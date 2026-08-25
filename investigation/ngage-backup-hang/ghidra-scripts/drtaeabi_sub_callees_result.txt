@@ -1,0 +1,209 @@
+=== target 80395370 ===
+FUNCTION FUN_80395370 @ 80395370 size=8
+--- disassembly ---
+80395370: push {r4,lr}
+80395372: bl 0x80395a34
+80395376: pop {r4,pc}
+--- decompiled ---
+
+void FUN_80395370(void)
+
+{
+  func_0x80395a34();
+  return;
+}
+
+
+
+=== target 803953a8 ===
+FUNCTION FUN_803953a8 @ 803953a8 size=30
+--- disassembly ---
+803953a8: push {r4,lr}
+803953aa: bl 0x80395370
+803953ae: ldr r1,[r0,#0x10]
+803953b0: cmp r1,#0x0
+803953b2: beq 0x803953bc
+803953b4: mov r2,#0x0
+803953b6: str r2,[r0,#0x10]
+803953b8: blx r1
+803953ba: b 0x803953c0
+803953bc: ldr r0,[r0,#0x8]
+803953be: blx r0
+803953c0: bl 0x80394522
+803953c4: pop {r4,pc}
+--- decompiled ---
+
+void FUN_803953a8(void)
+
+{
+  int iVar1;
+  code *pcVar2;
+  
+  iVar1 = FUN_80395370();
+  pcVar2 = *(code **)(iVar1 + 0x10);
+  if (pcVar2 == (code *)0x0) {
+    (**(code **)(iVar1 + 8))();
+  }
+  else {
+    *(undefined4 *)(iVar1 + 0x10) = 0;
+    (*pcVar2)();
+  }
+  func_0x80394522();
+  return;
+}
+
+
+
+=== target 803953de ===
+FUNCTION FUN_803953de @ 803953de size=14
+--- disassembly ---
+803953de: ldr r1,[0x80395798]
+803953e0: push {lr}
+803953e2: bl 0x803953c6
+803953e6: mov r1,#0x1
+803953e8: eor r0,r1
+803953ea: pop {pc}
+--- decompiled ---
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+uint FUN_803953de(undefined4 param_1)
+
+{
+  uint uVar1;
+  
+  uVar1 = func_0x803953c6(param_1,_DAT_80395798);
+  return uVar1 ^ 1;
+}
+
+
+
+=== target 80395510 ===
+FUNCTION FUN_80395510 @ 80395510 size=32
+--- disassembly ---
+80395510: push {r4,lr}
+80395512: mov r4,r0
+80395514: bl 0x80395370
+80395518: mov r3,r4
+8039551a: sub r3,#0x78
+8039551c: ldr r0,[r0,#0x1c]
+8039551e: mov r1,r3
+80395520: bl 0x80395392
+80395524: cmp r0,#0x0
+80395526: bne 0x8039552e
+80395528: mov r0,r3
+8039552a: blx 0x80396444
+8039552e: pop {r4,pc}
+--- decompiled ---
+
+void FUN_80395510(int param_1)
+
+{
+  int iVar1;
+  
+  iVar1 = FUN_80395370();
+  param_1 = param_1 + -0x78;
+  iVar1 = func_0x80395392(*(undefined4 *)(iVar1 + 0x1c),param_1);
+  if (iVar1 == 0) {
+    func_0x80396444(param_1);
+  }
+  return;
+}
+
+
+
+=== target 803954a6 ===
+FUNCTION FUN_803954a6 @ 803954a6 size=66
+--- disassembly ---
+803954a6: push {r4,r5,r6,lr}
+803954a8: mov r5,r0
+803954aa: bl 0x80395370
+803954ae: mov r4,r0
+803954b0: mov r0,r5
+803954b2: bl 0x803953de
+803954b6: cmp r0,#0x0
+803954b8: beq 0x803954c4
+803954ba: ldr r0,[r4,#0x14]
+803954bc: mov r1,r5
+803954be: bl 0x80395468
+803954c2: b 0x803954d4
+803954c4: mov r0,r5
+803954c6: sub r0,#0x20
+803954c8: ldr r1,[r0,#0x1c]
+803954ca: sub r1,r1,#0x1
+803954cc: str r1,[r0,#0x1c]
+803954ce: ldr r1,[r4,#0x0]
+803954d0: sub r1,r1,#0x1
+803954d2: str r1,[r4,#0x0]
+803954d4: ldr r1,[r0,#0x14]
+803954d6: add r1,r1,#0x1
+803954d8: str r1,[r0,#0x14]
+803954da: ldr r1,[r0,#0x10]
+803954dc: cmp r1,#0x0
+803954de: bne 0x803954e6
+803954e0: ldr r1,[r4,#0x14]
+803954e2: str r1,[r0,#0x10]
+803954e4: str r0,[r4,#0x14]
+803954e6: pop {r4,r5,r6,pc}
+--- decompiled ---
+
+void FUN_803954a6(int param_1)
+
+{
+  int *piVar1;
+  int iVar2;
+  
+  piVar1 = (int *)FUN_80395370();
+  iVar2 = FUN_803953de(param_1);
+  if (iVar2 == 0) {
+    iVar2 = param_1 + -0x20;
+    *(int *)(param_1 + -4) = *(int *)(param_1 + -4) + -1;
+    *piVar1 = *piVar1 + -1;
+  }
+  else {
+    iVar2 = func_0x80395468(piVar1[5],param_1);
+  }
+  *(int *)(iVar2 + 0x14) = *(int *)(iVar2 + 0x14) + 1;
+  if (*(int *)(iVar2 + 0x10) == 0) {
+    *(int *)(iVar2 + 0x10) = piVar1[5];
+    piVar1[5] = iVar2;
+  }
+  return;
+}
+
+
+
+=== target 80394bae ===
+FUNCTION FUN_80394bae @ 80394bae size=30
+--- disassembly ---
+80394bae: push {r4,lr}
+80394bb0: ldr r1,[r0,#0xc]
+80394bb2: cmp r1,#0x0
+80394bb4: bne 0x80394bbc
+80394bb6: bl 0x80394522
+80394bba: b 0x80394bc6
+80394bbc: cmp r1,#0x1
+80394bbe: bne 0x80394bc6
+80394bc0: sub r1,r1,#0x1
+80394bc2: str r1,[r0,#0xc]
+80394bc4: pop {r4,pc}
+80394bc6: bl 0x80394522
+80394bca: pop {r4,pc}
+--- decompiled ---
+
+void FUN_80394bae(int param_1)
+
+{
+  if (*(int *)(param_1 + 0xc) == 0) {
+    func_0x80394522();
+  }
+  else if (*(int *)(param_1 + 0xc) == 1) {
+    *(undefined4 *)(param_1 + 0xc) = 0;
+    return;
+  }
+  func_0x80394522();
+  return;
+}
+
+
+

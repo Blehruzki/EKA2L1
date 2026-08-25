@@ -1,0 +1,16 @@
+=== target 0x8214722c ===
+FUNCTION final_handler_exact @ 8214722c size=8
+--- disassembly ---
+8214722c: push {r4,lr}
+8214722e: blx 0x82147c28
+82147232: pop {r4,pc}
+--- decompiled ---
+
+void final_handler_exact(void)
+
+{
+  thunk_EXT_FUN_821b6252();
+  return;
+}
+
+

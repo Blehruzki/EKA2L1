@@ -618,6 +618,7 @@ void main_window::on_device_set_requested(const int index) {
             system->reset();
         } else {
             system->set_device(static_cast<std::uint8_t>(index));
+            system->mount_default_user_drives();
         }
     }
 
@@ -681,9 +682,7 @@ void main_window::on_new_device_added() {
         emulator_state_.symsys->startup();
         emulator_state_.symsys->set_device(0);
 
-        emulator_state_.symsys->mount(drive_c, drive_media::physical, eka2l1::add_path(emulator_state_.conf.storage, "/drives/c/"), io_attrib_internal);
-        emulator_state_.symsys->mount(drive_d, drive_media::physical, eka2l1::add_path(emulator_state_.conf.storage, "/drives/d/"), io_attrib_internal);
-        emulator_state_.symsys->mount(drive_e, drive_media::physical, eka2l1::add_path(emulator_state_.conf.storage, "/drives/e/"), io_attrib_removeable);
+        emulator_state_.symsys->mount_default_user_drives();
 
         // Set and wait for reinitialization
         emulator_state_.init_event.set();

@@ -175,7 +175,7 @@ namespace eka2l1::drivers {
                 if (more_buffer_callback_) {
                     more_buffer_callback_(more_buffer_userdata_);
                 }
-                
+
                 more_requested = true;
             }
         }

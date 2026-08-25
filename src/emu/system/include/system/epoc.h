@@ -173,6 +173,14 @@ namespace eka2l1 {
         void set_config(config::state *conf);
 
         void mount(drive_number drv, const drive_media media, std::string path, const std::uint32_t attrib = io_attrib_none);
+
+        /*! \brief (Re)mount the current device's C:/D:/E: drives from its own per-device storage folder.
+         *
+         * Unmounts any existing C:/D:/E: mapping first, so it is safe to call both for the
+         * initial mount and whenever the current device changes. Also migrates any pre-existing
+         * global (pre-per-device) drive folders into the current device's folder, once.
+        */
+        void mount_default_user_drives();
         zip_mount_error mount_game_zip(drive_number drv, const drive_media media, const std::string &zip_path, const std::uint32_t base_attrib = io_attrib_none,
             progress_changed_callback progress_cb = nullptr, cancel_requested_callback cancel_cb = nullptr);
 

@@ -1,0 +1,400 @@
+=== target 0x821b6252 ===
+FUNCTION new_821b6252 @ 821b6252 size=60
+821b6252: movs r7,r1
+821b6254: movs r4,#0x0
+821b6256: str r5,[sp,#0x8]
+821b6258: blx 0x821b6808
+821b625c: str r0,[sp,#0x4]
+821b625e: movs r1,r7
+821b6260: movs r0,r6
+821b6262: add r2,sp,#0x8
+821b6264: bl 0x821b6178
+821b6268: ldr r0,[sp,#0x4]
+821b626a: blx 0x821b6810
+821b626e: b 0x821b6288
+821b6288: ldr r0,[sp,#0x8]
+821b628a: cmp r0,#0x0
+821b628c: bne 0x821b629a
+821b628e: ldr r0,[0x821b6370]
+821b6290: cmp r4,r0
+821b6292: bne 0x821b629c
+821b6294: blx 0x821b68b8
+821b6298: str r5,[r0,#0x18]
+821b629a: b 0x821b5fee
+821b629c: movs r1,r4
+821b629e: movs r0,r7
+821b62a0: blx 0x821b67d8
+821b62a4: b 0x821b5fee
+--- decompiled ---
+
+void new_821b6252(undefined4 param_1,undefined4 param_2)
+
+{
+  undefined4 uVar1;
+  int iVar2;
+  int unaff_r5;
+  
+  uVar1 = thunk_EXT_FUN_803a82aa();
+  FUN_821b6178();
+  thunk_EXT_FUN_803a82c0(uVar1);
+  if (unaff_r5 == 0) {
+    if (DAT_821b6370 == 0) {
+      iVar2 = thunk_EXT_FUN_803a3144();
+      *(undefined4 *)(iVar2 + 0x18) = 0;
+    }
+    else {
+      thunk_EXT_FUN_803aa0f6(param_2,0);
+    }
+  }
+  return;
+}
+
+
+
+=== target 0x821b6808 ===
+FUNCTION thunk_EXT_FUN_803a82aa @ 821b6808 size=4
+821b6808: ldr pc,[0x821b680c]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a82aa(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b6808. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b680c)();
+  return;
+}
+
+
+
+=== target 0x821b6178 ===
+FUNCTION FUN_821b6178 @ 821b6178 size=52
+821b6178: push {r3,r4,r5,r6,r7,lr}
+821b617a: movs r5,r2
+821b617c: ldr r3,[r1,#0x4]
+821b617e: movs r4,r0
+821b6180: movs r7,r0
+821b6182: movs r6,#0x1
+821b6184: subs r3,#0x14
+821b6186: adds r7,#0x30
+821b6188: blx 0x821b69d0
+821b618c: lsrs r0,r2,#0x4
+821b618e: asrs r2,r2,#0x18
+821b6190: movs r1,#0x1c
+821b6192: cmp r1,#0x25
+821b6194: adds r1,#0x2d
+821b6196: subs r0,#0x34
+821b6198: ldr r5,[0x821b62c0]
+821b619a: ldrsb r3,[r2,r5]
+821b619c: ldrh r6,[r1,r0]
+821b619e: ldr r1,[r1,#0x0]
+821b61a0: movs r0,r4
+821b61a2: bl 0x821b615a
+821b61a6: b 0x821b622e
+821b622e: str r6,[r5,#0x0]
+821b6230: pop {r3,r4,r5,r6,r7,pc}
+--- decompiled ---
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+void FUN_821b6178(undefined4 param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4)
+
+{
+  ushort uVar1;
+  uint *puVar2;
+  uint extraout_r2;
+  
+  thunk_EXT_FUN_80399f48();
+  puVar2 = _DAT_821b62c0;
+  uVar1 = *(ushort *)((extraout_r2 >> 4) + 0x15);
+  FUN_821b615a(param_1,_DAT_00000049,(int)extraout_r2 >> 0x18,
+               (int)*(char *)(((int)extraout_r2 >> 0x18) + (int)_DAT_821b62c0),param_4);
+  *puVar2 = (uint)uVar1;
+  return;
+}
+
+
+
+=== target 0x821b6810 ===
+FUNCTION thunk_EXT_FUN_803a82c0 @ 821b6810 size=4
+821b6810: ldr pc,[0x821b6814]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a82c0(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b6810. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b6814)();
+  return;
+}
+
+
+
+=== target 0x821b68b8 ===
+FUNCTION thunk_EXT_FUN_803a3144 @ 821b68b8 size=4
+821b68b8: ldr pc,[0x821b68bc]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a3144(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b68b8. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b68bc)();
+  return;
+}
+
+
+
+=== target 0x821b67d8 ===
+FUNCTION thunk_EXT_FUN_803aa0f6 @ 821b67d8 size=4
+821b67d8: ldr pc,[0x821b67dc]
+--- decompiled ---
+
+void thunk_EXT_FUN_803aa0f6(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b67d8. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b67dc)();
+  return;
+}
+
+
+
+=== target 0x821b69d0 ===
+FUNCTION thunk_EXT_FUN_80399f48 @ 821b69d0 size=4
+821b69d0: ldr pc,[0x821b69d4]
+--- decompiled ---
+
+void thunk_EXT_FUN_80399f48(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b69d0. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b69d4)();
+  return;
+}
+
+
+
+=== target 0x821b615a ===
+FUNCTION FUN_821b615a @ 821b615a size=30
+821b615a: push {r0,r1,r4,lr}
+821b615c: movs r4,r0
+821b615e: ldr r0,[r0,#0x1c]
+821b6160: bl 0x821b59cc
+821b6164: cmp r0,#0x0
+821b6166: beq 0x821b616e
+821b6168: ldr r0,[sp,#0x4]
+821b616a: str r0,[r4,#0x20]
+821b616c: pop {r2,r3,r4,pc}
+821b616e: movs r1,#0x0
+821b6170: add r0,sp,#0x4
+821b6172: blx 0x821b67d8
+821b6176: pop {r2,r3,r4,pc}
+--- decompiled ---
+
+void FUN_821b615a(int param_1,undefined4 param_2)
+
+{
+  int iVar1;
+  undefined4 local_c;
+  
+  local_c = param_2;
+  iVar1 = FUN_821b59cc(*(undefined4 *)(param_1 + 0x1c));
+  if (iVar1 != 0) {
+    *(undefined4 *)(param_1 + 0x20) = local_c;
+    return;
+  }
+  thunk_EXT_FUN_803aa0f6(&local_c,0);
+  return;
+}
+
+
+
+=== target 0x821b59cc ===
+FUNCTION FUN_821b59cc @ 821b59cc size=18
+821b59cc: push {r4,lr}
+821b59ce: bl 0x821b599c
+821b59d2: adds r3,r0,#0x1
+821b59d4: bne 0x821b59da
+821b59d6: movs r0,#0x1
+821b59d8: pop {r4,pc}
+821b59da: movs r0,#0x0
+821b59dc: pop {r4,pc}
+--- decompiled ---
+
+undefined4 FUN_821b59cc(void)
+
+{
+  int iVar1;
+  
+  iVar1 = FUN_821b599c();
+  if (iVar1 == -1) {
+    return 1;
+  }
+  return 0;
+}
+
+
+
+=== target 0x821b599c ===
+FUNCTION FUN_821b599c @ 821b599c size=48
+821b599c: push {r3,r4,r5,r6,r7,lr}
+821b599e: movs r5,r0
+821b59a0: movs r7,#0x0
+821b59a2: mvns r7,r7
+821b59a4: adds r0,r0,#0x4
+821b59a6: bl 0x821b6a7c
+821b59aa: movs r6,r0
+821b59ac: movs r4,#0x0
+821b59ae: b 0x821b59c4
+821b59b0: adds r0,r5,#0x4
+821b59b2: movs r1,r4
+821b59b4: blx 0x821b67a0
+821b59b8: ldr r0,[r0,#0x4]
+821b59ba: adds r3,r0,#0x1
+821b59bc: beq 0x821b59c2
+821b59be: movs r7,r4
+821b59c0: b 0x821b59c8
+821b59c2: adds r4,r4,#0x1
+821b59c4: cmp r4,r6
+821b59c6: blt 0x821b59b0
+821b59c8: movs r0,r7
+821b59ca: pop {r3,r4,r5,r6,r7,pc}
+--- decompiled ---
+
+int FUN_821b599c(int param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4)
+
+{
+  int iVar1;
+  int iVar2;
+  undefined4 extraout_r2;
+  undefined4 extraout_r2_00;
+  undefined4 uVar3;
+  undefined4 extraout_r3;
+  undefined4 uVar4;
+  int iVar5;
+  int iVar6;
+  
+  iVar1 = FUN_821b6a7c(param_1 + 4);
+  iVar5 = 0;
+  uVar4 = extraout_r3;
+  uVar3 = extraout_r2;
+  while ((iVar6 = -1, iVar5 < iVar1 &&
+         (iVar2 = thunk_EXT_FUN_803a0934(param_1 + 4,iVar5,uVar3,uVar4,param_4), iVar6 = iVar5,
+         *(int *)(iVar2 + 4) == -1))) {
+    iVar5 = iVar5 + 1;
+    uVar4 = 0;
+    uVar3 = extraout_r2_00;
+  }
+  return iVar6;
+}
+
+
+
+=== target 0x821b6a7c ===
+FUNCTION FUN_821b6a7c @ 821b6a7c size=8
+821b6a7c: push {r4,lr}
+821b6a7e: blx 0x821b67a8
+821b6a82: pop {r4,pc}
+--- decompiled ---
+
+void FUN_821b6a7c(void)
+
+{
+  thunk_EXT_FUN_803b0b5c();
+  return;
+}
+
+
+
+=== target 0x821b67a0 ===
+FUNCTION thunk_EXT_FUN_803a0934 @ 821b67a0 size=4
+821b67a0: ldr pc,[0x821b67a4]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a0934(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b67a0. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b67a4)();
+  return;
+}
+
+
+
+=== target 0x821b59b0 ===
+FUNCTION FUN_821b599c @ 821b599c size=48
+821b599c: push {r3,r4,r5,r6,r7,lr}
+821b599e: movs r5,r0
+821b59a0: movs r7,#0x0
+821b59a2: mvns r7,r7
+821b59a4: adds r0,r0,#0x4
+821b59a6: bl 0x821b6a7c
+821b59aa: movs r6,r0
+821b59ac: movs r4,#0x0
+821b59ae: b 0x821b59c4
+821b59b0: adds r0,r5,#0x4
+821b59b2: movs r1,r4
+821b59b4: blx 0x821b67a0
+821b59b8: ldr r0,[r0,#0x4]
+821b59ba: adds r3,r0,#0x1
+821b59bc: beq 0x821b59c2
+821b59be: movs r7,r4
+821b59c0: b 0x821b59c8
+821b59c2: adds r4,r4,#0x1
+821b59c4: cmp r4,r6
+821b59c6: blt 0x821b59b0
+821b59c8: movs r0,r7
+821b59ca: pop {r3,r4,r5,r6,r7,pc}
+--- decompiled ---
+
+int FUN_821b599c(int param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4)
+
+{
+  int iVar1;
+  int iVar2;
+  undefined4 extraout_r2;
+  undefined4 extraout_r2_00;
+  undefined4 uVar3;
+  undefined4 extraout_r3;
+  undefined4 uVar4;
+  int iVar5;
+  int iVar6;
+  
+  iVar1 = FUN_821b6a7c(param_1 + 4);
+  iVar5 = 0;
+  uVar4 = extraout_r3;
+  uVar3 = extraout_r2;
+  while ((iVar6 = -1, iVar5 < iVar1 &&
+         (iVar2 = thunk_EXT_FUN_803a0934(param_1 + 4,iVar5,uVar3,uVar4,param_4), iVar6 = iVar5,
+         *(int *)(iVar2 + 4) == -1))) {
+    iVar5 = iVar5 + 1;
+    uVar4 = 0;
+    uVar3 = extraout_r2_00;
+  }
+  return iVar6;
+}
+
+
+
+=== target 0x821b67a8 ===
+FUNCTION thunk_EXT_FUN_803b0b5c @ 821b67a8 size=4
+821b67a8: ldr pc,[0x821b67ac]
+--- decompiled ---
+
+void thunk_EXT_FUN_803b0b5c(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b67a8. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b67ac)();
+  return;
+}
+
+
+

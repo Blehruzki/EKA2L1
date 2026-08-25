@@ -1,0 +1,304 @@
+=== export[1] @ 0x82147402 ===
+FUNCTION FUN_82147402 @ 82147402 size=16
+82147402: push {r4,lr}
+82147404: movs r0,#0x8c
+82147406: blx 0x82147ae8
+8214740a: movs r1,#0xc8
+8214740c: bl 0x821473e6
+82147410: pop {r4,pc}
+
+=== export[2] @ 0x82147e78 ===
+FUNCTION export_82147e78 @ 82147e78 size=12
+82147e78: ldrb r4,[r0,#0x7]
+82147e7a: strh r1,[r7,#0x0]
+82147e7c: ldrb r0,[r0,#0x1d]
+82147e7e: strh r4,[r2,#0x10]
+82147e80: stmia r0!,{}
+82147e82: strh r4,[r7,#0x0]
+
+=== export[3] @ 0x82147e84 ===
+FUNCTION export_82147e84 @ 82147e84 size=12
+82147e84: ldrb r4,[r0,#0x7]
+82147e86: strh r1,[r7,#0x0]
+82147e88: ldrb r6,[r1,#0x1d]
+82147e8a: strh r4,[r2,#0x10]
+82147e8c: stmia r0!,{r2,r4,r5}
+82147e8e: strh r4,[r7,#0x0]
+
+=== export[4] @ 0x82147e90 ===
+FUNCTION export_82147e90 @ 82147e90 size=36
+82147e90: ldrb r4,[r0,#0x7]
+82147e92: strh r1,[r7,#0x0]
+82147e94: ldrb r4,[r3,#0x1d]
+82147e96: strh r4,[r2,#0x10]
+82147e98: stmia r0!,{r2,r4,r5}
+82147e9a: strh r4,[r7,#0x0]
+82147e9c: ldrb r4,[r0,#0x7]
+82147e9e: strh r1,[r7,#0x0]
+82147ea0: ldrb r2,[r5,#0x1d]
+82147ea2: strh r4,[r2,#0x10]
+82147ea4: ldrb r0,[r2,#0x1c]
+82147ea6: strh r4,[r2,#0x10]
+82147ea8: ldrb r4,[r0,#0x7]
+82147eaa: strh r1,[r7,#0x0]
+82147eac: ldrb r0,[r4,#0x1e]
+82147eae: strh r4,[r2,#0x10]
+82147eb0: ldrb r0,[r5,#0x1c]
+82147eb2: strh r4,[r2,#0x10]
+
+=== export[5] @ 0x82147eb4 ===
+FUNCTION export_82147eb4 @ 82147eb4 size=28
+82147eb4: ldrb r4,[r0,#0x7]
+82147eb6: strh r1,[r7,#0x0]
+82147eb8: ldrb r7,[r7,#0x1e]
+82147eba: strh r4,[r2,#0x10]
+82147ebc: stmia r0!,{}
+82147ebe: strh r4,[r7,#0x0]
+82147ec0: ldrb r4,[r0,#0x6]
+82147ec2: strh r1,[r7,#0x0]
+82147ec4: ldrb r4,[r2,#0x1f]
+82147ec6: strh r4,[r2,#0x10]
+82147ec8: ldrb r4,[r0,#0x6]
+82147eca: strh r1,[r7,#0x0]
+82147ecc: ldrb r2,[r5,#0x1f]
+82147ece: strh r4,[r2,#0x10]
+
+=== export[6] @ 0x82147ed0 ===
+FUNCTION export_82147ed0 @ 82147ed0 size=32
+82147ed0: ldrb r4,[r2,#0x7]
+82147ed2: strh r1,[r7,#0x0]
+82147ed4: strh r0,[r0,#0x0]
+82147ed6: strh r4,[r2,#0x10]
+82147ed8: movs r0,r0
+82147eda: movs r0,r0
+82147edc: movs r2,r0
+82147ede: movs r0,r0
+82147ee0: ldr r0,[r7,#0x40]
+82147ee2: strh r3,[r3,#0x10]
+82147ee4: movs r2,r0
+82147ee6: movs r0,r0
+82147ee8: ldrb r0,[r1,#0x1b]
+82147eea: strh r4,[r2,#0x10]
+82147eec: ldrb r2,[r0,#0x0]
+82147eee: movs r0,r0
+
+=== export[7] @ 0x82147ef0 ===
+FUNCTION export_82147ef0 @ 82147ef0 size=68
+82147ef0: ldrb r4,[r2,#0x7]
+82147ef2: strh r1,[r7,#0x0]
+82147ef4: strh r7,[r2,#0x0]
+82147ef6: strh r4,[r2,#0x10]
+82147ef8: movs r0,r0
+82147efa: movs r0,r0
+82147efc: movs r2,r0
+82147efe: movs r0,r0
+82147f00: ldr r4,[r3,#0x44]
+82147f02: strh r3,[r3,#0x10]
+82147f04: movs r2,r0
+82147f06: movs r0,r0
+82147f08: ldrb r0,[r0,#0x1b]
+82147f0a: strh r4,[r2,#0x10]
+82147f0c: ands r2,r0
+82147f0e: movs r0,r0
+82147f10: ldrb r4,[r0,#0x7]
+82147f12: strh r1,[r7,#0x0]
+82147f14: strh r7,[r5,#0x0]
+82147f16: strh r4,[r2,#0x10]
+82147f18: itt eq
+82147f1a: strh.eq r4,[r7,#0x0]
+82147f1c: ldrb.eq r4,[r0,#0x7]
+82147f1e: strh r1,[r7,#0x0]
+82147f20: strh r1,[r4,#0x2]
+82147f22: strh r4,[r2,#0x10]
+82147f24: itt eq
+82147f26: strh.eq r4,[r7,#0x0]
+82147f28: ldrb.eq r4,[r0,#0x7]
+82147f2a: strh r1,[r7,#0x0]
+82147f2c: strh r4,[r7,#0x2]
+82147f2e: strh r4,[r2,#0x10]
+82147f30: ldrb r4,[r3,#0x1c]
+82147f32: strh r4,[r2,#0x10]
+
+=== export[8] @ 0x82147f34 ===
+FUNCTION export_82147f34 @ 82147f34 size=12
+82147f34: ldrb r4,[r0,#0x7]
+82147f36: strh r1,[r7,#0x0]
+82147f38: strh r6,[r2,#0x4]
+82147f3a: strh r4,[r2,#0x10]
+82147f3c: stmia r0!,{r4,r6,r7}
+82147f3e: strh r4,[r7,#0x0]
+
+=== export[9] @ 0x821480b8 ===
+FUNCTION export_821480b8 @ 821480b8 size=20
+821480b8: movs r0,r0
+821480ba: movs r0,r0
+821480bc: ldrb r0,[r7,#0x19]
+821480be: strh r4,[r2,#0x10]
+821480c0: strb r5,[r0,#0xd]
+821480c2: strh r4,[r2,#0x10]
+821480c4: strb r7,[r3,#0xe]
+821480c6: strh r4,[r2,#0x10]
+821480c8: ldrb r0,[r2,#0x9]
+821480ca: strh r4,[r2,#0x10]
+
+=== export[10] @ 0x821480cc ===
+FUNCTION export_821480cc @ 821480cc size=32
+821480cc: movs r0,r0
+821480ce: movs r0,r0
+821480d0: ldrb r4,[r0,#0x1a]
+821480d2: strh r4,[r2,#0x10]
+821480d4: strb r1,[r7,#0x1d]
+821480d6: strh r4,[r2,#0x10]
+821480d8: strb r3,[r3,#0x1e]
+821480da: strh r4,[r2,#0x10]
+821480dc: ldrb r0,[r4,#0x9]
+821480de: strh r4,[r2,#0x10]
+821480e0: strb r3,[r5,#0x1e]
+821480e2: strh r4,[r2,#0x10]
+821480e4: strb r7,[r2,#0x1f]
+821480e6: strh r4,[r2,#0x10]
+821480e8: ldrb r0,[r7,#0x3]
+821480ea: strh r4,[r2,#0x10]
+
+=== export[11] @ 0x821480ec ===
+FUNCTION export_821480ec @ 821480ec size=72
+821480ec: movs r0,r0
+821480ee: movs r0,r0
+821480f0: ldrb r0,[r2,#0x1a]
+821480f2: strh r4,[r2,#0x10]
+821480f4: strb r1,[r3,#0x9]
+821480f6: strh r4,[r2,#0x10]
+821480f8: strb r1,[r7,#0x9]
+821480fa: strh r4,[r2,#0x10]
+821480fc: ldrb r0,[r4,#0x9]
+821480fe: strh r4,[r2,#0x10]
+82148100: strb r5,[r1,#0xa]
+82148102: strh r4,[r2,#0x10]
+82148104: strb r5,[r5,#0xc]
+82148106: strh r4,[r2,#0x10]
+82148108: strb r5,[r6,#0xc]
+8214810a: strh r4,[r2,#0x10]
+8214810c: movs r0,r0
+8214810e: movs r0,r0
+82148110: ldrb r4,[r3,#0x1a]
+82148112: strh r4,[r2,#0x10]
+82148114: ldrb r1,[r4,#0x13]
+82148116: strh r4,[r2,#0x10]
+82148118: ldrb r1,[r2,#0x13]
+8214811a: strh r4,[r2,#0x10]
+8214811c: ldrb r0,[r2,#0x9]
+8214811e: strh r4,[r2,#0x10]
+82148120: movs r0,r0
+82148122: movs r0,r0
+82148124: ldrb r0,[r5,#0x1a]
+82148126: strh r4,[r2,#0x10]
+82148128: ldrb r1,[r7,#0x13]
+8214812a: strh r4,[r2,#0x10]
+8214812c: ldrb r1,[r5,#0x13]
+8214812e: strh r4,[r2,#0x10]
+82148130: ldrb r0,[r2,#0x9]
+82148132: strh r4,[r2,#0x10]
+
+=== export[12] @ 0x82148134 ===
+FUNCTION export_82148134 @ 82148134 size=20
+82148134: movs r0,r0
+82148136: movs r0,r0
+82148138: ldrb r4,[r6,#0x1a]
+8214813a: strh r4,[r2,#0x10]
+8214813c: strb r3,[r7,#0xe]
+8214813e: strh r4,[r2,#0x10]
+82148140: strb r7,[r2,#0xf]
+82148142: strh r4,[r2,#0x10]
+82148144: ldrb r0,[r2,#0x9]
+82148146: strh r4,[r2,#0x10]
+
+=== export[13] @ 0x82148148 ===
+FUNCTION export_82148148 @ 82148148 size=64
+82148148: movs r0,r0
+8214814a: movs r0,r0
+8214814c: ldrb r0,[r2,#0x1b]
+8214814e: strh r4,[r2,#0x10]
+82148150: strb r3,[r2,#0x10]
+82148152: strh r4,[r2,#0x10]
+82148154: strb r5,[r7,#0x10]
+82148156: strh r4,[r2,#0x10]
+82148158: ldrb r0,[r5,#0x9]
+8214815a: strh r4,[r2,#0x10]
+8214815c: ldrb r0,[r2,#0x5]
+8214815e: strh r4,[r2,#0x10]
+82148160: ldrb r0,[r1,#0x5]
+82148162: strh r4,[r2,#0x10]
+82148164: ldrb r0,[r6,#0x11]
+82148166: strh r4,[r2,#0x10]
+82148168: ldrb r0,[r3,#0x5]
+8214816a: strh r4,[r2,#0x10]
+8214816c: strb r7,[r5,#0x1c]
+8214816e: strh r4,[r2,#0x10]
+82148170: ldrb r0,[r4,#0x11]
+82148172: strh r4,[r2,#0x10]
+82148174: ldrb r0,[r6,#0x10]
+82148176: strh r4,[r2,#0x10]
+82148178: strb r5,[r1,#0x11]
+8214817a: strh r4,[r2,#0x10]
+8214817c: strb r7,[r6,#0x1a]
+8214817e: strh r4,[r2,#0x10]
+82148180: strb r5,[r2,#0x1c]
+82148182: strh r4,[r2,#0x10]
+82148184: strb r7,[r2,#0x1d]
+82148186: strh r4,[r2,#0x10]
+
+=== export[14] @ 0x82148194 ===
+FUNCTION export_82148194 @ 82148194 size=60
+82148194: movs r0,r0
+82148196: movs r0,r0
+82148198: ldrb r0,[r6,#0x1b]
+8214819a: strh r4,[r2,#0x10]
+8214819c: ldr r3,[r0,#0x50]
+8214819e: strh r4,[r2,#0x10]
+821481a0: ldr r3,[r1,#0x50]
+821481a2: strh r4,[r2,#0x10]
+821481a4: ldrb r0,[r6,#0x9]
+821481a6: strh r4,[r2,#0x10]
+821481a8: ldrb r0,[r4,#0x10]
+821481aa: strh r4,[r2,#0x10]
+821481ac: ldrb r0,[r2,#0x6]
+821481ae: strh r4,[r2,#0x10]
+821481b0: strb r5,[r5,#0x8]
+821481b2: strh r4,[r2,#0x10]
+821481b4: strb r5,[r6,#0x8]
+821481b6: strh r4,[r2,#0x10]
+821481b8: ldrb r0,[r1,#0x6]
+821481ba: strh r4,[r2,#0x10]
+821481bc: ldr r7,[r3,#0x50]
+821481be: strh r4,[r2,#0x10]
+821481c0: ldrb r0,[r0,#0x10]
+821481c2: strh r4,[r2,#0x10]
+821481c4: strb r5,[r2,#0x6]
+821481c6: strh r4,[r2,#0x10]
+821481c8: strb r5,[r6,#0x7]
+821481ca: strh r4,[r2,#0x10]
+821481cc: ldr r3,[r2,#0x54]
+821481ce: strh r4,[r2,#0x10]
+
+=== export[15] @ 0x821481dc ===
+FUNCTION export_821481dc @ 821481dc size=84
+821481dc: movs r0,r0
+821481de: movs r0,r0
+821481e0: ldrb r4,[r6,#0x1c]
+821481e2: strh r4,[r2,#0x10]
+821481e4: ldrb r1,[r1,#0x13]
+821481e6: strh r4,[r2,#0x10]
+821481e8: ldrb r1,[r7,#0x12]
+821481ea: strh r4,[r2,#0x10]
+821481ec: ldrb r0,[r4,#0x9]
+821481ee: strh r4,[r2,#0x10]
+821481f0: ldrb r0,[r1,#0xc]
+821481f2: strh r4,[r2,#0x10]
+821481f4: ldrb r0,[r5,#0x5]
+821481f6: strh r4,[r2,#0x10]
+821481f8: strb r7,[r5,#0xe]
+821481fa: strh r4,[r2,#0x10]
+821481fc: teq.w r4,pc, ror #0x1f
+82148200: movs r1,r0
+82148202: movs r0,r0
+

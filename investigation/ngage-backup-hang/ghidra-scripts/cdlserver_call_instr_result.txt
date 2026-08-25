@@ -1,0 +1,20 @@
+=== raw lr=83485ffb -> real return=83485ffa ===
+raw bytes [83485fea..]: ff f7 1b ff 28 00 00 f0 ae e9 0a e0 00 f0 d0 ea 00 f0 b6 e9 
+--- disassembly attempts from various back-offsets (each independent) ---
+[back=16] disassemble failed: Context register change conflicts with one or more instructions
+[back=12] disassemble failed: Context register change conflicts with one or more instructions
+[back=8] disassemble failed: Context register change conflicts with one or more instructions
+[back=6] disassemble failed: Context register change conflicts with one or more instructions
+[back=4] start=83485ff6 -> 83485ff6: blx 0x83486598 | 83485ffa: blx 0x83486368 | 
+[back=2] disassemble failed: Context register change conflicts with one or more instructions
+
+=== raw lr=8348600d -> real return=8348600c ===
+raw bytes [83485ffc..]: b6 e9 03 e0 00 f0 ca ea 00 f0 04 ea 00 f0 ca ea 20 00 ff f7 
+--- disassembly attempts from various back-offsets (each independent) ---
+[back=16] disassemble failed: Context register change conflicts with one or more instructions
+[back=12] start=83486000 -> 83486000: blx 0x83486598 | 83486004: blx 0x83486410 | 83486008: blx 0x834865a0 | 8348600c: mov r0,r4 | 
+[back=8] disassemble failed: Context register change conflicts with one or more instructions
+[back=6] disassemble failed: Context register change conflicts with one or more instructions
+[back=4] disassemble failed: Context register change conflicts with one or more instructions
+[back=2] disassemble failed: Context register change conflicts with one or more instructions
+

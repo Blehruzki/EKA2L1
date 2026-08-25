@@ -1,0 +1,68 @@
+=== target 0x803bb420 ===
+FUNCTION FUN_803bb420 @ 803bb420 size=32
+--- disassembly ---
+803bb420: movs r2,r0
+803bb422: movs r0,r1
+803bb424: push {r4,lr}
+803bb426: ldr r1,[0x803bb440]
+803bb428: movs r4,#0x2
+803bb42a: ldr r3,[r2,#0x4]
+803bb42c: cmp r0,r1
+803bb42e: bne 0x803bb438
+803bb430: movs r1,r3
+803bb432: orrs r1,r4
+803bb434: str r1,[r2,#0x4]
+803bb436: b 0x803bb43c
+803bb438: bics r3,r4
+803bb43a: str r3,[r2,#0x4]
+803bb43c: str r0,[r2,#0x0]
+803bb43e: pop {r4,pc}
+--- decompiled ---
+
+void FUN_803bb420(int *param_1,int param_2)
+
+{
+  if (param_2 == DAT_803bb440) {
+    param_1[1] = param_1[1] | 2;
+  }
+  else {
+    param_1[1] = param_1[1] & 0xfffffffd;
+  }
+  *param_1 = param_2;
+  return;
+}
+
+
+
+=== target 0x803aa99a ===
+FUNCTION FUN_803aa99a @ 803aa99a size=34
+--- disassembly ---
+803aa99a: push {r3,r4,r5,r6,r7,lr}
+803aa99c: movs r5,r0
+803aa99e: movs r7,r2
+803aa9a0: movs r6,r1
+803aa9a2: movs r4,r3
+803aa9a4: beq 0x803aa9ae
+803aa9a6: ldr r1,[0x803aac70]
+803aa9a8: movs r0,r4
+803aa9aa: bl 0x803bb420
+803aa9ae: movs r3,r4
+803aa9b0: movs r2,r7
+803aa9b2: ldr r0,[r5,#0x0]
+803aa9b4: movs r1,r6
+803aa9b6: blx 0x803a02dc
+803aa9ba: pop {r3,r4,r5,r6,r7,pc}
+--- decompiled ---
+
+void FUN_803aa99a(undefined4 *param_1,undefined4 param_2,undefined4 param_3,int param_4)
+
+{
+  if (param_4 != 0) {
+    FUN_803bb420(param_4,DAT_803aac70,param_3,param_4,param_4);
+  }
+  FUN_803a02dc(*param_1,param_2,param_3,param_4);
+  return;
+}
+
+
+

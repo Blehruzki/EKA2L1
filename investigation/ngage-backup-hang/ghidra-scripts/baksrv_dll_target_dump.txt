@@ -1,0 +1,28 @@
+TMode set to 1 from 821b6420 to 821b6480
+=== Thumb attempt at 0x821b643c (region 0x821b6420-0x821b6480) ===
+FUNCTION target_thumb_0x821b643c @ 821b643c size=8
+821b643c: push {r4,lr}
+821b643e: movs r0,#0x78
+821b6440: blx 0x821b6918
+--- decompiled ---
+
+void target_thumb_0x821b643c(void)
+
+{
+  undefined4 uVar1;
+  
+  uVar1 = thunk_EXT_FUN_803a83ae(0x78);
+  FUN_821b642e(uVar1,0);
+  return;
+}
+
+
+
+=== raw bytes around 0x821b6444 (context) ===
+
+821b6434: 96e96549016010bd10b5782000f06aea
+821b6444: 0021fff7f2ff10bd3eb504005e482100
+821b6454: 5c3120602cc968462cc00c3800f006ea
+821b6464: 684600f008ea07e0002802d001684968
+821b6474: 8847684600f0fee90028f5d1606f0028
+821b6484: 02d0016849688847a06e002802d00168

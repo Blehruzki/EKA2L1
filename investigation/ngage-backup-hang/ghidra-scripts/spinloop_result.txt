@@ -1,0 +1,33 @@
+=== target 0x8039fa9c ===
+FUNCTION FUN_8039fa98 @ 8039fa98 size=8
+--- disassembly ---
+8039fa98: swi 0x800000
+8039fa9c: bx lr
+--- decompiled ---
+
+void FUN_8039fa98(void)
+
+{
+  software_interrupt(0x800000);
+  return;
+}
+
+
+
+=== target 0x803a82d3 ===
+FUNCTION FUN_803a82cc @ 803a82cc size=8
+--- disassembly ---
+803a82cc: push {r4,lr}
+803a82ce: blx 0x8039fa98
+803a82d2: pop {r4,pc}
+--- decompiled ---
+
+void FUN_803a82cc(void)
+
+{
+  FUN_8039fa98();
+  return;
+}
+
+
+

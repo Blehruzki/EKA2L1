@@ -20,6 +20,8 @@
 
 #include <common/configure.h>
 
+#include <cstring>
+
 #include <common/algorithm.h>
 #include <common/chunkyseri.h>
 #include <common/container.h>
@@ -45,8 +47,12 @@
 #include <services/applist/applist.h>
 
 #include <atomic>
+#include <chrono>
 #include <fstream>
 #include <string>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
 
 #include <disasm/disasm.h>
 #include <drivers/itc.h>
@@ -153,6 +159,14 @@ namespace eka2l1 {
 
         std::size_t gdb_stub_breakpoint_callback_handle_;
         std::size_t ldd_request_load_callback_handle_;
+        // N-Gage 2.0 gametitlemetadata.dll infinite-loop compatibility fix (see
+        // investigation/ngage-backup-hang/README.md). Keyed by the "this" pointer (r5) of
+        // the loop instance, tracks the loop's real row index independent of whatever a
+        // buggy code path inside the loop body does to the guest's own r6 register.
+        std::size_t ngage_gtm_fix_codeseg_callback_handle_;
+        std::size_t ngage_gtm_fix_breakpoint_callback_handle_;
+        std::unordered_map<std::uint32_t, std::uint32_t> ngage_gtm_fix_loop_index_;
+        std::unordered_set<std::uint32_t> ngage_gtm_fix_installed_addrs_;
 
         common::identity_container<system_reset_callback_type> reset_callbacks_;
 
@@ -276,6 +290,77 @@ namespace eka2l1 {
 
             ldd_request_load_callback_handle_ = kern_->register_ldd_factory_request_callback(
                 &ldd::get_factory_func);
+
+            // N-Gage 2.0's gametitlemetadata.dll has a genuine compiled-code bug in a loop
+            // over purchase/title records: its own row index (r6) is not provably safe
+            // across the loop body (which dispatches through a per-record-type switch and
+            // a recursive call), and something along that path can disturb it, so the
+            // loop's `Count() > r6` exit test never reliably becomes false once the
+            // record table grows past around 16 rows (routine after a restored device
+            // backup) - an unconditional hang, not just a slow one. An earlier fix
+            // neutralized a specific instruction at code offset 0x47EC believed to be the
+            // culprit - but those exact 2 bytes are also read as *data* (a
+            // compiler-generated __switch8 jump table) by an unrelated call earlier in
+            // the same loop iteration, so that patch silently corrupted live switch
+            // routing instead, causing a second, previously-unexplained access violation.
+            // This fix instead hooks the loop's own back-edge increment (code offset
+            // 0x4810, `add r6,r6,#1`) - real, always-executed code, never table data - and
+            // enforces a host-tracked, monotonically-increasing index there, keyed by the
+            // loop instance's "this" pointer (r5), independent of whatever happened to r6
+            // during this pass. This is cause-agnostic by design: it guarantees loop
+            // termination without depending on which exact instruction disturbs r6. Full
+            // derivation in investigation/ngage-backup-hang/README.md.
+            static constexpr std::uint32_t GTM_LOOP_BACK_EDGE_OFFSET = 0x4810;
+            static const std::uint8_t GTM_LOOP_BACK_EDGE_EXPECTED[2] = { 0x76, 0x1C }; // add r6,r6,#1
+            static const std::uint8_t GTM_BKPT_BYTES[2] = { 0x00, 0xBE };
+
+            ngage_gtm_fix_codeseg_callback_handle_ = kern_->register_codeseg_loaded_callback(
+                [this](const std::string &name, kernel::process *pr, kernel::codeseg_ptr seg) {
+                    if (name.find("gametitlemetadata") == std::string::npos) {
+                        return;
+                    }
+
+                    const address run_addr = seg->get_code_run_addr(pr);
+                    const address target_addr = run_addr + GTM_LOOP_BACK_EDGE_OFFSET;
+                    std::uint8_t *ptr = reinterpret_cast<std::uint8_t *>(kern_->get_memory_system()->get_real_pointer(target_addr));
+
+                    if (!ptr) {
+                        return;
+                    }
+
+                    if (std::memcmp(ptr, GTM_LOOP_BACK_EDGE_EXPECTED, 2) != 0) {
+                        // Different build of this DLL - leave it untouched.
+                        return;
+                    }
+
+                    std::memcpy(ptr, GTM_BKPT_BYTES, 2);
+                    ngage_gtm_fix_installed_addrs_.insert(target_addr);
+                    LOG_INFO(SYSTEM, "Installed gametitlemetadata.dll infinite-loop compatibility hook at 0x{:X}", target_addr);
+                });
+
+            ngage_gtm_fix_breakpoint_callback_handle_ = kern_->register_breakpoint_hit_callback(
+                [this](arm::core *cpu_core, kernel::thread *target, const std::uint32_t addr) {
+                    if (ngage_gtm_fix_installed_addrs_.find(addr) == ngage_gtm_fix_installed_addrs_.end()) {
+                        return;
+                    }
+
+                    const std::uint32_t this_ptr = cpu_core->get_reg(5);
+                    const std::uint32_t real_r6 = cpu_core->get_reg(6);
+
+                    // Trust hardware only the first time this loop instance ("this"
+                    // pointer) is seen; every hit after that uses our own tracked count
+                    // instead of whatever the guest's r6 currently holds, since r6 isn't
+                    // provably safe from being disturbed elsewhere in the loop body.
+                    auto it = ngage_gtm_fix_loop_index_.find(this_ptr);
+                    const std::uint32_t base_index = (it != ngage_gtm_fix_loop_index_.end()) ? it->second : real_r6;
+                    const std::uint32_t next_index = base_index + 1;
+                    ngage_gtm_fix_loop_index_[this_ptr] = next_index;
+
+                    // Hand-emulate the real instruction (`add r6,r6,#1`) using the
+                    // corrected base, then continue past it.
+                    cpu_core->set_reg(6, next_index);
+                    cpu_core->set_pc(addr + 2);
+                });
 
             j2me_applist_ = std::make_unique<j2me::app_list>(*conf_);
         }
@@ -560,6 +645,7 @@ namespace eka2l1 {
         }
 
         void mount(drive_number drv, const drive_media media, std::string path, const std::uint32_t attrib = io_attrib_none);
+        void mount_default_user_drives();
         zip_mount_error mount_game_zip(drive_number drv, const drive_media media, const std::string &zip_path, const std::uint32_t attrib = io_attrib_none, progress_changed_callback progress_cb = nullptr, cancel_requested_callback cancel_cb = nullptr);
         ngage_game_card_install_error install_ngage_game_card(const std::string &folder_path, std::function<void(std::string)> game_name_found_cb, progress_changed_callback progress_cb = nullptr);
         ngage_game_card_install_error find_singular_ngage_game(const std::string &system_apps_folder_path, apa_app_registry &result, std::string *app_folder_name_1 = nullptr, std::string *app_folder_name_2 = nullptr);
@@ -689,6 +775,7 @@ namespace eka2l1 {
             return 1;
         }
 
+
         bool should_step = false;
         bool script_hits_the_feels = false;
 
@@ -744,6 +831,23 @@ namespace eka2l1 {
             return 0;
         }
 
+        if (kern_->crr_thread() == nullptr) {
+            // Genuinely idle: no thread was ready to run before or after
+            // reschedule(). Without this, the caller's own driving loop
+            // (the "while (!should_emu_quit) { loop(); }" in thread.cpp) just
+            // calls this function again immediately forever, pegging a full
+            // CPU core on pure busy-polling for as long as nothing is ready -
+            // indistinguishable from a hang from the outside (~99% of one
+            // core, zero log output) even when the underlying wait is a
+            // perfectly normal, resolvable one (see investigation/
+            // ngage-backup-hang round 73). Scheduled ntimer events still fire
+            // correctly regardless, on their own dedicated thread - this
+            // sleep only stops the CPU-scheduling loop itself from spinning
+            // while there's nothing for it to do. Kept short so a real event
+            // becoming ready is never perceptibly delayed.
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+
         return 1;
     }
 
@@ -796,6 +900,27 @@ namespace eka2l1 {
     void system_impl::mount(drive_number drv, const drive_media media, std::string path,
         const std::uint32_t attrib) {
         io_->mount_physical_path(drv, media, attrib, common::utf8_to_ucs2(path));
+    }
+
+    void system_impl::mount_default_user_drives() {
+        device *dvc = dvcmngr_->get_current();
+
+        if (!dvc) {
+            LOG_ERROR(SYSTEM, "No current device is available. Skipping user drives mount");
+            return;
+        }
+
+        migrate_legacy_drives_if_present(conf_->storage, dvc->firmware_code);
+
+        const std::string device_base = get_device_specific_storage_path(conf_->storage, dvc->firmware_code);
+
+        io_->unmount(drive_c);
+        io_->unmount(drive_d);
+        io_->unmount(drive_e);
+
+        mount(drive_c, drive_media::physical, add_path(device_base, "drives/c/"), io_attrib_internal);
+        mount(drive_d, drive_media::physical, add_path(device_base, "drives/d/"), io_attrib_internal);
+        mount(drive_e, drive_media::physical, add_path(device_base, "drives/e/"), io_attrib_removeable);
     }
 
     zip_mount_error system_impl::mount_game_zip(drive_number drv, const drive_media media, const std::string &zip_path, const std::uint32_t base_attrib, progress_changed_callback progress_cb, cancel_requested_callback cancel_cb) {
@@ -1178,6 +1303,8 @@ namespace eka2l1 {
         // Unregister HLE stuffs
         kern_->unregister_ldd_factory_request_callback(ldd_request_load_callback_handle_);
         kern_->unregister_breakpoint_hit_callback(gdb_stub_breakpoint_callback_handle_);
+        kern_->unregister_codeseg_loaded_callback(ngage_gtm_fix_codeseg_callback_handle_);
+        kern_->unregister_breakpoint_hit_callback(ngage_gtm_fix_breakpoint_callback_handle_);
 
         if (dispatcher_) {
             dispatcher_->shutdown(gdriver);
@@ -1305,6 +1432,10 @@ namespace eka2l1 {
 
     bool system::set_device(const std::uint8_t idx) {
         return impl->set_device(idx);
+    }
+
+    void system::mount_default_user_drives() {
+        impl->mount_default_user_drives();
     }
 
     void system::set_symbian_version_use(const epocver ever) {

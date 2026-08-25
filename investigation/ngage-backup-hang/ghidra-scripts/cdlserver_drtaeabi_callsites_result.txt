@@ -1,0 +1,41 @@
+=== return address 83485ffb ===
+containing function: none
+--- disassembly around call site ---
+83485fcc: str r1,[sp,#0x4]
+83485fce: ldr r0,[r0,#0x20]
+83485fd0: mov r1,sp
+83485fd2: blx 0x83486548
+83485fd6: mov r0,sp
+83485fd8: blx 0x834863e8
+83485fdc: pop {r2,r3,r4,pc}
+83485fde: push {r0,r4,r5,lr}
+83485fe0: mov r4,r0
+83485fe2: blx 0x83486348
+83485fe6: mov r5,r0
+83485fe8: mov r0,r4
+83485fea: bl 0x83485e24
+83485fee: mov r0,r5
+83485ff0: blx 0x83486350
+83485ff4: b 0x8348600c
+
+=== return address 8348600d ===
+containing function: none
+--- disassembly around call site ---
+83485fde: push {r0,r4,r5,lr}
+83485fe0: mov r4,r0
+83485fe2: blx 0x83486348
+83485fe6: mov r5,r0
+83485fe8: mov r0,r4
+83485fea: bl 0x83485e24
+83485fee: mov r0,r5
+83485ff0: blx 0x83486350
+83485ff4: b 0x8348600c
+8348600c: mov r0,r4
+8348600e: bl 0x83485c5c
+83486012: pop {r3,r4,r5,pc}
+83486014: push {r4,lr}
+83486016: mov r4,r0
+83486018: sub sp,#0x48
+8348601a: add r0,sp,#0x20
+8348601c: blx 0x83486500
+

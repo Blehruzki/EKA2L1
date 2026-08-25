@@ -1,0 +1,9 @@
+=== thunk @ 83486598 ===
+raw bytes: 04 f0 1f e5 e9 54 39 80 04 f0 1f e5 81 55 39 80 
+existing disassembly (if any):
+
+=== thunk @ 834865a0 ===
+raw bytes: 04 f0 1f e5 81 55 39 80 04 f0 1f e5 79 44 39 80 
+existing disassembly (if any):
+834865b0: ldr pc,[0x834865b4]
+

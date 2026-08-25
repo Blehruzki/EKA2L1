@@ -1219,7 +1219,64 @@ namespace eka2l1 {
             OBJECT_SEARCH(sema, semas_)
             OBJECT_SEARCH(condvar, condvars_)
             OBJECT_SEARCH(chunk, chunks_)
-            OBJECT_SEARCH(thread, threads_)
+
+            case kernel::object_type::thread: {
+                auto res = std::find_if(threads_.begin() + start - 1, threads_.end(), [&](const auto &rhs) {
+                    std::string to_compare = "";
+                    if (use_full_name) {
+                        rhs->full_name(to_compare);
+                    } else {
+                        to_compare = rhs->name();
+                    }
+                    return RE2::FullMatch(to_compare, filter);
+                });
+
+                if (res != threads_.end()) {
+                    handle_find_info.index = ((static_cast<std::uint32_t>(std::distance(threads_.begin(), res)) + 1) & FIND_HANDLE_IDX_MASK)
+                        | (static_cast<std::uint32_t>(type) << FIND_HANDLE_OBJ_TYPE_SHIFT);
+                    handle_find_info.object_id = (*res)->unique_id();
+                    handle_find_info.obj = reinterpret_cast<kernel_obj_ptr>(res->get());
+                    return handle_find_info;
+                }
+
+                // Real Symbian guest code sometimes does a TFindThread-style existence
+                // check for a server's own thread (e.g. the window server's, whose real
+                // thread name ends in "Wserv" - confirmed live, see
+                // investigation/ngage-backup-hang round 9) as a readiness gate before
+                // proceeding - some real system components rely on this succeeding and
+                // otherwise fall back to a generic/incomplete path that isn't equipped
+                // to handle everything the real one is. Several of this project's own
+                // HLE servers (including the window server) have no backing
+                // kernel::thread to be found this way. A server's own IPC name doesn't
+                // necessarily match what real guest code expects its underlying thread
+                // to be called (round 9 found this the hard way - "!Windowserver"
+                // doesn't end in "Wserv"), so match against each ownerless HLE server's
+                // own declared thread_presence_alias() instead of its regular name.
+                auto server_res = std::find_if(servers_.begin(), servers_.end(), [&](const auto &rhs) {
+                    service::server *srv = static_cast<service::server *>(rhs.get());
+                    if (!srv->is_hle() || srv->get_owner_thread()) {
+                        return false;
+                    }
+
+                    const std::string alias = srv->thread_presence_alias();
+                    if (alias.empty()) {
+                        return false;
+                    }
+
+                    return RE2::FullMatch(alias, filter);
+                });
+
+                if (server_res == servers_.end()) {
+                    return std::nullopt;
+                }
+
+                handle_find_info.index = ((static_cast<std::uint32_t>(std::distance(servers_.begin(), server_res)) + 1) & FIND_HANDLE_IDX_MASK)
+                    | (static_cast<std::uint32_t>(type) << FIND_HANDLE_OBJ_TYPE_SHIFT);
+                handle_find_info.object_id = (*server_res)->unique_id();
+                handle_find_info.obj = reinterpret_cast<kernel_obj_ptr>(server_res->get());
+                return handle_find_info;
+            }
+
             OBJECT_SEARCH(process, processes_)
             OBJECT_SEARCH(change_notifier, change_notifiers_)
             OBJECT_SEARCH(library, libraries_)

@@ -22,6 +22,7 @@
 #include <common/log.h>
 #include <kernel/codeseg.h>
 #include <kernel/kernel.h>
+#include <kernel/thread.h>
 #include <loader/common.h>
 #include <xxHash/xxhash.h>
 
@@ -348,6 +349,15 @@ namespace eka2l1::kernel {
                     *to_relocate_ptr = *to_relocate_ptr + the_delta;
                 }
             }
+
+            // N-Gage 2.0's gametitlemetadata.dll infinite-loop compatibility fix used to
+            // live here as a static byte patch at code offset 0x47EC. It was reverted:
+            // those 2 bytes are read as data (a compiler-generated __switch8 jump table)
+            // by a call earlier in the same loop, so patching them corrupted live switch
+            // routing instead of neutralizing dead code, which is what caused a second,
+            // previously-unexplained crash. The real fix now lives in system/src/epoc.cpp
+            // as a runtime register-correction hook that never touches these bytes.
+            // Full derivation in investigation/ngage-backup-hang/README.md.
         }
 
         if (new_foe)

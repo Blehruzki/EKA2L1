@@ -1,0 +1,908 @@
+=== FUNCTION entry_821b70f8 @ 821b70f8 size=104 ===
+--- disassembly ---
+821b70f8: tst pc,#0x0
+821b70fc: cmp r4,#0x1
+821b7100: b 0x821b7108
+821b7108: cpyls r0,r4
+821b710c: cpyls r1,sp
+821b7110: bls 0x821b7334
+821b7114: cmp r4,#0x4
+821b7118: bne 0x821b71b0
+821b711c: cpy r0,sp
+821b7120: ldr r4,[sp,#0x10]
+821b7124: tst r4,#0x20
+821b7128: ldrne r1,[sp,#0x50]
+821b712c: orrne r1,r1,#0x1
+821b7130: strne r1,[sp,#0x50]
+821b7134: cpy r11,sp
+821b7138: bic sp,sp,#0x4
+821b713c: blx 0x821b71c0
+821b7140: add sp,r11,#0x10
+821b7144: ldr r4,[sp],#0x4
+821b7148: bic r4,r4,#0x20
+821b714c: msr cpsr_cxsf,r4
+821b7150: ldmia sp,{r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,r10,r11,r12,sp,lr,pc}
+821b71b0: adr r12,0x821b71b9
+821b71b4: bx r12
+821b7334: adr r12,0x821b733d
+821b7338: bx r12
+--- decompiled ---
+
+undefined8 entry_821b70f8(void)
+
+{
+  int iVar1;
+  uint unaff_r4;
+  undefined8 uVar2;
+  undefined4 in_stack_00000008;
+  undefined4 in_stack_0000000c;
+  undefined8 in_stack_00000014;
+  
+  if (unaff_r4 < 2) {
+    iVar1 = thunk_EXT_FUN_803b6a28();
+    if (iVar1 == 0) {
+      FUN_821b735c(in_stack_00000008,in_stack_0000000c,unaff_r4);
+    }
+    uVar2 = thunk_EXT_FUN_803a96b4();
+    return uVar2;
+  }
+  if (unaff_r4 != 4) {
+    uVar2 = thunk_EXT_FUN_803a989a();
+    return uVar2;
+  }
+  FUN_821b71c0();
+  return in_stack_00000014;
+}
+
+
+
+=== FUNCTION FUN_821b7168 @ 821b7168 size=60 ===
+--- disassembly ---
+821b7168: ldr r0,[0x821b71a4]
+821b716c: stmdb sp!,{r3,r4,r5,lr}
+821b7170: cmp r0,#0x0
+821b7174: beq 0x821b717c
+821b7178: cpy r0,r0
+821b717c: ldr r4,[0x821b71a8]
+821b7180: ldr r5,[0x821b71ac]
+821b7184: cmp r4,r5
+821b7188: ldmiaeq sp!,{r3,r4,r5,pc}
+821b718c: ldr r0,[r4,#0x0]
+821b7190: blx r0
+821b7194: add r4,r4,#0x4
+821b7198: cmp r4,r5
+821b719c: bne 0x821b718c
+821b71a0: ldmia sp!,{r3,r4,r5,pc}
+--- decompiled ---
+
+undefined4 FUN_821b7168(void)
+
+{
+  undefined4 *puVar1;
+  undefined4 uVar2;
+  undefined4 *puVar3;
+  
+  puVar1 = DAT_821b71ac;
+  puVar3 = DAT_821b71a8;
+  if (DAT_821b71a8 == DAT_821b71ac) {
+    return DAT_821b71a4;
+  }
+  do {
+    uVar2 = (*(code *)*puVar3)();
+    puVar3 = puVar3 + 1;
+  } while (puVar3 != puVar1);
+  return uVar2;
+}
+
+
+
+=== FUNCTION FUN_821b71c0 @ 821b71c0 size=8 ===
+--- disassembly ---
+821b71c0: push {r4,lr}
+821b71c2: blx 0x821b7498
+821b71c6: pop {r4,pc}
+--- decompiled ---
+
+void FUN_821b71c0(void)
+
+{
+  thunk_EXT_FUN_803b6a96();
+  return;
+}
+
+
+
+=== FUNCTION FUN_821b71c8 @ 821b71c8 size=254 ===
+--- disassembly ---
+821b71c8: push {r4,r5,r6,r7,lr}
+821b71ca: sub sp,#0x1fc
+821b71cc: sub sp,#0x1fc
+821b71ce: ldr r6,[0x821b731c]
+821b71d0: sub sp,#0x1fc
+821b71d2: sub sp,#0x48
+821b71d4: add r6,sp
+821b71d6: subs r5,r6,#0x4
+821b71d8: movs r3,r5
+821b71da: movs r4,#0x0
+821b71dc: ldr r0,[0x821b7320]
+821b71de: subs r3,#0x2c
+821b71e0: str r0,[r3,#0x30]
+821b71e2: ldr r0,[0x821b7324]
+821b71e4: blx 0x821b73e8
+821b71e8: blx 0x821b7490
+821b71ec: movs r1,#0x1e
+821b71ee: movs r0,r6
+821b71f0: blx 0x821b7420
+821b71f4: movs r0,r6
+821b71f6: blx 0x821b73f8
+821b71fa: movs r3,r5
+821b71fc: subs r3,#0x2c
+821b71fe: movs r0,#0x1c
+821b7200: str r4,[r3,#0x2c]
+821b7202: blx 0x821b74a0
+821b7206: blx 0x821b7480
+821b720a: movs r4,#0xff
+821b720c: adds r4,r4,#0x1
+821b720e: add r7,sp,#0x3fc
+821b7210: ldr r1,[0x821b7328]
+821b7212: adds r7,#0x28
+821b7214: movs r6,r0
+821b7216: str r1,[r0,#0x0]
+821b7218: blx 0x821b7458
+821b721c: movs r0,r6
+821b721e: blx 0x821b7478
+821b7222: movs r0,r5
+821b7224: adds r0,#0x8
+821b7226: adr r1,[0x821b732c]
+821b7228: blx 0x821b73f0
+821b722c: movs r1,r0
+821b722e: movs r2,r4
+821b7230: movs r0,r7
+821b7232: blx 0x821b74b0
+821b7236: ldr r1,[0x821b7324]
+821b7238: add r6,sp,#0x20c
+821b723a: adds r1,#0x20
+821b723c: movs r0,r7
+821b723e: blx 0x821b74c0
+821b7242: movs r0,r6
+821b7244: movs r1,r7
+821b7246: blx 0x821b7468
+821b724a: add r7,sp,#0x4
+821b724c: movs r0,r7
+821b724e: movs r1,r4
+821b7250: blx 0x821b74b8
+821b7254: movs r4,#0x0
+821b7256: movs r1,r7
+821b7258: movs r0,r6
+821b725a: blx 0x821b7418
+821b725e: cmp r0,#0x0
+821b7260: beq 0x821b726a
+821b7262: blx 0x821b74c8
+821b7266: movs r5,r0
+821b7268: b 0x821b7296
+821b726a: ldr r2,[0x821b7324]
+821b726c: adds r2,#0x30
+821b726e: movs r1,r2
+821b7270: adds r1,#0x24
+821b7272: movs r0,r5
+821b7274: blx 0x821b7400
+821b7278: blx 0x821b7490
+821b727c: ldr r0,[0x821b7330]
+821b727e: movs r1,r5
+821b7280: blx 0x821b7450
+821b7284: movs r1,#0x1
+821b7286: movs r0,r5
+821b7288: blx 0x821b7428
+821b728c: blx r0
+821b728e: movs r5,r0
+821b7290: blx 0x821b7488
+821b7294: movs r4,#0x1
+821b7296: movs r0,r5
+821b7298: blx 0x821b7458
+821b729c: ldr r0,[r5,#0x0]
+821b729e: ldr r1,[r0,#0x28]
+821b72a0: movs r0,r5
+821b72a2: blx r1
+821b72a4: movs r0,#0x0
+821b72a6: blx 0x821b7410
+821b72aa: blx 0x821b7470
+821b72ae: blx 0x821b7438
+821b72b2: cmp r4,#0x0
+821b72b4: beq 0x821b72ba
+821b72b6: blx 0x821b7438
+821b72ba: blx 0x821b7438
+821b72be: ldr r3,[0x821b731c]
+821b72c0: adds r3,#0xc
+821b72c2: add sp,r3
+821b72c4: pop {r4,r5,r6,r7,pc}
+--- decompiled ---
+
+void FUN_821b71c8(void)
+
+{
+  undefined4 *puVar1;
+  undefined4 uVar2;
+  int iVar3;
+  int *piVar4;
+  code *pcVar5;
+  undefined4 *puVar6;
+  undefined4 auStack_654 [2];
+  undefined1 auStack_64c [520];
+  undefined1 auStack_444 [536];
+  undefined1 auStack_22c [536];
+  
+  iVar3 = DAT_821b731c;
+  puVar1 = (undefined4 *)((int)auStack_654 + DAT_821b731c + 4);
+  puVar6 = (undefined4 *)((int)auStack_654 + DAT_821b731c);
+  *puVar1 = DAT_821b7320;
+  thunk_EXT_FUN_803ab18a(DAT_821b7324);
+  thunk_EXT_FUN_803af4da();
+  thunk_EXT_FUN_803a801c(puVar1,0x1e);
+  thunk_EXT_FUN_803a9f34(puVar1);
+  *puVar6 = 0;
+  thunk_EXT_FUN_803a83ae(0x1c);
+  puVar1 = (undefined4 *)thunk_EXT_FUN_803a30ca();
+  *puVar1 = DAT_821b7328;
+  thunk_EXT_FUN_803a5696();
+  thunk_EXT_FUN_803a3128(puVar1);
+  uVar2 = thunk_EXT_FUN_803b2a94(auStack_64c + iVar3,&DAT_821b732c);
+  thunk_EXT_FUN_803b351a(auStack_22c,uVar2,0x100);
+  thunk_EXT_FUN_803a2140(auStack_22c,DAT_821b7324 + 0x20);
+  thunk_EXT_FUN_803a9e54(auStack_444,auStack_22c);
+  thunk_EXT_FUN_803b2bde(auStack_64c,0x100);
+  iVar3 = thunk_EXT_FUN_803a7cf2(auStack_444,auStack_64c);
+  if (iVar3 == 0) {
+    thunk_EXT_FUN_803b6956(puVar6,DAT_821b7324 + 0x54);
+    thunk_EXT_FUN_803af4da();
+    thunk_EXT_FUN_803a56a6(DAT_821b7330,puVar6);
+    pcVar5 = (code *)thunk_EXT_FUN_803a7e8a(puVar6,1);
+    piVar4 = (int *)(*pcVar5)();
+    thunk_EXT_FUN_803af4ea();
+  }
+  else {
+    piVar4 = (int *)thunk_EXT_FUN_821b6444();
+  }
+  thunk_EXT_FUN_803a5696(piVar4);
+  (**(code **)(*piVar4 + 0x28))(piVar4);
+  thunk_EXT_FUN_803aab96(0);
+  thunk_EXT_FUN_803a3262();
+  thunk_EXT_FUN_803a56d6();
+  if (iVar3 == 0) {
+    thunk_EXT_FUN_803a56d6();
+  }
+  thunk_EXT_FUN_803a56d6();
+  return;
+}
+
+
+
+=== FUNCTION FUN_821b72c6 @ 821b72c6 size=56 ===
+--- disassembly ---
+821b72c6: push {r4,r5,r6,lr}
+821b72c8: sub sp,#0x8
+821b72ca: blx 0x821b7430
+821b72ce: movs r4,r0
+821b72d0: movs r0,#0x3
+821b72d2: mvns r0,r0
+821b72d4: cmp r4,#0x0
+821b72d6: str r0,[sp,#0x4]
+821b72d8: beq 0x821b7316
+821b72da: movs r0,#0x0
+821b72dc: add r5,sp,#0x4
+821b72de: str r0,[sp,#0x4]
+821b72e0: blx 0x821b7440
+821b72e4: movs r6,r0
+821b72e6: bl 0x821b71c8
+821b72ea: movs r0,r6
+821b72ec: blx 0x821b7448
+821b72f0: b 0x821b730e
+821b730e: ldr r0,[r4,#0x0]
+821b7310: ldr r1,[r0,#0x4]
+821b7312: movs r0,r4
+821b7314: blx r1
+821b7316: ldr r0,[sp,#0x4]
+821b7318: pop {r2,r3,r4,r5,r6,pc}
+--- decompiled ---
+
+undefined4 FUN_821b72c6(void)
+
+{
+  int *piVar1;
+  undefined4 uVar2;
+  undefined4 local_14;
+  
+  piVar1 = (int *)thunk_EXT_FUN_803a5612();
+  local_14 = 0xfffffffc;
+  if (piVar1 != (int *)0x0) {
+    local_14 = 0;
+    uVar2 = thunk_EXT_FUN_803a82aa();
+    FUN_821b71c8();
+    thunk_EXT_FUN_803a82c0(uVar2);
+    (**(code **)(*piVar1 + 4))(piVar1);
+  }
+  return local_14;
+}
+
+
+
+=== FUNCTION FUN_821b735c @ 821b735c size=96 ===
+--- disassembly ---
+821b735c: stmdb sp!,{r0,r1,r2,r4,r5,r6,r7,lr}
+821b7360: sub sp,sp,#0xa8
+821b7364: cpy r5,r2
+821b7368: cpy r6,r0
+821b736c: cpy r0,sp
+821b7370: cpy r7,r1
+821b7374: bl 0x821b7518
+821b7378: cmp r5,#0x0
+821b737c: bne 0x821b738c
+821b7380: bl 0x821b7508
+821b7384: bl 0x821b73d4
+821b7388: bl 0x821b7168
+821b738c: cmp r5,#0x0
+821b7390: mov r4,#0x0
+821b7394: beq 0x821b73a4
+821b7398: cpy r0,r7
+821b739c: blx r6
+821b73a0: b 0x821b73a8
+821b73a4: blx 0x821b72c6
+821b73a8: cpy r4,r0
+821b73ac: b 0x821b73c4
+821b73c4: cpy r0,r4
+821b73c8: add sp,sp,#0xb4
+821b73cc: ldmia sp!,{r4,r5,r6,r7,pc}
+--- decompiled ---
+
+undefined4 FUN_821b735c(code *param_1,undefined4 param_2,int param_3)
+
+{
+  undefined4 uVar1;
+  undefined1 auStack_c8 [168];
+  code *pcStack_20;
+  undefined4 uStack_1c;
+  int iStack_18;
+  
+  pcStack_20 = param_1;
+  uStack_1c = param_2;
+  iStack_18 = param_3;
+  thunk_EXT_FUN_803946ce(auStack_c8);
+  if (param_3 == 0) {
+    thunk_EXT_FUN_803b6a5c();
+    FUN_821b73d4();
+    FUN_821b7168();
+    uVar1 = FUN_821b72c6();
+  }
+  else {
+    uVar1 = (*param_1)(param_2);
+  }
+  return uVar1;
+}
+
+
+
+=== FUNCTION FUN_821b73d4 @ 821b73d4 size=4 ===
+--- disassembly ---
+821b73d4: bx lr
+--- decompiled ---
+
+void FUN_821b73d4(void)
+
+{
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803ab18a @ 821b73e8 size=4 ===
+--- disassembly ---
+821b73e8: ldr pc,[0x821b73ec]
+--- decompiled ---
+
+void thunk_EXT_FUN_803ab18a(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b73e8. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b73ec)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803b2a94 @ 821b73f0 size=4 ===
+--- disassembly ---
+821b73f0: ldr pc,[0x821b73f4]
+--- decompiled ---
+
+void thunk_EXT_FUN_803b2a94(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b73f0. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b73f4)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a9f34 @ 821b73f8 size=4 ===
+--- disassembly ---
+821b73f8: ldr pc,[0x821b73fc]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a9f34(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b73f8. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b73fc)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803b6956 @ 821b7400 size=4 ===
+--- disassembly ---
+821b7400: ldr pc,[0x821b7404]
+--- decompiled ---
+
+void thunk_EXT_FUN_803b6956(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7400. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b7404)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803b6864 @ 821b7408 size=4 ===
+--- disassembly ---
+821b7408: ldr pc,[0x821b740c]
+--- decompiled ---
+
+void thunk_EXT_FUN_803b6864(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7408. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b740c)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803aab96 @ 821b7410 size=4 ===
+--- disassembly ---
+821b7410: ldr pc,[0x821b7414]
+--- decompiled ---
+
+void thunk_EXT_FUN_803aab96(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7410. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b7414)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a7cf2 @ 821b7418 size=4 ===
+--- disassembly ---
+821b7418: ldr pc,[0x821b741c]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a7cf2(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7418. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b741c)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a801c @ 821b7420 size=4 ===
+--- disassembly ---
+821b7420: ldr pc,[0x821b7424]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a801c(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7420. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b7424)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a7e8a @ 821b7428 size=4 ===
+--- disassembly ---
+821b7428: ldr pc,[0x821b742c]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a7e8a(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7428. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b742c)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a5612 @ 821b7430 size=4 ===
+--- disassembly ---
+821b7430: ldr pc,[0x821b7434]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a5612(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7430. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b7434)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a56d6 @ 821b7438 size=4 ===
+--- disassembly ---
+821b7438: ldr pc,[0x821b743c]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a56d6(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7438. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b743c)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a82aa @ 821b7440 size=4 ===
+--- disassembly ---
+821b7440: ldr pc,[0x821b7444]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a82aa(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7440. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b7444)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a82c0 @ 821b7448 size=4 ===
+--- disassembly ---
+821b7448: ldr pc,[0x821b744c]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a82c0(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7448. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b744c)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a56a6 @ 821b7450 size=4 ===
+--- disassembly ---
+821b7450: ldr pc,[0x821b7454]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a56a6(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7450. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b7454)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a5696 @ 821b7458 size=4 ===
+--- disassembly ---
+821b7458: ldr pc,[0x821b745c]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a5696(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7458. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b745c)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a9e54 @ 821b7468 size=4 ===
+--- disassembly ---
+821b7468: ldr pc,[0x821b746c]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a9e54(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7468. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b746c)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a3262 @ 821b7470 size=4 ===
+--- disassembly ---
+821b7470: ldr pc,[0x821b7474]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a3262(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7470. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b7474)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a3128 @ 821b7478 size=4 ===
+--- disassembly ---
+821b7478: ldr pc,[0x821b747c]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a3128(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7478. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b747c)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a30ca @ 821b7480 size=4 ===
+--- disassembly ---
+821b7480: ldr pc,[0x821b7484]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a30ca(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7480. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b7484)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803af4ea @ 821b7488 size=4 ===
+--- disassembly ---
+821b7488: ldr pc,[0x821b748c]
+--- decompiled ---
+
+void thunk_EXT_FUN_803af4ea(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7488. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b748c)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803af4da @ 821b7490 size=4 ===
+--- disassembly ---
+821b7490: ldr pc,[0x821b7494]
+--- decompiled ---
+
+void thunk_EXT_FUN_803af4da(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7490. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b7494)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803b6a96 @ 821b7498 size=4 ===
+--- disassembly ---
+821b7498: ldr pc,[0x821b749c]
+--- decompiled ---
+
+void thunk_EXT_FUN_803b6a96(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7498. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b749c)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a83ae @ 821b74a0 size=4 ===
+--- disassembly ---
+821b74a0: ldr pc,[0x821b74a4]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a83ae(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b74a0. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b74a4)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a989a @ 821b74a8 size=4 ===
+--- disassembly ---
+821b74a8: ldr pc,[0x821b74ac]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a989a(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b74a8. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b74ac)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803b351a @ 821b74b0 size=4 ===
+--- disassembly ---
+821b74b0: ldr pc,[0x821b74b4]
+--- decompiled ---
+
+void thunk_EXT_FUN_803b351a(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b74b0. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b74b4)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803b2bde @ 821b74b8 size=4 ===
+--- disassembly ---
+821b74b8: ldr pc,[0x821b74bc]
+--- decompiled ---
+
+void thunk_EXT_FUN_803b2bde(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b74b8. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b74bc)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a2140 @ 821b74c0 size=4 ===
+--- disassembly ---
+821b74c0: ldr pc,[0x821b74c4]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a2140(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b74c0. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b74c4)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_821b6444 @ 821b74c8 size=4 ===
+--- disassembly ---
+821b74c8: ldr pc,[0x821b74cc]
+--- decompiled ---
+
+void thunk_EXT_FUN_821b6444(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b74c8. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b74cc)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803b6a28 @ 821b74f8 size=4 ===
+--- disassembly ---
+821b74f8: ldr pc,[0x821b74fc]
+--- decompiled ---
+
+void thunk_EXT_FUN_803b6a28(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b74f8. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b74fc)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803a96b4 @ 821b7500 size=4 ===
+--- disassembly ---
+821b7500: ldr pc,[0x821b7504]
+--- decompiled ---
+
+void thunk_EXT_FUN_803a96b4(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7500. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b7504)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803b6a5c @ 821b7508 size=4 ===
+--- disassembly ---
+821b7508: ldr pc,[0x821b750c]
+--- decompiled ---
+
+void thunk_EXT_FUN_803b6a5c(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7508. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b750c)();
+  return;
+}
+
+
+
+=== FUNCTION thunk_EXT_FUN_803946ce @ 821b7518 size=4 ===
+--- disassembly ---
+821b7518: ldr pc,[0x821b751c]
+--- decompiled ---
+
+void thunk_EXT_FUN_803946ce(void)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x821b7518. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*DAT_821b751c)();
+  return;
+}
+
+
+
+TOTAL FUNCTIONS: 39

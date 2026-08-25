@@ -1,0 +1,26 @@
+8029a898 (in thunk_EXT_FUN_8055d812@8029a898): ldr pc,[0x8029a89c] -> 8055d812
+8029a8a0 (in thunk_EXT_FUN_8055d856@8029a8a0): ldr pc,[0x8029a8a4] -> 8055d856
+8029a8a8 (in thunk_EXT_FUN_8055d866@8029a8a8): ldr pc,[0x8029a8ac] -> 8055d866
+8029a8b0 (in thunk_EXT_FUN_8055d814@8029a8b0): ldr pc,[0x8029a8b4] -> 8055d814
+8029a8b8 (in thunk_EXT_FUN_8055d7aa@8029a8b8): ldr pc,[0x8029a8bc] -> 8055d7aa
+8029a8c0 (in thunk_EXT_FUN_8055d846@8029a8c0): ldr pc,[0x8029a8c4] -> 8055d846
+8029a8c8 (in thunk_EXT_FUN_8055d770@8029a8c8): ldr pc,[0x8029a8cc] -> 8055d770
+8029a8d0 (in thunk_EXT_FUN_8055d79e@8029a8d0): ldr pc,[0x8029a8d4] -> 8055d79e
+8029a8e0 (in thunk_EXT_FUN_80557fa4@8029a8e0): ldr pc,[0x8029a8e4] -> 80557fa4
+8029a8e8 (in thunk_EXT_FUN_80558002@8029a8e8): ldr pc,[0x8029a8ec] -> 80558002
+8029a8f0 (in thunk_EXT_FUN_80557b74@8029a8f0): ldr pc,[0x8029a8f4] -> 80557b74
+8029a8f8 (in ???): ldr pc,[0x8029a8fc] -> 80557a98
+8029a908 (in thunk_EXT_FUN_80558a10@8029a908): ldr pc,[0x8029a90c] -> 80558a10
+8029a910 (in thunk_EXT_FUN_8055a01c@8029a910): ldr pc,[0x8029a914] -> 8055a01c
+8029a918 (in thunk_EXT_FUN_8055b0aa@8029a918): ldr pc,[0x8029a91c] -> 8055b0aa
+8029a920 (in thunk_EXT_FUN_8055a61c@8029a920): ldr pc,[0x8029a924] -> 8055a61c
+8029a928 (in thunk_EXT_FUN_80558c8c@8029a928): ldr pc,[0x8029a92c] -> 80558c8c
+8029a930 (in thunk_EXT_FUN_8055dc14@8029a930): ldr pc,[0x8029a934] -> 8055dc14
+8029a938 (in thunk_EXT_FUN_8055dbb4@8029a938): ldr pc,[0x8029a93c] -> 8055dbb4
+8029a940 (in thunk_EXT_FUN_8055dbec@8029a940): ldr pc,[0x8029a944] -> 8055dbec
+8029a948 (in thunk_EXT_FUN_8055dbb2@8029a948): ldr pc,[0x8029a94c] -> 8055dbb2
+8029a950 (in thunk_EXT_FUN_8055dbf6@8029a950): ldr pc,[0x8029a954] -> 8055dbf6
+8029a960 (in thunk_EXT_FUN_8055dbda@8029a960): ldr pc,[0x8029a964] -> 8055dbda
+8029a968 (in thunk_EXT_FUN_8055d67a@8029a968): ldr pc,[0x8029a96c] -> 8055d67a
+
+total flow refs into bafl.dll range: 24

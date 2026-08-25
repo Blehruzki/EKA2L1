@@ -138,4 +138,18 @@ namespace eka2l1 {
         */
         device *get(const std::uint8_t index);
     };
+
+    /*! \brief Get the per-device storage root (where that device's C:/D:/E: drives live).
+     *
+     * \returns \<storage\>/devices/\<lowercased firmware code\>/
+    */
+    std::string get_device_specific_storage_path(const std::string &storage, const std::string &firmware_code);
+
+    /*! \brief Move any pre-existing global (non-per-device) C:/D:/E: drive folders into the
+     *         given device's own storage folder.
+     *
+     * Safe to call repeatedly: it only moves a legacy drive folder the first time, and never
+     * overwrites a destination that already exists.
+    */
+    void migrate_legacy_drives_if_present(const std::string &storage, const std::string &firmware_code);
 }

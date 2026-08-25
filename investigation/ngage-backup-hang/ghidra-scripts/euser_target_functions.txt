@@ -1,0 +1,239 @@
+=== target 0x8039fa9c ===
+  function: FUN_8039fa08 at 8039fa08 size=160
+
+=== target 0x803a02c8 ===
+  no containing function found
+
+=== target 0x803a02dc ===
+  function: FUN_803a02dc at 803a02dc size=20
+
+=== target 0x8039fccc ===
+  function: FUN_8039fccc at 8039fccc size=8
+
+=== target 0x803aa9ab ===
+  function: FUN_803aa99a at 803aa99a size=34
+
+=== target 0x803aa997 ===
+  function: FUN_803aa988 at 803aa988 size=18
+
+
+########## FULL DUMPS OF EACH UNIQUE CONTAINING FUNCTION ##########
+
+=========================================================
+FUNCTION FUN_8039fa08 @ 8039fa08
+=========================================================
+
+--- disassembly ---
+8039fa08: str lr,[sp,#-0x4]!
+8039fa0c: ldr r3,[0x8039fab8]
+8039fa10: subs r1,r1,#0x8
+8039fa14: cpy r2,r0
+8039fa18: mov r0,#0x0
+8039fa1c: bcc 0x8039fa40
+8039fa20: ands r12,r2,#0x3
+8039fa24: bne 0x8039fa6c
+8039fa28: ldmia r2!,{r12,lr}
+8039fa2c: subs r1,r1,#0x8
+8039fa30: eor r0,r0,r12
+8039fa34: eor r0,r0,lr, ror #0x18
+8039fa38: umull r0,r12,r3,r0
+8039fa3c: bcs 0x8039fa28
+8039fa40: adds r1,r1,#0x8
+8039fa44: beq 0x8039fa68
+8039fa48: ldrh r12,[r2],#0x2
+8039fa4c: cmp r1,#0x4
+8039fa50: eor r0,r0,r12
+8039fa54: ldrhcs r12,[r2],#0x2
+8039fa58: eorcs r0,r0,r12, lsl #0x10
+8039fa5c: ldrhhi r12,[r2],#0x2
+8039fa60: eorhi r0,r0,r12, ror #0x18
+8039fa64: umull r0,r12,r3,r0
+8039fa68: ldmia sp!,{pc}
+8039fa6c: add r2,r2,#0x2
+8039fa70: ldr lr,[r2,#-0x4]
+8039fa74: eor r0,r0,lr, lsr #0x10
+8039fa78: ldmia r2!,{r12,lr}
+8039fa7c: subs r1,r1,#0x8
+8039fa80: eor r0,r0,r12, lsl #0x10
+8039fa84: mov r12,r12, lsr #0x10
+8039fa88: orr r12,r12,lr, lsl #0x10
+8039fa8c: eor r0,r0,r12, ror #0x18
+8039fa90: umull r0,r12,r3,r0
+8039fa94: bcs 0x8039fa74
+8039fa98: adds r1,r1,#0x8
+8039fa9c: subne r2,r2,#0x2
+8039faa0: bne 0x8039fa48
+8039faa4: ldmia sp!,{pc}
+
+--- decompiled pseudocode ---
+
+uint FUN_8039fa08(uint *param_1,uint param_2)
+
+{
+  uint uVar1;
+  uint uVar2;
+  uint uVar3;
+  uint uVar4;
+  bool bVar5;
+  uint *puVar6;
+  
+  uVar2 = param_2 - 8;
+  uVar1 = 0;
+  if (7 < param_2) {
+    if (((uint)param_1 & 3) != 0) {
+      uVar4 = *(uint *)((int)param_1 + -2);
+      puVar6 = (uint *)((int)param_1 + 2);
+      do {
+        param_1 = puVar6;
+        uVar3 = uVar2;
+        uVar2 = uVar4 >> 0x10;
+        uVar4 = param_1[1];
+        uVar1 = (uVar1 ^ uVar2 ^ *param_1 << 0x10 ^
+                ((uVar4 & 0xffff) >> 8 | (*param_1 >> 0x10 | uVar4 << 0x10) << 8)) * DAT_8039fab8;
+        uVar2 = uVar3 - 8;
+        puVar6 = param_1 + 2;
+      } while (7 < uVar3);
+      if (uVar3 == 0) {
+        return uVar1;
+      }
+      param_1 = (uint *)((int)param_1 + 6);
+      goto LAB_8039fa48;
+    }
+    do {
+      uVar3 = *param_1;
+      puVar6 = param_1 + 1;
+      param_1 = param_1 + 2;
+      bVar5 = 7 < uVar2;
+      uVar2 = uVar2 - 8;
+      uVar1 = (uVar1 ^ uVar3 ^ (*puVar6 >> 0x18 | *puVar6 << 8)) * DAT_8039fab8;
+    } while (bVar5);
+  }
+  uVar3 = uVar2 + 8;
+  if (uVar3 == 0) {
+    return uVar1;
+  }
+LAB_8039fa48:
+  uVar1 = uVar1 ^ (ushort)*param_1;
+  puVar6 = (uint *)((int)param_1 + 2);
+  if (3 < uVar3) {
+    puVar6 = param_1 + 1;
+    uVar1 = uVar1 ^ (uint)*(ushort *)((int)param_1 + 2) << 0x10;
+  }
+  if (4 < uVar3) {
+    uVar1 = uVar1 ^ (uint)(ushort)*puVar6 << 8;
+  }
+  return uVar1 * DAT_8039fab8;
+}
+
+
+
+
+=========================================================
+FUNCTION FUN_803a02dc @ 803a02dc
+=========================================================
+
+--- disassembly ---
+803a02dc: stmdb sp!,{r4,r5,r6,r7,r8,lr}
+803a02e0: movs r8,r2
+803a02e4: ldmiane r2,{r4,r5,r6,r7,r8}
+803a02e8: swi 0x25
+803a02ec: ldmia sp!,{r4,r5,r6,r7,r8,pc}
+
+--- decompiled pseudocode ---
+
+void FUN_803a02dc(void)
+
+{
+  software_interrupt(0x25);
+  return;
+}
+
+
+
+
+=========================================================
+FUNCTION FUN_8039fccc @ 8039fccc
+=========================================================
+
+--- disassembly ---
+8039fccc: swi 0x27
+8039fcd0: bx lr
+
+--- decompiled pseudocode ---
+
+void FUN_8039fccc(void)
+
+{
+  software_interrupt(0x27);
+  return;
+}
+
+
+
+
+=========================================================
+FUNCTION FUN_803aa99a @ 803aa99a
+=========================================================
+
+--- disassembly ---
+803aa99a: push {r3,r4,r5,r6,r7,lr}
+803aa99c: movs r5,r0
+803aa99e: movs r7,r2
+803aa9a0: movs r6,r1
+803aa9a2: movs r4,r3
+803aa9a4: beq 0x803aa9ae
+803aa9a6: ldr r1,[0x803aac70]
+803aa9a8: movs r0,r4
+803aa9aa: bl 0x803bb420
+803aa9ae: movs r3,r4
+803aa9b0: movs r2,r7
+803aa9b2: ldr r0,[r5,#0x0]
+803aa9b4: movs r1,r6
+803aa9b6: blx 0x803a02dc
+803aa9ba: pop {r3,r4,r5,r6,r7,pc}
+
+--- decompiled pseudocode ---
+
+void FUN_803aa99a(undefined4 *param_1,undefined4 param_2,undefined4 param_3,int param_4)
+
+{
+  if (param_4 != 0) {
+    FUN_803bb420(param_4,DAT_803aac70,param_3,param_4,param_4);
+  }
+  FUN_803a02dc(*param_1,param_2,param_3,param_4);
+  return;
+}
+
+
+
+
+=========================================================
+FUNCTION FUN_803aa988 @ 803aa988
+=========================================================
+
+--- disassembly ---
+803aa988: push {r3,lr}
+803aa98a: movs r2,#0x0
+803aa98c: ldr r3,[0x803aac74]
+803aa98e: movs r1,#0x1
+803aa990: mov r0,sp
+803aa992: bl 0x803a9220
+803aa996: ldr r0,[sp,#0x0]
+803aa998: pop {r3,pc}
+
+--- decompiled pseudocode ---
+
+undefined4 FUN_803aa988(void)
+
+{
+  undefined4 in_r3;
+  undefined4 local_8;
+  
+  local_8 = in_r3;
+  FUN_803a9220(&local_8,1,0,DAT_803aac74);
+  return local_8;
+}
+
+
+
+

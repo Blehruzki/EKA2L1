@@ -135,8 +135,8 @@ void device_install_dialog::on_install_triggered() {
     ui->confirmation_install_btn->setDisabled(true);
 
     QFuture<eka2l1::device_installation_error> install_future = QtConcurrent::run([this]() {
-        const std::string root_c_path = eka2l1::add_path(conf_.storage, "drives/c/");
-        const std::string root_e_path = eka2l1::add_path(conf_.storage, "drives/e/");
+        const std::string root_c_path = eka2l1::add_path(conf_.storage, "_install_staging/drives/c/");
+        const std::string root_e_path = eka2l1::add_path(conf_.storage, "_install_staging/drives/e/");
         const std::string root_z_path = eka2l1::add_path(conf_.storage, "drives/z/");
         const std::string rom_resident_path = eka2l1::add_path(conf_.storage, "roms/");
 
@@ -167,8 +167,11 @@ void device_install_dialog::on_install_triggered() {
             }
         }
 
+        bool seeded_c_and_e = false;
+
         if (ui->vpl_browse_widget->isVisible()) {
             error = eka2l1::install_firmware(device_mngr_, ui->vpl_path_line_edit->text().toStdString(), root_c_path, root_e_path, root_z_path, rom_resident_path, select_variant_cb_func, progress_update_cb_func, cancel_cb_func);
+            seeded_c_and_e = true;
         }
 
         if (error != eka2l1::device_installation_none) {
@@ -181,6 +184,18 @@ void device_install_dialog::on_install_triggered() {
             const std::string rom_directory = eka2l1::add_path(conf_.storage, eka2l1::add_path("roms", firmware_code + "\\"));
             eka2l1::common::create_directories(rom_directory);
             eka2l1::common::copy_file(ui->rom_path_line_edit->text().toStdString(), eka2l1::add_path(rom_directory, "SYM.ROM"), true);
+        }
+
+        if (seeded_c_and_e) {
+            eka2l1::device *newest = device_mngr_->lastest();
+
+            if (newest) {
+                const std::string device_base = eka2l1::get_device_specific_storage_path(conf_.storage, newest->firmware_code);
+                eka2l1::common::create_directories(eka2l1::add_path(device_base, "drives/"));
+                eka2l1::common::move_file(root_c_path, eka2l1::add_path(device_base, "drives/c/"));
+                eka2l1::common::move_file(root_e_path, eka2l1::add_path(device_base, "drives/e/"));
+                eka2l1::common::delete_folder(eka2l1::add_path(conf_.storage, "_install_staging/"));
+            }
         }
 
         return error;

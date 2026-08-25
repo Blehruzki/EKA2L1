@@ -1,0 +1,344 @@
+CALL at 803aaa54 -> 0x803aa9dc   (bl 0x803aa9dc)
+CALL at 803aacf2 -> 0x803aa9dc   (bl 0x803aa9dc)
+CALL at 803ab056 -> 0x803aaa76   (bl 0x803aaa76)
+CALL at 803ab73e -> 0x803aaa76   (bl 0x803aaa76)
+CALL at 803b6930 -> 0x803aaa76   (bl 0x803aaa76)
+CALL at 803b69a4 -> 0x803aaa76   (bl 0x803aaa76)
+CALL at 803bb7b0 -> 0x803ac832   (bl 0x803ac832)
+scanned 33626 instructions total, 6 unique caller functions found
+
+=========================================================
+FUNCTION FUN_803aaa14 @ 803aaa14
+=========================================================
+
+--- disassembly ---
+803aaa14: push {r0,r1,r2,r3,r4,r5,r6,r7,lr}
+803aaa16: sub sp,#0x5c
+803aaa18: add r4,sp,#0x80
+803aaa1a: movs r5,r3
+803aaa1c: ldmia r4,{r4,r6,r7}
+803aaa1e: ldr r0,[sp,#0x60]
+803aaa20: bl 0x803a5bf2
+803aaa24: cmp r0,#0x0
+803aaa26: bne 0x803aaa58
+803aaa28: add r0,sp,#0x4
+803aaa2a: bl 0x803bc806
+803aaa2e: ldr r1,[sp,#0x60]
+803aaa30: add r0,sp,#0x4
+803aaa32: bl 0x803b12ca
+803aaa36: movs r3,r4
+803aaa38: movs r2,r6
+803aaa3a: movs r1,r5
+803aaa3c: add r0,sp,#0x4
+803aaa3e: blx 0x8039ff74
+803aaa42: movs r1,r0
+803aaa44: ldr r0,[sp,#0x5c]
+803aaa46: bl 0x803bb3a0
+803aaa4a: cmp r0,#0x0
+803aaa4c: bne 0x803aaa58
+803aaa4e: ldr r0,[sp,#0x5c]
+803aaa50: ldr r1,[sp,#0x64]
+803aaa52: movs r2,r7
+803aaa54: bl 0x803aa9dc
+803aaa58: add sp,#0x6c
+803aaa5a: pop {r4,r5,r6,r7,pc}
+
+--- decompiled pseudocode ---
+
+void FUN_803aaa14(undefined4 param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4,
+                 undefined4 param_5,undefined4 param_6,undefined4 param_7)
+
+{
+  int iVar1;
+  undefined4 uVar2;
+  undefined1 auStack_7c [88];
+  undefined4 local_24;
+  undefined4 local_20;
+  undefined4 local_1c;
+  undefined4 uStack_18;
+  
+  local_24 = param_1;
+  local_20 = param_2;
+  local_1c = param_3;
+  uStack_18 = param_4;
+  iVar1 = FUN_803a5bf2(param_2);
+  if (iVar1 == 0) {
+    FUN_803bc806(auStack_7c);
+    FUN_803b12ca(auStack_7c,local_20);
+    uVar2 = FUN_8039ff74(auStack_7c,param_4,param_6,param_5);
+    iVar1 = FUN_803bb3a0(local_24,uVar2);
+    if (iVar1 == 0) {
+      FUN_803aa9dc(local_24,local_1c,param_7);
+    }
+  }
+  return;
+}
+
+
+
+
+=========================================================
+FUNCTION FUN_803aacca @ 803aacca
+=========================================================
+
+--- disassembly ---
+803aacca: push {r3,r4,r5,r6,r7,lr}
+803aaccc: movs r5,r2
+803aacce: movs r4,r0
+803aacd0: movs r7,r3
+803aacd2: movs r0,r1
+803aacd4: ldr r3,[sp,#0x18]
+803aacd6: ldr r2,[sp,#0x1c]
+803aacd8: ldr r6,[sp,#0x20]
+803aacda: movs r1,r7
+803aacdc: blx 0x8039ff7c
+803aace0: movs r1,r0
+803aace2: movs r0,r4
+803aace4: bl 0x803bb3a0
+803aace8: cmp r0,#0x0
+803aacea: bne 0x803aacf6
+803aacec: movs r2,r6
+803aacee: movs r1,r5
+803aacf0: movs r0,r4
+803aacf2: bl 0x803aa9dc
+803aacf6: pop {r3,r4,r5,r6,r7,pc}
+
+--- decompiled pseudocode ---
+
+void FUN_803aacca(undefined4 param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4,
+                 undefined4 param_5,undefined4 param_6,undefined4 param_7)
+
+{
+  undefined4 uVar1;
+  int iVar2;
+  
+  uVar1 = FUN_8039ff7c(param_2,param_4,param_6,param_5,param_4);
+  iVar2 = FUN_803bb3a0(param_1,uVar1);
+  if (iVar2 == 0) {
+    FUN_803aa9dc(param_1,param_3,param_7);
+  }
+  return;
+}
+
+
+
+
+=========================================================
+FUNCTION FUN_803ab04c @ 803ab04c
+=========================================================
+
+--- disassembly ---
+803aaae4: add sp,#0x14
+803aaae6: pop {r4,r5,r6,r7,pc}
+803ab04c: push {r4,r5,r6,r7,lr}
+803ab04e: sub sp,#0x14
+803ab050: movs r5,r1
+803ab052: movs r7,r0
+803ab054: movs r6,r2
+803ab056: bl 0x803aaa76
+803ab05a: movs r4,r0
+803ab05c: bne 0x803ab082
+803ab05e: movs r1,#0x4
+803ab060: cmp r6,#0x0
+803ab062: bne 0x803ab066
+803ab064: movs r1,#0x3
+803ab066: movs r0,#0x0
+803ab068: str r0,[sp,#0x0]
+803ab06a: str r0,[sp,#0x8]
+803ab06c: movs r0,#0x38
+803ab06e: str r0,[sp,#0x10]
+803ab070: movs r0,r7
+803ab072: mov r2,sp
+803ab074: str r5,[sp,#0x4]
+803ab076: bl 0x803bb9b2
+803ab07a: movs r4,r0
+803ab07c: movs r0,r7
+803ab07e: bl 0x803a9f58
+803ab082: movs r0,r4
+803ab084: b 0x803aaae4
+
+--- decompiled pseudocode ---
+
+int FUN_803ab04c(undefined4 param_1,undefined4 param_2,int param_3)
+
+{
+  int iVar1;
+  undefined4 uVar2;
+  undefined4 local_28;
+  undefined4 local_24;
+  undefined4 local_20;
+  undefined4 local_18;
+  
+  iVar1 = FUN_803aaa76();
+  if (iVar1 == 0) {
+    uVar2 = 4;
+    if (param_3 == 0) {
+      uVar2 = 3;
+    }
+    local_28 = 0;
+    local_20 = 0;
+    local_18 = 0x38;
+    local_24 = param_2;
+    iVar1 = FUN_803bb9b2(param_1,uVar2,&local_28);
+    FUN_803a9f58(param_1);
+  }
+  return iVar1;
+}
+
+
+
+
+=========================================================
+FUNCTION FUN_803ab734 @ 803ab734
+=========================================================
+
+--- disassembly ---
+803ab734: push {r4,r5,r6,r7,lr}
+803ab736: sub sp,#0x24
+803ab738: movs r6,r0
+803ab73a: movs r5,r1
+803ab73c: movs r7,r2
+803ab73e: bl 0x803aaa76
+803ab742: movs r4,r0
+803ab744: bne 0x803ab774
+803ab746: movs r2,#0x58
+803ab748: movs r3,r2
+803ab74a: movs r1,r7
+803ab74c: add r0,sp,#0x4
+803ab74e: bl 0x803b1c02
+803ab752: movs r0,#0x0
+803ab754: str r0,[sp,#0x10]
+803ab756: add r0,sp,#0x4
+803ab758: str r0,[sp,#0x18]
+803ab75a: movs r0,#0xff
+803ab75c: adds r0,#0x39
+803ab75e: str r0,[sp,#0x20]
+803ab760: movs r1,#0x5
+803ab762: movs r0,r6
+803ab764: add r2,sp,#0x10
+803ab766: str r5,[sp,#0x14]
+803ab768: bl 0x803bb9b2
+803ab76c: movs r4,r0
+803ab76e: movs r0,r6
+803ab770: bl 0x803a9f58
+803ab774: movs r0,r4
+803ab776: add sp,#0x24
+803ab778: pop {r4,r5,r6,r7,pc}
+
+--- decompiled pseudocode ---
+
+int FUN_803ab734(undefined4 param_1,undefined4 param_2,undefined4 param_3)
+
+{
+  int iVar1;
+  undefined1 auStack_34 [12];
+  undefined4 local_28;
+  undefined4 local_24;
+  undefined1 *local_20;
+  undefined4 local_18;
+  
+  iVar1 = FUN_803aaa76();
+  if (iVar1 == 0) {
+    FUN_803b1c02(auStack_34,param_3,0x58,0x58);
+    local_28 = 0;
+    local_20 = auStack_34;
+    local_18 = 0x138;
+    local_24 = param_2;
+    iVar1 = FUN_803bb9b2(param_1,5,&local_28);
+    FUN_803a9f58(param_1);
+  }
+  return iVar1;
+}
+
+
+
+
+=========================================================
+FUNCTION FUN_803b691e @ 803b691e
+=========================================================
+
+--- disassembly ---
+803b691e: push {r0,r1,r2,r3,r4,r5,r6,r7,lr}
+803b6920: sub sp,#0xc
+803b6922: movs r4,r2
+803b6924: movs r6,r3
+803b6926: movs r5,r1
+803b6928: ldr r7,[sp,#0x30]
+803b692a: movs r0,#0x0
+803b692c: str r0,[sp,#0x8]
+803b692e: add r0,sp,#0x8
+803b6930: bl 0x803aaa76
+803b6934: cmp r0,#0x0
+803b6936: bne 0x803b695e
+803b6938: movs r3,r4
+803b693a: ldr r1,[sp,#0xc]
+803b693c: movs r2,r5
+803b693e: add r0,sp,#0x8
+803b6940: str r6,[sp,#0x0]
+803b6942: str r7,[sp,#0x4]
+803b6944: bl 0x803ab662
+803b6948: movs r4,r0
+803b694a: add r0,sp,#0x8
+803b694c: bl 0x803a9f58
+803b6950: cmp r4,#0x0
+803b6952: bne 0x803b695c
+803b6954: ldr r0,[sp,#0xc]
+803b6956: bl 0x803b68da
+803b695a: movs r4,r0
+803b695c: movs r0,r4
+803b695e: add sp,#0x1c
+803b6960: pop {r4,r5,r6,r7,pc}
+
+--- decompiled pseudocode ---
+
+int FUN_803b691e(undefined4 param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4,
+                undefined4 param_5)
+
+{
+  int iVar1;
+  undefined4 local_28;
+  undefined4 local_24;
+  undefined4 uStack_20;
+  undefined4 uStack_1c;
+  undefined4 uStack_18;
+  
+  local_28 = 0;
+  local_24 = param_1;
+  uStack_20 = param_2;
+  uStack_1c = param_3;
+  uStack_18 = param_4;
+  iVar1 = FUN_803aaa76(&local_28);
+  if (iVar1 == 0) {
+    iVar1 = FUN_803ab662(&local_28,local_24,param_2,param_3,param_4,param_5);
+    FUN_803a9f58(&local_28);
+    if (iVar1 == 0) {
+      iVar1 = FUN_803b68da(local_24);
+    }
+  }
+  return iVar1;
+}
+
+
+
+
+=========================================================
+FUNCTION FUN_803bb7ae @ 803bb7ae
+=========================================================
+
+--- disassembly ---
+803bb7ae: push {r4,lr}
+803bb7b0: bl 0x803ac832
+803bb7b4: pop {r4,pc}
+
+--- decompiled pseudocode ---
+
+void FUN_803bb7ae(void)
+
+{
+  FUN_803ac832();
+  return;
+}
+
+
+
+

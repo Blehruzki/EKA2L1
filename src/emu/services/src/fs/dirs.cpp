@@ -62,7 +62,6 @@ namespace eka2l1 {
         }
 
         dir.value() = get_full_symbian_path(path_relative, dir.value());
-        LOG_TRACE(SERVICE_EFSRV, "Opening directory: {}", common::ucs2_to_utf8(*dir));
 
         if (!dir || !utype.has_value()) {
             ctx->complete(epoc::error_argument);

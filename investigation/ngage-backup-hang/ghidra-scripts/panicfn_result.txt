@@ -1,0 +1,307 @@
+=== target 0x803af504 ===
+FUNCTION FUN_803af504 @ 803af504 size=20
+803af504: push {r2,r3,r4,lr}
+803af506: adr r1,[0x803af52c]
+803af508: movs r4,r0
+803af50a: mov r0,sp
+803af50c: bl 0x803b2a94
+803af510: movs r1,r4
+803af512: bl 0x803a96da
+803af516: pop {r2,r3,r4,pc}
+--- decompiled ---
+
+void FUN_803af504(undefined4 param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4)
+
+{
+  undefined4 uVar1;
+  undefined4 uStack_10;
+  undefined4 uStack_c;
+  
+  uStack_10 = param_3;
+  uStack_c = param_4;
+  uVar1 = FUN_803b2a94(&uStack_10,u_USER_803af52c);
+  FUN_803a96da(uVar1,param_1);
+  return;
+}
+
+
+
+=== target 0x803b2a94 ===
+FUNCTION FUN_803b2a94 @ 803b2a94 size=26
+803b2a94: push {r4,r5,r6,lr}
+803b2a96: movs r4,r0
+803b2a98: movs r5,r1
+803b2a9a: movs r0,r1
+803b2a9c: bl 0x803a9854
+803b2aa0: movs r1,#0x1
+803b2aa2: lsls r1,r1,#0x1c
+803b2aa4: orrs r0,r1
+803b2aa6: str r0,[r4,#0x0]
+803b2aa8: movs r0,r4
+803b2aaa: str r5,[r4,#0x4]
+803b2aac: pop {r4,r5,r6,pc}
+--- decompiled ---
+
+uint * FUN_803b2a94(uint *param_1,uint param_2)
+
+{
+  uint uVar1;
+  
+  uVar1 = FUN_803a9854(param_2);
+  *param_1 = uVar1 | 0x10000000;
+  param_1[1] = param_2;
+  return param_1;
+}
+
+
+
+=== target 0x803a96da ===
+FUNCTION FUN_803a96da @ 803a96da size=64
+803a96da: push {r4,r5,lr}
+803a96dc: movs r4,#0x10
+803a96de: movs r5,r1
+803a96e0: ldr r1,[r0,#0x0]
+803a96e2: sub sp,#0x24
+803a96e4: lsls r1,r1,#0x4
+803a96e6: lsrs r1,r1,#0x4
+803a96e8: cmp r1,#0x10
+803a96ea: bgt 0x803a96ee
+803a96ec: movs r4,r1
+803a96ee: blx 0x803a1b34
+803a96f2: movs r1,r0
+803a96f4: movs r2,r4
+803a96f6: add r0,sp,#0x1c
+803a96f8: bl 0x803b2aae
+803a96fc: movs r1,#0x10
+803a96fe: add r0,sp,#0x4
+803a9700: bl 0x803b1d1e
+803a9704: add r1,sp,#0x1c
+803a9706: add r0,sp,#0x4
+803a9708: bl 0x803b12a6
+803a970c: movs r1,r5
+803a970e: movs r0,#0x2
+803a9710: add r2,sp,#0x4
+803a9712: blx 0x803a045c
+803a9716: add sp,#0x24
+803a9718: pop {r4,r5,pc}
+--- decompiled ---
+
+void FUN_803a96da(uint *param_1,undefined4 param_2)
+
+{
+  undefined4 uVar1;
+  uint uVar2;
+  undefined1 auStack_2c [24];
+  undefined1 auStack_14 [8];
+  
+  uVar2 = 0x10;
+  if ((*param_1 & 0xfffffff) < 0x11) {
+    uVar2 = *param_1 & 0xfffffff;
+  }
+  uVar1 = FUN_803a1b34();
+  FUN_803b2aae(auStack_14,uVar1,uVar2);
+  FUN_803b1d1e(auStack_2c,0x10);
+  FUN_803b12a6(auStack_2c,auStack_14);
+  FUN_803a045c(2,param_2,auStack_2c);
+  return;
+}
+
+
+
+=== target 0x803a9854 ===
+FUNCTION FUN_803a9854 @ 803a9854 size=18
+803a9854: movs r1,r0
+803a9856: b 0x803a985a
+803a9858: adds r1,r1,#0x2
+803a985a: ldrh r2,[r1,#0x0]
+803a985c: cmp r2,#0x0
+803a985e: bne 0x803a9858
+803a9860: subs r0,r1,r0
+803a9862: asrs r0,r0,#0x1
+803a9864: bx lr
+--- decompiled ---
+
+int FUN_803a9854(short *param_1)
+
+{
+  short *psVar1;
+  
+  for (psVar1 = param_1; *psVar1 != 0; psVar1 = psVar1 + 1) {
+  }
+  return (int)psVar1 - (int)param_1 >> 1;
+}
+
+
+
+=== target 0x803a1b34 ===
+FUNCTION FUN_803a1b34 @ 803a1b34 size=36
+803a1b34: ldr r1,[r0],#0x4
+803a1b38: cmp r1,#0x50000000
+803a1b3c: bcs 0x803bb118
+803a1b40: eor r1,r1,r1, lsr #0x1
+803a1b44: msr cpsr_f,r1
+803a1b48: addcs r0,r0,#0x4
+803a1b4c: ldrle r0,[r0,#0x0]
+803a1b50: addeq r0,r0,#0x4
+803a1b54: bx lr
+--- decompiled ---
+
+uint * FUN_803a1b34(uint *param_1)
+
+{
+  uint *puVar1;
+  uint uVar2;
+  bool bVar3;
+  
+  puVar1 = param_1 + 1;
+  uVar2 = *param_1;
+  if (uVar2 < 0x50000000) {
+    uVar2 = uVar2 ^ uVar2 >> 1;
+    bVar3 = (uVar2 >> 0x1e & 1) != 0;
+    if ((uVar2 >> 0x1d & 1) != 0) {
+      puVar1 = param_1 + 2;
+    }
+    if (bVar3 || (int)uVar2 < 0 != ((uVar2 >> 0x1c & 1) != 0)) {
+      puVar1 = (uint *)*puVar1;
+    }
+    if (bVar3) {
+      puVar1 = puVar1 + 1;
+    }
+    return puVar1;
+  }
+                    /* WARNING: Could not recover jumptable at 0x803bb120. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  puVar1 = (uint *)(*(code *)((int)&DAT_803bb124 + DAT_803bb124))();
+  return puVar1;
+}
+
+
+
+=== target 0x803b2aae ===
+FUNCTION FUN_803b2aae @ 803b2aae size=28
+803b2aae: push {r4,lr}
+803b2ab0: movs r4,r0
+803b2ab2: movs r0,#0x1
+803b2ab4: lsls r0,r0,#0x1c
+803b2ab6: orrs r0,r2
+803b2ab8: str r0,[r4,#0x0]
+803b2aba: cmp r2,#0x0
+803b2abc: str r1,[r4,#0x4]
+803b2abe: bge 0x803b2ac6
+803b2ac0: movs r0,#0x11
+803b2ac2: bl 0x803af504
+803b2ac6: movs r0,r4
+803b2ac8: pop {r4,pc}
+--- decompiled ---
+
+uint * FUN_803b2aae(uint *param_1,uint param_2,uint param_3)
+
+{
+  *param_1 = param_3 | 0x10000000;
+  param_1[1] = param_2;
+  if ((int)param_3 < 0) {
+    FUN_803af504(0x11);
+  }
+  return param_1;
+}
+
+
+
+=== target 0x803b1d1e ===
+FUNCTION FUN_803b1d1e @ 803b1d1e size=10
+803b1d1e: movs r2,#0x3
+803b1d20: lsls r2,r2,#0x1c
+803b1d22: str r1,[r0,#0x4]
+803b1d24: str r2,[r0,#0x0]
+803b1d26: bx lr
+--- decompiled ---
+
+void FUN_803b1d1e(undefined4 *param_1,undefined4 param_2)
+
+{
+  param_1[1] = param_2;
+  *param_1 = 0x30000000;
+  return;
+}
+
+
+
+=== target 0x803b12a6 ===
+FUNCTION FUN_803b12a6 @ 803b12a6 size=60
+803b12a6: push {r4,r5,r6,lr}
+803b12a8: movs r4,r1
+803b12aa: movs r6,r0
+803b12ac: ldr r0,[r1,#0x0]
+803b12ae: lsls r5,r0,#0x4
+803b12b0: lsrs r5,r5,#0x4
+803b12b2: movs r1,r5
+803b12b4: movs r0,r6
+803b12b6: blx 0x803a0fe4
+803b12ba: movs r0,r4
+803b12bc: blx 0x803a1b34
+803b12c0: lsls r1,r5,#0x1
+803b12c2: adds r5,r1,r0
+803b12c4: movs r4,r0
+803b12c6: movs r0,r6
+803b12c8: bl 0x803bb932
+803b12cc: b 0x803b12dc
+803b12ce: ldrh r1,[r4,#0x0]
+803b12d0: adds r4,r4,#0x2
+803b12d2: cmp r1,#0xff
+803b12d4: bls 0x803b12d8
+803b12d6: movs r1,#0x1
+803b12d8: strb r1,[r0,#0x0]
+803b12da: adds r0,r0,#0x1
+803b12dc: cmp r4,r5
+803b12de: bcc 0x803b12ce
+803b12e0: pop {r4,r5,r6,pc}
+--- decompiled ---
+
+void FUN_803b12a6(undefined4 param_1,uint *param_2)
+
+{
+  uint uVar1;
+  ushort *puVar2;
+  undefined1 *puVar3;
+  ushort uVar4;
+  ushort *puVar5;
+  
+  uVar1 = *param_2;
+  FUN_803a0fe4(param_1,uVar1 & 0xfffffff);
+  puVar2 = (ushort *)FUN_803a1b34(param_2);
+  puVar5 = puVar2 + (uVar1 & 0xfffffff);
+  puVar3 = (undefined1 *)FUN_803bb932(param_1);
+  while (puVar2 < puVar5) {
+    uVar4 = *puVar2;
+    puVar2 = puVar2 + 1;
+    if (0xff < uVar4) {
+      uVar4 = 1;
+    }
+    *puVar3 = (char)uVar4;
+    puVar3 = puVar3 + 1;
+  }
+  return;
+}
+
+
+
+=== target 0x803a045c ===
+FUNCTION FUN_803a045c @ 803a045c size=28
+803a045c: cpy r3,r2
+803a0460: cpy r2,r1
+803a0464: cpy r1,r0
+803a0468: mvn r0,#0xfe
+803a046c: bic r0,r0,#0x7f00
+803a0470: swi 0x72
+803a0474: bx lr
+--- decompiled ---
+
+undefined8 FUN_803a045c(undefined4 param_1)
+
+{
+  software_interrupt(0x72);
+  return CONCAT44(param_1,0xffff8001);
+}
+
+
+

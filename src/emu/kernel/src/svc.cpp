@@ -32,6 +32,8 @@
 #include <common/configure.h>
 #include <kernel/kernel.h>
 #include <kernel/svc.h>
+#include <mem/mem.h>
+#include <mem/mmu.h>
 
 #include <loader/rom.h>
 
@@ -718,6 +720,7 @@ namespace eka2l1::epoc {
 
     BRIDGE_FUNC(void, message_complete, std::int32_t msg_handle, std::int32_t val) {
         ipc_msg_ptr msg = kern->get_msg(msg_handle);
+        msg->msg_status = ipc_message_status::completed;
 
         if (msg->request_sts) {
             epoc::request_status *status = msg->request_sts.get(msg->own_thr->owning_process());

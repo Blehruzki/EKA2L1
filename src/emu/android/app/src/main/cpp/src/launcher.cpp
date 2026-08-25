@@ -386,6 +386,7 @@ namespace eka2l1::android {
 
             if (temporary) {
                 sys->set_device(id);
+                sys->mount_default_user_drives();
                 retrieve_servers();
             } else {
                 // Permanent set in Android backend will reset the native side
@@ -428,8 +429,8 @@ namespace eka2l1::android {
         device_manager *dvc_mngr = sys->get_device_manager();
         device_installation_error result;
 
-        std::string root_c_path = add_path(conf->storage, "drives/c/");
-        std::string root_e_path = add_path(conf->storage, "drives/e/");
+        std::string root_c_path = add_path(conf->storage, "_install_staging/drives/c/");
+        std::string root_e_path = add_path(conf->storage, "_install_staging/drives/e/");
         std::string root_z_path = add_path(conf->storage, "drives/z/");
         std::string rom_resident_path = add_path(conf->storage, "roms/");
 
@@ -461,6 +462,18 @@ namespace eka2l1::android {
 
             eka2l1::common::create_directories(rom_directory);
             common::copy_file(rom_path, add_path(rom_directory, "SYM.ROM"), true);
+        }
+
+        if (!install_rpkg) {
+            eka2l1::device *newest = dvc_mngr->lastest();
+
+            if (newest) {
+                const std::string device_base = eka2l1::get_device_specific_storage_path(conf->storage, newest->firmware_code);
+                eka2l1::common::create_directories(add_path(device_base, "drives/"));
+                eka2l1::common::move_file(root_c_path, add_path(device_base, "drives/c/"));
+                eka2l1::common::move_file(root_e_path, add_path(device_base, "drives/e/"));
+                eka2l1::common::delete_folder(add_path(conf->storage, "_install_staging/"));
+            }
         }
 
         return device_installation_none;

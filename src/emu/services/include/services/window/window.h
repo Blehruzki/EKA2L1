@@ -334,6 +334,15 @@ namespace eka2l1 {
     public:
         using key_capture_request_queue = cp_queue<epoc::event_capture_key_notifier>;
 
+        // Real Symbian guest code (e.g. some system components) does a TFindThread-style
+        // check for a thread whose name ends in "Wserv" (real ewsrv.exe's own thread) as
+        // a window-server-readiness gate. This server has no backing kernel::thread (see
+        // its constructor), so provide the expected name as an alias for that lookup to
+        // match against instead - see investigation/ngage-backup-hang round 8/9.
+        std::string thread_presence_alias() const override {
+            return "Wserv";
+        }
+
         struct {
             // maps from controller button / key to input key code
             epoc::button_map button_input_map;

@@ -895,6 +895,11 @@ namespace eka2l1 {
             if (!ext.empty()) {
                 if (common::compare_ignore_case(ext, u".swf") == 0) {
                     app.data_type.data_type.assign(nullptr, "application/x-shockwave-flash");
+                } else if ((common::compare_ignore_case(ext, u".ngdat") == 0)
+                    || (common::compare_ignore_case(ext, u".dcf") == 0)
+                    || (common::compare_ignore_case(ext, u".odf") == 0)
+                    || (common::compare_ignore_case(ext, u".o4a") == 0)) {
+                    app.data_type.data_type.assign(nullptr, "application/vnd.oma.drm.dcf");
                 } else {
                     app.data_type.data_type.assign(nullptr, common::uppercase_string(common::ucs2_to_utf8(ext.substr(1))));
                 }

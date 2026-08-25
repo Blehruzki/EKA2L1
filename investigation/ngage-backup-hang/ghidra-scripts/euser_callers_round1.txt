@@ -1,0 +1,188 @@
+CALL at 803aa9b6 -> 0x803a02dc   (blx 0x803a02dc)
+CALL at 803aaa00 -> 0x803aa99a   (bl 0x803aa99a)
+CALL at 803aaa7a -> 0x803aa988   (bl 0x803aa988)
+CALL at 803aad1e -> 0x8039fccc   (blx 0x8039fccc)
+CALL at 803ac84a -> 0x803aa99a   (bl 0x803aa99a)
+scanned 33626 instructions total, 4 unique caller functions found
+
+=========================================================
+FUNCTION FUN_803aa99a @ 803aa99a (in block containing this addr)
+=========================================================
+
+--- disassembly ---
+803aa99a: push {r3,r4,r5,r6,r7,lr}
+803aa99c: movs r5,r0
+803aa99e: movs r7,r2
+803aa9a0: movs r6,r1
+803aa9a2: movs r4,r3
+803aa9a4: beq 0x803aa9ae
+803aa9a6: ldr r1,[0x803aac70]
+803aa9a8: movs r0,r4
+803aa9aa: bl 0x803bb420
+803aa9ae: movs r3,r4
+803aa9b0: movs r2,r7
+803aa9b2: ldr r0,[r5,#0x0]
+803aa9b4: movs r1,r6
+803aa9b6: blx 0x803a02dc
+803aa9ba: pop {r3,r4,r5,r6,r7,pc}
+
+--- decompiled pseudocode ---
+
+void FUN_803aa99a(undefined4 *param_1,undefined4 param_2,undefined4 param_3,int param_4)
+
+{
+  if (param_4 != 0) {
+    FUN_803bb420(param_4,DAT_803aac70,param_3,param_4,param_4);
+  }
+  FUN_803a02dc(*param_1,param_2,param_3,param_4);
+  return;
+}
+
+
+
+
+=========================================================
+FUNCTION FUN_803aa9dc @ 803aa9dc (in block containing this addr)
+=========================================================
+
+--- disassembly ---
+803aa9dc: push {r4,r5,lr}
+803aa9de: sub sp,#0x14
+803aa9e0: movs r5,r0
+803aa9e2: ldr r0,[r1,#0x0]
+803aa9e4: str r0,[sp,#0x0]
+803aa9e6: movs r0,#0x0
+803aa9e8: subs r1,r0,#0x1
+803aa9ea: cmp r2,#0x0
+803aa9ec: str r0,[sp,#0x10]
+803aa9ee: bne 0x803aa9fa
+803aa9f0: movs r0,r5
+803aa9f2: mov r2,sp
+803aa9f4: bl 0x803aa9bc
+803aa9f8: b 0x803aaa04
+803aa9fa: movs r3,r2
+803aa9fc: movs r0,r5
+803aa9fe: mov r2,sp
+803aaa00: bl 0x803aa99a
+803aaa04: movs r4,r0
+803aaa06: beq 0x803aaa0e
+803aaa08: movs r0,r5
+803aaa0a: bl 0x803a9f58
+803aaa0e: movs r0,r4
+803aaa10: add sp,#0x14
+803aaa12: pop {r4,r5,pc}
+
+--- decompiled pseudocode ---
+
+int FUN_803aa9dc(undefined4 param_1,undefined4 *param_2,int param_3)
+
+{
+  int iVar1;
+  undefined4 local_20 [4];
+  undefined4 local_10;
+  
+  local_20[0] = *param_2;
+  local_10 = 0;
+  if (param_3 == 0) {
+    iVar1 = FUN_803aa9bc(param_1,0xffffffff,local_20);
+  }
+  else {
+    iVar1 = FUN_803aa99a(param_1,0xffffffff,local_20,param_3);
+  }
+  if (iVar1 != 0) {
+    FUN_803a9f58(param_1);
+  }
+  return iVar1;
+}
+
+
+
+
+=========================================================
+FUNCTION FUN_803aaa76 @ 803aaa76 (in block containing this addr)
+=========================================================
+
+--- disassembly ---
+803aaa76: push {r3,r4,r5,lr}
+803aaa78: movs r4,r0
+803aaa7a: bl 0x803aa988
+803aaa7e: str r0,[sp,#0x0]
+803aaa80: movs r0,r4
+803aaa82: ldr r1,[0x803aac78]
+803aaa84: movs r3,#0x0
+803aaa86: mov r2,sp
+803aaa88: bl 0x803aaa5c
+803aaa8c: pop {r3,r4,r5,pc}
+
+--- decompiled pseudocode ---
+
+void FUN_803aaa76(undefined4 param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4)
+
+{
+  undefined4 local_10;
+  
+  local_10 = param_4;
+  local_10 = FUN_803aa988();
+  FUN_803aaa5c(param_1,DAT_803aac78,&local_10,0);
+  return;
+}
+
+
+
+
+=========================================================
+FUNCTION FUN_803ac832 @ 803ac832 (in block containing this addr)
+=========================================================
+
+--- disassembly ---
+803ac832: push {r3,r4,r5,r6,r7,lr}
+803ac834: movs r4,r3
+803ac836: ldr r3,[0x803ac9dc]
+803ac838: cmp r1,r3
+803ac83a: bhi 0x803ac85e
+803ac83c: adds r6,r3,#0x2
+803ac83e: ldr r3,[r4,#0x4]
+803ac840: movs r5,#0x2
+803ac842: orrs r3,r5
+803ac844: str r3,[r4,#0x4]
+803ac846: movs r3,r4
+803ac848: str r6,[r4,#0x0]
+803ac84a: bl 0x803aa99a
+803ac84e: cmp r0,#0x0
+803ac850: beq 0x803ac85c
+803ac852: movs r1,r0
+803ac854: mov r0,sp
+803ac856: str r4,[sp,#0x0]
+803ac858: bl 0x803a9770
+803ac85c: pop {r3,r4,r5,r6,r7,pc}
+803ac85e: movs r0,#0x48
+803ac860: bl 0x803af528
+803ac864: pop {r3,r4,r5,r6,r7,pc}
+
+--- decompiled pseudocode ---
+
+void FUN_803ac832(undefined4 param_1,uint param_2,undefined4 param_3,int *param_4)
+
+{
+  int iVar1;
+  int *local_18;
+  
+  local_18 = param_4;
+  if (param_2 <= DAT_803ac9dc) {
+    iVar1 = DAT_803ac9dc + 2;
+    param_4[1] = param_4[1] | 2;
+    *param_4 = iVar1;
+    iVar1 = FUN_803aa99a();
+    if (iVar1 != 0) {
+      local_18 = param_4;
+      FUN_803a9770(&local_18,iVar1);
+    }
+    return;
+  }
+  FUN_803af528(0x48);
+  return;
+}
+
+
+
+

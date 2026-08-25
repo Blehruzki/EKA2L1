@@ -809,8 +809,6 @@ namespace eka2l1 {
             return;
         }
 
-        LOG_INFO(SERVICE_EFSRV, "Get entry of: {}", common::ucs2_to_utf8(fname));
-
         bool dir = false;
 
         io_system *io = ctx->sys->get_io_system();

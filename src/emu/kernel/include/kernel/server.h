@@ -171,6 +171,18 @@ namespace eka2l1 {
                 return owner_thread;
             }
 
+            // Name to match this server against when guest code does a TFindThread-style
+            // existence check (object_next SVC, obj_type=thread) against a server that has
+            // no backing kernel::thread of its own (get_owner_thread() == nullptr). Real
+            // Symbian's actual thread naming convention for a given server's own thread
+            // isn't always the same as the server's own IPC name - override this in a
+            // subclass when guest code is known to search for something else (see
+            // investigation/ngage-backup-hang round 8/9 in the EKA2L1 project for a
+            // concrete case). Empty means "no known alias, don't match this way".
+            virtual std::string thread_presence_alias() const {
+                return std::string();
+            }
+
             service::share_mode get_share_mode() const {
                 return shmode_;
             }

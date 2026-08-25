@@ -1,0 +1,155 @@
+=== target 8077811a -> function FUN_8077811a@8077811a ===
+FUNCTION FUN_8077811a @ 8077811a size=118
+--- disassembly ---
+8077811a: push {r4,lr}
+8077811c: ldr r0,[0x807784cc]
+8077811e: mov r4,#0x0
+80778120: ldr r3,[r0,#0x0]
+80778122: mov r1,r4
+80778124: sub sp,#0x20
+80778126: mov r2,r4
+80778128: add r0,sp,#0x14
+8077812a: blx 0x8077f5c8
+8077812e: ldr r0,[0x807784d0]
+80778130: str r0,[sp,#0x10]
+80778132: ldr r0,[0x807784cc]
+80778134: mov r2,#0x0
+80778136: add r0,r0,#0x4
+80778138: mov r1,r0
+8077813a: str r2,[sp,#0x0]
+8077813c: add r1,#0x28
+8077813e: mov r2,r0
+80778140: add r0,sp,#0x10
+80778142: add r3,sp,#0x14
+80778144: blx 0x8077f5a8
+80778148: cmp r0,#0x0
+8077814a: bne 0x8077818c
+8077814c: add r1,sp,#0x8
+8077814e: add r0,sp,#0x10
+80778150: str r4,[sp,#0xc]
+80778152: blx 0x8077f720
+80778156: ldr r1,[0x807784d4]
+80778158: ldr r0,[sp,#0x8]
+8077815a: cmp r0,r1
+8077815c: beq 0x80778168
+8077815e: mov r1,#0x0
+80778160: add r0,sp,#0x10
+80778162: blx 0x8077f598
+80778166: b 0x8077816e
+80778168: add r0,sp,#0x10
+8077816a: blx 0x8077f5b0
+8077816e: add r0,sp,#0x8
+80778170: blx 0x8077f978
+80778174: add r0,sp,#0x10
+80778176: blx 0x8077f730
+8077817a: cmp r0,#0x2
+8077817c: bne 0x80778182
+8077817e: sub r4,r0,#0x4
+80778180: b 0x80778184
+80778182: ldr r4,[sp,#0x8]
+80778184: add r0,sp,#0x10
+80778186: blx 0x8077f568
+8077818a: mov r0,r4
+8077818c: add sp,#0x20
+8077818e: pop {r4,pc}
+--- decompiled ---
+
+int FUN_8077811a(void)
+
+{
+  int iVar1;
+  int iVar2;
+  int local_20 [3];
+  undefined1 auStack_14 [12];
+  
+  thunk_EXT_FUN_803a911e(auStack_14,0,0,*DAT_807784cc);
+  local_20[2] = DAT_807784d0;
+  iVar1 = thunk_EXT_FUN_803aaa6a(local_20 + 2,DAT_807784cc + 0xb,DAT_807784cc + 1,auStack_14,0);
+  if (iVar1 == 0) {
+    local_20[1] = 0;
+    thunk_EXT_FUN_803aab70(local_20 + 2,local_20);
+    if (local_20[0] == DAT_807784d4) {
+      thunk_EXT_FUN_803a80f0(local_20 + 2);
+    }
+    else {
+      thunk_EXT_FUN_803aaae2(local_20 + 2,0);
+    }
+    thunk_EXT_FUN_803a82d4(local_20);
+    iVar2 = thunk_EXT_FUN_803a8144(local_20 + 2);
+    iVar1 = local_20[0];
+    if (iVar2 == 2) {
+      iVar1 = -2;
+    }
+    thunk_EXT_FUN_803a9f34(local_20 + 2);
+  }
+  return iVar1;
+}
+
+
+
+=== target 80778190 -> function FUN_80778190@80778190 ===
+FUNCTION FUN_80778190 @ 80778190 size=68
+--- disassembly ---
+80778190: push {r3,r4,r5,r6,r7,lr}
+80778192: mov r4,#0xa
+80778194: ldr r5,[0x807784cc]
+80778196: mov r6,r0
+80778198: add r5,#0xc
+8077819a: mov r2,#0x1
+8077819c: mov r1,#0x0
+8077819e: mov r3,#0x1
+807781a0: mov r0,sp
+807781a2: blx 0x8077f5d8
+807781a6: mov r2,r0
+807781a8: mov r0,r6
+807781aa: mov r1,r5
+807781ac: mov r3,#0x4
+807781ae: blx 0x8077f7d0
+807781b2: sub r4,r4,#0x1
+807781b4: cmp r4,#0x0
+807781b6: ble 0x807781d2
+807781b8: add r3,r0,#0x1
+807781ba: beq 0x807781c2
+807781bc: mov r1,r0
+807781be: add r1,#0xf
+807781c0: bne 0x807781d2
+807781c2: mov r0,r6
+807781c4: bl 0x8077811a
+807781c8: cmp r0,#0x0
+807781ca: beq 0x8077819a
+807781cc: mov r1,r0
+807781ce: add r1,#0xb
+807781d0: beq 0x8077819a
+807781d2: pop {r3,r4,r5,r6,r7,pc}
+--- decompiled ---
+
+void FUN_80778190(undefined4 param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4)
+
+{
+  undefined4 uVar1;
+  int iVar2;
+  int iVar3;
+  int iVar4;
+  undefined4 uStack_18;
+  
+  iVar3 = 10;
+  iVar4 = DAT_807784cc + 0xc;
+  uStack_18 = param_4;
+  while( true ) {
+    uVar1 = thunk_EXT_FUN_803a91fc(&uStack_18,0,1,1);
+    iVar2 = thunk_EXT_FUN_803aaa38(param_1,iVar4,uVar1,4);
+    iVar3 = iVar3 + -1;
+    if (iVar3 < 1) {
+      return;
+    }
+    if ((iVar2 != -1) && (iVar2 != -0xf)) break;
+    iVar2 = FUN_8077811a(param_1);
+    if ((iVar2 != 0) && (iVar2 != -0xb)) {
+      return;
+    }
+  }
+  return;
+}
+
+
+

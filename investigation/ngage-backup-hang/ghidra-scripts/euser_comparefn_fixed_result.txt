@@ -1,0 +1,294 @@
+=== target 0x803a7cf2 ===
+FUNCTION target_803a7cf2 @ 803a7cf2 size=10
+--- disassembly ---
+803a7cf2: push {r4,lr}
+803a7cf4: movs r2,#0x0
+803a7cf6: bl 0x803a9e7c
+803a7cfa: pop {r4,pc}
+--- decompiled ---
+
+void target_803a7cf2(undefined4 param_1,undefined4 param_2)
+
+{
+  FUN_803a9e7c(param_1,param_2,0);
+  return;
+}
+
+
+
+=== target 0x803a9e7c ===
+FUNCTION FUN_803a9e7c @ 803a9e7c size=58
+--- disassembly ---
+803a9e7c: push {r4,r5,r6,lr}
+803a9e7e: movs r4,r0
+803a9e80: movs r5,r1
+803a9e82: movs r1,#0xff
+803a9e84: movs r6,r2
+803a9e86: sub sp,#0x108
+803a9e88: adds r1,r1,#0x1
+803a9e8a: mov r0,sp
+803a9e8c: bl 0x803b1d1e
+803a9e90: movs r1,r4
+803a9e92: adds r1,#0x10
+803a9e94: mov r0,sp
+803a9e96: bl 0x803b12a6
+803a9e9a: movs r2,r4
+803a9e9c: movs r0,r6
+803a9e9e: mov r1,sp
+803a9ea0: blx 0x8039fb78
+803a9ea4: movs r4,r0
+803a9ea6: bne 0x803a9eb0
+803a9ea8: movs r0,r5
+803a9eaa: mov r1,sp
+803a9eac: bl 0x803b2acc
+803a9eb0: movs r0,r4
+803a9eb2: add sp,#0x108
+803a9eb4: pop {r4,r5,r6,pc}
+--- decompiled ---
+
+int FUN_803a9e7c(int param_1,undefined4 param_2,undefined4 param_3)
+
+{
+  int iVar1;
+  undefined1 auStack_118 [264];
+  
+  FUN_803b1d1e(auStack_118,0x100);
+  FUN_803b12a6(auStack_118,param_1 + 0x10);
+  iVar1 = FUN_8039fb78(param_3,auStack_118,param_1);
+  if (iVar1 == 0) {
+    FUN_803b2acc(param_2,auStack_118);
+  }
+  return iVar1;
+}
+
+
+
+=== target 0x803b1d1e ===
+FUNCTION FUN_803b1d1e @ 803b1d1e size=10
+--- disassembly ---
+803b1d1e: movs r2,#0x3
+803b1d20: lsls r2,r2,#0x1c
+803b1d22: str r1,[r0,#0x4]
+803b1d24: str r2,[r0,#0x0]
+803b1d26: bx lr
+--- decompiled ---
+
+void FUN_803b1d1e(undefined4 *param_1,undefined4 param_2)
+
+{
+  param_1[1] = param_2;
+  *param_1 = 0x30000000;
+  return;
+}
+
+
+
+=== target 0x803b12a6 ===
+FUNCTION FUN_803b12a6 @ 803b12a6 size=60
+--- disassembly ---
+803b12a6: push {r4,r5,r6,lr}
+803b12a8: movs r4,r1
+803b12aa: movs r6,r0
+803b12ac: ldr r0,[r1,#0x0]
+803b12ae: lsls r5,r0,#0x4
+803b12b0: lsrs r5,r5,#0x4
+803b12b2: movs r1,r5
+803b12b4: movs r0,r6
+803b12b6: blx 0x803a0fe4
+803b12ba: movs r0,r4
+803b12bc: blx 0x803a1b34
+803b12c0: lsls r1,r5,#0x1
+803b12c2: adds r5,r1,r0
+803b12c4: movs r4,r0
+803b12c6: movs r0,r6
+803b12c8: bl 0x803bb932
+803b12cc: b 0x803b12dc
+803b12ce: ldrh r1,[r4,#0x0]
+803b12d0: adds r4,r4,#0x2
+803b12d2: cmp r1,#0xff
+803b12d4: bls 0x803b12d8
+803b12d6: movs r1,#0x1
+803b12d8: strb r1,[r0,#0x0]
+803b12da: adds r0,r0,#0x1
+803b12dc: cmp r4,r5
+803b12de: bcc 0x803b12ce
+803b12e0: pop {r4,r5,r6,pc}
+--- decompiled ---
+
+void FUN_803b12a6(undefined4 param_1,uint *param_2)
+
+{
+  uint uVar1;
+  ushort *puVar2;
+  undefined1 *puVar3;
+  ushort uVar4;
+  ushort *puVar5;
+  
+  uVar1 = *param_2;
+  FUN_803a0fe4(param_1,uVar1 & 0xfffffff);
+  puVar2 = (ushort *)FUN_803a1b34(param_2);
+  puVar5 = puVar2 + (uVar1 & 0xfffffff);
+  puVar3 = (undefined1 *)FUN_803bb932(param_1);
+  while (puVar2 < puVar5) {
+    uVar4 = *puVar2;
+    puVar2 = puVar2 + 1;
+    if (0xff < uVar4) {
+      uVar4 = 1;
+    }
+    *puVar3 = (char)uVar4;
+    puVar3 = puVar3 + 1;
+  }
+  return;
+}
+
+
+
+=== target 0x8039fb78 ===
+FUNCTION FUN_8039fb78 @ 8039fb78 size=8
+--- disassembly ---
+8039fb78: swi 0x0
+8039fb7c: bx lr
+--- decompiled ---
+
+void FUN_8039fb78(void)
+
+{
+  software_interrupt(0);
+  return;
+}
+
+
+
+=== target 0x803b2acc ===
+FUNCTION FUN_803b2acc @ 803b2acc size=52
+--- disassembly ---
+803b2acc: push {r4,r5,r6,lr}
+803b2ace: movs r4,r1
+803b2ad0: movs r6,r0
+803b2ad2: ldr r0,[r1,#0x0]
+803b2ad4: lsls r5,r0,#0x4
+803b2ad6: lsrs r5,r5,#0x4
+803b2ad8: movs r1,r5
+803b2ada: movs r0,r6
+803b2adc: blx 0x803a1bbc
+803b2ae0: movs r0,r4
+803b2ae2: blx 0x803a0f5c
+803b2ae6: movs r4,r0
+803b2ae8: adds r5,r0,r5
+803b2aea: movs r0,r6
+803b2aec: bl 0x803bb95c
+803b2af0: b 0x803b2afa
+803b2af2: ldrb r1,[r4,#0x0]
+803b2af4: adds r4,r4,#0x1
+803b2af6: strh r1,[r0,#0x0]
+803b2af8: adds r0,r0,#0x2
+803b2afa: cmp r4,r5
+803b2afc: bcc 0x803b2af2
+803b2afe: pop {r4,r5,r6,pc}
+--- decompiled ---
+
+void FUN_803b2acc(undefined4 param_1,uint *param_2)
+
+{
+  uint uVar1;
+  byte *pbVar2;
+  ushort *puVar3;
+  byte *pbVar4;
+  
+  uVar1 = *param_2;
+  FUN_803a1bbc(param_1,uVar1 & 0xfffffff);
+  pbVar2 = (byte *)FUN_803a0f5c(param_2);
+  pbVar4 = pbVar2 + (uVar1 & 0xfffffff);
+  puVar3 = (ushort *)FUN_803bb95c(param_1);
+  for (; pbVar2 < pbVar4; pbVar2 = pbVar2 + 1) {
+    *puVar3 = (ushort)*pbVar2;
+    puVar3 = puVar3 + 1;
+  }
+  return;
+}
+
+
+
+=== target 0x803a0fe4 ===
+FUNCTION FUN_803a0fe4 @ 803a0fe4 size=44
+--- disassembly ---
+803a0fe4: ldmia r0,{r2,r3}
+803a0fe8: cmp r1,r3
+803a0fec: bhi 0x803bb0d8
+803a0ff0: and r2,r2,#0xf0000000
+803a0ff4: cmp r2,#0x40000000
+803a0ff8: orr r2,r2,r1
+803a0ffc: str r2,[r0,#0x0]
+803a1000: bxne lr
+803a1004: ldr r2,[r0,#0x8]
+803a1008: str r1,[r2,#0x0]
+803a100c: bx lr
+--- decompiled ---
+
+void FUN_803a0fe4(uint *param_1,uint param_2)
+
+{
+  uint uVar1;
+  
+  uVar1 = *param_1;
+  if (param_1[1] < param_2) {
+                    /* WARNING: Could not recover jumptable at 0x803bb0e0. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+    (*(code *)((int)&DAT_803bb0e4 + DAT_803bb0e4))();
+    return;
+  }
+  *param_1 = uVar1 & 0xf0000000 | param_2;
+  if ((uVar1 & 0xf0000000) != 0x40000000) {
+    return;
+  }
+  *(uint *)param_1[2] = param_2;
+  return;
+}
+
+
+
+=== target 0x803a1b34 ===
+FUNCTION FUN_803a1b34 @ 803a1b34 size=36
+--- disassembly ---
+803a1b34: ldr r1,[r0],#0x4
+803a1b38: cmp r1,#0x50000000
+803a1b3c: bcs 0x803bb118
+803a1b40: eor r1,r1,r1, lsr #0x1
+803a1b44: msr cpsr_f,r1
+803a1b48: addcs r0,r0,#0x4
+803a1b4c: ldrle r0,[r0,#0x0]
+803a1b50: addeq r0,r0,#0x4
+803a1b54: bx lr
+--- decompiled ---
+
+uint * FUN_803a1b34(uint *param_1)
+
+{
+  uint *puVar1;
+  uint uVar2;
+  bool bVar3;
+  
+  puVar1 = param_1 + 1;
+  uVar2 = *param_1;
+  if (uVar2 < 0x50000000) {
+    uVar2 = uVar2 ^ uVar2 >> 1;
+    bVar3 = (uVar2 >> 0x1e & 1) != 0;
+    if ((uVar2 >> 0x1d & 1) != 0) {
+      puVar1 = param_1 + 2;
+    }
+    if (bVar3 || (int)uVar2 < 0 != ((uVar2 >> 0x1c & 1) != 0)) {
+      puVar1 = (uint *)*puVar1;
+    }
+    if (bVar3) {
+      puVar1 = puVar1 + 1;
+    }
+    return puVar1;
+  }
+                    /* WARNING: Could not recover jumptable at 0x803bb120. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  puVar1 = (uint *)(*(code *)((int)&DAT_803bb124 + DAT_803bb124))();
+  return puVar1;
+}
+
+
+

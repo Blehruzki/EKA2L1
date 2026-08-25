@@ -1,0 +1,66 @@
+containing function of 0x803a9717: FUN_803a96da@803a96da
+FUNCTION FUN_803a96da @ 803a96da size=64
+--- disassembly ---
+803a96da: push {r4,r5,lr}
+803a96dc: mov r4,#0x10
+803a96de: mov r5,r1
+803a96e0: ldr r1,[r0,#0x0]
+803a96e2: sub sp,#0x24
+803a96e4: lsl r1,r1,#0x4
+803a96e6: lsr r1,r1,#0x4
+803a96e8: cmp r1,#0x10
+803a96ea: bgt 0x803a96ee
+803a96ec: mov r4,r1
+803a96ee: blx 0x803a1b34
+803a96f2: mov r1,r0
+803a96f4: mov r2,r4
+803a96f6: add r0,sp,#0x1c
+803a96f8: bl 0x803b2aae
+803a96fc: mov r1,#0x10
+803a96fe: add r0,sp,#0x4
+803a9700: bl 0x803b1d1e
+803a9704: add r1,sp,#0x1c
+803a9706: add r0,sp,#0x4
+803a9708: bl 0x803b12a6
+803a970c: mov r1,r5
+803a970e: mov r0,#0x2
+803a9710: add r2,sp,#0x4
+803a9712: blx 0x803a045c
+803a9716: add sp,#0x24
+803a9718: pop {r4,r5,pc}
+--- decompiled ---
+
+void FUN_803a96da(uint *param_1,undefined4 param_2)
+
+{
+  undefined4 uVar1;
+  uint uVar2;
+  undefined1 auStack_2c [24];
+  undefined1 auStack_14 [8];
+  
+  uVar2 = 0x10;
+  if ((*param_1 & 0xfffffff) < 0x11) {
+    uVar2 = *param_1 & 0xfffffff;
+  }
+  uVar1 = FUN_803a1b34();
+  FUN_803b2aae(auStack_14,uVar1,uVar2);
+  FUN_803b1d1e(auStack_2c,0x10);
+  FUN_803b12a6(auStack_2c,auStack_14);
+  FUN_803a045c(2,param_2,auStack_2c);
+  return;
+}
+
+
+
+=== callers of this function ===
+caller @ 803a6626 (in FUN_803a6620@803a6620): bl 0x803a96da
+caller @ 803a6928 (in FUN_803a6916@803a6916): bl 0x803a96da
+caller @ 803a6dde (in FUN_803a6dd8@803a6dd8): bl 0x803a96da
+caller @ 803a86e6 (in ???): bl 0x803a96da
+caller @ 803ab14e (in ???): bl 0x803a96da
+caller @ 803af512 (in FUN_803af504@803af504): bl 0x803a96da
+caller @ 803af818 (in ???): bl 0x803a96da
+caller @ 803af900 (in FUN_803af8e8@803af8e8): bl 0x803a96da
+caller @ 803afb06 (in ???): bl 0x803a96da
+caller @ 803b6b76 (in FUN_8039e3ec@8039e3ec): bl 0x803a96da
+total callers: 10

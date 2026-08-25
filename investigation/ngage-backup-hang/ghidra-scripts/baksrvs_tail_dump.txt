@@ -1,0 +1,18 @@
+TMode set to 1 from 821b7518 to 821b75db
+=== FUNCTION tail_821b7518 @ 821b7518 size=8 ===
+--- disassembly ---
+821b7518: push {r4,lr}
+821b751a: blx 0x821b7400
+821b751e: pop {r4,pc}
+--- decompiled ---
+
+void tail_821b7518(void)
+
+{
+  thunk_EXT_FUN_803b6864();
+  return;
+}
+
+
+
+TOTAL FUNCTIONS: 1

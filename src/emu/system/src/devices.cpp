@@ -24,6 +24,7 @@
 
 #include <common/algorithm.h>
 #include <common/dynamicfile.h>
+#include <common/fileutils.h>
 #include <common/log.h>
 #include <common/path.h>
 #include <common/types.h>
@@ -378,5 +379,37 @@ namespace eka2l1 {
         }
 
         return false;
+    }
+
+    std::string get_device_specific_storage_path(const std::string &storage, const std::string &firmware_code) {
+        return add_path(storage, "devices/" + common::lowercase_string(firmware_code) + "/");
+    }
+
+    void migrate_legacy_drives_if_present(const std::string &storage, const std::string &firmware_code) {
+        const std::string device_base = get_device_specific_storage_path(storage, firmware_code);
+
+        for (const char drive_letter : { 'c', 'd', 'e' }) {
+            const std::string legacy_path = add_path(storage, std::string("drives/") + drive_letter + "/");
+
+            if (!common::exists(legacy_path) || !common::is_dir(legacy_path)) {
+                continue;
+            }
+
+            const std::string target_path = add_path(device_base, std::string("drives/") + drive_letter + "/");
+
+            if (common::exists(target_path)) {
+                LOG_WARN(SYSTEM, "Legacy {} drive folder still exists at {}, but {} already has its own. Leaving the legacy folder untouched.",
+                    drive_letter, legacy_path, firmware_code);
+                continue;
+            }
+
+            common::create_directories(add_path(device_base, "drives/"));
+
+            if (common::move_file(legacy_path, target_path)) {
+                LOG_INFO(SYSTEM, "Migrated legacy {} drive folder to per-device storage for {}", drive_letter, firmware_code);
+            } else {
+                LOG_ERROR(SYSTEM, "Failed to migrate legacy {} drive folder to per-device storage for {}", drive_letter, firmware_code);
+            }
+        }
     }
 }

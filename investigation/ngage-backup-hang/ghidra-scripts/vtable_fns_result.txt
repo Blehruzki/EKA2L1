@@ -1,0 +1,1245 @@
+=== vtable[1] 0x82147413 ===
+FUNCTION FUN_82147412 @ 82147412 size=42
+--- disassembly ---
+82147412: push {r4,lr}
+82147414: movs r4,r0
+82147416: ldr r0,[0x82147514]
+82147418: str r0,[r4,#0x0]
+8214741a: adds r0,#0x40
+8214741c: str r0,[r4,#0x78]
+8214741e: movs r0,#0x88
+82147420: ldr r0,[r0,r4]
+82147422: cmp r0,#0x0
+82147424: beq 0x8214742c
+82147426: ldr r1,[r0,#0x0]
+82147428: ldr r1,[r1,#0x4]
+8214742a: blx r1
+8214742c: movs r0,r4
+8214742e: adds r0,#0x7c
+82147430: blx 0x82147b38
+82147434: movs r0,r4
+82147436: blx 0x82147bf8
+8214743a: pop {r4,pc}
+--- decompiled ---
+
+void FUN_82147412(int *param_1)
+
+{
+  int iVar1;
+  
+  iVar1 = DAT_82147514;
+  *param_1 = DAT_82147514;
+  param_1[0x1e] = iVar1 + 0x40;
+  if ((int *)param_1[0x22] != (int *)0x0) {
+    (**(code **)(*(int *)param_1[0x22] + 4))();
+  }
+  thunk_EXT_FUN_806cbcde(param_1 + 0x1f);
+  thunk_EXT_FUN_821b6454(param_1);
+  return;
+}
+
+
+
+=== vtable[2] 0x8214743d ===
+  no containing function found; forceErr=null
+
+=== vtable[3] 0x82147a68 ===
+FUNCTION vfn_82147a68 @ 82147a68 size=16
+--- disassembly ---
+82147a68: blx 0x8254c4a8
+82147a6c: ldr r7,[r0,#0x0]
+82147a6e: strh r2,[r7,#0x0]
+82147a70: blx 0x8254c4b0
+82147a74: str r5,[r4,#0x64]
+82147a76: strh r2,[r7,#0x0]
+--- decompiled ---
+
+/* WARNING: Control flow encountered bad instruction data */
+
+undefined8 vfn_82147a68(void)
+
+{
+  undefined2 uVar1;
+  undefined4 *puVar2;
+  int iVar3;
+  undefined4 uVar4;
+  undefined8 *puVar5;
+  undefined2 extraout_r2;
+  undefined2 extraout_r2_00;
+  undefined2 extraout_r2_01;
+  undefined2 extraout_r2_02;
+  undefined2 extraout_r2_03;
+  undefined2 extraout_r2_04;
+  undefined2 extraout_r2_05;
+  undefined2 extraout_r2_06;
+  undefined2 extraout_r2_07;
+  undefined2 extraout_r2_08;
+  undefined2 extraout_r2_09;
+  undefined2 extraout_r2_10;
+  undefined2 extraout_r2_11;
+  undefined2 extraout_r2_12;
+  undefined2 extraout_r2_13;
+  undefined2 extraout_r2_14;
+  undefined2 extraout_r2_15;
+  uint extraout_r2_16;
+  undefined4 extraout_r2_17;
+  undefined4 *extraout_r2_18;
+  undefined4 *extraout_r2_19;
+  undefined4 extraout_r2_20;
+  undefined2 extraout_r3;
+  undefined2 extraout_r3_00;
+  undefined2 extraout_r3_01;
+  int extraout_r3_02;
+  int extraout_r3_03;
+  undefined8 *extraout_r3_04;
+  int unaff_r4;
+  int unaff_r5;
+  int iVar6;
+  int unaff_r6;
+  undefined2 *puVar7;
+  undefined2 *puVar8;
+  char cVar9;
+  undefined8 uVar10;
+  undefined4 in_stack_00000000;
+  undefined4 in_stack_00000004;
+  undefined4 in_stack_00000008;
+  undefined4 in_stack_0000000c;
+  undefined2 in_stack_00000010;
+  undefined8 in_stack_0000001c;
+  undefined4 in_stack_0000019c;
+  undefined4 in_stack_0000026c;
+  
+  puVar2 = (undefined4 *)func_0x8254c4a8();
+  puVar7 = (undefined2 *)*puVar2;
+  *puVar7 = extraout_r2;
+  func_0x8254c4b0();
+  *(int *)(unaff_r4 + 100) = unaff_r5;
+  *puVar7 = extraout_r2_00;
+  func_0x8254c4b8();
+  *puVar7 = extraout_r2_01;
+  func_0x8254c4c0();
+  *puVar7 = extraout_r2_02;
+  func_0x8254c4c8();
+  puVar8 = (undefined2 *)((int)puVar7 + 0x53);
+  *puVar8 = extraout_r2_03;
+  iVar3 = func_0x8254c4d0();
+  *puVar8 = extraout_r2_04;
+  func_0x8254c4d8(iVar3 + -0x55);
+  *puVar8 = extraout_r2_05;
+  func_0x8254c4e0();
+  *puVar8 = extraout_r2_06;
+  uVar10 = func_0x8254c4e8();
+  *puVar8 = extraout_r2_07;
+  func_0x8254c4f0((int)uVar10,(int)((ulonglong)uVar10 >> 0x20) + 0x45);
+  *puVar8 = (short)extraout_r2_16;
+  uVar4 = func_0x8254c4f8(extraout_r2_16 >> 5);
+  cVar9 = (unaff_r4 + 0xddU >> 6 & 1) != 0;
+  *puVar8 = extraout_r3;
+  func_0x8254c500(uVar4,unaff_r4 + 0xddU >> 7);
+  if (cVar9 == '\0') {
+                    /* WARNING: Bad instruction - Truncating control flow here */
+    halt_baddata();
+  }
+  func_0x8254c508();
+  *puVar8 = extraout_r2_08;
+  func_0x8254c510(in_stack_0000019c);
+  *(undefined2 *)(unaff_r5 + 0x39) = extraout_r3_00;
+  *puVar8 = extraout_r2_09;
+  func_0x8254c518();
+  if (cVar9 == '\0') {
+    func_0x8254c520();
+    *(short *)((int)puVar7 + 0x6d) = (short)puVar8;
+    *puVar8 = extraout_r2_10;
+    func_0x8254c528();
+    *(short *)(unaff_r5 + 0x33) = (short)puVar8;
+    *puVar8 = extraout_r2_11;
+    func_0x8254c530();
+    *puVar8 = extraout_r2_12;
+    func_0x8254c538(in_stack_0000026c);
+    *puVar8 = extraout_r3_01;
+    func_0x8254c540();
+    *puVar8 = extraout_r2_13;
+    func_0x8254c548();
+    iVar6 = *(int *)(extraout_r3_02 + 0x40);
+    *puVar8 = extraout_r2_14;
+    func_0x8254c550();
+    iVar3 = extraout_r3_03 + 2;
+    *puVar8 = extraout_r2_15;
+    uVar10 = func_0x8254c558();
+    puVar5 = (undefined8 *)((ulonglong)uVar10 >> 0x20);
+    *puVar5 = uVar10;
+    *(undefined4 *)(puVar5 + 1) = extraout_r2_17;
+    *(int *)((int)puVar5 + 0xc) = iVar3;
+    *(int *)(puVar5 + 2) = iVar6;
+    *(int *)((int)puVar5 + 0x14) = unaff_r6 + 0x35;
+    *(undefined2 **)(puVar5 + 3) = puVar8;
+    uVar1 = (undefined2)iVar3;
+    *(undefined2 *)(iVar6 + 2) = uVar1;
+    uVar4 = func_0x8254c560();
+    *extraout_r2_18 = uVar4;
+    extraout_r2_18[1] = extraout_r2_18;
+    extraout_r2_18[2] = iVar3;
+    *(undefined2 *)(iVar6 + 2) = uVar1;
+    uVar4 = func_0x8254c568();
+    *extraout_r2_19 = uVar4;
+    extraout_r2_19[1] = extraout_r2_19;
+    extraout_r2_19[2] = iVar3;
+    extraout_r2_19[3] = unaff_r6 + 0x35;
+    *(undefined2 *)(iVar6 + 2) = uVar1;
+    uVar10 = func_0x8254c570();
+    *extraout_r3_04 = uVar10;
+    *(undefined4 *)(extraout_r3_04 + 1) = extraout_r2_20;
+    *(int *)((int)extraout_r3_04 + 0xc) = iVar3;
+    *(undefined2 *)(iVar6 + 2) = uVar1;
+    func_0x8254c578();
+    *(undefined2 *)(iVar6 + 2) = in_stack_00000010;
+    func_0x8254c580(in_stack_00000000,in_stack_00000004,in_stack_00000008,in_stack_0000000c);
+    return in_stack_0000001c;
+  }
+                    /* WARNING: Bad instruction - Truncating control flow here */
+  halt_baddata();
+}
+
+
+
+=== vtable[4] 0x82147950 ===
+FUNCTION vfn_82147950 @ 82147950 size=16
+--- disassembly ---
+82147950: blx 0x8254c390
+82147954: str r1,[r0,#0x74]
+82147956: strh r2,[r7,#0x0]
+82147958: blx 0x8254c398
+8214795c: str r7,[r5,#0x78]
+8214795e: strh r2,[r7,#0x0]
+--- decompiled ---
+
+/* WARNING: Control flow encountered bad instruction data */
+
+void vfn_82147950(void)
+
+{
+  int extraout_r1;
+  undefined4 extraout_r1_00;
+  undefined2 extraout_r2;
+  undefined2 extraout_r2_00;
+  undefined2 extraout_r2_01;
+  undefined2 extraout_r2_02;
+  undefined2 extraout_r2_03;
+  undefined2 extraout_r2_04;
+  undefined2 extraout_r2_05;
+  undefined2 extraout_r2_06;
+  undefined2 extraout_r2_07;
+  undefined2 extraout_r2_08;
+  undefined2 extraout_r2_09;
+  undefined2 extraout_r2_10;
+  undefined2 extraout_r2_11;
+  undefined2 extraout_r2_12;
+  undefined2 extraout_r2_13;
+  undefined2 extraout_r2_14;
+  undefined2 extraout_r2_15;
+  undefined2 extraout_r2_16;
+  undefined2 extraout_r2_17;
+  undefined2 extraout_r2_18;
+  undefined2 extraout_r2_19;
+  undefined2 extraout_r2_20;
+  undefined2 extraout_r2_21;
+  undefined2 extraout_r2_22;
+  undefined2 extraout_r2_23;
+  undefined2 extraout_r2_24;
+  int extraout_r2_25;
+  int extraout_r2_26;
+  int extraout_r2_27;
+  int extraout_r2_28;
+  undefined2 extraout_r3;
+  uint extraout_r3_00;
+  int extraout_r3_01;
+  int unaff_r4;
+  uint uVar1;
+  int unaff_r5;
+  int iVar2;
+  undefined4 uVar3;
+  uint unaff_r6;
+  undefined2 *unaff_r7;
+  undefined2 *puVar4;
+  char cVar5;
+  undefined8 uVar6;
+  undefined6 uVar7;
+  
+  uVar6 = func_0x8254c390();
+  *(int *)((int)uVar6 + 0x74) = (int)((ulonglong)uVar6 >> 0x20);
+  *unaff_r7 = extraout_r2;
+  func_0x8254c398();
+  *(undefined2 **)(unaff_r5 + 0x78) = unaff_r7;
+  *unaff_r7 = extraout_r2_00;
+  func_0x8254c3a0();
+  *unaff_r7 = extraout_r2_01;
+  func_0x8254c3a8();
+  iVar2 = *(int *)(unaff_r6 + 0x4c);
+  *unaff_r7 = extraout_r2_02;
+  func_0x8254c3b0();
+  **(undefined2 **)(unaff_r7 + 0x24) = extraout_r2_03;
+  func_0x8254c3b8();
+  puVar4 = *(undefined2 **)(unaff_r4 + 0x40);
+  *puVar4 = extraout_r2_04;
+  func_0x8254c3c0();
+  uVar3 = *(undefined4 *)(iVar2 + 0x48);
+  *puVar4 = extraout_r2_05;
+  func_0x8254c3c8();
+  *(undefined4 *)(extraout_r1 + 100) = uVar3;
+  *puVar4 = extraout_r2_06;
+  func_0x8254c3d0();
+  *(undefined4 *)(unaff_r4 + 0x60) = extraout_r1_00;
+  *puVar4 = extraout_r2_07;
+  func_0x8254c3d8();
+  *puVar4 = extraout_r2_08;
+  func_0x8254c3e0();
+  uVar1 = unaff_r6 >> 10;
+  *puVar4 = extraout_r2_09;
+  func_0x8254c3e8();
+  *puVar4 = (short)extraout_r3_00;
+  func_0x8254c3f0();
+  *puVar4 = 0x7afc;
+  func_0x8254c3f8();
+  *puVar4 = extraout_r2_10;
+  func_0x8254c400(0x82147d9c);
+  *puVar4 = extraout_r2_11;
+  func_0x8254c408();
+  *puVar4 = extraout_r2_12;
+  func_0x8254c410();
+  *puVar4 = extraout_r2_13;
+  func_0x8254c418(&stack0x0000029c);
+  *puVar4 = extraout_r2_14;
+  func_0x8254c420();
+  *puVar4 = extraout_r2_15;
+  func_0x8254c428(&stack0x00000234);
+  puVar4 = (undefined2 *)(uint)*(byte *)((int)puVar4 + 0x1f);
+  *puVar4 = extraout_r2_16;
+  iVar2 = func_0x8254c430();
+  *(short *)(iVar2 + 2) = (short)(extraout_r3_00 >> 0xd) + 99;
+  *puVar4 = extraout_r2_17;
+  func_0x8254c438();
+  cVar5 = 3 < uVar1;
+  *puVar4 = extraout_r2_18;
+  func_0x8254c440(uVar1 - 4);
+  *puVar4 = extraout_r2_19;
+  func_0x8254c448();
+  *puVar4 = extraout_r2_20;
+  func_0x8254c450();
+  puVar4 = (undefined2 *)(int)*(char *)(extraout_r2_25 + extraout_r3_01);
+  *puVar4 = (short)extraout_r2_25;
+  func_0x8254c458();
+  *puVar4 = extraout_r2_21;
+  func_0x8254c460();
+  *(undefined2 *)((extraout_r3_00 >> 0xd) + 0x77) = extraout_r3;
+  *puVar4 = extraout_r2_22;
+  uVar7 = func_0x8254c468();
+  *(short *)((int)uVar7 + 0x16) = (short)((uint6)uVar7 >> 0x20);
+  *puVar4 = extraout_r2_23;
+  func_0x8254c470();
+  *(short *)(int)*(char *)(uVar1 + extraout_r2_26) = (short)extraout_r2_26;
+  func_0x8254c478();
+  *(short *)(int)*(char *)(extraout_r2_27 * 2) = (short)extraout_r2_27;
+  func_0x8254c480();
+  if (cVar5 == '\0') {
+    iVar2 = func_0x8254c488();
+    cVar5 = *(char *)(iVar2 + extraout_r2_28);
+    *(undefined2 *)(int)cVar5 = (short)extraout_r2_28;
+    func_0x8254c490();
+    **(undefined2 **)((undefined2 *)(int)cVar5 + 0x2e) = extraout_r2_24;
+                    /* WARNING: Could not recover jumptable at 0x82147a58. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+    (*DAT_82147a5c)();
+    return;
+  }
+                    /* WARNING: Bad instruction - Truncating control flow here */
+  halt_baddata();
+}
+
+
+
+=== vtable[5] 0x82147948 ===
+FUNCTION vfn_82147948 @ 82147948 size=4
+--- disassembly ---
+82147948: blx 0x8254c388
+--- decompiled ---
+
+/* WARNING: Control flow encountered bad instruction data */
+
+void vfn_82147948(void)
+
+{
+  func_0x8254c388();
+                    /* WARNING: Bad instruction - Truncating control flow here */
+  halt_baddata();
+}
+
+
+
+=== vtable[6] 0x82147c70 ===
+FUNCTION vfn_82147c70 @ 82147c70 size=8
+--- disassembly ---
+82147c70: blx 0x8254c6b0
+82147c74: str r7,[r4,#0x54]
+82147c76: strh r3,[r3,#0x10]
+--- decompiled ---
+
+void vfn_82147c70(void)
+
+{
+  int iVar1;
+  short extraout_r1;
+  short extraout_r1_00;
+  short extraout_r1_01;
+  short extraout_r1_02;
+  undefined2 extraout_r3;
+  int extraout_r3_00;
+  int extraout_r3_01;
+  uint extraout_r3_02;
+  int extraout_r3_03;
+  int unaff_r4;
+  int *piVar2;
+  int unaff_r5;
+  int unaff_r6;
+  short *unaff_r7;
+  undefined6 uVar3;
+  
+  func_0x8254c6b0();
+  *(short **)(unaff_r4 + 0x54) = unaff_r7;
+  *(short *)(extraout_r3_00 + 0x10) = (short)extraout_r3_00;
+  func_0x8254c6b8();
+  *(short **)(unaff_r6 + 0x40) = unaff_r7;
+  *(short *)(extraout_r3_01 + 0x10) = (short)extraout_r3_01;
+  func_0x8254c6c0();
+  piVar2 = (int *)~extraout_r3_02;
+  *unaff_r7 = extraout_r1;
+  func_0x8254c6c8();
+  *(undefined2 *)((int)unaff_r7 + (int)piVar2) = extraout_r3;
+  *unaff_r7 = extraout_r1_00;
+  uVar3 = func_0x8254c6d0();
+  *(short *)((int)uVar3 + unaff_r5) = (short)unaff_r5;
+  *unaff_r7 = (short)((uint6)uVar3 >> 0x20);
+  func_0x8254c6d8();
+  *(char *)(unaff_r5 + extraout_r3_03) = (char)extraout_r1_01;
+  *unaff_r7 = extraout_r1_01;
+  uVar3 = func_0x8254c6e0();
+  *(char *)((int)uVar3 + unaff_r6) = (char)((uint6)uVar3 >> 0x20);
+  *unaff_r7 = (short)((uint6)uVar3 >> 0x20);
+  func_0x8254c6e8();
+  *unaff_r7 = extraout_r1_02 + 0x7cb0;
+  func_0x8254c6f0();
+  iVar1 = *piVar2;
+  *(short *)piVar2[4] = (short)piVar2[1];
+  if (iVar1 != 0) {
+    thunk_EXT_FUN_803a6cac();
+    thunk_EXT_FUN_8039ccb2();
+  }
+  return;
+}
+
+
+
+=== vtable[7] 0x82147958 ===
+FUNCTION vfn_82147950 @ 82147950 size=16
+--- disassembly ---
+--- decompiled ---
+
+void vfn_82147950(void)
+
+{
+  undefined2 extraout_r2;
+  undefined2 extraout_r2_00;
+  undefined2 extraout_r2_01;
+  undefined2 extraout_r2_02;
+  undefined2 extraout_r2_03;
+  undefined2 extraout_r2_04;
+  int unaff_r4;
+  int unaff_r5;
+  undefined2 *unaff_r7;
+  undefined8 uVar1;
+  
+  uVar1 = func_0x8254c390();
+  *(int *)((int)uVar1 + 0x74) = (int)((ulonglong)uVar1 >> 0x20);
+  *unaff_r7 = extraout_r2;
+  func_0x8254c398();
+  *(undefined2 **)(unaff_r5 + 0x78) = unaff_r7;
+  *unaff_r7 = extraout_r2_00;
+  func_0x8254c3a0();
+  *unaff_r7 = extraout_r2_01;
+  func_0x8254c3a8();
+  *unaff_r7 = extraout_r2_02;
+  func_0x8254c3b0();
+  **(undefined2 **)(unaff_r7 + 0x24) = extraout_r2_03;
+  func_0x8254c3b8();
+  **(undefined2 **)(unaff_r4 + 0x40) = extraout_r2_04;
+                    /* WARNING: Could not recover jumptable at 0x82147980. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (*pcRam82147984)();
+  return;
+}
+
+
+
+=== vtable[8] 0x8214772f ===
+  no containing function found; forceErr=null
+
+=== vtable[9] 0x82147c60 ===
+FUNCTION vfn_82147c60 @ 82147c60 size=8
+--- disassembly ---
+82147c60: blx 0x8254c6a0
+82147c64: str r1,[r7,#0x48]
+82147c66: strh r3,[r3,#0x10]
+--- decompiled ---
+
+void vfn_82147c60(void)
+
+{
+  undefined2 uVar1;
+  undefined4 uVar2;
+  int iVar3;
+  short extraout_r1;
+  short extraout_r1_00;
+  short extraout_r1_01;
+  short extraout_r1_02;
+  undefined4 extraout_r1_03;
+  int extraout_r2;
+  undefined2 extraout_r3;
+  int extraout_r3_00;
+  int extraout_r3_01;
+  int extraout_r3_02;
+  int extraout_r3_03;
+  uint extraout_r3_04;
+  int extraout_r3_05;
+  int unaff_r4;
+  int *piVar4;
+  int unaff_r5;
+  int unaff_r6;
+  short *unaff_r7;
+  undefined6 uVar5;
+  
+  func_0x8254c6a0();
+  *(undefined4 *)(unaff_r7 + 0x24) = extraout_r1_03;
+  *(short *)(extraout_r3_00 + 0x10) = (short)extraout_r3_00;
+  uVar2 = func_0x8254c6a8();
+  uVar1 = *(undefined2 *)(unaff_r4 + extraout_r2);
+  *(short *)(extraout_r3_01 + 0x10) = (short)extraout_r3_01;
+  func_0x8254c6b0(uVar2,uVar1);
+  *(short **)(unaff_r4 + 0x54) = unaff_r7;
+  *(short *)(extraout_r3_02 + 0x10) = (short)extraout_r3_02;
+  func_0x8254c6b8();
+  *(short **)(unaff_r6 + 0x40) = unaff_r7;
+  *(short *)(extraout_r3_03 + 0x10) = (short)extraout_r3_03;
+  func_0x8254c6c0();
+  piVar4 = (int *)~extraout_r3_04;
+  *unaff_r7 = extraout_r1;
+  func_0x8254c6c8();
+  *(undefined2 *)((int)unaff_r7 + (int)piVar4) = extraout_r3;
+  *unaff_r7 = extraout_r1_00;
+  uVar5 = func_0x8254c6d0();
+  *(short *)((int)uVar5 + unaff_r5) = (short)unaff_r5;
+  *unaff_r7 = (short)((uint6)uVar5 >> 0x20);
+  func_0x8254c6d8();
+  *(char *)(unaff_r5 + extraout_r3_05) = (char)extraout_r1_01;
+  *unaff_r7 = extraout_r1_01;
+  uVar5 = func_0x8254c6e0();
+  *(char *)((int)uVar5 + unaff_r6) = (char)((uint6)uVar5 >> 0x20);
+  *unaff_r7 = (short)((uint6)uVar5 >> 0x20);
+  func_0x8254c6e8();
+  *unaff_r7 = extraout_r1_02 + 0x7cb0;
+  func_0x8254c6f0();
+  iVar3 = *piVar4;
+  *(short *)piVar4[4] = (short)piVar4[1];
+  if (iVar3 != 0) {
+    thunk_EXT_FUN_803a6cac();
+    thunk_EXT_FUN_8039ccb2();
+  }
+  return;
+}
+
+
+
+=== vtable[10] 0x82147c30 ===
+FUNCTION vfn_82147c30 @ 82147c30 size=8
+--- disassembly ---
+82147c30: blx 0x8254c670
+82147c34: str r7,[r4,#0x4c]
+82147c36: strh r3,[r3,#0x10]
+--- decompiled ---
+
+void vfn_82147c30(void)
+
+{
+  undefined1 uVar1;
+  undefined2 uVar2;
+  undefined4 uVar3;
+  int iVar4;
+  short extraout_r1;
+  short extraout_r1_00;
+  short extraout_r1_01;
+  short extraout_r1_02;
+  undefined4 extraout_r1_03;
+  int extraout_r2;
+  int extraout_r2_00;
+  undefined2 extraout_r3;
+  int extraout_r3_00;
+  int extraout_r3_01;
+  int extraout_r3_02;
+  int extraout_r3_03;
+  int extraout_r3_04;
+  int extraout_r3_05;
+  int extraout_r3_06;
+  int extraout_r3_07;
+  int extraout_r3_08;
+  int extraout_r3_09;
+  uint extraout_r3_10;
+  int extraout_r3_11;
+  int unaff_r4;
+  int *piVar5;
+  int unaff_r5;
+  int unaff_r6;
+  short *unaff_r7;
+  undefined6 uVar6;
+  
+  func_0x8254c670();
+  *(short **)(unaff_r4 + 0x4c) = unaff_r7;
+  *(short *)(extraout_r3_00 + 0x10) = (short)extraout_r3_00;
+  func_0x8254c678();
+  *(int *)(extraout_r3_01 + 0x34) = extraout_r3_01;
+  *(short *)(extraout_r3_01 + 0x10) = (short)extraout_r3_01;
+  uVar3 = func_0x8254c680();
+  uVar2 = *(undefined2 *)(extraout_r2 + (int)unaff_r7);
+  *(short *)(extraout_r3_02 + 0x10) = (short)extraout_r3_02;
+  iVar4 = func_0x8254c688(uVar3,uVar2);
+  uVar3 = *(undefined4 *)(unaff_r4 + iVar4);
+  *(short *)(extraout_r3_03 + 0x10) = (short)extraout_r3_03;
+  uVar3 = func_0x8254c690(iVar4,uVar3);
+  uVar2 = *(undefined2 *)(unaff_r4 + unaff_r5);
+  *(short *)(extraout_r3_04 + 0x10) = (short)extraout_r3_04;
+  uVar3 = func_0x8254c698(uVar3,uVar2);
+  uVar1 = *(undefined1 *)(extraout_r3_05 * 2);
+  *(short *)(extraout_r3_05 + 0x10) = (short)extraout_r3_05;
+  func_0x8254c6a0(uVar3,uVar1);
+  *(undefined4 *)(unaff_r7 + 0x24) = extraout_r1_03;
+  *(short *)(extraout_r3_06 + 0x10) = (short)extraout_r3_06;
+  uVar3 = func_0x8254c6a8();
+  uVar2 = *(undefined2 *)(unaff_r4 + extraout_r2_00);
+  *(short *)(extraout_r3_07 + 0x10) = (short)extraout_r3_07;
+  func_0x8254c6b0(uVar3,uVar2);
+  *(short **)(unaff_r4 + 0x54) = unaff_r7;
+  *(short *)(extraout_r3_08 + 0x10) = (short)extraout_r3_08;
+  func_0x8254c6b8();
+  *(short **)(unaff_r6 + 0x40) = unaff_r7;
+  *(short *)(extraout_r3_09 + 0x10) = (short)extraout_r3_09;
+  func_0x8254c6c0();
+  piVar5 = (int *)~extraout_r3_10;
+  *unaff_r7 = extraout_r1;
+  func_0x8254c6c8();
+  *(undefined2 *)((int)unaff_r7 + (int)piVar5) = extraout_r3;
+  *unaff_r7 = extraout_r1_00;
+  uVar6 = func_0x8254c6d0();
+  *(short *)((int)uVar6 + unaff_r5) = (short)unaff_r5;
+  *unaff_r7 = (short)((uint6)uVar6 >> 0x20);
+  func_0x8254c6d8();
+  *(char *)(unaff_r5 + extraout_r3_11) = (char)extraout_r1_01;
+  *unaff_r7 = extraout_r1_01;
+  uVar6 = func_0x8254c6e0();
+  *(char *)((int)uVar6 + unaff_r6) = (char)((uint6)uVar6 >> 0x20);
+  *unaff_r7 = (short)((uint6)uVar6 >> 0x20);
+  func_0x8254c6e8();
+  *unaff_r7 = extraout_r1_02 + 0x7cb0;
+  func_0x8254c6f0();
+  iVar4 = *piVar5;
+  *(short *)piVar5[4] = (short)piVar5[1];
+  if (iVar4 != 0) {
+    thunk_EXT_FUN_803a6cac();
+    thunk_EXT_FUN_8039ccb2();
+  }
+  return;
+}
+
+
+
+=== vtable[11] 0x8214744d ===
+  no containing function found; forceErr=null
+
+=== vtable[12] 0x821476b7 ===
+FUNCTION FUN_821476b6 @ 821476b6 size=56
+--- disassembly ---
+821476b6: push {r0,r1,r4,r5,r6,r7,lr}
+821476b8: sub sp,#0x4
+821476ba: movs r4,r0
+821476bc: adds r4,#0x80
+821476be: movs r5,r0
+821476c0: ldr r0,[r4,#0x8]
+821476c2: movs r7,r1
+821476c4: cmp r0,#0x0
+821476c6: beq 0x821476ce
+821476c8: ldr r1,[r0,#0x0]
+821476ca: ldr r1,[r1,#0x4]
+821476cc: blx r1
+821476ce: movs r0,#0x0
+821476d0: movs r6,#0x0
+821476d2: str r0,[r4,#0x8]
+821476d4: blx 0x82147a20
+821476d8: str r0,[sp,#0x0]
+821476da: movs r0,r5
+821476dc: movs r1,r7
+821476de: adds r0,#0x78
+821476e0: bl 0x82147682
+821476e4: str r0,[r4,#0x8]
+821476e6: ldr r0,[sp,#0x0]
+821476e8: blx 0x82147a28
+821476ec: pop {r1,r2,r3,r4,r5,r6,r7,pc}
+--- decompiled ---
+
+void FUN_821476b6(int param_1,undefined4 param_2)
+
+{
+  undefined4 uVar1;
+  undefined4 uVar2;
+  
+  if (*(int **)(param_1 + 0x88) != (int *)0x0) {
+    (**(code **)(**(int **)(param_1 + 0x88) + 4))();
+  }
+  *(undefined4 *)(param_1 + 0x88) = 0;
+  uVar1 = thunk_EXT_FUN_803a82aa();
+  uVar2 = FUN_82147682(param_1 + 0x78,param_2);
+  *(undefined4 *)(param_1 + 0x88) = uVar2;
+  thunk_EXT_FUN_803a82c0(uVar1);
+  return;
+}
+
+
+
+=== vtable[13] 0x82147715 ===
+  no containing function found; forceErr=null
+
+=== vtable[14] 0x82147757 ===
+  no containing function found; forceErr=null
+
+=== vtable[15] 0x82147775 ===
+  no containing function found; forceErr=null
+
+=== vtable[16] 0x82147a70 ===
+FUNCTION vfn_82147a68 @ 82147a68 size=16
+--- disassembly ---
+82147a68: blx 0x8254c4a8
+82147a6c: ldr r7,[r0,#0x0]
+82147a6e: strh r2,[r7,#0x0]
+82147a70: blx 0x8254c4b0
+82147a74: str r5,[r4,#0x64]
+82147a76: strh r2,[r7,#0x0]
+--- decompiled ---
+
+/* WARNING: Control flow encountered bad instruction data */
+
+undefined8 vfn_82147a68(void)
+
+{
+  undefined2 uVar1;
+  undefined4 *puVar2;
+  int iVar3;
+  undefined4 uVar4;
+  undefined8 *puVar5;
+  undefined2 extraout_r2;
+  undefined2 extraout_r2_00;
+  undefined2 extraout_r2_01;
+  undefined2 extraout_r2_02;
+  undefined2 extraout_r2_03;
+  undefined2 extraout_r2_04;
+  undefined2 extraout_r2_05;
+  undefined2 extraout_r2_06;
+  undefined2 extraout_r2_07;
+  undefined2 extraout_r2_08;
+  undefined2 extraout_r2_09;
+  undefined2 extraout_r2_10;
+  undefined2 extraout_r2_11;
+  undefined2 extraout_r2_12;
+  undefined2 extraout_r2_13;
+  undefined2 extraout_r2_14;
+  undefined2 extraout_r2_15;
+  uint extraout_r2_16;
+  undefined4 extraout_r2_17;
+  undefined4 *extraout_r2_18;
+  undefined4 *extraout_r2_19;
+  undefined4 extraout_r2_20;
+  undefined2 extraout_r3;
+  undefined2 extraout_r3_00;
+  undefined2 extraout_r3_01;
+  int extraout_r3_02;
+  int extraout_r3_03;
+  undefined8 *extraout_r3_04;
+  int unaff_r4;
+  int unaff_r5;
+  int iVar6;
+  int unaff_r6;
+  undefined2 *puVar7;
+  undefined2 *puVar8;
+  char cVar9;
+  undefined8 uVar10;
+  undefined4 in_stack_00000000;
+  undefined4 in_stack_00000004;
+  undefined4 in_stack_00000008;
+  undefined4 in_stack_0000000c;
+  undefined2 in_stack_00000010;
+  undefined8 in_stack_0000001c;
+  undefined4 in_stack_0000019c;
+  undefined4 in_stack_0000026c;
+  
+  puVar2 = (undefined4 *)func_0x8254c4a8();
+  puVar7 = (undefined2 *)*puVar2;
+  *puVar7 = extraout_r2;
+  func_0x8254c4b0();
+  *(int *)(unaff_r4 + 100) = unaff_r5;
+  *puVar7 = extraout_r2_00;
+  func_0x8254c4b8();
+  *puVar7 = extraout_r2_01;
+  func_0x8254c4c0();
+  *puVar7 = extraout_r2_02;
+  func_0x8254c4c8();
+  puVar8 = (undefined2 *)((int)puVar7 + 0x53);
+  *puVar8 = extraout_r2_03;
+  iVar3 = func_0x8254c4d0();
+  *puVar8 = extraout_r2_04;
+  func_0x8254c4d8(iVar3 + -0x55);
+  *puVar8 = extraout_r2_05;
+  func_0x8254c4e0();
+  *puVar8 = extraout_r2_06;
+  uVar10 = func_0x8254c4e8();
+  *puVar8 = extraout_r2_07;
+  func_0x8254c4f0((int)uVar10,(int)((ulonglong)uVar10 >> 0x20) + 0x45);
+  *puVar8 = (short)extraout_r2_16;
+  uVar4 = func_0x8254c4f8(extraout_r2_16 >> 5);
+  cVar9 = (unaff_r4 + 0xddU >> 6 & 1) != 0;
+  *puVar8 = extraout_r3;
+  func_0x8254c500(uVar4,unaff_r4 + 0xddU >> 7);
+  if (cVar9 == '\0') {
+                    /* WARNING: Bad instruction - Truncating control flow here */
+    halt_baddata();
+  }
+  func_0x8254c508();
+  *puVar8 = extraout_r2_08;
+  func_0x8254c510(in_stack_0000019c);
+  *(undefined2 *)(unaff_r5 + 0x39) = extraout_r3_00;
+  *puVar8 = extraout_r2_09;
+  func_0x8254c518();
+  if (cVar9 == '\0') {
+    func_0x8254c520();
+    *(short *)((int)puVar7 + 0x6d) = (short)puVar8;
+    *puVar8 = extraout_r2_10;
+    func_0x8254c528();
+    *(short *)(unaff_r5 + 0x33) = (short)puVar8;
+    *puVar8 = extraout_r2_11;
+    func_0x8254c530();
+    *puVar8 = extraout_r2_12;
+    func_0x8254c538(in_stack_0000026c);
+    *puVar8 = extraout_r3_01;
+    func_0x8254c540();
+    *puVar8 = extraout_r2_13;
+    func_0x8254c548();
+    iVar6 = *(int *)(extraout_r3_02 + 0x40);
+    *puVar8 = extraout_r2_14;
+    func_0x8254c550();
+    iVar3 = extraout_r3_03 + 2;
+    *puVar8 = extraout_r2_15;
+    uVar10 = func_0x8254c558();
+    puVar5 = (undefined8 *)((ulonglong)uVar10 >> 0x20);
+    *puVar5 = uVar10;
+    *(undefined4 *)(puVar5 + 1) = extraout_r2_17;
+    *(int *)((int)puVar5 + 0xc) = iVar3;
+    *(int *)(puVar5 + 2) = iVar6;
+    *(int *)((int)puVar5 + 0x14) = unaff_r6 + 0x35;
+    *(undefined2 **)(puVar5 + 3) = puVar8;
+    uVar1 = (undefined2)iVar3;
+    *(undefined2 *)(iVar6 + 2) = uVar1;
+    uVar4 = func_0x8254c560();
+    *extraout_r2_18 = uVar4;
+    extraout_r2_18[1] = extraout_r2_18;
+    extraout_r2_18[2] = iVar3;
+    *(undefined2 *)(iVar6 + 2) = uVar1;
+    uVar4 = func_0x8254c568();
+    *extraout_r2_19 = uVar4;
+    extraout_r2_19[1] = extraout_r2_19;
+    extraout_r2_19[2] = iVar3;
+    extraout_r2_19[3] = unaff_r6 + 0x35;
+    *(undefined2 *)(iVar6 + 2) = uVar1;
+    uVar10 = func_0x8254c570();
+    *extraout_r3_04 = uVar10;
+    *(undefined4 *)(extraout_r3_04 + 1) = extraout_r2_20;
+    *(int *)((int)extraout_r3_04 + 0xc) = iVar3;
+    *(undefined2 *)(iVar6 + 2) = uVar1;
+    func_0x8254c578();
+    *(undefined2 *)(iVar6 + 2) = in_stack_00000010;
+    func_0x8254c580(in_stack_00000000,in_stack_00000004,in_stack_00000008,in_stack_0000000c);
+    return in_stack_0000001c;
+  }
+                    /* WARNING: Bad instruction - Truncating control flow here */
+  halt_baddata();
+}
+
+
+
+=== vtable[17] 0x82147c20 ===
+FUNCTION vfn_82147c20 @ 82147c20 size=8
+--- disassembly ---
+82147c20: blx 0x8254c660
+82147c24: str r1,[r0,#0x2c]
+82147c26: strh r3,[r3,#0x10]
+--- decompiled ---
+
+void vfn_82147c20(void)
+
+{
+  undefined1 uVar1;
+  undefined2 uVar2;
+  undefined4 uVar3;
+  int iVar4;
+  short extraout_r1;
+  short extraout_r1_00;
+  short extraout_r1_01;
+  short extraout_r1_02;
+  undefined4 extraout_r1_03;
+  int extraout_r2;
+  int extraout_r2_00;
+  int extraout_r2_01;
+  undefined2 extraout_r3;
+  int extraout_r3_00;
+  int extraout_r3_01;
+  int extraout_r3_02;
+  int extraout_r3_03;
+  int extraout_r3_04;
+  int extraout_r3_05;
+  int extraout_r3_06;
+  int extraout_r3_07;
+  int extraout_r3_08;
+  int extraout_r3_09;
+  int extraout_r3_10;
+  int extraout_r3_11;
+  uint extraout_r3_12;
+  int extraout_r3_13;
+  int unaff_r4;
+  int *piVar5;
+  int unaff_r5;
+  int unaff_r6;
+  short *unaff_r7;
+  undefined8 uVar6;
+  undefined6 uVar7;
+  
+  uVar6 = func_0x8254c660();
+  *(int *)((int)uVar6 + 0x2c) = (int)((ulonglong)uVar6 >> 0x20);
+  *(short *)(extraout_r3_00 + 0x10) = (short)extraout_r3_00;
+  func_0x8254c668();
+  *(int *)(extraout_r2 + 0x24) = extraout_r3_01;
+  *(short *)(extraout_r3_01 + 0x10) = (short)extraout_r3_01;
+  func_0x8254c670();
+  *(short **)(unaff_r4 + 0x4c) = unaff_r7;
+  *(short *)(extraout_r3_02 + 0x10) = (short)extraout_r3_02;
+  func_0x8254c678();
+  *(int *)(extraout_r3_03 + 0x34) = extraout_r3_03;
+  *(short *)(extraout_r3_03 + 0x10) = (short)extraout_r3_03;
+  uVar3 = func_0x8254c680();
+  uVar2 = *(undefined2 *)(extraout_r2_00 + (int)unaff_r7);
+  *(short *)(extraout_r3_04 + 0x10) = (short)extraout_r3_04;
+  iVar4 = func_0x8254c688(uVar3,uVar2);
+  uVar3 = *(undefined4 *)(unaff_r4 + iVar4);
+  *(short *)(extraout_r3_05 + 0x10) = (short)extraout_r3_05;
+  uVar3 = func_0x8254c690(iVar4,uVar3);
+  uVar2 = *(undefined2 *)(unaff_r4 + unaff_r5);
+  *(short *)(extraout_r3_06 + 0x10) = (short)extraout_r3_06;
+  uVar3 = func_0x8254c698(uVar3,uVar2);
+  uVar1 = *(undefined1 *)(extraout_r3_07 * 2);
+  *(short *)(extraout_r3_07 + 0x10) = (short)extraout_r3_07;
+  func_0x8254c6a0(uVar3,uVar1);
+  *(undefined4 *)(unaff_r7 + 0x24) = extraout_r1_03;
+  *(short *)(extraout_r3_08 + 0x10) = (short)extraout_r3_08;
+  uVar3 = func_0x8254c6a8();
+  uVar2 = *(undefined2 *)(unaff_r4 + extraout_r2_01);
+  *(short *)(extraout_r3_09 + 0x10) = (short)extraout_r3_09;
+  func_0x8254c6b0(uVar3,uVar2);
+  *(short **)(unaff_r4 + 0x54) = unaff_r7;
+  *(short *)(extraout_r3_10 + 0x10) = (short)extraout_r3_10;
+  func_0x8254c6b8();
+  *(short **)(unaff_r6 + 0x40) = unaff_r7;
+  *(short *)(extraout_r3_11 + 0x10) = (short)extraout_r3_11;
+  func_0x8254c6c0();
+  piVar5 = (int *)~extraout_r3_12;
+  *unaff_r7 = extraout_r1;
+  func_0x8254c6c8();
+  *(undefined2 *)((int)unaff_r7 + (int)piVar5) = extraout_r3;
+  *unaff_r7 = extraout_r1_00;
+  uVar7 = func_0x8254c6d0();
+  *(short *)((int)uVar7 + unaff_r5) = (short)unaff_r5;
+  *unaff_r7 = (short)((uint6)uVar7 >> 0x20);
+  func_0x8254c6d8();
+  *(char *)(unaff_r5 + extraout_r3_13) = (char)extraout_r1_01;
+  *unaff_r7 = extraout_r1_01;
+  uVar7 = func_0x8254c6e0();
+  *(char *)((int)uVar7 + unaff_r6) = (char)((uint6)uVar7 >> 0x20);
+  *unaff_r7 = (short)((uint6)uVar7 >> 0x20);
+  func_0x8254c6e8();
+  *unaff_r7 = extraout_r1_02 + 0x7cb0;
+  func_0x8254c6f0();
+  iVar4 = *piVar5;
+  *(short *)piVar5[4] = (short)piVar5[1];
+  if (iVar4 != 0) {
+    thunk_EXT_FUN_803a6cac();
+    thunk_EXT_FUN_8039ccb2();
+  }
+  return;
+}
+
+
+
+=== vtable[18] 0x82147990 ===
+FUNCTION vfn_82147990 @ 82147990 size=8
+--- disassembly ---
+82147990: blx 0x8254c3d0
+82147994: str r1,[r4,#0x60]
+82147996: strh r2,[r7,#0x0]
+--- decompiled ---
+
+/* WARNING: Control flow encountered bad instruction data */
+
+undefined8 vfn_82147990(void)
+
+{
+  undefined2 uVar1;
+  undefined4 uVar2;
+  int iVar3;
+  undefined4 *puVar4;
+  undefined4 uVar5;
+  undefined4 extraout_r1;
+  undefined8 *puVar6;
+  undefined2 extraout_r2;
+  undefined2 extraout_r2_00;
+  undefined2 extraout_r2_01;
+  undefined2 extraout_r2_02;
+  undefined2 extraout_r2_03;
+  undefined2 extraout_r2_04;
+  undefined2 extraout_r2_05;
+  undefined2 extraout_r2_06;
+  undefined2 extraout_r2_07;
+  undefined2 extraout_r2_08;
+  undefined2 extraout_r2_09;
+  undefined2 extraout_r2_10;
+  undefined2 extraout_r2_11;
+  undefined2 extraout_r2_12;
+  undefined2 extraout_r2_13;
+  undefined2 extraout_r2_14;
+  undefined2 extraout_r2_15;
+  undefined2 extraout_r2_16;
+  undefined2 extraout_r2_17;
+  undefined2 extraout_r2_18;
+  undefined2 extraout_r2_19;
+  undefined2 extraout_r2_20;
+  undefined2 extraout_r2_21;
+  undefined2 extraout_r2_22;
+  undefined2 extraout_r2_23;
+  undefined2 extraout_r2_24;
+  undefined2 extraout_r2_25;
+  undefined2 extraout_r2_26;
+  undefined2 extraout_r2_27;
+  undefined2 extraout_r2_28;
+  undefined2 extraout_r2_29;
+  undefined2 extraout_r2_30;
+  undefined2 extraout_r2_31;
+  undefined2 extraout_r2_32;
+  undefined2 extraout_r2_33;
+  undefined2 extraout_r2_34;
+  undefined2 extraout_r2_35;
+  int extraout_r2_36;
+  int extraout_r2_37;
+  int extraout_r2_38;
+  int extraout_r2_39;
+  uint extraout_r2_40;
+  undefined4 extraout_r2_41;
+  undefined4 *extraout_r2_42;
+  undefined4 *extraout_r2_43;
+  undefined4 extraout_r2_44;
+  undefined2 extraout_r3;
+  undefined2 extraout_r3_00;
+  undefined2 extraout_r3_01;
+  undefined2 extraout_r3_02;
+  uint extraout_r3_03;
+  int extraout_r3_04;
+  int extraout_r3_05;
+  int extraout_r3_06;
+  undefined8 *extraout_r3_07;
+  int unaff_r4;
+  uint uVar7;
+  int iVar8;
+  uint unaff_r6;
+  undefined2 *unaff_r7;
+  undefined2 *puVar9;
+  undefined2 *puVar10;
+  char cVar11;
+  undefined8 uVar12;
+  undefined6 uVar13;
+  undefined4 in_stack_00000000;
+  undefined4 in_stack_00000004;
+  undefined4 in_stack_00000008;
+  undefined4 in_stack_0000000c;
+  undefined2 in_stack_00000010;
+  undefined8 in_stack_0000001c;
+  undefined4 in_stack_0000019c;
+  
+  func_0x8254c3d0();
+  *(undefined4 *)(unaff_r4 + 0x60) = extraout_r1;
+  *unaff_r7 = extraout_r2;
+  func_0x8254c3d8();
+  *unaff_r7 = extraout_r2_00;
+  func_0x8254c3e0();
+  uVar7 = unaff_r6 >> 10;
+  *unaff_r7 = extraout_r2_01;
+  func_0x8254c3e8();
+  *unaff_r7 = (short)extraout_r3_03;
+  func_0x8254c3f0();
+  *unaff_r7 = 0x7afc;
+  func_0x8254c3f8();
+  *unaff_r7 = extraout_r2_02;
+  func_0x8254c400(0x82147d9c);
+  *unaff_r7 = extraout_r2_03;
+  uVar2 = func_0x8254c408();
+  *unaff_r7 = extraout_r2_04;
+  func_0x8254c410();
+  *unaff_r7 = extraout_r2_05;
+  func_0x8254c418(&stack0x0000029c);
+  *unaff_r7 = extraout_r2_06;
+  func_0x8254c420();
+  *unaff_r7 = extraout_r2_07;
+  func_0x8254c428(&stack0x00000234);
+  puVar9 = (undefined2 *)(uint)*(byte *)((int)unaff_r7 + 0x1f);
+  *puVar9 = extraout_r2_08;
+  iVar3 = func_0x8254c430();
+  *(short *)(iVar3 + 2) = (short)(extraout_r3_03 >> 0xd) + 99;
+  *puVar9 = extraout_r2_09;
+  func_0x8254c438();
+  cVar11 = 3 < uVar7;
+  *puVar9 = extraout_r2_10;
+  func_0x8254c440(uVar7 - 4);
+  *puVar9 = extraout_r2_11;
+  func_0x8254c448();
+  *puVar9 = extraout_r2_12;
+  func_0x8254c450();
+  puVar9 = (undefined2 *)(int)*(char *)(extraout_r2_36 + extraout_r3_04);
+  *puVar9 = (short)extraout_r2_36;
+  func_0x8254c458();
+  *puVar9 = extraout_r2_13;
+  func_0x8254c460();
+  *(undefined2 *)((extraout_r3_03 >> 0xd) + 0x77) = extraout_r3;
+  *puVar9 = extraout_r2_14;
+  uVar13 = func_0x8254c468();
+  *(short *)((int)uVar13 + 0x16) = (short)((uint6)uVar13 >> 0x20);
+  *puVar9 = extraout_r2_15;
+  func_0x8254c470();
+  *(short *)(int)*(char *)(uVar7 + extraout_r2_37) = (short)extraout_r2_37;
+  func_0x8254c478();
+  *(short *)(int)*(char *)(extraout_r2_38 * 2) = (short)extraout_r2_38;
+  func_0x8254c480();
+  if (cVar11 != '\0') {
+                    /* WARNING: Bad instruction - Truncating control flow here */
+    halt_baddata();
+  }
+  iVar3 = func_0x8254c488();
+  cVar11 = *(char *)(iVar3 + extraout_r2_39);
+  *(undefined2 *)(int)cVar11 = (short)extraout_r2_39;
+  func_0x8254c490();
+  puVar9 = *(undefined2 **)((undefined2 *)(int)cVar11 + 0x2e);
+  *puVar9 = extraout_r2_16;
+  func_0x8254c498();
+  iVar8 = *(int *)(uVar7 + 0x5c);
+  *puVar9 = extraout_r2_17;
+  func_0x8254c4a0();
+  *puVar9 = extraout_r2_18;
+  puVar4 = (undefined4 *)func_0x8254c4a8();
+  puVar9 = (undefined2 *)*puVar4;
+  *puVar9 = extraout_r2_19;
+  func_0x8254c4b0();
+  *(int *)(uVar7 + 100) = iVar8;
+  *puVar9 = extraout_r2_20;
+  func_0x8254c4b8();
+  *puVar9 = extraout_r2_21;
+  func_0x8254c4c0();
+  *puVar9 = extraout_r2_22;
+  func_0x8254c4c8();
+  puVar10 = (undefined2 *)((int)puVar9 + 0x53);
+  *puVar10 = extraout_r2_23;
+  iVar3 = func_0x8254c4d0();
+  *puVar10 = extraout_r2_24;
+  func_0x8254c4d8(iVar3 + -0x55);
+  *puVar10 = extraout_r2_25;
+  func_0x8254c4e0();
+  *puVar10 = extraout_r2_26;
+  uVar12 = func_0x8254c4e8();
+  *puVar10 = extraout_r2_27;
+  func_0x8254c4f0((int)uVar12,(int)((ulonglong)uVar12 >> 0x20) + 0x45);
+  *puVar10 = (short)extraout_r2_40;
+  uVar5 = func_0x8254c4f8(extraout_r2_40 >> 5);
+  cVar11 = (uVar7 + 0xdd >> 6 & 1) != 0;
+  *puVar10 = extraout_r3_00;
+  func_0x8254c500(uVar5,uVar7 + 0xdd >> 7);
+  if (cVar11 != '\0') {
+    func_0x8254c508();
+    *puVar10 = extraout_r2_28;
+    func_0x8254c510(in_stack_0000019c);
+    *(undefined2 *)(iVar8 + 0x39) = extraout_r3_01;
+    *puVar10 = extraout_r2_29;
+    func_0x8254c518();
+    if (cVar11 == '\0') {
+      func_0x8254c520();
+      *(short *)((int)puVar9 + 0x6d) = (short)puVar10;
+      *puVar10 = extraout_r2_30;
+      func_0x8254c528();
+      *(short *)(iVar8 + 0x33) = (short)puVar10;
+      *puVar10 = extraout_r2_31;
+      func_0x8254c530();
+      *puVar10 = extraout_r2_32;
+      func_0x8254c538(uVar2);
+      *puVar10 = extraout_r3_02;
+      func_0x8254c540();
+      *puVar10 = extraout_r2_33;
+      func_0x8254c548();
+      iVar8 = *(int *)(extraout_r3_05 + 0x40);
+      *puVar10 = extraout_r2_34;
+      func_0x8254c550();
+      iVar3 = extraout_r3_06 + 2;
+      *puVar10 = extraout_r2_35;
+      uVar12 = func_0x8254c558();
+      puVar6 = (undefined8 *)((ulonglong)uVar12 >> 0x20);
+      *puVar6 = uVar12;
+      *(undefined4 *)(puVar6 + 1) = extraout_r2_41;
+      *(int *)((int)puVar6 + 0xc) = iVar3;
+      *(int *)(puVar6 + 2) = iVar8;
+      *(uint *)((int)puVar6 + 0x14) = unaff_r6 + 0x35;
+      *(undefined2 **)(puVar6 + 3) = puVar10;
+      uVar1 = (undefined2)iVar3;
+      *(undefined2 *)(iVar8 + 2) = uVar1;
+      uVar2 = func_0x8254c560();
+      *extraout_r2_42 = uVar2;
+      extraout_r2_42[1] = extraout_r2_42;
+      extraout_r2_42[2] = iVar3;
+      *(undefined2 *)(iVar8 + 2) = uVar1;
+      uVar2 = func_0x8254c568();
+      *extraout_r2_43 = uVar2;
+      extraout_r2_43[1] = extraout_r2_43;
+      extraout_r2_43[2] = iVar3;
+      extraout_r2_43[3] = unaff_r6 + 0x35;
+      *(undefined2 *)(iVar8 + 2) = uVar1;
+      uVar12 = func_0x8254c570();
+      *extraout_r3_07 = uVar12;
+      *(undefined4 *)(extraout_r3_07 + 1) = extraout_r2_44;
+      *(int *)((int)extraout_r3_07 + 0xc) = iVar3;
+      *(undefined2 *)(iVar8 + 2) = uVar1;
+      func_0x8254c578();
+      *(undefined2 *)(iVar8 + 2) = in_stack_00000010;
+      func_0x8254c580(in_stack_00000000,in_stack_00000004,in_stack_00000008,in_stack_0000000c);
+      return in_stack_0000001c;
+    }
+                    /* WARNING: Bad instruction - Truncating control flow here */
+    halt_baddata();
+  }
+                    /* WARNING: Bad instruction - Truncating control flow here */
+  halt_baddata();
+}
+
+
+

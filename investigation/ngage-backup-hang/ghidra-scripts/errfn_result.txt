@@ -1,0 +1,36 @@
+=== target 0x803aa0f6 ===
+FUNCTION FUN_803aa0f6 @ 803aa0f6 size=28
+803aa0f6: movs r2,r0
+803aa0f8: push {r4,lr}
+803aa0fa: ldr r0,[r0,#0x0]
+803aa0fc: movs r3,#0x0
+803aa0fe: cmp r0,#0x0
+803aa100: str r3,[r2,#0x0]
+803aa102: beq 0x803aa10a
+803aa104: blx 0x8039fd78
+803aa108: pop {r4,pc}
+803aa10a: movs r0,#0x46
+803aa10c: bl 0x803af504
+803aa110: pop {r4,pc}
+--- decompiled ---
+
+void FUN_803aa0f6(int *param_1)
+
+{
+  int iVar1;
+  
+  iVar1 = *param_1;
+  *param_1 = 0;
+  if (iVar1 != 0) {
+    FUN_8039fd78();
+    return;
+  }
+  FUN_803af504(0x46);
+  return;
+}
+
+
+
+=== target 0x8039f7dc ===
+  no containing function found
+

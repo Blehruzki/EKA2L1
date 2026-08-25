@@ -1,0 +1,138 @@
+=== target 803954e8 ===
+containing function: none
+after forcing: FUN_803954e8@803954e8
+FUNCTION FUN_803954e8 @ 803954e8 size=20
+--- disassembly ---
+803954e8: push {r4,r5,r6,lr}
+803954ea: mov r4,r0
+803954ec: ldr r5,[r0,#0x24]
+803954ee: bl 0x803954a6
+803954f2: mov r0,r4
+803954f4: bl 0x80394bae
+803954f8: mov r0,r5
+803954fa: pop {r4,r5,r6,pc}
+--- decompiled ---
+
+undefined4 FUN_803954e8(int param_1)
+
+{
+  undefined4 uVar1;
+  
+  uVar1 = *(undefined4 *)(param_1 + 0x24);
+  func_0x803954a6();
+  func_0x80394bae(param_1);
+  return uVar1;
+}
+
+
+
+=== target 80395580 ===
+containing function: none
+after forcing: FUN_80395580@80395580
+FUNCTION FUN_80395580 @ 80395580 size=120
+--- disassembly ---
+80395580: push {r4,r5,r6,r7,lr}
+80395582: sub sp,#0xc
+80395584: bl 0x80395370
+80395588: ldr r4,[r0,#0x14]
+8039558a: mov r5,r0
+8039558c: cmp r4,#0x0
+8039558e: bne 0x80395594
+80395590: bl 0x803953a8
+80395594: ldr r1,[r4,#0x1c]
+80395596: mov r0,#0x1
+80395598: cmp r1,#0x0
+8039559a: bne 0x8039559e
+8039559c: mov r0,#0x0
+8039559e: str r0,[sp,#0x8]
+803955a0: ldr r0,[r4,#0x14]
+803955a2: sub r0,r0,#0x1
+803955a4: str r0,[r4,#0x14]
+803955a6: bne 0x803955e4
+803955a8: mov r0,r4
+803955aa: add r0,#0x78
+803955ac: mov r7,r4
+803955ae: str r0,[sp,#0x4]
+803955b0: add r7,#0x20
+803955b2: mov r0,r7
+803955b4: bl 0x803953de
+803955b8: mov r6,r0
+803955ba: ldr r0,[r4,#0x10]
+803955bc: str r0,[r5,#0x14]
+803955be: beq 0x803955ca
+803955c0: ldr r7,[r4,#0x0]
+803955c2: ldr r0,[sp,#0x4]
+803955c4: bl 0x80395510
+803955c8: b 0x803955ce
+803955ca: mov r0,#0x0
+803955cc: str r0,[r4,#0x10]
+803955ce: ldr r0,[sp,#0x8]
+803955d0: cmp r0,#0x0
+803955d2: bne 0x803955e4
+803955d4: cmp r6,#0x0
+803955d6: beq 0x803955e6
+803955d8: ldr r2,[r7,#0x8]
+803955da: cmp r2,#0x0
+803955dc: beq 0x803955e4
+803955de: mov r1,r7
+803955e0: mov r0,#0x1
+803955e2: blx r2
+803955e4: pop {r1,r2,r3,r4,r5,r6,r7,pc}
+803955e6: ldr r1,[r4,#0x4]
+803955e8: cmp r1,#0x0
+803955ea: beq 0x803955f0
+803955ec: ldr r0,[sp,#0x4]
+803955ee: blx r1
+803955f0: ldr r0,[sp,#0x4]
+803955f2: bl 0x80395510
+803955f6: pop {r1,r2,r3,r4,r5,r6,r7,pc}
+--- decompiled ---
+
+void FUN_80395580(void)
+
+{
+  int iVar1;
+  int iVar2;
+  undefined4 *puVar3;
+  int iVar4;
+  undefined4 *puVar5;
+  undefined4 *puVar6;
+  
+  iVar1 = func_0x80395370();
+  puVar5 = *(undefined4 **)(iVar1 + 0x14);
+  if (puVar5 == (undefined4 *)0x0) {
+    func_0x803953a8();
+  }
+  iVar4 = puVar5[7];
+  iVar2 = puVar5[5];
+  puVar5[5] = iVar2 + -1;
+  if (iVar2 + -1 == 0) {
+    puVar3 = puVar5 + 0x1e;
+    puVar6 = puVar5 + 8;
+    iVar2 = func_0x803953de(puVar6);
+    *(undefined4 *)(iVar1 + 0x14) = puVar5[4];
+    if (iVar2 == 0) {
+      puVar5[4] = 0;
+    }
+    else {
+      puVar6 = (undefined4 *)*puVar5;
+      func_0x80395510(puVar3);
+    }
+    if (iVar4 == 0) {
+      if (iVar2 == 0) {
+        if ((code *)puVar5[1] != (code *)0x0) {
+          (*(code *)puVar5[1])(puVar3);
+        }
+        func_0x80395510(puVar3);
+        return;
+      }
+      if ((code *)puVar6[2] != (code *)0x0) {
+        (*(code *)puVar6[2])(1,puVar6);
+      }
+    }
+  }
+  return;
+}
+
+
+

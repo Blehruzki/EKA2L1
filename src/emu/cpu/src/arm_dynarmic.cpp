@@ -19,6 +19,7 @@
 
 #include <common/algorithm.h>
 #include <common/configure.h>
+#include <chrono>
 #include <common/log.h>
 
 #include <cpu/arm_dynarmic.h>
