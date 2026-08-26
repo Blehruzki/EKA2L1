@@ -152,6 +152,7 @@ namespace eka2l1 {
         default: {
             LOG_ERROR(SERVICE_UI, "Unimplemented opcode: {}", epoc::akn_skin_server_opcode_to_str(static_cast<const epoc::akn_skin_server_opcode>(ctx->msg->function)));
 
+            ctx->complete_unhandled("AknSkinServer");
             break;
         }
         }

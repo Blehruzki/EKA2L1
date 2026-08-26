@@ -586,7 +586,7 @@ namespace eka2l1 {
             break;
 
         default: {
-            LOG_ERROR(SERVICE_MSV, "Unimplemented opcode for MsvServer 0x{:X}", ctx->msg->function);
+            ctx->complete_unhandled("MsvServer");
             break;
         }
         }

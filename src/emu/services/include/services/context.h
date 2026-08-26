@@ -119,9 +119,28 @@ namespace eka2l1 {
             void complete(int res);
 
             /**
+             * \brief Complete a request that no opcode handler claimed.
+             *
+             * Every HLE service has opcodes it does not implement. Historically most of them
+             * logged and returned without completing the message, which leaves the calling
+             * guest thread parked in WaitForAnyRequest forever - the emulator looks frozen,
+             * and the app is given no chance to fall back. Completing with an error instead
+             * lets guest code take its own error path, which is almost always better.
+             *
+             * Behaviour is governed by config::state::unhandled_opcode_policy.
+             * The opcode is logged once per (server, opcode) pair, since these are reached
+             * from inner dispatch loops and would otherwise flood the log.
+             *
+             * \param server_name    Name used for logging, e.g. "MsvServer".
+             * \param prefer_success Pass true for services whose guest clients are known to
+             *                       need a fake KErrNone rather than a real error.
+             */
+            void complete_unhandled(const char *server_name, const bool prefer_success = false);
+
+            /**
              * \brief    Get the flag contains IPC argument information.
              * \returns  The flag value.
-             * 
+             *
              * \sa       complete
              */
             int flag() const;

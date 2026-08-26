@@ -47,7 +47,7 @@ namespace eka2l1 {
             if (ctx->msg->function >= 1000) {
                 resource_->execute_command(*ctx);
             } else {
-                LOG_ERROR(SERVICE_HWRM, "Unimplemented opcode for HWMR session 0x{:X}", ctx->msg->function);
+                ctx->complete_unhandled("HWRMServer");
             }
 
             break;

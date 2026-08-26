@@ -1143,7 +1143,7 @@ namespace eka2l1 {
                 break;
 
             default:
-                LOG_ERROR(SERVICE_APPLIST, "Unimplemented applist opcode {}", ctx->msg->function);
+                ctx->complete_unhandled("AppListServer");
                 break;
             }
         } else if (llevel == APA_LEGACY_LEVEL_S60V2) {
@@ -1157,7 +1157,7 @@ namespace eka2l1 {
                 break;
 
             default:
-                LOG_ERROR(SERVICE_APPLIST, "Unimplemented applist opcode {}", ctx->msg->function);
+                ctx->complete_unhandled("AppListServer");
                 break;
             }
         } else if (llevel == APA_LEGACY_LEVEL_TRANSITION) {
@@ -1187,7 +1187,7 @@ namespace eka2l1 {
                 break;
 
             default:
-                LOG_ERROR(SERVICE_APPLIST, "Unimplemented applist opcode 0x{:X}", ctx->msg->function);
+                ctx->complete_unhandled("AppListServer");
                 break;
             }
         } else {
@@ -1265,7 +1265,7 @@ namespace eka2l1 {
                 break;
 
             default:
-                LOG_ERROR(SERVICE_APPLIST, "Unimplemented applist opcode 0x{:X}", ctx->msg->function);
+                ctx->complete_unhandled("AppListServer");
                 break;
             }
         }

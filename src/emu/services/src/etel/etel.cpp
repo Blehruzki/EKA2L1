@@ -432,7 +432,7 @@ namespace eka2l1 {
                     }
                 }
 
-                LOG_ERROR(SERVICE_ETEL, "Unimplemented ETel server opcode {}", ctx->msg->function);
+                ctx->complete_unhandled("EtelServer");
                 break;
             }
         } else {
@@ -487,7 +487,7 @@ namespace eka2l1 {
                     }
                 }
 
-                LOG_ERROR(SERVICE_ETEL, "Unimplemented ETel server opcode {}", ctx->msg->function);
+                ctx->complete_unhandled("EtelServer");
                 break;
             }
         }

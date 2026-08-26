@@ -32,7 +32,7 @@ namespace eka2l1 {
         }
 
         default:
-            LOG_ERROR(SERVICE_UI, "Unhandled app ui based session opcode {}", ctx->msg->function);
+            ctx->complete_unhandled("AppUiBasedServer");
             break;
         }
     }

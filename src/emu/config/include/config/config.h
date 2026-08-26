@@ -162,6 +162,15 @@ namespace eka2l1::config {
         bool extensive_logging{ false };
         int background_image_opacity{ 255 };
 
+        // What an HLE service should do when it receives an opcode it does not implement.
+        //   "error"   - complete with KErrNotSupported (default). The guest gets a real
+        //               failure it can handle, instead of blocking forever.
+        //   "success" - complete with KErrNone. Fakes success for everything; useful when
+        //               a guest reacts badly to errors.
+        //   "hang"    - never complete. The pre-existing behaviour: the calling guest thread
+        //               parks in WaitForAnyRequest indefinitely. Kept only for A/B debugging.
+        std::string unhandled_opcode_policy{ "error" };
+
         std::string current_mmc_id;
 
         void serialize(const bool with_bindings = true);

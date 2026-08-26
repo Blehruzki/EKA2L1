@@ -449,7 +449,7 @@ namespace eka2l1 {
             break;
 
         default:
-            LOG_ERROR(SERVICE_UI, "Unimplemented view session opcode {}", ctx->msg->function);
+            ctx->complete_unhandled("ViewServer");
             break;
         }
     }

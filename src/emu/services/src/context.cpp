@@ -25,9 +25,14 @@
 
 #include <services/context.h>
 #include <utils/des.h>
+#include <utils/err.h>
 #include <utils/sec.h>
 
 #include <config/config.h>
+
+#include <mutex>
+#include <set>
+#include <string>
 
 namespace eka2l1 {
     namespace service {
@@ -149,6 +154,43 @@ namespace eka2l1 {
                     signaled = true;
                 }
             }
+        }
+
+        void ipc_context::complete_unhandled(const char *server_name, const bool prefer_success) {
+            const int opcode = msg ? msg->function : -1;
+            const char *name = server_name ? server_name : "<unknown server>";
+
+            // Log once per (server, opcode). Unhandled opcodes are typically hit from inner
+            // dispatch loops, so logging every occurrence buries the rest of the trace.
+            {
+                static std::mutex seen_lock;
+                static std::set<std::pair<std::string, int>> seen;
+
+                const std::lock_guard<std::mutex> guard(seen_lock);
+
+                if (seen.emplace(name, opcode).second) {
+                    // Deliberately ERROR, not WARN: this is the primary compatibility signal
+                    // for "this app asked for something we do not implement", and the sites
+                    // it replaced all logged at ERROR. Anything quieter gets filtered away by
+                    // common log-filter settings (e.g. "Service.Track:error") and the signal
+                    // is lost exactly when it is most needed.
+                    LOG_ERROR(SERVICE_TRACK, "Unimplemented opcode 0x{:X} for {}", opcode, name);
+                }
+            }
+
+            const std::string &policy = sys->get_config()->unhandled_opcode_policy;
+
+            if (policy == "hang") {
+                // Deliberately leave the message outstanding, reproducing the old behaviour.
+                return;
+            }
+
+            if (prefer_success || (policy == "success")) {
+                complete(epoc::error_none);
+                return;
+            }
+
+            complete(epoc::error_not_supported);
         }
 
         int ipc_context::flag() const {
