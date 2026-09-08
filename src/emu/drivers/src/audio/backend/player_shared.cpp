@@ -16,13 +16,22 @@
 #include <common/cvt.h>
 #include <common/log.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <thread>
+#include <vector>
 
 namespace eka2l1::drivers {
-    static void asphalt3_pcm_trace(const std::int16_t *data, const std::size_t frames, const std::uint32_t channels) {
+    static const char *asphalt3_pcm_trace_path() {
         const char *path = std::getenv("EKA2L1_PCM_TRACE");
-        if (!path || !*path || !data || !frames || !channels)
+        return (path && *path) ? path : nullptr;
+    }
+
+    static void asphalt3_pcm_trace(const std::int16_t *data, const std::size_t frames, const std::uint32_t channels) {
+        const char *path = asphalt3_pcm_trace_path();
+        if (!path || !data || !frames || !channels)
             return;
 
         FILE *out = std::fopen(path, "ab");
@@ -31,6 +40,106 @@ namespace eka2l1::drivers {
         std::fwrite(data, sizeof(std::int16_t), frames * channels, out);
         std::fclose(out);
     }
+
+    // Hardware-independent output stream used only when EKA2L1_PCM_TRACE is set.
+    // It clocks the normal decoder callback from a worker thread, so validation does
+    // not depend on cubeb/ALSA/PulseAudio successfully opening a host audio device.
+    class asphalt3_trace_output_stream final : public audio_output_stream {
+    public:
+        asphalt3_trace_output_stream(audio_driver *driver, const std::uint32_t rate,
+            const std::uint8_t channel_count, data_callback callback)
+            : audio_output_stream(driver, rate, channel_count), callback_(std::move(callback)),
+              running_(false), paused_(false), frames_played_(0), volume_(1.0f) {
+        }
+
+        ~asphalt3_trace_output_stream() override {
+            stop();
+        }
+
+        bool start() override {
+            if (running_.load()) {
+                paused_.store(false);
+                return true;
+            }
+
+            running_.store(true);
+            paused_.store(false);
+            worker_ = std::thread([this]() {
+                // 10 ms blocks are small enough to make pause/resume boundaries precise
+                // while keeping overhead low.
+                const std::size_t block_frames = std::max<std::size_t>(1, sample_rate / 100);
+                std::vector<std::int16_t> buffer(block_frames * channels);
+                const auto block_time = std::chrono::microseconds(
+                    static_cast<std::int64_t>(frames_to_microseconds(block_frames, sample_rate)));
+
+                while (running_.load()) {
+                    if (paused_.load()) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                        continue;
+                    }
+
+                    const auto begin = std::chrono::steady_clock::now();
+                    const std::size_t supplied = callback_(buffer.data(), block_frames);
+                    frames_played_.fetch_add(supplied);
+
+                    if (supplied == 0) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                        continue;
+                    }
+
+                    const auto elapsed = std::chrono::steady_clock::now() - begin;
+                    if (elapsed < block_time)
+                        std::this_thread::sleep_for(block_time - elapsed);
+                }
+            });
+            return true;
+        }
+
+        bool stop() override {
+            running_.store(false);
+            paused_.store(false);
+            if (worker_.joinable())
+                worker_.join();
+            return true;
+        }
+
+        void pause() override {
+            if (running_.load())
+                paused_.store(true);
+        }
+
+        bool is_playing() override {
+            return running_.load() && !paused_.load();
+        }
+
+        bool is_pausing() override {
+            return running_.load() && paused_.load();
+        }
+
+        bool set_volume(const float volume) override {
+            volume_.store(volume);
+            return true;
+        }
+
+        float get_volume() const override {
+            return volume_.load();
+        }
+
+        bool current_frame_position(std::uint64_t *pos) override {
+            if (!pos)
+                return false;
+            *pos = frames_played_.load();
+            return true;
+        }
+
+    private:
+        data_callback callback_;
+        std::thread worker_;
+        std::atomic<bool> running_;
+        std::atomic<bool> paused_;
+        std::atomic<std::uint64_t> frames_played_;
+        std::atomic<float> volume_;
+    };
 
     std::size_t player_shared::data_supply_callback(std::int16_t *data, std::size_t size) {
         const std::lock_guard<std::mutex> guard(lock_);
@@ -92,9 +201,18 @@ namespace eka2l1::drivers {
         data_pointer_ = 0;
         flags_ = 0;
         data_.clear();
-        output_stream_ = aud_->new_output_stream(freq_, channels_, [this](std::int16_t *u1, std::size_t u2) {
+
+        const auto supply_callback = [this](std::int16_t *u1, std::size_t u2) {
             return data_supply_callback(u1, u2);
-        });
+        };
+
+        if (asphalt3_pcm_trace_path()) {
+            output_stream_ = std::make_unique<asphalt3_trace_output_stream>(aud_, freq_, channels_, supply_callback);
+            LOG_INFO(DRIVER_AUD, "PCMTRACE: using hardware-independent trace output stream");
+        } else {
+            output_stream_ = aud_->new_output_stream(freq_, channels_, supply_callback);
+        }
+
         if (!output_stream_)
             return true;
 
