@@ -24,6 +24,10 @@
 #include <common/log.h>
 #include <common/platform.h>
 
+#include <chrono>
+#include <cstdlib>
+#include <vector>
+
 namespace eka2l1::drivers {
     static long data_callback_redirector(cubeb_stream *stm, void *user,
         const void *input_buffer, void *output_buffer, long nframes) {
@@ -42,7 +46,11 @@ namespace eka2l1::drivers {
         , callback_(callback)
         , idled_frames_(0)
         , internal_channels_(channels)
-        , in_action_(false) {
+        , in_action_(false)
+        , software_fallback_(false)
+        , fallback_sample_rate_(sample_rate)
+        , fallback_running_(false)
+        , fallback_frames_(0) {
         cubeb_stream_params params;
         params.format = CUBEB_SAMPLE_S16LE;
         params.rate = sample_rate;
@@ -70,12 +78,20 @@ namespace eka2l1::drivers {
             data_callback_redirector, state_callback_redirector, this);
 
         if (result != CUBEB_OK) {
+            const char *trace_path = std::getenv("EKA2L1_PCM_TRACE");
+            if (!is_recording && trace_path && *trace_path) {
+                software_fallback_ = true;
+                LOG_WARNING(DRIVER_AUD, "PCMTRACE: cubeb unavailable; using software-clocked output stream");
+                return;
+            }
+
             LOG_CRITICAL(DRIVER_AUD, "Error trying to initialize cubeb stream!");
             return;
         }
     }
 
     cubeb_audio_stream_base::~cubeb_audio_stream_base() {
+        stop_impl();
         if (stream_) {
             cubeb_stream_destroy(stream_);
         }
@@ -93,7 +109,16 @@ namespace eka2l1::drivers {
     }
     
     bool cubeb_audio_stream_base::current_frame_position_impl(std::uint64_t *pos) {
-        if (cubeb_stream_get_position(stream_, pos) != CUBEB_OK) {
+        if (!pos) {
+            return false;
+        }
+
+        if (software_fallback_) {
+            *pos = fallback_frames_.load();
+            return true;
+        }
+
+        if (!stream_ || cubeb_stream_get_position(stream_, pos) != CUBEB_OK) {
             return false;
         }
 
@@ -111,6 +136,42 @@ namespace eka2l1::drivers {
             return true;
         }
 
+        if (software_fallback_) {
+            fallback_running_.store(true);
+            in_action_ = true;
+            fallback_thread_ = std::thread([this]() {
+                const std::size_t block_frames = common::max<std::size_t>(1, fallback_sample_rate_ / 100);
+                std::vector<std::int16_t> buffer(block_frames * internal_channels_);
+                const auto block_time = std::chrono::microseconds(
+                    static_cast<std::int64_t>(frames_to_microseconds(block_frames, fallback_sample_rate_)));
+
+                while (fallback_running_.load()) {
+                    const auto begin = std::chrono::steady_clock::now();
+                    std::size_t supplied = 0;
+
+                    if (should_stream_idle()) {
+                        std::memset(buffer.data(), 0, buffer.size() * sizeof(std::int16_t));
+                    } else {
+                        supplied = callback_(buffer.data(), block_frames);
+                        fallback_frames_.fetch_add(supplied);
+                    }
+
+                    const auto elapsed = std::chrono::steady_clock::now() - begin;
+                    if (elapsed < block_time) {
+                        std::this_thread::sleep_for(block_time - elapsed);
+                    } else if (supplied == 0) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    }
+                }
+            });
+
+            return true;
+        }
+
+        if (!stream_) {
+            return false;
+        }
+
         if (cubeb_stream_start(stream_) == CUBEB_OK) {
             in_action_ = true;
             idled_frames_ = 0;
@@ -122,11 +183,20 @@ namespace eka2l1::drivers {
     }
 
     bool cubeb_audio_stream_base::stop_impl() {
+        if (software_fallback_) {
+            fallback_running_.store(false);
+            if (fallback_thread_.joinable()) {
+                fallback_thread_.join();
+            }
+            in_action_ = false;
+            return true;
+        }
+
         if (!in_action_) {
             return true;
         }
 
-        if (cubeb_stream_stop(stream_) == CUBEB_OK) {
+        if (stream_ && cubeb_stream_stop(stream_) == CUBEB_OK) {
             in_action_ = false;
             return true;
         }
@@ -143,6 +213,7 @@ namespace eka2l1::drivers {
     }
 
     cubeb_audio_output_stream::~cubeb_audio_output_stream() {
+        stop();
     }
 
     bool cubeb_audio_output_stream::should_stream_idle() {
@@ -180,7 +251,12 @@ namespace eka2l1::drivers {
     }
 
     bool cubeb_audio_output_stream::set_volume(const float volume) {
-        if (cubeb_stream_set_volume(stream_, volume * static_cast<float>(driver_->master_volume() / 100.0f)) == CUBEB_OK) {
+        if (software_fallback_) {
+            volume_ = volume;
+            return true;
+        }
+
+        if (stream_ && cubeb_stream_set_volume(stream_, volume * static_cast<float>(driver_->master_volume() / 100.0f)) == CUBEB_OK) {
             volume_ = volume;
             return true;
         }
@@ -203,7 +279,7 @@ namespace eka2l1::drivers {
     }
 
     cubeb_audio_input_stream::~cubeb_audio_input_stream() {
-
+        stop();
     }
 
     bool cubeb_audio_input_stream::start() {
