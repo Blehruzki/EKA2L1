@@ -81,7 +81,7 @@ namespace eka2l1::drivers {
             const char *trace_path = std::getenv("EKA2L1_PCM_TRACE");
             if (!is_recording && trace_path && *trace_path) {
                 software_fallback_ = true;
-                LOG_WARNING(DRIVER_AUD, "PCMTRACE: cubeb unavailable; using software-clocked output stream");
+                LOG_INFO(DRIVER_AUD, "PCMTRACE: cubeb unavailable; using software-clocked output stream");
                 return;
             }
 
