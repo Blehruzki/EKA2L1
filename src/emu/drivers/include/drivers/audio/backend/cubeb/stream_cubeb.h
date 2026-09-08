@@ -22,6 +22,9 @@
 #include <cubeb/cubeb.h>
 #include <drivers/audio/stream.h>
 
+#include <atomic>
+#include <thread>
+
 namespace eka2l1::drivers {
     struct cubeb_audio_stream_base {
     protected:
@@ -32,6 +35,15 @@ namespace eka2l1::drivers {
         std::uint8_t internal_channels_;
 
         bool in_action_;
+
+        // Validation-only fallback used when cubeb cannot create a host stream and
+        // EKA2L1_PCM_TRACE is enabled. This keeps game-side audio callbacks clocked
+        // without requiring ALSA/PulseAudio/cubeb output hardware.
+        bool software_fallback_;
+        std::uint32_t fallback_sample_rate_;
+        std::atomic<bool> fallback_running_;
+        std::atomic<std::uint64_t> fallback_frames_;
+        std::thread fallback_thread_;
 
     protected:
         bool current_frame_position_impl(std::uint64_t *val);
