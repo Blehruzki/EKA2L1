@@ -1,0 +1,63 @@
+name: Asphalt audio Linux validation
+
+on:
+  push:
+    branches:
+      - asphalt3-audio-capture
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    env:
+      config: Release
+      cache-version: v1
+
+    steps:
+    - name: Set up build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install ccache libgtk-3-dev libpulse-dev libasound2-dev \
+          libsdl2-dev pulseaudio qt6-base-dev qt6-base-private-dev qt6-tools-dev \
+          qt6-tools-dev-tools qt6-l10n-tools libqt6svg6-dev qt6-multimedia-dev
+
+    - name: Configure ccache
+      run: echo "CCACHE_DIR=${{ runner.temp }}/ccache" >> "$GITHUB_ENV"
+
+    - uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/ccache
+        key: asphalt-audio-ccache-${{ env.cache-version }}-${{ github.sha }}
+        restore-keys: asphalt-audio-ccache-${{ env.cache-version }}-
+
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: recursive
+
+    - name: CMake configure
+      run: cmake -B build -DCI=ON -DEKA2L1_ENABLE_UNEXPECTED_EXCEPTION_HANDLER=ON -DEKA2L1_NO_TERMINAL=ON -DEKA2L1_ENABLE_DISCORD_RICH_PRESENCE=ON -DCMAKE_BUILD_TYPE=${{ env.config }}
+
+    - name: Build EKA2L1 Qt
+      run: cmake --build build --config ${{ env.config }} --parallel 4 --target eka2l1_qt
+
+    - name: Generate AppImage
+      env:
+        APPIMAGE_EXTRACT_AND_RUN: 1
+        QMAKE: /usr/bin/qmake6
+      run: |
+        chmod u+x scripts/generate_appimage.sh
+        ./scripts/generate_appimage.sh
+
+    - name: Compute git short sha
+      id: git_short_sha
+      run: echo "value=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: eka2l1-asphalt-audio-${{ steps.git_short_sha.outputs.value }}-linux
+        path: build/eka2l1-qt-x64.AppImage
+        if-no-files-found: error
