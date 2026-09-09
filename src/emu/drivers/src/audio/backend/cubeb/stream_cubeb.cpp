@@ -133,7 +133,17 @@ namespace eka2l1::drivers {
 
     bool cubeb_audio_stream_base::start_impl() {
         if (in_action_) {
-            return true;
+            // A real cubeb output may be started again after it has drained. The
+            // software fallback has a finished worker thread in that state, so
+            // reap it before creating the next clocking worker.
+            if (software_fallback_ && !fallback_running_.load()) {
+                if (fallback_thread_.joinable()) {
+                    fallback_thread_.join();
+                }
+                in_action_ = false;
+            } else {
+                return true;
+            }
         }
 
         if (software_fallback_) {
@@ -142,25 +152,40 @@ namespace eka2l1::drivers {
             fallback_thread_ = std::thread([this]() {
                 const std::size_t block_frames = common::max<std::size_t>(1, fallback_sample_rate_ / 100);
                 std::vector<std::int16_t> buffer(block_frames * internal_channels_);
-                const auto block_time = std::chrono::microseconds(
-                    static_cast<std::int64_t>(frames_to_microseconds(block_frames, fallback_sample_rate_)));
 
                 while (fallback_running_.load()) {
                     const auto begin = std::chrono::steady_clock::now();
-                    std::size_t supplied = 0;
 
                     if (should_stream_idle()) {
                         std::memset(buffer.data(), 0, buffer.size() * sizeof(std::int16_t));
-                    } else {
-                        supplied = callback_(buffer.data(), block_frames);
-                        fallback_frames_.fetch_add(supplied);
+                        const auto block_time = std::chrono::microseconds(
+                            static_cast<std::int64_t>(frames_to_microseconds(block_frames, fallback_sample_rate_)));
+                        const auto elapsed = std::chrono::steady_clock::now() - begin;
+                        if (elapsed < block_time) {
+                            std::this_thread::sleep_for(block_time - elapsed);
+                        }
+                        continue;
                     }
 
+                    const std::size_t supplied = callback_(buffer.data(), block_frames);
+                    fallback_frames_.fetch_add(supplied);
+
+                    // cubeb treats a short data callback as end-of-stream and stops
+                    // requesting data after those final frames have drained. Doing
+                    // the same here is important for Symbian completion callbacks:
+                    // repeatedly calling a source after EOF can signal completion
+                    // more than once and leave game-side audio sequencing stuck.
+                    const auto played_time = std::chrono::microseconds(
+                        static_cast<std::int64_t>(frames_to_microseconds(supplied, fallback_sample_rate_)));
                     const auto elapsed = std::chrono::steady_clock::now() - begin;
-                    if (elapsed < block_time) {
-                        std::this_thread::sleep_for(block_time - elapsed);
-                    } else if (supplied == 0) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    if (elapsed < played_time) {
+                        std::this_thread::sleep_for(played_time - elapsed);
+                    }
+
+                    if (supplied < block_frames) {
+                        LOG_INFO(DRIVER_AUD, "PCMTRACE: software-clocked output drained after {} frames", fallback_frames_.load());
+                        fallback_running_.store(false);
+                        break;
                     }
                 }
             });
