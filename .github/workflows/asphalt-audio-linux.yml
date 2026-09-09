@@ -38,6 +38,19 @@ jobs:
         fetch-depth: 0
         submodules: recursive
 
+    - name: Use 100 ms software fallback quantum
+      run: |
+        python3 - <<'PY'
+        from pathlib import Path
+        p = Path('src/emu/drivers/src/audio/backend/cubeb/stream_cubeb.cpp')
+        s = p.read_text()
+        old = 'fallback_sample_rate_ / 100)'
+        new = 'fallback_sample_rate_ / 10)'
+        if old not in s:
+            raise SystemExit('fallback quantum expression not found')
+        p.write_text(s.replace(old, new, 1))
+        PY
+
     - name: CMake configure
       run: cmake -B build -DCI=ON -DEKA2L1_ENABLE_UNEXPECTED_EXCEPTION_HANDLER=ON -DEKA2L1_NO_TERMINAL=ON -DEKA2L1_ENABLE_DISCORD_RICH_PRESENCE=ON -DCMAKE_BUILD_TYPE=${{ env.config }}
 
