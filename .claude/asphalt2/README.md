@@ -269,6 +269,58 @@ not possible with the shipped art.
 
 ---
 
+## 7a. Audio: the N-Gage streams and the S60v3 player
+
+**`.swav` is the N-Gage SDK v3.1 stream container** and it is not encrypted:
+
+    'SWAV' u16 bom u16 version u32 fileSize u16 headerSize(16) u16 chunkCount(1)
+    'DATA' u32 chunkSize                       ; covers itself
+    u8 format(2) u8 flags u16 sampleRate u16 ? u16 ?
+    samples...                                 ; from offset 32
+
+The samples are **4-bit IMA ADPCM, mono, high nibble first**, with predictor and
+step index starting at 0 and running unbroken to the end of the file — no blocks,
+no periodic resets. `flags` is 0 or 1 and tracks nothing else in the header, so
+it is most likely the loop flag.
+
+Identifying the codec took one measurement, not a search: decode the payload
+under each candidate and take the lag-1 autocorrelation. Music at 16 kHz sits
+around 0.9; noise sits at 0. Signed PCM8 gave −0.21, PCM16 0.05, IMA ADPCM
+**0.94**. The same metric settled nibble order (high-first 0.936 vs low-first
+0.836) and the 32-byte header (the value plateaus from offset 31 on).
+
+Asphalt 2's 13 race tracks are all 16 kHz, 33–145 s, 6.4 MB total.
+
+**The S60v3 build can already play a media file by name.** Its imports are thin —
+one ordinal from `MediaClientAudioStream`, two from `MediaClientAudio` — but one
+of them is `CMdaAudioPlayerUtility::NewFilePlayerL`, called from a small wrapper
+class:
+
+| code offset | what it is |
+|-------------|------------|
+| `0xdad8` | `Wrapper::PlayFile(this, const TDesC& name, TInt, TUint8 volume)` — calls `NewFilePlayerL(name, this+4, 0, 3, NULL)`, stores the utility at `[this+0x14]` |
+| `0xdabc` | stop (vtable slot `+0x10` on the utility) |
+| `0xdafe` | set volume (vtable slot `+0x14`) |
+| `0x10812` | the only caller: builds `intro.mid`, widens it to 16-bit, calls `0xdad8` |
+
+So adding music needs **no new import and no new DLL** — only a file the phone can
+decode and a call to `0xdad8` at the right moment. The filename lives as a plain
+8-bit string at code offset `0x10bd4` and the install path as UTF-16 in the
+controller; `intro.mid` → `intro.wav` is the same length in both.
+
+**Format choice.** IMA ADPCM `.wav` (tag 0x11, 256-byte blocks, 505 samples each)
+keeps a track at its N-Gage size and round-trips at ~34 dB SNR. Note the block
+header stores the step index **at the start of the block**, not after it — getting
+that wrong still decodes, just at 5 dB. Plain 16-bit PCM is four times the size
+and certain to play.
+
+**EKA2L1 cannot check ADPCM for you.** Its bundled ffmpeg links `adpcm_ima_wav`,
+but `avcodec_find_decoder` still fails on one, the HLE `mediaclientaudio` then
+faults, and the game dies at `0x80190076`. A 16-bit PCM `.wav` in the same slot
+runs clean. Emulator silence on this format is not evidence about the device.
+
+---
+
 ## 8. Method notes
 
 - **Localise an effect with a marker texture.** Replacing `boost1b/2b/3b` with a

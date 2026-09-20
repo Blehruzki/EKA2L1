@@ -41,6 +41,11 @@ python3 build_package.py
 | `sheet3.py`, `dump.py` | Render any sprite to PNG — the fastest way to check a decode. |
 | `patchexe8.py` | The ten executable patches. Env-parameterised geometry. |
 | `build_package.py` | Assembles the `.sisx`: swaps both files, fixes lengths and hashes, strips the signature, recompresses the controller. |
+| `swav.py` | N-Gage `SWAV` stream reader: header parse plus the IMA ADPCM codec (mono, **high** nibble first, state running unbroken through the file). |
+| `imawav.py` | Writes 16-bit PCM back out as an IMA ADPCM `.wav` (tag 0x11). Keeps a track at roughly the N-Gage size instead of the 4x plain PCM costs. |
+| `audiostring.py` | Repoints the music player from `intro.mid` to `intro.wav` — same length in both the text section and the SIS install path, so nothing shifts. |
+| `build_v17.py` | `build_package.py` plus the intro swap: the third replaced file, its hash, and the controller rename. |
+| `verify_pkg.py` | Re-checks a built package the way a device does: every install description's SHA-1 and both lengths against the data unit actually shipped. Run it on `v16` too — a known-good control. |
 
 ## Guard rails worth keeping
 
@@ -48,3 +53,6 @@ python3 build_package.py
 wrong base image fails loudly instead of producing silent garbage. `build_package.py`
 asserts the file-description walk agrees with the file-data walk, and that the hash
 field is exactly SHA-1 sized. `e32crc.fix` asserts the CRC verifies after writing.
+`verify_pkg.py` closes the loop on the whole package after the fact; note that the
+last file description is a `FILENULL` (op 8) with no data unit, so only op-1
+descriptions line up index-for-index with the data units.
