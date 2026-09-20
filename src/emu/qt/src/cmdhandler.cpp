@@ -391,6 +391,12 @@ bool device_set_option_handler(eka2l1::common::arg_parser *parser, void *userdat
         }
     }
 
+    if (!found) {
+        // Without a message the parser just fails, and the emulator exits printing nothing at all.
+        *err = fmt::format("No device with firmware code {} is installed! Use --listdevices to see "
+                           "the installed ones.", device);
+    }
+
     return found;
 }
 
@@ -425,7 +431,13 @@ bool set_mmcid_option_handler(eka2l1::common::arg_parser *parser, void *userdata
         return true;
     }
 
+    // The MMC LDD reads the ID from the current session (`current_mmc_id`), which the stored
+    // setting only ever reaches through a config save. Without this the option is a no-op for
+    // the run it was given on, and card-protected N-Gage titles still see the default all-zero
+    // card ID.
     emu->conf.mmc_id = mmc_id;
+    emu->conf.current_mmc_id = mmc_id;
+
     return true;
 }
 
