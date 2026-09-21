@@ -17,7 +17,9 @@ import buildapp
 buildapp.build('gate4', 0xE0001004, 'Gate4', sys.argv[1] if len(sys.argv) > 1 else '.',
                imports=[(buildapp.EUSER, ['user_panic', 'userheap_setupthreadheap',
                                           'user_initprocess', 'user_alloc',
-                                          'chunk_createlocalcode', 'chunk_base']),
+                                          'chunk_createlocalcode', 'chunk_base',
+                                          'rlibrary_load', 'rlibrary_lookup']),
                         (buildapp.EFSRV, ['fs_connect', 'file_open',
                                           'file_size', 'file_read'])],
+               sources=('gate4.cpp', 'gate4_shim.cpp'),
                heap_max=0x800000)

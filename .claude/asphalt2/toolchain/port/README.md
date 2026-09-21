@@ -179,6 +179,37 @@ imports bound, its own instructions executing and calling out through our table.
 The panic categories say how far it got — `G4FS` file, `G4MEM` memory, `G4HDR`
 a header check, `G4IMP` an import reached, `G4RET` returned without calling.
 
+### The forwards
+
+`gen_shim.py` turns `shimtable.py`'s pairing into data gate 4 links against: a
+list of 9.x DLLs and one word per import saying which DLL and ordinal answers
+it. 351 of 462 are forwarded across 14 libraries.
+
+They are resolved at run time with `RLibrary::Lookup`, not through our own
+import section, for two reasons. An import section is checked when the image
+loads, so a single ordinal a device does not have would stop the program
+starting with no way to say which one; a lookup returning null can be counted.
+And the ordinals come from the Symbian source, which is a later 9.x than any
+one phone, so some will be wrong.
+
+With the forwards in place the game gets much further:
+
+```
+Thread Main panicked with category: G4RET and exit code: 350001
+```
+
+350 forwards resolved, 1 missing, and **`NewApplication` returned a live
+object** — the N-Gage binary ran its entry point, its static constructors and
+its application factory, allocating and constructing through S60v3's own euser,
+cone, eikcore and avkon.
+
+Forwarding is not correct in general, and this is a spike rather than a port.
+A 9.x framework class is not the same size as its 7.0s ancestor, so old code
+that allocates `sizeof` the old class and calls a forwarded 9.x constructor
+will corrupt the heap. It works here because the path taken is dominated by
+leaf functions -- allocation, descriptors, arithmetic -- whose layouts did not
+move. The classes the game derives from will each need real work.
+
 ### The startup nobody does for you
 
 This is where the first attempt died, with `pc` at zero and `lr` inside euser:

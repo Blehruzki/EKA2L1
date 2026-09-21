@@ -49,6 +49,8 @@ _start:
     IMPORT user_alloc,        646    @ User::Alloc(TInt)
     IMPORT chunk_createlocalcode, 905  @ RChunk::CreateLocalCode(TInt, TInt, TOwnerType)
     IMPORT chunk_base,       1702    @ RChunk::Base() const
+    IMPORT rlibrary_load,    1308    @ RLibrary::Load(TDesC16 const&, TDesC16 const&)
+    IMPORT rlibrary_lookup,  1838    @ RLibrary::Lookup(TInt) const
     @ efsrv
     IMPORT fs_connect,         68    @ RFs::Connect(TInt)
     IMPORT file_open,          93    @ RFile::Open(RFs&, TDesC16 const&, TUint)
