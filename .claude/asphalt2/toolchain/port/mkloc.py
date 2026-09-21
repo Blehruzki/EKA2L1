@@ -8,8 +8,19 @@ caption record follows it and expands to:
 import struct, sys
 import rscwrite as R
 
-SIGNATURE = struct.pack('<II', 4, 1)      # signature word, then offset|version
-CAPTION_RES_ID = 2
+# The second word of the signature resource is the file's NAME offset in its top
+# twenty bits, and its version in the rest. A .rss file's NAME statement sets
+# that offset, and every resource id in the file is the offset plus an index.
+#
+# It must not be zero: CCoeEnv::AddResourceFileL reads RResourceFile::Offset()
+# and panics CONE 15, ECoePanicResourceFileHasNullName, if it is. Nothing
+# checks that the offset matches any particular name, so any non-zero value
+# works as long as the ids we hand out agree with it -- which is why
+# CAPTION_RES_ID carries it.
+RES_OFFSET = 0x00010000
+RES_VERSION = 1
+SIGNATURE = struct.pack('<II', 4, RES_OFFSET | RES_VERSION)
+CAPTION_RES_ID = RES_OFFSET | 2
 
 
 def caption_runs(short_caption, long_caption, icon_path='', icon_count=0):

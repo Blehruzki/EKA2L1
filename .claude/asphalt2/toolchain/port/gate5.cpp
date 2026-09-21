@@ -17,6 +17,7 @@ typedef unsigned short u16;
 extern "C" {
 void user_panic(const void *category, int reason);
 void *user_alloc(int size);
+void *user_allocz(int size);
 int rlibrary_load(void *lib, const void *name, const void *path);
 void *rlibrary_lookup(const void *lib, int ordinal);
 void eikstart_runapplication(u32 type, u32 data, u32 cached, u32 spare);
@@ -38,7 +39,7 @@ enum { AVKON_VTABLE_CAknApplication = 3652 };
 //                       10,11 CApaApplication_Reserved1,2
 //                                                  17 CreateDocumentL()
 enum { VT_HEADER = 2, VT_SLOTS = 18,
-       SLOT_PRE_DOC_CONSTRUCT = 3, SLOT_APP_DLL_UID = 5, SLOT_CREATE_DOCUMENT = 17 };
+       SLOT_APP_DLL_UID = 5, SLOT_CREATE_DOCUMENT = 17 };
 
 enum { EPtrC = 1, KTypeShift = 28 };
 struct Ptrc16 { u32 lengthAndType; const u16 *text; };
@@ -67,12 +68,6 @@ static const u16 kAvkon[] = { 'a', 'v', 'k', 'o', 'n', '.', 'd', 'l', 'l' };
 extern "C" u32 gate5_app_dll_uid(void *)
 {
     return 0xE0001005;          // TUid is one word, returned in r0
-}
-
-// CEikApplication::PreDocConstructL loads the app's resource file. Skip it for
-// now to find out whether that is the only thing between us and the document.
-extern "C" void gate5_pre_doc_construct(void *)
-{
 }
 
 extern "C" void *gate5_create_document(void *)
@@ -106,15 +101,16 @@ extern "C" void *gate5_new_application()
     if (!vt) PANIC(CAT_LIB, -4);
     for (u32 i = 0; i < VT_HEADER + VT_SLOTS; i++)
         vt[i] = real[i];
-    vt[VT_HEADER + SLOT_PRE_DOC_CONSTRUCT] = (u32)&gate5_pre_doc_construct;
     vt[VT_HEADER + SLOT_APP_DLL_UID] = (u32)&gate5_app_dll_uid;
     vt[VT_HEADER + SLOT_CREATE_DOCUMENT] = (u32)&gate5_create_document;
 
-    // Generous and zeroed: sizeof(CAknApplication) is well under this, and the
-    // framework only ever touches its own members.
-    u32 *app = (u32 *)user_alloc(256);
+    // Deliberately generous. The headers in the Symbian source release are a
+    // later 9.x than any one phone, so a sizeof computed from them would not be
+    // the device's; 256 bytes was too few and the heap said so with USER 42,
+    // ETHeapBadCellAddress. Over-allocating a zeroed block cannot corrupt
+    // anything, and the framework only touches its own members.
+    u32 *app = (u32 *)user_allocz(2048);
     if (!app) PANIC(CAT_LIB, -5);
-    for (int i = 0; i < 64; i++) app[i] = 0;
     eikapplication_ctor(app);
     app[0] = (u32)(vt + VT_HEADER);   // the 9.x vptr points at the first slot
     return app;

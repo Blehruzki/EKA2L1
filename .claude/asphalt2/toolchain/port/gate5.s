@@ -33,6 +33,7 @@ _start:
     IMPORT userheap_setupthreadheap, 1360
     IMPORT user_initprocess,  585    @ User::InitProcess()
     IMPORT user_alloc,        646    @ User::Alloc(TInt)
+    IMPORT user_allocz,       652    @ User::AllocZ(TInt)
     IMPORT rlibrary_load,    1308    @ RLibrary::Load(TDesC16 const&, TDesC16 const&)
     IMPORT rlibrary_lookup,  1838    @ RLibrary::Lookup(TInt) const
     IMPORT eikstart_runapplication, 394  @ EikStart::RunApplication(TApaApplicationFactory)

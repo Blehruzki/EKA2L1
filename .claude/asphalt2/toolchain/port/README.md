@@ -376,13 +376,41 @@ Thread gate5 panicked with category: G5DOC and exit code: 1
 The framework took the object, called `AppDllUid` on it, and asked for a
 document -- so all three slot numbers are right.
 
-### What is still stubbed
+### The resource file needed a NAME
 
-Slot 3 is a no-op at the moment. With the real `PreDocConstructL` the framework
-panics `CONE 15`, `ECoePanicResourceFileHasNullName`: it loads the
-application's resource file, and the one this toolchain writes is a caption
-resource, not an application resource. That file is the next piece, and after
-it the document and the app UI, each built the same way as the application.
+With the real `PreDocConstructL` the framework first panicked `CONE 15`,
+`ECoePanicResourceFileHasNullName`. Reading `COEMAIN.CPP` rather than guessing:
+the panic is `RResourceFile::Offset()` returning zero. A `.rss` file's NAME
+statement sets an offset carried in the top twenty bits of the signature
+resource's second word, and every resource id in the file is that offset plus
+an index. The shipped game file has `0x083FA001` there; `mkloc.py` was writing
+`1`.
+
+Nothing checks that the offset matches any particular name, so any non-zero
+value works as long as the ids handed out agree with it -- which is why
+`CAPTION_RES_ID` now carries it. Both resource selftests still reproduce their
+shipped files byte for byte.
+
+Then `USER 42`, `ETHeapBadCellAddress`: the object was too small. The headers
+in the Symbian source release are a later 9.x than any one phone, so a `sizeof`
+computed from them would not be the device's -- and over-allocating a zeroed
+block cannot corrupt anything. 2048 bytes it is.
+
+With both fixed and nothing stubbed, the framework loads the resource file,
+fetches the caption and capability from apparc, and asks for a document:
+
+```
+Thread gate5 panicked with category: G5DOC and exit code: 1
+```
+
+### Still to do in step 1
+
+The document and the app UI, built the same way -- `CAknDocument` is avkon
+vtable 3632 with its constructor at 131, `CAknAppUi` is avkon 3820 with
+`CEikAppUi::CEikAppUi()` at eikcore 177. Their slot numbers need the same care
+the application's did: `CApaDocument` declares sixteen virtuals and `CCoeAppUi`
+and `CEikAppUi` bring mixins with them, so there are secondary vtables to get
+right rather than one list to count down.
 
 ## Not done yet
 
