@@ -45,8 +45,8 @@ struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
 
 // Every import gets a slot big enough for whichever thunk it needs.
 enum { SLOT = 32 };
-enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3 };
-enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1 };
+enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4 };
+enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3 };
 
 static void panic(const u16 *cat, int catLen, int reason)
 {
@@ -101,6 +101,17 @@ extern "C" void gate4_report(int code)
 extern "C" void gate4_pure_virtual()
 {
     PANIC(CAT_PURE, 0);
+}
+
+// Only the 16-bit Mem::Compare is still exported, so the 8-bit one lives here.
+// Symbian's contract: compare the common prefix, then the lengths.
+extern "C" int gate4_mem_compare(const u8 *a, int la, const u8 *b, int lb)
+{
+    const int n = (la < lb) ? la : lb;
+    for (int i = 0; i < n; i++)
+        if (a[i] != b[i])
+            return (int)a[i] - (int)b[i];
+    return la - lb;
 }
 
 extern "C" u32 gate4_main()
@@ -226,12 +237,23 @@ extern "C" u32 gate4_main()
             continue;
 
         if (kind == KIND_LOCAL) {
-            if ((entry & 0xFFFF) == LOCAL_NEGSF2) {
+            switch (entry & 0xFFFF) {
+            case LOCAL_NEGSF2:
                 s[0] = 0xE2200102;          // eor r0, r0, #0x80000000
                 s[1] = 0xE12FFF1E;          // bx  lr
-            } else {
+                break;
+            case LOCAL_NOOP:                // an empty body: _Reserved slots, CBase
+                s[0] = 0xE3A00000;          // mov r0, #0
+                s[1] = 0xE12FFF1E;          // bx  lr
+                break;
+            case LOCAL_MEM_COMPARE:
                 s[0] = 0xE51FF004;          // ldr pc, [pc, #-4]
+                s[1] = (u32)&gate4_mem_compare;
+                break;
+            default:
+                s[0] = 0xE51FF004;
                 s[1] = (u32)&gate4_pure_virtual;
+                break;
             }
             forwarded++;
             continue;
@@ -244,6 +266,10 @@ extern "C" u32 gate4_main()
         }
         if (kind == KIND_CALL) {
             iat[i] = (u32)fn;
+        } else if (kind == KIND_ARG3) {
+            s[0] = 0xE3A02000;              // mov r2, #0    -- the added argument
+            s[1] = 0xE51FF004;              // ldr pc, [pc, #-4]
+            s[2] = (u32)fn;
         } else {
             s[0] = 0xE92D4000;              // push {lr}
             s[1] = 0xE59FC008;              // ldr  r12, [pc, #8]

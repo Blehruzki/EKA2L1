@@ -57,6 +57,28 @@ def _type(s, i, seen):
         inner = _args(s[i + 1:j])
         ret, k = _type(s, j + 1, [])
         return '%s (%s)(%s)' % (ret, post.strip() or '*', ', '.join(inner)), k
+    if c == 't':                         # template: t<len><name><count><params>
+        m = re.match(r't(\d+)', s[i:])
+        if not m:
+            raise _Fail()
+        n = int(m.group(1)); j = i + m.end()
+        name = s[j:j + n]; j += n
+        mm = re.match(r'(\d)', s[j:])
+        if not mm:
+            raise _Fail()
+        count = int(mm.group(1)); j += mm.end()
+        params = []
+        for _ in range(count):
+            if s[j:j + 1] == 'Z':        # a type parameter
+                t, j = _type(s, j + 1, [])
+                params.append(t)
+            else:                        # a value parameter: its type then the literal
+                _t, j = _type(s, j, [])
+                mv = re.match(r'-?\d+', s[j:])
+                if not mv:
+                    raise _Fail()
+                params.append(mv.group()); j += mv.end()
+        return (pre + '%s<%s>' % (name, ', '.join(params)) + post).strip(), j
     if c == 'Q':                         # qualified name: Q<count><len><name>...
         m = re.match(r'Q(\d)', s[i:])
         if not m:
@@ -167,6 +189,17 @@ def _mangle_type(t, digits):
     for name, code in _CODES:
         if t == name:
             return suffix + ('C' if isconst else '') + code
+    if t.endswith('>') and '<' in t:     # TBuf<256> -> t4TBuf1i256
+        base, params = t[:t.index('<')], _split(t[t.index('<') + 1:-1])
+        body = ''
+        for prm in params:
+            prm = prm.strip()
+            if re.match(r'^-?\d+$', prm):
+                body += 'i' + prm       # a value parameter, always int here
+            else:
+                body += 'Z' + _mangle_type(prm, digits)
+        t = 't%s%d%s' % (('%d%s' % (len(base), base)) if digits else base, len(params), body)
+        return suffix + ('C' if isconst else '') + t
     return suffix + ('C' if isconst else '') + (('%d%s' % (len(t), t)) if digits else t)
 
 

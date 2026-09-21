@@ -218,10 +218,10 @@ which is exactly what they want.
 With the forwards in place the game gets much further:
 
 ```
-Thread Main panicked with category: G4RET and exit code: 370001
+Thread Main panicked with category: G4RET and exit code: 389001
 ```
 
-370 forwards resolved, 1 missing, and **`NewApplication` returned a live
+389 forwards resolved, 1 missing, and **`NewApplication` returned a live
 object** — the same numbers on the emulator's 9.4 ROM and on a real 9.2 N95.
 The one that will not resolve is import 146, `CEikApplication::OpenAppInfoFileLC`,
 which 9.x removed along with AIF files when registration moved to the resource
@@ -236,6 +236,29 @@ that allocates `sizeof` the old class and calls a forwarded 9.x constructor
 will corrupt the heap. It works here because the path taken is dominated by
 leaf functions -- allocation, descriptors, arithmetic -- whose layouts did not
 move. The classes the game derives from will each need real work.
+
+### Closing the near-misses
+
+390 of 462 are answered now. Three things were being missed for reasons that
+were fixable rather than fundamental:
+
+- **Templates.** GCC 2.x mangles `TBuf<256>` as `t4TBuf1i256`, which neither
+  end of the matcher understood. Both directions handle it now, and the four
+  affected names mangle back byte-exactly.
+- **`_Reserved` members.** Symbian's vtable padding, whose bodies are empty and
+  which 9.x stopped exporting. An empty body is the whole shim, so these get a
+  generated `mov r0,#0 / bx lr`.
+- **Six that moved rather than vanished**, each checked against the 9.x def
+  rather than assumed: `RThread::SetExceptionHandler` became
+  `User::SetExceptionHandler`; `RFsBase::Close` became `RHandleBase::Close`;
+  `User::ReAllocL` gained a mode argument, so it gets a thunk that passes zero;
+  `CBase`'s constructor and destructor are empty and no longer exported; and
+  only the 16-bit `Mem::Compare` survives, so the 8-bit one is written here.
+
+What remains unanswered is genuine work, not missing information: `CServer`,
+`CSession`, `TTrap` and `TInt64` really are gone from 9.x, 31 imports belong to
+Nokia's N-Gage-only libraries, and ten sit past the end of what EKA2L1's EPOC6
+database lists for their library, so nothing here can name them.
 
 ### The startup nobody does for you
 

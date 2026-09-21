@@ -25,7 +25,7 @@ COMPSUPP = KERNEL + '/kernel/eka/compsupp/eabi'
 EPOC6 = '/home/user/EKA2L1/src/emu/bridge/include/bridge/epoc6.def'
 
 # Each table entry is  kind << 24 | dll index << 16 | ordinal.
-KIND_NONE, KIND_CALL, KIND_REM, KIND_LOCAL = 0, 1, 2, 3
+KIND_NONE, KIND_CALL, KIND_REM, KIND_LOCAL, KIND_ARG3 = 0, 1, 2, 3, 4
 
 # GCC98r2 put its compiler helpers in euser; EABI puts them in the runtime
 # libraries the SDK links against, under their AEABI names. Same routines,
@@ -59,7 +59,27 @@ HELPERS = {
 }
 
 # No EABI routine matches these, so gate 4 generates them itself.
-LOCAL = {'__negsf2': 0, '__pure_virtual': 1}
+LOCAL_NEGSF2, LOCAL_PURE_VIRTUAL, LOCAL_NOOP, LOCAL_MEM_COMPARE = 0, 1, 2, 3
+LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL}
+
+# Functions 9.x kept but moved, renamed or gave another argument. Each was
+# checked against the 9.x def rather than assumed; the rest of what does not
+# match is genuinely gone (CServer, CSession, TTrap, TInt64) and needs writing.
+MANUAL = {
+    # The exception handler moved from RThread to User.
+    'RThread::SetExceptionHandler(void (*)(TExcType), unsigned long)':
+        ('euser', 'User::SetExceptionHandler(void (*)(TExcType), unsigned long)', KIND_CALL),
+    # RFsBase went away; closing a session handle is RHandleBase::Close.
+    'RFsBase::Close()': ('euser', 'RHandleBase::Close()', KIND_CALL),
+    # 9.x ReAllocL takes a mode as a third argument. Zero is the old behaviour.
+    'User1::ReAlloc1L(void *, int)': ('euser', 'User::ReAllocL(void*, int, int)', KIND_ARG3),
+    # CBase's constructor and destructor are empty and 9.x stopped exporting them.
+    'CBase1::CBase1(void)': ('local', LOCAL_NOOP, KIND_LOCAL),
+    'CBase1::~CBase1(void)': ('local', LOCAL_NOOP, KIND_LOCAL),
+    # Only the 16-bit Mem::Compare survives as an export, so do the 8-bit one here.
+    'Mem::Compare(unsigned char const *, int, unsigned char const *, int)':
+        ('local', LOCAL_MEM_COMPARE, KIND_LOCAL),
+}
 
 
 def find_defs():
@@ -85,6 +105,8 @@ def build(image):
     rows = shimtable.match(imports, {'euser': KERNEL + '/kernel/eka/bmarm/7.0-euseru.def'},
                            new, epoc6=EPOC6)
 
+    new_index = {lib: shimtable.index(symdef.load(path)) for lib, path in new.items()}
+
     helper_ords = {}
     for lib in ('dfpaeabi', 'drtaeabi', 'scppnwdl'):
         table = symdef.load('%s/%su.def' % (COMPSUPP, lib))
@@ -95,6 +117,17 @@ def build(image):
     for i, lib, _o, sig, ordinal, _src in rows:
         if ordinal:
             out.append((i, lib, ordinal, sig, KIND_CALL))
+        elif sig and 'Reserved' in sig:
+            # Vtable padding. Symbian's _Reserved members have empty bodies and
+            # exist only to hold a slot, so an empty body is the whole shim.
+            out.append((i, None, LOCAL_NOOP, sig, KIND_LOCAL))
+        elif sig in MANUAL:
+            target, what, kind = MANUAL[sig]
+            if target == 'local':
+                out.append((i, None, what, sig, KIND_LOCAL))
+            else:
+                o = new_index.get(target, {}).get(shimtable.norm(what))
+                out.append((i, target, o, sig, kind if o else KIND_NONE))
         elif sig in HELPERS:
             hlib, sym, kind = HELPERS[sig]
             o = helper_ords[hlib].get(sym)
