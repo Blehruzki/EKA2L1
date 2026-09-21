@@ -199,7 +199,11 @@ Thread Main panicked with category: G4RET and exit code: 350001
 ```
 
 350 forwards resolved, 1 missing, and **`NewApplication` returned a live
-object** — the N-Gage binary ran its entry point, its static constructors and
+object** — the same numbers on the emulator's 9.4 ROM and on a real 9.2 N95.
+The one that will not resolve is import 146, `CEikApplication::OpenAppInfoFileLC`,
+which 9.x removed along with AIF files when registration moved to the resource
+format `mkreg.py` writes. It is gone rather than renumbered, so it needs a
+hand-written shim if the game ever calls it — the N-Gage binary ran its entry point, its static constructors and
 its application factory, allocating and constructing through S60v3's own euser,
 cone, eikcore and avkon.
 
