@@ -321,6 +321,32 @@ The kernel leaves `SStdEpocThreadCreateInfo` at the initial stack pointer and
 passes the startup reason in r4, which is what a real entry point forwards. Our
 `_start` now does the same. Without it a process has no heap at all.
 
+## Step 1 — a real GUI application
+
+Nothing past `NewApplication` runs without a `CEikonEnv`, so the program has to
+stop being a bare exe and become an application the UI framework starts.
+
+A GUI app's `E32Main` hands a factory to `EikStart::RunApplication` (eikcore
+ordinal 394), which brings the framework up and then asks the factory for the
+application object. `TApaApplicationFactory` is four words -- a type tag, the
+payload, a cached pointer and a spare -- and is trivially copyable, so AAPCS
+passes it in r0..r3 rather than by reference, with type 0 meaning the payload is
+a function pointer. That register layout is the one thing here no def file can
+confirm, which is why `build_gate5.py` checks it on its own before anything is
+built on top:
+
+```
+Thread gate5 panicked with category: G5NEW and exit code: 1
+```
+
+The framework started and called our factory. The thread is named `gate5`
+rather than `Main`, which is the framework having taken over process startup.
+
+What remains of step 1 is the rest of the chain -- an application object, a
+document and an app UI, each a 9.x-layout class whose vtable clang lays out and
+whose base is constructed by the exported constructor, as the game's own
+`NewApplication` does.
+
 ## Not done yet
 
 - **The shim itself.** 462 stubs currently all panic. Each has to become a real

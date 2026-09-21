@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""Step 1: a real S60v3 GUI application.
+
+    G5NEW 1   the framework came up and asked our factory for the application
+    G5RET 0   RunApplication returned, which it should not
+    BADA....  the thread heap could not be created
+"""
+import sys
+import buildapp
+
+EIKCORE = 'eikcore{000a0000}[10004892].dll'
+
+buildapp.build('gate5', 0xE0001005, 'Gate5', sys.argv[1] if len(sys.argv) > 1 else '.',
+               imports=[(buildapp.EUSER, ['user_panic', 'userheap_setupthreadheap',
+                                          'user_initprocess']),
+                        (EIKCORE, ['eikstart_runapplication'])],
+               heap_max=0x400000)
