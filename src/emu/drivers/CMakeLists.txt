@@ -120,6 +120,8 @@ add_library(drivers
         src/video/video.cpp
         ${DRIVERS_AUDIOUNIT_IOS_SRC}
         ${DRIVERS_CUBEB_SRC}
+        include/drivers/audio/backend/wavcap/audio_wavcap.h
+        src/audio/backend/wavcap/audio_wavcap.cpp
         ${DRIVERS_FFMPEG_SRC}
         ${DRIVERS_HWRM_IOS_SRC}
         ${DRIVERS_OGL_SRC}

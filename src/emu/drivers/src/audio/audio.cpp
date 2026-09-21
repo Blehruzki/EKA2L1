@@ -27,6 +27,8 @@
 #include <drivers/audio/backend/cubeb/audio_cubeb.h>
 #endif
 
+#include <drivers/audio/backend/wavcap/audio_wavcap.h>
+
 #if EKA2L1_PLATFORM(WIN32)
 #include <drivers/audio/backend/wmf/wmf_loader.h>
 #endif
@@ -35,6 +37,7 @@
 #include <common/fileutils.h>
 #include <common/path.h>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace eka2l1::drivers {
@@ -142,6 +145,15 @@ namespace eka2l1::drivers {
 
     audio_driver_instance make_audio_driver(const audio_driver_backend backend, const std::uint32_t initial_master_vol,
         const player_type preferred_midi_backend) {
+        // A headless run has no device to open, so let one be asked for in files
+        // instead: everything each stream produces lands in its own .wav.
+        const char *capture_dir = std::getenv("EKA2L1_AUDIO_CAPTURE_DIR");
+
+        if (capture_dir && *capture_dir) {
+            return std::make_unique<wavcap_audio_driver>(capture_dir, initial_master_vol,
+                preferred_midi_backend);
+        }
+
         switch (backend) {
         case audio_driver_backend::cubeb: {
 #if EKA2L1_PLATFORM(IOS)
