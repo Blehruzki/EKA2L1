@@ -24,6 +24,9 @@ void *rlibrary_lookup(const void *lib, int ordinal);
 void eikstart_runapplication(u32 type, u32 data, u32 cached, u32 spare);
 void eikapplication_ctor(void *self);
 void eikappui_ctor(void *self);
+void eikappui_baseconstructl(void *self, int flags);
+void *coeenv_static(void);
+void coeappui_ctor(void *self);
 void akndocument_ctor(void *self, void *app);
 }
 
@@ -102,6 +105,29 @@ extern "C" void gate5_ui_slot(int index)
     PANIC(CAT_UI, index);
 }
 
+// Measured the same way as the document's: slot 16 is the first virtual the
+// framework calls on the app UI, which is ConstructL.
+enum { SLOT_UI_CONSTRUCT = 16 };
+
+// EIKAPPUI.H: ENoAppResourceFile skips reading the application info resource,
+// and BaseConstructL then builds resource-independent screen furniture
+// instead. An app without its own resource file is a supported case, so it is
+// the right thing to say rather than something to work around.
+enum { ENoAppResourceFile = 0x01 };
+
+extern "C" void gate5_ui_construct(void *self)
+{
+    eikappui_baseconstructl(self, ENoAppResourceFile);
+    PANIC(CAT_UI, 0);           // it came back: the UI framework is up
+}
+
+// Slot 16 is known now, so this only has to let the call through: the wrapper
+// records before it chains, and a recorder that panics never reaches the slot
+// it was meant to identify.
+extern "C" void gate5_record_ui(int, u32 *)
+{
+}
+
 extern "C" void gate5_doc_slot(int index)
 {
     PANIC(CAT_DOC, index);
@@ -178,7 +204,8 @@ extern "C" void gate5_record(int index, u32 *state)
     }
 }
 
-static u32 *chaining_vtable(const u32 *real, int slots, int patchSlot, void *patch)
+static u32 *chaining_vtable(const u32 *real, int slots, int patchSlot, void *patch,
+                            void *recorder)
 {
     u8 *code = (u8 *)user_allocz(slots * WRAP);
     u32 *vt = (u32 *)user_allocz((VT_HEADER + slots) * 4);
@@ -198,7 +225,7 @@ static u32 *chaining_vtable(const u32 *real, int slots, int patchSlot, void *pat
         w[7] = 0xE59FF00C;              // ldr  pc, [pc, #12]
         w[9] = (u32)i;
         w[10] = (u32)state;
-        w[11] = (u32)&gate5_record;
+        w[11] = (u32)recorder;
         w[12] = (i == patchSlot) ? (u32)patch : real[VT_HEADER + i];
         vt[VT_HEADER + i] = (u32)w;
     }
@@ -210,6 +237,12 @@ extern "C" void *gate5_create_app_ui(void *)
 {
     u32 *ui = (u32 *)user_allocz(2048);
     if (!ui) PANIC(CAT_LIB, -12);
+
+    // CCoeEnv::Static() is non-null here, yet iCoeEnv came out null after
+    // CEikAppUi's constructor -- so that constructor does not chain to
+    // CCoeAppUi's, which is what actually assigns it. A derived class's
+    // constructor would call the base's, so do that: cone first, then eikcore.
+    coeappui_ctor(ui);
     eikappui_ctor(ui);
 
     // Constructor and vtable have to come from the same class. CAknAppUi's
@@ -218,14 +251,17 @@ extern "C" void *gate5_create_app_ui(void *)
     // laid out that way -- and CCoeAppUi and CEikAppUi bring mixins, so the
     // secondary vptrs the constructor sets would no longer match the primary.
     // CEikAppUi is a perfectly good app UI on its own.
-    ui[0] = (u32)(EIKCORE_EXPORT(EIKCORE_VTABLE_CEikAppUi) + VT_HEADER);
+    ui[0] = (u32)(chaining_vtable(EIKCORE_EXPORT(EIKCORE_VTABLE_CEikAppUi), UI_SLOTS,
+                                  SLOT_UI_CONSTRUCT, (void *)&gate5_ui_construct,
+                                  (void *)&gate5_record_ui) + VT_HEADER);
     return ui;
 }
 
 extern "C" void *gate5_create_document(void *app)
 {
     u32 *vt = chaining_vtable(AVKON_EXPORT(AVKON_VTABLE_CAknDocument), DOC_SLOTS,
-                              SLOT_CREATE_APP_UI, (void *)&gate5_create_app_ui);
+                              SLOT_CREATE_APP_UI, (void *)&gate5_create_app_ui,
+                              (void *)&gate5_record);
 
     u32 *doc = (u32 *)user_allocz(2048);
     if (!doc) PANIC(CAT_LIB, -14);

@@ -470,11 +470,37 @@ Thread Gate5 panicked with category: CONE and exit code: 14
 are all built and `ConstructL` is running; it is asking for a resource by id
 and the file this toolchain writes does not contain it.
 
-### Still to do in step 1
+### The app UI, and why the resource file was the wrong task
 
-An application resource file with what Uikon and Avkon read out of it. That is
-more of the same format work the other writers needed, and the same
-byte-for-byte check applies.
+`CONE 14` looked like a call for an application resource file. It is not.
+`CEikAppUi::BaseConstructL` (eikcore 150) takes flags, and `ENoAppResourceFile`
+makes it skip the application info resource and build resource-independent
+screen furniture instead. An application without its own resource file is a
+supported case, so saying so is better than writing a file to satisfy a read
+that does not have to happen.
+
+The wrappers found the app UI's `ConstructL` at slot 16, the same way they
+found the document's `CreateAppUiL` at 19 -- with one correction worth keeping:
+a recorder that panics never reaches the slot it was meant to identify, since
+the wrapper records *before* it chains. Once a slot is known its recorder has
+to become a no-op.
+
+### Where this stops
+
+With slot 16 calling `BaseConstructL(ENoAppResourceFile)`, the app UI faults
+reading address 8. `iEikonEnv` is a macro for `iCoeEnv` (EIKDEF.H), which
+`BaseConstructL` dereferences on its first line, so `iCoeEnv` is null.
+
+It is not that there is no environment: calling `CCoeEnv::Static()` (cone 182)
+at that moment returns non-null. `CCoeAppUi::CCoeAppUi()` is what assigns
+`iCoeEnv`, and neither exported `CEikAppUi` constructor appears to chain to it
+-- calling cone's constructor explicitly first does not fix it either, which
+means the assumption that these objects can be assembled from exported
+constructors has run out somewhere that still needs finding.
+
+That is the open question for the app UI. The application and the document do
+work this way, so whatever is different about `CEikAppUi` is specific and
+findable, not a wall.
 
 ## Not done yet
 

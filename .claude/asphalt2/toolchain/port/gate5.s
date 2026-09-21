@@ -39,4 +39,7 @@ _start:
     IMPORT eikstart_runapplication, 394  @ EikStart::RunApplication(TApaApplicationFactory)
     IMPORT eikapplication_ctor,  64  @ CEikApplication::CEikApplication()
     IMPORT eikappui_ctor,       177  @ CEikAppUi::CEikAppUi()
+    IMPORT eikappui_baseconstructl, 150  @ CEikAppUi::BaseConstructL(TInt)
+    IMPORT coeenv_static,       182  @ CCoeEnv::Static()   [cone]
+    IMPORT coeappui_ctor,       245  @ CCoeAppUi::CCoeAppUi()  [cone]
     IMPORT akndocument_ctor,    131  @ CAknDocument::CAknDocument(CEikApplication&)
