@@ -1,6 +1,6 @@
 import struct, zlib, hashlib, os, sisrw, barfile, rleraw, compose7, fireboost, sishash, sisadd
 SRC='z_c5e5a984-Asphalt23D_nokiaN76_N93_ML_IGP_v1_0_0_Signed_N73_1/Asphalt23D_nokiaN76_N93_ML_IGP_v1_0_0_Signed_N73.sisx'
-DST='Asphalt23D_N73_newhud_v18.sisx'
+DST='Asphalt23D_N73_newhud_v19.sisx'
 EXE_IDX, LB_IDX, MID_IDX = 0, 5, 6
 WAV='../ngage/wav/'
 TARGET=u'!:\\private\\20008629\\A2\\bgm_%s.wav'

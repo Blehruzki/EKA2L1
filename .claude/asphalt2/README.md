@@ -332,12 +332,27 @@ next to `light.bar`. `bgm_0` is the menu track; the countdown cycles 1..a.
 | 2 | header `0x44` | `bss_size` 0 -> 8. The image declares none; this is where the game pointer, the one-shot track index and the race counter live, at `0x400008` |
 | 3 | end of `.text` | the section grows by ~50 halfwords for two caves. Relocations and import entries are offsets into the code and the space lands at its end, so nothing shifts but the four file offsets in the header |
 | 4 | `0x1087a` | four instructions in the start routine give way to `bl cave1` |
-| 5 | `0x1a7fe` | the `bl` that follows `s_go!` in the countdown becomes `bl cave2` |
+| 5 | `0x1176c` | the call just past race entry's music teardown becomes `bl cave2` |
 
 `cave1` saves the game pointer (its `r4` is that pointer plus `0xd6c0`), reads the
 track index, writes its character into the widened filename and resets the index
-to 0, then re-issues the four instructions it displaced. `cave2` makes the call
-it replaced, bumps the counter, sets the index and calls the start routine.
+to 0, then re-issues the four instructions it displaced -- with the initial volume
+scale changed from 0 to 0xff. `cave2` makes the call it replaced, bumps the
+counter, sets the index and calls the start routine.
+
+**The stock scale is 0 and the menu flow raises it afterwards.** Nothing raises it
+for a race, so a track opens, plays and is silent -- and where the device's maximum
+volume is small, `(0 * max) >> 8` is exactly zero. The scale is read by the
+open-complete callback, so it has to be right before the player exists; setting it
+after the call is too late.
+
+**Two hooks chosen by reading the disassembly were both dead code.** The `s_go!`
+countdown branch at `0x1a7e2` looks exactly like race start and never executes;
+neither does the state-4 transition at `0x3112e` that stops the music. What found
+the real site was `probe_stop.py`: make the stop wrapper fault for every caller
+except the start routine's own two, and read the caller out of the register dump.
+It named `0x11756`, the teardown in race entry's state machine, and the hook goes
+on the call right after it.
 
 **The character is positioned from the end of the string.** What the routine
 widens is a full path, not the bare name, so a fixed offset of 4 lands in
@@ -350,12 +365,19 @@ Nothing hooks the finish line: the start routine already stops whatever is
 playing, and returning to the menu starts its own track. The menu's
 "PLAYING: MOBY - LIFT ME UP" caption is a fixed string and now lies.
 
-**Proving the hook fires, with no audio device.** EKA2L1 cannot decode the ADPCM,
-so make that the signal: install PCM as `bgm_0` and leave `bgm_1` as ADPCM. A
-clean log up to the countdown and `Unable to get stream codec!` exactly at it
-proves the countdown hook ran, chose index 1, and that the digit patch rewrote
-the name. `Error while opening AVFormat Input!` instead would mean the name came
-out wrong.
+**Measure the audio, do not infer it.** `EKA2L1_AUDIO_CAPTURE_DIR=<dir>` makes the
+emulator write one .wav per stream instead of opening a device (see the driver of
+the same name). A run then answers directly: how many streams there were, which
+one is music and which the engine, how loud each is, and -- by correlating a
+window of the capture against the source track -- exactly which file is playing.
+A correlation of 1.000 against `bgm_1` at the expected offset is what finally
+confirmed race music; every earlier conclusion drawn from log lines alone had
+been wrong.
+
+Note the emulator's bundled ffmpeg has no `adpcm_ima_wav` decoder (the symbol is
+absent from `libavcodec.a`, though the name string is there), so a capture run
+needs PCM copies of whichever tracks it will play. That gap is the emulator's,
+not the device's.
 
 ---
 

@@ -45,7 +45,8 @@ python3 build_package.py
 | `imawav.py` | Writes 16-bit PCM back out as an IMA ADPCM `.wav` (tag 0x11). Keeps a track at roughly the N-Gage size instead of the 4x plain PCM costs. |
 | `audiopatch.py` | The race-music patch: renames the filename template, declares BSS the image never had, grows the text section for two code caves, and hooks the start routine and the `s_go!` countdown branch. |
 | `sisadd.py` | Adds *new* files to a package — a SISFileDescription in the controller's install block and a SISFileData beside the rest. Refuses to edit a controller that does not re-serialise byte-identically first. |
-| `build_v18.py` | `build_package.py` plus the soundtrack: the intro slot becomes `bgm_0`, twelve more tracks are appended, all hashes and lengths follow. |
+| `build_v19.py` | `build_package.py` plus the soundtrack: the intro slot becomes `bgm_0`, twelve more tracks are appended, all hashes and lengths follow. |
+| `probe_stop.py` | Diagnostic: makes the stop wrapper fault at a magic address for any caller but the start routine's own two, so the emulator's register dump names the site. This is what found race entry after two hooks chosen by reading had turned out to be dead code. |
 | `verify_pkg.py` | Re-checks a built package the way a device does: every install description's SHA-1 and both lengths against the data unit actually shipped. Run it on `v16` too — a known-good control. |
 
 ## Guard rails worth keeping

@@ -15,8 +15,11 @@ the race countdown calls the same routine.
     end of the string, because what gets widened is the full path and not the
     bare name -- and resets the index so every other caller (the menus) gets
     bgm_0 back.
-  * Cave 2 hangs off the `s_go!` countdown branch: it bumps the counter, sets
-    the index, and calls the start routine.
+  * Cave 2 hangs off race entry, just past the point where the menu track is torn
+    down: it makes the call it replaced, bumps the counter, sets the index, and
+    calls the start routine.
+  * The initial volume scale the call site passes goes from 0 to full, so a track
+    is audible without the menu flow that would otherwise raise it.
 
 Nothing stops the music at the finish line: the start routine already stops
 whatever is playing, and the menu starts its own track on the way back.
@@ -35,16 +38,30 @@ BSS_SIZE = 8                       # +0 game pointer, +4 track index, +5 race co
 HOLDER_OFF = 0xd6c0                # start routine's own base -> music holder offset
 
 START_MUSIC = 0x10812
-SFX_SETVOL = 0x276ac               # the call the countdown makes right after `s_go!`
+RACE_ENTER_CALL = 0x10e5c          # whatever the race-entry branch does after it
 
 PATCH_IN_START = 0x1087a           # movs r2,#1 / ldr r0,[r4,#0x18] / movs r3,#0 / add r1,sp,#4
-GO_CALL = 0x1a7fe                  # bl SFX_SETVOL in the `s_go!` branch
+
+# Race entry, found by probe rather than by reading: a diagnostic build made the
+# stop wrapper fault and print the caller, and it was the teardown at 0x11756 --
+# not the `s_go!` countdown branch, which never runs at all. The hook goes on the
+# call right after that teardown, so the player it would otherwise destroy is the
+# old one and the track we start is the new one.
+RACE_ENTER = 0x1176c
 
 RACE_TRACKS = 10                   # bgm_1 .. bgm_a; bgm_0 is the menu track
 
+# The stock call starts the player at scale 0 and the menu flow raises it once the
+# menu is up. Nothing raises it for a race, so the track opens, plays, and is
+# inaudible -- and on a device whose maximum volume is small, (0 * max) >> 8 is
+# exactly zero. The scale reaches the player through the open-complete callback,
+# which reads it from the object, so it has to be right before the player exists:
+# too late to set it after the call.
+INITIAL_VOLUME = 0xff
+
 STOCK = {
     PATCH_IN_START: '0122a069002301a9',
-    GO_CALL: '0cf055ff',
+    RACE_ENTER: 'fff776fb',
 }
 
 
@@ -100,9 +117,9 @@ def build_caves(cave_va):
     ins.append(subs_i(1, DIGIT_FROM_END))
     ins.append(lsls(1, 1, 1))
     ins.append(strh_rr(3, 6, 1))
-    ins.append(movs(2, 1))           # the four instructions the call site gave up
-    ins.append(ldr_r(0, 4, 0x18))
-    ins.append(movs(3, 0))
+    ins.append(movs(2, 1))           # the four instructions the call site gave up,
+    ins.append(ldr_r(0, 4, 0x18))    # except for the initial volume scale
+    ins.append(movs(3, INITIAL_VOLUME))
     ins.append(add_sp(1, 4))
     ins.append(bx_lr())
     c1_words = [BSS_BASE, HOLDER_OFF]
@@ -110,7 +127,7 @@ def build_caves(cave_va):
     # --- cave 2: hangs off the countdown's `s_go!` branch ---
     ins2 = []
     ins2.append(push([14]))
-    ins2.append(('bl', SFX_SETVOL))
+    ins2.append(('bl', RACE_ENTER_CALL))
     ins2.append(('ldr_pc', 2))       # r2 = BSS_BASE
     ins2.append(ldrb_r(1, 2, 5))     # race counter
     ins2.append(adds_i(1, 1))
@@ -183,7 +200,7 @@ def patch(img):
     img[fo(cave_va):fo(cave_va) + len(caves)] = caves
 
     img[fo(PATCH_IN_START):fo(PATCH_IN_START) + 8] = bl(PATCH_IN_START, c1) + struct.pack('<HH', nop(), nop())
-    img[fo(GO_CALL):fo(GO_CALL) + 4] = bl(GO_CALL, c2)
+    img[fo(RACE_ENTER):fo(RACE_ENTER) + 4] = bl(RACE_ENTER, c2)
 
     out = e32crc.fix(bytes(img))
     assert e32crc.stored(out) == e32crc.compute(out)
