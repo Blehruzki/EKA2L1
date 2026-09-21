@@ -485,22 +485,36 @@ a recorder that panics never reaches the slot it was meant to identify, since
 the wrapper records *before* it chains. Once a slot is known its recorder has
 to become a no-op.
 
-### Where this stops
+### Finding a slot exactly, rather than by when it is called
 
-With slot 16 calling `BaseConstructL(ENoAppResourceFile)`, the app UI faults
-reading address 8. `iEikonEnv` is a macro for `iCoeEnv` (EIKDEF.H), which
-`BaseConstructL` dereferences on its first line, so `iCoeEnv` is null.
+`BaseConstructL(ENoAppResourceFile)` faulted reading address 8, and the two
+obvious explanations were both wrong. `iEikonEnv` is a macro for `iCoeEnv`
+(EIKDEF.H), so a null there would explain it -- but scanning the object for the
+value `CCoeEnv::Static()` returns finds it at offset 4, set. And slot 16 might
+have been misidentified, as the document's first-called slot was -- but
+`CEikAppUi::ConstructL` is **exported**, eikcore 140, so looking that address
+up and finding it in the vtable settles it: slot 16.
 
-It is not that there is no environment: calling `CCoeEnv::Static()` (cone 182)
-at that moment returns non-null. `CCoeAppUi::CCoeAppUi()` is what assigns
-`iCoeEnv`, and neither exported `CEikAppUi` constructor appears to chain to it
--- calling cone's constructor explicitly first does not fix it either, which
-means the assumption that these objects can be assembled from exported
-constructors has run out somewhere that still needs finding.
+Looking up an exported function and finding its address in the table is worth
+preferring over watching which slot gets called first. It is exact, it needs no
+run, and it does not confuse "the first virtual the framework happens to call"
+with "the virtual we mean". It only works where the function is exported --
+`CreateAppUiL` is pure, so the document still needed the wrappers.
 
-That is the open question for the app UI. The application and the document do
-work this way, so whatever is different about `CEikAppUi` is specific and
-findable, not a wall.
+With both confirmed, the fault was really inside `BaseConstructL`, in
+`CreateResourceIndependentFurnitureL`: a status pane needs more of an
+environment than an app this bare has. `ENoScreenFurniture` alongside
+`ENoAppResourceFile` is the documented way to say so, and then it returns.
+
+### Step 1 is done
+
+Application, document and app UI are all built from exported constructors and
+vtables, and the UI framework accepts them and runs `ConstructL` to completion.
+
+Letting `ConstructL` return rather than stopping there faults shortly
+afterwards, which is fair: an app UI with no control and no view has nothing
+for the framework to run. Giving it one belongs with step 2, where the old
+binary's own classes start supplying the content.
 
 ## Not done yet
 

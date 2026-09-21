@@ -34,7 +34,8 @@ void akndocument_ctor(void *self, void *app);
 enum { AVKON_VTABLE_CAknApplication = 3652,
        AVKON_VTABLE_CAknDocument = 3632,
        AVKON_VTABLE_CAknAppUi = 3820,
-       EIKCORE_VTABLE_CEikAppUi = 387 };
+       EIKCORE_VTABLE_CEikAppUi = 387,
+       EIKCORE_CEikAppUi_ConstructL = 140 };
 
 // The vtable of a CAknApplication, worked out from the declaration order in
 // apaapp.h, EIKAPP.H and aknApp.h. Base virtuals come first, and a destructor
@@ -113,12 +114,22 @@ enum { SLOT_UI_CONSTRUCT = 16 };
 // and BaseConstructL then builds resource-independent screen furniture
 // instead. An app without its own resource file is a supported case, so it is
 // the right thing to say rather than something to work around.
-enum { ENoAppResourceFile = 0x01 };
+enum { ENoAppResourceFile = 0x01, ENoScreenFurniture = 0x04 };
 
 extern "C" void gate5_ui_construct(void *self)
 {
-    eikappui_baseconstructl(self, ENoAppResourceFile);
-    PANIC(CAT_UI, 0);           // it came back: the UI framework is up
+    // ENoScreenFurniture as well as ENoAppResourceFile: with only the former,
+    // BaseConstructL goes on to CreateResourceIndependentFurnitureL and faults.
+    // A status pane needs more of an environment than an app this bare has, and
+    // both flags are the documented way to say so.
+    eikappui_baseconstructl(self, ENoAppResourceFile | ENoScreenFurniture);
+
+    // Reaching here is the milestone: application, document and app UI are all
+    // built and the UI framework accepted them. Letting ConstructL return
+    // instead faults shortly afterwards -- an app UI with no control and no
+    // view has nothing for the framework to run -- and that is the next piece
+    // of work rather than part of this one.
+    PANIC(CAT_UI, 0);
 }
 
 // Slot 16 is known now, so this only has to let the call through: the wrapper
@@ -245,12 +256,6 @@ extern "C" void *gate5_create_app_ui(void *)
     coeappui_ctor(ui);
     eikappui_ctor(ui);
 
-    // Constructor and vtable have to come from the same class. CAknAppUi's
-    // constructor is not exported, so building with CEikAppUi's and then
-    // installing CAknAppUi's vtable would describe an object that was never
-    // laid out that way -- and CCoeAppUi and CEikAppUi bring mixins, so the
-    // secondary vptrs the constructor sets would no longer match the primary.
-    // CEikAppUi is a perfectly good app UI on its own.
     ui[0] = (u32)(chaining_vtable(EIKCORE_EXPORT(EIKCORE_VTABLE_CEikAppUi), UI_SLOTS,
                                   SLOT_UI_CONSTRUCT, (void *)&gate5_ui_construct,
                                   (void *)&gate5_record_ui) + VT_HEADER);
