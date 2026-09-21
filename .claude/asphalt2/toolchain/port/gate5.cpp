@@ -164,6 +164,31 @@ static const u32 *dll_export(const u16 *dll, int dllLen, int ordinal)
 #define AVKON_EXPORT(o)   dll_export(kAvkon, sizeof kAvkon / sizeof kAvkon[0], (o))
 #define EIKCORE_EXPORT(o) dll_export(kEikcore, sizeof kEikcore / sizeof kEikcore[0], (o))
 
+// An ordinal that means one thing on the phone this was developed against can
+// mean another on an older one -- these came from the Symbian source release,
+// which is a later 9.x than an N95 runs -- and a lookup that returns the wrong
+// symbol returns something rather than nothing. Used as a vtable, that is an
+// access violation with nothing to say about which lookup was wrong. So check
+// the shape before trusting it: a primary vtable begins with an offset-to-top
+// of zero, and its slots are code addresses.
+//
+// Reports as G5LIB, tag * 10 + reason: 1 absent, 2 bad offset-to-top, 3 slots
+// that are not code. Tags: 1 CAknApplication, 2 CAknDocument, 3 CEikAppUi.
+static const u32 *checked_vtable(const u16 *dll, int dllLen, int ordinal, int tag)
+{
+    const u32 *vt = dll_export(dll, dllLen, ordinal);
+    if (!vt) PANIC(CAT_LIB, tag * 10 + 1);
+    if (vt[0] != 0) PANIC(CAT_LIB, tag * 10 + 2);
+    int codeish = 0;
+    for (int i = 0; i < 8; i++)
+        if (vt[VT_HEADER + i] >= 0x10000) codeish++;
+    if (codeish < 6) PANIC(CAT_LIB, tag * 10 + 3);
+    return vt;
+}
+
+#define AVKON_VTABLE(o, tag)   checked_vtable(kAvkon, sizeof kAvkon / sizeof kAvkon[0], (o), (tag))
+#define EIKCORE_VTABLE(o, tag) checked_vtable(kEikcore, sizeof kEikcore / sizeof kEikcore[0], (o), (tag))
+
 // A vtable whose every slot reports its own index. Same trick as gate 4's
 // import stubs, and the reason the document's CreateAppUiL slot is known to be
 // 21 rather than the 19 a count of header declarations suggested.
@@ -256,7 +281,7 @@ extern "C" void *gate5_create_app_ui(void *)
     coeappui_ctor(ui);
     eikappui_ctor(ui);
 
-    ui[0] = (u32)(chaining_vtable(EIKCORE_EXPORT(EIKCORE_VTABLE_CEikAppUi), UI_SLOTS,
+    ui[0] = (u32)(chaining_vtable(EIKCORE_VTABLE(EIKCORE_VTABLE_CEikAppUi, 3), UI_SLOTS,
                                   SLOT_UI_CONSTRUCT, (void *)&gate5_ui_construct,
                                   (void *)&gate5_record_ui) + VT_HEADER);
     return ui;
@@ -264,7 +289,7 @@ extern "C" void *gate5_create_app_ui(void *)
 
 extern "C" void *gate5_create_document(void *app)
 {
-    u32 *vt = chaining_vtable(AVKON_EXPORT(AVKON_VTABLE_CAknDocument), DOC_SLOTS,
+    u32 *vt = chaining_vtable(AVKON_VTABLE(AVKON_VTABLE_CAknDocument, 2), DOC_SLOTS,
                               SLOT_CREATE_APP_UI, (void *)&gate5_create_app_ui,
                               (void *)&gate5_record);
 

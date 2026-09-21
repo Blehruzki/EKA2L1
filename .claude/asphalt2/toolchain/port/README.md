@@ -506,10 +506,25 @@ With both confirmed, the fault was really inside `BaseConstructL`, in
 environment than an app this bare has. `ENoScreenFurniture` alongside
 `ENoAppResourceFile` is the documented way to say so, and then it returns.
 
-### Step 1 is done
+### Step 1 works in the emulator, not yet on the phone
 
 Application, document and app UI are all built from exported constructors and
-vtables, and the UI framework accepts them and runs `ConstructL` to completion.
+vtables, and the UI framework accepts them and runs `ConstructL` to completion
+-- **on the emulator**. On an N95 the same package dies with `KERN-EXEC 3`.
+
+The emulator runs an S60v5 ROM and the N95 is S60v3 FP1, and the ordinals here
+come from the Symbian source release, which is later than either. The function
+ordinals are not the problem: an import section is resolved when the image
+loads, so a wrong one there would stop the app starting rather than let it
+fault. The three vtables looked up at run time are the suspects, because a
+wrong ordinal returns a real symbol rather than nothing, and a wrong symbol
+used as a vtable is exactly an access violation.
+
+So `checked_vtable` now tests the shape before trusting it -- a primary vtable
+starts with an offset-to-top of zero and its slots are code addresses -- and
+reports `G5LIB` with `tag * 10 + reason`: reason 1 absent, 2 bad offset-to-top,
+3 slots that are not code; tag 1 `CAknApplication`, 2 `CAknDocument`, 3
+`CEikAppUi`. That turns one silent fault into a number naming the lookup.
 
 Letting `ConstructL` return rather than stopping there faults shortly
 afterwards, which is fair: an app UI with no control and no view has nothing
