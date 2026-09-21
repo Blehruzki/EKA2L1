@@ -1,0 +1,465 @@
+N-Gage import -> Symbian 9.x ordinal, matched on signature.
+351 of 462 matched (76%).
+
+  0  apparc                 old 3      new 132     CApaApplication::AppFullName() const
+  1  apparc                 old 6      new 121     CApaDocument::Capability() const
+  2  apparc                 old 13     new 135     CApaApplication::DllName() const
+  3  apparc                 old 27     new 30      CApaDocument::GlassPictureL()
+  4  apparc                 old 71     new 123     CApaDocument::ValidatePasswordL() const
+  5  arenaframework         old 65     new -       ?
+  6  arenaframework         old 160    new -       ?
+  7  arenaframework         old 169    new -       ?
+  8  arenaframework         old 259    new -       ?
+  9  avkon                  old 63     new 2924    BaseConstructL__CAknAppUii
+ 10  avkon                  old 102    new 768     CAknNoteDialog_Reserved__CAknNoteWrapper
+ 11  avkon                  old 108    new 1994    CAknNoteDialog_Reserved__CAknResourceNoteDialog
+ 12  avkon                  old 122    new 1995    CAknResourceNoteDialog_Reserved__CAknResourceNoteDialog
+ 13  avkon                  old 173    new -       CEikDialog_Reserved___CAknNoteWrapper
+ 14  avkon                  old 187    new -       CEikDialog_Reserved___CAknResourceNoteDialog
+ 15  avkon                  old 197    new -       CEikDialog_Reserved___CAknNoteWrapper
+ 16  avkon                  old 211    new -       CEikDialog_Reserved___CAknResourceNoteDialog
+ 17  avkon                  old 655    new 769     ExecuteLD__CAknNoteWrapperi
+ 18  avkon                  old 662    new 1996    ExecuteLD__CAknResourceNoteDialogRCTDesC16
+ 19  avkon                  old 750    new -       HandleError__CAknAppUiiRCSExtendedErrorRTDes16T3
+ 20  avkon                  old 757    new 2931    HandleForegroundEventL__CAknAppUii
+ 21  avkon                  old 802    new 2935    HandleStatusPaneSizeChange__CAknAppUi
+ 22  avkon                  old 803    new 2928    HandleSystemEventL__CAknAppUiRCTWsEvent
+ 23  avkon                  old 805    new -       HandleViewDeactivation__CAknAppUiRCTVwsViewIdT1
+ 24  avkon                  old 808    new 2925    HandleWsEventL__CAknAppUiRCTWsEventPCCoeControl
+ 25  avkon                  old 874    new -       KeySounds__CAknAppUi
+ 26  avkon                  old 1166   new 541     OfferKeyEventL__CAknNoteDialogRCTKeyEventTEventCode
+ 27  avkon                  old 1205   new 130     OpenFileL__CAknDocumentiRCTDesC16RRFs
+ 28  avkon                  old 1206   new 3049    OpenIniFileLC__CCAknApplicationRRFs
+ 29  avkon                  old 1213   new 1139    PopContext__CAknKeySoundSystem
+ 30  avkon                  old 1225   new 550     PostLayoutDynInitL__CAknNoteDialog
+ 31  avkon                  old 1234   new 686     PreDocConstructL__CAknApplication
+ 32  avkon                  old 1235   new 546     PreLayoutDynInitL__CAknNoteDialog
+ 33  avkon                  old 1254   new 2922    PrepareToExit__CAknAppUi
+ 34  avkon                  old 1267   new 2926    ProcessCommandL__CAknAppUii
+ 35  avkon                  old 1272   new 1141    PushContextL__CAknKeySoundSystemi
+ 36  avkon                  old 1348   new 2929    Reserved_MtsmObject__CAknAppUi
+ 37  avkon                  old 1352   new 2930    Reserved_MtsmPosition__CAknAppUi
+ 38  avkon                  old 1379   new 559     RunLD__CAknNoteDialog
+ 39  avkon                  old 1529   new 2927    SetKeyBlockMode__CAknAppUiTAknKeyBlockMode
+ 40  avkon                  old 1633   new 551     SetSizeAndPosition__CAknNoteDialogRCTSize
+ 41  avkon                  old 1960   new 575     _._CAknNoteDialog
+ 42  avkon                  old 2048   new 2937    _._CAknAppUi
+ 43  avkon                  old 2053   new 131     __CAknDocumentRCEikApplication
+ 44  avkon                  old 2076   new 773     __CAknNoteWrapper
+ 45  bitgdi                 old 105    new 52      CFbsScreenDevice::SetAutoUpdate(int)
+ 46  bitgdi                 old 111    new 115     CFbsBitGc::SetClippingRegion(const TRegion *)
+ 47  bitgdi                 old 137    new 58      CFbsScreenDevice::Update(const TRegion &)
+ 48  bluetooth.dll          old 9      new -       ?
+ 49  cone                   old 3      new 61      CCoeControl::ActivateL()
+ 50  cone                   old 8      new 165     CCoeEnv::AddForegroundObserverL(MCoeForegroundObserver &)
+ 51  cone                   old 12     new 202     CCoeAppUi::AddToStackL(CCoeControl *, int, int)
+ 52  cone                   old 28     new 265     CCoeControl::ComponentControl(int) const
+ 53  cone                   old 29     new 48      CCoeControl::ConstructFromResourceL(TResourceReader &)
+ 54  cone                   old 33     new 272     CCoeControl::CountComponentControls() const
+ 55  cone                   old 40     new 25      CCoeControl::CreateWindowL()
+ 56  cone                   old 66     new 19      CCoeControl::FocusChanged(TDrawNow)
+ 57  cone                   old 72     new -       GetColorUseListL__C11CCoeControlRt9CArrayFix1Z12TCoeColorUse
+ 58  cone                   old 74     new 263     CCoeControl::GetHelpContext(TCoeHelpContext &) const
+ 59  cone                   old 82     new 210     CCoeAppUi::HandleKeyEventL(const TKeyEvent &, TEventCode)
+ 60  cone                   old 84     new 51      CCoeControl::HandlePointerBufferReadyL()
+ 61  cone                   old 85     new 36      CCoeControl::HandlePointerEventL(const TPointerEvent &)
+ 62  cone                   old 87     new 40      CCoeControl::HandleResourceChange(int)
+ 63  cone                   old 90     new 220     CCoeAppUi::HandleSwitchOnEventL(CCoeControl *)
+ 64  cone                   old 95     new 288     CCoeControl::HasBorder() const
+ 65  cone                   old 96     new 351     CCoeAppUi::HelpContextL() const
+ 66  cone                   old 100    new 270     CCoeControl::InputCapabilities() const
+ 67  cone                   old 101    new 355     CCoeAppUi::InputCapabilities() const
+ 68  cone                   old 114    new 289     CCoeControl::IsFocused() const
+ 69  cone                   old 131    new 119     MCoeForegroundObserver::MCoeForegroundObserver_Reserved_1()
+ 70  cone                   old 132    new 120     MCoeForegroundObserver::MCoeForegroundObserver_Reserved_2()
+ 71  cone                   old 138    new 11      CCoeControl::MakeVisible(int)
+ 72  cone                   old 139    new 12      CCoeControl::MinimumSize()
+ 73  cone                   old 147    new 30      CCoeControl::PositionChanged()
+ 74  cone                   old 153    new 42      CCoeControl::PrepareForFocusLossL()
+ 75  cone                   old 166    new 171     CCoeEnv::RemoveForegroundObserver(MCoeForegroundObserver &)
+ 76  cone                   old 167    new 211     CCoeAppUi::RemoveFromStack(CCoeControl *)
+ 77  cone                   old 173    new 271     CCoeControl::WriteInternalStateL(RWriteStream &) const
+ 78  cone                   old 177    new 9       CCoeControl::Reserved_2()
+ 79  cone                   old 181    new 308     MCoeControlContext::ResetContext(CWindowGc &) const
+ 80  cone                   old 185    new 13      CCoeControl::SetAdjacent(int)
+ 81  cone                   old 187    new 212     CCoeAppUi::SetAndDrawFocus(int)
+ 82  cone                   old 197    new 39      CCoeControl::SetContainerWindowL(const CCoeControl &)
+ 83  cone                   old 200    new 62      CCoeControl::SetDimmed(int)
+ 84  cone                   old 208    new 15      CCoeControl::SetNeighbor(CCoeControl *)
+ 85  cone                   old 221    new 18      CCoeControl::SizeChanged()
+ 86  cone                   old 223    new 182     CCoeEnv::Static()
+ 87  cone                   old 231    new 279     CCoeControl::Window() const
+ 88  cone                   old 232    new 66      CCoeControl::~CCoeControl()
+ 89  cone                   old 236    new 64      CCoeControl::CCoeControl()
+ 90  cone                   old 244    new 310     MCoeControlContext::ActivateContext(CWindowGc &, RDrawableWindow &) const
+ 91  cone                   old 255    new 100     MCoeMessageObserver::MCoeMessageObserver_Reserved_1()
+ 92  cone                   old 256    new 101     MCoeMessageObserver::MCoeMessageObserver_Reserved_2()
+ 93  cone                   old 276    new 41      CCoeControl::PrepareForFocusGainL()
+ 94  cone                   old 292    new 127     MCoeViewDeactivationObserver::MCoeViewDeactivationObserver_Reserved_1()
+ 95  cone                   old 293    new 128     MCoeViewDeactivationObserver::MCoeViewDeactivationObserver_Reserved_2()
+ 96  cone                   old 312    new -       ?
+ 97  cone                   old 314    new -       ?
+ 98  cone                   old 318    new -       ?
+ 99  efsrv                  old 15     new -       RFsBase::Close()
+100  efsrv                  old 18     new 68      RFs::Connect(int)
+101  efsrv                  old 25     new 105     RFile::Create(RFs &, const TDesC16 &, unsigned int)
+102  efsrv                  old 29     new 65      RFs::Delete(const TDesC16 &)
+103  efsrv                  old 33     new 195     TParseBase::DriveAndPath() const
+104  efsrv                  old 50     new 96      RFile::Flush()
+105  efsrv                  old 51     new 204     TParseBase::FullName() const
+106  efsrv                  old 85     new 70      RFs::MkDirAll(const TDesC16 &)
+107  efsrv                  old 86     new 63      RFs::MkDir(const TDesC16 &)
+108  efsrv                  old 102    new 199     TParseBase::Name() const
+109  efsrv                  old 121    new 93      RFile::Open(RFs &, const TDesC16 &, unsigned int)
+110  efsrv                  old 136    new 255     RFile::Read(TDes8 &) const
+111  efsrv                  old 151    new 108     RFile::Replace(RFs &, const TDesC16 &, unsigned int)
+112  efsrv                  old 155    new 64      RFs::RmDir(const TDesC16 &)
+113  efsrv                  old 162    new 263     RFile::Seek(TSeek, int &) const
+114  efsrv                  old 183    new 115     TParse::Set(const TDesC16 &, const TDesC16 *, const TDesC16 *)
+115  efsrv                  old 185    new 264     RFile::Size(int &) const
+116  efsrv                  old 194    new 97      RFile::Write(const TDesC8 &)
+117  efsrv                  old 210    new 12      TParsePtrC::TParsePtrC(const TDesC16 &)
+118  efsrv                  old 230    new 118     TParse::TParse()
+119  eikcoctl               old 396    new 1379    CEikStatusPaneBase::IsVisible() const
+120  eikcoctl               old 704    new 222     CListBoxView::SetDimmed(int)
+121  eikcore                old 17     new 316     CEikAppUi::Application() const
+122  eikcore                old 20     new 298     CEikApplication::BitmapStoreName() const
+123  eikcore                old 30     new 296     CEikApplication::Capability(TDes8 &) const
+124  eikcore                old 31     new 77      MEikMenuObserver::CheckHotKeyNotDimmedL(int)
+125  eikcore                old 40     new 140     CEikAppUi::ConstructL()
+126  eikcore                old 48     new 105     MEikCommandObserver::CreateCustomCommandControlL(int)
+127  eikcore                old 49     new 61      CEikApplication::CreateDocumentL(CApaProcess *)
+128  eikcore                old 51     new 144     CEikAppUi::CreateFileL(const TDesC16 &)
+129  eikcore                old 52     new 26      CEikDocument::CreateFileStoreLC(RFs &, const TDesC16 &)
+130  eikcore                old 64     new 74      MEikMenuObserver::DynInitMenuBarL(int, CEikMenuBar *)
+131  eikcore                old 65     new 75      MEikMenuObserver::DynInitMenuPaneL(int, CEikMenuPane *)
+132  eikcore                old 66     new 27      CEikDocument::EditL(MApaEmbeddedDocObserver *, int)
+133  eikcore                old 68     new 293     CEikDocument::ExternalizeL(RWriteStream &) const
+134  eikcore                old 71     new -       GetDefaultDocumentFileName__C15CEikApplicationRt4TBuf1i256
+135  eikcore                old 74     new 172     CEikAppUi::HandleApplicationSpecificEventL(int, const TWsEvent &)
+136  eikcore                old 75     new 79      MEikMenuObserver::HandleAttemptDimmedSelectionL(int)
+137  eikcore                old 76     new 151     CEikAppUi::HandleCommandL(int)
+138  eikcore                old 80     new -       HandleMessageL__9CEikAppUiUlG4TUidRC6TDesC8
+139  eikcore                old 81     new 158     CEikAppUi::HandleModelChangeL()
+140  eikcore                old 82     new 165     CEikAppUi::HandleResourceChangeL(int)
+141  eikcore                old 84     new 159     CEikAppUi::HandleSideBarMenuL(int, const TPoint &, int, const CEikHotKeyTable *)
+142  eikcore                old 86     new 291     CEikDocument::HasChanged() const
+143  eikcore                old 100    new 295     CEikDocument::IsEmpty() const
+144  eikcore                old 116    new 20      CEikDocument::NewDocumentL()
+145  eikcore                old 121    new 73      MEikMenuObserver::OfferKeyToAppL(const TKeyEvent &, TEventCode)
+146  eikcore                old 122    new 300     CEikApplication::OpenAppInfoFileLC() const
+147  eikcore                old 124    new 175     CEikAppUi::OpenFileL(const TDesC16 &)
+148  eikcore                old 130    new 30      CEikDocument::PrintL(const CStreamStore &)
+149  eikcore                old 133    new -       ProcessCommandParametersL__9CEikAppUi11TApaCommandRt4TBuf1i256RC6TDesC8
+150  eikcore                old 134    new -       ProcessMessageL__9CEikAppUiG4TUidRC6TDesC8
+151  eikcore                old 142    new -       CEikDocument::Reserved_1()
+152  eikcore                old 143    new -       CEikApplication::Reserved_1()
+153  eikcore                old 144    new -       CEikAppUi::Reserved_1()
+154  eikcore                old 146    new 18      CEikDocument::Reserved_2()
+155  eikcore                old 147    new -       CEikAppUi::Reserved_2()
+156  eikcore                old 149    new 142     CEikAppUi::Reserved_3()
+157  eikcore                old 150    new 143     CEikAppUi::Reserved_4()
+158  eikcore                old 151    new 299     CEikApplication::ResourceFileName() const
+159  eikcore                old 155    new 31      CEikDocument::RestoreL(const CStreamStore &, const CStreamDictionary &)
+160  eikcore                old 157    new 72      MEikMenuObserver::RestoreMenuL(CCoeControl *, int, MEikMenuObserver::TMenuType)
+161  eikcore                old 161    new 29      CEikDocument::SaveL()
+162  eikcore                old 179    new 147     CEikAppUi::SetEmphasis(CCoeControl *, int)
+163  eikcore                old 198    new 166     CEikAppUi::StopDisplayingMenuBar()
+164  eikcore                old 200    new 294     CEikDocument::StoreL(CStreamStore &, CStreamDictionary &) const
+165  eikcore                old 204    new 25      CEikDocument::UpdateTaskNameL(CApaWindowGroupName *)
+166  eikcore                old 206    new -       ValidFileType__C9CEikAppUiG4TUid
+167  eikcore                old 213    new 35      CEikDocument::~CEikDocument()
+168  eikcore                old 214    new 65      CEikApplication::~CEikApplication()
+169  eikcore                old 222    new 64      CEikApplication::CEikApplication()
+170  eikcore                old 224    new 177     CEikAppUi::CEikAppUi()
+171  eikcore                old 226    new 78      MEikMenuObserver::Reserved_1_MenuObserver()
+172  eikcore                old 233    new 318     CEikAppUi::ApplicationRect() const
+173  eikcore                old 253    new 28      CEikDocument::SaveL(MSaveObserver::TSaveType)
+174  eikcore                old 264    new 41      EikBubbleHelp::CancelTrigger()
+175  eikcore                old 286    new -       ?
+176  eikcore                old 290    new -       ?
+177  eikdlg                 old 18     new 104     CEikDialog::ConstructSleepingAlertDialogL(int)
+178  eikdlg                 old 24     new 221     CEikDialog::CountComponentControls() const
+179  eikdlg                 old 27     new 55      CEikDialog::CreateCustomControlL(int)
+180  eikdlg                 old 37     new 109     CEikDialog::ExecuteLD(int)
+181  eikdlg                 old 38     new 35      CEikDialog::ExitSleepingDialog()
+182  eikdlg                 old 40     new -       CEikCapCArray::FindLineIndex(CCoeControl *) const
+183  eikdlg                 old 41     new 143     CEikCaptionedControl::FocusChanged(TDrawNow)
+184  eikdlg                 old 58     new 243     CEikCaptionedControl::InputCapabilities() const
+185  eikdlg                 old 64     new 233     CEikCapCArray::LineIndexFromId(int) const
+186  eikdlg                 old 76     new 16      CEikDialog::OfferKeyEventL(const TKeyEvent &, TEventCode)
+187  eikdlg                 old 79     new 11      CEikDialog::PageChangedL(int)
+188  eikdlg                 old 82     new 198     CEikDialog::PreferredSize(const TSize &) const
+189  eikdlg                 old 90     new 251     CEikMover::WriteInternalStateL(RWriteStream &) const
+190  eikdlg                 old 91     new 2       CEikDialog::Reserved_2()
+191  eikdlg                 old 92     new 136     CEikCaptionedControl::Reserved_2()
+192  eikdlg                 old 95     new -       CEikDialog::Reserved_4()
+193  eikdlg                 old 99     new 134     CEikDlgLibrary::ResourceFile()
+194  eikdlg                 old 106    new 39      CEikDialog::SetControlCaptionL(int, const TDesC16 &)
+195  eikdlg                 old 114    new -       CEikDialog::SetHelpContext(const TCoeHelpContext &)
+196  eikdlg                 old 116    new 162     CEikCaptionedControl::SetLatentGroupLineFollows(int)
+197  eikdlg                 old 117    new 167     CEikCaptionedControl::SetLatent(int)
+198  eikdlg                 old 121    new 49      CEikDialog::SetPageDensePacking(int, int)
+199  eikdlg                 old 126    new 151     CEikCaptionedControl::SetTakesEnterKey(int)
+200  eikdlg                 old 127    new 183     CEikMover::SetTextL(const TDesC16 &)
+201  eikdlg                 old 131    new 176     CEikMover::SetTitleLeftMargin(int)
+202  eikdlg                 old 132    new 140     CEikCaptionedControl::SetTrailerL(const TDesC16 &)
+203  eikdlg                 old 133    new 141     CEikCaptionedControl::SetUsesEars()
+204  eikdlg                 old 135    new 142     CEikCaptionedControl::SizeChanged()
+205  eikdlg                 old 170    new -       ?
+206  eikdlg                 old 201    new -       ?
+207  eikdlg                 old 212    new -       ?
+208  esock                  old 45     new 219     RSocket::Close()
+209  esock                  old 48     new 81      RSocketServ::Connect(unsigned int)
+210  esock                  old 62     new -       FindProtocol__11RSocketServRCt4TBuf1i32R13TProtocolDesc
+211  esock                  old 87     new 224     RSocket::GetOpt(unsigned int, unsigned int, TDes8 &)
+212  esock                  old 129    new 211     RSocket::Open(RSocketServ &, unsigned int, unsigned int, unsigned int)
+213  esock                  old 209    new 82      RSocketServ::RSocketServ()
+214  esock                  old 217    new 242     RSocket::RSocket()
+215  estlib                 old 3      new 198     malloc
+216  estlib                 old 6      new 145     free
+217  estlib                 old 7      new -       memmove
+218  estlib                 old 9      new 254     strlen
+219  estlib                 old 21     new 370     cos
+220  estlib                 old 39     new 385     pow
+221  estlib                 old 40     new 390     sqrt
+222  estlib                 old 49     new 131     fclose
+223  estlib                 old 51     new 133     feof
+224  estlib                 old 53     new 135     fflush
+225  estlib                 old 54     new 136     fgetc
+226  estlib                 old 58     new 140     fopen
+227  estlib                 old 59     new 141     fprintf
+228  estlib                 old 62     new 144     fread
+229  estlib                 old 65     new 148     fseek
+230  estlib                 old 67     new 152     ftell
+231  estlib                 old 76     new 213     puts
+232  estlib                 old 82     new 240     sprintf
+233  estlib                 old 102    new -       abort
+234  estlib                 old 128    new 113     atoi
+235  estlib                 old 133    new 214     qsort
+236  estlib                 old 134    new 215     rand
+237  estlib                 old 153    new 194     localtime
+238  estlib                 old 156    new 253     strftime
+239  estlib                 old 157    new 270     time
+240  estlib                 old 167    new 189     isspace
+241  estlib                 old 170    new 273     tolower
+242  estlib                 old 171    new 274     toupper
+243  estlib                 old 174    new 203     memcmp
+244  estlib                 old 178    new 245     strcat
+245  estlib                 old 179    new 246     strchr
+246  estlib                 old 180    new 247     strcmp
+247  estlib                 old 181    new 249     strcpy
+248  estlib                 old 187    new 257     strncmp
+249  estlib                 old 188    new 258     strncpy
+250  etel                   old 29     new 29      RTelServer::Connect(int)
+251  etel                   old 54     new 246     RLine::EnumerateCall(int &) const
+252  etel                   old 56     new 167     RTelServer::EnumeratePhones(int &) const
+253  etel                   old 62     new 245     RLine::GetCallInfo(int, RLine::TCallInfo &) const
+254  etel                   old 72     new 256     RPhone::GetLineInfo(int, RPhone::TLineInfo &) const
+255  etel                   old 74     new 166     RTelServer::GetPhoneInfo(int, RTelServer::TPhoneInfo &) const
+256  etel                   old 78     new 262     RPhone::GetStatus(RPhone::TStatus &) const
+257  etel                   old 102    new 168     RTelServer::LoadPhoneModule(const TDesC16 &) const
+258  etel                   old 152    new 98      RLine::Open(RPhone &, const TDesC16 &)
+259  etel                   old 153    new 113     RPhone::Open(RTelServer &, const TDesC16 &)
+260  etel                   old 204    new 30      RTelServer::RTelServer()
+261  etel                   old 210    new 103     RLine::RLine()
+262  etel                   old 211    new 116     RPhone::RPhone()
+263  euser                  old 1      new 1955    memset
+264  euser                  old 2      new 1953    memcpy
+265  euser                  old 3      new 654     User::AllocZL(int)
+266  euser                  old 13     new 424     CActiveScheduler::Add(CActive *)
+267  euser                  old 21     new 645     User::After(TTimeIntervalMicroSeconds32)
+268  euser                  old 22     new 885     CTimer::After(TTimeIntervalMicroSeconds32)
+269  euser                  old 35     new 651     User::AllocL(int)
+270  euser                  old 45     new 646     User::Alloc(int)
+271  euser                  old 56     new 936     TDes16::AppendFormat(TRefByValue<TDesC16 const>,...)
+272  euser                  old 89     new 966     TDes16::Append(TChar)
+273  euser                  old 98     new 1718    TDesC8::AtC(int) const
+274  euser                  old 99     new 1806    TDesC16::AtC(int) const
+275  euser                  old 116    new 1553    CArrayFixBase::At(int) const
+276  euser                  old 119    new 1590    RPointerArrayBase::At(int) const
+277  euser                  old 126    new 1606    RHeap::Available(int &) const
+278  euser                  old 131    new 1702    RChunk::Base(void) const
+279  euser                  old 152    new 1088    CActive::Cancel(void)
+280  euser                  old 162    new 647     User::Check(void)
+281  euser                  old 172    new 120     RHandleBase::Close(void)
+282  euser                  old 173    new 460     RCriticalSection::Close(void)
+283  euser                  old 180    new 1311    RLibrary::Close(void)
+284  euser                  old 202    new -       Mem::Compare(unsigned char const *, int, unsigned char const *, int)
+285  euser                  old 209    new -       RMessage::Complete(int) const
+286  euser                  old 224    new 881     CTimer::ConstructL(void)
+287  euser                  old 243    new 564     Mem1::Copy(void *, void const *, int)
+288  euser                  old 245    new 743     TDes8::Copy(unsigned char const *, int)
+289  euser                  old 246    new 744     TDes8::Copy(TDesC8 const &)
+290  euser                  old 247    new 745     TDes8::Copy(TDesC16 const &)
+291  euser                  old 250    new 952     TDes16::Copy(TDesC8 const &)
+292  euser                  old 251    new 953     TDes16::Copy(TDesC16 const &)
+293  euser                  old 262    new -       CSharableSession::CountResources(void)
+294  euser                  old 263    new -       RSemaphore::Count(void)
+295  euser                  old 279    new -       CSharableSession::CreateL(CServer const &)
+296  euser                  old 280    new 64      RSemaphore::CreateLocal(int, TOwnerType)
+297  euser                  old 281    new 458     RCriticalSection::CreateLocal(TOwnerType)
+298  euser                  old 285    new 211     RSessionBase::CreateSession(TDesC16 const &, TVersion const &, int)
+299  euser                  old 289    new 1158    RThread::Create(TDesC16 const &, int (*)(void *), int, RAllocator *, void *, TOwnerType)
+300  euser                  old 295    new 1679    TTime::DateTime(void) const
+301  euser                  old 317    new 891     HBufC8::Des(void)
+302  euser                  old 318    new 1116    HBufC16::Des(void)
+303  euser                  old 328    new 1210    UserSvr::DllFreeTls(int)
+304  euser                  old 335    new 1237    UserSvr::DllSetTls(int, void *)
+305  euser                  old 336    new 1232    UserSvr::DllTls(int)
+306  euser                  old 350    new 886     CTimer::DoCancel(void)
+307  euser                  old 351    new -       CServer::DoCancel(void)
+308  euser                  old 397    new 641     User::Exit(int)
+309  euser                  old 410    new 1853    RProcess::FileName(void) const
+310  euser                  old 411    new 1951    memclr
+311  euser                  old 414    new 964     TDes16::FillZ(void)
+312  euser                  old 416    new 565     Mem1::Fill(void *, int, TChar)
+313  euser                  old 451    new 1809    TDesC16::Find(TDesC16 const &) const
+314  euser                  old 467    new 973     TDes16::Format(TRefByValue<TDesC16 const>,...)
+315  euser                  old 476    new 644     User::Free(void *)
+316  euser                  old 528    new 665     User::Allocator(void)
+317  euser                  old 531    new 859     TTime::HomeTime(void)
+318  euser                  old 534    new 1849    RProcess::Id(void) const
+319  euser                  old 569    new 428     CActiveScheduler::Install(CActiveScheduler *)
+320  euser                  old 621    new 1154    RThread::Kill(int)
+321  euser                  old 625    new 662     User::Language(void)
+322  euser                  old 627    new 593     User::LeaveIfError(int)
+323  euser                  old 629    new 599     User::LeaveNoMemory(void)
+324  euser                  old 630    new 649     User::Leave(int)
+325  euser                  old 644    new 1308    RLibrary::Load(TDesC16 const &, TDesC16 const &)
+326  euser                  old 672    new 1838    RLibrary::Lookup(int) const
+327  euser                  old 673    new 672     User::LowerCase(unsigned int)
+328  euser                  old 721    new 1119    HBufC16::NewLC(int)
+329  euser                  old 738    new 1379    CPeriodic::NewL(int)
+330  euser                  old 746    new 196     CTrapCleanup::New(void)
+331  euser                  old 749    new 892     HBufC8::New(int)
+332  euser                  old 750    new 1117    HBufC16::New(int)
+333  euser                  old 756    new 95      TFindChunk::Next(TBuf<256> &)
+334  euser                  old 758    new 159     TFindServer::Next(TBuf<256> &)
+335  euser                  old 760    new 215     TFindLibrary::Next(TBuf<256> &)
+336  euser                  old 797    new 119     RHandleBase::Open(TFindHandleBase const &, TOwnerType)
+337  euser                  old 803    new 1156    RThread::Open(TDesC16 const &, TOwnerType)
+338  euser                  old 809    new 650     User::Panic(TDesC16 const &, int)
+339  euser                  old 814    new -       CSession::Panic(TDesC16 const &, int) const
+340  euser                  old 824    new 203     CleanupStack::PopAndDestroy(void)
+341  euser                  old 828    new 205     CleanupStack::Pop(void)
+342  euser                  old 844    new 1797    RThread::Process(RProcess &) const
+343  euser                  old 855    new 1719    TDesC8::Ptr(void) const
+344  euser                  old 856    new 1807    TDesC16::Ptr(void) const
+345  euser                  old 858    new 208     CleanupStack::PushL(CBase *)
+346  euser                  old 859    new 209     CleanupStack::PushL(void *)
+347  euser                  old 864    new 637     User::QueryVersionSupported(TVersion const &, TVersion const &)
+348  euser                  old 870    new 557     Math::Random(void)
+349  euser                  old 871    new -       User1::ReAlloc1L(void *, int)
+350  euser                  old 926    new 617     User::RequestComplete(TRequestStatus *&, int)
+351  euser                  old 933    new 634     User::ResetInactivityTime(void)
+352  euser                  old 939    new 245     CArrayFixBase::Reset(void)
+353  euser                  old 954    new 1795    RThread::Resume(void) const
+354  euser                  old 962    new 1089    CActive::RunError(int)
+355  euser                  old 966    new -       CServer::RunL(void)
+356  euser                  old 970    new 1211    UserSvr::ScreenInfo(TDes8 &)
+357  euser                  old 972    new -       RSessionBase::SendReceive(int, void *) const
+358  euser                  old 979    new 1090    CActive::SetActive(void)
+359  euser                  old 985    new -       RThread::SetExceptionHandler(void (*)(TExcType), unsigned long)
+360  euser                  old 998    new 782     TDes8::SetLength(int)
+361  euser                  old 999    new 988     TDes16::SetLength(int)
+362  euser                  old 1016   new 1786    RThread::SetPriority(TThreadPriority) const
+363  euser                  old 1078   new 71      RSemaphore::Signal(void)
+364  euser                  old 1080   new 461     RCriticalSection::Signal(void)
+365  euser                  old 1087   new 1703    RChunk::Size(void) const
+366  euser                  old 1102   new -       CServer::StartL(TDesC16 const &)
+367  euser                  old 1107   new 426     CActiveScheduler::Start(void)
+368  euser                  old 1111   new 1381    CPeriodic::Start(TTimeIntervalMicroSeconds32, TTimeIntervalMicroSeconds32, TCallBack)
+369  euser                  old 1114   new 595     User::StringLength(unsigned char const *)
+370  euser                  old 1122   new 1798    RThread::Suspend(void) const
+371  euser                  old 1137   new 674     User::TickCount(void)
+372  euser                  old 1148   new -       TTrap::Trap(int &)
+373  euser                  old 1164   new -       TTrap::UnTrap(void)
+374  euser                  old 1212   new 69      RSemaphore::Wait(void)
+375  euser                  old 1213   new 459     RCriticalSection::Wait(void)
+376  euser                  old 1226   new -       CSession::WriteL(void const *, TDesC8 const &, int) const
+377  euser                  old 1244   new 734     TDes8::ZeroTerminate(void)
+378  euser                  old 1262   new -       CBase1::~CBase1(void)
+379  euser                  old 1264   new 888     CTimer::~CTimer(void)
+380  euser                  old 1268   new -       CServer::~CServer(void)
+381  euser                  old 1272   new -       CSession::~CSession(void)
+382  euser                  old 1282   new 80      TBufBase16::TBufBase16(TDesC16 const &, int)
+383  euser                  old 1283   new 81      TBufBase16::TBufBase16(int)
+384  euser                  old 1286   new 89      TBufCBase8::TBufCBase8(unsigned char const *, int)
+385  euser                  old 1339   new 403     TFindHandleBase::TFindHandleBase(TDesC16 const &)
+386  euser                  old 1343   new 430     CActiveScheduler::CActiveScheduler(void)
+387  euser                  old 1346   new 462     RCriticalSection::RCriticalSection(void)
+388  euser                  old 1359   new -       CBase1::CBase1(void)
+389  euser                  old 1366   new 815     TPtr8::TPtr8(unsigned char *, int)
+390  euser                  old 1367   new 816     TPtr8::TPtr8(unsigned char *, int, int)
+391  euser                  old 1377   new 887     CTimer::CTimer(int)
+392  euser                  old 1379   new -       TInt64::TInt64(int)
+393  euser                  old 1382   new 1027    TPtr16::TPtr16(unsigned short *, int, int)
+394  euser                  old 1384   new 1035    TPtrC8::TPtrC8(void)
+395  euser                  old 1385   new 1032    TPtrC8::TPtrC8(unsigned char const *)
+396  euser                  old 1386   new 1033    TPtrC8::TPtrC8(unsigned char const *, int)
+397  euser                  old 1398   new -       CServer::CServer(int, CServer::TServerType)
+398  euser                  old 1399   new -       MBusDev::MBusDev(void)
+399  euser                  old 1407   new 1169    TPtrC16::TPtrC16(unsigned short const *)
+400  euser                  old 1414   new -       CSession::CSession(RThread)
+401  euser                  old 1422   new 1356    TVersion::TVersion(void)
+402  euser                  old 1423   new 1355    TVersion::TVersion(int, int, int)
+403  euser                  old 1431   new 1468    TBufBase8::TBufBase8(int)
+404  euser                  old 1432   new 1469    TBufBase8::TBufBase8(int, int)
+405  euser                  old 1454   new -       __adddf3
+406  euser                  old 1455   new -       __addsf3
+407  euser                  old 1496   new -       TInt64::operator=(int)
+408  euser                  old 1504   new -       __builtin_delete
+409  euser                  old 1505   new -       __builtin_new
+410  euser                  old 1506   new -       __builtin_vec_delete
+411  euser                  old 1513   new -       __divsf3
+412  euser                  old 1514   new -       __divsi3
+413  euser                  old 1525   new -       __extendsfdf2
+414  euser                  old 1527   new -       __fixsfsi
+415  euser                  old 1528   new -       __floatsidf
+416  euser                  old 1529   new -       __floatsisf
+417  euser                  old 1569   new -       __modsi3
+418  euser                  old 1570   new -       __muldf3
+419  euser                  old 1571   new -       __mulsf3
+420  euser                  old 1580   new -       __negsf2
+421  euser                  old 1582   new 652     User::AllocZ(int)
+422  euser                  old 1611   new -       __pure_virtual
+423  euser                  old 1615   new -       __truncdfsf2
+424  euser                  old 1616   new -       __udivsi3
+425  euser                  old 1617   new -       __umodsi3
+426  euser                  old 1636   new -       __divdi3
+427  fbscli                 old 16     new 26      CFbsBitmap::Create(const TSize &, TDisplayMode)
+428  fbscli                 old 17     new 108     CFbsBitmap::DataAddress() const
+429  fbscli                 old 90     new 25      CFbsBitmap::Reset()
+430  fbscli                 old 135    new 31      CFbsBitmap::CFbsBitmap()
+431  gamecomms              old 2      new -       ?
+432  gamecomms              old 3      new -       ?
+433  gamecomms              old 6      new -       ?
+434  gamecomms              old 7      new -       ?
+435  gamecomms              old 9      new -       ?
+436  gamecomms              old 11     new -       ?
+437  gamecomms              old 14     new -       ?
+438  gamecomms              old 20     new -       ?
+439  gamecomms              old 24     new -       ?
+440  gamecomms              old 27     new -       ?
+441  gamecomms              old 28     new -       ?
+442  gamecomms              old 31     new -       ?
+443  gamecomms              old 32     new -       ?
+444  gamecomms              old 33     new -       ?
+445  gamecomms              old 34     new -       ?
+446  gamecomms              old 36     new -       ?
+447  gamecomms              old 39     new -       ?
+448  gamecomms              old 40     new -       ?
+449  gamecomms              old 61     new -       ?
+450  gamecomms              old 63     new -       ?
+451  gameutils              old 10     new -       ?
+452  gameutils              old 11     new -       ?
+453  gameutils              old 14     new -       ?
+454  gameutils              old 15     new -       ?
+455  gameutils              old 17     new -       ?
+456  gameutils              old 19     new -       ?
+457  hal                    old 1      new 1       HAL::Get(HALData::TAttribute, int &)
+458  mediaclientaudiostream old 2      new -       CMdaAudioOutputStreamPadFunction()
+459  nokiafc                old 1      new -       ?
+460  ws32                   old 348    new -       ?
+461  ws32                   old 350    new -       ?

@@ -67,10 +67,16 @@ static const u16 kPath1[] = {'C',':','\\','6','r','b','c','.','a','p','p'};
 static const u16 kPath2[] = {'E',':','\\','s','y','s','t','e','m','\\','a','p','p','s','\\',
                              '6','r','b','c','\\','6','r','b','c','.','a','p','p'};
 
-// Every import points here, through a 16-byte stub carrying its index.
-extern "C" void gate4_report(int index)
+// Every import points here, through a 16-byte stub carrying its own report
+// code. That code is `import count * 1000 + index`, because a panic gives us
+// one integer and which binary was loaded is half the answer: this game ships
+// both as a 1.6 MB image with 462 imports and as a 4 KB loader stub with 41,
+// and an index alone cannot tell them apart. Keeping it in the stub also keeps
+// this program free of writable globals, which the image has no room for --
+// it declares no .bss.
+extern "C" void gate4_report(int code)
 {
-    PANIC(CAT_IMP, index);
+    PANIC(CAT_IMP, code);
 }
 
 extern "C" u32 gate4_main()
@@ -160,7 +166,7 @@ extern "C" u32 gate4_main()
 
     // Build one stub per import and write its address into the import address
     // table, which on EKA1 sits at the end of the code section.
-    //   ldr r0, [pc, #0]   -> the index
+    //   ldr r0, [pc, #0]   -> the report code
     //   ldr pc, [pc, #0]   -> gate4_report
     u32 *iat = (u32 *)(base + h->textSize);
     u8 *stub = base + h->codeSize;
@@ -168,7 +174,7 @@ extern "C" u32 gate4_main()
         u32 *s = (u32 *)(stub + 16 * i);
         s[0] = 0xE59F0000;
         s[1] = 0xE59FF000;
-        s[2] = i;
+        s[2] = nImports * 1000 + i;
         s[3] = (u32)&gate4_report;
         iat[i] = (u32)s;
     }

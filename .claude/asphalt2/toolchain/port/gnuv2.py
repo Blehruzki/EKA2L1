@@ -124,15 +124,86 @@ def demangle(sym):
         name, rest = sym.split('__', 1)
         if rest.startswith('F'):                        # free function
             return '%s(%s)' % (name, ', '.join(_args(rest[1:])))
+        konst = False
+        if rest.startswith('C') and rest[1:2].isdigit():   # a const member function
+            konst, rest = True, rest[1:]
         m = re.match(r'(\d+)(.*)$', rest)
         if not m:
             return sym
         n = int(m.group(1)); tail = m.group(2)
         cls, tail = tail[:n], tail[n:]
-        konst = tail.endswith('C') or tail.startswith('C')
-        if tail.startswith('C'):
-            tail = tail[1:]
         return '%s::%s(%s)%s' % (cls, name, ', '.join(_args(tail)),
                                  ' const' if konst else '')
     except Exception:
         return sym
+
+
+# --- the other direction ------------------------------------------------------
+#
+# EKA2L1's EPOC6 database stores GCC 2.x mangled names, and for some libraries
+# (avkon among them) without the length prefixes, so demangling them is lossy or
+# impossible.  Mangling the 9.x side instead is exact: a Symbian .def comment
+# gives a full signature, and there is one mangling of it.  `mangle` returns
+# both spellings so a digit-less table still matches.
+
+_CODES = [('unsigned char', 'Uc'), ('unsigned short', 'Us'), ('unsigned int', 'Ui'),
+          ('unsigned long long', 'Ux'), ('unsigned long', 'Ul'), ('signed char', 'Sc'),
+          ('long long', 'x'), ('long double', 'r'), ('unsigned', 'Ui'),
+          ('void', 'v'), ('bool', 'b'), ('char', 'c'), ('short', 's'), ('int', 'i'),
+          ('long', 'l'), ('float', 'f'), ('double', 'd'), ('wchar_t', 'w')]
+
+
+def _mangle_type(t, digits):
+    t = ' '.join(t.replace('const', ' const ').split())
+    suffix = ''
+    while t.endswith('*') or t.endswith('&'):
+        suffix = ('P' if t[-1] == '*' else 'R') + suffix
+        t = t[:-1].strip()
+    isconst = False
+    if t.startswith('const '):
+        isconst, t = True, t[6:].strip()
+    elif t.endswith(' const'):
+        isconst, t = True, t[:-6].strip()
+    for name, code in _CODES:
+        if t == name:
+            return suffix + ('C' if isconst else '') + code
+    return suffix + ('C' if isconst else '') + (('%d%s' % (len(t), t)) if digits else t)
+
+
+def mangle(sig, digits=True):
+    """'CCoeControl::SetRect(TRect const&)' -> 'SetRect__11CCoeControlRC5TRect'"""
+    if '(' not in sig:
+        return None
+    head = sig[:sig.index('(')].strip()
+    args = sig[sig.index('(') + 1:sig.rindex(')')]
+    konst = sig[sig.rindex(')') + 1:].strip().startswith('const')
+    if '::' not in head:
+        return None
+    cls, fn = head.rsplit('::', 1)
+    if fn.startswith('~'):
+        fn = '_._'
+        return fn + (('%d%s' % (len(cls), cls)) if digits else cls)
+    if fn == cls:                                    # a constructor
+        parts = []
+        for a in _split(args):
+            parts.append(_mangle_type(a, digits))
+        return '__' + (('%d%s' % (len(cls), cls)) if digits else cls) + ''.join(parts)
+    parts = [_mangle_type(a, digits) for a in _split(args) if a.strip() not in ('', 'void')]
+    return '%s__%s%s%s' % (fn, 'C' if konst else '',
+                           ('%d%s' % (len(cls), cls)) if digits else cls, ''.join(parts))
+
+
+def _split(args):
+    out, depth, cur = [], 0, ''
+    for c in args:
+        if c in '(<':
+            depth += 1
+        elif c in ')>':
+            depth -= 1
+        if c == ',' and depth == 0:
+            out.append(cur); cur = ''
+        else:
+            cur += c
+    if cur.strip():
+        out.append(cur)
+    return out
