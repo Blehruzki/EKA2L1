@@ -43,6 +43,11 @@ enum { EPtrC = 1, EPtr = 2, KTypeShift = 28 };
 struct Ptrc16 { u32 lengthAndType; const u16 *text; };
 struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
 
+// Every import gets a slot big enough for whichever thunk it needs.
+enum { SLOT = 32 };
+enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3 };
+enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1 };
+
 static void panic(const u16 *cat, int catLen, int reason)
 {
     Ptrc16 d;
@@ -63,6 +68,7 @@ static void panic(const u16 *cat, int catLen, int reason)
 #define CAT_LIB {'G','4','L','I','B'}
 #define CAT_SHIM {'G','4','S','H','M'}
 #define CAT_NUL {'G','4','N','U','L'}
+#define CAT_PURE {'G','4','P','U','R'}
 
 // The EKA1 header, at the offsets EKA2L1's loader reads.
 struct E32 {
@@ -89,6 +95,12 @@ static const u16 kPath2[] = {'E',':','\\','s','y','s','t','e','m','\\','a','p','
 extern "C" void gate4_report(int code)
 {
     PANIC(CAT_IMP, code);
+}
+
+// A call through a vtable slot the old binary never filled in.
+extern "C" void gate4_pure_virtual()
+{
+    PANIC(CAT_PURE, 0);
 }
 
 extern "C" u32 gate4_main()
@@ -139,7 +151,7 @@ extern "C" u32 gate4_main()
     if (h->textSize > h->codeSize) PANIC(CAT_HDR, 5);
 
     const u32 nImports = (h->codeSize - h->textSize) / 4;
-    const u32 stubBytes = nImports * 16;
+    const u32 stubBytes = nImports * SLOT;
     const u32 chunkSize = h->codeSize + stubBytes;
 
     u32 chunk[2] = { 0, 0 };
@@ -201,23 +213,46 @@ extern "C" u32 gate4_main()
     u8 *stub = base + h->codeSize;
     u32 forwarded = 0, missing = 0;
     for (u32 i = 0; i < nImports; i++) {
-        u32 *s = (u32 *)(stub + 16 * i);
-        s[0] = 0xE59F0000;
-        s[1] = 0xE59FF000;
+        u32 *s = (u32 *)(stub + SLOT * i);
+        s[0] = 0xE59F0000;                  // ldr r0, [pc, #0]  -> the report code
+        s[1] = 0xE59FF000;                  // ldr pc, [pc, #0]  -> gate4_report
         s[2] = nImports * 1000 + i;
         s[3] = (u32)&gate4_report;
         iat[i] = (u32)s;
 
-        if (i >= kShimCount || !kShimTable[i])
+        const u32 entry = (i < kShimCount) ? kShimTable[i] : 0;
+        const u32 kind = entry >> 24;
+        if (!kind)
             continue;
-        void *fn = rlibrary_lookup(&libs[(kShimTable[i] >> 16) - 1],
-                                   (int)(kShimTable[i] & 0xFFFF));
-        if (fn) {
-            iat[i] = (u32)fn;
+
+        if (kind == KIND_LOCAL) {
+            if ((entry & 0xFFFF) == LOCAL_NEGSF2) {
+                s[0] = 0xE2200102;          // eor r0, r0, #0x80000000
+                s[1] = 0xE12FFF1E;          // bx  lr
+            } else {
+                s[0] = 0xE51FF004;          // ldr pc, [pc, #-4]
+                s[1] = (u32)&gate4_pure_virtual;
+            }
             forwarded++;
-        } else {
-            missing++;              // the stub stays, so we hear about it if used
+            continue;
         }
+
+        void *fn = rlibrary_lookup(&libs[(entry >> 16) & 0xFF], (int)(entry & 0xFFFF));
+        if (!fn) {
+            missing++;                      // the stub stays, so we hear about it
+            continue;
+        }
+        if (kind == KIND_CALL) {
+            iat[i] = (u32)fn;
+        } else {
+            s[0] = 0xE92D4000;              // push {lr}
+            s[1] = 0xE59FC008;              // ldr  r12, [pc, #8]
+            s[2] = 0xE12FFF3C;              // blx  r12
+            s[3] = 0xE1A00001;              // mov  r0, r1   -- the remainder
+            s[4] = 0xE8BD8000;              // pop  {pc}
+            s[5] = (u32)fn;
+        }
+        forwarded++;
     }
     if (!forwarded) PANIC(CAT_SHIM, (int)missing);
 

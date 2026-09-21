@@ -21,7 +21,45 @@ import e32imports, shimtable, symdef
 
 ROOT = '/home/user/symbiansource'
 KERNEL = ROOT + '/oss.fcl.sf.os.kernelhwsrv'
+COMPSUPP = KERNEL + '/kernel/eka/compsupp/eabi'
 EPOC6 = '/home/user/EKA2L1/src/emu/bridge/include/bridge/epoc6.def'
+
+# Each table entry is  kind << 24 | dll index << 16 | ordinal.
+KIND_NONE, KIND_CALL, KIND_REM, KIND_LOCAL = 0, 1, 2, 3
+
+# GCC98r2 put its compiler helpers in euser; EABI puts them in the runtime
+# libraries the SDK links against, under their AEABI names. Same routines,
+# same registers -- a double arrives in r0:r1 and r2:r3 either way -- so most
+# are a straight forward.
+HELPERS = {
+    '__adddf3':      ('dfpaeabi', '__aeabi_dadd',     KIND_CALL),
+    '__addsf3':      ('dfpaeabi', '__aeabi_fadd',     KIND_CALL),
+    '__divsf3':      ('dfpaeabi', '__aeabi_fdiv',     KIND_CALL),
+    '__muldf3':      ('dfpaeabi', '__aeabi_dmul',     KIND_CALL),
+    '__mulsf3':      ('dfpaeabi', '__aeabi_fmul',     KIND_CALL),
+    '__extendsfdf2': ('dfpaeabi', '__aeabi_f2d',      KIND_CALL),
+    '__truncdfsf2':  ('dfpaeabi', '__aeabi_d2f',      KIND_CALL),
+    '__fixsfsi':     ('dfpaeabi', '__aeabi_f2iz',     KIND_CALL),
+    '__floatsidf':   ('dfpaeabi', '__aeabi_i2d',      KIND_CALL),
+    '__floatsisf':   ('dfpaeabi', '__aeabi_i2f',      KIND_CALL),
+    # __aeabi_idiv and __aeabi_uidiv sit at the end of the def and are absent
+    # from shipped drtaeabi builds. divmod returns the quotient in r0, which is
+    # exactly what these want, so use it and ignore the remainder in r1.
+    '__divsi3':      ('drtaeabi', '__aeabi_idivmod',  KIND_CALL),
+    '__udivsi3':     ('drtaeabi', '__aeabi_uidivmod', KIND_CALL),
+    '__divdi3':      ('drtaeabi', '__aeabi_ldivmod',  KIND_CALL),
+    # idivmod returns the quotient in r0 and the remainder in r1; __modsi3 has
+    # to return the remainder, so these get a thunk that moves it across.
+    '__modsi3':      ('drtaeabi', '__aeabi_idivmod',  KIND_REM),
+    '__umodsi3':     ('drtaeabi', '__aeabi_uidivmod', KIND_REM),
+    # operator new and delete, which EABI keeps in their own library.
+    '__builtin_new':        ('scppnwdl', '_Znwj', KIND_CALL),
+    '__builtin_delete':     ('scppnwdl', '_ZdlPv', KIND_CALL),
+    '__builtin_vec_delete': ('scppnwdl', '_ZdaPv', KIND_CALL),
+}
+
+# No EABI routine matches these, so gate 4 generates them itself.
+LOCAL = {'__negsf2': 0, '__pure_virtual': 1}
 
 
 def find_defs():
@@ -46,8 +84,28 @@ def build(image):
     new = {lib: defs[lib] for lib in {l for l, _o in imports} if lib in defs}
     rows = shimtable.match(imports, {'euser': KERNEL + '/kernel/eka/bmarm/7.0-euseru.def'},
                            new, epoc6=EPOC6)
-    dlls = sorted({lib for _i, lib, _o, _s, ordinal, _src in rows if ordinal})
-    return rows, dlls
+
+    helper_ords = {}
+    for lib in ('dfpaeabi', 'drtaeabi', 'scppnwdl'):
+        table = symdef.load('%s/%su.def' % (COMPSUPP, lib))
+        helper_ords[lib] = {sym: o for o, (sym, _c) in table.items()}
+
+    # (index, library, ordinal, signature, kind)
+    out = []
+    for i, lib, _o, sig, ordinal, _src in rows:
+        if ordinal:
+            out.append((i, lib, ordinal, sig, KIND_CALL))
+        elif sig in HELPERS:
+            hlib, sym, kind = HELPERS[sig]
+            o = helper_ords[hlib].get(sym)
+            out.append((i, hlib, o, sig, kind if o else KIND_NONE))
+        elif sig in LOCAL:
+            out.append((i, None, LOCAL[sig], sig, KIND_LOCAL))
+        else:
+            out.append((i, None, 0, sig, KIND_NONE))
+
+    dlls = sorted({lib for _i, lib, _o, _s, kind in out if lib and kind != KIND_NONE})
+    return out, dlls
 
 
 def emit(rows, dlls, path):
@@ -73,8 +131,13 @@ def emit(rows, dlls, path):
 
     index = {d: i for i, d in enumerate(dlls)}
     words = []
-    for _i, lib, _o, _sig, ordinal, _src in rows:
-        words.append(((index[lib] + 1) << 16 | ordinal) if ordinal else 0)
+    for _i, lib, ordinal, _sig, kind in rows:
+        if kind == KIND_LOCAL:
+            words.append(KIND_LOCAL << 24 | ordinal)
+        elif kind and lib:
+            words.append(kind << 24 | index[lib] << 16 | ordinal)
+        else:
+            words.append(0)
     lines.append('extern const unsigned int kShimTable[] = {')
     for i in range(0, len(words), 8):
         lines.append('    ' + ' '.join('0x%08X,' % w for w in words[i:i + 8]))
@@ -89,5 +152,11 @@ def emit(rows, dlls, path):
 if __name__ == '__main__':
     rows, dlls = build(sys.argv[1])
     n = emit(rows, dlls, sys.argv[2])
-    print('%s: %d of %d imports forwarded across %d DLLs (%s)'
+    kinds = {}
+    for _i, _l, _o, _s, k in rows:
+        kinds[k] = kinds.get(k, 0) + 1
+    print('%s: %d of %d imports answered across %d DLLs (%s)'
           % (sys.argv[2], n, len(rows), len(dlls), ', '.join(dlls)))
+    print('   direct %d, remainder thunk %d, generated locally %d, unanswered %d'
+          % (kinds.get(KIND_CALL, 0), kinds.get(KIND_REM, 0),
+             kinds.get(KIND_LOCAL, 0), kinds.get(KIND_NONE, 0)))

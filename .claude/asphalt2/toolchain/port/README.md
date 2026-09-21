@@ -192,13 +192,36 @@ starting with no way to say which one; a lookup returning null can be counted.
 And the ordinals come from the Symbian source, which is a later 9.x than any
 one phone, so some will be wrong.
 
+### The compiler helpers
+
+GCC98r2 kept its compiler helpers in euser; EABI keeps them in the runtime
+libraries the SDK links against, under their AEABI names. euser 9.x exports
+none of them, so they are not a renumbering but a move. The routines are the
+same and so are the registers -- a double arrives in r0:r1 and r2:r3 either way
+-- so most are a straight forward to `dfpaeabi` or `drtaeabi`, and operator new
+and delete to `scppnwdl`. That is 20 more imports answered.
+
+Four needed more than a name change, and gate 4 generates those into the chunk
+alongside the reporting stubs:
+
+| import | why |
+| --- | --- |
+| `__modsi3`, `__umodsi3` | `__aeabi_idivmod` returns the quotient in r0 and the remainder in r1; these must return the remainder, so a thunk moves it across |
+| `__negsf2` | no AEABI equivalent: `eor r0, r0, #0x80000000` |
+| `__pure_virtual` | a call through a vtable slot the binary never filled; panics as `G4PUR` |
+
+`__divsi3` and `__udivsi3` are forwarded to **divmod** rather than to
+`__aeabi_idiv` and `__aeabi_uidiv`. Those two sit at the end of the def and are
+absent from shipped `drtaeabi` builds, while divmod returns the quotient in r0,
+which is exactly what they want.
+
 With the forwards in place the game gets much further:
 
 ```
-Thread Main panicked with category: G4RET and exit code: 350001
+Thread Main panicked with category: G4RET and exit code: 370001
 ```
 
-350 forwards resolved, 1 missing, and **`NewApplication` returned a live
+370 forwards resolved, 1 missing, and **`NewApplication` returned a live
 object** — the same numbers on the emulator's 9.4 ROM and on a real 9.2 N95.
 The one that will not resolve is import 146, `CEikApplication::OpenAppInfoFileLC`,
 which 9.x removed along with AIF files when registration moved to the resource
