@@ -61,6 +61,7 @@ old_call:
     IMPORT userheap_setupthreadheap, 1360  @ UserHeap::SetupThreadHeap(TBool, SStdEpocThreadCreateInfo&)
     IMPORT user_initprocess,  585    @ User::InitProcess()
     IMPORT user_alloc,        646    @ User::Alloc(TInt)
+    IMPORT user_allocz,       652    @ User::AllocZ(TInt)
     IMPORT chunk_createlocalcode, 905  @ RChunk::CreateLocalCode(TInt, TInt, TOwnerType)
     IMPORT chunk_base,       1702    @ RChunk::Base() const
     IMPORT rlibrary_load,    1308    @ RLibrary::Load(TDesC16 const&, TDesC16 const&)
@@ -72,4 +73,12 @@ old_call:
     IMPORT file_read,         255    @ RFile::Read(TDes8&)
     @ eikcore
     IMPORT eikstart_runapplication, 394  @ EikStart::RunApplication(TApaApplicationFactory)
-    IMPORT eikapplication_ctor,  64  @ CEikApplication::CEikApplication() const
+    IMPORT eikapplication_ctor,  64  @ CEikApplication::CEikApplication()
+    IMPORT eikappui_ctor,       177  @ CEikAppUi::CEikAppUi()
+    IMPORT eikappui_baseconstructl, 150  @ CEikAppUi::BaseConstructL(TInt)
+
+    @ avkon
+    IMPORT akndocument_ctor,    131  @ CAknDocument::CAknDocument(CEikApplication&)
+
+    @ cone
+    IMPORT coeappui_ctor,       245  @ CCoeAppUi::CCoeAppUi()

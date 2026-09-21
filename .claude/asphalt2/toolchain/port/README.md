@@ -606,6 +606,58 @@ N-Gage binary was loaded and relocated, its 462 imports bound, its
 `NewApplication` built its application object, and a 9.x virtual call reached
 it through its own calling convention and came back with its answer.
 
+### Only the slots the game overrides
+
+The obvious next move -- bridge every slot whose old counterpart is known --
+faults immediately. Bridging an *inherited* slot sends the framework through
+the game's veneers into our shim and back into 9.x code, running with `this`
+pointing at the old 556-byte object. The 9.x implementation reads fields that
+are not where it expects them and dies.
+
+So the wrapper forwards only what the game actually overrides, and leaves every
+inherited slot with its 9.x implementation, which then runs against a 9.x
+object as it was built to. The game's vtables say what that is:
+
+```
+application  0 destructor   3 AppDllUid   12 CreateDocumentL()   13 ?
+document     0 destructor   9 ?           17 CreateAppUiL()
+```
+
+Old application slot 12 is a one-instruction branch to a function that
+allocates 0x24 bytes and constructs a document with the application as its
+argument -- `CreateDocumentL()`, the no-argument factory, which 9.x puts at
+slot 17. Old document slot 17 allocates 0x68 bytes: `CreateAppUiL()`, 9.x slot
+19. Both were read from the binary, not guessed:
+
+```
+00002368  eaffffab  b #0x221c        @ CreateDocumentL()
+0000221c  e92d4030  push {r4, r5, lr}
+00002224  e3a00024  mov r0, #0x24
+00002228  eb045ae2  bl #0x118db8     @ operator new
+```
+
+Destructors stay 9.x -- the wrapper is a real 9.x object and has to be torn
+down as one -- so the old objects leak, which for now costs nothing.
+
+`AppDllUid` turned out to be the one slot that must *not* be bridged. With the
+game answering it, the framework looked the application up by the N-Gage UID,
+found no registration for it, and left with `KErrNotFound` right after opening
+the resource file. The UID is the framework's name for us, not for the game, so
+it stays ours -- the same one the registration resource carries.
+
+What is left is two parallel object graphs: the game keeps the objects its own
+code built, and each 9.x wrapper holds a pointer to its counterpart in a word
+past anything the 9.x class uses. `CreateDocumentL` calls the old slot, takes
+the old document, and hands back a `CAknDocument` of ours that remembers it;
+`CreateAppUiL` does the same one level down.
+
+```
+Thread Gate6 panicked with category: G6CHN and exit code: 3
+```
+
+Application, document and app UI -- the game's code built all three, on S60v3,
+and the framework accepted a wrapper for each.
+
 ## Not done yet
 
 - **The shim itself.** 462 stubs currently all panic. Each has to become a real

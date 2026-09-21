@@ -123,38 +123,135 @@ extern "C" int gate6_mem_compare(const u8 *a, int la, const u8 *b, int lb)
 
 extern "C" {
 void eikstart_runapplication(u32 type, u32 data, u32 cached, u32 spare);
-void eikapplication_ctor(void *self);
-int old_call(void *object, u32 slot);       // a GCC98r2 virtual call
+void eikapplication_ctor(void *self);                 // CEikApplication::CEikApplication()
+void akndocument_ctor(void *self, void *app);         // CAknDocument::CAknDocument(CEikApplication&)
+void coeappui_ctor(void *self);                       // CCoeAppUi::CCoeAppUi()
+void eikappui_ctor(void *self);                       // CEikAppUi::CEikAppUi()
+void eikappui_baseconstructl(void *self, int flags);  // CEikAppUi::BaseConstructL(TInt)
+void *user_allocz(int size);
+
+// A GCC98r2 virtual call: the vptr is at offset 0 and points eight bytes
+// before slot 0. Arguments past `this` are not passed, which is all the old
+// slots reached from here need.
+u32 old_call(const void *object, int slot);
 }
 
+#define CAT_CHN {'G','6','C','H','N'}
 #define CAT_UID {'G','6','U','I','D'}
 
-// The application vtable, 9.x on the left and the game's on the right. They are
-// not the same shape: 9.x splits the destructor into two slots and has no
-// OpenAppInfoFileLC, which 9.x deleted, so this is a translation rather than an
-// offset. Both were read off real vtables rather than counted.
-enum { VT_HEADER = 2, APP_SLOTS = 18 };
-enum { NEW_APP_DLL_UID = 5 };               // 9.x CApaApplication::AppDllUid
-enum { OLD_APP_DLL_UID = 3 };               // the same function in the game's
+// Two object graphs, not one. The 9.x framework gets objects of its own,
+// constructed the ordinary way from exported constructors, and the game keeps
+// the objects its own code built. A wrapper holds a pointer to its counterpart
+// and forwards only the slots the game actually overrides; everything the game
+// inherited stays with the 9.x implementation, which then runs against a 9.x
+// object as it expects. Bridging an inherited slot instead sends the framework
+// through the game's veneers back into 9.x code with `this` pointing at the old
+// object, and it faults -- which is what the first attempt at this did.
+//
+// The game's own overrides, from its vtables:
+//
+//   application  0 destructor   3 AppDllUid    12 CreateDocumentL()   13 ?
+//   document     0 destructor   9 ?            17 CreateAppUiL()
+//
+// AppDllUid is the exception: see below.
+//
+// Destructors stay 9.x: the wrapper is a real 9.x object and has to be torn
+// down as one. The old objects leak, which for now costs nothing.
+enum { VT_HEADER = 2 };
+enum { APP_SLOTS = 18, SLOT_APP_DLL_UID = 5, SLOT_CREATE_DOCUMENT = 17 };
+enum { DOC_SLOTS = 34, SLOT_CREATE_APP_UI = 19 };
+enum { UI_SLOTS = 48, SLOT_UI_CONSTRUCT = 16 };
 
-// The wrapper carries the old object itself, well past anything
-// CEikApplication uses. A writable global would need a .bss section, which
-// these images do not have.
-enum { WRAP_BYTES = 2048, WRAP_GAME_APP = 256 };   // word index, so offset 1024
+enum { OLD_CREATE_DOCUMENT = 12, OLD_CREATE_APP_UI = 17 };
 
-extern "C" u32 gate6_app_dll_uid(void *self)
+// EIKAPPUI.H, as gate 5 established.
+enum { ENoAppResourceFile = 0x01, ENoScreenFurniture = 0x04 };
+
+// This program has no writable globals -- the image declares no .bss -- so each
+// wrapper carries its counterpart itself, parked well past the end of any real
+// 9.x object in the 2 KB we give it.
+enum { WRAP_BYTES = 2048, WRAP_OLD = WRAP_BYTES / 4 - 1 };
+
+static const u32 *vtable_of(const u32 *object)
 {
-    // Ask the game, through its own vtable and its own calling convention.
-    return (u32)old_call((void *)((u32 *)self)[WRAP_GAME_APP], OLD_APP_DLL_UID);
+    return (const u32 *)object[0] - VT_HEADER;
 }
 
-static u32 load_and_start(void);
+static u32 *copy_vtable(const u32 *real, int slots)
+{
+    u32 *vt = (u32 *)user_allocz((VT_HEADER + slots) * 4);
+    if (!vt) PANIC(CAT_MEM, -30);
+    for (int i = 0; i < VT_HEADER + slots; i++)
+        vt[i] = real[i];
+    return vt;
+}
+
+// ---- the app UI ------------------------------------------------------------
+
+extern "C" void gate6_ui_construct(void *self)
+{
+    eikappui_baseconstructl(self, ENoAppResourceFile | ENoScreenFurniture);
+
+    // Application, document and app UI all came from the game's own code and
+    // the framework accepted every one of them. Calling the old app UI's
+    // ConstructL is the next step and needs a control to put on the screen.
+    PANIC(CAT_CHN, (int)((const u32 *)self)[WRAP_OLD] ? 3 : 2);
+}
+
+extern "C" void *gate6_create_app_ui(void *self)
+{
+    const u32 *oldDoc = (const u32 *)((const u32 *)self)[WRAP_OLD];
+    u32 oldUi = old_call(oldDoc, OLD_CREATE_APP_UI);
+    if (!oldUi) PANIC(CAT_NUL, 3);
+
+    u32 *ui = (u32 *)user_allocz(WRAP_BYTES);
+    if (!ui) PANIC(CAT_MEM, -31);
+    coeappui_ctor(ui);          // assigns iCoeEnv, which BaseConstructL reads
+    eikappui_ctor(ui);
+    ui[WRAP_OLD] = oldUi;
+
+    u32 *vt = copy_vtable(vtable_of(ui), UI_SLOTS);
+    vt[VT_HEADER + SLOT_UI_CONSTRUCT] = (u32)&gate6_ui_construct;
+    ui[0] = (u32)(vt + VT_HEADER);
+    return ui;
+}
+
+// ---- the document ----------------------------------------------------------
+
+extern "C" void *gate6_create_document(void *self)
+{
+    const u32 *oldApp = (const u32 *)((const u32 *)self)[WRAP_OLD];
+    u32 oldDoc = old_call(oldApp, OLD_CREATE_DOCUMENT);
+    if (!oldDoc) PANIC(CAT_NUL, 2);
+
+    u32 *doc = (u32 *)user_allocz(WRAP_BYTES);
+    if (!doc) PANIC(CAT_MEM, -32);
+    akndocument_ctor(doc, self);        // the 9.x document points at the 9.x app
+    doc[WRAP_OLD] = oldDoc;
+
+    u32 *vt = copy_vtable(vtable_of(doc), DOC_SLOTS);
+    vt[VT_HEADER + SLOT_CREATE_APP_UI] = (u32)&gate6_create_app_ui;
+    doc[0] = (u32)(vt + VT_HEADER);
+    return doc;
+}
+
+// ---- the application -------------------------------------------------------
+
+// The game's own AppDllUid answers with the N-Gage UID, and bridging it is what
+// the first run of this did: the framework then looked the application up by
+// that UID, found no registration for it and left with KErrNotFound before the
+// document was ever asked for. The UID is the framework's name for *us*, so it
+// stays ours -- the same one the registration resource carries.
+extern "C" u32 gate6_app_dll_uid(void *)
+{
+    return 0xE0001006;          // TUid is one word, returned in r0
+}
+
+static u32 load_and_start(void);   // -> the wrapper the framework gets
 
 extern "C" void *gate6_new_application()
 {
-    const u32 uid = load_and_start();
-    PANIC(CAT_UID, (int)uid);
-    return 0;
+    return (void *)load_and_start();
 }
 
 extern "C" u32 gate6_main()
@@ -340,22 +437,17 @@ static u32 load_and_start()
     const u32 ord1 = *(const u32 *)(raw + h->exportDirOffset);
     void *app = ((Ordinal1Fn)(base + ord1))();
     if (!app) PANIC(CAT_NUL, (int)(forwarded * 1000 + missing));
-    // The bridge: a 9.x object built the ordinary way, with the one slot that
-    // matters pointed at the old object instead.
-    u32 *wrap = (u32 *)user_alloc(WRAP_BYTES);
+    // The 9.x application: built the ordinary way, then told which old object
+    // it stands for, with its two overridden slots pointed at the game.
+    u32 *wrap = (u32 *)user_allocz(WRAP_BYTES);
     if (!wrap) PANIC(CAT_MEM, -20);
-    for (int i = 0; i < WRAP_BYTES / 4; i++) wrap[i] = 0;
     eikapplication_ctor(wrap);
-    wrap[WRAP_GAME_APP] = (u32)app;
-    const u32 *real = (const u32 *)wrap[0] - VT_HEADER;
-    u32 *vt = (u32 *)user_alloc((VT_HEADER + APP_SLOTS) * 4);
-    if (!vt) PANIC(CAT_MEM, -21);
-    for (int i = 0; i < VT_HEADER + APP_SLOTS; i++) vt[i] = real[i];
-    vt[VT_HEADER + NEW_APP_DLL_UID] = (u32)&gate6_app_dll_uid;
-    wrap[0] = (u32)(vt + VT_HEADER);
+    wrap[WRAP_OLD] = (u32)app;
 
-    // Call it the way the framework will, through the 9.x vtable.
-    typedef u32 (*UidFn)(void *);
-    return ((UidFn)vt[VT_HEADER + NEW_APP_DLL_UID])(wrap);
+    u32 *vt = copy_vtable(vtable_of(wrap), APP_SLOTS);
+    vt[VT_HEADER + SLOT_APP_DLL_UID] = (u32)&gate6_app_dll_uid;
+    vt[VT_HEADER + SLOT_CREATE_DOCUMENT] = (u32)&gate6_create_document;
+    wrap[0] = (u32)(vt + VT_HEADER);
+    return (u32)wrap;
 
 }
