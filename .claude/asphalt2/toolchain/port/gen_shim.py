@@ -78,6 +78,7 @@ FRAMEWORK_BASES = ('CCoeControl', 'CCoeAppUi', 'CEikApplication', 'CEikDocument'
 
 # No EABI routine matches these, so gate 4 generates them itself.
 LOCAL_NEGSF2, LOCAL_PURE_VIRTUAL, LOCAL_NOOP, LOCAL_MEM_COMPARE = 0, 1, 2, 3
+LOCAL_TRAP_ENTER = 4
 LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL}
 
 # Functions 9.x kept but moved, renamed or gave another argument. Each was
@@ -97,6 +98,12 @@ MANUAL = {
     # Only the 16-bit Mem::Compare survives as an export, so do the 8-bit one here.
     'Mem::Compare(unsigned char const *, int, unsigned char const *, int)':
         ('local', LOCAL_MEM_COMPARE, KIND_LOCAL),
+    # EKA1's trap harness has no 9.x counterpart -- TRAP became a thread trap
+    # handler. Entering a trap reports the first pass with no error and leaving
+    # it does nothing, so a leave inside the body propagates to the framework's
+    # own TRAP instead of being caught here. Only code that leaves can tell.
+    'TTrap::Trap(int &)': ('local', LOCAL_TRAP_ENTER, KIND_LOCAL),
+    'TTrap::UnTrap(void)': ('local', LOCAL_NOOP, KIND_LOCAL),
 }
 
 

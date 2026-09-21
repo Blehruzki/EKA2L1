@@ -658,6 +658,59 @@ Thread Gate6 panicked with category: G6CHN and exit code: 3
 Application, document and app UI -- the game's code built all three, on S60v3,
 and the framework accepted a wrapper for each.
 
+### The other direction
+
+Everything so far was the framework calling the game. `ConstructL` is the game
+calling the framework, on itself -- and the old object is exactly what a 9.x
+implementation must not be given. Its slot is 13; slot 17 compares its argument
+against 0x100, so that one is `HandleCommandL`. What it does:
+
+```
+BaseConstructL(0)                      avkon, import 9
+TTrap::Trap(err) { ... } UnTrap()      euser, imports 372 and 373
+[r5+0x60] = new <control>
+ApplicationRect()                      eikcore, import 172
+<control>->ConstructL(rect)
+AddToStackL(control, 0, 0)             cone, import 51
+SetKeyBlockMode(1)                     avkon, import 39
+[r5+0x64] = KeySounds()                avkon, import 25
+PushContextL(0x08cc0116)               avkon, import 35
+```
+
+So the shim needs to divert a call rather than forward it. A resolved import's
+stub slot is spare -- its address went straight into the table -- so the
+diversion is built there, carrying a context word in r2 while r0 and r1 pass
+through:
+
+```
+ldr r2, [pc, #4]
+ldr pc, [pc, #4]
+.word context
+.word our function
+```
+
+The context holds the 9.x wrapper, and `BaseConstructL` becomes ours: it drops
+the old object, and calls `CEikAppUi::BaseConstructL` on the wrapper with the
+flags gate 5 established rather than the game's zero, since nothing here has
+screen furniture to construct yet.
+
+EKA1's trap harness has no 9.x counterpart at all -- `TRAP` became a thread
+trap handler -- so `TTrap::Trap` is generated locally as "first pass, no error"
+and `UnTrap` as nothing. A leave inside the body then propagates to the
+framework's own TRAP instead of being caught. Only code that actually leaves
+can tell the difference.
+
+With those three in place the game's `ConstructL` runs past `BaseConstructL`,
+past the trap, and stops at:
+
+```
+Thread Gate6 panicked with category: G6IMP and exit code: 464459
+```
+
+Import 459: `NOKIAFC` ordinal 1. That is the N-Gage frontier -- 31 imports
+across GAMECOMMS, GAMEUTILS, ARENAFRAMEWORK and NOKIAFC exist only in the
+N-Gage ROM, and each has to be read out of it.
+
 ## Not done yet
 
 - **The shim itself.** 462 stubs currently all panic. Each has to become a real

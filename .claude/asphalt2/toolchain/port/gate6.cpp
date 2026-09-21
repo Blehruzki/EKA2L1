@@ -53,7 +53,8 @@ struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
 // Every import gets a slot big enough for whichever thunk it needs.
 enum { SLOT = 32 };
 enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4 };
-enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3 };
+enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
+       LOCAL_TRAP_ENTER = 4 };
 
 static void panic(const u16 *cat, int catLen, int reason)
 {
@@ -162,7 +163,14 @@ enum { APP_SLOTS = 18, SLOT_APP_DLL_UID = 5, SLOT_CREATE_DOCUMENT = 17 };
 enum { DOC_SLOTS = 34, SLOT_CREATE_APP_UI = 19 };
 enum { UI_SLOTS = 48, SLOT_UI_CONSTRUCT = 16 };
 
-enum { OLD_CREATE_DOCUMENT = 12, OLD_CREATE_APP_UI = 17 };
+enum { OLD_CREATE_DOCUMENT = 12, OLD_UI_CONSTRUCT = 13, OLD_CREATE_APP_UI = 17 };
+
+// The game's app UI ConstructL, old slot 13: BaseConstructL(0), then a trap
+// harness, then it builds a control, asks for ApplicationRect, pushes the
+// control on the stack, and sets the key block mode -- every one of them a
+// framework method called on the old object. Slot 17 is HandleCommandL, which
+// compares its argument against 0x100; slot 13 is what is left.
+enum { IMPORT_BASECONSTRUCTL = 9 };     // avkon CAknAppUi::BaseConstructL(TInt)
 
 // EIKAPPUI.H, as gate 5 established.
 enum { ENoAppResourceFile = 0x01, ENoScreenFurniture = 0x04 };
@@ -170,7 +178,16 @@ enum { ENoAppResourceFile = 0x01, ENoScreenFurniture = 0x04 };
 // This program has no writable globals -- the image declares no .bss -- so each
 // wrapper carries its counterpart itself, parked well past the end of any real
 // 9.x object in the 2 KB we give it.
-enum { WRAP_BYTES = 2048, WRAP_OLD = WRAP_BYTES / 4 - 1 };
+enum { WRAP_BYTES = 2048, WRAP_OLD = WRAP_BYTES / 4 - 1, WRAP_CTX = WRAP_BYTES / 4 - 2 };
+
+// What the shim needs to know and cannot keep in a global. Every wrapper holds
+// a pointer to it, so any of them can find it from `this`.
+struct Context { u32 *wrapUi; };
+
+static Context *context_of(const void *wrapper)
+{
+    return (Context *)((const u32 *)wrapper)[WRAP_CTX];
+}
 
 static const u32 *vtable_of(const u32 *object)
 {
@@ -186,16 +203,44 @@ static u32 *copy_vtable(const u32 *real, int slots)
     return vt;
 }
 
+// The other direction. When the game calls a framework method on itself, the
+// 9.x implementation must not see the old object, so the call is diverted to
+// one of ours -- which needs the context, and gets it in r2:
+//
+//   ldr r2, [pc, #4]    @ the context, baked in when the stub is built
+//   ldr pc, [pc, #4]    @ and on to our implementation
+//   .word context
+//   .word our function
+//
+// r0 and r1 pass through untouched, so the old arguments arrive as they were.
+static u32 ctx_thunk(u8 *code, const void *ctx, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE59F2004;                  // ldr r2, [pc, #4]
+    b[1] = 0xE59FF004;                  // ldr pc, [pc, #4]
+    b[3] = (u32)ctx;
+    b[4] = target;
+    return (u32)b;
+}
+
 // ---- the app UI ------------------------------------------------------------
+
+// The game asks CAknAppUi to base-construct the old object. Ours is a
+// CEikAppUi, built from the constructors gate 5 used, so it gets the CEikAppUi
+// one -- and the flags gate 5 established rather than the game's zero, since
+// nothing here has screen furniture to construct yet.
+extern "C" void gate6_baseconstructl(void *, int, Context *c)
+{
+    eikappui_baseconstructl(c->wrapUi, ENoAppResourceFile | ENoScreenFurniture);
+}
 
 extern "C" void gate6_ui_construct(void *self)
 {
-    eikappui_baseconstructl(self, ENoAppResourceFile | ENoScreenFurniture);
-
-    // Application, document and app UI all came from the game's own code and
-    // the framework accepted every one of them. Calling the old app UI's
-    // ConstructL is the next step and needs a control to put on the screen.
-    PANIC(CAT_CHN, (int)((const u32 *)self)[WRAP_OLD] ? 3 : 2);
+    // From here the game's own ConstructL drives, and whatever it reaches that
+    // the shim cannot answer panics with that import's index.
+    context_of(self)->wrapUi = (u32 *)self;
+    old_call((const u32 *)((const u32 *)self)[WRAP_OLD], OLD_UI_CONSTRUCT);
+    PANIC(CAT_CHN, 4);          // it returned, which nothing has done yet
 }
 
 extern "C" void *gate6_create_app_ui(void *self)
@@ -209,6 +254,7 @@ extern "C" void *gate6_create_app_ui(void *self)
     coeappui_ctor(ui);          // assigns iCoeEnv, which BaseConstructL reads
     eikappui_ctor(ui);
     ui[WRAP_OLD] = oldUi;
+    ui[WRAP_CTX] = ((const u32 *)self)[WRAP_CTX];
 
     u32 *vt = copy_vtable(vtable_of(ui), UI_SLOTS);
     vt[VT_HEADER + SLOT_UI_CONSTRUCT] = (u32)&gate6_ui_construct;
@@ -228,6 +274,7 @@ extern "C" void *gate6_create_document(void *self)
     if (!doc) PANIC(CAT_MEM, -32);
     akndocument_ctor(doc, self);        // the 9.x document points at the 9.x app
     doc[WRAP_OLD] = oldDoc;
+    doc[WRAP_CTX] = ((const u32 *)self)[WRAP_CTX];
 
     u32 *vt = copy_vtable(vtable_of(doc), DOC_SLOTS);
     vt[VT_HEADER + SLOT_CREATE_APP_UI] = (u32)&gate6_create_app_ui;
@@ -393,6 +440,11 @@ static u32 load_and_start()
                 s[0] = 0xE3A00000;          // mov r0, #0
                 s[1] = 0xE12FFF1E;          // bx  lr
                 break;
+            case LOCAL_TRAP_ENTER:          // TTrap::Trap(TInt&): first pass, no error
+                s[0] = 0xE3A00000;          // mov r0, #0
+                s[1] = 0xE5810000;          // str r0, [r1]
+                s[2] = 0xE12FFF1E;          // bx  lr
+                break;
             case LOCAL_MEM_COMPARE:
                 s[0] = 0xE51FF004;          // ldr pc, [pc, #-4]
                 s[1] = (u32)&gate6_mem_compare;
@@ -429,6 +481,14 @@ static u32 load_and_start()
     }
     if (!forwarded) PANIC(CAT_SHIM, (int)missing);
 
+    // The stub slot of a resolved import is spare -- its address went straight
+    // into the table -- so the diversions are built there.
+    Context *ctx = (Context *)user_allocz((int)sizeof(Context));
+    if (!ctx) PANIC(CAT_MEM, -23);
+    if (nImports <= IMPORT_BASECONSTRUCTL) PANIC(CAT_SHIM, (int)nImports);
+    iat[IMPORT_BASECONSTRUCTL] = ctx_thunk(stub + SLOT * IMPORT_BASECONSTRUCTL,
+                                           ctx, (u32)&gate6_baseconstructl);
+
     // Enter it. EKA1 calls a DLL's entry point with EDllProcessAttach first,
     // then apparc asks ordinal 1 for the application object.
     typedef int (*EntryFn)(int);
@@ -443,6 +503,7 @@ static u32 load_and_start()
     if (!wrap) PANIC(CAT_MEM, -20);
     eikapplication_ctor(wrap);
     wrap[WRAP_OLD] = (u32)app;
+    wrap[WRAP_CTX] = (u32)ctx;
 
     u32 *vt = copy_vtable(vtable_of(wrap), APP_SLOTS);
     vt[VT_HEADER + SLOT_APP_DLL_UID] = (u32)&gate6_app_dll_uid;

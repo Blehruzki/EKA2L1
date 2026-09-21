@@ -46,7 +46,8 @@ struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
 // Every import gets a slot big enough for whichever thunk it needs.
 enum { SLOT = 32 };
 enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4 };
-enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3 };
+enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
+       LOCAL_TRAP_ENTER = 4 };
 
 static void panic(const u16 *cat, int catLen, int reason)
 {
@@ -245,6 +246,11 @@ extern "C" u32 gate4_main()
             case LOCAL_NOOP:                // an empty body: _Reserved slots, CBase
                 s[0] = 0xE3A00000;          // mov r0, #0
                 s[1] = 0xE12FFF1E;          // bx  lr
+                break;
+            case LOCAL_TRAP_ENTER:          // TTrap::Trap(TInt&): first pass, no error
+                s[0] = 0xE3A00000;          // mov r0, #0
+                s[1] = 0xE5810000;          // str r0, [r1]
+                s[2] = 0xE12FFF1E;          // bx  lr
                 break;
             case LOCAL_MEM_COMPARE:
                 s[0] = 0xE51FF004;          // ldr pc, [pc, #-4]
