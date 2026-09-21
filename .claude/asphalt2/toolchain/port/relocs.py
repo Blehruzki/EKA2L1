@@ -9,12 +9,20 @@ quietly emitting a wrong table.
 
 The E32 relocation section groups entries by 4 KB page:
 
-    u32 section size, u32 relocation count
+    u32 size of the entries that follow, NOT counting these two words
+    u32 relocation count
     per page:  u32 page base (from the start of the code section)
                u32 block size, including these 8 bytes, padded to 4
                u16 entries: (type << 12) | offset within the page
 
-Type 3 is a text relocation, which is all a code-only image needs.
+Type 3 is KInferredRelocType, which is what shipped images use: the loader
+works out from the address whether a relocation lands in text or data.
+
+The size word excluding its own header is the kind of detail that is cheap to
+get wrong and expensive to debug -- a real device answers KErrCorrupt (-20) and
+nothing else, while the emulator, which never reads that field, runs the image
+happily.  `selftest` therefore rebuilds a shipped image's relocation section
+from the relocations parsed out of it and requires a byte-for-byte match.
 """
 import struct
 
@@ -60,4 +68,26 @@ def section(offsets):
             words += b'\0\0'                 # pad the block to a whole word
         body += struct.pack('<II', base, 8 + len(words)) + words
 
-    return struct.pack('<II', 8 + len(body), len(offsets)) + body
+    return struct.pack('<II', len(body), len(offsets)) + body
+
+
+def selftest(image):
+    """Rebuild a shipped image's relocation section and compare it byte for byte."""
+    import e32imports, vtables
+    d = open(image, 'rb').read()
+    h = e32imports.header(d)
+    mine = section(vtables.relocations(d, h))
+    theirs = d[h['code_reloc_offset']:]
+    ok = mine == theirs
+    print('relocs selftest: %s (%d bytes)' % ('exact match' if ok else 'FAILED', len(theirs)))
+    if not ok:
+        n = min(len(mine), len(theirs))
+        i = next((k for k in range(n) if mine[k] != theirs[k]), n)
+        print('  first difference at byte %d\n  ours   %s\n  theirs %s'
+              % (i, mine[max(0, i - 4):i + 12].hex(), theirs[max(0, i - 4):i + 12].hex()))
+    return ok
+
+
+if __name__ == '__main__':
+    import sys
+    sys.exit(0 if selftest(sys.argv[1]) else 1)
