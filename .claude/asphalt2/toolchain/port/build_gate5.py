@@ -15,10 +15,9 @@ CONE = 'cone{000a0000}[10003a41].dll'
 
 buildapp.build('gate5', 0xE0001005, 'Gate5', sys.argv[1] if len(sys.argv) > 1 else '.',
                imports=[(buildapp.EUSER, ['user_panic', 'userheap_setupthreadheap',
-                                          'user_initprocess', 'user_alloc', 'user_allocz',
-                                          'rlibrary_load', 'rlibrary_lookup']),
+                                          'user_initprocess', 'user_allocz']),
                         (EIKCORE, ['eikstart_runapplication', 'eikapplication_ctor',
                                    'eikappui_ctor', 'eikappui_baseconstructl']),
                         (AVKON, ['akndocument_ctor']),
-                        (CONE, ['coeenv_static', 'coeappui_ctor'])],
+                        (CONE, ['coeappui_ctor'])],
                heap_max=0x400000)

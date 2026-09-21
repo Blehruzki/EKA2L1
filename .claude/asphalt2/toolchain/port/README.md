@@ -506,25 +506,35 @@ With both confirmed, the fault was really inside `BaseConstructL`, in
 environment than an app this bare has. `ENoScreenFurniture` alongside
 `ENoAppResourceFile` is the documented way to say so, and then it returns.
 
-### Step 1 works in the emulator, not yet on the phone
+### Take the vtable from the object, not from an ordinal
 
-Application, document and app UI are all built from exported constructors and
-vtables, and the UI framework accepts them and runs `ConstructL` to completion
--- **on the emulator**. On an N95 the same package dies with `KERN-EXEC 3`.
+Application, document and app UI are all built and the framework runs
+`ConstructL` to completion in the emulator; an N95 gave `KERN-EXEC 3` on the
+same package. The emulator device here is RM-409, a Nokia 5320 on `epoc93fp2`
+-- S60v3 FP2 -- against an N95's FP1, so both are S60v3 and the gap is 9.3
+against 9.2.
 
-The emulator runs an S60v5 ROM and the N95 is S60v3 FP1, and the ordinals here
-come from the Symbian source release, which is later than either. The function
-ordinals are not the problem: an import section is resolved when the image
-loads, so a wrong one there would stop the app starting rather than let it
-fault. The three vtables looked up at run time are the suspects, because a
-wrong ordinal returns a real symbol rather than nothing, and a wrong symbol
-used as a vtable is exactly an access violation.
+Looking a vtable up by ordinal is the fragile part of that gap. Ordinals for
+these libraries come from the Symbian source release, later than either phone,
+and a vtable fetched by a wrong ordinal is a real symbol that is not a vtable
+-- an access violation with nothing to say about which lookup was wrong.
 
-So `checked_vtable` now tests the shape before trusting it -- a primary vtable
-starts with an offset-to-top of zero and its slots are code addresses -- and
-reports `G5LIB` with `tag * 10 + reason`: reason 1 absent, 2 bad offset-to-top,
-3 slots that are not code; tag 1 `CAknApplication`, 2 `CAknDocument`, 3
-`CEikAppUi`. That turns one silent fault into a number naming the lookup.
+A constructor has already put the right vtable in the object, so read it back
+from there:
+
+```cpp
+static const u32 *vtable_of(const u32 *object)
+{
+    return (const u32 *)object[0] - VT_HEADER;
+}
+```
+
+No ordinal, and a constructor ordinal cannot fail the same way: it lives in the
+import section, which the loader resolves when the image starts, so a wrong one
+stops the app rather than corrupting it. It also keeps constructor and vtable
+in step by construction, which pairing them by hand had not -- the application
+was being built with `CEikApplication`'s constructor and `CAknApplication`'s
+vtable, two classes whose layouts need not agree.
 
 Letting `ConstructL` return rather than stopping there faults shortly
 afterwards, which is fair: an app UI with no control and no view has nothing
