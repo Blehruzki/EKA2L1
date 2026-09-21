@@ -32,7 +32,8 @@ python3 build_package.py
 | `sisrw.py` | SIS(X) reader/writer. Descends only the path it needs; everything else stays raw, so it round-trips untouched packages byte-identically — the test that validates any container change. |
 | `sishash.py` | Locates the SHA-1 inside each `SISFileDescription`, and strips `SISSignatureCertChain`. |
 | `e32crc.py` | E32 image header CRC32 (`Mem::Crc32`, seeded with `KImageCrcInitialiser`). |
-| `barfile.py` | `light.bar` read/write. |
+| `barfile.py` | `light.bar` read/write. `put` appends to the name list for a name that is not already there -- `save` walks that list, so without it adding a file looks exactly like doing nothing. |
+| `znd.py` | Writes a track as a `.znd`: `u16 rate` then 8-bit signed PCM, the format the game's own sound engine plays. |
 | `rleraw.py` | RLE sprite codec, types 0/1/2. No row flip — callers decide, per blit path. |
 | `thumb.py` | THUMB assembler: the instructions needed for the patch set, plus `bl` offset encoding. |
 | `scan.py`, `sweep.py` | Resilient linear THUMB sweep. Capstone halts at the first undecodable word; `sweep` restarts +2 bytes. |

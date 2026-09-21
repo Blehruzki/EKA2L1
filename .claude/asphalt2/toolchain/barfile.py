@@ -17,6 +17,10 @@ class Bar:
         d=s.blobs[name]
         return zlib.decompress(d[4:]) if s.flags[name] else d
     def put(s,name,data,compress=True):
+        # save() walks s.names, so a name that is not in it is silently dropped --
+        # which is how adding a file looks like doing nothing at all.
+        if name not in s.blobs:
+            s.names.append(name)
         s.blobs[name]=struct.pack('>I',len(data))+zlib.compress(data,9) if compress else data
         s.flags[name]=compress
     def save(s,path):

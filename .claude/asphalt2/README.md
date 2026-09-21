@@ -347,6 +347,40 @@ volume is small, `(0 * max) >> 8` is exactly zero. The scale is read by the
 open-complete callback, so it has to be right before the player exists; setting it
 after the call is too late.
 
+## 7c. Why race music is still silent on hardware
+
+Established, in order:
+
+- The track **starts and plays to completion unheard**. Quitting a race reveals it
+  mid-flight, and a capture shows its stream producing audio continuously for 97s
+  across the race and on into the menu, while the effects stream stops at the quit.
+  No new player is created on the way back, so what plays in the menu is that same
+  track. (An earlier version of this test was invalid -- it stopped at the "DO YOU
+  REALY WANT TO QUIT?" confirmation and never reached the menu.)
+- **Not the audio policy priority**: creating the player at `EMdaPriorityMax`
+  changed nothing on the device.
+- **Not loudness**: the in-game VOLUME at 16/16 changed nothing either.
+- The asymmetry that matters: the game's effects are mixed by a **separate sound
+  server thread**, reached over client-server IPC (`SendReceive`, opcode 1 add,
+  3 play, and a volume op), which is why they keep sounding through a race. Music
+  goes through `CMdaAudioPlayerUtility` on the main thread, whose race loop never
+  services what would start it.
+
+So the music belongs in that engine, as one more sound. That route is built and
+**not yet working**: `znd.py` writes the tracks in the engine's format, they ship
+in `light.bar` as `Sounds\bgm_X.znd`, and a cave at race entry captures the sound
+bank (from `LoadSound`, rather than reconstructing it from an object graph),
+unloads the dead `s_3` slot, loads the track and plays it looping with the volume
+call the game always makes. A probe confirms the engine **accepts** the sound --
+its pointer lands at `bank + id*12 + 0x10`. Nothing comes out.
+
+Asking it to loop a stock sound (`s_go!`, conveniently also five characters) is
+silent too, so what is incomplete is the play contract, not the file. The next
+suspect is ordering: the race registers its own sound set, and doing so would
+overwrite the slot after the cave has filled it.
+
+---
+
 **The track starts on the device and is inaudible anyway.** Returning to the menu
 after a race plays a different track each time, and the emulator shows no new
 player is created on the way back -- so what plays there is the race's own track,

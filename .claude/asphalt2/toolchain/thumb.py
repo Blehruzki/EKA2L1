@@ -45,3 +45,5 @@ def blx_imm(frm,to):
     assert -0x400000<=off<0x400000
     o=off&0x7fffff
     return struct.pack('<HH', 0xF000|((o>>12)&0x7ff), 0xE800|((o>>1)&0x7fe))
+def adds_i2(rd,rn,imm): assert 0<=imm<8; return 0x1C00|(imm<<6)|(rn<<3)|rd
+def bne(frm,to): return 0xD100|(((to-(frm+4))>>1)&0xff)
