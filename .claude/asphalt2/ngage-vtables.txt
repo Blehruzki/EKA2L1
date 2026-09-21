@@ -1,0 +1,555 @@
+/tmp/claude-0/-home-user-EKA2L1/ec0d1fd1-56fb-5d4c-9116-ef9f3a4e0d5a/scratchpad/ngage/B/system/apps/6rbc/6rbc.app
+  47 vtables, 462 veneers
+  stored vptrs pointing at table-8: 160 ; at table+0: 0  -> the vptr is biased by 8
+  tables preceded by two zero words: 41 of 47 (the rest abut another table)
+
+vtable at code+0x1837b4 : 44 slots, 43 inherited, 1 overridden
+  [ 0] overridden, code +0x135e34
+  [ 1] avkon::OfferKeyEventL__CAknNoteDialogRCTKeyEventTEventCode
+  [ 2] eikdlg::CEikDialog::SetHelpContext(const TCoeHelpContext &)
+  [ 3] cone::CCoeControl::SetDimmed(int)
+  [ 4] cone::CCoeControl::SetContainerWindowL(const CCoeControl &)
+  [ 5] eikdlg::CEikDialog::CreateCustomControlL(int)
+  [ 6] cone::CCoeControl::ActivateL()
+  [ 7] cone::CCoeControl::PrepareForFocusLossL()
+  [ 8] cone::CCoeControl::PrepareForFocusGainL()
+  [ 9] eikcoctl::CListBoxView::SetDimmed(int)
+  [10] cone::CCoeControl::SetNeighbor(CCoeControl *)
+  [11] eikcoctl::IsVisible__C18CEikStatusPaneBase
+  [12] eikdlg::CEikCaptionedControl::SetLatent(int)
+  [13] eikdlg::CEikDialog::Reserved_4()
+  [14] eikdlg::CEikDialog::OfferKeyEventL(const TKeyEvent &, TEventCode)
+  [15] cone::GetHelpContext__C11CCoeControlR15TCoeHelpContext
+  [16] eikdlg::CEikDlgLibrary::ResourceFile()
+  [17] cone::CCoeControl::HandlePointerEventL(const TPointerEvent &)
+  [18] cone::CCoeControl::HandlePointerBufferReadyL()
+  [19] cone::CCoeControl::FocusChanged(TDrawNow)
+  [20] eikdlg ord 201
+  [21] cone::CCoeControl::PositionChanged()
+  [22] eikdlg::CEikDialog::ExitSleepingDialog()
+  [23] eikdlg::CountComponentControls__C10CEikDialog
+  [24] eikdlg::InputCapabilities__C20CEikCaptionedControl
+  [25] eikdlg ord 212
+  [26] eikdlg::CEikCaptionedControl::SizeChanged()
+  [27] avkon::ExecuteLD__CAknNoteWrapperi
+  [28] eikdlg::CEikCaptionedControl::SetUsesEars()
+  [29] avkon::RunLD__CAknNoteDialog
+  [30] eikdlg::CEikCaptionedControl::SetTakesEnterKey(int)
+  [31] avkon::PreLayoutDynInitL__CAknNoteDialog
+  [32] avkon::PostLayoutDynInitL__CAknNoteDialog
+  [33] eikdlg ord 170
+  [34] eikdlg::CEikDialog::Reserved_2()
+  [35] eikdlg::CEikCaptionedControl::Reserved_2()
+  [36] avkon::SetSizeAndPosition__CAknNoteDialogRCTSize
+  [37] eikdlg::CEikDialog::ConstructSleepingAlertDialogL(int)
+  [38] eikdlg::CEikCaptionedControl::SetLatentGroupLineFollows(int)
+  [39] eikdlg::PreferredSize__C10CEikDialogRC5TSize
+  [40] avkon::CEikDialog_Reserved___CAknResourceNoteDialog
+  [41] avkon::CEikDialog_Reserved___CAknResourceNoteDialog
+  [42] avkon::CAknNoteDialog_Reserved__CAknResourceNoteDialog
+  [43] avkon::CAknResourceNoteDialog_Reserved__CAknResourceNoteDialog
+
+vtable at code+0x181e8c : 43 slots, 42 inherited, 1 overridden
+  [ 0] overridden, code +0x135170
+  [ 1] avkon::OfferKeyEventL__CAknNoteDialogRCTKeyEventTEventCode
+  [ 2] eikdlg::CEikDialog::SetHelpContext(const TCoeHelpContext &)
+  [ 3] cone::CCoeControl::SetDimmed(int)
+  [ 4] cone::CCoeControl::SetContainerWindowL(const CCoeControl &)
+  [ 5] eikdlg::CEikDialog::CreateCustomControlL(int)
+  [ 6] cone::CCoeControl::ActivateL()
+  [ 7] cone::CCoeControl::PrepareForFocusLossL()
+  [ 8] cone::CCoeControl::PrepareForFocusGainL()
+  [ 9] eikcoctl::CListBoxView::SetDimmed(int)
+  [10] cone::CCoeControl::SetNeighbor(CCoeControl *)
+  [11] eikcoctl::IsVisible__C18CEikStatusPaneBase
+  [12] eikdlg::CEikCaptionedControl::SetLatent(int)
+  [13] eikdlg::CEikDialog::Reserved_4()
+  [14] eikdlg::CEikDialog::OfferKeyEventL(const TKeyEvent &, TEventCode)
+  [15] cone::GetHelpContext__C11CCoeControlR15TCoeHelpContext
+  [16] eikdlg::CEikDlgLibrary::ResourceFile()
+  [17] cone::CCoeControl::HandlePointerEventL(const TPointerEvent &)
+  [18] cone::CCoeControl::HandlePointerBufferReadyL()
+  [19] cone::CCoeControl::FocusChanged(TDrawNow)
+  [20] eikdlg ord 201
+  [21] cone::CCoeControl::PositionChanged()
+  [22] eikdlg::CEikDialog::ExitSleepingDialog()
+  [23] eikdlg::CountComponentControls__C10CEikDialog
+  [24] eikdlg::InputCapabilities__C20CEikCaptionedControl
+  [25] eikdlg ord 212
+  [26] eikdlg::CEikCaptionedControl::SizeChanged()
+  [27] avkon::ExecuteLD__CAknNoteWrapperi
+  [28] eikdlg::CEikCaptionedControl::SetUsesEars()
+  [29] avkon::RunLD__CAknNoteDialog
+  [30] eikdlg::CEikCaptionedControl::SetTakesEnterKey(int)
+  [31] avkon::PreLayoutDynInitL__CAknNoteDialog
+  [32] avkon::PostLayoutDynInitL__CAknNoteDialog
+  [33] eikdlg ord 170
+  [34] eikdlg::CEikDialog::Reserved_2()
+  [35] eikdlg::CEikCaptionedControl::Reserved_2()
+  [36] avkon::SetSizeAndPosition__CAknNoteDialogRCTSize
+  [37] eikdlg::CEikDialog::ConstructSleepingAlertDialogL(int)
+  [38] eikdlg::CEikCaptionedControl::SetLatentGroupLineFollows(int)
+  [39] eikdlg::PreferredSize__C10CEikDialogRC5TSize
+  [40] avkon::CEikDialog_Reserved___CAknNoteWrapper
+  [41] avkon::CEikDialog_Reserved___CAknNoteWrapper
+  [42] avkon::CAknNoteDialog_Reserved__CAknNoteWrapper
+
+vtable at code+0x182228 : 44 slots, 41 inherited, 3 overridden
+  [ 0] overridden, code +0x135210
+  [ 1] overridden, code +0x121544
+  [ 2] eikdlg::CEikDialog::SetHelpContext(const TCoeHelpContext &)
+  [ 3] cone::CCoeControl::SetDimmed(int)
+  [ 4] cone::CCoeControl::SetContainerWindowL(const CCoeControl &)
+  [ 5] eikdlg::CEikDialog::CreateCustomControlL(int)
+  [ 6] cone::CCoeControl::ActivateL()
+  [ 7] cone::CCoeControl::PrepareForFocusLossL()
+  [ 8] cone::CCoeControl::PrepareForFocusGainL()
+  [ 9] eikcoctl::CListBoxView::SetDimmed(int)
+  [10] cone::CCoeControl::SetNeighbor(CCoeControl *)
+  [11] eikcoctl::IsVisible__C18CEikStatusPaneBase
+  [12] eikdlg::CEikCaptionedControl::SetLatent(int)
+  [13] eikdlg::CEikDialog::Reserved_4()
+  [14] eikdlg::CEikDialog::OfferKeyEventL(const TKeyEvent &, TEventCode)
+  [15] cone::GetHelpContext__C11CCoeControlR15TCoeHelpContext
+  [16] eikdlg::CEikDlgLibrary::ResourceFile()
+  [17] cone::CCoeControl::HandlePointerEventL(const TPointerEvent &)
+  [18] cone::CCoeControl::HandlePointerBufferReadyL()
+  [19] cone::CCoeControl::FocusChanged(TDrawNow)
+  [20] eikdlg ord 201
+  [21] cone::CCoeControl::PositionChanged()
+  [22] eikdlg::CEikDialog::ExitSleepingDialog()
+  [23] eikdlg::CountComponentControls__C10CEikDialog
+  [24] eikdlg::InputCapabilities__C20CEikCaptionedControl
+  [25] eikdlg ord 212
+  [26] eikdlg::CEikCaptionedControl::SizeChanged()
+  [27] avkon::ExecuteLD__CAknNoteWrapperi
+  [28] eikdlg::CEikCaptionedControl::SetUsesEars()
+  [29] avkon::RunLD__CAknNoteDialog
+  [30] overridden, code +0x12154c
+  [31] avkon::PreLayoutDynInitL__CAknNoteDialog
+  [32] avkon::PostLayoutDynInitL__CAknNoteDialog
+  [33] eikdlg ord 170
+  [34] eikdlg::CEikDialog::Reserved_2()
+  [35] eikdlg::CEikCaptionedControl::Reserved_2()
+  [36] avkon::SetSizeAndPosition__CAknNoteDialogRCTSize
+  [37] eikdlg::CEikDialog::ConstructSleepingAlertDialogL(int)
+  [38] eikdlg::CEikCaptionedControl::SetLatentGroupLineFollows(int)
+  [39] eikdlg::PreferredSize__C10CEikDialogRC5TSize
+  [40] avkon::CEikDialog_Reserved___CAknResourceNoteDialog
+  [41] avkon::CEikDialog_Reserved___CAknResourceNoteDialog
+  [42] avkon::CAknNoteDialog_Reserved__CAknResourceNoteDialog
+  [43] avkon::CAknResourceNoteDialog_Reserved__CAknResourceNoteDialog
+
+vtable at code+0x184190 : 28 slots, 28 inherited, 0 overridden
+  [ 0] avkon::_._CAknAppUi
+  [ 1] avkon::HandleWsEventL__CAknAppUiRCTWsEventPCCoeControl
+  [ 2] avkon::PrepareToExit__CAknAppUi
+  [ 3] eikcore::CEikAppUi::Reserved_1()
+  [ 4] eikcore::CEikAppUi::Reserved_2()
+  [ 5] cone::InputCapabilities__C9CCoeAppUi
+  [ 6] cone::CCoeAppUi::HandleKeyEventL(const TKeyEvent &, TEventCode)
+  [ 7] avkon::HandleForegroundEventL__CAknAppUii
+  [ 8] cone::CCoeAppUi::HandleSwitchOnEventL(CCoeControl *)
+  [ 9] avkon::HandleSystemEventL__CAknAppUiRCTWsEvent
+  [10] eikcore::CEikAppUi::HandleApplicationSpecificEventL(int, const TWsEvent &)
+  [11] cone::CCoeAppUi::SetAndDrawFocus(int)
+  [12] cone::HelpContextL__C9CCoeAppUi
+  [13] eikcore::CEikAppUi::ConstructL()
+  [14] eikcore::CEikAppUi::HandleModelChangeL()
+  [15] eikcore::ProcessCommandParametersL__9CEikAppUi11TApaCommandRt4TBuf1i256RC6TDesC8
+  [16] eikcore::CEikAppUi::StopDisplayingMenuBar()
+  [17] eikcore::CEikAppUi::HandleCommandL(int)
+  [18] eikcore::ProcessMessageL__9CEikAppUiG4TUidRC6TDesC8
+  [19] eikcore::CEikAppUi::OpenFileL(const TDesC16 &)
+  [20] eikcore::CEikAppUi::CreateFileL(const TDesC16 &)
+  [21] avkon::HandleError__CAknAppUiiRCSExtendedErrorRTDes16T3
+  [22] eikcore::CEikAppUi::HandleResourceChangeL(int)
+  [23] eikcore::ValidFileType__C9CEikAppUiG4TUid
+  [24] eikcore::CEikAppUi::Reserved_3()
+  [25] eikcore::CEikAppUi::Reserved_4()
+  [26] avkon::Reserved_MtsmPosition__CAknAppUi
+  [27] avkon::Reserved_MtsmObject__CAknAppUi
+
+vtable at code+0x1819b0 : 28 slots, 25 inherited, 3 overridden
+  [ 0] overridden, code +0x2124
+  [ 1] avkon::HandleWsEventL__CAknAppUiRCTWsEventPCCoeControl
+  [ 2] avkon::PrepareToExit__CAknAppUi
+  [ 3] eikcore::CEikAppUi::Reserved_1()
+  [ 4] eikcore::CEikAppUi::Reserved_2()
+  [ 5] cone::InputCapabilities__C9CCoeAppUi
+  [ 6] cone::CCoeAppUi::HandleKeyEventL(const TKeyEvent &, TEventCode)
+  [ 7] avkon::HandleForegroundEventL__CAknAppUii
+  [ 8] cone::CCoeAppUi::HandleSwitchOnEventL(CCoeControl *)
+  [ 9] avkon::HandleSystemEventL__CAknAppUiRCTWsEvent
+  [10] eikcore::CEikAppUi::HandleApplicationSpecificEventL(int, const TWsEvent &)
+  [11] cone::CCoeAppUi::SetAndDrawFocus(int)
+  [12] cone::HelpContextL__C9CCoeAppUi
+  [13] overridden, code +0x2078
+  [14] eikcore::CEikAppUi::HandleModelChangeL()
+  [15] eikcore::ProcessCommandParametersL__9CEikAppUi11TApaCommandRt4TBuf1i256RC6TDesC8
+  [16] eikcore::CEikAppUi::StopDisplayingMenuBar()
+  [17] overridden, code +0x21c8
+  [18] eikcore::ProcessMessageL__9CEikAppUiG4TUidRC6TDesC8
+  [19] eikcore::CEikAppUi::OpenFileL(const TDesC16 &)
+  [20] eikcore::CEikAppUi::CreateFileL(const TDesC16 &)
+  [21] avkon::HandleError__CAknAppUiiRCSExtendedErrorRTDes16T3
+  [22] eikcore::CEikAppUi::HandleResourceChangeL(int)
+  [23] eikcore::ValidFileType__C9CEikAppUiG4TUid
+  [24] eikcore::CEikAppUi::Reserved_3()
+  [25] eikcore::CEikAppUi::Reserved_4()
+  [26] avkon::Reserved_MtsmPosition__CAknAppUi
+  [27] avkon::Reserved_MtsmObject__CAknAppUi
+
+vtable at code+0x180880 : 27 slots, 23 inherited, 4 overridden
+  [ 0] overridden, code +0x1349a8
+  [ 1] overridden, code +0x2060
+  [ 2] cone::CCoeControl::MakeVisible(int)
+  [ 3] cone::CCoeControl::SetDimmed(int)
+  [ 4] cone::CCoeControl::SetContainerWindowL(const CCoeControl &)
+  [ 5] cone::CCoeControl::ConstructFromResourceL(TResourceReader &)
+  [ 6] cone::CCoeControl::ActivateL()
+  [ 7] cone::CCoeControl::PrepareForFocusLossL()
+  [ 8] cone::CCoeControl::PrepareForFocusGainL()
+  [ 9] cone::CCoeControl::SetAdjacent(int)
+  [10] cone::CCoeControl::SetNeighbor(CCoeControl *)
+  [11] cone::HasBorder__C11CCoeControl
+  [12] cone::CCoeControl::MinimumSize()
+  [13] cone::CCoeControl::HandleResourceChange(int)
+  [14] cone::GetColorUseListL__C11CCoeControlRt9CArrayFix1Z12TCoeColorUse
+  [15] cone::GetHelpContext__C11CCoeControlR15TCoeHelpContext
+  [16] cone::InputCapabilities__C11CCoeControl
+  [17] cone::CCoeControl::HandlePointerEventL(const TPointerEvent &)
+  [18] cone::CCoeControl::HandlePointerBufferReadyL()
+  [19] overridden, code +0x1fe0
+  [20] cone::CCoeControl::SizeChanged()
+  [21] cone::CCoeControl::PositionChanged()
+  [22] cone::CountComponentControls__C11CCoeControl
+  [23] cone::ComponentControl__C11CCoeControli
+  [24] overridden, code +0x2020
+  [25] cone::WriteInternalStateL__C11CCoeControlR12RWriteStream
+  [26] cone::CCoeControl::Reserved_2()
+
+vtable at code+0x18426c : 21 slots, 18 inherited, 3 overridden
+  [ 0] overridden, code +0x1360e4
+  [ 1] eikcore::CEikDocument::NewDocumentL()
+  [ 2] eikcore::CEikDocument::CreateFileStoreLC(RFs &, const TDesC16 &)
+  [ 3] apparc::CApaDocument::GlassPictureL()
+  [ 4] eikcore::CEikDocument::EditL(MApaEmbeddedDocObserver *, int)
+  [ 5] eikcore::CEikDocument::PrintL(const CStreamStore &)
+  [ 6] eikcore::CEikDocument::SaveL()
+  [ 7] eikcore::StoreL__C12CEikDocumentR12CStreamStoreR17CStreamDictionary
+  [ 8] eikcore::CEikDocument::RestoreL(const CStreamStore &, const CStreamDictionary &)
+  [ 9] overridden, code +0x11bbe0
+  [10] eikcore::ExternalizeL__C12CEikDocumentR12RWriteStream
+  [11] eikcore::IsEmpty__C12CEikDocument
+  [12] apparc::ValidatePasswordL__C12CApaDocument
+  [13] apparc::Capability__C12CApaDocument
+  [14] eikcore::HasChanged__C12CEikDocument
+  [15] eikcore::CEikDocument::Reserved_1()
+  [16] eikcore::CEikDocument::Reserved_2()
+  [17] overridden, code +0x225c
+  [18] avkon::OpenFileL__CAknDocumentiRCTDesC16RRFs
+  [19] eikcore::CEikDocument::UpdateTaskNameL(CApaWindowGroupName *)
+  [20] eikcore::CEikDocument::SaveL(MSaveObserver::TSaveType)
+
+vtable at code+0x181e40 : 17 slots, 17 inherited, 0 overridden
+  [ 0] euser::__pure_virtual
+  [ 1] euser::__pure_virtual
+  [ 2] euser::__pure_virtual
+  [ 3] euser::__pure_virtual
+  [ 4] euser::__pure_virtual
+  [ 5] euser::__pure_virtual
+  [ 6] euser::__pure_virtual
+  [ 7] euser::__pure_virtual
+  [ 8] euser::__pure_virtual
+  [ 9] euser::__pure_virtual
+  [10] euser::__pure_virtual
+  [11] euser::__pure_virtual
+  [12] euser::__pure_virtual
+  [13] euser::__pure_virtual
+  [14] euser::__pure_virtual
+  [15] euser::__pure_virtual
+  [16] euser::__pure_virtual
+
+vtable at code+0x184018 : 14 slots, 13 inherited, 1 overridden
+  [ 0] overridden, code +0x1360c8
+  [ 1] euser::__pure_virtual
+  [ 2] euser::__pure_virtual
+  [ 3] euser::__pure_virtual
+  [ 4] euser::__pure_virtual
+  [ 5] euser::__pure_virtual
+  [ 6] euser::__pure_virtual
+  [ 7] euser::__pure_virtual
+  [ 8] euser::__pure_virtual
+  [ 9] euser::__pure_virtual
+  [10] euser::__pure_virtual
+  [11] euser::__pure_virtual
+  [12] euser::__pure_virtual
+  [13] euser::__pure_virtual
+
+vtable at code+0x181084 : 14 slots, 10 inherited, 4 overridden
+  [ 0] overridden, code +0x134b70
+  [ 1] avkon::PreDocConstructL__CAknApplication
+  [ 2] eikcore::CEikApplication::CreateDocumentL(CApaProcess *)
+  [ 3] overridden, code +0x2358
+  [ 4] avkon::OpenIniFileLC__CCAknApplicationRRFs
+  [ 5] eikcore::OpenAppInfoFileLC__C15CEikApplication
+  [ 6] apparc::AppFullName__C15CApaApplication
+  [ 7] eikcore::Capability__C15CEikApplicationR5TDes8
+  [ 8] eikcore::CEikApplication::Reserved_1()
+  [ 9] eikcore::GetDefaultDocumentFileName__C15CEikApplicationRt4TBuf1i256
+  [10] eikcore::BitmapStoreName__C15CEikApplication
+  [11] eikcore::ResourceFileName__C15CEikApplication
+  [12] overridden, code +0x2368
+  [13] overridden, code +0x11e720
+
+vtable at code+0x1840b8 : 16 slots, 10 inherited, 6 overridden
+  [ 0] overridden, code +0x183a0
+  [ 1] euser::__pure_virtual
+  [ 2] euser::__pure_virtual
+  [ 3] euser::__pure_virtual
+  [ 4] euser::__pure_virtual
+  [ 5] euser::__pure_virtual
+  [ 6] euser::__pure_virtual
+  [ 7] euser::__pure_virtual
+  [ 8] euser::__pure_virtual
+  [ 9] euser::__pure_virtual
+  [10] euser::__pure_virtual
+  [11] overridden, code +0x11d02c
+  [12] overridden, code +0x11b38c
+  [13] overridden, code +0x11b398
+  [14] overridden, code +0x11b3a4
+  [15] overridden, code +0x11b3b0
+
+vtable at code+0x184208 : 11 slots, 8 inherited, 3 overridden
+  [ 0] overridden, code +0x13bcf8
+  [ 1] eikcore::MEikCommandObserver::CreateCustomCommandControlL(int)
+  [ 2] eikcore::MEikMenuObserver::HandleAttemptDimmedSelectionL(int)
+  [ 3] eikcore::MEikMenuObserver::CheckHotKeyNotDimmedL(int)
+  [ 4] eikcore::MEikMenuObserver::RestoreMenuL(CCoeControl *, int, MEikMenuObserver::TMenuType)
+  [ 5] eikcore::MEikMenuObserver::DynInitMenuPaneL(int, CEikMenuPane *)
+  [ 6] eikcore::MEikMenuObserver::DynInitMenuBarL(int, CEikMenuBar *)
+  [ 7] overridden, code +0x13bcf0
+  [ 8] eikcore::MEikMenuObserver::OfferKeyToAppL(const TKeyEvent &, TEventCode)
+  [ 9] overridden, code +0x13bd00
+  [10] eikcore::MEikMenuObserver::Reserved_1_MenuObserver()
+
+vtable at code+0x183fd0 : 9 slots, 6 inherited, 3 overridden
+  [ 0] overridden, code +0x34460
+  [ 1] overridden, code +0x33dd4
+  [ 2] euser::__pure_virtual
+  [ 3] overridden, code +0x348f8
+  [ 4] euser::__pure_virtual
+  [ 5] euser::__pure_virtual
+  [ 6] euser::__pure_virtual
+  [ 7] euser::__pure_virtual
+  [ 8] euser::__pure_virtual
+
+vtable at code+0x1846dc : 20 slots, 6 inherited, 14 overridden
+  [ 0] overridden, code +0x3017c
+  [ 1] euser::__pure_virtual
+  [ 2] euser::__pure_virtual
+  [ 3] euser::__pure_virtual
+  [ 4] euser::__pure_virtual
+  [ 5] euser::__pure_virtual
+  [ 6] overridden, code +0x30194
+  [ 7] overridden, code +0x301c0
+  [ 8] overridden, code +0x301cc
+  [ 9] overridden, code +0x30210
+  [10] overridden, code +0x30258
+  [11] overridden, code +0x30278
+  [12] overridden, code +0x302b8
+  [13] overridden, code +0x302f8
+  [14] overridden, code +0x3035c
+  [15] overridden, code +0x30380
+  [16] overridden, code +0x303e4
+  [17] overridden, code +0x30448
+  [18] overridden, code +0x3046c
+  [19] euser::__pure_virtual
+
+vtable at code+0x18318c : 5 slots, 5 inherited, 0 overridden
+  [ 0] euser::__pure_virtual
+  [ 1] euser::__pure_virtual
+  [ 2] euser::__pure_virtual
+  [ 3] euser::__pure_virtual
+  [ 4] euser::__pure_virtual
+
+vtable at code+0x184058 : 7 slots, 5 inherited, 2 overridden
+  [ 0] overridden, code +0x4e64
+  [ 1] euser::__pure_virtual
+  [ 2] euser::__pure_virtual
+  [ 3] euser::__pure_virtual
+  [ 4] overridden, code +0x5144
+  [ 5] euser::__pure_virtual
+  [ 6] euser::__pure_virtual
+
+vtable at code+0x1848a8 : 9 slots, 5 inherited, 4 overridden
+  [ 0] overridden, code +0x136630
+  [ 1] euser::__pure_virtual
+  [ 2] euser::__pure_virtual
+  [ 3] euser::__pure_virtual
+  [ 4] overridden, code +0x5144
+  [ 5] euser::__pure_virtual
+  [ 6] euser::__pure_virtual
+  [ 7] overridden, code +0x11aa74
+  [ 8] overridden, code +0x12d048
+
+vtable at code+0x1848d4 : 9 slots, 5 inherited, 4 overridden
+  [ 0] overridden, code +0x1368f8
+  [ 1] euser::__pure_virtual
+  [ 2] euser::__pure_virtual
+  [ 3] euser::__pure_virtual
+  [ 4] overridden, code +0x5144
+  [ 5] euser::__pure_virtual
+  [ 6] euser::__pure_virtual
+  [ 7] overridden, code +0x11aa74
+  [ 8] overridden, code +0x12d048
+
+vtable at code+0x184900 : 9 slots, 5 inherited, 4 overridden
+  [ 0] overridden, code +0x136bc0
+  [ 1] euser::__pure_virtual
+  [ 2] euser::__pure_virtual
+  [ 3] euser::__pure_virtual
+  [ 4] overridden, code +0x5144
+  [ 5] euser::__pure_virtual
+  [ 6] euser::__pure_virtual
+  [ 7] overridden, code +0x11aa74
+  [ 8] overridden, code +0x12d048
+
+vtable at code+0x184998 : 9 slots, 5 inherited, 4 overridden
+  [ 0] overridden, code +0x137014
+  [ 1] euser::__pure_virtual
+  [ 2] euser::__pure_virtual
+  [ 3] euser::__pure_virtual
+  [ 4] overridden, code +0x5144
+  [ 5] euser::__pure_virtual
+  [ 6] euser::__pure_virtual
+  [ 7] overridden, code +0x11aa74
+  [ 8] overridden, code +0x12d048
+
+vtable at code+0x182b0c : 5 slots, 3 inherited, 2 overridden
+  [ 0] overridden, code +0x1356c4
+  [ 1] euser::CServer::DoCancel(void)
+  [ 2] euser::CServer::RunL(void)
+  [ 3] euser::CActive::RunError(int)
+  [ 4] overridden, code +0xb7d2c
+
+vtable at code+0x1839b0 : 3 slots, 3 inherited, 0 overridden
+  [ 0] arenaframework ord 259
+  [ 1] euser::__pure_virtual
+  [ 2] arenaframework ord 65
+
+vtable at code+0x183e58 : 3 slots, 3 inherited, 0 overridden
+  [ 0] euser::__pure_virtual
+  [ 1] cone::MCoeViewDeactivationObserver::MCoeViewDeactivationObserver_Reserved_1()
+  [ 2] cone::MCoeViewDeactivationObserver::MCoeViewDeactivationObserver_Reserved_2()
+
+vtable at code+0x183e6c : 4 slots, 3 inherited, 1 overridden
+  [ 0] overridden, code +0x13608c
+  [ 1] euser::__pure_virtual
+  [ 2] arenaframework ord 65
+  [ 3] euser::__pure_virtual
+
+vtable at code+0x180920 : 3 slots, 2 inherited, 1 overridden
+  [ 0] cone::ActivateContext__C18MCoeControlContextR9CWindowGcR15RDrawableWindow
+  [ 1] cone::ResetContext__C18MCoeControlContextR9CWindowGc
+  [ 2] overridden, code +0x13be28
+
+vtable at code+0x182f4c : 4 slots, 2 inherited, 2 overridden
+  [ 0] overridden, code +0x13581c
+  [ 1] euser::CSharableSession::CreateL(CServer const &)
+  [ 2] euser::CSharableSession::CountResources(void)
+  [ 3] overridden, code +0xb7df0
+
+vtable at code+0x1832c4 : 2 slots, 2 inherited, 0 overridden
+  [ 0] euser::__pure_virtual
+  [ 1] euser::__pure_virtual
+
+vtable at code+0x1835fc : 2 slots, 2 inherited, 0 overridden
+  [ 0] euser::__pure_virtual
+  [ 1] euser::__pure_virtual
+
+vtable at code+0x183878 : 4 slots, 2 inherited, 2 overridden
+  [ 0] overridden, code +0x13bd80
+  [ 1] overridden, code +0x13bd88
+  [ 2] cone::MCoeForegroundObserver::MCoeForegroundObserver_Reserved_1()
+  [ 3] cone::MCoeForegroundObserver::MCoeForegroundObserver_Reserved_2()
+
+vtable at code+0x184180 : 2 slots, 2 inherited, 0 overridden
+  [ 0] euser::__pure_virtual
+  [ 1] euser::__pure_virtual
+
+vtable at code+0x184248 : 3 slots, 2 inherited, 1 overridden
+  [ 0] overridden, code +0x13be48
+  [ 1] cone::MCoeViewDeactivationObserver::MCoeViewDeactivationObserver_Reserved_1()
+  [ 2] cone::MCoeViewDeactivationObserver::MCoeViewDeactivationObserver_Reserved_2()
+
+vtable at code+0x1842d8 : 3 slots, 2 inherited, 1 overridden
+  [ 0] overridden, code +0x13bd08
+  [ 1] cone::MCoeMessageObserver::MCoeMessageObserver_Reserved_1()
+  [ 2] cone::MCoeMessageObserver::MCoeMessageObserver_Reserved_2()
+
+vtable at code+0x18456c : 3 slots, 2 inherited, 1 overridden
+  [ 0] euser::__pure_virtual
+  [ 1] overridden, code +0x124474
+  [ 2] euser::__pure_virtual
+
+vtable at code+0x184764 : 2 slots, 2 inherited, 0 overridden
+  [ 0] euser::__pure_virtual
+  [ 1] euser::__pure_virtual
+
+vtable at code+0x180f14 : 4 slots, 1 inherited, 3 overridden
+  [ 0] overridden, code +0x13bce0
+  [ 1] overridden, code +0x13bcd8
+  [ 2] arenaframework ord 65
+  [ 3] overridden, code +0x13bcd0
+
+vtable at code+0x180ff4 : 4 slots, 1 inherited, 3 overridden
+  [ 0] overridden, code +0xc2bc4
+  [ 1] overridden, code +0xc2c08
+  [ 2] overridden, code +0xc2cf4
+  [ 3] euser::__pure_virtual
+
+vtable at code+0x18235c : 1 slots, 1 inherited, 0 overridden
+  [ 0] euser::__pure_virtual
+
+vtable at code+0x182b34 : 1 slots, 1 inherited, 0 overridden
+  [ 0] euser::__pure_virtual
+
+vtable at code+0x1837a4 : 2 slots, 1 inherited, 1 overridden
+  [ 0] overridden, code +0x135e1c
+  [ 1] euser::__pure_virtual
+
+vtable at code+0x1839a4 : 1 slots, 1 inherited, 0 overridden
+  [ 0] euser::__pure_virtual
+
+vtable at code+0x1839c4 : 1 slots, 1 inherited, 0 overridden
+  [ 0] euser::__pure_virtual
+
+vtable at code+0x183ba4 : 1 slots, 1 inherited, 0 overridden
+  [ 0] euser::__pure_virtual
+
+vtable at code+0x183cf0 : 1 slots, 1 inherited, 0 overridden
+  [ 0] euser::__pure_virtual
+
+vtable at code+0x184170 : 2 slots, 1 inherited, 1 overridden
+  [ 0] overridden, code +0x39060
+  [ 1] euser::__pure_virtual
+
+vtable at code+0x184860 : 4 slots, 1 inherited, 3 overridden
+  [ 0] overridden, code +0x136600
+  [ 1] overridden, code +0xc2c08
+  [ 2] overridden, code +0xc2cf4
+  [ 3] euser::__pure_virtual
+
+vtable at code+0x184878 : 4 slots, 1 inherited, 3 overridden
+  [ 0] overridden, code +0x136610
+  [ 1] overridden, code +0xc2c08
+  [ 2] overridden, code +0xc2cf4
+  [ 3] euser::__pure_virtual
+
+vtable at code+0x184890 : 4 slots, 1 inherited, 3 overridden
+  [ 0] overridden, code +0x136620
+  [ 1] overridden, code +0xc2c08
+  [ 2] overridden, code +0xc2cf4
+  [ 3] euser::__pure_virtual

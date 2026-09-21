@@ -90,10 +90,67 @@ That is the shape of an app built on the S60 application framework, and it is
 exactly what gate 3 has to reproduce: a shim has to present those classes with
 their GCC98r2 vtable layouts, not merely provide the functions.
 
+## Gate 3 — the ABI holds
+
+`vtables.py` reconstructs the image's vtables slot by slot. It works because
+imports in an EKA1 image go through a 16-byte veneer whose literal is
+relocated, so a vtable slot filled by an inherited method names the base-class
+ordinal that fills it. A derived class's vtable therefore states the layout of
+every framework class the game builds on; the result is in
+`../ngage-vtables.txt` (47 vtables).
+
+Measured from the binary, not assumed:
+
+| | |
+| --- | --- |
+| vptr | at object offset 0, pointing **8 bytes before slot 0** — 160 stored vptrs use `table-8`, **none** uses `table+0` |
+| those 8 bytes | two zero words: offset-to-top, and typeinfo, null with RTTI off (41 of 47 tables confirm directly; the other 6 abut another table) |
+| slot 0 | the destructor |
+| entries | plain function pointers, no per-entry delta — so `-fvtable-thunks` |
+| a virtual call | `ldr r3,[obj]` / `ldr r3,[r3,#8+4*slot]` / `mov lr,pc` / `bx r3`, smallest displacement seen being exactly 8 |
+| mixins | a second vptr at object offset +4, as every C-class-plus-M-mixin has |
+
+EABI points its vptr straight at slot 0, with offset-to-top and typeinfo at -8
+and -4. **The two layouts differ by exactly that 8-byte bias** — which is much
+less than feared.
+
+`build_gate3.py` proves it runs. A clang-built C++ class has its EABI vtable
+republished in the old shape and is then called the old way. Seven checks,
+reported as `0xBEEF0000 | mask`:
+
+| bit | check |
+| --- | --- |
+| 0,1,2 | old-style dispatch through slots 0, 1 and 2 reaches `a`, `b` and `c` and reads `this->magic` correctly — bit 1 uses the exact four-instruction sequence above |
+| 3 | biasing the vptr the EABI way reaches the **wrong** function, so the three above are not accidentally right |
+| 4 | the class still works when called normally from C++ |
+| 5 | a class with a virtual destructor dispatches correctly once the two Itanium destructor entries (complete, then deleting) are collapsed into the single one GCC 2.x emits |
+| 6 | a mixin: old code holding a pointer to the second base dispatches through the vptr at +4, and `this` is adjusted back to the whole object before the method sees it |
+
+Result in the emulator: **0xBEEF007F — all seven.** (Hardware confirmation
+pending; gate 1's package already runs on the phone, so the image format is not
+what is being tested here.)
+
+Bit 5 is the one that costs work in a shim. Every Symbian framework class has a
+virtual destructor, so every slot map needs that translation; slot numbers are
+not simply shifted.
+
+This also added **relocations** to `mke32.py`, which any real binary needs.
+`relocs.py` finds them by linking twice a page apart and comparing: a word that
+is identical is position-independent, one that differs by exactly the base
+delta is an absolute address, and anything else raises instead of producing a
+wrong table.
+
+### Still unproven
+
+Argument passing. APCS and AAPCS disagree about 64-bit arguments — AAPCS wants
+them in an even register pair — and about struct return. Nothing here exercises
+either, and Symbian passes `TTimeIntervalMicroSeconds` and friends by value.
+
 ## Not done yet
 
 - **Imports.** `mke32.py` writes no import section, so nothing can be called
-  yet.  This needs real EUSER ordinals, which means gate 2.
+  yet. The ordinals are known now (gate 2); the writer still needs to emit an
+  import block and the IAT.
 - **Reading stock images.** E32 code is compressed with Symbian's own deflate
   (`0x101F7AFC`), which is not zlib; reading the import section of a shipped
   binary needs that inflater ported.
