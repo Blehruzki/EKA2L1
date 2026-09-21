@@ -342,10 +342,47 @@ Thread gate5 panicked with category: G5NEW and exit code: 1
 The framework started and called our factory. The thread is named `gate5`
 rather than `Main`, which is the framework having taken over process startup.
 
-What remains of step 1 is the rest of the chain -- an application object, a
-document and an app UI, each a 9.x-layout class whose vtable clang lays out and
-whose base is constructed by the exported constructor, as the game's own
-`NewApplication` does.
+### The application object
+
+Declaring the base classes and hoping the layout matches is the fragile way to
+do this. avkon and eikcore **export their vtables** (`_ZTV15CAknApplication` is
+avkon ordinal 3652), so the sturdy way is to look the real one up, copy it, and
+patch in the slots a concrete application has to supply. The object itself is
+built exactly as the game builds its own: zeroed memory, the exported base
+constructor (`CEikApplication::CEikApplication()`, eikcore 64), then the vptr.
+
+`CAknApplication::CAknApplication()` is not exported, which is presumably why
+the game calls the CEikApplication one too.
+
+The slot numbers come from the declaration order in `apaapp.h`, `EIKAPP.H` and
+`aknApp.h` -- base virtuals first, a destructor taking two Itanium slots where
+its base declared it:
+
+```
+ 0,1 ~CBase           6  OpenIniFileLC        12 GetDefaultDocumentFileName
+ 2   Extension_       7  AppFullName          13 BitmapStoreName
+ 3   PreDocConstructL 8  Capability           14 ResourceFileName
+ 4   CreateDocumentL(CApaProcess*)            15,16 CEikApplication_Reserved1,2
+ 5   AppDllUid        9  NewAppServerL        17 CreateDocumentL()
+                      10,11 CApaApplication_Reserved1,2
+```
+
+Patching slots 5 and 17 and handing the object back gets:
+
+```
+Thread gate5 panicked with category: G5DOC and exit code: 1
+```
+
+The framework took the object, called `AppDllUid` on it, and asked for a
+document -- so all three slot numbers are right.
+
+### What is still stubbed
+
+Slot 3 is a no-op at the moment. With the real `PreDocConstructL` the framework
+panics `CONE 15`, `ECoePanicResourceFileHasNullName`: it loads the
+application's resource file, and the one this toolchain writes is a caption
+resource, not an application resource. That file is the next piece, and after
+it the document and the app UI, each built the same way as the application.
 
 ## Not done yet
 
