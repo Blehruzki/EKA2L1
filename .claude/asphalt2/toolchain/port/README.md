@@ -260,6 +260,50 @@ What remains unanswered is genuine work, not missing information: `CServer`,
 Nokia's N-Gage-only libraries, and ten sit past the end of what EKA2L1's EPOC6
 database lists for their library, so nothing here can name them.
 
+### What NewApplication actually builds, and why forwarding stops here
+
+Disassembling export ordinal 1 says exactly what the game hands back:
+
+```
+mov r0, #556               @ sizeof its CApaApplication subclass
+bl  User::AllocZL          @ import 265
+bl  CEikApplication::CEikApplication()   @ import 169, forwarded to 9.x eikcore
+ldr r3, [pc, #8]           @ the vtable at code+0x181084, minus the 8-byte bias
+str r3, [r4]
+```
+
+That object's vtable has 14 slots, four of them the game's own, and it is the
+specification a wrapper has to meet:
+
+```
+[ 0] the game's destructor        [ 7] Capability
+[ 1] PreDocConstructL             [ 8] Reserved_1
+[ 2] CreateDocumentL              [ 9] GetDefaultDocumentFileName
+[ 3] AppDllUid  (the game's)      [10] BitmapStoreName
+[ 4] OpenIniFileLC                [11] ResourceFileName
+[ 5] OpenAppInfoFileLC            [12] the game's
+[ 6] AppFullName                  [13] the game's
+```
+
+Slot 5 is the one import that cannot resolve, and it is inherited rather than
+overridden -- so it only matters if the 9.x framework calls it.
+
+**This is where forwarding stops being correct.** The third line above is a 9.x
+`CEikApplication` constructor running with `this` pointing at an object laid
+out by the 7.0s compiler. It does not crash, because the block is zeroed and a
+constructor writes only a couple of words, but nothing guarantees 9.x puts
+`iCoeEnv` and `iResourceFileOffset` where the old code expects them. Forwarding
+is sound for leaf functions -- allocation, descriptors, arithmetic, file I/O --
+and unsound for the framework classes the game *derives* from, which is
+roughly the cone, eikcore, eikdlg and avkon share of the table.
+
+The way out is not more forwarding. Those base classes have to be reimplemented
+against the old layout, and the old object handed to the 9.x framework only
+through a wrapper that owns a 9.x-layout object of its own. That also needs the
+program to be a real S60v3 GUI application, because none of the lifecycle past
+this point runs without a `CEikonEnv`: standalone, there is nothing to call
+`PreDocConstructL` on behalf of.
+
 ### The startup nobody does for you
 
 This is where the first attempt died, with `pc` at zero and `lr` inside euser:
