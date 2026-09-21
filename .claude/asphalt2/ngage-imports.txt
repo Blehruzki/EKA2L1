@@ -1,0 +1,471 @@
+/tmp/claude-0/-home-user-EKA2L1/ec0d1fd1-56fb-5d4c-9116-ef9f3a4e0d5a/scratchpad/ngage/B/system/apps/6rbc/6rbc.app
+  EKA1 / GCC98r2, 21 DLLs
+
+EUSER[100039e5].DLL  (164 imports)  <- 7.0-euseru.def
+      1  memset
+      2  memcpy
+      3  User::AllocZL(int)
+     13  CActiveScheduler::Add(CActive *)
+     21  User::After(TTimeIntervalMicroSeconds32)
+     22  CTimer::After(TTimeIntervalMicroSeconds32)
+     35  User::AllocL(int)
+     45  User::Alloc(int)
+     56  TDes16::AppendFormat(TRefByValue<TDesC16 const>,...)
+     89  TDes16::Append(TChar)
+     98  TDesC8::AtC(int) const
+     99  TDesC16::AtC(int) const
+    116  CArrayFixBase::At(int) const
+    119  RPointerArrayBase::At(int) const
+    126  RHeap::Available(int &) const
+    131  RChunk::Base(void) const
+    152  CActive::Cancel(void)
+    162  User::Check(void)
+    172  RHandleBase::Close(void)
+    173  RCriticalSection::Close(void)
+    180  RLibrary::Close(void)
+    202  Mem::Compare(unsigned char const *, int, unsigned char const *, int)
+    209  RMessage::Complete(int) const
+    224  CTimer::ConstructL(void)
+    243  Mem1::Copy(void *, void const *, int)
+    245  TDes8::Copy(unsigned char const *, int)
+    246  TDes8::Copy(TDesC8 const &)
+    247  TDes8::Copy(TDesC16 const &)
+    250  TDes16::Copy(TDesC8 const &)
+    251  TDes16::Copy(TDesC16 const &)
+    262  CSharableSession::CountResources(void)
+    263  RSemaphore::Count(void)
+    279  CSharableSession::CreateL(CServer const &)
+    280  RSemaphore::CreateLocal(int, TOwnerType)
+    281  RCriticalSection::CreateLocal(TOwnerType)
+    285  RSessionBase::CreateSession(TDesC16 const &, TVersion const &, int)
+    289  RThread::Create(TDesC16 const &, int (*)(void *), int, RAllocator *, void *, TOwnerType)
+    295  TTime::DateTime(void) const
+    317  HBufC8::Des(void)
+    318  HBufC16::Des(void)
+    328  UserSvr::DllFreeTls(int)
+    335  UserSvr::DllSetTls(int, void *)
+    336  UserSvr::DllTls(int)
+    350  CTimer::DoCancel(void)
+    351  CServer::DoCancel(void)
+    397  User::Exit(int)
+    410  RProcess::FileName(void) const
+    411  memclr
+    414  TDes16::FillZ(void)
+    416  Mem1::Fill(void *, int, TChar)
+    451  TDesC16::Find(TDesC16 const &) const
+    467  TDes16::Format(TRefByValue<TDesC16 const>,...)
+    476  User::Free(void *)
+    528  User::Allocator(void)
+    531  TTime::HomeTime(void)
+    534  RProcess::Id(void) const
+    569  CActiveScheduler::Install(CActiveScheduler *)
+    621  RThread::Kill(int)
+    625  User::Language(void)
+    627  User::LeaveIfError(int)
+    629  User::LeaveNoMemory(void)
+    630  User::Leave(int)
+    644  RLibrary::Load(TDesC16 const &, TDesC16 const &)
+    672  RLibrary::Lookup(int) const
+    673  User::LowerCase(unsigned int)
+    721  HBufC16::NewLC(int)
+    738  CPeriodic::NewL(int)
+    746  CTrapCleanup::New(void)
+    749  HBufC8::New(int)
+    750  HBufC16::New(int)
+    756  TFindChunk::Next(TBuf<256> &)
+    758  TFindServer::Next(TBuf<256> &)
+    760  TFindLibrary::Next(TBuf<256> &)
+    797  RHandleBase::Open(TFindHandleBase const &, TOwnerType)
+    803  RThread::Open(TDesC16 const &, TOwnerType)
+    809  User::Panic(TDesC16 const &, int)
+    814  CSession::Panic(TDesC16 const &, int) const
+    824  CleanupStack::PopAndDestroy(void)
+    828  CleanupStack::Pop(void)
+    844  RThread::Process(RProcess &) const
+    855  TDesC8::Ptr(void) const
+    856  TDesC16::Ptr(void) const
+    858  CleanupStack::PushL(CBase *)
+    859  CleanupStack::PushL(void *)
+    864  User::QueryVersionSupported(TVersion const &, TVersion const &)
+    870  Math::Random(void)
+    871  User1::ReAlloc1L(void *, int)
+    926  User::RequestComplete(TRequestStatus *&, int)
+    933  User::ResetInactivityTime(void)
+    939  CArrayFixBase::Reset(void)
+    954  RThread::Resume(void) const
+    962  CActive::RunError(int)
+    966  CServer::RunL(void)
+    970  UserSvr::ScreenInfo(TDes8 &)
+    972  RSessionBase::SendReceive(int, void *) const
+    979  CActive::SetActive(void)
+    985  RThread::SetExceptionHandler(void (*)(TExcType), unsigned long)
+    998  TDes8::SetLength(int)
+    999  TDes16::SetLength(int)
+   1016  RThread::SetPriority(TThreadPriority) const
+   1078  RSemaphore::Signal(void)
+   1080  RCriticalSection::Signal(void)
+   1087  RChunk::Size(void) const
+   1102  CServer::StartL(TDesC16 const &)
+   1107  CActiveScheduler::Start(void)
+   1111  CPeriodic::Start(TTimeIntervalMicroSeconds32, TTimeIntervalMicroSeconds32, TCallBack)
+   1114  User::StringLength(unsigned char const *)
+   1122  RThread::Suspend(void) const
+   1137  User::TickCount(void)
+   1148  TTrap::Trap(int &)
+   1164  TTrap::UnTrap(void)
+   1212  RSemaphore::Wait(void)
+   1213  RCriticalSection::Wait(void)
+   1226  CSession::WriteL(void const *, TDesC8 const &, int) const
+   1244  TDes8::ZeroTerminate(void)
+   1262  CBase1::~CBase1(void)
+   1264  CTimer::~CTimer(void)
+   1268  CServer::~CServer(void)
+   1272  CSession::~CSession(void)
+   1282  TBufBase16::TBufBase16(TDesC16 const &, int)
+   1283  TBufBase16::TBufBase16(int)
+   1286  TBufCBase8::TBufCBase8(unsigned char const *, int)
+   1339  TFindHandleBase::TFindHandleBase(TDesC16 const &)
+   1343  CActiveScheduler::CActiveScheduler(void)
+   1346  RCriticalSection::RCriticalSection(void)
+   1359  CBase1::CBase1(void)
+   1366  TPtr8::TPtr8(unsigned char *, int)
+   1367  TPtr8::TPtr8(unsigned char *, int, int)
+   1377  CTimer::CTimer(int)
+   1379  TInt64::TInt64(int)
+   1382  TPtr16::TPtr16(unsigned short *, int, int)
+   1384  TPtrC8::TPtrC8(void)
+   1385  TPtrC8::TPtrC8(unsigned char const *)
+   1386  TPtrC8::TPtrC8(unsigned char const *, int)
+   1398  CServer::CServer(int, CServer::TServerType)
+   1399  MBusDev::MBusDev(void)
+   1407  TPtrC16::TPtrC16(unsigned short const *)
+   1414  CSession::CSession(RThread)
+   1422  TVersion::TVersion(void)
+   1423  TVersion::TVersion(int, int, int)
+   1431  TBufBase8::TBufBase8(int)
+   1432  TBufBase8::TBufBase8(int, int)
+   1454  __adddf3
+   1455  __addsf3
+   1496  TInt64::operator=(int)
+   1504  __builtin_delete
+   1505  __builtin_new
+   1506  __builtin_vec_delete
+   1513  __divsf3
+   1514  __divsi3
+   1525  __extendsfdf2
+   1527  __fixsfsi
+   1528  __floatsidf
+   1529  __floatsisf
+   1569  __modsi3
+   1570  __muldf3
+   1571  __mulsf3
+   1580  __negsf2
+   1582  User::AllocZ(int)
+   1611  __pure_virtual
+   1615  __truncdfsf2
+   1616  __udivsi3
+   1617  __umodsi3
+   1636  __divdi3
+
+EIKCORE[10004892].DLL  (56 imports)  <- epoc6 database (~95% confidence)
+     17  Application__C9CEikAppUi
+     20  BitmapStoreName__C15CEikApplication
+     30  Capability__C15CEikApplicationR5TDes8
+     31  MEikMenuObserver::CheckHotKeyNotDimmedL(int)
+     40  CEikAppUi::ConstructL()
+     48  MEikCommandObserver::CreateCustomCommandControlL(int)
+     49  CEikApplication::CreateDocumentL(CApaProcess *)
+     51  CEikAppUi::CreateFileL(const TDesC16 &)
+     52  CEikDocument::CreateFileStoreLC(RFs &, const TDesC16 &)
+     64  MEikMenuObserver::DynInitMenuBarL(int, CEikMenuBar *)
+     65  MEikMenuObserver::DynInitMenuPaneL(int, CEikMenuPane *)
+     66  CEikDocument::EditL(MApaEmbeddedDocObserver *, int)
+     68  ExternalizeL__C12CEikDocumentR12RWriteStream
+     71  GetDefaultDocumentFileName__C15CEikApplicationRt4TBuf1i256
+     74  CEikAppUi::HandleApplicationSpecificEventL(int, const TWsEvent &)
+     75  MEikMenuObserver::HandleAttemptDimmedSelectionL(int)
+     76  CEikAppUi::HandleCommandL(int)
+     80  HandleMessageL__9CEikAppUiUlG4TUidRC6TDesC8
+     81  CEikAppUi::HandleModelChangeL()
+     82  CEikAppUi::HandleResourceChangeL(int)
+     84  CEikAppUi::HandleSideBarMenuL(int, const TPoint &, int, const CEikHotKeyTable *)
+     86  HasChanged__C12CEikDocument
+    100  IsEmpty__C12CEikDocument
+    116  CEikDocument::NewDocumentL()
+    121  MEikMenuObserver::OfferKeyToAppL(const TKeyEvent &, TEventCode)
+    122  OpenAppInfoFileLC__C15CEikApplication
+    124  CEikAppUi::OpenFileL(const TDesC16 &)
+    130  CEikDocument::PrintL(const CStreamStore &)
+    133  ProcessCommandParametersL__9CEikAppUi11TApaCommandRt4TBuf1i256RC6TDesC8
+    134  ProcessMessageL__9CEikAppUiG4TUidRC6TDesC8
+    142  CEikDocument::Reserved_1()
+    143  CEikApplication::Reserved_1()
+    144  CEikAppUi::Reserved_1()
+    146  CEikDocument::Reserved_2()
+    147  CEikAppUi::Reserved_2()
+    149  CEikAppUi::Reserved_3()
+    150  CEikAppUi::Reserved_4()
+    151  ResourceFileName__C15CEikApplication
+    155  CEikDocument::RestoreL(const CStreamStore &, const CStreamDictionary &)
+    157  MEikMenuObserver::RestoreMenuL(CCoeControl *, int, MEikMenuObserver::TMenuType)
+    161  CEikDocument::SaveL()
+    179  CEikAppUi::SetEmphasis(CCoeControl *, int)
+    198  CEikAppUi::StopDisplayingMenuBar()
+    200  StoreL__C12CEikDocumentR12CStreamStoreR17CStreamDictionary
+    204  CEikDocument::UpdateTaskNameL(CApaWindowGroupName *)
+    206  ValidFileType__C9CEikAppUiG4TUid
+    213  CEikDocument::~CEikDocument()
+    214  CEikApplication::~CEikApplication()
+    222  CEikApplication::CEikApplication()
+    224  CEikAppUi::CEikAppUi()
+    226  MEikMenuObserver::Reserved_1_MenuObserver()
+    233  ApplicationRect__C9CEikAppUi
+    253  CEikDocument::SaveL(MSaveObserver::TSaveType)
+    264  EikBubbleHelp::CancelTrigger()
+    286  not listed in this source
+    290  not listed in this source
+
+CONE[10003a41].DLL  (50 imports)  <- epoc6 database (~95% confidence)
+      3  CCoeControl::ActivateL()
+      8  CCoeEnv::AddForegroundObserverL(MCoeForegroundObserver &)
+     12  CCoeAppUi::AddToStackL(CCoeControl *, int, int)
+     28  ComponentControl__C11CCoeControli
+     29  CCoeControl::ConstructFromResourceL(TResourceReader &)
+     33  CountComponentControls__C11CCoeControl
+     40  CCoeControl::CreateWindowL()
+     66  CCoeControl::FocusChanged(TDrawNow)
+     72  GetColorUseListL__C11CCoeControlRt9CArrayFix1Z12TCoeColorUse
+     74  GetHelpContext__C11CCoeControlR15TCoeHelpContext
+     82  CCoeAppUi::HandleKeyEventL(const TKeyEvent &, TEventCode)
+     84  CCoeControl::HandlePointerBufferReadyL()
+     85  CCoeControl::HandlePointerEventL(const TPointerEvent &)
+     87  CCoeControl::HandleResourceChange(int)
+     90  CCoeAppUi::HandleSwitchOnEventL(CCoeControl *)
+     95  HasBorder__C11CCoeControl
+     96  HelpContextL__C9CCoeAppUi
+    100  InputCapabilities__C11CCoeControl
+    101  InputCapabilities__C9CCoeAppUi
+    114  IsFocused__C11CCoeControl
+    131  MCoeForegroundObserver::MCoeForegroundObserver_Reserved_1()
+    132  MCoeForegroundObserver::MCoeForegroundObserver_Reserved_2()
+    138  CCoeControl::MakeVisible(int)
+    139  CCoeControl::MinimumSize()
+    147  CCoeControl::PositionChanged()
+    153  CCoeControl::PrepareForFocusLossL()
+    166  CCoeEnv::RemoveForegroundObserver(MCoeForegroundObserver &)
+    167  CCoeAppUi::RemoveFromStack(CCoeControl *)
+    173  WriteInternalStateL__C11CCoeControlR12RWriteStream
+    177  CCoeControl::Reserved_2()
+    181  ResetContext__C18MCoeControlContextR9CWindowGc
+    185  CCoeControl::SetAdjacent(int)
+    187  CCoeAppUi::SetAndDrawFocus(int)
+    197  CCoeControl::SetContainerWindowL(const CCoeControl &)
+    200  CCoeControl::SetDimmed(int)
+    208  CCoeControl::SetNeighbor(CCoeControl *)
+    221  CCoeControl::SizeChanged()
+    223  CCoeEnv::Static()
+    231  Window__C11CCoeControl
+    232  CCoeControl::~CCoeControl()
+    236  CCoeControl::CCoeControl()
+    244  ActivateContext__C18MCoeControlContextR9CWindowGcR15RDrawableWindow
+    255  MCoeMessageObserver::MCoeMessageObserver_Reserved_1()
+    256  MCoeMessageObserver::MCoeMessageObserver_Reserved_2()
+    276  CCoeControl::PrepareForFocusGainL()
+    292  MCoeViewDeactivationObserver::MCoeViewDeactivationObserver_Reserved_1()
+    293  MCoeViewDeactivationObserver::MCoeViewDeactivationObserver_Reserved_2()
+    312  not listed in this source
+    314  not listed in this source
+    318  not listed in this source
+
+AVKON[100056c6].DLL  (36 imports)  <- epoc6 database (~95% confidence)
+     63  BaseConstructL__CAknAppUii
+    102  CAknNoteDialog_Reserved__CAknNoteWrapper
+    108  CAknNoteDialog_Reserved__CAknResourceNoteDialog
+    122  CAknResourceNoteDialog_Reserved__CAknResourceNoteDialog
+    173  CEikDialog_Reserved___CAknNoteWrapper
+    187  CEikDialog_Reserved___CAknResourceNoteDialog
+    197  CEikDialog_Reserved___CAknNoteWrapper
+    211  CEikDialog_Reserved___CAknResourceNoteDialog
+    655  ExecuteLD__CAknNoteWrapperi
+    662  ExecuteLD__CAknResourceNoteDialogRCTDesC16
+    750  HandleError__CAknAppUiiRCSExtendedErrorRTDes16T3
+    757  HandleForegroundEventL__CAknAppUii
+    802  HandleStatusPaneSizeChange__CAknAppUi
+    803  HandleSystemEventL__CAknAppUiRCTWsEvent
+    805  HandleViewDeactivation__CAknAppUiRCTVwsViewIdT1
+    808  HandleWsEventL__CAknAppUiRCTWsEventPCCoeControl
+    874  KeySounds__CAknAppUi
+   1166  OfferKeyEventL__CAknNoteDialogRCTKeyEventTEventCode
+   1205  OpenFileL__CAknDocumentiRCTDesC16RRFs
+   1206  OpenIniFileLC__CCAknApplicationRRFs
+   1213  PopContext__CAknKeySoundSystem
+   1225  PostLayoutDynInitL__CAknNoteDialog
+   1234  PreDocConstructL__CAknApplication
+   1235  PreLayoutDynInitL__CAknNoteDialog
+   1254  PrepareToExit__CAknAppUi
+   1267  ProcessCommandL__CAknAppUii
+   1272  PushContextL__CAknKeySoundSystemi
+   1348  Reserved_MtsmObject__CAknAppUi
+   1352  Reserved_MtsmPosition__CAknAppUi
+   1379  RunLD__CAknNoteDialog
+   1529  SetKeyBlockMode__CAknAppUiTAknKeyBlockMode
+   1633  SetSizeAndPosition__CAknNoteDialogRCTSize
+   1960  _._CAknNoteDialog
+   2048  _._CAknAppUi
+   2053  __CAknDocumentRCEikApplication
+   2076  __CAknNoteWrapper
+
+ESTLIB[10003b0b].DLL  (35 imports)  <- epoc6 database (~95% confidence)
+      3  malloc
+      6  free
+      7  memmove
+      9  strlen
+     21  cos
+     39  pow
+     40  sqrt
+     49  fclose
+     51  feof
+     53  fflush
+     54  fgetc
+     58  fopen
+     59  fprintf
+     62  fread
+     65  fseek
+     67  ftell
+     76  puts
+     82  sprintf
+    102  abort
+    128  atoi
+    133  qsort
+    134  rand
+    153  localtime
+    156  strftime
+    157  time
+    167  isspace
+    170  tolower
+    171  toupper
+    174  memcmp
+    178  strcat
+    179  strchr
+    180  strcmp
+    181  strcpy
+    187  strncmp
+    188  strncpy
+
+EIKDLG[10004898].DLL  (31 imports)  <- epoc6 database (~95% confidence)
+     18  CEikDialog::ConstructSleepingAlertDialogL(int)
+     24  CountComponentControls__C10CEikDialog
+     27  CEikDialog::CreateCustomControlL(int)
+     37  CEikDialog::ExecuteLD(int)
+     38  CEikDialog::ExitSleepingDialog()
+     40  FindLineIndex__C13CEikCapCArrayP11CCoeControl
+     41  CEikCaptionedControl::FocusChanged(TDrawNow)
+     58  InputCapabilities__C20CEikCaptionedControl
+     64  LineIndexFromId__C13CEikCapCArrayi
+     76  CEikDialog::OfferKeyEventL(const TKeyEvent &, TEventCode)
+     79  CEikDialog::PageChangedL(int)
+     82  PreferredSize__C10CEikDialogRC5TSize
+     90  WriteInternalStateL__C9CEikMoverR12RWriteStream
+     91  CEikDialog::Reserved_2()
+     92  CEikCaptionedControl::Reserved_2()
+     95  CEikDialog::Reserved_4()
+     99  CEikDlgLibrary::ResourceFile()
+    106  CEikDialog::SetControlCaptionL(int, const TDesC16 &)
+    114  CEikDialog::SetHelpContext(const TCoeHelpContext &)
+    116  CEikCaptionedControl::SetLatentGroupLineFollows(int)
+    117  CEikCaptionedControl::SetLatent(int)
+    121  CEikDialog::SetPageDensePacking(int, int)
+    126  CEikCaptionedControl::SetTakesEnterKey(int)
+    127  CEikMover::SetTextL(const TDesC16 &)
+    131  CEikMover::SetTitleLeftMargin(int)
+    132  CEikCaptionedControl::SetTrailerL(const TDesC16 &)
+    133  CEikCaptionedControl::SetUsesEars()
+    135  CEikCaptionedControl::SizeChanged()
+    170  not listed in this source
+    201  not listed in this source
+    212  not listed in this source
+
+EFSRV[100039e4].DLL  (20 imports)  <- epoc6 database (~95% confidence)
+     15  RFsBase::Close()
+     18  RFs::Connect(int)
+     25  RFile::Create(RFs &, const TDesC16 &, unsigned int)
+     29  RFs::Delete(const TDesC16 &)
+     33  DriveAndPath__C10TParseBase
+     50  RFile::Flush()
+     51  FullName__C10TParseBase
+     85  RFs::MkDirAll(const TDesC16 &)
+     86  RFs::MkDir(const TDesC16 &)
+    102  Name__C10TParseBase
+    121  RFile::Open(RFs &, const TDesC16 &, unsigned int)
+    136  Read__C5RFileR5TDes8
+    151  RFile::Replace(RFs &, const TDesC16 &, unsigned int)
+    155  RFs::RmDir(const TDesC16 &)
+    162  Seek__C5RFile5TSeekRi
+    183  TParse::Set(const TDesC16 &, const TDesC16 *, const TDesC16 *)
+    185  Size__C5RFileRi
+    194  RFile::Write(const TDesC8 &)
+    210  TParsePtrC::TParsePtrC(const TDesC16 &)
+    230  TParse::TParse()
+
+ETEL[10003d46].DLL  (13 imports)  <- epoc6 database (~95% confidence)
+     29  RTelServer::Connect(int)
+     54  EnumerateCall__C5RLineRi
+     56  EnumeratePhones__C10RTelServerRi
+     62  GetCallInfo__C5RLineiRQ25RLine9TCallInfo
+     72  GetLineInfo__C6RPhoneiRQ26RPhone9TLineInfo
+     74  GetPhoneInfo__C10RTelServeriRQ210RTelServer10TPhoneInfo
+     78  GetStatus__C6RPhoneRQ26RPhone7TStatus
+    102  LoadPhoneModule__C10RTelServerRC7TDesC16
+    152  RLine::Open(RPhone &, const TDesC16 &)
+    153  RPhone::Open(RTelServer &, const TDesC16 &)
+    204  RTelServer::RTelServer()
+    210  RLine::RLine()
+    211  RPhone::RPhone()
+
+ESOCK[10003d3f].DLL  (7 imports)  <- epoc6 database (~95% confidence)
+     45  RSocket::Close()
+     48  RSocketServ::Connect(unsigned int)
+     62  FindProtocol__11RSocketServRCt4TBuf1i32R13TProtocolDesc
+     87  RSocket::GetOpt(unsigned int, unsigned int, TDes8 &)
+    129  RSocket::Open(RSocketServ &, unsigned int, unsigned int, unsigned int)
+    209  RSocketServ::RSocketServ()
+    217  RSocket::RSocket()
+
+APPARC[10003a3d].DLL  (5 imports)  <- epoc6 database (~95% confidence)
+      3  AppFullName__C15CApaApplication
+      6  Capability__C12CApaDocument
+     13  DllName__C15CApaApplication
+     27  CApaDocument::GlassPictureL()
+     71  ValidatePasswordL__C12CApaDocument
+
+FBSCLI[10003a15].DLL  (4 imports)  <- epoc6 database (~95% confidence)
+     16  CFbsBitmap::Create(const TSize &, TDisplayMode)
+     17  DataAddress__C10CFbsBitmap
+     90  CFbsBitmap::Reset()
+    135  CFbsBitmap::CFbsBitmap()
+
+BITGDI[10003b18].DLL  (3 imports)  <- epoc6 database (~95% confidence)
+    105  CFbsScreenDevice::SetAutoUpdate(int)
+    111  CFbsBitGc::SetClippingRegion(const TRegion *)
+    137  CFbsScreenDevice::Update(const TRegion &)
+
+EIKCOCTL[1000489e].DLL  (2 imports)  <- epoc6 database (~95% confidence)
+    396  IsVisible__C18CEikStatusPaneBase
+    704  CListBoxView::SetDimmed(int)
+
+WS32[10003b21].DLL  (2 imports)  <- epoc6 database (~95% confidence)
+    348  not listed in this source
+    350  not listed in this source
+
+BLUETOOTH.DLL  (1 imports)  <- epoc6 database (~95% confidence)
+      9  TBTSockAddr::TBTSockAddr()
+
+HAL[100039e8].DLL  (1 imports)  <- epoc6 database (~95% confidence)
+      1  HAL::Get(HALData::TAttribute, int &)
+
+MEDIACLIENTAUDIOSTREAM[10003996].DLL  (1 imports)  <- epoc6 database (~95% confidence)
+      2  CMdaAudioOutputStreamPadFunction()
+
+no .def available for: gamecomms (20), gameutils (6), arenaframework (4), nokiafc (1)
+
+resolved 421 ordinals, 41 still unnamed

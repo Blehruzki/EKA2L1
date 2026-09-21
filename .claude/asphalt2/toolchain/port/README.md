@@ -43,6 +43,53 @@ app registration and the package all hold.
 - apparc drops an app entirely if its localisable resource file is missing, so
   a registration resource alone is not enough to get listed.
 
+## Gate 2 — 421 of 462 named
+
+`resolve_imports.py` names an image's imports from Symbian `.def` files.
+Run against the N-Gage build:
+
+```
+resolve_imports.py 6RBC.APP euser.dll=<src>/kernel/eka/bmarm/7.0-euseru.def \
+                   --epoc6 src/emu/bridge/include/bridge/epoc6.def
+```
+
+| source | covers | standing |
+| --- | --- | --- |
+| `kernel/eka/bmarm/7.0-euseru.def`, from the Symbian Foundation source release | EUSER, 164 imports | authoritative: the Symbian 7.0 ARM build, the N-Gage's own ABI |
+| EKA2L1's bundled `epoc6.def` | 16 more libraries, 257 imports | ~95% confidence, measured -- see below |
+| nothing | GAMECOMMS 20, GAMEUTILS 6, ARENAFRAMEWORK 4, NOKIAFC 1 | Nokia N-Gage libraries, never open-sourced; these 41 need reverse engineering |
+
+The result is in `../ngage-imports.txt`.
+
+### Two things that had to be checked, not assumed
+
+**Ordinals are not stable across Symbian versions.** Of the 1680 EUSER ordinals
+present in both the 7.0 and the 9.x ARM def files, **8 agree** -- 0.5%. The
+files are ordered alphabetically by mangled name, so a single added export
+shifts everything after it. Naming a 7.0s binary's imports from 9.x def files
+would produce a confident, complete and almost entirely wrong answer.
+
+**EKA2L1's `epoc6.def` is ordinal-ordered.** It lists 556 libraries' exports in
+file order with no ordinals written down, so that had to be established rather
+than assumed: against the authoritative 7.0 file, 1574 of euser's 1646
+positions agree (95.6%), and 155 of the 164 ordinals this game imports. Most
+disagreements are two names for one function (`memclr` / `Mem::FillZ`,
+`User::Allocator` / `User::Heap`). It is a strong lead per line, not proof --
+confirm at the call site before relying on one.
+
+`gnuv2.py` demangles the GCC 2.x names, which modern binutils no longer does.
+It returns the original string whenever it is unsure, so a name is never
+quietly turned into a wrong one.
+
+### What it says about the port
+
+The EIKCORE, CONE and AVKON surface is dominated by framework base-class
+methods -- `CEikAppUi`, `CEikApplication`, `CEikDocument`, `CCoeControl`,
+`CCoeAppUi`, `CAknAppUi` -- including the `_Reserved` vtable padding slots.
+That is the shape of an app built on the S60 application framework, and it is
+exactly what gate 3 has to reproduce: a shim has to present those classes with
+their GCC98r2 vtable layouts, not merely provide the functions.
+
 ## Not done yet
 
 - **Imports.** `mke32.py` writes no import section, so nothing can be called
