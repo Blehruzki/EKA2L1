@@ -10,10 +10,13 @@ import sys
 import buildapp
 
 EIKCORE = 'eikcore{000a0000}[10004892].dll'
+AVKON = 'avkon{000a0000}[100056c6].dll'
 
 buildapp.build('gate5', 0xE0001005, 'Gate5', sys.argv[1] if len(sys.argv) > 1 else '.',
                imports=[(buildapp.EUSER, ['user_panic', 'userheap_setupthreadheap',
                                           'user_initprocess', 'user_alloc', 'user_allocz',
                                           'rlibrary_load', 'rlibrary_lookup']),
-                        (EIKCORE, ['eikstart_runapplication', 'eikapplication_ctor'])],
+                        (EIKCORE, ['eikstart_runapplication', 'eikapplication_ctor',
+                                   'eikappui_ctor']),
+                        (AVKON, ['akndocument_ctor'])],
                heap_max=0x400000)

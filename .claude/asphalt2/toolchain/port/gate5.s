@@ -38,3 +38,5 @@ _start:
     IMPORT rlibrary_lookup,  1838    @ RLibrary::Lookup(TInt) const
     IMPORT eikstart_runapplication, 394  @ EikStart::RunApplication(TApaApplicationFactory)
     IMPORT eikapplication_ctor,  64  @ CEikApplication::CEikApplication()
+    IMPORT eikappui_ctor,       177  @ CEikAppUi::CEikAppUi()
+    IMPORT akndocument_ctor,    131  @ CAknDocument::CAknDocument(CEikApplication&)

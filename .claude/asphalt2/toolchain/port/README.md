@@ -403,14 +403,49 @@ fetches the caption and capability from apparc, and asks for a document:
 Thread gate5 panicked with category: G5DOC and exit code: 1
 ```
 
-### Still to do in step 1
+### The document, and why counting headers stopped working
 
-The document and the app UI, built the same way -- `CAknDocument` is avkon
-vtable 3632 with its constructor at 131, `CAknAppUi` is avkon 3820 with
-`CEikAppUi::CEikAppUi()` at eikcore 177. Their slot numbers need the same care
-the application's did: `CApaDocument` declares sixteen virtuals and `CCoeAppUi`
-and `CEikAppUi` bring mixins with them, so there are secondary vtables to get
-right rather than one list to count down.
+`CAknDocument::CAknDocument(CEikApplication&)` is avkon ordinal 131 and its
+vtable is 3632, so the object goes together like the application's -- and the
+constructor works: with it called, the framework goes on to use the document.
+
+The slot numbers did not survive the same treatment. Counting virtual
+declarations in `apadoc.h` and `EIKDOC.H` put `CreateAppUiL` at 19. Counting is
+a guess, because an override in a derived class is virtual whether or not the
+header repeats the keyword, so the count cannot tell an override from a new
+slot. Measuring instead: give the document a vtable whose every slot is a
+16-byte trampoline carrying its own index -- the same trick gate 4 uses on
+imports -- and let the framework name what it calls.
+
+```
+Thread gate5 panicked with category: G5DOC and exit code: 21
+```
+
+Two off. Worth knowing before building on it.
+
+Two other things that looked like the answer and were not:
+
+- Finding the pure slots by looking for a **repeated** value fails when there
+  is exactly one, because then nothing repeats.
+- Comparing against `__cxa_pure_virtual` from `drtaeabi` fails too: each DLL
+  links its own copy, so the addresses do not match across modules.
+
+### Where step 1 stands
+
+Slot 21 is the first virtual the framework calls on the document, which is not
+the same as being `CreateAppUiL`. Patching the real vtable there and returning
+an app UI does not work -- the framework carries on past the call and fails
+later with `USER-EXEC 3`, and it fails identically when that slot returns null.
+So the return value is not what it is unhappy about, and the app UI is not yet
+reached at all.
+
+Telling one slot from another needs wrappers that record the call and then
+chain to the real implementation, so the framework keeps working while the
+order is observed. That is the next piece, and the app UI follows it: it cannot
+be assembled the way the application and document were, because
+`CAknAppUi`'s constructor is not exported, and `CCoeAppUi` and `CEikAppUi`
+bring mixins, so a constructor and a vtable from different classes describe an
+object that was never laid out that way.
 
 ## Not done yet
 
