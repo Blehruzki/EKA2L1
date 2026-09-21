@@ -11,6 +11,8 @@ same way: **reproduce a stored value before writing one.**
 | `mkreg.py` | `<app>_reg.rsc`, the app registration | `selftest` rebuilds the shipped `Asphalt2_full_reg.rsc` byte for byte |
 | `mkloc.py` | `<app>.rsc`, the caption resource apparc reads next | `selftest` rebuilds the caption record of the shipped `asphalt2_full.rsc` byte for byte |
 | `mksis.py` | a SIS package, from EKA2L1's own `EKA2L1HW` sample as the container template | `verify_pkg.py` re-hashes every install description against the shipped data |
+| `relocs.py` | the code relocation section | `selftest` rebuilds a shipped image's section byte for byte |
+| `importsec.py` | the EABI import section | `selftest` rebuilds a shipped image's 26-DLL section byte for byte |
 
 ## Gate 1 — done
 
@@ -116,7 +118,9 @@ less than feared.
 
 `build_gate3.py` proves it runs. A clang-built C++ class has its EABI vtable
 republished in the old shape and is then called the old way. Seven checks,
-reported as `0xBEEF0000 | mask`:
+reported as the reason code of a panic -- a phone shows `<thread> <category>
+<reason>` on screen and never shows a fault address, so all seven passing reads
+**`Main GATE3 127`**:
 
 | bit | check |
 | --- | --- |
@@ -126,9 +130,7 @@ reported as `0xBEEF0000 | mask`:
 | 5 | a class with a virtual destructor dispatches correctly once the two Itanium destructor entries (complete, then deleting) are collapsed into the single one GCC 2.x emits |
 | 6 | a mixin: old code holding a pointer to the second base dispatches through the vptr at +4, and `this` is adjusted back to the whole object before the method sees it |
 
-Result in the emulator: **0xBEEF007F — all seven.** (Hardware confirmation
-pending; gate 1's package already runs on the phone, so the image format is not
-what is being tested here.)
+Result: **all seven**, in the emulator and on the phone.
 
 Bit 5 is the one that costs work in a shim. Every Symbian framework class has a
 virtual destructor, so every slot map needs that translation; slot numbers are
@@ -148,9 +150,8 @@ either, and Symbian passes `TTimeIntervalMicroSeconds` and friends by value.
 
 ## Not done yet
 
-- **Imports.** `mke32.py` writes no import section, so nothing can be called
-  yet. The ordinals are known now (gate 2); the writer still needs to emit an
-  import block and the IAT.
+- **Calling convention.** APCS and AAPCS disagree about 64-bit arguments and
+  struct return, and nothing has exercised either.
 - **Reading stock images.** E32 code is compressed with Symbian's own deflate
   (`0x101F7AFC`), which is not zlib; reading the import section of a shipped
   binary needs that inflater ported.

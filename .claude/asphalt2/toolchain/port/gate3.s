@@ -7,8 +7,10 @@
 
 _start:
     bl   gate3_main
+    @ gate3_main panics with the result, so reaching here means the import
+    @ never resolved.  Fall back to the fault the emulator can still report.
     ldr  r1, =0xBEEF0000
-    orr  r0, r1, r0            @ the fault address carries the result mask
+    orr  r0, r1, r0
     ldr  r1, [r0]
     b    .
 
@@ -35,3 +37,17 @@ old_call_slot1:
     bx   lr
 
     .ltorg
+
+    @ An import stub, exactly as the Symbian linker emits it: `ldr pc,[pc,#-4]`
+    @ reads pc as its own address plus 8, so it jumps through the word that
+    @ follows, and the loader overwrites that word with the resolved address.
+    .macro IMPORT name, ordinal
+    .global \name
+\name:
+    ldr  pc, [pc, #-4]
+    .global \name\()_ord
+\name\()_ord:
+    .word \ordinal
+    .endm
+
+    IMPORT user_panic, 650          @ User::Panic(TDesC16 const&, TInt)

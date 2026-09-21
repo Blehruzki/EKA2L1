@@ -18,6 +18,18 @@ typedef unsigned int u32;
 
 extern "C" int old_call(void *obj, u32 slot);   // the general dispatcher
 extern "C" int old_call_slot1(void *obj);       // the exact measured instruction
+extern "C" void user_panic(const void *category, int reason);   // euser ordinal 650
+
+// A phone shows a panic as "<thread> <category> <reason>", which is the only
+// way this test has of reporting a number: the fault address it falls back to
+// never reaches the screen. TPtrC16 is a length word whose top four bits are
+// the descriptor type (1 = EPtrC) and a pointer to the text.
+static const unsigned short kCategory[] = { 'G', 'A', 'T', 'E', '3' };
+
+struct Ptrc16 {
+    unsigned int length_and_type;
+    const unsigned short *text;
+};
 
 class Real {
 public:
@@ -132,6 +144,11 @@ extern "C" u32 gate3_main()
     ob.vptr1 = vts;
     ob.magic = 0x100;
     if (old_call(&ob.vptr1, 0) == 0x160) pass |= 1u << 6;
+
+    Ptrc16 cat;
+    cat.length_and_type = (1u << 28) | (sizeof kCategory / sizeof kCategory[0]);
+    cat.text = kCategory;
+    user_panic(&cat, (int)pass);
 
     return pass;
 }

@@ -71,11 +71,14 @@ def uid_checksum(uid1, uid2, uid3):
 
 
 def build(code, uid3, entry=0, stack=0x2000, heap_min=0x1000, heap_max=0x100000,
-          uid2=0, code_base=0x8000, when=None, reloc_offsets=()):
-    import relocs
+          uid2=0, code_base=0x8000, when=None, reloc_offsets=(), imports=()):
+    import importsec, relocs
     code = bytes(code)
     code += b'\0' * (-len(code) % 4)
+    import_section = importsec.section(imports) if imports else b''
     reloc_section = relocs.section(reloc_offsets) if reloc_offsets else b''
+    import_offset = CODE_OFFSET + len(code)
+    reloc_offset = import_offset + len(import_section)
 
     h = bytearray(HDR_LEN)
     def u32(off, v): struct.pack_into('<I', h, off, v & 0xFFFFFFFF)
@@ -102,17 +105,17 @@ def build(code, uid3, entry=0, stack=0x2000, heap_min=0x1000, heap_max=0x100000,
     u32(0x48, entry)           # entry point, an offset from the code base
     u32(0x4c, code_base)
     u32(0x50, DATA_BASE)
-    u32(0x54, 0)               # dll ref table count
+    u32(0x54, len(imports))    # dll ref table count
     u32(0x58, 0); u32(0x5c, 0)                       # export dir
     u32(0x60, len(code))       # text size == code size, so the IAT walk is empty
     u32(0x64, CODE_OFFSET)
     u32(0x68, 0)               # data offset
-    u32(0x6c, 0)               # import offset
-    u32(0x70, (CODE_OFFSET + len(code)) if reloc_section else 0)   # code relocations
+    u32(0x6c, import_offset if import_section else 0)
+    u32(0x70, reloc_offset if reloc_section else 0)                 # code relocations
     u32(0x74, 0)                                                    # data relocations
     u16(0x78, PRIORITY)
     u16(0x7a, CPU_ARMV5)
-    u32(0x7c, len(code) + len(reloc_section))   # everything past the header
+    u32(0x7c, len(code) + len(import_section) + len(reloc_section))  # past the header
     u32(0x80, uid3)            # secure id
     u32(0x84, 0)               # vendor id
     u32(0x88, 0); u32(0x8c, 0)                       # capabilities
@@ -120,7 +123,7 @@ def build(code, uid3, entry=0, stack=0x2000, heap_min=0x1000, heap_max=0x100000,
     u32(0x94, 0)               # spare
     u16(0x98, 0); h[0x9a] = 0; h[0x9b] = 0           # export description
 
-    img = bytearray(h) + code + reloc_section
+    img = bytearray(h) + code + import_section + reloc_section
 
     crc_hdr = bytearray(img[:HDR_LEN])
     struct.pack_into('<I', crc_hdr, 0x14, 0xC90FDAA2)
