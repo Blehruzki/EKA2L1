@@ -321,6 +321,44 @@ runs clean. Emulator silence on this format is not evidence about the device.
 
 ---
 
+## 7b. Race music: the patch set
+
+Thirteen tracks install as `bgm_0.wav` .. `bgm_c.wav` ('0'-'9', then 'a'-'c')
+next to `light.bar`. `bgm_0` is the menu track; the countdown cycles 1..a.
+
+| # | code offset | change |
+|---|-------------|--------|
+| 1 | `0x10bd4` | the filename string `intro.mid` -> `bgm_0.wav` (same length, and the SIS install path with it) |
+| 2 | header `0x44` | `bss_size` 0 -> 8. The image declares none; this is where the game pointer, the one-shot track index and the race counter live, at `0x400008` |
+| 3 | end of `.text` | the section grows by ~50 halfwords for two caves. Relocations and import entries are offsets into the code and the space lands at its end, so nothing shifts but the four file offsets in the header |
+| 4 | `0x1087a` | four instructions in the start routine give way to `bl cave1` |
+| 5 | `0x1a7fe` | the `bl` that follows `s_go!` in the countdown becomes `bl cave2` |
+
+`cave1` saves the game pointer (its `r4` is that pointer plus `0xd6c0`), reads the
+track index, writes its character into the widened filename and resets the index
+to 0, then re-issues the four instructions it displaced. `cave2` makes the call
+it replaced, bumps the counter, sets the index and calls the start routine.
+
+**The character is positioned from the end of the string.** What the routine
+widens is a full path, not the bare name, so a fixed offset of 4 lands in
+`E:\priv...` and corrupts the directory. Counting back five from the length the
+routine already stashed at `[sp,#0x10]` works whatever the prefix. The symptom of
+getting this wrong is an *open* failure, not a decode failure -- which is the
+tell that distinguishes the two in the log.
+
+Nothing hooks the finish line: the start routine already stops whatever is
+playing, and returning to the menu starts its own track. The menu's
+"PLAYING: MOBY - LIFT ME UP" caption is a fixed string and now lies.
+
+**Proving the hook fires, with no audio device.** EKA2L1 cannot decode the ADPCM,
+so make that the signal: install PCM as `bgm_0` and leave `bgm_1` as ADPCM. A
+clean log up to the countdown and `Unable to get stream codec!` exactly at it
+proves the countdown hook ran, chose index 1, and that the digit patch rewrote
+the name. `Error while opening AVFormat Input!` instead would mean the name came
+out wrong.
+
+---
+
 ## 8. Method notes
 
 - **Localise an effect with a marker texture.** Replacing `boost1b/2b/3b` with a

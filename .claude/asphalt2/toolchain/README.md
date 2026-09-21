@@ -43,8 +43,9 @@ python3 build_package.py
 | `build_package.py` | Assembles the `.sisx`: swaps both files, fixes lengths and hashes, strips the signature, recompresses the controller. |
 | `swav.py` | N-Gage `SWAV` stream reader: header parse plus the IMA ADPCM codec (mono, **high** nibble first, state running unbroken through the file). |
 | `imawav.py` | Writes 16-bit PCM back out as an IMA ADPCM `.wav` (tag 0x11). Keeps a track at roughly the N-Gage size instead of the 4x plain PCM costs. |
-| `audiostring.py` | Repoints the music player from `intro.mid` to `intro.wav` — same length in both the text section and the SIS install path, so nothing shifts. |
-| `build_v17.py` | `build_package.py` plus the intro swap: the third replaced file, its hash, and the controller rename. |
+| `audiopatch.py` | The race-music patch: renames the filename template, declares BSS the image never had, grows the text section for two code caves, and hooks the start routine and the `s_go!` countdown branch. |
+| `sisadd.py` | Adds *new* files to a package — a SISFileDescription in the controller's install block and a SISFileData beside the rest. Refuses to edit a controller that does not re-serialise byte-identically first. |
+| `build_v18.py` | `build_package.py` plus the soundtrack: the intro slot becomes `bgm_0`, twelve more tracks are appended, all hashes and lengths follow. |
 | `verify_pkg.py` | Re-checks a built package the way a device does: every install description's SHA-1 and both lengths against the data unit actually shipped. Run it on `v16` too — a known-good control. |
 
 ## Guard rails worth keeping

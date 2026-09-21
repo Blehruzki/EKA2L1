@@ -29,3 +29,14 @@ def stmia(rn,regs): return 0xC000|(rn<<8)|sum(1<<r for r in regs)
 def mov_lr_r7(): return 0x46BE
 def subs_i1(rd,rn): return 0x1E00|(1<<6)|(rn<<3)|rd
 def mov_r_lr(rd): return 0x4600|0x40|((14&7)<<3)|rd
+
+def strb_r(rd,rn,off): assert 0<=off<32; return 0x7000|(off<<6)|(rn<<3)|rd
+def strh_r(rd,rn,off): assert off%2==0 and off//2<32; return 0x8000|((off//2)<<6)|(rn<<3)|rd
+def ldr_pc(rd,frm,to):
+    off=to-(((frm+4)&~3)); assert off%4==0 and 0<=off<=1020, 'literal out of range: %d'%off
+    return 0x4800|(rd<<8)|(off//4)
+def push(regs): return 0xB400|sum(1<<r for r in regs if r<8)|(0x100 if 14 in regs else 0)
+def pop(regs): return 0xBC00|sum(1<<r for r in regs if r<8)|(0x100 if 15 in regs else 0)
+def bx_lr(): return 0x4770
+def subs_i(rd,imm): assert 0<=imm<=255; return 0x3800|(rd<<8)|imm
+def strh_rr(rd,rn,rm): return 0x5200|(rm<<6)|(rn<<3)|rd

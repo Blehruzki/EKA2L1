@@ -1,8 +1,13 @@
-import struct, zlib, hashlib, os, sisrw, barfile, rleraw, compose7, fireboost, sishash, audiostring
+import struct, zlib, hashlib, os, sisrw, barfile, rleraw, compose7, fireboost, sishash, sisadd
 SRC='z_c5e5a984-Asphalt23D_nokiaN76_N93_ML_IGP_v1_0_0_Signed_N73_1/Asphalt23D_nokiaN76_N93_ML_IGP_v1_0_0_Signed_N73.sisx'
-DST='Asphalt23D_N73_newhud_v17.sisx'
+DST='Asphalt23D_N73_newhud_v18.sisx'
 EXE_IDX, LB_IDX, MID_IDX = 0, 5, 6
-MUSIC='../ngage/wav/bgm_technoise.wav'
+WAV='../ngage/wav/'
+TARGET=u'!:\\private\\20008629\\A2\\bgm_%s.wav'
+# bgm_0 is the menu track; the countdown cycles 1..a, and b/c are the jingles.
+TRACKS=['technoise','all_roots','bad_dad','crush_that_truck','down_to_rio','drone_drive',
+        'gulp_fiction','kick_ya','moby_lift_me_up','pulp_friction','race_hong_kong','win','loose']
+SLOTS='0123456789abc'
 head, contents, orig = sisrw.load(SRC)
 ctrl=[k for k in contents.kids if k.t==sisrw.COMPRESSED][0]
 fds=list(sisrw.walk(contents, sisrw.FILEDATA))
@@ -43,7 +48,7 @@ b_c,b_u=replace(LB_IDX, bar)
 # The stock intro is a MIDI; swap in one of the N-Gage streams re-encoded as
 # IMA ADPCM, which the phone's WAV controller decodes. The exe and the install
 # path both say .wav now (same length as .mid, so nothing shifted).
-intro=open(MUSIC,'rb').read()
+intro=open(WAV+'bgm_%s.wav'%TRACKS[0],'rb').read()
 m_c,m_u=replace(MID_IDX, intro)
 
 cbuf=bytearray(zlib.decompress(ctrl.raw[12:]))
@@ -79,7 +84,14 @@ for _idx, _payload in ((EXE_IDX, exe), (LB_IDX, bar), (MID_IDX, intro)):
     _new = hashlib.sha1(_payload).digest()
     assert _len == len(_new), 'hash field is %d bytes, SHA-1 is %d' % (_len, len(_new))
     cbuf[_off:_off + _len] = _new
-cbuf = audiostring.patch_controller(cbuf)
+# the stock intro slot becomes bgm_0; the other twelve tracks are new entries
+_old=u'intro.mid'.encode('utf-16-le'); _new=u'bgm_0.wav'.encode('utf-16-le')
+assert bytes(cbuf).count(_old)==1
+cbuf=bytearray(bytes(cbuf).replace(_old,_new))
+_payloads=[open(WAV+'bgm_%s.wav'%t,'rb').read() for t in TRACKS[1:]]
+_targets=[TARGET % c for c in SLOTS[1:]]
+cbuf=sisadd.add_files(cbuf, contents, _payloads, _targets)
+print('added %d tracks (%.1f MB of audio)'%(len(_payloads), sum(map(len,_payloads))/1048576))
 cbuf,_removed = sishash.strip_signature(cbuf)
 print('signature block stripped: %d bytes, controller now %d'%(_removed,len(cbuf)))
 ctrl.raw=struct.pack('<IQ',1,len(cbuf))+zlib.compress(bytes(cbuf),9)

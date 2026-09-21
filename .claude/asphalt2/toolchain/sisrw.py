@@ -10,9 +10,13 @@ def rd_hdr(buf, off):
     return t, l, off, wide
 
 class F:
-    """type, wide-length flag, and either raw bytes or (elem_type, children)."""
-    def __init__(s, t, wide=False, raw=None, elem=None, kids=None):
-        s.t, s.wide, s.raw, s.elem, s.kids = t, wide, raw, elem, kids
+    """type, wide-length flag, and either raw bytes or (elem_type, children).
+
+    `tail` keeps whatever sits inside a container past its last field: this
+    package's SISInfo declares two bytes more than its fields account for, and
+    dropping them would change every length above it."""
+    def __init__(s, t, wide=False, raw=None, elem=None, kids=None, tail=b''):
+        s.t, s.wide, s.raw, s.elem, s.kids, s.tail = t, wide, raw, elem, kids, tail
     def body(s):
         if s.raw is not None: return s.raw
         out = struct.pack('<I', s.elem) if s.elem is not None else b''
@@ -21,7 +25,7 @@ class F:
             out += struct.pack('<I', len(b)) if s.elem is not None else b''
             if s.elem is None: out += hdr(k.t, len(b), k.wide)
             out += b + b'\0' * (-len(b) % 4)
-        return out
+        return out + s.tail
     def ser(s):
         b = s.body(); return hdr(s.t, len(b), s.wide) + b + b'\0' * (-len(b) % 4)
 
@@ -29,7 +33,13 @@ def hdr(t, l, wide):
     return struct.pack('<IIQ', t, 0xFFFFFFFF, l) if wide else struct.pack('<II', t, l)
 
 def parse(buf, off, end, descend):
-    """descend(type) -> True to recurse; arrays always recurse."""
+    return parse_body(buf, off, end, descend)[0]
+
+
+def parse_body(buf, off, end, descend):
+    """descend(type) -> True to recurse; arrays always recurse.
+
+    Returns (fields, trailing bytes)."""
     out = []
     while off + 8 <= end:
         t, l, doff, wide = rd_hdr(buf, off)
@@ -44,11 +54,12 @@ def parse(buf, off, end, descend):
                 o += el + (-el % 4)
             out.append(F(t, wide, elem=elem, kids=kids))
         elif descend(t):
-            out.append(F(t, wide, kids=parse(buf, doff, doff + l, descend)))
+            kids, tail = parse_body(buf, doff, doff + l, descend)
+            out.append(F(t, wide, kids=kids, tail=tail))
         else:
             out.append(F(t, wide, raw=buf[doff:doff + l]))
         off = doff + l + (-l % 4)
-    return out
+    return out, buf[off:end]
 
 def sub(buf, doff, dend, t, descend):
     if t == ARRAY:
@@ -61,7 +72,8 @@ def sub(buf, doff, dend, t, descend):
             o += el + (-el % 4)
         return F(t, elem=elem, kids=kids)
     if descend(t):
-        return F(t, kids=parse(buf, doff, dend, descend))
+        kids, tail = parse_body(buf, doff, dend, descend)
+        return F(t, kids=kids, tail=tail)
     return F(t, raw=buf[doff:dend])
 
 PATH = {CONTENTS, DATA, DATAUNIT, FILEDATA}
