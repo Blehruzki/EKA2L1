@@ -5,7 +5,7 @@ field, so every value is one we can explain.  The two self-describing fields --
 the UID checksum at 0x0c and the header CRC at 0x14 -- are computed with the
 same routines that reproduce the stored values in the shipped game binaries.
 """
-import struct, sys
+import datetime, struct, sys
 
 HDR_LEN = 156                  # V-format: 0x7c base + 0x20 extended
 CODE_OFFSET = HDR_LEN
@@ -14,8 +14,32 @@ UID1_EXE = 0x1000007A
 UID2_APP = 0x100039CE          # not used for a bare exe, kept for reference
 CPU_ARMV5 = 0x2001
 
-# header format 2 (V) | entry point type EKA2 (1<<5) | ABI EABI (1<<3)
-FLAGS = (2 << 24) | (1 << 5) | (1 << 3)
+# Import format ELF (1<<28) | header format 2 (V) (2<<24) | entry point type
+# EKA2 (1<<5) | ABI EABI (1<<3) | no call entry point (1<<1).
+#
+# The import format matters even with no imports: an EABI image declaring PE
+# imports is a combination Symbian's loader rejects outright, and it is exactly
+# what the emulator never notices, because it only reads the import format when
+# the DLL reference count is non-zero.  Both shipped S60v3 executables checked
+# against here -- one SDK-built, one that installs and runs on the target phone
+# -- carry 0x1200002a, so that is what we write.
+FLAGS = (1 << 28) | (2 << 24) | (1 << 5) | (1 << 3) | (1 << 1)
+
+MODULE_VERSION = 0x000A0000
+DATA_BASE = 0x00400000
+PRIORITY = 0x015E                  # EPriorityForeground, as both shipped exes use
+
+
+def symbian_time(when=None):
+    """TTime: microseconds since the start of year 0.
+
+    Checked against the shipped binaries: the game exe's stamp decodes to
+    2007-07-03 and the SDK sample's to 2018-04-21, both plausible build dates.
+    """
+    when = when or datetime.datetime.utcnow()
+    days = when.date().toordinal() + 365
+    secs = when.hour * 3600 + when.minute * 60 + when.second
+    return days * 86400 * 10 ** 6 + secs * 10 ** 6 + when.microsecond
 
 _TAB = []
 for _i in range(256):
@@ -47,7 +71,7 @@ def uid_checksum(uid1, uid2, uid3):
 
 
 def build(code, uid3, entry=0, stack=0x2000, heap_min=0x1000, heap_max=0x100000,
-          uid2=0, code_base=0x8000):
+          uid2=0, code_base=0x8000, when=None):
     code = bytes(code)
     code += b'\0' * (-len(code) % 4)
 
@@ -61,10 +85,11 @@ def build(code, uid3, entry=0, stack=0x2000, heap_min=0x1000, heap_max=0x100000,
     u32(0x0c, uid_checksum(UID1_EXE, uid2, uid3))
     h[0x10:0x14] = b'EPOC'
     u32(0x14, 0)               # header CRC, filled in below
-    u32(0x18, 0)               # module version
+    u32(0x18, MODULE_VERSION)
     u32(0x1c, 0)               # compression: none
-    h[0x20] = 2; h[0x21] = 0; u16(0x22, 0)          # tool version
-    u32(0x24, 0); u32(0x28, 0)                       # timestamp
+    h[0x20] = 2; h[0x21] = 0; u16(0x22, 0x0200)     # tool version
+    stamp = symbian_time(when)
+    u32(0x24, stamp & 0xFFFFFFFF); u32(0x28, stamp >> 32)
     u32(0x2c, FLAGS)
     u32(0x30, len(code))       # code size
     u32(0x34, 0)               # data size
@@ -74,7 +99,7 @@ def build(code, uid3, entry=0, stack=0x2000, heap_min=0x1000, heap_max=0x100000,
     u32(0x44, 0)               # bss
     u32(0x48, entry)           # entry point, an offset from the code base
     u32(0x4c, code_base)
-    u32(0x50, 0)               # data base
+    u32(0x50, DATA_BASE)
     u32(0x54, 0)               # dll ref table count
     u32(0x58, 0); u32(0x5c, 0)                       # export dir
     u32(0x60, len(code))       # text size == code size, so the IAT walk is empty
@@ -82,7 +107,7 @@ def build(code, uid3, entry=0, stack=0x2000, heap_min=0x1000, heap_max=0x100000,
     u32(0x68, 0)               # data offset
     u32(0x6c, 0)               # import offset
     u32(0x70, 0); u32(0x74, 0)                       # relocations
-    u16(0x78, 0)               # priority
+    u16(0x78, PRIORITY)
     u16(0x7a, CPU_ARMV5)
     u32(0x7c, len(code))       # uncompressed size (everything past the header)
     u32(0x80, uid3)            # secure id
