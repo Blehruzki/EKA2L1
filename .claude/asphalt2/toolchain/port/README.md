@@ -568,6 +568,44 @@ different object, which is closer to right but not right. Implementing them
 against the old layout is the rest of step 2, and the layouts are readable from
 the game's own code -- the allocation sizes and the offsets its methods touch.
 
+## Step 3 — the framework asks, the N-Gage binary answers
+
+Gate 4 loaded the old binary and ran its code; gate 5 made this a real S60v3
+GUI application. Gate 6 joins them.
+
+The framework wants a `CApaApplication`. The game's own `NewApplication` builds
+one, but it is an old-ABI object the 9.x framework cannot call. So the
+framework gets a 9.x-layout object of ours, built the ordinary way -- zeroed
+memory, `CEikApplication::CEikApplication()`, the vtable read back out of the
+object -- with one slot pointed at the old object instead:
+
+```cpp
+extern "C" u32 gate6_app_dll_uid(void *self)
+{
+    return (u32)old_call((void *)((u32 *)self)[WRAP_GAME_APP], OLD_APP_DLL_UID);
+}
+```
+
+`old_call` is the GCC98r2 virtual call gate 3 measured in the game's own code:
+the vptr at object offset 0, pointing eight bytes before slot 0. The wrapper
+carries the old object in a word past anything `CEikApplication` uses, since a
+writable global would need a `.bss` section these images do not have.
+
+The two vtables are not the same shape -- 9.x splits the destructor across two
+slots and has no `OpenAppInfoFileLC` -- so `AppDllUid` is slot 5 on one side
+and slot 3 on the other. A translation, not an offset.
+
+Called the way the framework calls it:
+
+```
+Thread gate6 panicked with category: G6UID and exit code: 270521389
+```
+
+`0x101FD42D`, the game's own UID3. The whole chain ran: our app started, the
+N-Gage binary was loaded and relocated, its 462 imports bound, its
+`NewApplication` built its application object, and a 9.x virtual call reached
+it through its own calling convention and came back with its answer.
+
 ## Not done yet
 
 - **The shim itself.** 462 stubs currently all panic. Each has to become a real
