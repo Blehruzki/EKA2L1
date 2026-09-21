@@ -58,6 +58,24 @@ HELPERS = {
     '__builtin_vec_delete': ('scppnwdl', '_ZdaPv', KIND_CALL),
 }
 
+# Classes the game derives from, whose constructors and destructors must not be
+# forwarded.
+#
+# Forwarding a leaf function is sound: allocation, descriptors, arithmetic and
+# file I/O have the same layout either side. Forwarding a base-class
+# constructor is not. The game allocates its application object at 556 bytes --
+# the size the 7.0s compiler computed -- and then calls the base constructor;
+# sending that to the 9.x one runs 9.x code writing 9.x field offsets into an
+# object that was never laid out that way. Nothing makes iCoeEnv and
+# iResourceFileOffset sit where the old code expects them.
+#
+# Until each is reimplemented against the old layout, an empty body on zeroed
+# memory is the closer approximation: it leaves the old fields at zero rather
+# than filling them with values meant for a different object.
+FRAMEWORK_BASES = ('CCoeControl', 'CCoeAppUi', 'CEikApplication', 'CEikDocument',
+                   'CEikAppUi', 'CEikDialog', 'CEikBorderedControl',
+                   'CAknApplication', 'CAknDocument', 'CAknAppUi')
+
 # No EABI routine matches these, so gate 4 generates them itself.
 LOCAL_NEGSF2, LOCAL_PURE_VIRTUAL, LOCAL_NOOP, LOCAL_MEM_COMPARE = 0, 1, 2, 3
 LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL}
@@ -80,6 +98,12 @@ MANUAL = {
     'Mem::Compare(unsigned char const *, int, unsigned char const *, int)':
         ('local', LOCAL_MEM_COMPARE, KIND_LOCAL),
 }
+
+
+def _is_framework_ctor(sig):
+    """Class::Class(...) or Class::~Class(...) for a class the game derives from."""
+    m = re.match(r'^(C\w+)::(~?)\1\s*\(', sig)
+    return bool(m) and m.group(1) in FRAMEWORK_BASES
 
 
 def find_defs():
@@ -115,7 +139,11 @@ def build(image):
     # (index, library, ordinal, signature, kind)
     out = []
     for i, lib, _o, sig, ordinal, _src in rows:
-        if ordinal:
+        # Checked before the ordinal, deliberately: these do have a 9.x
+        # equivalent, and forwarding to it is exactly what must not happen.
+        if sig and _is_framework_ctor(sig):
+            out.append((i, None, LOCAL_NOOP, sig, KIND_LOCAL))
+        elif ordinal:
             out.append((i, lib, ordinal, sig, KIND_CALL))
         elif sig and 'Reserved' in sig:
             # Vtable padding. Symbian's _Reserved members have empty bodies and

@@ -541,6 +541,33 @@ afterwards, which is fair: an app UI with no control and no view has nothing
 for the framework to run. Giving it one belongs with step 2, where the old
 binary's own classes start supplying the content.
 
+## Step 2 — stop forwarding what must not be forwarded
+
+Forwarding a leaf function is sound: allocation, descriptors, arithmetic and
+file I/O have the same layout on either side. Forwarding a base-class
+constructor is not, and gate 4 was doing it. The game allocates its application
+object at 556 bytes -- the size the 7.0s compiler computed -- and then calls
+the base constructor; sending that to the 9.x one runs 9.x code writing 9.x
+field offsets into an object that was never laid out that way. Nothing makes
+`iCoeEnv` and `iResourceFileOffset` sit where the old code expects them.
+
+`gen_shim.py` now intercepts the constructors and destructors of the classes
+the game derives from -- `CCoeControl`, `CCoeAppUi`, `CEikApplication`,
+`CEikDocument`, `CEikAppUi`, `CEikDialog`, `CEikBorderedControl`, and the Akn
+classes -- **before** looking for a 9.x ordinal, because they do have one and
+using it is the thing to avoid. Six of the 462 move from forwarded to an empty
+body, and the game still hands back a live application object:
+
+```
+Thread Main panicked with category: G4RET and exit code: 389001
+```
+
+An empty body on zeroed memory is an approximation, not a reimplementation: it
+leaves the old fields at zero rather than filling them with values meant for a
+different object, which is closer to right but not right. Implementing them
+against the old layout is the rest of step 2, and the layouts are readable from
+the game's own code -- the allocation sizes and the offsets its methods touch.
+
 ## Not done yet
 
 - **The shim itself.** 462 stubs currently all panic. Each has to become a real
