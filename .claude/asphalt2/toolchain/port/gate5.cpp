@@ -11,6 +11,7 @@
 // pointer. Getting that wrong is the one thing here that cannot be checked by
 // reading a def file, which is why this milestone exists.
 
+typedef unsigned char u8;
 typedef unsigned int u32;
 typedef unsigned short u16;
 
@@ -89,7 +90,12 @@ extern "C" u32 gate5_app_dll_uid(void *)
 // The framework then names the slot it calls first, which is the same trick
 // gate 4 uses on imports.
 enum { DOC_SLOTS = 34, UI_SLOTS = 48 };
-enum { SLOT_CREATE_APP_UI = 21 };   // measured, not counted
+// The framework calls slot 21 first and slot 19 second. Chaining slot 19 to
+// its real implementation raises an unhandled exception, which is what calling
+// a pure virtual does -- so 19 is CreateAppUiL and 21 is something else the
+// real vtable handles for us. A count of the headers had said 19 too; the
+// trampoline run mistook the first call for the interesting one.
+enum { SLOT_CREATE_APP_UI = 19 };
 
 extern "C" void gate5_ui_slot(int index)
 {
@@ -140,6 +146,65 @@ static u32 *trampoline_vtable(int slots, void *reporter)
     return vt;
 }
 
+// A vtable that records each call and then chains to the real implementation,
+// so the framework keeps working while the order of calls is observed. Each
+// slot gets a 64-byte wrapper:
+//
+//   push {r0-r3, r12, lr}     @ the arguments, untouched, and the return address
+//   ldr  r0, [pc, #24]        @ this slot's index
+//   ldr  r1, [pc, #24]        @ the shared counter
+//   ldr  r2, [pc, #24]        @ the recorder
+//   mov  lr, pc
+//   bx   r2
+//   pop  {r0-r3, r12, lr}     @ put the arguments back
+//   ldr  pc, [pc, #12]        @ and fall into the real implementation
+//
+// Restoring sp before the tail jump matters: a function returning a large
+// object by value, or reading arguments past r3, would otherwise see a stack
+// that has moved under it.
+enum { WRAP = 64, SEQ_REPORT = 12, SEQ_BITS = 7 };
+
+extern "C" void gate5_record(int index, u32 *state)
+{
+    const u32 n = state[0];
+    if (n < SEQ_REPORT)
+        state[1 + n] = (u32)index;
+    state[0] = n + 1;
+    if (n + 1 == SEQ_REPORT) {
+        u32 packed = 0;
+        for (u32 i = 0; i < SEQ_REPORT; i++)
+            packed |= state[1 + i] << (SEQ_BITS * i);
+        PANIC(CAT_DOC, (int)packed);
+    }
+}
+
+static u32 *chaining_vtable(const u32 *real, int slots, int patchSlot, void *patch)
+{
+    u8 *code = (u8 *)user_allocz(slots * WRAP);
+    u32 *vt = (u32 *)user_allocz((VT_HEADER + slots) * 4);
+    u32 *state = (u32 *)user_allocz((1 + SEQ_REPORT) * 4);
+    if (!code || !vt || !state) PANIC(CAT_LIB, -15);
+    for (int i = 0; i < VT_HEADER; i++)
+        vt[i] = real[i];
+    for (int i = 0; i < slots; i++) {
+        u32 *w = (u32 *)(code + WRAP * i);
+        w[0] = 0xE92D500F;              // push {r0-r3, r12, lr}
+        w[1] = 0xE59F0018;              // ldr  r0, [pc, #24]
+        w[2] = 0xE59F1018;              // ldr  r1, [pc, #24]
+        w[3] = 0xE59F2018;              // ldr  r2, [pc, #24]
+        w[4] = 0xE1A0E00F;              // mov  lr, pc
+        w[5] = 0xE12FFF12;              // bx   r2
+        w[6] = 0xE8BD500F;              // pop  {r0-r3, r12, lr}
+        w[7] = 0xE59FF00C;              // ldr  pc, [pc, #12]
+        w[9] = (u32)i;
+        w[10] = (u32)state;
+        w[11] = (u32)&gate5_record;
+        w[12] = (i == patchSlot) ? (u32)patch : real[VT_HEADER + i];
+        vt[VT_HEADER + i] = (u32)w;
+    }
+    return vt;
+}
+
 // The document asks for this once the framework wants a UI.
 extern "C" void *gate5_create_app_ui(void *)
 {
@@ -159,13 +224,8 @@ extern "C" void *gate5_create_app_ui(void *)
 
 extern "C" void *gate5_create_document(void *app)
 {
-    // Still a reporting vtable. Patching the real one at slot 21 and returning
-    // an app UI does not work: the framework carries on past that call and
-    // fails later, and it fails identically when the slot returns null -- so
-    // slot 21 is only the first virtual called, not necessarily CreateAppUiL.
-    // Telling them apart needs wrappers that record the call and then chain to
-    // the real implementation, which is the next piece of work.
-    u32 *vt = trampoline_vtable(DOC_SLOTS, (void *)&gate5_doc_slot);
+    u32 *vt = chaining_vtable(AVKON_EXPORT(AVKON_VTABLE_CAknDocument), DOC_SLOTS,
+                              SLOT_CREATE_APP_UI, (void *)&gate5_create_app_ui);
 
     u32 *doc = (u32 *)user_allocz(2048);
     if (!doc) PANIC(CAT_LIB, -14);

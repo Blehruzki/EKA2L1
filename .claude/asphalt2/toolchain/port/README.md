@@ -430,22 +430,51 @@ Two other things that looked like the answer and were not:
 - Comparing against `__cxa_pure_virtual` from `drtaeabi` fails too: each DLL
   links its own copy, so the addresses do not match across modules.
 
-### Where step 1 stands
+### Chaining wrappers, and what they found
 
-Slot 21 is the first virtual the framework calls on the document, which is not
-the same as being `CreateAppUiL`. Patching the real vtable there and returning
-an app UI does not work -- the framework carries on past the call and fails
-later with `USER-EXEC 3`, and it fails identically when that slot returns null.
-So the return value is not what it is unhappy about, and the app UI is not yet
-reached at all.
+Being the first virtual called is not the same as being `CreateAppUiL`, and the
+trampoline run conflated the two. A wrapper that records the call and then
+chains to the real implementation keeps the framework working while the order
+is observed. Each slot gets 64 bytes:
 
-Telling one slot from another needs wrappers that record the call and then
-chain to the real implementation, so the framework keeps working while the
-order is observed. That is the next piece, and the app UI follows it: it cannot
-be assembled the way the application and document were, because
-`CAknAppUi`'s constructor is not exported, and `CCoeAppUi` and `CEikAppUi`
-bring mixins, so a constructor and a vtable from different classes describe an
-object that was never laid out that way.
+```
+push {r0-r3, r12, lr}     @ the arguments, untouched, and the return address
+ldr  r0, [pc, #24]        @ this slot's index
+ldr  r1, [pc, #24]        @ the shared counter
+ldr  r2, [pc, #24]        @ the recorder
+mov  lr, pc
+bx   r2
+pop  {r0-r3, r12, lr}     @ put the arguments back
+ldr  pc, [pc, #12]        @ and fall into the real implementation
+```
+
+Restoring sp before the tail jump matters: a function returning a large object
+by value, or reading arguments past r3, would otherwise find the stack moved
+under it.
+
+The order is slot 21, then slot 19. Chaining 19 to its real implementation
+raises an unhandled exception -- `USER-EXEC 3` -- which is what calling a pure
+virtual does. So **19 is `CreateAppUiL`**, which is what counting the headers
+had said all along; 21 is something else that the real vtable handles for us.
+
+With 19 patched and the rest chained, and the app UI built from
+`CEikAppUi::CEikAppUi()` with `CEikAppUi`'s own vtable -- constructor and
+vtable from the same class, since `CAknAppUi`'s constructor is not exported and
+mixing the two would describe an object that was never laid out that way:
+
+```
+Thread Gate5 panicked with category: CONE and exit code: 14
+```
+
+`ECoePanicNoResourceFileForId`. The application, the document and the app UI
+are all built and `ConstructL` is running; it is asking for a resource by id
+and the file this toolchain writes does not contain it.
+
+### Still to do in step 1
+
+An application resource file with what Uikon and Avkon read out of it. That is
+more of the same format work the other writers needed, and the same
+byte-for-byte check applies.
 
 ## Not done yet
 
