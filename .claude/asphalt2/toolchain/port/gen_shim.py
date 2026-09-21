@@ -107,6 +107,17 @@ MANUAL = {
 }
 
 
+# The N-Gage-only libraries, which exist in no S60v3 ROM. Each entry is a
+# deliberate stand-in decided from what the game's code does with the call --
+# read out of the game, since there is no signature to match against.
+NGAGE = {
+    # ConstructL localises "Invalid game card" into five languages and hands it,
+    # with the ASCII name "N-Gage", to this. Nothing on an S60v3 phone would
+    # ever show that message, so it succeeds and does nothing.
+    ('nokiafc', 1): LOCAL_NOOP,
+}
+
+
 def _is_framework_ctor(sig):
     """Class::Class(...) or Class::~Class(...) for a class the game derives from."""
     m = re.match(r'^(C\w+)::(~?)\1\s*\(', sig)
@@ -150,6 +161,8 @@ def build(image):
         # equivalent, and forwarding to it is exactly what must not happen.
         if sig and _is_framework_ctor(sig):
             out.append((i, None, LOCAL_NOOP, sig, KIND_LOCAL))
+        elif (lib, _o) in NGAGE:
+            out.append((i, None, NGAGE[(lib, _o)], sig, KIND_LOCAL))
         elif ordinal:
             out.append((i, lib, ordinal, sig, KIND_CALL))
         elif sig and 'Reserved' in sig:

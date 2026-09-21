@@ -711,6 +711,44 @@ Import 459: `NOKIAFC` ordinal 1. That is the N-Gage frontier -- 31 imports
 across GAMECOMMS, GAMEUTILS, ARENAFRAMEWORK and NOKIAFC exist only in the
 N-Gage ROM, and each has to be read out of it.
 
+Read out of the game rather than out of the ROM: the trapped body builds a
+`TBuf<256>`, switches on the language for one of five strings -- "Invalid game
+card", "Carte de jeu non valable", "Tarjeta de juego inválida", "Ungültige
+Spielkarte", "Scheda gioco non valida" -- and passes it, with the ASCII name
+"N-Gage", to that one export. Nothing on an S60v3 phone would ever show that
+message, so the stand-in succeeds and does nothing. Stand-ins for the N-Gage
+libraries live in a table keyed by library and ordinal, since there is no
+signature to match on.
+
+Then `ApplicationRect`, `AddToStackL` and `SetKeyBlockMode`, all called on the
+old object, all wanting the 9.x implementation with the wrapper instead. Those
+need no code of their own, just the argument swapped, so the thunk does it:
+
+```
+ldr rN, [pc, #8]    @ rN = the cell holding the wrapper
+ldr rN, [rN]
+ldr pc, [pc, #4]
+```
+
+`ApplicationRect` returns a `TRect`, so r0 is the return buffer and `this` is
+in r1 -- which is why the thunk takes the register rather than assuming r0.
+
+### The frontier: the control
+
+Past those, `ConstructL` builds a control and calls
+`CCoeControl::CreateWindowL()` on it. That control is the game's object too, and
+it is the first thing here there can be more than one of: a single wrapper
+pointer in the context is not enough, it needs an old-object-to-wrapper map, and
+the thunks that consult it will have to do the lookup themselves, since a call
+with four arguments has no spare register to carry the context in.
+
+```
+Thread Gate6 panicked with category: G6CHN and exit code: 5
+```
+
+That is `CreateWindowL` diverted to a stop, rather than letting cone walk an
+object it cannot read.
+
 ## Not done yet
 
 - **The shim itself.** 462 stubs currently all panic. Each has to become a real

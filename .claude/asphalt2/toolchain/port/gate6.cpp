@@ -172,6 +172,23 @@ enum { OLD_CREATE_DOCUMENT = 12, OLD_UI_CONSTRUCT = 13, OLD_CREATE_APP_UI = 17 }
 // compares its argument against 0x100; slot 13 is what is left.
 enum { IMPORT_BASECONSTRUCTL = 9 };     // avkon CAknAppUi::BaseConstructL(TInt)
 
+// Where the app UI stops being the whole story. ConstructL builds a control and
+// calls CCoeControl::CreateWindowL on it, and that control is the game's own
+// object too -- a third graph, and the first one there can be more than one of,
+// so it needs a map rather than a single wrapper. Until that exists, stop here
+// rather than let cone walk an object it cannot read.
+enum { IMPORT_CREATEWINDOWL = 55 };     // cone CCoeControl::CreateWindowL()
+
+// The rest of what ConstructL calls on itself keeps its 9.x implementation and
+// only needs the old object swapped for the wrapper. ApplicationRect returns a
+// TRect, so r0 is the return buffer and `this` is in r1.
+struct Divert { u16 import; u8 arg; };
+static const Divert kDiverts[] = {
+    { 172, 1 },     // eikcore  CEikAppUi::ApplicationRect() const
+    {  51, 0 },     // cone     CCoeAppUi::AddToStackL(CCoeControl*, TInt, TInt)
+    {  39, 0 },     // avkon    CAknAppUi::SetKeyBlockMode(TAknKeyBlockMode)
+};
+
 // EIKAPPUI.H, as gate 5 established.
 enum { ENoAppResourceFile = 0x01, ENoScreenFurniture = 0x04 };
 
@@ -223,12 +240,37 @@ static u32 ctx_thunk(u8 *code, const void *ctx, u32 target)
     return (u32)b;
 }
 
+// The simpler diversion: the 9.x implementation is the right one, it just must
+// not be handed the old object. The wrapper does not exist when the stub is
+// built, so the thunk reads it from the context each time:
+//
+//   ldr rN, [pc, #8]    @ rN = the cell holding the wrapper
+//   ldr rN, [rN]
+//   ldr pc, [pc, #4]
+//   .word cell
+//   .word the 9.x function
+static u32 this_thunk(u8 *code, const void *cell, u32 target, int reg)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE59F0008 | ((u32)reg << 12);           // ldr rN, [pc, #8]
+    b[1] = 0xE5900000 | ((u32)reg << 16) | ((u32)reg << 12);
+    b[2] = 0xE59FF004;                              // ldr pc, [pc, #4]
+    b[4] = (u32)cell;
+    b[5] = target;
+    return (u32)b;
+}
+
 // ---- the app UI ------------------------------------------------------------
 
 // The game asks CAknAppUi to base-construct the old object. Ours is a
 // CEikAppUi, built from the constructors gate 5 used, so it gets the CEikAppUi
 // one -- and the flags gate 5 established rather than the game's zero, since
 // nothing here has screen furniture to construct yet.
+extern "C" void gate6_create_window(void *, int, Context *)
+{
+    PANIC(CAT_CHN, 5);
+}
+
 extern "C" void gate6_baseconstructl(void *, int, Context *c)
 {
     eikappui_baseconstructl(c->wrapUi, ENoAppResourceFile | ENoScreenFurniture);
@@ -488,6 +530,19 @@ static u32 load_and_start()
     if (nImports <= IMPORT_BASECONSTRUCTL) PANIC(CAT_SHIM, (int)nImports);
     iat[IMPORT_BASECONSTRUCTL] = ctx_thunk(stub + SLOT * IMPORT_BASECONSTRUCTL,
                                            ctx, (u32)&gate6_baseconstructl);
+
+    if (nImports > IMPORT_CREATEWINDOWL)
+        iat[IMPORT_CREATEWINDOWL] = ctx_thunk(stub + SLOT * IMPORT_CREATEWINDOWL,
+                                              ctx, (u32)&gate6_create_window);
+
+    for (u32 k = 0; k < sizeof kDiverts / sizeof kDiverts[0]; k++) {
+        const u32 j = kDiverts[k].import;
+        // An import the shim could not answer keeps its reporting stub: sending
+        // it through a diversion would lose the one thing it can still tell us.
+        if (j >= nImports || j >= kShimCount || (kShimTable[j] >> 24) != KIND_CALL)
+            continue;
+        iat[j] = this_thunk(stub + SLOT * j, &ctx->wrapUi, iat[j], kDiverts[k].arg);
+    }
 
     // Enter it. EKA1 calls a DLL's entry point with EDllProcessAttach first,
     // then apparc asks ordinal 1 for the application object.
