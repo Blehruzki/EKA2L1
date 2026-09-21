@@ -48,6 +48,8 @@ namespace eka2l1::drivers {
 
         supply_stuff();
 
+        apply_volume(data, frame_copied);
+
         if ((frame_copied < size) || (flags_ & 1)) {
             bool no_more_way = false;
 
@@ -84,6 +86,23 @@ namespace eka2l1::drivers {
         }
 
         return frame_copied;
+    }
+
+    void player_shared::apply_volume(std::int16_t *data, const std::size_t frames) {
+        // The volume a title sets was being stored and never used, so a track it
+        // faded or muted still came out at full level.
+        const std::uint32_t max = max_volume();
+
+        if (!max || (volume_ >= max) || !frames) {
+            return;
+        }
+
+        const std::size_t samples = frames * channels_;
+
+        for (std::size_t i = 0; i < samples; i++) {
+            data[i] = static_cast<std::int16_t>(static_cast<std::int32_t>(data[i])
+                * static_cast<std::int32_t>(volume_) / static_cast<std::int32_t>(max));
+        }
     }
 
     bool player_shared::play() {

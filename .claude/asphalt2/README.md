@@ -333,6 +333,7 @@ next to `light.bar`. `bgm_0` is the menu track; the countdown cycles 1..a.
 | 3 | end of `.text` | the section grows by ~50 halfwords for two caves. Relocations and import entries are offsets into the code and the space lands at its end, so nothing shifts but the four file offsets in the header |
 | 4 | `0x1087a` | four instructions in the start routine give way to `bl cave1` |
 | 5 | `0x1176c` | the call just past race entry's music teardown becomes `bl cave2` |
+| 6 | `0xdaf6` | the `blx` that creates the player becomes `bl cave3`, which sets the priority it is created at |
 
 `cave1` saves the game pointer (its `r4` is that pointer plus `0xd6c0`), reads the
 track index, writes its character into the widened filename and resets the index
@@ -345,6 +346,15 @@ for a race, so a track opens, plays and is silent -- and where the device's maxi
 volume is small, `(0 * max) >> 8` is exactly zero. The scale is read by the
 open-complete callback, so it has to be right before the player exists; setting it
 after the call is too late.
+
+**The track starts on the device and is inaudible anyway.** Returning to the menu
+after a race plays a different track each time, and the emulator shows no new
+player is created on the way back -- so what plays there is the race's own track,
+which ran the whole race unheard. The start is therefore right and the output is
+being suppressed while the race's sound stream holds the audio policy; `cave3`
+raises the player's priority to test exactly that. If the engine sounds go quiet
+in exchange, two media clients cannot share the device and the music belongs in
+the game's own mixer instead, as a sound the engine plays.
 
 **Two hooks chosen by reading the disassembly were both dead code.** The `s_go!`
 countdown branch at `0x1a7e2` looks exactly like race start and never executes;

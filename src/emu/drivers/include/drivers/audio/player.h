@@ -69,7 +69,9 @@ namespace eka2l1::drivers {
         std::mutex lock_;
 
         explicit player()
-            : volume_(5)
+            // Full by default: a title that never sets a volume should not be
+            // quieter than it used to be now that the setting is honoured.
+            : volume_(10)
             , balance_(0)
             , callback_(nullptr) {
         }

@@ -40,3 +40,8 @@ def pop(regs): return 0xBC00|sum(1<<r for r in regs if r<8)|(0x100 if 15 in regs
 def bx_lr(): return 0x4770
 def subs_i(rd,imm): assert 0<=imm<=255; return 0x3800|(rd<<8)|imm
 def strh_rr(rd,rn,rm): return 0x5200|(rm<<6)|(rn<<3)|rd
+def blx_imm(frm,to):
+    off=to-(((frm+4)&~3)); assert off%4==0, 'blx target must be word aligned'
+    assert -0x400000<=off<0x400000
+    o=off&0x7fffff
+    return struct.pack('<HH', 0xF000|((o>>12)&0x7ff), 0xE800|((o>>1)&0x7fe))

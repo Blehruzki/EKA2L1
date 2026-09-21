@@ -59,9 +59,22 @@ RACE_TRACKS = 10                   # bgm_1 .. bgm_a; bgm_0 is the menu track
 # too late to set it after the call.
 INITIAL_VOLUME = 0xff
 
+# The player is created at EMdaPriorityNormal, and on the device the race's own
+# sound stream already holds the audio policy by the time a track starts -- the
+# track runs to completion unheard and only becomes audible once the race ends.
+# This asks the policy for the device instead. If the engine sounds go quiet in
+# exchange, two media clients cannot share this device at all and the music has
+# to go through the game's own mixer rather than beside it.
+MEDIA_PRIORITY = 100               # EMdaPriorityMax
+
+NEW_FILE_PLAYER = 0x34ff4          # the import stub PlayFile calls
+PLAYER_CALL = 0xdaf6               # blx NEW_FILE_PLAYER
+PLAY_FILE_TAIL = 0xdafa            # str r0,[r4,#0x14] / pop {r3-r7,pc}
+
 STOCK = {
     PATCH_IN_START: '0122a069002301a9',
     RACE_ENTER: 'fff776fb',
+    PLAYER_CALL: '27f07eea',
 }
 
 
@@ -126,9 +139,11 @@ def build_caves(cave_va):
 
     # --- cave 2: hangs off the countdown's `s_go!` branch ---
     ins2 = []
-    ins2.append(push([14]))
+    ins2.append(push([4, 14]))
+    ins2.append(mov_r(4, 0))         # r0 is the game object here; keep it
     ins2.append(('bl', RACE_ENTER_CALL))
     ins2.append(('ldr_pc', 2))       # r2 = BSS_BASE
+    ins2.append(str_r(4, 2, 0))      # store it from the register, not from cave 1
     ins2.append(ldrb_r(1, 2, 5))     # race counter
     ins2.append(adds_i(1, 1))
     ins2.append(cmp_i(1, RACE_TRACKS))
@@ -137,12 +152,9 @@ def build_caves(cave_va):
     ins2.append(('label', 'keep'))
     ins2.append(strb_r(1, 2, 5))
     ins2.append(strb_r(1, 2, 4))     # the index cave 1 will consume
-    ins2.append(ldr_r(0, 2, 0))      # saved game pointer
-    ins2.append(cmp_i(0, 0))
-    ins2.append(('beq', 'out'))
+    ins2.append(mov_r(0, 4))
     ins2.append(('bl', START_MUSIC))
-    ins2.append(('label', 'out'))
-    ins2.append(pop([15]))
+    ins2.append(pop([4, 15]))
     c2_words = [BSS_BASE]
 
     def assemble(ins, words, base):
@@ -151,7 +163,7 @@ def build_caves(cave_va):
         for i in ins:
             if isinstance(i, tuple) and i[0] == 'label':
                 labels[i[1]] = addr
-            elif isinstance(i, tuple) and i[0] == 'bl':
+            elif isinstance(i, tuple) and i[0] in ('bl', 'blx'):
                 addr += 4
             else:
                 addr += 2
@@ -165,6 +177,8 @@ def build_caves(cave_va):
                 out += struct.pack('<H', ldr_pc(i[1], addr, pool + widx * 4)); widx += 1; addr += 2
             elif isinstance(i, tuple) and i[0] == 'bl':
                 out += bl(addr, i[1]); addr += 4
+            elif isinstance(i, tuple) and i[0] == 'blx':
+                out += blx_imm(addr, i[1]); addr += 4
             elif isinstance(i, tuple) and i[0] == 'ble':
                 out += struct.pack('<H', ble(addr, labels[i[1]])); addr += 2
             elif isinstance(i, tuple) and i[0] == 'beq':
@@ -176,10 +190,18 @@ def build_caves(cave_va):
             out += struct.pack('<I', w)
         return bytes(out)
 
+    ins3 = []
+    ins3.append(movs(2, MEDIA_PRIORITY))
+    ins3.append(('blx', NEW_FILE_PLAYER))
+    ins3.append(str_r(0, 4, 0x14))   # PlayFile's own tail, which we jumped over
+    ins3.append(pop([3, 4, 5, 6, 7, 15]))
+
     b1 = assemble(ins, c1_words, c1)
     c2 = c1 + len(b1)
     b2 = assemble(ins2, c2_words, c2)
-    return b1 + b2, c1, c2
+    c3 = c2 + len(b2)
+    b3 = assemble(ins3, [], c3)
+    return b1 + b2 + b3, c1, c2, c3
 
 
 def patch(img):
@@ -194,21 +216,22 @@ def patch(img):
     struct.pack_into('<I', img, 0x44, BSS_SIZE)          # the image declares no BSS; give it some
 
     cave_va = struct.unpack_from('<I', img, 0x60)[0]
-    probe, _, _ = build_caves(cave_va)
+    probe, _, _, _ = build_caves(cave_va)
     img = grow_code(img, (len(probe) + 3) & ~3)
-    caves, c1, c2 = build_caves(cave_va)
+    caves, c1, c2, c3 = build_caves(cave_va)
     img[fo(cave_va):fo(cave_va) + len(caves)] = caves
 
     img[fo(PATCH_IN_START):fo(PATCH_IN_START) + 8] = bl(PATCH_IN_START, c1) + struct.pack('<HH', nop(), nop())
     img[fo(RACE_ENTER):fo(RACE_ENTER) + 4] = bl(RACE_ENTER, c2)
+    img[fo(PLAYER_CALL):fo(PLAYER_CALL) + 4] = bl(PLAYER_CALL, c3)
 
     out = e32crc.fix(bytes(img))
     assert e32crc.stored(out) == e32crc.compute(out)
-    return out, c1, c2
+    return out, c1, c2, c3
 
 
 if __name__ == '__main__':
     src = open('asphalt2_full_patched.exe', 'rb').read()
-    out, c1, c2 = patch(src)
+    out, c1, c2, c3 = patch(src)
     open('asphalt2_full_patched_audio.exe', 'wb').write(out)
-    print('caves at %#x / %#x; image %d -> %d bytes' % (c1, c2, len(src), len(out)))
+    print('caves at %#x / %#x / %#x; image %d -> %d bytes' % (c1, c2, c3, len(src), len(out)))

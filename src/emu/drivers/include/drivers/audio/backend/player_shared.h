@@ -70,6 +70,7 @@ namespace eka2l1::drivers {
         virtual void reset_request() = 0;
         virtual void get_more_data() = 0;
         virtual bool set_position_for_custom_format(const std::uint64_t pos_in_us) = 0;
+        void apply_volume(std::int16_t *data, const std::size_t frames);
         std::size_t data_supply_callback(std::int16_t *data, std::size_t size);
 
         bool play() override;
