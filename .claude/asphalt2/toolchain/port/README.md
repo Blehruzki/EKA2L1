@@ -148,10 +148,61 @@ Argument passing. APCS and AAPCS disagree about 64-bit arguments — AAPCS wants
 them in an even register pair — and about struct return. Nothing here exercises
 either, and Symbian passes `TTimeIntervalMicroSeconds` and friends by value.
 
+## Gate 4 — the N-Gage binary runs
+
+`gate4.cpp` is a loader. It reads `6RBC.APP`, copies its code into a chunk made
+with `RChunk::CreateLocalCode` (the mechanism JITs use, so the memory is
+executable), rebases it with its own relocation table, points all 462 imports
+at stubs, and enters it -- entry point first with `EDllProcessAttach`, then
+export ordinal 1, which is `NewApplication`.
+
+Each stub is 16 bytes built at run time, carrying its own index:
+
+```
+ldr r0, [pc, #0]    @ the import index
+ldr pc, [pc, #0]    @ the reporter
+.word index
+.word gate4_report
+```
+
+Result in the emulator:
+
+```
+Thread Main panicked with category: G4IMP and exit code: 265
+```
+
+Import 265 is `euser` ordinal 3, **`User::AllocZL(int)`** — the game allocating
+its application object, which is exactly what `NewApplication` does first.
+
+So: an EKA1 N-Gage binary, loaded on an S60v3 system, 9165 words relocated, 462
+imports bound, its own instructions executing and calling out through our table.
+The panic categories say how far it got — `G4FS` file, `G4MEM` memory, `G4HDR`
+a header check, `G4IMP` an import reached, `G4RET` returned without calling.
+
+### The startup nobody does for you
+
+This is where the first attempt died, with `pc` at zero and `lr` inside euser:
+`User::Alloc` walked a null allocator. An exe built by the SDK links
+`eexe.lib`, whose `_E32Startup` does the work; ours links nothing. The Symbian
+source spells the sequence out in `kernel/eka/euser/epoc/arm/uc_exe.cpp`:
+
+```
+UserHeap::SetupThreadHeap(aNotFirst, cinfo);   // euser 1360
+User::InitProcess();                           // euser 585, statics for linked DLLs
+E32Main();
+```
+
+The kernel leaves `SStdEpocThreadCreateInfo` at the initial stack pointer and
+passes the startup reason in r4, which is what a real entry point forwards. Our
+`_start` now does the same. Without it a process has no heap at all.
+
 ## Not done yet
 
+- **The shim itself.** 462 stubs currently all panic. Each has to become a real
+  implementation, or a forward to the S60v3 equivalent.
 - **Calling convention.** APCS and AAPCS disagree about 64-bit arguments and
-  struct return, and nothing has exercised either.
+  struct return, and nothing has exercised either. Gate 4 is where that will
+  show up, since the game's own code is now calling our functions.
 - **Reading stock images.** E32 code is compressed with Symbian's own deflate
   (`0x101F7AFC`), which is not zlib; reading the import section of a shipped
   binary needs that inflater ported.
