@@ -84,6 +84,7 @@ old_call1:
     IMPORT chunk_base,       1702    @ RChunk::Base() const
     IMPORT rlibrary_load,    1308    @ RLibrary::Load(TDesC16 const&, TDesC16 const&)
     IMPORT rlibrary_lookup,  1838    @ RLibrary::Lookup(TInt) const
+    IMPORT rdebug_rawprint,   916    @ RDebug::RawPrint(TDesC16 const&)
     @ efsrv
     IMPORT fs_connect,         68    @ RFs::Connect(TInt)
     IMPORT file_open,          93    @ RFile::Open(RFs&, TDesC16 const&, TUint)

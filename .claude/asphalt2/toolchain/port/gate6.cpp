@@ -46,11 +46,15 @@ extern const unsigned char kShimDllLen[];
 extern const u32 kShimDllCount;
 extern const u32 kShimTable[];
 extern const u32 kShimCount;
+extern const u16 kShimEuser[];
+extern const u32 kShimEuserCount;
+extern const u16 kShimEuser[];
+extern const u32 kShimEuserCount;
 }
 
 // TDesC16 and TDes8: a length word whose top four bits are the descriptor type,
 // then (for a modifiable one) a maximum length, then the data pointer.
-enum { EPtrC = 1, EPtr = 2, KTypeShift = 28 };
+enum { EBufC = 0, EPtrC = 1, EPtr = 2, EBufType = 3, KTypeShift = 28 };
 
 struct Ptrc16 { u32 lengthAndType; const u16 *text; };
 struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
@@ -60,7 +64,7 @@ enum { SLOT = 48 };
 enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 5,
        KIND_ARGSHIFT = 6 };
 enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
-       LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5 };
+       LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5, LOCAL_TRUE = 6 };
 
 static void panic(const u16 *cat, int catLen, int reason)
 {
@@ -261,6 +265,7 @@ enum { NEW_CTL_FOCUS = 26, NEW_CTL_DRAW = 41 };
 // nothing. So the window server gets an observer of ours instead, two slots
 // wide like the interface, each dispatching into the game's the old way.
 enum { IMPORT_DSA_NEWL = 460 };         // ws32 CDirectScreenAccess::NewL(...)
+enum { IMPORT_DSA_STARTL = 461 };       // ws32 CDirectScreenAccess::StartL()
 enum { DSA_SLOTS = 2 };
 
 // The game's graphics object is a CTimer and it adds itself to the active
@@ -282,6 +287,39 @@ enum { TIMER_SLOTS = 6, NEW_DOCANCEL = 3, NEW_RUNL = 4, NEW_RUNERROR = 5 };
 enum { OLD_DOCANCEL = 1, OLD_RUNL = 2, OLD_RUNERROR = 3 };
 
 enum { IMPORT_CTIMER_CTOR = 391 };      // euser CTimer::CTimer(TInt)
+
+// The game starts its own frame loop the usual way:
+//
+//   SetActive();                          @ diverted, so the wrapper is active
+//   r3 = this + 4;                        @ the old object's iStatus
+//   User::RequestComplete(&r3, KErrNone);
+//
+// which marks our timer active and completes the game's own request status --
+// two different words, so the scheduler waits on one that nothing ever
+// completes and no frame is ever drawn. Anything completing the old object's
+// status means the wrapper's.
+enum { IMPORT_REQUEST_COMPLETE = 350 };  // euser User::RequestComplete(TRequestStatus*&, TInt)
+enum { IMPORT_CANCEL = 279 };            // euser CActive::Cancel()
+
+// The game does not only import: it loads euser.dll by name and asks it for a
+// run of ordinals, then calls each one without checking. An ordinal is a
+// build's own numbering with nothing in common between the two -- 799 is
+// RDebug::Open in the 7.0s euser and TLex8::Val(TReal64&) in the 9.x one,
+// called with a debug channel number for a TLex, which is where it first
+// faulted -- so the lookups go through the same signature pairing the imports
+// do, in kShimEuser.
+//
+// What it is resolving is its own decryptor. One function of the game, from
+// 0xd5094 to 0xd5254, ships XOR-encrypted, and the five ordinals it asks for
+// are RDebug::Open, RThread::Id, RDebug::WriteMemory, User::IMB_Range and
+// RChunk::Base: on EKA1 a code segment cannot be written to, so the game
+// attaches to itself as a debugger and writes its own plaintext in through
+// RDebug::WriteMemory. 9.x has none of the RDebug half -- it went with EKA1 --
+// but our code chunk is plain writable memory, so WriteMemory is a copy and
+// the thread id it is keyed on need only be consistent with itself. Answer
+// those three ourselves, pair the other two, and the game decrypts itself.
+enum { IMPORT_LIBRARY_LOOKUP = 326 };
+enum { OLD_RDEBUG_OPEN = 799, OLD_RTHREAD_ID = 533, OLD_RDEBUG_WRITEMEMORY = 1233 };
 enum { ON_TIMER = 2 };
 
 enum { IMPORT_DLL_NAME = 2 };           // apparc CApaApplication::DllName() const
@@ -293,7 +331,27 @@ enum { IMPORT_WINDOW = 87 };            // cone CCoeControl::Window() const
 // The rest of what ConstructL calls on itself keeps its 9.x implementation and
 // only needs the old object swapped for the wrapper. ApplicationRect returns a
 // TRect, so r0 is the return buffer and `this` is in r1.
+// Shifting the environment answers every field but one. The game's app UI is
+// its own class, and it reads its own members straight off whatever
+// CCoeEnv::Static()->AppUi() gives back -- so that word has to be the game's
+// object, not the wrapper the framework keeps there. Nothing else can be a
+// view of the real environment either, because the window server session and
+// the screen device the game reads out of it are handed to 9.x functions and
+// must stay real. So the game gets a copy: the shifted environment word for
+// word, with the app UI put back to its own.
+enum { COEENV_VIEW_WORDS = 0x60 / 4, OLD_COEENV_APPUI = 0x18 };
+
 enum { ON_APP_UI = 0, ON_CONTROL = 1 };
+
+// The frame loop is started from inside the game's own FocusChanged and Draw,
+// and both gate it on CCoeControl::IsFocused():
+//
+//   if (iEngine && IsFocused())  Resume(fromFocus);  else  Suspend();
+//
+// Asked of the old object that nothing ever focuses, the answer is always no
+// and the game never starts. Asked of the wrapper -- which is what the control
+// stack actually focuses -- it is the real answer, and losing focus still
+// suspends the game as the game intends.
 
 struct Divert { u16 import; u8 arg; u8 object; };
 static const Divert kDiverts[] = {
@@ -301,11 +359,11 @@ static const Divert kDiverts[] = {
     {  39, 0, ON_APP_UI },      // avkon    CAknAppUi::SetKeyBlockMode(TAknKeyBlockMode)
     {  98, 0, ON_CONTROL },     // cone     the Nokia export standing in for SetRect
     {  49, 0, ON_CONTROL },     // cone     CCoeControl::ActivateL()
+    {  68, 0, ON_CONTROL },     // cone     CCoeControl::IsFocused() const
     { 286, 0, ON_TIMER },       // euser    CTimer::ConstructL()
     { 268, 0, ON_TIMER },       // euser    CTimer::After(TTimeIntervalMicroSeconds32)
     { 266, 0, ON_TIMER },       // euser    CActiveScheduler::Add(CActive*)
     { 358, 0, ON_TIMER },       // euser    CActive::SetActive()
-    { 279, 0, ON_TIMER },       // euser    CActive::Cancel()
 };
 
 // AddToStackL is the one that needs both at once: the app UI it is called on
@@ -346,10 +404,21 @@ struct Context {
     u32 boxFile[4];
     u32 boxData[4];
     u32 boxDes[2];
+    u32 noteText[4];        // seven characters, for the emulator's log
+    u32 noteDes[2];
     u32 traceCount;         // how many imports have gone past
     u32 lastCall;           // the last slot of ours the framework called
     u32 avkon;              // an RLibrary on avkon, for what it does not export
     u32 newBaseConstructL;  // avkon's CAknAppUi::BaseConstructL, as resolved
+    u32 newRequestComplete; // euser's User::RequestComplete, as resolved
+    u32 *dsaShifted;        // the game's view of its CDirectScreenAccess
+    u32 *oldUi;             // the game's CEikAppUi, old layout
+    u32 coeEnvView[COEENV_VIEW_WORDS];  // the environment as the game must see it
+    u32 newCancel;          // euser's CActive::Cancel, as resolved
+    u32 noopFn;             // what a lookup answers when 9.x dropped the export
+    u32 idFn;               // RThread::Id: a TThreadId of zero, in r0 and r1
+    u32 newLibraryLookup;   // euser's RLibrary::Lookup, as resolved
+    void *euser;            // the RLibrary the game opened on euser.dll
     u8 *spare;              // unused executable room, handed out as needed
     u8 *spareEnd;
 };
@@ -482,6 +551,7 @@ struct CallBack { int (*fn)(void *); void *ptr; };
 
 extern "C" {
 void cperiodic_start(void *self, int delay, int interval, CallBack cb);
+void rdebug_rawprint(const void *text);
 }
 
 static const u16 kBoxPath[] = {'E',':','\\','g','6','b','o','x','.','d','a','t'};
@@ -516,8 +586,33 @@ static void box_flush(Context *c)
 // through here; every so many of them reach the disk.
 enum { BOX_EVERY = 16 };
 
+// The emulator hears RDebug, and a phone does not, which makes this the one
+// instrument that can say what happened in what order rather than only what
+// happened last. "G6 01cc" is import 460; "G6+0504" is a call into one of our
+// own slots.
+// Every import is a lot of them; a phone would spend real time on it, so the
+// per-import half is one constant away from being off.
+enum { TRACE_IMPORTS = 1 };
+
+static void note(Context *c, u32 value, u16 sign)
+{
+    u16 *b = (u16 *)c->noteText;
+    b[0] = 'G';
+    b[1] = '6';
+    b[2] = sign;
+    for (int i = 0; i < 4; i++) {
+        const u32 d = (value >> (12 - 4 * i)) & 0xF;
+        b[3 + i] = (u16)(d < 10 ? '0' + d : 'a' + d - 10);
+    }
+    c->noteDes[0] = ((u32)EPtrC << KTypeShift) | 7;
+    c->noteDes[1] = (u32)c->noteText;
+    rdebug_rawprint(c->noteDes);
+}
+
 extern "C" void gate6_trace(u32 index, Context *c)
 {
+    if (TRACE_IMPORTS)
+        note(c, index, ' ');
     c->lastImport = index;
     // The first stages make fewer than BOX_EVERY calls in total, so record
     // every one of those and thin out later.
@@ -527,9 +622,13 @@ extern "C" void gate6_trace(u32 index, Context *c)
 
 // The framework calling one of our objects. Rare enough to write out every
 // time, so the record is exact rather than to the nearest sixteen.
+enum { REACHED_SLOT = 16 };
+
 extern "C" void gate6_slot(u32 code, Context *c)
 {
+    note(c, code, '+');
     c->lastCall = code;
+    c->reached |= REACHED_SLOT;         // so a zero can be told from a silence
     box_flush(c);
 }
 
@@ -576,6 +675,7 @@ typedef void *(*TimerCtor)(void *self, int priority);
 // number and only once, so the ones that must not stop are recorded and the one
 // under test carries the record out with it.
 enum { REACHED_ABORT = 1, REACHED_RESTART = 2, REACHED_DOCANCEL = 4, REACHED_RUNERROR = 8 };
+enum { REACHED_RUNL = 32 };   // the frame loop ran at least once
 
 extern "C" void gate6_timer_docancel(void *, u32, Context *c)
 {
@@ -585,6 +685,8 @@ extern "C" void gate6_timer_docancel(void *, u32, Context *c)
 
 extern "C" void gate6_timer_runl(void *, u32, Context *c)
 {
+    c->reached |= REACHED_RUNL;
+
     // The request completed into the wrapper, and the game reads the result out
     // of its own object, so carry it across before handing over.
     c->oldTimer[ACTIVE_STATUS / 4] = c->wrapTimer[ACTIVE_STATUS / 4];
@@ -597,6 +699,15 @@ extern "C" u32 gate6_timer_runerror(void *, u32 error, Context *c)
 {
     c->reached |= REACHED_RUNERROR;
     return old_call1(c->oldTimer, OLD_RUNERROR, error);
+}
+
+extern "C" void gate6_request_complete(u32 **status, int reason, Context *c)
+{
+    typedef void (*RequestComplete)(u32 **, int);
+    if (c->oldTimer && c->wrapTimer &&
+        *status == (u32 *)((u8 *)c->oldTimer + ACTIVE_STATUS))
+        *status = (u32 *)((u8 *)c->wrapTimer + ACTIVE_STATUS);
+    ((RequestComplete)c->newRequestComplete)(status, reason);
 }
 
 // The game constructs its CTimer; ours is constructed alongside it, and from
@@ -635,28 +746,113 @@ extern "C" void gate6_dsa_slot1(void *, u32 reason, Context *c)
     old_call1(c->oldObserver, 1, reason);
 }
 
-// Remember the observer the game passed and put ours in its place. r3 is the
-// fourth argument and the only one that changes, so no C++ is needed:
+// CDirectScreenAccess is the one class the game reaches into rather than calls:
+// Gc(), ScreenDevice() and DrawingRegion() are inline in ws32.h, so the game's
+// code holds their offsets. Read out of both ROMs, 7.0s keeps them at 0x18,
+// 0x1c and 0x20, and 9.x -- the tail of CDirectScreenAccess::StartL hands
+// [this + 0x1c] and [this + 0x24] to CFbsBitGc::SetClippingRegion -- at 0x1c,
+// 0x20 and 0x24. One word later, all three, which is exactly the trick that
+// already works for CCoeEnv: hand the game the object four bytes on and every
+// old offset lands on its 9.x counterpart.
 //
-//   stmdb sp!, {r0, r12}
-//   ldr   r0, [pc, #12]     @ where to keep the game's observer
-//   str   r3, [r0]
-//   ldr   r3, [pc, #8]      @ ours
-//   ldmia sp!, {r0, r12}
-//   ldr   pc, [pc, #4]
-static u32 dsa_thunk(u8 *code, const void *cell, const void *observer, u32 target)
+// What it costs is that the calls have to come back the other way, since the
+// object really does start where ws32 put it. Only two take it: StartL, which
+// gets a thunk of its own, and CActive::Cancel, which the game also calls on
+// its timer and which therefore has to tell them apart.
+enum { DSA_BIAS = 4 };
+
+// Remember the observer the game passed, put ours in its place, and shift what
+// comes back. r3 is the fourth argument and the only one that changes.
+//
+//   stmdb sp!, {r12, lr}
+//   ldr   r12, [pc, #28]    @ where to keep the game's observer
+//   str   r3, [r12]
+//   ldr   r3, [pc, #24]     @ ours
+//   ldr   r12, [pc, #24]    @ CDirectScreenAccess::NewL
+//   blx   r12
+//   add   r0, r0, #4        @ the game's view of it
+//   ldr   r12, [pc, #16]    @ and ours, for Cancel to recognise
+//   str   r0, [r12]
+//   ldmia sp!, {r12, pc}
+static u32 dsa_thunk(u8 *code, const void *cell, const void *observer, u32 target,
+                     const void *shiftedCell)
 {
     u32 *b = (u32 *)code;
-    b[0] = 0xE92D1001;
-    b[1] = 0xE59F000C;
-    b[2] = 0xE5803000;
-    b[3] = 0xE59F3008;
-    b[4] = 0xE8BD1001;
-    b[5] = 0xE59FF004;
-    b[6] = (u32)cell;
-    b[7] = (u32)observer;
-    b[8] = target;
+    b[0] = 0xE92D5000;
+    b[1] = 0xE59FC01C;
+    b[2] = 0xE58C3000;
+    b[3] = 0xE59F3018;
+    b[4] = 0xE59FC018;
+    b[5] = 0xE12FFF3C;
+    b[6] = 0xE2800000 | DSA_BIAS;
+    b[7] = 0xE59FC010;
+    b[8] = 0xE58C0000;
+    b[9] = 0xE8BD9000;
+    b[10] = (u32)cell;
+    b[11] = (u32)observer;
+    b[12] = target;
+    b[13] = (u32)shiftedCell;
     return (u32)b;
+}
+
+// And back again, for the one call the game makes on it directly.
+//
+//   sub   r0, r0, #4
+//   ldr   pc, [pc, #-4]
+static u32 dsa_unshift_thunk(u8 *code, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE2400000 | DSA_BIAS;
+    b[1] = 0xE51FF004;
+    b[2] = target;
+    return (u32)b;
+}
+
+// RDebug::WriteMemory(TThreadId, TUint32 aAddress, const TDesC8 &aData, TInt).
+// The thread id goes in one register, not two -- the game called this with the
+// address in r1 -- so the descriptor is r2 and the last argument, which is not
+// needed, is r3. No context either: this is a copy and nothing more.
+extern "C" void gate6_write_memory(u32, u8 *address, const u32 *data, u32)
+{
+    const u32 length = data[0] & 0x0FFFFFFF;
+    const u32 type = data[0] >> KTypeShift;
+    // The four layouts of a descriptor: EBufC is the text straight after the
+    // length word, EPtrC a pointer to it, and EBuf and EPtr the same two again
+    // with a maximum length in between.
+    const u8 *text = (type == EBufC)    ? (const u8 *)(data + 1)
+                   : (type == EPtrC)    ? (const u8 *)data[1]
+                   : (type == EBufType) ? (const u8 *)(data + 2)
+                                        : (const u8 *)data[2];
+    for (u32 i = 0; i < length; i++)
+        address[i] = text[i];
+}
+
+extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
+{
+    c->euser = lib;
+    note(c, (u32)ordinal, 'L');
+    switch (ordinal) {
+    case OLD_RDEBUG_OPEN:        return c->noopFn;       // a channel of nothing
+    case OLD_RTHREAD_ID:         return c->idFn;         // always the same id
+    case OLD_RDEBUG_WRITEMEMORY: return (u32)&gate6_write_memory;
+    default: break;
+    }
+    const u32 mapped = (ordinal >= 1 && (u32)ordinal <= kShimEuserCount)
+                           ? kShimEuser[ordinal - 1] : 0;
+    return mapped ? ((u32 (*)(void *, int))c->newLibraryLookup)(c->euser, (int)mapped)
+                  : c->noopFn;
+}
+
+// Cancel is called on the game's timer -- which is really ours -- and on the
+// direct screen access object, which is really four bytes back.
+extern "C" void gate6_cancel(u32 *self, Context *c)
+{
+    typedef void (*Cancel)(void *);
+    if (c->oldTimer && c->wrapTimer && self == c->oldTimer)
+        self = c->wrapTimer;
+    else if (c->dsaShifted && self == c->dsaShifted)
+        self = (u32 *)((u8 *)self - DSA_BIAS);
+    ((Cancel)c->newCancel)(self);
 }
 
 // ---- the control -----------------------------------------------------------
@@ -686,20 +882,25 @@ extern "C" void *gate6_dll_name(u32 *out, void *, Context *c)
 // name as well as reading it out of its control -- CCoeEnv::Static() then
 // [env+0x18] is how it finds the app UI -- so the shifted view is what
 // CCoeEnv::Static() returns too.
-extern "C" void *gate6_coeenv_static(void)
+extern "C" void *gate6_coeenv_static(u32, u32, Context *c)
 {
-    return (u8 *)coeenv_static() + COEENV_BIAS;
+    const u32 *real = (const u32 *)((u8 *)coeenv_static() + COEENV_BIAS);
+    for (int i = 0; i < COEENV_VIEW_WORDS; i++)
+        c->coeEnvView[i] = real[i];
+    if (c->oldUi)
+        c->coeEnvView[OLD_COEENV_APPUI / 4] = (u32)c->oldUi;
+    return c->coeEnvView;
 }
 
 // The game's own control, constructed the way its own code expects. What the
 // 9.x constructor would write is not merely different, it is at the wrong
 // offsets, so this writes the old layout instead. A GCC98r2 constructor returns
 // the object.
-extern "C" void *gate6_coecontrol_ctor(u32 *self)
+extern "C" void *gate6_coecontrol_ctor(u32 *self, u32, Context *c)
 {
     for (int i = 0; i < OLD_CONTROL_BYTES / 4; i++)
         self[i] = 0;
-    self[OLD_CONTROL_COEENV / 4] = (u32)gate6_coeenv_static();
+    self[OLD_CONTROL_COEENV / 4] = (u32)gate6_coeenv_static(0, 0, c);
     return self;
 }
 
@@ -772,6 +973,7 @@ extern "C" void *gate6_create_app_ui(void *self)
     if (!oldUi) PANIC(CAT_NUL, 3);
 
     Context *c = context_of(self);
+    c->oldUi = (u32 *)oldUi;
 
     u32 *ui = (u32 *)user_allocz(WRAP_BYTES);
     if (!ui) PANIC(CAT_MEM, -31);
@@ -973,7 +1175,8 @@ static u32 load_and_start()
     ctx->path = paths[chosen];
     ctx->pathLen = lens[chosen];
     ctx->lastImport = 0xFFFF;               // nothing yet
-    ctx->spare = trace + nImports * TRACE + 8 * TRACE;   // past the fixed thunks
+    ctx->spare = trace + nImports * TRACE + 13 * TRACE;  // past the fixed thunks
+    ctx->spareEnd = trace + traceBytes;
 
     ctx->cppRuntime = (u32)&drtaeabi_pure_virtual;
 
@@ -1011,7 +1214,7 @@ static u32 load_and_start()
             if (magic == BOX_MAGIC)
                 PANIC(CAT_BOX, (int)(call * 100000 +
                                      (last == BOX_ARMED ? 999 : (last % 1000)) * 100 +
-                                     (reached & 99)));
+                                     (reached % 100)));
         }
     }
 
@@ -1048,6 +1251,10 @@ static u32 load_and_start()
                 break;
             case LOCAL_NOOP:                // an empty body: _Reserved slots, CBase
                 s[0] = 0xE3A00000;          // mov r0, #0
+                s[1] = 0xE12FFF1E;          // bx  lr
+                break;
+            case LOCAL_TRUE:                // a predicate that is always yes
+                s[0] = 0xE3A00001;          // mov r0, #1
                 s[1] = 0xE12FFF1E;          // bx  lr
                 break;
             case LOCAL_TRAP_ENTER:          // TTrap::Trap(TInt&): first pass, no error
@@ -1144,9 +1351,11 @@ static u32 load_and_start()
         iat[IMPORT_DLL_NAME] = ctx_thunk(stub + SLOT * IMPORT_DLL_NAME,
                                          ctx, (u32)&gate6_dll_name);
     if (nImports > IMPORT_COEENV_STATIC)
-        iat[IMPORT_COEENV_STATIC] = (u32)&gate6_coeenv_static;
+        iat[IMPORT_COEENV_STATIC] = ctx_thunk(stub + SLOT * IMPORT_COEENV_STATIC,
+                                              ctx, (u32)&gate6_coeenv_static);
     if (nImports > IMPORT_COECONTROL_CTOR)
-        iat[IMPORT_COECONTROL_CTOR] = (u32)&gate6_coecontrol_ctor;
+        iat[IMPORT_COECONTROL_CTOR] = ctx_thunk(stub + SLOT * IMPORT_COECONTROL_CTOR,
+                                                ctx, (u32)&gate6_coecontrol_ctor);
     if (nImports > IMPORT_WINDOW) {
         u32 *w = (u32 *)(stub + SLOT * IMPORT_WINDOW);
         w[0] = 0xE5900000 | OLD_CONTROL_WIN;    // ldr r0, [r0, #0x20]  -- iWin
@@ -1181,8 +1390,43 @@ static u32 load_and_start()
         vt[0] = ctx_thunk(spare + TRACE, ctx, (u32)&gate6_dsa_slot0);
         vt[1] = ctx_thunk(spare + 2 * TRACE, ctx, (u32)&gate6_dsa_slot1);
         obs[0] = (u32)vt;               // 9.x: the vptr points at slot 0
-        iat[IMPORT_DSA_NEWL] = dsa_thunk(spare + 3 * TRACE, &ctx->oldObserver, obs,
-                                         iat[IMPORT_DSA_NEWL]);
+        iat[IMPORT_DSA_NEWL] = dsa_thunk(spare + 8 * TRACE, &ctx->oldObserver, obs,
+                                         iat[IMPORT_DSA_NEWL], &ctx->dsaShifted);
+        if (nImports > IMPORT_DSA_STARTL && IMPORT_DSA_STARTL < kShimCount &&
+            (kShimTable[IMPORT_DSA_STARTL] >> 24) == KIND_CALL)
+            iat[IMPORT_DSA_STARTL] = dsa_unshift_thunk(spare + 3 * TRACE,
+                                                       iat[IMPORT_DSA_STARTL]);
+    }
+
+    if (nImports > IMPORT_CANCEL && IMPORT_CANCEL < kShimCount &&
+        (kShimTable[IMPORT_CANCEL] >> 24) == KIND_CALL) {
+        ctx->newCancel = iat[IMPORT_CANCEL];
+        iat[IMPORT_CANCEL] = ctx_thunk(stub + SLOT * IMPORT_CANCEL, ctx,
+                                       (u32)&gate6_cancel);
+    }
+
+    if (nImports > IMPORT_LIBRARY_LOOKUP && IMPORT_LIBRARY_LOOKUP < kShimCount &&
+        (kShimTable[IMPORT_LIBRARY_LOOKUP] >> 24) == KIND_CALL) {
+        u32 *noop = (u32 *)(trace + nImports * TRACE + 10 * TRACE);
+        noop[0] = 0xE3A00000;           // mov r0, #0
+        noop[1] = 0xE12FFF1E;           // bx  lr
+        ctx->noopFn = (u32)noop;
+        u32 *id = (u32 *)(trace + nImports * TRACE + 11 * TRACE);
+        id[0] = 0xE3A00000;             // mov r0, #0
+        id[1] = 0xE3A01000;             // mov r1, #0
+        id[2] = 0xE12FFF1E;             // bx  lr
+        ctx->idFn = (u32)id;
+        ctx->newLibraryLookup = iat[IMPORT_LIBRARY_LOOKUP];
+        iat[IMPORT_LIBRARY_LOOKUP] = ctx_thunk(stub + SLOT * IMPORT_LIBRARY_LOOKUP,
+                                               ctx, (u32)&gate6_library_lookup);
+    }
+
+    if (nImports > IMPORT_REQUEST_COMPLETE && IMPORT_REQUEST_COMPLETE < kShimCount &&
+        (kShimTable[IMPORT_REQUEST_COMPLETE] >> 24) == KIND_CALL) {
+        ctx->newRequestComplete = iat[IMPORT_REQUEST_COMPLETE];
+        iat[IMPORT_REQUEST_COMPLETE] =
+            ctx_thunk(stub + SLOT * IMPORT_REQUEST_COMPLETE, ctx,
+                      (u32)&gate6_request_complete);
     }
 
     // The scheduler's timer, and the game's.
