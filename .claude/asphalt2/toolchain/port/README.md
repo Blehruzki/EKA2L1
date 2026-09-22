@@ -938,3 +938,36 @@ anything else has made EKA2L1's UI server initialise, and
 `update_key_block_mode` dereferenced its `eik_server` without checking -- the
 sibling accessor `get_sgc_server()` initialises on first use and this one did
 not. Fixed in the emulator rather than worked around here.
+
+## What the phone was actually dying of
+
+The observer was real and had to be fixed, but it was not the fault. Two
+things found it.
+
+First, visibility. EKA2L1's JIT was crashing in host code with unreadable
+frames, which said nothing; its interpreter does not, and the configuration
+key is `cpu`, not `cpu_backend` -- `cpu: dyncom` in `config.yml`. With that,
+faults come out as guest register dumps again. (Its own remaining crash, in
+the C++ exception path while loading `avkonfep.dll`, looks like an emulator
+gap rather than ours: a leave unwinding through `__cxa_allocate_exception`
+with a null where it wants a pointer.)
+
+Second, the game's own code. `CTimer::CTimer(TInt)` at 0x39090 and
+`CActiveScheduler::Add` at 0x392b8, immediately after the direct screen
+access it sets up: the game's graphics object **is a CTimer**, and it hands
+itself to the active scheduler. Its vptr is GCC98r2, eight bytes before slot
+0. When the first timer expires, the scheduler calls `RunL` through it with
+the 9.x layout and jumps into the vtable header. That is exactly a fault the
+moment after `ConstructL` returns, which is what the phone reports.
+
+So `CActive` is the fifth object that needs the two-graph treatment, and the
+most demanding one, because the framework does not merely call it -- it owns
+its request. The crossings are all visible in the import list:
+`CTimer::CTimer`, `CTimer::ConstructL`, `CTimer::After`,
+`CActiveScheduler::Add`, `CActive::SetActive` and `CActive::Cancel`. Each is
+called by the game on its own object and has to be given a 9.x `CActive` of
+ours instead, so that the request completes into the wrapper's `iStatus` and
+the scheduler calls the wrapper's `RunL`, which dispatches into the game's
+the old way. What the game reads back out of its own `CActive` -- the
+completion code above all -- has to be copied across at that point, which
+needs both layouts measured out of the two ROMs, the way `CCoeEnv`'s were.
