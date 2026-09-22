@@ -671,7 +671,7 @@ enum { BOX_EVERY = 16 };
 // own slots.
 // Every import is a lot of them; a phone would spend real time on it, so the
 // per-import half is one constant away from being off.
-enum { TRACE_IMPORTS = 1 };
+enum { TRACE_IMPORTS = 0 };
 
 static void note(Context *c, u32 value, u16 sign)
 {
