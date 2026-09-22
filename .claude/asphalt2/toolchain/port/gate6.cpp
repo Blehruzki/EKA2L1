@@ -130,6 +130,7 @@ void coeappui_ctor(void *self);                       // CCoeAppUi::CCoeAppUi()
 void eikappui_ctor(void *self);                       // CEikAppUi::CEikAppUi()
 void eikappui_baseconstructl(void *self, int flags);  // CEikAppUi::BaseConstructL(TInt)
 void *coeenv_static(void);                            // CCoeEnv::Static()
+i32 user_setexceptionhandler(void *handler, u32 mask); // User::SetExceptionHandler
 void *coecontrol_ctor(void *self);                    // CCoeControl::CCoeControl()
 void coecontrol_createwindowl(void *self);            // CCoeControl::CreateWindowL()
 void *user_allocz(int size);
@@ -141,6 +142,7 @@ u32 old_call(const void *object, int slot);
 }
 
 #define CAT_CHN {'G','6','C','H','N'}
+#define CAT_FLT {'G','6','F','L','T'}
 #define CAT_UID {'G','6','U','I','D'}
 
 // Two object graphs, not one. The 9.x framework gets objects of its own,
@@ -230,6 +232,7 @@ struct Context {
     u32 *wrapControl;
     const u16 *path;        // where the game was loaded from
     int pathLen;
+    u32 lastImport;         // the last import the game called: see the tracer
 };
 
 static Context *context_of(const void *wrapper)
@@ -289,6 +292,40 @@ static u32 this_thunk(u8 *code, const void *cell, u32 target, int reg)
     b[4] = (u32)cell;
     b[5] = target;
     return (u32)b;
+}
+
+// A phone reports a fault as KERN-EXEC 3 and nothing else -- no address, no
+// instruction. So every import the game makes goes through this first, which
+// records which one it was and jumps on. r0 and r12 are saved across the
+// record; lr is the caller's and is never touched, and neither are the flags.
+//
+//   stmdb sp!, {r0, r12}
+//   ldr   r0, [pc, #12]     @ where to record it
+//   ldr   r12, [pc, #12]    @ which import
+//   str   r12, [r0]
+//   ldmia sp!, {r0, r12}
+//   ldr   pc, [pc, #4]      @ and on to whatever answers it
+enum { TRACE = 48 };
+
+static u32 trace_thunk(u8 *code, const void *cell, u32 index, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE92D1001;
+    b[1] = 0xE59F000C;
+    b[2] = 0xE59FC00C;
+    b[3] = 0xE580C000;
+    b[4] = 0xE8BD1001;
+    b[5] = 0xE59FF004;
+    b[6] = (u32)cell;
+    b[7] = index;
+    b[8] = target;
+    return (u32)b;
+}
+
+// Then a fault says where it happened, in the only terms the phone gives us.
+extern "C" void gate6_fault(Context *c, int type)
+{
+    PANIC(CAT_FLT, (int)(c->lastImport * 100 + (u32)(type & 63)));
 }
 
 // Both at once, for a call that is given one wrapper and made on another. Five
@@ -500,7 +537,8 @@ static u32 load_and_start()
 
     const u32 nImports = (h->codeSize - h->textSize) / 4;
     const u32 stubBytes = nImports * SLOT;
-    const u32 chunkSize = h->codeSize + stubBytes;
+    const u32 traceBytes = nImports * TRACE + TRACE;    // one spare for the handler
+    const u32 chunkSize = h->codeSize + stubBytes + traceBytes;
 
     u32 chunk[2] = { 0, 0 };
     err = chunk_createlocalcode(chunk, (int)chunkSize, (int)chunkSize, 0);
@@ -559,7 +597,26 @@ static u32 load_and_start()
     //   ldr pc, [pc, #0]   -> gate6_report
     u32 *iat = (u32 *)(base + h->textSize);
     u8 *stub = base + h->codeSize;
+    u8 *trace = stub + stubBytes;
     u32 forwarded = 0, missing = 0;
+
+    Context *ctx = (Context *)user_allocz((int)sizeof(Context));
+    if (!ctx) PANIC(CAT_MEM, -23);
+    ctx->path = paths[chosen];
+    ctx->pathLen = lens[chosen];
+    ctx->lastImport = 0xFFFF;               // nothing yet
+
+    // The handler takes a TExcType in r0 and has nowhere to keep the context,
+    // so it arrives through a thunk of its own.
+    {
+        u32 *b = (u32 *)(trace + nImports * TRACE);
+        b[0] = 0xE1A01000;                  // mov r1, r0   -- the exception type
+        b[1] = 0xE59F0000;                  // ldr r0, [pc, #0]
+        b[2] = 0xE59FF000;                  // ldr pc, [pc, #0]
+        b[3] = (u32)ctx;
+        b[4] = (u32)&gate6_fault;
+        user_setexceptionhandler(b, 0xFFFFFFFF);
+    }
     for (u32 i = 0; i < nImports; i++) {
         u32 *s = (u32 *)(stub + SLOT * i);
         s[0] = 0xE59F0000;                  // ldr r0, [pc, #0]  -> the report code
@@ -645,10 +702,6 @@ static u32 load_and_start()
 
     // The stub slot of a resolved import is spare -- its address went straight
     // into the table -- so the diversions are built there.
-    Context *ctx = (Context *)user_allocz((int)sizeof(Context));
-    if (!ctx) PANIC(CAT_MEM, -23);
-    ctx->path = paths[chosen];
-    ctx->pathLen = lens[chosen];
     if (nImports <= IMPORT_BASECONSTRUCTL) PANIC(CAT_SHIM, (int)nImports);
     iat[IMPORT_BASECONSTRUCTL] = ctx_thunk(stub + SLOT * IMPORT_BASECONSTRUCTL,
                                            ctx, (u32)&gate6_baseconstructl);
@@ -684,6 +737,10 @@ static u32 load_and_start()
         u32 **cell = (kDiverts[k].object == ON_CONTROL) ? &ctx->wrapControl : &ctx->wrapUi;
         iat[j] = this_thunk(stub + SLOT * j, cell, iat[j], kDiverts[k].arg);
     }
+
+    // Last, so that it records every import however it ended up being answered.
+    for (u32 i = 0; i < nImports; i++)
+        iat[i] = trace_thunk(trace + TRACE * i, &ctx->lastImport, i, iat[i]);
 
     // Enter it. EKA1 calls a DLL's entry point with EDllProcessAttach first,
     // then apparc asks ordinal 1 for the application object.

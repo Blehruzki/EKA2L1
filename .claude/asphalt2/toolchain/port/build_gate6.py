@@ -15,6 +15,7 @@ CONE = 'cone{000a0000}[10003a41].dll'
 buildapp.build('gate6', 0xE0001006, 'Gate6', sys.argv[1] if len(sys.argv) > 1 else '.',
                imports=[(buildapp.EUSER, ['user_panic', 'userheap_setupthreadheap',
                                           'user_initprocess', 'user_alloc', 'user_allocz',
+                                          'user_setexceptionhandler',
                                           'chunk_createlocalcode', 'chunk_base',
                                           'rlibrary_load', 'rlibrary_lookup']),
                         (buildapp.EFSRV, ['fs_connect', 'file_open',

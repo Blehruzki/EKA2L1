@@ -62,6 +62,7 @@ old_call:
     IMPORT user_initprocess,  585    @ User::InitProcess()
     IMPORT user_alloc,        646    @ User::Alloc(TInt)
     IMPORT user_allocz,       652    @ User::AllocZ(TInt)
+    IMPORT user_setexceptionhandler, 635  @ User::SetExceptionHandler(TExceptionHandler, TUint32)
     IMPORT chunk_createlocalcode, 905  @ RChunk::CreateLocalCode(TInt, TInt, TOwnerType)
     IMPORT chunk_base,       1702    @ RChunk::Base() const
     IMPORT rlibrary_load,    1308    @ RLibrary::Load(TDesC16 const&, TDesC16 const&)
