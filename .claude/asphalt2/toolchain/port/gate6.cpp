@@ -205,6 +205,27 @@ enum { NEW_CONTROL_WIN = 0x28 };
 enum { IMPORT_DSA_NEWL = 460 };         // ws32 CDirectScreenAccess::NewL(...)
 enum { DSA_SLOTS = 2 };
 
+// The game's graphics object is a CTimer and it adds itself to the active
+// scheduler, so the framework does not merely call it -- it owns its request.
+// A 9.x CTimer of ours goes to the scheduler instead and the game's is driven
+// from its virtuals.
+//
+// The vtables, both read out of their own ROM rather than counted:
+//
+//   9.x  0,1 ~CTimer   2 CBase::Extension_   3 DoCancel  4 RunL  5 RunError
+//   7.0s 0   ~CTimer   1 DoCancel            2 RunL      3 RunError
+//
+// The data needs no translation. CActive keeps iStatus at 4 and iActive at 8 in
+// both -- 9.x turned iActive into flags, but bit zero is still what ETrue sets,
+// and what grew is iLink at the end, which only the framework touches. CTimer's
+// own member moved from 0x18 to 0x1c, which is the four bytes of it.
+enum { ACTIVE_STATUS = 4, ACTIVE_ACTIVE = 8 };
+enum { TIMER_SLOTS = 6, NEW_DOCANCEL = 3, NEW_RUNL = 4, NEW_RUNERROR = 5 };
+enum { OLD_DOCANCEL = 1, OLD_RUNL = 2, OLD_RUNERROR = 3 };
+
+enum { IMPORT_CTIMER_CTOR = 391 };      // euser CTimer::CTimer(TInt)
+enum { ON_TIMER = 2 };
+
 enum { IMPORT_DLL_NAME = 2 };           // apparc CApaApplication::DllName() const
 enum { IMPORT_COEENV_STATIC = 86 };     // cone CCoeEnv::Static()
 enum { IMPORT_COECONTROL_CTOR = 89 };   // cone CCoeControl::CCoeControl()
@@ -222,6 +243,11 @@ static const Divert kDiverts[] = {
     {  39, 0, ON_APP_UI },      // avkon    CAknAppUi::SetKeyBlockMode(TAknKeyBlockMode)
     {  98, 0, ON_CONTROL },     // cone     the Nokia export standing in for SetRect
     {  49, 0, ON_CONTROL },     // cone     CCoeControl::ActivateL()
+    { 286, 0, ON_TIMER },       // euser    CTimer::ConstructL()
+    { 268, 0, ON_TIMER },       // euser    CTimer::After(TTimeIntervalMicroSeconds32)
+    { 266, 0, ON_TIMER },       // euser    CActiveScheduler::Add(CActive*)
+    { 358, 0, ON_TIMER },       // euser    CActive::SetActive()
+    { 279, 0, ON_TIMER },       // euser    CActive::Cancel()
 };
 
 // AddToStackL is the one that needs both at once: the app UI it is called on
@@ -245,6 +271,10 @@ struct Context {
     int pathLen;
     u32 lastImport;         // the last import the game called: see the tracer
     u32 *oldObserver;       // the game's MDirectScreenAccess, old layout
+    u32 *oldTimer;          // the game's CTimer, old layout
+    u32 *wrapTimer;         // the 9.x CTimer the scheduler owns
+    u32 newTimerCtor;       // 9.x CTimer::CTimer(TInt), as the shim resolved it
+    u32 timerThunks[3];     // DoCancel, RunL, RunError, built in the code chunk
 };
 
 static Context *context_of(const void *wrapper)
@@ -362,6 +392,50 @@ static u32 pair_thunk(u8 *code, const void *cell0, const void *cell1, u32 target
 // CEikAppUi, built from the constructors gate 5 used, so it gets the CEikAppUi
 // one -- and the flags gate 5 established rather than the game's zero, since
 // nothing here has screen furniture to construct yet.
+// ---- the timer -------------------------------------------------------------
+
+typedef void *(*TimerCtor)(void *self, int priority);
+
+extern "C" void gate6_timer_docancel(void *, u32, Context *c)
+{
+    old_call(c->oldTimer, OLD_DOCANCEL);
+}
+
+extern "C" void gate6_timer_runl(void *, u32, Context *c)
+{
+    // The request completed into the wrapper, and the game reads the result out
+    // of its own object, so carry it across before handing over.
+    c->oldTimer[ACTIVE_STATUS / 4] = c->wrapTimer[ACTIVE_STATUS / 4];
+    c->oldTimer[ACTIVE_ACTIVE / 4] = c->wrapTimer[ACTIVE_ACTIVE / 4];
+    old_call(c->oldTimer, OLD_RUNL);
+}
+
+extern "C" u32 gate6_timer_runerror(void *, u32 error, Context *c)
+{
+    return old_call1(c->oldTimer, OLD_RUNERROR, error);
+}
+
+// The game constructs its CTimer; ours is constructed alongside it, and from
+// here on everything the game does to its own goes to ours instead. A GCC98r2
+// constructor returns the object, which is still the game's.
+extern "C" void *gate6_ctimer_ctor(u32 *oldSelf, int priority, Context *c)
+{
+    c->oldTimer = oldSelf;
+
+    u32 *t = (u32 *)user_allocz(WRAP_BYTES);
+    if (!t) PANIC(CAT_MEM, -35);
+    ((TimerCtor)c->newTimerCtor)(t, priority);
+
+    u32 *vt = copy_vtable(vtable_of(t), TIMER_SLOTS);
+    vt[VT_HEADER + NEW_DOCANCEL] = c->timerThunks[0];
+    vt[VT_HEADER + NEW_RUNL] = c->timerThunks[1];
+    vt[VT_HEADER + NEW_RUNERROR] = c->timerThunks[2];
+    t[0] = (u32)(vt + VT_HEADER);
+
+    c->wrapTimer = t;
+    return oldSelf;
+}
+
 // ---- direct screen access --------------------------------------------------
 
 extern "C" void gate6_dsa_slot0(void *, u32 reason, Context *c)
@@ -587,7 +661,7 @@ static u32 load_and_start()
 
     const u32 nImports = (h->codeSize - h->textSize) / 4;
     const u32 stubBytes = nImports * SLOT;
-    const u32 traceBytes = nImports * TRACE + 4 * TRACE;  // spares for our own thunks
+    const u32 traceBytes = nImports * TRACE + 8 * TRACE;  // spares for our own thunks
     const u32 chunkSize = h->codeSize + stubBytes + traceBytes;
 
     u32 chunk[2] = { 0, 0 };
@@ -784,7 +858,9 @@ static u32 load_and_start()
         // it through a diversion would lose the one thing it can still tell us.
         if (j >= nImports || j >= kShimCount || (kShimTable[j] >> 24) != KIND_CALL)
             continue;
-        u32 **cell = (kDiverts[k].object == ON_CONTROL) ? &ctx->wrapControl : &ctx->wrapUi;
+        u32 **cell = &ctx->wrapUi;
+        if (kDiverts[k].object == ON_CONTROL) cell = &ctx->wrapControl;
+        else if (kDiverts[k].object == ON_TIMER) cell = &ctx->wrapTimer;
         iat[j] = this_thunk(stub + SLOT * j, cell, iat[j], kDiverts[k].arg);
     }
 
@@ -800,6 +876,17 @@ static u32 load_and_start()
         obs[0] = (u32)vt;               // 9.x: the vptr points at slot 0
         iat[IMPORT_DSA_NEWL] = dsa_thunk(spare + 3 * TRACE, &ctx->oldObserver, obs,
                                          iat[IMPORT_DSA_NEWL]);
+    }
+
+    // The scheduler's timer, and the game's.
+    if (nImports > IMPORT_CTIMER_CTOR && IMPORT_CTIMER_CTOR < kShimCount &&
+        (kShimTable[IMPORT_CTIMER_CTOR] >> 24) == KIND_CALL) {
+        u8 *spare = trace + nImports * TRACE;
+        ctx->newTimerCtor = iat[IMPORT_CTIMER_CTOR];
+        ctx->timerThunks[0] = ctx_thunk(spare + 4 * TRACE, ctx, (u32)&gate6_timer_docancel);
+        ctx->timerThunks[1] = ctx_thunk(spare + 5 * TRACE, ctx, (u32)&gate6_timer_runl);
+        ctx->timerThunks[2] = ctx_thunk(spare + 6 * TRACE, ctx, (u32)&gate6_timer_runerror);
+        iat[IMPORT_CTIMER_CTOR] = ctx_thunk(spare + 7 * TRACE, ctx, (u32)&gate6_ctimer_ctor);
     }
 
     // Last, so that it records every import however it ended up being answered.

@@ -971,3 +971,36 @@ the scheduler calls the wrapper's `RunL`, which dispatches into the game's
 the old way. What the game reads back out of its own `CActive` -- the
 completion code above all -- has to be copied across at that point, which
 needs both layouts measured out of the two ROMs, the way `CCoeEnv`'s were.
+
+### The timer wrapper
+
+The fifth two-graph object, and the first the framework owns rather than
+merely calls. Both vtables were read out of their own ROM:
+
+```
+9.x   0,1 ~CTimer   2 CBase::Extension_   3 DoCancel  4 RunL  5 RunError
+7.0s  0   ~CTimer   1 DoCancel            2 RunL      3 RunError
+```
+
+`CActive::Cancel` confirms each side: the 7.0s one calls through `[vptr+0xc]`,
+which with the GCC98r2 bias is slot 1, and the 9.x one through `[vptr+0xc]`,
+which without it is slot 3. The extra 9.x slot is `CBase::Extension_`, which
+7.0s did not have. The game's own vtable has exactly four entries, all four
+overridden.
+
+The data needs no translation at all, which is the good luck in this one.
+`CActive` keeps `iStatus` at 4 and `iActive` at 8 in both. 9.x turned `iActive`
+into a flag word, but bit zero is what `ETrue` sets, so the old code's writes
+still mean what they did; `CActive::SetActive` tests exactly that bit. What
+grew is `iLink` at the end, which only the framework touches -- `CTimer`'s own
+member moved from 0x18 to 0x1c, and that is the four bytes of it.
+
+So a 9.x `CTimer` is constructed alongside the game's, and everything the game
+does to its own -- `ConstructL`, `After`, `CActiveScheduler::Add`, `SetActive`,
+`Cancel` -- is diverted to ours, so the request completes into the wrapper's
+`iStatus` and the scheduler calls the wrapper's `RunL`. That copies the status
+and the active flag back into the game's object and dispatches into its slot 2
+the old way.
+
+The emulator cannot judge this one: it still stops earlier, in its own C++
+exception path while loading the FEP.
