@@ -1,9 +1,16 @@
-"""Write the localisable registration resource (<app>.rsc) apparc reads next.
+"""Write the application resource file (<app>.rsc).
 
-Resource 1 is the RSS signature apparc confirms before anything else; the
-caption record follows it and expands to:
-    8 reserved bytes, the short caption, 8 more reserved bytes, the long
-    caption, a u16 icon count, the icon file's path, and a u16 view count.
+It carries two things that are read by different people. apparc reads the
+caption record, which expands to: 8 reserved bytes, the short caption, 8 more
+reserved bytes, the long caption, a u16 icon count, the icon file's path, and a
+u16 view count. The UI framework reads EIK_APP_INFO, and it finds it by
+position -- the third resource in the file, after the signature and the
+document name -- which is why those two come first even though nothing here
+uses them. A file without it panics CONE 14, ECoePanicNoResourceFileForId,
+before an application with any screen furniture can start.
+
+A shipped S60v3 resource file has six resources; this has the four that are
+read, and the caption moves from second to fourth with them.
 """
 import struct, sys
 import rscwrite as R
@@ -20,7 +27,14 @@ import rscwrite as R
 RES_OFFSET = 0x00010000
 RES_VERSION = 1
 SIGNATURE = struct.pack('<II', 4, RES_OFFSET | RES_VERSION)
-CAPTION_RES_ID = RES_OFFSET | 2
+
+# EIK_APP_INFO is six resource links -- hotkeys, menu bar, toolbar, toolband,
+# status pane, command buttons -- and a word the compiler adds. All zero asks
+# avkon for the defaults, which is what an application with no menus of its own
+# wants. The shipped file's is 28 bytes of zeros; so is this.
+APP_INFO = bytes(28)
+
+CAPTION_RES_ID = RES_OFFSET | 4
 
 
 def caption_runs(short_caption, long_caption, icon_path='', icon_count=0):
@@ -33,11 +47,15 @@ def caption_runs(short_caption, long_caption, icon_path='', icon_count=0):
 
 
 def build(uid3, short_caption, long_caption=None, icon_path='', icon_count=0):
-    runs = caption_runs(short_caption, long_caption or short_caption, icon_path, icon_count)
-    body = R.encode_runs(runs)
-    return R.container(0, uid3, [SIGNATURE, body],
-                       unicode_bits=0x02,      # resource 2 is compressed, the signature is not
-                       largest=max(len(SIGNATURE), R.expanded_size(runs)))
+    caption = caption_runs(short_caption, long_caption or short_caption, icon_path, icon_count)
+    # One compressed run, the way the shipped file writes its own: nothing
+    # here reads the document name, so it only has to be well formed.
+    document = [('u', short_caption[:8].encode('ascii'))]
+    return R.container(0, uid3,
+                       [SIGNATURE, R.encode_runs(document), APP_INFO, R.encode_runs(caption)],
+                       unicode_bits=0x0A,      # 2 and 4 are compressed; 1 and 3 are raw
+                       largest=max(len(SIGNATURE), R.expanded_size(document),
+                                   len(APP_INFO), R.expanded_size(caption)))
 
 
 def selftest(reference):

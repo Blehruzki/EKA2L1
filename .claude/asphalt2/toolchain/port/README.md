@@ -1160,3 +1160,22 @@ Asking avkon for less is worse rather than safer. With
 `ENoAppResourceFile | ENoScreenFurniture` -- what the `CEikAppUi` wrapper used
 -- a `CAknAppUi` goes off the rails entirely and never gets a virtual called at
 all. So the resource file is the next thing to build, not something to avoid.
+
+### The application resource file
+
+`CONE 14` was literal: the UI framework finds `EIK_APP_INFO` by position, as
+the third resource of the application's resource file, and ours had two --
+the signature and the caption. A shipped S60v3 file has six; the four that are
+read are the signature, a document name, the app info, and the caption, so the
+caption moves from second to fourth and the registration resource points at its
+new id.
+
+`EIK_APP_INFO` itself is six resource links -- hotkeys, menu bar, toolbar,
+toolband, status pane, command buttons -- and a word the compiler adds. All
+zero asks avkon for its defaults, which is what an application with no menus of
+its own wants. The shipped file's is twenty-eight bytes of zeros; so is this.
+
+With that, `CAknAppUi::BaseConstructL(0)` gets through, and the window server
+starts taking draw commands from us. What stops it now is the emulator's own
+gap again: a leave that has to become a C++ exception, and drtaeabi's
+per-thread state that was never set up.
