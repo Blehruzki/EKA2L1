@@ -139,6 +139,7 @@ void *user_allocz(int size);
 // before slot 0. Arguments past `this` are not passed, which is all the old
 // slots reached from here need.
 u32 old_call(const void *object, int slot);
+u32 old_call1(const void *object, int slot, u32 arg);
 }
 
 #define CAT_CHN {'G','6','C','H','N'}
@@ -194,6 +195,16 @@ enum { COEENV_BIAS = 0x0c };
 enum { OLD_CONTROL_BYTES = 0x30, OLD_CONTROL_COEENV = 0x08, OLD_CONTROL_WIN = 0x20 };
 enum { NEW_CONTROL_WIN = 0x28 };
 
+// Direct screen access is the first thing that calls the game back. The window
+// server aborts it whenever the screen changes hands, and calls the observer
+// the game handed to CDirectScreenAccess::NewL -- which is a GCC98r2 mixin
+// subobject, vptr eight bytes before slot 0 and entries that are adjustor
+// thunks. A 9.x caller reads the offset-to-top word as slot 0 and jumps to
+// nothing. So the window server gets an observer of ours instead, two slots
+// wide like the interface, each dispatching into the game's the old way.
+enum { IMPORT_DSA_NEWL = 460 };         // ws32 CDirectScreenAccess::NewL(...)
+enum { DSA_SLOTS = 2 };
+
 enum { IMPORT_DLL_NAME = 2 };           // apparc CApaApplication::DllName() const
 enum { IMPORT_COEENV_STATIC = 86 };     // cone CCoeEnv::Static()
 enum { IMPORT_COECONTROL_CTOR = 89 };   // cone CCoeControl::CCoeControl()
@@ -233,6 +244,7 @@ struct Context {
     const u16 *path;        // where the game was loaded from
     int pathLen;
     u32 lastImport;         // the last import the game called: see the tracer
+    u32 *oldObserver;       // the game's MDirectScreenAccess, old layout
 };
 
 static Context *context_of(const void *wrapper)
@@ -350,6 +362,42 @@ static u32 pair_thunk(u8 *code, const void *cell0, const void *cell1, u32 target
 // CEikAppUi, built from the constructors gate 5 used, so it gets the CEikAppUi
 // one -- and the flags gate 5 established rather than the game's zero, since
 // nothing here has screen furniture to construct yet.
+// ---- direct screen access --------------------------------------------------
+
+extern "C" void gate6_dsa_slot0(void *, u32 reason, Context *c)
+{
+    old_call1(c->oldObserver, 0, reason);
+}
+
+extern "C" void gate6_dsa_slot1(void *, u32 reason, Context *c)
+{
+    old_call1(c->oldObserver, 1, reason);
+}
+
+// Remember the observer the game passed and put ours in its place. r3 is the
+// fourth argument and the only one that changes, so no C++ is needed:
+//
+//   stmdb sp!, {r0, r12}
+//   ldr   r0, [pc, #12]     @ where to keep the game's observer
+//   str   r3, [r0]
+//   ldr   r3, [pc, #8]      @ ours
+//   ldmia sp!, {r0, r12}
+//   ldr   pc, [pc, #4]
+static u32 dsa_thunk(u8 *code, const void *cell, const void *observer, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE92D1001;
+    b[1] = 0xE59F000C;
+    b[2] = 0xE5803000;
+    b[3] = 0xE59F3008;
+    b[4] = 0xE8BD1001;
+    b[5] = 0xE59FF004;
+    b[6] = (u32)cell;
+    b[7] = (u32)observer;
+    b[8] = target;
+    return (u32)b;
+}
+
 // ---- the control -----------------------------------------------------------
 
 // The game asks its application where it lives and takes the drive and path
@@ -419,12 +467,8 @@ extern "C" void gate6_ui_construct(void *self)
     context_of(self)->wrapUi = (u32 *)self;
     old_call((const u32 *)((const u32 *)self)[WRAP_OLD], OLD_UI_CONSTRUCT);
 
-    // In the emulator this runs to the end and the framework takes the
-    // application on into its event loop, where it faults. A phone faults too,
-    // but says only KERN-EXEC 3, so this marks the halfway point: reaching it
-    // says the fault is past here, and not reaching it says the fault is in
-    // ConstructL itself, where the phone and the emulator disagree.
-    PANIC(CAT_CHN, 4);
+    // Confirmed on hardware: this runs to the end there too, so the fault is
+    // past here and the framework takes the application on from here.
 }
 
 extern "C" void *gate6_create_app_ui(void *self)
@@ -543,7 +587,7 @@ static u32 load_and_start()
 
     const u32 nImports = (h->codeSize - h->textSize) / 4;
     const u32 stubBytes = nImports * SLOT;
-    const u32 traceBytes = nImports * TRACE + TRACE;    // one spare for the handler
+    const u32 traceBytes = nImports * TRACE + 4 * TRACE;  // spares for our own thunks
     const u32 chunkSize = h->codeSize + stubBytes + traceBytes;
 
     u32 chunk[2] = { 0, 0 };
@@ -742,6 +786,20 @@ static u32 load_and_start()
             continue;
         u32 **cell = (kDiverts[k].object == ON_CONTROL) ? &ctx->wrapControl : &ctx->wrapUi;
         iat[j] = this_thunk(stub + SLOT * j, cell, iat[j], kDiverts[k].arg);
+    }
+
+    // The window server's view of the game's observer.
+    if (nImports > IMPORT_DSA_NEWL && IMPORT_DSA_NEWL < kShimCount &&
+        (kShimTable[IMPORT_DSA_NEWL] >> 24) == KIND_CALL) {
+        u8 *spare = trace + nImports * TRACE;
+        u32 *vt = (u32 *)user_allocz(DSA_SLOTS * 4);
+        u32 *obs = (u32 *)user_allocz(4);
+        if (!vt || !obs) PANIC(CAT_MEM, -34);
+        vt[0] = ctx_thunk(spare + TRACE, ctx, (u32)&gate6_dsa_slot0);
+        vt[1] = ctx_thunk(spare + 2 * TRACE, ctx, (u32)&gate6_dsa_slot1);
+        obs[0] = (u32)vt;               // 9.x: the vptr points at slot 0
+        iat[IMPORT_DSA_NEWL] = dsa_thunk(spare + 3 * TRACE, &ctx->oldObserver, obs,
+                                         iat[IMPORT_DSA_NEWL]);
     }
 
     // Last, so that it records every import however it ended up being answered.

@@ -42,6 +42,20 @@ old_call:
     pop  {r4, lr}
     bx   lr
 
+    @ The same, for a call that takes one argument as well as the object.
+    @ r0 = the old object, r1 = the slot, r2 = the argument.
+    .global old_call1
+old_call1:
+    push {r4, lr}
+    add  r1, r1, #2
+    ldr  r3, [r0]
+    ldr  r3, [r3, r1, lsl #2]
+    mov  r1, r2
+    mov  lr, pc
+    bx   r3
+    pop  {r4, lr}
+    bx   lr
+
     .ltorg
 
     @ An import stub, as the Symbian linker emits it: `ldr pc,[pc,#-4]` reads pc
