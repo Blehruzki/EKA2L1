@@ -1069,3 +1069,26 @@ against the official build's twenty-four, because a normal EABI application
 links the C++ runtime and ours did not: it only ever loaded drtaeabi at run
 time, through the shim. One static reference fixes that, and it is right
 whether or not it matters here.
+
+## The black box
+
+A phone reports a fault as KERN-EXEC 3 and will not dispatch one to a handler,
+so a trace cannot escape the crash. It can survive it. Every import already
+goes through a thunk that records which one it was; that thunk now calls a
+function that also writes the number to a file on E: every sixteenth call, and
+the next run reads it back, reports it as a panic and deletes it. Two launches,
+one answer.
+
+The first attempt put the write on a timer, which never fired: the fault
+happens while the framework is still starting the application and the active
+scheduler has not run yet, so nothing of ours gets a turn. Moving the write
+into the trace itself fixed that -- and the timer stays, for a fault that
+happens once the scheduler is going, where the last import may be a long way
+back.
+
+Proved in the emulator before being sent anywhere, which is what the emulator
+is still good for even though it cannot run the application past its own first
+leave. Run one leaves `lastImport = 25`; run two reports `G6BOX 2500`. Import
+25 is `CAknAppUi::KeySounds()`, the second-to-last call the game's `ConstructL`
+makes -- exactly where it should be, since nothing of the game's runs after
+that in the emulator.

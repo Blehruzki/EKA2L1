@@ -77,6 +77,9 @@ old_call1:
     IMPORT user_alloc,        646    @ User::Alloc(TInt)
     IMPORT user_allocz,       652    @ User::AllocZ(TInt)
     IMPORT user_setexceptionhandler, 635  @ User::SetExceptionHandler(TExceptionHandler, TUint32)
+    IMPORT rhandle_close,     120    @ RHandleBase::Close()
+    IMPORT cperiodic_newl,   1379    @ CPeriodic::NewL(TInt)
+    IMPORT cperiodic_start,  1381    @ CPeriodic::Start(...)
     IMPORT chunk_createlocalcode, 905  @ RChunk::CreateLocalCode(TInt, TInt, TOwnerType)
     IMPORT chunk_base,       1702    @ RChunk::Base() const
     IMPORT rlibrary_load,    1308    @ RLibrary::Load(TDesC16 const&, TDesC16 const&)
@@ -86,6 +89,10 @@ old_call1:
     IMPORT file_open,          93    @ RFile::Open(RFs&, TDesC16 const&, TUint)
     IMPORT file_size,         264    @ RFile::Size(TInt&) const
     IMPORT file_read,         255    @ RFile::Read(TDes8&)
+    IMPORT file_replace,      108    @ RFile::Replace(RFs&, TDesC16 const&, TUint)
+    IMPORT file_write_at,     101    @ RFile::Write(TInt, TDesC8 const&)
+    IMPORT file_flush,         96    @ RFile::Flush()
+    IMPORT fs_delete,          65    @ RFs::Delete(TDesC16 const&)
     @ eikcore
     IMPORT eikstart_runapplication, 394  @ EikStart::RunApplication(TApaApplicationFactory)
     IMPORT eikapplication_ctor,  64  @ CEikApplication::CEikApplication()

@@ -32,6 +32,11 @@ i32 fs_connect(void *fs, int slots);
 i32 file_open(void *file, void *fs, const void *name, u32 mode);
 i32 file_size(const void *file, int *size);
 i32 file_read(const void *file, void *des);
+i32 file_replace(void *file, void *fs, const void *name, u32 mode);
+i32 file_write_at(const void *file, int pos, const void *des);
+i32 file_flush(const void *file);
+i32 rhandle_close(void *handle);
+i32 fs_delete(void *fs, const void *name);
 i32 rlibrary_load(void *lib, const void *name, const void *path);
 void *rlibrary_lookup(const void *lib, int ordinal);
 
@@ -135,6 +140,7 @@ i32 user_setexceptionhandler(void *handler, u32 mask); // User::SetExceptionHand
 void *coecontrol_ctor(void *self);                    // CCoeControl::CCoeControl()
 void coecontrol_createwindowl(void *self);            // CCoeControl::CreateWindowL()
 void *user_allocz(int size);
+void *cperiodic_newl(int priority);
 
 // A GCC98r2 virtual call: the vptr is at offset 0 and points eight bytes
 // before slot 0. Arguments past `this` are not passed, which is all the old
@@ -154,6 +160,7 @@ u32 old_call1(const void *object, int slot, u32 arg);
 #define CAT_CHN {'G','6','C','H','N'}
 #define CAT_FLT {'G','6','F','L','T'}
 #define CAT_TMR {'G','6','T','M','R'}
+#define CAT_BOX {'G','6','B','O','X'}
 #define CAT_UID {'G','6','U','I','D'}
 
 // Two object graphs, not one. The 9.x framework gets objects of its own,
@@ -287,6 +294,17 @@ struct Context {
     u32 timerThunks[3];     // DoCancel, RunL, RunError, built in the code chunk
     u32 reached;            // which of the game's callbacks have been entered
     u32 cppRuntime;         // see drtaeabi_pure_virtual: the reference is the point
+
+    // The black box. A phone reports a fault as KERN-EXEC 3 and nothing else,
+    // and it will not dispatch one to a handler, so the trace has to survive
+    // the crash instead of escaping it: a timer writes the last import to a
+    // file every few milliseconds, and the next run reads it back and reports
+    // it. Two launches, one answer.
+    u32 boxFs[2];
+    u32 boxFile[4];
+    u32 boxData[2];
+    u32 boxDes[2];
+    u32 traceCount;         // how many imports have gone past
 };
 
 static Context *context_of(const void *wrapper)
@@ -361,18 +379,22 @@ static u32 this_thunk(u8 *code, const void *cell, u32 target, int reg)
 //   ldr   pc, [pc, #4]      @ and on to whatever answers it
 enum { TRACE = 48 };
 
-static u32 trace_thunk(u8 *code, const void *cell, u32 index, u32 target)
+extern "C" void gate6_trace(u32 index, Context *c);
+
+static u32 trace_thunk(u8 *code, const void *ctx, u32 index, u32 target)
 {
     u32 *b = (u32 *)code;
-    b[0] = 0xE92D1001;
-    b[1] = 0xE59F000C;
-    b[2] = 0xE59FC00C;
-    b[3] = 0xE580C000;
-    b[4] = 0xE8BD1001;
-    b[5] = 0xE59FF004;
-    b[6] = (u32)cell;
+    b[0] = 0xE92D500F;                  // stmdb sp!, {r0-r3, r12, lr}  -- 24 bytes, aligned
+    b[1] = 0xE59F0010;                  // ldr   r0, [pc, #16]   -- which import
+    b[2] = 0xE59F1010;                  // ldr   r1, [pc, #16]   -- the context
+    b[3] = 0xE59FC010;                  // ldr   r12, [pc, #16]
+    b[4] = 0xE12FFF3C;                  // blx   r12
+    b[5] = 0xE8BD500F;                  // ldmia sp!, {r0-r3, r12, lr}
+    b[6] = 0xE59FF008;                  // ldr   pc, [pc, #8]
     b[7] = index;
-    b[8] = target;
+    b[8] = (u32)ctx;
+    b[9] = (u32)&gate6_trace;
+    b[10] = target;
     return (u32)b;
 }
 
@@ -404,6 +426,68 @@ static u32 pair_thunk(u8 *code, const void *cell0, const void *cell1, u32 target
 // CEikAppUi, built from the constructors gate 5 used, so it gets the CEikAppUi
 // one -- and the flags gate 5 established rather than the game's zero, since
 // nothing here has screen furniture to construct yet.
+// ---- the black box ---------------------------------------------------------
+
+struct CallBack { int (*fn)(void *); void *ptr; };
+
+extern "C" {
+void cperiodic_start(void *self, int delay, int interval, CallBack cb);
+}
+
+static const u16 kBoxPath[] = {'E',':','\\','g','6','b','o','x','.','d','a','t'};
+
+enum { BOX_NONE = 0xFFFFFFFF, BOX_ARMED = 0xFFFFFFFE };
+enum { EFileWrite = 0x200, EFileShareAny = 0x30 };
+
+static void box_name(Ptrc16 *name)
+{
+    name->lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kBoxPath / 2);
+    name->text = kBoxPath;
+}
+
+static void box_flush(Context *c)
+{
+    c->boxData[0] = c->lastImport;
+    c->boxData[1] = c->reached;
+    c->boxDes[0] = ((u32)EPtrC << KTypeShift) | 8;
+    c->boxDes[1] = (u32)c->boxData;
+    file_write_at(c->boxFile, 0, c->boxDes);
+    file_flush(c->boxFile);
+}
+
+// The trace itself does the recording, because the crash we are after happens
+// while the framework is still starting the application up and the active
+// scheduler has not run yet -- a timer never gets a turn. Every import goes
+// through here; every so many of them reach the disk.
+enum { BOX_EVERY = 16 };
+
+extern "C" void gate6_trace(u32 index, Context *c)
+{
+    c->lastImport = index;
+    if (++c->traceCount == 1 || (c->traceCount % BOX_EVERY) == 0)
+        box_flush(c);
+}
+
+// And a timer as well, for a fault that happens once the scheduler is running,
+// where the import before it may be a long way back.
+extern "C" int gate6_box_tick(void *p)
+{
+    box_flush((Context *)p);
+    return 1;
+}
+
+// Called once the active scheduler is the thing running us.
+static void box_start(Context *c)
+{
+    void *timer = cperiodic_newl(0);            // EPriorityIdle, so it never preempts
+    if (!timer)
+        return;
+    CallBack cb;
+    cb.fn = &gate6_box_tick;
+    cb.ptr = c;
+    cperiodic_start(timer, 1000, 5000, cb);     // 1ms, then every 5ms
+}
+
 // ---- the timer -------------------------------------------------------------
 
 typedef void *(*TimerCtor)(void *self, int priority);
@@ -558,6 +642,7 @@ extern "C" void gate6_baseconstructl(void *, int, Context *c)
 
 extern "C" void gate6_ui_construct(void *self)
 {
+    box_start(context_of(self));
     // From here the game's own ConstructL drives, and whatever it reaches that
     // the shim cannot answer panics with that import's index.
     context_of(self)->wrapUi = (u32 *)self;
@@ -753,6 +838,39 @@ static u32 load_and_start()
     ctx->lastImport = 0xFFFF;               // nothing yet
     ctx->cppRuntime = (u32)&drtaeabi_pure_virtual;
 
+    // Read what the last run got to, if it left anything, and say so. Then the
+    // file is gone and this run is an ordinary one that records again.
+    {
+        Ptrc16 name;
+        box_name(&name);
+        if (fs_connect(ctx->boxFs, -1) == 0) {
+            if (file_open(ctx->boxFile, ctx->boxFs, &name, 1) == 0) {
+                Ptr8 des;
+                des.lengthAndType = (u32)EPtr << KTypeShift;
+                des.maxLength = 8;
+                des.ptr = (u8 *)ctx->boxData;
+                ctx->boxData[0] = BOX_NONE;
+                ctx->boxData[1] = 0;
+                file_read(ctx->boxFile, &des);
+                rhandle_close(ctx->boxFile);
+                const u32 last = ctx->boxData[0];
+                fs_delete(ctx->boxFs, &name);
+                if (last != BOX_NONE)
+                    PANIC(CAT_BOX, (int)(last * 100 + (ctx->boxData[1] & 99)));
+            }
+            // Nothing recorded, so record. Armed but never written means the
+            // timer never got to run, which is itself an answer.
+            if (file_replace(ctx->boxFile, ctx->boxFs, &name, EFileWrite | EFileShareAny) == 0) {
+                ctx->boxData[0] = BOX_ARMED;
+                ctx->boxData[1] = 0;
+                ctx->boxDes[0] = ((u32)EPtrC << KTypeShift) | 8;
+                ctx->boxDes[1] = (u32)ctx->boxData;
+                file_write_at(ctx->boxFile, 0, ctx->boxDes);
+                file_flush(ctx->boxFile);
+            }
+        }
+    }
+
     // The handler takes a TExcType in r0 and has nowhere to keep the context,
     // so it arrives through a thunk of its own.
     {
@@ -923,7 +1041,7 @@ static u32 load_and_start()
 
     // Last, so that it records every import however it ended up being answered.
     for (u32 i = 0; i < nImports; i++)
-        iat[i] = trace_thunk(trace + TRACE * i, &ctx->lastImport, i, iat[i]);
+        iat[i] = trace_thunk(trace + TRACE * i, ctx, i, iat[i]);
 
     // Enter it. EKA1 calls a DLL's entry point with EDllProcessAttach first,
     // then apparc asks ordinal 1 for the application object.
