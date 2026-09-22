@@ -107,6 +107,7 @@ old_call1:
 
     @ drtaeabi -- referenced so the C++ runtime is a real dependency
     IMPORT drtaeabi_pure_virtual, 189  @ __cxa_pure_virtual
+    IMPORT cpprt_globals_ctor,   204  @ TCppRTExceptionsGlobals::TCppRTExceptionsGlobals()
     IMPORT coeenv_static,       182  @ CCoeEnv::Static()
     IMPORT coecontrol_ctor,      64  @ CCoeControl::CCoeControl()
     IMPORT coecontrol_createwindowl, 25  @ CCoeControl::CreateWindowL()

@@ -29,6 +29,6 @@ buildapp.build('gate6', 0xE0001006, 'Gate6', sys.argv[1] if len(sys.argv) > 1 el
                         (AVKON, ['akndocument_ctor']),
                         (CONE, ['coeappui_ctor', 'coeenv_static', 'coecontrol_ctor',
                                  'coecontrol_createwindowl']),
-                        (DRTAEABI, ['drtaeabi_pure_virtual'])],
+                        (DRTAEABI, ['drtaeabi_pure_virtual', 'cpprt_globals_ctor'])],
                sources=('gate6.cpp', 'gate4_shim.cpp'),
                heap_max=0x4000000)

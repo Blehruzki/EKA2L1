@@ -1179,3 +1179,42 @@ With that, `CAknAppUi::BaseConstructL(0)` gets through, and the window server
 starts taking draw commands from us. What stops it now is the emulator's own
 gap again: a leave that has to become a C++ exception, and drtaeabi's
 per-thread state that was never set up.
+
+## The C++ runtime's per-thread state
+
+The thing that had been reported as KERN-EXEC 3 for five rounds, and that the
+emulator was blamed for, was ours.
+
+On 9.x a leave *is* a C++ exception -- `TRAP` is `try`/`catch` -- so every leave
+goes through `__cxa_allocate_exception`, which asks `__cxa_get_globals` for the
+thread's exception state. In Symbian's runtime that function is two
+instructions: a `UserSvr::DllTls` and a return. Nothing allocates lazily. The
+state is created once per thread, and the tracing showed who does it: the only
+caller of drtaeabi's TLS setter is `TCppRTExceptionsGlobals`'s constructor,
+which is exported -- because euser calls it. `callfirstprocessfn.cpp` in the
+kernel source:
+
+```cpp
+TInt CallThrdProcEntry(TInt (*aFn)(void*), void* aPtr, TInt aNotFirst)
+    {
+    TCppRTExceptionsGlobals aExceptionGlobals;
+    ...
+```
+
+A local, on the entry function's frame, whose constructor does
+`Dll::SetTls(this)`. Our startup is our own -- `UserHeap::SetupThreadHeap`,
+`User::InitProcess`, our main -- and never constructed one. So
+`__cxa_get_globals` returned null, and the first leave that had to become an
+exception read through it.
+
+That is why the fault was always in framework code with nothing of ours or the
+game's anywhere near it, why the phone and the emulator agreed exactly, and why
+the control application never tripped it: it has euser's thread entry, and it
+never had to throw either.
+
+The fix is one call, before anything can leave, on a heap block rather than a
+stack frame so it outlives the work. With it, leaves unwind: thirty-eight of
+them pass in a run where the second used to be fatal, and the application gets
+as far as the game's own control construction before the next thing stops it --
+a virtual call through a null vptr from inside cone, which is a different
+question.

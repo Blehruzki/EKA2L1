@@ -154,6 +154,15 @@ u32 old_call(const void *object, int slot);
 // library whose per-thread state was never set up. One static reference puts
 // it in the process's dependencies where it belongs.
 void drtaeabi_pure_virtual(void);
+
+// The C++ runtime's per-thread state. On a normal EABI application euser's own
+// thread entry declares one of these on its stack and the constructor stores it
+// in the DLL's thread-local slot; our startup is our own and never did, so
+// __cxa_get_globals -- which is nothing but that lookup -- returned null, and
+// the first leave that had to become a C++ exception read through it. That is
+// every leave on 9.x: TRAP is try/catch. Hence a fault in framework code with
+// no code of ours or the game's anywhere near it.
+void cpprt_globals_ctor(void *self);
 u32 old_call1(const void *object, int slot, u32 arg);
 }
 
@@ -489,7 +498,9 @@ enum { BOX_EVERY = 16 };
 extern "C" void gate6_trace(u32 index, Context *c)
 {
     c->lastImport = index;
-    if (++c->traceCount == 1 || (c->traceCount % BOX_EVERY) == 0)
+    // The first stages make fewer than BOX_EVERY calls in total, so record
+    // every one of those and thin out later.
+    if (++c->traceCount <= 64 || (c->traceCount % BOX_EVERY) == 0)
         box_flush(c);
 }
 
@@ -795,6 +806,13 @@ extern "C" void *gate6_new_application()
 
 extern "C" u32 gate6_main()
 {
+    // Before anything can leave. The object has to outlive the thread's work,
+    // so it goes on the heap rather than this frame; the constructor writes
+    // only its own fields, so the room is generous on purpose.
+    void *globals = user_allocz(512);
+    if (!globals) PANIC(CAT_MEM, -40);
+    cpprt_globals_ctor(globals);
+
     eikstart_runapplication(0, (u32)&gate6_new_application, 0, 0);
     PANIC(CAT_RET, 0);
     return 0;
