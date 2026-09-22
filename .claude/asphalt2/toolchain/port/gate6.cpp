@@ -637,7 +637,7 @@ static const u16 kBoxPath[] = {'E',':','\\','g','6','b','o','x','.','d','a','t'}
 
 // A record left by a different build is worse than no record: it reads back as
 // a plausible number and says nothing. So the file carries what wrote it.
-enum { BOX_MAGIC = 0x47364232 };        // "G6B2"
+enum { BOX_MAGIC = 0x47364233 };        // "G6B3"
 enum { BOX_NONE = 0xFFFFFFFF, BOX_ARMED = 0xFFFFFFFE };
 enum { EFileWrite = 0x200, EFileShareAny = 0x30 };
 
@@ -652,7 +652,7 @@ static void box_flush(Context *c)
     c->boxData[0] = BOX_MAGIC;
     c->boxData[1] = c->lastImport;
     c->boxData[2] = c->reached;
-    c->boxData[3] = c->lastCall;
+    c->boxData[3] = c->traceCount;
     c->boxDes[0] = ((u32)EPtrC << KTypeShift) | 16;
     c->boxDes[1] = (u32)c->boxData;
     file_write_at(c->boxFile, 0, c->boxDes);
@@ -664,6 +664,7 @@ static void box_flush(Context *c)
 // scheduler has not run yet -- a timer never gets a turn. Every import goes
 // through here; every so many of them reach the disk.
 enum { BOX_EVERY = 16 };
+enum { REACHED_LEAVE = 64, REACHED_EXIT = 128 };  // how the game ended, if it did
 
 // The emulator hears RDebug, and a phone does not, which makes this the one
 // instrument that can say what happened in what order rather than only what
@@ -697,8 +698,10 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
     if (TRACE_IMPORTS)
         note(c, index, ' ');
     if (index == IMPORT_LEAVE || index == IMPORT_EXIT) {
+        c->reached |= (index == IMPORT_LEAVE) ? REACHED_LEAVE : REACHED_EXIT;
         note(c, caller >> 16, 'R');
         note(c, caller & 0xFFFF, 'r');
+        box_flush(c);
     }
     c->lastImport = index;
     // The first stages make fewer than BOX_EVERY calls in total, so record
@@ -1323,7 +1326,7 @@ static u32 load_and_start()
     {
         Ptrc16 name;
         box_name(&name);
-        u32 magic = 0, last = BOX_NONE, reached = 0, call = 0;
+        u32 magic = 0, last = BOX_NONE, reached = 0, count = 0;
         if (fs_connect(ctx->boxFs, -1) == 0) {
             if (file_open(ctx->boxFile, ctx->boxFs, &name, 1) == 0) {
                 Ptr8 des;
@@ -1336,21 +1339,28 @@ static u32 load_and_start()
                 magic = ctx->boxData[0];
                 last = ctx->boxData[1];
                 reached = ctx->boxData[2];
-                call = ctx->boxData[3];
+                count = ctx->boxData[3];
             }
             if (file_replace(ctx->boxFile, ctx->boxFs, &name, EFileWrite | EFileShareAny) == 0) {
                 ctx->lastImport = BOX_ARMED;    // armed, nothing recorded yet
                 box_flush(ctx);
                 ctx->lastImport = 0xFFFF;
             }
-            // One number, three fields: which of our slots the framework called
-            // last, which import the game called last, and which callbacks had
-            // fired. An import index runs past 99, so it gets three digits, and
-            // 999 means the file was armed and nothing was ever written to it.
-            if (magic == BOX_MAGIC)
-                PANIC(CAT_BOX, (int)(call * 100000 +
-                                     (last == BOX_ARMED ? 999 : (last % 1000)) * 100 +
-                                     (reached % 100)));
+            // One number, three fields. How many imports the game got through
+            // says at a glance whether it is running or stopped: a few hundred
+            // is a startup that gave up, thousands is a frame loop. Then which
+            // import it was on -- three digits, and 999 means the file was
+            // armed and nothing was ever written to it -- and last a digit for
+            // what happened: 1 the frame loop ran, 2 it left, 4 it exited.
+            if (magic == BOX_MAGIC) {
+                const u32 fate = ((reached & REACHED_RUNL) ? 1u : 0u)
+                               | ((reached & REACHED_LEAVE) ? 2u : 0u)
+                               | ((reached & REACHED_EXIT) ? 4u : 0u);
+                const u32 steps = count > 99999 ? 99999 : count;
+                PANIC(CAT_BOX, (int)(steps * 10000 +
+                                     (last == BOX_ARMED ? 999 : (last % 1000)) * 10 +
+                                     fate));
+            }
         }
     }
 
