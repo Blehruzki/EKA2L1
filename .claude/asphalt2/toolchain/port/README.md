@@ -1106,3 +1106,18 @@ nothing else. Slot 11 of a 9.x `CEikAppUi` is
 `HandleApplicationSpecificEventL`, which is also the check that the slot
 numbering is right -- slot 16 of the same table is `ConstructL`, which is the
 one the wrapper has been patching all along.
+
+### Versioning the record
+
+The first build of the slot recorder reported `2500` on the phone -- exactly
+what the build before it had left behind. A record from an older build reads
+back as a plausible number and says nothing: the file was eight bytes in the
+old format, the new build read twelve, and the third field came back zero.
+
+So the file now carries what wrote it, and a record from anything else is
+ignored. It is also re-armed by being replaced rather than deleted, since a
+delete the file server refuses would leave the same stale record to be reported
+again on every launch afterwards -- which is the shape of what happened.
+
+Proved by planting an old-format record and running: it is ignored, the file is
+re-armed, the run records, and the next run reports it.

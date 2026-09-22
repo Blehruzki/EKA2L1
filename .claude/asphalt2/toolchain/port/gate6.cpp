@@ -302,7 +302,7 @@ struct Context {
     // it. Two launches, one answer.
     u32 boxFs[2];
     u32 boxFile[4];
-    u32 boxData[3];
+    u32 boxData[4];
     u32 boxDes[2];
     u32 traceCount;         // how many imports have gone past
     u32 lastCall;           // the last slot of ours the framework called
@@ -442,6 +442,9 @@ void cperiodic_start(void *self, int delay, int interval, CallBack cb);
 
 static const u16 kBoxPath[] = {'E',':','\\','g','6','b','o','x','.','d','a','t'};
 
+// A record left by a different build is worse than no record: it reads back as
+// a plausible number and says nothing. So the file carries what wrote it.
+enum { BOX_MAGIC = 0x47364232 };        // "G6B2"
 enum { BOX_NONE = 0xFFFFFFFF, BOX_ARMED = 0xFFFFFFFE };
 enum { EFileWrite = 0x200, EFileShareAny = 0x30 };
 
@@ -453,10 +456,11 @@ static void box_name(Ptrc16 *name)
 
 static void box_flush(Context *c)
 {
-    c->boxData[0] = c->lastImport;
-    c->boxData[1] = c->reached;
-    c->boxData[2] = c->lastCall;
-    c->boxDes[0] = ((u32)EPtrC << KTypeShift) | 12;
+    c->boxData[0] = BOX_MAGIC;
+    c->boxData[1] = c->lastImport;
+    c->boxData[2] = c->reached;
+    c->boxData[3] = c->lastCall;
+    c->boxDes[0] = ((u32)EPtrC << KTypeShift) | 16;
     c->boxDes[1] = (u32)c->boxData;
     file_write_at(c->boxFile, 0, c->boxDes);
     file_flush(c->boxFile);
@@ -878,44 +882,41 @@ static u32 load_and_start()
     ctx->spareEnd = trace + traceBytes;
     ctx->cppRuntime = (u32)&drtaeabi_pure_virtual;
 
-    // Read what the last run got to, if it left anything, and say so. Then the
-    // file is gone and this run is an ordinary one that records again.
+    // Read what the last run got to, if it left anything this build wrote, and
+    // say so. The file is armed again by replacing it rather than deleting it,
+    // so that a delete the file server refuses cannot leave a stale record to
+    // be reported over and over.
     {
         Ptrc16 name;
         box_name(&name);
+        u32 magic = 0, last = BOX_NONE, reached = 0, call = 0;
         if (fs_connect(ctx->boxFs, -1) == 0) {
             if (file_open(ctx->boxFile, ctx->boxFs, &name, 1) == 0) {
                 Ptr8 des;
                 des.lengthAndType = (u32)EPtr << KTypeShift;
-                des.maxLength = 12;
+                des.maxLength = 16;
                 des.ptr = (u8 *)ctx->boxData;
-                ctx->boxData[0] = BOX_NONE;
-                ctx->boxData[1] = 0;
-                ctx->boxData[2] = 0;
+                for (int i = 0; i < 4; i++) ctx->boxData[i] = 0;
                 file_read(ctx->boxFile, &des);
                 rhandle_close(ctx->boxFile);
-                const u32 last = ctx->boxData[0];
-                fs_delete(ctx->boxFs, &name);
-                // One number, three fields: which of our slots the framework
-                // called last, which import the game called last, and which
-                // callbacks had fired. An import index runs past 99, so it
-                // gets three digits of its own.
-                if (last != BOX_NONE)
-                    PANIC(CAT_BOX, (int)(ctx->boxData[2] * 100000 +
-                                         (last % 1000) * 100 +
-                                         (ctx->boxData[1] & 99)));
+                magic = ctx->boxData[0];
+                last = ctx->boxData[1];
+                reached = ctx->boxData[2];
+                call = ctx->boxData[3];
             }
-            // Nothing recorded, so record. Armed but never written means the
-            // timer never got to run, which is itself an answer.
             if (file_replace(ctx->boxFile, ctx->boxFs, &name, EFileWrite | EFileShareAny) == 0) {
-                ctx->boxData[0] = BOX_ARMED;
-                ctx->boxData[1] = 0;
-                ctx->boxData[2] = 0;
-                ctx->boxDes[0] = ((u32)EPtrC << KTypeShift) | 12;
-                ctx->boxDes[1] = (u32)ctx->boxData;
-                file_write_at(ctx->boxFile, 0, ctx->boxDes);
-                file_flush(ctx->boxFile);
+                ctx->lastImport = BOX_ARMED;    // armed, nothing recorded yet
+                box_flush(ctx);
+                ctx->lastImport = 0xFFFF;
             }
+            // One number, three fields: which of our slots the framework called
+            // last, which import the game called last, and which callbacks had
+            // fired. An import index runs past 99, so it gets three digits, and
+            // 999 means the file was armed and nothing was ever written to it.
+            if (magic == BOX_MAGIC)
+                PANIC(CAT_BOX, (int)(call * 100000 +
+                                     (last == BOX_ARMED ? 999 : (last % 1000)) * 100 +
+                                     (reached & 99)));
         }
     }
 
