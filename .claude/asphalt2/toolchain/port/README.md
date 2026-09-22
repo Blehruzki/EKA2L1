@@ -759,3 +759,69 @@ object it cannot read.
 - **Reading stock images.** E32 code is compressed with Symbian's own deflate
   (`0x101F7AFC`), which is not zlib; reading the import section of a shipped
   binary needs that inflater ported.
+
+## Reading the ROM
+
+The question the wrapper ran into -- what the old class layouts actually are --
+is answered by the N-Gage ROM itself, which holds the 7.0s framework the game
+was built against. EKA2L1 extracts a ROM into its z drive, and those files are
+not E32 images: no `EPOC` signature, no import section, no relocations. Code in
+a ROM is executed in place, so it is linked for its final address and every
+pointer in it is already right.
+
+What there is, per `loader/romimage.h`: a `TRomImageHeader` -- 100 bytes up to
+EKA2, 120 after -- then the code, with an export directory inside it holding one
+absolute address per ordinal. `romimg.py` reads both eras; which header length
+applies is settled by trying each and keeping the one whose export directory
+reads back as addresses inside the code, rather than by trusting the device.
+Two things the format lets us check, and it does: the DLL reference table
+follows the code exactly, and every export points inside it. A few of the
+extracted files stop short of their own code, so anything past the end of the
+file is reported missing rather than read as zeroes.
+
+### What it says about the old layouts
+
+`CCoeControl::CCoeControl()` -- cone ordinal 236, Thumb, since the N-Gage ROM
+is Thumb-compiled:
+
+```
+push {r4, lr}
+bl   CBase::CBase()
+[this+4]  = <vtable>        @ a second base, at offset 4
+[this+0]  = <vtable>
+[this+0x10] = 0
+[this+0x14] = 0
+[this+0x18] = 0
+[this+0x1c] = 0
+r0 = this + 0x28; bl ...    @ a subobject at 0x28
+bl   CCoeEnv::Static()
+[this+8] = r0               @ iCoeEnv
+```
+
+So old `CCoeControl` is not four bytes after all. It has a base of its own at
+offset 4 -- which is why every class derived from it writes a vtable there too,
+and why the offsets looked impossible -- and `iCoeEnv` at offset 8. That is
+exactly the `[control+8]` the game reads.
+
+`CCoeControl::SystemGc()` is two instructions, and settles the rest:
+
+```
+ldr r0, [r0, #8]        @ iCoeEnv
+ldr r0, [r0, #0x34]     @ iSystemGc
+```
+
+`CCoeEnv::SwapSystemGc` agrees: `iSystemGc` is at 0x34. With the member order
+from `COEMAIN.H` -- `iAppUi, iFsSession, iWsSession, iRootWin, iSystemGc,
+iNormalFont, iScreen` -- that puts `iScreen` at 0x3c and `iWsSession` at 0x20,
+which is precisely what the game reads out of its `iCoeEnv`: the address of
+`+0x20` and the pointer at `+0x3c`, handed to its graphics object along with
+`Window()`. A window server session, a screen device and a window.
+
+The same measurement on the 5320's cone puts 9.x `iSystemGc` at 0x40, so the
+class grew by 12 bytes ahead of it. Nothing between `iSystemGc` and `iScreen`
+changed size, so 9.x `iScreen` is at 0x48; where `iWsSession` landed is not
+settled by this and still has to be measured.
+
+Neither `WsSession()` nor `ScreenDevice()` is exported, in either era -- both
+are inline, which is why the game reads the fields directly and why the port
+has to as well.
