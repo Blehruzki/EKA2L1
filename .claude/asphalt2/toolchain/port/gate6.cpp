@@ -58,6 +58,10 @@ extern const u32 kShimEuserCount;
 // then (for a modifiable one) a maximum length, then the data pointer.
 enum { EBufC = 0, EPtrC = 1, EPtr = 2, EBufType = 3, KTypeShift = 28 };
 
+// The record: four counters and a ring of the last sixteen imports, which is
+// what says what the game was doing rather than only how far it had got.
+enum { BOX_RING = 16, BOX_WORDS = 4 + BOX_RING, BOX_BYTES = BOX_WORDS * 4 };
+
 struct Ptrc16 { u32 lengthAndType; const u16 *text; };
 struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
 
@@ -419,7 +423,7 @@ struct Context {
     // it. Two launches, one answer.
     u32 boxFs[2];
     u32 boxFile[4];
-    u32 boxData[4];
+    u32 boxData[BOX_WORDS];
     u32 boxDes[2];
     u32 noteText[4];        // seven characters, for the emulator's log
     u32 noteDes[2];
@@ -637,7 +641,7 @@ static const u16 kBoxPath[] = {'E',':','\\','g','6','b','o','x','.','d','a','t'}
 
 // A record left by a different build is worse than no record: it reads back as
 // a plausible number and says nothing. So the file carries what wrote it.
-enum { BOX_MAGIC = 0x47364233 };        // "G6B3"
+enum { BOX_MAGIC = 0x47364234 };        // "G6B4"
 enum { BOX_NONE = 0xFFFFFFFF, BOX_ARMED = 0xFFFFFFFE };
 enum { EFileWrite = 0x200, EFileShareAny = 0x30 };
 
@@ -647,16 +651,73 @@ static void box_name(Ptrc16 *name)
     name->text = kBoxPath;
 }
 
-static void box_flush(Context *c)
+// Writing is cheap enough to do on every import; it is the flush that costs,
+// and the file server still has what was written when the process dies.
+static void box_write(Context *c)
 {
     c->boxData[0] = BOX_MAGIC;
     c->boxData[1] = c->lastImport;
     c->boxData[2] = c->reached;
     c->boxData[3] = c->traceCount;
-    c->boxDes[0] = ((u32)EPtrC << KTypeShift) | 16;
+    c->boxDes[0] = ((u32)EPtrC << KTypeShift) | BOX_BYTES;
     c->boxDes[1] = (u32)c->boxData;
     file_write_at(c->boxFile, 0, c->boxDes);
+}
+
+static void box_flush(Context *c)
+{
+    box_write(c);
     file_flush(c->boxFile);
+}
+
+static const u16 kTextPath[] = {'E',':','\\','g','6','b','o','x','.','t','x','t'};
+
+static int put_u32(u8 *out, u32 v)
+{
+    u8 digits[10];
+    int n = 0;
+    do { digits[n++] = (u8)('0' + v % 10); v /= 10; } while (v);
+    for (int i = 0; i < n; i++) out[i] = digits[n - 1 - i];
+    return n;
+}
+
+// A panic carries one number. This carries the whole tail, in a file the phone
+// can open: how many imports went past, which one it was on, what had happened
+// and, oldest first, the last sixteen imports the game made. Written on the
+// launch after the one that stopped, beside the record it is made from.
+static void box_report(Context *c, u32 count)
+{
+    u8 text[320];
+    int n = 0;
+    const u8 kSteps[] = { 's','t','e','p','s',' ' };
+    const u8 kLast[] = { '\n','l','a','s','t',' ' };
+    const u8 kFlags[] = { '\n','f','l','a','g','s',' ' };
+    const u8 kTail[] = { '\n','t','a','i','l' };
+    for (u32 i = 0; i < sizeof kSteps; i++) text[n++] = kSteps[i];
+    n += put_u32(text + n, count);
+    for (u32 i = 0; i < sizeof kLast; i++) text[n++] = kLast[i];
+    n += put_u32(text + n, c->boxData[1]);
+    for (u32 i = 0; i < sizeof kFlags; i++) text[n++] = kFlags[i];
+    n += put_u32(text + n, c->boxData[2]);
+    for (u32 i = 0; i < sizeof kTail; i++) text[n++] = kTail[i];
+    for (u32 i = 0; i < BOX_RING; i++) {
+        text[n++] = ' ';
+        n += put_u32(text + n, c->boxData[4 + ((count + i) & (BOX_RING - 1))]);
+    }
+    text[n++] = '\n';
+
+    u32 file[4] = { 0, 0, 0, 0 };
+    Ptrc16 name;
+    name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kTextPath / 2);
+    name.text = kTextPath;
+    if (file_replace(file, c->boxFs, &name, EFileWrite | EFileShareAny) == 0) {
+        u32 des[2];
+        des[0] = ((u32)EPtrC << KTypeShift) | (u32)n;
+        des[1] = (u32)text;
+        file_write_at(file, 0, des);
+        file_flush(file);
+        rhandle_close(file);
+    }
 }
 
 // The trace itself does the recording, because the crash we are after happens
@@ -704,10 +765,13 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
         box_flush(c);
     }
     c->lastImport = index;
-    // The first stages make fewer than BOX_EVERY calls in total, so record
-    // every one of those and thin out later.
-    if (++c->traceCount <= 64 || (c->traceCount % BOX_EVERY) == 0)
+    c->boxData[4 + (c->traceCount & (BOX_RING - 1))] = index;
+    // Every import is written; only the flush is thinned out.
+    ++c->traceCount;
+    if (c->traceCount <= 64 || (c->traceCount % BOX_EVERY) == 0)
         box_flush(c);
+    else
+        box_write(c);
 }
 
 // The framework calling one of our objects. Rare enough to write out every
@@ -1331,15 +1395,16 @@ static u32 load_and_start()
             if (file_open(ctx->boxFile, ctx->boxFs, &name, 1) == 0) {
                 Ptr8 des;
                 des.lengthAndType = (u32)EPtr << KTypeShift;
-                des.maxLength = 16;
+                des.maxLength = BOX_BYTES;
                 des.ptr = (u8 *)ctx->boxData;
-                for (int i = 0; i < 4; i++) ctx->boxData[i] = 0;
+                for (int i = 0; i < BOX_WORDS; i++) ctx->boxData[i] = 0;
                 file_read(ctx->boxFile, &des);
                 rhandle_close(ctx->boxFile);
                 magic = ctx->boxData[0];
                 last = ctx->boxData[1];
                 reached = ctx->boxData[2];
                 count = ctx->boxData[3];
+                box_report(ctx, count);
             }
             if (file_replace(ctx->boxFile, ctx->boxFs, &name, EFileWrite | EFileShareAny) == 0) {
                 ctx->lastImport = BOX_ARMED;    // armed, nothing recorded yet

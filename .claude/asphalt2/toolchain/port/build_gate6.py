@@ -32,4 +32,8 @@ buildapp.build('gate6', 0xE0001006, 'Gate6', sys.argv[1] if len(sys.argv) > 1 el
                                  'coecontrol_createwindowl']),
                         (DRTAEABI, ['drtaeabi_pure_virtual', 'cpprt_globals_ctor'])],
                sources=('gate6.cpp', 'gate4_shim.cpp'),
+               # The N-Gage gave the game 8 KB of stack and that was enough
+               # there; on 9.x the framework underneath it is deeper, and a
+               # stack that runs out is a fault with nothing to say for itself.
+               stack=0x10000,
                heap_max=0x4000000)
