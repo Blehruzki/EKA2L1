@@ -192,7 +192,7 @@ u32 old_call1(const void *object, int slot, u32 arg);
 // down as one. The old objects leak, which for now costs nothing.
 enum { VT_HEADER = 2 };
 enum { APP_SLOTS = 18, SLOT_APP_DLL_UID = 5, SLOT_CREATE_DOCUMENT = 17 };
-enum { DOC_SLOTS = 34, SLOT_CREATE_APP_UI = 19 };
+enum { DOC_SLOTS = 23, SLOT_CREATE_APP_UI = 19 };
 enum { UI_SLOTS = 48, SLOT_UI_CONSTRUCT = 16 };
 
 // The app UI is the object the framework touches last before it dies, and ours
@@ -231,7 +231,27 @@ enum { IMPORT_BASECONSTRUCTL = 9 };     // avkon CAknAppUi::BaseConstructL(TInt)
 // reference, through its own layout.
 enum { COEENV_BIAS = 0x0c };
 enum { OLD_CONTROL_BYTES = 0x30, OLD_CONTROL_COEENV = 0x08, OLD_CONTROL_WIN = 0x20 };
-enum { NEW_CONTROL_WIN = 0x28, CONTROL_SLOTS = 27 };
+// Every one of these was measured against its own vtable in the 5320 ROM,
+// counting until the table ends, rather than taken from the game's old tables
+// or from counting a header. Too many is harmless -- the extra slots are never
+// called -- but too few is fatal: CCoeControl::SetExtent calls slot 27, and a
+// table copied at 27 slots ends one short of it.
+//
+//   CCoeControl 44   CEikApplication 18   CAknDocument 23   CAknAppUi 45
+//   CTimer 6
+enum { NEW_CONTROL_WIN = 0x28, CONTROL_SLOTS = 44 };
+
+// The control is where the game draws, so its overrides have to come back to
+// it. Its old vtable overrides four slots, and the two tables were lined up by
+// naming both out of their own ROMs and matching the inherited entries between
+// them:
+//
+//   old  0 destructor        -> 9.x keeps its own
+//   old  1 OfferKeyEventL    -> 9.x 3    (two arguments: not yet)
+//   old 19 FocusChanged      -> 9.x 26
+//   old 24 Draw              -> 9.x 41
+enum { OLD_CTL_FOCUS = 19, OLD_CTL_DRAW = 24 };
+enum { NEW_CTL_FOCUS = 26, NEW_CTL_DRAW = 41 };
 
 // Direct screen access is the first thing that calls the game back. The window
 // server aborts it whenever the screen changes hands, and calls the observer
@@ -309,6 +329,7 @@ struct Context {
     int pathLen;
     u32 lastImport;         // the last import the game called: see the tracer
     u32 *oldObserver;       // the game's MDirectScreenAccess, old layout
+    u32 *oldControl;        // the game's CCoeControl, old layout
     u32 *oldTimer;          // the game's CTimer, old layout
     u32 *wrapTimer;         // the 9.x CTimer the scheduler owns
     u32 newTimerCtor;       // 9.x CTimer::CTimer(TInt), as the shim resolved it
@@ -682,6 +703,16 @@ extern "C" void *gate6_coecontrol_ctor(u32 *self)
     return self;
 }
 
+extern "C" void gate6_control_draw(void *, u32 rect, Context *c)
+{
+    old_call1(c->oldControl, OLD_CTL_DRAW, rect);
+}
+
+extern "C" void gate6_control_focus(void *, u32 drawNow, Context *c)
+{
+    old_call1(c->oldControl, OLD_CTL_FOCUS, drawNow);
+}
+
 // A window belongs to a 9.x control, so build one and lend the game its window:
 // old Window() is one instruction, a load from offset 0x20, so putting the
 // window there is all it takes for the game to find it.
@@ -689,9 +720,14 @@ extern "C" void gate6_create_window(u32 *oldControl, int, Context *c)
 {
     u32 *ctl = (u32 *)user_allocz(WRAP_BYTES);
     if (!ctl) PANIC(CAT_MEM, -33);
+    c->oldControl = oldControl;
     coecontrol_ctor(ctl);
     {
         u32 *cvt = copy_vtable(vtable_of(ctl), CONTROL_SLOTS);
+        cvt[VT_HEADER + NEW_CTL_DRAW] = ctx_thunk(c->spare, c, (u32)&gate6_control_draw);
+        c->spare += TRACE;
+        cvt[VT_HEADER + NEW_CTL_FOCUS] = ctx_thunk(c->spare, c, (u32)&gate6_control_focus);
+        c->spare += TRACE;
         instrument(c, cvt, CONTROL_SLOTS, OBJ_CONTROL);
         ctl[0] = (u32)(cvt + VT_HEADER);
     }

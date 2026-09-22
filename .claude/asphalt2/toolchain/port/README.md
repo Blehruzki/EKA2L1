@@ -1218,3 +1218,39 @@ them pass in a run where the second used to be fatal, and the application gets
 as far as the game's own control construction before the next thing stops it --
 a virtual call through a null vptr from inside cone, which is a different
 question.
+
+## Measuring the vtables, and the control's own slots
+
+A wrapper's vtable is copied from a constructed object, and the copy has to be
+long enough. `CONTROL_SLOTS` was 27 -- taken from the *game's* old control
+vtable -- while 9.x `CCoeControl` has 44, and `CCoeControl::SetExtent` calls
+slot 27:
+
+```
+805717ca  ldr r0, [r4]
+805717cc  ldr r1, [r0, #0x6c]    @ slot 27
+805717d0  blx r1
+```
+
+One past the end of the copy, so a jump into whatever followed. All five are
+now measured against their own vtable in the ROM, counting until the table
+ends: `CCoeControl` 44, `CEikApplication` 18, `CAknDocument` 23, `CAknAppUi`
+45, `CTimer` 6. Too many is harmless; too few is this.
+
+With that the application runs without crashing -- but drew nothing, because
+the framework was calling our wrapper control's `Draw`, which is a plain 9.x
+no-op, while the game's own sat unbridged. Lining the two tables up by naming
+both out of their own ROMs and matching the inherited entries:
+
+```
+old  0 destructor      -> 9.x keeps its own
+old  1 OfferKeyEventL  -> 9.x 3     (two arguments, so not yet)
+old 19 FocusChanged    -> 9.x 26
+old 24 Draw            -> 9.x 41
+```
+
+Bridging `Draw` and `FocusChanged` puts the game's own drawing code back in the
+path, and the trace shows it: the last import is now 68,
+`CCoeControl::IsFocused()`, which the game calls from inside its `Draw`. The
+screen stays black because the game renders through direct screen access rather
+than the window server, which is the next thing to follow.
