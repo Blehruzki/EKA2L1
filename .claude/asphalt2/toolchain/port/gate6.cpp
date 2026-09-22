@@ -415,10 +415,16 @@ extern "C" void gate6_baseconstructl(void *, int, Context *c)
 extern "C" void gate6_ui_construct(void *self)
 {
     // From here the game's own ConstructL drives, and whatever it reaches that
-    // the shim cannot answer panics with that import's index. It now runs to
-    // the end, so let it return and the framework take over.
+    // the shim cannot answer panics with that import's index.
     context_of(self)->wrapUi = (u32 *)self;
     old_call((const u32 *)((const u32 *)self)[WRAP_OLD], OLD_UI_CONSTRUCT);
+
+    // In the emulator this runs to the end and the framework takes the
+    // application on into its event loop, where it faults. A phone faults too,
+    // but says only KERN-EXEC 3, so this marks the halfway point: reaching it
+    // says the fault is past here, and not reaching it says the fault is in
+    // ConstructL itself, where the phone and the emulator disagree.
+    PANIC(CAT_CHN, 4);
 }
 
 extern "C" void *gate6_create_app_ui(void *self)
