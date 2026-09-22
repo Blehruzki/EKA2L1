@@ -1088,7 +1088,21 @@ back.
 
 Proved in the emulator before being sent anywhere, which is what the emulator
 is still good for even though it cannot run the application past its own first
-leave. Run one leaves `lastImport = 25`; run two reports `G6BOX 2500`. Import
-25 is `CAknAppUi::KeySounds()`, the second-to-last call the game's `ConstructL`
+leave. Run one leaves `lastImport = 25`; run two reports it. Import 25 is
+`CAknAppUi::KeySounds()`, the second-to-last call the game's `ConstructL`
 makes -- exactly where it should be, since nothing of the game's runs after
 that in the emulator.
+
+The phone said the same thing: 25, and no game code after `ConstructL` at all.
+So the fault is in framework code working on our objects, and the next thing
+to record is which of them it touches. Every slot of every wrapper's vtable --
+application, document, app UI, control, timer -- now goes through a thunk that
+notes the object and the slot and carries on. The report carries three fields:
+the last slot of ours the framework called, the last import the game made, and
+which callbacks had fired.
+
+In the emulator that reads `G6BOX 77945700`: object 3 slot 11, import 457,
+nothing else. Slot 11 of a 9.x `CEikAppUi` is
+`HandleApplicationSpecificEventL`, which is also the check that the slot
+numbering is right -- slot 16 of the same table is `ConstructL`, which is the
+one the wrapper has been patching all along.

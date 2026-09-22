@@ -210,7 +210,7 @@ enum { IMPORT_BASECONSTRUCTL = 9 };     // avkon CAknAppUi::BaseConstructL(TInt)
 // reference, through its own layout.
 enum { COEENV_BIAS = 0x0c };
 enum { OLD_CONTROL_BYTES = 0x30, OLD_CONTROL_COEENV = 0x08, OLD_CONTROL_WIN = 0x20 };
-enum { NEW_CONTROL_WIN = 0x28 };
+enum { NEW_CONTROL_WIN = 0x28, CONTROL_SLOTS = 27 };
 
 // Direct screen access is the first thing that calls the game back. The window
 // server aborts it whenever the screen changes hands, and calls the observer
@@ -302,9 +302,12 @@ struct Context {
     // it. Two launches, one answer.
     u32 boxFs[2];
     u32 boxFile[4];
-    u32 boxData[2];
+    u32 boxData[3];
     u32 boxDes[2];
     u32 traceCount;         // how many imports have gone past
+    u32 lastCall;           // the last slot of ours the framework called
+    u8 *spare;              // unused executable room, handed out as needed
+    u8 *spareEnd;
 };
 
 static Context *context_of(const void *wrapper)
@@ -380,8 +383,11 @@ static u32 this_thunk(u8 *code, const void *cell, u32 target, int reg)
 enum { TRACE = 48 };
 
 extern "C" void gate6_trace(u32 index, Context *c);
+extern "C" void gate6_slot(u32 code, Context *c);
 
-static u32 trace_thunk(u8 *code, const void *ctx, u32 index, u32 target)
+// Records `value` through `note` and carries on to `target`, leaving every
+// argument register as it found them.
+static u32 trace_thunk(u8 *code, const void *ctx, u32 value, u32 target, u32 note)
 {
     u32 *b = (u32 *)code;
     b[0] = 0xE92D500F;                  // stmdb sp!, {r0-r3, r12, lr}  -- 24 bytes, aligned
@@ -391,9 +397,9 @@ static u32 trace_thunk(u8 *code, const void *ctx, u32 index, u32 target)
     b[4] = 0xE12FFF3C;                  // blx   r12
     b[5] = 0xE8BD500F;                  // ldmia sp!, {r0-r3, r12, lr}
     b[6] = 0xE59FF008;                  // ldr   pc, [pc, #8]
-    b[7] = index;
+    b[7] = value;
     b[8] = (u32)ctx;
-    b[9] = (u32)&gate6_trace;
+    b[9] = note;
     b[10] = target;
     return (u32)b;
 }
@@ -449,7 +455,8 @@ static void box_flush(Context *c)
 {
     c->boxData[0] = c->lastImport;
     c->boxData[1] = c->reached;
-    c->boxDes[0] = ((u32)EPtrC << KTypeShift) | 8;
+    c->boxData[2] = c->lastCall;
+    c->boxDes[0] = ((u32)EPtrC << KTypeShift) | 12;
     c->boxDes[1] = (u32)c->boxData;
     file_write_at(c->boxFile, 0, c->boxDes);
     file_flush(c->boxFile);
@@ -466,6 +473,29 @@ extern "C" void gate6_trace(u32 index, Context *c)
     c->lastImport = index;
     if (++c->traceCount == 1 || (c->traceCount % BOX_EVERY) == 0)
         box_flush(c);
+}
+
+// The framework calling one of our objects. Rare enough to write out every
+// time, so the record is exact rather than to the nearest sixteen.
+extern "C" void gate6_slot(u32 code, Context *c)
+{
+    c->lastCall = code;
+    box_flush(c);
+}
+
+// Every slot of a wrapper's vtable, so that whatever the framework does to it
+// last is on record. The object is named in the top byte.
+enum { OBJ_APP = 1, OBJ_DOC = 2, OBJ_UI = 3, OBJ_CONTROL = 4, OBJ_TIMER = 5 };
+
+static void instrument(Context *c, u32 *vt, int slots, u32 object)
+{
+    for (int i = 0; i < slots; i++) {
+        if (c->spare + TRACE > c->spareEnd)
+            return;
+        vt[VT_HEADER + i] = trace_thunk(c->spare, c, (object << 8) | (u32)i,
+                                        vt[VT_HEADER + i], (u32)&gate6_slot);
+        c->spare += TRACE;
+    }
 }
 
 // And a timer as well, for a fault that happens once the scheduler is running,
@@ -534,6 +564,7 @@ extern "C" void *gate6_ctimer_ctor(u32 *oldSelf, int priority, Context *c)
     vt[VT_HEADER + NEW_DOCANCEL] = c->timerThunks[0];
     vt[VT_HEADER + NEW_RUNL] = c->timerThunks[1];
     vt[VT_HEADER + NEW_RUNERROR] = c->timerThunks[2];
+    instrument(c, vt, TIMER_SLOTS, OBJ_TIMER);
     t[0] = (u32)(vt + VT_HEADER);
 
     c->wrapTimer = t;
@@ -630,6 +661,11 @@ extern "C" void gate6_create_window(u32 *oldControl, int, Context *c)
     u32 *ctl = (u32 *)user_allocz(WRAP_BYTES);
     if (!ctl) PANIC(CAT_MEM, -33);
     coecontrol_ctor(ctl);
+    {
+        u32 *cvt = copy_vtable(vtable_of(ctl), CONTROL_SLOTS);
+        instrument(c, cvt, CONTROL_SLOTS, OBJ_CONTROL);
+        ctl[0] = (u32)(cvt + VT_HEADER);
+    }
     coecontrol_createwindowl(ctl);
     oldControl[OLD_CONTROL_WIN / 4] = ctl[NEW_CONTROL_WIN / 4];
     c->wrapControl = ctl;
@@ -667,6 +703,7 @@ extern "C" void *gate6_create_app_ui(void *self)
 
     u32 *vt = copy_vtable(vtable_of(ui), UI_SLOTS);
     vt[VT_HEADER + SLOT_UI_CONSTRUCT] = (u32)&gate6_ui_construct;
+    instrument(context_of(self), vt, UI_SLOTS, OBJ_UI);
     ui[0] = (u32)(vt + VT_HEADER);
     return ui;
 }
@@ -687,6 +724,7 @@ extern "C" void *gate6_create_document(void *self)
 
     u32 *vt = copy_vtable(vtable_of(doc), DOC_SLOTS);
     vt[VT_HEADER + SLOT_CREATE_APP_UI] = (u32)&gate6_create_app_ui;
+    instrument(context_of(self), vt, DOC_SLOTS, OBJ_DOC);
     doc[0] = (u32)(vt + VT_HEADER);
     return doc;
 }
@@ -768,7 +806,7 @@ static u32 load_and_start()
 
     const u32 nImports = (h->codeSize - h->textSize) / 4;
     const u32 stubBytes = nImports * SLOT;
-    const u32 traceBytes = nImports * TRACE + 8 * TRACE;  // spares for our own thunks
+    const u32 traceBytes = nImports * TRACE + 200 * TRACE;  // spares for our own thunks
     const u32 chunkSize = h->codeSize + stubBytes + traceBytes;
 
     u32 chunk[2] = { 0, 0 };
@@ -836,6 +874,8 @@ static u32 load_and_start()
     ctx->path = paths[chosen];
     ctx->pathLen = lens[chosen];
     ctx->lastImport = 0xFFFF;               // nothing yet
+    ctx->spare = trace + nImports * TRACE + 8 * TRACE;   // past the fixed thunks
+    ctx->spareEnd = trace + traceBytes;
     ctx->cppRuntime = (u32)&drtaeabi_pure_virtual;
 
     // Read what the last run got to, if it left anything, and say so. Then the
@@ -847,23 +887,31 @@ static u32 load_and_start()
             if (file_open(ctx->boxFile, ctx->boxFs, &name, 1) == 0) {
                 Ptr8 des;
                 des.lengthAndType = (u32)EPtr << KTypeShift;
-                des.maxLength = 8;
+                des.maxLength = 12;
                 des.ptr = (u8 *)ctx->boxData;
                 ctx->boxData[0] = BOX_NONE;
                 ctx->boxData[1] = 0;
+                ctx->boxData[2] = 0;
                 file_read(ctx->boxFile, &des);
                 rhandle_close(ctx->boxFile);
                 const u32 last = ctx->boxData[0];
                 fs_delete(ctx->boxFs, &name);
+                // One number, three fields: which of our slots the framework
+                // called last, which import the game called last, and which
+                // callbacks had fired. An import index runs past 99, so it
+                // gets three digits of its own.
                 if (last != BOX_NONE)
-                    PANIC(CAT_BOX, (int)(last * 100 + (ctx->boxData[1] & 99)));
+                    PANIC(CAT_BOX, (int)(ctx->boxData[2] * 100000 +
+                                         (last % 1000) * 100 +
+                                         (ctx->boxData[1] & 99)));
             }
             // Nothing recorded, so record. Armed but never written means the
             // timer never got to run, which is itself an answer.
             if (file_replace(ctx->boxFile, ctx->boxFs, &name, EFileWrite | EFileShareAny) == 0) {
                 ctx->boxData[0] = BOX_ARMED;
                 ctx->boxData[1] = 0;
-                ctx->boxDes[0] = ((u32)EPtrC << KTypeShift) | 8;
+                ctx->boxData[2] = 0;
+                ctx->boxDes[0] = ((u32)EPtrC << KTypeShift) | 12;
                 ctx->boxDes[1] = (u32)ctx->boxData;
                 file_write_at(ctx->boxFile, 0, ctx->boxDes);
                 file_flush(ctx->boxFile);
@@ -1041,7 +1089,7 @@ static u32 load_and_start()
 
     // Last, so that it records every import however it ended up being answered.
     for (u32 i = 0; i < nImports; i++)
-        iat[i] = trace_thunk(trace + TRACE * i, ctx, i, iat[i]);
+        iat[i] = trace_thunk(trace + TRACE * i, ctx, i, iat[i], (u32)&gate6_trace);
 
     // Enter it. EKA1 calls a DLL's entry point with EDllProcessAttach first,
     // then apparc asks ordinal 1 for the application object.
@@ -1062,6 +1110,7 @@ static u32 load_and_start()
     u32 *vt = copy_vtable(vtable_of(wrap), APP_SLOTS);
     vt[VT_HEADER + SLOT_APP_DLL_UID] = (u32)&gate6_app_dll_uid;
     vt[VT_HEADER + SLOT_CREATE_DOCUMENT] = (u32)&gate6_create_document;
+    instrument(ctx, vt, APP_SLOTS, OBJ_APP);
     wrap[0] = (u32)(vt + VT_HEADER);
     return (u32)wrap;
 
