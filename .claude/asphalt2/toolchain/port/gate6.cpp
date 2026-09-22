@@ -757,6 +757,13 @@ static u32 load_and_start()
         b[3] = (u32)ctx;
         b[4] = (u32)&gate6_fault;
         user_setexceptionhandler(b, 0xFFFFFFFF);
+
+        // One question, asked of the phone rather than assumed: does a fault
+        // reach the handler here? The emulator never calls it, so the trace has
+        // been useless; if hardware does, every later fault names itself and
+        // there is no more guessing. G6FLT says yes, KERN-EXEC 3 says no.
+        ctx->lastImport = 1234;
+        ctx->reached = *(volatile u32 *)0;
     }
     for (u32 i = 0; i < nImports; i++) {
         u32 *s = (u32 *)(stub + SLOT * i);
