@@ -144,6 +144,7 @@ u32 old_call1(const void *object, int slot, u32 arg);
 
 #define CAT_CHN {'G','6','C','H','N'}
 #define CAT_FLT {'G','6','F','L','T'}
+#define CAT_TMR {'G','6','T','M','R'}
 #define CAT_UID {'G','6','U','I','D'}
 
 // Two object graphs, not one. The 9.x framework gets objects of its own,
@@ -275,6 +276,7 @@ struct Context {
     u32 *wrapTimer;         // the 9.x CTimer the scheduler owns
     u32 newTimerCtor;       // 9.x CTimer::CTimer(TInt), as the shim resolved it
     u32 timerThunks[3];     // DoCancel, RunL, RunError, built in the code chunk
+    u32 reached;            // which of the game's callbacks have been entered
 };
 
 static Context *context_of(const void *wrapper)
@@ -396,8 +398,14 @@ static u32 pair_thunk(u8 *code, const void *cell0, const void *cell1, u32 target
 
 typedef void *(*TimerCtor)(void *self, int priority);
 
+// Which of the ways back into the game have been taken. A phone can report one
+// number and only once, so the ones that must not stop are recorded and the one
+// under test carries the record out with it.
+enum { REACHED_ABORT = 1, REACHED_RESTART = 2, REACHED_DOCANCEL = 4, REACHED_RUNERROR = 8 };
+
 extern "C" void gate6_timer_docancel(void *, u32, Context *c)
 {
+    c->reached |= REACHED_DOCANCEL;
     old_call(c->oldTimer, OLD_DOCANCEL);
 }
 
@@ -407,11 +415,18 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     // of its own object, so carry it across before handing over.
     c->oldTimer[ACTIVE_STATUS / 4] = c->wrapTimer[ACTIVE_STATUS / 4];
     c->oldTimer[ACTIVE_ACTIVE / 4] = c->wrapTimer[ACTIVE_ACTIVE / 4];
+
+    // Stop here rather than dispatch: reaching this says the scheduler is
+    // driving our timer and the game's RunL is where to look next, and the
+    // reason says which of the other callbacks fired before it.
+    PANIC(CAT_TMR, (int)c->reached);
+
     old_call(c->oldTimer, OLD_RUNL);
 }
 
 extern "C" u32 gate6_timer_runerror(void *, u32 error, Context *c)
 {
+    c->reached |= REACHED_RUNERROR;
     return old_call1(c->oldTimer, OLD_RUNERROR, error);
 }
 
@@ -440,11 +455,13 @@ extern "C" void *gate6_ctimer_ctor(u32 *oldSelf, int priority, Context *c)
 
 extern "C" void gate6_dsa_slot0(void *, u32 reason, Context *c)
 {
+    c->reached |= REACHED_ABORT;
     old_call1(c->oldObserver, 0, reason);
 }
 
 extern "C" void gate6_dsa_slot1(void *, u32 reason, Context *c)
 {
+    c->reached |= REACHED_RESTART;
     old_call1(c->oldObserver, 1, reason);
 }
 
