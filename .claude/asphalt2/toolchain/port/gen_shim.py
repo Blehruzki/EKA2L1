@@ -26,7 +26,7 @@ EPOC6 = '/home/user/EKA2L1/src/emu/bridge/include/bridge/epoc6.def'
 
 # Each table entry is  kind << 24 | dll index << 16 | ordinal.
 KIND_NONE, KIND_CALL, KIND_REM, KIND_LOCAL, KIND_ARG3 = 0, 1, 2, 3, 4
-KIND_SRET8 = 5
+KIND_SRET8, KIND_ARGSHIFT = 5, 6
 
 # Where the two calling conventions actually disagree. GCC98r2 returned an
 # eight-byte structure in r0 and r1; EABI returns anything over four bytes
@@ -96,9 +96,15 @@ LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL}
 # checked against the 9.x def rather than assumed; the rest of what does not
 # match is genuinely gone (CServer, CSession, TTrap, TInt64) and needs writing.
 MANUAL = {
-    # The exception handler moved from RThread to User.
+    # The exception handler moved from RThread to User -- and with it went the
+    # object. The game calls it on an RThread, so `this` is in r0 and the two
+    # real arguments are in r1 and r2; User::SetExceptionHandler wants them in
+    # r0 and r1. Forwarded as it stood, it installed the RThread's address as
+    # the handler and the handler's address as the mask, and the first
+    # exception after that jumped into nothing.
     'RThread::SetExceptionHandler(void (*)(TExcType), unsigned long)':
-        ('euser', 'User::SetExceptionHandler(void (*)(TExcType), unsigned long)', KIND_CALL),
+        ('euser', 'User::SetExceptionHandler(void (*)(TExcType), unsigned long)',
+         KIND_ARGSHIFT),
     # RFsBase went away; closing a session handle is RHandleBase::Close.
     'RFsBase::Close()': ('euser', 'RHandleBase::Close()', KIND_CALL),
     # 9.x ReAllocL takes a mode as a third argument. Zero is the old behaviour.

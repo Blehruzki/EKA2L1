@@ -1004,3 +1004,34 @@ the old way.
 
 The emulator cannot judge this one: it still stops earlier, in its own C++
 exception path while loading the FEP.
+
+### What three rounds of guessing were actually chasing
+
+The timer wrapper did not clear the fault, and nor did the observer. A probe
+that stops at the first `RunL` never fired, so the scheduler never reached the
+timer at all, and another that faults on purpose with an exception handler
+installed came back as `KERN-EXEC 3` -- so a phone does not dispatch to a user
+handler either, and there is no debugger to be had. That is worth knowing
+rather than assuming, but it left only one instrument: a panic at a point of
+our choosing.
+
+So, enumerate instead. Every import the game calls that hands the framework
+something of its own, found by pattern over the import list and confirmed at
+the call site. There were nine, and eight were accounted for. The ninth:
+
+```
+00039280  add r0, sp, #8      @ an RThread on the stack
+00039284  ldr r1, [pc, #0x188] @ the handler
+00039288  mvn r2, #0           @ the mask
+0003928c  bl  <import 359>     @ RThread::SetExceptionHandler
+```
+
+9.x moved that from `RThread` to `User`, and the shim forwarded it as an
+ordinary call -- so `User::SetExceptionHandler` received the `RThread` as its
+handler and the handler as its mask. A non-null handler at a nonsense address,
+with every exception class enabled, installed midway through `ConstructL`:
+after that, the first exception of any kind jumps into nothing, and what it
+was originally is unknowable.
+
+The fix is a third argument shape alongside the two already there: drop `this`
+and move the rest down a register.

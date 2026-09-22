@@ -45,7 +45,8 @@ struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
 
 // Every import gets a slot big enough for whichever thunk it needs.
 enum { SLOT = 48 };
-enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 5 };
+enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 5,
+       KIND_ARGSHIFT = 6 };
 enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
        LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5 };
 
@@ -291,6 +292,14 @@ extern "C" u32 gate4_main()
             s[6] = 0xE8BD0003;              // ldmia sp!, {r0, r1}
             s[7] = 0xE8BD8010;              // pop   {r4, pc}
             s[8] = (u32)fn;
+        } else if (kind == KIND_ARGSHIFT) {
+            // A member function 9.x made free: drop `this` and move the rest
+            // down a register.
+            s[0] = 0xE1A00001;              // mov r0, r1
+            s[1] = 0xE1A01002;              // mov r1, r2
+            s[2] = 0xE1A02003;              // mov r2, r3
+            s[3] = 0xE51FF004;              // ldr pc, [pc, #-4]
+            s[4] = (u32)fn;
         } else if (kind == KIND_ARG3) {
             s[0] = 0xE3A02000;              // mov r2, #0    -- the added argument
             s[1] = 0xE51FF004;              // ldr pc, [pc, #-4]

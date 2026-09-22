@@ -52,7 +52,8 @@ struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
 
 // Every import gets a slot big enough for whichever thunk it needs.
 enum { SLOT = 48 };
-enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 5 };
+enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 5,
+       KIND_ARGSHIFT = 6 };
 enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
        LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5 };
 
@@ -416,11 +417,6 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     c->oldTimer[ACTIVE_STATUS / 4] = c->wrapTimer[ACTIVE_STATUS / 4];
     c->oldTimer[ACTIVE_ACTIVE / 4] = c->wrapTimer[ACTIVE_ACTIVE / 4];
 
-    // Stop here rather than dispatch: reaching this says the scheduler is
-    // driving our timer and the game's RunL is where to look next, and the
-    // reason says which of the other callbacks fired before it.
-    PANIC(CAT_TMR, (int)c->reached);
-
     old_call(c->oldTimer, OLD_RUNL);
 }
 
@@ -758,12 +754,6 @@ static u32 load_and_start()
         b[4] = (u32)&gate6_fault;
         user_setexceptionhandler(b, 0xFFFFFFFF);
 
-        // One question, asked of the phone rather than assumed: does a fault
-        // reach the handler here? The emulator never calls it, so the trace has
-        // been useless; if hardware does, every later fault names itself and
-        // there is no more guessing. G6FLT says yes, KERN-EXEC 3 says no.
-        ctx->lastImport = 1234;
-        ctx->reached = *(volatile u32 *)0;
     }
     for (u32 i = 0; i < nImports; i++) {
         u32 *s = (u32 *)(stub + SLOT * i);
@@ -832,6 +822,14 @@ static u32 load_and_start()
             s[6] = 0xE8BD0003;              // ldmia sp!, {r0, r1}
             s[7] = 0xE8BD8010;              // pop   {r4, pc}
             s[8] = (u32)fn;
+        } else if (kind == KIND_ARGSHIFT) {
+            // A member function 9.x made free: drop `this` and move the rest
+            // down a register.
+            s[0] = 0xE1A00001;              // mov r0, r1
+            s[1] = 0xE1A01002;              // mov r1, r2
+            s[2] = 0xE1A02003;              // mov r2, r3
+            s[3] = 0xE51FF004;              // ldr pc, [pc, #-4]
+            s[4] = (u32)fn;
         } else if (kind == KIND_ARG3) {
             s[0] = 0xE3A02000;              // mov r2, #0    -- the added argument
             s[1] = 0xE51FF004;              // ldr pc, [pc, #-4]
