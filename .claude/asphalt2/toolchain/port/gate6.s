@@ -97,6 +97,9 @@ old_call1:
 
     @ cone
     IMPORT coeappui_ctor,       245  @ CCoeAppUi::CCoeAppUi()
+
+    @ drtaeabi -- referenced so the C++ runtime is a real dependency
+    IMPORT drtaeabi_pure_virtual, 189  @ __cxa_pure_virtual
     IMPORT coeenv_static,       182  @ CCoeEnv::Static()
     IMPORT coecontrol_ctor,      64  @ CCoeControl::CCoeControl()
     IMPORT coecontrol_createwindowl, 25  @ CCoeControl::CreateWindowL()

@@ -1035,3 +1035,37 @@ was originally is unknowable.
 
 The fix is a third argument shape alongside the two already there: drop `this`
 and move the rest down a register.
+
+## Why the emulator cannot judge this, and what it did show
+
+Working in the emulator instead of on the phone meant finding out why the
+emulator stops. Three things came out of it.
+
+**The official S60v3 build of the same game is installed here and runs.** That
+makes a control: whatever the emulator does to us, it does not do to a normal
+application.
+
+**The emulator's crash is its own.** Our application asks for the front-end
+processor; `avkonfep.dll` had been renamed to `.bak` in this ROM, so the load
+leaves with `KErrNotFound`, and the leave is taken by the real C++ throw
+machinery in `euser`. That reaches `__cxa_allocate_exception`, which calls
+`__cxa_get_globals` -- two instructions, a `UserSvr::DllTls` and nothing else --
+and gets null, because drtaeabi's per-thread exception state is never
+initialised for an application thread. Tracing every `DllTls` call confirms it:
+`dll_tls h=0x8018fe08 -> 0x0`, immediately before the fault, in our thread and
+in the control's alike. The control never trips it because it never throws.
+
+Putting the FEP back moves the failure rather than fixing it: the FEP now loads
+and its own initialisation leaves with `KErrNoMemory`, which throws just the
+same. The same null, the same instruction. So the emulator will stop at the
+first leave that has to become a C++ exception, whatever causes it, and none of
+that happens on a phone, where the FEP is present and the runtime is
+initialised.
+
+**Two things were ruled out on the way.** Our image's flags are identical to a
+shipped S60v3 executable's -- `0x1200002a`, `KImageNoCallEntryPoint` and all --
+so that is not it. And the static call list for our process had six entries
+against the official build's twenty-four, because a normal EABI application
+links the C++ runtime and ours did not: it only ever loaded drtaeabi at run
+time, through the shim. One static reference fixes that, and it is right
+whether or not it matters here.

@@ -140,6 +140,14 @@ void *user_allocz(int size);
 // before slot 0. Arguments past `this` are not passed, which is all the old
 // slots reached from here need.
 u32 old_call(const void *object, int slot);
+
+// Imported for its own sake. A normal EABI application links against the C++
+// runtime because its compiler emits calls into it; this one does not, so
+// drtaeabi would only ever be loaded at run time by the shim -- and then the
+// framework's own use of it, the unwinder behind every leave, runs against a
+// library whose per-thread state was never set up. One static reference puts
+// it in the process's dependencies where it belongs.
+void drtaeabi_pure_virtual(void);
 u32 old_call1(const void *object, int slot, u32 arg);
 }
 
@@ -278,6 +286,7 @@ struct Context {
     u32 newTimerCtor;       // 9.x CTimer::CTimer(TInt), as the shim resolved it
     u32 timerThunks[3];     // DoCancel, RunL, RunError, built in the code chunk
     u32 reached;            // which of the game's callbacks have been entered
+    u32 cppRuntime;         // see drtaeabi_pure_virtual: the reference is the point
 };
 
 static Context *context_of(const void *wrapper)
@@ -742,6 +751,7 @@ static u32 load_and_start()
     ctx->path = paths[chosen];
     ctx->pathLen = lens[chosen];
     ctx->lastImport = 0xFFFF;               // nothing yet
+    ctx->cppRuntime = (u32)&drtaeabi_pure_virtual;
 
     // The handler takes a TExcType in r0 and has nowhere to keep the context,
     // so it arrives through a thunk of its own.
