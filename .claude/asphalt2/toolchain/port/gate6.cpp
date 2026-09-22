@@ -186,6 +186,18 @@ enum { APP_SLOTS = 18, SLOT_APP_DLL_UID = 5, SLOT_CREATE_DOCUMENT = 17 };
 enum { DOC_SLOTS = 34, SLOT_CREATE_APP_UI = 19 };
 enum { UI_SLOTS = 48, SLOT_UI_CONSTRUCT = 16 };
 
+// The app UI is the object the framework touches last before it dies, and ours
+// was only a CEikAppUi. The framework here is avkon's, and avkon reaches past
+// the virtuals into CAknAppUi's own members -- so the wrapper has to be one.
+// Neither its constructor nor its vtable is exported by name that we can link
+// against, but CAknAppUiBase's constructor is, and the vtable is an export like
+// any other. Both are looked up at run time and checked before use, since the
+// ordinals come from a source release later than any phone.
+enum { AKN_APPUI_BASE_CTOR = 217, AKN_APPUI_VTABLE = 3820, AKN_APPUI_SLOTS = 45 };
+
+static const u16 kAvkonName[] = {'a','v','k','o','n','{','0','0','0','a','0','0','0','0','}',
+                                 '[','1','0','0','0','5','6','c','6',']','.','d','l','l'};
+
 enum { OLD_CREATE_DOCUMENT = 12, OLD_UI_CONSTRUCT = 13, OLD_CREATE_APP_UI = 17 };
 
 // The game's app UI ConstructL, old slot 13: BaseConstructL(0), then a trap
@@ -306,6 +318,8 @@ struct Context {
     u32 boxDes[2];
     u32 traceCount;         // how many imports have gone past
     u32 lastCall;           // the last slot of ours the framework called
+    u32 avkon;              // an RLibrary on avkon, for what it does not export
+    u32 newBaseConstructL;  // avkon's CAknAppUi::BaseConstructL, as resolved
     u8 *spare;              // unused executable room, handed out as needed
     u8 *spareEnd;
 };
@@ -675,9 +689,21 @@ extern "C" void gate6_create_window(u32 *oldControl, int, Context *c)
     c->wrapControl = ctl;
 }
 
-extern "C" void gate6_baseconstructl(void *, int, Context *c)
+extern "C" void gate6_baseconstructl(void *, int flags, Context *c)
 {
-    eikappui_baseconstructl(c->wrapUi, ENoAppResourceFile | ENoScreenFurniture);
+    // Now that the wrapper is a CAknAppUi, avkon's own base construction is
+    // the right one, and the flags the game asked for are worth honouring --
+    // it passes zero, a standard application with all its furniture.
+    // The flags the game asks for -- zero, a standard application with all its
+    // furniture. Asking avkon for less than that is worse, not safer: with
+    // ENoAppResourceFile it goes off the rails entirely, while with the game's
+    // own flags it gets as far as looking for status pane and menu resources
+    // and says so, which is a resource file to write rather than a mystery.
+    typedef void (*BaseConstructL)(void *, int);
+    if (c->newBaseConstructL)
+        ((BaseConstructL)c->newBaseConstructL)(c->wrapUi, flags);
+    else
+        eikappui_baseconstructl(c->wrapUi, ENoAppResourceFile | ENoScreenFurniture);
 }
 
 extern "C" void gate6_ui_construct(void *self)
@@ -698,16 +724,31 @@ extern "C" void *gate6_create_app_ui(void *self)
     u32 oldUi = old_call(oldDoc, OLD_CREATE_APP_UI);
     if (!oldUi) PANIC(CAT_NUL, 3);
 
+    Context *c = context_of(self);
+
     u32 *ui = (u32 *)user_allocz(WRAP_BYTES);
     if (!ui) PANIC(CAT_MEM, -31);
     coeappui_ctor(ui);          // assigns iCoeEnv, which BaseConstructL reads
     eikappui_ctor(ui);
+
+    // Then the part of CAknAppUi that can be constructed, and its vtable.
+    typedef void (*Ctor)(void *);
+    Ctor base = (Ctor)rlibrary_lookup(&c->avkon, AKN_APPUI_BASE_CTOR);
+    const u32 *akn = (const u32 *)rlibrary_lookup(&c->avkon, AKN_APPUI_VTABLE);
+    if (!base || !akn) PANIC(CAT_LIB, -1);
+    // A vtable, not something else at that ordinal: no offset to a containing
+    // object, and every slot filled.
+    if (akn[0] != 0) PANIC(CAT_LIB, -2);
+    for (int i = 0; i < AKN_APPUI_SLOTS; i++)
+        if (!akn[VT_HEADER + i]) PANIC(CAT_LIB, -(3 + i));
+    base(ui);
+
     ui[WRAP_OLD] = oldUi;
     ui[WRAP_CTX] = ((const u32 *)self)[WRAP_CTX];
 
-    u32 *vt = copy_vtable(vtable_of(ui), UI_SLOTS);
+    u32 *vt = copy_vtable(akn, AKN_APPUI_SLOTS);
     vt[VT_HEADER + SLOT_UI_CONSTRUCT] = (u32)&gate6_ui_construct;
-    instrument(context_of(self), vt, UI_SLOTS, OBJ_UI);
+    instrument(c, vt, AKN_APPUI_SLOTS, OBJ_UI);
     ui[0] = (u32)(vt + VT_HEADER);
     return ui;
 }
@@ -879,7 +920,7 @@ static u32 load_and_start()
     ctx->pathLen = lens[chosen];
     ctx->lastImport = 0xFFFF;               // nothing yet
     ctx->spare = trace + nImports * TRACE + 8 * TRACE;   // past the fixed thunks
-    ctx->spareEnd = trace + traceBytes;
+
     ctx->cppRuntime = (u32)&drtaeabi_pure_virtual;
 
     // Read what the last run got to, if it left anything this build wrote, and
@@ -1023,9 +1064,22 @@ static u32 load_and_start()
     }
     if (!forwarded) PANIC(CAT_SHIM, (int)missing);
 
+    // Keep avkon's handle: the app UI needs two things out of it that no
+    // header will give us, and the shim's list is a local of this function.
+    for (u32 i = 0; i < kShimDllCount; i++) {
+        const u16 *nm = kShimDllName[i];
+        if (kShimDllLen[i] >= 5 && nm[0] == 'a' && nm[1] == 'v' && nm[2] == 'k' &&
+            nm[3] == 'o' && nm[4] == 'n') {
+            ctx->avkon = libs[i];
+            break;
+        }
+    }
+    if (!ctx->avkon) PANIC(CAT_LIB, -100);
+
     // The stub slot of a resolved import is spare -- its address went straight
     // into the table -- so the diversions are built there.
     if (nImports <= IMPORT_BASECONSTRUCTL) PANIC(CAT_SHIM, (int)nImports);
+    ctx->newBaseConstructL = iat[IMPORT_BASECONSTRUCTL];
     iat[IMPORT_BASECONSTRUCTL] = ctx_thunk(stub + SLOT * IMPORT_BASECONSTRUCTL,
                                            ctx, (u32)&gate6_baseconstructl);
 

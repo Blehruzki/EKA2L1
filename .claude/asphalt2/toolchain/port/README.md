@@ -1121,3 +1121,42 @@ again on every launch afterwards -- which is the shape of what happened.
 
 Proved by planting an old-format record and running: it is ignored, the file is
 re-armed, the run records, and the next run reports it.
+
+## The phone and the emulator are the same failure
+
+With the record versioned and the stale file gone, the phone reported
+`G6BOX 77945700` -- the emulator's number exactly. Both stop with the same last
+framework call into our objects and the same last import from the game's. The
+earlier conclusion that the emulator's crash was its own was wrong; it is the
+same failure, and the emulator can be worked in after all.
+
+The number says: the last thing the framework called on us was the app UI's
+slot 11, which the ROM's own `_ZTV9CEikAppUi` names
+`HandleApplicationSpecificEventL`. So the framework is dispatching window
+server events to our app UI when it dies -- and our app UI was only a
+`CEikAppUi`, while everything around it is avkon's, which reaches past the
+virtuals into `CAknAppUi`'s own members.
+
+### Making it a CAknAppUi
+
+Neither `CAknAppUi`'s constructor nor its vtable can be linked against by name,
+but `CAknAppUiBase`'s constructor is exported and the vtable is an export like
+any other. Both are looked up at run time and checked before use -- no offset
+to a containing object, every slot filled -- since the ordinals come from a
+source release later than any phone.
+
+With that, and with the flags the game actually asks for:
+
+```
+Thread Gate6 panicked with category: CONE and exit code: 14
+```
+
+`ECoePanicNoResourceFileForId`. A named panic from the framework rather than a
+fault, and it is asking for something specific: `CAknAppUi::BaseConstructL(0)`
+wants the status pane and menu resources of a real application resource file,
+and ours holds a caption and nothing else.
+
+Asking avkon for less is worse rather than safer. With
+`ENoAppResourceFile | ENoScreenFurniture` -- what the `CEikAppUi` wrapper used
+-- a `CAknAppUi` goes off the rails entirely and never gets a virtual called at
+all. So the resource file is the next thing to build, not something to avoid.
