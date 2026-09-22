@@ -48,6 +48,8 @@ extern const u32 kShimTable[];
 extern const u32 kShimCount;
 extern const u16 kShimEuser[];
 extern const u32 kShimEuserCount;
+extern const u16 kShimEfsrv[];
+extern const u32 kShimEfsrvCount;
 extern const u16 kShimEuser[];
 extern const u32 kShimEuserCount;
 }
@@ -64,7 +66,7 @@ enum { SLOT = 48 };
 enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 5,
        KIND_ARGSHIFT = 6 };
 enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
-       LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5, LOCAL_TRUE = 6 };
+       LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5, LOCAL_TRUE = 6, LOCAL_SELF = 7 };
 
 static void panic(const u16 *cat, int catLen, int reason)
 {
@@ -318,8 +320,23 @@ enum { IMPORT_CANCEL = 279 };            // euser CActive::Cancel()
 // but our code chunk is plain writable memory, so WriteMemory is a copy and
 // the thread id it is keyed on need only be consistent with itself. Answer
 // those three ourselves, pair the other two, and the game decrypts itself.
-enum { IMPORT_LIBRARY_LOOKUP = 326 };
+enum { IMPORT_LIBRARY_LOOKUP = 326, IMPORT_LIBRARY_LOAD = 325 };
+// Which library the ordinals belong to: it loads euser.dll and efsrv.dll, and
+// their numberings have nothing to do with each other, so the load is watched
+// to know which table a lookup should go through.
+enum { LIB_EUSER = 0, LIB_EFSRV = 1, LIB_OTHER = 2 };
+enum { OLD_RFSBASE_CLOSE = 15 };
 enum { OLD_RDEBUG_OPEN = 799, OLD_RTHREAD_ID = 533, OLD_RDEBUG_WRITEMEMORY = 1233 };
+
+// And one the pairing gets wrong. The N-Gage's euser exports 1679 functions
+// where the 7.0 def lists 1680, so the two numberings are not the same all the
+// way up, and by 1649 they have parted: the def says User::IMB_Range, which
+// takes two arguments and returns nothing, while the game calls 1649 with four
+// and treats the answer as an error code, then asks the same object for
+// RChunk::Base and keeps that as an address. That is RChunk::CreateLocalCode,
+// the def's 1648 -- and the same pair this loader uses to make somewhere to
+// put the game.
+enum { OLD_CHUNK_CREATELOCALCODE = 1649, NEW_CHUNK_CREATELOCALCODE = 905 };
 enum { ON_TIMER = 2 };
 
 enum { IMPORT_DLL_NAME = 2 };           // apparc CApaApplication::DllName() const
@@ -413,12 +430,15 @@ struct Context {
     u32 newRequestComplete; // euser's User::RequestComplete, as resolved
     u32 *dsaShifted;        // the game's view of its CDirectScreenAccess
     u32 *oldUi;             // the game's CEikAppUi, old layout
+    u32 *coeEnv;            // the environment as it really is
+    u32 *oldForeground;     // the game's MCoeForegroundObserver, old layout
     u32 coeEnvView[COEENV_VIEW_WORDS];  // the environment as the game must see it
     u32 newCancel;          // euser's CActive::Cancel, as resolved
     u32 noopFn;             // what a lookup answers when 9.x dropped the export
     u32 idFn;               // RThread::Id: a TThreadId of zero, in r0 and r1
     u32 newLibraryLookup;   // euser's RLibrary::Lookup, as resolved
-    void *euser;            // the RLibrary the game opened on euser.dll
+    u32 newLibraryLoad;     // euser's RLibrary::Load, as resolved
+    void *dynLib[2];        // the RLibrary the game opened on each of the two
     u8 *spare;              // unused executable room, handed out as needed
     u8 *spareEnd;
 };
@@ -462,6 +482,20 @@ static u32 ctx_thunk(u8 *code, const void *ctx, u32 target)
     return (u32)b;
 }
 
+// The same, for a call that already uses r0 to r2.
+//
+//   ldr r3, [pc, #4]
+//   ldr pc, [pc, #4]
+static u32 ctx3_thunk(u8 *code, const void *ctx, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE59F3004;
+    b[1] = 0xE59FF004;
+    b[3] = (u32)ctx;
+    b[4] = target;
+    return (u32)b;
+}
+
 // The simpler diversion: the 9.x implementation is the right one, it just must
 // not be handed the old object. The wrapper does not exist when the stub is
 // built, so the thunk reads it from the context each time:
@@ -495,25 +529,28 @@ static u32 this_thunk(u8 *code, const void *cell, u32 target, int reg)
 //   ldr   pc, [pc, #4]      @ and on to whatever answers it
 enum { TRACE = 48 };
 
-extern "C" void gate6_trace(u32 index, Context *c);
-extern "C" void gate6_slot(u32 code, Context *c);
+extern "C" void gate6_trace(u32 index, Context *c, u32 caller);
+extern "C" void gate6_slot(u32 code, Context *c, u32 caller);
 
 // Records `value` through `note` and carries on to `target`, leaving every
-// argument register as it found them.
+// argument register as it found them. lr still holds the caller's return
+// address when the note is made, which is how a trace says where a call came
+// from and not only what it was.
 static u32 trace_thunk(u8 *code, const void *ctx, u32 value, u32 target, u32 note)
 {
     u32 *b = (u32 *)code;
     b[0] = 0xE92D500F;                  // stmdb sp!, {r0-r3, r12, lr}  -- 24 bytes, aligned
-    b[1] = 0xE59F0010;                  // ldr   r0, [pc, #16]   -- which import
-    b[2] = 0xE59F1010;                  // ldr   r1, [pc, #16]   -- the context
-    b[3] = 0xE59FC010;                  // ldr   r12, [pc, #16]
-    b[4] = 0xE12FFF3C;                  // blx   r12
-    b[5] = 0xE8BD500F;                  // ldmia sp!, {r0-r3, r12, lr}
-    b[6] = 0xE59FF008;                  // ldr   pc, [pc, #8]
-    b[7] = value;
-    b[8] = (u32)ctx;
-    b[9] = note;
-    b[10] = target;
+    b[1] = 0xE59F0014;                  // ldr   r0, [pc, #20]   -- which import
+    b[2] = 0xE59F1014;                  // ldr   r1, [pc, #20]   -- the context
+    b[3] = 0xE59FC014;                  // ldr   r12, [pc, #20]
+    b[4] = 0xE1A0200E;                  // mov   r2, lr          -- who called
+    b[5] = 0xE12FFF3C;                  // blx   r12
+    b[6] = 0xE8BD500F;                  // ldmia sp!, {r0-r3, r12, lr}
+    b[7] = 0xE59FF008;                  // ldr   pc, [pc, #8]
+    b[8] = value;
+    b[9] = (u32)ctx;
+    b[10] = note;
+    b[11] = target;
     return (u32)b;
 }
 
@@ -537,6 +574,48 @@ static u32 pair_thunk(u8 *code, const void *cell0, const void *cell1, u32 target
     b[6] = (u32)cell1;
     b[7] = target;
     return (u32)b;
+}
+
+// Once the game has its own copy of the environment it also calls cone on it,
+// and a copy is not something cone can be handed. So the calls go back to the
+// real one -- and the observer that goes with this one is a GCC98r2 mixin,
+// which a 9.x caller cannot use, so it gets the same two-slot stand-in the
+// direct screen access observer gets.
+//
+//   ldr r12, [pc, #16]      @ where to keep the game's observer
+//   str r1, [r12]
+//   ldr r12, [pc, #12]      @ the real environment
+//   ldr r0, [r12]
+//   ldr r1, [pc, #8]        @ ours
+//   ldr pc, [pc, #8]
+static u32 fg_thunk(u8 *code, const void *savedCell, const void *envCell,
+                    const void *observer, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE59FC010;
+    b[1] = 0xE58C1000;
+    b[2] = 0xE59FC00C;
+    b[3] = 0xE59C0000;
+    b[4] = 0xE59F1008;
+    b[5] = 0xE59FF008;
+    b[6] = (u32)savedCell;
+    b[7] = (u32)envCell;
+    b[8] = (u32)observer;
+    b[9] = target;
+    return (u32)b;
+}
+
+enum { IMPORT_ADD_FOREGROUND_OBSERVER = 50, FOREGROUND_SLOTS = 2 };
+enum { OLD_FG_GAINING = 0, OLD_FG_LOSING = 1 };
+
+extern "C" void gate6_foreground_gaining(void *, u32, Context *c)
+{
+    if (c->oldForeground) old_call(c->oldForeground, OLD_FG_GAINING);
+}
+
+extern "C" void gate6_foreground_losing(void *, u32, Context *c)
+{
+    if (c->oldForeground) old_call(c->oldForeground, OLD_FG_LOSING);
 }
 
 // ---- the app UI ------------------------------------------------------------
@@ -609,10 +688,18 @@ static void note(Context *c, u32 value, u16 sign)
     rdebug_rawprint(c->noteDes);
 }
 
-extern "C" void gate6_trace(u32 index, Context *c)
+// User::Leave and User::Exit are where the game gives up, so those two say
+// where from as well.
+enum { IMPORT_LEAVE = 324, IMPORT_EXIT = 308 };
+
+extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
 {
     if (TRACE_IMPORTS)
         note(c, index, ' ');
+    if (index == IMPORT_LEAVE || index == IMPORT_EXIT) {
+        note(c, caller >> 16, 'R');
+        note(c, caller & 0xFFFF, 'r');
+    }
     c->lastImport = index;
     // The first stages make fewer than BOX_EVERY calls in total, so record
     // every one of those and thin out later.
@@ -624,7 +711,7 @@ extern "C" void gate6_trace(u32 index, Context *c)
 // time, so the record is exact rather than to the nearest sixteen.
 enum { REACHED_SLOT = 16 };
 
-extern "C" void gate6_slot(u32 code, Context *c)
+extern "C" void gate6_slot(u32 code, Context *c, u32)
 {
     note(c, code, '+');
     c->lastCall = code;
@@ -827,20 +914,63 @@ extern "C" void gate6_write_memory(u32, u8 *address, const u32 *data, u32)
         address[i] = text[i];
 }
 
+// The game names the library in a descriptor; the second letter is enough to
+// tell euser.dll from efsrv.dll, and anything else gets no table at all.
+extern "C" int gate6_library_load(void *self, const u32 *name, const u32 *path,
+                                  Context *c)
+{
+    typedef int (*Load)(void *, const u32 *, const u32 *);
+    const int err = ((Load)c->newLibraryLoad)(self, name, path);
+    if (err)
+        return err;
+
+    const u32 type = name[0] >> KTypeShift;
+    const u16 *text = (type == EBufC)    ? (const u16 *)(name + 1)
+                    : (type == EPtrC)    ? (const u16 *)name[1]
+                    : (type == EBufType) ? (const u16 *)(name + 2)
+                                         : (const u16 *)name[2];
+    const u32 length = name[0] & 0x0FFFFFFF;
+    // The game keeps both open at once, so each is remembered in its own slot.
+    const u32 kind = (length < 2) ? LIB_OTHER
+                   : (text[1] == 'u' || text[1] == 'U') ? LIB_EUSER
+                   : (text[1] == 'f' || text[1] == 'F') ? LIB_EFSRV
+                                                        : LIB_OTHER;
+    if (kind != LIB_OTHER)
+        c->dynLib[kind] = self;
+    return err;
+}
+
 extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
 {
-    c->euser = lib;
     note(c, (u32)ordinal, 'L');
-    switch (ordinal) {
-    case OLD_RDEBUG_OPEN:        return c->noopFn;       // a channel of nothing
-    case OLD_RTHREAD_ID:         return c->idFn;         // always the same id
-    case OLD_RDEBUG_WRITEMEMORY: return (u32)&gate6_write_memory;
-    default: break;
+    const u32 kind = (lib == c->dynLib[LIB_EUSER]) ? LIB_EUSER
+                   : (lib == c->dynLib[LIB_EFSRV]) ? LIB_EFSRV : LIB_OTHER;
+    u32 mapped = 0;
+    if (kind == LIB_EUSER) {
+        switch (ordinal) {
+        case OLD_RDEBUG_OPEN:        return c->noopFn;   // a channel of nothing
+        case OLD_RTHREAD_ID:         return c->idFn;     // always the same id
+        case OLD_RDEBUG_WRITEMEMORY: return (u32)&gate6_write_memory;
+        case OLD_CHUNK_CREATELOCALCODE: mapped = NEW_CHUNK_CREATELOCALCODE; break;
+        default:
+            if (ordinal >= 1 && (u32)ordinal <= kShimEuserCount)
+                mapped = kShimEuser[ordinal - 1];
+            break;
+        }
+    } else if (kind == LIB_EFSRV) {
+        // 9.x stopped exporting RFsBase::Close from efsrv; it is the one it
+        // inherits, and euser still exports that.
+        if (ordinal == OLD_RFSBASE_CLOSE)
+            return (u32)&rhandle_close;
+        if (ordinal >= 1 && (u32)ordinal <= kShimEfsrvCount)
+            mapped = kShimEfsrv[ordinal - 1];
     }
-    const u32 mapped = (ordinal >= 1 && (u32)ordinal <= kShimEuserCount)
-                           ? kShimEuser[ordinal - 1] : 0;
-    return mapped ? ((u32 (*)(void *, int))c->newLibraryLookup)(c->euser, (int)mapped)
-                  : c->noopFn;
+    // Never null: the game calls what it is given without looking at it.
+    const u32 fn = mapped
+        ? ((u32 (*)(void *, int))c->newLibraryLookup)(lib, (int)mapped) : 0;
+    if (!fn)
+        note(c, (u32)ordinal, 'X');
+    return fn ? fn : c->noopFn;
 }
 
 // Cancel is called on the game's timer -- which is really ours -- and on the
@@ -884,7 +1014,8 @@ extern "C" void *gate6_dll_name(u32 *out, void *, Context *c)
 // CCoeEnv::Static() returns too.
 extern "C" void *gate6_coeenv_static(u32, u32, Context *c)
 {
-    const u32 *real = (const u32 *)((u8 *)coeenv_static() + COEENV_BIAS);
+    c->coeEnv = (u32 *)coeenv_static();
+    const u32 *real = (const u32 *)((u8 *)c->coeEnv + COEENV_BIAS);
     for (int i = 0; i < COEENV_VIEW_WORDS; i++)
         c->coeEnvView[i] = real[i];
     if (c->oldUi)
@@ -1063,8 +1194,13 @@ static u32 load_and_start()
     i32 err = fs_connect(fs, -1);
     if (err) PANIC(CAT_FS, err);
 
-    const u16 *paths[3] = { kPath0, kPath1, kPath2 };
-    const int lens[3] = { sizeof kPath0 / 2, sizeof kPath1 / 2, sizeof kPath2 / 2 };
+    // Where the game came from is not only how it is read: it is the answer to
+    // CApaApplication::DllName(), and the game builds the names of its own
+    // files beside it -- 6rbc.cwa among them, which lives where an N-Gage card
+    // puts it. So the card's own layout is tried first, and the loose copies
+    // only after.
+    const u16 *paths[3] = { kPath2, kPath0, kPath1 };
+    const int lens[3] = { sizeof kPath2 / 2, sizeof kPath0 / 2, sizeof kPath1 / 2 };
     err = -1;
     int chosen = 0;
     for (int i = 0; i < 3 && err; i++) {
@@ -1175,7 +1311,7 @@ static u32 load_and_start()
     ctx->path = paths[chosen];
     ctx->pathLen = lens[chosen];
     ctx->lastImport = 0xFFFF;               // nothing yet
-    ctx->spare = trace + nImports * TRACE + 13 * TRACE;  // past the fixed thunks
+    ctx->spare = trace + nImports * TRACE + 16 * TRACE;  // past the fixed thunks
     ctx->spareEnd = trace + traceBytes;
 
     ctx->cppRuntime = (u32)&drtaeabi_pure_virtual;
@@ -1252,6 +1388,9 @@ static u32 load_and_start()
             case LOCAL_NOOP:                // an empty body: _Reserved slots, CBase
                 s[0] = 0xE3A00000;          // mov r0, #0
                 s[1] = 0xE12FFF1E;          // bx  lr
+                break;
+            case LOCAL_SELF:                // a constructor with nothing to do
+                s[0] = 0xE12FFF1E;          // bx  lr     -- r0 is still the object
                 break;
             case LOCAL_TRUE:                // a predicate that is always yes
                 s[0] = 0xE3A00001;          // mov r0, #1
@@ -1380,6 +1519,21 @@ static u32 load_and_start()
         iat[j] = this_thunk(stub + SLOT * j, cell, iat[j], kDiverts[k].arg);
     }
 
+    if (nImports > IMPORT_ADD_FOREGROUND_OBSERVER &&
+        IMPORT_ADD_FOREGROUND_OBSERVER < kShimCount &&
+        (kShimTable[IMPORT_ADD_FOREGROUND_OBSERVER] >> 24) == KIND_CALL) {
+        u8 *spare = trace + nImports * TRACE;
+        u32 *vt = (u32 *)user_allocz(FOREGROUND_SLOTS * 4);
+        u32 *obs = (u32 *)user_allocz(4);
+        if (!vt || !obs) PANIC(CAT_MEM, -36);
+        vt[0] = ctx_thunk(spare + 13 * TRACE, ctx, (u32)&gate6_foreground_gaining);
+        vt[1] = ctx_thunk(spare + 14 * TRACE, ctx, (u32)&gate6_foreground_losing);
+        obs[0] = (u32)vt;
+        iat[IMPORT_ADD_FOREGROUND_OBSERVER] =
+            fg_thunk(spare + 15 * TRACE, &ctx->oldForeground, &ctx->coeEnv, obs,
+                     iat[IMPORT_ADD_FOREGROUND_OBSERVER]);
+    }
+
     // The window server's view of the game's observer.
     if (nImports > IMPORT_DSA_NEWL && IMPORT_DSA_NEWL < kShimCount &&
         (kShimTable[IMPORT_DSA_NEWL] >> 24) == KIND_CALL) {
@@ -1419,6 +1573,12 @@ static u32 load_and_start()
         ctx->newLibraryLookup = iat[IMPORT_LIBRARY_LOOKUP];
         iat[IMPORT_LIBRARY_LOOKUP] = ctx_thunk(stub + SLOT * IMPORT_LIBRARY_LOOKUP,
                                                ctx, (u32)&gate6_library_lookup);
+        if (nImports > IMPORT_LIBRARY_LOAD && IMPORT_LIBRARY_LOAD < kShimCount &&
+            (kShimTable[IMPORT_LIBRARY_LOAD] >> 24) == KIND_CALL) {
+            ctx->newLibraryLoad = iat[IMPORT_LIBRARY_LOAD];
+            iat[IMPORT_LIBRARY_LOAD] = ctx3_thunk(stub + SLOT * IMPORT_LIBRARY_LOAD,
+                                                  ctx, (u32)&gate6_library_load);
+        }
     }
 
     if (nImports > IMPORT_REQUEST_COMPLETE && IMPORT_REQUEST_COMPLETE < kShimCount &&

@@ -17,7 +17,7 @@ a later 9.x than any one phone, so some of them will be wrong.
 """
 import os, re, sys
 
-import e32imports, shimtable, symdef
+import e32imports, epocdb, shimtable, symdef
 
 ROOT = '/home/user/symbiansource'
 KERNEL = ROOT + '/oss.fcl.sf.os.kernelhwsrv'
@@ -91,6 +91,7 @@ FRAMEWORK_BASES = ('CCoeControl', 'CCoeAppUi', 'CEikApplication', 'CEikDocument'
 LOCAL_NEGSF2, LOCAL_PURE_VIRTUAL, LOCAL_NOOP, LOCAL_MEM_COMPARE = 0, 1, 2, 3
 LOCAL_TRAP_ENTER, LOCAL_TINT64_SET = 4, 5
 LOCAL_TRUE = 6
+LOCAL_SELF = 7
 LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL}
 
 # Functions 9.x kept but moved, renamed or gave another argument. Each was
@@ -122,6 +123,9 @@ MANUAL = {
     # own TRAP instead of being caught here. Only code that leaves can tell.
     'TTrap::Trap(int &)': ('local', LOCAL_TRAP_ENTER, KIND_LOCAL),
     'TTrap::UnTrap(void)': ('local', LOCAL_NOOP, KIND_LOCAL),
+    # An N-Gage bus device mixin with nothing behind it on a phone. A GCC98r2
+    # constructor hands the object back, so this one only returns.
+    'MBusDev::MBusDev(void)': ('local', LOCAL_SELF, KIND_LOCAL),
     # EKA1's TInt64 was a class of a low word and a high one; 9.x made it a
     # plain long long and stopped exporting anything. Setting one from a TInt
     # is a sign extension, and a GCC98r2 constructor returns the object.
@@ -270,21 +274,24 @@ def build(image):
     return out, dlls
 
 
-def euser_map():
-    """Old euser ordinal -> 9.x euser ordinal, 0 where 9.x has no such export.
+def dynamic_map(lib):
+    """Old ordinal -> 9.x ordinal for a library the game resolves at run time.
 
-    The game resolves a handful of functions by ordinal at run time rather than
-    importing them, and an ordinal is a build's own numbering, so the whole
-    table goes into the shim. Both sides are authoritative defs, so this is the
-    same pairing the imports get and not a guess.
+    Same pairing the imports get, run over every ordinal the old library has
+    rather than only the ones the image imports, and 0 where 9.x dropped the
+    function. euser's old side is the authoritative 7.0 def; the rest come from
+    EKA2L1's EPOC6 database, as the imports do.
     """
-    old = symdef.load(KERNEL + '/kernel/eka/bmarm/7.0-euseru.def')
-    new = shimtable.index(symdef.load(find_defs()['euser']))
-    out = [0] * (max(old) if old else 0)
-    for ordinal, (_mangled, sig) in old.items():
-        if sig:
-            out[ordinal - 1] = new.get(shimtable.norm(sig), 0)
-    return out
+    euser_def = KERNEL + '/kernel/eka/bmarm/7.0-euseru.def'
+    if lib == 'euser':
+        count = max(symdef.load(euser_def))
+        old_sources = {'euser': euser_def}
+    else:
+        count = len(epocdb.load(EPOC6)[lib])
+        old_sources = {}
+    rows = shimtable.match([(lib, o) for o in range(1, count + 1)],
+                           old_sources, {lib: find_defs()[lib]}, epoc6=EPOC6)
+    return [r[4] or 0 for r in rows]
 
 
 def emit(rows, dlls, path):
@@ -322,14 +329,17 @@ def emit(rows, dlls, path):
         lines.append('    ' + ' '.join('0x%08X,' % w for w in words[i:i + 8]))
     lines.append('};')
     lines.append('extern const unsigned int kShimCount = %d;' % len(words))
-    lines.append('')
-    table = euser_map()
-    lines.append('extern const unsigned short kShimEuser[];')
-    lines.append('extern const unsigned short kShimEuser[] = {')
-    for i in range(0, len(table), 16):
-        lines.append('    ' + ' '.join('%d,' % w for w in table[i:i + 16]))
-    lines.append('};')
-    lines.append('extern const unsigned int kShimEuserCount = %d;' % len(table))
+    # The two libraries the game loads by name and asks for ordinals.
+    for lib in ('euser', 'efsrv'):
+        table = dynamic_map(lib)
+        name = lib.capitalize()
+        lines.append('')
+        lines.append('extern const unsigned short kShim%s[];' % name)
+        lines.append('extern const unsigned short kShim%s[] = {' % name)
+        for i in range(0, len(table), 16):
+            lines.append('    ' + ' '.join('%d,' % w for w in table[i:i + 16]))
+        lines.append('};')
+        lines.append('extern const unsigned int kShim%sCount = %d;' % (name, len(table)))
 
     lines.append('')
     lines.append('}')
