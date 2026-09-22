@@ -899,3 +899,42 @@ One thing to come back to: the window server logs `Can't find requested screen`
 with a garbage number while direct screen access is being set up, and takes the
 focused screen instead. It does not stop anything yet, but it means something
 we hand `CDirectScreenAccess` is not being read the way it expects.
+
+## The N-Gage subsystems, and the end of ConstructL
+
+`bluetooth.dll` ordinal 9 -- the next stop -- reads out of the N-Gage ROM as a
+constructor for a 0x28-byte object with a six-byte address at offset 0x10, and
+the game builds twenty-three of them, each followed by a `TBuf<256>`. A
+discovered-device list. That is not one call to answer, it is a subsystem.
+
+Between them, ARENAFRAMEWORK, BLUETOOTH, GAMECOMMS, GAMEUTILS and NOKIAFC are
+the N-Gage's multiplayer and arena services: 32 imports that no S60v3 phone
+answers at all. They now all get the same stand-in -- do nothing, return zero --
+rather than one panic at a time. A GCC98r2 call site keeps the pointer it
+allocated rather than the one a constructor hands back, so a constructor losing
+its return value costs nothing; what it does cost is that everything built this
+way stays empty, which is the point. Single player first.
+
+Key click sounds went the same way. `CAknAppUi::KeySounds()` is inline in 9.x
+and reads a field of `CAknAppUiBase`, which our app UI -- a `CEikAppUi` -- does
+not have, so it answers with nothing; the context push it feeds has to be
+stubbed with it, since that one is called on whatever the first returns.
+
+With those, the game's `ConstructL` runs to the end:
+
+```
+Thread Gate6 panicked with category: G6CHN and exit code: 4
+```
+
+Every line of it. Base construction, the game card check, its own control, the
+window, direct screen access, the telephony watcher it uses to notice incoming
+calls, the control stack, key block mode, key sounds. So the panic came out and
+`ConstructL` now returns, and the framework runs the application: it goes on to
+load `avkonfep.dll` and enter the event loop, which is as far as an application
+gets before it is asked to draw.
+
+One emulator bug fell out of this. The game sets the key block mode before
+anything else has made EKA2L1's UI server initialise, and
+`update_key_block_mode` dereferenced its `eik_server` without checking -- the
+sibling accessor `get_sgc_server()` initialises on first use and this one did
+not. Fixed in the emulator rather than worked around here.

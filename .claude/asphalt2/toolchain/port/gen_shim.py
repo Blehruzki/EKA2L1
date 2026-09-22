@@ -123,6 +123,16 @@ MANUAL = {
 }
 
 
+# Libraries that exist only in the N-Gage ROM. Nothing on an S60v3 phone
+# answers any of them, and between them they are the N-Gage's multiplayer and
+# arena services -- a subsystem, not a handful of calls. They all get the same
+# stand-in: do nothing, return zero. GCC98r2 call sites keep the pointer they
+# allocated rather than the one a constructor returns, so a constructor losing
+# its return value costs nothing; what this does cost is that anything built
+# this way stays empty, which is the point. Single player is what is wanted
+# first. Individual ordinals can be answered properly in BY_ORDINAL.
+NGAGE_ONLY = ('arenaframework', 'bluetooth.dll', 'gamecomms', 'gameutils', 'nokiafc')
+
 # Imports with no signature to match on: the N-Gage-only libraries, and the
 # exports Nokia added past the end of what any list of ours covers. Each entry
 # is a deliberate stand-in, decided from what the game's code does with the
@@ -146,6 +156,13 @@ BY_ORDINAL = {
     ('ws32', 348): ('ws32', 'CDirectScreenAccess::NewL(RWsSession&, CWsScreenDevice&,'
                             ' RWindowBase&, MDirectScreenAccess&)', KIND_CALL),
     ('ws32', 350): ('ws32', 'CDirectScreenAccess::StartL()', KIND_CALL),
+    # Key click sounds. CAknAppUi::KeySounds() is inline in 9.x and reads a
+    # field of CAknAppUiBase, which our app UI -- a CEikAppUi -- does not have,
+    # so it answers with nothing and the context push it feeds does nothing
+    # either. Cosmetic, and the pair has to be stubbed together: the second is
+    # called on whatever the first returns.
+    ('avkon', 874): ('local', LOCAL_NOOP, KIND_LOCAL),
+    ('avkon', 1272): ('local', LOCAL_NOOP, KIND_LOCAL),
 }
 
 
@@ -199,6 +216,8 @@ def build(image):
         # Checked before the ordinal, deliberately: these do have a 9.x
         # equivalent, and forwarding to it is exactly what must not happen.
         if sig and _is_framework_ctor(sig):
+            out.append((i, None, LOCAL_NOOP, sig, KIND_LOCAL))
+        elif lib in NGAGE_ONLY and (lib, _o) not in BY_ORDINAL:
             out.append((i, None, LOCAL_NOOP, sig, KIND_LOCAL))
         elif (lib, _o) in BY_ORDINAL:
             target, what, kind = BY_ORDINAL[(lib, _o)]
