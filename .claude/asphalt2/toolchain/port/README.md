@@ -825,3 +825,77 @@ settled by this and still has to be measured.
 Neither `WsSession()` nor `ScreenDevice()` is exported, in either era -- both
 are inline, which is why the game reads the fields directly and why the port
 has to as well.
+
+## The control, and the environment behind it
+
+The game constructs its own control, so unlike the application, the document
+and the app UI, its base class cannot merely be wrapped -- it has to be right.
+`CCoeControl::CCoeControl()` is therefore generated rather than forwarded: it
+writes the old layout, zeroes to 0x30 and puts `iCoeEnv` at offset 8, and
+returns the object the way a GCC98r2 constructor does.
+
+What goes in `iCoeEnv` is the neat part. The whole tail of `CCoeEnv` moved
+twelve bytes between the two eras and nothing in it changed size -- measured in
+both ROMs at four fields:
+
+```
+              7.0s    9.x
+iAppUi        0x18    0x24
+iWsSession    0x20    0x2c
+iRootWin      0x2c    0x38
+iSystemGc     0x34    0x40
+iScreen       0x3c    0x48
+```
+
+So the game does not need a synthetic environment at all. Hand it the real one
+as a pointer twelve bytes past itself and every offset it reads lands on the
+right 9.x field: the real window server session, the real screen device, by
+reference, through its own layout. `CCoeEnv::Static()` returns the shifted view
+too, since the game calls it directly as well -- `Static()` then `[env+0x18]`
+is how it finds the app UI.
+
+A window belongs to a 9.x control, so `CreateWindowL` builds one of those and
+lends the game its window: old `Window()` is a single load from offset 0x20, so
+putting the window there is the whole of it.
+
+With that, the game gets through its control's `ConstructL` and into what it
+wanted the screen for. ws32's old ordinals 348 and 350 -- past the end of every
+list we have -- read out of the ROM as a four-argument factory returning a
+0x60-byte object and a starter for it: `CDirectScreenAccess::NewL` and
+`StartL`, which 9.x still has. The game hands the first the session and screen
+device from its `CCoeEnv`, its window, and itself as the abort observer.
+
+### Where the calling conventions finally disagree
+
+`TParseBase::DriveAndPath()` is where the ABI difference the toolchain spike
+left open actually bit. GCC98r2 returned an eight-byte structure in r0 and r1 --
+the game stores both straight after the call -- and EABI returns anything over
+four bytes through a hidden pointer in r0, pushing `this` to r1. So that import
+gets a thunk that borrows eight bytes of stack, lets the callee fill them, and
+hands them back in registers. The demangled names carry no return type, so the
+functions that need it are listed by name rather than detected.
+
+Three other things the game needed on the way:
+
+- `TInt64` was a class of two words in EKA1 and a plain `long long` in 9.x,
+  which exports nothing. Constructing or assigning one from a `TInt` is a sign
+  extension, generated locally.
+- `CApaApplication::DllName()` is how the game finds its own data files. Our
+  application is a 9.x `CEikApplication` built from nothing and has no name to
+  give, so the answer is the path the loader actually opened the game from.
+- cone's old ordinal 318, another export past the end of our lists, stands in
+  as `SetRect`: in the ROM it adjusts a size against something keyed by UID
+  0x101f8a5a, and the game calls it on its control with the rectangle
+  `ApplicationRect` just returned.
+
+```
+Thread Gate6 panicked with category: G6IMP and exit code: 464048
+```
+
+Import 48: `bluetooth.dll` ordinal 9. The game is past its own screen setup and
+into the N-Gage's networking.
+
+One thing to come back to: the window server logs `Can't find requested screen`
+with a garbage number while direct screen access is being set up, and takes the
+focused screen instead. It does not stop anything yet, but it means something
+we hand `CDirectScreenAccess` is not being read the way it expects.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read an EKA1 ROM image, as EKA2L1 extracts one into its z drive.
 
-    romimg.py <file> [ordinal ...]
+    romimg.py [--rom SYM.ROM] <file> [ordinal ...]
 
 A ROM image is not an E32 image. There is no 'EPOC' signature, no import
 section and no relocations -- the code is linked for the address it is executed
@@ -14,12 +14,17 @@ framework the game was built against, so the old class layouts and the
 N-Gage-only libraries can be read out of it rather than guessed at.
 
 Some of the extracted files are a little shorter than their code section, so
-anything past the end of the file reads as missing rather than as zeroes.
+anything past the end of the file reads as missing rather than as zeroes -- the
+export directory sits at the very end of the code, so it is exactly what goes
+missing. Pass the whole SYM.ROM and the image is read out of that instead: a
+ROM is mapped at one address, given in its own header, so a linked address is
+just an offset into the file.
 """
 import struct
 import sys
 
 HEADER_LENS = (100, 120)    # loader/romimage.h: 100 up to EKA2, 120 after
+ROM_BASE = 0x8c             # TRomHeader::iRomBase, past the 124-byte jump table
 
 FIELDS = ('uid1', 'uid2', 'uid3', 'uid_checksum', 'entry_point', 'code_address',
           'data_address', 'code_size', 'text_size', 'data_size', 'bss_size',
@@ -56,8 +61,30 @@ def header(d, header_len=None):
 
 def offset(h, address):
     """A linked address -> an offset into the file, or None if it is not there."""
-    o = address - h['code_address'] + h['header_len']
-    return o if h['header_len'] <= o else None
+    start = h.get('origin', 0)
+    o = address - h['code_address'] + start + h['header_len']
+    return o if start + h['header_len'] <= o else None
+
+
+def load(path, rom=None):
+    """-> (data, header).
+
+    With a ROM, the data is the whole ROM and the header carries where the
+    image starts in it, so nothing is missing; without one, the extracted copy
+    is read as it stands. The header is always taken from the extract, since
+    that is what names the image.
+    """
+    d = open(path, 'rb').read()
+    h = header(d)
+    if not rom:
+        return d, h
+    r = open(rom, 'rb').read()
+    base = struct.unpack_from('<I', r, ROM_BASE)[0]
+    h['origin'] = h['code_address'] - h['header_len'] - base
+    if r[h['origin']:h['origin'] + h['header_len']] != d[:h['header_len']]:
+        raise ValueError('the image is not at that address in this ROM')
+    check(r, h)
+    return r, h
 
 
 def exports(d, h):
@@ -71,7 +98,8 @@ def exports(d, h):
 
 
 def code(d, h):
-    return d[h['header_len']:h['header_len'] + h['code_size']]
+    o = h.get('origin', 0) + h['header_len']
+    return d[o:o + h['code_size']]
 
 
 def check(d, h):
@@ -91,9 +119,8 @@ def check(d, h):
     return len(ex), h['export_dir_count']
 
 
-def main(path, wanted):
-    d = open(path, 'rb').read()
-    h = header(d)
+def main(path, wanted, rom=None):
+    d, h = load(path, rom)
     got, want = check(d, h)
     print('%s: code %08x..%08x, %d exports%s' %
           (path, h['code_address'], h['code_address'] + h['code_size'],
@@ -105,4 +132,8 @@ def main(path, wanted):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1], sys.argv[2:])
+    a = sys.argv[1:]
+    r = None
+    if a[0] == '--rom':
+        r, a = a[1], a[2:]
+    main(a[0], a[1:], r)

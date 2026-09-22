@@ -82,3 +82,6 @@ old_call:
 
     @ cone
     IMPORT coeappui_ctor,       245  @ CCoeAppUi::CCoeAppUi()
+    IMPORT coeenv_static,       182  @ CCoeEnv::Static()
+    IMPORT coecontrol_ctor,      64  @ CCoeControl::CCoeControl()
+    IMPORT coecontrol_createwindowl, 25  @ CCoeControl::CreateWindowL()

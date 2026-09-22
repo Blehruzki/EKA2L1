@@ -44,10 +44,10 @@ struct Ptrc16 { u32 lengthAndType; const u16 *text; };
 struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
 
 // Every import gets a slot big enough for whichever thunk it needs.
-enum { SLOT = 32 };
-enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4 };
+enum { SLOT = 48 };
+enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 5 };
 enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
-       LOCAL_TRAP_ENTER = 4 };
+       LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5 };
 
 static void panic(const u16 *cat, int catLen, int reason)
 {
@@ -252,6 +252,12 @@ extern "C" u32 gate4_main()
                 s[1] = 0xE5810000;          // str r0, [r1]
                 s[2] = 0xE12FFF1E;          // bx  lr
                 break;
+            case LOCAL_TINT64_SET:          // TInt64 from a TInt: sign-extend
+                s[0] = 0xE5801000;          // str r1, [r0]
+                s[1] = 0xE1A02FC1;          // mov r2, r1, asr #31
+                s[2] = 0xE5802004;          // str r2, [r0, #4]
+                s[3] = 0xE12FFF1E;          // bx  lr     -- r0 is still the object
+                break;
             case LOCAL_MEM_COMPARE:
                 s[0] = 0xE51FF004;          // ldr pc, [pc, #-4]
                 s[1] = (u32)&gate4_mem_compare;
@@ -272,6 +278,19 @@ extern "C" u32 gate4_main()
         }
         if (kind == KIND_CALL) {
             iat[i] = (u32)fn;
+        } else if (kind == KIND_SRET8) {
+            // GCC98r2 returned an eight-byte structure in r0 and r1; EABI wants
+            // a buffer in r0 and pushes `this` to r1. Borrow eight bytes of
+            // stack, let the callee fill them, and hand them back in registers.
+            s[0] = 0xE92D4010;              // push  {r4, lr}
+            s[1] = 0xE24DD008;              // sub   sp, sp, #8
+            s[2] = 0xE1A01000;              // mov   r1, r0      -- `this`
+            s[3] = 0xE1A0000D;              // mov   r0, sp      -- the buffer
+            s[4] = 0xE59F4008;              // ldr   r4, [pc, #8]
+            s[5] = 0xE12FFF34;              // blx   r4
+            s[6] = 0xE8BD0003;              // ldmia sp!, {r0, r1}
+            s[7] = 0xE8BD8010;              // pop   {r4, pc}
+            s[8] = (u32)fn;
         } else if (kind == KIND_ARG3) {
             s[0] = 0xE3A02000;              // mov r2, #0    -- the added argument
             s[1] = 0xE51FF004;              // ldr pc, [pc, #-4]

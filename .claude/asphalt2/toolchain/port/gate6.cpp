@@ -51,10 +51,10 @@ struct Ptrc16 { u32 lengthAndType; const u16 *text; };
 struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
 
 // Every import gets a slot big enough for whichever thunk it needs.
-enum { SLOT = 32 };
-enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4 };
+enum { SLOT = 48 };
+enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 5 };
 enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
-       LOCAL_TRAP_ENTER = 4 };
+       LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5 };
 
 static void panic(const u16 *cat, int catLen, int reason)
 {
@@ -129,6 +129,9 @@ void akndocument_ctor(void *self, void *app);         // CAknDocument::CAknDocum
 void coeappui_ctor(void *self);                       // CCoeAppUi::CCoeAppUi()
 void eikappui_ctor(void *self);                       // CEikAppUi::CEikAppUi()
 void eikappui_baseconstructl(void *self, int flags);  // CEikAppUi::BaseConstructL(TInt)
+void *coeenv_static(void);                            // CCoeEnv::Static()
+void *coecontrol_ctor(void *self);                    // CCoeControl::CCoeControl()
+void coecontrol_createwindowl(void *self);            // CCoeControl::CreateWindowL()
 void *user_allocz(int size);
 
 // A GCC98r2 virtual call: the vptr is at offset 0 and points eight bytes
@@ -172,22 +175,45 @@ enum { OLD_CREATE_DOCUMENT = 12, OLD_UI_CONSTRUCT = 13, OLD_CREATE_APP_UI = 17 }
 // compares its argument against 0x100; slot 13 is what is left.
 enum { IMPORT_BASECONSTRUCTL = 9 };     // avkon CAknAppUi::BaseConstructL(TInt)
 
-// Where the app UI stops being the whole story. ConstructL builds a control and
-// calls CCoeControl::CreateWindowL on it, and that control is the game's own
-// object too -- a third graph, and the first one there can be more than one of,
-// so it needs a map rather than a single wrapper. Until that exists, stop here
-// rather than let cone walk an object it cannot read.
+// The control. ConstructL builds one, and unlike the application, the document
+// and the app UI, the game constructs it itself -- so its base class has to be
+// right, not just wrapped. The N-Gage ROM says what right is:
+//
+//   CCoeControl   iCoeEnv 0x08   iWin 0x20        (9.x: 0x0c and 0x28)
+//   CCoeEnv       iWsSession 0x20  iRootWin 0x2c  iSystemGc 0x34  iScreen 0x3c
+//
+// and 9.x CCoeEnv holds the same four twelve bytes further along -- measured in
+// both ROMs, at all four. The whole tail moved together, so the game can be
+// given the real environment as a pointer twelve bytes past it, and every old
+// offset it reads lands on the right 9.x field. No copy, no synthetic object:
+// the game gets the real window server session and the real screen device, by
+// reference, through its own layout.
+enum { COEENV_BIAS = 0x0c };
+enum { OLD_CONTROL_BYTES = 0x30, OLD_CONTROL_COEENV = 0x08, OLD_CONTROL_WIN = 0x20 };
+enum { NEW_CONTROL_WIN = 0x28 };
+
+enum { IMPORT_DLL_NAME = 2 };           // apparc CApaApplication::DllName() const
+enum { IMPORT_COEENV_STATIC = 86 };     // cone CCoeEnv::Static()
+enum { IMPORT_COECONTROL_CTOR = 89 };   // cone CCoeControl::CCoeControl()
 enum { IMPORT_CREATEWINDOWL = 55 };     // cone CCoeControl::CreateWindowL()
+enum { IMPORT_WINDOW = 87 };            // cone CCoeControl::Window() const
 
 // The rest of what ConstructL calls on itself keeps its 9.x implementation and
 // only needs the old object swapped for the wrapper. ApplicationRect returns a
 // TRect, so r0 is the return buffer and `this` is in r1.
-struct Divert { u16 import; u8 arg; };
+enum { ON_APP_UI = 0, ON_CONTROL = 1 };
+
+struct Divert { u16 import; u8 arg; u8 object; };
 static const Divert kDiverts[] = {
-    { 172, 1 },     // eikcore  CEikAppUi::ApplicationRect() const
-    {  51, 0 },     // cone     CCoeAppUi::AddToStackL(CCoeControl*, TInt, TInt)
-    {  39, 0 },     // avkon    CAknAppUi::SetKeyBlockMode(TAknKeyBlockMode)
+    { 172, 1, ON_APP_UI },      // eikcore  CEikAppUi::ApplicationRect() const
+    {  39, 0, ON_APP_UI },      // avkon    CAknAppUi::SetKeyBlockMode(TAknKeyBlockMode)
+    {  98, 0, ON_CONTROL },     // cone     the Nokia export standing in for SetRect
+    {  49, 0, ON_CONTROL },     // cone     CCoeControl::ActivateL()
 };
+
+// AddToStackL is the one that needs both at once: the app UI it is called on
+// and the control it is handed.
+enum { IMPORT_ADDTOSTACKL = 51 };
 
 // EIKAPPUI.H, as gate 5 established.
 enum { ENoAppResourceFile = 0x01, ENoScreenFurniture = 0x04 };
@@ -199,7 +225,12 @@ enum { WRAP_BYTES = 2048, WRAP_OLD = WRAP_BYTES / 4 - 1, WRAP_CTX = WRAP_BYTES /
 
 // What the shim needs to know and cannot keep in a global. Every wrapper holds
 // a pointer to it, so any of them can find it from `this`.
-struct Context { u32 *wrapUi; };
+struct Context {
+    u32 *wrapUi;
+    u32 *wrapControl;
+    const u16 *path;        // where the game was loaded from
+    int pathLen;
+};
 
 static Context *context_of(const void *wrapper)
 {
@@ -260,15 +291,83 @@ static u32 this_thunk(u8 *code, const void *cell, u32 target, int reg)
     return (u32)b;
 }
 
+// Both at once, for a call that is given one wrapper and made on another. Five
+// instructions and three words is exactly the slot, with nothing to spare.
+static u32 pair_thunk(u8 *code, const void *cell0, const void *cell1, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE59F000C;                  // ldr r0, [pc, #12]
+    b[1] = 0xE5900000;                  // ldr r0, [r0]
+    b[2] = 0xE59F1008;                  // ldr r1, [pc, #8]
+    b[3] = 0xE5911000;                  // ldr r1, [r1]
+    b[4] = 0xE59FF004;                  // ldr pc, [pc, #4]
+    b[5] = (u32)cell0;
+    b[6] = (u32)cell1;
+    b[7] = target;
+    return (u32)b;
+}
+
 // ---- the app UI ------------------------------------------------------------
 
 // The game asks CAknAppUi to base-construct the old object. Ours is a
 // CEikAppUi, built from the constructors gate 5 used, so it gets the CEikAppUi
 // one -- and the flags gate 5 established rather than the game's zero, since
 // nothing here has screen furniture to construct yet.
-extern "C" void gate6_create_window(void *, int, Context *)
+// ---- the control -----------------------------------------------------------
+
+// The game asks its application where it lives and takes the drive and path
+// from the answer, which is how it finds its own data files. Ours is a 9.x
+// CEikApplication built from nothing and has no name to give, so the answer is
+// the path the loader actually opened.
+//
+// TFileName is a TBuf<256>: a length word whose top four bits are the
+// descriptor type, a maximum length, then the text -- 0x208 bytes, which is
+// what the game reserves for it. Too big to return in registers, so r0 is the
+// buffer to fill and the function hands it back.
+enum { EBuf = 3 };
+
+extern "C" void *gate6_dll_name(u32 *out, void *, Context *c)
 {
-    PANIC(CAT_CHN, 5);
+    out[0] = ((u32)EBuf << KTypeShift) | (u32)c->pathLen;
+    out[1] = 256;
+    u16 *text = (u16 *)(out + 2);
+    for (int i = 0; i < c->pathLen; i++)
+        text[i] = c->path[i];
+    return out;
+}
+
+// The game must never see the environment as it really is. It asks for it by
+// name as well as reading it out of its control -- CCoeEnv::Static() then
+// [env+0x18] is how it finds the app UI -- so the shifted view is what
+// CCoeEnv::Static() returns too.
+extern "C" void *gate6_coeenv_static(void)
+{
+    return (u8 *)coeenv_static() + COEENV_BIAS;
+}
+
+// The game's own control, constructed the way its own code expects. What the
+// 9.x constructor would write is not merely different, it is at the wrong
+// offsets, so this writes the old layout instead. A GCC98r2 constructor returns
+// the object.
+extern "C" void *gate6_coecontrol_ctor(u32 *self)
+{
+    for (int i = 0; i < OLD_CONTROL_BYTES / 4; i++)
+        self[i] = 0;
+    self[OLD_CONTROL_COEENV / 4] = (u32)gate6_coeenv_static();
+    return self;
+}
+
+// A window belongs to a 9.x control, so build one and lend the game its window:
+// old Window() is one instruction, a load from offset 0x20, so putting the
+// window there is all it takes for the game to find it.
+extern "C" void gate6_create_window(u32 *oldControl, int, Context *c)
+{
+    u32 *ctl = (u32 *)user_allocz(WRAP_BYTES);
+    if (!ctl) PANIC(CAT_MEM, -33);
+    coecontrol_ctor(ctl);
+    coecontrol_createwindowl(ctl);
+    oldControl[OLD_CONTROL_WIN / 4] = ctl[NEW_CONTROL_WIN / 4];
+    c->wrapControl = ctl;
 }
 
 extern "C" void gate6_baseconstructl(void *, int, Context *c)
@@ -360,11 +459,13 @@ static u32 load_and_start()
     const u16 *paths[3] = { kPath0, kPath1, kPath2 };
     const int lens[3] = { sizeof kPath0 / 2, sizeof kPath1 / 2, sizeof kPath2 / 2 };
     err = -1;
+    int chosen = 0;
     for (int i = 0; i < 3 && err; i++) {
         Ptrc16 name;
         name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)lens[i];
         name.text = paths[i];
         err = file_open(file, fs, &name, 1);       // EFileRead | EFileShareReadersOnly
+        chosen = i;
     }
     if (err) PANIC(CAT_FS, err);
 
@@ -487,6 +588,12 @@ static u32 load_and_start()
                 s[1] = 0xE5810000;          // str r0, [r1]
                 s[2] = 0xE12FFF1E;          // bx  lr
                 break;
+            case LOCAL_TINT64_SET:          // TInt64 from a TInt: sign-extend
+                s[0] = 0xE5801000;          // str r1, [r0]
+                s[1] = 0xE1A02FC1;          // mov r2, r1, asr #31
+                s[2] = 0xE5802004;          // str r2, [r0, #4]
+                s[3] = 0xE12FFF1E;          // bx  lr     -- r0 is still the object
+                break;
             case LOCAL_MEM_COMPARE:
                 s[0] = 0xE51FF004;          // ldr pc, [pc, #-4]
                 s[1] = (u32)&gate6_mem_compare;
@@ -507,6 +614,19 @@ static u32 load_and_start()
         }
         if (kind == KIND_CALL) {
             iat[i] = (u32)fn;
+        } else if (kind == KIND_SRET8) {
+            // GCC98r2 returned an eight-byte structure in r0 and r1; EABI wants
+            // a buffer in r0 and pushes `this` to r1. Borrow eight bytes of
+            // stack, let the callee fill them, and hand them back in registers.
+            s[0] = 0xE92D4010;              // push  {r4, lr}
+            s[1] = 0xE24DD008;              // sub   sp, sp, #8
+            s[2] = 0xE1A01000;              // mov   r1, r0      -- `this`
+            s[3] = 0xE1A0000D;              // mov   r0, sp      -- the buffer
+            s[4] = 0xE59F4008;              // ldr   r4, [pc, #8]
+            s[5] = 0xE12FFF34;              // blx   r4
+            s[6] = 0xE8BD0003;              // ldmia sp!, {r0, r1}
+            s[7] = 0xE8BD8010;              // pop   {r4, pc}
+            s[8] = (u32)fn;
         } else if (kind == KIND_ARG3) {
             s[0] = 0xE3A02000;              // mov r2, #0    -- the added argument
             s[1] = 0xE51FF004;              // ldr pc, [pc, #-4]
@@ -527,6 +647,8 @@ static u32 load_and_start()
     // into the table -- so the diversions are built there.
     Context *ctx = (Context *)user_allocz((int)sizeof(Context));
     if (!ctx) PANIC(CAT_MEM, -23);
+    ctx->path = paths[chosen];
+    ctx->pathLen = lens[chosen];
     if (nImports <= IMPORT_BASECONSTRUCTL) PANIC(CAT_SHIM, (int)nImports);
     iat[IMPORT_BASECONSTRUCTL] = ctx_thunk(stub + SLOT * IMPORT_BASECONSTRUCTL,
                                            ctx, (u32)&gate6_baseconstructl);
@@ -534,6 +656,24 @@ static u32 load_and_start()
     if (nImports > IMPORT_CREATEWINDOWL)
         iat[IMPORT_CREATEWINDOWL] = ctx_thunk(stub + SLOT * IMPORT_CREATEWINDOWL,
                                               ctx, (u32)&gate6_create_window);
+    if (nImports > IMPORT_DLL_NAME)
+        iat[IMPORT_DLL_NAME] = ctx_thunk(stub + SLOT * IMPORT_DLL_NAME,
+                                         ctx, (u32)&gate6_dll_name);
+    if (nImports > IMPORT_COEENV_STATIC)
+        iat[IMPORT_COEENV_STATIC] = (u32)&gate6_coeenv_static;
+    if (nImports > IMPORT_COECONTROL_CTOR)
+        iat[IMPORT_COECONTROL_CTOR] = (u32)&gate6_coecontrol_ctor;
+    if (nImports > IMPORT_WINDOW) {
+        u32 *w = (u32 *)(stub + SLOT * IMPORT_WINDOW);
+        w[0] = 0xE5900000 | OLD_CONTROL_WIN;    // ldr r0, [r0, #0x20]  -- iWin
+        w[1] = 0xE12FFF1E;                      // bx  lr
+        iat[IMPORT_WINDOW] = (u32)w;
+    }
+    if (nImports > IMPORT_ADDTOSTACKL && IMPORT_ADDTOSTACKL < kShimCount &&
+        (kShimTable[IMPORT_ADDTOSTACKL] >> 24) == KIND_CALL)
+        iat[IMPORT_ADDTOSTACKL] = pair_thunk(stub + SLOT * IMPORT_ADDTOSTACKL,
+                                             &ctx->wrapUi, &ctx->wrapControl,
+                                             iat[IMPORT_ADDTOSTACKL]);
 
     for (u32 k = 0; k < sizeof kDiverts / sizeof kDiverts[0]; k++) {
         const u32 j = kDiverts[k].import;
@@ -541,7 +681,8 @@ static u32 load_and_start()
         // it through a diversion would lose the one thing it can still tell us.
         if (j >= nImports || j >= kShimCount || (kShimTable[j] >> 24) != KIND_CALL)
             continue;
-        iat[j] = this_thunk(stub + SLOT * j, &ctx->wrapUi, iat[j], kDiverts[k].arg);
+        u32 **cell = (kDiverts[k].object == ON_CONTROL) ? &ctx->wrapControl : &ctx->wrapUi;
+        iat[j] = this_thunk(stub + SLOT * j, cell, iat[j], kDiverts[k].arg);
     }
 
     // Enter it. EKA1 calls a DLL's entry point with EDllProcessAttach first,

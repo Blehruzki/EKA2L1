@@ -22,6 +22,7 @@ buildapp.build('gate6', 0xE0001006, 'Gate6', sys.argv[1] if len(sys.argv) > 1 el
                         (EIKCORE, ['eikstart_runapplication', 'eikapplication_ctor',
                                    'eikappui_ctor', 'eikappui_baseconstructl']),
                         (AVKON, ['akndocument_ctor']),
-                        (CONE, ['coeappui_ctor'])],
+                        (CONE, ['coeappui_ctor', 'coeenv_static', 'coecontrol_ctor',
+                                 'coecontrol_createwindowl'])],
                sources=('gate6.cpp', 'gate4_shim.cpp'),
                heap_max=0x800000)

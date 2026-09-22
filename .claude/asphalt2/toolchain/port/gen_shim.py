@@ -26,6 +26,17 @@ EPOC6 = '/home/user/EKA2L1/src/emu/bridge/include/bridge/epoc6.def'
 
 # Each table entry is  kind << 24 | dll index << 16 | ordinal.
 KIND_NONE, KIND_CALL, KIND_REM, KIND_LOCAL, KIND_ARG3 = 0, 1, 2, 3, 4
+KIND_SRET8 = 5
+
+# Where the two calling conventions actually disagree. GCC98r2 returned an
+# eight-byte structure in r0 and r1; EABI returns anything over four bytes
+# through a hidden pointer the caller passes in r0, pushing `this` to r1. The
+# demangled names carry no return type, so the ones that do this are listed.
+# Only no-argument members so far -- anything with arguments would have to
+# shift them along as well.
+RETURNS_STRUCT = {
+    'TParseBase::DriveAndPath() const',
+}
 
 # GCC98r2 put its compiler helpers in euser; EABI puts them in the runtime
 # libraries the SDK links against, under their AEABI names. Same routines,
@@ -78,7 +89,7 @@ FRAMEWORK_BASES = ('CCoeControl', 'CCoeAppUi', 'CEikApplication', 'CEikDocument'
 
 # No EABI routine matches these, so gate 4 generates them itself.
 LOCAL_NEGSF2, LOCAL_PURE_VIRTUAL, LOCAL_NOOP, LOCAL_MEM_COMPARE = 0, 1, 2, 3
-LOCAL_TRAP_ENTER = 4
+LOCAL_TRAP_ENTER, LOCAL_TINT64_SET = 4, 5
 LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL}
 
 # Functions 9.x kept but moved, renamed or gave another argument. Each was
@@ -104,17 +115,37 @@ MANUAL = {
     # own TRAP instead of being caught here. Only code that leaves can tell.
     'TTrap::Trap(int &)': ('local', LOCAL_TRAP_ENTER, KIND_LOCAL),
     'TTrap::UnTrap(void)': ('local', LOCAL_NOOP, KIND_LOCAL),
+    # EKA1's TInt64 was a class of a low word and a high one; 9.x made it a
+    # plain long long and stopped exporting anything. Setting one from a TInt
+    # is a sign extension, and a GCC98r2 constructor returns the object.
+    'TInt64::TInt64(int)': ('local', LOCAL_TINT64_SET, KIND_LOCAL),
+    'TInt64::operator=(int)': ('local', LOCAL_TINT64_SET, KIND_LOCAL),
 }
 
 
-# The N-Gage-only libraries, which exist in no S60v3 ROM. Each entry is a
-# deliberate stand-in decided from what the game's code does with the call --
-# read out of the game, since there is no signature to match against.
-NGAGE = {
+# Imports with no signature to match on: the N-Gage-only libraries, and the
+# exports Nokia added past the end of what any list of ours covers. Each entry
+# is a deliberate stand-in, decided from what the game's code does with the
+# call and from reading the function itself out of the N-Gage ROM.
+BY_ORDINAL = {
     # ConstructL localises "Invalid game card" into five languages and hands it,
     # with the ASCII name "N-Gage", to this. Nothing on an S60v3 phone would
     # ever show that message, so it succeeds and does nothing.
-    ('nokiafc', 1): LOCAL_NOOP,
+    ('nokiafc', 1): ('local', LOCAL_NOOP, KIND_LOCAL),
+    # A Nokia addition past cone's ordinary exports -- in the ROM it copies a
+    # size, compares it against something keyed by UID 0x101f8a5a and a factor
+    # of 0.4, and adjusts. The game calls it on its control with the rectangle
+    # ApplicationRect just gave it, immediately after CreateWindowL, which is
+    # where SetRect goes; 9.x has no counterpart, so SetRect is the stand-in.
+    ('cone', 318): ('cone', 'CCoeControl::SetRect(const TRect&)', KIND_CALL),
+    # Direct screen access, which is what a game wants the screen for. In the
+    # ROM, 348 takes four arguments and returns a 0x60-byte object, and 350
+    # starts one off; the game hands the first the window server session and
+    # screen device it read out of its CCoeEnv, its window, and itself as the
+    # abort observer. 9.x still has both, under their own names.
+    ('ws32', 348): ('ws32', 'CDirectScreenAccess::NewL(RWsSession&, CWsScreenDevice&,'
+                            ' RWindowBase&, MDirectScreenAccess&)', KIND_CALL),
+    ('ws32', 350): ('ws32', 'CDirectScreenAccess::StartL()', KIND_CALL),
 }
 
 
@@ -122,6 +153,11 @@ def _is_framework_ctor(sig):
     """Class::Class(...) or Class::~Class(...) for a class the game derives from."""
     m = re.match(r'^(C\w+)::(~?)\1\s*\(', sig)
     return bool(m) and m.group(1) in FRAMEWORK_BASES
+
+
+# WS322U.DEF is ws32.dll -- the digit is the def's own version, not part of the
+# library's name, and nothing in the file says so.
+DEF_ALIASES = {'ws32': 'ws322'}
 
 
 def find_defs():
@@ -135,6 +171,9 @@ def find_defs():
             b = symdef.base_name(f)
             for key in {b, b.rstrip('u'), re.sub(r'\d+u?$', '', b)}:
                 out.setdefault(key, os.path.join(dirpath, f))
+    for name, actual in DEF_ALIASES.items():
+        if actual in out:
+            out.setdefault(name, out[actual])
     return out
 
 
@@ -161,8 +200,13 @@ def build(image):
         # equivalent, and forwarding to it is exactly what must not happen.
         if sig and _is_framework_ctor(sig):
             out.append((i, None, LOCAL_NOOP, sig, KIND_LOCAL))
-        elif (lib, _o) in NGAGE:
-            out.append((i, None, NGAGE[(lib, _o)], sig, KIND_LOCAL))
+        elif (lib, _o) in BY_ORDINAL:
+            target, what, kind = BY_ORDINAL[(lib, _o)]
+            if target == 'local':
+                out.append((i, None, what, sig, KIND_LOCAL))
+            else:
+                o = new_index.get(target, {}).get(shimtable.norm(what))
+                out.append((i, target, o, sig, kind if o else KIND_NONE))
         elif ordinal:
             out.append((i, lib, ordinal, sig, KIND_CALL))
         elif sig and 'Reserved' in sig:
@@ -184,6 +228,9 @@ def build(image):
             out.append((i, None, LOCAL[sig], sig, KIND_LOCAL))
         else:
             out.append((i, None, 0, sig, KIND_NONE))
+
+    out = [(i, lib, o, sig, KIND_SRET8 if kind == KIND_CALL and sig in RETURNS_STRUCT
+            else kind) for i, lib, o, sig, kind in out]
 
     dlls = sorted({lib for _i, lib, _o, _s, kind in out if lib and kind != KIND_NONE})
     return out, dlls
