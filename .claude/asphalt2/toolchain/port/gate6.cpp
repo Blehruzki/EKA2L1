@@ -1075,6 +1075,14 @@ static u32 gc_thunk(u8 *code, const void *cell, u32 slot)
 
 enum { GC_THUNK_BYTES = 20 };
 
+// A diagnostic, not a setting. The phone reboots inside the first RunL, a few
+// hundred imports after the frame loop starts, and the emulator does not, so
+// the question is whether the drawing is what does it. With this at 0 the game
+// runs exactly as before -- the direct screen access still starts, the
+// clipping region is still set, the state machine is untouched -- and only
+// BitBlt does nothing. If it still goes down, the drawing is not the cause.
+enum { DRAW_THE_FRAME = 0, OLD_GC_BITBLT = 46 };
+
 extern "C" void gate6_dsa_startl(void *, u32, Context *c)
 {
     typedef void (*StartL)(void *);
@@ -1803,6 +1811,14 @@ static u32 load_and_start()
             gcVt[2 + i] = (kGcSlot[i] == GC_NONE)
                 ? (u32)&gate6_pure_virtual
                 : gc_thunk(gcRoom + i * GC_THUNK_BYTES, &ctx->realGc, kGcSlot[i]);
+        if (!DRAW_THE_FRAME) {
+            // Its thunk is already there and already pointed at; only what it
+            // does changes.
+            u32 *b = (u32 *)(gcRoom + OLD_GC_BITBLT * GC_THUNK_BYTES);
+            b[0] = 0xE3A00000;          // mov r0, #0
+            b[1] = 0xE12FFF1E;          // bx  lr
+            user_imb_range(b, b + 2);
+        }
         ctx->spare = gcRoom + OLD_GC_SLOTS * GC_THUNK_BYTES;
         // GCC98r2 keeps the two header words in the table and points at them.
         ctx->fakeGc[0] = (u32)gcVt;
