@@ -38,7 +38,7 @@ every import into them itself.
 
 Build with `python3 build_gate6.py <outdir>`; install the SIS; run twice. The
 first run is the one being measured. The second reads what the first left in
-`E:\g6box.dat`, panics with `G6BOX <number>`, writes `E:\g6box.txt` and stops
+`C:\g6box.dat`, panics with `G6BOX <number>`, writes `C:\g6box.txt` and stops
 without running the game. So every measurement costs two launches, and a third
 run reports nothing.
 
@@ -126,12 +126,19 @@ Do not re-open these without new evidence. Each cost at least one round.
   the phone, 2712 in the emulator, against the 64 KB the image asks for.
 - **The frame loop failing on a later frame.** `frames` is 1 everywhere. All
   of this is one-time engine setup inside the first `RunL`.
-- **The reboots were the instrument.** `box_start` armed a `CPeriodic` at five
-  milliseconds whose every tick did `RFile::Write` and `RFile::Flush` on the
-  memory card — two hundred flushes a second, for as long as the game ran. On
-  the host file the emulator writes to, that is free. The tell was the marker
-  moving between two otherwise identical runs, which deterministic code does
-  not do. The timer is gone and flushing is once per sixty-four records.
+- **The five-millisecond flush timer was not the reboot.** `box_start` did arm
+  a `CPeriodic` at 5 ms whose every tick flushed the record to the memory card
+  — two hundred flushes a second, free on the host file the emulator writes to
+  — and removing it changed nothing. It was worth removing and it was not the
+  cause. The marker had moved between two runs, which looked asynchronous, but
+  those two runs differed in configuration as well, so that reasoning was
+  unsound.
+
+Still open rather than ruled out: whether the file I/O has any part in it. The
+record now lives on C: rather than the memory card, which is the one component
+with a removable driver, and flushes on every record again — thinning it to
+one in sixty-four had made the report read up to sixty-three events stale,
+which is the worst possible property for this.
 
 ## Where it stands
 
@@ -140,8 +147,12 @@ engine setup, then faults reading 0x30002 — a string pointer — at game+0xd5a
 (the game's `stricmp`), called from a case in the jump table at 0xd94f0. The
 last hundreds of imports are `__udivsi3` from game+0xef1c4.
 
-**Phone:** was rebooting at ~655 imports for seven rounds, which was the
-instrument above. Untested since that was removed.
+**Phone:** reboots within a couple of instructions of entering the state
+machine, every time, in nine rounds across four configurations. With the
+record flushing accurately the last marker is 909 (game+0xca168, case 9, two
+instructions in) with the screen taken over, and 926 (the dispatcher) without.
+No panic, no leave, nothing in those instructions — stack loads, stack stores
+and arithmetic — that could account for it.
 
 Both stop inside the first `RunL`, in the game's own obfuscated state machine
 at 0xc9cd4 — seventeen cases dispatched through a jump table at 0xc9d38, each

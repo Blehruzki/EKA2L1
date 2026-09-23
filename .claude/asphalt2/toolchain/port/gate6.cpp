@@ -665,7 +665,10 @@ void cperiodic_start(void *self, int delay, int interval, CallBack cb);
 void rdebug_rawprint(const void *text);
 }
 
-static const u16 kBoxPath[] = {'E',':','\\','g','6','b','o','x','.','d','a','t'};
+// On C: rather than the memory card. Two reasons: the card is the one piece of
+// this the phone has a removable driver for, and internal flash answers a
+// flush faster, which is what lets every record be flushed again.
+static const u16 kBoxPath[] = {'C',':','\\','g','6','b','o','x','.','d','a','t'};
 
 // A record left by a different build is worse than no record: it reads back as
 // a plausible number and says nothing. So the file carries what wrote it.
@@ -711,7 +714,7 @@ static void box_flush(Context *c)
     file_flush(c->boxFile);
 }
 
-static const u16 kTextPath[] = {'E',':','\\','g','6','b','o','x','.','t','x','t'};
+static const u16 kTextPath[] = {'C',':','\\','g','6','b','o','x','.','t','x','t'};
 
 static int put_hex(u8 *out, u32 v)
 {
@@ -794,9 +797,11 @@ static void box_report(Context *c, u32 count)
 // scheduler has not run yet -- a timer never gets a turn. Every import goes
 // through here; every so many of them reach the disk.
 enum { BOX_EVERY = 16 };
-// How many records go by between flushes. Every record is written either way;
-// this is only how often the card is made to catch up.
-enum { BOX_SETTLE = 64 };
+// How many records go by between flushes. Thinning this was a mistake: a write
+// that has not been flushed is still in the file server when the phone goes
+// down, and goes down with it, so the record was reading up to sixty-three
+// events stale exactly when it mattered. Back to every one.
+enum { BOX_SETTLE = 1 };
 enum { REACHED_LEAVE = 64, REACHED_EXIT = 128 };  // how the game ended, if it did
 
 // The emulator hears RDebug, and a phone does not, which makes this the one
