@@ -36,6 +36,9 @@ KIND_SRET8, KIND_ARGSHIFT = 5, 6
 # shift them along as well.
 RETURNS_STRUCT = {
     'TParseBase::DriveAndPath() const',
+    # TProcessId wraps a TUint64, so it is eight bytes: two registers under
+    # GCC98r2, a hidden pointer under EABI.
+    'RProcess::Id(void) const',
 }
 
 # GCC98r2 put its compiler helpers in euser; EABI puts them in the runtime

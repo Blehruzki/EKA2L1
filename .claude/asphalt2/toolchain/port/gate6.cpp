@@ -342,7 +342,7 @@ enum { OLD_RDEBUG_OPEN = 799, OLD_RTHREAD_ID = 533, OLD_RDEBUG_WRITEMEMORY = 123
 // the def's 1648 -- and the same pair this loader uses to make somewhere to
 // put the game.
 enum { OLD_CHUNK_CREATELOCALCODE = 1649, NEW_CHUNK_CREATELOCALCODE = 905 };
-enum { ON_TIMER = 2 };
+enum { ON_TIMER = 2, ON_GC = 3 };
 
 enum { IMPORT_DLL_NAME = 2 };           // apparc CApaApplication::DllName() const
 enum { IMPORT_COEENV_STATIC = 86 };     // cone CCoeEnv::Static()
@@ -382,6 +382,7 @@ static const Divert kDiverts[] = {
     {  98, 0, ON_CONTROL },     // cone     the Nokia export standing in for SetRect
     {  49, 0, ON_CONTROL },     // cone     CCoeControl::ActivateL()
     {  68, 0, ON_CONTROL },     // cone     CCoeControl::IsFocused() const
+    {  46, 0, ON_GC },          // bitgdi   CFbsBitGc::SetClippingRegion(const TRegion*)
     { 286, 0, ON_TIMER },       // euser    CTimer::ConstructL()
     { 268, 0, ON_TIMER },       // euser    CTimer::After(TTimeIntervalMicroSeconds32)
     { 266, 0, ON_TIMER },       // euser    CActiveScheduler::Add(CActive*)
@@ -434,13 +435,18 @@ struct Context {
     u32 avkon;              // an RLibrary on avkon, for what it does not export
     u32 newBaseConstructL;  // avkon's CAknAppUi::BaseConstructL, as resolved
     u32 newRequestComplete; // euser's User::RequestComplete, as resolved
-    u32 *dsaShifted;        // the game's view of its CDirectScreenAccess
+    u32 *dsaReal;           // the CDirectScreenAccess ws32 made
+    u32 *dsaShadow;         // and the old-layout view of it the game holds
+    u32 *realGc;            // the 9.x CFbsBitGc inside it
+    u32 *fakeGc;            // and the old-vtable stand-in the game calls
+    u32 newDsaStartL;       // ws32's CDirectScreenAccess::StartL, as resolved
     u32 *oldUi;             // the game's CEikAppUi, old layout
     u32 *coeEnv;            // the environment as it really is
     u32 *oldForeground;     // the game's MCoeForegroundObserver, old layout
     u32 coeEnvView[COEENV_VIEW_WORDS];  // the environment as the game must see it
     u32 newCancel;          // euser's CActive::Cancel, as resolved
     u32 noopFn;             // what a lookup answers when 9.x dropped the export
+    u32 writeFn;            // and what stands in for RDebug::WriteMemory
     u32 idFn;               // RThread::Id: a TThreadId of zero, in r0 and r1
     u32 newLibraryLookup;   // euser's RLibrary::Lookup, as resolved
     u32 newLibraryLoad;     // euser's RLibrary::Load, as resolved
@@ -843,6 +849,8 @@ extern "C" void gate6_timer_docancel(void *, u32, Context *c)
     old_call(c->oldTimer, OLD_DOCANCEL);
 }
 
+static void dsa_refresh(Context *c);
+
 extern "C" void gate6_timer_runl(void *, u32, Context *c)
 {
     c->reached |= REACHED_RUNL;
@@ -851,6 +859,10 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     // of its own object, so carry it across before handing over.
     c->oldTimer[ACTIVE_STATUS / 4] = c->wrapTimer[ACTIVE_STATUS / 4];
     c->oldTimer[ACTIVE_ACTIVE / 4] = c->wrapTimer[ACTIVE_ACTIVE / 4];
+
+    // The frame the game is about to draw reads the direct screen access
+    // object, so its view of it is brought up to date first.
+    dsa_refresh(c);
 
     old_call(c->oldTimer, OLD_RUNL);
 }
@@ -906,73 +918,128 @@ extern "C" void gate6_dsa_slot1(void *, u32 reason, Context *c)
     old_call1(c->oldObserver, 1, reason);
 }
 
-// CDirectScreenAccess is the one class the game reaches into rather than calls:
-// Gc(), ScreenDevice() and DrawingRegion() are inline in ws32.h, so the game's
-// code holds their offsets. Read out of both ROMs, 7.0s keeps them at 0x18,
-// 0x1c and 0x20, and 9.x -- the tail of CDirectScreenAccess::StartL hands
-// [this + 0x1c] and [this + 0x24] to CFbsBitGc::SetClippingRegion -- at 0x1c,
-// 0x20 and 0x24. One word later, all three, which is exactly the trick that
-// already works for CCoeEnv: hand the game the object four bytes on and every
-// old offset lands on its 9.x counterpart.
+// CDirectScreenAccess is the one class the game reaches into rather than
+// calls: Gc(), ScreenDevice() and DrawingRegion() are inline in ws32.h, so the
+// game's code holds their offsets. Read out of both ROMs, 7.0s keeps them at
+// 0x18, 0x1c and 0x20 and 9.x at 0x1c, 0x20 and 0x24 -- one word later, all
+// three, because EKA2's CActive grew by a word.
 //
-// What it costs is that the calls have to come back the other way, since the
-// object really does start where ws32 put it. Only two take it: StartL, which
-// gets a thunk of its own, and CActive::Cancel, which the game also calls on
-// its timer and which therefore has to tell them apart.
-enum { DSA_BIAS = 4 };
+// Shifting the pointer by that word is not enough, though, and the first
+// hardware run showed why: the class is a CActive, and iStatus at 4 and
+// iActive at 8 did not move. The game reads iActive every frame to decide
+// whether to draw, so a shifted pointer has it reading the scheduler's list
+// instead. So the game gets a shadow with the old layout, filled from the real
+// object and refreshed every frame from RunL, and the two calls it makes on it
+// -- StartL and CActive::Cancel -- are turned back.
+enum { OLD_DSA_ACTIVE = 8, OLD_DSA_GC = 0x18, OLD_DSA_DEVICE = 0x1c,
+       OLD_DSA_REGION = 0x20, OLD_DSA_BYTES = 0x28 };
+enum { NEW_DSA_GC = 0x1c, NEW_DSA_DEVICE = 0x20, NEW_DSA_REGION = 0x24 };
 
-// Remember the observer the game passed, put ours in its place, and shift what
-// comes back. r3 is the fourth argument and the only one that changes.
+static void dsa_refresh(Context *c)
+{
+    if (!c->dsaReal || !c->dsaShadow)
+        return;
+    const u32 *real = c->dsaReal;
+    u32 *shadow = c->dsaShadow;
+    shadow[ACTIVE_STATUS / 4] = real[ACTIVE_STATUS / 4];
+    shadow[OLD_DSA_ACTIVE / 4] = real[OLD_DSA_ACTIVE / 4];
+    c->realGc = (u32 *)real[NEW_DSA_GC / 4];
+    // Not the real graphics context: the game calls it by vtable slot, and the
+    // two vtables do not line up. What it gets is the stand-in built below.
+    shadow[OLD_DSA_GC / 4] = (u32)c->fakeGc;
+    shadow[OLD_DSA_DEVICE / 4] = real[NEW_DSA_DEVICE / 4];
+    shadow[OLD_DSA_REGION / 4] = real[NEW_DSA_REGION / 4];
+}
+
+// Remember the observer the game passed, put ours in its place, keep what came
+// back and hand the shadow over instead. r3 is the fourth argument and the
+// only one that changes.
 //
 //   stmdb sp!, {r12, lr}
-//   ldr   r12, [pc, #28]    @ where to keep the game's observer
+//   ldr   r12, [pc, #32]    @ where to keep the game's observer
 //   str   r3, [r12]
-//   ldr   r3, [pc, #24]     @ ours
-//   ldr   r12, [pc, #24]    @ CDirectScreenAccess::NewL
+//   ldr   r3, [pc, #28]     @ ours
+//   ldr   r12, [pc, #28]    @ CDirectScreenAccess::NewL
 //   blx   r12
-//   add   r0, r0, #4        @ the game's view of it
-//   ldr   r12, [pc, #16]    @ and ours, for Cancel to recognise
+//   ldr   r12, [pc, #20]    @ where the real one goes
 //   str   r0, [r12]
+//   ldr   r12, [pc, #16]    @ and the shadow comes back
+//   ldr   r0, [r12]
 //   ldmia sp!, {r12, pc}
 static u32 dsa_thunk(u8 *code, const void *cell, const void *observer, u32 target,
-                     const void *shiftedCell)
+                     const void *realCell, const void *shadowCell)
 {
     u32 *b = (u32 *)code;
     b[0] = 0xE92D5000;
-    b[1] = 0xE59FC01C;
+    b[1] = 0xE59FC020;
     b[2] = 0xE58C3000;
-    b[3] = 0xE59F3018;
-    b[4] = 0xE59FC018;
+    b[3] = 0xE59F301C;
+    b[4] = 0xE59FC01C;
     b[5] = 0xE12FFF3C;
-    b[6] = 0xE2800000 | DSA_BIAS;
-    b[7] = 0xE59FC010;
-    b[8] = 0xE58C0000;
-    b[9] = 0xE8BD9000;
-    b[10] = (u32)cell;
-    b[11] = (u32)observer;
-    b[12] = target;
-    b[13] = (u32)shiftedCell;
+    b[6] = 0xE59FC018;
+    b[7] = 0xE58C0000;
+    b[8] = 0xE59FC014;
+    b[9] = 0xE59C0000;
+    b[10] = 0xE8BD9000;
+    b[11] = (u32)cell;
+    b[12] = (u32)observer;
+    b[13] = target;
+    b[14] = (u32)realCell;
+    b[15] = (u32)shadowCell;
     return (u32)b;
 }
 
-// And back again, for the one call the game makes on it directly.
+// The game blits its finished frame with iGc->vtable[46](TPoint&, CFbsBitmap*)
+// -- by slot, not by name -- and the two vtables do not line up: the 7.0s
+// CFbsBitGc has 51 virtuals, 9.x has more and in a different order, starting
+// with the second destructor Itanium adds and CBase::Extension_ after it. Slot
+// 46 there is BitBlt(const TPoint&, const CFbsBitmap*); here it is 57. Calling
+// 57's neighbour instead is what put a band of pixels across the top of the
+// screen and then took the phone down with it.
 //
-//   sub   r0, r0, #4
-//   ldr   pc, [pc, #-4]
-static u32 dsa_unshift_thunk(u8 *code, u32 target)
+// So the game is handed an object of ours with a vtable in the old shape,
+// every slot a thunk that swaps in the real context and jumps through its own.
+// The pairing is by signature, read out of the CFbsBitGc vtable in each ROM;
+// 41 and 42 are the two the old table does not export, and nothing calls them.
+enum { OLD_GC_SLOTS = 51, GC_NONE = 0xFF };
+static const u8 kGcSlot[OLD_GC_SLOTS] = {
+     0,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17,
+    18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33,
+    34, 35, 36, 37, 38, 39, 40, 43, 44, GC_NONE, GC_NONE, 54, 55, 56,
+    57, 58, 59, 60, 61,
+};
+
+// Swap `this` for the real graphics context and go through its own vtable.
+//
+//   ldr r12, [pc, #8]      @ where the real one is kept
+//   ldr r0, [r12]
+//   ldr r12, [r0]          @ its vtable
+//   ldr pc, [r12, #slot*4]
+static u32 gc_thunk(u8 *code, const void *cell, u32 slot)
 {
     u32 *b = (u32 *)code;
-    b[0] = 0xE2400000 | DSA_BIAS;
-    b[1] = 0xE51FF004;
-    b[2] = target;
+    b[0] = 0xE59FC008;
+    b[1] = 0xE59C0000;
+    b[2] = 0xE59CC000;
+    b[3] = 0xE59CF000 | (slot * 4);
+    b[4] = (u32)cell;
     return (u32)b;
+}
+
+enum { GC_THUNK_BYTES = 20 };
+
+extern "C" void gate6_dsa_startl(void *, u32, Context *c)
+{
+    typedef void (*StartL)(void *);
+    ((StartL)c->newDsaStartL)(c->dsaReal);
+    dsa_refresh(c);
 }
 
 // RDebug::WriteMemory(TThreadId, TUint32 aAddress, const TDesC8 &aData, TInt).
 // The thread id goes in one register, not two -- the game called this with the
-// address in r1 -- so the descriptor is r2 and the last argument, which is not
-// needed, is r3. No context either: this is a copy and nothing more.
-extern "C" void gate6_write_memory(u32, u8 *address, const u32 *data, u32)
+// address in r1 -- so the descriptor is r2, and the last argument is one the
+// game does not need, which leaves r3 for the context.
+extern "C" void gate6_write_memory(u32, u8 *address, const u32 *data, Context *c)
 {
     const u32 length = data[0] & 0x0FFFFFFF;
     const u32 type = data[0] >> KTypeShift;
@@ -985,6 +1052,12 @@ extern "C" void gate6_write_memory(u32, u8 *address, const u32 *data, u32)
                                         : (const u8 *)data[2];
     for (u32 i = 0; i < length; i++)
         address[i] = text[i];
+
+    // Every region the game decrypts, so that code which reads as rubbish in
+    // the file can be found and read as what it becomes.
+    note(c, (u32)address >> 16, 'W');
+    note(c, (u32)address & 0xFFFF, 'w');
+    note(c, length, 'n');
 }
 
 // The game names the library in a descriptor; the second letter is enough to
@@ -1023,7 +1096,7 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
         switch (ordinal) {
         case OLD_RDEBUG_OPEN:        return c->noopFn;   // a channel of nothing
         case OLD_RTHREAD_ID:         return c->idFn;     // always the same id
-        case OLD_RDEBUG_WRITEMEMORY: return (u32)&gate6_write_memory;
+        case OLD_RDEBUG_WRITEMEMORY: return c->writeFn;
         case OLD_CHUNK_CREATELOCALCODE: mapped = NEW_CHUNK_CREATELOCALCODE; break;
         default:
             if (ordinal >= 1 && (u32)ordinal <= kShimEuserCount)
@@ -1053,8 +1126,8 @@ extern "C" void gate6_cancel(u32 *self, Context *c)
     typedef void (*Cancel)(void *);
     if (c->oldTimer && c->wrapTimer && self == c->oldTimer)
         self = c->wrapTimer;
-    else if (c->dsaShifted && self == c->dsaShifted)
-        self = (u32 *)((u8 *)self - DSA_BIAS);
+    else if (c->dsaShadow && self == c->dsaShadow)
+        self = c->dsaReal;
     ((Cancel)c->newCancel)(self);
 }
 
@@ -1348,7 +1421,7 @@ static u32 load_and_start()
 
     const u32 nImports = (h->codeSize - h->textSize) / 4;
     const u32 stubBytes = nImports * SLOT;
-    const u32 traceBytes = nImports * TRACE + 200 * TRACE;  // spares for our own thunks
+    const u32 traceBytes = nImports * TRACE + 240 * TRACE;  // spares for our own thunks
     const u32 chunkSize = h->codeSize + stubBytes + traceBytes;
 
     u32 chunk[2] = { 0, 0 };
@@ -1630,6 +1703,7 @@ static u32 load_and_start()
         u32 **cell = &ctx->wrapUi;
         if (kDiverts[k].object == ON_CONTROL) cell = &ctx->wrapControl;
         else if (kDiverts[k].object == ON_TIMER) cell = &ctx->wrapTimer;
+        else if (kDiverts[k].object == ON_GC) cell = &ctx->realGc;
         iat[j] = this_thunk(stub + SLOT * j, cell, iat[j], kDiverts[k].arg);
     }
 
@@ -1658,12 +1732,32 @@ static u32 load_and_start()
         vt[0] = ctx_thunk(spare + TRACE, ctx, (u32)&gate6_dsa_slot0);
         vt[1] = ctx_thunk(spare + 2 * TRACE, ctx, (u32)&gate6_dsa_slot1);
         obs[0] = (u32)vt;               // 9.x: the vptr points at slot 0
+        // The old-layout view of the object, and the old-vtable view of the
+        // graphics context inside it.
+        ctx->dsaShadow = (u32 *)user_allocz(OLD_DSA_BYTES);
+        u32 *gcVt = (u32 *)user_allocz((2 + OLD_GC_SLOTS) * 4);
+        ctx->fakeGc = (u32 *)user_allocz(4);
+        if (!ctx->dsaShadow || !gcVt || !ctx->fakeGc) PANIC(CAT_MEM, -37);
+        u8 *gcRoom = ctx->spare;
+        if (gcRoom + OLD_GC_SLOTS * GC_THUNK_BYTES > ctx->spareEnd)
+            PANIC(CAT_MEM, -38);
+        for (u32 i = 0; i < OLD_GC_SLOTS; i++)
+            gcVt[2 + i] = (kGcSlot[i] == GC_NONE)
+                ? (u32)&gate6_pure_virtual
+                : gc_thunk(gcRoom + i * GC_THUNK_BYTES, &ctx->realGc, kGcSlot[i]);
+        ctx->spare = gcRoom + OLD_GC_SLOTS * GC_THUNK_BYTES;
+        // GCC98r2 keeps the two header words in the table and points at them.
+        ctx->fakeGc[0] = (u32)gcVt;
+
         iat[IMPORT_DSA_NEWL] = dsa_thunk(spare + 8 * TRACE, &ctx->oldObserver, obs,
-                                         iat[IMPORT_DSA_NEWL], &ctx->dsaShifted);
+                                         iat[IMPORT_DSA_NEWL], &ctx->dsaReal,
+                                         &ctx->dsaShadow);
         if (nImports > IMPORT_DSA_STARTL && IMPORT_DSA_STARTL < kShimCount &&
-            (kShimTable[IMPORT_DSA_STARTL] >> 24) == KIND_CALL)
-            iat[IMPORT_DSA_STARTL] = dsa_unshift_thunk(spare + 3 * TRACE,
-                                                       iat[IMPORT_DSA_STARTL]);
+            (kShimTable[IMPORT_DSA_STARTL] >> 24) == KIND_CALL) {
+            ctx->newDsaStartL = iat[IMPORT_DSA_STARTL];
+            iat[IMPORT_DSA_STARTL] = ctx_thunk(stub + SLOT * IMPORT_DSA_STARTL,
+                                               ctx, (u32)&gate6_dsa_startl);
+        }
     }
 
     if (nImports > IMPORT_CANCEL && IMPORT_CANCEL < kShimCount &&
@@ -1684,6 +1778,8 @@ static u32 load_and_start()
         id[1] = 0xE3A01000;             // mov r1, #0
         id[2] = 0xE12FFF1E;             // bx  lr
         ctx->idFn = (u32)id;
+        ctx->writeFn = ctx3_thunk(trace + nImports * TRACE + 12 * TRACE, ctx,
+                                  (u32)&gate6_write_memory);
         ctx->newLibraryLookup = iat[IMPORT_LIBRARY_LOOKUP];
         iat[IMPORT_LIBRARY_LOOKUP] = ctx_thunk(stub + SLOT * IMPORT_LIBRARY_LOOKUP,
                                                ctx, (u32)&gate6_library_lookup);
