@@ -832,7 +832,7 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 static const u32 kCrumb[] = {
     // The seventeen cases of the machine's jump table.
     0x0c9d84, 0x0c9dc0, 0x0ca470, 0x0c9e2c, 0x0c9e38, 0x0c9e44, 0x0c9e6c,
-    0x0c9fb0, 0x0ca010, 0x0ca168, 0x0ca1d0, 0x0ca238, 0x0ca29c, 0x0ca2c4,
+    0x0c9fb0, 0x0ca014, 0x0ca168, 0x0ca1d0, 0x0ca238, 0x0ca29c, 0x0ca2c4,
     0x0ca2e0, 0x0ca2fc, 0x0ca390,
     // And through the body of case 8, every forty bytes or so. Case 9 hands
     // to case 8 -- each case ends by loading a state and re-entering the
@@ -840,13 +840,17 @@ static const u32 kCrumb[] = {
     // case 8 is where the phone stops reporting. It is also the one case whose
     // first instruction reads the program counter, which is why nothing was
     // planted in it the first time round.
-    0x0ca014, 0x0ca038, 0x0ca060, 0x0ca088, 0x0ca0b0, 0x0ca0d8, 0x0ca100,
+    0x0ca038, 0x0ca060, 0x0ca088, 0x0ca0b0, 0x0ca0d8, 0x0ca100,
     0x0ca128, 0x0ca150,
     // And two that cut the remaining gap in three: the tail of case 9, and
     // the dispatcher every case returns to. 926 without 927 says it died in
     // case 9's own body; 927 without 917 says it died getting out of the
     // jump table.
     0x0ca1b4, 0x0c9d20,
+    // Case 9's body is eighteen instructions of stack traffic and arithmetic,
+    // and the phone dies somewhere inside it. One marker every few
+    // instructions says which.
+    0x0ca170, 0x0ca178, 0x0ca180, 0x0ca1a4, 0x0ca1ac, 0x0ca1b0,
 };
 
 // An instruction can only be moved if it does not depend on where it is.
@@ -1202,6 +1206,16 @@ enum { GC_THUNK_BYTES = 20 };
 // clipping region is still set, the state machine is untouched -- and only
 // BitBlt does nothing. If it still goes down, the drawing is not the cause.
 enum { DRAW_THE_FRAME = 1, OLD_GC_BITBLT = 46 };
+
+// The other half of the drawing, and the half the last experiment left alone.
+// Turning the blit off proved nothing about the screen itself, because direct
+// screen access still started and the game still told bitgdi to stop updating
+// the display on its own and wait to be asked -- which is the one call in all
+// of this that changes what the display driver is doing. With this at 0 that
+// call and the Update that answers it both do nothing, and the driver is left
+// as the system had it.
+enum { TAKE_THE_SCREEN = 0 };
+enum { IMPORT_SET_AUTO_UPDATE = 45, IMPORT_SCREEN_UPDATE = 47 };
 
 extern "C" void gate6_dsa_startl(void *, u32, Context *c)
 {
@@ -1681,6 +1695,14 @@ static u32 load_and_start()
 
     ctx->cppRuntime = (u32)&drtaeabi_pure_virtual;
 
+    {
+        u32 *noop = (u32 *)(trace + nImports * TRACE + 10 * TRACE);
+        noop[0] = 0xE3A00000;           // mov r0, #0
+        noop[1] = 0xE12FFF1E;           // bx  lr
+        user_imb_range(noop, noop + 2);
+        ctx->noopFn = (u32)noop;
+    }
+
     // Read what the last run got to, if it left anything this build wrote, and
     // say so. The file is armed again by replacing it rather than deleting it,
     // so that a delete the file server refuses cannot leave a stale record to
@@ -1963,10 +1985,6 @@ static u32 load_and_start()
 
     if (nImports > IMPORT_LIBRARY_LOOKUP && IMPORT_LIBRARY_LOOKUP < kShimCount &&
         (kShimTable[IMPORT_LIBRARY_LOOKUP] >> 24) == KIND_CALL) {
-        u32 *noop = (u32 *)(trace + nImports * TRACE + 10 * TRACE);
-        noop[0] = 0xE3A00000;           // mov r0, #0
-        noop[1] = 0xE12FFF1E;           // bx  lr
-        ctx->noopFn = (u32)noop;
         u32 *id = (u32 *)(trace + nImports * TRACE + 11 * TRACE);
         id[0] = 0xE3A00000;             // mov r0, #0
         id[1] = 0xE3A01000;             // mov r1, #0
@@ -2002,6 +2020,11 @@ static u32 load_and_start()
         ctx->timerThunks[1] = ctx_thunk(spare + 5 * TRACE, ctx, (u32)&gate6_timer_runl);
         ctx->timerThunks[2] = ctx_thunk(spare + 6 * TRACE, ctx, (u32)&gate6_timer_runerror);
         iat[IMPORT_CTIMER_CTOR] = ctx_thunk(spare + 7 * TRACE, ctx, (u32)&gate6_ctimer_ctor);
+    }
+
+    if (!TAKE_THE_SCREEN) {
+        if (nImports > IMPORT_SET_AUTO_UPDATE) iat[IMPORT_SET_AUTO_UPDATE] = ctx->noopFn;
+        if (nImports > IMPORT_SCREEN_UPDATE) iat[IMPORT_SCREEN_UPDATE] = ctx->noopFn;
     }
 
     for (u32 i = 0; i < sizeof kCrumb / sizeof kCrumb[0]; i++)
