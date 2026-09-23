@@ -68,12 +68,12 @@ def crumbs():
 
 # Notes whose payload is an address: the same run on two machines loads the
 # image somewhere different, so the number is worth printing and not comparing.
-ADDRESS_NOTES = {850, 851, 852, 853, 854, 855, 856, 857, 858}
+ADDRESS_NOTES = {850, 851, 852, 853, 854, 855, 856, 857, 858, 859}
 
 NOTES = {860: 'slot entered', 850: 'Cancel on', 851: 'STRAY Cancel on',
          852: 'image loaded at', 853: 'chunk ends at',
          854: 'APP UI VPTR CHANGED to', 855: 'decrypted literal',
-         856: '  and it points at a word', 857: 'r5 =', 858: '    word'}
+         856: '  and it points at a word', 857: 'r5 =', 858: '    word', 859: '    text'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework

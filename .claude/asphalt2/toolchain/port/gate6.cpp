@@ -96,6 +96,10 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_TARGET = 856,       // the descriptor's own first word
        NOTE_R5 = 857,           // r5 where a breadcrumb was asked to carry it
        NOTE_R5_AT = 858,        // and the words it addresses
+       NOTE_RESULT = 870,       // what a call returned
+       NOTE_RESULT_OF = 871,    // and which import it was
+       NOTE_RESULT_ARG = 872,   // and what it was asked for
+       NOTE_TEXT = 859,         // the text of a descriptor we read ourselves
        NOTE_VPTR = 854,         // the app UI's vtable pointer, when it went wrong
        NOTE_SLOT = 860,         // the framework entered a slot of ours
        NOTE_CANCEL = 850,       // CActive::Cancel, and on what
@@ -959,6 +963,7 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 // finding the way into the state machine; off is the default now, and the
 // emulator shows the same sequence with or without them.
 enum { TRACE_EVERY_IMPORT = 1 };
+enum { WATCH_ALLOCATIONS = 0 };
 enum { PLANT_CRUMBS = 0 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1086,6 +1091,46 @@ extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
 // marker would no longer mean the case was entered.
 // Same stub with `mov r3, r5` inserted before the call, so the handler is
 // handed the register as a fourth argument. The literals move by one word.
+// A thunk that lets the call happen and then records what came back, which a
+// trace on the way in cannot do. Used on the allocators, to find which
+// allocation produced an object the game later walks.
+extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
+{
+    log_event(c, NOTE_RESULT, result);
+    log_event(c, NOTE_RESULT_OF, index);
+    log_event(c, NOTE_RESULT_ARG, arg);
+    log_block(c);
+}
+
+// The result goes back over the saved r0 before the registers are restored, so
+// the caller still receives it. Every pc-relative offset counts from the
+// instruction's own address plus eight, which is where the first attempt at
+// this went wrong -- each literal was read one word late.
+static u32 result_thunk(u8 *code, const void *ctx, u32 value, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE92D500F;                  // stmdb sp!, {r0-r3, r12, lr}
+    b[1] = 0xE59FC024;                  // ldr   r12, [pc, #36]  -> b[12] target
+    b[2] = 0xE12FFF3C;                  // blx   r12             -- let it happen
+    b[3] = 0xE1A02000;                  // mov   r2, r0          -- the result
+    // r0-r3 do not survive a call, so the argument cannot be kept in one of
+    // them across it; the copy pushed on the way in is still there.
+    b[4] = 0xE59D3000;                  // ldr   r3, [sp]        -- what was asked
+    b[5] = 0xE58D2000;                  // str   r2, [sp]        -- the caller's r0
+    b[6] = 0xE59F0014;                  // ldr   r0, [pc, #20]   -> b[13] which
+    b[7] = 0xE59F1014;                  // ldr   r1, [pc, #20]   -> b[14] context
+    b[8] = 0xE59FC014;                  // ldr   r12, [pc, #20]  -> b[15] handler
+    b[9] = 0xE12FFF3C;                  // blx   r12
+    b[10] = 0xE8BD500F;                 // ldmia sp!, {r0-r3, r12, lr}
+    b[11] = 0xE12FFF1E;                 // bx    lr              -- r0 restored
+    b[12] = target;
+    b[13] = value;
+    b[14] = (u32)ctx;
+    b[15] = (u32)&gate6_result;
+    user_imb_range(b, b + 16);
+    return (u32)b;
+}
+
 static void crumb_plant_r5(Context *c, u8 *base, u32 at, u32 marker)
 {
     u32 *site = 0, original = 0;
@@ -1516,9 +1561,15 @@ extern "C" void gate6_write_memory(u32, u8 *address, const u32 *data, Context *c
             log_event(c, NOTE_LITERAL, p);
             // Only if it lands inside the image, since reading it is the very
             // thing the phone cannot do.
-            log_event(c, NOTE_TARGET,
-                      (p >= c->codeBase && p < (u32)c->spareEnd)
-                          ? *(const u32 *)p : 0xBADBAD00);
+            const int inside = (p >= c->codeBase && p < (u32)c->spareEnd);
+            log_event(c, NOTE_TARGET, inside ? *(const u32 *)p : 0xBADBAD00);
+            // And the nine characters themselves. The phone faults reading the
+            // third of them through TDesC16::AtC; if this reads all nine, the
+            // text is there and the fault is inside AtC rather than at the
+            // memory, which is most of the answer.
+            if (inside)
+                for (u32 k = 1; k <= 5; k++)
+                    log_event(c, NOTE_TEXT, ((const u32 *)p)[k]);
         }
         log_block(c);
     }
@@ -2358,6 +2409,20 @@ static u32 load_and_start()
     if (TRACE_EVERY_IMPORT)
         for (u32 i = 0; i < nImports; i++)
             iat[i] = trace_thunk(trace + TRACE * i, ctx, i, iat[i], (u32)&gate6_trace);
+
+    // The allocators, wrapped once more so the record carries the address each
+    // one handed back. Bench only: it doubles their cost and says nothing the
+    // phone needs.
+    if (WATCH_ALLOCATIONS) {
+        static const u32 kAlloc[] = { 265, 269, 270, 315 };   // ... and Free
+        for (u32 i = 0; i < sizeof kAlloc / sizeof kAlloc[0]; i++) {
+            const u32 j = kAlloc[i];
+            if (j >= nImports || ctx->spare + 16 * 4 > ctx->spareEnd)
+                continue;
+            iat[j] = result_thunk(ctx->spare, ctx, j, iat[j]);
+            ctx->spare += 16 * 4;
+        }
+    }
 
     // Everything above -- the image, the stubs, every thunk -- was written as
     // data and is about to be run as code, so the caches are put right over

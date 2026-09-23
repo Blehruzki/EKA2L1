@@ -436,6 +436,33 @@ copy has twenty-six from somewhere else and no `bin/` at all. Restoring `bin/`
 changes nothing, which figures: `main.dll` is 1,616,972 bytes with a code
 section of 0x1850fc, the same image as `6rbc.app`.
 
+**What the container turns out to be.** `result_thunk` wraps a call and
+records what came back -- which a trace on the way in cannot do -- and with it
+on the allocators the whole history of 0x8b8000 reads out: allocated at 21728
+bytes, freed, 448, freed, 1056, freed, then 20 four times over, each freed, and
+finally 4 bytes at record 4552 which is still live at the fault. The
+allocations bracket `memcpy` calls from 0x1036xx and one of the strings beside
+`6RBC.off` is `basic_string`, so that address is a container's buffer being
+grown and recycled. The search reads [+0], [+4] and [+0xc] from it, which fits
+the 20-byte tenant and not the 4-byte one. So the search is handed a pointer to
+a buffer that was freed long before, and following it further means reversing
+the game's whole container layer.
+
+Two things worth keeping from building that tool. `r0`-`r3` do not survive a
+call, so an argument cannot be held in one across it -- the copy `stmdb` pushed
+on the way in is the one to read. And wrapping an import twice makes the
+trace's caller column point at our own outer thunk, so `from` is meaningless
+for anything `WATCH_ALLOCATIONS` covers.
+
+**Back to the phone's own frontier**, which is 3500 records short of all this.
+It dies reading the third of nine characters through `TDesC16::AtC`, and the
+emulator reads all nine. `NOTE_TEXT` now logs those characters from our own
+read at startup, before the game touches them: the emulator gives 00770066
+00690076 002f0072 006f0066 00000070, "fwvir/fop" before descrambling. If the
+phone logs all five words the text is readable and the fault is inside `AtC`;
+if it stops partway, the memory is.
+
+
 
 
 
