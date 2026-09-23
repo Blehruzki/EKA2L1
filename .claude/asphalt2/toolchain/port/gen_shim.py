@@ -178,10 +178,15 @@ BY_ORDINAL = {
     ('avkon', 874): ('local', LOCAL_NOOP, KIND_LOCAL),
     ('avkon', 1272): ('local', LOCAL_NOOP, KIND_LOCAL),
     # And the third of that family. CAknAppUi::SetKeyBlockMode is not virtual
-    # and reads CAknAppUiBase's own members, which our app UI -- a CEikAppUi
-    # wearing CAknAppUi's vtable -- does not have, so avkon reads zeroes where
-    # it expects objects. It decides whether holding a key repeats it.
-    ('avkon', 2927): ('local', LOCAL_NOOP, KIND_LOCAL),
+    # and writes CAknAppUiBase's own members, which the game's app UI does not
+    # have: avkon writes at its own offsets into an object that is not one of
+    # its, and what it lands on depends on where the heap put things. It was
+    # found setting our app UI's vtable pointer to 1 -- a TBool at avkon's
+    # offset, the vptr at ours -- which the framework then dispatched
+    # ProcessCommandParametersL through. It decides whether holding a key
+    # repeats it. The key here is the ordinal in the N-Gage's avkon, not the
+    # 9.x one this used to name, which is why it went on being called for real.
+    ('avkon', 1529): ('local', LOCAL_NOOP, KIND_LOCAL),
     # CEikAppUi::IsForeground(), in all but name. In the N-Gage ROM it checks
     # that it is still the CCoeEnv's app UI and that the window server's
     # focused window group belongs to this process. The game asks it, together

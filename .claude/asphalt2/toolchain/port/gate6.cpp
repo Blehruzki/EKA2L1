@@ -92,7 +92,8 @@ enum { LOG_BLOCK = 64, LOG_ZOOM = 176, LOG_ZOOM_END = 336 };
 // the column that usually holds a caller holds the value. They are what the
 // log was missing -- it could only ever see the game calling out, never the
 // framework calling in, so anything that arrived on its own went unrecorded.
-enum { NOTE_SLOT = 860,         // the framework entered a slot of ours
+enum { NOTE_VPTR = 854,         // the app UI's vtable pointer, when it went wrong
+       NOTE_SLOT = 860,         // the framework entered a slot of ours
        NOTE_CANCEL = 850,       // CActive::Cancel, and on what
        NOTE_STRAY = 851,        // ... on something that is neither of ours
        NOTE_BASE = 852,         // where the game was loaded
@@ -491,6 +492,8 @@ struct Context {
     u32 avkon;              // an RLibrary on avkon, for what it does not export
     u32 newBaseConstructL;  // avkon's CAknAppUi::BaseConstructL, as resolved
     u32 newRequestComplete; // euser's User::RequestComplete, as resolved
+    u32 wrapUiVptr;         // the vtable pointer wrapUi was given, checked on
+                            // every call in, to catch a stray write over it
     u32 *dsaReal;           // the CDirectScreenAccess ws32 made
     u32 *dsaShadow;         // and the old-layout view of it the game holds
     u32 *realGc;            // the 9.x CFbsBitGc inside it
@@ -789,6 +792,8 @@ static void log_event(Context *c, u32 code, u32 from)
         log_block(c);
 }
 
+static void vptr_check(Context *c);
+
 static void box_write(Context *c)
 {
     c->boxData[0] = BOX_MAGIC;
@@ -1057,6 +1062,7 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
     c->boxData[BOX_FROM + slot] = caller - c->codeBase;
     ++c->traceCount;
     log_event(c, index, caller - c->codeBase);
+    vptr_check(c);                  // whichever call it was, it is named above
     if (index == IMPORT_LEAVE || index == IMPORT_EXIT)
         log_block(c);               // the tail of the block, on the way out
 }
@@ -1065,12 +1071,26 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
 // time, so the record is exact rather than to the nearest sixteen.
 enum { REACHED_SLOT = 16 };
 
+// The app UI's vtable pointer was found overwritten with 1 by the time the
+// framework dispatched ProcessCommandParametersL through it. Every import the
+// game makes and every call the framework makes into us comes past here, so
+// the record names the last one it was still right for.
+static void vptr_check(Context *c)
+{
+    if (c->wrapUi && c->wrapUi[0] != c->wrapUiVptr) {
+        log_event(c, NOTE_VPTR, c->wrapUi[0]);
+        log_block(c);
+        c->wrapUiVptr = c->wrapUi[0];   // say it once per change, not per call
+    }
+}
+
 extern "C" void gate6_slot(u32 code, Context *c, u32)
 {
     note(c, code, '+');
     c->lastCall = code;
     c->reached |= REACHED_SLOT;         // so a zero can be told from a silence
     log_event(c, NOTE_SLOT, code);      // the half of the story the log lacked
+    vptr_check(c);
     box_flush(c);
 }
 
@@ -1584,6 +1604,8 @@ extern "C" void *gate6_create_app_ui(void *self)
     vt[VT_HEADER + SLOT_UI_CONSTRUCT] = (u32)&gate6_ui_construct;
     instrument(c, vt, AKN_APPUI_SLOTS, OBJ_UI);
     ui[0] = (u32)(vt + VT_HEADER);
+    c->wrapUi = ui;
+    c->wrapUiVptr = ui[0];
     return ui;
 }
 
