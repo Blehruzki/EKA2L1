@@ -270,6 +270,45 @@ stale return address. With the register fixed the handler runs, records what
 `Cancel` was called on, and refuses an object that is neither ours — so the
 next run says who, and carries on.
 
+**With the register fixed the phone went from 258 records to 6988**, and the
+record shows the handler doing its job: `Cancel on 0x603388`, no stray, and the
+run carrying on for another six and a half thousand events.
+`phone-2026-09-23h.log` is that run. It ended in a reboot, and this one is not
+the write ceiling: 58 slot entries and about 325 writes all told, against the
+two thousand that ends a run.
+
+**It is hung, not crashed.** The last 2017 records hold no import and no call
+in from the framework, nothing but breadcrumbs, and after a one-off pass
+through states 909, 927..932, 925, 908, 917..924, 913 and 912 they settle into
+a cycle of five that repeats 181 times without variation:
+
+```
+926 -> 906 -> 926 -> 907 -> 926 -> 916 -> 926 -> 901 -> 926 -> 905 -> 926 ...
+```
+
+State 905, at 0xc9e44, is where it decides:
+
+```
+ldr ip, [sp, #0x34]
+ldr r4, [ip]            @ a word, through a pointer held in a local
+cmp sb, r4              @ against r9
+moveq r3, r2            @ which of two states comes next
+b    #0xc9d1c           @ and back to the dispatcher
+```
+
+The game is busy-waiting on one word of memory, and while it spins it makes no
+system call -- so our timer's `RunL` never runs, `dsa_refresh` never runs, and
+nothing this process does can change that word. A thread that never returns to
+the active scheduler is also what the phone's watchdog resets, which is the
+reboot.
+
+On the N-Gage something writes that word from outside the loop. Finding what
+is the next job: the pointer in `[sp+0x34]`, and what r9 was set to. The phone
+only reaches this because of the `Cancel` the emulator never makes -- the two
+runs share no records after it -- so whatever was cancelled may be the thing
+that was supposed to do the writing.
+
+
 Checked and wrong along the way: that the TLS key differs between the set and
 the get because one literal is relocated and the other is not. All three of
 the key literals at game+0xc8b28, 0xc8b34 and 0xc8b40 are in the relocation
