@@ -794,6 +794,9 @@ static void box_report(Context *c, u32 count)
 // scheduler has not run yet -- a timer never gets a turn. Every import goes
 // through here; every so many of them reach the disk.
 enum { BOX_EVERY = 16 };
+// How many records go by between flushes. Every record is written either way;
+// this is only how often the card is made to catch up.
+enum { BOX_SETTLE = 64 };
 enum { REACHED_LEAVE = 64, REACHED_EXIT = 128 };  // how the game ended, if it did
 
 // The emulator hears RDebug, and a phone does not, which makes this the one
@@ -882,10 +885,7 @@ extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
     c->boxData[4 + slot] = marker;
     c->boxData[BOX_FROM + slot] = site;
     c->traceCount++;
-    // The emulator runs this machine thousands of times and a flush apiece
-    // would crawl; the phone never gets that far, and early is where it
-    // matters, so the flushing stops once it is plainly past the question.
-    if (c->traceCount < 4096) box_flush(c); else box_write(c);
+    if ((c->traceCount % BOX_SETTLE) == 0) box_flush(c); else box_write(c);
 }
 
 //   stmdb sp!, {r0-r3, r12, lr}
@@ -946,9 +946,10 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
     const u32 slot = c->traceCount & (BOX_RING - 1);
     c->boxData[4 + slot] = index;
     c->boxData[BOX_FROM + slot] = caller - c->codeBase;
-    // Every import is written; only the flush is thinned out.
+    // Every import is written, which costs the file server a message and the
+    // card nothing. Flushing is what reaches the card, so it happens rarely.
     ++c->traceCount;
-    if (c->traceCount <= 64 || (c->traceCount % BOX_EVERY) == 0)
+    if ((c->traceCount % BOX_SETTLE) == 0)
         box_flush(c);
     else
         box_write(c);
@@ -981,25 +982,16 @@ static void instrument(Context *c, u32 *vt, int slots, u32 object)
     }
 }
 
-// And a timer as well, for a fault that happens once the scheduler is running,
-// where the import before it may be a long way back.
-extern "C" int gate6_box_tick(void *p)
-{
-    box_flush((Context *)p);
-    return 1;
-}
-
-// Called once the active scheduler is the thing running us.
-static void box_start(Context *c)
-{
-    void *timer = cperiodic_newl(0);            // EPriorityIdle, so it never preempts
-    if (!timer)
-        return;
-    CallBack cb;
-    cb.fn = &gate6_box_tick;
-    cb.ptr = c;
-    cperiodic_start(timer, 1000, 5000, cb);     // 1ms, then every 5ms
-}
+// There was a timer here that flushed the record every five milliseconds. It
+// was written before every import wrote its own record, when the worry was a
+// fault arriving long after the last import; it has been redundant since, and
+// it was doing two hundred RFile::Flush calls a second to a memory card for as
+// long as the game ran. On a host file that costs nothing, which is why the
+// emulator never minded. Every one of those flushes commits to the card on a
+// phone, and the reboots -- hardware only, asynchronous, no panic, no leave,
+// always at about the same point because the game takes about the same time to
+// get there -- fit that and nothing in the game's own code.
+static void box_start(Context *) {}
 
 // ---- the timer -------------------------------------------------------------
 
@@ -1214,7 +1206,7 @@ enum { DRAW_THE_FRAME = 1, OLD_GC_BITBLT = 46 };
 // of this that changes what the display driver is doing. With this at 0 that
 // call and the Update that answers it both do nothing, and the driver is left
 // as the system had it.
-enum { TAKE_THE_SCREEN = 0 };
+enum { TAKE_THE_SCREEN = 1 };
 enum { IMPORT_SET_AUTO_UPDATE = 45, IMPORT_SCREEN_UPDATE = 47 };
 
 extern "C" void gate6_dsa_startl(void *, u32, Context *c)
