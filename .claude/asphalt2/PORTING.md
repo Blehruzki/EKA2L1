@@ -154,22 +154,20 @@ Still open: the reboot itself, which survives all of the above.
 
 ## Where it stands
 
-**Emulator:** ~15,800 steps. Gets through startup, the decryptor and the
+**Emulator:** ~15,680 records. Gets through startup, the decryptor and the
 engine setup, then faults reading 0x30002 — a string pointer — at game+0xd5abc
 (the game's `stricmp`), called from a case in the jump table at 0xd94f0. The
 last hundreds of imports are `__udivsi3` from game+0xef1c4.
 
-**Phone:** with the log buffering its writes the reboots stopped, which
-settles the write ceiling for good: it is KERN-EXEC 3 now, an ordinary fault.
-`phone-2026-09-23.log` beside this file is that run, and it is identical to
-the emulator's for all 192 records it contains — the shim behaves the same on
-both machines that far. A second run at eight events to a write (`phone-2026-09-23b.log`) got 216
-records, also identical, so the telephony is not the problem: the game
-interrogates RTelServer, RPhone and RLine and comes through. The fault is now
-inside the frame-loop kick, in the seven events after `UserSvr::DllTls` at
-game+0x39c00 — `CActive::SetActive`, `User::RequestComplete`,
-`CAknAppUi::SetKeyBlockMode`, `KeySounds`, `PushContextL`, `IsFocused`,
-`strcat`.
+**Phone:** `CAknAppUi::SetKeyBlockMode` was the fault in the frame-loop kick.
+Diverting it was wrong — it is a 9.x method on the framework's app UI, and the
+game's own object is not one — so it is stubbed to a no-op in `gen_shim.py`
+(avkon 2927) and out of `kDiverts`. With that the phone went from 216 records
+to **2863, every one of them identical to the emulator's**, and it is into the
+state machine at 0xc9cd4 and cycling. That run ended in a reboot, but at the
+196th pass through a loop it had already survived 195 times: the write ceiling
+again, not the game. `phone-2026-09-23c.log` beside this file is that run.
+Nothing is yet known to behave differently on the two machines.
 
 Checked and wrong along the way: that the TLS key differs between the set and
 the get because one literal is relocated and the other is not. All three of

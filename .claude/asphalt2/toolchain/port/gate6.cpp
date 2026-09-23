@@ -79,7 +79,14 @@ enum { BOX_RING = 16 };
 // the fault has been landing and a window of even eight events is too wide to
 // name a call; then one write per sixteen, which keeps a run of thousands well
 // under the two thousand writes that used to end it in a reboot.
-enum { LOG_BLOCK = 16, LOG_EXACT = 512 };
+// Every write to the record costs the same scarce thing: this process gets
+// about two thousand RFile::Write calls out of the phone before the file
+// server takes it down with it, so the record's cadence is the run's length.
+// Sixty-four events to a write buys ten times the run the exact cadence did.
+// LOG_ZOOM turns the exact cadence back on from a given event, so once a run
+// says which block it died in the next one can watch that block event by
+// event; leave it past the end to keep the whole run cheap.
+enum { LOG_BLOCK = 64, LOG_ZOOM = 0x7fffffff };
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 // A count per marker. The tail says where it was; these say whether it was
@@ -731,9 +738,9 @@ static void log_block(Context *c)
     file_flush(c->logFile);
     c->logPos += c->logFill * 8;
     c->logFill = 0;
-    // The summary goes out at the same cadence, so the next launch still has a
-    // number to report even though the log is the thing worth reading.
-    box_flush(c);
+    // The summary used to go out at the same cadence, which doubled the cost of
+    // every block for a file nothing reads any more now that the log survives
+    // the run. It is written once at the start and at the exits instead.
 }
 
 static void log_event(Context *c, u32 code, u32 from)
@@ -743,7 +750,7 @@ static void log_event(Context *c, u32 code, u32 from)
         c->logBuf[c->logFill * 2 + 1] = from;
         c->logFill++;
     }
-    if (c->logFill >= (c->traceCount < LOG_EXACT ? 1u : (u32)LOG_BLOCK))
+    if (c->logFill >= (c->traceCount >= (u32)LOG_ZOOM ? 1u : (u32)LOG_BLOCK))
         log_block(c);
 }
 
@@ -1015,6 +1022,8 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
     c->boxData[BOX_FROM + slot] = caller - c->codeBase;
     ++c->traceCount;
     log_event(c, index, caller - c->codeBase);
+    if (index == IMPORT_LEAVE || index == IMPORT_EXIT)
+        log_block(c);               // the tail of the block, on the way out
 }
 
 // The framework calling one of our objects. Rare enough to write out every
