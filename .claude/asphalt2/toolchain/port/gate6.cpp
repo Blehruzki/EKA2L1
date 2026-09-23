@@ -87,7 +87,11 @@ enum { BOX_RING = 16 };
 // through, so a run that died somewhere inside a block can be watched closely
 // over just that block and stay cheap everywhere else. Past the end of the run
 // for both means the whole thing runs at the block cadence.
-enum { LOG_BLOCK = 64, LOG_ZOOM = 0x7fffffff, LOG_ZOOM_END = 0x7fffffff };
+// Over the run's last stretch, event by event. Two runs have ended at a block
+// boundary in this region, which says only that the fault is somewhere in the
+// sixty-odd events after it -- not, as it first looked, at the call the last
+// record names. About 250 extra writes, which the budget takes easily.
+enum { LOG_BLOCK = 64, LOG_ZOOM = 1850, LOG_ZOOM_END = 2100 };
 // 800..899 are notes rather than events: the code says what is being noted and
 // the column that usually holds a caller holds the value. They are what the
 // log was missing -- it could only ever see the game calling out, never the

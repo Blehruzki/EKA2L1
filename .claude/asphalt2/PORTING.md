@@ -462,6 +462,22 @@ read at startup, before the game touches them: the emulator gives 00770066
 phone logs all five words the text is readable and the fault is inside `AtC`;
 if it stops partway, the memory is.
 
+**It reads all nine**, byte for byte what the emulator reads: 00770066
+00690076 002f0072 006f0066 00000070 and 006f004e 00490066 00330067 00320036
+00000032, "fwvir/fop" and "NofIg3622" before descrambling
+(`phone-2026-09-24a.log`). The memory is readable and the text is right, so
+neither is the fault.
+
+**And a methodological correction that cost two readings.** That run stopped at
+1962 records, which is exactly a block boundary -- 810 records of notes and
+then eighteen full blocks of 64 -- so the last record is the last *flush*, not
+the fault, and the sixty-odd events after it were never written. The same is
+true of the run before it. Twice now the last record has been read as the
+place it died, and twice that was over-reading a cadence. `LOG_ZOOM` exists
+for exactly this and was switched off; it is on again over 1850..2100, which
+costs about 250 writes and gives the death point exactly.
+
+
 
 
 
