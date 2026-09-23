@@ -51,9 +51,15 @@ def crumbs():
         return {}
 
 
+NOTES = {860: 'slot entered', 850: 'Cancel on', 851: 'STRAY Cancel on',
+         852: 'image loaded at', 853: 'chunk ends at'}
+
+
 def label(code, imports, marks):
     if code >= CRUMB_FIRST:
         return 'marker %d at %s' % (code, marks.get(code, '?'))
+    if code in NOTES:
+        return '-- %s' % NOTES[code]
     return 'import %-4d %s' % (code, imports.get(code, '?'))
 
 

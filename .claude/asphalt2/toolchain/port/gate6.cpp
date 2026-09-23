@@ -88,6 +88,15 @@ enum { BOX_RING = 16 };
 // over just that block and stay cheap everywhere else. Past the end of the run
 // for both means the whole thing runs at the block cadence.
 enum { LOG_BLOCK = 64, LOG_ZOOM = 176, LOG_ZOOM_END = 336 };
+// 800..899 are notes rather than events: the code says what is being noted and
+// the column that usually holds a caller holds the value. They are what the
+// log was missing -- it could only ever see the game calling out, never the
+// framework calling in, so anything that arrived on its own went unrecorded.
+enum { NOTE_SLOT = 860,         // the framework entered a slot of ours
+       NOTE_CANCEL = 850,       // CActive::Cancel, and on what
+       NOTE_STRAY = 851,        // ... on something that is neither of ours
+       NOTE_BASE = 852,         // where the game was loaded
+       NOTE_END = 853 };        // and where its chunk stops
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 // A count per marker. The tail says where it was; these say whether it was
@@ -1038,6 +1047,7 @@ extern "C" void gate6_slot(u32 code, Context *c, u32)
     note(c, code, '+');
     c->lastCall = code;
     c->reached |= REACHED_SLOT;         // so a zero can be told from a silence
+    log_event(c, NOTE_SLOT, code);      // the half of the story the log lacked
     box_flush(c);
 }
 
@@ -1388,10 +1398,21 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
 extern "C" void gate6_cancel(u32 *self, Context *c)
 {
     typedef void (*Cancel)(void *);
+    log_event(c, NOTE_CANCEL, (u32)self);
     if (c->oldTimer && c->wrapTimer && self == c->oldTimer)
         self = c->wrapTimer;
     else if (c->dsaShadow && self == c->dsaShadow)
         self = c->dsaReal;
+    else {
+        // The game's own four call sites are all on the timer or the direct
+        // screen access object, so anything else got here without being
+        // called -- a stray branch into the stub. Cancelling whatever that
+        // pointer happens to be is how the run ends; recording it and
+        // returning is how the run carries on and says what came next.
+        log_event(c, NOTE_STRAY, (u32)self);
+        log_block(c);
+        return;
+    }
     ((Cancel)c->newCancel)(self);
 }
 
@@ -1798,6 +1819,10 @@ static u32 load_and_start()
             logName.text = kLogPath;
             file_replace(ctx->logFile, ctx->boxFs, &logName,
                          EFileWrite | EFileShareAny);
+            // Where the image landed, so a caller the log records as an offset
+            // can be turned back into an address and placed.
+            log_event(ctx, NOTE_BASE, ctx->codeBase);
+            log_event(ctx, NOTE_END, ctx->spareEnd ? (u32)ctx->spareEnd : 0);
 
             if (file_replace(ctx->boxFile, ctx->boxFs, &name, EFileWrite | EFileShareAny) == 0) {
                 ctx->lastImport = BOX_ARMED;    // armed, nothing recorded yet
