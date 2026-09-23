@@ -69,6 +69,7 @@ enum { EBufC = 0, EPtrC = 1, EPtr = 2, EBufType = 3, KTypeShift = 28 };
 // Knowing the import says what the game asked for; knowing the caller says
 // which of its own functions asked, which is the half that locates a fault.
 enum { BOX_RING = 16 };
+enum { LOG_BLOCK = 64 };                // events per write of the log
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 // A count per marker. The tail says where it was; these say whether it was
@@ -436,6 +437,18 @@ struct Context {
     // the crash instead of escaping it: a timer writes the last import to a
     // file every few milliseconds, and the next run reads it back and reports
     // it. Two launches, one answer.
+    // The log. Every import and every marker appends eight bytes -- what it was
+    // and where it was called from -- to a buffer in RAM, and the buffer goes
+    // to the file a block at a time. A block per sixty-four events instead of
+    // a write per event is the point: the phone reboots after about two
+    // thousand RFile::Write calls from this process, near enough whatever the
+    // flushing does, and that ceiling is what has been ending every run. The
+    // whole history also beats the last sixteen of it.
+    u32 logFile[4];
+    u32 logDes[2];
+    u32 logBuf[LOG_BLOCK * 2];
+    u32 logFill;            // events in the buffer
+    u32 logPos;             // where the next block goes in the file
     u32 boxFs[2];
     u32 boxFile[4];
     u32 boxData[BOX_WORDS];
@@ -671,6 +684,7 @@ void rdebug_rawprint(const void *text);
 // On C: rather than the memory card. Two reasons: the card is the one piece of
 // this the phone has a removable driver for, and internal flash answers a
 // flush faster, which is what lets every record be flushed again.
+static const u16 kLogPath[] = {'C',':','\\','g','6','b','o','x','.','l','o','g'};
 static const u16 kBoxPath[] = {'C',':','\\','g','6','b','o','x','.','d','a','t'};
 
 // A record left by a different build is worse than no record: it reads back as
@@ -696,6 +710,34 @@ static void stack_mark(Context *c)
     if (sp < c->spLow || !c->spLow) c->spLow = sp;
 }
 
+static void box_flush(Context *c);
+
+static void log_block(Context *c)
+{
+    if (!c->logFill || !c->logFile[0])
+        return;
+    c->logDes[0] = ((u32)EPtrC << KTypeShift) | (c->logFill * 8);
+    c->logDes[1] = (u32)c->logBuf;
+    file_write_at(c->logFile, (int)c->logPos, c->logDes);
+    file_flush(c->logFile);
+    c->logPos += c->logFill * 8;
+    c->logFill = 0;
+    // The summary goes out at the same cadence, so the next launch still has a
+    // number to report even though the log is the thing worth reading.
+    box_flush(c);
+}
+
+static void log_event(Context *c, u32 code, u32 from)
+{
+    if (c->logFill < LOG_BLOCK) {
+        c->logBuf[c->logFill * 2] = code;
+        c->logBuf[c->logFill * 2 + 1] = from;
+        c->logFill++;
+    }
+    if (c->logFill >= LOG_BLOCK)
+        log_block(c);
+}
+
 static void box_write(Context *c)
 {
     c->boxData[0] = BOX_MAGIC;
@@ -711,7 +753,7 @@ static void box_write(Context *c)
     file_write_at(c->boxFile, 0, c->boxDes);
 }
 
-static void box_flush(Context *c)
+void box_flush(Context *c)
 {
     box_write(c);
     file_flush(c->boxFile);
@@ -901,7 +943,7 @@ extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
     c->boxData[4 + slot] = marker;
     c->boxData[BOX_FROM + slot] = site;
     c->traceCount++;
-    if ((c->traceCount % BOX_SETTLE) == 0) box_flush(c); else box_write(c);
+    log_event(c, marker, site);
 }
 
 //   stmdb sp!, {r0-r3, r12, lr}
@@ -962,13 +1004,8 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
     const u32 slot = c->traceCount & (BOX_RING - 1);
     c->boxData[4 + slot] = index;
     c->boxData[BOX_FROM + slot] = caller - c->codeBase;
-    // Every import is written, which costs the file server a message and the
-    // card nothing. Flushing is what reaches the card, so it happens rarely.
     ++c->traceCount;
-    if ((c->traceCount % BOX_SETTLE) == 0)
-        box_flush(c);
-    else
-        box_write(c);
+    log_event(c, index, caller - c->codeBase);
 }
 
 // The framework calling one of our objects. Rare enough to write out every
@@ -1734,6 +1771,13 @@ static u32 load_and_start()
                 count = ctx->boxData[3];
                 box_report(ctx, count);
             }
+            Ptrc16 logName;
+            logName.lengthAndType = ((u32)EPtrC << KTypeShift) |
+                                    (u32)(sizeof kLogPath / 2);
+            logName.text = kLogPath;
+            file_replace(ctx->logFile, ctx->boxFs, &logName,
+                         EFileWrite | EFileShareAny);
+
             if (file_replace(ctx->boxFile, ctx->boxFs, &name, EFileWrite | EFileShareAny) == 0) {
                 ctx->lastImport = BOX_ARMED;    // armed, nothing recorded yet
                 box_flush(ctx);

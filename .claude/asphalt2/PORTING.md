@@ -36,11 +36,17 @@ every import into them itself.
 
 ## How a round works
 
-Build with `python3 build_gate6.py <outdir>`; install the SIS; run twice. The
-first run is the one being measured. The second reads what the first left in
-`C:\g6box.dat`, panics with `G6BOX <number>`, writes `C:\g6box.txt` and stops
-without running the game. So every measurement costs two launches, and a third
-run reports nothing.
+Build with `python3 build_gate6.py <outdir>`; install the SIS; **run once**.
+The run appends its whole history to `C:\g6box.log`, eight bytes an event, a
+block of sixty-four at a time. Read it with `readlog.py`, which names imports
+and markers, counts them, and -- the reason it exists -- diffs two logs and
+prints where they part company. `emulator-reference.log` beside this file is
+the emulator running the same build, for exactly that.
+
+The older two-launch route still works: the second launch reads `C:\g6box.dat`,
+panics with `G6BOX <number>` and writes `C:\g6box.txt`. That summary is now a
+convenience, written once per block rather than once per event, and the log is
+the thing worth reading.
 
 `g6box.txt`:
 
@@ -127,6 +133,13 @@ Do not re-open these without new evidence. Each cost at least one round.
   the phone, 2712 in the emulator, against the 64 KB the image asks for.
 - **The frame loop failing on a later frame.** `frames` is 1 everywhere. All
   of this is one-time engine setup inside the first `RunL`.
+- **The write count is a ceiling, and it was ending every run.** Across every
+  configuration -- 5 ms timer plus a flush every sixteen imports, a flush per
+  event on the card, a flush per sixty-four, a flush per event on C: -- the
+  phone went down after about two thousand `RFile::Write` calls from this
+  process, whatever the flushing did and whether the target was the card or
+  internal flash. 655 imports plus ~1400 timer ticks; 1923 records; ~2005
+  records. That is why the log buffers sixty-four events per write.
 - **Writing the record to the memory card was holding the run back.** A
   `CPeriodic` at 5 ms flushed it two hundred times a second, free on the host
   file the emulator writes to and not on a card. Removing the timer alone
@@ -146,10 +159,12 @@ engine setup, then faults reading 0x30002 — a string pointer — at game+0xd5a
 (the game's `stricmp`), called from a case in the jump table at 0xd94f0. The
 last hundreds of imports are `__udivsi3` from game+0xef1c4.
 
-**Phone:** still reboots, but no longer at the entrance. With the record on C:
-it cycles the state machine — 1, 5, 6, 7, 16 and round again, the same states
-the emulator runs about a thousand times each — before going down at ~2000
-records, in two to three seconds rather than seven to ten. No panic, no leave.
+**Phone:** cycles the state machine — 1, 5, 6, 7, 16 and round again — about
+118 times before going down, against the emulator's ~1084. It makes no imports
+at all while doing so: the import count freezes at 655 and only markers
+advance. Every run so far has ended at about two thousand records, which is
+the write ceiling above rather than anything the game does, so the loop count
+is a measure of the instrument and not of the game.
 
 Both stop inside the first `RunL`, in the game's own obfuscated state machine
 at 0xc9cd4 — seventeen cases dispatched through a jump table at 0xc9d38, each
