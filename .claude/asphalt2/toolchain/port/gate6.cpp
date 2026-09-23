@@ -60,7 +60,8 @@ enum { EBufC = 0, EPtrC = 1, EPtr = 2, EBufType = 3, KTypeShift = 28 };
 
 // The record: four counters and a ring of the last sixteen imports, which is
 // what says what the game was doing rather than only how far it had got.
-enum { BOX_RING = 16, BOX_WORDS = 4 + BOX_RING, BOX_BYTES = BOX_WORDS * 4 };
+enum { BOX_RING = 16, BOX_WORDS = 5 + BOX_RING, BOX_BYTES = BOX_WORDS * 4 };
+enum { BOX_PATH = 4 + BOX_RING };       // which of the candidate paths was used
 
 struct Ptrc16 { u32 lengthAndType; const u16 *text; };
 struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
@@ -424,6 +425,7 @@ struct Context {
     u32 boxFs[2];
     u32 boxFile[4];
     u32 boxData[BOX_WORDS];
+    u32 pathIndex;          // which candidate the game was loaded from
     u32 boxDes[2];
     u32 noteText[4];        // seven characters, for the emulator's log
     u32 noteDes[2];
@@ -659,6 +661,7 @@ static void box_write(Context *c)
     c->boxData[1] = c->lastImport;
     c->boxData[2] = c->reached;
     c->boxData[3] = c->traceCount;
+    c->boxData[BOX_PATH] = c->pathIndex;
     c->boxDes[0] = ((u32)EPtrC << KTypeShift) | BOX_BYTES;
     c->boxDes[1] = (u32)c->boxData;
     file_write_at(c->boxFile, 0, c->boxDes);
@@ -692,6 +695,7 @@ static void box_report(Context *c, u32 count)
     const u8 kSteps[] = { 's','t','e','p','s',' ' };
     const u8 kLast[] = { '\n','l','a','s','t',' ' };
     const u8 kFlags[] = { '\n','f','l','a','g','s',' ' };
+    const u8 kPath[] = { '\n','p','a','t','h',' ' };
     const u8 kTail[] = { '\n','t','a','i','l' };
     for (u32 i = 0; i < sizeof kSteps; i++) text[n++] = kSteps[i];
     n += put_u32(text + n, count);
@@ -699,6 +703,8 @@ static void box_report(Context *c, u32 count)
     n += put_u32(text + n, c->boxData[1]);
     for (u32 i = 0; i < sizeof kFlags; i++) text[n++] = kFlags[i];
     n += put_u32(text + n, c->boxData[2]);
+    for (u32 i = 0; i < sizeof kPath; i++) text[n++] = kPath[i];
+    n += put_u32(text + n, c->boxData[BOX_PATH]);
     for (u32 i = 0; i < sizeof kTail; i++) text[n++] = kTail[i];
     for (u32 i = 0; i < BOX_RING; i++) {
         text[n++] = ' ';
@@ -1268,16 +1274,48 @@ static u32 load_and_start()
     // only after.
     const u16 *paths[3] = { kPath2, kPath0, kPath1 };
     const int lens[3] = { sizeof kPath2 / 2, sizeof kPath0 / 2, sizeof kPath1 / 2 };
+    // The game opens eight files of its own beside wherever it was loaded
+    // from -- 6rbc.cwa, 6RBC.dat, cis.dat, cwivenc.dat and the rest -- and a
+    // missing one is not an error it survives. So a candidate only counts if
+    // its directory holds 6rbc.cwa too, and only if none of them does is the
+    // first readable .app taken anyway, so the failure is the game's own.
+    u16 sibling[32];
     err = -1;
-    int chosen = 0;
-    for (int i = 0; i < 3 && err; i++) {
-        Ptrc16 name;
-        name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)lens[i];
-        name.text = paths[i];
-        err = file_open(file, fs, &name, 1);       // EFileRead | EFileShareReadersOnly
-        chosen = i;
+    int chosen = -1;
+    int fallback = -1;
+    for (int pass = 0; pass < 2 && chosen < 0; pass++) {
+        for (int i = 0; i < 3; i++) {
+            Ptrc16 name;
+            name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)lens[i];
+            name.text = paths[i];
+            if (pass == 0) {
+                // The same path with "app" turned into "cwa".
+                if (lens[i] > 32) continue;
+                for (int k = 0; k < lens[i]; k++) sibling[k] = paths[i][k];
+                sibling[lens[i] - 3] = 'c';
+                sibling[lens[i] - 2] = 'w';
+                sibling[lens[i] - 1] = 'a';
+                Ptrc16 with;
+                with.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)lens[i];
+                with.text = sibling;
+                u32 probe[4] = { 0, 0, 0, 0 };
+                if (file_open(probe, fs, &with, 1) != 0) continue;
+                rhandle_close(probe);
+            }
+            err = file_open(file, fs, &name, 1);   // EFileRead | EFileShareReadersOnly
+            if (!err) { chosen = i; break; }
+            if (fallback < 0) fallback = i;
+        }
     }
-    if (err) PANIC(CAT_FS, err);
+    if (chosen < 0) {
+        if (fallback < 0) PANIC(CAT_FS, err);
+        chosen = fallback;
+        Ptrc16 name;
+        name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)lens[chosen];
+        name.text = paths[chosen];
+        err = file_open(file, fs, &name, 1);
+        if (err) PANIC(CAT_FS, err);
+    }
 
     int size = 0;
     err = file_size(file, &size);
@@ -1377,6 +1415,7 @@ static u32 load_and_start()
     if (!ctx) PANIC(CAT_MEM, -23);
     ctx->path = paths[chosen];
     ctx->pathLen = lens[chosen];
+    ctx->pathIndex = (u32)chosen;
     ctx->lastImport = 0xFFFF;               // nothing yet
     ctx->spare = trace + nImports * TRACE + 16 * TRACE;  // past the fixed thunks
     ctx->spareEnd = trace + traceBytes;
