@@ -394,6 +394,27 @@ neither the game's directory nor inside `6rbc.cwa`, so the search is one that
 cannot succeed; what matters is that the walk does not stop when it runs out
 of entries. Whatever ends that table is not ending it here.
 
+**Correction, from watching the walk rather than reading it.** It does not run
+off the end of the table: `PLANT_WALK` puts a breadcrumb on each of the three
+cases that drive the search, carrying r5 with it (`crumb_plant_r5` adds one
+`mov r3, r5` to the stub, and the handler logs the register and the four words
+it addresses). The search runs **once**. The very first node is already wrong.
+
+```
+case 0  start     r5 = 008b8000   @ the container
+        its words 008b8000 007039f0 00000000 000f000e
+case 6  compare   r5 = 007039f0   @ the first node
+        its words 00030002 0000007e 00700be8 40070002
+```
+
+So `head = container[+4] = 0x7039f0`, and that node's first word -- where the
+search expects a `char *` -- is 0x00030002. Nothing in those four words looks
+like a name record. The container is page-aligned and holds its own address at
+[+0], which is what a pool or a queue head looks like rather than a heap cell,
+so the question is no longer where the walk stopped but where the container
+came from and who was supposed to fill it.
+
+
 
 
 

@@ -94,6 +94,8 @@ enum { LOG_BLOCK = 64, LOG_ZOOM = 0x7fffffff, LOG_ZOOM_END = 0x7fffffff };
 // framework calling in, so anything that arrived on its own went unrecorded.
 enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it points at
        NOTE_TARGET = 856,       // the descriptor's own first word
+       NOTE_R5 = 857,           // r5 where a breadcrumb was asked to carry it
+       NOTE_R5_AT = 858,        // and the words it addresses
        NOTE_VPTR = 854,         // the app UI's vtable pointer, when it went wrong
        NOTE_SLOT = 860,         // the framework entered a slot of ours
        NOTE_CANCEL = 850,       // CActive::Cancel, and on what
@@ -977,6 +979,16 @@ static const u32 kLateCrumb[] = {
     0x0010b244,     // back from RLibrary::Lookup
 };
 
+// The linked-list search at 0xd9428 that the emulator dies in: where the walk
+// starts, every name it compares, and every step to the next node. r5 is the
+// node, so each record carries it.
+enum { PLANT_WALK = 0, CRUMB_WALK_FIRST = 960 };
+static const u32 kWalkCrumb[] = {
+    0x000d9484,     // case 0: r4 = head->[+4]
+    0x000d94e4,     // case 6: compare this node's name
+    0x000d9550,     // case 7: r4 = node->[+0xc], the next one
+};
+
 static const u32 kCrumb[] = {
     // The seventeen cases of the machine's jump table.
     0x0c9d84, 0x0c9dc0, 0x0ca470, 0x0c9e2c, 0x0c9e38, 0x0c9e44, 0x0c9e6c,
@@ -1022,6 +1034,25 @@ enum { IMPORT_LEAVE = 324, IMPORT_EXIT = 308 };
 // and the order is the order things happened in. The marker reads as 900 and
 // up, which no import index does, and the caller column carries where it was
 // planted.
+// A breadcrumb that also carries r5. The stub's `mov r3, r5` runs after the
+// registers are saved and before the call, so the value is the game's own at
+// the moment it passed the site -- which is how a list walk is followed: one
+// record per node, and the node is in it.
+extern "C" void gate6_crumb(u32 marker, Context *c, u32 site);
+
+extern "C" void gate6_crumb_r5(u32 marker, Context *c, u32 site, u32 r5)
+{
+    gate6_crumb(marker, c, site);
+    log_event(c, NOTE_R5, r5);
+    // And the first four words of whatever it points at, when that is an
+    // address this process could plausibly own: the question at the node is
+    // always what is in it, not only where it is.
+    if (r5 >= 0x400000 && r5 < 0x10000000 && !(r5 & 3))
+        for (u32 i = 0; i < 4; i++)
+            log_event(c, NOTE_R5_AT, ((const u32 *)r5)[i]);
+    log_block(c);
+}
+
 extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
 {
     stack_mark(c);
@@ -1052,6 +1083,34 @@ extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
 // prologue runs straight through, so a marker a little further in says the
 // same thing. The search stops at anything that branches, since past that the
 // marker would no longer mean the case was entered.
+// Same stub with `mov r3, r5` inserted before the call, so the handler is
+// handed the register as a fourth argument. The literals move by one word.
+static void crumb_plant_r5(Context *c, u8 *base, u32 at, u32 marker)
+{
+    u32 *site = 0, original = 0;
+    for (u32 i = 0; i < 8; i++) {
+        u32 *p = (u32 *)(base + at + 4 * i);
+        if (crumb_safe(*p)) { site = p; original = *p; break; }
+        if (((*p >> 25) & 7) >= 5) break;
+    }
+    if (!site || c->spare + CRUMB_BYTES + 8 > c->spareEnd)
+        return;
+    u32 *b = (u32 *)c->spare;
+    c->spare += CRUMB_BYTES + 8;
+    b[0] = 0xE92D500F;  b[1] = 0xE10F0000;  b[2] = 0xE92D0003;
+    b[3] = 0xE59F0028;  b[4] = 0xE59F1028;  b[5] = 0xE59F2028;
+    b[6] = 0xE59FC028;  b[7] = 0xE1A03005;  // mov r3, r5
+    b[8] = 0xE12FFF3C;  b[9] = 0xE8BD0003;  b[10] = 0xE128F000;
+    b[11] = 0xE8BD500F; b[12] = original;
+    b[13] = 0xE51FF004; b[14] = (u32)(site + 1);
+    b[15] = marker;     b[16] = (u32)c;
+    b[17] = (u32)site - (u32)base;
+    b[18] = (u32)&gate6_crumb_r5;
+    user_imb_range(b, b + 19);
+    *site = 0xEA000000 | ((((u32)b - (u32)site - 8) >> 2) & 0x00FFFFFF);
+    user_imb_range(site, site + 1);
+}
+
 static void crumb_plant(Context *c, u8 *base, u32 at, u32 marker)
 {
     u32 *site = 0;
@@ -2279,6 +2338,11 @@ static u32 load_and_start()
         if (nImports > IMPORT_SET_AUTO_UPDATE) iat[IMPORT_SET_AUTO_UPDATE] = ctx->noopFn;
         if (nImports > IMPORT_SCREEN_UPDATE) iat[IMPORT_SCREEN_UPDATE] = ctx->noopFn;
     }
+
+    if (PLANT_WALK)
+        for (u32 i = 0; i < sizeof kWalkCrumb / sizeof kWalkCrumb[0]; i++)
+            if (kWalkCrumb[i] + 4 <= h->codeSize)
+                crumb_plant_r5(ctx, base, kWalkCrumb[i], CRUMB_WALK_FIRST + i);
 
     if (PLANT_CRUMBS)
         for (u32 i = 0; i < sizeof kCrumb / sizeof kCrumb[0]; i++)
