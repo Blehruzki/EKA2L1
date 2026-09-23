@@ -198,6 +198,31 @@ something that is neither the timer nor the direct screen access object cannot
 have come from the game, so it is recorded and refused rather than made, and
 the run says what comes next instead of ending there.
 
+The next run stopped in the same place, so it reproduces: `CActive::Cancel`
+again, from 0x742a8070 this time, against a load base of 0x4600000 — about
+0x788a8070, which is RAM-loaded code and not the image.
+`phone-2026-09-23f.log` is that run. With the slot records in, both machines
+run an identical cascade of twelve framework calls into our vtables after
+`PushContextL` (app 5, appui 19, appui 18, app 12, doc 21, app 6, app 7,
+app 5, app 5, doc 20, appui 17, appui 14) and then part: the emulator carries
+on to appui slot 3, the phone branches into the stub table. Every slot that
+was logged is inside the copied count, so it is the call after the last one.
+
+**It is the heap.** Padding the vtable copies against exactly that — a slot
+past the end — broke the emulator instead, deterministically, at the first app
+slot of that cascade, three runs out of three; bisecting showed the padded
+allocation alone did it and the instrumentation was innocent. Nor is it the
+padding as such: `HEAP_NUDGE` makes one allocation at load time and never
+touches it, and 384 bytes reproduces the failure exactly while 96 and 2048
+leave the run alone. So the port has a fault that depends on where the heap
+puts things, and that is what a phone running the same build twice and getting
+through only once looks like. `VT_MARGIN` and `HEAP_NUDGE` in `gate6.cpp` are
+the bench for it; both are zero in a real build, and the baseline is ~15,800
+records and the usual 0x30002.
+
+Worth saying plainly: the emulator can reproduce this class of failure on
+demand now, so narrowing it costs nothing at the phone.
+
 Checked and wrong along the way: that the TLS key differs between the set and
 the get because one literal is relocated and the other is not. All three of
 the key literals at game+0xc8b28, 0xc8b34 and 0xc8b40 are in the relocation

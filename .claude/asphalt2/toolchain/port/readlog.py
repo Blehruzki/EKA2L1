@@ -51,13 +51,33 @@ def crumbs():
         return {}
 
 
+# Notes whose payload is an address: the same run on two machines loads the
+# image somewhere different, so the number is worth printing and not comparing.
+ADDRESS_NOTES = {850, 851, 852, 853}
+
 NOTES = {860: 'slot entered', 850: 'Cancel on', 851: 'STRAY Cancel on',
          852: 'image loaded at', 853: 'chunk ends at'}
+
+# How many slots of each wrapper's vtable are a copy of a real one. Past that
+# is the margin gate6.cpp pads with, and a call landing there is the framework
+# asking for a slot the class was not measured to have.
+OBJECTS = {1: ('app', 18), 2: ('doc', 23), 3: ('appui', 45),
+           4: ('control', 44), 5: ('timer', 6)}
+
+
+def slot_name(code):
+    obj, i = code >> 8, code & 0xFF
+    if obj not in OBJECTS:
+        return 'slot %x' % code
+    name, n = OBJECTS[obj]
+    return '%s slot %d%s' % (name, i, '   PAST THE END' if i >= n else '')
 
 
 def label(code, imports, marks):
     if code >= CRUMB_FIRST:
         return 'marker %d at %s' % (code, marks.get(code, '?'))
+    if code == 860:
+        return '-- entered'
     if code in NOTES:
         return '-- %s' % NOTES[code]
     return 'import %-4d %s' % (code, imports.get(code, '?'))
@@ -75,10 +95,25 @@ def main():
 
     if '--diff' in args:
         other = read(args[args.index('--diff') + 1])
+        if '--no-slots' in args:
+            # The framework works its way through our vtables in its own order,
+            # and two feature packs do not agree on it. That is noise in a diff
+            # and detail in a listing, so it comes out here and stays there.
+            events = [e for e in events if e[0] != 860]
+            other = [e for e in other if e[0] != 860]
+
+        def same(a, b):
+            """A note whose payload is an address says nothing across machines."""
+            if a is None or b is None:
+                return False
+            if a[0] != b[0]:
+                return False
+            return a[0] in ADDRESS_NOTES or a[1] == b[1]
+
         for i in range(max(len(events), len(other))):
             a = events[i] if i < len(events) else None
             b = other[i] if i < len(other) else None
-            if a != b:
+            if not same(a, b):
                 print('part company at record %d of %d / %d' % (i, len(events), len(other)))
                 for k in range(max(0, i - 4), min(max(len(events), len(other)), i + 5)):
                     ea = events[k] if k < len(events) else ('-', 0)
@@ -105,7 +140,8 @@ def main():
     tail = int(args[args.index('--tail') + 1]) if '--tail' in args else 40
     print('%d records' % len(events))
     for i, (code, frm) in enumerate(events[-tail:], start=len(events) - min(tail, len(events))):
-        print('%6d  %-44s from %x' % (i, label(code, imports, marks), frm))
+        shown = slot_name(frm) if code == 860 else '%x' % frm
+        print('%6d  %-44s from %s' % (i, label(code, imports, marks), shown))
 
 
 if __name__ == '__main__':

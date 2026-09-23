@@ -521,12 +521,35 @@ static const u32 *vtable_of(const u32 *object)
     return (const u32 *)object[0] - VT_HEADER;
 }
 
+// A wrapper's vtable is a copy of a real one, as many slots long as the class
+// was measured to have. The framework is under no obligation to agree: ask it
+// for a slot past the end and it reads whatever the heap put after the cell and
+// branches there, which is a wild jump that depends on the allocation history
+// and so happens on one run and not the next. The copy is padded, and the
+// padding answers.
+// A wrapper's vtable is a copy of a real one, as many slots long as the class
+// was measured to have, and the copy is exactly that big. Padding it looked
+// like cheap insurance against the framework asking for a slot past the end --
+// and it broke the emulator outright, at the first app slot of the cascade
+// after PushContextL, three runs out of three. Not because of the padding: an
+// allocation of 384 bytes made at load time and never touched does the same
+// thing, while 96 and 2048 leave the run alone. Something here depends on
+// where the heap puts things, which is the one explanation that fits a phone
+// running the same build twice and only sometimes getting through. Both knobs
+// are the bench for finding it and are zero in a real build.
+enum { VT_MARGIN = 0 };
+enum { HEAP_NUDGE = 0 };
+
+extern "C" u32 gate6_vt_beyond(void) { return 0; }
+
 static u32 *copy_vtable(const u32 *real, int slots)
 {
-    u32 *vt = (u32 *)user_allocz((VT_HEADER + slots) * 4);
+    u32 *vt = (u32 *)user_allocz((VT_HEADER + slots + VT_MARGIN) * 4);
     if (!vt) PANIC(CAT_MEM, -30);
     for (int i = 0; i < VT_HEADER + slots; i++)
         vt[i] = real[i];
+    for (int i = 0; i < VT_MARGIN; i++)
+        vt[VT_HEADER + slots + i] = (u32)&gate6_vt_beyond;
     return vt;
 }
 
@@ -1706,7 +1729,7 @@ static u32 load_and_start()
 
     const u32 nImports = (h->codeSize - h->textSize) / 4;
     const u32 stubBytes = nImports * SLOT;
-    const u32 traceBytes = nImports * TRACE + 240 * TRACE;  // spares for our own thunks
+    const u32 traceBytes = nImports * TRACE + 480 * TRACE;  // spares for our own thunks
     const u32 chunkSize = h->codeSize + stubBytes + traceBytes;
 
     u32 chunk[2] = { 0, 0 };
@@ -1779,6 +1802,9 @@ static u32 load_and_start()
     ctx->lastImport = 0xFFFF;               // nothing yet
     ctx->spare = trace + nImports * TRACE + 16 * TRACE;  // past the fixed thunks
     ctx->spareEnd = trace + traceBytes;
+    // A knob for the bench: a single allocation of this many bytes, to move
+    // everything the framework allocates afterwards. Zero for a real build.
+    if (HEAP_NUDGE) user_allocz(HEAP_NUDGE);
 
     ctx->cppRuntime = (u32)&drtaeabi_pure_virtual;
 
