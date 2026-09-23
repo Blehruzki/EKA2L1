@@ -163,12 +163,18 @@ last hundreds of imports are `__udivsi3` from game+0xef1c4.
 settles the write ceiling for good: it is KERN-EXEC 3 now, an ordinary fault.
 `phone-2026-09-23.log` beside this file is that run, and it is identical to
 the emulator's for all 192 records it contains — the shim behaves the same on
-both machines that far. It then ends, so the fault is somewhere in the
-following window, which at the time was sixty-three events wide: the telephony
-block the game runs to identify the phone (`RTelServer::GetPhoneInfo`,
-`RPhone::Open`, `GetStatus`, `GetLineInfo`, `RLine::Open`, records 192-201 in
-the reference) and then the frame-loop kick. The emulator passes straight
-through both, but its etel is a stub and the N95's is not.
+both machines that far. A second run at eight events to a write (`phone-2026-09-23b.log`) got 216
+records, also identical, so the telephony is not the problem: the game
+interrogates RTelServer, RPhone and RLine and comes through. The fault is now
+inside the frame-loop kick, in the seven events after `UserSvr::DllTls` at
+game+0x39c00 — `CActive::SetActive`, `User::RequestComplete`,
+`CAknAppUi::SetKeyBlockMode`, `KeySounds`, `PushContextL`, `IsFocused`,
+`strcat`.
+
+Checked and wrong along the way: that the TLS key differs between the set and
+the get because one literal is relocated and the other is not. All three of
+the key literals at game+0xc8b28, 0xc8b34 and 0xc8b40 are in the relocation
+table, so the keys agree.
 
 Both stop inside the first `RunL`, in the game's own obfuscated state machine
 at 0xc9cd4 — seventeen cases dispatched through a jump table at 0xc9d38, each

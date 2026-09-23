@@ -177,6 +177,11 @@ BY_ORDINAL = {
     # called on whatever the first returns.
     ('avkon', 874): ('local', LOCAL_NOOP, KIND_LOCAL),
     ('avkon', 1272): ('local', LOCAL_NOOP, KIND_LOCAL),
+    # And the third of that family. CAknAppUi::SetKeyBlockMode is not virtual
+    # and reads CAknAppUiBase's own members, which our app UI -- a CEikAppUi
+    # wearing CAknAppUi's vtable -- does not have, so avkon reads zeroes where
+    # it expects objects. It decides whether holding a key repeats it.
+    ('avkon', 2927): ('local', LOCAL_NOOP, KIND_LOCAL),
     # CEikAppUi::IsForeground(), in all but name. In the N-Gage ROM it checks
     # that it is still the CCoeEnv's app UI and that the window server's
     # focused window group belongs to this process. The game asks it, together

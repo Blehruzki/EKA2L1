@@ -75,7 +75,11 @@ enum { BOX_RING = 16 };
 // could only say the fault was somewhere in a window of sixty-three events.
 // Eight narrows that to seven and still writes only a few hundred times over a
 // run of thousands, well under the ceiling.
-enum { LOG_BLOCK = 8 };
+// Events per write of the log. Every one of them while the run is young, where
+// the fault has been landing and a window of even eight events is too wide to
+// name a call; then one write per sixteen, which keeps a run of thousands well
+// under the two thousand writes that used to end it in a reboot.
+enum { LOG_BLOCK = 16, LOG_EXACT = 512 };
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 // A count per marker. The tail says where it was; these say whether it was
@@ -398,7 +402,6 @@ enum { ON_APP_UI = 0, ON_CONTROL = 1 };
 struct Divert { u16 import; u8 arg; u8 object; };
 static const Divert kDiverts[] = {
     { 172, 1, ON_APP_UI },      // eikcore  CEikAppUi::ApplicationRect() const
-    {  39, 0, ON_APP_UI },      // avkon    CAknAppUi::SetKeyBlockMode(TAknKeyBlockMode)
     {  98, 0, ON_CONTROL },     // cone     the Nokia export standing in for SetRect
     {  49, 0, ON_CONTROL },     // cone     CCoeControl::ActivateL()
     {  68, 0, ON_CONTROL },     // cone     CCoeControl::IsFocused() const
@@ -740,7 +743,7 @@ static void log_event(Context *c, u32 code, u32 from)
         c->logBuf[c->logFill * 2 + 1] = from;
         c->logFill++;
     }
-    if (c->logFill >= LOG_BLOCK)
+    if (c->logFill >= (c->traceCount < LOG_EXACT ? 1u : (u32)LOG_BLOCK))
         log_block(c);
 }
 
