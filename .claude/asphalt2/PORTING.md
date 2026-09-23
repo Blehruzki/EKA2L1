@@ -51,6 +51,7 @@ flags   16 a slot of ours was entered · 32 the frame loop ran · 64 it left · 
 path    0 = E:\System\Apps\6rbc\ · 1 = E:\ · 2 = C:\
 stack   the deepest the stack has been, in bytes
 slot    the last vtable slot of ours the framework entered (0x504 = our timer's RunL)
+hits    how many times each marker fired, 900 upward
 tail    the last sixteen, oldest first
 from    where each was called from, as an offset into the loaded image
 ```
@@ -126,19 +127,17 @@ Do not re-open these without new evidence. Each cost at least one round.
   the phone, 2712 in the emulator, against the 64 KB the image asks for.
 - **The frame loop failing on a later frame.** `frames` is 1 everywhere. All
   of this is one-time engine setup inside the first `RunL`.
-- **The five-millisecond flush timer was not the reboot.** `box_start` did arm
-  a `CPeriodic` at 5 ms whose every tick flushed the record to the memory card
-  — two hundred flushes a second, free on the host file the emulator writes to
-  — and removing it changed nothing. It was worth removing and it was not the
-  cause. The marker had moved between two runs, which looked asynchronous, but
-  those two runs differed in configuration as well, so that reasoning was
-  unsound.
+- **Writing the record to the memory card was holding the run back.** A
+  `CPeriodic` at 5 ms flushed it two hundred times a second, free on the host
+  file the emulator writes to and not on a card. Removing the timer alone
+  appeared to change nothing, but that run had also been thinned to one flush
+  in sixty-four, and an unflushed write dies with the file server, so its
+  report was reading up to sixty-three events stale. With the record on C: and
+  every write flushed, the game goes from dying two instructions into case 9
+  to cycling the state machine, and gets there in two seconds rather than
+  eight. Keep the record on C: and keep flushing every write.
 
-Still open rather than ruled out: whether the file I/O has any part in it. The
-record now lives on C: rather than the memory card, which is the one component
-with a removable driver, and flushes on every record again — thinning it to
-one in sixty-four had made the report read up to sixty-three events stale,
-which is the worst possible property for this.
+Still open: the reboot itself, which survives all of the above.
 
 ## Where it stands
 
@@ -147,12 +146,10 @@ engine setup, then faults reading 0x30002 — a string pointer — at game+0xd5a
 (the game's `stricmp`), called from a case in the jump table at 0xd94f0. The
 last hundreds of imports are `__udivsi3` from game+0xef1c4.
 
-**Phone:** reboots within a couple of instructions of entering the state
-machine, every time, in nine rounds across four configurations. With the
-record flushing accurately the last marker is 909 (game+0xca168, case 9, two
-instructions in) with the screen taken over, and 926 (the dispatcher) without.
-No panic, no leave, nothing in those instructions — stack loads, stack stores
-and arithmetic — that could account for it.
+**Phone:** still reboots, but no longer at the entrance. With the record on C:
+it cycles the state machine — 1, 5, 6, 7, 16 and round again, the same states
+the emulator runs about a thousand times each — before going down at ~2000
+records, in two to three seconds rather than seven to ten. No panic, no leave.
 
 Both stop inside the first `RunL`, in the game's own obfuscated state machine
 at 0xc9cd4 — seventeen cases dispatched through a jump table at 0xc9d38, each

@@ -71,7 +71,10 @@ enum { EBufC = 0, EPtrC = 1, EPtr = 2, EBufType = 3, KTypeShift = 28 };
 enum { BOX_RING = 16 };
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
-enum { BOX_WORDS = BOX_STACK + 1, BOX_BYTES = BOX_WORDS * 4 };
+// A count per marker. The tail says where it was; these say whether it was
+// going round in circles to get there, and how many times.
+enum { BOX_HITS = BOX_STACK + 1, BOX_MARKERS = 40 };
+enum { BOX_WORDS = BOX_HITS + BOX_MARKERS, BOX_BYTES = BOX_WORDS * 4 };
 
 struct Ptrc16 { u32 lengthAndType; const u16 *text; };
 struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
@@ -741,7 +744,7 @@ static int put_u32(u8 *out, u32 v)
 // launch after the one that stopped, beside the record it is made from.
 static void box_report(Context *c, u32 count)
 {
-    u8 text[640];
+    u8 text[1024];
     int n = 0;
     const u8 kSteps[] = { 's','t','e','p','s',' ' };
     const u8 kLast[] = { '\n','l','a','s','t',' ' };
@@ -770,6 +773,12 @@ static void box_report(Context *c, u32 count)
     const u8 kStack[] = { '\n','s','t','a','c','k',' ' };
     for (u32 i = 0; i < sizeof kStack; i++) text[n++] = kStack[i];
     n += put_u32(text + n, c->boxData[BOX_STACK]);
+    const u8 kHits[] = { '\n','h','i','t','s' };
+    for (u32 i = 0; i < sizeof kHits; i++) text[n++] = kHits[i];
+    for (u32 i = 0; i < BOX_MARKERS; i++) {
+        text[n++] = ' ';
+        n += put_u32(text + n, c->boxData[BOX_HITS + i]);
+    }
     const u8 kFrom[] = { '\n','f','r','o','m' };
     for (u32 i = 0; i < sizeof kFrom; i++) text[n++] = kFrom[i];
     for (u32 i = 0; i < BOX_RING; i++) {
@@ -885,6 +894,8 @@ enum { IMPORT_LEAVE = 324, IMPORT_EXIT = 308 };
 extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
 {
     stack_mark(c);
+    if (marker - CRUMB_FIRST < BOX_MARKERS)
+        c->boxData[BOX_HITS + (marker - CRUMB_FIRST)]++;
     c->lastImport = marker;
     const u32 slot = c->traceCount & (BOX_RING - 1);
     c->boxData[4 + slot] = marker;
