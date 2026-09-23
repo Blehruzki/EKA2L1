@@ -179,6 +179,25 @@ file server between events, and the window covers the rest of telephony,
 goes over it next: dying inside the window names the record, sailing past it
 says the timing is what matters.
 
+The zoom window found it. The phone stops at record 221, and 217..220 —
+`RequestComplete`, `SetKeyBlockMode`, `KeySounds`, `PushContextL` — match the
+emulator exactly. 221 is `CActive::Cancel` from a caller that is not an offset
+into the image at all (0x74258070), where the emulator has
+`CCoeControl::IsFocused`. The game's own four `bl` sites for that stub are all
+at 0x398b8..0x39e04, so nothing in the game called it: something branched into
+the stub table and arrived with a stale return address.
+`phone-2026-09-23e.log` is that run.
+
+It is a race rather than a code path: the 2863-record run is the same build on
+the same phone and went 220 to `IsFocused` like the emulator. The log could not
+show what the race was against, because it only ever recorded the game calling
+out and never the framework calling in — so `gate6_slot` writes to it now (52
+such entries in the emulator run, three inside the frame-loop kick), as do the
+load address and, for a `Cancel`, the object it was made on. A `Cancel` on
+something that is neither the timer nor the direct screen access object cannot
+have come from the game, so it is recorded and refused rather than made, and
+the run says what comes next instead of ending there.
+
 Checked and wrong along the way: that the TLS key differs between the set and
 the get because one literal is relocated and the other is not. All three of
 the key literals at game+0xc8b28, 0xc8b34 and 0xc8b40 are in the relocation
