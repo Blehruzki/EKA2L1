@@ -364,6 +364,37 @@ emulator says 0x0487f0e8 against a base of 0x4700000 -- correct -- and a
 length word of 9. A correct answer on the phone is 0x0477f0e8 against
 0x4600000.
 
+**The pointers are right.** The phone says 0x0477f0e8 against a base of
+0x4600000, and a length word of 9 -- exactly what it should be, for both
+descriptors (`phone-2026-09-23k.log`). So neither the pointer nor the data is
+wrong, and reading the third character of nine ought to work.
+
+That run also ended in KERN-EXEC 0 rather than 3, and at 1952 records rather
+than 1984 or 2112 -- a third build, a third place, in the same name-building
+code. Something the game does depends on our build. The obvious suspect was
+the tracer, since it makes every IAT entry point at a thunk of ours and this
+code is arithmetic over fetched values: `TRACE_EVERY_IMPORT = 0` leaves the
+table pointing straight at what answered it. The emulator faults in exactly
+the same place with it off, so the tracer is innocent and that idea is dead.
+
+**What the emulator's own fault is.** It has been stable across every build,
+which makes it the better thing to chase, and it is now read: at game+0xd5abc,
+the game's `stricmp`, with `ldrb r3,[r5]` and r5 = 0x30002. The caller is case
+6 of a second obfuscated state machine at 0xd9430 --
+
+```
+000d94e4  mov r0, r8        @ "6RBC.off"
+000d94e8  ldr r1, [r5]      @ a name out of a table
+000d94ec  bl  #0xd5aa4      @ the game's stricmp
+```
+
+-- so the game is searching for a file called `6RBC.off` and one of the
+entries it walks has 0x30002 where a name pointer should be. `6RBC.off` is in
+neither the game's directory nor inside `6rbc.cwa`, so the search is one that
+cannot succeed; what matters is that the walk does not stop when it runs out
+of entries. Whatever ends that table is not ending it here.
+
+
 
 
 

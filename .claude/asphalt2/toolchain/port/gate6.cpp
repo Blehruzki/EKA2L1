@@ -956,6 +956,7 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 // which is the reboot, and it is ours, not the game's. They earned their keep
 // finding the way into the state machine; off is the default now, and the
 // emulator shows the same sequence with or without them.
+enum { TRACE_EVERY_IMPORT = 1 };
 enum { PLANT_CRUMBS = 0 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -2285,8 +2286,13 @@ static u32 load_and_start()
                 crumb_plant(ctx, base, kCrumb[i], CRUMB_FIRST + i);
 
     // Last, so that it records every import however it ended up being answered.
-    for (u32 i = 0; i < nImports; i++)
-        iat[i] = trace_thunk(trace + TRACE * i, ctx, i, iat[i], (u32)&gate6_trace);
+    // Off, this leaves each IAT entry pointing straight at what answered it --
+    // which is the question: the game derives names by arithmetic on values it
+    // has fetched, and if any of that arithmetic runs over its own import
+    // table then our thunks are the wrong answer and the tracer is the bug.
+    if (TRACE_EVERY_IMPORT)
+        for (u32 i = 0; i < nImports; i++)
+            iat[i] = trace_thunk(trace + TRACE * i, ctx, i, iat[i], (u32)&gate6_trace);
 
     // Everything above -- the image, the stubs, every thunk -- was written as
     // data and is about to be run as code, so the caches are put right over
