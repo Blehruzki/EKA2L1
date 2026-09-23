@@ -813,11 +813,20 @@ static void note(Context *c, u32 value, u16 sign)
 // that machine's jump table, which is as fine a grain as its own structure
 // offers. Two of them read the program counter and cannot be moved, so they
 // are left alone and never report.
-enum { CRUMB_BYTES = 64, CRUMB_FIRST = 900 };
+enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 static const u32 kCrumb[] = {
+    // The seventeen cases of the machine's jump table.
     0x0c9d84, 0x0c9dc0, 0x0ca470, 0x0c9e2c, 0x0c9e38, 0x0c9e44, 0x0c9e6c,
     0x0c9fb0, 0x0ca010, 0x0ca168, 0x0ca1d0, 0x0ca238, 0x0ca29c, 0x0ca2c4,
     0x0ca2e0, 0x0ca2fc, 0x0ca390,
+    // And through the body of case 8, every forty bytes or so. Case 9 hands
+    // to case 8 -- each case ends by loading a state and re-entering the
+    // dispatcher, so the sequence reads straight out of the literals -- and
+    // case 8 is where the phone stops reporting. It is also the one case whose
+    // first instruction reads the program counter, which is why nothing was
+    // planted in it the first time round.
+    0x0ca014, 0x0ca038, 0x0ca060, 0x0ca088, 0x0ca0b0, 0x0ca0d8, 0x0ca100,
+    0x0ca128, 0x0ca150,
 };
 
 // An instruction can only be moved if it does not depend on where it is.
@@ -841,12 +850,12 @@ enum { IMPORT_LEAVE = 324, IMPORT_EXIT = 308 };
 // and the order is the order things happened in. The marker reads as 900 and
 // up, which no import index does, and the caller column carries where it was
 // planted.
-extern "C" void gate6_crumb(u32 marker, Context *c)
+extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
 {
     c->lastImport = marker;
     const u32 slot = c->traceCount & (BOX_RING - 1);
     c->boxData[4 + slot] = marker;
-    c->boxData[BOX_FROM + slot] = kCrumb[marker - CRUMB_FIRST];
+    c->boxData[BOX_FROM + slot] = site;
     c->traceCount++;
     // The emulator runs this machine thousands of times and a flush apiece
     // would crawl; the phone never gets that far, and early is where it
@@ -857,30 +866,42 @@ extern "C" void gate6_crumb(u32 marker, Context *c)
 //   stmdb sp!, {r0-r3, r12, lr}
 //   mrs   r0, cpsr
 //   stmdb sp!, {r0, r1}
-//   ldr   r0, [pc, #32]     @ which one
-//   ldr   r1, [pc, #32]     @ the context
-//   ldr   r12, [pc, #32]
+//   ldr   r0, [pc, #36]     @ which one
+//   ldr   r1, [pc, #36]     @ the context
+//   ldr   r2, [pc, #36]     @ where it ended up being planted
+//   ldr   r12, [pc, #36]
 //   blx   r12
 //   ldmia sp!, {r0, r1}
 //   msr   cpsr_f, r0
 //   ldmia sp!, {r0-r3, r12, lr}
 //   <the instruction that used to be there>
 //   ldr   pc, [pc, #-4]     @ and on with the rest of it
+// Where the named instruction cannot be moved, the next few are tried: a
+// prologue runs straight through, so a marker a little further in says the
+// same thing. The search stops at anything that branches, since past that the
+// marker would no longer mean the case was entered.
 static void crumb_plant(Context *c, u8 *base, u32 at, u32 marker)
 {
-    u32 *site = (u32 *)(base + at);
-    const u32 original = *site;
-    if (!crumb_safe(original) || c->spare + CRUMB_BYTES > c->spareEnd)
+    u32 *site = 0;
+    u32 original = 0;
+    for (u32 i = 0; i < 8; i++) {
+        u32 *p = (u32 *)(base + at + 4 * i);
+        if (crumb_safe(*p)) { site = p; original = *p; break; }
+        if (((*p >> 25) & 7) >= 5) break;       // a branch: go no further
+    }
+    if (!site || c->spare + CRUMB_BYTES > c->spareEnd)
         return;
     u32 *b = (u32 *)c->spare;
     c->spare += CRUMB_BYTES;
     b[0] = 0xE92D500F;  b[1] = 0xE10F0000;  b[2] = 0xE92D0003;
-    b[3] = 0xE59F0020;  b[4] = 0xE59F1020;  b[5] = 0xE59FC020;
-    b[6] = 0xE12FFF3C;  b[7] = 0xE8BD0003;  b[8] = 0xE128F000;
-    b[9] = 0xE8BD500F;  b[10] = original;   b[11] = 0xE51FF004;
-    b[12] = (u32)(site + 1);
-    b[13] = marker;     b[14] = (u32)c;     b[15] = (u32)&gate6_crumb;
-    user_imb_range(b, b + 16);
+    b[3] = 0xE59F0024;  b[4] = 0xE59F1024;  b[5] = 0xE59F2024;
+    b[6] = 0xE59FC024;  b[7] = 0xE12FFF3C;  b[8] = 0xE8BD0003;
+    b[9] = 0xE128F000;  b[10] = 0xE8BD500F; b[11] = original;
+    b[12] = 0xE51FF004; b[13] = (u32)(site + 1);
+    b[14] = marker;     b[15] = (u32)c;
+    b[16] = (u32)site - (u32)base;
+    b[17] = (u32)&gate6_crumb;
+    user_imb_range(b, b + 18);
     *site = 0xEA000000 | ((((u32)b - (u32)site - 8) >> 2) & 0x00FFFFFF);
     user_imb_range(site, site + 1);
 }
