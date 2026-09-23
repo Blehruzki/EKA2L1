@@ -70,7 +70,8 @@ enum { EBufC = 0, EPtrC = 1, EPtr = 2, EBufType = 3, KTypeShift = 28 };
 // which of its own functions asked, which is the half that locates a fault.
 enum { BOX_RING = 16 };
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
-enum { BOX_WORDS = BOX_PATH + 1, BOX_BYTES = BOX_WORDS * 4 };
+enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1 };
+enum { BOX_WORDS = BOX_FRAMES + 1, BOX_BYTES = BOX_WORDS * 4 };
 
 struct Ptrc16 { u32 lengthAndType; const u16 *text; };
 struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
@@ -437,6 +438,7 @@ struct Context {
     u32 boxData[BOX_WORDS];
     u32 pathIndex;          // which candidate the game was loaded from
     u32 codeBase;           // where the game was loaded, so callers read as offsets
+    u32 frames;             // how many times the frame loop has come round
     u32 boxDes[2];
     u32 noteText[4];        // seven characters, for the emulator's log
     u32 noteDes[2];
@@ -684,6 +686,8 @@ static void box_write(Context *c)
     c->boxData[2] = c->reached;
     c->boxData[3] = c->traceCount;
     c->boxData[BOX_PATH] = c->pathIndex;
+    c->boxData[BOX_SLOT] = c->lastCall;
+    c->boxData[BOX_FRAMES] = c->frames;
     c->boxDes[0] = ((u32)EPtrC << KTypeShift) | BOX_BYTES;
     c->boxDes[1] = (u32)c->boxData;
     file_write_at(c->boxFile, 0, c->boxDes);
@@ -742,6 +746,12 @@ static void box_report(Context *c, u32 count)
         text[n++] = ' ';
         n += put_u32(text + n, c->boxData[4 + ((count + i) & (BOX_RING - 1))]);
     }
+    const u8 kSlot[] = { '\n','s','l','o','t',' ' };
+    for (u32 i = 0; i < sizeof kSlot; i++) text[n++] = kSlot[i];
+    n += put_hex(text + n, c->boxData[BOX_SLOT]);
+    const u8 kFrames[] = { '\n','f','r','a','m','e','s',' ' };
+    for (u32 i = 0; i < sizeof kFrames; i++) text[n++] = kFrames[i];
+    n += put_u32(text + n, c->boxData[BOX_FRAMES]);
     const u8 kFrom[] = { '\n','f','r','o','m' };
     for (u32 i = 0; i < sizeof kFrom; i++) text[n++] = kFrom[i];
     for (u32 i = 0; i < BOX_RING; i++) {
@@ -888,6 +898,7 @@ static void dsa_refresh(Context *c);
 extern "C" void gate6_timer_runl(void *, u32, Context *c)
 {
     c->reached |= REACHED_RUNL;
+    c->frames++;
 
     // The request completed into the wrapper, and the game reads the result out
     // of its own object, so carry it across before handing over.
