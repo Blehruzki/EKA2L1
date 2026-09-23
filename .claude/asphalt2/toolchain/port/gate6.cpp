@@ -92,7 +92,9 @@ enum { LOG_BLOCK = 64, LOG_ZOOM = 0x7fffffff, LOG_ZOOM_END = 0x7fffffff };
 // the column that usually holds a caller holds the value. They are what the
 // log was missing -- it could only ever see the game calling out, never the
 // framework calling in, so anything that arrived on its own went unrecorded.
-enum { NOTE_VPTR = 854,         // the app UI's vtable pointer, when it went wrong
+enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it points at
+       NOTE_TARGET = 856,       // the descriptor's own first word
+       NOTE_VPTR = 854,         // the app UI's vtable pointer, when it went wrong
        NOTE_SLOT = 860,         // the framework entered a slot of ours
        NOTE_CANCEL = 850,       // CActive::Cancel, and on what
        NOTE_STRAY = 851,        // ... on something that is neither of ours
@@ -961,7 +963,10 @@ enum { PLANT_CRUMBS = 0 };
 // go in afterwards instead, from the write itself, once the region carrying
 // them has arrived. Markers run from 940 so they cannot be mistaken for the
 // ordinary ones.
-enum { PLANT_LATE_CRUMBS = 1, CRUMB_LATE_FIRST = 940 };
+// Off: they gave nothing (the run never reached them) and patching the
+// decrypted code is a change to the game's own bytes, which this build has
+// reason to keep to a minimum.
+enum { PLANT_LATE_CRUMBS = 0, CRUMB_LATE_FIRST = 940 };
 
 static const u32 kLateCrumb[] = {
     0x0010b1f8,     // back from TDesC16::Ptr, about to scrub the name
@@ -1434,6 +1439,28 @@ extern "C" void gate6_write_memory(u32, u8 *address, const u32 *data, Context *c
     // and length first, it disassembles like anything else.
     if (DUMP_DECRYPTED)
         dump_region(c, address, length);
+
+    // Two pointers the decryptor writes into its own plaintext, at 0x10b33c
+    // and 0x10b344. Each addresses a nine-character descriptor the game reads
+    // one character at a time to build a library name, and the phone faults on
+    // the third character where the emulator reads all nine. Whether the
+    // pointer or what it points at is wrong, this says so.
+    {
+        const u32 from = (u32)address - c->codeBase;
+        static const u32 kWatch[] = { 0x0010b33c, 0x0010b344 };
+        for (u32 i = 0; i < sizeof kWatch / sizeof kWatch[0]; i++) {
+            if (kWatch[i] < from || kWatch[i] + 4 > from + length)
+                continue;
+            const u32 p = *(const u32 *)(c->codeBase + kWatch[i]);
+            log_event(c, NOTE_LITERAL, p);
+            // Only if it lands inside the image, since reading it is the very
+            // thing the phone cannot do.
+            log_event(c, NOTE_TARGET,
+                      (p >= c->codeBase && p < (u32)c->spareEnd)
+                          ? *(const u32 *)p : 0xBADBAD00);
+        }
+        log_block(c);
+    }
 
     if (PLANT_LATE_CRUMBS) {
         const u32 from = (u32)address - c->codeBase;

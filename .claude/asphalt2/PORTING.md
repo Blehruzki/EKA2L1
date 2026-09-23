@@ -333,6 +333,38 @@ Marker 941 sits on the scrub and fires once per byte: the emulator runs the
 site twice and writes ten bytes each time. If the phone writes ten and stops,
 the pointer is wrong; if it writes many more, the length is.
 
+The late crumbs never fired: the run stopped before reaching them, at 1984
+records (`phone-2026-09-23j.log`), earlier than the run before it. Worth
+knowing why they are not comparable -- **two builds are not two runs**. The
+same phone on two builds parts company at record 1574, in the middle of the
+division storm, long before any crumb site. Whatever this game derives from
+depends on our build, so only phone-against-emulator on the *same* build says
+anything.
+
+On that footing the phone is again in lockstep to the end. It faults in an
+earlier loop of the same function, at 0x10b030, on the third of nine
+characters:
+
+```
+0010aff4  bl  #0x118d78        @ TBuf16<9> at sp+0x58
+0010aff8  ldr sl, [pc, #0x33c] @ a pointer the decryptor wrote, at 0x10b33c
+0010b024  mov r0, sl ; mov r1, r5
+0010b02c  bl  #0x118fc8        @ TDesC16::AtC(i) -- returns a reference
+0010b030  ldrb r4, [r0]        @ and the game reads through it
+```
+
+The emulator reads all nine, twice. Both source descriptors are plain inline
+`EBufC`s of length nine, at image+0x17f0e8 and +0x17f100, well inside a
+0x1849bc text section, so the text is there to be read -- which puts the
+suspicion on the pointer. It is a literal *inside a decrypted region*, so it
+is not in the file to be checked: the decryptor writes it, and whether it
+comes out relocated for where the image actually landed is the question.
+`NOTE_LITERAL` and `NOTE_TARGET` log both from `gate6_write_memory`. The
+emulator says 0x0487f0e8 against a base of 0x4700000 -- correct -- and a
+length word of 9. A correct answer on the phone is 0x0477f0e8 against
+0x4600000.
+
+
 
 
 ## Open
