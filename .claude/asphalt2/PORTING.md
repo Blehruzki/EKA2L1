@@ -167,7 +167,17 @@ to **2863, every one of them identical to the emulator's**, and it is into the
 state machine at 0xc9cd4 and cycling. That run ended in a reboot, but at the
 196th pass through a loop it had already survived 195 times: the write ceiling
 again, not the game. `phone-2026-09-23c.log` beside this file is that run.
-Nothing is yet known to behave differently on the two machines.
+
+Then the same build at the cheap cadence stopped at 192 records — a block
+boundary, so somewhere in 192..255 — with KERN-EXEC 3, which is where the runs
+before the SetKeyBlockMode fix stopped too. The only difference between it and
+the 2863-record run is how often the record is written, so either the fault in
+that window moves with the timing (the exact cadence spends milliseconds in the
+file server between events, and the window covers the rest of telephony,
+`RequestComplete` and the whole frame-loop kick) or 2863 was the lucky one.
+`phone-2026-09-23d.log` is that run, and a zoom window over 176..336 is what
+goes over it next: dying inside the window names the record, sailing past it
+says the timing is what matters.
 
 Checked and wrong along the way: that the TLS key differs between the set and
 the get because one literal is relocated and the other is not. All three of
