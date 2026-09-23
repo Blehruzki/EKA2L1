@@ -64,8 +64,13 @@ enum { EBufC = 0, EPtrC = 1, EPtr = 2, EBufType = 3, KTypeShift = 28 };
 
 // The record: four counters and a ring of the last sixteen imports, which is
 // what says what the game was doing rather than only how far it had got.
-enum { BOX_RING = 16, BOX_WORDS = 5 + BOX_RING, BOX_BYTES = BOX_WORDS * 4 };
-enum { BOX_PATH = 4 + BOX_RING };       // which of the candidate paths was used
+// The record: four counters, a ring of the last sixteen imports, the same
+// again for where each was called from, and which path the game came from.
+// Knowing the import says what the game asked for; knowing the caller says
+// which of its own functions asked, which is the half that locates a fault.
+enum { BOX_RING = 16 };
+enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
+enum { BOX_WORDS = BOX_PATH + 1, BOX_BYTES = BOX_WORDS * 4 };
 
 struct Ptrc16 { u32 lengthAndType; const u16 *text; };
 struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
@@ -431,6 +436,7 @@ struct Context {
     u32 boxFile[4];
     u32 boxData[BOX_WORDS];
     u32 pathIndex;          // which candidate the game was loaded from
+    u32 codeBase;           // where the game was loaded, so callers read as offsets
     u32 boxDes[2];
     u32 noteText[4];        // seven characters, for the emulator's log
     u32 noteDes[2];
@@ -691,6 +697,16 @@ static void box_flush(Context *c)
 
 static const u16 kTextPath[] = {'E',':','\\','g','6','b','o','x','.','t','x','t'};
 
+static int put_hex(u8 *out, u32 v)
+{
+    u8 digits[8];
+    int n = 0;
+    do { const u32 d = v & 0xF; digits[n++] = (u8)(d < 10 ? '0' + d : 'a' + d - 10); v >>= 4; }
+    while (v);
+    for (int i = 0; i < n; i++) out[i] = digits[n - 1 - i];
+    return n;
+}
+
 static int put_u32(u8 *out, u32 v)
 {
     u8 digits[10];
@@ -706,7 +722,7 @@ static int put_u32(u8 *out, u32 v)
 // launch after the one that stopped, beside the record it is made from.
 static void box_report(Context *c, u32 count)
 {
-    u8 text[320];
+    u8 text[640];
     int n = 0;
     const u8 kSteps[] = { 's','t','e','p','s',' ' };
     const u8 kLast[] = { '\n','l','a','s','t',' ' };
@@ -725,6 +741,12 @@ static void box_report(Context *c, u32 count)
     for (u32 i = 0; i < BOX_RING; i++) {
         text[n++] = ' ';
         n += put_u32(text + n, c->boxData[4 + ((count + i) & (BOX_RING - 1))]);
+    }
+    const u8 kFrom[] = { '\n','f','r','o','m' };
+    for (u32 i = 0; i < sizeof kFrom; i++) text[n++] = kFrom[i];
+    for (u32 i = 0; i < BOX_RING; i++) {
+        text[n++] = ' ';
+        n += put_hex(text + n, c->boxData[BOX_FROM + ((count + i) & (BOX_RING - 1))]);
     }
     text[n++] = '\n';
 
@@ -787,7 +809,9 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
         box_flush(c);
     }
     c->lastImport = index;
-    c->boxData[4 + (c->traceCount & (BOX_RING - 1))] = index;
+    const u32 slot = c->traceCount & (BOX_RING - 1);
+    c->boxData[4 + slot] = index;
+    c->boxData[BOX_FROM + slot] = caller - c->codeBase;
     // Every import is written; only the flush is thinned out.
     ++c->traceCount;
     if (c->traceCount <= 64 || (c->traceCount % BOX_EVERY) == 0)
@@ -1511,6 +1535,7 @@ static u32 load_and_start()
     ctx->path = paths[chosen];
     ctx->pathLen = lens[chosen];
     ctx->pathIndex = (u32)chosen;
+    ctx->codeBase = (u32)base;
     ctx->lastImport = 0xFFFF;               // nothing yet
     ctx->spare = trace + nImports * TRACE + 16 * TRACE;  // past the fixed thunks
     ctx->spareEnd = trace + traceBytes;
