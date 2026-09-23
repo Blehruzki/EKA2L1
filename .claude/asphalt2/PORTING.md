@@ -159,12 +159,16 @@ engine setup, then faults reading 0x30002 — a string pointer — at game+0xd5a
 (the game's `stricmp`), called from a case in the jump table at 0xd94f0. The
 last hundreds of imports are `__udivsi3` from game+0xef1c4.
 
-**Phone:** cycles the state machine — 1, 5, 6, 7, 16 and round again — about
-118 times before going down, against the emulator's ~1084. It makes no imports
-at all while doing so: the import count freezes at 655 and only markers
-advance. Every run so far has ended at about two thousand records, which is
-the write ceiling above rather than anything the game does, so the loop count
-is a measure of the instrument and not of the game.
+**Phone:** with the log buffering its writes the reboots stopped, which
+settles the write ceiling for good: it is KERN-EXEC 3 now, an ordinary fault.
+`phone-2026-09-23.log` beside this file is that run, and it is identical to
+the emulator's for all 192 records it contains — the shim behaves the same on
+both machines that far. It then ends, so the fault is somewhere in the
+following window, which at the time was sixty-three events wide: the telephony
+block the game runs to identify the phone (`RTelServer::GetPhoneInfo`,
+`RPhone::Open`, `GetStatus`, `GetLineInfo`, `RLine::Open`, records 192-201 in
+the reference) and then the frame-loop kick. The emulator passes straight
+through both, but its etel is a stub and the N95's is not.
 
 Both stop inside the first `RunL`, in the game's own obfuscated state machine
 at 0xc9cd4 — seventeen cases dispatched through a jump table at 0xc9d38, each

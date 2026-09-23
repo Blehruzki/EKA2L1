@@ -69,7 +69,13 @@ enum { EBufC = 0, EPtrC = 1, EPtr = 2, EBufType = 3, KTypeShift = 28 };
 // Knowing the import says what the game asked for; knowing the caller says
 // which of its own functions asked, which is the half that locates a fault.
 enum { BOX_RING = 16 };
-enum { LOG_BLOCK = 64 };                // events per write of the log
+// Events per write of the log. Sixty-four proved the point -- the phone
+// stopped rebooting the moment the write count came down -- but it also means
+// the last partial block dies with the process, so the first run under it
+// could only say the fault was somewhere in a window of sixty-three events.
+// Eight narrows that to seven and still writes only a few hundred times over a
+// run of thousands, well under the ceiling.
+enum { LOG_BLOCK = 8 };
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 // A count per marker. The tail says where it was; these say whether it was
