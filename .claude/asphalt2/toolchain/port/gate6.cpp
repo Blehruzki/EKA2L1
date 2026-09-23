@@ -87,7 +87,7 @@ enum { BOX_RING = 16 };
 // through, so a run that died somewhere inside a block can be watched closely
 // over just that block and stay cheap everywhere else. Past the end of the run
 // for both means the whole thing runs at the block cadence.
-enum { LOG_BLOCK = 64, LOG_ZOOM = 176, LOG_ZOOM_END = 336 };
+enum { LOG_BLOCK = 64, LOG_ZOOM = 0x7fffffff, LOG_ZOOM_END = 0x7fffffff };
 // 800..899 are notes rather than events: the code says what is being noted and
 // the column that usually holds a caller holds the value. They are what the
 // log was missing -- it could only ever see the game calling out, never the
@@ -944,6 +944,16 @@ static void note(Context *c, u32 value, u16 sign)
 // offers. Two of them read the program counter and cannot be moved, so they
 // are left alone and never report.
 enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
+// The breadcrumbs are planted in the game's own state machine, which is the
+// hottest code in the run: they were 89% of the phone's records and every one
+// of them costs a call out and a record. The game stays inside a single RunL
+// for all of it, so none of that time is given back to the active scheduler,
+// and about ten seconds of not yielding is what the phone's watchdog resets --
+// which is the reboot, and it is ours, not the game's. They earned their keep
+// finding the way into the state machine; off is the default now, and the
+// emulator shows the same sequence with or without them.
+enum { PLANT_CRUMBS = 0 };
+
 static const u32 kCrumb[] = {
     // The seventeen cases of the machine's jump table.
     0x0c9d84, 0x0c9dc0, 0x0ca470, 0x0c9e2c, 0x0c9e38, 0x0c9e44, 0x0c9e6c,
@@ -2179,9 +2189,10 @@ static u32 load_and_start()
         if (nImports > IMPORT_SCREEN_UPDATE) iat[IMPORT_SCREEN_UPDATE] = ctx->noopFn;
     }
 
-    for (u32 i = 0; i < sizeof kCrumb / sizeof kCrumb[0]; i++)
-        if (kCrumb[i] + 4 <= h->codeSize)
-            crumb_plant(ctx, base, kCrumb[i], CRUMB_FIRST + i);
+    if (PLANT_CRUMBS)
+        for (u32 i = 0; i < sizeof kCrumb / sizeof kCrumb[0]; i++)
+            if (kCrumb[i] + 4 <= h->codeSize)
+                crumb_plant(ctx, base, kCrumb[i], CRUMB_FIRST + i);
 
     // Last, so that it records every import however it ended up being answered.
     for (u32 i = 0; i < nImports; i++)

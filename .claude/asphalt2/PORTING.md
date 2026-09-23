@@ -277,48 +277,30 @@ run carrying on for another six and a half thousand events.
 the write ceiling: 58 slot entries and about 325 writes all told, against the
 two thousand that ends a run.
 
-**It is hung, not crashed.** The last 2017 records hold no import and no call
-in from the framework, nothing but breadcrumbs, and after a one-off pass
-through states 909, 927..932, 925, 908, 917..924, 913 and 912 they settle into
-a cycle of five that repeats 181 times without variation:
+**It is not hung, and that reading was wrong.** The emulator runs the same
+five-state cycle 636 times and has longer import-free stretches than the phone
+does -- 3510, 3043 and 2944 records against the phone's 2944, 2017 and 1266,
+two of them exactly equal. The spinning is the game's obfuscated state machine
+working, not waiting, and the phone simply stopped part-way through an
+ordinary stretch of it. The locals it reads there are never written and its
+`r9` is never set, which says the same thing: that arithmetic is obfuscation,
+and reading it as a wait loop was reading too much into it.
 
-```
-926 -> 906 -> 926 -> 907 -> 926 -> 916 -> 926 -> 901 -> 926 -> 905 -> 926 ...
-```
+**The reboot is the instrument.** Breadcrumbs were 6227 of the phone's 6988
+records, 89% of them, and they are planted in the hottest code in the run:
+every pass costs a call out of the game, a record, and -- inside the zoom
+window -- a file write and a flush. All of it happens inside a single `RunL`,
+so none of that time is given back to the active scheduler, and roughly ten
+seconds of a thread not yielding is what the phone's watchdog resets. That
+also matches what the reboots always looked like: seven to ten seconds, no
+panic, no leave.
 
-State 905, at 0xc9e44, is where it decides:
+So `PLANT_CRUMBS` is off by default and the zoom window with it. The emulator
+reaches the same 0x30002 with 5184 records instead of 15813 and about eighty
+writes instead of three hundred, and the game's own loop runs with nothing of
+ours in it. The breadcrumbs earned their keep finding the way into the state
+machine and can go back on for a question that needs them.
 
-```
-ldr ip, [sp, #0x34]
-ldr r4, [ip]            @ a word, through a pointer held in a local
-cmp sb, r4              @ against r9
-moveq r3, r2            @ which of two states comes next
-b    #0xc9d1c           @ and back to the dispatcher
-```
-
-The game is busy-waiting on one word of memory, and while it spins it makes no
-system call -- so our timer's `RunL` never runs, `dsa_refresh` never runs, and
-nothing this process does can change that word. A thread that never returns to
-the active scheduler is also what the phone's watchdog resets, which is the
-reboot.
-
-On the N-Gage something writes that word from outside the loop. Finding what
-is the next job: the pointer in `[sp+0x34]`, and what r9 was set to. The phone
-only reaches this because of the `Cancel` the emulator never makes -- the two
-runs share no records after it -- so whatever was cancelled may be the thing
-that was supposed to do the writing.
-
-
-Checked and wrong along the way: that the TLS key differs between the set and
-the get because one literal is relocated and the other is not. All three of
-the key literals at game+0xc8b28, 0xc8b34 and 0xc8b40 are in the relocation
-table, so the keys agree.
-
-Both stop inside the first `RunL`, in the game's own obfuscated state machine
-at 0xc9cd4 — seventeen cases dispatched through a jump table at 0xc9d38, each
-ending by loading a state number and re-entering the dispatcher, so the state
-sequence reads statically out of the literals (bias 0xa9f52710). It is not a
-one-off check: the emulator runs it thousands of times.
 
 ## Open
 
