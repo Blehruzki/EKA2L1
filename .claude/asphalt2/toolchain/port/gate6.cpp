@@ -472,6 +472,8 @@ struct Context {
     // flushing does, and that ceiling is what has been ending every run. The
     // whole history also beats the last sixteen of it.
     u32 logFile[4];
+    u32 dumpFile[4];        // the bench's copy of the decrypted code
+    u32 dumpPos;            // and how much of it is written
     u32 logDes[2];
     u32 logBuf[LOG_BLOCK * 2];
     u32 logFill;            // events in the buffer
@@ -954,6 +956,21 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 // emulator shows the same sequence with or without them.
 enum { PLANT_CRUMBS = 0 };
 
+// Three regions of this image only ever exist decrypted, and a breadcrumb
+// planted at load time would be written straight over by the decryptor. These
+// go in afterwards instead, from the write itself, once the region carrying
+// them has arrived. Markers run from 940 so they cannot be mistaken for the
+// ordinary ones.
+enum { PLANT_LATE_CRUMBS = 1, CRUMB_LATE_FIRST = 940 };
+
+static const u32 kLateCrumb[] = {
+    0x0010b1f8,     // back from TDesC16::Ptr, about to scrub the name
+    0x0010b210,     // the first byte of the scrub
+    0x0010b220,     // the scrub finished
+    0x0010b230,     // back from the game's own call at 0xd4ed8
+    0x0010b244,     // back from RLibrary::Lookup
+};
+
 static const u32 kCrumb[] = {
     // The seventeen cases of the machine's jump table.
     0x0c9d84, 0x0c9dc0, 0x0ca470, 0x0c9e2c, 0x0c9e38, 0x0c9e44, 0x0c9e6c,
@@ -1357,6 +1374,37 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
 // The thread id goes in one register, not two -- the game called this with the
 // address in r1 -- so the descriptor is r2, and the last argument is one the
 // game does not need, which leaves r3 for the context.
+enum { DUMP_DECRYPTED = 0 };
+
+static const u16 kCodePath[] = {'C',':','\\','g','6','c','o','d','e','.','b','i','n'};
+
+// Appends one region to C:\g6code.bin: where it went, how long it is, and the
+// bytes. Bench only -- it costs two writes per region and the phone has no use
+// for it, but the emulator can then be disassembled where the file cannot.
+static void dump_region(Context *c, const u8 *address, u32 length)
+{
+    if (!c->dumpFile[0]) {
+        // Once: file_replace truncates, so reopening it per region would leave
+        // nothing but the last one.
+        Ptrc16 name;
+        name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kCodePath / 2);
+        name.text = kCodePath;
+        if (file_replace(c->dumpFile, c->boxFs, &name, EFileWrite | EFileShareAny) != 0)
+            return;
+    }
+    u32 *const file = c->dumpFile;
+    u32 head[2] = { (u32)address, length };
+    u32 des[2];
+    des[0] = ((u32)EPtrC << KTypeShift) | 8u;
+    des[1] = (u32)head;
+    file_write_at(file, (int)c->dumpPos, des);
+    des[0] = ((u32)EPtrC << KTypeShift) | length;
+    des[1] = (u32)address;
+    file_write_at(file, (int)c->dumpPos + 8, des);
+    file_flush(file);
+    c->dumpPos += 8 + length;
+}
+
 extern "C" void gate6_write_memory(u32, u8 *address, const u32 *data, Context *c)
 {
     const u32 length = data[0] & 0x0FFFFFFF;
@@ -1379,6 +1427,21 @@ extern "C" void gate6_write_memory(u32, u8 *address, const u32 *data, Context *c
     // moment it calls in, which is what KERN-EXEC 3 at the head of the
     // decrypted function was.
     user_imb_range(address, address + length);
+
+    // On the bench, the plaintext as well as the fact of it: three regions of
+    // this image only ever exist decrypted in memory, so a fault inside one of
+    // them cannot be read out of the file. Written to C:\\g6code.bin, address
+    // and length first, it disassembles like anything else.
+    if (DUMP_DECRYPTED)
+        dump_region(c, address, length);
+
+    if (PLANT_LATE_CRUMBS) {
+        const u32 from = (u32)address - c->codeBase;
+        for (u32 i = 0; i < sizeof kLateCrumb / sizeof kLateCrumb[0]; i++)
+            if (kLateCrumb[i] >= from && kLateCrumb[i] + 4 <= from + length)
+                crumb_plant(c, (u8 *)c->codeBase, kLateCrumb[i],
+                            CRUMB_LATE_FIRST + i);
+    }
 
     // Every region the game decrypts, so that code which reads as rubbish in
     // the file can be found and read as what it becomes.

@@ -301,6 +301,39 @@ writes instead of three hundred, and the game's own loop runs with nothing of
 ours in it. The breadcrumbs earned their keep finding the way into the state
 machine and can go back on for a question that needs them.
 
+**And it was.** With the breadcrumbs out the reboot stopped: the next run is a
+plain KERN-EXEC 3 at 2112 records, `phone-2026-09-23i.log`. The phone's last
+sixty records appear in the emulator's run verbatim, so the two are in
+lockstep right up to the fault, and it is now inside one of the decrypted
+regions -- code that reads as rubbish in the file, so `DUMP_DECRYPTED` writes
+all three regions to `C:\g6code.bin` on the bench and they disassemble like
+anything else.
+
+What the game is doing there: building a five-character DLL name a character
+at a time (`AtC`, `__modsi3`, `Append`), calling a function pointer it
+resolved earlier with it, and then scrubbing the name off the stack --
+
+```
+0010b1f4  bl   #0x1191e8        @ TDesC16::Ptr()
+0010b1f8  ldr  r3, [sp, #0x38]  @ the descriptor's length word
+0010b1fc  bic  r3, r3, #0xf0000000
+0010b200  lsl  r3, r3, #1       @ length in bytes
+0010b210  strb r2, [r0], #1     @ fill it with 0,1,2,... and die here
+```
+
+anti-tamper, erasing the name it just used. The phone faults between
+`TDesC16::Ptr` at 0x10b1f8 and `RLibrary::Lookup` at 0x10b244. All four
+imports on that path map correctly (`Ptr` is euser 1807), and the descriptor
+is `sp+0x38`, on the stack, so the write should be in bounds.
+
+A breadcrumb cannot be planted there at load time -- the decryptor writes
+straight over it -- so `kLateCrumb` is planted from `gate6_write_memory`
+instead, once the region carrying it has arrived, with markers from 940.
+Marker 941 sits on the scrub and fires once per byte: the emulator runs the
+site twice and writes ten bytes each time. If the phone writes ten and stops,
+the pointer is wrong; if it writes many more, the length is.
+
+
 
 ## Open
 

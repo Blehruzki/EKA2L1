@@ -37,6 +37,19 @@ def names(game):
         return {}
 
 
+def late_crumbs():
+    """Markers planted after the decryptor has run, read out of gate6.cpp."""
+    import os, re
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gate6.cpp')
+    try:
+        text = open(src).read()
+        body = text[text.index('static const u32 kLateCrumb[] = {'):]
+        body = body[:body.index('};')]
+        return {940 + i: v for i, v in enumerate(re.findall(r'0x0[0-9a-f]+', body))}
+    except Exception:
+        return {}
+
+
 def crumbs():
     """-> {marker: planted offset}, read out of gate6.cpp so it cannot drift."""
     import os
@@ -46,9 +59,11 @@ def crumbs():
         text = open(src).read()
         body = text[text.index('static const u32 kCrumb[] = {'):]
         body = body[:body.index('};')]
-        return {CRUMB_FIRST + i: v for i, v in enumerate(re.findall(r'0x0[0-9a-f]+', body))}
+        out = {CRUMB_FIRST + i: v for i, v in enumerate(re.findall(r'0x0[0-9a-f]+', body))}
     except Exception:
-        return {}
+        out = {}
+    out.update(late_crumbs())
+    return out
 
 
 # Notes whose payload is an address: the same run on two machines loads the
