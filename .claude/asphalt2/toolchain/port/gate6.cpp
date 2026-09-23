@@ -1438,7 +1438,13 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
 
 // Cancel is called on the game's timer -- which is really ours -- and on the
 // direct screen access object, which is really four bytes back.
-extern "C" void gate6_cancel(u32 *self, Context *c)
+// The context arrives in r2, as it does for every other ctx_thunk, which means
+// a middle argument this one has no use for. Without it the context was read
+// out of r1 -- and CActive::Cancel() takes no arguments, so r1 is whatever the
+// caller happened to leave there. The first thing done with it is a
+// dereference, so reaching this function at all was fatal. The emulator never
+// showed it because nothing in its fifteen thousand records calls Cancel.
+extern "C" void gate6_cancel(u32 *self, u32, Context *c)
 {
     typedef void (*Cancel)(void *);
     log_event(c, NOTE_CANCEL, (u32)self);
