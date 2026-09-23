@@ -804,9 +804,86 @@ static void note(Context *c, u32 value, u16 sign)
     rdebug_rawprint(c->noteDes);
 }
 
+// The phone goes down inside the obfuscated state machine at 0xc9cd4, between
+// one import and the next, so the record has nothing to say about where. A
+// breadcrumb is a marker planted at an address in the game: the instruction
+// there is replaced with a branch to a stub that records which one was
+// reached, puts the flags and registers back, runs the instruction it
+// displaced, and returns to what followed it. These seventeen are the cases of
+// that machine's jump table, which is as fine a grain as its own structure
+// offers. Two of them read the program counter and cannot be moved, so they
+// are left alone and never report.
+enum { CRUMB_BYTES = 64, CRUMB_FIRST = 900 };
+static const u32 kCrumb[] = {
+    0x0c9d84, 0x0c9dc0, 0x0ca470, 0x0c9e2c, 0x0c9e38, 0x0c9e44, 0x0c9e6c,
+    0x0c9fb0, 0x0ca010, 0x0ca168, 0x0ca1d0, 0x0ca238, 0x0ca29c, 0x0ca2c4,
+    0x0ca2e0, 0x0ca2fc, 0x0ca390,
+};
+
+// An instruction can only be moved if it does not depend on where it is.
+static int crumb_safe(u32 w)
+{
+    if ((w >> 28) != 0xE) return 0;             // only the unconditional ones
+    const u32 cls = (w >> 25) & 7;
+    if (cls >= 5) return 0;                     // branches, coprocessor, SWI
+    if (((w >> 16) & 0xF) == 15) return 0;      // reads the program counter
+    if (((w >> 12) & 0xF) == 15) return 0;      // or writes it
+    if ((cls == 0 || cls == 3) && (w & 0xF) == 15) return 0;
+    if (cls == 4 && (w & 0x8000)) return 0;     // or carries it in a list
+    return 1;
+}
+
 // User::Leave and User::Exit are where the game gives up, so those two say
 // where from as well.
 enum { IMPORT_LEAVE = 324, IMPORT_EXIT = 308 };
+
+// A breadcrumb goes into the same ring as the imports, so the two interleave
+// and the order is the order things happened in. The marker reads as 900 and
+// up, which no import index does, and the caller column carries where it was
+// planted.
+extern "C" void gate6_crumb(u32 marker, Context *c)
+{
+    c->lastImport = marker;
+    const u32 slot = c->traceCount & (BOX_RING - 1);
+    c->boxData[4 + slot] = marker;
+    c->boxData[BOX_FROM + slot] = kCrumb[marker - CRUMB_FIRST];
+    c->traceCount++;
+    // The emulator runs this machine thousands of times and a flush apiece
+    // would crawl; the phone never gets that far, and early is where it
+    // matters, so the flushing stops once it is plainly past the question.
+    if (c->traceCount < 4096) box_flush(c); else box_write(c);
+}
+
+//   stmdb sp!, {r0-r3, r12, lr}
+//   mrs   r0, cpsr
+//   stmdb sp!, {r0, r1}
+//   ldr   r0, [pc, #32]     @ which one
+//   ldr   r1, [pc, #32]     @ the context
+//   ldr   r12, [pc, #32]
+//   blx   r12
+//   ldmia sp!, {r0, r1}
+//   msr   cpsr_f, r0
+//   ldmia sp!, {r0-r3, r12, lr}
+//   <the instruction that used to be there>
+//   ldr   pc, [pc, #-4]     @ and on with the rest of it
+static void crumb_plant(Context *c, u8 *base, u32 at, u32 marker)
+{
+    u32 *site = (u32 *)(base + at);
+    const u32 original = *site;
+    if (!crumb_safe(original) || c->spare + CRUMB_BYTES > c->spareEnd)
+        return;
+    u32 *b = (u32 *)c->spare;
+    c->spare += CRUMB_BYTES;
+    b[0] = 0xE92D500F;  b[1] = 0xE10F0000;  b[2] = 0xE92D0003;
+    b[3] = 0xE59F0020;  b[4] = 0xE59F1020;  b[5] = 0xE59FC020;
+    b[6] = 0xE12FFF3C;  b[7] = 0xE8BD0003;  b[8] = 0xE128F000;
+    b[9] = 0xE8BD500F;  b[10] = original;   b[11] = 0xE51FF004;
+    b[12] = (u32)(site + 1);
+    b[13] = marker;     b[14] = (u32)c;     b[15] = (u32)&gate6_crumb;
+    user_imb_range(b, b + 16);
+    *site = 0xEA000000 | ((((u32)b - (u32)site - 8) >> 2) & 0x00FFFFFF);
+    user_imb_range(site, site + 1);
+}
 
 extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
 {
@@ -1081,7 +1158,7 @@ enum { GC_THUNK_BYTES = 20 };
 // runs exactly as before -- the direct screen access still starts, the
 // clipping region is still set, the state machine is untouched -- and only
 // BitBlt does nothing. If it still goes down, the drawing is not the cause.
-enum { DRAW_THE_FRAME = 0, OLD_GC_BITBLT = 46 };
+enum { DRAW_THE_FRAME = 1, OLD_GC_BITBLT = 46 };
 
 extern "C" void gate6_dsa_startl(void *, u32, Context *c)
 {
@@ -1883,6 +1960,10 @@ static u32 load_and_start()
         ctx->timerThunks[2] = ctx_thunk(spare + 6 * TRACE, ctx, (u32)&gate6_timer_runerror);
         iat[IMPORT_CTIMER_CTOR] = ctx_thunk(spare + 7 * TRACE, ctx, (u32)&gate6_ctimer_ctor);
     }
+
+    for (u32 i = 0; i < sizeof kCrumb / sizeof kCrumb[0]; i++)
+        if (kCrumb[i] + 4 <= h->codeSize)
+            crumb_plant(ctx, base, kCrumb[i], CRUMB_FIRST + i);
 
     // Last, so that it records every import however it ended up being answered.
     for (u32 i = 0; i < nImports; i++)
