@@ -984,6 +984,7 @@ static const u32 kLateCrumb[] = {
 // node, so each record carries it.
 enum { PLANT_WALK = 0, CRUMB_WALK_FIRST = 960 };
 static const u32 kWalkCrumb[] = {
+    0x000ccb68,     // the caller: r0 = *r5, the container it searches
     0x000d9484,     // case 0: r4 = head->[+4]
     0x000d94e4,     // case 6: compare this node's name
     0x000d9550,     // case 7: r4 = node->[+0xc], the next one

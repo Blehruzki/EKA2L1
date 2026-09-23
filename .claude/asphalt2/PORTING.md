@@ -414,6 +414,29 @@ like a name record. The container is page-aligned and holds its own address at
 so the question is no longer where the walk stopped but where the container
 came from and who was supposed to fill it.
 
+Where those addresses live, since it matters: gate6's own `$HEAP` is at
+0x700000 with a maximum of 0x4000000, so the container at 0x8b8000 and the
+nodes at 0x7039f0 and 0x700be8 are all our own heap. Page-aligned is not
+evidence of anything here.
+
+**The name the decrypted code builds is `cwdynlog.dll`**, and the emulator
+says so itself: `Try loading cwdynlog.dll to Gate6 failed`. It is built a
+character at a time precisely so it is not in the image as text -- searching
+for it there finds nothing -- and the file ships nowhere: not in the installed
+copy, not inside `6rbc.cwa`, not in the original release. A logging DLL that is
+not shipped, so the load is expected to fail, and after it the game looks up an
+ordinal and calls whatever comes back, which `gate6_library_lookup` answers
+with a no-op rather than null. `6RBC.off` is the same kind of thing: absent
+from the original release too, so that search is meant to fail.
+
+Also checked and not the problem: the installed game directory does not match
+the original release. The release ships four DLLs -- `bin/ARENAFRAMEWORK.DLL`,
+`bin/main.dll`, `Libs/GAMECOMMS.DLL`, `Libs/GAMEUTILS.DLL` -- and the installed
+copy has twenty-six from somewhere else and no `bin/` at all. Restoring `bin/`
+changes nothing, which figures: `main.dll` is 1,616,972 bytes with a code
+section of 0x1850fc, the same image as `6rbc.app`.
+
+
 
 
 
