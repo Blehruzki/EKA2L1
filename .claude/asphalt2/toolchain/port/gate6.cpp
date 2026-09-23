@@ -70,8 +70,8 @@ enum { EBufC = 0, EPtrC = 1, EPtr = 2, EBufType = 3, KTypeShift = 28 };
 // which of its own functions asked, which is the half that locates a fault.
 enum { BOX_RING = 16 };
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
-enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1 };
-enum { BOX_WORDS = BOX_FRAMES + 1, BOX_BYTES = BOX_WORDS * 4 };
+enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
+enum { BOX_WORDS = BOX_STACK + 1, BOX_BYTES = BOX_WORDS * 4 };
 
 struct Ptrc16 { u32 lengthAndType; const u16 *text; };
 struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
@@ -439,6 +439,8 @@ struct Context {
     u32 pathIndex;          // which candidate the game was loaded from
     u32 codeBase;           // where the game was loaded, so callers read as offsets
     u32 frames;             // how many times the frame loop has come round
+    u32 spTop;              // where the stack started
+    u32 spLow;              // and the deepest it has been seen
     u32 boxDes[2];
     u32 noteText[4];        // seven characters, for the emulator's log
     u32 noteDes[2];
@@ -679,6 +681,15 @@ static void box_name(Ptrc16 *name)
 
 // Writing is cheap enough to do on every import; it is the flush that costs,
 // and the file server still has what was written when the process dies.
+// The one thing a fault leaves no trace of is how much room it had left. Every
+// marker notes where the stack had got to, and the record carries the deepest.
+static void stack_mark(Context *c)
+{
+    const u32 sp = (u32)__builtin_frame_address(0);
+    if (!c->spTop) c->spTop = sp;
+    if (sp < c->spLow || !c->spLow) c->spLow = sp;
+}
+
 static void box_write(Context *c)
 {
     c->boxData[0] = BOX_MAGIC;
@@ -688,6 +699,7 @@ static void box_write(Context *c)
     c->boxData[BOX_PATH] = c->pathIndex;
     c->boxData[BOX_SLOT] = c->lastCall;
     c->boxData[BOX_FRAMES] = c->frames;
+    c->boxData[BOX_STACK] = c->spTop - c->spLow;
     c->boxDes[0] = ((u32)EPtrC << KTypeShift) | BOX_BYTES;
     c->boxDes[1] = (u32)c->boxData;
     file_write_at(c->boxFile, 0, c->boxDes);
@@ -752,6 +764,9 @@ static void box_report(Context *c, u32 count)
     const u8 kFrames[] = { '\n','f','r','a','m','e','s',' ' };
     for (u32 i = 0; i < sizeof kFrames; i++) text[n++] = kFrames[i];
     n += put_u32(text + n, c->boxData[BOX_FRAMES]);
+    const u8 kStack[] = { '\n','s','t','a','c','k',' ' };
+    for (u32 i = 0; i < sizeof kStack; i++) text[n++] = kStack[i];
+    n += put_u32(text + n, c->boxData[BOX_STACK]);
     const u8 kFrom[] = { '\n','f','r','o','m' };
     for (u32 i = 0; i < sizeof kFrom; i++) text[n++] = kFrom[i];
     for (u32 i = 0; i < BOX_RING; i++) {
@@ -827,6 +842,11 @@ static const u32 kCrumb[] = {
     // planted in it the first time round.
     0x0ca014, 0x0ca038, 0x0ca060, 0x0ca088, 0x0ca0b0, 0x0ca0d8, 0x0ca100,
     0x0ca128, 0x0ca150,
+    // And two that cut the remaining gap in three: the tail of case 9, and
+    // the dispatcher every case returns to. 926 without 927 says it died in
+    // case 9's own body; 927 without 917 says it died getting out of the
+    // jump table.
+    0x0ca1b4, 0x0c9d20,
 };
 
 // An instruction can only be moved if it does not depend on where it is.
@@ -852,6 +872,7 @@ enum { IMPORT_LEAVE = 324, IMPORT_EXIT = 308 };
 // planted.
 extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
 {
+    stack_mark(c);
     c->lastImport = marker;
     const u32 slot = c->traceCount & (BOX_RING - 1);
     c->boxData[4 + slot] = marker;
@@ -908,6 +929,7 @@ static void crumb_plant(Context *c, u8 *base, u32 at, u32 marker)
 
 extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
 {
+    stack_mark(c);
     if (TRACE_IMPORTS)
         note(c, index, ' ');
     if (index == IMPORT_LEAVE || index == IMPORT_EXIT) {
