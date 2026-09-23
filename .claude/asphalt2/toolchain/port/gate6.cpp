@@ -83,10 +83,11 @@ enum { BOX_RING = 16 };
 // about two thousand RFile::Write calls out of the phone before the file
 // server takes it down with it, so the record's cadence is the run's length.
 // Sixty-four events to a write buys ten times the run the exact cadence did.
-// LOG_ZOOM turns the exact cadence back on from a given event, so once a run
-// says which block it died in the next one can watch that block event by
-// event; leave it past the end to keep the whole run cheap.
-enum { LOG_BLOCK = 64, LOG_ZOOM = 0x7fffffff };
+// LOG_ZOOM..LOG_ZOOM_END is a window the record is written event by event
+// through, so a run that died somewhere inside a block can be watched closely
+// over just that block and stay cheap everywhere else. Past the end of the run
+// for both means the whole thing runs at the block cadence.
+enum { LOG_BLOCK = 64, LOG_ZOOM = 176, LOG_ZOOM_END = 336 };
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 // A count per marker. The tail says where it was; these say whether it was
@@ -750,7 +751,9 @@ static void log_event(Context *c, u32 code, u32 from)
         c->logBuf[c->logFill * 2 + 1] = from;
         c->logFill++;
     }
-    if (c->logFill >= (c->traceCount >= (u32)LOG_ZOOM ? 1u : (u32)LOG_BLOCK))
+    const u32 n = c->traceCount;
+    const u32 want = (n >= (u32)LOG_ZOOM && n < (u32)LOG_ZOOM_END) ? 1u : (u32)LOG_BLOCK;
+    if (c->logFill >= want)
         log_block(c);
 }
 
