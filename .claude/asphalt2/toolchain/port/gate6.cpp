@@ -1116,7 +1116,13 @@ enum { PLANT_PROBES = 1, PROBE_FIRST = 990, PROBE_BYTES = 80 };
 // the whole obfuscated function dispatches through, so a probe on it is a
 // station at every block boundary without knowing the path -- and silent until
 // the one boundary that matters.
-enum { PROBE_QUIET_FROM = 993 };
+enum { PROBE_QUIET_FROM = 995 };  // nothing sits here now; kept for the next hot site
+// And a probe from this marker on says nothing unless the register it reports
+// *is* the watched field's address. On a store that runs constantly, that is
+// the difference between a flood and the one firing that matters -- and it is
+// a stronger statement than "the word changed near here", because it is the
+// instruction naming its own target.
+enum { PROBE_TARGET_FROM = 992, PROBE_TARGET_TO = 993 };
 struct Probe { u32 at; u8 ra; u8 rb; };
 static const Probe kProbe[] = {
     // 990 must stay first: it latches the watched object, and from then on
@@ -1140,13 +1146,25 @@ static const Probe kProbe[] = {
     // One word, which is exactly what the four-word watch says happened. If
     // r5 + 4*ip lands on this+4, the poison is an out-of-bounds array store
     // and the value in sl was never meant to be a pointer at all.
-    { 0x00104824,  0, 3 },      // ldr r0, [sp, #0xcc] -- just before the delete
-    // 993 and up are quiet. This one sits on the jump table the obfuscated
-    // function dispatches through -- `cmp r3, #0x16; ldrls pc, [pc, r3 lsl 2]`
-    // -- so it fires at every block boundary and reports only the boundary the
-    // field changes at. r0 is the key the caller loaded inline before jumping
-    // here, which is what names the block that just ran.
-    { 0x001037ac,  0, 1 },      // add r3, r0, #0x1000000a -- the dispatcher
+    // The confirmation E20 owes. A single probe on the store itself, firing
+    // only when it is about to write the watched field -- no dispatcher probe,
+    // so the run is the unperturbed one. ip is the out-pointer it writes
+    // through, sl the value.
+    { 0x001082c0, 12, 10 },     // str sl, [ip]
+    // And the load the stored value comes from. `mov r7, #5` then
+    // `ldr r1, [r1, r7, lsl #2]` is r1 = array[5]; by 0x108298 r1 holds that
+    // word. If the chains either side are the usual inverse pair, the field
+    // simply receives array[5] -- and the bug is one level up, in an array
+    // whose sixth word is wrong. Loud, because there is nothing to filter on
+    // here; the firing that matters is the last one before marker 992.
+    { 0x00108298,  1, 9 },      // mov sl, r1  -- r1 is array[5], sb the factor
+    // sb is 0 at that mla, so array[5] is multiplied away and the stored value
+    // is a pure function of r8. Inverting the tail chain puts r8 at
+    // 0x_2D08240 -- the top byte depending on r4, the rest fixed -- which is
+    // not a heap pointer either. So r8 arrives wrong. These two catch it and
+    // the r4 that picks the constant.
+    { 0x00108290,  8, 6 },      // ldr sb, [sp,#4] -- r8 = sb * r6, just computed
+    { 0x001082a0,  4, 10 },     // mla r3, sl, r4, sl -- r4 picks the multiplier
 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1594,6 +1612,9 @@ extern "C" void gate6_probe(u32 marker, Context *c, u32 a, u32 b)
     // probe has fired -- that one marks the object, and is the only thing that
     // says the interesting call is the one now running.
     if (marker != (u32)PROBE_FIRST && !c->watchAt)
+        return;
+    if (marker >= (u32)PROBE_TARGET_FROM && marker < (u32)PROBE_TARGET_TO &&
+        a != c->watchAt + 4)
         return;
     if (marker >= (u32)PROBE_QUIET_FROM) {
         const u32 now = ((const u32 *)c->watchAt)[1];

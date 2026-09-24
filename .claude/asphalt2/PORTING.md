@@ -96,7 +96,13 @@ here and the section it overturns is marked.*
   `base + index * size`, not the image's multiply-by-constant obfuscation. So
   `this->[4]` is meant to hold a computed pointer and one of the inputs is
   wrong. That is also why the value is deterministic per machine and different
-  between machines.
+  between machines. Confirmed on its own terms in E21: a probe filtered to fire
+  only when the store targets the watched field fired exactly once.
+- **The computation is fully unwound and every step checks against a register.**
+  `array[5]` is a decoy -- it is multiplied by a zero `sb` -- and the stored
+  value is `755139455 * r8`, which reproduces the observed `0x1c975dc0` from the
+  observed `r8 = 0x42d08240`. **`r8` arrives already wrong**, so the bug is one
+  level further up the same function.
 - **The poison lands between a successful allocation and the `delete` called
   from image offset `0x104828`,** inside one of `0xe9988`'s callees. Watched
   from the wrappers, `this->[4]` is intact at every station before that and
@@ -2447,3 +2453,60 @@ moves the outcome is a probe whose evidence has to be confirmed, and rule 5
 says a measurement that agrees with the theory gets checked as hard as one that
 does not. **The next run re-confirms `0x1082c0` without the dispatcher probe**,
 by planting a single quiet probe there instead.
+
+## The value, computed: every step now checked against a register
+
+E20's site needed confirming, and E21 to E23 did that and then followed the
+arithmetic up.
+
+**E21 -- the store confirms itself.** A single probe on `0x1082c0`, filtered to
+fire only when the register it reports *is* the watched field's address, with
+no probe on the dispatcher. It fired once:
+
+```
+marker 992 at 0x001082c0   ip = 8b2764   sl = 1c975dc0
+```
+
+`this` is `0x8b2760` that run, so `ip` is `this+4` exactly, and the fault
+address is `0x1c975dc0 + 0x240`. That is the instruction naming its own target,
+which is a stronger statement than "the word changed near here".
+
+**E22 -- `array[5]` is a decoy.** The block runs exactly once in the whole run,
+so there was nothing to filter after all. At `0x108298`, `r1` holds `array[5]`
+= `0x782efefd` and `sb` is **zero**, so `mla sl, sb, sl, r8` reduces to
+`sl = r8`. The load two instructions earlier -- `mov r7, #5;
+ldr r1, [r1, r7, lsl #2]` -- is multiplied away. Obfuscation, not content.
+
+**E23 -- and the rest is arithmetic that checks out.** `r8 = 0x42d08240`, which
+is exactly the candidate the tail inversion predicted for `r4 = 0`, and
+
+```
+755139455 * 0x42d08240 = 0x1c975dc0     (observed)
+```
+
+So the chain of custody is complete and every step is confirmed against an
+observed register:
+
+```
+r6 = fb0896a0 , sb -> r8 = 42d08240 -> * 755139455 -> 1c975dc0
+   -> str sl, [ip]  at 0x1082c0,  ip = this+4
+   -> ldr r0, [r6, #4]  at 0xcc8ec
+   -> ldr r2, [r1, #0x240]  at 0x139588  -> fault at 1c976000
+```
+
+**`r8` arrives already wrong.** De-obfuscating `r6` and `r8` with this block's
+own constant (`483517375`, the identity chain with `r4 = 0`) gives `0x3AAC9160`
+and `0x346B0DC0` -- not pointers either, so they came through a different
+chain, or with a different `r4`. Where `r6` and the first `sb` come from is the
+next question, and it is one level further up the same function.
+
+### A caveat that has to be repeated
+
+The fault has read `0x1C976000` since E20 rather than `0xEAF88580`. That is not
+the dispatcher probe -- E21 removed it and the value stayed. It is the
+`lastWatch` field added to `Context`, which moved every field after it and with
+them the heap layout. **The mechanism is unchanged** (the fault is still the
+stored value plus `0x240`, and the store is still `0x1082c0`), and the value
+being layout-dependent is itself consistent with a pointer computed from
+addresses. But the number is not comparable with anything before E20, and
+nothing should be inferred from the change in it.
