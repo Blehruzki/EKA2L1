@@ -40,12 +40,18 @@ here and the section it overturns is marked.*
   `RHandleBase::Close`**, which closes the file server session out from under
   everything after it. Fixed with `RFile::Close` (efsrv 300). Nothing about
   write volume, write rate or extending files was ever involved.
-- `RFile::Open` of `cwivenc.dat` returns `KErrNone`. The phone dies on the very
-  next call, `__builtin_delete` on the name buffer.
-- At traced event 128, four events before that free, `User::CountAllocCells`
-  walks the whole heap and counts 1209 cells. **The heap is structurally
-  intact**, so the free is not a symptom of a broken chain -- what is left is
-  the pointer.
+- `RFile::Open` of `cwivenc.dat` returns `KErrNone`. The phone does not die
+  there.
+- **Furthest reached: 136 traced events** (build 44). It dies inside a
+  `User::Free` of `0x7b7cd8`.
+- The heap is sound and so are the pointers: at event 128
+  `User::CountAllocCells` walks it clean at 1209 cells, and every one of the 31
+  frees before the fatal one matched a live cell -- no double frees, no strays.
+  So either `0x7b7cd8` is the first bad pointer, or `User::Free` faults for a
+  reason that is not the cell it was handed.
+- The setup state on the phone matches the emulator exactly: 20612 bytes of
+  spare arena, a 3768-byte context, all four optional wraps installed. Nothing
+  is being silently skipped there.
 - The phone and the emulator run the same import sequence, tracking event for
   event over 55 consecutive events at an offset of 27.
 - The game's own protection paths -- `6RBC.off`, `cwdynlog.dll`, GD1DRV, and a
@@ -66,6 +72,7 @@ here and the section it overturns is marked.*
 | 512 bytes meant a disk sector | `LOG_BLOCK` is 8. Sixty-four records is eight of our own blocks. |
 | The read came from caller 0xe4774 | It came from 0xed694. The import trace records the call from inside a shared helper. |
 | The emulator is a reference | For the protection paths it never was; it cannot run the original game at all. |
+| Builds 38-43 failed at 64 records | They did not fail there at all. 64 records is eight log blocks; build 44, with the same code, reached 136 events. Four builds were judged on a hidden tail. |
 
 ### Standing rules, each bought with a wasted round
 
@@ -82,6 +89,10 @@ here and the section it overturns is marked.*
    left a different configuration in `out/` and it went to the phone.
 6. **Ordinals come from the device, not from a def file.** The phone is an N95
    (9.2); the emulator ROM is a 5320 (9.3).
+7. **This section is updated in the same commit as the section that changes
+   it.** It went stale one round after it was written, which is how the log got
+   into the state that made it necessary. `toolchain/port/checkrec.py` fails
+   when a new section is appended without it; run it before committing.
 
 ## The two machines, which are not the same machine
 
