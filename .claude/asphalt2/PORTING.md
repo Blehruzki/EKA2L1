@@ -75,6 +75,12 @@ here and the section it overturns is marked.*
   `0xa6dfb180`, in the emulator `0xeaf88340` -- different nonsense in each,
   which is what an unwritten field looks like. `r1 + 0x240` is the faulting
   address in both.
+- **The field is poisoned by one call: `bl 0xe9988` at `0xcc890`,** which is
+  handed `&this->[4]` as its fourth argument. Probes on either side show a good
+  heap pointer going in and garbage coming out; it returns 1. Everything before
+  that call leaves the field intact, the temporary the "fatal" delete frees is
+  created and destroyed inside the same sequence, and the object's other seven
+  words are unremarkable.
 - **`0x139588` is the instruction EKA2L1 cannot run the *original* N-Gage
   binary past either.** That was recorded here long ago and filed as an
   emulator deficiency. It is not one. The original game under the emulator, our
@@ -2228,3 +2234,42 @@ of reboots.
 
 **Next: who is `r6`, and what is supposed to write its fifth word.** That is a
 static question about the image, so it costs no hardware round.
+
+## Where `this->[4]` goes bad: one call, and no hardware round spent
+
+Round 50 put the fault on a pointer read out of `this->[4]`. Three probes
+across the function that owns it, in the emulator, narrow the damage to a
+single instruction:
+
+```
+000cc864  add r0, r5, #0x28        marker: this->[4] = 8d8ee8   a heap pointer
+000cc86c  bl  #0xe97cc
+000cc870  bl  #0xd5fbc
+000cc874  add r3, r5, #4           marker: this->[4] = 8d8ee8   still fine
+000cc884  ldr r0, [r4, #4]
+000cc888  mov r1, r5
+000cc88c  mov r2, #1
+000cc890  bl  #0xe9988             <- r3 is &this->[4], its fourth argument
+000cc894  mov r4, r0               marker: this->[4] = eaf88340  garbage
+```
+
+**`0xe9988` is handed `&this->[4]` as an out-parameter, runs for three hundred
+records, returns 1, and leaves nonsense in it.** The field is a good heap
+pointer on either side of `0xe97cc` and `0xd5fbc` and only changes across that
+one call.
+
+Two details fall out of the same run. `0xd5fbc` returns `0xb32248` -- which is
+the pointer the "fatal" delete at 0xcc8c0 frees, so that temporary is created
+and destroyed inside this sequence and was never anything to do with the fault.
+And `r6`'s other seven words are unremarkable on both machines: three heap
+pointers, one large mapped address, four zeros. Only the fifth word is wrong.
+
+`0xe9988` sits a hundred and ninety-six bytes after `0xe98c4`, the `TickCount`
+stopwatch with `Math::Random` mixed into its result that this file records as
+one of the game's protection paths. That is a neighbourhood, not evidence, and
+the next step is inside `0xe9988` -- which is more emulator bisection, not a
+round on the phone.
+
+**No build shipped for this.** The emulator and the phone have now agreed for
+three rounds running, the question is where inside one function a value goes
+bad, and that is answerable for free.

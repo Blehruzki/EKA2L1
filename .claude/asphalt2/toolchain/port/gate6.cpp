@@ -1091,6 +1091,14 @@ static const Probe kProbe[] = {
     // put that delete at 0xcc8c0, and the four instructions here are what the
     // game does next -- none of which calls a traced import, which is why the
     // log goes quiet whether or not the run survives them.
+    // Round 50 put the fault at 0x139588, on a pointer taken from this->[4].
+    // These two bisect where that field goes bad: 0xcc864 is before the call
+    // that is handed &this->[4] as its fourth argument, 0xcc894 is straight
+    // after it. The probe dumps eight words at the pointer it reports, so each
+    // one carries the object's fifth word as it stood at that moment.
+    { 0x000cc864,  5, 6 },      // add r0, r5, #0x28 -- this, at entry
+    { 0x000cc874,  6, 0 },      // add r3, r5, #4  -- past 0xe97cc and 0xd5fbc
+    { 0x000cc894,  6, 0 },      // mov r4, r0      -- and after 0xe9988 returns
     { 0x000cc8c4,  6, 4 },      // mov r7, r8      -- straight after the delete
     { 0x000cc8ec,  6, 4 },      // ldr r0, [r6,#4] -- the first load after it
     { 0x0010a9e4,  0, 1 },      // mov r4, r0      -- entered the call it makes
