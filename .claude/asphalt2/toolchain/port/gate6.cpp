@@ -91,7 +91,10 @@ enum { BOX_RING = 16 };
 // boundary in this region, which says only that the fault is somewhere in the
 // sixty-odd events after it -- not, as it first looked, at the call the last
 // record names. About 250 extra writes, which the budget takes easily.
-enum { LOG_BLOCK = 64, LOG_ZOOM = 1850, LOG_ZOOM_END = 2100 };
+// 1850 was too late: the phone stopped at 1853 imports and only three events
+// fell inside it. The runs so far end between 1853 and 2051, so the window
+// wants to open well before that and stay narrow enough to be cheap.
+enum { LOG_BLOCK = 64, LOG_ZOOM = 1780, LOG_ZOOM_END = 1990 };
 // 800..899 are notes rather than events: the code says what is being noted and
 // the column that usually holds a caller holds the value. They are what the
 // log was missing -- it could only ever see the game calling out, never the
@@ -103,6 +106,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_RESULT = 870,       // what a call returned
        NOTE_RESULT_OF = 871,    // and which import it was
        NOTE_RESULT_ARG = 872,   // and what it was asked for
+       NOTE_CALL_ARG = 873,     // a call, recorded before it is made
        NOTE_TEXT = 859,         // the text of a descriptor we read ourselves
        NOTE_VPTR = 854,         // the app UI's vtable pointer, when it went wrong
        NOTE_SLOT = 860,         // the framework entered a slot of ours
@@ -967,7 +971,7 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 // finding the way into the state machine; off is the default now, and the
 // emulator shows the same sequence with or without them.
 enum { TRACE_EVERY_IMPORT = 1 };
-enum { WATCH_ALLOCATIONS = 0 };
+enum { WATCH_ALLOCATIONS = 1 };
 enum { PLANT_CRUMBS = 0 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1110,6 +1114,37 @@ extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
 // the caller still receives it. Every pc-relative offset counts from the
 // instruction's own address plus eight, which is where the first attempt at
 // this went wrong -- each literal was read one word late.
+// trace_thunk with the first argument in place of the return address, and the
+// record written before the call rather than after. A call that never returns
+// -- an allocation the phone cannot satisfy, say -- leaves nothing behind
+// otherwise.
+extern "C" void gate6_arg(u32 index, Context *c, u32 arg)
+{
+    log_event(c, NOTE_CALL_ARG, index);
+    log_event(c, NOTE_RESULT_ARG, arg);
+    log_block(c);
+}
+
+static u32 arg_thunk(u8 *code, const void *ctx, u32 value, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE92D500F;                  // stmdb sp!, {r0-r3, r12, lr}
+    b[1] = 0xE1A02000;                  // mov   r2, r0          -- the argument
+    b[2] = 0xE59F0014;                  // ldr   r0, [pc, #20]   -> b[9]  which
+    b[3] = 0xE59F1014;                  // ldr   r1, [pc, #20]   -> b[10] context
+    b[4] = 0xE59FC014;                  // ldr   r12, [pc, #20]  -> b[11] handler
+    b[5] = 0xE12FFF3C;                  // blx   r12
+    b[6] = 0xE8BD500F;                  // ldmia sp!, {r0-r3, r12, lr}
+    b[7] = 0xE59FF00C;                  // ldr   pc, [pc, #12]   -> b[12] target
+    b[8] = 0;
+    b[9] = value;
+    b[10] = (u32)ctx;
+    b[11] = (u32)&gate6_arg;
+    b[12] = target;
+    user_imb_range(b, b + 13);
+    return (u32)b;
+}
+
 static u32 result_thunk(u8 *code, const void *ctx, u32 value, u32 target)
 {
     u32 *b = (u32 *)code;
@@ -2418,13 +2453,13 @@ static u32 load_and_start()
     // one handed back. Bench only: it doubles their cost and says nothing the
     // phone needs.
     if (WATCH_ALLOCATIONS) {
-        static const u32 kAlloc[] = { 265, 269, 270, 315 };   // ... and Free
+        static const u32 kAlloc[] = { 332 };            // HBufC16::New, asked before the call
         for (u32 i = 0; i < sizeof kAlloc / sizeof kAlloc[0]; i++) {
             const u32 j = kAlloc[i];
-            if (j >= nImports || ctx->spare + 16 * 4 > ctx->spareEnd)
+            if (j >= nImports || ctx->spare + 13 * 4 > ctx->spareEnd)
                 continue;
-            iat[j] = result_thunk(ctx->spare, ctx, j, iat[j]);
-            ctx->spare += 16 * 4;
+            iat[j] = arg_thunk(ctx->spare, ctx, j, iat[j]);
+            ctx->spare += 13 * 4;
         }
     }
 

@@ -73,7 +73,8 @@ ADDRESS_NOTES = {850, 851, 852, 853, 854, 855, 856, 857, 858, 859}
 NOTES = {860: 'slot entered', 850: 'Cancel on', 851: 'STRAY Cancel on',
          852: 'image loaded at', 853: 'chunk ends at',
          854: 'APP UI VPTR CHANGED to', 855: 'decrypted literal',
-         856: '  and it points at a word', 857: 'r5 =', 858: '    word', 859: '    text'}
+         856: '  and it points at a word', 857: 'r5 =', 858: '    word', 859: '    text', 870: 'returned', 871: '  by import',
+         872: '  asked for', 873: 'about to call import'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework

@@ -477,6 +477,37 @@ place it died, and twice that was over-reading a cadence. `LOG_ZOOM` exists
 for exactly this and was switched off; it is on again over 1850..2100, which
 costs about 250 writes and gives the death point exactly.
 
+**The sequence is fixed; where it stops is not.** Counting imports rather than
+records, which is the only measure comparable across builds, the phone has run
+2051, 1923, 1887, 1887 and now 1853 (`phone-2026-09-24b.log`). Every one of
+those is a *prefix* of the next longest -- this run's 1853 imports differ from
+the previous run's 1887 at no point at all -- so the game does exactly the same
+thing every time and only the stopping point moves. That is worth holding on
+to: it rules out a data-dependent divergence and points at something about how
+far it gets rather than what it does.
+
+The endpoint also moves with instrumentation in a way that fits. Taking the
+breadcrumbs out took the phone from 700 imports to 2051 at a stroke, which is a
+speed effect and not a fix; 1850 for the zoom window was set too late and only
+three events fell inside it, and that run rebooted rather than panicking.
+
+What the exact records did give: the run ends right after `TDes8::SetLength`
+from 0x13f62c, and the next thing the code does is
+
+```
+0013f630  ldr r0, [sp, #0x18]      @ the TPtr8's length word
+0013f634  bic r0, r0, #0xf0000000  @ its length
+0013f638  bl  #0x119768            @ HBufC16::New(that many)
+```
+
+An allocation whose size comes straight out of a descriptor. The emulator makes
+that call nine times for 27, 31, 28, 27, 26, 31, 26, 31 and 28 characters; a
+bad length here would ask the phone for something enormous, which is a better
+explanation for a reboot than for a panic. `arg_thunk` records a call's first
+argument *before* it is made -- `result_thunk` could not, and a call that never
+returns leaves nothing otherwise -- and it is on `HBufC16::New`.
+
+
 
 
 
