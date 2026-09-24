@@ -110,6 +110,9 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_RESULT_OF = 871,    // and which import it was
        NOTE_RESULT_ARG = 872,   // and what it was asked for
        NOTE_CALL_ARG = 873,     // a call, recorded before it is made
+       NOTE_SHUT_LIBRARY = 874, // an ordinal asked of a library that is not open
+       NOTE_LOOKUP_HANDLE = 875,// the library handle a lookup was made on
+       NOTE_LOOKUP_RESULT = 876,// and the address it answered with
        NOTE_TEXT = 859,         // the text of a descriptor we read ourselves
        NOTE_VPTR = 854,         // the app UI's vtable pointer, when it went wrong
        NOTE_SLOT = 860,         // the framework entered a slot of ours
@@ -1683,9 +1686,26 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
         if (ordinal >= 1 && (u32)ordinal <= kShimEfsrvCount)
             mapped = kShimEfsrv[ordinal - 1];
     }
+    // An RLibrary is an RHandleBase: one handle, at offset zero, and zero when
+    // the load never succeeded. The game loads cwdynlog.dll, which ships
+    // nowhere, does not look at whether it worked, and asks for an ordinal
+    // anyway -- and asking a kernel object that is not open is KERN-EXEC 0,
+    // invalid handle. The emulator allows it, a phone does not, which is why
+    // this is where the phone has stopped whatever the instrument was doing.
+    const int open = lib && ((const int *)lib)[0] != 0;
+    if (!open) {
+        log_event(c, NOTE_SHUT_LIBRARY, (u32)ordinal);
+        return c->noopFn;
+    }
+    // The game takes what comes back from here and branches straight to it, at
+    // 0x10b0f0, which is where the phone stops. So: the handle asked, and the
+    // address handed over. 66 lookups, which at this weight is affordable.
+    log_event(c, NOTE_LOOKUP_HANDLE, (u32)((const int *)lib)[0]);
     // Never null: the game calls what it is given without looking at it.
     const u32 fn = mapped
         ? ((u32 (*)(void *, int))c->newLibraryLookup)(lib, (int)mapped) : 0;
+    log_event(c, NOTE_LOOKUP_RESULT, fn ? fn : c->noopFn);
+    log_block(c);
     if (!fn)
         note(c, (u32)ordinal, 'X');
     return fn ? fn : c->noopFn;

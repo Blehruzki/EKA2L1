@@ -547,6 +547,38 @@ the emulator against 705 and 4915, the same fault in the same place, and the
 block drops to eight events so at most seven are lost when it stops. Twenty-
 five times lighter than the trace that was in place two rounds ago.
 
+**The 38% to 65% was not real, and neither was the conclusion drawn from it.**
+Those two numbers came from different trace sets, so their denominators were
+different -- the exact mistake flagged one paragraph earlier, made immediately.
+On a yardstick that does hold, the milestone subsequence extracted from every
+log and counted against the emulator's 169, the phone reads:
+
+```
+2%  4%  33%  2%  6%  6%  6%  38%   60% 58% 58% 58%  56% 53% 53%   59%
+```
+
+Flat at 58-60% since the first build with the breadcrumbs out, through a
+twenty-five-fold reduction in instrument. So the trace was never what limited
+the run, the reboots aside, and "it is time" was wrong. The stopping point is
+fixed.
+
+**Where it is fixed.** The phone's last milestone is the emulator's 123,
+`RLibrary::Lookup` from 0x10b0e4, and the two instructions after it are
+
+```
+0010b0e4  mov r6, r0      @ what the lookup answered
+0010b0f0  bx  r6          @ and straight into it
+```
+
+`gate6_library_lookup` hands that address over. It now refuses an `RLibrary`
+whose handle is zero rather than asking the kernel about it -- a lookup on an
+object that is not open is KERN-EXEC 0, invalid handle, which is the panic the
+phone reports and which the emulator allows. The guard never fires here, since
+every library the emulator looks up is open, so it is a fix that cannot be
+tested on this side. What can be seen either way is the handle and the answer,
+and both are now on record for all 66 lookups.
+
+
 
 
 
