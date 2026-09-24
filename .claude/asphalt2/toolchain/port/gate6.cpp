@@ -94,7 +94,10 @@ enum { BOX_RING = 16 };
 // 1850 was too late: the phone stopped at 1853 imports and only three events
 // fell inside it. The runs so far end between 1853 and 2051, so the window
 // wants to open well before that and stay narrow enough to be cheap.
-enum { LOG_BLOCK = 64, LOG_ZOOM = 0x7fffffff, LOG_ZOOM_END = 0x7fffffff };
+// Eight, not sixty-four: with the milestone trace the whole run is about two
+// hundred records, so this is twenty-five writes and at most seven events lost
+// if it stops. Writes were never what cost the game its reach.
+enum { LOG_BLOCK = 8, LOG_ZOOM = 0x7fffffff, LOG_ZOOM_END = 0x7fffffff };
 // 800..899 are notes rather than events: the code says what is being noted and
 // the column that usually holds a caller holds the value. They are what the
 // log was missing -- it could only ever see the game calling out, never the
@@ -971,7 +974,7 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 // finding the way into the state machine; off is the default now, and the
 // emulator shows the same sequence with or without them.
 enum { TRACE_EVERY_IMPORT = 1 };
-enum { TRACE_SKIPS_HOT = 1 };
+enum { TRACE_SKIPS_HOT = 1, TRACE_MILESTONES = 1 };
 enum { WATCH_ALLOCATIONS = 0 };
 enum { PLANT_CRUMBS = 0 };
 
@@ -2453,10 +2456,27 @@ static u32 load_and_start()
     // nothing: arithmetic helpers, a character at a time out of a descriptor,
     // and a byte at a time into one. What is left still names every file
     // opened, every library loaded and every frame drawn.
+    // Only these, when TRACE_MILESTONES is on: files, libraries, the screen,
+    // the frame-loop kick, and the two that have to be seen for the record to
+    // be closed properly. 161 records in the emulator against 705 for the
+    // pruned trace and 4915 for the full one, and they still say every file
+    // opened, every library loaded and every frame drawn.
+    static const u16 kMilestone[] = {
+        100, 109, 110, 99,          // RFs::Connect, RFile Open/Read, Close
+        325, 326, 283,              // RLibrary Load / Lookup / Close
+        45, 46, 47, 348, 350,       // the screen, and the frame-loop kick
+        279, 305, 358, 332, 86,     // Cancel, DllTls, SetActive, HBufC16, CCoeEnv
+        IMPORT_LEAVE, IMPORT_EXIT,  // so the last block still reaches the disk
+    };
     static const u16 kHot[] = { 424, 425, 274, 287, 272, 417, 383, 369, 389, 264, 344 };
     if (TRACE_EVERY_IMPORT)
         for (u32 i = 0; i < nImports; i++) {
-            if (TRACE_SKIPS_HOT) {
+            if (TRACE_MILESTONES) {
+                int wanted = 0;
+                for (u32 k = 0; k < sizeof kMilestone / sizeof kMilestone[0]; k++)
+                    if (kMilestone[k] == i) { wanted = 1; break; }
+                if (!wanted) continue;
+            } else if (TRACE_SKIPS_HOT) {
                 int hot = 0;
                 for (u32 k = 0; k < sizeof kHot / sizeof kHot[0]; k++)
                     if (kHot[k] == i) { hot = 1; break; }

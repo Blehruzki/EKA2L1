@@ -528,6 +528,26 @@ the eleven together 88% -- which takes the emulator's run from 5122 records to
 773 for the same fault at the same place. What is left still names every file
 opened, every library loaded and every frame drawn.
 
+**And it worked.** Measured the only way that compares -- phone against
+emulator on the *same* build -- the phone went from 1887 of 4915 imports to
+455 of 705: **38% to 65%** (`phone-2026-09-24d.log`). Its last records are the
+emulator's 470-475, an alternating pair of allocations, so it stopped mid-loop
+again rather than anywhere meaningful.
+
+Checked and cleared on the way: `mke32.py` defaults `heap_max` to 1 MB, which
+would have been a fine story -- the S60v3 framework costs far more heap than
+the N-Gage's did, and the emulator hands out 64 MB whatever the header says.
+But `build_gate6.py` already overrides it to 0x4000000, so both machines have
+64 MB and that is not it.
+
+So the instrument comes down again, from pruning to a whitelist:
+`TRACE_MILESTONES` wraps only files, libraries, the screen, the frame-loop
+kick, and the two the record needs to close itself properly. 197 records in
+the emulator against 705 and 4915, the same fault in the same place, and the
+block drops to eight events so at most seven are lost when it stops. Twenty-
+five times lighter than the trace that was in place two rounds ago.
+
+
 
 
 
