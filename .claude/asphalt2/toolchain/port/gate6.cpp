@@ -113,6 +113,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_SHUT_LIBRARY = 874, // an ordinal asked of a library that is not open
        NOTE_LOOKUP_HANDLE = 875,// the library handle a lookup was made on
        NOTE_LOOKUP_RESULT = 876,// and the address it answered with
+       NOTE_DRIVER = 877,       // a kernel driver call, refused
        NOTE_TEXT = 859,         // the text of a descriptor we read ourselves
        NOTE_VPTR = 854,         // the app UI's vtable pointer, when it went wrong
        NOTE_SLOT = 860,         // the framework entered a slot of ours
@@ -1697,6 +1698,25 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
         log_event(c, NOTE_SHUT_LIBRARY, (u32)ordinal);
         return c->noopFn;
     }
+    // The game resolves a kernel device driver through here: the two sites the
+    // phone stops between are User::LoadLogicalDevice and
+    // RBusLogicalChannel::DoControl. That driver is the N-Gage's; S60v3 has
+    // nothing to load, so the load fails, the channel never opens, and a
+    // control call on a channel that is not open is KERN-EXEC 0 -- invalid
+    // handle, which is the panic reported, and which the emulator allows.
+    // None of it can be honoured here, so none of it is passed on: the load
+    // and the free answer KErrNone, and everything done to a channel answers
+    // zero. The game gets no driver, but it gets to carry on.
+    static const u16 kDriver[] = {
+        485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 495, 501,
+        623, 624, 628, 630, 1134, 1778, 1779, 1780,
+    };
+    for (u32 k = 0; mapped && k < sizeof kDriver / sizeof kDriver[0]; k++)
+        if (kDriver[k] == mapped) {
+            log_event(c, NOTE_DRIVER, mapped);
+            return c->noopFn;
+        }
+
     // The game takes what comes back from here and branches straight to it, at
     // 0x10b0f0, which is where the phone stops. So: the handle asked, and the
     // address handed over. 66 lookups, which at this weight is affordable.

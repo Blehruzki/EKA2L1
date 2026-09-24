@@ -578,6 +578,36 @@ every library the emulator looks up is open, so it is a fix that cannot be
 tested on this side. What can be seen either way is the handle and the answer,
 and both are now on record for all 66 lookups.
 
+**The handle was fine, and that is what gave it away.** 0x40750035, open, so
+the guard never fires and that idea was wrong too (`phone-2026-09-24f.log`).
+But the lookups are now on record site by site, and every one of them answers
+the same on both machines -- including 0x10b128, where both correctly hand back
+our own no-op. The phone also got past the scrub to 0x10b244, further than any
+earlier reading had it.
+
+**It is a kernel device driver.** Resolving the two sites the phone stops
+between, through euser's exports in the ROM:
+
+```
+0x10b0e4  ->  euser 624  User::LoadLogicalDevice(const TDesC16&)
+0x10b244  ->  euser 490  RBusLogicalChannel::DoControl(TInt, TAny*)
+```
+
+The game loads an LDD -- an N-Gage device driver -- opens a bus logical channel
+to it and calls control on it. S60v3 has no such driver, so the load fails, the
+channel never opens, and a control call on a channel that is not open is
+KERN-EXEC 0: invalid handle, the exact panic, deterministic, and untouched by
+anything done to the instrument. That is why the reach has sat at 58-60% since
+the breadcrumbs came out.
+
+None of it can be honoured, so `gate6_library_lookup` no longer passes any of
+it on: the twenty euser ordinals for logical and physical devices, bus channels
+and `RDevice` all answer with the no-op, which returns zero -- KErrNone for the
+load and the free, and nothing for the channel. The emulator refuses 624, 490
+and 623 twice each, reaches the same 170 milestones and the same fault, so the
+game carries on without its driver.
+
+
 
 
 
