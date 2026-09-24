@@ -89,7 +89,11 @@ here and the section it overturns is marked.*
    left a different configuration in `out/` and it went to the phone.
 6. **Ordinals come from the device, not from a def file.** The phone is an N95
    (9.2); the emulator ROM is a 5320 (9.3).
-7. **This section is updated in the same commit as the section that changes
+7. **Every hardware round goes in `ROUNDS.md` before the next one is asked
+   for.** One row: the single change, how many runs, the result, and what it
+   settled. A round whose "settled" column is empty bought nothing and should
+   be said out loud. Five of builds 38 to 43 have empty columns.
+8. **This section is updated in the same commit as the section that changes
    it.** It went stale one round after it was written, which is how the log got
    into the state that made it necessary. `toolchain/port/checkrec.py` fails
    when a new section is appended without it; run it before committing.
