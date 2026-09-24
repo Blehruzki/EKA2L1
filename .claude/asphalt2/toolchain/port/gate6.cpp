@@ -982,7 +982,7 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 // emulator shows the same sequence with or without them.
 enum { TRACE_EVERY_IMPORT = 1 };
 enum { TRACE_SKIPS_HOT = 1, TRACE_MILESTONES = 1 };
-enum { WATCH_ALLOCATIONS = 1, LOG_THE_CLOCK = 1, REFUSE_DRIVERS = 1 };
+enum { WATCH_ALLOCATIONS = 1, LOG_THE_CLOCK = 1, REFUSE_DRIVERS = 1, WATCH_THE_READS = 1 };
 enum { PLANT_CRUMBS = 0 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1134,10 +1134,18 @@ extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
 // record written before the call rather than after. A call that never returns
 // -- an allocation the phone cannot satisfy, say -- leaves nothing behind
 // otherwise.
-extern "C" void gate6_arg(u32 index, Context *c, u32 arg)
+extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
 {
     log_event(c, NOTE_CALL_ARG, index);
-    log_event(c, NOTE_RESULT_ARG, arg);
+    log_event(c, NOTE_RESULT_ARG, a0);
+    log_event(c, NOTE_RESULT_ARG, a1);
+    // For RFile::Read the second argument is the descriptor the file server
+    // will write into, and what it says about itself is the whole question:
+    // type and length in the first word, maximum in the second, and the buffer
+    // in the third.
+    if (a1 >= 0x400000 && a1 < 0x10000000 && !(a1 & 3))
+        for (u32 i = 0; i < 3; i++)
+            log_event(c, NOTE_R5_AT, ((const u32 *)a1)[i]);
     log_block(c);
 }
 
@@ -1145,19 +1153,20 @@ static u32 arg_thunk(u8 *code, const void *ctx, u32 value, u32 target)
 {
     u32 *b = (u32 *)code;
     b[0] = 0xE92D500F;                  // stmdb sp!, {r0-r3, r12, lr}
-    b[1] = 0xE1A02000;                  // mov   r2, r0          -- the argument
-    b[2] = 0xE59F0014;                  // ldr   r0, [pc, #20]   -> b[9]  which
-    b[3] = 0xE59F1014;                  // ldr   r1, [pc, #20]   -> b[10] context
-    b[4] = 0xE59FC014;                  // ldr   r12, [pc, #20]  -> b[11] handler
-    b[5] = 0xE12FFF3C;                  // blx   r12
-    b[6] = 0xE8BD500F;                  // ldmia sp!, {r0-r3, r12, lr}
-    b[7] = 0xE59FF00C;                  // ldr   pc, [pc, #12]   -> b[12] target
-    b[8] = 0;
-    b[9] = value;
-    b[10] = (u32)ctx;
-    b[11] = (u32)&gate6_arg;
-    b[12] = target;
-    user_imb_range(b, b + 13);
+    b[1] = 0xE1A03001;                  // mov   r3, r1   -- before r1 is reused
+    b[2] = 0xE1A02000;                  // mov   r2, r0
+    b[3] = 0xE59F0014;                  // ldr   r0, [pc, #20]   -> b[10] which
+    b[4] = 0xE59F1014;                  // ldr   r1, [pc, #20]   -> b[11] context
+    b[5] = 0xE59FC014;                  // ldr   r12, [pc, #20]  -> b[12] handler
+    b[6] = 0xE12FFF3C;                  // blx   r12
+    b[7] = 0xE8BD500F;                  // ldmia sp!, {r0-r3, r12, lr}
+    b[8] = 0xE59FF00C;                  // ldr   pc, [pc, #12]   -> b[13] target
+    b[9] = 0;
+    b[10] = value;
+    b[11] = (u32)ctx;
+    b[12] = (u32)&gate6_arg;
+    b[13] = target;
+    user_imb_range(b, b + 14);
     return (u32)b;
 }
 
@@ -2603,6 +2612,12 @@ static u32 load_and_start()
     // The allocators, wrapped once more so the record carries the address each
     // one handed back. Bench only: it doubles their cost and says nothing the
     // phone needs.
+    // RFile::Read, recorded before the call with the descriptor it is handed.
+    if (WATCH_THE_READS && 110 < nImports && ctx->spare + 14 * 4 <= ctx->spareEnd) {
+        iat[110] = arg_thunk(ctx->spare, ctx, 110, iat[110]);
+        ctx->spare += 14 * 4;
+    }
+
     if (WATCH_ALLOCATIONS) {
         // Every allocator, recording what came back. An allocation that fails returns
             // zero rather than panicking, so if the phone is running out of memory -- the

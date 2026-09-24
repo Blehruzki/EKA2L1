@@ -802,3 +802,27 @@ support takes it down at 0x9EBD3A00 well before our port gets on the S60v3
 side, so it cannot serve as a full trace to diff against. It is still worth
 having: it showed that the native game reads `E:\game.id` from the card root,
 which our port never opens.
+
+## Where it actually stops
+
+Reading the tail properly rather than the milestone count: the phone gets
+**past** the whole driver interaction -- select, card info, free, close -- and
+then opens a file at 0x10a314 and dies on the `RFile::Read` at 0x10a814.
+
+```
+0010a7f8  mov r0, sp          @ a TPtr8 on the stack
+0010a804  bl  #0x1195b8       @ TPtr8::TPtr8(buffer, length)
+0010a810  bl  #0x11a418       @ RFile::Read(that)
+```
+
+Which is worth pausing on, because `RFile::Read` is the file server writing
+into *our* address space across an IPC boundary. A descriptor that points
+somewhere it should not is no longer a fault in this process; it is a server
+writing where it was told to. That is one of the few things a user process can
+do that ends kernel-side, which is what a reboot means.
+
+`WATCH_THE_READS` records the descriptor before each read -- its type and
+length word, its maximum, and its buffer. The emulator's are all unremarkable:
+type 2, lengths matching maxima, buffers on the stack at 0x40xxxx or in the
+heap at 0x8bxxxx. Anything on the phone pointing into the game's chunk at
+0x46xxxxx, or anywhere that is not stack or heap, is the answer.
