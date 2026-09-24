@@ -132,7 +132,12 @@ enum { SILENT = 1 };
 // touching anything that changes the sequence: probes and crumbs are the only
 // instruments that add traced events, and they stay off either way. Local
 // builds only; the shipped one has it at zero.
-enum { LOG_ANYWAY = 0 };
+// The log ships again. Every build that wrote it used to reboot the phone, and
+// that was read as the log being the cause -- wrongly. It was the two RFiles
+// closed as plain handles: with those fixed, a build writing the log at a
+// block of eight ran three times on hardware without a reboot and got further
+// than any silent one. The instrument was never the problem; the handle was.
+enum { LOG_ANYWAY = 1 };
 enum { QUIET = SILENT && !LOG_ANYWAY };
 enum { LOG_BLOCK = QUIET ? 1024 : 8,
        LOG_ZOOM = 0x7fffffff,
@@ -985,6 +990,7 @@ enum { WATCH_ALLOCATIONS = LOG_ANYWAY, LOG_THE_CLOCK = 0, REFUSE_DRIVERS = 1,
 enum { PAD_THE_ALLOCATIONS = 0, ZERO_THE_SLACK = 0 };
 enum { LEAK_EVERYTHING = 0 };
 enum { WRAP_ALLOCATORS = WATCH_ALLOCATIONS };
+enum { WATCH_OPEN_RESULT = 1 };
 enum { PLANT_CRUMBS = 0 };
 
 // A probe is a breadcrumb that also reports two of the game's registers, at
@@ -1157,6 +1163,15 @@ extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
         c->allocPtr[n] = result;
         c->allocLen[n] = arg;
         c->allocNext++;
+    }
+    // RFile::Open is the other way round -- zero is success there -- so it is
+    // recorded whatever it says, and the record's existence is the point: it
+    // means the call returned at all.
+    if (index == IMPORT_FILE_OPEN) {
+        log_event(c, NOTE_RESULT_OF, index);
+        log_event(c, NOTE_RESULT, result);
+        log_block(c);
+        return;
     }
     // Only the failures. An allocator that succeeded says nothing worth the
     // time -- and time is what the run is short of -- while a zero is the whole
@@ -2820,6 +2835,23 @@ static u32 load_and_start()
         IMPORT_LEAVE, IMPORT_EXIT,  // so the last block still reaches the disk
     };
     static const u16 kHot[] = { 424, 425, 274, 287, 272, 417, 383, 369, 389, 264, 344 };
+
+    // RFile::Open's result. The phone logs the name it is about to open and
+    // then stops, with nothing from the call -- so either the open never
+    // returns, or it returns and the fault is immediately after. One record
+    // settles it.
+    //
+    // This goes on before the trace loop, so the trace thunk ends up outside
+    // it and still sees the game's own return address. Wrapped the other way
+    // round the caller column reads as our own thunk, which is the alignment
+    // against the emulator gone for the one import being asked about.
+    if (WATCH_OPEN_RESULT && IMPORT_FILE_OPEN < nImports &&
+        ctx->spare + 16 * 4 <= ctx->spareEnd) {
+        iat[IMPORT_FILE_OPEN] = result_thunk(ctx->spare, ctx, IMPORT_FILE_OPEN,
+                                             iat[IMPORT_FILE_OPEN]);
+        ctx->spare += 16 * 4;
+    }
+
     if (TRACE_EVERY_IMPORT)
         for (u32 i = 0; i < nImports; i++) {
             if (TRACE_MILESTONES) {

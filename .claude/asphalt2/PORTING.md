@@ -1390,3 +1390,60 @@ mistake in the game's own path. The other caller, 0x34ac4, closes `r4 + 0xa0`
 and then touches `r4 + 0xa8`, and which of those is the RFile is not clear from
 the code. The current mapping reaches a hundred and twenty-eight events, so it
 stays until there is a reason beyond suspicion.
+
+## The reboots were the handle, and the log was never the problem
+
+Build 36 went out with the wrong binary. `ref.sh` built the reference with
+`LOG_ANYWAY` on, restored the *source* afterwards and left that build sitting in
+`out/`, which is where the `.sis` was copied from. So the phone got a build
+writing the log at a block of eight -- the shape that had rebooted it every
+time for a month.
+
+It did not reboot. Three runs, no reboot, and further than any silent build:
+
+```
+run 1 (deleted first)   KERN-EXEC 3   131 traced events
+run 2 (deleted first)   KERN-EXEC 3   131 traced events
+run 3 (files left)      KERN-EXEC 3, and sometimes 0 alongside it
+```
+
+So the previous section is wrong. It is not that the log extends a file and the
+box does not. **It was the two RFiles closed as plain handles**, which closed
+the file server session; everything written afterwards went through a dead one,
+and the more a build wrote the worse that got. The correlation with the log was
+real and the cause was not. Fix the close and the log is free.
+
+That is the fifth instrument bug and the first that was hiding a real one --
+every reboot for a month was this, and each of the theories built on top of it
+(a write ceiling, a write rate, extending writes) was fitted to its shadow.
+
+*The process failure is its own lesson.* A script that builds one configuration
+and ships another is a trap that goes off silently, and this one went off in the
+user's hand. `ref.sh` builds and leaves the shipped configuration now; there is
+only one binary.
+
+### Where it stops
+
+The run ends one event short of the emulator's, and the last records are ours,
+from immediately before the call:
+
+```
+-- about to call import 109       RFile::Open
+--   asked for  007c506c          the RFile
+--   asked for  007c5068          the RFs, four bytes below it
+--     text     ...ystem\apps\6rbc\cwivenc.d
+                                  <- and nothing further
+```
+
+The name is read correctly by our own code, so the descriptor is sound. The
+open of `cwivenc.dat` either never returns or the fault is on the instruction
+after it. The emulator, at the same event, opens it and gets KErrNone.
+
+The user also reports **a black bar with pixels in it, in every run**, and one
+to two seconds before the panic. Something is being drawn.
+
+Build 37 keeps the log, and puts a result thunk on `RFile::Open` -- wrapped
+*inside* the trace thunk, so the trace still records the game's own return
+address rather than ours, which is the alignment against the emulator for the
+one import being asked about. Whatever it returns, or the absence of any record
+at all, answers this.
