@@ -1524,3 +1524,43 @@ heap last walked clean at event 160, 803 cells
 
 That is one import and one call every four events against build 37, which is
 the smallest delta that can answer anything.
+
+## Build 39's instrument worked and could not say so
+
+Build 37, reinstalled unchanged, reached 132 traced events again with a single
+KERN-EXEC 3. So the phone had not changed and builds 38 and 39 really did
+regress -- and build 39 differs from 37 by one import and one call, which is as
+clean a one-variable result as this project has had.
+
+But "regressed" is the wrong word for what build 39 probably did.
+`User::CountAllocCells` walks the heap and faults on a broken one; the run died
+at traced event ten, and the box only wrote every sixteen, so **the walk's
+verdict never reached the disk**. An instrument that detects the thing it was
+built for and then dies before it can report reads exactly like a regression.
+
+Build 40 fixes the reporting rather than the walk. The box goes down *before*
+each walk carrying "begun at event N", and again after it carrying "came back
+at event N". A walk that faults leaves the two disagreeing; one that returns
+leaves them equal. The emulator now reads
+
+```
+heap walk: begun at event 160, last came back at event 160, 803 cells
+```
+
+with no false positive -- the first attempt flushed only before the walk, and
+the emulator's own unrelated fault then left the two fields apart and the flag
+lit for the wrong reason.
+
+The interval is sixteen rather than four, so eight walks on a run of this
+length is sixteen box writes against the forty-odd the log already does. That
+also disambiguates the two readings of build 39: if the run reaches 132 again,
+walking every four events was itself the perturbation; if it stops early with
+the two fields disagreeing, the heap is broken by then and we have the bracket.
+
+*The ordinal question stays open.* `user_countalloccells` was taken from a
+`kernelhwsrv` def file, not from the 5320's own `euser.dll`, and euser ordinals
+are not guaranteed identical across 9.1 to 9.4. It works against the RM-409 ROM
+in the emulator, which is the same firmware family, so it is probably right --
+but "probably" is how `SetKeyBlockMode` got keyed to the wrong ordinal months
+ago, and the device's export table is sitting in `z/rm-409/sys/bin/euser.dll`
+if this needs settling.

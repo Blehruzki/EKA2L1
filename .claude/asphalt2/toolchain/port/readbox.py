@@ -27,7 +27,7 @@ BOX_FROM = 4 + BOX_RING
 BOX_PATH = BOX_FROM + BOX_RING
 BOX_SLOT, BOX_FRAMES, BOX_STACK = BOX_PATH + 1, BOX_PATH + 2, BOX_PATH + 3
 BOX_EXC = BOX_STACK + 1
-BOX_HEAP_OK, BOX_CELLS = BOX_EXC + 1, BOX_EXC + 2
+BOX_HEAP_TRY, BOX_HEAP_OK, BOX_CELLS = BOX_EXC + 1, BOX_EXC + 2, BOX_EXC + 3
 BOX_NAME, BOX_NAME_WORDS = BOX_CELLS + 1, 8
 MAGIC = 0x47364234
 FLAGS = [(1, 'abort'), (2, 'restart'), (4, 'docancel'), (8, 'runerror'),
@@ -52,8 +52,9 @@ def show(path, imports):
     print('  User::SetExceptionHandler said %d%s'
           % (exc, '' if exc == 0 else '   <- the handler is NOT installed'))
     if BOX_CELLS < len(w):
-        print('  heap last walked clean at event %d, %d cells'
-              % (w[BOX_HEAP_OK], w[BOX_CELLS]))
+        print('  heap walk: begun at event %d, last came back at event %d, %d cells%s'
+              % (w[BOX_HEAP_TRY], w[BOX_HEAP_OK], w[BOX_CELLS],
+                 '   <- THE WALK DID NOT RETURN' if w[BOX_HEAP_TRY] > w[BOX_HEAP_OK] else ''))
     name = ''.join(chr(h) if 32 <= h < 127 else ''
                    for k in range(BOX_NAME, min(BOX_NAME + BOX_NAME_WORDS, len(w)))
                    for h in (w[k] & 0xFFFF, w[k] >> 16))

@@ -197,7 +197,8 @@ enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAME
 // A count per marker. The tail says where it was; these say whether it was
 // going round in circles to get there, and how many times.
 enum { BOX_EXC = BOX_STACK + 1 };       // what User::SetExceptionHandler said
-enum { BOX_HEAP_OK = BOX_EXC + 1 };     // the last event the heap walked clean
+enum { BOX_HEAP_TRY = BOX_EXC + 1 };    // the last event a heap walk was begun
+enum { BOX_HEAP_OK = BOX_HEAP_TRY + 1 };// ... and the last one that came back
 enum { BOX_CELLS = BOX_HEAP_OK + 1 };   // and how many cells it had then
 enum { BOX_NAME = BOX_CELLS + 1, BOX_NAME_WORDS = 8 };  // the last file opened
 enum { BOX_HITS = BOX_NAME + BOX_NAME_WORDS, BOX_MARKERS = 40 };
@@ -1004,7 +1005,7 @@ enum { WATCH_OPEN_RESULT = 1 };
 // kept in the box. Whatever the run ends as, the box then brackets the
 // corrupting write to within a few events -- which is a search in time rather
 // than another guess about who did it.
-enum { CHECK_THE_HEAP = 1, HEAP_CHECK_EVERY = 4 };
+enum { CHECK_THE_HEAP = 1, HEAP_CHECK_EVERY = 16 };
 enum { PLANT_CRUMBS = 0 };
 
 // A probe is a breadcrumb that also reports two of the game's registers, at
@@ -1508,9 +1509,17 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
     // Walk the heap. If it comes back, say so in the box; if it does not, the
     // box already holds the last event at which it did.
     if (CHECK_THE_HEAP && (c->traceCount % (u32)HEAP_CHECK_EVERY) == 0) {
+        // The box goes down *before* the walk as well as after it. Build 39
+        // walked the heap and died at event ten with nothing on disk to say so,
+        // because the box only wrote every sixteen -- the instrument worked and
+        // could not report. Now: "tried at" survives a walk that faults, "came
+        // back at" only a walk that did not.
+        c->boxData[BOX_HEAP_TRY] = c->traceCount;
+        box_flush(c);                       // survives a walk that faults
         const int cells = user_countalloccells();
         c->boxData[BOX_HEAP_OK] = c->traceCount;
         c->boxData[BOX_CELLS] = (u32)cells;
+        box_flush(c);                       // only written if it came back
     }
     if (SILENT && (c->traceCount & (BOX_EVERY_TRACED - 1)) == 0)
         box_flush(c);
