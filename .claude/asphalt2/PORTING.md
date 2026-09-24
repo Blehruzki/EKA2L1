@@ -25,6 +25,64 @@ Everything lives in `toolchain/port/`. `gate6.cpp` is the loader and shim,
 `gate6.s` its imports, `gen_shim.py` generates the import table into
 `gate4_shim.cpp`, `build_gate6.py` builds `gate6.sis`.
 
+## Read this first: settled, retracted, and the rules
+
+*This file is a working log, appended to as things happen, and a log tells you
+what was believed at the time rather than what is true. This section is the
+part that is maintained. When something below is overturned, it is recorded
+here and the section it overturns is marked.*
+
+### Settled
+
+- The game's image has no data and no bss; every global lives behind
+  `Dll::Tls()`, and that root is built correctly by our loader.
+- The reboots -- a month of them -- were **two `RFile`s closed with
+  `RHandleBase::Close`**, which closes the file server session out from under
+  everything after it. Fixed with `RFile::Close` (efsrv 300). Nothing about
+  write volume, write rate or extending files was ever involved.
+- `RFile::Open` of `cwivenc.dat` returns `KErrNone`. The phone dies on the very
+  next call, `__builtin_delete` on the name buffer.
+- At traced event 128, four events before that free, `User::CountAllocCells`
+  walks the whole heap and counts 1209 cells. **The heap is structurally
+  intact**, so the free is not a symptom of a broken chain -- what is left is
+  the pointer.
+- The phone and the emulator run the same import sequence, tracking event for
+  event over 55 consecutive events at an offset of 27.
+- The game's own protection paths -- `6RBC.off`, `cwdynlog.dll`, GD1DRV, and a
+  `TickCount` stopwatch with `Math::Random` mixed into its result -- behave as
+  designed. The empty container the emulator dies walking is the *correct*
+  state two seconds into a run.
+- EKA2L1 cannot run the original N-Gage binary either (KERN-EXEC 3 at
+  0x139588). Our port gets *further* under the emulator than the original does.
+
+### Retracted, and why
+
+| Believed | Why it was wrong |
+|---|---|
+| The file server was overflowing a 31-byte cell | The allocation ring was searched in slot order and a stale entry won. There was no overflow. |
+| The reboot was a write ceiling, then a write rate, then extending writes | Three theories fitted to the shadow of the closed-handle bug. A build writing the log heavily does not reboot once the handle is fixed. |
+| Builds 38, 39 and 40 regressed | Each stopped early on a single run. Build 40 later reached 128. Two working instruments were reverted over it. |
+| A run is a coin flip | Build 42 stopped at the same point five times out of five. The variance was real earlier and is not the explanation now. |
+| 512 bytes meant a disk sector | `LOG_BLOCK` is 8. Sixty-four records is eight of our own blocks. |
+| The read came from caller 0xe4774 | It came from 0xed694. The import trace records the call from inside a shared helper. |
+| The emulator is a reference | For the protection paths it never was; it cannot run the original game at all. |
+
+### Standing rules, each bought with a wasted round
+
+1. **A hardware round is three runs**, compared on the longest. One run is not
+   a build's behaviour.
+2. **One variable per build.** Build 38 changed four things and cost three
+   rounds to unpick.
+3. **Suspect the instrument first.** Five of the failures in this file were the
+   tool, not the game -- and three of those were read as the game dying when
+   the recorder had gone deaf.
+4. **A measurement that agrees with the theory gets checked as hard as one that
+   does not.**
+5. **Never ship from a directory another script built into.** `ref.sh` once
+   left a different configuration in `out/` and it went to the phone.
+6. **Ordinals come from the device, not from a def file.** The phone is an N95
+   (9.2); the emulator ROM is a 5320 (9.3).
+
 ## The two machines, which are not the same machine
 
 **The phone** is a Nokia N95, RM-160, firmware v35.2.001, S60 3rd Edition
@@ -1017,6 +1075,8 @@ now.
 
 ## The instrument goes nearly silent
 
+> *Superseded in its premise: write volume was never what took the phone down.*
+
 The zoomed build (`g6box-28`) did what it was for and cost what it was warned
 it might. It located the death precisely for the first time -- and it died
 sooner than the three before it.
@@ -1211,6 +1271,8 @@ link, which is the design working.
 
 ## What the container is waiting for, and why the emulator is not a reference
 
+> *Refined: our port gets further under the emulator than the original N-Gage binary does.*
+
 Following the empty container back a layer at a time:
 
 ```
@@ -1325,6 +1387,8 @@ the other thunks index the context; they all use literals already.
   box holds the tail.
 
 ## It is the log file, not the number of writes
+
+> *Superseded: the log was never the cause. See "The reboots were the handle".*
 
 Build 34 rebooted the phone at eighty-eight traced events. It was supposed to
 be the cheap build.
@@ -1505,6 +1569,8 @@ is going down -- which fits a heap the file server is also writing into.
 
 ## Build 38 regressed, and was reverted rather than explained
 
+> *Superseded: build 38 was not a regression; that was one run. See "Three runs of one build".*
+
 Build 38 -- the free-matching one -- took the phone from 132 traced events to
 **nine**, dying in the framework's own startup with the box never written past
 arming. The emulator ran it to the usual 170 and the usual fault, so there is
@@ -1541,6 +1607,8 @@ That is one import and one call every four events against build 37, which is
 the smallest delta that can answer anything.
 
 ## Build 39's instrument worked and could not say so
+
+> *Partly superseded: the walk never ran at all -- the run never reached event sixteen.*
 
 Build 37, reinstalled unchanged, reached 132 traced events again with a single
 KERN-EXEC 3. So the phone had not changed and builds 38 and 39 really did
@@ -1581,6 +1649,8 @@ ago, and the device's export table is sitting in `z/rm-409/sys/bin/euser.dll`
 if this needs settling.
 
 ## An assumption that was never tested: that a run is repeatable
+
+> *Partly superseded: the variance is real but does not explain builds 38-43, which fail deterministically.*
 
 Build 40's box says the heap walk **never ran** -- it fires every sixteen
 traced events and the run reached eleven. So neither the call nor the import
@@ -1655,6 +1725,8 @@ Some of what is written above will have to be re-read with that in mind -- the
 write-budget table in particular, whose rows are single runs.
 
 ## Sixty-four records, five times: the log was dying, not the game
+
+> *Superseded: sixty-four records is eight of our own log blocks, not a sector.*
 
 Build 41, three runs, all three stopping at nine to eleven traced events. And
 every short run in this record -- builds 38, 39, 40 and all three of 41 --
