@@ -40,7 +40,7 @@ us about the instrument rather than the game. Detail is in `PORTING.md` under
 | 42 | Panic on a failed write | 5 | "64 records", no `G6WR` | Writes are **not** failing. Killed the 512-byte theory |
 | 43 | 37 + free matching only | 2 | "64 records" | The import was not the difference |
 | 44 | Exact logging over the opening | 1 | **136**, dies in `User::Free(0x7b7cd8)` | 31 frees, all matched. Furthest yet. "64 records" was eight of our own log blocks all along |
-| 45 | Flush each freed pointer before the free | *pending* | | |
+| 45 | Flush each freed pointer before the free | 1 | 136, dies freeing `0x7b89a8` | The fatal pointer is now named. Its ring verdict is still missing: the verdict record is written but not flushed |
 
 ## What builds 38-43 actually cost
 
@@ -52,3 +52,31 @@ eight, and the tail was sitting unflushed in the buffer the whole time.
 Five of those six rounds settled nothing. That is the largest single waste in
 this project after the reboots, and it came from reading an instrument's blind
 spot as the game's behaviour -- the same mistake, for the fifth time.
+
+## Where we are
+
+**Furthest: 136 traced events** (builds 44 and 45, same result twice). The run
+gets through the whole resource-loading sequence, opens `cwivenc.dat`
+successfully, and dies inside a `User::Free`.
+
+**Best round so far: 44.** It was the first to show that "64 records" -- which
+five earlier rounds had been scored on -- was our own log block hiding the
+tail, and it reached 136 with the free matching working. Everything since is
+refinement of what it exposed.
+
+**Runner-up: 36**, the `RFile::Close` fix. It ended a month of reboots and is
+the single change that made hardware rounds informative again.
+
+### What is known at the point of failure
+
+| | |
+|---|---|
+| Heap at event 128 | walks clean, 1209 cells |
+| Frees before the fatal one | 31, all matched a live cell, no doubles, no strays |
+| `RFile::Open` | returns KErrNone |
+| Setup state | identical to the emulator |
+| Fatal call | `User::Free(0x7b89a8)` -- build 44 had `0x7b7cd8`, same point, different heap layout |
+
+So the heap is sound, the pointers are sound, and the open succeeds. The one
+unmeasured thing is whether the *fatal* pointer is in the ring, and that is one
+missing flush away.

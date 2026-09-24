@@ -42,8 +42,9 @@ here and the section it overturns is marked.*
   write volume, write rate or extending files was ever involved.
 - `RFile::Open` of `cwivenc.dat` returns `KErrNone`. The phone does not die
   there.
-- **Furthest reached: 136 traced events** (build 44). It dies inside a
-  `User::Free` of `0x7b7cd8`.
+- **Furthest reached: 136 traced events** (builds 44 and 45, twice). It dies
+  inside a `User::Free` -- of `0x7b7cd8` in build 44, `0x7b89a8` in build 45:
+  the same point, a different heap layout.
 - The heap is sound and so are the pointers: at event 128
   `User::CountAllocCells` walks it clean at 1209 cells, and every one of the 31
   frees before the fatal one matched a live cell -- no double frees, no strays.
