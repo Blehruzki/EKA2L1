@@ -233,6 +233,11 @@ static void panic(const u16 *cat, int catLen, int reason)
     panic(s, (int)(sizeof s / sizeof s[0]), (reason)); } while (0)
 
 #define CAT_FS  {'G','6','F','S'}
+// A write that failed, and which file it was: the log or the box. The reason
+// is the file server's own error code, negated as Symbian returns it.
+#define CAT_WRITE {'G','6','W','R'}
+enum { LOUD_WRITE_ERRORS = 1 };
+#define CAT_BOXW  {'G','6','B','W'}
 #define CAT_MEM {'G','6','M','E','M'}
 #define CAT_HDR {'G','6','H','D','R'}
 #define CAT_IMP {'G','6','I','M','P'}
@@ -885,13 +890,27 @@ static void stack_mark(Context *c)
 }
 
 
+// Every short run on the phone -- five of them now, across four builds --
+// stopped at exactly sixty-four records. Sixty-four records is 512 bytes,
+// which is one sector, and a number that round is not the game dying. It is
+// the log dying, silently, because nothing here ever looked at what
+// file_write_at returned: the position advances whether or not the write
+// landed, so a file server that starts refusing leaves the file at 512 bytes
+// and the run carries on blind. The box stops at the same moment for the same
+// reason, which is why those runs look like they ended at event nine.
+//
+// So the error is no longer discarded. The first one panics with its own code,
+// which is a number the phone puts on screen -- the run was already over as
+// far as the record goes, and this way it says why.
 static void log_block(Context *c)
 {
     if (!c->logFill || !c->logFile[0])
         return;
     c->logDes[0] = ((u32)EPtrC << KTypeShift) | (c->logFill * 8);
     c->logDes[1] = (u32)c->logBuf;
-    file_write_at(c->logFile, (int)c->logPos, c->logDes);
+    const i32 err = file_write_at(c->logFile, (int)c->logPos, c->logDes);
+    if (LOUD_WRITE_ERRORS && err)
+        PANIC(CAT_WRITE, (int)err);
     file_flush(c->logFile);
     c->logPos += c->logFill * 8;
     c->logFill = 0;
@@ -927,7 +946,9 @@ static void box_write(Context *c)
     c->boxData[BOX_STACK] = c->spTop - c->spLow;
     c->boxDes[0] = ((u32)EPtrC << KTypeShift) | BOX_BYTES;
     c->boxDes[1] = (u32)c->boxData;
-    file_write_at(c->boxFile, 0, c->boxDes);
+    const i32 err = file_write_at(c->boxFile, 0, c->boxDes);
+    if (LOUD_WRITE_ERRORS && err)
+        PANIC(CAT_BOXW, (int)err);
 }
 
 static void box_flush(Context *c)

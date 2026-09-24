@@ -1653,3 +1653,35 @@ the longest of three, and never call a build a regression on one run again.
 
 Some of what is written above will have to be re-read with that in mind -- the
 write-budget table in particular, whose rows are single runs.
+
+## Sixty-four records, five times: the log was dying, not the game
+
+Build 41, three runs, all three stopping at nine to eleven traced events. And
+every short run in this record -- builds 38, 39, 40 and all three of 41 --
+stopped at **exactly sixty-four records**.
+
+Sixty-four records is 512 bytes. One sector. A number that round is not a game
+crashing; it is a file that stopped growing.
+
+`log_block` never looked at what `file_write_at` returned, and it advances
+`logPos` whether or not the write landed. So a file server that starts refusing
+leaves the log at 512 bytes, every later write goes to a higher offset and also
+fails, and the run carries on with no record at all. The box stops at the same
+moment for the same reason -- which is exactly why those runs read as "ended at
+event nine" and were written up three times as regressions.
+
+**So the short runs were never short.** They are runs where the instrument went
+deaf early, and the game very likely carried on to the same place it always
+does. The KERN-EXEC 0 the user reports on those runs is the natural end of that
+story: writes on a session that is no longer good.
+
+That also retires the "build 41 is 0 for 3" reading from the section above, and
+the dose-response it seemed to show across builds 37, 40 and 41. There is no
+gradient; there is a coin, and what it decides is whether the *log* survives,
+not how far the game gets.
+
+Build 42 stops discarding the error. The first failed write panics with its own
+category -- `G6WR` for the log, `G6BW` for the box -- carrying the file
+server's error code as the reason. The run is already over as far as the record
+goes; this way the phone puts the reason on its own screen, and a number that
+the user can read off is worth more than a file that is not there.
