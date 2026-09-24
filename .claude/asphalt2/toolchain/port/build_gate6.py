@@ -22,7 +22,7 @@ buildapp.build('gate6', 0xE0001006, 'Gate6', sys.argv[1] if len(sys.argv) > 1 el
                                           'rlibrary_load', 'rlibrary_lookup',
                                           'rdebug_rawprint', 'user_imb_range',
                                           'user_tickcount']),
-                        (buildapp.EFSRV, ['fs_connect', 'file_open',
+                        (buildapp.EFSRV, ['fs_connect', 'file_open', 'file_close',
                                           'file_size', 'file_read',
                                           'file_replace', 'file_write_at',
                                           'file_flush', 'fs_delete']),

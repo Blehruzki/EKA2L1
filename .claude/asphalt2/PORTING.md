@@ -1346,3 +1346,47 @@ the phone**, so the handler is installed and the exception still is not reaching
 it -- the reason KERN-EXEC 3 shows instead of our own category is something
 else, and worth one look later. And the last file opened is
 `...s\6rbc\cwivenc.d`, the same as the emulator's.
+
+## KERN-EXEC 0: an RFile closed as a plain handle
+
+A three-run test settled this in one go. Delete the box and run: reboot. Leave
+the box in place and run: **KERN-EXEC 0**, four to six times over, every time.
+
+The only code that behaves differently when `g6box.dat` exists is the startup
+read of the previous run's box, and in it:
+
+```c
+file_open(ctx->boxFile, ctx->boxFs, &name, 1);
+...
+rhandle_close(ctx->boxFile);        // RHandleBase::Close
+```
+
+On 9.x an `RFile` is an `RSubSessionBase`, whose first member is the
+`RSessionBase` it belongs to. So the first word of an `RFile` is **the file
+server session's handle**, and closing an RFile as a plain handle closes the
+session out from under everything that follows -- which is invalid-handle,
+KERN-EXEC 0, on the next file operation. The emulator allows it and says
+nothing, exactly as `CLAUDE.md` says it would.
+
+There were two of these. The other, `rhandle_close(probe)`, runs on *every*
+startup, on the sibling-`.cwa` probe, and is the same mistake. It now uses
+`RFile::Close` (efsrv ordinal 300, imported for this).
+
+The startup read is gone entirely rather than fixed. It existed to get a record
+off a phone that had just rebooted, which the box now does on its own; it wrote
+a second file that grows, which the previous section says nothing may do; and
+it carried this bug. `g6box.txt` goes with it.
+
+**What this does not explain is the reboot.** When the box is absent the read
+never runs, and that is the run that rebooted. Two separate faults were being
+read as one, and every second run has been polluted by this since the box was
+introduced.
+
+*Still open, noted rather than changed:* the game closes its own files through
+import 99, which `gen_shim` names `RFsBase::Close` and which we answer with
+`RHandleBase::Close`. It is called on `object + 4` at 0x10a7c8 -- the same
+address the read helper treats as the `RFile` -- so it is very likely the same
+mistake in the game's own path. The other caller, 0x34ac4, closes `r4 + 0xa0`
+and then touches `r4 + 0xa8`, and which of those is the RFile is not clear from
+the code. The current mapping reaches a hundred and twenty-eight events, so it
+stays until there is a reason beyond suspicion.

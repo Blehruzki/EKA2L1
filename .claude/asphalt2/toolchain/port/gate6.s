@@ -91,6 +91,7 @@ old_call1:
     @ efsrv
     IMPORT fs_connect,         68    @ RFs::Connect(TInt)
     IMPORT file_open,          93    @ RFile::Open(RFs&, TDesC16 const&, TUint)
+    IMPORT file_close,        300    @ RFile::Close()
     IMPORT file_size,         264    @ RFile::Size(TInt&) const
     IMPORT file_read,         255    @ RFile::Read(TDes8&)
     IMPORT file_replace,      108    @ RFile::Replace(RFs&, TDesC16 const&, TUint)

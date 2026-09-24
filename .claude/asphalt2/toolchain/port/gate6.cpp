@@ -30,6 +30,12 @@ i32 chunk_createlocalcode(void *chunk, int size, int maxSize, int owner);
 u8 *chunk_base(const void *chunk);
 i32 fs_connect(void *fs, int slots);
 i32 file_open(void *file, void *fs, const void *name, u32 mode);
+// RFile::Close, and not RHandleBase::Close. An RFile is an RSubSessionBase,
+// whose first word is the *session's* handle -- so closing one as a plain
+// handle closes the file server session out from under everything that comes
+// after it, which on a phone is KERN-EXEC 0 and in the emulator is nothing at
+// all. Two of those cost a hardware round each.
+i32 file_close(void *file);
 i32 file_size(const void *file, int *size);
 i32 file_read(const void *file, void *des);
 i32 file_replace(void *file, void *fs, const void *name, u32 mode);
@@ -915,90 +921,9 @@ static void box_flush(Context *c)
     file_flush(c->boxFile);
 }
 
-static const u16 kTextPath[] = {'C',':','\\','g','6','b','o','x','.','t','x','t'};
-
-static int put_hex(u8 *out, u32 v)
-{
-    u8 digits[8];
-    int n = 0;
-    do { const u32 d = v & 0xF; digits[n++] = (u8)(d < 10 ? '0' + d : 'a' + d - 10); v >>= 4; }
-    while (v);
-    for (int i = 0; i < n; i++) out[i] = digits[n - 1 - i];
-    return n;
-}
-
-static int put_u32(u8 *out, u32 v)
-{
-    u8 digits[10];
-    int n = 0;
-    do { digits[n++] = (u8)('0' + v % 10); v /= 10; } while (v);
-    for (int i = 0; i < n; i++) out[i] = digits[n - 1 - i];
-    return n;
-}
-
-// A panic carries one number. This carries the whole tail, in a file the phone
-// can open: how many imports went past, which one it was on, what had happened
-// and, oldest first, the last sixteen imports the game made. Written on the
-// launch after the one that stopped, beside the record it is made from.
-static void box_report(Context *c, u32 count)
-{
-    u8 text[1024];
-    int n = 0;
-    const u8 kSteps[] = { 's','t','e','p','s',' ' };
-    const u8 kLast[] = { '\n','l','a','s','t',' ' };
-    const u8 kFlags[] = { '\n','f','l','a','g','s',' ' };
-    const u8 kPath[] = { '\n','p','a','t','h',' ' };
-    const u8 kTail[] = { '\n','t','a','i','l' };
-    for (u32 i = 0; i < sizeof kSteps; i++) text[n++] = kSteps[i];
-    n += put_u32(text + n, count);
-    for (u32 i = 0; i < sizeof kLast; i++) text[n++] = kLast[i];
-    n += put_u32(text + n, c->boxData[1]);
-    for (u32 i = 0; i < sizeof kFlags; i++) text[n++] = kFlags[i];
-    n += put_u32(text + n, c->boxData[2]);
-    for (u32 i = 0; i < sizeof kPath; i++) text[n++] = kPath[i];
-    n += put_u32(text + n, c->boxData[BOX_PATH]);
-    for (u32 i = 0; i < sizeof kTail; i++) text[n++] = kTail[i];
-    for (u32 i = BOX_RING - 16; i < BOX_RING; i++) {
-        text[n++] = ' ';
-        n += put_u32(text + n, c->boxData[4 + ((count + i) & (BOX_RING - 1))]);
-    }
-    const u8 kSlot[] = { '\n','s','l','o','t',' ' };
-    for (u32 i = 0; i < sizeof kSlot; i++) text[n++] = kSlot[i];
-    n += put_hex(text + n, c->boxData[BOX_SLOT]);
-    const u8 kFrames[] = { '\n','f','r','a','m','e','s',' ' };
-    for (u32 i = 0; i < sizeof kFrames; i++) text[n++] = kFrames[i];
-    n += put_u32(text + n, c->boxData[BOX_FRAMES]);
-    const u8 kStack[] = { '\n','s','t','a','c','k',' ' };
-    for (u32 i = 0; i < sizeof kStack; i++) text[n++] = kStack[i];
-    n += put_u32(text + n, c->boxData[BOX_STACK]);
-    const u8 kHits[] = { '\n','h','i','t','s' };
-    for (u32 i = 0; i < sizeof kHits; i++) text[n++] = kHits[i];
-    for (u32 i = 0; i < BOX_MARKERS; i++) {
-        text[n++] = ' ';
-        n += put_u32(text + n, c->boxData[BOX_HITS + i]);
-    }
-    const u8 kFrom[] = { '\n','f','r','o','m' };
-    for (u32 i = 0; i < sizeof kFrom; i++) text[n++] = kFrom[i];
-    for (u32 i = BOX_RING - 16; i < BOX_RING; i++) {
-        text[n++] = ' ';
-        n += put_hex(text + n, c->boxData[BOX_FROM + ((count + i) & (BOX_RING - 1))]);
-    }
-    text[n++] = '\n';
-
-    u32 file[4] = { 0, 0, 0, 0 };
-    Ptrc16 name;
-    name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kTextPath / 2);
-    name.text = kTextPath;
-    if (file_replace(file, c->boxFs, &name, EFileWrite | EFileShareAny) == 0) {
-        u32 des[2];
-        des[0] = ((u32)EPtrC << KTypeShift) | (u32)n;
-        des[1] = (u32)text;
-        file_write_at(file, 0, des);
-        file_flush(file);
-        rhandle_close(file);
-    }
-}
-
+// g6box.txt -- the box as text, written at startup so it could be read off
+// the phone's own screen -- is gone with the startup read that produced it.
+// It opened a second file and grew it, and nothing has read it in weeks.
 // The trace itself does the recording, because the crash we are after happens
 // while the framework is still starting the application up and the active
 // scheduler has not run yet -- a timer never gets a turn. Every import goes
@@ -1059,11 +984,6 @@ enum { WATCH_ALLOCATIONS = LOG_ANYWAY, LOG_THE_CLOCK = 0, REFUSE_DRIVERS = 1,
 // Not an instrument: a fix, and it ships. See gate6_alloc.
 enum { PAD_THE_ALLOCATIONS = 0, ZERO_THE_SLACK = 0 };
 enum { LEAK_EVERYTHING = 0 };
-// The last run's box, reported as a panic at the start of the next one. It was
-// the only way to read a record off a phone that had just rebooted, and it is
-// destructive: it truncates the log and kills the run before the game starts.
-// Now that the box survives on its own it costs more than it gives.
-enum { REPORT_LAST_BOX = 0 };
 enum { WRAP_ALLOCATORS = WATCH_ALLOCATIONS };
 enum { PLANT_CRUMBS = 0 };
 
@@ -2415,7 +2335,7 @@ static u32 load_and_start()
                 with.text = sibling;
                 u32 probe[4] = { 0, 0, 0, 0 };
                 if (file_open(probe, fs, &with, 1) != 0) continue;
-                rhandle_close(probe);
+                file_close(probe);
             }
             err = file_open(file, fs, &name, 1);   // EFileRead | EFileShareReadersOnly
             if (!err) { chosen = i; break; }
@@ -2550,29 +2470,15 @@ static u32 load_and_start()
         ctx->noopFn = (u32)noop;
     }
 
-    // Read what the last run got to, if it left anything this build wrote, and
-    // say so. The file is armed again by replacing it rather than deleting it,
-    // so that a delete the file server refuses cannot leave a stale record to
-    // be reported over and over.
+    // The previous run's box used to be read back here and reported. It was
+    // the only way to get a record off a phone that had just rebooted; the box
+    // survives on its own now, and reading it cost more than it gave -- it
+    // wrote a second file that grows, and it closed an RFile as a plain
+    // handle, which is what turned every run after the first into KERN-EXEC 0.
     {
         Ptrc16 name;
         box_name(&name);
-        u32 magic = 0, last = BOX_NONE, reached = 0, count = 0;
         if (fs_connect(ctx->boxFs, -1) == 0) {
-            if (file_open(ctx->boxFile, ctx->boxFs, &name, 1) == 0) {
-                Ptr8 des;
-                des.lengthAndType = (u32)EPtr << KTypeShift;
-                des.maxLength = BOX_BYTES;
-                des.ptr = (u8 *)ctx->boxData;
-                for (int i = 0; i < BOX_WORDS; i++) ctx->boxData[i] = 0;
-                file_read(ctx->boxFile, &des);
-                rhandle_close(ctx->boxFile);
-                magic = ctx->boxData[0];
-                last = ctx->boxData[1];
-                reached = ctx->boxData[2];
-                count = ctx->boxData[3];
-                box_report(ctx, count);
-            }
             Ptrc16 logName;
             logName.lengthAndType = ((u32)EPtrC << KTypeShift) |
                                     (u32)(sizeof kLogPath / 2);
@@ -2588,21 +2494,6 @@ static u32 load_and_start()
                 ctx->lastImport = BOX_ARMED;    // armed, nothing recorded yet
                 box_flush(ctx);
                 ctx->lastImport = 0xFFFF;
-            }
-            // One number, three fields. How many imports the game got through
-            // says at a glance whether it is running or stopped: a few hundred
-            // is a startup that gave up, thousands is a frame loop. Then which
-            // import it was on -- three digits, and 999 means the file was
-            // armed and nothing was ever written to it -- and last a digit for
-            // what happened: 1 the frame loop ran, 2 it left, 4 it exited.
-            if (REPORT_LAST_BOX && magic == BOX_MAGIC) {
-                const u32 fate = ((reached & REACHED_RUNL) ? 1u : 0u)
-                               | ((reached & REACHED_LEAVE) ? 2u : 0u)
-                               | ((reached & REACHED_EXIT) ? 4u : 0u);
-                const u32 steps = count > 99999 ? 99999 : count;
-                PANIC(CAT_BOX, (int)(steps * 10000 +
-                                     (last == BOX_ARMED ? 999 : (last % 1000)) * 10 +
-                                     fate));
             }
         }
     }
