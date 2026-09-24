@@ -52,6 +52,7 @@ eight, and the tail was sitting unflushed in the buffer the whole time.
 Five of those six rounds settled nothing. That is the largest single waste in
 this project after the reboots, and it came from reading an instrument's blind
 spot as the game's behaviour -- the same mistake, for the fifth time.
+| 46 | Flush the ring's verdict, not just the pointer | *pending* | | |
 
 ## Where we are
 

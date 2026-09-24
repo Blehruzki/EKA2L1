@@ -1299,8 +1299,15 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
                 log_event(c, NOTE_FREE_TWICE, a0);
                 log_block(c);
             } else {
-                if (loud)
+                // Flushed, like the pointer above it. Round 45 named the
+                // pointer it dies on and not what the ring made of it, because
+                // a plain match was written and left in the buffer -- the same
+                // shape as the five failures before it, where the record was
+                // there and never reached the disk.
+                if (loud) {
                     log_event(c, NOTE_FREE_OK, c->allocLen[i]);
+                    log_block(c);
+                }
                 c->allocLen[i] = SPENT;
             }
             return;
