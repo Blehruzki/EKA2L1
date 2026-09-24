@@ -52,8 +52,21 @@ here and the section it overturns is marked.*
   `User::Free`, on a cell that everything we can measure says is fine --
   including its header, which build 47 read: 27 bytes requested, header
   `0x28`, exactly the emulator's shape. Heap chain, pointer, size and header
-  all correct. What is left is the part of a free that is not about the cell
-  being freed: **coalescing**, which reads the *neighbouring* cell's header.
+  all correct. Build 48 then read the **neighbour** the free coalesces with,
+  and that is right too: its header is `0x20`, and the ring independently
+  holds an allocation at `next + 4`, which corroborates the fatal cell's own
+  header from a record that has nothing to do with our arithmetic. Heap chain,
+  pointer, size, header, neighbour -- every measurable property of that free is
+  correct, and it still faults. **There is nothing left to measure about the
+  cell.**
+- **The run is deterministic.** Three runs of build 48 produced byte-identical
+  7624-byte logs and identical boxes. A single run is now worth something,
+  where under rule 1 it was not.
+- **The ring's request column cannot be used to call a header wrong.** RHeap
+  hands over a whole free cell rather than split off a remainder too small to
+  be a cell, and any deallocation not going through ordinals 315, 408 or 410
+  leaves a stale live entry for an address that is later reused. Six of 32
+  frees have a header larger than `align8(request + 4)` for those reasons.
 - **Log volume is not what moves the emulator.** Three extra records per free
   with no dereference leave it ending exactly where it did (1066 -> 1258
   records, the same `0x30002`). When a reading changes, the write is not the

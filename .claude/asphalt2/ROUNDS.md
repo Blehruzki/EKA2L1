@@ -54,21 +54,29 @@ this project after the reboots, and it came from reading an instrument's blind
 spot as the game's behaviour -- the same mistake, for the fifth time.
 | 46 | Flush the ring's verdict, not just the pointer | 1 | 136, dies freeing `0x7b8e20` | **The fatal free is legitimate.** Its pointer matched a live 27-byte cell -- no double, no stray. The verdict was the last record written, so the fault is in `User::Free` itself |
 | 47 | Log the cell's header words before each free | 1 | 136, dies freeing `0x7b8e20` | **The header is healthy.** 27 bytes requested, header reads `0x28` -- exactly the emulator's pattern. The cell itself is not damaged |
-| 48 | Read the *neighbouring* cell's header, ring-vouched | pending | – | – |
+| 48 | Read the *neighbouring* cell's header, ring-vouched | 3 | 128 events, all three identical, dies freeing `0x7b89a8` | **The header is right, and the neighbour corroborates it.** The ring independently holds an allocation at `next + 4`, so the cell really does end where its header says. Nothing about the free is corrupt |
 
 ## Where we are
 
-**Furthest: 136 traced events** (builds 44 and 45, same result twice). The run
-gets through the whole resource-loading sequence, opens `cwivenc.dat`
-successfully, and dies inside a `User::Free`.
+**Furthest: 136 traced events** (builds 44 and 45, and build 48's box puts all
+three of its runs in the same 128-159 window). The run gets through the whole
+resource-loading sequence, opens `cwivenc.dat` successfully, and dies inside a
+`User::Free`. Build 48 is where it stopped being a lottery: three runs,
+byte-identical logs.
 
-**Best round so far: 44.** It was the first to show that "64 records" -- which
+**Best round so far: 48** -- it is the round that ends the line of enquiry
+rather than extending it. Heap chain, pointer, size, header and neighbour all
+measure correct, with the header independently corroborated, so "something
+about this cell is damaged" is exhausted. It also made the run deterministic
+enough that one run is now worth something.
+
+**Runner-up: 44.** It was the first to show that "64 records" -- which
 five earlier rounds had been scored on -- was our own log block hiding the
 tail, and it reached 136 with the free matching working. Everything since is
 refinement of what it exposed.
 
-**Runner-up: 36**, the `RFile::Close` fix. It ended a month of reboots and is
-the single change that made hardware rounds informative again.
+Before those, **36**, the `RFile::Close` fix: it ended a month of reboots and
+is the single change that made hardware rounds informative again.
 
 ### What is known at the point of failure
 
@@ -79,7 +87,10 @@ the single change that made hardware rounds informative again.
 | Frees before the fatal one | 31, all matched a live cell, no doubles, no strays |
 | `RFile::Open` | returns KErrNone |
 | Setup state | identical to the emulator |
+| The fatal cell's header | `0x28`, and the ring holds an allocation at `next + 4` -- so the cell ends exactly where the header says |
+| Its neighbour | header `0x20`, a live 24-byte cell the ring recognises. The only live neighbour of 27 |
 | Fatal call | `User::Free(0x7b89a8)` -- build 44 had `0x7b7cd8`, same point, different heap layout |
+| Determinism | three runs of build 48 produced byte-identical logs |
 
 So the heap is sound, the pointers are sound, the open succeeds -- **and the
 fatal free is of a live, known, 27-byte cell**. Round 46 closed the last gap:
@@ -87,33 +98,55 @@ the verdict record was the final thing written before the run ended, so
 everything up to and including our own handler completed and the fault is
 inside `User::Free`.
 
-What is left is the one thing nothing has looked at: the **cell's own header**.
-RHeap keeps a cell's size in the word before the payload, and that is what
-`User::Free` reads first. A header damaged after the last heap walk would give
-exactly this -- a clean walk at 128, a pointer the ring recognises, and a free
-that faults.
+Builds 47 and 48 read the header and then the neighbour's header. Both are
+right, and the neighbour corroborates the first independently. **There is
+nothing left to measure about this cell.** Rounds 44 to 48 have each closed one
+description of the damage and found none, which is the point at which
+describing it harder stops being the cheapest move.
 
-Build 47 read it, and **the header is healthy**: 27 bytes requested, header
-`0x28`, exactly the shape the emulator produces. So the cell is not damaged
-either.
+### What build 48 found
 
-Every measurable property of that free is now correct -- heap chain, pointer,
-cell size, header -- and `User::Free` still faults on it. Which points at the
-one part of a free that is *not* about the cell being freed: **coalescing**.
-`RHeap::Free` looks at the neighbouring cell to decide whether to merge, so it
-reads a header that belongs to somebody else. `CountAllocCells` walks the
-allocated chain and would not necessarily notice a damaged free-list link or a
-damaged neighbour.
+Three runs, and for the first time they are **identical**: 7624-byte logs to
+the byte, 953 records, 128 traced events at the last box write, the same last
+import (`RLibrary::Close`), the same 1932-byte stack high-water. Two died
+freeing `0x7b89a8`, the third `0x7b8e20` -- the same free, one heap layout
+apart. The run is deterministic now; three-run rounds are cheap confirmation
+rather than a lottery.
 
-### Build 48, out and not yet answered
+Thirty-two frees carried a full verdict. The fatal one:
 
-The one change: each free now also reports the address of the next cell's
-header, and -- only when the allocation ring recognises that cell -- the word
-in it and whether the ring thinks it is live. This is the coalescing path, the
-last part of a free nothing has looked at.
+```
+free 7b89a8  matched a live cell of 1b  header 28
+  next cell 7b89cc   header 20   ring says live, 18 bytes
+```
 
-Two things about it were settled in the emulator before it went out, so the
-hardware round is not spent on them: extra log records do not move the
-emulator (1066 -> 1258, same fault), and a bound taken from the allocation ring
-is worthless because the ring also holds `RFile::Open`'s error codes. Write
-count is unchanged from build 47.
+**The header is right.** `0x7b89a8 - 4 + 0x28` is `0x7b89cc`, and the ring
+holds an allocation whose payload is `0x7b89d0` -- one word past it. That
+record came from `User::Alloc` returning that address, not from our
+arithmetic, so it is independent corroboration that the cell really does end
+where its header says. The neighbour's own header, `0x20`, is the right size
+for the 24-byte cell the ring says is there.
+
+So the coalescing theory does not survive its own test. Heap chain, pointer,
+size, header, and now the neighbour: every one of them measures correct, and
+`User::Free` still faults.
+
+### The one thing that distinguishes the fatal free
+
+Of the 27 frees whose neighbour the ring recognised, 26 coalesce into a cell
+the ring has already seen freed. The fatal one is **the only one whose
+neighbour is still live**. That is not in itself wrong -- reading a live
+neighbour's header is what a free does -- but it is the only measured property
+that singles this free out.
+
+### A column that looked like a finding and is not
+
+Six of the 32 frees have a header larger than `align8(request + 4)`, the
+fatal one among them (27 bytes in a 40-byte cell). That looked like damage for
+about ten minutes. It is not usable: the request column is the *ring's* record,
+and two ordinary things break it -- RHeap hands over a whole free cell rather
+than splitting off a remainder too small to be a cell, and any deallocation
+that does not go through ordinals 315, 408 or 410 leaves a stale live entry in
+the ring for an address that was reused. Twenty-six of thirty-two fit the rule
+exactly, including every large allocation. **The request column cannot be used
+to call a header wrong.**
