@@ -81,6 +81,15 @@ here and the section it overturns is marked.*
   that call leaves the field intact, the temporary the "fatal" delete frees is
   created and destroyed inside the same sequence, and the object's other seven
   words are unremarkable.
+- **`0xe9988` cannot be instrumented from the inside.** One probe at its third
+  instruction takes the run from 1240 records to 553, before any marker outside
+  it is reached. Flags are preserved by `probe_plant`, so this is the game, not
+  the thunk. Every instrument from here watches state through wrappers we
+  already own rather than patching a game byte.
+- **The poison lands between a successful allocation and the `delete` called
+  from image offset `0x104828`,** inside one of `0xe9988`'s callees. Watched
+  from the wrappers, `this->[4]` is intact at every station before that and
+  wrong at every station after.
 - **`0x139588` is the instruction EKA2L1 cannot run the *original* N-Gage
   binary past either.** That was recorded here long ago and filed as an
   emulator deficiency. It is not one. The original game under the emulator, our
@@ -2273,3 +2282,63 @@ round on the phone.
 **No build shipped for this.** The emulator and the phone have now agreed for
 three rounds running, the question is where inside one function a value goes
 bad, and that is answerable for free.
+
+## Instrumenting a function that will not be instrumented
+
+The next question was where inside `0xe9988` the field goes bad, and the
+obvious way to ask it -- probes along the function -- does not work.
+
+**One probe at its third instruction takes the run from 1240 records to 553**,
+and the run dies before even the marker at `0xcc864` outside it is reached. Ten
+probes did the same. The site is `str r0, [sp, #0x30]`, an ordinary
+instruction; `probe_plant` saves and restores CPSR around its call, so this is
+not a clobbered flag. A single patched word in that function is enough to end
+the run, which for a game carrying a decryptor, a `TickCount` stopwatch and
+three other protection paths is a finding rather than an obstacle -- and a
+standing constraint on every instrument from here.
+
+### The watch: a station that patches nothing
+
+So the field is watched instead of the function. The first probe latches the
+object's address, and from then on **every wrapper we already own re-reads
+`this->[4]` and writes one record**: `gate6_trace` on each traced import,
+`gate6_result` on each allocation, `gate6_arg` on each free. No byte of the
+game is touched to get one.
+
+It does not perturb the run: 1292 records against 1240, the same
+`0xEAF88580`.
+
+What it shows:
+
+```
+1236  >> watched field   8d8ee8
+1237  import 283  RLibrary::Close(void)   from 135850
+1238  >> watched field   8d8ee8
+1239  about to call import 198  (delete b32220, called from 0x13589c)
+...
+1249  >> watched field   8d8ee8      <- after an allocation returned
+1250  >> watched field   eaf88340    <- before the next delete
+1251  about to call import 13b  (delete c4fe50, called from 0x104828)
+```
+
+The field survives everything up to and including a successful allocation, and
+is poisoned before the `delete` at image offset `0x104828`. That call sits in
+one of `0xe9988`'s callees, in the game's obfuscated dispatch style -- constant
+multiply chains, `b #0x1037ac`, and operand words inlined in the instruction
+stream.
+
+### Two negatives worth keeping
+
+**The poisoned value is not a transform of the good one.** Solving
+`0x8d8ee8 * C == 0xeaf88340 (mod 2^32)` gives `C = 0x17052F88`, nothing
+resembling the obfuscation constants. The two machines do not even agree on
+the shape: the value's 2-adic valuation is 6 in the emulator and 7 on the
+phone, so it is not one function of one differently-based pointer.
+
+**It is not `Math::Random` reaching the field directly, either.** The value is
+deterministic per machine -- the same `0xEAF88580` from the emulator every run,
+the same `0xa6dfb180` on three phone runs.
+
+The phone's *pre*-call value is still unknown: round 50's probe set did not
+include `0xcc864`. The current build does, so the next hardware round yields it
+without being spent on it.

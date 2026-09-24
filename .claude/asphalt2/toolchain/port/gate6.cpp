@@ -191,6 +191,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_CELL_HDR = 887,     // the words RHeap keeps in front of a payload
        NOTE_NEXT_HDR = 888,     // and the header of the cell after it
        NOTE_CALLER = 889,       // the return address a wrapped call was made from
+       NOTE_WATCH = 895,        // and one word of a struct every probe re-reads
        NOTE_CELL_AT = 881,      // the cell a read buffer sits in
        NOTE_CELL = 879,         // and how big it is
        NOTE_OVERFLOW = 880,     // ... and the maximum, when it is more than that
@@ -619,6 +620,13 @@ struct Context {
     u32 allocLen[ALLOC_RING];   // can be matched against one -- or found not to be
     u32 allocNext;
     u32 argR2;              // the third argument of a call arg_thunk wrapped
+    u32 watchAt;            // the object the first probe reported, re-read by
+                            // every probe after it. Bisecting which call
+                            // spoils a field means watching the field, and a
+                            // probe can only report registers -- inside a
+                            // callee the pointer to it is on a stack we cannot
+                            // name. Latching it from the first probe costs one
+                            // record each and works anywhere.
     u32 wrapUiVptr;         // the vtable pointer wrapUi was given, checked on
                             // every call in, to catch a stray write over it
     u32 *dsaReal;           // the CDirectScreenAccess ws32 made
@@ -752,6 +760,19 @@ static u32 this_thunk(u8 *code, const void *cell, u32 target, int reg)
 //   ldmia sp!, {r0, r12}
 //   ldr   pc, [pc, #4]      @ and on to whatever answers it
 enum { TRACE = 48 };
+
+// One line of the watched field, from wherever it is called. The field lives
+// at a fixed address in the game's memory once the first probe has named it,
+// and every wrapper we already own is a station -- no game byte is patched to
+// get one, which is the point after 0xe9988 refused to be instrumented from
+// the inside: a single probe planted at its third instruction took the run
+// from 1240 records to 553.
+static void log_event(Context *c, u32 code, u32 from);
+static void watch_note(Context *c)
+{
+    if (c->watchAt)
+        log_event(c, NOTE_WATCH, ((const u32 *)c->watchAt)[1]);
+}
 
 extern "C" void gate6_trace(u32 index, Context *c, u32 caller);
 extern "C" void gate6_slot(u32 code, Context *c, u32 caller);
@@ -1083,28 +1104,17 @@ enum { PLANT_CRUMBS = 0 };
 enum { PLANT_PROBES = 1, PROBE_FIRST = 990, PROBE_BYTES = 80 };
 struct Probe { u32 at; u8 ra; u8 rb; };
 static const Probe kProbe[] = {
-    // Why the container at 0xcc914 is never filled. 0xcc984 installs whatever
-    // 0xe98c4 returns, and 0xe98c4 searches a table of 24-byte entries for one
-    // whose [+4] is the key, returning its fallback -- the empty slot itself --
-    // when it finds none. So: the object that owns the table, and the table.
-    // The stretch immediately after the fatal delete. Round 49's caller record
-    // put that delete at 0xcc8c0, and the four instructions here are what the
-    // game does next -- none of which calls a traced import, which is why the
-    // log goes quiet whether or not the run survives them.
-    // Round 50 put the fault at 0x139588, on a pointer taken from this->[4].
-    // These two bisect where that field goes bad: 0xcc864 is before the call
-    // that is handed &this->[4] as its fourth argument, 0xcc894 is straight
-    // after it. The probe dumps eight words at the pointer it reports, so each
-    // one carries the object's fifth word as it stood at that moment.
+    // 990 must stay first: it latches the watched object, and from then on
+    // every wrapped import records this->[4] as well.
+    //
+    // Ten stations planted *inside* 0xe9988 were tried and had to be taken out
+    // again. One probe at its third instruction takes the run from 1240
+    // records to 553, before even this first marker is reached -- patching a
+    // single word of that function breaks it, which for a game with a
+    // decryptor and a stopwatch is a result in itself. The import wrappers
+    // touch none of the game's bytes, so the field is watched from there.
     { 0x000cc864,  5, 6 },      // add r0, r5, #0x28 -- this, at entry
-    { 0x000cc874,  6, 0 },      // add r3, r5, #4  -- past 0xe97cc and 0xd5fbc
     { 0x000cc894,  6, 0 },      // mov r4, r0      -- and after 0xe9988 returns
-    { 0x000cc8c4,  6, 4 },      // mov r7, r8      -- straight after the delete
-    { 0x000cc8ec,  6, 4 },      // ldr r0, [r6,#4] -- the first load after it
-    { 0x0010a9e4,  0, 1 },      // mov r4, r0      -- entered the call it makes
-    { 0x0010aa04,  0, 4 },      // subs r4, r0, #0 -- and came back from 0x139568
-    { 0x000cc908,  6, 5 },      // mov r0, #4      -- about to allocate four bytes
-    { 0x000cc914,  5, 6 },      // str r5, [r5]    -- and write the cell into itself
 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1235,8 +1245,14 @@ extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
 // A thunk that lets the call happen and then records what came back, which a
 // trace on the way in cannot do. Used on the allocators, to find which
 // allocation produced an object the game later walks.
+// One line of the watched field, from wherever it is called. The field lives
+// in the game's memory at a fixed address once the first probe has named it,
+// and every wrapped import is a station we already own -- no game byte is
+// patched to get one, which is the whole point after 0xe9988 refused to be
+// instrumented from the inside.
 extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
 {
+    watch_note(c);
     // Remember it, whether or not it failed. RFile::Read hands the file server
     // a buffer and a maximum, and the server writes up to that maximum into
     // this process -- so if the maximum is larger than the cell the buffer came
@@ -1298,6 +1314,7 @@ static const u16 *des_text(const u32 *d, u32 *length)
 
 extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
 {
+    watch_note(c);
     log_event(c, NOTE_CALL_ARG, index);
     log_event(c, NOTE_RESULT_ARG, a0);
     log_event(c, NOTE_CALLER, a1);
@@ -1539,6 +1556,13 @@ static u32 result_thunk(u8 *code, const void *ctx, u32 value, u32 target)
 
 extern "C" void gate6_probe(u32 marker, Context *c, u32 a, u32 b)
 {
+    // Stations inside a callee are hot: 0xe9988 is called many times before the
+    // call that matters, and ten probes through it drowned the run in its own
+    // records at 595. So nothing but the first probe reports until the first
+    // probe has fired -- that one marks the object, and is the only thing that
+    // says the interesting call is the one now running.
+    if (marker != (u32)PROBE_FIRST && !c->watchAt)
+        return;
     stack_mark(c);
     c->lastImport = marker;
     const u32 slot = c->traceCount & (BOX_RING - 1);
@@ -1554,6 +1578,13 @@ extern "C" void gate6_probe(u32 marker, Context *c, u32 a, u32 b)
     if (a >= 0x400000 && a < 0x10000000 && !(a & 3))
         for (u32 i = 0; i < PROBE_WORDS; i++)
             log_event(c, NOTE_R5_AT, ((const u32 *)a)[i]);
+    // The watched word, from the first probe's object, on every probe after
+    // it. One record, and it turns a scatter of registers into a timeline of
+    // one field.
+    if (marker == (u32)PROBE_FIRST && a >= 0x400000 && a < 0x10000000 && !(a & 3))
+        c->watchAt = a;
+    if (c->watchAt)
+        log_event(c, NOTE_WATCH, ((const u32 *)c->watchAt)[1]);
     // A probe is planted at a site that is about to go wrong, so the block it
     // is in is the one most likely never to be written.
     if (LOG_ANYWAY)
@@ -1647,6 +1678,7 @@ static void crumb_plant(Context *c, u8 *base, u32 at, u32 marker)
 
 extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
 {
+    watch_note(c);
     stack_mark(c);
     if (TRACE_IMPORTS)
         note(c, index, ' ');
