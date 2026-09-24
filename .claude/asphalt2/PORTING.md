@@ -1054,3 +1054,68 @@ down when almost nothing is being written? Either answer is worth the round.
 If it still reboots, the instrument is finally exonerated and every future
 build can afford to talk. If it does not, the log has been the bug all along,
 and the next instrument is a memory-only ring read out at the end.
+
+## The reboots were ours
+
+The silent build did not reboot the phone. It panicked KERN-EXEC 3 -- an
+ordinary unhandled exception in the game's own thread -- and got further than
+any run before it.
+
+```
+                          traced events   how it ended    writes
+g6box-18 .. g6box-30        106 .. 118    reboot            86-91
+g6box-28 (every record)            86     reboot              129
+g6box-32 (silent)               128+      KERN-EXEC 3         3-5
+```
+
+Thirty rounds. **The instrument was the reboot**, all of it, and the write
+volume was the variable the whole time -- which is why the reboot moved around
+with each build and never matched anything the game was doing. It is the third
+time the tool has been the bug and by far the most expensive: two of the three
+theories this file records at length were autopsies on a corpse we made.
+
+What the box says, with the game's own panic instead of a dead phone:
+
+```
+  128 traced events at the last write, so 128..159 in all
+  last import 283  RLibrary::Close
+  reached a slot of ours, THE FRAME LOOP RAN
+  stack high-water 1932 bytes
+```
+
+`THE FRAME LOOP RAN` has never been set on hardware before. And the phone's
+last sixteen events are the emulator's, instruction for instruction, offset by
+twenty-seven:
+
+```
+  phone 117..127   283@13f610 332@13f63c 326@13f68c 326@10abf8 325@10b08c
+                   326@10b0e4 326@10b128 326@10b244 326@10b2d4 326@10b308 283@10b37c
+  emu   144..154   283@13f610 332@13f63c 326@13f68c 326@10abf8 325@10b08c
+                   326@10b0e4 326@10b128 326@10b244 326@10b2d4 326@10b308 283@10b37c
+```
+
+The phone died between events 128 and 159, which maps onto the emulator's
+155-186; the emulator's own 0x30002 falls between 160 and 191. **Those windows
+overlap**, so the phone and the emulator may now be failing at the same place
+-- which would make the rest of this local.
+
+### The instrument that should have been there all along
+
+A log that appends pays a write per block and loses whatever has not been
+flushed. A box is a fixed record rewritten in place: one `file_write_at`
+carries the whole of it however big it is. So the ring went from sixteen
+events to sixty-four -- same single write -- and it goes down every sixteen
+traced events, which is about ten writes a run against the eighty-six the
+rebooting builds were doing. The last box therefore always holds every event
+since the one before it, and forty-eight more for context.
+
+`gate6_fault` now writes the box before it panics, so if the exception handler
+ever does run the record is exact rather than up to fifteen events short.
+It did not run this time: KERN-EXEC 3 is what the kernel raises when nothing
+handled the exception, and our own panic category would have shown instead.
+`User::SetExceptionHandler` is not taking on 9.x, which is its own small
+problem and worth one look later.
+
+**The rule this earns:** the instrument's cost is a measurement, not a guess.
+Every future build states its write budget, and no build goes to hardware
+spending more than the last one that survived.

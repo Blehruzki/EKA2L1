@@ -69,7 +69,11 @@ enum { EBufC = 0, EPtrC = 1, EPtr = 2, EBufType = 3, KTypeShift = 28 };
 // again for where each was called from, and which path the game came from.
 // Knowing the import says what the game asked for; knowing the caller says
 // which of its own functions asked, which is the half that locates a fault.
-enum { BOX_RING = 16 };
+// One write carries the whole box however big it is, so the ring is the
+// cheapest context there is: sixty-four events for the same single
+// file_write_at that sixteen cost. This is the instrument now -- a bounded
+// ring rewritten in place, not an append log that pays a write per block.
+enum { BOX_RING = 64 };
 // Events per write of the log. Sixty-four proved the point -- the phone
 // stopped rebooting the moment the write count came down -- but it also means
 // the last partial block dies with the process, so the first run under it
@@ -124,6 +128,13 @@ enum { LOG_BLOCK = SILENT ? 1024 : 8,
 // half the budget, and not one of them survives a reboot. It earns its cost
 // against a panic and nothing against this.
 enum { BOX_ON_SLOT = !SILENT };
+// How many traced events between box writes. Ten writes on a run of the length
+// the phone manages, against the eighty-six the builds that rebooted it were
+// doing and the hundred and twenty-nine of the one that rebooted it soonest.
+// The ring is sixty-four deep, so the last box holds every event since the
+// write before it and forty-eight more besides.
+enum { BOX_EVERY_TRACED = 16 };
+enum { REACHED_FAULT = 256 };   // the exception handler ran
 // 800..899 are notes rather than events: the code says what is being noted and
 // the column that usually holds a caller holds the value. They are what the
 // log was missing -- it could only ever see the game calling out, never the
@@ -715,8 +726,15 @@ static u32 trace_thunk(u8 *code, const void *ctx, u32 value, u32 target, u32 not
 }
 
 // Then a fault says where it happened, in the only terms the phone gives us.
+static void box_flush(Context *c);
+
 extern "C" void gate6_fault(Context *c, int type)
 {
+    // The box goes down before the panic does: one write, on a path taken
+    // once, and the only one carrying the events right at the fault rather
+    // than up to fifteen short of it.
+    c->reached |= REACHED_FAULT;
+    box_flush(c);
     PANIC(CAT_FLT, (int)(c->lastImport * 100 + (u32)(type & 63)));
 }
 
@@ -824,7 +842,6 @@ static void stack_mark(Context *c)
     if (sp < c->spLow || !c->spLow) c->spLow = sp;
 }
 
-static void box_flush(Context *c);
 
 static void log_block(Context *c)
 {
@@ -871,7 +888,7 @@ static void box_write(Context *c)
     file_write_at(c->boxFile, 0, c->boxDes);
 }
 
-void box_flush(Context *c)
+static void box_flush(Context *c)
 {
     box_write(c);
     file_flush(c->boxFile);
@@ -920,7 +937,7 @@ static void box_report(Context *c, u32 count)
     for (u32 i = 0; i < sizeof kPath; i++) text[n++] = kPath[i];
     n += put_u32(text + n, c->boxData[BOX_PATH]);
     for (u32 i = 0; i < sizeof kTail; i++) text[n++] = kTail[i];
-    for (u32 i = 0; i < BOX_RING; i++) {
+    for (u32 i = BOX_RING - 16; i < BOX_RING; i++) {
         text[n++] = ' ';
         n += put_u32(text + n, c->boxData[4 + ((count + i) & (BOX_RING - 1))]);
     }
@@ -941,7 +958,7 @@ static void box_report(Context *c, u32 count)
     }
     const u8 kFrom[] = { '\n','f','r','o','m' };
     for (u32 i = 0; i < sizeof kFrom; i++) text[n++] = kFrom[i];
-    for (u32 i = 0; i < BOX_RING; i++) {
+    for (u32 i = BOX_RING - 16; i < BOX_RING; i++) {
         text[n++] = ' ';
         n += put_hex(text + n, c->boxData[BOX_FROM + ((count + i) & (BOX_RING - 1))]);
     }
@@ -1471,7 +1488,7 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
     // thirty-two traced events: four writes on a run of the length the phone
     // manages, against a hundred and twenty-nine last time. It carries the
     // count and the last thirty-two events, which is the yardstick.
-    if (SILENT && (c->traceCount & 31) == 0)
+    if (SILENT && (c->traceCount & (BOX_EVERY_TRACED - 1)) == 0)
         box_flush(c);
     if (index == IMPORT_LEAVE || index == IMPORT_EXIT)
         log_block(c);               // the tail of the block, on the way out
