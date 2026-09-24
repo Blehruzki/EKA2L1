@@ -188,6 +188,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FREE_OK = 884,      // ... which matched a live allocation of this size
        NOTE_FREE_TWICE = 885,   // ... which had already been freed
        NOTE_FREE_STRAY = 886,   // ... which was never handed out at all
+       NOTE_CELL_HDR = 887,     // the words RHeap keeps in front of a payload
        NOTE_CELL_AT = 881,      // the cell a read buffer sits in
        NOTE_CELL = 879,         // and how big it is
        NOTE_OVERFLOW = 880,     // ... and the maximum, when it is more than that
@@ -1306,6 +1307,15 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
                 // there and never reached the disk.
                 if (loud) {
                     log_event(c, NOTE_FREE_OK, c->allocLen[i]);
+                    // The cell's own header. RHeap keeps a cell's length in
+                    // the word before the payload, and that word is the first
+                    // thing User::Free reads -- so it is what faults when a
+                    // free faults on a cell everything else says is fine. The
+                    // ring vouched for this pointer, so reading behind it is
+                    // safe. Two words, because the healthy ones give the
+                    // baseline that makes the damaged one obvious.
+                    log_event(c, NOTE_CELL_HDR, ((const u32 *)a0)[-1]);
+                    log_event(c, NOTE_CELL_HDR, ((const u32 *)a0)[-2]);
                     log_block(c);
                 }
                 c->allocLen[i] = SPENT;

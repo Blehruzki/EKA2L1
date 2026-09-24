@@ -53,6 +53,7 @@ Five of those six rounds settled nothing. That is the largest single waste in
 this project after the reboots, and it came from reading an instrument's blind
 spot as the game's behaviour -- the same mistake, for the fifth time.
 | 46 | Flush the ring's verdict, not just the pointer | 1 | 136, dies freeing `0x7b8e20` | **The fatal free is legitimate.** Its pointer matched a live 27-byte cell -- no double, no stray. The verdict was the last record written, so the fault is in `User::Free` itself |
+| 47 | Log the cell's header words before each free | *pending* | | |
 
 ## Where we are
 
@@ -90,3 +91,8 @@ RHeap keeps a cell's size in the word before the payload, and that is what
 `User::Free` reads first. A header damaged after the last heap walk would give
 exactly this -- a clean walk at 128, a pointer the ring recognises, and a free
 that faults.
+
+Build 47 reads it. The emulator's baseline, for comparison: the word before the
+payload is the cell's size, always a little above what was asked for --
+`0x24 -> 0x28`, `0x7d -> 0x88`, `0x1c -> 0x28`. Anything else on the phone is
+the answer.
