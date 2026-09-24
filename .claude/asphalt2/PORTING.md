@@ -1685,3 +1685,36 @@ category -- `G6WR` for the log, `G6BW` for the box -- carrying the file
 server's error code as the reason. The run is already over as far as the record
 goes; this way the phone puts the reason on its own screen, and a number that
 the user can read off is worth more than a file that is not there.
+
+## No write error, so the bisect is real
+
+Five runs of build 42: sixty-four records and nine traced events, every one.
+And **no `G6WR` or `G6BW` panic** -- so `file_write_at` is not failing, the
+512-byte theory is wrong, and the run genuinely ends there.
+
+That also kills the coin. Five identical runs is not a coin; builds 38 to 42
+stop here reliably, and build 37 does not, twice. The one long run of build 40
+is the outlier. So there is a real difference between 37 and everything after
+it, and it has to be bisected rather than reasoned about -- three sections of
+this file are what reasoning about it produced.
+
+```
+build 37   28600 bytes of code, 145 relocations, 37 imports   reaches 132
+build 42   25560 bytes of code, 158 relocations, 38 imports   stops at 9
+```
+
+The code got *smaller* while gaining features, which is odd enough to check:
+the diff is 113 insertions against 9 deletions, all of them intended, and
+`gate4_shim.cpp` is untouched since long before either. Nothing was lost in the
+merge that built 41. Left as a compiler artefact, noted in case it turns out
+not to be.
+
+**Build 43 is build 37 plus the free matching, and nothing else.** The heap
+walk is gone and so is `user_countalloccells` -- the one thing builds 39
+through 42 all carried and 37 did not, and the one whose ordinal was taken from
+a def file rather than from the N95. Build 38 failed without it, but that was a
+single run, and single runs are what this whole detour was made of.
+
+If 43 runs the distance, the import was the difference and the free matching is
+finally in hand. If it stops at nine, the free matching is the difference and
+the bisect continues into it. Either way the next answer is one variable wide.

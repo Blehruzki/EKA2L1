@@ -304,7 +304,6 @@ void *coecontrol_ctor(void *self);                    // CCoeControl::CCoeContro
 void coecontrol_createwindowl(void *self);            // CCoeControl::CreateWindowL()
 void *user_allocz(int size);
 int user_alloclen(const void *cell);            // User::AllocLen
-int user_countalloccells(void);                 // User::CountAllocCells
 void *cperiodic_newl(int priority);
 
 // A GCC98r2 virtual call: the vptr is at offset 0 and points eight bytes
@@ -1029,7 +1028,6 @@ enum { WATCH_OPEN_RESULT = 1 };
 // symptom of a broken chain. Which leaves the pointer itself -- never handed
 // out, or handed out and freed already -- and that is what matching every free
 // against the outstanding allocations says.
-enum { CHECK_THE_HEAP = 1, HEAP_CHECK_EVERY = 16 };
 enum { WATCH_FREES = 1, FREE_WATCH_FROM = 110, SPENT = 0xFFFFFFFF };
 enum { IMPORT_DELETE_OP = 408, IMPORT_VEC_DELETE_OP = 410, IMPORT_USER_FREE_OP = 315 };
 enum { PLANT_CRUMBS = 0 };
@@ -1570,21 +1568,6 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
     // thirty-two traced events: four writes on a run of the length the phone
     // manages, against a hundred and twenty-nine last time. It carries the
     // count and the last thirty-two events, which is the yardstick.
-    // Walk the heap. If it comes back, say so in the box; if it does not, the
-    // box already holds the last event at which it did.
-    if (CHECK_THE_HEAP && (c->traceCount % (u32)HEAP_CHECK_EVERY) == 0) {
-        // The box goes down *before* the walk as well as after it. Build 39
-        // walked the heap and died at event ten with nothing on disk to say so,
-        // because the box only wrote every sixteen -- the instrument worked and
-        // could not report. Now: "tried at" survives a walk that faults, "came
-        // back at" only a walk that did not.
-        c->boxData[BOX_HEAP_TRY] = c->traceCount;
-        box_flush(c);                       // survives a walk that faults
-        const int cells = user_countalloccells();
-        c->boxData[BOX_HEAP_OK] = c->traceCount;
-        c->boxData[BOX_CELLS] = (u32)cells;
-        box_flush(c);                       // only written if it came back
-    }
     if (SILENT && (c->traceCount & (BOX_EVERY_TRACED - 1)) == 0)
         box_flush(c);
     if (index == IMPORT_LEAVE || index == IMPORT_EXIT)
