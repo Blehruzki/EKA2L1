@@ -73,7 +73,7 @@ enum { EBufC = 0, EPtrC = 1, EPtr = 2, EBufType = 3, KTypeShift = 28 };
 // cheapest context there is: sixty-four events for the same single
 // file_write_at that sixteen cost. This is the instrument now -- a bounded
 // ring rewritten in place, not an append log that pays a write per block.
-enum { BOX_RING = 64 };
+enum { BOX_RING = 128 };
 // Events per write of the log. Sixty-four proved the point -- the phone
 // stopped rebooting the moment the write count came down -- but it also means
 // the last partial block dies with the process, so the first run under it
@@ -128,7 +128,7 @@ enum { SILENT = 1 };
 // builds only; the shipped one has it at zero.
 enum { LOG_ANYWAY = 0 };
 enum { QUIET = SILENT && !LOG_ANYWAY };
-enum { LOG_BLOCK = QUIET ? 256 : 8,
+enum { LOG_BLOCK = QUIET ? 1024 : 8,
        LOG_ZOOM = 0x7fffffff,
        LOG_ZOOM_END = 0x7fffffff };
 // The box is a fixed-position record rewritten on every call the framework
@@ -141,7 +141,17 @@ enum { BOX_ON_SLOT = !SILENT };
 // doing and the hundred and twenty-nine of the one that rebooted it soonest.
 // The ring is sixty-four deep, so the last box holds every event since the
 // write before it and forty-eight more besides.
-enum { BOX_EVERY_TRACED = 8 };
+// Sixteen, not eight. Build 34 went to twenty-two writes a run and rebooted
+// the phone at eighty-eight traced events; builds 32 and 33, at four and ten,
+// reached a hundred and twenty-eight and panicked cleanly. The rule was
+// already written down -- no build spends more than the last one that survived
+// -- and build 34 broke it. Ten writes is the ceiling until something proves
+// otherwise.
+//
+// The history comes from the ring instead, which is free: one write carries it
+// whatever its depth, so it is a hundred and twenty-eight events deep now and
+// covers the whole of a run the phone gets through.
+enum { BOX_EVERY_TRACED = 16 };
 enum { REACHED_FAULT = 256 };   // the exception handler ran
 // 800..899 are notes rather than events: the code says what is being noted and
 // the column that usually holds a caller holds the value. They are what the

@@ -1308,3 +1308,41 @@ the other thunks index the context; they all use literals already.
 - A log again, by accident and worth keeping: a 256-record buffer fills once in
   a run of this length, so one extra write buys the first 256 records while the
   box holds the tail.
+
+## It is the log file, not the number of writes
+
+Build 34 rebooted the phone at eighty-eight traced events. It was supposed to
+be the cheap build.
+
+```
+build  writes  what it wrote     traced events  outcome
+18/24/30  86-91  log + box           106-118     reboot
+28       129     log, every record        86     reboot
+32         4     box only               128+     KERN-EXEC 3
+33        10     box only               128+     KERN-EXEC 3
+34        12     box + one log flush   88-95     reboot
+```
+
+The count does not order these: eighty-six writes got further than twelve. But
+**every build that wrote the log rebooted, and the two that wrote only the box
+did not.** Six runs, no exceptions.
+
+The difference between the two files is not how often they are written but
+*how*. The box is one fixed record rewritten at position zero -- it extends the
+file exactly once, when it is created, and never again. The log appends: every
+block goes to a new offset and the file grows. On a phone that means the file
+server updating the FAT on the internal drive, over and over, from inside a
+startup sequence that never yields. The box does none of that.
+
+So the rule is not a budget any more, it is a shape: **nothing this build
+writes may extend a file.** Build 35 writes only the box, ten times, and the
+history that the log was there to provide comes from the ring instead -- which
+is free, because one write carries it whatever its depth. It is a hundred and
+twenty-eight events deep now, which covers the whole of a run the phone gets
+through.
+
+Build 34 did buy two things. `User::SetExceptionHandler` returns **KErrNone on
+the phone**, so the handler is installed and the exception still is not reaching
+it -- the reason KERN-EXEC 3 shows instead of our own category is something
+else, and worth one look later. And the last file opened is
+`...s\6rbc\cwivenc.d`, the same as the emulator's.
