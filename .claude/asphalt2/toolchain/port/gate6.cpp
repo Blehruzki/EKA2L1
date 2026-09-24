@@ -108,7 +108,22 @@ enum { BOX_RING = 16 };
 // last third of the run recorded event by event, for about eighty extra
 // writes. The build that took the phone down through sheer write volume did
 // around two thousand.
-enum { LOG_BLOCK = 8, LOG_ZOOM = 65, LOG_ZOOM_END = 0x7fffffff };
+//
+// SILENT: the instrument has been the bug twice, and the run that recorded
+// most also died soonest. Rather than keep guessing at the right weight, this
+// build takes the weight to nearly nothing -- one write, at the end, if the
+// end is ever reached -- and asks the only question that settles it: does the
+// phone still go down when almost nothing is being written? Everything the
+// shim *does* is unchanged; only what it says about it is gone.
+enum { SILENT = 1 };
+enum { LOG_BLOCK = SILENT ? 1024 : 8,
+       LOG_ZOOM = SILENT ? 0x7fffffff : 65,
+       LOG_ZOOM_END = 0x7fffffff };
+// The box is a fixed-position record rewritten on every call the framework
+// makes into one of our vtable slots -- fifty-eight writes in a run, which is
+// half the budget, and not one of them survives a reboot. It earns its cost
+// against a panic and nothing against this.
+enum { BOX_ON_SLOT = !SILENT };
 // 800..899 are notes rather than events: the code says what is being noted and
 // the column that usually holds a caller holds the value. They are what the
 // log was missing -- it could only ever see the game calling out, never the
@@ -1001,7 +1016,8 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 // emulator shows the same sequence with or without them.
 enum { TRACE_EVERY_IMPORT = 1 };
 enum { TRACE_SKIPS_HOT = 1, TRACE_MILESTONES = 1 };
-enum { WATCH_ALLOCATIONS = 1, LOG_THE_CLOCK = 1, REFUSE_DRIVERS = 1, WATCH_THE_READS = 1, CLAMP_THE_READS = 0 };
+enum { WATCH_ALLOCATIONS = !SILENT, LOG_THE_CLOCK = !SILENT, REFUSE_DRIVERS = 1,
+       WATCH_THE_READS = !SILENT, CLAMP_THE_READS = 0 };
 enum { PLANT_CRUMBS = 0 };
 
 // A probe is a breadcrumb that also reports two of the game's registers, at
@@ -1018,7 +1034,7 @@ enum { PLANT_CRUMBS = 0 };
 // nothing about which of the helper's callers is the one asking for a hundred
 // and sixty kilobytes into a thirty-one byte cell. lr at the helper's first
 // instruction does say.
-enum { PLANT_PROBES = 1, PROBE_FIRST = 990, PROBE_BYTES = 80 };
+enum { PLANT_PROBES = !SILENT, PROBE_FIRST = 990, PROBE_BYTES = 80 };
 struct Probe { u32 at; u8 ra; u8 rb; };
 static const Probe kProbe[] = {
     { 0x0010a7dc, 14, 0 },      // push {r4, lr} -- who called the read, and the buffer
@@ -1451,6 +1467,12 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
     if (LOG_THE_CLOCK && (++c->clockTick & 15) == 0)
         log_event(c, NOTE_TICK, user_tickcount());
     vptr_check(c);                  // whichever call it was, it is named above
+    // Silent still has to answer "how far", so the box goes down once every
+    // thirty-two traced events: four writes on a run of the length the phone
+    // manages, against a hundred and twenty-nine last time. It carries the
+    // count and the last thirty-two events, which is the yardstick.
+    if (SILENT && (c->traceCount & 31) == 0)
+        box_flush(c);
     if (index == IMPORT_LEAVE || index == IMPORT_EXIT)
         log_block(c);               // the tail of the block, on the way out
 }
@@ -1467,7 +1489,7 @@ static void vptr_check(Context *c)
 {
     if (c->wrapUi && c->wrapUi[0] != c->wrapUiVptr) {
         log_event(c, NOTE_VPTR, c->wrapUi[0]);
-        log_block(c);
+        if (!SILENT) log_block(c);
         c->wrapUiVptr = c->wrapUi[0];   // say it once per change, not per call
     }
 }
@@ -1479,7 +1501,8 @@ extern "C" void gate6_slot(u32 code, Context *c, u32)
     c->reached |= REACHED_SLOT;         // so a zero can be told from a silence
     log_event(c, NOTE_SLOT, code);      // the half of the story the log lacked
     vptr_check(c);
-    box_flush(c);
+    if (BOX_ON_SLOT)
+        box_flush(c);
 }
 
 // Every slot of a wrapper's vtable, so that whatever the framework does to it
@@ -1855,7 +1878,7 @@ extern "C" void gate6_write_memory(u32, u8 *address, const u32 *data, Context *c
                 for (u32 k = 1; k <= 5; k++)
                     log_event(c, NOTE_TEXT, ((const u32 *)p)[k]);
         }
-        log_block(c);
+        if (!SILENT) log_block(c);
     }
 
     if (PLANT_LATE_CRUMBS) {
@@ -1987,7 +2010,7 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
     const u32 fn = mapped
         ? ((u32 (*)(void *, int))c->newLibraryLookup)(lib, (int)mapped) : 0;
     log_event(c, NOTE_LOOKUP_RESULT, fn ? fn : c->noopFn);
-    log_block(c);
+    if (!SILENT) log_block(c);      // thirty lookups is thirty writes
     if (!fn)
         note(c, (u32)ordinal, 'X');
     return fn ? fn : c->noopFn;
@@ -2016,7 +2039,7 @@ extern "C" void gate6_cancel(u32 *self, u32, Context *c)
         // pointer happens to be is how the run ends; recording it and
         // returning is how the run carries on and says what came next.
         log_event(c, NOTE_STRAY, (u32)self);
-        log_block(c);
+        if (!SILENT) log_block(c);
         return;
     }
     ((Cancel)c->newCancel)(self);

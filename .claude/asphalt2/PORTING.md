@@ -999,3 +999,58 @@ never runs". It never appears because `TRACE_MILESTONES` traces a whitelist
 and 304 is not on it. Three probes and one emulator run, no hardware, and the
 theory was dead before it was written down. That is the intended cost of one
 now.
+
+## The instrument goes nearly silent
+
+The zoomed build (`g6box-28`) did what it was for and cost what it was warned
+it might. It located the death precisely for the first time -- and it died
+sooner than the three before it.
+
+```
+                 records  traced events  ticks  est. writes
+g6box-30             226           115      -           86
+g6box-24             224           107      -           86
+g6box-18             265           106     64           91
+g6box-28 (zoom)      295            86     27          129
+```
+
+Records went up only because the build writes more per event; the yardstick is
+traced events, and it fell. So did the clock.
+
+**Where it dies.** With every record flushed as it happened, the last one on
+disk is the last thing that happened, and it is the `RLibrary::Lookup` from
+0x13f5e4 -- the second pass through that site, having succeeded on the first
+fourteen records earlier. Our own `gate6_library_lookup` logged nothing at all
+after it, so the phone went down inside the handler, before it had read the
+library's handle. The site is:
+
+```
+0013f5d8  ldr ip, [r4]      @ a function pointer out of a table
+0013f5e0  bx ip             @ -> RLibrary::Lookup        <- last record
+0013f5e4  mov r6, r0        @ whatever it answered
+0013f5f0  bx r6             @ ... is called, unconditionally
+```
+
+**What that is worth against what it cost.** Two of the four things this port
+has spent hardware rounds on turned out to be the instrument. The run that
+recorded most also died soonest. The write budget has never been measured
+against reach, only guessed at -- so rather than guess again at the right
+weight, `SILENT` takes it to nearly nothing:
+
+- `LOG_BLOCK` 1024 and no zoom: the log never fills, so it never writes.
+- No probes, no read watching, no allocation watching, no clock.
+- The box, which was rewritten on every one of the fifty-eight framework calls
+  into our vtable slots -- half the whole budget, and not one of those writes
+  survives a reboot -- now goes down once every thirty-two traced events. Four
+  writes on a run of the length the phone manages, carrying the count, the last
+  import and the ring of the last thirty-two events.
+
+Three or four writes against a hundred and twenty-nine. **Nothing the shim
+does changes; only what it says about it.** The emulator reaches the same
+0x30002 with the same trace, and writes no log at all.
+
+The question is the one thirty rounds have not asked: does the phone still go
+down when almost nothing is being written? Either answer is worth the round.
+If it still reboots, the instrument is finally exonerated and every future
+build can afford to talk. If it does not, the log has been the bug all along,
+and the next instrument is a memory-only ring read out at the end.
