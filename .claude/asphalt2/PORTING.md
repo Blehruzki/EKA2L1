@@ -1617,3 +1617,39 @@ eleven every time, the difference is real and worth bisecting properly.
 
 It costs no install and it tests something that should have been tested before
 the first "regression" was declared.
+
+## Three runs of one build: 128, early, early
+
+```
+build 40, run 1   128 traced events, heap walked clean, 1209 cells
+build 40, run 2   stopped before the first box write
+build 40, run 3   stopped before the first box write
+```
+
+Same binary, three runs, one of them as far as build 37 ever got. So:
+
+**Builds 38, 39 and 40 were never regressions.** Each stopped early once, each
+was read as broken by whatever it had changed, and two working instruments were
+reverted on the strength of a coin landing the same way three times. The
+reasoning in the three sections above is wrong wherever it treats a single run
+as a build's behaviour.
+
+**The heap is intact.** At traced event 128 -- four events before the free that
+faults -- `CountAllocCells` walks the whole heap and counts 1209 cells. The
+chain is sound. So the free is not faulting because the heap is structurally
+broken, and the theory the last two builds were built on is dead.
+
+That is worth more than it cost. It narrows the free to the **pointer**: one
+that was never handed out, or one already freed. Which is precisely what build
+38's free matching was built to find, and build 38 works. Both instruments ship
+together now.
+
+### The rule this earns
+
+**A hardware round is three runs, not one.** Every count in this file taken
+from a single run is an upper bound on nothing: the same build reaches 128 or
+stops at eleven depending on something none of these instruments see. Compare
+the longest of three, and never call a build a regression on one run again.
+
+Some of what is written above will have to be re-read with that in mind -- the
+write-budget table in particular, whose rows are single runs.
