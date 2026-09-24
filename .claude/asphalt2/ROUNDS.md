@@ -52,7 +52,7 @@ eight, and the tail was sitting unflushed in the buffer the whole time.
 Five of those six rounds settled nothing. That is the largest single waste in
 this project after the reboots, and it came from reading an instrument's blind
 spot as the game's behaviour -- the same mistake, for the fifth time.
-| 46 | Flush the ring's verdict, not just the pointer | *pending* | | |
+| 46 | Flush the ring's verdict, not just the pointer | 1 | 136, dies freeing `0x7b8e20` | **The fatal free is legitimate.** Its pointer matched a live 27-byte cell -- no double, no stray. The verdict was the last record written, so the fault is in `User::Free` itself |
 
 ## Where we are
 
@@ -73,11 +73,20 @@ the single change that made hardware rounds informative again.
 | | |
 |---|---|
 | Heap at event 128 | walks clean, 1209 cells |
+| The fatal free | a live 27-byte cell the ring recognised |
 | Frees before the fatal one | 31, all matched a live cell, no doubles, no strays |
 | `RFile::Open` | returns KErrNone |
 | Setup state | identical to the emulator |
 | Fatal call | `User::Free(0x7b89a8)` -- build 44 had `0x7b7cd8`, same point, different heap layout |
 
-So the heap is sound, the pointers are sound, and the open succeeds. The one
-unmeasured thing is whether the *fatal* pointer is in the ring, and that is one
-missing flush away.
+So the heap is sound, the pointers are sound, the open succeeds -- **and the
+fatal free is of a live, known, 27-byte cell**. Round 46 closed the last gap:
+the verdict record was the final thing written before the run ended, so
+everything up to and including our own handler completed and the fault is
+inside `User::Free`.
+
+What is left is the one thing nothing has looked at: the **cell's own header**.
+RHeap keeps a cell's size in the word before the payload, and that is what
+`User::Free` reads first. A header damaged after the last heap walk would give
+exactly this -- a clean walk at 128, a pointer the ring recognises, and a free
+that faults.

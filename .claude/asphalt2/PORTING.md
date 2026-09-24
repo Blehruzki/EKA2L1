@@ -45,11 +45,13 @@ here and the section it overturns is marked.*
 - **Furthest reached: 136 traced events** (builds 44 and 45, twice). It dies
   inside a `User::Free` -- of `0x7b7cd8` in build 44, `0x7b89a8` in build 45:
   the same point, a different heap layout.
-- The heap is sound and so are the pointers: at event 128
-  `User::CountAllocCells` walks it clean at 1209 cells, and every one of the 31
-  frees before the fatal one matched a live cell -- no double frees, no strays.
-  So either `0x7b7cd8` is the first bad pointer, or `User::Free` faults for a
-  reason that is not the cell it was handed.
+- The heap is sound, the pointers are sound, **and so is the fatal free**: at
+  event 128 `User::CountAllocCells` walks the heap clean at 1209 cells, every
+  free matches a live cell, and the fatal one matched a live 27-byte cell with
+  its verdict written to disk before the run ended. The fault is inside
+  `User::Free`, on a cell that everything we can measure says is fine. What has
+  never been looked at is the cell's own header -- the word RHeap keeps before
+  the payload, and the first thing `User::Free` reads.
 - The setup state on the phone matches the emulator exactly: 20612 bytes of
   spare arena, a 3768-byte context, all four optional wraps installed. Nothing
   is being silently skipped there.
