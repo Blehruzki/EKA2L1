@@ -266,6 +266,7 @@ i32 user_setexceptionhandler(void *handler, u32 mask); // User::SetExceptionHand
 void *coecontrol_ctor(void *self);                    // CCoeControl::CCoeControl()
 void coecontrol_createwindowl(void *self);            // CCoeControl::CreateWindowL()
 void *user_allocz(int size);
+int user_alloclen(const void *cell);            // User::AllocLen
 void *cperiodic_newl(int priority);
 
 // A GCC98r2 virtual call: the vptr is at offset 0 and points eight bytes
@@ -1041,8 +1042,17 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 // emulator shows the same sequence with or without them.
 enum { TRACE_EVERY_IMPORT = 1 };
 enum { TRACE_SKIPS_HOT = 1, TRACE_MILESTONES = 1 };
-enum { WATCH_ALLOCATIONS = !SILENT, LOG_THE_CLOCK = !SILENT, REFUSE_DRIVERS = 1,
-       WATCH_THE_READS = !SILENT, CLAMP_THE_READS = 0 };
+enum { WATCH_ALLOCATIONS = LOG_ANYWAY, LOG_THE_CLOCK = 0, REFUSE_DRIVERS = 1,
+       WATCH_THE_READS = 0, CLAMP_THE_READS = 0 };
+// Not an instrument: a fix, and it ships. See gate6_alloc.
+enum { PAD_THE_ALLOCATIONS = 0, ZERO_THE_SLACK = 0 };
+enum { LEAK_EVERYTHING = 0 };
+// The last run's box, reported as a panic at the start of the next one. It was
+// the only way to read a record off a phone that had just rebooted, and it is
+// destructive: it truncates the log and kills the run before the game starts.
+// Now that the box survives on its own it costs more than it gives.
+enum { REPORT_LAST_BOX = 0 };
+enum { WRAP_ALLOCATORS = WATCH_ALLOCATIONS };
 enum { PLANT_CRUMBS = 0 };
 
 // A probe is a breadcrumb that also reports two of the game's registers, at
@@ -1061,13 +1071,22 @@ enum { PLANT_CRUMBS = 0 };
 // instruction does say.
 // Probes and crumbs are the only instruments that add traced events, so they
 // stay off whenever a run has to line up with the phone's -- which is always now.
+// Opt in per investigation, never by default: probes add traced events, and a
+// reference carrying them cannot be lined up against the phone's build. Tying
+// this to LOG_ANYWAY looked tidy and quietly broke the comparison again.
 enum { PLANT_PROBES = 0, PROBE_FIRST = 990, PROBE_BYTES = 80 };
 struct Probe { u32 at; u8 ra; u8 rb; };
 static const Probe kProbe[] = {
-    { 0x0010a7dc, 14, 0 },      // push {r4, lr} -- who called the read, and the buffer
-    { 0x0010a7e0,  1, 0 },      // sub sp, sp, #0xc -- and how much it asks for
-    { 0x000ed678,  0, 4 },      // mov r7, r0 -- what 0xed694's own allocation returned,
-                                //   and what it asked for, straight from the game
+    // The list find the emulator dies in. 0xd9428 is
+    //   find(container, name): for (n = container->[4]; n; n = n->[0xc])
+    //                              if (!stricmp(name, n->[0])) return n;
+    // and it dies in stricmp on the first node, whose [0] is 0x00030002.
+    { 0x000cc914,  5, 6 },      // str r5, [r5] -- the four-byte cell, self-initialised
+    { 0x000cc92c,  5, 4 },      // ldr r2, [r5] -- and read straight back out
+    { 0x000ccb68,  5, 4 },      // ldr r0, [r5] -- where the container is read from
+    { 0x000d9428,  0, 1 },      // push -- the container, and the name
+    { 0x000d9484,  6, 7 },      // ldr r4, [r6, #4] -- the container again, and the name
+    { 0x000d94e4,  5, 8 },      // mov r0, r8 -- every node, and the name
 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1381,6 +1400,17 @@ extern "C" void gate6_probe(u32 marker, Context *c, u32 a, u32 b)
     c->traceCount++;
     log_event(c, marker, a);
     log_event(c, NOTE_PROBE_B, b);
+    // And the first four words of what a addresses, when it looks like an
+    // address this process owns. Half of what a probe is asked is about what
+    // is at the pointer, not what the pointer is.
+    enum { PROBE_WORDS = LOG_ANYWAY ? 8 : 4 };
+    if (a >= 0x400000 && a < 0x10000000 && !(a & 3))
+        for (u32 i = 0; i < PROBE_WORDS; i++)
+            log_event(c, NOTE_R5_AT, ((const u32 *)a)[i]);
+    // A probe is planted at a site that is about to go wrong, so the block it
+    // is in is the one most likely never to be written.
+    if (LOG_ANYWAY)
+        log_block(c);
 }
 
 // The two registers are copied before anything else, because the flag save
@@ -1963,6 +1993,47 @@ extern "C" int gate6_library_load(void *self, const u32 *name, const u32 *path,
 enum { MMC_SELECT_CARD = 4, MMC_CARD_INFO = 6, MMC_CARD_TYPE_ROM = 0 };
 enum { MMC_CID_WORDS = 4 };
 
+// The game asks User::Alloc for four bytes at 0xcc914, writes the cell's own
+// address into it -- which is how it says "this list is empty" -- and then at
+// 0xd9484 reads [cell + 4] as the head of that list and walks it. Four bytes
+// past the end of a four-byte cell. It gets away with that on the N-Gage
+// because the slack inside the minimum-sized RHeap cell it has just been
+// handed reads as zero there and the walk stops at once; here it reads as
+// whatever the last tenant of that address left behind, and the walk sets off
+// into freed memory and dies in stricmp on a word that is two shorts.
+//
+// Two wrong ways first, both worth keeping. Padding every allocation and
+// zeroing it moves every cell in the heap, and the run died earlier and
+// somewhere else -- heap layout has caught this port out before. Assuming the
+// slack instead, and zeroing a four-byte cell out to eight, writes over the
+// next cell's header whenever the heap gave exactly four, and the run then
+// fails differently every time.
+//
+// So ask. User::AllocLen gives the cell's real size, nothing moves, and not a
+// byte is written outside what the game was handed.
+// If the game is reading memory it has already freed -- and the container at
+// 0xcc914 says it is -- then the fix is not to scrub the cell but to stop the
+// heap handing that address out again. The N-Gage's RHeap evidently does not
+// reuse it quickly enough for the game to notice. So: free nothing. A startup
+// sequence against a sixty-four megabyte heap can afford it, and it is a
+// straight test of whether the fault is a use-after-free at all.
+extern "C" void gate6_free(void *)
+{
+}
+
+extern "C" void *gate6_alloc(int size, u32, Context *)
+{
+    if (size < 0)
+        return 0;
+    u8 *p = (u8 *)user_alloc(size);
+    if (!p)
+        return 0;
+    if (ZERO_THE_SLACK)
+        for (int i = size, n = user_alloclen(p); i < n; i++)
+            p[i] = 0;
+    return p;
+}
+
 extern "C" u32 gate6_mmc_control(u32, u32 op, u32 *info)
 {
     if (op == MMC_CARD_INFO && info) {
@@ -2496,7 +2567,7 @@ static u32 load_and_start()
             // import it was on -- three digits, and 999 means the file was
             // armed and nothing was ever written to it -- and last a digit for
             // what happened: 1 the frame loop ran, 2 it left, 4 it exited.
-            if (magic == BOX_MAGIC) {
+            if (REPORT_LAST_BOX && magic == BOX_MAGIC) {
                 const u32 fate = ((reached & REACHED_RUNL) ? 1u : 0u)
                                | ((reached & REACHED_LEAVE) ? 2u : 0u)
                                | ((reached & REACHED_EXIT) ? 4u : 0u);
@@ -2860,7 +2931,23 @@ static u32 load_and_start()
         ctx->spare += ARG_WORDS * 4;
     }
 
-    if (WATCH_ALLOCATIONS) {
+    // User::Alloc, answered by a padded, zeroed one. See gate6_alloc.
+    enum { IMPORT_USER_ALLOC = 270 };
+    enum { IMPORT_USER_FREE = 315, IMPORT_DELETE = 408, IMPORT_VEC_DELETE = 410 };
+    if (LEAK_EVERYTHING) {
+        static const u16 kFree[] = { IMPORT_USER_FREE, IMPORT_DELETE, IMPORT_VEC_DELETE };
+        for (u32 i = 0; i < sizeof kFree / sizeof kFree[0]; i++)
+            if (kFree[i] < nImports)
+                iat[kFree[i]] = (u32)&gate6_free;
+    }
+
+    if (PAD_THE_ALLOCATIONS && IMPORT_USER_ALLOC < nImports &&
+        ctx->spare + TRACE <= ctx->spareEnd) {
+        iat[IMPORT_USER_ALLOC] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_alloc);
+        ctx->spare += TRACE;
+    }
+
+    if (WRAP_ALLOCATORS) {
         // Every allocator, recording what came back. An allocation that fails returns
             // zero rather than panicking, so if the phone is running out of memory -- the
             // other thing that is asynchronous, varies with whatever else the phone is

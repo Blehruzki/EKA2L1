@@ -1119,3 +1119,77 @@ problem and worth one look later.
 **The rule this earns:** the instrument's cost is a measurement, not a guess.
 Every future build states its write budget, and no build goes to hardware
 spending more than the last one that survived.
+
+## The emulator's own fault, read out
+
+With the phone and the emulator failing in the same window, the 0x30002 fault
+is worth the probes. Six of them, one run:
+
+```
+0x000cc914  r5 = 008b80e0   str r5, [r5]     <- User::Alloc(4), then self
+0x000cc92c  r5 = 008b80e0   ldr r2, [r5]
+0x000ccb68  r5 = 008b80e0   ldr r0, [r5]     -> the container, = the cell
+0x000d9428  r0 = 008b80e0   r1 = 0483fce0    <- find(container, "6RBC.off")
+0x000d9484  r6 = 008b80e0                    <- head = [container + 4]
+0x000d94e4  r5 = 00703abc                    <- and stricmp on its [0]
+```
+
+and the machine at 0xd9428, once its jump table is unpicked, is nothing
+exotic:
+
+```
+find(container, name):
+    for (n = container->[4]; n; n = n->[0xc])
+        if (!stricmp(name, n->[0])) return n;
+    return 0;
+```
+
+So the game asks for **four bytes**, writes the cell's own address into it, and
+later reads `[cell + 4]` as the head of a list. `User::AllocLen` says a
+four-byte request gets a **thirty-six** byte cell here, so that read is inside
+the cell -- it is not out of bounds, it is uninitialised. It holds 0x703abc,
+whose `[0]` is 0x00030002, and stricmp walks into it.
+
+The container's words are the giveaway:
+
+```
+0x8b80e0:  008b80e0  00703abc  00000000  000f000e
+           00000000  00000000  008b2dec  008b2df8
+```
+
+Word 0 is what 0xcc914 wrote. The rest is not noise -- two heap pointers, a
+pair of counters -- it is a **live-looking object the game allocated earlier,
+freed, and is still reading**. Our heap handed that address back out for the
+four-byte cell and word 0 went over the top of it.
+
+### Three fixes tried, none of them a fix
+
+| | traced events | stricmp reached | ends |
+|---|---|---|---|
+| as it is | 179 | yes | fault 0x30002 |
+| zero the cell's slack | 43 | **no** | clean `User::Leave` |
+| pad every allocation by 16 and zero | 160 | no | fault elsewhere |
+| free nothing at all | 160 | no | fault elsewhere |
+
+Zeroing works exactly as intended -- the list reads empty and the walk stops
+before a single node -- and the game then gives up at a *third* of the
+distance. It was reading that memory on purpose. Padding moves every cell in
+the heap and fails earlier somewhere else, which is the trap `VT_MARGIN` set
+two months ago. Leaking gets no further either.
+
+**So the walk is a symptom.** The container is meant to hold a list of names
+and it holds a freed object; the question is what was supposed to fill it, not
+how to survive its being empty. That is the same shape as `6RBC.off` and
+`cwdynlog.dll`: things the game looks for that are not there.
+
+`User::AllocLen` is imported now and `gate6_alloc` stays, switched off, with
+all three experiments behind their own constants -- they cost nothing off and
+each one is a question that will be asked again.
+
+*Two process notes.* `REPORT_LAST_BOX` -- the startup panic that reported the
+previous run's box -- truncates the log and kills the run before the game
+starts, which cost four confused iterations here before it was spotted. It was
+the only way to read a record off a phone that had just rebooted; the box
+survives on its own now, so it is off. And a build with no writable globals
+cannot hold a `static Context *` for a one-off measurement: it fails at the
+link, which is the design working.
