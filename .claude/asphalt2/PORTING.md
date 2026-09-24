@@ -1447,3 +1447,43 @@ Build 37 keeps the log, and puts a result thunk on `RFile::Open` -- wrapped
 address rather than ours, which is the alignment against the emulator for the
 one import being asked about. Whatever it returns, or the absence of any record
 at all, answers this.
+
+## RFile::Open succeeds; the fault is in the free after it
+
+Build 37 answered its question in one record:
+
+```
+import 109  RFile::Open  from 10a314
+--   by import  6d
+-- returned     0                 <- KErrNone
+```
+
+The open succeeds. The game's next two instructions are
+
+```
+0010a314  mov r0, r4        @ keep the result
+0010a318  mov r0, r5
+0010a31c  bl  #0x118e68     @ __builtin_delete -- the name buffer
+```
+
+and that is where the phone stops. `__builtin_delete` maps to
+`scppnwdl::_ZdlPv`, which is correct, and the buffer came from `HBufC16::New`
+on the same heap, so the free itself is right. **A free only faults on a heap
+that is already wrong**, which means the damage was done earlier and this is
+merely where it surfaces -- and the emulator, whose heap is a flat region that
+forgives almost anything, sails through.
+
+So build 38 matches every free against the allocations still outstanding. The
+ring is 256 deep and tracks `__builtin_new`, the three `User::Alloc` variants
+and `HBufC16::New`; every free marks its cell spent, from the first one, so a
+double free cannot read as an ordinary match. Records are rationed -- plain
+matches only over the stretch the run dies in -- but a **double free** or a
+**stray** (a pointer never handed out) is reported wherever it happens.
+
+The emulator's baseline: sixty-nine frees, every one matched to a live cell,
+no doubles and no strays. If the phone shows either, that is the corruption,
+and it will name the pointer.
+
+*Also worth recording*: four panics in that single run, two KERN-EXEC 0 and two
+KERN-EXEC 3. One thread cannot panic four times, so more than the game's thread
+is going down -- which fits a heap the file server is also writing into.
