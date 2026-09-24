@@ -120,8 +120,16 @@ enum { BOX_RING = 64 };
 // phone still go down when almost nothing is being written? Everything the
 // shim *does* is unchanged; only what it says about it is gone.
 enum { SILENT = 1 };
-enum { LOG_BLOCK = SILENT ? 1024 : 8,
-       LOG_ZOOM = SILENT ? 0x7fffffff : 65,
+// The emulator does not pay for writes, and a reference that is not built from
+// the same event set as the phone's build cannot be compared with it -- which
+// has now cost two wrong alignments. LOG_ANYWAY turns the log back on without
+// touching anything that changes the sequence: probes and crumbs are the only
+// instruments that add traced events, and they stay off either way. Local
+// builds only; the shipped one has it at zero.
+enum { LOG_ANYWAY = 0 };
+enum { QUIET = SILENT && !LOG_ANYWAY };
+enum { LOG_BLOCK = QUIET ? 1024 : 8,
+       LOG_ZOOM = 0x7fffffff,
        LOG_ZOOM_END = 0x7fffffff };
 // The box is a fixed-position record rewritten on every call the framework
 // makes into one of our vtable slots -- fifty-eight writes in a run, which is
@@ -1051,7 +1059,9 @@ enum { PLANT_CRUMBS = 0 };
 // nothing about which of the helper's callers is the one asking for a hundred
 // and sixty kilobytes into a thirty-one byte cell. lr at the helper's first
 // instruction does say.
-enum { PLANT_PROBES = !SILENT, PROBE_FIRST = 990, PROBE_BYTES = 80 };
+// Probes and crumbs are the only instruments that add traced events, so they
+// stay off whenever a run has to line up with the phone's -- which is always now.
+enum { PLANT_PROBES = 0, PROBE_FIRST = 990, PROBE_BYTES = 80 };
 struct Probe { u32 at; u8 ra; u8 rb; };
 static const Probe kProbe[] = {
     { 0x0010a7dc, 14, 0 },      // push {r4, lr} -- who called the read, and the buffer
@@ -1506,7 +1516,7 @@ static void vptr_check(Context *c)
 {
     if (c->wrapUi && c->wrapUi[0] != c->wrapUiVptr) {
         log_event(c, NOTE_VPTR, c->wrapUi[0]);
-        if (!SILENT) log_block(c);
+        if (!QUIET) log_block(c);
         c->wrapUiVptr = c->wrapUi[0];   // say it once per change, not per call
     }
 }
@@ -1895,7 +1905,7 @@ extern "C" void gate6_write_memory(u32, u8 *address, const u32 *data, Context *c
                 for (u32 k = 1; k <= 5; k++)
                     log_event(c, NOTE_TEXT, ((const u32 *)p)[k]);
         }
-        if (!SILENT) log_block(c);
+        if (!QUIET) log_block(c);
     }
 
     if (PLANT_LATE_CRUMBS) {
@@ -2027,7 +2037,7 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
     const u32 fn = mapped
         ? ((u32 (*)(void *, int))c->newLibraryLookup)(lib, (int)mapped) : 0;
     log_event(c, NOTE_LOOKUP_RESULT, fn ? fn : c->noopFn);
-    if (!SILENT) log_block(c);      // thirty lookups is thirty writes
+    if (!QUIET) log_block(c);      // thirty lookups is thirty writes
     if (!fn)
         note(c, (u32)ordinal, 'X');
     return fn ? fn : c->noopFn;
@@ -2056,7 +2066,7 @@ extern "C" void gate6_cancel(u32 *self, u32, Context *c)
         // pointer happens to be is how the run ends; recording it and
         // returning is how the run carries on and says what came next.
         log_event(c, NOTE_STRAY, (u32)self);
-        if (!SILENT) log_block(c);
+        if (!QUIET) log_block(c);
         return;
     }
     ((Cancel)c->newCancel)(self);
