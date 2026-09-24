@@ -116,6 +116,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_LOOKUP_RESULT = 876,// and the address it answered with
        NOTE_DRIVER = 877,       // a kernel driver call, refused
        NOTE_TICK = 878,         // User::TickCount, every sixteenth milestone
+       NOTE_PROBE_B = 882,      // the second register a probe was asked for
        NOTE_CELL_AT = 881,      // the cell a read buffer sits in
        NOTE_CELL = 879,         // and how big it is
        NOTE_OVERFLOW = 880,     // ... and the maximum, when it is more than that
@@ -991,6 +992,29 @@ enum { TRACE_SKIPS_HOT = 1, TRACE_MILESTONES = 1 };
 enum { WATCH_ALLOCATIONS = 1, LOG_THE_CLOCK = 1, REFUSE_DRIVERS = 1, WATCH_THE_READS = 1, CLAMP_THE_READS = 0 };
 enum { PLANT_CRUMBS = 0 };
 
+// A probe is a breadcrumb that also reports two of the game's registers, at
+// one exact instruction. crumb_plant hunts forward for an instruction it can
+// move, which is right when the question is "did the run come through here";
+// it is wrong when the question is "what was in this register here", because
+// the answer would be taken a few instructions late. A probe therefore takes
+// the address as given and reports nothing at all if what stands there cannot
+// be moved.
+//
+// The read helper at 0x10a7dc builds a TPtr8 over a buffer and a length its
+// caller hands it and calls RFile::Read. The import trace records where inside
+// the helper the call was made, which is the same address every time and says
+// nothing about which of the helper's callers is the one asking for a hundred
+// and sixty kilobytes into a thirty-one byte cell. lr at the helper's first
+// instruction does say.
+enum { PLANT_PROBES = 1, PROBE_FIRST = 990, PROBE_BYTES = 80 };
+struct Probe { u32 at; u8 ra; u8 rb; };
+static const Probe kProbe[] = {
+    { 0x0010a7dc, 14, 0 },      // push {r4, lr} -- who called the read, and the buffer
+    { 0x0010a7e0,  1, 0 },      // sub sp, sp, #0xc -- and how much it asks for
+    { 0x000ed678,  0, 4 },      // mov r7, r0 -- what 0xed694's own allocation returned,
+                                //   and what it asked for, straight from the game
+};
+
 // Three regions of this image only ever exist decrypted, and a breadcrumb
 // planted at load time would be written straight over by the decryptor. These
 // go in afterwards instead, from the write itself, once the region carrying
@@ -1167,7 +1191,14 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
         // against the maximum the server has been given.
         const u32 want = ((const u32 *)a1)[1];
         const u32 buf = ((const u32 *)a1)[2];
-        for (u32 i = 0; i < 32; i++)
+        // Newest first. The ring knows nothing about frees, so an address
+        // that has been handed out twice appears twice in it, and the entry
+        // that describes the cell the buffer is in now is the later one. In
+        // slot order the stale one wins, which is how a perfectly ordinary
+        // read came to be written up here as a hundred-and-sixty-kilobyte
+        // overflow of a thirty-one byte cell.
+        for (u32 k = 1; k <= 32; k++) {
+            const u32 i = (c->allocNext - k) & 31;
             if (c->allocPtr[i] && buf >= c->allocPtr[i] &&
                 buf < c->allocPtr[i] + c->allocLen[i]) {
                 log_event(c, NOTE_CELL_AT, c->allocPtr[i]);
@@ -1189,6 +1220,7 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
                 }
                 break;
             }
+        }
     }
     log_block(c);
 }
@@ -1237,6 +1269,51 @@ static u32 result_thunk(u8 *code, const void *ctx, u32 value, u32 target)
     b[15] = (u32)&gate6_result;
     user_imb_range(b, b + 16);
     return (u32)b;
+}
+
+extern "C" void gate6_probe(u32 marker, Context *c, u32 a, u32 b)
+{
+    stack_mark(c);
+    c->lastImport = marker;
+    const u32 slot = c->traceCount & (BOX_RING - 1);
+    c->boxData[4 + slot] = marker;
+    c->boxData[BOX_FROM + slot] = a;
+    c->traceCount++;
+    log_event(c, marker, a);
+    log_event(c, NOTE_PROBE_B, b);
+}
+
+// The two registers are copied before anything else, because the flag save
+// below clobbers r0 -- so ra and rb are the game's own. rb may not be r2 for
+// the same reason: r2 is written first.
+static void probe_plant(Context *c, u8 *base, const Probe &p, u32 marker)
+{
+    u32 *site = (u32 *)(base + p.at);
+    if (p.rb == 2 || !crumb_safe(*site) || c->spare + PROBE_BYTES > c->spareEnd)
+        return;
+    u32 *b = (u32 *)c->spare;
+    c->spare += PROBE_BYTES;
+    b[0]  = 0xE92D500F;                 // stmdb sp!, {r0-r3, r12, lr}
+    b[1]  = 0xE1A02000 | p.ra;          // mov   r2, ra
+    b[2]  = 0xE1A03000 | p.rb;          // mov   r3, rb
+    b[3]  = 0xE10F0000;                 // mrs   r0, cpsr
+    b[4]  = 0xE92D0003;                 // stmdb sp!, {r0, r1}
+    b[5]  = 0xE59F0020;                 // ldr   r0, [pc, #32]  -> b[15] marker
+    b[6]  = 0xE59F1020;                 // ldr   r1, [pc, #32]  -> b[16] context
+    b[7]  = 0xE59FC020;                 // ldr   r12, [pc, #32] -> b[17] handler
+    b[8]  = 0xE12FFF3C;                 // blx   r12
+    b[9]  = 0xE8BD0003;                 // ldmia sp!, {r0, r1}
+    b[10] = 0xE128F000;                 // msr   cpsr_f, r0
+    b[11] = 0xE8BD500F;                 // ldmia sp!, {r0-r3, r12, lr}
+    b[12] = *site;                      // what stood here
+    b[13] = 0xE51FF004;                 // ldr   pc, [pc, #-4]
+    b[14] = (u32)(site + 1);
+    b[15] = marker;
+    b[16] = (u32)c;
+    b[17] = (u32)&gate6_probe;
+    user_imb_range(b, b + 18);
+    *site = 0xEA000000 | ((((u32)b - (u32)site - 8) >> 2) & 0x00FFFFFF);
+    user_imb_range(site, site + 1);
 }
 
 static void crumb_plant_r5(Context *c, u8 *base, u32 at, u32 marker)
@@ -2606,6 +2683,11 @@ static u32 load_and_start()
         for (u32 i = 0; i < sizeof kWalkCrumb / sizeof kWalkCrumb[0]; i++)
             if (kWalkCrumb[i] + 4 <= h->codeSize)
                 crumb_plant_r5(ctx, base, kWalkCrumb[i], CRUMB_WALK_FIRST + i);
+
+    if (PLANT_PROBES)
+        for (u32 i = 0; i < sizeof kProbe / sizeof kProbe[0]; i++)
+            if (kProbe[i].at + 4 <= h->codeSize)
+                probe_plant(ctx, base, kProbe[i], PROBE_FIRST + i);
 
     if (PLANT_CRUMBS)
         for (u32 i = 0; i < sizeof kCrumb / sizeof kCrumb[0]; i++)

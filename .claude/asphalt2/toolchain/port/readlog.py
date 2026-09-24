@@ -63,7 +63,22 @@ def crumbs():
     except Exception:
         out = {}
     out.update(late_crumbs())
+    out.update(probes())
     return out
+
+
+def probes():
+    """Probe markers, read out of kProbe in gate6.cpp."""
+    import os, re
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gate6.cpp')
+    try:
+        text = open(src).read()
+        body = text[text.index('static const Probe kProbe[] = {'):]
+        body = body[:body.index('};')]
+        return {990 + i: m for i, m in
+                enumerate(re.findall(r'\{\s*(0x0[0-9a-f]+)', body))}
+    except Exception:
+        return {}
 
 
 # Notes whose payload is an address: the same run on two machines loads the
@@ -78,7 +93,8 @@ NOTES = {860: 'slot entered', 850: 'Cancel on', 851: 'STRAY Cancel on',
          874: 'ordinal asked of a library that is not open',
          875: 'lookup on handle', 876: '   answered', 877: 'DRIVER CALL refused, euser ordinal',
          878: 'tick', 879: 'cell size', 881: 'buffer sits in the cell at',
-         880: 'OVERFLOW: the server was given a maximum of'}
+         880: 'OVERFLOW: the server was given a maximum of',
+         882: 'probe b'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework

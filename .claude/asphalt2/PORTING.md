@@ -827,14 +827,11 @@ type 2, lengths matching maxima, buffers on the stack at 0x40xxxx or in the
 heap at 0x8bxxxx. Anything on the phone pointing into the game's chunk at
 0x46xxxxx, or anywhere that is not stack or heap, is the answer.
 
-## A buffer overflow, performed by the file server
+## A buffer overflow that was mine, not the game's
 
-The descriptors the phone hands `RFile::Read` are all well formed -- type 2,
-lengths matching maxima, buffers in stack or heap and never in the game's chunk
-(`phone-2026-09-24l.log`). So the shape was never the problem. The size is.
-
-Recording each read buffer against the cell it was allocated in, in the
-emulator, gives this:
+*What this section said before was wrong, and the way it was wrong is worth
+keeping.* Recording each read buffer against the cell it was allocated in, in
+the emulator, gave this:
 
 ```
 max 0x8      buf 0040f880   (stack)
@@ -847,33 +844,87 @@ max 0x2807c  buf 008b9b70   cell 008b9b70 size 163964
 max 0x2807c  buf 008b9b70   cell 008b9b70 size 163964
 ```
 
-The sixth read asks the file server for the whole of `cwivenc.dat`, 163,964
-bytes, into a cell of **thirty-one**. The emulator writes it and carries on --
-its heap is a flat region and the damage does not show. On a phone the file
-server runs off the end of the chunk and faults *inside itself*, and a fault in
-a system server is the kernel-side event that a reboot means. The phone
-survives that read and dies on the next one, which is what a smashed heap looks
-like.
+and the sixth line was written up here as the file server being handed a
+thirty-one byte cell and asked for a hundred and sixty kilobytes -- a
+server-side overflow, which is the one kind of thing a user process can do
+that ends kernel-side, which is what a reboot means. It fit so well that it
+went in as a finding.
 
-Clamping the maximum to the cell stops the overflow and starves the game: 43
-milestones instead of 170. `CLAMP_THE_READS` is off for that reason. The data
-is needed; the buffer is what is wrong.
-
-**And it is not the game being careless.** All five of the later reads come
-from one helper at 0x10a7dc, whose first argument is the buffer. One caller,
-0xed694, allocates a block and reads exactly that many bytes into it -- correct,
-and those are the two good reads. The other, 0xe4774, does this:
+It is an artefact of the instrument. `allocPtr`/`allocLen` is a ring of the
+last thirty-two allocations and it is never told about frees, so an address
+that has been handed out twice appears in it twice. The search ran the ring in
+slot order and stopped at the first entry containing the buffer, which is
+whichever of the two happens to sit at the lower index -- here the stale
+thirty-one byte one. Searching newest-first instead, the same run reports:
 
 ```
-000e4740  bl  User::Alloc        @ -> r4, and never used as the buffer
-000e4760  ldr ip, [ip, #0x240]   @ a pointer out of a table at +0x240
-000e4768  mov r0, ip             @ that is the buffer
-000e476c  mov r1, r5             @ and a length from somewhere else
-000e4774  bl  #0x10a7dc
+max 0x54e0   buf 008b2a78   cell 008b2a78 size 21728
+max 0x2807c  buf 008bd448   cell 008bd448 size 163964
+max 0x2807c  buf 008b9b70   cell 008b9b70 size 163964
 ```
 
-The buffer comes out of a table at offset 0x240 of some object -- the same
-+0x240 the decrypted code reads at 0x10afd4 -- and the length from elsewhere.
-So the table slot holds a pointer to a thirty-one byte cell when it should hold
-one to a hundred and sixty kilobyte cell. Whatever fills that table is where
-this actually goes wrong, and that is the next thing to find.
+Every read sits in a cell exactly its own size. There is no overflow, and there
+never was one.
+
+### Probes, and what they cost to have built
+
+What settled it is a new instrument. A *probe* is a breadcrumb that also
+reports two of the game's own registers, at one exact instruction:
+`probe_plant` takes the address as given and refuses the site if what stands
+there cannot be moved, where `crumb_plant` hunts forward for an instruction it
+can move and so answers a few instructions late. Two registers, a marker, and
+the site are enough to ask "what was in here, here".
+
+Three of them took the overflow apart in two runs.
+
+The first five went around 0xe4774, which this section had named as the guilty
+caller. They reported the table at r6 = 0x8b1c28, index 0, the slot at +0x240
+written with 0x8b2a78, and the same slot read back -- correct, and with a
+length of 0x54e0 rather than 0x2807c. That path was never the one. The import
+trace records the call to `RFile::Read` from *inside* the helper at 0x10a814,
+which is the same address whichever caller asked, and the attribution to
+0xe4774 was a guess dressed as a reading.
+
+So the next probe went on the helper's own first instruction, reporting `lr`:
+
+```
+lr 047e3774  buf 0040f7c8   ->  caller 0x0e3770
+lr 047e4778  buf 008b2a78   ->  caller 0x0e4774
+lr 047ed698  buf 008bd448   ->  caller 0x0ed694
+```
+
+(the image loads at 0x4700000). The read this section was about comes from
+**0xed694** -- the caller it had cleared as correct -- and a third probe, on
+that caller's own allocation, closes it:
+
+```
+0x000ed678  r0 = 008bd448   r4 = 0002807c
+```
+
+The game asked for 163,964 bytes and got a cell of 163,964 bytes, and read
+163,964 bytes into it. There is nothing wrong with the read.
+
+### What is left of it
+
+- The reboot has no explanation again. This was the leading one for four days.
+- 0xd5a08 is not `User::Alloc` but a one-instruction veneer into an import
+  stub at 0x119608 (`ldr ip,[pc,#4]; ldr ip,[ip]; bx ip`), one of a table of
+  them at 0x1195f0 and up reading an IAT at 0x10184xxx. Allocation is in
+  `kHot` and untraced, which is why no import record appears between the
+  `RFile::Open` and the read.
+- The read helper at 0x10a7dc is fully read:
+  `read(void *buf, TInt len, RFile *f)` builds a `TPtr8(buf, len)` on its own
+  stack, calls `RFile::Read`, and returns the length read or -1. The length is
+  the caller's own and is never derived from the buffer.
+- `CLAMP_THE_READS` clamped reads that were not too long. That it starved the
+  game (43 milestones against 170) was the instrument breaking the run, not
+  evidence about the buffer.
+
+**Twice now the instrument has been the bug** -- the breadcrumbs that rebooted
+the phone, and now this. The pattern is the same both times: the tool was
+written in the same hour as the theory it went on to confirm, and nothing was
+pointed at the tool until the theory ran out of places to go. A measurement
+that agrees with the theory has to be checked as hard as one that does not,
+and the cheapest check is a second instrument that does not share the first
+one's assumptions. Here that was three probes and two emulator runs, and it
+could have been run on day one.
