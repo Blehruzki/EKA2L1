@@ -52,13 +52,18 @@ here and the section it overturns is marked.*
   `User::Free`, on a cell that everything we can measure says is fine --
   including its header, which build 47 read: 27 bytes requested, header
   `0x28`, exactly the emulator's shape. Heap chain, pointer, size and header
-  all correct. Build 48 then read the **neighbour** the free coalesces with,
-  and that is right too: its header is `0x20`, and the ring independently
-  holds an allocation at `next + 4`, which corroborates the fatal cell's own
-  header from a record that has nothing to do with our arithmetic. Heap chain,
-  pointer, size, header, neighbour -- every measurable property of that free is
-  correct, and it still faults. **There is nothing left to measure about the
-  cell.**
+  all correct, and so is the neighbour build 48 read. **Build 49 then settled
+  it: with all three deallocation ordinals answered by a no-op, the run stops
+  in exactly the same place.** Nothing was freed -- every freed pointer in the
+  run is unique where build 48 reused them -- and the traced event count, the
+  last import, the stack high-water, the import count, the free count and the
+  verdict count are all identical. `User::Free` is innocent, the cell was never
+  damaged, and rounds 44 to 48 are retired. The fault is in the game's own code
+  after the 99th `delete` returns, which nothing has looked at because the free
+  was standing in front of it.
+- **Build 48's `0x28` header was reuse, not damage.** With the leak on, the
+  same free reads `0x20` -- exactly `align8(27 + 4)`. RHeap had handed over a
+  whole recycled cell rather than split off a remainder too small to be one.
 - **The run is deterministic.** Three runs of build 48 produced byte-identical
   7624-byte logs and identical boxes. A single run is now worth something,
   where under rule 1 it was not.
@@ -67,11 +72,10 @@ here and the section it overturns is marked.*
   be a cell, and any deallocation not going through ordinals 315, 408 or 410
   leaves a stale live entry for an address that is later reused. Six of 32
   frees have a header larger than `align8(request + 4)` for those reasons.
-- **In the emulator, neutering the frees does not get past the wall.** Build 49
-  answers all three deallocation ordinals with a no-op -- verified in effect,
-  because every freed pointer in the run becomes unique where build 48 reused
-  the same address ten times -- and the run still ends at a free record, of a
-  27-byte cell with a `0x28` header. Not a reference, but the way to bet.
+- **The emulator called this one right.** It predicted build 49 would not get
+  past the wall, and the phone agreed. That is one data point, not a licence to
+  trust it -- for the protection paths it is still wrong -- but for questions
+  about the shape of the import sequence it has now been right twice.
 - **Log volume is not what moves the emulator.** Three extra records per free
   with no dereference leave it ending exactly where it did (1066 -> 1258
   records, the same `0x30002`). When a reading changes, the write is not the
@@ -108,20 +112,25 @@ here and the section it overturns is marked.*
    a build's behaviour.
 2. **One variable per build.** Build 38 changed four things and cost three
    rounds to unpick.
-3. **Suspect the instrument first.** Five of the failures in this file were the
+3. **When every measurement of a suspect comes back clean, remove the suspect
+   rather than measure it harder.** Rounds 44 to 48 each measured one more
+   property of the fatal cell and each came back clean; round 49 turned the
+   free off and answered all five at once. The switch had been in the source
+   the whole time.
+4. **Suspect the instrument first.** Five of the failures in this file were the
    tool, not the game -- and three of those were read as the game dying when
    the recorder had gone deaf.
-4. **A measurement that agrees with the theory gets checked as hard as one that
+5. **A measurement that agrees with the theory gets checked as hard as one that
    does not.**
-5. **Never ship from a directory another script built into.** `ref.sh` once
+6. **Never ship from a directory another script built into.** `ref.sh` once
    left a different configuration in `out/` and it went to the phone.
-6. **Ordinals come from the device, not from a def file.** The phone is an N95
+7. **Ordinals come from the device, not from a def file.** The phone is an N95
    (9.2); the emulator ROM is a 5320 (9.3).
-7. **Every hardware round goes in `ROUNDS.md` before the next one is asked
+8. **Every hardware round goes in `ROUNDS.md` before the next one is asked
    for.** One row: the single change, how many runs, the result, and what it
    settled. A round whose "settled" column is empty bought nothing and should
    be said out loud. Five of builds 38 to 43 have empty columns.
-8. **This section is updated in the same commit as the section that changes
+9. **This section is updated in the same commit as the section that changes
    it.** It went stale one round after it was written, which is how the log got
    into the state that made it necessary. `toolchain/port/checkrec.py` fails
    when a new section is appended without it; run it before committing.
@@ -2030,3 +2039,40 @@ And it does not get past the wall. The emulator still ends at a free -- of a
 free having actually happened. That is a prediction for the hardware round
 rather than an answer, because the emulator is not a reference and dies of a
 different fault. But it is the way to bet.
+
+## Round 49: the free was never the wall
+
+Three runs, 7592-byte logs to the byte, and the box carries `LEAK: nothing is
+freed`. Every one of the 99 freed pointers in the run is unique -- build 48
+freed `7b7c10` three times over, because the heap kept handing it back -- so
+nothing went to the heap, and the run stops in exactly the same place:
+
+| | build 48 | build 49 |
+|---|---|---|
+| traced events at the last box write | 128 | 128 |
+| last import in the box | `RLibrary::Close` | `RLibrary::Close` |
+| stack high-water | 1932 | 1932 |
+| imports in the log | 248 | 248 |
+| frees / verdicts | 99 / 32 | 99 / 32 |
+| stops at | the 99th free | the 99th free |
+
+`User::Free` never ran, and the wall did not move. It is the last record before
+the fault because it is the last thing we write, not because it is what faults.
+Everything between that record and the next traced import -- the game's own
+code, after `delete` returns -- is what five rounds of heap forensics were
+standing in front of.
+
+One number falls out of it. The fatal cell's header reads `0x20` here,
+`align8(27 + 4)`, where build 48 read `0x28` on the same free. That was reuse,
+not damage: RHeap hands over a whole recycled cell rather than split off a
+remainder too small to be a cell. The build-48 entry warned the request column
+could not tell those apart; the leak removes reuse and the header snaps to the
+arithmetic.
+
+### What it costs to have taken five rounds over this
+
+Rounds 44 to 48 were each a sound measurement, and each one came back clean.
+The rule they were missing is not about heaps: **when every measurement of a
+suspect comes back clean, the cheapest next move is to remove the suspect, not
+to measure it more precisely.** `LEAK_EVERYTHING` had been sitting in the
+source, unshipped, the whole time.

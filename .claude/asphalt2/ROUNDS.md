@@ -55,7 +55,7 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 46 | Flush the ring's verdict, not just the pointer | 1 | 136, dies freeing `0x7b8e20` | **The fatal free is legitimate.** Its pointer matched a live 27-byte cell -- no double, no stray. The verdict was the last record written, so the fault is in `User::Free` itself |
 | 47 | Log the cell's header words before each free | 1 | 136, dies freeing `0x7b8e20` | **The header is healthy.** 27 bytes requested, header reads `0x28` -- exactly the emulator's pattern. The cell itself is not damaged |
 | 48 | Read the *neighbouring* cell's header, ring-vouched | 3 | 128 events, all three identical, dies freeing `0x7b89a8` | **The header is right, and the neighbour corroborates it.** The ring independently holds an allocation at `next + 4`, so the cell really does end where its header says. Nothing about the free is corrupt |
-| 49 | **Free nothing.** All three deallocation ordinals answered by a no-op | pending | – | – |
+| 49 | **Free nothing.** All three deallocation ordinals answered by a no-op | 3 | 128 events, identical, stops at the same 99th free | **`User::Free` is not the wall.** Nothing was freed -- every freed pointer in the run is unique where build 48 reused them -- and the run stops in exactly the same place. Retires rounds 44-48 |
 
 ## Where we are
 
@@ -65,13 +65,17 @@ resource-loading sequence, opens `cwivenc.dat` successfully, and dies inside a
 `User::Free`. Build 48 is where it stopped being a lottery: three runs,
 byte-identical logs.
 
-**Best round so far: 48** -- it is the round that ends the line of enquiry
-rather than extending it. Heap chain, pointer, size, header and neighbour all
-measure correct, with the header independently corroborated, so "something
-about this cell is damaged" is exhausted. It also made the run deterministic
-enough that one run is now worth something.
+**Best round so far: 49.** It answered a question five rounds had only
+narrowed, and answered it in the direction that retires them: with every
+deallocation turned into a no-op, the run stops in exactly the same place. The
+fault is not in `User::Free`, was never in the cell, and the whole
+"which property of this cell is damaged" programme is closed. It is also the
+cheapest round in the file -- one switch, already in the source.
 
-**Runner-up: 44.** It was the first to show that "64 records" -- which
+**Runner-up: 48**, which made the run deterministic (three byte-identical logs)
+and established the last of the measurements 49 then made moot.
+
+**Before those: 44.** It was the first to show that "64 records" -- which
 five earlier rounds had been scored on -- was our own log block hiding the
 tail, and it reached 136 with the free matching working. Everything since is
 refinement of what it exposed.
@@ -88,10 +92,10 @@ is the single change that made hardware rounds informative again.
 | Frees before the fatal one | 31, all matched a live cell, no doubles, no strays |
 | `RFile::Open` | returns KErrNone |
 | Setup state | identical to the emulator |
-| The fatal cell's header | `0x28`, and the ring holds an allocation at `next + 4` -- so the cell ends exactly where the header says |
-| Its neighbour | header `0x20`, a live 24-byte cell the ring recognises. The only live neighbour of 27 |
-| Fatal call | `User::Free(0x7b89a8)` -- build 44 had `0x7b7cd8`, same point, different heap layout |
-| Determinism | three runs of build 48 produced byte-identical logs |
+| The fatal cell's header | correct: `0x20` for a 27-byte request once reuse is off |
+| Fatal call | the 99th `delete` of the run. The pointer moves with the heap layout; the call does not |
+| **`User::Free`** | **innocent. Build 49 turned every deallocation into a no-op and the run stopped in the same place** |
+| Determinism | three byte-identical logs in each of rounds 48 and 49 |
 
 So the heap is sound, the pointers are sound, the open succeeds -- **and the
 fatal free is of a live, known, 27-byte cell**. Round 46 closed the last gap:
@@ -99,11 +103,11 @@ the verdict record was the final thing written before the run ended, so
 everything up to and including our own handler completed and the fault is
 inside `User::Free`.
 
-Builds 47 and 48 read the header and then the neighbour's header. Both are
-right, and the neighbour corroborates the first independently. **There is
-nothing left to measure about this cell.** Rounds 44 to 48 have each closed one
-description of the damage and found none, which is the point at which
-describing it harder stops being the cheapest move.
+Builds 47 and 48 read the header and then the neighbour's header; both were
+right. Build 49 then removed the free entirely and the run stopped in the same
+place, which makes all of that moot: **the cell was never the problem.** What
+is left is the game's own code after the 99th `delete` returns, which nothing
+has looked at because the free was standing in front of it.
 
 ### What build 48 found
 
@@ -152,20 +156,48 @@ the ring for an address that was reused. Twenty-six of thirty-two fit the rule
 exactly, including every large allocation. **The request column cannot be used
 to call a header wrong.**
 
-### Build 49, out and not yet answered
+### What build 49 found
 
-The one change: nothing is freed. This is the first build in the series that
-changes the game's behaviour rather than watching it, and it is here because
-rounds 44-48 exhausted what can be measured about the fatal cell.
+The leak was installed -- the box says `LEAK: nothing is freed`, and every one
+of the 99 freed pointers in the run is unique, where build 48 freed `7b7c10`
+three times and the emulator freed one address ten times. Nothing went back to
+the heap.
 
-Read the round this way. If the phone gets further, the free was the wall and
-the port has moved. If it stops in the same place having freed nothing, then
-`User::Free` was never the problem -- which retires the thing five rounds have
-been built on, and points the next build at the ground between the free record
-and the next traced import.
+And the run stops in exactly the same place.
 
-The emulator was run first and says it will be the second: 275 imports against
-build 48's 289, still ending at a free record, with the leak demonstrably in
-effect (every freed pointer unique, where build 48 reused one address ten
-times). It is not a reference and it dies of a different fault, so the phone
-decides.
+| | build 48 | build 49 |
+|---|---|---|
+| traced events at the last box write | 128 | 128 |
+| last import in the box | `RLibrary::Close` | `RLibrary::Close` |
+| stack high-water | 1932 | 1932 |
+| imports in the log | 248 | 248 |
+| frees | 99 | 99 |
+| verdicts | 32 | 32 |
+| stops at | the 99th free | the 99th free |
+
+**So `User::Free` is not the wall.** It never ran. The free is simply the last
+thing written before the fault, and the ground between that record and the next
+traced import -- the game's own code, after the `delete` returns -- is what has
+been wearing the blame since build 44.
+
+Five rounds of "which property of this cell is damaged" are retired by one
+round that did not measure the cell at all.
+
+### A number that was wrong, and is now explained
+
+With nothing reused, the fatal cell's header reads `0x20` -- exactly
+`align8(0x1b + 4)`, the size its 27-byte request calls for. Build 48 read
+`0x28` on the same free. That was not damage: it was RHeap handing over a whole
+recycled cell rather than splitting off a remainder too small to be one, which
+is what the build-48 entry above already warned the request column could not
+distinguish. The leak removes reuse, and the header snaps to the arithmetic.
+
+### Build 50: find the call site
+
+Nothing about the next step needs the phone. The question is now *which*
+`delete` this is -- there are 99 in the run and the 99th is the one -- and a
+call site is a static property of the game's image. `arg_thunk` records `r0`
+and `r1`; `r1` at a `delete` is junk (`0x6d6a2b7b` every time). Recording `lr`
+instead names the instruction in the game that called it, and the emulator is
+good enough to find it, because the address is in the image rather than in the
+heap.
