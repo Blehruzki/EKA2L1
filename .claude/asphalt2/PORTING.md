@@ -962,3 +962,40 @@ different path. It stops.
 And it stops fast: the tick records put the whole run at **64 ticks, one
 second**, from the first milestone to the last. Whatever kills it is not a
 watchdog and not a slow leak.
+
+### Checked while waiting: the game's globals are not missing
+
+The image declares `dataSize = 0` and `bssSize = 0`: the game has no writable
+static data at all, so every global it has lives behind `Dll::Tls()`. That is
+the GCC98r2 pattern for a polymorphic DLL, and it is the sort of thing a loader
+that never runs a DLL attach would silently lose -- which would explain the
+container full of stale pointers that the emulator dies on.
+
+It is not lost. Reading the image out:
+
+```
+000b8f24  operator new(8)               @ the TLS root
+000b8e48  [r5+4] = 0x10182f38           @ its table
+          [r5+0] = operator new(0x28)   @ ten pointers, zeroed
+          Dll::SetTls(r5)
+000b8f44  set(a, b): Dll::Tls()->[0][b] = a
+000b8fa4  b 0xc8b2c -> UserSvr::DllTls(0x10000000)   @ the handle is the
+                                                       image's own code base
+```
+
+and three probes say it all happened:
+
+```
+0x000b8f54  r0 = 0089aac8   -> 0089aaf0 04882f38 00000000 00000000
+```
+
+`0x89aaf0` is the ten-pointer array and `0x4882f38` is `0x10182f38` correctly
+rebased into our chunk. The root is built, the handle survives our relocation,
+and 9.x answers it.
+
+*What nearly went in here as a finding* is that `UserSvr::DllSetTls` never
+appears in the trace while `DllTls` appears six times -- read as "the creator
+never runs". It never appears because `TRACE_MILESTONES` traces a whitelist
+and 304 is not on it. Three probes and one emulator run, no hardware, and the
+theory was dead before it was written down. That is the intended cost of one
+now.
