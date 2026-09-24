@@ -30,7 +30,33 @@ def sections(text):
     return re.findall(r'^## .*$', text, re.M)
 
 
+ROUNDS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'ROUNDS.md')
+
+
+def unfinished_runs():
+    """Rows emurun.sh wrote and nobody finished.
+
+    The emulator runs went unlogged for a whole session while the hardware
+    rounds were written up religiously, because one had a file and a rule and
+    the other did not. emurun.sh writes the row; this refuses to let the row
+    stay a stub.
+    """
+    try:
+        rows = open(ROUNDS).read().splitlines()
+    except OSError:
+        return []
+    return [r for r in rows if r.startswith('|') and r.rstrip().endswith('TODO |')]
+
+
 def main():
+    bad = unfinished_runs()
+    if bad:
+        print('checkrec: %d run(s) logged and not written up:' % len(bad))
+        for r in bad:
+            print('  ' + r.strip())
+        print('  Fill in what each settled -- or say it settled nothing, which')
+        print('  is also an answer and the one worth recording.')
+        return 1
     new = open(DOC).read()
     try:
         old = subprocess.run(['git', 'show', 'HEAD:' + REL], capture_output=True,

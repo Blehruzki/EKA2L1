@@ -9,8 +9,46 @@ not a repeat of. If I state a finding, ask which row established it. If a row's
 "settled" column is empty, that round bought nothing and I should say so rather
 than let it blur into the next one.
 
+**Both machines are in here.** The emulator table below came late: fifteen
+emulator runs happened while only the hardware rounds were being written down,
+and they existed only as prose in `PORTING.md`, where a repeat could not be
+caught. `emurun.sh` writes each run's row itself now and `checkrec.py` will not
+let a stub row survive a commit, so "I forgot to log it" is not available.
+
 The phone is a **Nokia N95** (Symbian 9.2, S60 3rd FP1). The emulator runs an
 RM-409 (5320, 9.3 / FP2). Counts are *traced events* unless stated.
+
+## Emulator runs
+
+Hardware rounds are not the only tests. Most of the work happens here, and the
+same rule applies: a run that is not written down gets repeated. `emurun.sh`
+appends a row automatically with the record count and the fault, leaving
+`TODO` in the last column; `checkrec.py` refuses a commit while any `TODO` is
+still there, so the row has to be finished before the next thing is done.
+
+Rows before the script existed were reconstructed from the session that ran
+them, and say so.
+
+| # | The one change | records | ends | What it settled |
+|---|---|---|---|---|
+| E1 | baseline, neighbour read off *(reconstructed)* | 1066 | `0x30002` | The reference point for rounds 48-50 |
+| E2 | 3 extra records per free, **no dereference** | 1258 | `0x30002` | **Log volume does not perturb the emulator.** The earlier `0x9B0000` really was the read |
+| E3 | ring-vouched neighbour dereference | 1236 | `0x30002` | Safe. Shipped as build 48 |
+| E4 | `LEAK_EVERYTHING` | 1188 | `0xEAF88580` | Leak verified in effect: every freed pointer unique. Does not pass the wall |
+| E5 | + `W_LEAK` box flag | 1188 | `0xEAF88580` | The flag is not behavioural. Shipped as build 49 |
+| E6 | `arg_thunk` records `lr` | 1188 | `0xEAF88580` | **The fatal delete is at image offset `0xcc8c0`** |
+| E7 | 4 probes after the delete | 1208 | `0xEAF88580` | 990 and 991 fire: the run gets past the delete |
+| E8 | 6 probes | 1210 | `0xEAF88580` | 992 fires, 993 does not. Shipped as build 50 |
+| E9 | probes at `0xcc864` and `0xcc894` | 1230 | `0xEAF88580` | `this->[4]` good at entry, garbage after |
+| E10 | + probe at `0xcc874` | 1240 | `0xEAF88580` | **`bl 0xe9988` is the one call that poisons it** |
+| E11 | 10 probes *inside* `0xe9988` | 595 | – | Run dies before any marker. The function will not take a patch |
+| E12 | + inner probes silent until the watch latches | 553 | – | Not the logging. The planting itself |
+| E13 | a single inner probe at `0xe9990` | 553 | `0x8D8EE…` | Confirms it: one patched word in that function ends the run |
+| E14 | `watch_note` in `gate6_result` / `gate6_arg` | 1268 | `0xEAF88580` | No perturbation, and the poison lands in a window between an allocation and the `delete` at `0x104828` |
+| E15 | + `watch_note` in `gate6_trace` | 1292 | `0xEAF88580` | Same window with three times the stations. Current state |
+| E16 | self-test of `emurun.sh` (no source change) | 1292 | `0xEAF88580` | The runner logs itself, and `checkrec.py` refuses the stub. Also an independent repeat of E15, to the record |
+
+<!-- EMURUN -->
 
 ## Builds 1-30 (before the record was kept this way)
 
