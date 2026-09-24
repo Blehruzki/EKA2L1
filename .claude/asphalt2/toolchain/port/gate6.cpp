@@ -979,7 +979,7 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 // emulator shows the same sequence with or without them.
 enum { TRACE_EVERY_IMPORT = 1 };
 enum { TRACE_SKIPS_HOT = 1, TRACE_MILESTONES = 1 };
-enum { WATCH_ALLOCATIONS = 0 };
+enum { WATCH_ALLOCATIONS = 1 };
 enum { PLANT_CRUMBS = 0 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1112,6 +1112,11 @@ extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
 // allocation produced an object the game later walks.
 extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
 {
+    // Only the failures. An allocator that succeeded says nothing worth the
+    // time -- and time is what the run is short of -- while a zero is the whole
+    // answer to whether the phone is running out of memory.
+    if (result)
+        return;
     log_event(c, NOTE_RESULT, result);
     log_event(c, NOTE_RESULT_OF, index);
     log_event(c, NOTE_RESULT_ARG, arg);
@@ -1321,6 +1326,12 @@ extern "C" void gate6_timer_docancel(void *, u32, Context *c)
     old_call(c->oldTimer, OLD_DOCANCEL);
 }
 
+// Left on. Releasing the screen is not a one-line switch: the graphics context
+// only exists once StartL has run, so without it the run dies writing through
+// a null at three milestones. If the window server's abort timeout turns out
+// to be the reboot, this needs the context standing in as well.
+enum { HOLD_THE_SCREEN = 1 };
+
 static void dsa_refresh(Context *c);
 
 extern "C" void gate6_timer_runl(void *, u32, Context *c)
@@ -1415,7 +1426,10 @@ static void dsa_refresh(Context *c)
     const u32 *real = c->dsaReal;
     u32 *shadow = c->dsaShadow;
     shadow[ACTIVE_STATUS / 4] = real[ACTIVE_STATUS / 4];
-    shadow[OLD_DSA_ACTIVE / 4] = real[OLD_DSA_ACTIVE / 4];
+    // The game reads this before it will do anything, so when the real screen
+    // is not being held it has to be told otherwise -- without it the run stops
+    // at three milestones instead of a hundred and seventy.
+    shadow[OLD_DSA_ACTIVE / 4] = HOLD_THE_SCREEN ? real[OLD_DSA_ACTIVE / 4] : 1;
     c->realGc = (u32 *)real[NEW_DSA_GC / 4];
     // Not the real graphics context: the game calls it by vtable slot, and the
     // two vtables do not line up. What it gets is the stand-in built below.
@@ -1521,10 +1535,23 @@ enum { DRAW_THE_FRAME = 1, OLD_GC_BITBLT = 46 };
 enum { TAKE_THE_SCREEN = 1 };
 enum { IMPORT_SET_AUTO_UPDATE = 45, IMPORT_SCREEN_UPDATE = 47 };
 
+// Direct screen access is a promise to the window server that drawing will
+// stop the moment it says so. The game starts it, draws one frame, and then
+// spends the rest of the run computing -- thousands of operations, all inside
+// one RunL, never going back to the active scheduler and so never able to hear
+// an abort. The emulator does not mind. A phone has a timeout on that, and two
+// runs of the same build rebooting at 110 and 118 milestones -- one a prefix of
+// the other, so the same path and a different moment -- is what an
+// asynchronous intervention looks like rather than a fault in the code.
+//
+// Nothing is drawn again in any of that stretch: the one Update is at
+// milestone 16 and the emulator's run ends at 170 without another. So holding
+// the screen through it buys nothing and can be given up for nothing.
 extern "C" void gate6_dsa_startl(void *, u32, Context *c)
 {
     typedef void (*StartL)(void *);
-    ((StartL)c->newDsaStartL)(c->dsaReal);
+    if (HOLD_THE_SCREEN)
+        ((StartL)c->newDsaStartL)(c->dsaReal);
     dsa_refresh(c);
 }
 
@@ -2529,13 +2556,18 @@ static u32 load_and_start()
     // one handed back. Bench only: it doubles their cost and says nothing the
     // phone needs.
     if (WATCH_ALLOCATIONS) {
-        static const u32 kAlloc[] = { 332 };            // HBufC16::New, asked before the call
+        // Every allocator, recording what came back. An allocation that fails returns
+            // zero rather than panicking, so if the phone is running out of memory -- the
+            // other thing that is asynchronous, varies with whatever else the phone is
+            // doing, and would explain two runs of one build stopping eight milestones
+            // apart -- it will be a zero in here.
+            static const u32 kAlloc[] = { 265, 269, 270, 332 };
         for (u32 i = 0; i < sizeof kAlloc / sizeof kAlloc[0]; i++) {
             const u32 j = kAlloc[i];
-            if (j >= nImports || ctx->spare + 13 * 4 > ctx->spareEnd)
+            if (j >= nImports || ctx->spare + 16 * 4 > ctx->spareEnd)
                 continue;
-            iat[j] = arg_thunk(ctx->spare, ctx, j, iat[j]);
-            ctx->spare += 13 * 4;
+            iat[j] = result_thunk(ctx->spare, ctx, j, iat[j]);
+            ctx->spare += 16 * 4;
         }
     }
 

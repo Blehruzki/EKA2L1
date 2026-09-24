@@ -625,6 +625,27 @@ already seen on the phone. Nothing draws again before the emulator faults at
 search at game+0xd5abc is now the wall for both machines rather than just this
 one.
 
+**Two runs of that build, deliberately identical** (`phone-2026-09-24h.log`):
+222 records against 230, 110 milestones against 118, and one a *prefix* of the
+other. Same path, different moment, so the reboot is asynchronous -- it is not
+in the code the game is running.
+
+Two things are asynchronous here. One is the window server: direct screen
+access is a promise to stop drawing when told, and the game holds it while
+computing for thousands of operations inside a single `RunL`, never back in
+the active scheduler and so never able to hear an abort. `HOLD_THE_SCREEN`
+tests that by not taking the screen -- but it cannot be a one-line switch, as
+the graphics context only exists once `StartL` has run and the run dies
+writing through a null at three milestones. Left on until the stand-in exists.
+
+The other is memory, which varies with whatever else the phone is doing and
+would equally explain two runs eight milestones apart. That one is cheap to
+settle: `User::Alloc`, `AllocL`, `AllocZL` and `HBufC16::New` return zero on
+failure rather than panicking, so `result_thunk` now records **only** the
+zeroes -- nothing at all in the ordinary case, the whole answer if it happens.
+None in the emulator's 135 allocations.
+
+
 
 
 
