@@ -982,7 +982,7 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 // emulator shows the same sequence with or without them.
 enum { TRACE_EVERY_IMPORT = 1 };
 enum { TRACE_SKIPS_HOT = 1, TRACE_MILESTONES = 1 };
-enum { WATCH_ALLOCATIONS = 1, LOG_THE_CLOCK = 1 };
+enum { WATCH_ALLOCATIONS = 1, LOG_THE_CLOCK = 1, REFUSE_DRIVERS = 1 };
 enum { PLANT_CRUMBS = 0 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1761,7 +1761,7 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
         485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 495, 501,
         623, 624, 628, 630, 1134, 1778, 1779, 1780,
     };
-    for (u32 k = 0; mapped && k < sizeof kDriver / sizeof kDriver[0]; k++)
+    for (u32 k = 0; REFUSE_DRIVERS && mapped && k < sizeof kDriver / sizeof kDriver[0]; k++)
         if (kDriver[k] == mapped) {
             log_event(c, NOTE_DRIVER, mapped);
             return c->noopFn;

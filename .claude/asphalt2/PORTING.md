@@ -710,3 +710,58 @@ framework while it works.
 - The framework base-class constructors are still `LOCAL_NOOP` approximations.
 - `mke32.py` has no `.bss` support, which is why the context is reached
   through a pointer baked into each thunk.
+
+## Stopping to take stock
+
+**The clock says it is not time either.** 63 ticks across the phone's whole run
+against the emulator's 38 -- about a second, not the ten a watchdog would want
+(`phone-2026-09-24k.log`). That was the last hypothesis standing, and it is
+wrong like the others.
+
+What is actually established, as against guessed:
+
+- **Ruled out by measurement**: the write ceiling (30 writes now), instrument
+  weight (58-60% held across a 25-fold reduction), memory (no allocation
+  returns zero), resource leaks (loads/closes and file sessions match the
+  emulator exactly), the window server (releasing the screen changes nothing),
+  elapsed time (one second), and a data-dependent divergence (every phone run
+  is a prefix of the emulator's sequence).
+- **Fixed, and each one real**: the GCC98/EABI vtable and ABI work, the
+  decryptor, the cache flushes, `SetKeyBlockMode` on the right ordinal,
+  `gate6_cancel`'s register, and the driver refusal -- which moved the phone
+  off a plateau it had sat on for seven builds.
+- **Still unexplained**: the reboot, at 107-118 milestones, five runs running.
+
+**A reboot is not a user-side fault.** Symbian's own documentation is plain
+about it: a user thread that touches bad memory gets KERN-EXEC 3, and the OS
+reboots when the faulting thread is a *kernel* one. So whatever is happening is
+kernel-side, which a user process can reach in very few ways -- essentially
+through a device driver, or by taking a system server down with it.
+
+**And the game drives a kernel device.** The LDD it loads is named `GD1DRV`,
+and `gd1drv.ldd` (uid2 0x100000af, a kernel LDD) sits in `system/libs` of both
+N-Gage ROMs beside `gd1eng.dll`, and in no S60v3 ROM. The game opens a bus
+logical channel to it and issues `DoControl`. Refusing those calls stopped the
+KERN-EXEC 0, correctly -- but it leaves the game running on whatever it makes of
+a driver that answered zero to everything, which is not the same as working.
+
+## What this needs, to be worked on without the phone
+
+**The N-Gage is already here.** EKA2L1 has NEM-4 and RH-29 installed with their
+ROMs, and the original unmodified game runs on them: `--device NEM-4 --run
+0x101fd42d` reaches the same files in the same order and loads GD1DRV.LDD
+before it stops. That is the reference this work has never had -- the game
+behaving *correctly*, to compare the port against, instead of inferring correct
+behaviour from a 5320 running the port.
+
+**EKA2L1 is this repository.** Every divergence so far has been the emulator
+being lenient where hardware is strict: invalid handles tolerated, DSA rules
+unenforced, an absent LDD shrugged off. Those are all things that can be made
+strict here, and a stricter emulator reproduces the phone's failures locally
+instead of one per hardware round.
+
+**GD1DRV can be emulated.** EKA2L1 has an `ldd::factory` framework and no
+GD1DRV in it -- `suitable_ldd_instantiate_func` finds nothing, which is why
+even the native run cannot use the driver. Writing that factory would let the
+native game get past it and show what the driver is actually for, which is the
+one thing needed to decide what the shim should answer instead of zero.
