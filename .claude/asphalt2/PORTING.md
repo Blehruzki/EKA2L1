@@ -1829,3 +1829,42 @@ within the next eight records, which the block hides.
   guaranteed to come back -- and a thunk silently skipped for want of arena
   would look exactly like the game dying. The emulator reads 20612 bytes spare,
   a 3768-byte context, and all four wraps installed.
+
+## The furthest run yet, and it dies inside a free
+
+Build 44: **136 traced events**, four past the previous best and well past the
+64 that four builds in a row had been read as. So builds 38 to 43 were not
+failing where they appeared to -- the log's block boundary was hiding the tail,
+exactly as the section above worked out.
+
+The free matching ran, and it clears the pointer:
+
+```
+31 frees, 31 matched a live cell, 0 double frees, 0 strays
+```
+
+The setup state matches the emulator exactly -- 20612 bytes of spare arena,
+a 3768-byte context, all four optional wraps installed -- so nothing is being
+silently skipped on the phone that is present here.
+
+And the last three records are:
+
+```
+731  -- about to call import 0x13b      User::Free
+732  --   asked for  007b7cd8
+     (nothing further)
+```
+
+**It dies inside a free of 0x7b7cd8**, and whether the ring knew that pointer
+is the one thing not on disk, because the exact-logging window was placed over
+the first 96 records -- where the failure was wrongly believed to be.
+
+So build 45 writes the pointer and flushes it *before* anything is done with
+it. Thirty-one frees in a run can each afford a write of their own, and this is
+the one place the record has to survive the thing it is recording.
+
+Two facts now stand together and constrain what is left: at event 128 the heap
+walks clean with 1209 cells, and every free up to the fatal one matches a live
+cell. The heap is sound and the pointers are sound -- so either the fatal
+pointer is the first bad one, or `User::Free` is faulting for a reason that is
+not the cell it was given.

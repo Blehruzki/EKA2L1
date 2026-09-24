@@ -1281,20 +1281,26 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
         // an ordinary match. Only the *records* are rationed: frees are
         // constant traffic, so the plain ones are kept for the stretch the run
         // dies in, and a double or a stray is reported wherever it happens.
+        // The pointer goes down before anything is done with it. The run that
+        // got furthest died inside a free, between the record naming the
+        // pointer and the record saying what the ring made of it -- and the
+        // exact-logging window was at the start of the run, where the failure
+        // was wrongly believed to be. A free is rare enough (thirty-one in a
+        // run) to afford a write of its own, and it is the one place the
+        // record has to survive.
+        log_event(c, NOTE_FREE, a0);
+        log_block(c);
         const int loud = (c->traceCount >= (u32)FREE_WATCH_FROM);
         for (u32 k = 1; k <= ALLOC_RING; k++) {
             const u32 i = (c->allocNext - k) & (ALLOC_RING - 1);
             if (c->allocPtr[i] != a0)
                 continue;
             if (c->allocLen[i] == SPENT) {
-                log_event(c, NOTE_FREE, a0);
                 log_event(c, NOTE_FREE_TWICE, a0);
                 log_block(c);
             } else {
-                if (loud) {
-                    log_event(c, NOTE_FREE, a0);
+                if (loud)
                     log_event(c, NOTE_FREE_OK, c->allocLen[i]);
-                }
                 c->allocLen[i] = SPENT;
             }
             return;
@@ -1303,7 +1309,6 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
         // a long way, so this is only worth saying late, where it is a claim
         // about this free rather than about the ring's depth.
         if (loud) {
-            log_event(c, NOTE_FREE, a0);
             log_event(c, NOTE_FREE_STRAY, a0);
             log_block(c);
         }
