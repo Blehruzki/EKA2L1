@@ -26,6 +26,8 @@ BOX_RING = ring_size()
 BOX_FROM = 4 + BOX_RING
 BOX_PATH = BOX_FROM + BOX_RING
 BOX_SLOT, BOX_FRAMES, BOX_STACK = BOX_PATH + 1, BOX_PATH + 2, BOX_PATH + 3
+BOX_EXC = BOX_STACK + 1
+BOX_NAME, BOX_NAME_WORDS = BOX_EXC + 1, 8
 MAGIC = 0x47364234
 FLAGS = [(1, 'abort'), (2, 'restart'), (4, 'docancel'), (8, 'runerror'),
          (16, 'a slot of ours'), (32, 'THE FRAME LOOP RAN'),
@@ -45,6 +47,14 @@ def show(path, imports):
     print('  reached %s' % (', '.join(n for b, n in FLAGS if w[2] & b) or 'nothing'))
     print('  path %d   last slot %x   frames %d   stack high-water %d bytes'
           % (w[BOX_PATH], w[BOX_SLOT], w[BOX_FRAMES], w[BOX_STACK]))
+    exc = w[BOX_EXC] if BOX_EXC < len(w) else 0
+    print('  User::SetExceptionHandler said %d%s'
+          % (exc, '' if exc == 0 else '   <- the handler is NOT installed'))
+    name = ''.join(chr(h) if 32 <= h < 127 else ''
+                   for k in range(BOX_NAME, min(BOX_NAME + BOX_NAME_WORDS, len(w)))
+                   for h in (w[k] & 0xFFFF, w[k] >> 16))
+    if name:
+        print('  last file opened  ...%s' % name)
     for i in range(BOX_RING):
         k = (count + i) & (BOX_RING - 1)
         code, frm = w[4 + k], w[BOX_FROM + k]

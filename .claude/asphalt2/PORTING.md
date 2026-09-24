@@ -1270,3 +1270,41 @@ import sequence. Two conclusions follow. The 0x30002 fault may be an artefact
 of whatever EKA2L1 is not giving the protection rather than a defect in the
 port. And the phone, which is the only real platform in this loop, is the only
 thing that can say which.
+
+## A twelve-bit offset, and what build 34 is for
+
+`arg_thunk` kept the third argument of a wrapped call by emitting
+
+```
+str r2, [r12, #offsetof(Context, argR2)]
+```
+
+and that instruction encodes the offset in **twelve bits**. When `SILENT` set
+`LOG_BLOCK` to 1024 the log buffer in front of the field grew to eight
+kilobytes, `argR2` moved to offset 9404, and the assembler-by-hand truncated it
+to 1212 -- so the write went 8192 bytes short, landing inside the log buffer,
+where in a silent build nothing ever reads it. No damage: builds 32 and 33 are
+unaffected, and the only casualty was a field being read back as zero. But it
+is the fourth self-inflicted instrument bug in this file and the first one that
+could have corrupted state rather than only lying.
+
+The thunk carries the field's own address as a literal now, which cannot be
+truncated, and the silent build's buffer is a quarter of what it was. None of
+the other thunks index the context; they all use literals already.
+
+**Build 34** is still silent, and carries:
+
+- The box every **eight** traced events rather than sixteen: about twenty
+  writes on a run of the length the phone manages, against the eighty-six the
+  rebooting builds were doing. It pins where it stopped to within eight events.
+- **The last file opened**, in the box. It rides the write the box was making
+  anyway, and it turns "it stopped at a read" into "it stopped on this file".
+  The emulator's says `...s\6rbc\cwivenc.d`.
+- **What `User::SetExceptionHandler` returned.** KERN-EXEC 3 is the kernel's
+  panic for an exception nothing handled, so our handler is not running and our
+  own category never gets its chance. The emulator answers KErrNone; if the
+  phone answers anything else, that is why, and a working handler would give
+  the faulting address outright.
+- A log again, by accident and worth keeping: a 256-record buffer fills once in
+  a run of this length, so one extra write buys the first 256 records while the
+  box holds the tail.

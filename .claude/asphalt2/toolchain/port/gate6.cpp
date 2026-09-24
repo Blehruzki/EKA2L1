@@ -128,7 +128,7 @@ enum { SILENT = 1 };
 // builds only; the shipped one has it at zero.
 enum { LOG_ANYWAY = 0 };
 enum { QUIET = SILENT && !LOG_ANYWAY };
-enum { LOG_BLOCK = QUIET ? 1024 : 8,
+enum { LOG_BLOCK = QUIET ? 256 : 8,
        LOG_ZOOM = 0x7fffffff,
        LOG_ZOOM_END = 0x7fffffff };
 // The box is a fixed-position record rewritten on every call the framework
@@ -141,7 +141,7 @@ enum { BOX_ON_SLOT = !SILENT };
 // doing and the hundred and twenty-nine of the one that rebooted it soonest.
 // The ring is sixty-four deep, so the last box holds every event since the
 // write before it and forty-eight more besides.
-enum { BOX_EVERY_TRACED = 16 };
+enum { BOX_EVERY_TRACED = 8 };
 enum { REACHED_FAULT = 256 };   // the exception handler ran
 // 800..899 are notes rather than events: the code says what is being noted and
 // the column that usually holds a caller holds the value. They are what the
@@ -175,7 +175,9 @@ enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 // A count per marker. The tail says where it was; these say whether it was
 // going round in circles to get there, and how many times.
-enum { BOX_HITS = BOX_STACK + 1, BOX_MARKERS = 40 };
+enum { BOX_EXC = BOX_STACK + 1 };       // what User::SetExceptionHandler said
+enum { BOX_NAME = BOX_EXC + 1, BOX_NAME_WORDS = 8 };   // the last file opened
+enum { BOX_HITS = BOX_NAME + BOX_NAME_WORDS, BOX_MARKERS = 40 };
 enum { BOX_WORDS = BOX_HITS + BOX_MARKERS, BOX_BYTES = BOX_WORDS * 4 };
 
 struct Ptrc16 { u32 lengthAndType; const u16 *text; };
@@ -1275,6 +1277,20 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
     if (index == IMPORT_FILE_OPEN) {
         u32 n = 0;
         const u16 *t = des_text((const u32 *)c->argR2, &n);
+        // Into the box, always: it rides the write the box was making anyway,
+        // and it turns "it stopped at a read" into "it stopped on this file".
+        if (t && n <= 256 && !((u32)t & 1) &&
+            (u32)t >= 0x400000 && (u32)t < 0x10000000) {
+            const u32 chars = 2 * BOX_NAME_WORDS;
+            const u32 from = (n > chars) ? n - chars : 0;
+            for (u32 i = 0; i < BOX_NAME_WORDS; i++) {
+                const u32 k = from + 2 * i;
+                c->boxData[BOX_NAME + i] = (k < n)
+                    ? (t[k] | ((k + 1 < n) ? (t[k + 1] << 16) : 0)) : 0;
+            }
+        }
+        if (QUIET)
+            return;
         // The layout word, so that a name that comes out shifted says which
         // layout it was read as rather than being guessed at.
         log_event(c, NOTE_RESULT_ARG, c->argR2 ? *(const u32 *)c->argR2 : 0);
@@ -1335,28 +1351,34 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
 enum { ARG_WORDS = 16 };
 
 // Three arguments, not two: r0 and r1 go to the handler in r2 and r3, and r2
-// is put in the context first, before the moves below overwrite it. A fourth
-// would need the stack.
+// is stored first, before the moves below overwrite it. A fourth would need
+// the stack.
+//
+// The store goes through the field's own address, carried as a literal, and
+// not as an offset from the context. `str r2, [r12, #off]` encodes twelve bits
+// and the field sat at 9404 once the silent build's log buffer grew in front
+// of it, so the offset was truncated and the write went 8192 bytes short --
+// into the log buffer, silently, where nothing ever reads it. A literal cannot
+// be truncated.
 static u32 arg_thunk(u8 *code, Context *ctx, u32 value, u32 target)
 {
     u32 *b = (u32 *)code;
-    const u32 off = (u32)((u8 *)&ctx->argR2 - (u8 *)ctx);
     b[0]  = 0xE92D500F;                 // stmdb sp!, {r0-r3, r12, lr}
-    b[1]  = 0xE59FC024;                 // ldr   r12, [pc, #36]  -> b[12] context
-    b[2]  = 0xE58C2000 | (off & 0xFFF); // str   r2, [r12, #off] -- the third one
+    b[1]  = 0xE59FC020;                 // ldr   r12, [pc, #32]  -> b[11] &argR2
+    b[2]  = 0xE58C2000;                 // str   r2, [r12]  -- the third argument
     b[3]  = 0xE1A03001;                 // mov   r3, r1   -- before r1 is reused
     b[4]  = 0xE1A02000;                 // mov   r2, r0
-    b[5]  = 0xE59F0010;                 // ldr   r0, [pc, #16]   -> b[11] which
-    b[6]  = 0xE1A0100C;                 // mov   r1, r12         -- the context
-    b[7]  = 0xE59FC010;                 // ldr   r12, [pc, #16]  -> b[13] handler
+    b[5]  = 0xE59F0014;                 // ldr   r0, [pc, #20]   -> b[12] which
+    b[6]  = 0xE59F1014;                 // ldr   r1, [pc, #20]   -> b[13] context
+    b[7]  = 0xE59FC014;                 // ldr   r12, [pc, #20]  -> b[14] handler
     b[8]  = 0xE12FFF3C;                 // blx   r12
     b[9]  = 0xE8BD500F;                 // ldmia sp!, {r0-r3, r12, lr}
-    b[10] = 0xE59FF008;                 // ldr   pc, [pc, #8]    -> b[14] target
-    b[11] = value;
-    b[12] = (u32)ctx;
-    b[13] = (u32)&gate6_arg;
-    b[14] = target;
-    b[15] = 0;
+    b[10] = 0xE59FF00C;                 // ldr   pc, [pc, #12]   -> b[15] target
+    b[11] = (u32)&ctx->argR2;
+    b[12] = value;
+    b[13] = (u32)ctx;
+    b[14] = (u32)&gate6_arg;
+    b[15] = target;
     user_imb_range(b, b + ARG_WORDS);
     return (u32)b;
 }
@@ -2584,7 +2606,11 @@ static u32 load_and_start()
         b[2] = 0xE59FF000;                  // ldr pc, [pc, #0]
         b[3] = (u32)ctx;
         b[4] = (u32)&gate6_fault;
-        user_setexceptionhandler(b, 0xFFFFFFFF);
+        // KERN-EXEC 3 is what the kernel raises when nothing handled the
+        // exception, and that is what the phone reports -- so this handler is
+        // not running and our own panic never gets the chance. Whether it was
+        // even accepted is one word, and it goes in the box.
+        ctx->boxData[BOX_EXC] = (u32)user_setexceptionhandler(b, 0xFFFFFFFF);
 
     }
     for (u32 i = 0; i < nImports; i++) {
@@ -2920,7 +2946,7 @@ static u32 load_and_start()
     // And RFile::Open, for the name: five or six of them in a run, and knowing
     // which file the game is on turns a record that says "a read" into one
     // that says where in its own loading sequence it had got to.
-    if (WATCH_THE_READS && IMPORT_FILE_OPEN < nImports &&
+    if (IMPORT_FILE_OPEN < nImports &&
         ctx->spare + ARG_WORDS * 4 <= ctx->spareEnd) {
         iat[IMPORT_FILE_OPEN] = arg_thunk(ctx->spare, ctx, IMPORT_FILE_OPEN,
                                           iat[IMPORT_FILE_OPEN]);
