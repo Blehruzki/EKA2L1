@@ -86,6 +86,7 @@ old_call1:
     IMPORT rlibrary_lookup,  1838    @ RLibrary::Lookup(TInt) const
     IMPORT rdebug_rawprint,   916    @ RDebug::RawPrint(TDesC16 const&)
     IMPORT user_imb_range,    667    @ User::IMB_Range(TAny*, TAny*)
+    IMPORT user_tickcount,    674    @ User::TickCount()
     @ efsrv
     IMPORT fs_connect,         68    @ RFs::Connect(TInt)
     IMPORT file_open,          93    @ RFile::Open(RFs&, TDesC16 const&, TUint)
