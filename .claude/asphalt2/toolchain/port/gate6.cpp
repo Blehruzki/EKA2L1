@@ -1077,16 +1077,12 @@ enum { PLANT_CRUMBS = 0 };
 enum { PLANT_PROBES = 0, PROBE_FIRST = 990, PROBE_BYTES = 80 };
 struct Probe { u32 at; u8 ra; u8 rb; };
 static const Probe kProbe[] = {
-    // The list find the emulator dies in. 0xd9428 is
-    //   find(container, name): for (n = container->[4]; n; n = n->[0xc])
-    //                              if (!stricmp(name, n->[0])) return n;
-    // and it dies in stricmp on the first node, whose [0] is 0x00030002.
-    { 0x000cc914,  5, 6 },      // str r5, [r5] -- the four-byte cell, self-initialised
-    { 0x000cc92c,  5, 4 },      // ldr r2, [r5] -- and read straight back out
-    { 0x000ccb68,  5, 4 },      // ldr r0, [r5] -- where the container is read from
-    { 0x000d9428,  0, 1 },      // push -- the container, and the name
-    { 0x000d9484,  6, 7 },      // ldr r4, [r6, #4] -- the container again, and the name
-    { 0x000d94e4,  5, 8 },      // mov r0, r8 -- every node, and the name
+    // Why the container at 0xcc914 is never filled. 0xcc984 installs whatever
+    // 0xe98c4 returns, and 0xe98c4 searches a table of 24-byte entries for one
+    // whose [+4] is the key, returning its fallback -- the empty slot itself --
+    // when it finds none. So: the object that owns the table, and the table.
+    { 0x000cc918,  6, 5 },      // add r4, r6, #0x28 -- the owner, and the slot
+    { 0x000e9904,  6, 8 },      // add ip, r6, r3 lsl #3 -- the table, and the key
 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb

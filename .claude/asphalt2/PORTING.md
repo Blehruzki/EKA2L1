@@ -1193,3 +1193,80 @@ the only way to read a record off a phone that had just rebooted; the box
 survives on its own now, so it is off. And a build with no writable globals
 cannot hold a `static Context *` for a one-off measurement: it fails at the
 link, which is the design working.
+
+## What the container is waiting for, and why the emulator is not a reference
+
+Following the empty container back a layer at a time:
+
+```
+0xcc90c   User::Alloc(4) -> the slot;  [slot] = slot          "empty"
+0xcc928   0xe9808(table = owner + 0x28, 1, 0)
+0xcc940   r0 = 0xe98c4(table, 1, *slot, 0, key = 0)
+          ... twenty instructions of shift-and-add ...
+0xcc984   [slot] = that                                        install
+0xccb68   find(*slot, "6RBC.off")
+```
+
+The twenty instructions between are a multiply by 3467093631 followed by a
+multiply by 4016970111, and those two multiply to **1** mod 2^32. The whole
+chain is the identity: `[slot] = 0xe98c4(...)`, obfuscated.
+
+And 0xe98c4 is not a container lookup at all. It walks a table of 24-byte
+entries for one whose `[+4]` matches the key, and for each match computes
+
+```
+overrun = entry[+0xc] - 1.5 * entry[+0x10]      clamped at zero
+```
+
+`0xd59e0`, which fills `entry[+8]`, resolves to **`User::TickCount`**;
+`0xd59e4`, one veneer along, is `Math::Random`. The entry the probes caught
+reads
+
+```
+[+4] = 0 (the key, matched)   [+8] = 0x8e -> 0x90   (ticks, rising)
+[+0xc] = 0x30 -> 0x2e         [+0x10] = [+0x14] = 0xf00
+```
+
+0xf00 is 3840 ticks: **sixty seconds**. So this is a stopwatch, not a heap,
+and the result it hands back is
+
+```
+return sl( fallback | overrun | (count << (Math::Random() % 16)) )
+```
+
+-- the fallback with junk OR'd into it if anything has overrun, which is
+anti-tamper machinery of the same family as the `6RBC.off` and `cwdynlog.dll`
+searches and the GD1DRV card check. Two seconds into a run nothing has
+overrun, so it returns the fallback unchanged, and `[slot] == slot` is the
+**correct** result. The empty container is not a symptom of anything. The game
+then walks it anyway.
+
+### The emulator is not ground truth for these paths
+
+Which raises the obvious question: what does the real game do here? EKA2L1 has
+both N-Gage ROMs installed and the original is sitting on `e.ngage`, so it can
+be asked directly --
+
+```
+eka2l1_qt --device RH-29 --run 0x101fd42d
+```
+
+-- and **the unmodified game, on its own platform, dies the same way**:
+KERN-EXEC 3, after opening `cwp.dat`, `nc.dat` and `cwivenc.dat` in the same
+order our port opens them. The fault is at 0x139588:
+
+```
+0010a9f0  mov r0, #0x24        @ thirty-six bytes
+0010a9f4  bl  operator new
+0010aa00  blne #0x139568       @ construct(it, r4)
+00139588  ldr r2, [r1, #0x240] @ <- faults; r1 is not an object
+```
+
+`[r1 + 0x240]` -- the same +0x240 table this session opened with at 0xe4724.
+
+So EKA2L1 cannot run this game on the N-Gage either, and **the emulator has
+never been a reference for the protection paths**, only for the shape of the
+import sequence. Two conclusions follow. The 0x30002 fault may be an artefact
+of whatever EKA2L1 is not giving the protection rather than a defect in the
+port. And the phone, which is the only real platform in this loop, is the only
+thing that can say which.
