@@ -54,6 +54,7 @@ this project after the reboots, and it came from reading an instrument's blind
 spot as the game's behaviour -- the same mistake, for the fifth time.
 | 46 | Flush the ring's verdict, not just the pointer | 1 | 136, dies freeing `0x7b8e20` | **The fatal free is legitimate.** Its pointer matched a live 27-byte cell -- no double, no stray. The verdict was the last record written, so the fault is in `User::Free` itself |
 | 47 | Log the cell's header words before each free | 1 | 136, dies freeing `0x7b8e20` | **The header is healthy.** 27 bytes requested, header reads `0x28` -- exactly the emulator's pattern. The cell itself is not damaged |
+| 48 | Read the *neighbouring* cell's header, ring-vouched | pending | – | – |
 
 ## Where we are
 
@@ -103,3 +104,16 @@ one part of a free that is *not* about the cell being freed: **coalescing**.
 reads a header that belongs to somebody else. `CountAllocCells` walks the
 allocated chain and would not necessarily notice a damaged free-list link or a
 damaged neighbour.
+
+### Build 48, out and not yet answered
+
+The one change: each free now also reports the address of the next cell's
+header, and -- only when the allocation ring recognises that cell -- the word
+in it and whether the ring thinks it is live. This is the coalescing path, the
+last part of a free nothing has looked at.
+
+Two things about it were settled in the emulator before it went out, so the
+hardware round is not spent on them: extra log records do not move the
+emulator (1066 -> 1258, same fault), and a bound taken from the allocation ring
+is worthless because the ring also holds `RFile::Open`'s error codes. Write
+count is unchanged from build 47.

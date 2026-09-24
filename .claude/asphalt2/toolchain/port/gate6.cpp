@@ -189,6 +189,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FREE_TWICE = 885,   // ... which had already been freed
        NOTE_FREE_STRAY = 886,   // ... which was never handed out at all
        NOTE_CELL_HDR = 887,     // the words RHeap keeps in front of a payload
+       NOTE_NEXT_HDR = 888,     // and the header of the cell after it
        NOTE_CELL_AT = 881,      // the cell a read buffer sits in
        NOTE_CELL = 879,         // and how big it is
        NOTE_OVERFLOW = 880,     // ... and the maximum, when it is more than that
@@ -1314,8 +1315,44 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
                     // ring vouched for this pointer, so reading behind it is
                     // safe. Two words, because the healthy ones give the
                     // baseline that makes the damaged one obvious.
-                    log_event(c, NOTE_CELL_HDR, ((const u32 *)a0)[-1]);
+                    const u32 hdr = ((const u32 *)a0)[-1];
+                    log_event(c, NOTE_CELL_HDR, hdr);
                     log_event(c, NOTE_CELL_HDR, ((const u32 *)a0)[-2]);
+                    // And the cell after this one. Freeing coalesces: RHeap
+                    // reads the neighbour's header to decide whether to merge,
+                    // so a free can fault on a header that is not its own.
+                    // Everything about this cell has now measured clean, which
+                    // leaves the one part of a free that is about somebody
+                    // else's memory. The size is known good, so stepping by it
+                    // is safe; the bounds check is for the case where it
+                    // is not.
+                    // Bounded by the highest address any allocation has
+                    // reached. The first attempt checked only that the size
+                    // looked sane and read the neighbour of the *last* cell
+                    // straight off the end of the heap -- the emulator's fault
+                    // moved from 0x30002 to 0x9B0000, which is what caught it.
+                    // An instrument that walks past the end of the thing it is
+                    // measuring is the same mistake as all the others.
+                    const u32 *next = (const u32 *)((const u8 *)a0 - 4 + hdr);
+                    log_event(c, NOTE_NEXT_HDR, (u32)next);
+                    // Vouched the same way this cell was: the ring has to have
+                    // been handed a payload one word past it. Nothing else is
+                    // safe to dereference -- the first attempt bounded the read
+                    // by the highest address any allocation had reached and
+                    // still walked off the end, moving the emulator's fault
+                    // from 0x30002 to 0x9B0000. (The extra records are not the
+                    // perturbation: three events per free with no dereference
+                    // leave the emulator at 0x30002.) A neighbour the ring
+                    // does not know is reported as a pointer and left alone,
+                    // which is itself the answer -- a free cell, or one older
+                    // than the ring.
+                    for (u32 j = 0; j < ALLOC_RING; j++) {
+                        if (c->allocPtr[j] != (u32)next + 4)
+                            continue;
+                        log_event(c, NOTE_NEXT_HDR, next[0]);
+                        log_event(c, NOTE_NEXT_HDR, c->allocLen[j]);
+                        break;
+                    }
                     log_block(c);
                 }
                 c->allocLen[i] = SPENT;

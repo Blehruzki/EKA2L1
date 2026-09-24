@@ -54,6 +54,10 @@ here and the section it overturns is marked.*
   `0x28`, exactly the emulator's shape. Heap chain, pointer, size and header
   all correct. What is left is the part of a free that is not about the cell
   being freed: **coalescing**, which reads the *neighbouring* cell's header.
+- **Log volume is not what moves the emulator.** Three extra records per free
+  with no dereference leave it ending exactly where it did (1066 -> 1258
+  records, the same `0x30002`). When a reading changes, the write is not the
+  suspect; what the instrument *reads* is.
 - The setup state on the phone matches the emulator exactly: 20612 bytes of
   spare arena, a 3768-byte context, all four optional wraps installed. Nothing
   is being silently skipped there.
@@ -78,6 +82,7 @@ here and the section it overturns is marked.*
 | The read came from caller 0xe4774 | It came from 0xed694. The import trace records the call from inside a shared helper. |
 | The emulator is a reference | For the protection paths it never was; it cannot run the original game at all. |
 | Builds 38-43 failed at 64 records | They did not fail there at all. 64 records is eight log blocks; build 44, with the same code, reached 136 events. Four builds were judged on a hidden tail. |
+| The allocation ring bounds the heap | It does not. `gate6_result` records every non-zero result, and `RFile::Open` is wrapped too, so a failed open puts `KErrNotFound` in it. A `heapTop` built from it was the whole address space, and the read it guarded walked off the end. |
 
 ### Standing rules, each bought with a wasted round
 
@@ -1888,3 +1893,70 @@ walks clean with 1209 cells, and every free up to the fatal one matches a live
 cell. The heap is sound and the pointers are sound -- so either the fatal
 pointer is the first bad one, or `User::Free` is faulting for a reason that is
 not the cell it was given.
+
+## Build 48: the neighbouring cell, and a bound that was not a bound
+
+Every property of the fatal free that belongs to the cell itself now measures
+correct -- the allocated chain walks clean, the ring recognises the pointer,
+the requested size is 27 bytes and the header in front of it reads `0x28`. What
+that leaves is the part of a free that is about somebody else's memory.
+`RHeap::Free` coalesces: it reads the header of the cell *after* the one being
+freed to decide whether the two can merge. A damaged neighbour would give
+exactly the run we have -- a clean walk, a good pointer, a good header, and a
+fault inside `User::Free`.
+
+So build 48 reads the neighbour. The cell's own header gives its length, so
+the next header sits at `payload - 4 + length`, and the record carries that
+address, the word at it, and what the allocation ring makes of it.
+
+### The first attempt walked off the end of the heap
+
+The read was first guarded by a `heapTop` -- the highest address any recorded
+allocation had reached, `result + arg` maintained in `gate6_result`. It did not
+work. The emulator's fault moved from `0x30002` (its normal ending, 1066
+records) to `0x9B0000` at 768 records: an unmapped high address, which is what
+an instrument reading past the end of the thing it is measuring looks like.
+
+The reason is worth keeping, because the ring is used for more than this.
+**`gate6_result` records every non-zero result into the allocation ring, and
+the ring is wrapped around `RFile::Open` as well as the five allocators.** A
+failed open returns `KErrNotFound`, so `allocPtr` gets `0xFFFFFFFF` and
+`heapTop` gets `0xFFFFFFFF + arg`. One failed open -- and the game's file-exists
+switch performs several -- and the bound is the whole address space. The bound
+was computed from a ring that does not only contain allocations.
+
+### What is safe, and how it was checked
+
+The neighbour is dereferenced only when the ring vouches for it the same way it
+vouched for the cell being freed: some entry's payload has to start one word
+past the candidate header. Nothing else is touched. A neighbour the ring does
+not know is reported as an address and left alone, which is itself an answer --
+it means a free cell, or one older than 256 allocations.
+
+Two emulator runs separate the instrument from the effect:
+
+| | records | fault |
+|---|---|---|
+| read disabled | 1066 | `0x30002` |
+| three extra records per free, **no dereference** | 1258 | `0x30002` |
+| ring-vouched dereference | 1236 | `0x30002` |
+
+The middle row is the one that matters. Extra log volume does not move the
+emulator; only the dereference did. That is the check rule 4 asks for -- the
+`0x9B0000` reading was not assumed to be the off-heap read just because the
+theory said so.
+
+The records it produces here look like this:
+
+```
+free                     from 8b89e0
+  matched a live cell of from 24
+  cell header word       from 28
+  cell header word       from 0
+    next cell            from 8b8a04      <- the neighbour's header address
+    next cell            from 28          <- the word in it
+    next cell            from ffffffff    <- SPENT: the ring freed it already
+```
+
+The write count is unchanged: the new records go inside the block the verdict
+already flushed, and `log_block` is called exactly as often as in build 47.
