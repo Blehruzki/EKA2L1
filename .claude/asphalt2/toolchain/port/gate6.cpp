@@ -192,6 +192,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_NEXT_HDR = 888,     // and the header of the cell after it
        NOTE_CALLER = 889,       // the return address a wrapped call was made from
        NOTE_WATCH = 895,        // and one word of a struct every probe re-reads
+       NOTE_WATCH_AT240 = 896,  // ... and what 0x139588 would read out of it
        NOTE_CELL_AT = 881,      // the cell a read buffer sits in
        NOTE_CELL = 879,         // and how big it is
        NOTE_OVERFLOW = 880,     // ... and the maximum, when it is more than that
@@ -781,6 +782,15 @@ static void watch_note(Context *c)
     const u32 *o = (const u32 *)c->watchAt;
     for (u32 i = 0; i < 4; i++)
         log_event(c, NOTE_WATCH, o[i]);
+    // And, when the field still looks like an address, the word 0x139588 will
+    // read out of it. That instruction -- `ldr r2, [r1, #0x240]` -- is the one
+    // the run dies on, so whether the *pre-call* value survives it is the
+    // question of whether the call should have written the field at all.
+    // Guarded, because the poisoned value must not be dereferenced: that is
+    // the fault we are studying, not one to reproduce.
+    const u32 v = o[1];
+    if (v >= 0x400000 && v < 0x10000000 && !(v & 3))
+        log_event(c, NOTE_WATCH_AT240, ((const u32 *)(v + 0x240))[0]);
 }
 
 extern "C" void gate6_trace(u32 index, Context *c, u32 caller);
@@ -1110,6 +1120,20 @@ enum { PLANT_CRUMBS = 0 };
 // Opt in per investigation, never by default: probes add traced events, and a
 // reference carrying them cannot be lined up against the phone's build. Tying
 // this to LOG_ANYWAY looked tidy and quietly broke the comparison again.
+// A patch, not an instrument. The store at 0x1082c0 writes a computed value
+// over this->[4] -- and the field already held a valid object before the call:
+// `[field + 0x240]`, the word 0x139588 dies reading, is a good heap pointer at
+// every one of the 83 stations before the store and the fault after it. The
+// block containing the store runs exactly once in a run, so turning that one
+// write into a no-op leaves the field with the value that works and touches
+// nothing else.
+//
+// This is a workaround and it is named as one. It does not explain why the
+// game computes a wild pointer here; it tests whether the pre-call value is
+// the right one, and if the run advances, buys reach while that is worked out.
+enum { NOP_THE_STORE = 1 };
+static const u32 kNop[] = { 0x001082c0 };
+
 enum { PLANT_PROBES = 1, PROBE_FIRST = 990, PROBE_BYTES = 80 };
 // A probe from this marker on says nothing unless the watched word has changed
 // since the last one. That makes a hot site usable: 0x1037ac is the jump table
@@ -3075,6 +3099,14 @@ static u32 load_and_start()
         for (u32 i = 0; i < sizeof kWalkCrumb / sizeof kWalkCrumb[0]; i++)
             if (kWalkCrumb[i] + 4 <= h->codeSize)
                 crumb_plant_r5(ctx, base, kWalkCrumb[i], CRUMB_WALK_FIRST + i);
+
+    if (NOP_THE_STORE)
+        for (u32 i = 0; i < sizeof kNop / sizeof kNop[0]; i++)
+            if (kNop[i] + 4 <= h->codeSize) {
+                u32 *site = (u32 *)(base + kNop[i]);
+                *site = 0xE1A00000;             // mov r0, r0
+                user_imb_range(site, site + 1);
+            }
 
     if (PLANT_PROBES)
         for (u32 i = 0; i < sizeof kProbe / sizeof kProbe[0]; i++)

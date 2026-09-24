@@ -98,7 +98,7 @@ NOTES = {860: 'slot entered', 850: 'Cancel on', 851: 'STRAY Cancel on',
          885: '  DOUBLE FREE of', 886: '  STRAY: never allocated',
          887: '  cell header word',
          888: '    next cell', 889: '  called from',
-         895: '  >> watched field'}
+         895: '  >> watched field', 896: '  >> would read at +0x240'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework

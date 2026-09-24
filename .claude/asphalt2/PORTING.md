@@ -103,6 +103,14 @@ here and the section it overturns is marked.*
   value is `755139455 * r8`, which reproduces the observed `0x1c975dc0` from the
   observed `r8 = 0x42d08240`. **`r8` arrives already wrong**, so the bug is one
   level further up the same function.
+- **The value the store clobbers is the correct one.** `[field + 0x240]` --
+  the exact word `0x139588` dies reading -- is a good heap pointer at every one
+  of the 83 stations before the store. The field held a valid object and the
+  call overwrote it.
+- **NOPping that one store takes the wall down.** 292 imports against 248, no
+  access violation at all, on through two `RLibrary::Load`s never reached
+  before, and then an orderly `User::Leave`. A workaround, not an explanation,
+  and named as one -- but the first movement here since build 44.
 - **The poison lands between a successful allocation and the `delete` called
   from image offset `0x104828`,** inside one of `0xe9988`'s callees. Watched
   from the wrappers, `this->[4]` is intact at every station before that and
@@ -2510,3 +2518,54 @@ stored value plus `0x240`, and the store is still `0x1082c0`), and the value
 being layout-dependent is itself consistent with a pointer computed from
 addresses. But the number is not comparable with anything before E20, and
 nothing should be inferred from the change in it.
+
+## The pre-call value was the answer all along
+
+**E24 asked the one question that mattered.** `0x139588` dies on
+`ldr r2, [r1, #0x240]`. So: read `[field + 0x240]` at every station, guarded so
+the poisoned value is never dereferenced. Before the store, at all 83 stations:
+
+```
+>> watched field          8d8f38
+>> would read at +0x240   8d9c60
+```
+
+A good heap pointer, stable throughout. **The field already held a valid
+object, with exactly the word `0x139588` wants, and `0xe9988` overwrote it.**
+
+**E25 acted on that.** The block containing the store runs exactly once in a
+run (E22), so one word of the game's code -- `str sl, [ip]` at `0x1082c0` --
+was replaced with `mov r0, r0`. The field keeps what it had.
+
+```
+                 imports   ends
+before            248      fault at the stored value + 0x240
+store NOPped      292      no access violation at all
+```
+
+The run goes on past everything it has ever reached: `RLibrary::Load` at
+`0x13964c` and again at `0x13f588` -- sites never seen before -- `Lookup`,
+`HBufC16::New`, a second pass of the `0xe98c4` stopwatch, more deletes. Then
+`User::Leave` from `0x2b20`, and the app exits. The `G6MEM` panic after it
+carries `1616972`, which is the byte size of `6rbc.app`: that is our *loader*
+failing to allocate the image on a relaunch, not the game.
+
+So the failure mode has changed completely, from a wild pointer dereference to
+**the game's own error path**, taken in an orderly way. That is the first
+movement at this wall since build 44.
+
+### What this is and is not
+
+It **is** a workaround. It does not explain why the game computes a wild
+pointer at `0x1082c0`, only that the value it clobbers was the correct one. The
+honest reading is that `0xe9988` is meant to *find* something and hand it back,
+finds nothing, and writes a computed miss where the caller expected the thing
+it already had.
+
+It **is** narrow: one word, in a block measured to execute once. It is not a
+blanket patch of the game's code, and the region tolerates it where `0xe9988`
+tolerates nothing.
+
+And it **is** the first candidate fix this project has had rather than another
+measurement. The next question is what `User::Leave` is complaining about --
+but that is a question at a place the port has never stood before.
