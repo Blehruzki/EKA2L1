@@ -68,8 +68,19 @@ here and the section it overturns is marked.*
   stops at the 99th free" were both the end of the recording, not the end of
   the run.
 - **The fatal delete is at image offset 0xcc8c0**, named by the `lr` its
-  wrapper now records. What kills the emulator four instructions later is
-  `[r6 + 4]`, holding `0xeaf88340` -- an ARM branch word read as a pointer.
+  wrapper now records, and round 50's probes show the phone getting past it
+  every time.
+- **The actual fault is `0x139588`: `ldr r2, [r1, #0x240]`, with `r1` taken
+  from `[r6 + 4]`, a field nobody ever wrote.** On the phone it holds
+  `0xa6dfb180`, in the emulator `0xeaf88340` -- different nonsense in each,
+  which is what an unwritten field looks like. `r1 + 0x240` is the faulting
+  address in both.
+- **`0x139588` is the instruction EKA2L1 cannot run the *original* N-Gage
+  binary past either.** That was recorded here long ago and filed as an
+  emulator deficiency. It is not one. The original game under the emulator, our
+  port under the emulator and our port on an N95 all stop at the same
+  instruction for the same reason, so whatever fills `[r6 + 4]` on a real
+  N-Gage is happening on none of the three. That is the port's real problem.
 - **Build 48's `0x28` header was reuse, not damage.** With the leak on, the
   same free reads `0x20` -- exactly `align8(27 + 4)`. RHeap had handed over a
   whole recycled cell rather than split off a remainder too small to be one.
@@ -112,6 +123,8 @@ here and the section it overturns is marked.*
 | 512 bytes meant a disk sector | `LOG_BLOCK` is 8. Sixty-four records is eight of our own blocks. |
 | The read came from caller 0xe4774 | It came from 0xed694. The import trace records the call from inside a shared helper. |
 | The emulator is a reference | For the protection paths it never was; it cannot run the original game at all. |
+| EKA2L1's KERN-EXEC 3 at 0x139588 on the original binary is an emulator bug | It is the same fault our port hits, on real hardware. `[r6+4]` is unwritten in all three cases. What looked like the emulator's limitation was the game's own missing state. |
+| The port dies in `User::Free` / at the 99th free | It dies 60-odd instructions later, at `0x139588`. The free was the last thing *logged*, and nothing between it and the fault calls a traced import. |
 | Builds 38-43 failed at 64 records | They did not fail there at all. 64 records is eight log blocks; build 44, with the same code, reached 136 events. Four builds were judged on a hidden tail. |
 | The allocation ring bounds the heap | It does not. `gate6_result` records every non-zero result, and `RFile::Open` is wrapped too, so a failed open puts `KErrNotFound` in it. A `heapTop` built from it was the whole address space, and the read it guarded walked off the end. |
 
@@ -2146,3 +2159,72 @@ write budget is unchanged in kind.
 The constant-multiply chains on r4 either side of the delete are obfuscation,
 not arithmetic: the first multiplies by 3467093631 and the second by
 4017970111, which are inverses mod 2^32. r4 comes out of the pair unchanged.
+
+## Round 50: the fault, at last, and it is an old acquaintance
+
+Three runs, identical. Markers 990, 991 and 992 fire; 993 does not.
+
+```
+marker 990 at 0x000cc8c4   r6 = 7d68e8   r4 = cea7a67f
+marker 991 at 0x000cc8ec   r6 = 7d68e8   r4 = 1
+marker 992 at 0x0010a9e4   r0 = a6dfb180
+```
+
+`r4` is `0xcea7a67f` before the second obfuscation multiply and `1` after it,
+which is the pair of inverse constants doing nothing, as expected. `r6` is
+stable. What is not stable, and not a pointer, is what `[r6 + 4]` hands over.
+
+`0x10a9e0` takes it, allocates 0x24 bytes and calls `0x139568` with it:
+
+```
+00139568  push  {r4-r8, sb, sl, lr}
+0013956c  sub   sp, sp, #0x1c
+00139570  mov   r6, r0
+00139574  ldr   r3, [pc, #0x118]
+00139578  str   r3, [r6]              <- a vtable: this is a constructor
+0013957c  mov   r4, #0
+00139580  str   r4, [r6, #8]
+00139584  str   r4, [r6, #0xc]
+00139588  ldr   r2, [r1, #0x240]      <- and here it dies
+```
+
+`r1 = 0xa6dfb180`, so it reads `0xa6dfb3c0`. In the emulator `r1` is
+`0xeaf88340` and the fault address is `0xEAF88580` -- the number the emulator
+has been printing for weeks, which is that same instruction, arrived at the
+same way.
+
+The object at `r6`:
+
+```
+[r6+00] 913458     [r6+10] 0
+[r6+04] a6dfb180   <- the only nonsense in it
+[r6+08] 7d76d0     [r6+18] 0
+[r6+0c] 4800000    [r6+1c] 0
+```
+
+Three plausible heap pointers, one large mapped address, four zeros, and one
+field holding different garbage on the phone than in the emulator. That is what
+a field nobody wrote looks like.
+
+### What this costs the emulator as an alibi
+
+`0x139588` is where **EKA2L1 cannot run the original N-Gage binary** -- KERN-EXEC
+3, written into this file long ago and filed under "the emulator is not a
+reference". It was not the emulator. Our port reaches the same instruction with
+the same kind of value in the same register, on a real N95.
+
+Three runs of three different things fail identically:
+
+| | |
+|---|---|
+| the original binary, under EKA2L1 | KERN-EXEC 3 at `0x139588` |
+| our port, under EKA2L1 | fault at `0xEAF88580` = `r1 + 0x240` |
+| our port, on an N95 | fault at `r1 + 0x240`, `r1 = 0xa6dfb180` |
+
+The original game runs on a real N-Gage. So something that fills `[r6 + 4]` on
+that device fills it on none of these three, and that is the port's actual
+problem. It has been sitting in this file, mislabelled, since before the month
+of reboots.
+
+**Next: who is `r6`, and what is supposed to write its fifth word.** That is a
+static question about the image, so it costs no hardware round.
