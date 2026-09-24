@@ -178,7 +178,14 @@ def main():
     tail = int(args[args.index('--tail') + 1]) if '--tail' in args else 40
     print('%d records' % len(events))
     for i, (code, frm) in enumerate(events[-tail:], start=len(events) - min(tail, len(events))):
-        shown = slot_name(frm) if code == 860 else '%x' % frm
+        if code == 860:
+            shown = slot_name(frm)
+        elif code == 859:
+            # two UTF-16 characters to a record, low half first
+            shown = ''.join(chr(h) if 32 <= h < 127 else '.'
+                            for h in (frm & 0xFFFF, frm >> 16))
+        else:
+            shown = '%x' % frm
         print('%6d  %-44s from %s' % (i, label(code, imports, marks), shown))
 
 

@@ -928,3 +928,37 @@ that agrees with the theory has to be checked as hard as one that does not,
 and the cheapest check is a second instrument that does not share the first
 one's assumptions. Here that was three probes and two emulator runs, and it
 could have been run on day one.
+
+## What the next hardware round is for
+
+Four reboots in a row and the one thing they do not say is *where*. The three
+newest phone logs end at 224, 226 and 265 records, and with eight events to a
+block the last record on disk is up to seven events before the one that killed
+the phone. That ambiguity is not academic: it is the same gap that let 0xe4774
+be named as the caller doing the damage when it was 0xed694.
+
+So this build is for location, and carries three changes, all of them cheap:
+
+- **`LOG_ZOOM = 65`.** From the sixty-fifth traced event on, every record is
+  written and flushed as it happens. About eighty extra writes on a run of the
+  length the phone manages; the build that took the phone down by write volume
+  alone did around two thousand. *If this one reboots noticeably earlier than
+  the last three, the instrument is implicated again and the window closes.*
+- **`RFile::Open` names its file.** `arg_thunk` now keeps the third argument
+  as well as the first two, so the name descriptor can be read: the last
+  twenty-four characters, which is the filename and enough of the path to
+  place it. The emulator's six opens read
+  `nokia_en.rle`, `6RBC.dat`, `cis.dat`, `cwivenc.dat` ×3. A record that says
+  "a read" becomes one that says where in its own loading sequence the game
+  had got to.
+- **Probes on the read helper.** Two records per read, naming the caller.
+
+What the phone and the emulator do is otherwise the same shape. Comparing the
+import histograms of the phone's last run against the emulator's, the phone is
+a strict prefix -- fewer of everything, nothing it does that the emulator does
+not, including the one pass through direct screen access. It is not taking a
+different path. It stops.
+
+And it stops fast: the tick records put the whole run at **64 ticks, one
+second**, from the first milestone to the last. Whatever kills it is not a
+watchdog and not a slow leak.

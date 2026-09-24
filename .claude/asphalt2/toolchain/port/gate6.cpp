@@ -98,7 +98,17 @@ enum { BOX_RING = 16 };
 // Eight, not sixty-four: with the milestone trace the whole run is about two
 // hundred records, so this is twenty-five writes and at most seven events lost
 // if it stops. Writes were never what cost the game its reach.
-enum { LOG_BLOCK = 8, LOG_ZOOM = 0x7fffffff, LOG_ZOOM_END = 0x7fffffff };
+//
+// And the window is open again, because the one thing four reboots in a row
+// have not said is *where*. The phone's last three runs end at 224, 226 and
+// 265 records, which is around the hundredth traced event, and with eight
+// events to a block the last record written is up to seven events before the
+// one that killed it -- which is exactly the ambiguity that let 0xe4774 be
+// named as the guilty caller when it was 0xed694. Opening at 65 leaves the
+// last third of the run recorded event by event, for about eighty extra
+// writes. The build that took the phone down through sheer write volume did
+// around two thousand.
+enum { LOG_BLOCK = 8, LOG_ZOOM = 65, LOG_ZOOM_END = 0x7fffffff };
 // 800..899 are notes rather than events: the code says what is being noted and
 // the column that usually holds a caller holds the value. They are what the
 // log was missing -- it could only ever see the game calling out, never the
@@ -397,6 +407,7 @@ enum { IMPORT_CANCEL = 279 };            // euser CActive::Cancel()
 // the thread id it is keyed on need only be consistent with itself. Answer
 // those three ourselves, pair the other two, and the game decrypts itself.
 enum { IMPORT_LIBRARY_LOOKUP = 326, IMPORT_LIBRARY_LOAD = 325 };
+enum { IMPORT_FILE_OPEN = 109, IMPORT_FILE_READ = 110 };
 // Which library the ordinals belong to: it loads euser.dll and efsrv.dll, and
 // their numberings have nothing to do with each other, so the load is watched
 // to know which table a lookup should go through.
@@ -527,6 +538,7 @@ struct Context {
     u32 allocPtr[32];       // the last few allocations, so a buffer handed to
     u32 allocLen[32];       // the file server can be checked against its cell
     u32 allocNext;
+    u32 argR2;              // the third argument of a call arg_thunk wrapped
     u32 wrapUiVptr;         // the vtable pointer wrapUi was given, checked on
                             // every call in, to catch a stray write over it
     u32 *dsaReal;           // the CDirectScreenAccess ws32 made
@@ -1175,11 +1187,48 @@ extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
 // record written before the call rather than after. A call that never returns
 // -- an allocation the phone cannot satisfy, say -- leaves nothing behind
 // otherwise.
+// A TDesC16 keeps its text in a different place for each of the four layouts,
+// and the game uses more than one. -> the text, or zero.
+static const u16 *des_text(const u32 *d, u32 *length)
+{
+    if (!d || ((u32)d & 3) || (u32)d < 0x400000 || (u32)d >= 0x10000000)
+        return 0;
+    *length = d[0] & 0x0FFFFFFF;
+    // Measured, not deduced: the names this game hands RFile::Open carry type
+    // 4, and the text is where a type-4 word says it is only if the third word
+    // is read as a pointer. Reading it as inline text -- which is what the
+    // published layout for EBufCPtr would say -- gives rubbish for every name
+    // that decoded cleanly before.
+    switch (d[0] >> KTypeShift) {
+    case EBufC:    return (const u16 *)(d + 1);     // length, then the text
+    case EPtrC:    return (const u16 *)d[1];        // length, then a pointer
+    case EBufType: return (const u16 *)(d + 2);     // length, max, then the text
+    default:       return (const u16 *)d[2];        // length, max, then a pointer
+    }
+}
+
 extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
 {
     log_event(c, NOTE_CALL_ARG, index);
     log_event(c, NOTE_RESULT_ARG, a0);
     log_event(c, NOTE_RESULT_ARG, a1);
+    // RFile::Open's third argument is the name. Sixteen characters is enough
+    // for "cwivenc.dat" and for anything else this game opens.
+    if (index == IMPORT_FILE_OPEN) {
+        u32 n = 0;
+        const u16 *t = des_text((const u32 *)c->argR2, &n);
+        // The layout word, so that a name that comes out shifted says which
+        // layout it was read as rather than being guessed at.
+        log_event(c, NOTE_RESULT_ARG, c->argR2 ? *(const u32 *)c->argR2 : 0);
+        // The tail, because the path is long and the name is at the end of it.
+        enum { NAME_CHARS = 24 };
+        if (t && n <= 256 && !((u32)t & 1) &&
+            (u32)t >= 0x400000 && (u32)t < 0x10000000)
+            for (u32 i = ((n > NAME_CHARS) ? n - NAME_CHARS : 0) & ~1u; i < n; i += 2)
+                log_event(c, NOTE_TEXT, t[i] | ((i + 1 < n) ? (t[i + 1] << 16) : 0));
+        log_block(c);
+        return;
+    }
     // For RFile::Read the second argument is the descriptor the file server
     // will write into, and what it says about itself is the whole question:
     // type and length in the first word, maximum in the second, and the buffer
@@ -1225,24 +1274,32 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
     log_block(c);
 }
 
-static u32 arg_thunk(u8 *code, const void *ctx, u32 value, u32 target)
+enum { ARG_WORDS = 16 };
+
+// Three arguments, not two: r0 and r1 go to the handler in r2 and r3, and r2
+// is put in the context first, before the moves below overwrite it. A fourth
+// would need the stack.
+static u32 arg_thunk(u8 *code, Context *ctx, u32 value, u32 target)
 {
     u32 *b = (u32 *)code;
-    b[0] = 0xE92D500F;                  // stmdb sp!, {r0-r3, r12, lr}
-    b[1] = 0xE1A03001;                  // mov   r3, r1   -- before r1 is reused
-    b[2] = 0xE1A02000;                  // mov   r2, r0
-    b[3] = 0xE59F0014;                  // ldr   r0, [pc, #20]   -> b[10] which
-    b[4] = 0xE59F1014;                  // ldr   r1, [pc, #20]   -> b[11] context
-    b[5] = 0xE59FC014;                  // ldr   r12, [pc, #20]  -> b[12] handler
-    b[6] = 0xE12FFF3C;                  // blx   r12
-    b[7] = 0xE8BD500F;                  // ldmia sp!, {r0-r3, r12, lr}
-    b[8] = 0xE59FF00C;                  // ldr   pc, [pc, #12]   -> b[13] target
-    b[9] = 0;
-    b[10] = value;
-    b[11] = (u32)ctx;
-    b[12] = (u32)&gate6_arg;
-    b[13] = target;
-    user_imb_range(b, b + 14);
+    const u32 off = (u32)((u8 *)&ctx->argR2 - (u8 *)ctx);
+    b[0]  = 0xE92D500F;                 // stmdb sp!, {r0-r3, r12, lr}
+    b[1]  = 0xE59FC024;                 // ldr   r12, [pc, #36]  -> b[12] context
+    b[2]  = 0xE58C2000 | (off & 0xFFF); // str   r2, [r12, #off] -- the third one
+    b[3]  = 0xE1A03001;                 // mov   r3, r1   -- before r1 is reused
+    b[4]  = 0xE1A02000;                 // mov   r2, r0
+    b[5]  = 0xE59F0010;                 // ldr   r0, [pc, #16]   -> b[11] which
+    b[6]  = 0xE1A0100C;                 // mov   r1, r12         -- the context
+    b[7]  = 0xE59FC010;                 // ldr   r12, [pc, #16]  -> b[13] handler
+    b[8]  = 0xE12FFF3C;                 // blx   r12
+    b[9]  = 0xE8BD500F;                 // ldmia sp!, {r0-r3, r12, lr}
+    b[10] = 0xE59FF008;                 // ldr   pc, [pc, #8]    -> b[14] target
+    b[11] = value;
+    b[12] = (u32)ctx;
+    b[13] = (u32)&gate6_arg;
+    b[14] = target;
+    b[15] = 0;
+    user_imb_range(b, b + ARG_WORDS);
     return (u32)b;
 }
 
@@ -2739,9 +2796,18 @@ static u32 load_and_start()
     // one handed back. Bench only: it doubles their cost and says nothing the
     // phone needs.
     // RFile::Read, recorded before the call with the descriptor it is handed.
-    if (WATCH_THE_READS && 110 < nImports && ctx->spare + 14 * 4 <= ctx->spareEnd) {
+    if (WATCH_THE_READS && 110 < nImports && ctx->spare + ARG_WORDS * 4 <= ctx->spareEnd) {
         iat[110] = arg_thunk(ctx->spare, ctx, 110, iat[110]);
-        ctx->spare += 14 * 4;
+        ctx->spare += ARG_WORDS * 4;
+    }
+    // And RFile::Open, for the name: five or six of them in a run, and knowing
+    // which file the game is on turns a record that says "a read" into one
+    // that says where in its own loading sequence it had got to.
+    if (WATCH_THE_READS && IMPORT_FILE_OPEN < nImports &&
+        ctx->spare + ARG_WORDS * 4 <= ctx->spareEnd) {
+        iat[IMPORT_FILE_OPEN] = arg_thunk(ctx->spare, ctx, IMPORT_FILE_OPEN,
+                                          iat[IMPORT_FILE_OPEN]);
+        ctx->spare += ARG_WORDS * 4;
     }
 
     if (WATCH_ALLOCATIONS) {
