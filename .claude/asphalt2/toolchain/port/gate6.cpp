@@ -1033,7 +1033,19 @@ enum { WATCH_ALLOCATIONS = LOG_ANYWAY, LOG_THE_CLOCK = 0, REFUSE_DRIVERS = 1,
        WATCH_THE_READS = 0, CLAMP_THE_READS = 0 };
 // Not an instrument: a fix, and it ships. See gate6_alloc.
 enum { PAD_THE_ALLOCATIONS = 0, ZERO_THE_SLACK = 0 };
-enum { LEAK_EVERYTHING = 0 };
+// Build 49. Every property of the fatal free measures correct -- chain,
+// pointer, size, header, neighbour -- so there is nothing left to describe
+// about the cell, and describing it harder has cost five rounds. This is the
+// intervention instead: the three deallocation ordinals are answered by a
+// function that does nothing, and the question becomes whether the run gets
+// past the wall at all.
+//
+// It splits cleanly either way. If the run advances, the fault is in the free
+// and the port has moved. If it dies at exactly the same place with no free
+// having happened, then the fault was never in User::Free -- the free is
+// merely the last thing we log before it, and everything between that record
+// and the next traced import has been carrying the blame for it.
+enum { LEAK_EVERYTHING = 1 };
 enum { WRAP_ALLOCATORS = WATCH_ALLOCATIONS };
 enum { WATCH_OPEN_RESULT = 1 };
 // RFile::Open returns KErrNone and the phone dies on the next instruction,
@@ -1044,7 +1056,7 @@ enum { WATCH_OPEN_RESULT = 1 };
 // out, or handed out and freed already -- and that is what matching every free
 // against the outstanding allocations says.
 enum { WATCH_FREES = 1, FREE_WATCH_FROM = 110, SPENT = 0xFFFFFFFF };
-enum { W_ALLOC = 1, W_FREE = 2, W_OPENRES = 4, W_OPENARG = 8 };
+enum { W_ALLOC = 1, W_FREE = 2, W_OPENRES = 4, W_OPENARG = 8, W_LEAK = 16 };
 enum { IMPORT_DELETE_OP = 408, IMPORT_VEC_DELETE_OP = 410, IMPORT_USER_FREE_OP = 315 };
 enum { PLANT_CRUMBS = 0 };
 
@@ -2995,6 +3007,22 @@ static u32 load_and_start()
     // it and still sees the game's own return address. Wrapped the other way
     // round the caller column reads as our own thunk, which is the alignment
     // against the emulator gone for the one import being asked about.
+    // Before the watcher, not after it. The late version overwrote the IAT
+    // entry the watcher and the trace loop had already wrapped, so turning the
+    // frees off also turned off every record of them -- two variables in one
+    // build, and the round would not have been comparable with 48. Here the
+    // no-op is what gets wrapped: the same records come out, naming the same
+    // pointers, and the only difference on the wire is that nothing is freed.
+    if (LEAK_EVERYTHING) {
+        static const u16 kFree[] = { IMPORT_USER_FREE_OP, IMPORT_DELETE_OP,
+                                     IMPORT_VEC_DELETE_OP };
+        for (u32 i = 0; i < sizeof kFree / sizeof kFree[0]; i++)
+            if (kFree[i] < nImports) {
+                iat[kFree[i]] = (u32)&gate6_free;
+                ctx->boxData[BOX_WRAPS] |= W_LEAK;
+            }
+    }
+
     if (WATCH_FREES) {
         static const u16 kFreeOp[] = { IMPORT_DELETE_OP, IMPORT_VEC_DELETE_OP,
                                        IMPORT_USER_FREE_OP };
@@ -3051,14 +3079,6 @@ static u32 load_and_start()
 
     // User::Alloc, answered by a padded, zeroed one. See gate6_alloc.
     enum { IMPORT_USER_ALLOC = 270 };
-    enum { IMPORT_USER_FREE = 315, IMPORT_DELETE = 408, IMPORT_VEC_DELETE = 410 };
-    if (LEAK_EVERYTHING) {
-        static const u16 kFree[] = { IMPORT_USER_FREE, IMPORT_DELETE, IMPORT_VEC_DELETE };
-        for (u32 i = 0; i < sizeof kFree / sizeof kFree[0]; i++)
-            if (kFree[i] < nImports)
-                iat[kFree[i]] = (u32)&gate6_free;
-    }
-
     if (PAD_THE_ALLOCATIONS && IMPORT_USER_ALLOC < nImports &&
         ctx->spare + TRACE <= ctx->spareEnd) {
         iat[IMPORT_USER_ALLOC] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_alloc);

@@ -55,6 +55,7 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 46 | Flush the ring's verdict, not just the pointer | 1 | 136, dies freeing `0x7b8e20` | **The fatal free is legitimate.** Its pointer matched a live 27-byte cell -- no double, no stray. The verdict was the last record written, so the fault is in `User::Free` itself |
 | 47 | Log the cell's header words before each free | 1 | 136, dies freeing `0x7b8e20` | **The header is healthy.** 27 bytes requested, header reads `0x28` -- exactly the emulator's pattern. The cell itself is not damaged |
 | 48 | Read the *neighbouring* cell's header, ring-vouched | 3 | 128 events, all three identical, dies freeing `0x7b89a8` | **The header is right, and the neighbour corroborates it.** The ring independently holds an allocation at `next + 4`, so the cell really does end where its header says. Nothing about the free is corrupt |
+| 49 | **Free nothing.** All three deallocation ordinals answered by a no-op | pending | – | – |
 
 ## Where we are
 
@@ -150,3 +151,21 @@ that does not go through ordinals 315, 408 or 410 leaves a stale live entry in
 the ring for an address that was reused. Twenty-six of thirty-two fit the rule
 exactly, including every large allocation. **The request column cannot be used
 to call a header wrong.**
+
+### Build 49, out and not yet answered
+
+The one change: nothing is freed. This is the first build in the series that
+changes the game's behaviour rather than watching it, and it is here because
+rounds 44-48 exhausted what can be measured about the fatal cell.
+
+Read the round this way. If the phone gets further, the free was the wall and
+the port has moved. If it stops in the same place having freed nothing, then
+`User::Free` was never the problem -- which retires the thing five rounds have
+been built on, and points the next build at the ground between the free record
+and the next traced import.
+
+The emulator was run first and says it will be the second: 275 imports against
+build 48's 289, still ending at a free record, with the leak demonstrably in
+effect (every freed pointer unique, where build 48 reused one address ten
+times). It is not a reference and it dies of a different fault, so the phone
+decides.

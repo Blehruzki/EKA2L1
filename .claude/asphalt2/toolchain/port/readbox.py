@@ -29,7 +29,8 @@ BOX_SLOT, BOX_FRAMES, BOX_STACK = BOX_PATH + 1, BOX_PATH + 2, BOX_PATH + 3
 BOX_EXC = BOX_STACK + 1
 BOX_SPARE, BOX_CTXSZ, BOX_WRAPS = BOX_EXC + 1, BOX_EXC + 2, BOX_EXC + 3
 BOX_NAME, BOX_NAME_WORDS = BOX_WRAPS + 1, 8
-WRAPS = [(1, 'allocators'), (2, 'frees'), (4, 'open-result'), (8, 'open-arg')]
+WRAPS = [(1, 'allocators'), (2, 'frees'), (4, 'open-result'), (8, 'open-arg'),
+         (16, 'LEAK: nothing is freed')]
 MAGIC = 0x47364234
 FLAGS = [(1, 'abort'), (2, 'restart'), (4, 'docancel'), (8, 'runerror'),
          (16, 'a slot of ours'), (32, 'THE FRAME LOOP RAN'),

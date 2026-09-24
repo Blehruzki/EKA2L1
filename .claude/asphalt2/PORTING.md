@@ -67,6 +67,11 @@ here and the section it overturns is marked.*
   be a cell, and any deallocation not going through ordinals 315, 408 or 410
   leaves a stale live entry for an address that is later reused. Six of 32
   frees have a header larger than `align8(request + 4)` for those reasons.
+- **In the emulator, neutering the frees does not get past the wall.** Build 49
+  answers all three deallocation ordinals with a no-op -- verified in effect,
+  because every freed pointer in the run becomes unique where build 48 reused
+  the same address ten times -- and the run still ends at a free record, of a
+  27-byte cell with a `0x28` header. Not a reference, but the way to bet.
 - **Log volume is not what moves the emulator.** Three extra records per free
   with no dereference leave it ending exactly where it did (1066 -> 1258
   records, the same `0x30002`). When a reading changes, the write is not the
@@ -1973,3 +1978,55 @@ free                     from 8b89e0
 
 The write count is unchanged: the new records go inside the block the verdict
 already flushed, and `log_block` is called exactly as often as in build 47.
+
+## Build 49: stop measuring the cell and turn the frees off
+
+Rounds 44 to 48 each closed one description of the damage and found none.
+Chain, pointer, size, header, neighbour: every measurable property of the fatal
+free is correct, and the neighbour corroborates the header from a record that
+does not pass through our arithmetic. There is nothing left to measure about
+that cell, and a sixth round describing it harder is the mistake this file
+already has five entries for.
+
+So build 49 intervenes instead. The three deallocation ordinals -- 315
+(`User::Free`), 408 (`operator delete`) and 410 (`operator delete[]`) -- are
+answered by a function that does nothing. `LEAK_EVERYTHING` has been in the
+source since the use-after-free theory and has never been shipped.
+
+It splits the question either way:
+
+- the run **advances** -- the fault is in the free, and the port has moved past
+  a wall it has been at since build 44;
+- the run **dies in the same place with nothing freed** -- then the fault was
+  never in `User::Free`. The free is merely the last thing we write before it,
+  and everything between that record and the next traced import has been
+  wearing the blame.
+
+### The switch had to move before the instrument
+
+`LEAK_EVERYTHING` was implemented late in the setup, after the free watcher and
+the trace loop had already wrapped those IAT entries -- so turning it on
+*overwrote* both wrappers and turned off every record of a free at the same
+time. That is two variables in one build, and the round would not have been
+comparable with 48. It is installed before the watcher now: the no-op is what
+gets wrapped, the same records come out naming the same pointers, and the only
+difference on the wire is that nothing is freed. A `LEAK` flag in the box says
+so out loud.
+
+### What the emulator says first
+
+| | imports reached | ending |
+|---|---|---|
+| build 48 | 289 | `0x30002`, at a free of `8b8a58` |
+| build 49 | 275 | `0xEAF88580`, at a free of `b32248` |
+
+The leak is demonstrably in effect: in build 48 the emulator freed `8b89e0`
+ten times over and `8b8a58` eight times, because the heap kept handing the
+same addresses back. In build 49 **every freed pointer in the run is unique**,
+which is only true if nothing is being returned to the heap.
+
+And it does not get past the wall. The emulator still ends at a free -- of a
+27-byte cell with a `0x28` header, the same signature as the phone's -- with no
+free having actually happened. That is a prediction for the hardware round
+rather than an answer, because the emulator is not a reference and dies of a
+different fault. But it is the way to bet.
