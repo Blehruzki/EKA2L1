@@ -94,7 +94,7 @@ enum { BOX_RING = 16 };
 // 1850 was too late: the phone stopped at 1853 imports and only three events
 // fell inside it. The runs so far end between 1853 and 2051, so the window
 // wants to open well before that and stay narrow enough to be cheap.
-enum { LOG_BLOCK = 64, LOG_ZOOM = 1780, LOG_ZOOM_END = 1990 };
+enum { LOG_BLOCK = 64, LOG_ZOOM = 0x7fffffff, LOG_ZOOM_END = 0x7fffffff };
 // 800..899 are notes rather than events: the code says what is being noted and
 // the column that usually holds a caller holds the value. They are what the
 // log was missing -- it could only ever see the game calling out, never the
@@ -971,7 +971,8 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 // finding the way into the state machine; off is the default now, and the
 // emulator shows the same sequence with or without them.
 enum { TRACE_EVERY_IMPORT = 1 };
-enum { WATCH_ALLOCATIONS = 1 };
+enum { TRACE_SKIPS_HOT = 1 };
+enum { WATCH_ALLOCATIONS = 0 };
 enum { PLANT_CRUMBS = 0 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -2445,9 +2446,24 @@ static u32 load_and_start()
     // which is the question: the game derives names by arithmetic on values it
     // has fetched, and if any of that arithmetic runs over its own import
     // table then our thunks are the wrong answer and the tracer is the bug.
+    // The hot ones go untraced. Every record costs the game time it does not
+    // have -- six builds running the same sequence stopped at 2051, 1923, 1887,
+    // 1887, 1853 and 1785 imports, each further instrument buying a shorter
+    // run -- and these eleven are 88% of all the calls made while saying almost
+    // nothing: arithmetic helpers, a character at a time out of a descriptor,
+    // and a byte at a time into one. What is left still names every file
+    // opened, every library loaded and every frame drawn.
+    static const u16 kHot[] = { 424, 425, 274, 287, 272, 417, 383, 369, 389, 264, 344 };
     if (TRACE_EVERY_IMPORT)
-        for (u32 i = 0; i < nImports; i++)
+        for (u32 i = 0; i < nImports; i++) {
+            if (TRACE_SKIPS_HOT) {
+                int hot = 0;
+                for (u32 k = 0; k < sizeof kHot / sizeof kHot[0]; k++)
+                    if (kHot[k] == i) { hot = 1; break; }
+                if (hot) continue;
+            }
             iat[i] = trace_thunk(trace + TRACE * i, ctx, i, iat[i], (u32)&gate6_trace);
+        }
 
     // The allocators, wrapped once more so the record carries the address each
     // one handed back. Bench only: it doubles their cost and says nothing the

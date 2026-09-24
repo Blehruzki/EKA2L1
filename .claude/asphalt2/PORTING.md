@@ -507,6 +507,28 @@ explanation for a reboot than for a panic. `arg_thunk` records a call's first
 argument *before* it is made -- `result_thunk` could not, and a call that never
 returns leaves nothing otherwise -- and it is on `HBufC16::New`.
 
+**The lengths are fine** -- 27, 31, 28, 27, the emulator's own first four
+(`phone-2026-09-24c.log`) -- so that idea is dead, and the run it came from
+stopped at 1785 imports, earlier again.
+
+**It is time, and the instrument was eating it.** Six builds running an
+identical sequence, each a prefix of the last, stopping at 2051, 1923, 1887,
+1887, 1853 and 1785 imports -- monotonically shorter as more measurement went
+in. The reboots are the watchdog: the game never returns to the active
+scheduler through any of this, and about ten seconds of that is what the phone
+resets. Every record is time the game does not get, and for several rounds the
+answer to "why did it stop earlier" was me.
+
+Where the cost is is not the writes -- at 64 events to a block the whole run is
+about thirty of them. It is the trace itself, on every import: six registers
+saved, three literals loaded, a call out, a record appended, and back, against
+a real `TDesC16::AtC` of about ten instructions. `TRACE_SKIPS_HOT` leaves the
+eleven hottest imports unwrapped -- `__udivsi3` alone is 57% of all calls, and
+the eleven together 88% -- which takes the emulator's run from 5122 records to
+773 for the same fault at the same place. What is left still names every file
+opened, every library loaded and every frame drawn.
+
+
 
 
 
