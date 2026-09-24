@@ -6,6 +6,21 @@ into a code chunk, answers its 462 imports with 9.x equivalents, and bridges
 the two object graphs. The other file here, `README.md`, is about a different
 job — patching the official S60v3 build — and shares nothing with this.
 
+## The hardware is a Nokia N95
+
+**The phone every hardware round is run on is an N95: Symbian 9.2, S60 3rd
+edition Feature Pack 1.** The emulator here runs an RM-409 (Nokia 5320), which
+is 9.3 / FP2, because that is the ROM EKA2L1 has. One feature pack apart, and
+for the shape of the import sequence it has not mattered -- the phone and the
+emulator track each other event for event over fifty-five consecutive events.
+
+Where it can matter is **ordinals**. euser and efsrv export ordinals are not
+guaranteed identical across 9.1 to 9.4, and every ordinal in `gate6.s` that was
+taken from a `kernelhwsrv` def file rather than from the device is a guess that
+happens to hold on FP2. `SetKeyBlockMode` was keyed to the wrong ordinal once
+already. When an import behaves strangely on hardware and not in the emulator,
+this is the first thing to suspect.
+
 Everything lives in `toolchain/port/`. `gate6.cpp` is the loader and shim,
 `gate6.s` its imports, `gen_shim.py` generates the import table into
 `gate4_shim.cpp`, `build_gate6.py` builds `gate6.sis`.
@@ -1564,3 +1579,41 @@ in the emulator, which is the same firmware family, so it is probably right --
 but "probably" is how `SetKeyBlockMode` got keyed to the wrong ordinal months
 ago, and the device's export table is sitting in `z/rm-409/sys/bin/euser.dll`
 if this needs settling.
+
+## An assumption that was never tested: that a run is repeatable
+
+Build 40's box says the heap walk **never ran** -- it fires every sixteen
+traced events and the run reached eleven. So neither the call nor the import
+can be what stopped it, and the same is true of build 39.
+
+Lined up against build 37's run, build 40 is **identical for sixty records**
+and then takes a different turn:
+
+```
+ 59  -- entered appui slot 4      | -- entered appui slot 4
+ 60  -- entered control slot 3    | -- entered appui slot 8        <<<
+ 61  -- entered appui slot 7      | -- entered control slot 26
+ 62  -- entered appui slot 4      | import 305  UserSvr::DllTls
+ 63  -- entered control slot 29   | import 279  CActive::Cancel
+ 64  -- entered control slot 41   | end
+```
+
+The framework calls a different slot, the game cancels an active object, and
+the run ends. Slot order is the one thing in this record already known to vary
+-- `readlog --no-slots` exists because two feature packs do not agree on it --
+so this may be no difference at all.
+
+Which exposes the assumption underneath five builds of reasoning: **that one
+run of a build is that build's behaviour.** Builds 38, 39 and 40 each stopped
+at nine to eleven events and each was read as a regression caused by whatever
+it had changed. Build 37 reached 131 and 132 twice. Three against two is not
+enough to tell a real regression from a coin landing the same way three times,
+and every conclusion drawn from those three builds rests on it.
+
+So the next round is not a new build. It is **build 40 again, three times**,
+with nothing changed. If it reaches 132 even once, the last three builds were
+never regressions and the heap walk is still an open instrument. If it stops at
+eleven every time, the difference is real and worth bisecting properly.
+
+It costs no install and it tests something that should have been tested before
+the first "regression" was declared.
