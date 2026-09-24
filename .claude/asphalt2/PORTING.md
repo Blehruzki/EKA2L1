@@ -765,3 +765,40 @@ GD1DRV in it -- `suitable_ldd_instantiate_func` finds nothing, which is why
 even the native run cannot use the driver. Writing that factory would let the
 native game get past it and show what the driver is actually for, which is the
 one thing needed to decide what the shim should answer instead of zero.
+
+## What GD1DRV is
+
+EKA2L1 answers this itself: `ldd/src/collection.cpp` maps the name `gd1drv` to
+`mmcif_factory`, the **MMC interface**. Its channel implements two EKA1
+controls, `select_card = 4` and `card_info = 6`, and the second fills a
+twenty-byte `{ TUint32 cid[4]; TUint32 type; }` with the memory card's CID and
+a type of 0, ROM.
+
+The game's own code, in the decrypted region, is exactly that:
+
+```
+0010b248  add r5, sp, #0x4c   @ the channel
+0010b250  mov r1, #4          @ select_card
+0010b25c  bx  r6
+0010b26c  bl  #0x118f38       @ zero twenty bytes at sp+0x24
+0010b270  mov r3, #4
+0010b274  str r3, [r4, #0x10] @ type = 4, unknown
+0010b27c  mov r1, #6          @ card_info
+0010b288  bx  r6
+0010b294  ldrb r3, [r1, r3]   @ then eight bytes out of the CID, 14 down to 7
+```
+
+So the game asks the card who it is and reads eight bytes of the answer. This
+is the copy protection: an N-Gage game shipped on a card, checking the card.
+Answering nothing leaves the type at 4 -- the game is told its card is not a
+game card. `gate6_mmc_control` now answers `card_info` the way EKA2L1's own
+channel would, a zero CID and ROM, so the game is told what the emulator would
+tell it rather than what an absent card would. The emulator's run is unchanged
+at 170 milestones, so this is not the wall, but it removes a wrong answer.
+
+**The native reference is real but limited.** The original game does run on
+NEM-4 (`--run 0x101fd42d`) and does load GD1DRV.LDD -- but EKA2L1's N-Gage
+support takes it down at 0x9EBD3A00 well before our port gets on the S60v3
+side, so it cannot serve as a full trace to diff against. It is still worth
+having: it showed that the native game reads `E:\game.id` from the card root,
+which our port never opens.

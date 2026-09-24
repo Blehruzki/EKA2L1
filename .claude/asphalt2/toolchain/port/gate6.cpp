@@ -1712,6 +1712,30 @@ extern "C" int gate6_library_load(void *self, const u32 *name, const u32 *path,
     return err;
 }
 
+// GD1DRV is the N-Gage's MMC interface, and what the game wants from it is the
+// memory card's identity: select the card, then ask for its info. It zeroes a
+// twenty-byte structure, sets the type to 4 -- unknown -- and passes it in for
+// the driver to fill; the driver answers with the card's CID and a type of 0,
+// ROM. Then it reads eight bytes back out of the CID, high to low.
+//
+// Answering nothing leaves the type at unknown, which tells the game its card
+// is not a game card. EKA2L1's own mmcif channel answers a zero CID and ROM,
+// so that is what is answered here: the same thing the game would be told by
+// the emulator, rather than the same thing it would be told by a card that is
+// not there.
+enum { MMC_SELECT_CARD = 4, MMC_CARD_INFO = 6, MMC_CARD_TYPE_ROM = 0 };
+enum { MMC_CID_WORDS = 4 };
+
+extern "C" u32 gate6_mmc_control(u32, u32 op, u32 *info)
+{
+    if (op == MMC_CARD_INFO && info) {
+        for (u32 i = 0; i < MMC_CID_WORDS; i++)
+            info[i] = 0;
+        info[MMC_CID_WORDS] = MMC_CARD_TYPE_ROM;
+    }
+    return 0;
+}
+
 extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
 {
     note(c, (u32)ordinal, 'L');
@@ -1764,7 +1788,8 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
     for (u32 k = 0; REFUSE_DRIVERS && mapped && k < sizeof kDriver / sizeof kDriver[0]; k++)
         if (kDriver[k] == mapped) {
             log_event(c, NOTE_DRIVER, mapped);
-            return c->noopFn;
+            // DoControl(TInt, TAny*) is the one the game needs an answer from.
+            return (mapped == 490) ? (u32)&gate6_mmc_control : c->noopFn;
         }
 
     // The game takes what comes back from here and branches straight to it, at
