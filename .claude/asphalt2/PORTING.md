@@ -61,6 +61,15 @@ here and the section it overturns is marked.*
   damaged, and rounds 44 to 48 are retired. The fault is in the game's own code
   after the 99th `delete` returns, which nothing has looked at because the free
   was standing in front of it.
+- **The log goes quiet after that delete whether or not the run survives it.**
+  Nothing in the next hundred instructions calls a traced import, and the one
+  allocation among them is logged only if it fails. Probes in the emulator show
+  the run getting past the delete every time. "It dies in the free" and "it
+  stops at the 99th free" were both the end of the recording, not the end of
+  the run.
+- **The fatal delete is at image offset 0xcc8c0**, named by the `lr` its
+  wrapper now records. What kills the emulator four instructions later is
+  `[r6 + 4]`, holding `0xeaf88340` -- an ARM branch word read as a pointer.
 - **Build 48's `0x28` header was reuse, not damage.** With the leak on, the
   same free reads `0x20` -- exactly `align8(27 + 4)`. RHeap had handed over a
   whole recycled cell rather than split off a remainder too small to be one.
@@ -2076,3 +2085,64 @@ The rule they were missing is not about heaps: **when every measurement of a
 suspect comes back clean, the cheapest next move is to remove the suspect, not
 to measure it more precisely.** `LEAK_EVERYTHING` had been sitting in the
 source, unshipped, the whole time.
+
+## Build 50: the log going quiet is not the game dying
+
+Round 49's `lr` record names the fatal `delete`: image offset **0xcc8c0**,
+returning to 0xcc8c4. The code there:
+
+```
+000cc8b8  cmp    r7, #0
+000cc8bc  movne  r0, r5
+000cc8c0  blne   #0xd5a0c        <- the delete, 99th of the run
+000cc8c4  mov    r7, r8
+000cc8c8..e0     (a constant-multiply chain on r4)
+000cc8e4  cmp    r4, #0
+000cc8e8  beq    #0xcca88
+000cc8ec  ldr    r0, [r6, #4]
+000cc8f0  mov    r1, r7
+000cc8f4  mov    r2, #1
+000cc8f8  bl     #0x10a9e0
+...
+000cc908  mov    r0, #4
+000cc90c  bl     #0xd5a08        <- User::Alloc(4)
+000cc914  str    r5, [r5]
+```
+
+**Not one instruction in that stretch calls a traced import.** The allocation at
+0xcc90c is wrapped, but `gate6_result` logs allocations only when they *fail*.
+So the log goes quiet after the delete whether the run survives the next
+hundred instructions or not, and "it dies in the free" -- and then "it stops at
+the 99th free" -- were both reading the end of the recording as the end of the
+run.
+
+The emulator proves it outright. Six probes planted along that stretch, one
+run:
+
+```
+marker 990 at 0x000cc8c4   r6 = 8b2710     straight after the delete
+marker 991 at 0x000cc8ec   r6 = 8b2710     the first load after it
+marker 992 at 0x0010a9e4   r0 = eaf88340   entered the call it makes
+```
+
+The run gets past the delete every time. What it does not get past is what
+`[r6 + 4]` hands it: **0xeaf88340**, which is an ARM branch word, not an
+object. 0x10a9e0 allocates 0x24 bytes and calls 0x139568 with that value, and
+0x139568 dereferences it -- the emulator's fault address, `0xEAF88580`, is that
+garbage plus 0x240.
+
+Two things follow. The near one: `[r6 + 4]` is uninitialised or stale, which is
+the same shape as the container at 0xcc914 that this file already describes --
+a field holding what was in the memory before, read as a pointer. The far one:
+**0x139568 is where EKA2L1 cannot run the original N-Gage binary either**
+(KERN-EXEC 3 at 0x139588). Past this point the emulator may be measuring
+itself.
+
+So build 50 ships the probes. It is build 49 plus six markers, and it answers
+the question the log cannot: how far past the delete does the *phone* get. In
+the emulator they fire three times in a run and cost ten records each, so the
+write budget is unchanged in kind.
+
+The constant-multiply chains on r4 either side of the delete are obfuscation,
+not arithmetic: the first multiplies by 3467093631 and the second by
+4017970111, which are inverses mod 2^32. r4 comes out of the pair unchanged.

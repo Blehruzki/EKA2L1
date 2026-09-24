@@ -56,6 +56,7 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 47 | Log the cell's header words before each free | 1 | 136, dies freeing `0x7b8e20` | **The header is healthy.** 27 bytes requested, header reads `0x28` -- exactly the emulator's pattern. The cell itself is not damaged |
 | 48 | Read the *neighbouring* cell's header, ring-vouched | 3 | 128 events, all three identical, dies freeing `0x7b89a8` | **The header is right, and the neighbour corroborates it.** The ring independently holds an allocation at `next + 4`, so the cell really does end where its header says. Nothing about the free is corrupt |
 | 49 | **Free nothing.** All three deallocation ordinals answered by a no-op | 3 | 128 events, identical, stops at the same 99th free | **`User::Free` is not the wall.** Nothing was freed -- every freed pointer in the run is unique where build 48 reused them -- and the run stops in exactly the same place. Retires rounds 44-48 |
+| 50 | Six probes along the stretch after the fatal delete | pending | – | – |
 
 ## Where we are
 
@@ -192,12 +193,26 @@ recycled cell rather than splitting off a remainder too small to be one, which
 is what the build-48 entry above already warned the request column could not
 distinguish. The leak removes reuse, and the header snaps to the arithmetic.
 
-### Build 50: find the call site
+### Build 50, out and not yet answered
 
-Nothing about the next step needs the phone. The question is now *which*
-`delete` this is -- there are 99 in the run and the 99th is the one -- and a
-call site is a static property of the game's image. `arg_thunk` records `r0`
-and `r1`; `r1` at a `delete` is junk (`0x6d6a2b7b` every time). Recording `lr`
-instead names the instruction in the game that called it, and the emulator is
-good enough to find it, because the address is in the image rather than in the
-heap.
+Round 49's `lr` record put the fatal delete at image offset **0xcc8c0**, and
+disassembling there retires another belief: **nothing in the hundred
+instructions after that delete calls a traced import**, and the one allocation
+among them is logged only when it fails. The log goes quiet there whether the
+run survives or not. "It dies in the free", and then "it stops at the 99th
+free", were both the end of the recording read as the end of the run.
+
+Six probes now mark that stretch. In the emulator they fire three times, cost
+ten records each, and show the run getting past the delete every time -- what
+stops it is `[r6 + 4]` handing back `0xeaf88340`, an ARM branch word used as a
+pointer, which 0x139568 then dereferences. The fault address is that value plus
+0x240.
+
+Read the round this way: whichever marker is the last one in the log is how far
+the phone gets. If it reaches 995 the delete was never near the problem. If it
+stops at 990 or 991 the phone and the emulator are failing in the same place,
+and the target is `[r6 + 4]`.
+
+One caution on the emulator from here on: **0x139568 is where EKA2L1 cannot run
+the original N-Gage binary either** (KERN-EXEC 3 at 0x139588). Past this point
+it may be measuring itself.

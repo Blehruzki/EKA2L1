@@ -190,6 +190,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FREE_STRAY = 886,   // ... which was never handed out at all
        NOTE_CELL_HDR = 887,     // the words RHeap keeps in front of a payload
        NOTE_NEXT_HDR = 888,     // and the header of the cell after it
+       NOTE_CALLER = 889,       // the return address a wrapped call was made from
        NOTE_CELL_AT = 881,      // the cell a read buffer sits in
        NOTE_CELL = 879,         // and how big it is
        NOTE_OVERFLOW = 880,     // ... and the maximum, when it is more than that
@@ -1079,15 +1080,23 @@ enum { PLANT_CRUMBS = 0 };
 // Opt in per investigation, never by default: probes add traced events, and a
 // reference carrying them cannot be lined up against the phone's build. Tying
 // this to LOG_ANYWAY looked tidy and quietly broke the comparison again.
-enum { PLANT_PROBES = 0, PROBE_FIRST = 990, PROBE_BYTES = 80 };
+enum { PLANT_PROBES = 1, PROBE_FIRST = 990, PROBE_BYTES = 80 };
 struct Probe { u32 at; u8 ra; u8 rb; };
 static const Probe kProbe[] = {
     // Why the container at 0xcc914 is never filled. 0xcc984 installs whatever
     // 0xe98c4 returns, and 0xe98c4 searches a table of 24-byte entries for one
     // whose [+4] is the key, returning its fallback -- the empty slot itself --
     // when it finds none. So: the object that owns the table, and the table.
-    { 0x000cc918,  6, 5 },      // add r4, r6, #0x28 -- the owner, and the slot
-    { 0x000e9904,  6, 8 },      // add ip, r6, r3 lsl #3 -- the table, and the key
+    // The stretch immediately after the fatal delete. Round 49's caller record
+    // put that delete at 0xcc8c0, and the four instructions here are what the
+    // game does next -- none of which calls a traced import, which is why the
+    // log goes quiet whether or not the run survives them.
+    { 0x000cc8c4,  6, 4 },      // mov r7, r8      -- straight after the delete
+    { 0x000cc8ec,  6, 4 },      // ldr r0, [r6,#4] -- the first load after it
+    { 0x0010a9e4,  0, 1 },      // mov r4, r0      -- entered the call it makes
+    { 0x0010aa04,  0, 4 },      // subs r4, r0, #0 -- and came back from 0x139568
+    { 0x000cc908,  6, 5 },      // mov r0, #4      -- about to allocate four bytes
+    { 0x000cc914,  5, 6 },      // str r5, [r5]    -- and write the cell into itself
 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1283,7 +1292,7 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
 {
     log_event(c, NOTE_CALL_ARG, index);
     log_event(c, NOTE_RESULT_ARG, a0);
-    log_event(c, NOTE_RESULT_ARG, a1);
+    log_event(c, NOTE_CALLER, a1);
     // RFile::Open's third argument is the name. Sixteen characters is enough
     // for "cwivenc.dat" and for anything else this game opens.
     if (WATCH_FREES && (index == IMPORT_DELETE_OP || index == IMPORT_VEC_DELETE_OP ||
@@ -1473,7 +1482,12 @@ static u32 arg_thunk(u8 *code, Context *ctx, u32 value, u32 target)
     b[0]  = 0xE92D500F;                 // stmdb sp!, {r0-r3, r12, lr}
     b[1]  = 0xE59FC020;                 // ldr   r12, [pc, #32]  -> b[11] &argR2
     b[2]  = 0xE58C2000;                 // str   r2, [r12]  -- the third argument
-    b[3]  = 0xE1A03001;                 // mov   r3, r1   -- before r1 is reused
+    // lr, not r1. The second argument of a `delete` is junk (0x6d6a2b7b in
+    // every record of round 49) and the question the run is now on is *which*
+    // delete this is -- the 99th of a run, in a game with no symbols. This
+    // thunk tail-jumps, so lr here is still the game's own return address:
+    // the instruction after the call, in the image, at a fixed offset.
+    b[3]  = 0xE1A0300E;                 // mov   r3, lr   -- who called
     b[4]  = 0xE1A02000;                 // mov   r2, r0
     b[5]  = 0xE59F0014;                 // ldr   r0, [pc, #20]   -> b[12] which
     b[6]  = 0xE59F1014;                 // ldr   r1, [pc, #20]   -> b[13] context
