@@ -1487,3 +1487,40 @@ and it will name the pointer.
 *Also worth recording*: four panics in that single run, two KERN-EXEC 0 and two
 KERN-EXEC 3. One thread cannot panic four times, so more than the game's thread
 is going down -- which fits a heap the file server is also writing into.
+
+## Build 38 regressed, and was reverted rather than explained
+
+Build 38 -- the free-matching one -- took the phone from 132 traced events to
+**nine**, dying in the framework's own startup with the box never written past
+arming. The emulator ran it to the usual 170 and the usual fault, so there is
+nothing local to bisect against.
+
+It changed four things at once: a 256-deep allocation ring in place of a
+32-deep one, `arg_thunk` on three free imports, `__builtin_new` added to the
+result-wrapped allocators, and the free bookkeeping itself. Any of them could
+be it, and finding out costs a hardware round per guess.
+
+So it is reverted to build 37 whole. **A change that breaks something and
+cannot be bisected locally is not worth keeping while it is unexplained**, and
+four changes in one build is how a round gets wasted -- the same lesson as
+build 34, which broke the write budget, and build 36, which shipped the wrong
+binary. One variable.
+
+### A search in time instead
+
+The question build 38 was asking was *which* free. The better question is
+*when* the heap went bad, because that brackets the write that did it without
+needing to identify the victim.
+
+`User::CountAllocCells` walks the whole heap cell by cell. On an intact heap it
+returns a count; on a broken one it walks into the damage. Build 39 calls it
+every four traced events and keeps the last event at which it came back in the
+box, with the cell count. However the run ends, the box then says when the heap
+was last whole -- and the emulator, for comparison, walks clean the whole way:
+
+```
+heap last walked clean at event 160, 803 cells
+```
+
+That is one import and one call every four events against build 37, which is
+the smallest delta that can answer anything.

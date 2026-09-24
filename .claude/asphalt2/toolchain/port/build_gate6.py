@@ -16,6 +16,7 @@ DRTAEABI = 'drtaeabi.dll'
 buildapp.build('gate6', 0xE0001006, 'Gate6', sys.argv[1] if len(sys.argv) > 1 else '.',
                imports=[(buildapp.EUSER, ['user_panic', 'userheap_setupthreadheap',
                                           'user_initprocess', 'user_alloc', 'user_allocz', 'user_alloclen',
+                                          'user_countalloccells',
                                           'user_setexceptionhandler', 'rhandle_close',
                                           'cperiodic_newl', 'cperiodic_start',
                                           'chunk_createlocalcode', 'chunk_base',

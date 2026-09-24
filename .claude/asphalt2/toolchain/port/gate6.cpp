@@ -80,8 +80,6 @@ enum { EBufC = 0, EPtrC = 1, EPtr = 2, EBufType = 3, KTypeShift = 28 };
 // file_write_at that sixteen cost. This is the instrument now -- a bounded
 // ring rewritten in place, not an append log that pays a write per block.
 enum { BOX_RING = 128 };
-// Every allocation still outstanding, so a free can be matched against one.
-enum { ALLOC_RING = 256 };
 // Events per write of the log. Sixty-four proved the point -- the phone
 // stopped rebooting the moment the write count came down -- but it also means
 // the last partial block dies with the process, so the first run under it
@@ -184,10 +182,6 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_DRIVER = 877,       // a kernel driver call, refused
        NOTE_TICK = 878,         // User::TickCount, every sixteenth milestone
        NOTE_PROBE_B = 882,      // the second register a probe was asked for
-       NOTE_FREE = 883,         // a pointer handed to delete or User::Free
-       NOTE_FREE_OK = 884,      // ... which matched a live allocation of this size
-       NOTE_FREE_TWICE = 885,   // ... which had already been freed
-       NOTE_FREE_STRAY = 886,   // ... which was never handed out at all
        NOTE_CELL_AT = 881,      // the cell a read buffer sits in
        NOTE_CELL = 879,         // and how big it is
        NOTE_OVERFLOW = 880,     // ... and the maximum, when it is more than that
@@ -203,7 +197,9 @@ enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAME
 // A count per marker. The tail says where it was; these say whether it was
 // going round in circles to get there, and how many times.
 enum { BOX_EXC = BOX_STACK + 1 };       // what User::SetExceptionHandler said
-enum { BOX_NAME = BOX_EXC + 1, BOX_NAME_WORDS = 8 };   // the last file opened
+enum { BOX_HEAP_OK = BOX_EXC + 1 };     // the last event the heap walked clean
+enum { BOX_CELLS = BOX_HEAP_OK + 1 };   // and how many cells it had then
+enum { BOX_NAME = BOX_CELLS + 1, BOX_NAME_WORDS = 8 };  // the last file opened
 enum { BOX_HITS = BOX_NAME + BOX_NAME_WORDS, BOX_MARKERS = 40 };
 enum { BOX_WORDS = BOX_HITS + BOX_MARKERS, BOX_BYTES = BOX_WORDS * 4 };
 
@@ -296,6 +292,7 @@ void *coecontrol_ctor(void *self);                    // CCoeControl::CCoeContro
 void coecontrol_createwindowl(void *self);            // CCoeControl::CreateWindowL()
 void *user_allocz(int size);
 int user_alloclen(const void *cell);            // User::AllocLen
+int user_countalloccells(void);                 // User::CountAllocCells
 void *cperiodic_newl(int priority);
 
 // A GCC98r2 virtual call: the vptr is at offset 0 and points eight bytes
@@ -599,8 +596,8 @@ struct Context {
     u32 newBaseConstructL;  // avkon's CAknAppUi::BaseConstructL, as resolved
     u32 newRequestComplete; // euser's User::RequestComplete, as resolved
     u32 clockTick;          // how many milestones since the last clock reading
-    u32 allocPtr[ALLOC_RING];   // every allocation still outstanding, so a free
-    u32 allocLen[ALLOC_RING];   // can be matched against one -- or found not to be
+    u32 allocPtr[32];       // the last few allocations, so a buffer handed to
+    u32 allocLen[32];       // the file server can be checked against its cell
     u32 allocNext;
     u32 argR2;              // the third argument of a call arg_thunk wrapped
     u32 wrapUiVptr;         // the vtable pointer wrapUi was given, checked on
@@ -997,14 +994,17 @@ enum { PAD_THE_ALLOCATIONS = 0, ZERO_THE_SLACK = 0 };
 enum { LEAK_EVERYTHING = 0 };
 enum { WRAP_ALLOCATORS = WATCH_ALLOCATIONS };
 enum { WATCH_OPEN_RESULT = 1 };
-// RFile::Open returns KErrNone and the phone dies on the next instruction,
-// which is `delete` on the name buffer. A free only faults on a heap that is
-// already wrong, so: every free is matched against the allocations still
-// outstanding. A pointer that was never handed out, or handed out and freed
-// already, is the answer; a pointer that matches cleanly says the damage is
-// somewhere else and this free is just where it shows.
-enum { WATCH_FREES = 1, FREE_WATCH_FROM = 110, SPENT = 0xFFFFFFFF };
-enum { IMPORT_DELETE_OP = 408, IMPORT_VEC_DELETE_OP = 410, IMPORT_USER_FREE_OP = 315 };
+// RFile::Open returns KErrNone and the phone dies on the next call, which is
+// `delete` on the name buffer. A free only faults on a heap that is already
+// wrong, so the question is not which free but *when* the heap went bad.
+//
+// User::CountAllocCells walks the whole heap cell by cell. On an intact heap
+// it returns a count; on a broken one it walks into the damage. So it is
+// called every few traced events, and the last event at which it came back is
+// kept in the box. Whatever the run ends as, the box then brackets the
+// corrupting write to within a few events -- which is a search in time rather
+// than another guess about who did it.
+enum { CHECK_THE_HEAP = 1, HEAP_CHECK_EVERY = 4 };
 enum { PLANT_CRUMBS = 0 };
 
 // A probe is a breadcrumb that also reports two of the game's registers, at
@@ -1173,7 +1173,7 @@ extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
     // from, the overflow is performed by a server and lands wherever the heap
     // put the next thing. That is the kind of thing that ends kernel-side.
     if (result) {
-        const u32 n = c->allocNext & (ALLOC_RING - 1);
+        const u32 n = c->allocNext & 31;
         c->allocPtr[n] = result;
         c->allocLen[n] = arg;
         c->allocNext++;
@@ -1233,44 +1233,6 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
     log_event(c, NOTE_RESULT_ARG, a1);
     // RFile::Open's third argument is the name. Sixteen characters is enough
     // for "cwivenc.dat" and for anything else this game opens.
-    if (WATCH_FREES && (index == IMPORT_DELETE_OP || index == IMPORT_VEC_DELETE_OP ||
-                        index == IMPORT_USER_FREE_OP)) {
-        if (!a0)
-            return;
-        // The bookkeeping runs on every free from the first one -- a cell has
-        // to be marked spent when it is freed or a later double free reads as
-        // an ordinary match. Only the *records* are rationed: frees are
-        // constant traffic, so the plain ones are kept for the stretch the run
-        // dies in, and a double or a stray is reported wherever it happens.
-        const int loud = (c->traceCount >= (u32)FREE_WATCH_FROM);
-        for (u32 k = 1; k <= ALLOC_RING; k++) {
-            const u32 i = (c->allocNext - k) & (ALLOC_RING - 1);
-            if (c->allocPtr[i] != a0)
-                continue;
-            if (c->allocLen[i] == SPENT) {
-                log_event(c, NOTE_FREE, a0);
-                log_event(c, NOTE_FREE_TWICE, a0);
-                log_block(c);
-            } else {
-                if (loud) {
-                    log_event(c, NOTE_FREE, a0);
-                    log_event(c, NOTE_FREE_OK, c->allocLen[i]);
-                }
-                c->allocLen[i] = SPENT;
-            }
-            return;
-        }
-        // Not in the ring at all. Two hundred and fifty-six allocations back is
-        // a long way, so this is only worth saying late, where it is a claim
-        // about this free rather than about the ring's depth.
-        if (loud) {
-            log_event(c, NOTE_FREE, a0);
-            log_event(c, NOTE_FREE_STRAY, a0);
-            log_block(c);
-        }
-        return;
-    }
-
     if (index == IMPORT_FILE_OPEN) {
         u32 n = 0;
         const u16 *t = des_text((const u32 *)c->argR2, &n);
@@ -1317,8 +1279,8 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
         // slot order the stale one wins, which is how a perfectly ordinary
         // read came to be written up here as a hundred-and-sixty-kilobyte
         // overflow of a thirty-one byte cell.
-        for (u32 k = 1; k <= ALLOC_RING; k++) {
-            const u32 i = (c->allocNext - k) & (ALLOC_RING - 1);
+        for (u32 k = 1; k <= 32; k++) {
+            const u32 i = (c->allocNext - k) & 31;
             if (c->allocPtr[i] && buf >= c->allocPtr[i] &&
                 buf < c->allocPtr[i] + c->allocLen[i]) {
                 log_event(c, NOTE_CELL_AT, c->allocPtr[i]);
@@ -1543,6 +1505,13 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
     // thirty-two traced events: four writes on a run of the length the phone
     // manages, against a hundred and twenty-nine last time. It carries the
     // count and the last thirty-two events, which is the yardstick.
+    // Walk the heap. If it comes back, say so in the box; if it does not, the
+    // box already holds the last event at which it did.
+    if (CHECK_THE_HEAP && (c->traceCount % (u32)HEAP_CHECK_EVERY) == 0) {
+        const int cells = user_countalloccells();
+        c->boxData[BOX_HEAP_OK] = c->traceCount;
+        c->boxData[BOX_CELLS] = (u32)cells;
+    }
     if (SILENT && (c->traceCount & (BOX_EVERY_TRACED - 1)) == 0)
         box_flush(c);
     if (index == IMPORT_LEAVE || index == IMPORT_EXIT)
@@ -2897,16 +2866,6 @@ static u32 load_and_start()
     // it and still sees the game's own return address. Wrapped the other way
     // round the caller column reads as our own thunk, which is the alignment
     // against the emulator gone for the one import being asked about.
-    if (WATCH_FREES) {
-        static const u16 kFreeOp[] = { IMPORT_DELETE_OP, IMPORT_VEC_DELETE_OP,
-                                       IMPORT_USER_FREE_OP };
-        for (u32 i = 0; i < sizeof kFreeOp / sizeof kFreeOp[0]; i++)
-            if (kFreeOp[i] < nImports && ctx->spare + ARG_WORDS * 4 <= ctx->spareEnd) {
-                iat[kFreeOp[i]] = arg_thunk(ctx->spare, ctx, kFreeOp[i], iat[kFreeOp[i]]);
-                ctx->spare += ARG_WORDS * 4;
-            }
-    }
-
     if (WATCH_OPEN_RESULT && IMPORT_FILE_OPEN < nImports &&
         ctx->spare + 16 * 4 <= ctx->spareEnd) {
         iat[IMPORT_FILE_OPEN] = result_thunk(ctx->spare, ctx, IMPORT_FILE_OPEN,
@@ -2970,7 +2929,7 @@ static u32 load_and_start()
             // other thing that is asynchronous, varies with whatever else the phone is
             // doing, and would explain two runs of one build stopping eight milestones
             // apart -- it will be a zero in here.
-            static const u32 kAlloc[] = { 265, 269, 270, 332, 409 };
+            static const u32 kAlloc[] = { 265, 269, 270, 332 };
         for (u32 i = 0; i < sizeof kAlloc / sizeof kAlloc[0]; i++) {
             const u32 j = kAlloc[i];
             if (j >= nImports || ctx->spare + 16 * 4 > ctx->spareEnd)

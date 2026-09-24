@@ -77,6 +77,7 @@ old_call1:
     IMPORT user_alloc,        646    @ User::Alloc(TInt)
     IMPORT user_allocz,       652    @ User::AllocZ(TInt)
     IMPORT user_alloclen,     660    @ User::AllocLen(TAny const*)
+    IMPORT user_countalloccells, 609 @ User::CountAllocCells()
     IMPORT user_setexceptionhandler, 635  @ User::SetExceptionHandler(TExceptionHandler, TUint32)
     IMPORT rhandle_close,     120    @ RHandleBase::Close()
     IMPORT cperiodic_newl,   1379    @ CPeriodic::NewL(TInt)
