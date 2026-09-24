@@ -645,6 +645,24 @@ failure rather than panicking, so `result_thunk` now records **only** the
 zeroes -- nothing at all in the ordinary case, the whole answer if it happens.
 None in the emulator's 135 allocations.
 
+**Not memory.** 110 milestones again and not one allocation returned zero
+(`phone-2026-09-24i.log`). The two runs do differ at record 97, but only in the
+caller column, and only because wrapping an import twice makes the trace record
+our own outer thunk -- the same trap noted above, and the runs are otherwise
+identical.
+
+So the window server is what is left, and it can be tested after all without a
+stand-in context: start the access, let `dsa_refresh` take the graphics context
+out of it, and then give the screen straight back with `Cancel`. The game is
+told it still has it, since it will not move otherwise, and nothing is drawn
+between there and the end of the emulator's run so nothing is lost by the lie.
+`RELEASE_THE_SCREEN` does that; the emulator reaches the same 170 milestones
+and the same fault with it on, which makes it a clean test rather than a
+change of behaviour. If the phone stops rebooting, the reboot was a client
+holding the screen and not listening; if it does not, the window server is
+innocent and something else is interrupting.
+
+
 
 
 

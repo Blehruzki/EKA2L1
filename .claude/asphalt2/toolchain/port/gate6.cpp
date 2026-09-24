@@ -1330,7 +1330,7 @@ extern "C" void gate6_timer_docancel(void *, u32, Context *c)
 // only exists once StartL has run, so without it the run dies writing through
 // a null at three milestones. If the window server's abort timeout turns out
 // to be the reboot, this needs the context standing in as well.
-enum { HOLD_THE_SCREEN = 1 };
+enum { HOLD_THE_SCREEN = 1, RELEASE_THE_SCREEN = 1 };
 
 static void dsa_refresh(Context *c);
 
@@ -1429,7 +1429,8 @@ static void dsa_refresh(Context *c)
     // The game reads this before it will do anything, so when the real screen
     // is not being held it has to be told otherwise -- without it the run stops
     // at three milestones instead of a hundred and seventy.
-    shadow[OLD_DSA_ACTIVE / 4] = HOLD_THE_SCREEN ? real[OLD_DSA_ACTIVE / 4] : 1;
+    shadow[OLD_DSA_ACTIVE / 4] =
+        (HOLD_THE_SCREEN && !RELEASE_THE_SCREEN) ? real[OLD_DSA_ACTIVE / 4] : 1;
     c->realGc = (u32 *)real[NEW_DSA_GC / 4];
     // Not the real graphics context: the game calls it by vtable slot, and the
     // two vtables do not line up. What it gets is the stand-in built below.
@@ -1553,6 +1554,17 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
     if (HOLD_THE_SCREEN)
         ((StartL)c->newDsaStartL)(c->dsaReal);
     dsa_refresh(c);
+    // Started, so the graphics context exists and the shadow has it -- and then
+    // given straight back, so the window server is not left waiting on a client
+    // that has gone away to compute for ten seconds. The game is told it still
+    // has the screen, by dsa_refresh, because it will not move otherwise.
+    // Nothing is drawn between here and the end of the emulator's run, so
+    // nothing is lost by it; when something is, this has to become a real
+    // start-on-demand rather than a release.
+    if (RELEASE_THE_SCREEN && c->newCancel && c->dsaReal) {
+        typedef void (*Cancel)(void *);
+        ((Cancel)c->newCancel)(c->dsaReal);
+    }
 }
 
 // RDebug::WriteMemory(TThreadId, TUint32 aAddress, const TDesC8 &aData, TInt).
