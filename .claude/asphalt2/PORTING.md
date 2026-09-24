@@ -1718,3 +1718,42 @@ single run, and single runs are what this whole detour was made of.
 If 43 runs the distance, the import was the difference and the free matching is
 finally in hand. If it stops at nine, the free matching is the difference and
 the bisect continues into it. Either way the next answer is one variable wide.
+
+## The sector was a block boundary of our own
+
+Build 43 -- build 37 plus the free matching, with the heap walk and its import
+removed -- stops at sixty-four records too, both runs. So the import was not
+it, and the free matching is where the bisect goes next.
+
+But first, two things that were wrong.
+
+**Sixty-four records is eight blocks of eight.** `LOG_BLOCK` is 8; the log
+flushes on block boundaries; so a file of exactly 512 bytes means the run died
+somewhere in records 64 to 71 with the last flush at 64. It is a boundary of
+our own making, and reading it as a disk sector produced a whole section above
+about extending writes and the file server. The `G6WR` panic that never fired
+had already said as much.
+
+**The 3040-byte code shrink is not damage.** `gate6_arg` went from 0x808 to
+0x49c while *gaining* code, and so did every other function that touches the
+context -- `gate6_library_lookup`, `gate6_result`, `gate6_write_memory`,
+`gate6_cancel`. All of them shrinking together is the compiler re-optimising
+around a different `Context` layout, not code going missing. The remaining
+hand-assembled offsets were checked: `arg_thunk` was the only one that indexed
+the context with a twelve-bit immediate, and it uses a literal now.
+
+### What build 44 carries
+
+Both build 43 runs are identical through record 62 and then differ by one slot
+from build 37 -- `appui slot 8` where 37 has `control slot 29` -- and die
+within the next eight records, which the block hides.
+
+- **Every record written on its own for the first 768 bytes.** Ninety-six
+  records at exact resolution, then back to blocks. The true last record goes
+  on disk instead of the last multiple of eight.
+- **The setup's own state, in a box write taken before the game runs.** Spare
+  arena remaining, `sizeof(Context)`, and a bitmask of which optional wraps
+  installed. Every failing run still produces a box, so this is the one record
+  guaranteed to come back -- and a thunk silently skipped for want of arena
+  would look exactly like the game dying. The emulator reads 20612 bytes spare,
+  a 3768-byte context, and all four wraps installed.

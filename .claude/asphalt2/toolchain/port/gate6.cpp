@@ -203,10 +203,14 @@ enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAME
 // A count per marker. The tail says where it was; these say whether it was
 // going round in circles to get there, and how many times.
 enum { BOX_EXC = BOX_STACK + 1 };       // what User::SetExceptionHandler said
-enum { BOX_HEAP_TRY = BOX_EXC + 1 };    // the last event a heap walk was begun
-enum { BOX_HEAP_OK = BOX_HEAP_TRY + 1 };// ... and the last one that came back
-enum { BOX_CELLS = BOX_HEAP_OK + 1 };   // and how many cells it had then
-enum { BOX_NAME = BOX_CELLS + 1, BOX_NAME_WORDS = 8 };  // the last file opened
+// Written once, before the game starts, and therefore guaranteed to come back:
+// every failing run still produces a full box from the arming write. So the
+// setup's own state goes in it. A thunk that was silently skipped for want of
+// room in the spare arena would not show up any other way.
+enum { BOX_SPARE = BOX_EXC + 1 };       // bytes of spare arena left after setup
+enum { BOX_CTXSZ = BOX_SPARE + 1 };     // sizeof(Context)
+enum { BOX_WRAPS = BOX_CTXSZ + 1 };     // which optional wraps actually installed
+enum { BOX_NAME = BOX_WRAPS + 1, BOX_NAME_WORDS = 8 };  // the last file opened
 enum { BOX_HITS = BOX_NAME + BOX_NAME_WORDS, BOX_MARKERS = 40 };
 enum { BOX_WORDS = BOX_HITS + BOX_MARKERS, BOX_BYTES = BOX_WORDS * 4 };
 
@@ -237,6 +241,7 @@ static void panic(const u16 *cat, int catLen, int reason)
 // is the file server's own error code, negated as Symbian returns it.
 #define CAT_WRITE {'G','6','W','R'}
 enum { LOUD_WRITE_ERRORS = 1 };
+enum { EXACT_BYTES = 768 };   // 96 records written one at a time
 #define CAT_BOXW  {'G','6','B','W'}
 #define CAT_MEM {'G','6','M','E','M'}
 #define CAT_HDR {'G','6','H','D','R'}
@@ -925,8 +930,16 @@ static void log_event(Context *c, u32 code, u32 from)
         c->logBuf[c->logFill * 2 + 1] = from;
         c->logFill++;
     }
+    // Exact over the opening, blocks after it. The short runs all end with the
+    // log at sixty-four records, which is eight full blocks of eight -- a
+    // boundary of our own making, not a sector, and it hides the last seven
+    // records. Every record is written on its own until the file passes
+    // EXACT_BYTES, which costs about seventy writes and puts the true last
+    // record on disk.
     const u32 n = c->traceCount;
-    const u32 want = (n >= (u32)LOG_ZOOM && n < (u32)LOG_ZOOM_END) ? 1u : (u32)LOG_BLOCK;
+    const u32 want = (c->logPos < (u32)EXACT_BYTES) ? 1u
+                   : (n >= (u32)LOG_ZOOM && n < (u32)LOG_ZOOM_END) ? 1u
+                   : (u32)LOG_BLOCK;
     if (c->logFill >= want)
         log_block(c);
 }
@@ -1029,6 +1042,7 @@ enum { WATCH_OPEN_RESULT = 1 };
 // out, or handed out and freed already -- and that is what matching every free
 // against the outstanding allocations says.
 enum { WATCH_FREES = 1, FREE_WATCH_FROM = 110, SPENT = 0xFFFFFFFF };
+enum { W_ALLOC = 1, W_FREE = 2, W_OPENRES = 4, W_OPENARG = 8 };
 enum { IMPORT_DELETE_OP = 408, IMPORT_VEC_DELETE_OP = 410, IMPORT_USER_FREE_OP = 315 };
 enum { PLANT_CRUMBS = 0 };
 
@@ -2929,6 +2943,7 @@ static u32 load_and_start()
             if (kFreeOp[i] < nImports && ctx->spare + ARG_WORDS * 4 <= ctx->spareEnd) {
                 iat[kFreeOp[i]] = arg_thunk(ctx->spare, ctx, kFreeOp[i], iat[kFreeOp[i]]);
                 ctx->spare += ARG_WORDS * 4;
+                ctx->boxData[BOX_WRAPS] |= W_FREE;
             }
     }
 
@@ -2937,6 +2952,7 @@ static u32 load_and_start()
         iat[IMPORT_FILE_OPEN] = result_thunk(ctx->spare, ctx, IMPORT_FILE_OPEN,
                                              iat[IMPORT_FILE_OPEN]);
         ctx->spare += 16 * 4;
+        ctx->boxData[BOX_WRAPS] |= W_OPENRES;
     }
 
     if (TRACE_EVERY_IMPORT)
@@ -2971,6 +2987,7 @@ static u32 load_and_start()
         iat[IMPORT_FILE_OPEN] = arg_thunk(ctx->spare, ctx, IMPORT_FILE_OPEN,
                                           iat[IMPORT_FILE_OPEN]);
         ctx->spare += ARG_WORDS * 4;
+        ctx->boxData[BOX_WRAPS] |= W_OPENARG;
     }
 
     // User::Alloc, answered by a padded, zeroed one. See gate6_alloc.
@@ -2995,6 +3012,7 @@ static u32 load_and_start()
             // other thing that is asynchronous, varies with whatever else the phone is
             // doing, and would explain two runs of one build stopping eight milestones
             // apart -- it will be a zero in here.
+            ctx->boxData[BOX_WRAPS] |= W_ALLOC;
             static const u32 kAlloc[] = { 265, 269, 270, 332, 409 };
         for (u32 i = 0; i < sizeof kAlloc / sizeof kAlloc[0]; i++) {
             const u32 j = kAlloc[i];
@@ -3009,6 +3027,16 @@ static u32 load_and_start()
     // data and is about to be run as code, so the caches are put right over
     // the whole chunk before anything in it is entered.
     user_imb_range(base, base + chunkSize);
+
+    // Everything is wrapped by now, so the setup's own state goes down once,
+    // before the game has run a single instruction. Every failing run still
+    // produces a box, so this is the one record that is certain to come back:
+    // how much spare arena is left, how big the context grew, and which of the
+    // optional wraps actually installed. A thunk skipped for want of room is
+    // invisible any other way, and would look exactly like the game dying.
+    ctx->boxData[BOX_SPARE] = (u32)(ctx->spareEnd - ctx->spare);
+    ctx->boxData[BOX_CTXSZ] = (u32)sizeof(Context);
+    box_flush(ctx);
 
     // Enter it. EKA1 calls a DLL's entry point with EDllProcessAttach first,
     // then apparc asks ordinal 1 for the application object.
