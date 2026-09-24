@@ -53,7 +53,7 @@ Five of those six rounds settled nothing. That is the largest single waste in
 this project after the reboots, and it came from reading an instrument's blind
 spot as the game's behaviour -- the same mistake, for the fifth time.
 | 46 | Flush the ring's verdict, not just the pointer | 1 | 136, dies freeing `0x7b8e20` | **The fatal free is legitimate.** Its pointer matched a live 27-byte cell -- no double, no stray. The verdict was the last record written, so the fault is in `User::Free` itself |
-| 47 | Log the cell's header words before each free | *pending* | | |
+| 47 | Log the cell's header words before each free | 1 | 136, dies freeing `0x7b8e20` | **The header is healthy.** 27 bytes requested, header reads `0x28` -- exactly the emulator's pattern. The cell itself is not damaged |
 
 ## Where we are
 
@@ -92,7 +92,14 @@ RHeap keeps a cell's size in the word before the payload, and that is what
 exactly this -- a clean walk at 128, a pointer the ring recognises, and a free
 that faults.
 
-Build 47 reads it. The emulator's baseline, for comparison: the word before the
-payload is the cell's size, always a little above what was asked for --
-`0x24 -> 0x28`, `0x7d -> 0x88`, `0x1c -> 0x28`. Anything else on the phone is
-the answer.
+Build 47 read it, and **the header is healthy**: 27 bytes requested, header
+`0x28`, exactly the shape the emulator produces. So the cell is not damaged
+either.
+
+Every measurable property of that free is now correct -- heap chain, pointer,
+cell size, header -- and `User::Free` still faults on it. Which points at the
+one part of a free that is *not* about the cell being freed: **coalescing**.
+`RHeap::Free` looks at the neighbouring cell to decide whether to merge, so it
+reads a header that belongs to somebody else. `CountAllocCells` walks the
+allocated chain and would not necessarily notice a damaged free-list link or a
+damaged neighbour.

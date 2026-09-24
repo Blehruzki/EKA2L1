@@ -49,9 +49,11 @@ here and the section it overturns is marked.*
   event 128 `User::CountAllocCells` walks the heap clean at 1209 cells, every
   free matches a live cell, and the fatal one matched a live 27-byte cell with
   its verdict written to disk before the run ended. The fault is inside
-  `User::Free`, on a cell that everything we can measure says is fine. What has
-  never been looked at is the cell's own header -- the word RHeap keeps before
-  the payload, and the first thing `User::Free` reads.
+  `User::Free`, on a cell that everything we can measure says is fine --
+  including its header, which build 47 read: 27 bytes requested, header
+  `0x28`, exactly the emulator's shape. Heap chain, pointer, size and header
+  all correct. What is left is the part of a free that is not about the cell
+  being freed: **coalescing**, which reads the *neighbouring* cell's header.
 - The setup state on the phone matches the emulator exactly: 20612 bytes of
   spare arena, a 3768-byte context, all four optional wraps installed. Nothing
   is being silently skipped there.
