@@ -116,6 +116,9 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_LOOKUP_RESULT = 876,// and the address it answered with
        NOTE_DRIVER = 877,       // a kernel driver call, refused
        NOTE_TICK = 878,         // User::TickCount, every sixteenth milestone
+       NOTE_CELL_AT = 881,      // the cell a read buffer sits in
+       NOTE_CELL = 879,         // and how big it is
+       NOTE_OVERFLOW = 880,     // ... and the maximum, when it is more than that
        NOTE_TEXT = 859,         // the text of a descriptor we read ourselves
        NOTE_VPTR = 854,         // the app UI's vtable pointer, when it went wrong
        NOTE_SLOT = 860,         // the framework entered a slot of ours
@@ -520,6 +523,9 @@ struct Context {
     u32 newBaseConstructL;  // avkon's CAknAppUi::BaseConstructL, as resolved
     u32 newRequestComplete; // euser's User::RequestComplete, as resolved
     u32 clockTick;          // how many milestones since the last clock reading
+    u32 allocPtr[32];       // the last few allocations, so a buffer handed to
+    u32 allocLen[32];       // the file server can be checked against its cell
+    u32 allocNext;
     u32 wrapUiVptr;         // the vtable pointer wrapUi was given, checked on
                             // every call in, to catch a stray write over it
     u32 *dsaReal;           // the CDirectScreenAccess ws32 made
@@ -982,7 +988,7 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 // emulator shows the same sequence with or without them.
 enum { TRACE_EVERY_IMPORT = 1 };
 enum { TRACE_SKIPS_HOT = 1, TRACE_MILESTONES = 1 };
-enum { WATCH_ALLOCATIONS = 1, LOG_THE_CLOCK = 1, REFUSE_DRIVERS = 1, WATCH_THE_READS = 1 };
+enum { WATCH_ALLOCATIONS = 1, LOG_THE_CLOCK = 1, REFUSE_DRIVERS = 1, WATCH_THE_READS = 1, CLAMP_THE_READS = 0 };
 enum { PLANT_CRUMBS = 0 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1115,6 +1121,17 @@ extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
 // allocation produced an object the game later walks.
 extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
 {
+    // Remember it, whether or not it failed. RFile::Read hands the file server
+    // a buffer and a maximum, and the server writes up to that maximum into
+    // this process -- so if the maximum is larger than the cell the buffer came
+    // from, the overflow is performed by a server and lands wherever the heap
+    // put the next thing. That is the kind of thing that ends kernel-side.
+    if (result) {
+        const u32 n = c->allocNext & 31;
+        c->allocPtr[n] = result;
+        c->allocLen[n] = arg;
+        c->allocNext++;
+    }
     // Only the failures. An allocator that succeeded says nothing worth the
     // time -- and time is what the run is short of -- while a zero is the whole
     // answer to whether the phone is running out of memory.
@@ -1143,9 +1160,36 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
     // will write into, and what it says about itself is the whole question:
     // type and length in the first word, maximum in the second, and the buffer
     // in the third.
-    if (a1 >= 0x400000 && a1 < 0x10000000 && !(a1 & 3))
+    if (a1 >= 0x400000 && a1 < 0x10000000 && !(a1 & 3)) {
         for (u32 i = 0; i < 3; i++)
             log_event(c, NOTE_R5_AT, ((const u32 *)a1)[i]);
+        // And the cell the buffer belongs to, if we saw it allocated: its size
+        // against the maximum the server has been given.
+        const u32 want = ((const u32 *)a1)[1];
+        const u32 buf = ((const u32 *)a1)[2];
+        for (u32 i = 0; i < 32; i++)
+            if (c->allocPtr[i] && buf >= c->allocPtr[i] &&
+                buf < c->allocPtr[i] + c->allocLen[i]) {
+                log_event(c, NOTE_CELL_AT, c->allocPtr[i]);
+                log_event(c, NOTE_CELL, c->allocLen[i]);
+                const u32 room = c->allocLen[i] - (buf - c->allocPtr[i]);
+                if (want > room) {
+                    // The file server writes up to the maximum it is given, and
+                    // it does it from outside this process. Asking it for a
+                    // hundred and sixty kilobytes into a thirty-one byte cell
+                    // is not a fault here when it goes wrong -- it is a fault
+                    // in the server, which is the one kind that takes a phone
+                    // down rather than an application. So the maximum is cut
+                    // to what the cell can hold. The read comes back short,
+                    // which the game may not like; the alternative is a heap
+                    // smashed by something that cannot be stopped once asked.
+                    log_event(c, NOTE_OVERFLOW, want);
+                    if (CLAMP_THE_READS)
+                        ((u32 *)a1)[1] = room;
+                }
+                break;
+            }
+    }
     log_block(c);
 }
 

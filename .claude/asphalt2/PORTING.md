@@ -826,3 +826,54 @@ length word, its maximum, and its buffer. The emulator's are all unremarkable:
 type 2, lengths matching maxima, buffers on the stack at 0x40xxxx or in the
 heap at 0x8bxxxx. Anything on the phone pointing into the game's chunk at
 0x46xxxxx, or anywhere that is not stack or heap, is the answer.
+
+## A buffer overflow, performed by the file server
+
+The descriptors the phone hands `RFile::Read` are all well formed -- type 2,
+lengths matching maxima, buffers in stack or heap and never in the game's chunk
+(`phone-2026-09-24l.log`). So the shape was never the problem. The size is.
+
+Recording each read buffer against the cell it was allocated in, in the
+emulator, gives this:
+
+```
+max 0x8      buf 0040f880   (stack)
+max 0x80     buf 0040f888   (stack)
+max 0x2823   buf 008c3e38   cell 008c3e38 size 10275
+max 0x5      buf 0040f7c8   (stack)
+max 0x54e0   buf 008b2a78   cell 008b2030 size 73216
+max 0x2807c  buf 008bd448   cell 008bd448 size 31        <-- 163964 asked for
+max 0x2807c  buf 008b9b70   cell 008b9b70 size 163964
+max 0x2807c  buf 008b9b70   cell 008b9b70 size 163964
+```
+
+The sixth read asks the file server for the whole of `cwivenc.dat`, 163,964
+bytes, into a cell of **thirty-one**. The emulator writes it and carries on --
+its heap is a flat region and the damage does not show. On a phone the file
+server runs off the end of the chunk and faults *inside itself*, and a fault in
+a system server is the kernel-side event that a reboot means. The phone
+survives that read and dies on the next one, which is what a smashed heap looks
+like.
+
+Clamping the maximum to the cell stops the overflow and starves the game: 43
+milestones instead of 170. `CLAMP_THE_READS` is off for that reason. The data
+is needed; the buffer is what is wrong.
+
+**And it is not the game being careless.** All five of the later reads come
+from one helper at 0x10a7dc, whose first argument is the buffer. One caller,
+0xed694, allocates a block and reads exactly that many bytes into it -- correct,
+and those are the two good reads. The other, 0xe4774, does this:
+
+```
+000e4740  bl  User::Alloc        @ -> r4, and never used as the buffer
+000e4760  ldr ip, [ip, #0x240]   @ a pointer out of a table at +0x240
+000e4768  mov r0, ip             @ that is the buffer
+000e476c  mov r1, r5             @ and a length from somewhere else
+000e4774  bl  #0x10a7dc
+```
+
+The buffer comes out of a table at offset 0x240 of some object -- the same
++0x240 the decrypted code reads at 0x10afd4 -- and the length from elsewhere.
+So the table slot holds a pointer to a thirty-one byte cell when it should hold
+one to a hundred and sixty kilobyte cell. Whatever fills that table is where
+this actually goes wrong, and that is the next thing to find.
