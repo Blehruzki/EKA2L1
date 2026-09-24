@@ -607,6 +607,25 @@ load and the free, and nothing for the channel. The emulator refuses 624, 490
 and 623 twice each, reaches the same 170 milestones and the same fault, so the
 game carries on without its driver.
 
+**It worked.** The phone refused 624, 490 and 623, exactly as the emulator
+does, and moved for the first time in seven builds: 118 milestones against 102,
+**60% to 69%** by count, and positionally it now reaches the emulator's
+milestone 141 of 170 -- 83% of the way to the emulator's own frontier
+(`phone-2026-09-24g.log`). The plateau was that driver.
+
+It rebooted rather than panicking, and this time the instrument is not a
+plausible culprit: 230 records and about thirty writes, against the 6988 and
+the thousands that caused the earlier ones.
+
+**Worth being plain about what is and is not ahead.** The only drawing in the
+emulator's whole run is at milestone 16 -- `SetClippingRegion`, `SetAutoUpdate`
+and one `CFbsScreenDevice::Update` -- which is the black band with pixels
+already seen on the phone. Nothing draws again before the emulator faults at
+170. So the splash is past the emulator's frontier as well, and the archive
+search at game+0xd5abc is now the wall for both machines rather than just this
+one.
+
+
 
 
 
