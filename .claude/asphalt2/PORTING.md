@@ -86,6 +86,17 @@ here and the section it overturns is marked.*
   it is reached. Flags are preserved by `probe_plant`, so this is the game, not
   the thunk. Every instrument from here watches state through wrappers we
   already own rather than patching a game byte.
+- **The poisoning store is `str sl, [ip]` at `0x1082c0`,** through an
+  out-parameter held at `[sp, #0xb8]` -- which is what `&this->[4]` became when
+  `0xe9988` passed it down. One word, which matches the measurement that only
+  word 1 of the object changes. *Named by a run that perturbed; awaiting a
+  clean confirmation.*
+- **The value is a pointer calculation, not a poison.** `mul` and `mla` over
+  runtime values -- `sl = sb*r1 + r8`, then `sl*(r4+1)` scaled -- is
+  `base + index * size`, not the image's multiply-by-constant obfuscation. So
+  `this->[4]` is meant to hold a computed pointer and one of the inputs is
+  wrong. That is also why the value is deterministic per machine and different
+  between machines.
 - **The poison lands between a successful allocation and the `delete` called
   from image offset `0x104828`,** inside one of `0xe9988`'s callees. Watched
   from the wrappers, `this->[4]` is intact at every station before that and
@@ -2349,3 +2360,90 @@ the same `0xa6dfb180` on three phone runs.
 The phone's *pre*-call value is still unknown: round 50's probe set did not
 include `0xcc864`. The current build does, so the next hardware round yields it
 without being spent on it.
+
+## The store that poisons the field, and what it is computing
+
+Four emulator runs, E17 to E20, from "somewhere inside `0xe9988`" to one
+instruction.
+
+**E17 -- it is a deliberate store, not an overrun.** The watch was widened from
+one word to four. Across the flip, word 1 changes and words 0, 2 and 3 do not:
+
+```
+before: 83dc3e00  8d8ee8    8b29d8  4900000
+after : 83dc3e00  eaf88340  8b29d8  4900000
+```
+
+A copy that ran long, or an overrun from the cell in front, takes neighbours
+with it. This takes exactly one word, which also clears our own shim of having
+scribbled on it.
+
+**E18 -- the other function in the window does tolerate a probe.** `0xe9988`
+dies on a single patched word; `0x103774`, which is running when the field goes
+bad, does not. That was the fork in the road, and it went the good way.
+
+**E19 -- and it is not either of that function's two array stores.** The only
+non-frame stores in it are the same instruction twice,
+`str sl, [r5, ip, lsl #2]`. Both were probed; all fifty firings fill two
+five-element arrays at `0x40f640` and `0x8d9144`, and not one of them addresses
+`this+4`. The flip is bracketed between them, and the stretch between is
+dispatcher jumps -- one call out, no stores.
+
+**E20 -- so instrument the obfuscation's own choke point.** The function
+dispatches through a jump table at `0x1037ac`
+(`cmp r3, #0x16; ldrls pc, [pc, r3, lsl #2]`), reached by `b` from everywhere,
+with the block's key loaded inline into `r0` just before the jump. A probe
+there is a station at every block boundary without knowing the path -- and made
+*quiet*, reporting only when the watched word has changed, it is silent until
+the one boundary that matters. It fired **once**, with `r0 = 0xe649867c`.
+
+That key appears twice in the image. One of the two blocks ending in it is
+this:
+
+```
+00108294  mul  sb, sl, sb
+00108298  mov  sl, r1
+0010829c  mla  sl, sb, sl, r8        sl = sb*r1 + r8
+001082a0  mla  r3, sl, r4, sl        r3 = sl*(r4 + 1)
+001082a4  add  r3, r3, r3, lsl #2
+001082a8  add  r3, sl, r3, lsl #10
+001082ac  add  r3, sl, r3, lsl #3
+001082b0  rsb  r3, sl, r3, lsl #4
+001082b4  add  r3, r3, r3, lsl #3
+001082b8  rsb  sl, sl, r3, lsl #7
+001082bc  ldr  ip, [sp, #0xb8]       <- the out-pointer, off the frame
+001082c0  str  sl, [ip]              <- the store
+```
+
+`ldr ip, [sp, #0xb8]; str sl, [ip]` is a store **through an out-parameter held
+in a stack slot** -- which is what `&this->[4]` became after `0xe9988` passed it
+down. One word, matching E17 exactly.
+
+### What the value is, and why that matters
+
+The arithmetic is not the obfuscation. Obfuscation in this image is
+multiply-by-constant, built from shift-adds with an inverse chain later;
+`mul sb, sl, sb` and `mla sl, sb, sl, r8` multiply two **runtime** values.
+`mla r3, sl, r4, sl` is `sl * (r4 + 1)`, and the shift-add tail scales it
+again.
+
+That is the shape of `base + index * size`, not of a hash. So `this->[4]` is
+meant to receive a **computed pointer into an array**, and it is coming out
+wild because one of `sb`, `r1`, `r8` or `r4` is wrong. The field is not being
+deliberately poisoned by anti-tamper; it is a pointer calculation with a bad
+input.
+
+Which also finally explains the shape of the value: deterministic per machine,
+different between machines, never appearing anywhere earlier in the log, and
+not a constant multiple of anything -- exactly what `a*b + c` over
+machine-specific addresses produces.
+
+### The caveat on E20, stated plainly
+
+**That run perturbed.** The emulator's fault moved from `0xEAF88580` to
+`0x1C976000`, and the field's garbage changed with it -- consistently, since
+`0x1c975dc0 + 0x240` is the new fault, so the mechanism held. But a probe that
+moves the outcome is a probe whose evidence has to be confirmed, and rule 5
+says a measurement that agrees with the theory gets checked as hard as one that
+does not. **The next run re-confirms `0x1082c0` without the dispatcher probe**,
+by planting a single quiet probe there instead.

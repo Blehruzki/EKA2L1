@@ -620,6 +620,7 @@ struct Context {
     u32 allocLen[ALLOC_RING];   // can be matched against one -- or found not to be
     u32 allocNext;
     u32 argR2;              // the third argument of a call arg_thunk wrapped
+    u32 lastWatch;          // ... and what it last read there
     u32 watchAt;            // the object the first probe reported, re-read by
                             // every probe after it. Bisecting which call
                             // spoils a field means watching the field, and a
@@ -770,8 +771,16 @@ enum { TRACE = 48 };
 static void log_event(Context *c, u32 code, u32 from);
 static void watch_note(Context *c)
 {
-    if (c->watchAt)
-        log_event(c, NOTE_WATCH, ((const u32 *)c->watchAt)[1]);
+    // Four words, not one. A deliberate store into this->[4] touches that word
+    // and nothing else; a stray write -- an overrun from the cell before it,
+    // or a copy that ran long -- takes its neighbours with it. One record
+    // each, and the difference between those two explanations is the whole
+    // question now.
+    if (!c->watchAt)
+        return;
+    const u32 *o = (const u32 *)c->watchAt;
+    for (u32 i = 0; i < 4; i++)
+        log_event(c, NOTE_WATCH, o[i]);
 }
 
 extern "C" void gate6_trace(u32 index, Context *c, u32 caller);
@@ -1102,6 +1111,12 @@ enum { PLANT_CRUMBS = 0 };
 // reference carrying them cannot be lined up against the phone's build. Tying
 // this to LOG_ANYWAY looked tidy and quietly broke the comparison again.
 enum { PLANT_PROBES = 1, PROBE_FIRST = 990, PROBE_BYTES = 80 };
+// A probe from this marker on says nothing unless the watched word has changed
+// since the last one. That makes a hot site usable: 0x1037ac is the jump table
+// the whole obfuscated function dispatches through, so a probe on it is a
+// station at every block boundary without knowing the path -- and silent until
+// the one boundary that matters.
+enum { PROBE_QUIET_FROM = 993 };
 struct Probe { u32 at; u8 ra; u8 rb; };
 static const Probe kProbe[] = {
     // 990 must stay first: it latches the watched object, and from then on
@@ -1115,6 +1130,23 @@ static const Probe kProbe[] = {
     // touch none of the game's bytes, so the field is watched from there.
     { 0x000cc864,  5, 6 },      // add r0, r5, #0x28 -- this, at entry
     { 0x000cc894,  6, 0 },      // mov r4, r0      -- and after 0xe9988 returns
+    // The fork in the road. The poison lands while 0x103774 is running -- the
+    // function that deletes a cell at 0x104824 -- and 0xe9988 refused to carry
+    // a probe at all. If this one survives, that region can be bisected the
+    // ordinary way. If it does not, nothing in this call tree can be patched
+    // and the next instrument has to come from somewhere else entirely.
+    // The only two stores in that function that are not frame slots are the
+    // same instruction: `str sl, [r5, ip, lsl #2]`, an indexed array write.
+    // One word, which is exactly what the four-word watch says happened. If
+    // r5 + 4*ip lands on this+4, the poison is an out-of-bounds array store
+    // and the value in sl was never meant to be a pointer at all.
+    { 0x00104824,  0, 3 },      // ldr r0, [sp, #0xcc] -- just before the delete
+    // 993 and up are quiet. This one sits on the jump table the obfuscated
+    // function dispatches through -- `cmp r3, #0x16; ldrls pc, [pc, r3 lsl 2]`
+    // -- so it fires at every block boundary and reports only the boundary the
+    // field changes at. r0 is the key the caller loaded inline before jumping
+    // here, which is what names the block that just ran.
+    { 0x001037ac,  0, 1 },      // add r3, r0, #0x1000000a -- the dispatcher
 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1563,6 +1595,12 @@ extern "C" void gate6_probe(u32 marker, Context *c, u32 a, u32 b)
     // says the interesting call is the one now running.
     if (marker != (u32)PROBE_FIRST && !c->watchAt)
         return;
+    if (marker >= (u32)PROBE_QUIET_FROM) {
+        const u32 now = ((const u32 *)c->watchAt)[1];
+        if (now == c->lastWatch)
+            return;
+        c->lastWatch = now;
+    }
     stack_mark(c);
     c->lastImport = marker;
     const u32 slot = c->traceCount & (BOX_RING - 1);
@@ -1581,10 +1619,11 @@ extern "C" void gate6_probe(u32 marker, Context *c, u32 a, u32 b)
     // The watched word, from the first probe's object, on every probe after
     // it. One record, and it turns a scatter of registers into a timeline of
     // one field.
-    if (marker == (u32)PROBE_FIRST && a >= 0x400000 && a < 0x10000000 && !(a & 3))
+    if (marker == (u32)PROBE_FIRST && a >= 0x400000 && a < 0x10000000 && !(a & 3)) {
         c->watchAt = a;
-    if (c->watchAt)
-        log_event(c, NOTE_WATCH, ((const u32 *)c->watchAt)[1]);
+        c->lastWatch = ((const u32 *)a)[1];
+    }
+    watch_note(c);
     // A probe is planted at a site that is about to go wrong, so the block it
     // is in is the one most likely never to be written.
     if (LOG_ANYWAY)
