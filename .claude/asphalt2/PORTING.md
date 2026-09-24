@@ -662,6 +662,29 @@ change of behaviour. If the phone stops rebooting, the reboot was a client
 holding the screen and not listening; if it does not, the window server is
 innocent and something else is interrupting.
 
+**The window server is innocent too.** 115 milestones with the screen given
+back, inside the 110-118 band of the runs that held it, and still positionally
+the emulator's 141 (`phone-2026-09-24j.log`). Nor is anything leaking: loads
+against closes are 15/13 on the phone and 19/17 in the emulator, file sessions
+7/4 against 8/5 -- the same two and three outstanding on both. And the blind
+spot the milestone trace leaves between 141 and 158 is only 203 calls, almost
+all of them the name descrambler again, so nothing exotic is hiding in it.
+
+Which leaves the plainest explanation: the game takes longer than the phone
+allows in one `RunL`, and always has. Every earlier reboot was ours -- two
+thousand writes, then six thousand breadcrumbs -- and removing those bought
+real distance each time, which fits. What is left is the game's own speed on a
+332 MHz phone.
+
+`LOG_THE_CLOCK` reads `User::TickCount` every sixteenth milestone, which is ten
+readings and 38 ticks across the emulator's whole run. It settles the question
+either way: stopping at the same moment each time and a different milestone is
+a clock, and stopping at the same milestone after a different time is not. If
+it is the clock, the answer is to stop computing inside a `RunL` at all -- to
+give the game its own thread, so the active scheduler stays free to service the
+framework while it works.
+
+
 
 
 
