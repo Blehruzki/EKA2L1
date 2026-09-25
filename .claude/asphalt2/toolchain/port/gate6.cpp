@@ -165,6 +165,7 @@ enum { BOX_ON_SLOT = !SILENT };
 // whatever its depth, so it is a hundred and twenty-eight events deep now and
 // covers the whole of a run the phone gets through.
 enum { BOX_EVERY_TRACED = 16 };
+enum { OPEN_THUNK_BYTES = 13 * 4 };
 enum { REACHED_FAULT = 256 };   // the exception handler ran
 // 800..899 are notes rather than events: the code says what is being noted and
 // the column that usually holds a caller holds the value. They are what the
@@ -184,6 +185,9 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_DES = 892,     // ... three words of that descriptor
        NOTE_FILE_RET = 893,     // ... and what the call answered
        NOTE_FILE_SIZE = 894,    // RFile::Size, and the size it answered
+       NOTE_FILE_OPEN = 897,    // what RFile::Open answered
+       NOTE_FILE_PATH = 898,    // ... and the name it was asked for
+       NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
        NOTE_LOOKUP_HANDLE = 875,// the library handle a lookup was made on
        NOTE_LOOKUP_RESULT = 876,// and the address it answered with
        NOTE_DRIVER = 877,       // a kernel driver call, refused
@@ -659,8 +663,10 @@ struct Context {
     void *dynLib[2];        // the RLibrary the game opened on each of the two
     u32 fileRead;           // efsrv's RFile::Read, as resolved for the game
     u32 fileSize;           // and RFile::Size
+    u32 fileOpen;           // and RFile::Open
     u32 fileReadThunk;      // the diversions handed over in their place
     u32 fileSizeThunk;
+    u32 fileOpenThunk;
     u8 *spare;              // unused executable room, handed out as needed
     u8 *spareEnd;
 };
@@ -2328,13 +2334,20 @@ extern "C" void gate6_free(void *)
 {
 }
 
-extern "C" void *gate6_alloc(int size, u32, Context *)
+extern "C" void *gate6_alloc(int size, u32, Context *c)
 {
     if (size < 0)
         return 0;
     u8 *p = (u8 *)user_alloc(size);
-    if (!p)
+    if (!p) {
+        // Nothing has ever recorded one of these. The game asks for a 64 KiB
+        // read buffer, and with LEAK_EVERYTHING nothing is ever given back, so
+        // a heap that is generous in the emulator and finite on the phone is a
+        // standing candidate for anything the phone skips and the emulator does.
+        log_event(c, NOTE_ALLOC_FAIL, (u32)size);
+        log_block(c);
         return 0;
+    }
     if (ZERO_THE_SLACK)
         for (int i = size, n = user_alloclen(p); i < n; i++)
             p[i] = 0;
@@ -2367,7 +2380,67 @@ extern "C" u32 gate6_mmc_control(u32, u32 op, u32 *info)
 // descriptor with no room left answers KErrNone having read nothing. Three
 // words are logged before the call and the length word again after it, so a
 // short read and an empty buffer cannot be confused for each other.
-enum { NEW_RFILE_READ = 255, NEW_RFILE_SIZE = 264 };
+enum { NEW_RFILE_READ = 255, NEW_RFILE_SIZE = 264, NEW_RFILE_OPEN = 93 };
+
+// `RFile::Open(RFs&, const TDesC16&, TUint)` fills r0 to r3, so there is no
+// register free to carry the context and a ctx_thunk cannot be used. The shape
+// result_thunk already uses works instead: push the arguments, let the call
+// happen, then read the saved r2 -- the file name -- back off the stack.
+//
+//   stmdb sp!, {r0-r3, r12, lr}
+//   ldr   r12, [pc, #28]        @ the real RFile::Open
+//   blx   r12
+//   str   r0, [sp]              @ the result becomes the caller's r0
+//   ldr   r1, [sp, #8]          @ ... and the saved r2 is the name
+//   ldr   r2, [pc, #16]         @ context
+//   ldr   r12, [pc, #16]        @ handler
+//   blx   r12
+//   ldmia sp!, {r0-r3, r12, lr}
+//   bx    lr
+static u32 open_thunk(u8 *code, const void *ctx, u32 target, u32 handler)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE92D500F;
+    b[1] = 0xE59FC01C;
+    b[2] = 0xE12FFF3C;
+    b[3] = 0xE58D0000;
+    b[4] = 0xE59D1008;
+    b[5] = 0xE59F2010;
+    b[6] = 0xE59FC010;
+    b[7] = 0xE12FFF3C;
+    b[8] = 0xE8BD500F;
+    b[9] = 0xE12FFF1E;
+    b[10] = target;
+    b[11] = (u32)ctx;
+    b[12] = handler;
+    user_imb_range(b, b + 13);
+    return (u32)b;
+}
+
+// Which file, and whether it opened. The name is a TDesC16 in one of the four
+// layouts the game uses, decoded the same way gate6_library_load decodes a
+// library name, and written down two characters to a record so the path can be
+// read straight out of the log rather than inferred from the box.
+enum { OPEN_NAME_WORDS = 20 };
+
+extern "C" void gate6_file_open(u32 err, const u32 *name, Context *c)
+{
+    log_event(c, NOTE_FILE_OPEN, err);
+    if (name) {
+        const u32 type = name[0] >> KTypeShift;
+        const u16 *text = (type == EBufC)    ? (const u16 *)(name + 1)
+                        : (type == EPtrC)    ? (const u16 *)name[1]
+                        : (type == EBufType) ? (const u16 *)(name + 2)
+                                             : (const u16 *)name[2];
+        u32 length = name[0] & 0x0FFFFFFF;
+        if (length > 2 * OPEN_NAME_WORDS)
+            length = 2 * OPEN_NAME_WORDS;
+        for (u32 i = 0; i + 1 < length; i += 2)
+            log_event(c, NOTE_FILE_PATH, (u32)text[i] | ((u32)text[i + 1] << 16));
+    }
+    log_block(c);
+}
+
 
 extern "C" int gate6_file_read(void *self, u32 *des, Context *c)
 {
@@ -2467,6 +2540,17 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
     // Hand the game a diversion instead of the file call itself. The thunk is
     // built once and kept: the game asks for Read thirty times in a run, and
     // the spare arena is not big enough to spend a thunk on each.
+    if (fn && kind == LIB_EFSRV && mapped == NEW_RFILE_OPEN) {
+        c->fileOpen = fn;
+        if (!c->fileOpenThunk && c->spare + OPEN_THUNK_BYTES <= c->spareEnd) {
+            c->fileOpenThunk = open_thunk(c->spare, c, fn, (u32)&gate6_file_open);
+            c->spare += OPEN_THUNK_BYTES;
+        }
+        // The thunk holds the address it was built with; a later pass that
+        // resolves somewhere else must not be sent to the old one.
+        if (c->fileOpenThunk && ((u32 *)c->fileOpenThunk)[10] == fn)
+            return c->fileOpenThunk;
+    }
     if (fn && kind == LIB_EFSRV && (mapped == NEW_RFILE_READ || mapped == NEW_RFILE_SIZE)) {
         const int read = (mapped == NEW_RFILE_READ);
         u32 *slot = read ? &c->fileReadThunk : &c->fileSizeThunk;
@@ -2797,6 +2881,17 @@ static u32 load_and_start()
         got += n;
     }
     if (got != size) PANIC(CAT_FS, got);
+
+    // Give the image back. The loader opened it EFileShareReadersOnly and then
+    // held it for the life of the process, and the game opens *the same file*
+    // itself -- `E:\system\apps\6rbc\6rbc.app`, which it reads in 64 KiB
+    // chunks, twenty-six of them, before it does anything else. A file already
+    // open readers-only cannot be opened exclusively, and the default share
+    // mode is exclusive: on hardware that open answers KErrInUse and the whole
+    // read is skipped, which is the one place the two machines' logs differ.
+    // The emulator's file server does not enforce share modes, so it never
+    // showed. Nothing reads through this handle after here in any case.
+    file_close(file);
 
     const E32 *h = (const E32 *)raw;
     if (h->sig != 0x434F5045) PANIC(CAT_HDR, 1);            // 'EPOC'

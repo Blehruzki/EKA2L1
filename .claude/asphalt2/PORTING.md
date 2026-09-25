@@ -193,6 +193,7 @@ logs until that is settled.
 | A `static` is safe to write to in our loader | It is not. This image has no data section: `flat.ld` folded `.data*` into `.rodata` and `mke32.py` declares data and bss zero, so every static is in read-only memory. Build 52 patched one character of one and the phone took KERN-EXEC 3 before creating a file. The emulator maps it writable and saw nothing. |
 | Three euser lookups are answered out of the efsrv table (round 57) | **My own error, retracted in round 58.** They were efsrv asks all along: old efsrv 121/136/185 are `RFile::Open`, `RFile::Read` and `RFile::Size`, and they map to new efsrv 93/255/264, which are `RFile::Open`, `RFile::Read` and `RFile::Size`. I named the old ordinals out of the **euser** def file and the new ones out of euser's too, and got three unrelated names. Every mapping in the log is correct. |
 | The 35-event gap is a wrong-table bug in `gate6_library_lookup` | It is not a bug in the shim at all. The gap is 26 extra `RFile::Read` calls the emulator makes and the phone does not, from one call site, on one file. |
+| The gap is a short read on the phone | Nothing the phone reads is short -- every read fills its buffer exactly and answers KErrNone. The 26 reads are a *different file*, `6rbc.app`, that the phone never opens successfully: the loader is still holding it open readers-only, and the game's own open is exclusive. |
 | The 35-event gap is an N95-versus-5320 ordinal difference | The phone's ordinals and mappings are identical to the emulator's. Both machines are handed the wrong functions; only the consequences differ. |
 | The app runs once per launch | It runs over and over. Twelve launches in one 45-second emulator session, each identical, each leaving and being restarted. `file_replace` truncates, so each was erasing the last one's log. |
 | The port has one failure per run | It has two. One KERN-EXEC 0 and one KERN-EXEC 3, every run, for dozens of rounds -- and the logs may be recording whichever process ran second. |
@@ -252,6 +253,11 @@ logs until that is settled.
    it.** It went stale one round after it was written, which is how the log got
    into the state that made it necessary. `toolchain/port/checkrec.py` fails
    when a new section is appended without it; run it before committing.
+12. **Anything the emulator permits is untested.** EKA2L1 is lax where a phone
+   is strict -- share modes, handle validity, read-only memory, integrity
+   fields -- so a green emulator run says only that nothing *else* is wrong.
+   Every resource the loader takes and does not give back is a candidate, and
+   the loader holding `6rbc.app` open cost three months before round 59.
 
 ## The two machines, which are not the same machine
 
@@ -3048,3 +3054,51 @@ The lesson is narrower than the last one and worth writing down plainly: when a
 mapping looks absurd, check which library it came out of before deciding the
 code is broken. Two of the three "unrelated functions" were unrelated only
 because I read them in the wrong book.
+
+## The loader was holding the game's own image open
+
+Round 58 put a wrapper in front of `RFile::Read` and `RFile::Size` and the
+answer came back in four numbers. The phone: `Size` = 125, one read into a
+125-byte buffer, 125 bytes returned, KErrNone. The emulator: twenty-six reads
+into a **65536**-byte buffer, 65536 bytes each, before `Size` is ever called,
+and only then the same 125-byte read.
+
+So nothing the phone reads is short. The twenty-six reads are a *different
+file*, opened earlier, that the phone does not read at all.
+
+Round 59's `RFile::Open` wrapper named it. The five files the game opens:
+
+| file | size | reads |
+|---|---|---|
+| `E:\system\apps\6rbc\6rbc.app` | 1.6 MB | **26 x 64 KiB** |
+| `E:\system\apps\6rbc\cwp.dat` | 125 | 1 |
+| `E:\system\apps\6rbc\nc.dat` | 16 | 1, twice |
+| `E:\system\apps\6rbc\6rbc.cwa` | 38 KB | -- |
+
+The burst is the game reading **its own image**. That is a protection check --
+the thing a copy of the game does to itself before it will run.
+
+And the loader has that file open. `gate6_load` opens
+`E:\system\apps\6rbc\6rbc.app` with mode 1, `EFileRead | EFileShareReadersOnly`,
+reads the image into the chunk, and **never closes it**. It is held for the life
+of the process.
+
+A file already open readers-only cannot be opened *exclusively*, and exclusive
+is the default share mode. On hardware the game's own open of `6rbc.app`
+answers **KErrInUse** and the whole check is skipped. EKA2L1's file server does
+not enforce share modes, so the emulator opened it happily and read it
+twenty-six times, and the difference never showed in three months of logs.
+
+**The fix is one line**: close the handle once the image has been read. Nothing
+reads through it afterwards. E35 confirms it costs the emulator nothing --
+2132 records, 29 reads, five opens, byte-for-byte E34 -- which is exactly what a
+change that only matters on hardware should look like.
+
+### What this says about the method
+
+This is the second time a difference between the two machines has been *ours*
+rather than the game's, and both were invisible from the emulator alone: the
+emulator is lax where a phone is strict, so anything the emulator permits is
+untested. Round 58's instrument -- standing in front of a dynamically resolved
+call, which no round had ever done -- is what turned a 27-event hole in a diff
+into a named file and a share mode.
