@@ -62,6 +62,13 @@ here and the section it overturns is marked.*
   Emulator: state path 47 13 36 29 **34 4** 59 7 instead of ...29 **68**..., and
   179 -> 195 -> **198** traced events. It is a workaround; what the check hashes
   is still unknown.
+- **The crack is a loader, not a patched binary.** The second dump's
+  `bin/main.dll` is byte-identical to our image; its 3964-byte `6RBC.APP` is a
+  BiNPDA loader that opens `RDebug` on its own thread and uses
+  `RDebug::WriteMemory` to write **seven four-byte patches** into the loaded
+  image, each a pointer to one of its own routines. Same technique as `gate6`.
+  The patch table is at crack offset `0xb44`; the offsets are XOR'd with a key
+  computed at run time from CRC32s, and the key is not recovered yet.
 - **There is one dump on this machine and it is not cracked.** All three copies
   of `6rbc.app` are byte-identical, as are every data file beside them; the `e`
   drive is the same dump laid out as an N-Gage card. The protection runs in it.
@@ -3781,3 +3788,94 @@ reaches the game. `ANSWER_THE_CARD` is kept on anyway: it costs nothing and it
 is the truthful answer where zeros were a guess.
 
 So the CID is either not an input to the digest, or not the only one.
+
+## The second dump is a crack *loader*, and it works exactly like ours
+
+`Asphalt_Urban_GT_2.zip` is not a cracked binary. Its game code is
+`System/Apps/6RBC/bin/main.dll`, 1616972 bytes, and it is **byte-identical** to
+the `6rbc.app` this project has been running all along; so is every data file
+beside it -- `cwp.dat`, `nc.dat`, `cis.dat`, `cwivenc.dat`, `6rbc.cwa`,
+`game.lic`, `6RBC.dat`, `version.txt`, `nokia_EN.RLE`, the resources.
+
+The difference is one file: **`6RBC.APP`, 3964 bytes**, where our tree has the
+1.6 MB image under that name. Its strings say what it is:
+
+```
+E:\System\Apps\6rbc\6rbc.APP
+E:\System\Apps\6rbc\bin\main.dll
+z:\System\Libs\EUser.dll
+z:\System\Libs\EFSrv.dll
+e:\system\apps\6rbc\bin\
+main.dll
+BiNPDA presents...
+e:\system\apps\6rbc\bin\arenaframework.dll
+```
+
+and its imports say how it works: `RLibrary::Load`, `RLibrary::Lookup`,
+`RLibrary::EntryPoint`, `RThread::Id`, **`RDebug::Open`** and
+**`RDebug::WriteMemory`** -- the same pair this port already shims, because the
+game's own decryptor uses them.
+
+**It is the same technique as gate6.** Load the image, open a debug channel to
+your own thread, and write bytes into the loaded code.
+
+### The patch loop, in full
+
+```
+05cc  bl 0x480 ; mov r9, r0           @ r9 = a key, computed at run time
+05f8  ldr r12, [pc,#204] -> 0x10000b44 @ the patch table
+05fc  ldm/stm x6                       @ copied onto the stack at sp+16
+0628  add r0, sp, #8 ; bl RThread::Id  @ r10 = our own thread id
+0640  bl RDebug::Open(16, 16, 16, 0x10000)
+064c  mov r0, r4 ; bl RLibrary::EntryPoint ; mov r8, r0   @ main.dll's base
+      loop r5 = 0 .. 6:
+0674    bl TPtrC8::TPtrC8(&rec[r5].word, 4)
+0678    ldr r1, [r6, r5*8]             @ rec.offset, obfuscated
+067c    eor r1, r9, r1                 @ ^ the key
+0684    add r1, r8, r1                 @ base + offset
+0690    bl RDebug::WriteMemory(r10, r1, that TPtrC8, 4)
+069c    cmp r5, #6 ; bls
+```
+
+**Seven four-byte patches**, and the table at code offset `0xb44` is seven
+records of `{offset ^ key, value}`:
+
+| # | offset ^ key | value | what it points at in the crack |
+|---|---|---|---|
+| 0 | `85a3a51c` | crack+`0x18c` | `bx lr` -- do nothing |
+| 1 | `85a3a510` | crack+`0x190` | `b` to an import stub |
+| 2 | `85a3beb0` | crack+`0x194` | `b` to an import stub |
+| 3 | `85a3bb20` | crack+`0x380` | `push {r4,r5,r6,lr} / sub sp,#1040` |
+| 4 | `85a3be84` | crack+`0x198` | `push {r4-r7,lr}` |
+| 5 | `85a3be8c` | crack+`0x244` | `push {r4-r7,lr}` |
+| 6 | `85a3bea4` | crack+`0x2bc` | `push {r4-r7,lr}` |
+
+So the crack replaces **seven function pointers** in the loaded image with its
+own routines -- one of which simply returns. That is the whole crack, and it is
+about seven hundred bytes of ARM code.
+
+### The key is not recovered yet
+
+The offsets are XOR'd with a value computed at run time by `0x480`, which opens
+files, takes `crc32` from `ezlib` over UTF-16 descriptors (`bic #0xf0000000`
+then `lsl #1` is a descriptor's byte length) and sums the results. Tried and
+failed: CRC32 of every string in the crack, singly and in pairs and triples.
+Brute force over every 4-aligned offset in the image, filtered to keys where all
+seven targets currently hold pointers (1356 candidates), then to pointers at
+function starts (45), then to functions that call any known protection address
+(0). The targets are not in the protection's own jump table either.
+
+### Two ways to finish this
+
+1. **Let the crack compute its own key.** Everything it needs is something this
+   port already provides: `RDebug::Open` answers, `gate6_write_memory` performs
+   the write and `DUMP_DECRYPTED` records it. Hosting a 3964-byte EKA1 image
+   whose imports our shim already resolves is a smaller job than the loader we
+   already have, and it ends with the seven patches written down.
+2. **Run the cracked dump under EKA2L1 here** and capture the writes from the
+   emulator side. It is reported to work on the Android build, and this is the
+   same emulator.
+
+Either ends with seven `{offset, word}` pairs and about seven hundred bytes of
+replacement code to carry into `gate6`, which is a form this project already has
+machinery for.
