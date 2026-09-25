@@ -635,7 +635,8 @@ struct Context {
     u32 launchNo;           // the digit this launch put in its log's name,
                             // taken from the clock so that nothing has to be
                             // opened or read to find it
-    u32 lastWatch;          // ... and what it last read there
+    u32 lastWatch;
+    u32 loudCount;          // passes through a dispatcher station, rationed          // ... and what it last read there
     u32 watchAt;            // the object the first probe reported, re-read by
                             // every probe after it. Bisecting which call
                             // spoils a field means watching the field, and a
@@ -1197,6 +1198,10 @@ enum { PROBE_QUIET_FROM = 995 };  // nothing sits here now; kept for the next ho
 // a stronger statement than "the word changed near here", because it is the
 // instruction naming its own target.
 enum { PROBE_TARGET_FROM = 992, PROBE_TARGET_TO = 993 };
+// The quiet rule is for stations on a hot store. A station on a *dispatcher*
+// wants the opposite: every pass, because the sequence is the answer. Markers
+// from here up are exempt, and rationed by count instead.
+enum { PROBE_LOUD_FROM = 996, PROBE_LOUD_MAX = 400 };
 struct Probe { u32 at; u8 ra; u8 rb; };
 static const Probe kProbe[] = {
     // 990 must stay first: it latches the watched object, and from then on
@@ -1239,6 +1244,19 @@ static const Probe kProbe[] = {
     // the r4 that picks the constant.
     { 0x00108290,  8, 6 },      // ldr sb, [sp,#4] -- r8 = sb * r6, just computed
     { 0x001082a0,  4, 10 },     // mla r3, sl, r4, sl -- r4 picks the multiplier
+    // The protection's dispatcher. `0xccbb4` is sixty-nine states, each block
+    // ending in a branch back here with the next key in r0. The station goes on
+    // `cmp r3, #68` at 0xccbfc, not on the `ldrls pc, [pc, r3, lsl #2]` at
+    // 0xccc00 that follows it: a conditional load into pc is neither safe to
+    // re-execute out of place nor unconditional, so crumb_safe refuses it and
+    // the first attempt planted nothing at all. On the cmp it is safe, because
+    // the plant restores the flags before re-executing it, so the load that
+    // follows still branches on the comparison's own result.
+    //
+    // r3 here is the state about to run, 0..68, and the table at 0xccc08 turns
+    // it into the block's address. The sequence of r3 values is the path
+    // through the check; the last one is the state that answers zero.
+    { 0x000ccbfc,  3, 0 },
 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1690,7 +1708,11 @@ extern "C" void gate6_probe(u32 marker, Context *c, u32 a, u32 b)
     if (marker >= (u32)PROBE_TARGET_FROM && marker < (u32)PROBE_TARGET_TO &&
         a != c->watchAt + 4)
         return;
-    if (marker >= (u32)PROBE_QUIET_FROM) {
+    if (marker >= (u32)PROBE_LOUD_FROM) {
+        if (c->loudCount >= (u32)PROBE_LOUD_MAX)
+            return;
+        c->loudCount++;
+    } else if (marker >= (u32)PROBE_QUIET_FROM) {
         const u32 now = ((const u32 *)c->watchAt)[1];
         if (now == c->lastWatch)
             return;

@@ -48,6 +48,18 @@ here and the section it overturns is marked.*
   is a sixty-nine-state obfuscated dispatcher. The answer is not a boolean --
   on the success path it is XOR'd into the next call and stored -- so the
   branch cannot simply be forced.
+- **The path through that dispatcher is seven states**, 47 13 36 29 68 59 7,
+  and only state 29 decides anything: it calls **`0xe6df8`** and picks the next
+  key from whether the result is zero. It was zero, so the machine went to 68
+  (`mov r8, #0`) and then 7 (`mov r0, r8`, epilogue). `0xe6df8` returning zero
+  is the whole failure.
+- **The dispatcher's keys decode statically**: `r3 = r0 + 0x1c936f1c`, truncated
+  to 32 bits. Every `ldr r0, [pc]` in the state machine names its successor, so
+  the graph can be read without running it.
+- **A station that changes nothing may simply not have been planted.**
+  `crumb_safe` refuses conditional, pc-reading and pc-writing instructions and
+  says nothing about it, and a refused plant produces a run bit-identical to the
+  one before -- which is also what a station that proves an absence looks like.
 - **Furthest reached: 176 traced events on hardware** (build 59), where the
   phone and the emulator agree on 178 of 180 core events and the phone faults
   at the point the emulator calls `User::Leave`. No known divergence between
@@ -3226,3 +3238,67 @@ emulator.
 only in memory. It does not -- three regions, 448 + 1056 + 1092 bytes, none of
 them near `0xccbb4`. The whole check is plaintext in the file. The flag is off
 again.
+
+## Seven states, and the one call that answers zero
+
+A station on the protection's dispatcher gives the path through it directly,
+and it is far shorter than sixty-nine states suggested:
+
+```
+47 -> 13 -> 36 -> 29 -> 68 -> 59 -> 7
+```
+
+Seven blocks. The table at `0xccc08` turns each index into its address, and the
+three that matter read plainly:
+
+```
+cdc64   state 29
+cdc74     ldr  r0, [r12, #4]          @ r12 = [sp,#56]
+cdc84     mov  r1, #100
+cdc88     mov  r2, r8
+cdc8c     ldr  r3, [sp, #140]
+cdc90     bl   0xe6df8                @ <- the check
+cdc94     mov  r4, r0
+cdca4     cmp  r4, #0
+cdca8     movne r0, <key A>           @ nonzero -> state 34
+cdcac     moveq r0, <key B>           @ zero    -> state 68
+cdcb0     b    dispatcher
+
+cf488   state 68
+cf488     mov  r8, #0                 @ the answer becomes zero
+
+cd0f4   state 7
+cd0f4     mov  r0, r8
+cd0f8     b    0xcf498                @ add sp, #212 / pop / bx lr
+```
+
+So `0xccbb4` is not itself the check. It is a wrapper whose one decision is
+**`0xe6df8`**, and `0xe6df8` returned zero.
+
+### The keys decode
+
+The dispatcher builds its index as `r3 = r0 + 0x1c936f1c`, truncated to 32
+bits -- one literal load and four adds, which is the same unfolding this image
+does to every constant. The two keys in state 29 are `0xe36c9106` and
+`0xe36c9128`, and adding `0x1c936f1c` gives **34** and **68** exactly. Every
+`ldr r0, [pc]` in the state machine can be read the same way, so the whole
+sixty-nine-state graph is recoverable statically now without running anything.
+
+### What is next
+
+`0xe6df8(r0 = [[sp+56]+4], r1 = 100, r2 = 0, r3 = <literal>, +2 stack words)`.
+`r1 = 100` is a round number -- a count, a size or a limit. A station on
+`0xcdc94` would log the result, but the result is already known; what is wanted
+is inside `0xe6df8`, and it can be read the same way this was.
+
+### A method note
+
+The first attempt planted nothing at all: I put the station on `0xccc00`,
+which is the `ldrls pc, [pc, r3, lsl #2]`, because I had read my own
+disassembler's output one line out of step. `crumb_safe` refused it -- correctly,
+a conditional load into pc is neither unconditional nor safe to re-execute
+elsewhere -- and the run came back bit-identical to the one before, which is
+what a refused plant looks like. **A station that changes nothing has either
+proved something or not been planted, and those two look the same.** The fix
+was one instruction earlier, on the `cmp`, where restoring the flags before
+re-executing it keeps the load that follows honest.
