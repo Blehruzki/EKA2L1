@@ -2421,6 +2421,9 @@ namespace eka2l1::epoc {
             return;
         }
 
+        LOG_TRACE(KERNEL, "thread_resume {} (handle 0x{:x}) in state {}", thr->name(),
+            h, static_cast<int>(thr->current_state()));
+
         switch (thr->current_state()) {
         case kernel::thread_state::create: {
             kern->get_thread_scheduler()->schedule(&(*thr));

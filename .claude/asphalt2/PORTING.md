@@ -68,6 +68,12 @@ here and the section it overturns is marked.*
   all answer **KErrAccessDenied** for any name on E:. The protection's question
   is "am I on a real N-Gage game card?", asked two ways, and this port answers
   both wrongly by construction.
+- **Created, resumed, queued ready, never run.** Every link has evidence now:
+  create succeeds (eighteen, no failures), the handle is real, `Resume` is
+  called on it, the emulator reports `in state 0` -- `create`, the one case that
+  calls `schedule()` -- and the breadcrumbs at both entry points are provably
+  planted. Not one instruction of either thread executes. The fault is not in
+  the shim.
 - **RETRACTED: `RThread::Create` never failed.** Seventeen creations and no
   failures once the wrapper came off. `frame_thunk` pushes seven words before
   calling the target, so a six-argument function reads its three stack
@@ -4603,3 +4609,54 @@ The clue was in the first measurement and I read past it. E84 reported that
 `Thread SoundServer created`** -- two creates, one working and one not, through
 the same euser. The one that worked was the static import; the one that failed
 was the only one with a wrapper on it. That is not a subtle tell.
+
+## Created, resumed, queued, and never run
+
+With the artefact out of the way, the worker question was asked again properly,
+and every link in the chain now has its own evidence:
+
+| | |
+|---|---|
+| `RThread::Create` | succeeds -- eighteen creations, no failures |
+| the handle it writes | `0x5e005a`, a real one |
+| `RThread::Resume` | called on that handle |
+| the emulator's view | `thread_resume SoundServer (handle 0x20001c) in state 0` |
+| state 0 | `create`, the one case that calls `schedule()` |
+| the breadcrumb at the entry | `planted: [970, 971]`, refused: none |
+| the breadcrumb firing | **never** |
+
+So the threads are created, resumed, queued ready with their entry points
+instrumented, and **not one instruction of either is executed**.
+
+### Where that puts the fault
+
+Not in the shim. Every argument the game passes is right, the handle is real,
+and the emulator agrees it has queued the thread. `next_ready_thread` picks the
+highest-priority ready queue, and `thread_create` hands every thread
+`priority_normal` regardless of what the caller asked -- so the worker sits in
+the same queue as the main thread and waits for a switch.
+
+The switch never comes, and the main thread makes no traced call after the
+resume. Two readings fit:
+
+1. **The main thread is spinning** in game code, waiting for a flag the worker
+   would set. No syscall, no timeslice, no switch -- and on a real phone the
+   kernel would have preempted it. The emulator's CPU sat at 23-35% rather than
+   pegged, which argues against this, though the Qt side is in that figure too.
+2. **The main thread is blocked** and the scheduler still is not picking the
+   worker.
+
+They are distinguishable from inside the emulator: log `reschedule()` and what
+it picks. That is the next thing, and it is a question about EKA2L1 rather than
+about the port -- which is the second time this week that the answer has been on
+that side of the line.
+
+### Two notes from the instrument
+
+`crumb_plant` refused silently, which is how a round was lost believing the
+workers never ran when the crumb might simply not have been there. It reports
+now, either way.
+
+And four note codes were added on top of ones already in use -- 870 and 871 are
+`NOTE_RESULT` and `NOTE_RESULT_OF` -- which would have made the decoder lie.
+Caught before the run. 800 to 849 is empty and the new ones live there.

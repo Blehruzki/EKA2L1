@@ -197,8 +197,10 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_THREAD_CREATE = 867,// what RThread::Create or Resume answered
        NOTE_THREAD_HANDLE = 868,// and the handle in the object
        NOTE_THREAD_RESUME = 869,// the object Resume was called on
-       NOTE_THREAD_ARG = 870+0, // one word of the create frame
-       NOTE_THREAD_NAME = 871+0,// one word of the name descriptor
+       NOTE_THREAD_ARG = 840,   // one word of the create frame
+       NOTE_THREAD_NAME = 841,  // one word of the name descriptor
+       NOTE_PLANT_OK = 842,     // a breadcrumb that went in
+       NOTE_PLANT_REFUSED = 843, // and one that did not
        NOTE_LOOKUP_HANDLE = 875,// the library handle a lookup was made on
        NOTE_LOOKUP_RESULT = 876,// and the address it answered with
        NOTE_DRIVER = 877,       // a kernel driver call, refused
@@ -1420,12 +1422,15 @@ enum { PLANT_WALK = 0, CRUMB_WALK_FIRST = 960 };
 // as the main thread, which is not something this file has done before; the
 // main thread is idle by then, so one record each is a risk worth taking to
 // find out.
-enum { PLANT_WORKERS = 0, CRUMB_WORKER_FIRST = 970 };
+enum { PLANT_WORKERS = 1, CRUMB_WORKER_FIRST = 970 };
 // The third entry is the control. `0xcc7e4` is the object maker and the log has
 // it running on every launch, so if the mechanism works at all it must panic
 // there. Without it, "no G6WRK" means either the workers never ran or the crumb
 // was never planted, and those are not the same answer.
-static const u32 kWorkerCrumb[] = { 0x000b8660, 0x000cb710, 0x000cc7e4 };
+// The control at `0xcc7e4` has done its job -- it proved the panic crumb fires
+// at a site that runs -- and it has to come out, because it panics long before
+// the threads are resumed and would kill the run before the question is asked.
+static const u32 kWorkerCrumb[] = { 0x000b8660, 0x000cb710 };
 static const u32 kWalkCrumb[] = {
     0x000ccb68,     // the caller: r0 = *r5, the container it searches
     0x000d9484,     // case 0: r4 = head->[+4]
@@ -1964,6 +1969,10 @@ static void crumb_plant_r5(Context *c, u8 *base, u32 at, u32 marker)
 
 static void crumb_plant(Context *c, u8 *base, u32 at, u32 marker)
 {
+    // Silently refusing to plant is how this file spent a round believing the
+    // workers never ran. Say so, either way: one record per plant, from the
+    // main thread at setup, where writing to the log is safe.
+
     u32 *site = 0;
     u32 original = 0;
     for (u32 i = 0; i < 8; i++) {
@@ -1971,8 +1980,10 @@ static void crumb_plant(Context *c, u8 *base, u32 at, u32 marker)
         if (crumb_safe(*p)) { site = p; original = *p; break; }
         if (((*p >> 25) & 7) >= 5) break;       // a branch: go no further
     }
-    if (!site || c->spare + CRUMB_BYTES > c->spareEnd)
+    if (!site || c->spare + CRUMB_BYTES > c->spareEnd) {
+        log_event(c, NOTE_PLANT_REFUSED, marker);
         return;
+    }
     u32 *b = (u32 *)c->spare;
     c->spare += CRUMB_BYTES;
     b[0] = 0xE92D500F;  b[1] = 0xE10F0000;  b[2] = 0xE92D0003;
@@ -1986,6 +1997,7 @@ static void crumb_plant(Context *c, u8 *base, u32 at, u32 marker)
     user_imb_range(b, b + 18);
     *site = 0xEA000000 | ((((u32)b - (u32)site - 8) >> 2) & 0x00FFFFFF);
     user_imb_range(site, site + 1);
+    log_event(c, NOTE_PLANT_OK, marker);
 }
 
 extern "C" void gate6_trace(u32 index, Context *c, u32 caller)

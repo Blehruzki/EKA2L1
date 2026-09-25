@@ -141,6 +141,10 @@ them, and say so.
 | E86b | build 81 with the emulator's bridge made null-safe and printing the raw name pointer | 5353 | `--` | **The kernel's `owner` argument is the thread function pointer.** `owner = 75282192` is `0x47cb710`, and `pc = 0x47cb710`. The same word, in both places. The name pointer is not null after all, so the missing null check was hardening rather than the bug  **RETRACTED (E88).** The displaced argument was displaced by our own thunk |
 | E87 | build 82 -- try old 289 -> new **1159**, the other `RThread::Create` overload | 322 | `--` | **Died at 322 records**, one launch. Whatever 1159 is in this ROM, calling it with 289's frame is worse. Not the answer, and asked for the wrong reason |
 | E88 | build 83 -- **take the wrapper off `RThread::Create`** | 5341 | `--` | **Seventeen thread creations and not one failure.** The `-2`, the garbage owner and the garbage name were all `frame_thunk`: it pushes `{r0-r4, r12, lr}`, seven words, before calling the target, so euser read its three stack arguments out of our saved registers. E84 to E86b are retracted. The run is otherwise unchanged -- 5341 records, one `RunL` that never returns, the same 70 dispatcher passes |
+| E89 | build 84 -- worker crumbs back on, control removed, now that create works | 5343 | `--` | **Still nothing.** Eighteen thread creations, no failures, and no `G6WRK`. Create working changed nothing about whether the threads run |
+| E90 | build 84 with the emulator logging what state a resumed thread is in | 5343 | `--` | **`thread_resume SoundServer (handle 0x20001c) in state 0`** -- state 0 is `create`, which is the one case that calls `schedule()`. Both threads, every launch, valid handles. So they are queued ready and still never run |
+| E91 | build 85 -- make `crumb_plant` say whether it planted | 5343 | `--` | **`planted: [970, 971]`, refused: none.** The crumbs are at the worker entry points. So the chain is complete: created, valid handle, resumed, queued ready, breadcrumb in place -- **and not one instruction executed** |
+| E89 | (not stated) | 5341 | `--` | TODO |
 
 <!-- EMURUN -->
 
