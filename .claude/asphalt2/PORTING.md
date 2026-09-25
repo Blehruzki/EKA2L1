@@ -42,6 +42,12 @@ here and the section it overturns is marked.*
   write volume, write rate or extending files was ever involved.
 - `RFile::Open` of `cwivenc.dat` returns `KErrNone`. The phone does not die
   there.
+- **Both machines now end at the game's protection check.** `User::Leave(-2)`,
+  KErrGeneral, from `0x2b20`: the game's own code, not the framework's. The
+  decision is `subs r4, r0, #0 / beq` on what `0xccbb4` answers, and `0xccbb4`
+  is a sixty-nine-state obfuscated dispatcher. The answer is not a boolean --
+  on the success path it is XOR'd into the next call and stored -- so the
+  branch cannot simply be forced.
 - **Furthest reached: 176 traced events on hardware** (build 59), where the
   phone and the emulator agree on 178 of 180 core events and the phone faults
   at the point the emulator calls `User::Leave`. No known divergence between
@@ -3155,3 +3161,68 @@ startup sequence decides it cannot continue and leaves; the framework catches
 it and the process exits. Nothing in the log says what the leave code is or
 what decided. That is the next instrument, and it can be built and tested
 entirely in the emulator.
+
+## What the game leaves with, and who decides
+
+`User::Leave` is the last thing either machine reaches, and the log had only
+ever recorded that it happened and where from. An `arg_thunk` on import 324
+writes down r0 and the return address, and a leave does not come back, so that
+is the only chance to see it.
+
+**`User::Leave(-2)` -- KErrGeneral -- from `0x2b20`.**
+
+That is not a leave the framework raised. It is the game's own code, and the
+function it ends is short enough to read whole:
+
+```
+2998  push {r4, r5, lr}
+299c  sub  sp, sp, #32
+29a0  mov  r5, r0                @ the object to fill in
+29a4  ldr  r0/lr/r4/r12, [pc]    @ six literals from the pool at 0x2aa0
+...   str  r12, [sp] / [sp,#4] / [sp,#8]
+29c8  eor  r0, r1, r0            @ the caller's own r1, r2, r3, each
+29d0  eor  r2, r2, lr            @ XOR'd with one of those literals
+29d4  eor  r3, r3, r4
+29d8  bl   0xccbb4
+29dc  subs r4, r0, #0
+29e0  beq  2b18                  @ <-- taken
+...
+2b18  mvn  r0, #1                @ -2
+2b1c  bl   User::Leave
+```
+
+So: build seven XOR-obfuscated arguments, call `0xccbb4`, and if it answers
+**zero**, give up with KErrGeneral. On the success path `r4` -- the same
+answer -- is XOR'd into the next call's r3 and the result stored at `[r5]`, so
+it is not a boolean. It is a value the rest of the startup needs. **Forcing the
+branch would hand the next call a zero it has never seen.**
+
+### `0xccbb4` is a state machine
+
+```
+ccbb4  push {r4-r10, lr}
+ccbb8  sub  sp, sp, #212
+...
+ccbf0  add  r3, r0, #478150656   @ the key in r0, unfolded in four adds
+ccbfc  add  r3, r3, #28
+ccc00  cmp  r3, #68
+ccc04  ldrls pc, [pc, r3, lsl #2]
+ccc08  <69 entries, 0x100ccd24 .. 0x100cd8f0>
+```
+
+Sixty-nine states, each a short block ending in `b` back to the dispatcher with
+the next key in r0, and the arithmetic between them done in the shift-add
+multiply chains this image uses everywhere. The first state reads `[sp,#128]`,
+dereferences it, compares it with 2 and picks one of two keys -- so the state
+graph is data-dependent from the first hop.
+
+This is the game's protection, and it is reached on both machines now. Reading
+it statically is a project; **the state trace is not**. A probe on `0xccc00`
+logging r3 on every pass gives the exact path through the sixty-nine states and
+the state that decides on zero, and it can be built and read entirely in the
+emulator.
+
+`DUMP_DECRYPTED` was turned on for one run to check whether any of this lives
+only in memory. It does not -- three regions, 448 + 1056 + 1092 bytes, none of
+them near `0xccbb4`. The whole check is plaintext in the file. The flag is off
+again.

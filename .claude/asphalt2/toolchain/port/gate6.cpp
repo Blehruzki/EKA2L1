@@ -3423,6 +3423,16 @@ static u32 load_and_start()
             }
     }
 
+    // What the game leaves with. `User::Leave` is the last thing either machine
+    // reaches, and the log has only ever recorded that it happened and where it
+    // was called from -- never the reason code, which is the whole content of a
+    // leave. An arg_thunk puts r0 and the return address down before the call,
+    // and a leave does not come back, so this is the only chance to see it.
+    if (IMPORT_LEAVE < nImports && ctx->spare + ARG_WORDS * 4 <= ctx->spareEnd) {
+        iat[IMPORT_LEAVE] = arg_thunk(ctx->spare, ctx, IMPORT_LEAVE, iat[IMPORT_LEAVE]);
+        ctx->spare += ARG_WORDS * 4;
+    }
+
     if (WATCH_OPEN_RESULT && IMPORT_FILE_OPEN < nImports &&
         ctx->spare + 16 * 4 <= ctx->spareEnd) {
         iat[IMPORT_FILE_OPEN] = result_thunk(ctx->spare, ctx, IMPORT_FILE_OPEN,
