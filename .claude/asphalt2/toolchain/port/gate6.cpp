@@ -856,7 +856,10 @@ static void note(Context *c, u32 value, u16 sign);
 // moment it exists. It is not the allocator: the object never comes out of
 // gate6_alloc (E104). If the layout ever shifts, the constant simply never
 // matches and probe 990 latches as before -- NOTE_WATCH_EARLY says which.
-enum { WATCH_EARLY = 1, WATCH_EARLY_AT = 0x008b2810, WATCH_EARLY_SLACK = 0x40 };
+// Off. It did its job -- E105 to E112 -- and the object at that address has
+// long since been freed and reused, so all it does now is four records per
+// import wrapper: 35,288 of E116's 41,420 records were this.
+enum { WATCH_EARLY = 0, WATCH_EARLY_AT = 0x008b2810, WATCH_EARLY_SLACK = 0x40 };
 
 static void watch_latch(Context *c, u32 p)
 {
@@ -1320,7 +1323,7 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 enum { TRACE_EVERY_IMPORT = 1 };
 enum { TRACE_SKIPS_HOT = 1, TRACE_MILESTONES = 1 };
 enum { WATCH_ALLOCATIONS = LOG_ANYWAY, LOG_THE_CLOCK = 0, REFUSE_DRIVERS = 1,
-       WATCH_THE_READS = 0, CLAMP_THE_READS = 0 };
+       WATCH_THE_READS = 1, CLAMP_THE_READS = 0, WATCH_READ_RESULT = 1 };
 // Not an instrument: a fix, and it ships. See gate6_alloc.
 enum { PAD_THE_ALLOCATIONS = 0, ZERO_THE_SLACK = 0 };
 // Build 49. Every property of the fatal free measures correct -- chain,
@@ -1413,7 +1416,7 @@ static const u32 kNop[] = { 0x001082c0 };
 // This is a workaround, not an explanation. What the check hashes is still
 // unknown, and the honest answer may be that it cannot be satisfied at all
 // without the N-Gage game card it was written to look for.
-enum { PATCH_THE_CHECK = 1 };
+enum { PATCH_THE_CHECK = 0 };
 struct Patch { u32 at; u32 word; };
 static const Patch kPatch[] = {
 };
@@ -1686,7 +1689,7 @@ static int crumb_safe(u32 w)
 
 // User::Leave and User::Exit are where the game gives up, so those two say
 // where from as well.
-enum { IMPORT_LEAVE = 324, IMPORT_EXIT = 308 };
+enum { IMPORT_LEAVE = 324, IMPORT_EXIT = 308, IMPORT_FILE_READ_STATIC = 110 };
 
 // A breadcrumb goes into the same ring as the imports, so the two interleave
 // and the order is the order things happened in. The marker reads as 900 and
@@ -1800,7 +1803,11 @@ extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
     // RFile::Open is the other way round -- zero is success there -- so it is
     // recorded whatever it says, and the record's existence is the point: it
     // means the call returned at all.
-    if (index == IMPORT_FILE_OPEN) {
+    // RFile::Read is the same: zero is success, so the branch below that keeps
+    // only the failures would keep exactly the wrong half. The helper at
+    // 0x34ad8 answers false when the call errored *or* when the descriptor came
+    // up short, and only the code tells those apart.
+    if (index == IMPORT_FILE_OPEN || index == IMPORT_FILE_READ_STATIC) {
         log_event(c, NOTE_RESULT_OF, index);
         log_event(c, NOTE_RESULT, result);
         log_block(c);
@@ -4286,9 +4293,18 @@ static u32 load_and_start()
     // one handed back. Bench only: it doubles their cost and says nothing the
     // phone needs.
     // RFile::Read, recorded before the call with the descriptor it is handed.
+    // The argument wrapper only says which descriptor; what is wanted at
+    // 0x34ad8 is what came back, because that helper reads N bytes and answers
+    // false if the call errored **or** the descriptor came up short, and those
+    // are different faults. So the result wrapper goes on as well -- outermost,
+    // so it sees the value the game will see.
     if (WATCH_THE_READS && 110 < nImports && ctx->spare + ARG_WORDS * 4 <= ctx->spareEnd) {
         iat[110] = arg_thunk(ctx->spare, ctx, 110, iat[110]);
         ctx->spare += ARG_WORDS * 4;
+    }
+    if (WATCH_READ_RESULT && 110 < nImports && ctx->spare + 16 * 4 <= ctx->spareEnd) {
+        iat[110] = result_thunk(ctx->spare, ctx, 110, iat[110]);
+        ctx->spare += 16 * 4;
     }
     // And RFile::Open, for the name: five or six of them in a run, and knowing
     // which file the game is on turns a record that says "a read" into one

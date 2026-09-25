@@ -138,6 +138,33 @@ here and the section it overturns is marked.*
   `gate4_shim.cpp` but never regenerates it, so a change to the override tables
   looks exactly like a change that did nothing (E114). Regenerate it by hand:
   `python3 gen_shim.py <6rbc.app> gate4_shim.cpp`.
+- **Do not patch the protection: let it pass.** The crack never patches the
+  check. It forges the memory card's CID through
+  `RBusLogicalChannel::DoControl` -- old euser 353, a fixed twenty bytes,
+  `KErrNone` -- and lets the real check run; the twenty bytes are exactly the
+  `kCardCidBE` this port already answers with. Patching the check instead
+  (`PATCH_THE_CHECK`) handed the game a **zeroed sixty-four byte stand-in
+  licence**, and everything downstream of it got zeros. Turning the patch off
+  took the run from 248 core events to 273 and about 8,800 further import
+  calls, with the whole Codewave file sequence appearing in order for the first
+  time. `PATCH_THE_CHECK` is 0 and should stay 0.
+- **The crack, fully decoded, is already carried across.** Its
+  `RLibrary::Lookup` replacement answers exactly four things and forwards
+  everything else: `z:\System\Libs\EUser.dll` ordinal 353 -> the forged CID;
+  `z:\System\Libs\EFSrv.dll` ordinals 25, 121 and 151 (`RFile::Create`,
+  `Open`, `Replace`) -> routines that refuse a write-mode open on `E:` with
+  `KErrAccessDenied` and substitute one filename for another. We do the CID and
+  the read-only refusal. The substitution is
+  `E:\System\Apps\6rbc\6rbc.APP` -> `E:\System\Apps\6rbc\bin\main.dll`,
+  which is a packaging artefact of the cracked dump -- there `6RBC.APP` *is*
+  the 3964-byte loader and the real image lives in `bin\` -- and means nothing
+  here, where `6rbc.app` is the game. What is **not** carried across is the two
+  audio compatibility patches, imports 458 and 459, pointing
+  `CMdaAudioOutputStreamPadFunction` at `CMdaAudioOutputStream::NewL`; 458 is
+  still an unresolved stub. Nothing has called it yet.
+- **Our install is not the problem.** Every file we have in common with the
+  known-good cracked dump is byte-identical, `6rbc.dat` (12,224,045 bytes) and
+  `6rbc.cwa` (38,413) included; we simply have 86 more files than it does.
 - **Where the run stops now: the Codewave archive.** With nothing panicking and
   nothing faulting, the game opens `e:\system\apps\6rbc\6rbc.cwa`, reads two
   2 KB blocks (both `KErrNone`), searches, frees everything and calls
