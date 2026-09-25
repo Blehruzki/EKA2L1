@@ -103,6 +103,10 @@ them, and say so.
 | E49 | build 68 with `PATCH_THE_CHECK = 0` -- does the real check pass now? | 2267 | `--` | **No.** States 47 13 36 29 **68** 59 7. The card CID in big-endian word order is not what the protection was missing |
 | E50 | build 68, little-endian CID word order, check patch still off | 2259 | `--` | **No.** Same path, 47 13 36 29 **68** 59 7. Neither reading of `nc.dat` satisfies it |
 | E51 | build 68 restored -- CID answered, check patch on, gate two off | 2384 | `--` | The control. Identical to E47, so answering the card's real identity costs nothing and is kept: it is the truthful answer even though it does not open the gate |
+| E52 | build 69 -- answer the driver with the crack's forged CID, `56785733 10011234 0b70194e 16000400`, check patch off | 1860 | `0xEC49E40` | **A different failure, and an earlier one.** No dispatcher states at all: the run dies at `RFile::Open` after 160 traced events, and the emulator segfaults. With a card that looks real the game takes the card path for the first time -- and the card path needs the rest of the crack |
+| E53 | build 69 repeated | 1860 | `0xEC49E40` | Identical. Not flaky |
+| E54 | build 70 -- add the read-only card rules on `RFile::Open`, `Create` and `Replace`, static imports and dynamic lookups alike | 2259 | `--` | **The earlier death is gone** -- back to 2259 records and the full state path -- but **zero refusals fire**: the game never asks to write to E: before the check. States 47 13 36 29 **68** 59 7, so the check still fails |
+| E55 | build 70 -- answer every `DoControl` rather than only `MMC_CARD_INFO`, as the crack does | 2259 | `--` | No change: 2259 records, same path, same 68. So either the call is not reaching `gate6_mmc_control` or the CID is not what the digest is missing |
 
 <!-- EMURUN -->
 

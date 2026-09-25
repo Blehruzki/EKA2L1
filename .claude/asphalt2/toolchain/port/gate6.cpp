@@ -189,6 +189,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_PATH = 898,    // ... and the name it was asked for
        NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
        NOTE_FILE_HEAD = 861,    // the first three words of a name descriptor
+       NOTE_CARD_REFUSED = 862, // a write to the game card, refused as a card would
        NOTE_LOOKUP_HANDLE = 875,// the library handle a lookup was made on
        NOTE_LOOKUP_RESULT = 876,// and the address it answered with
        NOTE_DRIVER = 877,       // a kernel driver call, refused
@@ -666,6 +667,12 @@ struct Context {
     u32 fileRead;           // efsrv's RFile::Read, as resolved for the game
     u32 fileSize;           // and RFile::Size
     u32 fileOpen;           // and RFile::Open
+    u32 realOpen;           // the real RFile::Open/Create/Replace, as resolved,
+    u32 realCreate;         // kept so the card wrappers can chain to them
+    u32 realReplace;
+    u32 cardOpen;           // and the wrappers themselves, built once
+    u32 cardCreate;
+    u32 cardReplace;
     u32 fileReadThunk;      // the diversions handed over in their place
     u32 fileSizeThunk;
     u32 fileOpenThunk;
@@ -1216,7 +1223,7 @@ static const u32 kNop[] = { 0x001082c0 };
 // This is a workaround, not an explanation. What the check hashes is still
 // unknown, and the honest answer may be that it cannot be satisfied at all
 // without the N-Gage game card it was written to look for.
-enum { PATCH_THE_CHECK = 1 };
+enum { PATCH_THE_CHECK = 0 };
 struct Patch { u32 at; u32 word; };
 static const Patch kPatch[] = {
     { 0x000e6f34, 0xE3A00002 },     // mov r0, #2, in place of `beq e6f54`
@@ -2483,21 +2490,38 @@ extern "C" void *gate6_alloc(int size, u32, Context *c)
 // Word order is a guess with two candidates: the file read as four big-endian
 // words, or as four little-endian ones. CARD_CID_ORDER picks; one emulator run
 // each settles it.
+// ...and `nc.dat` turned out not to be it either. The BiNPDA loader answers the
+// same driver call, and it does not read `nc.dat` or anything else: it copies a
+// fixed twenty bytes out of its own image, at crack offset 0xa70, and returns
+// zero. Twenty bytes is four CID words and the type word, which is exactly the
+// structure this function fills.
+//
+//     0334  memcpy(sp, crack+0xa70, 20)
+//     0354  if (out) memcpy(out, sp, 20)
+//     0368  mov r0, #0
+//
+// so the card the protection is looking for is this one, and it is not a card
+// that ever existed. Three of the four words read as deliberate: 0x56785733,
+// 0x10011234.
 enum { ANSWER_THE_CARD = 1, CARD_CID_ORDER = 0 };
-static const u32 kCardCidBE[MMC_CID_WORDS] = {
-    0xbd81cbfb, 0xeb08cd1e, 0x6d341c6e, 0xe83e5d16,
+static const u32 kCardCidBE[MMC_CID_WORDS + 1] = {
+    0x56785733, 0x10011234, 0x0b70194e, 0x16000400, 0x00000000,
 };
-static const u32 kCardCidLE[MMC_CID_WORDS] = {
-    0xfbcb81bd, 0x1ecd08eb, 0x6e1c346d, 0x165d3ee8,
+static const u32 kCardCidLE[MMC_CID_WORDS + 1] = {   // `nc.dat`, kept for the record
+    0xbd81cbfb, 0xeb08cd1e, 0x6d341c6e, 0xe83e5d16, 0x00000000,
 };
 
+// The BiNPDA loader does not look at the function code at all: whatever is
+// asked, it copies its twenty bytes into the out pointer and answers zero. Ours
+// gated on MMC_CARD_INFO, which is a guess about which call the game makes, and
+// a wrong guess answers nothing. Do what the crack does.
 extern "C" u32 gate6_mmc_control(u32, u32 op, u32 *info)
 {
-    if (op == MMC_CARD_INFO && info) {
+    (void)op;
+    if (info) {
         const u32 *cid = CARD_CID_ORDER ? kCardCidLE : kCardCidBE;
-        for (u32 i = 0; i < MMC_CID_WORDS; i++)
-            info[i] = ANSWER_THE_CARD ? cid[i] : 0;
-        info[MMC_CID_WORDS] = MMC_CARD_TYPE_ROM;
+        for (u32 i = 0; i <= MMC_CID_WORDS; i++)
+            info[i] = ANSWER_THE_CARD ? cid[i] : (i == MMC_CID_WORDS ? MMC_CARD_TYPE_ROM : 0);
     }
     return 0;
 }
@@ -2518,6 +2542,93 @@ extern "C" u32 gate6_mmc_control(u32, u32 op, u32 *info)
 // descriptor with no room left answers KErrNone having read nothing. Three
 // words are logged before the call and the length word again after it, so a
 // short read and an empty buffer cannot be confused for each other.
+// An N-Gage game card is read only, and the protection knows it. The BiNPDA
+// loader replaces `RFile::Open`, `Create` and `Replace` with three routines
+// that all do the same thing:
+//
+//     if (name[0] == 'e' || name[0] == 'E')  return -21;   // KErrAccessDenied
+//     else                                   the real one
+//
+// -- Open only when the mode carries EFileWrite, Create and Replace always.
+// So the check is "can I write to my own drive?", and on a real game card the
+// answer is no. On a memory card, or on EKA2L1's E:, the answer is yes, and
+// that is what the protection has been failing on.
+//
+// This is not a crack in the sense of defeating a test. It is supplying the
+// one piece of the N-Gage the port does not have: a read-only game card.
+enum { CARD_IS_READ_ONLY = 1 };
+enum { KErrAccessDenied = -21, EFileWriteMode = 0x200 };
+enum { IMPORT_FILE_CREATE = 101, IMPORT_FILE_REPLACE = 111 };
+enum { NEW_RFILE_CREATE = 105, NEW_RFILE_REPLACE = 108 };
+
+static int name_on_the_card(const u32 *name)
+{
+    if (!name)
+        return 0;
+    const u32 type = name[0] >> KTypeShift;
+    const u16 *text = (type == EBufC)    ? (const u16 *)(name + 1)
+                    : (type == EPtrC)    ? (const u16 *)name[1]
+                    : (type == EBufType) ? (const u16 *)(name + 2)
+                                         : (const u16 *)name[2];
+    if (!(name[0] & 0x0FFFFFFF) || !text)
+        return 0;
+    return text[0] == 'e' || text[0] == 'E';
+}
+
+typedef int (*FileCall)(void *, void *, const u32 *, u32);
+
+extern "C" int gate6_card_open(void *f, void *fs, const u32 *name, u32 mode, Context *c)
+{
+    if (CARD_IS_READ_ONLY && (mode & EFileWriteMode) && name_on_the_card(name)) {
+        log_event(c, NOTE_CARD_REFUSED, mode);
+        return KErrAccessDenied;
+    }
+    return ((FileCall)c->realOpen)(f, fs, name, mode);
+}
+
+extern "C" int gate6_card_create(void *f, void *fs, const u32 *name, u32 mode, Context *c)
+{
+    if (CARD_IS_READ_ONLY && name_on_the_card(name)) {
+        log_event(c, NOTE_CARD_REFUSED, 1);
+        return KErrAccessDenied;
+    }
+    return ((FileCall)c->realCreate)(f, fs, name, mode);
+}
+
+extern "C" int gate6_card_replace(void *f, void *fs, const u32 *name, u32 mode, Context *c)
+{
+    if (CARD_IS_READ_ONLY && name_on_the_card(name)) {
+        log_event(c, NOTE_CARD_REFUSED, 2);
+        return KErrAccessDenied;
+    }
+    return ((FileCall)c->realReplace)(f, fs, name, mode);
+}
+
+// These take four arguments, so r0 to r3 are all spoken for and no ctx_thunk
+// will do. The context goes on the stack as a fifth argument instead, which is
+// where AAPCS puts one anyway:
+//
+//   push {lr} ; ldr r12, =ctx ; push {r12} ; ldr r12, =handler ; blx r12
+//   add sp, sp, #4 ; pop {lr} ; bx lr
+enum { ARG5_BYTES = 10 * 4 };
+
+static u32 arg5_thunk(u8 *code, const void *ctx, u32 handler)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE92D4000;                  // stmdb sp!, {lr}
+    b[1] = 0xE59FC014;                  // ldr   r12, [pc, #20]  -> b[8]
+    b[2] = 0xE52DC004;                  // str   r12, [sp, #-4]!
+    b[3] = 0xE59FC010;                  // ldr   r12, [pc, #16]  -> b[9]
+    b[4] = 0xE12FFF3C;                  // blx   r12
+    b[5] = 0xE28DD004;                  // add   sp, sp, #4
+    b[6] = 0xE8BD4000;                  // ldmia sp!, {lr}
+    b[7] = 0xE12FFF1E;                  // bx    lr
+    b[8] = (u32)ctx;
+    b[9] = handler;
+    user_imb_range(b, b + 10);
+    return (u32)b;
+}
+
 enum { NEW_RFILE_READ = 255, NEW_RFILE_SIZE = 264, NEW_RFILE_OPEN = 93 };
 
 // `RFile::Open(RFs&, const TDesC16&, TUint)` fills r0 to r3, so there is no
@@ -2685,6 +2796,14 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
     // Hand the game a diversion instead of the file call itself. The thunk is
     // built once and kept: the game asks for Read thirty times in a run, and
     // the spare arena is not big enough to spend a thunk on each.
+    // The same three answers the card wrappers give the static imports, for the
+    // protection's dynamic route. The BiNPDA loader does exactly this: it
+    // replaces RLibrary::Lookup as well as the import table, and answers old
+    // efsrv 25, 121 and 151 with its own Create, Open and Replace.
+    if (fn && kind == LIB_EFSRV && CARD_IS_READ_ONLY) {
+        if (mapped == NEW_RFILE_CREATE && c->cardCreate) { c->realCreate = fn; return c->cardCreate; }
+        if (mapped == NEW_RFILE_REPLACE && c->cardReplace) { c->realReplace = fn; return c->cardReplace; }
+    }
     if (fn && kind == LIB_EFSRV && mapped == NEW_RFILE_OPEN) {
         c->fileOpen = fn;
         if (!c->fileOpenThunk && c->spare + OPEN_THUNK_BYTES <= c->spareEnd) {
@@ -3495,6 +3614,24 @@ static u32 load_and_start()
                 *site = kPatch[i].word;
                 user_imb_range(site, site + 1);
             }
+
+    // Last of the file wraps, so the card rule sits outside the logging ones and
+    // whatever they answered is what the card wrapper chains to.
+    if (CARD_IS_READ_ONLY && IMPORT_FILE_REPLACE < nImports &&
+        ctx->spare + 3 * ARG5_BYTES <= ctx->spareEnd) {
+        ctx->realOpen = iat[IMPORT_FILE_OPEN];
+        ctx->realCreate = iat[IMPORT_FILE_CREATE];
+        ctx->realReplace = iat[IMPORT_FILE_REPLACE];
+        ctx->cardOpen = arg5_thunk(ctx->spare, ctx, (u32)&gate6_card_open);
+        ctx->spare += ARG5_BYTES;
+        ctx->cardCreate = arg5_thunk(ctx->spare, ctx, (u32)&gate6_card_create);
+        ctx->spare += ARG5_BYTES;
+        ctx->cardReplace = arg5_thunk(ctx->spare, ctx, (u32)&gate6_card_replace);
+        ctx->spare += ARG5_BYTES;
+        iat[IMPORT_FILE_OPEN] = ctx->cardOpen;
+        iat[IMPORT_FILE_CREATE] = ctx->cardCreate;
+        iat[IMPORT_FILE_REPLACE] = ctx->cardReplace;
+    }
 
     if (PATCH_GATE_TWO)
         for (u32 i = 0; i < sizeof kGateTwo / sizeof kGateTwo[0]; i++)

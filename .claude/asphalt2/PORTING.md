@@ -62,6 +62,16 @@ here and the section it overturns is marked.*
   Emulator: state path 47 13 36 29 **34 4** 59 7 instead of ...29 **68**..., and
   179 -> 195 -> **198** traced events. It is a workaround; what the check hashes
   is still unknown.
+- **The crack is a forged card identity and a read-only drive.** `DoControl`
+  always answers the same twenty bytes -- CID `56785733 10011234 0b70194e
+  16000400`, type 0 -- and `RFile::Open` (write mode), `Create` and `Replace`
+  all answer **KErrAccessDenied** for any name on E:. The protection's question
+  is "am I on a real N-Gage game card?", asked two ways, and this port answers
+  both wrongly by construction.
+- **Supplying both is not yet enough.** E54 and E55 deliver the CID and the
+  refusals and the check still goes to state 68. Either `gate6_mmc_control` is
+  never called -- the lookup is logged, the call is not -- or the digest wants
+  more than the card.
 - **The crack's key is `0x85bbf5f4`** -- crc32 of `bin\arenaframework.dll`
   (8508 bytes) plus crc32 of its path, of `BiNPDA presents...` and of
   `gt2 loader. (c) 2005 zg.`, summed. XOR it through the table at crack `0xb44`
@@ -3935,3 +3945,73 @@ across.
 
 Route 2 -- running the cracked dump under EKA2L1 to watch the writes -- is no
 longer needed: the writes are known without running anything.
+
+## What the crack actually does, in four routines
+
+All four are read now, and together they are short enough to state in full.
+
+**`RLibrary::Lookup` (crack `0x380`)** -- the protection resolves its own
+functions dynamically, so the crack answers those lookups itself:
+
+```
+name = library.FileName()
+if name ~= u"z:\System\Libs\EUser.dll"  and ordinal == 353:  -> crack 0x334
+if name ~= u"z:\System\Libs\EFSrv.dll":
+      ordinal 25  -> crack 0x2bc      (RFile::Create)
+      ordinal 121 -> crack 0x198      (RFile::Open)
+      ordinal 151 -> crack 0x244      (RFile::Replace)
+otherwise the real RLibrary::Lookup
+```
+
+Old euser **353 is `RBusLogicalChannel::DoControl(int, void*)`** -- the driver
+call this port already answers.
+
+**`DoControl` (crack `0x334`)**:
+
+```
+memcpy(scratch, crack+0xa70, 20)
+if (out) memcpy(out, scratch, 20)
+return 0
+```
+
+Twenty bytes, whatever was asked, and they are four CID words and a type word:
+**`56785733 10011234 0b70194e 16000400`, type 0**. Not `nc.dat`, not a card
+that ever existed -- a forged identity the protection accepts.
+
+**`RFile::Open` (crack `0x198`)**:
+
+```
+if (name[0] == 'e' or 'E') and (mode & EFileWrite):  return -21   KErrAccessDenied
+if name ~= u"E:\System\Apps\6rbc\6rbc.APP":  name = u"E:\System\Apps\6rbc\bin\main.dll"
+the real Open
+```
+
+**`RFile::Create` (`0x2bc`) and `Replace` (`0x244`)**: the same first line,
+unconditionally -- any Create or Replace on E: answers KErrAccessDenied.
+
+So the crack is: **a forged card identity, and a drive that refuses to be
+written to.** The redirect is only bookkeeping for the split layout, and the
+other two patches are an audio-import compatibility fix.
+
+That reframes the whole thing. The protection's question is *"am I on a real
+N-Gage game card?"*, and it asks it two ways -- the card's CID, and whether its
+own drive is read only. This port answers both wrongly by construction: EKA2L1's
+E: is writable and so is a memory card.
+
+### Both answers supplied, and the check still fails
+
+| run | what changed | result |
+|---|---|---|
+| E52/E53 | the forged CID, check patch off | dies at `RFile::Open` after 160 events, no dispatcher states at all, emulator segfault -- the card path entered for the first time |
+| E54 | plus the read-only rules on Open/Create/Replace, static and dynamic | the early death is gone, 2259 records, but **zero refusals fire** and the state path is still 47 13 36 29 **68** 59 7 |
+| E55 | plus answering every `DoControl`, not only `MMC_CARD_INFO` | no change |
+
+Two honest readings, and the next round has to tell them apart:
+
+1. `gate6_mmc_control` is never actually *called*. The lookup of 9.x ordinal 490
+   is logged as refused, so the address is handed over, but nothing records the
+   call itself.
+2. The CID is delivered and the digest wants something else as well.
+
+A station or a log line inside `gate6_mmc_control` separates them in one run,
+and that is the next thing.
