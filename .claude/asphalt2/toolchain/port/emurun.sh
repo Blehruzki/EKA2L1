@@ -21,7 +21,7 @@ cp "$S/out/gate6.exe" $D/sys/bin/gate6.exe
 cp "$S/out/gate6.rsc" $D/resource/apps/gate6.rsc
 cp "$S/out/gate6_reg.rsc" $D/private/10003a3f/import/apps/gate6_reg.rsc
 rm -f $C/g6box*.log $D/g6box*.dat $C/g6box*.dat
-(cd /home/user/EKA2L1/build/bin && timeout "${TMO:-45}" ./eka2l1_qt --device RM-409 --run 0xE0001006 >"$S/g6.log" 2>&1)
+(cd /home/user/EKA2L1/build/bin && timeout "${TMO:-120}" ./eka2l1_qt --device RM-409 --run 0xE0001006 >"$S/g6.log" 2>&1)
 pkill -x eka2l1_qt 2>/dev/null
 FIRSTLOG=$(ls -S "$C"/g6box[0-9].log 2>/dev/null | head -1)
 cp -f "$FIRSTLOG" "$S/emu-latest.log" 2>/dev/null

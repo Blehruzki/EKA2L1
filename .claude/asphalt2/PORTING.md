@@ -4184,3 +4184,35 @@ was *plausible* rather than right, and each time the evidence for it was an
 absence: no refusal fired, no record appeared, a small integer looked like a
 status code. An absence is the weakest evidence there is, and this file should
 treat one as a question rather than a result.
+
+## The variance was the harness, and the result holds
+
+Three re-runs of build 76 read 22, 48 and then a partial run, against E74's 336
+traced events, and for a while it looked as though E74 had been a fluke. It had
+not. `emurun.sh` killed the emulator after forty-five seconds, and the run now
+takes longer than that because **it gets further**: given `TMO=120`, four
+launches in one session reach 5337, 5337, 5335 and 5335 records. The short reads
+were launches caught partway.
+
+`emurun.sh` now defaults to 120 seconds. Two smaller things this exposed and
+that are worth writing down:
+
+- **Xvfb had died**, and the script's `pgrep || start` did not notice it in time,
+  so one run was made against no display at all. A run against a dead display is
+  not a short run, it is no run.
+- **The box is unreliable when a build relaunches.** `g6box.dat` is written by
+  whichever launch wrote last, so with several launches in a session it can
+  report 0 events while a 5337-record log sits beside it. The largest
+  `g6box[0-9].log` is the measure; the box is only good when `launches` is 1.
+
+Three runs were nearly written off on harness artefacts. The rows are kept as
+E75 to E77 rather than deleted, because "the build regressed" has been wrong in
+this file before -- four times, by the Retracted table's count -- and every one
+of those was read off a number the harness produced rather than the port.
+
+### Where the run ends now
+
+246 import events, the protection's fourteen states five times over, then a
+loop of `RLibrary::Load` / `Lookup` / `Close` with `HBufC16::New` and
+`Math::Random` between -- the game loading resources, which is what it should be
+doing -- and it stops inside a `__builtin_delete` of a 180-byte cell.
