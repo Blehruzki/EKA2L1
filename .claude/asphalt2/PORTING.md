@@ -68,6 +68,14 @@ here and the section it overturns is marked.*
   all answer **KErrAccessDenied** for any name on E:. The protection's question
   is "am I on a real N-Gage game card?", asked two ways, and this port answers
   both wrongly by construction.
+- **`RThread::Create` answers KErrGeneral and leaves the handle zero**, and the
+  game does not check: it resumes a null handle, gets KErrNone, and waits
+  forever. Not memory (fifteen gigabytes free, every stale emulator killed) and
+  not flaky (identical twice, to the record index). The old-to-new mapping is
+  *correct* -- old euser 289 and new 1158 are the same signature, and the
+  heap-min/max overload the shim could have confused it with is 291/1159.
+  `thread_create_eka1` in the emulator returns `error_general` in one place
+  only: `create_and_add<kernel::thread>` giving back `INVALID_HANDLE`.
 - **The game's two threads are created and never entered.** A crumb that
   *panics* (a logging one cannot work: an `RFs` session belongs to the thread
   that made it) fires at the control site `0xcc7e4` and never at `0xb8660` or
@@ -4380,3 +4388,50 @@ the shell that started it.
 That is the third harness artefact in two sessions -- after the forty-five
 second timeout and the dead Xvfb -- and all three produced numbers that looked
 like the port getting worse.
+
+## `RThread::Create` answers KErrGeneral
+
+Wrapping both thread calls where our own lookup answers them gives the whole
+thing in five records:
+
+```
+867  -2          @ RThread::Create answered KErrGeneral
+868   0          @ and the handle it left in the object
+869  0x1b44458   @ RThread::Resume, called on that object
+868   0          @ whose handle is still zero
+867   0          @ and Resume answered KErrNone
+```
+
+**The threads are not failing to start. They are failing to be created**, and
+the game does not look at the error -- it resumes a null handle, gets
+KErrNone for its trouble, and carries on into the wait that never ends.
+
+Not memory: repeated with fifteen gigabytes free and every stale emulator
+killed. Not flaky: identical both times, down to the record index.
+
+### The mapping is right, which rules out the obvious
+
+Old euser 289 and new euser 1158 are the *same* signature --
+`RThread::Create(const TDesC16&, int (*)(void*), int, RAllocator*, void*,
+TOwnerType)`. The old library has a second overload at 291 taking heap min and
+max as ints, and 9.x has the matching one at 1159, so the shim could have paired
+them wrongly and did not. That was the likely explanation and it is wrong.
+
+### What the emulator's own log points at
+
+The line the emulator prints on a successful creation --
+
+```
+Thread SoundServer created with start pc = 0x..., stack size = 0x186a0
+```
+
+comes from **`thread_create_eka1`**, the EKA1 executor path in
+`src/emu/kernel/src/svc.cpp`. That function returns `error_general` in exactly
+one place: when `create_and_add<kernel::thread>` gives back
+`INVALID_HANDLE`, before the log line is printed. Which matches what we see --
+`-2` and no log line for the launch being watched, while other launches in the
+same session print eleven successful creations.
+
+So the next question is why that allocation fails for this call and not the
+others, and it is a question about the emulator's own code, in a repository we
+have open.
