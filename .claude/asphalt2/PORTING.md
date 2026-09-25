@@ -191,6 +191,8 @@ logs until that is settled.
 | Believed | Why it was wrong |
 |---|---|
 | A `static` is safe to write to in our loader | It is not. This image has no data section: `flat.ld` folded `.data*` into `.rodata` and `mke32.py` declares data and bss zero, so every static is in read-only memory. Build 52 patched one character of one and the phone took KERN-EXEC 3 before creating a file. The emulator maps it writable and saw nothing. |
+| The game's dynamic euser lookups are correctly mapped | Three of them are translated through the **efsrv** table. `gate6_library_lookup` identifies a library by comparing a stale `RLibrary` pointer, and the game loads euser twelve times and efsrv five in a run, so the addresses get reused. It asks for `RPointerArrayBase::BinarySearchUnsigned` twenty-six times and is handed `CArrayFixBase::CArrayFixBase`. |
+| The 35-event gap is an N95-versus-5320 ordinal difference | The phone's ordinals and mappings are identical to the emulator's. Both machines are handed the wrong functions; only the consequences differ. |
 | The app runs once per launch | It runs over and over. Twelve launches in one 45-second emulator session, each identical, each leaving and being restarted. `file_replace` truncates, so each was erasing the last one's log. |
 | The port has one failure per run | It has two. One KERN-EXEC 0 and one KERN-EXEC 3, every run, for dozens of rounds -- and the logs may be recording whichever process ran second. |
 | The file server was overflowing a 31-byte cell | The allocation ring was searched in slot order and a stale entry won. There was no overflow. |
@@ -2915,3 +2917,67 @@ one ROM means nothing against an address on another. **What settles it is the
 N95's own euser.dll export table.** That is a one-off file pull, and the same
 thing was done once before for `BitGdi.dll` and `Ws32.dll` when two
 measurements were in doubt.
+
+## The wrong table: euser ordinals answered out of efsrv
+
+Round 57 put the phone's lookup ordinals beside the emulator's and they are
+**identical** -- same old ordinals, same 9.x mappings, in the same order. So the
+mapping table is not where the two machines differ, and the N95-versus-5320
+ordinal theory is wrong.
+
+What the logged ordinals *do* show is that the mappings themselves are nonsense,
+on both machines:
+
+| caller | old ordinal | name | mapped to | name |
+|---|---|---|---|---|
+| `13f5e4` | 1114 | `User::StringLength(const unsigned char*)` | 595 | `User::StringLength(const unsigned char*)` |
+| `13f68c` | 121 | `CObjectIx::At(const CObject*) const` | 93 | **`TBufCBase8::TBufCBase8(TDesC8 const&, int)`** |
+| `10abf8` **x26** | 136 | `RPointerArrayBase::BinarySearchUnsigned(unsigned, int&)` | 255 | **`CArrayFixBase::CArrayFixBase(...)`** |
+| `10ac6c` | 185 | `TDes16::Collate()` | 264 | **`CArrayFixFlat<int>::CArrayFixFlat(int)`** |
+| `10b2d4` | 172 | `RHandleBase::Close()` | 120 | `RHandleBase::Close()` |
+
+Three of the five are unrelated functions. And they are not missing from 9.x:
+`RPointerArrayBase::BinarySearchUnsigned` is euser ordinal **1588**,
+`TDes16::Collate()` is **978**, `CObjectIx::At(const CObject*)` is **1866**.
+
+### It is not the table
+
+`kShimEuser[ordinal - 1]` gives the right answer for every one of them, in the
+generated table and in the copy checked into `gate4_shim.cpp` alike. The table
+is correct.
+
+**The answers came from the wrong table.** `kShimEfsrv[120]` is 93,
+`kShimEfsrv[135]` is 255, `kShimEfsrv[184]` is 264 -- all three, exactly.
+
+`gate6_library_lookup` picks the table like this:
+
+```c
+const u32 kind = (lib == c->dynLib[LIB_EUSER]) ? LIB_EUSER
+               : (lib == c->dynLib[LIB_EFSRV]) ? LIB_EFSRV : LIB_OTHER;
+```
+
+It identifies a library by comparing an `RLibrary` **pointer** against one
+remembered from an earlier load. The game loads euser twelve times and efsrv
+five times in a run, closing them in between, so those objects are created and
+destroyed repeatedly and their addresses are reused. When a fresh euser
+`RLibrary` lands on the address a closed efsrv one used to occupy, this
+comparison says efsrv, and every euser ordinal the game asks for is translated
+through the efsrv table.
+
+### What it costs
+
+The game asks for a binary search twenty-six times and is handed an array
+constructor. It asks for `CObjectIx::At` and is handed a descriptor
+constructor. It calls them, gets nonsense, and decides what to do next on the
+strength of it -- on the emulator it carries on into the burst, on the phone it
+closes the library and gives up. **That is the whole 35-event gap**, and neither
+machine was ever going to work; the emulator only looked like it did.
+
+This also retires the theory the previous section built: the ordinals are not a
+9.2-versus-9.3 problem, and the N95's `euser.dll` is no longer needed to settle
+it.
+
+**Identity by stale pointer** is the flaw, and it is the same shape as two
+earlier bugs in this file -- the allocation ring matching a stale entry, and the
+`RFile` closed as a plain handle. A library has to be identified by something
+that survives being closed and reopened.
