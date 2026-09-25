@@ -62,6 +62,13 @@ here and the section it overturns is marked.*
   Emulator: state path 47 13 36 29 **34 4** 59 7 instead of ...29 **68**..., and
   179 -> 195 -> **198** traced events. It is a workaround; what the check hashes
   is still unknown.
+- **The gates are one gate seen from several places.** Gate one was a decision
+  with a non-zero answer the game itself produces, and forcing it cost nothing.
+  Gate two (`mov r4, #1` at `0x13f6c8`) is not a decision: it reports whether an
+  open succeeded, and forcing the report does not open the file. Past it the run
+  reads 2048 bytes on a handle that was never opened, gets **-8 KErrBadHandle**
+  and faults. `PATCH_GATE_TWO` is in the source at zero. Forcing reports cannot
+  manufacture the entry the parse failed to produce.
 - **The wall is Codewave content protection, and it is not a bug.** `cwp.dat`
   begins `CWZ`, `game.lic` reads `Asphalt2 10185-2.0.194-prd-4205THA`, `nc.dat`
   is sixteen bytes of key material, and the two 104-byte records at `0x17e298`
@@ -3657,3 +3664,60 @@ honest ways past it:
 
 Neither is emulator work in the sense the last thirty rounds were. This is the
 point to say so rather than keep drilling one call deeper each round.
+
+## Route one, and where it stops
+
+Gate two is one word: `0x13f4c8` ends
+
+```
+13f6b4  bx    r6          @ RFile::Open through our shim
+13f6c4  cmp   r4, #0
+13f6c8  movne r4, #0
+13f6cc  moveq r4, #1
+```
+
+and replacing `movne r4, #0` with `mov r4, #1` makes it always report success.
+Five of its six calls open a real path and already answered 1, so only the
+sixth -- the one handed the empty list as a name -- changes.
+
+**It works, and it fails immediately.** The state trace stops at `47 13 36 29
+34`: no return to the dispatcher, no `User::Leave`, no `User::Exit`. The run
+goes somewhere it has never been and the last thing in the log is
+
+```
+Lookup old 136 -> new 255      @ RFile::Read
+Read  into 2048 bytes  ->  -8  @ KErrBadHandle
+<fault>
+```
+
+a read on the handle that was never opened. The patch's own comment predicted
+this before the run, which is the only good thing about it.
+
+### What route one actually buys
+
+Gate one was a decision: a function that answers zero where the game accepts
+anything non-zero, and there was a non-zero the game itself produces. Sixteen
+events, no side effects, and the build is still the best there has been.
+
+Gate two is not a decision. `0x13f4c8` reports whether an open succeeded, and
+forcing the report does not open the file. Behind it is an `RFile` that does not
+exist, and behind *that* is a name that only exists if the licence parse
+produced an entry for key 1 -- which is the thing gate one was checking.
+
+So the gates are not a sequence of independent booleans. **They are one gate
+seen from several places**: the parse produced nothing, and everything after it
+is reading from nothing. Forcing the reports keeps the run alive a few hundred
+instructions longer and then it dies on the emptiness itself.
+
+`PATCH_GATE_TWO` is left in the source at zero, with the finding attached, so
+the next round starts from this rather than rediscovering it. E47 confirms the
+tree is back to the best run there has been.
+
+### What would actually move this
+
+Making the parse produce an entry, which is route two: read `cwp.dat`'s `CWZ`
+format, find what it keys entries by and what it digests, and see whether the
+port can supply it. Everything needed for that is on this machine -- the 125
+bytes of `cwp.dat`, the 16 of `nc.dat`, the licence string, the two 104-byte
+contexts at `0x17e298` and the whole of `0xe50d8` -- and none of it needs the
+phone.

@@ -1220,6 +1220,36 @@ enum { PATCH_THE_CHECK = 1 };
 struct Patch { u32 at; u32 word; };
 static const Patch kPatch[] = {
     { 0x000e6f34, 0xE3A00002 },     // mov r0, #2, in place of `beq e6f54`
+    // Gate two. `0x13f4c8` builds a name, opens it and reports whether the
+    // open said KErrNone:
+    //
+    //     13f6b4  bx    r6          @ RFile::Open, resolved through our shim
+    //     13f6c4  cmp   r4, #0
+    //     13f6c8  movne r4, #0
+    //     13f6cc  moveq r4, #1
+    //
+    // Five of its six calls open a real path and already answer 1. The sixth
+    // is handed the empty list as a name -- four control bytes -- and answers
+    // KErrNotFound, so the factory at `0x10a93c` deletes the object and
+    // returns zero, and state 34 fails exactly as state 29 did. Replacing
+    // `movne r4, #0` with `mov r4, #1` makes all six answer 1; the five that
+    // already did are unaffected.
+    //
+    // The cost is honest and worth writing down: the object this keeps alive
+    // holds an RFile that was never opened. Reading through it is KERN-EXEC 0
+    // on a phone, which is the failure this port has spent months on. If the
+    // run dies that way, this patch is why.
+};
+// Gate two is kept but not applied. It works -- state 34 passes and the run goes
+// somewhere it has never been -- and what it finds there is `RFile::Read` on the
+// handle that was never opened, answering **-8, KErrBadHandle**, and then a
+// fault. The patch is sound; the object behind it is not, because the name it
+// was supposed to open only exists if the licence parse produced an entry.
+// Left here so the next round starts from the finding rather than rediscovering
+// it, and off so the tree stays at the best run there has been.
+enum { PATCH_GATE_TWO = 0 };
+static const Patch kGateTwo[] = {
+    { 0x0013f6c8, 0xE3A04001 },     // mov r4, #1, in place of `movne r4, #0`
 };
 
 enum { PLANT_PROBES = 1, PROBE_FIRST = 990, PROBE_BYTES = 80 };
@@ -3441,6 +3471,14 @@ static u32 load_and_start()
             if (kPatch[i].at + 4 <= h->codeSize) {
                 u32 *site = (u32 *)(base + kPatch[i].at);
                 *site = kPatch[i].word;
+                user_imb_range(site, site + 1);
+            }
+
+    if (PATCH_GATE_TWO)
+        for (u32 i = 0; i < sizeof kGateTwo / sizeof kGateTwo[0]; i++)
+            if (kGateTwo[i].at + 4 <= h->codeSize) {
+                u32 *site = (u32 *)(base + kGateTwo[i].at);
+                *site = kGateTwo[i].word;
                 user_imb_range(site, site + 1);
             }
 
