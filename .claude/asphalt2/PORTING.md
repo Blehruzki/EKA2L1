@@ -62,6 +62,13 @@ here and the section it overturns is marked.*
   Emulator: state path 47 13 36 29 **34 4** 59 7 instead of ...29 **68**..., and
   179 -> 195 -> **198** traced events. It is a workaround; what the check hashes
   is still unknown.
+- **There is one dump on this machine and it is not cracked.** All three copies
+  of `6rbc.app` are byte-identical, as are every data file beside them; the `e`
+  drive is the same dump laid out as an N-Gage card. The protection runs in it.
+- **`nc.dat` is the card's CID** -- `bd81cbfb eb08cd1e 6d341c6e e83e5d16`, four
+  words, the game's record of the card it was sold on. `gate6_mmc_control` now
+  answers it instead of zeros (`ANSWER_THE_CARD`), which is truthful and changes
+  nothing: with the check patch off, neither word order gets state 29 past 68.
 - **The gates are one gate seen from several places.** Gate one was a decision
   with a non-zero answer the game itself produces, and forcing it cost nothing.
   Gate two (`mov r4, #1` at `0x13f6c8`) is not a decision: it reports whether an
@@ -3721,3 +3728,56 @@ port can supply it. Everything needed for that is on this machine -- the 125
 bytes of `cwp.dat`, the 16 of `nc.dat`, the licence string, the two 104-byte
 contexts at `0x17e298` and the whole of `0xe50d8` -- and none of it needs the
 phone.
+
+## The dump on this machine is not cracked, and `nc.dat` is the card
+
+Asked whether the dump already in hand is a cracked one, the answer is no, and
+it is not a judgement call:
+
+```
+e.ngage/system/apps/6rbc/6rbc.app   1616972 bytes
+e/6rbc.app                          1616972 bytes
+e/system/apps/6rbc/6rbc.app         1616972 bytes
+```
+
+**All three are byte-identical**, and so are `cwp.dat`, `nc.dat`, `cis.dat`,
+`cwivenc.dat`, `6rbc.cwa`, `game.lic` and `6rbc.dat` across every tree. There is
+one dump here in three places. The `e` drive is that dump laid out as an N-Gage
+card -- it carries `game.id` (`N-Gage`), `nokia.dat`, `version.dat` and
+`ngagegamestarter.txt` (`Path: \system\apps\6RBC\6RBC.app`) -- which is why it
+looked like a second one. The later timestamp on `e/6rbc.app` is a copy, not an
+edit.
+
+And the protection is demonstrably live in it: it runs, it computes, and it
+answers zero. A cracked image would not reach `User::Leave(-2)`.
+
+### `nc.dat` is the card's CID
+
+Sixteen bytes, four words, sitting next to the game:
+
+```
+bd81cbfb eb08cd1e 6d341c6e e83e5d16
+```
+
+That is the length and shape of an MMC CID, and an earlier session evidently
+reached the same conclusion -- `/tmp/card_bd81cbfb-eb08cd1e-6d341c6e-e83e5d16/`
+is a whole card tree named after it. So the game carries the identity of the
+card it was sold on, and `gate6_mmc_control` has been answering **zeros**,
+which is what EKA2L1's own mmcif channel says.
+
+Answering `nc.dat` instead is three lines and an obvious shot. It is not the
+answer:
+
+| run | CID answered | check patch | state path |
+|---|---|---|---|
+| E48 | `nc.dat`, big-endian | on | 47 13 36 29 **34 4** 59 7 |
+| E49 | `nc.dat`, big-endian | **off** | 47 13 36 29 **68** 59 7 |
+| E50 | `nc.dat`, little-endian | **off** | 47 13 36 29 **68** 59 7 |
+| E51 | `nc.dat`, big-endian | on | 47 13 36 29 **34 4** 59 7 |
+
+Neither word order makes the real check pass, and the driver log shows ordinal
+490 -- the card-info call -- being answered on every run, so the CID genuinely
+reaches the game. `ANSWER_THE_CARD` is kept on anyway: it costs nothing and it
+is the truthful answer where zeros were a guess.
+
+So the CID is either not an input to the digest, or not the only one.

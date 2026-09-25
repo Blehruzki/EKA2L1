@@ -2470,11 +2470,33 @@ extern "C" void *gate6_alloc(int size, u32, Context *c)
     return p;
 }
 
+// `nc.dat` next to the game is sixteen bytes and nothing else:
+//
+//     bd81cbfb eb08cd1e 6d341c6e e83e5d16
+//
+// which is four words, which is the length of an MMC CID -- and the game's own
+// copy of the identity of the card it was sold on. Answering zeros here, which
+// is what EKA2L1's mmcif channel would say, tells the protection it is running
+// on a card that is not the one in `nc.dat`. Answering `nc.dat` tells it the
+// truth about the card the dump came from.
+//
+// Word order is a guess with two candidates: the file read as four big-endian
+// words, or as four little-endian ones. CARD_CID_ORDER picks; one emulator run
+// each settles it.
+enum { ANSWER_THE_CARD = 1, CARD_CID_ORDER = 0 };
+static const u32 kCardCidBE[MMC_CID_WORDS] = {
+    0xbd81cbfb, 0xeb08cd1e, 0x6d341c6e, 0xe83e5d16,
+};
+static const u32 kCardCidLE[MMC_CID_WORDS] = {
+    0xfbcb81bd, 0x1ecd08eb, 0x6e1c346d, 0x165d3ee8,
+};
+
 extern "C" u32 gate6_mmc_control(u32, u32 op, u32 *info)
 {
     if (op == MMC_CARD_INFO && info) {
+        const u32 *cid = CARD_CID_ORDER ? kCardCidLE : kCardCidBE;
         for (u32 i = 0; i < MMC_CID_WORDS; i++)
-            info[i] = 0;
+            info[i] = ANSWER_THE_CARD ? cid[i] : 0;
         info[MMC_CID_WORDS] = MMC_CARD_TYPE_ROM;
     }
     return 0;
