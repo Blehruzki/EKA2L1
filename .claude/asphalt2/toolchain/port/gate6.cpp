@@ -213,6 +213,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_CELL_HDR = 887,     // the words RHeap keeps in front of a payload
        NOTE_NEXT_HDR = 888,     // and the header of the cell after it
        NOTE_CALLER = 889,       // the return address a wrapped call was made from
+       NOTE_WATCH_EARLY = 844,  // the allocation the watch was latched on, early
        NOTE_WATCH = 895,        // and one word of a struct every probe re-reads
        NOTE_WATCH_AT240 = 896,  // ... and what 0x139588 would read out of it
        NOTE_CELL_AT = 881,      // the cell a read buffer sits in
@@ -639,6 +640,7 @@ struct Context {
     u32 noteDes[2];
     u32 traceCount;         // how many imports have gone past
     u32 workerNotes;        // how many worker events have gone to RDebug
+    u32 workerWatch;        // the watched word as the worker last saw it
     u32 lastCall;           // the last slot of ours the framework called
     u32 avkon;              // an RLibrary on avkon, for what it does not export
     u32 newBaseConstructL;  // avkon's CAknAppUi::BaseConstructL, as resolved
@@ -653,6 +655,9 @@ struct Context {
                             // opened or read to find it
     u32 lastWatch;
     u32 loudCount;          // passes through a dispatcher station, rationed          // ... and what it last read there
+    u32 watchFromProbe;     // 1 once probe 990 has latched it, rather than the
+                            // allocator: only then is the object built enough to
+                            // dereference a word of
     u32 watchAt;            // the object the first probe reported, re-read by
                             // every probe after it. Bisecting which call
                             // spoils a field means watching the field, and a
@@ -831,6 +836,32 @@ enum { TRACE = 48 };
 // from 1240 records to 553.
 static void log_event(Context *c, u32 code, u32 from);
 static void note(Context *c, u32 value, u16 sign);
+// The word that goes wrong is at a fixed address -- 0x8b281c, the fourth word
+// of the object probe 990 latches at 0x8b2810 -- and it is already wrong by the
+// time that probe fires, a thousand records in. The heap is deterministic here:
+// the run with the worker and the run without it put the object at the same
+// address, and the two records are identical for 806 events, so nothing before
+// that moves a cell.
+//
+// So latch the watch as soon as anything hands us a pointer into that cell,
+// which is record 120 rather than 1139, and the field gets a timeline from the
+// moment it exists. It is not the allocator: the object never comes out of
+// gate6_alloc (E104). If the layout ever shifts, the constant simply never
+// matches and probe 990 latches as before -- NOTE_WATCH_EARLY says which.
+enum { WATCH_EARLY = 1, WATCH_EARLY_AT = 0x008b2810, WATCH_EARLY_SLACK = 0x40 };
+
+static void watch_latch(Context *c, u32 p)
+{
+    if (!WATCH_EARLY || c->watchAt || !p || (p & 3))
+        return;
+    if (p > (u32)WATCH_EARLY_AT || (u32)WATCH_EARLY_AT - p >= (u32)WATCH_EARLY_SLACK)
+        return;
+    c->watchAt = (u32)WATCH_EARLY_AT;
+    c->lastWatch = ((const u32 *)c->watchAt)[1];
+    c->workerWatch = 0xFFFFFFFF;    // so the worker's first look always reports
+    log_event(c, NOTE_WATCH_EARLY, p);
+}
+
 static void watch_note(Context *c)
 {
     // Four words, not one. A deliberate store into this->[4] touches that word
@@ -849,8 +880,12 @@ static void watch_note(Context *c)
     // question of whether the call should have written the field at all.
     // Guarded, because the poisoned value must not be dereferenced: that is
     // the fault we are studying, not one to reproduce.
+    // Only once probe 990 has latched the object. Latched from the allocator
+    // instead, the cell is raw heap and o[1] is whatever the last tenant left:
+    // a value that passes the range test and faults on the read is exactly the
+    // fault being studied, reproduced by the instrument.
     const u32 v = o[1];
-    if (v >= 0x400000 && v < 0x10000000 && !(v & 3))
+    if (c->watchFromProbe && v >= 0x400000 && v < 0x10000000 && !(v & 3))
         log_event(c, NOTE_WATCH_AT240, ((const u32 *)(v + 0x240))[0]);
 }
 
@@ -1081,15 +1116,34 @@ static void log_block(Context *c)
 // Capped, because two RawPrints an event for a thread that may do thousands of
 // them buries the emulator's own log. The opening is what is wanted: what the
 // worker does first, and what it was doing when the run ended.
-enum { WORKER_NOTES = 1, WORKER_NOTE_MAX = 600 };
+enum { WORKER_NOTES = 1, WORKER_NOTE_MAX = 3000 };
 
 static void log_event(Context *c, u32 code, u32 from)
 {
     if (WORKER_NOTES && !on_main_thread(c)) {
+        // The word being chased, and only when it changes. The worker spins in
+        // a polling loop -- 0xcbe24, 0xcbf14, 0xcba28, 0xcbd14, 0xcc114, round
+        // and round -- so a line per station spends the whole budget on the
+        // loop and none of it on the answer. A line per *change* spends nothing
+        // until the moment that matters, and the station logged just before it
+        // is the one the write is between.
+        if (c->watchAt) {
+            const u32 w = ((const u32 *)c->watchAt)[3];
+            if (w != c->workerWatch) {
+                c->workerWatch = w;
+                note(c, w >> 16, 'v');
+                note(c, w & 0xffff, 'u');
+            }
+        }
         if (c->workerNotes < (u32)WORKER_NOTE_MAX) {
             c->workerNotes++;
             note(c, code, 't');
-            note(c, from & 0xffff, ':');
+            // Both halves. The low half alone made every call site read as
+            // nonsense -- `0xa1dc` is `bx lr` and `0x532c` is the middle of a
+            // compare -- and cost a round (E105) before it was noticed, because
+            // a truncated image offset still looks like an image offset.
+            note(c, from >> 16, 'h');
+            note(c, from & 0xffff, 'l');
         }
         return;
     }
@@ -1457,6 +1511,13 @@ static const Probe kProbe[] = {
     // The station is on `mov r0, r4` just before that call, so r4 is obj+40 and
     // the four words at it are the record's first sixteen bytes.
     { 0x000cc938,  4, 5 },
+    // 1002: the instruction that poisons the word, measured rather than
+    // inferred. `0xcbb68` is `str r12, [r10, #12]`, and [r10,#12] is believed
+    // to be 0x8b281c -- the fourth word of the object the watch follows. r10
+    // says whether that is so, and r5 is the operand that decides whether the
+    // store is the identity: the two chains around it multiply to exactly 1
+    // mod 2^32, so the value survives if and only if r5 is zero.
+    { 0x000cbb68, 10, 5 },
 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1502,7 +1563,7 @@ enum { PLANT_WALK = 0, CRUMB_WALK_FIRST = 960 };
 // thread rather than calling the function it was given. The crumbs panic by
 // design, so leaving them on would kill the worker on its first instruction,
 // which is the opposite of what is wanted now.
-enum { PLANT_WORKERS = 0, CRUMB_WORKER_FIRST = 970 };
+enum { PLANT_WORKERS = 1, CRUMB_WORKER_FIRST = 970 };
 // The third entry is the control. `0xcc7e4` is the object maker and the log has
 // it running on every launch, so if the mechanism works at all it must panic
 // there. Without it, "no G6WRK" means either the workers never ran or the crumb
@@ -1510,7 +1571,17 @@ enum { PLANT_WORKERS = 0, CRUMB_WORKER_FIRST = 970 };
 // The control at `0xcc7e4` has done its job -- it proved the panic crumb fires
 // at a site that runs -- and it has to come out, because it panics long before
 // the threads are resumed and would kill the run before the question is asked.
-static const u32 kWorkerCrumb[] = { 0x000b8660, 0x000cb710 };
+static const u32 kWorkerCrumb[] = {
+    0x000b8660,     // SoundServer's entry
+    0x000cb710,     // and the small worker's, which is the one that runs
+    // Thirteen stations through the small worker, roughly every 0x100, each on
+    // the first instruction crumb_safe will take. The word at 0x8b281c is
+    // already poisoned by this worker's first import call, so the write is
+    // somewhere in here and nothing finer than the function was known.
+    0x000cb714, 0x000cb814, 0x000cb914, 0x000cba28, 0x000cbb14,
+    0x000cbc1c, 0x000cbd14, 0x000cbe24, 0x000cbf14, 0x000cc014,
+    0x000cc114, 0x000cc214, 0x000cc314,
+};
 static const u32 kWalkCrumb[] = {
     0x000ccb68,     // the caller: r0 = *r5, the container it searches
     0x000d9484,     // case 0: r4 = head->[+4]
@@ -1592,9 +1663,10 @@ extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
     // is indistinguishable from the thread never having run, and that is the
     // thing being asked. So they panic instead. A panic needs no handle and the
     // emulator prints the category, so if the worker runs, `G6WRK` says so.
-    if (PLANT_WORKERS && marker >= (u32)CRUMB_WORKER_FIRST &&
-        marker < (u32)CRUMB_WORKER_FIRST + 8)
-        PANIC(CAT_WRK, (int)marker);
+    // The panic has done its job: E97 proved the workers run. From a worker the
+    // log now goes to RDebug rather than the file, so a crumb can simply be
+    // recorded, and a crumb that records is one that can be planted fourteen
+    // times across a function to find where inside it something happens.
     stack_mark(c);
     if (marker - CRUMB_FIRST < BOX_MARKERS)
         c->boxData[BOX_HITS + (marker - CRUMB_FIRST)]++;
@@ -1697,6 +1769,7 @@ static const u16 *des_text(const u32 *d, u32 *length)
 
 extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
 {
+    watch_latch(c, a0);
     watch_note(c);
     log_event(c, NOTE_CALL_ARG, index);
     log_event(c, NOTE_RESULT_ARG, a0);
@@ -1980,6 +2053,7 @@ extern "C" void gate6_probe(u32 marker, Context *c, u32 a, u32 b)
     if (marker == (u32)PROBE_FIRST && a >= 0x400000 && a < 0x10000000 && !(a & 3)) {
         c->watchAt = a;
         c->lastWatch = ((const u32 *)a)[1];
+        c->watchFromProbe = 1;
     }
     watch_note(c);
     // A probe is planted at a site that is about to go wrong, so the block it
