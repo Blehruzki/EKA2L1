@@ -160,6 +160,12 @@ here and the section it overturns is marked.*
   maps that memory writable -- ran twelve launches without complaint.
   `buildapp.py` now refuses to build an image that wants one.
 
+- **KERN-EXEC 0 is almost certainly ours.** `box_write` had no handle guard
+  where `log_block` has always had one, so a failed `file_replace` of the box
+  leaves handle 0 and the next box write is `RFile::Write` on it -- a bad
+  handle, which is what KERN-EXEC 0 means. It lands exactly where round 54's
+  second launch stops, two records in. Build 55 guards it.
+
 ### Two panics, not one
 
 **Every run on the phone raises one KERN-EXEC 0 and one KERN-EXEC 3**, and has
@@ -2770,3 +2776,37 @@ In the emulator: nine log files on digits 1 to 9, **1832 records each -- which
 is exactly E25's count**, the build-51-era run. That is the check that build 54
 really is build 51 plus the name and nothing else. 179 traced events, no fault,
 and 265 records of write budget handed back.
+
+## KERN-EXEC 0 is ours, and it has been all along
+
+Round 54 showed each run is two launches: a full one of 1563 records, and one
+that writes two records and dies without ever writing a box. That second launch
+is where the KERN-EXEC 0 has been hiding for dozens of rounds -- it was never in
+a log because every log it wrote was truncated by the next launch.
+
+`log_block` has always guarded its handle:
+
+```c
+if (!c->logFill || !c->logFile[0])
+    return;
+```
+
+**`box_write` never did.** If `file_replace` of the box fails, `boxFile` stays
+zero, and the next box write is `RFile::Write` **on handle 0** -- which is
+exactly KERN-EXEC 0, a bad handle. The guarded `box_flush` at startup is
+skipped on a failed replace, so the first unguarded write is the one the app
+framework triggers, right where the stub launch stops: two records in.
+
+Build 55 gives `box_write` the guard `log_block` has had all along, zeroes the
+handle on a failed replace so the guard holds, and says out loud what the
+replace returned. It also writes the tick into the *log*, because the launch
+that dies before writing a box carried no tick and round 54 therefore could not
+say which of the pair ran first.
+
+In the emulator: 1834 records against E29's 1832 -- the two new records and
+nothing else. The emulator's box replace always succeeds, so **the guard itself
+can only be tested on the phone.**
+
+If the KERN-EXEC 0 goes away, it was ours, and the remaining failure is the
+single KERN-EXEC 3 at the end of the full launch. If it does not, the stub dies
+somewhere else in the loader and its log will now carry the tick to place it.

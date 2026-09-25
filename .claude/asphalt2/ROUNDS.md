@@ -81,6 +81,7 @@ them, and say so.
 | E27 | launch counter in the box, and a per-launch log name | 2097 | `--` | **Twelve launches in one 45-second session**, all byte-identical, each reaching 179 traced events and ending `User::Leave` / `User::Exit`. The app is in a relaunch loop, and every log in this project was whichever launch happened to be last |
 | E28 | build 53 -- launch name built on the stack, writable-statics guard in the build | 2097 | `--` | Identical to build 52 in the emulator -- 12 launches, 2097 records, 179 events -- so the fix is behaviour-neutral there. The guard was tested by reintroducing a writable static: the build refuses it |
 | E29 | build 54 -- per-launch log name from the clock, no file read at startup | 1832 | `--` | Launches land on digits 1-9, 1832 records each -- **exactly E25's count**, which confirms build 54 is build 51 plus the one change and nothing else. 179 traced events, no fault, and 265 records of write budget given back |
+| E30 | build 55 -- guard the box write, log the tick and the box replace result | 1834 | `--` | 1834 records -- E29's 1832 plus the two new ones -- so the guard costs nothing. Record 2 is the tick, record 3 the box replace's result (`0` here). The emulator's replace always succeeds, so the guard itself can only be tested on the phone |
 
 <!-- EMURUN -->
 
@@ -132,7 +133,8 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 51 | **NOP the store at 0x1082c0** (+ the watch instrumentation) | 3 | 144 traced events, 262 imports, 1563 records | **The wall is down on hardware.** 128 -> 144 events, 248 -> 262 imports, and the phone follows the emulator's new sequence import for import. First advance since build 44 |
 | 52 | Launch counter in the box, one log file per launch | – | **nothing produced, KERN-EXEC 3** | Mine. I made `kLogPath` non-`const` to patch a digit into it, and **our image has no writable data section** -- `flat.ld` folds `.data*` into `.rodata` and `mke32.py` declares data and bss zero. The write faults before any file is created. The emulator maps that memory writable, so it ran 12 launches happily |
 | 53 | Build 52 with the name built on the stack, plus a build-time guard | 1 | **reboot**, one launch only (`g6box1.log` + `.dat`) | The write does not fault any more -- the files exist. But a **reboot**, which has not happened since build 36, and only one launch where the emulator does twelve. **I broke rule 2**: 53 carries three changes against the last build known to survive (51) -- the launch counter's `RFile` open/read/close, the `RLibrary::Load` wrap, and a widened `arg_thunk` |
-| 54 | Build 51 + per-launch log name from the clock, one variable | pending | – | – |
+| 54 | Build 51 + per-launch log name from the clock, one variable | 3 | **no reboot**; every run is exactly 2 launches: one of 1563 records, one of **2** | **The reboot was one of the three things build 53 carried** -- it is gone with them reverted. And the second launch is visible for the first time: it writes `image loaded at` and `chunk ends at`, then dies. It never writes a box |
+| 55 | **Guard the box write**, and log the tick + the box replace result | pending | – | – |
 
 ## Where we are
 
@@ -351,3 +353,40 @@ thirty imports short of where the emulator gets (292, and an orderly
 
 **The store at `0x1082c0` was the wall**, and the value it clobbered was the
 right one on hardware as well as in the emulator.
+
+### What build 54 found
+
+Three runs, six log files, and they come in two kinds:
+
+| | records | box | reaches |
+|---|---|---|---|
+| `g6box5/6/7.log` | 1563 | yes, 144 traced events, last import `RLibrary::Load` | the same place round 51 reached |
+| `g6box2/4/9.log` | **2** | **none** | `image loaded at`, `chunk ends at`, and then nothing |
+
+**No reboot.** Build 53's reboot came from one of the three things it carried
+past build 51, all of which are reverted here. Which one is not established and
+does not need to be: none of them are wanted.
+
+The full launch is 1563 records and 144 traced events -- **identical to round
+51** -- which is the check that build 54 changed nothing but the file name.
+
+And the second launch has never been seen before. It gets as far as the two
+records the loader writes immediately after replacing the log file, and dies
+before the box is written -- there is no box from it at all. That is
+`file_replace` of the box, or the stretch of loader between the two, and the
+whole of the image load and relocation lies inside that window.
+
+So "one KERN-EXEC 0 and one KERN-EXEC 3 per run" is two launches, not two
+faults in one: a full launch that dies at the end, and a second that dies
+almost immediately.
+
+### What the instrument still cannot say
+
+**Which of the two is first.** The digit is `TickCount % 10`, and the stub
+writes no box, so it carries no tick of its own. Run 1 has the full launch on
+digit 7 and a stub on digit 9; run 3 has the full launch on 5 and a stub on 2.
+Either order fits. If the stub is *first*, then everything this project has
+ever measured is the second launch -- which would be worth knowing before
+another theory is built on it.
+
+That is one record: the tick, written into the log rather than only the box.

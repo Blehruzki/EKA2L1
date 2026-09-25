@@ -1009,6 +1009,15 @@ static void vptr_check(Context *c);
 
 static void box_write(Context *c)
 {
+    // The same guard log_block has had all along, and the box never did.
+    //
+    // If `file_replace` of the box fails, `boxFile` stays zero and every write
+    // after it is `RFile::Write` on handle 0 -- which is **KERN-EXEC 0, a bad
+    // handle**. The phone has raised one of those every run for dozens of
+    // rounds, and round 54 showed why it was never in a log: it is the second
+    // launch of the pair, and it dies at the first box write, two records in.
+    if (!c->boxFile[0])
+        return;
     c->boxData[0] = BOX_MAGIC;
     c->boxData[1] = c->lastImport;
     c->boxData[2] = c->reached;
@@ -2848,10 +2857,24 @@ static u32 load_and_start()
             log_event(ctx, NOTE_BASE, ctx->codeBase);
             log_event(ctx, NOTE_END, ctx->spareEnd ? (u32)ctx->spareEnd : 0);
 
-            if (file_replace(ctx->boxFile, ctx->boxFs, &name, EFileWrite | EFileShareAny) == 0) {
+            // The tick goes in the log, not only in the box. The launch that
+            // dies before writing a box carries no tick at all otherwise, and
+            // round 54 could not say which of the pair ran first because of
+            // it.
+            log_event(ctx, NOTE_TICK, user_tickcount());
+            const i32 boxErr = file_replace(ctx->boxFile, ctx->boxFs, &name,
+                                            EFileWrite | EFileShareAny);
+            // And whether the box could be opened at all. A failure here used
+            // to be silent and then fatal at the first box write.
+            log_event(ctx, NOTE_RESULT, (u32)boxErr);
+            log_block(ctx);
+            if (boxErr == 0) {
                 ctx->lastImport = BOX_ARMED;    // armed, nothing recorded yet
                 box_flush(ctx);
                 ctx->lastImport = 0xFFFF;
+            } else {
+                for (u32 i = 0; i < 4; i++)
+                    ctx->boxFile[i] = 0;        // so the guard above holds
             }
         }
     }
