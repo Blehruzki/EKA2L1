@@ -188,6 +188,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_OPEN = 897,    // what RFile::Open answered
        NOTE_FILE_PATH = 898,    // ... and the name it was asked for
        NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
+       NOTE_FILE_HEAD = 861,    // the first three words of a name descriptor
        NOTE_LOOKUP_HANDLE = 875,// the library handle a lookup was made on
        NOTE_LOOKUP_RESULT = 876,// and the address it answered with
        NOTE_DRIVER = 877,       // a kernel driver call, refused
@@ -1196,10 +1197,21 @@ static const u32 kNop[] = { 0x001082c0 };
 //     e6e20  beq  e6f58          @ -> return 2
 //
 // and state 29 treats any non-zero answer as success, so **2 is a value the
-// game's own code produces and accepts**. Turning `subs r5, r0, #0` into
-// `subs r5, r0, r0` takes that exit every time: the check returns 2, through
-// the game's own path, with a value the game itself chose. Nothing is invented
-// and nothing downstream sees a number it was not written to handle.
+// game's own code produces and accepts**.
+//
+// Taking that exit by patching `subs r5, r0, #0` to `subs r5, r0, r0` works --
+// state 29 goes to 34 and the run gains sixteen events -- and then state 34
+// reads an empty list and builds a filename out of it. Of course it does: the
+// early exit skips the whole body, and the body is what fills the list. A
+// station at `0xcde68` shows the pointer holding its own address, which is how
+// this game says "empty", and `User::StringLength` over it answers 4.
+//
+// So override the verdict instead of skipping the work. `0xe6f34` is the
+// `beq` that returns zero when the fourth argument is null; replacing it with
+// `mov r0, #2` leaves the loop, the body and everything it populates intact,
+// and only the answer changes -- to the same 2 the function already returns on
+// its other exit. The chains from there to the return are the identity, so 2
+// is what the caller sees.
 //
 // This is a workaround, not an explanation. What the check hashes is still
 // unknown, and the honest answer may be that it cannot be satisfied at all
@@ -1207,7 +1219,7 @@ static const u32 kNop[] = { 0x001082c0 };
 enum { PATCH_THE_CHECK = 1 };
 struct Patch { u32 at; u32 word; };
 static const Patch kPatch[] = {
-    { 0x000e6e18, 0xE0505000 },     // subs r5, r0, r0
+    { 0x000e6f34, 0xE3A00002 },     // mov r0, #2, in place of `beq e6f54`
 };
 
 enum { PLANT_PROBES = 1, PROBE_FIRST = 990, PROBE_BYTES = 80 };
@@ -1289,6 +1301,12 @@ static const Probe kProbe[] = {
     // question is one number -- `[r5]`, the count -- and the station is on the
     // load that fetches it. r5 is an address, so the four words at it come too.
     { 0x000e6e8c,  5, 1 },
+    // State 34's input. It reads `[[sp,#52]]` and hands that pointer on as a C
+    // string, and the name that eventually reaches RFile::Open is four control
+    // characters. Whether that pointer is rubbish because the check was forced
+    // or was always rubbish is the question this answers: r3 is the pointer and
+    // the station prints the four words at it.
+    { 0x000cde68,  3, 9 },
 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -2480,6 +2498,13 @@ enum { OPEN_NAME_WORDS = 20 };
 extern "C" void gate6_file_open(u32 err, const u32 *name, Context *c)
 {
     log_event(c, NOTE_FILE_OPEN, err);
+    // The raw header first. The five opens this decoded before all came back a
+    // word early -- the length showed up where the first character should be --
+    // and guessing at the layout twice is enough. Three words, then the text as
+    // the type says, and the decoder can tell which is which.
+    if (name)
+        for (u32 i = 0; i < 3; i++)
+            log_event(c, NOTE_FILE_HEAD, name[i]);
     if (name) {
         const u32 type = name[0] >> KTypeShift;
         const u16 *text = (type == EBufC)    ? (const u16 *)(name + 1)

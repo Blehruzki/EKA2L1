@@ -102,6 +102,7 @@ NOTES = {860: 'slot entered', 850: 'Cancel on', 851: 'STRAY Cancel on',
          891: 'RFile::Read into', 892: '   descriptor word',
          893: '   answered', 894: 'RFile::Size answered',
          897: 'RFile::Open answered', 898: '   name', 899: 'ALLOC FAILED, bytes',
+         861: '   descriptor word',
  895: '  >> watched field', 896: '  >> would read at +0x240'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that

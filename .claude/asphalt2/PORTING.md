@@ -54,11 +54,20 @@ here and the section it overturns is marked.*
   (`mov r8, #0`) and then 7 (`mov r0, r8`, epilogue). `0xe6df8` returning zero
   is the whole failure.
 - **The protection can be made to pass with its own value.** `0xe6df8` returns
-  2 when its first argument is null, and state 29 accepts any non-zero answer,
-  so patching `subs r5, r0, #0` to `subs r5, r0, r0` at `0xe6e18` takes that
-  exit every time. Emulator: state path 47 13 36 29 **34 4** 59 7 instead of
-  ...29 **68**..., and 179 -> 195 traced events. It is a workaround; what the
-  check hashes is still unknown.
+  2 when its first argument is null, and state 29 accepts any non-zero answer.
+  The patch is at **`0xe6f34`**: `mov r0, #2` in place of the `beq` that returns
+  zero, which leaves the loop and the body running and changes only the answer.
+  (Taking the early exit at `0xe6e18` instead also reaches state 34, but skips
+  the body, so it is the wrong patch even though it looks equivalent.)
+  Emulator: state path 47 13 36 29 **34 4** 59 7 instead of ...29 **68**..., and
+  179 -> 195 -> **198** traced events. It is a workaround; what the check hashes
+  is still unknown.
+- **State 34 opens a file whose name is an empty list.** The sixth
+  `RFile::Open` of the run gets a four-character name of control bytes and
+  answers KErrNotFound. Its source is `[[sp,#52]]`, a pointer whose first word
+  is its own address -- this game's empty-list idiom, the same one the cell at
+  `0xcc914` uses -- walked by `User::StringLength`. It is empty whether or not
+  the check is forced, so **something that should have filled it never did**.
 - **The next wall is `0x13f4c4`, and it is ours, not the protection's.** State
   34 calls `0x10a93c`, a factory that news 36 bytes and calls `0x13f4c4` on it;
   that answers false, so the factory deletes and returns zero, and state 4 --
@@ -3468,3 +3477,58 @@ plausibly be wrong about -- unlike a digest over a game card that is not there.
 `PATCH_THE_CHECK` is a workaround. What the protection hashes is still unknown,
 and the answer may be that it cannot be satisfied without the N-Gage game card
 it was written to look for. The patch is in the record as a patch.
+
+## The name it opens is an empty list
+
+The forced check gets to state 34, and state 34 fails on a sixth `RFile::Open`
+that no earlier run ever reached. Logging the raw descriptor says why:
+
+| open | header | text | err |
+|---|---|---|---|
+| `6rbc.app` | `4000001c 0000001c ptr` | the path | 0 |
+| `cwp.dat` | `4000001b 0000001c ptr` | the path | 0 |
+| `nc.dat` x2 | `4000001a 0000001c ptr` | the path | 0 |
+| `6rbc.cwa` | `4000001c 0000001c ptr` | the path | 0 |
+| **the sixth** | **`40000004 00000010 ptr`** | **`0x0008 0x000a`** | **-1** |
+
+Type nibble 4 in every one, and the buffer at `ptr` begins with its own header
+-- which is why the first decode of these names came out a word early. The
+sixth has four characters and they are control bytes.
+
+A station on state 34's input says where they come from:
+
+```
+r3 = 0x04160a08     [r3] = 0x04160a08
+```
+
+**The word at the pointer is the pointer.** That is this game's way of saying a
+list is empty, and it is already on file: the cell at `0xcc914` does exactly the
+same thing. State 34 hands that pointer on as a C string, `User::StringLength`
+walks four bytes of it before hitting the zero, and those four bytes become the
+filename.
+
+### And it is not the patch's doing
+
+The first patch took the check's early exit, which skips the whole body -- and
+the body is the obvious candidate for whatever fills that list. So the patch
+moved: `0xe6f34` is the `beq` that returns zero when the fourth argument is
+null, and replacing it with `mov r0, #2` leaves the loop and the body intact and
+changes only the answer, to the same 2 the function already returns elsewhere.
+The chains from there to the return are the identity, so 2 is what the caller
+sees.
+
+With the body running -- station 997 fires twice, one iteration and the exit,
+so `0xe50d8` did execute -- **state 34 still reads a list holding its own
+address**. Traced events 195 -> 198, and no exception handler fired at all.
+
+So the empty list is not a consequence of forcing the check. Something that
+should have put an entry in it never did, and that is a much better kind of bug
+to have: a list this port failed to populate is the shim's business, where a
+digest over a game card that is not there is not.
+
+### What is next
+
+Find who writes to that list. The pointer is `[[sp,#52]]` in the dispatcher's
+frame, so an earlier state -- 47, 13 or 36 -- put it there, and one of them, or
+something they call, is meant to add to it. Stations on those three states'
+inputs will say which.
