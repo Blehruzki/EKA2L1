@@ -4435,3 +4435,50 @@ same session print eleven successful creations.
 So the next question is why that allocation fails for this call and not the
 others, and it is a question about the emulator's own code, in a repository we
 have open.
+
+## Making the emulator say why
+
+`thread_create` in `src/emu/kernel/src/svc.cpp` returns `error_general` when
+`create_and_add<kernel::thread>` gives back `INVALID_HANDLE`, and said nothing
+about it. Four lines of `LOG_ERROR` there -- an improvement to the emulator in
+its own right, since a silent failure is the hardest kind -- and it answers at
+once:
+
+```
+Thread -590328542 NOT created: pc = 0x47cb710, user stack = 0x2000,
+    heap 0..0, allocator = 0x8b2ad8, ptr = 0x40f868,
+    owner = 75282192, total size = 64
+```
+
+Two things fall out.
+
+**The failing thread is the second one.** `pc = 0x?cb710` with an 8 KB stack is
+the unnamed thread, not `SoundServer` -- which has a 100 KB stack and is created
+successfully in the same run. So the sound server is fine and something else is
+not.
+
+**The name and the owner are garbage.** `owner` is an `epoc::owner_type`: it can
+be 0 or 1, and it is 75282192. The name prints as a negative number, which is
+what `to_std_string` makes of a descriptor that is not one. Meanwhile the `info`
+block beside them is perfectly sound -- a real image offset for the pc, a
+sensible stack, a plausible allocator pointer.
+
+So of the three arguments the kernel is handed, the third is right and the first
+two are wrong. That is the signature of **arguments landing in the wrong
+places**, and the shape that produces it is a call made with one overload's
+argument list and received with another's: old euser 291 takes
+`(name, fn, stack, heapMin, heapMax, ptr, owner)` where 289 takes
+`(name, fn, stack, RAllocator*, ptr, owner)`, and a 289 answered where 291 was
+asked would slide every stack argument along by one.
+
+Our lookup log says the call came through as old 289 -> new 1158, which is the
+`RAllocator*` pair and correct. The next instrument has to show what the game
+actually pushed: the saved r1 and the three stack words at the call.
+
+### A note on the boundary
+
+This is a change to the emulator's own source rather than to
+`.claude/asphalt2/`. It earns its place there -- a kernel call that fails
+silently is worth a log line whatever is being run -- but it is the first time
+this work has touched the project proper, and it is committed on its own so it
+can be dropped without taking anything else with it.
