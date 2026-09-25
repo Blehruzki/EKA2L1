@@ -144,7 +144,7 @@ them, and say so.
 | E89 | build 84 -- worker crumbs back on, control removed, now that create works | 5343 | `--` | **Still nothing.** Eighteen thread creations, no failures, and no `G6WRK`. Create working changed nothing about whether the threads run |
 | E90 | build 84 with the emulator logging what state a resumed thread is in | 5343 | `--` | **`thread_resume SoundServer (handle 0x20001c) in state 0`** -- state 0 is `create`, which is the one case that calls `schedule()`. Both threads, every launch, valid handles. So they are queued ready and still never run |
 | E91 | build 85 -- make `crumb_plant` say whether it planted | 5343 | `--` | **`planted: [970, 971]`, refused: none.** The crumbs are at the worker entry points. So the chain is complete: created, valid handle, resumed, queued ready, breadcrumb in place -- **and not one instruction executed** |
-| E89 | (not stated) | 5341 | `--` | TODO |
+| E92 | build 85 repeated -- the same build, a different launch of it | 5341 | `--` | 5341 against E91's 5343, which is two records of launch-to-launch noise. Kept because it is a run that happened, and renumbered because `emurun.sh` wrote it before the lock that stops two finishing runs claiming the same row number
 
 <!-- EMURUN -->
 
