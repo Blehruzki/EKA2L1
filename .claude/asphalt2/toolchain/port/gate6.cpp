@@ -178,8 +178,12 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_RESULT_OF = 871,    // and which import it was
        NOTE_RESULT_ARG = 872,   // and what it was asked for
        NOTE_CALL_ARG = 873,     // a call, recorded before it is made
-       NOTE_SHUT_LIBRARY = 874, // an ordinal asked of a library that is not open
+       NOTE_SHUT_LIBRARY = 890, // an ordinal asked of a library that is not open
        NOTE_LOOKUP_ORD = 874,   // the ordinal asked for, and what it mapped to
+       NOTE_FILE_READ = 891,    // RFile::Read, and the descriptor handed to it
+       NOTE_FILE_DES = 892,     // ... three words of that descriptor
+       NOTE_FILE_RET = 893,     // ... and what the call answered
+       NOTE_FILE_SIZE = 894,    // RFile::Size, and the size it answered
        NOTE_LOOKUP_HANDLE = 875,// the library handle a lookup was made on
        NOTE_LOOKUP_RESULT = 876,// and the address it answered with
        NOTE_DRIVER = 877,       // a kernel driver call, refused
@@ -653,6 +657,10 @@ struct Context {
     u32 newLibraryLookup;   // euser's RLibrary::Lookup, as resolved
     u32 newLibraryLoad;     // euser's RLibrary::Load, as resolved
     void *dynLib[2];        // the RLibrary the game opened on each of the two
+    u32 fileRead;           // efsrv's RFile::Read, as resolved for the game
+    u32 fileSize;           // and RFile::Size
+    u32 fileReadThunk;      // the diversions handed over in their place
+    u32 fileSizeThunk;
     u8 *spare;              // unused executable room, handed out as needed
     u8 *spareEnd;
 };
@@ -2343,6 +2351,49 @@ extern "C" u32 gate6_mmc_control(u32, u32 op, u32 *info)
     return 0;
 }
 
+// The one difference between the two machines is a loop. The game opens a file
+// and reads it in chunks, re-resolving RFile::Read through RLibrary::Lookup on
+// every pass; the emulator goes round twenty-nine times and the phone three.
+// Every other lookup site is called the same number of times on both.
+//
+// A dynamically resolved call is handed straight to the game, so nothing in the
+// log has ever seen what one of them answered. These two stand in the way of
+// the read and the size and write down what came back. `RFile::Read(TDes8&)`
+// and `RFile::Size(TInt&)` both leave r2 free, so an ordinary ctx_thunk carries
+// the context and neither wrapper has to touch the arguments.
+//
+// The descriptor matters as much as the return code: a TPtr8 or TBuf8 keeps its
+// length in the first word and its maximum in the second, and a read into a
+// descriptor with no room left answers KErrNone having read nothing. Three
+// words are logged before the call and the length word again after it, so a
+// short read and an empty buffer cannot be confused for each other.
+enum { NEW_RFILE_READ = 255, NEW_RFILE_SIZE = 264 };
+
+extern "C" int gate6_file_read(void *self, u32 *des, Context *c)
+{
+    typedef int (*Read)(void *, u32 *);
+    log_event(c, NOTE_FILE_READ, (u32)des);
+    if (des)
+        for (u32 i = 0; i < 3; i++)
+            log_event(c, NOTE_FILE_DES, des[i]);
+    const int err = ((Read)c->fileRead)(self, des);
+    log_event(c, NOTE_FILE_RET, (u32)err);
+    if (des)
+        log_event(c, NOTE_FILE_DES, des[0]);
+    if (!QUIET) log_block(c);
+    return err;
+}
+
+extern "C" int gate6_file_size(void *self, int *size, Context *c)
+{
+    typedef int (*Size)(void *, int *);
+    const int err = ((Size)c->fileSize)(self, size);
+    log_event(c, NOTE_FILE_SIZE, size ? (u32)*size : 0xFFFFFFFF);
+    log_event(c, NOTE_FILE_RET, (u32)err);
+    if (!QUIET) log_block(c);
+    return err;
+}
+
 extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
 {
     note(c, (u32)ordinal, 'L');
@@ -2413,6 +2464,22 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
     const u32 fn = mapped
         ? ((u32 (*)(void *, int))c->newLibraryLookup)(lib, (int)mapped) : 0;
     log_event(c, NOTE_LOOKUP_RESULT, fn ? fn : c->noopFn);
+    // Hand the game a diversion instead of the file call itself. The thunk is
+    // built once and kept: the game asks for Read thirty times in a run, and
+    // the spare arena is not big enough to spend a thunk on each.
+    if (fn && kind == LIB_EFSRV && (mapped == NEW_RFILE_READ || mapped == NEW_RFILE_SIZE)) {
+        const int read = (mapped == NEW_RFILE_READ);
+        u32 *slot = read ? &c->fileReadThunk : &c->fileSizeThunk;
+        u32 *real = read ? &c->fileRead : &c->fileSize;
+        *real = fn;                     // re-resolved every pass; keep the latest
+        if (!*slot && c->spare + TRACE <= c->spareEnd) {
+            *slot = ctx_thunk(c->spare, c, read ? (u32)&gate6_file_read
+                                                : (u32)&gate6_file_size);
+            c->spare += TRACE;
+        }
+        if (*slot)
+            return *slot;
+    }
     if (!QUIET) log_block(c);      // thirty lookups is thirty writes
     if (!fn)
         note(c, (u32)ordinal, 'X');

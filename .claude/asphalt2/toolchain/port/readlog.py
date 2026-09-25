@@ -83,14 +83,14 @@ def probes():
 
 # Notes whose payload is an address: the same run on two machines loads the
 # image somewhere different, so the number is worth printing and not comparing.
-ADDRESS_NOTES = {850, 851, 852, 853, 854, 855, 856, 857, 858, 859, 875, 876}
+ADDRESS_NOTES = {850, 851, 852, 853, 854, 855, 856, 857, 858, 859, 875, 876, 891}
 
 NOTES = {860: 'slot entered', 850: 'Cancel on', 851: 'STRAY Cancel on',
          852: 'image loaded at', 853: 'chunk ends at',
          854: 'APP UI VPTR CHANGED to', 855: 'decrypted literal',
          856: '  and it points at a word', 857: 'r5 =', 858: '    word', 859: '    text', 870: 'returned', 871: '  by import',
          872: '  asked for', 873: 'about to call import',
-         874: 'ordinal asked of a library that is not open',
+         890: 'ordinal asked of a library that is not open',
          875: 'lookup on handle', 876: '   answered', 877: 'DRIVER CALL refused, euser ordinal',
          878: 'tick', 879: 'cell size', 881: 'buffer sits in the cell at',
          880: 'OVERFLOW: the server was given a maximum of',
@@ -98,7 +98,10 @@ NOTES = {860: 'slot entered', 850: 'Cancel on', 851: 'STRAY Cancel on',
          885: '  DOUBLE FREE of', 886: '  STRAY: never allocated',
          887: '  cell header word',
          888: '    next cell', 889: '  called from',
-         874: 'lookup ordinal old<<16|new', 895: '  >> watched field', 896: '  >> would read at +0x240'}
+         874: 'lookup ordinal old<<16|new',
+         891: 'RFile::Read into', 892: '   descriptor word',
+         893: '   answered', 894: 'RFile::Size answered',
+ 895: '  >> watched field', 896: '  >> would read at +0x240'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework
