@@ -2730,3 +2730,43 @@ that uses it.
 Build 53 is build 52 with that change and the guard. In the emulator it is
 identical to 52 -- twelve launches, 2097 records, 179 traced events -- so
 nothing about its behaviour moved.
+
+## Build 54: back to one variable
+
+Build 53 rebooted, and produced one launch where the emulator produces twelve.
+A reboot has not happened since build 36 fixed the closed file-server handle.
+
+Looking at what shipped, the fault is procedural before it is technical.
+**Build 53 carried three changes against the last build known to survive.**
+Build 51 ran three times on the phone without incident; between it and 53 the
+loader gained the launch counter's `RFile` open/read/close, the
+`RLibrary::Load` wrap, and a widened `arg_thunk` -- three commits, shipped as
+one build. Rule 2 exists for exactly this, and I did not apply it.
+
+So build 54 is build 51 plus **one** thing:
+
+```
+$ git diff <build 51> -- gate6.cpp
++ BOX_LAUNCH, BOX_TICK                 two box slots
++ launchNo                             one context word
+- kLogPath[] = "C:\g6box.log"
++ kLogPath[] = "C:\g6box0.log"         one digit, patched into a stack copy
+```
+
+The `RLibrary::Load` wrap and the widened `arg_thunk` are reverted. So is the
+part of the launch counter that **read the previous box**: open, read and close
+an `RFile` at startup is the exact shape of the bug behind a month of reboots,
+and although this one used `file_close` and may well be innocent, a suspect
+that can be deleted instead of measured should be deleted. That is rule 3, and
+it is the rule that broke the last wall.
+
+The digit comes from `User::TickCount` instead. Nothing is opened and nothing
+is read; two launches are milliseconds apart at worst and a tick is about
+1/64 s, so they land on different digits. A collision costs one overwritten log
+and nothing else. The tick goes in the box so the launches can be ordered
+afterwards.
+
+In the emulator: nine log files on digits 1 to 9, **1832 records each -- which
+is exactly E25's count**, the build-51-era run. That is the check that build 54
+really is build 51 plus the name and nothing else. 179 traced events, no fault,
+and 265 records of write budget handed back.

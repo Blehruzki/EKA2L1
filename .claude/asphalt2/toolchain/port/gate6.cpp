@@ -216,7 +216,8 @@ enum { BOX_SPARE = BOX_EXC + 1 };       // bytes of spare arena left after setup
 enum { BOX_CTXSZ = BOX_SPARE + 1 };     // sizeof(Context)
 enum { BOX_WRAPS = BOX_CTXSZ + 1 };     // which optional wraps actually installed
 enum { BOX_NAME = BOX_WRAPS + 1, BOX_NAME_WORDS = 8 };  // the last file opened
-enum { BOX_LAUNCH = BOX_NAME + BOX_NAME_WORDS };        // which launch this is
+enum { BOX_LAUNCH = BOX_NAME + BOX_NAME_WORDS };        // which log this launch wrote
+enum { BOX_TICK = BOX_LAUNCH + 1 };                    // and when it started
 enum { BOX_HITS = BOX_NAME + BOX_NAME_WORDS, BOX_MARKERS = 40 };
 enum { BOX_WORDS = BOX_HITS + BOX_MARKERS, BOX_BYTES = BOX_WORDS * 4 };
 
@@ -490,7 +491,7 @@ enum { IMPORT_CANCEL = 279 };            // euser CActive::Cancel()
 // the thread id it is keyed on need only be consistent with itself. Answer
 // those three ourselves, pair the other two, and the game decrypts itself.
 enum { IMPORT_LIBRARY_LOOKUP = 326, IMPORT_LIBRARY_LOAD = 325 };
-enum { IMPORT_FILE_OPEN = 109, IMPORT_FILE_READ = 110, IMPORT_LIB_LOAD = 325 };
+enum { IMPORT_FILE_OPEN = 109, IMPORT_FILE_READ = 110 };
 // Which library the ordinals belong to: it loads euser.dll and efsrv.dll, and
 // their numberings have nothing to do with each other, so the load is watched
 // to know which table a lookup should go through.
@@ -622,11 +623,9 @@ struct Context {
     u32 allocLen[ALLOC_RING];   // can be matched against one -- or found not to be
     u32 allocNext;
     u32 argR2;              // the third argument of a call arg_thunk wrapped
-    u32 argR1;              // and the second -- these two are adjacent on
-                            // purpose: the thunk carries one literal address
-                            // and stores through it at +0 and +4
-    u32 launchNo;           // 1 for the first launch since the box was deleted,
-                            // 2 for the one that follows a panic, and so on
+    u32 launchNo;           // the digit this launch put in its log's name,
+                            // taken from the clock so that nothing has to be
+                            // opened or read to find it
     u32 lastWatch;          // ... and what it last read there
     u32 watchAt;            // the object the first probe reported, re-read by
                             // every probe after it. Bisecting which call
@@ -1351,11 +1350,7 @@ extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
     // this process -- so if the maximum is larger than the cell the buffer came
     // from, the overflow is performed by a server and lands wherever the heap
     // put the next thing. That is the kind of thing that ends kernel-side.
-    // The ring is for allocators. RFile::Open and RLibrary::Load return an error
-    // code, not a pointer, and a failed one puts KErrNotFound in it -- which is
-    // how a bound computed from this ring once came out as the whole address
-    // space. They are recorded, not ringed.
-    if (result && index != IMPORT_FILE_OPEN && index != IMPORT_LIB_LOAD) {
+    if (result) {
         const u32 n = c->allocNext & (ALLOC_RING - 1);
         c->allocPtr[n] = result;
         c->allocLen[n] = arg;
@@ -1364,7 +1359,7 @@ extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
     // RFile::Open is the other way round -- zero is success there -- so it is
     // recorded whatever it says, and the record's existence is the point: it
     // means the call returned at all.
-    if (index == IMPORT_FILE_OPEN || index == IMPORT_LIB_LOAD) {
+    if (index == IMPORT_FILE_OPEN) {
         log_event(c, NOTE_RESULT_OF, index);
         log_event(c, NOTE_RESULT, result);
         log_block(c);
@@ -1512,24 +1507,6 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
         return;
     }
 
-    // RLibrary::Load's file name is its second argument, so it comes out of
-    // argR1. The run now reaches two Loads it had never got to -- 0x13964c and
-    // 0x13f588 -- and a Load that fails, followed by a Lookup on the handle it
-    // did not open, is exactly a KERN-EXEC 0. The phone shows one of those
-    // every run.
-    if (index == IMPORT_LIB_LOAD) {
-        u32 n = 0;
-        const u16 *t = des_text((const u32 *)c->argR1, &n);
-        log_event(c, NOTE_RESULT_ARG, c->argR1 ? *(const u32 *)c->argR1 : 0);
-        enum { LIB_CHARS = 32 };
-        if (t && n <= 256 && !((u32)t & 1) &&
-            (u32)t >= 0x400000 && (u32)t < 0x10000000)
-            for (u32 i = ((n > LIB_CHARS) ? n - LIB_CHARS : 0) & ~1u; i < n; i += 2)
-                log_event(c, NOTE_TEXT, t[i] | ((i + 1 < n) ? (t[i + 1] << 16) : 0));
-        log_block(c);
-        return;
-    }
-
     if (index == IMPORT_FILE_OPEN) {
         u32 n = 0;
         const u16 *t = des_text((const u32 *)c->argR2, &n);
@@ -1604,7 +1581,7 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
     log_block(c);
 }
 
-enum { ARG_WORDS = 20 };
+enum { ARG_WORDS = 16 };
 
 // Three arguments, not two: r0 and r1 go to the handler in r2 and r3, and r2
 // is stored first, before the moves below overwrite it. A fourth would need
@@ -1620,32 +1597,26 @@ static u32 arg_thunk(u8 *code, Context *ctx, u32 value, u32 target)
 {
     u32 *b = (u32 *)code;
     b[0]  = 0xE92D500F;                 // stmdb sp!, {r0-r3, r12, lr}
-    b[1]  = 0xE59FC024;                 // ldr   r12, [pc, #36]  -> b[12] &argR2
-    b[2]  = 0xE58C2000;                 // str   r2, [r12]       -- third argument
-    // And the second, into the word after it. RLibrary::Load's file name is in
-    // r1, and r1 is the one register this thunk used to throw away. Adding a
-    // word here moves every literal offset below by four: b[1] reads +36 where
-    // it read +32, and the tail-jump +12 now lands on b[16]. Getting that
-    // arithmetic wrong once already cost a round -- the store went into the
-    // log buffer instead of the field -- so it is spelled out beside each one.
-    b[3]  = 0xE58C1004;                 // str   r1, [r12, #4]   -- second argument
+    b[1]  = 0xE59FC020;                 // ldr   r12, [pc, #32]  -> b[11] &argR2
+    b[2]  = 0xE58C2000;                 // str   r2, [r12]  -- the third argument
     // lr, not r1. The second argument of a `delete` is junk (0x6d6a2b7b in
-    // every record of round 49) and the question was *which* delete it is --
-    // the 99th of a run, in a game with no symbols. This thunk tail-jumps, so
-    // lr here is still the game's own return address.
-    b[4]  = 0xE1A0300E;                 // mov   r3, lr   -- who called
-    b[5]  = 0xE1A02000;                 // mov   r2, r0
-    b[6]  = 0xE59F0014;                 // ldr   r0, [pc, #20]   -> b[13] which
-    b[7]  = 0xE59F1014;                 // ldr   r1, [pc, #20]   -> b[14] context
-    b[8]  = 0xE59FC014;                 // ldr   r12, [pc, #20]  -> b[15] handler
-    b[9]  = 0xE12FFF3C;                 // blx   r12
-    b[10] = 0xE8BD500F;                 // ldmia sp!, {r0-r3, r12, lr}
-    b[11] = 0xE59FF00C;                 // ldr   pc, [pc, #12]   -> b[16] target
-    b[12] = (u32)&ctx->argR2;
-    b[13] = value;
-    b[14] = (u32)ctx;
-    b[15] = (u32)&gate6_arg;
-    b[16] = target;
+    // every record of round 49) and the question the run is now on is *which*
+    // delete this is -- the 99th of a run, in a game with no symbols. This
+    // thunk tail-jumps, so lr here is still the game's own return address:
+    // the instruction after the call, in the image, at a fixed offset.
+    b[3]  = 0xE1A0300E;                 // mov   r3, lr   -- who called
+    b[4]  = 0xE1A02000;                 // mov   r2, r0
+    b[5]  = 0xE59F0014;                 // ldr   r0, [pc, #20]   -> b[12] which
+    b[6]  = 0xE59F1014;                 // ldr   r1, [pc, #20]   -> b[13] context
+    b[7]  = 0xE59FC014;                 // ldr   r12, [pc, #20]  -> b[14] handler
+    b[8]  = 0xE12FFF3C;                 // blx   r12
+    b[9]  = 0xE8BD500F;                 // ldmia sp!, {r0-r3, r12, lr}
+    b[10] = 0xE59FF00C;                 // ldr   pc, [pc, #12]   -> b[15] target
+    b[11] = (u32)&ctx->argR2;
+    b[12] = value;
+    b[13] = (u32)ctx;
+    b[14] = (u32)&gate6_arg;
+    b[15] = target;
     user_imb_range(b, b + ARG_WORDS);
     return (u32)b;
 }
@@ -2841,41 +2812,30 @@ static u32 load_and_start()
         Ptrc16 name;
         box_name(&name);
         if (fs_connect(ctx->boxFs, -1) == 0) {
-            // Which launch is this? The box from the previous one is still on
-            // disk at this point -- file_replace has not run yet -- so its
-            // counter is readable. No magic there, or no file, means this is
-            // the first launch since the files were cleared.
+            // Which launch is this? Not by reading the previous box, which
+            // is what build 53 did -- open, read, close an RFile at startup.
+            // That is the exact shape of the bug behind a month of reboots,
+            // and build 53 rebooted. It used the right close this time, so it
+            // may be innocent, but a suspect that can be deleted rather than
+            // measured should be deleted: rule 3.
             //
-            // Reading the previous box was done here once before and removed,
-            // because it closed an RFile with RHandleBase::Close and took the
-            // file server session down with it. That is the bug that cost a
-            // month. This one closes with file_close, efsrv 300, and does not
-            // touch the handle any other way.
-            ctx->launchNo = 1;
-            {
-                u32 prevFile[4] = { 0, 0, 0, 0 };
-                if (file_open(prevFile, ctx->boxFs, &name, 1) == 0) {
-                    u32 head[BOX_LAUNCH + 1];
-                    for (u32 i = 0; i <= (u32)BOX_LAUNCH; i++)
-                        head[i] = 0;
-                    Ptr8 des;
-                    des.lengthAndType = (u32)EPtr << KTypeShift;
-                    des.maxLength = (int)sizeof head;
-                    des.ptr = (u8 *)head;
-                    if (file_read(prevFile, &des) == 0 && head[0] == BOX_MAGIC &&
-                        head[BOX_LAUNCH] >= 1 && head[BOX_LAUNCH] < 99)
-                        ctx->launchNo = head[BOX_LAUNCH] + 1;
-                    file_close(prevFile);
-                }
-            }
+            // So the digit comes from the clock instead. Nothing is opened,
+            // nothing is read, and two launches are milliseconds apart at
+            // worst -- a tick is about 1/64 s, so they land on different
+            // digits. A collision costs one overwritten log and nothing else.
+            // The tick itself goes in the box, so the launches can be put in
+            // order afterwards.
+            ctx->launchNo = user_tickcount() % 10;
+            if (ctx->launchNo == 0)
+                ctx->launchNo = 10;         // '0' is reserved for "not set"
             ctx->boxData[BOX_LAUNCH] = ctx->launchNo;
+            ctx->boxData[BOX_TICK] = user_tickcount();
             // And the log goes to a name of its own, so the second launch no
             // longer erases the first one's record.
             u16 logChars[LOG_NAME_CHARS];
             for (u32 i = 0; i < (u32)LOG_NAME_CHARS; i++)
                 logChars[i] = kLogPath[i];
-            logChars[LOG_DIGIT] =
-                (u16)('0' + (ctx->launchNo < 10 ? ctx->launchNo : 9));
+            logChars[LOG_DIGIT] = (u16)('0' + (ctx->launchNo % 10));
 
             Ptrc16 logName;
             logName.lengthAndType = ((u32)EPtrC << KTypeShift) |
@@ -3261,16 +3221,6 @@ static u32 load_and_start()
                 ctx->spare += ARG_WORDS * 4;
                 ctx->boxData[BOX_WRAPS] |= W_FREE;
             }
-    }
-
-    if (IMPORT_LIB_LOAD < nImports &&
-        ctx->spare + (16 + ARG_WORDS) * 4 <= ctx->spareEnd) {
-        iat[IMPORT_LIB_LOAD] = arg_thunk(ctx->spare, ctx, IMPORT_LIB_LOAD,
-                                         iat[IMPORT_LIB_LOAD]);
-        ctx->spare += ARG_WORDS * 4;
-        iat[IMPORT_LIB_LOAD] = result_thunk(ctx->spare, ctx, IMPORT_LIB_LOAD,
-                                            iat[IMPORT_LIB_LOAD]);
-        ctx->spare += 16 * 4;
     }
 
     if (WATCH_OPEN_RESULT && IMPORT_FILE_OPEN < nImports &&
