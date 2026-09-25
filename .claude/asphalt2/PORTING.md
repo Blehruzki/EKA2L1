@@ -68,6 +68,17 @@ here and the section it overturns is marked.*
   all answer **KErrAccessDenied** for any name on E:. The protection's question
   is "am I on a real N-Gage game card?", asked two ways, and this port answers
   both wrongly by construction.
+- **The failing thread is the *second* one, not SoundServer.** With the
+  emulator patched to report a failed create: `pc = 0x?cb710, user stack =
+  0x2000` -- the 8 KB unnamed thread. SoundServer, 100 KB stack, is created
+  successfully in the same run.
+- **Two of the three arguments are junk.** The info block is sound (real image
+  pc, sensible stack, plausible allocator) while the name descriptor and the
+  owner type are garbage -- `owner` can be 0 or 1 and is 75282192. That is
+  arguments landing in the wrong places, which is what answering one overload
+  where another was asked would do: old euser 291 is
+  `(name, fn, stack, heapMin, heapMax, ptr, owner)` against 289's
+  `(name, fn, stack, RAllocator*, ptr, owner)`.
 - **`RThread::Create` answers KErrGeneral and leaves the handle zero**, and the
   game does not check: it resumes a null handle, gets KErrNone, and waits
   forever. Not memory (fifteen gigabytes free, every stale emulator killed) and
