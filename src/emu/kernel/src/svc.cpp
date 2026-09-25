@@ -2301,6 +2301,10 @@ namespace eka2l1::epoc {
                                               .first;
 
         if (thr_handle == kernel::INVALID_HANDLE) {
+            LOG_ERROR(KERNEL, "Thread {} NOT created: pc = 0x{:x}, user stack = 0x{:x}, heap {:d}..{:d}, "
+                "allocator = 0x{:x}, ptr = 0x{:x}, owner = {:d}, total size = {:d}", thr_name,
+                info->func_ptr, info->user_stack_size, info->heap_initial_size, info->heap_max_size,
+                info->allocator, info->ptr, static_cast<int>(owner), info->total_size);
             return epoc::error_general;
         } else {
             LOG_TRACE(KERNEL, "Thread {} created with start pc = 0x{:x}, stack size = 0x{:x}", thr_name,
