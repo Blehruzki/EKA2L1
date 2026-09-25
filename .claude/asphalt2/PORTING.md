@@ -62,6 +62,14 @@ here and the section it overturns is marked.*
   Emulator: state path 47 13 36 29 **34 4** 59 7 instead of ...29 **68**..., and
   179 -> 195 -> **198** traced events. It is a workaround; what the check hashes
   is still unknown.
+- **The crack's key is `0x85bbf5f4`** -- crc32 of `bin\arenaframework.dll`
+  (8508 bytes) plus crc32 of its path, of `BiNPDA presents...` and of
+  `gt2 loader. (c) 2005 zg.`, summed. XOR it through the table at crack `0xb44`
+  and the seven targets are **import-table slots**: 98, 101 (`RFile::Create`),
+  109 (`RFile::Open`), 111 (`RFile::Replace`), **326 (`RLibrary::Lookup`)**, and
+  458/459, which are an audio-import compatibility fix rather than protection.
+  The crack answers the protection's dynamic lookups itself -- through the one
+  import `gate6` already owns.
 - **The crack is a loader, not a patched binary.** The second dump's
   `bin/main.dll` is byte-identical to our image; its 3964-byte `6RBC.APP` is a
   BiNPDA loader that opens `RDebug` on its own thread and uses
@@ -3879,3 +3887,51 @@ function starts (45), then to functions that call any known protection address
 Either ends with seven `{offset, word}` pairs and about seven hundred bytes of
 replacement code to carry into `gate6`, which is a form this project already has
 machinery for.
+
+## The crack's key, and the seven imports it replaces
+
+The key is recovered. The function at crack offset `0x480` opens
+`e:\system\apps\6rbc\bin\arenaframework.dll`, reads 8508 bytes of it -- which is
+exactly that file's size in the cracked dump -- and sums four CRC32s:
+
+```
+crc32(arenaframework.dll, 8508)
++ crc32(u"e:\system\apps\6rbc\bin\arenaframework.dll")
++ crc32(u"BiNPDA presents...")
++ crc32(b"gt2 loader. (c) 2005 zg.")
+= 0x85bbf5f4
+```
+
+XOR that through the seven records at `0xb44` and every offset lands, 4-aligned,
+inside the loaded image's **import address table** -- `[text_size, code_size)`,
+which is `[1591740, 1593596)` and which `gate6` already calls `iat[]`. The words
+those offsets currently hold are the ordinals the loader has yet to resolve,
+which is how the decode checks out: 318, 25, 121, 151, 672, 2, 1.
+
+| import | was | replaced by |
+|---|---|---|
+| 98 | ordinal 318 | `bx lr` -- returns at once |
+| 101 | `RFile::Create` | a crack routine |
+| 109 | `RFile::Open` | a crack routine |
+| 111 | `RFile::Replace` | a crack routine |
+| **326** | **`RLibrary::Lookup(int) const`** | a crack routine, 1040 bytes of stack |
+| 458 | `CMdaAudioOutputStreamPadFunction` | `b` to `CMdaAudioOutputStream::NewL` |
+| 459 | ordinal 1 | `b` to an import stub |
+
+Two of those are not protection at all: the N-Gage build imports an audio
+padding function and the crack points it at the real `NewL`. A compatibility
+fix, and one this port will want anyway.
+
+The other five are the crack, and **import 326 is the one that matters**. The
+protection resolves its own functions dynamically through `RLibrary::Lookup` --
+which is the whole reason this project ever wrote `gate6_library_lookup` -- and
+the crack answers those lookups itself, standing in front of `RFile::Open`,
+`Create` and `Replace` at the same time.
+
+So the thing we would have to build is the thing we already have. `gate6` owns
+import 326 and already wraps `RFile::Open`. What is left is four routines of ARM
+code, kept in `.claude/asphalt2/crack/` with the decode, to read and carry
+across.
+
+Route 2 -- running the cracked dump under EKA2L1 to watch the writes -- is no
+longer needed: the writes are known without running anything.
