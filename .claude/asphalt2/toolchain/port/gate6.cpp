@@ -590,6 +590,8 @@ enum { WRAP_BYTES = 2048, WRAP_OLD = WRAP_BYTES / 4 - 1, WRAP_CTX = WRAP_BYTES /
 
 // What the shim needs to know and cannot keep in a global. Every wrapper holds
 // a pointer to it, so any of them can find it from `this`.
+enum { DYNLIB_MAX = 8 };
+
 struct Context {
     u32 *wrapUi;
     u32 *wrapControl;
@@ -636,6 +638,7 @@ struct Context {
     u32 noteText[4];        // seven characters, for the emulator's log
     u32 noteDes[2];
     u32 traceCount;         // how many imports have gone past
+    u32 workerNotes;        // how many worker events have gone to RDebug
     u32 lastCall;           // the last slot of ours the framework called
     u32 avkon;              // an RLibrary on avkon, for what it does not export
     u32 newBaseConstructL;  // avkon's CAknAppUi::BaseConstructL, as resolved
@@ -674,7 +677,20 @@ struct Context {
     u32 idFn;               // RThread::Id: a TThreadId of zero, in r0 and r1
     u32 newLibraryLookup;   // euser's RLibrary::Lookup, as resolved
     u32 newLibraryLoad;     // euser's RLibrary::Load, as resolved
-    void *dynLib[2];        // the RLibrary the game opened on each of the two
+    // Which RLibrary is euser and which is efsrv. One slot per kind was wrong
+    // the moment a second thread ran the game's code: the worker opens its own
+    // euser and its own efsrv -- different objects, because an RLibrary handle
+    // belongs to the thread that opened it -- and overwrote the main thread's
+    // entry. The main thread then failed to recognise its own euser, skipped
+    // the old-to-new ordinal mapping, and asked the 9.x euser for an EKA1
+    // ordinal, which answers a different function entirely. That is the
+    // KERN-EXEC 3 at image offset 0x13c478 (E98 to E101).
+    //
+    // A table instead of a slot, so every thread's copy is recognised. Eight is
+    // room for four threads' worth, and the oldest goes if it ever fills.
+    void *dynLib[DYNLIB_MAX];
+    u8 dynKind[DYNLIB_MAX];
+    u32 dynNext;
     u32 fileRead;           // efsrv's RFile::Read, as resolved for the game
     u32 fileSize;           // and RFile::Size
     u32 fileOpen;           // and RFile::Open
@@ -814,6 +830,7 @@ enum { TRACE = 48 };
 // the inside: a single probe planted at its third instruction took the run
 // from 1240 records to 553.
 static void log_event(Context *c, u32 code, u32 from);
+static void note(Context *c, u32 value, u16 sign);
 static void watch_note(Context *c)
 {
     // Four words, not one. A deliberate store into this->[4] touches that word
@@ -986,10 +1003,35 @@ static void box_name(Ptrc16 *name)
 // and the file server still has what was written when the process dies.
 // The one thing a fault leaves no trace of is how much room it had left. Every
 // marker notes where the stack had got to, and the record carries the deepest.
+// Which thread is running, cheaply and without a handle.
+//
+// Since the entry point learned to dispatch on r4 (E97) the game's two workers
+// really do run, and almost nothing in this file was written for that. An RFs
+// session belongs to the thread that made it, so a worker writing the log
+// through `c->fs` is dropped on the floor; the stack measurement below would
+// take a worker's stack as the main thread's and report a depth of megabytes;
+// and the box ring is one shared array with no lock.
+//
+// There is no per-thread storage here to key any of that on. The cheapest
+// thing that *is* per-thread is the stack: the kernel gives every thread its
+// own chunk and they are megabytes apart, so a local's address names the
+// thread. `spTop` is the main thread's, set the first time it gets here.
+enum { THREAD_SPAN = 0x100000 };        // no thread's stack is a megabyte deep
+
+static int on_main_thread(Context *c)
+{
+    const u32 sp = (u32)__builtin_frame_address(0);
+    if (!c->spTop)
+        return 1;                       // nothing has run yet; this is it
+    const u32 d = c->spTop > sp ? c->spTop - sp : sp - c->spTop;
+    return d < (u32)THREAD_SPAN;
+}
+
 static void stack_mark(Context *c)
 {
     const u32 sp = (u32)__builtin_frame_address(0);
     if (!c->spTop) c->spTop = sp;
+    if (!on_main_thread(c)) return;     // a worker's stack is not this one
     if (sp < c->spLow || !c->spLow) c->spLow = sp;
 }
 
@@ -1008,6 +1050,13 @@ static void stack_mark(Context *c)
 // far as the record goes, and this way it says why.
 static void log_block(Context *c)
 {
+    // The guard belongs here rather than only in log_event, because twenty
+    // places flush the block directly. A worker reaching one of them writes
+    // the main thread's RFile from the wrong thread, which answers
+    // KErrBadHandle -- and LOUD_WRITE_ERRORS turns that into a panic that
+    // kills the worker two events in. E99 is exactly that: `G6WR -8`.
+    if (!on_main_thread(c))
+        return;
     if (!c->logFill || !c->logFile[0])
         return;
     c->logDes[0] = ((u32)EPtrC << KTypeShift) | (c->logFill * 8);
@@ -1023,8 +1072,27 @@ static void log_block(Context *c)
     // the run. It is written once at the start and at the exits instead.
 }
 
+// Off the main thread the event cannot go in the file, so it goes to RDebug,
+// which needs no handle and which the emulator prints. `G6w` is the event and
+// `G6:` the low half of where it came from -- two lines instead of one record,
+// and interleaved with the main thread's rather than ordered against it, but
+// the alternative is not seeing the workers at all.
+//
+// Capped, because two RawPrints an event for a thread that may do thousands of
+// them buries the emulator's own log. The opening is what is wanted: what the
+// worker does first, and what it was doing when the run ended.
+enum { WORKER_NOTES = 1, WORKER_NOTE_MAX = 600 };
+
 static void log_event(Context *c, u32 code, u32 from)
 {
+    if (WORKER_NOTES && !on_main_thread(c)) {
+        if (c->workerNotes < (u32)WORKER_NOTE_MAX) {
+            c->workerNotes++;
+            note(c, code, 't');
+            note(c, from & 0xffff, ':');
+        }
+        return;
+    }
     if (c->logFill < LOG_BLOCK) {
         c->logBuf[c->logFill * 2] = code;
         c->logBuf[c->logFill * 2 + 1] = from;
@@ -1048,6 +1116,10 @@ static void vptr_check(Context *c);
 
 static void box_write(Context *c)
 {
+    // The box is the main thread's file and the main thread's ring. A worker
+    // writing it would be a bad handle and a data race for nothing.
+    if (!on_main_thread(c))
+        return;
     // The same guard log_block has had all along, and the box never did.
     //
     // If `file_replace` of the box fails, `boxFile` stays zero and every write
@@ -2493,8 +2565,15 @@ extern "C" int gate6_library_load(void *self, const u32 *name, const u32 *path,
                    : (text[1] == 'u' || text[1] == 'U') ? LIB_EUSER
                    : (text[1] == 'f' || text[1] == 'F') ? LIB_EFSRV
                                                         : LIB_OTHER;
-    if (kind != LIB_OTHER)
-        c->dynLib[kind] = self;
+    if (kind != LIB_OTHER) {
+        u32 i = 0;
+        while (i < (u32)DYNLIB_MAX && c->dynLib[i] && c->dynLib[i] != self)
+            i++;
+        if (i == (u32)DYNLIB_MAX)
+            i = c->dynNext++ % (u32)DYNLIB_MAX;   // full: the oldest goes
+        c->dynLib[i] = self;
+        c->dynKind[i] = (u8)kind;
+    }
     return err;
 }
 
@@ -2961,8 +3040,12 @@ extern "C" int gate6_file_size(void *self, int *size, Context *c)
 extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
 {
     note(c, (u32)ordinal, 'L');
-    const u32 kind = (lib == c->dynLib[LIB_EUSER]) ? LIB_EUSER
-                   : (lib == c->dynLib[LIB_EFSRV]) ? LIB_EFSRV : LIB_OTHER;
+    u32 kind = LIB_OTHER;
+    for (u32 i = 0; i < (u32)DYNLIB_MAX; i++)
+        if (c->dynLib[i] == lib) {
+            kind = c->dynKind[i];
+            break;
+        }
     u32 mapped = 0;
     if (kind == LIB_EUSER) {
         switch (ordinal) {

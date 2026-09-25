@@ -40,10 +40,19 @@ _start:
     @ image has to do the dispatch itself. SStdEpocThreadCreateInfo holds the
     @ function at +8 and its argument at +12, and the thread ends with whatever
     @ the function returns.
-2:  ldr  r12, [r5, #8]          @ iFunction
+    @ RUN_WORKERS 0 creates and resumes the thread exactly as before and then
+    @ ends it without running a single instruction of the game's function. It
+    @ is the control for "does the main thread's fault depend on the workers
+    @ running at all": everything the kernel sees is identical, and the only
+    @ difference is whether the game's own code executes on a second thread.
+    .set RUN_WORKERS, 1
+2:  mov  r0, #0
+.if RUN_WORKERS
+    ldr  r12, [r5, #8]          @ iFunction
     ldr  r0,  [r5, #12]         @ iPtr
     mov  lr, pc
     bx   r12
+.endif
     bl   user_exit              @ User::Exit(the function's return value)
     b    .
 

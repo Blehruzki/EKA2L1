@@ -116,7 +116,24 @@ here and the section it overturns is marked.*
   before it does anything else.**
 - **A worker thread cannot write to the box log.** An `RFs` session belongs to
   the thread that made it, so every event the workers log through `c->fs` is
-  dropped on the floor. Since E98 that is half the running program, invisible.
+  dropped on the floor -- and `LOUD_WRITE_ERRORS` turns the `KErrBadHandle`
+  into a panic that kills the worker two events in. The guard is in
+  `on_main_thread`, at `log_block` and `box_write` rather than only at
+  `log_event`, because twenty places flush a block directly; off the main
+  thread an event goes to RDebug instead, as `G6t` and `G6:`. The thread is
+  told apart by its stack, which is the only thing here that is per-thread
+  without asking euser for it.
+- **The worker corrupts one word of the main thread's state, and that is the
+  whole of the remaining fault.** With the worker created and resumed but its
+  body not run (`RUN_WORKERS 0` in `gate6.s`, which is the control), the main
+  thread reaches 337 core events; with it running, 190 and a `KERN-EXEC 3`. The
+  two records are **identical for 806 events** and then differ by exactly one
+  word: the fourth word of the object probe 990 latches reads `0x4900000` -- a
+  local code chunk the game makes -- in the control, and `0x483c1fc` when the
+  worker runs, which is image offset `0x13c1fc`, `mov r3, #1` in the middle of
+  a function. It is reached through the vtable slot-3 dispatch at `0xe81d0`,
+  which is how the run comes to be executing at `0x13c478`. What writes it is
+  the open question.
 - **Eleven stale emulators were the `G6MEM`.** `emurun.sh` used `pkill -x`
   without a follow-up `-9`; the emulator does not always go on SIGTERM. Cleared,
   a clean run has no panics at all. The script now force-kills after a second.
