@@ -62,6 +62,13 @@ here and the section it overturns is marked.*
   Emulator: state path 47 13 36 29 **34 4** 59 7 instead of ...29 **68**..., and
   179 -> 195 -> **198** traced events. It is a workaround; what the check hashes
   is still unknown.
+- **The empty container is `0xcc7e4`'s return, and predates the protection.**
+  `state 34 [sp,#52] <- state 13 <- [sp,#140] <- state 47 <- [sp,#152] <-
+  0xccbb4's arg3 <- 0x2998's r3 <- r5 at 0x2e3c <- bl 0xcc7e4`. And `0xcc7e4`
+  is the function probes 990 and 991 sit inside, whose `this->[4]` the store at
+  `0x1082c0` was poisoning, and which calls `0xe9988`. The poisoned object, the
+  un-probeable function and the empty list are one thread, not three. `0x2998`
+  is then called five times against that one container.
 - **State 34 opens a file whose name is an empty list.** The sixth
   `RFile::Open` of the run gets a four-character name of control bytes and
   answers KErrNotFound. Its source is `[[sp,#52]]`, a pointer whose first word
@@ -3532,3 +3539,58 @@ Find who writes to that list. The pointer is `[[sp,#52]]` in the dispatcher's
 frame, so an earlier state -- 47, 13 or 36 -- put it there, and one of them, or
 something they call, is meant to add to it. Stations on those three states'
 inputs will say which.
+
+## The empty container comes from the function this project has been watching all along
+
+Chasing the empty list outwards, one dereference at a time:
+
+```
+state 34   ldr r9, [sp,#52] ; ldr r3, [r9] ; ldr r3, [r3]   @ the "string"
+sp+52      written in state 13, from [sp,#140]
+sp+140     written in state 47, from [sp,#152]
+sp+152     written in 0xccbb4's prologue, from r3           @ arg3
+arg3       0x2998 passes its own r3, XOR'd with a literal
+0x2998     called from 0x2e54 and 0x2e7c with r3 = r5
+r5         `bl 0xcc7e4 ; subs r5, r0, #0` at 0x2e38
+```
+
+So the container is **`0xcc7e4`'s return value**, and it is empty before the
+protection is ever entered. Forcing the check did not empty it and could not
+have.
+
+And `0xcc7e4` is not a new address. It is the function probes 990 and 991 sit
+inside -- `add r0, r5, #40` at `0xcc864` and `mov r4, r0` at `0xcc894` -- the one
+this project has been watching for months because its `this->[4]` was being
+poisoned by the store at `0x1082c0`. It is also the caller of `0xe9988`, the
+function that refused to carry a probe at all:
+
+```
+cc864  add  r0, r5, #40 ; mov r1, #1
+cc86c  bl   0xe97cc
+cc870  bl   0xd5fbc
+cc878  subs r7, r0, #0 ; movne r7, #1
+cc884  ldr  r0, [r4, #4]
+cc888  mov  r1, r5 ; mov r2, #1
+cc890  bl   0xe9988
+cc894  mov  r4, r0
+```
+
+The call site at `0x2e38` is followed by `subs r5, r0, #0 / beq`, and then
+`0x2998` is called **five times** -- once at `0x2e54` and four more round the
+loop at `0x2e7c`, `cmp r4, #3 / ble`. Five registrations against one container.
+The container is empty on the first one.
+
+### Why this matters
+
+Two threads that have been separate for months are the same thread. The object
+whose fourth word was being poisoned, the function that would not take a probe,
+and the empty list the protection trips over are all one object made by one
+function. Whatever `0xcc7e4` failed to do, it is upstream of everything since.
+
+### What is next
+
+`0xcc7e4` calls `0xe97cc`, `0xd5fbc` and `0xe9988` before it returns. One of
+them fills the container. `0xe9988` is the one to be careful with -- a single
+probe at its third instruction once took a run from 1240 records to 553 -- but
+`0xcc7e4` itself already carries two stations without trouble, and the two calls
+before `0xe9988` have never been looked at.
