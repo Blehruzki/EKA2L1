@@ -130,6 +130,7 @@ them, and say so.
 | E76 | build 76, display restored | 592 | `--` | **48 traced events.** Still nothing like E74, and now three runs of the same build read 336, 22 and 48 |
 | E77 | build 76, third try | 4144 | `--` | Closer, still short. At this point the honest reading was that E74 might have been a fluke |
 | E78 | build 76 with `TMO=120` -- give the emulator two minutes instead of forty-five seconds | 5337 | `--` | **E74 is reproducible and the variance was the harness.** Four launches in one session reach **5337, 5337, 5335 and 5335 records**; the short ones were launches the forty-five-second kill caught partway. 246 import events, the protection's fourteen states five times over, and the run ends in a `__builtin_delete` of a 180-byte cell. `emurun.sh` now defaults to 120 |
+| E79 | build 76 with `TMO=240` -- is 5337 an ending or a timeout? | 5337 | `--` | **An ending.** Twice the time, the same 42696 bytes. And of **eight launches in the session only one panicked** -- a single `G6MEM`, our loader's own, when `user_alloc(1616972)` failed on a relaunch. The other seven neither panicked nor left nor exited. The startup completes and the game goes quiet, with `frames 1`: one frame drawn and then nothing |
 
 <!-- EMURUN -->
 
@@ -199,11 +200,13 @@ self-check of its own image, and it stops exactly where the emulator gives up:
 at `User::Leave`. The port no longer has a hardware-specific failure ahead of
 it. It has the *same* failure as the emulator.
 
-**The emulator is now at 5337 records and 336 traced events, with the
-protection's state machine running its full fourteen-state path five times over,
-eleven file opens of which ten succeed, and no `User::Leave` or `User::Exit`
-anywhere in the log** (E74). The previous best was 200 traced events. None of it
-has been to hardware yet.
+**The emulator now completes the startup.** 5337 records and 336 traced events,
+the protection's state machine running its full fourteen-state path five times
+over, eleven file opens of which ten succeed, and no `User::Leave`, no
+`User::Exit` and no panic (E74, E78, E79). Doubling the emulator's time changes
+nothing, so that is an ending and not a cut-off: the game draws one frame and
+goes quiet. The previous best was 200 traced events and every run before this
+ended by giving up or faulting. None of it has been to hardware yet.
 
 **Best round so far: 59.** It is the first round where a hardware run and an
 emulator run of the same build tell the same story from beginning to end.

@@ -68,6 +68,12 @@ here and the section it overturns is marked.*
   all answer **KErrAccessDenied** for any name on E:. The protection's question
   is "am I on a real N-Gage game card?", asked two ways, and this port answers
   both wrongly by construction.
+- **The run ends because the startup finishes.** `TMO=240` gives the same 5337
+  records as `TMO=120`, so it is not a cut-off, and of eight launches only one
+  panicked -- a `G6MEM` from our own loader failing to allocate the image on a
+  relaunch. Seven ran to quiet. The port loads the image, passes the protection,
+  loads resources, draws one frame and waits. **`frames 1` is the next thread**:
+  no input is bridged and the frame timer may not be re-armed.
 - **The protection completes.** The check returns an *object*, not a status:
   state 38 does `ldr r9, [sp,#28]` then `ldr r4, [r9,#20]`, so the forced 2 was
   being dereferenced. Handing it sixty-four zeroed bytes instead (`ldr r2,
@@ -4222,3 +4228,45 @@ of those was read off a number the harness produced rather than the port.
 loop of `RLibrary::Load` / `Lookup` / `Close` with `HBufC16::New` and
 `Math::Random` between -- the game loading resources, which is what it should be
 doing -- and it stops inside a `__builtin_delete` of a 180-byte cell.
+
+## It stops because it has finished, not because it broke
+
+Two questions were open about the 5337-record run: whether that number is an
+ending or the emulator's timeout, and what kills it.
+
+**It is an ending.** With `TMO=240`, twice the time, the largest log is the same
+42696 bytes. Nothing is being cut off.
+
+**Nothing kills it.** Eight launches in that session produced exactly **one**
+panic -- a `G6MEM`, which is our own loader's, raised when `user_alloc(1616972)`
+failed to get room for the image on a relaunch. The other seven neither
+panicked, nor left, nor exited. They ran their startup and went quiet.
+
+So the state of the port is now: it loads the image, satisfies the protection,
+loads resources, draws a frame, and waits. That is the first time in this file's
+history that a run has ended without giving up or faulting.
+
+### What it is waiting for
+
+`frames 1`. The frame loop ran **once**. A game that was running would go round
+it, so the port is not idling in a render loop -- it did one frame and stopped.
+The standing gaps say what is most likely missing, and they have been on the
+list since the beginning:
+
+- **`OfferKeyEventL` is unbridged**, so there is no input at all. A startup that
+  ends at a menu waiting for a key would look exactly like this.
+- The frame loop is driven by a timer that is really ours, and `CActive::Cancel`
+  goes through `gate6_cancel`; if the timer is not being re-armed, one frame is
+  all there would ever be.
+- Screen geometry is still 176x208 against the device's 240x320.
+
+None of those is protection and none of them needs hardware to work on.
+
+### The one panic, which is ours and not new
+
+`G6MEM 1616972` is `PANIC(CAT_MEM, size)` in `gate6_load`: 1.6 MB for the image,
+refused. With `LEAK_EVERYTHING` on and the run now going much further than it
+used to, each launch takes far more heap than it did and never gives any back,
+and a relaunch on top of processes that are still alive eventually cannot get
+its image in. It is a consequence of running further, not a regression, and it
+only hits relaunches.
