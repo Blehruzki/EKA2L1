@@ -179,6 +179,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_RESULT_ARG = 872,   // and what it was asked for
        NOTE_CALL_ARG = 873,     // a call, recorded before it is made
        NOTE_SHUT_LIBRARY = 874, // an ordinal asked of a library that is not open
+       NOTE_LOOKUP_ORD = 874,   // the ordinal asked for, and what it mapped to
        NOTE_LOOKUP_HANDLE = 875,// the library handle a lookup was made on
        NOTE_LOOKUP_RESULT = 876,// and the address it answered with
        NOTE_DRIVER = 877,       // a kernel driver call, refused
@@ -2401,6 +2402,12 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
     // The game takes what comes back from here and branches straight to it, at
     // 0x10b0f0, which is where the phone stops. So: the handle asked, and the
     // address handed over. 66 lookups, which at this weight is affordable.
+    // The ordinal, and what it mapped to. Both have always been in scope here
+    // and neither was ever written down, which is why round 56's divergence --
+    // the emulator resolving 26 ordinals in a burst where the phone closes the
+    // library and gives up -- cannot be read out of the logs already taken.
+    // A failed mapping only ever went to RDebug, which the phone does not show.
+    log_event(c, NOTE_LOOKUP_ORD, ((u32)ordinal << 16) | mapped);
     log_event(c, NOTE_LOOKUP_HANDLE, (u32)((const int *)lib)[0]);
     // Never null: the game calls what it is given without looking at it.
     const u32 fn = mapped

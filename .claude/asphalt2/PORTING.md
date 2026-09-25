@@ -2852,3 +2852,66 @@ Build 56 guards `box_flush` itself, which covers both calls.
 
 `log_block` was checked at the same time and has always guarded correctly. The
 only other unguarded writes are in the dump path, which is off.
+
+## The 35-event gap: the phone gives up at a library lookup
+
+Diffing the phone's first launch against the emulator's, by import sequence
+rather than by address, puts the divergence on one instruction.
+
+Both machines do exactly this:
+
+```
+CCoeEnv::Static
+RLibrary::Load    from 13f588      (euser.dll)
+RLibrary::Lookup  from 13f5e4      answered
+RLibrary::Close   from 13f610
+HBufC16::New      from 1909e4
+RLibrary::Lookup  from 13f68c      answered
+delete
+```
+
+and then:
+
+| | next |
+|---|---|
+| emulator | `RLibrary::Lookup from 10abf8`, **twenty-six times** |
+| phone | `RLibrary::Close from 135850` -- it gives up |
+
+The game calls the function it has just looked up and branches on what comes
+back. On the phone that branch goes the other way.
+
+### What the lookups are
+
+`gate6_lookup` has had the ordinal and its 9.x mapping in scope since it was
+written and has never logged either -- a failed mapping went only to RDebug,
+which the phone does not show. One `log_event` fixes that, and the emulator
+answers immediately:
+
+| caller | old ordinal | mapped to 9.x |
+|---|---|---|
+| `13f5e4` | 1114 | 595 |
+| **`13f68c`** | **121** | **93** |
+| `10abf8` (the burst, x26) | 136 | 255 |
+| `10b128` | 355 | **0 -- nothing** |
+
+So the branch turns on **old ordinal 121, answered by 9.x ordinal 93 of
+euser.dll**, and the burst the phone never enters is old 136 resolved
+twenty-six times.
+
+### Why this is the ordinal warning coming due
+
+This file has carried the same caution since it was written: the 9.x ordinals
+in the mapping came from `kernelhwsrv` def files rather than from the device,
+and they are a guess that happens to hold on FP2. The emulator is a 5320 (9.3);
+the phone is an N95 (9.2).
+
+**If euser's ordinal 93 is a different function on 9.2 than on 9.3, the game is
+handed the wrong function, calls it, and branches on its answer** -- which is
+precisely the shape of what the logs show. Nothing crashes; the game simply
+decides not to proceed.
+
+The addresses the lookups answer with cannot settle it, because an address on
+one ROM means nothing against an address on another. **What settles it is the
+N95's own euser.dll export table.** That is a one-off file pull, and the same
+thing was done once before for `BitGdi.dll` and `Ws32.dll` when two
+measurements were in doubt.
