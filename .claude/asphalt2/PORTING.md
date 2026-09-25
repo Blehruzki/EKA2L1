@@ -53,6 +53,20 @@ here and the section it overturns is marked.*
   key from whether the result is zero. It was zero, so the machine went to 68
   (`mov r8, #0`) and then 7 (`mov r0, r8`, epilogue). `0xe6df8` returning zero
   is the whole failure.
+- **The protection can be made to pass with its own value.** `0xe6df8` returns
+  2 when its first argument is null, and state 29 accepts any non-zero answer,
+  so patching `subs r5, r0, #0` to `subs r5, r0, r0` at `0xe6e18` takes that
+  exit every time. Emulator: state path 47 13 36 29 **34 4** 59 7 instead of
+  ...29 **68**..., and 179 -> 195 traced events. It is a workaround; what the
+  check hashes is still unknown.
+- **The next wall is `0x13f4c4`, and it is ours, not the protection's.** State
+  34 calls `0x10a93c`, a factory that news 36 bytes and calls `0x13f4c4` on it;
+  that answers false, so the factory deletes and returns zero, and state 4 --
+  the same block as 68 -- zeroes the answer again. `0x13f4c8` is the
+  nine-character library-name builder that the log has always shown as
+  `RLibrary::Load from 0x13f588` / `Lookup from 0x13f5e4` / `Close from
+  0x13f610`. A library load that resolves the right ordinals and still reports
+  false is something the shim can be wrong about.
 - **`0xe6df8` loops once and returns its body's answer.** The list at
   `0x0334ca90` holds 1, the counter goes 0 then 1, and `arg3` is a code address
   so the null-argument exit is not taken either. The zero comes from the single
@@ -3379,3 +3393,78 @@ would say.
 The same method again, one level down: find `0xe50d8`'s exits, station the one
 that decides, and see which of the two digests it is unhappy with. Nothing here
 needs hardware.
+
+## Forcing the check's own success value, and what is behind it
+
+The check answers zero and the game leaves. Forcing the *branch* would hand the
+next call a zero it has never seen -- but the check has a legal success value of
+its own:
+
+```
+e6e18  subs r5, r0, #0
+e6e1c  moveq r2, #2
+e6e20  beq  e6f58        @ -> return 2
+```
+
+and state 29 treats **any** non-zero answer as success. So `2` is a value the
+game's own code produces and its own code accepts. Turning `subs r5, r0, #0`
+into `subs r5, r0, r0` takes that exit every time. Nothing is invented; the
+check returns the game's own number by the game's own path.
+
+**It works.** The state path changes from
+
+```
+47 13 36 29 68 59 7        @ 68 is `mov r8, #0`
+```
+
+to
+
+```
+47 13 36 29 34 4 59 7
+```
+
+and traced events go **179 to 195**. State 29 took its success key.
+
+### And the wall moves one step
+
+State 34 fails the same shape:
+
+```
+cde4c  mov  r0, #24
+cde50  bl   0xd5a20            @ 24 bytes
+cde6c  ldr  r0, [r12, #4]
+cde74  mov  r1, r3 ; mov r2, #0
+cde7c  bl   0x10a93c
+cde80  mov  r8, r0
+cde88  str  r8, [r9, #12]
+cde94  cmp  r8, #0
+cde98  moveq r0, <key>          @ -> state 4
+```
+
+and **state 4 is the same block as state 68** -- `mov r8, #0`. Two table entries,
+one failure block.
+
+`0x10a93c` is a factory: `new (36)`, construct it with the first argument, then
+call one of two methods depending on a byte flag, and delete and answer zero if
+that method reports false. With the flag zero it calls `0x13f4c4`, and that is
+**our** territory rather than the protection's: `0x13f4c8` builds a
+nine-character library name a byte at a time, loads it, resolves ordinals and
+uses them -- it is the site the log has been showing all along as
+`RLibrary::Load from 0x13f588`, `Lookup from 0x13f5e4`, `Close from 0x13f610`.
+
+So the chain now reads:
+
+```
+0x2998 -> 0xccbb4 state 29 -> 0xe6df8 -> 0xe50d8 -> 0xe7b84     (forced)
+0x2998 -> 0xccbb4 state 34 -> 0x10a93c -> 0x13f4c4              (open)
+```
+
+The second one is worth more than the first, because a library load that
+resolves the right ordinals and still reports false is something the shim can
+plausibly be wrong about -- unlike a digest over a game card that is not there.
+
+### The honest caveat
+
+`PATCH_THE_CHECK` is a workaround. What the protection hashes is still unknown,
+and the answer may be that it cannot be satisfied without the N-Gage game card
+it was written to look for. The patch is in the record as a patch.

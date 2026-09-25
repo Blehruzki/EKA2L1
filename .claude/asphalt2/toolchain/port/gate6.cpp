@@ -1185,6 +1185,31 @@ enum { PLANT_CRUMBS = 0 };
 enum { NOP_THE_STORE = 1 };
 static const u32 kNop[] = { 0x001082c0 };
 
+// A patch that writes a chosen word rather than a nop.
+//
+// The protection answers zero and the game leaves. Forcing the branch in the
+// state machine would hand the next call a zero it has never seen -- but the
+// check has a legal success value of its own. `0xe6df8` opens with
+//
+//     e6e18  subs r5, r0, #0
+//     e6e1c  moveq r2, #2
+//     e6e20  beq  e6f58          @ -> return 2
+//
+// and state 29 treats any non-zero answer as success, so **2 is a value the
+// game's own code produces and accepts**. Turning `subs r5, r0, #0` into
+// `subs r5, r0, r0` takes that exit every time: the check returns 2, through
+// the game's own path, with a value the game itself chose. Nothing is invented
+// and nothing downstream sees a number it was not written to handle.
+//
+// This is a workaround, not an explanation. What the check hashes is still
+// unknown, and the honest answer may be that it cannot be satisfied at all
+// without the N-Gage game card it was written to look for.
+enum { PATCH_THE_CHECK = 1 };
+struct Patch { u32 at; u32 word; };
+static const Patch kPatch[] = {
+    { 0x000e6e18, 0xE0505000 },     // subs r5, r0, r0
+};
+
 enum { PLANT_PROBES = 1, PROBE_FIRST = 990, PROBE_BYTES = 80 };
 // A probe from this marker on says nothing unless the watched word has changed
 // since the last one. That makes a hot site usable: 0x1037ac is the jump table
@@ -3371,6 +3396,14 @@ static u32 load_and_start()
         for (u32 i = 0; i < sizeof kWalkCrumb / sizeof kWalkCrumb[0]; i++)
             if (kWalkCrumb[i] + 4 <= h->codeSize)
                 crumb_plant_r5(ctx, base, kWalkCrumb[i], CRUMB_WALK_FIRST + i);
+
+    if (PATCH_THE_CHECK)
+        for (u32 i = 0; i < sizeof kPatch / sizeof kPatch[0]; i++)
+            if (kPatch[i].at + 4 <= h->codeSize) {
+                u32 *site = (u32 *)(base + kPatch[i].at);
+                *site = kPatch[i].word;
+                user_imb_range(site, site + 1);
+            }
 
     if (NOP_THE_STORE)
         for (u32 i = 0; i < sizeof kNop / sizeof kNop[0]; i++)
