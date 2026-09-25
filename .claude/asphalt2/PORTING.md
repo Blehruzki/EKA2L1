@@ -388,7 +388,13 @@ logs until that is settled.
    it.** It went stale one round after it was written, which is how the log got
    into the state that made it necessary. `toolchain/port/checkrec.py` fails
    when a new section is appended without it; run it before committing.
-12. **Anything the emulator permits is untested.** EKA2L1 is lax where a phone
+12. **A number the harness produced is not a result.** `emurun.sh` killed the
+   emulator at forty-five seconds while the run needed longer, Xvfb died and a
+   run was made against no display, and `g6box.dat` reports whichever launch
+   wrote last. Three runs were nearly written off as a regression on those.
+   Before believing a build got worse, check the display was up, the timeout
+   was not hit and the box belongs to the launch being read.
+13. **Anything the emulator permits is untested.** EKA2L1 is lax where a phone
    is strict -- share modes, handle validity, read-only memory, integrity
    fields -- so a green emulator run says only that nothing *else* is wrong.
    Every resource the loader takes and does not give back is a candidate, and
