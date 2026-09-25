@@ -4,7 +4,8 @@ Absolute relocations are found by linking twice a page apart and comparing, and
 each import stub's ordinal word is labelled `<symbol>_ord` in the assembly, so
 the linked symbol table says where the loader has to patch.
 """
-import os, subprocess as sp, sys
+import os
+import subprocess, subprocess as sp, sys
 
 import mke32, mkloc, mkreg, mksis, relocs
 
@@ -16,6 +17,32 @@ CXXFLAGS = ['--target=armv5-none-eabi', '-marm', '-O1', '-fno-exceptions',
 # The decorated names the SDK emits, carrying the module version and the UID.
 EUSER = 'euser{000a0000}[100039e5].dll'
 EFSRV = 'efsrv{000a0000}[100039e4].dll'
+
+
+def no_writable_statics(elf):
+    """Refuse an image that wants a writable static.
+
+    There is nowhere to put one: mke32 declares data size and bss zero, so the
+    linker would place it in the read-only code segment and the first write
+    would fault. The emulator maps that memory writable and notices nothing,
+    which is exactly how build 52 reached the phone.
+    """
+    out = subprocess.run(['llvm-readelf', '-S', elf], capture_output=True,
+                         text=True).stdout
+    for line in out.splitlines():
+        if '.data' not in line or '.data.rel.ro' in line:
+            continue
+        parts = line.replace('[', ' ').replace(']', ' ').split()
+        try:
+            size = int(parts[parts.index('PROGBITS') + 3], 16)
+        except (ValueError, IndexError):
+            continue
+        if size:
+            raise SystemExit(
+                'buildapp: %d bytes of writable statics.\n'
+                '  This image has no data section -- they would land in the\n'
+                '  read-only code segment and fault on the first write.\n'
+                '  Make them const, or build the value on the stack.' % size)
 
 
 def sh(*args):
@@ -41,6 +68,7 @@ def build(name, uid3, caption, out, imports=(), sources=None, **e32):
             open(os.path.join(HERE, 'flat.ld')).read().replace('BASE', hex(base)))
         elf = p('%s_%x.elf' % (name, base))
         sh('ld.lld', '-T', script, '-o', elf, asm, *objs)
+        no_writable_statics(elf)
         sh('llvm-objcopy', '-O', 'binary', elf, p('%s_%x.bin' % (name, base)))
         flats.append(open(p('%s_%x.bin' % (name, base)), 'rb').read())
         if base == BASES[0]:

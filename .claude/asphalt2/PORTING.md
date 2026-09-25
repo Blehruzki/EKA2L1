@@ -152,6 +152,14 @@ here and the section it overturns is marked.*
 - EKA2L1 cannot run the original N-Gage binary either (KERN-EXEC 3 at
   0x139588). Our port gets *further* under the emulator than the original does.
 
+- **This image has no writable statics.** `flat.ld` folds nothing into
+  `.rodata` any more, but `mke32.py` declares data size and bss zero, so a
+  non-`const` static lands in the read-only code segment and the first write
+  to it faults. Build 52 patched one character of a file name and the phone
+  took KERN-EXEC 3 before creating a single file, while the emulator -- which
+  maps that memory writable -- ran twelve launches without complaint.
+  `buildapp.py` now refuses to build an image that wants one.
+
 ### Two panics, not one
 
 **Every run on the phone raises one KERN-EXEC 0 and one KERN-EXEC 3**, and has
@@ -176,6 +184,7 @@ logs until that is settled.
 
 | Believed | Why it was wrong |
 |---|---|
+| A `static` is safe to write to in our loader | It is not. This image has no data section: `flat.ld` folded `.data*` into `.rodata` and `mke32.py` declares data and bss zero, so every static is in read-only memory. Build 52 patched one character of one and the phone took KERN-EXEC 3 before creating a file. The emulator maps it writable and saw nothing. |
 | The app runs once per launch | It runs over and over. Twelve launches in one 45-second emulator session, each identical, each leaving and being restarted. `file_replace` truncates, so each was erasing the last one's log. |
 | The port has one failure per run | It has two. One KERN-EXEC 0 and one KERN-EXEC 3, every run, for dozens of rounds -- and the logs may be recording whichever process ran second. |
 | The file server was overflowing a 31-byte cell | The allocation ring was searched in slot order and a stale entry won. There was no overflow. |
@@ -2673,3 +2682,51 @@ The phone's "one KERN-EXEC 0 and one KERN-EXEC 3 per run" is now two
 observations about a *series* of launches, not two failures in one. The first
 launch's own record has never been seen. Build 52 is the first build that can
 show it.
+
+## This image has no writable statics, and now it cannot have any
+
+Build 52 produced **no files at all** and panicked KERN-EXEC 3 on the phone.
+That was mine, and the cause is worth more than the bug.
+
+To give each launch its own log, build 52 patched one character of the file
+name in place:
+
+```c
+static u16 kLogPath[] = {'C',':','\\','g','6','b','o','x','0','.','l','o','g'};
+kLogPath[LOG_DIGIT] = '0' + launchNo;
+```
+
+**There is nowhere for that array to live.** `flat.ld` folded `.data*` into
+`.rodata`, and `mke32.py` declares data size and bss both zero -- so every
+static in this image is placed in the read-only code segment. The write faults
+on the first launch, before a single file is created, which is exactly what the
+phone showed.
+
+The emulator ran twelve launches without a murmur, because it maps that memory
+writable. This is the clearest case yet of the rule this file already carries:
+**the emulator is not a reference.** It is also a case the emulator could never
+have caught, however many runs it got.
+
+### The guard
+
+Rather than remember it, `flat.ld` now gives writable data a section of its own
+instead of folding it away, and `buildapp.py` refuses to build if anything
+lands there:
+
+```
+buildapp: 8 bytes of writable statics.
+  This image has no data section -- they would land in the
+  read-only code segment and fault on the first write.
+  Make them const, or build the value on the stack.
+```
+
+Tested by reintroducing a writable static, which the build then refused, and
+removing it again, which the build then accepted.
+
+The fix itself is that the digit is patched into a **copy on the stack**. The
+template stays `const`, and the descriptor points at the local for the one call
+that uses it.
+
+Build 53 is build 52 with that change and the guard. In the emulator it is
+identical to 52 -- twelve launches, 2097 records, 179 traced events -- so
+nothing about its behaviour moved.

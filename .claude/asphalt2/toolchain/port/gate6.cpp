@@ -916,13 +916,20 @@ void rdebug_rawprint(const void *text);
 // On C: rather than the memory card. Two reasons: the card is the one piece of
 // this the phone has a removable driver for, and internal flash answers a
 // flush faster, which is what lets every record be flushed again.
-// The log name carries the launch number. file_replace truncates, so a second
-// launch of the same build used to destroy the first one's log entirely -- and
-// the phone raises two panics per run, which most likely means two processes.
-// Every log in this project may therefore have been the second process, and
-// nothing said so. One digit, patched at startup, ends that.
-static u16 kLogPath[] = {'C',':','\\','g','6','b','o','x','0','.','l','o','g'};
-enum { LOG_DIGIT = 8 };
+// The log name carries the launch number: file_replace truncates, so a second
+// launch used to destroy the first one's log entirely and nothing said so.
+//
+// The digit is patched into a *copy on the stack*, never here. Build 52
+// patched this array in place, which took the phone down with KERN-EXEC 3
+// before it could create a single file: **this image has no writable data.**
+// `flat.ld` folds `.data*` into `.rodata` and `mke32.py` declares data size
+// and bss both zero, so every static lands in the read-only code segment. The
+// emulator maps it writable and ran twelve launches without complaint, which
+// is the whole reason the rule about the emulator not being a reference
+// exists. build_gate6.py now fails the build rather than letting it happen
+// again.
+static const u16 kLogPath[] = {'C',':','\\','g','6','b','o','x','0','.','l','o','g'};
+enum { LOG_DIGIT = 8, LOG_NAME_CHARS = sizeof kLogPath / 2 };
 static const u16 kBoxPath[] = {'C',':','\\','g','6','b','o','x','.','d','a','t'};
 
 // A record left by a different build is worse than no record: it reads back as
@@ -2864,12 +2871,16 @@ static u32 load_and_start()
             ctx->boxData[BOX_LAUNCH] = ctx->launchNo;
             // And the log goes to a name of its own, so the second launch no
             // longer erases the first one's record.
-            kLogPath[LOG_DIGIT] = (u16)('0' + (ctx->launchNo < 10 ? ctx->launchNo : 9));
+            u16 logChars[LOG_NAME_CHARS];
+            for (u32 i = 0; i < (u32)LOG_NAME_CHARS; i++)
+                logChars[i] = kLogPath[i];
+            logChars[LOG_DIGIT] =
+                (u16)('0' + (ctx->launchNo < 10 ? ctx->launchNo : 9));
 
             Ptrc16 logName;
             logName.lengthAndType = ((u32)EPtrC << KTypeShift) |
-                                    (u32)(sizeof kLogPath / 2);
-            logName.text = kLogPath;
+                                    (u32)LOG_NAME_CHARS;
+            logName.text = logChars;
             file_replace(ctx->logFile, ctx->boxFs, &logName,
                          EFileWrite | EFileShareAny);
             // Where the image landed, so a caller the log records as an offset
