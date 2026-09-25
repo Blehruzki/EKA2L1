@@ -68,6 +68,13 @@ here and the section it overturns is marked.*
   all answer **KErrAccessDenied** for any name on E:. The protection's question
   is "am I on a real N-Gage game card?", asked two ways, and this port answers
   both wrongly by construction.
+- **`frames 1` is one `RunL` that never returns**, not a timer fault. The game
+  enters its frame function at record 65 and the remaining 5273 records all
+  happen inside it. At the end it resolves `RThread::Create` and
+  `RThread::Resume`, and the emulator logs `Thread SoundServer created with
+  start pc = 0x90b8660, stack size = 0x186a0`. The main thread goes quiet
+  immediately after -- which is what a thread blocked in the kernel looks like
+  to a log made of call records.
 - **The run ends because the startup finishes.** `TMO=240` gives the same 5337
   records as `TMO=120`, so it is not a cut-off, and of eight launches only one
   panicked -- a `G6MEM` from our own loader failing to allocate the image on a
@@ -4270,3 +4277,49 @@ used to, each launch takes far more heap than it did and never gives any back,
 and a relaunch on top of processes that are still alive eventually cannot get
 its image in. It is a consequence of running further, not a regression, and it
 only hits relaunches.
+
+## One RunL, and it never comes back
+
+`frames 1` looked like a timer that was not being re-armed. It is not.
+
+A log either side of `old_call(c->oldTimer, OLD_RUNL)` says the game's frame
+function is entered **once**, at record 65, and **never returns**. The other
+5273 records -- the whole protection sequence, the five registrations, the
+resource-loading loop, every file open -- happen inside that single call. The
+game has never reached its second frame because it has not finished its first.
+
+So the timer bridge is fine and always was. The question is what the first frame
+is waiting for.
+
+### It is spinning up its sound server
+
+The dynamic lookups name it. Of the thirteen ordinals this run resolves, two are
+called exactly once each at the end:
+
+```
+old  289 -> new 1158   RThread::Create(TDesC16 const&, int (*)(void*), ...)
+old  954 -> new 1795   RThread::Resume() const
+```
+
+and the emulator's own log agrees:
+
+```
+Thread SoundServer created with start pc = 0x90b8660, stack size = 0x186a0
+Thread 872578056      created with start pc = 0x9bcb710, stack size = 0x2000
+```
+
+The game creates a **SoundServer** thread with a 100 KB stack, resumes it, and
+the main thread goes quiet immediately afterwards. Nothing traced happens again,
+which is what waiting looks like: a main thread blocked in the kernel makes no
+calls at all.
+
+That is a completely different kind of problem from everything before it. It is
+not protection, it is not a shim answer being wrong -- **it is the game booting
+its audio subsystem**, and the port getting far enough to do that is the point.
+
+### What to look at next
+
+Whether the SoundServer thread runs, and what the main thread is blocked on. The
+second is the harder one: a thread waiting in the kernel is invisible to a log
+made of call records, so it needs a different instrument -- a marker the
+*worker* writes, or the emulator's own view of the thread's state.

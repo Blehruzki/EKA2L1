@@ -192,6 +192,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_CARD_REFUSED = 862, // a write to the game card, refused as a card would
        NOTE_CARD_CALL = 863,    // the driver asked for the card's identity, and where to put it
        NOTE_CARD_SUBST = 864,   // a name that cannot be a filename, and what was handed over instead
+       NOTE_FRAME = 865,        // the game's RunL, about to run
+       NOTE_FRAME_END = 866,    // ... and it came back
        NOTE_LOOKUP_HANDLE = 875,// the library handle a lookup was made on
        NOTE_LOOKUP_RESULT = 876,// and the address it answered with
        NOTE_DRIVER = 877,       // a kernel driver call, refused
@@ -2077,7 +2079,15 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     // object, so its view of it is brought up to date first.
     dsa_refresh(c);
 
+    // Whether the game's RunL comes back is the whole question behind
+    // `frames 1`. If it does and the loop still does not go round, nothing is
+    // re-arming the timer; if it does not, the game is stuck inside one frame
+    // and never returns to the scheduler.
+    log_event(c, NOTE_FRAME, c->frames);
+    log_block(c);
     old_call(c->oldTimer, OLD_RUNL);
+    log_event(c, NOTE_FRAME_END, c->frames);
+    log_block(c);
 }
 
 extern "C" u32 gate6_timer_runerror(void *, u32 error, Context *c)
