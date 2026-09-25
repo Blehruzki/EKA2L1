@@ -425,3 +425,40 @@ events with KERN-EXEC 3**. The emulator's first launch reaches **179** and
 leaves cleanly. So the phone dies about thirty-five events *before* the
 emulator's `User::Leave`, and that gap has never been instrumented -- every
 probe in this file sits at or before the wall that came down in build 51.
+
+### Round 56, run 4: the relaunch, explained by hand
+
+A fourth run, driven manually: dismiss each panic quickly and the app relaunches
+itself, over and over, about eight times. Nine logs came out of it -- three full
+(1551, 1551, 1535) and five stubs (148 x4, 137) -- so it is a *cycle*, not the
+one pair earlier rounds saw.
+
+**A panicking Symbian thread stays alive until its dialog is dismissed**, and
+it keeps every file handle while that box is on screen. That is the whole
+mechanism:
+
+1. launch A reaches 144 events and panics KERN-EXEC 3; its dialog opens and **A
+   stays alive holding `6RBC.dat`**
+2. the framework relaunches; launch B starts *while A is still alive*, opens
+   `6RBC.dat`, gets `KErrInUse` -- the `-14` already in the relaunch log -- and
+   fails inside cone: **CONE 2**
+3. dismissing quickly keeps a launch permanently in flight and the cycle repeats
+
+Waiting breaks it: given a few seconds B runs its whole doomed startup and exits
+by itself, and then there is nothing left to relaunch. The black bar that
+appears and vanishes behind the CONE 2 dialog **is B's entire life**.
+
+CONE 2 appearing "first" is dialog stacking, not chronology: B's panic lands on
+top of A's, so it is dismissed first.
+
+**The relaunch is pure echo.** CONE 2, the `KErrInUse`, the second panic and the
+loop are all downstream of launch A's KERN-EXEC 3. Fix that and they go
+together; none of them is separate work.
+
+**A caution this earns.** A black bar is drawn on *every* launch, including the
+ones that die at 148 records. This file has treated "the black bar with pixels"
+as the port's visible output; it is not evidence that the launch reaching 144
+events got anywhere.
+
+The relaunch is not ours: the only `restart` flag in the loader is the DSA
+observer's Restart callback, and the box says it never fired.
