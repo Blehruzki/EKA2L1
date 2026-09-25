@@ -123,6 +123,36 @@ here and the section it overturns is marked.*
   thread an event goes to RDebug instead, as `G6t` and `G6:`. The thread is
   told apart by its stack, which is the only thing here that is per-thread
   without asking euser for it.
+- **The EKA1 client-server framework has stand-ins, not an implementation.**
+  9.x replaced `CServer`, `CSession` and `RMessage` with `CServer2`,
+  `CSession2` and `RMessage2` -- different classes, different virtuals, a
+  different message object -- so none of the twelve forwards, and every one was
+  a stub that panics. The game's SoundServer thread builds a `CServer`, and
+  that panic killed the thread; the emulator let the process carry on, a phone
+  would not. The stand-ins let it build its object and sit in its own active
+  scheduler. Both ends of this server are inside our process, so a real
+  in-process bridge is possible -- `CreateSession` finding the server by name,
+  `SendReceive` calling its session straight, no kernel IPC -- and that is the
+  right answer for audio when audio matters.
+- **`gen_shim.py` is not run by the build.** `build_gate6.py` compiles
+  `gate4_shim.cpp` but never regenerates it, so a change to the override tables
+  looks exactly like a change that did nothing (E114). Regenerate it by hand:
+  `python3 gen_shim.py <6rbc.app> gate4_shim.cpp`.
+- **Where the run stops now: the Codewave archive.** With nothing panicking and
+  nothing faulting, the game opens `e:\system\apps\6rbc\6rbc.cwa`, reads two
+  2 KB blocks (both `KErrNone`), searches, frees everything and calls
+  `User::Leave(-1)` from `0xba354` -- an inlined `LeaveIfError` on what
+  `0xba500` answered, which in turn calls `0xb86ec`, inside the same module as
+  the SoundServer entry at `0xb8660`. `RSessionBase::CreateSession` is never
+  called, so this is not the sound session; it is the archive lookup. The
+  `.cwa` is 38 KB of noise with no readable names, and it is **byte-identical
+  in the cracked dump** -- as are `nc.dat` and `game.lic`. The crack does not
+  touch the data at all; it replaces the app with a loader that rewrites seven
+  imports, and the one that matters is **import 326, `RLibrary::Lookup`**,
+  which this port already owns. The protection resolves its own functions
+  dynamically through that import and the crack answers those lookups itself.
+  So the next gate is decoding the crack's routine at `crack+0x380` and
+  answering the same lookups from `gate6_library_lookup`.
 - **The game checksums its own code from the worker thread, so a planted probe
   changes the answer.** This is now the first thing to suspect whenever an
   instrument and a conclusion disagree. The small worker at `0xcb710` walks

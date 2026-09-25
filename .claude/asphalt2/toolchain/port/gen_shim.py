@@ -134,6 +134,45 @@ MANUAL = {
     # is a sign extension, and a GCC98r2 constructor returns the object.
     'TInt64::TInt64(int)': ('local', LOCAL_TINT64_SET, KIND_LOCAL),
     'TInt64::operator=(int)': ('local', LOCAL_TINT64_SET, KIND_LOCAL),
+
+    # EKA1's client-server framework. 9.x replaced CServer, CSession and
+    # RMessage wholesale with CServer2, CSession2 and RMessage2 -- different
+    # classes, different virtuals, a different message object -- so not one of
+    # them forwards, and every one of them was a reporting stub that panics.
+    # The game's SoundServer thread builds a CServer, and through E113 that
+    # panic killed the thread; the emulator let the process carry on, but a
+    # phone would not.
+    #
+    # These are stand-ins, not an implementation. Both ends of this server live
+    # inside our own process, so a real in-process bridge is possible and is
+    # the right answer for audio -- CreateSession would find the server object
+    # by name and SendReceive would call its session straight, with no kernel
+    # IPC at all. This is the smaller thing that comes first: the sound thread
+    # builds its object, sits in its own active scheduler and harms nothing.
+    #
+    # LOCAL_SELF for the constructors because a GCC98r2 constructor hands the
+    # object back in r0. They leave the CActive base uninitialised, which would
+    # matter if anything added the server to a scheduler -- but StartL is what
+    # does that on real Symbian, and StartL here does nothing.
+    'CServer::CServer(int, CServer::TServerType)': ('local', LOCAL_SELF, KIND_LOCAL),
+    'CServer::StartL(TDesC16 const &)': ('local', LOCAL_NOOP, KIND_LOCAL),
+    'CServer::RunL(void)': ('local', LOCAL_NOOP, KIND_LOCAL),
+    'CServer::DoCancel(void)': ('local', LOCAL_NOOP, KIND_LOCAL),
+    'CServer::~CServer(void)': ('local', LOCAL_NOOP, KIND_LOCAL),
+    'CSession::CSession(RThread)': ('local', LOCAL_SELF, KIND_LOCAL),
+    'CSession::~CSession(void)': ('local', LOCAL_NOOP, KIND_LOCAL),
+    'CSession::WriteL(void const *, TDesC8 const &, int) const':
+        ('local', LOCAL_NOOP, KIND_LOCAL),
+    # Never panic on the game's behalf: a session panic kills the client.
+    'CSession::Panic(TDesC16 const &, int) const': ('local', LOCAL_NOOP, KIND_LOCAL),
+    'CSharableSession::CreateL(CServer const &)': ('local', LOCAL_NOOP, KIND_LOCAL),
+    'RMessage::Complete(int) const': ('local', LOCAL_NOOP, KIND_LOCAL),
+    # KErrNone. RSessionBase::CreateSession is deliberately left forwarding to
+    # the real 9.x export, which will answer KErrNotFound because no kernel
+    # server of that name exists -- that is the honest answer and the game may
+    # well have a path for it. If it turns out not to, this is where pretending
+    # would go, and the two have to agree.
+    'RSessionBase::SendReceive(int, void *) const': ('local', LOCAL_NOOP, KIND_LOCAL),
 }
 
 
