@@ -1307,6 +1307,20 @@ static const Probe kProbe[] = {
     // or was always rubbish is the question this answers: r3 is the pointer and
     // the station prints the four words at it.
     { 0x000cde68,  3, 9 },
+    // `0xcc7e4` again, at the two decisions that surround the empty list.
+    // `0xcc914` is `str r5, [r5]` -- the four-byte cell that writes its own
+    // address, this file's oldest landmark and, it turns out, the very list
+    // state 34 later reads. It is created empty on purpose; something after it
+    // is meant to fill it.
+    //
+    // 999: `cmp r4, #0` at 0xcc8e4. Zero here branches over the whole thing --
+    // the allocation, the cell and the two calls on the container at obj+40 --
+    // so if it is zero the list is never even made.
+    // 1000: `mov r4, r0` at 0xcc944, which takes the answer of `0xe98c4`, the
+    // second call on that container and the last thing before the function
+    // returns the object the protection will read.
+    { 0x000cc8e4,  4, 7 },
+    { 0x000cc944,  0, 5 },
 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb

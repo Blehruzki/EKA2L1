@@ -62,6 +62,13 @@ here and the section it overturns is marked.*
   Emulator: state path 47 13 36 29 **34 4** 59 7 instead of ...29 **68**..., and
   179 -> 195 -> **198** traced events. It is a workaround; what the check hashes
   is still unknown.
+- **The wall is Codewave content protection, and it is not a bug.** `cwp.dat`
+  begins `CWZ`, `game.lic` reads `Asphalt2 10185-2.0.194-prd-4205THA`, `nc.dat`
+  is sixteen bytes of key material, and the two 104-byte records at `0x17e298`
+  are its contexts. The map at `obj+40` has no entry for key 1, so the list at
+  `0xcc914` stays as it was made -- empty -- and the startup unwinds from there.
+  Past this point the choices are patching each gate with the game's own values
+  or reverse-engineering the licence format; neither is more emulator work.
 - **The empty container is `0xcc7e4`'s return, and predates the protection.**
   `state 34 [sp,#52] <- state 13 <- [sp,#140] <- state 47 <- [sp,#152] <-
   0xccbb4's arg3 <- 0x2998's r3 <- r5 at 0x2e3c <- bl 0xcc7e4`. And `0xcc7e4`
@@ -3594,3 +3601,59 @@ them fills the container. `0xe9988` is the one to be careful with -- a single
 probe at its third instruction once took a run from 1240 records to 553 -- but
 `0xcc7e4` itself already carries two stations without trouble, and the two calls
 before `0xe9988` have never been looked at.
+
+## The wall has a name: Codewave, and the map has no key 1
+
+Two stations inside `0xcc7e4` settle what happens around the empty list:
+
+```
+cc8e4  cmp r4, #0     -> r4 = 1        @ so the skip is not taken
+cc908  mov r0, #4 ; bl <alloc>
+cc914  str r5, [r5]                    @ the list is created empty, deliberately
+cc928  bl 0xe9808 (obj+40, 1, 0)
+cc92c  ldr r2, [r5]
+cc940  bl 0xe98c4 (obj+40, 1, r2, 0)
+cc944  mov r4, r0     -> r0 = r5       @ it answers the head: key 1 is not there
+```
+
+So `0xcc914` -- the four-byte cell that writes its own address, the landmark this
+file has had since the `User::Free` era -- **is** the list state 34 reads, and it
+is created empty by design. The container it is looked up in is at `obj+40`, it
+is keyed by an integer, and `0xe98c4` answers "not found" for key 1.
+
+### What the container is for
+
+The files the game opens name it. `cwp.dat` is 125 bytes and begins **`CWZ`**;
+`nc.dat` is sixteen bytes of binary; `game.lic` is thirty-four bytes of ASCII:
+
+```
+Asphalt2 10185-2.0.194-prd-4205THA
+```
+
+and `version.txt` says `2.0.194`. Those, with `cwivenc.dat` and `cis.dat`
+alongside them, are the **Codewave** content-protection set that N-Gage titles
+of this era shipped with. The two 104-byte records at `0x17e298` and `0x17e300`
+-- tag `0xba243c3f` twice, then twenty bytes -- are its contexts, and `0xe6df8`,
+`0xe50d8` and `0xe7b84` are its machinery.
+
+So the remaining wall is not a bug. It is the game's licence check: it parses
+its protection blob, looks for entry 1, finds nothing, and the whole startup
+unwinds from there through `User::Leave(-2)`.
+
+### What this means for the port, said plainly
+
+Everything between the loader and this point is now working on hardware, and the
+two machines agree to the event. What is left is DRM, and there are only two
+honest ways past it:
+
+1. **Patch each gate as it comes.** `0xe6f34` already does this for the first
+   one, with the game's own return value, and it bought sixteen events. There
+   will be more gates; each is a few hours and none of them is understanding.
+2. **Understand the Codewave format** well enough to produce an entry the game
+   accepts -- parse `cwp.dat`, work out what keys it derives and from what, and
+   see whether the port can supply them. The card CID the port answers with
+   zeros is a candidate input, and if it is a real input then no amount of
+   correctness makes this pass on a phone with no N-Gage game card in it.
+
+Neither is emulator work in the sense the last thirty rounds were. This is the
+point to say so rather than keep drilling one call deeper each round.
