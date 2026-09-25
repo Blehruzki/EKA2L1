@@ -165,7 +165,17 @@ here and the section it overturns is marked.*
 - **Our install is not the problem.** Every file we have in common with the
   known-good cracked dump is byte-identical, `6rbc.dat` (12,224,045 bytes) and
   `6rbc.cwa` (38,413) included; we simply have 86 more files than it does.
-- **Where the run stops now: the Codewave archive.** With nothing panicking and
+- **The protection is passed and the game reads its assets.** The run now gets
+  a 4-byte size header (`0x440` = 1088) and 411 bytes of zlib out of
+  `6rbc.dat` at offset 3,406,180, and that blob inflates to exactly 1088
+  bytes -- the archive lookup, the seek and the reads are all correct.
+  `cwivenc.dat` is the white-box AES blob the protection decrypts with
+  (`0x44332211`, version 2, `WBAESDecrypt`) and loads whole without error.
+  The remaining `User::Leave(KErrNotFound)` is raised after that, from
+  `0xba500` -> `0xb86ec`, which is in the same module as the SoundServer
+  entry at `0xb8660`.
+- ~~**Where the run stops now: the Codewave archive.**~~ **Superseded: that was
+  the licence stand-in (E116), and the archive reads correctly now.** With nothing panicking and
   nothing faulting, the game opens `e:\system\apps\6rbc\6rbc.cwa`, reads two
   2 KB blocks (both `KErrNone`), searches, frees everything and calls
   `User::Leave(-1)` from `0xba354` -- an inlined `LeaveIfError` on what

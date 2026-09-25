@@ -197,6 +197,10 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_THREAD_CREATE = 867,// what RThread::Create or Resume answered
        NOTE_THREAD_HANDLE = 868,// and the handle in the object
        NOTE_THREAD_RESUME = 869,// the object Resume was called on
+       NOTE_SEEK_MODE = 830,    // RFile::Seek, and the TSeek it was given
+       NOTE_SEEK_IN = 831,      // ... the position asked for
+       NOTE_SEEK_OUT = 832,     // ... and the one it ended at
+       NOTE_READ_DATA = 833,    // the first words a read actually delivered
        NOTE_THREAD_ARG = 840,   // one word of the create frame
        NOTE_THREAD_NAME = 841,  // one word of the name descriptor
        NOTE_PLANT_OK = 842,     // a breadcrumb that went in
@@ -719,6 +723,9 @@ struct Context {
     u32 threadResumeThunk;
     u32 fileReadThunk;      // the diversions handed over in their place
     u32 fileSizeThunk;
+    u32 fileSeek;           // efsrv's RFile::Seek, as resolved for the game
+    u32 fileSeekThunk;
+    u32 fileReadStatic;     // efsrv's RFile::Read as the static import had it
     u32 fileOpenThunk;
     u8 *spare;              // unused executable room, handed out as needed
     u8 *spareEnd;
@@ -1690,6 +1697,7 @@ static int crumb_safe(u32 w)
 // User::Leave and User::Exit are where the game gives up, so those two say
 // where from as well.
 enum { IMPORT_LEAVE = 324, IMPORT_EXIT = 308, IMPORT_FILE_READ_STATIC = 110 };
+enum { READ_DATA_WORDS = 8 };
 
 // A breadcrumb goes into the same ring as the imports, so the two interleave
 // and the order is the order things happened in. The marker reads as 900 and
@@ -3102,7 +3110,8 @@ static u32 frame_thunk(u8 *code, const void *ctx, u32 target, u32 handler)
     return (u32)b;
 }
 
-enum { NEW_RFILE_READ = 255, NEW_RFILE_SIZE = 264, NEW_RFILE_OPEN = 93 };
+enum { NEW_RFILE_READ = 255, NEW_RFILE_SIZE = 264, NEW_RFILE_OPEN = 93,
+       NEW_RFILE_SEEK = 263 };
 
 // `RFile::Open(RFs&, const TDesC16&, TUint)` fills r0 to r3, so there is no
 // register free to carry the context and a ctx_thunk cannot be used. The shape
@@ -3186,11 +3195,60 @@ extern "C" int gate6_file_read(void *self, u32 *des, Context *c)
     return err;
 }
 
+// The same, for the statically imported RFile::Read. It cannot share
+// gate6_file_read's target: c->fileRead is filled by the dynamic lookup, and
+// the first static read happens hundreds of records before that lookup. The
+// argument wrapper that was on this import only ever said which RFile; what is
+// wanted is the descriptor, because the helper at 0x34ad8 fails on its length.
+extern "C" int gate6_file_read_static(void *self, u32 *des, Context *c)
+{
+    typedef int (*Read)(void *, u32 *);
+    log_event(c, NOTE_FILE_READ, (u32)des);
+    if (des)
+        for (u32 i = 0; i < 3; i++)
+            log_event(c, NOTE_FILE_DES, des[i]);
+    const int err = ((Read)c->fileReadStatic)(self, des);
+    log_event(c, NOTE_FILE_RET, (u32)err);
+    if (des)
+        log_event(c, NOTE_FILE_DES, des[0]);
+    // And what actually arrived. The reads succeed and the game rejects the
+    // contents, so the contents are the question: plaintext means the archive
+    // is being read correctly and the check is about something else, noise
+    // means the key is wrong.
+    if (READ_DATA_WORDS && !err && des && des[2] >= 0x400000 && des[2] < 0x10000000) {
+        const u32 have = (des[0] & 0x0FFFFFFF) / 4;
+        const u32 n = have < (u32)READ_DATA_WORDS ? have : (u32)READ_DATA_WORDS;
+        for (u32 i = 0; i < n; i++)
+            log_event(c, NOTE_READ_DATA, ((const u32 *)des[2])[i]);
+    }
+    if (!QUIET) log_block(c);
+    return err;
+}
+
 extern "C" int gate6_file_size(void *self, int *size, Context *c)
 {
     typedef int (*Size)(void *, int *);
     const int err = ((Size)c->fileSize)(self, size);
     log_event(c, NOTE_FILE_SIZE, size ? (u32)*size : 0xFFFFFFFF);
+    log_event(c, NOTE_FILE_RET, (u32)err);
+    if (!QUIET) log_block(c);
+    return err;
+}
+
+// The last thing on the archive path that was never wrapped. Every read in the
+// run answers KErrNone and the last one still comes up short (E119), so the
+// game is seeking past the end of a 38,413-byte file and reading nothing. This
+// says where it seeks to.
+//
+// Three real arguments -- this, the TSeek mode, and the in/out position -- so
+// the context has to ride in r3, not r2.
+extern "C" int gate6_file_seek(void *self, int mode, int *pos, Context *c)
+{
+    typedef int (*Seek)(void *, int, int *);
+    log_event(c, NOTE_SEEK_MODE, (u32)mode);
+    log_event(c, NOTE_SEEK_IN, pos ? (u32)*pos : 0xFFFFFFFF);
+    const int err = ((Seek)c->fileSeek)(self, mode, pos);
+    log_event(c, NOTE_SEEK_OUT, pos ? (u32)*pos : 0xFFFFFFFF);
     log_event(c, NOTE_FILE_RET, (u32)err);
     if (!QUIET) log_block(c);
     return err;
@@ -3337,6 +3395,15 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
         }
         if (c->fileOpenThunk && ((u32 *)c->fileOpenThunk)[10] == tgt)
             return c->fileOpenThunk;
+    }
+    if (fn && kind == LIB_EFSRV && mapped == NEW_RFILE_SEEK) {
+        c->fileSeek = fn;               // re-resolved every pass; keep the latest
+        if (!c->fileSeekThunk && c->spare + TRACE <= c->spareEnd) {
+            c->fileSeekThunk = ctx3_thunk(c->spare, c, (u32)&gate6_file_seek);
+            c->spare += TRACE;
+        }
+        if (c->fileSeekThunk)
+            return c->fileSeekThunk;
     }
     if (fn && kind == LIB_EFSRV && (mapped == NEW_RFILE_READ || mapped == NEW_RFILE_SIZE)) {
         const int read = (mapped == NEW_RFILE_READ);
@@ -4298,13 +4365,12 @@ static u32 load_and_start()
     // false if the call errored **or** the descriptor came up short, and those
     // are different faults. So the result wrapper goes on as well -- outermost,
     // so it sees the value the game will see.
-    if (WATCH_THE_READS && 110 < nImports && ctx->spare + ARG_WORDS * 4 <= ctx->spareEnd) {
-        iat[110] = arg_thunk(ctx->spare, ctx, 110, iat[110]);
-        ctx->spare += ARG_WORDS * 4;
-    }
-    if (WATCH_READ_RESULT && 110 < nImports && ctx->spare + 16 * 4 <= ctx->spareEnd) {
-        iat[110] = result_thunk(ctx->spare, ctx, 110, iat[110]);
-        ctx->spare += 16 * 4;
+    if (WATCH_THE_READS && IMPORT_FILE_READ_STATIC < nImports &&
+        ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->fileReadStatic = iat[IMPORT_FILE_READ_STATIC];
+        iat[IMPORT_FILE_READ_STATIC] =
+            ctx_thunk(ctx->spare, ctx, (u32)&gate6_file_read_static);
+        ctx->spare += TRACE;
     }
     // And RFile::Open, for the name: five or six of them in a run, and knowing
     // which file the game is on turns a record that says "a read" into one
