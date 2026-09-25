@@ -197,6 +197,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_THREAD_CREATE = 867,// what RThread::Create or Resume answered
        NOTE_THREAD_HANDLE = 868,// and the handle in the object
        NOTE_THREAD_RESUME = 869,// the object Resume was called on
+       NOTE_THREAD_ARG = 870+0, // one word of the create frame
+       NOTE_THREAD_NAME = 871+0,// one word of the name descriptor
        NOTE_LOOKUP_HANDLE = 875,// the library handle a lookup was made on
        NOTE_LOOKUP_RESULT = 876,// and the address it answered with
        NOTE_DRIVER = 877,       // a kernel driver call, refused
@@ -2762,10 +2764,25 @@ static u32 arg5_thunk(u8 *code, const void *ctx, u32 handler)
 // nothing.
 enum { NEW_RTHREAD_CREATE = 1158, NEW_RTHREAD_RESUME = 1795 };
 
-extern "C" void gate6_thread_created(u32 err, const u32 *self, Context *c)
+extern "C" void gate6_thread_created(u32 err, const u32 *frame, Context *c)
 {
+    enum { FRAME_R4 = 4, FRAME_STACKARG = 7 };
     log_event(c, NOTE_THREAD_CREATE, err);
-    log_event(c, NOTE_THREAD_HANDLE, self ? self[0] : 0);
+    if (!frame)
+        return;
+    // r0 the object, r1 the name, r2 the function, r3 the stack size, then the
+    // three the caller pushed: with the 289 signature they are the allocator,
+    // the argument and the owner type.
+    for (u32 i = 0; i < 4; i++)
+        log_event(c, NOTE_THREAD_ARG, frame[i]);
+    for (u32 i = 0; i < 3; i++)
+        log_event(c, NOTE_THREAD_ARG, frame[FRAME_STACKARG + i]);
+    log_event(c, NOTE_THREAD_HANDLE, frame[0] ? ((const u32 *)frame[0])[0] : 0);
+    // And the name itself, which the kernel could make nothing of.
+    const u32 *name = (const u32 *)frame[1];
+    if (name)
+        for (u32 i = 0; i < 3; i++)
+            log_event(c, NOTE_THREAD_NAME, name[i]);
     log_block(c);
 }
 
@@ -2780,27 +2797,39 @@ extern "C" int gate6_thread_resume(u32 *self, u32, Context *c)
     return err;
 }
 
-// open_thunk reads the saved r2; this one reads the saved r0, which for
-// `RThread::Create` is the object the handle lands in.
-static u32 self_thunk(u8 *code, const void *ctx, u32 target, u32 handler)
+// Two of the three arguments the kernel receives are junk while the third is
+// sound, which is what arguments landing in the wrong places looks like. So log
+// the whole frame: the object, the name descriptor and what it points at, the
+// function, the stack size, and the three words the caller pushed.
+//
+//   stmdb sp!, {r0-r4, r12, lr}     @ seven words, then the caller's stack args
+//   ldr   r12, =target ; blx r12
+//   mov   r4, r0                    @ keep the result across the handler
+//   mov   r1, sp                    @ the frame
+//   ldr   r2, =ctx ; ldr r12, =handler ; blx r12
+//   mov   r0, r4 ; str r0, [sp]     @ the result survives the ldmia
+//   ldmia sp!, {r0-r4, r12, lr} ; bx lr
+enum { FRAME_THUNK_BYTES = 15 * 4 };
+
+static u32 frame_thunk(u8 *code, const void *ctx, u32 target, u32 handler)
 {
     u32 *b = (u32 *)code;
-    b[0] = 0xE92D500F;                  // stmdb sp!, {r0-r3, r12, lr}
-    b[1] = 0xE59FC01C;                  // ldr   r12, [pc, #28]  -> b[10]
-    b[2] = 0xE12FFF3C;                  // blx   r12
-    b[3] = 0xE59D1000;                  // ldr   r1, [sp]        -- the saved r0,
-    b[4] = 0xE58D0000;                  // str   r0, [sp]        -- read before
-                                        //                          the result
-                                        //                          overwrites it
-    b[5] = 0xE59F2010;                  // ldr   r2, [pc, #16]   -> b[11] ctx
-    b[6] = 0xE59FC010;                  // ldr   r12, [pc, #16]  -> b[12]
-    b[7] = 0xE12FFF3C;                  // blx   r12
-    b[8] = 0xE8BD500F;                  // ldmia sp!, {r0-r3, r12, lr}
-    b[9] = 0xE12FFF1E;                  // bx    lr
-    b[10] = target;
-    b[11] = (u32)ctx;
-    b[12] = handler;
-    user_imb_range(b, b + 13);
+    b[0]  = 0xE92D501F;
+    b[1]  = 0xE59FC024;
+    b[2]  = 0xE12FFF3C;
+    b[3]  = 0xE1A04000;
+    b[4]  = 0xE1A0100D;
+    b[5]  = 0xE59F2018;
+    b[6]  = 0xE59FC018;
+    b[7]  = 0xE12FFF3C;
+    b[8]  = 0xE1A00004;
+    b[9]  = 0xE58D0000;
+    b[10] = 0xE8BD501F;
+    b[11] = 0xE12FFF1E;
+    b[12] = target;
+    b[13] = (u32)ctx;
+    b[14] = handler;
+    user_imb_range(b, b + 15);
     return (u32)b;
 }
 
@@ -2985,12 +3014,12 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
     // efsrv 25, 121 and 151 with its own Create, Open and Replace.
     // The two thread calls, watched from the one place both of them come through.
     if (fn && kind == LIB_EUSER && mapped == NEW_RTHREAD_CREATE) {
-        if (!c->threadCreateThunk && c->spare + OPEN_THUNK_BYTES <= c->spareEnd) {
-            c->threadCreateThunk = self_thunk(c->spare, c, fn,
-                                              (u32)&gate6_thread_created);
-            c->spare += OPEN_THUNK_BYTES;
+        if (!c->threadCreateThunk && c->spare + FRAME_THUNK_BYTES <= c->spareEnd) {
+            c->threadCreateThunk = frame_thunk(c->spare, c, fn,
+                                               (u32)&gate6_thread_created);
+            c->spare += FRAME_THUNK_BYTES;
         }
-        if (c->threadCreateThunk && ((u32 *)c->threadCreateThunk)[10] == fn)
+        if (c->threadCreateThunk && ((u32 *)c->threadCreateThunk)[12] == fn)
             return c->threadCreateThunk;
     }
     if (fn && kind == LIB_EUSER && mapped == NEW_RTHREAD_RESUME) {

@@ -68,6 +68,12 @@ here and the section it overturns is marked.*
   all answer **KErrAccessDenied** for any name on E:. The protection's question
   is "am I on a real N-Gage game card?", asked two ways, and this port answers
   both wrongly by construction.
+- **The kernel receives the thread function where the owner type belongs.**
+  `owner = 75282192 = 0x47cb710`, and `pc = 0x47cb710`: the same word twice. And
+  the game's own call is impeccable -- name a well-formed descriptor, `fn` a
+  real image offset, and the pushed words `0`, `0x3c9f550`, `0` reading exactly
+  as 289's `aHeap`, `aPtr`, `aType`. So an argument moves between the game's
+  call and the kernel's handler, and the info block is not the one that moved.
 - **The failing thread is the *second* one, not SoundServer.** With the
   emulator patched to report a failed create: `pc = 0x?cb710, user stack =
   0x2000` -- the 8 KB unnamed thread. SoundServer, 100 KB stack, is created
@@ -4493,3 +4499,54 @@ This is a change to the emulator's own source rather than to
 silently is worth a log line whatever is being run -- but it is the first time
 this work has touched the project proper, and it is committed on its own so it
 can be dropped without taking anything else with it.
+
+## The kernel's owner argument is the thread function
+
+Two more instruments, and between them they put the fault in a very narrow
+place.
+
+**The game's call is impeccable.** Logging the whole frame it pushes:
+
+```
+r0  this   = 0x3dc8a60
+r1  name   = a type-3 descriptor, length 11, max 64      -- well formed
+r2  fn     = 0x98cb710                                   -- a real image offset
+r3  stack  = 0x2000
+[sp+0]     = 0            -- aHeap  = NULL
+[sp+4]     = 0x3c9f550    -- aPtr
+[sp+8]     = 0            -- aType  = EOwnerThread
+```
+
+That is ordinal 289's signature filled in correctly, argument for argument.
+Nothing is wrong on our side of the call.
+
+**And the kernel receives the function pointer as the owner type.**
+
+```
+Thread ... NOT created: pc = 0x47cb710, ..., owner = 75282192, ...
+                             ^^^^^^^^^                ^^^^^^^^
+                             0x47cb710         75282192 == 0x47cb710
+```
+
+The same word in both places. `epoc::owner_type` can be 0 or 1; it is holding
+the address of the thread's entry point. So between the game's correct call and
+the kernel's handler, **an argument has moved**, and it is not the info block --
+that arrives sound, `total_size` 64, every field where it should be.
+
+Two candidates remain, and they are distinguishable:
+
+1. **9.x euser reads the game's arguments one slot off.** The game is GCC98r2
+   and euser is EABI, and while the two agree on scalars, they have not been
+   checked against each other for this call.
+2. **EKA2L1's `thread_create` bridge has the wrong parameter list for this
+   ROM's exec.** It is registered at `0x68` in two tables and `0x67` in a third,
+   and its second parameter may simply not be the owner.
+
+The second can be settled by printing the raw registers at the bridge and
+comparing them with the frame above, which is the next thing.
+
+### Side note: a null check the bridge did not have
+
+`thread_create` did `thread_name_des.get(pr)->to_std_string(pr)` with no null
+check, and an anonymous thread is legal. It is hardened now. It was not this
+bug -- the pointer is `0x40f74c`, not null -- but it would have been someone's.
