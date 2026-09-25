@@ -191,7 +191,8 @@ logs until that is settled.
 | Believed | Why it was wrong |
 |---|---|
 | A `static` is safe to write to in our loader | It is not. This image has no data section: `flat.ld` folded `.data*` into `.rodata` and `mke32.py` declares data and bss zero, so every static is in read-only memory. Build 52 patched one character of one and the phone took KERN-EXEC 3 before creating a file. The emulator maps it writable and saw nothing. |
-| The game's dynamic euser lookups are correctly mapped | Three of them are translated through the **efsrv** table. `gate6_library_lookup` identifies a library by comparing a stale `RLibrary` pointer, and the game loads euser twelve times and efsrv five in a run, so the addresses get reused. It asks for `RPointerArrayBase::BinarySearchUnsigned` twenty-six times and is handed `CArrayFixBase::CArrayFixBase`. |
+| Three euser lookups are answered out of the efsrv table (round 57) | **My own error, retracted in round 58.** They were efsrv asks all along: old efsrv 121/136/185 are `RFile::Open`, `RFile::Read` and `RFile::Size`, and they map to new efsrv 93/255/264, which are `RFile::Open`, `RFile::Read` and `RFile::Size`. I named the old ordinals out of the **euser** def file and the new ones out of euser's too, and got three unrelated names. Every mapping in the log is correct. |
+| The 35-event gap is a wrong-table bug in `gate6_library_lookup` | It is not a bug in the shim at all. The gap is 26 extra `RFile::Read` calls the emulator makes and the phone does not, from one call site, on one file. |
 | The 35-event gap is an N95-versus-5320 ordinal difference | The phone's ordinals and mappings are identical to the emulator's. Both machines are handed the wrong functions; only the consequences differ. |
 | The app runs once per launch | It runs over and over. Twelve launches in one 45-second emulator session, each identical, each leaving and being restarted. `file_replace` truncates, so each was erasing the last one's log. |
 | The port has one failure per run | It has two. One KERN-EXEC 0 and one KERN-EXEC 3, every run, for dozens of rounds -- and the logs may be recording whichever process ran second. |
@@ -2981,3 +2982,69 @@ it.
 earlier bugs in this file -- the allocation ring matching a stale entry, and the
 `RFile` closed as a plain handle. A library has to be identified by something
 that survives being closed and reopened.
+
+
+## Retraction: the lookup mappings were right, and the gap is a short read
+
+Round 57 read the logged lookup ordinals and concluded that three euser asks
+were being answered out of the efsrv table. **That conclusion is wrong**, and
+this section withdraws it.
+
+The mistake was mine and it was in the naming, not in the shim. I took the old
+ordinals 121, 136 and 185 and looked them up in the **euser** 7.0 def, which
+answers `CObjectIx::At`, `RPointerArrayBase::BinarySearchUnsigned` and
+`TDes16::Collate`; then I took the mapped values 93, 255 and 264 and looked
+*those* up in euser as well. Two wrong dictionaries, one after the other.
+
+Read out of efsrv, which is the library the game actually asked, every one of
+them is exact:
+
+| call site | old efsrv | name | new efsrv | name |
+|---|---|---|---|---|
+| `13f68c` | 121 | `RFile::Open(RFs&, const TDesC16&, TUint)` | 93 | `RFile::Open(RFs&, const TDesC16&, unsigned int)` |
+| `10abf8` | 136 | `RFile::Read(TDes8&) const` | 255 | `RFile::Read(TDes8&) const` |
+| `10ac6c` | 185 | `RFile::Size(TInt&) const` | 264 | `RFile::Size(int&) const` |
+
+and the euser asks in the same run are exact too: old 1114 -> new 595 is
+`User::StringLength` on both sides, 355 is `RBusLogicalChannel::DoCreate`
+(dropped in 9.x, which is why it maps to 0 and takes the driver refusal), 172
+is `RHandleBase::Close`. **`gate6_library_lookup` is picking the right table.**
+
+### What the 35-event gap actually is
+
+Filtering the notes out of both logs leaves 180 core events in the emulator and
+151 on the phone, and aligning them leaves exactly one substantive difference:
+
+```
+delete  emu[73:100]      27 x  326 RLibrary::Lookup  from 0x10abf8
+```
+
+Twenty-seven lookups at **one call site**, and that site resolves
+`RFile::Read`. The emulator calls it 29 times, the phone 3. Every other lookup
+site is called the same number of times on both machines, `RFile::Size` once
+each, the opens and closes identical, and the run is byte-for-byte identical
+across all three phone launches.
+
+So the game opens a file and reads it in a loop, re-resolving `RFile::Read`
+each time round. On the emulator the loop runs 26 times on one handle
+(`0x405b002b`) in a tight burst. On the phone the same loop stops after its
+first read.
+
+**The gap is a short read, not a wrong function.** Nothing in the shim
+translates it; the game asked for `RFile::Read`, got `RFile::Read`, called it,
+and the answer on the phone ended the loop. What the logs cannot yet say is
+*why*: whether the open failed, the file is absent or empty where the phone
+looks for it, or the descriptor handed to `Read` has no room in it. None of
+those three has ever been recorded, because a dynamically resolved call is
+handed straight to the game and never passes through the result thunks.
+
+### What this costs, and what it does not
+
+The round 57 row in `ROUNDS.md` is corrected, not deleted. The one thing round
+57 did establish stands: **the phone's ordinals and mappings are identical to
+the emulator's**, so the N95-versus-5320 ordinal theory is dead either way.
+
+The lesson is narrower than the last one and worth writing down plainly: when a
+mapping looks absurd, check which library it came out of before deciding the
+code is broken. Two of the three "unrelated functions" were unrelated only
+because I read them in the wrong book.
