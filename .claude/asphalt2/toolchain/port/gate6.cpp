@@ -191,6 +191,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_HEAD = 861,    // the first three words of a name descriptor
        NOTE_CARD_REFUSED = 862, // a write to the game card, refused as a card would
        NOTE_CARD_CALL = 863,    // the driver asked for the card's identity, and where to put it
+       NOTE_CARD_SUBST = 864,   // a name that cannot be a filename, and what was handed over instead
        NOTE_LOOKUP_HANDLE = 875,// the library handle a lookup was made on
        NOTE_LOOKUP_RESULT = 876,// and the address it answered with
        NOTE_DRIVER = 877,       // a kernel driver call, refused
@@ -1360,6 +1361,13 @@ static const Probe kProbe[] = {
     // returns the object the protection will read.
     { 0x000cc8e4,  4, 7 },
     { 0x000cc944,  0, 5 },
+    // The container at obj+40 is an array of 24-byte records: `0xe98c4` walks
+    // `count` of them comparing the word at +4 with a key, and answers the
+    // default when none matches. `0xcc7e4` calls it with count 1 and key 0, and
+    // gets the default -- so there is exactly one record and its +4 is not 0.
+    // The station is on `mov r0, r4` just before that call, so r4 is obj+40 and
+    // the four words at it are the record's first sixteen bytes.
+    { 0x000cc938,  4, 5 },
 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -2569,7 +2577,7 @@ enum { KErrAccessDenied = -21, EFileWriteMode = 0x200 };
 enum { IMPORT_FILE_CREATE = 101, IMPORT_FILE_REPLACE = 111 };
 enum { NEW_RFILE_CREATE = 105, NEW_RFILE_REPLACE = 108 };
 
-static int name_on_the_card(const u32 *name)
+static const u16 *name_text(const u32 *name, u32 *outLen)
 {
     if (!name)
         return 0;
@@ -2578,18 +2586,73 @@ static int name_on_the_card(const u32 *name)
                     : (type == EPtrC)    ? (const u16 *)name[1]
                     : (type == EBufType) ? (const u16 *)(name + 2)
                                          : (const u16 *)name[2];
-    if (!(name[0] & 0x0FFFFFFF) || !text)
+    const u32 len = name[0] & 0x0FFFFFFF;
+    if (!text || !len)
         return 0;
-    return text[0] == 'e' || text[0] == 'E';
+    // These names are type 4 and the buffer at `ptr` begins with its own
+    // header: two shorts of length before the characters. Every decode in this
+    // file has tripped over that once, and `name_on_the_card` was reading the
+    // length where it wanted the drive letter, which is why no refusal ever
+    // fired. Detect it in one place.
+    if (text[0] == (u16)len && text[1] == 0)
+        text += 2;
+    if (outLen)
+        *outLen = len;
+    return text;
+}
+
+static int name_on_the_card(const u32 *name)
+{
+    u32 len = 0;
+    const u16 *text = name_text(name, &len);
+    return text && (text[0] == 'e' || text[0] == 'E');
 }
 
 typedef int (*FileCall)(void *, void *, const u32 *, u32);
+
+// Supplying the answer instead of waiting for it.
+//
+// The sixth open of a run is handed a name four characters long made of control
+// bytes, because the record it came from leads to an empty list. The name is
+// rubbish; the *open* is real, and whatever the game wanted to read it will read
+// through this call. So when a name arrives that cannot be a filename -- shorter
+// than eight characters, or starting below space -- hand it one of the game's
+// own files instead and see how far it gets. Which file is the question, and
+// SUBSTITUTE_FILE picks; one emulator run per candidate answers it.
+enum { SUBSTITUTE_BAD_NAMES = 0, SUBSTITUTE_FILE = 0 };
+static const u16 kSubst0[] = {'E',':','\\','s','y','s','t','e','m','\\','a','p','p','s','\\',
+                              '6','r','b','c','\\','c','i','s','.','d','a','t'};
+static const u16 kSubst1[] = {'E',':','\\','s','y','s','t','e','m','\\','a','p','p','s','\\',
+                              '6','r','b','c','\\','c','w','p','.','d','a','t'};
+static const u16 kSubst2[] = {'E',':','\\','s','y','s','t','e','m','\\','a','p','p','s','\\',
+                              '6','r','b','c','\\','6','r','b','c','.','c','w','a'};
+
+static int name_is_rubbish(const u32 *name)
+{
+    u32 len = 0;
+    const u16 *text = name_text(name, &len);
+    if (!text)
+        return 1;
+    return len < 8 || text[0] < 0x20 || text[1] < 0x20;
+}
 
 extern "C" int gate6_card_open(void *f, void *fs, const u32 *name, u32 mode, Context *c)
 {
     if (CARD_IS_READ_ONLY && (mode & EFileWriteMode) && name_on_the_card(name)) {
         log_event(c, NOTE_CARD_REFUSED, mode);
         return KErrAccessDenied;
+    }
+    if (SUBSTITUTE_BAD_NAMES && name_is_rubbish(name)) {
+        const u16 *t = (SUBSTITUTE_FILE == 0) ? kSubst0
+                     : (SUBSTITUTE_FILE == 1) ? kSubst1 : kSubst2;
+        const u32 n = (SUBSTITUTE_FILE == 0) ? sizeof kSubst0 / 2
+                    : (SUBSTITUTE_FILE == 1) ? sizeof kSubst1 / 2 : sizeof kSubst2 / 2;
+        Ptrc16 subst;
+        subst.lengthAndType = ((u32)EPtrC << KTypeShift) | n;
+        subst.text = t;
+        log_event(c, NOTE_CARD_SUBST, SUBSTITUTE_FILE);
+        log_block(c);
+        return ((FileCall)c->realOpen)(f, fs, (const u32 *)&subst, mode);
     }
     return ((FileCall)c->realOpen)(f, fs, name, mode);
 }
@@ -2823,15 +2886,17 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
     if (fn && kind == LIB_EFSRV && mapped == NEW_RFILE_OPEN) {
         // Through the card wrapper, not straight at efsrv: the dynamic route
         // had been skipping the read-only rule that the static import gets.
+        // The logging thunk holds its target as a literal, so setting a context
+        // field was never going to redirect it: build it around the card
+        // wrapper, and keep the raw address for the wrapper to chain to.
         c->realOpen = fn;
-        c->fileOpen = (CARD_IS_READ_ONLY && c->cardOpen) ? c->cardOpen : fn;
+        const u32 tgt = (CARD_IS_READ_ONLY && c->cardOpen) ? c->cardOpen : fn;
+        c->fileOpen = tgt;
         if (!c->fileOpenThunk && c->spare + OPEN_THUNK_BYTES <= c->spareEnd) {
-            c->fileOpenThunk = open_thunk(c->spare, c, fn, (u32)&gate6_file_open);
+            c->fileOpenThunk = open_thunk(c->spare, c, tgt, (u32)&gate6_file_open);
             c->spare += OPEN_THUNK_BYTES;
         }
-        // The thunk holds the address it was built with; a later pass that
-        // resolves somewhere else must not be sent to the old one.
-        if (c->fileOpenThunk && ((u32 *)c->fileOpenThunk)[10] == fn)
+        if (c->fileOpenThunk && ((u32 *)c->fileOpenThunk)[10] == tgt)
             return c->fileOpenThunk;
     }
     if (fn && kind == LIB_EFSRV && (mapped == NEW_RFILE_READ || mapped == NEW_RFILE_SIZE)) {

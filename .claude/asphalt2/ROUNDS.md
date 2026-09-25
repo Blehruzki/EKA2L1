@@ -110,6 +110,21 @@ them, and say so.
 | E56 | build 71 -- a ctx3_thunk on `DoControl` so it can say whether it runs at all | 2267 | `0x42B8D80` | **It runs.** Twice per launch, as a pair: op **4** with a null buffer, then op **6** with a pointer. So the original `MMC_CARD_INFO` gate was right, the CID is written into the game's own buffer, and the card's identity is genuinely delivered. The check still goes to 68 |
 | E57 | build 71 -- route the *dynamic* `RFile::Open` through the card wrapper too | 2267 | `0x42B8D80` | A real gap closed -- the dynamic route had been skipping the read-only rule the static import got -- and no change: still no refusals, still 68. The game does not try to write to E: before the check |
 | E58 | build 71 with the verdict override back on, card answers kept | 2392 | `0x5CBFE00` | **200 traced events**, a new emulator best, up from 198. State path 47 13 36 29 **34 4** 59 7 and the same sixth `RFile::Open` failing on the empty-list name. The card answers cost nothing and are kept |
+| E59 | build 72 -- a station on the container at `obj+40`, at `0xcc938` | 2407 | `0x5CBFE00` | **One record, and its key field is 0** -- `{0, 0, 0x596, 0x46}` -- which is the key the search is looking for. So the container is not empty in the way it looked; what came back was the default, and why needed a closer look at the caller |
+| E60 | build 73 -- substitute a real filename when the game asks to open rubbish, `cis.dat` | 251 | `--` | **Broke the run at once**: 35 traced events. The substitution fired twice, on names that were perfectly good |
+| E61 | build 73, `cwp.dat` | 200 | `--` | Same collapse |
+| E62 | build 73, `6rbc.cwa` | 200 | `--` | Same collapse. Something is wrong with the test, not the idea |
+| E63 | build 73 repeated, `cis.dat` | 251 | `--` | Identical -- the edit that was meant to fix the decode had failed its assertion and written nothing |
+| E64 | build 73 repeated, `cwp.dat` | 200 | `--` | Identical |
+| E65 | build 73 repeated, `6rbc.cwa` | 200 | `--` | Identical |
+| E66 | build 74 -- **the decode fixed**: these names are type 4 and the buffer at `ptr` begins with its own header, so every reader must skip two shorts | 2407 | `--` | **The run is healthy again** -- 2407 records, full state path -- and the substitution never fires, correctly. But this also means `name_on_the_card` had been reading the length word where it wanted the drive letter, **so the read-only rule had never once applied** |
+| E67 | build 74, `cwp.dat` | 2407 | `0x5CBFE00` | Same |
+| E68 | build 74, `6rbc.cwa` | 2407 | `0x5CBFE00` | Same. The substitution is not needed |
+| E69 | build 75 -- build the logging open thunk **around** the card wrapper, not around the raw efsrv address | 2492 | `0x9AB31D42` | **Past state 34.** The refusal fires for the first time (one open answers **-21**), the run makes **seven** opens instead of six and the last two succeed, and the state path is 47 13 36 29 34 -> **38**, a state no run has ever reached. **No `User::Leave` and no `User::Exit` anywhere in the log** |
+| E70 | build 75, `cwp.dat` | 2492 | `0x9AB31D42` | Identical -- the substitution plays no part |
+| E71 | build 75, `6rbc.cwa` | 2492 | `0x9AB31D42` | Identical |
+| E72 | build 75 with `PATCH_THE_CHECK = 0` -- does the real check pass now? | 1868 | `0xE4D4280` | **Not yet.** No dispatcher states at all and an early death, the same shape E52 had. The card rules change what happens after the check, not the check itself |
+| E73 | build 75 final -- card answers on, read-only rule working, verdict override on, substitution off | 2492 | `0x9AB31D42` | The best run this project has had: 2492 records, one launch, no relaunch, no `User::Leave`, past state 34, and a fault after the frame loop instead of an orderly give-up |
 
 <!-- EMURUN -->
 
@@ -178,6 +193,11 @@ build 50 at 128, past the 144 that build 51 reached, through the game's
 self-check of its own image, and it stops exactly where the emulator gives up:
 at `User::Leave`. The port no longer has a hardware-specific failure ahead of
 it. It has the *same* failure as the emulator.
+
+**The emulator is now at 2492 records, one launch, past state 34, with no
+`User::Leave` and no `User::Exit` anywhere in the log** (E73). That is the
+furthest this port has ever run and the first time the game has not given up.
+None of it has been to hardware yet.
 
 **Best round so far: 59.** It is the first round where a hardware run and an
 emulator run of the same build tell the same story from beginning to end.

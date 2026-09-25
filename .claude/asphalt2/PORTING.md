@@ -68,6 +68,17 @@ here and the section it overturns is marked.*
   all answer **KErrAccessDenied** for any name on E:. The protection's question
   is "am I on a real N-Gage game card?", asked two ways, and this port answers
   both wrongly by construction.
+- **A read-only game card gets the port past state 34, and the leave is gone.**
+  Two bugs had been hiding it: filenames are type 4 descriptors whose buffer
+  begins with its own header, so `name_on_the_card` was reading the length where
+  it wanted the drive letter and the rule never ran; and `open_thunk` holds its
+  target as a literal, so the dynamic `RFile::Open` bypassed the wrapper
+  entirely. With both fixed the refusal fires, the run makes seven opens instead
+  of six, the state path goes 47 13 36 29 34 -> **38**, and **no `User::Leave`
+  or `User::Exit` appears in the log at all**. 2492 records, one launch, no
+  relaunch.
+- **"Zero refusals" was a rule that was not running.** E54 to E58 concluded the
+  card was answered and insufficient; they were measuring a broken predicate.
 - **The card call does happen.** `DoControl` runs twice a launch, op 4 with a
   null buffer then op 6 with a pointer, so the forged CID reaches the game. No
   write to E: is ever attempted before the check, so the read-only rule is not
@@ -4063,3 +4074,56 @@ any amount of correctness in the shim.
 
 E58 keeps the card answers and puts the override back: **200 traced events**, a
 new emulator best, and the same state 34 failure to work on next.
+
+## Supplying the answer works, and the leave is gone
+
+The question was whether the port could extract what the protection wants and
+supply it directly rather than hope a phone answers correctly. It can, and it
+did -- but not before a bug of my own came out.
+
+### The decode that had been silently disabling the card rule
+
+Every filename this game opens is a type 4 descriptor whose `ptr` addresses a
+buffer that **begins with its own header**: two shorts of length before the
+characters. This file has tripped over that three times now. `name_on_the_card`
+was reading the length word where it wanted the drive letter, so it never saw
+an `E`, so **the read-only rule had never once applied** -- which is exactly why
+E54 to E58 reported "zero refusals" and concluded the card was answered and not
+enough. The conclusion was drawn from a rule that was not running.
+
+`name_text` now does the skip in one place, and the substitution experiment that
+found it (E60-E68, which broke the run at 35 events because it fired on perfectly
+good names) is off again, unneeded.
+
+### The thunk that held its target as a literal
+
+The second one: `open_thunk` keeps its target as a literal word, so pointing a
+context field at the card wrapper redirected nothing. The dynamic `RFile::Open`
+went straight to efsrv. Building the logging thunk **around** the card wrapper
+is the fix.
+
+### What happened when both were right
+
+| | before | after |
+|---|---|---|
+| records | 2392 | **2492** |
+| card refusals | 0 | **1** (`-21`) |
+| opens | 6, the last failing | **7, and the last two succeed** |
+| state path | 47 13 36 29 34 **4** | 47 13 36 29 34 -> **38** |
+| ending | `User::Leave(-2)` / `User::Exit` | **neither appears in the log** |
+| launches | 6-8, relaunching | **1** |
+
+**State 34 passes.** The wall that has ended every run since the protection was
+first reached is down, and the game no longer gives up: there is no `User::Leave`
+anywhere in the log. It runs on past the frame loop and faults, which is an
+ordinary bug and the kind this project knows how to work.
+
+The read-only game card was the answer after all. It just needed the rule to
+actually run.
+
+### What is still true
+
+E72: with the verdict override off, the real check still does not pass, and the
+run dies early the way E52 did. So the card rules change what happens *after*
+the check, not the check itself, and `PATCH_THE_CHECK` stays. What it overrides
+is still exactly what it was: a test for a physical N-Gage game card.
