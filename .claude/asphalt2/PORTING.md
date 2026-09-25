@@ -53,6 +53,13 @@ here and the section it overturns is marked.*
   key from whether the result is zero. It was zero, so the machine went to 68
   (`mov r8, #0`) and then 7 (`mov r0, r8`, epilogue). `0xe6df8` returning zero
   is the whole failure.
+- **`0xe6df8` loops once and returns its body's answer.** The list at
+  `0x0334ca90` holds 1, the counter goes 0 then 1, and `arg3` is a code address
+  so the null-argument exit is not taken either. The zero comes from the single
+  call to **`0xe50d8`**, which initialises two identical 104-byte records --
+  a tag word twice, twenty bytes, then zeros -- each beside a zeroed 64-byte
+  block. Twenty bytes of state and a 64-byte block is a hash, and the game
+  imports no crypto library, so it is in the image.
 - **The dispatcher's keys decode statically**: `r3 = r0 + 0x1c936f1c`, truncated
   to 32 bits. Every `ldr r0, [pc]` in the state machine names its successor, so
   the graph can be read without running it.
@@ -3302,3 +3309,73 @@ what a refused plant looks like. **A station that changes nothing has either
 proved something or not been planted, and those two look the same.** The fix
 was one instruction earlier, on the `cmp`, where restoring the flags before
 re-executing it keeps the load that follows honest.
+
+## Inside the check: a loop of one, and two hash contexts
+
+`0xe6df8` is an ordinary function, and short enough to read whole:
+
+```
+e6df8  push {r4-r10, lr}
+e6e00  subs r10, r3, #0 / movne r10, #1     @ r10 = (arg3 != 0)
+e6e18  subs r5, r0, #0
+e6e1c  moveq r2, #2
+e6e20  beq  e6f58                           @ arg0 == 0 -> return 2
+e6e24  mov  r1, #0                          @ the counter
+e6e8c  ldr  r2, [r5]                        @ <- loop top: the bound
+e6ecc  cmp  r1, r2
+e6ed0  bge  e6f30                           @ counter >= bound -> out
+e6ee8  bl   0xe50d8                         @ the body
+e6f2c  b    e6e8c
+e6f30  cmp  r10, #0
+e6f34  beq  e6f54                           @ arg3 was null -> return 0
+e6f38  <identity chain on r0>               @ otherwise return r0
+```
+
+Every one of those "chains" is the identity -- fifteen shift-adds whose net
+multiplier is 1, which is what this image does to every value it touches.
+
+A station on the loop top says: **`r5 = 0x0334ca90`, `[r5] = 1`, counter 0 then
+1.** The list has one entry and the body runs once. So the zero is not an empty
+list, and `r10` is not null either -- `arg3` is `0x100ccb38`, a code address.
+The function returns **whatever the single call to `0xe50d8` left in r0**, and
+that was zero.
+
+### `0xe50d8` initialises two hash contexts
+
+```
+e50d8  push {r4-r10, lr}
+e50dc  sub  sp, sp, #608
+e50f0  add  r0, sp, #504 / ldr r1, =0x1017e298 / mov r2, #104 / bl memcpy
+e5100  add  r0, sp, #296 / ldr r1, =0x1017e300 / mov r2, #104 / bl memcpy
+e5110  add  r1, sp, #544 ; zero 64 bytes
+e5140  add  r1, sp, #336 ; zero 64 bytes
+```
+
+Two 104-byte records, adjacent in the image, **byte-for-byte identical**:
+
+```
+17e298: ba243c3f ba243c3f 0efdae7e 7e7195f6 d0dfea81 616c0309 c4d0618f
+        then 76 zero bytes
+17e300: the same again
+```
+
+A tag word twice, then **twenty bytes**, then zeros -- and each record is paired
+with a 64-byte block that is zeroed. Twenty bytes of state and a 64-byte block
+is the shape of a hash, and the game imports no crypto library (apparc, avkon,
+bitgdi, cone, dfpaeabi, drtaeabi, efsrv, eikcoctl, eikcore, eikdlg, esock,
+estlib, etel, euser, fbscli, hal, scppnwdl, ws32) so whatever it is, it is in
+the image. The twenty bytes are not SHA-1's standard IV, so it is a variant or
+the words are stored transformed.
+
+**This is the protection, and it is computing something twice and comparing.**
+What goes into it is the open question, and there are two candidates already on
+the table: the 1.6 MB of `6rbc.app` the game reads before any of this, and the
+memory card's CID -- which the port answers with zeros, because there is no
+N-Gage game card and `gate6_mmc_control` copies what EKA2L1's own mmcif channel
+would say.
+
+### What is next
+
+The same method again, one level down: find `0xe50d8`'s exits, station the one
+that decides, and see which of the two digests it is unhappy with. Nothing here
+needs hardware.

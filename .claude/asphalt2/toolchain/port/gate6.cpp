@@ -1257,6 +1257,13 @@ static const Probe kProbe[] = {
     // it into the block's address. The sequence of r3 values is the path
     // through the check; the last one is the state that answers zero.
     { 0x000ccbfc,  3, 0 },
+    // Inside the check itself. `0xe6df8` is an ordinary function, not a state
+    // machine, and it is a loop: `ldr r2, [r5]` at the top, `cmp r1, r2` and
+    // `bge` out, with r1 the counter starting at zero. Fall straight out and
+    // r0 is still zero, and zero is what the caller reads as failure. So the
+    // question is one number -- `[r5]`, the count -- and the station is on the
+    // load that fetches it. r5 is an address, so the four words at it come too.
+    { 0x000e6e8c,  5, 1 },
 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb

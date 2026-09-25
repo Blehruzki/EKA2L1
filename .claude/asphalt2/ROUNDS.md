@@ -91,6 +91,7 @@ them, and say so.
 | E37 | build 60 with `DUMP_DECRYPTED` on, to read the decrypted image | 2143 | `0x45933C0` | Three regions only, 448 + 1056 + 1092 bytes, and none of them is the check at `0xccbb4` -- that function is plaintext in the file and did not need dumping. The flag is off again |
 | E38 | build 61 -- a station on the protection's dispatcher, planted on `0xccc00` | 2143 | `0x45933C0` | **Nothing fired, and that is the answer**: `0xccc00` is the `ldrls pc, [pc, r3, lsl #2]`, not the `cmp`. `crumb_safe` refuses a conditional load into pc, so no station was planted and the run is bit-identical to E37. An off-by-one in reading my own disassembly |
 | E39 | build 61 -- the same station moved to the `cmp` at `0xccbfc` | 2192 | `0x45933C0` | **Seven states: 47, 13, 36, 29, 68, 59, 7.** Not sixty-nine -- the check's whole path is seven blocks. State 29 calls `0xe6df8`, compares the result with zero and picks the next key from it; the result was **zero**, so it went to 68, which sets `r8 = 0`, and then to 7, which is `mov r0, r8` into the epilogue. **`0xe6df8` returning zero is the entire failure** |
+| E40 | build 62 -- a station on the loop inside `0xe6df8`, on the `ldr r2, [r5]` that fetches its bound | 2222 | `0x45933C0` | **The list has one entry, and the loop runs once.** `r5 = 0x0334ca90`, `[r5] = 1`, counter 0 then 1. So the zero is not an empty list -- the body ran, called `0xe50d8`, and that call's result is what comes back. `0xe50d8` returned zero |
 
 <!-- EMURUN -->
 
