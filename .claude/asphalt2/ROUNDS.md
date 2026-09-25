@@ -143,16 +143,26 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 56 | Guard `file_flush` too -- the other use of the same handle | 3 | KERN-EXEC 0 gone in 2 of 3 runs; **CONE 2** new in all three; relaunch goes from 4 records to **148** | **The guard worked.** The relaunch no longer dies on our bad handle -- it runs into the framework and fails honestly on `RFile::Open` = **-14, KErrInUse**, because the panicked first process still holds the game's data file. The relaunch is a *consequence*, not a second bug |
 | 57 | Log the lookup ordinal and its 9.x mapping | 3 | same ordinals and mappings as the emulator, exactly; all three runs byte-identical in structure | **The ordinal theory is dead** -- the phone maps exactly as the emulator does. My first reading of this row ("three euser asks answered out of efsrv") was **wrong and is retracted**: they were efsrv asks, and 121/136/185 -> 93/255/264 is `RFile::Open`/`Read`/`Size` -> `RFile::Open`/`Read`/`Size`, correct on both sides. I had named them out of the euser def. **The real gap: 26 extra `RFile::Read` calls the emulator makes at `0x10abf8` and the phone does not** -- a read loop that stops after one iteration on hardware |
 | 58 | Stand in front of `RFile::Read` and `RFile::Size` and log what they answer | 3 (one produced only 137 records) | `RFile::Size` = **125**, one read of a **125-byte** buffer, two of 16 bytes, all KErrNone; the 26 x 64 KiB burst **never happens** | **The gap is an open, not a read.** Every read the phone does make succeeds and fills its buffer exactly; the emulator's extra 26 reads are a separate, earlier file the phone never reads at all. Both machines agree on `cwp.dat` (125) and `nc.dat` (16) |
+| 59 | Close the loader's own handle on `6rbc.app` | 3 (two produced only ~110 records) | **`6rbc.app` now opens: 0.** 29 reads, five opens, all KErrNone; **2086 and 2104 records**, up from 1571; **176 traced events**, up from 144 | **The gap is closed.** The phone and the emulator now agree on **178 of 180 core events**, and the only differences left are heap addresses inside two probes. The phone dies where the emulator calls `User::Leave` -- same place, same reason, one orderly and one not. The panic is still CONE 2 / KERN-EXEC 3 |
 
 ## Where we are
 
-**Furthest: 179 traced events** in the emulator (build 52), **144 on the
-phone** (build 51). Both are past the wall that held from build 44 to build 50
-at 128. The run now gets through the whole resource-loading sequence, past the
-store that was poisoning `this->[4]`, through two `RLibrary::Load`s it had
-never reached, and out via an orderly `User::Leave` / `User::Exit`.
+**Furthest: 176 traced events on the phone** (build 59), against 180 core
+events in the emulator on the same build -- and the two now agree on **178 of
+those 180**, the remaining two being heap addresses inside probes that were
+never going to match. The phone is past the wall that held from build 44 to
+build 50 at 128, past the 144 that build 51 reached, through the game's
+self-check of its own image, and it stops exactly where the emulator gives up:
+at `User::Leave`. The port no longer has a hardware-specific failure ahead of
+it. It has the *same* failure as the emulator.
 
-**Best round so far: 51.** It is the one that moved the port rather than
+**Best round so far: 59.** It is the first round where a hardware run and an
+emulator run of the same build tell the same story from beginning to end.
+Closing one file handle took the phone from 1571 records to 2104 and from 144
+traced events to 176, and retired the last known divergence between the two
+machines.
+
+**Runner-up: 51.** It is the one that moved the port rather than
 describing it: NOP one word of the game's code and the phone goes 128 -> 144
 traced events, 248 -> 262 imports, following the emulator's new sequence import
 for import. First advance on hardware since build 44, and the first candidate

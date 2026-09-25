@@ -42,9 +42,18 @@ here and the section it overturns is marked.*
   write volume, write rate or extending files was ever involved.
 - `RFile::Open` of `cwivenc.dat` returns `KErrNone`. The phone does not die
   there.
-- **Furthest reached: 136 traced events** (builds 44 and 45, twice). It dies
-  inside a `User::Free` -- of `0x7b7cd8` in build 44, `0x7b89a8` in build 45:
-  the same point, a different heap layout.
+- **Furthest reached: 176 traced events on hardware** (build 59), where the
+  phone and the emulator agree on 178 of 180 core events and the phone faults
+  at the point the emulator calls `User::Leave`. No known divergence between
+  the two machines remains. (Earlier marks, kept for the shape of the climb:
+  128 from build 44 to 50, 144 at build 51, 136 in builds 44 and 45 where it
+  died inside a `User::Free`.)
+- **The loader must give back what it takes.** It held `6rbc.app` open
+  `EFileShareReadersOnly` for the life of the process, and the game opens that
+  same file itself, exclusively, to check its own image. On hardware that open
+  answered KErrInUse and the check was skipped; EKA2L1 does not enforce share
+  modes, so it never showed. Closing the handle is what took the phone from
+  1571 records to 2104.
 - The heap is sound, the pointers are sound, **and so is the fatal free**: at
   event 128 `User::CountAllocCells` walks the heap clean at 1209 cells, every
   free matches a live cell, and the fatal one matched a live 27-byte cell with
@@ -3102,3 +3111,47 @@ emulator is lax where a phone is strict, so anything the emulator permits is
 untested. Round 58's instrument -- standing in front of a dynamically resolved
 call, which no round had ever done -- is what turned a 27-event hole in a diff
 into a named file and a share mode.
+
+## The gap is closed
+
+Build 59 closed the loader's handle on `6rbc.app` and the phone answered
+exactly as predicted:
+
+| | build 58 | build 59 |
+|---|---|---|
+| `RFile::Open` on `6rbc.app` | (never logged; skipped) | **0** |
+| reads | 3 | **29** |
+| records | 1571 | **2086, 2104** |
+| traced events | 144 (build 51's best) | **176** |
+
+All five opens answer KErrNone, no allocation ever fails, and the game runs its
+own self-check -- twenty-six 64 KiB reads of its own image -- on hardware for
+the first time.
+
+Aligning the phone's core events against the emulator's for the same build:
+
+```
+emu 180 core events | phone 178
+replace emu[139] phone[139]   probe address   0x3874a38 vs 0x7d6908
+replace emu[164] phone[164]   probe value
+replace emu[166:168] phone[166:168]   the same two probe addresses
+delete  emu[178:180]          324 User::Leave, 308 User::Exit
+```
+
+**Two machines, 178 events, no divergence.** The three "replace" rows are heap
+addresses inside probes and were never going to match. The only real difference
+left is the tail: the emulator gives up through `User::Leave` and `User::Exit`,
+and the phone faults at the same point instead.
+
+So the port no longer has a hardware-specific failure in front of it. It has
+the failure the emulator has always had, which is the one thing about this
+project that has ever been easy to work on: it reproduces locally, every run,
+without asking anyone to install anything.
+
+### What is next
+
+`User::Leave(...)` from `0x2b20` is now the whole question. Something in the
+startup sequence decides it cannot continue and leaves; the framework catches
+it and the process exits. Nothing in the log says what the leave code is or
+what decided. That is the next instrument, and it can be built and tested
+entirely in the emulator.
