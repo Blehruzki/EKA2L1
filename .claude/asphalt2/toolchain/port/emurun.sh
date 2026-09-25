@@ -20,12 +20,13 @@ pgrep -x Xvfb >/dev/null || { nohup Xvfb :99 -screen 0 1280x900x24 >"$S/xvfb.log
 cp "$S/out/gate6.exe" $D/sys/bin/gate6.exe
 cp "$S/out/gate6.rsc" $D/resource/apps/gate6.rsc
 cp "$S/out/gate6_reg.rsc" $D/private/10003a3f/import/apps/gate6_reg.rsc
-rm -f $C/g6box.log $D/g6box.dat $C/g6box.dat
+rm -f $C/g6box*.log $D/g6box*.dat $C/g6box*.dat
 (cd /home/user/EKA2L1/build/bin && timeout "${TMO:-45}" ./eka2l1_qt --device RM-409 --run 0xE0001006 >"$S/g6.log" 2>&1)
 pkill -x eka2l1_qt 2>/dev/null
-cp -f $C/g6box.log "$S/emu-latest.log" 2>/dev/null
+cp -f "$C"/g6box1.log "$S/emu-latest.log" 2>/dev/null
+LAUNCHES=$(ls "$C"/g6box[0-9].log 2>/dev/null | wc -l)
 
-REC=$(python3 -c "import os;p='$C/g6box.log';print(os.path.getsize(p)//8 if os.path.exists(p) else 0)")
+REC=$(python3 -c "import os;p='$C/g6box1.log';print(os.path.getsize(p)//8 if os.path.exists(p) else 0)")
 FAULT=$(grep -oE 'Access violation reading address 0x[0-9A-Fa-f]+' "$S/g6.log" | tail -1 | grep -oE '0x[0-9A-Fa-f]+')
 [ -z "$FAULT" ] && FAULT="--"
 
@@ -43,4 +44,4 @@ j = s.rindex('\n', 0, i)          # the blank line before the marker
 j = s.rindex('\n', 0, j) + 1      # end of the last table row
 open(path, 'w').write(s[:j] + row + s[j:])
 PY
-echo "records: $REC   ends: $FAULT   -> logged as E$N in ROUNDS.md (finish its last column)"
+echo "records: $REC   launches: ${LAUNCHES:-?}   ends: $FAULT   -> logged as E$N in ROUNDS.md (finish its last column)"

@@ -216,6 +216,7 @@ enum { BOX_SPARE = BOX_EXC + 1 };       // bytes of spare arena left after setup
 enum { BOX_CTXSZ = BOX_SPARE + 1 };     // sizeof(Context)
 enum { BOX_WRAPS = BOX_CTXSZ + 1 };     // which optional wraps actually installed
 enum { BOX_NAME = BOX_WRAPS + 1, BOX_NAME_WORDS = 8 };  // the last file opened
+enum { BOX_LAUNCH = BOX_NAME + BOX_NAME_WORDS };        // which launch this is
 enum { BOX_HITS = BOX_NAME + BOX_NAME_WORDS, BOX_MARKERS = 40 };
 enum { BOX_WORDS = BOX_HITS + BOX_MARKERS, BOX_BYTES = BOX_WORDS * 4 };
 
@@ -624,6 +625,8 @@ struct Context {
     u32 argR1;              // and the second -- these two are adjacent on
                             // purpose: the thunk carries one literal address
                             // and stores through it at +0 and +4
+    u32 launchNo;           // 1 for the first launch since the box was deleted,
+                            // 2 for the one that follows a panic, and so on
     u32 lastWatch;          // ... and what it last read there
     u32 watchAt;            // the object the first probe reported, re-read by
                             // every probe after it. Bisecting which call
@@ -913,7 +916,13 @@ void rdebug_rawprint(const void *text);
 // On C: rather than the memory card. Two reasons: the card is the one piece of
 // this the phone has a removable driver for, and internal flash answers a
 // flush faster, which is what lets every record be flushed again.
-static const u16 kLogPath[] = {'C',':','\\','g','6','b','o','x','.','l','o','g'};
+// The log name carries the launch number. file_replace truncates, so a second
+// launch of the same build used to destroy the first one's log entirely -- and
+// the phone raises two panics per run, which most likely means two processes.
+// Every log in this project may therefore have been the second process, and
+// nothing said so. One digit, patched at startup, ends that.
+static u16 kLogPath[] = {'C',':','\\','g','6','b','o','x','0','.','l','o','g'};
+enum { LOG_DIGIT = 8 };
 static const u16 kBoxPath[] = {'C',':','\\','g','6','b','o','x','.','d','a','t'};
 
 // A record left by a different build is worse than no record: it reads back as
@@ -2825,6 +2834,38 @@ static u32 load_and_start()
         Ptrc16 name;
         box_name(&name);
         if (fs_connect(ctx->boxFs, -1) == 0) {
+            // Which launch is this? The box from the previous one is still on
+            // disk at this point -- file_replace has not run yet -- so its
+            // counter is readable. No magic there, or no file, means this is
+            // the first launch since the files were cleared.
+            //
+            // Reading the previous box was done here once before and removed,
+            // because it closed an RFile with RHandleBase::Close and took the
+            // file server session down with it. That is the bug that cost a
+            // month. This one closes with file_close, efsrv 300, and does not
+            // touch the handle any other way.
+            ctx->launchNo = 1;
+            {
+                u32 prevFile[4] = { 0, 0, 0, 0 };
+                if (file_open(prevFile, ctx->boxFs, &name, 1) == 0) {
+                    u32 head[BOX_LAUNCH + 1];
+                    for (u32 i = 0; i <= (u32)BOX_LAUNCH; i++)
+                        head[i] = 0;
+                    Ptr8 des;
+                    des.lengthAndType = (u32)EPtr << KTypeShift;
+                    des.maxLength = (int)sizeof head;
+                    des.ptr = (u8 *)head;
+                    if (file_read(prevFile, &des) == 0 && head[0] == BOX_MAGIC &&
+                        head[BOX_LAUNCH] >= 1 && head[BOX_LAUNCH] < 99)
+                        ctx->launchNo = head[BOX_LAUNCH] + 1;
+                    file_close(prevFile);
+                }
+            }
+            ctx->boxData[BOX_LAUNCH] = ctx->launchNo;
+            // And the log goes to a name of its own, so the second launch no
+            // longer erases the first one's record.
+            kLogPath[LOG_DIGIT] = (u16)('0' + (ctx->launchNo < 10 ? ctx->launchNo : 9));
+
             Ptrc16 logName;
             logName.lengthAndType = ((u32)EPtrC << KTypeShift) |
                                     (u32)(sizeof kLogPath / 2);

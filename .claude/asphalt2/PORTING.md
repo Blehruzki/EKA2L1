@@ -176,6 +176,7 @@ logs until that is settled.
 
 | Believed | Why it was wrong |
 |---|---|
+| The app runs once per launch | It runs over and over. Twelve launches in one 45-second emulator session, each identical, each leaving and being restarted. `file_replace` truncates, so each was erasing the last one's log. |
 | The port has one failure per run | It has two. One KERN-EXEC 0 and one KERN-EXEC 3, every run, for dozens of rounds -- and the logs may be recording whichever process ran second. |
 | The file server was overflowing a 31-byte cell | The allocation ring was searched in slot order and a stale entry won. There was no overflow. |
 | The reboot was a write ceiling, then a write rate, then extending writes | Three theories fitted to the shadow of the closed-handle bug. A build writing the log heavily does not reboot once the handle is fixed. |
@@ -2620,3 +2621,46 @@ of the field, and cost a round -- so each offset is now spelled out beside the
 instruction that uses it, and `ARG_WORDS` went from 16 to 20.
 
 The emulator run now ends with **no fault at all**.
+
+## The app is not run once. It is run over and over.
+
+The phone raises two panics per run. Chasing that turned up something larger.
+
+`file_replace` truncates, so every launch of the app was erasing the previous
+launch's log and writing its own from position 0. Nothing recorded which launch
+a log belonged to. So build 52 stamps it: the box carries a **launch counter**,
+read out of the previous box before `file_replace` destroys it, and the log
+goes to `C:\g6box<N>.log` -- one digit, patched at startup, so no launch can
+overwrite another.
+
+One 45-second emulator session:
+
+```
+g6box1.log .. g6box9.log     16776 bytes each, byte-identical
+box: LAUNCH 12
+     179 traced events, last import User::Leave
+     flags: THE FRAME LOOP RAN, User::Leave, User::Exit
+```
+
+**Twelve launches.** Each one identical, each reaching 179 traced events --
+further than any number in this file -- leaving cleanly and exiting, and being
+started again. (The digit saturates at 9, so launches 10 and up share
+`g6box9.log`; the counter in the box is the true one.)
+
+So every log this project has ever read was whichever launch happened to run
+last, and every count in this file was measured on an unknown member of a
+series. That did not invalidate the findings -- the launches are identical --
+but it was not known to be true, and it is exactly the kind of thing that has
+cost this project rounds before.
+
+Reading the previous box was done here once and removed, because it closed an
+`RFile` with `RHandleBase::Close` and took the file server session down with
+it -- the bug behind a month of reboots. This one closes with `file_close`,
+efsrv 300, and touches the handle no other way.
+
+### What it changes about the phone
+
+The phone's "one KERN-EXEC 0 and one KERN-EXEC 3 per run" is now two
+observations about a *series* of launches, not two failures in one. The first
+launch's own record has never been seen. Build 52 is the first build that can
+show it.

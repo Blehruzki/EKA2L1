@@ -29,6 +29,7 @@ BOX_SLOT, BOX_FRAMES, BOX_STACK = BOX_PATH + 1, BOX_PATH + 2, BOX_PATH + 3
 BOX_EXC = BOX_STACK + 1
 BOX_SPARE, BOX_CTXSZ, BOX_WRAPS = BOX_EXC + 1, BOX_EXC + 2, BOX_EXC + 3
 BOX_NAME, BOX_NAME_WORDS = BOX_WRAPS + 1, 8
+BOX_LAUNCH = BOX_NAME + BOX_NAME_WORDS
 WRAPS = [(1, 'allocators'), (2, 'frees'), (4, 'open-result'), (8, 'open-arg'),
          (16, 'LEAK: nothing is freed')]
 MAGIC = 0x47364234
@@ -61,6 +62,10 @@ def show(path, imports):
         print('  wraps installed: %s%s'
               % (', '.join(got) or 'none',
                  '   MISSING: ' + ', '.join(miss) if miss else ''))
+    if BOX_LAUNCH < len(w) and w[BOX_LAUNCH]:
+        n = w[BOX_LAUNCH]
+        print('  LAUNCH %d%s' % (n, '' if n == 1 else
+              '   <- this is a relaunch; launch 1 wrote g6box1.log'))
     name = ''.join(chr(h) if 32 <= h < 127 else ''
                    for k in range(BOX_NAME, min(BOX_NAME + BOX_NAME_WORDS, len(w)))
                    for h in (w[k] & 0xFFFF, w[k] >> 16))
