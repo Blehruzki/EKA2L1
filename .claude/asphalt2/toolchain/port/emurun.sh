@@ -45,3 +45,5 @@ j = s.rindex('\n', 0, j) + 1      # end of the last table row
 open(path, 'w').write(s[:j] + row + s[j:])
 PY
 echo "records: $REC   launches: ${LAUNCHES:-?}   ends: $FAULT   -> logged as E$N in ROUNDS.md (finish its last column)"
+echo
+python3 "$P/rules.py"

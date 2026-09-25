@@ -9,6 +9,13 @@ not a repeat of. If I state a finding, ask which row established it. If a row's
 "settled" column is empty, that round bought nothing and I should say so rather
 than let it blur into the next one.
 
+**The three confirmations are generated, not remembered.**
+`toolchain/port/rules.py` prints them from this file -- what is logged, how
+many rows a new test has to be checked against, and how far we are with which
+round was best. They were given for rounds 47 to 50 and then dropped at round
+51 without my noticing. If a reply of mine reports a result or asks for a run
+and does not carry them, that is the lapse, not an oversight in the format.
+
 **Both machines are in here.** The emulator table below came late: fifteen
 emulator runs happened while only the hardware rounds were being written down,
 and they existed only as prose in `PORTING.md`, where a repeat could not be
@@ -125,34 +132,30 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 
 ## Where we are
 
-**Furthest: 136 traced events** (builds 44 and 45, and build 48's box puts all
-three of its runs in the same 128-159 window). The run gets through the whole
-resource-loading sequence, opens `cwivenc.dat` successfully, and dies inside a
-`User::Free`. Build 48 is where it stopped being a lottery: three runs,
-byte-identical logs.
+**Furthest: 179 traced events** in the emulator (build 52), **144 on the
+phone** (build 51). Both are past the wall that held from build 44 to build 50
+at 128. The run now gets through the whole resource-loading sequence, past the
+store that was poisoning `this->[4]`, through two `RLibrary::Load`s it had
+never reached, and out via an orderly `User::Leave` / `User::Exit`.
 
-**Best round so far: 50.** It reached the actual fault -- `0x139588`,
-`ldr r2, [r1, #0x240]`, with a `r1` nobody ever wrote -- and in doing so joined
-our port's failure to the one EKA2L1 has always had with the original binary.
-Everything before it was looking at the wrong instruction.
+**Best round so far: 51.** It is the one that moved the port rather than
+describing it: NOP one word of the game's code and the phone goes 128 -> 144
+traced events, 248 -> 262 imports, following the emulator's new sequence import
+for import. First advance on hardware since build 44, and the first candidate
+fix this project has produced instead of another measurement.
 
-**Runner-up: 49.** It answered a question five rounds had only
-narrowed, and answered it in the direction that retires them: with every
-deallocation turned into a no-op, the run stops in exactly the same place. The
-fault is not in `User::Free`, was never in the cell, and the whole
-"which property of this cell is damaged" programme is closed. It is also the
-cheapest round in the file -- one switch, already in the source.
+**Runner-up: 49**, which retired five rounds of heap forensics in one switch by
+turning every deallocation into a no-op and showing the run stopped in exactly
+the same place. `User::Free` was never the wall.
 
-**Runner-up: 48**, which made the run deterministic (three byte-identical logs)
-and established the last of the measurements 49 then made moot.
+**Also load-bearing: 50**, which put the fault at `0x139588` and showed it was
+the same instruction EKA2L1 cannot run the original N-Gage binary past; and
+**36**, the `RFile::Close` fix that ended a month of reboots.
 
-**Before those: 44.** It was the first to show that "64 records" -- which
-five earlier rounds had been scored on -- was our own log block hiding the
-tail, and it reached 136 with the free matching working. Everything since is
-refinement of what it exposed.
-
-Before those, **36**, the `RFile::Close` fix: it ended a month of reboots and
-is the single change that made hardware rounds informative again.
+**Build 52 is out and unanswered.** It does not change behaviour: it stamps a
+launch counter into the box and gives each launch its own log file, because the
+emulator turns out to run the app **twelve times** in a 45-second session and
+every log ever read here was whichever launch happened to be last.
 
 ### What is known at the point of failure
 

@@ -48,6 +48,18 @@ def unfinished_runs():
     return [r for r in rows if r.startswith('|') and r.rstrip().endswith('TODO |')]
 
 
+def confirmations():
+    """The three the user asked for, printed from the record.
+
+    They were given for rounds 47 to 50 and then quietly stopped, which is the
+    same shape as every other lapse in this project: a discipline held while it
+    was new and dropped once it was routine. So it is not remembered any more.
+    """
+    import rules
+    print()
+    rules.main()
+
+
 def main():
     bad = unfinished_runs()
     if bad:
@@ -67,6 +79,7 @@ def main():
     grew = len(sections(new)) - len(sections(old))
     if grew <= 0:
         print('checkrec: no new sections')
+        confirmations()
         return 0
     if head_of(new) == head_of(old):
         print('checkrec: %d new section(s) and the head is unchanged.' % grew)
@@ -74,6 +87,7 @@ def main():
         print('  commit why this one changes nothing at the top.')
         return 1
     print('checkrec: %d new section(s), head updated' % grew)
+    confirmations()
     return 0
 
 
