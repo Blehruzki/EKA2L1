@@ -22,7 +22,12 @@ cp "$S/out/gate6.rsc" $D/resource/apps/gate6.rsc
 cp "$S/out/gate6_reg.rsc" $D/private/10003a3f/import/apps/gate6_reg.rsc
 rm -f $C/g6box*.log $D/g6box*.dat $C/g6box*.dat
 (cd /home/user/EKA2L1/build/bin && timeout "${TMO:-120}" ./eka2l1_qt --device RM-409 --run 0xE0001006 >"$S/g6.log" 2>&1)
-pkill -x eka2l1_qt 2>/dev/null
+# The emulator does not always go on SIGTERM, and a run left behind holds its
+# memory and a few per cent of a core. Enough of them and a later launch cannot
+# allocate the image -- which is where the G6MEM panics were coming from -- and
+# every timing in the session is off. Always match exactly: `pkill -f` would
+# also match the shell that started it.
+pkill -x eka2l1_qt 2>/dev/null; sleep 1; pkill -9 -x eka2l1_qt 2>/dev/null
 FIRSTLOG=$(ls -S "$C"/g6box[0-9].log 2>/dev/null | head -1)
 cp -f "$FIRSTLOG" "$S/emu-latest.log" 2>/dev/null
 LAUNCHES=$(ls "$C"/g6box[0-9].log 2>/dev/null | wc -l)

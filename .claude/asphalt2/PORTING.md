@@ -68,6 +68,15 @@ here and the section it overturns is marked.*
   all answer **KErrAccessDenied** for any name on E:. The protection's question
   is "am I on a real N-Gage game card?", asked two ways, and this port answers
   both wrongly by construction.
+- **The game's two threads are created and never entered.** A crumb that
+  *panics* (a logging one cannot work: an `RFs` session belongs to the thread
+  that made it) fires at the control site `0xcc7e4` and never at `0xb8660` or
+  `0xcb710`. So `RThread::Create` and `RThread::Resume` -- both answered by our
+  own lookup, old 289 -> 1158 and old 954 -> 1795 -- are not starting the
+  threads. An `RThread` is a handle whose layout the shim has never considered.
+- **Eleven stale emulators were the `G6MEM`.** `emurun.sh` used `pkill -x`
+  without a follow-up `-9`; the emulator does not always go on SIGTERM. Cleared,
+  a clean run has no panics at all. The script now force-kills after a second.
 - **`frames 1` is one `RunL` that never returns**, not a timer fault. The game
   enters its frame function at record 65 and the remaining 5273 records all
   happen inside it. At the end it resolves `RThread::Create` and
@@ -4323,3 +4332,51 @@ Whether the SoundServer thread runs, and what the main thread is blocked on. The
 second is the harder one: a thread waiting in the kernel is invisible to a log
 made of call records, so it needs a different instrument -- a marker the
 *worker* writes, or the emulator's own view of the thread's state.
+
+## The threads are created and never entered
+
+Two questions were left: does the SoundServer thread run, and what is the main
+thread blocked on. The first is answered, and answering it took two attempts
+because the first instrument was silent in exactly the way the bug is.
+
+**A breadcrumb at each worker's entry point logged nothing** -- and could not
+have. An `RFs` session belongs to the thread that made it, so a write from one
+of the game's threads through the main thread's handle answers an error and
+leaves no record. "No record" and "never ran" look identical, which is the
+mistake this file has now made three times.
+
+So the crumbs **panic** instead. A panic needs no handle and the emulator prints
+the category. And a third crumb went in at `0xcc7e4`, the object maker, which
+the log has running on every launch, as a control:
+
+```
+panicked with category: G6WRK and exit code: 972      <- the control, 0xcc7e4
+(nothing for 970, 0xb8660)                            <- SoundServer
+(nothing for 971, 0xcb710)
+```
+
+**The mechanism works and the workers do not run.** The game creates two
+threads -- the emulator names one `SoundServer`, both start at offsets inside
+the loaded image, so they are the game's own code with our shim under them --
+resumes them, and neither ever reaches its first instruction.
+
+That is now the thing to explain. `RThread::Create` and `RThread::Resume` are
+both resolved through our own lookup, old 289 -> new 1158 and old 954 -> new
+1795, and an `RThread` is a handle whose layout the shim has never had to think
+about. A `Resume` on the wrong handle would look exactly like this.
+
+## Eleven emulators
+
+`emurun.sh` ended with `pkill -x eka2l1_qt`, and the emulator does not always go
+on SIGTERM. **Eleven of them were still alive**, the oldest forty minutes old,
+each holding its memory and three or four per cent of a core. That is where the
+`G6MEM` panics came from: our loader asking for 1.6 MB in a machine that had
+eleven dead emulators in it. With them cleared, a clean run has **no panics at
+all**.
+
+The script now sends SIGKILL a second later. `-x` stays: `pkill -f` would match
+the shell that started it.
+
+That is the third harness artefact in two sessions -- after the forty-five
+second timeout and the dead Xvfb -- and all three produced numbers that looked
+like the port getting worse.

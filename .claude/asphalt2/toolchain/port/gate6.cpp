@@ -1399,6 +1399,25 @@ static const u32 kLateCrumb[] = {
 // starts, every name it compares, and every step to the next node. r5 is the
 // node, so each record carries it.
 enum { PLANT_WALK = 0, CRUMB_WALK_FIRST = 960 };
+// The two threads the game creates on its way out of the first frame. The
+// emulator names one of them `SoundServer` and reports both starting inside the
+// loaded image -- `base + 0xb8660` and `base + 0xcb710` -- so they run the
+// game's own code with our shim under them. Whether they *run* is the question:
+// the main thread goes quiet the moment it resumes them, and a thread blocked
+// in the kernel makes no traced calls, so nothing in the log can tell the
+// difference between "waiting for a worker that is running" and "waiting for
+// one that never started".
+//
+// A breadcrumb at each entry point answers it. Both write through the same log
+// as the main thread, which is not something this file has done before; the
+// main thread is idle by then, so one record each is a risk worth taking to
+// find out.
+enum { PLANT_WORKERS = 0, CRUMB_WORKER_FIRST = 970 };
+// The third entry is the control. `0xcc7e4` is the object maker and the log has
+// it running on every launch, so if the mechanism works at all it must panic
+// there. Without it, "no G6WRK" means either the workers never ran or the crumb
+// was never planted, and those are not the same answer.
+static const u32 kWorkerCrumb[] = { 0x000b8660, 0x000cb710, 0x000cc7e4 };
 static const u32 kWalkCrumb[] = {
     0x000ccb68,     // the caller: r0 = *r5, the container it searches
     0x000d9484,     // case 0: r4 = head->[+4]
@@ -1470,8 +1489,19 @@ extern "C" void gate6_crumb_r5(u32 marker, Context *c, u32 site, u32 r5)
     log_block(c);
 }
 
+#define CAT_WRK {'G','6','W','R','K'}
+
 extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
 {
+    // The worker crumbs cannot use the log. An RFs session belongs to the
+    // thread that made it, so a write from one of the game's threads through
+    // the main thread's handle answers an error and leaves no record -- which
+    // is indistinguishable from the thread never having run, and that is the
+    // thing being asked. So they panic instead. A panic needs no handle and the
+    // emulator prints the category, so if the worker runs, `G6WRK` says so.
+    if (PLANT_WORKERS && marker >= (u32)CRUMB_WORKER_FIRST &&
+        marker < (u32)CRUMB_WORKER_FIRST + 8)
+        PANIC(CAT_WRK, (int)marker);
     stack_mark(c);
     if (marker - CRUMB_FIRST < BOX_MARKERS)
         c->boxData[BOX_HITS + (marker - CRUMB_FIRST)]++;
@@ -3758,6 +3788,11 @@ static u32 load_and_start()
         for (u32 i = 0; i < sizeof kProbe / sizeof kProbe[0]; i++)
             if (kProbe[i].at + 4 <= h->codeSize)
                 probe_plant(ctx, base, kProbe[i], PROBE_FIRST + i);
+
+    if (PLANT_WORKERS)
+        for (u32 i = 0; i < sizeof kWorkerCrumb / sizeof kWorkerCrumb[0]; i++)
+            if (kWorkerCrumb[i] + 4 <= h->codeSize)
+                crumb_plant(ctx, base, kWorkerCrumb[i], CRUMB_WORKER_FIRST + i);
 
     if (PLANT_CRUMBS)
         for (u32 i = 0; i < sizeof kCrumb / sizeof kCrumb[0]; i++)
