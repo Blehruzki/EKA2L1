@@ -1035,6 +1035,14 @@ static void box_write(Context *c)
 
 static void box_flush(Context *c)
 {
+    // Guard both calls, not just the write. Build 55 put the guard inside
+    // box_write and left this flush unguarded, so a failed box replace still
+    // ended in `RFile::Flush` on handle 0 -- the same bad handle, one line
+    // further down. The stub launch went from two records to four and then
+    // died in exactly the same place, which is what a half-applied fix looks
+    // like.
+    if (!c->boxFile[0])
+        return;
     box_write(c);
     file_flush(c->boxFile);
 }

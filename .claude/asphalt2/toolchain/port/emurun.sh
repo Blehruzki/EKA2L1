@@ -23,10 +23,11 @@ cp "$S/out/gate6_reg.rsc" $D/private/10003a3f/import/apps/gate6_reg.rsc
 rm -f $C/g6box*.log $D/g6box*.dat $C/g6box*.dat
 (cd /home/user/EKA2L1/build/bin && timeout "${TMO:-45}" ./eka2l1_qt --device RM-409 --run 0xE0001006 >"$S/g6.log" 2>&1)
 pkill -x eka2l1_qt 2>/dev/null
-cp -f "$C"/g6box1.log "$S/emu-latest.log" 2>/dev/null
+FIRSTLOG=$(ls -S "$C"/g6box[0-9].log 2>/dev/null | head -1)
+cp -f "$FIRSTLOG" "$S/emu-latest.log" 2>/dev/null
 LAUNCHES=$(ls "$C"/g6box[0-9].log 2>/dev/null | wc -l)
 
-REC=$(python3 -c "import os;p='$C/g6box1.log';print(os.path.getsize(p)//8 if os.path.exists(p) else 0)")
+REC=$(python3 -c "import os,sys;p=sys.argv[1] if len(sys.argv)>1 and sys.argv[1] else '';print(os.path.getsize(p)//8 if p and os.path.exists(p) else 0)" "$FIRSTLOG")
 FAULT=$(grep -oE 'Access violation reading address 0x[0-9A-Fa-f]+' "$S/g6.log" | tail -1 | grep -oE '0x[0-9A-Fa-f]+')
 [ -z "$FAULT" ] && FAULT="--"
 

@@ -2810,3 +2810,45 @@ can only be tested on the phone.**
 If the KERN-EXEC 0 goes away, it was ours, and the remaining failure is the
 single KERN-EXEC 3 at the end of the full launch. If it does not, the stub dies
 somewhere else in the loader and its log will now carry the tick to place it.
+
+## Round 55: the ordering, and a half-applied fix
+
+Two results, one of them settling a question that had been open since round 54.
+
+**The full launch runs first.** Each run's stub now carries its own tick, and
+against the full launch's box tick:
+
+| run | full launch | stub | gap |
+|---|---|---|---|
+| 1 | 78064 | 78177 | +113 |
+| 2 | 80520 | 80631 | +111 |
+| 3 | 82699 | 82809 | +110 |
+
+About 1.7 seconds, three times out of three. So the launch this project has
+been measuring for fifty rounds **is** the first one, and the stub is what
+happens after it panics. That worry can be closed.
+
+**And the stub's box `file_replace` returns -6, `KErrArgument`** -- the same
+value every run. Not `KErrInUse`, not `KErrAccessDenied`. Unexplained.
+
+### The fix was half-applied
+
+Build 55 put the handle guard inside `box_write`. `box_flush` calls
+`box_write` **and then `file_flush` on the same handle**, and I left the second
+one alone:
+
+```c
+static void box_flush(Context *c)
+{
+    box_write(c);            // guarded in build 55
+    file_flush(c->boxFile);  // not guarded -- RFile::Flush on handle 0
+}
+```
+
+So the stub went from two records to four and died in the same place. That is
+what a half-applied fix looks like, and the shape of it is familiar: the guard
+was added where the bug was *described*, not everywhere the handle is used.
+Build 56 guards `box_flush` itself, which covers both calls.
+
+`log_block` was checked at the same time and has always guarded correctly. The
+only other unguarded writes are in the dump path, which is off.
