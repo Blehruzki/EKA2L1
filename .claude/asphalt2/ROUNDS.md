@@ -18,6 +18,20 @@ let a stub row survive a commit, so "I forgot to log it" is not available.
 The phone is a **Nokia N95** (Symbian 9.2, S60 3rd FP1). The emulator runs an
 RM-409 (5320, 9.3 / FP2). Counts are *traced events* unless stated.
 
+**The phone shows two panics per run, and has for many rounds:** one
+**KERN-EXEC 0** and one **KERN-EXEC 3**. That was mentioned in rounds up to
+about 40 and then stopped being mentioned, and I stopped asking -- so it went
+unrecorded through every round since, while every theory in this file was built
+around a single failure. KERN-EXEC 3 is an access violation; **KERN-EXEC 0 is a
+bad handle**, which is a different fault with a different cause. Both are
+kernel-side, so neither is one of our own `G6xxx` panics.
+
+Two panics most likely means two *processes*: the app, and something starting
+it again afterwards. The emulator shows exactly that shape -- the run ends with
+`User::Leave`, `User::Exit`, and then our loader panics `G6MEM` failing to
+allocate the image on a relaunch. **Which of the two the log we read belongs to
+is not established**, and it needs to be before the next theory is built on it.
+
 ## Emulator runs
 
 Hardware rounds are not the only tests. Most of the work happens here, and the
@@ -56,6 +70,7 @@ them, and say so.
 | E23 | probe r8 and r6 at 0x108290, and r4 at 0x1082a0 | 1570 | `0x1C976000` | `r8 = 0x42d08240`, matching the inversion's `r4 = 0` candidate exactly. `755139455 * r8 = 0x1c975dc0`, the observed value -- **the whole chain is now verified arithmetic**, and `r8` arrives already wrong |
 | E24 | read [field + 0x240] at every station, the word 0x139588 dies on | 1653 | `0x1C976000` | **The pre-call value is the right one.** `[field + 0x240]` -- the exact word `0x139588` dies reading -- is a good heap pointer at all 83 stations before the store. The field held a valid object and the call overwrote it |
 | E25 | NOP the store at 0x1082c0 -- keep the pre-call value in this->[4] | 1832 | `--` | **The wall comes down.** NOP the store and there is no access violation at all: 292 imports against 248, on through two more `RLibrary::Load`s, and the game then *leaves* cleanly. A workaround, not an explanation -- but the first thing to move this since build 44 |
+| E26 | wrap RLibrary::Load -- its name from r1, and its return code | 2097 | `--` | Every `RLibrary::Load` in the run resolves: `euser.dll` x12, `efsrv.dll` x5, all `KErrNone`. The only failure is `c:\system\cwdynlog.dll` -> `KErrNotFound`, which is the known protection path. **The bad-handle theory does not hold here.** The emulator run now ends with no fault at all |
 
 <!-- EMURUN -->
 

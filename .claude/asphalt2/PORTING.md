@@ -152,10 +152,31 @@ here and the section it overturns is marked.*
 - EKA2L1 cannot run the original N-Gage binary either (KERN-EXEC 3 at
   0x139588). Our port gets *further* under the emulator than the original does.
 
+### Two panics, not one
+
+**Every run on the phone raises one KERN-EXEC 0 and one KERN-EXEC 3**, and has
+done for many rounds. It was reported up to about round 40, then stopped being
+mentioned, and I stopped asking -- so every theory in this file since has been
+built around a single failure while the phone was showing two.
+
+KERN-EXEC 3 is an access violation. **KERN-EXEC 0 is a bad handle** -- a
+different fault, with a different cause. Both are kernel-side, so neither is
+one of our own `G6xxx` panics.
+
+Two panics most likely means two *processes*: the app, and something starting
+it again afterwards. The emulator shows exactly that shape -- `User::Leave`,
+`User::Exit`, then our loader panicking `G6MEM` while failing to allocate the
+image on a relaunch. **Which run the log we read belongs to is not
+established.** The log is written from position 0 every time, so a relaunch
+overwrites the first run's record with its own, and every log in this file may
+be the second run rather than the first. Nothing more should be built on the
+logs until that is settled.
+
 ### Retracted, and why
 
 | Believed | Why it was wrong |
 |---|---|
+| The port has one failure per run | It has two. One KERN-EXEC 0 and one KERN-EXEC 3, every run, for dozens of rounds -- and the logs may be recording whichever process ran second. |
 | The file server was overflowing a 31-byte cell | The allocation ring was searched in slot order and a stale entry won. There was no overflow. |
 | The reboot was a write ceiling, then a write rate, then extending writes | Three theories fitted to the shadow of the closed-handle bug. A build writing the log heavily does not reboot once the handle is fixed. |
 | Builds 38, 39 and 40 regressed | Each stopped early on a single run. Build 40 later reached 128. Two working instruments were reverted over it. |
@@ -2569,3 +2590,33 @@ tolerates nothing.
 And it **is** the first candidate fix this project has had rather than another
 measurement. The next question is what `User::Leave` is complaining about --
 but that is a question at a place the port has never stood before.
+
+## Every library the game loads, and the one that does not
+
+E26 wrapped `RLibrary::Load` on both sides: `arg_thunk` widened to keep `r1`
+(the file name, the one register it used to throw away) and a `result_thunk`
+for the return code.
+
+| called from | name | result |
+|---|---|---|
+| `d5058`, `d589c` x3, `d516c`, `d54b8`, `13f588` x5, `10b08c` x2 | `euser.dll` | `KErrNone` |
+| `13964c` x5 | `efsrv.dll` | `KErrNone` |
+| `e815c` | `c:\system\cwdynlog.dll` | **`KErrNotFound`** |
+
+So the game resolves euser and efsrv **by name at runtime** rather than through
+its import table -- which is worth knowing on its own, because those lookups go
+to the *phone's* ordinals, not to ours, and this file's standing worry about
+ordinals across feature packs applies to every one of them.
+
+The two Loads it reaches only after the wall came down, `0x13964c` and
+`0x13f588`, both succeed. The only failure in the run is `cwdynlog.dll`, which
+this file already records as a protection path and which is *supposed* to be
+missing. **So a `Lookup` on an unopened handle is not where the KERN-EXEC 0
+comes from**, and that theory is closed before it cost a round.
+
+Widening `arg_thunk` moved every literal offset in it by four bytes. That exact
+arithmetic went wrong once before -- the store landed in the log buffer instead
+of the field, and cost a round -- so each offset is now spelled out beside the
+instruction that uses it, and `ARG_WORDS` went from 16 to 20.
+
+The emulator run now ends with **no fault at all**.
