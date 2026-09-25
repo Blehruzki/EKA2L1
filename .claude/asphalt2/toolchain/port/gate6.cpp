@@ -214,6 +214,10 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_NEXT_HDR = 888,     // and the header of the cell after it
        NOTE_CALLER = 889,       // the return address a wrapped call was made from
        NOTE_WATCH_EARLY = 844,  // the allocation the watch was latched on, early
+       NOTE_IMAGE_AT = 845,     // an image word that is not what was loaded
+       NOTE_IMAGE_NOW = 846,    // ... and what it says now
+       NOTE_SCRATCH = 847,      // a word of the game's scratch code chunk
+       NOTE_IMAGE_WORD = 848,   // ... beside the image word it may have become
        NOTE_WATCH = 895,        // and one word of a struct every probe re-reads
        NOTE_WATCH_AT240 = 896,  // ... and what 0x139588 would read out of it
        NOTE_CELL_AT = 881,      // the cell a read buffer sits in
@@ -632,6 +636,10 @@ struct Context {
     u32 boxData[BOX_WORDS];
     u32 pathIndex;          // which candidate the game was loaded from
     u32 codeBase;           // where the game was loaded, so callers read as offsets
+    u32 gameEntry;          // the image's own entry point, for EDllThreadAttach
+    u32 imageWas[4];        // words of the image as loaded, to catch a rewrite
+    u32 scratchSeen;        // the game's 0x1000 local code chunk, once it exists
+    u32 attached;           // how many threads have had it called for them
     u32 frames;             // how many times the frame loop has come round
     u32 spTop;              // where the stack started
     u32 spLow;              // and the deepest it has been seen
@@ -862,8 +870,45 @@ static void watch_latch(Context *c, u32 p)
     log_event(c, NOTE_WATCH_EARLY, p);
 }
 
+// The code the dead call runs through is not the code that was loaded: the
+// emulator reads 0x979f568c at the faulting pc where the file has 0x15943000.
+// So something rewrites the image itself. These are the three words that
+// matter -- the address the poisoned vtable slot points at, the start of the
+// function it lands in, and the instruction it dies on -- reported whenever one
+// stops matching what the loader put there.
+enum { IMAGE_WATCH = 1 };
+static const u32 kImageWatch[] = { 0x0013c1fc, 0x0013c424, 0x0013c478 };
+
+static void image_note(Context *c)
+{
+    if (!IMAGE_WATCH || !c->codeBase)
+        return;
+    for (u32 i = 0; i < sizeof kImageWatch / sizeof kImageWatch[0]; i++) {
+        const u32 now = *(const u32 *)(c->codeBase + kImageWatch[i]);
+        if (now == c->imageWas[i])
+            continue;
+        c->imageWas[i] = now;
+        log_event(c, NOTE_IMAGE_AT, kImageWatch[i]);
+        log_event(c, NOTE_IMAGE_NOW, now);
+        // And, once only, the two regions side by side. The game builds code in
+        // a 0x1000 local code chunk and the watched slot held that chunk's base
+        // before it was poisoned, so the obvious reading is that this rewrite is
+        // the game copying the chunk into place -- in which case the garbage
+        // came out of the chunk and the copy is innocent. Eight words of each
+        // settles which.
+        if (c->scratchSeen && i == 0) {
+            for (u32 k = 0; k < 8; k++) {
+                log_event(c, NOTE_SCRATCH, ((const u32 *)(c->scratchSeen + 0x1f0))[k]);
+                log_event(c, NOTE_IMAGE_WORD,
+                          ((const u32 *)(c->codeBase + 0x0013c1f0))[k]);
+            }
+        }
+    }
+}
+
 static void watch_note(Context *c)
 {
+    image_note(c);
     // Four words, not one. A deliberate store into this->[4] touches that word
     // and nothing else; a stray write -- an overrun from the cell before it,
     // or a copy that ran long -- takes its neighbours with it. One record
@@ -872,6 +917,10 @@ static void watch_note(Context *c)
     if (!c->watchAt)
         return;
     const u32 *o = (const u32 *)c->watchAt;
+    // Slot 3 holds the local code chunk's base until the worker overwrites it,
+    // so this is the one chance to remember where that chunk is.
+    if (!c->scratchSeen && (o[3] & 0xFF0FFFFF) == 0x04000000 && o[3] != c->codeBase)
+        c->scratchSeen = o[3];
     for (u32 i = 0; i < 4; i++)
         log_event(c, NOTE_WATCH, o[i]);
     // And, when the field still looks like an address, the word 0x139588 will
@@ -1405,7 +1454,7 @@ static const Patch kGateTwo[] = {
     { 0x0013f6c8, 0xE3A04001 },     // mov r4, #1, in place of `movne r4, #0`
 };
 
-enum { PLANT_PROBES = 1, PROBE_FIRST = 990, PROBE_BYTES = 80 };
+enum { PLANT_PROBES = 0, PROBE_FIRST = 990, PROBE_BYTES = 80 };
 // A probe from this marker on says nothing unless the watched word has changed
 // since the last one. That makes a hot site usable: 0x1037ac is the jump table
 // the whole obfuscated function dispatches through, so a probe on it is a
@@ -1518,6 +1567,12 @@ static const Probe kProbe[] = {
     // store is the identity: the two chains around it multiply to exactly 1
     // mod 2^32, so the value survives if and only if r5 is zero.
     { 0x000cbb68, 10, 5 },
+    // 1003: where the bad offset comes from. Everything that ends up in
+    // [sp,#88] is a transform of one loaded word: 0xcb7e0 reads a pointer out
+    // of [sp,#92] and 0xcb7e4 loads the word at it. The station is on the
+    // instruction after that load, so r5 is the pointer -- and the probe prints
+    // the eight words at it -- and r12 is the value the whole chain starts from.
+    { 0x000cb7e8,  5, 12 },
 };
 
 // Three regions of this image only ever exist decrypted, and a breadcrumb
@@ -1563,7 +1618,10 @@ enum { PLANT_WALK = 0, CRUMB_WALK_FIRST = 960 };
 // thread rather than calling the function it was given. The crumbs panic by
 // design, so leaving them on would kill the worker on its first instruction,
 // which is the opposite of what is wanted now.
-enum { PLANT_WORKERS = 1, CRUMB_WORKER_FIRST = 970 };
+enum { PLANT_WORKERS = 0, CRUMB_WORKER_FIRST = 970 };
+// EKA1's DLL entry reasons, in the order the kernel uses them.
+enum { EDLL_PROCESS_ATTACH = 0, EDLL_THREAD_ATTACH = 1 };
+enum { ATTACH_THREADS = 1 };
 // The third entry is the control. `0xcc7e4` is the object maker and the log has
 // it running on every launch, so if the mechanism works at all it must panic
 // there. Without it, "no G6WRK" means either the workers never ran or the crumb
@@ -1667,6 +1725,26 @@ extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
     // log now goes to RDebug rather than the file, so a crumb can simply be
     // recorded, and a crumb that records is one that can be planted fourteen
     // times across a function to find where inside it something happens.
+    //
+    // And the first two markers are the two worker entry points, which is the
+    // one place a thread's own setup can be done. EKA1 calls every loaded
+    // image's entry point with EDllProcessAttach when the process starts and
+    // **EDllThreadAttach when a thread starts** -- that second call is how a
+    // DLL gets per-thread state, and it is what EKA2L1's own EKA1 bootstrap
+    // does before it calls the thread function. Our loader only ever made the
+    // process call, on the main thread, so the worker ran with whatever
+    // per-thread state the image never got. `_start` cannot do it: the thread
+    // branch there has no way to reach the context, because this image
+    // declares no writable data and a static would fault on hardware. A crumb
+    // can, because its trampoline carries the context as a literal.
+    if (PLANT_WORKERS && ATTACH_THREADS && !on_main_thread(c) &&
+        (marker == (u32)CRUMB_WORKER_FIRST || marker == (u32)CRUMB_WORKER_FIRST + 1) &&
+        c->gameEntry) {
+        typedef int (*EntryFn)(int);
+        c->attached++;
+        note(c, c->attached, 'a');
+        ((EntryFn)c->gameEntry)(EDLL_THREAD_ATTACH);
+    }
     stack_mark(c);
     if (marker - CRUMB_FIRST < BOX_MARKERS)
         c->boxData[BOX_HITS + (marker - CRUMB_FIRST)]++;
@@ -4267,7 +4345,10 @@ static u32 load_and_start()
     // then apparc asks ordinal 1 for the application object.
     typedef int (*EntryFn)(int);
     typedef void *(*Ordinal1Fn)(void);
-    ((EntryFn)(base + h->entryPoint))(0);
+    ctx->gameEntry = (u32)(base + h->entryPoint);
+    for (u32 i = 0; i < sizeof kImageWatch / sizeof kImageWatch[0]; i++)
+        ctx->imageWas[i] = *(const u32 *)(base + kImageWatch[i]);
+    ((EntryFn)ctx->gameEntry)(EDLL_PROCESS_ATTACH);
     const u32 ord1 = *(const u32 *)(raw + h->exportDirOffset);
     void *app = ((Ordinal1Fn)(base + ord1))();
     if (!app) PANIC(CAT_NUL, (int)(forwarded * 1000 + missing));

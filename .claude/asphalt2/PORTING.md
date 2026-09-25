@@ -123,8 +123,25 @@ here and the section it overturns is marked.*
   thread an event goes to RDebug instead, as `G6t` and `G6:`. The thread is
   told apart by its stack, which is the only thing here that is per-thread
   without asking euser for it.
-- **The worker corrupts one word of the main thread's state, and that is the
-  whole of the remaining fault.** With the worker created and resumed but its
+- **The game checksums its own code from the worker thread, so a planted probe
+  changes the answer.** This is now the first thing to suspect whenever an
+  instrument and a conclusion disagree. The small worker at `0xcb710` walks
+  image addresses -- `0x47ca714`, `0x47ca71c`, `0x47cc864` -- loading
+  *instruction words* and running them through the shift-add chains, and the
+  value it derives becomes a destination pointer. With probes planted it read
+  `0xea030f81`, the branch to our own trampoline, where `add r0, r5, #0x28`
+  belongs, and the pointer landed in the middle of the image; the game then
+  wrote its data through it, over its own code, and the main thread died calling
+  into the wreckage. **With `PLANT_PROBES` and `PLANT_WORKERS` off the fault is
+  gone entirely** (E113): no rewrite, no `KERN-EXEC 3`, and SoundServer created
+  for the first time. Fifteen runs, E98 to E112, were spent on a fault the
+  instrument was causing. Note the limit of the claim: the protection patch at
+  `0xe6f30` still modifies code and the run is fine, so it is not that *any*
+  change is fatal -- only that the checksummed region includes what we were
+  planting in, and which sites those are is not yet known.
+- ~~**The worker corrupts one word of the main thread's state, and that is the
+  whole of the remaining fault.**~~ **Our own doing (E113); the analysis below
+  is still correct as mechanism.** With the worker created and resumed but its
   body not run (`RUN_WORKERS 0` in `gate6.s`, which is the control), the main
   thread reaches 337 core events; with it running, 190 and a `KERN-EXEC 3`. The
   two records are **identical for 806 events** and then differ by exactly one
