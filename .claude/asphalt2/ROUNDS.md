@@ -136,7 +136,7 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 53 | Build 52 with the name built on the stack, plus a build-time guard | 1 | **reboot**, one launch only (`g6box1.log` + `.dat`) | The write does not fault any more -- the files exist. But a **reboot**, which has not happened since build 36, and only one launch where the emulator does twelve. **I broke rule 2**: 53 carries three changes against the last build known to survive (51) -- the launch counter's `RFile` open/read/close, the `RLibrary::Load` wrap, and a widened `arg_thunk` |
 | 54 | Build 51 + per-launch log name from the clock, one variable | 3 | **no reboot**; every run is exactly 2 launches: one of 1563 records, one of **2** | **The reboot was one of the three things build 53 carried** -- it is gone with them reverted. And the second launch is visible for the first time: it writes `image loaded at` and `chunk ends at`, then dies. It never writes a box |
 | 55 | **Guard the box write**, and log the tick + the box replace result | 3 | still KERN-EXEC 0 and 3; stubs now 4 records instead of 2 | **The ordering is settled: the full launch is FIRST**, the stub is the relaunch ~110 ticks (1.7 s) later, all three runs. So every measurement in this file was the first launch. And the stub's box `file_replace` returns **-6, KErrArgument**, every time. The guard was incomplete: `box_flush` still calls `file_flush` on the same handle |
-| 56 | Guard `file_flush` too -- the other use of the same handle | pending | – | – |
+| 56 | Guard `file_flush` too -- the other use of the same handle | 3 | KERN-EXEC 0 gone in 2 of 3 runs; **CONE 2** new in all three; relaunch goes from 4 records to **148** | **The guard worked.** The relaunch no longer dies on our bad handle -- it runs into the framework and fails honestly on `RFile::Open` = **-14, KErrInUse**, because the panicked first process still holds the game's data file. The relaunch is a *consequence*, not a second bug |
 
 ## Where we are
 
@@ -392,3 +392,36 @@ ever measured is the second launch -- which would be worth knowing before
 another theory is built on it.
 
 That is one record: the tick, written into the log rather than only the box.
+
+### What build 56 found
+
+Ten log files across three runs, in three shapes:
+
+| shape | records | what it does |
+|---|---|---|
+| the first launch | 1535-1551 | 144 traced events, the usual ending -- KERN-EXEC 3 |
+| the relaunch | 148 | into the framework, then `RFile::Open` -> **-14 `KErrInUse`** on `6RBC.dat`, and the game bails |
+| one more | 69 | armed its box (`0 traced events`, `reached nothing`) and died in `timer slot 3` |
+
+**The relaunch is explained and it is not a bug of ours.** The first process
+panics still holding the game's data file; the relaunch opens it, gets
+`KErrInUse`, and the game takes its own error path. Fix the first launch and
+the relaunch stops existing. Nothing more should be spent on it.
+
+**CONE 2 is new, and it is most likely progress rather than a regression.**
+Before build 56 the relaunch died on our bad handle at four records, before the
+framework had done anything. It now runs 148 records *into* cone.dll and fails
+there. A panic from cone is what a relaunch that gets far enough to fail
+properly looks like.
+
+**The KERN-EXEC 0 went away in two runs of three.** Not all three, so the guard
+is not the whole of it -- but it is most of it, and what remains is no longer
+the first thing in the way.
+
+### Where this leaves the target
+
+The first launch is the only one that matters, and it dies at **144 traced
+events with KERN-EXEC 3**. The emulator's first launch reaches **179** and
+leaves cleanly. So the phone dies about thirty-five events *before* the
+emulator's `User::Leave`, and that gap has never been instrumented -- every
+probe in this file sits at or before the wall that came down in build 51.
