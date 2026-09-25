@@ -104,7 +104,7 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 48 | Read the *neighbouring* cell's header, ring-vouched | 3 | 128 events, all three identical, dies freeing `0x7b89a8` | **The header is right, and the neighbour corroborates it.** The ring independently holds an allocation at `next + 4`, so the cell really does end where its header says. Nothing about the free is corrupt |
 | 49 | **Free nothing.** All three deallocation ordinals answered by a no-op | 3 | 128 events, identical, stops at the same 99th free | **`User::Free` is not the wall.** Nothing was freed -- every freed pointer in the run is unique where build 48 reused them -- and the run stops in exactly the same place. Retires rounds 44-48 |
 | 50 | Six probes along the stretch after the fatal delete | 3 | identical; 990, 991, 992 reached, 993 not | **The delete was never it.** The run gets past it every time and dies at `0x139588`, `ldr r2, [r1, #0x240]`, with `r1` = `[r6+4]` = garbage. The same instruction EKA2L1 cannot run the *original* N-Gage binary past |
-| 51 | **NOP the store at 0x1082c0** (+ the watch instrumentation) | pending | – | – |
+| 51 | **NOP the store at 0x1082c0** (+ the watch instrumentation) | 3 | 144 traced events, 262 imports, 1563 records | **The wall is down on hardware.** 128 -> 144 events, 248 -> 262 imports, and the phone follows the emulator's new sequence import for import. First advance since build 44 |
 
 ## Where we are
 
@@ -297,3 +297,33 @@ the emulator, our port on an N95 -- all stop at `ldr r2, [r1, #0x240]` because
 something that fills `[r6+4]` on that device is not happening on any of the
 three. That, not the heap, is the port's actual problem, and it has been
 visible since before the reboot months.
+
+### What build 51 found
+
+| | build 50 | build 51 |
+|---|---|---|
+| traced events at the last box write | 128 | **144** |
+| last import in the box | `RLibrary::Close` | **`RLibrary::Load`** |
+| imports in the log | 248 | **262** |
+| records | 971 | **1563** |
+| the watched field | -- | a good pointer throughout, `[+0x240]` valid |
+
+And the sequence it runs after the wall is the emulator's, import for import:
+
+```
+RLibrary::Load    from 13964c      <- never reached before
+CCoeEnv::Static   from 139684
+RLibrary::Load    from 13f588      <- nor this
+RLibrary::Lookup  from 13f5e4
+RLibrary::Close   from 13f610
+HBufC16::New      from 1909e4
+RLibrary::Lookup  from 13f68c
+... deletes, Lookup/Close, Math::Random from e9954, more deletes
+```
+
+Two machines, the same new ground, in the same order. The phone stops about
+thirty imports short of where the emulator gets (292, and an orderly
+`User::Leave`), in the middle of a free's verdict block.
+
+**The store at `0x1082c0` was the wall**, and the value it clobbered was the
+right one on hardware as well as in the emulator.
