@@ -1229,26 +1229,31 @@ static const u32 kNop[] = { 0x001082c0 };
 enum { PATCH_THE_CHECK = 1 };
 struct Patch { u32 at; u32 word; };
 static const Patch kPatch[] = {
-    { 0x000e6f34, 0xE3A00002 },     // mov r0, #2, in place of `beq e6f54`
-    // Gate two. `0x13f4c8` builds a name, opens it and reports whether the
-    // open said KErrNone:
-    //
-    //     13f6b4  bx    r6          @ RFile::Open, resolved through our shim
-    //     13f6c4  cmp   r4, #0
-    //     13f6c8  movne r4, #0
-    //     13f6cc  moveq r4, #1
-    //
-    // Five of its six calls open a real path and already answer 1. The sixth
-    // is handed the empty list as a name -- four control bytes -- and answers
-    // KErrNotFound, so the factory at `0x10a93c` deletes the object and
-    // returns zero, and state 34 fails exactly as state 29 did. Replacing
-    // `movne r4, #0` with `mov r4, #1` makes all six answer 1; the five that
-    // already did are unaffected.
-    //
-    // The cost is honest and worth writing down: the object this keeps alive
-    // holds an RFile that was never opened. Reading through it is KERN-EXEC 0
-    // on a phone, which is the failure this port has spent months on. If the
-    // run dies that way, this patch is why.
+};
+// ...and `mov r0, #2` was wrong, which state 38 proved by dereferencing it:
+//
+//     cdf80  ldr r9, [sp, #28]      @ the check's answer, stored by state 29
+//     cdf84  ldr r4, [r9, #20]      @ a read at 2 + 20
+//
+// So the check returns an **object**, not a status, and the one small integer
+// it legally produces -- 2, on the null-argument exit -- is legal only to a
+// caller that never dereferences it. Forcing it took the run past state 34 and
+// straight into a read at address 0x16.
+//
+// Hand over an object instead. Sixty-four zeroed bytes is enough: `[+20]` reads
+// 0, a length of nothing, and the call state 38 makes with it asks for nothing.
+// Three words rather than one, because the address is only known at run time:
+//
+//     e6f30  ldr r2, [pc, #4]       @ the literal at e6f3c
+//     e6f34  b   e6f58              @ into the identity chain that returns r2
+//     e6f3c  <the buffer>           @ written by the loader
+//
+// `0xe6f58` onwards is the same fifteen-shift-add identity every value in this
+// image passes through, so r2 arrives in r0 unchanged.
+enum { LICENCE_STANDIN_BYTES = 64, CHECK_LITERAL_AT = 0x000e6f3c };
+static const Patch kCheckPatch[] = {
+    { 0x000e6f30, 0xE59F2004 },     // ldr r2, [pc, #4]
+    { 0x000e6f34, 0xEA000007 },     // b   0xe6f58
 };
 // Gate two is kept but not applied. It works -- state 34 passes and the run goes
 // somewhere it has never been -- and what it finds there is `RFile::Read` on the
@@ -3691,13 +3696,19 @@ static u32 load_and_start()
             if (kWalkCrumb[i] + 4 <= h->codeSize)
                 crumb_plant_r5(ctx, base, kWalkCrumb[i], CRUMB_WALK_FIRST + i);
 
-    if (PATCH_THE_CHECK)
-        for (u32 i = 0; i < sizeof kPatch / sizeof kPatch[0]; i++)
-            if (kPatch[i].at + 4 <= h->codeSize) {
-                u32 *site = (u32 *)(base + kPatch[i].at);
-                *site = kPatch[i].word;
+    if (PATCH_THE_CHECK && CHECK_LITERAL_AT + 4 <= h->codeSize) {
+        u8 *standin = (u8 *)user_allocz(LICENCE_STANDIN_BYTES);
+        if (standin) {
+            for (u32 i = 0; i < sizeof kCheckPatch / sizeof kCheckPatch[0]; i++) {
+                u32 *site = (u32 *)(base + kCheckPatch[i].at);
+                *site = kCheckPatch[i].word;
                 user_imb_range(site, site + 1);
             }
+            u32 *lit = (u32 *)(base + CHECK_LITERAL_AT);
+            *lit = (u32)standin;
+            user_imb_range(lit, lit + 1);
+        }
+    }
 
     // Last of the file wraps, so the card rule sits outside the logging ones and
     // whatever they answered is what the card wrapper chains to.

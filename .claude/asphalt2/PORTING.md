@@ -68,6 +68,14 @@ here and the section it overturns is marked.*
   all answer **KErrAccessDenied** for any name on E:. The protection's question
   is "am I on a real N-Gage game card?", asked two ways, and this port answers
   both wrongly by construction.
+- **The protection completes.** The check returns an *object*, not a status:
+  state 38 does `ldr r9, [sp,#28]` then `ldr r4, [r9,#20]`, so the forced 2 was
+  being dereferenced. Handing it sixty-four zeroed bytes instead (`ldr r2,
+  [pc,#4]` / `b 0xe6f58` at `0xe6f30`, literal written by the loader) takes the
+  state machine through its full fourteen-state path -- `47 13 36 29 34 38 18 61
+  32 40 23 24 59 7` -- **five times**, once per registration. 5337 records,
+  **336 traced events** against a previous best of 200, eleven opens with ten
+  succeeding, no leave and no exit.
 - **A read-only game card gets the port past state 34, and the leave is gone.**
   Two bugs had been hiding it: filenames are type 4 descriptors whose buffer
   begins with its own header, so `name_on_the_card` was reading the length where
@@ -4127,3 +4135,52 @@ E72: with the verdict override off, the real check still does not pass, and the
 run dies early the way E52 did. So the card rules change what happens *after*
 the check, not the check itself, and `PATCH_THE_CHECK` stays. What it overrides
 is still exactly what it was: a test for a physical N-Gage game card.
+
+## The check returns an object, and the protection completes
+
+State 38 settled what `0xe6f34`'s `mov r0, #2` had been getting wrong:
+
+```
+cdf80  ldr r9, [sp, #28]      @ the check's answer, stored by state 29
+cdf84  ldr r4, [r9, #20]      @ a read at 2 + 20
+```
+
+The check returns an **object**. The 2 it produces on its null-argument exit is
+legal only to a caller that never dereferences it, and state 29's caller is not
+that caller. Forcing 2 took the run past state 34 and straight into a read at
+address 0x16 -- the fault that ended E69 to E73.
+
+So hand it an object. Sixty-four zeroed bytes from the heap, three words of
+patch because the address is only known at run time:
+
+```
+e6f30  ldr r2, [pc, #4]       @ the literal at e6f3c
+e6f34  b   e6f58              @ into the identity chain that returns r2
+e6f3c  <the buffer>           @ written by the loader
+```
+
+`[+20]` then reads 0, a length of nothing, and the call state 38 makes with it
+asks for nothing.
+
+### What that did
+
+| | E73 | E74 |
+|---|---|---|
+| records | 2492 | **5337** |
+| traced events | 176..207 | **336** |
+| state path | `47 13 36 29 34 38` then a fault | **`47 13 36 29 34 38 18 61 32 40 23 24 59 7`** |
+| times round | once | **five**, once per call of the loop at `0x2e7c` |
+| opens | 7 | **11, ten succeeding** |
+| `User::Leave` | absent | absent |
+
+**The protection runs to completion.** Fourteen states, five registrations, and
+the machine reaches state 7 -- its ordinary return -- every time. The previous
+best this project had ever recorded was 200 traced events; this is 336.
+
+### The lesson, which is the same one twice
+
+Three times now the thing standing in the way has been an answer of mine that
+was *plausible* rather than right, and each time the evidence for it was an
+absence: no refusal fired, no record appeared, a small integer looked like a
+status code. An absence is the weakest evidence there is, and this file should
+treat one as a question rather than a result.

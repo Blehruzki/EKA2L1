@@ -125,6 +125,7 @@ them, and say so.
 | E71 | build 75, `6rbc.cwa` | 2492 | `0x9AB31D42` | Identical |
 | E72 | build 75 with `PATCH_THE_CHECK = 0` -- does the real check pass now? | 1868 | `0xE4D4280` | **Not yet.** No dispatcher states at all and an early death, the same shape E52 had. The card rules change what happens after the check, not the check itself |
 | E73 | build 75 final -- card answers on, read-only rule working, verdict override on, substitution off | 2492 | `0x9AB31D42` | The best run this project has had: 2492 records, one launch, no relaunch, no `User::Leave`, past state 34, and a fault after the frame loop instead of an orderly give-up |
+| E74 | build 76 -- the check returns a **sixty-four-byte zeroed object** instead of the integer 2: `ldr r2, [pc, #4]` / `b 0xe6f58` at `0xe6f30`, with the address written into the literal at `0xe6f3c` by the loader | 5337 | `--` | **The protection completes.** The state machine runs its full path -- `47 13 36 29 34 38 18 61 32 40 23 24 59 7`, fourteen states -- and does it **five times**, once per call of the loop at `0x2e7c`. **5337 records** against 2492, **336 traced events** against a previous best of 200, **eleven opens with ten succeeding** and the one refusal that should fire. No `User::Leave`, no `User::Exit` |
 
 <!-- EMURUN -->
 
@@ -194,10 +195,11 @@ self-check of its own image, and it stops exactly where the emulator gives up:
 at `User::Leave`. The port no longer has a hardware-specific failure ahead of
 it. It has the *same* failure as the emulator.
 
-**The emulator is now at 2492 records, one launch, past state 34, with no
-`User::Leave` and no `User::Exit` anywhere in the log** (E73). That is the
-furthest this port has ever run and the first time the game has not given up.
-None of it has been to hardware yet.
+**The emulator is now at 5337 records and 336 traced events, with the
+protection's state machine running its full fourteen-state path five times over,
+eleven file opens of which ten succeed, and no `User::Leave` or `User::Exit`
+anywhere in the log** (E74). The previous best was 200 traced events. None of it
+has been to hardware yet.
 
 **Best round so far: 59.** It is the first round where a hardware run and an
 emulator run of the same build tell the same story from beginning to end.
