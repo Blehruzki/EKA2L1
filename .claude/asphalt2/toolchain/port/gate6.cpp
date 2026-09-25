@@ -190,6 +190,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
        NOTE_FILE_HEAD = 861,    // the first three words of a name descriptor
        NOTE_CARD_REFUSED = 862, // a write to the game card, refused as a card would
+       NOTE_CARD_CALL = 863,    // the driver asked for the card's identity, and where to put it
        NOTE_LOOKUP_HANDLE = 875,// the library handle a lookup was made on
        NOTE_LOOKUP_RESULT = 876,// and the address it answered with
        NOTE_DRIVER = 877,       // a kernel driver call, refused
@@ -673,6 +674,7 @@ struct Context {
     u32 cardOpen;           // and the wrappers themselves, built once
     u32 cardCreate;
     u32 cardReplace;
+    u32 cardControl;        // the DoControl diversion, with the context in r3
     u32 fileReadThunk;      // the diversions handed over in their place
     u32 fileSizeThunk;
     u32 fileOpenThunk;
@@ -1223,7 +1225,7 @@ static const u32 kNop[] = { 0x001082c0 };
 // This is a workaround, not an explanation. What the check hashes is still
 // unknown, and the honest answer may be that it cannot be satisfied at all
 // without the N-Gage game card it was written to look for.
-enum { PATCH_THE_CHECK = 0 };
+enum { PATCH_THE_CHECK = 1 };
 struct Patch { u32 at; u32 word; };
 static const Patch kPatch[] = {
     { 0x000e6f34, 0xE3A00002 },     // mov r0, #2, in place of `beq e6f54`
@@ -2515,9 +2517,15 @@ static const u32 kCardCidLE[MMC_CID_WORDS + 1] = {   // `nc.dat`, kept for the r
 // asked, it copies its twenty bytes into the out pointer and answers zero. Ours
 // gated on MMC_CARD_INFO, which is a guess about which call the game makes, and
 // a wrong guess answers nothing. Do what the crack does.
-extern "C" u32 gate6_mmc_control(u32, u32 op, u32 *info)
+// `DoControl(TInt, TAny*)` uses r0 to r2, so r3 is free and a ctx3_thunk can
+// carry the context -- which is the only way this function can say whether it
+// ran at all. Three rounds have handed its address over and none of them
+// recorded a call.
+extern "C" u32 gate6_mmc_control(u32, u32 op, u32 *info, Context *c)
 {
-    (void)op;
+    log_event(c, NOTE_CARD_CALL, op);
+    log_event(c, NOTE_CARD_CALL, (u32)info);
+    log_block(c);
     if (info) {
         const u32 *cid = CARD_CID_ORDER ? kCardCidLE : kCardCidBE;
         for (u32 i = 0; i <= MMC_CID_WORDS; i++)
@@ -2776,7 +2784,15 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
         if (kDriver[k] == mapped) {
             log_event(c, NOTE_DRIVER, mapped);
             // DoControl(TInt, TAny*) is the one the game needs an answer from.
-            return (mapped == 490) ? (u32)&gate6_mmc_control : c->noopFn;
+            if (mapped == 490) {
+                if (!c->cardControl && c->spare + TRACE <= c->spareEnd) {
+                    c->cardControl = ctx3_thunk(c->spare, c, (u32)&gate6_mmc_control);
+                    c->spare += TRACE;
+                }
+                if (c->cardControl)
+                    return c->cardControl;
+            }
+            return c->noopFn;
         }
 
     // The game takes what comes back from here and branches straight to it, at
@@ -2805,7 +2821,10 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
         if (mapped == NEW_RFILE_REPLACE && c->cardReplace) { c->realReplace = fn; return c->cardReplace; }
     }
     if (fn && kind == LIB_EFSRV && mapped == NEW_RFILE_OPEN) {
-        c->fileOpen = fn;
+        // Through the card wrapper, not straight at efsrv: the dynamic route
+        // had been skipping the read-only rule that the static import gets.
+        c->realOpen = fn;
+        c->fileOpen = (CARD_IS_READ_ONLY && c->cardOpen) ? c->cardOpen : fn;
         if (!c->fileOpenThunk && c->spare + OPEN_THUNK_BYTES <= c->spareEnd) {
             c->fileOpenThunk = open_thunk(c->spare, c, fn, (u32)&gate6_file_open);
             c->spare += OPEN_THUNK_BYTES;

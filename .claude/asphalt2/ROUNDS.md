@@ -107,6 +107,9 @@ them, and say so.
 | E53 | build 69 repeated | 1860 | `0xEC49E40` | Identical. Not flaky |
 | E54 | build 70 -- add the read-only card rules on `RFile::Open`, `Create` and `Replace`, static imports and dynamic lookups alike | 2259 | `--` | **The earlier death is gone** -- back to 2259 records and the full state path -- but **zero refusals fire**: the game never asks to write to E: before the check. States 47 13 36 29 **68** 59 7, so the check still fails |
 | E55 | build 70 -- answer every `DoControl` rather than only `MMC_CARD_INFO`, as the crack does | 2259 | `--` | No change: 2259 records, same path, same 68. So either the call is not reaching `gate6_mmc_control` or the CID is not what the digest is missing |
+| E56 | build 71 -- a ctx3_thunk on `DoControl` so it can say whether it runs at all | 2267 | `0x42B8D80` | **It runs.** Twice per launch, as a pair: op **4** with a null buffer, then op **6** with a pointer. So the original `MMC_CARD_INFO` gate was right, the CID is written into the game's own buffer, and the card's identity is genuinely delivered. The check still goes to 68 |
+| E57 | build 71 -- route the *dynamic* `RFile::Open` through the card wrapper too | 2267 | `0x42B8D80` | A real gap closed -- the dynamic route had been skipping the read-only rule the static import got -- and no change: still no refusals, still 68. The game does not try to write to E: before the check |
+| E58 | build 71 with the verdict override back on, card answers kept | 2392 | `0x5CBFE00` | **200 traced events**, a new emulator best, up from 198. State path 47 13 36 29 **34 4** 59 7 and the same sixth `RFile::Open` failing on the empty-list name. The card answers cost nothing and are kept |
 
 <!-- EMURUN -->
 

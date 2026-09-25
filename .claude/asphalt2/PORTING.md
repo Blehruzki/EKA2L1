@@ -68,6 +68,12 @@ here and the section it overturns is marked.*
   all answer **KErrAccessDenied** for any name on E:. The protection's question
   is "am I on a real N-Gage game card?", asked two ways, and this port answers
   both wrongly by construction.
+- **The card call does happen.** `DoControl` runs twice a launch, op 4 with a
+  null buffer then op 6 with a pointer, so the forged CID reaches the game. No
+  write to E: is ever attempted before the check, so the read-only rule is not
+  even exercised. Both of the crack's answers are supplied and the check still
+  fails -- because the crack only had to fix the card, while everything else on
+  its machine was real and everything else on ours is a shim.
 - **Supplying both is not yet enough.** E54 and E55 deliver the CID and the
   refusals and the check still goes to state 68. Either `gate6_mmc_control` is
   never called -- the lookup is logged, the call is not -- or the digest wants
@@ -4015,3 +4021,45 @@ Two honest readings, and the next round has to tell them apart:
 
 A station or a log line inside `gate6_mmc_control` separates them in one run,
 and that is the next thing.
+
+## The card is delivered, and it is not enough
+
+A `ctx3_thunk` on `DoControl` -- r0 to r2 are the arguments, r3 is free -- finally
+records whether the call happens. It does, twice a launch, as a pair:
+
+```
+DoControl(op = 4, out = 0)          @ select the card
+DoControl(op = 6, out = <pointer>)  @ and ask for its info
+```
+
+So the original `MMC_CARD_INFO` gate was right all along, the twenty bytes go
+into the game's own buffer, and the forged identity the crack uses is genuinely
+delivered. E57 then closed a real gap -- the *dynamic* `RFile::Open` had been
+skipping the read-only rule that the static import got -- and changed nothing.
+
+**No refusal ever fires.** The game does not attempt a write to E: anywhere
+before the check. So of the two questions the crack answers, only one is even
+being asked on this path, and it is being answered correctly, and the check
+still goes to state 68.
+
+### What that means, honestly
+
+The crack had to fix exactly two things because everything else on its machine
+was real. It ran on an N-Gage, under EKA1, with a genuine euser and efsrv and a
+genuine file server, and the only lies it needed to tell were about the card.
+
+This port's machine is a shim. Hundreds of answers in it are approximations --
+framework base classes are `LOCAL_NOOP`, the screen is the wrong size, the
+foreground observer is a stand-in, `RFs` is the phone's. The protection digests
+something, and the something is not only the card. Supplying the crack's two
+answers was worth doing and is kept, but it was never going to be sufficient on
+its own, and there is no short list of further answers to copy: the crack does
+not have them, because it never needed them.
+
+So **the verdict override at `0xe6f34` is the route**, and the value of all this
+is that we now know precisely what is being overridden: a test for a physical
+N-Gage game card, which an N95 with no such card in it cannot pass honestly, by
+any amount of correctness in the shim.
+
+E58 keeps the card answers and puts the override back: **200 traced events**, a
+new emulator best, and the same state 34 failure to work on next.
