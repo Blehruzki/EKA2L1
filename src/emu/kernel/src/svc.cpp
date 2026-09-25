@@ -2286,9 +2286,19 @@ namespace eka2l1::epoc {
         process_ptr pr = kern->crr_process();
         memory_system *mem = kern->get_memory_system();
 
-        // Get rid of null terminator
-        std::string thr_name = thread_name_des.get(pr)->to_std_string(pr).c_str();
+        // Get rid of null terminator. The descriptor pointer is the caller's and
+        // may be null -- an anonymous thread is legal -- so it cannot be
+        // dereferenced without looking. It was, and a null name produced a
+        // garbage std::string and a thread that could not be created.
+        epoc::desc8 *name_des = thread_name_des.get(pr);
+        std::string thr_name = name_des ? name_des->to_std_string(pr).c_str() : std::string();
         thread_create_info_expand *info = info_ptr.get(pr);
+
+        if (!info) {
+            LOG_ERROR(KERNEL, "Thread create with no info block (name des = 0x{:x})",
+                thread_name_des.ptr_address());
+            return epoc::error_argument;
+        }
 
         if (thr_name.empty()) {
             thr_name = "AnonymousThread";
@@ -2302,9 +2312,10 @@ namespace eka2l1::epoc {
 
         if (thr_handle == kernel::INVALID_HANDLE) {
             LOG_ERROR(KERNEL, "Thread {} NOT created: pc = 0x{:x}, user stack = 0x{:x}, heap {:d}..{:d}, "
-                "allocator = 0x{:x}, ptr = 0x{:x}, owner = {:d}, total size = {:d}", thr_name,
+                "allocator = 0x{:x}, ptr = 0x{:x}, owner = {:d}, total size = {:d}, name des = 0x{:x}", thr_name,
                 info->func_ptr, info->user_stack_size, info->heap_initial_size, info->heap_max_size,
-                info->allocator, info->ptr, static_cast<int>(owner), info->total_size);
+                info->allocator, info->ptr, static_cast<int>(owner), info->total_size,
+                thread_name_des.ptr_address());
             return epoc::error_general;
         } else {
             LOG_TRACE(KERNEL, "Thread {} created with start pc = 0x{:x}, stack size = 0x{:x}", thr_name,
