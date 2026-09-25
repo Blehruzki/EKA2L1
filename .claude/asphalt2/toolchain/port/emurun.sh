@@ -21,7 +21,7 @@ cp "$S/out/gate6.exe" $D/sys/bin/gate6.exe
 cp "$S/out/gate6.rsc" $D/resource/apps/gate6.rsc
 cp "$S/out/gate6_reg.rsc" $D/private/10003a3f/import/apps/gate6_reg.rsc
 rm -f $C/g6box*.log $D/g6box*.dat $C/g6box*.dat
-(cd /home/user/EKA2L1/build/bin && timeout "${TMO:-120}" ./eka2l1_qt --device RM-409 --run 0xE0001006 >"$S/g6.log" 2>&1)
+(cd /home/user/EKA2L1/build/bin && timeout -k 5 -s KILL "${TMO:-120}" ./eka2l1_qt --device RM-409 --run 0xE0001006 >"$S/g6.log" 2>&1)
 # The emulator does not always go on SIGTERM, and a run left behind holds its
 # memory and a few per cent of a core. Enough of them and a later launch cannot
 # allocate the image -- which is where the G6MEM panics were coming from -- and

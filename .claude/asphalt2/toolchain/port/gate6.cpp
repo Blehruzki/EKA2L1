@@ -1422,7 +1422,15 @@ enum { PLANT_WALK = 0, CRUMB_WALK_FIRST = 960 };
 // as the main thread, which is not something this file has done before; the
 // main thread is idle by then, so one record each is a risk worth taking to
 // find out.
-enum { PLANT_WORKERS = 1, CRUMB_WORKER_FIRST = 970 };
+//
+// ANSWERED (E97), and off from here on. Both crumbs fired -- `G6WRK` 970 and
+// 971 -- once `_start` learned to dispatch on r4. They never fired before
+// because the kernel points a new thread at the *process* entry point, so
+// every RThread::Create was re-running the whole application in the new
+// thread rather than calling the function it was given. The crumbs panic by
+// design, so leaving them on would kill the worker on its first instruction,
+// which is the opposite of what is wanted now.
+enum { PLANT_WORKERS = 0, CRUMB_WORKER_FIRST = 970 };
 // The third entry is the control. `0xcc7e4` is the object maker and the log has
 // it running on every launch, so if the mechanism works at all it must panic
 // there. Without it, "no G6WRK" means either the workers never ran or the crumb

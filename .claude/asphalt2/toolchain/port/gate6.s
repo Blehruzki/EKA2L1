@@ -13,11 +13,14 @@
     @ at the initial stack pointer and passes the startup reason in r4, which
     @ is what a real entry point forwards.
 _start:
+    mov  r5, sp                 @ SStdEpocThreadCreateInfo, before anything moves sp
     mov  r0, r4                 @ aNotFirst: 0 when this is the process starting
     mov  r1, sp                 @ the thread create info the kernel left there
     bl   userheap_setupthreadheap
     cmp  r0, #0
     bne  1f
+    cmp  r4, #0
+    bne  2f                     @ r4 != 0: a thread starting, not the process
     bl   user_initprocess
     bl   gate6_main
 1:  ldr  r1, =0xBADA0000        @ the heap could not be created
@@ -26,6 +29,22 @@ _start:
     ldr  r1, =0xBEEF0000
     orr  r0, r1, r0
     ldr  r1, [r0]
+    b    .
+
+    @ A thread starting, not the process. Every entry point is shared between
+    @ the two, and without this branch RThread::Create re-ran the whole
+    @ application in the new thread: it loaded a second copy of the image, got
+    @ as far as creating another worker, and so on. The kernel points a new
+    @ thread at the process entry point by design -- a real EXE is linked
+    @ against eexe.lib, whose _E32Startup dispatches on r4 -- so a hand-built
+    @ image has to do the dispatch itself. SStdEpocThreadCreateInfo holds the
+    @ function at +8 and its argument at +12, and the thread ends with whatever
+    @ the function returns.
+2:  ldr  r12, [r5, #8]          @ iFunction
+    ldr  r0,  [r5, #12]         @ iPtr
+    mov  lr, pc
+    bx   r12
+    bl   user_exit              @ User::Exit(the function's return value)
     b    .
 
     @ A GCC98r2 virtual call, as gate 3 measured it in the game's own code: the
@@ -74,6 +93,7 @@ old_call1:
     IMPORT user_panic,        650    @ User::Panic(TDesC16 const&, TInt)
     IMPORT userheap_setupthreadheap, 1360  @ UserHeap::SetupThreadHeap(TBool, SStdEpocThreadCreateInfo&)
     IMPORT user_initprocess,  585    @ User::InitProcess()
+    IMPORT user_exit,         641    @ User::Exit(TInt)
     IMPORT user_alloc,        646    @ User::Alloc(TInt)
     IMPORT user_allocz,       652    @ User::AllocZ(TInt)
     IMPORT user_alloclen,     660    @ User::AllocLen(TAny const*)

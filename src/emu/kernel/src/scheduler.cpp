@@ -199,6 +199,22 @@ namespace eka2l1::kernel {
             next_thread = next_ready_thread();
         }
 
+        // Only when the pick changes: a reschedule that keeps the same thread is
+        // the common case and would drown the log. A thread that is queued ready
+        // and never picked shows up as its name simply never appearing here.
+        {
+            static kernel::thread *last_pick = nullptr;
+            if (next_thread != last_pick) {
+                last_pick = next_thread;
+                kernel::process *np = next_thread ? next_thread->owning_process() : nullptr;
+                LOG_TRACE(KERNEL, "reschedule: {} -> {} [{}] pc = 0x{:x}",
+                    crr_thread ? crr_thread->name() : std::string("(none)"),
+                    next_thread ? next_thread->name() : std::string("(none)"),
+                    np ? np->name() : std::string("(no process)"),
+                    next_thread ? next_thread->get_thread_context().get_pc() : 0);
+            }
+        }
+
         switch_context(crr_thread, next_thread);
     }
 

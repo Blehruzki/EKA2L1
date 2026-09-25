@@ -95,12 +95,28 @@ here and the section it overturns is marked.*
   heap-min/max overload the shim could have confused it with is 291/1159.
   `thread_create_eka1` in the emulator returns `error_general` in one place
   only: `create_and_add<kernel::thread>` giving back `INVALID_HANDLE`.
-- **The game's two threads are created and never entered.** A crumb that
-  *panics* (a logging one cannot work: an `RFs` session belongs to the thread
-  that made it) fires at the control site `0xcc7e4` and never at `0xb8660` or
-  `0xcb710`. So `RThread::Create` and `RThread::Resume` -- both answered by our
-  own lookup, old 289 -> 1158 and old 954 -> 1795 -- are not starting the
-  threads. An `RThread` is a handle whose layout the shim has never considered.
+- ~~**The game's two threads are created and never entered.**~~ **SOLVED
+  (E96, E97).** The crumbs were planted, the handles were real, the resume was
+  real and the scheduler really did pick `SoundServer` -- and the entry was
+  never reached, because it was never where the thread started.
+  `thread::reset_thread_ctx` in the emulator points a newly created thread at
+  **the owning process's entry point**, not at the function `RThread::Create`
+  was given; a real EXE is linked against `eexe.lib`, whose `_E32Startup`
+  dispatches on `r4` (1 = a thread starting, 0 = the process) and only then
+  calls `SStdEpocThreadCreateInfo::iFunction`. Our hand-built `_start` ran
+  `gate6_main` unconditionally, so every `RThread::Create` **re-ran the whole
+  application in the new thread** -- a second CONE startup, a second copy of
+  the image, another worker, and so on; the image base climbed `0x47` -> `0x58`
+  -> `0x61` -> `0x6e` -> `0x77` -> `0x82` -> `0x95` across seven SoundServers
+  in one run. Six instructions of dispatch in `gate6.s` fixed it: both crumbs
+  fired, `G6WRK` 970 and 971, and `launches` went from six to one. Nothing was
+  ever wrong with `RThread`'s handle layout, with ordinal 289 -> 1158, or with
+  the emulator. **The rule this leaves: a hand-built EXE entry point is shared
+  between the process and every thread it creates, and must dispatch on `r4`
+  before it does anything else.**
+- **A worker thread cannot write to the box log.** An `RFs` session belongs to
+  the thread that made it, so every event the workers log through `c->fs` is
+  dropped on the floor. Since E98 that is half the running program, invisible.
 - **Eleven stale emulators were the `G6MEM`.** `emurun.sh` used `pkill -x`
   without a follow-up `-9`; the emulator does not always go on SIGTERM. Cleared,
   a clean run has no panics at all. The script now force-kills after a second.
