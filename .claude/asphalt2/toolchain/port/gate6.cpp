@@ -2762,7 +2762,18 @@ static u32 arg5_thunk(u8 *code, const void *ctx, u32 handler)
 // later reads, and this port has been caught by exactly that before, with an
 // `RFile` closed as a plain handle. If the two differ, the resume is resuming
 // nothing.
-enum { NEW_RTHREAD_CREATE = 1158, NEW_RTHREAD_RESUME = 1795 };
+// SoundServer's create passes `owner = 0` and succeeds; the one through our own
+// lookup passes the *function pointer* as the owner and fails. Same euser, same
+// kernel bridge, two different answers -- so the bridge is not the problem and
+// the difference is which euser export the call lands on.
+//
+// Our map says old 289 -> new 1158, the `RAllocator*` overload. If this ROM's
+// euser numbers them the other way round, 1158 is the one taking
+// `(name, fn, stack, heapMin, heapMax, ptr, owner)` and reading the game's
+// frame against it slides everything -- which is what the kernel sees.
+// CREATE_ORDINAL picks; one run each settles it.
+enum { CREATE_ORDINAL = 1158 };
+enum { NEW_RTHREAD_CREATE = CREATE_ORDINAL, NEW_RTHREAD_RESUME = 1795 };
 
 extern "C" void gate6_thread_created(u32 err, const u32 *frame, Context *c)
 {
@@ -2939,6 +2950,11 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
         case OLD_RTHREAD_ID:         return c->idFn;     // always the same id
         case OLD_RDEBUG_WRITEMEMORY: return c->writeFn;
         case OLD_CHUNK_CREATELOCALCODE: mapped = NEW_CHUNK_CREATELOCALCODE; break;
+        case 289:
+            // The one ordinal this file overrides by hand, because the two
+            // overloads are a pair and the generated table can only pick one.
+            mapped = CREATE_ORDINAL;
+            break;
         default:
             if (ordinal >= 1 && (u32)ordinal <= kShimEuserCount)
                 mapped = kShimEuser[ordinal - 1];
@@ -3013,7 +3029,16 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
     // replaces RLibrary::Lookup as well as the import table, and answers old
     // efsrv 25, 121 and 151 with its own Create, Open and Replace.
     // The two thread calls, watched from the one place both of them come through.
-    if (fn && kind == LIB_EUSER && mapped == NEW_RTHREAD_CREATE) {
+    // WRAP_CREATE is off, and the reason is worth keeping. `frame_thunk` pushes
+    // seven words before it calls the target, so the target reads its *stack*
+    // arguments twenty-eight bytes too low -- our saved registers, not the
+    // caller's. For a four-argument call like `RFile::Open` that is harmless;
+    // `RThread::Create` takes six, and the three it reads off the stack are
+    // exactly the ones that came back as junk. The instrument was the fault it
+    // reported. Same objection applies to `self_thunk` and `open_thunk`
+    // wherever the wrapped function takes more than four arguments.
+    enum { WRAP_CREATE = 0 };
+    if (WRAP_CREATE && fn && kind == LIB_EUSER && mapped == NEW_RTHREAD_CREATE) {
         if (!c->threadCreateThunk && c->spare + FRAME_THUNK_BYTES <= c->spareEnd) {
             c->threadCreateThunk = frame_thunk(c->spare, c, fn,
                                                (u32)&gate6_thread_created);

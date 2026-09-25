@@ -39,6 +39,10 @@ FAULT=$(grep -oE 'Access violation reading address 0x[0-9A-Fa-f]+' "$S/g6.log" |
 # Next number in the E series, then the row, in place of the marker.
 N=$(grep -oE '^\| E([0-9]+) ' "$R" | grep -oE '[0-9]+' | sort -n | tail -1)
 N=$((N + 1))
+# Two runs finishing together both read the same last row number and both write
+# it, which is where the duplicate E82 and E89 rows came from. One at a time.
+exec 9>"$R.lock"; flock 9
+N=$(grep -oE '^\| E([0-9]+) ' "$R" | grep -oE '[0-9]+' | sort -n | tail -1); N=$((N + 1))
 python3 - "$R" "E$N" "$CHANGE" "$REC" "$FAULT" <<'PY'
 import sys
 path, num, change, rec, fault = sys.argv[1:6]
@@ -50,6 +54,7 @@ j = s.rindex('\n', 0, i)          # the blank line before the marker
 j = s.rindex('\n', 0, j) + 1      # end of the last table row
 open(path, 'w').write(s[:j] + row + s[j:])
 PY
+flock -u 9
 echo "records: $REC   launches: ${LAUNCHES:-?}   ends: $FAULT   -> logged as E$N in ROUNDS.md (finish its last column)"
 echo
 python3 "$P/rules.py"

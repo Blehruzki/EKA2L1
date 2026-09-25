@@ -68,16 +68,12 @@ here and the section it overturns is marked.*
   all answer **KErrAccessDenied** for any name on E:. The protection's question
   is "am I on a real N-Gage game card?", asked two ways, and this port answers
   both wrongly by construction.
-- **The kernel receives the thread function where the owner type belongs.**
-  `owner = 75282192 = 0x47cb710`, and `pc = 0x47cb710`: the same word twice. And
-  the game's own call is impeccable -- name a well-formed descriptor, `fn` a
-  real image offset, and the pushed words `0`, `0x3c9f550`, `0` reading exactly
-  as 289's `aHeap`, `aPtr`, `aType`. So an argument moves between the game's
-  call and the kernel's handler, and the info block is not the one that moved.
-- **The failing thread is the *second* one, not SoundServer.** With the
-  emulator patched to report a failed create: `pc = 0x?cb710, user stack =
-  0x2000` -- the 8 KB unnamed thread. SoundServer, 100 KB stack, is created
-  successfully in the same run.
+- **RETRACTED: `RThread::Create` never failed.** Seventeen creations and no
+  failures once the wrapper came off. `frame_thunk` pushes seven words before
+  calling the target, so a six-argument function reads its three stack
+  arguments out of our saved registers -- which is where the garbage owner came
+  from. **A thunk that pushes before it calls can only wrap a function whose
+  arguments all fit in registers.**
 - **Two of the three arguments are junk.** The info block is sound (real image
   pc, sensible stack, plausible allocator) while the name descriptor and the
   owner type are garbage -- `owner` can be 0 or 1 and is 75282192. That is
@@ -373,6 +369,7 @@ logs until that is settled.
 | Believed | Why it was wrong |
 |---|---|
 | A `static` is safe to write to in our loader | It is not. This image has no data section: `flat.ld` folded `.data*` into `.rodata` and `mke32.py` declares data and bss zero, so every static is in read-only memory. Build 52 patched one character of one and the phone took KERN-EXEC 3 before creating a file. The emulator maps it writable and saw nothing. |
+| `RThread::Create` answers KErrGeneral (E84-E86b) | **My own instrument.** `frame_thunk` pushes seven words before calling the target, so a six-argument function reads its stack arguments twenty-eight bytes too low. With the wrapper off: seventeen creations, no failures. Three rounds spent on a fault that was not there. |
 | Three euser lookups are answered out of the efsrv table (round 57) | **My own error, retracted in round 58.** They were efsrv asks all along: old efsrv 121/136/185 are `RFile::Open`, `RFile::Read` and `RFile::Size`, and they map to new efsrv 93/255/264, which are `RFile::Open`, `RFile::Read` and `RFile::Size`. I named the old ordinals out of the **euser** def file and the new ones out of euser's too, and got three unrelated names. Every mapping in the log is correct. |
 | The 35-event gap is a wrong-table bug in `gate6_library_lookup` | It is not a bug in the shim at all. The gap is 26 extra `RFile::Read` calls the emulator makes and the phone does not, from one call site, on one file. |
 | The gap is a short read on the phone | Nothing the phone reads is short -- every read fills its buffer exactly and answers KErrNone. The 26 reads are a *different file*, `6rbc.app`, that the phone never opens successfully: the loader is still holding it open readers-only, and the game's own open is exclusive. |
@@ -4550,3 +4547,59 @@ comparing them with the frame above, which is the next thing.
 `thread_create` did `thread_name_des.get(pr)->to_std_string(pr)` with no null
 check, and an anonymous thread is legal. It is hardened now. It was not this
 bug -- the pointer is `0x40f74c`, not null -- but it would have been someone's.
+
+## Retraction: the thread-create failure was my own thunk
+
+`RThread::Create` does not answer KErrGeneral. It works, and it always did.
+
+Taking the wrapper off it gives **seventeen thread creations and no failures**.
+Every part of the story E84 to E86b told -- the `-2`, the handle left at zero,
+the garbage owner, the garbage name -- was produced by the instrument that was
+watching.
+
+### Why
+
+`frame_thunk` does this:
+
+```
+stmdb sp!, {r0-r4, r12, lr}     @ seven words
+ldr   r12, =target ; blx r12
+```
+
+Seven words is twenty-eight bytes, and the target reads its **stack** arguments
+relative to the stack pointer it is entered with. `RThread::Create` takes six
+arguments: four in registers and `aHeap`, `aPtr`, `aType` on the stack. euser
+read those three out of our saved registers, passed the thread function where
+the owner type belonged, and the kernel refused the create.
+
+The same objection applies to `open_thunk`, `self_thunk` and `result_thunk`.
+They are all safe where they are used today -- `RFile::Open`, `Create` and
+`Replace` take four arguments, all in registers -- but the rule has to be
+written down, because nothing in the code says so:
+
+> **A thunk that pushes before it calls can only wrap a function whose
+> arguments all fit in registers.** Four or fewer, and nothing variadic. For
+> anything wider the wrapper has to replicate the caller's stack frame or stay
+> out of the way.
+
+### What survives
+
+- **E80 stands.** `RunL` is entered once and never returns. No thread wrapper
+  existed when that was measured.
+- **E82 stands.** The workers are created and never entered, and it had a
+  control -- a third crumb at `0xcc7e4` that fires.
+- **E86's frame dump stands** as evidence in its own right: the game's call
+  really is impeccable, `aHeap` null, `aPtr` set, `aType` zero.
+- The two emulator patches stand on their own merits: a kernel call that failed
+  silently now says why, and a null name descriptor is no longer dereferenced.
+
+So the question is back where E82 left it: the threads are created, and they
+never run. Three rounds were spent on a fault that was not there.
+
+### How it should have been caught
+
+The clue was in the first measurement and I read past it. E84 reported that
+`RThread::Create` failed **in the same runs where the emulator logged
+`Thread SoundServer created`** -- two creates, one working and one not, through
+the same euser. The one that worked was the static import; the one that failed
+was the only one with a wrapper on it. That is not a subtle tell.
