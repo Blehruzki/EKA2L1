@@ -164,7 +164,15 @@ enum { BOX_ON_SLOT = !SILENT };
 // The history comes from the ring instead, which is free: one write carries it
 // whatever its depth, so it is a hundred and twenty-eight events deep now and
 // covers the whole of a run the phone gets through.
-enum { BOX_EVERY_TRACED = 16 };
+// Round 62: every sixteenth is not fine enough any more. The main thread dies
+// in a five-import window after frame 1 and the box's own header could only
+// say "208 traced events at the last write, so 208..239 in all" -- thirty-one
+// events of not knowing. One write per traced import is about two hundred and
+// forty write-and-flush pairs on a run of the length the phone reaches, which
+// is a long way under the ten-write budget's reasoning: that ceiling was set
+// against twenty thousand of them, not two hundred. The box is one fixed
+// 1,264-byte write at offset zero, so it does not grow the file either.
+enum { BOX_EVERY_TRACED = 1 };
 enum { OPEN_THUNK_BYTES = 13 * 4 };
 enum { REACHED_FAULT = 256 };   // the exception handler ran
 // 800..899 are notes rather than events: the code says what is being noted and
@@ -3145,6 +3153,7 @@ enum { NEW_RTHREAD_CREATE = CREATE_ORDINAL, NEW_RTHREAD_RESUME = 1795 };
 // is a different and visible failure.
 enum { STACK_CEILING = 0x10000, STACK_FLOOR = 0x1000 };
 enum { CLAMP_THREAD_STACK = 1, IMPORT_THREAD_CREATE = 299 };
+enum { WATCH_SEM_RESULT = 1 };
 
 extern "C" void gate6_thread_stack(u32 err, u32 stack, Context *c)
 {
@@ -4682,6 +4691,14 @@ static u32 load_and_start()
         100, 109, 110, 99,          // RFs::Connect, RFile Open/Read, Close
         325, 326, 283,              // RLibrary Load / Lookup / Close
         45, 46, 350,                // the screen's setup, and the frame-loop kick
+        // The SoundServer handshake, which is the window the main thread now
+        // dies in and which nothing was tracing. Both sides of it: what the
+        // main thread does after RThread::Create returns, and what the new
+        // thread does on its way up to the Signal that releases the Wait.
+        296, 299, 362, 353, 374,    // Semaphore CreateLocal, thread Create/SetPriority/Resume, Wait
+        281,                        // RHandleBase::Close -- twice, at 0xb87b0 and 0xb87b8
+        330, 386, 319, 363, 367,    // TrapCleanup, ActiveScheduler ctor/Install, Signal, Start
+        298,                        // RSessionBase::CreateSession, the connect that follows
         IMPORT_LEAVE, IMPORT_EXIT,  // so the last block still reaches the disk
     };
     static const u16 kHot[] = { 424, 425, 274, 287, 272, 417, 383, 369, 389, 264, 344 };
@@ -4738,6 +4755,20 @@ static u32 load_and_start()
                                              iat[IMPORT_FILE_OPEN]);
         ctx->spare += 16 * 4;
         ctx->boxData[BOX_WRAPS] |= W_OPENRES;
+    }
+
+    // The game throws away what RSemaphore::CreateLocal answers, and the whole
+    // SoundServer handshake hangs off that semaphore being real: the main
+    // thread Waits on it and then Closes it, in the window where it now dies.
+    // Three arguments, all in registers, so result_thunk's six-word prologue
+    // cannot slide anything -- the objection that rules it out for
+    // RThread::Create does not apply here.
+    enum { IMPORT_SEM_CREATE = 296 };
+    if (WATCH_SEM_RESULT && IMPORT_SEM_CREATE < nImports &&
+        ctx->spare + 16 * 4 <= ctx->spareEnd) {
+        iat[IMPORT_SEM_CREATE] = result_thunk(ctx->spare, ctx, IMPORT_SEM_CREATE,
+                                              iat[IMPORT_SEM_CREATE]);
+        ctx->spare += 16 * 4;
     }
 
     if (TRACE_EVERY_IMPORT)
