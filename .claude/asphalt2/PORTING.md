@@ -165,6 +165,19 @@ here and the section it overturns is marked.*
 - **Our install is not the problem.** Every file we have in common with the
   known-good cracked dump is byte-identical, `6rbc.dat` (12,224,045 bytes) and
   `6rbc.cwa` (38,413) included; we simply have 86 more files than it does.
+- **The game runs.** `RunL` enters and returns 4,706 times in a two-minute run
+  and `CFbsScreenDevice::Update` is called 4,716 times; the window shows a
+  moving picture at 40-42 FPS. 109,542 core events, against 388 before the last
+  two fixes, 273 before that and 180 on build 59. Nothing panics, nothing
+  leaves, and the run ends only because the harness timeout kills it.
+  Two things unblocked it: answering `RSessionBase::CreateSession` with
+  `KErrNone` so the sound server connect succeeds, and supplying `memmove`,
+  which the game imports from the C runtime and 9.x does not export.
+- **What is wrong now is the picture, not the boot.** The drawn area is a band
+  of about 176x130 across the top, in horizontal magenta/green/grey streaks,
+  with the rest white -- a pixel format or stride mismatch between the
+  framebuffer the game writes and the screen device that reads it. Screen
+  geometry is the other half: the N-Gage is 176x208, the RM-409 is 240x320.
 - **The protection is passed and the game reads its assets.** The run now gets
   a 4-byte size header (`0x440` = 1088) and 411 bytes of zlib out of
   `6rbc.dat` at offset 3,406,180, and that blob inflates to exactly 1088

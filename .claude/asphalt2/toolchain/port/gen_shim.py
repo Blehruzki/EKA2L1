@@ -95,7 +95,9 @@ LOCAL_NEGSF2, LOCAL_PURE_VIRTUAL, LOCAL_NOOP, LOCAL_MEM_COMPARE = 0, 1, 2, 3
 LOCAL_TRAP_ENTER, LOCAL_TINT64_SET = 4, 5
 LOCAL_TRUE = 6
 LOCAL_SELF = 7
-LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL}
+LOCAL_MEM_MOVE = 8
+LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL,
+         'memmove': LOCAL_MEM_MOVE}
 
 # Functions 9.x kept but moved, renamed or gave another argument. Each was
 # checked against the 9.x def rather than assumed; the rest of what does not
@@ -191,6 +193,24 @@ NGAGE_ONLY = ('arenaframework', 'bluetooth.dll', 'gamecomms', 'gameutils', 'noki
 # is a deliberate stand-in, decided from what the game's code does with the
 # call and from reading the function itself out of the N-Gage ROM.
 BY_ORDINAL = {
+    # RSessionBase::CreateSession, old euser 285. It does have a 9.x export and
+    # forwarding to it is exactly what must not happen: there is no kernel
+    # server called SoundServer, because our CServer::StartL is a stand-in that
+    # registers nothing, so the real call answers KErrNotFound.
+    #
+    # 0xb86ec is the classic connect-or-start-the-server idiom -- it builds the
+    # name "SoundServer", tries to connect, starts a thread with the 100000-byte
+    # stack the caller passes in, tries again, and returns KErrNotFound when
+    # both fail. 0xba500 calls it and LeaveIfErrors the answer, and that leave
+    # is where every run has ended since E115.
+    #
+    # KErrNone, to agree with SendReceive, which already answers KErrNone. The
+    # game believes it has a sound session and every request it makes is
+    # swallowed. Sound is silent; the game gets on with it. The honest version
+    # is the in-process bridge -- both ends of this server are in our own
+    # address space -- and this is the placeholder that keeps the run moving
+    # until audio is worth building.
+    ('euser', 285): ('local', LOCAL_NOOP, KIND_LOCAL),
     # ConstructL localises "Invalid game card" into five languages and hands it,
     # with the ASCII name "N-Gage", to this. Nothing on an S60v3 phone would
     # ever show that message, so it succeeds and does nothing.

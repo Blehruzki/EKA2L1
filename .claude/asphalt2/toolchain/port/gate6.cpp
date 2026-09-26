@@ -260,7 +260,25 @@ enum { SLOT = 48 };
 enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 5,
        KIND_ARGSHIFT = 6 };
 enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
-       LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5, LOCAL_TRUE = 6, LOCAL_SELF = 7 };
+       LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5, LOCAL_TRUE = 6, LOCAL_SELF = 7,
+       LOCAL_MEM_MOVE = 8 };
+
+// memmove. The game imports it from the C runtime and 9.x does not export it
+// under that name, so it is written here rather than forwarded. Overlap is the
+// whole point of the function -- Mem::Move would do, but it is one more import
+// to resolve and this is eight instructions.
+extern "C" void *gate6_mem_move(void *dst, const void *src, u32 n)
+{
+    u8 *d = (u8 *)dst;
+    const u8 *s = (const u8 *)src;
+    if (d == s || !n)
+        return dst;
+    if (d < s)
+        for (u32 i = 0; i < n; i++) d[i] = s[i];
+    else
+        for (u32 i = n; i-- > 0; ) d[i] = s[i];
+    return dst;
+}
 
 static void panic(const u16 *cat, int catLen, int reason)
 {
@@ -3970,6 +3988,10 @@ static u32 load_and_start()
             case LOCAL_MEM_COMPARE:
                 s[0] = 0xE51FF004;          // ldr pc, [pc, #-4]
                 s[1] = (u32)&gate6_mem_compare;
+                break;
+            case LOCAL_MEM_MOVE:
+                s[0] = 0xE51FF004;
+                s[1] = (u32)&gate6_mem_move;
                 break;
             default:
                 s[0] = 0xE51FF004;
