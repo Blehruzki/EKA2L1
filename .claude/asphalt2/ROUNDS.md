@@ -212,6 +212,7 @@ them, and say so.
 | E157 | **build 138b -- `RThread::Id` is a struct return; the hidden pointer goes in r0** | 14551 | `--` | **The identity test works and nothing regressed.** 14,551 records, 1,561 frames, and **both worker probes still fill** -- slot 0 the polling worker at `RLibrary::Load`, slot 1 the SoundServer thread at `CTrapCleanup::New` -- so asking the kernel classifies the two workers exactly as the stack test did here, which is the point: the emulator was never where it went wrong. The main thread's id is latched the first time `on_main_thread` runs, which is during setup, and the stack test stays only as the fallback for that one call. This is the build to send |
 | E158 | **build 139 -- a table of candidate framebuffer formats, cycled live from the keypad with `*` and `#`** | 11007 | `--` | **Builds, and entry 0 leaves the run exactly as it was.** `NOTE_SCREEN_FMT` records `idx=0 bpp=32 pitch=960`, which is what the derivation produces, and the run is normal: 2,572 frames, no leave, no exit. Eight candidates, including the 24-bit packed `EColor16M` case, which needed a third branch in the blit -- three bytes, blue first, written a byte at a time because there is no alignment to lean on |
 | E159 | **build 139b -- a digit picks a format outright, and the picker listens on `EEventKey`** | 10707 | `--` | **Two corrections to the picker, both from the record rather than from testing it here.** A digit `0`-`7` selects a candidate directly, because "press `*` four times" is a worse instrument than "press 4". And the event type: I had written `EEventKeyDown = 1`, but E131 recorded types **3, 1, 2** for a single press and those are `EEventKeyDown`, `EEventKey`, `EEventKeyUp` -- so type 1 is `EEventKey`, which is the only one where `iCode` carries a character at all. The value was right and the name was wrong, which is the kind of thing that is right until it is not. Driving the keys here with `xdotool` did not work: this container has no window manager, so `windowactivate` is refused and the emulator never gets focus. Not chased, because the key path is proven on the phone -- round 69 put **157 key events** through this very function -- and the round is self-correcting either way: every key's `iCode` is logged, so if the picker does not fire, the log says exactly what the phone sends instead |
+| E160 | **build 140 -- paint a ruler over the top of the frame so one photograph measures the framebuffer** | 10778 | `--` | **The pattern is right, verified by looking at it.** Captured from the emulator, where the format is known to be correct, it is exactly what it should be: a row of red/green/blue/white bands eight pixels wide across the top, six bands of four rows each below them, a one-pixel white border, and the game's loading screen underneath, undisturbed. That is the control -- whatever the phone shows, the difference from this is the answer. 10,778 records, no leave, no exit, and the cost is one pass over 176x32 pixels a frame |
 
 <!-- EMURUN -->
 
@@ -279,17 +280,32 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 67 | **build 136** -- trace the game's allocator, recorded only when a worker makes the call | 1 | **box identical to round 66 to the entry**; last worker event still `CTrapCleanup::New from b866c`; `SoundServer KERN-EXEC 0` | **It dies in the first euser call it ever makes.** `TTrap::Trap`, `User::AllocL`, `TTrap::UnTrap`, `User::LeaveNoMemory` and `User::Free` all carry trace thunks now and are recorded whenever a worker calls them -- and **not one of them appears**. So the SoundServer thread never reaches the game's `operator new` at all: it dies inside `CTrapCleanup::New()` itself, between the trace record made on the way in and any return. That is the *first* call that thread makes, which reads less like a broken euser export and more like a thread that is not fit to make a call yet -- and `CTrapCleanup::New` allocates, which is the first thing a half-built thread would fail at. Round 66 said lending it a heap changes nothing, but it could not say whether the lend reached the thread. Build 137 asks the thread itself, from inside the trace thunk, one instruction before the call |
 | 68 | **build 137** -- a worker probe, one slot per worker, asking each thread about its own allocator | 1 | **`WORKER PROBE never ran`** -- both slots empty -- and **`import 330` is in the MAIN log** | **The probe answered by not running, and it is the answer.** The box still has `CTrapCleanup::New from b866c` at entry 224, so the SoundServer thread did reach `gate6_trace`; the probe is called there whenever `!on_main_thread(c)`, and it did not run. Then the log settles it from the other side: the main log, which **only the main thread writes**, contains that thread's `CTrapCleanup::New` record. So `on_main_thread` calls the SoundServer thread the main thread on this phone, and **every guard built on it is a no-op for that thread** -- `log_block`, `box_write`, `box_flush`, the worker-log gate, the probe. The thread writes into the shared log buffer and, on the eighth record, `log_block` writes **the main thread's `RFile`**: KERN-EXEC 0, named `SoundServer`. Stacks on EKA2 are packed close together within a process; `THREAD_SPAN` is a megabyte; EKA2L1 gives every thread its own chunk megabytes away, which is why the test has always passed there. **This retracts round 63's "`on_main_thread` works on hardware"** -- it was read from the absence of a record in rounds 63 and 64, and that absence was the eight-record log buffer being lost when the process died, not a guard working |
 | 69 | **build 138** -- `on_main_thread` asks the kernel for the thread id instead of measuring a stack | 1 | **5,227 records, 836 frames, 968 framework calls, 157 key events, no panic** -- and the game **boots to its main menu on the phone and takes input** | **The port runs on hardware.** The semaphore is signalled on the *first* 100 ms slice, so the SoundServer thread lives, does its whole startup and signals: `NOTE_SEM_WAIT` reads `0` then `1` where every round since 63 read `ffffffff`. Both worker probes fill, and they measure the thing that caused nine rounds of trouble: the two workers' stacks are at `0x00415e7c` and `0x00427f90` -- **72 KB apart**, against a test that allowed a megabyte. Asking euser for the thread id fixed it. The remaining fault is entirely cosmetic and entirely ours: the picture is drawn with the wrong framebuffer geometry, so the game's image appears three times across the screen with alternate lines showing the phone's menu through it |
+| 70 | **build 139** -- eight candidate framebuffer formats, selected live from the keypad | 1, eight photographs | **The picker works; none of the eight is right** | **Input reaches the picker and every format is visibly different, so the instrument is sound and the answer is simply not in the table.** Two checks passed on the way: index 4 (32bpp, 960) is indistinguishable from index 0, which is the derived format, so the table and the derivation agree; and the digit keys reach `gate6_control_offerkey` and are swallowed, so the game never sees them. What the eight say: **every one of them stripes**, including 16bpp on a 480-byte line, which is the tightest pitch offered -- if the real line were 480 bytes or more at two bytes a pixel, that one would have laid its rows down contiguously. Index 1, which is exactly what HAL claims (16 bits, 640), gives much the most coherent picture: the word `SELECT` is legible in it. Measuring the rest off photographs is what produced round 60's wrong answer, so build 140 stops measuring pictures of a car and paints a ruler instead |
 
 ## Where we are
 
-**Furthest: round 69, build 138 -- the game boots on the phone.** It reaches
+**Furthest: round 70.** The game boots and runs; the only thing left is the
+framebuffer's format, and eight candidates have now been tried on the phone
+itself. None is right, but the round is not a loss: the picker works, the
+derived format and the table agree, and every candidate stripes -- including
+the tightest pitch on offer, which says the real line is shorter than
+480 bytes at two bytes a pixel, or is not that shape at all. The most
+coherent of the eight is exactly what HAL claims, 16 bits on a 640-byte line.
+
+**Best round so far: 69**, still: it is the one where the game booted.
+
+**Round 70** is the one that stopped the guessing being open-ended: the
+answer is now one photograph away, because build 140 paints a ruler instead
+of a car.
+
+**Previously furthest: round 69, build 138 -- the game boots on the phone.** It reaches
 its main menu, runs 836 frames, takes 157 key events and does not panic. The
 SoundServer thread lives and signals the semaphore on the first 100 ms slice.
 Everything structural this file has been chasing since round 31 is done; what
 is left is that the framebuffer's real format is still unknown, so the
 picture is unreadable.
 
-**Best round so far: 69.** It is the one the project was for.
+**Round 69** is the one the project was for.
 
 **Runner-up: 68**, which found the cause the day before: `on_main_thread`
 identified a thread by how far its stack was from the main thread's and
@@ -1326,3 +1342,44 @@ not what that would give -- and HAL has lied about it three ways out of three
 can carry a table of candidate formats and a key that cycles through them
 live. One round, one key held down, and the format is whichever one makes the
 picture stand still.
+
+## Round 70 -- build 139: eight formats, none of them right
+
+The picker works. Eight digits, eight visibly different pictures, and the
+game kept running through all of them. Two things are confirmed by
+construction: index 4 (32 bits, 960-byte line) is indistinguishable from
+index 0, which is the derived format, so the table agrees with the
+derivation; and the digits reach `gate6_control_offerkey` and are swallowed,
+so the game never saw them.
+
+| key | format | what it looks like |
+|---|---|---|
+| key 0, 4 | 32bpp, 960 | small blocky repeats, heavy striping |
+| **key 1** | **16bpp, 640** -- what HAL claims | **much the most coherent; `SELECT` is legible** |
+| key 2 | 16bpp, 480 | two copies, striped |
+| key 3 | 16bpp, 512 | two copies, different phase |
+| key 5 | 32bpp, 1024 | finer stripes, fragmented |
+| key 6 | 24bpp packed, 720 | fragmented |
+| key 7 | 32bpp, 1440 | shredded, spilling over the whole screen |
+
+**Every one of them stripes** -- alternate lines show the phone's own menu
+through the picture. Format 2 offers the tightest line the table has, 480
+bytes, which is 240 pixels at two bytes; if the real line were that long or
+longer at two bytes a pixel, that format would have laid its rows down
+contiguously with no gaps at all. It did not.
+
+### Why this round stops here
+
+Three readings have now been taken off photographs of the game's own
+artwork, and one of them -- round 60's "four bytes on a 960-byte line" --
+was wrong and cost four rounds. A photograph of a car tells you very little
+about a pitch.
+
+So build 140 paints a **ruler** into the top of the frame instead: eight
+source pixels per colour band across, four source rows per colour band down,
+in red, green, blue and white, with a one-pixel white border round the whole
+176x208 image. Then a single photograph answers all of it arithmetically --
+the width of a band across gives the bytes per pixel, the height of a band
+down gives the line pitch, and the sideways drift from one band to the next
+gives the remainder. The game's picture stays underneath, and the picker
+stays, so the same photograph can be taken in any of the eight formats.

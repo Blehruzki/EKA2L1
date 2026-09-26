@@ -3706,6 +3706,7 @@ static const u16 kFmt[][2] = {           // { bytes per pixel, line in bytes }
     { 4, 960 }, { 4, 1024 }, { 3, 720 }, { 4, 1440 },
 };
 enum { SCREEN_PICKER = 1, FMT_COUNT = sizeof kFmt / sizeof kFmt[0] };
+enum { SCREEN_RULER = 1 };
 enum { KEY_FMT_NEXT = '*', KEY_FMT_PREV = '#' };
 
 static void screen_format(Context *c)
@@ -3846,6 +3847,37 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
         c->shots++;
         if (c->shots == (u32)DUMP_FRAME || c->shots == (u32)DUMP_FRAME + 60)
             dump_region(c, (const u8 *)c->gameScreen, DUMP_FRAME_BYTES);
+    }
+    // Round 70: eight candidate formats went to the phone and none of them
+    // was right, and the pictures could not be measured because they are
+    // pictures of a car. So paint a ruler over the top of the frame -- eight
+    // source pixels per colour band across, four source rows per band down,
+    // and a one-pixel border round the whole 176x208 -- and one photograph
+    // answers it arithmetically instead:
+    //
+    //   band width on screen / 8  =  bytes we write / bytes the screen has
+    //   band height on screen / 4 =  the line we write / the line it has
+    //   sideways drift per band   =  the remainder between the two
+    //
+    // Painted into our own buffer, which the game rewrites every frame, so it
+    // costs one pass over 176x32 pixels and changes nothing else.
+    if (SCREEN_RULER && c->gameScreen) {
+        u16 *g = c->gameScreen;
+        static const u16 kBand[4] = { 0x0F00, 0x00F0, 0x000F, 0x0FFF };
+        for (u32 y = 0; y < 8; y++)                     // across: 8 px a band
+            for (u32 x = 0; x < (u32)GAME_W; x++)
+                g[y * (u32)GAME_W + x] = kBand[(x >> 3) & 3];
+        for (u32 y = 8; y < 32; y++)                    // down: 4 rows a band
+            for (u32 x = 0; x < (u32)GAME_W; x++)
+                g[y * (u32)GAME_W + x] = kBand[(y >> 2) & 3];
+        for (u32 x = 0; x < (u32)GAME_W; x++) {         // and the border
+            g[x] = 0x0FFF;
+            g[((u32)GAME_H - 1) * (u32)GAME_W + x] = 0x0FFF;
+        }
+        for (u32 y = 0; y < (u32)GAME_H; y++) {
+            g[y * (u32)GAME_W] = 0x0FFF;
+            g[y * (u32)GAME_W + (u32)GAME_W - 1] = 0x0FFF;
+        }
     }
     if (c->gameScreen && c->realScreen) {
         const u16 *src = c->gameScreen;
