@@ -44,6 +44,14 @@ here and the section it overturns is marked.*
   is that the framebuffer's real format is unknown, so the picture is drawn
   three times across the screen with alternate lines showing the phone's own
   menu through it.
+- **The framebuffer's line is about 576 bytes**, which is a 240-pixel
+  16-bit line padded up to a 64-byte boundary. Round 71 measured it two ways
+  that agree: a ruler of known size painted into the frame, whose on-screen
+  height is `32 * p_used / P_real`, and round 69's three-row repeat, which is
+  the period of `960 mod P` only for P near 576. **So HAL's
+  `EDisplayBitsPerPixel` of 16 was right all along** and only its
+  `EDisplayOffsetBetweenLines` of 640 is wrong -- by one padding rule. Not
+  yet confirmed by a correct picture.
 - **The framebuffer format cannot be deduced.** HAL answers wrongly three
   ways out of three, and three readings from photographs have now been tried,
   the last of them wrong. Build 139 carries eight candidates and a key that

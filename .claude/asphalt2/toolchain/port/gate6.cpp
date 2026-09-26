@@ -3690,24 +3690,27 @@ extern "C" int gate6_file_read_static(void *self, u32 *des, Context *c)
 // size, which for the RM-409 is 240x320 where the game expects 176x208, and the
 // chunk begins with a palette rather than with pixels. Any of those three would
 // produce what is on the screen now, so the first thing is to see the numbers.
-// Candidate framebuffer formats, in the order `*` walks them. Entry 0 is
-// "whatever was derived", so a run that is never touched behaves exactly as
-// round 69's did.
+// Round 71 read the ruler and it says the line is about **576 bytes** -- a
+// 240-pixel 16-bit line padded up to a 64-byte boundary, which is a number
+// hardware picks and none of build 139's candidates was within 64 bytes of.
+// So the depth HAL reported was right all along and only its padding was
+// wrong.
 //
-//   1  what HAL claims: 16 bits, 640-byte line
-//   2  240 x 2, unpadded
-//   3  240 x 2, padded to 512
-//   4  240 x 4, unpadded -- the emulator's layout
-//   5  240 x 4, padded to 1024
-//   6  240 x 3, packed EColor16M
-//   7  the 1440-byte line the round 69 photograph's three-row repeat implies
+// A table of eight was the wrong instrument anyway: it can only be right by
+// luck. The digits are coarse presets around the new answer now, `*` and `#`
+// step the line by sixteen bytes, and `9` switches the depth -- so the whole
+// space is reachable by hand and the round ends when the picture stands
+// still rather than when the table runs out.
 static const u16 kFmt[][2] = {           // { bytes per pixel, line in bytes }
-    { 0, 0 }, { 2, 640 }, { 2, 480 }, { 2, 512 },
-    { 4, 960 }, { 4, 1024 }, { 3, 720 }, { 4, 1440 },
+    { 0, 0 },                            // 0: whatever was derived
+    { 2, 576 },                          // 1: 480 padded to 64 -- the answer, if round 71 is right
+    { 2, 512 }, { 2, 544 }, { 2, 608 },  // 2-4: one step either side
+    { 2, 480 }, { 2, 640 },              // 5-6: unpadded, and what HAL claims
+    { 4, 1152 },                         // 7: the same line at four bytes
 };
 enum { SCREEN_PICKER = 1, FMT_COUNT = sizeof kFmt / sizeof kFmt[0] };
-enum { SCREEN_RULER = 1 };
-enum { KEY_FMT_NEXT = '*', KEY_FMT_PREV = '#' };
+enum { KEY_FMT_NEXT = '*', KEY_FMT_PREV = '#', KEY_FMT_DEPTH = '9' };
+enum { FMT_STEP = 16, FMT_MIN = 240, FMT_MAX = 4096 };
 
 static void screen_format(Context *c)
 {
@@ -3715,13 +3718,18 @@ static void screen_format(Context *c)
     if (i && i < (u32)FMT_COUNT) {
         c->realBpp = (u32)kFmt[i][0] * 8;
         c->realPitch = (u32)kFmt[i][1];
+    } else if (i) {
+        // Stepped by hand: fmtIndex is out of the table, so bpp and pitch are
+        // whatever the stepping left them.
     } else {
         c->realBpp = c->derivedBpp;
         c->realPitch = c->derivedPitch;
     }
-    log_event(c, NOTE_SCREEN_FMT, (i << 24) | (c->realBpp << 16) | c->realPitch);
+    log_event(c, NOTE_SCREEN_FMT, (c->realBpp << 16) | (c->realPitch & 0xFFFF));
     log_block(c);
 }
+
+enum { SCREEN_RULER = 1 };
 
 extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
 {
@@ -4241,15 +4249,23 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
         enum { EEventKey = 1 };
         if (SCREEN_PICKER && type == (u32)EEventKey) {
             const u32 code = k[0];
-            u32 want = (u32)-1;
-            if (code >= '0' && code < '0' + (u32)FMT_COUNT)
-                want = code - '0';
-            else if (code == (u32)KEY_FMT_NEXT)
-                want = (c->fmtIndex + 1) % (u32)FMT_COUNT;
-            else if (code == (u32)KEY_FMT_PREV)
-                want = (c->fmtIndex + (u32)FMT_COUNT - 1) % (u32)FMT_COUNT;
-            if (want != (u32)-1) {
-                c->fmtIndex = want;
+            if (code >= '0' && code < '0' + (u32)FMT_COUNT) {
+                c->fmtIndex = code - '0';
+                screen_format(c);
+                return 1;                   // EKeyWasConsumed
+            }
+            if (code == (u32)KEY_FMT_NEXT || code == (u32)KEY_FMT_PREV ||
+                code == (u32)KEY_FMT_DEPTH) {
+                // Stepping leaves the table behind, so mark the index as
+                // "hand-set" and let screen_format keep what is there.
+                c->fmtIndex = (u32)FMT_COUNT;
+                if (code == (u32)KEY_FMT_DEPTH)
+                    c->realBpp = (c->realBpp == 16) ? 32u : 16u;
+                else if (code == (u32)KEY_FMT_NEXT) {
+                    if (c->realPitch + (u32)FMT_STEP <= (u32)FMT_MAX)
+                        c->realPitch += (u32)FMT_STEP;
+                } else if (c->realPitch >= (u32)(FMT_MIN + FMT_STEP))
+                    c->realPitch -= (u32)FMT_STEP;
                 screen_format(c);
                 return 1;                   // EKeyWasConsumed
             }

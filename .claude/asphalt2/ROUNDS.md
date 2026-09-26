@@ -213,6 +213,7 @@ them, and say so.
 | E158 | **build 139 -- a table of candidate framebuffer formats, cycled live from the keypad with `*` and `#`** | 11007 | `--` | **Builds, and entry 0 leaves the run exactly as it was.** `NOTE_SCREEN_FMT` records `idx=0 bpp=32 pitch=960`, which is what the derivation produces, and the run is normal: 2,572 frames, no leave, no exit. Eight candidates, including the 24-bit packed `EColor16M` case, which needed a third branch in the blit -- three bytes, blue first, written a byte at a time because there is no alignment to lean on |
 | E159 | **build 139b -- a digit picks a format outright, and the picker listens on `EEventKey`** | 10707 | `--` | **Two corrections to the picker, both from the record rather than from testing it here.** A digit `0`-`7` selects a candidate directly, because "press `*` four times" is a worse instrument than "press 4". And the event type: I had written `EEventKeyDown = 1`, but E131 recorded types **3, 1, 2** for a single press and those are `EEventKeyDown`, `EEventKey`, `EEventKeyUp` -- so type 1 is `EEventKey`, which is the only one where `iCode` carries a character at all. The value was right and the name was wrong, which is the kind of thing that is right until it is not. Driving the keys here with `xdotool` did not work: this container has no window manager, so `windowactivate` is refused and the emulator never gets focus. Not chased, because the key path is proven on the phone -- round 69 put **157 key events** through this very function -- and the round is self-correcting either way: every key's `iCode` is logged, so if the picker does not fire, the log says exactly what the phone sends instead |
 | E160 | **build 140 -- paint a ruler over the top of the frame so one photograph measures the framebuffer** | 10778 | `--` | **The pattern is right, verified by looking at it.** Captured from the emulator, where the format is known to be correct, it is exactly what it should be: a row of red/green/blue/white bands eight pixels wide across the top, six bands of four rows each below them, a one-pixel white border, and the game's loading screen underneath, undisturbed. That is the control -- whatever the phone shows, the difference from this is the answer. 10,778 records, no leave, no exit, and the cost is one pass over 176x32 pixels a frame |
+| E161 | **build 141 -- the picker steps the line by sixteen bytes and switches depth, with presets around 576** | 10881 | `--` | **Builds, runs, entry 0 unchanged.** `NOTE_SCREEN_FMT` now records the bits and the line rather than a table index, which is what matters once the line can be stepped off the table: `bpp=32 pitch=960`, the derived pair, and 2,502 frames with no leave and no exit. The digits are presets around 576, `*` and `#` move the line sixteen bytes at a time between 240 and 4096, and `9` flips between two and four bytes a pixel, so the whole space is reachable by hand. One self-inflicted build error on the way, worth a line: the replacement spliced the new table in *above* the old `screen_format` instead of over it, and clang caught two redefinitions -- the sort of thing that only costs a minute when the compiler is the one reading |
 
 <!-- EMURUN -->
 
@@ -281,10 +282,21 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 68 | **build 137** -- a worker probe, one slot per worker, asking each thread about its own allocator | 1 | **`WORKER PROBE never ran`** -- both slots empty -- and **`import 330` is in the MAIN log** | **The probe answered by not running, and it is the answer.** The box still has `CTrapCleanup::New from b866c` at entry 224, so the SoundServer thread did reach `gate6_trace`; the probe is called there whenever `!on_main_thread(c)`, and it did not run. Then the log settles it from the other side: the main log, which **only the main thread writes**, contains that thread's `CTrapCleanup::New` record. So `on_main_thread` calls the SoundServer thread the main thread on this phone, and **every guard built on it is a no-op for that thread** -- `log_block`, `box_write`, `box_flush`, the worker-log gate, the probe. The thread writes into the shared log buffer and, on the eighth record, `log_block` writes **the main thread's `RFile`**: KERN-EXEC 0, named `SoundServer`. Stacks on EKA2 are packed close together within a process; `THREAD_SPAN` is a megabyte; EKA2L1 gives every thread its own chunk megabytes away, which is why the test has always passed there. **This retracts round 63's "`on_main_thread` works on hardware"** -- it was read from the absence of a record in rounds 63 and 64, and that absence was the eight-record log buffer being lost when the process died, not a guard working |
 | 69 | **build 138** -- `on_main_thread` asks the kernel for the thread id instead of measuring a stack | 1 | **5,227 records, 836 frames, 968 framework calls, 157 key events, no panic** -- and the game **boots to its main menu on the phone and takes input** | **The port runs on hardware.** The semaphore is signalled on the *first* 100 ms slice, so the SoundServer thread lives, does its whole startup and signals: `NOTE_SEM_WAIT` reads `0` then `1` where every round since 63 read `ffffffff`. Both worker probes fill, and they measure the thing that caused nine rounds of trouble: the two workers' stacks are at `0x00415e7c` and `0x00427f90` -- **72 KB apart**, against a test that allowed a megabyte. Asking euser for the thread id fixed it. The remaining fault is entirely cosmetic and entirely ours: the picture is drawn with the wrong framebuffer geometry, so the game's image appears three times across the screen with alternate lines showing the phone's menu through it |
 | 70 | **build 139** -- eight candidate framebuffer formats, selected live from the keypad | 1, eight photographs | **The picker works; none of the eight is right** | **Input reaches the picker and every format is visibly different, so the instrument is sound and the answer is simply not in the table.** Two checks passed on the way: index 4 (32bpp, 960) is indistinguishable from index 0, which is the derived format, so the table and the derivation agree; and the digit keys reach `gate6_control_offerkey` and are swallowed, so the game never sees them. What the eight say: **every one of them stripes**, including 16bpp on a 480-byte line, which is the tightest pitch offered -- if the real line were 480 bytes or more at two bytes a pixel, that one would have laid its rows down contiguously. Index 1, which is exactly what HAL claims (16 bits, 640), gives much the most coherent picture: the word `SELECT` is legible in it. Measuring the rest off photographs is what produced round 60's wrong answer, so build 140 stops measuring pictures of a car and paints a ruler instead |
+| 71 | **build 140** -- a ruler painted over the top of the frame, photographed in all eight formats | 1, eight photographs | **The ruler is legible and gives a number: the line is about 576 bytes** | **The ruler behaves exactly as the model says it should, which is the first time the model has been testable.** Its on-screen height grows with the pitch we write: squeezed into a couple of rows at 640, a little taller at 960, and spread into clearly separated red / green / blue / white bands at 1440. Thirty-two source rows occupying *H* display rows means `H = 32 * p_used / P_real`, and the 1440 photograph puts *H* near 80, which gives **P_real ~= 576**. That agrees with a second, independent measurement made a round earlier: round 69's picture repeated every **three** display rows, and three is the period of `960 mod P` for P = 576 and for almost nothing else nearby. And 576 is what a 240-pixel 16-bit line looks like when the hardware pads it to a 64-byte boundary: 480 rounded up. **So HAL was right about the depth and wrong about the padding**, and no candidate in the table was within 64 bytes of it |
 
 ## Where we are
 
-**Furthest: round 70.** The game boots and runs; the only thing left is the
+**Furthest: round 71.** The ruler works, and the framebuffer's line is
+about **576 bytes** -- which is a 240-pixel 16-bit line padded up to a
+64-byte boundary, so HAL was right about the depth all along and wrong only
+about the padding. Two independent measurements agree on it: the ruler's
+height at three different pitches, and the three-row repeat photographed in
+round 69. No candidate in build 139's table was within 64 bytes of it.
+
+**Best round so far: 69**, still, for the boot. **Round 71** is the one that
+turned the screen from a guessing game into a number.
+
+**Previously furthest: round 70.** The game boots and runs; the only thing left is the
 framebuffer's format, and eight candidates have now been tried on the phone
 itself. None is right, but the round is not a loss: the picker works, the
 derived format and the table agree, and every candidate stripes -- including
@@ -1383,3 +1395,40 @@ the width of a band across gives the bytes per pixel, the height of a band
 down gives the line pitch, and the sideways drift from one band to the next
 gives the remainder. The game's picture stays underneath, and the picker
 stays, so the same photograph can be taken in any of the eight formats.
+
+## Round 71 -- build 140: the ruler reads 576
+
+The ruler is 32 source rows tall: eight rows of colour bands across, then six
+bands of four rows down. On screen it occupies
+
+    H  =  32 * p_used / P_real       display rows
+
+so photographing it at several `p_used` and reading *H* gives `P_real`
+directly. That is what the eight photographs do, and they behave exactly as
+that formula says: at 640 the whole ruler is squeezed into a couple of rows,
+at 960 it is a little taller, and at **1440** it opens out into clearly
+separated red, green, blue and white bands.
+
+At 1440 the ruler covers something near 80 display rows, which puts
+
+    P_real  =  32 * 1440 / 80  ~=  576
+
+**A second measurement agrees.** Round 69's picture repeated every **three**
+display rows. The repeat period is the smallest *k* with `k * 960` divisible
+by `P_real`, and for 576 that is exactly 3 -- 960 leaves 384, 1920 leaves
+192, 2880 leaves nothing. Very few nearby pitches give 3.
+
+**And 576 is a number hardware would choose.** 240 pixels at two bytes is
+480; rounded up to a 64-byte boundary it is 576. So HAL's
+`EDisplayBitsPerPixel` of 16 was **right all along** -- the depth was never
+the problem -- and its `EDisplayOffsetBetweenLines` of 640 is wrong by one
+padding rule. Build 139's table had 480, 512 and 640 in it and not one
+candidate within 64 bytes of the answer.
+
+### Build 141 stops offering a menu
+
+A fixed table of eight was the wrong instrument: it can only be right by
+luck. Build 141 keeps the digits as coarse presets but adds a **fine step**:
+`*` and `#` move the line by 16 bytes at a time, and `9` switches between two
+and four bytes a pixel. The whole space is then reachable by hand, so the
+round ends when the picture stands still rather than when the table runs out.
