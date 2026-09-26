@@ -37,6 +37,24 @@ here and the section it overturns is marked.*
 
 ### Settled
 
+- **The port hangs; it does not crash.** The main thread goes into
+  `RSemaphore::Wait` at `0xb8798` waiting for the SoundServer thread to signal
+  at `0xb86ac`, the signal never comes, and `gate6 ViewSrv 11` is the view
+  server timing out on an application that has stopped answering (round 63).
+  `RSemaphore::CreateLocal` answers 0, so the semaphore itself is sound.
+  Build 134 waits in 100 ms slices instead, so the box keeps being flushed
+  while the other thread runs, and gives up after two seconds so the game goes
+  on rather than hanging.
+- **The thread that dies is `SoundServer`** -- named on the phone's own panic
+  dialog in round 64, which is the first time any round has had a name rather
+  than a guess. It is the thread the game starts at `0xb8660` to run its sound
+  server, and it dies somewhere between `CTrapCleanup::New` and the
+  `RSemaphore::Signal` five calls later.
+- **An instrument must not touch a file from a worker thread.** Build 133 gave
+  the worker its own `RFs` and its own file, and killed it at the first
+  `RFs::Connect` -- which a trace thunk reaches *before* the import it traces.
+  That build is what named `SoundServer`, and it is off. The rule is now
+  simply: on a worker, memory only.
 - **The KERN-EXEC 0 the phone has raised beside every KERN-EXEC 3 is ours.**
   `box_flush` returned early on a null handle, `box_write` returned early off
   the main thread, and the `RFile::Flush` between them did neither -- so the

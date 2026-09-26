@@ -22,7 +22,7 @@ buildapp.build('gate6', 0xE0001006, 'Gate6', sys.argv[1] if len(sys.argv) > 1 el
                                           'chunk_createlocalcode', 'chunk_base',
                                           'rlibrary_load', 'rlibrary_lookup',
                                           'rdebug_rawprint', 'user_imb_range',
-                                          'user_tickcount']),
+                                          'user_tickcount', 'sem_wait_timeout']),
                         (buildapp.EFSRV, ['fs_connect', 'file_open', 'file_close',
                                           'file_size', 'file_read',
                                           'file_replace', 'file_write_at',

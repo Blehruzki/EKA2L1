@@ -28,6 +28,7 @@ void user_panic(const void *category, int reason);
 void *user_alloc(int size);
 i32 chunk_createlocalcode(void *chunk, int size, int maxSize, int owner);
 u8 *chunk_base(const void *chunk);
+i32 sem_wait_timeout(void *sem, int microseconds);
 i32 fs_connect(void *fs, int slots);
 i32 file_open(void *file, void *fs, const void *name, u32 mode);
 // RFile::Close, and not RHandleBase::Close. An RFile is an RSubSessionBase,
@@ -230,6 +231,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_WATCH_EARLY = 844,  // the allocation the watch was latched on, early
        NOTE_IMAGE_AT = 845,     // an image word that is not what was loaded
        NOTE_IMAGE_NOW = 846,    // ... and what it says now
+       NOTE_SEM_WAIT = 836,     // the main thread's wait on the SoundServer's semaphore
        NOTE_WORKER_SP = 849,    // a worker's stack, so two of them can be told apart
        NOTE_SCRATCH = 847,      // a word of the game's scratch code chunk
        NOTE_IMAGE_WORD = 848,   // ... beside the image word it may have become
@@ -1269,7 +1271,19 @@ enum { WORKER_NOTES = 1, WORKER_NOTE_MAX = 200 };
 // owns is touched. If either the connect or the replace fails the state goes
 // to 2 and this never tries again -- a failed instrument must be silent, not
 // a second fault. That is the rule build 55 had to learn about the box.
-enum { WORKER_LOG = 1, WORKER_LOG_MAX = 1024 };
+// **Off.** Round 64: the only change in build 133 was this, and the only new
+// thing on the phone was a panic that said **`SoundServer`** -- the first time
+// that thread has been named. No `g6wrk.log` was produced at all, so it died
+// at or before `fs_connect`, which a trace thunk reaches *before* the import
+// it is tracing. Two things wrong with it: both workers share one `RFs` and
+// one `RFile` here, which is the same cross-thread handle rounds 60 to 62
+// were about, and the first call is fatal on that thread regardless of that.
+//
+// It is left in, switched off, because the alternative -- `gate6_sem_wait`
+// below -- gets the same story out of the box without the worker touching a
+// file at all, and an instrument that cannot be the fault is worth more than
+// one that might be.
+enum { WORKER_LOG = 0, WORKER_LOG_MAX = 1024 };
 
 static void worker_log(Context *c, u32 code, u32 from)
 {
@@ -3328,6 +3342,50 @@ extern "C" void gate6_thread_created(u32 err, const u32 *frame, Context *c)
     log_block(c);
 }
 
+// Round 63 and 64: the main thread goes into `RSemaphore::Wait` at `0xb8798`
+// and never comes out, because the SoundServer thread dies before its
+// `RSemaphore::Signal` at `0xb86ac`. Two things follow from a blocking wait
+// and both are in the way:
+//
+//   * the application stops answering, which is what `gate6 ViewSrv 11` is --
+//     the view server timing out on it;
+//   * nothing flushes the box again, so every record the dying thread makes
+//     is stranded in memory and the round ends knowing nothing.
+//
+// euser exports a wait with a timeout (ordinal 68) beside the blocking one.
+// Called in slices it is the same wait -- it returns 0 the moment the
+// semaphore is signalled -- except that between slices the box goes down, so
+// the worker's story reaches the disk while it is still being written. And
+// when the signal never comes, this gives up after five seconds and lets the
+// game carry on rather than hang, which is worth a round on its own: what the
+// game does next has never been seen.
+//
+// This is the instrument that replaces `worker_log`. It touches no file from
+// any thread but the main one, so it cannot be the fault it is looking for.
+// Two seconds, not five. All of this happens inside frame 1's `RunL`, and
+// this file already records a phone watchdog reset at about ten seconds of
+// not yielding. The emulator's semaphore is signalled inside the first 100 ms
+// slice, so a healthy handshake never notices the difference.
+enum { POLL_THE_WAIT = 1, SEM_SLICE_US = 100000, SEM_SLICES = 20 };
+
+extern "C" void gate6_sem_wait(void *self, u32, Context *c)
+{
+    log_event(c, NOTE_SEM_WAIT, 0);
+    log_block(c);
+    for (u32 i = 0; i < (u32)SEM_SLICES; i++) {
+        const i32 err = sem_wait_timeout(self, SEM_SLICE_US);
+        box_flush(c);
+        if (err == 0) {
+            log_event(c, NOTE_SEM_WAIT, i + 1);   // signalled, and how long it took
+            log_block(c);
+            return;
+        }
+    }
+    // Never signalled. Say so and carry on regardless.
+    log_event(c, NOTE_SEM_WAIT, 0xFFFFFFFF);
+    log_block(c);
+}
+
 extern "C" int gate6_thread_resume(u32 *self, u32, Context *c)
 {
     typedef int (*Resume)(void *);
@@ -4842,6 +4900,15 @@ static u32 load_and_start()
     // Three arguments, all in registers, so result_thunk's six-word prologue
     // cannot slide anything -- the objection that rules it out for
     // RThread::Create does not apply here.
+    // The timed wait goes in *before* the trace loop, so the trace thunk wraps
+    // it and the box still records the import.
+    enum { IMPORT_SEM_WAIT = 374 };
+    if (POLL_THE_WAIT && IMPORT_SEM_WAIT < nImports &&
+        ctx->spare + TRACE <= ctx->spareEnd) {
+        iat[IMPORT_SEM_WAIT] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_sem_wait);
+        ctx->spare += TRACE;
+    }
+
     enum { IMPORT_SEM_CREATE = 296 };
     if (WATCH_SEM_RESULT && IMPORT_SEM_CREATE < nImports &&
         ctx->spare + 16 * 4 <= ctx->spareEnd) {
