@@ -173,6 +173,26 @@ here and the section it overturns is marked.*
   Two things unblocked it: answering `RSessionBase::CreateSession` with
   `KErrNone` so the sound server connect succeeds, and supplying `memmove`,
   which the game imports from the C runtime and 9.x does not export.
+- **The clipped right edge is the game's own, not the port's.** Measured, not
+  guessed: the framebuffer is 176x208 with a **176-pixel stride** (the title
+  screen renders pixel-perfect from a raw dump at 176 and shears at 192 and
+  208), and the game writes **exactly 176x208 and nothing beyond** -- the rest
+  of the buffer stays untouched zeros. What it does do is draw up to **192
+  pixels wide**, so as many as sixteen columns of a row land on the **next
+  row's left edge**: the `0s` at the far left is the tail of `11.90s` from the
+  line above. The overflow is concentrated in rows 5 to 31, the car-name banner
+  at the top; the stats lines overflow by about one column.
+  Three things were tried and none of them moves it, each left in the source
+  with its result beside it: reporting `iScreenSize` as 176x208 instead of the
+  device's 240x320 (`TELL_GAME_ITS_SIZE`) gives **byte-identical** frames;
+  sizing the lent window to 176x208 (`SIZE_THE_WINDOW`) changes nothing; and
+  reporting a 192-pixel pitch makes the picture shear, because the game keeps
+  writing rows 176 apart. Its stride is hardcoded.
+  So the fix is not in the shim. It needs the constant the game lays its menus
+  out against, found in its code -- and it is worth knowing first whether an
+  N-Gage does the same thing, because a panel with 192 pixels of pitch and 176
+  visible would swallow the overflow and this may simply be what the game does.
+  `DUMP_FRAME` drops a raw frame into `C:\g6code.bin` for that work.
 - **Input works.** The game takes keys by overriding **old control slot 1**,
   `CCoeControl::OfferKeyEventL` -- the image names that slot itself, since every
   other control vtable in it carries a base-class veneer there and in the

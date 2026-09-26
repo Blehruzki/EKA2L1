@@ -489,6 +489,13 @@ enum { OLD_CTL_OFFERKEY = 1 };
 // replace in the copied vtable. Scanning for it beats hardcoding an index that
 // would be wrong on the next feature pack.
 enum { NEW_COECONTROL_OFFERKEY = 26, BRIDGE_KEYS = 1 };
+// The window the game is lent is the wrapper control's, and the wrapper is a
+// full-screen 9.x control -- 240x320. The game writes exactly 176x208 and
+// nothing more (measured: the rest of the buffer is untouched), so the window
+// is the only remaining place it could be getting a wider number from for the
+// menu layout it truncates. cone 63 is CCoeControl::SetExtent(TPoint, TSize).
+// Measured to make no difference (E134); kept off.
+enum { NEW_COECONTROL_SETEXTENT = 63, SIZE_THE_WINDOW = 0 };
 enum { NEW_CTL_FOCUS = 26, NEW_CTL_DRAW = 41 };
 
 // Direct screen access is the first thing that calls the game back. The window
@@ -764,6 +771,8 @@ struct Context {
     u8 *realScreen;         // and the 32bpp one the emulator actually shows
     u32 realPitch;          // bytes between its lines
     u32 offX, offY;         // where the game's picture sits inside it
+    u32 shots;              // frames seen, for the one-shot framebuffer dump
+    u32 srcPitch;           // pixels between the game's rows, 176 or 192
     u32 fileOpenThunk;
     u8 *spare;              // unused executable room, handed out as needed
     u8 *spareEnd;
@@ -1738,7 +1747,18 @@ enum { IMPORT_LEAVE = 324, IMPORT_EXIT = 308, IMPORT_FILE_READ_STATIC = 110 };
 enum { READ_DATA_WORDS = 8 };
 enum { IMPORT_SCREEN_INFO = 356, WATCH_THE_SCREEN = 1 };
 // The N-Gage's screen, which is what this game draws whatever it is told.
-enum { OWN_SCREEN = 1, SCREEN_4K = 1, GAME_W = 176, GAME_H = 208 };
+// GAME_W is what shows; GAME_PITCH is how far apart the game puts its rows.
+// Measured (E133-E135): the game writes rows 176 apart and draws up to **192**
+// wide, so sixteen columns of every row land on the next row's left edge. On
+// an N-Gage those sixteen would be off-screen padding, which says the real
+// panel pitch is 192 with 176 visible. Reading the buffer differently cannot
+// undo it -- the overflow has already overwritten the next row -- so the pitch
+// the game uses has to be 192, and the only number we hand it is iScreenSize.
+enum { OWN_SCREEN = 1, SCREEN_4K = 1, GAME_W = 176, GAME_PITCH = 192, GAME_H = 208,
+       TELL_GAME_ITS_SIZE = 0 };
+// 0 = off. Set it to a frame number to drop that frame's raw buffer into
+// C:\g6code.bin, which is how the stride and the overflow were measured.
+enum { DUMP_FRAME = 0, DUMP_FRAME_BYTES = 240 * 240 * 2 };
 
 // A breadcrumb goes into the same ring as the imports, so the two interleave
 // and the order is the order things happened in. The marker reads as 900 and
@@ -3303,18 +3323,27 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
                                         // 64-byte aligned, so tight is right
         c->offX = w > (u32)GAME_W ? (w - (u32)GAME_W) / 2 : 0;
         c->offY = h > (u32)GAME_H ? (h - (u32)GAME_H) / 2 : 0;
-        // Only the address. E127 changed the reported size to 176x208 as well
-        // and the run died at the first Update on a null vptr, so the game does
-        // read that size for something even though it ignores it when it draws.
-        // The buffer is big enough for either, so nothing overruns if it writes
-        // to the size it was told after all.
+        // The buffer is sized for whichever the game believes, so nothing can
+        // overrun: that is what E127 got wrong, where a 176x208 buffer was
+        // handed over together with a 176x208 size and the run died at the
+        // first Update. Here it is always big enough for the device's own
+        // screen.
         u32 want = w * h * 2;
-        if (want < (u32)(GAME_W * GAME_H * 2)) want = GAME_W * GAME_H * 2;
+        if (want < (u32)(GAME_PITCH * GAME_H * 2)) want = GAME_PITCH * GAME_H * 2;
         c->gameScreen = (u16 *)user_allocz((int)want);
         if (c->gameScreen) {
             p[3] = (u32)c->gameScreen;
+            // And the size it was built for. Told 240x320 it lays its interface
+            // out for 240 and writes rows 176 wide, so everything past column
+            // 176 is lost and wraps into the next row -- which is the clipped
+            // "$00000" on the race HUD and the second "HUMME" on the menu.
+            if (TELL_GAME_ITS_SIZE) {
+                p[4] = GAME_PITCH;
+                p[5] = GAME_H;
+            }
+            c->srcPitch = TELL_GAME_ITS_SIZE ? (u32)GAME_PITCH : (u32)GAME_W;
             log_event(c, NOTE_SCREEN, (u32)c->gameScreen);
-            log_event(c, NOTE_SCREEN, c->realPitch);
+            log_event(c, NOTE_SCREEN, c->srcPitch);
         }
     }
     if (!QUIET) log_block(c);
@@ -3326,12 +3355,23 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
 extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
 {
     typedef void (*Update)(void *, const void *);
+    // One frame of the game's own buffer, raw, so the stride can be measured
+    // rather than guessed. Text is clipped at the right edge and neither the
+    // reported screen size nor the blit explains it, so the question is what
+    // the real row length is -- and that is answerable offline from the bytes.
+    // Twice, sixty frames apart: if the text at the right edge moves between
+    // them it is a scrolling banner and nothing is being clipped at all.
+    if (DUMP_FRAME && c->gameScreen) {
+        c->shots++;
+        if (c->shots == (u32)DUMP_FRAME || c->shots == (u32)DUMP_FRAME + 60)
+            dump_region(c, (const u8 *)c->gameScreen, DUMP_FRAME_BYTES);
+    }
     if (c->gameScreen && c->realScreen) {
         const u16 *src = c->gameScreen;
         for (u32 y = 0; y < (u32)GAME_H; y++) {
             u32 *dst = (u32 *)(c->realScreen + (y + c->offY) * c->realPitch) + c->offX;
             for (u32 x = 0; x < (u32)GAME_W; x++) {
-                const u32 v = src[y * (u32)GAME_W + x];
+                const u32 v = src[y * (u32)c->srcPitch + x];
                 u32 r, g, b;
                 if (SCREEN_4K) {
                     r = ((v >> 8) & 0xF) * 17;
@@ -3692,6 +3732,16 @@ extern "C" void gate6_create_window(u32 *oldControl, int, Context *c)
         ctl[0] = (u32)(cvt + VT_HEADER);
     }
     coecontrol_createwindowl(ctl);
+    if (SIZE_THE_WINDOW && c->cone) {
+        typedef void (*SetExtent)(void *, const u32 *, const u32 *);
+        SetExtent se = (SetExtent)rlibrary_lookup(&c->cone, NEW_COECONTROL_SETEXTENT);
+        if (se) {
+            const u32 tl[2] = { 0, 0 };
+            const u32 sz[2] = { GAME_W, GAME_H };
+            se(ctl, tl, sz);
+            log_event(c, NOTE_SCREEN, 0x51E00000u | (GAME_W & 0xFFFF));
+        }
+    }
     oldControl[OLD_CONTROL_WIN / 4] = ctl[NEW_CONTROL_WIN / 4];
     c->wrapControl = ctl;
 }
