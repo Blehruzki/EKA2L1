@@ -70,6 +70,22 @@ old_call:
     pop  {r4, lr}
     bx   lr
 
+    @ And for two arguments: r0 = the old object, r1 = the slot, r2 and r3 the
+    @ arguments. r3 is live here, unlike old_call, so the scratch is r4 -- which
+    @ is saved anyway.
+    .global old_call2
+old_call2:
+    push {r4, lr}
+    add  r1, r1, #2
+    ldr  r4, [r0]
+    ldr  r4, [r4, r1, lsl #2]
+    mov  r1, r2
+    mov  r2, r3
+    mov  lr, pc
+    bx   r4
+    pop  {r4, lr}
+    bx   lr
+
     @ The same, for a call that takes one argument as well as the object.
     @ r0 = the old object, r1 = the slot, r2 = the argument.
     .global old_call1

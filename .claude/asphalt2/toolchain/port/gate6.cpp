@@ -202,6 +202,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_SEEK_OUT = 832,     // ... and the one it ended at
        NOTE_READ_DATA = 833,    // the first words a read actually delivered
        NOTE_SCREEN = 834,       // a word of the TScreenInfoV01 the game is given
+       NOTE_KEY = 835,          // a key event, as it is handed to the game
        NOTE_THREAD_ARG = 840,   // one word of the create frame
        NOTE_THREAD_NAME = 841,  // one word of the name descriptor
        NOTE_PLANT_OK = 842,     // a breadcrumb that went in
@@ -390,6 +391,7 @@ void drtaeabi_pure_virtual(void);
 // no code of ours or the game's anywhere near it.
 void cpprt_globals_ctor(void *self);
 u32 old_call1(const void *object, int slot, u32 arg);
+u32 old_call2(const void *object, int slot, u32 a, u32 b);
 }
 
 #define CAT_CHN {'G','6','C','H','N'}
@@ -477,6 +479,16 @@ enum { NEW_CONTROL_WIN = 0x28, CONTROL_SLOTS = 44 };
 //   old 19 FocusChanged      -> 9.x 26
 //   old 24 Draw              -> 9.x 41
 enum { OLD_CTL_FOCUS = 19, OLD_CTL_DRAW = 24 };
+// The game's control overrides four slots: 0 the destructor, 19 FocusChanged,
+// 24 Draw, and **1, OfferKeyEventL**, which is how it takes input. Slot 1 is
+// named by the image itself: every other control vtable in the game carries a
+// base-class veneer there, and in the CAknNoteDialog one that veneer is avkon
+// 1166, `OfferKeyEventL(const TKeyEvent&, TEventCode)`.
+enum { OLD_CTL_OFFERKEY = 1 };
+// 9.x cone's own CCoeControl::OfferKeyEventL, whose address names the slot to
+// replace in the copied vtable. Scanning for it beats hardcoding an index that
+// would be wrong on the next feature pack.
+enum { NEW_COECONTROL_OFFERKEY = 26, BRIDGE_KEYS = 1 };
 enum { NEW_CTL_FOCUS = 26, NEW_CTL_DRAW = 41 };
 
 // Direct screen access is the first thing that calls the game back. The window
@@ -674,6 +686,7 @@ struct Context {
     u32 workerWatch;        // the watched word as the worker last saw it
     u32 lastCall;           // the last slot of ours the framework called
     u32 avkon;              // an RLibrary on avkon, for what it does not export
+    u32 cone;               // and on cone, to find CCoeControl::OfferKeyEventL
     u32 newBaseConstructL;  // avkon's CAknAppUi::BaseConstructL, as resolved
     u32 newRequestComplete; // euser's User::RequestComplete, as resolved
     u32 clockTick;          // how many milestones since the last clock reading
@@ -3624,6 +3637,31 @@ extern "C" void gate6_control_focus(void *, u32 drawNow, Context *c)
     old_call1(c->oldControl, OLD_CTL_FOCUS, drawNow);
 }
 
+// Input. The 9.x framework offers a key to every control on its stack, and the
+// wrapper control is on it -- AddToStackL is already diverted to put it there.
+// The game's own control is not a 9.x object and can never be on that stack, so
+// the key is handed across here, to the slot its vtable overrides.
+//
+// TKeyEvent is { TUint iCode; TInt iScanCode; TUint iModifiers; TInt iRepeats; }
+// and is unchanged between EKA1 and 9.x, so it goes over as the pointer it is.
+// The answer is a TKeyResponse -- 0 not consumed, 1 consumed -- and is passed
+// straight back, so anything the game does not want still reaches avkon.
+extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context *c)
+{
+    if (key) {
+        const u32 *k = (const u32 *)key;
+        log_event(c, NOTE_KEY, k[0]);       // iCode
+        log_event(c, NOTE_KEY, k[1]);       // iScanCode
+        log_event(c, NOTE_KEY, type);
+    }
+    if (!c->oldControl)
+        return 0;
+    const u32 r = old_call2(c->oldControl, OLD_CTL_OFFERKEY, (u32)key, type);
+    log_event(c, NOTE_KEY, r);
+    if (!QUIET) log_block(c);
+    return r;
+}
+
 // A window belongs to a 9.x control, so build one and lend the game its window:
 // old Window() is one instruction, a load from offset 0x20, so putting the
 // window there is all it takes for the game to find it.
@@ -3639,6 +3677,17 @@ extern "C" void gate6_create_window(u32 *oldControl, int, Context *c)
         c->spare += TRACE;
         cvt[VT_HEADER + NEW_CTL_FOCUS] = ctx_thunk(c->spare, c, (u32)&gate6_control_focus);
         c->spare += TRACE;
+        if (BRIDGE_KEYS && c->cone) {
+            const u32 offer = (u32)rlibrary_lookup(&c->cone, NEW_COECONTROL_OFFERKEY);
+            for (int i = 0; offer && i < CONTROL_SLOTS; i++)
+                if (cvt[VT_HEADER + i] == offer) {
+                    cvt[VT_HEADER + i] =
+                        ctx3_thunk(c->spare, c, (u32)&gate6_control_offerkey);
+                    c->spare += TRACE;
+                    log_event(c, NOTE_KEY, 0xC0DE0000u | (u32)i);
+                    break;
+                }
+        }
         instrument(c, cvt, CONTROL_SLOTS, OBJ_CONTROL);
         ctl[0] = (u32)(cvt + VT_HEADER);
     }
@@ -4146,7 +4195,10 @@ static u32 load_and_start()
         if (kShimDllLen[i] >= 5 && nm[0] == 'a' && nm[1] == 'v' && nm[2] == 'k' &&
             nm[3] == 'o' && nm[4] == 'n') {
             ctx->avkon = libs[i];
-            break;
+        }
+        if (kShimDllLen[i] >= 4 && nm[0] == 'c' && nm[1] == 'o' && nm[2] == 'n' &&
+            nm[3] == 'e') {
+            ctx->cone = libs[i];
         }
     }
     if (!ctx->avkon) PANIC(CAT_LIB, -100);

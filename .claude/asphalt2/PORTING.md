@@ -173,6 +173,19 @@ here and the section it overturns is marked.*
   Two things unblocked it: answering `RSessionBase::CreateSession` with
   `KErrNone` so the sound server connect succeeds, and supplying `memmove`,
   which the game imports from the C runtime and 9.x does not export.
+- **Input works.** The game takes keys by overriding **old control slot 1**,
+  `CCoeControl::OfferKeyEventL` -- the image names that slot itself, since every
+  other control vtable in it carries a base-class veneer there and in the
+  `CAknNoteDialog` table that veneer is avkon 1166. Its own control vtable
+  overrides 0, 1, 19 and 24: destructor, OfferKeyEventL, FocusChanged, Draw.
+  On the 9.x side the wrapper control is already on the framework's control
+  stack (`AddToStackL` is diverted to put it there), so the bridge is one slot:
+  resolve cone ordinal 26, scan the copied vtable for that address -- rather
+  than hardcode an index that would move on another feature pack -- and put a
+  thunk there that hands the `TKeyEvent` and `TEventCode` to the game and passes
+  its `TKeyResponse` back. `TKeyEvent` is unchanged between EKA1 and 9.x, so it
+  goes over as the pointer it is. Driving it with `xdotool` walks the game from
+  the attract race into the vehicle selection menu.
 - **The picture works.** Three things, all in `gate6.cpp`. The game finds its
   framebuffer through `UserSvr::ScreenInfo` and nothing else -- `CFbsBitmap` and
   `HAL::Get` are never called -- so the wrapper on that import hands it a linear
