@@ -188,11 +188,20 @@ here and the section it overturns is marked.*
   sizing the lent window to 176x208 (`SIZE_THE_WINDOW`) changes nothing; and
   reporting a 192-pixel pitch makes the picture shear, because the game keeps
   writing rows 176 apart. Its stride is hardcoded.
-  So the fix is not in the shim. It needs the constant the game lays its menus
-  out against, found in its code -- and it is worth knowing first whether an
-  N-Gage does the same thing, because a panel with 192 pixels of pitch and 176
-  visible would swallow the overflow and this may simply be what the game does.
-  `DUMP_FRAME` drops a raw frame into `C:\g6code.bin` for that work.
+  **Settled (E137): it is the game, and the port cannot change it.** The game
+  asks for nothing that could move its layout. Its only geometry query is
+  `UserSvr::ScreenInfo`, whose size it ignores, and it imports **no** text
+  rendering whatsoever -- no `DrawText`, no `CFont`, no `TextWidth`, no
+  `HAL::Get`, no `CCoeControl::Size`. Every glyph is its own bitmap font drawn
+  straight into the framebuffer. Layout width and row stride are both hardcoded
+  in the binary, so the same binary draws the same picture on any framebuffer,
+  N-Gage included. (EKA2L1 does have `NEM-4` and `RH-29` profiles with ROMs and
+  the game launches on them, but it dies in the Codewave check at
+  `ldr r2, [r1, #0x240]` -- with or without the BiNPDA loader -- so no picture
+  can be got that way either.)
+  Changing it would mean patching the game's own layout constants, the way the
+  protection check is patched. `DUMP_FRAME` drops a raw frame into
+  `C:\g6code.bin` for that work if it is ever wanted.
 - **Input works.** The game takes keys by overriding **old control slot 1**,
   `CCoeControl::OfferKeyEventL` -- the image names that slot itself, since every
   other control vtable in it carries a base-class veneer there and in the
