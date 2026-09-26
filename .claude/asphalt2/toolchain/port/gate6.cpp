@@ -251,6 +251,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_MDA_ARG = 854,      // ... and the four registers it called it with
        NOTE_MDA_VT = 855,       // a slot of the real 9.x stream's vtable
        NOTE_MDA_CODE = 856,     // ... and the first words of the code there
+       NOTE_MDA_CB = 857,       // the stream calling the game back, and with what
        NOTE_SEM_WAIT = 836,     // the main thread's wait on the SoundServer's semaphore
        NOTE_WORKER_SP = 849,    // a worker's stack, so two of them can be told apart
        NOTE_SCRATCH = 847,      // a word of the game's scratch code chunk
@@ -737,6 +738,8 @@ struct Context {
     u32 *soundMsg;          // the RMessage the bridge fills in and passes
     u32 soundCalls;         // how many messages have gone across
     u32 mdaNewL;            // the real CMdaAudioOutputStream::NewL
+    u32 mdaWrites;          // how many buffers have gone to it
+    u32 mdaCopies;          // and how many it has said it copied
     u32 mode;               // how the picture is fitted: 1:1, shape-kept, or filled
     u32 clearPending;       // blank the framebuffer once, after any change
     u32 dstW, dstH;         // how big the picture is drawn
@@ -4620,14 +4623,33 @@ static const u16 kNgage[][2] = {         // import ranges, inclusive
 // before. A fake stream with a logging vtable both stops the panic and says
 // which of the stream's methods the game actually uses, which is what the
 // real 9.x object has to be wired up to.
-// And the real thing behind it. `epoc9.def` -- the same database, for 9.x,
-// in the same file-order-is-ordinal-order convention -- gives
-// mediaclientaudiostream ordinal **3** for
-// `CMdaAudioOutputStream::NewL(MMdaAudioOutputStreamCallback&, CMdaServer*)`.
-// The class is dispatched through its vtable on 9.x exactly as it was on the
-// N-Gage (the DLL even exports "vtable for CMdaAudioOutputStream"), which is
-// how the game already calls it, so the real object may drop straight in.
-// `MDA_FAKE` stays as the fallback and the instrument.
+// And the real thing behind it. The class is dispatched through its vtable
+// on 9.x exactly as it was on the N-Gage (the DLL even exports "vtable for
+// CMdaAudioOutputStream"), which is how the game already calls it, so the
+// real object may drop straight in. `MDA_FAKE` stays as the fallback and
+// the instrument.
+// The ordinal is **3**, and the way that was checked is worth writing down
+// because it was briefly changed to 9 and E200 said no within one run.
+//
+// There are two DLLs with this name and two ordinal schemes, and the one
+// that counts is the one `RLibrary::Load` opens. That is the **ROM's**
+// mediaclientaudiostream.dll -- UID3 0x10003996, code 0x804d3eb8 on
+// RM-409, seventeen exports, which is `epoc9.def`'s list exactly. Its
+// ordinal 3 is `NewL(MMdaAudioOutputStreamCallback&, CMdaServer*)`.
+//
+// The emulator's own patch DLL is a separate image (UID3 0xEE000001, 55
+// exports) and it does not replace the ROM one: it overwrites individual
+// ROM exports, and `patch/mediaclientaudiostream.dll.map` lists which, as
+// `<patch export> <ROM ordinal>` pairs. Its line `9 3` is patch export 9 --
+// the patch's `NewL` -- installed over **ROM ordinal 3**. Every other line
+// checks against the patch's own def the same way, and the four the
+// emulator reports it cannot patch (1, 4, 11, 12 -> ROM 18..21) are the
+// ones the N95's seventeen-export ROM has no slot for.
+//
+// So ordinal 3 always was the real `NewL`. Ordinal 9 is "typeinfo for
+// CMdaAudioOutputStream", a data address, and calling it landed the run in
+// a string table: undefined instruction at 0x804d5028, which is the text
+// of a class name.
 enum { MDA_REAL = 1, MDA_NEWL_ORDINAL = 3 };
 enum { MDA_FAKE = 1, IMPORT_MDA_NEWL = 458 };
 static const u16 kMdaDll[] = { 'm','e','d','i','a','c','l','i','e','n','t',
@@ -4876,68 +4898,103 @@ static void args_thunk(u32 *s, const void *ctx, u32 fn)
 // `MMdaAudioOutputStreamCallback` has no destructor to disagree about, so its
 // three slots line up as they are.
 enum { MDA_PROXY = 1, MDA_SLOTS = 14 };
-// The game's slot -> the 9.x slot. 9.x order after the two destructor
-// entries: SetAudioPropertiesL 4, Open 5, MaxVolume 6, Volume 7,
-// SetVolume 8, SetPriority 9, WriteL 10, Stop 11, Position 12.
-// The fault said where this was wrong: "access violation reading address
-// 0x100" with 0x100 the first argument, so the callee dereferenced an int --
-// the slot numbers were one too high and `SetPriority` was landing on
-// `WriteL`. One destructor entry, not two. The two layouts turn out to be
-// the *same* but for where `SetPriority` sits: first on the N-Gage, sixth
-// on 9.x.
-// Settled by dumping the real vtable and disassembling it (E191). Two
-// header words, then **two** destructor entries -- both begin
-// `push {r4,r5,lr}; ldr r3,[pc]; str r3,[r0]`, which is a destructor
-// reinstalling a vtable -- and the virtuals run from 4. So:
-// SetAudioPropertiesL 4, Open 5, MaxVolume 6, Volume 7, SetVolume 8,
-// SetPriority 9, WriteL 10, Stop 11, Position 12.
-// The missing slot is **`CBase::Extension_`**, which 9.x declares on CBase
-// and EKA1 did not. It is `[+4]` in the dump: the only entry pointing
-// outside the DLL, into euser, and its code is `movs r0,#0; str r0,[r2];
-// movs r0,#46; mvns r0,r0` -- store nothing through the out-parameter and
-// return **-47**, `KErrExtensionNotSupported`. So the 9.x virtuals start at
-// 5, not 4, and everything below shifts one further:
+// The game's slot -> the 9.x slot.
 //
-//   5 SetAudioPropertiesL  6 Open      7 MaxVolume  8 Volume
-//   9 SetVolume           10 SetPriority  11 WriteL  12 Stop  13 Position
+// This was two slots too high for six runs, and the reason is in the
+// instrument, not the object. `MDA_DUMP_VT` reads `rvt[k - 2]` -- it starts
+// two entries *behind* the pointer on purpose, to catch the offset-to-top
+// and the typeinfo -- and its output was then read as if `k` were the slot
+// number. Hence "two header words, then two destructor entries, and the
+// virtuals run from 4", and hence the further shift for `Extension_` on top
+// of it. The dump was right; counting from it was not.
 //
-// Each of those is confirmed by the shape of its code in the dump: Open and
-// SetPriority save r1 (they have an argument they keep), MaxVolume, Volume
-// and Stop are bare `ldr r0,[r0,#8]; bl impl; pop {pc}` forwarders.
+// What the shift actually did is in the last trace under it. Game slot 4
+// (`Open`) went to 6 (`Volume`), which returned 10 and was read as an open
+// succeeding; game slot 7 (`SetVolume`) went to 9 (`WriteL`), which took
+// the volume as a descriptor and faulted reading **0x64** -- the number
+// itself, 100. The same for the 0x100 and the 0xFFFFFFFA before it. They
+// were not null dereferences at a field offset, and the stream not being
+// open had nothing to do with them.
+//
+// Both sides are now read out of the binaries, offline and exactly, and
+// they agree with each other.
+//
+// 9.x, from two places. In the ROM DLL, ordinal 12 is
+// `_ZTV21CMdaAudioOutputStream` at 0x804d50cc: `0` (offset-to-top), the
+// typeinfo (which is ordinal 9), then twelve function words, then
+// 0xfffffffc -- the offset-to-top of the secondary vtable. In the patch
+// DLL, inflated on the bench with the emulator's own `flate::inflater`
+// because Symbian's deflate is not zlib's, export 17 is the same table
+// with the same twelve entries, and its constructor stores the **address
+// point** -- the table plus eight -- in the object, then that plus 0x38
+// (twelve words and two header words) as the second vtable pointer. So
+// counting from what the proxy reads out of the object:
+//
+//   0 ~C (complete)   1 ~C (deleting)   2 CBase::Extension_
+//   3 SetAudioPropertiesL   4 Open   5 MaxVolume   6 Volume
+//   7 SetVolume   8 SetPriority   9 WriteL   10 Stop   11 Position
+//
+// Twelve entries is two destructors, `CBase::Extension_` and the nine
+// virtuals the class declares, and the `Extension_` word is the one entry
+// the neighbouring vtables share -- it is euser's.
+//
+// The N-Gage, from the game. Import 458 is the only thing the game takes
+// from mediaclientaudiostream, so every method is a vtable call and the
+// slot numbers are in the game's own code. Its two `NewL` sites are at
+// 0x1df2c and 0x1dfc4, and each is followed by `ldr r3,[r0]; ldr r12,
+// [r3,#16]` -- `Open` is slot 4. A sweep of the game for vtable dispatches
+// on the stream finds slots 3, 4, 5, 7, 8, 9 and 10 and nothing else, and
+// each site says what it is:
+//
+//   3  (rate, 0x02000000)                SetAudioPropertiesL
+//   4  (the package at this+0x30)        Open
+//   5  no argument, result feeds slot 7  MaxVolume
+//   7  (that result)                     SetVolume
+//   8  (100, 0)                          SetPriority
+//   9  (a descriptor)                    WriteL
+//   10 no argument                       Stop
+//
+// So from slot 3 the two layouts are **identical** -- same class, same
+// declaration order, and the game's GCC98r2 header happens to be as wide as
+// 9.x's two destructors plus `Extension_`. Only the head differs, and the
+// game's one destructor entry maps to 9.x's deleting destructor.
 static const signed char kMdaMap[14] = {
-    -1, -1,   3,  10,   6,   7,   8,   9,  -1,  11,  -1,  13,  -1, -1
-//   0   1  dtor Prio Open Max  Vol  Set   ?  Write Stop  Pos
+    -1, -1,   1,   3,   4,   5,   6,   7,   8,   9,  10,  11,  -1, -1
+//   0   1  dtor Prop Open Max  Vol  Set Prio Write Stop  Pos
 };
-// `Stop` is dropped for now, and the reason is in the implementation: it
-// begins `iWaitBufferEndTimer->Cancel()` and then works the buffer queue,
-// all of which only exists once an open has completed. The game calls Stop
-// defensively before anything is playing -- harmless on the N-Gage, a fault
-// here -- and E195 caught it exactly: `Open` was called **and returned**,
-// `Stop` was called and did not.
-// The N-Gage's priority scale is not 9.x's. The game asks for **256**, and
-// the fault in E188 was a read of address **0x100** -- the number itself,
-// used as an address by whatever indexes on priority. 9.x runs -100..100.
-enum { MDA_PRIO_MAX = 100, MDA_VOL_MAX = 100 };
+// Nothing is dropped now. `Stop` came back: the earlier reason for pulling
+// it -- an implementation that never finished opening -- was an artefact of
+// the same wrong object.
+// The priority the game asks for is **100**, in range for 9.x as it
+// stands. The 256 that was read as an out-of-range priority is at
+// `this+0x4c`, which is the settings package's `iSampleRate`, and it is
+// `ESampleRate16000Hz`.
 // Bench only: every slot says what it was called with before it forwards.
 // The proxy gets three messages further than the bare pointer and then
 // faults, and this is what says which method and which argument.
 enum { MDA_TRACE = 1, MDA_TRAMP = MDA_TRACE ? 14 : 3 };
+// Past this many buffers, `WriteL` and `MaoscBufferCopied` stop writing
+// records. The whole-buffer peek keeps its five samples either way, which
+// is what says the stream carries music and not silence: writes 0 and 40
+// are all zeros -- the track's lead-in -- and writes **160, 320 and 640
+// have all five hundred words non-zero**, with the OR of the buffer
+// 0xffffffff (E206).
+enum { MDA_QUIET_AFTER = 4 };
 // Off: it has answered, and it was reading whatever each vtable word
 // pointed at -- including the 0xfffffffc past the end of the table, which
 // is what "access violation reading 0xFFFFFFFC" in E191 and E192 was. My
 // instrument, not the game.
 enum { MDA_DUMP_VT = 0 };
-// The one thing still unknown is where 9.x reads the sample rate and the
-// channel count out of the settings package the game hands `Open`. `Open`
-// is vtable slot 6 and its code says so directly, so dump it and read the
-// `ldr rN, [r1, #offset]` out of it. The DLL is compressed on disk with
-// Symbian's own deflate, which zlib will not inflate, so the copy in
-// memory is the one to read.
-// Off. It produced confusion rather than data twice running, which is a
-// signal to slow down rather than iterate faster: the three dumps it made
-// disagree about where slot 6 points, and only 66 of the 192 words it asked
-// for reached the log. What it did establish is worth keeping -- **`NewL` is
-// called three times**, so the game runs more than one stream.
+// Off, and it should stay off. It was meant to read where 9.x takes the
+// sample rate and the channel count out of the settings package, and it
+// produced confusion twice running: three dumps that disagreed about where
+// the slot pointed, and 66 of 192 words reaching the log. The disagreement
+// was real -- it was dumping an object `NewL` had never made -- but the
+// answer was never in the emulator's memory to begin with. Inflating the
+// DLL on the bench and disassembling it gave it in one pass, exactly, with
+// nothing to run. Read the binary before instrumenting the run.
+// What the dump did establish stands: **`NewL` is called three times**, so
+// the game runs more than one stream.
 enum { MDA_DUMP_OPEN = 0, MDA_OPEN_WORDS = 64 };
 
 // The whole call, in C: log it, make it, log that it came back. The
@@ -4951,44 +5008,89 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
     void *real = (void *)obj[1];
     u32 *rvt = (u32 *)obj[2];
     const int to = (slot < 14) ? kMdaMap[slot] : -1;
-    log_event(c, NOTE_MDA_CALL, slot);
-    log_event(c, NOTE_MDA_ARG, saved[1]);
-    log_event(c, NOTE_MDA_ARG, saved[2]);
-    log_event(c, NOTE_MDA_ARG, saved[3]);
-    log_block(c);
+    // Same reasoning as the callback: slot 9 is `WriteL` and everything
+    // else on this object is called about twenty times in a run.
+    const bool quiet = (slot == 9) && (c->mdaWrites >= (u32)MDA_QUIET_AFTER);
+    if (!quiet) {
+        log_event(c, NOTE_MDA_CALL, slot);
+        log_event(c, NOTE_MDA_ARG, saved[1]);
+        log_event(c, NOTE_MDA_ARG, saved[2]);
+        log_event(c, NOTE_MDA_ARG, saved[3]);
+        log_block(c);
+    }
     if (to < 0 || !rvt || !real)
         return 0;
-    // Two values have to be made sane on the way through, and for one
-    // reason: **9.x opens the stream asynchronously and the N-Gage did
-    // not**. The game asks for the volume the instant it has opened, the
-    // real `MaxVolume` answers with an error because nothing is open yet,
-    // and the game then hands that error straight back as a volume. E196
-    // caught the whole chain: `MaxVolume` returned, the game computed -6
-    // from it, and `SetVolume(-6)` faulted reading address 0xFFFFFFFA --
-    // the number itself. So: a failed `MaxVolume` answers 100, and a volume
-    // is clamped into range before it goes in. The same for the priority,
-    // which is on a different scale entirely.
+    // No values are corrected on the way through any more. Every clamp
+    // that used to be here was answering a fault that came from calling
+    // the wrong export, and each of them hid what the real call does: a
+    // priority of 100 is in range, and a volume the game got from our own
+    // `MaxVolume` needs no second opinion. A slot that is wrong should
+    // fault, so that it can be read.
+    // The settings package needs no translation either, which is worth
+    // saying because it was the standing suspect. 9.x's `Open` reads
+    // `[r1,#0x1c]` for the rate and `[r1,#0x20]` for the channels, and the
+    // game writes its rate at `this+0x4c` and its channels at `this+0x50`
+    // with the package at `this+0x30` -- the same two offsets. The values
+    // agree too: the game's rate table answers 0x10, 0x40, 0x100, 0x400,
+    // 0x1000, 0x4000, 0x10000 for 8000 through 48000 Hz, and 9.x's
+    // `ConvertFreqEnumToNumber` takes exactly those; the game's channel
+    // word is 0x02000000 and 9.x's `ConvertChannelEnumToNumber` reads that
+    // as mono. It is one enum, unchanged between the two.
     u32 a1 = saved[1];
-    if (slot == 3 && (int)a1 > (int)MDA_PRIO_MAX) a1 = (u32)MDA_PRIO_MAX;
-    if (slot == 7) {
-        if ((int)a1 < 0) a1 = 0;
-        if ((int)a1 > (int)MDA_VOL_MAX) a1 = (u32)MDA_VOL_MAX;
+    // The one thing the bench cannot hear is whether the buffers hold
+    // anything. `WriteL` takes a `TDesC8`, so its first word is
+    // length | type<<28 and, for the pointer descriptors the game keeps an
+    // array of, the data is at +4. The first few say whether this is music
+    // or silence; after that the log would be nothing else.
+    if (MDA_TRACE && slot == 9) {
+        const u32 k = c->mdaWrites++;
+        // Seven words off the front of the first four buffers came back
+        // all zero, which is what a track's lead-in looks like and also
+        // what a dead decoder looks like. So: the **whole** buffer, as one
+        // OR and one count of non-zero words, on a handful of writes
+        // spread out far enough that silence at 0.25 s cannot account for
+        // them. 2000 bytes at 16000 Hz mono 16-bit is 62.5 ms, so write
+        // 320 is twenty seconds in.
+        if (k == 0 || k == 40 || k == 160 || k == 320 || k == 640) {
+            const u32 *dp = (const u32 *)a1;
+            if (dp) {
+                // The type is the top four bits of word 0. `EPtrC` (1)
+                // keeps the data pointer in word 1; `EPtr` (2) and the
+                // `TDes8` shapes above it have `iMaxLength` there and the
+                // pointer in word 2. The first peek read word 1 for both
+                // and got 2000 -- a length, not an address.
+                const u32 type = dp[0] >> 28;
+                const u32 len = dp[0] & 0x0FFFFFFFu;
+                const u32 *b = (const u32 *)((type >= 2) ? dp[2] : dp[1]);
+                log_event(c, NOTE_MDA_CODE, 0xB0000000u | k);
+                log_event(c, NOTE_MDA_CODE, dp[0]);
+                if (b && (u32)b >= 0x400000 && len <= 0x4000) {
+                    u32 acc = 0, hits = 0;
+                    for (u32 w = 0; w < len / 4; w++) {
+                        acc |= b[w];
+                        if (b[w])
+                            hits++;
+                    }
+                    log_event(c, NOTE_MDA_CODE, acc);
+                    log_event(c, NOTE_MDA_CODE, hits);
+                }
+            }
+        }
     }
     u32 r = ((Any)rvt[to])(real, a1, saved[2], saved[3]);
-    if (slot == 5 && (int)r <= 0)
-        r = (u32)MDA_VOL_MAX;
-    log_event(c, NOTE_MDA_CALL, 0x100u | slot);     // and it came back
-    log_event(c, NOTE_MDA_ARG, r);
-    log_block(c);
+    if (!quiet) {
+        log_event(c, NOTE_MDA_CALL, 0x100u | slot);     // and it came back
+        log_event(c, NOTE_MDA_ARG, r);
+        log_block(c);
+    }
     return r;
 }
 
 extern "C" void gate6_mda_call(u32 *saved, Context *c, u32 slot)
 {
     // The trampoline pops these back into r0-r3 after this returns, so a
-    // correction written here is the one the real method sees.
-    if (slot == 3 && (int)saved[1] > (int)MDA_PRIO_MAX)
-        saved[1] = (u32)MDA_PRIO_MAX;
+    // correction written here would be the one the real method sees. None
+    // is made; see `gate6_mda_call2`.
     log_event(c, NOTE_MDA_CALL, slot);
     log_event(c, NOTE_MDA_ARG, saved[0]);
     log_event(c, NOTE_MDA_ARG, saved[1]);
@@ -4997,12 +5099,105 @@ extern "C" void gate6_mda_call(u32 *saved, Context *c, u32 slot)
     log_block(c);
 }
 
+// The callback goes the other way, and it needs the same shim for the same
+// reason -- which the note above this once denied ("no destructor to
+// disagree about, so its three slots line up as they are"). They do not.
+//
+// The rule behind both shifts, now that two vtables on each side have been
+// read: **GCC98r2 stores the vtable object's start in the object; EABI
+// stores its address point.** So a GCC98r2 vptr has two words in front of
+// the first entry -- offset-to-top and typeinfo -- and an EABI vptr has
+// none. For `CMdaAudioOutputStream` that cancels out, because the game's
+// two header words plus its one destructor entry come to the same three
+// slots as 9.x's two destructors plus `CBase::Extension_`; the map above is
+// the identity for that reason and not by luck. For a pure mixin with no
+// destructor at all there is nothing to cancel, and the two header words
+// stand as a plain **shift of two**.
+//
+// E201 caught it exactly. The implementation's own
+// `iCallback->MaoscOpenComplete(KErrNone)` is `ldr r0,[r0,#0x88]; ldr r3,
+// [r0]; ldr r3,[r3]; movs r1,#0; blx r3` -- entry zero of the callback's
+// vtable -- and entry zero of the game's is **0xfffffffc**, which is the
+// offset-to-top of a secondary base: -4, because the game's callback is a
+// mixin sub-object four bytes into its sound object. The run jumped to
+// 0xfffffffc and died there.
+enum { CB_PROXY = 1, CB_SLOTS = 3, CB_SHIFT = 2 };
+enum { CB_TRACE = 1, CB_TRAMP = CB_TRACE ? 14 : 3 };
+
+// What the stream is telling the game. Slot 0 is `MaoscOpenComplete`, and
+// its one argument is the error -- which is the answer to whether the open
+// worked, and the first time this port has been in a position to read it.
+extern "C" void gate6_cb_call(u32 *saved, Context *c, u32 slot)
+{
+    // Slot 1 is `MaoscBufferCopied` and it comes back once per buffer --
+    // 71,775 of them in a two-and-a-half minute run. On the bench that is
+    // merely a large log; on the phone it would be the whole log and a
+    // good part of the frame time. The first few say the buffers are
+    // being taken; after that only `MaoscOpenComplete` and
+    // `MaoscPlayComplete` are worth a record.
+    if (slot == 1 && c->mdaCopies++ >= (u32)MDA_QUIET_AFTER)
+        return;
+    log_event(c, NOTE_MDA_CB, slot);
+    log_event(c, NOTE_MDA_ARG, saved[1]);
+    log_event(c, NOTE_MDA_ARG, saved[2]);
+    log_block(c);
+}
+
 extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
 {
     typedef void *(*NewL)(void *, void *);
     if (!c->mdaNewL)
         return 0;
-    void *real = ((NewL)c->mdaNewL)((void *)a[0], (void *)a[1]);
+    // The callback proxy first, because the real `NewL` keeps the pointer
+    // it is given and calls back through it later. Same shape as the
+    // stream's proxy in the other direction: word 0 a vtable of ours, word
+    // 1 the game's own callback sub-object, and each entry a trampoline
+    // that puts word 1 back in r0 and jumps to the game's entry two slots
+    // further on.
+    void *cb = (void *)a[0];
+    const u32 cbNeed = 8 + (u32)CB_SLOTS * 4 + (u32)CB_SLOTS * CB_TRAMP * 4;
+    if (CB_PROXY && cb && c->spare && c->spare + cbNeed <= c->spareEnd) {
+        u32 *gvt = *(u32 **)cb;
+        if (gvt) {
+            u32 *co = (u32 *)c->spare;
+            u32 *cvt = co + 2;
+            u32 *ct = cvt + CB_SLOTS;
+            c->spare += cbNeed;
+            for (u32 k = 0; k < (u32)CB_SLOTS; k++) {
+                u32 *t = ct + k * CB_TRAMP;
+                if (CB_TRACE) {
+                    t[0]  = 0xE92D400F;     // push {r0-r3, lr}
+                    t[1]  = 0xE1A0000D;     // mov  r0, sp
+                    t[2]  = 0xE59F1014;     // ldr  r1, [pc, #20]  -> ctx
+                    t[3]  = 0xE59F2014;     // ldr  r2, [pc, #20]  -> slot
+                    t[4]  = 0xE59F3014;     // ldr  r3, [pc, #20]  -> the logger
+                    t[5]  = 0xE12FFF33;     // blx  r3
+                    t[6]  = 0xE8BD400F;     // pop  {r0-r3, lr}
+                    t[7]  = 0xE5900004;     // ldr  r0, [r0, #4]
+                    t[8]  = 0xE59FF00C;     // ldr  pc, [pc, #12]
+                    t[9]  = (u32)c;
+                    t[10] = k;
+                    t[11] = (u32)&gate6_cb_call;
+                    t[12] = 0;
+                    t[13] = gvt[k + CB_SHIFT];
+                } else {
+                    t[0] = 0xE5900004;      // ldr r0, [r0, #4]
+                    t[1] = 0xE51FF004;      // ldr pc, [pc, #-4]
+                    t[2] = gvt[k + CB_SHIFT];
+                }
+                cvt[k] = (u32)t;
+            }
+            co[0] = (u32)cvt;
+            co[1] = (u32)cb;
+            user_imb_range(co, ct + CB_SLOTS * CB_TRAMP);
+            log_event(c, NOTE_MDA_CB, 0x200u);
+            log_event(c, NOTE_MDA_ARG, (u32)cb);
+            log_event(c, NOTE_MDA_ARG, (u32)co);
+            log_block(c);
+            cb = (void *)co;
+        }
+    }
+    void *real = ((NewL)c->mdaNewL)(cb, (void *)a[1]);
     log_event(c, NOTE_SOUND, (u32)real);
     if (!real || !MDA_PROXY) {
         log_block(c);
@@ -5022,7 +5217,7 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
     // are three instructions; `Stop` is short; `WriteL` touches a descriptor;
     // `Open` is long. That identifies them without another run.
     if (MDA_DUMP_OPEN) {
-        const u32 *f = (const u32 *)(rvt[6] & ~3u);
+        const u32 *f = (const u32 *)(rvt[4] & ~3u);   // Open
         log_event(c, NOTE_MDA_VT, (u32)f);
         for (u32 w = 0; w < (u32)MDA_OPEN_WORDS; w++)
             log_event(c, NOTE_MDA_CODE, f[w]);

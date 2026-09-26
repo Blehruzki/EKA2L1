@@ -252,6 +252,14 @@ them, and say so.
 | E197 | **build 163 -- sanitise the values crossing the bridge** | 2134 | `0x64` | **The values are sane now and it still faults, which moves the diagnosis.** A failed `MaxVolume` answers 100, a volume is clamped into range, a priority likewise: the log reads `Open` -> returned, `SetPriority` -> returned, `MaxVolume` -> **returned 100**, `SetVolume(100)` -> fault reading **0x64**. 0x64 is both 100 and a plausible structure offset, and three faults have now read an address equal to an argument -- which is the giveaway: these are **null-pointer dereferences at a field offset**, not arguments used as addresses. Something inside the implementation is null because the open never really succeeded |
 | E198 | **build 164 -- dump the 9.x `Open`** | 2199 | `0x64` | **Inconclusive, and the instrument is why.** Three dumps came out, not one -- so **`NewL` is called three times** and the game runs more than one stream, which is worth knowing -- but they disagree about where slot 6 points, and only 66 of the 192 words asked for reached the log. Nothing about the settings layout was learned. Two dumps in a row have now produced confusion rather than data (E190 was the other), which is the signal to slow down rather than iterate faster: the offsets wanted here are in a compressed DLL that zlib will not inflate, because Symbian's deflate is its own, and the honest way in is EKA2L1's own decompressor rather than another guess at a memory address |
 | E199 | **build 164b -- the tree as it stands** | 2134 | `0x64` | **Builds and runs, dump off.** The state to carry forward: the bridge delivers, the stream is created from the real 9.x `NewL`, and `Open`, `SetPriority` and `MaxVolume` all return before `SetVolume` faults on a null inside an implementation that never finished opening. 2,134 records, the same as E197, which is the point -- nothing regressed while the instruments came off |
+| E200 | MDA NewL ordinal 3 -> 9 (read from the inflated patch DLL); vtable map identity from slot 3; all value clamps removed; Stop re-enabled | 1307 | `--` | **The ordinal change was wrong and the run said so in one launch.** Undefined instruction at 0x804D5028, an address holding the text of a class name, reached from our own `blx` in `gate6_mda_newl`. There are two DLLs of this name: the **ROM's** (UID3 0x10003996, 17 exports, loaded at 0x804d3eb8) is the one `RLibrary::Load` opens, and the emulator's patch (UID3 0xEE000001, 55 exports) does not replace it -- `patch/mediaclientaudiostream.dll.map` overwrites individual ROM exports and its lines read `<patch export> <ROM ordinal>`, so `9 3` is the patch's `NewL` installed over **ROM ordinal 3**. Ordinal 9 of the ROM is "typeinfo for CMdaAudioOutputStream". **Ordinal 3 was right all along.** Not a repeat of E188/E189 (vtable slot guesses) or E198 (the in-memory dump): this is the first time the export tables themselves were read |
+| E201 | MDA vtable map corrected to the identity from slot 3 (the old map was two slots high: MDA_DUMP_VT prints rvt[k-2] and k was read as the slot); ordinal back to 3; clamps gone; Stop on | 1321 | `0xFFFFFFFC` | **The stream side is right: `Open` was called with the game's own settings package and returned.** The trace reads slot 4 called with (0xd8e2f8, 0, 0x489248c) and slot 4 returning, then the server completed the message and the game sent the next one. Then a fault at pc **0xfffffffc** with lr inside the patch DLL at +0x13bc, which is `ldr r0,[r0,#0x88]; ldr r3,[r0]; ldr r3,[r3]; movs r1,#0; blx r3` -- the implementation calling `iCallback->MaoscOpenComplete(KErrNone)`. **The callback is shifted two slots the other way**, and 0xfffffffc is the offset-to-top of the game's secondary vtable: -4, because its callback is a mixin sub-object four bytes into its sound object. Retracts three readings at once: `SetVolume` faulting on a null field (it was `WriteL` handed the volume 100 as a descriptor, which is why the address was 0x64), the same for 0x100 and 0xFFFFFFFA, and "9.x opens asynchronously so nothing is ready" -- the open is fine |
+| E202 | callback proxy: MMdaAudioOutputStreamCallback shifted two slots (GCC98r2 vptr points at the vtable object, EABI at its address point), plus a trace of what the stream tells the game | 695381 | `--` | **The audio chain runs end to end, and this is the furthest the port has ever got.** No fault, no panic, the full 150 seconds, **695,381 records** against 2,134 in the best run before it. The trace in order: `Open` -> returned; **`MaoscOpenComplete(0)`** -- KErrNone, the stream really opened; `SetAudioPropertiesL(0x100, 0x02000000)` = 16000 Hz mono -> returned; `MaxVolume()` -> **10**; `SetVolume(10)` -> returned; `SetPriority(100, 0)` -> returned; `Stop()` x3 -> returned; then **`WriteL` 71,777 times, each answered by `MaoscBufferCopied(KErrNone, buffer)`** (71,775 of them), and one `MaoscPlayComplete`. The emulator's own patch prints `[MediaClientAudioStream] Open complete`, and the file the game opened is `E:\system\apps\6RBC\Streams\bgm_moby_lift_me_up.swav` -- the soundtrack. Not a repeat of anything: every earlier sound run died inside the first `Open`/`SetVolume` sequence |
+| E203 | same tree as E202, with ALSA writing the mix to a file so the bench can hear it | 116322 | `--` | **Abandoned, and the method is the finding.** ALSA's `file` plugin over a `null` slave does not pace, so the emulator's mixer ran free and wrote **10 GB in ninety seconds**; the run was killed and the capture thrown away, and the first 8 MB of it -- a fraction of a second of boot -- was all zeros, which proves nothing. There is no way to hear this machine: it has no sound card, and any sink that does not block turns a timing question into a disk-space one. **The bench can prove the chain and not the sound.** Read the buffers instead (E204), and let the phone be the ear |
+| E204 | peek at the first four WriteL descriptors, to see whether the buffers hold music or silence | 297786 | `--` | **Half of it: the descriptors are real, the data was not reached.** Each `WriteL` is handed word 0 = `0x200007d0` -- type **2** (`EPtr`, a `TPtr8`) and length **2000 bytes**, which at 16000 Hz mono 16-bit is 62.5 ms a buffer, a sane streaming size, and the same for all four. The peek then read word 1 as the data pointer and got 0x7d0 again: for `EPtr` and above word 1 is `iMaxLength` and the pointer is in **word 2**. My instrument, not the game -- corrected in E205 |
+| E205 | peek again, reading the data pointer from word 2 for a TPtr8 rather than word 1 | 263166 | `--` | **The buffers are reached, and the first four begin with 28 bytes of zero.** Which is ambiguous by construction: four buffers is 250 ms, and a track's lead-in looks exactly like a dead decoder over that distance. A peek at the front of the first buffers cannot answer this -- it needs the whole buffer, on writes far enough in that silence cannot account for them. E206 |
+| E206 | peek the whole buffer, as an OR and a non-zero count, on writes 0, 40, 160, 320 and 640 | 288610 | `--` | **It is music, not silence, and this settles the bench side.** Every buffer is a `TPtr8` of **2000 bytes** -- 62.5 ms at 16000 Hz mono 16-bit. Write 0 and write 40 are entirely zero, which is the track's lead-in, about 2.5 seconds of it. Writes **160, 320 and 640** (10, 20 and 40 seconds in) each have **all 500 words non-zero and an OR of 0xffffffff** -- full-range PCM. So the chain is proven from `bgm_moby_lift_me_up.swav` to `WriteL`, and everything past that is the device's DevSound, which only the phone can test. Answers what E203 could not |
+| E207 | the quiet build: WriteL and MaoscBufferCopied stop logging after four, everything else as E206 | 28143 | `--` | **Same audio sequence, a tenth of the log: 173 MDA records against 646,106.** `Open` -> returned, `MaoscOpenComplete(0)`, `SetAudioPropertiesL(16000 Hz, mono)`, `MaxVolume` 10, `SetVolume(10)`, `SetPriority(100, 0)`, the buffer peek at writes 0/40/160/320/640, and nothing else per buffer. This is what the phone can carry -- 71,777 writes x 8 records would have been the whole box log and a good part of the frame time. **Shipped as build 165** |
 
 <!-- EMURUN -->
 
@@ -552,7 +560,8 @@ from anything done so far, and not a small one.
 
 ## Where we are
 
-**Furthest: round 78 and the sound work behind it.** The display is
+**Furthest: E206 -- the audio chain runs end to end and carries music**,
+with round 78 the furthest the phone itself has been. The display is
 finished: 32 bits a pixel on a 1280-byte line, the screen the 240x320
 `ScreenInfo` reports with 1280 a padded stride, `EDisplayOffsetToFirstPixel`
 applied (32 here, 0 on the phone), the game's picture read from pixel
@@ -560,22 +569,48 @@ sixteen, and the picture filled to the width and anchored to the bottom
 below the 56-row band. The phone's own dwell chose those numbers and build
 149 fixed them, with the picker off so every key reaches the game.
 
-**Sound is the work now, and the bridge is built.** The game hosts its own
-client-server pair in this process and the shim was dropping every message.
-`CServer::StartL` keeps the server, `CreateSession` calls its `NewSessionL`
-(vtable slot 6), `SendReceive` fills a message -- `iFunction` at 0,
-`iArgs[0..3]` at 36, 40, 44, 48 -- parks it at `session+16` and calls
-`ServiceL` (slot 5). The first run of that ended in our own `G6IMP 464458`
-panic, which is 464x1000 + 458, `CMdaAudioOutputStream::NewL`: proof the
-game had never reached audio before.
+**Sound runs end to end on the bench (E202, E206), and the phone has not
+heard it yet.** The game hosts its own client-server pair in this process
+and the shim was dropping every message. `CServer::StartL` keeps the
+server, `CreateSession` calls its `NewSessionL` (vtable slot 6),
+`SendReceive` fills a message -- `iFunction` at 0, `iArgs[0..3]` at 36, 40,
+44, 48 -- parks it at `session+16` and calls `ServiceL` (slot 5). The first
+run of that ended in our own `G6IMP 464458` panic, which is 464x1000 + 458,
+`CMdaAudioOutputStream::NewL`: proof the game had never reached audio
+before.
 
-The stream is now created from the real 9.x `NewL` (mediaclientaudiostream
-ordinal 3) behind a proxy vtable, and the game's calls reach it: **`Open`,
-`SetPriority` and `MaxVolume` all return**. What is left is that 9.x opens a
-stream asynchronously where the N-Gage did not, so the object is not ready
-when the game asks it for things, and a null inside it faults. The settings
-package the game hands `Open` -- an N-Gage `TMdaAudioDataSettings` read by a
-9.x reader -- is the next suspect.
+The stream is created from the real `NewL` -- **ROM ordinal 3**, which the
+emulator's patch overwrites with its own -- behind a proxy vtable, and the
+game's calls reach it. What was left turned out to be one misreading in two
+places. **GCC98r2 stores the vtable object's start in the object; EABI
+stores its address point**, so a slot number counted from the pointer means
+different things on the two sides. For `CMdaAudioOutputStream` it cancels
+(two header words and a destructor against two destructors and
+`CBase::Extension_`) and the map is the identity from slot 3; for
+`MMdaAudioOutputStreamCallback`, a mixin with no destructor, nothing
+cancels and it is a plain shift of two, which needs a proxy of its own in
+the other direction.
+
+With both in place: `Open` returns, **`MaoscOpenComplete(KErrNone)`**,
+`SetAudioPropertiesL(16000 Hz, mono)`, `MaxVolume` 10, `SetVolume(10)`,
+`SetPriority(100, 0)`, and then **71,777 `WriteL` calls each answered by
+`MaoscBufferCopied(KErrNone, ...)`** in one run, with 695,381 records
+against 2,134 in the best run before it. The buffers are 2000-byte `TPtr8`s
+and they carry music: writes 160, 320 and 640 have all five hundred words
+non-zero. The file the game holds open is
+`E:\system\apps\6RBC\Streams\bgm_moby_lift_me_up.swav`.
+
+Retracted with it: the faults at 0x100, 0xFFFFFFFA and 0x64 were `WriteL`
+being handed an integer where it wanted a descriptor, not null fields in an
+implementation that had not finished opening; 9.x's asynchronous open was
+never the problem, and the settings package needed no translation at all --
+9.x reads the rate and the channels at exactly the offsets the game writes
+them, with the same enum values.
+
+**The bench cannot hear.** This machine has no sound card, and a non-blocking
+ALSA sink turns a timing question into a disk-space one (E203 wrote 10 GB in
+ninety seconds). Everything past `WriteL` is the device's DevSound, so the
+next step is a phone round.
 
 **Best round so far: 72**, narrowly over 69. Round 69 got the game running;
 round 72 made it watchable, and did it by putting the instrument in the

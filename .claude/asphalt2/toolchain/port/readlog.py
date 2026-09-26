@@ -85,10 +85,15 @@ def probes():
 # image somewhere different, so the number is worth printing and not comparing.
 ADDRESS_NOTES = {850, 851, 852, 853, 854, 855, 856, 857, 858, 859, 875, 876, 891}
 
-NOTES = {860: 'slot entered', 850: 'Cancel on', 851: 'STRAY Cancel on',
-         852: 'image loaded at', 853: 'chunk ends at',
-         854: 'APP UI VPTR CHANGED to', 855: 'decrypted literal',
-         856: '  and it points at a word', 857: 'r5 =', 858: '    word', 859: '    text', 870: 'returned', 871: '  by import',
+# 850..857 are reused: the names on the right are what gate6.cpp writes
+# there now, and the ones on the left are what the same codes meant when the
+# display work was using them. Reading a sound trace as "APP UI VPTR CHANGED"
+# is how E201's Open call nearly went unnoticed.
+NOTES = {860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on / SOUND',
+         852: 'image loaded at / sound msg', 853: 'chunk ends at / MDA CALL',
+         854: 'APP UI VPTR CHANGED to / MDA arg', 855: 'decrypted literal / MDA vtable',
+         856: '  and it points at a word / MDA code',
+         857: 'r5 = / MDA CALLBACK', 858: '    word', 859: '    text', 870: 'returned', 871: '  by import',
          872: '  asked for', 873: 'about to call import',
          890: 'ordinal asked of a library that is not open',
          875: 'lookup on handle', 876: '   answered', 877: 'DRIVER CALL refused, euser ordinal',

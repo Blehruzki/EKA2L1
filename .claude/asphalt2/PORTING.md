@@ -109,45 +109,84 @@ reached the audio call in its life. With a logging fake in its place the
 whole path runs, no panic, and the bridge carries functions 1, 4, 5, 15
 (x48), 19, 25, 26, 27, 28, 32 and 33 across in a minute.
 
-**What is left is one table: which 9.x vtable slot is which.**
+**The chain is complete, and it plays** (E202). What was left was two
+tables, and both were off by the same misreading of two ABIs.
 
-The stream object is reached, created and called. `epoc9.def` gives
-mediaclientaudiostream ordinal **3** for `NewL(MMdaAudioOutputStreamCallback&,
-CMdaServer*)`, and it resolves and runs. The game then calls the stream
-through its vtable, and the two builds do not agree on the order.
+**The rule behind both.** GCC98r2 stores the vtable **object's start** in
+the object -- offset-to-top, typeinfo, then the entries. EABI stores its
+**address point** -- the entries directly. So a slot number counted from
+the pointer the object carries means two different things on the two sides.
 
-**The game's side is known**, read off its own dispatch sites:
+**The stream: the identity, from slot 3.** The game's layout is two header
+words, one destructor entry, then `SetAudioPropertiesL`, `Open`,
+`MaxVolume`, `Volume`, `SetVolume`, `SetPriority`, `WriteL`, `Stop`,
+`Position`. 9.x's is two destructors (complete and deleting),
+`CBase::Extension_`, then the same nine in the same order. Three slots of
+head on each side, so **from slot 3 the two are the same table**. The map
+is the identity; the game's one destructor entry maps to 9.x's deleting
+destructor.
 
-| game slot | what, and how it was identified |
-|---|---|
-| 3 | `SetPriority` -- `mov r2, #0x02000000` before the call, which is `EMdaPriorityPreferenceQuality` |
-| 4 | `Open` -- handed a pointer built at object+48, straight after `NewL` |
-| 5 | `MaxVolume` -- no arguments, result fed into slot 7 |
-| 7 | `SetVolume` -- takes what slot 5 returned |
-| 9 | `WriteL` -- takes `[r7, r4, lsl #2]`, an element of an array of descriptors |
-| 10 | `Stop` -- no arguments |
-| 8 | unknown; called with `(100, 0)` and nothing identifies it |
+Read out of the binaries rather than guessed. The ROM DLL
+(`z/rm-409/sys/bin/mediaclientaudiostream.dll`, code 0x804d3eb8, 17
+exports) has `_ZTV21CMdaAudioOutputStream` at ordinal 12 = 0x804d50cc:
+zero, the typeinfo, twelve function words, then 0xfffffffc -- the
+offset-to-top of the secondary vtable for `MMMFClientUtility`. The
+emulator's patch DLL has the same twelve. The game's side comes from its
+own dispatch sites: a sweep of the image for vtable calls on the stream
+finds slots 3, 4, 5, 7, 8, 9, 10 and nothing else, and each site names
+itself -- slot 5 takes no argument and its result feeds slot 7
+(`MaxVolume` into `SetVolume`), slot 8 is called with `(100, 0)`
+(`SetPriority`), slot 4 is called with the package at `this+0x30` straight
+after `NewL` (`Open`).
 
-**The 9.x side is half known.** Dumping the real vtable (E191) settles its
-shape: `[0]` offset-to-top, `[1]` typeinfo, **`[2]` and `[3]` both a
-destructor** (each begins `push {r4,r5,lr}; ldr r3,[pc]; str r3,[r0]`, a
-destructor reinstalling a vtable -- the EABI complete/deleting pair), and the
-virtuals from **4**. The DLL is **Thumb**, so every entry is odd and the low
-bit is not part of the address. `[4]` is a bare `bx lr` in another module and
-the rest are forwarders of the shape `ldr r0, [r0, #8]; bl impl`.
+**The callback: a shift of two.** `MMdaAudioOutputStreamCallback` is a pure
+mixin with no destructor, so nothing cancels the game's two header words.
+9.x calls entry 0 expecting `MaoscOpenComplete`; the game's entry 0 is
+**0xfffffffc**, the offset-to-top of a secondary base -- its callback is a
+mixin sub-object four bytes into its sound object. So the callback needs
+its own proxy in the other direction, three entries mapping to the game's
+2, 3, 4.
 
-What is *not* settled is which virtual is which. Taking the declared order --
-SetAudioPropertiesL, Open, MaxVolume, Volume, SetVolume, SetPriority, WriteL,
-Stop, Position -- puts `SetPriority` at 9, and the game's priority argument
-is then dereferenced as a pointer: clamping 256 to 100 moves the fault from
-"reading 0x100" to "reading 0x64" exactly (E193). So slot 9 takes a pointer
-and is not `SetPriority`, and the declared order is not the vtable order.
+**The ordinal is 3, and the reason is worth keeping.** Two DLLs carry this
+name. `RLibrary::Load` opens the **ROM's** (UID3 0x10003996, 17 exports,
+which is `epoc9.def`'s list); the emulator's patch (UID3 0xEE000001, 55
+exports) does not replace it but overwrites individual exports of it, per
+`patch/mediaclientaudiostream.dll.map`, whose lines read `<patch export>
+<ROM ordinal>`. Its `9 3` is the patch's `NewL` over ROM ordinal 3. Ordinal
+9 of the ROM is *typeinfo*, and calling it (E200) landed a run in a string
+table.
 
-Three runs have now been spent guessing it, which is two too many. The way
-to finish it without guessing is already half built: the forwarders differ
-only in the `bl` offset into the implementation class, so computing those
-targets and sorting them gives the implementation's own order, which
-`src/patch/mediaclientaudiostream/inc/impl.h` in the emulator's tree names.
+**The settings package needs no translation.** 9.x's `Open` reads
+`[r1,#0x1c]` for the rate and `[r1,#0x20]` for the channels; the game
+writes its rate and channels at exactly those offsets of the package it
+builds at `this+0x30`. The values are the same enum too: the game's own
+Hz-to-enum function answers 0x10, 0x40, 0x100, 0x400, 0x1000, 0x4000,
+0x10000 for 8000..48000 Hz and 9.x's `ConvertFreqEnumToNumber` takes
+exactly those; the game's channel word is 0x02000000 and 9.x reads that as
+mono.
+
+**What E202 recorded.** `Open` returned, **`MaoscOpenComplete(KErrNone)`**,
+`SetAudioPropertiesL(16000 Hz, mono)`, `MaxVolume()` = 10, `SetVolume(10)`,
+`SetPriority(100, 0)`, three defensive `Stop()`s, and then **71,777
+`WriteL` calls each answered by `MaoscBufferCopied(KErrNone, ...)`** over
+150 seconds, with the emulator's patch printing `Open complete` and the
+game holding `bgm_moby_lift_me_up.swav` open.
+
+**Retracted with it**: the faults at 0x100, 0xFFFFFFFA and 0x64 were never
+null fields inside an implementation that had not finished opening. They
+were `WriteL` being handed an integer where it wanted a descriptor,
+because the map was two slots high. 9.x opening asynchronously is real but
+was never the problem -- the open completes, and it says so.
+
+**How the two-slot error survived six runs.** `MDA_DUMP_VT` reads
+`rvt[k - 2]` on purpose, to catch the two words behind the pointer, and its
+output was then read as if `k` were the slot number. The instrument was
+right; counting from it was not. The wider lesson is the one E198 already
+pointed at and this session finally took: the answer was in the binaries
+the whole time. The patch DLL is compressed with Symbian's own deflate,
+which zlib will not inflate, and thirty lines against EKA2L1's own
+`flate::inflater` (`src/emu/common/src/flate.cpp`) opened it. Read the
+binary before instrumenting the run.
 
 **What the probe added.** Every N-Gage-only import (GAMEUTILS, GAMECOMMS,
 ARENAFRAMEWORK, NOKIAFC) is a no-op returning zero. Handing back a non-null
@@ -160,15 +199,6 @@ stored at object offsets 972, 980, 664, 988), **11 is a predicate** turned
 into a boolean, and **17 is a per-frame predicate** on the object 19
 returned. Answering that poll with a pointer means "yes" every frame, so the
 blanket probe is off again -- the next one needs an answer per import.
-
-**Where the work is.** Something between the sound client's connect and its
-thirty-five wrappers decides not to play. Two candidates, and they are
-distinguishable: the platform flag those GAMEUTILS constructors feed, or the
-game's own `opt_volume` setting in `user.dat`. After that, the remaining
-work is known: resolve import 458 to S60v3's real
-`CMdaAudioOutputStream::NewL` and give the returned object the vtable the
-game expects -- which the same talking-fake trick will read off, since the
-game calls the stream polymorphically.
 
 ### Settled
 
