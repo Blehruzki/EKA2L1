@@ -716,6 +716,7 @@ struct Context {
     u32 screenW, screenH;   // what ScreenInfo reported -- the logical size, rotated
     u32 bufW, bufH;         // the screen's shape, which the pitch does not decide
     u32 srcW;               // how many of the game's pixels a row is read as
+    u32 srcOrigin;          // where in its buffer the game's first pixel is
     u32 stretch;            // 1 = scale 176x208 up to fill the screen
     u32 clearPending;       // blank the framebuffer once, after any change
     u32 dstW, dstH;         // how big the picture is drawn
@@ -3706,24 +3707,33 @@ extern "C" int gate6_file_read_static(void *self, u32 *des, Context *c)
 // wrong.
 //
 // Rounds 72 and 73 answered all of that -- **32 bits a pixel on a 1280-byte
-// line** -- twice over and by two unrelated readings, so the format is closed
-// and the keypad is free for the one thing still wrong.
+// line** -- and round 75 answered the game's row length: 176, the only value
+// out of 97 swept that does not shear the picture.
 //
-// That is the game's own row length. Part of the right-hand side of the
-// picture comes back through the left, at every format and every size, which
-// is what a row longer than the buffer it is written into looks like: the
-// overflow lands at the start of the next row. `srcPitch` is what we read it
-// as, and 176 is only ever what the game was *told*. So make it steppable and
-// let the phone answer, the way the phone answered the format: presets on the
-// digits, one pixel a step on `*` and `#`, eight on `4` and `6`.
-static const u16 kSrc[] = {              // pixels between the game's rows
-    0,                                   // 0: back to what it was told
-    176, 192, 200, 0, 208, 0, 240,       // 1-3, 5, 7: the candidates
+// What was left was measured from the game's own bytes rather than asked of
+// the phone (E167, E168). Two raw frames, a title screen and a race, both say
+// the same thing: the stride is 176 -- vertical continuity picks it out at
+// 3.76 against 5.46 for its nearest neighbour -- and **the game's first pixel
+// is sixteen into the buffer**, not at the start of it. The sharpest column
+// boundary in either frame is between 15 and 16, three times the mean, and
+// the last column of a row runs *smoothly* into the first of the next (1.46,
+// where a typical adjacent pair is 4.23), which is what a picture displaced
+// sixteen pixels along a 176-wide row looks like. So the right-hand side
+// coming back through the left was never an overflow: it is the picture
+// starting sixteen pixels late and its own right edge wrapping.
+//
+// Read from pixel sixteen and the picture is whole. The offset is steppable
+// anyway -- digits for the candidates, one pixel on `*` and `#`, eight on `4`
+// and `6` -- because it is measured in the emulator and the phone has not
+// confirmed it yet.
+static const u16 kOrigin[] = {           // where the game's first pixel is
+    0, 8, 16, 24, 0, 32, 0, 48,          // 0-3, 5, 7
 };
 enum { SCREEN_KNOWN = 1, SCREEN_KNOWN_BPP = 32, SCREEN_KNOWN_PITCH = 1280 };
-enum { SCREEN_PICKER = 1, SRC_COUNT = sizeof kSrc / sizeof kSrc[0] };
-enum { KEY_SRC_NEXT = '*', KEY_SRC_PREV = '#', KEY_SRC_UP = '6', KEY_SRC_DOWN = '4',
+enum { SCREEN_PICKER = 1, ORIGIN_COUNT = sizeof kOrigin / sizeof kOrigin[0] };
+enum { KEY_ORG_NEXT = '*', KEY_ORG_PREV = '#', KEY_ORG_UP = '6', KEY_ORG_DOWN = '4',
        KEY_FMT_DEPTH = '9' };
+enum { SRC_ORIGIN = 16, SRC_ORIGIN_MAX = 64 };
 enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
 // Round 74: 176x208 centred in the middle of the screen is a small picture
 // with the phone's own menu round it, so it is scaled up to fill. `8`
@@ -3739,17 +3749,13 @@ static void screen_format(Context *c)
     log_block(c);
 }
 
-// The game's row length, which is the open question now. Clamped, and a zero
-// means "whatever the game was told", so `0` always comes back to a known
-// state after a sweep.
-static void src_set(Context *c, u32 pitch)
+// Where the game's first pixel is. Clamped, and the layout is redone because
+// nothing else about it changes -- the picture is the same size, it is only
+// read from a different place.
+static void src_set(Context *c, u32 origin)
 {
-    if (!pitch)
-        pitch = (u32)(TELL_GAME_ITS_SIZE ? GAME_PITCH : GAME_W);
-    if (pitch < (u32)SRC_PITCH_MIN) pitch = (u32)SRC_PITCH_MIN;
-    if (pitch > (u32)SRC_PITCH_MAX) pitch = (u32)SRC_PITCH_MAX;
-    c->srcPitch = pitch;
-    c->srcW = pitch;
+    if (origin > (u32)SRC_ORIGIN_MAX) origin = (u32)SRC_ORIGIN_MAX;
+    c->srcOrigin = origin;
     screen_layout(c);
     log_block(c);
 }
@@ -3846,7 +3852,7 @@ static void screen_layout(Context *c)
     log_event(c, NOTE_SCREEN_FIT, (bw << 16) | (bh & 0xFFFF));
     log_event(c, NOTE_SCREEN_FIT, (c->dstW << 16) | (c->dstH & 0xFFFF));
     log_event(c, NOTE_SCREEN_FIT, (c->offX << 16) | (c->offY & 0xFFFF));
-    log_event(c, NOTE_SCREEN_SRC, (sw << 16) | (c->srcPitch & 0xFFFF));
+    log_event(c, NOTE_SCREEN_SRC, (c->srcOrigin << 16) | (c->srcPitch & 0xFFFF));
 }
 
 extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
@@ -3967,7 +3973,8 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
                 p[5] = GAME_H;
             }
             c->srcPitch = TELL_GAME_ITS_SIZE ? (u32)GAME_PITCH : (u32)GAME_W;
-            c->srcW = c->srcPitch;
+            c->srcW = (u32)GAME_W;
+            c->srcOrigin = (u32)SRC_ORIGIN;
             screen_layout(c);
             log_event(c, NOTE_SCREEN, (u32)c->gameScreen);
             log_event(c, NOTE_SCREEN, c->srcPitch);
@@ -4050,7 +4057,7 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
         const u16 *src = c->gameScreen;
         for (u32 y = 0; y < c->dstH; y++) {
             u8 *row = c->realScreen + (y + c->offY) * c->realPitch;
-            const u16 *srow = src + (u32)c->mapY[y] * (u32)c->srcPitch;
+            const u16 *srow = src + c->srcOrigin + (u32)c->mapY[y] * (u32)c->srcPitch;
             for (u32 x = 0; x < c->dstW; x++) {
                 const u32 v = srow[c->mapX[x]];
                 u32 r, g, b;
@@ -4400,8 +4407,8 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
         log_event(c, NOTE_KEY, k[0]);       // iCode
         log_event(c, NOTE_KEY, k[1]);       // iScanCode
         log_event(c, NOTE_KEY, type);
-        // The picker, now on the game's row length. A digit selects a
-        // candidate outright, `*` and `#` move it one pixel, `4` and `6`
+        // The picker, now on where the game's first pixel is. A digit selects
+        // a candidate outright, `*` and `#` move it one pixel, `4` and `6`
         // eight. Only on **EEventKey**, which is type 1 -- E131 recorded types
         // 3, 1 and 2 for one press, and those are EEventKeyDown, EEventKey and
         // EEventKeyUp in that order, so type 1 is the one press and the only
@@ -4421,12 +4428,12 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
                 screen_format(c);
                 return 1;                   // EKeyWasConsumed
             }
-            if (code == (u32)KEY_SRC_UP)    { src_set(c, c->srcPitch + 8); return 1; }
-            if (code == (u32)KEY_SRC_DOWN)  { src_set(c, c->srcPitch - 8); return 1; }
-            if (code == (u32)KEY_SRC_NEXT)  { src_set(c, c->srcPitch + 1); return 1; }
-            if (code == (u32)KEY_SRC_PREV)  { src_set(c, c->srcPitch - 1); return 1; }
-            if (code >= '0' && code < '0' + (u32)SRC_COUNT) {
-                const u32 want = kSrc[code - '0'];
+            if (code == (u32)KEY_ORG_UP)   { src_set(c, c->srcOrigin + 8); return 1; }
+            if (code == (u32)KEY_ORG_DOWN)  { src_set(c, c->srcOrigin ? c->srcOrigin - 8 : 0); return 1; }
+            if (code == (u32)KEY_ORG_NEXT)  { src_set(c, c->srcOrigin + 1); return 1; }
+            if (code == (u32)KEY_ORG_PREV)  { src_set(c, c->srcOrigin ? c->srcOrigin - 1 : 0); return 1; }
+            if (code >= '0' && code < '0' + (u32)ORIGIN_COUNT) {
+                const u32 want = kOrigin[code - '0'];
                 if (want || code == '0') {
                     src_set(c, want);
                     return 1;               // EKeyWasConsumed

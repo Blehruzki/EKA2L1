@@ -68,12 +68,21 @@ here and the section it overturns is marked.*
   change -- all 320 rows, stopping at the last row's last visible pixel, since
   the pad after the final row need not be allocated. `8` toggles back to the
   centred 176x208.
-- **Open: the game's own row length.** A strip of the right-hand side of the
-  picture reappears at its left, at every format and every size -- what a row
-  written longer than its buffer looks like, the overflow landing at the start
-  of the next row. `srcPitch` is 176 only because that is what the game was
-  told. Build 143 makes it steppable from the keypad and logs it as
-  `NOTE_SCREEN_SRC`, so the phone can answer it the way it answered the format.
+- **The game's picture starts sixteen pixels into its buffer, and its stride
+  is 176** (round 75, E167, E168). Both measured, neither guessed. The stride:
+  the phone swept every read stride from 160 to 256 and 176 is the only one
+  that does not shear, and scoring two raw frames by vertical continuity picks
+  176 at 3.76 against 5.46 for its nearest neighbour. The origin: the sharpest
+  column boundary in a raw frame is between 15 and 16 (13.77 against a mean of
+  2.76) while the last column of a row runs into the first of the next at
+  1.46, *smoother* than a typical adjacent pair -- which is a picture
+  displaced sixteen pixels along the buffer, not one overflowing it. **So the
+  right-hand side coming back through the left was never an overflow**, and
+  the earlier reading of it as one -- "draws up to 192 pixels wide, so sixteen
+  columns land on the next row" -- is retracted, along with the conclusion
+  that only a patch to the game's layout constants could fix it. Reading from
+  pixel sixteen fixes it (E170), and it holds on the title screen and in a
+  race alike.
 - **`on_main_thread` was wrong on hardware, and it is what killed the
   SoundServer thread.** It identified the main thread by how far the caller's
   stack was from it, allowing a megabyte, on the strength of a comment saying
@@ -304,6 +313,17 @@ here and the section it overturns is marked.*
   Two things unblocked it: answering `RSessionBase::CreateSession` with
   `KErrNone` so the sound server connect succeeds, and supplying `memmove`,
   which the game imports from the C runtime and 9.x does not export.
+- **RETRACTED (round 75, E167-E170): the clipped right edge is not the
+  game's own, and it is not an overflow.** The section below stands as the
+  measurement of the stride -- 176, confirmed twice since -- but its reading
+  of the artefact was wrong. The game's picture starts **sixteen pixels into
+  the buffer**; nothing is written past 176, and the right-hand side that
+  appears at the left is the picture's own right edge, displaced. Reading
+  from pixel sixteen fixes it. What follows is kept because the reasoning
+  that led away from it is worth not repeating: three port-side controls
+  were tried and none moved the artefact, and that was read as proof it was
+  unreachable, when the untried fourth was where in the buffer to start.
+
 - **The clipped right edge is the game's own, not the port's.** Measured, not
   guessed: the framebuffer is 176x208 with a **176-pixel stride** (the title
   screen renders pixel-perfect from a raw dump at 176 and shears at 192 and

@@ -219,6 +219,10 @@ them, and say so.
 | E164 | **build 142b again, with a screenshot** | -- | `--` | **Looked at, not inferred.** The race runs with the picture scaled to the full width of the emulator's screen: HUD legible across the top, the dashboard bar at the bottom, the car centred, nothing of the shell left round the edges. That is the same code path the phone will take, with different numbers in it -- 320x240 buffer, 203x240 picture, centred at x=58 |
 | E165 | **build 143 -- the screen is the reported 240x320, the pitch only a stride** | 13339 | `--` | **The records read as they should.** `NOTE_SCREEN_FIT` gives buffer **240x320**, picture **240x283**, offset **0,18**, and `NOTE_SCREEN_SRC` gives 176/176. Same numbers the emulator produced before, which is the point: the layout no longer depends on the pitch, so the one build is right on a padded line and an unpadded one alike. The clear now covers all 320 rows, and stops at the last row's last *visible* pixel, since the pad after row 319 need not exist |
 | E166 | **build 143 with a screenshot** | -- | `--` | **Looked at.** The race fills the width of the screen with the shape kept, nothing of the shell round it. The `$000000` on the HUD is still clipped at the right edge -- that is the source-side wrap, untouched by this build and the thing round 75 is for |
+| E167 | **build 143d -- two raw frames of the title screen, to measure the overflow instead of arguing about it** | 17213 | `--` | **The bytes say it is not an overflow at all.** Rendered at a 176 stride the title screen is pixel-perfect, and the artefact is a sixteen-column strip down the left. Three measurements over the frame, each a mean absolute difference between column pairs: the sharpest column boundary in the whole frame is **between 15 and 16, at 13.77 against a mean of 2.76**; the last column of a row against the first of the next is **1.46**, *smoother* than a typical adjacent pair at 4.23; and column 0 against column 16 is 16.28. A picture whose rows run smoothly across the row boundary and break at column 16 is a picture **displaced sixteen pixels along the buffer**. Its own right-hand edge is what comes back through the left |
+| E168 | **build 143e -- two raw frames of a race, to see whether the offset is the same elsewhere** | 18650 | `--` | **Same sixteen, and the stride confirmed a third way.** The sharpest column boundary on the race screen is again at 16 (10.4 against a mean of 3.29), so the displacement is not a property of the title screen. And scoring the stride by *vertical* continuity -- column c of row y against column c of row y+1, over the middle of the frame -- picks **176 at 3.76** against 5.46 for its nearest neighbour and 8.5 at 240. Stride 176, origin 16, measured from the game's own bytes on two unrelated screens |
+| E169 | **build 144 -- read the game's buffer from pixel sixteen** | 14207 | `--` | **Builds and runs, 14,207 records, no leave.** One term added to the source address in the blit and one field in the context; the layout is untouched, because the picture is the same size and only read from a different place |
+| E170 | **build 144 with a screenshot** | -- | `--` | **The wrap is gone.** `$000260` is whole where it read `$00026` with a stray `0` at the far left, `KmH` is whole where the `K` was on the other side of the screen, the dashboard runs edge to edge, and the left column is clean. Same run also confirms the round-74 shape holds: the race fills the screen with the aspect kept |
 
 <!-- EMURUN -->
 
@@ -291,6 +295,7 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 72 | **build 141** -- the line steppable by hand from the keypad | 1, four logs and a photograph | **The menu is legible and upright: `ARCADE`, the carousel, `SELECT`, the car.** The format is **32 bits a pixel on a 1280-byte line** | **The phone answered, and the answer was in the log rather than in my reading of a picture.** The user swept the line by hand and the log records every step, so the format they settled on is simply the one they stopped on longest: in `g6box2-8.log` the four longest dwells that are not the startup default are **all at pitch 1280**, and the longest of the whole session -- 1,493 records, nearly three times anything else -- is **32bpp / 1280**. They swept up to 1280 and back down to it four separate times. 1280 bytes is 320 pixels at four bytes, and the N95's panel is natively **320x240 landscape**; 240x320 is the rotated logical size `UserSvr::ScreenInfo` reports. **This retracts round 71's 576** -- see below. Two of the four logs turn out to be from build 139, still on the phone from the round before: the launch-numbered log files are not cleared between installs |
 | 73 | **build 141 again** -- the same picker, driven deliberately: preset `7`, then `*` eight times | 1, the count itself | **Eight clicks from preset 7 is the picture** | **Independent confirmation of round 72, and it is arithmetic rather than judgement.** Build 141's preset 7 is four bytes on a **1152**-byte line and `*` steps the line by sixteen, so eight clicks land on **1152 + 128 = 1280**, at four bytes a pixel. Round 72 reached 32bpp/1280 by measuring how long the user's hand sweep dwelt on each format; this reached it by counting the keys they pressed. Two different readings of two different runs, same number. The format question is closed |
 | 74 | **build 142** -- the picture scaled to fill, and the buffer blanked | 1, a photograph and five logs | **Wrong aspect, and the right-hand side still comes back through the left.** Colours right, composition almost right | **The scaling arithmetic was sound and the shape it was given was not.** Round 72 read the 1280-byte line as a 320-pixel buffer whose rotation is the reported 240x320; build 142 drew 203x240 at column 58 on that basis, and the photograph shows the picture running off the *right-hand edge of the screen* -- which can only happen if the visible width is the 240 `ScreenInfo` reports. So 1280 is a **padded stride** (240 pixels at four bytes is 960) and the reported size is the screen. The five logs also settle that the format itself is right: they sweep it again and `32bpp/1280` holds the longest dwell in every one of them -- 2,606 of 2,893 records in `g6box1-4`, 1,891 of 1,933 in `g6box6-8` -- so the sweeps were the user trying to fix the *shape* with the *format* knob, which was the only knob there was |
+| 75 | **build 143** -- the aspect fixed, and the keypad on the game's row length | 1, a log and a video | **The aspect is right.** The whole 160-256 range swept, 97 values, and the wrap survives every one of them | **Both halves answered.** The fit records read buffer **240x320**, picture **240x283** at y=18 -- round 74's correction holds on the phone, and the video shows the picture filling the screen with the shape kept. And the sweep is a clean negative: **176 holds 7,489 records of dwell, the next value 1,589**, and the video shows every other value shearing the picture diagonally. So 176 *is* the stride the game writes with, confirmed on hardware for the first time, and the wrap is not in how we read the buffer. That matches what E137 concluded offline from a raw frame: the game writes 176x208 and nothing beyond, but *draws* up to 192 pixels wide, so the overflow lands on the next row. 4,493 frames, no panic |
 
 ## Round 74 -- the pitch is padding, and the screen is what it says
 
@@ -346,25 +351,74 @@ way it did for the format. If a value makes the strip go away, that value is
 the game's row length. If none does, the wrap is in the game's own layout
 rather than in how we read it, and that is a different fix.
 
+## Round 75 -- 176 is the stride, so the wrap is the game's
+
+Two questions went out in build 143 and the phone answered both.
+
+**The aspect is right.** `NOTE_SCREEN_FIT` reads buffer 240x320, picture
+240x283 at y=18, and the video shows it filling the screen with the shape
+kept. Round 74's correction -- the reported size is the screen, the 1280-byte
+line is only a padded stride -- holds on hardware.
+
+**The row length is 176, and that does not fix the wrap.** The user swept the
+whole range the picker allows, **all 97 values from 160 to 256**, and the
+dwell is not close:
+
+| source pitch | records held |
+|---|---|
+| pitch **176** | **7,489** |
+| pitch 240 | 1,589 |
+| pitch 256 | 786 |
+| pitch 192 | 594 |
+| everything else | under 440 |
+
+176 is where they kept coming back, and the video shows why: every other
+value shears the picture into diagonal bands. That is what reading a buffer
+at the wrong stride looks like, and it means **176 is the stride the game
+writes with** -- measured on hardware for the first time, where before it was
+only what the game had been told.
+
+And the wrap is still there at 176. So it is not in how the port reads the
+buffer. It cannot be: the only parameter that could cause it has been swept
+end to end.
+
+This is the negative result the round was built to get, and it agrees with
+what **E137** established offline from a raw frame: the game writes 176x208
+and nothing outside it, but *draws* as much as 192 pixels wide, so up to
+sixteen columns of a row land at the start of the next one. The port has now
+tried every control it has -- reporting 176x208 as the screen size (E132,
+byte-identical frames), sizing the lent window (E137), reporting a 192-pixel
+pitch (shears), and now sweeping the read stride on the phone. None of them
+moves it.
+
+**What is left is the game's own layout constants**, which means patching the
+image, the way the protection check is patched. Next step is to look at what
+the game actually writes, from a raw frame, rather than to reason about it.
+
 ## Where we are
 
-**Furthest: round 74 -- the screen's shape is settled, and one thing is
-left.** The framebuffer is **32 bits a pixel on a 1280-byte line**, confirmed
-three separate ways (round 72's dwell times, round 73's keypress count, round
-74's five logs). The screen itself is the **240 x 320** `UserSvr::ScreenInfo`
-reports; 1280 bytes is a *padded stride*, since 240 pixels at four bytes is
-960 and the hardware keeps a 320-pixel line. Round 72's reading of that line
-as a 320-pixel-wide buffer is retracted -- round 74's photograph shows the
-picture running off the right-hand edge, which settles it.
+**Furthest: round 75, and then E167-E170 -- the display is solved, all of
+it.** The framebuffer is **32 bits a pixel on a 1280-byte line** (rounds 72,
+73, 75). The screen is the **240 x 320** `UserSvr::ScreenInfo` reports and
+1280 is a *padded stride* (round 74). The picture is scaled to **240x283 at
+y=18**, filling the screen with its shape kept, and the buffer is blanked so
+none of the shell shows.
 
-Build 143 lays the picture out from the reported size and uses the pitch only
-to step between rows: **240x283 at y=18**, the shape kept, the full width
-filled, the whole buffer blanked so none of the shell shows.
+And the wrap is fixed. Round 75 swept the read stride over all 97 values from
+160 to 256 and 176 held 7,489 records of dwell against 1,589 for the next,
+which settles the stride and rules the port's read out as the cause. The
+cause came out of the game's own bytes instead (E167, E168): **its picture
+starts sixteen pixels into the buffer.** The sharpest column boundary in a
+raw frame is between 15 and 16 at five times the mean, while the last column
+of a row runs *smoothly* into the first of the next -- a picture displaced
+sixteen pixels along a 176-wide row, whose own right edge therefore comes
+back through the left. Reading from pixel sixteen makes it whole (E170):
+`$000260` and `KmH` complete, nothing at the left edge.
 
-**What is left is the game's own row length.** A strip of the right-hand side
-of the picture comes back through the left, at every format and every size.
-`srcPitch` is 176 because 176 is what the game was told; nothing has measured
-what it writes. Build 143 puts the keypad on that.
+Nine rounds of calling that an overflow, and it was an offset.
+
+**Next**: the phone has not seen build 144 yet, and audio is still a silent
+stand-in with 17 imports unanswered.
 
 **Best round so far: 72**, narrowly over 69. Round 69 got the game running;
 round 72 made it watchable, and did it by putting the instrument in the
