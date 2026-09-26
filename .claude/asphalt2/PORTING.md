@@ -37,6 +37,21 @@ here and the section it overturns is marked.*
 
 ### Settled
 
+- **The KERN-EXEC 0 the phone has raised beside every KERN-EXEC 3 is ours.**
+  `box_flush` returned early on a null handle, `box_write` returned early off
+  the main thread, and the `RFile::Flush` between them did neither -- so the
+  first worker thread to reach a sixteenth traced event called `RFile::Flush`
+  on the main thread's handle, which is a bad handle on EKA2. Round 61 put it
+  beyond doubt: with the stack clamp in, the SoundServer thread becomes
+  creatable, starts, makes its first imports, and the phone dies there with the
+  main thread still running -- so the old reading, that the worker was touching
+  something an exiting main thread had taken with it, is **retracted**. One
+  line fixes it.
+- **HAL is finished as a source for the screen's format.** Three attributes,
+  three wrong answers on an N95: `EDisplayBitsPerPixel` 16, 
+  `EDisplayOffsetBetweenLines` 640 and `EDisplayMode` `EGray2`, for a 240x320
+  screen that is 32 bits a pixel on a 960-byte line. Nothing further should be
+  asked of it; the pitch-consistency rule is what gets the right answer.
 - **EKA2 caps a user thread's stack and EKA1 did not**, and that is what round
   60 stopped on: the game starts its sound server at `0xb86ec` with
   `RThread::Create(..., aStackSize = 100,000, ...)` -- a literal at `0xba370`

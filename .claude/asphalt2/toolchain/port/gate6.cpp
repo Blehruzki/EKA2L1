@@ -1319,6 +1319,14 @@ static void box_flush(Context *c)
     // like.
     if (!c->boxFile[0])
         return;
+    // And the wrong thread, which is the half that was still missing. Round
+    // 61: `box_write` returns early off the main thread and `file_flush` did
+    // not, so the first worker to reach a sixteenth traced event called
+    // `RFile::Flush` on the main thread's handle -- a bad handle on EKA2, and
+    // **KERN-EXEC 0**. That is the panic this project has shown beside every
+    // KERN-EXEC 3 for dozens of rounds, and it was never the game's.
+    if (!on_main_thread(c))
+        return;
     box_write(c);
     file_flush(c->boxFile);
 }

@@ -198,6 +198,7 @@ them, and say so.
 | E143 | **build 128 -- clamp `RThread::Create`'s stack, and reject a HAL pitch that is not a multiple of the width** | 15253 | `--` | **The clamp works and costs nothing.** Both thread creations now come through `stack_thunk`, which copies the caller's stack arguments down itself instead of leaving the callee to read ours -- the objection that kept `WRAP_CREATE` off since the frame_thunk attempt. The game's own worker asks for 0x2000 and is untouched; the SoundServer start site asks for 100,000 and gets **0x10000**, and `Create` answers **0**. No retry was needed here because the emulator has no cap to hit; the halving loop is for the phone. Frames went 1,402 -> **4,053** and records 7,344 -> 15,253 in the same 120 seconds, so nothing was slowed by the wrapper. And the HAL attribute put on trial answered: **`EDisplayMode` = 11, `EColor16MU`** -- four bytes a pixel, which is the truth the emulator's `EDisplayBitsPerPixel` of 24 does not tell. The pitch check is a no-op here (960 == 240*4, self-consistent) and only changes what happens on a phone |
 | E144 | **build 129 -- clamp OFF, against an EKA2L1 that now enforces the EKA2 user-stack ceiling** | 1274 | `--` | **The emulator now fails exactly as the phone does, record for record.** `svc.cpp`'s `thread_create` refuses a user stack over 0x14000 with `KErrTooBig` instead of allocating whatever is asked, and the run ends: `RFile::Read` from `0x34b00` twice, `User::Leave(-40)` from `0xba354`, `User::Exit`. Aligned from each side's first `NOTE_FRAME`, the emulator and the phone's round 60 log are **1,196 records with not one code out of place** -- the whole remaining run -- and every one of the 334 value differences is a heap address, a library handle or the image base. The kernel log also names the thread: **`Thread SoundServer asks for a 100000-byte stack; EKA2 allows 81920`**. This is the run that makes the emulator a valid check before a phone round, for this class of bug: before the patch it accepted what a device refuses, so 142 runs cleared a build that could not work |
 | E145 | **build 130 -- clamp back on, against the emulator that now has the ceiling** | 12497 | `--` | **The pair works.** With both halves in place the game runs: 3,147 frames, no `User::Leave`, no `User::Exit`, no refusal in the kernel log. The SoundServer thread is created with 0x10000 instead of 100,000 and `Create` answers 0; the game's own worker asks for 0x2000 and is left alone. So the emulator can now *both* reproduce the phone's failure (E144) and show the fix clearing it, which is what a pre-hardware check has to be able to do. This is the build to send |
+| E146 | **build 131 -- guard `box_flush`'s `RFile::Flush` against the wrong thread** | 12509 | `--` | **No regression, and the emulator cannot show the fix.** 3,109 frames against E145's 3,147 in the same 90 seconds, no leave, no exit, and the first 6,078 records identical to E145 before the two drift apart the way two timed frame loops do. That is the whole of what this run can say: EKA2L1 does not enforce the file server's thread affinity, so the unguarded flush was harmless here and removing it changes nothing here either. The evidence for the fix is round 61's phone log, not this. Worth writing down as a limit of the instrument rather than a null result: the emulator caught the stack cap only once it was taught to (E144), and it has not been taught this one |
 
 <!-- EMURUN -->
 
@@ -256,10 +257,28 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 58 | Stand in front of `RFile::Read` and `RFile::Size` and log what they answer | 3 (one produced only 137 records) | `RFile::Size` = **125**, one read of a **125-byte** buffer, two of 16 bytes, all KErrNone; the 26 x 64 KiB burst **never happens** | **The gap is an open, not a read.** Every read the phone does make succeeds and fills its buffer exactly; the emulator's extra 26 reads are a separate, earlier file the phone never reads at all. Both machines agree on `cwp.dat` (125) and `nc.dat` (16) |
 | 59 | Close the loader's own handle on `6rbc.app` | 3 (two produced only ~110 records) | **`6rbc.app` now opens: 0.** 29 reads, five opens, all KErrNone; **2086 and 2104 records**, up from 1571; **176 traced events**, up from 144 | **The gap is closed.** The phone and the emulator now agree on **178 of 180 core events**, and the only differences left are heap addresses inside two probes. The phone dies where the emulator calls `User::Leave` -- same place, same reason, one orderly and one not. The panic is still CONE 2 / KERN-EXEC 3 |
 | 60 | **build 127** -- the whole port, after the game became playable in the emulator (worker threads, screen, input, protection passing for real, the log cut 21-fold) | 2 logged + several more | **1,276 records**, both logged runs byte-identical; `User::Leave(-40)` then `User::Exit`; **KERN-EXEC 0** under a different decimal thread name each run; the N-Gage splash on screen, duplicated and very small | **Two findings, both fixable, neither a mystery.** (1) The phone matches E142 for **1,188 records in a row** inside the first `RunL` and then `RThread::Create` refuses the game's **100,000-byte stack** with `KErrTooBig` at the SoundServer start site `0xb86ec` -- an EKA2 rule EKA1 never had, and one **EKA2L1 does not enforce**, which is why 142 emulator runs never saw it. (2) The splash is measurable: bands 88 pixels wide with seams at columns 16, 104 and 176 are exactly what writing 16-bit pixels on a 640-byte line into a buffer that is really **4 bytes a pixel on a 960-byte line** produces, so **HAL misreports both** on an N95 -- and 640 was never a multiple of 240 at any pixel size, which says so without a phone. See the round 60 section below |
+| 61 | **build 130** -- clamp `RThread::Create`'s stack to 64 KB, reject a HAL pitch that is not a multiple of the width | 1 logged | **1,274 records**, no `User::Leave`, no `User::Exit`; frame 1 runs and returns; **KERN-EXEC 0** again, name `-266741334`; screen streaked | **The clamp works on hardware and the panic turns out to be ours.** `RThread::Create` answers **0** with a 0x10000 stack where 100,000 got `KErrTooBig`, and the phone matches the emulator's run of the same build for **1,193 records with no code out of place** -- the whole run to the end of frame 1. The log then stops dead where the emulator goes on to frame 2, which is exactly when the SoundServer thread starts. `box_flush` guards the null handle and `box_write` guards the wrong thread, but **`file_flush` between them is guarded by neither**: every sixteenth traced event, from whichever thread makes it, calls `RFile::Flush` on the main thread's handle. The box's last write is at **208 traced events, 16x13**, and the new thread's first imports land just after it. The same half-applied-fix shape the comment above `box_flush` already describes, one line further down again. Also: HAL's third answer, **`EDisplayMode` = 1, `EGray2`** on a 240x320 colour screen, so all three display attributes lie on an N95 and the rejection rule is what produced 32bpp/960 anyway |
 
 ## Where we are
 
-**Furthest: round 60, build 127.** The phone runs 1,276 records and matches the
+**Furthest: round 61, build 130.** The stack clamp works on hardware:
+`RThread::Create` answers 0 with a 64 KB stack where 100,000 got
+`KErrTooBig`, there is no leave and no exit, frame 1 runs and returns, and the
+phone matches the emulator's run of the same build for **1,193 records with no
+code out of place**. The run then ends in the **KERN-EXEC 0 that turns out to
+be our own instrument**: `box_flush` guards the null handle and `box_write`
+guards the wrong thread, and the `RFile::Flush` between them is guarded by
+neither, so the SoundServer thread -- the thread the clamp just made
+creatable -- flushes the main thread's file handle on its first sixteenth
+traced event. One line. It also retires a reading that stood for dozens of
+rounds: the KERN-EXEC 0 beside every KERN-EXEC 3 was never the game's.
+
+**Best round so far: 61.** It confirmed a fix on hardware, held a 1,193-record
+agreement with the emulator, and found that the second panic this project has
+been explaining away since round 40 is a missing guard in our own logging.
+Round 60 is what made it readable.
+
+**Previously furthest: round 60, build 127.** The phone runs 1,276 records and matches the
 emulator's run of the same build for **1,188 consecutive records** inside the
 first `RunL` before parting company. Two phone runs gave identical logs, so the
 ending is deterministic, and it is a single named cause:
@@ -269,7 +288,7 @@ screen geometry is wrong for a second, separate reason -- HAL misreports both
 the bits-per-pixel and the line pitch on an N95 -- and the video measures it
 exactly. Neither is a mystery and both are in the shim's reach.
 
-**Best round so far: 60**, by a distance. It is the first round where the
+**Round 60** was, by a distance, the best before 61. It is the first round where the
 phone got far enough to fail at something specific rather than something
 structural, the first where a 1,188-record agreement with the emulator could be
 shown, and the first that produced two independent fixable findings from one
@@ -740,3 +759,77 @@ hardware-specific divergence: the phone and the emulator run the *same* 1,188
 records and then the phone hits an EKA2 rule the emulator does not enforce.
 Both findings are fixable in the shim, and the first is fixable in EKA2L1 too,
 so that the next one of these is caught before the phone sees it.
+
+## Round 61 -- build 130 on the N95
+
+Both of round 60's fixes went to the phone. One of them is settled, the other
+is not, and the round found a third thing that was never the game's.
+
+### The stack clamp works, and the two machines are identical up to it
+
+`RThread::Create` answers **0** with the clamped 0x10000 stack, where 100,000
+got `KErrTooBig`. There is no `User::Leave` and no `User::Exit` in the log:
+frame 1 runs to the end and returns. Aligned from each side's first
+`NOTE_FRAME`, the phone and **E145** -- the emulator running the same build --
+agree for **1,193 records with not one code out of place**, which is the whole
+run as far as the phone got.
+
+### The panic is our own instrument, not the game
+
+The phone's log stops dead one record after frame 1 ends. The emulator's next
+records are slot `0x504` and frame 2. What happens in that gap is the
+**SoundServer thread starting** -- the thread the clamp just made creatable --
+and its first act is a run of imports: `CTrapCleanup::New`, `operator new`,
+`CActiveScheduler`, `Install`, and so on.
+
+Every traced import goes through `gate6_trace`, from whichever thread makes
+it, and every sixteenth one calls `box_flush`:
+
+    static void box_flush(Context *c)
+    {
+        if (!c->boxFile[0])
+            return;
+        box_write(c);            // guarded: returns early off the main thread
+        file_flush(c->boxFile);  // NOT guarded
+    }
+
+`log_block` has had the wrong-thread guard all along and `box_write` was given
+one, but the `RFile::Flush` between them was left open. So the new thread
+reaches a multiple of sixteen and calls `RFile::Flush` on **the main thread's
+handle**, which on EKA2 is a bad handle: **KERN-EXEC 0**. The box's own
+last-write counter says **208 traced events**, which is 16 x 13, and the
+SoundServer thread's first imports land immediately after it.
+
+The comment directly above `box_flush` describes this exact mistake being made
+once before -- "build 55 put the guard inside `box_write` and left this flush
+unguarded ... the same bad handle, one line further down". It was fixed for the
+null handle and not for the wrong thread.
+
+**This retracts round 60's reading of the KERN-EXEC 0.** It is not the game's
+garbage-named worker touching something the exiting main thread took with it:
+the main thread does not exit here and the panic still happens. It is ours, and
+it has been ours for every round that has shown a KERN-EXEC 0 alongside a
+KERN-EXEC 3.
+
+### HAL lies about the screen three ways out of three
+
+`EDisplayMode` was queried this round to see whether it could be trusted where
+the other two could not. On the N95 it answers **1 -- `EGray2`**, for a 240x320
+colour screen. So:
+
+| attribute | N95 says | truth |
+|---|---|---|
+| `EDisplayBitsPerPixel` | 16 | 32 |
+| `EDisplayOffsetBetweenLines` | 640 | 960 |
+| `EDisplayMode` | `EGray2` | a 16M colour mode |
+
+All three are wrong, and the rejection rule added in build 130 is what
+produced the right answer regardless: the pitch was rejected for not being a
+multiple of the width, and `realBpp` / `realPitch` came out **32 / 960**, which
+is what round 60's video measured. **HAL is finished as a source for this** --
+nothing further should be asked of it.
+
+Whether 32/960 is right on the panel is still open. The only frames in this
+round's video are from after the panic, with the window server repainting over
+whatever was there, so they say nothing either way. The next round's video, of
+a run that does not panic, is what settles it.
