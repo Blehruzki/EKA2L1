@@ -264,6 +264,11 @@ enum { BOX_NAME = BOX_WRAPS + 1, BOX_NAME_WORDS = 8 };  // the last file opened
 enum { BOX_LAUNCH = BOX_NAME + BOX_NAME_WORDS };        // which log this launch wrote
 enum { BOX_TICK = BOX_LAUNCH + 1 };                    // and when it started
 enum { BOX_HITS = BOX_NAME + BOX_NAME_WORDS, BOX_MARKERS = 40 };
+// Six words a worker fills and the main thread carries to the disk. A worker
+// may not touch a file -- rounds 60 to 64 -- so this is how it says anything
+// at all. They sit in the crumb-marker region, which has been unused since
+// the breadcrumbs were switched off, well past the launch and tick words.
+enum { BOX_WRK = BOX_HITS + 28, BOX_WRK_WORDS = 6, BOX_WRK_SLOTS = 2 };
 enum { BOX_WORDS = BOX_HITS + BOX_MARKERS, BOX_BYTES = BOX_WORDS * 4 };
 
 struct Ptrc16 { u32 lengthAndType; const u16 *text; };
@@ -2453,10 +2458,59 @@ static int worker_only_import(u32 i)
     return i == 269 || i == 372 || i == 373 || i == 323 || i == 315;
 }
 
+// Round 67 put the death inside `CTrapCleanup::New()` -- the first euser call
+// the SoundServer thread ever makes, and one that allocates. Two things could
+// do that and the record cannot tell them apart: the export is not what we
+// think it is, or the thread is not fit to make a call yet.
+//
+// So ask the thread. This runs inside the trace thunk, one instruction before
+// the call, on that thread's own stack: what does it think its allocator is,
+// and can it allocate sixteen bytes? Memory only -- a worker may not flush --
+// and the main thread's 100 ms wait slices carry it out. The progress word is
+// written before each step, so a fault *inside* the probe still says which
+// step it was.
+enum { WORKER_PROBE = 1 };
+
+static void worker_probe(Context *c, u32 index)
+{
+    // One slot per worker, not one per run. There are two of them -- the
+    // game's polling worker, created at record 205, and the SoundServer
+    // thread -- and the first is resumed long before the second, so a single
+    // slot would always be spent on the wrong one. They are told apart by
+    // their stacks, the same way `on_main_thread` tells a worker from the
+    // main thread.
+    const u32 sp = (u32)__builtin_frame_address(0);
+    u32 *w = 0;
+    for (u32 i = 0; i < (u32)BOX_WRK_SLOTS; i++) {
+        u32 *k = &c->boxData[BOX_WRK + i * BOX_WRK_WORDS];
+        const u32 d = k[1] > sp ? k[1] - sp : sp - k[1];
+        if (k[0] && d < 0x2000)
+            return;                     // this worker has already answered
+        if (!k[0] && !w)
+            w = k;
+    }
+    if (!w)
+        return;                         // more workers than slots; first two win
+    w[1] = sp;
+    w[0] = 0x57524B31;                  // 'WRK1'
+    w[3] = index;
+    w[5] = 1;
+    w[2] = (u32)user_allocator();
+    w[5] = 2;
+    void *p = user_alloc(16);
+    w[4] = (u32)p;
+    w[5] = 3;
+    // Not freed. Sixteen bytes once a run, and this build already leaks every
+    // deallocation on purpose; a free here would be a second thing that could
+    // fault and would tell us nothing the allocation has not.
+}
+
 extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
 {
     watch_note(c);
     stack_mark(c);
+    if (WORKER_PROBE && !on_main_thread(c))
+        worker_probe(c, index);
     if (worker_only_import(index) && on_main_thread(c))
         return;
     if (TRACE_IMPORTS)

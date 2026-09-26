@@ -31,6 +31,7 @@ BOX_SPARE, BOX_CTXSZ, BOX_WRAPS = BOX_EXC + 1, BOX_EXC + 2, BOX_EXC + 3
 BOX_NAME, BOX_NAME_WORDS = BOX_WRAPS + 1, 8
 BOX_LAUNCH = BOX_NAME + BOX_NAME_WORDS
 BOX_TICK = BOX_LAUNCH + 1
+BOX_HITS = BOX_NAME + BOX_NAME_WORDS    # mirrors gate6.cpp
 WRAPS = [(1, 'allocators'), (2, 'frees'), (4, 'open-result'), (8, 'open-arg'),
          (16, 'LEAK: nothing is freed')]
 MAGIC = 0x47364234
@@ -72,6 +73,23 @@ def show(path, imports):
                    for h in (w[k] & 0xFFFF, w[k] >> 16))
     if name:
         print('  last file opened  ...%s' % name)
+    # The worker probe: six words a worker thread filled and the main thread
+    # carried out. See worker_probe in gate6.cpp.
+    base = BOX_HITS + 28
+    any_probe = False
+    for slot in range(2):
+        wrk = base + 6 * slot
+        if len(w) <= wrk + 5 or w[wrk] != 0x57524B31:
+            continue
+        any_probe = True
+        step = ('nothing', 'asked for its allocator', 'got it, asking for 16 bytes',
+                'got the 16 bytes')[min(w[wrk + 5], 3)]
+        print('  WORKER PROBE %d  at import %s, sp 0x%08x'
+              % (slot, readlog.label(w[wrk + 3], imports, {}).strip(), w[wrk + 1]))
+        print('     allocator 0x%08x   alloc(16) -> 0x%08x   got as far as: %s'
+              % (w[wrk + 2], w[wrk + 4], step))
+    if not any_probe and len(w) > base:
+        print('  WORKER PROBE  never ran')
     for i in range(BOX_RING):
         k = (count + i) & (BOX_RING - 1)
         code, frm = w[4 + k], w[BOX_FROM + k]

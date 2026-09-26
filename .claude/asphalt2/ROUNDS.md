@@ -206,6 +206,8 @@ them, and say so.
 | E151 | **build 134b -- the timed wait gives up after two seconds rather than five** | 14485 | `--` | **Same behaviour, with the watchdog left alone.** All of this happens inside frame 1's `RunL`, and this file already records a phone watchdog reset at about ten seconds of not yielding; five seconds of waiting inside that one call was too close to it for a number chosen carelessly. Signalled in the first slice again, 3,787 frames, `g6wrk.log` absent. This is the build to send |
 | E152 | **build 135 -- lend a new thread the creating thread's heap when the game passes `aHeap = NULL`** | 14538 | `--` | **Builds, reads a sane heap, changes nothing here -- and cannot, by construction.** `User::Allocator()` (euser 665) answers **`0x700000`** on the main thread and that is what `stack_thunk` now bakes in and substitutes for the null `aHeap`; the clamped 0x10000 stack still goes through beside it. 3,748 frames, no leave, no exit, no regression. The emulator cannot say more than that: E148 established that EKA2L1 never runs the SoundServer thread's entry function at all -- imports 330, 386, 319, 363 and 367 are still zero here -- so the allocation that is supposed to stop failing never happens. As with round 61's flush guard, the evidence will be the phone or nothing |
 | E153 | **build 136 -- trace the game's allocator, but record it only when a worker makes the call** | 14233 | `--` | **The filter holds and costs nothing.** Imports 269, 372, 373, 323 and 315 now carry trace thunks, and the main log contains **zero** records for any of them -- `gate6_trace` drops them unless a worker made the call, so the box is not flushed thousands of times a run and the phone will not spend its budget writing the game's allocator down. 3,689 frames, no leave, no exit. As with E148 and E152 the emulator cannot show the half that matters, because it never runs the SoundServer thread's entry function; what it can show is that the filter works, which is the thing that would have made this build unshippable if it did not |
+| E154 | **build 137 -- a worker asks, one instruction before its first import, what its allocator is and whether it can allocate** | 14178 | `--` | **The probe works and one slot is not enough.** Six words in the box's unused crumb region, written by the worker and carried out by the main thread's wait slices, with a progress word set before each step so a fault inside the probe still says which step. It reported: at import 325 (`RLibrary::Load`), sp `0x04a01e7c`, allocator **`0x00700000`** -- the same heap the main thread has -- and `alloc(16)` -> `0x00a27eb0`, all the way through. But that is the game's *polling* worker, which is resumed at record 211, long before the SoundServer thread exists, so on one slot it would always answer for the wrong thread |
+| E155 | **build 137b -- one probe slot per worker, told apart by stack** | 14364 | `--` | **Both workers answer, and one long-standing reading is retracted.** Slot 0 is the polling worker at `RLibrary::Load`; **slot 1 is the SoundServer thread at `CTrapCleanup::New`, sp `0x04d0ff90`** -- allocator `0x00700000`, `alloc(16)` -> `0x00d8dd60`, all the way through. So **EKA2L1 does run that thread's entry function after all**: E148 read zero records for imports 330/386/319/363/367 in the *log* and concluded the thread never ran, when the log cannot carry worker events at all -- they were in the box. That is corrected. It also means the emulator gets the whole handshake right, `Signal` included, which is why its wait returns on the first slice. 14,364 records, 3,600-odd frames, no regression. This is the build to send |
 
 <!-- EMURUN -->
 
@@ -270,10 +272,23 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 64 | **build 133** -- the worker gets its own log file, connected on its own thread | several launches | **1,285 records**, box identical to round 63 to the entry; **no `g6wrk.log` at all**; panics `-1879111643 KERN-EXEC 0`, **`SoundServer KERN-EXEC 0`** (twice) and `gate6 ViewSrv 11` | **The thread is named at last -- and the instrument is what names it.** `SoundServer KERN-EXEC 0` has never appeared before; the only change in this build is `worker_log`, and it runs on that thread. It never produced a file, so it died at or before its first file call, which is `RFs::Connect` -- and that call happens **before** `CTrapCleanup::New` itself, because a trace thunk records on the way in. Two faults in one: the design shares one `RFs` and one `RFile` between *both* workers, which is the same cross-thread handle that rounds 60-62 were about, and something in that first call is fatal on that thread regardless. It also confirms the round 63 reading from the other side: `SoundServer` is a real name, so the decimal-numbered panic is a different thread again. Nothing else moved -- box last import `RSemaphore::Wait`, `CTrapCleanup::New from b866c` at 224, no frame end |
 | 65 | **build 134** -- `worker_log` off; the main thread's `RSemaphore::Wait` in 100 ms slices that flush the box, giving up after two seconds | 1 | **1,295 records** and **the frame ends**; `NOTE_SEM_WAIT` says `0` then `ffffffff`; panic `SoundServer KERN-EXEC 0` | **The hang is gone and the fault is cornered to two calls.** The wait ran its full twenty slices and was **never signalled**, so the main thread gave up, closed both handles, ran `RSessionBase::CreateSession` and **finished frame 1** -- the first time the game has got past the handshake on hardware. And because the box was flushed every 100 ms for the whole two seconds, the silence from the other thread is now evidence rather than a gap: the SoundServer thread makes **no traced import at all** after `CTrapCleanup::New`. A trace thunk records on the way *in*, so it died between that record and its next one, `CActiveScheduler::CActiveScheduler()`. Two calls sit in that gap -- `CTrapCleanup::New()` itself and the game's `operator new(20)` at `0x652f8` -- and **both allocate**. The game passes `aHeap = NULL` to `RThread::Create`, which means *share the creating thread's heap*; if euser leaves the create info's allocator null and its heap size zero, `UserHeap::SetupThreadHeap` sets nothing up and the thread's first allocation reaches for a heap that is not there -- and KERN-EXEC 0 is a bad **handle**, which is what an `RHeap`'s chunk handle would be. Build 135 substitutes the creating thread's allocator for the null one |
 | 66 | **build 135** -- lend a new thread the creating thread's heap when the game passes `aHeap = NULL` | 1 | **1,294 records, identical to round 65 record for record**; wait still times out (`ffffffff`); frame 1 still ends; `SoundServer KERN-EXEC 0` again | **The heap hypothesis is wrong.** The substitution went in -- the phone's `User::Allocator()` is **`0x600000`** and that is what the thunk lent -- and it changed **nothing**. So the SoundServer thread is not dying for want of an allocator, and round 65's leading explanation is retired. What the round does buy is a much tighter reading of the gap, because `operator new` at `0x652f8` has now been read out and it is not one call but four: `TTrap::Trap` (our own stand-in, which writes a zero and returns zero), **`User::AllocL`** (import 269), `TTrap::UnTrap` (a no-op), and `User::LeaveNoMemory` on the error path. None of those four is traced, nor is `CTrapCleanup::New` on the way out, so the gap the thread dies in is five calls wide and not two. Build 136 traces them -- but only on a worker, because on the main thread they are thousands of calls a run |
+| 67 | **build 136** -- trace the game's allocator, recorded only when a worker makes the call | 1 | **box identical to round 66 to the entry**; last worker event still `CTrapCleanup::New from b866c`; `SoundServer KERN-EXEC 0` | **It dies in the first euser call it ever makes.** `TTrap::Trap`, `User::AllocL`, `TTrap::UnTrap`, `User::LeaveNoMemory` and `User::Free` all carry trace thunks now and are recorded whenever a worker calls them -- and **not one of them appears**. So the SoundServer thread never reaches the game's `operator new` at all: it dies inside `CTrapCleanup::New()` itself, between the trace record made on the way in and any return. That is the *first* call that thread makes, which reads less like a broken euser export and more like a thread that is not fit to make a call yet -- and `CTrapCleanup::New` allocates, which is the first thing a half-built thread would fail at. Round 66 said lending it a heap changes nothing, but it could not say whether the lend reached the thread. Build 137 asks the thread itself, from inside the trace thunk, one instruction before the call |
 
 ## Where we are
 
-**Furthest: round 66, build 135.** Unchanged from round 65 in every record,
+**Furthest: round 67, build 136.** The gap is closed to a single call. With
+the whole of the game's `operator new` traced on workers -- `TTrap::Trap`,
+`User::AllocL`, `TTrap::UnTrap`, `User::LeaveNoMemory`, `User::Free` -- not
+one of them appears, so the SoundServer thread never gets that far. It dies
+inside **`CTrapCleanup::New()`**, which is the first euser call it ever
+makes, and which allocates.
+
+**Best round so far: 67**, narrowly over 65: five candidate calls to one, on
+a pure-instrument build that changed no behaviour and cost nothing. What it
+cannot yet separate is a broken euser export from a thread that was never fit
+to make a call, and build 137 asks the thread that question directly.
+
+**Previously furthest: round 66, build 135.** Unchanged from round 65 in every record,
 which is the result: lending the SoundServer thread the creating thread's
 heap does not save it, so it is not dying for want of an allocator. The five
 calls it dies among are now all named -- `CTrapCleanup::New`, then
@@ -281,7 +296,7 @@ calls it dies among are now all named -- `CTrapCleanup::New`, then
 inside the game's `operator new` at `0x652f8` -- and none of them has ever
 been traced.
 
-**Best round so far: 65**, still: it removed the hang and turned a silence
+**Round 65** removed the hang and turned a silence
 into a measurement. Round 66 is a clean negative, which is worth having and
 is not the same thing.
 
@@ -1142,3 +1157,22 @@ box flushed on every traced import that is thousands of file writes. So they
 are traced, and `gate6_trace` drops them **on the main thread only**: on a
 worker they cost nothing but memory, because a worker may not flush, and the
 main thread's 100 ms slices pick them up.
+
+## Retracted: "the emulator never runs the SoundServer thread"
+
+Said in E148 and repeated in E152, E153 and three replies. It was read off
+the *main log*, which contains zero records for imports 330, 386, 319, 363
+and 367 -- and the main log cannot contain them, because `log_event` diverts
+every worker event away from it (that guard is what rounds 60 to 62 were
+about). They were in the box all along.
+
+**E155 settles it from the other side.** The worker probe's second slot is
+filled by a thread whose stack is `0x04d0ff90`, at import `CTrapCleanup::New`
+-- that is the SoundServer thread, in the emulator, running its own entry
+function. It gets an allocator, allocates, and goes on to signal the
+semaphore, which is why the emulator's wait returns on its first 100 ms slice
+where the phone's never returns at all.
+
+So the emulator is not blind to this path. It runs it correctly, which is a
+different and more useful thing: the difference between the two machines is
+now narrow enough to be a single call.
