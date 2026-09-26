@@ -4927,6 +4927,18 @@ enum { MDA_TRACE = 1, MDA_TRAMP = MDA_TRACE ? 14 : 3 };
 // is what "access violation reading 0xFFFFFFFC" in E191 and E192 was. My
 // instrument, not the game.
 enum { MDA_DUMP_VT = 0 };
+// The one thing still unknown is where 9.x reads the sample rate and the
+// channel count out of the settings package the game hands `Open`. `Open`
+// is vtable slot 6 and its code says so directly, so dump it and read the
+// `ldr rN, [r1, #offset]` out of it. The DLL is compressed on disk with
+// Symbian's own deflate, which zlib will not inflate, so the copy in
+// memory is the one to read.
+// Off. It produced confusion rather than data twice running, which is a
+// signal to slow down rather than iterate faster: the three dumps it made
+// disagree about where slot 6 points, and only 66 of the 192 words it asked
+// for reached the log. What it did establish is worth keeping -- **`NewL` is
+// called three times**, so the game runs more than one stream.
+enum { MDA_DUMP_OPEN = 0, MDA_OPEN_WORDS = 64 };
 
 // The whole call, in C: log it, make it, log that it came back. The
 // two-stage thunk could say a call had started and never that it returned,
@@ -5009,6 +5021,13 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
     // functions off their own instructions offline. `MaxVolume` and `Volume`
     // are three instructions; `Stop` is short; `WriteL` touches a descriptor;
     // `Open` is long. That identifies them without another run.
+    if (MDA_DUMP_OPEN) {
+        const u32 *f = (const u32 *)(rvt[6] & ~3u);
+        log_event(c, NOTE_MDA_VT, (u32)f);
+        for (u32 w = 0; w < (u32)MDA_OPEN_WORDS; w++)
+            log_event(c, NOTE_MDA_CODE, f[w]);
+        log_block(c);
+    }
     if (MDA_DUMP_VT) {
         log_event(c, NOTE_MDA_VT, (u32)rvt);
         // From two entries *before* the pointer: an EABI vtable pointer aims
