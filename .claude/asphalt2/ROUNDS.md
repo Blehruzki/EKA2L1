@@ -200,6 +200,8 @@ them, and say so.
 | E145 | **build 130 -- clamp back on, against the emulator that now has the ceiling** | 12497 | `--` | **The pair works.** With both halves in place the game runs: 3,147 frames, no `User::Leave`, no `User::Exit`, no refusal in the kernel log. The SoundServer thread is created with 0x10000 instead of 100,000 and `Create` answers 0; the game's own worker asks for 0x2000 and is left alone. So the emulator can now *both* reproduce the phone's failure (E144) and show the fix clearing it, which is what a pre-hardware check has to be able to do. This is the build to send |
 | E146 | **build 131 -- guard `box_flush`'s `RFile::Flush` against the wrong thread** | 12509 | `--` | **No regression, and the emulator cannot show the fix.** 3,109 frames against E145's 3,147 in the same 90 seconds, no leave, no exit, and the first 6,078 records identical to E145 before the two drift apart the way two timed frame loops do. That is the whole of what this run can say: EKA2L1 does not enforce the file server's thread affinity, so the unguarded flush was harmless here and removing it changes nothing here either. The evidence for the fix is round 61's phone log, not this. Worth writing down as a limit of the instrument rather than a null result: the emulator caught the stack cap only once it was taught to (E144), and it has not been taught this one |
 | E147 | **build 132 -- the box on every traced import, the SoundServer handshake traced, and `RSemaphore::CreateLocal`'s result** | 12104 | `--` | **The window is now legible, and it is thirteen records long.** Where round 62's log had two `RFile::Read` and then the frame ending, build 132 shows the whole handshake: `RSemaphore::CreateLocal` at `0xb8758` answering **0**, `RThread::Create` answering 0 with the clamped 0x10000 stack, `SetPriority`, `Resume`, `Sem::Wait`, the two `RHandleBase::Close` at `0xb87b4` and `0xb87bc`, then `RSessionBase::CreateSession` at `0xba544` -- and only then the frame ends. So the phone's death has thirteen named places to be instead of a thirty-one-event window, and the semaphore the whole handshake hangs off is real at least here. Costs 3%: 12,104 records and 2,940 frames against E146's 12,509 and 3,109 in the same 90 seconds, for what on the phone is about 240 write-and-flush pairs. The SoundServer thread's own imports stay out of the log by design and will show in the box's ring |
+| E148 | **build 133 -- the worker gets its own log file, connected on its own thread** | 14331 | `--` | **It works, and it shows the emulator cannot exercise the thing it is for.** The worker's `RFs` is connected on the worker, its `C:\g6wrk.log` is written a record at a time and flushed each time, and the run is *faster* than E147 rather than slower: 14,331 records and 3,708 frames against 12,104 and 2,940. Five records came out, all from the game's polling worker -- `RLibrary::Load` and `Lookup` -- and **none from the SoundServer thread**, because in EKA2L1 that thread never runs its entry function at all: imports 330, 386, 319, 363 and 367 are zero in both files, and `RSemaphore::Wait` returns regardless. On the phone the box caught `CTrapCleanup::New from b866c`, so there the thread does run. One more place the emulator gets past a handshake by not honouring it, and one more thing only hardware can answer |
+| E149 | **build 133b -- the worker log marks which worker is writing** | 14467 | `--` | **Readable.** Two threads share the one file, so a `NOTE_WORKER_SP` (849) goes in whenever the writing thread's stack moves by more than 8 KB, and the file reads as separate stories rather than one interleaved mess. First record out is `849 04a01e2c`, then the same five as E148. No cost: 14,467 records, 3,708 frames. This is the build to send |
 
 <!-- EMURUN -->
 
@@ -260,10 +262,27 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 60 | **build 127** -- the whole port, after the game became playable in the emulator (worker threads, screen, input, protection passing for real, the log cut 21-fold) | 2 logged + several more | **1,276 records**, both logged runs byte-identical; `User::Leave(-40)` then `User::Exit`; **KERN-EXEC 0** under a different decimal thread name each run; the N-Gage splash on screen, duplicated and very small | **Two findings, both fixable, neither a mystery.** (1) The phone matches E142 for **1,188 records in a row** inside the first `RunL` and then `RThread::Create` refuses the game's **100,000-byte stack** with `KErrTooBig` at the SoundServer start site `0xb86ec` -- an EKA2 rule EKA1 never had, and one **EKA2L1 does not enforce**, which is why 142 emulator runs never saw it. (2) The splash is measurable: bands 88 pixels wide with seams at columns 16, 104 and 176 are exactly what writing 16-bit pixels on a 640-byte line into a buffer that is really **4 bytes a pixel on a 960-byte line** produces, so **HAL misreports both** on an N95 -- and 640 was never a multiple of 240 at any pixel size, which says so without a phone. See the round 60 section below |
 | 61 | **build 130** -- clamp `RThread::Create`'s stack to 64 KB, reject a HAL pitch that is not a multiple of the width | 1 logged | **1,274 records**, no `User::Leave`, no `User::Exit`; frame 1 runs and returns; **KERN-EXEC 0** again, name `-266741334`; screen streaked | **The clamp works on hardware and the panic turns out to be ours.** `RThread::Create` answers **0** with a 0x10000 stack where 100,000 got `KErrTooBig`, and the phone matches the emulator's run of the same build for **1,193 records with no code out of place** -- the whole run to the end of frame 1. The log then stops dead where the emulator goes on to frame 2, which is exactly when the SoundServer thread starts. `box_flush` guards the null handle and `box_write` guards the wrong thread, but **`file_flush` between them is guarded by neither**: every sixteenth traced event, from whichever thread makes it, calls `RFile::Flush` on the main thread's handle. The box's last write is at **208 traced events, 16x13**, and the new thread's first imports land just after it. The same half-applied-fix shape the comment above `box_flush` already describes, one line further down again. Also: HAL's third answer, **`EDisplayMode` = 1, `EGray2`** on a 240x320 colour screen, so all three display attributes lie on an N95 and the rejection rule is what produced 32bpp/960 anyway |
 | 62 | **build 131** -- guard `box_flush`'s `RFile::Flush` against the wrong thread | 2 runs, 4 launches logged | **1,274 records every time**, all four launches the same shape; still no leave, no exit; frame 1 runs and returns; **KERN-EXEC 0 -- but now named `gate6`** | **The guard worked and uncovered the next fault.** The panic's name has changed from a different garbage number every run to **`gate6`**, so the thread that dies is no longer the garbage-named worker: it is the main thread. That is the evidence the wrong-thread flush was real and is fixed -- the worker now survives -- and it says the main thread has a bad handle of its own, immediately after frame 1's `RunL` returns. Where exactly is **not** in this round: the log buffers eight records before writing, so its end is +/-7 events, and the box flushes every sixteenth traced import and says only "208 traced events at the last write, so 208..239 in all". Four launches agreeing to the record makes it deterministic. The region the fault is in -- `RThread::SetPriority`, `Resume`, `RSemaphore::Wait`, then two `RHandleBase::Close` at `0xb87b0` and `0xb87b8` -- is traced by nothing, which is why build 132 exists |
+| 63 | **build 132** -- the box on every traced import, the SoundServer handshake traced, `RSemaphore::CreateLocal`'s result | several launches | **1,285 records**; **no frame end**; two panics seen -- `886699653 KERN-EXEC 0` and, on one launch, **`gate6 ViewSrv 11`** | **The instrument paid for itself: the window is now named, and the failure turns out to be a hang.** The box records, exactly: `RSemaphore::CreateLocal` -> **0** (so the semaphore is real on hardware, a question the game throws away), `RThread::Create` -> 0 with the clamped stack, `SetPriority`, `Resume`, then **`CTrapCleanup::New` from `0xb866c` -- the SoundServer thread running its own entry function** -- and finally `RSemaphore::Wait` from `0xb8798`. There is **no `NOTE_FRAME_END`**: the main thread went into that `Wait` and never came out, which is what `ViewSrv 11` is -- the view server timing out on an application that is not responding, a hang and not a crash. So the SoundServer thread does not reach its `RSemaphore::Signal` at `0xb86ac`. It also shows `on_main_thread` working correctly on hardware: the worker's `CTrapCleanup::New` is in the box, which any thread writes, and **not** in the log, which only the main thread writes. That is also why the round ends there -- once the main thread blocks, nothing flushes the box again and the worker's own story is stranded in memory. Build 133 gives the worker a file of its own |
 
 ## Where we are
 
-**Furthest: round 62, build 131.** The wrong-thread flush is fixed and the
+**Furthest: round 63, build 132.** The failure is now located and it is not
+what this file has called it for sixty rounds: **the main thread hangs**. It
+goes into `RSemaphore::Wait` at `0xb8798` and never comes out, because the
+SoundServer thread does not reach the `RSemaphore::Signal` at `0xb86ac` that
+would release it -- and `gate6 ViewSrv 11` is the view server timing out on an
+application that is not answering. The box, flushed on every traced import,
+names the whole handshake up to that point, including the SoundServer thread
+running its own `CTrapCleanup::New`. The semaphore is real (`CreateLocal`
+answers 0) and `on_main_thread` is correct on hardware, both now measured
+rather than assumed.
+
+**Best round so far: 63.** It turned "the phone panics somewhere after frame
+1" into "the main thread is blocked in a named `Wait` and the thread that
+should release it dies between two named calls", and it retired the reading
+that this was a crash at all. The instrument that did it cost 3%.
+
+**Previously furthest: round 62, build 131.** The wrong-thread flush is fixed and the
 proof is the dialog: the panic's name went from a different garbage number
 every run to **`gate6`**, so the worker no longer dies and the thread that
 does is our own main thread. Four launches agree to the record, so it is
@@ -271,7 +290,7 @@ deterministic. What is left is a second bad handle in the thirteen imports
 between `RSemaphore::CreateLocal` and the end of frame 1 -- a region nothing
 was tracing, which is what build 132 fixes.
 
-**Best round so far: 62.** It is the round that turned the second panic from
+**Round 62** turned the second panic from
 a property of the port into a located, deterministic fault, and it did it on
 a name in a dialog rather than a record, because the record could not reach
 that far. Rounds 60 and 61 are what made it possible.
@@ -903,3 +922,70 @@ the main thread does twice in the window where it now dies.
 Build 132 is the instrument for this and nothing else: the box flushed on
 **every** traced import instead of every sixteenth, and those imports added to
 the milestone set so there is something to flush.
+
+## Round 63 -- build 132 on the N95
+
+Build 132 changed no behaviour. It flushed the box on every traced import
+instead of every sixteenth and put the SoundServer handshake into the
+milestone set, so that the thirteen-import window round 62 could not see into
+would be on record. It worked, and what it found reframes the failure.
+
+### It is a hang, not a crash
+
+The box's ring ends:
+
+    220  RSemaphore::CreateLocal   from b8758
+    221  RThread::Create           from 1907b0   (our clamping thunk)
+    222  RThread::SetPriority      from b8788
+    223  RThread::Resume           from b8790
+    224  CTrapCleanup::New         from b866c    <- the SoundServer thread, running
+    225  RSemaphore::Wait          from b8798    <- the main thread, about to block
+
+and the log has **no `NOTE_FRAME_END`**. Round 62's log had one. So the main
+thread went into that `RSemaphore::Wait` and did not come out.
+
+That is exactly what the third dialog says. **`gate6 ViewSrv 11`** is the view
+server timing out on an application that has stopped answering -- a hang.
+Every previous round in this file has been read as a crash; this one is an
+application sitting in a `Wait` that is never signalled.
+
+The `Signal` that would release it is at `0xb86ac`, in the SoundServer
+thread's entry function, after `CTrapCleanup::New`, an `operator new`, the
+`CActiveScheduler` and the server's own construction at `0xb7ce0`. The thread
+reached the first of those and not the last.
+
+### Two questions answered on the way
+
+**The semaphore is real.** `RSemaphore::CreateLocal` answers **0** on
+hardware. The game throws that result away, so nothing could have known it
+before this build wrapped the call; the whole handshake hangs off it, and it
+is fine.
+
+**`on_main_thread` works on hardware.** The SoundServer thread's
+`CTrapCleanup::New` is in the box, which any thread writes to, and **not** in
+the log, which only the main thread writes. That is precisely the split the
+guards are supposed to produce, and it rules out the worry that the main
+thread's stack and a new thread's are close enough on EKA2 to confuse a
+1 MB test.
+
+### Why the round stops where it does, and what build 133 is for
+
+The guard that makes the worker safe is also what blinds us to it: a worker
+may not touch the box's file, so its records sit in memory waiting for the
+main thread to flush them -- and the main thread is blocked in `Wait`. Every
+import the SoundServer thread makes after `CTrapCleanup::New` is stranded.
+
+Build 133 gives the worker **its own** file: its own `RFs` session, connected
+on the worker's own thread, its own `C:\g6wrk.log`, one record per write,
+flushed each time, capped so a polling worker cannot fill the disk. Nothing
+shared, so nothing to panic on.
+
+### The other dialog
+
+`886699653 KERN-EXEC 0` is still there, and still a decimal number rather than
+a name. It is not the SoundServer thread: that one is created with a real name
+from the image -- the emulator's kernel log prints it as `SoundServer` -- and
+`RThread::Create` would have answered `KErrBadName` for a bad one, where it
+answered 0. On the evidence so far it is the game's other worker, the 0x2000
+one created at record 205 and resumed at 211. Build 133's worker log covers
+both threads, so the next round says which.

@@ -230,6 +230,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_WATCH_EARLY = 844,  // the allocation the watch was latched on, early
        NOTE_IMAGE_AT = 845,     // an image word that is not what was loaded
        NOTE_IMAGE_NOW = 846,    // ... and what it says now
+       NOTE_WORKER_SP = 849,    // a worker's stack, so two of them can be told apart
        NOTE_SCRATCH = 847,      // a word of the game's scratch code chunk
        NOTE_IMAGE_WORD = 848,   // ... beside the image word it may have become
        NOTE_WATCH = 895,        // and one word of a struct every probe re-reads
@@ -684,6 +685,15 @@ struct Context {
     u32 logPos;             // where the next block goes in the file
     u32 boxFs[2];
     u32 boxFile[4];
+    // The worker's own file, connected on the worker's own thread. See
+    // worker_log.
+    u32 wrkFs[2];
+    u32 wrkFile[4];
+    u32 wrkDes[2];
+    u32 wrkBuf[2];
+    u32 wrkPos;
+    u32 wrkState;           // 0 not tried, 1 open, 2 gave up
+    u32 wrkLastSp;          // which worker wrote last, to the nearest stack
     u32 boxData[BOX_WORDS];
     u32 pathIndex;          // which candidate the game was loaded from
     u32 codeBase;           // where the game was loaded, so callers read as offsets
@@ -909,6 +919,7 @@ enum { TRACE = 48 };
 // from 1240 records to 553.
 static void log_event(Context *c, u32 code, u32 from);
 static void note(Context *c, u32 value, u16 sign);
+static void worker_log(Context *c, u32 code, u32 from);
 // The word that goes wrong is at a fixed address -- 0x8b281c, the fourth word
 // of the object probe 990 latches at 0x8b2810 -- and it is already wrong by the
 // time that probe fires, a thousand records in. The heap is deterministic here:
@@ -1138,6 +1149,16 @@ void rdebug_rawprint(const void *text);
 static const u16 kLogPath[] = {'C',':','\\','g','6','b','o','x','0','.','l','o','g'};
 enum { LOG_DIGIT = 8, LOG_NAME_CHARS = sizeof kLogPath / 2 };
 static const u16 kBoxPath[] = {'C',':','\\','g','6','b','o','x','.','d','a','t'};
+// Round 63: a worker may not touch the box's file -- that was the KERN-EXEC 0
+// of rounds 60 to 62 -- so its records sat in memory waiting for the main
+// thread to flush them, and the main thread was blocked in the
+// `RSemaphore::Wait` the worker was supposed to release. Everything the
+// SoundServer thread did after `CTrapCleanup::New` was stranded.
+//
+// So the worker gets a file of its own, with its own file server session
+// connected on its own thread. Nothing is shared with the main thread, so
+// there is nothing to raise a bad handle on.
+static const u16 kWrkPath[] = {'C',':','\\','g','6','w','r','k','.','l','o','g'};
 
 // A record left by a different build is worse than no record: it reads back as
 // a plausible number and says nothing. So the file carries what wrote it.
@@ -1237,8 +1258,66 @@ static void log_block(Context *c)
 // three calls an event, and the opening is all that is wanted.
 enum { WORKER_NOTES = 1, WORKER_NOTE_MAX = 200 };
 
+// One record per write, flushed each time, on the worker's own file. A worker
+// is either spinning in a polling loop or doing something short and fatal, so
+// a block buffer would lose exactly the tail that matters; and the whole cost
+// is bounded by WORKER_LOG_MAX, because the game's other worker does poll and
+// must not be allowed to fill the disk.
+//
+// Everything here belongs to the calling thread: the session is connected the
+// first time this runs, which is on the worker, and nothing the main thread
+// owns is touched. If either the connect or the replace fails the state goes
+// to 2 and this never tries again -- a failed instrument must be silent, not
+// a second fault. That is the rule build 55 had to learn about the box.
+enum { WORKER_LOG = 1, WORKER_LOG_MAX = 1024 };
+
+static void worker_log(Context *c, u32 code, u32 from)
+{
+    if (!WORKER_LOG || c->wrkState == 2)
+        return;
+    if (c->wrkState == 0) {
+        c->wrkState = 2;                    // pessimistic until both calls pass
+        if (fs_connect(c->wrkFs, -1) != 0)
+            return;
+        Ptrc16 name;
+        name.lengthAndType = ((u32)EPtrC << KTypeShift) |
+                             (u32)(sizeof kWrkPath / 2);
+        name.text = kWrkPath;
+        if (file_replace(c->wrkFile, c->wrkFs, &name,
+                         EFileWrite | EFileShareAny) != 0)
+            return;
+        c->wrkPos = 0;
+        c->wrkState = 1;
+    }
+    if (c->wrkState != 1 || c->wrkPos >= (u32)WORKER_LOG_MAX * 8)
+        return;
+    // Two workers share this file -- the game's polling one and the
+    // SoundServer thread -- and a record says nothing about which wrote it.
+    // Their stacks do: a line whenever the writer changes, and the file reads
+    // as two interleaved stories instead of one incoherent one.
+    const u32 sp = (u32)__builtin_frame_address(0);
+    const u32 moved = c->wrkLastSp > sp ? c->wrkLastSp - sp : sp - c->wrkLastSp;
+    if (!c->wrkLastSp || moved >= 0x2000) {
+        c->wrkLastSp = sp;
+        worker_log(c, NOTE_WORKER_SP, sp);
+    }
+    c->wrkBuf[0] = code;
+    c->wrkBuf[1] = from;
+    c->wrkDes[0] = ((u32)EPtrC << KTypeShift) | 8;
+    c->wrkDes[1] = (u32)c->wrkBuf;
+    if (file_write_at(c->wrkFile, (int)c->wrkPos, c->wrkDes) != 0) {
+        c->wrkState = 2;
+        return;
+    }
+    c->wrkPos += 8;
+    file_flush(c->wrkFile);
+}
+
 static void log_event(Context *c, u32 code, u32 from)
 {
+    if (!on_main_thread(c)) {
+        worker_log(c, code, from);
+    }
     if (WORKER_NOTES && !on_main_thread(c)) {
         // The word being chased, and only when it changes. The worker spins in
         // a polling loop -- 0xcbe24, 0xcbf14, 0xcba28, 0xcbd14, 0xcc114, round
