@@ -133,6 +133,8 @@ old_call1:
     IMPORT rdebug_rawprint,   916    @ RDebug::RawPrint(TDesC16 const&)
     IMPORT user_imb_range,    667    @ User::IMB_Range(TAny*, TAny*)
     IMPORT user_tickcount,    674    @ User::TickCount()
+    @ hal
+    IMPORT hal_get,             1    @ HAL::Get(HALData::TAttribute, TInt&)
     @ efsrv
     IMPORT fs_connect,         68    @ RFs::Connect(TInt)
     IMPORT file_open,          93    @ RFile::Open(RFs&, TDesC16 const&, TUint)

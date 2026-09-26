@@ -12,6 +12,7 @@ EIKCORE = 'eikcore{000a0000}[10004892].dll'
 AVKON = 'avkon{000a0000}[100056c6].dll'
 CONE = 'cone{000a0000}[10003a41].dll'
 DRTAEABI = 'drtaeabi.dll'
+HAL = 'hal.dll'
 
 buildapp.build('gate6', 0xE0001006, 'Gate6', sys.argv[1] if len(sys.argv) > 1 else '.',
                imports=[(buildapp.EUSER, ['user_panic', 'userheap_setupthreadheap',
@@ -31,7 +32,8 @@ buildapp.build('gate6', 0xE0001006, 'Gate6', sys.argv[1] if len(sys.argv) > 1 el
                         (AVKON, ['akndocument_ctor']),
                         (CONE, ['coeappui_ctor', 'coeenv_static', 'coecontrol_ctor',
                                  'coecontrol_createwindowl']),
-                        (DRTAEABI, ['drtaeabi_pure_virtual', 'cpprt_globals_ctor'])],
+                        (DRTAEABI, ['drtaeabi_pure_virtual', 'cpprt_globals_ctor']),
+                        (HAL, ['hal_get'])],
                sources=('gate6.cpp', 'gate4_shim.cpp'),
                # The N-Gage gave the game 8 KB of stack and that was enough
                # there; on 9.x the framework underneath it is deeper, and a

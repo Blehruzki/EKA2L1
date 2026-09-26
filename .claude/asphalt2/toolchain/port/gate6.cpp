@@ -372,6 +372,7 @@ void *cperiodic_newl(int priority);
 // A GCC98r2 virtual call: the vptr is at offset 0 and points eight bytes
 // before slot 0. Arguments past `this` are not passed, which is all the old
 // slots reached from here need.
+i32 hal_get(int attribute, int *value);
 u32 old_call(const void *object, int slot);
 
 // Imported for its own sake. A normal EABI application links against the C++
@@ -770,6 +771,7 @@ struct Context {
     u16 *gameScreen;        // the 176x208 16bpp framebuffer handed to the game
     u8 *realScreen;         // and the 32bpp one the emulator actually shows
     u32 realPitch;          // bytes between its lines
+    u32 realBpp;            // and bits per pixel: 16 on most phones, 32 here
     u32 offX, offY;         // where the game's picture sits inside it
     u32 shots;              // frames seen, for the one-shot framebuffer dump
     u32 srcPitch;           // pixels between the game's rows, 176 or 192
@@ -1222,7 +1224,9 @@ static void log_block(Context *c)
 // Capped, because two RawPrints an event for a thread that may do thousands of
 // them buries the emulator's own log. The opening is what is wanted: what the
 // worker does first, and what it was doing when the run ended.
-enum { WORKER_NOTES = 1, WORKER_NOTE_MAX = 3000 };
+// Capped low for hardware: RDebug goes nowhere on a phone but still costs
+// three calls an event, and the opening is all that is wanted.
+enum { WORKER_NOTES = 1, WORKER_NOTE_MAX = 200 };
 
 static void log_event(Context *c, u32 code, u32 from)
 {
@@ -1376,7 +1380,7 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 // emulator shows the same sequence with or without them.
 enum { TRACE_EVERY_IMPORT = 1 };
 enum { TRACE_SKIPS_HOT = 1, TRACE_MILESTONES = 1 };
-enum { WATCH_ALLOCATIONS = LOG_ANYWAY, LOG_THE_CLOCK = 0, REFUSE_DRIVERS = 1,
+enum { WATCH_ALLOCATIONS = 0, LOG_THE_CLOCK = 0, REFUSE_DRIVERS = 1,
        WATCH_THE_READS = 0, CLAMP_THE_READS = 0, WATCH_READ_RESULT = 0 };
 // Not an instrument: a fix, and it ships. See gate6_alloc.
 enum { PAD_THE_ALLOCATIONS = 0, ZERO_THE_SLACK = 0 };
@@ -1402,7 +1406,11 @@ enum { WATCH_OPEN_RESULT = 1 };
 // symptom of a broken chain. Which leaves the pointer itself -- never handed
 // out, or handed out and freed already -- and that is what matching every free
 // against the outstanding allocations says.
-enum { WATCH_FREES = 1, FREE_WATCH_FROM = 110, SPENT = 0xFFFFFFFF };
+// Off. This was built to chase a use-after-free and it found it; now that the
+// game runs it is 149,000 of a 157,000-record run -- every allocation, every
+// free, and the heap cell headers around them. A phone would spend the whole
+// round writing it.
+enum { WATCH_FREES = 0, FREE_WATCH_FROM = 110, SPENT = 0xFFFFFFFF };
 enum { W_ALLOC = 1, W_FREE = 2, W_OPENRES = 4, W_OPENARG = 8, W_LEAK = 16 };
 enum { IMPORT_DELETE_OP = 408, IMPORT_VEC_DELETE_OP = 410, IMPORT_USER_FREE_OP = 315 };
 enum { PLANT_CRUMBS = 0 };
@@ -1746,6 +1754,15 @@ static int crumb_safe(u32 w)
 enum { IMPORT_LEAVE = 324, IMPORT_EXIT = 308, IMPORT_FILE_READ_STATIC = 110 };
 enum { READ_DATA_WORDS = 8 };
 enum { IMPORT_SCREEN_INFO = 356, WATCH_THE_SCREEN = 1 };
+// The panel, asked rather than assumed. EKA2L1's screen is color16ma -- 32
+// bits a pixel on a 960-byte line -- but a phone is as likely to be 16, and
+// writing 32-bit pixels into a 16-bit framebuffer would put twice the bytes
+// into every line and run off the end of each one. HAL knows; ScreenInfo only
+// gives the size. EDisplayOffsetToFirstPixel is read and recorded but **not**
+// applied: the address ScreenInfo hands back is already the first pixel here,
+// and EKA2L1 answers 32 for it regardless, which would shift the picture.
+enum { HAL_BITS_PER_PIXEL = 76, HAL_OFFSET_TO_FIRST_PIXEL = 79,
+       HAL_OFFSET_BETWEEN_LINES = 80, ASK_HAL = 1 };
 // The N-Gage's screen, which is what this game draws whatever it is told.
 // GAME_W is what shows; GAME_PITCH is how far apart the game puts its rows.
 // Measured (E133-E135): the game writes rows 176 apart and draws up to **192**
@@ -3319,8 +3336,33 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
     if (OWN_SCREEN && p[2] && !c->gameScreen) {
         c->realScreen = (u8 *)p[3];
         const u32 w = p[4], h = p[5];
-        c->realPitch = w * 4;           // color16ma, and 240*4 is already
-                                        // 64-byte aligned, so tight is right
+        int bpp = 0, pitch = 0, first = 0;
+        if (ASK_HAL) {
+            if (hal_get(HAL_BITS_PER_PIXEL, &bpp)) bpp = 0;
+            if (hal_get(HAL_OFFSET_BETWEEN_LINES, &pitch)) pitch = 0;
+            if (hal_get(HAL_OFFSET_TO_FIRST_PIXEL, &first)) first = 0;
+        }
+        // Bytes per pixel from the **pitch**, not from EDisplayBitsPerPixel:
+        // the emulator answers 24 for a buffer that is plainly four bytes a
+        // pixel (960 / 240), because that attribute reports colour depth and
+        // not storage. 16M colour is stored in 32 bits on most panels. The
+        // pitch divided by the width cannot lie about it.
+        // Compared, not divided: there is no __aeabi_uidiv in this image and
+        // a runtime divide will not link.
+        u32 bytes = 0;
+        if (pitch > 0 && w > 0) {
+            if ((u32)pitch >= w * 4) bytes = 4;
+            else if ((u32)pitch >= w * 2) bytes = 2;
+        }
+        if (bytes != 2 && bytes != 4)
+            bytes = (bpp == 16) ? 2u : 4u;
+        c->realBpp = bytes * 8;
+        c->realPitch = (pitch > 0) ? (u32)pitch : w * bytes;
+        log_event(c, NOTE_SCREEN, (u32)bpp);
+        log_event(c, NOTE_SCREEN, (u32)pitch);
+        log_event(c, NOTE_SCREEN, (u32)first);
+        log_event(c, NOTE_SCREEN, c->realBpp);
+        log_event(c, NOTE_SCREEN, c->realPitch);
         c->offX = w > (u32)GAME_W ? (w - (u32)GAME_W) / 2 : 0;
         c->offY = h > (u32)GAME_H ? (h - (u32)GAME_H) / 2 : 0;
         // The buffer is sized for whichever the game believes, so nothing can
@@ -3369,7 +3411,7 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
     if (c->gameScreen && c->realScreen) {
         const u16 *src = c->gameScreen;
         for (u32 y = 0; y < (u32)GAME_H; y++) {
-            u32 *dst = (u32 *)(c->realScreen + (y + c->offY) * c->realPitch) + c->offX;
+            u8 *row = c->realScreen + (y + c->offY) * c->realPitch;
             for (u32 x = 0; x < (u32)GAME_W; x++) {
                 const u32 v = src[y * (u32)c->srcPitch + x];
                 u32 r, g, b;
@@ -3378,11 +3420,19 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
                     g = ((v >> 4) & 0xF) * 17;
                     b = (v & 0xF) * 17;
                 } else {
-                    r = ((v >> 11) & 0x1F) * 255 / 31;
-                    g = ((v >> 5) & 0x3F) * 255 / 63;
-                    b = (v & 0x1F) * 255 / 31;
+                    // Replicate the high bits rather than divide: same result,
+                    // and no __aeabi_uidiv if SCREEN_4K is ever turned off.
+                    const u32 r5 = (v >> 11) & 0x1F, g6 = (v >> 5) & 0x3F, b5 = v & 0x1F;
+                    r = (r5 << 3) | (r5 >> 2);
+                    g = (g6 << 2) | (g6 >> 4);
+                    b = (b5 << 3) | (b5 >> 2);
                 }
-                dst[x] = 0xFF000000u | (r << 16) | (g << 8) | b;
+                if (c->realBpp == 16)
+                    ((u16 *)row)[c->offX + x] =
+                        (u16)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
+                else
+                    ((u32 *)row)[c->offX + x] =
+                        0xFF000000u | (r << 16) | (g << 8) | b;
             }
         }
     }
@@ -4489,16 +4539,23 @@ static u32 load_and_start()
     // nothing: arithmetic helpers, a character at a time out of a descriptor,
     // and a byte at a time into one. What is left still names every file
     // opened, every library loaded and every frame drawn.
-    // Only these, when TRACE_MILESTONES is on: files, libraries, the screen,
-    // the frame-loop kick, and the two that have to be seen for the record to
-    // be closed properly. 161 records in the emulator against 705 for the
-    // pruned trace and 4915 for the full one, and they still say every file
-    // opened, every library loaded and every frame drawn.
+    // Only these, when TRACE_MILESTONES is on: files, libraries, the screen's
+    // one-shot setup, and the two that have to be seen for the record to be
+    // closed properly. They still say every file opened and every library
+    // loaded.
+    //
+    // Pruned hard for hardware. Five of the old entries were written for a run
+    // that stopped in the first second and are per-frame or worse now that the
+    // game runs: `UserSvr::DllTls` alone fires **90,808** times in a
+    // forty-five second emulator run, and `CCoeEnv::Static` and
+    // `CFbsScreenDevice::Update` once each per frame. At a flush every eight
+    // records that is twenty thousand write-and-flush pairs on a phone, which
+    // would look exactly like a hang. None of them is needed: the frame count
+    // lives in the box, and the screen is its own evidence.
     static const u16 kMilestone[] = {
         100, 109, 110, 99,          // RFs::Connect, RFile Open/Read, Close
         325, 326, 283,              // RLibrary Load / Lookup / Close
-        45, 46, 47, 348, 350,       // the screen, and the frame-loop kick
-        279, 305, 358, 332, 86,     // Cancel, DllTls, SetActive, HBufC16, CCoeEnv
+        45, 46, 350,                // the screen's setup, and the frame-loop kick
         IMPORT_LEAVE, IMPORT_EXIT,  // so the last block still reaches the disk
     };
     static const u16 kHot[] = { 424, 425, 274, 287, 272, 417, 383, 369, 389, 264, 344 };
