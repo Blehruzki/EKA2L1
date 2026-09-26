@@ -201,6 +201,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_SEEK_IN = 831,      // ... the position asked for
        NOTE_SEEK_OUT = 832,     // ... and the one it ended at
        NOTE_READ_DATA = 833,    // the first words a read actually delivered
+       NOTE_SCREEN = 834,       // a word of the TScreenInfoV01 the game is given
        NOTE_THREAD_ARG = 840,   // one word of the create frame
        NOTE_THREAD_NAME = 841,  // one word of the name descriptor
        NOTE_PLANT_OK = 842,     // a breadcrumb that went in
@@ -744,6 +745,12 @@ struct Context {
     u32 fileSeek;           // efsrv's RFile::Seek, as resolved for the game
     u32 fileSeekThunk;
     u32 fileReadStatic;     // efsrv's RFile::Read as the static import had it
+    u32 screenInfo;         // euser's UserSvr::ScreenInfo, as resolved
+    u32 screenUpdate;       // bitgdi's CFbsScreenDevice::Update, as resolved
+    u16 *gameScreen;        // the 176x208 16bpp framebuffer handed to the game
+    u8 *realScreen;         // and the 32bpp one the emulator actually shows
+    u32 realPitch;          // bytes between its lines
+    u32 offX, offY;         // where the game's picture sits inside it
     u32 fileOpenThunk;
     u8 *spare;              // unused executable room, handed out as needed
     u8 *spareEnd;
@@ -1348,7 +1355,7 @@ enum { CRUMB_BYTES = 80, CRUMB_FIRST = 900 };
 enum { TRACE_EVERY_IMPORT = 1 };
 enum { TRACE_SKIPS_HOT = 1, TRACE_MILESTONES = 1 };
 enum { WATCH_ALLOCATIONS = LOG_ANYWAY, LOG_THE_CLOCK = 0, REFUSE_DRIVERS = 1,
-       WATCH_THE_READS = 1, CLAMP_THE_READS = 0, WATCH_READ_RESULT = 1 };
+       WATCH_THE_READS = 0, CLAMP_THE_READS = 0, WATCH_READ_RESULT = 0 };
 // Not an instrument: a fix, and it ships. See gate6_alloc.
 enum { PAD_THE_ALLOCATIONS = 0, ZERO_THE_SLACK = 0 };
 // Build 49. Every property of the fatal free measures correct -- chain,
@@ -1716,6 +1723,9 @@ static int crumb_safe(u32 w)
 // where from as well.
 enum { IMPORT_LEAVE = 324, IMPORT_EXIT = 308, IMPORT_FILE_READ_STATIC = 110 };
 enum { READ_DATA_WORDS = 8 };
+enum { IMPORT_SCREEN_INFO = 356, WATCH_THE_SCREEN = 1 };
+// The N-Gage's screen, which is what this game draws whatever it is told.
+enum { OWN_SCREEN = 1, SCREEN_4K = 1, GAME_W = 176, GAME_H = 208 };
 
 // A breadcrumb goes into the same ring as the imports, so the two interleave
 // and the order is the order things happened in. The marker reads as 900 and
@@ -3243,6 +3253,89 @@ extern "C" int gate6_file_read_static(void *self, u32 *des, Context *c)
     return err;
 }
 
+// What the game is told the screen is. On the N-Gage this is how a game finds
+// the framebuffer: TScreenInfoV01 is { iWindowHandleValid, iWindowHandle,
+// iScreenAddressValid, iScreenAddress, iScreenSize.iWidth, iScreenSize.iHeight }
+// -- six words. EKA2L1 answers with the screen chunk's base and the *device's*
+// size, which for the RM-409 is 240x320 where the game expects 176x208, and the
+// chunk begins with a palette rather than with pixels. Any of those three would
+// produce what is on the screen now, so the first thing is to see the numbers.
+extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
+{
+    typedef void (*Info)(u32 *);
+    ((Info)c->screenInfo)(des);
+    if (!des)
+        return;
+    for (u32 i = 0; i < 3; i++)
+        log_event(c, NOTE_SCREEN, des[i]);
+    const u32 type = des[0] >> KTypeShift;
+    u32 *p = (type == EBufC) ? des + 1
+           : (type == EPtrC || type == EPtr) ? (u32 *)des[1]
+           : (type == EBufType) ? des + 2 : (u32 *)des[2];
+    if (!((u32)p >= 0x400000 && (u32)p < 0x10000000 && !((u32)p & 3)))
+        return;
+    for (u32 i = 0; i < 6; i++)
+        log_event(c, NOTE_SCREEN, p[i]);
+
+    // Hand the game the screen it was built for, and keep the real one to copy
+    // into. It is told 240x320 and writes 176x208 anyway -- 73,216 bytes of
+    // 16-bit pixels, which at the emulator's 960-byte 32bpp line covers 76 rows
+    // and produces exactly the band of streaks that was on the screen. Rather
+    // than hope it adapts, give it a buffer of its own size and format and do
+    // the conversion at Update, where we already stand.
+    if (OWN_SCREEN && p[2] && !c->gameScreen) {
+        c->realScreen = (u8 *)p[3];
+        const u32 w = p[4], h = p[5];
+        c->realPitch = w * 4;           // color16ma, and 240*4 is already
+                                        // 64-byte aligned, so tight is right
+        c->offX = w > (u32)GAME_W ? (w - (u32)GAME_W) / 2 : 0;
+        c->offY = h > (u32)GAME_H ? (h - (u32)GAME_H) / 2 : 0;
+        // Only the address. E127 changed the reported size to 176x208 as well
+        // and the run died at the first Update on a null vptr, so the game does
+        // read that size for something even though it ignores it when it draws.
+        // The buffer is big enough for either, so nothing overruns if it writes
+        // to the size it was told after all.
+        u32 want = w * h * 2;
+        if (want < (u32)(GAME_W * GAME_H * 2)) want = GAME_W * GAME_H * 2;
+        c->gameScreen = (u16 *)user_allocz((int)want);
+        if (c->gameScreen) {
+            p[3] = (u32)c->gameScreen;
+            log_event(c, NOTE_SCREEN, (u32)c->gameScreen);
+            log_event(c, NOTE_SCREEN, c->realPitch);
+        }
+    }
+    if (!QUIET) log_block(c);
+}
+
+// 16 bits to 32, once a frame. The game's own screen is RGB565 on the N-Gage;
+// SCREEN_4K reads it as RGB444 instead, which is the other layout an N-Gage
+// title might use, and one run tells which.
+extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
+{
+    typedef void (*Update)(void *, const void *);
+    if (c->gameScreen && c->realScreen) {
+        const u16 *src = c->gameScreen;
+        for (u32 y = 0; y < (u32)GAME_H; y++) {
+            u32 *dst = (u32 *)(c->realScreen + (y + c->offY) * c->realPitch) + c->offX;
+            for (u32 x = 0; x < (u32)GAME_W; x++) {
+                const u32 v = src[y * (u32)GAME_W + x];
+                u32 r, g, b;
+                if (SCREEN_4K) {
+                    r = ((v >> 8) & 0xF) * 17;
+                    g = ((v >> 4) & 0xF) * 17;
+                    b = (v & 0xF) * 17;
+                } else {
+                    r = ((v >> 11) & 0x1F) * 255 / 31;
+                    g = ((v >> 5) & 0x3F) * 255 / 63;
+                    b = (v & 0x1F) * 255 / 31;
+                }
+                dst[x] = 0xFF000000u | (r << 16) | (g << 8) | b;
+            }
+        }
+    }
+    ((Update)c->screenUpdate)(self, region);
+}
+
 extern "C" int gate6_file_size(void *self, int *size, Context *c)
 {
     typedef int (*Size)(void *, int *);
@@ -4387,6 +4480,19 @@ static u32 load_and_start()
     // false if the call errored **or** the descriptor came up short, and those
     // are different faults. So the result wrapper goes on as well -- outermost,
     // so it sees the value the game will see.
+    if (OWN_SCREEN && IMPORT_SCREEN_UPDATE < nImports &&
+        ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->screenUpdate = iat[IMPORT_SCREEN_UPDATE];
+        iat[IMPORT_SCREEN_UPDATE] =
+            ctx_thunk(ctx->spare, ctx, (u32)&gate6_screen_update);
+        ctx->spare += TRACE;
+    }
+    if (WATCH_THE_SCREEN && IMPORT_SCREEN_INFO < nImports &&
+        ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->screenInfo = iat[IMPORT_SCREEN_INFO];
+        iat[IMPORT_SCREEN_INFO] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_screen_info);
+        ctx->spare += TRACE;
+    }
     if (WATCH_THE_READS && IMPORT_FILE_READ_STATIC < nImports &&
         ctx->spare + TRACE <= ctx->spareEnd) {
         ctx->fileReadStatic = iat[IMPORT_FILE_READ_STATIC];

@@ -173,7 +173,20 @@ here and the section it overturns is marked.*
   Two things unblocked it: answering `RSessionBase::CreateSession` with
   `KErrNone` so the sound server connect succeeds, and supplying `memmove`,
   which the game imports from the C runtime and 9.x does not export.
-- **What is wrong now is the picture, not the boot.** The drawn area is a band
+- **The picture works.** Three things, all in `gate6.cpp`. The game finds its
+  framebuffer through `UserSvr::ScreenInfo` and nothing else -- `CFbsBitmap` and
+  `HAL::Get` are never called -- so the wrapper on that import hands it a linear
+  buffer of its own and keeps the real address. It writes a linear **176x208 at
+  `EColor4K`** (`0000RRRRGGGGBBBB`) whatever size it is told, and the emulator's
+  screen is 240x320 `color16ma`, 32bpp on a 960-byte line: 73,216 bytes of the
+  game's output covers 76 of those lines, which was the band of streaks.
+  Converting 4K to 32bpp at every `CFbsScreenDevice::Update`, centred, gives the
+  real picture at 40 FPS. Reading the source as RGB565 instead gives a heavy
+  green cast, so the mode matters.
+  **Leave the size the game is told alone.** Reporting 176x208 as well as the
+  substituted address killed the run at the first `Update` on a null vptr
+  (E127); it draws 176x208 regardless, but it reads that size for something
+  else. The drawn area is a band
   of about 176x130 across the top, in horizontal magenta/green/grey streaks,
   with the rest white -- a pixel format or stride mismatch between the
   framebuffer the game writes and the screen device that reads it. Screen
