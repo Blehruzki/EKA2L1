@@ -210,6 +210,8 @@ them, and say so.
 | E155 | **build 137b -- one probe slot per worker, told apart by stack** | 14364 | `--` | **Both workers answer, and one long-standing reading is retracted.** Slot 0 is the polling worker at `RLibrary::Load`; **slot 1 is the SoundServer thread at `CTrapCleanup::New`, sp `0x04d0ff90`** -- allocator `0x00700000`, `alloc(16)` -> `0x00d8dd60`, all the way through. So **EKA2L1 does run that thread's entry function after all**: E148 read zero records for imports 330/386/319/363/367 in the *log* and concluded the thread never ran, when the log cannot carry worker events at all -- they were in the box. That is corrected. It also means the emulator gets the whole handshake right, `Signal` included, which is why its wait returns on the first slice. 14,364 records, 3,600-odd frames, no regression. This is the build to send |
 | E156 | **build 138 -- `on_main_thread` asks the kernel for the thread id instead of measuring a stack** | 0 | `0x354` | **Dead before its first record, and the reason is an ABI detail worth keeping.** `TThreadId` is a `TUint64` wrapper, so `RThread::Id() const` is a **struct return**: the hidden result pointer goes in r0 and `this` in r1. Declared as a plain `u32 rthread_id(const void*)` the call took `&handle` as its return buffer and wrote eight bytes over a stack local before anything had been logged. The project already has a `KIND_SRET8` for exactly this shape and I did not look |
 | E157 | **build 138b -- `RThread::Id` is a struct return; the hidden pointer goes in r0** | 14551 | `--` | **The identity test works and nothing regressed.** 14,551 records, 1,561 frames, and **both worker probes still fill** -- slot 0 the polling worker at `RLibrary::Load`, slot 1 the SoundServer thread at `CTrapCleanup::New` -- so asking the kernel classifies the two workers exactly as the stack test did here, which is the point: the emulator was never where it went wrong. The main thread's id is latched the first time `on_main_thread` runs, which is during setup, and the stack test stays only as the fallback for that one call. This is the build to send |
+| E158 | **build 139 -- a table of candidate framebuffer formats, cycled live from the keypad with `*` and `#`** | 11007 | `--` | **Builds, and entry 0 leaves the run exactly as it was.** `NOTE_SCREEN_FMT` records `idx=0 bpp=32 pitch=960`, which is what the derivation produces, and the run is normal: 2,572 frames, no leave, no exit. Eight candidates, including the 24-bit packed `EColor16M` case, which needed a third branch in the blit -- three bytes, blue first, written a byte at a time because there is no alignment to lean on |
+| E159 | **build 139b -- a digit picks a format outright, and the picker listens on `EEventKey`** | 10707 | `--` | **Two corrections to the picker, both from the record rather than from testing it here.** A digit `0`-`7` selects a candidate directly, because "press `*` four times" is a worse instrument than "press 4". And the event type: I had written `EEventKeyDown = 1`, but E131 recorded types **3, 1, 2** for a single press and those are `EEventKeyDown`, `EEventKey`, `EEventKeyUp` -- so type 1 is `EEventKey`, which is the only one where `iCode` carries a character at all. The value was right and the name was wrong, which is the kind of thing that is right until it is not. Driving the keys here with `xdotool` did not work: this container has no window manager, so `windowactivate` is refused and the emulator never gets focus. Not chased, because the key path is proven on the phone -- round 69 put **157 key events** through this very function -- and the round is self-correcting either way: every key's `iCode` is logged, so if the picker does not fire, the log says exactly what the phone sends instead |
 
 <!-- EMURUN -->
 
@@ -276,10 +278,25 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 66 | **build 135** -- lend a new thread the creating thread's heap when the game passes `aHeap = NULL` | 1 | **1,294 records, identical to round 65 record for record**; wait still times out (`ffffffff`); frame 1 still ends; `SoundServer KERN-EXEC 0` again | **The heap hypothesis is wrong.** The substitution went in -- the phone's `User::Allocator()` is **`0x600000`** and that is what the thunk lent -- and it changed **nothing**. So the SoundServer thread is not dying for want of an allocator, and round 65's leading explanation is retired. What the round does buy is a much tighter reading of the gap, because `operator new` at `0x652f8` has now been read out and it is not one call but four: `TTrap::Trap` (our own stand-in, which writes a zero and returns zero), **`User::AllocL`** (import 269), `TTrap::UnTrap` (a no-op), and `User::LeaveNoMemory` on the error path. None of those four is traced, nor is `CTrapCleanup::New` on the way out, so the gap the thread dies in is five calls wide and not two. Build 136 traces them -- but only on a worker, because on the main thread they are thousands of calls a run |
 | 67 | **build 136** -- trace the game's allocator, recorded only when a worker makes the call | 1 | **box identical to round 66 to the entry**; last worker event still `CTrapCleanup::New from b866c`; `SoundServer KERN-EXEC 0` | **It dies in the first euser call it ever makes.** `TTrap::Trap`, `User::AllocL`, `TTrap::UnTrap`, `User::LeaveNoMemory` and `User::Free` all carry trace thunks now and are recorded whenever a worker calls them -- and **not one of them appears**. So the SoundServer thread never reaches the game's `operator new` at all: it dies inside `CTrapCleanup::New()` itself, between the trace record made on the way in and any return. That is the *first* call that thread makes, which reads less like a broken euser export and more like a thread that is not fit to make a call yet -- and `CTrapCleanup::New` allocates, which is the first thing a half-built thread would fail at. Round 66 said lending it a heap changes nothing, but it could not say whether the lend reached the thread. Build 137 asks the thread itself, from inside the trace thunk, one instruction before the call |
 | 68 | **build 137** -- a worker probe, one slot per worker, asking each thread about its own allocator | 1 | **`WORKER PROBE never ran`** -- both slots empty -- and **`import 330` is in the MAIN log** | **The probe answered by not running, and it is the answer.** The box still has `CTrapCleanup::New from b866c` at entry 224, so the SoundServer thread did reach `gate6_trace`; the probe is called there whenever `!on_main_thread(c)`, and it did not run. Then the log settles it from the other side: the main log, which **only the main thread writes**, contains that thread's `CTrapCleanup::New` record. So `on_main_thread` calls the SoundServer thread the main thread on this phone, and **every guard built on it is a no-op for that thread** -- `log_block`, `box_write`, `box_flush`, the worker-log gate, the probe. The thread writes into the shared log buffer and, on the eighth record, `log_block` writes **the main thread's `RFile`**: KERN-EXEC 0, named `SoundServer`. Stacks on EKA2 are packed close together within a process; `THREAD_SPAN` is a megabyte; EKA2L1 gives every thread its own chunk megabytes away, which is why the test has always passed there. **This retracts round 63's "`on_main_thread` works on hardware"** -- it was read from the absence of a record in rounds 63 and 64, and that absence was the eight-record log buffer being lost when the process died, not a guard working |
+| 69 | **build 138** -- `on_main_thread` asks the kernel for the thread id instead of measuring a stack | 1 | **5,227 records, 836 frames, 968 framework calls, 157 key events, no panic** -- and the game **boots to its main menu on the phone and takes input** | **The port runs on hardware.** The semaphore is signalled on the *first* 100 ms slice, so the SoundServer thread lives, does its whole startup and signals: `NOTE_SEM_WAIT` reads `0` then `1` where every round since 63 read `ffffffff`. Both worker probes fill, and they measure the thing that caused nine rounds of trouble: the two workers' stacks are at `0x00415e7c` and `0x00427f90` -- **72 KB apart**, against a test that allowed a megabyte. Asking euser for the thread id fixed it. The remaining fault is entirely cosmetic and entirely ours: the picture is drawn with the wrong framebuffer geometry, so the game's image appears three times across the screen with alternate lines showing the phone's menu through it |
 
 ## Where we are
 
-**Furthest: round 68, build 137.** The cause is found and it is ours. On the
+**Furthest: round 69, build 138 -- the game boots on the phone.** It reaches
+its main menu, runs 836 frames, takes 157 key events and does not panic. The
+SoundServer thread lives and signals the semaphore on the first 100 ms slice.
+Everything structural this file has been chasing since round 31 is done; what
+is left is that the framebuffer's real format is still unknown, so the
+picture is unreadable.
+
+**Best round so far: 69.** It is the one the project was for.
+
+**Runner-up: 68**, which found the cause the day before: `on_main_thread`
+identified a thread by how far its stack was from the main thread's and
+allowed a megabyte, when the two workers' stacks on this phone are **72 KB**
+apart -- measured this round, by the probe, at `0x00415e7c` and `0x00427f90`.
+
+**Previously furthest: round 68, build 137.** The cause is found and it is ours. On the
 N95 `on_main_thread` calls the SoundServer thread *the main thread*, because
 EKA2 packs a process's thread stacks close together and the test allows a
 megabyte. Every guard built on it -- `log_block`, `box_write`, `box_flush`,
@@ -289,7 +306,7 @@ thread, so it writes the main thread's `RFile` and takes a bad handle:
 EKA2L1 puts every thread's stack in a chunk of its own, megabytes away, where
 the test happens to work.
 
-**Best round so far: 68.** It found the fault, and it found it in the one
+**Round 68** found the fault, and it found it in the one
 place this project keeps finding faults -- its own instrument -- by an
 instrument that reported by staying silent. It also retracts round 63.
 
@@ -433,7 +450,7 @@ Closing one file handle took the phone from 1571 records to 2104 and from 144
 traced events to 176, and retired the last known divergence between the two
 machines.
 
-**Runner-up: 51.** It is the one that moved the port rather than
+**Also load-bearing: 51.** It is the one that moved the port rather than
 describing it: NOP one word of the game's code and the phone goes 128 -> 144
 traced events, 248 -> 262 imports, following the emulator's new sequence import
 for import. First advance on hardware since build 44, and the first candidate
@@ -1259,3 +1276,53 @@ thread's pseudo-handle `0xFFFF8001` answers for whichever thread asks. The
 main thread's id is recorded once at setup; every later call compares against
 it. The stack test stays only as a fallback for the window before the id is
 known.
+
+## Round 69 -- build 138 on the N95: it boots
+
+The game starts, reaches its main menu, and answers the keypad. On the phone.
+
+| | round 68 | round 69 |
+|---|---|---|
+| records | 1,294 | **5,227** |
+| frames in / out | 1 / 1 | **836 / 835** |
+| framework calls into our slots | 5 | **968** |
+| key events | 0 | **157** |
+| `NOTE_SEM_WAIT` | `0`, `ffffffff` | **`0`, `1`** |
+| panic | `SoundServer KERN-EXEC 0` | **none** |
+
+`NOTE_SEM_WAIT` reading `1` is the whole story in one number: the semaphore
+was signalled inside the **first** 100 ms slice, which means the SoundServer
+thread got through `CTrapCleanup::New`, the `CActiveScheduler`, the server's
+own construction at `0xb7ce0`, and reached its `RSemaphore::Signal`. It has
+died at the first of those in every round since 63.
+
+### What the probe measured
+
+Both slots filled, and between them they say why nine rounds went wrong:
+
+    WORKER PROBE 0  RLibrary::Load       sp 0x00415e7c   allocator 0x00600000
+    WORKER PROBE 1  CTrapCleanup::New    sp 0x00427f90   allocator 0x00600000
+
+**The two worker stacks are 72 KB apart.** `THREAD_SPAN` allowed a megabyte,
+on the strength of a comment describing EKA2L1's memory model. Both threads
+also report the same allocator, `0x00600000`, which is the heap the round 65
+substitution lends them -- so that change was right even though it was not
+the fix.
+
+### What is left, and it is only the picture
+
+The framebuffer geometry. The game's image appears **three times across the
+screen** with alternate lines showing the phone's own menu through it, which
+is what writing 176 pixels at four bytes each, on a 960-byte line, does to a
+framebuffer that is none of those things.
+
+Three attempts have now been made to deduce the real format from photographs
+-- round 60 said four bytes on a 960-byte line, and this round's picture is
+not what that would give -- and HAL has lied about it three ways out of three
+(`EDisplayBitsPerPixel` 16, `EDisplayOffsetBetweenLines` 640, `EDisplayMode`
+`EGray2`). Deduction has had its turn.
+
+**Build 139 asks the phone instead.** The game now takes input, so the port
+can carry a table of candidate formats and a key that cycles through them
+live. One round, one key held down, and the format is whichever one makes the
+picture stand still.

@@ -237,6 +237,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_WATCH_EARLY = 844,  // the allocation the watch was latched on, early
        NOTE_IMAGE_AT = 845,     // an image word that is not what was loaded
        NOTE_IMAGE_NOW = 846,    // ... and what it says now
+       NOTE_SCREEN_FMT = 837,   // which framebuffer format the picker has live
        NOTE_SEM_WAIT = 836,     // the main thread's wait on the SoundServer's semaphore
        NOTE_WORKER_SP = 849,    // a worker's stack, so two of them can be told apart
        NOTE_SCRATCH = 847,      // a word of the game's scratch code chunk
@@ -708,6 +709,9 @@ struct Context {
     u32 wrkState;           // 0 not tried, 1 open, 2 gave up
     u32 wrkLastSp;          // which worker wrote last, to the nearest stack
     u32 mainThreadId;       // latched at setup; what on_main_thread really asks
+    u32 fmtIndex;           // which candidate framebuffer format is live
+    u32 derivedBpp;         // and what the derivation said, for entry 0
+    u32 derivedPitch;
     u32 boxData[BOX_WORDS];
     u32 pathIndex;          // which candidate the game was loaded from
     u32 codeBase;           // where the game was loaded, so callers read as offsets
@@ -3686,6 +3690,38 @@ extern "C" int gate6_file_read_static(void *self, u32 *des, Context *c)
 // size, which for the RM-409 is 240x320 where the game expects 176x208, and the
 // chunk begins with a palette rather than with pixels. Any of those three would
 // produce what is on the screen now, so the first thing is to see the numbers.
+// Candidate framebuffer formats, in the order `*` walks them. Entry 0 is
+// "whatever was derived", so a run that is never touched behaves exactly as
+// round 69's did.
+//
+//   1  what HAL claims: 16 bits, 640-byte line
+//   2  240 x 2, unpadded
+//   3  240 x 2, padded to 512
+//   4  240 x 4, unpadded -- the emulator's layout
+//   5  240 x 4, padded to 1024
+//   6  240 x 3, packed EColor16M
+//   7  the 1440-byte line the round 69 photograph's three-row repeat implies
+static const u16 kFmt[][2] = {           // { bytes per pixel, line in bytes }
+    { 0, 0 }, { 2, 640 }, { 2, 480 }, { 2, 512 },
+    { 4, 960 }, { 4, 1024 }, { 3, 720 }, { 4, 1440 },
+};
+enum { SCREEN_PICKER = 1, FMT_COUNT = sizeof kFmt / sizeof kFmt[0] };
+enum { KEY_FMT_NEXT = '*', KEY_FMT_PREV = '#' };
+
+static void screen_format(Context *c)
+{
+    const u32 i = c->fmtIndex;
+    if (i && i < (u32)FMT_COUNT) {
+        c->realBpp = (u32)kFmt[i][0] * 8;
+        c->realPitch = (u32)kFmt[i][1];
+    } else {
+        c->realBpp = c->derivedBpp;
+        c->realPitch = c->derivedPitch;
+    }
+    log_event(c, NOTE_SCREEN_FMT, (i << 24) | (c->realBpp << 16) | c->realPitch);
+    log_block(c);
+}
+
 extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
 {
     typedef void (*Info)(u32 *);
@@ -3748,6 +3784,18 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         if (!bytes) { bytes = 4; use = w * 4; }
         c->realBpp = bytes * 8;
         c->realPitch = use;
+        c->derivedBpp = c->realBpp;
+        c->derivedPitch = c->realPitch;
+        // Round 69: the game runs on the phone and the only thing still wrong
+        // is this. Three deductions from photographs have now been made and
+        // the last one was wrong, and HAL has answered wrongly three times out
+        // of three. So stop deducing: the game takes input now, so carry the
+        // candidates and let the phone say which is right. `*` steps forward,
+        // `#` steps back, and the first entry is whatever was derived above.
+        if (SCREEN_PICKER) {
+            c->fmtIndex = 0;
+            screen_format(c);
+        }
         log_event(c, NOTE_SCREEN, (u32)bpp);
         log_event(c, NOTE_SCREEN, (u32)pitch);
         log_event(c, NOTE_SCREEN, (u32)first);
@@ -3818,12 +3866,18 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
                     g = (g6 << 2) | (g6 >> 4);
                     b = (b5 << 3) | (b5 >> 2);
                 }
-                if (c->realBpp == 16)
+                if (c->realBpp == 16) {
                     ((u16 *)row)[c->offX + x] =
                         (u16)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
-                else
+                } else if (c->realBpp == 24) {
+                    // Packed EColor16M: three bytes, blue first, and no
+                    // alignment to lean on -- so a byte at a time.
+                    u8 *p8 = row + (c->offX + x) * 3;
+                    p8[0] = (u8)b; p8[1] = (u8)g; p8[2] = (u8)r;
+                } else {
                     ((u32 *)row)[c->offX + x] =
                         0xFF000000u | (r << 16) | (g << 8) | b;
+                }
             }
         }
     }
@@ -4146,6 +4200,28 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
         log_event(c, NOTE_KEY, k[0]);       // iCode
         log_event(c, NOTE_KEY, k[1]);       // iScanCode
         log_event(c, NOTE_KEY, type);
+        // The format picker. A digit selects a candidate outright, `*` and `#`
+        // step forward and back. Only on **EEventKey**, which is type 1 --
+        // E131 recorded types 3, 1 and 2 for one press, and those are
+        // EEventKeyDown, EEventKey and EEventKeyUp in that order, so type 1
+        // is the one press and the only one where `iCode` carries a
+        // character at all. The key is swallowed, so the game never sees it.
+        enum { EEventKey = 1 };
+        if (SCREEN_PICKER && type == (u32)EEventKey) {
+            const u32 code = k[0];
+            u32 want = (u32)-1;
+            if (code >= '0' && code < '0' + (u32)FMT_COUNT)
+                want = code - '0';
+            else if (code == (u32)KEY_FMT_NEXT)
+                want = (c->fmtIndex + 1) % (u32)FMT_COUNT;
+            else if (code == (u32)KEY_FMT_PREV)
+                want = (c->fmtIndex + (u32)FMT_COUNT - 1) % (u32)FMT_COUNT;
+            if (want != (u32)-1) {
+                c->fmtIndex = want;
+                screen_format(c);
+                return 1;                   // EKeyWasConsumed
+            }
+        }
     }
     if (!c->oldControl)
         return 0;

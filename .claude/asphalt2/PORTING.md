@@ -37,6 +37,19 @@ here and the section it overturns is marked.*
 
 ### Settled
 
+- **The game runs on the phone.** Round 69: 836 frames, 968 framework calls
+  into our slots, 157 key events, no panic, and it reaches its main menu and
+  answers the keypad. The SoundServer thread lives and signals its semaphore
+  inside the first 100 ms slice. Everything structural is done. What remains
+  is that the framebuffer's real format is unknown, so the picture is drawn
+  three times across the screen with alternate lines showing the phone's own
+  menu through it.
+- **The framebuffer format cannot be deduced.** HAL answers wrongly three
+  ways out of three, and three readings from photographs have now been tried,
+  the last of them wrong. Build 139 carries eight candidates and a key that
+  selects between them live, so the phone can answer instead. Until that
+  round comes back, **no statement in this file about the screen's bytes per
+  pixel or line pitch should be relied on.**
 - **`on_main_thread` was wrong on hardware, and it is what killed the
   SoundServer thread.** It identified the main thread by how far the caller's
   stack was from it, allowing a megabyte, on the strength of a comment saying
