@@ -228,6 +228,8 @@ them, and say so.
 | E173 | **build 146 -- no screen furniture** | 7923 | `--` | **Avkon takes the flag and the game still runs.** `ENoScreenFurniture` (0x04) added to the flags the game asks for. 7,923 records, the frame loop running, the picture unchanged here -- which is the point: the emulator does not paint a status pane over us, so this run only shows the flag is safe. Whether it clears the band is the phone's to say |
 | E174 | **build 146 with a screenshot** | -- | `--` | **Looked at, as a control.** The race renders exactly as it did in E170: full width, shape kept, `$000260` and `KmH` whole, nothing at any edge. Nothing regressed by dropping the furniture |
 | E175 | **build 147 -- the furniture flag, plus a keypad inset** | 4138 | `--` | **Runs, layout unchanged at inset zero.** `NOTE_SCREEN_DST` now carries the inset beside the first-pixel offset: 0 and 32 here. The inset shrinks the height the picture is fitted into and pushes `offY` down by the same amount, so the phone can put the picture below the status pane if the flag does not remove it. The clear still covers all 320 rows |
+| E176 | **build 148 -- fill mode, bottom-anchored, inset 56, full-screen window** | 4910 | `--` | **The records read exactly as intended.** Picture **240x264 at (0,56)**: full width, bottom edge on row 320, the leftover 56 rows at the top. `NOTE_SCREEN_DST` now packs inset, mode and first-pixel offset together and reads 56 / mode 2 / 32. The window is sized to the whole screen rather than to the game's 176x208, which is the one untried lever on the band |
+| E177 | **build 148 with a screenshot** | -- | `--` | **Looked at.** Full width, bottom exact, a black band at the top where the inset is -- which in the emulator is just unused space, because there is no status pane here. The 7 per cent difference between the two scales is not visible in the picture |
 
 <!-- EMURUN -->
 
@@ -302,6 +304,7 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 74 | **build 142** -- the picture scaled to fill, and the buffer blanked | 1, a photograph and five logs | **Wrong aspect, and the right-hand side still comes back through the left.** Colours right, composition almost right | **The scaling arithmetic was sound and the shape it was given was not.** Round 72 read the 1280-byte line as a 320-pixel buffer whose rotation is the reported 240x320; build 142 drew 203x240 at column 58 on that basis, and the photograph shows the picture running off the *right-hand edge of the screen* -- which can only happen if the visible width is the 240 `ScreenInfo` reports. So 1280 is a **padded stride** (240 pixels at four bytes is 960) and the reported size is the screen. The five logs also settle that the format itself is right: they sweep it again and `32bpp/1280` holds the longest dwell in every one of them -- 2,606 of 2,893 records in `g6box1-4`, 1,891 of 1,933 in `g6box6-8` -- so the sweeps were the user trying to fix the *shape* with the *format* knob, which was the only knob there was |
 | 75 | **build 143** -- the aspect fixed, and the keypad on the game's row length | 1, a log and a video | **The aspect is right.** The whole 160-256 range swept, 97 values, and the wrap survives every one of them | **Both halves answered.** The fit records read buffer **240x320**, picture **240x283** at y=18 -- round 74's correction holds on the phone, and the video shows the picture filling the screen with the shape kept. And the sweep is a clean negative: **176 holds 7,489 records of dwell, the next value 1,589**, and the video shows every other value shearing the picture diagonally. So 176 *is* the stride the game writes with, confirmed on hardware for the first time, and the wrap is not in how we read the buffer. That matches what E137 concluded offline from a raw frame: the game writes 176x208 and nothing beyond, but *draws* up to 192 pixels wide, so the overflow lands on the next row. 4,493 frames, no panic |
 | 76 | **build 144** -- the game's buffer read from pixel sixteen | 1, a log and a video | **The wrap is gone on the phone.** The game plays: vehicle select, a tunnel race, the Golden Gate track, nitro. What is left is a band across the top | **The offset was right, and it was right for the phone without any device-specific number.** 16,912 records, `NOTE_SCREEN_FIT` reading 240x320, 240x283 at y=18, `NOTE_SCREEN_SRC` reading origin 16 on a 176 pitch, and no panic. The band across the top is the phone's **status pane**: the port writes the framebuffer directly, so anything the window server paints lands on top of the picture, and the game asks avkon for a standard application with all its furniture. It is visible as itself in the round-74 photograph -- close icon left, battery right -- and as a hazy band over the game once the two repaint in turn. Also settled by this log: the phone's HAL answers **0** for `EDisplayOffsetToFirstPixel` and 0 is right there, while the emulator answers 32 and 32 is right here |
+| 77 | **build 147** -- no screen furniture, and an inset on the keypad | 1, two logs and a video | **The band survives `ENoScreenFurniture`.** The user swept the inset and settled on **56**, which clears it but costs a black bar down each side | **The flag reached avkon and did not remove the band.** Record 16 of both logs is the flags our wrapper passed: **4**, `ENoScreenFurniture`. The band is still there, so it is not the app's own status pane -- or not only that. What the sweep does give is its height: 56 held **7,624 records** of dwell against 2,458 for 64, 2,590 for no inset at all and 1,164 for 48, so the band is **more than 48 rows and no more than 56**. At 56 the shape-preserving fit is 223x264 and leaves 8 pixels of black down each side, which is what the user does not want |
 
 ## Round 74 -- the pitch is padding, and the screen is what it says
 
@@ -467,24 +470,81 @@ full-screen game asks for. It is not the flag that went wrong before:
 resource file; `ENoScreenFurniture` (0x04) only says not to build the panes.
 Avkon takes it and the game still runs (E173, E174).
 
+## Round 77 -- the band survives the flag, so fill the space instead
+
+`ENoScreenFurniture` reached avkon -- record 16 of both logs is the flags the
+wrapper passed, and it is **4** -- and the band across the top is still
+there. So it is not (only) the app's own status pane. Its appearance did
+change: round 74's photograph had the close icon and the battery in it, and
+now it is a plain grey band, so the flag removed the *contents* and left
+something else painting the space.
+
+The sweep measures it. Dwell per layout in the longer log:
+
+| layout | records held |
+|---|---|
+| inset 56: picture 223x264 at (8,56) | **7,624** |
+| inset 0: picture 240x283 at (0,18) | 2,590 |
+| inset 64: picture 216x256 at (12,64) | 2,458 |
+| inset 48: picture 230x272 at (5,48) | 1,164 |
+| inset 32: picture 240x283 at (0,34) | 917 |
+
+They tried 48 and moved on; they stayed at 56. **The band is more than 48
+rows and no more than 56.**
+
+### The trade, and which way to take it
+
+At an inset of 56 there are 264 rows left. Keeping the shape in 240 x 264
+gives 223 x 264 -- a black bar eight pixels wide down each side, an eighth of
+the picture's width in dead space. Filling 240 x 264 instead stretches the
+picture 1.364 across and 1.269 down: the axes differ by **7 per cent**.
+
+Seven per cent of distortion against an eighth of the width in bars is not a
+close call, and it is what the user asked for. Build 148 makes **fill** the
+default, anchors the picture to the **bottom** so the leftover is at the top
+where the band already is, and defaults the inset to 56.
+
+`8` cycles the three fittings -- 1:1, shape-kept, filled -- and the inset
+stays on the keypad, so the smallest inset that clears the band can be found
+by stepping down from 56 with `#` (two rows) or `4` (eight).
+
+### The one lever left on the band itself
+
+Build 148 also sizes the lent window to the **whole screen** rather than to
+the game's 176x208. E137 sized it to the game's own size and nothing moved,
+which says nothing about this: the question is whether the band is another
+window showing through where ours does not reach, and only a full-screen
+window answers it. If the band goes, the inset can go to 0 and the picture
+becomes 240x320 with nothing left over.
+
+### Not on the table: making the game render 240x320
+
+The game asks nothing about the screen it is drawing on. Its only geometry
+query is `UserSvr::ScreenInfo`, whose size it ignores (E132: reporting
+176x208 gives byte-identical frames), it imports no text rendering at all,
+and every glyph is its own bitmap drawn straight into the framebuffer. Layout
+width and row stride are both constants in the binary. Rendering natively at
+240x320 would mean patching those constants -- a different kind of work
+from anything done so far, and not a small one.
+
 ## Where we are
 
-**Furthest: round 76 -- the game plays on the phone and the picture is
-right.** The framebuffer is 32 bits a pixel on a 1280-byte line; the screen
-is the 240x320 `ScreenInfo` reports and 1280 is a padded stride; the picture
-is scaled to 240x283 at y=18; the game's own picture starts sixteen pixels
-into its buffer, and reading from there fixed the wrap that nine rounds had
-called an overflow. On the phone: vehicle select, a tunnel race, the Golden
-Gate track, nitro, no panic.
+**Furthest: round 77 -- the picture fits, and one thing still owns the top
+of the screen.** Settled: the framebuffer is 32 bits a pixel on a 1280-byte
+line; the screen is the 240x320 `ScreenInfo` reports and 1280 is a padded
+stride; `EDisplayOffsetToFirstPixel` must be applied (32 in the emulator, 0
+on the phone, HAL right about both); the game's own picture starts sixteen
+pixels into its buffer, which was the wrap. The game plays on the phone.
 
-Two corrections came out of this round. The screen chunk **begins with a
-sixteen-entry word palette**, so `EDisplayOffsetToFirstPixel` has to be
-applied -- 32 in the emulator, 0 on the phone, and HAL is right about both.
-And the band across the top of the phone's screen is the **status pane**: the
-port writes the framebuffer directly, so whatever the window server paints
-lands on the picture. Build 146 asks avkon for no screen furniture.
+A band 49 to 56 rows tall owns the top of the screen and survives
+`ENoScreenFurniture`, which the log confirms reached avkon. Build 148 fills
+the space below it -- picture **240x264 at (0,56)**, full width, bottom edge
+exact, the leftover at the top -- and takes a 7 per cent difference between
+the two scales rather than an eighth of the width in black bars. It also
+sizes the lent window to the whole screen, which is the last untried lever on
+the band.
 
-**Next**: the phone has not seen 145 or 146 yet. After that, audio is still a
+**Next**: whether the band survives a full-screen window. Then audio, still a
 silent stand-in with 17 imports unanswered.
 
 **Best round so far: 72**, narrowly over 69. Round 69 got the game running;

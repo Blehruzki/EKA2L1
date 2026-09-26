@@ -522,7 +522,7 @@ enum { NEW_COECONTROL_OFFERKEY = 26, BRIDGE_KEYS = 1 };
 // is the only remaining place it could be getting a wider number from for the
 // menu layout it truncates. cone 63 is CCoeControl::SetExtent(TPoint, TSize).
 // Measured to make no difference (E134); kept off.
-enum { NEW_COECONTROL_SETEXTENT = 63, SIZE_THE_WINDOW = 0 };
+enum { NEW_COECONTROL_SETEXTENT = 63, SIZE_THE_WINDOW = 1 };
 enum { NEW_CTL_FOCUS = 26, NEW_CTL_DRAW = 41 };
 
 // Direct screen access is the first thing that calls the game back. The window
@@ -720,7 +720,7 @@ struct Context {
     u32 srcW;               // how many of the game's pixels a row is read as
     u32 srcOrigin;          // where in its buffer the game's first pixel is
     u32 topInset;           // rows at the top of the screen to keep clear of
-    u32 stretch;            // 1 = scale 176x208 up to fill the screen
+    u32 mode;               // how the picture is fitted: 1:1, shape-kept, or filled
     u32 clearPending;       // blank the framebuffer once, after any change
     u32 dstW, dstH;         // how big the picture is drawn
     u8 mapX[320];           // destination column -> source column, Bresenham
@@ -3757,10 +3757,22 @@ enum { SRC_ORIGIN = 16, SRC_ORIGIN_MAX = 64 };
 // which pixels of the screen we wrote and which we did not.
 enum { BLIT_BORDER = 0 };
 enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
-// Round 74: 176x208 centred in the middle of the screen is a small picture
-// with the phone's own menu round it, so it is scaled up to fill. `8`
-// switches between the two so one run can compare them.
-enum { SCREEN_STRETCH = 1, KEY_STRETCH = '8' };
+// How the picture is fitted, cycled by `8`.
+//
+// Round 77: keeping the shape *and* clearing the band costs width. The band
+// owns the top 51 to 56 rows, so a shape-preserving fit into what is left --
+// 240 x 264 -- comes out 223 wide and leaves a black bar down each side. The
+// user would rather have the sides and the bottom exact and take the small
+// distortion, which is the right trade: filling 240 x 264 stretches the
+// picture 1.364 across and 1.269 down, a **7 per cent** difference between
+// the axes, where the bars are a visible eighth of the width.
+//
+// The vertical placement is against the **bottom** in both fitted modes, so
+// whatever is left over is at the top, where the band already is, and none
+// of it is taken out of the picture.
+enum { MODE_ONE_TO_ONE = 0, MODE_SHAPE = 1, MODE_FILL = 2, MODE_COUNT = 3 };
+enum { SCREEN_MODE = MODE_FILL, KEY_MODE = '8' };
+enum { INSET_DEFAULT = 56 };
 
 static void screen_layout(Context *c);
 
@@ -3824,25 +3836,26 @@ static void screen_layout(Context *c)
         for (u32 i = 0; i < sh && i < (u32)sizeof c->mapY; i++) c->mapY[i] = (u8)i;
         return;
     }
-    if (!c->stretch) {
+    if (c->mode == (u32)MODE_ONE_TO_ONE) {
         c->dstW = sw < bw ? sw : bw;
         c->dstH = sh < bh ? sh : bh;
         for (u32 i = 0; i < c->dstW; i++) c->mapX[i] = (u8)i;
         for (u32 i = 0; i < c->dstH; i++) c->mapY[i] = (u8)i;
     } else {
-        // The widest fit that keeps the shape. Which axis runs out first is
-        // `bw * sh` against `bh * sw` -- a comparison, not a divide. Then the
-        // long axis is filled and the short one counted out by Bresenham, one
-        // add per output pixel.
         u32 dw, dh;
-        if (bw * sh > bh * sw) {                        // height-limited
+        if (c->mode == (u32)MODE_FILL) {
+            // Both axes to the edges. The two scales differ, and by little
+            // enough to be worth the exact fit.
+            dw = bw;
+            dh = bh;
+        } else if (bw * sh > bh * sw) {         // shape kept, height-limited
             dh = bh;
             dw = 0;
             for (u32 i = 0, acc = 0; i < dh; i++) {
                 acc += sw;
                 while (acc >= sh) { acc -= sh; dw++; }
             }
-        } else {                                        // width-limited
+        } else {                                // shape kept, width-limited
             dw = bw;
             dh = 0;
             for (u32 i = 0, acc = 0; i < dw; i++) {
@@ -3857,7 +3870,7 @@ static void screen_layout(Context *c)
         c->dstW = dw;
         c->dstH = dh;
         // Which source pixel each output pixel reads: nearest neighbour,
-        // stepped by accumulation for the same reason.
+        // stepped by accumulation, one add per output pixel.
         { u32 src = 0, acc = 0;
           for (u32 i = 0; i < dw; i++) {
               c->mapX[i] = (u8)(src < sw ? src : sw - 1);
@@ -3872,12 +3885,15 @@ static void screen_layout(Context *c)
           } }
     }
     c->offX = bw > c->dstW ? (bw - c->dstW) / 2 : 0;
-    c->offY = inset + (bh > c->dstH ? (bh - c->dstH) / 2 : 0);
+    // Against the bottom, so the leftover is at the top with the band.
+    c->offY = inset + (bh > c->dstH
+        ? (c->mode == (u32)MODE_ONE_TO_ONE ? (bh - c->dstH) / 2 : bh - c->dstH)
+        : 0);
     log_event(c, NOTE_SCREEN_FIT, (bw << 16) | (bh & 0xFFFF));
     log_event(c, NOTE_SCREEN_FIT, (c->dstW << 16) | (c->dstH & 0xFFFF));
     log_event(c, NOTE_SCREEN_FIT, (c->offX << 16) | (c->offY & 0xFFFF));
     log_event(c, NOTE_SCREEN_SRC, (c->srcOrigin << 16) | (c->srcPitch & 0xFFFF));
-    log_event(c, NOTE_SCREEN_DST, (inset << 16) | (c->firstPixel & 0xFFFF));
+    log_event(c, NOTE_SCREEN_DST, (inset << 16) | ((c->mode & 0xF) << 12) | (c->firstPixel & 0xFFF));
 }
 
 extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
@@ -3976,7 +3992,8 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         // candidates and let the phone say which is right. `*` steps forward,
         // `#` steps back, and the first entry is whatever was derived above.
         if (!c->screenW)
-            c->stretch = (u32)SCREEN_STRETCH;
+            c->mode = (u32)SCREEN_MODE;
+            c->topInset = (u32)INSET_DEFAULT;
         c->screenW = w;
         c->screenH = h;
         screen_format(c);
@@ -4455,8 +4472,8 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
         enum { EEventKey = 1 };
         if (SCREEN_PICKER && type == (u32)EEventKey) {
             const u32 code = k[0];
-            if (code == (u32)KEY_STRETCH) {
-                c->stretch = !c->stretch;
+            if (code == (u32)KEY_MODE) {
+                c->mode = (c->mode + 1) % (u32)MODE_COUNT;
                 screen_layout(c);
                 log_block(c);
                 return 1;                   // EKeyWasConsumed
@@ -4521,10 +4538,18 @@ extern "C" void gate6_create_window(u32 *oldControl, int, Context *c)
         typedef void (*SetExtent)(void *, const u32 *, const u32 *);
         SetExtent se = (SetExtent)rlibrary_lookup(&c->cone, NEW_COECONTROL_SETEXTENT);
         if (se) {
+            // The **whole screen**, not the game's 176x208. E137 sized it to
+            // the game's own size and nothing moved, which says nothing about
+            // this: the question now is whether the band across the top is
+            // another window showing through where ours does not reach, and
+            // only a full-screen window answers it. The size is not known
+            // from ScreenInfo yet at construction, so fall back on the
+            // device's own.
             const u32 tl[2] = { 0, 0 };
-            const u32 sz[2] = { GAME_W, GAME_H };
+            const u32 sz[2] = { c->screenW ? c->screenW : 240u,
+                                c->screenH ? c->screenH : 320u };
             se(ctl, tl, sz);
-            log_event(c, NOTE_SCREEN, 0x51E00000u | (GAME_W & 0xFFFF));
+            log_event(c, NOTE_SCREEN, 0x51E00000u | (sz[0] & 0xFFFF));
         }
     }
     oldControl[OLD_CONTROL_WIN / 4] = ctl[NEW_CONTROL_WIN / 4];
