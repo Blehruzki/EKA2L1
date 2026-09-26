@@ -247,6 +247,10 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_NGAGE_LR = 850,     // and the site that made the call
        NOTE_SOUND = 851,        // the sound server bridge: what it connected
        NOTE_SOUND_MSG = 852,    // ... and each message it carried across
+       NOTE_MDA_CALL = 853,     // a method the game called on the audio stream
+       NOTE_MDA_ARG = 854,      // ... and the four registers it called it with
+       NOTE_MDA_VT = 855,       // a slot of the real 9.x stream's vtable
+       NOTE_MDA_CODE = 856,     // ... and the first words of the code there
        NOTE_SEM_WAIT = 836,     // the main thread's wait on the SoundServer's semaphore
        NOTE_WORKER_SP = 849,    // a worker's stack, so two of them can be told apart
        NOTE_SCRATCH = 847,      // a word of the game's scratch code chunk
@@ -4871,7 +4875,53 @@ static void args_thunk(u32 *s, const void *ctx, u32 fn)
 // The callback goes the other way and needs no shim:
 // `MMdaAudioOutputStreamCallback` has no destructor to disagree about, so its
 // three slots line up as they are.
-enum { MDA_PROXY = 1, MDA_SLOTS = 14, MDA_DTOR = 2 };
+enum { MDA_PROXY = 1, MDA_SLOTS = 14 };
+// The game's slot -> the 9.x slot. 9.x order after the two destructor
+// entries: SetAudioPropertiesL 4, Open 5, MaxVolume 6, Volume 7,
+// SetVolume 8, SetPriority 9, WriteL 10, Stop 11, Position 12.
+// The fault said where this was wrong: "access violation reading address
+// 0x100" with 0x100 the first argument, so the callee dereferenced an int --
+// the slot numbers were one too high and `SetPriority` was landing on
+// `WriteL`. One destructor entry, not two. The two layouts turn out to be
+// the *same* but for where `SetPriority` sits: first on the N-Gage, sixth
+// on 9.x.
+// Settled by dumping the real vtable and disassembling it (E191). Two
+// header words, then **two** destructor entries -- both begin
+// `push {r4,r5,lr}; ldr r3,[pc]; str r3,[r0]`, which is a destructor
+// reinstalling a vtable -- and the virtuals run from 4. So:
+// SetAudioPropertiesL 4, Open 5, MaxVolume 6, Volume 7, SetVolume 8,
+// SetPriority 9, WriteL 10, Stop 11, Position 12.
+static const signed char kMdaMap[14] = {
+    -1, -1,   3,   9,   5,   6,   7,   8,  -1,  10,  11,  12,  -1, -1
+//   0   1  dtor Prio Open Max  Vol  Set   ?  Write Stop  Pos
+};
+// The N-Gage's priority scale is not 9.x's. The game asks for **256**, and
+// the fault in E188 was a read of address **0x100** -- the number itself,
+// used as an address by whatever indexes on priority. 9.x runs -100..100.
+enum { MDA_PRIO_MAX = 100 };
+// Bench only: every slot says what it was called with before it forwards.
+// The proxy gets three messages further than the bare pointer and then
+// faults, and this is what says which method and which argument.
+enum { MDA_TRACE = 1, MDA_TRAMP = MDA_TRACE ? 14 : 3 };
+// Off: it has answered, and it was reading whatever each vtable word
+// pointed at -- including the 0xfffffffc past the end of the table, which
+// is what "access violation reading 0xFFFFFFFC" in E191 and E192 was. My
+// instrument, not the game.
+enum { MDA_DUMP_VT = 0 };
+
+extern "C" void gate6_mda_call(u32 *saved, Context *c, u32 slot)
+{
+    // The trampoline pops these back into r0-r3 after this returns, so a
+    // correction written here is the one the real method sees.
+    if (slot == 3 && (int)saved[1] > (int)MDA_PRIO_MAX)
+        saved[1] = (u32)MDA_PRIO_MAX;
+    log_event(c, NOTE_MDA_CALL, slot);
+    log_event(c, NOTE_MDA_ARG, saved[0]);
+    log_event(c, NOTE_MDA_ARG, saved[1]);
+    log_event(c, NOTE_MDA_ARG, saved[2]);
+    log_event(c, NOTE_MDA_ARG, saved[3]);
+    log_block(c);
+}
 
 extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
 {
@@ -4884,33 +4934,94 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
         log_block(c);
         return (u32)real;
     }
-    const u32 need = 8 + (u32)MDA_SLOTS * 4 + (u32)MDA_SLOTS * 12;
+    const u32 need = 8 + (u32)MDA_SLOTS * 4 + (u32)MDA_SLOTS * MDA_TRAMP * 4;
     if (!c->spare || c->spare + need > c->spareEnd) {
         log_block(c);
         return (u32)real;                   // no room: give it the bare object
     }
     u32 *rvt = *(u32 **)real;
+    // Which 9.x slot is which cannot be looked up: the virtuals are not
+    // exported and no definition file we have names them. Two guesses at the
+    // layout cost two runs (E188, E189). So dump it instead -- every slot's
+    // address and the first eight words of the code there -- and read the
+    // functions off their own instructions offline. `MaxVolume` and `Volume`
+    // are three instructions; `Stop` is short; `WriteL` touches a descriptor;
+    // `Open` is long. That identifies them without another run.
+    if (MDA_DUMP_VT) {
+        log_event(c, NOTE_MDA_VT, (u32)rvt);
+        // From two entries *before* the pointer: an EABI vtable pointer aims
+        // at the first function, with the offset and the typeinfo behind it.
+        // And the entries are **Thumb** -- odd addresses -- so the low bit
+        // has to come off before the code can be read.
+        for (u32 k = 0; k < 18; k++) {
+            const u32 e = rvt[(int)k - 2];
+            log_event(c, NOTE_MDA_VT, e);
+            const u32 *f = (const u32 *)(e & ~3u);
+            if ((u32)f >= 0x400000)
+                for (u32 w = 0; w < 6; w++)
+                    log_event(c, NOTE_MDA_CODE, f[w]);
+        }
+        log_block(c);
+    }
     u32 *obj = (u32 *)c->spare;
     u32 *vt = obj + 2;
     u32 *tramp = vt + MDA_SLOTS;
     c->spare += need;
     for (u32 k = 0; k < (u32)MDA_SLOTS; k++) {
-        // slot 2 is the destructor, and the game calls it the GCC98r2 way
-        // with a flag in r1; the deleting form is the nearer of the two.
-        const u32 from = (k < (u32)MDA_DTOR) ? k
-                       : (k == (u32)MDA_DTOR) ? 3u
-                       : k + 1;
-        u32 *t = tramp + k * 3;
-        t[0] = 0xE5900004;                  // ldr r0, [r0, #4]
-        t[1] = 0xE51FF004;                  // ldr pc, [pc, #-4]
-        t[2] = rvt[from];
+        // Not a shift: a table. The two builds declare the same methods in
+        // **different orders**, which the one-slot theory got wrong -- read
+        // off the game's own dispatch sites, its slot 3 takes
+        // `(TInt, 0x02000000)`, and 0x02000000 is
+        // `EMdaPriorityPreferenceQuality`, so slot 3 is `SetPriority`, which
+        // on 9.x is the *sixth* virtual and not the first. Each of these came
+        // from a call site:
+        //
+        //   3  `mov r2, #0x02000000` before the call     SetPriority
+        //   4  a pointer built at object+48, after NewL  Open
+        //   5  no arguments, result fed to slot 7        MaxVolume
+        //   7  takes what slot 5 returned                SetVolume
+        //   9  takes `[r7, r4, lsl #2]`, an array of descriptors   WriteL
+        //   10 no arguments, after a `cmn r1, #10`       Stop
+        //
+        // Slot 8 is called with `(100, 0)` and nothing identifies it, so it
+        // goes nowhere rather than somewhere wrong.
+        const int to = kMdaMap[k];
+        if (to < 0) {
+            u32 *t0 = tramp + k * MDA_TRAMP;
+            t0[0] = 0xE3A00000;             // mov r0, #0
+            t0[1] = 0xE12FFF1E;             // bx  lr
+            vt[k] = (u32)t0;
+            continue;
+        }
+        const u32 from = (u32)to;
+        u32 *t = tramp + k * MDA_TRAMP;
+        if (MDA_TRACE) {
+            t[0]  = 0xE92D400F;             // push {r0-r3, lr}
+            t[1]  = 0xE1A0000D;             // mov  r0, sp
+            t[2]  = 0xE59F1014;             // ldr  r1, [pc, #20]  -> ctx
+            t[3]  = 0xE59F2014;             // ldr  r2, [pc, #20]  -> slot
+            t[4]  = 0xE59F3014;             // ldr  r3, [pc, #20]  -> the logger
+            t[5]  = 0xE12FFF33;             // blx  r3
+            t[6]  = 0xE8BD400F;             // pop  {r0-r3, lr}
+            t[7]  = 0xE5900004;             // ldr  r0, [r0, #4]
+            t[8]  = 0xE59FF00C;             // ldr  pc, [pc, #12]  -> the method
+            t[9]  = (u32)c;
+            t[10] = k;
+            t[11] = (u32)&gate6_mda_call;
+            t[12] = 0;
+            t[13] = rvt[from];
+        } else {
+            t[0] = 0xE5900004;              // ldr r0, [r0, #4]
+            t[1] = 0xE51FF004;              // ldr pc, [pc, #-4]
+            t[2] = rvt[from];
+        }
         vt[k] = (u32)t;
     }
     vt[0] = 0;
     vt[1] = 0;
     obj[0] = (u32)vt;
     obj[1] = (u32)real;
-    user_imb_range(obj, tramp + MDA_SLOTS * 3);
+    user_imb_range(obj, tramp + MDA_SLOTS * MDA_TRAMP);
     log_event(c, NOTE_SOUND, (u32)obj);
     log_block(c);
     return (u32)obj;

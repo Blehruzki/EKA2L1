@@ -109,23 +109,45 @@ reached the audio call in its life. With a logging fake in its place the
 whole path runs, no panic, and the bridge carries functions 1, 4, 5, 15
 (x48), 19, 25, 26, 27, 28, 32 and 33 across in a minute.
 
-**What is left is the stream object itself.** `epoc9.def` gives
-mediaclientaudiostream ordinal **3** for `NewL(MMdaAudioOutputStreamCallback&,
-CMdaServer*)`, and it resolves and runs. But GCC98r2 gives a class **one**
-destructor entry and EABI gives it **two**, so every virtual after the
-destructor sits one slot further along on 9.x. Under that shift the slots the
-game actually calls -- 3, 4, 5, 7, 9, 10 -- read as `SetAudioPropertiesL`,
-`Open`, `MaxVolume`, `SetVolume`, `WriteL`, `Stop`: exactly the set for
-playing a stream, and nothing else. A proxy object with a shifted vtable gets
-three messages further than the bare pointer and then faults.
+**What is left is one table: which 9.x vtable slot is which.**
 
-It is not the bench: this machine has no sound card and cubeb was failing to
-start, which would have been a tidy explanation, but a null ALSA device
-removes that error and the run is identical. So the vtable *order* is right
-and something in the *arguments* is not. `Open(TMdaPackage*)` is the
-candidate -- an N-Gage-era settings package handed to a 9.x reader -- and the
-next step is to log each proxy slot with its arguments, which is the same
-instrument again.
+The stream object is reached, created and called. `epoc9.def` gives
+mediaclientaudiostream ordinal **3** for `NewL(MMdaAudioOutputStreamCallback&,
+CMdaServer*)`, and it resolves and runs. The game then calls the stream
+through its vtable, and the two builds do not agree on the order.
+
+**The game's side is known**, read off its own dispatch sites:
+
+| game slot | what, and how it was identified |
+|---|---|
+| 3 | `SetPriority` -- `mov r2, #0x02000000` before the call, which is `EMdaPriorityPreferenceQuality` |
+| 4 | `Open` -- handed a pointer built at object+48, straight after `NewL` |
+| 5 | `MaxVolume` -- no arguments, result fed into slot 7 |
+| 7 | `SetVolume` -- takes what slot 5 returned |
+| 9 | `WriteL` -- takes `[r7, r4, lsl #2]`, an element of an array of descriptors |
+| 10 | `Stop` -- no arguments |
+| 8 | unknown; called with `(100, 0)` and nothing identifies it |
+
+**The 9.x side is half known.** Dumping the real vtable (E191) settles its
+shape: `[0]` offset-to-top, `[1]` typeinfo, **`[2]` and `[3]` both a
+destructor** (each begins `push {r4,r5,lr}; ldr r3,[pc]; str r3,[r0]`, a
+destructor reinstalling a vtable -- the EABI complete/deleting pair), and the
+virtuals from **4**. The DLL is **Thumb**, so every entry is odd and the low
+bit is not part of the address. `[4]` is a bare `bx lr` in another module and
+the rest are forwarders of the shape `ldr r0, [r0, #8]; bl impl`.
+
+What is *not* settled is which virtual is which. Taking the declared order --
+SetAudioPropertiesL, Open, MaxVolume, Volume, SetVolume, SetPriority, WriteL,
+Stop, Position -- puts `SetPriority` at 9, and the game's priority argument
+is then dereferenced as a pointer: clamping 256 to 100 moves the fault from
+"reading 0x100" to "reading 0x64" exactly (E193). So slot 9 takes a pointer
+and is not `SetPriority`, and the declared order is not the vtable order.
+
+Three runs have now been spent guessing it, which is two too many. The way
+to finish it without guessing is already half built: the forwarders differ
+only in the `bl` offset into the implementation class, so computing those
+targets and sorting them gives the implementation's own order, which
+`src/patch/mediaclientaudiostream/inc/impl.h` in the emulator's tree names.
 
 **What the probe added.** Every N-Gage-only import (GAMEUTILS, GAMECOMMS,
 ARENAFRAMEWORK, NOKIAFC) is a no-op returning zero. Handing back a non-null
