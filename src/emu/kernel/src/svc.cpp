@@ -2304,6 +2304,26 @@ namespace eka2l1::epoc {
             thr_name = "AnonymousThread";
         }
 
+        // EKA2 puts a ceiling on a user thread's stack; EKA1 did not. Without
+        // it the emulator accepts a stack a device refuses, and a program that
+        // only ever ran here looks healthy while hardware answers KErrTooBig
+        // and the caller leaves. That is not hypothetical: a Symbian 7 title
+        // ported onto 9.x asks for a 100,000-byte stack for its sound server
+        // thread, runs here, and dies on an N95 at exactly that call.
+        //
+        // The ceiling is a platform parameter on a real device rather than a
+        // fixed number in the ABI, so this is the documented EKA2 default and
+        // errs towards being stricter than the phone -- which is the useful
+        // direction for something whose job is to catch this before hardware
+        // does.
+        static constexpr int MAX_USER_THREAD_STACK = 0x14000;
+
+        if (info->user_stack_size > MAX_USER_THREAD_STACK) {
+            LOG_ERROR(KERNEL, "Thread {} asks for a {:d}-byte stack; EKA2 allows {:d}",
+                thr_name, info->user_stack_size, MAX_USER_THREAD_STACK);
+            return epoc::error_too_big;
+        }
+
         const kernel::handle thr_handle = kern->create_and_add<kernel::thread>(static_cast<kernel::owner_type>(owner),
                                                   mem, kern->get_ntimer(), kern->crr_process(),
                                                   kernel::access_type::local_access, thr_name, info->func_ptr, info->user_stack_size,

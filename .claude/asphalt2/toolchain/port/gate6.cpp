@@ -760,6 +760,7 @@ struct Context {
     u32 cardControl;        // the DoControl diversion, with the context in r3
     u32 realResume;         // RThread::Resume, as resolved
     u32 threadCreateThunk;
+    u32 threadStackThunk;
     u32 threadResumeThunk;
     u32 fileReadThunk;      // the diversions handed over in their place
     u32 fileSizeThunk;
@@ -1762,7 +1763,7 @@ enum { IMPORT_SCREEN_INFO = 356, WATCH_THE_SCREEN = 1 };
 // applied: the address ScreenInfo hands back is already the first pixel here,
 // and EKA2L1 answers 32 for it regardless, which would shift the picture.
 enum { HAL_BITS_PER_PIXEL = 76, HAL_OFFSET_TO_FIRST_PIXEL = 79,
-       HAL_OFFSET_BETWEEN_LINES = 80, ASK_HAL = 1 };
+       HAL_OFFSET_BETWEEN_LINES = 80, HAL_DISPLAY_MODE = 84, ASK_HAL = 1 };
 // The N-Gage's screen, which is what this game draws whatever it is told.
 // GAME_W is what shows; GAME_PITCH is how far apart the game puts its rows.
 // Measured (E133-E135): the game writes rows 176 apart and draws up to **192**
@@ -3119,6 +3120,96 @@ static u32 arg5_thunk(u8 *code, const void *ctx, u32 handler)
 enum { CREATE_ORDINAL = 1158 };
 enum { NEW_RTHREAD_CREATE = CREATE_ORDINAL, NEW_RTHREAD_RESUME = 1795 };
 
+// Round 60, the thing the phone stops on. `RThread::Create` is called from
+// `0xb86ec` -- the connect-or-start-SoundServer site -- with `aStackSize` =
+// 100,000, a literal at `0xba370`. EKA1 allocated whatever was asked for.
+// **EKA2 caps a user thread's stack**, the N95 answers `KErrTooBig` (-40),
+// and the game turns that straight into `User::Leave(-40)` and `User::Exit`.
+// EKA2L1 has no cap at all -- `thread_create` in its `svc.cpp` page-aligns the
+// size and allocates -- which is why 142 emulator runs never saw this.
+//
+// The exact cap is not something this side can know, so the trampoline does
+// two things and neither guesses: it clamps the request to STACK_CEILING, so
+// that the phone and the emulator ask for the same thing and the two logs stay
+// comparable, and if the device still says KErrTooBig it halves and tries
+// again down to STACK_FLOOR, ending up with the largest stack the device will
+// actually give. A thread that then overflows says so as a KERN-EXEC 3, which
+// is a different and visible failure.
+enum { STACK_CEILING = 0x10000, STACK_FLOOR = 0x1000 };
+enum { CLAMP_THREAD_STACK = 1, IMPORT_THREAD_CREATE = 299 };
+
+extern "C" void gate6_thread_stack(u32 err, u32 stack, Context *c)
+{
+    log_event(c, NOTE_THREAD_CREATE, err);
+    log_event(c, NOTE_THREAD_ARG, stack);
+    log_block(c);
+}
+
+// `frame_thunk` cannot be used here and the comment at WRAP_CREATE says why:
+// it pushes seven words before calling the target, so a six-argument call
+// reads its stack arguments out of our saved registers. This one copies the
+// caller's stack arguments down itself -- four of them, which covers the
+// seven-argument overload as well as the six-argument one, since `aStackSize`
+// is r3 in both -- and touches nothing else.
+//
+//   stmdb sp!, {r4-r8, r10, r11, lr}    @ 32 bytes: caller's args at sp+32..44
+//   mov   r4-r7, r0-r3                  @ keep this, name, function, stack
+//   r7 = min(r7, ceiling)
+// retry:
+//   ldr   r0-r3, [sp, #32..44] ; stmdb sp!, {r0-r3}
+//   mov   r0-r3, r4-r7 ; call the real one ; add sp, sp, #16
+//   cmn   r0, #40                       @ KErrTooBig?
+//   bne   done
+//   r7 >>= 1 ; if r7 >= floor goto retry
+// done:
+//   record (r0 = the error, r1 = the stack size that was used)
+enum { STACK_WORDS = 38 };
+
+static u32 stack_thunk(u8 *code, const void *ctx, u32 target, u32 ceiling)
+{
+    u32 *b = (u32 *)code;
+    b[0]  = 0xE92D4DF0;                 // stmdb sp!, {r4-r8, r10, r11, lr}
+    b[1]  = 0xE1A04000;                 // mov   r4, r0
+    b[2]  = 0xE1A05001;                 // mov   r5, r1
+    b[3]  = 0xE1A06002;                 // mov   r6, r2
+    b[4]  = 0xE1A07003;                 // mov   r7, r3
+    b[5]  = 0xE59F806C;                 // ldr   r8, [pc, #108]  -> b[34]
+    b[6]  = 0xE1580007;                 // cmp   r8, r7
+    b[7]  = 0x31A07008;                 // movcc r7, r8
+    b[8]  = 0xE59D0020;                 // ldr   r0, [sp, #32]
+    b[9]  = 0xE59D1024;                 // ldr   r1, [sp, #36]
+    b[10] = 0xE59D2028;                 // ldr   r2, [sp, #40]
+    b[11] = 0xE59D302C;                 // ldr   r3, [sp, #44]
+    b[12] = 0xE92D000F;                 // stmdb sp!, {r0-r3}
+    b[13] = 0xE1A00004;                 // mov   r0, r4
+    b[14] = 0xE1A01005;                 // mov   r1, r5
+    b[15] = 0xE1A02006;                 // mov   r2, r6
+    b[16] = 0xE1A03007;                 // mov   r3, r7
+    b[17] = 0xE59FC040;                 // ldr   r12, [pc, #64]  -> b[35]
+    b[18] = 0xE1A0E00F;                 // mov   lr, pc
+    b[19] = 0xE12FFF1C;                 // bx    r12
+    b[20] = 0xE28DD010;                 // add   sp, sp, #16
+    b[21] = 0xE3700028;                 // cmn   r0, #40         -- KErrTooBig
+    b[22] = 0x1A000002;                 // bne   -> b[26]
+    b[23] = 0xE1B070A7;                 // movs  r7, r7, lsr #1
+    b[24] = 0xE3570A01;                 // cmp   r7, #0x1000  -- STACK_FLOOR
+    b[25] = 0x2AFFFFED;                 // bcs   -> b[8]
+    b[26] = 0xE1A0A000;                 // mov   r10, r0
+    b[27] = 0xE1A01007;                 // mov   r1, r7
+    b[28] = 0xE59F2018;                 // ldr   r2, [pc, #24]   -> b[36]
+    b[29] = 0xE59FC018;                 // ldr   r12, [pc, #24]  -> b[37]
+    b[30] = 0xE12FFF3C;                 // blx   r12
+    b[31] = 0xE1A0000A;                 // mov   r0, r10
+    b[32] = 0xE8BD4DF0;                 // ldmia sp!, {r4-r8, r10, r11, lr}
+    b[33] = 0xE12FFF1E;                 // bx    lr
+    b[34] = ceiling;
+    b[35] = target;
+    b[36] = (u32)ctx;
+    b[37] = (u32)&gate6_thread_stack;
+    user_imb_range(b, b + STACK_WORDS);
+    return (u32)b;
+}
+
 extern "C" void gate6_thread_created(u32 err, const u32 *frame, Context *c)
 {
     enum { FRAME_R4 = 4, FRAME_STACKARG = 7 };
@@ -3336,11 +3427,15 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
     if (OWN_SCREEN && p[2] && !c->gameScreen) {
         c->realScreen = (u8 *)p[3];
         const u32 w = p[4], h = p[5];
-        int bpp = 0, pitch = 0, first = 0;
+        int bpp = 0, pitch = 0, first = 0, mode = -1;
         if (ASK_HAL) {
             if (hal_get(HAL_BITS_PER_PIXEL, &bpp)) bpp = 0;
             if (hal_get(HAL_OFFSET_BETWEEN_LINES, &pitch)) pitch = 0;
             if (hal_get(HAL_OFFSET_TO_FIRST_PIXEL, &first)) first = 0;
+            // Recorded, not acted on. Round 60 showed the other two attributes
+            // lying on an N95, so this one is on trial: if it names the mode
+            // correctly there, a later build can derive the format from it.
+            if (hal_get(HAL_DISPLAY_MODE, &mode)) mode = -1;
         }
         // Bytes per pixel from the **pitch**, not from EDisplayBitsPerPixel:
         // the emulator answers 24 for a buffer that is plainly four bytes a
@@ -3349,18 +3444,29 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         // pitch divided by the width cannot lie about it.
         // Compared, not divided: there is no __aeabi_uidiv in this image and
         // a runtime divide will not link.
-        u32 bytes = 0;
+        //
+        // Round 60 then showed the pitch lying too. The N95 answers 16 bits a
+        // pixel and 640 bytes a line for a 240-pixel screen -- and **640 is
+        // not a multiple of 240 at any pixel size**: 240*2 is 480, 240*4 is
+        // 960. The pair was never self-consistent, and no phone was needed to
+        // see that. Written as 2 bytes on a 640-byte line, the image came out
+        // in 88-pixel bands with seams at columns 16, 104 and 176, which is
+        // exactly what 16-bit writes do in a buffer that is 4 bytes a pixel on
+        // a 960-byte line. So: accept HAL's pitch only when it is exactly
+        // `w * 2` or `w * 4`, and otherwise take the layout the video
+        // measured, which is also the one the emulator has.
+        u32 bytes = 0, use = 0;
         if (pitch > 0 && w > 0) {
-            if ((u32)pitch >= w * 4) bytes = 4;
-            else if ((u32)pitch >= w * 2) bytes = 2;
+            if ((u32)pitch == w * 4) { bytes = 4; use = (u32)pitch; }
+            else if ((u32)pitch == w * 2) { bytes = 2; use = (u32)pitch; }
         }
-        if (bytes != 2 && bytes != 4)
-            bytes = (bpp == 16) ? 2u : 4u;
+        if (!bytes) { bytes = 4; use = w * 4; }
         c->realBpp = bytes * 8;
-        c->realPitch = (pitch > 0) ? (u32)pitch : w * bytes;
+        c->realPitch = use;
         log_event(c, NOTE_SCREEN, (u32)bpp);
         log_event(c, NOTE_SCREEN, (u32)pitch);
         log_event(c, NOTE_SCREEN, (u32)first);
+        log_event(c, NOTE_SCREEN, (u32)mode);
         log_event(c, NOTE_SCREEN, c->realBpp);
         log_event(c, NOTE_SCREEN, c->realPitch);
         c->offX = w > (u32)GAME_W ? (w - (u32)GAME_W) / 2 : 0;
@@ -3571,6 +3677,18 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
     // exactly the ones that came back as junk. The instrument was the fault it
     // reported. Same objection applies to `self_thunk` and `open_thunk`
     // wherever the wrapped function takes more than four arguments.
+    // ... which is what `stack_thunk` exists for: it copies the caller's stack
+    // arguments down itself instead of leaving the callee to read ours. So the
+    // dynamic route gets the same clamp as the static import, and this is the
+    // wrapper the two thread calls go through now.
+    if (CLAMP_THREAD_STACK && fn && kind == LIB_EUSER && mapped == NEW_RTHREAD_CREATE) {
+        if (!c->threadStackThunk && c->spare + STACK_WORDS * 4 <= c->spareEnd) {
+            c->threadStackThunk = stack_thunk(c->spare, c, fn, STACK_CEILING);
+            c->spare += STACK_WORDS * 4;
+        }
+        if (c->threadStackThunk && ((u32 *)c->threadStackThunk)[35] == fn)
+            return c->threadStackThunk;
+    }
     enum { WRAP_CREATE = 0 };
     if (WRAP_CREATE && fn && kind == LIB_EUSER && mapped == NEW_RTHREAD_CREATE) {
         if (!c->threadCreateThunk && c->spare + FRAME_THUNK_BYTES <= c->spareEnd) {
@@ -4645,6 +4763,17 @@ static u32 load_and_start()
         iat[IMPORT_SCREEN_UPDATE] =
             ctx_thunk(ctx->spare, ctx, (u32)&gate6_screen_update);
         ctx->spare += TRACE;
+    }
+    // RThread::Create, clamped. Round 60: the phone refuses the game's
+    // 100,000-byte stack and the run ends there. Both routes into it are
+    // wrapped -- this one for the static import the SoundServer start site
+    // calls, and the one in the lookup for the game's own dynamic calls.
+    if (CLAMP_THREAD_STACK && IMPORT_THREAD_CREATE < nImports &&
+        ctx->spare + STACK_WORDS * 4 <= ctx->spareEnd) {
+        iat[IMPORT_THREAD_CREATE] = stack_thunk(ctx->spare, ctx,
+                                                iat[IMPORT_THREAD_CREATE],
+                                                STACK_CEILING);
+        ctx->spare += STACK_WORDS * 4;
     }
     if (WATCH_THE_SCREEN && IMPORT_SCREEN_INFO < nImports &&
         ctx->spare + TRACE <= ctx->spareEnd) {
