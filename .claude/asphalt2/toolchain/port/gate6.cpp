@@ -5487,6 +5487,11 @@ static u32 load_and_start()
         281,                        // RHandleBase::Close -- twice, at 0xb87b0 and 0xb87b8
         330, 386, 319, 363, 367,    // TrapCleanup, ActiveScheduler ctor/Install, Signal, Start
         298,                        // RSessionBase::CreateSession, the connect that follows
+        // The sound path, end to end. None of these was traced before, and
+        // their absence from the log was read as "never called" when all it
+        // ever meant was "never watched".
+        357, 295, 397, 366, 355, 400, 285, 376, 339,
+        458,                        // CMdaAudioOutputStream::NewL -- ordinal 2 is not a pad
         // The game's allocator, recorded on a worker and dropped on the main
         // thread -- see worker_only_import.
         372, 269, 373, 323, 315,    // TTrap::Trap, User::AllocL, UnTrap, LeaveNoMemory, Free

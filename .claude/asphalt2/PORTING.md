@@ -64,11 +64,45 @@ and the session is created. Thirty-five `SendReceive` wrappers sit
 immediately after it, `0xba5c0` to `0xbad28`: the sound API, one wrapper per
 request.
 
-**4. And not one of them is ever called.** `RSessionBase::SendReceive` has
-**zero** calls in every log of the session, phone and emulator, before and
-after the probe. The client connects and never speaks. `CMdaAudioOutputStream
-::NewL` is therefore never reached, which is why there is no sound: not a
-broken audio path but an unused one.
+**4. The client speaks constantly, and nothing is listening.**
+`RSessionBase::SendReceive` is called **835 times a minute**, from eight of
+those wrappers. Our stand-in for it is `LOCAL_NOOP`: it answers `KErrNone`
+and drops the message.
+
+*(Corrected from the first reading of this, which said SendReceive was never
+called. `TRACE_MILESTONES` traces only the imports listed in `kMilestone`,
+and 357 was not among them, so the zero meant "never watched". Anything read
+off that list needs the list checked first -- `CServer::*`, `CSession::*`
+and import 458 were all in the same position.)*
+
+**5. The server thread builds its server and waits for ever.** Its records
+go to RDebug rather than the log, because the box only writes from the main
+thread, and the emulator's own output has them: `CTrapCleanup::New`,
+`User::AllocL`, `CActiveScheduler` constructor and `Install`,
+**`CServer::CServer`**, **`CServer::StartL`**, `RSemaphore::Signal`, then
+`CActiveScheduler::Start`. So the thread is alive and sitting in its loop.
+But `CServer::StartL` is `LOCAL_NOOP` -- nothing was ever really started --
+and there is no session, so no message ever arrives, `ServiceL` never runs,
+and `CMdaAudioOutputStream::NewL` is never reached.
+
+**So the silence is one missing piece: the in-process bridge.** Both ends
+are inside our process. What it needs:
+
+1. `CServer::StartL` to remember the server object and the name it was
+   started under, instead of doing nothing.
+2. `RSessionBase::CreateSession` to find that server by name and ask it for
+   a session -- `NewSessionL` is a virtual on the game's own `CServer`
+   subclass, so it is a vtable call whose slot has to be found.
+3. `RSessionBase::SendReceive` to build an EKA1 `RMessage` the game's
+   `ServiceL` understands and call it straight, on the caller's thread, with
+   no kernel IPC. `RMessage::Complete` is import 285, so the game does call
+   it, and the message layout has to match what its `ServiceL` reads.
+4. Import 458 pointed at S60v3's real `CMdaAudioOutputStream::NewL`, and the
+   returned object given whatever vtable the game calls on it -- the same
+   talking-fake trick reads those slots off, since the game uses the stream
+   polymorphically (slot 2 with argument 3 at `0x1df08`).
+
+Steps 1 to 3 are all testable in the emulator.
 
 **What the probe added.** Every N-Gage-only import (GAMEUTILS, GAMECOMMS,
 ARENAFRAMEWORK, NOKIAFC) is a no-op returning zero. Handing back a non-null
