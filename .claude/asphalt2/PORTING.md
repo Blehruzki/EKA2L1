@@ -23,7 +23,10 @@ this is the first thing to suspect.
 
 Everything lives in `toolchain/port/`. `gate6.cpp` is the loader and shim,
 `gate6.s` its imports, `gen_shim.py` generates the import table into
-`gate4_shim.cpp`, `build_gate6.py` builds `gate6.sis`.
+`gate4_shim.cpp`, `build_gate6.py` builds `gate6.sis`. `readlog.py` reads and
+diffs a run's log; `d2.py` disassembles the game image. Use `d2.py` and not the
+scratchpad's `dis.py`, which prints every mnemonic one instruction below its
+true address and sent round 60's first reading to the wrong call site.
 
 ## Read this first: settled, retracted, and the rules
 
@@ -34,6 +37,32 @@ here and the section it overturns is marked.*
 
 ### Settled
 
+- **EKA2 caps a user thread's stack and EKA1 did not**, and that is what round
+  60 stopped on: the game starts its sound server at `0xb86ec` with
+  `RThread::Create(..., aStackSize = 100,000, ...)` -- a literal at `0xba370`
+  -- and an N95 answers `KErrTooBig`, which the game turns straight into
+  `User::Leave(-40)` and `User::Exit`. `stack_thunk` clamps the request to
+  64 KB and halves it on a refusal down to 4 KB, so the thread gets the
+  largest stack the device will actually give. It copies the caller's stack
+  arguments down itself, which is the thing `frame_thunk` got wrong and which
+  kept `WRAP_CREATE` off for twenty rounds.
+- **EKA2L1 had no such cap**, which is why 142 emulator runs cleared a build
+  that could not run. `thread_create` in `src/emu/kernel/src/svc.cpp` now
+  refuses a user stack over the EKA2 default ceiling. With the shim's clamp
+  turned off the emulator ends the run exactly where the phone does: 1,196
+  records aligned from the first frame with **not one code out of place**, and
+  every remaining difference a heap address or a handle (E144).
+- **HAL cannot be trusted for the screen's format.** It answers
+  `EDisplayBitsPerPixel` 24 in the emulator for a four-byte pixel (E138) and,
+  on an N95, 16 bits and a 640-byte line for a 240-pixel screen -- **640 is
+  not a multiple of 240 at any pixel size**, so the pair was never
+  self-consistent and no phone was needed to see it. Written as 2 bytes on a
+  640-byte line the splash came out in 88-pixel bands with seams at columns
+  16, 104 and 176, which is what 16-bit writes do in a buffer that is 4 bytes
+  a pixel on a 960-byte line. An inconsistent pair is now rejected.
+  `EDisplayMode` is queried and logged but not yet acted on; in the emulator
+  it answers `EColor16MU`, which is the truth the bits-per-pixel attribute
+  does not tell, and the next hardware round says whether it tells it there.
 - The game's image has no data and no bss; every global lives behind
   `Dll::Tls()`, and that root is built correctly by our loader.
 - The reboots -- a month of them -- were **two `RFile`s closed with
