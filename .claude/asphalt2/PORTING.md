@@ -35,6 +35,54 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### Audio: where the silence comes from
+
+Reconnaissance only so far -- no code written -- but the shape is clear, and
+it is not where I expected.
+
+- **The game makes exactly one call into an audio DLL, and it is a pad.**
+  `MEDIACLIENTAUDIOSTREAM[10003996].DLL` contributes **one** import, ordinal
+  2, which `epoc6.def` names `CMdaAudioOutputStreamPadFunction()` -- a
+  placeholder export that does nothing. Ordinal 1 is the real
+  `CMdaAudioOutputStream::NewL`, and the game does not import it. So the
+  image never asks MDA for an output stream.
+- **And it never calls even that.** Across every log in the session, import
+  458 has been called **0 times**.
+- **The crack's audio patches are about loading, not sound.** They repoint
+  imports 458 and 459 at `CMdaAudioOutputStream::NewL`, which makes an image
+  that depends on `nokiafc.dll` and a pad export load on a phone that has
+  neither. Carrying them across would not produce a note.
+- **The audio the game does use is the N-Gage's own.** Its imports include
+  four DLLs that exist on no S60v3 device: `GAMEUTILS[101fb6f5]` (6 imports),
+  `GAMECOMMS[101f5ee2]` (20), `ARENAFRAMEWORK[101fde50]` (4) and
+  `NOKIAFC[101f8a5b]` (1). Every one of them is wired in the shim to
+  `LOCAL_NOOP`. GAMECOMMS and ARENAFRAMEWORK are never called -- they are
+  N-Gage Arena, the online side. **GAMEUTILS and NOKIAFC are.**
+- **Where they are called says what they are for.** Five GAMEUTILS entries
+  are called once per launch from a tight cluster at `0x39494`-`0x394cc`,
+  and each result is stored straight into an object: offsets 972, 980, 664
+  and 988, and the last call's result is turned into a **boolean** at a fixed
+  offset (`subs r0, r0, #0; movne r0, #1; strb`). That is a platform-services
+  constructor building handles and then recording whether it succeeded. With
+  every one of them a no-op, the handles are junk and the flag is false.
+- So the likely gate is **not** MDA at all: the game asks the N-Gage for its
+  audio objects, is told nothing, and runs silent. NOKIAFC's single ordinal
+  is called once per launch from `0x1ea8`, in a function that builds a
+  520-byte descriptor on the stack -- a path, by its size -- which is a
+  separate question.
+
+**Next step, and it is a probe rather than a fix.** `LOCAL_NOOP` returns
+nothing; give those five GAMEUTILS entries a *non-null* dummy object instead
+and the game will start calling methods on it. Those calls can be logged,
+and what it asks of the object is what the interface is. That is the same
+method that answered the framebuffer: hand the game something and write down
+what it does with it. It is testable in the emulator, so it costs no
+hardware round.
+
+What it cannot answer is what the N-Gage's `gameutils.dll` ordinals 10, 11,
+14, 15, 17 and 19 actually *were*; that has to come from how the game uses
+what they return.
+
 ### Settled
 
 - **The game runs on the phone.** Round 69: 836 frames, 968 framework calls

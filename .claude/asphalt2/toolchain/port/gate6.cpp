@@ -3748,7 +3748,11 @@ static const u16 kInset[] = {            // rows to leave at the top
     0, 16, 32, 48, 0, 56, 0, 64,         // 0-3, 5, 7
 };
 enum { SCREEN_KNOWN = 1, SCREEN_KNOWN_BPP = 32, SCREEN_KNOWN_PITCH = 1280 };
-enum { SCREEN_PICKER = 1, INSET_COUNT = sizeof kInset / sizeof kInset[0] };
+// **Off from build 149.** The phone has answered every question the picker
+// was built to ask -- format, stride, origin, first pixel, inset, fitting --
+// and while it is on it eats keys the game wants: `2` is nitro as well as a
+// mode change. The answers it found are the defaults above.
+enum { SCREEN_PICKER = 0, INSET_COUNT = sizeof kInset / sizeof kInset[0] };
 enum { KEY_INSET_NEXT = '*', KEY_INSET_PREV = '#', KEY_INSET_UP = '6',
        KEY_INSET_DOWN = '4', KEY_FMT_DEPTH = '9' };
 enum { INSET_STEP = 2, INSET_STEP_BIG = 8, INSET_MAX = 120 };
