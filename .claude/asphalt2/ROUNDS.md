@@ -223,6 +223,10 @@ them, and say so.
 | E168 | **build 143e -- two raw frames of a race, to see whether the offset is the same elsewhere** | 18650 | `--` | **Same sixteen, and the stride confirmed a third way.** The sharpest column boundary on the race screen is again at 16 (10.4 against a mean of 3.29), so the displacement is not a property of the title screen. And scoring the stride by *vertical* continuity -- column c of row y against column c of row y+1, over the middle of the frame -- picks **176 at 3.76** against 5.46 for its nearest neighbour and 8.5 at 240. Stride 176, origin 16, measured from the game's own bytes on two unrelated screens |
 | E169 | **build 144 -- read the game's buffer from pixel sixteen** | 14207 | `--` | **Builds and runs, 14,207 records, no leave.** One term added to the source address in the blit and one field in the context; the layout is untouched, because the picture is the same size and only read from a different place |
 | E170 | **build 144 with a screenshot** | -- | `--` | **The wrap is gone.** `$000260` is whole where it read `$00026` with a stray `0` at the far left, `KmH` is whole where the `K` was on the other side of the screen, the dashboard runs edge to edge, and the left column is clean. Same run also confirms the round-74 shape holds: the race fills the screen with the aspect kept |
+| E171 | **build 144b -- paint the blit's own outline** | 5031 | `--` | **The strip in E170 was ours, and the instrument said so in one run.** Destination column 0 painted green, column 239 red: the green line came out at screen x=639 and the red at x=637, *beside it*, at the right-hand end of the picture. Every row was starting eight pixels early and wrapping. Eight pixels at four bytes is 32 bytes, and the emulator's own source has that number twice -- `hal.cpp` computes `EDisplayOffsetToFirstPixel` as `sizeof(u16) * WORD_PALETTE_ENTRIES_COUNT` = 32, and `screen.cpp` adds exactly that to the chunk base to find the pixels. **The screen chunk begins with a sixteen-entry word palette and `ScreenInfo` hands back the chunk's base.** I had read HAL's 32 as an emulator quirk and refused it since build 59 |
+| E172 | **build 145 -- skip the palette** | 5979 | `--` | **Right here and still right on the phone.** HAL's offset is applied now, but only after a sanity check -- a whole number of pixels and under 4 KB -- because HAL has lied about every other display attribute on the N95. The emulator answers 32 and the emulator needs 32; the **phone answers 0**, which is why build 144, applying nothing, was correct there. One build, both right. The screenshot has the picture edge to edge with no strip |
+| E173 | **build 146 -- no screen furniture** | 7923 | `--` | **Avkon takes the flag and the game still runs.** `ENoScreenFurniture` (0x04) added to the flags the game asks for. 7,923 records, the frame loop running, the picture unchanged here -- which is the point: the emulator does not paint a status pane over us, so this run only shows the flag is safe. Whether it clears the band is the phone's to say |
+| E174 | **build 146 with a screenshot** | -- | `--` | **Looked at, as a control.** The race renders exactly as it did in E170: full width, shape kept, `$000260` and `KmH` whole, nothing at any edge. Nothing regressed by dropping the furniture |
 
 <!-- EMURUN -->
 
@@ -296,6 +300,7 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 73 | **build 141 again** -- the same picker, driven deliberately: preset `7`, then `*` eight times | 1, the count itself | **Eight clicks from preset 7 is the picture** | **Independent confirmation of round 72, and it is arithmetic rather than judgement.** Build 141's preset 7 is four bytes on a **1152**-byte line and `*` steps the line by sixteen, so eight clicks land on **1152 + 128 = 1280**, at four bytes a pixel. Round 72 reached 32bpp/1280 by measuring how long the user's hand sweep dwelt on each format; this reached it by counting the keys they pressed. Two different readings of two different runs, same number. The format question is closed |
 | 74 | **build 142** -- the picture scaled to fill, and the buffer blanked | 1, a photograph and five logs | **Wrong aspect, and the right-hand side still comes back through the left.** Colours right, composition almost right | **The scaling arithmetic was sound and the shape it was given was not.** Round 72 read the 1280-byte line as a 320-pixel buffer whose rotation is the reported 240x320; build 142 drew 203x240 at column 58 on that basis, and the photograph shows the picture running off the *right-hand edge of the screen* -- which can only happen if the visible width is the 240 `ScreenInfo` reports. So 1280 is a **padded stride** (240 pixels at four bytes is 960) and the reported size is the screen. The five logs also settle that the format itself is right: they sweep it again and `32bpp/1280` holds the longest dwell in every one of them -- 2,606 of 2,893 records in `g6box1-4`, 1,891 of 1,933 in `g6box6-8` -- so the sweeps were the user trying to fix the *shape* with the *format* knob, which was the only knob there was |
 | 75 | **build 143** -- the aspect fixed, and the keypad on the game's row length | 1, a log and a video | **The aspect is right.** The whole 160-256 range swept, 97 values, and the wrap survives every one of them | **Both halves answered.** The fit records read buffer **240x320**, picture **240x283** at y=18 -- round 74's correction holds on the phone, and the video shows the picture filling the screen with the shape kept. And the sweep is a clean negative: **176 holds 7,489 records of dwell, the next value 1,589**, and the video shows every other value shearing the picture diagonally. So 176 *is* the stride the game writes with, confirmed on hardware for the first time, and the wrap is not in how we read the buffer. That matches what E137 concluded offline from a raw frame: the game writes 176x208 and nothing beyond, but *draws* up to 192 pixels wide, so the overflow lands on the next row. 4,493 frames, no panic |
+| 76 | **build 144** -- the game's buffer read from pixel sixteen | 1, a log and a video | **The wrap is gone on the phone.** The game plays: vehicle select, a tunnel race, the Golden Gate track, nitro. What is left is a band across the top | **The offset was right, and it was right for the phone without any device-specific number.** 16,912 records, `NOTE_SCREEN_FIT` reading 240x320, 240x283 at y=18, `NOTE_SCREEN_SRC` reading origin 16 on a 176 pitch, and no panic. The band across the top is the phone's **status pane**: the port writes the framebuffer directly, so anything the window server paints lands on top of the picture, and the game asks avkon for a standard application with all its furniture. It is visible as itself in the round-74 photograph -- close icon left, battery right -- and as a hazy band over the game once the two repaint in turn. Also settled by this log: the phone's HAL answers **0** for `EDisplayOffsetToFirstPixel` and 0 is right there, while the emulator answers 32 and 32 is right here |
 
 ## Round 74 -- the pitch is padding, and the screen is what it says
 
@@ -395,30 +400,70 @@ moves it.
 image, the way the protection check is patched. Next step is to look at what
 the game actually writes, from a raw frame, rather than to reason about it.
 
+## Round 76 -- the wrap is gone, and the band is the status pane
+
+Build 144 on the phone: the game plays. Vehicle select, a tunnel race, the
+Golden Gate track, nitro, the HUD whole. The right-hand side no longer comes
+back through the left.
+
+Two things came out of the round.
+
+### The palette in front of the screen, found here rather than there
+
+E170's screenshot still had a strip at the right and I called it fixed. The
+user drew a line on it. Painting the blit's own outline (E171) answered it in
+one run: destination column 0 landed at screen x=639 and column 239 at x=637,
+*beside it*. Every row was starting eight pixels early and wrapping -- 32
+bytes.
+
+The emulator's own source has that number twice: `hal.cpp` computes
+`EDisplayOffsetToFirstPixel` as `sizeof(u16) * WORD_PALETTE_ENTRIES_COUNT`,
+which is 32, and `screen.cpp` adds exactly that to the chunk base to reach
+the pixels. **The screen chunk begins with a sixteen-entry word palette, and
+`UserSvr::ScreenInfo` hands back the chunk's base.** HAL had been answering
+32 since build 59 and the port refused it, on a note that said the address
+was already the first pixel and the 32 would shift the picture. Backwards.
+
+The phone answers **0** for the same attribute, and 0 is right there -- which
+is why build 144 was correct on the phone and wrong in the emulator. Build
+145 applies HAL's answer after a sanity check, and is right in both.
+
+### The band across the top
+
+The port writes the framebuffer directly, underneath the window server.
+Anything the window server paints therefore lands on top of the picture, and
+the game asks avkon for `BaseConstructL(0)` -- a standard application, with a
+status pane at the top and a button group at the bottom.
+
+That band is visible as itself in round 74's photograph, with the close icon
+on the left and the battery on the right. Over a running game the two
+repaint in turn and it reads as a hazy smear instead.
+
+Build 146 adds **`ENoScreenFurniture`** to the flags, which is what a
+full-screen game asks for. It is not the flag that went wrong before:
+`ENoAppResourceFile` (0x01) took avkon off the rails because it does need the
+resource file; `ENoScreenFurniture` (0x04) only says not to build the panes.
+Avkon takes it and the game still runs (E173, E174).
+
 ## Where we are
 
-**Furthest: round 75, and then E167-E170 -- the display is solved, all of
-it.** The framebuffer is **32 bits a pixel on a 1280-byte line** (rounds 72,
-73, 75). The screen is the **240 x 320** `UserSvr::ScreenInfo` reports and
-1280 is a *padded stride* (round 74). The picture is scaled to **240x283 at
-y=18**, filling the screen with its shape kept, and the buffer is blanked so
-none of the shell shows.
+**Furthest: round 76 -- the game plays on the phone and the picture is
+right.** The framebuffer is 32 bits a pixel on a 1280-byte line; the screen
+is the 240x320 `ScreenInfo` reports and 1280 is a padded stride; the picture
+is scaled to 240x283 at y=18; the game's own picture starts sixteen pixels
+into its buffer, and reading from there fixed the wrap that nine rounds had
+called an overflow. On the phone: vehicle select, a tunnel race, the Golden
+Gate track, nitro, no panic.
 
-And the wrap is fixed. Round 75 swept the read stride over all 97 values from
-160 to 256 and 176 held 7,489 records of dwell against 1,589 for the next,
-which settles the stride and rules the port's read out as the cause. The
-cause came out of the game's own bytes instead (E167, E168): **its picture
-starts sixteen pixels into the buffer.** The sharpest column boundary in a
-raw frame is between 15 and 16 at five times the mean, while the last column
-of a row runs *smoothly* into the first of the next -- a picture displaced
-sixteen pixels along a 176-wide row, whose own right edge therefore comes
-back through the left. Reading from pixel sixteen makes it whole (E170):
-`$000260` and `KmH` complete, nothing at the left edge.
+Two corrections came out of this round. The screen chunk **begins with a
+sixteen-entry word palette**, so `EDisplayOffsetToFirstPixel` has to be
+applied -- 32 in the emulator, 0 on the phone, and HAL is right about both.
+And the band across the top of the phone's screen is the **status pane**: the
+port writes the framebuffer directly, so whatever the window server paints
+lands on the picture. Build 146 asks avkon for no screen furniture.
 
-Nine rounds of calling that an overflow, and it was an offset.
-
-**Next**: the phone has not seen build 144 yet, and audio is still a silent
-stand-in with 17 imports unanswered.
+**Next**: the phone has not seen 145 or 146 yet. After that, audio is still a
+silent stand-in with 17 imports unanswered.
 
 **Best round so far: 72**, narrowly over 69. Round 69 got the game running;
 round 72 made it watchable, and did it by putting the instrument in the

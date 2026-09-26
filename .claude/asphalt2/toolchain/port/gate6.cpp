@@ -240,6 +240,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_SCREEN_FMT = 837,   // which framebuffer format the picker has live
        NOTE_SCREEN_FIT = 838,   // buffer shape, picture size and offset, packed pairs
        NOTE_SCREEN_SRC = 839,   // how wide the game's own rows are being read
+       NOTE_SCREEN_DST = 840,   // and how many bytes of palette precede the screen
        NOTE_SEM_WAIT = 836,     // the main thread's wait on the SoundServer's semaphore
        NOTE_WORKER_SP = 849,    // a worker's stack, so two of them can be told apart
        NOTE_SCRATCH = 847,      // a word of the game's scratch code chunk
@@ -655,6 +656,7 @@ enum { IMPORT_ADDTOSTACKL = 51 };
 
 // EIKAPPUI.H, as gate 5 established.
 enum { ENoAppResourceFile = 0x01, ENoScreenFurniture = 0x04 };
+enum { NO_FURNITURE = 1 };
 
 // This program has no writable globals -- the image declares no .bss -- so each
 // wrapper carries its counterpart itself, parked well past the end of any real
@@ -816,7 +818,9 @@ struct Context {
     u32 screenInfo;         // euser's UserSvr::ScreenInfo, as resolved
     u32 screenUpdate;       // bitgdi's CFbsScreenDevice::Update, as resolved
     u16 *gameScreen;        // the 176x208 16bpp framebuffer handed to the game
+    u8 *screenBase;         // what ScreenInfo handed back: palette, then pixels
     u8 *realScreen;         // and the 32bpp one the emulator actually shows
+    u32 firstPixel;         // bytes of palette in front of it
     u32 realPitch;          // bytes between its lines
     u32 realBpp;            // and bits per pixel: 16 on most phones, 32 here
     u32 offX, offY;         // where the game's picture sits inside it
@@ -3726,14 +3730,18 @@ extern "C" int gate6_file_read_static(void *self, u32 *des, Context *c)
 // anyway -- digits for the candidates, one pixel on `*` and `#`, eight on `4`
 // and `6` -- because it is measured in the emulator and the phone has not
 // confirmed it yet.
-static const u16 kOrigin[] = {           // where the game's first pixel is
-    0, 8, 16, 24, 0, 32, 0, 48,          // 0-3, 5, 7
+static const u16 kFirst[] = {            // bytes of palette before the pixels
+    0, 16, 32, 48, 0, 64, 0, 96,         // 0-3, 5, 7
 };
 enum { SCREEN_KNOWN = 1, SCREEN_KNOWN_BPP = 32, SCREEN_KNOWN_PITCH = 1280 };
-enum { SCREEN_PICKER = 1, ORIGIN_COUNT = sizeof kOrigin / sizeof kOrigin[0] };
-enum { KEY_ORG_NEXT = '*', KEY_ORG_PREV = '#', KEY_ORG_UP = '6', KEY_ORG_DOWN = '4',
-       KEY_FMT_DEPTH = '9' };
+enum { SCREEN_PICKER = 1, FIRST_COUNT = sizeof kFirst / sizeof kFirst[0] };
+enum { KEY_FIRST_NEXT = '*', KEY_FIRST_PREV = '#', KEY_FIRST_UP = '6',
+       KEY_FIRST_DOWN = '4', KEY_FMT_DEPTH = '9' };
+enum { FIRST_STEP = 4, FIRST_STEP_BIG = 32, FIRST_MAX = 4096 };
 enum { SRC_ORIGIN = 16, SRC_ORIGIN_MAX = 64 };
+// Bench only: paint the blit's own outline, so a screenshot says exactly
+// which pixels of the screen we wrote and which we did not.
+enum { BLIT_BORDER = 0 };
 enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
 // Round 74: 176x208 centred in the middle of the screen is a small picture
 // with the phone's own menu round it, so it is scaled up to fill. `8`
@@ -3749,14 +3757,17 @@ static void screen_format(Context *c)
     log_block(c);
 }
 
-// Where the game's first pixel is. Clamped, and the layout is redone because
-// nothing else about it changes -- the picture is the same size, it is only
-// read from a different place.
-static void src_set(Context *c, u32 origin)
+// How many bytes of palette sit in front of the screen's pixels. Moving it
+// moves every row, so the whole buffer is blanked again behind it.
+static void first_set(Context *c, u32 bytes)
 {
-    if (origin > (u32)SRC_ORIGIN_MAX) origin = (u32)SRC_ORIGIN_MAX;
-    c->srcOrigin = origin;
-    screen_layout(c);
+    if ((int)bytes < 0) bytes = 0;
+    if (bytes > (u32)FIRST_MAX) bytes = (u32)FIRST_MAX;
+    c->firstPixel = bytes & ~3u;
+    if (c->screenBase)
+        c->realScreen = c->screenBase + c->firstPixel;
+    c->clearPending = 1;
+    log_event(c, NOTE_SCREEN_DST, c->firstPixel);
     log_block(c);
 }
 
@@ -3853,6 +3864,7 @@ static void screen_layout(Context *c)
     log_event(c, NOTE_SCREEN_FIT, (c->dstW << 16) | (c->dstH & 0xFFFF));
     log_event(c, NOTE_SCREEN_FIT, (c->offX << 16) | (c->offY & 0xFFFF));
     log_event(c, NOTE_SCREEN_SRC, (c->srcOrigin << 16) | (c->srcPitch & 0xFFFF));
+    log_event(c, NOTE_SCREEN_DST, c->firstPixel);
 }
 
 extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
@@ -3879,7 +3891,6 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
     // than hope it adapts, give it a buffer of its own size and format and do
     // the conversion at Update, where we already stand.
     if (OWN_SCREEN && p[2] && !c->gameScreen) {
-        c->realScreen = (u8 *)p[3];
         const u32 w = p[4], h = p[5];
         int bpp = 0, pitch = 0, first = 0, mode = -1;
         if (ASK_HAL) {
@@ -3891,6 +3902,14 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
             // correctly there, a later build can derive the format from it.
             if (hal_get(HAL_DISPLAY_MODE, &mode)) mode = -1;
         }
+        // Where the pixels start. HAL is believed here where it is not
+        // believed about the format, because the answer is checkable: it has
+        // to be a whole number of pixels and it has to be small. The emulator
+        // says 32 and 32 is right; the N95 says 0, which may also be right,
+        // and the keypad can move it if it is not.
+        c->firstPixel = (first >= 0 && first < 4096 && !(first & 3)) ? (u32)first : 0u;
+        c->screenBase = (u8 *)p[3];
+        c->realScreen = c->screenBase + c->firstPixel;
         // Bytes per pixel from the **pitch**, not from EDisplayBitsPerPixel:
         // the emulator answers 24 for a buffer that is plainly four bytes a
         // pixel (960 / 240), because that attribute reports colour depth and
@@ -4082,8 +4101,14 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
                     u8 *p8 = row + (c->offX + x) * 3;
                     p8[0] = (u8)b; p8[1] = (u8)g; p8[2] = (u8)r;
                 } else {
-                    ((u32 *)row)[c->offX + x] =
-                        0xFF000000u | (r << 16) | (g << 8) | b;
+                    u32 out = 0xFF000000u | (r << 16) | (g << 8) | b;
+                    if (BLIT_BORDER) {
+                        if (x == 0) out = 0xFF00FF00u;                  // green: first column
+                        else if (x + 1 == c->dstW) out = 0xFFFF0000u;   // red: last column
+                        else if (y == 0) out = 0xFF00FFFFu;             // cyan: first row
+                        else if (y + 1 == c->dstH) out = 0xFFFFFF00u;   // yellow: last row
+                    }
+                    ((u32 *)row)[c->offX + x] = out;
                 }
             }
         }
@@ -4407,9 +4432,9 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
         log_event(c, NOTE_KEY, k[0]);       // iCode
         log_event(c, NOTE_KEY, k[1]);       // iScanCode
         log_event(c, NOTE_KEY, type);
-        // The picker, now on where the game's first pixel is. A digit selects
-        // a candidate outright, `*` and `#` move it one pixel, `4` and `6`
-        // eight. Only on **EEventKey**, which is type 1 -- E131 recorded types
+        // The picker, now on how many bytes of palette come before the
+        // screen's pixels. A digit selects a candidate outright, `*` and `#`
+        // move it one pixel, `4` and `6` eight. Only on **EEventKey**, which is type 1 -- E131 recorded types
         // 3, 1 and 2 for one press, and those are EEventKeyDown, EEventKey and
         // EEventKeyUp in that order, so type 1 is the one press and the only
         // one where `iCode` carries a character at all. The key is swallowed,
@@ -4428,14 +4453,14 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
                 screen_format(c);
                 return 1;                   // EKeyWasConsumed
             }
-            if (code == (u32)KEY_ORG_UP)   { src_set(c, c->srcOrigin + 8); return 1; }
-            if (code == (u32)KEY_ORG_DOWN)  { src_set(c, c->srcOrigin ? c->srcOrigin - 8 : 0); return 1; }
-            if (code == (u32)KEY_ORG_NEXT)  { src_set(c, c->srcOrigin + 1); return 1; }
-            if (code == (u32)KEY_ORG_PREV)  { src_set(c, c->srcOrigin ? c->srcOrigin - 1 : 0); return 1; }
-            if (code >= '0' && code < '0' + (u32)ORIGIN_COUNT) {
-                const u32 want = kOrigin[code - '0'];
+            if (code == (u32)KEY_FIRST_UP)   { first_set(c, c->firstPixel + (u32)FIRST_STEP_BIG); return 1; }
+            if (code == (u32)KEY_FIRST_DOWN) { first_set(c, c->firstPixel - (u32)FIRST_STEP_BIG); return 1; }
+            if (code == (u32)KEY_FIRST_NEXT) { first_set(c, c->firstPixel + (u32)FIRST_STEP); return 1; }
+            if (code == (u32)KEY_FIRST_PREV) { first_set(c, c->firstPixel - (u32)FIRST_STEP); return 1; }
+            if (code >= '0' && code < '0' + (u32)FIRST_COUNT) {
+                const u32 want = kFirst[code - '0'];
                 if (want || code == '0') {
-                    src_set(c, want);
+                    first_set(c, want);
                     return 1;               // EKeyWasConsumed
                 }
             }
@@ -4496,16 +4521,28 @@ extern "C" void gate6_create_window(u32 *oldControl, int, Context *c)
 extern "C" void gate6_baseconstructl(void *, int flags, Context *c)
 {
     // Now that the wrapper is a CAknAppUi, avkon's own base construction is
-    // the right one, and the flags the game asked for are worth honouring --
-    // it passes zero, a standard application with all its furniture.
-    // The flags the game asks for -- zero, a standard application with all its
-    // furniture. Asking avkon for less than that is worse, not safer: with
-    // ENoAppResourceFile it goes off the rails entirely, while with the game's
-    // own flags it gets as far as looking for status pane and menu resources
-    // and says so, which is a resource file to write rather than a mystery.
+    // the right one. The game asks for zero -- a standard application with
+    // all its furniture -- and that turns out to be the last thing wrong with
+    // the display.
+    //
+    // **Round 76: the band across the top of the phone's screen is the status
+    // pane.** The port writes the framebuffer directly, so whatever the window
+    // server paints lands on top of the picture, and a standard application
+    // gets a status pane at the top and a button group at the bottom. It is
+    // visible as itself in the round-74 photograph -- the close icon on the
+    // left, the battery on the right -- and as a hazy band over the game once
+    // the two are repainting in turn. `ENoScreenFurniture` asks avkon for
+    // neither, which is what a full-screen game asks for.
+    //
+    // This is not the same as the flag that went wrong before:
+    // `ENoAppResourceFile` (0x01) took avkon off the rails entirely, because
+    // it does need the resource file. `ENoScreenFurniture` (0x04) only says
+    // not to build the panes.
     typedef void (*BaseConstructL)(void *, int);
+    const int want = NO_FURNITURE ? (flags | ENoScreenFurniture) : flags;
+    log_event(c, NOTE_SCREEN_DST, (u32)want);
     if (c->newBaseConstructL)
-        ((BaseConstructL)c->newBaseConstructL)(c->wrapUi, flags);
+        ((BaseConstructL)c->newBaseConstructL)(c->wrapUi, want);
     else
         eikappui_baseconstructl(c->wrapUi, ENoAppResourceFile | ENoScreenFurniture);
 }

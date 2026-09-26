@@ -68,6 +68,25 @@ here and the section it overturns is marked.*
   change -- all 320 rows, stopping at the last row's last visible pixel, since
   the pad after the final row need not be allocated. `8` toggles back to the
   centred 176x208.
+- **The screen chunk begins with a sixteen-entry word palette, so
+  `EDisplayOffsetToFirstPixel` must be applied** (E171, E172). `ScreenInfo`
+  hands back the chunk's *base*, not the first pixel. The emulator answers 32
+  and needs 32 -- its own source computes the offset as `sizeof(u16) *
+  WORD_PALETTE_ENTRIES_COUNT` in `hal.cpp` and adds exactly that to the chunk
+  base in `screen.cpp`. The **N95 answers 0 and 0 is right there**. So HAL is
+  believed for this one attribute, after a sanity check (a whole number of
+  pixels, under 4 KB), where it is not believed about depth, pitch or mode.
+  Refusing it cost nine rounds: the picture started eight pixels early and
+  every row wrapped, which painting the blit's own outline showed in one run.
+- **The port writes the framebuffer directly, underneath the window server,
+  so the app must ask for no screen furniture** (round 76). Anything the
+  window server paints lands on top of the picture. The game calls
+  `BaseConstructL(0)` -- a standard application, status pane at the top,
+  button group at the bottom -- and that status pane is the band across the
+  top of the phone's screen, visible as itself (close icon, battery) in round
+  74's photograph. `ENoScreenFurniture` (0x04) is added to the flags. It is
+  not `ENoAppResourceFile` (0x01), which took avkon off the rails in an
+  earlier build because avkon does need the resource file.
 - **The game's picture starts sixteen pixels into its buffer, and its stride
   is 176** (round 75, E167, E168). Both measured, neither guessed. The stride:
   the phone swept every read stride from 160 to 256 and 176 is the only one
