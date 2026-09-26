@@ -208,6 +208,8 @@ them, and say so.
 | E153 | **build 136 -- trace the game's allocator, but record it only when a worker makes the call** | 14233 | `--` | **The filter holds and costs nothing.** Imports 269, 372, 373, 323 and 315 now carry trace thunks, and the main log contains **zero** records for any of them -- `gate6_trace` drops them unless a worker made the call, so the box is not flushed thousands of times a run and the phone will not spend its budget writing the game's allocator down. 3,689 frames, no leave, no exit. As with E148 and E152 the emulator cannot show the half that matters, because it never runs the SoundServer thread's entry function; what it can show is that the filter works, which is the thing that would have made this build unshippable if it did not |
 | E154 | **build 137 -- a worker asks, one instruction before its first import, what its allocator is and whether it can allocate** | 14178 | `--` | **The probe works and one slot is not enough.** Six words in the box's unused crumb region, written by the worker and carried out by the main thread's wait slices, with a progress word set before each step so a fault inside the probe still says which step. It reported: at import 325 (`RLibrary::Load`), sp `0x04a01e7c`, allocator **`0x00700000`** -- the same heap the main thread has -- and `alloc(16)` -> `0x00a27eb0`, all the way through. But that is the game's *polling* worker, which is resumed at record 211, long before the SoundServer thread exists, so on one slot it would always answer for the wrong thread |
 | E155 | **build 137b -- one probe slot per worker, told apart by stack** | 14364 | `--` | **Both workers answer, and one long-standing reading is retracted.** Slot 0 is the polling worker at `RLibrary::Load`; **slot 1 is the SoundServer thread at `CTrapCleanup::New`, sp `0x04d0ff90`** -- allocator `0x00700000`, `alloc(16)` -> `0x00d8dd60`, all the way through. So **EKA2L1 does run that thread's entry function after all**: E148 read zero records for imports 330/386/319/363/367 in the *log* and concluded the thread never ran, when the log cannot carry worker events at all -- they were in the box. That is corrected. It also means the emulator gets the whole handshake right, `Signal` included, which is why its wait returns on the first slice. 14,364 records, 3,600-odd frames, no regression. This is the build to send |
+| E156 | **build 138 -- `on_main_thread` asks the kernel for the thread id instead of measuring a stack** | 0 | `0x354` | **Dead before its first record, and the reason is an ABI detail worth keeping.** `TThreadId` is a `TUint64` wrapper, so `RThread::Id() const` is a **struct return**: the hidden result pointer goes in r0 and `this` in r1. Declared as a plain `u32 rthread_id(const void*)` the call took `&handle` as its return buffer and wrote eight bytes over a stack local before anything had been logged. The project already has a `KIND_SRET8` for exactly this shape and I did not look |
+| E157 | **build 138b -- `RThread::Id` is a struct return; the hidden pointer goes in r0** | 14551 | `--` | **The identity test works and nothing regressed.** 14,551 records, 1,561 frames, and **both worker probes still fill** -- slot 0 the polling worker at `RLibrary::Load`, slot 1 the SoundServer thread at `CTrapCleanup::New` -- so asking the kernel classifies the two workers exactly as the stack test did here, which is the point: the emulator was never where it went wrong. The main thread's id is latched the first time `on_main_thread` runs, which is during setup, and the stack test stays only as the fallback for that one call. This is the build to send |
 
 <!-- EMURUN -->
 
@@ -273,17 +275,32 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 65 | **build 134** -- `worker_log` off; the main thread's `RSemaphore::Wait` in 100 ms slices that flush the box, giving up after two seconds | 1 | **1,295 records** and **the frame ends**; `NOTE_SEM_WAIT` says `0` then `ffffffff`; panic `SoundServer KERN-EXEC 0` | **The hang is gone and the fault is cornered to two calls.** The wait ran its full twenty slices and was **never signalled**, so the main thread gave up, closed both handles, ran `RSessionBase::CreateSession` and **finished frame 1** -- the first time the game has got past the handshake on hardware. And because the box was flushed every 100 ms for the whole two seconds, the silence from the other thread is now evidence rather than a gap: the SoundServer thread makes **no traced import at all** after `CTrapCleanup::New`. A trace thunk records on the way *in*, so it died between that record and its next one, `CActiveScheduler::CActiveScheduler()`. Two calls sit in that gap -- `CTrapCleanup::New()` itself and the game's `operator new(20)` at `0x652f8` -- and **both allocate**. The game passes `aHeap = NULL` to `RThread::Create`, which means *share the creating thread's heap*; if euser leaves the create info's allocator null and its heap size zero, `UserHeap::SetupThreadHeap` sets nothing up and the thread's first allocation reaches for a heap that is not there -- and KERN-EXEC 0 is a bad **handle**, which is what an `RHeap`'s chunk handle would be. Build 135 substitutes the creating thread's allocator for the null one |
 | 66 | **build 135** -- lend a new thread the creating thread's heap when the game passes `aHeap = NULL` | 1 | **1,294 records, identical to round 65 record for record**; wait still times out (`ffffffff`); frame 1 still ends; `SoundServer KERN-EXEC 0` again | **The heap hypothesis is wrong.** The substitution went in -- the phone's `User::Allocator()` is **`0x600000`** and that is what the thunk lent -- and it changed **nothing**. So the SoundServer thread is not dying for want of an allocator, and round 65's leading explanation is retired. What the round does buy is a much tighter reading of the gap, because `operator new` at `0x652f8` has now been read out and it is not one call but four: `TTrap::Trap` (our own stand-in, which writes a zero and returns zero), **`User::AllocL`** (import 269), `TTrap::UnTrap` (a no-op), and `User::LeaveNoMemory` on the error path. None of those four is traced, nor is `CTrapCleanup::New` on the way out, so the gap the thread dies in is five calls wide and not two. Build 136 traces them -- but only on a worker, because on the main thread they are thousands of calls a run |
 | 67 | **build 136** -- trace the game's allocator, recorded only when a worker makes the call | 1 | **box identical to round 66 to the entry**; last worker event still `CTrapCleanup::New from b866c`; `SoundServer KERN-EXEC 0` | **It dies in the first euser call it ever makes.** `TTrap::Trap`, `User::AllocL`, `TTrap::UnTrap`, `User::LeaveNoMemory` and `User::Free` all carry trace thunks now and are recorded whenever a worker calls them -- and **not one of them appears**. So the SoundServer thread never reaches the game's `operator new` at all: it dies inside `CTrapCleanup::New()` itself, between the trace record made on the way in and any return. That is the *first* call that thread makes, which reads less like a broken euser export and more like a thread that is not fit to make a call yet -- and `CTrapCleanup::New` allocates, which is the first thing a half-built thread would fail at. Round 66 said lending it a heap changes nothing, but it could not say whether the lend reached the thread. Build 137 asks the thread itself, from inside the trace thunk, one instruction before the call |
+| 68 | **build 137** -- a worker probe, one slot per worker, asking each thread about its own allocator | 1 | **`WORKER PROBE never ran`** -- both slots empty -- and **`import 330` is in the MAIN log** | **The probe answered by not running, and it is the answer.** The box still has `CTrapCleanup::New from b866c` at entry 224, so the SoundServer thread did reach `gate6_trace`; the probe is called there whenever `!on_main_thread(c)`, and it did not run. Then the log settles it from the other side: the main log, which **only the main thread writes**, contains that thread's `CTrapCleanup::New` record. So `on_main_thread` calls the SoundServer thread the main thread on this phone, and **every guard built on it is a no-op for that thread** -- `log_block`, `box_write`, `box_flush`, the worker-log gate, the probe. The thread writes into the shared log buffer and, on the eighth record, `log_block` writes **the main thread's `RFile`**: KERN-EXEC 0, named `SoundServer`. Stacks on EKA2 are packed close together within a process; `THREAD_SPAN` is a megabyte; EKA2L1 gives every thread its own chunk megabytes away, which is why the test has always passed there. **This retracts round 63's "`on_main_thread` works on hardware"** -- it was read from the absence of a record in rounds 63 and 64, and that absence was the eight-record log buffer being lost when the process died, not a guard working |
 
 ## Where we are
 
-**Furthest: round 67, build 136.** The gap is closed to a single call. With
+**Furthest: round 68, build 137.** The cause is found and it is ours. On the
+N95 `on_main_thread` calls the SoundServer thread *the main thread*, because
+EKA2 packs a process's thread stacks close together and the test allows a
+megabyte. Every guard built on it -- `log_block`, `box_write`, `box_flush`,
+the worker-log gate, the probe itself -- is therefore a no-op for that
+thread, so it writes the main thread's `RFile` and takes a bad handle:
+**KERN-EXEC 0, named `SoundServer`**. The emulator has never shown it because
+EKA2L1 puts every thread's stack in a chunk of its own, megabytes away, where
+the test happens to work.
+
+**Best round so far: 68.** It found the fault, and it found it in the one
+place this project keeps finding faults -- its own instrument -- by an
+instrument that reported by staying silent. It also retracts round 63.
+
+**Previously furthest: round 67, build 136.** The gap is closed to a single call. With
 the whole of the game's `operator new` traced on workers -- `TTrap::Trap`,
 `User::AllocL`, `TTrap::UnTrap`, `User::LeaveNoMemory`, `User::Free` -- not
 one of them appears, so the SoundServer thread never gets that far. It dies
 inside **`CTrapCleanup::New()`**, which is the first euser call it ever
 makes, and which allocates.
 
-**Best round so far: 67**, narrowly over 65: five candidate calls to one, on
+**Round 67** was, narrowly over 65: five candidate calls to one, on
 a pure-instrument build that changed no behaviour and cost nothing. What it
 cannot yet separate is a broken euser export from a thread that was never fit
 to make a call, and build 137 asks the thread that question directly.
@@ -1176,3 +1193,69 @@ where the phone's never returns at all.
 So the emulator is not blind to this path. It runs it correctly, which is a
 different and more useful thing: the difference between the two machines is
 now narrow enough to be a single call.
+
+## Round 68 -- build 137 on the N95
+
+The probe was meant to say what the SoundServer thread's allocator is. It
+printed **`WORKER PROBE never ran`**, and that is a better answer than the
+one it was built to give.
+
+### The chain
+
+1. The box still has `CTrapCleanup::New from b866c` at entry 224. So the
+   SoundServer thread *did* reach `gate6_trace`.
+2. `worker_probe` is called from there whenever `!on_main_thread(c)`. Both
+   slots are empty, so that test was false: **`on_main_thread` said the
+   SoundServer thread is the main thread.**
+3. The main log -- which only the main thread writes, by that same guard --
+   contains **`import 330`**, that thread's `CTrapCleanup::New`. Two
+   independent measurements, same conclusion.
+4. So every guard built on `on_main_thread` is a no-op for that thread:
+   `log_block`, `box_write`, `box_flush`, the `worker_log` gate,
+   `worker_probe`. The thread writes into the shared `logBuf` and, on the
+   eighth record, `log_block` writes **the main thread's `RFile`**.
+5. Which on EKA2 is a bad handle. **KERN-EXEC 0, named `SoundServer`.**
+
+### Why the test is wrong, and why nothing here could see it
+
+    enum { THREAD_SPAN = 0x100000 };        // no thread's stack is a megabyte deep
+
+    static int on_main_thread(Context *c)
+    {
+        const u32 sp = (u32)__builtin_frame_address(0);
+        if (!c->spTop) return 1;
+        const u32 d = c->spTop > sp ? c->spTop - sp : sp - c->spTop;
+        return d < (u32)THREAD_SPAN;
+    }
+
+The comment above it says "the kernel gives every thread its own chunk and
+they are megabytes apart". **That is EKA2L1's behaviour, not a device's.** On
+a real EKA2 phone a process's thread stacks are packed together, so a 64 KB
+stack allocated beside an 8 KB one is a few kilobytes away, not a megabyte.
+The emulator's worker sits at `0x04d0ff90` against a main thread megabytes
+off and the test passes; the phone's does not.
+
+### Retracted: "on_main_thread works on hardware" (round 63)
+
+Round 63 argued that the guard was working because the worker's
+`CTrapCleanup::New` was in the box and **not** in the log. It was not in the
+log because the log buffers eight records and the process died before that
+block was written. Rounds 65 to 68, where the main thread survives the wait
+and flushes, all have `import 330` in the log. The guard has never worked on
+this phone.
+
+Three rounds were spent downstream of that mistake -- 65's heap hypothesis,
+66's disproof of it, 67's narrowing to `CTrapCleanup::New` -- and none of them
+was looking at the instrument. The rule this earns is the one the file
+already has and I did not apply: **when a phone fault has no counterpart in
+the emulator, suspect the thing that differs between them, and the instrument
+is one of those things.**
+
+### The fix
+
+`on_main_thread` must not infer identity from a stack address. euser exports
+`RThread::Id() const` at ordinal 1793, and an `RThread` holding the current
+thread's pseudo-handle `0xFFFF8001` answers for whichever thread asks. The
+main thread's id is recorded once at setup; every later call compares against
+it. The stack test stays only as a fallback for the window before the id is
+known.

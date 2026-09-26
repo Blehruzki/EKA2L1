@@ -34,6 +34,13 @@ present: SDL2, and Qt6 `LinguistTools`, `Svg`, `Network` and `OpenGLWidgets`.
 
 ## Known gaps in the emulator
 
+EKA2L1 gives every thread's user stack a chunk of its own, megabytes from
+every other thread's. A real EKA2 device packs a process's thread stacks
+together, kilobytes apart. Code that identifies a thread by how far its stack
+is from another one's therefore works here and fails on hardware. Related:
+`thread_create` in `src/emu/kernel/src/svc.cpp` accepted any stack size at all
+until it was taught the EKA2 ceiling.
+
 EKA2L1 accepts SIS packages that a real device rejects, because it verifies none
 of the integrity fields a device checks: the per-file SHA-1 in each
 `SISFileDescription`, the E32 image header CRC32, `SISControllerChecksum` /

@@ -135,6 +135,7 @@ old_call1:
     IMPORT user_tickcount,    674    @ User::TickCount()
     IMPORT sem_wait_timeout,   68    @ RSemaphore::Wait(TInt aTimeout) -- the timed one
     IMPORT user_allocator,    665    @ User::Allocator()
+    IMPORT rthread_id,       1793    @ RThread::Id() const
     @ hal
     IMPORT hal_get,             1    @ HAL::Get(HALData::TAttribute, TInt&)
     @ efsrv

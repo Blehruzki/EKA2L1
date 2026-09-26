@@ -37,7 +37,21 @@ here and the section it overturns is marked.*
 
 ### Settled
 
-- **The SoundServer thread dies in its first allocation.** Round 65 flushed
+- **`on_main_thread` was wrong on hardware, and it is what killed the
+  SoundServer thread.** It identified the main thread by how far the caller's
+  stack was from it, allowing a megabyte, on the strength of a comment saying
+  "the kernel gives every thread its own chunk and they are megabytes apart".
+  That is **EKA2L1's** behaviour. A real EKA2 process packs its thread stacks
+  together, so the SoundServer thread's 64 KB stack is kilobytes from the
+  main thread's and the test called it the main thread -- which makes every
+  guard built on it a no-op for exactly the thread they exist to stop. It
+  wrote the main thread's `RFile` through `log_block` and took a bad handle:
+  KERN-EXEC 0, named `SoundServer`, for nine rounds (round 68). It now asks
+  euser for `RThread::Id()` instead. **This retracts round 63's finding that
+  the guard worked**, which was read from a record that was merely lost in an
+  eight-record buffer when the process died.
+- **Where the SoundServer thread dies**, as of round 67 and now probably
+  explained by the entry above. Round 65 flushed
   the box every 100 ms for the whole two seconds that thread was alive and
   caught nothing from it after `CTrapCleanup::New`. A trace thunk records on
   the way *in*, so the death is inside `CTrapCleanup::New()` or the game's

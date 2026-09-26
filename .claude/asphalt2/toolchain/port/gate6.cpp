@@ -30,6 +30,11 @@ i32 chunk_createlocalcode(void *chunk, int size, int maxSize, int owner);
 u8 *chunk_base(const void *chunk);
 i32 sem_wait_timeout(void *sem, int microseconds);
 void *user_allocator(void);
+// `TThreadId` is a TUint64 wrapper, so this is a struct return: the hidden
+// pointer goes in r0 and `this` in r1. Declaring it as a plain u32 result
+// cost E156 -- the call took &handle as its return buffer and the run died
+// before its first record.
+void rthread_id(void *out, const void *thread);
 i32 fs_connect(void *fs, int slots);
 i32 file_open(void *file, void *fs, const void *name, u32 mode);
 // RFile::Close, and not RHandleBase::Close. An RFile is an RSubSessionBase,
@@ -702,6 +707,7 @@ struct Context {
     u32 wrkPos;
     u32 wrkState;           // 0 not tried, 1 open, 2 gave up
     u32 wrkLastSp;          // which worker wrote last, to the nearest stack
+    u32 mainThreadId;       // latched at setup; what on_main_thread really asks
     u32 boxData[BOX_WORDS];
     u32 pathIndex;          // which candidate the game was loaded from
     u32 codeBase;           // where the game was loaded, so callers read as offsets
@@ -1198,9 +1204,43 @@ static void box_name(Ptrc16 *name)
 // own chunk and they are megabytes apart, so a local's address names the
 // thread. `spTop` is the main thread's, set the first time it gets here.
 enum { THREAD_SPAN = 0x100000 };        // no thread's stack is a megabyte deep
+enum { ASK_THREAD_ID = 1 };
+
+// Round 68: the stack test was wrong on the phone, and wrong in the way that
+// matters. Its comment claimed "the kernel gives every thread its own chunk
+// and they are megabytes apart" -- which is **EKA2L1's** behaviour, not a
+// device's. A real EKA2 process packs its thread stacks together, so the
+// SoundServer thread's 64 KB stack sits a few kilobytes from the main
+// thread's and the megabyte test called it the main thread. Every guard built
+// on this is then a no-op for exactly the thread they exist to stop:
+// `log_block`, `box_write`, `box_flush`, the worker-log gate, the probe. It
+// wrote the main thread's `RFile` and took a bad handle -- KERN-EXEC 0, named
+// `SoundServer`, for nine rounds.
+//
+// So ask the kernel instead. euser's `RThread::Id() const` answers for
+// whichever thread calls it, given an `RThread` holding the current thread's
+// pseudo-handle. The main thread's id is latched the first time this runs,
+// which is on the main thread during setup, long before any other exists.
+enum { KCurrentThreadHandle = 0xFFFF8001 };
+
+static u32 this_thread_id(void)
+{
+    u32 h = KCurrentThreadHandle;       // an RThread is one word: the handle
+    u32 id[2] = { 0, 0 };
+    rthread_id(id, &h);
+    return id[0];                       // the low half is unique within a boot
+}
 
 static int on_main_thread(Context *c)
 {
+    if (ASK_THREAD_ID) {
+        const u32 id = this_thread_id();
+        if (!c->mainThreadId)
+            c->mainThreadId = id;       // setup runs on the main thread
+        if (id)
+            return id == c->mainThreadId;
+    }
+    // Fallback, and only for the window before an id can be had: the stack.
     const u32 sp = (u32)__builtin_frame_address(0);
     if (!c->spTop)
         return 1;                       // nothing has run yet; this is it
