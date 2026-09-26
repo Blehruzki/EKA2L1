@@ -35,53 +35,61 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
-### Audio: where the silence comes from
+### Audio: the chain, end to end
 
-Reconnaissance only so far -- no code written -- but the shape is clear, and
-it is not where I expected.
+Mapped now, from the music file to the speaker, with the blocker in one
+place. Reconnaissance and two probe runs (E179, E180); no fix written yet.
 
-- **The game makes exactly one call into an audio DLL, and it is a pad.**
-  `MEDIACLIENTAUDIOSTREAM[10003996].DLL` contributes **one** import, ordinal
-  2, which `epoc6.def` names `CMdaAudioOutputStreamPadFunction()` -- a
-  placeholder export that does nothing. Ordinal 1 is the real
-  `CMdaAudioOutputStream::NewL`, and the game does not import it. So the
-  image never asks MDA for an output stream.
-- **And it never calls even that.** Across every log in the session, import
-  458 has been called **0 times**.
-- **The crack's audio patches are about loading, not sound.** They repoint
-  imports 458 and 459 at `CMdaAudioOutputStream::NewL`, which makes an image
-  that depends on `nokiafc.dll` and a pad export load on a phone that has
-  neither. Carrying them across would not produce a note.
-- **The audio the game does use is the N-Gage's own.** Its imports include
-  four DLLs that exist on no S60v3 device: `GAMEUTILS[101fb6f5]` (6 imports),
-  `GAMECOMMS[101f5ee2]` (20), `ARENAFRAMEWORK[101fde50]` (4) and
-  `NOKIAFC[101f8a5b]` (1). Every one of them is wired in the shim to
-  `LOCAL_NOOP`. GAMECOMMS and ARENAFRAMEWORK are never called -- they are
-  N-Gage Arena, the online side. **GAMEUTILS and NOKIAFC are.**
-- **Where they are called says what they are for.** Five GAMEUTILS entries
-  are called once per launch from a tight cluster at `0x39494`-`0x394cc`,
-  and each result is stored straight into an object: offsets 972, 980, 664
-  and 988, and the last call's result is turned into a **boolean** at a fixed
-  offset (`subs r0, r0, #0; movne r0, #1; strb`). That is a platform-services
-  constructor building handles and then recording whether it succeeded. With
-  every one of them a no-op, the handles are junk and the flag is false.
-- So the likely gate is **not** MDA at all: the game asks the N-Gage for its
-  audio objects, is told nothing, and runs silent. NOKIAFC's single ordinal
-  is called once per launch from `0x1ea8`, in a function that builds a
-  520-byte descriptor on the stack -- a path, by its size -- which is a
-  separate question.
+**1. The music exists and is installed.** The image holds the paths
+`E:\system\apps\6RBC\Streams\bgm_moby_lift_me_up.swav`, `bgm_win.swav`,
+`bgm_loose.swav` and a `sounds\` folder, and the install has
+`streams/bgm_*.swav` -- fourteen of them. Also in the image:
+`opt_volume`, `SoundServ server`, `SoundServer`, `Sound server panic`, and
+`Decoder currently does not parse transport streams`.
 
-**Next step, and it is a probe rather than a fix.** `LOCAL_NOOP` returns
-nothing; give those five GAMEUTILS entries a *non-null* dummy object instead
-and the game will start calling methods on it. Those calls can be logged,
-and what it asks of the object is what the interface is. That is the same
-method that answered the framebuffer: hand the game something and write down
-what it does with it. It is testable in the emulator, so it costs no
-hardware round.
+**2. The player is `CMdaAudioOutputStream`, and it is import 458.** Two call
+sites, `0x1df2c` and `0x1dfc4`, both `add r0, obj, #4` / `mov r1, #0` /
+`bl` -- which is `NewL(MMdaAudioOutputStreamCallback&, CMdaServer* = NULL)`
+exactly. The result is stored at object+44 and then **called through its
+vtable**: at `0x1df08` the game loads `[stream]`, takes slot 2 and calls it
+with argument 3. **So `epoc6.def` is wrong about this ordinal for this
+build**: it names mediaclientaudiostream ordinal 2
+`CMdaAudioOutputStreamPadFunction`, and the call site proves it is `NewL`.
+That matters, because the shim believed the def and left it a reporting stub.
 
-What it cannot answer is what the N-Gage's `gameutils.dll` ordinals 10, 11,
-14, 15, 17 and 19 actually *were*; that has to come from how the game uses
-what they return.
+**3. The game hosts its own sound server in-process.** `RSessionBase::
+CreateSession` is called once per launch, at `0xba540`, and only when
+`0xb86ec` -- the connect-or-start-SoundServer site -- returns zero. It does,
+and the session is created. Thirty-five `SendReceive` wrappers sit
+immediately after it, `0xba5c0` to `0xbad28`: the sound API, one wrapper per
+request.
+
+**4. And not one of them is ever called.** `RSessionBase::SendReceive` has
+**zero** calls in every log of the session, phone and emulator, before and
+after the probe. The client connects and never speaks. `CMdaAudioOutputStream
+::NewL` is therefore never reached, which is why there is no sound: not a
+broken audio path but an unused one.
+
+**What the probe added.** Every N-Gage-only import (GAMEUTILS, GAMECOMMS,
+ARENAFRAMEWORK, NOKIAFC) is a no-op returning zero. Handing back a non-null
+fake object instead changes the game's behaviour markedly: GAMEUTILS ordinal
+17 goes from never called to **1,883 calls, one a frame**, and GAMECOMMS
+ordinals 2, 20, 27 and 28 begin to be called. The game calls slot 2 of the
+fake's vtable on two of those objects, so it treats them as polymorphic.
+From the call sites: GAMEUTILS **19, 14, 15, 10 are constructors** (results
+stored at object offsets 972, 980, 664, 988), **11 is a predicate** turned
+into a boolean, and **17 is a per-frame predicate** on the object 19
+returned. Answering that poll with a pointer means "yes" every frame, so the
+blanket probe is off again -- the next one needs an answer per import.
+
+**Where the work is.** Something between the sound client's connect and its
+thirty-five wrappers decides not to play. Two candidates, and they are
+distinguishable: the platform flag those GAMEUTILS constructors feed, or the
+game's own `opt_volume` setting in `user.dat`. After that, the remaining
+work is known: resolve import 458 to S60v3's real
+`CMdaAudioOutputStream::NewL` and give the returned object the vtable the
+game expects -- which the same talking-fake trick will read off, since the
+game calls the stream polymorphically.
 
 ### Settled
 

@@ -241,6 +241,10 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_SCREEN_FIT = 838,   // buffer shape, picture size and offset, packed pairs
        NOTE_SCREEN_SRC = 839,   // how wide the game's own rows are being read
        NOTE_SCREEN_DST = 840,   // and how many bytes of palette precede the screen
+       NOTE_NGAGE = 841,        // an N-Gage-only import the game called
+       NOTE_NGAGE_VT = 842,     // ... and a method it then called on what it got
+       NOTE_NGAGE_ARG = 843,    // the four argument registers as the game left them
+       NOTE_NGAGE_LR = 850,     // and the site that made the call
        NOTE_SEM_WAIT = 836,     // the main thread's wait on the SoundServer's semaphore
        NOTE_WORKER_SP = 849,    // a worker's stack, so two of them can be told apart
        NOTE_SCRATCH = 847,      // a word of the game's scratch code chunk
@@ -720,6 +724,7 @@ struct Context {
     u32 srcW;               // how many of the game's pixels a row is read as
     u32 srcOrigin;          // where in its buffer the game's first pixel is
     u32 topInset;           // rows at the top of the screen to keep clear of
+    u32 ngageVt;            // the shared vtable the N-Gage fakes point at
     u32 mode;               // how the picture is fitted: 1:1, shape-kept, or filled
     u32 clearPending;       // blank the framebuffer once, after any change
     u32 dstW, dstH;         // how big the picture is drawn
@@ -4560,6 +4565,119 @@ extern "C" void gate6_create_window(u32 *oldControl, int, Context *c)
     c->wrapControl = ctl;
 }
 
+// ---------------------------------------------------------------------------
+// The N-Gage-only imports, and what the game does with what they return.
+//
+// Four of the DLLs the game imports exist on no S60v3 device: GAMEUTILS,
+// GAMECOMMS, ARENAFRAMEWORK and NOKIAFC. Every one of their entries is a
+// no-op in the shim, which returns zero. Five GAMEUTILS entries are called
+// once per launch from a cluster at 0x39494, each result stored straight
+// into an object, and the last turned into a boolean -- a platform-services
+// constructor recording whether it worked. With zeroes it did not, and that
+// is the likeliest reason the game is silent: it asks the N-Gage for its
+// audio and is told there is none.
+//
+// This is the probe for that, not the fix. Each of those imports returns a
+// **fake object** instead of zero, and the fake object's vtable is 32 slots
+// of trampoline that log which slot was called and return zero. So the log
+// says both which of the N-Gage entries the game calls and what interface it
+// expects of what they hand back -- which is the only way to learn what
+// those ordinals were, the DLLs being long gone and in no definition file we
+// have.
+//
+// Safe enough for a bench run and no further: a fake object that is deleted
+// rather than merely used would put our arena pointer through User::Free.
+// **Off.** It did its job (E179, E180) and it is not safe to leave on: a
+// non-null answer to every one of these is a lie in both directions. Import
+// 455 -- GAMEUTILS ordinal 17 -- is a *predicate* the game polls every
+// frame, and answering it with an object pointer says "yes" 1,883 times a
+// run, which sends the game down whatever path that means. The next probe
+// wants per-import answers, not one answer for all of them.
+enum { NGAGE_PROBE = 0, NGAGE_SLOTS = 32 };
+static const u16 kNgage[][2] = {         // import ranges, inclusive
+    { 5, 8 },                            // ARENAFRAMEWORK
+    { 431, 456 },                        // GAMECOMMS, then GAMEUTILS
+    { 459, 459 },                        // NOKIAFC
+};
+
+static bool ngage_import(u32 i)
+{
+    for (u32 k = 0; k < sizeof kNgage / sizeof kNgage[0]; k++)
+        if (i >= kNgage[k][0] && i <= kNgage[k][1])
+            return true;
+    return false;
+}
+
+// A method call on one of the fakes. `self` is the object, so the context
+// rides in its second word.
+extern "C" u32 gate6_ngage_method(void *self, u32 slot)
+{
+    u32 *o = (u32 *)self;
+    Context *c = (Context *)o[1];
+    log_event(c, NOTE_NGAGE_VT, (o[2] << 16) | (slot & 0xFFFF));
+    log_block(c);
+    return 0;
+}
+
+// One shared vtable, built once: 32 trampolines, each four words.
+//
+//   ldr r1, [pc, #0]     @ the slot number -- r0 is still `this`
+//   ldr pc, [pc, #0]
+//   .word slot
+//   .word gate6_ngage_method
+static u32 ngage_vtable(Context *c)
+{
+    if (c->ngageVt)
+        return c->ngageVt;
+    const u32 need = (u32)NGAGE_SLOTS * 16 + (u32)NGAGE_SLOTS * 4;
+    if (!c->spare || c->spare + need > c->spareEnd)
+        return 0;
+    u32 *tramp = (u32 *)c->spare;
+    u32 *vt = tramp + (u32)NGAGE_SLOTS * 4;
+    for (u32 k = 0; k < (u32)NGAGE_SLOTS; k++) {
+        u32 *t = tramp + k * 4;
+        t[0] = 0xE59F1000;                      // ldr r1, [pc, #0]
+        t[1] = 0xE59FF000;                      // ldr pc, [pc, #0]
+        t[2] = k;
+        t[3] = (u32)&gate6_ngage_method;
+        vt[k] = (u32)t;
+    }
+    c->spare += need;
+    user_imb_range(tramp, vt + NGAGE_SLOTS);
+    c->ngageVt = (u32)vt;
+    return c->ngageVt;
+}
+
+// The import itself: log that it was called, and hand back a fake.
+//
+//   word 0  the vtable, so a virtual call lands in a trampoline
+//   word 1  the context, so the trampoline can write to the log
+//   word 2  which import made it, so the objects can be told apart
+extern "C" u32 gate6_ngage(u32 index, Context *c, const u32 *saved)
+{
+    // `saved` is {r0, r1, r2, r3, lr} as the game left them, so the log gets
+    // the arguments and, in lr, the site that made the call.
+    log_event(c, NOTE_NGAGE, index);
+    if (saved) {
+        log_event(c, NOTE_NGAGE_ARG, saved[0]);
+        log_event(c, NOTE_NGAGE_ARG, saved[1]);
+        log_event(c, NOTE_NGAGE_ARG, saved[2]);
+        log_event(c, NOTE_NGAGE_ARG, saved[3]);
+        log_event(c, NOTE_NGAGE_LR, saved[4]);
+    }
+    log_block(c);
+    const u32 vt = ngage_vtable(c);
+    if (!vt || c->spare + 64 > c->spareEnd)
+        return 0;
+    u32 *o = (u32 *)c->spare;
+    c->spare += 64;
+    for (u32 k = 0; k < 16; k++) o[k] = 0;
+    o[0] = vt;
+    o[1] = (u32)c;
+    o[2] = index;
+    return (u32)o;
+}
+
 extern "C" void gate6_baseconstructl(void *, int flags, Context *c)
 {
     // Now that the wrapper is a CAknAppUi, avkon's own base construction is
@@ -4969,6 +5087,35 @@ static u32 load_and_start()
         s[2] = nImports * 1000 + i;
         s[3] = (u32)&gate6_report;
         iat[i] = (u32)s;
+
+        if (NGAGE_PROBE && ngage_import(i)) {
+            // r0 = which import, r1 = the context, then jump. The game's own
+            // arguments go with them, which is the point: this answers what
+            // is called, not what with.
+            //   push {r0-r3, lr}      @ the game's arguments, and the site
+            //   mov  r2, sp
+            //   ldr  r0, [pc, #20]    @ which import
+            //   ldr  r1, [pc, #20]    @ the context
+            //   ldr  r3, [pc, #20]    @ gate6_ngage
+            //   blx  r3
+            //   add  sp, sp, #16      @ drop the arguments, keep the answer
+            //   pop  {lr}
+            //   bx   lr
+            s[0] = 0xE92D400F;
+            s[1] = 0xE1A0200D;
+            s[2] = 0xE59F0014;
+            s[3] = 0xE59F1014;
+            s[4] = 0xE59F3014;
+            s[5] = 0xE12FFF33;
+            s[6] = 0xE28DD010;
+            s[7] = 0xE8BD4000;
+            s[8] = 0xE12FFF1E;
+            s[9]  = i;
+            s[10] = (u32)ctx;
+            s[11] = (u32)&gate6_ngage;
+            forwarded++;
+            continue;
+        }
 
         const u32 entry = (i < kShimCount) ? kShimTable[i] : 0;
         const u32 kind = entry >> 24;
