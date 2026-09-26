@@ -85,24 +85,47 @@ But `CServer::StartL` is `LOCAL_NOOP` -- nothing was ever really started --
 and there is no session, so no message ever arrives, `ServiceL` never runs,
 and `CMdaAudioOutputStream::NewL` is never reached.
 
-**So the silence is one missing piece: the in-process bridge.** Both ends
-are inside our process. What it needs:
+**So the silence was one missing piece: the in-process bridge. It is built,
+and it works** (E182-E186).
 
-1. `CServer::StartL` to remember the server object and the name it was
-   started under, instead of doing nothing.
-2. `RSessionBase::CreateSession` to find that server by name and ask it for
-   a session -- `NewSessionL` is a virtual on the game's own `CServer`
-   subclass, so it is a vtable call whose slot has to be found.
-3. `RSessionBase::SendReceive` to build an EKA1 `RMessage` the game's
-   `ServiceL` understands and call it straight, on the caller's thread, with
-   no kernel IPC. `RMessage::Complete` is import 285, so the game does call
-   it, and the message layout has to match what its `ServiceL` reads.
-4. Import 458 pointed at S60v3's real `CMdaAudioOutputStream::NewL`, and the
-   returned object given whatever vtable the game calls on it -- the same
-   talking-fake trick reads those slots off, since the game uses the stream
-   polymorphically (slot 2 with argument 3 at `0x1df08`).
+* `CServer::StartL` keeps the server instead of doing nothing.
+* `RSessionBase::CreateSession` calls the server's `NewSessionL` -- **vtable
+  slot 6**, found by dumping the vtable the game installs at `0x10182b04`
+  right after `CServer::CServer` -- and keeps the session in the handle word.
+* `RSessionBase::SendReceive` fills in a message and calls the session's
+  `ServiceL` -- **vtable slot 5** of `0x10182f44` -- straight, on the
+  caller's thread. **The message layout is `iFunction` at 0 and `iArgs[0..3]`
+  at 36, 40, 44, 48**, read off the dispatch (`ldr r3, [r1]`, `sub #1`,
+  `cmp #34`, a 35-entry jump table matching the 35 client wrappers) and
+  confirmed against two handlers and their matching client wrappers. The
+  handlers find the live message at **`session+16`**, so the bridge parks it
+  there.
+* `RMessage::Complete` records the answer in a word of our own at the end of
+  the message, which is what `SendReceive` returns.
 
-Steps 1 to 3 are all testable in the emulator.
+The first run of it ended in **our own** `G6IMP 464458` panic -- 464x1000 +
+458, `CMdaAudioOutputStream::NewL` -- which is the proof: the game had never
+reached the audio call in its life. With a logging fake in its place the
+whole path runs, no panic, and the bridge carries functions 1, 4, 5, 15
+(x48), 19, 25, 26, 27, 28, 32 and 33 across in a minute.
+
+**What is left is the stream object itself.** `epoc9.def` gives
+mediaclientaudiostream ordinal **3** for `NewL(MMdaAudioOutputStreamCallback&,
+CMdaServer*)`, and it resolves and runs. But GCC98r2 gives a class **one**
+destructor entry and EABI gives it **two**, so every virtual after the
+destructor sits one slot further along on 9.x. Under that shift the slots the
+game actually calls -- 3, 4, 5, 7, 9, 10 -- read as `SetAudioPropertiesL`,
+`Open`, `MaxVolume`, `SetVolume`, `WriteL`, `Stop`: exactly the set for
+playing a stream, and nothing else. A proxy object with a shifted vtable gets
+three messages further than the bare pointer and then faults.
+
+It is not the bench: this machine has no sound card and cubeb was failing to
+start, which would have been a tidy explanation, but a null ALSA device
+removes that error and the run is identical. So the vtable *order* is right
+and something in the *arguments* is not. `Open(TMdaPackage*)` is the
+candidate -- an N-Gage-era settings package handed to a 9.x reader -- and the
+next step is to log each proxy slot with its arguments, which is the same
+instrument again.
 
 **What the probe added.** Every N-Gage-only import (GAMEUTILS, GAMECOMMS,
 ARENAFRAMEWORK, NOKIAFC) is a no-op returning zero. Handing back a non-null

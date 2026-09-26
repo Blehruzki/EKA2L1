@@ -245,6 +245,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_NGAGE_VT = 842,     // ... and a method it then called on what it got
        NOTE_NGAGE_ARG = 843,    // the four argument registers as the game left them
        NOTE_NGAGE_LR = 850,     // and the site that made the call
+       NOTE_SOUND = 851,        // the sound server bridge: what it connected
+       NOTE_SOUND_MSG = 852,    // ... and each message it carried across
        NOTE_SEM_WAIT = 836,     // the main thread's wait on the SoundServer's semaphore
        NOTE_WORKER_SP = 849,    // a worker's stack, so two of them can be told apart
        NOTE_SCRATCH = 847,      // a word of the game's scratch code chunk
@@ -263,6 +265,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_END = 853 };        // and where its chunk stops
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
+enum { BOX_MDA = BOX_STACK + 1 };   // what CMdaAudioOutputStream::NewL resolved to
 // A count per marker. The tail says where it was; these say whether it was
 // going round in circles to get there, and how many times.
 enum { BOX_EXC = BOX_STACK + 1 };       // what User::SetExceptionHandler said
@@ -725,6 +728,11 @@ struct Context {
     u32 srcOrigin;          // where in its buffer the game's first pixel is
     u32 topInset;           // rows at the top of the screen to keep clear of
     u32 ngageVt;            // the shared vtable the N-Gage fakes point at
+    void *soundServer;      // the game's own CServer, caught at StartL
+    void *soundSession;     // and the session its NewSessionL handed back
+    u32 *soundMsg;          // the RMessage the bridge fills in and passes
+    u32 soundCalls;         // how many messages have gone across
+    u32 mdaNewL;            // the real CMdaAudioOutputStream::NewL
     u32 mode;               // how the picture is fitted: 1:1, shape-kept, or filled
     u32 clearPending;       // blank the framebuffer once, after any change
     u32 dstW, dstH;         // how big the picture is drawn
@@ -4600,8 +4608,34 @@ static const u16 kNgage[][2] = {         // import ranges, inclusive
     { 459, 459 },                        // NOKIAFC
 };
 
+// The audio stream gets the same treatment, on its own switch. The bridge
+// carried the first message across and the server answered it by calling
+// import 458 -- `CMdaAudioOutputStream::NewL` -- which was still the stub
+// that panics, so the run ended in our own `G6IMP 464458`. That panic is
+// the proof the bridge works: nothing had ever reached the audio call
+// before. A fake stream with a logging vtable both stops the panic and says
+// which of the stream's methods the game actually uses, which is what the
+// real 9.x object has to be wired up to.
+// And the real thing behind it. `epoc9.def` -- the same database, for 9.x,
+// in the same file-order-is-ordinal-order convention -- gives
+// mediaclientaudiostream ordinal **3** for
+// `CMdaAudioOutputStream::NewL(MMdaAudioOutputStreamCallback&, CMdaServer*)`.
+// The class is dispatched through its vtable on 9.x exactly as it was on the
+// N-Gage (the DLL even exports "vtable for CMdaAudioOutputStream"), which is
+// how the game already calls it, so the real object may drop straight in.
+// `MDA_FAKE` stays as the fallback and the instrument.
+enum { MDA_REAL = 1, MDA_NEWL_ORDINAL = 3 };
+enum { MDA_FAKE = 1, IMPORT_MDA_NEWL = 458 };
+static const u16 kMdaDll[] = { 'm','e','d','i','a','c','l','i','e','n','t',
+                               'a','u','d','i','o','s','t','r','e','a','m',
+                               '.','d','l','l' };
+
 static bool ngage_import(u32 i)
 {
+    if (MDA_FAKE && !MDA_REAL && i == (u32)IMPORT_MDA_NEWL)
+        return true;
+    if (!NGAGE_PROBE)
+        return false;
     for (u32 k = 0; k < sizeof kNgage / sizeof kNgage[0]; k++)
         if (i >= kNgage[k][0] && i <= kNgage[k][1])
             return true;
@@ -4676,6 +4710,210 @@ extern "C" u32 gate6_ngage(u32 index, Context *c, const u32 *saved)
     o[1] = (u32)c;
     o[2] = index;
     return (u32)o;
+}
+
+// ---------------------------------------------------------------------------
+// The sound server bridge.
+//
+// The game hosts its own EKA1 client-server pair *inside this process*: a
+// thread called SoundServer builds a `CServer`, starts it under the name in
+// `SoundServ server`, signals a semaphore and sits in its own active
+// scheduler; the main thread connects with `RSessionBase::CreateSession` and
+// then sends **835 requests a minute** with `RSessionBase::SendReceive`. All
+// three of those are `LOCAL_NOOP` in the shim, so the connect is a lie, the
+// messages are dropped, and the server waits for ever. That is the whole of
+// the silence: nothing about the audio is broken, the requests never arrive.
+//
+// Both ends being in one process, no kernel IPC is needed. What the bridge
+// has to know is three numbers, and all three came out of the image rather
+// than out of a guess:
+//
+//   * **the server's vtable slot for `NewSessionL`** -- the game's CServer
+//     subclass installs its vtable at `0x10182b04` right after calling
+//     `CServer::CServer`, and slot 6 is the only entry pointing into the
+//     game's own code near the server (`0xb7d2c`), which takes a `TVersion*`
+//     and ends by allocating a 44-byte session.
+//   * **the session's vtable slot for `ServiceL`** -- the session ctor
+//     installs `0x10182f44`, and slot 5 is `0xb7df0`, the function that traps
+//     a dispatch and then calls `RMessage::Complete`.
+//   * **where the message keeps its arguments.** `ServiceL`'s dispatch reads
+//     the function from **offset 0** (`ldr r3, [r1]`, then `sub #1, cmp #34`
+//     into a 35-entry jump table, which matches the 35 client wrappers
+//     exactly). The handlers reach their arguments through `[session+16]`,
+//     which is where the framework parks the live message, and read it at
+//     **+36, +40**: handler 1 takes a halfword at +36 and a word at +40,
+//     and the client wrapper for function 1 puts a 16-bit value in `args[0]`
+//     and a packed word in `args[1]`. Handler 3 treats +36 as a pointer and
+//     writes its result through it, and the wrapper for function 3 puts a
+//     pointer to its own stack slot in `args[0]`. So **iFunction is at 0 and
+//     iArgs[0..3] are at 36, 40, 44, 48**.
+//
+// The call runs on the *client's* thread, which is the point of an
+// in-process bridge: no handshake, no scheduler round trip, and the
+// arguments are already pointers into memory both sides share.
+enum { SOUND_BRIDGE = 1 };
+enum { IMPORT_SERVER_STARTL = 366, IMPORT_CREATE_SESSION = 298,
+       IMPORT_SEND_RECEIVE = 357, IMPORT_MSG_COMPLETE = 285 };
+enum { SRV_VT_NEWSESSION = 6, SES_VT_SERVICEL = 5, SES_MESSAGE = 4 };
+enum { MSG_WORDS = 16, MSG_ARG0 = 9, MSG_DONE = 15 };
+
+// `CServer::StartL(name)`: keep the server. The name is not needed -- there
+// is only one server in the process -- but it is logged so a second one
+// would be obvious.
+extern "C" void gate6_server_start(u32 *a, Context *c)
+{
+    c->soundServer = (void *)a[0];
+    log_event(c, NOTE_SOUND, a[0]);
+    log_block(c);
+}
+
+// `RSessionBase::CreateSession(name, version, slots)`: ask the server for a
+// session and keep it in the handle word, which is all an RSessionBase is.
+extern "C" u32 gate6_create_session(u32 *a, Context *c)
+{
+    u32 *self = (u32 *)a[0];
+    if (!SOUND_BRIDGE || !c->soundServer || !self) {
+        log_event(c, NOTE_SOUND, 0xBAD0);
+        return 0;                                   // as before: KErrNone
+    }
+    typedef void *(*NewSessionL)(void *, const void *);
+    u32 *vt = *(u32 **)c->soundServer;
+    NewSessionL make = (NewSessionL)vt[SRV_VT_NEWSESSION];
+    void *session = make(c->soundServer, (const void *)a[2]);
+    c->soundSession = session;
+    self[0] = (u32)session;                         // the handle *is* the session
+    log_event(c, NOTE_SOUND, (u32)session);
+    log_block(c);
+    return 0;
+}
+
+// `RSessionBase::SendReceive(function, args)`: fill in the message, park it
+// where the handlers look for it, and call ServiceL straight.
+extern "C" u32 gate6_send_receive(u32 *a, Context *c)
+{
+    u32 *self = (u32 *)a[0];
+    const u32 fn = a[1];
+    const u32 *args = (const u32 *)a[2];
+    void *session = (self && self[0]) ? (void *)self[0] : c->soundSession;
+    if (!SOUND_BRIDGE || !session)
+        return 0;
+    if (!c->soundMsg) {
+        c->soundMsg = (u32 *)user_allocz(MSG_WORDS * 4);
+        if (!c->soundMsg)
+            return 0;
+    }
+    u32 *m = c->soundMsg;
+    for (u32 i = 0; i < (u32)MSG_WORDS; i++) m[i] = 0;
+    m[0] = fn;
+    if (args)
+        for (u32 i = 0; i < 4; i++) m[MSG_ARG0 + i] = args[i];
+    ((u32 *)session)[SES_MESSAGE] = (u32)m;         // session+16
+    typedef void (*ServiceL)(void *, const void *);
+    u32 *vt = *(u32 **)session;
+    ServiceL serve = (ServiceL)vt[SES_VT_SERVICEL];
+    c->soundCalls++;
+    if (c->soundCalls <= 64) {                      // the first few, then quiet
+        log_event(c, NOTE_SOUND_MSG, fn);
+        log_block(c);
+    }
+    serve(session, m);
+    return m[MSG_DONE];                             // what Complete recorded
+}
+
+// `RMessage::Complete(code)`: the message is ours, so the answer goes in a
+// word of our own at the end of it.
+extern "C" void gate6_msg_complete(u32 *a, Context *c)
+{
+    u32 *m = (u32 *)a[0];
+    if (m && m == c->soundMsg)
+        m[MSG_DONE] = a[1];
+}
+
+// push {r0-r3, lr} / hand the block and the context to a C function / keep
+// its answer. Twelve words fit in a slot and this needs ten.
+static void args_thunk(u32 *s, const void *ctx, u32 fn)
+{
+    s[0] = 0xE92D400F;                  // push {r0-r3, lr}
+    s[1] = 0xE1A0000D;                  // mov  r0, sp
+    s[2] = 0xE59F1010;                  // ldr  r1, [pc, #16]  -> s[8]
+    s[3] = 0xE59F3010;                  // ldr  r3, [pc, #16]  -> s[9]
+    s[4] = 0xE12FFF33;                  // blx  r3
+    s[5] = 0xE28DD010;                  // add  sp, sp, #16
+    s[6] = 0xE8BD4000;                  // ldm  sp!, {lr}
+    s[7] = 0xE12FFF1E;                  // bx   lr
+    s[8] = (u32)ctx;
+    s[9] = fn;
+}
+
+// The stream the game gets: its own vtable in front of the 9.x object.
+//
+// Both sides declare the same class in the same order -- `SetAudioPropertiesL`,
+// `Open`, `MaxVolume`, `Volume`, `SetVolume`, `SetPriority`, `WriteL`, `Stop`,
+// `Position` -- but they lay the vtable out differently. GCC98r2 gives a class
+// **one** destructor entry and EABI gives it **two** (complete and deleting),
+// so every virtual after the destructor sits one slot further along on 9.x
+// than the game expects. That is the whole of the mismatch, and the reason
+// pointing the import straight at the real `NewL` ended in KERN-EXEC 3.
+//
+// The proof it is only that: with a logging fake in place the game called
+// slots 3, 4, 5, 7, 9 and 10, which under this shift are SetAudioPropertiesL,
+// Open, MaxVolume, SetVolume, WriteL and Stop -- exactly the set for playing
+// a stream, and nothing else.
+//
+// So: a proxy object whose word 0 is a vtable of ours and word 1 is the real
+// stream. Each of our slots is three words that swap `this` for the real
+// object and jump to the right slot of its vtable:
+//
+//   ldr r0, [r0, #4]
+//   ldr pc, [pc, #-4]
+//   .word the real method
+//
+// The callback goes the other way and needs no shim:
+// `MMdaAudioOutputStreamCallback` has no destructor to disagree about, so its
+// three slots line up as they are.
+enum { MDA_PROXY = 1, MDA_SLOTS = 14, MDA_DTOR = 2 };
+
+extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
+{
+    typedef void *(*NewL)(void *, void *);
+    if (!c->mdaNewL)
+        return 0;
+    void *real = ((NewL)c->mdaNewL)((void *)a[0], (void *)a[1]);
+    log_event(c, NOTE_SOUND, (u32)real);
+    if (!real || !MDA_PROXY) {
+        log_block(c);
+        return (u32)real;
+    }
+    const u32 need = 8 + (u32)MDA_SLOTS * 4 + (u32)MDA_SLOTS * 12;
+    if (!c->spare || c->spare + need > c->spareEnd) {
+        log_block(c);
+        return (u32)real;                   // no room: give it the bare object
+    }
+    u32 *rvt = *(u32 **)real;
+    u32 *obj = (u32 *)c->spare;
+    u32 *vt = obj + 2;
+    u32 *tramp = vt + MDA_SLOTS;
+    c->spare += need;
+    for (u32 k = 0; k < (u32)MDA_SLOTS; k++) {
+        // slot 2 is the destructor, and the game calls it the GCC98r2 way
+        // with a flag in r1; the deleting form is the nearer of the two.
+        const u32 from = (k < (u32)MDA_DTOR) ? k
+                       : (k == (u32)MDA_DTOR) ? 3u
+                       : k + 1;
+        u32 *t = tramp + k * 3;
+        t[0] = 0xE5900004;                  // ldr r0, [r0, #4]
+        t[1] = 0xE51FF004;                  // ldr pc, [pc, #-4]
+        t[2] = rvt[from];
+        vt[k] = (u32)t;
+    }
+    vt[0] = 0;
+    vt[1] = 0;
+    obj[0] = (u32)vt;
+    obj[1] = (u32)real;
+    user_imb_range(obj, tramp + MDA_SLOTS * 3);
+    log_event(c, NOTE_SOUND, (u32)obj);
+    log_block(c);
+    return (u32)obj;
 }
 
 extern "C" void gate6_baseconstructl(void *, int flags, Context *c)
@@ -5088,7 +5326,43 @@ static u32 load_and_start()
         s[3] = (u32)&gate6_report;
         iat[i] = (u32)s;
 
-        if (NGAGE_PROBE && ngage_import(i)) {
+        if (SOUND_BRIDGE) {
+            u32 fn = 0;
+            if (i == IMPORT_SERVER_STARTL)   fn = (u32)&gate6_server_start;
+            else if (i == IMPORT_CREATE_SESSION) fn = (u32)&gate6_create_session;
+            else if (i == IMPORT_SEND_RECEIVE)   fn = (u32)&gate6_send_receive;
+            else if (i == IMPORT_MSG_COMPLETE)   fn = (u32)&gate6_msg_complete;
+            if (fn) {
+                args_thunk(s, ctx, fn);
+                forwarded++;
+                continue;
+            }
+        }
+
+        if (MDA_REAL && i == (u32)IMPORT_MDA_NEWL) {
+            void *lib = 0;
+            Ptrc16 nm;
+            nm.lengthAndType = ((u32)EPtrC << KTypeShift) |
+                               (u32)(sizeof kMdaDll / 2);
+            nm.text = kMdaDll;
+            Ptrc16 none;
+            none.lengthAndType = (u32)EPtrC << KTypeShift;
+            none.text = 0;
+            void *fn = 0;
+            if (!rlibrary_load(&lib, &nm, &none))
+                fn = rlibrary_lookup(&lib, (int)MDA_NEWL_ORDINAL);
+            ctx->boxData[BOX_MDA] = (u32)fn;
+            if (fn) {
+                ctx->mdaNewL = (u32)fn;
+                args_thunk(s, ctx, (u32)&gate6_mda_newl);
+                forwarded++;
+                continue;
+            }
+            // no such ordinal on this phone: fall through to the fake, which
+            // at least keeps the game alive and says what it wanted
+        }
+
+        if (ngage_import(i)) {
             // r0 = which import, r1 = the context, then jump. The game's own
             // arguments go with them, which is the point: this answers what
             // is called, not what with.
