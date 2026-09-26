@@ -194,6 +194,7 @@ them, and say so.
 | E139 | build 125 -- derive bytes-per-pixel from the pitch, not from the bpp attribute | 168882 | `--` | **Renders correctly, and now it would on a 16-bit panel too.** `pitch / width` cannot lie about storage where `EDisplayBitsPerPixel` can, and the blit takes a 16-bit path as well as a 32-bit one. Two link traps caught here rather than on the phone: a runtime divide pulls in `__aeabi_uidiv`, which this image does not link, so the pitch is *compared* against `w*2` and `w*4`; and the RGB565 branch had the same divides waiting for whenever `SCREEN_4K` is turned off -- now bit replication |
 | E140 | build 126 -- prune the milestone trace | 157375 | `--` | **Barely moved it, and said why.** Dropping `UserSvr::DllTls` (90,808 calls), `CCoeEnv::Static` and `CFbsScreenDevice::Update` from the milestone set -- all per-frame or worse now the game runs -- took 175k records to 157k. The flood was somewhere else |
 | E141 | **build 127 -- turn the allocation and free watchers off** | 7365 | `--` | **157,375 records to 7,365, twenty-one times less writing.** Codes 883-889 -- every allocation, every free, and the heap cell headers around them -- were 149,000 of the run. They were built to chase a use-after-free, they found it, and on a phone at a flush every eight records they would have been twenty thousand write-and-flush pairs, which looks exactly like a hang. Checked before flipping them: `LEAK_EVERYTHING` and `PAD_THE_ALLOCATIONS` are separate switches, so `gate6_free` still leaks deliberately and nothing about the run's behaviour changed -- only what it says about it. Renders, navigates, no panic |
+| E142 | build 127 reference for the round 60 diff | 7344 | `--` | **The baseline that made round 60 readable.** Same build the phone ran, same drive contents, nothing changed -- its only job was to be lined up against `r60/a.log`. It renders and navigates as E141 did. Lined up from each side's first `NOTE_FRAME`, the phone and the emulator match **1,188 records in a row** inside the first `RunL`, code for code, and part company on the 1,189th. Two runs of the phone gave byte-identical logs, so the divergence is deterministic. Also caught a tool bug worth keeping: `scratchpad/dis.py` prints every mnemonic one instruction below its true address, which sent the first reading of `0xba354` to the wrong call. `scratchpad/d2.py` decodes each word at its own address and is what the round 60 disassembly is from |
 
 <!-- EMURUN -->
 
@@ -251,10 +252,29 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 57 | Log the lookup ordinal and its 9.x mapping | 3 | same ordinals and mappings as the emulator, exactly; all three runs byte-identical in structure | **The ordinal theory is dead** -- the phone maps exactly as the emulator does. My first reading of this row ("three euser asks answered out of efsrv") was **wrong and is retracted**: they were efsrv asks, and 121/136/185 -> 93/255/264 is `RFile::Open`/`Read`/`Size` -> `RFile::Open`/`Read`/`Size`, correct on both sides. I had named them out of the euser def. **The real gap: 26 extra `RFile::Read` calls the emulator makes at `0x10abf8` and the phone does not** -- a read loop that stops after one iteration on hardware |
 | 58 | Stand in front of `RFile::Read` and `RFile::Size` and log what they answer | 3 (one produced only 137 records) | `RFile::Size` = **125**, one read of a **125-byte** buffer, two of 16 bytes, all KErrNone; the 26 x 64 KiB burst **never happens** | **The gap is an open, not a read.** Every read the phone does make succeeds and fills its buffer exactly; the emulator's extra 26 reads are a separate, earlier file the phone never reads at all. Both machines agree on `cwp.dat` (125) and `nc.dat` (16) |
 | 59 | Close the loader's own handle on `6rbc.app` | 3 (two produced only ~110 records) | **`6rbc.app` now opens: 0.** 29 reads, five opens, all KErrNone; **2086 and 2104 records**, up from 1571; **176 traced events**, up from 144 | **The gap is closed.** The phone and the emulator now agree on **178 of 180 core events**, and the only differences left are heap addresses inside two probes. The phone dies where the emulator calls `User::Leave` -- same place, same reason, one orderly and one not. The panic is still CONE 2 / KERN-EXEC 3 |
+| 60 | **build 127** -- the whole port, after the game became playable in the emulator (worker threads, screen, input, protection passing for real, the log cut 21-fold) | 2 logged + several more | **1,276 records**, both logged runs byte-identical; `User::Leave(-40)` then `User::Exit`; **KERN-EXEC 0** under a different decimal thread name each run; the N-Gage splash on screen, duplicated and very small | **Two findings, both fixable, neither a mystery.** (1) The phone matches E142 for **1,188 records in a row** inside the first `RunL` and then `RThread::Create` refuses the game's **100,000-byte stack** with `KErrTooBig` at the SoundServer start site `0xb86ec` -- an EKA2 rule EKA1 never had, and one **EKA2L1 does not enforce**, which is why 142 emulator runs never saw it. (2) The splash is measurable: bands 88 pixels wide with seams at columns 16, 104 and 176 are exactly what writing 16-bit pixels on a 640-byte line into a buffer that is really **4 bytes a pixel on a 960-byte line** produces, so **HAL misreports both** on an N95 -- and 640 was never a multiple of 240 at any pixel size, which says so without a phone. See the round 60 section below |
 
 ## Where we are
 
-**Furthest: 176 traced events on the phone** (build 59), against 180 core
+**Furthest: round 60, build 127.** The phone runs 1,276 records and matches the
+emulator's run of the same build for **1,188 consecutive records** inside the
+first `RunL` before parting company. Two phone runs gave identical logs, so the
+ending is deterministic, and it is a single named cause:
+`RThread::Create` refusing the game's 100,000-byte stack with `KErrTooBig`,
+which is an EKA2 rule EKA1 did not have and EKA2L1 does not enforce. The
+screen geometry is wrong for a second, separate reason -- HAL misreports both
+the bits-per-pixel and the line pitch on an N95 -- and the video measures it
+exactly. Neither is a mystery and both are in the shim's reach.
+
+**Best round so far: 60**, by a distance. It is the first round where the
+phone got far enough to fail at something specific rather than something
+structural, the first where a 1,188-record agreement with the emulator could be
+shown, and the first that produced two independent fixable findings from one
+run. It also found a gap in EKA2L1 itself.
+
+**Previously best: 59.**
+
+**Furthest before round 60: 176 traced events on the phone** (build 59), against 180 core
 events in the emulator on the same build -- and the two now agree on **178 of
 those 180**, the remaining two being heap addresses inside probes that were
 never going to match. The phone is past the wall that held from build 44 to
@@ -271,7 +291,7 @@ nothing, so that is an ending and not a cut-off: the game draws one frame and
 goes quiet. The previous best was 200 traced events and every run before this
 ended by giving up or faulting. None of it has been to hardware yet.
 
-**Best round so far: 59.** It is the first round where a hardware run and an
+**Round 59** was the first round where a hardware run and an
 emulator run of the same build tell the same story from beginning to end.
 Closing one file handle took the phone from 1571 records to 2104 and from 144
 traced events to 176, and retired the last known divergence between the two
@@ -593,3 +613,127 @@ events got anywhere.
 
 The relaunch is not ours: the only `restart` flag in the loader is the DSA
 observer's Restart callback, and the box says it never fired.
+
+## Round 60 -- build 127 on the N95
+
+The first hardware round since the game became playable in the emulator. Two
+logs came back byte-identical in size (1,276 records each), a third and later
+runs gave no log at all, and every run ended in **KERN-EXEC 0** under a thread
+name that was a different decimal number each time -- `909947600`,
+`1057530725`, and others. The user also saw, and filmed, the game's N-Gage
+splash on screen: **duplicated and very small**.
+
+Three separate things, and the round settles all three.
+
+### 1. Where it stops: `RThread::Create` refuses a 100,000-byte stack
+
+The two phone logs are the same run twice, so the ending is deterministic. It
+is:
+
+    import 110  RFile::Read      from 34b00
+    import 110  RFile::Read      from 34b00
+    import 324  User::Leave(int) from ba354   arg 0xffffffd8 = -40 KErrTooBig
+    import 308  User::Exit
+
+Lined up against **E142**, the emulator run of the identical build, the two
+machines match **1,188 records in a row** from the first `NOTE_FRAME` and part
+company on the next one: where the phone leaves with -40, the emulator's `RunL`
+simply returns and goes on to draw 1,401 more frames. Nothing before that
+differs -- not one code, not one address.
+
+`0xba354` is the return address of a `blne` at `0xba350`:
+
+    0ba348  bl   0xba500
+    0ba34c  cmp  r0, #0
+    0ba350  blne 0x118da8        <- the User::Leave stub
+    0ba354  stm  sp, {r4, r5}
+
+so the -40 is whatever `0xba500` returned, and `0xba500` is a two-line wrapper
+around **`0xb86ec`** -- the connect-or-start-SoundServer site this file has
+named since round 51. Read out, `0xb86ec` is the textbook `StartServer()`:
+
+    TFindServer(name); TBuf<256> found; if (Next(found) != KErrNone) {
+        RSemaphore sem; sem.CreateLocal(0);
+        RThread t;  t.Create(name, threadfn, aStackSize, NULL, &sem);
+        if (err) return err;                <- this is the -40
+        t.SetPriority(...); t.Resume(); sem.Wait();
+    }
+    ... RSessionBase::CreateSession(name, version, 4)
+
+and `aStackSize` is `r3`, which comes in from `0xba318` as a literal:
+
+    0ba370  000186a0            = 100,000
+
+**EKA2 caps a user thread's stack; EKA1 did not.** The N95 answers
+`KErrTooBig`. Every number in that chain is from the image and the log, not
+from a guess: the stub-to-import mapping is `(stub[3] - 0x101849bc) / 4`, which
+puts `0x118da8` at import 324 = `User::Leave`, and that is the index the log
+recorded.
+
+**The emulator never saw it because EKA2L1 has no such cap.** `thread_create`
+in `src/emu/kernel/src/svc.cpp` passes `user_stack_size` straight to
+`kernel::thread`, which page-aligns it and allocates. Any size a program asks
+for succeeds. That is the same family of gap as the SIS integrity fields in
+`CLAUDE.md`: the emulator accepts what a device refuses, so the emulator cannot
+be trusted to clear a build for hardware.
+
+### 2. What the splash says: HAL's display geometry is wrong on the N95
+
+The log's `NOTE_SCREEN` block gives the phone's answers in full:
+
+| | phone (N95) | emulator (RM-409) |
+|---|---|---|
+| `iScreenAddress` | `0xcb400000` | `0xc9200000` |
+| width x height | 240 x 320 | 240 x 320 |
+| HAL `EDisplayBitsPerPixel` | **16** | 24 |
+| HAL `EDisplayOffsetBetweenLines` | **640** | 960 |
+| HAL `EDisplayOffsetToFirstPixel` | 0 | 32 |
+| derived bpp / pitch | 16 / 640 | 32 / 960 |
+| our buffer / source pitch | `0x00798060` / 176 | `0x0089b648` / 176 |
+
+The substitution worked, the allocation succeeded, the game drew into our
+buffer and the blit ran. The picture is still wrong, and the video says by
+exactly how much. Measured off the frame, against the screen's own 240-pixel
+width, the game's image appears as vertical bands with seams at device columns
+**16, 104 and 176**, each band 88 pixels wide, washed out, and the whole thing
+begins at row ~33.
+
+Every one of those numbers falls out of assuming the buffer is **4 bytes per
+pixel with a 960-byte line**, while we wrote it as 2 bytes per pixel with a
+640-byte line:
+
+* 176 sixteen-bit writes cover 352 bytes = **88** pixels of a 4-byte-per-pixel
+  line, starting at byte 64 = column **16**. Band width and left edge, both.
+* our row *y* goes to byte `(y+56)*640`, which in a 960-byte line is row
+  `0.667*(y+56)` -- first written row **37**, against ~33 measured -- and
+  column `((y+56)*640 mod 960)/4`, which cycles **0, 160, 80**. Add the 16:
+  seams at **16, 176, 96**. The three measured seams are 16, 104 (= 16+88) and
+  176.
+* two 16-bit pixels land inside each 32-bit pixel, which is why the colour is
+  bleached rather than merely shifted.
+
+So the reading is: **`EDisplayBitsPerPixel` and `EDisplayOffsetBetweenLines`
+both lie on the N95 for the buffer `UserSvr::ScreenInfo` hands out.** E138
+already caught `EDisplayBitsPerPixel` lying in the emulator (24 for a four-byte
+pixel) and E139 worked around it by trusting the *pitch* instead. Round 60 says
+the pitch is not trustworthy either. There is a tell that would have caught it
+offline: **640 is not a multiple of 240 at any bytes-per-pixel** -- 240x2 = 480,
+240x4 = 960 -- so the pair HAL returned was never self-consistent.
+
+### 3. The KERN-EXEC 0 with the numeric name
+
+`User::Exit` ends the main thread. The garbage-named thread is the game's own
+second worker, which this file has described before: it is created with a name
+built from uninitialised stack, so it reads as a different decimal number every
+launch. It outlives the main thread, touches a handle that has gone with it,
+and gets **KERN-EXEC 0** -- a bad handle, which is what the panic has always
+been. The varying number is the thread's name, not an address, and it is not
+evidence of a different fault each run.
+
+### What the round bought
+
+The port's first hardware failure that is neither a mystery nor a
+hardware-specific divergence: the phone and the emulator run the *same* 1,188
+records and then the phone hits an EKA2 rule the emulator does not enforce.
+Both findings are fixable in the shim, and the first is fixable in EKA2L1 too,
+so that the next one of these is caught before the phone sees it.
