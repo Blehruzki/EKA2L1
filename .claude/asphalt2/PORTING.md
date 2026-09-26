@@ -47,8 +47,13 @@ here and the section it overturns is marked.*
   `UserHeap::SetupThreadHeap` with a zero heap size, nothing is set up and the
   first allocation reaches for a heap that is not there. KERN-EXEC 0 is a bad
   **handle**, which is what an `RHeap`'s `RChunk` would be. `stack_thunk` now
-  substitutes `&User::Allocator()` for the null. **Not yet confirmed on
-  hardware**, and the emulator cannot confirm it: it never runs that thread.
+  substitutes `&User::Allocator()` for the null. **Round 66 tried it and it
+  changed nothing** -- the log came back identical record for record -- so
+  the thread is *not* dying for want of an allocator and that explanation is
+  retired. The substitution stays because it is the right semantics and costs
+  nothing. The gap is five calls, all of them now known: `CTrapCleanup::New`,
+  then `TTrap::Trap`, `User::AllocL`, `TTrap::UnTrap` and
+  `User::LeaveNoMemory` inside the game's `operator new` at `0x652f8`.
 - **The main thread no longer hangs, and the hang was never a crash.** It
   used to go into `RSemaphore::Wait` at `0xb8798` waiting for a signal at
   `0xb86ac` that never came, and `gate6 ViewSrv 11` was the view server timing

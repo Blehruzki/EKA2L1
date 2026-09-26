@@ -2436,10 +2436,29 @@ static void crumb_plant(Context *c, u8 *base, u32 at, u32 marker)
     log_event(c, NOTE_PLANT_OK, marker);
 }
 
+// The five calls the SoundServer thread dies among: `CTrapCleanup::New` is
+// already a milestone, and these are the game's `operator new` at `0x652f8`
+// read out -- `TTrap::Trap`, `User::AllocL`, `TTrap::UnTrap` and, on the
+// failure path, `User::LeaveNoMemory`; `User::Free` comes with them because
+// the matching `operator delete` is the same shape.
+//
+// They cannot simply be traced. On the main thread they are the game's
+// allocator -- thousands of calls a run -- and the box is flushed on every
+// traced import, which would be thousands of file writes on a phone. So they
+// are traced and dropped here unless a worker made the call: on a worker they
+// cost nothing but memory, because a worker may not flush, and the main
+// thread's 100 ms wait slices carry them to the disk.
+static int worker_only_import(u32 i)
+{
+    return i == 269 || i == 372 || i == 373 || i == 323 || i == 315;
+}
+
 extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
 {
     watch_note(c);
     stack_mark(c);
+    if (worker_only_import(index) && on_main_thread(c))
+        return;
     if (TRACE_IMPORTS)
         note(c, index, ' ');
     if (index == IMPORT_LEAVE || index == IMPORT_EXIT) {
@@ -4854,6 +4873,9 @@ static u32 load_and_start()
         281,                        // RHandleBase::Close -- twice, at 0xb87b0 and 0xb87b8
         330, 386, 319, 363, 367,    // TrapCleanup, ActiveScheduler ctor/Install, Signal, Start
         298,                        // RSessionBase::CreateSession, the connect that follows
+        // The game's allocator, recorded on a worker and dropped on the main
+        // thread -- see worker_only_import.
+        372, 269, 373, 323, 315,    // TTrap::Trap, User::AllocL, UnTrap, LeaveNoMemory, Free
         IMPORT_LEAVE, IMPORT_EXIT,  // so the last block still reaches the disk
     };
     static const u16 kHot[] = { 424, 425, 274, 287, 272, 417, 383, 369, 389, 264, 344 };
