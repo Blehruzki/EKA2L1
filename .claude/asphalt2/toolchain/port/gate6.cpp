@@ -239,6 +239,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_IMAGE_NOW = 846,    // ... and what it says now
        NOTE_SCREEN_FMT = 837,   // which framebuffer format the picker has live
        NOTE_SCREEN_FIT = 838,   // buffer shape, picture size and offset, packed pairs
+       NOTE_SCREEN_SRC = 839,   // how wide the game's own rows are being read
        NOTE_SEM_WAIT = 836,     // the main thread's wait on the SoundServer's semaphore
        NOTE_WORKER_SP = 849,    // a worker's stack, so two of them can be told apart
        NOTE_SCRATCH = 847,      // a word of the game's scratch code chunk
@@ -710,11 +711,11 @@ struct Context {
     u32 wrkState;           // 0 not tried, 1 open, 2 gave up
     u32 wrkLastSp;          // which worker wrote last, to the nearest stack
     u32 mainThreadId;       // latched at setup; what on_main_thread really asks
-    u32 fmtIndex;           // which candidate framebuffer format is live
     u32 derivedBpp;         // and what the derivation said, for entry 0
     u32 derivedPitch;
     u32 screenW, screenH;   // what ScreenInfo reported -- the logical size, rotated
-    u32 bufW, bufH;         // the framebuffer's own shape, taken from the line length
+    u32 bufW, bufH;         // the screen's shape, which the pitch does not decide
+    u32 srcW;               // how many of the game's pixels a row is read as
     u32 stretch;            // 1 = scale 176x208 up to fill the screen
     u32 clearPending;       // blank the framebuffer once, after any change
     u32 dstW, dstH;         // how big the picture is drawn
@@ -3704,46 +3705,51 @@ extern "C" int gate6_file_read_static(void *self, u32 *des, Context *c)
 // So the depth HAL reported was right all along and only its padding was
 // wrong.
 //
-// A table of eight was the wrong instrument anyway: it can only be right by
-// luck. The digits are coarse presets around the new answer now, `*` and `#`
-// step the line by sixteen bytes, and `9` switches the depth -- so the whole
-// space is reachable by hand and the round ends when the picture stands
-// still rather than when the table runs out.
-static const u16 kFmt[][2] = {           // { bytes per pixel, line in bytes }
-    { 0, 0 },                            // 0: whatever was derived
-    { 4, 1280 },                         // 1: what round 72 measured
-    { 4, 1248 }, { 4, 1312 },            // 2-3: one step either side
-    { 4, 960 },  { 2, 1280 },            // 4-5: unpadded, and the other depth
-    { 2, 640 },  { 4, 1024 },            // 6-7: what HAL claims, and a power of two
+// Rounds 72 and 73 answered all of that -- **32 bits a pixel on a 1280-byte
+// line** -- twice over and by two unrelated readings, so the format is closed
+// and the keypad is free for the one thing still wrong.
+//
+// That is the game's own row length. Part of the right-hand side of the
+// picture comes back through the left, at every format and every size, which
+// is what a row longer than the buffer it is written into looks like: the
+// overflow lands at the start of the next row. `srcPitch` is what we read it
+// as, and 176 is only ever what the game was *told*. So make it steppable and
+// let the phone answer, the way the phone answered the format: presets on the
+// digits, one pixel a step on `*` and `#`, eight on `4` and `6`.
+static const u16 kSrc[] = {              // pixels between the game's rows
+    0,                                   // 0: back to what it was told
+    176, 192, 200, 0, 208, 0, 240,       // 1-3, 5, 7: the candidates
 };
 enum { SCREEN_KNOWN = 1, SCREEN_KNOWN_BPP = 32, SCREEN_KNOWN_PITCH = 1280 };
-enum { SCREEN_PICKER = 1, FMT_COUNT = sizeof kFmt / sizeof kFmt[0] };
-enum { KEY_FMT_NEXT = '*', KEY_FMT_PREV = '#', KEY_FMT_DEPTH = '9' };
-// Round 72 answered the format, so what is left is the size: 176x208 in the
-// middle of a 320x240 buffer is a small picture with the phone's own menu
-// round it. Scaled up it is 203x240 and fills the screen. `8` switches
-// between the two so one run can compare them.
+enum { SCREEN_PICKER = 1, SRC_COUNT = sizeof kSrc / sizeof kSrc[0] };
+enum { KEY_SRC_NEXT = '*', KEY_SRC_PREV = '#', KEY_SRC_UP = '6', KEY_SRC_DOWN = '4',
+       KEY_FMT_DEPTH = '9' };
+enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
+// Round 74: 176x208 centred in the middle of the screen is a small picture
+// with the phone's own menu round it, so it is scaled up to fill. `8`
+// switches between the two so one run can compare them.
 enum { SCREEN_STRETCH = 1, KEY_STRETCH = '8' };
-enum { FMT_STEP = 16, FMT_MIN = 240, FMT_MAX = 4096 };
 
 static void screen_layout(Context *c);
 
 static void screen_format(Context *c)
 {
-    const u32 i = c->fmtIndex;
-    if (i && i < (u32)FMT_COUNT) {
-        c->realBpp = (u32)kFmt[i][0] * 8;
-        c->realPitch = (u32)kFmt[i][1];
-    } else if (i) {
-        // Stepped by hand: fmtIndex is out of the table, so bpp and pitch are
-        // whatever the stepping left them.
-    } else {
-        c->realBpp = c->derivedBpp;
-        c->realPitch = c->derivedPitch;
-    }
     log_event(c, NOTE_SCREEN_FMT, (c->realBpp << 16) | (c->realPitch & 0xFFFF));
-    // The buffer's width is read out of the line length, so the layout is a
-    // function of the format and has to follow every change of it.
+    screen_layout(c);
+    log_block(c);
+}
+
+// The game's row length, which is the open question now. Clamped, and a zero
+// means "whatever the game was told", so `0` always comes back to a known
+// state after a sweep.
+static void src_set(Context *c, u32 pitch)
+{
+    if (!pitch)
+        pitch = (u32)(TELL_GAME_ITS_SIZE ? GAME_PITCH : GAME_W);
+    if (pitch < (u32)SRC_PITCH_MIN) pitch = (u32)SRC_PITCH_MIN;
+    if (pitch > (u32)SRC_PITCH_MAX) pitch = (u32)SRC_PITCH_MAX;
+    c->srcPitch = pitch;
+    c->srcW = pitch;
     screen_layout(c);
     log_block(c);
 }
@@ -3753,12 +3759,20 @@ static void screen_format(Context *c)
 // that the answer fell out of the log.
 enum { SCREEN_RULER = 0 };
 
-// Where the picture goes, and how big. Round 72 left the game's 176x208
-// sitting in the middle of a 240x320 screen with whatever the window server
-// had drawn still round it, which is what "it does not fit" means.
+// Where the picture goes, and how big.
 //
-// Two halves. `clearPending` blanks the framebuffer once after any change, so
-// nothing of the phone's own menu is left showing. And with `stretch` the
+// Round 74 corrected the shape. Round 72 read the 1280-byte line as "the
+// buffer is 320 pixels wide and the reported 240x320 is its rotation", and
+// built the layout on that. The phone says otherwise: at 203 pixels wide
+// starting at column 58 the picture ran off the right-hand edge of the
+// screen and the overflow came back through the left, which only happens if
+// the visible width really is the **240** that `UserSvr::ScreenInfo`
+// reports. So 1280 bytes is a padded stride -- 240 pixels of four bytes is
+// 960, and the hardware keeps a 320-pixel line -- and the reported size is
+// the screen. The pitch is for addressing rows and for nothing else.
+//
+// `clearPending` blanks the framebuffer once after any change, so nothing of
+// the phone's own menu is left showing round the picture. With `stretch` the
 // image is scaled up to fill the screen instead of being centred in it --
 // nearest-neighbour through a table built by Bresenham, because there is no
 // `__aeabi_uidiv` in this image and a runtime divide will not link. Building
@@ -3766,55 +3780,44 @@ enum { SCREEN_RULER = 0 };
 // load per pixel.
 static void screen_layout(Context *c)
 {
-    // The *buffer's* shape, which is not the logical screen's.
-    // `UserSvr::ScreenInfo` reports 240x320 on this phone and round 72
-    // measured a 1280-byte line at four bytes a pixel, so the buffer is 320
-    // wide -- the panel is natively landscape and the reported size is its
-    // rotation. Every derivation from the reported width has been wrong, so
-    // take the width from the one number hardware confirmed. By shifting: a
-    // variable divide would want __aeabi_uidiv, and this image has none.
-    const u32 w = c->screenW, h = c->screenH;
-    u32 bw = 0;
-    if (c->realBpp == 32) bw = c->realPitch >> 2;
-    else if (c->realBpp == 16) bw = c->realPitch >> 1;
-    if (!bw || bw > (u32)sizeof c->mapX) bw = w;
-    // The height is then whichever of the reported pair is not the width.
-    const u32 bh = (bw == h) ? w : (bw == w) ? h : (w < h ? w : h);
+    const u32 bw = c->screenW, bh = c->screenH;
+    const u32 sw = c->srcW ? c->srcW : (u32)GAME_W;
+    const u32 sh = (u32)GAME_H;
     c->bufW = bw;
     c->bufH = bh;
     c->clearPending = 1;
     if (!bw || !bh) {
-        c->dstW = (u32)GAME_W;
-        c->dstH = (u32)GAME_H;
+        c->dstW = sw;
+        c->dstH = sh;
         c->offX = c->offY = 0;
-        for (u32 i = 0; i < (u32)GAME_W; i++) c->mapX[i] = (u8)i;
-        for (u32 i = 0; i < (u32)GAME_H; i++) c->mapY[i] = (u8)i;
+        for (u32 i = 0; i < sw && i < (u32)sizeof c->mapX; i++) c->mapX[i] = (u8)i;
+        for (u32 i = 0; i < sh && i < (u32)sizeof c->mapY; i++) c->mapY[i] = (u8)i;
         return;
     }
     if (!c->stretch) {
-        c->dstW = (u32)GAME_W;
-        c->dstH = (u32)GAME_H;
-        for (u32 i = 0; i < (u32)GAME_W; i++) c->mapX[i] = (u8)i;
-        for (u32 i = 0; i < (u32)GAME_H; i++) c->mapY[i] = (u8)i;
+        c->dstW = sw < bw ? sw : bw;
+        c->dstH = sh < bh ? sh : bh;
+        for (u32 i = 0; i < c->dstW; i++) c->mapX[i] = (u8)i;
+        for (u32 i = 0; i < c->dstH; i++) c->mapY[i] = (u8)i;
     } else {
         // The widest fit that keeps the shape. Which axis runs out first is
-        // `bw * 208` against `bh * 176` -- a comparison, not a divide. Then
-        // the long axis is filled and the short one counted out by
-        // Bresenham, one add per output pixel.
+        // `bw * sh` against `bh * sw` -- a comparison, not a divide. Then the
+        // long axis is filled and the short one counted out by Bresenham, one
+        // add per output pixel.
         u32 dw, dh;
-        if (bw * (u32)GAME_H > bh * (u32)GAME_W) {      // height-limited
+        if (bw * sh > bh * sw) {                        // height-limited
             dh = bh;
             dw = 0;
             for (u32 i = 0, acc = 0; i < dh; i++) {
-                acc += (u32)GAME_W;
-                while (acc >= (u32)GAME_H) { acc -= (u32)GAME_H; dw++; }
+                acc += sw;
+                while (acc >= sh) { acc -= sh; dw++; }
             }
         } else {                                        // width-limited
             dw = bw;
             dh = 0;
             for (u32 i = 0, acc = 0; i < dw; i++) {
-                acc += (u32)GAME_H;
-                while (acc >= (u32)GAME_W) { acc -= (u32)GAME_W; dh++; }
+                acc += sh;
+                while (acc >= sw) { acc -= sw; dh++; }
             }
         }
         if (dw > bw) dw = bw;
@@ -3827,14 +3830,14 @@ static void screen_layout(Context *c)
         // stepped by accumulation for the same reason.
         { u32 src = 0, acc = 0;
           for (u32 i = 0; i < dw; i++) {
-              c->mapX[i] = (u8)(src < (u32)GAME_W ? src : (u32)GAME_W - 1);
-              acc += (u32)GAME_W;
+              c->mapX[i] = (u8)(src < sw ? src : sw - 1);
+              acc += sw;
               while (acc >= dw) { acc -= dw; src++; }
           } }
         { u32 src = 0, acc = 0;
           for (u32 i = 0; i < dh; i++) {
-              c->mapY[i] = (u8)(src < (u32)GAME_H ? src : (u32)GAME_H - 1);
-              acc += (u32)GAME_H;
+              c->mapY[i] = (u8)(src < sh ? src : sh - 1);
+              acc += sh;
               while (acc >= dh) { acc -= dh; src++; }
           } }
     }
@@ -3843,6 +3846,7 @@ static void screen_layout(Context *c)
     log_event(c, NOTE_SCREEN_FIT, (bw << 16) | (bh & 0xFFFF));
     log_event(c, NOTE_SCREEN_FIT, (c->dstW << 16) | (c->dstH & 0xFFFF));
     log_event(c, NOTE_SCREEN_FIT, (c->offX << 16) | (c->offY & 0xFFFF));
+    log_event(c, NOTE_SCREEN_SRC, (sw << 16) | (c->srcPitch & 0xFFFF));
 }
 
 extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
@@ -3937,12 +3941,7 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
             c->stretch = (u32)SCREEN_STRETCH;
         c->screenW = w;
         c->screenH = h;
-        if (SCREEN_PICKER) {
-            c->fmtIndex = 0;
-            screen_format(c);
-        } else {
-            screen_layout(c);
-        }
+        screen_format(c);
         log_event(c, NOTE_SCREEN, (u32)bpp);
         log_event(c, NOTE_SCREEN, (u32)pitch);
         log_event(c, NOTE_SCREEN, (u32)first);
@@ -3955,7 +3954,7 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         // first Update. Here it is always big enough for the device's own
         // screen.
         u32 want = w * h * 2;
-        if (want < (u32)(GAME_PITCH * GAME_H * 2)) want = GAME_PITCH * GAME_H * 2;
+        if (want < (u32)(SRC_PITCH_MAX * GAME_H * 2)) want = SRC_PITCH_MAX * GAME_H * 2;
         c->gameScreen = (u16 *)user_allocz((int)want);
         if (c->gameScreen) {
             p[3] = (u32)c->gameScreen;
@@ -3968,6 +3967,8 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
                 p[5] = GAME_H;
             }
             c->srcPitch = TELL_GAME_ITS_SIZE ? (u32)GAME_PITCH : (u32)GAME_W;
+            c->srcW = c->srcPitch;
+            screen_layout(c);
             log_event(c, NOTE_SCREEN, (u32)c->gameScreen);
             log_event(c, NOTE_SCREEN, c->srcPitch);
         }
@@ -4030,11 +4031,17 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
     if (c->clearPending && c->realScreen && c->bufH) {
         // Opaque black is 0xFF000000 a pixel at four bytes, and plain zero at
         // any other depth; either way it is written a word at a time.
+        // The buffer is only guaranteed as far as the last row's last
+        // *visible* pixel: 1280 bytes a line and 240 pixels of it in use
+        // means the pad after row 319 need not exist. So full rows up to the
+        // last one, and only the visible part of that.
         const u32 fill = (c->realBpp == 32) ? 0xFF000000u : 0u;
         const u32 words = c->realPitch >> 2;
+        const u32 last = (c->bufW * (c->realBpp >> 3)) >> 2;
         for (u32 y = 0; y < c->bufH; y++) {
             u32 *row = (u32 *)(c->realScreen + y * c->realPitch);
-            for (u32 x = 0; x < words; x++)
+            const u32 n = (y + 1 == c->bufH) ? last : words;
+            for (u32 x = 0; x < n; x++)
                 row[x] = fill;
         }
         c->clearPending = 0;
@@ -4393,40 +4400,37 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
         log_event(c, NOTE_KEY, k[0]);       // iCode
         log_event(c, NOTE_KEY, k[1]);       // iScanCode
         log_event(c, NOTE_KEY, type);
-        // The format picker. A digit selects a candidate outright, `*` and `#`
-        // step forward and back. Only on **EEventKey**, which is type 1 --
-        // E131 recorded types 3, 1 and 2 for one press, and those are
-        // EEventKeyDown, EEventKey and EEventKeyUp in that order, so type 1
-        // is the one press and the only one where `iCode` carries a
-        // character at all. The key is swallowed, so the game never sees it.
+        // The picker, now on the game's row length. A digit selects a
+        // candidate outright, `*` and `#` move it one pixel, `4` and `6`
+        // eight. Only on **EEventKey**, which is type 1 -- E131 recorded types
+        // 3, 1 and 2 for one press, and those are EEventKeyDown, EEventKey and
+        // EEventKeyUp in that order, so type 1 is the one press and the only
+        // one where `iCode` carries a character at all. The key is swallowed,
+        // so the game never sees it.
         enum { EEventKey = 1 };
         if (SCREEN_PICKER && type == (u32)EEventKey) {
             const u32 code = k[0];
-            if (code >= '0' && code < '0' + (u32)FMT_COUNT) {
-                c->fmtIndex = code - '0';
-                screen_format(c);
-                return 1;                   // EKeyWasConsumed
-            }
             if (code == (u32)KEY_STRETCH) {
                 c->stretch = !c->stretch;
                 screen_layout(c);
                 log_block(c);
                 return 1;                   // EKeyWasConsumed
             }
-            if (code == (u32)KEY_FMT_NEXT || code == (u32)KEY_FMT_PREV ||
-                code == (u32)KEY_FMT_DEPTH) {
-                // Stepping leaves the table behind, so mark the index as
-                // "hand-set" and let screen_format keep what is there.
-                c->fmtIndex = (u32)FMT_COUNT;
-                if (code == (u32)KEY_FMT_DEPTH)
-                    c->realBpp = (c->realBpp == 16) ? 32u : 16u;
-                else if (code == (u32)KEY_FMT_NEXT) {
-                    if (c->realPitch + (u32)FMT_STEP <= (u32)FMT_MAX)
-                        c->realPitch += (u32)FMT_STEP;
-                } else if (c->realPitch >= (u32)(FMT_MIN + FMT_STEP))
-                    c->realPitch -= (u32)FMT_STEP;
+            if (code == (u32)KEY_FMT_DEPTH) {   // the one format escape hatch
+                c->realBpp = (c->realBpp == 16) ? 32u : 16u;
                 screen_format(c);
                 return 1;                   // EKeyWasConsumed
+            }
+            if (code == (u32)KEY_SRC_UP)    { src_set(c, c->srcPitch + 8); return 1; }
+            if (code == (u32)KEY_SRC_DOWN)  { src_set(c, c->srcPitch - 8); return 1; }
+            if (code == (u32)KEY_SRC_NEXT)  { src_set(c, c->srcPitch + 1); return 1; }
+            if (code == (u32)KEY_SRC_PREV)  { src_set(c, c->srcPitch - 1); return 1; }
+            if (code >= '0' && code < '0' + (u32)SRC_COUNT) {
+                const u32 want = kSrc[code - '0'];
+                if (want || code == '0') {
+                    src_set(c, want);
+                    return 1;               // EKeyWasConsumed
+                }
             }
         }
     }

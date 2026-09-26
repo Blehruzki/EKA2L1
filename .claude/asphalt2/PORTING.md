@@ -43,31 +43,37 @@ here and the section it overturns is marked.*
   inside the first 100 ms slice. Everything structural is done. What remains
   was that the framebuffer's real format was unknown; rounds 72 and 73
   settled it, and build 142 scales the picture to fill the screen.
-- **The framebuffer is 32 bits a pixel on a 1280-byte line** (rounds 72 and
-  73). 1280 bytes is **320 pixels at four bytes**, and the N95's panel is
-  natively **320x240 landscape** -- it is a slider that opens that way. The
-  240x320 that `UserSvr::ScreenInfo` reports is the *rotated logical size*,
-  not the buffer's shape, which is why every derivation from that width was
-  wrong. Two independent confirmations: round 72 took the format the user's
-  hand sweep dwelt on longest in the log, round 73 counted the keys they
-  pressed (preset 7 = 1152, plus eight sixteen-byte steps = 1280). **HAL is
-  wrong about all of it** on this phone -- 16 bits, a 640-byte line and
-  `EGray2` -- though 640 is the same 320 pixels at the other depth, so it was
-  right about the width by accident.
-- **Take the buffer's width from the line length, not from the reported
-  screen size**, and believe HAL's pitch only when it is exactly `w * 2` or
-  `w * 4`. The emulator answers 24 bits on a 960-byte line for a 240-pixel
-  screen, which is self-consistent and correct; the N95 answers a line that
-  is a multiple of nothing, and there the measured 32/1280 is used instead.
-  One build then draws correctly in both places (E163).
-- **The picture is scaled, not centred** (build 142). 176x208 into 320x240 is
-  height-limited, so it is drawn **203x240** centred at x=58; in the emulator's
-  240x320 it is 240x283 at y=18. Nearest neighbour through a table of source
-  columns and rows built by Bresenham accumulation, because there is no
-  `__aeabi_uidiv` in this image and a runtime divide will not link. The whole
-  buffer is blanked once after any change of format or layout, so nothing the
-  window server drew is left showing round the edges. `8` toggles back to the
+- **The framebuffer is 32 bits a pixel on a 1280-byte line** (rounds 72, 73
+  and 74, three independent readings). **HAL is wrong about all of it** on
+  this phone -- 16 bits, a 640-byte line and `EGray2` -- though 640 is the
+  same 320-pixel line at the other depth, so it was right about the pad by
+  accident.
+- **1280 bytes is a padded stride, not a width** (round 74). 240 pixels at
+  four bytes is 960; the hardware keeps a 320-pixel line and shows the first
+  240 of it. **The screen is the 240 x 320 that `UserSvr::ScreenInfo`
+  reports** -- round 72's reading of it as the rotation of a 320x240 landscape
+  panel is retracted, because at 203 pixels wide from column 58 the picture
+  ran off the right-hand edge, which needs a visible width under 261. So:
+  lay out from the reported size, and use the pitch only to step between rows.
+- **Believe HAL's pitch only when it is exactly `w * 2` or `w * 4`.** The
+  emulator answers 24 bits on a 960-byte line for a 240-pixel screen, which is
+  self-consistent and correct; the N95 answers a line that is a multiple of
+  nothing, and there the measured 1280 is used instead. One build then draws
+  correctly in both places (E163, E165).
+- **The picture is scaled, not centred** (builds 142-143). 176x208 into
+  240x320 is width-limited, so it is drawn **240x283 at y=18**. Nearest
+  neighbour through a table of source columns and rows built by Bresenham
+  accumulation, because there is no `__aeabi_uidiv` in this image and a
+  runtime divide will not link. The whole buffer is blanked once after any
+  change -- all 320 rows, stopping at the last row's last visible pixel, since
+  the pad after the final row need not be allocated. `8` toggles back to the
   centred 176x208.
+- **Open: the game's own row length.** A strip of the right-hand side of the
+  picture reappears at its left, at every format and every size -- what a row
+  written longer than its buffer looks like, the overflow landing at the start
+  of the next row. `srcPitch` is 176 only because that is what the game was
+  told. Build 143 makes it steppable from the keypad and logs it as
+  `NOTE_SCREEN_SRC`, so the phone can answer it the way it answered the format.
 - **`on_main_thread` was wrong on hardware, and it is what killed the
   SoundServer thread.** It identified the main thread by how far the caller's
   stack was from it, allowing a megabyte, on the strength of a comment saying

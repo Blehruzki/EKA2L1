@@ -217,6 +217,8 @@ them, and say so.
 | E162 | build 142: scale 176x208 up to fill the buffer, and blank it once | 14542 | `--` | ran; fit records say buffer 320x240, picture 203x240 at x=58 -- the arithmetic is right, but `SCREEN_KNOWN` forced the N95's 1280-byte line onto the emulator, whose own is a self-consistent 960. Made the measured value a fallback instead |
 | E163 | **build 142b -- believe a self-consistent HAL pitch, fall back to round 72's** | 13660 | `--` | **Right in both places now.** The emulator reports 24 bits on a 960-byte line for a 240-pixel screen, and 960 *is* 240 at four bytes, so it is believed and the emulator draws as it always did; the N95 reports 16 bits on a 640-byte line for the same 240, which is consistent with nothing, and there round 72's measured 32/1280 is taken instead. `NOTE_SCREEN_FIT` records the three pairs that matter: buffer **240x320**, picture **240x283**, offset **0,18** -- the width filled, the shape kept, 13,660 records, no leave |
 | E164 | **build 142b again, with a screenshot** | -- | `--` | **Looked at, not inferred.** The race runs with the picture scaled to the full width of the emulator's screen: HUD legible across the top, the dashboard bar at the bottom, the car centred, nothing of the shell left round the edges. That is the same code path the phone will take, with different numbers in it -- 320x240 buffer, 203x240 picture, centred at x=58 |
+| E165 | **build 143 -- the screen is the reported 240x320, the pitch only a stride** | 13339 | `--` | **The records read as they should.** `NOTE_SCREEN_FIT` gives buffer **240x320**, picture **240x283**, offset **0,18**, and `NOTE_SCREEN_SRC` gives 176/176. Same numbers the emulator produced before, which is the point: the layout no longer depends on the pitch, so the one build is right on a padded line and an unpadded one alike. The clear now covers all 320 rows, and stops at the last row's last *visible* pixel, since the pad after row 319 need not exist |
+| E166 | **build 143 with a screenshot** | -- | `--` | **Looked at.** The race fills the width of the screen with the shape kept, nothing of the shell round it. The `$000000` on the HUD is still clipped at the right edge -- that is the source-side wrap, untouched by this build and the thing round 75 is for |
 
 <!-- EMURUN -->
 
@@ -288,23 +290,81 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 71 | **build 140** -- a ruler painted over the top of the frame, photographed in all eight formats | 1, eight photographs | **The ruler is legible and gives a number: the line is about 576 bytes** | **The ruler behaves exactly as the model says it should, which is the first time the model has been testable.** Its on-screen height grows with the pitch we write: squeezed into a couple of rows at 640, a little taller at 960, and spread into clearly separated red / green / blue / white bands at 1440. Thirty-two source rows occupying *H* display rows means `H = 32 * p_used / P_real`, and the 1440 photograph puts *H* near 80, which gives **P_real ~= 576**. That agrees with a second, independent measurement made a round earlier: round 69's picture repeated every **three** display rows, and three is the period of `960 mod P` for P = 576 and for almost nothing else nearby. And 576 is what a 240-pixel 16-bit line looks like when the hardware pads it to a 64-byte boundary: 480 rounded up. **So HAL was right about the depth and wrong about the padding**, and no candidate in the table was within 64 bytes of it |
 | 72 | **build 141** -- the line steppable by hand from the keypad | 1, four logs and a photograph | **The menu is legible and upright: `ARCADE`, the carousel, `SELECT`, the car.** The format is **32 bits a pixel on a 1280-byte line** | **The phone answered, and the answer was in the log rather than in my reading of a picture.** The user swept the line by hand and the log records every step, so the format they settled on is simply the one they stopped on longest: in `g6box2-8.log` the four longest dwells that are not the startup default are **all at pitch 1280**, and the longest of the whole session -- 1,493 records, nearly three times anything else -- is **32bpp / 1280**. They swept up to 1280 and back down to it four separate times. 1280 bytes is 320 pixels at four bytes, and the N95's panel is natively **320x240 landscape**; 240x320 is the rotated logical size `UserSvr::ScreenInfo` reports. **This retracts round 71's 576** -- see below. Two of the four logs turn out to be from build 139, still on the phone from the round before: the launch-numbered log files are not cleared between installs |
 | 73 | **build 141 again** -- the same picker, driven deliberately: preset `7`, then `*` eight times | 1, the count itself | **Eight clicks from preset 7 is the picture** | **Independent confirmation of round 72, and it is arithmetic rather than judgement.** Build 141's preset 7 is four bytes on a **1152**-byte line and `*` steps the line by sixteen, so eight clicks land on **1152 + 128 = 1280**, at four bytes a pixel. Round 72 reached 32bpp/1280 by measuring how long the user's hand sweep dwelt on each format; this reached it by counting the keys they pressed. Two different readings of two different runs, same number. The format question is closed |
+| 74 | **build 142** -- the picture scaled to fill, and the buffer blanked | 1, a photograph and five logs | **Wrong aspect, and the right-hand side still comes back through the left.** Colours right, composition almost right | **The scaling arithmetic was sound and the shape it was given was not.** Round 72 read the 1280-byte line as a 320-pixel buffer whose rotation is the reported 240x320; build 142 drew 203x240 at column 58 on that basis, and the photograph shows the picture running off the *right-hand edge of the screen* -- which can only happen if the visible width is the 240 `ScreenInfo` reports. So 1280 is a **padded stride** (240 pixels at four bytes is 960) and the reported size is the screen. The five logs also settle that the format itself is right: they sweep it again and `32bpp/1280` holds the longest dwell in every one of them -- 2,606 of 2,893 records in `g6box1-4`, 1,891 of 1,933 in `g6box6-8` -- so the sweeps were the user trying to fix the *shape* with the *format* knob, which was the only knob there was |
+
+## Round 74 -- the pitch is padding, and the screen is what it says
+
+Build 142 scaled the picture to 203x240 and centred it at column 58, on
+round 72's reading that the buffer is 320 pixels wide. The photograph says
+that reading was wrong.
+
+**The picture runs off the right-hand edge of the screen.** 58 + 203 = 261,
+and if the screen really were 320 wide there would be 59 pixels of black to
+the right of it. There is none: it reaches the edge, and the overflow appears
+back at the left. The visible width is therefore under 261, and the only
+candidate is the **240** that `UserSvr::ScreenInfo` has been reporting all
+along.
+
+So the two numbers are not in conflict and never were:
+
+* **240 x 320 is the screen.** What `ScreenInfo` says is what is visible.
+* **1280 bytes is the stride**, and it is padded: 240 pixels of four bytes is
+  960, and the hardware keeps a 320-pixel line. Rows are 1280 bytes apart and
+  only the first 960 of each are shown.
+
+Round 72's reading -- that the panel is natively 320x240 landscape and the
+reported 240x320 is its rotation -- is retracted. The measurement it rested
+on, 32 bits a pixel on a 1280-byte line, stands, and this round's five logs
+confirm it a third time: the user swept the format again and `32bpp/1280`
+holds the longest dwell in all five.
+
+### What the sweeps were actually doing
+
+Stepping the line changed the *shape*, because build 142 derived the buffer
+width from the pitch. `g6box7-7` walks the line down 1280, 1264, 1248 ... and
+the fit records follow it: 320x240, 316x240, 312x240. The user was trying to
+fix the aspect with the only control there was, and every step made the
+stride wrong as well.
+
+One accident worth keeping: at **16 bits** the derived width came out 640,
+wider than the map arrays allow, so the code fell back to the reported 240 --
+and the layout records read a correct **240x283 at y=18**. The right geometry
+was reachable in build 142, but only through the wrong depth.
+
+### Still open: the right-hand side comes back through the left
+
+Unchanged from before build 142, and independent of everything above: a strip
+of the picture's right-hand side reappears at its left. That is what a row
+written longer than the buffer it goes into looks like -- the overflow lands
+at the start of the next row. `srcPitch` is 176 because 176 is what the game
+was *told*, and nothing has ever measured what it actually writes.
+
+Build 143 puts the keypad on that instead of on the format: presets on the
+digits (176, 192, 200, 208, 240), one pixel a step on `*` and `#`, eight on
+`4` and `6`, and `NOTE_SCREEN_SRC` in the log so the dwell reading works the
+way it did for the format. If a value makes the strip go away, that value is
+the game's row length. If none does, the wrap is in the game's own layout
+rather than in how we read it, and that is a different fix.
 
 ## Where we are
 
-**Furthest: round 73 -- the format is confirmed twice over, and build 142
-acts on it.** The framebuffer is **32 bits a pixel on a 1280-byte line**,
-which is 320 pixels, which is the N95's native landscape panel; the 240x320
-that `UserSvr::ScreenInfo` reports is the rotated logical size. Round 72
-measured it from the dwell times in the log, round 73 from the keys the user
-pressed -- preset 7 (1152) plus eight sixteen-byte steps -- and they agree.
+**Furthest: round 74 -- the screen's shape is settled, and one thing is
+left.** The framebuffer is **32 bits a pixel on a 1280-byte line**, confirmed
+three separate ways (round 72's dwell times, round 73's keypress count, round
+74's five logs). The screen itself is the **240 x 320** `UserSvr::ScreenInfo`
+reports; 1280 bytes is a *padded stride*, since 240 pixels at four bytes is
+960 and the hardware keeps a 320-pixel line. Round 72's reading of that line
+as a 320-pixel-wide buffer is retracted -- round 74's photograph shows the
+picture running off the right-hand edge, which settles it.
 
-Build 142 stops centring a small picture: it takes the buffer's *own* shape
-from the line length rather than from the reported screen size, scales
-176x208 up to the widest shape-preserving fit (**203x240** on the phone,
-240x283 in the emulator), and blanks the whole buffer once after any change
-so nothing of the shell shows round the edges. `8` toggles back to the
-centred picture for comparison. E163/E164 ran it here and it fills the
-screen.
+Build 143 lays the picture out from the reported size and uses the pitch only
+to step between rows: **240x283 at y=18**, the shape kept, the full width
+filled, the whole buffer blanked so none of the shell shows.
+
+**What is left is the game's own row length.** A strip of the right-hand side
+of the picture comes back through the left, at every format and every size.
+`srcPitch` is 176 because 176 is what the game was told; nothing has measured
+what it writes. Build 143 puts the keypad on that.
 
 **Best round so far: 72**, narrowly over 69. Round 69 got the game running;
 round 72 made it watchable, and did it by putting the instrument in the
