@@ -227,6 +227,7 @@ them, and say so.
 | E172 | **build 145 -- skip the palette** | 5979 | `--` | **Right here and still right on the phone.** HAL's offset is applied now, but only after a sanity check -- a whole number of pixels and under 4 KB -- because HAL has lied about every other display attribute on the N95. The emulator answers 32 and the emulator needs 32; the **phone answers 0**, which is why build 144, applying nothing, was correct there. One build, both right. The screenshot has the picture edge to edge with no strip |
 | E173 | **build 146 -- no screen furniture** | 7923 | `--` | **Avkon takes the flag and the game still runs.** `ENoScreenFurniture` (0x04) added to the flags the game asks for. 7,923 records, the frame loop running, the picture unchanged here -- which is the point: the emulator does not paint a status pane over us, so this run only shows the flag is safe. Whether it clears the band is the phone's to say |
 | E174 | **build 146 with a screenshot** | -- | `--` | **Looked at, as a control.** The race renders exactly as it did in E170: full width, shape kept, `$000260` and `KmH` whole, nothing at any edge. Nothing regressed by dropping the furniture |
+| E175 | **build 147 -- the furniture flag, plus a keypad inset** | 4138 | `--` | **Runs, layout unchanged at inset zero.** `NOTE_SCREEN_DST` now carries the inset beside the first-pixel offset: 0 and 32 here. The inset shrinks the height the picture is fitted into and pushes `offY` down by the same amount, so the phone can put the picture below the status pane if the flag does not remove it. The clear still covers all 320 rows |
 
 <!-- EMURUN -->
 
@@ -438,6 +439,27 @@ status pane at the top and a button group at the bottom.
 That band is visible as itself in round 74's photograph, with the close icon
 on the left and the battery on the right. Over a running game the two
 repaint in turn and it reads as a hazy smear instead.
+
+### The ruler says so too, and gives the height
+
+The user asked why the coloured bands from rounds 70 and 71 -- painted over
+the game's own top 32 rows -- are gone now, and why that part of the game is
+not being drawn in their place.
+
+Because nothing stopped being drawn. It moved. Rounds 70 and 71 centred a
+176x208 picture, so `offY` was **56** and those bands came out at screen rows
+56 to 87, just clear of the pane. The scaled picture starts at row **18**, so
+the game's own rows land at 18 and upward -- under it.
+
+That also measures the pane. In round 74's photograph the picture starts at
+screen row **51** although build 142 placed it at row 0, so the pane is
+**51 rows** tall. The band in round 76's video measures 55 to 59, which is
+the same thing through a phone camera.
+
+Build 147 therefore carries a fallback in the same install: the keypad sets a
+**top inset**, which fits the picture into the screen below the inset instead
+of the whole screen. At 51 rows the picture becomes 227x269 -- about a
+twentieth narrower -- and every row of it is visible whatever the pane does.
 
 Build 146 adds **`ENoScreenFurniture`** to the flags, which is what a
 full-screen game asks for. It is not the flag that went wrong before:

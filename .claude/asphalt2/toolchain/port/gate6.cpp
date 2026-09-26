@@ -719,6 +719,7 @@ struct Context {
     u32 bufW, bufH;         // the screen's shape, which the pitch does not decide
     u32 srcW;               // how many of the game's pixels a row is read as
     u32 srcOrigin;          // where in its buffer the game's first pixel is
+    u32 topInset;           // rows at the top of the screen to keep clear of
     u32 stretch;            // 1 = scale 176x208 up to fill the screen
     u32 clearPending;       // blank the framebuffer once, after any change
     u32 dstW, dstH;         // how big the picture is drawn
@@ -3730,14 +3731,27 @@ extern "C" int gate6_file_read_static(void *self, u32 *des, Context *c)
 // anyway -- digits for the candidates, one pixel on `*` and `#`, eight on `4`
 // and `6` -- because it is measured in the emulator and the phone has not
 // confirmed it yet.
-static const u16 kFirst[] = {            // bytes of palette before the pixels
-    0, 16, 32, 48, 0, 64, 0, 96,         // 0-3, 5, 7
+// The keypad, on the last thing the phone has not answered.
+//
+// Round 76 measured it: in round 74's photograph the picture starts at screen
+// row **51** although that build placed it at row 0, so something owns the
+// top 51 rows. It is the status pane, and `ENoScreenFurniture` should remove
+// it. If it does not, the picture can simply start below it instead -- which
+// costs about a twentieth of the width, and is worth having in the same
+// round rather than the next one.
+//
+// It also explains why the band was never noticed before build 142: rounds
+// 70 and 71 centred a 176x208 picture, so `offY` was 56 and the ruler painted
+// over its top rows came out at rows 56 to 87, just clear of the pane. The
+// scaled picture starts at row 18, and the game's own HUD bar lands under it.
+static const u16 kInset[] = {            // rows to leave at the top
+    0, 16, 32, 48, 0, 56, 0, 64,         // 0-3, 5, 7
 };
 enum { SCREEN_KNOWN = 1, SCREEN_KNOWN_BPP = 32, SCREEN_KNOWN_PITCH = 1280 };
-enum { SCREEN_PICKER = 1, FIRST_COUNT = sizeof kFirst / sizeof kFirst[0] };
-enum { KEY_FIRST_NEXT = '*', KEY_FIRST_PREV = '#', KEY_FIRST_UP = '6',
-       KEY_FIRST_DOWN = '4', KEY_FMT_DEPTH = '9' };
-enum { FIRST_STEP = 4, FIRST_STEP_BIG = 32, FIRST_MAX = 4096 };
+enum { SCREEN_PICKER = 1, INSET_COUNT = sizeof kInset / sizeof kInset[0] };
+enum { KEY_INSET_NEXT = '*', KEY_INSET_PREV = '#', KEY_INSET_UP = '6',
+       KEY_INSET_DOWN = '4', KEY_FMT_DEPTH = '9' };
+enum { INSET_STEP = 2, INSET_STEP_BIG = 8, INSET_MAX = 120 };
 enum { SRC_ORIGIN = 16, SRC_ORIGIN_MAX = 64 };
 // Bench only: paint the blit's own outline, so a screenshot says exactly
 // which pixels of the screen we wrote and which we did not.
@@ -3757,17 +3771,14 @@ static void screen_format(Context *c)
     log_block(c);
 }
 
-// How many bytes of palette sit in front of the screen's pixels. Moving it
-// moves every row, so the whole buffer is blanked again behind it.
-static void first_set(Context *c, u32 bytes)
+// How many rows at the top of the screen to stay out of. The layout is redone
+// from scratch, because the picture gets smaller as the inset grows.
+static void inset_set(Context *c, u32 rows)
 {
-    if ((int)bytes < 0) bytes = 0;
-    if (bytes > (u32)FIRST_MAX) bytes = (u32)FIRST_MAX;
-    c->firstPixel = bytes & ~3u;
-    if (c->screenBase)
-        c->realScreen = c->screenBase + c->firstPixel;
-    c->clearPending = 1;
-    log_event(c, NOTE_SCREEN_DST, c->firstPixel);
+    if ((int)rows < 0) rows = 0;
+    if (rows > (u32)INSET_MAX) rows = (u32)INSET_MAX;
+    c->topInset = rows;
+    screen_layout(c);
     log_block(c);
 }
 
@@ -3797,11 +3808,13 @@ enum { SCREEN_RULER = 0 };
 // load per pixel.
 static void screen_layout(Context *c)
 {
-    const u32 bw = c->screenW, bh = c->screenH;
+    const u32 bw = c->screenW;
+    const u32 inset = (c->topInset < c->screenH) ? c->topInset : 0u;
+    const u32 bh = c->screenH - inset;
     const u32 sw = c->srcW ? c->srcW : (u32)GAME_W;
     const u32 sh = (u32)GAME_H;
     c->bufW = bw;
-    c->bufH = bh;
+    c->bufH = c->screenH;   // the clear still covers the whole screen
     c->clearPending = 1;
     if (!bw || !bh) {
         c->dstW = sw;
@@ -3859,12 +3872,12 @@ static void screen_layout(Context *c)
           } }
     }
     c->offX = bw > c->dstW ? (bw - c->dstW) / 2 : 0;
-    c->offY = bh > c->dstH ? (bh - c->dstH) / 2 : 0;
+    c->offY = inset + (bh > c->dstH ? (bh - c->dstH) / 2 : 0);
     log_event(c, NOTE_SCREEN_FIT, (bw << 16) | (bh & 0xFFFF));
     log_event(c, NOTE_SCREEN_FIT, (c->dstW << 16) | (c->dstH & 0xFFFF));
     log_event(c, NOTE_SCREEN_FIT, (c->offX << 16) | (c->offY & 0xFFFF));
     log_event(c, NOTE_SCREEN_SRC, (c->srcOrigin << 16) | (c->srcPitch & 0xFFFF));
-    log_event(c, NOTE_SCREEN_DST, c->firstPixel);
+    log_event(c, NOTE_SCREEN_DST, (inset << 16) | (c->firstPixel & 0xFFFF));
 }
 
 extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
@@ -4432,9 +4445,9 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
         log_event(c, NOTE_KEY, k[0]);       // iCode
         log_event(c, NOTE_KEY, k[1]);       // iScanCode
         log_event(c, NOTE_KEY, type);
-        // The picker, now on how many bytes of palette come before the
-        // screen's pixels. A digit selects a candidate outright, `*` and `#`
-        // move it one pixel, `4` and `6` eight. Only on **EEventKey**, which is type 1 -- E131 recorded types
+        // The picker, now on how many rows at the top of the screen to stay
+        // out of. A digit selects a candidate outright, `*` and `#` move it
+        // two rows, `4` and `6` eight. Only on **EEventKey**, which is type 1 -- E131 recorded types
         // 3, 1 and 2 for one press, and those are EEventKeyDown, EEventKey and
         // EEventKeyUp in that order, so type 1 is the one press and the only
         // one where `iCode` carries a character at all. The key is swallowed,
@@ -4453,14 +4466,14 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
                 screen_format(c);
                 return 1;                   // EKeyWasConsumed
             }
-            if (code == (u32)KEY_FIRST_UP)   { first_set(c, c->firstPixel + (u32)FIRST_STEP_BIG); return 1; }
-            if (code == (u32)KEY_FIRST_DOWN) { first_set(c, c->firstPixel - (u32)FIRST_STEP_BIG); return 1; }
-            if (code == (u32)KEY_FIRST_NEXT) { first_set(c, c->firstPixel + (u32)FIRST_STEP); return 1; }
-            if (code == (u32)KEY_FIRST_PREV) { first_set(c, c->firstPixel - (u32)FIRST_STEP); return 1; }
-            if (code >= '0' && code < '0' + (u32)FIRST_COUNT) {
-                const u32 want = kFirst[code - '0'];
+            if (code == (u32)KEY_INSET_UP)   { inset_set(c, c->topInset + (u32)INSET_STEP_BIG); return 1; }
+            if (code == (u32)KEY_INSET_DOWN) { inset_set(c, c->topInset - (u32)INSET_STEP_BIG); return 1; }
+            if (code == (u32)KEY_INSET_NEXT) { inset_set(c, c->topInset + (u32)INSET_STEP); return 1; }
+            if (code == (u32)KEY_INSET_PREV) { inset_set(c, c->topInset - (u32)INSET_STEP); return 1; }
+            if (code >= '0' && code < '0' + (u32)INSET_COUNT) {
+                const u32 want = kInset[code - '0'];
                 if (want || code == '0') {
-                    first_set(c, want);
+                    inset_set(c, want);
                     return 1;               // EKeyWasConsumed
                 }
             }
