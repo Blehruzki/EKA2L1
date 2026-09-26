@@ -246,6 +246,10 @@ them, and say so.
 | E191 | **build 158b -- the same dump, masked and widened** | 1403 | `0xFFFFFFFC` | **The vtable reads cleanly.** `[+0]` is 0 (offset-to-top), `[+1]` a typeinfo pointer, and **`[+2]` and `[+3]` both begin `push {r4,r5,lr}; ldr r3,[pc]; str r3,[r0]`** -- a destructor reinstalling a vtable, twice, which is the EABI complete/deleting pair. So the virtuals start at **4** and the first table was right about that. `[+4]` is a bare `bx lr` in another module, and the rest are Thumb forwarders of the shape `ldr r0, [r0, #8]; bl impl`. The 0xFFFFFFFC fault is **the dump itself** reading the word past the end of the table |
 | E192 | **build 159 -- the map from the dump, and a clamped priority** | 1403 | `0xFFFFFFFC` | **Same fault, same cause: my own dump, still on.** Nothing about the game |
 | E193 | **build 159b -- dump off** | 2127 | `0x64` | **The clamp works and the diagnosis moves on.** The priority now goes in as 100 rather than 256, and the fault follows it exactly: **access violation reading 0x64**, which is 100. So it is not the *value* that is wrong -- whatever the game's slot 3 lands on takes a **pointer** as its first argument, and `SetPriority` does not. The vtable's shape is settled; which 9.x slot is which is not |
+| E194 | **build 160 -- `CBase::Extension_` accounted for** | 2122 | `0xFFFFFFFC` | **The missing slot, found in the dump.** `[+4]` is the only entry pointing outside the DLL, into euser, and its code is `movs r0,#0; str r0,[r2]; movs r0,#46; mvns r0,r0` -- return **-47**, `KErrExtensionNotSupported`. That is `CBase::Extension_`, which 9.x declares on CBase and EKA1 did not, so the virtuals start at 5 |
+| E195 | **build 161 -- calls made from C, so returns are logged too** | 2122 | `0xFFFFFFFC` | **Now the fault has a name.** The two-stage thunk could say a call had started and never that it came back. With the call made from C: **`Open` was called and returned; `Stop` was called and did not**. `Stop` begins `iWaitBufferEndTimer->Cancel()` and then works the buffer queue -- state that exists only after an open completes -- and the game calls Stop defensively before anything is playing |
+| E196 | **build 162 -- skip the defensive Stop** | 2134 | `0xFFFFFFFA` | **Three more calls, and the chain is visible end to end.** `Open` returns, `SetPriority` returns, **`MaxVolume` returns** -- and then the game computes **-6** from what MaxVolume gave it and hands that back as a volume, and `SetVolume(-6)` faults. 9.x opens a stream **asynchronously** and the N-Gage did not: the game asks for the volume the instant it has opened, and gets an error back |
+| E197 | **build 163 -- sanitise the values crossing the bridge** | 2134 | `0x64` | **The values are sane now and it still faults, which moves the diagnosis.** A failed `MaxVolume` answers 100, a volume is clamped into range, a priority likewise: the log reads `Open` -> returned, `SetPriority` -> returned, `MaxVolume` -> **returned 100**, `SetVolume(100)` -> fault reading **0x64**. 0x64 is both 100 and a plausible structure offset, and three faults have now read an address equal to an argument -- which is the giveaway: these are **null-pointer dereferences at a field offset**, not arguments used as addresses. Something inside the implementation is null because the open never really succeeded |
 
 <!-- EMURUN -->
 
@@ -546,23 +550,30 @@ from anything done so far, and not a small one.
 
 ## Where we are
 
-**Furthest: round 77 -- the picture fits, and one thing still owns the top
-of the screen.** Settled: the framebuffer is 32 bits a pixel on a 1280-byte
-line; the screen is the 240x320 `ScreenInfo` reports and 1280 is a padded
-stride; `EDisplayOffsetToFirstPixel` must be applied (32 in the emulator, 0
-on the phone, HAL right about both); the game's own picture starts sixteen
-pixels into its buffer, which was the wrap. The game plays on the phone.
+**Furthest: round 78 and the sound work behind it.** The display is
+finished: 32 bits a pixel on a 1280-byte line, the screen the 240x320
+`ScreenInfo` reports with 1280 a padded stride, `EDisplayOffsetToFirstPixel`
+applied (32 here, 0 on the phone), the game's picture read from pixel
+sixteen, and the picture filled to the width and anchored to the bottom
+below the 56-row band. The phone's own dwell chose those numbers and build
+149 fixed them, with the picker off so every key reaches the game.
 
-A band 49 to 56 rows tall owns the top of the screen and survives
-`ENoScreenFurniture`, which the log confirms reached avkon. Build 148 fills
-the space below it -- picture **240x264 at (0,56)**, full width, bottom edge
-exact, the leftover at the top -- and takes a 7 per cent difference between
-the two scales rather than an eighth of the width in black bars. It also
-sizes the lent window to the whole screen, which is the last untried lever on
-the band.
+**Sound is the work now, and the bridge is built.** The game hosts its own
+client-server pair in this process and the shim was dropping every message.
+`CServer::StartL` keeps the server, `CreateSession` calls its `NewSessionL`
+(vtable slot 6), `SendReceive` fills a message -- `iFunction` at 0,
+`iArgs[0..3]` at 36, 40, 44, 48 -- parks it at `session+16` and calls
+`ServiceL` (slot 5). The first run of that ended in our own `G6IMP 464458`
+panic, which is 464x1000 + 458, `CMdaAudioOutputStream::NewL`: proof the
+game had never reached audio before.
 
-**Next**: whether the band survives a full-screen window. Then audio, still a
-silent stand-in with 17 imports unanswered.
+The stream is now created from the real 9.x `NewL` (mediaclientaudiostream
+ordinal 3) behind a proxy vtable, and the game's calls reach it: **`Open`,
+`SetPriority` and `MaxVolume` all return**. What is left is that 9.x opens a
+stream asynchronously where the N-Gage did not, so the object is not ready
+when the game asks it for things, and a null inside it faults. The settings
+package the game hands `Open` -- an N-Gage `TMdaAudioDataSettings` read by a
+9.x reader -- is the next suspect.
 
 **Best round so far: 72**, narrowly over 69. Round 69 got the game running;
 round 72 made it watchable, and did it by putting the instrument in the

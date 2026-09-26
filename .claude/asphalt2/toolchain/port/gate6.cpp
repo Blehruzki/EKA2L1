@@ -4891,14 +4891,33 @@ enum { MDA_PROXY = 1, MDA_SLOTS = 14 };
 // reinstalling a vtable -- and the virtuals run from 4. So:
 // SetAudioPropertiesL 4, Open 5, MaxVolume 6, Volume 7, SetVolume 8,
 // SetPriority 9, WriteL 10, Stop 11, Position 12.
+// The missing slot is **`CBase::Extension_`**, which 9.x declares on CBase
+// and EKA1 did not. It is `[+4]` in the dump: the only entry pointing
+// outside the DLL, into euser, and its code is `movs r0,#0; str r0,[r2];
+// movs r0,#46; mvns r0,r0` -- store nothing through the out-parameter and
+// return **-47**, `KErrExtensionNotSupported`. So the 9.x virtuals start at
+// 5, not 4, and everything below shifts one further:
+//
+//   5 SetAudioPropertiesL  6 Open      7 MaxVolume  8 Volume
+//   9 SetVolume           10 SetPriority  11 WriteL  12 Stop  13 Position
+//
+// Each of those is confirmed by the shape of its code in the dump: Open and
+// SetPriority save r1 (they have an argument they keep), MaxVolume, Volume
+// and Stop are bare `ldr r0,[r0,#8]; bl impl; pop {pc}` forwarders.
 static const signed char kMdaMap[14] = {
-    -1, -1,   3,   9,   5,   6,   7,   8,  -1,  10,  11,  12,  -1, -1
+    -1, -1,   3,  10,   6,   7,   8,   9,  -1,  11,  -1,  13,  -1, -1
 //   0   1  dtor Prio Open Max  Vol  Set   ?  Write Stop  Pos
 };
+// `Stop` is dropped for now, and the reason is in the implementation: it
+// begins `iWaitBufferEndTimer->Cancel()` and then works the buffer queue,
+// all of which only exists once an open has completed. The game calls Stop
+// defensively before anything is playing -- harmless on the N-Gage, a fault
+// here -- and E195 caught it exactly: `Open` was called **and returned**,
+// `Stop` was called and did not.
 // The N-Gage's priority scale is not 9.x's. The game asks for **256**, and
 // the fault in E188 was a read of address **0x100** -- the number itself,
 // used as an address by whatever indexes on priority. 9.x runs -100..100.
-enum { MDA_PRIO_MAX = 100 };
+enum { MDA_PRIO_MAX = 100, MDA_VOL_MAX = 100 };
 // Bench only: every slot says what it was called with before it forwards.
 // The proxy gets three messages further than the bare pointer and then
 // faults, and this is what says which method and which argument.
@@ -4908,6 +4927,49 @@ enum { MDA_TRACE = 1, MDA_TRAMP = MDA_TRACE ? 14 : 3 };
 // is what "access violation reading 0xFFFFFFFC" in E191 and E192 was. My
 // instrument, not the game.
 enum { MDA_DUMP_VT = 0 };
+
+// The whole call, in C: log it, make it, log that it came back. The
+// two-stage thunk could say a call had started and never that it returned,
+// which is the difference between "this method faults" and "the fault is
+// after it".
+extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
+{
+    typedef u32 (*Any)(void *, u32, u32, u32);
+    u32 *obj = (u32 *)saved[0];
+    void *real = (void *)obj[1];
+    u32 *rvt = (u32 *)obj[2];
+    const int to = (slot < 14) ? kMdaMap[slot] : -1;
+    log_event(c, NOTE_MDA_CALL, slot);
+    log_event(c, NOTE_MDA_ARG, saved[1]);
+    log_event(c, NOTE_MDA_ARG, saved[2]);
+    log_event(c, NOTE_MDA_ARG, saved[3]);
+    log_block(c);
+    if (to < 0 || !rvt || !real)
+        return 0;
+    // Two values have to be made sane on the way through, and for one
+    // reason: **9.x opens the stream asynchronously and the N-Gage did
+    // not**. The game asks for the volume the instant it has opened, the
+    // real `MaxVolume` answers with an error because nothing is open yet,
+    // and the game then hands that error straight back as a volume. E196
+    // caught the whole chain: `MaxVolume` returned, the game computed -6
+    // from it, and `SetVolume(-6)` faulted reading address 0xFFFFFFFA --
+    // the number itself. So: a failed `MaxVolume` answers 100, and a volume
+    // is clamped into range before it goes in. The same for the priority,
+    // which is on a different scale entirely.
+    u32 a1 = saved[1];
+    if (slot == 3 && (int)a1 > (int)MDA_PRIO_MAX) a1 = (u32)MDA_PRIO_MAX;
+    if (slot == 7) {
+        if ((int)a1 < 0) a1 = 0;
+        if ((int)a1 > (int)MDA_VOL_MAX) a1 = (u32)MDA_VOL_MAX;
+    }
+    u32 r = ((Any)rvt[to])(real, a1, saved[2], saved[3]);
+    if (slot == 5 && (int)r <= 0)
+        r = (u32)MDA_VOL_MAX;
+    log_event(c, NOTE_MDA_CALL, 0x100u | slot);     // and it came back
+    log_event(c, NOTE_MDA_ARG, r);
+    log_block(c);
+    return r;
+}
 
 extern "C" void gate6_mda_call(u32 *saved, Context *c, u32 slot)
 {
@@ -4934,7 +4996,7 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
         log_block(c);
         return (u32)real;
     }
-    const u32 need = 8 + (u32)MDA_SLOTS * 4 + (u32)MDA_SLOTS * MDA_TRAMP * 4;
+    const u32 need = 16 + (u32)MDA_SLOTS * 4 + (u32)MDA_SLOTS * MDA_TRAMP * 4;
     if (!c->spare || c->spare + need > c->spareEnd) {
         log_block(c);
         return (u32)real;                   // no room: give it the bare object
@@ -4964,7 +5026,7 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
         log_block(c);
     }
     u32 *obj = (u32 *)c->spare;
-    u32 *vt = obj + 2;
+    u32 *vt = obj + 4;
     u32 *tramp = vt + MDA_SLOTS;
     c->spare += need;
     for (u32 k = 0; k < (u32)MDA_SLOTS; k++) {
@@ -5000,6 +5062,24 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
             t[1]  = 0xE1A0000D;             // mov  r0, sp
             t[2]  = 0xE59F1014;             // ldr  r1, [pc, #20]  -> ctx
             t[3]  = 0xE59F2014;             // ldr  r2, [pc, #20]  -> slot
+            t[4]  = 0xE59F3014;             // ldr  r3, [pc, #20]  -> the C entry
+            t[5]  = 0xE12FFF33;             // blx  r3
+            t[6]  = 0xE28DD010;             // add  sp, sp, #16
+            t[7]  = 0xE8BD4000;             // ldm  sp!, {lr}
+            t[8]  = 0xE12FFF1E;             // bx   lr
+            t[9]  = (u32)c;
+            t[10] = k;
+            t[11] = (u32)&gate6_mda_call2;
+            t[12] = 0;
+            t[13] = 0;
+            vt[k] = (u32)t;
+            continue;
+        }
+        if (0) {
+            t[0]  = 0xE92D400F;             // push {r0-r3, lr}
+            t[1]  = 0xE1A0000D;             // mov  r0, sp
+            t[2]  = 0xE59F1014;             // ldr  r1, [pc, #20]  -> ctx
+            t[3]  = 0xE59F2014;             // ldr  r2, [pc, #20]  -> slot
             t[4]  = 0xE59F3014;             // ldr  r3, [pc, #20]  -> the logger
             t[5]  = 0xE12FFF33;             // blx  r3
             t[6]  = 0xE8BD400F;             // pop  {r0-r3, lr}
@@ -5021,6 +5101,7 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
     vt[1] = 0;
     obj[0] = (u32)vt;
     obj[1] = (u32)real;
+    obj[2] = (u32)rvt;
     user_imb_range(obj, tramp + MDA_SLOTS * MDA_TRAMP);
     log_event(c, NOTE_SOUND, (u32)obj);
     log_block(c);
