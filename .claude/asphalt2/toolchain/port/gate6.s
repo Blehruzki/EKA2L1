@@ -134,6 +134,7 @@ old_call1:
     IMPORT user_imb_range,    667    @ User::IMB_Range(TAny*, TAny*)
     IMPORT user_tickcount,    674    @ User::TickCount()
     IMPORT sem_wait_timeout,   68    @ RSemaphore::Wait(TInt aTimeout) -- the timed one
+    IMPORT user_allocator,    665    @ User::Allocator()
     @ hal
     IMPORT hal_get,             1    @ HAL::Get(HALData::TAttribute, TInt&)
     @ efsrv

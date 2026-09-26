@@ -29,6 +29,7 @@ void *user_alloc(int size);
 i32 chunk_createlocalcode(void *chunk, int size, int maxSize, int owner);
 u8 *chunk_base(const void *chunk);
 i32 sem_wait_timeout(void *sem, int microseconds);
+void *user_allocator(void);
 i32 fs_connect(void *fs, int slots);
 i32 file_open(void *file, void *fs, const void *name, u32 mode);
 // RFile::Close, and not RHandleBase::Close. An RFile is an RSubSessionBase,
@@ -3246,7 +3247,7 @@ enum { NEW_RTHREAD_CREATE = CREATE_ORDINAL, NEW_RTHREAD_RESUME = 1795 };
 // is a different and visible failure.
 enum { STACK_CEILING = 0x10000, STACK_FLOOR = 0x1000 };
 enum { CLAMP_THREAD_STACK = 1, IMPORT_THREAD_CREATE = 299 };
-enum { WATCH_SEM_RESULT = 1 };
+enum { WATCH_SEM_RESULT = 1, LEND_THE_HEAP = 1 };
 
 extern "C" void gate6_thread_stack(u32 err, u32 stack, Context *c)
 {
@@ -3273,7 +3274,21 @@ extern "C" void gate6_thread_stack(u32 err, u32 stack, Context *c)
 //   r7 >>= 1 ; if r7 >= floor goto retry
 // done:
 //   record (r0 = the error, r1 = the stack size that was used)
-enum { STACK_WORDS = 38 };
+// Round 65 adds the second substitution. The game passes `aHeap = NULL`,
+// which in this overload means *share the creating thread's heap* -- and if
+// euser leaves that null in the create info with a zero heap size,
+// `UserHeap::SetupThreadHeap` sets nothing up and the new thread's first
+// allocation reaches for a heap that is not there. That is where the
+// SoundServer thread dies: between the trace record for `CTrapCleanup::New`,
+// which fires before the call, and its next traced import, with nothing in
+// the gap but that call and the game's `operator new(20)`. KERN-EXEC 0 is a
+// bad **handle**, which is what an `RHeap`'s `RChunk` would be.
+//
+// So a null `aHeap` becomes `&User::Allocator()` -- the creating thread's
+// heap, said out loud. The value is read on the main thread when the thunk is
+// built and baked in as a literal, which is the only place it is certainly
+// right.
+enum { STACK_WORDS = 41 };
 
 static u32 stack_thunk(u8 *code, const void *ctx, u32 target, u32 ceiling)
 {
@@ -3283,39 +3298,42 @@ static u32 stack_thunk(u8 *code, const void *ctx, u32 target, u32 ceiling)
     b[2]  = 0xE1A05001;                 // mov   r5, r1
     b[3]  = 0xE1A06002;                 // mov   r6, r2
     b[4]  = 0xE1A07003;                 // mov   r7, r3
-    b[5]  = 0xE59F806C;                 // ldr   r8, [pc, #108]  -> b[34]
+    b[5]  = 0xE59F8074;                 // ldr   r8, [pc, #116]  -> b[36]
     b[6]  = 0xE1580007;                 // cmp   r8, r7
     b[7]  = 0x31A07008;                 // movcc r7, r8
-    b[8]  = 0xE59D0020;                 // ldr   r0, [sp, #32]
-    b[9]  = 0xE59D1024;                 // ldr   r1, [sp, #36]
-    b[10] = 0xE59D2028;                 // ldr   r2, [sp, #40]
-    b[11] = 0xE59D302C;                 // ldr   r3, [sp, #44]
-    b[12] = 0xE92D000F;                 // stmdb sp!, {r0-r3}
-    b[13] = 0xE1A00004;                 // mov   r0, r4
-    b[14] = 0xE1A01005;                 // mov   r1, r5
-    b[15] = 0xE1A02006;                 // mov   r2, r6
-    b[16] = 0xE1A03007;                 // mov   r3, r7
-    b[17] = 0xE59FC040;                 // ldr   r12, [pc, #64]  -> b[35]
-    b[18] = 0xE1A0E00F;                 // mov   lr, pc
-    b[19] = 0xE12FFF1C;                 // bx    r12
-    b[20] = 0xE28DD010;                 // add   sp, sp, #16
-    b[21] = 0xE3700028;                 // cmn   r0, #40         -- KErrTooBig
-    b[22] = 0x1A000002;                 // bne   -> b[26]
-    b[23] = 0xE1B070A7;                 // movs  r7, r7, lsr #1
-    b[24] = 0xE3570A01;                 // cmp   r7, #0x1000  -- STACK_FLOOR
-    b[25] = 0x2AFFFFED;                 // bcs   -> b[8]
-    b[26] = 0xE1A0A000;                 // mov   r10, r0
-    b[27] = 0xE1A01007;                 // mov   r1, r7
-    b[28] = 0xE59F2018;                 // ldr   r2, [pc, #24]   -> b[36]
-    b[29] = 0xE59FC018;                 // ldr   r12, [pc, #24]  -> b[37]
-    b[30] = 0xE12FFF3C;                 // blx   r12
-    b[31] = 0xE1A0000A;                 // mov   r0, r10
-    b[32] = 0xE8BD4DF0;                 // ldmia sp!, {r4-r8, r10, r11, lr}
-    b[33] = 0xE12FFF1E;                 // bx    lr
-    b[34] = ceiling;
-    b[35] = target;
-    b[36] = (u32)ctx;
-    b[37] = (u32)&gate6_thread_stack;
+    b[8]  = 0xE59D0020;                 // ldr   r0, [sp, #32]   -- aHeap
+    b[9]  = 0xE3500000;                 // cmp   r0, #0
+    b[10] = 0x059F0070;                 // ldreq r0, [pc, #112]  -> b[40]
+    b[11] = 0xE59D1024;                 // ldr   r1, [sp, #36]
+    b[12] = 0xE59D2028;                 // ldr   r2, [sp, #40]
+    b[13] = 0xE59D302C;                 // ldr   r3, [sp, #44]
+    b[14] = 0xE92D000F;                 // stmdb sp!, {r0-r3}
+    b[15] = 0xE1A00004;                 // mov   r0, r4
+    b[16] = 0xE1A01005;                 // mov   r1, r5
+    b[17] = 0xE1A02006;                 // mov   r2, r6
+    b[18] = 0xE1A03007;                 // mov   r3, r7
+    b[19] = 0xE59FC040;                 // ldr   r12, [pc, #64]  -> b[37]
+    b[20] = 0xE1A0E00F;                 // mov   lr, pc
+    b[21] = 0xE12FFF1C;                 // bx    r12
+    b[22] = 0xE28DD010;                 // add   sp, sp, #16
+    b[23] = 0xE3700028;                 // cmn   r0, #40         -- KErrTooBig
+    b[24] = 0x1A000002;                 // bne   -> b[28]
+    b[25] = 0xE1B070A7;                 // movs  r7, r7, lsr #1
+    b[26] = 0xE3570A01;                 // cmp   r7, #0x1000  -- STACK_FLOOR
+    b[27] = 0x2AFFFFEB;                 // bcs   -> b[8]
+    b[28] = 0xE1A0A000;                 // mov   r10, r0
+    b[29] = 0xE1A01007;                 // mov   r1, r7
+    b[30] = 0xE59F2018;                 // ldr   r2, [pc, #24]   -> b[38]
+    b[31] = 0xE59FC018;                 // ldr   r12, [pc, #24]  -> b[39]
+    b[32] = 0xE12FFF3C;                 // blx   r12
+    b[33] = 0xE1A0000A;                 // mov   r0, r10
+    b[34] = 0xE8BD4DF0;                 // ldmia sp!, {r4-r8, r10, r11, lr}
+    b[35] = 0xE12FFF1E;                 // bx    lr
+    b[36] = ceiling;
+    b[37] = target;
+    b[38] = (u32)ctx;
+    b[39] = (u32)&gate6_thread_stack;
+    b[40] = LEND_THE_HEAP ? (u32)user_allocator() : 0u;
     user_imb_range(b, b + STACK_WORDS);
     return (u32)b;
 }
@@ -4959,6 +4977,10 @@ static u32 load_and_start()
                                                 iat[IMPORT_THREAD_CREATE],
                                                 STACK_CEILING);
         ctx->spare += STACK_WORDS * 4;
+        // The heap the thunk will lend a new thread when the game asks for
+        // none, read here on the main thread where it is certainly right.
+        log_event(ctx, NOTE_THREAD_ARG, LEND_THE_HEAP ? (u32)user_allocator() : 0u);
+        log_block(ctx);
     }
     if (WATCH_THE_SCREEN && IMPORT_SCREEN_INFO < nImports &&
         ctx->spare + TRACE <= ctx->spareEnd) {

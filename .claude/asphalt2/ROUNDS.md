@@ -204,6 +204,7 @@ them, and say so.
 | E149 | **build 133b -- the worker log marks which worker is writing** | 14467 | `--` | **Readable.** Two threads share the one file, so a `NOTE_WORKER_SP` (849) goes in whenever the writing thread's stack moves by more than 8 KB, and the file reads as separate stories rather than one interleaved mess. First record out is `849 04a01e2c`, then the same five as E148. No cost: 14,467 records, 3,708 frames. This is the build to send |
 | E150 | **build 134 -- `worker_log` off; the main thread's `RSemaphore::Wait` in 100 ms slices that flush the box, giving up after five seconds** | 14289 | `--` | **Costs nothing when the handshake is healthy.** `NOTE_SEM_WAIT` (836) goes down twice: `0` on entry and `1` on return, so the emulator's semaphore is signalled inside the **first** slice and the timed wait is indistinguishable from the blocking one -- 3,707 frames, the same as E149. The point of it is the two things a blocking wait costs on hardware and not here: the box stops being flushed the moment the main thread blocks, and the application stops answering, which is `ViewSrv 11`. Slices fix both, and the give-up lets the game past a signal that never comes, which no round has ever seen it do. `worker_log` is off and wrote nothing, as intended -- round 64 named the thread it was killing |
 | E151 | **build 134b -- the timed wait gives up after two seconds rather than five** | 14485 | `--` | **Same behaviour, with the watchdog left alone.** All of this happens inside frame 1's `RunL`, and this file already records a phone watchdog reset at about ten seconds of not yielding; five seconds of waiting inside that one call was too close to it for a number chosen carelessly. Signalled in the first slice again, 3,787 frames, `g6wrk.log` absent. This is the build to send |
+| E152 | **build 135 -- lend a new thread the creating thread's heap when the game passes `aHeap = NULL`** | 14538 | `--` | **Builds, reads a sane heap, changes nothing here -- and cannot, by construction.** `User::Allocator()` (euser 665) answers **`0x700000`** on the main thread and that is what `stack_thunk` now bakes in and substitutes for the null `aHeap`; the clamped 0x10000 stack still goes through beside it. 3,748 frames, no leave, no exit, no regression. The emulator cannot say more than that: E148 established that EKA2L1 never runs the SoundServer thread's entry function at all -- imports 330, 386, 319, 363 and 367 are still zero here -- so the allocation that is supposed to stop failing never happens. As with round 61's flush guard, the evidence will be the phone or nothing |
 
 <!-- EMURUN -->
 
@@ -266,10 +267,25 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 62 | **build 131** -- guard `box_flush`'s `RFile::Flush` against the wrong thread | 2 runs, 4 launches logged | **1,274 records every time**, all four launches the same shape; still no leave, no exit; frame 1 runs and returns; **KERN-EXEC 0 -- but now named `gate6`** | **The guard worked and uncovered the next fault.** The panic's name has changed from a different garbage number every run to **`gate6`**, so the thread that dies is no longer the garbage-named worker: it is the main thread. That is the evidence the wrong-thread flush was real and is fixed -- the worker now survives -- and it says the main thread has a bad handle of its own, immediately after frame 1's `RunL` returns. Where exactly is **not** in this round: the log buffers eight records before writing, so its end is +/-7 events, and the box flushes every sixteenth traced import and says only "208 traced events at the last write, so 208..239 in all". Four launches agreeing to the record makes it deterministic. The region the fault is in -- `RThread::SetPriority`, `Resume`, `RSemaphore::Wait`, then two `RHandleBase::Close` at `0xb87b0` and `0xb87b8` -- is traced by nothing, which is why build 132 exists |
 | 63 | **build 132** -- the box on every traced import, the SoundServer handshake traced, `RSemaphore::CreateLocal`'s result | several launches | **1,285 records**; **no frame end**; two panics seen -- `886699653 KERN-EXEC 0` and, on one launch, **`gate6 ViewSrv 11`** | **The instrument paid for itself: the window is now named, and the failure turns out to be a hang.** The box records, exactly: `RSemaphore::CreateLocal` -> **0** (so the semaphore is real on hardware, a question the game throws away), `RThread::Create` -> 0 with the clamped stack, `SetPriority`, `Resume`, then **`CTrapCleanup::New` from `0xb866c` -- the SoundServer thread running its own entry function** -- and finally `RSemaphore::Wait` from `0xb8798`. There is **no `NOTE_FRAME_END`**: the main thread went into that `Wait` and never came out, which is what `ViewSrv 11` is -- the view server timing out on an application that is not responding, a hang and not a crash. So the SoundServer thread does not reach its `RSemaphore::Signal` at `0xb86ac`. It also shows `on_main_thread` working correctly on hardware: the worker's `CTrapCleanup::New` is in the box, which any thread writes, and **not** in the log, which only the main thread writes. That is also why the round ends there -- once the main thread blocks, nothing flushes the box again and the worker's own story is stranded in memory. Build 133 gives the worker a file of its own |
 | 64 | **build 133** -- the worker gets its own log file, connected on its own thread | several launches | **1,285 records**, box identical to round 63 to the entry; **no `g6wrk.log` at all**; panics `-1879111643 KERN-EXEC 0`, **`SoundServer KERN-EXEC 0`** (twice) and `gate6 ViewSrv 11` | **The thread is named at last -- and the instrument is what names it.** `SoundServer KERN-EXEC 0` has never appeared before; the only change in this build is `worker_log`, and it runs on that thread. It never produced a file, so it died at or before its first file call, which is `RFs::Connect` -- and that call happens **before** `CTrapCleanup::New` itself, because a trace thunk records on the way in. Two faults in one: the design shares one `RFs` and one `RFile` between *both* workers, which is the same cross-thread handle that rounds 60-62 were about, and something in that first call is fatal on that thread regardless. It also confirms the round 63 reading from the other side: `SoundServer` is a real name, so the decimal-numbered panic is a different thread again. Nothing else moved -- box last import `RSemaphore::Wait`, `CTrapCleanup::New from b866c` at 224, no frame end |
+| 65 | **build 134** -- `worker_log` off; the main thread's `RSemaphore::Wait` in 100 ms slices that flush the box, giving up after two seconds | 1 | **1,295 records** and **the frame ends**; `NOTE_SEM_WAIT` says `0` then `ffffffff`; panic `SoundServer KERN-EXEC 0` | **The hang is gone and the fault is cornered to two calls.** The wait ran its full twenty slices and was **never signalled**, so the main thread gave up, closed both handles, ran `RSessionBase::CreateSession` and **finished frame 1** -- the first time the game has got past the handshake on hardware. And because the box was flushed every 100 ms for the whole two seconds, the silence from the other thread is now evidence rather than a gap: the SoundServer thread makes **no traced import at all** after `CTrapCleanup::New`. A trace thunk records on the way *in*, so it died between that record and its next one, `CActiveScheduler::CActiveScheduler()`. Two calls sit in that gap -- `CTrapCleanup::New()` itself and the game's `operator new(20)` at `0x652f8` -- and **both allocate**. The game passes `aHeap = NULL` to `RThread::Create`, which means *share the creating thread's heap*; if euser leaves the create info's allocator null and its heap size zero, `UserHeap::SetupThreadHeap` sets nothing up and the thread's first allocation reaches for a heap that is not there -- and KERN-EXEC 0 is a bad **handle**, which is what an `RHeap`'s chunk handle would be. Build 135 substitutes the creating thread's allocator for the null one |
 
 ## Where we are
 
-**Furthest: round 64, build 133.** The thread is named: **`SoundServer`**
+**Furthest: round 65, build 134.** The hang is gone: the timed wait ran its
+full two seconds unsignalled, the main thread gave up, closed both handles and
+**finished frame 1** -- the first time on hardware with the sound server in
+the picture -- and there was no `ViewSrv 11`. What is left is one thread and
+two calls. The box was flushed every 100 ms throughout, caught nothing from
+the SoundServer thread after `CTrapCleanup::New`, and a trace thunk records on
+the way *in*, so the death is inside `CTrapCleanup::New()` or the game's
+`operator new(20)` at `0x652f8`, with nothing else in the gap. Both allocate,
+and the game asks for the thread with `aHeap = NULL`.
+
+**Best round so far: 65.** It removed the hang, turned a silence into a
+measurement, and narrowed sixty-five rounds of "it dies somewhere" down to two
+consecutive calls that do the same thing.
+
+**Previously furthest: round 64, build 133.** The thread is named: **`SoundServer`**
 appears in a panic dialog for the first time, and it appears because the
 instrument sent to watch it killed it -- `worker_log` never produced a file,
 so it died at or before its first `RFs::Connect`, which a trace thunk reaches
@@ -278,7 +294,7 @@ Three dialogs now name three threads: `SoundServer` (KERN-EXEC 0), a
 decimal-numbered one (KERN-EXEC 0), and `gate6` (ViewSrv 11, the main thread
 hung in `RSemaphore::Wait`).
 
-**Best round so far: 64.** One round, one name, and the name is the answer to
+**Round 64** gave one name, and the name is the answer to
 a question this file has been guessing at since round 40. It also cost the
 instrument: `worker_log` is off, and build 134 gets the same story out of the
 box instead, by slicing the main thread's wait so that something is still
@@ -1007,3 +1023,68 @@ from the image -- the emulator's kernel log prints it as `SoundServer` -- and
 answered 0. On the evidence so far it is the game's other worker, the 0x2000
 one created at record 205 and resumed at 211. Build 133's worker log covers
 both threads, so the next round says which.
+
+## Round 65 -- build 134 on the N95
+
+Two results, and the second one is only legible because of the first.
+
+### The main thread is out of the hang
+
+`NOTE_SEM_WAIT` goes down twice: `0` on the way in and **`ffffffff`** on the
+way out. That is the give-up: twenty 100 ms slices, never signalled. The main
+thread then did what it would have done anyway --
+
+    281  RHandleBase::Close   b87b4
+    281  RHandleBase::Close   b87bc
+    298  RSessionBase::CreateSession  ba544
+    866  FRAME END
+
+-- and **frame 1 completed**, which has never happened on hardware with the
+sound server in the picture. No `ViewSrv 11` this round either, because the
+application never stopped answering.
+
+### And the silence is now evidence
+
+The box was flushed every 100 ms for the whole two seconds the other thread
+was alive. It caught nothing. So the SoundServer thread makes **no traced
+import at all** after `CTrapCleanup::New`, and that is a measurement rather
+than a gap in the record.
+
+A trace thunk records on the way *in*, so `CTrapCleanup::New` being the last
+entry means the thread died somewhere between that record and its next one.
+Reading `0xb8660` out, exactly two calls sit in that gap:
+
+    0b8668  bl  CTrapCleanup::New()          <- the trace fires here, before the call
+    0b8674  mov r0, #20
+    0b8678  bl  0x652f8                      <- the game's operator new(20)
+    0b8684  bl  CActiveScheduler ctor        <- would have been traced
+
+**Both of them allocate**, and nothing else in the gap does anything at all.
+
+### The leading explanation, and it is not yet proved
+
+The game creates this thread with `aHeap = NULL`:
+
+    0b8758  stm sp, {r5, r6}     ; [sp+0] = 0 = aHeap, [sp+4] = &semaphore
+    0b875c  str r5, [sp, #8]     ; owner
+
+On EKA1 and on EKA2 alike, a null `aHeap` in that overload means *share the
+creating thread's heap*. Whether euser resolves that null into the creating
+thread's allocator when it fills `SStdEpocThreadCreateInfo`, or leaves it null
+for `UserHeap::SetupThreadHeap` to deal with, decides whether this thread has
+a heap at all -- and if `iAllocator` is null **and** `iHeapInitialSize` is
+zero, `SetupThreadHeap` sets up nothing. The thread's first allocation then
+reaches for a heap that is not there.
+
+That fits the panic number: **KERN-EXEC 0 is a bad handle**, not a bad
+pointer, and an `RHeap` holds an `RChunk` handle it adjusts when it grows.
+It also fits why no emulator run has ever shown it: EKA2L1 does not run this
+thread's entry function at all (E148).
+
+It is a hypothesis with one round's worth of evidence behind it -- the thread
+dies in its first allocation and in nothing else. Build 135 tests it in the
+cheapest possible way: `stack_thunk` already stands in front of
+`RThread::Create`, so when the game passes a null `aHeap` it now passes
+`&User::Allocator()` instead, which is the creating thread's heap said out
+loud. If the hypothesis is right the thread lives; if it is wrong, nothing
+else changes and the next round looks at `0x652f8` instead.

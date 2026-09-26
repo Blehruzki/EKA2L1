@@ -37,14 +37,27 @@ here and the section it overturns is marked.*
 
 ### Settled
 
-- **The port hangs; it does not crash.** The main thread goes into
-  `RSemaphore::Wait` at `0xb8798` waiting for the SoundServer thread to signal
-  at `0xb86ac`, the signal never comes, and `gate6 ViewSrv 11` is the view
-  server timing out on an application that has stopped answering (round 63).
+- **The SoundServer thread dies in its first allocation.** Round 65 flushed
+  the box every 100 ms for the whole two seconds that thread was alive and
+  caught nothing from it after `CTrapCleanup::New`. A trace thunk records on
+  the way *in*, so the death is inside `CTrapCleanup::New()` or the game's
+  `operator new(20)` at `0x652f8` -- the only two calls in the gap, and both
+  allocate. The game creates the thread with `aHeap = NULL`, which means
+  *share the creating thread's heap*; if that null reaches
+  `UserHeap::SetupThreadHeap` with a zero heap size, nothing is set up and the
+  first allocation reaches for a heap that is not there. KERN-EXEC 0 is a bad
+  **handle**, which is what an `RHeap`'s `RChunk` would be. `stack_thunk` now
+  substitutes `&User::Allocator()` for the null. **Not yet confirmed on
+  hardware**, and the emulator cannot confirm it: it never runs that thread.
+- **The main thread no longer hangs, and the hang was never a crash.** It
+  used to go into `RSemaphore::Wait` at `0xb8798` waiting for a signal at
+  `0xb86ac` that never came, and `gate6 ViewSrv 11` was the view server timing
+  out on an application that had stopped answering (round 63).
   `RSemaphore::CreateLocal` answers 0, so the semaphore itself is sound.
-  Build 134 waits in 100 ms slices instead, so the box keeps being flushed
-  while the other thread runs, and gives up after two seconds so the game goes
-  on rather than hanging.
+  Build 134 waits in 100 ms slices, so the box keeps being flushed while the
+  other thread runs, and gives up after two seconds. Round 65: it gave up,
+  closed both handles and **finished frame 1** -- the first time on hardware
+  with the sound server in the picture.
 - **The thread that dies is `SoundServer`** -- named on the phone's own panic
   dialog in round 64, which is the first time any round has had a name rather
   than a guess. It is the thread the game starts at `0xb8660` to run its sound
