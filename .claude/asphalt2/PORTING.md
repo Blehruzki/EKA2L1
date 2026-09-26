@@ -41,23 +41,33 @@ here and the section it overturns is marked.*
   into our slots, 157 key events, no panic, and it reaches its main menu and
   answers the keypad. The SoundServer thread lives and signals its semaphore
   inside the first 100 ms slice. Everything structural is done. What remains
-  is that the framebuffer's real format is unknown, so the picture is drawn
-  three times across the screen with alternate lines showing the phone's own
-  menu through it.
-- **The framebuffer's line is about 576 bytes**, which is a 240-pixel
-  16-bit line padded up to a 64-byte boundary. Round 71 measured it two ways
-  that agree: a ruler of known size painted into the frame, whose on-screen
-  height is `32 * p_used / P_real`, and round 69's three-row repeat, which is
-  the period of `960 mod P` only for P near 576. **So HAL's
-  `EDisplayBitsPerPixel` of 16 was right all along** and only its
-  `EDisplayOffsetBetweenLines` of 640 is wrong -- by one padding rule. Not
-  yet confirmed by a correct picture.
-- **The framebuffer format cannot be deduced.** HAL answers wrongly three
-  ways out of three, and three readings from photographs have now been tried,
-  the last of them wrong. Build 139 carries eight candidates and a key that
-  selects between them live, so the phone can answer instead. Until that
-  round comes back, **no statement in this file about the screen's bytes per
-  pixel or line pitch should be relied on.**
+  was that the framebuffer's real format was unknown; rounds 72 and 73
+  settled it, and build 142 scales the picture to fill the screen.
+- **The framebuffer is 32 bits a pixel on a 1280-byte line** (rounds 72 and
+  73). 1280 bytes is **320 pixels at four bytes**, and the N95's panel is
+  natively **320x240 landscape** -- it is a slider that opens that way. The
+  240x320 that `UserSvr::ScreenInfo` reports is the *rotated logical size*,
+  not the buffer's shape, which is why every derivation from that width was
+  wrong. Two independent confirmations: round 72 took the format the user's
+  hand sweep dwelt on longest in the log, round 73 counted the keys they
+  pressed (preset 7 = 1152, plus eight sixteen-byte steps = 1280). **HAL is
+  wrong about all of it** on this phone -- 16 bits, a 640-byte line and
+  `EGray2` -- though 640 is the same 320 pixels at the other depth, so it was
+  right about the width by accident.
+- **Take the buffer's width from the line length, not from the reported
+  screen size**, and believe HAL's pitch only when it is exactly `w * 2` or
+  `w * 4`. The emulator answers 24 bits on a 960-byte line for a 240-pixel
+  screen, which is self-consistent and correct; the N95 answers a line that
+  is a multiple of nothing, and there the measured 32/1280 is used instead.
+  One build then draws correctly in both places (E163).
+- **The picture is scaled, not centred** (build 142). 176x208 into 320x240 is
+  height-limited, so it is drawn **203x240** centred at x=58; in the emulator's
+  240x320 it is 240x283 at y=18. Nearest neighbour through a table of source
+  columns and rows built by Bresenham accumulation, because there is no
+  `__aeabi_uidiv` in this image and a runtime divide will not link. The whole
+  buffer is blanked once after any change of format or layout, so nothing the
+  window server drew is left showing round the edges. `8` toggles back to the
+  centred 176x208.
 - **`on_main_thread` was wrong on hardware, and it is what killed the
   SoundServer thread.** It identified the main thread by how far the caller's
   stack was from it, allowing a megabyte, on the strength of a comment saying

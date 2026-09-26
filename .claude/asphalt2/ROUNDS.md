@@ -214,6 +214,9 @@ them, and say so.
 | E159 | **build 139b -- a digit picks a format outright, and the picker listens on `EEventKey`** | 10707 | `--` | **Two corrections to the picker, both from the record rather than from testing it here.** A digit `0`-`7` selects a candidate directly, because "press `*` four times" is a worse instrument than "press 4". And the event type: I had written `EEventKeyDown = 1`, but E131 recorded types **3, 1, 2** for a single press and those are `EEventKeyDown`, `EEventKey`, `EEventKeyUp` -- so type 1 is `EEventKey`, which is the only one where `iCode` carries a character at all. The value was right and the name was wrong, which is the kind of thing that is right until it is not. Driving the keys here with `xdotool` did not work: this container has no window manager, so `windowactivate` is refused and the emulator never gets focus. Not chased, because the key path is proven on the phone -- round 69 put **157 key events** through this very function -- and the round is self-correcting either way: every key's `iCode` is logged, so if the picker does not fire, the log says exactly what the phone sends instead |
 | E160 | **build 140 -- paint a ruler over the top of the frame so one photograph measures the framebuffer** | 10778 | `--` | **The pattern is right, verified by looking at it.** Captured from the emulator, where the format is known to be correct, it is exactly what it should be: a row of red/green/blue/white bands eight pixels wide across the top, six bands of four rows each below them, a one-pixel white border, and the game's loading screen underneath, undisturbed. That is the control -- whatever the phone shows, the difference from this is the answer. 10,778 records, no leave, no exit, and the cost is one pass over 176x32 pixels a frame |
 | E161 | **build 141 -- the picker steps the line by sixteen bytes and switches depth, with presets around 576** | 10881 | `--` | **Builds, runs, entry 0 unchanged.** `NOTE_SCREEN_FMT` now records the bits and the line rather than a table index, which is what matters once the line can be stepped off the table: `bpp=32 pitch=960`, the derived pair, and 2,502 frames with no leave and no exit. The digits are presets around 576, `*` and `#` move the line sixteen bytes at a time between 240 and 4096, and `9` flips between two and four bytes a pixel, so the whole space is reachable by hand. One self-inflicted build error on the way, worth a line: the replacement spliced the new table in *above* the old `screen_format` instead of over it, and clang caught two redefinitions -- the sort of thing that only costs a minute when the compiler is the one reading |
+| E162 | build 142: scale 176x208 up to fill the buffer, and blank it once | 14542 | `--` | ran; fit records say buffer 320x240, picture 203x240 at x=58 -- the arithmetic is right, but `SCREEN_KNOWN` forced the N95's 1280-byte line onto the emulator, whose own is a self-consistent 960. Made the measured value a fallback instead |
+| E163 | **build 142b -- believe a self-consistent HAL pitch, fall back to round 72's** | 13660 | `--` | **Right in both places now.** The emulator reports 24 bits on a 960-byte line for a 240-pixel screen, and 960 *is* 240 at four bytes, so it is believed and the emulator draws as it always did; the N95 reports 16 bits on a 640-byte line for the same 240, which is consistent with nothing, and there round 72's measured 32/1280 is taken instead. `NOTE_SCREEN_FIT` records the three pairs that matter: buffer **240x320**, picture **240x283**, offset **0,18** -- the width filled, the shape kept, 13,660 records, no leave |
+| E164 | **build 142b again, with a screenshot** | -- | `--` | **Looked at, not inferred.** The race runs with the picture scaled to the full width of the emulator's screen: HUD legible across the top, the dashboard bar at the bottom, the car centred, nothing of the shell left round the edges. That is the same code path the phone will take, with different numbers in it -- 320x240 buffer, 203x240 picture, centred at x=58 |
 
 <!-- EMURUN -->
 
@@ -283,18 +286,40 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 69 | **build 138** -- `on_main_thread` asks the kernel for the thread id instead of measuring a stack | 1 | **5,227 records, 836 frames, 968 framework calls, 157 key events, no panic** -- and the game **boots to its main menu on the phone and takes input** | **The port runs on hardware.** The semaphore is signalled on the *first* 100 ms slice, so the SoundServer thread lives, does its whole startup and signals: `NOTE_SEM_WAIT` reads `0` then `1` where every round since 63 read `ffffffff`. Both worker probes fill, and they measure the thing that caused nine rounds of trouble: the two workers' stacks are at `0x00415e7c` and `0x00427f90` -- **72 KB apart**, against a test that allowed a megabyte. Asking euser for the thread id fixed it. The remaining fault is entirely cosmetic and entirely ours: the picture is drawn with the wrong framebuffer geometry, so the game's image appears three times across the screen with alternate lines showing the phone's menu through it |
 | 70 | **build 139** -- eight candidate framebuffer formats, selected live from the keypad | 1, eight photographs | **The picker works; none of the eight is right** | **Input reaches the picker and every format is visibly different, so the instrument is sound and the answer is simply not in the table.** Two checks passed on the way: index 4 (32bpp, 960) is indistinguishable from index 0, which is the derived format, so the table and the derivation agree; and the digit keys reach `gate6_control_offerkey` and are swallowed, so the game never sees them. What the eight say: **every one of them stripes**, including 16bpp on a 480-byte line, which is the tightest pitch offered -- if the real line were 480 bytes or more at two bytes a pixel, that one would have laid its rows down contiguously. Index 1, which is exactly what HAL claims (16 bits, 640), gives much the most coherent picture: the word `SELECT` is legible in it. Measuring the rest off photographs is what produced round 60's wrong answer, so build 140 stops measuring pictures of a car and paints a ruler instead |
 | 71 | **build 140** -- a ruler painted over the top of the frame, photographed in all eight formats | 1, eight photographs | **The ruler is legible and gives a number: the line is about 576 bytes** | **The ruler behaves exactly as the model says it should, which is the first time the model has been testable.** Its on-screen height grows with the pitch we write: squeezed into a couple of rows at 640, a little taller at 960, and spread into clearly separated red / green / blue / white bands at 1440. Thirty-two source rows occupying *H* display rows means `H = 32 * p_used / P_real`, and the 1440 photograph puts *H* near 80, which gives **P_real ~= 576**. That agrees with a second, independent measurement made a round earlier: round 69's picture repeated every **three** display rows, and three is the period of `960 mod P` for P = 576 and for almost nothing else nearby. And 576 is what a 240-pixel 16-bit line looks like when the hardware pads it to a 64-byte boundary: 480 rounded up. **So HAL was right about the depth and wrong about the padding**, and no candidate in the table was within 64 bytes of it |
+| 72 | **build 141** -- the line steppable by hand from the keypad | 1, four logs and a photograph | **The menu is legible and upright: `ARCADE`, the carousel, `SELECT`, the car.** The format is **32 bits a pixel on a 1280-byte line** | **The phone answered, and the answer was in the log rather than in my reading of a picture.** The user swept the line by hand and the log records every step, so the format they settled on is simply the one they stopped on longest: in `g6box2-8.log` the four longest dwells that are not the startup default are **all at pitch 1280**, and the longest of the whole session -- 1,493 records, nearly three times anything else -- is **32bpp / 1280**. They swept up to 1280 and back down to it four separate times. 1280 bytes is 320 pixels at four bytes, and the N95's panel is natively **320x240 landscape**; 240x320 is the rotated logical size `UserSvr::ScreenInfo` reports. **This retracts round 71's 576** -- see below. Two of the four logs turn out to be from build 139, still on the phone from the round before: the launch-numbered log files are not cleared between installs |
+| 73 | **build 141 again** -- the same picker, driven deliberately: preset `7`, then `*` eight times | 1, the count itself | **Eight clicks from preset 7 is the picture** | **Independent confirmation of round 72, and it is arithmetic rather than judgement.** Build 141's preset 7 is four bytes on a **1152**-byte line and `*` steps the line by sixteen, so eight clicks land on **1152 + 128 = 1280**, at four bytes a pixel. Round 72 reached 32bpp/1280 by measuring how long the user's hand sweep dwelt on each format; this reached it by counting the keys they pressed. Two different readings of two different runs, same number. The format question is closed |
 
 ## Where we are
 
-**Furthest: round 71.** The ruler works, and the framebuffer's line is
+**Furthest: round 73 -- the format is confirmed twice over, and build 142
+acts on it.** The framebuffer is **32 bits a pixel on a 1280-byte line**,
+which is 320 pixels, which is the N95's native landscape panel; the 240x320
+that `UserSvr::ScreenInfo` reports is the rotated logical size. Round 72
+measured it from the dwell times in the log, round 73 from the keys the user
+pressed -- preset 7 (1152) plus eight sixteen-byte steps -- and they agree.
+
+Build 142 stops centring a small picture: it takes the buffer's *own* shape
+from the line length rather than from the reported screen size, scales
+176x208 up to the widest shape-preserving fit (**203x240** on the phone,
+240x283 in the emulator), and blanks the whole buffer once after any change
+so nothing of the shell shows round the edges. `8` toggles back to the
+centred picture for comparison. E163/E164 ran it here and it fills the
+screen.
+
+**Best round so far: 72**, narrowly over 69. Round 69 got the game running;
+round 72 made it watchable, and did it by putting the instrument in the
+user's hands instead of trusting my own reading of a photograph -- which had
+by then been wrong twice.
+
+**Previously furthest: round 71.** The ruler works, and the framebuffer's line is
 about **576 bytes** -- which is a 240-pixel 16-bit line padded up to a
 64-byte boundary, so HAL was right about the depth all along and wrong only
 about the padding. Two independent measurements agree on it: the ruler's
 height at three different pitches, and the three-row repeat photographed in
 round 69. No candidate in build 139's table was within 64 bytes of it.
 
-**Best round so far: 69**, still, for the boot. **Round 71** is the one that
-turned the screen from a guessing game into a number.
+**Round 69** is the one where the game booted. **Round 71**'s number was
+wrong, and round 72 says why.
 
 **Previously furthest: round 70.** The game boots and runs; the only thing left is the
 framebuffer's format, and eight candidates have now been tried on the phone
@@ -1432,3 +1457,77 @@ luck. Build 141 keeps the digits as coarse presets but adds a **fine step**:
 `*` and `#` move the line by 16 bytes at a time, and `9` switches between two
 and four bytes a pixel. The whole space is then reachable by hand, so the
 round ends when the picture stands still rather than when the table runs out.
+
+## Round 73 -- eight clicks, counted
+
+The user ran build 141 again and said what they did rather than what they
+saw: **preset `7`, then `*` eight times**.
+
+Preset 7 in build 141 is `{ 4, 1152 }` and `*` adds `FMT_STEP` = 16 bytes to
+the line. Eight of them is 128 bytes. `1152 + 128 = `**`1280`**, at four
+bytes a pixel.
+
+That is round 72's answer, reached without touching round 72's evidence.
+Round 72 counted how long each format stayed live in the log and took the
+longest dwell; this counts keypresses. Nothing is shared between the two
+readings except the phone.
+
+**32 bits a pixel, 1280 bytes a line.** Closed.
+
+## Round 72 -- 32 bits a pixel, 1280 bytes a line
+
+The user swept the line by hand and the log recorded every step, so the
+answer did not need to be read off a photograph at all. It is simply the
+format they stopped on.
+
+Dwell, in records, per format in `g6box2-8.log`:
+
+| format | records held |
+|---|---|
+| **32bpp, 1280** | **1,493** |
+| 32bpp, 960 (the startup default, before any key) | 1,269 |
+| 16bpp, 1280 | 588 |
+| 16bpp, 1280 | 585 |
+| 16bpp, 1280 | 360 |
+| 16bpp, 576 | 356 |
+| everything else | under 270 |
+
+They swept up to 1280 and back down to it **four separate times**, at two
+different depths, and the longest hold of the whole session -- nearly three
+times anything else -- is 32 bits a pixel on a 1280-byte line. The
+photograph, showing `ARCADE`, the carousel, `SELECT` and the car all upright
+and legible, is that format.
+
+**1280 bytes is 320 pixels at four bytes**, and the N95's panel is natively
+**320 x 240 landscape** -- it is a slider that opens that way. The 240x320
+that `UserSvr::ScreenInfo` reports is the rotated logical size, not the
+buffer's shape.
+
+### Retracted: round 71's 576, and round 69's three-row repeat
+
+Both were wrong, and they were wrong the same way.
+
+* Round 71 read the ruler's height off a photograph as "near 80 rows" at a
+  1440-byte line. With the real line at 1280 it is `32 * 1440 / 1280` = **36**
+  rows. I was out by a factor of two.
+* Round 69 counted the repeat as three display rows. With the real line at
+  1280 the column offset cycles `960, 640, 320, 0` -- a period of **four**.
+
+I presented these as two independent measurements agreeing. They were not
+independent: both were my eye on a photograph of a phone screen, which is
+the exact failure mode round 70 was written to avoid, and which I then
+repeated twice in the same round. The ruler *method* was sound -- it is what
+made the sweep legible enough to do by hand -- but reading it by eye was not.
+
+**What worked was giving the instrument to the person holding the phone**
+and letting the log record the answer.
+
+### A trap worth keeping
+
+Two of the four logs in this round are from **build 139**, not 141. They
+decode as build 139's table -- presets `(2,640) (2,480) (2,512) (4,960)
+(4,1024) (3,720) (4,1440)` -- and its older `NOTE_SCREEN_FMT` packing, which
+put the table index in the top byte. The launch-numbered log files
+`g6box0..9.log` are **not cleared when a new build is installed**, so a log
+pulled off the phone can be from any build that has run since the file was
+last overwritten. Read the packing before trusting the contents.
