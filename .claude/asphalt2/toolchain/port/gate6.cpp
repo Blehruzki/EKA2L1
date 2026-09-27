@@ -806,6 +806,7 @@ struct Context {
     u32 boxData[BOX_WORDS];
     u32 pathIndex;          // which layout the game was loaded from
     u32 dataDrive;          // and the drive it is really on, as a letter
+    u32 imageIsBin;         // the image was installed as 6rbc.bin, not .app
     u16 swapText[272];      // a name with its drive letter translated
     u32 swapDes[2];         // ... and the descriptor handed to efsrv
     u32 codeBase;           // where the game was loaded, so callers read as offsets
@@ -3381,19 +3382,44 @@ static int name_is_rubbish(const u32 *name)
 // the same place on every install.
 //
 // On an E: install `c->dataDrive` is 'E' and this returns the name unchanged.
+static int ends_with_app(const u16 *t, u32 len)
+{
+    if (len < 4)
+        return 0;
+    const u16 a = t[len - 3], b = t[len - 2], p = t[len - 1];
+    return (a == 'a' || a == 'A') && (b == 'p' || b == 'P') &&
+           (p == 'p' || p == 'P') && t[len - 4] == '.';
+}
+
 static const u32 *on_the_real_drive(const u32 *name, Context *c)
 {
-    if (!name || !c->dataDrive || c->dataDrive == 'E')
+    if (!name)
         return name;
     u32 len = 0;
     const u16 *text = name_text(name, &len);
     if (!text || !len || len > 270)
         return name;
-    if (text[0] != 'e' && text[0] != 'E')
+    // Two rewrites, and a name may want either, both or neither.
+    const int drive = (c->dataDrive && c->dataDrive != 'E' &&
+                       (text[0] == 'e' || text[0] == 'E'));
+    // The game opens its own image as well as the loader: twice in the
+    // emulator's file log, once at mode 1 (ours) and once at mode 2 (its
+    // own reader, at 0x34a0c). So when the image was installed as
+    // `6rbc.bin` the game's `6rbc.app` has to land on it too, or it reads
+    // nothing. Only when we loaded a `.bin` ourselves -- a hand-copied
+    // N-Gage dump still has the original name and must not be touched.
+    const int rename = (c->imageIsBin && ends_with_app(text, len));
+    if (!drive && !rename)
         return name;
-    c->swapText[0] = (u16)c->dataDrive;
-    for (u32 i = 1; i < len; i++)
+    for (u32 i = 0; i < len; i++)
         c->swapText[i] = text[i];
+    if (drive)
+        c->swapText[0] = (u16)c->dataDrive;
+    if (rename) {
+        c->swapText[len - 3] = 'b';
+        c->swapText[len - 2] = 'i';
+        c->swapText[len - 1] = 'n';
+    }
     c->swapDes[0] = ((u32)EPtrC << KTypeShift) | len;
     c->swapDes[1] = (u32)c->swapText;
     return c->swapDes;
@@ -5584,6 +5610,7 @@ static u32 load_and_start()
     err = -1;
     int chosenLayout = -1;
     u16 chosenDrive = 'E';
+    int chosenBin = 0;
     int fbLayout = -1;
     u16 fbDrive = 0;
     for (int pass = 0; pass < 2 && chosenLayout < 0; pass++) {
@@ -5608,9 +5635,30 @@ static u32 load_and_start()
                     if (file_open(probe, fs, &with, 1) != 0) continue;
                     file_close(probe);
                 }
-                err = file_open(file, fs, &name, 1);  // EFileRead | EFileShareReadersOnly
-                if (!err) { chosenLayout = i; chosenDrive = kDrives[dv]; break; }
-                if (fbLayout < 0) { fbLayout = i; fbDrive = kDrives[dv]; }
+                // Two names for the same image. A SIS cannot carry an E32
+                // executable anywhere but `\sys\bin` -- round 81's probe 4
+                // is one file, `6rbc.app` into `\system\apps\6rbc\`, and
+                // the phone refuses it -- so the installer ships it as
+                // `6rbc.bin`. A hand-copied N-Gage dump still has `.app`,
+                // and both have to work.
+                for (int nm = 0; nm < 2; nm++) {
+                    if (nm) {
+                        cand[lens[i] - 3] = 'b';
+                        cand[lens[i] - 2] = 'i';
+                        cand[lens[i] - 1] = 'n';
+                    }
+                    err = file_open(file, fs, &name, 1);  // EFileRead | EFileShareReadersOnly
+                    if (!err) {
+                        chosenLayout = i;
+                        chosenDrive = kDrives[dv];
+                        chosenBin = nm;
+                        break;
+                    }
+                    if (fbLayout < 0) { fbLayout = i; fbDrive = kDrives[dv]; }
+                }
+                for (int k = 0; k < lens[i]; k++) cand[k] = layouts[i][k];
+                cand[0] = kDrives[dv];
+                if (chosenLayout >= 0) break;
             }
         }
     }
@@ -5742,6 +5790,7 @@ static u32 load_and_start()
     ctx->pathIndex = (u32)chosenLayout;
     // And where the bytes really are, for the translation in the file calls.
     ctx->dataDrive = chosenDrive;
+    ctx->imageIsBin = (u32)chosenBin;
     ctx->codeBase = (u32)base;
     ctx->lastImport = 0xFFFF;               // nothing yet
     ctx->spare = trace + nImports * TRACE + 16 * TRACE;  // past the fixed thunks

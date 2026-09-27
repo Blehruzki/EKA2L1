@@ -43,6 +43,14 @@ INSTALL_TEXT = ('Asphalt 2 N-Gage version, ported to S60v3 by DeltaCharlie.')
 ICON_BITMAPS = (0,)
 
 
+# `6rbc.app` is an E32 executable image, and Symbian will not install one
+# anywhere but `\sys\bin` -- round 81's probe 4 is that one file on its own
+# and the phone refuses it. It travels as `6rbc.bin` instead. The loader
+# looks for both names, and redirects the game's own open of `6rbc.app`
+# when it loaded a `.bin`, so nothing downstream notices.
+RENAME = {'6rbc.app': '6rbc.bin'}
+
+
 def game_files(root):
     """-> [(local path, install target)], every file in the tree.
 
@@ -56,7 +64,7 @@ def game_files(root):
         for n in sorted(names):
             local = os.path.join(dirpath, n)
             sub = '' if rel == '.' else '\\' + rel.replace(os.sep, '\\')
-            out.append((local, TARGET_DIR + sub + '\\' + n))
+            out.append((local, TARGET_DIR + sub + '\\' + RENAME.get(n, n)))
     return out
 
 
@@ -69,6 +77,9 @@ def main(out='.', game=GAME):
     extra = game_files(game)
     total = sum(os.path.getsize(s) for s, _t in extra)
     print('game files: %d, %.1f MB' % (len(extra), total / 1e6))
+    for _local, target in extra:
+        if target.lower().endswith('.bin'):
+            print('renamed:    %s' % target)
 
     build_gate6.build(out, caption=CAPTION, icon=icon, extra=extra,
                       install_text=INSTALL_TEXT if WITH_INSTALL_TEXT else None,
