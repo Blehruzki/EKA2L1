@@ -35,6 +35,76 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### Which drive the game lives on
+
+*Round 79's other question, answered on the bench: it now installs to phone
+memory or a card, and the game cannot tell.*
+
+Three things wanted a drive letter, and only one was ours.
+
+**Ours**: the loader tried `E:\system\apps\6rbc\6rbc.app`, `E:\6rbc.app`
+and `C:\6rbc.app` -- never `C:\system\apps\6rbc\`, the layout a C:
+install actually uses. It now searches two layouts across C, E, F, D, G and
+H, E first because that is where every install so far has put it.
+
+**The game's, one**: it has absolute `E:` paths compiled in -- the prefix
+`E:\system\apps\6RBC\Streams\` that it joins the `bgm_*.swav` names
+onto, and three full paths beside it. Those cannot be made relative.
+
+**The game's, two**, and the one that would have cost a round: the BiNPDA
+loader's read-only-card protection tests the **drive letter**, not the
+directory. Its replacements for `RFile::Open`, `Create` and `Replace` are
+all `if (name[0] == 'e' || name[0] == 'E') return KErrAccessDenied;`. Move
+the game to C: and the protection stops firing, and a game that finds its
+own drive writable has good reason to decide it is not on a card.
+
+So the answer is not to teach the port about C:. It is to **never tell the
+game about anything but E:**. `CApaApplication::DllName()` answers with the
+`E:` form of whichever layout was found; every path the game derives is
+therefore an `E:` path; its own compiled-in `E:` paths agree; the protection
+fires exactly as it does on a card. The three file calls the protection
+replaced then translate `E:` to the real drive on the way into efsrv, after
+the refusal has been decided on the name the game asked for.
+
+The save is untouched by all of it, and deliberately. The game asks for
+`c:\system\apps\6RBC\user.dat` as an absolute C: path of its own, so it
+is neither translated nor refused, and it lands in the same place on every
+install -- which is what makes it something a person can back up. On a C:
+install the data directory and the save directory are the same folder on
+disk, and the two rules still hold apart, because each is decided by what
+the game asked for rather than by where the bytes are.
+
+On an E: install `dataDrive` is `'E'` and the translation returns every name
+untouched, so the existing setup pays nothing.
+
+`RFs::Delete`, `MkDir`, `MkDirAll` and `RmDir` are not translated. The game
+uses them for its C: save directory, which needs no translation, and an
+`E:` one would be refused by a real card anyway.
+
+Proved without a phone round: **E209** is the regression on E: (identical
+frame profile, identical audio sequence, every name unchanged), and **E210**
+moved the whole tree to C:, emptied E:, and read the emulator's own file
+server log -- `C:\system\apps\6rbc\6rbc.app` found, every data file on
+C:, `C:\system\apps\6RBC\Streams\bgm_moby_lift_me_up.swav` opened from
+a path the game spelled with an E, and the card refusal still firing once.
+
+### The save, and what to back up
+
+Hardcoded in the game, absolute, always C:, whatever drive it is installed
+to:
+
+- `c:\system\apps\6RBC\user.dat` -- the save
+- `c:\system\apps\6RBC\user.bak` -- the game's own backup of it
+- `c:\system\apps\GameMgr\6RBC.cfg`, `...\icons\6RBC.mbm` -- N-Gage Game
+  Manager, unused on S60v3, but the folder is still created
+
+The game ships a manifest string of its own saying so:
+`<File Description="" Path="c:\system\apps\6RBC\*" FileType="UserData"
+FreeStatus="Free" CreateStatus="Created" PortableStatus="Portable"/>`.
+
+No package of ours lists anything under that path, so neither installing nor
+uninstalling touches a save.
+
 ### The instrument outgrew its budget
 
 *Round 79. Sound worked on the phone and the race started dropping frames,

@@ -383,8 +383,41 @@ struct E32 {
     u32 codeOffset, dataOffset, importOffset, codeRelocOffset, dataRelocOffset;
 };
 
+// The two layouts the game's files can sit in, and the drives to look on.
+// These are what the loader *searches*; what the game is *told* is always the
+// `E:` form of whichever layout was found -- see kPath2 and kPath0 below and
+// `gate6_dll_name`.
+//
+// Round 79's question was whether the port survives an install to phone
+// memory. It did not, for three separate reasons, and only one of them was
+// ours: the search tried `E:\system\apps\6rbc\`, `E:\6rbc.app` and
+// `C:\6rbc.app` and never `C:\system\apps\6rbc\`, which is the layout a
+// C: install actually uses.
+static const u16 kLayoutApps[] = {'?',':','\\','s','y','s','t','e','m','\\','a','p','p','s','\\',
+                                  '6','r','b','c','\\','6','r','b','c','.','a','p','p'};
+static const u16 kLayoutRoot[] = {'?',':','\\','6','r','b','c','.','a','p','p'};
+// E first, because that is where every install so far has put it and a hit on
+// the first candidate costs one open. C next, then the mass-memory letters.
+static const u16 kDrives[] = { 'E', 'C', 'F', 'D', 'G', 'H' };
+
+// The other two reasons were the game's, and they are why the answer is not
+// "teach the port about C:" but "never tell the game about anything but E:".
+//
+// One: the game has absolute `E:` paths compiled into it -- the prefix
+// `E:\system\apps\6RBC\Streams\` that it joins the bgm_*.swav names onto,
+// and three full paths beside it. Those cannot be made relative.
+//
+// Two, and the one that would have been found the hard way: the BiNPDA
+// loader's read-only-card protection tests the **letter**, not the directory
+// (see `name_on_the_card`). Move the game to C: and the protection stops
+// firing, and a game that finds its own drive writable is a game that has
+// decided it is not on a card.
+//
+// So the game is told `E:` whatever drive it is really on, and the three file
+// calls the protection replaced translate `E:` to the real drive on the way
+// through. On the usual E: install the translation is the identity and
+// nothing changes at all.
 static const u16 kPath0[] = {'E',':','\\','6','r','b','c','.','a','p','p'};
-static const u16 kPath1[] = {'C',':','\\','6','r','b','c','.','a','p','p'};
 static const u16 kPath2[] = {'E',':','\\','s','y','s','t','e','m','\\','a','p','p','s','\\',
                              '6','r','b','c','\\','6','r','b','c','.','a','p','p'};
 
@@ -771,7 +804,10 @@ struct Context {
     u8 mapX[320];           // destination column -> source column, Bresenham
     u8 mapY[320];           // and the same down
     u32 boxData[BOX_WORDS];
-    u32 pathIndex;          // which candidate the game was loaded from
+    u32 pathIndex;          // which layout the game was loaded from
+    u32 dataDrive;          // and the drive it is really on, as a letter
+    u16 swapText[272];      // a name with its drive letter translated
+    u32 swapDes[2];         // ... and the descriptor handed to efsrv
     u32 codeBase;           // where the game was loaded, so callers read as offsets
     u32 gameEntry;          // the image's own entry point, for EDllThreadAttach
     u32 imageWas[4];        // words of the image as loaded, to catch a rewrite
@@ -3330,12 +3366,46 @@ static int name_is_rubbish(const u32 *name)
     return len < 8 || text[0] < 0x20 || text[1] < 0x20;
 }
 
+// `E:` is a fiction the game is kept inside: it is told its own path is on
+// E: whatever drive it was installed to, its own compiled-in `E:` paths then
+// agree with that, and the read-only-card protection -- which tests the
+// letter -- fires exactly as it does on a card. Here is where the fiction
+// meets the disk: on the way into efsrv, an `E:` turns into the drive the
+// files are really on.
+//
+// The refusal above this runs first and on the name the game asked for, so a
+// write to the game's own directory is refused on C: for the same reason it
+// is on E:. The save is not caught by that, because the game asks for it as
+// `c:\system\apps\6RBC\user.dat` -- an absolute C: path of its own, which
+// is not translated and not refused, and which is why the save still lands in
+// the same place on every install.
+//
+// On an E: install `c->dataDrive` is 'E' and this returns the name unchanged.
+static const u32 *on_the_real_drive(const u32 *name, Context *c)
+{
+    if (!name || !c->dataDrive || c->dataDrive == 'E')
+        return name;
+    u32 len = 0;
+    const u16 *text = name_text(name, &len);
+    if (!text || !len || len > 270)
+        return name;
+    if (text[0] != 'e' && text[0] != 'E')
+        return name;
+    c->swapText[0] = (u16)c->dataDrive;
+    for (u32 i = 1; i < len; i++)
+        c->swapText[i] = text[i];
+    c->swapDes[0] = ((u32)EPtrC << KTypeShift) | len;
+    c->swapDes[1] = (u32)c->swapText;
+    return c->swapDes;
+}
+
 extern "C" int gate6_card_open(void *f, void *fs, const u32 *name, u32 mode, Context *c)
 {
     if (CARD_IS_READ_ONLY && (mode & EFileWriteMode) && name_on_the_card(name)) {
         log_event(c, NOTE_CARD_REFUSED, mode);
         return KErrAccessDenied;
     }
+    name = on_the_real_drive(name, c);
     if (SUBSTITUTE_BAD_NAMES && name_is_rubbish(name)) {
         const u16 *t = (SUBSTITUTE_FILE == 0) ? kSubst0
                      : (SUBSTITUTE_FILE == 1) ? kSubst1 : kSubst2;
@@ -3357,7 +3427,7 @@ extern "C" int gate6_card_create(void *f, void *fs, const u32 *name, u32 mode, C
         log_event(c, NOTE_CARD_REFUSED, 1);
         return KErrAccessDenied;
     }
-    return ((FileCall)c->realCreate)(f, fs, name, mode);
+    return ((FileCall)c->realCreate)(f, fs, on_the_real_drive(name, c), mode);
 }
 
 extern "C" int gate6_card_replace(void *f, void *fs, const u32 *name, u32 mode, Context *c)
@@ -3366,7 +3436,7 @@ extern "C" int gate6_card_replace(void *f, void *fs, const u32 *name, u32 mode, 
         log_event(c, NOTE_CARD_REFUSED, 2);
         return KErrAccessDenied;
     }
-    return ((FileCall)c->realReplace)(f, fs, name, mode);
+    return ((FileCall)c->realReplace)(f, fs, on_the_real_drive(name, c), mode);
 }
 
 // These take four arguments, so r0 to r3 are all spoken for and no ctx_thunk
@@ -5501,47 +5571,58 @@ static u32 load_and_start()
     // files beside it -- 6rbc.cwa among them, which lives where an N-Gage card
     // puts it. So the card's own layout is tried first, and the loose copies
     // only after.
-    const u16 *paths[3] = { kPath2, kPath0, kPath1 };
-    const int lens[3] = { sizeof kPath2 / 2, sizeof kPath0 / 2, sizeof kPath1 / 2 };
+    const u16 *layouts[2] = { kLayoutApps, kLayoutRoot };
+    const int lens[2] = { sizeof kLayoutApps / 2, sizeof kLayoutRoot / 2 };
+    const int nDrives = (int)(sizeof kDrives / sizeof kDrives[0]);
     // The game opens eight files of its own beside wherever it was loaded
     // from -- 6rbc.cwa, 6RBC.dat, cis.dat, cwivenc.dat and the rest -- and a
     // missing one is not an error it survives. So a candidate only counts if
     // its directory holds 6rbc.cwa too, and only if none of them does is the
     // first readable .app taken anyway, so the failure is the game's own.
-    u16 sibling[32];
+    u16 cand[40];
+    u16 sibling[40];
     err = -1;
-    int chosen = -1;
-    int fallback = -1;
-    for (int pass = 0; pass < 2 && chosen < 0; pass++) {
-        for (int i = 0; i < 3; i++) {
-            Ptrc16 name;
-            name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)lens[i];
-            name.text = paths[i];
-            if (pass == 0) {
-                // The same path with "app" turned into "cwa".
-                if (lens[i] > 32) continue;
-                for (int k = 0; k < lens[i]; k++) sibling[k] = paths[i][k];
-                sibling[lens[i] - 3] = 'c';
-                sibling[lens[i] - 2] = 'w';
-                sibling[lens[i] - 1] = 'a';
-                Ptrc16 with;
-                with.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)lens[i];
-                with.text = sibling;
-                u32 probe[4] = { 0, 0, 0, 0 };
-                if (file_open(probe, fs, &with, 1) != 0) continue;
-                file_close(probe);
+    int chosenLayout = -1;
+    u16 chosenDrive = 'E';
+    int fbLayout = -1;
+    u16 fbDrive = 0;
+    for (int pass = 0; pass < 2 && chosenLayout < 0; pass++) {
+        for (int i = 0; i < 2 && chosenLayout < 0; i++) {
+            if (lens[i] > 40) continue;
+            for (int k = 0; k < lens[i]; k++) cand[k] = layouts[i][k];
+            for (int dv = 0; dv < nDrives; dv++) {
+                cand[0] = kDrives[dv];
+                Ptrc16 name;
+                name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)lens[i];
+                name.text = cand;
+                if (pass == 0) {
+                    // The same path with "app" turned into "cwa".
+                    for (int k = 0; k < lens[i]; k++) sibling[k] = cand[k];
+                    sibling[lens[i] - 3] = 'c';
+                    sibling[lens[i] - 2] = 'w';
+                    sibling[lens[i] - 1] = 'a';
+                    Ptrc16 with;
+                    with.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)lens[i];
+                    with.text = sibling;
+                    u32 probe[4] = { 0, 0, 0, 0 };
+                    if (file_open(probe, fs, &with, 1) != 0) continue;
+                    file_close(probe);
+                }
+                err = file_open(file, fs, &name, 1);  // EFileRead | EFileShareReadersOnly
+                if (!err) { chosenLayout = i; chosenDrive = kDrives[dv]; break; }
+                if (fbLayout < 0) { fbLayout = i; fbDrive = kDrives[dv]; }
             }
-            err = file_open(file, fs, &name, 1);   // EFileRead | EFileShareReadersOnly
-            if (!err) { chosen = i; break; }
-            if (fallback < 0) fallback = i;
         }
     }
-    if (chosen < 0) {
-        if (fallback < 0) PANIC(CAT_FS, err);
-        chosen = fallback;
+    if (chosenLayout < 0) {
+        if (fbLayout < 0) PANIC(CAT_FS, err);
+        chosenLayout = fbLayout;
+        chosenDrive = fbDrive;
+        for (int k = 0; k < lens[chosenLayout]; k++) cand[k] = layouts[chosenLayout][k];
+        cand[0] = chosenDrive;
         Ptrc16 name;
-        name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)lens[chosen];
-        name.text = paths[chosen];
+        name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)lens[chosenLayout];
+        name.text = cand;
         err = file_open(file, fs, &name, 1);
         if (err) PANIC(CAT_FS, err);
     }
@@ -5654,9 +5735,13 @@ static u32 load_and_start()
 
     Context *ctx = (Context *)user_allocz((int)sizeof(Context));
     if (!ctx) PANIC(CAT_MEM, -23);
-    ctx->path = paths[chosen];
-    ctx->pathLen = lens[chosen];
-    ctx->pathIndex = (u32)chosen;
+    // What the game is told, which is the `E:` form whatever drive it is on.
+    ctx->path = (chosenLayout == 0) ? kPath2 : kPath0;
+    ctx->pathLen = (chosenLayout == 0) ? (int)(sizeof kPath2 / 2)
+                                       : (int)(sizeof kPath0 / 2);
+    ctx->pathIndex = (u32)chosenLayout;
+    // And where the bytes really are, for the translation in the file calls.
+    ctx->dataDrive = chosenDrive;
     ctx->codeBase = (u32)base;
     ctx->lastImport = 0xFFFF;               // nothing yet
     ctx->spare = trace + nImports * TRACE + 16 * TRACE;  // past the fixed thunks

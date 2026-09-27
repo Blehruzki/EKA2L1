@@ -32,7 +32,13 @@ def _find(node, t):
 
 
 def build(dst, uid, name, vendor, files, template=TEMPLATE):
-    """files: [(local path, install target)], the target like '!:\\sys\\bin\\x.exe'."""
+    """files: [(local path, install target)], the target like '!:\\sys\\bin\\x.exe'.
+
+    A target of `None` makes the entry a **display text** instead of an
+    install: the installer shows the file's contents with a Continue button
+    and puts nothing on disk. The file still travels in the package, so it is
+    written UTF-16LE with a BOM, which is what the installer reads it as.
+    """
     head, contents, _ = sisrw.load(template)
     ctrl_node = [k for k in contents.kids if k.t == sisrw.COMPRESSED][0]
     cbuf = bytearray(zlib.decompress(ctrl_node.raw[12:]))
@@ -59,8 +65,11 @@ def build(dst, uid, name, vendor, files, template=TEMPLATE):
         packed = zlib.compress(payload, 9)
         data_arr.kids.append(sisrw.F(sisrw.FILEDATA,
             kids=[sisrw.F(sisrw.COMPRESSED, raw=struct.pack('<IQ', 1, len(payload)) + packed)]))
+        op, op_op = ((sisadd.OP_TEXT, sisadd.FT_LET_CONTINUE) if target is None
+                     else (sisadd.OP_INSTALL, 0))
         desc_arr.kids.append(sisrw.F(FILEDESC, raw=sisadd.make_filedesc(
-            target, hashlib.sha1(payload).digest(), len(packed), len(payload), index)))
+            target or '', hashlib.sha1(payload).digest(), len(packed), len(payload),
+            index, op, op_op)))
 
     cbuf = bytearray(ctrl.ser())
     ctrl_node.raw = struct.pack('<IQ', 1, len(cbuf)) + zlib.compress(bytes(cbuf), 9)

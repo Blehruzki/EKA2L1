@@ -21,12 +21,24 @@ def _field(t, data):
     return struct.pack('<II', t, len(data)) + data + b'\0' * (-len(data) % 4)
 
 
-def make_filedesc(target, sha1, clen, ulen, index):
-    """target is the install path, e.g. '!:\\private\\20008629\\A2\\bgm_1.wav'."""
+# SISFileDescription's operation word, and the options that go with it.
+# `install` puts the file at its target; `text` displays it during the install
+# and puts it nowhere, which is how a package says who made it. `let_continue`
+# is the one-button form -- a Continue and nothing to decline. EKA2L1's own
+# installer reads both (src/emu/loader/include/loader/sis_fields.h).
+OP_INSTALL, OP_RUN, OP_TEXT, OP_NULL = 1, 2, 4, 8
+FT_LET_CONTINUE = 1 << 9
+
+
+def make_filedesc(target, sha1, clen, ulen, index, op=OP_INSTALL, op_op=0):
+    """target is the install path, e.g. '!:\\private\\20008629\\A2\\bgm_1.wav'.
+
+    For `OP_TEXT` the target is empty: the file is shown, not installed.
+    """
     body = _field(STRING, target.encode('utf-16-le'))
     body += _field(STRING, b'')
     body += _field(HASH, struct.pack('<I', 1) + _field(BLOB, sha1))
-    body += struct.pack('<IIQQI', 1, 0, clen, ulen, index)
+    body += struct.pack('<IIQQI', op, op_op, clen, ulen, index)
     return body
 
 
