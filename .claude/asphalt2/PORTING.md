@@ -35,6 +35,51 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### The standalone installer
+
+One SIS, 20.6 MB, 39 files: the port, all 34 of the game's own files, the
+icon, and a line of text shown during the install. `build_release.py` makes
+it; `buildapp.build` grew three optional arguments for it (`icon`, `extra`,
+`install_text`) and the bench build passes none of them, so it is unchanged.
+
+**The icon is the original.** `6rbc.aif` is a direct file store whose UID2
+says AIF rather than multi-bitmap, and whose bitmaps are laid out exactly as
+an MBM's are -- a 40-byte `SEpocBitmapHeader` and its data, one after
+another from offset 20, each header's first word leading to the next. So
+`mkmbm.py` copies them byte for byte and writes an MBM container round them:
+nothing is decoded, nothing re-encoded, and the icon that reaches the phone
+is the one Gameloft drew. The AIF holds two pairs, 44x44 and 42x29; only the
+44x44 colour bitmap is shipped.
+
+**Its mask is not**, and the reason is a convention that reversed. The AIF's
+mask rows read `00 00 00 00 00 f0 ff ff` -- for a 44-pixel row that is every
+visible bit *clear* and the padding set, which in the old AIF world means a
+set bit is **transparent** and the icon is a solid square. S60v3 reads an
+MBM icon/mask pair the other way round. Copying that mask across would have
+asked the shell for an icon that is entirely invisible. `mkmbm` generates a
+fully opaque mask instead, which is what the original meant.
+
+**Looking at it mattered.** `aificon.py` renders an AIF's bitmaps to PNG so
+an icon can be seen before it ships, and its first answer was a blue smear:
+right shape, wrong colours, because the 256-colour table it picked was not
+the one the platform uses. The thing that settled it was installing the
+package and screenshotting **EKA2L1's own app list**, where the icon comes
+out as the orange swoosh it is (`shots/r80-icon-in-applist.png`). The
+platform's own renderer is the honest check; mine was the instrument being
+wrong again.
+
+**The install-time message** is a `SISFileDescription` with operation
+`EOpText` (4) and option `let_continue` (1<<9): the installer displays the
+file and puts it nowhere. `sisadd.make_filedesc` takes the operation and
+options now, and `mksis.build` reads a `None` target as "show this". The
+file is UTF-16LE with a BOM. EKA2L1 processes it (E211) but logs the raw
+buffer, so its log line shows the BOM rather than the text -- how Symbian's
+own installer renders it is the one thing the bench cannot say.
+
+The package installs to whichever drive the user picks, because every target
+is `!:`, and the port then finds the game wherever that was -- see the
+section above.
+
 ### Which drive the game lives on
 
 *Round 79's other question, answered on the bench: it now installs to phone

@@ -14,7 +14,13 @@ CONE = 'cone{000a0000}[10003a41].dll'
 DRTAEABI = 'drtaeabi.dll'
 HAL = 'hal.dll'
 
-buildapp.build('gate6', 0xE0001006, 'Gate6', sys.argv[1] if len(sys.argv) > 1 else '.',
+UID3 = 0xE0001006
+
+
+def build(out='.', caption='Gate6', **kw):
+    """The one place the import list lives, so the bench build and the
+    release installer cannot drift apart."""
+    return buildapp.build('gate6', UID3, caption, out,
                imports=[(buildapp.EUSER, ['user_panic', 'userheap_setupthreadheap',
                                           'user_initprocess', 'user_alloc', 'user_allocz', 'user_alloclen',
                                           'user_setexceptionhandler', 'rhandle_close',
@@ -40,4 +46,8 @@ buildapp.build('gate6', 0xE0001006, 'Gate6', sys.argv[1] if len(sys.argv) > 1 el
                # there; on 9.x the framework underneath it is deeper, and a
                # stack that runs out is a fault with nothing to say for itself.
                stack=0x10000,
-               heap_max=0x4000000)
+               heap_max=0x4000000, **kw)
+
+
+if __name__ == '__main__':
+    build(sys.argv[1] if len(sys.argv) > 1 else '.')

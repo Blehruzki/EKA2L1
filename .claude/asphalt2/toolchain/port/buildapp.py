@@ -49,8 +49,14 @@ def sh(*args):
     sp.run(args, check=True, cwd=HERE)
 
 
-def build(name, uid3, caption, out, imports=(), sources=None, **e32):
-    """imports: [(dll name, [stub symbol names])], resolved via the `_ord` labels."""
+def build(name, uid3, caption, out, imports=(), sources=None, icon=None,
+          extra=(), install_text=None, vendor='EKA2L1 port', **e32):
+    """imports: [(dll name, [stub symbol names])], resolved via the `_ord` labels.
+
+    icon          a local .mbm to ship as the application's icon
+    extra         [(local path, install target)] carried in the same package
+    install_text  a line the installer shows before it does anything
+    """
     p = lambda n: os.path.join(out, n)
     cpp = sources or (name + '.cpp',)
     objs = []
@@ -91,13 +97,30 @@ def build(name, uid3, caption, out, imports=(), sources=None, **e32):
     open(p(name + '.exe'), 'wb').write(
         mke32.build(flats[0], uid3, uid2=0x100039CE, reloc_offsets=offsets,
                     imports=blocks, **e32))
+    # The icon path in the caption record carries no drive: apparc searches
+    # for it, so the same resource works whichever drive `!:` resolved to.
+    icon_path = '\\resource\\apps\\%s.mbm' % name if icon else ''
     open(p(name + '_reg.rsc'), 'wb').write(mkreg.build(name, uid3, mkloc.CAPTION_RES_ID))
-    open(p(name + '.rsc'), 'wb').write(mkloc.build(uid3, caption))
-    mksis.build(p(name + '.sis'), uid3, caption, 'EKA2L1 port', [
+    open(p(name + '.rsc'), 'wb').write(
+        mkloc.build(uid3, caption, icon_path=icon_path, icon_count=1 if icon else 0))
+
+    files = [
         (p(name + '.exe'), '!:\\sys\\bin\\%s.exe' % name),
         (p(name + '.rsc'), '!:\\resource\\apps\\%s.rsc' % name),
         (p(name + '_reg.rsc'), '!:\\private\\10003a3f\\import\\apps\\%s_reg.rsc' % name),
-    ])
-    print('%s: %d bytes of code, %d relocations, %d imports -> %s'
+    ]
+    if icon:
+        files.append((icon, '!:\\resource\\apps\\%s.mbm' % name))
+    files += list(extra)
+    if install_text:
+        # UTF-16LE with a BOM, which is what the installer reads a text file
+        # as when it starts with one. A `None` target makes it a display.
+        note = p(name + '_install.txt')
+        open(note, 'wb').write(b'\xff\xfe' + install_text.encode('utf-16-le'))
+        files.append((note, None))
+
+    mksis.build(p(name + '.sis'), uid3, caption, vendor, files)
+    print('%s: %d bytes of code, %d relocations, %d imports, %d files -> %s (%.1f MB)'
           % (name, len(flats[0]), len(offsets),
-             sum(len(o) for _d, o in blocks), p(name + '.sis')))
+             sum(len(o) for _d, o in blocks), len(files), p(name + '.sis'),
+             os.path.getsize(p(name + '.sis')) / 1e6))

@@ -1,0 +1,4 @@
+# The standalone installer carries the game's own 22 MB of data. It is built
+# from the tree on disk by toolchain/port/build_release.py and handed to the
+# user directly; it is not something to push to a remote.
+build/Asphalt2-S60v3-*.sis
