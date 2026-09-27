@@ -399,6 +399,10 @@ static const u16 kLayoutRoot[] = {'?',':','\\','6','r','b','c','.','a','p','p'};
 // E first, because that is where every install so far has put it and a hit on
 // the first candidate costs one open. C next, then the mass-memory letters.
 static const u16 kDrives[] = { 'E', 'C', 'F', 'D', 'G', 'H' };
+// What `build_release.py` XORs the front of the image with, and what the
+// loader XORs back. Any value does; this one is not zero and not 0xff, so a
+// mistake shows up as noise rather than as the original or as a blank.
+enum { IMAGE_SCRAMBLE = 0xA5, IMAGE_SCRAMBLE_BYTES = 32 };
 
 // The other two reasons were the game's, and they are why the answer is not
 // "teach the port about C:" but "never tell the game about anything but E:".
@@ -5696,6 +5700,18 @@ static u32 load_and_start()
         got += n;
     }
     if (got != size) PANIC(CAT_FS, got);
+
+    // A `.bin` is a scrambled image, and here is where it stops being one.
+    //
+    // Round 82: probe 5 is the image renamed and nothing else, and the phone
+    // refuses it; probe 6 is the same bytes with the first 32 XORed, and the
+    // phone takes it. So the installer reads the file rather than its name,
+    // and the only way an executable travels in a SIS is not looking like
+    // one. Thirty-two bytes covers the UID triple, the checksum and the
+    // 'EPOC' signature -- everything at the front that says E32 image.
+    if (chosenBin && size >= IMAGE_SCRAMBLE_BYTES)
+        for (int i = 0; i < IMAGE_SCRAMBLE_BYTES; i++)
+            raw[i] ^= (u8)IMAGE_SCRAMBLE;
 
     // Give the image back. The loader opened it EFileShareReadersOnly and then
     // held it for the life of the process, and the game opens *the same file*

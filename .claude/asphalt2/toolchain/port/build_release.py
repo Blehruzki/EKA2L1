@@ -45,13 +45,22 @@ ICON_BITMAPS = (0,)
 
 # `6rbc.app` is an E32 executable image, and Symbian will not install one
 # anywhere but `\sys\bin` -- round 81's probe 4 is that one file on its own
-# and the phone refuses it. It travels as `6rbc.bin` instead. The loader
-# looks for both names, and redirects the game's own open of `6rbc.app`
-# when it loaded a `.bin`, so nothing downstream notices.
+# and the phone refuses it.
+#
+# Renaming is not enough. Round 82: probe 5 is the same bytes under another
+# name and the phone still refuses it, probe 6 is the same bytes with the
+# first 32 XORed and the phone takes it. The check reads the file, which is
+# the sensible design -- a rename would have made the rule a formality.
+#
+# So the image travels as `6rbc.bin` with its header XORed, and the loader
+# XORs it back after reading. Thirty-two bytes covers the UID triple, the
+# checksum and the 'EPOC' signature. `IMAGE_SCRAMBLE` in gate6.cpp is the
+# same constant and the two have to agree.
 RENAME = {'6rbc.app': '6rbc.bin'}
+SCRAMBLE = {'6rbc.app': (0xA5, 32)}
 
 
-def game_files(root):
+def game_files(root, scratch):
     """-> [(local path, install target)], every file in the tree.
 
     Sorted, so two builds of the same tree produce the same package and a
@@ -64,6 +73,12 @@ def game_files(root):
         for n in sorted(names):
             local = os.path.join(dirpath, n)
             sub = '' if rel == '.' else '\\' + rel.replace(os.sep, '\\')
+            if n in SCRAMBLE:
+                key, count = SCRAMBLE[n]
+                src = open(local, 'rb').read()
+                local = os.path.join(scratch, RENAME.get(n, n))
+                open(local, 'wb').write(
+                    bytes(b ^ key for b in src[:count]) + src[count:])
             out.append((local, TARGET_DIR + sub + '\\' + RENAME.get(n, n)))
     return out
 
@@ -74,12 +89,12 @@ def main(out='.', game=GAME):
     got = mkmbm.build(os.path.join(game, '6rbc.aif'), icon, list(ICON_BITMAPS))
     print('icon: %s' % ', '.join(mkmbm.describe(f) for f in got))
 
-    extra = game_files(game)
+    extra = game_files(game, out)
     total = sum(os.path.getsize(s) for s, _t in extra)
     print('game files: %d, %.1f MB' % (len(extra), total / 1e6))
     for _local, target in extra:
         if target.lower().endswith('.bin'):
-            print('renamed:    %s' % target)
+            print('renamed and scrambled: %s' % target)
 
     build_gate6.build(out, caption=CAPTION, icon=icon, extra=extra,
                       install_text=INSTALL_TEXT if WITH_INSTALL_TEXT else None,

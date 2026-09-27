@@ -35,6 +35,58 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### Why the image travels as 6rbc.bin
+
+*Rounds 80 to 82. The first standalone installer was refused by the phone,
+and finding out why took six probes and no guessing that survived one.*
+
+**Symbian will not install an E32 executable image anywhere but
+`\sys\bin`, and it decides by reading the file rather than its name.**
+`6rbc.app` is one -- uid1 0x10000079, `'EPOC'` at 0x10 -- and it is the only
+file in the game's tree that is; the `.aif` is a bitmap store and the rest
+is data.
+
+Probe 4 is that one file and nothing else, and the phone refuses it. Probe
+5 is the same bytes renamed `6rbc.bin`, and the phone refuses that too.
+Probe 6 is the same bytes with the first 32 XORed -- the UID triple, the
+checksum and the signature -- and the phone takes it. Which is the sensible
+design: a rename would have made the rule a formality.
+
+So the installer ships `6rbc.bin`, scrambled, and the loader XORs those 32
+bytes back after reading its own copy. `IMAGE_SCRAMBLE` in gate6.cpp and
+`SCRAMBLE` in build_release.py are the same constant and have to agree.
+
+**The game opens its own image too**, which is what made this more than a
+rename: two opens in the emulator's file log, mode 1 from the loader and
+mode 2 from the game's own reader at 0x34a0c. The loader remembers which
+name it loaded, and when it loaded a `.bin` it redirects the game's
+`...\6rbc.app` to `...\6rbc.bin` on the way into efsrv, beside the drive
+translation. A hand-copied N-Gage dump still has the original name and is
+untouched.
+
+I had two designs ready for the case where the game minded the scrambled
+header -- track the file position and patch reads that touch the first 32
+bytes, or write a clean copy out at first launch and redirect there. E214
+made both unnecessary in one run: scramble the file, run the game, and it
+never notices. **The cheap experiment was worth more than the design.**
+
+**What the failure taught about diagnosis.** The display-text entry was my
+leading suspect for a whole round, on the strength of one argument: it is
+the last entry in the package, so the installer reaches it at the end, and
+the failure was at the end. That is a real argument and it was worth
+nothing -- probe 2 carries a text entry and installs. Three of the six
+probes existed only to retire hypotheses I had ranked, and the one that
+found it was the one I ranked third.
+
+**`sischeck.py`** came out of the same round and closes a gap this project
+had written down and not acted on: the emulator verifies none of the
+integrity fields a device checks, so a package can be valid here and
+refused there. It checks every file's SHA-1 against its actual decompressed
+data, every compressed and uncompressed length, and the descriptor layout,
+and it is calibrated against a real signed Gameloft S60v3 package that the
+phone accepts. Build 167 passed all of it, which is how the package itself
+was ruled out early.
+
 ### The standalone installer
 
 One SIS, 20.6 MB, 39 files: the port, all 34 of the game's own files, the
