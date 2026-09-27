@@ -148,7 +148,13 @@ enum { SILENT = 1 };
 // than any silent one. The instrument was never the problem; the handle was.
 enum { LOG_ANYWAY = 1 };
 enum { QUIET = SILENT && !LOG_ANYWAY };
-enum { LOG_BLOCK = QUIET ? 1024 : 8,
+// Eight, not any more. Every block is an `RFile::Write` **and an
+// `RFile::Flush`**, and a flush is a commit to flash. Eight was chosen when a
+// run reached a few hundred records; a race with sound writes 44,000, which
+// is 5,497 commits. 256 makes it 171, at the cost of losing up to 256 records
+// if the game dies -- which it no longer does, and the box's own ring still
+// carries the last 128 traced events either way.
+enum { LOG_BLOCK = QUIET ? 1024 : 256,
        LOG_ZOOM = 0x7fffffff,
        LOG_ZOOM_END = 0x7fffffff };
 // The box is a fixed-position record rewritten on every call the framework
@@ -179,7 +185,26 @@ enum { BOX_ON_SLOT = !SILENT };
 // is a long way under the ten-write budget's reasoning: that ceiling was set
 // against twenty thousand of them, not two hundred. The box is one fixed
 // 1,264-byte write at offset zero, so it does not grow the file either.
-enum { BOX_EVERY_TRACED = 1 };
+//
+// **Round 79 collected on that reasoning.** It was right for a run of two
+// hundred and forty traced imports and wrong for a race: build 165's log
+// says **27,378**, because the sound bridge traces `SendReceive` and
+// `RMessage::Complete` and those alone are 24,404 of them. One write and one
+// flush each is 27,378 commits to flash and 34.6 MB rewritten over the same
+// 1,264 bytes, and with the log's own blocks that is **9.5 disk commits in
+// every frame of the race**. That is the stutter the user saw when the sound
+// came on, and none of it is the game's. The measurement outgrew its budget
+// the moment the thing being measured started working.
+//
+// 1024 puts it at twenty-six writes a race -- under even the ten-write
+// ceiling's spirit, since that was about a run, not a race. Per-event
+// granularity was for finding where a run of a few hundred imports died; the
+// game now reaches `User::Exit`, and the box's 128-deep ring still carries
+// every event before whatever it does die of.
+enum { BOX_EVERY_TRACED = 1024 };
+// A tick either side of the game's RunL, so a long frame can be found and
+// read. Costs two syscalls and two records a frame and nothing on disk.
+enum { CLOCK_EVERY_FRAME = 1 };
 enum { OPEN_THUNK_BYTES = 13 * 4 };
 enum { REACHED_FAULT = 256 };   // the exception handler ran
 // 800..899 are notes rather than events: the code says what is being noted and
@@ -2721,11 +2746,20 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     // `frames 1`. If it does and the loop still does not go round, nothing is
     // re-arming the timer; if it does not, the game is stuck inside one frame
     // and never returns to the scheduler.
+    // A clock on every frame, which is what round 79 had no way to answer.
+    // `User::TickCount` runs at 1/64 s, so a frame that costs three ticks is
+    // 47 ms and a dropped one; the log then says not only that a frame was
+    // long but what was inside it. One syscall a frame and no write of its
+    // own, now that the blocks are 256 deep.
     log_event(c, NOTE_FRAME, c->frames);
-    log_block(c);
+    if (CLOCK_EVERY_FRAME)
+        log_event(c, NOTE_TICK, user_tickcount());
+    if (!QUIET && !CLOCK_EVERY_FRAME)
+        log_block(c);
     old_call(c->oldTimer, OLD_RUNL);
+    if (CLOCK_EVERY_FRAME)
+        log_event(c, NOTE_TICK, user_tickcount());
     log_event(c, NOTE_FRAME_END, c->frames);
-    log_block(c);
 }
 
 extern "C" u32 gate6_timer_runerror(void *, u32 error, Context *c)

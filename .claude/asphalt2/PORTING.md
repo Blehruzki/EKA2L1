@@ -35,6 +35,46 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### The instrument outgrew its budget
+
+*Round 79. Sound worked on the phone and the race started dropping frames,
+worst on nitro. None of it was the sound.*
+
+`BOX_EVERY_TRACED` had been **1** since round 62, so every traced import was
+an `RFile::Write` of 1,264 bytes **and an `RFile::Flush`** -- a commit to
+flash. The reasoning for that is still in the source and states its own
+premise: *"about two hundred and forty write-and-flush pairs on a run of the
+length the phone reaches"*. It was right then. A race with sound makes
+**27,378** traced events, because the bridge traces `SendReceive` and
+`RMessage::Complete` and those two alone are 24,404 of them. With the log's
+blocks of eight and two more flushes per frame, that is about **forty
+thousand disk commits in one race, 9.5 in every frame** -- and they bunch
+where the sound is busiest, which is why nitro was the worst of it.
+
+Build 166: box every 1024 traced events, log blocks of 256, no flush per
+frame. About **two hundred commits a race** -- fewer than round 78's smooth
+build, which did two per frame.
+
+The general shape of this, which has now cost rounds twice (the 64-record
+plateau of builds 38-43 was the other): **a budget set against one workload
+is not a budget.** Every threshold in the instrument -- how often the box
+goes down, how deep a block is, what gets traced at all -- was calibrated
+against a run that died in the first few hundred imports. The moment the
+port started working, the same settings became the slowest thing in the
+frame. Re-derive them when the thing being measured changes size.
+
+The clock that replaces them costs nothing: `CLOCK_EVERY_FRAME` writes
+`User::TickCount` either side of the game's `RunL`, two records and two
+syscalls a frame and no write of its own. `toolchain/port/ticks.py` reads
+it: a frame is one tick at 1/64 s, three or more is a drop, and it prints
+what was inside the long ones.
+
+What the game itself costs, for comparison, from the same round-79 log:
+2,523 `RFile::Read`s from one open file across the race, 1,791 of them
+inside a frame, in bursts of up to 63; only 21 `RFile::Open`s in the whole
+race, so the sound server streams rather than loading per effect. Whether
+any of that is visible with the instrument quiet is what round 80 answers.
+
 ### Audio: the chain, end to end
 
 Mapped now, from the music file to the speaker, with the blocker in one
