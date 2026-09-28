@@ -328,7 +328,9 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_HIST = 814,         // one bucket of the allocation histogram
        NOTE_SITE = 815,         // a call site that allocates, as an image offset
        NOTE_SITE_N = 816,       // ... how many times
-       NOTE_SITE_KB = 817 };    // ... and how many kilobytes in all
+       NOTE_SITE_KB = 817,      // ... and how many kilobytes in all
+       NOTE_RAM_FREE = 818,     // free system RAM, which our own heap cannot see
+       NOTE_HEAP_PEAK = 819 };  // a new high-water mark, between samples
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 enum { BOX_MDA = BOX_STACK + 1 };   // what CMdaAudioOutputStream::NewL resolved to
@@ -956,6 +958,8 @@ struct Context {
     u8 quarWhich[QUARANTINE_CELLS];     // and which deallocator owns each
     u32 quarNext;
     u32 freedBytes;             // what has actually gone back
+    u32 heapPeak;               // the most this process has ever held
+    u32 heapPeakSaid;           // ... and the last peak a record named
     u32 siteAt[SITE_SLOTS];     // call sites that ask for large blocks
     u32 siteN[SITE_SLOTS];      // how many times each has asked
     u32 siteKB[SITE_SLOTS];     // and for how much, in kilobytes
@@ -1089,6 +1093,7 @@ enum { TRACE = 48 };
 // from 1240 records to 553.
 static void log_event(Context *c, u32 code, u32 from);
 static void heap_note(Context *c);
+static void heap_peak(Context *c);
 static void note(Context *c, u32 value, u16 sign);
 static void worker_log(Context *c, u32 code, u32 from);
 // The word that goes wrong is at a fixed address -- 0x8b281c, the fourth word
@@ -1738,7 +1743,13 @@ enum { PAD_THE_ALLOCATIONS = 0, ZERO_THE_SLACK = 0 };
 //
 // The ceiling this leaves is QUARANTINE_CELLS times the largest cell that can
 // be in the quarantine: 512 x 4 KB, two megabytes, and in practice far less.
-enum { WRAP_ALLOCATORS = WATCH_ALLOCATIONS };
+// Not tied to WATCH_ALLOCATIONS any more, and that coupling was a hole. This
+// is the wrapper that records an allocator returning **null** -- the most
+// direct evidence of running out of memory there is -- and it was off in
+// build 172. So "no allocation failed" in that build's logs means only that
+// nothing was in a position to say so. The same shape of mistake as
+// LEAK_EVERYTHING: a switch whose setting is invisible in the output.
+enum { WRAP_ALLOCATORS = 1 };
 enum { WATCH_OPEN_RESULT = 1 };
 // RFile::Open returns KErrNone and the phone dies on the next instruction,
 // which is `delete` on the name buffer. Two instruments, because the first
@@ -2147,6 +2158,12 @@ enum { WATCH_THE_EXITS = 1 };
 // is either true or not, and a trend line settles it in one run. At 64 it is
 // two records a second and nothing on disk.
 enum { HEAP_EVERY_FRAMES = 64 };
+// A sample once a second cannot see a spike that comes and goes between two
+// of them, and a spike is exactly what a failed allocation would be. So the
+// heap total is read every frame -- User::AllocSize reads two counters the
+// allocator already keeps, it does not walk anything -- and a record is
+// written only when the peak beats the last one written by this much.
+enum { HEAP_PEAK_STEP = 64 * 1024 };
 // And where the bytes went. Twenty-seven thousand live cells holding 56 MB is
 // a two-kilobyte average, and an average hides a whale: one allocation sized
 // from something this port supplies -- a screen dimension, a file size, a
@@ -2168,6 +2185,15 @@ enum { IMPORT_SCREEN_INFO = 356, WATCH_THE_SCREEN = 1 };
 // and EKA2L1 answers 32 for it regardless, which would shift the picture.
 enum { HAL_BITS_PER_PIXEL = 76, HAL_OFFSET_TO_FIRST_PIXEL = 79,
        HAL_OFFSET_BETWEEN_LINES = 80, HAL_DISPLAY_MODE = 84, ASK_HAL = 1 };
+// `HALData::EMemoryRAM` is 15 in this numbering, which `kernel/hal.def` states
+// outright, so `EMemoryRAMFree` is 16. It is the one number that says whether
+// the *phone* has run out rather than this process. Build 172's logs show a
+// heap sitting flat at 7 MB for eight minutes, which says nothing at all about
+// what the window server, DevSound, the file cache and every background app
+// have taken -- and an allocation fails on the sum, not on our share. EKA2L1
+// answers free = total, so the bench can prove the call works and nothing
+// more; the phone answers it honestly.
+enum { HAL_MEMORY_RAM_FREE = 16 };
 // The N-Gage's screen, which is what this game draws whatever it is told.
 // GAME_W is what shows; GAME_PITCH is how far apart the game puts its rows.
 // Measured (E133-E135): the game writes rows 176 apart and draws up to **192**
@@ -2767,6 +2793,26 @@ static void heap_note(Context *c)
     log_event(c, NOTE_HEAP_USED, (u32)bytes);
     log_event(c, NOTE_HEAP, (u32)free);
     log_event(c, NOTE_HEAP_BIG, (u32)biggest);
+    int ram = 0;
+    if (!hal_get(HAL_MEMORY_RAM_FREE, &ram))
+        log_event(c, NOTE_RAM_FREE, (u32)ram);
+}
+
+// Every frame, and almost always silent. Two counter reads and a compare.
+static void heap_peak(Context *c)
+{
+    i32 bytes = 0;
+    (void)user_allocsize(&bytes);
+    if ((u32)bytes <= c->heapPeak)
+        return;
+    c->heapPeak = (u32)bytes;
+    if ((u32)bytes < c->heapPeakSaid + (u32)HEAP_PEAK_STEP)
+        return;
+    c->heapPeakSaid = (u32)bytes;
+    log_event(c, NOTE_HEAP_PEAK, (u32)bytes);
+    int ram = 0;
+    if (!hal_get(HAL_MEMORY_RAM_FREE, &ram))
+        log_event(c, NOTE_RAM_FREE, (u32)ram);
 }
 
 extern "C" void gate6_zbefore(Context *c, u32 marker)
@@ -3111,6 +3157,8 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     log_event(c, NOTE_FRAME, c->frames);
     if (CLOCK_EVERY_FRAME)
         log_event(c, NOTE_TICK, user_tickcount());
+    if (HEAP_PEAK_STEP)
+        heap_peak(c);
     if (HEAP_EVERY_FRAMES && !(c->frames % (u32)HEAP_EVERY_FRAMES))
         heap_note(c);
     if (CENSUS_ALLOCS && HIST_EVERY_FRAMES && !(c->frames % (u32)HIST_EVERY_FRAMES)) {

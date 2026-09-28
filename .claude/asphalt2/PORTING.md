@@ -35,6 +35,73 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### What a clean build-172 log looks like, and the three things it cannot say
+
+*Round 86. A third party's eight-minute log, sent with a claim of "still
+crashes from out of memory". Worth reading as the reference for a healthy run.*
+
+| | |
+|---|---|
+| length | 8 min 06 s, 14,547 frames, ~30 fps, 7,361 key events |
+| heap peak | **6.80 MB** / 11,999 cells, across 227 samples |
+| heap floor | 3.37 MB -- it falls between races |
+| cumulative allocation | **97.8 MB**, of which 68.2 MB is zlib's `calloc` at `+0x1166c0` |
+| `CMdaAudioOutputStream::Open` | **once** in eight minutes |
+| zlib failures / leaves / panics | none |
+
+97.8 MB asked for against a heap that never passes 6.80 MB means roughly
+**91 MB was allocated and handed back**. The quarantine is not a one-off
+saving made at startup; it is running continuously, all session. And one
+`Open` for thirteen track changes rules out the other leak worth suspecting,
+an audio stream per track.
+
+The bench agrees closely: **6.67 MB peak here against 6.80 MB on the phone.**
+Same game, same memory, two machines.
+
+#### Where the run actually ends
+
+Not at a failure. The log stops **27 records into a music track change that is
+byte-identical to the five before it** -- `Stop` -> callback 2 ->
+`SetAudioPropertiesL(0x100, 0x2000000)` -> `MaxVolume` 10 -> `SetVolume(10)` ->
+`Stop` returned -- immediately before the `RMessage::Complete` that follows it
+every other time. The last frame took one tick.
+
+That tail is exact rather than truncated, which is worth stating because it is
+not obvious: the MDA proxy calls `log_block` on **every** return, so the
+records were flushed at that point on purpose. The death is inside the 255
+records after it, which is the second or two between a race ending and the
+results screen -- the phase that, twice earlier in the same log, runs
+`bg_136x64.mpg`, then writes **`user.dat`**, then opens the next track.
+
+#### The three blind spots
+
+Honest limits on the above, and all three are now closed in build 173:
+
+1. **A null from an allocator was not recorded.** `WRAP_ALLOCATORS` was
+   defined as `WATCH_ALLOCATIONS`, which is 0, so the wrapper that catches an
+   allocation returning zero was switched off. "No allocation failed" in a
+   build-172 log means only that nothing could have said so. This is the same
+   shape of mistake as `LEAK_EVERYTHING`: a switch whose setting leaves no
+   trace in the output. Now `WRAP_ALLOCATORS = 1`, decoupled.
+2. **A spike between samples was invisible.** The heap was read every 64
+   frames. Now `User::AllocSize` is read every frame -- it reads two counters
+   the allocator already maintains, it does not walk the heap -- and a record
+   is written only when the peak beats the last reported one by 64 KB. Eleven
+   records for a whole run, at per-frame resolution.
+3. **Free *system* RAM was never measured at all.** Our numbers are this
+   process's heap. An allocation fails on what the whole phone has left, and
+   a heap sitting at 7 MB says nothing about the window server, DevSound, the
+   file cache or anything in the background. `HALData::EMemoryRAM` is 15 in
+   this numbering (`kernel/hal.def` says so outright), so `EMemoryRAMFree` is
+   **16**, and it now goes down beside every heap note. EKA2L1 answers
+   `free = total` -- 134,217,728 on the RM-409 -- so the bench can prove the
+   call works and nothing else. The phone answers honestly.
+
+The general lesson is the one round 85 already taught, arriving from the other
+direction: **an instrument that cannot produce a negative result cannot be
+cited as evidence of one.** The heap numbers here are strong because they are
+measured; the absence of allocation failures was worth nothing.
+
 ### The crashes are a diagnostic switch left on
 
 *E219-E225, confirmed on hardware in round 85: several races on the N95, no
