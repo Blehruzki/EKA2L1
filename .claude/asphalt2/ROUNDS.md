@@ -351,6 +351,7 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 81 | **four probes**, one hypothesis each | 4 installs | **Probes 1, 2 and 3 install. Probe 4 does not.** So it is not the `\system\apps\6rbc\` directory, not the display-text entry, not the file count -- it is **`6rbc.app`** | **Symbian will not install an E32 executable image anywhere but `\sys\bin`.** Probe 4 carries that one file and nothing else, and the phone refuses it. Probe 3's forty files and probe 2's text entry both went in, which retires the two hypotheses I ranked highest -- the text entry was the leading suspect purely because it acts at the end of an install, and that reasoning was worth nothing against a probe. The user also confirms build 167 was tried with nothing of ours installed and the game files moved aside, so the vendor-mismatch-on-an-existing-UID theory is dead too. `6rbc.app` is the only file in the tree that is an E32 image (uid1 0x10000079, 'EPOC' at 0x10); the `.aif` is a bitmap store and everything else is data. And the game opens it **itself** -- twice in the emulator's file log, mode 1 from our loader and mode 2 from the game's own reader at 0x34a0c -- so any change to the file has to be invisible to the game, which is what probes 5 and 6 are for: the same bytes renamed, against the same bytes with the header scrambled |
 | 82 | **probes 5 and 6** -- the same file renamed, against the same file with its header scrambled | 2 installs | **Probe 5 fails, probe 6 installs.** So the installer reads the file, not its name | **The check is on the content.** Renaming `6rbc.app` to `6rbc.bin` changes nothing; XORing the first 32 bytes -- the UID triple, the checksum and the `'EPOC'` signature -- is what lets it travel. Which is the sensible design on Symbian's part: a rename would have made the whole "executables live in `\sys\bin`" rule a formality. The loader XORs those bytes back after reading its own copy, so nothing about the image the game runs changes. What is not yet settled is the game's **own** open of that file, which now reads 32 scrambled bytes at the front -- E214 asks whether it cares |
 | 83 | **build 170**, and a second opinion | install on C: and E:, plus C5 and N79 logs and a patched build from another model | **It installs on both drives and boots.** Two things wrong: the icon is an empty box, and the display is broken on the user's other phones | **Both found and fixed while I was out of context, by another model working from the binary, and both readings hold up against the source.** *The icon*: S60v3 draws a **MIF**, not an MBM. Two bytes in the caption resource and a converted icon file; the emulator rendered my MBM happily, which is the third time this project has been caught by the emulator being more permissive than the device. *The display*: `HAL::Get` takes the mode **in** the same integer it answers in, and every build to 170 left it at zero -- so all three display attributes described **mode 0** while `EDisplayMode` said mode 1 was live, logged and ignored. Confirmed against my own source: `int bpp = 0, pitch = 0, first = 0` is the bug, in one line. And the selection rule `pitch == w*2 || pitch == w*4` asks whether the framebuffer line is the *logical screen* wide. On the N95 it is not, so the rule never once matched there and the 1280 fallback carried the display the whole time -- it looked like it worked. On a phone with a wider line it fails outright |
+| 84 | **v5 on the N95** | 1 | **It works.** The display fix holds on the phone it was not derived from | **The last doubt about the new display rule, closed.** The N95's live mode had never been measured -- every log queried mode 0 -- and the risk was specific: mode 0 there reports 16 bits on a 640-byte line, the new rule would accept that as sane, and round 60 proved it produces 88-pixel banding. It does not happen. The pixels-per-line rule held: the N95's line is 320 pixels whatever the mode, so the live mode selects the same 32 bits on a 1280-byte line that the fallback was already choosing, and nothing changes there. **The rule is now confirmed on two phones that need different answers from it** -- 320 pixels a line on the N95, 2048 on the C5-00 -- which is worth more than either result alone: a rule that only ever produced one answer was what the old one did. The N79 is untested and predicted to be the C5's case |
 
 ## Round 74 -- the pitch is padding, and the screen is what it says
 
@@ -575,14 +576,20 @@ from anything done so far, and not a small one.
 
 ## Where we are
 
-**Furthest: E206 -- the audio chain runs end to end and carries music**,
-with round 78 the furthest the phone itself has been. The display is
-finished: 32 bits a pixel on a 1280-byte line, the screen the 240x320
-`ScreenInfo` reports with 1280 a padded stride, `EDisplayOffsetToFirstPixel`
-applied (32 here, 0 on the phone), the game's picture read from pixel
-sixteen, and the picture filled to the width and anchored to the bottom
-below the 56-row band. The phone's own dwell chose those numbers and build
-149 fixed them, with the picker off so every key reaches the game.
+**Furthest: round 84.** The game installs from one SIS to either drive,
+boots, plays with sound at frame rate, carries its own icon, and now runs
+on **three different phones** -- N95, C5-00 and (predicted, untested) N79.
+
+The display is finished, and the rule is no longer the N95's. Ask HAL for
+the **live** mode, not mode 0, and believe the stride it reports when it is
+sane, treating 24 bits as 32-bit storage. A framebuffer line is a fixed
+number of pixels and the mode only says how wide a pixel is: 320 pixels a
+line on the N95, 2048 on the C5-00. The old rule -- the line is the logical
+screen wide -- never matched on any phone, and the 1280-byte fallback
+carried the N95 for eleven rounds while looking like it worked. The rest of
+the layout stands as the phone's own dwell chose it in rounds 74 to 78:
+picture read from source pixel sixteen, filled to the width, anchored to
+the bottom below the 56-row band, picker off so every key reaches the game.
 
 **Sound runs end to end on the bench (E202, E206), and the phone has not
 heard it yet.** The game hosts its own client-server pair in this process

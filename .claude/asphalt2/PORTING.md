@@ -86,12 +86,19 @@ Confirmed on the C5 by the other model's binary patch; ported to source
 here and checked to read identically on the bench (E216), where asking the
 live mode returns a straight 32 where mode 0 returned 24.
 
-**The N95 is the one phone this has not been re-confirmed on.** Its mode 1
-was never measured -- every log we have queried mode 0. The
-pixels-per-line rule above predicts mode 1 reports 24 or 32 bits on a
-1280-byte line, which selects exactly what the fallback was already
-choosing, so the expectation is no change. It is an expectation, not a
-measurement.
+**Confirmed on the N95 too** (round 84), which was the last doubt: its
+mode 1 had never been measured, and the worry was that it might report the
+same 16 bits on a 640-byte line as its mode 0 does -- which the new rule
+would accept, and which round 60 proved wrong. It does not. The
+pixels-per-line rule held: whatever mode 1 reports there, it selects the
+same 32 bits on a 1280-byte line the old fallback was choosing, and the
+display is unchanged.
+
+So the rule is now confirmed on two phones that need different answers --
+the N95 at 320 pixels a line and the C5-00 at 2048 -- and no phone still
+needs the hardcoded fallback. The N79 has not reported back; the rule
+predicts it is the C5's case, since its mode 0 reports the same 16 bits on
+a 4096-byte line.
 
 ### Why the icon was an empty box
 
