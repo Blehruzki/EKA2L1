@@ -30,6 +30,14 @@ i32 chunk_createlocalcode(void *chunk, int size, int maxSize, int owner);
 u8 *chunk_base(const void *chunk);
 i32 sem_wait_timeout(void *sem, int microseconds);
 void *user_allocator(void);
+// RHeap::Available(TInt& biggestBlock) const -- the total free, and the
+// largest single cell, which is the pair that tells a failed 300 KB
+// decompression from a heap that is merely fragmented.
+i32 rheap_available(const void *heap, i32 *biggest);
+// User::AllocSize(TInt& total) -> cells outstanding, and the bytes in them.
+// Available answers the free list, which on a growable heap is small whatever
+// is going on; this is the number that rises when something is being kept.
+i32 user_allocsize(i32 *total);
 // `TThreadId` is a TUint64 wrapper, so this is a struct return: the hidden
 // pointer goes in r0 and `this` in r1. Declaring it as a plain u32 result
 // cost E156 -- the call took &handle as its return buffer and the run died
@@ -205,6 +213,16 @@ enum { BOX_EVERY_TRACED = 1024 };
 // A tick either side of the game's RunL, so a long frame can be found and
 // read. Costs two syscalls and two records a frame and nothing on disk.
 enum { CLOCK_EVERY_FRAME = 1 };
+enum { LEAK_EVERYTHING = 1, FREE_BACK_FROM = 4096, QUARANTINE_CELLS = 512 };
+enum { CENSUS_ALLOCS = 1, ALLOC_BIG = 1 << 16, ALLOC_BIG_MAX = 96 };
+enum { HIST_BUCKETS = 24 };
+// The histogram is a picture, not a stream: it goes down whole, rarely.
+enum { HIST_EVERY_FRAMES = 512 };
+// The histogram says how big; this says who. One row per call site that has
+// asked for a block of at least SITE_FLOOR, with the running count and total.
+// Thirty-two rows is more distinct large-allocation sites than this game has,
+// and the last row is a catch-all so an overflow is visible rather than lost.
+enum { SITE_SLOTS = 32, SITE_FLOOR = 8192 };
 enum { OPEN_THUNK_BYTES = 13 * 4 };
 enum { REACHED_FAULT = 256 };   // the exception handler ran
 // 800..899 are notes rather than events: the code says what is being noted and
@@ -292,7 +310,25 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_CANCEL = 850,       // CActive::Cancel, and on what
        NOTE_STRAY = 851,        // ... on something that is neither of ours
        NOTE_BASE = 852,         // where the game was loaded
-       NOTE_END = 853 };        // and where its chunk stops
+       NOTE_END = 853,          // and where its chunk stops
+       NOTE_Z_CALL = 800,       // a call into zlib uncompress, and which site
+       NOTE_Z_DEST = 801,       // ... the destination buffer
+       NOTE_Z_ROOM = 802,       // ... and how many bytes it says are there
+       NOTE_Z_SRC = 803,        // ... the compressed data
+       NOTE_Z_LEN = 804,        // ... and how much of it
+       NOTE_Z_HEAD = 805,       // ... the first two words of it, as read
+       NOTE_Z_RET = 806,        // what zlib really answered, before the flattening
+       NOTE_Z_WROTE = 807,      // and how much it says it wrote
+       NOTE_HEAP = 808,         // bytes free on the heap
+       NOTE_HEAP_BIG = 809,     // ... and the largest single cell in it
+       NOTE_HEAP_CELLS = 810,   // allocations outstanding
+       NOTE_HEAP_USED = 811,    // ... and the bytes in them
+       NOTE_BIG_ALLOC = 812,    // an allocation over the census threshold
+       NOTE_BIG_FROM = 813,     // ... and the site that asked for it
+       NOTE_HIST = 814,         // one bucket of the allocation histogram
+       NOTE_SITE = 815,         // a call site that allocates, as an image offset
+       NOTE_SITE_N = 816,       // ... how many times
+       NOTE_SITE_KB = 817 };    // ... and how many kilobytes in all
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 enum { BOX_MDA = BOX_STACK + 1 };   // what CMdaAudioOutputStream::NewL resolved to
@@ -914,6 +950,21 @@ struct Context {
     u32 shots;              // frames seen, for the one-shot framebuffer dump
     u32 srcPitch;           // pixels between the game's rows, 176 or 192
     u32 fileOpenThunk;
+    u32 allocHist[HIST_BUCKETS];    // calls per power-of-two size band
+    u32 realFree[3];            // the deallocators as they resolved
+    void *quarPtr[QUARANTINE_CELLS];    // small cells held back
+    u8 quarWhich[QUARANTINE_CELLS];     // and which deallocator owns each
+    u32 quarNext;
+    u32 freedBytes;             // what has actually gone back
+    u32 siteAt[SITE_SLOTS];     // call sites that ask for large blocks
+    u32 siteN[SITE_SLOTS];      // how many times each has asked
+    u32 siteKB[SITE_SLOTS];     // and for how much, in kilobytes
+    u32 allocPeak;          // the largest single allocation asked for
+    u32 allocPeakFrom;      // and the site that asked for it
+    u32 allocBigSaid;       // how many big ones have been written down
+    u32 zArg[6];            // r0-r3 as the zlib call site left them, then the
+                            // room the caller claimed and the stream's first word
+    u32 zCalls;             // how many decompressions have gone past
     u8 *spare;              // unused executable room, handed out as needed
     u8 *spareEnd;
 };
@@ -1037,6 +1088,7 @@ enum { TRACE = 48 };
 // the inside: a single probe planted at its third instruction took the run
 // from 1240 records to 553.
 static void log_event(Context *c, u32 code, u32 from);
+static void heap_note(Context *c);
 static void note(Context *c, u32 value, u16 sign);
 static void worker_log(Context *c, u32 code, u32 from);
 // The word that goes wrong is at a fixed address -- 0x8b281c, the fourth word
@@ -1657,7 +1709,35 @@ enum { PAD_THE_ALLOCATIONS = 0, ZERO_THE_SLACK = 0 };
 // having happened, then the fault was never in User::Free -- the free is
 // merely the last thing we log before it, and everything between that record
 // and the next traced import has been carrying the blame for it.
-enum { LEAK_EVERYTHING = 1 };
+// It advanced, and it stayed on, and that is the bug the crashes are.
+//
+// The census (E221 to E223) measured what freeing nothing costs: 25,684
+// allocations, 26,648 cells still live, **51 MB** held at the end of one
+// ninety-second run -- and `heapMax` was raised to 64 MB to let it. On this
+// bench that is free; a phone has perhaps twenty megabytes to give, and the
+// first allocation it cannot satisfy is whichever one comes next. In the
+// recorded failure it is zlib's own 32 KB window inside `uncompress`, which
+// returns Z_MEM_ERROR, which `0x33a7c` flattens to -4, which is
+// `User::Leave(-4)`. The leak was never the workaround's *cost*; on hardware
+// it is the failure.
+//
+// So give the memory back, without giving back what the use-after-free wants.
+// Two rules, and they do not overlap:
+//
+//   - Anything at least FREE_BACK_FROM bytes is returned at once. The cells
+//     that hold the memory are large: 1,492 calls through the game's calloc
+//     at 0x1166b0 account for 32 MB on their own, and the game's own buffers
+//     are 108 to 160 KB each. A container small enough to be read after it
+//     was freed is not in this band.
+//   - Everything smaller goes into a quarantine of QUARANTINE_CELLS entries
+//     and is returned when that many more frees have pushed it out. The heap
+//     cannot hand a cell back to the game until it has actually been freed,
+//     so a read of a just-freed small object still finds what it left there
+//     -- which is exactly what leaking everything bought, at a bounded price
+//     instead of an unbounded one.
+//
+// The ceiling this leaves is QUARANTINE_CELLS times the largest cell that can
+// be in the quarantine: 512 x 4 KB, two megabytes, and in practice far less.
 enum { WRAP_ALLOCATORS = WATCH_ALLOCATIONS };
 enum { WATCH_OPEN_RESULT = 1 };
 // RFile::Open returns KErrNone and the phone dies on the next instruction,
@@ -1779,6 +1859,42 @@ enum { PATCH_GATE_TWO = 0 };
 static const Patch kGateTwo[] = {
     { 0x0013f6c8, 0xE3A04001 },     // mov r4, #1, in place of `movne r4, #0`
 };
+
+// The crash, and the one value the game throws away.
+//
+// `0x33a74` calls zlib 1.1.3 `uncompress` at `0xd4f88`, and two instructions
+// later:
+//
+//     33a78  cmp   r0, #0
+//     33a7c  mvnne r0, #3          @ ANY nonzero status becomes -4
+//     33a80  blne  0x118da8        @ User::Leave(-4)
+//
+// So every way a decompression can fail -- Z_MEM_ERROR (-4), Z_DATA_ERROR
+// (-3), Z_BUF_ERROR (-5) -- arrives on the phone as one leave code, and -4 is
+// also KErrNoMemory, which is what made "it ran out of memory" the obvious
+// reading. It is a reading the log cannot support, because the game destroyed
+// the evidence before the log saw it.
+//
+// Hook the call site rather than the two instructions after it. The status is
+// the discriminator, but it is not the whole answer: a Z_BUF_ERROR says the
+// destination was too small and a Z_DATA_ERROR says the input was wrong, and
+// only the arguments say which buffer and which archive. So the thunk records
+// the destination, the room the caller claims is in it, the source and its
+// length, the first two words of the compressed data -- a zlib stream starts
+// 0x78 -- and, on the way out, the true status and the length written back.
+// Plus the heap, because if the reading is memory after all, that is the
+// number that shows it.
+//
+// A `bl` is replaced by a `bl`, so lr is still the game's own return address
+// and the thunk returns straight into `cmp r0, #0` with r0 as zlib left it.
+// Both call sites are hooked: `0x33a74` is the one that has crashed, and
+// `0x11562c` is the other user of the same routine, which handles -4 itself.
+enum { HOOK_UNCOMPRESS = 1, Z_REAL = 0x000d4f88, Z_BYTES = 104 };
+static const u32 kZSite[] = { 0x00033a74, 0x0011562c };
+// A decompression per resource is hundreds a run, and the failing one is the
+// last. Record every call up to this many, then only the ones that fail --
+// which keeps the log short enough to survive and still holds the answer.
+enum { Z_LOUD_FIRST = 24 };
 
 enum { PLANT_PROBES = 0, PROBE_FIRST = 990, PROBE_BYTES = 80 };
 // A probe from this marker on says nothing unless the watched word has changed
@@ -2013,6 +2129,34 @@ static int crumb_safe(u32 w)
 // User::Leave and User::Exit are where the game gives up, so those two say
 // where from as well.
 enum { IMPORT_LEAVE = 324, IMPORT_EXIT = 308, IMPORT_FILE_READ_STATIC = 110 };
+// The other three ways this game can end, none of which the log has ever
+// named. `User::Leave` was wrapped because it is the one the phone was seen
+// to reach; these are the ones it would reach instead.
+//
+// `LeaveIfError` is the awkward one: the game calls it on every result it
+// gets, error or not, so wrapping it the ordinary way is thousands of records
+// a second. It is wrapped anyway and filtered in the handler -- a call with a
+// non-negative argument returns before it writes anything -- which makes it
+// free on the path it is always on and exact on the one that matters. That
+// argument is a Symbian error code, which is the discriminator the zlib site
+// throws away: -4 KErrNoMemory reads differently from -18 KErrCorrupt.
+enum { IMPORT_LEAVE_IF_ERROR = 322, IMPORT_LEAVE_NOMEM = 323, IMPORT_PANIC = 338 };
+enum { WATCH_THE_EXITS = 1 };
+// The heap, once every this many frames. The leak reading -- that a long
+// session runs the heap down until a decompression cannot find its buffer --
+// is either true or not, and a trend line settles it in one run. At 64 it is
+// two records a second and nothing on disk.
+enum { HEAP_EVERY_FRAMES = 64 };
+// And where the bytes went. Twenty-seven thousand live cells holding 56 MB is
+// a two-kilobyte average, and an average hides a whale: one allocation sized
+// from something this port supplies -- a screen dimension, a file size, a
+// count read out of a header -- would look exactly like this. So every
+// allocator call is bucketed by size, the largest is kept with the site that
+// asked for it, and anything over the threshold is written down.
+//
+// The census costs a compare and two increments on a call that already goes
+// through a thunk, and writes nothing for the 99% of allocations that are
+// small.
 enum { READ_DATA_WORDS = 8 };
 enum { IMPORT_SCREEN_INFO = 356, WATCH_THE_SCREEN = 1 };
 // The panel, asked rather than assumed. EKA2L1's screen is color16ma -- 32
@@ -2199,13 +2343,60 @@ static const u16 *des_text(const u32 *d, u32 *length)
     }
 }
 
+// Which imports take a byte count as their first argument. HBufC16::New is
+// in characters rather than bytes, which the census does not correct for --
+// the band it lands in is one out and the shape is the same.
+static int is_allocator(u32 index)
+{
+    return index == 265 || index == 269 || index == 270 ||
+           index == 332 || index == 409 || index == 421;
+}
+
 extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
 {
+    // See IMPORT_LEAVE_IF_ERROR: the call that does not leave is not a record.
+    if (index == (u32)IMPORT_LEAVE_IF_ERROR && (i32)a0 >= 0)
+        return;
+    if (CENSUS_ALLOCS && is_allocator(index)) {
+        u32 band = 0;
+        while (band + 1 < (u32)HIST_BUCKETS && (a0 >> band) > 1)
+            band++;
+        c->allocHist[band]++;
+        if (a0 > c->allocPeak) {
+            c->allocPeak = a0;
+            c->allocPeakFrom = a1;
+        }
+        if (a0 >= (u32)SITE_FLOOR) {
+            // Linear, because the table is small and the calls that reach here
+            // are the rare ones. The last slot is the overflow, so a site that
+            // did not fit is still counted and still says so.
+            u32 k = 0;
+            while (k < (u32)SITE_SLOTS - 1 && c->siteAt[k] && c->siteAt[k] != a1)
+                k++;
+            if (!c->siteAt[k]) c->siteAt[k] = a1;
+            c->siteN[k]++;
+            c->siteKB[k] += (a0 + 1023) >> 10;
+        }
+        if (a0 < (u32)ALLOC_BIG || c->allocBigSaid >= (u32)ALLOC_BIG_MAX)
+            return;
+        c->allocBigSaid++;
+        log_event(c, NOTE_BIG_ALLOC, a0);
+        log_event(c, NOTE_BIG_FROM, a1 - c->codeBase);
+        return;
+    }
     watch_latch(c, a0);
     watch_note(c);
     log_event(c, NOTE_CALL_ARG, index);
     log_event(c, NOTE_RESULT_ARG, a0);
     log_event(c, NOTE_CALLER, a1);
+    // None of these three come back, so whatever is in the buffer now is the
+    // last of the record -- and the heap goes with it, because "it ran out of
+    // memory" is a claim about a number nothing has ever written down.
+    if (index == (u32)IMPORT_LEAVE_IF_ERROR || index == (u32)IMPORT_LEAVE_NOMEM ||
+        index == (u32)IMPORT_PANIC) {
+        heap_note(c);
+        log_block(c);
+    }
     // RFile::Open's third argument is the name. Sixteen characters is enough
     // for "cwivenc.dat" and for anything else this game opens.
     if (WATCH_FREES && (index == IMPORT_DELETE_OP || index == IMPORT_VEC_DELETE_OP ||
@@ -2527,6 +2718,131 @@ static void probe_plant(Context *c, u8 *base, const Probe &p, u32 marker)
     user_imb_range(site, site + 1);
 }
 
+// What the thunk saw, written out as one run of records. The order is the
+// order the call was made in, so a reader does not have to hold the argument
+// list in their head: what, where to, how much room, from where, how much,
+// what it started with, what came back.
+static void z_report(Context *c, u32 marker, u32 status, u32 wrote)
+{
+    stack_mark(c);
+    log_event(c, NOTE_Z_CALL, marker);
+    log_event(c, NOTE_Z_DEST, c->zArg[0]);
+    log_event(c, NOTE_Z_ROOM, c->zArg[4]);
+    log_event(c, NOTE_Z_SRC, c->zArg[2]);
+    log_event(c, NOTE_Z_LEN, c->zArg[3]);
+    log_event(c, NOTE_Z_HEAD, c->zArg[5]);
+    log_event(c, NOTE_Z_RET, status);
+    log_event(c, NOTE_Z_WROTE, wrote);
+    if (status) {
+        // Only on a failure, because it is two calls into the allocator and
+        // the successful path runs hundreds of times a load.
+        heap_note(c);
+        // The run is about to leave with -4 and the next thing that happens
+        // may be the end of it, so this block goes to the file now.
+        log_block(c);
+    }
+}
+
+// Read four bytes from wherever the caller pointed, without assuming it is
+// aligned or that it is a pointer at all. A zlib stream begins 0x78, and the
+// byte after it says which preset; a source that does not start that way is
+// the answer on its own.
+static u32 z_head(u32 p)
+{
+    if (p < 0x1000) return 0;
+    const u8 *b = (const u8 *)p;
+    return (u32)b[0] | ((u32)b[1] << 8) | ((u32)b[2] << 16) | ((u32)b[3] << 24);
+}
+
+// Four numbers, because no one of them is the answer. Cells and bytes
+// outstanding say whether anything is being kept; the free list and its
+// biggest cell say whether what is left is usable -- a heap with 300 KB free
+// in 2 KB pieces fails a 40 KB decompression exactly like an empty one.
+static void heap_note(Context *c)
+{
+    i32 bytes = 0, biggest = 0;
+    const i32 cells = user_allocsize(&bytes);
+    const i32 free = rheap_available(user_allocator(), &biggest);
+    log_event(c, NOTE_HEAP_CELLS, (u32)cells);
+    log_event(c, NOTE_HEAP_USED, (u32)bytes);
+    log_event(c, NOTE_HEAP, (u32)free);
+    log_event(c, NOTE_HEAP_BIG, (u32)biggest);
+}
+
+extern "C" void gate6_zbefore(Context *c, u32 marker)
+{
+    (void)marker;
+    c->zCalls++;
+    const u32 room = c->zArg[1];
+    c->zArg[4] = (room >= 0x1000 && !(room & 3)) ? *(const u32 *)room : 0xffffffff;
+    c->zArg[5] = z_head(c->zArg[2]);
+}
+
+// Returns the status, so the game's own `cmp r0, #0` two instructions later
+// sees exactly what zlib said -- the thunk is transparent, and the flattening
+// to -4 still happens, in the game's code, where it always did.
+extern "C" u32 gate6_zafter(Context *c, u32 status, u32 lenAt, u32 marker)
+{
+    const u32 wrote = (lenAt >= 0x1000 && !(lenAt & 3))
+                    ? *(const u32 *)lenAt : 0xffffffff;
+    if (status || c->zCalls <= (u32)Z_LOUD_FIRST)
+        z_report(c, marker, status, wrote);
+    return status;
+}
+
+// A `bl` in place of a `bl`: lr still points at the instruction after the
+// call site, so the thunk's final pop straight into pc returns the game to
+// its own `cmp r0, #0` with r0 as zlib left it. r12 is scratch across a call
+// on this ABI, so the thunk may use it before the first push has settled;
+// r4 and r5 are not, and are saved. Four registers go on the stack rather
+// than three so the push is sixteen bytes and whatever alignment the caller
+// had is the alignment the handlers get.
+static void zhook_plant(Context *c, u8 *base, u32 at, u32 marker)
+{
+    u32 *site = (u32 *)(base + at);
+    if (c->spare + Z_BYTES > c->spareEnd) {
+        log_event(c, NOTE_PLANT_REFUSED, marker);
+        return;
+    }
+    u32 *b = (u32 *)c->spare;
+    const i32 reach = (i32)((u32)b - (u32)site - 8) >> 2;
+    if (reach > 0x7fffff || reach < -0x800000) {
+        log_event(c, NOTE_PLANT_REFUSED, marker);
+        return;
+    }
+    c->spare += Z_BYTES;
+    b[0]  = 0xE92D4070;                 // stmdb sp!, {r4, r5, r6, lr}
+    b[1]  = 0xE59F5044;                 // ldr   r5, [pc, #68]  -> b[20] context
+    b[2]  = 0xE59FC044;                 // ldr   r12, [pc, #68] -> b[21] &zArg
+    b[3]  = 0xE1A04001;                 // mov   r4, r1         -- keep &destLen
+    b[4]  = 0xE88C000F;                 // stmia r12, {r0-r3}   -- the arguments
+    b[5]  = 0xE92D000F;                 // stmdb sp!, {r0-r3}
+    b[6]  = 0xE1A00005;                 // mov   r0, r5
+    b[7]  = 0xE59F1034;                 // ldr   r1, [pc, #52]  -> b[22] marker
+    b[8]  = 0xE59FC034;                 // ldr   r12, [pc, #52] -> b[23] before
+    b[9]  = 0xE12FFF3C;                 // blx   r12
+    b[10] = 0xE8BD000F;                 // ldmia sp!, {r0-r3}   -- as they were
+    b[11] = 0xE59FC02C;                 // ldr   r12, [pc, #44] -> b[24] uncompress
+    b[12] = 0xE12FFF3C;                 // blx   r12            -- let it happen
+    b[13] = 0xE1A01000;                 // mov   r1, r0         -- the true status
+    b[14] = 0xE1A02004;                 // mov   r2, r4
+    b[15] = 0xE59F3014;                 // ldr   r3, [pc, #20]  -> b[22] marker
+    b[16] = 0xE1A00005;                 // mov   r0, r5
+    b[17] = 0xE59FC018;                 // ldr   r12, [pc, #24] -> b[25] after
+    b[18] = 0xE12FFF3C;                 // blx   r12            -- r0 = status
+    b[19] = 0xE8BD8070;                 // ldmia sp!, {r4, r5, r6, pc}
+    b[20] = (u32)c;
+    b[21] = (u32)&c->zArg[0];
+    b[22] = marker;
+    b[23] = (u32)&gate6_zbefore;
+    b[24] = (u32)base + (u32)Z_REAL;
+    b[25] = (u32)&gate6_zafter;
+    user_imb_range(b, b + 26);
+    *site = 0xEB000000 | ((u32)reach & 0x00FFFFFF);
+    user_imb_range(site, site + 1);
+    log_event(c, NOTE_PLANT_OK, marker);
+}
+
 static void crumb_plant_r5(Context *c, u8 *base, u32 at, u32 marker)
 {
     u32 *site = 0, original = 0;
@@ -2795,6 +3111,23 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     log_event(c, NOTE_FRAME, c->frames);
     if (CLOCK_EVERY_FRAME)
         log_event(c, NOTE_TICK, user_tickcount());
+    if (HEAP_EVERY_FRAMES && !(c->frames % (u32)HEAP_EVERY_FRAMES))
+        heap_note(c);
+    if (CENSUS_ALLOCS && HIST_EVERY_FRAMES && !(c->frames % (u32)HIST_EVERY_FRAMES)) {
+        // Band number in the top half, count in the bottom, so one record is
+        // one bar and the reader does not have to track position.
+        for (u32 i = 0; i < (u32)HIST_BUCKETS; i++)
+            if (c->allocHist[i])
+                log_event(c, NOTE_HIST, (i << 24) | (c->allocHist[i] & 0xFFFFFF));
+        log_event(c, NOTE_BIG_ALLOC, c->allocPeak);
+        log_event(c, NOTE_BIG_FROM, c->allocPeakFrom - c->codeBase);
+        for (u32 i = 0; i < (u32)SITE_SLOTS; i++)
+            if (c->siteAt[i]) {
+                log_event(c, NOTE_SITE, c->siteAt[i] - c->codeBase);
+                log_event(c, NOTE_SITE_N, c->siteN[i]);
+                log_event(c, NOTE_SITE_KB, c->siteKB[i]);
+            }
+    }
     if (!QUIET && !CLOCK_EVERY_FRAME)
         log_block(c);
     old_call(c->oldTimer, OLD_RUNL);
@@ -3198,8 +3531,41 @@ enum { MMC_CID_WORDS = 4 };
 // reuse it quickly enough for the game to notice. So: free nothing. A startup
 // sequence against a sixty-four megabyte heap can afford it, and it is a
 // straight test of whether the fault is a use-after-free at all.
-extern "C" void gate6_free(void *)
+extern "C" void gate6_free(void *p, u32 which, Context *c)
 {
+    typedef void (*Free)(void *);
+    if (!p || which > 2)
+        return;
+    const u32 len = (u32)user_alloclen(p);
+    c->freedBytes += len;
+    if (len >= (u32)FREE_BACK_FROM || !QUARANTINE_CELLS) {
+        if (c->realFree[which]) ((Free)c->realFree[which])(p);
+        return;
+    }
+    const u32 n = c->quarNext % (u32)QUARANTINE_CELLS;
+    void *const old = c->quarPtr[n];
+    const u32 owner = c->quarWhich[n];
+    c->quarPtr[n] = p;
+    c->quarWhich[n] = (u8)which;
+    c->quarNext++;
+    if (old && c->realFree[owner])
+        ((Free)c->realFree[owner])(old);
+}
+
+// r0 is already the pointer, so the two spare argument registers carry which
+// deallocator this is and the context, and the jump is a tail jump -- lr is
+// still the game's, and the handler returns straight to it.
+static u32 free_thunk(u8 *code, const void *ctx, u32 which, u32 handler)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE59F1004;                  // ldr r1, [pc, #4]  -> b[3] which
+    b[1] = 0xE59F2004;                  // ldr r2, [pc, #4]  -> b[4] context
+    b[2] = 0xE59FF004;                  // ldr pc, [pc, #4]  -> b[5] handler
+    b[3] = which;
+    b[4] = (u32)ctx;
+    b[5] = handler;
+    user_imb_range(b, b + 6);
+    return (u32)b;
 }
 
 extern "C" void *gate6_alloc(int size, u32, Context *c)
@@ -6329,6 +6695,11 @@ static u32 load_and_start()
         iat[IMPORT_FILE_REPLACE] = ctx->cardReplace;
     }
 
+    if (HOOK_UNCOMPRESS)
+        for (u32 i = 0; i < sizeof kZSite / sizeof kZSite[0]; i++)
+            if (kZSite[i] + 4 <= h->codeSize)
+                zhook_plant(ctx, base, kZSite[i], kZSite[i]);
+
     if (PATCH_GATE_TWO)
         for (u32 i = 0; i < sizeof kGateTwo / sizeof kGateTwo[0]; i++)
             if (kGateTwo[i].at + 4 <= h->codeSize) {
@@ -6428,8 +6799,10 @@ static u32 load_and_start()
         static const u16 kFree[] = { IMPORT_USER_FREE_OP, IMPORT_DELETE_OP,
                                      IMPORT_VEC_DELETE_OP };
         for (u32 i = 0; i < sizeof kFree / sizeof kFree[0]; i++)
-            if (kFree[i] < nImports) {
-                iat[kFree[i]] = (u32)&gate6_free;
+            if (kFree[i] < nImports && ctx->spare + 6 * 4 <= ctx->spareEnd) {
+                ctx->realFree[i] = iat[kFree[i]];
+                iat[kFree[i]] = free_thunk(ctx->spare, ctx, i, (u32)&gate6_free);
+                ctx->spare += 6 * 4;
                 ctx->boxData[BOX_WRAPS] |= W_LEAK;
             }
     }
@@ -6453,6 +6826,16 @@ static u32 load_and_start()
     if (IMPORT_LEAVE < nImports && ctx->spare + ARG_WORDS * 4 <= ctx->spareEnd) {
         iat[IMPORT_LEAVE] = arg_thunk(ctx->spare, ctx, IMPORT_LEAVE, iat[IMPORT_LEAVE]);
         ctx->spare += ARG_WORDS * 4;
+    }
+
+    if (WATCH_THE_EXITS) {
+        static const u32 kExit[] = { IMPORT_LEAVE_IF_ERROR, IMPORT_LEAVE_NOMEM,
+                                     IMPORT_PANIC };
+        for (u32 i = 0; i < sizeof kExit / sizeof kExit[0]; i++)
+            if (kExit[i] < nImports && ctx->spare + ARG_WORDS * 4 <= ctx->spareEnd) {
+                iat[kExit[i]] = arg_thunk(ctx->spare, ctx, kExit[i], iat[kExit[i]]);
+                ctx->spare += ARG_WORDS * 4;
+            }
     }
 
     if (WATCH_OPEN_RESULT && IMPORT_FILE_OPEN < nImports &&
@@ -6579,6 +6962,19 @@ static u32 load_and_start()
                 continue;
             iat[j] = result_thunk(ctx->spare, ctx, j, iat[j]);
             ctx->spare += 16 * 4;
+        }
+    }
+
+    // And on the way in, for the census: result_thunk sees what came back,
+    // which says nothing about how much was asked for or by whom.
+    if (CENSUS_ALLOCS) {
+        static const u32 kCensus[] = { 265, 269, 270, 332, 409, 421 };
+        for (u32 i = 0; i < sizeof kCensus / sizeof kCensus[0]; i++) {
+            const u32 j = kCensus[i];
+            if (j >= nImports || ctx->spare + ARG_WORDS * 4 > ctx->spareEnd)
+                continue;
+            iat[j] = arg_thunk(ctx->spare, ctx, j, iat[j]);
+            ctx->spare += ARG_WORDS * 4;
         }
     }
 

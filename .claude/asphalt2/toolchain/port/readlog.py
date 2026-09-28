@@ -83,7 +83,8 @@ def probes():
 
 # Notes whose payload is an address: the same run on two machines loads the
 # image somewhere different, so the number is worth printing and not comparing.
-ADDRESS_NOTES = {850, 851, 852, 853, 854, 855, 856, 857, 858, 859, 875, 876, 891}
+ADDRESS_NOTES = {850, 851, 852, 853, 854, 855, 856, 857, 858, 859, 875, 876, 891,
+                 801, 803}
 
 # 850..857 are reused: the names on the right are what gate6.cpp writes
 # there now, and the ones on the left are what the same codes meant when the
@@ -108,7 +109,14 @@ NOTES = {860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on
          893: '   answered', 894: 'RFile::Size answered',
          897: 'RFile::Open answered', 898: '   name', 899: 'ALLOC FAILED, bytes',
          861: '   descriptor word',
- 895: '  >> watched field', 896: '  >> would read at +0x240'}
+ 895: '  >> watched field', 896: '  >> would read at +0x240',
+ 800: 'zlib uncompress at', 801: '   dest', 802: '   room in it',
+ 803: '   source', 804: '   compressed bytes', 805: '   stream starts',
+ 806: '   ZLIB SAID', 807: '   bytes written',
+ 808: '   heap free', 809: '   biggest cell',
+ 810: 'heap: cells out', 811: '   bytes out',
+ 812: 'BIG alloc', 813: '   asked from', 814: 'hist band<<24|count',
+ 815: 'alloc site', 816: '   calls', 817: '   KB in all'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework

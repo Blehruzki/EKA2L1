@@ -29,7 +29,7 @@ def build(out='.', caption='Gate6', **kw):
                                           'rlibrary_load', 'rlibrary_lookup',
                                           'rdebug_rawprint', 'user_imb_range',
                                           'user_tickcount', 'sem_wait_timeout',
-                                          'user_allocator', 'rthread_id']),
+                                          'user_allocator', 'rthread_id', 'rheap_available', 'user_allocsize']),
                         (buildapp.EFSRV, ['fs_connect', 'file_open', 'file_close',
                                           'file_size', 'file_read',
                                           'file_replace', 'file_write_at',

@@ -35,6 +35,92 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### The crashes are a diagnostic switch left on
+
+*E219-E224. The one finding that explains the crashes, and it is ours.*
+
+**`LEAK_EVERYTHING = 1` in `gate6.cpp` answered `User::Free`, `operator
+delete` and `operator delete[]` with a function that does nothing. It has been
+on since build 49 and it shipped in every build since, the one on the phone
+included.** It was a diagnostic: build 49 was stuck at a wall that looked like
+a use-after-free, and freeing nothing is the cleanest way to ask whether it is
+one. The run advanced. The switch stayed on. `heapMax` was raised to 64 MB so
+the bench would not notice, and it did not.
+
+What it costs, measured rather than assumed:
+
+| | leaking | after |
+|---|---|---|
+| cells live at the end of a 90 s run | 26,648 | 11,405 |
+| bytes held | **51.1 MB** | **6.5 MB** |
+| free list / biggest cell | 1,664 / 1,628 | 149,536 / 23,060 |
+| frames | ~2,400 | 2,744 |
+
+25,684 allocator calls and 26,648 cells still live is the whole thing said in
+one line: the process was freeing nothing. On this bench that is free. A phone
+has perhaps twenty megabytes to give, and the first allocation it cannot
+satisfy is whichever one happens to come next -- so the crash lands somewhere
+different each time, late, and after enough play, which is exactly how it was
+reported.
+
+In the failure that was recorded it lands inside zlib. The game's zlib 1.1.3
+`uncompress` at `+0xd4f88` allocates a 32 KB window and a state block through
+the `calloc` at `+0x1166b0` -- 1,492 calls, 32.1 MB, the single largest
+consumer in the run -- and when that fails it returns `Z_MEM_ERROR`. The call
+site does this with it:
+
+    33a74  bl    0xd4f88        @ uncompress
+    33a78  cmp   r0, #0
+    33a7c  mvnne r0, #3         @ ANY nonzero status becomes -4
+    33a80  blne  0x118da8       @ User::Leave(-4)
+
+which is why the log could only ever say -4: the game destroys the status
+before anything can read it, and -4 is also `KErrNoMemory`, so the one reading
+the evidence supported was the one that happened to be right for the wrong
+reason.
+
+**The replacement is not "turn it off".** The use-after-free the switch was
+hiding may still be there, so the rule is now two rules that do not overlap:
+
+- anything **4 KB or larger goes back at once** -- that is where all the memory
+  is, and a container small enough to be read after it was freed is not in
+  that band;
+- everything smaller goes into a **512-cell quarantine** and is returned when
+  that many further frees have pushed it out, so the heap still cannot hand a
+  just-freed small object to anybody else.
+
+The ceiling that leaves is 512 x 4 KB, and in practice far less.
+
+**The lesson is about the switch, not the leak.** Nothing in the build said it
+was on. It had a comment explaining the experiment, a name that says exactly
+what it does, and no expiry -- and the thing it does is invisible on a machine
+with memory to spare, which is the only machine it was ever measured on.
+`SILENT`, `PAD_THE_ALLOCATIONS`, `PATCH_THE_CHECK` and `PATCH_GATE_TWO` are the
+same shape. A diagnostic that changes behaviour and cannot be seen in the
+output is a diagnostic that ships.
+
+### How the heap is measured now
+
+`RHeap::Available` is the wrong question and answered 2,320 bytes all through
+the leaking run: on a heap that grows on demand the free list is short whatever
+is going on. `User::AllocSize` (euser ordinal 664, beside `User::Allocator` at
+665, which this port already resolves) answers what is actually held. Four
+numbers go down every 64 frames -- cells out, bytes out, free, biggest -- and
+all four together, because a heap with 300 KB free in 2 KB pieces fails a 40 KB
+request exactly like an empty one.
+
+Beside them: a size histogram over every allocator call, and a table of every
+call site that has asked for 8 KB or more with its count and total. That table
+is what named `+0x1166b0` as `calloc` in one run after the histogram had only
+been able to say "772 allocations between 32 and 64 KB".
+
+And the zlib call sites themselves are hooked -- a `bl` in place of the `bl`,
+at both `+0x33a74` and `+0x11562c` -- recording the destination, the room the
+caller claims is in it, the source, its length, the stream's first word, and
+then the **true** status and the length written back, before the game flattens
+it. On the bench every one reads `78 9c`, status 0, and bytes written exactly
+equal to the room claimed.
+
 ### The display, on phones that are not the N95
 
 *Round 83. Build 170 installs and boots, and two things are wrong: the icon
