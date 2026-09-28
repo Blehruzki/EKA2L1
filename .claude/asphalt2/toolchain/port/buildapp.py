@@ -10,6 +10,8 @@ import subprocess, subprocess as sp, sys
 import mke32, mkloc, mkreg, mksis, relocs
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, os.pardir))
+import mkmif
 BASES = (0x8000, 0x9000)
 CXXFLAGS = ['--target=armv5-none-eabi', '-marm', '-O1', '-fno-exceptions',
             '-fno-rtti', '-fno-builtin', '-ffreestanding']
@@ -97,27 +99,50 @@ def build(name, uid3, caption, out, imports=(), sources=None, icon=None,
     open(p(name + '.exe'), 'wb').write(
         mke32.build(flats[0], uid3, uid2=0x100039CE, reloc_offsets=offsets,
                     imports=blocks, **e32))
-    # The icon path in the caption record carries no drive: apparc searches
-    # for it, so the same resource works whichever drive `!:` resolved to.
-    icon_path = '\\resource\\apps\\%s.mbm' % name if icon else ''
+    # The icon the shell actually draws is the **MIF**. Build 170 shipped a
+    # correct `.mbm`, the emulator rendered it, and the phone drew an empty
+    # box -- the same emulator-is-more-permissive gap that has caught this
+    # project twice before. S60v3 wants a scalable icon, so the MBM is
+    # converted and the caption resource names the `.mif`.
+    #
+    # The `.mbm` still travels. It is 1.7 KB, it is what the MIF is built
+    # from, and the package that the phone accepted had both -- matching it
+    # exactly is worth more than the space.
+    #
+    # The path carries no drive: apparc searches for it, so the same
+    # resource works whichever drive `!:` resolved to.
+    icon_mif = None
+    if icon:
+        icon_mif = p(name + '.mif')
+        info = mkmif.build(icon, icon_mif)
+        print('%s: icon %dx%d, %d colours, %d opaque pixels, %d bytes of MIF'
+              % (name, info['width'], info['height'], info['colours'],
+                 info['opaque'], info['bytes']))
+    icon_path = '\\resource\\apps\\%s.mif' % name if icon else ''
     open(p(name + '_reg.rsc'), 'wb').write(mkreg.build(name, uid3, mkloc.CAPTION_RES_ID))
     open(p(name + '.rsc'), 'wb').write(
         mkloc.build(uid3, caption, icon_path=icon_path, icon_count=1 if icon else 0))
 
-    files = [
+    files = []
+    if install_text:
+        # **First**, not last. The installer works the list in order, and a
+        # display-text entry is meant to be read before anything is copied;
+        # build 167 had it at the end, where it would have appeared after the
+        # install had already finished. UTF-16LE with a BOM, which is what
+        # the installer reads a text file as when it starts with one. A
+        # `None` target makes it a display rather than a file.
+        note = p(name + '_install.txt')
+        open(note, 'wb').write(b'\xff\xfe' + install_text.encode('utf-16-le'))
+        files.append((note, None))
+    files += [
         (p(name + '.exe'), '!:\\sys\\bin\\%s.exe' % name),
         (p(name + '.rsc'), '!:\\resource\\apps\\%s.rsc' % name),
         (p(name + '_reg.rsc'), '!:\\private\\10003a3f\\import\\apps\\%s_reg.rsc' % name),
     ]
     if icon:
         files.append((icon, '!:\\resource\\apps\\%s.mbm' % name))
+        files.append((icon_mif, '!:\\resource\\apps\\%s.mif' % name))
     files += list(extra)
-    if install_text:
-        # UTF-16LE with a BOM, which is what the installer reads a text file
-        # as when it starts with one. A `None` target makes it a display.
-        note = p(name + '_install.txt')
-        open(note, 'wb').write(b'\xff\xfe' + install_text.encode('utf-16-le'))
-        files.append((note, None))
 
     mksis.build(p(name + '.sis'), uid3, caption, vendor, files)
     print('%s: %d bytes of code, %d relocations, %d imports, %d files -> %s (%.1f MB)'

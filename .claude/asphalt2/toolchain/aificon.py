@@ -9,7 +9,8 @@ Decoding follows EKA2L1's own code: `decompress_rle<8>` in
 `src/emu/common/src/runlen.cpp` (signed count byte -- non-negative means the
 next byte repeats count+1 times, negative means -count literal bytes), and
 the 256-colour table in `src/emu/services/include/services/fbs/palette.h`.
-The N-Gage is EPOC 7, so the *old* table is the right one.
+The N-Gage is EPOC 7, so the *old* table is the right one -- and its entries
+are **0x00BBGGRR**, which this got backwards once and paid for.
 """
 import os
 import re
@@ -34,7 +35,11 @@ def palette(which='old'):
             raise ValueError('unexpected palette entry %r' % t)
         out.append(int(t, 16) & 0xFFFFFF)
     assert len(out) == 256, len(out)
-    return out
+    # **The table is 0x00BBGGRR, not 0xRRGGBB.** Read the other way round it
+    # turns the icon's orange into blue, which is exactly what this tool did
+    # for a whole round while the emulator's own app list -- reading the same
+    # table correctly -- drew it in orange. The table was never the problem.
+    return [((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF) for c in out]
 
 
 def bitmaps(d):

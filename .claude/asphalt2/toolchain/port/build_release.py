@@ -26,14 +26,13 @@ GAME = '/root/.local/share/EKA2L1/data/drives/e/system/apps/6rbc'
 TARGET_DIR = '!:\\system\\apps\\6rbc'
 CAPTION = 'Asphalt 2'
 VENDOR = 'DeltaCharlie'
-# Off for build 168. The phone refused build 167 at nine tenths of the
-# progress bar, on both drives, and this is the newest thing in the package
-# and the only one that acts at the *end* of an install -- it is the last
-# entry, so the installer reaches it after every file is copied, which is
-# where the failure is. `build_probes.py` tests it on its own; until one of
-# those comes back this stays out, because a package that installs is worth
-# more than a line of text in it.
-WITH_INSTALL_TEXT = False
+# Back on for build 171, and innocent all along. It was pulled for build 168
+# on one argument -- it is the last entry, so the installer reaches it at the
+# end, and the failure was at the end -- and round 81's probe 2 carries a
+# text entry and installs. `buildapp` now puts it **first**, where the
+# installer shows it before it copies anything, which is where it belongs
+# and where it would have been visible in build 167 had it been the cause.
+WITH_INSTALL_TEXT = True
 INSTALL_TEXT = ('Asphalt 2 N-Gage version, ported to S60v3 by DeltaCharlie.')
 
 # Just the 44x44 colour bitmap; `mkmbm` puts a mask of its own after it. The

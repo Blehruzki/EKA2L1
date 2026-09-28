@@ -4081,13 +4081,29 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         const u32 w = p[4], h = p[5];
         int bpp = 0, pitch = 0, first = 0, mode = -1;
         if (ASK_HAL) {
-            if (hal_get(HAL_BITS_PER_PIXEL, &bpp)) bpp = 0;
-            if (hal_get(HAL_OFFSET_BETWEEN_LINES, &pitch)) pitch = 0;
-            if (hal_get(HAL_OFFSET_TO_FIRST_PIXEL, &first)) first = 0;
-            // Recorded, not acted on. Round 60 showed the other two attributes
-            // lying on an N95, so this one is on trial: if it names the mode
-            // correctly there, a later build can derive the format from it.
+            // **Ask which mode is live, and ask about that one.**
+            //
+            // `EDisplayBitsPerPixel`, `EDisplayOffsetBetweenLines` and
+            // `EDisplayOffsetToFirstPixel` take the mode number *in* the
+            // same integer they answer in. Every build up to 170 left that
+            // integer at zero, so all three described **mode 0** while
+            // `EDisplayMode` said mode **1** was running -- logged, and
+            // never acted on, which is the bug.
+            //
+            // It is not academic. The C5-00 answers 16 bits on a 4096-byte
+            // line for mode 0 and 24 bits on an 8192-byte line for mode 1,
+            // and the second pair is the true one. Both describe the same
+            // **2048-pixel** line at their own depth, which is the shape of
+            // the thing: a phone's framebuffer line is a fixed number of
+            // pixels and the mode only says how wide a pixel is.
             if (hal_get(HAL_DISPLAY_MODE, &mode)) mode = -1;
+            const int live = (mode >= 0) ? mode : 0;
+            bpp = live;
+            if (hal_get(HAL_BITS_PER_PIXEL, &bpp)) bpp = 0;
+            pitch = live;
+            if (hal_get(HAL_OFFSET_BETWEEN_LINES, &pitch)) pitch = 0;
+            first = live;
+            if (hal_get(HAL_OFFSET_TO_FIRST_PIXEL, &first)) first = 0;
         }
         // Where the pixels start. HAL is believed here where it is not
         // believed about the format, because the answer is checkable: it has
@@ -4132,10 +4148,40 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         // self-consistent. The emulator answers 24 bits on a 960-byte line for
         // a 240-pixel screen, and 960 is 240 at four bytes -- consistent, so
         // believed, and the same build then draws correctly in both places.
+        //
+        // **Round 83 replaces the rule below this comment**, and the comment
+        // stays because its reasoning was right about the N95 and wrong
+        // about everything else.
+        //
+        // `pitch == w * 2 || pitch == w * 4` asks whether the line is the
+        // *logical screen* wide. On the N95 it is not -- 1280 is 320 pixels,
+        // the panel's native landscape width -- so the test never matched
+        // there and the fallback carried the display. It looked like the
+        // rule worked. It never once fired.
+        //
+        // On a phone whose line is padded further it is worse than useless:
+        // the C5-00 and the N79 report a **2048-pixel** line (4096 bytes at
+        // 16 bits, 8192 at 24), the test rejects it, and the 1280-byte
+        // fallback writes a fifth of each row into the right place and the
+        // rest into the next. That is the streaking the user photographed.
+        //
+        // So: believe the reported stride, and check it for sense rather
+        // than for equality with a number derived from the wrong width.
+        // **24 bits means 32-bit storage**, which is Symbian's own
+        // convention -- `EColor16MU` is 24-bit colour held four bytes to a
+        // pixel, and the screen driver treats HAL's 24 and 32 as the same
+        // thing. The emulator says 24 for a 960-byte line on a 240 screen,
+        // which is four bytes a pixel exactly, and this is why.
         u32 bytes = 0, use = 0;
-        if (pitch > 0 && w > 0) {
-            if ((u32)pitch == w * 4) { bytes = 4; use = (u32)pitch; }
-            else if ((u32)pitch == w * 2) { bytes = 2; use = (u32)pitch; }
+        int depth = bpp;
+        if (depth == 24) depth = 32;
+        if ((depth == 16 || depth == 32) && pitch > 0 && w > 0) {
+            const u32 b = (u32)depth >> 3;      // no divide: there is no
+                                                // __aeabi_uidiv in this image
+            if ((u32)pitch >= w * b && (u32)pitch <= 0x10000) {
+                bytes = b;
+                use = (u32)pitch;
+            }
         }
         if (!bytes && SCREEN_KNOWN) { bytes = SCREEN_KNOWN_BPP / 8; use = SCREEN_KNOWN_PITCH; }
         if (!bytes) { bytes = 4; use = w * 4; }

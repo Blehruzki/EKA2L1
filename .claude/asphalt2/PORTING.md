@@ -35,6 +35,84 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### The display, on phones that are not the N95
+
+*Round 83. Build 170 installs and boots, and two things are wrong: the icon
+is an empty box, and the display is broken on the user's C5-00 and N79.
+Both were found by another model working from the binary while this session
+was out of context, and both readings hold up against the source.*
+
+**`HAL::Get` takes the mode number *in* the same integer it answers in.**
+`EDisplayBitsPerPixel`, `EDisplayOffsetBetweenLines` and
+`EDisplayOffsetToFirstPixel` are per-mode properties, and every build up to
+170 left that integer at zero:
+
+    int bpp = 0, pitch = 0, first = 0, mode = -1;
+
+So all three described **mode 0**, while `EDisplayMode` reported mode **1**
+was live -- logged, and never acted on. One line, and it is the bug.
+
+It is not academic. Reading the three phones' logs side by side:
+
+| | HAL bpp | HAL pitch | pixels per line | mode |
+|---|---|---|---|---|
+| N95, mode 0 | 16 | 640 | 320 | 1 live |
+| C5-00, mode 0 | 16 | 4096 | 2048 | 1 live |
+| C5-00, mode 1 | 24 | 8192 | 2048 | 1 live |
+| N79, mode 0 | 16 | 4096 | 2048 | 1 live |
+
+**A framebuffer line is a fixed number of pixels; the mode only says how
+wide a pixel is.** The N95's line is 320 pixels -- its panel is natively
+320x240 landscape, which round 72 worked out the hard way from a
+photograph. The C5's and the N79's are 2048, an aligned stride. Both of the
+C5's modes describe the same 2048-pixel line.
+
+**And the old selection rule asked the wrong question.** `pitch == w * 2 ||
+pitch == w * 4` asks whether the line is as wide as the *logical screen*.
+On the N95 it is not, so the rule never matched there -- not once -- and
+the 1280-byte fallback carried the display for eleven rounds while looking
+like a working rule. On a phone with a wider line it rejects the truth and
+writes a fifth of each row into the right place and the rest into the next,
+which is the streaking the user photographed on the C5.
+
+So: ask the live mode, believe the reported stride when it is sane (at
+least a visible row, no more than 65536), and treat **24 bits as 32-bit
+storage** -- `EColor16MU` is 24-bit colour held four bytes to a pixel, and
+Symbian's own screen driver treats HAL's 24 and 32 as the same thing. The
+emulator says 24 for a 960-byte line on a 240 screen, which is four bytes a
+pixel exactly, and that is why.
+
+Confirmed on the C5 by the other model's binary patch; ported to source
+here and checked to read identically on the bench (E216), where asking the
+live mode returns a straight 32 where mode 0 returned 24.
+
+**The N95 is the one phone this has not been re-confirmed on.** Its mode 1
+was never measured -- every log we have queried mode 0. The
+pixels-per-line rule above predicts mode 1 reports 24 or 32 bits on a
+1280-byte line, which selects exactly what the fallback was already
+choosing, so the expectation is no change. It is an expectation, not a
+measurement.
+
+### Why the icon was an empty box
+
+S60v3 draws a **MIF**, not an MBM. Build 170 shipped a correct `.mbm`,
+named it in the caption resource, and the phone drew nothing; EKA2L1
+rendered it perfectly. That is the third time this project has been caught
+by the emulator being more permissive than the device, after the SIS
+integrity fields and the executable-outside-`\sys\bin` rule.
+
+`mkmif.py` converts the MBM: each horizontal run of one colour becomes a
+rectangle path in an SVG Tiny document, wrapped in a MIF container. Same
+geometry, same colours, same 1,936 opaque pixels. Both files ship and the
+caption resource names the `.mif` -- two bytes.
+
+**The palette is 0x00BBGGRR.** Reading it as 0xRRGGBB is what made
+`aificon.py` draw the icon in blue for a whole round while EKA2L1's own app
+list drew it in orange. The table was right; the channel order was not. The
+fix in `aificon` then broke `mkmif`, which was swapping a second time --
+caught immediately, because `mkmif` is checked byte-for-byte against the
+MIF the phone accepted.
+
 ### Why the image travels as 6rbc.bin
 
 *Rounds 80 to 82. The first standalone installer was refused by the phone,
