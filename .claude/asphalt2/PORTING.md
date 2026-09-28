@@ -37,7 +37,8 @@ here and the section it overturns is marked.*
 
 ### The crashes are a diagnostic switch left on
 
-*E219-E224. The one finding that explains the crashes, and it is ours.*
+*E219-E225, confirmed on hardware in round 85: several races on the N95, no
+crash. The one finding that explains the crashes, and it is ours.*
 
 **`LEAK_EVERYTHING = 1` in `gate6.cpp` answered `User::Free`, `operator
 delete` and `operator delete[]` with a function that does nothing. It has been

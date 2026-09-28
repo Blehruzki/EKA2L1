@@ -360,6 +360,7 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 82 | **probes 5 and 6** -- the same file renamed, against the same file with its header scrambled | 2 installs | **Probe 5 fails, probe 6 installs.** So the installer reads the file, not its name | **The check is on the content.** Renaming `6rbc.app` to `6rbc.bin` changes nothing; XORing the first 32 bytes -- the UID triple, the checksum and the `'EPOC'` signature -- is what lets it travel. Which is the sensible design on Symbian's part: a rename would have made the whole "executables live in `\sys\bin`" rule a formality. The loader XORs those bytes back after reading its own copy, so nothing about the image the game runs changes. What is not yet settled is the game's **own** open of that file, which now reads 32 scrambled bytes at the front -- E214 asks whether it cares |
 | 83 | **build 170**, and a second opinion | install on C: and E:, plus C5 and N79 logs and a patched build from another model | **It installs on both drives and boots.** Two things wrong: the icon is an empty box, and the display is broken on the user's other phones | **Both found and fixed while I was out of context, by another model working from the binary, and both readings hold up against the source.** *The icon*: S60v3 draws a **MIF**, not an MBM. Two bytes in the caption resource and a converted icon file; the emulator rendered my MBM happily, which is the third time this project has been caught by the emulator being more permissive than the device. *The display*: `HAL::Get` takes the mode **in** the same integer it answers in, and every build to 170 left it at zero -- so all three display attributes described **mode 0** while `EDisplayMode` said mode 1 was live, logged and ignored. Confirmed against my own source: `int bpp = 0, pitch = 0, first = 0` is the bug, in one line. And the selection rule `pitch == w*2 || pitch == w*4` asks whether the framebuffer line is the *logical screen* wide. On the N95 it is not, so the rule never once matched there and the 1280 fallback carried the display the whole time -- it looked like it worked. On a phone with a wider line it fails outright |
 | 84 | **v5 on the N95** | 1 | **It works.** The display fix holds on the phone it was not derived from | **The last doubt about the new display rule, closed.** The N95's live mode had never been measured -- every log queried mode 0 -- and the risk was specific: mode 0 there reports 16 bits on a 640-byte line, the new rule would accept that as sane, and round 60 proved it produces 88-pixel banding. It does not happen. The pixels-per-line rule held: the N95's line is 320 pixels whatever the mode, so the live mode selects the same 32 bits on a 1280-byte line that the fallback was already choosing, and nothing changes there. **The rule is now confirmed on two phones that need different answers from it** -- 320 pixels a line on the N95, 2048 on the C5-00 -- which is worth more than either result alone: a rule that only ever produced one answer was what the old one did. The N79 is untested and predicted to be the C5's case |
+| 85 | **build 172** -- the deallocators doing their job again | several races on the N95 | **No crash, not once.** The user played several races end to end | **The crashes were `LEAK_EVERYTHING`, and they are gone.** Nothing else in build 172 differs from 171, so this is a clean single-variable round: the three deallocation ordinals stopped being answered by a do-nothing function, the heap fell from 51.1 MB to 6.5 MB (E223 against E224), and the failure mode disappeared. It confirms the whole chain read out of the bench -- 26,648 cells never freed, zlib's own 32 KB window per `uncompress` the largest single consumer at 32.1 MB, `Z_MEM_ERROR` flattened to -4 by `0x33a7c`, `User::Leave(-4)` -- without a single log having to come back off the phone. Several races is also the test the bench could not do: it plays one, and the leak was cumulative, so this is the case that would have failed worst |
 
 ## Round 74 -- the pitch is padding, and the screen is what it says
 
@@ -584,9 +585,24 @@ from anything done so far, and not a small one.
 
 ## Where we are
 
-**Furthest: round 84.** The game installs from one SIS to either drive,
-boots, plays with sound at frame rate, carries its own icon, and now runs
-on **three different phones** -- N95, C5-00 and (predicted, untested) N79.
+**Furthest: round 85.** The game installs from one SIS to either drive,
+boots, plays with sound at frame rate, carries its own icon, runs on
+**three different phones** -- N95, C5-00 and (predicted, untested) N79 --
+and **plays several races in a row without crashing**.
+
+Round 85 closed the crashes, and the cause was ours: `LEAK_EVERYTHING`,
+a build-49 diagnostic that answered `User::Free`, `operator delete` and
+`operator delete[]` with a do-nothing function, was never switched off
+and shipped in every build since. The process held 51.1 MB after ninety
+seconds on the bench and freed nothing; a phone runs out long before
+that, and the first allocation it cannot satisfy is whichever comes next
+-- in the recorded failure, zlib's own 32 KB window inside `uncompress`,
+returning `Z_MEM_ERROR`, which `0x33a7c` flattens to -4, which is
+`User::Leave(-4)`. The replacement gives back anything 4 KB or larger at
+once and holds smaller cells in a 512-deep quarantine, so the
+use-after-free the switch was hiding still cannot be handed a live
+address. 51.1 MB -> 6.5 MB, and several races on hardware with no
+crash.
 
 The display is finished, and the rule is no longer the N95's. Ask HAL for
 the **live** mode, not mode 0, and believe the stride it reports when it is
