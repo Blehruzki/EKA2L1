@@ -339,6 +339,7 @@ HOOKS = {
     'IMPORT_CTIMER_CTOR':             ('euser', 1377),
     'IMPORT_DELETE_OP':               ('euser', 1504),
     'IMPORT_VEC_DELETE_OP':           ('euser', 1506),
+    'IMPORT_APP_RECT':                ('eikcore', 233),
     'IMPORT_MDA_NEWL':                ('mediaclientaudiostream', 2),
     'IMPORT_DSA_NEWL':                ('ws32', 348),
     'IMPORT_DSA_STARTL':              ('ws32', 350),

@@ -49,9 +49,10 @@ enum { GAME_SRC_ORIGIN = 0 };
 #define GAME_Z_REAL             0
 #define GAME_Z_SITES            0
 
-// Replace a null `this` on a CEikAppUi method with the real app UI.
-// E263: this game calls CEikAppUi::ApplicationRect() with a null `this`
-// and eikcore faults on it.
+// Hand CEikAppUi methods the real app UI in place of the game's own.
+// E264 measured it: the game calls CEikAppUi::ApplicationRect() with
+// `this` = its own GCC98r2 app UI, and eikcore reads a member at +0x48
+// that is not there. E265 swapped the pointer and the fault went away.
 #define GAME_FIX_APPUI_THIS 1
 
 #endif

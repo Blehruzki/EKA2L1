@@ -323,6 +323,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_END = 853,          // and where its chunk stops
        NOTE_COEENV_SWAP = 796, // a cone method whose `this` is put back
        NOTE_APPUI_SWAP = 793,  // an app UI method that will take the real one
+       NOTE_ARG = 789,         // one register as the game left it at a call
+       NOTE_ARG_UI = 788,      // ... and the state of the app UI at that moment
        NOTE_RSC_FN = 797,      // CCoeEnv::AddResourceFileL, as resolved
        NOTE_RSC_OFFSET = 798,  // ... and the offset it answered
        NOTE_RSC_PATH = 799,    // two characters of the path it was given
@@ -874,6 +876,7 @@ struct Context {
     u32 imageIsBin;         // the image was installed as 6rbc.bin, not .app
     u32 rscOffset;          // what AddResourceFileL answered for the game's .rsc
     u32 rscTried;           // ... and that it has been attempted, however it went
+    u32 baseDone;           // BaseConstructL has returned
     u16 rscText[64];        // the real path to it, drive letter and all
     u16 swapText[272];      // a name with its drive letter translated
     u32 swapDes[2];         // ... and the descriptor handed to efsrv
@@ -3540,36 +3543,115 @@ static u32 coeenv_thunk(u8 *code, const void *view, const void *realCell, u32 ta
     return (u32)b;
 }
 
-// **A null app UI, replaced with the real one.**
+// **The game's app UI, replaced with the real one.**
 //
-// E263: the game calls `CEikAppUi::ApplicationRect()` and eikcore faults at
-// +7 into it with `this` null -- the game passed nothing. We hold a real
-// 9.x app UI (`wrapUi`), so these entries get a thunk that substitutes it
-// when, and only when, the game passes zero. Anything else goes through
-// untouched, so a call on a real object is not disturbed.
+// E264: the game calls 9.x CEikAppUi methods on an object of its own, laid
+// out by GCC98r2 for 7.0s, and eikcore reads members that are not where it
+// expects. We hold a real 9.x app UI built alongside it, so these entries
+// get a thunk that swaps one for the other -- the same old-in, real-out
+// mapping the port already makes for the timer and the screen-access
+// shadow. A pointer that is not the old app UI goes through untouched.
+//
+// This watches r0, which is `this` for every method that does not return a
+// structure. `ApplicationRect` does return one (a TRect), so both ABIs put
+// a hidden buffer in r0 and `this` in r1; it is handled separately above,
+// and the loop that installs these skips it.
 //
 // Per game, and off for Asphalt 2: those calls work there today and a
 // shipping build is not the place to find out otherwise.
 //
-//   cmp   r0, #0
-//   ldreq r12, [pc, #4]     @ where the wrapper is kept
+//   ldr   r12, [pc, #16]    @ where the old one is kept
+//   ldr   r12, [r12]
+//   cmp   r0, r12
+//   ldreq r12, [pc, #8]     @ where the wrapper is kept
 //   ldreq r0, [r12]
 //   ldr   pc, [pc, #4]
-static u32 appui_thunk(u8 *code, const void *wrapCell, u32 target)
+// **What the game actually passed, and a chance to change it.** Same
+// save-and-restore as `trace_thunk`, but the logger is handed the address of
+// the saved r0-r3 rather than their values, so a write there lands in the
+// register the `ldmia` restores. That is how the app UI substitution below
+// gets to happen without a second thunk shape.
+//
+//   stmdb sp!, {r0-r3, r12, lr}
+//   mov   r1, sp            @ the four of them, in order
+//   ldr   r0, [pc, #12]     @ the context
+//   ldr   r12, [pc, #12]
+//   blx   r12
+//   ldmia sp!, {r0-r3, r12, lr}
+//   ldr   pc, [pc, #4]
+static u32 args_thunk(u8 *code, const void *ctx, u32 logger, u32 target)
 {
     u32 *b = (u32 *)code;
-    b[0] = 0xE3500000;
-    b[1] = 0x059FC004;
-    b[2] = 0x059C0000;
-    b[3] = 0xE59FF004;
-    b[4] = (u32)wrapCell;
-    b[5] = 0;
-    b[6] = target;
-    user_imb_range(b, b + 7);
+    b[0] = 0xE92D500F;
+    b[1] = 0xE1A0100D;
+    b[2] = 0xE59F000C;
+    b[3] = 0xE59FC00C;
+    b[4] = 0xE12FFF3C;
+    b[5] = 0xE8BD500F;
+    b[6] = 0xE59FF004;
+    b[7] = (u32)ctx;
+    b[8] = logger;
+    b[9] = target;
+    user_imb_range(b, b + 10);
     return (u32)b;
 }
 
-enum { APPUI_THUNK_BYTES = 32 };
+enum { ARGS_THUNK_BYTES = 40, PROBE_APP_RECT = 1 };
+
+// Which register holds `this` at `CEikAppUi::ApplicationRect()`.
+//
+// It returns a TRect -- sixteen bytes -- so **both** ABIs hand the callee a
+// hidden buffer in r0 and push `this` to r1. E263 put a thunk on r0 and it
+// changed nothing, which is why: r0 was a stack address, never null, and the
+// object was one register further along. E264 measured it: r0 = 0x40fc34
+// (the stack), r1 = 0x7a4858.
+enum { APPUI_THIS_REG = 1 };
+
+// **The game's own app UI, handed to eikcore.**
+//
+// E264 settled what the fault is. `this` is not null and it is not our
+// wrapper: it is an object of the game's, laid out by GCC98r2 for a 7.0s
+// CEikAppUi, and eikcore reads a member at +0x48 that is not there. The
+// answer is the mapping the port already makes for the timer and for the
+// screen-access shadow -- old object in, real object out -- applied to
+// `this` in whichever register carries it.
+//
+// The swap is conditional on the pointer actually being the old app UI, so
+// a call that already passes a real one is left alone; the registers are
+// logged either way, because if it is some third object we need to see it.
+extern "C" void gate6_appui_this(Context *c, u32 *regs)
+{
+    for (u32 i = 0; i < 4; i++)
+        log_event(c, NOTE_ARG, regs[i]);
+    log_event(c, NOTE_ARG_UI, (u32)c->wrapUi);
+    log_event(c, NOTE_ARG_UI, (u32)c->oldUi);
+    log_event(c, NOTE_ARG_UI, c->baseDone);
+
+    if (c->oldUi && c->wrapUi && regs[APPUI_THIS_REG] == (u32)c->oldUi) {
+        regs[APPUI_THIS_REG] = (u32)c->wrapUi;
+        log_event(c, NOTE_APPUI_SWAP, (u32)c->wrapUi);
+    }
+    log_block(c);
+}
+
+static u32 appui_thunk(u8 *code, const void *oldCell, const void *wrapCell,
+                       u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE59FC010;
+    b[1] = 0xE59CC000;
+    b[2] = 0xE150000C;
+    b[3] = 0x059FC008;
+    b[4] = 0x059C0000;
+    b[5] = 0xE59FF004;
+    b[6] = (u32)oldCell;
+    b[7] = (u32)wrapCell;
+    b[8] = target;
+    user_imb_range(b, b + 9);
+    return (u32)b;
+}
+
+enum { APPUI_THUNK_BYTES = 40 };
 static const u16 kAppUiMethod[] = { GATE_APPUI_METHODS };
 
 enum { COEENV_THUNK_BYTES = 32 };
@@ -6594,6 +6676,7 @@ extern "C" void gate6_baseconstructl(void *, int flags, Context *c)
         ((BaseConstructL)c->newBaseConstructL)(c->wrapUi, want);
     else
         eikappui_baseconstructl(c->wrapUi, ENoAppResourceFile | ENoScreenFurniture);
+    c->baseDone = 1;
 }
 
 extern "C" void gate6_ui_construct(void *self)
@@ -7304,15 +7387,29 @@ static u32 load_and_start()
         log_event(ctx, NOTE_COEENV_SWAP, at);
     }
 
+    if (PROBE_APP_RECT && GAME_FIX_APPUI_THIS && IMPORT_APP_RECT < nImports &&
+        IMPORT_APP_RECT < kShimCount &&
+        (kShimTable[IMPORT_APP_RECT] >> 24) == KIND_CALL &&
+        ctx->spare + ARGS_THUNK_BYTES <= ctx->spareEnd) {
+        iat[IMPORT_APP_RECT] = args_thunk(ctx->spare, ctx, (u32)&gate6_appui_this,
+                                          iat[IMPORT_APP_RECT]);
+        ctx->spare += ARGS_THUNK_BYTES;
+    }
+
     for (u32 i = 0; GAME_FIX_APPUI_THIS && i < (u32)GATE_APPUI_METHOD_COUNT; i++) {
         const u32 at = kAppUiMethod[i];
         if (at >= nImports || at >= kShimCount)
             continue;
         if ((kShimTable[at] >> 24) != KIND_CALL)
             continue;
+        // ApplicationRect got its own thunk above, watching the register a
+        // structure return actually leaves `this` in. Do not stack a second
+        // one on top of it, watching the wrong one.
+        if (PROBE_APP_RECT && at == (u32)IMPORT_APP_RECT)
+            continue;
         if (ctx->spare + APPUI_THUNK_BYTES > ctx->spareEnd)
             break;
-        iat[at] = appui_thunk(ctx->spare, &ctx->wrapUi, iat[at]);
+        iat[at] = appui_thunk(ctx->spare, &ctx->oldUi, &ctx->wrapUi, iat[at]);
         ctx->spare += APPUI_THUNK_BYTES;
         log_event(ctx, NOTE_APPUI_SWAP, at);
     }

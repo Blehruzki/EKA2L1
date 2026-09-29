@@ -17,6 +17,7 @@ enum { GAME_UID3 = 0x101fd3fc };
 enum {
     IMPORT_ADDTOSTACKL                 =    46,
     IMPORT_ADD_FOREGROUND_OBSERVER     = 65535,   // absent
+    IMPORT_APP_RECT                    =   160,
     IMPORT_BASECONSTRUCTL              =     5,
     IMPORT_CANCEL                      =   253,
     IMPORT_COECONTROL_CTOR             =    82,
@@ -65,7 +66,7 @@ enum {
 
 // Methods on CEikAppUi. A null `this` from the game is replaced
 // with the real app UI, when the game asks for it (GAME_FIX_APPUI_THIS).
-#define GATE_APPUI_METHODS  109, 113, 116, 123, 125, 127, 128, 129, 135, 137, 141, 143, 144, 145, 150, 151, 160
-#define GATE_APPUI_METHOD_COUNT 17
+#define GATE_APPUI_METHODS  109, 113, 116, 123, 125, 127, 128, 129, 135, 137, 141, 143, 144, 145, 150, 151
+#define GATE_APPUI_METHOD_COUNT 16
 
 #endif
