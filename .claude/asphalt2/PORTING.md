@@ -60,13 +60,19 @@ Measured with a real held key at the emulator (`holdtest.sh` drives `xdotool`;
 EKA2L1 binds host Backspace to `std_key_backspace`, the same 0x01):
 
     3 mode change(s):
-       tick 2288     -> fill
-       tick 2320     -> integer   +0.50 s
-       tick 2354     -> full      +0.53 s
-    3 config write(s), 3 returned KErrNone
+       tick 2305     -> fill
+       tick 2339     -> integer   +0.53 s
+       tick 2372     -> full      +0.52 s
+    1 config write(s), 1 returned KErrNone
 
 A 2.2-second hold gives exactly three changes, which is one at a second and
-two more at half-second steps, and the measured gaps are 0.50 and 0.53 s.
+two more at half-second steps, and the measured gaps are 0.53 and 0.52 s.
+
+**One write, not three.** The first version saved on every step, which put a
+file replace, a write and a flush inside the frame loop twice a second for as
+long as the key was held -- a stalled frame each time, for nothing. The save
+happens once, on release, and the count in the log is how that was checked:
+three changes, one write.
 
 **The choice is kept** in `C:\gate6.cfg`, sixteen bytes: magic `G6CF`, a
 version, the mode, and an inset override. `C:\` root rather than beside the
@@ -78,6 +84,32 @@ unknown magic or version is simply not there and the defaults stand.
 
 Round trip on disk after the hold: `magic 0x46433647 ('G6CF'), version 1,
 mode 4, inset 48`.
+
+#### No separate key for the inset, and why that promise was dropped
+
+Phase 4 said `#` would nudge the inset if Avkon's answer turned out wrong on
+some device. It will not, because `#` has exactly the problem `*` has: on a
+QWERTY S60v3 it is a Chr/Fn symbol rather than a key, so it would work on
+the numeric-keypad phones and not the others -- half a fix, on the half we
+can already test.
+
+It is not needed, because the mode cycle already spans the cases. If Avkon
+under-reports the band -- says 48 where a device's is really 56 -- then on a
+240x320 panel:
+
+| mode | where the picture starts | covered by a 56-row band? |
+|---|---|---|
+| 1:1 | y = 80 (48 + half the slack) | no |
+| integer | y = 80, same as 1:1 here | no |
+| full | y = 0, by design | yes, and that is what it is for |
+| aspect | y = 48 | the top 8 rows of 272, 3% |
+| fill | y = 48 | the same 8 rows |
+
+So three of the five modes are immune and the other two lose about three per
+cent off the top. Adding a key that works on some phones to recover three per
+cent on two modes is a worse trade than leaving it out. The log still records
+what Avkon said beside what was adopted, so if a device does disagree the
+next round says so and the fix is a constant, not a keypress.
 
 **The default is now aspect**, not fill. It is the only mode that holds
 176:208 -- within 0.6% on every panel measured -- where fill is +7.4% on an

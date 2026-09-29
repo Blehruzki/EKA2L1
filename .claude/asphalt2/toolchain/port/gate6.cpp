@@ -4541,9 +4541,13 @@ static void hold_tick(Context *c)
     c->holdNext = now + (u32)HOLD_REPEAT_TICKS;
     c->holdCycled = 1;
     screen_layout(c);
-    cfg_save(c);
     log_event(c, NOTE_MODE_NOW, c->mode);
     log_block(c);
+    // Not saved here. Writing the file on every step would put a file
+    // replace, a write and a flush inside the frame loop twice a second for
+    // as long as the key is down, and stall a frame each time. The save
+    // happens once, when the key is let go.
+
 }
 
 static void screen_format(Context *c)
@@ -5305,8 +5309,10 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
                 const u32 acted = c->holdCycled;
                 c->holdSince = 0;
                 c->holdCycled = 0;
-                if (acted)
+                if (acted) {
+                    cfg_save(c);            // once per gesture, not per step
                     return 1;               // EKeyWasConsumed
+                }
             } else if (c->holdCycled) {
                 return 1;
             }
