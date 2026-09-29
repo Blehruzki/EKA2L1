@@ -49,4 +49,9 @@ enum { GAME_SRC_ORIGIN = 0 };
 #define GAME_Z_REAL             0
 #define GAME_Z_SITES            0
 
+// Replace a null `this` on a CEikAppUi method with the real app UI.
+// E263: this game calls CEikAppUi::ApplicationRect() with a null `this`
+// and eikcore faults on it.
+#define GAME_FIX_APPUI_THIS 1
+
 #endif

@@ -63,4 +63,9 @@ enum {
 #define GATE_COEENV_METHODS  47
 #define GATE_COEENV_METHOD_COUNT 1
 
+// Methods on CEikAppUi. A null `this` from the game is replaced
+// with the real app UI, when the game asks for it (GAME_FIX_APPUI_THIS).
+#define GATE_APPUI_METHODS  109, 113, 116, 123, 125, 127, 128, 129, 135, 137, 141, 143, 144, 145, 150, 151, 160
+#define GATE_APPUI_METHOD_COUNT 17
+
 #endif

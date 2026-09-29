@@ -48,4 +48,9 @@ enum { GAME_SRC_ORIGIN = 16 };
 #define GAME_Z_REAL             0x000d4f88
 #define GAME_Z_SITES            0x00033a74, 0x0011562c
 
+// Replace a null `this` on a CEikAppUi method with the real app UI.
+// Asphalt 2 makes these calls and they work today. A build that is out
+// with people is not the place to find out otherwise.
+#define GAME_FIX_APPUI_THIS 0
+
 #endif

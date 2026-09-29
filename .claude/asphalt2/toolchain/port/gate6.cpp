@@ -322,6 +322,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_BASE = 852,         // where the game was loaded
        NOTE_END = 853,          // and where its chunk stops
        NOTE_COEENV_SWAP = 796, // a cone method whose `this` is put back
+       NOTE_APPUI_SWAP = 793,  // an app UI method that will take the real one
        NOTE_RSC_FN = 797,      // CCoeEnv::AddResourceFileL, as resolved
        NOTE_RSC_OFFSET = 798,  // ... and the offset it answered
        NOTE_RSC_PATH = 799,    // two characters of the path it was given
@@ -3538,6 +3539,38 @@ static u32 coeenv_thunk(u8 *code, const void *view, const void *realCell, u32 ta
     user_imb_range(b, b + 8);
     return (u32)b;
 }
+
+// **A null app UI, replaced with the real one.**
+//
+// E263: the game calls `CEikAppUi::ApplicationRect()` and eikcore faults at
+// +7 into it with `this` null -- the game passed nothing. We hold a real
+// 9.x app UI (`wrapUi`), so these entries get a thunk that substitutes it
+// when, and only when, the game passes zero. Anything else goes through
+// untouched, so a call on a real object is not disturbed.
+//
+// Per game, and off for Asphalt 2: those calls work there today and a
+// shipping build is not the place to find out otherwise.
+//
+//   cmp   r0, #0
+//   ldreq r12, [pc, #4]     @ where the wrapper is kept
+//   ldreq r0, [r12]
+//   ldr   pc, [pc, #4]
+static u32 appui_thunk(u8 *code, const void *wrapCell, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE3500000;
+    b[1] = 0x059FC004;
+    b[2] = 0x059C0000;
+    b[3] = 0xE59FF004;
+    b[4] = (u32)wrapCell;
+    b[5] = 0;
+    b[6] = target;
+    user_imb_range(b, b + 7);
+    return (u32)b;
+}
+
+enum { APPUI_THUNK_BYTES = 32 };
+static const u16 kAppUiMethod[] = { GATE_APPUI_METHODS };
 
 enum { COEENV_THUNK_BYTES = 32 };
 static const u16 kCoeEnvMethod[] = { GATE_COEENV_METHODS };
@@ -7269,6 +7302,19 @@ static u32 load_and_start()
         iat[at] = coeenv_thunk(ctx->spare, ctx->coeEnvView, &ctx->coeEnv, iat[at]);
         ctx->spare += COEENV_THUNK_BYTES;
         log_event(ctx, NOTE_COEENV_SWAP, at);
+    }
+
+    for (u32 i = 0; GAME_FIX_APPUI_THIS && i < (u32)GATE_APPUI_METHOD_COUNT; i++) {
+        const u32 at = kAppUiMethod[i];
+        if (at >= nImports || at >= kShimCount)
+            continue;
+        if ((kShimTable[at] >> 24) != KIND_CALL)
+            continue;
+        if (ctx->spare + APPUI_THUNK_BYTES > ctx->spareEnd)
+            break;
+        iat[at] = appui_thunk(ctx->spare, &ctx->wrapUi, iat[at]);
+        ctx->spare += APPUI_THUNK_BYTES;
+        log_event(ctx, NOTE_APPUI_SWAP, at);
     }
     if (nImports > IMPORT_COECONTROL_CTOR)
         iat[IMPORT_COECONTROL_CTOR] = ctx_thunk(stub + SLOT * IMPORT_COECONTROL_CTOR,
