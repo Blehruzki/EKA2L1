@@ -75,8 +75,41 @@ passed straight through to the game.
 
 What cannot be derived is **keypad rollover**: S60v3 keypads are matrix
 scanned and not every pair of keys registers when held together. That is a
-property of each phone, so the port should record whether it ever saw the two
-held at once and let a hardware round answer it.
+property of each phone.
+
+### ...and why the gesture is a long press on C, not a chord
+
+Neither `*` nor Shift is universal across S60v3, in opposite directions:
+
+- **`*` is not one key on QWERTY.** On an E71/E61/E63 the keypad is QWERTY and
+  `*` is a symbol reached through Chr/Fn, not a dedicated key.
+- **Shift does not exist on a numeric keypad.** The N95, C5-00 and N79 -- the
+  three phones this port is tested on, and most of the installed base -- have
+  no Shift key at all. Scancodes `0x12` and `0x13` (`EStdKeyLeftShift` /
+  `EStdKeyRightShift`) appear **zero** times in round 86's log, and on those
+  phones they never can.
+
+So a Shift chord works on QWERTY and is unreachable on everything we can test,
+and a `*` chord is the reverse.
+
+**The C key is the only one that is a single physical press on both layouts
+with the same scancode** -- `EStdKeyBackspace`, `0x01`, the C key on a numeric
+keypad and Backspace on a QWERTY one -- and the game never uses it. Checked
+parser-independently: across all 7,361 `NOTE_KEY` records the value `0x01`
+occurs 3,093 times and every one is accounted for as either an `EEventKey`
+type or a "consumed" response (1,253 + 1,840 = 3,093), leaving none that is a
+scancode. `0x2A` and `0x23` occur **not once**.
+
+So the gesture is **hold C for about a second**. One key, no chord, no
+rollover, no modifier, and identical on both keypad types. A short tap still
+passes through to the game, so nothing is stolen even if some menu wants it.
+Holding is measurable two independent ways -- down/up timestamps, or counting
+auto-repeats, which reach us (772 repeats from 38 presses of `'5'`).
+
+Note also what the port does **not** capture today: the four `NOTE_KEY`
+records per event are `iCode`, `iScanCode`, the event type and the game's own
+`TKeyResponse`. **`iModifiers` is not logged**, so nothing in the record can
+say whether a modifier was ever held.
 
 ### What the game asks about the screen: nothing
 
