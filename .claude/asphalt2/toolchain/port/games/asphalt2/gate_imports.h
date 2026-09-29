@@ -57,4 +57,10 @@ enum {
     IMPORT_WINDOW                      =    87,
 };
 
+// Imports that are a method on CCoeEnv. The game holds a copy of the
+// environment laid out the old way; cone has to be given the real one.
+//     75  CCoeEnv::RemoveForegroundObserver(MCoeForegroundObserver &)
+#define GATE_COEENV_METHODS  75
+#define GATE_COEENV_METHOD_COUNT 1
+
 #endif

@@ -57,4 +57,10 @@ enum {
     IMPORT_WINDOW                      =    80,
 };
 
+// Imports that are a method on CCoeEnv. The game holds a copy of the
+// environment laid out the old way; cone has to be given the real one.
+//     47  CCoeEnv::AllocReadResourceAsDes16LC(int) const
+#define GATE_COEENV_METHODS  47
+#define GATE_COEENV_METHOD_COUNT 1
+
 #endif

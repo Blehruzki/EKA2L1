@@ -321,6 +321,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_STRAY = 851,        // ... on something that is neither of ours
        NOTE_BASE = 852,         // where the game was loaded
        NOTE_END = 853,          // and where its chunk stops
+       NOTE_COEENV_SWAP = 796, // a cone method whose `this` is put back
        NOTE_VT_OBJ = 794,       // an old object whose vtable is being read out
        NOTE_VT_SLOT = 795,      // ... and one entry of it, in order from slot 0
        NOTE_RGN_HDR = 790,      // a header word of the region the game posts with
@@ -3428,6 +3429,47 @@ static const u8 kGcSlot[OLD_GC_SLOTS] = {
 //   ldr r0, [r12]
 //   ldr r12, [r0]          @ its vtable
 //   ldr pc, [r12, #slot*4]
+// **Put the real environment back before cone sees it.**
+//
+// `CCoeEnv::Static()` hands the game `coeEnvView`, a copy of the real
+// environment's words shifted by `COEENV_BIAS` so that an old-layout field
+// read lands on the right 9.x field. That is enough for a game that only
+// reads fields, which is all Asphalt 2 ever did. Asphalt Urban GT calls
+// `CCoeEnv::AllocReadResourceAsDes16LC` **on** it (E258), and cone then runs
+// with `this` pointing at our copy and dies on the first member it follows.
+//
+// Same shape as the direct-screen-access shadow, and the same answer: the
+// game keeps the view, and every cone entry that takes a `CCoeEnv *` gets
+// the real pointer swapped back into r0 on the way through. Which entries
+// those are is generated per game -- see GATE_COEENV_METHODS.
+//
+//   ldr   r12, [pc, #12]    @ the view's address, fixed at install time
+//   cmp   r0, r12
+//   ldr   r12, [pc, #8]     @ where the real one is kept
+//   ldreq r0, [r12]         @ ... and only if this really is the view
+//   ldr   pc, [pc, #4]
+//
+// If the real one is still null -- the game reaching a method before it has
+// ever called Static() -- the swap passes that null on, which is exactly
+// today's behaviour and no worse.
+static u32 coeenv_thunk(u8 *code, const void *view, const void *realCell, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE59FC00C;
+    b[1] = 0xE150000C;
+    b[2] = 0xE59FC008;
+    b[3] = 0x059C0000;
+    b[4] = 0xE59FF004;
+    b[5] = (u32)view;
+    b[6] = (u32)realCell;
+    b[7] = target;
+    user_imb_range(b, b + 8);
+    return (u32)b;
+}
+
+enum { COEENV_THUNK_BYTES = 32 };
+static const u16 kCoeEnvMethod[] = { GATE_COEENV_METHODS };
+
 static u32 gc_thunk(u8 *code, const void *cell, u32 slot)
 {
     u32 *b = (u32 *)code;
@@ -7141,6 +7183,20 @@ static u32 load_and_start()
     if (nImports > IMPORT_COEENV_STATIC)
         iat[IMPORT_COEENV_STATIC] = ctx_thunk(stub + SLOT * IMPORT_COEENV_STATIC,
                                               ctx, (u32)&gate6_coeenv_static);
+
+    // ... and every cone method the game calls **on** what Static() gave it.
+    for (u32 i = 0; i < (u32)GATE_COEENV_METHOD_COUNT; i++) {
+        const u32 at = kCoeEnvMethod[i];
+        if (at >= nImports || at >= kShimCount)
+            continue;
+        if ((kShimTable[at] >> 24) != KIND_CALL)
+            continue;
+        if (ctx->spare + COEENV_THUNK_BYTES > ctx->spareEnd)
+            break;
+        iat[at] = coeenv_thunk(ctx->spare, ctx->coeEnvView, &ctx->coeEnv, iat[at]);
+        ctx->spare += COEENV_THUNK_BYTES;
+        log_event(ctx, NOTE_COEENV_SWAP, at);
+    }
     if (nImports > IMPORT_COECONTROL_CTOR)
         iat[IMPORT_COECONTROL_CTOR] = ctx_thunk(stub + SLOT * IMPORT_COECONTROL_CTOR,
                                                 ctx, (u32)&gate6_coecontrol_ctor);
