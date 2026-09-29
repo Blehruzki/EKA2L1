@@ -20,7 +20,9 @@ pgrep -x Xvfb >/dev/null || { nohup Xvfb :99 -screen 0 1280x900x24 >"$S/xvfb.log
 cp "$S/out/gate6.exe" $D/sys/bin/gate6.exe
 cp "$S/out/gate6.rsc" $D/resource/apps/gate6.rsc
 cp "$S/out/gate6_reg.rsc" $D/private/10003a3f/import/apps/gate6_reg.rsc
-rm -f $C/g6box*.log $D/g6box*.dat $C/g6box*.dat
+# KEEPOLD=1 leaves whatever is on the drive alone, which is how the sweep of
+# the old rotated log names is tested: the port has to delete them itself.
+[ -n "$KEEPOLD" ] || rm -f $C/g6box*.log $D/g6box*.dat $C/g6box*.dat
 (cd /home/user/EKA2L1/build/bin && timeout -k 5 -s KILL "${TMO:-120}" ./eka2l1_qt --device RM-409 --run 0xE0001006 >"$S/g6.log" 2>&1)
 # The emulator does not always go on SIGTERM, and a run left behind holds its
 # memory and a few per cent of a core. Enough of them and a later launch cannot
@@ -28,9 +30,10 @@ rm -f $C/g6box*.log $D/g6box*.dat $C/g6box*.dat
 # every timing in the session is off. Always match exactly: `pkill -f` would
 # also match the shell that started it.
 pkill -x eka2l1_qt 2>/dev/null; sleep 1; pkill -9 -x eka2l1_qt 2>/dev/null
-FIRSTLOG=$(ls -S "$C"/g6box[0-9].log 2>/dev/null | head -1)
+# One log since build 178, and the old rotated names while any linger.
+FIRSTLOG=$(ls -S "$C"/g6box.log "$C"/g6box[0-9].log 2>/dev/null | head -1)
 cp -f "$FIRSTLOG" "$S/emu-latest.log" 2>/dev/null
-LAUNCHES=$(ls "$C"/g6box[0-9].log 2>/dev/null | wc -l)
+LAUNCHES=$(ls "$C"/g6box.log "$C"/g6box[0-9].log 2>/dev/null | wc -l)
 
 REC=$(python3 -c "import os,sys;p=sys.argv[1] if len(sys.argv)>1 and sys.argv[1] else '';print(os.path.getsize(p)//8 if p and os.path.exists(p) else 0)" "$FIRSTLOG")
 FAULT=$(grep -oE 'Access violation reading address 0x[0-9A-Fa-f]+' "$S/g6.log" | tail -1 | grep -oE '0x[0-9A-Fa-f]+')

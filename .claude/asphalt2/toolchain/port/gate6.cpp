@@ -1366,8 +1366,35 @@ void rdebug_rawprint(const void *text);
 // is the whole reason the rule about the emulator not being a reference
 // exists. build_gate6.py now fails the build rather than letting it happen
 // again.
-static const u16 kLogPath[] = {'C',':','\\','g','6','b','o','x','0','.','l','o','g'};
-enum { LOG_DIGIT = 8, LOG_NAME_CHARS = sizeof kLogPath / 2 };
+//
+// **One file, replaced every launch, and capped.** Builds 52 to 177 gave each
+// launch a digit of its own so a second launch could not destroy the first
+// one's record, which was the right trade while the phone was still going
+// down hard and the log was the only witness. It is the wrong trade now: the
+// crashes closed in round 85, the box is what survives a hard stop anyway,
+// and ten files that are never cleared is a pile of stale trace on the
+// owner's C: drive -- 1.4 MB for eight minutes of play, times ten, plus the
+// round-86 trap where a log left by an older build reads back as a newer
+// one's and means nothing.
+//
+// So: `C:\g6box.log`, one name, `file_replace` at launch, which truncates.
+// At most one log exists and it is always this run's. The digit stays in the
+// box, where it costs a word and still orders two launches in a pair.
+static const u16 kLogPath[] = {'C',':','\\','g','6','b','o','x','.','l','o','g'};
+enum { LOG_NAME_CHARS = sizeof kLogPath / 2 };
+// The names builds up to 177 wrote, cleared once at startup so an owner who
+// has been testing since build 52 does not keep ten of them for ever.
+static const u16 kOldLogPath[] = {'C',':','\\','g','6','b','o','x','0','.','l','o','g'};
+enum { OLD_LOG_DIGIT = 8, OLD_LOG_CHARS = sizeof kOldLogPath / 2,
+       SWEEP_OLD_LOGS = 1, OLD_LOG_NAMES = 10 };
+// And a ceiling on one run, because replacing the file bounds how many there
+// are but not how big one gets: eight minutes of play is 1.4 MB and nothing
+// stops a long session writing ten. Past this the log simply stops. The two
+// instruments split the run cleanly that way -- the log holds the opening,
+// which is where every layout, region and configuration answer is, and the
+// box holds the last sixty-four events and the end state, which is where a
+// failure is. Neither grows without bound.
+enum { KEEP_A_LOG = 1, LOG_MAX_BYTES = 1 << 20 };
 static const u16 kBoxPath[] = {'C',':','\\','g','6','b','o','x','.','d','a','t'};
 // Round 63: a worker may not touch the box's file -- that was the KERN-EXEC 0
 // of rounds 60 to 62 -- so its records sat in memory waiting for the main
@@ -1486,6 +1513,13 @@ static void log_block(Context *c)
         return;
     if (!c->logFill || !c->logFile[0])
         return;
+    // The ceiling. Drop what is buffered rather than growing the file: the
+    // box carries the end of the run, so nothing is lost that the pair of
+    // instruments does not still hold between them.
+    if (c->logPos >= (u32)LOG_MAX_BYTES) {
+        c->logFill = 0;
+        return;
+    }
     c->logDes[0] = ((u32)EPtrC << KTypeShift) | (c->logFill * 8);
     c->logDes[1] = (u32)c->logBuf;
     const i32 err = file_write_at(c->logFile, (int)c->logPos, c->logDes);
@@ -6782,19 +6816,33 @@ static u32 load_and_start()
                 ctx->launchNo = 10;         // '0' is reserved for "not set"
             ctx->boxData[BOX_LAUNCH] = ctx->launchNo;
             ctx->boxData[BOX_TICK] = user_tickcount();
-            // And the log goes to a name of its own, so the second launch no
-            // longer erases the first one's record.
-            u16 logChars[LOG_NAME_CHARS];
-            for (u32 i = 0; i < (u32)LOG_NAME_CHARS; i++)
-                logChars[i] = kLogPath[i];
-            logChars[LOG_DIGIT] = (u16)('0' + (ctx->launchNo % 10));
-
+            // The ten names builds up to 177 rotated through, cleared once.
+            // A missing one answers KErrNotFound and is not looked at: this
+            // runs before anything else and must not be able to stop a
+            // launch. The array is patched on the **stack**, never in place
+            // -- this image has no writable data, and build 52 proved it.
+            if (SWEEP_OLD_LOGS) {
+                u16 oldChars[OLD_LOG_CHARS];
+                for (u32 i = 0; i < (u32)OLD_LOG_CHARS; i++)
+                    oldChars[i] = kOldLogPath[i];
+                Ptrc16 oldName;
+                oldName.lengthAndType = ((u32)EPtrC << KTypeShift) |
+                                        (u32)OLD_LOG_CHARS;
+                oldName.text = oldChars;
+                for (u32 d = 0; d < (u32)OLD_LOG_NAMES; d++) {
+                    oldChars[OLD_LOG_DIGIT] = (u16)('0' + d);
+                    fs_delete(ctx->boxFs, &oldName);
+                }
+            }
+            // One name, replaced: file_replace truncates, so this launch's
+            // log is the only one on the drive and it starts empty.
             Ptrc16 logName;
             logName.lengthAndType = ((u32)EPtrC << KTypeShift) |
                                     (u32)LOG_NAME_CHARS;
-            logName.text = logChars;
-            file_replace(ctx->logFile, ctx->boxFs, &logName,
-                         EFileWrite | EFileShareAny);
+            logName.text = kLogPath;
+            if (KEEP_A_LOG)
+                file_replace(ctx->logFile, ctx->boxFs, &logName,
+                             EFileWrite | EFileShareAny);
             // Where the image landed, so a caller the log records as an offset
             // can be turned back into an address and placed.
             log_event(ctx, NOTE_BASE, ctx->codeBase);
