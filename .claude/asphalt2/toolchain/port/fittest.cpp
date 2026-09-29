@@ -39,7 +39,7 @@ static const Panel kPanels[] = {
     { "exactly the source",     176, 208 },
 };
 
-static const char *kModeName[FIT_MODES] = { "1:1", "aspect", "fill", "int" };
+static const char *kModeName[FIT_MODES] = { "1:1", "aspect", "fill", "int", "full" };
 
 // Failures are collapsed by (panel, mode, reason, whether the clamp was in
 // force), because the inset sweep runs the same case fifty times and a wall
@@ -116,7 +116,8 @@ static void run(const Panel &p, unsigned mode, unsigned inset, unsigned mapMax,
     // 2. It clears the status band it was told to.
     // An exact mode is allowed to sit above the band, but only when that is
     // the one way to show the whole source; every other mode must stay clear.
-    if (!(fit_is_exact(mode) && p.h > appliedInset && p.h - appliedInset < f.srcH))
+    if (mode != FIT_FULL
+        && !(fit_is_exact(mode) && p.h > appliedInset && p.h - appliedInset < f.srcH))
         check(f.offY >= appliedInset || f.dstH == 0, "picture starts above the inset",
               p, mode, f);
 
@@ -177,6 +178,13 @@ static void run(const Panel &p, unsigned mode, unsigned inset, unsigned mapMax,
     if (mode == FIT_FILL && !f.clamped) {
         check(f.dstW == p.w, "fill does not reach the side edges", p, mode, f);
         check(f.dstH == p.h - appliedInset, "fill does not reach the bottom", p, mode, f);
+    }
+    if (mode == FIT_FULL && !f.clamped) {
+        // Full screen means the whole panel, whatever the inset says. If it
+        // leaves a single row or column over it has missed its one job.
+        check(f.dstW == p.w, "full does not reach the side edges", p, mode, f);
+        check(f.dstH == p.h, "full does not reach the top and bottom", p, mode, f);
+        check(f.offX == 0 && f.offY == 0, "full is not at the origin", p, mode, f);
     }
 
     if (verbose) {

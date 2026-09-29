@@ -116,7 +116,10 @@ NOTES = {860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on
  808: '   heap free', 809: '   biggest cell',
  810: 'heap: cells out', 811: '   bytes out',
  812: 'BIG alloc', 813: '   asked from', 814: 'hist band<<24|count',
- 815: 'alloc site', 816: '   calls', 817: '   KB in all'}
+ 815: 'alloc site', 816: '   calls', 817: '   KB in all',
+ 818: '   system RAM free', 819: 'heap peak',
+ 820: 'AknLayoutUtils::LayoutMetricsRect resolved to',
+ 821: '   main pane corner', 822: '   inset adopted'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework

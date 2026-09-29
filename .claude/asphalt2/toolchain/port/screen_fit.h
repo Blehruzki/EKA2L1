@@ -28,8 +28,14 @@
 //            on an E90, kept because some people prefer the coverage
 //   integer  2x, 3x... where one fits exactly: sharp like 1:1 and large
 //            like aspect, but only on panels whose size happens to allow it
+//   full     every pixel of the panel, status band included. The most
+//            distorted of the lot and deliberately offered anyway: plenty of
+//            people would rather have the whole screen than the right shape,
+//            and the complaint about not being given the choice is a fair
+//            one. It differs from fill in exactly one way -- fill stops at
+//            the top of the status band, full does not.
 enum { FIT_ONE_TO_ONE = 0, FIT_SHAPE = 1, FIT_FILL = 2, FIT_INTEGER = 3,
-       FIT_MODES = 4 };
+       FIT_FULL = 4, FIT_MODES = 5 };
 // 1:1 and integer are the modes that promise exact pixels. If the source does
 // not fit below the status band on some panel they do **not** crop it -- they
 // centre it in the whole panel instead and let the band overlap the top. The
@@ -91,6 +97,13 @@ static void screen_fit(ScreenFit *f)
         useTop = 0;
     }
 
+    // Full screen ignores the band outright: that is the whole of its
+    // purpose, so it is decided before anything else looks at the inset.
+    if (f->mode == (unsigned)FIT_FULL) {
+        useH = f->screenH;
+        useTop = 0;
+    }
+
     unsigned dw, dh;
     unsigned scale = 1;                 // how many output pixels per source one
     if (f->mode == (unsigned)FIT_ONE_TO_ONE) {
@@ -107,12 +120,13 @@ static void screen_fit(ScreenFit *f)
         dh = n * sh;
         if (dw > bw) { dw = sw < bw ? sw : bw; scale = 1; }   // cannot fit once
         if (dh > useH) { dh = sh < useH ? sh : useH; scale = 1; }
-    } else if (f->mode == (unsigned)FIT_FILL) {
-        // Both axes to the edges. The two scales differ, and by little enough
-        // on a portrait panel to be worth the exact fit -- though not on a
-        // landscape one, where E231 measured the error at +105.5%.
+    } else if (f->mode == (unsigned)FIT_FILL || f->mode == (unsigned)FIT_FULL) {
+        // Both axes to the edges of whatever area the mode is using. The two
+        // scales differ, and by little enough on a portrait panel to be worth
+        // the exact fit -- though not on a landscape one, where E231 measured
+        // the error at +105.5%.
         dw = bw;
-        dh = bh;
+        dh = useH;
     } else if (bw * sh > bh * sw) {         // shape kept, height-limited
         dh = bh;
         dw = 0;

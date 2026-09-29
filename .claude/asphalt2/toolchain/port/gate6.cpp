@@ -338,7 +338,10 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_SITE_N = 816,       // ... how many times
        NOTE_SITE_KB = 817,      // ... and how many kilobytes in all
        NOTE_RAM_FREE = 818,     // free system RAM, which our own heap cannot see
-       NOTE_HEAP_PEAK = 819 };  // a new high-water mark, between samples
+       NOTE_HEAP_PEAK = 819,    // a new high-water mark, between samples
+       NOTE_INSET_FN = 820,     // what AknLayoutUtils::LayoutMetricsRect resolved to
+       NOTE_INSET_RECT = 821,   // the main pane rect it answered, two corners
+       NOTE_INSET_TAKEN = 822 };// and the inset actually adopted
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 enum { BOX_MDA = BOX_STACK + 1 };   // what CMdaAudioOutputStream::NewL resolved to
@@ -959,6 +962,8 @@ struct Context {
     u32 offX, offY;         // where the game's picture sits inside it
     u32 shots;              // frames seen, for the one-shot framebuffer dump
     u32 modeShot;           // how many modes the cycling test has captured
+    u32 insetAsked;         // Avkon has been asked for the main pane once
+    u32 insetFromAvkon;     // and this is what it said, 0 for "would not say"
     u32 srcPitch;           // pixels between the game's rows, 176 or 192
     u32 fileOpenThunk;
     u32 allocHist[HIST_BUCKETS];    // calls per power-of-two size band
@@ -4362,9 +4367,56 @@ enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
 // of it is taken out of the picture.
 #include "screen_fit.h"
 enum { MODE_ONE_TO_ONE = FIT_ONE_TO_ONE, MODE_SHAPE = FIT_SHAPE,
-       MODE_FILL = FIT_FILL, MODE_INTEGER = FIT_INTEGER, MODE_COUNT = FIT_MODES };
+       MODE_FILL = FIT_FILL, MODE_INTEGER = FIT_INTEGER, MODE_FULL = FIT_FULL,
+       MODE_COUNT = FIT_MODES };
 enum { SCREEN_MODE = MODE_FILL, KEY_MODE = '8' };
+// 56 rows is the N95's status pane, measured by dwelling on the phone in
+// rounds 74 to 78. It is a per-device number that the port applied to every
+// device: on a 240-tall landscape panel it eats 23% of the screen (E231).
+//
+// Ask Avkon instead. `AknLayoutUtils::LayoutMetricsRect(EMainPane, TRect&)`
+// hands back the area below the status pane on whatever device is running,
+// derived rather than measured, and its top edge is the inset. A static with
+// a reference out-parameter, so the call is just (enum, pointer) -- no
+// `this`, no struct return.
+//
+// Resolved at run time through the avkon RLibrary the port already holds,
+// **not** as a static import, because Avkon ordinals are not guaranteed
+// across feature packs and this file's opening section says so: an ordinal
+// taken from a def file is a guess that happens to hold on FP2. A null
+// lookup or an answer that fails the sanity check falls back to 56, so the
+// worst case is the behaviour we already shipped.
+enum { ASK_AVKON_INSET = 1, AKN_LAYOUT_METRICS_RECT = 417, AKN_MAIN_PANE = 3 };
 enum { INSET_DEFAULT = 56 };
+
+// The top of the main pane, or 0 if Avkon will not say. Cached: the lookup
+// and the call are cheap but this is asked for on every mode change.
+static u32 avkon_inset(Context *c)
+{
+    typedef void (*MetricsRect)(int, i32 *);
+    if (!ASK_AVKON_INSET || !c->avkon)
+        return 0;
+    if (c->insetAsked)
+        return c->insetFromAvkon;
+    c->insetAsked = 1;
+    MetricsRect fn = (MetricsRect)rlibrary_lookup(&c->avkon, AKN_LAYOUT_METRICS_RECT);
+    log_event(c, NOTE_INSET_FN, (u32)fn);
+    if (!fn)
+        return 0;
+    i32 r[4] = { -1, -1, -1, -1 };      // TRect: tl.x, tl.y, br.x, br.y
+    fn(AKN_MAIN_PANE, r);
+    log_event(c, NOTE_INSET_RECT, ((u32)r[0] << 16) | ((u32)r[1] & 0xFFFF));
+    log_event(c, NOTE_INSET_RECT, ((u32)r[2] << 16) | ((u32)r[3] & 0xFFFF));
+    // Believe it only if it describes a plausible main pane: a top edge in
+    // the upper half of the screen, a bottom below the top, and nothing
+    // outside the panel. Anything else means the ordinal was not what we
+    // thought it was, which is the failure this is guarded against.
+    const i32 h = (i32)c->screenH;
+    if (h > 0 && r[1] >= 0 && r[1] < h / 2 && r[3] > r[1] && r[3] <= h)
+        c->insetFromAvkon = (u32)r[1];
+    log_event(c, NOTE_INSET_TAKEN, c->insetFromAvkon);
+    return c->insetFromAvkon;
+}
 
 static void screen_layout(Context *c);
 
@@ -4587,11 +4639,19 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         // of three. So stop deducing: the game takes input now, so carry the
         // candidates and let the phone say which is right. `*` steps forward,
         // `#` steps back, and the first entry is whatever was derived above.
-        if (!c->screenW)
-            c->mode = (u32)SCREEN_MODE;
-            c->topInset = (u32)INSET_DEFAULT;
+        // The braces matter and were missing: the `if` guarded only the
+        // mode, so the inset was reset to 56 on **every** call here whatever
+        // the picker had set it to. Harmless while the picker was off and
+        // this runs twice; not harmless once a key can change it.
+        const int firstTime = !c->screenW;
         c->screenW = w;
         c->screenH = h;
+        if (firstTime) {
+            c->mode = (u32)SCREEN_MODE;
+            // Avkon's answer if it will give one, the N95's 56 if not.
+            const u32 fromAvkon = avkon_inset(c);
+            c->topInset = fromAvkon ? fromAvkon : (u32)INSET_DEFAULT;
+        }
         screen_format(c);
         log_event(c, NOTE_SCREEN, (u32)bpp);
         log_event(c, NOTE_SCREEN, (u32)pitch);

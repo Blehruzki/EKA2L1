@@ -35,6 +35,80 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### Phase 4: a full-screen mode, and an inset the device chooses
+
+*E240.*
+
+#### Full screen, distortion and all
+
+A fifth mode, and it exists because the complaint it prevents is a fair one:
+plenty of people would rather have the whole panel than the right shape, and
+being told they cannot is worse than the stretch. It differs from fill in one
+respect only -- **fill stops at the top of the status band, full does not** --
+so it is 100% of every panel, at (0,0), whatever the inset says.
+
+What it costs, per panel: -11.4% on an N95, +57.6% on an E71, +110.1% on a
+landscape 5800, +168.6% on an E90's inner screen. And two panels where it
+costs **nothing at all**: 352x416 and 176x208 are both exactly 176:208, so
+there full screen is complete *and* undistorted.
+
+#### The inset, asked rather than assumed
+
+`INSET_DEFAULT = 56` is the N95's status pane, measured by dwelling on the
+phone in rounds 74 to 78, and it was being applied to every device -- on a
+240-tall landscape panel it eats 23% of the screen (E231).
+
+`AknLayoutUtils::LayoutMetricsRect(EMainPane, TRect&)` hands back the area
+below the status pane on whatever device is running. A static with a
+reference out-parameter, so the call is just (enum, pointer): no `this`, no
+struct return. Its top edge is the inset.
+
+It is resolved **at run time** through the avkon `RLibrary` the port already
+holds, not as a static import, because this file's opening section warns that
+an Avkon ordinal taken from a def file is a guess that happens to hold on
+FP2. Three guards, in order: a null lookup falls back; an answer that is not
+a plausible main pane -- top edge outside the upper half of the screen, a
+bottom above its own top, anything off the panel -- falls back; and what was
+resolved, what it answered and what was adopted all go in the log, so a
+device that disagrees says so instead of quietly drawing wrongly. The
+fallback is 56, which is exactly what shipped, so the worst case is today.
+
+
+#### 48, not 56 -- and it changes the one confirmed layout
+
+On the RM-409 Avkon answers a main pane of **(0,48) to (240,293)**: a 48-row
+status pane and a 27-row softkey pane. The layout becomes **240x272 at (0,48),
+85.0% of the screen, +4.3% aspect error**, against 240x264 at (0,56), 82.5%
+and +7.4%. Bigger and less distorted.
+
+It is also **the first deliberate change to the layout hardware has
+confirmed**, so it is the thing round 87 must actually look at. 56 was
+measured on an N95, which is FP1; 48 is what a 5320 reports, which is FP2;
+those can legitimately differ and the whole point of asking is that the
+number is per device. But if the N95's real band is 56 and Avkon there also
+answers 48, the top eight rows of the picture will sit under the band.
+**Wasting rows is safe, being covered is visible** -- so this is the one
+change in the multi-resolution work that could look worse on the phone that
+already worked, and it is called out rather than buried.
+
+If it is wrong there, `#` nudges the inset in phase 5 and the log already
+records what Avkon said beside what was adopted, so one round settles it.
+
+#### A brace that was not there
+
+Found while wiring it in:
+
+    if (!c->screenW)
+        c->mode = (u32)SCREEN_MODE;
+        c->topInset = (u32)INSET_DEFAULT;
+
+The `if` guards the mode and nothing else, so **the inset was reset to 56 on
+every call**, not only the first. Harmless while the picker is off and this
+runs twice a launch. Not harmless at all once a key can change the inset,
+which is the next phase -- the adjustment would have been silently undone the
+next time the game asked about the screen, and it would have looked like the
+key not working.
+
 ### Phase 3: four modes, and an exact one that no longer crops
 
 *E236-E239.*
