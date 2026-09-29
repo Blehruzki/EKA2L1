@@ -35,6 +35,66 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### Round 87: the band in full-screen mode is the status pane's window
+
+*E244-E245, and the photograph is what identified it.*
+
+Round 87 confirmed the picker: the cycling works, the choice persists. One
+thing wrong -- **full-screen mode still leaves a band across the top of an
+N95**, so it is not full screen.
+
+A frame lifted out of the video says what the band is. It is a **smooth
+gradient with none of the dither the game's own picture has**, and there is a
+hard horizontal edge where the picture starts. That is an Avkon **skin
+background**: the status pane's own window, painting over ours. Round 76
+established the mechanism -- the port writes the framebuffer directly, so
+anything the window server paints afterwards lands on top -- and round 77
+established that the `ENoScreenFurniture` construction flag does not stop it.
+
+The layout is not the problem. `screen_fit` puts full screen at 240x320 from
+(0,0) and the harness agrees; the pixels are written and then covered.
+
+#### What was tried, and what the bench was good for
+
+Two calls, both resolved at run time through libraries the port already
+holds:
+
+| | |
+|---|---|
+| `CAknAppUiBase::SetFullScreenApp(ETrue)` | avkon 208 |
+| `CAknAppUi::StatusPane()` then `CEikStatusPane::MakeVisible(EFalse)` | avkon 2919, eikcoctl 324 |
+
+Together they **killed the app**: 44 records, zero frames, an access
+violation at address 0 (E244). Split and bisected: `SetFullScreenApp` alone
+runs 1,580 frames and returns; `MakeVisible` is the killer (E245). All three
+lookups resolve and `StatusPane()` hands back a live-looking `0x700e68`, so
+it is the call itself that will not have it -- most likely that pane belongs
+to an app UI Avkon set up more thoroughly than our synthetic one.
+
+**The emulator paints no status pane, so it cannot show whether the band
+goes.** What it can show is a call that kills the app, and it did, before a
+phone saw it. That is the whole value of running it here first, and it is
+worth stating plainly because the run looks like a failure and was not.
+
+#### What ships, and what is deliberately not changed yet
+
+`SetFullScreenApp` only. `MakeVisible` stays in the source, switched off,
+with its result written beside it so the next idea starts from a known
+position.
+
+The inset is **left at what Avkon reports**, even though a genuinely
+full-screen app has nothing to stay clear of. If `SetFullScreenApp` does
+remove the band, aspect and fill will waste those rows until a follow-up
+drops the inset to zero -- and if it does not, they are exactly as they
+shipped in 174. Full-screen mode ignores the inset either way, so **the mode
+the round is about is fixed either way**. Dropping the inset now would risk
+hiding the top of two working modes on a guess; it costs one round to do it
+in the right order.
+
+The theory all this supports: under DSA our writes reach the framebuffer, but
+the window server restores what lies outside the app's own region, and
+`SetFullScreenApp` is the call that makes that region the whole screen.
+
 ### Phase 5: hold C to cycle, and the choice is kept
 
 *E241-E242.*

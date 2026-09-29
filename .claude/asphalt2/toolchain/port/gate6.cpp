@@ -346,7 +346,11 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_INSET_TAKEN = 822,  // and the inset actually adopted
        NOTE_CFG_READ = 823,     // a saved choice was found: mode and inset
        NOTE_CFG_WROTE = 824,    // ... and written back, with the error code
-       NOTE_MODE_NOW = 825 };   // the picture mode, after a hold changed it
+       NOTE_MODE_NOW = 825,     // the picture mode, after a hold changed it
+       NOTE_PANE_FN = 826,      // a status-pane entry point, as resolved
+       NOTE_PANE_OBJ = 827,     // the CEikStatusPane the app UI handed back
+       NOTE_PANE_GONE = 828,    // 1 if it then reported itself invisible
+       NOTE_PANE_STEP = 829 };  // a pane call that returned, by number
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 enum { BOX_MDA = BOX_STACK + 1 };   // what CMdaAudioOutputStream::NewL resolved to
@@ -884,6 +888,9 @@ struct Context {
     u32 lastCall;           // the last slot of ours the framework called
     u32 avkon;              // an RLibrary on avkon, for what it does not export
     u32 cone;               // and on cone, to find CCoeControl::OfferKeyEventL
+    u32 eikcoctl;           // and on eikcoctl, for the status pane
+    u32 paneTried;          // the status pane has been dealt with once
+    u32 paneGone;           // and it reported itself invisible afterwards
     u32 newBaseConstructL;  // avkon's CAknAppUi::BaseConstructL, as resolved
     u32 newRequestComplete; // euser's User::RequestComplete, as resolved
     u32 clockTick;          // how many milestones since the last clock reading
@@ -1120,6 +1127,7 @@ static void log_event(Context *c, u32 code, u32 from);
 static void heap_note(Context *c);
 static void heap_peak(Context *c);
 static void hold_tick(Context *c);
+static void status_pane_off(Context *c);
 static void note(Context *c, u32 value, u16 sign);
 static void worker_log(Context *c, u32 code, u32 from);
 // The word that goes wrong is at a fixed address -- 0x8b281c, the fourth word
@@ -4434,7 +4442,96 @@ static const u16 kCfgPath[] = {'C',':','\\','g','a','t','e','6','.','c','f','g'}
 // lookup or an answer that fails the sanity check falls back to 56, so the
 // worst case is the behaviour we already shipped.
 enum { ASK_AVKON_INSET = 1, AKN_LAYOUT_METRICS_RECT = 417, AKN_MAIN_PANE = 3 };
+
+// Round 87: full-screen mode leaves a band across the top of an N95, and the
+// photograph says what it is. The band is a smooth gradient with none of the
+// dither the game's own picture has, and a hard edge where the picture
+// starts: it is the **status pane's skin background**, painted by its own
+// window over ours. The port writes the framebuffer directly, so anything the
+// window server paints afterwards lands on top (round 76 established that).
+//
+// `ENoScreenFurniture` was already tried in round 77 and the band survived,
+// so the flag is not the answer. These are, or one of them is:
+//
+//   - `CAknAppUiBase::SetFullScreenApp(ETrue)`, which is the API that exists
+//     precisely for an application that owns the whole screen;
+//   - `CAknAppUi::StatusPane()` then `CEikStatusPane::MakeVisible(EFalse)`,
+//     which removes the window rather than asking for it not to be made.
+//
+// Both are done, because the bench cannot tell them apart: **the emulator
+// paints no status pane** (E173), so it can only show that neither call
+// breaks anything. The phone decides, and one round settles it either way.
+//
+// It is self-checking. `CEikStatusPaneBase::IsVisible()` is asked afterwards,
+// and the inset is only dropped to zero when the pane agrees it has gone --
+// so if the calls do nothing, the layout is exactly what shipped in 174 and
+// only the full-screen mode is still wrong. A silent failure cannot make the
+// other four modes worse.
+// Split, and bisected. Both together died at address 0 with no frame drawn
+// (E244); `SetFullScreenApp` alone runs 1,580 frames and returns (E245), so
+// the killer is `CEikStatusPane::MakeVisible`. It is left in, off, with its
+// result beside it, because the next idea will want to know that the lookups
+// all resolve and the pane pointer looks live -- `StatusPane()` handed back
+// `0x700e68` quite happily; it is the call that will not have it. Most
+// likely the pane belongs to an app UI that Avkon set up more thoroughly
+// than ours, and walking its sub-panes finds a member we never populated.
+//
+// **The emulator cannot show whether the band goes** -- it paints no status
+// pane (E173). What it can show, and did, is a call that kills the app. That
+// is the whole value of running this here first.
+enum { HIDE_STATUS_PANE = 1, PANE_SET_FULLSCREEN = 1, PANE_MAKE_INVISIBLE = 0 };
+enum { AKN_SET_FULLSCREEN_APP = 208, AKN_APPUI_STATUS_PANE = 2919,
+       EIK_SP_MAKE_VISIBLE = 324, EIK_SP_IS_VISIBLE = 1379 };
 enum { INSET_DEFAULT = 56 };
+
+// Take the whole screen, if Avkon will let us. Called once, before the inset
+// is asked for, so that the answer already reflects a pane that has gone.
+static void status_pane_off(Context *c)
+{
+    typedef void (*SetFull)(void *, int);
+    typedef void *(*PaneOf)(void *);
+    typedef void (*MakeVisible)(void *, int);
+    typedef int (*IsVisible)(const void *);
+    if (!HIDE_STATUS_PANE || c->paneTried || !c->avkon || !c->wrapUi)
+        return;
+    c->paneTried = 1;
+
+    if (PANE_SET_FULLSCREEN) {
+        SetFull full = (SetFull)rlibrary_lookup(&c->avkon, AKN_SET_FULLSCREEN_APP);
+        log_event(c, NOTE_PANE_FN, (u32)full);
+        log_block(c);
+        if (full)
+            full(c->wrapUi, 1);
+        log_event(c, NOTE_PANE_STEP, 1);
+        log_block(c);
+    }
+    if (!PANE_MAKE_INVISIBLE)
+        return;
+
+    PaneOf paneOf = (PaneOf)rlibrary_lookup(&c->avkon, AKN_APPUI_STATUS_PANE);
+    log_event(c, NOTE_PANE_FN, (u32)paneOf);
+    if (!paneOf || !c->eikcoctl)
+        return;
+    void *pane = paneOf(c->wrapUi);
+    log_event(c, NOTE_PANE_OBJ, (u32)pane);
+    if (!pane)
+        return;
+
+    MakeVisible mv = (MakeVisible)rlibrary_lookup(&c->eikcoctl, EIK_SP_MAKE_VISIBLE);
+    IsVisible iv = (IsVisible)rlibrary_lookup(&c->eikcoctl, EIK_SP_IS_VISIBLE);
+    log_event(c, NOTE_PANE_FN, (u32)mv);
+    log_event(c, NOTE_PANE_FN, (u32)iv);
+    log_block(c);
+    if (mv)
+        mv(pane, 0);
+    log_event(c, NOTE_PANE_STEP, 2);
+    log_block(c);
+    // Only believe it if the pane says so itself. Where it does not, the
+    // inset stays whatever Avkon reported and nothing else changes.
+    if (iv)
+        c->paneGone = iv(pane) ? 0u : 1u;
+    log_event(c, NOTE_PANE_GONE, c->paneGone);
+}
 
 // The top of the main pane, or 0 if Avkon will not say. Cached: the lookup
 // and the call are cheap but this is asked for on every mode change.
@@ -4778,9 +4875,15 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         c->screenH = h;
         if (firstTime) {
             c->mode = (u32)SCREEN_MODE;
-            // Avkon's answer if it will give one, the N95's 56 if not.
+            // Take the whole screen first, so the main pane Avkon then
+            // reports is the one that is actually left.
+            status_pane_off(c);
+            // With the pane gone there is nothing to stay clear of. Only on
+            // the pane's own say-so: if it would not go, the inset is
+            // whatever Avkon reports, which is what build 174 shipped.
             const u32 fromAvkon = avkon_inset(c);
-            c->topInset = fromAvkon ? fromAvkon : (u32)INSET_DEFAULT;
+            c->topInset = c->paneGone ? 0u
+                        : (fromAvkon ? fromAvkon : (u32)INSET_DEFAULT);
             // And then whatever the player chose last time, which overrides
             // both. Read after the defaults so that a config carrying only a
             // mode still gets this device's inset.
@@ -6775,6 +6878,12 @@ static u32 load_and_start()
         if (kShimDllLen[i] >= 4 && nm[0] == 'c' && nm[1] == 'o' && nm[2] == 'n' &&
             nm[3] == 'e') {
             ctx->cone = libs[i];
+        }
+        // eikcoctl, for CEikStatusPane: see status_pane_off.
+        if (kShimDllLen[i] >= 8 && nm[0] == 'e' && nm[1] == 'i' && nm[2] == 'k' &&
+            nm[3] == 'c' && nm[4] == 'o' && nm[5] == 'c' && nm[6] == 't' &&
+            nm[7] == 'l') {
+            ctx->eikcoctl = libs[i];
         }
     }
     if (!ctx->avkon) PANIC(CAT_LIB, -100);

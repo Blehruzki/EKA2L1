@@ -119,7 +119,10 @@ NOTES = {860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on
  815: 'alloc site', 816: '   calls', 817: '   KB in all',
  818: '   system RAM free', 819: 'heap peak',
  820: 'AknLayoutUtils::LayoutMetricsRect resolved to',
- 821: '   main pane corner', 822: '   inset adopted'}
+ 821: '   main pane corner', 822: '   inset adopted',
+ 823: 'saved choice read', 824: '   choice written', 825: 'picture mode now',
+ 826: 'status-pane entry point', 827: '   the CEikStatusPane',
+ 828: '   pane reports itself gone'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework
