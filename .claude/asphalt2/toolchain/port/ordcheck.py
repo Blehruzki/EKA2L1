@@ -28,6 +28,7 @@ costs nothing.
     ordcheck.py [image ...]     # the images say which ordinals are 'used'
 """
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -278,8 +279,22 @@ def _same(got, want):
 
 
 def _head(sig):
-    """'Math::ASin(double &, ...)' -> 'mathasin' -- who and what, no arguments."""
-    return _norm((sig or '').split('(')[0])
+    """'Math::ASin(double &, ...)' -> 'mathasin' -- who and what, no arguments.
+
+    The release .def disambiguates a duplicate name by suffixing a digit, to
+    the **class** as well as the method: `Mem1::Copy`, `User1::ReAlloc1L`,
+    `CBase1::~CBase1`. Those are not classes called Mem1 and CBase1. Strip
+    the digits from both halves.
+    """
+    head = (sig or '').split('(')[0]
+    parts = [_norm(x).rstrip('0123456789') for x in head.split('::')]
+    # A constructor or destructor repeats the class name; drop the repeat so
+    # `CBase::~CBase` and `CBase::CBase` both reduce to the class plus a mark.
+    if len(parts) >= 2:
+        last = parts[-1].lstrip('~')
+        if last == parts[-2]:
+            return parts[-2] + ('dtor' if '~' in head.split('::')[-1] else 'ctor')
+    return ''.join(parts)
 
 
 def _head_mangled(sym):
@@ -303,7 +318,16 @@ def _head_mangled(sym):
     if j == i:
         return _norm(method)
     n = int(rest[i:j])
-    return _norm(rest[j:j + n] + method)
+    cls = _norm(rest[j:j + n]).rstrip('0123456789')
+    # GCC98r2 writes a constructor as `__<len>Class` and a destructor as
+    # `_._<len>Class`, so the method half comes out empty or as `_.`; and an
+    # operator as `__as`, `__nw` and so on. Name them the same way _head does.
+    m = _norm(method)
+    if not m:
+        return cls + 'ctor'
+    if m in ('', '_', 'dot') or method in ('_.',):
+        return cls + 'dtor'
+    return cls + m
 
 
 def _short(s, n=42):
@@ -328,9 +352,46 @@ def used_from(images):
     return libs, ords
 
 
+IMPORTS_TXT = os.path.join(HERE, os.pardir, os.pardir, 'ngage-imports.txt')
+
+
+def used_from_report(path=IMPORTS_TXT):
+    """{library stem: {ordinals}} out of a gen_shim import report.
+
+    The game's own `6rbc.app` lived in a scratchpad that has since been
+    cleared, and `crack/binpda_6rbc.app` is **not** it -- that is the BiNPDA
+    crack loader, 3,964 bytes and eight DLLs, a different program that
+    patches the game. Scoring the directory against the loader's 25 euser
+    ordinals was the first cut of this and the answer it gave, 100%, was
+    about the wrong file. The report keeps the real list: 21 DLLs, 462
+    imports, 164 of them euser.
+    """
+    lib, out = None, {}
+    head = re.compile(r'^(\S+?)(?:\[[0-9a-fA-F]+\])?\.DLL\s+\((\d+) imports\)', re.I)
+    row = re.compile(r'^\s+(\d+)\s+\S')
+    for line in open(path, errors='replace'):
+        m = head.match(line)
+        if m:
+            lib = symdef.base_name(m.group(1))
+            out.setdefault(lib, set())
+            continue
+        m = row.match(line)
+        if m and lib:
+            out[lib].add(int(m.group(1)))
+    return set(out), out
+
+
 if __name__ == '__main__':
     images = sys.argv[1:]
-    libs, ords = used_from(images) if images else (set(), {})
+    if images:
+        libs, ords = used_from(images)
+    elif os.path.exists(IMPORTS_TXT):
+        libs, ords = used_from_report()
+        print('ordinals taken from %s (%d libraries, %d imports)\n'
+              % (os.path.normpath(IMPORTS_TXT), len(ords),
+                 sum(len(v) for v in ords.values())))
+    else:
+        libs, ords = set(), {}
     if not libs:
         libs = {'apparc', 'avkon', 'bitgdi', 'cone', 'efsrv', 'eikcore',
                 'eikcoctl', 'eikdlg', 'estlib', 'euser', 'fbscli', 'hal',

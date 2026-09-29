@@ -6287,16 +6287,52 @@ that can be scored:
 * and of the remainder, inspection shows most are still renames of the same
   code -- `memclr`/`Mem::FillZ`, `User::Heap`/`User::Allocator`,
   `RSessionBase::Share`/`DoShare`, `TLex8::Val`/`BoundedVal`;
-* **100% of the 25 euser ordinals Asphalt 2 actually imports. Zero wrong.**
+* **96.3% of the 164 euser ordinals Asphalt 2 actually imports** -- 6 wrong.
 
-That last line is the one that decides it. The errors are in the tail --
-`TBusLocalDrive::Lock`, `RNotifier::LoadNotifiers` -- not in the allocator,
-the descriptors or the file server.
+### Retracted: "100% of the 25 ordinals a real game imports"
+
+The first run of this scored the directory against
+`crack/binpda_6rbc.app` and reported **100% of 25 euser ordinals**. That
+file is **not the game**. It is the BiNPDA crack *loader*: 3,964 bytes,
+eight DLLs, a separate program that loads `bin\main.dll` and rewrites seven
+of its imports -- described two directories away in `crack/README.md`, which
+I had read. The game's own `6rbc.app` is 21 DLLs and 462 imports, 164 of
+them euser, and it lived in a scratchpad that has since been cleared.
+
+So the headline was a real measurement of the wrong file. `ngage-imports.txt`
+keeps the true list and `ordcheck.py` now reads it by default.
+
+There was a second signal I walked past: `epocdb.py`'s own docstring says
+"155 of the 164 ordinals the N-Gage game actually imports" -- 94.5%, and
+flatly inconsistent with 100% of 25. **A number that disagrees with what is
+already written down is the cheapest error check there is, and I did not
+make it.**
+
+### What the six are
+
+    3  User::AllocZL(int)          epoc6: CBase::newL(unsigned int)
+  411  memclr                      epoc6: Mem::FillZ(void *, int)
+  528  User::Allocator(void)       epoc6: User::Heap(void)
+  871  User::ReAllocL(void *, int) epoc6: User::ReAllocL(void *, int)
+ 1496  TInt64::operator=(int)      epoc6: TInt64::operator=(int)
+ 1582  User::AllocZ(int)           epoc6: CBase::operator new(unsigned int)
+
+Four are the same function under two names: 411 and 528 are renames the
+`epocdb` docstring already called out, and 871 and 1496 are the comparison
+failing on the release's digit suffix and on operator mangling rather than
+on the data. Two -- 3 and 1582 -- pair `User::AllocZ{,L}` against `CBase`'s
+allocating `new`, which are near-certainly aliases at one address, and
+**that is a guess, not a measurement.**
+
+So: 96.3% strict, and somewhere between that and 100% in practice, with two
+unproven. The strict figure is the one to quote. The errors are in the tail
+-- `TBusLocalDrive::Lock`, `RNotifier::LoadNotifiers` -- not in the
+allocator, the descriptors or the file server.
 
 ### Verdict
 
-**Go**, with one honest limit: euser is one library and 25 ordinals is a
-small sample of "what games import". `ordcheck.py` takes image arguments for
+**Go**, with one honest limit: euser is one library and 164 ordinals is one
+game's worth of "what games import". `ordcheck.py` takes image arguments for
 exactly that reason -- point it at more N-Gage binaries as they turn up and
 the sample grows. The measurement to repeat before shipping a loader is the
 old-side score over the union of several games' imports.
@@ -6314,4 +6350,7 @@ standing rule on this project.
   as a disagreement. Class and method now come straight off the mangled
   symbol.
 
-Seventh and eighth time the instrument was the finding.
+Seventh and eighth time the instrument was the finding -- and the
+wrong-file retraction above is the ninth, caught only because the question
+"do the games need cracking?" sent me back to look at what the input
+actually was.
