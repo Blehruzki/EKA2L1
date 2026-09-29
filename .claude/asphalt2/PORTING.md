@@ -35,6 +35,57 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### The renderer, not the port: a strip that looked like wrapping
+
+*Phase 0, after E230. Spotted by the user in a frame I had rendered and
+posted, and it would have gone into the whole multi-resolution phase unnoticed.*
+
+A dump render of the title screen showed a narrow vertical strip down the
+left, exactly the signature of the horizontal wrap this port spent rounds 74
+to 78 on. It is not that, and the measurements say so in four steps:
+
+1. **The picture is 176x208, not the screen.** The content measures 1326x1568
+   -- aspect 0.8457 against 176/208 = 0.8462 and 240/320 = 0.75. So it is the
+   game's own buffer rendered by `dumppng.py`, not the emulator's display and
+   not a phone.
+2. **The wrap signature is absent.** Do the first K columns of row y equal the
+   last K of row y-1? **0 of 207 rows** for K = 12, 16, 20 and 24.
+3. **There is one hard seam and it is at column 15 to 16**, mean neighbouring
+   delta **1041**, against 431 and 416 for the strongest seams in the artwork
+   itself and 100-260 everywhere else.
+4. **Column 16 is `SRC_ORIGIN`.** Re-rendered from source pixel sixteen, the
+   1041 seam disappears entirely and the remaining seams shift left by exactly
+   sixteen (116 -> 100, 132 -> 116): the same picture, in phase.
+
+`gate6_screen_update` reads from `src + SRC_ORIGIN + y * srcPitch`. The
+renderer read from column 0. Sixteen columns of the game's left-hand padding
+that the display never shows were being drawn, and the picture was sixteen
+columns out of phase. Nothing on any device was affected -- the blit has
+always applied the offset -- and `dumppng.py` and `bandpng.py` now default
+their origin to 16, with the reason in the docstring.
+
+#### The pattern, now that there are five of them
+
+This is the fifth time in this port that the instrument was the finding, and
+the **second inside phase 0 alone**:
+
+| | what it measured wrongly |
+|---|---|
+| the framedrops | `BOX_EVERY_TRACED = 1`, ~40,000 disk commits a race |
+| six rounds of vtable guesses | `MDA_DUMP_VT` prints `rvt[k-2]`, read as `rvt[k]` |
+| "no allocation ever failed" | `WRAP_ALLOCATORS` off, so none could be recorded |
+| "the reported size changes the layout" | two shots 60 frames apart against a 60-frame blink |
+| "the wrap is back" | a renderer starting at column 0 against a blit starting at 16 |
+
+The last two were tools written in this session, each to answer one question,
+each inheriting that question's defaults and then being used for another. That
+is the specific failure mode, and it is worth stating as a rule: **a tool
+written to answer one question carries that question's assumptions, and the
+second use is where they bite.** Both were caught by comparing against a
+number the port itself already holds -- the blink period against the sampling
+interval, `SRC_ORIGIN` against the render origin -- rather than by looking
+harder at the picture.
+
 ### Phase 0: the game ignores the size it is told, and a blink nearly said otherwise
 
 *E227-E230. The multi-resolution work opened by re-testing the one place the
