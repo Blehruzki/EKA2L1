@@ -4631,10 +4631,24 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         c->gameScreen = (u16 *)user_allocz((int)want);
         if (c->gameScreen) {
             p[3] = (u32)c->gameScreen;
-            // And the size it was built for. Told 240x320 it lays its interface
-            // out for 240 and writes rows 176 wide, so everything past column
-            // 176 is lost and wraps into the next row -- which is the clipped
-            // "$00000" on the race HUD and the second "HUMME" on the menu.
+            // And the size it was built for -- which changes **nothing** the
+            // game draws, settled by E229/E230: four shots per run at
+            // 17-frame spacing, clustered by content, and every picture the
+            // run told 192x208 produced also occurs in the run told the
+            // device's 240x320, byte for byte. The control holds too -- run D
+            // logged `srcPitch` 192, so the flag really did take effect.
+            //
+            // This comment used to say the opposite, that being told 240 made
+            // the game lay its interface out for 240 and lose everything past
+            // column 176. That reading came from an A/B pair sampled 60 frames
+            // apart (E227/E228) -- and "PRESS ANY KEY" blinks on a sixty-frame
+            // cycle, so both shots of each run always caught the same phase
+            // and the two runs happened to catch opposite ones. The whole
+            // difference was one line of text blinking, 445 words of it.
+            //
+            // So the clipped HUD is the game's own and nothing reported to it
+            // moves it. Its stride is hardcoded at 176 and it never asks how
+            // big the screen is: `HAL::Get` is imported and called zero times.
             if (TELL_GAME_ITS_SIZE) {
                 p[4] = GAME_PITCH;
                 p[5] = GAME_H;
@@ -4664,7 +4678,11 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
     // them it is a scrolling banner and nothing is being clipped at all.
     if (DUMP_FRAME && c->gameScreen) {
         c->shots++;
-        if (c->shots == (u32)DUMP_FRAME || c->shots == (u32)DUMP_FRAME + 60)
+        // Four shots at odd spacing, not two 60 apart: "PRESS ANY KEY"
+        // blinks, and a blink whose period divides 60 looks exactly like a
+        // line of text that is never drawn at all.
+        if (c->shots == (u32)DUMP_FRAME || c->shots == (u32)DUMP_FRAME + 17 ||
+            c->shots == (u32)DUMP_FRAME + 34 || c->shots == (u32)DUMP_FRAME + 51)
             dump_region(c, (const u8 *)c->gameScreen, DUMP_FRAME_BYTES);
     }
     // Round 70: eight candidate formats went to the phone and none of them

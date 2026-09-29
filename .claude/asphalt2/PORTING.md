@@ -35,6 +35,60 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### Phase 0: the game ignores the size it is told, and a blink nearly said otherwise
+
+*E227-E230. The multi-resolution work opened by re-testing the one place the
+record contradicted itself, and the answer is the boring one.*
+
+`PORTING.md` said reporting a different `iScreenSize` gives byte-identical
+frames. A comment beside `TELL_GAME_ITS_SIZE` in `gate6.cpp` said the
+opposite -- that being told 240x320 makes the game lay its interface out for
+240 and lose everything past column 176. Both cannot be true, and it decided
+whether multi-resolution had a cheap win in it.
+
+**It does not. The game ignores the size.** Four shots per run at 17-frame
+spacing, clustered by exact content: each configuration produces exactly two
+distinct pictures and both of them occur, byte for byte, in the other.
+`srcPitch` logged 192 in the run told 192x208, so the flag really did take
+effect -- the result is not vacuous.
+
+So the clipped HUD is the game's own, nothing reported to it moves it, and
+**the scaler is the only place resolution can change.** The stale comment is
+corrected in place.
+
+#### How it nearly went the other way
+
+The first pair (E227/E228) compared frames 400 and 460 and found 445 words
+differing, all in rows 153-159, columns 54-153 -- one seven-pixel line of the
+game's own bitmap font. Rendered, the run told 192x208 reads **`PRESS ANY
+KEY`** and the other is bare background. Frames 400 and 460 were identical
+*within* each run, which appeared to rule out timing and make the difference
+structural.
+
+`PRESS ANY KEY` blinks on a **sixty-frame** cycle. Two shots sixty frames
+apart catch the same phase for ever, so each run sampled one phase, and the
+two runs -- which do not start in lockstep, 28,782 log records against 37,124
+-- caught opposite ones. The "identical within each run" check that seemed to
+rule out timing was the alias confirming itself.
+
+Two habits came out of it, both now in the tools:
+
+- `dump_region` takes **four shots at 17-frame spacing**, not two at 60. Any
+  spacing that divides a repeating period is a spacing that can only ever see
+  one phase of it.
+- `phasecmp.py` **clusters shots by exact content** instead of pairing them by
+  index or thresholding on brightness. The first version of it did threshold,
+  and called all four frames "text on" because the background alone is bright
+  enough -- a parameter chosen to separate two known cases, which then had
+  nothing to say about a third.
+
+That is the fourth time in this port the instrument has been the finding,
+after the 40,000 disk commits a race that caused the framedrops, the
+`rvt[k-2]` vtable read that cost six rounds, and `WRAP_ALLOCATORS` being off
+so that no allocation failure could ever be recorded. The pattern is specific
+enough to name: **every one was a measurement that could only produce one
+answer, and none of them looked like it at the time.**
+
 ### Which keys the game does not use
 
 *Measured from round 86's log: 7,361 key events over eight minutes of real
