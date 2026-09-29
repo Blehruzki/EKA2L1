@@ -321,6 +321,9 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_STRAY = 851,        // ... on something that is neither of ours
        NOTE_BASE = 852,         // where the game was loaded
        NOTE_END = 853,          // and where its chunk stops
+       NOTE_RGN_HDR = 790,      // a header word of the region the game posts with
+       NOTE_RGN_RECT = 791,     // one rectangle of it, two corners packed
+       NOTE_POST_FN = 792,      // CFbsScreenDevice::Update(void), as resolved
        NOTE_Z_CALL = 800,       // a call into zlib uncompress, and which site
        NOTE_Z_DEST = 801,       // ... the destination buffer
        NOTE_Z_ROOM = 802,       // ... and how many bytes it says are there
@@ -889,6 +892,7 @@ struct Context {
     u32 avkon;              // an RLibrary on avkon, for what it does not export
     u32 cone;               // and on cone, to find CCoeControl::OfferKeyEventL
     u32 eikcoctl;           // and on eikcoctl, for the status pane
+    u32 bitgdi;             // and on bitgdi, to post the whole screen
     u32 paneTried;          // the status pane has been dealt with once
     u32 paneGone;           // and it reported itself invisible afterwards
     u32 newBaseConstructL;  // avkon's CAknAppUi::BaseConstructL, as resolved
@@ -965,6 +969,9 @@ struct Context {
     u32 fileReadStatic;     // efsrv's RFile::Read as the static import had it
     u32 screenInfo;         // euser's UserSvr::ScreenInfo, as resolved
     u32 screenUpdate;       // bitgdi's CFbsScreenDevice::Update, as resolved
+    u32 postWhole;          // ... and its no-argument overload, which posts it all
+    u32 postTried;          // the lookup has been made once, however it went
+    u32 regionLogs;         // how many posted regions have been written out
     u16 *gameScreen;        // the 176x208 16bpp framebuffer handed to the game
     u8 *screenBase;         // what ScreenInfo handed back: palette, then pixels
     u8 *realScreen;         // and the 32bpp one the emulator actually shows
@@ -3413,6 +3420,66 @@ enum { DRAW_THE_FRAME = 1, OLD_GC_BITBLT = 46 };
 enum { TAKE_THE_SCREEN = 1 };
 enum { IMPORT_SET_AUTO_UPDATE = 45, IMPORT_SCREEN_UPDATE = 47 };
 
+// **The band across the top, and why no emulator could ever show it.**
+//
+// `SetAutoUpdate(EFalse)` is the one call in the whole run that changes what
+// the display driver does: after it, nothing reaches the panel until somebody
+// asks. The game then asks once a frame, with
+// `CFbsScreenDevice::Update(const TRegion &)` -- and the region it hands over
+// is its direct-screen-access drawing region, which the window server derived
+// from the *visible* part of its window. Whatever the status pane occupies is
+// not in it.
+//
+// So the top of the framebuffer is written and never posted. Our pixels are
+// there; the panel is still showing what the window server put on it before
+// the game took over, which is the skin's gradient. That is exactly the shape
+// of the evidence: the band is stable rather than flickering (nothing is
+// fighting us for it), it survived `ENoScreenFurniture` (round 77) and
+// `SetFullScreenApp` (round 87, build 175), full-screen mode computes
+// 240x320 at (0,0) and the harness agrees, and **the bench has never once
+// reproduced it** -- because a framebuffer the emulator scans out directly
+// has no posting step to leave a region out of.
+//
+// The fix is one ordinal: bitgdi 59 is `CFbsScreenDevice::Update(void)`, the
+// overload that posts the whole device. Same call site, same frequency, 22%
+// more pixels on a 240x320 panel, and no region to leave anything out.
+// If the lookup fails the original call stands, so the worst case is today.
+enum { BITGDI_UPDATE_ALL = 59 };        // CFbsScreenDevice::Update(void)
+enum { POST_WHOLE_SCREEN = 1, LOG_POSTED_REGION = 1, REGION_LOGS = 2 };
+
+// TRegion is three words -- { TInt iCount; TBool iError; TInt iAllocedRects; }
+// -- and where its rectangles live depends on one flag in the third: set
+// means an RRegion with them on the heap and the pointer in the word after,
+// clear means a TRegionFix with them in place from offset twelve. A TRect is
+// four words, { iTl.iX, iTl.iY, iBr.iX, iBr.iY }.
+//
+// The first run of this wrote four header words and then read the rectangles
+// from the fifth, which is one word past where they start -- and duly
+// reported a corner at x=30536. **The instrument was the finding, for the
+// sixth time this project.** So nothing is decoded on the phone now: ten raw
+// words go down and the host works out which reading fits.
+enum { RGN_WORDS = 10, RGN_RECT_LIST = 4 };
+
+static void region_log(Context *c, const void *region)
+{
+    const u32 *r = (const u32 *)region;
+    if (!r || ((u32)r & 3) || (u32)r < 0x400000)
+        return;
+    for (u32 i = 0; i < (u32)RGN_WORDS; i++)
+        log_event(c, NOTE_RGN_HDR, r[i]);
+    // And the rectangles themselves. E247 read the ten words back and they
+    // are an RRegion exactly as the source declares it: TRegion is the three
+    // words iCount, iError and iAllocedRects, and RRegion adds iGranularity
+    // -- 5, its documented default, and there in the log -- and then
+    // iRectangleList. So the pointer is word **four**, not word three.
+    const u32 *rect = (const u32 *)r[RGN_RECT_LIST];
+    if (!rect || ((u32)rect & 3) || (u32)rect < 0x400000)
+        return;
+    const u32 count = (r[0] < 2u) ? r[0] : 2u;
+    for (u32 i = 0; i < count * 4u; i++)
+        log_event(c, NOTE_RGN_RECT, rect[i]);
+}
+
 // Direct screen access is a promise to the window server that drawing will
 // stop the moment it says so. The game starts it, draws one frame, and then
 // spends the rest of the run computing -- thousands of operations, all inside
@@ -5069,6 +5136,27 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
         c->modeShot++;
         c->mode = (c->mode + 1) % (u32)MODE_COUNT;
         screen_layout(c);
+    }
+    if (LOG_POSTED_REGION && c->regionLogs < (u32)REGION_LOGS) {
+        c->regionLogs++;
+        region_log(c, region);
+        log_block(c);
+    }
+    // Post the whole device rather than the region the game asked for: see
+    // BITGDI_UPDATE_ALL. The region is still what the game drew; it is only
+    // no longer what limits what reaches the panel.
+    if (POST_WHOLE_SCREEN) {
+        if (!c->postTried && c->bitgdi) {
+            c->postTried = 1;
+            c->postWhole = (u32)rlibrary_lookup(&c->bitgdi, BITGDI_UPDATE_ALL);
+            log_event(c, NOTE_POST_FN, c->postWhole);
+            log_block(c);
+        }
+        if (c->postWhole) {
+            typedef void (*UpdateAll)(void *);
+            ((UpdateAll)c->postWhole)(self);
+            return;
+        }
     }
     ((Update)c->screenUpdate)(self, region);
 }
@@ -6884,6 +6972,11 @@ static u32 load_and_start()
             nm[3] == 'c' && nm[4] == 'o' && nm[5] == 'c' && nm[6] == 't' &&
             nm[7] == 'l') {
             ctx->eikcoctl = libs[i];
+        }
+        // bitgdi, for the no-argument Update that posts the whole screen.
+        if (kShimDllLen[i] >= 6 && nm[0] == 'b' && nm[1] == 'i' && nm[2] == 't' &&
+            nm[3] == 'g' && nm[4] == 'd' && nm[5] == 'i') {
+            ctx->bitgdi = libs[i];
         }
     }
     if (!ctx->avkon) PANIC(CAT_LIB, -100);

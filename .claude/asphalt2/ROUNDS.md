@@ -298,6 +298,9 @@ them, and say so.
 | E243 | build 174 packaged, installed over an emptied tree and run from what the installer left -- the multi-resolution work end to end | 27338 | `--` | **The package carries all of it and nothing regressed.** `Package Asphalt 2 registering with UID: 0xe0001006`, `EOpText` processed, `Installation done!`, the directory holding `6rbc.bin` and no `6rbc.app`, and `\resource\apps\` holding `gate6.rsc`, `gate6.mbm` and `gate6.mif`. Run from the installed state: **aspect by default at 230x272 (5,48), -0.1% aspect error, 81.5% of the screen**, inset 48 from Avkon, 2,030 frames, heap 6.87 MB, the soundtrack opened and `Open complete` from the MDA patch, both image opens on `6rbc.bin`, no fault. Same 40 payloads as build 173. This is the build round 87 tests |
 | E244 | round 87 follow-up: the status pane taken out of the way -- SetFullScreenApp plus CEikStatusPane::MakeVisible(EFalse), with IsVisible asked afterwards and the inset dropped to zero only on the pane's own say-so | 44 | `0x0` | **It kills the app: 44 records, zero frames, an access violation at address 0.** All three entry points resolved -- `CAknAppUiBase::SetFullScreenApp` at `0x8141338d`, `CAknAppUi::StatusPane` at `0x81413da7`, `CEikStatusPane::MakeVisible` at `0x81500251` -- and `StatusPane()` handed back a plausible object at `0x700e68`. The log then stops, with the `MakeVisible` address as its last record and no `NOTE_PANE_GONE`, so the fault is in the call itself rather than in the lookup. **The value of the bench here is exactly this: it cannot show the band, but it can show a call that kills the app, and it did so before a phone saw it.** Split into two flags and bisected in E245. Not a repeat of round 77, which tried the `ENoScreenFurniture` construction flag rather than touching the pane object |
 | E245 | bisecting E244: SetFullScreenApp alone, MakeVisible off, with a flush either side of the call | 19070 | `--` | **`SetFullScreenApp` alone is safe; `MakeVisible` is the killer.** With `PANE_MAKE_INVISIBLE` off: the lookup resolves to `0x8141338d`, the call **returns** (`NOTE_PANE_STEP` 1), and the run goes 1,580 frames over 19,070 records with no fault. So E244's crash is entirely `CEikStatusPane::MakeVisible`, which is left in the source switched off with its result recorded beside it -- the lookups all resolve and `StatusPane()` hands back a live-looking `0x700e68`, so the next idea starts from a known position rather than from scratch. Most likely that pane belongs to an app UI Avkon set up more thoroughly than our synthetic one. **What the bench cannot say is whether the band actually goes**, because the emulator paints no status pane (E173); `EMainPane` still reports 48 afterwards, which is a layout-table lookup rather than a live measurement and proves nothing either way. The theory this supports: under DSA our writes reach the framebuffer, but the window server restores whatever lies outside the app's own region, and `SetFullScreenApp` is the call that makes that region the whole screen |
+| E246 | build 176: post the whole screen -- CFbsScreenDevice::Update(void) (bitgdi 59) in place of Update(region), plus the posted region written out | 50249 | `--` | **The ordinal resolves and the run is clean: 3,336 frames, no fault.** `CFbsScreenDevice::Update(void)` came back non-null (`0x804848b9`) through the bitgdi RLibrary, and every frame now posts the whole device instead of the region the game hands over. Two independent checks say the ordinal is right on a real ROM as well: the shim already reaches bitgdi **58** for `Update(const TRegion &)` and **52** for `SetAutoUpdate(TInt)`, both of which work on the phone, and the source release numbers those two the same way it numbers 59. The region decode, though, is **wrong and was caught here**: `TRegion` is three words, not four, so the rectangles were read one word late and the first corner came out at x=30536. The header it did capture is real -- `iCount 1, iError 0, iAllocedRects 1` -- so the game posts **one rectangle** a frame, which is what the theory needs. Rewritten to send ten raw words down and decode on the host; re-run as E247. Not a repeat of E240/E243 (layout and packaging, which never touched the posting call) or E244/E245 (the status pane itself, which is the wrong object entirely) |
+| E247 | build 176 again: the posted region written out as ten raw words, decoded on the host instead of on the phone | 47364 | `--` | **The picture still reaches the screen through the new call, and the region's shape is now known.** 3,249 frames, no fault, and a screenshot taken 75 seconds in shows the splash rendering normally at 30 FPS -- so `CFbsScreenDevice::Update(void)` is a working substitute for `Update(const TRegion &)` and the change costs nothing visible on the bench. The ten words are `1, 0, 1, 5, 0x008d7748, 0, 0, 0, 0, 40`, which reads exactly as the source says an `RRegion` is laid out: `TRegion` is three words (`iCount 1`, `iError 0`, `iAllocedRects 1`) and `RRegion` adds `iGranularity` -- 5, its documented default -- and `iRectangleList`, the heap pointer. **So the game posts one rectangle a frame and it is on the heap at word four**, not at word three where E246 looked for it. The rectangle itself still has to be followed; E248 does that. What the bench cannot show either way is the band, because a framebuffer it scans out directly has no posting step to leave a region out of -- the phone is the only instrument for that half |
+| E248 | build 176, third cut: the posted rectangle followed through iRectangleList at word four | 37430 | `--` | **The rectangle reads, and on the bench it is the whole screen: `(0,0)` to `(240,320)`.** 2,699 frames, no fault, one rectangle a frame. That is the reading the theory predicts here and it is why the bench has never shown the band: with nothing above the game's window, the region the window server derives covers everything, so posting it or posting the device comes to the same picture. **The instrument is now good enough to settle the question on the phone in one round.** If an N95 log says `(0,58)` to `(240,320)` -- the main pane rect Avkon already reported in round 87 -- then the top 58 rows were written and never posted, which is the whole of the band, and `Update(void)` is the fix. If it says `(0,0)` the theory is wrong and the band is something else. Either way the log answers it without anyone reading a photograph. Not a repeat of E246 (wrong word offset) or E247 (header only, rectangle not followed) |
 
 <!-- EMURUN -->
 
@@ -383,6 +386,7 @@ spot as the game's behaviour -- the same mistake, for the fifth time.
 | 85 | **build 172** -- the deallocators doing their job again | several races on the N95 | **No crash, not once.** The user played several races end to end | **The crashes were `LEAK_EVERYTHING`, and they are gone.** Nothing else in build 172 differs from 171, so this is a clean single-variable round: the three deallocation ordinals stopped being answered by a do-nothing function, the heap fell from 51.1 MB to 6.5 MB (E223 against E224), and the failure mode disappeared. It confirms the whole chain read out of the bench -- 26,648 cells never freed, zlib's own 32 KB window per `uncompress` the largest single consumer at 32.1 MB, `Z_MEM_ERROR` flattened to -4 by `0x33a7c`, `User::Leave(-4)` -- without a single log having to come back off the phone. Several races is also the test the bench could not do: it plays one, and the leak was cumulative, so this is the case that would have failed worst |
 | 86 | **a third party's build-172 log**, 8 minutes of play on their phone, sent with a claim that the game "can still crash from out of memory" | 1 log of 171,261 records (two others sent with it are pre-172 and carry no heap data at all) | **No memory problem of any kind, and the run ends somewhere much more specific.** Heap peak **6.80 MB** across 227 samples, oscillating and falling between races, never a trend | **The claim is not supported, and the log says something better.** 8 min 06 s, 14,547 frames at ~30 fps, 7,361 key events, three race cycles. **97.8 MB asked for cumulatively** -- 68.2 MB of it zlib's `calloc` at `+0x1166c0` -- against a heap that never exceeds 6.80 MB: about 91 MB allocated and given back, which is the quarantine working continuously rather than once. `CMdaAudioOutputStream::Open` called **once** in eight minutes, so no stream leak either. No zlib failure, no `Leave`, no `LeaveNoMemory`, no `Panic`. The run ends **27 records into a music track change byte-identical to the five before it**, immediately after `Stop` returned and before the `RMessage::Complete` that follows it every other time -- and because the MDA proxy calls `log_block` on every return, that tail is a real flush, not a truncation. The death is inside the 255 records after it, which is the second or two between a race ending and the results screen that writes `user.dat`. **Three things build 172 could not have seen, now fixed in 173 (E226):** a null from an allocator (`WRAP_ALLOCATORS` was off), a heap spike between one-second samples, and free *system* RAM, which is what an allocation actually fails on |
 | 87 | **build 174** -- the multi-resolution work: five modes on hold-C, aspect by default, the inset from Avkon | 1, plus a video | **The picker works: cycling, and the choice persists across launches.** One thing wrong -- **full-screen mode still leaves a band across the top**, so it is not full screen | **The gesture and the persistence are confirmed on hardware, and the band is identified from the video.** A frame lifted out of it shows a **smooth gradient with none of the dither the game's own picture has**, and a hard edge where the picture starts: that is an Avkon skin background, so the band is the **status pane's own window** painting over ours -- the mechanism round 76 established and round 77 showed `ENoScreenFurniture` does not stop. The layout is innocent: `screen_fit` puts full screen at 240x320 from (0,0) and the harness agrees, so the pixels are written and then covered. **The inset is not answered by this round** -- and an earlier version of this row said it was. Nothing was reported about it because nothing was asked about it: the round's report was about the band, not a checklist being worked through, so silence there is silence, not a pass. What Avkon answers on an N95 is recorded in the log (`NOTE_INSET_RECT` 821, `NOTE_INSET_TAKEN` 822) and settles in one line as soon as a log comes back; until then 48-vs-56 on that phone is unmeasured. Fixed for build 175 with `CAknAppUiBase::SetFullScreenApp`, after the bench caught the obvious-looking companion call killing the app outright (E244/E245) |
+| 88 | **build 176** -- the whole screen posted (`CFbsScreenDevice::Update(void)`, bitgdi 59) instead of the region the game hands over, and that region written into the log | pending | pending | **What it is for:** full-screen mode should now actually cover the screen. The log settles the mechanism whatever the picture does: `NOTE_RGN_HDR` (790) and `NOTE_RGN_RECT` (791) carry the rectangle the game posts with, `NOTE_POST_FN` (792) what the new ordinal resolved to. The bench reads `(0,0)`-`(240,320)` (E248); an N95 reading `(0,58)`-`(240,320)` proves the band was a posting boundary |
 
 ## Round 74 -- the pitch is padding, and the screen is what it says
 
@@ -594,6 +598,70 @@ which says nothing about this: the question is whether the band is another
 window showing through where ours does not reach, and only a full-screen
 window answers it. If the band goes, the inset can go to 0 and the picture
 becomes 240x320 with nothing left over.
+
+**Answered, and the answer is no.** Round 87's log has the full-screen
+window going in (`SetExtent` to 240x320, recorded) and the band still there,
+so it is not a window showing through where ours does not reach. See "The
+band is a posting boundary" below.
+
+### The band is a posting boundary, not a window drawn over us
+
+Round 87's photograph of build 175 settled two things at once, and one of
+them was not what the round was for.
+
+The one it was for: the band survives `CAknAppUiBase::SetFullScreenApp`. The
+log says the call resolved (`0x82cdb98d`) and returned, and the band is
+still 58 rows of the phone's own theme gradient.
+
+The one it was not for: **Avkon on the N95 answers 58**, not the 48 a 5320
+reports and not the 56 the port hardcoded for four rounds. `NOTE_INSET_RECT`
+has the main pane at `(0,58)` to `(240,293)` and `NOTE_INSET_TAKEN` has 58
+adopted, and `gate6.cfg` carries `mode 4, inset 58` back off the phone. So
+the risk build 174 took -- that a device might report less than its real band
+and tuck the top of the picture under it -- did not happen here: 58 is
+*more* than the 56 that worked, and nothing is hidden. That is the question I
+should have asked outright in round 87 rather than inferred from silence.
+
+**And the band itself now has an explanation that fits every observation.**
+The game calls `CFbsScreenDevice::SetAutoUpdate(EFalse)` once -- the one call
+in the whole run that changes what the display driver does -- and from then
+on nothing reaches the panel until it is asked. It asks once a frame, with
+`CFbsScreenDevice::Update(const TRegion &)`, and the region it hands over is
+its direct-screen-access drawing region: the *visible* part of its window, as
+the window server computed it. Whatever the status pane occupies is not in
+it. So the top of the framebuffer is written every frame and **posted
+never**, and the panel keeps showing what the window server put there before
+the game took the screen.
+
+Everything lines up with that and nothing argues against it:
+
+* the band is **stable**, not flickering -- nothing is fighting us for those
+  pixels, they are simply not being sent;
+* the picture is **chopped, not squeezed** -- full-screen mode computes
+  240x320 at `(0,0)`, the log says so and the harness agrees, so the pixels
+  exist;
+* it survived `ENoScreenFurniture` (round 77) and `SetFullScreenApp` (round
+  87), because neither changes which region gets posted;
+* the band is **exactly** the 58 rows Avkon calls the status pane; and
+* **the bench has never once reproduced it** (E244 noted that and treated it
+  as a limitation) -- because a framebuffer the emulator scans out directly
+  has no posting step for a region to be left out of.
+
+The fix is one ordinal. bitgdi **59** is `CFbsScreenDevice::Update(void)`,
+the overload that posts the whole device: same call site, same frequency,
+22% more pixels on a 240x320 panel, no region to leave anything out of, and
+the original call still stands if the lookup comes back null. Two checks say
+the ordinal is right on a real ROM and not only in the source release: the
+shim already reaches bitgdi **58** for `Update(const TRegion &)` and **52**
+for `SetAutoUpdate(TInt)`, both working on the phone, and the source numbers
+all three the same way.
+
+Build 176 does that, and also writes the posted region down so the phone can
+confirm or kill the theory rather than a photograph deciding it. On the bench
+the rectangle is `(0,0)` to `(240,320)` (E248) -- the whole screen, which is
+what a machine with nothing above the game's window should report. **If the
+N95 says `(0,58)` to `(240,320)`, the band was never anything but a region
+boundary.**
 
 ### Not on the table: making the game render 240x320
 
