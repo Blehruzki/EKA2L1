@@ -18,6 +18,9 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <cstdio>
+#include <cstdlib>
+
 #include <services/window/io.h>
 #include <services/window/op.h>
 #include <services/window/window.h>
@@ -1317,6 +1320,29 @@ namespace eka2l1::epoc {
 }
 
 namespace eka2l1 {
+    // `EKA2L1_SCREEN=WxH` overrides the size of every screen mode the window
+    // server builds from `wsini.ini`. It exists for testing a guest against a
+    // panel this installation has no ROM for: the Asphalt 2 port in
+    // `.claude/asphalt2` has to fit a fixed 176x208 picture onto 240x320,
+    // 320x240 landscape, 352x416 and 360x640, and only one S60v3 ROM is
+    // installed. Read once; an unparseable or non-positive value is ignored,
+    // so the variable can be left set to something harmless.
+    static const vec2 &screen_size_override() {
+        static const vec2 chosen = [] {
+            vec2 v{ 0, 0 };
+            const char *spec = std::getenv("EKA2L1_SCREEN");
+            if (spec) {
+                int w = 0, h = 0;
+                if (std::sscanf(spec, "%dx%d", &w, &h) == 2 && w > 0 && h > 0) {
+                    v.x = w;
+                    v.y = h;
+                }
+            }
+            return v;
+        }();
+        return chosen;
+    }
+
     std::string get_winserv_name_by_epocver(const epocver ver) {
         if (ver < epocver::eka2) {
             return "Windowserver";
@@ -1546,6 +1572,19 @@ namespace eka2l1 {
                     scr_mode.style = styles[0];
                 } else {
                     scr_mode.style = "";
+                }
+
+                // A screen-size override, for testing a guest against panels
+                // this build has no ROM for. The Asphalt 2 port (see
+                // .claude/asphalt2) has to lay a fixed 176x208 picture out on
+                // 240x320, 320x240 landscape, 352x416 and 360x640, and the
+                // only S60v3 ROM installed here is a 240x320 one -- so without
+                // this there is no way to exercise the scaler end to end short
+                // of buying each phone. EKA2L1_SCREEN=WxH rewrites the size of
+                // every mode; rotation and style are left as the ini has them.
+                if (screen_size_override().x && screen_size_override().y) {
+                    scr_mode.size.x = screen_size_override().x;
+                    scr_mode.size.y = screen_size_override().y;
                 }
 
                 scr.modes.push_back(scr_mode);

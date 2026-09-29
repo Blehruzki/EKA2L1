@@ -35,6 +35,75 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### Phase 1: the emulator can pose as a landscape panel, and not much else
+
+*E231-E233. `EKA2L1_SCREEN=WxH`, 39 lines in EKA2L1's `window.cpp`.*
+
+The bench has one S60v3 ROM (RM-409, 240x320) and the two N-Gage ROMs cannot
+run this port, so without help there is no way to exercise a scaler against a
+panel short of buying the phone. The override rewrites every screen mode's
+size after `wsini.ini` is parsed, reads its value once from the environment,
+and does nothing at all when unset.
+
+**It reaches exactly as far as the ROM's own Avkon layout data.**
+
+| panel | result |
+|---|---|
+| 240x320 | native, unchanged |
+| **320x240** | **runs the full 90 seconds** -- it is the native mode rotated, so Avkon has layouts for it |
+| 352x416 | `AVKON` panic **61** during framework construction, before any of our code |
+| 360x640 | the same, then `Corrupted graphics command list! Emulation halt.` |
+
+Avkon picks its layout tables by screen size, and a ROM carries them only for
+the resolutions its device has. Overriding the width and height does not
+conjure matching layout data. The failure is at least honest -- it stops
+rather than quietly handing the guest a framebuffer of the wrong size.
+
+So the override is worth keeping for the one case it does cover, and that case
+is the valuable one: **320x240 landscape is precisely what hardware cannot
+test here**, since the three phones available are all 240x320. Everything
+else belongs to the host harness, which is promoted from supplement to the
+primary coverage mechanism.
+
+#### What the landscape run said
+
+Fill mode, which build 173 ships as the default:
+
+    panel             320 x 240   (usable 320 x 184 below a 56-row inset)
+    picture drawn     320 x 184 at (0, 56)
+    aspect            1.7391 vs source 0.8462   (+105.5%)
+    screen used       76.7%
+    *** at or past the 320-entry limit of mapX/mapY: clamped ***
+
+Three of the four problems the plan predicted, in one run:
+
+- **the aspect blows out by 105.5%** on a landscape panel, which settles the
+  default the other way from build 173 and confirms aspect-correct;
+- the picture sits **exactly on the 320-entry limit** of `mapX`/`mapY`, so a
+  wider panel clamps;
+- the **56-row inset**, measured by dwelling on a portrait N95 in rounds 74 to
+  78, eats **23%** of a 240-tall screen. It is a per-device constant being
+  applied as a universal one, which is what phase 1 of the plan said to
+  replace with Avkon's own answer.
+
+`srcOrigin` and `srcPitch` come through at 16 and 176, unchanged.
+
+#### And a third reused note code
+
+`screenfit.py`, written to read that block, got it wrong on first use:
+**840 is both `NOTE_SCREEN_DST` and `NOTE_THREAD_ARG`**, and 841 is both
+`NOTE_NGAGE` and `NOTE_THREAD_NAME`. Taking "the last record with code 840"
+reads a thread argument and reports a top inset of 1 and mode 0 when the
+truth is 56 and mode 2. It now matches the exact consecutive run
+`screen_layout` writes -- three FIT, one SRC, one DST -- so a reused code
+cannot be mistaken for part of it.
+
+It also compared `offY + dstH` against the FIT record's height and reported
+the picture hanging off the bottom of a panel it fits exactly. Those two
+numbers are measured from different origins: the FIT height is the panel
+*minus* the inset, while `offY` starts at the top of the whole screen and
+already includes it.
+
 ### The renderer, not the port: a strip that looked like wrapping
 
 *Phase 0, after E230. Spotted by the user in a frame I had rendered and
