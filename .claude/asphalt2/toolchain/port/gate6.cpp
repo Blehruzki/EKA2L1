@@ -213,6 +213,14 @@ enum { BOX_EVERY_TRACED = 1024 };
 // A tick either side of the game's RunL, so a long frame can be found and
 // read. Costs two syscalls and two records a frame and nothing on disk.
 enum { CLOCK_EVERY_FRAME = 1 };
+// Room for the widest panel worth supporting. 320 was the old size and it was
+// not a decision -- it happened to be enough for a 240x320 phone, and on
+// anything larger an array bound decided how big the picture was drawn rather
+// than the screen: a 5800 got a 320x320 square out of a 176x208 source
+// (E235). Two kilobytes of Context buys every panel up to 1024 pixels.
+// The entries stay one byte because they index the source, which is 208 tall
+// at its largest.
+enum { MAP_MAX = 1024 };
 enum { LEAK_EVERYTHING = 1, FREE_BACK_FROM = 4096, QUARANTINE_CELLS = 512 };
 enum { CENSUS_ALLOCS = 1, ALLOC_BIG = 1 << 16, ALLOC_BIG_MAX = 96 };
 enum { HIST_BUCKETS = 24 };
@@ -843,8 +851,8 @@ struct Context {
     u32 mode;               // how the picture is fitted: 1:1, shape-kept, or filled
     u32 clearPending;       // blank the framebuffer once, after any change
     u32 dstW, dstH;         // how big the picture is drawn
-    u8 mapX[320];           // destination column -> source column, Bresenham
-    u8 mapY[320];           // and the same down
+    u8 mapX[MAP_MAX];       // destination column -> source column, Bresenham
+    u8 mapY[MAP_MAX];       // and the same down
     u32 boxData[BOX_WORDS];
     u32 pathIndex;          // which layout the game was loaded from
     u32 dataDrive;          // and the drive it is really on, as a letter
@@ -950,6 +958,7 @@ struct Context {
     u32 realBpp;            // and bits per pixel: 16 on most phones, 32 here
     u32 offX, offY;         // where the game's picture sits inside it
     u32 shots;              // frames seen, for the one-shot framebuffer dump
+    u32 modeShot;           // how many modes the cycling test has captured
     u32 srcPitch;           // pixels between the game's rows, 176 or 192
     u32 fileOpenThunk;
     u32 allocHist[HIST_BUCKETS];    // calls per power-of-two size band
@@ -2207,6 +2216,15 @@ enum { OWN_SCREEN = 1, SCREEN_4K = 1, GAME_W = 176, GAME_PITCH = 192, GAME_H = 2
 // 0 = off. Set it to a frame number to drop that frame's raw buffer into
 // C:\g6code.bin, which is how the stride and the overflow were measured.
 enum { DUMP_FRAME = 0, DUMP_FRAME_BYTES = 240 * 240 * 2 };
+// Test-only, and both off in anything shipped. MODE_CYCLE_FRAMES advances the
+// picture mode every so many frames so that one run exercises all four, and
+// DUMP_SCREEN writes the **composited** framebuffer -- what the panel actually
+// shows, after the blit -- once per mode. Together they answer "what does each
+// mode look like on this panel" in a single run instead of four builds.
+// Each dump is preceded by a four-word descriptor (width, height, pitch,
+// bits) so the renderer does not have to be told the geometry and cannot be
+// told it wrongly, which is how phase 0's renderer went wrong.
+enum { MODE_CYCLE_FRAMES = 0, DUMP_SCREEN = 0, DUMP_SCREEN_FIRST = 240 };
 
 // A breadcrumb goes into the same ring as the imports, so the two interleave
 // and the order is the order things happened in. The marker reads as 900 and
@@ -4344,7 +4362,7 @@ enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
 // of it is taken out of the picture.
 #include "screen_fit.h"
 enum { MODE_ONE_TO_ONE = FIT_ONE_TO_ONE, MODE_SHAPE = FIT_SHAPE,
-       MODE_FILL = FIT_FILL, MODE_COUNT = FIT_MODES };
+       MODE_FILL = FIT_FILL, MODE_INTEGER = FIT_INTEGER, MODE_COUNT = FIT_MODES };
 enum { SCREEN_MODE = MODE_FILL, KEY_MODE = '8' };
 enum { INSET_DEFAULT = 56 };
 
@@ -4738,6 +4756,22 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
                 }
             }
         }
+    }
+    if (MODE_CYCLE_FRAMES && c->frames > (u32)DUMP_SCREEN_FIRST
+        && c->frames % (u32)MODE_CYCLE_FRAMES == 0
+        && c->modeShot < (u32)MODE_COUNT) {
+        // Snapshot this mode, then move to the next one. The picture is
+        // dumped before the change so the descriptor and the pixels agree.
+        if (DUMP_SCREEN && c->realScreen && c->realPitch && c->screenH) {
+            u32 head[4];
+            head[0] = c->screenW; head[1] = c->screenH;
+            head[2] = c->realPitch; head[3] = c->realBpp;
+            dump_region(c, (const u8 *)head, sizeof head);
+            dump_region(c, c->realScreen, c->realPitch * c->screenH);
+        }
+        c->modeShot++;
+        c->mode = (c->mode + 1) % (u32)MODE_COUNT;
+        screen_layout(c);
     }
     ((Update)c->screenUpdate)(self, region);
 }

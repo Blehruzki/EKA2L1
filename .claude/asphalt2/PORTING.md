@@ -35,6 +35,67 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### Phase 3: four modes, and an exact one that no longer crops
+
+*E236-E239.*
+
+Four changes to `screen_fit.h`, each one gated by the harness before it was
+written:
+
+- **`MAP_MAX` 320 -> 1024.** The old size was never a decision; it happened to
+  be enough for a 240x320 phone, and on anything larger an array bound decided
+  how big the picture was drawn. Clears all 76 clamp failures.
+- **An integer mode.** The largest whole multiple that fits, falling back to
+  1x where none does. On a 5800 that is a pixel-exact **352x416 filling 63.6%
+  of the screen**; on 240x320 there is no room for 2x and it is 1:1 exactly.
+- **Exact modes no longer crop.** `dstH = sh < bh ? sh : bh` truncated
+  whenever the usable height was under 208. 1:1 and integer now centre in the
+  **whole panel** when that is the only way to show all of the source, letting
+  the band overlap the top instead. Overlapping the top of a picture can be
+  undone by switching mode; a row that was never drawn cannot.
+- **Scaled modes centre vertically** instead of bottom-anchoring. The old
+  behaviour was chosen on an N95, where those modes leave no vertical slack at
+  all, so it never showed there -- and on a 5800 it dropped the picture 160
+  rows for no reason. The harness confirms it is a no-op on every 240x320
+  layout.
+
+The gate is `runfit.sh`: it exits non-zero while any of the ~1,500 layouts
+fails, and it is clean.
+
+#### Seeing it rather than describing it
+
+`MODE_CYCLE_FRAMES` advances the mode every 150 frames and `DUMP_SCREEN`
+writes the **composited framebuffer** -- what the panel shows after the blit,
+letterbox and all -- once per mode. Both are test-only and off in anything
+shipped. Each dump carries a four-word descriptor (width, height, pitch,
+bits) ahead of the pixels, so the renderer takes its geometry from the data:
+phase 0's renderer was told its geometry separately, got it wrong by sixteen
+columns, and drew a convincing artefact.
+
+| | 240x320 | 320x240 landscape |
+|---|---|---|
+| fill | 240x264, +7.4% | **320x184, +105.5%** -- the logo squashed flat |
+| aspect | 223x264, 76.7% | 155x184, 37.1% |
+| 1:1 | 176x208, 47.7% | **176x208**, 47.7% (was 176x184 before phase 3) |
+| integer | 176x208 -- no room for 2x | 176x208 -- likewise |
+
+**A finding that bears on the default.** On a landscape panel **1:1 is the
+larger picture than aspect** -- 47.7% against 37.1% -- because an exact mode
+may sit above the status band to avoid cropping while a scaled one must stay
+below it. On 240x320 aspect is the larger. So "aspect by default" is right for
+the three phones in hand and is not obviously right everywhere, which is an
+argument for choosing the default per panel rather than fixing it.
+
+#### And a harness of my own making
+
+E237 is a spoiled run kept in the record: six frames instead of thousands, no
+panic, no fault. I had started it while the previous run's emulator was still
+alive -- two instances contended, and then the first one's `emurun.sh` reached
+its `pkill -x eka2l1_qt` and killed the second. **`emurun.sh` must not be
+invoked while another run is in flight.** An absurdly short result is the
+shape that has misled this project before, so it gets checked rather than
+read.
+
 ### Phase 2: the scaler's sums, on the host, over every panel
 
 *E234-E235. `screen_fit.h` and `fittest.cpp`.*

@@ -39,7 +39,7 @@ static const Panel kPanels[] = {
     { "exactly the source",     176, 208 },
 };
 
-static const char *kModeName[FIT_MODES] = { "1:1", "aspect", "fill" };
+static const char *kModeName[FIT_MODES] = { "1:1", "aspect", "fill", "int" };
 
 // Failures are collapsed by (panel, mode, reason, whether the clamp was in
 // force), because the inset sweep runs the same case fifty times and a wall
@@ -114,8 +114,11 @@ static void run(const Panel &p, unsigned mode, unsigned inset, unsigned mapMax,
     check(f.offY + f.dstH <= p.h, "picture runs off the bottom", p, mode, f);
 
     // 2. It clears the status band it was told to.
-    check(f.offY >= appliedInset || f.dstH == 0, "picture starts above the inset",
-          p, mode, f);
+    // An exact mode is allowed to sit above the band, but only when that is
+    // the one way to show the whole source; every other mode must stay clear.
+    if (!(fit_is_exact(mode) && p.h > appliedInset && p.h - appliedInset < f.srcH))
+        check(f.offY >= appliedInset || f.dstH == 0, "picture starts above the inset",
+              p, mode, f);
 
     // 3. Every map entry addresses a real source pixel. An entry past the
     //    source reads another row; an entry past 255 cannot be stored at all.
@@ -146,18 +149,23 @@ static void run(const Panel &p, unsigned mode, unsigned inset, unsigned mapMax,
     if (mode == FIT_ONE_TO_ONE) {
         for (unsigned i = 0; i < f.dstW; i++)
             if (mapX[i] != i) { check(false, "1:1 does not map pixel for pixel", p, mode, f); break; }
-        // 1:1 means all of it, not just the part that fits below the band.
-        // `dstH = sh < bh ? sh : bh` truncates, so on any panel whose usable
-        // height is under 208 the bottom of the frame is simply not drawn --
-        // and the bottom of this game's frame is where the HUD lives. Only
-        // counted when the panel itself is tall enough and the inset is what
-        // did the cropping; a panel genuinely shorter than the source is
-        // physics, not a defect.
-        check(f.dstH == f.srcH || p.h < f.srcH,
-              "1:1 crops the source: the inset, not the panel, is too small",
-              p, mode, f);
-        check(f.dstW == f.srcW || p.w < f.srcW,
-              "1:1 crops the source horizontally", p, mode, f);
+    }
+    if (fit_is_exact(mode)) {
+        // An exact mode must show all of the source unless the panel itself
+        // is genuinely too small. Before phase 3 it cropped whenever the
+        // usable height was under 208, losing 56 rows -- over a quarter of
+        // the frame -- on a panel exactly the source's own size.
+        check(f.dstH >= f.srcH || p.h < f.srcH,
+              "an exact mode crops the source vertically", p, mode, f);
+        check(f.dstW >= f.srcW || p.w < f.srcW,
+              "an exact mode crops the source horizontally", p, mode, f);
+        // And it must be a whole multiple, or the pixels are not exact.
+        if (f.dstW >= f.srcW && f.dstH >= f.srcH) {
+            const unsigned nx = f.dstW / f.srcW, ny = f.dstH / f.srcH;
+            check(f.dstW == nx * f.srcW, "width is not a whole multiple", p, mode, f);
+            check(f.dstH == ny * f.srcH, "height is not a whole multiple", p, mode, f);
+            check(nx == ny, "the two axes scale differently", p, mode, f);
+        }
     }
     if (mode == FIT_SHAPE && f.dstW && f.dstH) {
         // Keeping the shape means the ratio survives. One output pixel of

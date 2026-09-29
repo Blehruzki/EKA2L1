@@ -24,6 +24,17 @@ import struct, sys
 FIT, SRC, DST, FMT = 838, 839, 840, 837
 
 
+def map_max():
+    """MAP_MAX from gate6.cpp, so this cannot drift from what ships."""
+    import os, re
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gate6.cpp')
+    try:
+        m = re.search(r'enum \{ MAP_MAX = (\d+) \}', open(src).read())
+        return int(m.group(1)) if m else 320
+    except Exception:
+        return 320
+
+
 def main(path):
     d = open(path, 'rb').read()
     ev = [struct.unpack_from('<II', d, 8 * i) for i in range(len(d) // 8)]
@@ -55,8 +66,11 @@ def main(path):
         print('  aspect            %.4f vs source %.4f   (%+.1f%%)'
               % (dw / dh, 176 / 208, 100.0 * ((dw / dh) / (176 / 208) - 1)))
     print('  screen used       %.1f%%' % (100.0 * dw * dh / (bw * panel_h)))
-    if dw >= 320 or dh >= 320:
-        print('  *** at or past the 320-entry limit of mapX/mapY: clamped ***')
+    # MAP_MAX, which phase 3 raised from 320 to 1024. Read it out of the
+    # source rather than repeating it here: this check went stale the moment
+    # the constant moved and reported a clamp that no longer existed.
+    if dw >= map_max() or dh >= map_max():
+        print('  *** at or past the %d-entry limit of mapX/mapY: clamped ***' % map_max())
     print('  source origin/pitch %d / %d' % (src >> 16, src & 0xFFFF))
     print('  first pixel offset  %d' % first)
 
