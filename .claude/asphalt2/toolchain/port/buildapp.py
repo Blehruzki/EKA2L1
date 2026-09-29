@@ -52,7 +52,7 @@ def sh(*args):
 
 
 def build(name, uid3, caption, out, imports=(), sources=None, icon=None,
-          extra=(), install_text=None, vendor='EKA2L1 port', **e32):
+          extra=(), install_text=None, vendor='EKA2L1 port', incdir=None, **e32):
     """imports: [(dll name, [stub symbol names])], resolved via the `_ord` labels.
 
     icon          a local .mbm to ship as the application's icon
@@ -62,9 +62,13 @@ def build(name, uid3, caption, out, imports=(), sources=None, icon=None,
     p = lambda n: os.path.join(out, n)
     cpp = sources or (name + '.cpp',)
     objs = []
+    # `incdir` is where the per-game header lives: one game's generated
+    # `gate_imports.h` and hand-written `game.h` sit in its own directory, so
+    # the same gate6.cpp builds against whichever game is named.
+    inc = ['-I' + incdir] if incdir else []
     for src in cpp:
         obj = p(os.path.basename(src) + '.o')
-        sh('clang', *CXXFLAGS, '-c', '-o', obj, os.path.join(HERE, src))
+        sh('clang', *CXXFLAGS, *inc, '-c', '-o', obj, os.path.join(HERE, src))
         objs.append(obj)
     asm = p(name + '.s.o')
     sh('clang', '--target=armv5-none-eabi', '-c', '-o', asm, os.path.join(HERE, name + '.s'))

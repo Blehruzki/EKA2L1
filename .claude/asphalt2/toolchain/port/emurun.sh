@@ -13,17 +13,23 @@ S="${EMUSCRATCH:-/tmp/claude-0/-home-user-EKA2L1/ec0d1fd1-56fb-5d4c-9116-ef9f3a4
 D=/root/.local/share/EKA2L1/data/drives/e
 C=/root/.local/share/EKA2L1/data/drives/c
 CHANGE="${1:-(not stated)}"
+# Which game to build and launch. `games/<name>/` holds its generated shim and
+# import indices and its hand-written game.h; the app UID comes out of that
+# file so the two cannot disagree about which application to run.
+GAME="${GAME:-asphalt2}"
+UID3=$(sed -n 's/.*GAME_APP_UID3[[:space:]]*\(0x[0-9A-Fa-f]*\).*/\1/p' "$P/games/$GAME/game.h")
+[ -n "$UID3" ] || { echo "no GAME_APP_UID3 in games/$GAME/game.h"; exit 1; }
 
 export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe QT_QPA_PLATFORM=xcb DISPLAY=:99
 pgrep -x Xvfb >/dev/null || { nohup Xvfb :99 -screen 0 1280x900x24 >"$S/xvfb.log" 2>&1 & sleep 3; }
-(cd "$P" && python3 build_gate6.py "$S/out") || exit 1
+(cd "$P" && python3 build_gate6.py "$S/out" "$GAME") || exit 1
 cp "$S/out/gate6.exe" $D/sys/bin/gate6.exe
 cp "$S/out/gate6.rsc" $D/resource/apps/gate6.rsc
 cp "$S/out/gate6_reg.rsc" $D/private/10003a3f/import/apps/gate6_reg.rsc
 # KEEPOLD=1 leaves whatever is on the drive alone, which is how the sweep of
 # the old rotated log names is tested: the port has to delete them itself.
 [ -n "$KEEPOLD" ] || rm -f $C/g6box*.log $D/g6box*.dat $C/g6box*.dat
-(cd /home/user/EKA2L1/build/bin && timeout -k 5 -s KILL "${TMO:-120}" ./eka2l1_qt --device RM-409 --run 0xE0001006 >"$S/g6.log" 2>&1)
+(cd /home/user/EKA2L1/build/bin && timeout -k 5 -s KILL "${TMO:-120}" ./eka2l1_qt --device RM-409 --run $UID3 >"$S/g6.log" 2>&1)
 # The emulator does not always go on SIGTERM, and a run left behind holds its
 # memory and a few per cent of a core. Enough of them and a later launch cannot
 # allocate the image -- which is where the G6MEM panics were coming from -- and
