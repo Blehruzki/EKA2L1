@@ -972,6 +972,9 @@ struct Context {
     u32 postWhole;          // ... and its no-argument overload, which posts it all
     u32 postTried;          // the lookup has been made once, however it went
     u32 regionLogs;         // how many posted regions have been written out
+    u32 fullRgn[5];         // an RRegion of ours, covering the whole screen
+    i32 fullRect[4];        // ... and the single rectangle it points at
+    u32 fullRgnReady;       // built once, as soon as the screen size is known
     u16 *gameScreen;        // the 176x208 16bpp framebuffer handed to the game
     u8 *screenBase;         // what ScreenInfo handed back: palette, then pixels
     u8 *realScreen;         // and the 32bpp one the emulator actually shows
@@ -3440,12 +3443,40 @@ enum { IMPORT_SET_AUTO_UPDATE = 45, IMPORT_SCREEN_UPDATE = 47 };
 // reproduced it** -- because a framebuffer the emulator scans out directly
 // has no posting step to leave a region out of.
 //
-// The fix is one ordinal: bitgdi 59 is `CFbsScreenDevice::Update(void)`, the
-// overload that posts the whole device. Same call site, same frequency, 22%
-// more pixels on a 240x320 panel, and no region to leave anything out.
-// If the lookup fails the original call stands, so the worst case is today.
+// **Round 88 confirmed all of this from the phone.** The N95 posts one
+// rectangle a frame and it is `(0,58)` to `(240,320)`; the bench posts
+// `(0,0)` to `(240,320)`. 58 is the same number Avkon gives for the main
+// pane. The band is the part of the framebuffer that is written and never
+// sent, and nothing else.
+//
+// The first attempt at the fix was `CFbsScreenDevice::Update(void)`, bitgdi
+// 59, the overload that posts the whole device. It resolves on the phone
+// (`0x8064a345`) and it **stops the game dead**: six frames, a black screen,
+// and a log that ends nine seconds in with the soundtrack thread playing on
+// as though nothing had happened. Safe on the bench, fatal there.
+//
+// So keep the call the phone is known to be happy with -- the same
+// `Update(const TRegion &)`, same ordinal, same driver path, same frequency
+// -- and give it a **region of our own** covering the whole screen. Only the
+// numbers change. `TRegion::RectangleListW` decides where the rectangles
+// are from the sign of `iAllocedRects`:
+//
+//     if (iAllocedRects >= 0)               return ((RRegion *)this)->iRectangleList;
+//     else if (iAllocedRects & ERRegionBuf) return (TRect *)(this + 1);
+//     return (TRect *)(((RRegion *)this) + 1);
+//
+// and the region the game posts with reads `1, 0, 1, 5, <heap pointer>`,
+// which is the first branch. Ours says the same thing about itself, so
+// bitgdi reads it by the same path.
 enum { BITGDI_UPDATE_ALL = 59 };        // CFbsScreenDevice::Update(void)
-enum { POST_WHOLE_SCREEN = 1, LOG_POSTED_REGION = 1, REGION_LOGS = 2 };
+// Left in the source and **off**. Round 88 is what it cost.
+enum { POST_WHOLE_SCREEN = 0 };
+enum { POST_FULL_REGION = 1, LOG_POSTED_REGION = 1, REGION_LOGS = 2 };
+// iCount, iError, iAllocedRects, iGranularity, iRectangleList -- and 5 is
+// RRegion's own documented default granularity, which is what the game's
+// region carries.
+enum { RGN_COUNT = 0, RGN_ERROR = 1, RGN_ALLOCED = 2, RGN_GRAN = 3,
+       RGN_LIST = 4, RGN_GRAN_DEFAULT = 5 };
 
 // TRegion is three words -- { TInt iCount; TBool iError; TInt iAllocedRects; }
 // -- and where its rectangles live depends on one flag in the third: set
@@ -5142,9 +5173,7 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
         region_log(c, region);
         log_block(c);
     }
-    // Post the whole device rather than the region the game asked for: see
-    // BITGDI_UPDATE_ALL. The region is still what the game drew; it is only
-    // no longer what limits what reaches the panel.
+    // The no-argument overload. Off: it kills the game on an N95 (round 88).
     if (POST_WHOLE_SCREEN) {
         if (!c->postTried && c->bitgdi) {
             c->postTried = 1;
@@ -5157,6 +5186,27 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
             ((UpdateAll)c->postWhole)(self);
             return;
         }
+    }
+    // Post the same way the game does, over the whole screen instead of the
+    // part of its window the status pane leaves it. Built once, and only
+    // once the screen size is known -- before that the game's own region is
+    // the only one there is.
+    if (POST_FULL_REGION && c->screenW && c->screenH) {
+        if (!c->fullRgnReady) {
+            c->fullRect[0] = 0;
+            c->fullRect[1] = 0;
+            c->fullRect[2] = (i32)c->screenW;
+            c->fullRect[3] = (i32)c->screenH;
+            c->fullRgn[RGN_COUNT] = 1;
+            c->fullRgn[RGN_ERROR] = 0;
+            c->fullRgn[RGN_ALLOCED] = 1;    // >= 0, so the list pointer is used
+            c->fullRgn[RGN_GRAN] = (u32)RGN_GRAN_DEFAULT;
+            c->fullRgn[RGN_LIST] = (u32)c->fullRect;
+            c->fullRgnReady = 1;
+            log_event(c, NOTE_POST_FN, (c->screenW << 16) | (c->screenH & 0xFFFF));
+            log_block(c);
+        }
+        region = c->fullRgn;
     }
     ((Update)c->screenUpdate)(self, region);
 }
