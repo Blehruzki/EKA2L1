@@ -6232,3 +6232,86 @@ now, either way.
 And four note codes were added on top of ones already in use -- 870 and 871 are
 `NOTE_RESULT` and `NOTE_RESULT_OF` -- which would have made the decoder lie.
 Caught before the run. 800 to 849 is empty and the new ones live there.
+
+## Is a generic loader viable? The ordinal directory, measured
+
+The port redials: the game asks for an old ordinal, the shim answers with a
+9.x one. For one game that map is 462 entries and every one was looked at.
+A **generic loader** -- one binary that runs any N-Gage title, with the game's
+files supplied separately -- needs the map to cover the whole platform, and
+nobody is going to look at fifty thousand entries. So the question is what
+the error rate of a generated map would be, and whether the errors land in
+functions games actually call.
+
+`toolchain/port/ordcheck.py` measures both halves. It is desk work: no
+device, no emulator run.
+
+### The new side: 96.7% of the platform is in the safe direction
+
+`gen_shim.py` resolves 9.x ordinals out of the Symbian source release. The
+phone runs its own ROM, not the release, and the two disagree about export
+counts almost everywhere -- euser by 317, avkon by 159, efsrv by 70.
+
+That sounds fatal and is not, because **Symbian froze its .def files**: a
+later release appends exports and never renumbers, which is the whole reason
+a 9.1 binary runs on a 9.3 phone. So the sign is what matters, and over the
+153 libraries present in both the RM-409 ROM and the release:
+
+| | libraries | |
+|---|---|---|
+| release == ROM | 79 (51.6%) | identical numbering |
+| release > ROM | 69 (45.1%) | release is newer -- safe under append-only |
+| release < ROM | 5 (3.3%) | release is **older** than the phone |
+
+Every library the port binds to is in the safe direction -- bitgdi +19,
+cone +11, efsrv +70, euser +317, ezlib +14, gdi +45 -- and the five going
+the other way are `bsulinifile`, `epbusm`, `dfprvct2_1`, `drtrvct2_1` and
+`responsemsg`: driver and runtime odds and ends that no game imports.
+
+The architecture already handles the residue. An ordinal the release knows
+and the phone does not is simply absent, and imports resolve through
+`RLibrary::Lookup` at run time rather than a static import section, so it
+comes back **null and gets reported** instead of failing the load. That was
+decided for a different reason in build 4 and it is what makes the loader
+safe to attempt.
+
+### The old side: 100% of what a game actually imports
+
+EKA2L1's `epoc6.def` lists 555 libraries' exports in ordinal order. The only
+authoritative old-side list is `7.0-euseru.def`, so euser is the one library
+that can be scored:
+
+* **86.7%** of all 1,646 positions name the same function outright;
+* **89.2%** once methods reparented in 9.x are counted as hits
+  (`RHeap::AllocL` became `RAllocator::AllocL` at the same ordinal);
+* and of the remainder, inspection shows most are still renames of the same
+  code -- `memclr`/`Mem::FillZ`, `User::Heap`/`User::Allocator`,
+  `RSessionBase::Share`/`DoShare`, `TLex8::Val`/`BoundedVal`;
+* **100% of the 25 euser ordinals Asphalt 2 actually imports. Zero wrong.**
+
+That last line is the one that decides it. The errors are in the tail --
+`TBusLocalDrive::Lock`, `RNotifier::LoadNotifiers` -- not in the allocator,
+the descriptors or the file server.
+
+### Verdict
+
+**Go**, with one honest limit: euser is one library and 25 ordinals is a
+small sample of "what games import". `ordcheck.py` takes image arguments for
+exactly that reason -- point it at more N-Gage binaries as they turn up and
+the sample grows. The measurement to repeat before shipping a loader is the
+old-side score over the union of several games' imports.
+
+### Two instrument bugs, caught here rather than later
+
+Both by reading the sample rather than the percentage, which is now the
+standing rule on this project.
+
+* The first cut compared `ASin__4MathRdRCd` against
+  `Math::ASin(double &, double const &)` as **text** and scored 3%. Same
+  function, two spellings.
+* The second demangled, but `gnuv2.demangle` does not handle `G`, GCC98r2's
+  marker for a class argument passed by value, so `User::After` still read
+  as a disagreement. Class and method now come straight off the mangled
+  symbol.
+
+Seventh and eighth time the instrument was the finding.
