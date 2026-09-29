@@ -64,6 +64,20 @@ pressed `*`. It is not proof that the game ignores it, only that the game was
 never given it. The picker consumes the key it handles, so the cost of being
 wrong is one lost input and the fix is a one-line change.
 
+**A chord is feasible, which the same log settles.** The events arrive as
+1,253 `EEventKey` (type 1), 294 `EEventKeyDown` (3) and 293 `EEventKeyUp` (2),
+so held state can be tracked rather than inferred -- `'5'` shows 38 downs, 772
+repeats and 37 ups, one press still held when the log ends. `EStdKeyBackspace`
+is scancode **0x01** (EKA2L1's `keys.h`), which is the C key on a numeric
+keypad and the backspace key on a QWERTY S60v3, and it appears **nowhere** in
+the log either. So "hold C, press `*`" can be detected, and a bare `*` can be
+passed straight through to the game.
+
+What cannot be derived is **keypad rollover**: S60v3 keypads are matrix
+scanned and not every pair of keys registers when held together. That is a
+property of each phone, so the port should record whether it ever saw the two
+held at once and let a hardware round answer it.
+
 ### What the game asks about the screen: nothing
 
 Two facts that together decide the whole multi-resolution approach, and both
