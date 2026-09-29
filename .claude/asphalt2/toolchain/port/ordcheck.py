@@ -287,6 +287,10 @@ def _head(sig):
     the digits from both halves.
     """
     head = (sig or '').split('(')[0]
+    # `TRealX::operator unsigned int` is a conversion; the type it converts
+    # to is spelled differently on the two sides, so keep only 'operator'.
+    if ' ' in head.split('::')[-1] and 'operator' in head:
+        head = head[:head.index('operator') + len('operator')]
     parts = [_norm(x).rstrip('0123456789') for x in head.split('::')]
     # A constructor or destructor repeats the class name; drop the repeat so
     # `CBase::~CBase` and `CBase::CBase` both reduce to the class plus a mark.
@@ -295,6 +299,31 @@ def _head(sig):
         if last == parts[-2]:
             return parts[-2] + ('dtor' if '~' in head.split('::')[-1] else 'ctor')
     return ''.join(parts)
+
+
+# GCC98r2 spells an operator as a two-letter code after the `__`. A closed,
+# documented set, so decoding it is not tuning the comparison to fit: the
+# union of six games' euser imports scored 19 wrong and **15 of them were
+# operators**, every one the identical function on both sides.
+GNU_OPS = {
+    'as': '=', 'pl': '+', 'mi': '-', 'ml': '*', 'dv': '/', 'md': '%',
+    'eq': '==', 'ne': '!=', 'lt': '<', 'gt': '>', 'le': '<=', 'ge': '>=',
+    'apl': '+=', 'ami': '-=', 'amu': '*=', 'adv': '/=', 'amd': '%=',
+    'rs': '>>', 'ls': '<<', 'ars': '>>=', 'als': '<<=',
+    'aa': '&&', 'oo': '||', 'nt': '!', 'co': '~', 'ad': '&', 'or': '|',
+    'er': '^', 'aad': '&=', 'aor': '|=', 'aer': '^=',
+    'cl': '()', 'vc': '[]', 'rf': '->', 'pp': '++', 'mm': '--', 'cm': ',',
+    'nw': 'new', 'dl': 'delete', 'nwa': 'new[]', 'dla': 'delete[]',
+}
+
+
+def _op_name(tail):
+    """'as' -> 'operator=', 'opUi' -> 'operator' (a cast); else None."""
+    if tail in GNU_OPS:
+        return 'operator' + GNU_OPS[tail]
+    if tail.startswith('op'):
+        return 'operator'          # a conversion operator; the type follows
+    return None
 
 
 def _head_mangled(sym):
@@ -307,6 +336,13 @@ def _head_mangled(sym):
     if '__' not in sym:
         return _norm(sym)
     method, rest = sym.split('__', 1)
+    # `__as__6TInt64i` splits to ('', 'as__6TInt64i'): the operator code is
+    # the head of the rest, not the method half.
+    if not method and '__' in rest:
+        code, rest2 = rest.split('__', 1)
+        op = _op_name(code)
+        if op:
+            method, rest = op, rest2
     i = 0
     while i < len(rest) and rest[i] in 'CV':
         i += 1

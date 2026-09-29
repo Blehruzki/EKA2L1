@@ -6331,11 +6331,69 @@ allocator, the descriptors or the file server.
 
 ### Verdict
 
-**Go**, with one honest limit: euser is one library and 164 ordinals is one
-game's worth of "what games import". `ordcheck.py` takes image arguments for
-exactly that reason -- point it at more N-Gage binaries as they turn up and
-the sample grows. The measurement to repeat before shipping a loader is the
-old-side score over the union of several games' imports.
+### Six games, and the limit is closed
+
+Five more N-Gage titles were read: **One**, **Colin McRae Rally 2005**,
+**Asphalt Urban GT** (the first one), **Ashen** and **Call of Duty**, all
+retail card dumps. Every one is a plain EKA1/GCC98r2 E32 image --
+**uncompressed, unencrypted, imports readable straight off the original**,
+with no cracking involved. Colin McRae keeps its engine in a second
+executable, `6r66.nax`, which reads the same way.
+
+Over the union of all six games' euser imports:
+
+> **368 distinct ordinals, 5 disagreements -- 98.6%.**
+
+The five are `User::AllocZL`, `memclr`, `User::Allocator`,
+`User::ReAllocL` and `User::AllocZ`. Three are the same function under two
+names (`memclr`/`Mem::FillZ` and `User::Allocator`/`User::Heap` are renames
+`epocdb.py` already documents; `User1::ReAlloc1L` is the release's own digit
+suffix). The other two pair `User::AllocZ{,L}` against `CBase`'s allocating
+`new` -- near-certainly aliases at one address, and still unproven.
+
+Getting there needed one more fix to the comparison, worth separating from
+tuning: the first union run scored **19** wrong and **15 of them were
+operators** -- `__as`, `__pl`, `__eq`, `__lt`, `__apl` and friends, every
+one the identical function on both sides. GCC98r2's operator codes are a
+closed, documented set, so decoding them is reading the format rather than
+fitting the answer. 94.8% -> 98.6%.
+
+### What the five games are shaped like
+
+| game | imports | display path |
+|---|---|---|
+| One | 532 | **identical to Asphalt 2** |
+| Asphalt Urban GT | 391 | **identical to Asphalt 2** |
+| Ashen | 354 | CFbsBitGc through a context |
+| Call of Duty | 427 | CFbsBitGc through a context |
+| Colin McRae 2005 | 583 + 53 | window server only, engine in a `.nax` |
+
+**One and Asphalt Urban GT import the same three bitgdi entries as Asphalt
+2** -- `SetAutoUpdate(TInt)`, `SetClippingRegion`, `Update(const TRegion &)`
+-- and the same two ws32 ordinals, **348 and 350**, which are this port's
+imports 460 and 461: `CDirectScreenAccess::NewL` and `StartL`. The same
+architecture, down to the ordinal. Everything rounds 74 to 89 bought --
+the framebuffer conversion, the scaler, the picture modes, and the posted
+region behind the band -- applies to them unchanged. **The band bug would
+have hit both of them, identically.**
+
+Ashen and Call of Duty take a graphics context from `CFbsDevice` and never
+call `SetAutoUpdate` or `Update`, so they do not take the screen the same
+way: a different display path, and real work. Colin McRae imports no bitgdi
+at all.
+
+Four of the five need `gamecomms` and `nokiafc`, which the shim already
+stubs, and four of five use the MDA audio stream, which the port already
+bridges.
+
+**So the next game to port is One or Asphalt Urban GT**, and neither should
+need much beyond the loader that exists.
+
+### Verdict
+
+**Go.** euser is still one library -- it is the only one with an
+authoritative old-side list -- but the sample within it is now six games and
+368 ordinals rather than one game and 164.
 
 ### Two instrument bugs, caught here rather than later
 
