@@ -53,7 +53,7 @@ def main(path):
     ox, oy = oxoy >> 16, oxoy & 0xFFFF
     inset, mode, first = dst >> 16, (dst >> 12) & 0xF, dst & 0xFFF
     panel_h = bh + inset
-    names = {0: '1:1', 1: 'aspect', 2: 'fill'}
+    names = {0: '1:1', 1: 'aspect', 2: 'fill', 3: 'integer', 4: 'full'}
     print('layout decisions recorded: %d' % len(groups))
     print('  panel             %d x %d   (usable %d x %d below a %d-row inset)'
           % (bw, panel_h, bw, bh, inset))

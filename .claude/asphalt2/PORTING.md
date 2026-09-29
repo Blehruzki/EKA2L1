@@ -35,6 +35,55 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### Phase 5: hold C to cycle, and the choice is kept
+
+*E241-E242.*
+
+**The gesture.** Hold C: the first change after about a second, then one every
+half second while it is still held. C rather than `*` and one key rather than
+a chord, because neither `*` nor Shift exists everywhere -- `*` is a Chr/Fn
+symbol on a QWERTY E71, and Shift does not exist at all on a numeric keypad,
+where scancodes 0x12 and 0x13 appear zero times in round 86's log.
+`EStdKeyBackspace`, **0x01**, is the one key that is a single press on both
+layouts and the game never uses it.
+
+**The timing runs off the frame loop, not key auto-repeat.** Repeats do reach
+us -- `'5'` shows 772 of them from 38 presses -- but whether a *clear* key
+repeats is a per-phone question, and the frame loop is not. The key handler
+notes only the down and the up.
+
+**A tap passes through.** The key is swallowed only once a hold has actually
+changed something, and then until it is released. Somebody who never holds it
+loses nothing, even on a phone whose menus do use C.
+
+Measured with a real held key at the emulator (`holdtest.sh` drives `xdotool`;
+EKA2L1 binds host Backspace to `std_key_backspace`, the same 0x01):
+
+    3 mode change(s):
+       tick 2288     -> fill
+       tick 2320     -> integer   +0.50 s
+       tick 2354     -> full      +0.53 s
+    3 config write(s), 3 returned KErrNone
+
+A 2.2-second hold gives exactly three changes, which is one at a second and
+two more at half-second steps, and the measured gaps are 0.50 and 0.53 s.
+
+**The choice is kept** in `C:\gate6.cfg`, sixteen bytes: magic `G6CF`, a
+version, the mode, and an inset override. `C:\` root rather than beside the
+save, because it is the one directory guaranteed to exist and be writable
+before the game has ever saved -- the installer may have put the game on E:,
+and `C:\system\apps\6RBC` does not exist until the first `user.dat` is
+written, which is after a race. A file that is missing, short, or carrying an
+unknown magic or version is simply not there and the defaults stand.
+
+Round trip on disk after the hold: `magic 0x46433647 ('G6CF'), version 1,
+mode 4, inset 48`.
+
+**The default is now aspect**, not fill. It is the only mode that holds
+176:208 -- within 0.6% on every panel measured -- where fill is +7.4% on an
+N95 and +105.5% on a landscape E71. An upgrade never overrides a choice
+already written; the default applies only when the file is absent.
+
 ### Phase 4: a full-screen mode, and an inset the device chooses
 
 *E240.*

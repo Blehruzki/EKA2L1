@@ -221,6 +221,8 @@ enum { CLOCK_EVERY_FRAME = 1 };
 // The entries stay one byte because they index the source, which is 208 tall
 // at its largest.
 enum { MAP_MAX = 1024 };
+// The saved picture choice: see kCfgPath.
+enum { CFG_MAGIC = 0x46433647, CFG_VERSION = 1, CFG_WORDS = 4 };
 enum { LEAK_EVERYTHING = 1, FREE_BACK_FROM = 4096, QUARANTINE_CELLS = 512 };
 enum { CENSUS_ALLOCS = 1, ALLOC_BIG = 1 << 16, ALLOC_BIG_MAX = 96 };
 enum { HIST_BUCKETS = 24 };
@@ -341,7 +343,10 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_HEAP_PEAK = 819,    // a new high-water mark, between samples
        NOTE_INSET_FN = 820,     // what AknLayoutUtils::LayoutMetricsRect resolved to
        NOTE_INSET_RECT = 821,   // the main pane rect it answered, two corners
-       NOTE_INSET_TAKEN = 822 };// and the inset actually adopted
+       NOTE_INSET_TAKEN = 822,  // and the inset actually adopted
+       NOTE_CFG_READ = 823,     // a saved choice was found: mode and inset
+       NOTE_CFG_WROTE = 824,    // ... and written back, with the error code
+       NOTE_MODE_NOW = 825 };   // the picture mode, after a hold changed it
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 enum { BOX_MDA = BOX_STACK + 1 };   // what CMdaAudioOutputStream::NewL resolved to
@@ -964,6 +969,12 @@ struct Context {
     u32 modeShot;           // how many modes the cycling test has captured
     u32 insetAsked;         // Avkon has been asked for the main pane once
     u32 insetFromAvkon;     // and this is what it said, 0 for "would not say"
+    u32 holdSince;          // tick the mode key went down, 0 when it is up
+    u32 holdNext;           // and the tick the next cycle is due
+    u32 holdCycled;         // whether this hold has changed anything yet
+    u32 cfgRead;            // the saved choice has been looked for once
+    u32 cfg[CFG_WORDS];     // magic, version, mode, inset override
+    u32 cfgDes[2];          // ... and the descriptor it is read and written through
     u32 srcPitch;           // pixels between the game's rows, 176 or 192
     u32 fileOpenThunk;
     u32 allocHist[HIST_BUCKETS];    // calls per power-of-two size band
@@ -1108,6 +1119,7 @@ enum { TRACE = 48 };
 static void log_event(Context *c, u32 code, u32 from);
 static void heap_note(Context *c);
 static void heap_peak(Context *c);
+static void hold_tick(Context *c);
 static void note(Context *c, u32 value, u16 sign);
 static void worker_log(Context *c, u32 code, u32 from);
 // The word that goes wrong is at a fixed address -- 0x8b281c, the fourth word
@@ -1354,7 +1366,7 @@ static const u16 kWrkPath[] = {'C',':','\\','g','6','w','r','k','.','l','o','g'}
 // a plausible number and says nothing. So the file carries what wrote it.
 enum { BOX_MAGIC = 0x47364234 };        // "G6B4"
 enum { BOX_NONE = 0xFFFFFFFF, BOX_ARMED = 0xFFFFFFFE };
-enum { EFileWrite = 0x200, EFileShareAny = 0x30 };
+enum { EFileWrite = 0x200, EFileShareAny = 0x30, EFileRead = 0x000 };
 
 static void box_name(Ptrc16 *name)
 {
@@ -3180,6 +3192,7 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     log_event(c, NOTE_FRAME, c->frames);
     if (CLOCK_EVERY_FRAME)
         log_event(c, NOTE_TICK, user_tickcount());
+    hold_tick(c);
     if (HEAP_PEAK_STEP)
         heap_peak(c);
     if (HEAP_EVERY_FRAMES && !(c->frames % (u32)HEAP_EVERY_FRAMES))
@@ -4369,7 +4382,41 @@ enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
 enum { MODE_ONE_TO_ONE = FIT_ONE_TO_ONE, MODE_SHAPE = FIT_SHAPE,
        MODE_FILL = FIT_FILL, MODE_INTEGER = FIT_INTEGER, MODE_FULL = FIT_FULL,
        MODE_COUNT = FIT_MODES };
-enum { SCREEN_MODE = MODE_FILL, KEY_MODE = '8' };
+// The default when nothing has been chosen. Aspect, because it is the only
+// mode that holds 176:208 -- within 0.6% on every panel measured (E235) --
+// where fill is +7.4% on an N95 and +105.5% on a landscape E71.
+enum { SCREEN_MODE = MODE_SHAPE, KEY_MODE = '8' };
+
+// Hold C to cycle the picture mode: the first change after about a second,
+// then one every half second while it is still held.
+//
+// C and not `*`, and one key rather than a chord, because neither `*` nor
+// Shift exists everywhere. `*` is a Chr/Fn symbol on a QWERTY E71 and Shift
+// does not exist at all on a numeric keypad -- the N95, C5-00 and N79 have
+// none, and scancodes 0x12 and 0x13 appear zero times in round 86's log.
+// `EStdKeyBackspace`, 0x01, is the one key that is a single press on both
+// layouts (C on a keypad, Backspace on a QWERTY) and the game never uses it:
+// across 7,361 key events the value 0x01 occurs 3,093 times and every one is
+// accounted for as an event type or a consumed-response.
+//
+// The timing is driven from the **frame loop**, not from key auto-repeat.
+// Repeats do reach us -- '5' shows 772 of them from 38 presses -- but whether
+// a clear key repeats at all is a per-phone question and there is no reason
+// to depend on the answer. The frame loop runs either way.
+//
+// A short tap is passed straight through to the game. Only once a hold has
+// actually changed something is the key swallowed, so nothing is taken away
+// from anyone who never holds it.
+enum { PICK_ON_HOLD = 1, HOLD_KEY = 0x01 };
+enum { HOLD_FIRST_TICKS = 64, HOLD_REPEAT_TICKS = 32 };   // 1 s, then 0.5 s
+
+// Where the choice is kept. `C:\` root, beside the box log, because it is the
+// one directory guaranteed to exist and be writable before the game has ever
+// saved: the installer may have put the game on E:, and `C:\system\apps\6RBC`
+// does not exist until the game first writes `user.dat`, which is after a
+// race. Sixteen bytes: a magic, a version, the mode, and an inset override
+// (0 meaning "whatever Avkon or the default says").
+static const u16 kCfgPath[] = {'C',':','\\','g','a','t','e','6','.','c','f','g'};
 // 56 rows is the N95's status pane, measured by dwelling on the phone in
 // rounds 74 to 78. It is a per-device number that the port applied to every
 // device: on a 240-tall landscape panel it eats 23% of the screen (E231).
@@ -4419,6 +4466,85 @@ static u32 avkon_inset(Context *c)
 }
 
 static void screen_layout(Context *c);
+
+// The saved choice, read once. A file that is missing, short, or carrying a
+// magic or version this build does not know is simply not there: the caller
+// keeps its own default. Nothing here can fail in a way that stops the game.
+static void cfg_load(Context *c)
+{
+    if (c->cfgRead)
+        return;
+    c->cfgRead = 1;
+    u32 file[4] = { 0, 0, 0, 0 };
+    Ptrc16 name;
+    name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kCfgPath / 2);
+    name.text = kCfgPath;
+    if (file_open(file, c->boxFs, &name, EFileRead | EFileShareAny) != 0)
+        return;
+    // A modifiable descriptor this time, not the EPtrC the log writes
+    // through: a read needs somewhere to put the bytes and a maximum to stop
+    // at. EPtr is { length | type, maxLength, pointer }.
+    c->cfgDes[0] = ((u32)EPtr << KTypeShift) | 0u;
+    c->cfgDes[1] = (u32)(CFG_WORDS * 4);
+    u32 des[3];
+    des[0] = c->cfgDes[0];
+    des[1] = c->cfgDes[1];
+    des[2] = (u32)c->cfg;
+    const i32 err = file_read(file, des);
+    file_close(file);
+    if (err != 0 || (des[0] & 0x0FFFFFFF) < (u32)(CFG_WORDS * 4))
+        return;
+    if (c->cfg[0] != (u32)CFG_MAGIC || c->cfg[1] != (u32)CFG_VERSION)
+        return;
+    if (c->cfg[2] < (u32)MODE_COUNT)
+        c->mode = c->cfg[2];
+    if (c->cfg[3])
+        c->topInset = c->cfg[3];
+    log_event(c, NOTE_CFG_READ, (c->cfg[2] << 16) | (c->cfg[3] & 0xFFFF));
+}
+
+// Written on every change, because the alternative is losing it to a battery
+// pull. One replace, one write, one flush: a few milliseconds, and only when
+// somebody actually holds the key.
+static void cfg_save(Context *c)
+{
+    u32 file[4] = { 0, 0, 0, 0 };
+    Ptrc16 name;
+    name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kCfgPath / 2);
+    name.text = kCfgPath;
+    if (file_replace(file, c->boxFs, &name, EFileWrite | EFileShareAny) != 0)
+        return;
+    c->cfg[0] = (u32)CFG_MAGIC;
+    c->cfg[1] = (u32)CFG_VERSION;
+    c->cfg[2] = c->mode;
+    c->cfg[3] = c->topInset;
+    u32 des[2];
+    des[0] = ((u32)EPtrC << KTypeShift) | (u32)(CFG_WORDS * 4);
+    des[1] = (u32)c->cfg;
+    const i32 err = file_write_at(file, 0, des);
+    file_flush(file);
+    file_close(file);
+    log_event(c, NOTE_CFG_WROTE, (c->mode << 16) | ((u32)err & 0xFFFF));
+}
+
+// Called once a frame. The hold is timed here rather than off key repeats,
+// because whether a clear key auto-repeats is a per-phone question and the
+// frame loop is not.
+static void hold_tick(Context *c)
+{
+    if (!PICK_ON_HOLD || !c->holdSince)
+        return;
+    const u32 now = user_tickcount();
+    if ((i32)(now - c->holdNext) < 0)
+        return;
+    c->mode = (c->mode + 1) % (u32)MODE_COUNT;
+    c->holdNext = now + (u32)HOLD_REPEAT_TICKS;
+    c->holdCycled = 1;
+    screen_layout(c);
+    cfg_save(c);
+    log_event(c, NOTE_MODE_NOW, c->mode);
+    log_block(c);
+}
 
 static void screen_format(Context *c)
 {
@@ -4651,6 +4777,10 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
             // Avkon's answer if it will give one, the N95's 56 if not.
             const u32 fromAvkon = avkon_inset(c);
             c->topInset = fromAvkon ? fromAvkon : (u32)INSET_DEFAULT;
+            // And then whatever the player chose last time, which overrides
+            // both. Read after the defaults so that a config carrying only a
+            // mode still gets this device's inset.
+            cfg_load(c);
         }
         screen_format(c);
         log_event(c, NOTE_SCREEN, (u32)bpp);
@@ -5159,7 +5289,28 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
         // EEventKeyUp in that order, so type 1 is the one press and the only
         // one where `iCode` carries a character at all. The key is swallowed,
         // so the game never sees it.
-        enum { EEventKey = 1 };
+        enum { EEventKey = 1, EEventKeyUp = 2, EEventKeyDown = 3 };
+        // Hold C to cycle the picture mode. Only the down and up are noted
+        // here; the timing is done in the frame loop, which does not care
+        // whether this phone's clear key auto-repeats. A tap is passed
+        // straight through -- the key is swallowed only once a hold has
+        // actually changed something, and then until it is let go.
+        if (PICK_ON_HOLD && k[1] == (u32)HOLD_KEY) {
+            if (type == (u32)EEventKeyDown) {
+                const u32 now = user_tickcount();
+                c->holdSince = now ? now : 1u;
+                c->holdNext = now + (u32)HOLD_FIRST_TICKS;
+                c->holdCycled = 0;
+            } else if (type == (u32)EEventKeyUp) {
+                const u32 acted = c->holdCycled;
+                c->holdSince = 0;
+                c->holdCycled = 0;
+                if (acted)
+                    return 1;               // EKeyWasConsumed
+            } else if (c->holdCycled) {
+                return 1;
+            }
+        }
         if (SCREEN_PICKER && type == (u32)EEventKey) {
             const u32 code = k[0];
             if (code == (u32)KEY_MODE) {
