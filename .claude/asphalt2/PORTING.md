@@ -35,6 +35,65 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### Phase 2: the scaler's sums, on the host, over every panel
+
+*E234-E235. `screen_fit.h` and `fittest.cpp`.*
+
+Phase 1 ended with the emulator able to reach one panel beyond the native one.
+Everything else has to be covered by arithmetic -- and arithmetic checked
+against a second copy of itself proves nothing, which this project has now
+paid for four times. So the sums were **moved**, not copied: `screen_fit.h`
+holds them, `gate6.cpp` includes it and adapts its Context to the struct, and
+`fittest.cpp` includes the same header and drives it directly. There is one
+copy of the arithmetic and the test runs the shipping one.
+
+The harness covers **10 panels x 3 modes x 51 insets, about 1,500 layouts, in
+well under a second**, checking seven things per layout:
+
+1. the picture is inside the panel, both axes -- everything else is cosmetic
+   next to this, because the blit writes `dstW x dstH` at `(offX, offY)` into
+   the real framebuffer;
+2. it starts at or below the status band it was told to clear;
+3. every `mapX`/`mapY` entry addresses a real source pixel;
+4. nothing was written past the entries the caller offered;
+5. both maps rise -- a scaler that goes backwards mirrors part of the picture;
+6. 1:1 maps pixel for pixel, and shows **all** of the source;
+7. aspect keeps the ratio to within a pixel, and fill reaches the edges.
+
+#### Two defects, neither of which shows on any phone we have
+
+**The 320-entry clamp.** `mapX` and `mapY` are `u8[320]` and the picture is
+clamped to that, so on a panel wider or taller than 320 the size is decided by
+an array bound rather than by the screen. Four distinct cases, 76 in the
+sweep. The worst is the 5800/N97: **aspect mode gives a 320x320 square from a
+176x208 source.** Widening the maps to 1024 entries clears every one of them
+-- checked before the change is written, which is the point of having the
+harness first.
+
+**1:1 crops the source.** `dstH = sh < bh ? sh : bh` truncates when the usable
+height is under 208, so the bottom of the frame is simply not drawn -- and the
+bottom of this game's frame is the HUD. At the real 56-row inset:
+
+| panel | drawn | lost |
+|---|---|---|
+| E71 landscape 320x240 | 176x184 | 24 rows |
+| N91 / 6110 176x220 | 176x164 | 44 rows |
+| a panel exactly the source's size | 176x152 | **56 rows, over a quarter** |
+
+Neither defect can appear on the N95, C5-00 or N79: all three are 240x320,
+whose 264 usable rows hold 208 comfortably and whose axes are both under 320.
+They are latent, and they bite exactly on the panels this work exists to add.
+That is the harness earning its place -- both were found without an emulator,
+a phone, or a round.
+
+#### What the table says about the modes
+
+Aspect keeps the ratio to between -0.6% and +0.1% on all ten panels, which is
+the accumulation slack and invisible. Fill does not: +7.4% on the N95,
+**+105.5%** on an E71, **+148.8%** on a landscape 5800 and **+219.4%** on an
+E90's inner screen. The default being changed to aspect is settled by this
+table rather than by preference.
+
 ### Phase 1: the emulator can pose as a landscape panel, and not much else
 
 *E231-E233. `EKA2L1_SCREEN=WxH`, 39 lines in EKA2L1's `window.cpp`.*

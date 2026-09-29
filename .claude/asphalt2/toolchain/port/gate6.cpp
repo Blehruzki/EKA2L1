@@ -4342,7 +4342,9 @@ enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
 // The vertical placement is against the **bottom** in both fitted modes, so
 // whatever is left over is at the top, where the band already is, and none
 // of it is taken out of the picture.
-enum { MODE_ONE_TO_ONE = 0, MODE_SHAPE = 1, MODE_FILL = 2, MODE_COUNT = 3 };
+#include "screen_fit.h"
+enum { MODE_ONE_TO_ONE = FIT_ONE_TO_ONE, MODE_SHAPE = FIT_SHAPE,
+       MODE_FILL = FIT_FILL, MODE_COUNT = FIT_MODES };
 enum { SCREEN_MODE = MODE_FILL, KEY_MODE = '8' };
 enum { INSET_DEFAULT = 56 };
 
@@ -4392,76 +4394,34 @@ enum { SCREEN_RULER = 0 };
 // load per pixel.
 static void screen_layout(Context *c)
 {
-    const u32 bw = c->screenW;
-    const u32 inset = (c->topInset < c->screenH) ? c->topInset : 0u;
-    const u32 bh = c->screenH - inset;
-    const u32 sw = c->srcW ? c->srcW : (u32)GAME_W;
-    const u32 sh = (u32)GAME_H;
-    c->bufW = bw;
-    c->bufH = c->screenH;   // the clear still covers the whole screen
+    // The sums live in screen_fit.h so that `fittest.cpp` can run exactly
+    // these, on the host, against every panel in a second. This function is
+    // the adapter: Context in, Context out, and the record.
+    ScreenFit f;
+    f.screenW = c->screenW;
+    f.screenH = c->screenH;
+    f.topInset = c->topInset;
+    f.srcW = c->srcW ? c->srcW : (u32)GAME_W;
+    f.srcH = (u32)GAME_H;
+    f.mode = c->mode;
+    f.mapX = c->mapX;
+    f.mapY = c->mapY;
+    f.mapMax = (u32)sizeof c->mapX;
+    screen_fit(&f);
+    c->bufW = f.bufW;
+    c->bufH = f.bufH;
+    c->dstW = f.dstW;
+    c->dstH = f.dstH;
+    c->offX = f.offX;
+    c->offY = f.offY;
     c->clearPending = 1;
-    if (!bw || !bh) {
-        c->dstW = sw;
-        c->dstH = sh;
-        c->offX = c->offY = 0;
-        for (u32 i = 0; i < sw && i < (u32)sizeof c->mapX; i++) c->mapX[i] = (u8)i;
-        for (u32 i = 0; i < sh && i < (u32)sizeof c->mapY; i++) c->mapY[i] = (u8)i;
-        return;
-    }
-    if (c->mode == (u32)MODE_ONE_TO_ONE) {
-        c->dstW = sw < bw ? sw : bw;
-        c->dstH = sh < bh ? sh : bh;
-        for (u32 i = 0; i < c->dstW; i++) c->mapX[i] = (u8)i;
-        for (u32 i = 0; i < c->dstH; i++) c->mapY[i] = (u8)i;
-    } else {
-        u32 dw, dh;
-        if (c->mode == (u32)MODE_FILL) {
-            // Both axes to the edges. The two scales differ, and by little
-            // enough to be worth the exact fit.
-            dw = bw;
-            dh = bh;
-        } else if (bw * sh > bh * sw) {         // shape kept, height-limited
-            dh = bh;
-            dw = 0;
-            for (u32 i = 0, acc = 0; i < dh; i++) {
-                acc += sw;
-                while (acc >= sh) { acc -= sh; dw++; }
-            }
-        } else {                                // shape kept, width-limited
-            dw = bw;
-            dh = 0;
-            for (u32 i = 0, acc = 0; i < dw; i++) {
-                acc += sh;
-                while (acc >= sw) { acc -= sw; dh++; }
-            }
-        }
-        if (dw > bw) dw = bw;
-        if (dh > bh) dh = bh;
-        if (dw > (u32)sizeof c->mapX) dw = (u32)sizeof c->mapX;
-        if (dh > (u32)sizeof c->mapY) dh = (u32)sizeof c->mapY;
-        c->dstW = dw;
-        c->dstH = dh;
-        // Which source pixel each output pixel reads: nearest neighbour,
-        // stepped by accumulation, one add per output pixel.
-        { u32 src = 0, acc = 0;
-          for (u32 i = 0; i < dw; i++) {
-              c->mapX[i] = (u8)(src < sw ? src : sw - 1);
-              acc += sw;
-              while (acc >= dw) { acc -= dw; src++; }
-          } }
-        { u32 src = 0, acc = 0;
-          for (u32 i = 0; i < dh; i++) {
-              c->mapY[i] = (u8)(src < sh ? src : sh - 1);
-              acc += sh;
-              while (acc >= dh) { acc -= dh; src++; }
-          } }
-    }
-    c->offX = bw > c->dstW ? (bw - c->dstW) / 2 : 0;
-    // Against the bottom, so the leftover is at the top with the band.
-    c->offY = inset + (bh > c->dstH
-        ? (c->mode == (u32)MODE_ONE_TO_ONE ? (bh - c->dstH) / 2 : bh - c->dstH)
-        : 0);
-    log_event(c, NOTE_SCREEN_FIT, (bw << 16) | (bh & 0xFFFF));
+    // The inset as it was actually applied, and the height left below it.
+    // screen_fit ignores an inset taller than the panel, so recompute rather
+    // than log what was asked for -- screenfit.py reads these two as a pair
+    // and it already went wrong once by mixing the two origins up.
+    const u32 inset = (c->topInset < c->screenH) ? c->topInset : 0u;
+    const u32 usableH = c->screenH - inset;
+    log_event(c, NOTE_SCREEN_FIT, (f.bufW << 16) | (usableH & 0xFFFF));
     log_event(c, NOTE_SCREEN_FIT, (c->dstW << 16) | (c->dstH & 0xFFFF));
     log_event(c, NOTE_SCREEN_FIT, (c->offX << 16) | (c->offY & 0xFFFF));
     log_event(c, NOTE_SCREEN_SRC, (c->srcOrigin << 16) | (c->srcPitch & 0xFFFF));
