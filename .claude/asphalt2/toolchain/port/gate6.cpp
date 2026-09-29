@@ -322,6 +322,9 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_BASE = 852,         // where the game was loaded
        NOTE_END = 853,          // and where its chunk stops
        NOTE_COEENV_SWAP = 796, // a cone method whose `this` is put back
+       NOTE_RSC_FN = 797,      // CCoeEnv::AddResourceFileL, as resolved
+       NOTE_RSC_OFFSET = 798,  // ... and the offset it answered
+       NOTE_RSC_PATH = 799,    // two characters of the path it was given
        NOTE_VT_OBJ = 794,       // an old object whose vtable is being read out
        NOTE_VT_SLOT = 795,      // ... and one entry of it, in order from slot 0
        NOTE_RGN_HDR = 790,      // a header word of the region the game posts with
@@ -868,6 +871,9 @@ struct Context {
     u32 pathIndex;          // which layout the game was loaded from
     u32 dataDrive;          // and the drive it is really on, as a letter
     u32 imageIsBin;         // the image was installed as 6rbc.bin, not .app
+    u32 rscOffset;          // what AddResourceFileL answered for the game's .rsc
+    u32 rscTried;           // ... and that it has been attempted, however it went
+    u16 rscText[64];        // the real path to it, drive letter and all
     u16 swapText[272];      // a name with its drive letter translated
     u32 swapDes[2];         // ... and the descriptor handed to efsrv
     u32 codeBase;           // where the game was loaded, so callers read as offsets
@@ -1133,9 +1139,75 @@ enum { TRACE = 48 };
 // the inside: a single probe planted at its third instruction took the run
 // from 1240 records to 553.
 static void log_event(Context *c, u32 code, u32 from);
+// Declared here as well as defined below: a diagnostic that cannot flush
+// before the thing it is diagnosing is no diagnostic at all. E261 lost
+// every record it added because the buffer went down with the process.
+static void log_block(Context *c);
 static void heap_note(Context *c);
 static void heap_peak(Context *c);
 static void hold_tick(Context *c);
+// **The game's own resource file.**
+//
+// On an N-Gage the application *is* `6r67.app`, so the framework opens
+// `6r67.rsc` beside it and every `R_...` the game compiled against that file
+// resolves. Here the application is ours: the game's resource file is never
+// registered, and E259 is what that looks like from cone -- `CONE 14`,
+// `ECoePanicNoResourceFileForId`, on the first string the game reads.
+//
+// So register it. `CCoeEnv::AddResourceFileL` is cone ordinal 148, looked up
+// through the handle the port already holds. The path has to be the **real**
+// one -- cone goes to the file server directly and never passes through the
+// `E:` fiction the game is kept inside -- so it is built from `dataDrive`,
+// the drive the image was actually found on.
+//
+// It answers an offset, which Symbian normally expects to be added to every
+// id read from that file. The game adds nothing, because on its own machine
+// it was the application. So the offset is logged: if it comes back zero the
+// ids line up as they are, and if it does not, the read has to be biased by
+// it. Measuring before assuming.
+enum { ADD_RESOURCE_FILE = 1, CONE_ADD_RESOURCE_FILE_L = 148 };
+static const u16 kRscTail[] = {'.','r','s','c'};
+
+static void resource_file_add(Context *c)
+{
+    typedef int (*AddRsc)(void *, const void *);
+    if (!ADD_RESOURCE_FILE || c->rscTried || !c->cone || !c->coeEnv)
+        return;
+    c->rscTried = 1;
+    AddRsc add = (AddRsc)rlibrary_lookup(&c->cone, CONE_ADD_RESOURCE_FILE_L);
+    log_event(c, NOTE_RSC_FN, (u32)add);
+    if (!add)
+        return;
+    // `<drive>:\system\apps\<stem>\<stem>.rsc`, from the layout the image
+    // was found in. kPath2 and kPath0 already spell both, ending `.app`.
+    const u16 *src = (c->pathIndex == 0) ? kPath2 : kPath0;
+    const u32 n = (c->pathIndex == 0) ? (u32)(sizeof kPath2 / 2)
+                                      : (u32)(sizeof kPath0 / 2);
+    if (n < 4 || n > sizeof c->rscText / 2)
+        return;
+    for (u32 i = 0; i < n; i++)
+        c->rscText[i] = src[i];
+    c->rscText[0] = (u16)(c->dataDrive ? c->dataDrive : 'E');
+    for (u32 i = 0; i < 4; i++)              // `.app` -> `.rsc`
+        c->rscText[n - 4 + i] = kRscTail[i];
+    for (u32 i = 0; i + 1 < n; i += 2)
+        log_event(c, NOTE_RSC_PATH, ((u32)c->rscText[i] << 16) | c->rscText[i + 1]);
+    Ptrc16 name;
+    name.lengthAndType = ((u32)EPtrC << KTypeShift) | n;
+    name.text = c->rscText;
+    // What we are about to call it on. E260 faulted reading 0x48, which is
+    // an offset into something null, so the question is whether the object
+    // is the environment at all -- and the answer is four words of it.
+    log_event(c, NOTE_RSC_FN, (u32)c->coeEnv);
+    for (u32 i = 0; i < 4; i++)
+        log_event(c, NOTE_RSC_FN, ((const u32 *)c->coeEnv)[i]);
+    log_block(c);               // on disk before the call that may not return
+    const int off = add(c->coeEnv, &name);
+    c->rscOffset = (u32)off;
+    log_event(c, NOTE_RSC_OFFSET, (u32)off);
+    log_block(c);
+}
+
 static void status_pane_off(Context *c);
 static void note(Context *c, u32 value, u16 sign);
 static void worker_log(Context *c, u32 code, u32 from);
@@ -5558,6 +5630,7 @@ extern "C" void *gate6_dll_name(u32 *out, void *, Context *c)
 extern "C" void *gate6_coeenv_static(u32, u32, Context *c)
 {
     c->coeEnv = (u32 *)coeenv_static();
+    resource_file_add(c);       // once, as soon as there is an environment
     const u32 *real = (const u32 *)((u8 *)c->coeEnv + COEENV_BIAS);
     for (int i = 0; i < COEENV_VIEW_WORDS; i++)
         c->coeEnvView[i] = real[i];
