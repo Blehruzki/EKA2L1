@@ -321,6 +321,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_STRAY = 851,        // ... on something that is neither of ours
        NOTE_BASE = 852,         // where the game was loaded
        NOTE_END = 853,          // and where its chunk stops
+       NOTE_VT_OBJ = 794,       // an old object whose vtable is being read out
+       NOTE_VT_SLOT = 795,      // ... and one entry of it, in order from slot 0
        NOTE_RGN_HDR = 790,      // a header word of the region the game posts with
        NOTE_RGN_RECT = 791,     // one rectangle of it, two corners packed
        NOTE_POST_FN = 792,      // CFbsScreenDevice::Update(void), as resolved
@@ -6458,6 +6460,37 @@ extern "C" void gate6_ui_construct(void *self)
     // past here and the framework takes the application on from here.
 }
 
+// **Which slots the game actually overrides.**
+//
+// `OLD_UI_CONSTRUCT = 13` was found in Asphalt 2 by elimination -- slot 17
+// was HandleCommandL, so 13 was what was left. That is a fact about one
+// class. E256: in Asphalt Urban GT slot 13 is not ConstructL, and calling it
+// lands in cone on a null environment.
+//
+// Elimination does not transfer, but a measurement does. An entry that
+// points **inside the game's image** is a method the game wrote; anything
+// else is a base-class veneer it inherited. Read the table out, write it
+// down raw, and let the host sort them: the log already carries NOTE_BASE
+// and NOTE_END, so the classification is subtraction.
+//
+// GCC98r2 puts two header words in front, which is why `old_call` adds 2.
+enum { DUMP_OLD_VTABLES = 1, OLD_VT_SLOTS = 32, OLD_VT_HEADER = 2 };
+
+static void old_vtable_dump(Context *c, const u32 *obj, u32 mark)
+{
+    if (!DUMP_OLD_VTABLES || !obj || ((u32)obj & 3))
+        return;
+    const u32 *vt = (const u32 *)obj[0];
+    log_event(c, NOTE_VT_OBJ, (u32)obj);
+    log_event(c, NOTE_VT_OBJ, (u32)vt);
+    log_event(c, NOTE_VT_OBJ, mark);
+    if (!vt || ((u32)vt & 3))
+        return;
+    for (u32 i = 0; i < (u32)OLD_VT_SLOTS; i++)
+        log_event(c, NOTE_VT_SLOT, vt[OLD_VT_HEADER + i]);
+    log_block(c);
+}
+
 extern "C" void *gate6_create_app_ui(void *self)
 {
     const u32 *oldDoc = (const u32 *)((const u32 *)self)[WRAP_OLD];
@@ -6466,6 +6499,8 @@ extern "C" void *gate6_create_app_ui(void *self)
 
     Context *c = context_of(self);
     c->oldUi = (u32 *)oldUi;
+    old_vtable_dump(c, oldDoc, 2);              // the document, for comparison
+    old_vtable_dump(c, (const u32 *)oldUi, 3);  // and the app UI, which is the question
 
     u32 *ui = (u32 *)user_allocz(WRAP_BYTES);
     if (!ui) PANIC(CAT_MEM, -31);
