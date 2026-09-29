@@ -35,6 +35,56 @@ what was believed at the time rather than what is true. This section is the
 part that is maintained. When something below is overturned, it is recorded
 here and the section it overturns is marked.*
 
+### Which keys the game does not use
+
+*Measured from round 86's log: 7,361 key events over eight minutes of real
+play, which is the only honest way to answer this.*
+
+Every `iCode` the game was handed, with counts:
+
+| code | | count |
+|---|---|---|
+| `0x35` | `'5'` | 772 |
+| `0x00` | (key-up) | 587 |
+| `0xF807` / `0xF808` | left / right arrow | 395 |
+| `0xF845`, `0xF842`, `0xF843` | centre, softkeys | 34 |
+| `0xF809` / `0xF80A` | up / down arrow | 16 |
+| `0x32`, `0x37` | `'2'`, `'7'` | 34 |
+| `0x38`, `0x34` | `'8'`, `'4'` | 1 each |
+| `0x2A`, `0x23` | **`*`, `#`** | **0** |
+
+So `*` and `#` are free and the picker belongs on them. Note `'8'` and `'4'`
+*do* reach the game -- those were `KEY_MODE` and `KEY_INSET_*` when the picker
+was live, which is exactly why rounds 74-78 had to switch it off. The old
+picker was stealing game input, and one press in eight minutes is enough to
+ruin a race.
+
+The caveat: this is one player's session, and they may simply never have
+pressed `*`. It is not proof that the game ignores it, only that the game was
+never given it. The picker consumes the key it handles, so the cost of being
+wrong is one lost input and the fix is a one-line change.
+
+### What the game asks about the screen: nothing
+
+Two facts that together decide the whole multi-resolution approach, and both
+are checkable rather than argued:
+
+- **The game imports no text rendering at all.** No `DrawText`, no `CFont`, no
+  `TextWidth`, no `MeasureText`. Its entire graphics import surface is four
+  `CFbsBitmap` calls, three `bitgdi` and two `ws32`. Every glyph and every HUD
+  element is its own bitmap, authored for 176x208, drawn straight into the
+  framebuffer at coordinates compiled into the binary.
+- **`HAL::Get` is imported and never called.** Zero times in eight minutes of
+  play in round 86's log. Its only geometry query is `UserSvr::ScreenInfo`,
+  whose size it ignores (E133-E137).
+
+So the game draws the same 176x208 picture into whatever buffer it is given,
+on any device, and nothing the port reports can move it. **The only place
+resolution can be changed is our scaler, between the game's buffer and the
+device's framebuffer.** Rendering natively wider would mean patching every
+hardcoded layout constant *and* redrawing every asset, and would cost 2.1x the
+fill rate at 240x320 on a CPU already at 30 fps.
+
 ### What a clean build-172 log looks like, and the three things it cannot say
 
 *Round 86. A third party's eight-minute log, sent with a claim of "still
