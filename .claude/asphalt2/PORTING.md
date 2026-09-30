@@ -709,6 +709,55 @@ have already been wrong in this port; a person turning a knob until the
 picture is straight is a measurement, and a person describing a photograph is
 not.
 
+### There are two backgrounding paths, and this is the other one
+
+*Round 96. The first round where a single new record answered the question
+it was added for.*
+
+`NOTE_TIMER_OFF` fired on both titles, once each, as the **last record in
+the file**. The four things before it are the same on both:
+
+    MDA CALL 0x10a        the audio teardown returning
+    RMessage::Complete
+    NOTE_CANCEL  self=0x6aca18 / 0x799ee0     the game's own frame timer
+    SLOT timer:3                              CActive::DoCancel
+    ** NOTE_TIMER_OFF **  frame 1548 / frame 94
+
+So the frame loop does not stop. **The game stops it**, with its own
+imported `CActive::Cancel` on its own timer -- the pointer in the record is
+the old timer our wrapper maps. That is a game pausing itself because it
+has lost the foreground, and on an N-Gage it would have been right.
+
+And then nothing. **Not even the heartbeat**, which is our CPeriodic and
+has nothing to do with the game's: 0.64 s and 1.08 s after the last beat,
+inside one interval either way. So the process dies, or the scheduler
+stops, within a second of the game pausing itself.
+
+**This was not the app shutter.** Slots 10, 21 and 24 -- the sequence round
+94 caught and the Avkon sources name -- do not appear in either of these
+runs. Round 94's backgrounding was Avkon telling the game to exit; round
+96's is the game standing itself down and something killing it afterwards.
+Two paths, both ending in `KERN-EXEC 0`, and the port has been treating
+them as one.
+
+**One elimination worth keeping**, because it looked exactly right.
+Asphalt 2's box ring ends `RLibrary::Close`, `RLibrary::Load`,
+`RLibrary::Lookup` -- and the SDK's canonical example of `KERN-EXEC 0` is
+"a call to `RLibrary::Lookup()` panics with KERN-EXEC 0 if not preceded by
+a successful call to `RLibrary::Load()`". A perfect fit. It is also wrong:
+that cycle runs thirty times in that run, and **Asphalt 1 makes no
+`RLibrary` call at all** and dies identically. A pattern matching the
+documentation is not evidence that it is the one that fired.
+
+**What is still missing is one second**, and it is an instrument problem,
+not a mystery. The box reaches disk once a second on the heartbeat; the
+panic lands inside that second; the ring on the phone is a second stale
+(73 frames against the log's 94). Past the timer's cancellation the box is
+now written on every traced call -- bounded to 256 of them, because "the
+endgame is short" is a guess and a counter is not. E324 forced that state
+on the bench, since the bench never cancels a timer: 256 flushes, 0.03 s,
+nothing broken.
+
 ### It is not crashing on background. It is being told to quit.
 
 *Research round, at the person's instruction to stop inferring the platform

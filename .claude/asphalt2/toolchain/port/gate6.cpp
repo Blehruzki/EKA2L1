@@ -1030,6 +1030,7 @@ struct Context {
     u32 modeShot;           // how many modes the cycling test has captured
     u32 insetAsked;         // Avkon has been asked for the main pane once
     u32 insetFromAvkon;     // and this is what it said, 0 for "would not say"
+    u32 timerOff;           // imports left to write the box on every call
     u32 beatTimer;          // our own CPeriodic, so a dead app can be told
     u32 beats;              //   from a stopped one
     CallBack beatCb;        //   (the callback has to outlive the call)
@@ -1378,6 +1379,10 @@ static void watch_note(Context *c)
     if (c->watchFromProbe && v >= 0x400000 && v < 0x10000000 && !(v & 3))
         log_event(c, NOTE_WATCH_AT240, ((const u32 *)(v + 0x240))[0]);
 }
+
+// How many traced calls after the frame timer is cancelled get the box
+// written for them. Round 96 saw three; 256 is room to spare and a bound.
+enum { ENDGAME_CALLS = 256 };
 
 extern "C" void gate6_trace(u32 index, Context *c, u32 caller);
 extern "C" void gate6_slot(u32 code, Context *c, u32 caller);
@@ -3368,6 +3373,15 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
     // count and the last thirty-two events, which is the yardstick.
     if (SILENT && (c->traceCount & (BOX_EVERY_TRACED - 1)) == 0)
         box_flush(c);
+    // Past the frame timer's cancellation, every call -- but a bounded
+    // number of them. A file write and a flush per import is fine for the
+    // handful of calls round 96 saw before the process died, and would be
+    // ruinous if the app instead went on running: the endgame is a guess
+    // about how long it lasts, and a counter is not.
+    else if (c->timerOff) {
+        c->timerOff--;
+        box_flush(c);
+    }
     if (index == IMPORT_LEAVE || index == IMPORT_EXIT)
         log_block(c);               // the tail of the block, on the way out
 }
@@ -3494,8 +3508,21 @@ extern "C" void gate6_timer_docancel(void *, u32, Context *c)
     c->reached |= REACHED_DOCANCEL;
     // Round 95: the frame loop stops and nothing says why. If this is
     // where it stops, the log will now say so, with the frame it stopped on.
+    // Round 96: it is where it stops, on both titles, and it is the game's
+    // own `CActive::Cancel` on its own timer -- the game pausing itself
+    // because it has lost the foreground. What kills the process comes
+    // after this and inside a second, which is less than one heartbeat, so
+    // neither the log nor the box has ever held it.
+    //
+    // From here the endgame is short and every traced call is worth a file
+    // write. `timerOff` turns the box's flush from once-a-second into
+    // once-an-import, so the next KERN-EXEC 0 arrives with the call that
+    // caused it. It costs nothing during play because during play it is
+    // never set.
     log_event(c, NOTE_TIMER_OFF, c->frames);
+    c->timerOff = (u32)ENDGAME_CALLS;
     log_block(c);
+    box_flush(c);
     old_call(c->oldTimer, OLD_DOCANCEL);
 }
 
