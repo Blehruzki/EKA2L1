@@ -709,6 +709,70 @@ have already been wrong in this port; a person turning a knob until the
 picture is straight is a measurement, and a person describing a photograph is
 not.
 
+### The answer to both was already in the project
+
+*Round 97, after being asked why Asphalt 1 differs from a title that was
+fixed, and why the background was still being guessed at.*
+
+**The wrap.** The two titles differ in exactly one thing the blit reads.
+`TELL_GAME_ITS_SIZE` is 0, so `GAME_PITCH` never reaches the runtime and
+both games use a source pitch of `GAME_W` = 176; `screen_fit` gets the same
+inputs and produces the same 240x320 at (0,0). The only difference is
+`GAME_SRC_ORIGIN`: **16 for Asphalt 2, 0 for Asphalt 1**.
+
+And the knob settled on **-22**:
+
+    16 source columns * 240 / 176 = 21.818...
+
+The destination shift was compensating, to the nearest whole pixel, for the
+sixteen source columns the origin was supposed to skip. **The pixel that
+survived every attempt is the 0.18 a whole-pixel rotation cannot express.**
+Asphalt 1's origin is 16 now, the knob reads 0, and the rotation is gone
+along with its seam.
+
+Why it was 0: E288 set it from a dumped frame's non-zero column extent,
+0..175. That measurement cannot answer this question. It says where *data*
+is, not where the *picture* begins, and sixteen columns of anything non-zero
+read the same as sixteen columns of picture. Asphalt 2's 16 was established
+the hard way and then a second title was allowed to disagree with it on
+weaker evidence. **When a new title differs from a settled one, the
+difference is the finding -- diff the configurations before measuring
+anything.**
+
+**The crash.** `CTimer::DoCancel()` is `iTimer.Cancel()`: an executive call
+on an **RTimer handle**. `gate6_timer_docancel` forwarded it to the game's
+own timer -- a 7.0s `CTimer` this 9.x process never constructed, whose
+`iTimer` word therefore holds whatever the old layout put there. On the
+bench the emulator cannot resolve it and returns quietly. On a device the
+kernel cannot find that object in the index and panics the thread
+**KERN-EXEC 0**, which is the definition, verbatim, from the panic
+reference.
+
+That is why every log for ten rounds ended at the cancel with **nothing
+after it** -- not a short endgame, no endgame: the call never returns.
+
+E327 reproduces it in ninety seconds: force the cancel on the bench with
+`EKA2L1_STRICTHANDLE=1` and the emulator reports one bad handle,
+`0x4798d70` -- a pointer, not a handle. E328 routes the cancel to the real
+9.x `CTimer::DoCancel` that our own thunk displaced, on our own CPeriodic,
+which actually has a timer to cancel: **zero bad handles and the run
+carries on**. The two runs differ in one line.
+
+**What the documentation did and did not give.** It gave the vtable map,
+the shutter path, the panic's exact definition and the `RequestComplete`
+contract -- and the panic definition is what turned "some handle somewhere"
+into "an RTimer handle in an object we never built". What it could not give
+was which call; that took the emulator patched to enforce the device's
+semantics, and a forced reproduction. **Documentation narrows the search;
+only an instrument closes it.** Both were needed and the project had
+neither until this week.
+
+One thing still unexplained and worth not glossing: round 94's backgrounding
+went through Avkon's app shutter (slots 10, 21, 24) and rounds 96 and 97 did
+not. The `DoCancel` fault explains the deaths in 96 and 97. Whether it also
+explains 94 -- where the shutter had already asked the game to exit -- is
+not established.
+
 ### There are two backgrounding paths, and this is the other one
 
 *Round 96. The first round where a single new record answered the question

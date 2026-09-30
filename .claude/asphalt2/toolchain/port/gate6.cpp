@@ -240,7 +240,11 @@ enum { MAP_MAX = 1024 };
 // -- cfg_load refuses a version it does not know and the defaults stand --
 // which costs a saved mode once and is better than reading four words as
 // five.
-enum { CFG_MAGIC = 0x46433647, CFG_VERSION = 2, CFG_WORDS = 5,
+// Version 3. A version-2 file carries a keypad shift that was compensating
+// for a source origin of 0, and the origin is 16 now -- so that shift is
+// the wrong correction applied twice. Mode and inset are still read from
+// an older file; the shift is not.
+enum { CFG_MAGIC = 0x46433647, CFG_VERSION = 3, CFG_WORDS = 5,
        CFG_V1_WORDS = 4 };
 // FREE_BACK_FROM is per game: E271 found Asphalt 1 writing a vtable pointer
 // into a freed cell's `next` link during boot, so that title hands nothing
@@ -1031,6 +1035,7 @@ struct Context {
     u32 insetAsked;         // Avkon has been asked for the main pane once
     u32 insetFromAvkon;     // and this is what it said, 0 for "would not say"
     u32 timerOff;           // imports left to write the box on every call
+    u32 realDoCancel;       // the 9.x CTimer::DoCancel our thunk displaced
     u32 beatTimer;          // our own CPeriodic, so a dead app can be told
     u32 beats;              //   from a stopped one
     CallBack beatCb;        //   (the callback has to outlive the call)
@@ -3523,7 +3528,23 @@ extern "C" void gate6_timer_docancel(void *, u32, Context *c)
     c->timerOff = (u32)ENDGAME_CALLS;
     log_block(c);
     box_flush(c);
-    old_call(c->oldTimer, OLD_DOCANCEL);
+    // **The real one, not the game's.** E327: forwarding to the game's own
+    // `DoCancel` is what kills the process. A `CTimer::DoCancel` is
+    // `iTimer.Cancel()`, an executive call on an RTimer handle -- and the
+    // game's old timer is a 7.0s object this process never constructed, so
+    // the word where its handle should be holds a pointer. On the bench
+    // that call resolves to nothing and the emulator shrugs; on a device
+    // the kernel cannot find object 0x4798d70 and panics the thread
+    // **KERN-EXEC 0**, which is why every log for ten rounds has ended
+    // exactly here with nothing after it.
+    //
+    // Ours is a real 9.x CPeriodic and its own DoCancel is the one that
+    // has a timer to cancel. The game's object has nothing to cancel and
+    // nothing that wants cancelling.
+    if (c->realDoCancel) {
+        typedef void (*DoCancel)(void *);
+        ((DoCancel)c->realDoCancel)(c->wrapTimer);
+    }
 }
 
 // Left on. Releasing the screen is not a one-line switch: the graphics context
@@ -3702,6 +3723,7 @@ extern "C" void *gate6_ctimer_ctor(u32 *oldSelf, int priority, Context *c)
     ((TimerCtor)c->newTimerCtor)(t, priority);
 
     u32 *vt = copy_vtable(vtable_of(t), TIMER_SLOTS);
+    c->realDoCancel = vt[VT_HEADER + NEW_DOCANCEL];   // before we displace it
     vt[VT_HEADER + NEW_DOCANCEL] = c->timerThunks[0];
     vt[VT_HEADER + NEW_RUNL] = c->timerThunks[1];
     vt[VT_HEADER + NEW_RUNERROR] = c->timerThunks[2];
@@ -5465,13 +5487,13 @@ static void cfg_load(Context *c)
     // by hand on a title that already works, which is not a thing a new
     // build gets to do. Read what the file has and default the rest.
     const u32 ver = c->cfg[1];
-    if (ver != 1 && ver != (u32)CFG_VERSION)
+    if (ver < 1 || ver > (u32)CFG_VERSION)
         return;
     if (c->cfg[2] < (u32)MODE_COUNT)
         c->mode = c->cfg[2];
     if (c->cfg[3])
         c->topInset = c->cfg[3];
-    if (ver >= 2 && got >= (u32)(CFG_WORDS * 4))
+    if (ver >= 3 && got >= (u32)(CFG_WORDS * 4))
         c->shiftX = (i32)c->cfg[4];
     log_event(c, NOTE_CFG_READ, (c->cfg[2] << 16) | (c->cfg[3] & 0xFFFF));
     log_event(c, NOTE_SHIFT, (u32)c->shiftX);

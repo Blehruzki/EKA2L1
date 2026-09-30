@@ -31,10 +31,34 @@
 // for. Phase 2 measures these; until then no claim is made about them.
 enum { GAME_W = 176, GAME_PITCH = 176, GAME_H = 208 };
 
-// Likewise unmeasured. Asphalt 2 reads from source pixel sixteen, and taking
-// that on faith for another game is the mistake that produced a convincing
-// fake horizontal wrap once already.
-enum { GAME_SRC_ORIGIN = 0 };
+// **Sixteen, the same as Asphalt 2 -- and the reason it took eight rounds
+// to say so is worth more than the number.**
+//
+// The two titles differ in exactly one thing that the blit reads. Neither
+// GAME_PITCH nor GAME_W differs at runtime: `TELL_GAME_ITS_SIZE` is 0, so
+// both games run at a source pitch of GAME_W = 176 and `GAME_PITCH` is
+// used only by the offline tools. The whole difference is this constant,
+// and Asphalt 2 has had 16 in it since its own display was settled.
+//
+// The arithmetic closes it. The person turning the keypad knob on the
+// phone converged on a destination shift of **-22**, and the destination
+// is the 176-wide source stretched to 240:
+//
+//     16 source columns * 240 / 176  =  21.818...  ->  22
+//
+// So the knob was compensating, on the destination side and to the nearest
+// whole pixel, for exactly the sixteen source columns this constant was
+// supposed to skip. That also accounts for the pixel of misalignment that
+// survived the knob: 22 is not 21.818, and a rotation of the output can
+// never be exactly a shift of the input.
+//
+// E288 measured 0 here, off a dumped frame's non-zero column extent
+// (0..175). That measurement cannot answer this question: it says where
+// data is, not where the picture begins, and sixteen columns of anything
+// non-zero read the same as sixteen columns of picture. The first game had
+// already answered it and the second was allowed to disagree on weaker
+// evidence.
+enum { GAME_SRC_ORIGIN = 16 };
 
 // Nothing here has been measured in this image, so nothing is switched on.
 // The watch needs three offsets that hold the app UI's vtable slot, and the
