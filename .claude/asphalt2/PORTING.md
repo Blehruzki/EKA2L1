@@ -709,6 +709,108 @@ have already been wrong in this port; a person turning a knob until the
 picture is straight is a measurement, and a person describing a photograph is
 not.
 
+### It is not crashing on background. It is being told to quit.
+
+*Research round, at the person's instruction to stop inferring the platform
+from an emulator and read the sources. **Everything in this section is from
+Symbian's own published source or SDK documentation**, not from EKA2L1 and
+not from memory; the citations are in the text.*
+
+The app UI slot numbers the port has been logging for months finally have
+names. `CCoeAppUi` derives from `CBase`, so an EABI vtable begins with two
+destructors and `CBase::Extension_`, and `CCoeAppUi`'s own virtuals follow
+in declaration order (`cone/inc/COEAUI.H`), then `CEikAppUi`'s
+(`uikon/coreinc/EIKAPPUI.H`), then `CAknAppUi`'s:
+
+| slot | method |
+|---|---|
+| 4 | `HandleWsEventL` |
+| 8 | `HandleForegroundEventL(TBool)` |
+| 10 | `HandleSystemEventL(const TWsEvent&)` |
+| 11 | `HandleApplicationSpecificEventL` |
+| 16 | `CEikAppUi::ConstructL` |
+| 20 | `ApplicationRect` |
+| 21 | `StopDisplayingMenuBar` |
+| 24 | `HandleCommandL(TInt)` |
+| 30 | `Exit` |
+
+Slot 16 is the check: the port has had `SLOT_UI_CONSTRUCT = 16` since gate 5,
+established empirically, and the header's declaration order puts
+`CEikAppUi::ConstructL` there independently. Slot 4 being `HandleWsEventL`
+matches its count -- 63, 173, once per window-server event -- and slot 8
+being `HandleForegroundEventL` matches its firing twice in the runs that
+were backgrounded and once in the run that was not.
+
+**Now read the backgrounding burst with the names in place.** Round 94,
+Asphalt 2, in order: `HandleWsEventL`, `HandleApplicationSpecificEventL`,
+**`HandleSystemEventL`**, **`StopDisplayingMenuBar`**, **`HandleCommandL`**,
+`HandleWsEventL`, `HandleForegroundEventL`.
+
+And here is `CAknAppUi::HandleSystemEventL`, from Avkon
+(`uifw/AvKon/src/AknAppUi.cpp`):
+
+```cpp
+case EApaSystemEventShutdown:
+    ...
+case EApaSystemEventSecureShutdown:
+    StopDisplayingPopupToolbar();
+    CAknEnv::RunAppShutter();
+    break;
+```
+
+and here is the shutter it runs (`uifw/AvKon/src/aknshut.cpp`):
+
+```cpp
+appUi->StopDisplayingMenuBar();
+appUi->HandleCommandL(EEikCmdExit);
+```
+
+**Two consecutive calls in the source; two consecutive slots in the log.**
+Slot 21 then slot 24. The match is line for line.
+
+So the game is not crashing when it goes to the background. **The system is
+sending it `EApaSystemEventShutdown`, Avkon is running the application
+shutter, and the shutter is telling the game to exit with `EEikCmdExit`.**
+Our wrapper forwards that to the game's EKA1 app UI, which begins shutting
+down -- which is why the audio stream is torn down, why the frame loop
+stops, and why nothing comes back. The `KERN-EXEC 0` is whatever the EKA1
+exit path does wrong on 9.x, and it is the *last* thing to happen, not the
+first.
+
+Four rounds of theories about direct screen access, audio streams and
+stale handles were all downstream of a decision the system had already
+made.
+
+**And the shutter says why it exists.** When the app does not close, it
+reports to `ROomMonitorSession` -- the out-of-memory monitor. The app
+shutter is Symbian's low-memory mechanism: the system asks background
+applications to close so the foreground one can have their RAM. Which puts
+`GAME_ALLOC_PAD 512` -- 512 bytes added to every allocation the game makes,
+a real fix for a real overrun -- back in the frame as something with a
+cost, because a fatter process is a more attractive target.
+
+That is a connection worth testing rather than believing: the padding is
+measurable, and whether the phone shuts the game down is observable.
+
+#### What this changes
+
+The next build does not need to guess. Slot 24's argument says whether the
+command is `EEikCmdExit` (1) or something else, and slot 10's says which
+`TApaSystemEvent` arrived. Two logged words settle it. After that the
+choice is a real one -- obey the shutdown cleanly, or decline it -- and it
+is the person's to make, not mine, because declining a shutdown the system
+sent for memory is not free.
+
+#### Sources
+
+Symbian's published source, cloned and read here: `oss.FCL.sf.mw.classicui`
+(cone, uikon and Avkon -- the headers and `AknAppUi.cpp`, `aknshut.cpp`),
+`oss.FCL.sf.os.kernelhwsrv` (`euser/us_func.cpp`), `oss.FCL.sf.os.graphics`
+(the window server's `Direct.CPP`). SDK documentation for the panic
+categories and the `User::RequestComplete` contract. Two claims made
+earlier in this file from the emulator alone have now been checked against
+these and are marked where they stand.
+
 ### KERN-EXEC 0 is a handle, and what EKA2 does with handles
 
 *Asked for after round 95: "look at how Symbian 9.x handles multitasking".

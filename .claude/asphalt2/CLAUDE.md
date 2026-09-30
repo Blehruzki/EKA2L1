@@ -67,6 +67,33 @@ bugs found by doing it:
   three answers. Measure the bytes, or give the instrument to the person
   holding the phone and let them turn it until it is right.
 
+## Sources, and which is which
+
+Rank them, and say in the record which one a claim rests on. Getting this
+wrong cost four rounds: the platform's behaviour was inferred from an
+emulator's reimplementation of it, and the inference was wrong.
+
+1. **The binaries on this machine.** The N-Gage images, the RM-409 ROM and
+   its extracted `z:\sys\bin`. `romimg.py`, `e32imports.py`, `epocdb.py`
+   read them. Primary: vtable layouts, export addresses, real ordinal
+   counts.
+2. **Symbian's own published source**, cloned under
+   `/home/user/symbiansource/`: `oss.FCL.sf.mw.classicui` (cone, uikon,
+   Avkon), `oss.FCL.sf.os.kernelhwsrv` (euser, the kernel),
+   `oss.FCL.sf.os.graphics` (the window server). This is the platform. Use
+   it before anything below.
+3. **SDK documentation** -- the panic references, the class reference. Good
+   for contracts and panic meanings.
+4. **Measurements** -- bench runs and the phone's logs and boxes.
+5. **EKA2L1's source.** A reimplementation. Useful for seeing what the
+   *bench* will do, which is a different question from what a device does.
+   Never cite it for platform behaviour without checking 2 or 3.
+6. **Training memory of Symbian.** Unverifiable here and wrong before now.
+
+Web search and `WebFetch` are available and were not used for the first
+ninety-five rounds of this project. That was the single largest avoidable
+source of guessing in it.
+
 ## Self-tests
 
 `logringtest.py` covers the log format -- eight states, including the legacy
