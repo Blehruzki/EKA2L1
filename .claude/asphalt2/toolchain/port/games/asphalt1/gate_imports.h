@@ -79,4 +79,9 @@ enum {
 #define GATE_HOT  361, 362, 258, 354, 327, 246, 298,
 #define GATE_HOT_COUNT 7
 
+// The diversions: see DIVERTS in gen_shim.py. {import, register,
+// which wrapper}, and an import the game does not have is left out.
+#define GATE_DIVERTS  { 160, 1, 0 }, { 91, 0, 1 }, { 45, 0, 1 }, { 64, 0, 1 }, { 42, 0, 3 }, { 257, 0, 2 }, { 250, 0, 2 }, { 248, 0, 2 }, { 310, 0, 2 },
+#define GATE_DIVERT_COUNT 9
+
 #endif

@@ -67,4 +67,8 @@ enum { GAME_SRC_ORIGIN = 16 };
 // shipping build to fix a fault it does not have is not a trade.
 #define GAME_ALLOC_PAD 0
 
+// Substitute rather than map on the diversions: what a phone has been
+// running. See the note beside kDiverts.
+#define GAME_DIVERT_MATCH 0
+
 #endif

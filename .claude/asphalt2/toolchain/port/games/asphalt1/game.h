@@ -73,4 +73,9 @@ enum { GAME_SRC_ORIGIN = 0 };
 // writes past the end of the cell, onto the next cell's free-list link.
 #define GAME_ALLOC_PAD 512
 
+// Map rather than substitute on the diversions. E282: this game adds more
+// than one active object to the scheduler, and substituting made every Add
+// an add of the timer -- E32USER-CBase 41, EReqAlreadyAdded.
+#define GAME_DIVERT_MATCH 1
+
 #endif

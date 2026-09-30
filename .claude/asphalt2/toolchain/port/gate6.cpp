@@ -783,17 +783,12 @@ enum { ON_APP_UI = 0, ON_CONTROL = 1 };
 // suspends the game as the game intends.
 
 struct Divert { u16 import; u8 arg; u8 object; };
-static const Divert kDiverts[] = {
-    { 172, 1, ON_APP_UI },      // eikcore  CEikAppUi::ApplicationRect() const
-    {  98, 0, ON_CONTROL },     // cone     the Nokia export standing in for SetRect
-    {  49, 0, ON_CONTROL },     // cone     CCoeControl::ActivateL()
-    {  68, 0, ON_CONTROL },     // cone     CCoeControl::IsFocused() const
-    {  46, 0, ON_GC },          // bitgdi   CFbsBitGc::SetClippingRegion(const TRegion*)
-    { 286, 0, ON_TIMER },       // euser    CTimer::ConstructL()
-    { 268, 0, ON_TIMER },       // euser    CTimer::After(TTimeIntervalMicroSeconds32)
-    { 266, 0, ON_TIMER },       // euser    CActiveScheduler::Add(CActive*)
-    { 358, 0, ON_TIMER },       // euser    CActive::SetActive()
-};
+// Keyed by (DLL, old ordinal) in gen_shim.py -- see DIVERTS there, which also
+// says what these nine are. They were indices measured in Asphalt 2, and in
+// any other game they diverted nine unrelated imports: E281 died of exactly
+// that, with `CCoeControl::ActivateL()` called on the game's own EKA1 control
+// while the divert for it sat on an index that is not ActivateL here.
+static const Divert kDiverts[] = { GATE_DIVERTS };
 
 // AddToStackL is the one that needs both at once: the app UI it is called on
 // and the control it is handed.
@@ -3696,7 +3691,12 @@ static u32 args_thunk(u8 *code, const void *ctx, u32 logger, u32 target)
     return (u32)b;
 }
 
-enum { ARGS_THUNK_BYTES = 40, PROBE_APP_RECT = 1 };
+// Off: the generated diversion does this properly, on the register a struct
+// return leaves `this` in, and it was doing it for Asphalt 2 all along -- the
+// probe existed only because the divert list was keyed by that game's import
+// indices and so never installed here. Kept because the register capture is
+// the thing that reads a call the port did not expect.
+enum { ARGS_THUNK_BYTES = 40, PROBE_APP_RECT = 0 };
 
 // Which register holds `this` at `CEikAppUi::ApplicationRect()`.
 //
@@ -3769,21 +3769,29 @@ static u32 pad_thunk(u8 *code, u32 pad, u32 target)
 
 enum { PAD_THUNK_BYTES = 24, ALLOC_PAD = GAME_ALLOC_PAD };
 
-static u32 appui_thunk(u8 *code, const void *oldCell, const void *wrapCell,
-                       u32 target)
+// The same swap on whichever register holds the object: r0 for an ordinary
+// method, r1 for one that returns a structure.
+static u32 map_thunk(u8 *code, const void *oldCell, const void *wrapCell,
+                     u32 target, u32 reg)
 {
     u32 *b = (u32 *)code;
     b[0] = 0xE59FC010;
     b[1] = 0xE59CC000;
-    b[2] = 0xE150000C;
+    b[2] = 0xE150000C | (reg << 16);
     b[3] = 0x059FC008;
-    b[4] = 0x059C0000;
+    b[4] = 0x059C0000 | (reg << 12);
     b[5] = 0xE59FF004;
     b[6] = (u32)oldCell;
     b[7] = (u32)wrapCell;
     b[8] = target;
     user_imb_range(b, b + 9);
     return (u32)b;
+}
+
+static u32 appui_thunk(u8 *code, const void *oldCell, const void *wrapCell,
+                       u32 target)
+{
+    return map_thunk(code, oldCell, wrapCell, target, 0);
 }
 
 enum { APPUI_THUNK_BYTES = 40 };
@@ -7564,7 +7572,9 @@ static u32 load_and_start()
         // ApplicationRect got its own thunk above, watching the register a
         // structure return actually leaves `this` in. Do not stack a second
         // one on top of it, watching the wrong one.
-        if (PROBE_APP_RECT && at == (u32)IMPORT_APP_RECT)
+        // ApplicationRect has its own diversion, on r1, because it returns a
+        // structure; this thunk watches r0, which is the return buffer.
+        if (at == (u32)IMPORT_APP_RECT)
             continue;
         if (ctx->spare + APPUI_THUNK_BYTES > ctx->spareEnd)
             break;
@@ -7594,10 +7604,31 @@ static u32 load_and_start()
         if (j >= nImports || j >= kShimCount || (kShimTable[j] >> 24) != KIND_CALL)
             continue;
         u32 **cell = &ctx->wrapUi;
-        if (kDiverts[k].object == ON_CONTROL) cell = &ctx->wrapControl;
-        else if (kDiverts[k].object == ON_TIMER) cell = &ctx->wrapTimer;
-        else if (kDiverts[k].object == ON_GC) cell = &ctx->realGc;
-        iat[j] = this_thunk(stub + SLOT * j, cell, iat[j], kDiverts[k].arg);
+        u32 **was = &ctx->oldUi;
+        if (kDiverts[k].object == ON_CONTROL) {
+            cell = &ctx->wrapControl; was = &ctx->oldControl;
+        } else if (kDiverts[k].object == ON_TIMER) {
+            cell = &ctx->wrapTimer;   was = &ctx->oldTimer;
+        } else if (kDiverts[k].object == ON_GC) {
+            cell = &ctx->realGc;      was = &ctx->fakeGc;
+        }
+        // **Substitute, or map?** Asphalt 2 substitutes: whatever the game
+        // passes is thrown away and the wrapper goes in. That is right while
+        // the game has exactly one of each object, and it is what a phone has
+        // been running for ninety-second races, so it stays.
+        //
+        // It is wrong the moment a game has two. E282: with the diversions
+        // finally reaching this game, every `CActiveScheduler::Add` became
+        // "add the timer", the second one found it already there, and the
+        // run ended in E32USER-CBase 41, EReqAlreadyAdded. Mapping -- swap
+        // only the object we know is the old one, leave anything else alone
+        // -- is the same thing for one object and correct for any number.
+        if (!GAME_DIVERT_MATCH || ctx->spare + APPUI_THUNK_BYTES > ctx->spareEnd) {
+            iat[j] = this_thunk(stub + SLOT * j, cell, iat[j], kDiverts[k].arg);
+        } else {
+            iat[j] = map_thunk(ctx->spare, was, cell, iat[j], kDiverts[k].arg);
+            ctx->spare += APPUI_THUNK_BYTES;
+        }
     }
 
     if (nImports > IMPORT_ADD_FOREGROUND_OBSERVER &&
