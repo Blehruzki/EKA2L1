@@ -35,35 +35,87 @@ def game_image(arg):
 
 
 NOTE_LOG_WRAP = 780
-LOG_HDR_BYTES = 16
+LOG_HDR_BYTES = 24
 LOG_HEAD_BYTES = 256 * 1024
 
 
 def read(path):
     """The log, oldest record first, whether or not the file wrapped.
 
-    Since build 007 the log is a ring: record zero is a header holding
-    NOTE_LOG_WRAP and the byte offset of the oldest live record, and the
-    body runs from byte 8 to the end and starts over. Before that the file
-    was written once and stopped at a megabyte -- which meant every crash
-    late in a run happened past the end of its own log, round 92 and round
-    93 both. A file with no header record reads exactly as it used to.
+    The log has a frozen head and a ring behind it. Three header records
+    at the front hold the write pointer, where the head ended, and whether
+    the ring has come round; the head runs from the header to
+    LOG_HEAD_BYTES and is written once; the ring runs from there to the end
+    of the file and wraps.
+
+    Before this the file was written once and stopped at a megabyte, so
+    every crash late in a run happened past the end of its own log -- round
+    92 and round 93 both. A file with no header records reads exactly as it
+    used to.
+
+    `logringtest.py` exercises all four states this can be in. The version
+    that shipped in build 007 had two header records instead of three and
+    dropped the whole ring whenever it had not yet wrapped, which is the
+    state a short run ends in -- so the instrument built to catch a late
+    crash would have lost the records of one.
     """
     d = open(path, 'rb').read()
     recs = [struct.unpack_from('<II', d, 8 * i) for i in range(len(d) // 8)]
+    hdr = LOG_HDR_BYTES // 8
     if len(recs) < 2 or recs[0][0] != NOTE_LOG_WRAP or recs[1][0] != NOTE_LOG_WRAP:
-        return recs
+        return recs                      # a log from before the ring
+    ring_start = LOG_HEAD_BYTES // 8
+    if recs[2][0] != NOTE_LOG_WRAP:
+        return _legacy(recs, ring_start)  # builds 007 and 008: two records
+    write, head_end, wrapped = recs[0][1] // 8, recs[1][1] // 8, recs[2][1]
+    if not (hdr <= head_end <= len(recs)) or not (hdr <= write <= len(recs)):
+        return recs[hdr:]                # a header that makes no sense
+    head = recs[hdr:min(head_end, ring_start)]
+    if not wrapped:
+        # The ring has not come round, so it holds one run of records from
+        # its start up to the write pointer -- and nothing past it. Reading
+        # to the end of the file here is what build 007 got wrong: it read
+        # the zeroes after the live records as records.
+        return head + (recs[ring_start:write] if write > ring_start else [])
+    return head + _ring(recs, ring_start, write)
+
+
+def _legacy(recs, ring_start):
+    """Builds 007 and 008, whose header is two records and cannot say where
+    the ring's newest record is while the ring has not yet wrapped.
+
+    Those two builds are on a phone as this is written, so their logs have
+    to open. The missing write pointer is recoverable: the file is created
+    fresh each run, so the ring's unwritten part is zeroes, and the live
+    records end where the trailing run of them begins. A zero record is
+    `(0, 0)`, and no real record has code 0.
+    """
+    hdr = 2
     ring_at, head_end = recs[0][1] // 8, recs[1][1] // 8
-    head_start, ring_start = LOG_HDR_BYTES // 8, LOG_HEAD_BYTES // 8
-    if head_end < head_start or head_end > len(recs):
-        return recs[head_start:]
-    head = recs[head_start:min(head_end, ring_start)]
-    if not ring_at or ring_at <= ring_start or ring_at > len(recs):
-        # The head is still being written, or the ring has not come round.
-        return head + recs[ring_start:] if head_end >= ring_start else head
-    # In the ring the write pointer is where the oldest record sits, so the
-    # tail of the file comes before the part already overwritten.
-    return head + recs[ring_at:] + recs[ring_start:ring_at]
+    if not (hdr <= head_end <= len(recs)):
+        return recs[hdr:]
+    head = recs[hdr:min(head_end, ring_start)]
+    return head + _ring(recs, ring_start,
+                        ring_at if ring_start < ring_at <= len(recs) else 0)
+
+
+def _ring(recs, ring_start, write):
+    """The ring's records, oldest first.
+
+    Two things have to happen and the order matters. The writer wraps
+    *before* the block that would not fit, so on the first time round the
+    very end of the file is still unwritten -- zeroes -- and those are not
+    records. After the second time round there are none, because every byte
+    has been written at least once. So trim the trailing zeroes first, then
+    rotate at the write pointer, which is where the oldest live record sits.
+    """
+    ring = list(recs[ring_start:])
+    while ring and ring[-1] == (0, 0):
+        ring.pop()
+    k = (write - ring_start) if write else 0
+    if 0 < k <= len(ring):
+        return ring[k:] + ring[:k]
+    return ring
 
 
 def names(game):

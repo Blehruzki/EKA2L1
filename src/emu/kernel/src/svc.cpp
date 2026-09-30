@@ -18,6 +18,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <cstdlib>
 #include <common/uid.h>
 #include <utils/chunk.h>
 #include <utils/des.h>
@@ -2929,6 +2930,20 @@ namespace eka2l1::epoc {
     /* TIMER */
     /*********************/
     BRIDGE_FUNC(void, clear_inactivity_time) {
+        // EKA2L1_INACTIVITY=1 counts the calls that come from the *guest*.
+        // The window server resets the same timer host-side on every event,
+        // so counting in kernel_system::reset_inactivity_time mixes the two
+        // and cannot answer the question it was added for: whether a port
+        // calling User::ResetInactivityTime by euser ordinal reached the
+        // right export. This entry point is reachable from guest code only.
+        static const bool watch = []() {
+            const char *v = std::getenv("EKA2L1_INACTIVITY");
+            return v && *v && *v != '0';
+        }();
+        if (watch) {
+            static std::uint32_t seen = 0;
+            LOG_INFO(KERNEL, "guest User::ResetInactivityTime call {}", ++seen);
+        }
         kern->reset_inactivity_time();
     }
 

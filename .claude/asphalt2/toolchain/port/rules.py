@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""rules.py -- print the three confirmations, computed from the record.
+"""rules.py -- print the four confirmations, computed from the record.
 
 The user asked for three things, in their words:
 
@@ -11,10 +11,25 @@ The user asked for three things, in their words:
   3. keep track of how far we've gone through with the tests, and which test
      provided the best results so far and why (in a brief manner).
 
-I followed them for rounds 47 to 50 and then stopped, without noticing and
-without being asked to. So the confirmations are not written from memory any
-more: this reads ROUNDS.md and prints them, and the numbers in them are
-whatever the file actually says.
+A fourth was added after round 93, in the same spirit and for the same
+reason -- the first three are about not repeating a *test*, and nothing was
+about not shipping a *guess*:
+
+  4. Review your own code before it goes out. Do not just guess, do not just
+     code: read back what you wrote, ask whether it actually makes sense,
+     and check the things you assumed.
+
+That one came from noticing, unprompted, that a version bump in a config
+format would have silently thrown away a setting every phone already had.
+The point is that the noticing should not be luck. So this rule runs what
+can be run -- the self-tests, and every hard-coded ordinal against the ROM
+that has to answer it -- and then asks the three questions that cannot be
+automated.
+
+I followed the first three for rounds 47 to 50 and then stopped, without
+noticing and without being asked to. So the confirmations are not written
+from memory any more: this reads ROUNDS.md and prints them, and the numbers
+in them are whatever the file actually says.
 
     python3 rules.py            # before shipping anything, and in every reply
                                 # that reports a result or asks for a run
@@ -86,7 +101,98 @@ def main():
     r = re.search(r'\*\*Runner-up: ([^*]+)\*\*', text)
     if r:
         print('  runner-up: %s' % r.group(1).strip(' .'))
-    return 1 if unfinished else 0
+
+    print()
+    bad = rule4()
+    return 1 if (unfinished or bad) else 0
+
+
+# ---- rule 4 ---------------------------------------------------------------
+
+SELF_TESTS = ('logringtest.py',)
+
+# Ordinals this port has confirmed by *measurement*, not by reading a table.
+# `epoc9.def` lists 2,184 euser exports and the RM-409 ROM has 2,229, so an
+# index into the def is not a proof of an ordinal; and a wrong ordinal for a
+# no-argument function does nothing visible, which is the worst kind of
+# wrong. E314 to E316 settled 634 by changing how often the port called it
+# and watching the emulator's count move by exactly that much.
+CONFIRMED = {634: 'User::ResetInactivityTime -- E314-E316, by differential count',
+             674: 'User::TickCount -- every frame of every run, values at 64/s',
+             650: 'User::Panic -- every G6 panic the phone has ever shown'}
+
+
+def ordinals():
+    """Every IMPORT in gate6.s, and whether the ROM library has that many
+    exports. A number past the end is caught here; a number inside the range
+    but wrong is not, and only a measurement settles those."""
+    import romimg
+    src = os.path.join(HERE, 'gate6.s')
+    rom = '/root/.local/share/EKA2L1/data/roms/rm-409/SYM.ROM'
+    zbin = '/root/.local/share/EKA2L1/data/drives/z/rm-409/sys/bin/'
+    lib, out = None, []
+    for line in open(src):
+        m = re.match(r'\s*@\s*([a-z0-9]+)\s*$', line)
+        if m:
+            lib = m.group(1)
+            continue
+        m = re.match(r'\s*IMPORT\s+(\w+),\s*(\d+)', line)
+        if m and lib:
+            out.append((lib, m.group(1), int(m.group(2))))
+    counts = {}
+    for l in sorted(set(x[0] for x in out)):
+        p = zbin + l + '.dll'
+        if not os.path.isfile(p):
+            counts[l] = None
+            continue
+        try:
+            d, h = romimg.load(p, rom)
+            counts[l] = len(romimg.exports(d, h))
+        except Exception:
+            counts[l] = None
+    return out, counts
+
+
+def rule4():
+    print('RULE 4 -- reviewed, not guessed')
+    bad = 0
+    for t in SELF_TESTS:
+        p = os.path.join(HERE, t)
+        if not os.path.isfile(p):
+            print('  %-20s MISSING' % t)
+            bad += 1
+            continue
+        r = subprocess.run([sys.executable, p], capture_output=True, text=True)
+        print('  %-20s %s' % (t, 'pass' if r.returncode == 0 else '** FAIL **'))
+        bad += (r.returncode != 0)
+    try:
+        imps, counts = ordinals()
+    except Exception as exc:
+        print('  ordinals: not checked (%s)' % exc)
+        return bad
+    over = [(l, n, o) for l, n, o in imps
+            if counts.get(l) and o > counts[l]]
+    unread = sorted(set(l for l, _n, _o in imps if not counts.get(l)))
+    print('  %d imported ordinals across %d libraries; %d past the end of '
+          'their export table' % (len(imps), len(set(x[0] for x in imps)), len(over)))
+    for l, n, o in over:
+        print('    ** %s ordinal %d (%s) -- the ROM has %d' % (l, o, n, counts[l]))
+    bad += len(over)
+    if unread:
+        print('  not checked (no ROM copy): %s' % ', '.join(unread))
+    print('  confirmed by measurement: %s'
+          % ', '.join(str(k) for k in sorted(CONFIRMED)))
+    print()
+    print('  And the three that cannot be computed. Answer them in writing')
+    print('  before a build goes out, not after:')
+    print('    a. What in this change is a guess? Name each one, and how it')
+    print('       could be settled on the bench rather than on the phone.')
+    print('    b. Which lines of the diff did I read back, and which did I')
+    print('       only remember writing?')
+    print('    c. What state does this code have that the bench run did not')
+    print('       enter? A ring that never wrapped. A config from the last')
+    print('       build. A key held down. Those are where the bugs were.')
+    return bad
 
 
 if __name__ == '__main__':

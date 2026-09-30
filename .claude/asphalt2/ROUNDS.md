@@ -9,6 +9,23 @@ not a repeat of. If I state a finding, ask which row established it. If a row's
 "settled" column is empty, that round bought nothing and I should say so rather
 than let it blur into the next one.
 
+**There are four rules now.** The fourth came after round 93 and it is about
+the other half of the problem: the first three stop a *test* being repeated,
+and nothing stopped a *guess* being shipped.
+
+> 4. Review your own code before it goes out. Do not just guess, do not just
+>    code: read back what you wrote, ask whether it actually makes sense, and
+>    check the things you assumed.
+
+`rules.py` runs what can be run for it -- the self-tests, and every hard-coded
+ordinal in `gate6.s` against the export table of the ROM that has to answer it
+-- and then asks the three questions that cannot be automated: which parts of
+this change are guesses and how each could be settled on the bench; which
+lines of the diff were read back rather than remembered; and what state the
+code can be in that the bench run never entered. All three of the bugs the
+first review pass found were in that last category -- a ring that had not
+wrapped, a config from the previous build, a key held down.
+
 **The three confirmations are generated, not remembered.**
 `toolchain/port/rules.py` prints them from this file -- what is logged, how
 many rows a new test has to be checked against, and how far we are with which
@@ -366,6 +383,10 @@ them, and say so.
 | E311 | E311: the log's head frozen at a quarter megabyte and only the tail ringed, so one file carries both the boot and the end | 130832 | `--` | **One file with both ends of the run in it.** The first quarter megabyte is written once and never overwritten and the remaining 768 KB wraps; the header is two records, where the ring's oldest record sits and how far the head got. The result reads as frames **1 to 4,511, in order, no inversions**, ticks monotonic over 149.2 s, with a gap in the middle where the minutes nobody needs used to be. 4,511 frames is the best this title has managed on the bench. This is the instrument round 92 and round 93 both needed and neither had |
 | E312 | E312: Asphalt 2 on the shared changes -- the DSA abort guard, the inactivity reset, the split log and the shift knob | 51968 | `--` | **Asphalt 2 takes the shared changes without a scratch: 3,371 frames, clean, the frame loop running and the box's flags unchanged.** The abort guard, the inactivity reset, the split log and the shift knob all live in `gate6.cpp`, so the fix the person asked for on both titles is one fix; this row is the check that the title it was not diagnosed on is no worse for it. The knob's keys were moved off `4` and `6` before this ran -- those are steering |
 | E313 | E313: Asphalt 2 back to the crash fix alone -- the shift knob and the boot clock off for this title, and a version-1 gate6.cfg on disk to read | 44288 | `--` | **Two things checked, both of which build 178 got wrong.** The knob is off for this title (`GAME_SHIFT_PICKER 0`) and so is the boot clock (`GAME_LOG_CLOCK 0`): 3,094 frames, clean, 5,120 tick records which is exactly two a frame from `CLOCK_EVERY_FRAME` and none from the clock I had switched on globally. **And the version-1 config loads.** A `gate6-6rbc.cfg` of four words -- magic, version 1, mode 3, inset 56, the shape build 177 writes -- was planted on the drive before the run, and the log has `NOTE_CFG_READ` at mode 3 inset 56 with the shift defaulting to 0. Bumping CFG_VERSION to 2 for the knob would otherwise have thrown away the screen mode every person on this title has already chosen by hand, on a build whose whole point is to change nothing but the crash. That is the second thing in two builds that would have made a working title worse in the name of a fix it did not need |
+| E314 | E314: EKA2L1 patched to count User::ResetInactivityTime calls -- is euser ordinal 634 the function the port thinks it is? | 120110 | `--` | **Asked the wrong question and said so.** 1,137 calls counted, all from the game's thread, against 2,501 frames and a reset every 32 -- so ours are about 79 of them and the other 1,058 are the window server resetting the same timer host-side on every event. `kernel_system::reset_inactivity_time` is reached from both, so counting there cannot answer whether *our* call arrives. The probe moved |
+| E315 | E315: the same count, but at the guest-only entry point -- our calls alone | 117952 | `--` | **Closer, still not decisive.** The probe is on `clear_inactivity_time`, the bridged SVC, which only guest code can reach: 1,147 calls against 2,540 frames. Ours should be 79 of those, so 1,068 are Avkon and cone resetting the timer from the guest on key and redraw events. A count that big cannot have a 79 picked out of it |
+| E316 | E316: the same run with our reset on every frame instead of every 32 -- if the guest count rises by the frame count, the ordinal is ours | 127067 | `--` | **Settled: euser ordinal 634 is `User::ResetInactivityTime`.** One variable changed -- the port's reset goes from every 32 frames to every frame -- and nothing else. 3,512 guest calls against 2,431 frames, so the part that is not ours is **1,081**, against E315's **1,068** over its own frame count: within 1.2 per cent. The rise is exactly the frame count, which nothing but our call can produce. Worth the three runs: the ordinal came from `epoc9.def`, whose euser table has **2,184** entries against the RM-409 ROM's **2,229**, so the index that produced it is not a proof; and a wrong ordinal on a no-argument function does nothing visible at all |
+| E317 | E317: the review's fixes -- three header records so a ring that has not come round keeps its tail, and the nudged setting written once the keypad goes quiet | 130832 | `--` | **The review's own two fixes, on the bench.** Three header records now -- write pointer, head end, wrapped -- reading back `(780, 483328) (780, 260840) (780, 1)` and unwrapping to frames 1 to 3,542 with no inversions. And the nudged setting is written once the keypad has been quiet for a second rather than on every keypress: `*` and `#` repeat while held, and `cfg_save` is a file replace, a write, a flush and a close, which is the stall `hold_tick` was written to avoid and which I put back one function below it |
 
 <!-- EMURUN -->
 

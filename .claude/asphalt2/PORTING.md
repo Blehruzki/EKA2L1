@@ -709,6 +709,83 @@ have already been wrong in this port; a person turning a knob until the
 picture is straight is a measurement, and a person describing a photograph is
 not.
 
+### Reviewing my own diff, and the three things it found
+
+*After round 93, at the person's instruction: "Do not just guess, do not just
+code. Review your own code, analyze your solutions and ask yourself if this
+actually makes sense before coding."*
+
+The prompt was a correction, and a fair one. Build 178 shipped and had to be
+withdrawn; the thing that caught its worst part -- a config version bump that
+would have discarded a setting every phone already had -- was me re-reading
+the diff, which had been luck rather than method. So the review became a pass
+of its own, and it found three more.
+
+**One: the ring log dropped the ring.** The header had two records -- where
+the ring's oldest record is, and how far the frozen head got -- and no way to
+say where the ring's *newest* record is while the ring has not yet come round.
+The reader therefore returned the head alone in that state. That state is a
+short run, which is to say a crash, which is the only thing the ring was built
+for. Three header records now, and `logringtest.py` covers all eight states
+the file can be in, the legacy two-record format included, because builds 007
+and 008 are on a phone and their logs still have to open.
+
+Worth keeping: **the first version of that test passed against the buggy
+reader.** It laid the head out ending exactly on the ring boundary, and the
+writer never does that -- it writes whole blocks, so the head stops a little
+short (round 93's own log: 261,472 against a boundary of 262,144). With an
+exact fit the reader took a different branch and looked correct. A case that
+cannot fail is not a case, and the way to know is to run the new test against
+the code it was written to catch. Against the real layout, build 007's reader
+loses all thirty ring records.
+
+**Two: euser ordinal 634 was a guess wearing a citation.** It came from
+`epoc9.def`, and that file's euser list has 2,184 entries against the RM-409
+ROM's 2,229 exports -- so an index into it is not a proof, and nothing in the
+file says where the two stop agreeing. Disassembling the export helped and did
+not settle it: ordinal 634 is `push {r4,lr} / blx / pop {r4,pc}`, which is the
+right shape for a no-argument function and is also the shape of every other
+no-argument function in euser.
+
+What settled it was a differential. E314 counted the calls in
+`kernel_system::reset_inactivity_time` and got 1,137 against 79 expected,
+because the window server resets the same timer host-side. E315 moved the
+probe to the bridged SVC, which only guest code can reach, and got 1,147 --
+Avkon resets it too. E316 changed one variable, the port's reset going from
+every 32 frames to every frame: 3,512 calls against 2,431 frames, so the part
+that is not ours is 1,081 against E315's 1,068. Within 1.2 per cent, and the
+rise is exactly the frame count. Nothing but our call produces that.
+
+Three bench runs against one constant is a good trade. A wrong ordinal on a
+no-argument function does nothing visible at all -- it would have shipped, the
+screensaver would have kept coming up, and the next round would have blamed
+the abort guard.
+
+**Three: the config was written on every keypress.** `*` and `#` repeat while
+held, and `cfg_save` is a file replace, a write, a flush and a close. That is
+a stalled frame several times a second, on a phone, from a diagnostic. The
+mode-cycle code one function above it has a comment explaining why it does not
+do this. I did it anyway. Marked dirty now, written once the keypad has been
+quiet for a second.
+
+**And one thing the review found that it could not fix.** The abort guard
+shipped in builds 007, 008 and 179 rests on the window server calling
+`AbortNow`, and `RELEASE_THE_SCREEN` is 1 -- the port cancels direct screen
+access immediately after starting it, so it holds no outstanding DSA request
+and may never be sent an abort at all. Round 93's box shows no abort flag, and
+I read that as "the abort happened after the last flush" without weighing the
+other reading: that it never happens. The `User::ResetInactivityTime` half
+does not depend on DSA and should still remove the idle case; deliberate
+backgrounding may not be fixed. The next log will say which, because all 45
+app UI slots are already instrumented and the ring now keeps the end of the
+run -- so whatever the framework calls on the way to the crash is recorded
+whether it is the DSA observer or `HandleForegroundEventL`.
+
+The pattern across all four: **every one was in a state the bench run never
+entered.** A ring that had not wrapped, a config from the previous build, a
+key held down, a callback that only fires when something takes the screen.
+That is now the third question rule 4 asks.
+
 ### A fix a title did not ask for is a regression
 
 *Build 178, withdrawn. Build 179 is build 177 plus the crash fix and nothing else.*

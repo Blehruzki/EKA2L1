@@ -41,6 +41,26 @@ is from another one's therefore works here and fails on hardware. Related:
 `thread_create` in `src/emu/kernel/src/svc.cpp` accepted any stack size at all
 until it was taught the EKA2 ceiling.
 
+EKA2L1 lets a handle that has been closed go on being used. `RHandleBase::Close`
+does not invalidate it, so guest code that closes a handle and then passes it
+somewhere keeps working here and raises **KERN-EXEC 0** on a device. This is
+not hypothetical: it hid a real fault through a whole emulator round.
+
+`src/emu/bridge/include/bridge/epoc9.def` is not an ordinal table. Its euser
+list has **2,184** entries against the RM-409 ROM's **2,229** exports, so an
+index into it is not a proof of an ordinal -- the two agree at the low numbers
+and there is nothing in the file that says where they stop agreeing. Resolve a
+hard-coded ordinal against the ROM (`romimg.py` reads its export directory), or
+better, confirm it by measurement: call the function at two different rates and
+watch the count move.
+
+`EKA2L1_INACTIVITY=1` counts guest calls to `User::ResetInactivityTime` at the
+bridged SVC (`clear_inactivity_time` in `src/emu/kernel/src/svc.cpp`). Counting
+in `kernel_system::reset_inactivity_time` instead mixes in the window server's
+own host-side resets, which are an order of magnitude more frequent. The other
+probes are `EKA2L1_WATCH`, `EKA2L1_WATCHVAL`, `EKA2L1_WATCHPC` and
+`EKA2L1_RWATCH` in `src/emu/cpu/src/dyncom/armstate.cpp`.
+
 EKA2L1 accepts SIS packages that a real device rejects, because it verifies none
 of the integrity fields a device checks: the per-file SHA-1 in each
 `SISFileDescription`, the E32 image header CRC32, `SISControllerChecksum` /

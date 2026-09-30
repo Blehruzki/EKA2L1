@@ -41,6 +41,7 @@
 #include <disasm/disasm.h>
 
 #include <kernel/kernel.h>
+#include <cstdlib>
 #include <kernel/libmanager.h>
 #include <kernel/guomen_process.h>
 #include <kernel/scheduler.h>

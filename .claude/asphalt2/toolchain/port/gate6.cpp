@@ -852,7 +852,7 @@ struct Context {
     u32 logFill;            // events in the buffer
     u32 logPos;             // where the next block goes in the file
     u32 logWrapped;         // ... and whether it has been round once
-    u32 logHdr[4];          // the ring's header records, rewritten each block
+    u32 logHdr[6];          // the ring's header records, rewritten each block
     u32 logHeadEnd;         // how far the frozen head got
     u32 boxFs[2];
     u32 boxFile[4];
@@ -1019,6 +1019,8 @@ struct Context {
     u32 modeShot;           // how many modes the cycling test has captured
     u32 insetAsked;         // Avkon has been asked for the main pane once
     u32 insetFromAvkon;     // and this is what it said, 0 for "would not say"
+    u32 cfgDirty;           // a setting changed and is not on disk yet
+    u32 cfgDue;             // ... and the tick it should be written at
     u32 holdSince;          // tick the mode key went down, 0 when it is up
     u32 holdNext;           // and the tick the next cycle is due
     u32 holdCycled;         // whether this hold has changed anything yet
@@ -1545,7 +1547,15 @@ enum { KEEP_A_LOG = 1, LOG_MAX_BYTES = 1 << 20 };
 // is written once and never overwritten, and the rest wraps. The header is
 // two records: where the ring's oldest record sits, and how far the head
 // got.
-enum { LOG_HDR_BYTES = 16, LOG_BODY_START = LOG_HDR_BYTES,
+// Three records, not two. With only "where the ring's oldest record is"
+// and "how far the head got", a file whose head has filled but whose ring
+// has not yet come round says nothing about where the ring's *newest*
+// record is -- the reader cannot tell live records from the zeroes after
+// them, and the version of this that shipped in build 007 dropped the
+// whole tail in that state. Which is every short run: the ring is 768 KB
+// and a crash two minutes in never reaches the end of it. So: the write
+// pointer, where the head ended, and whether the ring has wrapped.
+enum { LOG_HDR_BYTES = 24, LOG_BODY_START = LOG_HDR_BYTES,
        LOG_HEAD_BYTES = 256 * 1024 };
 static const u16 kBoxPath[] = {'C',':','\\','g','6','b','o','x','-',
                                GAME_STEM_CHARS,'.','d','a','t'};
@@ -1695,9 +1705,11 @@ static void log_block(Context *c)
     // does not have. Before the wrap it reads zero, which means "in order
     // from the start" and is what every reader already does.
     c->logHdr[0] = (u32)NOTE_LOG_WRAP;
-    c->logHdr[1] = c->logWrapped ? c->logPos : 0u;
+    c->logHdr[1] = c->logPos;                   // where the next block goes
     c->logHdr[2] = (u32)NOTE_LOG_WRAP;
     c->logHdr[3] = c->logHeadEnd ? c->logHeadEnd : c->logPos;
+    c->logHdr[4] = (u32)NOTE_LOG_WRAP;
+    c->logHdr[5] = c->logWrapped;
     c->logDes[0] = ((u32)EPtrC << KTypeShift) | (u32)LOG_HDR_BYTES;
     c->logDes[1] = (u32)c->logHdr;
     file_write_at(c->logFile, 0, c->logDes);
@@ -3482,6 +3494,10 @@ static void dsa_refresh(Context *c);
 // inactivity timeout. A power of two, so the test is a mask: this image
 // links against euser alone and a runtime divide would want a helper.
 enum { RESET_INACTIVITY = 1, RESET_INACTIVITY_FRAMES = 32 };
+// A second of quiet keypad before a nudged setting goes to disk.
+enum { CFG_SETTLE_TICKS = 64 };
+
+static void cfg_save(Context *c);
 
 extern "C" void gate6_timer_runl(void *, u32, Context *c)
 {
@@ -3523,6 +3539,11 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     // kernel call and there is no gain in making it thirty.
     if (RESET_INACTIVITY && !(c->frames & ((u32)RESET_INACTIVITY_FRAMES - 1)))
         user_resetinactivity();
+    // A setting nudged from the keypad, written once the nudging stops.
+    if (c->cfgDirty && (i32)(user_tickcount() - c->cfgDue) >= 0) {
+        c->cfgDirty = 0;
+        cfg_save(c);
+    }
     hold_tick(c);
     if (HEAP_PEAK_STEP)
         heap_peak(c);
@@ -5444,7 +5465,16 @@ static void shift_set(Context *c, i32 cols)
     c->clearPending = 1;        // the old position is still on the panel
     log_event(c, NOTE_SHIFT, (u32)c->shiftX);
     log_block(c);
-    cfg_save(c);
+    // **Not saved here.** `*` and `#` repeat while they are held, and
+    // cfg_save is a file replace, a write, a flush and a close -- inside
+    // the key handler, several times a second, stalling a frame each
+    // time. This is the same mistake hold_tick was written to avoid and
+    // its comment says so in as many words; I made it anyway one function
+    // further down. Marked dirty instead, and the frame loop writes it
+    // once the keypad has been quiet for a second.
+    c->cfgDirty = 1;
+    const u32 now = user_tickcount();
+    c->cfgDue = now + (u32)CFG_SETTLE_TICKS;
 }
 
 // How many rows at the top of the screen to stay out of. The layout is redone
