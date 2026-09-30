@@ -135,13 +135,13 @@ enum { GAME_SRC_ORIGIN = 16 };
 // the loader; without it the installer carries the loader alone and the
 // data is copied to the phone by hand, which is what a 9 MB card dump and
 // a signing limit make the sensible shape for this title.
-// The keypad knob for the horizontal position of the picture in the
-// frame buffer: `*` and `#` move it a column, `7` and `9` eight, `0`
-// resets, and the choice is saved. Round 93 established that what we
-// write is correct and the panel shows it shifted, which is a scan-out
-// question no measurement inside the process can answer -- so the wrap is live on this title.
-// Turn it off once the right value is known and it is the default here.
-#define GAME_SHIFT_PICKER 1
+// **Off, and gone for good.** The knob existed to find the horizontal
+// offset by hand, and round 97 found it properly instead: the offset was
+// GAME_SRC_ORIGIN, 16, the same constant Asphalt 2 has always had. The
+// knob's -22 was that 16 scaled to the destination and rounded, which is
+// why it never quite landed. With the origin right there is nothing to
+// nudge, and five keys go back to the game.
+#define GAME_SHIFT_PICKER 0
 
 // A tick every sixteenth traced event, to find where the thirteen-second
 // boot goes. Round 92 blamed the leak settings and round 93 disproved it

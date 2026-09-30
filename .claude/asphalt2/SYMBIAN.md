@@ -93,6 +93,45 @@ there independently. Slot 4's count (63, 173 — once per ws event) and slot
 `CActive` for comparison: 0, 1 destructors, 2 `Extension_`, **3 `DoCancel`**,
 4 `RunL`, 5 `RunError` — which the port already encodes as `NEW_DOCANCEL = 3`.
 
+## Cancelling an active object
+
+From `kernel/eka/euser/cbase/ub_act.cpp` and `ub_tim.cpp`:
+
+```cpp
+EXPORT_C void CActive::Cancel()
+	{
+	if (iStatus.iFlags & TRequestStatus::EActive)
+		{
+		DoCancel();
+		User::WaitForRequest(iStatus);
+		iStatus.iFlags &= ~(TRequestStatus::EActive | TRequestStatus::ERequestPending);
+		}
+	}
+
+EXPORT_C void CTimer::DoCancel()
+	{
+	iTimer.Cancel();
+	}
+```
+
+Two things follow and the port got both wrong before reading this.
+
+**`DoCancel` must make the outstanding request complete**, because `Cancel`
+then waits for it. A `DoCancel` that does not is a thread blocked forever in
+`User::WaitForRequest`.
+
+**`CTimer::DoCancel` is an executive call on an RTimer handle.** A `CTimer`
+whose `ConstructL` never ran has no such timer -- `iTimer.CreateLocal()` is
+in `ConstructL`, not the constructor -- so its handle is zero, and an EKA1
+object's handle word holds whatever that layout left there. Either way the
+kernel refuses it: **KERN-EXEC 0**.
+
+This port substitutes a 9.x `CTimer` for the game's 7.0s one by running the
+constructor over allocated memory and driving the request from the game's own
+completions. For such an object the right `DoCancel` is neither the game's
+nor the real one: it is to complete the request, which is what the contract
+above actually asks for.
+
 ## Avkon shuts applications down through HandleCommandL
 
 `CAknAppUi::HandleSystemEventL`, from `uifw/AvKon/src/AknAppUi.cpp`:
