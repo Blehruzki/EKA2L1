@@ -338,6 +338,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_ARG_UI = 788,      // ... and the state of the app UI at that moment
        NOTE_HEAP_VT = 787,     // the allocator and its vtable, as they start out
        NOTE_HEAP_BAD = 786,    // ... and where they stopped being that
+       NOTE_PROBE = 785,       // a one-off question, with a code nothing shares
        NOTE_RSC_FN = 797,      // CCoeEnv::AddResourceFileL, as resolved
        NOTE_RSC_OFFSET = 798,  // ... and the offset it answered
        NOTE_RSC_PATH = 799,    // two characters of the path it was given
@@ -945,7 +946,7 @@ struct Context {
     u32 noopFn;             // what a lookup answers when 9.x dropped the export
     u32 writeFn;            // and what stands in for RDebug::WriteMemory
     u32 idFn;               // RThread::Id: a TThreadId of zero, in r0 and r1
-    u32 threadOpen;         // euser's RThread::Open, for a name already taken
+    u32 threadHandle;       // the handle the create that worked came back with
     u32 newLibraryLookup;   // euser's RLibrary::Lookup, as resolved
     u32 newLibraryLoad;     // euser's RLibrary::Load, as resolved
     // Which RLibrary is euser and which is efsrv. One slot per kind was wrong
@@ -4588,21 +4589,34 @@ enum { KERR_ALREADY_EXISTS = -11, OWNER_PROCESS = 1 };
 extern "C" int gate6_thread_exists(int err, void *self, const void *name,
                                    Context *c)
 {
+    // Every create comes through here. A good one is remembered: an RThread
+    // is one word, its handle, and that is the whole of what the second
+    // object needs to name the same thread.
+    if (err == 0 && self) {
+        c->threadHandle = ((const u32 *)self)[0];
+        return err;
+    }
     if (err != KERR_ALREADY_EXISTS)
         return err;
+
     log_event(c, NOTE_THREAD_CREATE, 0xA11EAD00u);
     log_event(c, NOTE_THREAD_CREATE, (u32)self);
-    log_event(c, NOTE_THREAD_CREATE, (u32)name);
-    log_event(c, NOTE_THREAD_CREATE, c->threadOpen);
-    if (!c->threadOpen || !self || !name) {
+    log_event(c, NOTE_THREAD_CREATE, c->threadHandle);
+
+    // `RThread::Open(TDesC16 const &, TOwnerType)` was the first answer and
+    // E305 measured it wrong: EKA2 wants a **full** name there --
+    // `process[uid]instance::thread` -- so a bare "SoundServer" comes back
+    // KErrNotFound (-1). Copying the handle needs no name, no extra import
+    // and no assumption about how the platform spells a thread's identity.
+    if (!self || !c->threadHandle) {
         log_block(c);
         return err;
     }
-    typedef int (*Open)(void *, const void *, int);
-    const int r = ((Open)c->threadOpen)(self, name, OWNER_PROCESS);
-    log_event(c, NOTE_THREAD_CREATE, (u32)r);
+    ((u32 *)self)[0] = c->threadHandle;
+    log_event(c, NOTE_THREAD_CREATE, 0x0BEC0000u);
     log_block(c);
-    return r;
+    (void)name;
+    return 0;
 }
 
 static u32 stack_thunk(u8 *code, const void *ctx, u32 target, u32 ceiling)
@@ -4671,6 +4685,9 @@ static u32 stack_thunk(u8 *code, const void *ctx, u32 target, u32 ceiling)
     b[48] = (u32)&gate6_thread_stack;
     b[49] = LEND_THE_HEAP ? (u32)user_allocator() : 0u;
     b[50] = (u32)&gate6_thread_exists;
+    // Where this one landed, so the hook below can read back the words that
+    // are actually executing rather than the ones this function wrote.
+    ((Context *)ctx)->threadStackThunk = (u32)b;
     user_imb_range(b, b + STACK_WORDS);
     return (u32)b;
 }
@@ -8095,12 +8112,6 @@ static u32 load_and_start()
     // 100,000-byte stack and the run ends there. Both routes into it are
     // wrapped -- this one for the static import the SoundServer start site
     // calls, and the one in the lookup for the game's own dynamic calls.
-    // Before the create is wrapped, because the wrapper's KErrAlreadyExists
-    // arm calls through this and a stub would take the call instead.
-    if (IMPORT_THREAD_OPEN < nImports && IMPORT_THREAD_OPEN < kShimCount &&
-        (kShimTable[IMPORT_THREAD_OPEN] >> 24) == KIND_CALL)
-        ctx->threadOpen = iat[IMPORT_THREAD_OPEN];
-
     if (CLAMP_THREAD_STACK && IMPORT_THREAD_CREATE < nImports &&
         ctx->spare + STACK_WORDS * 4 <= ctx->spareEnd) {
         iat[IMPORT_THREAD_CREATE] = stack_thunk(ctx->spare, ctx,

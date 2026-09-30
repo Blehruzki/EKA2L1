@@ -492,6 +492,46 @@ number the port itself already holds -- the blink period against the sampling
 interval, `SRC_ORIGIN` against the render origin -- rather than by looking
 harder at the picture.
 
+### Ten runs against a binary that was not being built
+
+*E295 to E305, chasing round 90's fix.*
+
+The fix for the duplicate thread name went in, and its probe did not fire.
+Then a probe on the line above it did not fire, under three different note
+codes, in three different places, while the line below kept logging. That is
+impossible in straight-line C, and `load_and_start` is straight-line C from
+7098 to 8250 -- one function, no early return, braces counted.
+
+What settled it was not the source but the **record count**: 6,008 for ten
+runs in a row while the image grew from 47,640 to 48,048 bytes. A
+deterministic run repeats a count; it cannot repeat one across code that
+changed. So the image being executed was not the image being built -- and the
+emulator's own log had been saying so all along, in a line nobody read:
+
+    gate6.exe (UID3=0xE0001007) runtime code: 0x70000000
+
+Round 90 renamed Asphalt 1's installed files to `gate6a1.*` so it would stop
+colliding with Asphalt 2's. Every bench run **before** that rename had copied
+Asphalt 1's build onto the emulator's drive as `gate6.exe` and
+`gate6_reg.rsc` -- and that registration claimed UID 0xE0001007. After the
+rename there were two registrations for one UID, the applist found it twice,
+and the stale executable won every launch. The host-side change made in the
+same stretch, the duplicate-name refusal, kept working throughout, because
+that one is in the emulator and not in the guest.
+
+Three things worth keeping:
+
+- **A build size is a cheap checksum.** Every probe round should have started
+  by comparing it. E297's probe was never compiled at all -- the edit and the
+  run were one shell command and the sandbox refused it -- and only the
+  unchanged size said so.
+- **Two names for one number is the same bug as one name for two games.**
+  E298's probe went out under `NOTE_THREAD_ARG`, which is 840, and so is
+  `NOTE_SCREEN_DST`.
+- **Renaming what a bench installs leaves the old name installed.** The
+  emulator's drive is not rebuilt between runs, so it accumulates. Nothing
+  cleans it, and a stale registration outranks a new one.
+
 ### Packaging a second title: loader-only, and two checkers that were wrong
 
 *After E291. Phases 1 to 3 are done for Asphalt 1 in the emulator, so the
