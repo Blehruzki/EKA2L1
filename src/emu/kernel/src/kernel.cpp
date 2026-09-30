@@ -246,6 +246,33 @@ namespace eka2l1 {
         core->save_context(target_to_stop->get_thread_context());
         arm::dump_context(target_to_stop->get_thread_context());
 
+        // A register dump names the instruction that died and nothing about
+        // how it was reached. The words above the stack pointer are the
+        // return addresses the callers pushed, so printing a slice of them
+        // turns "jumped through a null pointer" into a call chain. Once per
+        // run: a fault that leaves the CPU walking through unmapped memory
+        // arrives thousands of times and the first one is the only one that
+        // was still on the original stack.
+        static bool stack_printed = false;
+
+        if (!stack_printed) {
+            stack_printed = true;
+
+            const std::uint32_t sp = core->get_sp();
+
+            for (std::uint32_t i = 0; i < 40; i++) {
+                const std::uint32_t at = sp + i * 4;
+                std::uint32_t *w = reinterpret_cast<std::uint32_t *>(
+                    crr_process()->get_ptr_on_addr_space(at));
+
+                if (!w) {
+                    break;
+                }
+
+                LOG_TRACE(KERNEL, "stack 0x{:X}: 0x{:X}", at, *w);
+            }
+        }
+
         target_to_stop->kill(kernel::entity_exit_type::terminate, u"KERN-EXEC", 3);
     }
 

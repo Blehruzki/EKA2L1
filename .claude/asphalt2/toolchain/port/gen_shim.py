@@ -317,7 +317,14 @@ HOOKS = {
     'IMPORT_FILE_OPEN':               ('efsrv', 121),
     'IMPORT_FILE_READ':               ('efsrv', 136),
     'IMPORT_FILE_REPLACE':            ('efsrv', 151),
+    # Every route the game has to the heap, so an allocation can be padded:
+    # a 9.x framework object constructed into an EKA1-sized cell writes
+    # past the end of it (E277).
+    'IMPORT_USER_ALLOCZL':            ('euser', 3),
+    'IMPORT_USER_ALLOCL':             ('euser', 35),
     'IMPORT_USER_ALLOC':              ('euser', 45),
+    'IMPORT_USER_ALLOCZ':             ('euser', 1582),
+    'IMPORT_MALLOC':                  ('estlib', 3),
     'IMPORT_CANCEL':                  ('euser', 152),
     'IMPORT_MSG_COMPLETE':            ('euser', 209),
     'IMPORT_SEM_CREATE':              ('euser', 280),

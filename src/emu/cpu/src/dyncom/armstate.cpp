@@ -3,11 +3,90 @@
 // Refer to the license.txt file included.
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <common/bytes.h>
 #include <common/log.h>
 #include <cpu/dyncom/arm_dyncom.h>
 #include <cpu/dyncom/armstate.h>
 #include <cpu/dyncom/vfp/vfp.h>
+
+std::uint32_t ARMul_State::watch_addr = []() -> std::uint32_t {
+    const char *w = std::getenv("EKA2L1_WATCH");
+    return w ? static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) : 0;
+}();
+
+std::uint32_t ARMul_State::watch_end = []() -> std::uint32_t {
+    const char *w = std::getenv("EKA2L1_WATCH");
+    if (!w) {
+        return 0;
+    }
+    const char *colon = std::strchr(w, ':');
+    if (colon) {
+        return static_cast<std::uint32_t>(std::strtoul(colon + 1, nullptr, 16));
+    }
+    return static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) + 4;
+}();
+
+std::uint32_t ARMul_State::rwatch_addr = []() -> std::uint32_t {
+    const char *w = std::getenv("EKA2L1_RWATCH");
+    return w ? static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) : 0;
+}();
+
+void ARMul_State::ReportRead(std::uint32_t address, std::uint32_t value) const {
+    static std::uint32_t first = 0;
+    static std::uint32_t seen = 0;
+
+    if (seen == 0) {
+        first = value;
+    }
+
+    seen++;
+
+    if (seen <= 5 || value != first) {
+        LOG_ERROR(eka2l1::CPU_DYNCOM, "RWATCH: read 0x{:X} at 0x{:X} from pc 0x{:X} lr 0x{:X} (read {})",
+            value, address, Reg[15], Reg[14], seen);
+    }
+}
+
+std::uint32_t ARMul_State::watch_val = []() -> std::uint32_t {
+    const char *w = std::getenv("EKA2L1_WATCHVAL");
+    return w ? static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) : 0;
+}();
+
+bool ARMul_State::watch_val_set = std::getenv("EKA2L1_WATCHVAL") != nullptr;
+
+std::uint32_t ARMul_State::watch_pc_lo = []() -> std::uint32_t {
+    const char *w = std::getenv("EKA2L1_WATCHPC");
+    return w ? static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) : 0;
+}();
+
+std::uint32_t ARMul_State::watch_pc_hi = []() -> std::uint32_t {
+    const char *w = std::getenv("EKA2L1_WATCHPC");
+    const char *colon = w ? std::strchr(w, ':') : nullptr;
+    return colon ? static_cast<std::uint32_t>(std::strtoul(colon + 1, nullptr, 16)) : 0;
+}();
+
+void ARMul_State::ReportWatch(std::uint32_t address, std::uint32_t data, std::uint32_t width) {
+    if (watch_val_set && data != watch_val) {
+        return;
+    }
+
+    if (watch_pc_hi && (Reg[15] < watch_pc_lo || Reg[15] >= watch_pc_hi)) {
+        return;
+    }
+
+    // A range watch over the ROM catches a runaway memset, which is thousands
+    // of writes and only the first few say anything.
+    static std::uint32_t reported = 0;
+
+    if (++reported > 400) {
+        return;
+    }
+
+    LOG_ERROR(eka2l1::CPU_DYNCOM, "WATCH: {} byte write of 0x{:X} to 0x{:X} from pc 0x{:X} lr 0x{:X}",
+        width, data, address, Reg[15], Reg[14]);
+}
 
 ARMul_State::ARMul_State(eka2l1::arm::dyncom_core *core, PrivilegeMode initial_mode)
     : core(core) {

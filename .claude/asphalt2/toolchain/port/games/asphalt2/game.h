@@ -53,4 +53,18 @@ enum { GAME_SRC_ORIGIN = 16 };
 // with people is not the place to find out otherwise.
 #define GAME_FIX_APPUI_THIS 0
 
+// Cells this big or bigger go straight back to the heap; smaller ones wait
+// in the quarantine. 4 KB is where this title's use-after-free stops
+// reaching, measured over builds 150 to 172.
+#define GAME_FREE_BACK_FROM 4096
+
+// The quarantine and FREE_BACK_FROM do the work here; nothing is leaked
+// outright, which a ninety-second run cannot afford.
+#define GAME_LEAK_ALL 0
+
+// No cushion: this title's allocation sizes have been exercised over
+// ninety-second runs on three phones and adding memory pressure to a
+// shipping build to fix a fault it does not have is not a trade.
+#define GAME_ALLOC_PAD 0
+
 #endif

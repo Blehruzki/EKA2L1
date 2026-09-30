@@ -176,10 +176,21 @@ public:
             return *ptr;
         return ReadMemory16Slow(address);
     }
+    // The read half of the same idea: EKA2L1_RWATCH logs what a word read
+    // at that address answers with. Every read for the first few, and after
+    // that only an answer that differs from the first one -- which is the
+    // case worth seeing, a pointer that was one thing and is now another.
+    static std::uint32_t rwatch_addr;
+    void ReportRead(std::uint32_t address, std::uint32_t value) const;
     std::uint32_t ReadMemory32(std::uint32_t address) const {
+        std::uint32_t value;
         if (std::uint32_t *ptr = reinterpret_cast<std::uint32_t *>(mem_cache_->lookup(address)))
-            return *ptr;
-        return ReadMemory32Slow(address);
+            value = *ptr;
+        else
+            value = ReadMemory32Slow(address);
+        if (rwatch_addr && address == rwatch_addr)
+            ReportRead(address, value);
+        return value;
     }
     std::uint64_t ReadMemory64(std::uint32_t address) const {
         if (std::uint64_t *ptr = reinterpret_cast<std::uint64_t *>(mem_cache_->lookup(address)))
@@ -187,7 +198,36 @@ public:
         return ReadMemory64Slow(address);
     }
     std::uint32_t ReadCode(std::uint32_t address) const;
+    // **A write watch, for the bench.**
+    //
+    // Set EKA2L1_WATCH to a hex address and every store that lands in the
+    // word at that address is logged with the PC and link register that did
+    // it. It exists because a guest can zero a pointer the framework owns --
+    // a heap's vtable pointer, say -- and nothing in the guest is in a
+    // position to see it happen. Unset, this is one compare against zero per
+    // store and nothing else.
+    // EKA2L1_WATCH is one hex address, or "lo:hi" for a half-open range --
+    // "80000000:84000000" catches any write into the ROM at all, which is
+    // never legitimate and so needs no knowledge of what is being looked for.
+    static std::uint32_t watch_addr;
+    static std::uint32_t watch_end;
+    // EKA2L1_WATCHVAL narrows a range watch to stores of one value, which is
+    // how a wild pointer is traced back to whoever wrote it.
+    static std::uint32_t watch_val;
+    static bool watch_val_set;
+    // EKA2L1_WATCHPC=lo:hi narrows a watch to stores made by code in that
+    // range, which is how one library's writes are picked out of a busy
+    // window of memory.
+    static std::uint32_t watch_pc_lo;
+    static std::uint32_t watch_pc_hi;
+    void ReportWatch(std::uint32_t address, std::uint32_t data, std::uint32_t width);
+    inline void WatchWrite(std::uint32_t address, std::uint32_t data, std::uint32_t width) {
+        if (watch_addr && address < watch_end && address + width > watch_addr)
+            ReportWatch(address, data, width);
+    }
+
     void WriteMemory8(std::uint32_t address, std::uint8_t data) {
+        WatchWrite(address, static_cast<std::uint32_t>(data), 1);
         if (std::uint8_t *ptr = mem_cache_->lookup(address)) {
             *ptr = data;
             return;
@@ -195,6 +235,7 @@ public:
         WriteMemory8Slow(address, data);
     }
     void WriteMemory16(std::uint32_t address, std::uint16_t data) {
+        WatchWrite(address, static_cast<std::uint32_t>(data), 2);
         if (InBigEndianMode())
             data = eka2l1::common::byte_swap(data);
         if (std::uint16_t *ptr = reinterpret_cast<std::uint16_t *>(mem_cache_->lookup(address))) {
@@ -204,6 +245,7 @@ public:
         WriteMemory16Slow(address, data);
     }
     void WriteMemory32(std::uint32_t address, std::uint32_t data) {
+        WatchWrite(address, static_cast<std::uint32_t>(data), 4);
         if (InBigEndianMode())
             data = eka2l1::common::byte_swap(data);
         if (std::uint32_t *ptr = reinterpret_cast<std::uint32_t *>(mem_cache_->lookup(address))) {
@@ -213,6 +255,7 @@ public:
         WriteMemory32Slow(address, data);
     }
     void WriteMemory64(std::uint32_t address, std::uint64_t data) {
+        WatchWrite(address, static_cast<std::uint32_t>(data), 8);
         if (InBigEndianMode())
             data = eka2l1::common::byte_swap(data);
         if (std::uint64_t *ptr = reinterpret_cast<std::uint64_t *>(mem_cache_->lookup(address))) {
@@ -249,6 +292,7 @@ public:
     }
 
     void WriteMemory32Block(std::uint32_t address, std::uint32_t data, block_cursor &c) {
+        WatchWrite(address, static_cast<std::uint32_t>(data), 4);
         if (InBigEndianMode())
             data = eka2l1::common::byte_swap(data);
         const std::uint32_t page_off = address & static_cast<std::uint32_t>(mem_cache_->page_mask);

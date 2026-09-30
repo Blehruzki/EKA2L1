@@ -55,4 +55,22 @@ enum { GAME_SRC_ORIGIN = 0 };
 // that is not there. E265 swapped the pointer and the fault went away.
 #define GAME_FIX_APPUI_THIS 1
 
+// Nothing is ever handed back. E271: during boot this game writes a vtable
+// pointer over a freed cell's `next` link, the allocator follows it into
+// the ROM and clears euser's vtables on top of it. Until the object that
+// does it is found, the quarantine holds every cell whatever its size --
+// which boot can afford, and which is the same bargain Asphalt 2 struck
+// with LEAK_EVERYTHING before the band was narrowed to 4 KB.
+#define GAME_FREE_BACK_FROM 0x7fffffff
+
+// Leak outright while boot is being debugged: see E274. Not a shipping
+// setting -- it is how a free of the game's is told from a free of the
+// framework's, which our wrapper never sees.
+#define GAME_LEAK_ALL 1
+
+// A cushion on every allocation the game makes. E277: it allocates a
+// CAknNoteWrapper at its 7.0s size and the 9.x CEikDialog constructor
+// writes past the end of the cell, onto the next cell's free-list link.
+#define GAME_ALLOC_PAD 512
+
 #endif

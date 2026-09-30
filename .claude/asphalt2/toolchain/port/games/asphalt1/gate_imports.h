@@ -40,6 +40,7 @@ enum {
     IMPORT_LEAVE_NOMEM                 =   286,
     IMPORT_LIBRARY_LOAD                = 65535,   // absent
     IMPORT_LIBRARY_LOOKUP              = 65535,   // absent
+    IMPORT_MALLOC                      =   202,
     IMPORT_MDA_NEWL                    =   385,
     IMPORT_MSG_COMPLETE                =   256,
     IMPORT_PANIC                       =   293,
@@ -53,6 +54,9 @@ enum {
     IMPORT_SET_AUTO_UPDATE             =    41,
     IMPORT_THREAD_CREATE               =   268,
     IMPORT_USER_ALLOC                  =   252,
+    IMPORT_USER_ALLOCL                 =   251,
+    IMPORT_USER_ALLOCZ                 =   358,
+    IMPORT_USER_ALLOCZL                =   247,
     IMPORT_USER_FREE_OP                =   280,
     IMPORT_VEC_DELETE_OP               =   347,
     IMPORT_WINDOW                      =    80,
