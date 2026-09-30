@@ -119,6 +119,12 @@ enum { GAME_SRC_ORIGIN = 0 };
 // Turn it off once the right value is known and it is the default here.
 #define GAME_SHIFT_PICKER 1
 
+// A tick every sixteenth traced event, to find where the thirteen-second
+// boot goes. Round 92 blamed the leak settings and round 93 disproved it
+// with the same boot time and the leak off, so the record has to say more
+// than one reading at each end of it. Off again once it has.
+#define GAME_LOG_CLOCK 1
+
 #define GAME_BUNDLE_DATA 0
 #define GAME_VENDOR      "DeltaCharlie"
 // No backslashes and no apostrophes in the text: it lives in a C header

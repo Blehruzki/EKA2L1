@@ -709,6 +709,33 @@ have already been wrong in this port; a person turning a knob until the
 picture is straight is a measurement, and a person describing a photograph is
 not.
 
+### A fix a title did not ask for is a regression
+
+*Build 178, withdrawn. Build 179 is build 177 plus the crash fix and nothing else.*
+
+The wrap was reported on both titles, so the knob went into both. That was
+wrong twice over, and the person holding the phone said so plainly: Asphalt 2
+works, and a knob that swallows five keys on a game that works can only make
+it worse. The keys were already the second-guess -- `4` and `6` had to come
+out because they are steering -- and `*`, `#`, `7`, `9`, `0` are only *less*
+likely to be wanted, not known to be unwanted.
+
+Worse was underneath it. The knob needed a fifth word in `gate6.cfg`, so
+`CFG_VERSION` went from 1 to 2, and `cfg_load` refuses a version it does not
+know. Every phone running build 177 has a version-1 file with a screen mode
+chosen by hand over four hardware rounds. Build 178 would have silently
+discarded it -- on a title whose only complaint was a crash. E313 plants a
+four-word version-1 file on the bench and reads it back at mode 3, inset 56,
+which is the check that should have run before the version was ever bumped.
+
+The rule this leaves: **a shared fix ships to every title; a shared
+*instrument* does not.** `GAME_SHIFT_PICKER` and `GAME_LOG_CLOCK` are per
+title now, off for the one that works, and the abort guard and the
+inactivity reset -- which are the actual fix -- stay in `gate6.cpp` where
+both get them. The same distinction the picture geometry needed, arrived at
+from the other direction: there the defaults were shared and should not have
+been; here the diagnostics were.
+
 ### The game may not draw while the screen is not its own
 
 *Round 93. Both titles, and it had been there since the first one.*

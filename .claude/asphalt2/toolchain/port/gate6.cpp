@@ -234,7 +234,8 @@ enum { MAP_MAX = 1024 };
 // -- cfg_load refuses a version it does not know and the defaults stand --
 // which costs a saved mode once and is better than reading four words as
 // five.
-enum { CFG_MAGIC = 0x46433647, CFG_VERSION = 2, CFG_WORDS = 5 };
+enum { CFG_MAGIC = 0x46433647, CFG_VERSION = 2, CFG_WORDS = 5,
+       CFG_V1_WORDS = 4 };
 // FREE_BACK_FROM is per game: E271 found Asphalt 1 writing a vtable pointer
 // into a freed cell's `next` link during boot, so that title hands nothing
 // back at all and the quarantine takes everything.
@@ -1955,7 +1956,7 @@ enum { TRACE_SKIPS_HOT = 1, TRACE_MILESTONES = 1 };
 // there are 5,898 traced imports and one clock reading at each end. A tick
 // every sixteenth traced event puts a time on each stretch of that boot
 // and says which imports the thirteen seconds are actually spent around.
-enum { WATCH_ALLOCATIONS = 0, LOG_THE_CLOCK = 1, REFUSE_DRIVERS = 1,
+enum { WATCH_ALLOCATIONS = 0, LOG_THE_CLOCK = GAME_LOG_CLOCK, REFUSE_DRIVERS = 1,
        WATCH_THE_READS = 0, CLAMP_THE_READS = 0, WATCH_READ_RESULT = 0 };
 // Not an instrument: a fix, and it ships. See gate6_alloc.
 enum { PAD_THE_ALLOCATIONS = 0, ZERO_THE_SLACK = 0 };
@@ -5329,15 +5330,25 @@ static void cfg_load(Context *c)
     des[2] = (u32)c->cfg;
     const i32 err = file_read(file, des);
     file_close(file);
-    if (err != 0 || (des[0] & 0x0FFFFFFF) < (u32)(CFG_WORDS * 4))
+    const u32 got = des[0] & 0x0FFFFFFF;
+    if (err != 0 || got < (u32)(CFG_V1_WORDS * 4))
         return;
-    if (c->cfg[0] != (u32)CFG_MAGIC || c->cfg[1] != (u32)CFG_VERSION)
+    if (c->cfg[0] != (u32)CFG_MAGIC)
+        return;
+    // **A version-1 file still counts.** Every phone this port runs on has
+    // one: four words, magic, version, mode and inset. Refusing it because
+    // the shift was added would throw away a screen mode the person chose
+    // by hand on a title that already works, which is not a thing a new
+    // build gets to do. Read what the file has and default the rest.
+    const u32 ver = c->cfg[1];
+    if (ver != 1 && ver != (u32)CFG_VERSION)
         return;
     if (c->cfg[2] < (u32)MODE_COUNT)
         c->mode = c->cfg[2];
     if (c->cfg[3])
         c->topInset = c->cfg[3];
-    c->shiftX = (i32)c->cfg[4];
+    if (ver >= 2 && got >= (u32)(CFG_WORDS * 4))
+        c->shiftX = (i32)c->cfg[4];
     log_event(c, NOTE_CFG_READ, (c->cfg[2] << 16) | (c->cfg[3] & 0xFFFF));
     log_event(c, NOTE_SHIFT, (u32)c->shiftX);
 }

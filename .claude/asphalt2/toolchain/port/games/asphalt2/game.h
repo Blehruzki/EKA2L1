@@ -85,13 +85,18 @@ enum { GAME_SRC_ORIGIN = 16 };
 
 // Packaging: the game's own files travel in the SIS, which is what every
 // build a phone has run does.
-// The keypad knob for the horizontal position of the picture in the
-// frame buffer: `*` and `#` move it a column, `7` and `9` eight, `0`
-// resets, and the choice is saved. Round 93 established that what we
-// write is correct and the panel shows it shifted, which is a scan-out
-// question no measurement inside the process can answer -- so the same wrap is reported on this title.
-// Turn it off once the right value is known and it is the default here.
-#define GAME_SHIFT_PICKER 1
+// **Off, and it should never have been on.** The keypad knob for the
+// picture's horizontal position (`*`/`#`/`7`/`9`/`0`) went into build 178
+// for both titles because the wrap was reported on both. It is not wanted
+// here: this title's picture is right, and a knob that swallows five keys
+// on a game that works can only make it worse. Build 179 is build 177 plus
+// the backgrounding fix and nothing else.
+#define GAME_SHIFT_PICKER 0
+
+// The boot clock -- a tick every sixteenth traced event -- is for finding
+// where Asphalt 1's thirteen seconds go. It costs a record and a kernel
+// call per sixteen imports, which a working title has no reason to pay.
+#define GAME_LOG_CLOCK 0
 
 #define GAME_BUNDLE_DATA 1
 #define GAME_VENDOR      "DeltaCharlie"
