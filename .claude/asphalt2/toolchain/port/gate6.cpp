@@ -3533,6 +3533,19 @@ extern "C" int gate6_heartbeat(void *p)
     log_event(c, NOTE_BEAT, user_tickcount());
     log_event(c, NOTE_BEAT, c->frames);
     log_block(c);
+    // **And the box, which is the only record of the worker threads.**
+    //
+    // KERN-EXEC 0 is a handle the kernel refused, and round 95 shows the
+    // last *traced import* in the log is well before the death -- because
+    // a worker thread's imports never reach the log file at all. They do
+    // reach the box's ring, which holds the last thirty-two whoever made
+    // them; but the box only went to disk every 1,024 traced events, so
+    // what was in the ring at the moment of the panic was never written.
+    //
+    // Flushing it here makes the box at most one second stale, whatever
+    // the game is doing, so the next KERN-EXEC 0 arrives with the calls
+    // that led to it. One file write a second.
+    box_flush(c);
     return 1;                       // keep going
 }
 

@@ -709,6 +709,66 @@ have already been wrong in this port; a person turning a knob until the
 picture is straight is a measurement, and a person describing a photograph is
 not.
 
+### KERN-EXEC 0 is a handle, and what EKA2 does with handles
+
+*Asked for after round 95: "look at how Symbian 9.x handles multitasking".
+The reference used here is EKA2L1's own kernel, which implements these
+semantics and can be read; it is not Symbian's documentation, and where the
+two might differ that is worth remembering.*
+
+**KERN-EXEC 0 is a bad handle in an executive call.** Not an access
+violation -- that is KERN-EXEC 3, which this port has also seen and which
+is a different fault with a different cause. The kernel resolves a handle
+on every executive call that takes one, and a handle it cannot resolve is
+treated as a programming error: the calling thread is panicked, not given
+an error code.
+
+Three things decide whether a handle resolves, all visible in
+`object_ix::get_object`:
+
+1. **The slot has to be in use.** Closing a handle frees the record. A
+   handle to a freed record is invalid.
+2. **The instance bits have to match**, on EKA2 and not on EKA1. A handle
+   carries an instance counter as well as an index, and the record keeps
+   the value it was issued with; the emulator's own comment says EKA1
+   clients retain handles across a slot being reused and EKA2 relies on
+   the instance bits to reject exactly that. So EKA1 code that keeps a
+   stale handle and gets away with it -- because the slot is live again --
+   is rejected on EKA2.
+3. **Ownership.** A handle is `EOwnerProcess` or `EOwnerThread`, and a
+   thread-owned handle is only valid in the thread that made it. This port
+   has already been killed by that once: round 61, a worker thread reaching
+   `RFile::Flush` on the main thread's handle, which is KERN-EXEC 0 on a
+   device and worked here.
+
+**And EKA2L1 is polite about all three.** A rejected handle comes back as
+`KErrBadHandle`, or -- for the executive calls that return void, like
+`RThread::SetPriority` and `RThread::RequestSignal` -- as nothing at all.
+The guest carries on. That is the whole of the gap: not that the emulator
+accepts a bad handle, but that it declines it quietly where a device would
+kill the process. `EKA2L1_STRICTHANDLE=1` now reports every one; `=2`
+panics as the device would.
+
+**What the logs already rule out.** `RThread::Kill` is imported by both
+titles and called by neither, in any run. The audio stream object is intact
+through the whole teardown, vtable and all. Thread identity in the port is
+taken from `RThread::Id` on `KCurrentThreadHandle`, not from stack
+distance, so the stack-packing difference in CLAUDE.md is not this either.
+
+**And why no log names the call.** Every euser call the *game's main
+thread* makes is traced and logged. A **worker thread's** calls are not:
+`log_block` and `box_write` both return early off the main thread, on
+purpose, because a worker writing the main thread's RFile handle is itself
+the fault being hunted. Worker calls do go into the box's thirty-two-entry
+ring -- that is written by every traced import whatever thread it is on --
+but the box only reached the disk every 1,024 traced events, so what was in
+the ring at the instant of a panic was never written down. Four rounds of
+"the log just stops" have that as their cause.
+
+The heartbeat now flushes the box as well, once a second. Whatever the next
+KERN-EXEC 0 is, it will arrive with the last thirty-two calls before it,
+across all threads.
+
 ### The stream was never freed, and the frame loop is what stops
 
 *Round 95. The probe built to test a hypothesis eliminated it, which is the

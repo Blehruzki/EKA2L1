@@ -41,10 +41,20 @@ is from another one's therefore works here and fails on hardware. Related:
 `thread_create` in `src/emu/kernel/src/svc.cpp` accepted any stack size at all
 until it was taught the EKA2 ceiling.
 
-EKA2L1 lets a handle that has been closed go on being used. `RHandleBase::Close`
-does not invalidate it, so guest code that closes a handle and then passes it
-somewhere keeps working here and raises **KERN-EXEC 0** on a device. This is
-not hypothetical: it hid a real fault through a whole emulator round.
+EKA2L1 declines a bad handle quietly where a device kills the process. The
+handle table does reject it -- `object_ix::get_object` refuses a freed slot,
+and on EKA2 a handle whose instance bits do not match the record -- but the
+executive call then returns `KErrBadHandle`, or, for the ones that return
+void such as `RThread::SetPriority` and `RThread::RequestSignal`, returns
+nothing at all. A real EKA2 kernel panics the calling thread **KERN-EXEC 0**:
+an unresolvable handle is a programming error, not an error code. So guest
+code that uses a closed, stale or wrong-thread handle runs here and dies on
+hardware. `EKA2L1_STRICTHANDLE=1` logs every rejected handle and `=2` panics
+the thread as a device would (`kernel_system::get_kernel_obj_raw`).
+
+Handle ownership is part of this: `EOwnerThread` handles are valid only in
+the thread that created them, so a worker touching the main thread's RFile
+is KERN-EXEC 0 on a device and silent here.
 
 `src/emu/bridge/include/bridge/epoc9.def` is not an ordinal table. Its euser
 list has **2,184** entries against the RM-409 ROM's **2,229** exports, so an

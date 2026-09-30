@@ -41,6 +41,7 @@
 #include <disasm/disasm.h>
 
 #include <kernel/kernel.h>
+#include <cstdlib>
 #include <kernel/libmanager.h>
 #include <kernel/guomen_process.h>
 #include <kernel/scheduler.h>
@@ -1047,6 +1048,26 @@ namespace eka2l1 {
         return crr_process()->process_handles.close(handle);
     }
 
+// **A handle EKA2 would have killed the process for.**
+//
+// EKA2L1 answers a failed handle lookup politely: an executive call either
+// returns KErrBadHandle or, where it returns void, does nothing at all. A
+// real EKA2 kernel treats an invalid handle in an executive call as a
+// programming error and panics the calling thread with **KERN-EXEC 0**. So
+// guest code that uses a handle it has already closed runs here and dies on
+// a device, and nothing in a bench run says a word about it.
+//
+// EKA2L1_STRICTHANDLE=1 logs every rejected handle, which is enough to find
+// one; =2 also panics the thread the way a device would, for reproducing the
+// failure rather than merely locating it.
+static int strict_handle_level() {
+    static const int level = []() {
+        const char *v = std::getenv("EKA2L1_STRICTHANDLE");
+        return (v && *v) ? std::atoi(v) : 0;
+    }();
+    return level;
+}
+
     kernel_obj_ptr kernel_system::get_kernel_obj_raw(uint32_t handle, kernel::thread *target) {
         if ((handle & ~0x8000) == 0xFFFF0000) {
             return reinterpret_cast<kernel::kernel_obj *>(get_by_id<kernel::process>(
@@ -1058,15 +1079,27 @@ namespace eka2l1 {
 
         kernel::handle_inspect_info info = kernel::inspect_handle(handle);
 
+        kernel_obj_ptr found = nullptr;
         if (info.handle_array_local) {
-            return target->thread_handles.get_object(handle);
+            found = target->thread_handles.get_object(handle);
+        } else if (info.handle_array_kernel) {
+            found = kernel_handles_.get_object(handle);
+        } else {
+            found = target->owning_process()->process_handles.get_object(handle);
         }
 
-        if (info.handle_array_kernel) {
-            return kernel_handles_.get_object(handle);
+        if (!found) {
+            const int level = strict_handle_level();
+            if (level) {
+                LOG_ERROR(KERNEL, "BAD HANDLE 0x{:x} used by thread {} -- a device "
+                    "would panic KERN-EXEC 0 here", handle,
+                    target ? target->name() : std::string("?"));
+                if (level > 1 && target) {
+                    target->kill(kernel::entity_exit_type::panic, u"KERN-EXEC", 0);
+                }
+            }
         }
-
-        return target->owning_process()->process_handles.get_object(handle);
+        return found;
     }
 
     bool kernel_system::get_info(kernel_obj_ptr the_object, kernel::handle_info &info) {
