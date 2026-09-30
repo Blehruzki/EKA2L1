@@ -191,3 +191,33 @@ static void screen_fit(ScreenFit *f)
     // better on the rest; the harness checks that claim.
     f->offY = useTop + (useH > dh ? (useH - dh) / 2 : 0);
 }
+
+// **Where each column of the picture lands in the frame buffer line.**
+//
+// Here rather than in gate6.cpp so that a host test can run exactly this,
+// which the bench cannot: EKA2L1's frame buffer line is the screen width
+// and the N95's is 320 pixels against a visible 240. Build 008 wrapped the
+// shift modulo the *line*, which on the bench is the same number and is
+// correct, and on the phone pushed the picture into the 80-pixel pad and
+// left black behind it. One machine could not see the bug the other had.
+//
+// `screenW` is the visible width, `dstW` the picture's, `offX` where it
+// starts, `shift` the keypad nudge in columns. `out[i]` is the frame buffer
+// column for picture column i. No divide: `shift` is bounded well inside
+// one screen width, so one add or one subtract always brings it back.
+static inline void screen_columns(unsigned screenW, unsigned dstW,
+                                  unsigned offX, int shift,
+                                  unsigned short *out, unsigned outMax)
+{
+    const int w = (int)(screenW ? screenW : 1u);
+    for (unsigned x = 0; x < dstW && x < outMax; x++) {
+        int col = (int)(offX + x) + shift;
+        if (col < 0)
+            col += w;
+        else if (col >= w)
+            col -= w;
+        if (col < 0 || col >= w)
+            col = (int)(offX + x);
+        out[x] = (unsigned short)col;
+    }
+}

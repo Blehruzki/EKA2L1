@@ -709,6 +709,85 @@ have already been wrong in this port; a person turning a knob until the
 picture is straight is a measurement, and a person describing a photograph is
 not.
 
+### The screen was never the problem: it is the audio device
+
+*Round 94, and the first round whose logs contain their own ending.*
+
+The ring log paid for itself immediately. Four runs, and all four end where
+they died instead of 163 seconds in. What they say:
+
+**The DSA abort never fires. Zero, in all four runs**, including both
+backgrounding deaths. The review predicted this from `RELEASE_THE_SCREEN`
+-- the port cancels direct screen access the instant it starts it, so it
+holds no outstanding request and the window server has nothing to abort --
+and round 94 measures it. The guard shipped in builds 007, 008 and 179 is
+inert. It stays, because it is correct if an abort ever does arrive, but it
+was never the fix and I presented it as one.
+
+**What actually happens on the menu key**, from the Asphalt 2 log, in order:
+key `0xf863` (EKeyApplication0); app UI slots 4, 11, **10, 21, 24**, 4, 8
+and control 26 -- and slots 10, 21 and 24 fire in no other run, so that
+burst is the background transition; three window-server messages; and then
+`MaoscPlayComplete` with **-3, KErrCancel**. The media server has taken the
+audio device away. The game tears the stream down and reconfigures it --
+slots 3, 5, 7, 10 -- and the last record in the file is `Stop` returning.
+Asphalt 1's round-4 log ends with the same cascade and the same -3.
+
+**And `G6FLT 31600` is the same path.** Import 316 is `TTrap::Trap` and the
+type is 0, so it is a fault inside a trap; the trap is the one the game
+opens at `0x14398`, and the last thing in the log is `SetAudioPropertiesL`
+called and never returning. One code path, two symptoms: a track change
+reached it in one run and the background transition in the other.
+
+This is the platform gap again, in the place nobody was looking. An N-Gage
+never took the audio device away from a running game -- there was nothing
+else to give it to. On S60 the audio policy revokes it whenever something
+more important wants it: a call, the task list, another app. The game's
+recovery path for that revocation has, as far as this port can tell, never
+run before.
+
+What build 009 and build 180 add is not a fix for it. It is the instrument
+the next round needs: every call on the stream now logs the object, the
+vtable the proxy cached, **the vtable the object is holding now**, and the
+address the dispatch resolves to. If the server frees the stream on the
+cancel and the game calls into it afterwards, those two vtables disagree
+and the log says so. Worth stating plainly: I do not know yet whether that
+is what happens, and the way to find out is to look rather than to ship a
+guess at a fix.
+
+One thing the bench could settle and did: the phone faults in
+`SetAudioPropertiesL` with the arguments `0x100, 0x2000000, 0x2b11`, and the
+bench makes the same call with **the same three values** and does not fault.
+So it is the stream's state, not its arguments.
+
+### The bug the bench could not have caught, and the test that can
+
+*Round 94, the keypad shift.*
+
+The knob moved the picture and left black behind it instead of wrapping.
+That is my arithmetic: `column_map` wrapped modulo the frame buffer *line*,
+and on the N95 the line is 320 pixels against a visible 240. A shift of
+fourteen put fourteen columns of picture into the 80-column pad the panel
+never shows, and left fourteen columns of screen unwritten -- black. The
+person described it exactly.
+
+**EKA2L1's frame buffer line is the screen width**, so on the bench the two
+moduli are the same number and the code was correct. No emulator run could
+have found this, at any length. That is the third question rule 4 asks --
+what state does this code have that the bench never enters -- and the answer
+here is a hardware property, not a code path.
+
+So the arithmetic moved into `screen_fit.h`, beside the layout sums that are
+there for the same reason, and `columntest.cpp` runs it on the host against
+both geometries. It checks the thing that actually matters -- that every
+shift is a *permutation* of the visible columns, so nothing is lost and
+nothing is black -- and build 008's version fails it with exactly the 14 and
+14 the phone showed.
+
+A side effect worth keeping: the pad is off-screen, confirmed. The visible
+width really is the 240 that `UserSvr::ScreenInfo` reports, and 1280 bytes a
+line really is padding.
+
 ### Reviewing my own diff, and the three things it found
 
 *After round 93, at the person's instruction: "Do not just guess, do not just

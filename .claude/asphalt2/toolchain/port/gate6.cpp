@@ -290,6 +290,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_DSA_ABORT = 781,    // the window server took the screen away, and why
        NOTE_DSA_RESTART = 782,  // ... and gave it back
        NOTE_SHIFT = 783,        // the framebuffer column the picture starts at
+       NOTE_MDA_WHERE = 784,    // the audio object, its vtable and the target
        NOTE_SCREEN = 834,       // a word of the TScreenInfoV01 the game is given
        NOTE_KEY = 835,          // a key event, as it is handed to the game
        NOTE_THREAD_ARG = 840,   // one word of the create frame
@@ -880,6 +881,7 @@ struct Context {
     u32 soundCalls;         // how many messages have gone across
     u32 mdaNewL;            // the real CMdaAudioOutputStream::NewL
     u32 mdaWrites;          // how many buffers have gone to it
+    u32 mdaProxyObj;        // our stream proxy, so a callback can look at it
     u32 mdaCopies;          // and how many it has said it copied
     u32 mode;               // how the picture is fitted: 1:1, shape-kept, or filled
     u32 clearPending;       // blank the framebuffer once, after any change
@@ -5567,37 +5569,24 @@ static void screen_layout(Context *c)
 // shape as `mapX`, which the blit already reads.
 static void column_map(Context *c)
 {
-    // Pixels in one framebuffer line. The pad beyond the visible width is
-    // part of the line, so a shift can park the picture in it -- which is
-    // information too: if the picture disappears rather than wrapping, the
-    // line really is 320 pixels and the pad really is off-screen.
+    // **Wrap inside the visible width, not inside the frame buffer line.**
     //
-    // Shifts and a loop, not a divide: 32 and 16 bits a pixel are powers of
-    // two and 24 is not, and there is no `__aeabi_uidiv` to link against.
-    // Once per layout, so the loop costs nothing worth avoiding.
-    u32 line = 0;
-    if (c->realBpp == 32)      line = c->realPitch >> 2;
-    else if (c->realBpp == 16) line = c->realPitch >> 1;
-    else if (c->realBpp == 24) { for (u32 b = 0; b + 3 <= c->realPitch; b += 3) line++; }
-    if (line < c->screenW || line > 4096u)
-        line = c->screenW ? c->screenW : 1u;
-    // One conditional each way, and no loop: a `while (col >= line) col -=
-    // line` is the modulo idiom and the compiler duly turned it into a call
-    // to `__aeabi_uidiv`, which this image has nothing to link it against.
-    // SHIFT_MAX is below the narrowest line any of these panels has, and
-    // `offX + x` is inside the line by construction, so `col` can be out by
-    // at most one line in either direction.
-    const i32 w = (i32)line;
-    for (u32 x = 0; x < c->dstW && x < (u32)MAP_MAX; x++) {
-        i32 col = (i32)(c->offX + x) + c->shiftX;
-        if (col < 0)
-            col += w;
-        else if (col >= w)
-            col -= w;
-        if (col < 0 || col >= w)        // a layout that does not fit: no shift
-            col = (i32)(c->offX + x);
-        c->colX[x] = (u16)col;
-    }
+    // Build 008 wrapped modulo the line, which on the N95 is 320 pixels
+    // against a visible 240 -- so a shift of seven pushed seven columns of
+    // picture into the 80-pixel pad, where the panel never looks, and left
+    // seven columns of screen unwritten and therefore black. That is what
+    // came back from round 94: "it keeps getting pushed to the sides and
+    // black pixels fill the gap". Which settles a real question as a side
+    // effect -- **the pad is off-screen**, so the visible width is the 240
+    // that `UserSvr::ScreenInfo` reports and 1280 bytes really is a padded
+    // stride. It does not make the knob work, and the knob is the thing
+    // being asked for, so: modulo the screen.
+    // The sums are in screen_fit.h so `fittest.cpp` can run exactly these
+    // on the host. The bench cannot test this one: its frame buffer line
+    // is the screen width, and the bug build 008 shipped only exists where
+    // the line is wider -- which is every real phone and no emulator.
+    screen_columns(c->screenW, c->dstW, c->offX, c->shiftX,
+                   c->colX, (u32)MAP_MAX);
 }
 
 extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
@@ -6895,6 +6884,54 @@ enum { MDA_DUMP_OPEN = 0, MDA_OPEN_WORDS = 64 };
 // two-stage thunk could say a call had started and never that it returned,
 // which is the difference between "this method faults" and "the fault is
 // after it".
+
+// **Where an audio call is actually going.** Round 94 put both titles'
+// deaths in this path and neither log can say more than which slot was
+// entered. `G6FLT 31600` is a fault inside the trap the game opens at
+// 0x14398 and the last thing in the file is `SetAudioPropertiesL` being
+// called and never returning; the backgrounding deaths are the same
+// object a few calls later, after the media server has taken the stream
+// away and called back with **KErrCancel**.
+//
+// The question both raise is the same and it is not answerable from a
+// slot number: is the object still there? If the server tore the stream
+// down on the cancel and the game called into it afterwards, the real
+// object's vtable pointer is the thing that says so. So, for the calls
+// that reconfigure or tear down -- and not for `WriteL`, which runs per
+// buffer -- three records: the real object, the vtable it is holding, and
+// the address this dispatch resolves to.
+enum { MDA_WHERE = 1 };
+
+static void mda_where(Context *c, u32 slot, u32 proxy)
+{
+    if (!MDA_WHERE || slot >= 14u)
+        return;
+    const signed char to = kMdaMap[slot];
+    if (to < 0 || slot == 9u)                   // WriteL is per buffer
+        return;
+    if (!proxy || (proxy & 3))
+        return;
+    const u32 *p = (const u32 *)proxy;
+    const u32 real = p[1];          // the object the proxy stands in for
+    const u32 cached = p[2];        // its vtable, as the proxy was built
+    log_event(c, NOTE_MDA_WHERE, real);
+    log_event(c, NOTE_MDA_WHERE, cached);
+    if (!real || (real & 3)) {
+        log_event(c, NOTE_MDA_WHERE, 0u);
+        log_event(c, NOTE_MDA_WHERE, 0u);
+        return;
+    }
+    // The **live** vtable pointer, read out of the object now. If the
+    // media server has freed the stream under us -- which is the open
+    // question after a KErrCancel -- this is where it shows: a freed cell
+    // has the allocator's link words in it, not a vtable, and it will not
+    // match the cached one.
+    const u32 live = ((const u32 *)real)[0];
+    log_event(c, NOTE_MDA_WHERE, live);
+    log_event(c, NOTE_MDA_WHERE,
+              (live && !(live & 3)) ? ((const u32 *)live)[(u32)to] : 0u);
+}
+
 extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
 {
     typedef u32 (*Any)(void *, u32, u32, u32);
@@ -6910,6 +6947,7 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
         log_event(c, NOTE_MDA_ARG, saved[1]);
         log_event(c, NOTE_MDA_ARG, saved[2]);
         log_event(c, NOTE_MDA_ARG, saved[3]);
+        mda_where(c, slot, saved[0]);
         log_block(c);
     }
     if (to < 0 || !rvt || !real)
@@ -6990,6 +7028,7 @@ extern "C" void gate6_mda_call(u32 *saved, Context *c, u32 slot)
     log_event(c, NOTE_MDA_ARG, saved[1]);
     log_event(c, NOTE_MDA_ARG, saved[2]);
     log_event(c, NOTE_MDA_ARG, saved[3]);
+    mda_where(c, slot, saved[0]);
     log_block(c);
 }
 
@@ -7034,6 +7073,12 @@ extern "C" void gate6_cb_call(u32 *saved, Context *c, u32 slot)
     log_event(c, NOTE_MDA_CB, slot);
     log_event(c, NOTE_MDA_ARG, saved[1]);
     log_event(c, NOTE_MDA_ARG, saved[2]);
+    // The stream's own state at the moment it calls back. Slot 2 is
+    // `MaoscPlayComplete`, and round 94 has it arriving with -3 on both
+    // titles when the app goes to the background -- so what the object
+    // looks like right then is the first thing the next log has to say.
+    if (c->mdaProxyObj)
+        mda_where(c, 10u, c->mdaProxyObj);
     log_block(c);
 }
 
@@ -7210,6 +7255,11 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
     obj[0] = (u32)vt;
     obj[1] = (u32)real;
     obj[2] = (u32)rvt;
+    // Kept so a callback can look at the stream's state. The callback
+    // arrives on the game's own object, not on this one, and round 94's
+    // open question -- whether the server has freed the stream by the
+    // time it says KErrCancel -- needs this one to answer it.
+    c->mdaProxyObj = (u32)obj;
     user_imb_range(obj, tramp + MDA_SLOTS * MDA_TRAMP);
     log_event(c, NOTE_SOUND, (u32)obj);
     log_block(c);

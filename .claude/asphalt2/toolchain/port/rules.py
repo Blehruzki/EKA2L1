@@ -110,6 +110,18 @@ def main():
 # ---- rule 4 ---------------------------------------------------------------
 
 SELF_TESTS = ('logringtest.py',)
+# Compiled on the host and run. `columntest.cpp` exists because the bench
+# cannot reach the geometry the bug lived in: EKA2L1's frame buffer line is
+# the screen width and every phone's is wider, so build 008's shift was
+# right here and wrong there.
+CC_TESTS = ('columntest.cpp', 'fittest.cpp')
+
+# A test that has always failed teaches you to ignore a red line, which is
+# the opposite of what rule 4 is for. `fittest.cpp` fails on panels this
+# port has never run on -- N80, 5800, E90, all larger than 240x320 -- with
+# the scaler's map clamping. That is a real finding and it is not new, so
+# the baseline is written down and only a *change* in it is reported.
+KNOWN_FAIL = {'fittest.cpp': 8}      # distinct failures, panels > 240x320
 
 # Ordinals this port has confirmed by *measurement*, not by reading a table.
 # `epoc9.def` lists 2,184 euser exports and the RM-409 ROM has 2,229, so an
@@ -165,6 +177,33 @@ def rule4():
         r = subprocess.run([sys.executable, p], capture_output=True, text=True)
         print('  %-20s %s' % (t, 'pass' if r.returncode == 0 else '** FAIL **'))
         bad += (r.returncode != 0)
+    import tempfile
+    for t in CC_TESTS:
+        p = os.path.join(HERE, t)
+        if not os.path.isfile(p):
+            print('  %-20s MISSING' % t)
+            bad += 1
+            continue
+        exe = os.path.join(tempfile.gettempdir(), t.replace('.cpp', '.bin'))
+        b = subprocess.run(['c++', '-O2', '-I', HERE, '-o', exe, p],
+                           capture_output=True, text=True)
+        if b.returncode:
+            print('  %-20s ** WILL NOT BUILD **' % t)
+            bad += 1
+            continue
+        r = subprocess.run([exe], capture_output=True, text=True)
+        if r.returncode == 0:
+            print('  %-20s pass' % t)
+            continue
+        want = KNOWN_FAIL.get(t)
+        m = re.search(r'(\d+) distinct failure', r.stdout)
+        got = int(m.group(1)) if m else None
+        if want is not None and got == want:
+            print('  %-20s %d known failures, unchanged (panels > 240x320)'
+                  % (t, got))
+            continue
+        print('  %-20s ** FAIL ** (%s, baseline %s)' % (t, got, want))
+        bad += 1
     try:
         imps, counts = ordinals()
     except Exception as exc:
