@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cmpdump.py <a.bin> <b.bin> -- compare two g6code.bin frame dumps.
+"""cmpdump.py --game <name> <a.bin> <b.bin> -- compare two g6code.bin frame dumps.
 
 `dump_region` writes each region as an eight-byte header (the address it was
 read from, then the length) followed by the bytes. The address differs between
@@ -11,6 +11,8 @@ to answer: whether what the game draws moves when the reported screen size
 changes.
 """
 import struct, sys
+
+import picture
 
 
 def regions(path):
@@ -24,7 +26,8 @@ def regions(path):
     return out
 
 
-def main(pa, pb, pitch=176, height=208):
+def main(g, pa, pb):
+    pitch, height = g['pitch'], g['height']
     A, B = regions(pa), regions(pb)
     print('%s: %d region(s)   %s: %d region(s)' % (pa, len(A), pb, len(B)))
     for i, ((aa, a), (ab, b)) in enumerate(zip(A, B)):
@@ -55,4 +58,7 @@ def main(pa, pb, pitch=176, height=208):
 
 
 if __name__ == '__main__':
-    main(*sys.argv[1:3])
+    game, rest = picture.take_game_arg(sys.argv[1:])
+    g = picture.geometry(game)
+    picture.banner(g)
+    main(g, *rest[:2])

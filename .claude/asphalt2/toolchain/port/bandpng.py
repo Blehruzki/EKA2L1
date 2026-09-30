@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""bandpng.py <dump.bin> <out.png> [y0] [y1] -- stack one band from every
+"""bandpng.py --game <name> <dump.bin> <out.png> [y0] [y1] [zoom] -- stack one band from every
 region of a dump, so a line that blinks can be told from one that is never
 drawn. Each region becomes one strip, in order, separated by a black rule.
 """
 import struct, zlib, sys
+
+import picture
 
 
 def regions(p):
@@ -27,11 +29,11 @@ def png(path, w, h, rows):
         + ch(b'IDAT', zlib.compress(raw, 9)) + ch(b'IEND', b''))
 
 
-def main(src, out, y0=148, y1=164, pitch=176, zoom=3, origin=16):
-    # Origin 16, for the reason dumppng.py's docstring gives: the blit reads
-    # from source pixel sixteen, so a render from column 0 is out of phase.
-    y0, y1, pitch, zoom = int(y0), int(y1), int(pitch), int(zoom)
-    origin = int(origin)
+def main(g, src, out, y0=148, y1=164, zoom=3):
+    # No default pitch or origin: see picture.py. One game's sixteen is
+    # another game's horizontal wrap.
+    y0, y1, zoom = int(y0), int(y1), int(zoom)
+    pitch, origin = g['pitch'], g['origin']
     regs = regions(src)
     print('%d region(s)' % len(regs))
     for i in range(len(regs)):
@@ -54,4 +56,7 @@ def main(src, out, y0=148, y1=164, pitch=176, zoom=3, origin=16):
 
 
 if __name__ == '__main__':
-    main(*sys.argv[1:])
+    game, rest = picture.take_game_arg(sys.argv[1:])
+    g = picture.geometry(game)
+    picture.banner(g)
+    main(g, *rest)

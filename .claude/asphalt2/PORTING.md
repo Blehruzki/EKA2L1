@@ -480,6 +480,8 @@ the **second inside phase 0 alone**:
 | "no allocation ever failed" | `WRAP_ALLOCATORS` off, so none could be recorded |
 | "the reported size changes the layout" | two shots 60 frames apart against a 60-frame blink |
 | "the wrap is back" | a renderer starting at column 0 against a blit starting at 16 |
+| Asphalt 1's stride is 350 | a vertical-continuity metric reading a two-pixel dither |
+| Asphalt 1's picture is misaligned | a scaled screenshot of a window, read three ways, wrong twice |
 
 The last two were tools written in this session, each to answer one question,
 each inheriting that question's defaults and then being used for another. That
@@ -489,6 +491,39 @@ second use is where they bite.** Both were caught by comparing against a
 number the port itself already holds -- the blink period against the sampling
 interval, `SRC_ORIGIN` against the render origin -- rather than by looking
 harder at the picture.
+
+#### And the two from Asphalt 1, which are the same rule from the other side
+
+*E287-E290, phase 2 of the second title.*
+
+The sixth is the defaults themselves. `dumppng.py`, `bandpng.py` and
+`cmpdump.py` all defaulted to pitch 176, height 208 and **origin 16** --
+Asphalt 2's numbers, the last of them with a docstring explaining why sixteen
+is right. Pointed at a second game those defaults are the fake wrap again, by
+construction. There is now a `picture.py` that every one of them asks, that
+has **no defaults at all** -- `--game <name>` or all three numbers explicitly
+or it refuses -- and that prints a warning on stderr when the numbers in a
+game's `game.h` have never been measured. `GAME_PICTURE_MEASURED` is what
+says whether they have.
+
+The seventh is the rule's plainest form yet. Asphalt 1's picture was called
+misaligned three times off one screenshot -- a horizontal wrap, then two
+pictures composited with a live outer copy, then nothing at all -- and the
+answer each time came from somewhere other than the screenshot: the zero-run
+spacing in the game's own buffer (stride 352, origin 0, no wrap signature),
+the composited panel compared pixel for pixel against the source (1.000 over
+62,560 pixels, 0 of 14,240 non-black outside it), and finally Asphalt 2 run
+as a control, which looks the same and plays on three phones. The HUD around
+an inset 3D viewport is how both games draw themselves.
+
+Worth keeping separately: the **first** attempt at measuring the stride was
+also wrong. Mean |b[i] - b[i+S]| against candidate strides -- vertical
+continuity, which is the textbook method -- put its minimum at 350 bytes and
+did not even make 352 a local minimum. Every candidate it liked was 2 mod 4,
+because the picture is dithered on a two-pixel period and the metric was
+reading the dither. What settled it was a property with no free parameters:
+the buffer is `user_allocz`'d, so the ends of the drawn rows are still zero,
+and those zero runs recur at exactly the stride.
 
 ### Phase 0: the game ignores the size it is told, and a blink nearly said otherwise
 

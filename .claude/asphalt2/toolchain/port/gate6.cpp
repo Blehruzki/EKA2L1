@@ -2389,7 +2389,10 @@ enum { HAL_MEMORY_RAM_FREE = 16 };
 enum { OWN_SCREEN = 1, SCREEN_4K = 1, TELL_GAME_ITS_SIZE = 0 };
 // 0 = off. Set it to a frame number to drop that frame's raw buffer into
 // C:\g6code.bin, which is how the stride and the overflow were measured.
-enum { DUMP_FRAME = 0, DUMP_FRAME_BYTES = 240 * 240 * 2 };
+// Per game, because which frame is worth dumping depends on how long that
+// title takes to get somewhere worth looking at, and because leaving it on
+// in a shipping build writes 115 KB to a memory card four times.
+enum { DUMP_FRAME = GAME_DUMP_FRAME, DUMP_FRAME_BYTES = 240 * 240 * 2 };
 // Test-only, and both off in anything shipped. MODE_CYCLE_FRAMES advances the
 // picture mode every so many frames so that one run exercises all four, and
 // DUMP_SCREEN writes the **composited** framebuffer -- what the panel actually
@@ -2399,6 +2402,8 @@ enum { DUMP_FRAME = 0, DUMP_FRAME_BYTES = 240 * 240 * 2 };
 // bits) so the renderer does not have to be told the geometry and cannot be
 // told it wrongly, which is how phase 0's renderer went wrong.
 enum { MODE_CYCLE_FRAMES = 0, DUMP_SCREEN = 0, DUMP_SCREEN_FIRST = 240 };
+// The composited dump on its own, without cycling modes: per game.
+enum { DUMP_SCREEN_TOO = GAME_DUMP_SCREEN };
 
 // A breadcrumb goes into the same ring as the imports, so the two interleave
 // and the order is the order things happened in. The marker reads as 900 and
@@ -5567,6 +5572,27 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
                 }
             }
         }
+    }
+    // **And the composited framebuffer, at the same frames as the source.**
+    //
+    // Separate from the mode-cycling dump below, which only fires when the
+    // port is walking the four picture modes. The question here is the other
+    // one: the game's own buffer is a clean picture (E288 measured it), so if
+    // the panel is not, the fault is in the blit or in the reading of a
+    // screenshot -- and only the panel's own bytes tell those apart. A
+    // screenshot of the emulator window is scaled by the emulator and then
+    // again by whatever looks at it, which is how the first reading of E287
+    // went wrong.
+    //
+    // Four words of descriptor first, so the geometry travels with the
+    // pixels and the renderer cannot be told it wrongly.
+    if (DUMP_SCREEN_TOO && c->realScreen && c->realPitch && c->screenH &&
+        (c->shots == (u32)DUMP_FRAME || c->shots == (u32)DUMP_FRAME + 34)) {
+        u32 head[4];
+        head[0] = c->screenW; head[1] = c->screenH;
+        head[2] = c->realPitch; head[3] = c->realBpp;
+        dump_region(c, (const u8 *)head, sizeof head);
+        dump_region(c, c->realScreen, c->realPitch * c->screenH);
     }
     if (MODE_CYCLE_FRAMES && c->frames > (u32)DUMP_SCREEN_FIRST
         && c->frames % (u32)MODE_CYCLE_FRAMES == 0

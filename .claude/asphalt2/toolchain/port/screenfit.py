@@ -21,6 +21,8 @@ Two traps, both hit on the first use of this script:
 """
 import struct, sys
 
+import picture
+
 FIT, SRC, DST, FMT = 838, 839, 840, 837
 
 
@@ -35,7 +37,7 @@ def map_max():
         return 320
 
 
-def main(path):
+def main(path, g):
     d = open(path, 'rb').read()
     ev = [struct.unpack_from('<II', d, 8 * i) for i in range(len(d) // 8)]
     # The exact run screen_layout writes, so a reused code cannot be mistaken
@@ -63,8 +65,12 @@ def main(path):
     print('  right/bottom edge %d / %d of %d / %d   %s'
           % (ox + dw, oy + dh, bw, panel_h, 'inside' if fits else '*** PAST THE PANEL ***'))
     if dw and dh:
+        # The source aspect comes from the game, not from 176/208 written
+        # down here: that is Asphalt 2's shape and reporting it for another
+        # game is the same class of mistake as rendering with its origin.
+        sa = g['width'] / g['height']
         print('  aspect            %.4f vs source %.4f   (%+.1f%%)'
-              % (dw / dh, 176 / 208, 100.0 * ((dw / dh) / (176 / 208) - 1)))
+              % (dw / dh, sa, 100.0 * ((dw / dh) / sa - 1)))
     print('  screen used       %.1f%%' % (100.0 * dw * dh / (bw * panel_h)))
     # MAP_MAX, which phase 3 raised from 320 to 1024. Read it out of the
     # source rather than repeating it here: this check went stale the moment
@@ -76,4 +82,7 @@ def main(path):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1])
+    game, rest = picture.take_game_arg(sys.argv[1:])
+    g = picture.geometry(game)
+    picture.banner(g)
+    main(rest[0], g)

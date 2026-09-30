@@ -17,6 +17,8 @@ convincingly as horizontal wrapping. It is not. Pass 0 for the raw buffer,
 """
 import struct, sys, zlib
 
+import picture
+
 
 def png(path, w, h, rows):
     raw = b''.join(b'\0' + r for r in rows)
@@ -30,8 +32,8 @@ def png(path, w, h, rows):
     open(path, 'wb').write(out)
 
 
-def main(src, prefix, pitch=176, height=208, origin=16):
-    pitch, height, origin = int(pitch), int(height), int(origin)
+def main(g, src, prefix):
+    pitch, height, origin = g['pitch'], g['height'], g['origin']
     d = open(src, 'rb').read()
     o, i = 0, 0
     while o + 8 <= len(d):
@@ -55,4 +57,8 @@ def main(src, prefix, pitch=176, height=208, origin=16):
 
 
 if __name__ == '__main__':
-    main(*sys.argv[1:])
+    game, rest = picture.take_game_arg(sys.argv[1:])
+    src, prefix, nums = rest[0], rest[1], rest[2:]
+    g = picture.geometry(game, *nums)
+    picture.banner(g)
+    main(g, src, prefix)

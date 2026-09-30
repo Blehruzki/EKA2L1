@@ -71,4 +71,16 @@ enum { GAME_SRC_ORIGIN = 16 };
 // running. See the note beside kDiverts.
 #define GAME_DIVERT_MATCH 0
 
+// The three picture numbers above are measurements, not guesses: the pitch
+// over rounds 74 to 78 and again in E133 to E135, the origin from the seam
+// at column 15/16. Tools render with them and say so.
+#define GAME_PICTURE_MEASURED 1
+
+// No frame dump: the stride here was measured long ago and a shipping build
+// should not write 115 KB to a memory card four times.
+#define GAME_DUMP_FRAME 0
+
+// No composited dump.
+#define GAME_DUMP_SCREEN 0
+
 #endif

@@ -78,4 +78,19 @@ enum { GAME_SRC_ORIGIN = 0 };
 // an add of the timer -- E32USER-CBase 41, EReqAlreadyAdded.
 #define GAME_DIVERT_MATCH 1
 
+// **Measured, E288**, off four raw frames of the game's own buffer. The
+// stride from the spacing of the zero runs the game leaves at the end of
+// each drawn row -- 352 bytes, exactly -- and the origin from the non-zero
+// column extent, which is 0 to 175, so there is no left margin to skip.
+// The wrap signature is 4 to 11 per cent for K of 8 to 24, which is noise.
+#define GAME_PICTURE_MEASURED 1
+
+// Dump the raw buffer at this frame and at +17, +34 and +51. 1,200 frames is
+// about seventy seconds, which E287 showed is inside the attract race. This
+// is how GAME_PITCH and GAME_SRC_ORIGIN get measured instead of guessed.
+#define GAME_DUMP_FRAME 1200
+
+// Dump the composited framebuffer too, at GAME_DUMP_FRAME and +34.
+#define GAME_DUMP_SCREEN 1
+
 #endif
