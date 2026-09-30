@@ -181,6 +181,62 @@ claim. `CActive::SetActive`'s own documentation names that case:
 `SetActive` also panics **E32USER-CBase 42** if the object is already active
 and **49** if it was never added to a scheduler.
 
+## How EKA2 delivers an exception to a user-side handler
+
+From `kernel/eka/kernel/arm/ckernel.cpp` (`Exc::Dispatch`) and
+`kernel/eka/euser/epoc/arm/uc_exe.cia` (`_E32Startup`):
+
+The kernel does **not** call the handler installed with
+`User::SetExceptionHandler`. For a user-mode fault in a thread whose handler
+covers it, it pushes a frame on the *user* stack (`PushExcInfoOnUserStack`,
+low address first) --
+
+    word 0  TExcType         word 3  iFaultStatus     word 5..20  r0 .. r15
+    word 1  iExcCode         word 4  iCpsr            (18 sp, 19 lr, 20 pc)
+    word 2  iFaultAddress
+
+-- then sets `r15 = iReentryPoint` (the process's E32 entry point), `r4 =
+KModuleEntryReasonException` (4, `u32std.h`), clears the Thumb bit, and
+returns to user mode. eexe's `_E32Startup` compares r4 against 4 and calls
+`User::HandleException(sp)`, which runs the installed handler. If the thread
+faults again with `KThreadFlagLastChance` set, or has no handler, the kernel
+panics it **KERN-EXEC 3** (`K::PanicKernExec(ECausedException)`).
+
+So a hand-written entry point that dispatches on r4 == 0 only never runs its
+handler, however correctly it was installed: the exception arrives as a
+thread start with the fault frame where `SStdEpocThreadCreateInfo` should be.
+This port's `_start` did exactly that until build 017, and every KERN-EXEC 3
+it has ever reported went through it. `User::ExceptionHandler()` returns the
+installed pointer, which is how the entry point finds its way back to the
+handler without any writable data of its own.
+
+`TExcType` (`e32const.h`): `EExcGeneral` 0, `EExcAccessViolation` 9,
+`EExcDataAbort` 23. `iExcCode`: 0 prefetch abort, 1 data abort, 2 undefined
+instruction. The mask bits for `SetExceptionHandler`: `KExceptionFault`
+0x10 is the one a bad pointer raises. The emulator (EKA2L1) delivers only
+software exceptions (`User::RaiseException`) to a handler, calling it
+directly with the type in r0; a bad memory access there never reaches user
+code, so the phone path can be reviewed but not run on the bench.
+
+**Exec numbers are the ROM's, not the source tree's.** The RM-409 euser's
+stubs (disassembled) use `svc 0x5A` for `SetExceptionHandler`, `0x59` for
+`ExceptionHandler` and `0x54` for `ResetInactivityTime`; the kernel test
+`e32test/system/execinfo.cpp` in the published (later) source numbers them
+0x80, 0x7F and 0x48. Go through euser's exports, never a raw `svc`.
+
+## Window-server events on losing the foreground
+
+From `classicui/lafagnosticuifoundation/cone/src/COEAUI.CPP` and
+`COEMAIN.CPP`: `CCoeEnv::RunL` reads one `TWsEvent` and calls
+`iAppUi->HandleWsEventL(event, control)` (app UI vtable slot 4). For
+`EEventFocusLost` (10) / `EEventFocusGained` (11) that calls
+`HandleForegroundEventL(aForeground)` (slot 8) and then `SetFocus` on the
+top focusable control, which is the control's `FocusChanged`. `TWsEvent` is
+`TInt iType; TUint iHandle; TTime iTime; TUint8 iEventData[]` (`W32STD.H`),
+so the type is the first word of the argument. Avkon's own
+`CAknAppUi::HandleWsEventL` (`AknAppUi.cpp`) swallows
+`KAknFullOrPartialForegroundLost/Gained` before anything else runs.
+
 ## Avkon shuts applications down through HandleCommandL
 
 `CAknAppUi::HandleSystemEventL`, from `uifw/AvKon/src/AknAppUi.cpp`:

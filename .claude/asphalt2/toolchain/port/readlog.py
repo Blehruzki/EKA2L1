@@ -176,7 +176,7 @@ def probes():
 # Notes whose payload is an address: the same run on two machines loads the
 # image somewhere different, so the number is worth printing and not comparing.
 ADDRESS_NOTES = {850, 851, 852, 853, 854, 855, 856, 857, 858, 859, 875, 876, 891,
-                 801, 803, 705}
+                 801, 803, 705, 722, 724, 725, 726, 727, 729}
 
 # 850..857 are reused: the names on the right are what gate6.cpp writes
 # there now, and the ones on the left are what the same codes meant when the
@@ -219,7 +219,13 @@ NOTES = {860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on
  702: '   iStatus', 703: '   iFlags (1 active, 2 pending)',
  704: '   our DoCancel returned (0 nothing, 1 completed, 2 no wrapper)',
  705: 'CActive::Cancel returned on', 706: 'BUILD',
- 708: '   completions so far (all, then timer)', 709: '   completing status at'}
+ 708: '   completions so far (all, then timer)', 709: '   completing status at',
+ 710: 'WS EVENT type', 711: '   ws event handled', 712: 'FOREGROUND EVENT (1 gain, 0 lose)',
+ 713: '   foreground event handled',
+ 720: '**** FAULT **** TExcType', 721: '   exc code (0 prefetch, 1 data abort, 2 undef)',
+ 722: '   fault address', 723: '   cpsr', 724: '   sp', 725: '   lr', 726: '   pc',
+ 727: '   r0..r12', 728: '   pc as image offset', 729: 'bench: sent to back via',
+ 730: 'SetExceptionHandler answered'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework

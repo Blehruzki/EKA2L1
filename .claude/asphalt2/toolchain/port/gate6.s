@@ -13,6 +13,12 @@
     @ at the initial stack pointer and passes the startup reason in r4, which
     @ is what a real entry point forwards.
 _start:
+    @ First, before the heap is touched: eexe's _E32Startup tests the reason
+    @ before anything else, because for reason 4 what sp points at is not a
+    @ thread-create info block but the fault frame, and SetupThreadHeap
+    @ reading an allocator out of it is a second fault on top of the first.
+    cmp  r4, #4
+    beq  3f                     @ r4 == 4: the kernel re-entering us for an exception
     mov  r5, sp                 @ SStdEpocThreadCreateInfo, before anything moves sp
     mov  r0, r4                 @ aNotFirst: 0 when this is the process starting
     mov  r1, sp                 @ the thread create info the kernel left there
@@ -54,6 +60,35 @@ _start:
     bx   r12
 .endif
     bl   user_exit              @ User::Exit(the function's return value)
+    b    .
+
+    @ **An exception, and this is how EKA2 delivers one to a user handler.**
+    @ kernel/arm/ckernel.cpp, Exc::Dispatch: if the thread has a handler
+    @ installed for the fault, the kernel pushes the fault frame on the user
+    @ stack -- PushExcInfoOnUserStack: TExcType, iExcCode, iFaultAddress,
+    @ iFaultStatus, iCpsr, then r0 to r15, low address first -- and re-enters
+    @ the process **at its entry point** with r4 = KModuleEntryReasonException
+    @ (4, u32std.h) and sp at the frame. eexe's _E32Startup (uc_exe.cia)
+    @ dispatches on r4 and calls User::HandleException(sp), which runs the
+    @ installed handler. This entry point dispatched on r4 == 0 only, so an
+    @ exception took the thread-start branch below: `ldr r12, [r5, #8]` read
+    @ the fault address out of the frame and branched to it -- a second fault
+    @ with the last-chance flag set, which the kernel reports as KERN-EXEC 3.
+    @ Every KERN-EXEC 3 this port has ever shown went through here.
+    @
+    @ The handler we installed is the thunk gate6.cpp built around the
+    @ context, and User::ExceptionHandler() hands it back; it gets the frame
+    @ in r0 and never returns. The kernel clears the Thumb bit before the
+    @ re-entry, so this is ARM as the rest of the file is.
+3:  mov  r5, sp                 @ the frame: type, code, fault address, status, cpsr, r0-r15
+    bl   user_exceptionhandler  @ User::ExceptionHandler(): what we installed, or 0
+    cmp  r0, #0
+    beq  5f
+    mov  r1, r0
+    mov  r0, r5
+    bx   r1                     @ gate6_fault, through its thunk; does not return
+5:  mvn  r0, #0                 @ no handler -- cannot happen, the kernel checked
+    bl   user_exit
     b    .
 
     @ A GCC98r2 virtual call, as gate 3 measured it in the game's own code: the
@@ -123,6 +158,7 @@ old_call1:
     IMPORT user_allocz,       652    @ User::AllocZ(TInt)
     IMPORT user_alloclen,     660    @ User::AllocLen(TAny const*)
     IMPORT user_setexceptionhandler, 635  @ User::SetExceptionHandler(TExceptionHandler, TUint32)
+    IMPORT user_exceptionhandler, 620     @ User::ExceptionHandler()
     IMPORT rhandle_close,     120    @ RHandleBase::Close()
     IMPORT cperiodic_newl,   1379    @ CPeriodic::NewL(TInt)
     IMPORT cperiodic_start,  1381    @ CPeriodic::Start(...)

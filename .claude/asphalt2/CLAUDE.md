@@ -76,6 +76,11 @@ bugs found by doing it:
   say. It is in the image: find the import veneer, find every `bl` to it,
   disassemble around each. That took ten minutes and found a second `Cancel`
   the port had never accounted for.
+- **Check what a box word means before trusting a hundred rounds of it.**
+  `BOX_EXC` and `BOX_MDA` were the same word, and the audio stream's NewL
+  address was read as "the exception handler is NOT installed" for a hundred
+  rounds -- which steered every theory away from the one instrument that
+  names a fault's instruction. Two enums at the same offset is a grep.
 - **A picture is not a measurement.** Three readings of one screenshot gave
   three answers. Measure the bytes, or give the instrument to the person
   holding the phone and let them turn it until it is right.

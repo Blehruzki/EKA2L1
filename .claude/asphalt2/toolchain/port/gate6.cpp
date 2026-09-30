@@ -310,6 +310,21 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_BUILD = 706,        // which build wrote this file
        NOTE_COMPLETES = 708,    // how many completions have gone through the hook
        NOTE_COMPLETE_TO = 709,  // and, in the endgame, the status each one names
+       NOTE_WS_EVENT = 710,     // HandleWsEventL entered: the event's type (w32std.h)
+       NOTE_WS_EVENT_DONE = 711,// ... and returned from, same type
+       NOTE_FG_EVENT = 712,     // HandleForegroundEventL entered: 1 gaining, 0 losing
+       NOTE_FG_EVENT_DONE = 713,// ... and returned from
+       NOTE_FAULT = 720,        // the exception handler ran: the TExcType
+       NOTE_FAULT_CODE = 721,   // iExcCode: 0 prefetch abort, 1 data abort, 2 undefined
+       NOTE_FAULT_ADDR = 722,   // the address the access violation was on
+       NOTE_FAULT_CPSR = 723,   // the CPSR at the fault
+       NOTE_FAULT_SP = 724,     // sp, lr and pc at the fault, in that order
+       NOTE_FAULT_LR = 725,
+       NOTE_FAULT_PC = 726,
+       NOTE_FAULT_REG = 727,    // r0 to r12, in order, one record each
+       NOTE_FAULT_PC_REL = 728, // pc as an offset into the game's image, when it is in it
+       NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
+       NOTE_EXC_INSTALL = 730,  // what User::SetExceptionHandler answered
        NOTE_SCREEN = 834,       // a word of the TScreenInfoV01 the game is given
        NOTE_KEY = 835,          // a key event, as it is handed to the game
        NOTE_THREAD_ARG = 840,   // one word of the create frame
@@ -1050,6 +1065,8 @@ struct Context {
     u32 timerOff;           // imports left to write the box on every call
     u32 completes;          // completions seen by the hook, all destinations
     u32 completesMine;      // ... and the ones aimed at the frame timer
+    u32 realWsEvent;        // avkon's CAknAppUi::HandleWsEventL, before our thunk
+    u32 realFgEvent;        // ... and its HandleForegroundEventL
     u32 realDoCancel;       // the 9.x CTimer::DoCancel our thunk displaced
     u32 beatTimer;          // our own CPeriodic, so a dead app can be told
     u32 beats;              //   from a stopped one
@@ -1433,14 +1450,49 @@ static u32 trace_thunk(u8 *code, const void *ctx, u32 value, u32 target, u32 not
 // Then a fault says where it happened, in the only terms the phone gives us.
 static void box_flush(Context *c);
 
-extern "C" void gate6_fault(Context *c, int type)
+// **The fault, with the instruction it happened on.**
+//
+// Two doors in. On a device the kernel does not call the handler: it pushes
+// the fault frame on the user stack and re-enters the process at its entry
+// point (kernel/arm/ckernel.cpp, Exc::Dispatch; the frame layout is
+// PushExcInfoOnUserStack's), and `_start` in gate6.s brings that frame here
+// in `arg`. The emulator calls the handler directly with the TExcType in r0,
+// and that arrives here as a small number. The frame is told from the type by
+// what only a frame can contain: a CPSR in user mode at word 4, a code of 0,
+// 1 or 2 at word 1, and a type under 64 at word 0.
+//
+// Every word goes in the log before the panic, and the log and box are
+// flushed: this is the one path where the record matters more than the cost.
+enum { FRAME_TYPE = 0, FRAME_CODE = 1, FRAME_ADDR = 2, FRAME_STATUS = 3, FRAME_CPSR = 4,
+       FRAME_R0 = 5, FRAME_SP = 18, FRAME_LR = 19, FRAME_PC = 20 };
+
+extern "C" void gate6_fault(Context *c, u32 arg)
 {
-    // The box goes down before the panic does: one write, on a path taken
-    // once, and the only one carrying the events right at the fault rather
-    // than up to fifteen short of it.
     c->reached |= REACHED_FAULT;
+    const u32 *f = (const u32 *)arg;
+    u32 type = arg;
+    const int frame = arg >= 0x1000 && !(arg & 3) && f[FRAME_TYPE] < 64 &&
+                      f[FRAME_CODE] <= 2 && (f[FRAME_CPSR] & 0x1F) == 0x10;
+    if (frame) {
+        type = f[FRAME_TYPE];
+        log_event(c, NOTE_FAULT, f[FRAME_TYPE]);
+        log_event(c, NOTE_FAULT_CODE, f[FRAME_CODE]);
+        log_event(c, NOTE_FAULT_ADDR, f[FRAME_ADDR]);
+        log_event(c, NOTE_FAULT_CPSR, f[FRAME_CPSR]);
+        log_event(c, NOTE_FAULT_SP, f[FRAME_SP]);
+        log_event(c, NOTE_FAULT_LR, f[FRAME_LR]);
+        log_event(c, NOTE_FAULT_PC, f[FRAME_PC]);
+        const u32 pc = f[FRAME_PC];
+        if (c->codeBase && pc >= c->codeBase && pc < (u32)c->spareEnd)
+            log_event(c, NOTE_FAULT_PC_REL, pc - c->codeBase);
+        for (u32 i = 0; i < 13; i++)
+            log_event(c, NOTE_FAULT_REG, f[FRAME_R0 + i]);
+    } else {
+        log_event(c, NOTE_FAULT, arg);
+    }
+    log_block(c);
     box_flush(c);
-    PANIC(CAT_FLT, (int)(c->lastImport * 100 + (u32)(type & 63)));
+    PANIC(CAT_FLT, (int)(c->lastImport * 100 + (type & 63)));
 }
 
 // Both at once, for a call that is given one wrapper and made on another. Five
@@ -3683,6 +3735,38 @@ static void cfg_save(Context *c);
 enum { FORCE_CANCEL_AT = 0 };
 extern "C" void gate6_cancel(u32 *self, u32, Context *c);
 
+// **Bench only, zero in everything that ships: lose the foreground.** The
+// phone's death is in the window-server events that follow the menu key,
+// and the cancel alone (above) does not make the bench send them. Putting our
+// own window group at the back of the ordinal list is what going to the
+// background is (TApaTask::SendToBackground is this call), and whether the
+// emulator's window server then sends EEventFocusLost and the rest is what
+// the run measures. ws32 211 is `RWindowTreeNode::SetOrdinalPosition(TInt)`
+// by def index, unconfirmed -- the record of a type-10 event confirms it.
+// CCoeEnv's iRootWin is at 0x2c in the 7.0s layout the game reads and twelve
+// bytes further in 9.x, and it is the RWindowGroup itself, not a pointer.
+enum { FORCE_BACKGROUND_AT = 0, WS32_SET_ORDINAL_POSITION = 211,
+       NEW_COEENV_ROOTWIN = 0x2c + COEENV_BIAS };
+static const u16 kWs32Name[] = { 'w','s','3','2','.','d','l','l' };
+
+static void bench_background(Context *c)
+{
+    typedef void (*SetOrdinal)(void *, int);
+    u32 lib = 0;
+    Ptrc16 nm, none;
+    nm.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kWs32Name / 2);
+    nm.text = kWs32Name;
+    none.lengthAndType = (u32)EPtrC << KTypeShift;
+    none.text = 0;
+    void *fn = 0;
+    if (!rlibrary_load(&lib, &nm, &none))
+        fn = rlibrary_lookup(&lib, (int)WS32_SET_ORDINAL_POSITION);
+    log_event(c, NOTE_BACKGROUND, (u32)fn);
+    log_block(c);
+    if (fn && c->coeEnv)
+        ((SetOrdinal)fn)((u8 *)c->coeEnv + NEW_COEENV_ROOTWIN, -1);
+}
+
 extern "C" void gate6_timer_runl(void *, u32, Context *c)
 {
     c->reached |= REACHED_RUNL;
@@ -3765,6 +3849,8 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     // with the request already complete.
     if (FORCE_CANCEL_AT && c->frames == (u32)FORCE_CANCEL_AT && c->oldTimer)
         gate6_cancel(c->oldTimer, 0, c);
+    if (FORCE_BACKGROUND_AT && c->frames == (u32)FORCE_BACKGROUND_AT)
+        bench_background(c);
 }
 
 extern "C" u32 gate6_timer_runerror(void *, u32 error, Context *c)
@@ -7542,6 +7628,35 @@ extern "C" void gate6_baseconstructl(void *, int flags, Context *c)
     c->baseDone = 1;
 }
 
+// **The two events that carry an application into the background.**
+//
+// The framework delivers every window-server event to the wrapper's slot 4,
+// `HandleWsEventL`, and cone turns focus loss and gain into slot 8,
+// `HandleForegroundEventL` (COEAUI.CPP). Round 100 put the death in the
+// second slot-4 entry after the game's pause, and nothing recorded which
+// event that was. TWsEvent is `TInt iType` first (W32STD.H), so the type is
+// one word off the argument, and the record either side says whether avkon's
+// own handler returned. These call the real avkon functions the vtable copy
+// held before the thunks went in.
+enum { SLOT_UI_WSEVENT = 4, SLOT_UI_FOREGROUND = 8 };
+
+extern "C" void gate6_ui_wsevent(void *self, const u32 *event, void *dest, Context *c)
+{
+    typedef void (*WsEvent)(void *, const void *, void *);
+    const u32 type = event ? event[0] : 0xFFFFFFFFu;
+    log_event(c, NOTE_WS_EVENT, type);
+    ((WsEvent)c->realWsEvent)(self, event, dest);
+    log_event(c, NOTE_WS_EVENT_DONE, type);
+}
+
+extern "C" void gate6_ui_foreground(void *self, u32 foreground, Context *c)
+{
+    typedef void (*FgEvent)(void *, u32);
+    log_event(c, NOTE_FG_EVENT, foreground);
+    ((FgEvent)c->realFgEvent)(self, foreground);
+    log_event(c, NOTE_FG_EVENT_DONE, foreground);
+}
+
 extern "C" void gate6_ui_construct(void *self)
 {
     box_start(context_of(self));
@@ -7619,6 +7734,14 @@ extern "C" void *gate6_create_app_ui(void *self)
     u32 *vt = copy_vtable(akn, AKN_APPUI_SLOTS);
     vt[VT_HEADER + SLOT_UI_CONSTRUCT] = (u32)&gate6_ui_construct;
     new_vtable_dump(c, vt + VT_HEADER, (u32)AKN_APPUI_SLOTS, 5);
+    c->realWsEvent = vt[VT_HEADER + SLOT_UI_WSEVENT];
+    c->realFgEvent = vt[VT_HEADER + SLOT_UI_FOREGROUND];
+    if (c->spare + 2 * TRACE <= c->spareEnd) {
+        vt[VT_HEADER + SLOT_UI_WSEVENT] = ctx3_thunk(c->spare, c, (u32)&gate6_ui_wsevent);
+        c->spare += TRACE;
+        vt[VT_HEADER + SLOT_UI_FOREGROUND] = ctx_thunk(c->spare, c, (u32)&gate6_ui_foreground);
+        c->spare += TRACE;
+    }
     instrument(c, vt, AKN_APPUI_SLOTS, OBJ_UI);
     ui[0] = (u32)(vt + VT_HEADER);
     c->wrapUi = ui;
@@ -8026,11 +8149,15 @@ static u32 load_and_start()
         b[2] = 0xE59FF000;                  // ldr pc, [pc, #0]
         b[3] = (u32)ctx;
         b[4] = (u32)&gate6_fault;
-        // KERN-EXEC 3 is what the kernel raises when nothing handled the
-        // exception, and that is what the phone reports -- so this handler is
-        // not running and our own panic never gets the chance. Whether it was
-        // even accepted is one word, and it goes in the box.
-        ctx->boxData[BOX_EXC] = (u32)user_setexceptionhandler(b, 0xFFFFFFFF);
+        // Whether it was accepted goes in the log, not the box: BOX_EXC and
+        // BOX_MDA are the same word, and the "handler is NOT installed" the
+        // box has printed for a hundred rounds was the audio stream's NewL
+        // address, written later. The ROM's own euser (RM-409, ordinal 635,
+        // disassembled) loads KCurrentThreadHandle and calls the exec stub
+        // at svc 0x5A, so the install was very likely fine all along; what
+        // never worked was `_start`, which did not dispatch the kernel's
+        // re-entry for an exception (r4 == 4). See gate6.s.
+        log_event(ctx, NOTE_EXC_INSTALL, (u32)user_setexceptionhandler(b, 0xFFFFFFFF));
 
     }
     for (u32 i = 0; i < nImports; i++) {

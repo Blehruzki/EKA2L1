@@ -60,8 +60,11 @@ def show(path, imports):
     print('  path %d   last slot %x   frames %d   stack high-water %d bytes'
           % (w[BOX_PATH], w[BOX_SLOT], w[BOX_FRAMES], w[BOX_STACK]))
     exc = w[BOX_EXC] if BOX_EXC < len(w) else 0
-    print('  User::SetExceptionHandler said %d%s'
-          % (exc, '' if exc == 0 else '   <- the handler is NOT installed'))
+    # BOX_EXC and BOX_MDA are the same word, and the MDA address is written
+    # last: this said "the handler is NOT installed" for a hundred rounds on
+    # the strength of CMdaAudioOutputStream::NewL's address. The answer to
+    # SetExceptionHandler is NOTE_EXC_INSTALL (730) in the log since build 017.
+    print('  MDA NewL resolved to 0x%x (this word once misread as SetExceptionHandler)' % exc)
     if BOX_WRAPS < len(w):
         print('  setup: %d bytes of spare arena left, context %d bytes'
               % (w[BOX_SPARE], w[BOX_CTXSZ]))
