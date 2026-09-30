@@ -85,6 +85,14 @@ enum { GAME_SRC_ORIGIN = 16 };
 
 // Packaging: the game's own files travel in the SIS, which is what every
 // build a phone has run does.
+// The keypad knob for the horizontal position of the picture in the
+// frame buffer: `*` and `#` move it a column, `7` and `9` eight, `0`
+// resets, and the choice is saved. Round 93 established that what we
+// write is correct and the panel shows it shifted, which is a scan-out
+// question no measurement inside the process can answer -- so the same wrap is reported on this title.
+// Turn it off once the right value is known and it is the default here.
+#define GAME_SHIFT_PICKER 1
+
 #define GAME_BUNDLE_DATA 1
 #define GAME_VENDOR      "DeltaCharlie"
 #define GAME_INSTALL_TEXT "Asphalt 2 N-Gage version, ported to S60v3 by DeltaCharlie."

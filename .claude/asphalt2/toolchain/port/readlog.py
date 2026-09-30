@@ -34,9 +34,36 @@ def game_image(arg):
     return picture.image(arg)
 
 
+NOTE_LOG_WRAP = 780
+LOG_HDR_BYTES = 16
+LOG_HEAD_BYTES = 256 * 1024
+
+
 def read(path):
+    """The log, oldest record first, whether or not the file wrapped.
+
+    Since build 007 the log is a ring: record zero is a header holding
+    NOTE_LOG_WRAP and the byte offset of the oldest live record, and the
+    body runs from byte 8 to the end and starts over. Before that the file
+    was written once and stopped at a megabyte -- which meant every crash
+    late in a run happened past the end of its own log, round 92 and round
+    93 both. A file with no header record reads exactly as it used to.
+    """
     d = open(path, 'rb').read()
-    return [struct.unpack_from('<II', d, 8 * i) for i in range(len(d) // 8)]
+    recs = [struct.unpack_from('<II', d, 8 * i) for i in range(len(d) // 8)]
+    if len(recs) < 2 or recs[0][0] != NOTE_LOG_WRAP or recs[1][0] != NOTE_LOG_WRAP:
+        return recs
+    ring_at, head_end = recs[0][1] // 8, recs[1][1] // 8
+    head_start, ring_start = LOG_HDR_BYTES // 8, LOG_HEAD_BYTES // 8
+    if head_end < head_start or head_end > len(recs):
+        return recs[head_start:]
+    head = recs[head_start:min(head_end, ring_start)]
+    if not ring_at or ring_at <= ring_start or ring_at > len(recs):
+        # The head is still being written, or the ring has not come round.
+        return head + recs[ring_start:] if head_end >= ring_start else head
+    # In the ring the write pointer is where the oldest record sits, so the
+    # tail of the file comes before the part already overwritten.
+    return head + recs[ring_at:] + recs[ring_start:ring_at]
 
 
 def names(game):

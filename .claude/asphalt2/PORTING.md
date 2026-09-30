@@ -633,6 +633,112 @@ there is no default -- the tool refuses and says which titles it knows.
 `build_release.py`'s own copy of the stem parser is gone with it; one
 spelling, in `picture.py`.
 
+### The log ended before every failure it was meant to explain
+
+*Rounds 92 and 93, E310, E311.*
+
+The log stopped at a megabyte and dropped everything after it. A megabyte is
+about 163 seconds of this game. Round 92 faulted 34,142 frames in; round 93
+died on being backgrounded after 29,343. **Neither crash is in its own log.**
+Both were read out of the box's thirty-two-event ring, which is enough to
+name the last import and nothing else, and the first 163 seconds -- which
+nobody needed -- were on disk in full.
+
+The fix is not a bigger file. Two parts of a run are worth keeping and they
+are at opposite ends: the boot, which takes thirteen seconds nobody can yet
+account for, and the last few seconds before a failure. So the file has a
+frozen head of a quarter megabyte, written once, and a ring of 768 KB behind
+it, with a two-record header saying where the ring's oldest record is and how
+far the head got. E311 reads back as frames 1 to 4,511 in order, ticks
+monotonic, with a gap in the middle where the minutes nobody needs used to
+be.
+
+Worth saying plainly: this is the third instrument in this port that was
+answering a different question from the one being asked, and the one that
+cost the most. Two hardware rounds ended with "the log does not go that far".
+
+### Retracted: the stalls were not the leak
+
+*Round 92 claimed it, round 93 refutes it.*
+
+Round 92's boot took 13.16 s, and I attributed it to `GAME_LEAK_ALL` and
+`GAME_ALLOC_PAD` -- nothing freed, 512 bytes on every cell, so every
+allocation grows a chunk. The arithmetic was real (1,779 `User::AllocL` in
+that window, 7.4 ms each, against 0.3 ms later in the same run) and the
+conclusion did not follow. Round 93 has the leak off and boots in **13.25 s**.
+
+What went wrong in the reasoning is worth keeping. The 13.16 s was the gap
+between two tick readings, and I read it as though the allocations were the
+only thing in it. They are only the only thing *the trace can see*: 5,898
+traced imports over thirteen seconds is 450 a second, so the game spends
+almost all of that time in its own code between imports, and the trace says
+nothing about what. A rate computed over a window is not a cost per event
+unless the events fill the window.
+
+`LOG_THE_CLOCK` -- a tick every sixteenth traced event -- has been in the
+source the whole time, switched off. It is on for build 007.
+
+### The picture is right and the panel disagrees
+
+*Round 93, and the end of guessing about the wrap.*
+
+Build 006 dumped, off the phone, the game's own 176x208 source buffer and the
+composited frame buffer at the same two frames. Both are clean. The frame
+buffer is 1280 bytes a line, 320 lines, 32 bits a pixel, and every row's
+non-zero content lies strictly inside columns 0 to 239; rendered out, it is
+the Sound Setup screen, correct and unwrapped. The panel, photographed, shows
+that picture with a strip of its right-hand side appearing at the left.
+
+A correct buffer displayed shifted is a scan-out that does not begin where we
+think the line begins, and **nothing inside the process can ask the panel
+where that is.** HAL is already known to lie about this phone's display: it
+reported 16 bits a pixel on a 640-byte line for a 240-pixel screen in round
+60, and it reports an offset-to-first-pixel of 0 here that may be no better.
+
+So build 007 stops arguing and adds a knob: `*` and `#` move the picture one
+frame-buffer column, `7` and `9` move it eight, `0` resets, the value is
+saved per title and written to the log. Not `4` and `6` -- those are
+steering, and a diagnostic that eats the controls of a driving game is worse
+than the fault it measures.
+
+The knob answers either way. If a setting lines the picture up, the offset is
+the answer and it becomes the default. If nothing ever lines it up -- if the
+picture slides but never squares -- then the panel's *stride* is wrong and
+not its origin, and that is a different fix. Three readings of one photograph
+have already been wrong in this port; a person turning a knob until the
+picture is straight is a measurement, and a person describing a photograph is
+not.
+
+### The game may not draw while the screen is not its own
+
+*Round 93. Both titles, and it had been there since the first one.*
+
+Idle the phone for a moment and the process dies. Background it and the same.
+The window server takes direct screen access away whenever something else
+needs the screen -- the task list, a call, the screensaver after the
+inactivity timeout -- by calling `AbortNow`, and from that moment until
+`Restart` the process may not touch the frame buffer.
+
+The game handles this correctly, as far as it goes: the port forwards both
+callbacks to its EKA1 observer and always has. But **the game is not the
+thing drawing.** `gate6_screen_update` blits into the frame buffer and hands
+a region to the driver, and neither ever asked whether the screen was still
+ours. On the N-Gage there was nothing to ask: the game owned the screen.
+
+One flag, set in the abort callback and cleared in the restart one, and the
+blit and the post both return early while it is set. The game goes on running
+-- frames, timers, sound -- and is simply not seen, which is what
+backgrounding is supposed to look like.
+
+And the cheaper half of the same fix: `User::ResetInactivityTime()` once a
+second from the frame loop, so the screensaver does not start at all. Every
+S60 game does this. The game takes its input through the window server like
+any other application, so a player holding one direction is, as far as the
+system is concerned, idle. The N-Gage version never needed it because an
+N-Gage did not put a screensaver over a running game -- which is the same
+shape as every other finding in this file: the port has to supply what the
+platform used to.
+
 ### A diagnostic setting is a thing that ships
 
 *Round 92. The crash was mine, and it had been mine for three builds.*

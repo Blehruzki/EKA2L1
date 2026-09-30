@@ -89,18 +89,18 @@ enum { GAME_SRC_ORIGIN = 0 };
 // The wrap signature is 4 to 11 per cent for K of 8 to 24, which is noise.
 #define GAME_PICTURE_MEASURED 1
 
-// **On for one round.** The person sees a horizontal wrap on the N95 that no
-// emulator run has ever reproduced, and rounds E287 to E290 read a single
-// photograph of it three different ways and got three different answers --
-// so a photograph is not going to settle it and a fourth reading would be
-// the same mistake a fourth time. This drops the raw buffer at frames 600,
-// 617, 634 and 651, and with GAME_DUMP_SCREEN the composited framebuffer at
-// 600 and 634: the game's own bytes and the panel's bytes for the same
-// moment, which is the pair that says whether the wrap is in what the game
-// draws or in what we post. 600 frames is inside the menu.
+// Off again, and the round it was on for answered the question it was
+// asked. Build 006's dump has the phone's own frame buffer holding a clean
+// 240x320 picture in columns 0 to 239 of a 320-pixel line, and the game's
+// own 176x208 source clean behind it -- while the panel showed that same
+// picture wrapped. So the wrap is not in what we draw or in what we write,
+// and no further dump can say more about it; it is a scan-out question,
+// and build 007 asks it with a knob instead (SHIFT_PICKER in gate6.cpp).
 //
-// Costs about 750 KB on C: and two long writes. Back to 0 next build.
-#define GAME_DUMP_FRAME 600
+// Set it to a frame number to drop that frame's raw buffer, and the ones
+// at +17, +34 and +51, into C:\g6code-<stem>.bin; with GAME_DUMP_SCREEN
+// the composited buffer comes too. It costs about 750 KB on C:.
+#define GAME_DUMP_FRAME 0
 
 // The composited framebuffer too, at GAME_DUMP_FRAME and +34: what the panel
 // actually shows, with its geometry in a descriptor in front of it. Needs
@@ -111,6 +111,14 @@ enum { GAME_SRC_ORIGIN = 0 };
 // the loader; without it the installer carries the loader alone and the
 // data is copied to the phone by hand, which is what a 9 MB card dump and
 // a signing limit make the sensible shape for this title.
+// The keypad knob for the horizontal position of the picture in the
+// frame buffer: `*` and `#` move it a column, `7` and `9` eight, `0`
+// resets, and the choice is saved. Round 93 established that what we
+// write is correct and the panel shows it shifted, which is a scan-out
+// question no measurement inside the process can answer -- so the wrap is live on this title.
+// Turn it off once the right value is known and it is the default here.
+#define GAME_SHIFT_PICKER 1
+
 #define GAME_BUNDLE_DATA 0
 #define GAME_VENDOR      "DeltaCharlie"
 // No backslashes and no apostrophes in the text: it lives in a C header
