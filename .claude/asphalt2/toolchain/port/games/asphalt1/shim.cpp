@@ -34,17 +34,19 @@ extern const unsigned short kShimDll12[] = { 'e', 't', 'e', 'l', '.', 'd', 'l', 
 extern const unsigned short kShimDll13[];
 extern const unsigned short kShimDll13[] = { 'e', 'u', 's', 'e', 'r', '.', 'd', 'l', 'l' };
 extern const unsigned short kShimDll14[];
-extern const unsigned short kShimDll14[] = { 'f', 'b', 's', 'c', 'l', 'i', '.', 'd', 'l', 'l' };
+extern const unsigned short kShimDll14[] = { 'e', 'z', 'l', 'i', 'b', '.', 'd', 'l', 'l' };
 extern const unsigned short kShimDll15[];
-extern const unsigned short kShimDll15[] = { 'h', 'a', 'l', '.', 'd', 'l', 'l' };
+extern const unsigned short kShimDll15[] = { 'f', 'b', 's', 'c', 'l', 'i', '.', 'd', 'l', 'l' };
 extern const unsigned short kShimDll16[];
-extern const unsigned short kShimDll16[] = { 's', 'c', 'p', 'p', 'n', 'w', 'd', 'l', '.', 'd', 'l', 'l' };
+extern const unsigned short kShimDll16[] = { 'h', 'a', 'l', '.', 'd', 'l', 'l' };
 extern const unsigned short kShimDll17[];
-extern const unsigned short kShimDll17[] = { 'w', 's', '3', '2', '.', 'd', 'l', 'l' };
+extern const unsigned short kShimDll17[] = { 's', 'c', 'p', 'p', 'n', 'w', 'd', 'l', '.', 'd', 'l', 'l' };
+extern const unsigned short kShimDll18[];
+extern const unsigned short kShimDll18[] = { 'w', 's', '3', '2', '.', 'd', 'l', 'l' };
 
-extern const unsigned short *const kShimDllName[] = { kShimDll0, kShimDll1, kShimDll2, kShimDll3, kShimDll4, kShimDll5, kShimDll6, kShimDll7, kShimDll8, kShimDll9, kShimDll10, kShimDll11, kShimDll12, kShimDll13, kShimDll14, kShimDll15, kShimDll16, kShimDll17 };
-extern const unsigned char kShimDllLen[] = { 10, 9, 10, 8, 12, 12, 9, 12, 11, 10, 9, 10, 8, 9, 10, 7, 12, 8 };
-extern const unsigned int kShimDllCount = 18;
+extern const unsigned short *const kShimDllName[] = { kShimDll0, kShimDll1, kShimDll2, kShimDll3, kShimDll4, kShimDll5, kShimDll6, kShimDll7, kShimDll8, kShimDll9, kShimDll10, kShimDll11, kShimDll12, kShimDll13, kShimDll14, kShimDll15, kShimDll16, kShimDll17, kShimDll18 };
+extern const unsigned char kShimDllLen[] = { 10, 9, 10, 8, 12, 12, 9, 12, 11, 10, 9, 10, 8, 9, 9, 10, 7, 12, 8 };
+extern const unsigned int kShimDllCount = 19;
 
 extern const unsigned int kShimTable[] = {
     0x01000084, 0x01000079, 0x01000087, 0x0100001E, 0x0100007B, 0x01010B6C, 0x01010300, 0x010107CA,
@@ -90,12 +92,12 @@ extern const unsigned int kShimTable[] = {
     0x010D02DE, 0x03000002, 0x010D0378, 0x010D0444, 0x03000002, 0x03000002, 0x010D0050, 0x010D0051,
     0x010D0193, 0x010D01AE, 0x03000002, 0x010D0330, 0x010D0377, 0x03000005, 0x010D0403, 0x010D0409,
     0x010D0443, 0x03000007, 0x03000007, 0x010D054C, 0x010D054B, 0x010D05BC, 0x010D05BD, 0x0104000C,
-    0x0104001D, 0x03000005, 0x01100003, 0x01100001, 0x01040024, 0x01050087, 0x01040018, 0x01040019,
+    0x0104001D, 0x03000005, 0x01110003, 0x01110001, 0x01040024, 0x01050087, 0x01040018, 0x01040019,
     0x01040029, 0x0104002A, 0x02050087, 0x01040014, 0x01040025, 0x03000000, 0x010D028C, 0x03000001,
-    0x01040007, 0x0105009B, 0x0205009B, 0x00000000, 0x010E001A, 0x010E006C, 0x010E001F, 0x03000002,
+    0x01040007, 0x0105009B, 0x0205009B, 0x010E0045, 0x010F001A, 0x010F006C, 0x010F001F, 0x03000002,
     0x03000002, 0x03000002, 0x03000002, 0x03000002, 0x03000002, 0x03000002, 0x03000002, 0x03000002,
     0x03000002, 0x03000002, 0x03000002, 0x03000002, 0x03000002, 0x03000002, 0x03000002, 0x03000002,
-    0x010F0001, 0x00000000, 0x00000000, 0x00000000, 0x03000002, 0x011100E9, 0x011100EA,
+    0x01100001, 0x00000000, 0x00000000, 0x00000000, 0x03000002, 0x011200E9, 0x011200EA,
 };
 extern const unsigned int kShimCount = 391;
 

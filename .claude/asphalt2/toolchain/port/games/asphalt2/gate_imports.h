@@ -73,4 +73,10 @@ enum {
 #define GATE_APPUI_METHODS  121, 125, 128, 135, 137, 139, 140, 141, 147, 149, 153, 155, 156, 157, 162, 163
 #define GATE_APPUI_METHOD_COUNT 16
 
+// The trace lists: see MILESTONES and HOT in gen_shim.py. Both may be
+// empty, which is why gate6.cpp appends the two exits to the first.
+#define GATE_MILESTONES  100, 109, 110, 99, 325, 326, 283, 45, 46, 350, 296, 299, 362, 353, 374, 281, 330, 386, 319, 363, 367, 298, 357, 295, 397, 366, 355, 400, 285, 376, 339, 458, 372, 269, 373, 323, 315,
+#define GATE_HOT  424, 425, 274, 287, 272, 417, 383, 369, 389, 264, 344,
+#define GATE_HOT_COUNT 11
+
 #endif

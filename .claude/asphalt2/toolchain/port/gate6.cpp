@@ -7816,29 +7816,15 @@ static u32 load_and_start()
     // records that is twenty thousand write-and-flush pairs on a phone, which
     // would look exactly like a hang. None of them is needed: the frame count
     // lives in the box, and the screen is its own evidence.
-    static const u16 kMilestone[] = {
-        100, 109, 110, 99,          // RFs::Connect, RFile Open/Read, Close
-        325, 326, 283,              // RLibrary Load / Lookup / Close
-        45, 46, 350,                // the screen's setup, and the frame-loop kick
-        // The SoundServer handshake, which is the window the main thread now
-        // dies in and which nothing was tracing. Both sides of it: what the
-        // main thread does after RThread::Create returns, and what the new
-        // thread does on its way up to the Signal that releases the Wait.
-        296, 299, 362, 353, 374,    // Semaphore CreateLocal, thread Create/SetPriority/Resume, Wait
-        281,                        // RHandleBase::Close -- twice, at 0xb87b0 and 0xb87b8
-        330, 386, 319, 363, 367,    // TrapCleanup, ActiveScheduler ctor/Install, Signal, Start
-        298,                        // RSessionBase::CreateSession, the connect that follows
-        // The sound path, end to end. None of these was traced before, and
-        // their absence from the log was read as "never called" when all it
-        // ever meant was "never watched".
-        357, 295, 397, 366, 355, 400, 285, 376, 339,
-        458,                        // CMdaAudioOutputStream::NewL -- ordinal 2 is not a pad
-        // The game's allocator, recorded on a worker and dropped on the main
-        // thread -- see worker_only_import.
-        372, 269, 373, 323, 315,    // TTrap::Trap, User::AllocL, UnTrap, LeaveNoMemory, Free
-        IMPORT_LEAVE, IMPORT_EXIT,  // so the last block still reaches the disk
-    };
-    static const u16 kHot[] = { 424, 425, 274, 287, 272, 417, 383, 369, 389, 264, 344 };
+    // Keyed by (DLL, old ordinal) in gen_shim.py and resolved per game: see
+    // MILESTONES there for what is in the list and why the per-frame ones are
+    // not. The two exits are appended here so the array is never empty and so
+    // the last block still reaches the disk.
+    static const u16 kMilestone[] = { GATE_MILESTONES
+                                      IMPORT_LEAVE, IMPORT_EXIT };
+    // HOOK_ABSENT is never an import index, so it only keeps the array from
+    // being empty in a game that imports none of them.
+    static const u16 kHot[] = { GATE_HOT (u16)HOOK_ABSENT };
 
     // RFile::Open's result. The phone logs the name it is about to open and
     // then stops, with nothing from the call -- so either the open never
