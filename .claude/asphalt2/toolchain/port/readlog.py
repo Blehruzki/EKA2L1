@@ -176,7 +176,7 @@ def probes():
 # Notes whose payload is an address: the same run on two machines loads the
 # image somewhere different, so the number is worth printing and not comparing.
 ADDRESS_NOTES = {850, 851, 852, 853, 854, 855, 856, 857, 858, 859, 875, 876, 891,
-                 801, 803}
+                 801, 803, 705}
 
 # 850..857 are reused: the names on the right are what gate6.cpp writes
 # there now, and the ones on the left are what the same codes meant when the
@@ -214,7 +214,12 @@ NOTES = {860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on
  821: '   main pane corner', 822: '   inset adopted',
  823: 'saved choice read', 824: '   choice written', 825: 'picture mode now',
  826: 'status-pane entry point', 827: '   the CEikStatusPane',
- 828: '   pane reports itself gone'}
+ 828: '   pane reports itself gone',
+ 700: 'heartbeat', 701: '** TIMER CANCELLED **',
+ 702: '   iStatus', 703: '   iFlags (1 active, 2 pending)',
+ 704: '   our DoCancel returned (0 nothing, 1 completed, 2 no wrapper)',
+ 705: 'CActive::Cancel returned on', 706: 'BUILD',
+ 708: '   completions so far (all, then timer)', 709: '   completing status at'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework

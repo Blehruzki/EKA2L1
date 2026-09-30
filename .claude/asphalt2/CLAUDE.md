@@ -63,6 +63,19 @@ bugs found by doing it:
 - **A build size is a cheap checksum.** Ten bench runs once went to a binary
   that was not being rebuilt, and an unchanging record count is what caught it.
   If a change should alter the code size and does not, find out why first.
+- **An instrument's coverage is a claim, and it needs checking too.** The
+  endgame flush was added so that "the last record before the death" would be
+  the truth. It hung off `gate6_trace`, so it covered *traced imports* -- and
+  everything that runs after the frame timer is cancelled is the port's own
+  code, which is not a traced import. Three hardware rounds read "no records
+  after the cancel" as "the process dies inside the cancel", when it only ever
+  meant "nothing after the cancel was flushed". Before reading an absence as
+  evidence, ask what would have had to happen for the record to appear.
+- **The binary answers questions a round cannot.** "What does the game do
+  after it cancels its timer?" was treated as something only the phone could
+  say. It is in the image: find the import veneer, find every `bl` to it,
+  disassemble around each. That took ten minutes and found a second `Cancel`
+  the port had never accounted for.
 - **A picture is not a measurement.** Three readings of one screenshot gave
   three answers. Measure the bytes, or give the instrument to the person
   holding the phone and let them turn it until it is right.

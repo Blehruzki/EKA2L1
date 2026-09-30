@@ -54,7 +54,7 @@ def build(out='.', caption=None, game=DEFAULT_GAME, **kw):
                                           'chunk_createlocalcode', 'chunk_base',
                                           'rlibrary_load', 'rlibrary_lookup',
                                           'rdebug_rawprint', 'user_imb_range',
-                                          'user_tickcount', 'user_resetinactivity', 'user_requestcomplete',
+                                          'user_tickcount', 'user_resetinactivity',
                                           'sem_wait_timeout',
                                           'user_allocator', 'rthread_id', 'rheap_available', 'user_allocsize']),
                         (buildapp.EFSRV, ['fs_connect', 'file_open', 'file_close',

@@ -132,6 +132,55 @@ completions. For such an object the right `DoCancel` is neither the game's
 nor the real one: it is to complete the request, which is what the contract
 above actually asks for.
 
+**And "complete the request" means *if it is still outstanding*, not always.**
+That took a second reading, and build 015 shipped the first one.
+
+`TRequestStatus` is two words (`e32cmn.h`): `iStatus` then `iFlags`, whose
+bit 0 is `EActive` and bit 1 `ERequestPending`. `CActive` is `CBase` (a vptr)
+then `iStatus`, so in a `CActive` the status word is at **+4** and the flags
+at **+8**. `TRequestStatus::operator=` (`e32cmn.inl`) sets `ERequestPending`
+when `KRequestPending` is assigned and clears it for anything else, so the
+status word alone says whether a completion is outstanding.
+`KRequestPending` is `-KMaxTInt` (`e32const.h`).
+
+```cpp
+// us_func.cpp
+EXPORT_C void User::RequestComplete(TRequestStatus*& aStatus, TInt aReason)
+	{
+	*aStatus = KRequestPending;
+	RThread().RequestComplete(aStatus, aReason);
+	}
+
+// us_exec.cpp -- note that it always takes one signal off the semaphore
+EXPORT_C void User::WaitForRequest(TRequestStatus& aStatus)
+	{
+	TInt i = -1;
+	do { i++; Exec::WaitForAnyRequest(); } while (aStatus == KRequestPending);
+	if (i) Exec::RequestSignal(i);
+	}
+```
+
+`RThread::RequestComplete` (`epoc/arm/uc_exec.cia`) swaps the caller's pointer
+to NULL, stores the reason through the old one, and **signals the thread's
+request semaphore**. So each completion puts one signal on the semaphore and
+each `WaitForRequest` takes exactly one off.
+
+That is the whole accounting, and it decides what `DoCancel` may do. If the
+request is still `KRequestPending`, nothing has signalled and `DoCancel` must
+complete it or the wait never returns. If it has already been completed --
+which for this port is the normal state between frames, because the game arms
+its timer with `SetActive()` followed immediately by its own
+`User::RequestComplete` -- a signal is already waiting and `DoCancel` must do
+nothing: completing again leaves a second signal that no active object will
+claim. `CActive::SetActive`'s own documentation names that case:
+
+> E32USER-CBase 46 panics may occur if an active object is set active but no
+> request is made on its TRequestStatus, or vice versa. [...] This panic is
+> termed a 'stray event'.
+
+`SetActive` also panics **E32USER-CBase 42** if the object is already active
+and **49** if it was never added to a scheduler.
+
 ## Avkon shuts applications down through HandleCommandL
 
 `CAknAppUi::HandleSystemEventL`, from `uifw/AvKon/src/AknAppUi.cpp`:
