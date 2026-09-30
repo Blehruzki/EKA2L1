@@ -17,8 +17,21 @@ first place they part company is the answer.
 import struct
 import sys
 
-GAME = '/root/.local/share/EKA2L1/data/drives/e.ngage/system/apps/6rbc/6rbc.app'
+# No default game. This was one hardcoded path -- Asphalt 2's 6rbc.app --
+# and `readbox.py` decoded every title's box through it, so round 92's fault
+# at import 251 printed as `RLine::EnumerateCall` when this image's 251 is
+# `User::AllocL`. The indices are right and the names are another game's,
+# which is worse than no names at all. `--game <name>` now, resolved by
+# `picture.image`, or a path to the `.app` if that is what is meant.
 CRUMB_FIRST = 900
+
+
+def game_image(arg):
+    """`--game`'s value: a title's name, or a path to its image."""
+    import picture
+    if arg and ('/' in arg or arg.lower().endswith('.app')):
+        return arg
+    return picture.image(arg)
 
 
 def read(path):
@@ -155,7 +168,8 @@ def main():
         print(__doc__)
         return
     path = args[0]
-    game = args[args.index('--game') + 1] if '--game' in args else GAME
+    game = game_image(args[args.index('--game') + 1]
+                      if '--game' in args else None)
     events = read(path)
     imports, marks = names(game), crumbs()
 

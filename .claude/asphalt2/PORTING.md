@@ -482,6 +482,8 @@ the **second inside phase 0 alone**:
 | "the wrap is back" | a renderer starting at column 0 against a blit starting at 16 |
 | Asphalt 1's stride is 350 | a vertical-continuity metric reading a two-pixel dither |
 | Asphalt 1's picture is misaligned | a scaled screenshot of a window, read three ways, wrong twice |
+| round 92's fault is at `RLine::EnumerateCall` | `readbox.py` naming this game's imports out of the other game's table |
+| "nothing is freed", read as the policy | box bit 16, which only says the free thunk is installed |
 
 The last two were tools written in this session, each to answer one question,
 each inheriting that question's defaults and then being used for another. That
@@ -609,6 +611,66 @@ because the picture is dithered on a two-pixel period and the metric was
 reading the dither. What settled it was a property with no free parameters:
 the buffer is `user_allocz`'d, so the ends of the drawn rows are still zero,
 and those zero runs recur at exactly the stride.
+
+#### The eighth, and it named a fault after the wrong function
+
+*Round 92.*
+
+`readbox.py` decodes a box's import indices into names through
+`readlog.GAME`, which was one hardcoded path: Asphalt 2's `6rbc.app`. Point
+it at Asphalt 1's box -- which is what every round of the second title has
+done -- and the indices are right, the counts are right, and every **name**
+is the other game's. Round 92's phone died with `G6FLT 25100`, import 251,
+and the tool printed `RLine::EnumerateCall(int &) const`. This image's 251
+is `User::AllocL(int)`, which is a different fault with a different cause;
+the analysis happened to go the right way because the index was checked
+against the game's own table by hand, and it need not have.
+
+A wrong name is worse than no name, because it reads as a finding. Fixed the
+way the geometry was: `picture.image(game)` resolves a title's `.app` from
+its `GAME_STEM_CHARS`, `readlog` and `readbox` take `--game <name>`, and
+there is no default -- the tool refuses and says which titles it knows.
+`build_release.py`'s own copy of the stem parser is gone with it; one
+spelling, in `picture.py`.
+
+### A diagnostic setting is a thing that ships
+
+*Round 92. The crash was mine, and it had been mine for three builds.*
+
+Asphalt 1's `game.h` went to the phone with `GAME_LEAK_ALL 1` and
+`GAME_FREE_BACK_FROM 0x7fffffff`: nothing the game frees is ever handed
+back. Both were set during boot debugging -- E274 to tell the game's frees
+from the framework's, E271 to stop a vtable pointer written over a freed
+cell's link -- and E274's own comment says in as many words that it is not a
+shipping setting. It shipped in builds 003, 004 and 005. Round 92 played for
+34,142 frames and faulted at the `User::AllocL` that finally had nowhere to
+go.
+
+Two things make this worth writing down rather than just fixing.
+
+**The reason for the quarantine had already been superseded and nobody went
+back.** E271 held every cell because something was corrupting the free list;
+E277 found what (the 9.x `CEikDialog` constructor overrunning a cell sized
+for 7.0s) and fixed it with `GAME_ALLOC_PAD`. The stand-in stayed on for six
+more emulator runs and three hardware rounds. E309 is the check that should
+have been run then: frees back on, quarantine at 4,096 bytes, and **no
+corruption** -- 4,108 frames, clean.
+
+**The instrument said what I wanted to hear.** The box prints
+`LEAK: nothing is freed` off bit 16 of its wrap word, and I read that in
+round 92 as confirmation of the policy. Bit 16 only means the free *thunk*
+is installed; it is set whenever `LEAK_EVERYTHING` is, which is always. The
+reading was right by luck. There is a `W_LEAKALL` bit now that means the
+policy and nothing else, printed on its own line and only when it is on.
+
+And the cost was not only the crash. The tick clock puts the phone's boot at
+**13.16 seconds**, and inside it 1,779 `User::AllocL` with almost nothing
+else -- **7.4 ms an allocation**, against 0.3 ms for the same call later in
+the same run. An allocation that slow is a chunk the kernel has to grow,
+which is what never freeing plus 512 bytes a cell guarantees. The tracing
+was the first suspect and the numbers acquit it: 531,897 traced events, a
+log that stops at its 1 MB cap after 512 block writes, and a box written
+once every 1,024 events. The slow thing was the policy, not the instrument.
 
 ### Phase 0: the game ignores the size it is told, and a blink nearly said otherwise
 

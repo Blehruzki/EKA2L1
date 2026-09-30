@@ -57,6 +57,59 @@ def setting(game, name):
     return m.group(1).strip() if m else None
 
 
+# The game's own N-Gage image, which is where import names come from.
+#
+# `readlog.GAME` was one hardcoded path -- Asphalt 2's `6rbc.app` -- and
+# `readbox.py` read every box through it. Point it at another title's box and
+# the events still decode, the indices are still right, and every *name* is
+# the wrong game's: round 92's fault at import 251 printed as
+# `RLine::EnumerateCall` when this image's 251 is `User::AllocL`. A wrong name
+# is worse than no name, because it reads as a finding. Same rule as the
+# geometry: ask for a game, or be given the path, or refuse.
+IMAGE_ROOTS = (
+    '/root/.local/share/EKA2L1/data/drives/e/system/apps',
+    '/root/.local/share/EKA2L1/data/drives/e.ngage/system/apps',
+)
+
+
+def stem(game):
+    """The four characters a title's files live under, out of GAME_STEM_CHARS.
+
+    Parsed rather than written down twice: the loader builds its paths from
+    that same list, and two spellings of one name is how a package installs
+    to a directory the loader never looks in.
+    """
+    path = os.path.join(GAMES, game, 'game.h')
+    if not os.path.isfile(path):
+        raise SystemExit('picture: no such game %r (have: %s)'
+                         % (game, ', '.join(games()) or 'none'))
+    m = re.search(r"#define\s+GAME_STEM_CHARS\s+(.*)", open(path).read())
+    if not m:
+        raise SystemExit('picture: no GAME_STEM_CHARS for %r' % game)
+    return ''.join(re.findall(r"'(.)'", m.group(1)))
+
+
+def image(game=None, path=None):
+    """The title's `<stem>.app` -- or an exit saying which game to name."""
+    if path:
+        return path
+    if not game:
+        raise SystemExit('picture: no game image. Pass --game <%s> or the '
+                         'path to the title\'s .app. There is no default: '
+                         'one game\'s import table names another game\'s '
+                         'calls, and a wrong name reads as a finding.'
+                         % ('|'.join(games()) or 'name'))
+    st = stem(game)
+    tried = []
+    for root in IMAGE_ROOTS:
+        cand = os.path.join(root, st, st + '.app')
+        tried.append(cand)
+        if os.path.isfile(cand):
+            return cand
+    raise SystemExit('picture: no image for %r (stem %s). Tried:\n  %s'
+                     % (game, st, '\n  '.join(tried)))
+
+
 def geometry(game=None, pitch=None, height=None, origin=None, width=None):
     """{width, pitch, height, origin, measured, game} -- or an exit.
 

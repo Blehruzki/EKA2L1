@@ -54,18 +54,8 @@ WITH_INSTALL_TEXT = True
 ICON_BITMAPS = (0,)
 
 
-def stem(game):
-    """The four characters the game's files live under, out of game.h.
-
-    Parsed from GAME_STEM_CHARS rather than written down again here: the
-    loader builds its paths from that same list, and two spellings of one
-    name is how a package installs to a directory the loader never looks in.
-    """
-    src = open(os.path.join(picture.GAMES, game, 'game.h')).read()
-    m = re.search(r"#define\s+GAME_STEM_CHARS\s+(.*)", src)
-    if not m:
-        raise SystemExit('build_release: no GAME_STEM_CHARS for %r' % game)
-    return ''.join(re.findall(r"'(.)'", m.group(1)))
+# One spelling of the stem, in picture.py, which the log readers use too.
+stem = picture.stem
 
 
 # `<stem>.app` is an E32 executable image, and Symbian will not install one

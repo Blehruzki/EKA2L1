@@ -7,6 +7,7 @@ sixteen and costs one write however often it is taken. On a phone that goes
 down hard, what survives is what was written, so the box is the instrument
 that scales."""
 import struct, sys
+import picture
 import readlog
 
 # The ring is read out of gate6.cpp so the two cannot drift: it grew from
@@ -33,7 +34,12 @@ BOX_LAUNCH = BOX_NAME + BOX_NAME_WORDS
 BOX_TICK = BOX_LAUNCH + 1
 BOX_HITS = BOX_NAME + BOX_NAME_WORDS    # mirrors gate6.cpp
 WRAPS = [(1, 'allocators'), (2, 'frees'), (4, 'open-result'), (8, 'open-arg'),
-         (16, 'LEAK: nothing is freed')]
+         (16, 'free wrapper')]
+# Not a wrapper: a policy the wrapper carries out. Listing it beside the
+# others made `LEAK: nothing is freed` read as a fact about the run when it
+# was only a fact about the thunk being in place, which is how round 92's
+# box was read. Printed on its own line, and only when it is on.
+POLICY = [(32, 'LEAK_ALL: nothing is handed back, ever')]
 MAGIC = 0x47364234
 FLAGS = [(1, 'abort'), (2, 'restart'), (4, 'docancel'), (8, 'runerror'),
          (16, 'a slot of ours'), (32, 'THE FRAME LOOP RAN'),
@@ -64,6 +70,9 @@ def show(path, imports):
         print('  wraps installed: %s%s'
               % (', '.join(got) or 'none',
                  '   MISSING: ' + ', '.join(miss) if miss else ''))
+        for b, n in POLICY:
+            if w[BOX_WRAPS] & b:
+                print('  policy: %s' % n)
     if BOX_LAUNCH < len(w) and w[BOX_LAUNCH]:
         n = w[BOX_LAUNCH]
         tick = w[BOX_TICK] if BOX_TICK < len(w) else 0
@@ -100,8 +109,9 @@ def show(path, imports):
 
 
 def main():
-    imports = readlog.names(readlog.GAME)
-    for p in sys.argv[1:]:
+    game, rest = picture.take_game_arg(sys.argv[1:])
+    imports = readlog.names(readlog.game_image(game))
+    for p in rest:
         show(p, imports)
 
 

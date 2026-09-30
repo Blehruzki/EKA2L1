@@ -55,18 +55,22 @@ enum { GAME_SRC_ORIGIN = 0 };
 // that is not there. E265 swapped the pointer and the fault went away.
 #define GAME_FIX_APPUI_THIS 1
 
-// Nothing is ever handed back. E271: during boot this game writes a vtable
-// pointer over a freed cell's `next` link, the allocator follows it into
-// the ROM and clears euser's vtables on top of it. Until the object that
-// does it is found, the quarantine holds every cell whatever its size --
-// which boot can afford, and which is the same bargain Asphalt 2 struck
-// with LEAK_EVERYTHING before the band was narrowed to 4 KB.
-#define GAME_FREE_BACK_FROM 0x7fffffff
+// Quarantine the small cells only, as Asphalt 2 does. This was
+// 0x7fffffff -- hold everything -- from E271, when a vtable pointer written
+// over a freed cell's `next` link was sending the allocator into the ROM.
+// **E277 found what was doing it** (the 9.x `CEikDialog` constructor
+// overrunning a cell sized for 7.0s) and fixed it with GAME_ALLOC_PAD below;
+// the quarantine was a stand-in for that fix and simply never came back off.
+// Round 92 is the bill: 34,142 frames with nothing ever handed back, and a
+// fault at the `User::AllocL` that finally had nowhere to go.
+#define GAME_FREE_BACK_FROM 4096
 
-// Leak outright while boot is being debugged: see E274. Not a shipping
-// setting -- it is how a free of the game's is told from a free of the
-// framework's, which our wrapper never sees.
-#define GAME_LEAK_ALL 1
+// Off. E274 turned it on to tell a free of the game's from a free of the
+// framework's while boot was being debugged, and said in the same breath
+// that it is not a shipping setting. It shipped anyway, in builds 003 to
+// 005, and round 92's `G6FLT 25100` is it: a heap that only grows, with
+// GAME_ALLOC_PAD on top of every cell, for half an hour of play.
+#define GAME_LEAK_ALL 0
 
 // A cushion on every allocation the game makes. E277: it allocates a
 // CAknNoteWrapper at its 7.0s size and the 9.x CEikDialog constructor
@@ -85,12 +89,18 @@ enum { GAME_SRC_ORIGIN = 0 };
 // The wrap signature is 4 to 11 per cent for K of 8 to 24, which is noise.
 #define GAME_PICTURE_MEASURED 1
 
-// Off, the measurement is done (E288/E289). Set it to a frame number to drop
-// that frame's raw buffer, and the ones at +17, +34 and +51, into
-// C:\g6code.bin. 1,200 frames is about seventy seconds, which is inside the
-// attract race. This is how GAME_PITCH and GAME_SRC_ORIGIN were measured
-// rather than guessed, and it is how they would be re-measured.
-#define GAME_DUMP_FRAME 0
+// **On for one round.** The person sees a horizontal wrap on the N95 that no
+// emulator run has ever reproduced, and rounds E287 to E290 read a single
+// photograph of it three different ways and got three different answers --
+// so a photograph is not going to settle it and a fourth reading would be
+// the same mistake a fourth time. This drops the raw buffer at frames 600,
+// 617, 634 and 651, and with GAME_DUMP_SCREEN the composited framebuffer at
+// 600 and 634: the game's own bytes and the panel's bytes for the same
+// moment, which is the pair that says whether the wrap is in what the game
+// draws or in what we post. 600 frames is inside the menu.
+//
+// Costs about 750 KB on C: and two long writes. Back to 0 next build.
+#define GAME_DUMP_FRAME 600
 
 // The composited framebuffer too, at GAME_DUMP_FRAME and +34: what the panel
 // actually shows, with its geometry in a descriptor in front of it. Needs

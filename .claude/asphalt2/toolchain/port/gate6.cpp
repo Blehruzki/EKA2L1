@@ -1958,7 +1958,13 @@ enum { WATCH_OPEN_RESULT = 1 };
 // free, and the heap cell headers around them. A phone would spend the whole
 // round writing it.
 enum { WATCH_FREES = 0, FREE_WATCH_FROM = 110, SPENT = 0xFFFFFFFF };
-enum { W_ALLOC = 1, W_FREE = 2, W_OPENRES = 4, W_OPENARG = 8, W_LEAK = 16 };
+// W_LEAK says the free wrapper is *installed*, which is not the same thing
+// as nothing being freed -- and round 92 read it as though it were, off a box
+// whose build did leak, which made the reading right by luck. W_LEAKALL is
+// the policy: it goes on only when LEAK_ALL is, so a box says which of the
+// two it is without anyone having to remember what the build was set to.
+enum { W_ALLOC = 1, W_FREE = 2, W_OPENRES = 4, W_OPENARG = 8, W_LEAK = 16,
+       W_LEAKALL = 32 };
 enum { PLANT_CRUMBS = 0 };
 
 // A probe is a breadcrumb that also reports two of the game's registers, at
@@ -8022,6 +8028,8 @@ static u32 load_and_start()
                 iat[kFree[i]] = free_thunk(ctx->spare, ctx, i, (u32)&gate6_free);
                 ctx->spare += 6 * 4;
                 ctx->boxData[BOX_WRAPS] |= W_LEAK;
+                if (LEAK_ALL)
+                    ctx->boxData[BOX_WRAPS] |= W_LEAKALL;
             }
     }
 
