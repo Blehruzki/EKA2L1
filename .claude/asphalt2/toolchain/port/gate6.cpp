@@ -946,7 +946,9 @@ struct Context {
     u32 noopFn;             // what a lookup answers when 9.x dropped the export
     u32 writeFn;            // and what stands in for RDebug::WriteMemory
     u32 idFn;               // RThread::Id: a TThreadId of zero, in r0 and r1
-    u32 threadHandle;       // the handle the create that worked came back with
+    u32 nameDes[2];         // a thread name of ours, so two creates never clash
+    u16 nameText[8];
+    u32 nameSeq;
     u32 newLibraryLookup;   // euser's RLibrary::Lookup, as resolved
     u32 newLibraryLoad;     // euser's RLibrary::Load, as resolved
     // Which RLibrary is euser and which is efsrv. One slot per kind was wrong
@@ -4568,56 +4570,63 @@ enum { STACK_WORDS = 51, STACK_TARGET = 46 };
 
 // **A second thread of the same name, which EKA2 refuses.**
 //
-// Round 90: the game creates its sound server at image offset 0xa3e44 and
-// gets KErrNone, and later creates it again from that same call site and
-// gets **KErrAlreadyExists**, then leaves with it. EKA2 will not have two
-// threads of one name in a process. The N-Gage presumably tolerated it
-// because the first thread had exited by then; ours never does, because the
-// server it stands in for is a stand-in.
+// Round 90: the game creates its sound server at image offset 0xa3e44, gets
+// KErrNone, sets the priority, resumes it -- and then **closes the handle**,
+// at 0x5fe74 and 0x5fe80. It is a fire-and-forget start; the server is
+// talked to through the session, not the handle. Later it runs the whole
+// routine again from the same call site, and EKA2 will not have two threads
+// of one name in a process.
 //
-// Renaming is not the fix: the game imports `RThread::Open(TDesC16 const &,
-// TOwnerType)` and would not find a thread we had renamed. So give it what
-// it asked for -- a valid handle on a running sound server -- by opening the
-// one that is already there under that name. `SetPriority` and `Resume` on a
-// thread that is already running are both harmless.
+// Two answers were tried and measured wrong, in this order:
 //
-// EKA2L1 does not enforce the uniqueness, which is why every emulator run
-// took the other branch and played on. That is patched too, so the bench
-// refuses what a phone refuses.
-enum { KERR_ALREADY_EXISTS = -11, OWNER_PROCESS = 1 };
+//   1. `RThread::Open(TDesC16 const &, TOwnerType)` on the name. E305: EKA2
+//      wants a **full** name there -- `process[uid]instance::thread` -- so a
+//      bare "SoundServer" comes back KErrNotFound.
+//   2. Copy the handle the first create answered with. E306 played 2,752
+//      frames on the bench and round 91 died on the phone with **KERN-EXEC
+//      0**, a bad handle, because the game had closed that handle at record
+//      364 and EKA2L1 does not invalidate a closed one.
+//
+// So: make the name unique instead, which the game turns out not to mind.
+// It imports `RThread::Open(TDesC16 const &, TOwnerType)` -- that was the
+// reason for not renaming -- and in a whole run it **never calls it**. And
+// two sound servers are already known to be harmless: every emulator run
+// before E295 had both, because EKA2L1 allowed the duplicate, and the game
+// played with sound for 2,587 frames that way.
+//
+// The name is ours, four characters, one per create. Nothing reads it: the
+// port tells threads apart by their stacks, not their names.
+enum { KERR_ALREADY_EXISTS = -11, THREAD_NAME_CHARS = 4 };
 
+extern "C" void gate6_thread_name(Context *c, u32 *regs)
+{
+    c->nameText[0] = 'g';
+    c->nameText[1] = '6';
+    c->nameText[2] = 'w';
+    c->nameText[3] = (u16)('0' + (c->nameSeq & 0xF));
+    c->nameSeq++;
+    c->nameDes[0] = ((u32)EPtrC << KTypeShift) | (u32)THREAD_NAME_CHARS;
+    c->nameDes[1] = (u32)c->nameText;
+    regs[1] = (u32)c->nameDes;
+    log_event(c, NOTE_THREAD_CREATE, 0x6E414D00u | (c->nameSeq & 0xFF));
+    log_block(c);
+}
+
+// Kept, and now only a witness: if a create still comes back
+// KErrAlreadyExists after the rename, something reached it that the rename
+// did not, and the log should say so rather than the run dying silently.
 extern "C" int gate6_thread_exists(int err, void *self, const void *name,
                                    Context *c)
 {
-    // Every create comes through here. A good one is remembered: an RThread
-    // is one word, its handle, and that is the whole of what the second
-    // object needs to name the same thread.
-    if (err == 0 && self) {
-        c->threadHandle = ((const u32 *)self)[0];
-        return err;
-    }
     if (err != KERR_ALREADY_EXISTS)
         return err;
-
     log_event(c, NOTE_THREAD_CREATE, 0xA11EAD00u);
     log_event(c, NOTE_THREAD_CREATE, (u32)self);
-    log_event(c, NOTE_THREAD_CREATE, c->threadHandle);
-
-    // `RThread::Open(TDesC16 const &, TOwnerType)` was the first answer and
-    // E305 measured it wrong: EKA2 wants a **full** name there --
-    // `process[uid]instance::thread` -- so a bare "SoundServer" comes back
-    // KErrNotFound (-1). Copying the handle needs no name, no extra import
-    // and no assumption about how the platform spells a thread's identity.
-    if (!self || !c->threadHandle) {
-        log_block(c);
-        return err;
-    }
-    ((u32 *)self)[0] = c->threadHandle;
-    log_event(c, NOTE_THREAD_CREATE, 0x0BEC0000u);
+    log_event(c, NOTE_THREAD_CREATE, (u32)name);
     log_block(c);
-    (void)name;
-    return 0;
+    return err;
 }
+
 
 static u32 stack_thunk(u8 *code, const void *ctx, u32 target, u32 ceiling)
 {
@@ -8118,6 +8127,15 @@ static u32 load_and_start()
                                                 iat[IMPORT_THREAD_CREATE],
                                                 STACK_CEILING);
         ctx->spare += STACK_WORDS * 4;
+        // And outside it, a rename: the args thunk hands its hook the address
+        // of the saved r0-r3, so writing r1 there replaces the name the game
+        // asked for with one of ours before the call is made.
+        if (ctx->spare + ARGS_THUNK_BYTES <= ctx->spareEnd) {
+            iat[IMPORT_THREAD_CREATE] =
+                args_thunk(ctx->spare, ctx, (u32)&gate6_thread_name,
+                           iat[IMPORT_THREAD_CREATE]);
+            ctx->spare += ARGS_THUNK_BYTES;
+        }
         // The heap the thunk will lend a new thread when the game asks for
         // none, read here on the main thread where it is certainly right.
         log_event(ctx, NOTE_THREAD_ARG, LEND_THE_HEAP ? (u32)user_allocator() : 0u);
