@@ -43,9 +43,16 @@ def setting(game, name):
         raise SystemExit('picture: no such game %r (have: %s)'
                          % (game, ', '.join(games()) or 'none'))
     src = open(path).read()
+    # A quoted value first, and the whole of it. `(\S+)` stops at the first
+    # space, which turned GAME_CAPTION "Asphalt 2" into "Asphalt" in every
+    # build that read it -- harmless in the emulator, wrong on a phone's
+    # application list, and wrong in an installer's text.
+    m = re.search(r'#define\s+%s\s+"([^"]*)"' % name, src)
+    if m:
+        return m.group(1)
     m = re.search(r'#define\s+%s\s+(\S+)' % name, src)
     if m:
-        return m.group(1).strip('"')
+        return m.group(1)
     m = re.search(r'\b%s\s*=\s*([^,}]+)' % name, src)
     return m.group(1).strip() if m else None
 

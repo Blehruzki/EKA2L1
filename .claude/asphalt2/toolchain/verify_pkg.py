@@ -6,12 +6,26 @@ def check(path):
     head, contents, orig = sisrw.load(path)
     ctrl = [k for k in contents.kids if k.t == sisrw.COMPRESSED][0]
     cbuf = bytearray(zlib.decompress(ctrl.raw[12:]))
-    # Descriptions with op != 1 (install) carry no data unit -- the package ends with a
-    # FILENULL entry that only names a file to remove on uninstall.
-    des = [d for d in sishash.find_filedes(cbuf)
-           if struct.unpack_from('<I', cbuf, d[1] - 28)[0] == 1]
+    # Descriptions with op != 1 (install) carry no data unit -- the package ends
+    # with a FILENULL entry that only names a file to remove on uninstall.
+    #
+    # ...except the install-text entry, which `buildapp` puts **first** and
+    # which does carry one: its text is shipped as a data unit like any other
+    # file. Filtering the descriptions by op and then indexing the data units
+    # in parallel therefore pairs every file with the unit belonging to the
+    # one before it, and the count comes out one short. This asserted on the
+    # shipping Asphalt 2 package as readily as on a new one, which is how it
+    # was caught: a checker that fails on a build three phones install is
+    # reporting on itself.
+    #
+    # So pair by position over the descriptions that have a unit -- install
+    # and text -- and let the trailing FILENULL drop out.
+    all_des = list(sishash.find_filedes(cbuf))
+    ops = [struct.unpack_from('<I', cbuf, d[1] - 28)[0] for d in all_des]
     fds = list(sisrw.walk(contents, sisrw.FILEDATA))
-    assert len(des) == len(fds), 'install descriptions %d vs data units %d' % (len(des), len(fds))
+    des = [d for d, op in zip(all_des, ops) if op != 3][:len(fds)]
+    assert len(des) == len(fds), ('descriptions with data %d vs data units %d '
+                                  '(ops %s)' % (len(des), len(fds), ops))
     ok = True
     for i, (dstart, dend) in enumerate(des):
         comp = fds[i].kids[0]

@@ -83,4 +83,10 @@ enum { GAME_SRC_ORIGIN = 16 };
 // No composited dump.
 #define GAME_DUMP_SCREEN 0
 
+// Packaging: the game's own files travel in the SIS, which is what every
+// build a phone has run does.
+#define GAME_BUNDLE_DATA 1
+#define GAME_VENDOR      "DeltaCharlie"
+#define GAME_INSTALL_TEXT "Asphalt 2 N-Gage version, ported to S60v3 by DeltaCharlie."
+
 #endif

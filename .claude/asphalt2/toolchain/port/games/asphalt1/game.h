@@ -85,12 +85,27 @@ enum { GAME_SRC_ORIGIN = 0 };
 // The wrap signature is 4 to 11 per cent for K of 8 to 24, which is noise.
 #define GAME_PICTURE_MEASURED 1
 
-// Dump the raw buffer at this frame and at +17, +34 and +51. 1,200 frames is
-// about seventy seconds, which E287 showed is inside the attract race. This
-// is how GAME_PITCH and GAME_SRC_ORIGIN get measured instead of guessed.
-#define GAME_DUMP_FRAME 1200
+// Off, the measurement is done (E288/E289). Set it to a frame number to drop
+// that frame's raw buffer, and the ones at +17, +34 and +51, into
+// C:\g6code.bin. 1,200 frames is about seventy seconds, which is inside the
+// attract race. This is how GAME_PITCH and GAME_SRC_ORIGIN were measured
+// rather than guessed, and it is how they would be re-measured.
+#define GAME_DUMP_FRAME 0
 
-// Dump the composited framebuffer too, at GAME_DUMP_FRAME and +34.
+// The composited framebuffer too, at GAME_DUMP_FRAME and +34: what the panel
+// actually shows, with its geometry in a descriptor in front of it. Needs
+// GAME_DUMP_FRAME to be non-zero as well.
 #define GAME_DUMP_SCREEN 1
+
+// Packaging. GAME_BUNDLE_DATA puts the game's own files in the SIS beside
+// the loader; without it the installer carries the loader alone and the
+// data is copied to the phone by hand, which is what a 9 MB card dump and
+// a signing limit make the sensible shape for this title.
+#define GAME_BUNDLE_DATA 0
+#define GAME_VENDOR      "DeltaCharlie"
+// No backslashes and no apostrophes in the text: it lives in a C header
+// and is read out of it by a packager that does not run a C compiler, so
+// an escape here would reach the phone as an escape.
+#define GAME_INSTALL_TEXT "Asphalt Urban GT N-Gage version, ported to S60v3 by DeltaCharlie. Copy the game files into system/apps/6r67 on the same drive first."
 
 #endif

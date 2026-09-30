@@ -26,14 +26,13 @@ def game_dir(game):
 
 
 def game_setting(game, name):
-    """One #define or enum value out of a game's game.h, without a compiler."""
-    import re
-    src = open(os.path.join(game_dir(game), 'game.h')).read()
-    m = re.search(r'#define\s+%s\s+(\S+)' % name, src)
-    if m:
-        return m.group(1).strip('"')
-    m = re.search(r'\b%s\s*=\s*([^,}]+)' % name, src)
-    return m.group(1).strip() if m else None
+    """One #define or enum value out of a game's game.h, without a compiler.
+
+    One implementation, in picture.py: this had its own copy, with the same
+    `(\S+)` that reads GAME_CAPTION "Asphalt 2" as "Asphalt".
+    """
+    import picture
+    return picture.setting(game, name)
 
 
 def build(out='.', caption=None, game=DEFAULT_GAME, **kw):

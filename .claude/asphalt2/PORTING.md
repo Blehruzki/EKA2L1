@@ -492,6 +492,51 @@ number the port itself already holds -- the blink period against the sampling
 interval, `SRC_ORIGIN` against the render origin -- rather than by looking
 harder at the picture.
 
+### Packaging a second title: loader-only, and two checkers that were wrong
+
+*After E291. Phases 1 to 3 are done for Asphalt 1 in the emulator, so the
+next thing it needs is a package.*
+
+`build_release.py` had Asphalt 2 written into it six times over -- the game
+tree, the install directory, the caption, the vendor, the install text, and
+the rename-and-scramble pair keyed on `6rbc.app`. All six now come out of
+`games/<name>/game.h`, and the four-character stem is **parsed from
+`GAME_STEM_CHARS`** rather than written down again, because the loader
+builds its paths from that same list and two spellings of one name is how a
+package installs into a directory the loader never looks in.
+
+`GAME_BUNDLE_DATA` picks the shape. Asphalt 2 keeps its 20.6 MB installer
+with the game inside it. Asphalt 1 gets a **31 KB loader-only package**: the
+port, its registration and its icon, and nothing else. Its data is copied to
+`\system\apps\6r67` by hand, and the loader has always read a hand-copied
+dump as happily as an installed one -- it looks for `<stem>.bin` first,
+because that is how an installer has to carry an E32 image past the check
+that round 82 found, and falls back to the plain `<stem>.app` a card dump
+has. Every emulator run in this session has been against hand-placed files,
+so that half is already exercised.
+
+Two instruments were wrong, both found by pointing them at the build three
+phones already run:
+
+- **`game_setting` read `GAME_CAPTION "Asphalt 2"` as `Asphalt`.** The
+  pattern was `(\S+)`, which stops at the first space. Harmless where it had
+  been used -- the emulator only needs the UID -- but it would have put
+  `Asphalt` on a phone's application list and `Asphalt` in an installer's
+  text the moment the release build started reading it. There is now one
+  implementation, in `picture.py`, which takes a quoted value whole.
+- **`verify_pkg.py` asserted on every package it was given**, 39 descriptions
+  against 40 data units for Asphalt 2 and 5 against 6 for Asphalt 1. It
+  filtered descriptions to op 1 and then indexed the data units in parallel,
+  which pairs every file with the unit belonging to the one before it; the
+  install-text entry is op 4 and does carry a unit. A checker that fails on a
+  build three phones install is reporting on itself. Fixed, and both packages
+  now pass a device-style check: every `SISFileDescription`'s SHA-1 and both
+  lengths against the bytes actually shipped.
+
+A note on the install text: it lives in a C header and is read out of it by a
+packager that does not run a C compiler, so it carries no backslashes and no
+apostrophes. An escape there would reach the phone as an escape.
+
 #### And the two from Asphalt 1, which are the same rule from the other side
 
 *E287-E290, phase 2 of the second title.*
