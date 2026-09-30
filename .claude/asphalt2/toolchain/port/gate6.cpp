@@ -945,6 +945,7 @@ struct Context {
     u32 noopFn;             // what a lookup answers when 9.x dropped the export
     u32 writeFn;            // and what stands in for RDebug::WriteMemory
     u32 idFn;               // RThread::Id: a TThreadId of zero, in r0 and r1
+    u32 threadOpen;         // euser's RThread::Open, for a name already taken
     u32 newLibraryLookup;   // euser's RLibrary::Lookup, as resolved
     u32 newLibraryLoad;     // euser's RLibrary::Load, as resolved
     // Which RLibrary is euser and which is efsrv. One slot per kind was wrong
@@ -4559,7 +4560,50 @@ extern "C" void gate6_thread_stack(u32 err, u32 stack, Context *c)
 // heap, said out loud. The value is read on the main thread when the thunk is
 // built and baked in as a literal, which is the only place it is certainly
 // right.
-enum { STACK_WORDS = 41 };
+// 51 since round 90 added the KErrAlreadyExists arm and two literals.
+// STACK_TARGET is where the target address is baked in, which the dynamic
+// route compares against to know whether its cached thunk is the right one.
+enum { STACK_WORDS = 51, STACK_TARGET = 46 };
+
+// **A second thread of the same name, which EKA2 refuses.**
+//
+// Round 90: the game creates its sound server at image offset 0xa3e44 and
+// gets KErrNone, and later creates it again from that same call site and
+// gets **KErrAlreadyExists**, then leaves with it. EKA2 will not have two
+// threads of one name in a process. The N-Gage presumably tolerated it
+// because the first thread had exited by then; ours never does, because the
+// server it stands in for is a stand-in.
+//
+// Renaming is not the fix: the game imports `RThread::Open(TDesC16 const &,
+// TOwnerType)` and would not find a thread we had renamed. So give it what
+// it asked for -- a valid handle on a running sound server -- by opening the
+// one that is already there under that name. `SetPriority` and `Resume` on a
+// thread that is already running are both harmless.
+//
+// EKA2L1 does not enforce the uniqueness, which is why every emulator run
+// took the other branch and played on. That is patched too, so the bench
+// refuses what a phone refuses.
+enum { KERR_ALREADY_EXISTS = -11, OWNER_PROCESS = 1 };
+
+extern "C" int gate6_thread_exists(int err, void *self, const void *name,
+                                   Context *c)
+{
+    if (err != KERR_ALREADY_EXISTS)
+        return err;
+    log_event(c, NOTE_THREAD_CREATE, 0xA11EAD00u);
+    log_event(c, NOTE_THREAD_CREATE, (u32)self);
+    log_event(c, NOTE_THREAD_CREATE, (u32)name);
+    log_event(c, NOTE_THREAD_CREATE, c->threadOpen);
+    if (!c->threadOpen || !self || !name) {
+        log_block(c);
+        return err;
+    }
+    typedef int (*Open)(void *, const void *, int);
+    const int r = ((Open)c->threadOpen)(self, name, OWNER_PROCESS);
+    log_event(c, NOTE_THREAD_CREATE, (u32)r);
+    log_block(c);
+    return r;
+}
 
 static u32 stack_thunk(u8 *code, const void *ctx, u32 target, u32 ceiling)
 {
@@ -4569,12 +4613,12 @@ static u32 stack_thunk(u8 *code, const void *ctx, u32 target, u32 ceiling)
     b[2]  = 0xE1A05001;                 // mov   r5, r1
     b[3]  = 0xE1A06002;                 // mov   r6, r2
     b[4]  = 0xE1A07003;                 // mov   r7, r3
-    b[5]  = 0xE59F8074;                 // ldr   r8, [pc, #116]  -> b[36]
+    b[5]  = 0xE59F8098;                 // ldr   r8, [pc, #152]  -> b[45]
     b[6]  = 0xE1580007;                 // cmp   r8, r7
     b[7]  = 0x31A07008;                 // movcc r7, r8
     b[8]  = 0xE59D0020;                 // ldr   r0, [sp, #32]   -- aHeap
     b[9]  = 0xE3500000;                 // cmp   r0, #0
-    b[10] = 0x059F0070;                 // ldreq r0, [pc, #112]  -> b[40]
+    b[10] = 0x059F0094;                 // ldreq r0, [pc, #148]  -> b[49]
     b[11] = 0xE59D1024;                 // ldr   r1, [sp, #36]
     b[12] = 0xE59D2028;                 // ldr   r2, [sp, #40]
     b[13] = 0xE59D302C;                 // ldr   r3, [sp, #44]
@@ -4583,7 +4627,7 @@ static u32 stack_thunk(u8 *code, const void *ctx, u32 target, u32 ceiling)
     b[16] = 0xE1A01005;                 // mov   r1, r5
     b[17] = 0xE1A02006;                 // mov   r2, r6
     b[18] = 0xE1A03007;                 // mov   r3, r7
-    b[19] = 0xE59FC040;                 // ldr   r12, [pc, #64]  -> b[37]
+    b[19] = 0xE59FC064;                 // ldr   r12, [pc, #100] -> b[46]
     b[20] = 0xE1A0E00F;                 // mov   lr, pc
     b[21] = 0xE12FFF1C;                 // bx    r12
     b[22] = 0xE28DD010;                 // add   sp, sp, #16
@@ -4593,18 +4637,40 @@ static u32 stack_thunk(u8 *code, const void *ctx, u32 target, u32 ceiling)
     b[26] = 0xE3570A01;                 // cmp   r7, #0x1000  -- STACK_FLOOR
     b[27] = 0x2AFFFFEB;                 // bcs   -> b[8]
     b[28] = 0xE1A0A000;                 // mov   r10, r0
-    b[29] = 0xE1A01007;                 // mov   r1, r7
-    b[30] = 0xE59F2018;                 // ldr   r2, [pc, #24]   -> b[38]
-    b[31] = 0xE59FC018;                 // ldr   r12, [pc, #24]  -> b[39]
-    b[32] = 0xE12FFF3C;                 // blx   r12
-    b[33] = 0xE1A0000A;                 // mov   r0, r10
-    b[34] = 0xE8BD4DF0;                 // ldmia sp!, {r4-r8, r10, r11, lr}
-    b[35] = 0xE12FFF1E;                 // bx    lr
-    b[36] = ceiling;
-    b[37] = target;
-    b[38] = (u32)ctx;
-    b[39] = (u32)&gate6_thread_stack;
-    b[40] = LEND_THE_HEAP ? (u32)user_allocator() : 0u;
+    // **And KErrAlreadyExists, which round 90 died on.** The game starts its
+    // sound server a second time from the same call site without killing the
+    // first, and EKA2 will not have two threads of one name in a process. r4
+    // and r5 still hold the handle and the name -- our own `stmdb` at the top
+    // saved the caller's, and a C call preserves them -- so the hook needs no
+    // frame of its own. Its answer replaces the error.
+    // No branch here, deliberately. The first cut of this tested the error in
+    // ARM and jumped over the call, and the call never happened -- with the
+    // encodings and every pc-relative offset checked twice and right. Rather
+    // than keep staring at six instructions, the hook runs on **every**
+    // create and decides in C, where it can say what it saw. It costs one
+    // call per thread the game makes, which is two.
+    b[29] = 0xE1A01004;                 // mov   r1, r4          -- the RThread
+    b[30] = 0xE1A02005;                 // mov   r2, r5          -- its name
+    b[31] = 0xE59F3038;                 // ldr   r3, [pc, #56]   -> b[47]
+    b[32] = 0xE59FC040;                 // ldr   r12, [pc, #64]  -> b[50]
+    b[33] = 0xE12FFF3C;                 // blx   r12             -- r0 is still the error
+    b[34] = 0xE1A0A000;                 // mov   r10, r0         -- what it answered
+    b[35] = 0xE1A00000;                 // mov   r0, r0
+    b[36] = 0xE1A00000;                 // mov   r0, r0
+    b[37] = 0xE1A0000A;                 // mov   r0, r10
+    b[38] = 0xE1A01007;                 // mov   r1, r7
+    b[39] = 0xE59F2018;                 // ldr   r2, [pc, #24]   -> b[47]
+    b[40] = 0xE59FC018;                 // ldr   r12, [pc, #24]  -> b[48]
+    b[41] = 0xE12FFF3C;                 // blx   r12
+    b[42] = 0xE1A0000A;                 // mov   r0, r10
+    b[43] = 0xE8BD4DF0;                 // ldmia sp!, {r4-r8, r10, r11, lr}
+    b[44] = 0xE12FFF1E;                 // bx    lr
+    b[45] = ceiling;
+    b[46] = target;
+    b[47] = (u32)ctx;
+    b[48] = (u32)&gate6_thread_stack;
+    b[49] = LEND_THE_HEAP ? (u32)user_allocator() : 0u;
+    b[50] = (u32)&gate6_thread_exists;
     user_imb_range(b, b + STACK_WORDS);
     return (u32)b;
 }
@@ -5598,7 +5664,12 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
     //
     // Four words of descriptor first, so the geometry travels with the
     // pixels and the renderer cannot be told it wrongly.
-    if (DUMP_SCREEN_TOO && c->realScreen && c->realPitch && c->screenH &&
+    // `DUMP_FRAME &&` first, and round 90 is why. `c->shots` is only
+    // incremented inside the frame-dump block above, so with the frame
+    // dump off it stays 0 -- and `0 == DUMP_FRAME` is then true on every
+    // frame. A phone wrote 300 KB to C: per frame until the write failed.
+    if (DUMP_FRAME && DUMP_SCREEN_TOO && c->realScreen && c->realPitch &&
+        c->screenH &&
         (c->shots == (u32)DUMP_FRAME || c->shots == (u32)DUMP_FRAME + 34)) {
         u32 head[4];
         head[0] = c->screenW; head[1] = c->screenH;
@@ -5806,7 +5877,13 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
             c->threadStackThunk = stack_thunk(c->spare, c, fn, STACK_CEILING);
             c->spare += STACK_WORDS * 4;
         }
-        if (c->threadStackThunk && ((u32 *)c->threadStackThunk)[35] == fn)
+        // Word 46 is the baked-in target: the cache is only good for the same
+        // `fn` it was built for. The index was 35, which is an instruction and
+        // never equals an address, so this always fell through to the raw
+        // function -- and it moved again when round 90 grew the thunk. Named
+        // rather than written down, so the next change cannot silently break
+        // it the same way.
+        if (c->threadStackThunk && ((u32 *)c->threadStackThunk)[STACK_TARGET] == fn)
             return c->threadStackThunk;
     }
     enum { WRAP_CREATE = 0 };
@@ -8018,6 +8095,12 @@ static u32 load_and_start()
     // 100,000-byte stack and the run ends there. Both routes into it are
     // wrapped -- this one for the static import the SoundServer start site
     // calls, and the one in the lookup for the game's own dynamic calls.
+    // Before the create is wrapped, because the wrapper's KErrAlreadyExists
+    // arm calls through this and a stub would take the call instead.
+    if (IMPORT_THREAD_OPEN < nImports && IMPORT_THREAD_OPEN < kShimCount &&
+        (kShimTable[IMPORT_THREAD_OPEN] >> 24) == KIND_CALL)
+        ctx->threadOpen = iat[IMPORT_THREAD_OPEN];
+
     if (CLAMP_THREAD_STACK && IMPORT_THREAD_CREATE < nImports &&
         ctx->spare + STACK_WORDS * 4 <= ctx->spareEnd) {
         iat[IMPORT_THREAD_CREATE] = stack_thunk(ctx->spare, ctx,

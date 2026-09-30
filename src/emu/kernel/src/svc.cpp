@@ -2324,6 +2324,32 @@ namespace eka2l1::epoc {
             return epoc::error_too_big;
         }
 
+        // **One name, one thread, per process.** EKA2 refuses a second thread
+        // of a name already taken in the same process; this did not, so a
+        // guest that restarts a named worker without killing the first one
+        // ran here and died on a phone. Asphalt Urban GT's sound server is
+        // exactly that: create, KErrNone, create again from the same call
+        // site, KErrAlreadyExists, and a leave with it (round 90 of the
+        // port's notes). A bench that answers differently from the device is
+        // worth less than the bug it hides.
+        if (!thr_name.empty()) {
+            kernel::process *const crr = kern->crr_process();
+
+            for (auto &obj : kern->get_thread_list()) {
+                kernel::thread *const other = reinterpret_cast<kernel::thread *>(obj.get());
+
+                if (!other || other->owning_process() != crr) {
+                    continue;
+                }
+
+                if (other->name() == thr_name && other->current_state() != kernel::thread_state::stop) {
+                    LOG_WARN(KERNEL, "Thread {} already exists in this process; refusing, as EKA2 does",
+                        thr_name);
+                    return epoc::error_already_exists;
+                }
+            }
+        }
+
         const kernel::handle thr_handle = kern->create_and_add<kernel::thread>(static_cast<kernel::owner_type>(owner),
                                                   mem, kern->get_ntimer(), kern->crr_process(),
                                                   kernel::access_type::local_access, thr_name, info->func_ptr, info->user_stack_size,

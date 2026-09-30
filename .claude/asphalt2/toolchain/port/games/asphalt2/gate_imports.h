@@ -53,6 +53,7 @@ enum {
     IMPORT_SERVER_STARTL               =   366,
     IMPORT_SET_AUTO_UPDATE             =    45,
     IMPORT_THREAD_CREATE               =   299,
+    IMPORT_THREAD_OPEN                 =   337,
     IMPORT_USER_ALLOC                  =   270,
     IMPORT_USER_ALLOCL                 =   269,
     IMPORT_USER_ALLOCZ                 =   421,

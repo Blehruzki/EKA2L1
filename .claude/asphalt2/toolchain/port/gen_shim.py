@@ -356,6 +356,9 @@ HOOKS = {
     'IMPORT_SEM_CREATE':              ('euser', 280),
     'IMPORT_CREATE_SESSION':          ('euser', 285),
     'IMPORT_THREAD_CREATE':           ('euser', 289),
+    # RThread::Open, so a create that comes back KErrAlreadyExists can be
+    # turned into a handle on the thread that is already there. Round 90.
+    'IMPORT_THREAD_OPEN':             ('euser', 803),
     'IMPORT_EXIT':                    ('euser', 397),
     'IMPORT_USER_FREE_OP':            ('euser', 476),
     'IMPORT_LEAVE_IF_ERROR':          ('euser', 627),
