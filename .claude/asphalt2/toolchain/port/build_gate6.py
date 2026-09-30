@@ -46,6 +46,7 @@ def build(out='.', caption=None, game=DEFAULT_GAME, **kw):
     uid3 = int(game_setting(game, 'GAME_APP_UID3'), 0)
     caption = caption or game_setting(game, 'GAME_CAPTION')
     return buildapp.build('gate6', uid3, caption, out,
+               appname=game_setting(game, 'GAME_APP_NAME') or 'gate6',
                imports=[(buildapp.EUSER, ['user_panic', 'userheap_setupthreadheap',
                                           'user_initprocess', 'user_alloc', 'user_allocz', 'user_alloclen',
                                           'user_setexceptionhandler', 'rhandle_close',

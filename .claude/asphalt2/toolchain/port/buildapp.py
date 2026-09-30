@@ -52,15 +52,27 @@ def sh(*args):
 
 
 def build(name, uid3, caption, out, imports=(), sources=None, icon=None,
-          extra=(), install_text=None, vendor='EKA2L1 port', incdir=None, **e32):
+          extra=(), install_text=None, vendor='EKA2L1 port', incdir=None,
+          appname=None, **e32):
     """imports: [(dll name, [stub symbol names])], resolved via the `_ord` labels.
 
     icon          a local .mbm to ship as the application's icon
     extra         [(local path, install target)] carried in the same package
     install_text  a line the installer shows before it does anything
+    appname       what the installed files are called, when that is not `name`
+
+    `name` is the **source** base -- `gate6.cpp`, `gate6.s` -- and one source
+    tree builds every title. `appname` is what lands on the phone:
+    `<appname>.exe`, `.rsc`, `_reg.rsc`, `.mbm`, `.mif`. They have to be
+    separable, because Symbian will not let one package write a file another
+    package owns: two titles both installing `gate6.exe` gives the installer's
+    "Update error", whatever their UIDs are, and the UIDs were already
+    different when that happened.
     """
     p = lambda n: os.path.join(out, n)
-    cpp = sources or (name + '.cpp',)
+    src_base = name
+    name = appname or name
+    cpp = sources or (src_base + '.cpp',)
     objs = []
     # `incdir` is where the per-game header lives: one game's generated
     # `gate_imports.h` and hand-written `game.h` sit in its own directory, so
@@ -71,7 +83,8 @@ def build(name, uid3, caption, out, imports=(), sources=None, icon=None,
         sh('clang', *CXXFLAGS, *inc, '-c', '-o', obj, os.path.join(HERE, src))
         objs.append(obj)
     asm = p(name + '.s.o')
-    sh('clang', '--target=armv5-none-eabi', '-c', '-o', asm, os.path.join(HERE, name + '.s'))
+    sh('clang', '--target=armv5-none-eabi', '-c', '-o', asm,
+       os.path.join(HERE, src_base + '.s'))
 
     flats, elf = [], None
     for base in BASES:

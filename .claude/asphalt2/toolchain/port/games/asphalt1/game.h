@@ -108,4 +108,11 @@ enum { GAME_SRC_ORIGIN = 0 };
 // an escape here would reach the phone as an escape.
 #define GAME_INSTALL_TEXT "Asphalt Urban GT N-Gage version, ported to S60v3 by DeltaCharlie. Copy the game files into system/apps/6r67 on the same drive first."
 
+// The name every installed file carries. It has to differ from every
+// other title's: Symbian will not let one package write a file another
+// package owns, and the installer answers "Update error". The package
+// UIDs already differed (0xE0001007 against 0xE0001006) and that is not
+// the thing it checks -- the file names are.
+#define GAME_APP_NAME "gate6a1"
+
 #endif

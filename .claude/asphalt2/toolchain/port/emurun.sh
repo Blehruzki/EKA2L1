@@ -28,9 +28,13 @@ STEM=$(sed -n "s/.*GAME_STEM_CHARS[[:space:]]*//p" "$P/games/$GAME/game.h" | tr 
 export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe QT_QPA_PLATFORM=xcb DISPLAY=:99
 pgrep -x Xvfb >/dev/null || { nohup Xvfb :99 -screen 0 1280x900x24 >"$S/xvfb.log" 2>&1 & sleep 3; }
 (cd "$P" && python3 build_gate6.py "$S/out" "$GAME") || exit 1
-cp "$S/out/gate6.exe" $D/sys/bin/gate6.exe
-cp "$S/out/gate6.rsc" $D/resource/apps/gate6.rsc
-cp "$S/out/gate6_reg.rsc" $D/private/10003a3f/import/apps/gate6_reg.rsc
+# Under the name that title installs as -- two games cannot both be gate6.exe,
+# on a phone or here. See GAME_APP_NAME.
+APPNAME=$(sed -n 's/.*GAME_APP_NAME[[:space:]]*"\([^"]*\)".*/\1/p' "$P/games/$GAME/game.h")
+APPNAME=${APPNAME:-gate6}
+cp "$S/out/$APPNAME.exe" $D/sys/bin/$APPNAME.exe
+cp "$S/out/$APPNAME.rsc" $D/resource/apps/$APPNAME.rsc
+cp "$S/out/${APPNAME}_reg.rsc" $D/private/10003a3f/import/apps/${APPNAME}_reg.rsc
 # KEEPOLD=1 leaves whatever is on the drive alone, which is how the sweep of
 # the old rotated log names is tested: the port has to delete them itself.
 [ -n "$KEEPOLD" ] || rm -f $C/g6box-$STEM*.log $D/g6box-$STEM*.dat $C/g6box-$STEM*.dat

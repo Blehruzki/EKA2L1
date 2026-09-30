@@ -89,4 +89,10 @@ enum { GAME_SRC_ORIGIN = 16 };
 #define GAME_VENDOR      "DeltaCharlie"
 #define GAME_INSTALL_TEXT "Asphalt 2 N-Gage version, ported to S60v3 by DeltaCharlie."
 
+// The name every installed file carries: gate6.exe, gate6.rsc,
+// gate6_reg.rsc, gate6.mbm, gate6.mif. **Do not change it for this
+// title.** Three phones have it installed, and a build under another
+// name installs beside the old one instead of replacing it.
+#define GAME_APP_NAME "gate6"
+
 #endif
