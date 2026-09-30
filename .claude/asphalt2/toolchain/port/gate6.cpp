@@ -1486,7 +1486,13 @@ void rdebug_rawprint(const void *text);
 // So: `C:\g6box.log`, one name, `file_replace` at launch, which truncates.
 // At most one log exists and it is always this run's. The digit stays in the
 // box, where it costs a word and still orders two launches in a pair.
-static const u16 kLogPath[] = {'C',':','\\','g','6','b','o','x','.','l','o','g'};
+// **One name per title.** Every one of these four paths was a single fixed
+// string, which was right while there was one game and wrong the moment
+// there were two: launching Asphalt 1 truncated Asphalt 2's log, and a
+// third title would have truncated both. The stem goes in the name, from
+// the same GAME_STEM_CHARS the loader builds its data paths from.
+static const u16 kLogPath[] = {'C',':','\\','g','6','b','o','x','-',
+                               GAME_STEM_CHARS,'.','l','o','g'};
 enum { LOG_NAME_CHARS = sizeof kLogPath / 2 };
 // The names builds up to 177 wrote, cleared once at startup so an owner who
 // has been testing since build 52 does not keep ten of them for ever.
@@ -1501,7 +1507,8 @@ enum { OLD_LOG_DIGIT = 8, OLD_LOG_CHARS = sizeof kOldLogPath / 2,
 // box holds the last sixty-four events and the end state, which is where a
 // failure is. Neither grows without bound.
 enum { KEEP_A_LOG = 1, LOG_MAX_BYTES = 1 << 20 };
-static const u16 kBoxPath[] = {'C',':','\\','g','6','b','o','x','.','d','a','t'};
+static const u16 kBoxPath[] = {'C',':','\\','g','6','b','o','x','-',
+                               GAME_STEM_CHARS,'.','d','a','t'};
 // Round 63: a worker may not touch the box's file -- that was the KERN-EXEC 0
 // of rounds 60 to 62 -- so its records sat in memory waiting for the main
 // thread to flush them, and the main thread was blocked in the
@@ -3961,7 +3968,8 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
 // game does not need, which leaves r3 for the context.
 enum { DUMP_DECRYPTED = 0 };
 
-static const u16 kCodePath[] = {'C',':','\\','g','6','c','o','d','e','.','b','i','n'};
+static const u16 kCodePath[] = {'C',':','\\','g','6','c','o','d','e','-',
+                                GAME_STEM_CHARS,'.','b','i','n'};
 
 // Appends one region to C:\g6code.bin: where it went, how long it is, and the
 // bytes. Bench only -- it costs two writes per region and the phone has no use
@@ -4943,7 +4951,11 @@ enum { HOLD_FIRST_TICKS = 64, HOLD_REPEAT_TICKS = 32 };   // 1 s, then 0.5 s
 // does not exist until the game first writes `user.dat`, which is after a
 // race. Sixteen bytes: a magic, a version, the mode, and an inset override
 // (0 meaning "whatever Avkon or the default says").
-static const u16 kCfgPath[] = {'C',':','\\','g','a','t','e','6','.','c','f','g'};
+// Per title as well: the picture mode and the inset a player chooses in one
+// game are that game's, and a shared file would carry a choice made for a
+// 176x208 picture into whatever the next one is.
+static const u16 kCfgPath[] = {'C',':','\\','g','a','t','e','6','-',
+                               GAME_STEM_CHARS,'.','c','f','g'};
 // 56 rows is the N95's status pane, measured by dwelling on the phone in
 // rounds 74 to 78. It is a per-device number that the port applied to every
 // device: on a 240-tall landscape panel it eats 23% of the screen (E231).
