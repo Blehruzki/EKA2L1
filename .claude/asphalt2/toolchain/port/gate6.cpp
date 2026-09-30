@@ -29,6 +29,12 @@ typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned int u32;
 typedef int i32;
+typedef signed char i8;
+
+// Up here rather than beside `cperiodic_start`, because the context holds
+// one: a CPeriodic keeps the callback by value and ours has to outlive the
+// call that starts it, and this image has no writable data to put it in.
+struct CallBack { int (*fn)(void *); void *ptr; };
 
 extern "C" {
 void user_panic(const void *category, int reason);
@@ -291,6 +297,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_DSA_RESTART = 782,  // ... and gave it back
        NOTE_SHIFT = 783,        // the framebuffer column the picture starts at
        NOTE_MDA_WHERE = 784,    // the audio object, its vtable and the target
+       NOTE_BEAT = 700,         // a heartbeat of ours, and the tick it fired at
+       NOTE_TIMER_OFF = 701,    // the game cancelled the frame timer
        NOTE_SCREEN = 834,       // a word of the TScreenInfoV01 the game is given
        NOTE_KEY = 835,          // a key event, as it is handed to the game
        NOTE_THREAD_ARG = 840,   // one word of the create frame
@@ -1017,10 +1025,14 @@ struct Context {
     u32 offX, offY;         // where the game's picture sits inside it
     i32 shiftX;             // ... nudged, in framebuffer columns, by the keypad
     u16 colX[MAP_MAX];      // destination column -> framebuffer column, wrapped
+    i8  rowD[MAP_MAX];      // ... and the row it carries into, -1, 0 or +1
     u32 shots;              // frames seen, for the one-shot framebuffer dump
     u32 modeShot;           // how many modes the cycling test has captured
     u32 insetAsked;         // Avkon has been asked for the main pane once
     u32 insetFromAvkon;     // and this is what it said, 0 for "would not say"
+    u32 beatTimer;          // our own CPeriodic, so a dead app can be told
+    u32 beats;              //   from a stopped one
+    CallBack beatCb;        //   (the callback has to outlive the call)
     u32 cfgDirty;           // a setting changed and is not on disk yet
     u32 cfgDue;             // ... and the tick it should be written at
     u32 holdSince;          // tick the mode key went down, 0 when it is up
@@ -1474,7 +1486,6 @@ extern "C" void gate6_foreground_losing(void *, u32, Context *c)
 // nothing here has screen furniture to construct yet.
 // ---- the black box ---------------------------------------------------------
 
-struct CallBack { int (*fn)(void *); void *ptr; };
 
 extern "C" {
 void cperiodic_start(void *self, int delay, int interval, CallBack cb);
@@ -3481,6 +3492,10 @@ enum { REACHED_RUNL = 32 };   // the frame loop ran at least once
 extern "C" void gate6_timer_docancel(void *, u32, Context *c)
 {
     c->reached |= REACHED_DOCANCEL;
+    // Round 95: the frame loop stops and nothing says why. If this is
+    // where it stops, the log will now say so, with the frame it stopped on.
+    log_event(c, NOTE_TIMER_OFF, c->frames);
+    log_block(c);
     old_call(c->oldTimer, OLD_DOCANCEL);
 }
 
@@ -3491,6 +3506,51 @@ extern "C" void gate6_timer_docancel(void *, u32, Context *c)
 enum { HOLD_THE_SCREEN = 1, RELEASE_THE_SCREEN = 1 };
 
 static void dsa_refresh(Context *c);
+
+// **Is it dead, or is it just not being driven?**
+//
+// Round 95 leaves that open and it is the whole question. Both titles stop
+// logging at the same instant -- the audio stream is torn down and
+// reconfigured, every call returns, the object is provably intact, and then
+// there is no frame, no tick and no import ever again. Every record this
+// port writes comes from the game's own frame loop, so a process that is
+// alive but no longer being driven looks exactly like a process that has
+// died.
+//
+// So: a CPeriodic of ours, once a second, writing a record and flushing it.
+// It is on the same active scheduler, which is a real limit and worth
+// stating -- if the scheduler itself has stopped this goes quiet too. But
+// it separates the case that matters most: records that continue past the
+// freeze mean the process is alive and the game's own timer is what
+// stopped, and that is a thing a port can restart.
+enum { HEARTBEAT = 1, BEAT_US = 1000000, BEAT_PRIORITY = 0 };
+
+extern "C" int gate6_heartbeat(void *p)
+{
+    Context *c = (Context *)p;
+    c->beats++;
+    log_event(c, NOTE_BEAT, c->beats);
+    log_event(c, NOTE_BEAT, user_tickcount());
+    log_event(c, NOTE_BEAT, c->frames);
+    log_block(c);
+    return 1;                       // keep going
+}
+
+static void heartbeat_start(Context *c)
+{
+    if (!HEARTBEAT || c->beatTimer)
+        return;
+    c->beatTimer = 1;               // once only, whatever happens below
+    void *t = cperiodic_newl(BEAT_PRIORITY);
+    if (!t)
+        return;
+    c->beatTimer = (u32)t;
+    c->beatCb.fn = &gate6_heartbeat;
+    c->beatCb.ptr = c;
+    cperiodic_start(t, (int)BEAT_US, (int)BEAT_US, c->beatCb);
+    log_event(c, NOTE_BEAT, 0xB0A7u);
+    log_block(c);
+}
 
 // Thirty-two frames is about a second of play and well inside any phone's
 // inactivity timeout. A power of two, so the test is a mask: this image
@@ -3539,6 +3599,7 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     //
     // Once a second at 64 ticks to the second, not every frame: it is a
     // kernel call and there is no gain in making it thirty.
+    heartbeat_start(c);             // once, on the first frame
     if (RESET_INACTIVITY && !(c->frames & ((u32)RESET_INACTIVITY_FRAMES - 1)))
         user_resetinactivity();
     // A setting nudged from the keypad, written once the nudging stops.
@@ -5586,7 +5647,7 @@ static void column_map(Context *c)
     // is the screen width, and the bug build 008 shipped only exists where
     // the line is wider -- which is every real phone and no emulator.
     screen_columns(c->screenW, c->dstW, c->offX, c->shiftX,
-                   c->colX, (u32)MAP_MAX);
+                   c->colX, c->rowD, (u32)MAP_MAX);
 }
 
 extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
@@ -5905,13 +5966,24 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
                     b = (b5 << 3) | (b5 >> 2);
                 }
                 const u32 col = c->colX[x];
+                // A column that wrapped belongs to the neighbouring row,
+                // because what the panel does is read the buffer at a
+                // linear offset. At the top and bottom that row is off
+                // the buffer, and those pixels are off the panel too.
+                const i32 dy = c->rowD[x];
+                if (dy) {
+                    const i32 ry = (i32)(y + c->offY) + dy;
+                    if (ry < 0 || (u32)ry >= c->bufH)
+                        continue;
+                }
+                u8 *const drow = row + dy * (i32)c->realPitch;
                 if (c->realBpp == 16) {
-                    ((u16 *)row)[col] =
+                    ((u16 *)drow)[col] =
                         (u16)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
                 } else if (c->realBpp == 24) {
                     // Packed EColor16M: three bytes, blue first, and no
                     // alignment to lean on -- so a byte at a time.
-                    u8 *p8 = row + col * 3;
+                    u8 *p8 = drow + col * 3;
                     p8[0] = (u8)b; p8[1] = (u8)g; p8[2] = (u8)r;
                 } else {
                     u32 out = 0xFF000000u | (r << 16) | (g << 8) | b;
@@ -5921,7 +5993,7 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
                         else if (y == 0) out = 0xFF00FFFFu;             // cyan: first row
                         else if (y + 1 == c->dstH) out = 0xFFFFFF00u;   // yellow: last row
                     }
-                    ((u32 *)row)[col] = out;
+                    ((u32 *)drow)[col] = out;
                 }
             }
         }

@@ -709,6 +709,70 @@ have already been wrong in this port; a person turning a knob until the
 picture is straight is a measurement, and a person describing a photograph is
 not.
 
+### The stream was never freed, and the frame loop is what stops
+
+*Round 95. The probe built to test a hypothesis eliminated it, which is the
+point of a probe.*
+
+Build 009 and 180 went out with one question in them: after the media
+server says `KErrCancel`, is the audio stream still there? If the server
+had freed it and the game called into the corpse, that would explain both
+deaths and the fix would follow.
+
+It has not. At every call after the cancel -- `Stop`, `SetAudioPropertiesL`,
+`MaxVolume`, `SetVolume` -- the probe reads the same object (`0x813890` on
+Asphalt 2, `0x6003c8` on Asphalt 1), the vtable the proxy cached and the
+vtable the object is holding **now** are the same pointer (`0x80698e44`),
+and every call returns. The teardown completes cleanly. The audio path is a
+*consequence* of backgrounding, not the cause of death.
+
+So what is actually observable is narrower and more useful: **the frame
+timer stops.** After the last audio call there is no frame, no tick, no
+import and no slot, ever again, on either title.
+
+And here is the hole that has been in the instrument the whole time: every
+record this port writes comes from inside the game's own frame loop. A
+process that is alive but no longer being driven writes exactly as many
+records as one that has died -- none. Four hardware rounds have been read
+as "it crashed" when the evidence only says "it stopped writing".
+
+Build 010 closes that with a CPeriodic of its own, once a second, that logs
+a record and flushes it whatever the game is doing, plus a record if the
+game's frame timer is cancelled. E320: 92 beats, 65 ticks apart, each
+carrying the frame count. Its limit is worth stating rather than
+discovering later -- it is on the same active scheduler, so if the
+scheduler itself has stopped it goes quiet too. But it separates the case
+that matters: records continuing past the freeze mean the process is alive
+and the game's own timer is what stopped, and a stopped timer is something
+a port can restart.
+
+### A wrap carries a row
+
+*Round 95, and the same bug one step further on.*
+
+With the shift wrapping inside the visible width the picture can be
+aligned -- the sweep in the log runs down to **-22** and the photograph has
+it square. Except the strip that comes round the edge sits one row out.
+
+That follows from what the fault actually is. The panel reads the buffer at
+a **linear** offset, so picture pixel (x, y) has to be written at linear
+offset `y * screenW + x + shift`; and when `x + shift` leaves the row, that
+offset is in the *neighbouring* row:
+
+    x + shift >= screenW  ->  row y + 1
+    x + shift <  0        ->  row y - 1
+
+Build 009 wrapped the column and kept the row, which puts 22 of 240 columns
+exactly one row out at shift -22 -- which is the strip, and its size.
+
+`columntest.cpp` now checks the property rather than the symptom: for every
+column at every shift, `row * screenW + column` must equal the linear
+offset the shift asks for. Build 009 fails it by exactly those 22 columns.
+That is the second time this one test has caught a step of the same bug,
+and both times the bench could not have: EKA2L1's frame buffer line is the
+screen width, so neither the wrap nor the carry has anywhere to go wrong
+there.
+
 ### The screen was never the problem: it is the audio device
 
 *Round 94, and the first round whose logs contain their own ending.*

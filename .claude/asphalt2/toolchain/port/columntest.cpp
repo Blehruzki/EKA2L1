@@ -24,9 +24,10 @@ static void check(const char *what, bool ok)
 int main()
 {
     unsigned short col[512];
+    signed char rd[512];
 
     // 1. No shift is the identity, whatever the line is.
-    screen_columns(240, 240, 0, 0, col, 512);
+    screen_columns(240, 240, 0, 0, col, rd, 512);
     bool id = true;
     for (unsigned x = 0; x < 240; x++) id &= (col[x] == x);
     check("no shift leaves every column where it was", id);
@@ -36,7 +37,7 @@ int main()
     //    is what build 008 broke: 14 columns went into the pad and 14
     //    columns of screen were never written at all, and showed black.
     for (int sh = -200; sh <= 200; sh += 7) {
-        screen_columns(240, 240, 0, sh, col, 512);
+        screen_columns(240, 240, 0, sh, col, rd, 512);
         int seen[240];
         std::memset(seen, 0, sizeof seen);
         bool inrange = true;
@@ -56,7 +57,7 @@ int main()
 
     // 3. The specific case from the phone: 240 visible, a 320-pixel line,
     //    shift -14. Nothing may land in the pad.
-    screen_columns(240, 240, 0, -14, col, 512);
+    screen_columns(240, 240, 0, -14, col, rd, 512);
     bool nopad = true;
     for (unsigned x = 0; x < 240; x++) nopad &= (col[x] < 240);
     check("with a 320-pixel line, nothing lands in the 80-column pad", nopad);
@@ -67,15 +68,48 @@ int main()
 
     // 4. A centred picture narrower than the screen still wraps inside the
     //    screen, not inside itself.
-    screen_columns(240, 176, 32, 40, col, 512);
+    screen_columns(240, 176, 32, 40, col, rd, 512);
     bool ok4 = true;
     for (unsigned x = 0; x < 176; x++) ok4 &= (col[x] < 240);
     check("a centred picture stays inside the screen when shifted", ok4);
 
     // 5. The output buffer is never overrun.
     std::memset(col, 0xAA, sizeof col);
-    screen_columns(240, 4096, 0, 3, col, 8);
+    screen_columns(240, 4096, 0, 3, col, rd, 8);
     check("outMax is honoured", col[8] == 0xAAAA);
+
+    // 6. **The wrap carries a row.** What the panel does is read the
+    //    buffer at a linear offset, so a column pushed past an edge lands
+    //    in the neighbouring row. Build 009 wrapped the column and kept
+    //    the row, and round 95 photographed the result: the strip that
+    //    came round the edge sat one row out. The check is that
+    //    `row * screenW + column` is the linear offset the shift asks for,
+    //    for every column and every shift.
+    bool linear = true;
+    for (int sh = -200; sh <= 200 && linear; sh += 3) {
+        screen_columns(240, 240, 0, sh, col, rd, 512);
+        for (unsigned x = 0; x < 240; x++) {
+            const int want = (int)x + sh;                 // offset from row start
+            const int got = rd[x] * 240 + (int)col[x];
+            if (want != got) {
+                std::printf("shift %d, column %u: linear offset %d, wanted %d\n",
+                            sh, x, got, want);
+                linear = false;
+                break;
+            }
+        }
+    }
+    check("a wrapped column carries into the neighbouring row", linear);
+    if (!linear) fails++;
+
+    screen_columns(240, 240, 0, -22, col, rd, 512);
+    check("shift -22: the first 22 columns carry one row up",
+          rd[0] == -1 && rd[21] == -1 && rd[22] == 0 && rd[239] == 0);
+    screen_columns(240, 240, 0, 22, col, rd, 512);
+    check("shift +22: the last 22 columns carry one row down",
+          rd[0] == 0 && rd[217] == 0 && rd[218] == 1 && rd[239] == 1);
+    check("no shift carries no rows at all", (screen_columns(240, 240, 0, 0,
+          col, rd, 512), rd[0] == 0 && rd[120] == 0 && rd[239] == 0));
 
     std::printf("\n%s\n", fails ? "** SOME CASES FAILED **" : "all cases pass");
     return fails ? 1 : 0;

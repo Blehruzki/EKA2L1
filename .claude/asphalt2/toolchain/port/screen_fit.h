@@ -192,7 +192,7 @@ static void screen_fit(ScreenFit *f)
     f->offY = useTop + (useH > dh ? (useH - dh) / 2 : 0);
 }
 
-// **Where each column of the picture lands in the frame buffer line.**
+// **Where each column of the picture lands in the frame buffer.**
 //
 // Here rather than in gate6.cpp so that a host test can run exactly this,
 // which the bench cannot: EKA2L1's frame buffer line is the screen width
@@ -201,23 +201,38 @@ static void screen_fit(ScreenFit *f)
 // correct, and on the phone pushed the picture into the 80-pixel pad and
 // left black behind it. One machine could not see the bug the other had.
 //
+// **And a wrap carries a row.** What the panel does is read the buffer at a
+// linear offset, so picture pixel (x, y) has to be written at linear
+// offset `y * screenW + x + shift`. When `x + shift` leaves the row that
+// offset is in the *neighbouring* row, not the same one:
+//
+//     x + shift >= screenW   ->  row y + 1, column x + shift - screenW
+//     x + shift <  0         ->  row y - 1, column x + shift + screenW
+//
+// Build 009 wrapped the column and kept the row, so the strip that came
+// round the edge sat one row out -- which is what round 95 photographed
+// once the alignment was otherwise right. `rowd[i]` is that carry, -1, 0
+// or +1, and the caller has to skip a pixel whose carried row falls off
+// the buffer.
+//
 // `screenW` is the visible width, `dstW` the picture's, `offX` where it
-// starts, `shift` the keypad nudge in columns. `out[i]` is the frame buffer
-// column for picture column i. No divide: `shift` is bounded well inside
-// one screen width, so one add or one subtract always brings it back.
+// starts, `shift` the keypad nudge in columns. No divide: `shift` is
+// bounded well inside one screen width, so one add or one subtract always
+// brings it back.
 static inline void screen_columns(unsigned screenW, unsigned dstW,
                                   unsigned offX, int shift,
-                                  unsigned short *out, unsigned outMax)
+                                  unsigned short *out, signed char *rowd,
+                                  unsigned outMax)
 {
     const int w = (int)(screenW ? screenW : 1u);
     for (unsigned x = 0; x < dstW && x < outMax; x++) {
         int col = (int)(offX + x) + shift;
-        if (col < 0)
-            col += w;
-        else if (col >= w)
-            col -= w;
-        if (col < 0 || col >= w)
-            col = (int)(offX + x);
+        int dy = 0;
+        if (col < 0)        { col += w; dy = -1; }
+        else if (col >= w)  { col -= w; dy = +1; }
+        if (col < 0 || col >= w) { col = (int)(offX + x); dy = 0; }
         out[x] = (unsigned short)col;
+        if (rowd)
+            rowd[x] = (signed char)dy;
     }
 }
