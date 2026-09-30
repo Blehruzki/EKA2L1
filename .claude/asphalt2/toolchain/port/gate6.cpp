@@ -6010,13 +6010,17 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
                 // because what the panel does is read the buffer at a
                 // linear offset. At the top and bottom that row is off
                 // the buffer, and those pixels are off the panel too.
+                // The carried row wraps inside the picture, so the pixels
+                // that leave one end arrive at the other and nothing is
+                // left unwritten. See screen_row in screen_fit.h.
                 const i32 dy = c->rowD[x];
+                u8 *drow = row;
                 if (dy) {
-                    const i32 ry = (i32)(y + c->offY) + dy;
-                    if (ry < 0 || (u32)ry >= c->bufH)
+                    const u32 ry = screen_row(y, dy, c->dstH) + c->offY;
+                    if (ry >= c->bufH)
                         continue;
+                    drow = c->realScreen + ry * c->realPitch;
                 }
-                u8 *const drow = row + dy * (i32)c->realPitch;
                 if (c->realBpp == 16) {
                     ((u16 *)drow)[col] =
                         (u16)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));

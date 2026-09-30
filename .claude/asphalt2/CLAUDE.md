@@ -73,15 +73,21 @@ Rank them, and say in the record which one a claim rests on. Getting this
 wrong cost four rounds: the platform's behaviour was inferred from an
 emulator's reimplementation of it, and the inference was wrong.
 
+0. **`SYMBIAN.md`, in this directory.** Everything already read out of the
+   platform's own sources and documentation, with each claim's file or page
+   named: the panic codes, the `User::RequestComplete` contract, the app UI
+   vtable slot map, how Avkon shuts an application down, what direct screen
+   access does on an abort. **Read it before asserting anything about the
+   platform, and add to it instead of re-deriving.**
 1. **The binaries on this machine.** The N-Gage images, the RM-409 ROM and
    its extracted `z:\sys\bin`. `romimg.py`, `e32imports.py`, `epocdb.py`
    read them. Primary: vtable layouts, export addresses, real ordinal
    counts.
-2. **Symbian's own published source**, cloned under
-   `/home/user/symbiansource/`: `oss.FCL.sf.mw.classicui` (cone, uikon,
-   Avkon), `oss.FCL.sf.os.kernelhwsrv` (euser, the kernel),
-   `oss.FCL.sf.os.graphics` (the window server). This is the platform. Use
-   it before anything below.
+2. **Symbian's own published source.** `toolchain/port/getsources.sh`
+   clones it under `/home/user/symbiansource/` -- classicui (cone, uikon,
+   Avkon), kernelhwsrv (euser, the kernel), graphics (the window server).
+   Not in this repository, and ten minutes to get back in a fresh
+   container. This is the platform. Use it before anything below.
 3. **SDK documentation** -- the panic references, the class reference. Good
    for contracts and panic meanings.
 4. **Measurements** -- bench runs and the phone's logs and boxes.
@@ -92,7 +98,9 @@ emulator's reimplementation of it, and the inference was wrong.
 
 Web search and `WebFetch` are available and were not used for the first
 ninety-five rounds of this project. That was the single largest avoidable
-source of guessing in it.
+source of guessing in it. When a new platform question comes up: search,
+read the source, write the answer into `SYMBIAN.md` with its citation, and
+only then write code.
 
 ## Self-tests
 

@@ -236,3 +236,31 @@ static inline void screen_columns(unsigned screenW, unsigned dstW,
             rowd[x] = (signed char)dy;
     }
 }
+
+// **The carried row wraps too, and that is not a detail.**
+//
+// What the shift is correcting is a scan-out that starts a fixed number of
+// pixels into the buffer, so the whole picture is one rotation of a flat
+// array of screenW * dstH pixels -- not a per-row slide. Under a rotation
+// nothing is lost: the pixels that fall off one end arrive at the other.
+//
+// Build 011 carried the row and then *skipped* a carry that left the
+// picture, which is not the same thing: at a shift of -22 it drops the 22
+// pixels of picture row 0 that belong off the top, and leaves the 22
+// screen pixels of the last row's right-hand end with nothing written into
+// them at all -- a black notch in a corner. Those are the same 22 pixels.
+// Wrapping the row hands them over and the rotation is complete.
+//
+// `y` is the picture row, and the answer is the picture row whose pixels
+// belong there. The caller adds its own vertical offset.
+static inline unsigned screen_row(unsigned y, int dy, unsigned dstH)
+{
+    if (!dstH)
+        return y;
+    int ry = (int)y + dy;
+    if (ry < 0)
+        ry += (int)dstH;
+    else if (ry >= (int)dstH)
+        ry -= (int)dstH;
+    return (unsigned)ry;
+}

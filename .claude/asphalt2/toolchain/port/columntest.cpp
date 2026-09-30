@@ -111,6 +111,40 @@ int main()
     check("no shift carries no rows at all", (screen_columns(240, 240, 0, 0,
           col, rd, 512), rd[0] == 0 && rd[120] == 0 && rd[239] == 0));
 
+    // 9. **The invariant that matters: every screen pixel written exactly
+    //    once.** A shift is a rotation of the whole picture, so nothing may
+    //    be lost and nothing written twice. Build 011 satisfied neither: at
+    //    -22 it dropped 22 pixels of the first row and left 22 pixels of
+    //    the last row's right-hand end black -- the same 22 pixels, which
+    //    is what a rotation would have handed over. Testing the corner
+    //    would have missed the next shift; testing the invariant does not.
+    {
+        const unsigned W = 240, Hh = 320;
+        bool allok = true;
+        for (int sh = -200; sh <= 200 && allok; sh += 11) {
+            static unsigned char seen[320][240];
+            std::memset(seen, 0, sizeof seen);
+            screen_columns(W, W, 0, sh, col, rd, 512);
+            for (unsigned y = 0; y < Hh; y++)
+                for (unsigned x = 0; x < W; x++)
+                    seen[screen_row(y, rd[x], Hh)][col[x]]++;
+            unsigned missing = 0, twice = 0;
+            for (unsigned y = 0; y < Hh; y++)
+                for (unsigned x = 0; x < W; x++) {
+                    if (!seen[y][x]) missing++;
+                    if (seen[y][x] > 1) twice++;
+                }
+            if (missing || twice) {
+                std::printf("shift %d: %u pixels unwritten, %u written twice\n",
+                            sh, missing, twice);
+                allok = false;
+            }
+        }
+        check("every screen pixel is written exactly once, at every shift",
+              allok);
+        if (!allok) fails++;
+    }
+
     std::printf("\n%s\n", fails ? "** SOME CASES FAILED **" : "all cases pass");
     return fails ? 1 : 0;
 }
