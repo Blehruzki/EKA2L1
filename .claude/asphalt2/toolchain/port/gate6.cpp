@@ -333,6 +333,9 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_AO_FLAGS = 736,     // ... iFlags: 1 active, 2 pending
        NOTE_AO_END = 737,       // how many, or 0xBAD0 no scheduler / 0xBAD1 wrong layout
        NOTE_TIMER_PRIO = 738,   // the priority the game gave its frame timer, then ours
+       NOTE_AO_PRIO = 739,      // ... and in the queue walk, each object's priority
+       NOTE_VIEWOBS = 740,      // the view-deactivation observer inside the wrapper: the search
+       NOTE_DEACTIVATE = 741,   // bench knob: DeactivateActiveViewL called on the wrapper
        NOTE_SCREEN = 834,       // a word of the TScreenInfoV01 the game is given
        NOTE_KEY = 835,          // a key event, as it is handed to the game
        NOTE_THREAD_ARG = 840,   // one word of the create frame
@@ -3762,6 +3765,10 @@ extern "C" void gate6_cancel(u32 *self, u32, Context *c);
 // by def index, unconfirmed -- the record of a type-10 event confirms it.
 // CCoeEnv's iRootWin is at 0x2c in the 7.0s layout the game reads and twelve
 // bytes further in 9.x, and it is the RWindowGroup itself, not a pointer.
+// Bench only: ask the view server to deactivate our view, which is what it
+// does by itself when the phone takes the foreground away. The event comes
+// back through the same receiver and the same cone path the phone dies in.
+enum { FORCE_DEACTIVATE_AT = 0, CONE_DEACTIVATE_ACTIVE_VIEW = 224 };
 enum { FORCE_BACKGROUND_AT = 0, WS32_SET_ORDINAL_POSITION = 211,
        NEW_COEENV_ROOTWIN = 0x2c + COEENV_BIAS };
 static const u16 kWs32Name[] = { 'w','s','3','2','.','d','l','l' };
@@ -3870,6 +3877,15 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     }
     if (FORCE_BACKGROUND_AT && c->frames == (u32)FORCE_BACKGROUND_AT)
         bench_background(c);
+    if (FORCE_DEACTIVATE_AT && c->frames == (u32)FORCE_DEACTIVATE_AT && c->wrapUi) {
+        typedef void (*Deactivate)(void *);
+        Deactivate d = (Deactivate)rlibrary_lookup(&c->cone, CONE_DEACTIVATE_ACTIVE_VIEW);
+        log_event(c, NOTE_DEACTIVATE, (u32)d);
+        log_block(c);
+        if (d) d(c->wrapUi);
+        log_event(c, NOTE_DEACTIVATE, 1);
+        log_block(c);
+    }
 }
 
 extern "C" u32 gate6_timer_runerror(void *, u32 error, Context *c)
@@ -3916,7 +3932,7 @@ extern "C" void gate6_request_complete(u32 **status, int reason, Context *c)
 // the frame loop runs exactly when nothing else is ready, which is what a
 // well-behaved application's does; input and window-server events also
 // stop queueing behind frames.
-enum { YIELD_TO_IDLE = 1, EPRIORITY_IDLE = -100, TIMER_PRIORITY = EPRIORITY_IDLE - 1 };
+enum { YIELD_TO_IDLE = 0, EPRIORITY_IDLE = -100, TIMER_PRIORITY = EPRIORITY_IDLE - 1 };
 
 extern "C" void *gate6_ctimer_ctor(u32 *oldSelf, int priority, Context *c)
 {
@@ -7639,6 +7655,107 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
     return (u32)obj;
 }
 
+// **What avkon does to an application that loses the foreground, and why
+// this one died of it.** Rounds 102 and 103's queue walks name the object
+// dispatched at the fault: the view server client's event receiver
+// (viewcli.dll, placed by the ROM's module order). The view server
+// deactivates an application's view when it loses the foreground; cone's
+// `CCoeViewManager::HandleViewEventL` turns that into `DoDeactivation`,
+// which calls every registered `MCoeViewDeactivationObserver` -- and
+// `CAknAppUi::ConstructL` (AknAppUi.cpp) registers the app UI itself, as
+// the `MCoeViewDeactivationObserver` subobject inside it, `this + k`.
+//
+// **The wrapper has no vtable there.** avkon exports `CAknAppUiBase`'s
+// constructor (217) and `CAknAppUi`'s vtable (3820), and that is how the
+// wrapper is built; `CAknAppUi`'s own constructor is not exported and never
+// runs, so the vtable pointers of the mixins it adds -- MEikStatusPaneObserver,
+// MCoeViewDeactivationObserver, MAknTouchPaneObserver -- stay at the zero
+// the allocation gave them. cone's `DoDeactivation` loads that zero as a
+// vtable and faults reading address 0: the N95's frame exactly (r0 the
+// observer, r1 the vtable it read, lr in euser's RPointerArrayBase::At,
+// pc in cone), and E345 reproduces it on the bench by asking the view
+// server for the deactivation. The S60 1.x CAknAppUi the game's own app UI
+// derives from had none of these mixins.
+//
+// Each mixin's offset comes from avkon itself: the export table lists the
+// non-virtual thunk for each mixin method, and a thunk is `sub r0, #k` then
+// a branch, so k is read off its first instruction. A vtable of no-ops is
+// put at each offset the construction left empty, with the header EABI
+// expects (offset-to-top -k, then typeinfo). Only empty words are written.
+// Only the view-deactivation thunk is located this way: on the RM-409 ROM
+// def index 4030 is `subs r0, #0x5c; b ...` as a thunk should be, while 4021
+// (status pane) and 3826 (touch pane) land on bare `bx lr` -- the def has
+// drifted there. AknAppUi.h declares MEikStatusPaneObserver immediately
+// before MCoeViewDeactivationObserver, and mixins with nothing but a vtable
+// pointer are laid out consecutively after the primary base, so the status
+// pane observer's subobject is the word before, at k - 4. It gets the same
+// treatment on the same condition: only if the word is still zero.
+enum { MIXIN_FIX = 1, MIXIN_SLOTS = 4, MIXIN_WORDS = 2 + MIXIN_SLOTS };
+static const u16 kMixinThunks[] = { 4030 };   // non-virtual thunk to CAknAppUi::HandleViewDeactivation
+
+extern "C" void gate6_mixin_called(void *self, u32 a, u32 b, Context *c)
+{
+    log_event(c, NOTE_VIEWOBS, 0xCA11);
+    log_event(c, NOTE_VIEWOBS, (u32)self);
+    log_event(c, NOTE_VIEWOBS, a);
+    log_event(c, NOTE_VIEWOBS, b);
+    log_block(c);
+}
+
+// The this-adjustment of a non-virtual thunk: Thumb `subs r0, #imm8`, Thumb-2
+// `sub.w`/`subw r0, r0, #imm12`, or ARM `sub r0, r0, #rotated`. 0 if it is
+// none of those, which is the signal to leave that mixin alone.
+static u32 thunk_adjust(u32 fn)
+{
+    if (!fn) return 0;
+    if (fn & 1) {
+        const u16 *h = (const u16 *)(fn & ~1u);
+        const u16 a = h[0], b2 = h[1];
+        if ((a & 0xFF00) == 0x3800) return a & 0xFF;
+        if (((a & 0xFBF0) == 0xF1A0 || (a & 0xFBF0) == 0xF2A0) && (b2 & 0x8F00) == 0) {
+            const u32 i = (a >> 10) & 1, imm3 = (b2 >> 12) & 7, imm8 = b2 & 0xFF;
+            const u32 imm12 = (i << 11) | (imm3 << 8) | imm8;
+            if ((a & 0xFBF0) == 0xF2A0) return imm12;        // subw: plain 12-bit
+            return imm12 < 0x100 ? imm12 : 0;               // sub.w: modified immediate, small case only
+        }
+        return 0;
+    }
+    const u32 w = *(const u32 *)fn;
+    if ((w & 0x0FFFF000) == 0x02400000) {
+        const u32 imm8 = w & 0xFF, rot = ((w >> 8) & 0xF) * 2;
+        return rot ? ((imm8 >> rot) | (imm8 << (32 - rot))) : imm8;
+    }
+    return 0;
+}
+
+static void mixins_install(Context *c)
+{
+    u32 *ui = c->wrapUi;
+    for (u32 m = 0; m < sizeof kMixinThunks / sizeof kMixinThunks[0]; m++) {
+        const u32 fn = (u32)rlibrary_lookup(&c->avkon, (int)kMixinThunks[m]);
+        const u32 k = thunk_adjust(fn);
+        log_event(c, NOTE_VIEWOBS, kMixinThunks[m]);
+        log_event(c, NOTE_VIEWOBS, fn);
+        log_event(c, NOTE_VIEWOBS, k);
+        if (!k || (k & 3) || k >= (u32)(WRAP_BYTES - 64)) continue;
+        log_event(c, NOTE_VIEWOBS, ui[k / 4]);
+        if (ui[k / 4] || !MIXIN_FIX) continue;              // something is there: not ours to touch
+        if (c->spare + 3 * TRACE > c->spareEnd) continue;
+        const u32 noop = ctx3_thunk(c->spare, c, (u32)&gate6_mixin_called);  c->spare += TRACE;
+        for (u32 at = k; at >= k - 4 && at >= 8; at -= 4) {   // the observer, then the status pane's
+            if (ui[at / 4]) break;
+            u32 *vt = (u32 *)c->spare;  c->spare += TRACE;
+            vt[0] = 0u - at;                                // offset-to-top
+            vt[1] = 0;                                      // typeinfo: none
+            for (u32 i = 0; i < (u32)MIXIN_SLOTS; i++) vt[2 + i] = noop;
+            ui[at / 4] = (u32)(vt + 2);
+            log_event(c, NOTE_VIEWOBS, at);
+            log_event(c, NOTE_VIEWOBS, (u32)(vt + 2));
+        }
+    }
+    log_block(c);
+}
+
 extern "C" void gate6_baseconstructl(void *, int flags, Context *c)
 {
     // Now that the wrapper is a CAknAppUi, avkon's own base construction is
@@ -7667,6 +7784,7 @@ extern "C" void gate6_baseconstructl(void *, int flags, Context *c)
     else
         eikappui_baseconstructl(c->wrapUi, ENoAppResourceFile | ENoScreenFurniture);
     c->baseDone = 1;
+    mixins_install(c);
 }
 
 // **The two events that carry an application into the background.**
@@ -7732,6 +7850,7 @@ static void sched_dump(Context *c, u32 why)
         log_event(c, NOTE_AO_RUNL, sane_ptr(o[0]) ? ((const u32 *)o[0])[4] : 0);
         log_event(c, NOTE_AO_STATUS, o[ACTIVE_STATUS / 4]);
         log_event(c, NOTE_AO_FLAGS, o[ACTIVE_ACTIVE / 4]);
+        log_event(c, NOTE_AO_PRIO, ((const u32 *)link)[2]);   // TPriQueLink::iPriority
         link = ((const u32 *)link)[0];
     }
     log_event(c, NOTE_AO_END, n);

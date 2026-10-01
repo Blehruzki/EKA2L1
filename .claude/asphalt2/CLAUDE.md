@@ -86,6 +86,19 @@ bugs found by doing it:
   the active scheduler's list, logged at three moments, which named the
   object by elimination: the only one whose flags changed between the last
   two walks. When the question is "which object", read the list.
+- **Ask the framework to do on the bench what the phone does.** The
+  backgrounding death was "not reproducible on the bench" for a hundred
+  rounds because nothing on the emulator takes the foreground away. The
+  phone's chain was a view deactivation, and `CCoeAppUi::DeactivateActiveViewL`
+  asks the view server for one from inside the process -- which reproduced the
+  fault in a single run and verified the fix in the next. When a path cannot be
+  entered from outside, look for the API that enters it from inside.
+- **An object built from a base constructor and a copied vtable has only the
+  bases' mixins.** The wrapper app UI was `CAknAppUiBase`'s constructor plus
+  `CAknAppUi`'s primary vtable; the mixins `CAknAppUi` itself adds had no
+  vtable pointer at all, and the first framework call through one was the
+  crash. Every class level's constructor writes its own secondary vtable
+  pointers; a vtable copy replaces one.
 - **A picture is not a measurement.** Three readings of one screenshot gave
   three answers. Measure the bytes, or give the instrument to the person
   holding the phone and let them turn it until it is right.

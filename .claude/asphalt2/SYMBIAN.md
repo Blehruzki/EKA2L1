@@ -266,6 +266,42 @@ The queue can be read from inside the process: `CActiveScheduler::Current()`,
 set and `iStatus != KRequestPending` is ready; the one being run has bit 0
 just cleared.
 
+## A view deactivation reaches the app UI through a mixin, and a constructor sets its vtable
+
+What S60 does to an application that loses the foreground, beyond
+`EEventFocusLost`: the view server deactivates the application's view.
+`CVwsSessionWrapper` (viewcli.dll) receives the event on an active object
+and calls `MVwsSessionWrapperObserver::HandleViewEventL`; cone's
+`CCoeViewManager::HandleViewEventL` (coevwman.cpp) turns `EVwsDeactivateView`
+into `DoDeactivation`, which calls every registered
+`MCoeViewDeactivationObserver::HandleViewDeactivation`. `CAknAppUi::ConstructL`
+(AknAppUi.cpp) registers the app UI itself, and `CAknAppUi::HandleViewDeactivation`
+is one line: `iAvkonEnv->CloseAllIntermediateStates()`, which deletes and
+re-creates a `CIdle` and closes any menus or popups registered with `CAknEnv`
+(nothing in the tree but aknenv.cpp registers any).
+
+The observer pointer cone stores is the mixin subobject, `this + k`. A
+mixin with nothing but a vtable pointer is four bytes, laid out after the
+primary base in declaration order; `class CAknAppUi : public CAknAppUiBase,
+MEikStatusPaneObserver, public MCoeViewDeactivationObserver` puts the status
+pane observer at k - 4 and the view deactivation observer at k. **Only the
+class's own constructor writes those vtable pointers.** avkon exports
+`CAknAppUiBase`'s constructor (217) and `vtable for CAknAppUi` (3820) but not
+`CAknAppUi`'s constructor, so an object assembled from those two has the
+primary vtable and none of CAknAppUi's mixins: cone's first deactivation
+reads a zero as a vtable, which is a data abort on address 0 with the
+observer in r0, pc in cone and lr in euser's `RPointerArrayBase::At`.
+
+The offset k is in avkon itself: the export table lists `non-virtual thunk
+to CAknAppUi::HandleViewDeactivation`, and a non-virtual thunk is
+`subs r0, #k` followed by a branch to the method (on the RM-409 ROM, def
+4030 is `subs r0, #0x5c; b ...`). Def indices for the other thunks (4021,
+3826) land on `bx lr` on that ROM, so they are not usable; the status pane
+observer is placed by the declaration order above. A deactivation can be
+driven from inside the process with `CCoeAppUi::DeactivateActiveViewL`
+(cone 224): the view server sends the event back through the same path, on
+the emulator too.
+
 ## Avkon shuts applications down through HandleCommandL
 
 `CAknAppUi::HandleSystemEventL`, from `uifw/AvKon/src/AknAppUi.cpp`:
