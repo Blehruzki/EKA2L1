@@ -324,6 +324,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FAULT_REG = 727,    // r0 to r12, in order, one record each
        NOTE_FAULT_PC_REL = 728, // pc as an offset into the game's image, when it is in it
        NOTE_FAULT_SCAN = 744,   // the direct handler got only a TExcType; this frame was recovered from the stack
+       NOTE_FAULT_ARG = 745,    // the raw value the handler was entered with: a frame pointer, or a bare TExcType
+       NOTE_FAULT_RAW = 746,    // the handler's own sp, then raw stack words from it, for offline reading of the real frame
        NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
        NOTE_EXC_INSTALL = 730,  // what User::SetExceptionHandler answered
        NOTE_AO_WHY = 731,       // a walk of the active scheduler's queue: what prompted it
@@ -1494,52 +1496,36 @@ enum { FRAME_TYPE = 0, FRAME_CODE = 1, FRAME_ADDR = 2, FRAME_STATUS = 3, FRAME_C
 
 static void sched_dump(Context *c, u32 why);
 
-// Does this window of memory look like the kernel's exception frame?
-// { type, code, FAR, FSR, CPSR, r0..r15 } -- type small, code 0..2, the
-// CPSR in a user mode (0x10) or system mode (0x1f), and the pc a real code
-// address. The same shape the _start path is handed; see uc_exe.cia.
-static int frame_here(const u32 *f)
-{
-    if (f[FRAME_TYPE] >= 64 || f[FRAME_CODE] > 2)
-        return 0;
-    const u32 m = f[FRAME_CPSR] & 0x1F;
-    if (m != 0x10 && m != 0x1F)
-        return 0;
-    const u32 pc = f[FRAME_PC];
-    return pc >= 0x8000 && !(pc & 1);
-}
-
+// **The fault catcher, raw.** Build 023's clever scan matched a false window
+// (round 107: type 4, pc 0x2000000 -- a stack window near the audio call's
+// locals, not the frame). Two things were wrong: it never logged the value
+// the handler was actually entered with, so small-TExcType and frame-pointer
+// could not be told apart; and it interpreted instead of recording. So now
+// it records. `arg` is logged raw; if it is a pointer, the 21 words at it are
+// dumped (that is the frame the _start re-entry hands over); and either way a
+// window of the handler's own stack is dumped, because when the kernel calls
+// the handler with only a TExcType the frame is still on the stack above us
+// (euser's uc_exe.cia built it). The real frame is then found offline by its
+// signature -- a cpsr with user-mode bits, followed by r0-r15 with a pc in
+// the image [0x10000000, +code] or the ROM [0x80000000, 0x90000000] -- with
+// full context rather than a lossy in-process guess.
 extern "C" void gate6_fault(Context *c, u32 arg)
 {
     c->reached |= REACHED_FAULT;
-    const u32 *f = (const u32 *)arg;
-    u32 type = arg;
-    int frame = arg >= 0x1000 && !(arg & 3) && f[FRAME_TYPE] < 64 &&
-                      f[FRAME_CODE] <= 2 && (f[FRAME_CPSR] & 0x1F) == 0x10;
-    int scanned = 0;
-    // The direct path: the kernel called our handler with only a TExcType
-    // (arg is a small integer, not a frame pointer), so there is no address
-    // in hand. But euser's trampoline built the full frame on the stack just
-    // above us before it called in (uc_exe.cia). Walk up from here for it,
-    // preferring one whose type matches the TExcType we were given. Bounded
-    // and read-only: it runs only on a fault that is already fatal.
-    if (!frame) {
-        u32 probe;
-        const u32 *base = (const u32 *)(((u32)&probe + 3) & ~3u);
-        const u32 *hit = 0;
-        for (u32 i = 0; i < 1024u; i++) {
-            const u32 *w = base + i;
-            if (frame_here(w)) {
-                if (w[FRAME_TYPE] == arg) { hit = w; break; }
-                if (!hit) hit = w;      // first plausible, in case none matches
-            }
-        }
-        if (hit) { f = hit; frame = 1; scanned = 1; }
-    }
-    if (scanned)
-        log_event(c, NOTE_FAULT_SCAN, (u32)f);
-    if (frame) {
-        type = f[FRAME_TYPE];
+    u32 hsp;
+    __asm__ volatile ("mov %0, sp" : "=r"(hsp));
+
+    log_event(c, NOTE_FAULT_ARG, arg);
+
+    const int ptr = arg >= 0x1000 && !(arg & 3);
+    u32 type = arg & 63;
+    if (ptr) {
+        // The _start re-entry path hands the frame pointer in; decode it as
+        // the frame, whatever its inner fields, and let the raw words below
+        // confirm the layout. { type, excCode, faultAddr, faultStatus, cpsr,
+        // r0..r15 }.
+        const u32 *f = (const u32 *)arg;
+        type = f[FRAME_TYPE] & 63;
         log_event(c, NOTE_FAULT, f[FRAME_TYPE]);
         log_event(c, NOTE_FAULT_CODE, f[FRAME_CODE]);
         log_event(c, NOTE_FAULT_ADDR, f[FRAME_ADDR]);
@@ -1555,10 +1541,16 @@ extern "C" void gate6_fault(Context *c, u32 arg)
     } else {
         log_event(c, NOTE_FAULT, arg);
     }
-    // The queue at the moment of the fault. If the scheduler was dispatching,
-    // the object being run is the one whose active flag it has just cleared
-    // and whose status is no longer pending -- and its RunL slot is where
-    // the pc came from.
+
+    // The handler's own stack, raw. 96 words is far enough up to cover
+    // euser's exception trampoline frame and the TArmExcInfo it left, and
+    // bounded so a dying thread does not walk off a mapped page. Read-only.
+    log_event(c, NOTE_FAULT_RAW, hsp);
+    const u32 *w = (const u32 *)(hsp & ~3u);
+    for (u32 i = 0; i < 96u; i++)
+        log_event(c, NOTE_FAULT_RAW, w[i]);
+
+    // The queue at the moment of the fault, as before.
     sched_dump(c, 0xFA17);
     log_block(c);
     box_flush(c);

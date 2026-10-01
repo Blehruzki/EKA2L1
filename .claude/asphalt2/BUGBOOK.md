@@ -293,9 +293,12 @@ during repeated audio-stream teardown/reopen with a key held, after a
 foreground event. Not localizable from the round-106 log because the port's
 `User::SetExceptionHandler` handler is called with only a `TExcType`, no
 frame -- unlike the `_start` last-chance re-entry, which hands over the full
-frame. Build 023's catcher recovers the frame from the stack on that path
-(`frame_here`/`NOTE_FAULT_SCAN` in `gate6.cpp`); awaiting the next phone log
-to name the address.
+frame. The crash sits in the audio-stream reopen (SetAudioPropertiesL on a
+recreated stream after a foreground cycle, ~255 frames in). Build 023's
+stack scan to recover the frame gave a false positive (round 107); build
+024 logs the raw entry value and dumps raw stack (`NOTE_FAULT_ARG`,
+`NOTE_FAULT_RAW` in `gate6.cpp`) so the real frame is read offline.
+Awaiting the next phone log to name the faulting address.
 
 ## 10. Where the bench and the phone disagree
 

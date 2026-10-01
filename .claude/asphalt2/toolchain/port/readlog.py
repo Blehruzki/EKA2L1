@@ -231,6 +231,8 @@ NOTES = {860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on
  740: 'mixin: ordinal/thunk/offset/word/vtable, or CA11 self a b', 741: 'bench: DeactivateActiveViewL',
  742: 'DSA drawing region: count, then corners x<<16|y', 743: '   clip: tl, br, then mode (0 none, 1 all, 2 box, 3 rects)',
  744: 'FAULT frame recovered from the stack at',
+ 745: 'FAULT handler entered with (pointer = frame, small = TExcType)',
+ 746: 'FAULT raw: handler sp, then stack words',
  781: 'DSA ABORTED by wserv, reason', 782: 'DSA RESTART, reason (0x57a7: StartL by us)'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
