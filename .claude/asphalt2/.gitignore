@@ -23,3 +23,8 @@ build/*_install.txt
 # The packages under their build names, before they are renamed for the record.
 build/gate6.sis
 build/gate6a1.sis
+# build_release.py by-products written into toolchain/port
+toolchain/port/*.mif
+toolchain/port/*.mbm
+toolchain/port/*_install.txt
+toolchain/port/*.sis
