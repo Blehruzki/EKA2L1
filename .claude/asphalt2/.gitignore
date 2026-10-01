@@ -28,3 +28,4 @@ toolchain/port/*.mif
 toolchain/port/*.mbm
 toolchain/port/*_install.txt
 toolchain/port/*.sis
+build/Ashen-*.sis

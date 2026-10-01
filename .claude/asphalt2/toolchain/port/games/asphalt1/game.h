@@ -166,6 +166,11 @@ enum { GAME_SRC_ORIGIN = 16 };
 // than one reading at each end of it. Off again once it has.
 #define GAME_LOG_CLOCK 1
 
+// A diagnostic, per title and off: every UseFont and DrawText through the gc
+// stand-ins, with the text's descriptor raw (E385-E388). Thousands of
+// records a second when on.
+#define GAME_LOG_TEXT 0
+
 #define GAME_BUNDLE_DATA 1
 #define GAME_VENDOR      "DeltaCharlie"
 // No backslashes and no apostrophes in the text: it lives in a C header

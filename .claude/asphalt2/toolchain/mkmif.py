@@ -44,11 +44,32 @@ def decode(path):
     off = offs[0]
     f = struct.unpack_from('<10i', d, off)
     w, h, bpp = f[2], f[3], f[6]
-    if bpp != 8:
-        raise ValueError('icon is %d bpp, expected 8' % bpp)
-    stride = ((w * 8 + 31) // 32) * 4
     body = d[off + mkmbm.HEADER_LEN:off + f[0]]
-    pix = aificon.unrle8(body, stride * h) if f[9] == 1 else body
+    if bpp == 8:
+        stride = ((w * 8 + 31) // 32) * 4
+        pix = aificon.unrle8(body, stride * h) if f[9] == 1 else body
+        colour_at = lambda y, x: pal[pix[y * stride + x]]
+    elif bpp == 12:
+        # EColor4K: a 16-bit word a pixel, 0x0RGB, rows word-aligned. Its
+        # compression (2, ETwelveBitRLECompression) is one 16-bit word per
+        # run: the top nibble is the run length less one, the low twelve
+        # bits the colour. Ashen's icon is this; the Asphalts' are 8 bpp.
+        stride = ((w * 16 + 31) // 32) * 4
+        if f[9] == 2:
+            words = []
+            for i in range(0, len(body) - 1, 2):
+                v = body[i] | (body[i + 1] << 8)
+                words += [v & 0xFFF] * ((v >> 12) + 1)
+                if len(words) >= (stride // 2) * h:
+                    break
+        elif f[9] == 0:
+            words = [body[i] | (body[i + 1] << 8) for i in range(0, len(body) - 1, 2)]
+        else:
+            raise ValueError('12 bpp icon with compression %d' % f[9])
+        words += [0] * ((stride // 2) * h - len(words))
+        colour_at = lambda y, x: (lambda v: (((v >> 8) & 0xF) * 0x110000) | (((v >> 4) & 0xF) * 0x1100) | ((v & 0xF) * 0x11))(words[y * (stride // 2) + x])
+    else:
+        raise ValueError('icon is %d bpp, expected 8 or 12' % bpp)
 
     moff = offs[1]
     mf = struct.unpack_from('<10i', d, moff)
@@ -60,7 +81,7 @@ def decode(path):
         row = []
         for x in range(w):
             opaque = (mask[y * mstride + (x >> 3)] >> (x & 7)) & 1
-            c = pal[pix[y * stride + x]]
+            c = colour_at(y, x)
             # `aificon.palette` already hands back 0xRRGGBB -- it swaps the
             # table's 0x00BBGGRR once, and swapping again here is how the
             # first build of this file came out with the channels back to

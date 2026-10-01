@@ -107,6 +107,11 @@ enum { GAME_SRC_ORIGIN = 0 };
 // first rounds.
 #define GAME_LOG_CLOCK 1
 
+// A diagnostic, per title and off: every UseFont and DrawText through the gc
+// stand-ins, with the text's descriptor raw (E385-E388). Thousands of
+// records a second when on.
+#define GAME_LOG_TEXT 0
+
 // Packaging: the card dump travels in the SIS beside the loader.
 #define GAME_BUNDLE_DATA 1
 #define GAME_VENDOR      "DeltaCharlie"

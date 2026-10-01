@@ -113,6 +113,11 @@ enum { GAME_SRC_ORIGIN = 16 };
 // call per sixteen imports, which a working title has no reason to pay.
 #define GAME_LOG_CLOCK 0
 
+// A diagnostic, per title and off: every UseFont and DrawText through the gc
+// stand-ins, with the text's descriptor raw (E385-E388). Thousands of
+// records a second when on.
+#define GAME_LOG_TEXT 0
+
 #define GAME_BUNDLE_DATA 1
 #define GAME_VENDOR      "DeltaCharlie"
 #define GAME_INSTALL_TEXT "Asphalt 2 N-Gage version, ported to S60v3 by DeltaCharlie."

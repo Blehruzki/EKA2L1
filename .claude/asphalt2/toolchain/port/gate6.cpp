@@ -335,6 +335,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_CHOSEN = 754,       // where the image was found: drive letter << 16 | layout << 8 | bin
        NOTE_OPEN_RETRY = 755,   // an E: open failed on an E: install: its error, then the C: retry's
        NOTE_CLEANUP = 756,      // a CTrapCleanup stand-in: the real object, or 0xDE1 then it on delete
+       NOTE_FONT = 757,         // a font asked of the screen device: px | bold << 8, then the CFont* or the error; 0xF2EE then the font on release
+       NOTE_GCTEXT = 758,       // bitgdi stand-in: 0xF0 then the font on UseFont; 0x7E then x<<16|y, length, first chars on DrawText
        NOTE_TRAP = 747,         // the trap bridge: 0x5E7 installed (then the original handler), 0xE11 entered (TTrap),
                                 // 0x1EA a leave (reason), 0x7E5 longjmp into (TTrap), 0xF0C the bench's forced leave
        NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
@@ -1058,6 +1060,8 @@ struct Context {
     u32 *bitGcVt;           // the old-shaped CFbsBitGc vtable every stand-in shares
     u32 realCleanupNew;     // euser's CTrapCleanup::New, before our hook
     u32 *cleanupVt;         // the three-word vtable its stand-ins share: delete, any way in
+    u32 *realScreenDev;     // the environment's CWsScreenDevice, 9.x
+    u32 *fakeScreenDev;     // and the two-vtable old-shaped stand-in the game asks fonts of
     u32 *fakeWinGc;         // and the old-vtable stand-in the game draws with
     u32 newDsaStartL;       // ws32's CDirectScreenAccess::StartL, as resolved
     u32 *oldUi;             // the game's CEikAppUi, old layout
@@ -7029,6 +7033,98 @@ static const u8 kWinGcSlot[OLD_WINGC_SLOTS] = {
     59, 60, 61, 67, 68, 69, 70, 71, 72, 47, 50, 51, 73, 48, 49,
 };
 
+// Two entries of the bitgdi stand-in that say what they were asked (E384:
+// fonts answered, and no text on the menu page): UseFont, old 7, and
+// DrawText(const TDesC&, const TPoint&), old 39. Forwarded to the same 9.x
+// slots kGcSlot names, 9 and 43.
+enum { OLD_GC_USEFONT = 7, OLD_GC_DRAWTEXT = 39, OLD_GC_DRAWTEXTBOX = 40 };
+static void log_text_words(Context *c, const u32 *des)
+{
+    // Raw, until the descriptor's shape is known: the address, its first
+    // three words, then the two words the second word points at.
+    log_event(c, NOTE_GCTEXT, (u32)des);
+    if (!des || ((u32)des & 3) || (u32)des < 0x400000) return;
+    log_event(c, NOTE_GCTEXT, des[0]);
+    log_event(c, NOTE_GCTEXT, des[1]);
+    log_event(c, NOTE_GCTEXT, des[2]);
+    // And, when the text's first word reads as a pointer, six words there:
+    // the game's Format("%s") argument may be a {pointer, length} pair.
+    const u32 *p = (const u32 *)des[2];
+    if (p && !((u32)p & 1) && (u32)p >= 0x400000 && (u32)p < 0x10000000) {
+        log_event(c, NOTE_GCTEXT, 0x5EE);
+        for (u32 i = 0; i < 6; i++)
+            log_event(c, NOTE_GCTEXT, ((const u32 *)((u32)p & ~3u))[i]);
+    }
+}
+// The boxed DrawText (old 40, 9.x 44): six arguments, so no thunk -- the
+// context comes off the stand-in itself.
+extern "C" void gate6_gc_drawtextbox(u32 *standin, const u32 *des, const i32 *rect,
+                                     i32 baseline, u32 align, i32 left)
+{
+    typedef void (*Fn)(void *, const u32 *, const i32 *, i32, u32, i32);
+    u32 *real = (u32 *)standin[1];
+    Context *c = (Context *)standin[2];
+    if (GAME_LOG_TEXT) {
+        log_event(c, NOTE_GCTEXT, 0x7B);
+        log_event(c, NOTE_GCTEXT, ((u32)rect[0] << 16) | ((u32)rect[1] & 0xFFFF));
+        log_event(c, NOTE_GCTEXT, ((u32)rect[2] << 16) | ((u32)rect[3] & 0xFFFF));
+        log_event(c, NOTE_GCTEXT, ((u32)baseline << 16) | (align << 8) | ((u32)left & 0xFF));
+        log_text_words(c, des);
+    }
+    ((Fn)((const u32 *)real[0])[kGcSlot[OLD_GC_DRAWTEXTBOX]])(real, des, rect, baseline, align, left);
+}
+extern "C" void gate6_gc_usefont(u32 *standin, const u32 *font, Context *c)
+{
+    typedef void (*Fn)(void *, const u32 *);
+    u32 *real = (u32 *)standin[1];
+    if (GAME_LOG_TEXT) {
+        log_event(c, NOTE_GCTEXT, 0xF0);
+        log_event(c, NOTE_GCTEXT, (u32)font);
+    }
+    ((Fn)((const u32 *)real[0])[kGcSlot[OLD_GC_USEFONT]])(real, font);
+}
+extern "C" void gate6_gc_drawtext(u32 *standin, const u32 *des, const i32 *pt, Context *c)
+{
+    typedef void (*Fn)(void *, const u32 *, const i32 *);
+    u32 *real = (u32 *)standin[1];
+    if (GAME_LOG_TEXT) {
+        log_event(c, NOTE_GCTEXT, 0x7E);
+        log_event(c, NOTE_GCTEXT, ((u32)pt[0] << 16) | ((u32)pt[1] & 0xFFFF));
+        log_text_words(c, des);
+    }
+    ((Fn)((const u32 *)real[0])[kGcSlot[OLD_GC_DRAWTEXT]])(real, des, pt);
+}
+
+// The window gc stand-in's text entries, logged the same way; its object
+// carries the context at [1] and the real gc is read off the context.
+extern "C" void gate6_wgc_drawtext(u32 *standin, const u32 *des, const i32 *pt)
+{
+    typedef void (*Fn)(void *, const u32 *, const i32 *);
+    Context *c = (Context *)standin[1];
+    u32 *real = c->realWinGc;
+    if (GAME_LOG_TEXT) {
+        log_event(c, NOTE_GCTEXT, 0x17E);
+        log_event(c, NOTE_GCTEXT, ((u32)pt[0] << 16) | ((u32)pt[1] & 0xFFFF));
+        log_text_words(c, des);
+    }
+    ((Fn)((const u32 *)real[0])[kWinGcSlot[OLD_GC_DRAWTEXT]])(real, des, pt);
+}
+extern "C" void gate6_wgc_drawtextbox(u32 *standin, const u32 *des, const i32 *rect,
+                                      i32 baseline, u32 align, i32 left)
+{
+    typedef void (*Fn)(void *, const u32 *, const i32 *, i32, u32, i32);
+    Context *c = (Context *)standin[1];
+    u32 *real = c->realWinGc;
+    if (GAME_LOG_TEXT) {
+        log_event(c, NOTE_GCTEXT, 0x17B);
+        log_event(c, NOTE_GCTEXT, ((u32)rect[0] << 16) | ((u32)rect[1] & 0xFFFF));
+        log_event(c, NOTE_GCTEXT, ((u32)rect[2] << 16) | ((u32)rect[3] & 0xFFFF));
+        log_event(c, NOTE_GCTEXT, ((u32)baseline << 16) | (align << 8) | ((u32)left & 0xFF));
+        log_text_words(c, des);
+    }
+    ((Fn)((const u32 *)real[0])[kWinGcSlot[OLD_GC_DRAWTEXTBOX]])(real, des, rect, baseline, align, left);
+}
+
 static void *wingc_standin(Context *c)
 {
     if (!c->coeEnv)
@@ -7039,7 +7135,7 @@ static void *wingc_standin(Context *c)
     c->realWinGc = real;
     if (!c->fakeWinGc) {
         u32 *vt = (u32 *)user_allocz((2 + OLD_WINGC_SLOTS) * 4);
-        u32 *obj = (u32 *)user_allocz(4);
+        u32 *obj = (u32 *)user_allocz(8);
         if (!vt || !obj || c->spare + OLD_WINGC_SLOTS * GC_THUNK_BYTES > c->spareEnd)
             PANIC(CAT_MEM, -39);
         for (u32 i = 0; i < OLD_WINGC_SLOTS; i++)
@@ -7047,7 +7143,10 @@ static void *wingc_standin(Context *c)
                 ? (u32)&gate6_pure_virtual
                 : gc_thunk(c->spare + i * GC_THUNK_BYTES, &c->realWinGc, kWinGcSlot[i]);
         c->spare += OLD_WINGC_SLOTS * GC_THUNK_BYTES;
+        vt[2 + OLD_GC_DRAWTEXT] = (u32)&gate6_wgc_drawtext;
+        vt[2 + OLD_GC_DRAWTEXTBOX] = (u32)&gate6_wgc_drawtextbox;
         obj[0] = (u32)vt;           // GCC98r2: the vptr points at the header
+        obj[1] = (u32)c;
         c->fakeWinGc = obj;
         log_event(c, NOTE_WINGC, (u32)real);
     }
@@ -7116,6 +7215,13 @@ static u32 *bitgc_standin(Context *c, u32 *real)
                 ? (u32)&gate6_pure_virtual
                 : objgc_thunk(c->spare + i * OBJGC_THUNK_BYTES, kGcSlot[i]);
         c->spare += OLD_GC_SLOTS * OBJGC_THUNK_BYTES;
+        if (c->spare + 2 * TRACE <= c->spareEnd) {
+            vt[2 + OLD_GC_USEFONT] = ctx_thunk(c->spare, c, (u32)&gate6_gc_usefont);
+            c->spare += TRACE;
+            vt[2 + OLD_GC_DRAWTEXT] = ctx3_thunk(c->spare, c, (u32)&gate6_gc_drawtext);
+            c->spare += TRACE;
+            vt[2 + OLD_GC_DRAWTEXTBOX] = (u32)&gate6_gc_drawtextbox;
+        }
         c->bitGcVt = vt;
     }
     u32 *obj = (u32 *)user_allocz(BITGC_STANDIN_WORDS * 4);
@@ -7177,6 +7283,88 @@ extern "C" u32 *gate6_app_rect(u32 *out, u32, Context *)
     return out;
 }
 
+// **The screen device, as far as the game uses it: fonts.** Ashen reads the
+// environment's `iScreen` (old 0x3c) and calls entry 5 of the vtable at
+// +4 -- the old `MGraphicsDeviceMap` secondary table: 0 destructor, 1-4
+// the twips/pixel conversions, 5 GetNearestFontInTwips, 6 ReleaseFont --
+// with the N-Gage's bitmap fonts by name, `LatinPlain12`, `LatinBold12`,
+// `LatinBold13`, `LatinBold17`, `LatinBold19`, all at "30 twips". The
+// N-Gage matched the name and the height was moot; S60 3rd has no such
+// typeface, matched the height, and handed back a two-pixel font: the specks
+// on the menu page of E383's key run. A 9.x CWsScreenDevice has one vptr
+// (MGraphicsDeviceMap is its primary base) and `MWsClientClass::iBuffer` at
+// +4, so the old call went through a window-server buffer word and happened
+// to return. The stand-in has the two tables the game expects, answers the
+// font request with the system typeface at the pixel height the old name
+// carries (the digits; `Bold` sets the weight) through 9.x slot 26,
+// `GetNearestFontToDesignHeightInPixels` -- the slot numbers from GDI.H's
+// base-class order, as the gc's were -- and forwards ReleaseFont to slot 7.
+// Anything else the game asks of either table is the pure-virtual panic.
+enum { OLD_COEENV_SCREEN = 0x3c, NEW_COEENV_SCREEN = 0x48,
+       OLD_MAP_SLOTS = 8, OLD_MAP_FONT = 5, OLD_MAP_RELEASE = 6,
+       NEW_SCREEN_RELEASE_FONT = 7, NEW_SCREEN_FONT_DESIGN_PX = 26,
+       FONT_DEFAULT_PX = 12, FONT_BOLD = 2 };
+struct FontSpec9 { u32 nameLen; u16 name[24]; u32 typefaceFlags; i32 height; u32 style, res1, res2; };
+
+extern "C" int gate6_screen_font(u32 *self4, u32 **out, const u32 *oldSpec, Context *c)
+{
+    typedef int (*Fn)(void *, u32 **, const FontSpec9 *);
+    (void)self4;
+    const u32 n = oldSpec[0] & 0xFF;
+    const u16 *nm = (const u16 *)(oldSpec + 1);
+    u32 px = 0, bold = 0;
+    for (u32 i = 0; i < n && i < 24; i++) {
+        if (nm[i] >= '0' && nm[i] <= '9') px = px * 10 + (nm[i] - '0');
+        if (nm[i] == 'B' && i + 3 < n && nm[i + 1] == 'o' && nm[i + 2] == 'l' && nm[i + 3] == 'd') bold = 1;
+    }
+    if (!px || px > 64) px = FONT_DEFAULT_PX;
+    FontSpec9 spec;
+    for (u32 i = 0; i < sizeof spec / 4; i++) ((u32 *)&spec)[i] = 0;
+    spec.height = (i32)px;
+    spec.style = bold ? (u32)FONT_BOLD : 0;
+    *out = 0;
+    const u32 *real = c->realScreenDev;
+    const int r = ((Fn)((const u32 *)real[0])[NEW_SCREEN_FONT_DESIGN_PX])((void *)real, out, &spec);
+    log_event(c, NOTE_FONT, px | (bold << 8));
+    log_event(c, NOTE_FONT, r ? (u32)r : (u32)*out);
+    return r;
+}
+
+extern "C" void gate6_screen_release(u32 *self4, u32 *font, Context *c)
+{
+    typedef void (*Fn)(void *, u32 *);
+    (void)self4;
+    log_event(c, NOTE_FONT, 0xF2EE);
+    log_event(c, NOTE_FONT, (u32)font);
+    const u32 *real = c->realScreenDev;
+    ((Fn)((const u32 *)real[0])[NEW_SCREEN_RELEASE_FONT])((void *)real, font);
+}
+
+static u32 *screen_standin(Context *c)
+{
+    if (c->fakeScreenDev)
+        return c->fakeScreenDev;
+    u32 *real = (u32 *)((const u32 *)c->coeEnv)[NEW_COEENV_SCREEN / 4];
+    if (!real || c->spare + 2 * TRACE > c->spareEnd)
+        return 0;
+    u32 *primary = (u32 *)user_allocz((2 + OLD_MAP_SLOTS) * 4);
+    u32 *map = (u32 *)user_allocz((2 + OLD_MAP_SLOTS) * 4);
+    u32 *obj = (u32 *)user_allocz(4 * 4);
+    if (!primary || !map || !obj) PANIC(CAT_MEM, -44);
+    for (u32 i = 0; i < (u32)OLD_MAP_SLOTS; i++)
+        primary[2 + i] = map[2 + i] = (u32)&gate6_pure_virtual;
+    map[2 + OLD_MAP_FONT] = ctx3_thunk(c->spare, c, (u32)&gate6_screen_font);
+    c->spare += TRACE;
+    map[2 + OLD_MAP_RELEASE] = ctx_thunk(c->spare, c, (u32)&gate6_screen_release);
+    c->spare += TRACE;
+    obj[0] = (u32)primary;
+    obj[1] = (u32)map;
+    obj[2] = (u32)real;
+    c->realScreenDev = real;
+    c->fakeScreenDev = obj;
+    return obj;
+}
+
 extern "C" void *gate6_coeenv_static(u32, u32, Context *c)
 {
     c->coeEnv = (u32 *)coeenv_static();
@@ -7191,6 +7379,9 @@ extern "C" void *gate6_coeenv_static(u32, u32, Context *c)
     // for a title that reads the field rather than calling SystemGc().
     if (IMPORT_SYSTEM_GC < 0xFFFF && wingc_standin(c))
         c->coeEnvView[OLD_COEENV_SYSTEM_GC / 4] = (u32)c->fakeWinGc;
+    // And the old iScreen (0x3c), for the font requests above.
+    if (screen_standin(c))
+        c->coeEnvView[OLD_COEENV_SCREEN / 4] = (u32)c->fakeScreenDev;
     return c->coeEnvView;
 }
 
