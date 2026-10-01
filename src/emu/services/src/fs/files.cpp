@@ -551,8 +551,33 @@ namespace eka2l1 {
 
         uint64_t size = vfs_file->size();
 
-        if (size - read_pos < read_len) {
+        // Underflow-safe clamp. Previously `size - read_pos` (uint64 - uint64) wrapped to a huge value
+        // when read_pos > size (read past EOF), and a negative read_len also converted to a huge
+        // unsigned value. In both cases the clamp was skipped and resize() with the guest's unclamped
+        // length threw std::bad_alloc with no handler, killing the emulator.
+        // Reading at/after EOF is normal in Symbian: KErrNone with a zero-length descriptor.
+        const int requested_read_len = read_len;
+        const bool guard_changed = (read_pos >= size) || (read_len < 0);
+
+        if (read_pos >= size) {
+            read_len = 0;
+        } else if ((size - read_pos) < static_cast<std::uint64_t>(read_len)) {
             read_len = static_cast<int>(size - read_pos);
+        }
+
+        if (read_len < 0) {
+            read_len = 0;
+        }
+
+        if (guard_changed) {
+            // Capped: reads at EOF are routine, only report the first few.
+            static int guard_log_count = 0;
+
+            if (guard_log_count < 5) {
+                guard_log_count++;
+                LOG_WARN(SERVICE_EFSRV, "file_read guard: read_pos={} size={} requested_read_len={} file={} (occurrence {}/5)",
+                    read_pos, size, requested_read_len, common::ucs2_to_utf8(vfs_file->file_name()), guard_log_count);
+            }
         }
 
         std::vector<char> read_data;
