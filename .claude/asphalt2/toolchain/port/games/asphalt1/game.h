@@ -94,6 +94,12 @@ enum { GAME_SRC_ORIGIN = 16 };
 #define GAME_CODE_PATCHES { 0, 0, 0 }
 #define GAME_CODE_PATCH_COUNT 0
 
+// The environment's screen device, as the game reads it off the view
+// (old iScreen, 0x3c): 1 hands it a stand-in that answers font requests by
+// the N-Gage font names (E384); 0 leaves the real 9.x device there, which a
+// title that passes it on to direct screen access needs (E390).
+#define GAME_SCREEN_FONTS 0
+
 // Quarantine the small cells only, as Asphalt 2 does. This was
 // 0x7fffffff -- hold everything -- from E271, when a vtable pointer written
 // over a freed cell's `next` link was sending the allocator into the ROM.

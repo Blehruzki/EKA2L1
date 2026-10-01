@@ -107,6 +107,20 @@ off for the next title.
 by hiding E: and laying the SIS's files on C: (E378, E379). The chosen-drive
 note (754) and the C: retry (755) from build 026 are what made it readable.
 
+### 1.w A stand-in for one title reached the others through the shared view (E390)
+
+**Symptom.** Asphalt Urban GT dead at 338 records, `KERN-EXEC 3` in ws32
+with a null `this`, the day after Ashen's fonts went in.
+
+**Cause.** The screen-device stand-in Ashen needs for its font requests was
+written into the environment view's old `iScreen` for every title, and the
+Asphalts hand that word on to direct screen access, which reads a real
+`CWsScreenDevice` off it. Nothing on Ashen's path showed it.
+
+**Fix.** A title knob (`GAME_SCREEN_FONTS`), off for the Asphalts. The
+regression run is what caught it, two minutes after the change: the shared
+file ships to every title, so every title runs before anything ships.
+
 ## 2. Loading the N-Gage image
 
 **The entry point is an offset, entered in ARM mode with `lr = 0`.**

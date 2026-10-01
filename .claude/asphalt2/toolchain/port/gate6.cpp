@@ -7379,8 +7379,10 @@ extern "C" void *gate6_coeenv_static(u32, u32, Context *c)
     // for a title that reads the field rather than calling SystemGc().
     if (IMPORT_SYSTEM_GC < 0xFFFF && wingc_standin(c))
         c->coeEnvView[OLD_COEENV_SYSTEM_GC / 4] = (u32)c->fakeWinGc;
-    // And the old iScreen (0x3c), for the font requests above.
-    if (screen_standin(c))
+    // And the old iScreen (0x3c), for the font requests above -- per title:
+    // E390, the Asphalts hand that word to CDirectScreenAccess::NewL as the
+    // screen device, and ws32 reads a real one's insides off it.
+    if (GAME_SCREEN_FONTS && screen_standin(c))
         c->coeEnvView[OLD_COEENV_SCREEN / 4] = (u32)c->fakeScreenDev;
     return c->coeEnvView;
 }
