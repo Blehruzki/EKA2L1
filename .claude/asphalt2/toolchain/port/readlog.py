@@ -227,7 +227,7 @@ NOTES = {860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on
  727: '   r0..r12', 728: '   pc as image offset', 729: 'bench: sent to back via',
  730: 'SetExceptionHandler answered',
  731: 'ACTIVE SCHEDULER QUEUE, after event', 732: '   object', 733: '      vptr',
- 734: '      RunL ->', 735: '      iStatus', 736: '      iFlags', 737: '   objects (or BADx)'}
+ 734: '      RunL ->', 735: '      iStatus', 736: '      iFlags', 737: '   objects (or BADx)', 738: 'frame timer priority (game, then ours)'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework

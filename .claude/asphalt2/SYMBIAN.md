@@ -237,6 +237,35 @@ so the type is the first word of the argument. Avkon's own
 `CAknAppUi::HandleWsEventL` (`AknAppUi.cpp`) swallows
 `KAknFullOrPartialForegroundLost/Gained` before anything else runs.
 
+## The active scheduler runs the highest-priority ready object, always
+
+`CActiveScheduler::DoRunL` (euser/cbase/ub_act.cpp) walks `iActiveQ`, a
+`TPriQue` ordered by `CActive::iLink.iPriority`, and runs the first object
+that is active with a completed request. It never rotates: a lower-priority
+object that is ready stays ready for as long as any higher-priority object
+keeps completing. `EPriorityIdle` is -100, `EPriorityLow` -20,
+`EPriorityStandard` 0, `EPriorityUserInput` 10, `EPriorityHigh` 20
+(e32base.h).
+
+S60 brings an application up in stages, and the last ones are idle-priority
+active objects queued during construction to run "once the app is idle". A
+game whose frame timer re-completes every frame at priority 0 starves them
+for the whole run; they run for the first time when the game pauses --
+on losing the foreground -- against a state minutes older than the one they
+were queued for. Round 102 measured exactly this on an N95: one object,
+ready at the startup walk, ready a hundred frames later at FocusLost, ready
+at ForegroundLost, dispatched at the fault. The port's remedy is to give its
+frame-timer wrapper a priority below `EPriorityIdle`, so the frame loop runs
+exactly when nothing else is ready, which is what a well-behaved
+application's does.
+
+The queue can be read from inside the process: `CActiveScheduler::Current()`,
+`iActiveQ` at +8 (head next, head prev, `iOffset` which reads 12 =
+`CActive::iLink`), each link's object at link - 12, with `iStatus` at +4 and
+`iFlags` at +8 (bit 0 active, bit 1 request pending). An object with bit 0
+set and `iStatus != KRequestPending` is ready; the one being run has bit 0
+just cleared.
+
 ## Avkon shuts applications down through HandleCommandL
 
 `CAknAppUi::HandleSystemEventL`, from `uifw/AvKon/src/AknAppUi.cpp`:

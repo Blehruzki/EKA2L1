@@ -81,6 +81,11 @@ bugs found by doing it:
   address was read as "the exception handler is NOT installed" for a hundred
   rounds -- which steered every theory away from the one instrument that
   names a fault's instruction. Two enums at the same offset is a grep.
+- **A dump of the queue beats any theory about the queue.** Six rounds of
+  hypotheses about what dies on backgrounding were replaced by one walk of
+  the active scheduler's list, logged at three moments, which named the
+  object by elimination: the only one whose flags changed between the last
+  two walks. When the question is "which object", read the list.
 - **A picture is not a measurement.** Three readings of one screenshot gave
   three answers. Measure the bytes, or give the instrument to the person
   holding the phone and let them turn it until it is right.

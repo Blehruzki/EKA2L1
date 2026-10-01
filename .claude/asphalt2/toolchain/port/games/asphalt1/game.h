@@ -168,6 +168,6 @@ enum { GAME_SRC_ORIGIN = 16 };
 // was last overwritten -- round 71 read two build-139 logs as build 141's
 // and spent the round on it. Bump this with every package that goes to the
 // phone; `rules.py` checks it against the newest package in build/.
-#define GAME_BUILD 18
+#define GAME_BUILD 19
 
 #endif

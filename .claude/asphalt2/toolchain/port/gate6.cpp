@@ -332,6 +332,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_AO_STATUS = 735,    // ... iStatus
        NOTE_AO_FLAGS = 736,     // ... iFlags: 1 active, 2 pending
        NOTE_AO_END = 737,       // how many, or 0xBAD0 no scheduler / 0xBAD1 wrong layout
+       NOTE_TIMER_PRIO = 738,   // the priority the game gave its frame timer, then ours
        NOTE_SCREEN = 834,       // a word of the TScreenInfoV01 the game is given
        NOTE_KEY = 835,          // a key event, as it is handed to the game
        NOTE_THREAD_ARG = 840,   // one word of the create frame
@@ -3899,12 +3900,34 @@ extern "C" void gate6_request_complete(u32 **status, int reason, Context *c)
 // The game constructs its CTimer; ours is constructed alongside it, and from
 // here on everything the game does to its own goes to ours instead. A GCC98r2
 // constructor returns the object, which is still the game's.
+// **The frame timer runs below everything else, so nothing starves.**
+//
+// Round 102's queue walks: one object (vtable 0x80701c40 on the N95, a small
+// ROM DLL just below cone) is complete-and-active at the startup walk, still
+// so at FocusLost after a hundred frames in which every other ready object
+// ran, still so at ForegroundLost, and is the one being dispatched at the
+// fault. The game's frame timer completes every frame at the game's own
+// priority, and the 9.x scheduler always runs the highest-priority ready
+// object -- so an idle-priority object queued at start-up never runs until
+// the game pauses, and then runs for the first time against a state that is
+// minutes stale. On a1 that ends in a cone destructor on a null; on a2 in a
+// path that reaches the game's own User::Exit. The N-Gage had no such
+// objects to starve. With the wrapper below EPriorityIdle (-100, e32base.h)
+// the frame loop runs exactly when nothing else is ready, which is what a
+// well-behaved application's does; input and window-server events also
+// stop queueing behind frames.
+enum { YIELD_TO_IDLE = 1, EPRIORITY_IDLE = -100, TIMER_PRIORITY = EPRIORITY_IDLE - 1 };
+
 extern "C" void *gate6_ctimer_ctor(u32 *oldSelf, int priority, Context *c)
 {
     c->oldTimer = oldSelf;
 
     u32 *t = (u32 *)user_allocz(WRAP_BYTES);
     if (!t) PANIC(CAT_MEM, -35);
+    log_event(c, NOTE_TIMER_PRIO, (u32)priority);
+    if (YIELD_TO_IDLE)
+        priority = TIMER_PRIORITY;
+    log_event(c, NOTE_TIMER_PRIO, (u32)priority);
     ((TimerCtor)c->newTimerCtor)(t, priority);
 
     u32 *vt = copy_vtable(vtable_of(t), TIMER_SLOTS);
