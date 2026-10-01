@@ -16,3 +16,7 @@ build/*.rsc
 build/*.mbm
 build/*.mif
 build/*_install.txt
+
+# The packages under their build names, before they are renamed for the record.
+build/gate6.sis
+build/gate6a1.sis

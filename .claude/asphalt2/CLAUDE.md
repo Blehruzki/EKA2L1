@@ -102,6 +102,13 @@ bugs found by doing it:
 - **A picture is not a measurement.** Three readings of one screenshot gave
   three answers. Measure the bytes, or give the instrument to the person
   holding the phone and let them turn it until it is right.
+- **A workaround for a guess outlives the guess.** Round 60 released the
+  direct screen access on the first frame against a reboot it supposed the
+  window server's abort timeout caused; the source says that timeout
+  proceeds quietly, and the release is what left the last frame on the
+  panel after every switch for forty rounds. When a protocol is given up
+  for a theory, write down the theory beside the switch, and read the
+  protocol's own source before shipping a build that breaks it.
 
 ## Sources, and which is which
 

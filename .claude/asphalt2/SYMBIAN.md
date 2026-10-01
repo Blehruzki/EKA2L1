@@ -334,18 +334,53 @@ KERN-EXEC 0. Do not assume which one a given report is.
 
 ## Direct screen access
 
-From the window server's own `Direct.CPP` and the SDK's DSA example:
+From `windowing/windowserver/nonnga/SERVER/Direct.CPP` (the server side) and
+`CLIENT/RDirect.CPP`:
 
-- The server panics a client for DSA misuse (`EWservPanicDirectMisuse`) — a
-  WSERV panic, not KERN-EXEC.
-- Drawing after an abort and before the restart "will cause a temporary
-  deadlock (since the client will be waiting for WSERV to make the requested
-  window rearrangement, and WSERV will be waiting for the client to
-  acknowledge that the DSA has aborted)". A hang, not a panic.
-- `Restart` updates the clipping region and the example calls `StartL()` from
-  inside it.
-- `CWsDirectScreenAccess`'s region-sync timer is `KRegionSyncTimeoutMicrosec`
-  = 0.1 s and only clears the frozen region. It does not kill the client.
+A client that calls `CDirectScreenAccess::StartL` is given its window's
+visible region (`DrawingRegion()`): on the N95, the whole 240x320 for an app
+whose status pane is gone, `(0,58)-(240,320)` for one whose pane is still
+visible. Drawing outside it is drawing on windows wserv believes it owns.
+
+When the screen changes hands wserv runs `AbortNow` on the server object:
+it signals the client (`ETerminateRegion` for a window change, a global
+reason otherwise), copies the client's visible region into `iFrozenRegion`,
+and waits **0.4 s** for the client's acknowledgement -- which the client
+library gives from `CDirectScreenAccess::RunL`, calling the application's
+`MDirectScreenAccess::AbortNow` and then, through a `CIdle`, `Restart`. If
+the acknowledgement does not come, wserv `Abort()`s the session and carries
+on; nothing reboots. Either way the frozen region ends with
+`CancelFrozenRegion` -> `Screen()->ScheduleRegionUpdate(&iFrozenRegion)`:
+**wserv repaints the region the DSA client was drawing in.** A session the
+client cancelled itself (`Cancel` while running: `Terminate1`, `Terminate2`,
+`ETerminateCancel`) gets no such repaint; `CorrectScreen` -- an `Invalidate`
+of the region -- runs only for a session that was aborted by timeout and
+then cancelled.
+
+So an application that writes the frame buffer must keep its DSA session
+for as long as it writes: that is what makes wserv aware of the region, stop
+the client before it redraws it, and repaint it afterwards. The port
+released its session on the first frame from round 60 to build 020, and the
+last frame it wrote stayed on the panel after every switch, under whatever
+wserv did not know it had to repaint.
+
+**The restart comes at once, with a smaller region.** `CDirectScreenAccess::RunL`
+calls the application's `AbortNow`, acknowledges (`Completed()`), and
+starts a `CIdle` whose callback is the application's `Restart` -- not when
+the window comes back to the front, but as soon as the scheduler is idle,
+seconds before the user returns. An application whose `Restart` calls
+`StartL` again (the documented pattern) is granted the window's visible
+region *as it is now*: empty while another application covers it, part of
+it while a popup or the task list does. The abort that brings the window
+back is the same mechanism in reverse: the region changes
+(`CWsWindow::PossibleVisibilityChangedEvent` -> `IsAbortRequired`,
+WINDOW.CPP), the session is aborted and restarted, and the new region is
+the whole window again. So a client must clip every write to
+`DrawingRegion()` and draw nothing for an empty one; a client that draws
+the whole window on every restart paints over the menu the moment its
+window is sent behind it. The region is an `RRegion` in screen coordinates:
+`iCount`, `iError`, `iAllocedRects`, `iGranularity`, then the pointer to
+its `TRect`s.
 
 ## Sources
 

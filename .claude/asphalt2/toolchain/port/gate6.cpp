@@ -336,6 +336,10 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_AO_PRIO = 739,      // ... and in the queue walk, each object's priority
        NOTE_VIEWOBS = 740,      // the view-deactivation observer inside the wrapper: the search
        NOTE_DEACTIVATE = 741,   // bench knob: DeactivateActiveViewL called on the wrapper
+       NOTE_DSA_RGN = 742,      // the drawing region ws32 holds: its count, then each
+                                // rectangle's corners packed x << 16 | y
+       NOTE_DSA_BOX = 743,      // ... and its bounding box as the blit will use it,
+                                // top-left then bottom-right; 0 0 means draw nothing
        NOTE_SCREEN = 834,       // a word of the TScreenInfoV01 the game is given
        NOTE_KEY = 835,          // a key event, as it is handed to the game
        NOTE_THREAD_ARG = 840,   // one word of the create frame
@@ -1001,6 +1005,14 @@ struct Context {
     u32 *dsaReal;           // the CDirectScreenAccess ws32 made
     u32 *dsaShadow;         // and the old-layout view of it the game holds
     u32 screenLost;         // the window server has taken the screen away
+    u32 boxL, boxT, boxR, boxB; // the clip the blit and the blank keep to, in
+                            // screen pixels, half-open; see clipMode
+    u32 clipMode;           // CLIP_NONE, CLIP_ALL, CLIP_BOX or CLIP_RECTS
+    u32 rgnL, rgnT, rgnR, rgnB; // the drawing region's own bounding box
+    u32 rgnN;               // and its rectangles, clamped to the panel
+    i32 rgn[8][4];
+    u32 box0L, box0T, box0R, box0B, box0Set; // the first region's box: the
+                            // title's own window, as wserv first granted it
     u32 *realGc;            // the 9.x CFbsBitGc inside it
     u32 *fakeGc;            // and the old-vtable stand-in the game calls
     u32 newDsaStartL;       // ws32's CDirectScreenAccess::StartL, as resolved
@@ -1070,6 +1082,7 @@ struct Context {
     i32 shiftX;             // ... nudged, in framebuffer columns, by the keypad
     u16 colX[MAP_MAX];      // destination column -> framebuffer column, wrapped
     i8  rowD[MAP_MAX];      // ... and the row it carries into, -1, 0 or +1
+    u32 rowWraps;           // 1 if any entry of rowD is not 0
     u32 shots;              // frames seen, for the one-shot framebuffer dump
     u32 modeShot;           // how many modes the cycling test has captured
     u32 insetAsked;         // Avkon has been asked for the main pane once
@@ -3671,7 +3684,19 @@ extern "C" void gate6_timer_docancel(void *, u32, Context *c)
 // only exists once StartL has run, so without it the run dies writing through
 // a null at three milestones. If the window server's abort timeout turns out
 // to be the reboot, this needs the context standing in as well.
-enum { HOLD_THE_SCREEN = 1, RELEASE_THE_SCREEN = 1 };
+// **Held, since build 021.** The release was a guess from round 60 that the
+// window server's abort timeout was rebooting the phone during the game's
+// ten-second boot; wserv's own source (Direct.CPP, `AbortNow`) waits 0.4 s
+// for the client's acknowledgement and then simply proceeds with `Abort()`
+// -- no reboot was ever in it. What the release cost is the residual frame
+// every player saw on minimising: a client that holds its DSA is aborted
+// when the screen changes hands, and wserv then schedules a region update
+// over the region it froze for that client (`CancelFrozenRegion` ->
+// `ScheduleRegionUpdate`), which is the repaint that erases what the client
+// drew. A client that cancelled on the first frame is not aborted, nothing
+// is frozen, nothing is repainted, and the frame buffer keeps the last
+// frame the port wrote behind wserv's back.
+enum { HOLD_THE_SCREEN = 1, RELEASE_THE_SCREEN = 0 };
 
 static void dsa_refresh(Context *c);
 static void sched_dump(Context *c, u32 why);
@@ -3960,6 +3985,14 @@ extern "C" void *gate6_ctimer_ctor(u32 *oldSelf, int priority, Context *c)
 
 // ---- direct screen access --------------------------------------------------
 
+// The layouts dsa_box and the shadow need; commented where they used to sit.
+enum { OLD_DSA_ACTIVE = 8, OLD_DSA_GC = 0x18, OLD_DSA_DEVICE = 0x1c,
+       OLD_DSA_REGION = 0x20, OLD_DSA_BYTES = 0x28 };
+enum { NEW_DSA_GC = 0x1c, NEW_DSA_DEVICE = 0x20, NEW_DSA_REGION = 0x24 };
+enum { RGN_COUNT = 0, RGN_ERROR = 1, RGN_ALLOCED = 2, RGN_GRAN = 3,
+       RGN_LIST = 4, RGN_GRAN_DEFAULT = 5 };
+enum { RGN_WORDS = 10, RGN_RECT_LIST = 4 };
+
 // **AbortNow and Restart, and why the game does not survive them on its own.**
 //
 // The window server takes direct screen access away whenever something else
@@ -3996,6 +4029,17 @@ extern "C" void gate6_dsa_slot1(void *, u32 reason, Context *c)
     // game does not, and only then start drawing again. Whatever the
     // screen's shape was, the phone's own UI has been over it, so the next
     // frame blanks what the blit does not cover.
+    //
+    // And if the game's Restart did not start it again, start it here: a
+    // restart that is not followed by StartL leaves the object inactive and
+    // its region as it was before the abort, and drawing on that region is
+    // the residual frame all over again. ws32's own RunL has just acknowledged
+    // the abort, so a new request is in order.
+    if (c->dsaReal && c->newDsaStartL && !(c->dsaReal[OLD_DSA_ACTIVE / 4] & 1)) {
+        typedef void (*StartL)(void *);
+        log_event(c, NOTE_DSA_RESTART, 0x57A7);
+        ((StartL)c->newDsaStartL)(c->dsaReal);
+    }
     dsa_refresh(c);
     c->clearPending = 1;
     c->screenLost = 0;
@@ -4014,9 +4058,135 @@ extern "C" void gate6_dsa_slot1(void *, u32 reason, Context *c)
 // instead. So the game gets a shadow with the old layout, filled from the real
 // object and refreshed every frame from RunL, and the two calls it makes on it
 // -- StartL and CActive::Cancel -- are turned back.
-enum { OLD_DSA_ACTIVE = 8, OLD_DSA_GC = 0x18, OLD_DSA_DEVICE = 0x1c,
-       OLD_DSA_REGION = 0x20, OLD_DSA_BYTES = 0x28 };
-enum { NEW_DSA_GC = 0x1c, NEW_DSA_DEVICE = 0x20, NEW_DSA_REGION = 0x24 };
+// (the OLD_DSA_* / NEW_DSA_* offsets are declared above dsa_box, which needs them first)
+
+// **Direct screen access is a licence for a region, not for the screen.**
+//
+// ws32 hands the client the region of its window the window server can see
+// (`RDirectScreenAccess::Request`, in screen coordinates) and the client may
+// write to the frame buffer inside it and nowhere else. The port wrote the
+// whole picture regardless, which was invisible while the window was the
+// only one on the screen and is the residual frame once it is not: a
+// window sent behind the menu is aborted (`CWsWindow::PossibleVisibilityChangedEvent`
+// -> `IsAbortRequired`, WINDOW.CPP) and its region repainted, and ws32's
+// `CDirectScreenAccess::RunL` then restarts the client from a `CIdle` --
+// with the region it has *now*, which is empty while the window is hidden
+// and a part of it while something smaller is over it. Draw outside that
+// and the picture is back on top of whatever the server just painted.
+//
+// So the region is read on every refresh and the blit and the blank keep
+// to it, in one of four ways (`clipMode`):
+//
+//   CLIP_NONE   the region is empty: the window is behind something that
+//               covers it, and nothing at all is written;
+//   CLIP_ALL    the region is one rectangle and the same box the title was
+//               first granted -- its own window, in front: the picture is
+//               drawn exactly as every build before this one drew it, so a
+//               window that does not reach the top of the panel (Asphalt 2's
+//               posts `(0,58)`-`(240,320)` on the N95, round 88) keeps the
+//               band the port has always painted over it. Whether that band
+//               is the window's or not is what the region records answer;
+//   CLIP_BOX    one rectangle smaller than that first box: a strip of the
+//               window shows, and only it is written;
+//   CLIP_RECTS  several rectangles -- a popup over the middle of the
+//               window -- and each pixel is tested against them.
+//
+// The region is `TRegion` -- iCount, iError, iAllocedRects -- then
+// RRegion's iGranularity and the pointer to its rectangles, as E247 read
+// it back (see region_log). Any change is logged, so the phone's own answer
+// to "what does the game's window cover" is in the next log.
+enum { RGN_KEEP = 8, CLIP_NONE = 0, CLIP_ALL = 1, CLIP_BOX = 2, CLIP_RECTS = 3 };
+
+static void dsa_box(Context *c)
+{
+    const u32 *real = c->dsaReal;
+    const u32 *rgn = (const u32 *)real[NEW_DSA_REGION / 4];
+    u32 l = 0, t = 0, r = 0, b = 0, n = 0, m = 0;
+    const i32 *rect = 0;
+    i32 kept[RGN_KEEP][4];
+    if (rgn && !((u32)rgn & 3) && (u32)rgn >= 0x400000) {
+        n = rgn[RGN_COUNT];
+        rect = (const i32 *)rgn[RGN_RECT_LIST];
+        if (n > 64 || !rect || ((u32)rect & 3) || (u32)rect < 0x400000)
+            n = 0;
+    }
+    for (u32 i = 0; i < n; i++) {
+        const i32 *q = rect + i * 4;
+        i32 x0 = q[0], y0 = q[1], x1 = q[2], y1 = q[3];
+        if (x0 < 0) x0 = 0;
+        if (y0 < 0) y0 = 0;
+        if (x1 > (i32)c->bufW) x1 = (i32)c->bufW;
+        if (y1 > (i32)c->bufH) y1 = (i32)c->bufH;
+        if (x1 <= x0 || y1 <= y0)
+            continue;
+        if (m < (u32)RGN_KEEP) {
+            kept[m][0] = x0; kept[m][1] = y0; kept[m][2] = x1; kept[m][3] = y1;
+        }
+        m++;
+        if (r <= l || b <= t) {
+            l = (u32)x0; t = (u32)y0; r = (u32)x1; b = (u32)y1;
+        } else {
+            if ((u32)x0 < l) l = (u32)x0;
+            if ((u32)y0 < t) t = (u32)y0;
+            if ((u32)x1 > r) r = (u32)x1;
+            if ((u32)y1 > b) b = (u32)y1;
+        }
+    }
+    if (l == c->rgnL && t == c->rgnT && r == c->rgnR && b == c->rgnB && m == c->rgnN) {
+        u32 same = 1;
+        for (u32 i = 0; same && i < m && i < (u32)RGN_KEEP; i++)
+            for (u32 k = 0; k < 4; k++)
+                if (c->rgn[i][k] != kept[i][k])
+                    same = 0;
+        if (same)
+            return;
+    }
+    c->rgnL = l; c->rgnT = t; c->rgnR = r; c->rgnB = b;
+    c->rgnN = m;
+    for (u32 i = 0; i < m && i < (u32)RGN_KEEP; i++)
+        for (u32 k = 0; k < 4; k++)
+            c->rgn[i][k] = kept[i][k];
+
+    u32 mode;
+    if (r <= l || b <= t) {
+        mode = CLIP_NONE;
+        c->boxL = c->boxT = c->boxR = c->boxB = 0;
+    } else {
+        if (!c->box0Set) {
+            c->box0L = l; c->box0T = t; c->box0R = r; c->box0B = b;
+            c->box0Set = 1;
+        }
+        if (m == 1 && l == c->box0L && t == c->box0T && r == c->box0R && b == c->box0B) {
+            mode = CLIP_ALL;
+            c->boxL = 0; c->boxT = 0; c->boxR = c->bufW; c->boxB = c->bufH;
+        } else {
+            mode = (m == 1 || m > (u32)RGN_KEEP) ? CLIP_BOX : CLIP_RECTS;
+            c->boxL = l; c->boxT = t; c->boxR = r; c->boxB = b;
+        }
+    }
+    c->clipMode = mode;
+    log_event(c, NOTE_DSA_RGN, n);
+    for (u32 i = 0; i < n && i < 4u; i++) {
+        const i32 *q = rect + i * 4;
+        log_event(c, NOTE_DSA_RGN, ((u32)q[0] << 16) | ((u32)q[1] & 0xFFFF));
+        log_event(c, NOTE_DSA_RGN, ((u32)q[2] << 16) | ((u32)q[3] & 0xFFFF));
+    }
+    log_event(c, NOTE_DSA_BOX, (c->boxL << 16) | c->boxT);
+    log_event(c, NOTE_DSA_BOX, (c->boxR << 16) | c->boxB);
+    log_event(c, NOTE_DSA_BOX, mode);
+    log_block(c);
+}
+
+// One pixel against the kept rectangles, for CLIP_RECTS only.
+static int in_rects(const Context *c, u32 x, u32 y)
+{
+    for (u32 i = 0; i < c->rgnN && i < (u32)RGN_KEEP; i++) {
+        const i32 *q = c->rgn[i];
+        if ((i32)x >= q[0] && (i32)x < q[2] && (i32)y >= q[1] && (i32)y < q[3])
+            return 1;
+    }
+    return 0;
+}
 
 static void dsa_refresh(Context *c)
 {
@@ -4024,6 +4194,7 @@ static void dsa_refresh(Context *c)
         return;
     const u32 *real = c->dsaReal;
     u32 *shadow = c->dsaShadow;
+    dsa_box(c);
     shadow[ACTIVE_STATUS / 4] = real[ACTIVE_STATUS / 4];
     // The game reads this before it will do anything, so when the real screen
     // is not being held it has to be told otherwise -- without it the run stops
@@ -4386,8 +4557,7 @@ enum { POST_FULL_REGION = 1, LOG_POSTED_REGION = 1, REGION_LOGS = 2 };
 // iCount, iError, iAllocedRects, iGranularity, iRectangleList -- and 5 is
 // RRegion's own documented default granularity, which is what the game's
 // region carries.
-enum { RGN_COUNT = 0, RGN_ERROR = 1, RGN_ALLOCED = 2, RGN_GRAN = 3,
-       RGN_LIST = 4, RGN_GRAN_DEFAULT = 5 };
+// (RGN_* declared above dsa_box)
 
 // TRegion is three words -- { TInt iCount; TBool iError; TInt iAllocedRects; }
 // -- and where its rectangles live depends on one flag in the third: set
@@ -4400,7 +4570,7 @@ enum { RGN_COUNT = 0, RGN_ERROR = 1, RGN_ALLOCED = 2, RGN_GRAN = 3,
 // reported a corner at x=30536. **The instrument was the finding, for the
 // sixth time this project.** So nothing is decoded on the phone now: ten raw
 // words go down and the host works out which reading fits.
-enum { RGN_WORDS = 10, RGN_RECT_LIST = 4 };
+// (RGN_WORDS / RGN_RECT_LIST declared above dsa_box)
 
 static void region_log(Context *c, const void *region)
 {
@@ -5934,6 +6104,14 @@ static void column_map(Context *c)
     // the line is wider -- which is every real phone and no emulator.
     screen_columns(c->screenW, c->dstW, c->offX, c->shiftX,
                    c->colX, c->rowD, (u32)MAP_MAX);
+    // Whether any column carries into another row at all, so the blit can
+    // skip a row outside the region's box without looking at each pixel.
+    c->rowWraps = 0;
+    for (u32 x = 0; x < c->dstW && x < (u32)MAP_MAX; x++)
+        if (c->rowD[x]) {
+            c->rowWraps = 1;
+            break;
+        }
 }
 
 extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
@@ -6163,6 +6341,10 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
     // is not seen -- which is what backgrounding is supposed to look like.
     if (c->screenLost)
         return;
+    // Nor outside the region the window server granted -- and an empty one,
+    // which is what a window behind the menu is given, means not at all.
+    if (c->clipMode == CLIP_NONE)
+        return;
     // One frame of the game's own buffer, raw, so the stride can be measured
     // rather than guessed. Text is clipped at the right edge and neither the
     // reported screen size nor the blit explains it, so the question is what
@@ -6220,20 +6402,44 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
         // *visible* pixel: 1280 bytes a line and 240 pixels of it in use
         // means the pad after row 319 need not exist. So full rows up to the
         // last one, and only the visible part of that.
+        // And only inside the region's box: the rest of the buffer is the
+        // window server's, and what it has there is not ours to blank.
         const u32 fill = (c->realBpp == 32) ? 0xFF000000u : 0u;
         const u32 words = c->realPitch >> 2;
         const u32 last = (c->bufW * (c->realBpp >> 3)) >> 2;
-        for (u32 y = 0; y < c->bufH; y++) {
-            u32 *row = (u32 *)(c->realScreen + y * c->realPitch);
-            const u32 n = (y + 1 == c->bufH) ? last : words;
-            for (u32 x = 0; x < n; x++)
-                row[x] = fill;
+        const u32 nrect = (c->clipMode == CLIP_RECTS) ? c->rgnN : 1u;
+        for (u32 i = 0; i < nrect && i < (u32)RGN_KEEP; i++) {
+            u32 l = c->boxL, t = c->boxT, r = c->boxR, b = c->boxB;
+            if (c->clipMode == CLIP_RECTS) {
+                l = (u32)c->rgn[i][0]; t = (u32)c->rgn[i][1];
+                r = (u32)c->rgn[i][2]; b = (u32)c->rgn[i][3];
+            }
+            const u32 w0 = (l * (c->realBpp >> 3)) >> 2;
+            // A box reaching the right edge takes the pad with it, as the
+            // whole-buffer blank always did.
+            const u32 w1 = (r >= c->bufW) ? words : ((r * (c->realBpp >> 3) + 3u) >> 2);
+            for (u32 y = t; y < b && y < c->bufH; y++) {
+                u32 *row = (u32 *)(c->realScreen + y * c->realPitch);
+                u32 n = (y + 1 == c->bufH) ? last : words;
+                if (n > w1)
+                    n = w1;
+                for (u32 x = w0; x < n; x++)
+                    row[x] = fill;
+            }
         }
         c->clearPending = 0;
     }
     if (c->gameScreen && c->realScreen) {
         const u16 *src = c->gameScreen;
+        const u32 mode = c->clipMode;
+        const u32 boxL = c->boxL, boxW = c->boxR - c->boxL;
+        const u32 boxT = c->boxT, boxH = c->boxB - c->boxT;
         for (u32 y = 0; y < c->dstH; y++) {
+            // A row outside the box has nothing to draw unless a column of
+            // it wraps into a row that is inside; those are tested below.
+            const u32 rowIn = (mode == CLIP_ALL) || ((y + c->offY) - boxT) < boxH;
+            if (!rowIn && !c->rowWraps)
+                continue;
             u8 *row = c->realScreen + (y + c->offY) * c->realPitch;
             const u16 *srow = src + c->srcOrigin + (u32)c->mapY[y] * (u32)c->srcPitch;
             for (u32 x = 0; x < c->dstW; x++) {
@@ -6259,14 +6465,25 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
                 // The carried row wraps inside the picture, so the pixels
                 // that leave one end arrive at the other and nothing is
                 // left unwritten. See screen_row in screen_fit.h.
+                // Not a pixel outside the region's box: one unsigned
+                // compare a column, and one a row only where the column
+                // wrapped into another row (the row itself was tested once
+                // above).
+                if (mode != CLIP_ALL && col - boxL >= boxW)
+                    continue;
                 const i32 dy = c->rowD[x];
                 u8 *drow = row;
+                u32 ry = y + c->offY;
                 if (dy) {
-                    const u32 ry = screen_row(y, dy, c->dstH) + c->offY;
-                    if (ry >= c->bufH)
+                    ry = screen_row(y, dy, c->dstH) + c->offY;
+                    if (ry >= c->bufH || (mode != CLIP_ALL && ry - boxT >= boxH))
                         continue;
                     drow = c->realScreen + ry * c->realPitch;
+                } else if (!rowIn) {
+                    continue;
                 }
+                if (mode == CLIP_RECTS && !in_rects(c, col, ry))
+                    continue;
                 if (c->realBpp == 16) {
                     ((u16 *)drow)[col] =
                         (u16)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
