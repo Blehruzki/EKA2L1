@@ -325,6 +325,13 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FAULT_PC_REL = 728, // pc as an offset into the game's image, when it is in it
        NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
        NOTE_EXC_INSTALL = 730,  // what User::SetExceptionHandler answered
+       NOTE_AO_WHY = 731,       // a walk of the active scheduler's queue: what prompted it
+       NOTE_AO = 732,           // one active object in it
+       NOTE_AO_VPTR = 733,      // ... its vtable pointer, which names the DLL it belongs to
+       NOTE_AO_RUNL = 734,      // ... slot 4 of that vtable: where its RunL would go
+       NOTE_AO_STATUS = 735,    // ... iStatus
+       NOTE_AO_FLAGS = 736,     // ... iFlags: 1 active, 2 pending
+       NOTE_AO_END = 737,       // how many, or 0xBAD0 no scheduler / 0xBAD1 wrong layout
        NOTE_SCREEN = 834,       // a word of the TScreenInfoV01 the game is given
        NOTE_KEY = 835,          // a key event, as it is handed to the game
        NOTE_THREAD_ARG = 840,   // one word of the create frame
@@ -592,6 +599,7 @@ void coeappui_ctor(void *self);                       // CCoeAppUi::CCoeAppUi()
 void eikappui_ctor(void *self);                       // CEikAppUi::CEikAppUi()
 void eikappui_baseconstructl(void *self, int flags);  // CEikAppUi::BaseConstructL(TInt)
 void *coeenv_static(void);                            // CCoeEnv::Static()
+void *cactivescheduler_current(void);                 // CActiveScheduler::Current()
 i32 user_setexceptionhandler(void *handler, u32 mask); // User::SetExceptionHandler
 void *coecontrol_ctor(void *self);                    // CCoeControl::CCoeControl()
 void coecontrol_createwindowl(void *self);            // CCoeControl::CreateWindowL()
@@ -1466,6 +1474,8 @@ static void box_flush(Context *c);
 enum { FRAME_TYPE = 0, FRAME_CODE = 1, FRAME_ADDR = 2, FRAME_STATUS = 3, FRAME_CPSR = 4,
        FRAME_R0 = 5, FRAME_SP = 18, FRAME_LR = 19, FRAME_PC = 20 };
 
+static void sched_dump(Context *c, u32 why);
+
 extern "C" void gate6_fault(Context *c, u32 arg)
 {
     c->reached |= REACHED_FAULT;
@@ -1490,6 +1500,11 @@ extern "C" void gate6_fault(Context *c, u32 arg)
     } else {
         log_event(c, NOTE_FAULT, arg);
     }
+    // The queue at the moment of the fault. If the scheduler was dispatching,
+    // the object being run is the one whose active flag it has just cleared
+    // and whose status is no longer pending -- and its RunL slot is where
+    // the pc came from.
+    sched_dump(c, 0xFA17);
     log_block(c);
     box_flush(c);
     PANIC(CAT_FLT, (int)(c->lastImport * 100 + (type & 63)));
@@ -3655,6 +3670,7 @@ extern "C" void gate6_timer_docancel(void *, u32, Context *c)
 enum { HOLD_THE_SCREEN = 1, RELEASE_THE_SCREEN = 1 };
 
 static void dsa_refresh(Context *c);
+static void sched_dump(Context *c, u32 why);
 
 // **Is it dead, or is it just not being driven?**
 //
@@ -3847,8 +3863,10 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     // completion -- so here, on the way out, is the only place on the bench
     // where the object is in the state the phone cancels it in: active, and
     // with the request already complete.
-    if (FORCE_CANCEL_AT && c->frames == (u32)FORCE_CANCEL_AT && c->oldTimer)
+    if (FORCE_CANCEL_AT && c->frames == (u32)FORCE_CANCEL_AT && c->oldTimer) {
         gate6_cancel(c->oldTimer, 0, c);
+        sched_dump(c, 0xBE4C);          // the bench's population, for comparison
+    }
     if (FORCE_BACKGROUND_AT && c->frames == (u32)FORCE_BACKGROUND_AT)
         bench_background(c);
 }
@@ -7640,6 +7658,63 @@ extern "C" void gate6_baseconstructl(void *, int flags, Context *c)
 // held before the thunks went in.
 enum { SLOT_UI_WSEVENT = 4, SLOT_UI_FOREGROUND = 8 };
 
+// **Every object the 9.x active scheduler holds, and where each one's RunL
+// would go.** Round 101 put the death one step past avkon's handling of
+// `KAknFullOrPartialForegroundLost`: euser code, at the address range the
+// N95's RHeap vtable also lives in, calling through a function pointer --
+// into cone on one title, where it faults on a null, and into the game's
+// own `User::Exit` import stub on the other. That is the shape of the active
+// scheduler dispatching a completed object through its vtable, and the
+// object is not one of ours or a slot of ours would have been entered. The
+// queue says which it is: e32base.h puts `iActiveQ` at +8 of the scheduler
+// (vptr, iStack, then the TPriQue: head next, head prev, iOffset) and
+// `CActive::iLink` at +12 after vptr, iStatus and iFlags -- so iOffset reads
+// 12, which is the check that the layout is the one being walked.
+// `CActiveScheduler::Current()` is euser def index 427, unconfirmed; a wrong
+// function fails the same check.
+enum { SCHED_QUEUE = 8, ACTIVE_LINK = 12, SCHED_WALK_MAX = 48 };
+enum { EEVENT_FOCUS_LOST = 10, EEVENT_FOCUS_GAINED = 11,
+       KAKN_FOREGROUND_LOST = 0x10281F37, KAKN_FOREGROUND_GAINED = 0x10281F36 };
+
+static int sane_ptr(u32 p)
+{
+    // Heap and chunks, then RAM-loaded code (0x70000000 on the emulator) and
+    // ROM: E341 found a vtable at 0x70115c00 and read its RunL as 0.
+    return !(p & 3) && ((p >= 0x400000 && p < 0x10000000) ||
+                        (p >= 0x70000000u && p < 0x90000000u));
+}
+
+static void sched_dump(Context *c, u32 why)
+{
+    log_event(c, NOTE_AO_WHY, why);
+    const u32 sched = (u32)cactivescheduler_current();
+    if (!sane_ptr(sched)) {
+        log_event(c, NOTE_AO_END, 0xBAD0);
+        return;
+    }
+    const u32 *q = (const u32 *)(sched + SCHED_QUEUE);
+    if (q[2] != (u32)ACTIVE_LINK) {
+        log_event(c, NOTE_AO_END, 0xBAD1);
+        return;
+    }
+    u32 n = 0;
+    for (u32 link = q[0]; link != (u32)q && n < (u32)SCHED_WALK_MAX; n++) {
+        if (!sane_ptr(link)) {
+            log_event(c, NOTE_AO_END, 0xBAD2);
+            return;
+        }
+        const u32 *o = (const u32 *)(link - ACTIVE_LINK);
+        log_event(c, NOTE_AO, (u32)o);
+        log_event(c, NOTE_AO_VPTR, o[0]);
+        log_event(c, NOTE_AO_RUNL, sane_ptr(o[0]) ? ((const u32 *)o[0])[4] : 0);
+        log_event(c, NOTE_AO_STATUS, o[ACTIVE_STATUS / 4]);
+        log_event(c, NOTE_AO_FLAGS, o[ACTIVE_ACTIVE / 4]);
+        link = ((const u32 *)link)[0];
+    }
+    log_event(c, NOTE_AO_END, n);
+    log_block(c);
+}
+
 extern "C" void gate6_ui_wsevent(void *self, const u32 *event, void *dest, Context *c)
 {
     typedef void (*WsEvent)(void *, const void *, void *);
@@ -7647,6 +7722,11 @@ extern "C" void gate6_ui_wsevent(void *self, const u32 *event, void *dest, Conte
     log_event(c, NOTE_WS_EVENT, type);
     ((WsEvent)c->realWsEvent)(self, event, dest);
     log_event(c, NOTE_WS_EVENT_DONE, type);
+    // The two events on the way to the background, and the queue after each:
+    // whatever runs next is in it now, with its request already complete.
+    if (type == (u32)EEVENT_FOCUS_LOST || type == (u32)KAKN_FOREGROUND_LOST ||
+        type == (u32)EEVENT_FOCUS_GAINED)
+        sched_dump(c, type);
 }
 
 extern "C" void gate6_ui_foreground(void *self, u32 foreground, Context *c)

@@ -159,6 +159,7 @@ old_call1:
     IMPORT user_alloclen,     660    @ User::AllocLen(TAny const*)
     IMPORT user_setexceptionhandler, 635  @ User::SetExceptionHandler(TExceptionHandler, TUint32)
     IMPORT user_exceptionhandler, 620     @ User::ExceptionHandler()
+    IMPORT cactivescheduler_current, 427  @ CActiveScheduler::Current()
     IMPORT rhandle_close,     120    @ RHandleBase::Close()
     IMPORT cperiodic_newl,   1379    @ CPeriodic::NewL(TInt)
     IMPORT cperiodic_start,  1381    @ CPeriodic::Start(...)

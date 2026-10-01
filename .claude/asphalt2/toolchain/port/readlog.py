@@ -176,7 +176,7 @@ def probes():
 # Notes whose payload is an address: the same run on two machines loads the
 # image somewhere different, so the number is worth printing and not comparing.
 ADDRESS_NOTES = {850, 851, 852, 853, 854, 855, 856, 857, 858, 859, 875, 876, 891,
-                 801, 803, 705, 722, 724, 725, 726, 727, 729}
+                 801, 803, 705, 722, 724, 725, 726, 727, 729, 732, 733, 734, 731}
 
 # 850..857 are reused: the names on the right are what gate6.cpp writes
 # there now, and the ones on the left are what the same codes meant when the
@@ -225,7 +225,9 @@ NOTES = {860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on
  720: '**** FAULT **** TExcType', 721: '   exc code (0 prefetch, 1 data abort, 2 undef)',
  722: '   fault address', 723: '   cpsr', 724: '   sp', 725: '   lr', 726: '   pc',
  727: '   r0..r12', 728: '   pc as image offset', 729: 'bench: sent to back via',
- 730: 'SetExceptionHandler answered'}
+ 730: 'SetExceptionHandler answered',
+ 731: 'ACTIVE SCHEDULER QUEUE, after event', 732: '   object', 733: '      vptr',
+ 734: '      RunL ->', 735: '      iStatus', 736: '      iFlags', 737: '   objects (or BADx)'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework
