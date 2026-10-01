@@ -79,13 +79,42 @@ namespace eka2l1 {
 
             template <typename T>
             std::basic_string<T> read_string() {
-                std::basic_string<T> str;
-                std::size_t len;
+                // The length prefix comes straight from the file and was previously trusted blindly.
+                // A real-device file (Symbian store format, e.g. the N95 MTM registry) fed an
+                // enormous bogus length into resize(), which threw an uncaught std::bad_alloc and
+                // killed the emulator. Validate it, and return an empty string on any problem.
+                constexpr std::uint64_t MAX_STRING_BYTES = 16 * 1024 * 1024;
 
-                read(&len, sizeof(len));
+                std::basic_string<T> str;
+                std::size_t len = 0;
+
+                if (read(&len, sizeof(len)) != sizeof(len)) {
+                    return str;
+                }
+
+                if (len == 0) {
+                    return str;
+                }
+
+                if (len > MAX_STRING_BYTES / sizeof(T)) {
+                    return str;
+                }
+
+                const std::uint64_t byte_count = static_cast<std::uint64_t>(len) * sizeof(T);
+
+                // left() is exact for the file/buffer streams; 0 means "end or unknown", in which
+                // case the absolute cap above and the short-read check below still protect us.
+                const std::uint64_t remaining = left();
+                if ((remaining != 0) && (byte_count > remaining)) {
+                    return str;
+                }
+
                 str.resize(len);
 
-                read(&str[0], static_cast<std::uint32_t>(len) * sizeof(T));
+                const std::uint64_t actually_read = read(&str[0], byte_count);
+                if (actually_read != byte_count) {
+                    str.resize(static_cast<std::size_t>(actually_read / sizeof(T)));
+                }
 
                 return str;
             }

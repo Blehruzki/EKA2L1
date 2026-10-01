@@ -189,6 +189,13 @@ namespace eka2l1::epoc::msv {
             std::string mtm_path;
             mtm_path = list_file_stream.read_string<char>();
 
+            if (mtm_path.empty()) {
+                // Malformed, truncated, or a foreign format (e.g. the Symbian store file from a real
+                // device backup). Never let a device's own registry take the emulator down.
+                LOG_WARN(SERVICE_MSV, "MTM registry file is malformed or in an unrecognised format, parsing stopped");
+                break;
+            }
+
             install_group(common::utf8_to_ucs2(mtm_path));
         }
     }
