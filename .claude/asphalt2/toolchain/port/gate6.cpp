@@ -332,6 +332,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_WINGC = 751,        // the window gc stand-in built: the real CWindowGc
        NOTE_PATCH = 752,        // a GAME_CODE_PATCHES word rewritten: its image offset
        NOTE_BITGC = 753,        // a bitgdi context stand-in: the real CFbsBitGc, or 0xDE1 then it on delete
+       NOTE_CHOSEN = 754,       // where the image was found: drive letter << 16 | layout << 8 | bin
+       NOTE_OPEN_RETRY = 755,   // an E: open failed on an E: install: its error, then the C: retry's
        NOTE_TRAP = 747,         // the trap bridge: 0x5E7 installed (then the original handler), 0xE11 entered (TTrap),
                                 // 0x1EA a leave (reason), 0x7E5 longjmp into (TTrap), 0xF0C the bench's forced leave
        NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
@@ -5033,7 +5035,7 @@ extern "C" u32 gate6_mmc_control(u32, u32 op, u32 *info, Context *c)
 // This is not a crack in the sense of defeating a test. It is supplying the
 // one piece of the N-Gage the port does not have: a read-only game card.
 enum { CARD_IS_READ_ONLY = 1 };
-enum { KErrAccessDenied = -21, EFileWriteMode = 0x200 };
+enum { KErrAccessDenied = -21, KErrNotReady = -18, KErrPathNotFound = -12, KErrNotFound = -1, EFileWriteMode = 0x200 };
 enum { NEW_RFILE_CREATE = 105, NEW_RFILE_REPLACE = 108 };
 
 static const u16 *name_text(const u32 *name, u32 *outLen)
@@ -5172,7 +5174,31 @@ extern "C" int gate6_card_open(void *f, void *fs, const u32 *name, u32 mode, Con
         log_block(c);
         return ((FileCall)c->realOpen)(f, fs, (const u32 *)&subst, mode);
     }
-    return ((FileCall)c->realOpen)(f, fs, name, mode);
+    const int err = ((FileCall)c->realOpen)(f, fs, name, mode);
+    // Round 109: on an E: install the game's `E:` names go to E: as they are,
+    // and a C5-00's pack opens came back -18, KErrNotReady, from a drive the
+    // loader had read the image off ten seconds earlier. The image probe
+    // already walks the drives; a data open that fails on E: gets the same
+    // second chance on C:, which is also where a leftover hand-copied dump on
+    // the card leaves a SIS-installed pack. Logged either way, so the phone
+    // says which drive answered.
+    if (err != 0 && (err == KErrNotReady || err == KErrNotFound || err == KErrPathNotFound) &&
+        c->dataDrive == 'E' && name) {
+        u32 len = 0;
+        const u16 *text = name_text(name, &len);
+        if (text && len && len <= 270 && (text[0] == 'e' || text[0] == 'E') && text[1] == ':') {
+            for (u32 i = 0; i < len; i++)
+                c->swapText[i] = text[i];
+            c->swapText[0] = 'C';
+            c->swapDes[0] = ((u32)EPtrC << KTypeShift) | len;
+            c->swapDes[1] = (u32)c->swapText;
+            const int again = ((FileCall)c->realOpen)(f, fs, c->swapDes, mode);
+            log_event(c, NOTE_OPEN_RETRY, (u32)err);
+            log_event(c, NOTE_OPEN_RETRY, (u32)again);
+            return again;
+        }
+    }
+    return err;
 }
 
 extern "C" int gate6_card_create(void *f, void *fs, const u32 *name, u32 mode, Context *c)
@@ -9084,6 +9110,10 @@ static u32 load_and_start()
             // -- round 71 lost a round to exactly that -- and until now the
             // only way to tell was to recognise the record format.
             log_event(ctx, NOTE_BUILD, (u32)GAME_BUILD);
+            // Round 109: a C5-00's pack opens answered KErrNotReady and the
+            // log could not say which drive the loader had chosen.
+            log_event(ctx, NOTE_CHOSEN, ((u32)chosenDrive << 16) |
+                                        ((u32)chosenLayout << 8) | (u32)chosenBin);
 
             // The tick goes in the log, not only in the box. The launch that
             // dies before writing a box carries no tick at all otherwise, and

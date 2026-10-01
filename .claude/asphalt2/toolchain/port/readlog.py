@@ -188,6 +188,8 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          751: 'WINDOW GC stand-in built over the real CWindowGc at',
          752: 'CODE PATCH applied at image offset',
          753: 'BITGDI CONTEXT stand-in: real CFbsBitGc (0xDE1 then it: deleted)',
+         754: 'IMAGE FOUND: drive<<16 | layout<<8 | bin',
+         755: 'OPEN RETRY on C: after an E: failure: the error, then the retry',
          860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on / SOUND',
          852: 'image loaded at / sound msg', 853: 'chunk ends at / MDA CALL',
          854: 'APP UI VPTR CHANGED to / MDA arg', 855: 'decrypted literal / MDA vtable',
@@ -332,6 +334,10 @@ def main():
             # two UTF-16 characters to a record, low half first
             shown = ''.join(chr(h) if 32 <= h < 127 else '.'
                             for h in (frm & 0xFFFF, frm >> 16))
+        elif code == 706:
+            shown = '%d (0x%x)' % (frm, frm)        # the build number, in decimal: 0x19 is 25
+        elif code == 754:
+            shown = '%s: layout %d %s' % (chr(frm >> 16), (frm >> 8) & 0xFF, '.bin' if frm & 0xFF else '.app')
         else:
             shown = '%x' % frm
         print('%6d  %-44s from %s' % (i, label(code, imports, marks), shown))

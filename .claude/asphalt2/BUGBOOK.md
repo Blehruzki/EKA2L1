@@ -67,6 +67,28 @@ head of every log, and the code size printed by the build as a checksum.
 one is 0 in a shipped build, and a regression run on the exact shipping
 binary precedes every release (`E348`, `E353`, `E354`).
 
+### 1.x The gc thunk indexed the object, not its vtable (E370)
+
+**Symptom.** Ashen's first call through the window gc stand-in jumped to 0:
+`KERN-EXEC 3` at pc 0, r0 = r12 = the real gc.
+
+**Cause.** `gc_thunk` was `ldr r0,[cell]; ldr ip,[cell]; ldr pc,[ip,#slot*4]`
+-- the real object in both registers, the slot read off the object. It had
+never executed: the direct-screen stand-in's one exercised entry, BitBlt, is
+the port's own blit, so a hundred Asphalt rounds never ran a thunk.
+
+**Fix.** `ldr ip,[r0]` for the vptr. Both Asphalts regressed clean (E375,
+E377).
+
+### 1.y A hex build number read as decimal (round 109)
+
+**Symptom.** A C5-00 report was written up as "build 019" and the user was
+on 025. readlog printed every value in hex and `BUILD 19` is 0x19.
+
+**Fix.** readlog prints the build as `25 (0x19)`. The lesson is the one the
+instrument chapter already carries: an instrument's output format is part of
+its contract, and a number without its base is a guess.
+
 ## 2. Loading the N-Gage image
 
 **The entry point is an offset, entered in ARM mode with `lr = 0`.**
