@@ -334,6 +334,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_BITGC = 753,        // a bitgdi context stand-in: the real CFbsBitGc, or 0xDE1 then it on delete
        NOTE_CHOSEN = 754,       // where the image was found: drive letter << 16 | layout << 8 | bin
        NOTE_OPEN_RETRY = 755,   // an E: open failed on an E: install: its error, then the C: retry's
+       NOTE_CLEANUP = 756,      // a CTrapCleanup stand-in: the real object, or 0xDE1 then it on delete
        NOTE_TRAP = 747,         // the trap bridge: 0x5E7 installed (then the original handler), 0xE11 entered (TTrap),
                                 // 0x1EA a leave (reason), 0x7E5 longjmp into (TTrap), 0xF0C the bench's forced leave
        NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
@@ -1055,6 +1056,8 @@ struct Context {
     u32 *realWinGc;         // the environment's 9.x CWindowGc (SystemGc)
     u32 realCreateContext;  // bitgdi's CFbsDevice::CreateContext, before our hook
     u32 *bitGcVt;           // the old-shaped CFbsBitGc vtable every stand-in shares
+    u32 realCleanupNew;     // euser's CTrapCleanup::New, before our hook
+    u32 *cleanupVt;         // the three-word vtable its stand-ins share: delete, any way in
     u32 *fakeWinGc;         // and the old-vtable stand-in the game draws with
     u32 newDsaStartL;       // ws32's CDirectScreenAccess::StartL, as resolved
     u32 *oldUi;             // the game's CEikAppUi, old layout
@@ -7083,7 +7086,7 @@ static u32 objgc_thunk(u8 *code, u32 slot)
     user_imb_range(b, b + 3);
     return (u32)b;
 }
-enum { OBJGC_THUNK_BYTES = 12, BITGC_STANDIN_WORDS = 3 };
+enum { OBJGC_THUNK_BYTES = 12, BITGC_STANDIN_WORDS = 4 };   // vt, real, context, note code
 
 extern "C" void gate6_bitgc_delete(u32 *standin)
 {
@@ -7091,8 +7094,8 @@ extern "C" void gate6_bitgc_delete(u32 *standin)
     u32 *real = (u32 *)standin[1];
     Context *c = (Context *)standin[2];
     if (c) {
-        log_event(c, NOTE_BITGC, 0xDE1);
-        log_event(c, NOTE_BITGC, (u32)real);
+        log_event(c, standin[3], 0xDE1);
+        log_event(c, standin[3], (u32)real);
     }
     standin[1] = 0;
     if (real && !((u32)real & 3) && real[0])
@@ -7120,7 +7123,37 @@ static u32 *bitgc_standin(Context *c, u32 *real)
     obj[0] = (u32)c->bitGcVt;
     obj[1] = (u32)real;
     obj[2] = (u32)c;
+    obj[3] = NOTE_BITGC;
     log_event(c, NOTE_BITGC, (u32)real);
+    return obj;
+}
+
+// **CTrapCleanup, deletable the old way.** E381: a worker thread of Ashen's
+// ends with `delete cleanup` on the object `CTrapCleanup::New()` gave it --
+// vtable word 2, r1 = 3, the GCC98r2 deleting destructor -- and word 2 of
+// the 9.x object's vtable is `CBase::Extension_`, which wrote its null
+// result through r2 and killed the thread. Nothing else is ever called on
+// a CTrapCleanup, so the stand-in's table is three words of the delete
+// above: EABI slots 0 and 1 for a 9.x caller, old slot 0 for the game.
+extern "C" void *gate6_cleanup_new(u32, u32, Context *c)
+{
+    typedef void *(*Fn)(void);
+    u32 *real = (u32 *)((Fn)c->realCleanupNew)();
+    if (!real)
+        return 0;
+    if (!c->cleanupVt) {
+        u32 *vt = (u32 *)user_allocz(3 * 4);
+        if (!vt) PANIC(CAT_MEM, -42);
+        vt[0] = vt[1] = vt[2] = (u32)&gate6_bitgc_delete;
+        c->cleanupVt = vt;
+    }
+    u32 *obj = (u32 *)user_allocz(BITGC_STANDIN_WORDS * 4);
+    if (!obj) PANIC(CAT_MEM, -43);
+    obj[0] = (u32)c->cleanupVt;
+    obj[1] = (u32)real;
+    obj[2] = (u32)c;
+    obj[3] = NOTE_CLEANUP;
+    log_event(c, NOTE_CLEANUP, (u32)real);
     return obj;
 }
 
@@ -9521,6 +9554,12 @@ static u32 load_and_start()
         ctx->realCreateContext = iat[IMPORT_CREATE_CONTEXT];
         iat[IMPORT_CREATE_CONTEXT] = ctx_thunk(stub + SLOT * IMPORT_CREATE_CONTEXT,
                                                ctx, (u32)&gate6_create_context);
+    }
+    if (nImports > IMPORT_CLEANUP_NEW && IMPORT_CLEANUP_NEW < kShimCount &&
+        (kShimTable[IMPORT_CLEANUP_NEW] >> 24) == KIND_CALL) {
+        ctx->realCleanupNew = iat[IMPORT_CLEANUP_NEW];
+        iat[IMPORT_CLEANUP_NEW] = ctx_thunk(stub + SLOT * IMPORT_CLEANUP_NEW,
+                                            ctx, (u32)&gate6_cleanup_new);
     }
     // After the diversions: this replaces the one on ApplicationRect's `this`.
     if (GAME_CONTROL_W && GAME_CONTROL_H && nImports > IMPORT_APP_RECT)

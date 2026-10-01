@@ -20,6 +20,7 @@ enum {
     IMPORT_APP_RECT                    =   160,
     IMPORT_BASECONSTRUCTL              =     5,
     IMPORT_CANCEL                      =   253,
+    IMPORT_CLEANUP_NEW                 =   290,
     IMPORT_COECONTROL_CTOR             =    82,
     IMPORT_COEENV_STATIC               =    79,
     IMPORT_CREATEWINDOWL               =    51,
