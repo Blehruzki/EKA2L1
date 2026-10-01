@@ -133,8 +133,10 @@ enum { GAME_SRC_ORIGIN = 16 };
 
 // Packaging. GAME_BUNDLE_DATA puts the game's own files in the SIS beside
 // the loader; without it the installer carries the loader alone and the
-// data is copied to the phone by hand, which is what a 9 MB card dump and
-// a signing limit make the sensible shape for this title.
+// data is copied to the phone by hand. Loader-only through build 021;
+// bundled from build 022, the same shape as Asphalt 2's package, now that
+// the port is finished and the 20 MB Asphalt 2 installer has shown the
+// size is no obstacle.
 // **Off, and gone for good.** The knob existed to find the horizontal
 // offset by hand, and round 97 found it properly instead: the offset was
 // GAME_SRC_ORIGIN, 16, the same constant Asphalt 2 has always had. The
@@ -149,12 +151,12 @@ enum { GAME_SRC_ORIGIN = 16 };
 // than one reading at each end of it. Off again once it has.
 #define GAME_LOG_CLOCK 1
 
-#define GAME_BUNDLE_DATA 0
+#define GAME_BUNDLE_DATA 1
 #define GAME_VENDOR      "DeltaCharlie"
 // No backslashes and no apostrophes in the text: it lives in a C header
 // and is read out of it by a packager that does not run a C compiler, so
 // an escape here would reach the phone as an escape.
-#define GAME_INSTALL_TEXT "Asphalt Urban GT N-Gage version, ported to S60v3 by DeltaCharlie. Copy the game files into system/apps/6r67 on the same drive first."
+#define GAME_INSTALL_TEXT "Asphalt Urban GT N-Gage version, ported to S60v3 by DeltaCharlie."
 
 // The name every installed file carries. It has to differ from every
 // other title's: Symbian will not let one package write a file another
@@ -168,6 +170,6 @@ enum { GAME_SRC_ORIGIN = 16 };
 // was last overwritten -- round 71 read two build-139 logs as build 141's
 // and spent the round on it. Bump this with every package that goes to the
 // phone; `rules.py` checks it against the newest package in build/.
-#define GAME_BUILD 21
+#define GAME_BUILD 22
 
 #endif

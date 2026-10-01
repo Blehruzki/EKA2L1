@@ -2,6 +2,9 @@
 # from the tree on disk by toolchain/port/build_release.py and handed to the
 # user directly; it is not something to push to a remote.
 build/Asphalt2-S60v3-*.sis
+# And Asphalt Urban GT's, from build 022 on: it carries the game's data too.
+build/AsphaltUrbanGT-S60v3-build02[2-9].sis
+build/AsphaltUrbanGT-S60v3-build0[3-9]?.sis
 
 # What build_release.py leaves in build/ beside the package: object files, the
 # linked images at both load addresses, and the resources the packager folds
