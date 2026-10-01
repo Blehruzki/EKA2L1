@@ -1,0 +1,503 @@
+reference: 477 (library, ordinal) pairs in the two Asphalt ports
+== Asphalt_Urban_GT_v1_3_4: 2 images (1 app, 1 shipped dll of which 1 stubbed as N-Gage-only), 391 distinct imports, 374 of them platform
+   the .app alone: 374 platform imports, 27 of them on the bill; the 0 carried DLLs add the rest
+   def 76  epoc6= 34  epoc6~ 179  answered 58  no-9.x 21  unnamed 6  shipped 17
+   shared with the Asphalt ports: 374 of 374 platform imports; new to this title: 0
+   of the new ones: 
+   THE BILL (no table answers it, the shim generator has none yet): 27 imports, 0 of them not in the Asphalt ports
+   library                     imps   def epoc6= epoc6~  answ beyond  no-9.x absent  old side
+   apparc                         5     0      0      5     0      0       0      0  rh-29 110 / epoc6 109 / rm-409 333
+   avkon                         36     0      0     27     3      0       6      0  rh-29 2274 / epoc6 2727 / rm-409 4418
+   bitgdi                         3     0      0      3     0      0       0      0  rh-29 171 / epoc6 161 / rm-409 273
+   bluetooth                      1     0      0      0     0      0       1      0  rh-29 26 / epoc6 23 / rm-409 311
+   cone                          47     0      0     42     3      0       0      0  rh-29 318 / epoc6 309 / rm-409 729
+   efsrv                         15     0      0     14     1      0       0      0  rh-29 232 / epoc6 230 / rm-409 351
+   eikcoctl                       2     0      0      2     0      0       0      0  rh-29 1219 / epoc6 1104 / rm-409 1952
+   eikcore                       55     0      0     43     4      0       7      0  rh-29 290 / epoc6 278 / rm-409 590
+   eikdlg                        31     0      0     25     0      0       3      0  rh-29 229 / epoc6 150 / rm-409 296
+   esock                          7     0      7      0     0      0       0      0  rh-29 240 / epoc6 240 / rm-409 359
+   estlib                        28     0     26      0     1      0       1      0  rh-29 347 / epoc6 347 / rm-409 394
+   etel                          15     0      0     15     0      0       0      0  rh-29 228 / epoc6 227 / rm-409 382
+   euser                        118    76      0      0    40      0       2      0  rh-29 1679 / epoc6 1646 / rm-409 2229
+   ezlib                          1     0      0      0     1      0       0      0  rh-29 67 / epoc6 67 / rm-409 86
+   fbscli                         3     0      0      3     0      0       0      0  rh-29 156 / epoc6 145 / rm-409 250
+   hal                            1     0      1      0     0      0       0      0  rh-29 3 / epoc6 3 / rm-409 5
+   mediaclientaudiostream         1     0      0      0     0      0       1      0  rh-29 2 / epoc6 8 / rm-409 17
+   msgs                           2     0      0      0     2      0       0      0  rh-29 373 / epoc6 373 / rm-409 936
+   nokiafc                        1     0      0      0     1      0       0      0  rh-29 1 / epoc6 -- / rm-409 None
+   ws32                           2     0      0      0     2      0       0      0  rh-29 357 / epoc6 343 / rm-409 580
+
+== 95992227_Asphalt_Urban_GT_2: 5 images (1 app, 4 shipped dll of which 3 stubbed as N-Gage-only), 482 distinct imports, 452 of them platform
+   the .app alone: 41 platform imports, 8 of them on the bill; the 1 carried DLLs add the rest
+   def 126  epoc6= 42  epoc6~ 190  answered 59  no-9.x 29  unnamed 6  shipped 30
+   shared with the Asphalt ports: 432 of 452 platform imports; new to this title: 20
+   of the new ones: def 7  epoc6= 1  epoc6~ 4  no-9.x 8
+   THE BILL (no table answers it, the shim generator has none yet): 35 imports, 8 of them not in the Asphalt ports
+   library                     imps   def epoc6= epoc6~  answ beyond  no-9.x absent  old side
+   apparc                         5     0      0      5     0      0       0      0  rh-29 110 / epoc6 109 / rm-409 333
+   avkon                         36     0      0     27     3      0       6      0  rh-29 2274 / epoc6 2727 / rm-409 4418
+   bitgdi                         7     0      0      5     0      0       2      0  rh-29 171 / epoc6 161 / rm-409 273
+   bluetooth                      1     0      0      0     0      0       1      0  rh-29 26 / epoc6 23 / rm-409 311
+   cone                          51     0      0     46     3      0       0      0  rh-29 318 / epoc6 309 / rm-409 729
+   efsrv                         21     0      0     20     1      0       0      0  rh-29 232 / epoc6 230 / rm-409 351
+   eikcoctl                       2     0      0      2     0      0       0      0  rh-29 1219 / epoc6 1104 / rm-409 1952
+   eikcore                       56     0      0     43     5      0       7      0  rh-29 290 / epoc6 278 / rm-409 590
+   eikdlg                        31     0      0     25     0      0       3      0  rh-29 229 / epoc6 150 / rm-409 296
+   esock                          7     0      7      0     0      0       0      0  rh-29 240 / epoc6 240 / rm-409 359
+   estlib                        35     0     33      0     1      0       1      0  rh-29 347 / epoc6 347 / rm-409 394
+   etel                          13     0      0     13     0      0       0      0  rh-29 228 / epoc6 227 / rm-409 382
+   euser                        174   126      0      0    43      0       5      0  rh-29 1679 / epoc6 1646 / rm-409 2229
+   ezlib                          1     0      0      0     0      0       1      0  rh-29 67 / epoc6 67 / rm-409 86
+   fbscli                         4     0      0      4     0      0       0      0  rh-29 156 / epoc6 145 / rm-409 250
+   fntstr                         1     0      0      0     0      0       1      0  rh-29 71 / epoc6 71 / rm-409 165
+   gdi                            1     0      1      0     0      0       0      0  rh-29 195 / epoc6 195 / rm-409 352
+   hal                            1     0      1      0     0      0       0      0  rh-29 3 / epoc6 3 / rm-409 5
+   mediaclientaudiostream         2     0      0      0     0      0       2      0  rh-29 2 / epoc6 8 / rm-409 17
+   nokiafc                        1     0      0      0     1      0       0      0  rh-29 1 / epoc6 -- / rm-409 None
+   ws32                           2     0      0      0     2      0       0      0  rh-29 357 / epoc6 343 / rm-409 580
+   new to this title and answered by nothing (8):
+     no-9.x   bitgdi            62  GetFontById__10CFbsDeviceRP5CFontG4TUidRC9TAlgStyle
+     no-9.x   bitgdi            88  NewL__16CFbsScreenDeviceRC7TDesC1612TDisplayModeG4TRgb
+     no-9.x   euser            385  RLibrary::EntryPoint(void) const
+     no-9.x   euser            799  RDebug::Open(int, int, int, unsigned int)
+     no-9.x   euser           1233  RDebug::WriteMemory(TThreadId, unsigned int, TDesC8 &, int)
+     no-9.x   ezlib             47  crc32(unsigned long, const unsigned char *, unsigned int)
+     no-9.x   fntstr            66  TAlgStyle::TAlgStyle()
+     no-9.x   mediaclientaudiostream     1  NewL__CMdaAudioOutputStreamRMMdaAudioOutputStreamCallbackPCMdaServer
+
+== Colin_McRae: 8 images (3 app, 5 shipped dll of which 2 stubbed as N-Gage-only), 638 distinct imports, 632 of them platform
+   the .app alone: 606 platform imports, 105 of them on the bill; the 3 carried DLLs add the rest
+   def 148  epoc6= 33  epoc6~ 307  answered 24  beyond 1  no-9.x 84  unnamed 13  absent 22  shipped 6
+   shared with the Asphalt ports: 221 of 632 platform imports; new to this title: 411
+   of the new ones: def 79  epoc6= 24  epoc6~ 197  answered 3  beyond 1  no-9.x 75  unnamed 10  absent 22
+   THE BILL (no table answers it, the shim generator has none yet): 120 imports, 108 of them not in the Asphalt ports
+   library                     imps   def epoc6= epoc6~  answ beyond  no-9.x absent  old side
+   apgrfx                         4     0      0      4     0      0       0      0  rh-29 183 / epoc6 169 / rm-409 433
+   apparc                         8     0      0      8     0      0       0      0  rh-29 110 / epoc6 109 / rm-409 333
+   avkon                         37     0      0     32     0      0       5      0  rh-29 2274 / epoc6 2727 / rm-409 4418
+   bafl                          11     0      0     11     0      0       0      0  rh-29 229 / epoc6 222 / rm-409 468
+   bigint                         4     0      0      0     0      0       0      4  rh-29 62 / epoc6 62 / rm-409 None
+   charconv                       2     0      1      0     0      0       1      0  rh-29 32 / epoc6 32 / rm-409 51
+   commonengine                   5     0      0      4     0      0       1      0  rh-29 114 / epoc6 120 / rm-409 83
+   cone                          57     0      0     50     3      0       1      0  rh-29 318 / epoc6 309 / rm-409 729
+   cryptalg                       7     0      0      0     0      0       0      7  rh-29 193 / epoc6 -- / rm-409 None
+   dsclient                       5     0      0      0     0      0       0      0  rh-29 99 / epoc6 -- / rm-409 29
+   efsrv                          8     0      0      7     1      0       0      0  rh-29 232 / epoc6 230 / rm-409 351
+   egul                           3     0      0      0     0      0       3      0  rh-29 107 / epoc6 107 / rm-409 262
+   eikcoctl                     115     0      0    105     1      0       6      0  rh-29 1219 / epoc6 1104 / rm-409 1952
+   eikcore                       67     0      0     53     6      0       7      0  rh-29 290 / epoc6 278 / rm-409 590
+   eikctl                        57     0      0     16     0      1      40      0  rh-29 386 / epoc6 488 / rm-409 692
+   estlib                         9     0      9      0     0      0       0      0  rh-29 347 / epoc6 347 / rm-409 394
+   estor                         24     0     18      0     0      0       6      0  rh-29 559 / epoc6 559 / rm-409 771
+   etel                           5     0      0      5     0      0       0      0  rh-29 228 / epoc6 227 / rm-409 382
+   etext                          4     0      3      0     0      0       1      0  rh-29 296 / epoc6 296 / rm-409 393
+   euser                        170   148      0      0    13      0       9      0  rh-29 1679 / epoc6 1646 / rm-409 2229
+   fbscli                         2     0      0      1     0      0       0      0  rh-29 156 / epoc6 145 / rm-409 250
+   fepbase                        2     0      0      0     0      0       2      0  rh-29 98 / epoc6 98 / rm-409 168
+   form                           6     0      0      5     0      0       1      0  rh-29 264 / epoc6 238 / rm-409 319
+   gdi                            1     0      1      0     0      0       0      0  rh-29 195 / epoc6 195 / rm-409 352
+   gsmadv                         2     0      0      0     0      0       0      2  rh-29 582 / epoc6 574 / rm-409 None
+   hal                            1     0      1      0     0      0       0      0  rh-29 3 / epoc6 3 / rm-409 5
+   sysagt                         9     0      0      0     0      0       0      9  rh-29 28 / epoc6 28 / rm-409 None
+   ws32                           7     0      0      6     0      0       1      0  rh-29 357 / epoc6 343 / rm-409 580
+   def drift (the chain names a 9.x ordinal the ROM does not have, or a bx lr stub):
+     eikctl           124  CEikSecretEditor::FocusChanged(TDrawNow)  -> 9.x 699
+   new to this title and answered by nothing (85):
+     unnamed  fbscli           156  ?
+     no-9.x   ws32             119  RWsSession::GetFocusWindowGroup()
+     no-9.x   avkon            612  Draw__CtAknPopupListEmptyZCEikFormattedCellListBoxRCTRect
+     no-9.x   avkon            707  GetColorUseListL__CCEikFormattedCellListBoxRtCArrayFixZTCoeColorUse
+     no-9.x   avkon           1087  NewL__CAknPopupListPCEikListBoxiQAknPopupLayoutsTAknPopupLayouts
+     no-9.x   charconv           4  CnvUtfConverter::ConvertFromUnicodeToUtf8(TDes8 &, const TDesC16 &)
+     no-9.x   cone              65  Flush__7CCoeEnvG27TTimeIntervalMicroSeconds32
+     unnamed  cone             315  ?
+     no-9.x   egul               6  ClipToFit__9TextUtilsR6TDes16RC5CFontiG5TChar
+     no-9.x   egul               7  ColorAdjust__10ColorUtilsG4TRgbi
+     no-9.x   egul              85  TMargins8::TMargins8()
+     no-9.x   eikcoctl         574  CEikListBox::Reserved_2()
+     no-9.x   eikcoctl         656  SetBackColor__12CListBoxViewG4TRgb
+     no-9.x   eikcoctl         707  CEikScrollButton::SetDimmed(int)
+     no-9.x   eikcoctl         848  CEikMenuBar::SetTitleL(const TDesC16 &, int, CGulIcon *)
+     no-9.x   eikcoctl         936  UpdateScrollbarsL__18CEikConsoleControlRC5TSizeT1G6TPoint
+     no-9.x   eikcoctl        1044  CEikArrowHeadScrollBar::CEikArrowHeadScrollBar()
+     unnamed  eikcoctl        1132  ?
+     unnamed  eikcoctl        1188  ?
+     unnamed  eikcoctl        1195  ?
+     no-9.x   eikctl             9  CEikDialogToolBar::AddControlL(TEikGroupControl &)
+     no-9.x   eikctl            10  CHierarchicalListBoxModel::AddItemL(CHierListItem *, int, int)
+     no-9.x   eikctl            27  CHierarchicalListBoxModel::CollapseItem(int)
+     no-9.x   eikctl            51  CEikClock::ConstructFromResourceL(TResourceReader &)
+     no-9.x   eikctl            64  ConstructL__25CEikLocaleConformantClockG20TTimeIntervalSeconds19TDaylightSavingZ
+     no-9.x   eikctl            66  CEikChoiceListPopoutListBox::ConstructL(const CCoeControl *, int, const CFont *)
+     no-9.x   eikctl            77  CEikChoiceList::CreatePopoutL()
+     no-9.x   eikctl            78  CEikChoiceListBase::CurrentItemChangedL()
+     no-9.x   eikctl            83  CEikRubberBand::Deactivate()
+     no-9.x   eikctl            86  CEikChoiceListBase::DesCArray() const
+     no-9.x   eikctl            91  CEikChoiceList::DoCreatePopoutL()
+     no-9.x   eikctl           101  CHierarchicalListBoxView::DrawItemWithoutLinks(int) const
+     no-9.x   eikctl           108  CEikWorldSelector::Draw(const TRect &) const
+     no-9.x   eikctl           112  CEikLocaleConformantClock::Draw(CWindowGc &) const
+     no-9.x   eikctl           125  CEikWorldSelector::FocusChanged(TDrawNow)
+     no-9.x   eikctl           136  CEikOptionButton::GetColorUseListL(CArrayFix<TCoeColorUse> &) const
+     no-9.x   eikctl           145  CEikClock::GetColorUseListL(CArrayFix<TCoeColorUse> &) const
+     no-9.x   eikctl           147  CColumnListBoxData::GetInnerGutter() const
+     no-9.x   eikctl           158  CEikChoiceListBase::HandlePointerEventL(const TPointerEvent &)
+     no-9.x   eikctl           164  CEikChoiceList::HandleResourceChange(int)
+     no-9.x   eikctl           171  CEikHierarchicalListBox::HandleResourceChange(int)
+     no-9.x   eikctl           175  CEikWorldSelector::HandleStateChangeL()
+     no-9.x   eikctl           192  CEikChoiceListBase::InputCapabilities() const
+     no-9.x   eikctl           217  CEikComboBox::MaxArraySize() const
+     no-9.x   eikctl           228  CEikHorOptionButtonList::MinimumSize()
+     no-9.x   eikctl           229  CEikLabeledOptionButton::MinimumSize()
+     no-9.x   eikctl           247  CEikChoiceListBase::OfferKeyEventL(const TKeyEvent &, TEventCode)
+     no-9.x   eikctl           252  CHierarchicalListBoxModel::ParentIndex(int) const
+     no-9.x   eikctl           255  CEikChoiceListBase::PopoutCurrentItem() const
+     no-9.x   eikctl           269  CHierarchicalListItemDrawer::Reserved_1()
+     no-9.x   eikctl           285  CEikColumnListBoxEditor::Reserved_2()
+     no-9.x   eikctl           286  CEikHierarchicalListBox::Reserved_2()
+     no-9.x   eikctl           297  CEikWorldController::ResetMatcher()
+     no-9.x   eikctl           299  CHierarchicalListBoxModel::Reset()
+     no-9.x   eikctl           323  CEikGlobalTextEditor::SetButtonGroup(CEikDialogToolBar *)
+     no-9.x   eikctl           343  CEikChoiceListBase::SetFont(const CFont *)
+     no-9.x   eikctl           348  CHierarchicalListItemDrawer::SetIconArray(CArrayPtr<CGulIcon> *)
+     no-9.x   eikctl           381  CEikLabeledOptionButton::StateChanged()
+     no-9.x   eikctl           383  CEikChoiceListBase::TextEdgeMargin()
+     no-9.x   eikctl           384  CEikLocaleConformantClock::TypeNeverChanges() const
+     ... and 25 more
+
+== Ashen_v1: 7 images (1 app, 6 shipped dll of which 1 stubbed as N-Gage-only), 450 distinct imports, 402 of them platform
+   the .app alone: 328 platform imports, 42 of them on the bill; the 5 carried DLLs add the rest
+   def 141  epoc6= 37  epoc6~ 132  answered 35  no-9.x 39  unnamed 5  absent 13  shipped 48
+   shared with the Asphalt ports: 241 of 402 platform imports; new to this title: 161
+   of the new ones: def 60  epoc6= 30  epoc6~ 27  answered 1  no-9.x 28  unnamed 2  absent 13
+   THE BILL (no table answers it, the shim generator has none yet): 57 imports, 43 of them not in the Asphalt ports
+   library                     imps   def epoc6= epoc6~  answ beyond  no-9.x absent  old side
+   apparc                         4     0      0      4     0      0       0      0  rh-29 110 / epoc6 109 / rm-409 333
+   avkon                         18     0      0     13     3      0       2      0  rh-29 2274 / epoc6 2727 / rm-409 4418
+   bitgdi                         5     0      0      4     0      0       0      0  rh-29 171 / epoc6 161 / rm-409 273
+   bluetooth                      1     0      0      0     0      0       1      0  rh-29 26 / epoc6 23 / rm-409 311
+   charconv                       1     0      0      0     0      0       1      0  rh-29 32 / epoc6 32 / rm-409 51
+   commdb                        10     0      0      8     0      0       2      0  rh-29 145 / epoc6 131 / rm-409 234
+   cone                          48     0      0     42     3      0       1      0  rh-29 318 / epoc6 309 / rm-409 729
+   efsrv                         12     0      0     10     1      0       1      0  rh-29 232 / epoc6 230 / rm-409 351
+   eikcore                       58     0      0     45     5      0       7      0  rh-29 290 / epoc6 278 / rm-409 590
+   esock                         33     0     33      0     0      0       0      0  rh-29 240 / epoc6 240 / rm-409 359
+   euser                        178   141      0      0    20      0      17      0  rh-29 1679 / epoc6 1646 / rm-409 2229
+   fbscli                         6     0      0      5     0      0       0      0  rh-29 156 / epoc6 145 / rm-409 250
+   flogger                        2     0      0      0     0      0       2      0  rh-29 24 / epoc6 24 / rm-409 26
+   gdi                            1     0      1      0     0      0       0      0  rh-29 195 / epoc6 195 / rm-409 352
+   genconn                        4     0      0      0     0      0       0      4  rh-29 None / epoc6 90 / rm-409 None
+   insock                         5     0      3      0     0      0       2      0  rh-29 16 / epoc6 16 / rm-409 96
+   mediaclientaudiostream         1     0      0      0     0      0       1      0  rh-29 2 / epoc6 8 / rm-409 17
+   msgs                           2     0      0      0     2      0       0      0  rh-29 373 / epoc6 373 / rm-409 936
+   nifman                         2     0      0      0     0      0       2      0  rh-29 106 / epoc6 106 / rm-409 379
+   nokiafc                        1     0      0      0     1      0       0      0  rh-29 1 / epoc6 -- / rm-409 None
+   plpvariant                     1     0      0      1     0      0       0      0  rh-29 10 / epoc6 9 / rm-409 10
+   sysagt                         9     0      0      0     0      0       0      9  rh-29 28 / epoc6 28 / rm-409 None
+   new to this title and answered by nothing (30):
+     unnamed  bitgdi           170  ?
+     no-9.x   charconv           4  CnvUtfConverter::ConvertFromUnicodeToUtf8(TDes8 &, const TDesC16 &)
+     no-9.x   cone              65  Flush__7CCoeEnvG27TTimeIntervalMicroSeconds32
+     no-9.x   efsrv            129  RFs::ReadFileSection(const TDesC16 &, int, TDes8 &, int) const
+     no-9.x   euser            463  TDes16::FormatList(TDesC16 const &, signed char **)
+     no-9.x   euser            497  RThread::GetRamSizes(int &, int &)
+     no-9.x   euser            529  RThread::Heap(void)
+     no-9.x   euser            782  TDes8::Num(int)
+     no-9.x   euser           1085  RHeap1::Size(void) const
+     no-9.x   euser           1507  __builtin_vec_new
+     no-9.x   euser           1512  __divdf3
+     no-9.x   euser           1532  __gesf2
+     no-9.x   euser           1535  __gtsf2
+     no-9.x   euser           1541  __ltdf2
+     no-9.x   euser           1542  __ltsf2
+     no-9.x   euser           1613  __subdf3
+     no-9.x   euser           1614  __subsf3
+     unnamed  fbscli           156  ?
+     no-9.x   insock            13  TInetAddr::TInetAddr()
+     no-9.x   commdb           121  __Q231CCommsDbConnectionPrefTableView16TCommDbIapBearer
+     no-9.x   commdb           123  __Q231CCommsDbConnectionPrefTableView24TCommDbIapConnectionPref
+     no-9.x   euser             75  TDes8::AppendNum(unsigned int, TRadix)
+     no-9.x   flogger           10  WriteFormat__11RFileLoggerRC7TDesC16T116TFileLoggingModeGt11TRefByValue1ZC7TDesC
+     no-9.x   flogger           12  Write__11RFileLoggerRC7TDesC16T116TFileLoggingModeT1
+     no-9.x   nifman            66  RNif::Progress(TNifProgress &)
+     no-9.x   nifman            76  RNif::Stop()
+     no-9.x   euser           1530  TInt64::operator>=(TInt64 const &) const
+     no-9.x   insock             3  TInetAddr::Input(const TDesC16 &)
+     no-9.x   euser            323  TInt64::DivMod(TInt64 const &, TInt64 &)
+     no-9.x   euser            462  TDes8::FormatList(TDesC8 const &, signed char **)
+
+== One_v09155: 45 images (1 app, 44 shipped dll of which 3 stubbed as N-Gage-only), 1825 distinct imports, 1331 of them platform
+   the .app alone: 503 platform imports, 56 of them on the bill; the 41 carried DLLs add the rest
+   def 406  epoc6= 136  epoc6~ 430  answered 46  beyond 3  no-9.x 181  unnamed 19  absent 110  shipped 494
+   shared with the Asphalt ports: 333 of 1331 platform imports; new to this title: 998
+   of the new ones: def 294  epoc6= 115  epoc6~ 290  beyond 3  no-9.x 170  unnamed 16  absent 110
+   THE BILL (no table answers it, the shim generator has none yet): 313 imports, 299 of them not in the Asphalt ports
+   library                     imps   def epoc6= epoc6~  answ beyond  no-9.x absent  old side
+   apengine                       6     0      0      0     0      0       6      0  rh-29 121 / epoc6 146 / rm-409 236
+   apgrfx                        16     0      0     13     0      0       3      0  rh-29 183 / epoc6 169 / rm-409 433
+   apmime                         3     0      1      0     0      0       2      0  rh-29 64 / epoc6 64 / rm-409 118
+   apparc                         9     0      0      9     0      0       0      0  rh-29 110 / epoc6 109 / rm-409 333
+   avkon                         46     0      0     32     3      0      11      0  rh-29 2274 / epoc6 2727 / rm-409 4418
+   bafl                          15     0      0     15     0      0       0      0  rh-29 229 / epoc6 222 / rm-409 468
+   bigint                         2     0      0      0     0      0       0      2  rh-29 62 / epoc6 62 / rm-409 None
+   bitgdi                        10     0      0      9     0      0       0      0  rh-29 171 / epoc6 161 / rm-409 273
+   capcodec                      17     0      0      0     0      0       0     17  rh-29 52 / epoc6 51 / rm-409 None
+   charconv                      11     0      9      0     0      0       2      0  rh-29 32 / epoc6 32 / rm-409 51
+   cntmodel                       2     0      0      1     0      0       1      0  rh-29 410 / epoc6 352 / rm-409 686
+   commdb                        10     0      0      8     0      0       2      0  rh-29 145 / epoc6 131 / rm-409 234
+   commonengine                  20     0      0     11     0      3       6      0  rh-29 114 / epoc6 120 / rm-409 83
+   commonui                       4     0      0      2     0      0       2      0  rh-29 36 / epoc6 110 / rm-409 118
+   cone                          83     0      0     76     3      0       1      0  rh-29 318 / epoc6 309 / rm-409 729
+   connectionmanager              4     0      0      0     0      0       4      0  rh-29 43 / epoc6 68 / rm-409 125
+   cryptalg                      14     0      0      0     0      0       0     14  rh-29 193 / epoc6 -- / rm-409 None
+   crypto                         9     0      0      8     0      0       1      0  rh-29 50 / epoc6 54 / rm-409 84
+   dsclient                       5     0      0      0     0      0       0      0  rh-29 99 / epoc6 -- / rm-409 29
+   efsrv                         48     0      0     45     1      0       2      0  rh-29 232 / epoc6 230 / rm-409 351
+   egul                           7     0      6      0     0      0       1      0  rh-29 107 / epoc6 107 / rm-409 262
+   eikcoctl                      95     0      0     81     0      0       8      0  rh-29 1219 / epoc6 1104 / rm-409 1952
+   eikcore                       59     0      0     45     5      0       7      0  rh-29 290 / epoc6 278 / rm-409 590
+   eikctl                        21     0      0      4     0      0      17      0  rh-29 386 / epoc6 488 / rm-409 692
+   elocl                          1     0      0      0     0      0       0      1  rh-29 21 / epoc6 21 / rm-409 None
+   esock                         38     0     38      0     0      0       0      0  rh-29 240 / epoc6 240 / rm-409 359
+   estlib                        22     0     21      0     0      0       1      0  rh-29 347 / epoc6 347 / rm-409 394
+   estor                         37     0     28      0     0      0       9      0  rh-29 559 / epoc6 559 / rm-409 771
+   etel                          24     0      0     24     0      0       0      0  rh-29 228 / epoc6 227 / rm-409 382
+   etext                         10     0      9      0     0      0       1      0  rh-29 296 / epoc6 296 / rm-409 393
+   euser                        488   406      0      0    31      0      51      0  rh-29 1679 / epoc6 1646 / rm-409 2229
+   ezlib                          1     0      1      0     0      0       0      0  rh-29 67 / epoc6 67 / rm-409 86
+   fbscli                         5     0      0      4     0      0       0      0  rh-29 156 / epoc6 145 / rm-409 250
+   fepbase                        6     0      6      0     0      0       0      0  rh-29 98 / epoc6 98 / rm-409 168
+   flogger                        7     0      2      0     0      0       5      0  rh-29 24 / epoc6 24 / rm-409 26
+   form                           9     0      0      9     0      0       0      0  rh-29 264 / epoc6 238 / rm-409 319
+   gdi                            3     0      3      0     0      0       0      0  rh-29 195 / epoc6 195 / rm-409 352
+   genconn                        5     0      0      0     0      0       0      5  rh-29 None / epoc6 90 / rm-409 None
+   gsmadv                         4     0      0      0     0      0       0      4  rh-29 582 / epoc6 574 / rm-409 None
+   hal                            1     0      1      0     0      0       0      0  rh-29 3 / epoc6 3 / rm-409 5
+   hash                           3     0      3      0     0      0       0      0  rh-29 42 / epoc6 42 / rm-409 101
+   ietd                           4     0      0      0     0      0       0      4  rh-29 9 / epoc6 -- / rm-409 None
+   imut                           2     0      0      1     0      0       1      0  rh-29 95 / epoc6 93 / rm-409 204
+   insock                         6     0      3      0     0      0       3      0  rh-29 16 / epoc6 16 / rm-409 96
+   loadercli                      1     0      0      0     0      0       0      1  rh-29 83 / epoc6 -- / rm-409 None
+   mediaclientaudiostream         1     0      0      0     0      0       1      0  rh-29 2 / epoc6 8 / rm-409 17
+   mediaclientimage               2     0      2      0     0      0       0      0  rh-29 34 / epoc6 34 / rm-409 54
+   nifman                         6     0      0      0     0      0       6      0  rh-29 106 / epoc6 106 / rm-409 379
+   nokiafc                        1     0      0      0     1      0       0      0  rh-29 1 / epoc6 -- / rm-409 None
+   pbkeng                        13     0      0      0     0      0      13      0  rh-29 327 / epoc6 338 / rm-409 424
+   pbkview                        5     0      0      0     0      0       5      0  rh-29 265 / epoc6 292 / rm-409 487
+   pkixcert                       3     0      2      0     0      0       1      0  rh-29 13 / epoc6 13 / rm-409 31
+   plpvariant                     1     0      0      1     0      0       0      0  rh-29 10 / epoc6 9 / rm-409 10
+   random                         1     0      1      0     0      0       0      0  rh-29 5 / epoc6 5 / rm-409 16
+   rbinterpreter                 10     0      0      0     0      0       0     10  rh-29 216 / epoc6 -- / rm-409 None
+   secdlgsv                       5     0      0      0     0      0       0      5  rh-29 8 / epoc6 8 / rm-409 None
+   sendui                         1     0      0      0     0      0       1      0  rh-29 33 / epoc6 37 / rm-409 122
+   sysagt                         8     0      0      0     0      0       0      8  rh-29 28 / epoc6 28 / rm-409 None
+   sysutil                        3     0      0      0     0      0       3      0  rh-29 21 / epoc6 22 / rm-409 20
+   wapstkcli                     39     0      0      0     0      0       0     39  rh-29 91 / epoc6 87 / rm-409 None
+   ws32                          12     0      0      9     2      0       1      0  rh-29 357 / epoc6 343 / rm-409 580
+   x500                           4     0      0      3     0      0       0      0  rh-29 32 / epoc6 30 / rm-409 46
+   x509                          23     0      0     20     0      0       3      0  rh-29 209 / epoc6 204 / rm-409 398
+   def drift (the chain names a 9.x ordinal the ROM does not have, or a bx lr stub):
+     commonengine      16  GetInt__CRSharedDataClientRCTDesC16Ri  -> 9.x 126
+     commonengine      18  GetString__CRSharedDataClientRCTDesC16RTDes16  -> 9.x 128
+     commonengine      81  Value__CSharedDataInteger  -> 9.x 89
+   new to this title and answered by nothing (186):
+     unnamed  cone             315  ?
+     no-9.x   efsrv              1  __vc__C4CDiri
+     no-9.x   estor            106  DoReadL__10TStreamBufR12MStreamInputG15TStreamTransfer
+     no-9.x   estor            158  DoWriteL__10TStreamBufR13MStreamOutputG15TStreamTransfer
+     no-9.x   estor            328  RFileReadStream::Open(RFs &, const TDesC16 &, unsigned int)
+     no-9.x   estor            359  ReadL__11RReadStreamR6TDes16G5TChar
+     no-9.x   estor            392  RFileWriteStream::Replace(RFs &, const TDesC16 &, unsigned int)
+     no-9.x   estor            476  TStreamBuf::TStreamBuf()
+     no-9.x   estor            515  TMemBuf::TMemBuf()
+     no-9.x   estor            516  RFileBuf::RFileBuf()
+     no-9.x   euser             75  TDes8::AppendNum(unsigned int, TRadix)
+     no-9.x   euser             77  TDes8::AppendNum(int)
+     no-9.x   euser             80  TDes16::AppendNum(unsigned int, TRadix)
+     no-9.x   euser             82  TDes16::AppendNum(int)
+     no-9.x   euser            404  Math::FRand(TInt64 &)
+     no-9.x   euser            501  TInt64::GetTInt(void) const
+     no-9.x   euser            502  TInt64::GetTReal(void) const
+     no-9.x   euser            777  TDes16::NumUC(unsigned int, TRadix)
+     no-9.x   euser            787  TDes16::Num(int)
+     no-9.x   euser            869  Math::Rand(TInt64 &)
+     no-9.x   euser           1487  TInt64::operator+=(TInt64 const &)
+     no-9.x   euser           1507  __builtin_vec_new
+     no-9.x   euser           1512  __divdf3
+     no-9.x   euser           1515  TInt64::operator/(TInt64 const &) const
+     no-9.x   euser           1523  __eqdf2
+     no-9.x   euser           1524  __eqsf2
+     no-9.x   euser           1526  __fixdfsi
+     no-9.x   euser           1530  TInt64::operator>=(TInt64 const &) const
+     no-9.x   euser           1531  __gedf2
+     no-9.x   euser           1534  __gtdf2
+     no-9.x   euser           1535  __gtsf2
+     no-9.x   euser           1540  TInt64::operator<(TInt64 const &) const
+     no-9.x   euser           1541  __ltdf2
+     no-9.x   euser           1542  __ltsf2
+     no-9.x   euser           1557  TInt64::operator-(TInt64 const &) const
+     no-9.x   euser           1563  TInt64::operator*(TInt64 const &) const
+     no-9.x   euser           1578  __nedf2
+     no-9.x   euser           1579  __negdf2
+     no-9.x   euser           1587  TRealX::operator unsigned int(void)
+     no-9.x   euser           1613  __subdf3
+     no-9.x   euser           1614  __subsf3
+     no-9.x   sysutil           12  FFSSpaceBelowCriticalLevelL__SysUtilPRFsi
+     no-9.x   euser            462  TDes8::FormatList(TDesC8 const &, signed char **)
+     no-9.x   euser            463  TDes16::FormatList(TDesC16 const &, signed char **)
+     no-9.x   flogger            1  RFileLogger::RFileLogger()
+     no-9.x   flogger            3  CreateLog__11RFileLoggerRC7TDesC16T116TFileLoggingMode
+     no-9.x   flogger           11  RFileLogger::Write(const TDesC16 &)
+     no-9.x   flogger           13  RFileLogger::~RFileLogger()
+     no-9.x   apengine          58  NewLC__CApDataHandlerRCCommsDatabase
+     no-9.x   apengine          59  NewLC__CApAccessPointItem
+     no-9.x   apengine          67  ReadConstLongTextL__CApAccessPointItemTApMember
+     no-9.x   apengine          70  ReadTextL__CApAccessPointItemTApMemberRTDes16
+     no-9.x   apengine          72  ReadUint__CApAccessPointItemTApMemberRUl
+     no-9.x   apengine         120  AccessPointDataL__CApDataHandlerUlRCApAccessPointItem
+     no-9.x   charconv           4  CnvUtfConverter::ConvertFromUnicodeToUtf8(TDes8 &, const TDesC16 &)
+     no-9.x   commdb           121  __Q231CCommsDbConnectionPrefTableView16TCommDbIapBearer
+     no-9.x   commdb           123  __Q231CCommsDbConnectionPrefTableView24TCommDbIapConnectionPref
+     no-9.x   commonengine       4  Assign__CRSharedDataClientGTUid
+     no-9.x   commonengine      75  SetString__RSharedDataClientRCTDesC16T1
+     no-9.x   euser            782  TDes8::Num(int)
+     ... and 126 more
+
+== Call_of_Duty: 52 images (1 app, 51 shipped dll of which 3 stubbed as N-Gage-only), 1925 distinct imports, 1356 of them platform
+   the .app alone: 319 platform imports, 25 of them on the bill; the 48 carried DLLs add the rest
+   def 380  epoc6= 151  epoc6~ 457  answered 46  beyond 3  no-9.x 189  unnamed 20  absent 110  shipped 569
+   shared with the Asphalt ports: 307 of 1356 platform imports; new to this title: 1049
+   of the new ones: def 282  epoc6= 139  epoc6~ 318  answered 1  beyond 3  no-9.x 179  unnamed 17  absent 110
+   THE BILL (no table answers it, the shim generator has none yet): 322 imports, 309 of them not in the Asphalt ports
+   library                     imps   def epoc6= epoc6~  answ beyond  no-9.x absent  old side
+   apengine                       6     0      0      0     0      0       6      0  rh-29 121 / epoc6 146 / rm-409 236
+   apgrfx                        19     0      0     15     0      0       4      0  rh-29 183 / epoc6 169 / rm-409 433
+   apmime                         3     0      1      0     0      0       2      0  rh-29 64 / epoc6 64 / rm-409 118
+   apparc                         8     0      0      8     0      0       0      0  rh-29 110 / epoc6 109 / rm-409 333
+   avkon                         37     0      0     24     3      0      10      0  rh-29 2274 / epoc6 2727 / rm-409 4418
+   bafl                          16     0      0     16     0      0       0      0  rh-29 229 / epoc6 222 / rm-409 468
+   bigint                         2     0      0      0     0      0       0      2  rh-29 62 / epoc6 62 / rm-409 None
+   bitgdi                        12     0      0     11     0      0       0      0  rh-29 171 / epoc6 161 / rm-409 273
+   browsertelservice              8     0      0      0     0      0       8      0  rh-29 18 / epoc6 19 / rm-409 25
+   capcodec                      17     0      0      0     0      0       0     17  rh-29 52 / epoc6 51 / rm-409 None
+   charconv                      11     0      9      0     0      0       2      0  rh-29 32 / epoc6 32 / rm-409 51
+   commdb                        10     0      0      8     0      0       2      0  rh-29 145 / epoc6 131 / rm-409 234
+   commonengine                  18     0      0      9     0      3       6      0  rh-29 114 / epoc6 120 / rm-409 83
+   commonui                       4     0      0      2     0      0       2      0  rh-29 36 / epoc6 110 / rm-409 118
+   cone                          82     0      0     75     3      0       1      0  rh-29 318 / epoc6 309 / rm-409 729
+   cryptalg                      14     0      0      0     0      0       0     14  rh-29 193 / epoc6 -- / rm-409 None
+   crypto                         9     0      0      8     0      0       1      0  rh-29 50 / epoc6 54 / rm-409 84
+   dsclient                       5     0      0      0     0      0       0      0  rh-29 99 / epoc6 -- / rm-409 29
+   edbms                         38     0     23      0     0      0      15      0  rh-29 277 / epoc6 277 / rm-409 526
+   efsrv                         72     0      0     68     1      0       2      0  rh-29 232 / epoc6 230 / rm-409 351
+   egul                           7     0      6      0     0      0       1      0  rh-29 107 / epoc6 107 / rm-409 262
+   eikcoctl                      95     0      0     81     0      0       8      0  rh-29 1219 / epoc6 1104 / rm-409 1952
+   eikcore                       64     0      0     50     5      0       7      0  rh-29 290 / epoc6 278 / rm-409 590
+   eikctl                        21     0      0      4     0      0      17      0  rh-29 386 / epoc6 488 / rm-409 692
+   elocl                          1     0      0      0     0      0       0      1  rh-29 21 / epoc6 21 / rm-409 None
+   esock                         38     0     38      0     0      0       0      0  rh-29 240 / epoc6 240 / rm-409 359
+   estlib                         9     0      8      0     0      0       1      0  rh-29 347 / epoc6 347 / rm-409 394
+   estor                         24     0     18      0     0      0       6      0  rh-29 559 / epoc6 559 / rm-409 771
+   etel                          17     0      0     17     0      0       0      0  rh-29 228 / epoc6 227 / rm-409 382
+   etext                          8     0      7      0     0      0       1      0  rh-29 296 / epoc6 296 / rm-409 393
+   euser                        463   380      0      0    29      0      54      0  rh-29 1679 / epoc6 1646 / rm-409 2229
+   ezlib                          1     0      0      0     1      0       0      0  rh-29 67 / epoc6 67 / rm-409 86
+   fbscli                        10     0      0      9     0      0       0      0  rh-29 156 / epoc6 145 / rm-409 250
+   fepbase                        6     0      6      0     0      0       0      0  rh-29 98 / epoc6 98 / rm-409 168
+   flogger                        8     0      2      0     0      0       6      0  rh-29 24 / epoc6 24 / rm-409 26
+   form                           9     0      0      9     0      0       0      0  rh-29 264 / epoc6 238 / rm-409 319
+   gdi                            6     0      6      0     0      0       0      0  rh-29 195 / epoc6 195 / rm-409 352
+   genconn                        5     0      0      0     0      0       0      5  rh-29 None / epoc6 90 / rm-409 None
+   gsmadv                         2     0      0      0     0      0       0      2  rh-29 582 / epoc6 574 / rm-409 None
+   gsmbas                         2     0      0      0     0      0       0      2  rh-29 255 / epoc6 255 / rm-409 None
+   gsmu                           3     0      0      2     0      0       1      0  rh-29 196 / epoc6 195 / rm-409 500
+   hal                            1     0      1      0     0      0       0      0  rh-29 3 / epoc6 3 / rm-409 5
+   hash                           3     0      3      0     0      0       0      0  rh-29 42 / epoc6 42 / rm-409 101
+   ietd                           4     0      0      0     0      0       0      4  rh-29 9 / epoc6 -- / rm-409 None
+   imut                           2     0      0      1     0      0       1      0  rh-29 95 / epoc6 93 / rm-409 204
+   insock                         6     0      3      0     0      0       3      0  rh-29 16 / epoc6 16 / rm-409 96
+   loadercli                      1     0      0      0     0      0       0      1  rh-29 83 / epoc6 -- / rm-409 None
+   mediaclientaudiostream         2     0      0      0     0      0       2      0  rh-29 2 / epoc6 8 / rm-409 17
+   mediaclientimage               2     0      2      0     0      0       0      0  rh-29 34 / epoc6 34 / rm-409 54
+   msgs                          20     0     11      0     1      0       8      0  rh-29 373 / epoc6 373 / rm-409 936
+   nifman                         6     0      0      0     0      0       6      0  rh-29 106 / epoc6 106 / rm-409 379
+   nokiafc                        1     0      0      0     1      0       0      0  rh-29 1 / epoc6 -- / rm-409 None
+   pkixcert                       3     0      2      0     0      0       1      0  rh-29 13 / epoc6 13 / rm-409 31
+   plpvariant                     1     0      0      1     0      0       0      0  rh-29 10 / epoc6 9 / rm-409 10
+   random                         1     0      1      0     0      0       0      0  rh-29 5 / epoc6 5 / rm-409 16
+   rbinterpreter                 10     0      0      0     0      0       0     10  rh-29 216 / epoc6 -- / rm-409 None
+   secdlgsv                       5     0      0      0     0      0       0      5  rh-29 8 / epoc6 8 / rm-409 None
+   smcm                           4     0      4      0     0      0       0      0  rh-29 47 / epoc6 47 / rm-409 288
+   sysagt                         8     0      0      0     0      0       0      8  rh-29 28 / epoc6 28 / rm-409 None
+   sysutil                        1     0      0      0     0      0       1      0  rh-29 21 / epoc6 22 / rm-409 20
+   wapstkcli                     39     0      0      0     0      0       0     39  rh-29 91 / epoc6 87 / rm-409 None
+   ws32                          19     0      0     16     2      0       1      0  rh-29 357 / epoc6 343 / rm-409 580
+   x500                           4     0      0      3     0      0       0      0  rh-29 32 / epoc6 30 / rm-409 46
+   x509                          23     0      0     20     0      0       3      0  rh-29 209 / epoc6 204 / rm-409 398
+   def drift (the chain names a 9.x ordinal the ROM does not have, or a bx lr stub):
+     commonengine      16  GetInt__CRSharedDataClientRCTDesC16Ri  -> 9.x 126
+     commonengine      18  GetString__CRSharedDataClientRCTDesC16RTDes16  -> 9.x 128
+     commonengine      81  Value__CSharedDataInteger  -> 9.x 89
+   new to this title and answered by nothing (196):
+     unnamed  bitgdi           170  ?
+     no-9.x   euser             77  TDes8::AppendNum(int)
+     no-9.x   euser             82  TDes16::AppendNum(int)
+     no-9.x   euser            501  TInt64::GetTInt(void) const
+     no-9.x   euser            869  Math::Rand(TInt64 &)
+     no-9.x   euser           1507  __builtin_vec_new
+     no-9.x   euser           1515  TInt64::operator/(TInt64 const &) const
+     no-9.x   euser           1520  TInt64::operator==(TInt64 const &) const
+     no-9.x   euser           1557  TInt64::operator-(TInt64 const &) const
+     no-9.x   euser           1575  TInt64::operator!=(TInt64 const &) const
+     no-9.x   euser           1614  __subsf3
+     unnamed  fbscli           156  ?
+     no-9.x   euser            462  TDes8::FormatList(TDesC8 const &, signed char **)
+     no-9.x   euser            463  TDes16::FormatList(TDesC16 const &, signed char **)
+     no-9.x   flogger            1  RFileLogger::RFileLogger()
+     no-9.x   flogger            3  CreateLog__11RFileLoggerRC7TDesC16T116TFileLoggingMode
+     no-9.x   flogger           11  RFileLogger::Write(const TDesC16 &)
+     no-9.x   flogger           13  RFileLogger::~RFileLogger()
+     no-9.x   apengine          58  NewLC__CApDataHandlerRCCommsDatabase
+     no-9.x   apengine          59  NewLC__CApAccessPointItem
+     no-9.x   apengine          67  ReadConstLongTextL__CApAccessPointItemTApMember
+     no-9.x   apengine          70  ReadTextL__CApAccessPointItemTApMemberRTDes16
+     no-9.x   apengine          72  ReadUint__CApAccessPointItemTApMemberRUl
+     no-9.x   apengine         120  AccessPointDataL__CApDataHandlerUlRCApAccessPointItem
+     no-9.x   charconv           4  CnvUtfConverter::ConvertFromUnicodeToUtf8(TDes8 &, const TDesC16 &)
+     no-9.x   commdb           121  __Q231CCommsDbConnectionPrefTableView16TCommDbIapBearer
+     no-9.x   commdb           123  __Q231CCommsDbConnectionPrefTableView24TCommDbIapConnectionPref
+     no-9.x   commonengine       4  Assign__CRSharedDataClientGTUid
+     no-9.x   commonengine      75  SetString__RSharedDataClientRCTDesC16T1
+     no-9.x   euser             75  TDes8::AppendNum(unsigned int, TRadix)
+     no-9.x   euser            782  TDes8::Num(int)
+     no-9.x   flogger           10  WriteFormat__11RFileLoggerRC7TDesC16T116TFileLoggingModeGt11TRefByValue1ZC7TDesC
+     no-9.x   insock            13  TInetAddr::TInetAddr()
+     no-9.x   nifman            53  RNif::NetworkActive(int &)
+     no-9.x   nifman            66  RNif::Progress(TNifProgress &)
+     no-9.x   nifman            76  RNif::Stop()
+     no-9.x   euser            787  TDes16::Num(int)
+     no-9.x   gsmu             130  CSmsPDU::SetServiceCenterAddressL(const TDesC16 &)
+     no-9.x   msgs              23  ChildrenWithMtmL__C9CMsvEntryG4TUid
+     no-9.x   msgs             136  NewL__18CClientMtmRegistryR11CMsvSessionG27TTimeIntervalMicroSeconds32
+     no-9.x   msgs             141  NewMtmL__18CClientMtmRegistryG4TUid
+     no-9.x   msgs             261  CMsvEntrySelection::CMsvEntrySelection()
+     no-9.x   msgs             266  TMsvSelectionOrdering::TMsvSelectionOrdering()
+     no-9.x   msgs             270  TMsvLocalOperationProgress::TMsvLocalOperationProgress()
+     no-9.x   msgs             275  TMsvEntry::TMsvEntry()
+     no-9.x   msgs             276  TMsvEntry::TMsvEntry(const TMsvEntry &)
+     no-9.x   charconv           5  CCnvCharacterSetConverter::ConvertFromUnicode(TDes8 &, const TDesC16 &) const
+     no-9.x   commonengine      59  NotifyChange__RSharedDataClientGTUidPCTDesC16
+     no-9.x   mediaclientaudiostream     1  NewL__CMdaAudioOutputStreamRMMdaAudioOutputStreamCallbackPCMdaServer
+     no-9.x   apgrfx           136  StartDocument__13RApaLsSessionRC7TDesC16G4TUidR9TThreadIdQ213RApaLsSession11TLau
+     no-9.x   insock             3  TInetAddr::Input(const TDesC16 &)
+     no-9.x   apgrfx            32  FindApp__12TApaTaskListG4TUid
+     no-9.x   apgrfx            42  GetAppInfo__C13RApaLsSessionR11TApaAppInfoG4TUid
+     no-9.x   efsrv              1  __vc__C4CDiri
+     no-9.x   efsrv            229  __as__6TEntryRC6TEntry
+     no-9.x   estor            453  RWriteStream::WriteL(const TDesC16 &)
+     no-9.x   estor            515  TMemBuf::TMemBuf()
+     no-9.x   euser            973  RSessionBase::SendReceive(int, void *, TRequestStatus &) const
+     no-9.x   euser            177  RDebug::Close(void)
+     no-9.x   euser            491  RDebug::GetException(SDebugInfo &, TRequestStatus &)
+     ... and 136 more
+
