@@ -89,6 +89,24 @@ on 025. readlog printed every value in hex and `BUILD 19` is 0x19.
 instrument chapter already carries: an instrument's output format is part of
 its contract, and a number without its base is a guess.
 
+### 1.z A C: install read nothing on Asphalt Urban GT (round 110)
+
+**Symptom.** A C5-00 with no memory card, the game installed to phone
+memory: the game's two pack opens return -18 `KErrNotReady`, then it
+faults on a null object. Every N95 test of a C: install had worked.
+
+**Cause.** The wrapper that rewrites the game's `E:` paths to the install
+drive was installed behind a guard wanting `RFile::Open`, `Create` and
+`Replace` all imported. This title imports no `Replace`, so the wrapper never
+went in; its opens went to E:, which on every test phone also held the
+hand-copied card dump. The guard was itself the fix for an out-of-bounds
+thunk write found by a static sweep -- a fix that quietly switched a feature
+off for the next title.
+
+**Fix.** Each wrapper on its own guard (build 027). Reproduced on the bench
+by hiding E: and laying the SIS's files on C: (E378, E379). The chosen-drive
+note (754) and the C: retry (755) from build 026 are what made it readable.
+
 ## 2. Loading the N-Gage image
 
 **The entry point is an offset, entered in ARM mode with `lr = 0`.**

@@ -9665,20 +9665,33 @@ static u32 load_and_start()
     // property of the code: a title that imports Replace and not Create would
     // have written a thunk past the end of the import table. Found by a
     // static sweep for indices without a guard, before any of it ran.
-    if (CARD_IS_READ_ONLY && IMPORT_FILE_REPLACE < nImports &&
-        IMPORT_FILE_OPEN < nImports && IMPORT_FILE_CREATE < nImports &&
-        ctx->spare + 3 * ARG5_BYTES <= ctx->spareEnd) {
+    //
+    // Round 110: and each one on its own guard. The all-three guard above
+    // was the sweep's fix for the out-of-bounds write, and it also switched
+    // the whole block off for any title missing one of the three -- Asphalt
+    // Urban GT imports no Replace, Ashen no Create -- which took the `E:`
+    // to install-drive rewrite in gate6_card_open with it. Every N95 test of
+    // a C: install had the card dump on E: as well, so nothing showed until
+    // a C5-00 with no card answered the game's pack opens with KErrNotReady.
+    if (CARD_IS_READ_ONLY && IMPORT_FILE_OPEN < nImports &&
+        ctx->spare + ARG5_BYTES <= ctx->spareEnd) {
         ctx->realOpen = iat[IMPORT_FILE_OPEN];
-        ctx->realCreate = iat[IMPORT_FILE_CREATE];
-        ctx->realReplace = iat[IMPORT_FILE_REPLACE];
         ctx->cardOpen = arg5_thunk(ctx->spare, ctx, (u32)&gate6_card_open);
         ctx->spare += ARG5_BYTES;
+        iat[IMPORT_FILE_OPEN] = ctx->cardOpen;
+    }
+    if (CARD_IS_READ_ONLY && IMPORT_FILE_CREATE < nImports &&
+        ctx->spare + ARG5_BYTES <= ctx->spareEnd) {
+        ctx->realCreate = iat[IMPORT_FILE_CREATE];
         ctx->cardCreate = arg5_thunk(ctx->spare, ctx, (u32)&gate6_card_create);
         ctx->spare += ARG5_BYTES;
+        iat[IMPORT_FILE_CREATE] = ctx->cardCreate;
+    }
+    if (CARD_IS_READ_ONLY && IMPORT_FILE_REPLACE < nImports &&
+        ctx->spare + ARG5_BYTES <= ctx->spareEnd) {
+        ctx->realReplace = iat[IMPORT_FILE_REPLACE];
         ctx->cardReplace = arg5_thunk(ctx->spare, ctx, (u32)&gate6_card_replace);
         ctx->spare += ARG5_BYTES;
-        iat[IMPORT_FILE_OPEN] = ctx->cardOpen;
-        iat[IMPORT_FILE_CREATE] = ctx->cardCreate;
         iat[IMPORT_FILE_REPLACE] = ctx->cardReplace;
     }
 
