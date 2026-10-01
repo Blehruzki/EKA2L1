@@ -286,6 +286,17 @@ Restart calls StartL** (measured, `R105`), the port restarts the access
 itself when the game has not. Both titles' windows are the whole panel once
 the status pane has gone, so the clip changes nothing in the foreground.
 
+## 9a. Open: G6FLT 31600 on Asphalt 1 (round 106)
+
+A rare early crash: `EExcGeneral` (type 0) with `TTrap::Trap` the last import,
+during repeated audio-stream teardown/reopen with a key held, after a
+foreground event. Not localizable from the round-106 log because the port's
+`User::SetExceptionHandler` handler is called with only a `TExcType`, no
+frame -- unlike the `_start` last-chance re-entry, which hands over the full
+frame. Build 023's catcher recovers the frame from the stack on that path
+(`frame_here`/`NOTE_FAULT_SCAN` in `gate6.cpp`); awaiting the next phone log
+to name the address.
+
 ## 10. Where the bench and the phone disagree
 
 Known gaps in EKA2L1, each of which hid a bug above: thread stacks far

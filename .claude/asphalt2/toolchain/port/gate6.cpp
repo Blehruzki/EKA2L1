@@ -323,6 +323,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FAULT_PC = 726,
        NOTE_FAULT_REG = 727,    // r0 to r12, in order, one record each
        NOTE_FAULT_PC_REL = 728, // pc as an offset into the game's image, when it is in it
+       NOTE_FAULT_SCAN = 744,   // the direct handler got only a TExcType; this frame was recovered from the stack
        NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
        NOTE_EXC_INSTALL = 730,  // what User::SetExceptionHandler answered
        NOTE_AO_WHY = 731,       // a walk of the active scheduler's queue: what prompted it
@@ -1493,13 +1494,50 @@ enum { FRAME_TYPE = 0, FRAME_CODE = 1, FRAME_ADDR = 2, FRAME_STATUS = 3, FRAME_C
 
 static void sched_dump(Context *c, u32 why);
 
+// Does this window of memory look like the kernel's exception frame?
+// { type, code, FAR, FSR, CPSR, r0..r15 } -- type small, code 0..2, the
+// CPSR in a user mode (0x10) or system mode (0x1f), and the pc a real code
+// address. The same shape the _start path is handed; see uc_exe.cia.
+static int frame_here(const u32 *f)
+{
+    if (f[FRAME_TYPE] >= 64 || f[FRAME_CODE] > 2)
+        return 0;
+    const u32 m = f[FRAME_CPSR] & 0x1F;
+    if (m != 0x10 && m != 0x1F)
+        return 0;
+    const u32 pc = f[FRAME_PC];
+    return pc >= 0x8000 && !(pc & 1);
+}
+
 extern "C" void gate6_fault(Context *c, u32 arg)
 {
     c->reached |= REACHED_FAULT;
     const u32 *f = (const u32 *)arg;
     u32 type = arg;
-    const int frame = arg >= 0x1000 && !(arg & 3) && f[FRAME_TYPE] < 64 &&
+    int frame = arg >= 0x1000 && !(arg & 3) && f[FRAME_TYPE] < 64 &&
                       f[FRAME_CODE] <= 2 && (f[FRAME_CPSR] & 0x1F) == 0x10;
+    int scanned = 0;
+    // The direct path: the kernel called our handler with only a TExcType
+    // (arg is a small integer, not a frame pointer), so there is no address
+    // in hand. But euser's trampoline built the full frame on the stack just
+    // above us before it called in (uc_exe.cia). Walk up from here for it,
+    // preferring one whose type matches the TExcType we were given. Bounded
+    // and read-only: it runs only on a fault that is already fatal.
+    if (!frame) {
+        u32 probe;
+        const u32 *base = (const u32 *)(((u32)&probe + 3) & ~3u);
+        const u32 *hit = 0;
+        for (u32 i = 0; i < 1024u; i++) {
+            const u32 *w = base + i;
+            if (frame_here(w)) {
+                if (w[FRAME_TYPE] == arg) { hit = w; break; }
+                if (!hit) hit = w;      // first plausible, in case none matches
+            }
+        }
+        if (hit) { f = hit; frame = 1; scanned = 1; }
+    }
+    if (scanned)
+        log_event(c, NOTE_FAULT_SCAN, (u32)f);
     if (frame) {
         type = f[FRAME_TYPE];
         log_event(c, NOTE_FAULT, f[FRAME_TYPE]);
