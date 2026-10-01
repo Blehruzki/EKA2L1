@@ -23,6 +23,7 @@ enum {
     IMPORT_COECONTROL_CTOR             =    82,
     IMPORT_COEENV_STATIC               =    79,
     IMPORT_CREATEWINDOWL               =    51,
+    IMPORT_CREATE_CONTEXT              = 65535,   // absent
     IMPORT_CREATE_SESSION              =   267,
     IMPORT_CTIMER_CTOR                 =   332,
     IMPORT_DELETE_OP                   =   346,
@@ -52,6 +53,7 @@ enum {
     IMPORT_SEND_RECEIVE                =   309,
     IMPORT_SERVER_STARTL               =   313,
     IMPORT_SET_AUTO_UPDATE             =    41,
+    IMPORT_SYSTEM_GC                   = 65535,   // absent
     IMPORT_THREAD_CREATE               =   268,
     IMPORT_THREAD_OPEN                 =   292,
     IMPORT_USER_ALLOC                  =   252,
@@ -82,7 +84,7 @@ enum {
 
 // The diversions: see DIVERTS in gen_shim.py. {import, register,
 // which wrapper}, and an import the game does not have is left out.
-#define GATE_DIVERTS  { 160, 1, 0 }, { 91, 0, 1 }, { 45, 0, 1 }, { 64, 0, 1 }, { 42, 0, 3 }, { 257, 0, 2 }, { 250, 0, 2 }, { 248, 0, 2 }, { 310, 0, 2 },
-#define GATE_DIVERT_COUNT 9
+#define GATE_DIVERTS  { 160, 1, 0 }, { 91, 0, 1 }, { 45, 0, 1 }, { 64, 0, 1 }, { 65, 0, 1 }, { 75, 1, 1 }, { 69, 1, 1 }, { 16, 0, 0 }, { 18, 0, 0 }, { 42, 0, 3 }, { 257, 0, 2 }, { 250, 0, 2 }, { 248, 0, 2 }, { 310, 0, 2 },
+#define GATE_DIVERT_COUNT 14
 
 #endif

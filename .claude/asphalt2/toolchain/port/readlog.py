@@ -182,7 +182,13 @@ ADDRESS_NOTES = {850, 851, 852, 853, 854, 855, 856, 857, 858, 859, 875, 876, 891
 # there now, and the ones on the left are what the same codes meant when the
 # display work was using them. Reading a sound trace as "APP UI VPTR CHANGED"
 # is how E201's Open call nearly went unnoticed.
-NOTES = {860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on / SOUND',
+NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   old slot',
+         749: 'UI OVERRIDE forwarded: old slot<<24 | offset (7 foreground, 9 system event, 17 command)',
+         750: 'HandleCommandL on the wrapper: command',
+         751: 'WINDOW GC stand-in built over the real CWindowGc at',
+         752: 'CODE PATCH applied at image offset',
+         753: 'BITGDI CONTEXT stand-in: real CFbsBitGc (0xDE1 then it: deleted)',
+         860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on / SOUND',
          852: 'image loaded at / sound msg', 853: 'chunk ends at / MDA CALL',
          854: 'APP UI VPTR CHANGED to / MDA arg', 855: 'decrypted literal / MDA vtable',
          856: '  and it points at a word / MDA code',
@@ -233,6 +239,7 @@ NOTES = {860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on
  744: 'FAULT frame recovered from the stack at',
  745: 'FAULT handler entered with (pointer = frame, small = TExcType)',
  746: 'FAULT raw: handler sp, then stack words',
+ 748: 'SYSAGT: a11 armed (then the status), ca0 cancelled, bad second notify',
  747: 'TRAP: 5e7 handler installed (orig), e11 enter (TTrap), 1ea leave (reason), 7e5 longjmp (TTrap), f0c bench forced leave',
  781: 'DSA ABORTED by wserv, reason', 782: 'DSA RESTART, reason (0x57a7: StartL by us)'}
 

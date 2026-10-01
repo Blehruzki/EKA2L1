@@ -49,7 +49,7 @@ def build(out='.', caption=None, game=DEFAULT_GAME, **kw):
                appname=game_setting(game, 'GAME_APP_NAME') or 'gate6',
                imports=[(buildapp.EUSER, ['user_panic', 'userheap_setupthreadheap',
                                           'user_initprocess', 'user_alloc', 'user_allocz', 'user_alloclen',
-                                          'user_setexceptionhandler', 'user_exceptionhandler', 'cactivescheduler_current', 'rhandle_close',
+                                          'user_setexceptionhandler', 'user_exceptionhandler', 'cactivescheduler_current', 'rhandle_close', 'user_requestcomplete',
                                           'user_leave', 'user_settraphandler', 'user_traphandler', 'user_markcleanupstack', 'user_unmarkcleanupstack', 'xleave_getreason',
                                           'cperiodic_newl', 'cperiodic_start',
                                           'chunk_createlocalcode', 'chunk_base',

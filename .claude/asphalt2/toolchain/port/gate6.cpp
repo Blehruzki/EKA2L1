@@ -326,6 +326,12 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FAULT_SCAN = 744,   // the direct handler got only a TExcType; this frame was recovered from the stack
        NOTE_FAULT_ARG = 745,    // the raw value the handler was entered with: a frame pointer, or a bare TExcType
        NOTE_FAULT_RAW = 746,    // the handler's own sp, then raw stack words from it, for offline reading of the real frame
+       NOTE_SYSAGT = 748,       // the System Agent stand-in: 0xA11 armed (status), 0xCA0 cancelled, 0xBAD a second notify
+       NOTE_UI_FORWARD = 749,   // the game overrides an app UI event slot: (old slot << 24) | its image offset
+       NOTE_UI_COMMAND = 750,   // HandleCommandL entered on the wrapper: the command
+       NOTE_WINGC = 751,        // the window gc stand-in built: the real CWindowGc
+       NOTE_PATCH = 752,        // a GAME_CODE_PATCHES word rewritten: its image offset
+       NOTE_BITGC = 753,        // a bitgdi context stand-in: the real CFbsBitGc, or 0xDE1 then it on delete
        NOTE_TRAP = 747,         // the trap bridge: 0x5E7 installed (then the original handler), 0xE11 entered (TTrap),
                                 // 0x1EA a leave (reason), 0x7E5 longjmp into (TTrap), 0xF0C the bench's forced leave
        NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
@@ -472,10 +478,11 @@ struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
 // Every import gets a slot big enough for whichever thunk it needs.
 enum { SLOT = 48 };
 enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 5,
-       KIND_ARGSHIFT = 6 };
+       KIND_ARGSHIFT = 6, KIND_NEG = 7, KIND_DEC = 8, KIND_NOT = 9, KIND_SEXT1 = 10 };
 enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
        LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5, LOCAL_TRUE = 6, LOCAL_SELF = 7,
-       LOCAL_MEM_MOVE = 8, LOCAL_TRAP_UNTRAP = 9 };
+       LOCAL_MEM_MOVE = 8, LOCAL_TRAP_UNTRAP = 9, LOCAL_RAMSIZES = 10,
+       LOCAL_SYSAGT_SETSTATUS = 11, LOCAL_SYSAGT_NOTIFY = 12, LOCAL_SYSAGT_CANCEL = 13 };
 
 // memmove. The game imports it from the C runtime and 9.x does not export it
 // under that name, so it is written here rather than forwarded. Overlap is the
@@ -615,6 +622,7 @@ void *coeenv_static(void);                            // CCoeEnv::Static()
 void *cactivescheduler_current(void);                 // CActiveScheduler::Current()
 i32 user_setexceptionhandler(void *handler, u32 mask); // User::SetExceptionHandler
 void user_leave(int reason);                          // User::Leave
+void user_requestcomplete(u32 **status, int reason);  // User::RequestComplete
 void *user_settraphandler(void *h);                   // User::SetTrapHandler -> the previous one
 void *user_traphandler(void);                         // User::TrapHandler
 void *user_markcleanupstack(void);                    // User::MarkCleanupStack
@@ -696,6 +704,14 @@ static const u16 kAvkonName[] = {'a','v','k','o','n','{','0','0','0','a','0','0'
                                  '[','1','0','0','0','5','6','c','6',']','.','d','l','l'};
 
 enum { OLD_CREATE_DOCUMENT = 12, OLD_UI_CONSTRUCT = 13, OLD_CREATE_APP_UI = 17 };
+// The three event slots a game overrides on its old app UI, read off the
+// vtable's inherited neighbours (ROUNDS E368: old 8 is cone
+// HandleSwitchOnEventL, 10 eikcore HandleApplicationSpecificEventL, 16
+// StopDisplayingMenuBar), and the 9.x slot each one answers (SYMBIAN.md,
+// the app UI vtable).
+enum { OLD_UI_FOREGROUND = 7, OLD_UI_SYSEVENT = 9, OLD_UI_COMMAND = 17 };
+// GCC98r2 puts two header words in front of an old vtable (old_call adds them).
+enum { OLD_VT_HEADER = 2 };
 
 // The game's app UI ConstructL, old slot 13: BaseConstructL(0), then a trap
 // harness, then it builds a control, asks for ApplicationRect, pushes the
@@ -849,7 +865,7 @@ enum { ON_TIMER = 2, ON_GC = 3 };
 // the screen device the game reads out of it are handed to 9.x functions and
 // must stay real. So the game gets a copy: the shifted environment word for
 // word, with the app UI put back to its own.
-enum { COEENV_VIEW_WORDS = 0x60 / 4, OLD_COEENV_APPUI = 0x18 };
+enum { COEENV_VIEW_WORDS = 0x60 / 4, OLD_COEENV_APPUI = 0x18, OLD_COEENV_SYSTEM_GC = 0x34 };
 
 enum { ON_APP_UI = 0, ON_CONTROL = 1 };
 
@@ -1023,6 +1039,7 @@ struct Context {
     u32 trapVt[3];          // its vtable: Trap, UnTrap, Leave, as ctx thunks
     u32 trapLogs;           // enter records written so far (capped: the game traps every frame)
     u32 forceLeaveN;        // bench knob counter, see FORCE_LEAVE_AT
+    u32 *sysagtStatus;      // the one System Agent notify outstanding, or 0
     u32 boxL, boxT, boxR, boxB; // the clip the blit and the blank keep to, in
                             // screen pixels, half-open; see clipMode
     u32 clipMode;           // CLIP_NONE, CLIP_ALL, CLIP_BOX or CLIP_RECTS
@@ -1033,6 +1050,10 @@ struct Context {
                             // title's own window, as wserv first granted it
     u32 *realGc;            // the 9.x CFbsBitGc inside it
     u32 *fakeGc;            // and the old-vtable stand-in the game calls
+    u32 *realWinGc;         // the environment's 9.x CWindowGc (SystemGc)
+    u32 realCreateContext;  // bitgdi's CFbsDevice::CreateContext, before our hook
+    u32 *bitGcVt;           // the old-shaped CFbsBitGc vtable every stand-in shares
+    u32 *fakeWinGc;         // and the old-vtable stand-in the game draws with
     u32 newDsaStartL;       // ws32's CDirectScreenAccess::StartL, as resolved
     u32 *oldUi;             // the game's CEikAppUi, old layout
     u32 heapSum;            // a fingerprint of the allocator's vtable
@@ -1110,6 +1131,11 @@ struct Context {
     u32 completesMine;      // ... and the ones aimed at the frame timer
     u32 realWsEvent;        // avkon's CAknAppUi::HandleWsEventL, before our thunk
     u32 realFgEvent;        // ... and its HandleForegroundEventL
+    u32 realSysEvent;       // ... HandleSystemEventL and HandleCommandL, the same
+    u32 realCommand;
+    u32 oldFgEvent;         // the game's own overrides of those three, on its old
+    u32 oldSysEvent;        //   app UI (GAME_UI_FORWARD_EVENTS), 0 where it inherits
+    u32 oldCommand;
     u32 realDoCancel;       // the 9.x CTimer::DoCancel our thunk displaced
     u32 beatTimer;          // our own CPeriodic, so a dead app can be told
     u32 beats;              //   from a stopped one
@@ -2362,6 +2388,8 @@ static const Patch kGateTwo[] = {
 // writes into the middle of some other function in anyone else's. See game.h.
 enum { HOOK_UNCOMPRESS = GAME_HOOK_UNCOMPRESS, Z_REAL = GAME_Z_REAL, Z_BYTES = 104 };
 static const u32 kZSite[] = { GAME_Z_SITES };
+struct CodePatch { u32 at, expect, replace; };
+static const CodePatch kCodePatch[] = { GAME_CODE_PATCHES };
 // A decompression per resource is hundreds a run, and the failing one is the
 // last. Record every call up to this many, then only the ones that fail --
 // which keeps the log short enough to survive and still holds the answer.
@@ -4522,14 +4550,19 @@ static const u16 kCoeEnvMethod[] = { GATE_COEENV_METHODS };
 static u32 gc_thunk(u8 *code, const void *cell, u32 slot)
 {
     u32 *b = (u32 *)code;
-    b[0] = 0xE59FC008;
-    b[1] = 0xE59C0000;
-    b[2] = 0xE59CC000;
-    b[3] = 0xE59CF000 | (slot * 4);
+    b[0] = 0xE59FC008;                  // ldr ip, [pc, #8]      ip = cell
+    b[1] = 0xE59C0000;                  // ldr r0, [ip]          r0 = the real gc
+    b[2] = 0xE590C000;                  // ldr ip, [r0]          ip = its vtable
+    b[3] = 0xE59CF000 | (slot * 4);     // ldr pc, [ip, #slot*4]
     b[4] = (u32)cell;
     user_imb_range(b, b + 5);
     return (u32)b;
 }
+// E370: the third word was `ldr ip, [ip]` -- the object again, not its
+// vtable -- so every entry jumped through a word of the object itself. It
+// had never run: the direct-screen stand-in's one exercised entry, BitBlt,
+// is replaced by the port's own blit below, and Ashen's window gc was the
+// first to call through one.
 
 enum { GC_THUNK_BYTES = 20 };
 
@@ -6935,6 +6968,156 @@ extern "C" void *gate6_dll_name(u32 *out, void *, Context *c)
 // name as well as reading it out of its control -- CCoeEnv::Static() then
 // [env+0x18] is how it finds the app UI -- so the shifted view is what
 // CCoeEnv::Static() returns too.
+// CCoeControl::SystemGc() const: cone walks the control's parents to the
+// root and returns its environment's `iSystemGc` (coemain.h keeps it at
+// +0x40 on this release; E363 faulted on exactly that read). A title that
+// draws through the window gc -- Ashen -- asks for it on its own old-layout
+// control, and before CreateWindowL has built the wrapper, so the answer
+// comes straight from the real environment instead. Whatever the game then
+// does with the gc is through its vtable, in the old slot order.
+enum { COEENV_SYSTEM_GC = 0x40 };
+
+// **The window gc, in the old shape.** E369: handed the real CWindowGc, the
+// game called it by its old slot numbers -- word 0xd8 for Activate(window)
+// is 9.x's Clear(), word 0xc0 for BitBlt(const TPoint&, const CFbsBitmap*)
+// is 9.x's SetClippingRegion -- and the emulator died in Clear on a gc with
+// no window. Same disease as the CFbsBitGc one above (kGcSlot), same cure.
+//
+// Old entry -> 9.x slot, both read off the ROMs rather than a header: the
+// RH-29 ws32 vtable (0x5058dcc0, 63 entries) and RM-409's _ZTV9CWindowGc
+// (ordinal 436), each entry named by the wserv opcode its body writes (the
+// emulator's gcop.def, u139 and u151m2 columns). The 9.x numbers also fall
+// out of GDI.H/W32STD.H in base-class declaration order -- CBase 0-2,
+// CGraphicsContext 3-53, CBitmapContext 54-66, CWindowGc's own 67-79 -- and
+// the two agree. Entry 0 is the destructor, which nothing may call on the
+// environment's gc; 41 and 42 are gdi's DrawText(TDrawTextParam) and
+// Reserved, inherited both sides.
+enum { OLD_WINGC_SLOTS = 63 };
+static const u8 kWinGcSlot[OLD_WINGC_SLOTS] = {
+    GC_NONE, 3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17,
+    18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33,
+    34, 35, 36, 37, 38, 39, 40, 43, 44, 45, 46, 54, 55, 56, 57, 58,
+    59, 60, 61, 67, 68, 69, 70, 71, 72, 47, 50, 51, 73, 48, 49,
+};
+
+static void *wingc_standin(Context *c)
+{
+    if (!c->coeEnv)
+        return 0;
+    u32 *real = (u32 *)((const u32 *)c->coeEnv)[COEENV_SYSTEM_GC / 4];
+    if (!real)
+        return 0;
+    c->realWinGc = real;
+    if (!c->fakeWinGc) {
+        u32 *vt = (u32 *)user_allocz((2 + OLD_WINGC_SLOTS) * 4);
+        u32 *obj = (u32 *)user_allocz(4);
+        if (!vt || !obj || c->spare + OLD_WINGC_SLOTS * GC_THUNK_BYTES > c->spareEnd)
+            PANIC(CAT_MEM, -39);
+        for (u32 i = 0; i < OLD_WINGC_SLOTS; i++)
+            vt[2 + i] = (kWinGcSlot[i] == GC_NONE)
+                ? (u32)&gate6_pure_virtual
+                : gc_thunk(c->spare + i * GC_THUNK_BYTES, &c->realWinGc, kWinGcSlot[i]);
+        c->spare += OLD_WINGC_SLOTS * GC_THUNK_BYTES;
+        obj[0] = (u32)vt;           // GCC98r2: the vptr points at the header
+        c->fakeWinGc = obj;
+        log_event(c, NOTE_WINGC, (u32)real);
+    }
+    return c->fakeWinGc;
+}
+
+extern "C" void *gate6_system_gc(u32, u32, Context *c)
+{
+    return wingc_standin(c);
+}
+
+// **The bitgdi contexts, in the old shape, one stand-in per object.** E373:
+// the CFbsBitGc that `CFbsDevice::CreateContext` hands the game is a 9.x
+// object and the game calls it by old slot numbers, as it does the window gc
+// -- and unlike the direct-screen context there can be any number of them
+// (the game makes one per bitmap it converts and deletes it again), so the
+// stand-in carries its own real pointer instead of reading a shared cell:
+//
+//   ldr r0, [r0, #4]      @ the real context
+//   ldr ip, [r0]          @ its vtable
+//   ldr pc, [ip, #slot*4]
+//
+// The slot map is kGcSlot, measured for the direct-screen stand-in. The
+// table's two GCC98r2 header words double as EABI slots 0 and 1 for the 9.x
+// euser that deletes the object off the cleanup stack (`PopAndDestroy` ->
+// `CBase::Delete` -> the deleting destructor, slot 1 of whatever the vptr
+// points at), and old slot 0 is the game's own destructor call: all three
+// forward to the real deleting destructor. The 12-byte stand-in itself is
+// not freed (there is no free in this layer); a few hundred a run.
+static u32 objgc_thunk(u8 *code, u32 slot)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE5900004;                  // ldr r0, [r0, #4]
+    b[1] = 0xE590C000;                  // ldr ip, [r0]
+    b[2] = 0xE59CF000 | (slot * 4);     // ldr pc, [ip, #slot*4]
+    user_imb_range(b, b + 3);
+    return (u32)b;
+}
+enum { OBJGC_THUNK_BYTES = 12, BITGC_STANDIN_WORDS = 3 };
+
+extern "C" void gate6_bitgc_delete(u32 *standin)
+{
+    typedef void (*Dtor)(void *);
+    u32 *real = (u32 *)standin[1];
+    Context *c = (Context *)standin[2];
+    if (c) {
+        log_event(c, NOTE_BITGC, 0xDE1);
+        log_event(c, NOTE_BITGC, (u32)real);
+    }
+    standin[1] = 0;
+    if (real && !((u32)real & 3) && real[0])
+        ((Dtor)((const u32 *)real[0])[1])(real);
+}
+
+static u32 *bitgc_standin(Context *c, u32 *real)
+{
+    if (!c->bitGcVt) {
+        u32 *vt = (u32 *)user_allocz((2 + OLD_GC_SLOTS) * 4);
+        if (!vt || c->spare + OLD_GC_SLOTS * OBJGC_THUNK_BYTES > c->spareEnd)
+            PANIC(CAT_MEM, -40);
+        vt[0] = (u32)&gate6_bitgc_delete;   // EABI slot 0, complete destructor
+        vt[1] = (u32)&gate6_bitgc_delete;   // EABI slot 1, deleting destructor
+        vt[2] = (u32)&gate6_bitgc_delete;   // old slot 0, the game's destructor call
+        for (u32 i = 1; i < (u32)OLD_GC_SLOTS; i++)
+            vt[2 + i] = (kGcSlot[i] == GC_NONE)
+                ? (u32)&gate6_pure_virtual
+                : objgc_thunk(c->spare + i * OBJGC_THUNK_BYTES, kGcSlot[i]);
+        c->spare += OLD_GC_SLOTS * OBJGC_THUNK_BYTES;
+        c->bitGcVt = vt;
+    }
+    u32 *obj = (u32 *)user_allocz(BITGC_STANDIN_WORDS * 4);
+    if (!obj) PANIC(CAT_MEM, -41);
+    obj[0] = (u32)c->bitGcVt;
+    obj[1] = (u32)real;
+    obj[2] = (u32)c;
+    log_event(c, NOTE_BITGC, (u32)real);
+    return obj;
+}
+
+extern "C" int gate6_create_context(void *device, u32 **out, Context *c)
+{
+    typedef int (*Fn)(void *, u32 **);
+    const int r = ((Fn)c->realCreateContext)(device, out);
+    if (r == 0 && out && *out)
+        *out = bitgc_standin(c, *out);
+    return r;
+}
+
+// `CEikAppUi::ApplicationRect()` as an N-Gage reports it: the game sizes its
+// container, and from that its frame bitmaps, off this (E373: 240x320 here
+// gave a 240-wide bitmap drawn at a 176 pitch). A structure return: r0 is
+// the buffer, r1 is `this`.
+extern "C" u32 *gate6_app_rect(u32 *out, u32, Context *)
+{
+    out[0] = 0; out[1] = 0;
+    out[2] = (u32)GAME_CONTROL_W; out[3] = (u32)GAME_CONTROL_H;
+    return out;
+}
+
 extern "C" void *gate6_coeenv_static(u32, u32, Context *c)
 {
     c->coeEnv = (u32 *)coeenv_static();
@@ -6944,6 +7127,11 @@ extern "C" void *gate6_coeenv_static(u32, u32, Context *c)
         c->coeEnvView[i] = real[i];
     if (c->oldUi)
         c->coeEnvView[OLD_COEENV_APPUI / 4] = (u32)c->oldUi;
+    // The old iSystemGc (0x34; the 9.x one is twelve bytes along, so the
+    // shifted copy already holds the real gc there): the stand-in instead,
+    // for a title that reads the field rather than calling SystemGc().
+    if (IMPORT_SYSTEM_GC < 0xFFFF && wingc_standin(c))
+        c->coeEnvView[OLD_COEENV_SYSTEM_GC / 4] = (u32)c->fakeWinGc;
     return c->coeEnvView;
 }
 
@@ -7105,9 +7293,14 @@ extern "C" void gate6_create_window(u32 *oldControl, int, Context *c)
             // only a full-screen window answers it. The size is not known
             // from ScreenInfo yet at construction, so fall back on the
             // device's own.
+            // ... unless the title sizes its own frame from the control
+            // (GAME_CONTROL_W/H): Ashen creates its two frame bitmaps from
+            // Rect().Size() and renders into them at its own 176 pitch, so a
+            // 240x320 control gave it a 240-wide bitmap and a sheared picture
+            // (E372's screenshot).
             const u32 tl[2] = { 0, 0 };
-            const u32 sz[2] = { c->screenW ? c->screenW : 240u,
-                                c->screenH ? c->screenH : 320u };
+            const u32 sz[2] = { GAME_CONTROL_W ? (u32)GAME_CONTROL_W : (c->screenW ? c->screenW : 240u),
+                                GAME_CONTROL_H ? (u32)GAME_CONTROL_H : (c->screenH ? c->screenH : 320u) };
             se(ctl, tl, sz);
             log_event(c, NOTE_SCREEN, 0x51E00000u | (sz[0] & 0xFFFF));
         }
@@ -7730,6 +7923,48 @@ extern "C" void gate6_trap_leave(void *self, u32 reason, u32, Context *c)
     gate6_trap_longjmp(t, (int)reason);
 }
 
+// ---------------------------------------------------------------------------
+// **The System Agent, as an agent with nothing to say.** sysagt.dll is gone on
+// 9.x. Ashen keeps a CActive watching it: SetRequestStatus(iStatus) on its
+// TSysAgentEvent, NotifyOnEvent(event) on the agent, SetActive() -- and a
+// RunL that re-arms. EKA1's TSysAgentEvent is { TUid iUid; TInt iState;
+// TRequestStatus* iRequestStatus; }. The stand-in keeps the request pending
+// for ever, which is what no events looks like, and completes it with
+// KErrCancel on NotifyEventCancel so that CActive::Cancel's WaitForRequest
+// returns. One outstanding notify; a second is logged and takes over.
+enum { SYSAGT_STATUS_AT = 8 };
+
+extern "C" void gate6_sysagt_setstatus(u32 *event, u32 *status, u32, Context *)
+{
+    if (event)
+        event[SYSAGT_STATUS_AT / 4] = (u32)status;
+}
+
+extern "C" int gate6_sysagt_notify(void *, u32 *event, u32, Context *c)
+{
+    u32 *status = event ? (u32 *)event[SYSAGT_STATUS_AT / 4] : 0;
+    if (!status)
+        return -6;                       // KErrArgument
+    if (c->sysagtStatus && c->sysagtStatus != status)
+        log_event(c, NOTE_SYSAGT, 0xBAD);
+    *status = (u32)KREQUEST_PENDING;
+    c->sysagtStatus = status;
+    log_event(c, NOTE_SYSAGT, 0xA11);
+    log_event(c, NOTE_SYSAGT, (u32)status);
+    return 0;
+}
+
+extern "C" int gate6_sysagt_cancel(void *, u32, u32, Context *c)
+{
+    u32 *status = c->sysagtStatus;
+    if (status && *status == (u32)KREQUEST_PENDING) {
+        c->sysagtStatus = 0;
+        log_event(c, NOTE_SYSAGT, 0xCA0);
+        user_requestcomplete(&status, -3);   // KErrCancel, with the thread's signal
+    }
+    return 0;
+}
+
 // Bench knob: the Nth SetAudioPropertiesL (slot 3) leaves with KErrNotSupported
 // instead of being forwarded. The game's own code at 0x14398 traps that call
 // and, on -5 at 16 kHz, retries at 8 kHz -- so a working bridge shows as a
@@ -8217,7 +8452,7 @@ extern "C" void gate6_baseconstructl(void *, int flags, Context *c)
 // one word off the argument, and the record either side says whether avkon's
 // own handler returned. These call the real avkon functions the vtable copy
 // held before the thunks went in.
-enum { SLOT_UI_WSEVENT = 4, SLOT_UI_FOREGROUND = 8 };
+enum { SLOT_UI_WSEVENT = 4, SLOT_UI_FOREGROUND = 8, SLOT_UI_SYSEVENT = 10, SLOT_UI_COMMAND = 24 };
 
 // **Every object the 9.x active scheduler holds, and where each one's RunL
 // would go.** Round 101 put the death one step past avkon's handling of
@@ -8291,12 +8526,65 @@ extern "C" void gate6_ui_wsevent(void *self, const u32 *event, void *dest, Conte
         sched_dump(c, type);
 }
 
+// **The game's own event handlers.** The framework talks to the wrapper, and
+// the wrapper called nothing of the old app UI but its ConstructL -- which
+// was enough for the Asphalts (Asphalt 2 overrides no event slot; Asphalt 1
+// overrides four and shipped a hundred rounds without any of them called).
+// Ashen starts its game loop from its HandleForegroundEventL override (E368:
+// code+0xb5a8c, the only path to its CIdle::Start), so with
+// GAME_UI_FORWARD_EVENTS the three slots a game overrides go to the old
+// object instead of to avkon. Each override calls its avkon base itself, on
+// the old object; the diversion on that import (gen_shim DIVERTS, avkon 757
+// and 803) hands the base the wrapper, so avkon runs once, on the object it
+// can read, in the order the game wrote.
 extern "C" void gate6_ui_foreground(void *self, u32 foreground, Context *c)
 {
     typedef void (*FgEvent)(void *, u32);
     log_event(c, NOTE_FG_EVENT, foreground);
-    ((FgEvent)c->realFgEvent)(self, foreground);
+    if (GAME_UI_FORWARD_EVENTS && c->oldFgEvent)
+        ((FgEvent)c->oldFgEvent)(c->oldUi, foreground);
+    else
+        ((FgEvent)c->realFgEvent)(self, foreground);
     log_event(c, NOTE_FG_EVENT_DONE, foreground);
+}
+
+extern "C" void gate6_ui_sysevent(void *self, const void *event, Context *c)
+{
+    typedef void (*SysEvent)(void *, const void *);
+    if (GAME_UI_FORWARD_EVENTS && c->oldSysEvent)
+        ((SysEvent)c->oldSysEvent)(c->oldUi, event);
+    else
+        ((SysEvent)c->realSysEvent)(self, event);
+}
+
+extern "C" void gate6_ui_command(void *self, u32 command, Context *c)
+{
+    typedef void (*Command)(void *, u32);
+    log_event(c, NOTE_UI_COMMAND, command);
+    if (GAME_UI_FORWARD_EVENTS && c->oldCommand)
+        ((Command)c->oldCommand)(c->oldUi, command);
+    else
+        ((Command)c->realCommand)(self, command);
+}
+
+// An old vtable entry the game wrote, as opposed to one it inherited: inside
+// the image, and not the import veneer (`ldr ip, [pc, #4]; ldr ip, [ip];
+// bx ip`) every inherited slot of an old table points at -- those are inside
+// the image too, which is why "in the image" alone does not say override.
+static u32 old_override(const Context *c, const u32 *oldObj, u32 slot)
+{
+    if (!oldObj || ((u32)oldObj & 3) || !c->codeBase)
+        return 0;
+    const u32 *vt = (const u32 *)oldObj[0];
+    if (!vt || ((u32)vt & 3))
+        return 0;
+    const u32 f = vt[OLD_VT_HEADER + slot];
+    if (f < c->codeBase || f + 12 > c->codeBase + c->codeLen || (f & 3))
+        return 0;
+    const u32 *w = (const u32 *)f;
+    if (w[0] == 0xE59FC004 && w[1] == 0xE59CC000 && w[2] == 0xE12FFF1C)
+        return 0;
+    return f;
 }
 
 extern "C" void gate6_ui_construct(void *self)
@@ -8325,7 +8613,7 @@ extern "C" void gate6_ui_construct(void *self)
 // and NOTE_END, so the classification is subtraction.
 //
 // GCC98r2 puts two header words in front, which is why `old_call` adds 2.
-enum { DUMP_OLD_VTABLES = 1, OLD_VT_SLOTS = 32, OLD_VT_HEADER = 2 };
+enum { DUMP_OLD_VTABLES = 1, OLD_VT_SLOTS = 32 };
 
 static void old_vtable_dump(Context *c, const u32 *obj, u32 mark)
 {
@@ -8378,11 +8666,31 @@ extern "C" void *gate6_create_app_ui(void *self)
     new_vtable_dump(c, vt + VT_HEADER, (u32)AKN_APPUI_SLOTS, 5);
     c->realWsEvent = vt[VT_HEADER + SLOT_UI_WSEVENT];
     c->realFgEvent = vt[VT_HEADER + SLOT_UI_FOREGROUND];
+    c->realSysEvent = vt[VT_HEADER + SLOT_UI_SYSEVENT];
+    c->realCommand = vt[VT_HEADER + SLOT_UI_COMMAND];
     if (c->spare + 2 * TRACE <= c->spareEnd) {
         vt[VT_HEADER + SLOT_UI_WSEVENT] = ctx3_thunk(c->spare, c, (u32)&gate6_ui_wsevent);
         c->spare += TRACE;
         vt[VT_HEADER + SLOT_UI_FOREGROUND] = ctx_thunk(c->spare, c, (u32)&gate6_ui_foreground);
         c->spare += TRACE;
+    }
+    if (GAME_UI_FORWARD_EVENTS) {
+        const u32 *old = (const u32 *)oldUi;
+        c->oldFgEvent = old_override(c, old, OLD_UI_FOREGROUND);
+        c->oldSysEvent = old_override(c, old, OLD_UI_SYSEVENT);
+        c->oldCommand = old_override(c, old, OLD_UI_COMMAND);
+        if (c->oldFgEvent)
+            log_event(c, NOTE_UI_FORWARD, (OLD_UI_FOREGROUND << 24) | (c->oldFgEvent - c->codeBase));
+        if (c->oldSysEvent)
+            log_event(c, NOTE_UI_FORWARD, (OLD_UI_SYSEVENT << 24) | (c->oldSysEvent - c->codeBase));
+        if (c->oldCommand)
+            log_event(c, NOTE_UI_FORWARD, (OLD_UI_COMMAND << 24) | (c->oldCommand - c->codeBase));
+        if (c->spare + 2 * TRACE <= c->spareEnd) {
+            vt[VT_HEADER + SLOT_UI_SYSEVENT] = ctx_thunk(c->spare, c, (u32)&gate6_ui_sysevent);
+            c->spare += TRACE;
+            vt[VT_HEADER + SLOT_UI_COMMAND] = ctx_thunk(c->spare, c, (u32)&gate6_ui_command);
+            c->spare += TRACE;
+        }
     }
     instrument(c, vt, AKN_APPUI_SLOTS, OBJ_UI);
     ui[0] = (u32)(vt + VT_HEADER);
@@ -8679,6 +8987,23 @@ static u32 load_and_start()
     ctx->imageIsBin = (u32)chosenBin;
     ctx->codeBase = (u32)base;
     ctx->codeLen = h->codeSize;
+
+    // **Words of the game rewritten in place** (GAME_CODE_PATCHES): a bug of
+    // the game's own that EKA1 forgave and EKA2 does not. Each one names the
+    // word it expects to find, because an offset measured in one image is a
+    // random word in any other (E281 again), and a mismatch refuses to start
+    // rather than running patched nonsense. After relocation, since the
+    // words are code and carry none.
+    for (u32 i = 0; i < (u32)GAME_CODE_PATCH_COUNT; i++) {
+        const u32 at = kCodePatch[i].at;
+        if (at + 4 > h->codeSize || (at & 3)) PANIC(CAT_HDR, 8);
+        u32 *w = (u32 *)(base + at);
+        if (*w != kCodePatch[i].expect) PANIC(CAT_HDR, 9);
+        *w = kCodePatch[i].replace;
+        user_imb_range(w, w + 1);
+        log_event(ctx, NOTE_PATCH, at);
+    }
+
     ctx->lastImport = 0xFFFF;               // nothing yet
     ctx->spare = trace + nImports * TRACE + 16 * TRACE;  // past the fixed thunks
     ctx->spareEnd = trace + traceBytes;
@@ -8903,6 +9228,25 @@ static u32 load_and_start()
                 s[2] = (u32)ctx;
                 s[3] = (u32)&gate6_trap_enter;
                 break;
+            case LOCAL_RAMSIZES:            // RThread::GetRamSizes(TInt& total, TInt& free): 32 MB, 8 MB
+                s[0] = 0xE3A03402;          // mov r3, #0x02000000
+                s[1] = 0xE5813000;          // str r3, [r1]
+                s[2] = 0xE3A03502;          // mov r3, #0x00800000
+                s[3] = 0xE5823000;          // str r3, [r2]
+                s[4] = 0xE3A00000;          // mov r0, #0
+                s[5] = 0xE12FFF1E;          // bx  lr
+                break;
+            case LOCAL_SYSAGT_SETSTATUS:    // these three reach C with the context in r3
+            case LOCAL_SYSAGT_NOTIFY:
+            case LOCAL_SYSAGT_CANCEL:
+                s[0] = 0xE59F3004;          // ldr r3, [pc, #4]  -> the context
+                s[1] = 0xE59FF004;          // ldr pc, [pc, #4]
+                s[2] = 0;
+                s[3] = (u32)ctx;
+                s[4] = ((entry & 0xFFFF) == LOCAL_SYSAGT_SETSTATUS) ? (u32)&gate6_sysagt_setstatus
+                     : ((entry & 0xFFFF) == LOCAL_SYSAGT_NOTIFY)    ? (u32)&gate6_sysagt_notify
+                     :                                               (u32)&gate6_sysagt_cancel;
+                break;
             case LOCAL_TRAP_UNTRAP:         // TTrap::UnTrap(): pop the game's trap and the cleanup mark
                 s[0] = 0xE59F0000;          // ldr r0, [pc, #0]   -> the context
                 s[1] = 0xE59FF000;          // ldr pc, [pc, #0]   -> gate6_trap_untrap
@@ -8964,6 +9308,23 @@ static u32 load_and_start()
             s[0] = 0xE3A02000;              // mov r2, #0    -- the added argument
             s[1] = 0xE51FF004;              // ldr pc, [pc, #-4]
             s[2] = (u32)fn;
+        } else if (kind == KIND_SEXT1) {
+            // A TInt that became a TInt64: r1 goes to r2:r3, sign-extended.
+            s[0] = 0xE1A02001;              // mov r2, r1
+            s[1] = 0xE1A03FC1;              // mov r3, r1, asr #31
+            s[2] = 0xE51FF004;              // ldr pc, [pc, #-4]
+            s[3] = (u32)fn;
+        } else if (kind == KIND_NEG || kind == KIND_DEC || kind == KIND_NOT) {
+            // Forward, then shape the answer for a GCC98r2 caller: the EABI
+            // comparisons answer 1 or 0 and libgcc's answered a sign.
+            s[0] = 0xE92D4000;              // push {lr}
+            s[1] = 0xE59FC008;              // ldr  r12, [pc, #8]  -> s[5]; E366 had #12, one word past it, and called 0
+            s[2] = 0xE12FFF3C;              // blx  r12
+            s[3] = (kind == KIND_NEG) ? 0xE2600000u    // rsb r0, r0, #0   (1 -> -1)
+                 : (kind == KIND_DEC) ? 0xE2400001u    // sub r0, r0, #1   (1 -> 0, 0 -> -1)
+                 :                      0xE2600001u;   // rsb r0, r0, #1   (1 -> 0, 0 -> 1)
+            s[4] = 0xE8BD8000;              // pop  {pc}
+            s[5] = (u32)fn;
         } else {
             s[0] = 0xE92D4000;              // push {lr}
             s[1] = 0xE59FC008;              // ldr  r12, [pc, #8]
@@ -9018,6 +9379,9 @@ static u32 load_and_start()
     if (nImports > IMPORT_COEENV_STATIC)
         iat[IMPORT_COEENV_STATIC] = ctx_thunk(stub + SLOT * IMPORT_COEENV_STATIC,
                                               ctx, (u32)&gate6_coeenv_static);
+    if (nImports > IMPORT_SYSTEM_GC)
+        iat[IMPORT_SYSTEM_GC] = ctx_thunk(stub + SLOT * IMPORT_SYSTEM_GC,
+                                          ctx, (u32)&gate6_system_gc);
 
     // ... and every cone method the game calls **on** what Static() gave it.
     for (u32 i = 0; i < (u32)GATE_COEENV_METHOD_COUNT; i++) {
@@ -9121,6 +9485,17 @@ static u32 load_and_start()
             ctx->spare += APPUI_THUNK_BYTES;
         }
     }
+
+    if (nImports > IMPORT_CREATE_CONTEXT && IMPORT_CREATE_CONTEXT < kShimCount &&
+        (kShimTable[IMPORT_CREATE_CONTEXT] >> 24) == KIND_CALL) {
+        ctx->realCreateContext = iat[IMPORT_CREATE_CONTEXT];
+        iat[IMPORT_CREATE_CONTEXT] = ctx_thunk(stub + SLOT * IMPORT_CREATE_CONTEXT,
+                                               ctx, (u32)&gate6_create_context);
+    }
+    // After the diversions: this replaces the one on ApplicationRect's `this`.
+    if (GAME_CONTROL_W && GAME_CONTROL_H && nImports > IMPORT_APP_RECT)
+        iat[IMPORT_APP_RECT] = ctx_thunk(stub + SLOT * IMPORT_APP_RECT,
+                                         ctx, (u32)&gate6_app_rect);
 
     if (nImports > IMPORT_ADD_FOREGROUND_OBSERVER &&
         IMPORT_ADD_FOREGROUND_OBSERVER < kShimCount &&

@@ -28,6 +28,12 @@ EPOC9 = '/home/user/EKA2L1/src/emu/bridge/include/bridge/epoc9.def'
 # Each table entry is  kind << 24 | dll index << 16 | ordinal.
 KIND_NONE, KIND_CALL, KIND_REM, KIND_LOCAL, KIND_ARG3 = 0, 1, 2, 3, 4
 KIND_SRET8, KIND_ARGSHIFT = 5, 6
+# Forward and post-process r0: negate (GCC's __lt*2 answers negative for
+# less, EABI's __aeabi_*cmplt answers 1), decrement (__ge*2 answers >= 0 for
+# greater-or-equal; cmpge's 1 -> 0, 0 -> -1), invert 1<->0 (__le*2 / __eq*2
+# answer 0 for true), and sign-extend r1 into r2:r3 for a TInt that became a
+# TInt64 (TDes8::Num).
+KIND_NEG, KIND_DEC, KIND_NOT, KIND_SEXT1 = 7, 8, 9, 10
 
 # Where the two calling conventions actually disagree. GCC98r2 returned an
 # eight-byte structure in r0 and r1; EABI returns anything over four bytes
@@ -71,6 +77,23 @@ HELPERS = {
     '__builtin_new':        ('scppnwdl', '_Znwj', KIND_CALL),
     '__builtin_delete':     ('scppnwdl', '_ZdlPv', KIND_CALL),
     '__builtin_vec_delete': ('scppnwdl', '_ZdaPv', KIND_CALL),
+    '__builtin_vec_new':    ('scppnwdl', '_Znaj',  KIND_CALL),
+    # Ashen's share of the GCC98r2 float library, round 109.
+    '__subdf3':      ('dfpaeabi', '__aeabi_dsub',     KIND_CALL),
+    '__subsf3':      ('dfpaeabi', '__aeabi_fsub',     KIND_CALL),
+    '__divdf3':      ('dfpaeabi', '__aeabi_ddiv',     KIND_CALL),
+    '__ltsf2':       ('dfpaeabi', '__aeabi_fcmplt',   KIND_NEG),
+    '__ltdf2':       ('dfpaeabi', '__aeabi_dcmplt',   KIND_NEG),
+    '__gtsf2':       ('dfpaeabi', '__aeabi_fcmpgt',   KIND_CALL),
+    '__gtdf2':       ('dfpaeabi', '__aeabi_dcmpgt',   KIND_CALL),
+    '__gesf2':       ('dfpaeabi', '__aeabi_fcmpge',   KIND_DEC),
+    '__gedf2':       ('dfpaeabi', '__aeabi_dcmpge',   KIND_DEC),
+    '__lesf2':       ('dfpaeabi', '__aeabi_fcmple',   KIND_NOT),
+    '__ledf2':       ('dfpaeabi', '__aeabi_dcmple',   KIND_NOT),
+    '__eqsf2':       ('dfpaeabi', '__aeabi_fcmpeq',   KIND_NOT),
+    '__eqdf2':       ('dfpaeabi', '__aeabi_dcmpeq',   KIND_NOT),
+    '__nesf2':       ('dfpaeabi', '__aeabi_fcmpeq',   KIND_NOT),
+    '__nedf2':       ('dfpaeabi', '__aeabi_dcmpeq',   KIND_NOT),
 }
 
 # Classes the game derives from, whose constructors and destructors must not be
@@ -98,6 +121,8 @@ LOCAL_TRUE = 6
 LOCAL_SELF = 7
 LOCAL_MEM_MOVE = 8
 LOCAL_TRAP_UNTRAP = 9
+LOCAL_RAMSIZES = 10
+LOCAL_SYSAGT_SETSTATUS, LOCAL_SYSAGT_NOTIFY, LOCAL_SYSAGT_CANCEL = 11, 12, 13
 LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL,
          'memmove': LOCAL_MEM_MOVE}
 
@@ -165,6 +190,24 @@ MANUAL = {
     # object back in r0. They leave the CActive base uninitialised, which would
     # matter if anything added the server to a scheduler -- but StartL is what
     # does that on real Symbian, and StartL here does nothing.
+    # Ashen, round 109. Each of these has a 9.x function with the same job
+    # under another name or shape.
+    'RFs::ReadFileSection(const TDesC16 &, int, TDes8 &, int) const':
+        ('efsrv', 'RFs::ReadFileSection_RESERVED(TDesC16 const&, int, TDes8&, int) const', KIND_CALL),
+    # The G in the old mangling (a class passed by value) is beyond gnuv2, so
+    # the key is the raw name. One word either way.
+    'Flush__7CCoeEnvG27TTimeIntervalMicroSeconds32':
+        ('cone', 'CCoeEnv::Flush(TTimeIntervalMicroSeconds32)', KIND_CALL),
+    'TDes16::FormatList(TDesC16 const &, signed char **)':
+        ('euser', 'TDes16::FormatList(TDesC16 const&, std::__va_list)', KIND_CALL),
+    # TDes8::Num(TInt) is inline over Num(TInt64) now: the value goes to r2:r3.
+    'TDes8::Num(int)': ('euser', 'TDes8::Num(long long)', KIND_SEXT1),
+    # The current thread's heap, which is all the game ever asks about.
+    'RThread::Heap(void)': ('euser', 'User::Allocator()', KIND_CALL),
+    'RHeap1::Size(void) const': ('euser', 'RAllocator::Size() const', KIND_CALL),
+    'RThread::GetRamSizes(int &, int &)': ('local', LOCAL_RAMSIZES, KIND_LOCAL),
+    'CnvUtfConverter::ConvertFromUnicodeToUtf8(TDes8 &, const TDesC16 &)':
+        ('charconv', 'CnvUtfConverter::ConvertFromUnicodeToUtf8(TDes8&, TDesC16 const&)', KIND_CALL),
     'CServer::CServer(int, CServer::TServerType)': ('local', LOCAL_SELF, KIND_LOCAL),
     'CServer::StartL(TDesC16 const &)': ('local', LOCAL_NOOP, KIND_LOCAL),
     'CServer::RunL(void)': ('local', LOCAL_NOOP, KIND_LOCAL),
@@ -195,7 +238,11 @@ MANUAL = {
 # its return value costs nothing; what this does cost is that anything built
 # this way stays empty, which is the point. Single player is what is wanted
 # first. Individual ordinals can be answered properly in BY_ORDINAL.
-NGAGE_ONLY = ('arenaframework', 'bluetooth.dll', 'gamecomms', 'gameutils', 'nokiafc')
+# arenafoundation is the Arena client Ashen links (online play); sysagt is the
+# System Agent, which 9.x removed outright -- its state queries answer 0 and
+# its event subscriptions never fire, which a game treats as 'nothing changed'.
+NGAGE_ONLY = ('arenaframework', 'arenafoundation', 'bluetooth.dll', 'gamecomms',
+              'gameutils', 'nokiafc', 'sysagt')
 
 # Imports with no signature to match on: the N-Gage-only libraries, and the
 # exports Nokia added past the end of what any list of ours covers. Each entry
@@ -285,6 +332,21 @@ BY_ORDINAL = {
     # cone only focuses a stacked control while its application has the
     # foreground, so the foreground half is true whenever it is asked.
     ('eikcore', 286): ('local', LOCAL_TRUE, KIND_LOCAL),
+    # Ashen, round 109. bitgdi's last exports are past epoc6's list; the N-Gage
+    # ROM's 170 is a one-argument NewL (push cleanup, new, ConstructL, pop) and
+    # the game hands it the CFbsBitmap it has just created in EColor4K and then
+    # asks the result for a CreateContext -- CFbsBitmapDevice::NewL(CFbsBitmap*).
+    ('bitgdi', 170): ('bitgdi', 'CFbsBitmapDevice::NewL(CFbsBitmap*)', KIND_CALL),
+    # The System Agent, which 9.x removed. A whole-library no-op is not enough
+    # for an event watcher (E367): NotifyOnEvent that leaves the request
+    # status at 0 makes a CActive that is 'active and complete' forever, and
+    # the scheduler dispatches it on every wake ahead of everything below its
+    # priority -- the game's own loop never ran. These three keep the contract
+    # of an agent with no events: the status goes pending and stays so, and a
+    # cancel completes it with KErrCancel for CActive::Cancel to collect.
+    ('sysagt', 12): ('local', LOCAL_SYSAGT_SETSTATUS, KIND_LOCAL),   # TSysAgentEvent::SetRequestStatus(TRequestStatus&)
+    ('sysagt', 8): ('local', LOCAL_SYSAGT_NOTIFY, KIND_LOCAL),       # RSystemAgent::NotifyOnEvent(TSysAgentEvent&)
+    ('sysagt', 4): ('local', LOCAL_SYSAGT_CANCEL, KIND_LOCAL),       # RSystemAgent::NotifyEventCancel()
 }
 
 
@@ -342,6 +404,8 @@ HOOKS = {
     'IMPORT_ADDTOSTACKL':             ('cone', 12),
     'IMPORT_CREATEWINDOWL':           ('cone', 40),
     'IMPORT_COEENV_STATIC':           ('cone', 223),
+    'IMPORT_SYSTEM_GC':               ('cone', 226),    # CCoeControl::SystemGc() const -- answered from the real environment
+    'IMPORT_CREATE_CONTEXT':          ('bitgdi', 23),   # CFbsDevice::CreateContext(CFbsBitGc*&) -- the result wrapped in the old-shaped stand-in (E373)
     'IMPORT_WINDOW':                  ('cone', 231),
     'IMPORT_COECONTROL_CTOR':         ('cone', 236),
     'IMPORT_FILE_CREATE':             ('efsrv', 25),
@@ -412,6 +476,26 @@ DIVERTS = [
     ('cone', 318, 0, ON_CONTROL),     # the Nokia export standing in for SetRect
     ('cone', 3, 0, ON_CONTROL),       # CCoeControl::ActivateL()
     ('cone', 114, 0, ON_CONTROL),     # CCoeControl::IsFocused() const
+    # Ashen, round 109: a title that draws through its control rather than
+    # direct screen access calls these on its own old-layout control, and
+    # cone reads 9.x offsets off it (E363: SystemGc walked to iCoeEnv at +0xc,
+    # found 0, read 0x40). The map sends them to the wrapper control. SystemGc
+    # itself is a hook (IMPORT_SYSTEM_GC): Ashen calls it on its container
+    # before CreateWindowL, when there is no wrapper yet to map to.
+    ('cone', 55, 0, ON_CONTROL),      # CCoeControl::DrawableWindow() const
+    ('cone', 160, 1, ON_CONTROL),     # CCoeControl::Rect() const -- TRect is returned through r0, `this` is r1
+    ('cone', 138, 0, ON_CONTROL),     # CCoeControl::MakeVisible(TBool)
+    ('cone', 197, 1, ON_CONTROL),     # CCoeControl::SetContainerWindowL(const CCoeControl&): the container argument
+    ('cone', 167, 1, ON_CONTROL),     # CCoeAppUi::RemoveFromStack(CCoeControl*): the control argument
+    # Ashen, round 109: the game's own app UI overrides HandleForegroundEventL
+    # and HandleSystemEventL and calls the avkon base from each, on its
+    # old-layout object. The wrapper forwards those slots to the game
+    # (GAME_UI_FORWARD_EVENTS); the base calls come back here and go to the
+    # wrapper, which is the object avkon can read. The names are epoc6 leads
+    # on a mismatched library, corroborated by the override that calls each
+    # one with its own arguments (ROUNDS E368).
+    ('avkon', 757, 0, ON_APP_UI),     # CAknAppUi::HandleForegroundEventL(TBool)
+    ('avkon', 803, 0, ON_APP_UI),     # CAknAppUi::HandleSystemEventL(const TWsEvent&)
     ('bitgdi', 111, 0, ON_GC),        # CFbsBitGc::SetClippingRegion(const TRegion *)
     ('euser', 224, 0, ON_TIMER),      # CTimer::ConstructL()
     ('euser', 22, 0, ON_TIMER),       # CTimer::After(TTimeIntervalMicroSeconds32)
@@ -497,11 +581,16 @@ def coeenv_methods(imports, db, hooked=()):
     the entries where that happens, so the loader can put the real pointer
     back. `Static()` is excluded -- it takes no `this` and is hooked already.
     """
+    # CEikonEnv derives from CCoeEnv and is the same object; its eikcore
+    # methods read the derived part, which the view does not carry at all
+    # (E371: `CEikonEnv::DenseFont()` on the view handed uiklaf a null font
+    # array). Ashen is the first title to import one; the Asphalts import none.
     out = []
     for i, (lib, o) in enumerate(imports):
-        if symdef.base_name(lib) != 'cone':
+        base = symdef.base_name(lib)
+        if base not in ('cone', 'eikcore'):
             continue
-        table = db.get('cone') or []
+        table = db.get(base) or []
         if o - 1 >= len(table):
             continue
         raw = table[o - 1]
@@ -509,9 +598,9 @@ def coeenv_methods(imports, db, hooked=()):
             sig = gnuv2.demangle(raw) or raw
         except Exception:
             sig = raw
-        if not sig.startswith('CCoeEnv::'):
+        if not (sig.startswith('CCoeEnv::') or sig.startswith('CEikonEnv::')):
             continue
-        if sig.startswith('CCoeEnv::Static'):
+        if sig.startswith('CCoeEnv::Static') or sig.startswith('CEikonEnv::Static'):
             continue
         # An import the port already diverts is not ours to wrap: the swap
         # would chain in front of that hook and change what it is handed.
@@ -638,6 +727,9 @@ def build(image):
             continue
         table = {}
         for o, sig in enumerate(fallback[lib], 1):
+            # epoc9.def keeps the demangler's suffix on some names
+            # ('(complete object constructor)'); norm() cannot parse it.
+            sig = sig.replace(' (complete object constructor)', '')
             table.setdefault(shimtable.norm(sig), o)
         new_index[lib] = table
 

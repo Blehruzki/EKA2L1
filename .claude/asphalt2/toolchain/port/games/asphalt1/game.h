@@ -79,6 +79,21 @@ enum { GAME_SRC_ORIGIN = 16 };
 // that is not there. E265 swapped the pointer and the fault went away.
 #define GAME_FIX_APPUI_THIS 1
 
+// The wrapper keeps the three app UI event slots (foreground, system event,
+// command) for avkon, as it always has on this title; the game's own
+// overrides of them, where it has any, were never called in any round it
+// shipped. Ashen needs them forwarded (E368) and turns this on.
+#define GAME_UI_FORWARD_EVENTS 0
+
+// The wrapper control stays the whole screen (0), as it has since E137; this
+// title draws by direct screen access and never sizes anything from it.
+#define GAME_CONTROL_W 0
+#define GAME_CONTROL_H 0
+
+// No words of the image rewritten after loading (see Ashen's game.h).
+#define GAME_CODE_PATCHES { 0, 0, 0 }
+#define GAME_CODE_PATCH_COUNT 0
+
 // Quarantine the small cells only, as Asphalt 2 does. This was
 // 0x7fffffff -- hold everything -- from E271, when a vtable pointer written
 // over a freed cell's `next` link was sending the allocator into the ROM.

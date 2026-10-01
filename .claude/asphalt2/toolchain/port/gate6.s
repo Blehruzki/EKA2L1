@@ -200,6 +200,7 @@ old_call1:
     IMPORT user_alloclen,     660    @ User::AllocLen(TAny const*)
     IMPORT user_setexceptionhandler, 635  @ User::SetExceptionHandler(TExceptionHandler, TUint32)
     IMPORT user_exceptionhandler, 620     @ User::ExceptionHandler()
+    IMPORT user_requestcomplete, 617 @ User::RequestComplete(TRequestStatus*&, TInt)
     IMPORT user_leave,        649    @ User::Leave(TInt)
     IMPORT user_settraphandler, 603  @ User::SetTrapHandler(TTrapHandler*)
     IMPORT user_traphandler,  589    @ User::TrapHandler()

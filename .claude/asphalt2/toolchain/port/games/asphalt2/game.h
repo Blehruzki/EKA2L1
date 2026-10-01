@@ -53,6 +53,21 @@ enum { GAME_SRC_ORIGIN = 16 };
 // with people is not the place to find out otherwise.
 #define GAME_FIX_APPUI_THIS 0
 
+// The wrapper keeps the three app UI event slots (foreground, system event,
+// command) for avkon, as it always has on this title; the game's own
+// overrides of them, where it has any, were never called in any round it
+// shipped. Ashen needs them forwarded (E368) and turns this on.
+#define GAME_UI_FORWARD_EVENTS 0
+
+// The wrapper control stays the whole screen (0), as it has since E137; this
+// title draws by direct screen access and never sizes anything from it.
+#define GAME_CONTROL_W 0
+#define GAME_CONTROL_H 0
+
+// No words of the image rewritten after loading (see Ashen's game.h).
+#define GAME_CODE_PATCHES { 0, 0, 0 }
+#define GAME_CODE_PATCH_COUNT 0
+
 // Cells this big or bigger go straight back to the heap; smaller ones wait
 // in the quarantine. 4 KB is where this title's use-after-free stops
 // reaching, measured over builds 150 to 172.
