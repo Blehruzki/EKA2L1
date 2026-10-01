@@ -122,6 +122,10 @@ emulator's reimplementation of it, and the inference was wrong.
    vtable slot map, how Avkon shuts an application down, what direct screen
    access does on an abort. **Read it before asserting anything about the
    platform, and add to it instead of re-deriving.**
+   **`BUGBOOK.md`, beside it.** Every bug this port has fixed, by symptom,
+   with its cause, its fix and the round that settled it. **Read it before
+   proposing a test for a symptom**: a new title's first fifty crashes are
+   in there already. When a round closes a bug, add it.
 1. **The binaries on this machine.** The N-Gage images, the RM-409 ROM and
    its extracted `z:\sys\bin`. `romimg.py`, `e32imports.py`, `epocdb.py`
    read them. Primary: vtable layouts, export addresses, real ordinal
