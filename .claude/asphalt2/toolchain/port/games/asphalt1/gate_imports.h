@@ -35,8 +35,10 @@ enum {
     IMPORT_FILE_CREATE                 =    94,
     IMPORT_FILE_OPEN                   =   100,
     IMPORT_FILE_READ                   =   101,
+    IMPORT_FILE_READ_POS               = 65535,   // absent
     IMPORT_FILE_READ_STATIC            =   101,
     IMPORT_FILE_REPLACE                = 65535,   // absent
+    IMPORT_FILE_SIZE                   =   104,
     IMPORT_LEAVE                       =   287,
     IMPORT_LEAVE_IF_ERROR              =   285,
     IMPORT_LEAVE_NOMEM                 =   286,

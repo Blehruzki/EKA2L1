@@ -193,6 +193,8 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          756: 'CTRAPCLEANUP stand-in: real object (0xDE1 then it: deleted)',
          757: 'FONT asked of the screen: px | bold<<8, then CFont* or error (0xF2EE then font: released)',
          758: 'GC TEXT: f0 then font (UseFont); 7e then x<<16|y, length, first chars (DrawText)',
+         759: 'FILE READ(pos, des, len): pos, len, result, length after',
+         760: 'FILE SIZE: size, then result',
          860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on / SOUND',
          852: 'image loaded at / sound msg', 853: 'chunk ends at / MDA CALL',
          854: 'APP UI VPTR CHANGED to / MDA arg', 855: 'decrypted literal / MDA vtable',

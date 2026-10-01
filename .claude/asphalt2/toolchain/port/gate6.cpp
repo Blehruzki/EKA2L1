@@ -337,6 +337,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_CLEANUP = 756,      // a CTrapCleanup stand-in: the real object, or 0xDE1 then it on delete
        NOTE_FONT = 757,         // a font asked of the screen device: px | bold << 8, then the CFont* or the error; 0xF2EE then the font on release
        NOTE_GCTEXT = 758,       // bitgdi stand-in: 0xF0 then the font on UseFont; 0x7E then x<<16|y, length, first chars on DrawText
+       NOTE_READ_POS = 759,     // RFile::Read(pos, des, len): pos, len, then the result and the descriptor's length after
+       NOTE_SIZE_ASKED = 760,   // RFile::Size: the size, then the result
        NOTE_TRAP = 747,         // the trap bridge: 0x5E7 installed (then the original handler), 0xE11 entered (TTrap),
                                 // 0x1EA a leave (reason), 0x7E5 longjmp into (TTrap), 0xF0C the bench's forced leave
        NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
@@ -1059,6 +1061,8 @@ struct Context {
     u32 realCreateContext;  // bitgdi's CFbsDevice::CreateContext, before our hook
     u32 *bitGcVt;           // the old-shaped CFbsBitGc vtable every stand-in shares
     u32 realCleanupNew;     // euser's CTrapCleanup::New, before our hook
+    u32 realReadPos, realSize;  // efsrv's RFile::Read(pos, des, len) and Size, before our hooks
+    u32 readsLogged;        // the first few reads only; a loading loop is thousands
     u32 *cleanupVt;         // the three-word vtable its stand-ins share: delete, any way in
     u32 *realScreenDev;     // the environment's CWsScreenDevice, 9.x
     u32 *fakeScreenDev;     // and the two-vtable old-shaped stand-in the game asks fonts of
@@ -7241,6 +7245,33 @@ static u32 *bitgc_standin(Context *c, u32 *real)
 // result through r2 and killed the thread. Nothing else is ever called on
 // a CTrapCleanup, so the stand-in's table is three words of the delete
 // above: EABI slots 0 and 1 for a 9.x caller, old slot 0 for the game.
+// **The pack reads, written down.** Round 111: on the N95 the game opened
+// its pack, and the next record is the close -- where the bench reads the
+// header and loads for a second. The reads are not milestones, so nothing
+// said what they returned. The first FILE_READS_LOGGED reads and every Size.
+enum { FILE_READS_LOGGED = 24 };
+extern "C" int gate6_file_read_pos(void *file, i32 pos, u32 *des, i32 len, Context *c)
+{
+    typedef int (*Fn)(void *, i32, u32 *, i32);
+    const int r = ((Fn)c->realReadPos)(file, pos, des, len);
+    if (c->readsLogged < (u32)FILE_READS_LOGGED) {
+        c->readsLogged++;
+        log_event(c, NOTE_READ_POS, (u32)pos);
+        log_event(c, NOTE_READ_POS, (u32)len);
+        log_event(c, NOTE_READ_POS, (u32)r);
+        log_event(c, NOTE_READ_POS, des ? (des[0] & 0x0FFFFFFF) : 0xFFFFFFFFu);
+    }
+    return r;
+}
+extern "C" int gate6_file_size_asked(void *file, i32 *size, Context *c)
+{
+    typedef int (*Fn)(void *, i32 *);
+    const int r = ((Fn)c->realSize)(file, size);
+    log_event(c, NOTE_SIZE_ASKED, size ? (u32)*size : 0xFFFFFFFFu);
+    log_event(c, NOTE_SIZE_ASKED, (u32)r);
+    return r;
+}
+
 extern "C" void *gate6_cleanup_new(u32, u32, Context *c)
 {
     typedef void *(*Fn)(void);
@@ -9747,6 +9778,18 @@ static u32 load_and_start()
         ctx->realCreateContext = iat[IMPORT_CREATE_CONTEXT];
         iat[IMPORT_CREATE_CONTEXT] = ctx_thunk(stub + SLOT * IMPORT_CREATE_CONTEXT,
                                                ctx, (u32)&gate6_create_context);
+    }
+    if (nImports > IMPORT_FILE_READ_POS && IMPORT_FILE_READ_POS < kShimCount &&
+        (kShimTable[IMPORT_FILE_READ_POS] >> 24) == KIND_CALL &&
+        ctx->spare + ARG5_BYTES <= ctx->spareEnd) {
+        ctx->realReadPos = iat[IMPORT_FILE_READ_POS];
+        iat[IMPORT_FILE_READ_POS] = arg5_thunk(ctx->spare, ctx, (u32)&gate6_file_read_pos);
+        ctx->spare += ARG5_BYTES;
+    }
+    if (nImports > IMPORT_FILE_SIZE && IMPORT_FILE_SIZE < kShimCount &&
+        (kShimTable[IMPORT_FILE_SIZE] >> 24) == KIND_CALL) {
+        ctx->realSize = iat[IMPORT_FILE_SIZE];
+        iat[IMPORT_FILE_SIZE] = ctx_thunk(stub + SLOT * IMPORT_FILE_SIZE, ctx, (u32)&gate6_file_size_asked);
     }
     if (nImports > IMPORT_CLEANUP_NEW && IMPORT_CLEANUP_NEW < kShimCount &&
         (kShimTable[IMPORT_CLEANUP_NEW] >> 24) == KIND_CALL) {

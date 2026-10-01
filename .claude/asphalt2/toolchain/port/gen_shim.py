@@ -407,6 +407,8 @@ HOOKS = {
     'IMPORT_SYSTEM_GC':               ('cone', 226),    # CCoeControl::SystemGc() const -- answered from the real environment
     'IMPORT_CREATE_CONTEXT':          ('bitgdi', 23),   # CFbsDevice::CreateContext(CFbsBitGc*&) -- the result wrapped in the old-shaped stand-in (E373)
     'IMPORT_CLEANUP_NEW':             ('euser', 746),   # CTrapCleanup::New() -- a stand-in the game's old-ABI delete can reach (E381)
+    'IMPORT_FILE_READ_POS':           ('efsrv', 142),   # RFile::Read(TInt, TDes8&, TInt) -- logged: round 111's pack read on the N95
+    'IMPORT_FILE_SIZE':               ('efsrv', 185),   # RFile::Size(TInt&) -- logged, the same
     'IMPORT_WINDOW':                  ('cone', 231),
     'IMPORT_COECONTROL_CTOR':         ('cone', 236),
     'IMPORT_FILE_CREATE':             ('efsrv', 25),
