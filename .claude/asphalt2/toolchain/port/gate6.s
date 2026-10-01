@@ -94,6 +94,47 @@ _start:
     @ A GCC98r2 virtual call, as gate 3 measured it in the game's own code: the
     @ vptr sits at object offset 0 and points eight bytes before slot 0.
     @ r0 = the old object (and `this` for the call), r1 = slot index.
+    @ **The game's TRAP harness, bridged to 9.x leaves.** EKA1's TTrap::Trap
+    @ was a setjmp: save the callee-saved registers, sp and lr into the TTrap
+    @ the game keeps on its stack, return 0; a User::Leave later longjmps back
+    @ into it with the reason. 9.x has no such function -- a leave there is a
+    @ C++ throw caught by a try/catch in TRAP -- and a throw cannot unwind
+    @ through the game's GCC98r2 frames or ours, so an uncaught one ends in
+    @ std::terminate -> User::RaiseException(EExcGeneral): rounds 106 to 108.
+    @ So the port does EKA1's job itself. This is the setjmp half; the C side
+    @ (gate6_trap_push) chains the TTrap and marks the cleanup stack, and the
+    @ port's own TTrapHandler::Leave calls gate6_trap_longjmp before 9.x gets
+    @ to throw anything. TTrap layout: iState[16], iNext, iResult, iHandler.
+    @ r0 = TTrap*, r1 = &aResult, r2 = Context*; lr and sp are the game's.
+    .global gate6_trap_enter
+gate6_trap_enter:
+    stmia r0, {r4-r11}          @ iState[0..7]
+    str  sp, [r0, #32]          @ iState[8]: the game's sp at the call
+    str  lr, [r0, #36]          @ iState[9]: where TTrap::Trap returns to
+    str  r1, [r0, #68]          @ iResult
+    mov  r3, #0
+    str  r3, [r1]               @ aResult = KErrNone on the first pass, as EKA1's did
+    push {r4, lr}
+    mov  r4, r0
+    mov  r1, r2                 @ (TTrap*, Context*)
+    bl   gate6_trap_push
+    mov  r0, #0                 @ first pass: no error
+    pop  {r4, lr}
+    bx   lr
+
+    @ r0 = TTrap*, r1 = reason. Never returns: lands after the game's
+    @ `bl TTrap::Trap` with r0 nonzero and *aResult = reason, as EKA1 did.
+    .global gate6_trap_longjmp
+gate6_trap_longjmp:
+    ldr  r2, [r0, #68]
+    str  r1, [r2]
+    ldr  sp, [r0, #32]
+    ldr  lr, [r0, #36]
+    ldmia r0, {r4-r11}
+    movs r0, r1
+    moveq r0, #1
+    bx   lr
+
     .global old_call
 old_call:
     push {r4, lr}
@@ -159,6 +200,12 @@ old_call1:
     IMPORT user_alloclen,     660    @ User::AllocLen(TAny const*)
     IMPORT user_setexceptionhandler, 635  @ User::SetExceptionHandler(TExceptionHandler, TUint32)
     IMPORT user_exceptionhandler, 620     @ User::ExceptionHandler()
+    IMPORT user_leave,        649    @ User::Leave(TInt)
+    IMPORT user_settraphandler, 603  @ User::SetTrapHandler(TTrapHandler*)
+    IMPORT user_traphandler,  589    @ User::TrapHandler()
+    IMPORT user_markcleanupstack, 2060    @ User::MarkCleanupStack()
+    IMPORT user_unmarkcleanupstack, 2061  @ User::UnMarkCleanupStack(TTrapHandler*)
+    IMPORT xleave_getreason, 2082    @ XLeaveException::GetReason() const -- Exec::LeaveEnd and return iR
     IMPORT cactivescheduler_current, 427  @ CActiveScheduler::Current()
     IMPORT rhandle_close,     120    @ RHandleBase::Close()
     IMPORT cperiodic_newl,   1379    @ CPeriodic::NewL(TInt)

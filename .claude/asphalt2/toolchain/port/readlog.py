@@ -233,6 +233,7 @@ NOTES = {860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on
  744: 'FAULT frame recovered from the stack at',
  745: 'FAULT handler entered with (pointer = frame, small = TExcType)',
  746: 'FAULT raw: handler sp, then stack words',
+ 747: 'TRAP: 5e7 handler installed (orig), e11 enter (TTrap), 1ea leave (reason), 7e5 longjmp (TTrap), f0c bench forced leave',
  781: 'DSA ABORTED by wserv, reason', 782: 'DSA RESTART, reason (0x57a7: StartL by us)'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that

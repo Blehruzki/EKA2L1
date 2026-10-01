@@ -382,6 +382,37 @@ window is sent behind it. The region is an `RRegion` in screen coordinates:
 `iCount`, `iError`, `iAllocedRects`, `iGranularity`, then the pointer to
 its `TRect`s.
 
+## Leaves, TRAP and the trap handler on 9.x
+
+From `kernel/eka/euser/us_trp.cpp`, `us_exec.cpp`, `cbase/ub_cln.cpp`,
+`include/e32cmn.h`, `e32std.h`, `e32base.h`:
+
+- `User::Leave(aReason)` is `Exec::LeaveStart(); pH = GetTrapHandler();
+  if (pH) pH->Leave(aReason); throw XLeaveException(aReason);`. `TRAP` is
+  `try { MarkCleanupStack(); body; UnMarkCleanupStack(); } catch
+  (XLeaveException& l) { r = l.GetReason(); }`. `GetReason()` is
+  `Exec::LeaveEnd(); return iR;` -- the kernel counts threads mid-leave to
+  defer code-segment unloads, so every LeaveStart wants a LeaveEnd.
+- `TTrapHandler` is `{ vptr }` with virtuals `Trap()`, `UnTrap()`,
+  `Leave(TInt)` in that order and no virtual destructor. `MarkCleanupStack`
+  calls `Trap()`, `UnMarkCleanupStack` calls `UnTrap()`. The handler is per
+  thread (`User::SetTrapHandler`, `User::TrapHandler`).
+- The default handler, `TCleanupTrapHandler`, is `{ vptr; CCleanup*
+  iCleanup; }`; `Trap()` is `iCleanup->NextLevel()`, `UnTrap()`
+  `PreviousLevel()`, `Leave()` `PopAndDestroyAll()`. **`CleanupStack::PushL`
+  and friends cast whatever handler is installed to this class and read
+  `iCleanup` at offset 4** (`cleanup()` in ub_cln.cpp): any replacement
+  handler must keep that word.
+- `TTrap::Trap(TInt&)` does not exist in a `__LEAVE_EQUALS_THROW__` build
+  (uc_trp.cia); the class is kept for layout: `iState[16]`, `iNext`,
+  `iResult`, `iHandler`. EKA1's `Trap` set `aResult = KErrNone` on the first
+  pass and returned 0; a leave returned into it with a nonzero result.
+- An exception no catch can take (the unwinder fails on a frame without
+  tables) reaches `std::terminate`, which on this platform ends in
+  `User::RaiseException(EExcGeneral)` -> `User::HandleException(&type)` ->
+  the thread's exception handler, called with the `TExcType` alone. That
+  is how an uncaught leave shows up as a `TExcType 0` with no frame.
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:

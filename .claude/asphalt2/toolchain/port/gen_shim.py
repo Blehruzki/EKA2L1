@@ -97,6 +97,7 @@ LOCAL_TRAP_ENTER, LOCAL_TINT64_SET = 4, 5
 LOCAL_TRUE = 6
 LOCAL_SELF = 7
 LOCAL_MEM_MOVE = 8
+LOCAL_TRAP_UNTRAP = 9
 LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL,
          'memmove': LOCAL_MEM_MOVE}
 
@@ -126,12 +127,16 @@ MANUAL = {
     # Only the 16-bit Mem::Compare survives as an export, so do the 8-bit one here.
     'Mem::Compare(unsigned char const *, int, unsigned char const *, int)':
         ('local', LOCAL_MEM_COMPARE, KIND_LOCAL),
-    # EKA1's trap harness has no 9.x counterpart -- TRAP became a thread trap
-    # handler. Entering a trap reports the first pass with no error and leaving
-    # it does nothing, so a leave inside the body propagates to the framework's
-    # own TRAP instead of being caught here. Only code that leaves can tell.
+    # EKA1's trap harness has no 9.x counterpart -- a 9.x leave is a C++
+    # throw, and a throw cannot unwind through the game's frames or ours:
+    # rounds 106 to 108 died in std::terminate when SetAudioPropertiesL left
+    # inside the game's TRAP. So the port runs EKA1's harness itself:
+    # Trap is a setjmp into the game's TTrap and UnTrap pops it
+    # (gate6_trap_enter / gate6_trap_untrap), and the port's own
+    # TTrapHandler::Leave longjmps back before 9.x throws. Builds up to 024
+    # faked both (Trap answered 0, UnTrap did nothing).
     'TTrap::Trap(int &)': ('local', LOCAL_TRAP_ENTER, KIND_LOCAL),
-    'TTrap::UnTrap(void)': ('local', LOCAL_NOOP, KIND_LOCAL),
+    'TTrap::UnTrap(void)': ('local', LOCAL_TRAP_UNTRAP, KIND_LOCAL),
     # An N-Gage bus device mixin with nothing behind it on a phone. A GCC98r2
     # constructor hands the object back, so this one only returns.
     'MBusDev::MBusDev(void)': ('local', LOCAL_SELF, KIND_LOCAL),

@@ -326,6 +326,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FAULT_SCAN = 744,   // the direct handler got only a TExcType; this frame was recovered from the stack
        NOTE_FAULT_ARG = 745,    // the raw value the handler was entered with: a frame pointer, or a bare TExcType
        NOTE_FAULT_RAW = 746,    // the handler's own sp, then raw stack words from it, for offline reading of the real frame
+       NOTE_TRAP = 747,         // the trap bridge: 0x5E7 installed (then the original handler), 0xE11 entered (TTrap),
+                                // 0x1EA a leave (reason), 0x7E5 longjmp into (TTrap), 0xF0C the bench's forced leave
        NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
        NOTE_EXC_INSTALL = 730,  // what User::SetExceptionHandler answered
        NOTE_AO_WHY = 731,       // a walk of the active scheduler's queue: what prompted it
@@ -473,7 +475,7 @@ enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 
        KIND_ARGSHIFT = 6 };
 enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
        LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5, LOCAL_TRUE = 6, LOCAL_SELF = 7,
-       LOCAL_MEM_MOVE = 8 };
+       LOCAL_MEM_MOVE = 8, LOCAL_TRAP_UNTRAP = 9 };
 
 // memmove. The game imports it from the C runtime and 9.x does not export it
 // under that name, so it is written here rather than forwarded. Overlap is the
@@ -612,6 +614,14 @@ void eikappui_baseconstructl(void *self, int flags);  // CEikAppUi::BaseConstruc
 void *coeenv_static(void);                            // CCoeEnv::Static()
 void *cactivescheduler_current(void);                 // CActiveScheduler::Current()
 i32 user_setexceptionhandler(void *handler, u32 mask); // User::SetExceptionHandler
+void user_leave(int reason);                          // User::Leave
+void *user_settraphandler(void *h);                   // User::SetTrapHandler -> the previous one
+void *user_traphandler(void);                         // User::TrapHandler
+void *user_markcleanupstack(void);                    // User::MarkCleanupStack
+void user_unmarkcleanupstack(void *h);                // User::UnMarkCleanupStack
+int xleave_getreason(const void *self);               // XLeaveException::GetReason: Exec::LeaveEnd, then iR
+void gate6_trap_enter(void *trap, int *result, void *ctx);   // gate6.s
+void gate6_trap_longjmp(void *trap, int reason);             // gate6.s, never returns
 void *coecontrol_ctor(void *self);                    // CCoeControl::CCoeControl()
 void coecontrol_createwindowl(void *self);            // CCoeControl::CreateWindowL()
 void *user_allocz(int size);
@@ -1008,6 +1018,11 @@ struct Context {
     u32 *dsaReal;           // the CDirectScreenAccess ws32 made
     u32 *dsaShadow;         // and the old-layout view of it the game holds
     u32 screenLost;         // the window server has taken the screen away
+    struct TrapHandler *trapHandlers[8]; // the port's TTrapHandler, one per thread that has trapped
+    u32 trapHandlerCount;
+    u32 trapVt[3];          // its vtable: Trap, UnTrap, Leave, as ctx thunks
+    u32 trapLogs;           // enter records written so far (capped: the game traps every frame)
+    u32 forceLeaveN;        // bench knob counter, see FORCE_LEAVE_AT
     u32 boxL, boxT, boxR, boxB; // the clip the blit and the blank keep to, in
                             // screen pixels, half-open; see clipMode
     u32 clipMode;           // CLIP_NONE, CLIP_ALL, CLIP_BOX or CLIP_RECTS
@@ -7568,6 +7583,159 @@ static void mda_where(Context *c, u32 slot, u32 proxy)
               (live && !(live & 3)) ? ((const u32 *)live)[(u32)to] : 0u);
 }
 
+// ---------------------------------------------------------------------------
+// **The trap bridge.** An EKA1 TRAP is a setjmp/longjmp pair; a 9.x leave is a
+// C++ throw. The game's TTrap::Trap is answered by gate6_trap_enter (gate6.s),
+// which saves the game's registers into its TTrap and comes here to chain it
+// and to mark the 9.x cleanup stack, so that a leave unwinds the cleanup
+// stack exactly to this trap. The port installs its own TTrapHandler on each
+// thread, wrapping the TCleanupTrapHandler that CTrapCleanup::New installed:
+// Trap/UnTrap/Leave forward to it, and Leave additionally knows whether the
+// innermost open trap is the game's -- if so, it longjmps into the game's
+// TTrap with the reason, and 9.x's `throw XLeaveException` never runs. A
+// framework TRAP stays a try/catch and is left alone. Before the throw is
+// skipped, XLeaveException::GetReason is called on a dummy to balance the
+// Exec::LeaveStart the leave already made. Rounds 106 to 108: without this,
+// SetAudioPropertiesL leaving inside the game's TRAP ended in std::terminate.
+enum { TRAP_KINDS = 64, TRAP_THREADS = 8, TRAP_LOG_CAP = 64 };
+struct TrapHandler {
+    u32 vptr;               // -> c->trapVt
+    u32 *iCleanup;          // **at offset 4, as TCleanupTrapHandler keeps it**: euser's
+                            // CleanupStack::PushL casts the installed handler to that
+                            // class and reads the CCleanup from here (ub_cln.cpp,
+                            // cleanup()). E358 put `orig` here and died EClnPushAtLevelZero
+    u32 *orig;              // the handler we wrap, an EABI object
+    u32 depth;              // open traps on this thread, game's and framework's
+    u32 nextIsGame;         // set by gate6_trap_push around MarkCleanupStack
+    u32 *gameTop;           // innermost game TTrap, chained through its iNext
+    u8 kind[TRAP_KINDS];    // per open trap: 1 the game's, 0 the framework's
+};
+enum { TTRAP_NEXT = 16, TTRAP_RESULT = 17 };
+typedef void (*Vt0)(void *);
+typedef void (*Vt1)(void *, u32);
+static inline u32 *vt_of(u32 *obj) { return (u32 *)obj[0]; }
+
+extern "C" void gate6_trap_mark(void *self, u32, u32, Context *c);
+extern "C" void gate6_trap_unmark(void *self, u32, u32, Context *c);
+extern "C" void gate6_trap_leave(void *self, u32 reason, u32, Context *c);
+
+static TrapHandler *trap_handler(Context *c)
+{
+    u32 *cur = (u32 *)user_traphandler();
+    for (u32 i = 0; i < c->trapHandlerCount; i++)
+        if ((u32 *)c->trapHandlers[i] == cur)
+            return c->trapHandlers[i];
+    // No cleanup stack on this thread yet (CTrapCleanup::New not called):
+    // nothing to wrap, and PushL would read a null CCleanup through us.
+    // The game's trap then behaves as it did before the bridge.
+    if (!cur)
+        return 0;
+    if (!c->trapVt[0]) {
+        if (c->spare + 3 * TRACE > c->spareEnd)
+            return 0;
+        c->trapVt[0] = ctx3_thunk(c->spare, c, (u32)&gate6_trap_mark);   c->spare += TRACE;
+        c->trapVt[1] = ctx3_thunk(c->spare, c, (u32)&gate6_trap_unmark); c->spare += TRACE;
+        c->trapVt[2] = ctx3_thunk(c->spare, c, (u32)&gate6_trap_leave);  c->spare += TRACE;
+    }
+    if (c->trapHandlerCount >= (u32)TRAP_THREADS)
+        return 0;
+    TrapHandler *h = (TrapHandler *)user_allocz((int)sizeof *h);
+    if (!h)
+        return 0;
+    h->vptr = (u32)c->trapVt;
+    h->iCleanup = (u32 *)cur[1];
+    h->orig = (u32 *)user_settraphandler(h);
+    c->trapHandlers[c->trapHandlerCount++] = h;
+    log_event(c, NOTE_TRAP, 0x5E7);
+    log_event(c, NOTE_TRAP, (u32)h->orig);
+    log_block(c);
+    return h;
+}
+
+// The game's TTrap::Trap, after gate6.s saved its registers into t.
+extern "C" void gate6_trap_push(u32 *t, Context *c)
+{
+    TrapHandler *h = trap_handler(c);
+    if (!h)
+        return;
+    t[TTRAP_NEXT] = (u32)h->gameTop;
+    h->gameTop = t;
+    h->nextIsGame = 1;
+    user_markcleanupstack();            // -> gate6_trap_mark on this thread
+    h->nextIsGame = 0;
+    if (c->trapLogs < (u32)TRAP_LOG_CAP) {
+        c->trapLogs++;
+        log_event(c, NOTE_TRAP, 0xE11);
+        log_event(c, NOTE_TRAP, (u32)t);
+    }
+}
+
+// The game's TTrap::UnTrap: the body returned without leaving.
+extern "C" void gate6_trap_untrap(Context *c)
+{
+    TrapHandler *h = trap_handler(c);
+    if (!h)
+        return;
+    u32 *t = h->gameTop;
+    if (t)
+        h->gameTop = (u32 *)t[TTRAP_NEXT];
+    user_unmarkcleanupstack(h);         // -> gate6_trap_unmark
+}
+
+// TTrapHandler::Trap -- MarkCleanupStack, from a framework TRAP or from ours.
+extern "C" void gate6_trap_mark(void *self, u32, u32, Context *)
+{
+    TrapHandler *h = (TrapHandler *)self;
+    if (h->depth < (u32)TRAP_KINDS)
+        h->kind[h->depth] = (u8)h->nextIsGame;
+    h->depth++;
+    h->nextIsGame = 0;
+    if (h->orig)
+        ((Vt0)vt_of(h->orig)[0])(h->orig);
+}
+
+// TTrapHandler::UnTrap -- UnMarkCleanupStack.
+extern "C" void gate6_trap_unmark(void *self, u32, u32, Context *)
+{
+    TrapHandler *h = (TrapHandler *)self;
+    if (h->depth)
+        h->depth--;
+    if (h->orig)
+        ((Vt0)vt_of(h->orig)[1])(h->orig);
+}
+
+// TTrapHandler::Leave -- User::Leave is about to throw.
+extern "C" void gate6_trap_leave(void *self, u32 reason, u32, Context *c)
+{
+    TrapHandler *h = (TrapHandler *)self;
+    if (h->orig)
+        ((Vt1)vt_of(h->orig)[2])(h->orig, reason);   // the cleanup stack, back to the mark
+    log_event(c, NOTE_TRAP, 0x1EA);
+    log_event(c, NOTE_TRAP, reason);
+    if (!h->depth)
+        return;
+    const u32 game = (h->depth <= (u32)TRAP_KINDS) ? h->kind[h->depth - 1] : 0u;
+    h->depth--;
+    if (!game)
+        return;                         // a framework TRAP: its catch takes the throw
+    u32 *t = h->gameTop;
+    if (!t)
+        return;
+    h->gameTop = (u32 *)t[TTRAP_NEXT];
+    u32 dummy = 0;
+    xleave_getreason(&dummy);           // Exec::LeaveEnd, for the LeaveStart already made
+    log_event(c, NOTE_TRAP, 0x7E5);
+    log_event(c, NOTE_TRAP, (u32)t);
+    log_block(c);
+    gate6_trap_longjmp(t, (int)reason);
+}
+
+// Bench knob: the Nth SetAudioPropertiesL (slot 3) leaves with KErrNotSupported
+// instead of being forwarded. The game's own code at 0x14398 traps that call
+// and, on -5 at 16 kHz, retries at 8 kHz -- so a working bridge shows as a
+// second slot-3 call with the 8 kHz enum (0x40) and the run going on. 0 ships.
+enum { FORCE_LEAVE_AT = 0 };
+
 extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
 {
     typedef u32 (*Any)(void *, u32, u32, u32);
@@ -7585,6 +7753,11 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
         log_event(c, NOTE_MDA_ARG, saved[3]);
         mda_where(c, slot, saved[0]);
         log_block(c);
+    }
+    if (FORCE_LEAVE_AT && slot == 3 && ++c->forceLeaveN == (u32)FORCE_LEAVE_AT) {
+        log_event(c, NOTE_TRAP, 0xF0C);
+        log_block(c);
+        user_leave(-5);
     }
     if (to < 0 || !rvt || !real)
         return 0;
@@ -8724,10 +8897,17 @@ static u32 load_and_start()
                 s[0] = 0xE3A00001;          // mov r0, #1
                 s[1] = 0xE12FFF1E;          // bx  lr
                 break;
-            case LOCAL_TRAP_ENTER:          // TTrap::Trap(TInt&): first pass, no error
-                s[0] = 0xE3A00000;          // mov r0, #0
-                s[1] = 0xE5810000;          // str r0, [r1]
-                s[2] = 0xE12FFF1E;          // bx  lr
+            case LOCAL_TRAP_ENTER:          // TTrap::Trap(TInt&): the real thing, see gate6.s
+                s[0] = 0xE59F2000;          // ldr r2, [pc, #0]   -> the context
+                s[1] = 0xE59FF000;          // ldr pc, [pc, #0]   -> gate6_trap_enter, lr and sp untouched
+                s[2] = (u32)ctx;
+                s[3] = (u32)&gate6_trap_enter;
+                break;
+            case LOCAL_TRAP_UNTRAP:         // TTrap::UnTrap(): pop the game's trap and the cleanup mark
+                s[0] = 0xE59F0000;          // ldr r0, [pc, #0]   -> the context
+                s[1] = 0xE59FF000;          // ldr pc, [pc, #0]   -> gate6_trap_untrap
+                s[2] = (u32)ctx;
+                s[3] = (u32)&gate6_trap_untrap;
                 break;
             case LOCAL_TINT64_SET:          // TInt64 from a TInt: sign-extend
                 s[0] = 0xE5801000;          // str r1, [r0]

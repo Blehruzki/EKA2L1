@@ -286,19 +286,43 @@ Restart calls StartL** (measured, `R105`), the port restarts the access
 itself when the game has not. Both titles' windows are the whole panel once
 the status pane has gone, so the clip changes nothing in the foreground.
 
-## 9a. Open: G6FLT 31600 on Asphalt 1 (round 106)
+## 9a. Leaves inside the game's TRAPs (G6FLT 31600 / 31604)
 
-A rare early crash: `EExcGeneral` (type 0) with `TTrap::Trap` the last import,
-during repeated audio-stream teardown/reopen with a key held, after a
-foreground event. Not localizable from the round-106 log because the port's
-`User::SetExceptionHandler` handler is called with only a `TExcType`, no
-frame -- unlike the `_start` last-chance re-entry, which hands over the full
-frame. The crash sits in the audio-stream reopen (SetAudioPropertiesL on a
-recreated stream after a foreground cycle, ~255 frames in). Build 023's
-stack scan to recover the frame gave a false positive (round 107); build
-024 logs the raw entry value and dumps raw stack (`NOTE_FAULT_ARG`,
-`NOTE_FAULT_RAW` in `gate6.cpp`) so the real frame is read offline.
-Awaiting the next phone log to name the faulting address.
+**Symptom.** `R106-108`. `G6FLT` with `TExcType 0` (`EExcGeneral`) and no
+frame, `TTrap::Trap` the last import, in Asphalt 1's audio-stream reopen
+after a foreground cycle. Rare: round 105 played 3,000 frames without it.
+
+**Cause.** On 9.x `User::Leave` is `throw XLeaveException` and TRAP is a
+try/catch (`us_trp.cpp`, `e32cmn.h`). The port had faked the game's EKA1
+`TTrap::Trap` (return 0) and `UnTrap` (no-op), so a leave inside a game
+TRAP was a C++ throw with no catch it could reach: the unwinder cannot pass
+the game's GCC98r2 frames or the port's, so `__cxa_throw` ends in
+`std::terminate` -> `User::RaiseException(EExcGeneral)` -> the installed
+exception handler -- which is why the catcher saw a bare type and never a
+kernel frame. `SetAudioPropertiesL` left on the reopen; the game's code at
+0x14398 was written to catch it and retry at 8 kHz.
+
+**Fix.** `gate6.s` `gate6_trap_enter`/`gate6_trap_longjmp` and the trap
+bridge in `gate6.cpp` (`TrapHandler`, `gate6_trap_*`): the game's
+`TTrap::Trap` is a real setjmp (registers, sp, lr, and `aResult = 0` on
+entry, as EKA1 did -- E359), `UnTrap` pops, and the port installs its own
+`TTrapHandler` per thread wrapping the real `TCleanupTrapHandler`, laid out
+like it (`iCleanup` at offset 4, because `CleanupStack::PushL` casts the
+installed handler -- E358). `Leave` forwards to the original, calls
+`XLeaveException::GetReason` on a dummy to balance `Exec::LeaveStart`, and
+longjmps into the innermost game trap before 9.x throws. Framework TRAPs
+keep their try/catch. Bench knob `FORCE_LEAVE_AT` proves the round trip
+(E360). Lesson: **a faked primitive is a promise the port has to keep
+somewhere**; "only code that leaves can tell" was true, and it told.
+
+**How it was found.** Three instrument rounds: 023's frame scan matched a
+false window (`R107`); 024 recorded the raw entry value and stack instead
+of interpreting, and the raw words named `User::HandleException`'s frame.
+Record first, interpret offline.
+
+**Still open.** A leave with no game trap open, thrown from code reached
+through game frames (a game callback that leaves without trapping), is
+still a terminate, as it always was.
 
 ## 10. Where the bench and the phone disagree
 
