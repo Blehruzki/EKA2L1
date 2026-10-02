@@ -151,6 +151,10 @@ only then write code.
 
 ## Features every title carries
 
+`KNOBS.md` is the table: every knob and fix, which title has it on, whether
+it is universal, and the round that settled it. Keep it current when a knob
+changes hands.
+
 - **Hold C to cycle the picture mode.** C on a keypad, Backspace on a QWERTY
   (`EStdKeyBackspace`, scancode 0x01): held about a second it steps the fit
   (`FIT_*` in `screen_fit.h`: one to one, shape, fill, integer, full), then every

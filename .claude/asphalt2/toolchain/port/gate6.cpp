@@ -345,6 +345,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FPA = 764,          // doubles re-ordered for 9.x: the register helpers hooked, then the Math functions hooked
        NOTE_SCREEN_MODES = 765, // the window-gc title's screen: w<<16|h of the whole-screen wrapper, then mode<<16|inset
        NOTE_VA_LIST = 766,      // a FormatList re-pointed: the game's VA_LIST array, then the va pointer it held (first few only)
+       NOTE_THREAD_DONE = 768,  // a game thread's function returned: the function, then what it returned (the thread then exits)
        NOTE_FORMAT_CALL = 767,  // GAME_LOG_TEXT: 0xF0A7 (Format) or 0xF0A8 (FormatList), three words of the format text, the first argument word, then (bare %s only) its two words; 0xF0A9 then the length FormatList produced
        NOTE_TRAP = 747,         // the trap bridge: 0x5E7 installed (then the original handler), 0xE11 entered (TTrap),
                                 // 0x1EA a leave (reason), 0x7E5 longjmp into (TTrap), 0xF0C the bench's forced leave
@@ -4718,8 +4719,13 @@ static void region_log(Context *c, const void *region)
 extern "C" void gate6_dsa_startl(void *, u32, Context *c)
 {
     typedef void (*StartL)(void *);
+    // Round 118: on an N91 the record ends inside the first StartL -- no
+    // leave, no return, no fault -- so the call is bracketed: 0x57A0 going
+    // in, 0x57A1 coming back. A leave skips the second.
+    log_event(c, NOTE_DSA_RESTART, 0x57A0);
     if (HOLD_THE_SCREEN)
         ((StartL)c->newDsaStartL)(c->dsaReal);
+    log_event(c, NOTE_DSA_RESTART, 0x57A1);
     dsa_refresh(c);
     // Started, so the graphics context exists and the shadow has it -- and then
     // given straight back, so the window server is not left waiting on a client
@@ -5418,8 +5424,35 @@ enum { STACK_WORDS = 51, STACK_TARGET = 46 };
 // port tells threads apart by their stacks, not their names.
 enum { KERR_ALREADY_EXISTS = -11, THREAD_NAME_CHARS = 4 };
 
+// **A thread's function, witnessed on its way out.** Round 118: Asphalt 2
+// on an N91 (S60 3.0) ends with `User::Exit` from the stub's own thread
+// entry -- a game thread's function had returned -- and nothing says which
+// function or what it answered. So r2 of every RThread::Create is replaced
+// by a thunk into gate6_thread_run with a two-word record {context, the
+// game's function}; the run calls the function with the game's own argument,
+// writes the pair down, and returns the result to `_start`, which exits the
+// thread with it as before.
+extern "C" int gate6_thread_run(void *arg, u32, const u32 *rec)
+{
+    typedef int (*Fn)(void *);
+    Context *c = (Context *)rec[0];
+    const int r = ((Fn)rec[1])(arg);
+    log_event(c, NOTE_THREAD_DONE, rec[1]);
+    log_event(c, NOTE_THREAD_DONE, (u32)r);
+    log_block(c);
+    return r;
+}
+
 extern "C" void gate6_thread_name(Context *c, u32 *regs)
 {
+    if (c->spare + 8 + TRACE <= c->spareEnd && regs[2]) {
+        u32 *rec = (u32 *)c->spare;
+        c->spare += 8;
+        rec[0] = (u32)c;
+        rec[1] = regs[2];
+        regs[2] = ctx_thunk(c->spare, rec, (u32)&gate6_thread_run);
+        c->spare += TRACE;
+    }
     c->nameText[0] = 'g';
     c->nameText[1] = '6';
     c->nameText[2] = 'w';

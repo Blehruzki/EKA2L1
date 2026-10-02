@@ -201,6 +201,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          764: 'FPA DOUBLES re-ordered for 9.x: register helpers hooked, then Math functions hooked',
          765: 'SCREEN MODES (window-gc title): w<<16|h of the whole-screen wrapper, then mode<<16|inset',
          766: 'VA_LIST re-pointed for FormatList: the game array, then the va pointer it held',
+         768: 'THREAD DONE: a game thread function returned: the function, then its result',
          767: 'FORMAT CALL (GAME_LOG_TEXT): f0a7 Format / f0a8 FormatList, three words of the format text, the argument word, (bare %s) its two words; f0a9 then the length produced',
          825: 'MODE NOW, after a hold changed it', 824: 'CFG WROTE: mode<<16 | error', 838: 'SCREEN FIT pair', 839: 'SCREEN SRC', 840: 'SCREEN DST: inset<<16 | mode<<12 | first pixel',
          860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on / SOUND',
@@ -256,7 +257,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
  746: 'FAULT raw: handler sp, then stack words',
  748: 'SYSAGT: a11 armed (then the status), ca0 cancelled, bad second notify',
  747: 'TRAP: 5e7 handler installed (orig), e11 enter (TTrap), 1ea leave (reason), 7e5 longjmp (TTrap), f0c bench forced leave',
- 781: 'DSA ABORTED by wserv, reason', 782: 'DSA RESTART, reason (0x57a7: StartL by us)'}
+ 781: 'DSA ABORTED by wserv, reason', 782: 'DSA RESTART, reason (0x57a7: StartL by us; 0x57a0 StartL entered, 0x57a1 StartL returned)'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework
