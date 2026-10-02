@@ -1907,7 +1907,9 @@ namespace eka2l1::drivers {
             std::optional<command_list> list = list_queue.pop();
 
             if (!list) {
-                LOG_ERROR(DRIVER_GRAPHICS, "Corrupted graphics command list! Emulation halt.");
+                // request_queue::pop() with no timeout blocks until a list arrives and returns nullopt only once the queue
+                // has been aborted (ogl_graphics_driver::abort(), called from kill_emulator). It is a normal shutdown.
+                LOG_INFO(DRIVER_GRAPHICS, "Graphics command queue aborted (emulator is shutting down), graphics thread exiting.");
                 break;
             }
 
