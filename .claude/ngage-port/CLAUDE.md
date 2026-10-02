@@ -1,9 +1,11 @@
-# Working on this port
+# Working on the N-Gage port
 
 Read this before changing anything under `toolchain/port/`. It is the working
-agreement for the Asphalt port, not for EKA2L1 -- the emulator's own CLAUDE.md
-is at the repository root and says, correctly, to ignore this directory unless
-the task is this game.
+agreement for the port -- N-Gage titles brought to S60v3 through the gate6
+loader and shim: Asphalt Urban GT, Asphalt 2 and Ashen so far -- not for
+EKA2L1. The emulator's own CLAUDE.md is at the repository root and says,
+correctly, to ignore this directory unless the task is this port. `README.md`
+beside this file is the map of the directory.
 
 ## The four rules
 

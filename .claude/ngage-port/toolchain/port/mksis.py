@@ -9,7 +9,6 @@ Field types used here, from the SIS spec and confirmed against that template:
   24 FileDescription  28 InstallBlock  31 DataUnit  32 FileData  3 Compressed
 """
 import hashlib, os, struct, sys, zlib
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir))
 import sisrw, sisadd
 
 STRING, ARRAY, UID, INFO, FILEDESC, INSTALLBLOCK = 1, 2, 9, 14, 24, 28

@@ -1322,8 +1322,8 @@ namespace eka2l1::epoc {
 namespace eka2l1 {
     // `EKA2L1_SCREEN=WxH` overrides the size of every screen mode the window
     // server builds from `wsini.ini`. It exists for testing a guest against a
-    // panel this installation has no ROM for: the Asphalt 2 port in
-    // `.claude/asphalt2` has to fit a fixed 176x208 picture onto 240x320,
+    // panel this installation has no ROM for: the N-Gage port in
+    // `.claude/ngage-port` has to fit a fixed 176x208 picture onto 240x320,
     // 320x240 landscape, 352x416 and 360x640, and only one S60v3 ROM is
     // installed. Read once; an unparseable or non-positive value is ignored,
     // so the variable can be left set to something harmless.
@@ -1575,8 +1575,8 @@ namespace eka2l1 {
                 }
 
                 // A screen-size override, for testing a guest against panels
-                // this build has no ROM for. The Asphalt 2 port (see
-                // .claude/asphalt2) has to lay a fixed 176x208 picture out on
+                // this build has no ROM for. The N-Gage port (see
+                // .claude/ngage-port) has to lay a fixed 176x208 picture out on
                 // 240x320, 320x240 landscape, 352x416 and 360x640, and the
                 // only S60v3 ROM installed here is a 240x320 one -- so without
                 // this there is no way to exercise the scaler end to end short

@@ -5,11 +5,14 @@
 **This repository is the EKA2L1 emulator. That is the default and only subject of
 work here.**
 
-`.claude/asphalt2/` holds reverse-engineering notes and tooling for patching a
-Symbian game (Asphalt 2: Urban GT). It lives here purely so it survives, and it
-is **not part of this project**. Ignore it entirely — do not read it, cite it,
-or let it steer emulator work — unless the current task is explicitly about that
-game. If the task is about EKA2L1, that directory does not exist.
+`.claude/ngage-port/` holds a separate project: N-Gage titles (Asphalt Urban
+GT, Asphalt 2, Ashen) ported to S60v3 phones through a loader and API shim,
+with its own record and rules in `.claude/ngage-port/CLAUDE.md`. It lives in
+this fork so it survives, and it is **not part of the emulator**. Ignore it
+entirely — do not read it, cite it, or let it steer emulator work — unless the
+current task is explicitly about that port. If the task is about EKA2L1, that
+directory does not exist. (The emulator carries a few bench instruments made
+for it, such as `EKA2L1_SCREEN`; those are emulator code and documented here.)
 
 This is a personal fork. Do not open pull requests, issues, or any other
 contribution against the upstream repository, and do not push anywhere but this

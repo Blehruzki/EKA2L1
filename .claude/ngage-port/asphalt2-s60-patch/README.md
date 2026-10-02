@@ -1,7 +1,9 @@
 # Asphalt 2: Urban GT (S60v3) — patching reference
 
-> **Not part of EKA2L1.** Parked in this fork so it survives. Ignore unless the
-> task is explicitly about this game — see the scope note in the root `CLAUDE.md`.
+> **Historical.** This is the S60v3 Asphalt 2 HUD patch the `.claude/ngage-port/`
+> directory began as, kept for the record and unrelated to the N-Gage port that
+> now lives above it. Its tools are in `toolchain/` beside this file. Ignore it
+> unless the task is explicitly this patch.
 
 Everything established while restoring the unused `newhud` dashboard to the
 N73/N76/N93 build and getting it onto real hardware. Written so the next session

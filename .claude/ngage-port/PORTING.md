@@ -2862,7 +2862,7 @@ Build with `python3 build_gate6.py <outdir>`; install the SIS; **run once**.
 The run appends its whole history to `C:\g6box.log`, eight bytes an event, a
 block of sixty-four at a time. Read it with `readlog.py`, which names imports
 and markers, counts them, and -- the reason it exists -- diffs two logs and
-prints where they part company. `emulator-reference.log` beside this file is
+prints where they part company. `logs/emulator-reference.log` is
 the emulator running the same build, for exactly that.
 
 The older two-launch route still works: the second launch reads `C:\g6box.dat`,
@@ -2988,7 +2988,7 @@ game's own object is not one — so it is stubbed to a no-op in `gen_shim.py`
 to **2863, every one of them identical to the emulator's**, and it is into the
 state machine at 0xc9cd4 and cycling. That run ended in a reboot, but at the
 196th pass through a loop it had already survived 195 times: the write ceiling
-again, not the game. `phone-2026-09-23c.log` beside this file is that run.
+again, not the game. `logs/phone-2026-09-23c.log` beside this file is that run.
 
 Then the same build at the cheap cadence stopped at 192 records — a block
 boundary, so somewhere in 192..255 — with KERN-EXEC 3, which is where the runs
@@ -2997,7 +2997,7 @@ the 2863-record run is how often the record is written, so either the fault in
 that window moves with the timing (the exact cadence spends milliseconds in the
 file server between events, and the window covers the rest of telephony,
 `RequestComplete` and the whole frame-loop kick) or 2863 was the lucky one.
-`phone-2026-09-23d.log` is that run, and a zoom window over 176..336 is what
+`logs/phone-2026-09-23d.log` is that run, and a zoom window over 176..336 is what
 goes over it next: dying inside the window names the record, sailing past it
 says the timing is what matters.
 
@@ -3008,7 +3008,7 @@ into the image at all (0x74258070), where the emulator has
 `CCoeControl::IsFocused`. The game's own four `bl` sites for that stub are all
 at 0x398b8..0x39e04, so nothing in the game called it: something branched into
 the stub table and arrived with a stale return address.
-`phone-2026-09-23e.log` is that run.
+`logs/phone-2026-09-23e.log` is that run.
 
 It is a race rather than a code path: the 2863-record run is the same build on
 the same phone and went 220 to `IsFocused` like the emulator. The log could not
@@ -3023,7 +3023,7 @@ the run says what comes next instead of ending there.
 The next run stopped in the same place, so it reproduces: `CActive::Cancel`
 again, from 0x742a8070 this time, against a load base of 0x4600000 — about
 0x788a8070, which is RAM-loaded code and not the image.
-`phone-2026-09-23f.log` is that run. With the slot records in, both machines
+`logs/phone-2026-09-23f.log` is that run. With the slot records in, both machines
 run an identical cascade of twelve framework calls into our vtables after
 `PushContextL` (app 5, appui 19, appui 18, app 12, doc 21, app 6, app 7,
 app 5, app 5, doc 20, appui 17, appui 14) and then part: the emulator carries
@@ -3070,7 +3070,7 @@ exactly the same place with exactly the same caller, and the canary never
 fired: nothing overwrites the app UI's vtable pointer on the phone. Two
 different builds stopping identically also retires the word race — it is
 deterministic, and the 2863-record run that got past it is the one that needs
-explaining, not this one. `phone-2026-09-23g.log` is that run.
+explaining, not this one. `logs/phone-2026-09-23g.log` is that run.
 
 **`gate6_cancel` took the context in the wrong register.** Every one of the
 nineteen functions a `ctx_thunk` points at takes the context third, in r2,
@@ -3095,7 +3095,7 @@ next run says who, and carries on.
 **With the register fixed the phone went from 258 records to 6988**, and the
 record shows the handler doing its job: `Cancel on 0x603388`, no stray, and the
 run carrying on for another six and a half thousand events.
-`phone-2026-09-23h.log` is that run. It ended in a reboot, and this one is not
+`logs/phone-2026-09-23h.log` is that run. It ended in a reboot, and this one is not
 the write ceiling: 58 slot entries and about 325 writes all told, against the
 two thousand that ends a run.
 
@@ -3124,7 +3124,7 @@ ours in it. The breadcrumbs earned their keep finding the way into the state
 machine and can go back on for a question that needs them.
 
 **And it was.** With the breadcrumbs out the reboot stopped: the next run is a
-plain KERN-EXEC 3 at 2112 records, `phone-2026-09-23i.log`. The phone's last
+plain KERN-EXEC 3 at 2112 records, `logs/phone-2026-09-23i.log`. The phone's last
 sixty records appear in the emulator's run verbatim, so the two are in
 lockstep right up to the fault, and it is now inside one of the decrypted
 regions -- code that reads as rubbish in the file, so `DUMP_DECRYPTED` writes
@@ -3156,7 +3156,7 @@ site twice and writes ten bytes each time. If the phone writes ten and stops,
 the pointer is wrong; if it writes many more, the length is.
 
 The late crumbs never fired: the run stopped before reaching them, at 1984
-records (`phone-2026-09-23j.log`), earlier than the run before it. Worth
+records (`logs/phone-2026-09-23j.log`), earlier than the run before it. Worth
 knowing why they are not comparable -- **two builds are not two runs**. The
 same phone on two builds parts company at record 1574, in the middle of the
 division storm, long before any crumb site. Whatever this game derives from
@@ -3188,7 +3188,7 @@ length word of 9. A correct answer on the phone is 0x0477f0e8 against
 
 **The pointers are right.** The phone says 0x0477f0e8 against a base of
 0x4600000, and a length word of 9 -- exactly what it should be, for both
-descriptors (`phone-2026-09-23k.log`). So neither the pointer nor the data is
+descriptors (`logs/phone-2026-09-23k.log`). So neither the pointer nor the data is
 wrong, and reading the third character of nine ought to work.
 
 That run also ended in KERN-EXEC 0 rather than 3, and at 1952 records rather
@@ -3287,7 +3287,7 @@ if it stops partway, the memory is.
 **It reads all nine**, byte for byte what the emulator reads: 00770066
 00690076 002f0072 006f0066 00000070 and 006f004e 00490066 00330067 00320036
 00000032, "fwvir/fop" and "NofIg3622" before descrambling
-(`phone-2026-09-24a.log`). The memory is readable and the text is right, so
+(`logs/phone-2026-09-24a.log`). The memory is readable and the text is right, so
 neither is the fault.
 
 **And a methodological correction that cost two readings.** That run stopped at
@@ -3301,7 +3301,7 @@ costs about 250 writes and gives the death point exactly.
 
 **The sequence is fixed; where it stops is not.** Counting imports rather than
 records, which is the only measure comparable across builds, the phone has run
-2051, 1923, 1887, 1887 and now 1853 (`phone-2026-09-24b.log`). Every one of
+2051, 1923, 1887, 1887 and now 1853 (`logs/phone-2026-09-24b.log`). Every one of
 those is a *prefix* of the next longest -- this run's 1853 imports differ from
 the previous run's 1887 at no point at all -- so the game does exactly the same
 thing every time and only the stopping point moves. That is worth holding on
@@ -3330,7 +3330,7 @@ argument *before* it is made -- `result_thunk` could not, and a call that never
 returns leaves nothing otherwise -- and it is on `HBufC16::New`.
 
 **The lengths are fine** -- 27, 31, 28, 27, the emulator's own first four
-(`phone-2026-09-24c.log`) -- so that idea is dead, and the run it came from
+(`logs/phone-2026-09-24c.log`) -- so that idea is dead, and the run it came from
 stopped at 1785 imports, earlier again.
 
 **It is time, and the instrument was eating it.** Six builds running an
@@ -3352,7 +3352,7 @@ opened, every library loaded and every frame drawn.
 
 **And it worked.** Measured the only way that compares -- phone against
 emulator on the *same* build -- the phone went from 1887 of 4915 imports to
-455 of 705: **38% to 65%** (`phone-2026-09-24d.log`). Its last records are the
+455 of 705: **38% to 65%** (`logs/phone-2026-09-24d.log`). Its last records are the
 emulator's 470-475, an alternating pair of allocations, so it stopped mid-loop
 again rather than anywhere meaningful.
 
@@ -3401,7 +3401,7 @@ tested on this side. What can be seen either way is the handle and the answer,
 and both are now on record for all 66 lookups.
 
 **The handle was fine, and that is what gave it away.** 0x40750035, open, so
-the guard never fires and that idea was wrong too (`phone-2026-09-24f.log`).
+the guard never fires and that idea was wrong too (`logs/phone-2026-09-24f.log`).
 But the lookups are now on record site by site, and every one of them answers
 the same on both machines -- including 0x10b128, where both correctly hand back
 our own no-op. The phone also got past the scrub to 0x10b244, further than any
@@ -3433,7 +3433,7 @@ game carries on without its driver.
 does, and moved for the first time in seven builds: 118 milestones against 102,
 **60% to 69%** by count, and positionally it now reaches the emulator's
 milestone 141 of 170 -- 83% of the way to the emulator's own frontier
-(`phone-2026-09-24g.log`). The plateau was that driver.
+(`logs/phone-2026-09-24g.log`). The plateau was that driver.
 
 It rebooted rather than panicking, and this time the instrument is not a
 plausible culprit: 230 records and about thirty writes, against the 6988 and
@@ -3447,7 +3447,7 @@ already seen on the phone. Nothing draws again before the emulator faults at
 search at game+0xd5abc is now the wall for both machines rather than just this
 one.
 
-**Two runs of that build, deliberately identical** (`phone-2026-09-24h.log`):
+**Two runs of that build, deliberately identical** (`logs/phone-2026-09-24h.log`):
 222 records against 230, 110 milestones against 118, and one a *prefix* of the
 other. Same path, different moment, so the reboot is asynchronous -- it is not
 in the code the game is running.
@@ -3468,7 +3468,7 @@ zeroes -- nothing at all in the ordinary case, the whole answer if it happens.
 None in the emulator's 135 allocations.
 
 **Not memory.** 110 milestones again and not one allocation returned zero
-(`phone-2026-09-24i.log`). The two runs do differ at record 97, but only in the
+(`logs/phone-2026-09-24i.log`). The two runs do differ at record 97, but only in the
 caller column, and only because wrapping an import twice makes the trace record
 our own outer thunk -- the same trap noted above, and the runs are otherwise
 identical.
@@ -3486,7 +3486,7 @@ innocent and something else is interrupting.
 
 **The window server is innocent too.** 115 milestones with the screen given
 back, inside the 110-118 band of the runs that held it, and still positionally
-the emulator's 141 (`phone-2026-09-24j.log`). Nor is anything leaking: loads
+the emulator's 141 (`logs/phone-2026-09-24j.log`). Nor is anything leaking: loads
 against closes are 15/13 on the phone and 19/17 in the emulator, file sessions
 7/4 against 8/5 -- the same two and three outstanding on both. And the blind
 spot the milestone trace leaves between 141 and 158 is only 203 calls, almost
@@ -3537,7 +3537,7 @@ framework while it works.
 
 **The clock says it is not time either.** 63 ticks across the phone's whole run
 against the emulator's 38 -- about a second, not the ten a watchdog would want
-(`phone-2026-09-24k.log`). That was the last hypothesis standing, and it is
+(`logs/phone-2026-09-24k.log`). That was the last hypothesis standing, and it is
 wrong like the others.
 
 What is actually established, as against guessed:
@@ -6403,7 +6403,7 @@ the crack answers those lookups itself, standing in front of `RFile::Open`,
 
 So the thing we would have to build is the thing we already have. `gate6` owns
 import 326 and already wraps `RFile::Open`. What is left is four routines of ARM
-code, kept in `.claude/asphalt2/crack/` with the decode, to read and carry
+code, kept in `.claude/ngage-port/crack/` with the decode, to read and carry
 across.
 
 Route 2 -- running the cracked dump under EKA2L1 to watch the writes -- is no
@@ -6880,7 +6880,7 @@ actually pushed: the saved r1 and the three stack words at the call.
 ### A note on the boundary
 
 This is a change to the emulator's own source rather than to
-`.claude/asphalt2/`. It earns its place there -- a kernel call that fails
+`.claude/ngage-port/`. It earns its place there -- a kernel call that fails
 silently is worth a log line whatever is being run -- but it is the first time
 this work has touched the project proper, and it is committed on its own so it
 can be dropped without taking anything else with it.

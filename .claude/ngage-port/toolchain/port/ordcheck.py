@@ -43,7 +43,7 @@ Z = '/root/.local/share/EKA2L1/data/drives/z/'
 ROM9 = '/root/.local/share/EKA2L1/data/roms/rm-409/SYM.ROM'
 OLD_DEFS = {'euser': gen_shim.KERNEL + '/kernel/eka/bmarm/7.0-euseru.def'}
 ASPHALT = [os.path.join(os.path.dirname(os.path.abspath(__file__)), p)
-           for p in ('../../../../.claude/asphalt2/toolchain/port/6rbc_orig.app',)]
+           for p in ('../../../../.claude/ngage-port/toolchain/port/6rbc_orig.app',)]
 BX_LR = ('4770', 'e12fff1e')
 
 

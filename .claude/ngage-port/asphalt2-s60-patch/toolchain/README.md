@@ -1,4 +1,10 @@
-# Toolchain
+# Toolchain (the Asphalt 2 S60 HUD patch, historical)
+
+> The SIS and image modules this patch shares with the N-Gage port --
+> `sisrw.py`, `sisadd.py`, `sishash.py`, `mkmbm.py`, `mkmif.py`, `aificon.py`,
+> `verify_pkg.py` -- now live in `../../toolchain/port/`, which is where the
+> port imports them from. Run anything here with
+> `PYTHONPATH=../../toolchain/port` in front.
 
 Verified complete: a clean copy of this directory plus the four inputs below
 rebuilds the shipped package **byte-identically**.

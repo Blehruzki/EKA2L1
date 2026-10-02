@@ -16,7 +16,7 @@ import sys
 import os
 
 DOC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'PORTING.md')
-REL = '.claude/asphalt2/PORTING.md'
+REL = '.claude/ngage-port/PORTING.md'
 HEAD_START = '## Read this first'
 
 

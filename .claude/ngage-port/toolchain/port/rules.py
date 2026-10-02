@@ -41,7 +41,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROUNDS = os.path.join(HERE, '..', '..', 'ROUNDS.md')
-REL = '.claude/asphalt2/ROUNDS.md'
+REL = '.claude/ngage-port/ROUNDS.md'
 
 
 def rows(text, prefix):
