@@ -118,6 +118,14 @@ enum { GAME_SRC_ORIGIN = 0 };
 // the background and starts it again on return (round 115).
 #define GAME_CANCEL_ROM_OBJECTS 1
 
+// The game's variadic wrappers hand `TDes16::FormatList` a GCC98r2 VA_LIST:
+// a one-element array, passed as its address. The 9.x euser takes the va
+// pointer itself, so handed the address it reads the game's stack as the
+// arguments, and every `%s` comes out as a few glyphless characters. 1: the
+// hook passes the array's element (round 116). A title that imports
+// FormatList needs this; one that does not is untouched by it.
+#define GAME_VA_LIST 1
+
 // The allocator: cells of 4 KB and up go straight back, smaller ones through
 // the quarantine; nothing is leaked; every allocation padded by 512 bytes,
 // which is what keeps a 9.x constructor's overrun off the next cell (E277).

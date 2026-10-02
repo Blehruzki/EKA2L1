@@ -32,6 +32,8 @@ enum {
     IMPORT_CTL_RECT                    = 65535,   // absent
     IMPORT_CTL_SETRECT                 =    91,
     IMPORT_DELETE_OP                   =   346,
+    IMPORT_DES_FORMAT                  = 65535,   // absent
+    IMPORT_DES_FORMATLIST              = 65535,   // absent
     IMPORT_DIVDF3                      = 65535,   // absent
     IMPORT_DLL_NAME                    =     2,
     IMPORT_DSA_NEWL                    =   389,

@@ -131,6 +131,14 @@ enum { GAME_SRC_ORIGIN = 16 };
 // the background and starts it again on return (round 115).
 #define GAME_CANCEL_ROM_OBJECTS 0
 
+// The game's variadic wrappers hand `TDes16::FormatList` a GCC98r2 VA_LIST:
+// a one-element array, passed as its address. The 9.x euser takes the va
+// pointer itself, so handed the address it reads the game's stack as the
+// arguments, and every `%s` comes out as a few glyphless characters. 1: the
+// hook passes the array's element (round 116). A title that imports
+// FormatList needs this; one that does not is untouched by it.
+#define GAME_VA_LIST 0
+
 // Quarantine the small cells only, as Asphalt 2 does. This was
 // 0x7fffffff -- hold everything -- from E271, when a vtable pointer written
 // over a freed cell's `next` link was sending the allocator into the ROM.

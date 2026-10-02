@@ -237,6 +237,51 @@ background an app by sending its window back (E424, E425: no focus event
 from the emulator's window server), so the bench knob calls the port's
 foreground forwarder with 0 and then 1, which is the path the phone takes.
 E426 reproduced the panic, E427 cleared it.
+### 1.q The menu was a row of dots: two faults, one symptom (round 116)
+
+**Symptom.** Ashen on the N95 (builds 004 to 008) and on the bench: every
+string the game draws in the system font -- the main menu, the prompts, the
+version line -- is a row of one-pixel dots. The bitmap text (the page
+titles, the softkeys) is fine.
+
+**Cause 1: VA_LIST.** All of that text is built by the game's own variadic
+wrappers (0xb3b78, 0xb3c88, 0xb3d90 and three more), which collect their
+arguments with VA_START and call `TDes16::FormatList(fmt, VA_LIST)`. Under
+GCC98r2, VA_LIST is `TInt8* [1]` (e32def.h), and an array argument is
+passed as its address: r2 is the address of a stack word holding the va
+pointer. The 9.x euser is an EABI build whose VA_LIST is the compiler's
+`va_list`, one word passed by value: r2 *is* the va pointer. So 9.x took
+the game's array as the argument area and its one element, a stack
+address, as the `%s` string -- and every item came out as the bytes of
+that address and whatever lay above it, two to eight glyphless characters
+(E435: each item's text is exactly the wrapper's pushed r2 and r3). Fix:
+the FormatList hook passes the array's element (`GAME_VA_LIST`). `Format`
+itself needs nothing; both ABIs leave the trailing arguments in r2, r3 and
+on the stack.
+
+**Cause 2: the font slot.** The screen stand-in answered the game's font
+request through the primary vtable's slot 26, counted from GDI.H as
+`GetNearestFontToDesignHeightInPixels`. The count left out the EABI rule
+that an override of a non-primary base's virtual gets a slot of its own in
+the primary table: CWsScreenDevice's eight MGraphicsDeviceMap overrides
+follow CBitmapDevice's, and 26 is `GetNearestFontToDesignHeightInTwips`.
+Twelve twips is the smallest font there is -- bold honoured, height not,
+the same CFbsFont for 12, 13, 17 and 19 (E437). The pixel getter is slot
+18. Fix: slot 18, and ReleaseFont through the MGraphicsDeviceMap table at
++4, slot 9, with that subobject as `this`; the font's own HeightInPixels
+is logged after the call, which is what settles a slot (E438: 12, 12, 12,
+17, 19).
+
+**What was not the fault.** Two readings were tried first and both were
+wrong, and the record keeps them: a `{TText16*, TInt}` string object passed
+by reference to `%s` (E431, E432: a hook answered such pairs -- it was
+cause 1 seen from the other end, and it is gone), and the raw 9.x CFbsFont
+handed to the game's old CFont slots (E433, E434: a stand-in remapped
+them -- but the game's own code shows old slot 6 taking a descriptor, so
+the old table is the 9.x Do* order shifted by two and the raw font's vptr
+already serves it; the stand-in is gone). Both would have been caught a
+round earlier by logging what the game got back -- the formatted length,
+the font's height -- instead of what it was given.
 
 ## 2. Loading the N-Gage image
 

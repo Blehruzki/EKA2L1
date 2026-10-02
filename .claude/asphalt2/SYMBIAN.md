@@ -413,6 +413,43 @@ From `kernel/eka/euser/us_trp.cpp`, `us_exec.cpp`, `cbase/ub_cln.cpp`,
   the thread's exception handler, called with the `TExcType` alone. That
   is how an uncaught leave shows up as a `TExcType 0` with no frame.
 
+## VA_LIST, and the vtable of a class with two polymorphic bases
+
+From `kernel/eka/include/e32def.h`, `kernel/eka/euser/us_des.cpp`,
+`graphicsdeviceinterface/gdi/inc/GDI.H`, `windowing/windowserver/inc/W32STD.H`:
+
+- `VA_LIST` is `typedef TInt8 *VA_LIST[1]` unless the compiler's headers
+  define `__VA_LIST_defined` first, which the EABI builds (RVCT, GCCE) do:
+  there it is the compiler's `va_list`, one pointer passed by value. A
+  GCC98r2 caller passes its one-element array as the array's address, so a
+  9.x `TDes16::FormatList(fmt, VA_LIST)` called from old code receives the
+  address of the word that holds the va pointer, and reads the caller's
+  stack as the arguments (round 116, E435). Variadic functions such as
+  `TDes16::Format(fmt, ...)` are unaffected: both ABIs leave the trailing
+  arguments in r2, r3 and on the stack. The old array's one element is
+  what 9.x wants.
+- `%s` (us_des.cpp, `case 's'`) takes one pointer word from the list and
+  reads a zero-terminated string of the descriptor's character width at it;
+  `%S` takes a `TDesC*`. Neither reads a `{text, length}` pair.
+- `class CGraphicsDevice : public CBase, public MGraphicsDeviceMap`: two
+  polymorphic bases, so an object has two vptrs, CBase's at +0 and
+  MGraphicsDeviceMap's at +4. In the EABI (Itanium) layout a virtual that a
+  derived class overrides from the non-primary base gets a slot of its own
+  in the primary table as well, appended in the derived class's declaration
+  order after everything inherited through the primary chain. For
+  `CWsScreenDevice : public CBitmapDevice, public MWsClientClass` that is:
+  0-2 CBase, 3-12 CGraphicsDevice's ten (DisplayMode .. GetPalette), 13-20
+  CBitmapDevice's eight (GetPixel, GetScanLine, AddFile, RemoveFile,
+  GetNearestFontInPixels, GetNearestFontToDesignHeightInPixels,
+  GetNearestFontToMaxHeightInPixels, FontHeightInPixels), then 21-24 the
+  twips/pixel conversions, 25 GetNearestFontInTwips, 26
+  GetNearestFontToDesignHeightInTwips, 27 GetNearestFontToMaxHeightInTwips,
+  28 ReleaseFont. The table at +4 is MGraphicsDeviceMap's own: 0-1 its
+  destructor, 2-5 the conversions, 6-8 the three twips getters, 9
+  ReleaseFont, each entry a thunk that expects the +4 subobject as `this`.
+  A slot counted on paper is confirmed by what comes back: the font's
+  `HeightInPixels` after the call (E437, E438).
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:

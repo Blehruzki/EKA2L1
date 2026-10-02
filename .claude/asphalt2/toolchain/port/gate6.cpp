@@ -344,6 +344,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_EXIT_ASKED = 763,   // CEikAppUi::Exit() from the game: the thread exits with reason 0
        NOTE_FPA = 764,          // doubles re-ordered for 9.x: the register helpers hooked, then the Math functions hooked
        NOTE_SCREEN_MODES = 765, // the window-gc title's screen: w<<16|h of the whole-screen wrapper, then mode<<16|inset
+       NOTE_VA_LIST = 766,      // a FormatList re-pointed: the game's VA_LIST array, then the va pointer it held (first few only)
+       NOTE_FORMAT_CALL = 767,  // GAME_LOG_TEXT: 0xF0A7 (Format) or 0xF0A8 (FormatList), three words of the format text, the first argument word, then (bare %s only) its two words; 0xF0A9 then the length FormatList produced
        NOTE_TRAP = 747,         // the trap bridge: 0x5E7 installed (then the original handler), 0xE11 entered (TTrap),
                                 // 0x1EA a leave (reason), 0x7E5 longjmp into (TTrap), 0xF0C the bench's forced leave
        NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
@@ -1073,11 +1075,15 @@ struct Context {
     CallBack holdCb;
     const void *lastBmp;    // the last frame the game blitted
     u32 benchBgDone, benchFgDone;   // the bench's one background and one return, done
+    u32 realFormat, realFormatList; // euser's TDes16::Format and FormatList, before our hooks
+    u32 formatLogs;
     u32 benchBeats;
     u32 readsLogged;        // the first few reads only; a loading loop is thousands
     u32 *cleanupVt;         // the three-word vtable its stand-ins share: delete, any way in
     u32 *realScreenDev;     // the environment's CWsScreenDevice, 9.x
     u32 *fakeScreenDev;     // and the two-vtable old-shaped stand-in the game asks fonts of
+    u32 formatCalls;        // Format and FormatList calls logged (GAME_LOG_TEXT)
+    u32 lastFmt[4];         // ... and the last one, so a frame's repeats are not
     u32 *fakeWinGc;         // and the old-vtable stand-in the game draws with
     u32 newDsaStartL;       // ws32's CDirectScreenAccess::StartL, as resolved
     u32 *oldUi;             // the game's CEikAppUi, old layout
@@ -7104,21 +7110,17 @@ static const u8 kWinGcSlot[OLD_WINGC_SLOTS] = {
 enum { OLD_GC_USEFONT = 7, OLD_GC_DRAWTEXT = 39, OLD_GC_DRAWTEXTBOX = 40 };
 static void log_text_words(Context *c, const u32 *des)
 {
-    // Raw, until the descriptor's shape is known: the address, its first
-    // three words, then the two words the second word points at.
+    // Raw: the address, then its first three words (type and length, the
+    // maximum or the pointer, the first text word). There was a peek here
+    // at six words behind the third word when it looked like a pointer,
+    // for the %s pair question (round 116, answered); it read text that
+    // happened to spell a heap address nobody mapped -- "Hi" is 0x690048
+    // -- and faulted (E433). The words are only ever logged now.
     log_event(c, NOTE_GCTEXT, (u32)des);
     if (!des || ((u32)des & 3) || (u32)des < 0x400000) return;
     log_event(c, NOTE_GCTEXT, des[0]);
     log_event(c, NOTE_GCTEXT, des[1]);
     log_event(c, NOTE_GCTEXT, des[2]);
-    // And, when the text's first word reads as a pointer, six words there:
-    // the game's Format("%s") argument may be a {pointer, length} pair.
-    const u32 *p = (const u32 *)des[2];
-    if (p && !((u32)p & 1) && (u32)p >= 0x400000 && (u32)p < 0x10000000) {
-        log_event(c, NOTE_GCTEXT, 0x5EE);
-        for (u32 i = 0; i < 6; i++)
-            log_event(c, NOTE_GCTEXT, ((const u32 *)((u32)p & ~3u))[i]);
-    }
 }
 // The boxed DrawText (old 40, 9.x 44): six arguments, so no thunk -- the
 // context comes off the stand-in itself.
@@ -7153,6 +7155,7 @@ extern "C" void gate6_gc_drawtext(u32 *standin, const u32 *des, const i32 *pt, C
     u32 *real = (u32 *)standin[1];
     if (GAME_LOG_TEXT) {
         log_event(c, NOTE_GCTEXT, 0x7E);
+        log_event(c, NOTE_GCTEXT, (u32)__builtin_return_address(0));
         log_event(c, NOTE_GCTEXT, ((u32)pt[0] << 16) | ((u32)pt[1] & 0xFFFF));
         log_text_words(c, des);
     }
@@ -7168,6 +7171,7 @@ extern "C" void gate6_wgc_drawtext(u32 *standin, const u32 *des, const i32 *pt)
     u32 *real = c->realWinGc;
     if (GAME_LOG_TEXT) {
         log_event(c, NOTE_GCTEXT, 0x17E);
+        log_event(c, NOTE_GCTEXT, (u32)__builtin_return_address(0));
         log_event(c, NOTE_GCTEXT, ((u32)pt[0] << 16) | ((u32)pt[1] & 0xFFFF));
         log_text_words(c, des);
     }
@@ -7669,6 +7673,110 @@ static void fpa_install(Context *c, u32 *iat, u32 nImports)
     log_event(c, NOTE_FPA, maths);
 }
 
+// ---------------------------------------------------------------------------
+// **The menu text, round 116: VA_LIST.** Every string Ashen draws in the
+// system font is built by one of its own variadic wrappers (0xb3b78,
+// 0xb3c88, 0xb3d90 and three more) that collect the arguments with
+// VA_START and hand them to `TDes16::FormatList(fmt, VA_LIST)`. Under
+// GCC98r2, VA_LIST is `TInt8* [1]` (e32def.h): an array of one pointer,
+// and an array argument is passed as its address, so r2 is the address of
+// a word on the game's stack that holds the va pointer. The 9.x euser is
+// an EABI build, where VA_LIST is the compiler's `va_list`, one word
+// passed by value: r2 *is* the va pointer. Handed the array's address, 9.x
+// took the array itself as the argument area, and its one element -- a
+// stack address -- as the `%s` string: every item came out as the bytes of
+// that address and whatever lay above it, two to eight characters the
+// font has no glyphs for, and the menu drew as a row of dots (E435: the
+// item text is exactly the pushed r2 and r3 of the wrapper's call). So the
+// FormatList hook passes the array's element. `Format(fmt, ...)` needs
+// nothing: both ABIs leave the trailing arguments in r2, r3 and on the
+// stack. The earlier reading of these strings as a `{text, length}` pair
+// passed by reference (E431, E432, builds 009 drafts) was this fault seen
+// from the other end, and the hook that answered a bare `%s` from such a
+// pair is gone with it.
+enum { USER_LOW = 0x400000u, VA_LIST_LOGS = 8 };
+
+// GAME_LOG_TEXT: every Format and FormatList the game makes, a frame's
+// repeats collapsed, the first few hundred. The argument's two words are
+// read only for a bare %s, where 9.x is about to read them anyway.
+enum { FORMAT_CALL_LOGS = 400 };
+static void log_format_call(Context *c, u32 which, const u32 *fmt, const u32 *arg)
+{
+    if (!GAME_LOG_TEXT || c->formatCalls >= (u32)FORMAT_CALL_LOGS)
+        return;
+    u32 flen = 0;
+    const u16 *f = name_text(fmt, &flen);
+    const u32 *fw = (const u32 *)f;
+    u32 w[3] = { 0, 0, 0 };
+    for (u32 i = 0; i < 3 && f; i++)
+        if (flen > 2 * i) w[i] = fw[i];
+    if (w[0] == c->lastFmt[0] && w[1] == c->lastFmt[1] && w[2] == c->lastFmt[2] && (u32)arg == c->lastFmt[3])
+        return;
+    c->lastFmt[0] = w[0]; c->lastFmt[1] = w[1]; c->lastFmt[2] = w[2]; c->lastFmt[3] = (u32)arg;
+    c->formatCalls++;
+    log_event(c, NOTE_FORMAT_CALL, which);
+    log_event(c, NOTE_FORMAT_CALL, w[0]);
+    log_event(c, NOTE_FORMAT_CALL, w[1]);
+    log_event(c, NOTE_FORMAT_CALL, w[2]);
+    log_event(c, NOTE_FORMAT_CALL, (u32)arg);
+    if (f && flen == 2 && f[0] == '%' && f[1] == 's' && arg && !((u32)arg & 3)
+        && (u32)arg >= USER_LOW && (u32)arg < ROM_VTABLE_FLOOR) {
+        log_event(c, NOTE_FORMAT_CALL, arg[0]);
+        log_event(c, NOTE_FORMAT_CALL, arg[1]);
+    }
+}
+
+// The Format diagnostic, GAME_LOG_TEXT only: a guard thunk calls this with
+// r0-r2 and the context, and as it always declines, restores every register
+// and tail-jumps to the real variadic function on the caller's own frame.
+extern "C" int gate6_format_check(u32 *des, const u32 *fmt, const u32 *arg, Context *c)
+{
+    (void)des;
+    log_format_call(c, 0xF0A7, fmt, arg);
+    return 0;
+}
+
+// The game's VA_LIST is the address of its one-element array; 9.x wants
+// the element.
+extern "C" void gate6_formatlist(u32 *des, const u32 *fmt, u32 **list, Context *c)
+{
+    typedef void (*Fn)(void *, const void *, void *);
+    u32 *va = list ? list[0] : 0;
+    log_format_call(c, 0xF0A8, fmt, va ? (const u32 *)*va : 0);
+    if (c->formatLogs < (u32)VA_LIST_LOGS) {
+        c->formatLogs++;
+        log_event(c, NOTE_VA_LIST, (u32)list);
+        log_event(c, NOTE_VA_LIST, (u32)va);
+    }
+    ((Fn)c->realFormatList)(des, fmt, va);
+    if (GAME_LOG_TEXT && c->formatCalls < (u32)FORMAT_CALL_LOGS && des && !((u32)des & 3)) {
+        log_event(c, NOTE_FORMAT_CALL, 0xF0A9);
+        log_event(c, NOTE_FORMAT_CALL, des[0]);
+    }
+}
+
+//   push {r0-r3, lr} ; ldr r3, =ctx ; ldr ip, =check ; blx ip ; cmp r0, #0
+//   pop {r0-r3, lr} ; bxne lr ; ldr pc, =real
+enum { GUARD_BYTES = 11 * 4 };
+
+static u32 guard_thunk(u8 *code, const void *ctx, u32 check, u32 real)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE92D400F;                  // stmdb sp!, {r0-r3, lr}
+    b[1] = 0xE59F3014;                  // ldr   r3, [pc, #20]  -> b[8]
+    b[2] = 0xE59FC014;                  // ldr   ip, [pc, #20]  -> b[9]
+    b[3] = 0xE12FFF3C;                  // blx   ip
+    b[4] = 0xE3500000;                  // cmp   r0, #0
+    b[5] = 0xE8BD400F;                  // ldmia sp!, {r0-r3, lr}
+    b[6] = 0x112FFF1E;                  // bxne  lr             -- answered
+    b[7] = 0xE59FF004;                  // ldr   pc, [pc, #4]   -> b[10]: pc is b[9] here (E431 read b[11], the next thunk's push)
+    b[8] = (u32)ctx;
+    b[9] = check;
+    b[10] = real;
+    user_imb_range(b, b + 11);
+    return (u32)b;
+}
+
 // Round 113. The game quits through `CEikAppUi::Exit()` -- image 0xb66cc,
 // the last thing its tick does once the quit flag at +0x90 is set. On 9.x
 // Exit() is a leave, bafl's KLeaveWithoutAlert (-1003), that the active
@@ -7772,18 +7880,33 @@ extern "C" u32 *gate6_app_rect(u32 *out, u32, Context *)
 // `LatinBold13`, `LatinBold17`, `LatinBold19`, all at "30 twips". The
 // N-Gage matched the name and the height was moot; S60 3rd has no such
 // typeface, matched the height, and handed back a two-pixel font: the specks
-// on the menu page of E383's key run. A 9.x CWsScreenDevice has one vptr
-// (MGraphicsDeviceMap is its primary base) and `MWsClientClass::iBuffer` at
-// +4, so the old call went through a window-server buffer word and happened
-// to return. The stand-in has the two tables the game expects, answers the
-// font request with the system typeface at the pixel height the old name
-// carries (the digits; `Bold` sets the weight) through 9.x slot 26,
-// `GetNearestFontToDesignHeightInPixels` -- the slot numbers from GDI.H's
-// base-class order, as the gc's were -- and forwards ReleaseFont to slot 7.
-// Anything else the game asks of either table is the pure-virtual panic.
+// on the menu page of E383's key run. A 9.x CWsScreenDevice is a CBase
+// first and an MGraphicsDeviceMap second, so +4 is that base's own vptr,
+// and the old entry 5 landed on its slot 7, GetNearestFontToDesignHeightIn-
+// Twips, which is how a call through the wrong table still returned a font.
+//
+// The stand-in has the two tables the game expects and answers the font
+// request with the system typeface at the pixel height the old name
+// carries (the digits; `Bold` sets the weight) through the primary table's
+// slot 18, `GetNearestFontToDesignHeightInPixels`. The primary table is
+// CBase (0-2), CGraphicsDevice's ten (3 DisplayMode .. 12 GetPalette),
+// CBitmapDevice's eight (13 GetPixel, 14 GetScanLine, 15 AddFile, 16
+// RemoveFile, 17 GetNearestFontInPixels, 18 ..ToDesignHeightInPixels, 19
+// ..ToMaxHeightInPixels, 20 FontHeightInPixels), then, because the EABI
+// gives an override of a non-primary base's virtual a slot of its own in
+// the primary table too, CWsScreenDevice's MGraphicsDeviceMap overrides in
+// its declaration order: 21-24 the conversions, 25 GetNearestFontInTwips,
+// 26 ..ToDesignHeightInTwips, 27 ..ToMaxHeightInTwips, 28 ReleaseFont.
+// Builds 004 to 008 called 26 for the pixel getter -- counted without the
+// override rule -- and got a 12-twip font, the same CFbsFont for 12, 13,
+// 17 and 19 and every string a row of dots (E437); the font's own height
+// is logged after the call, which is what settles a slot. ReleaseFont goes
+// through the secondary table at +4, slot 9, with that subobject as
+// `this`. Anything else the game asks of either table is the pure-virtual
+// panic.
 enum { OLD_COEENV_SCREEN = 0x3c, NEW_COEENV_SCREEN = 0x48,
        OLD_MAP_SLOTS = 8, OLD_MAP_FONT = 5, OLD_MAP_RELEASE = 6,
-       NEW_SCREEN_RELEASE_FONT = 7, NEW_SCREEN_FONT_DESIGN_PX = 26,
+       NEW_SCREEN_FONT_DESIGN_PX = 18, NEW_MAP_RELEASE_FONT = 9, NEW_FONT_HEIGHT_PX = 4,
        FONT_DEFAULT_PX = 12, FONT_BOLD = 2 };
 struct FontSpec9 { u32 nameLen; u16 name[24]; u32 typefaceFlags; i32 height; u32 style, res1, res2; };
 
@@ -7808,6 +7931,11 @@ extern "C" int gate6_screen_font(u32 *self4, u32 **out, const u32 *oldSpec, Cont
     const int r = ((Fn)((const u32 *)real[0])[NEW_SCREEN_FONT_DESIGN_PX])((void *)real, out, &spec);
     log_event(c, NOTE_FONT, px | (bold << 8));
     log_event(c, NOTE_FONT, r ? (u32)r : (u32)*out);
+    if (!r && *out) {
+        typedef int (*Height)(const void *);
+        const u32 *font = *out;     // its DoHeightInPixels: the measure of the slot above
+        log_event(c, NOTE_FONT, (u32)((Height)((const u32 *)font[0])[NEW_FONT_HEIGHT_PX])(font));
+    }
     return r;
 }
 
@@ -7817,8 +7945,8 @@ extern "C" void gate6_screen_release(u32 *self4, u32 *font, Context *c)
     (void)self4;
     log_event(c, NOTE_FONT, 0xF2EE);
     log_event(c, NOTE_FONT, (u32)font);
-    const u32 *real = c->realScreenDev;
-    ((Fn)((const u32 *)real[0])[NEW_SCREEN_RELEASE_FONT])((void *)real, font);
+    const u32 *map = c->realScreenDev + 1;     // the MGraphicsDeviceMap subobject, vptr at +4
+    ((Fn)((const u32 *)map[0])[NEW_MAP_RELEASE_FONT])((void *)map, font);
 }
 
 static u32 *screen_standin(Context *c)
@@ -10267,6 +10395,19 @@ static u32 load_and_start()
     }
     if (GAME_FPA_DOUBLES)
         fpa_install(ctx, iat, nImports);
+    if (GAME_VA_LIST) {
+        if (GAME_LOG_TEXT && nImports > IMPORT_DES_FORMAT && IMPORT_DES_FORMAT < kShimCount &&
+            (kShimTable[IMPORT_DES_FORMAT] >> 24) == KIND_CALL && ctx->spare + GUARD_BYTES <= ctx->spareEnd) {
+            ctx->realFormat = iat[IMPORT_DES_FORMAT];
+            iat[IMPORT_DES_FORMAT] = guard_thunk(ctx->spare, ctx, (u32)&gate6_format_check, ctx->realFormat);
+            ctx->spare += GUARD_BYTES;
+        }
+        if (nImports > IMPORT_DES_FORMATLIST && IMPORT_DES_FORMATLIST < kShimCount &&
+            (kShimTable[IMPORT_DES_FORMATLIST] >> 24) == KIND_CALL) {
+            ctx->realFormatList = iat[IMPORT_DES_FORMATLIST];
+            iat[IMPORT_DES_FORMATLIST] = ctx3_thunk(stub + SLOT * IMPORT_DES_FORMATLIST, ctx, (u32)&gate6_formatlist);
+        }
+    }
     if (GAME_SCREEN_MODES && GAME_CONTROL_W) {
         if (nImports > IMPORT_CTL_RECT && IMPORT_CTL_RECT < kShimCount)
             iat[IMPORT_CTL_RECT] = ctx_thunk(stub + SLOT * IMPORT_CTL_RECT, ctx, (u32)&gate6_ctl_rect);
