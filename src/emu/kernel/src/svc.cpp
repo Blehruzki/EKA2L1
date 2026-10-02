@@ -2780,6 +2780,20 @@ namespace eka2l1::epoc {
             .first;
     }
 
+    // Exec::ChannelCreate(const TDesC &aLogicalDevice, TChannelCreateInfo &aInfo, TOwnerType aType), the
+    // RBusLogicalChannel::DoCreate backend. There are no device drivers here: pretend the channel opened.
+    // Returns 0 (not a handle), so RHandleBase::SetReturnedHandle leaves iHandle at 0 and reports KErrNone.
+    BRIDGE_FUNC(std::int32_t, channel_create) {
+        return epoc::error_none;
+    }
+
+    // Exec::ChannelRequest(TInt aHandle, TInt aFunction, TAny *a1, TAny *a2): RBusLogicalChannel::DoControl
+    // (aFunction >= 0) and DoRequest (aFunction < 0, async). With no driver behind the channel just report
+    // success. Nothing ever completes the request status that a driver would have completed.
+    BRIDGE_FUNC(std::int32_t, channel_request) {
+        return epoc::error_none;
+    }
+
     /* 
     * Note: the difference between At and After on hardware is At request still actives when the phone shutdown.
     * At is extremely important to implement the alarm in S60 (i believe S60v4 is a part based on S60 so it maybe related).
@@ -6023,6 +6037,7 @@ namespace eka2l1::epoc {
         BRIDGE_REGISTER(0x02, chunk_size),
         BRIDGE_REGISTER(0x03, chunk_max_size),
         BRIDGE_REGISTER(0x05, tick_count),
+        BRIDGE_REGISTER(0x0A, channel_request),
         BRIDGE_REGISTER(0x0B, math_rand),
         BRIDGE_REGISTER(0x0C, imb_range),
         BRIDGE_REGISTER(0x0E, library_lookup),
@@ -6111,6 +6126,7 @@ namespace eka2l1::epoc {
         BRIDGE_REGISTER(0x7D, server_create),
         BRIDGE_REGISTER(0x7E, session_create),
         BRIDGE_REGISTER(0x7F, session_create_from_handle),
+        BRIDGE_REGISTER(0x82, channel_create),
         BRIDGE_REGISTER(0x83, timer_create),
         BRIDGE_REGISTER(0x84, timer_after), // Actually TimerHighRes
         BRIDGE_REGISTER(0x85, after), // Actually AfterHighRes
