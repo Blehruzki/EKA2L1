@@ -7,10 +7,10 @@ stays off for a title until a round of its own has run it there. Rounds are
 hardware; E-numbers are bench runs (ROUNDS.md).
 
 Shipping builds: Asphalt Urban GT **030** (`gate6a1`), Asphalt 2 **196**
-(`gate6`), Ashen **009** (`gate6ashe`). All verified on a Nokia N95 (S60 3.1)
+(`gate6`), Ashen **010** (`gate6ashe`). All verified on a Nokia N95 (S60 3.1)
 and the bench (RM-409 ROM, S60 3.2); the Asphalts also on a Nokia N91 (S60 3.0,
-round 121). A C5-00 run of Asphalt Urban GT 027 was never confirmed. Ashen has
-not yet run on 3.0; its next build carries round 120's fix.
+round 121). A C5-00 run of Asphalt Urban GT 027 was never confirmed. Ashen 010 carries
+round 120's fix and is with the N91 tester.
 
 ## Fixes and features, by knob
 

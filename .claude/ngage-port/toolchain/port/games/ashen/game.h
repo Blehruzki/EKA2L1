@@ -150,5 +150,5 @@ enum { GAME_SRC_ORIGIN = 0 };
 #define GAME_APP_NAME "gate6ashe"
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 9
+#define GAME_BUILD 10
 #endif

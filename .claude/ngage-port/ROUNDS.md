@@ -526,6 +526,10 @@ them, and say so.
 | E454 | E454: Asphalt Urban GT build 030, the validation on the window's second word (iBuffer); 60 s launch regression | 62551 | `--` | **Clean, and the validation now passes: 62,551 records, no fault; the measured word 0x7b0348 validated (its second word is the session buffer 0x700be8), the scan found the same pointer at word 10, the DSA object has the window at word 10 and the offsets come out 0x1c, 0x20, 0x24 -- the measured ones, so 3.1 and 3.2 behave as before by construction.** The binary that ships as build 030 |
 | E455 | E455: Asphalt 2 build 196, the same; 60 s launch regression | 15889 | `--` | **The same: clean, validated, word 10, the measured offsets.** The binary that ships as build 196 |
 | E456 | E456: Ashen from the same source, the same; 60 s launch regression, not shipped | 83961 | `--` | **The same on Ashen: DrawableWindow() and the scan agree with the word at 0x28, all validated.** Not shipped; the next Ashen build carries it |
+| E457 | E457: Ashen build 010 as it ships -- the control's window validated against the session buffer (round 120), the thread and StartL witnesses, the two dumps; 60 s launch regression | 27206 | `--` | **Clean.** 27,206 records in 60 s, no panic, no access violation; the game's own frame counter at 3,327 against E439's 3,796 and the same event mix, so a slower bench (the container had restarted nine minutes before), not a different run. The window record: the word at 0x28 validated, DrawableWindow() and the scan agree. The binary that ships as build 010 |
+| E458 | E458 (manual, keys5.sh): the shipping build 010, the quit sequence | 90146 | `--` | **Quiet quit: `EXIT asked`, the thread gone with 0** |
+| E459 | E459 (manual, keys6.sh, twice): the shipping build 010, C held on the main menu | -- | `--` | **First run two steps (0, 1), second run four (2, 3, 4, 0): X auto-repeat ends a hold early on this bench without `xset`, as E441 noted; the mode cycles and the choice is saved either way** |
+| E460 | E460 (manual, keys7.sh): the shipping build 010, the main menu | -- | `--` | **Readable, in the one-to-one mode the hold run left saved** |
 
 <!-- EMURUN -->
 
