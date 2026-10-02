@@ -202,6 +202,8 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          765: 'SCREEN MODES (window-gc title): w<<16|h of the whole-screen wrapper, then mode<<16|inset',
          766: 'VA_LIST re-pointed for FormatList: the game array, then the va pointer it held',
          768: 'THREAD DONE: a game thread function returned: the function, then its result',
+         769: 'COEENV word (24, once): the real 9.x CCoeEnv from its first word',
+         770: 'DSA BEFORE StartL (once): the resolved StartL, 24 words of the real CDirectScreenAccess, then heap free, biggest, cells, bytes',
          767: 'FORMAT CALL (GAME_LOG_TEXT): f0a7 Format / f0a8 FormatList, three words of the format text, the argument word, (bare %s) its two words; f0a9 then the length produced',
          825: 'MODE NOW, after a hold changed it', 824: 'CFG WROTE: mode<<16 | error', 838: 'SCREEN FIT pair', 839: 'SCREEN SRC', 840: 'SCREEN DST: inset<<16 | mode<<12 | first pixel',
          860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on / SOUND',

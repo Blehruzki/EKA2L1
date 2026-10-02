@@ -345,6 +345,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FPA = 764,          // doubles re-ordered for 9.x: the register helpers hooked, then the Math functions hooked
        NOTE_SCREEN_MODES = 765, // the window-gc title's screen: w<<16|h of the whole-screen wrapper, then mode<<16|inset
        NOTE_VA_LIST = 766,      // a FormatList re-pointed: the game's VA_LIST array, then the va pointer it held (first few only)
+       NOTE_COEENV_WORDS = 769, // the first 24 words of the real 9.x CCoeEnv, once (round 119: is the layout the one the bias assumes)
+       NOTE_DSA_BEFORE = 770,   // before StartL: the resolved StartL, 24 words of the real CDirectScreenAccess, then heap free, biggest, cells, bytes
        NOTE_THREAD_DONE = 768,  // a game thread's function returned: the function, then what it returned (the thread then exits)
        NOTE_FORMAT_CALL = 767,  // GAME_LOG_TEXT: 0xF0A7 (Format) or 0xF0A8 (FormatList), three words of the format text, the first argument word, then (bare %s only) its two words; 0xF0A9 then the length FormatList produced
        NOTE_TRAP = 747,         // the trap bridge: 0x5E7 installed (then the original handler), 0xE11 entered (TTrap),
@@ -1084,6 +1086,7 @@ struct Context {
     u32 *realScreenDev;     // the environment's CWsScreenDevice, 9.x
     u32 *fakeScreenDev;     // and the two-vtable old-shaped stand-in the game asks fonts of
     u32 formatCalls;        // Format and FormatList calls logged (GAME_LOG_TEXT)
+    u32 coeLogged, dsaLogged;   // the two one-time dumps of round 119
     u32 lastFmt[4];         // ... and the last one, so a frame's repeats are not
     u32 *fakeWinGc;         // and the old-vtable stand-in the game draws with
     u32 newDsaStartL;       // ws32's CDirectScreenAccess::StartL, as resolved
@@ -4723,6 +4726,25 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
     // leave, no return, no fault -- so the call is bracketed: 0x57A0 going
     // in, 0x57A1 coming back. A leave skips the second.
     log_event(c, NOTE_DSA_RESTART, 0x57A0);
+    // Round 119, once: what StartL is about to work on. The resolved StartL
+    // places ws32 among the fault's addresses; the object's words are the
+    // session, device and window references NewL stored; the heap's state
+    // says whether the allocator the fault's lr sits in had anything left.
+    if (!c->dsaLogged) {
+        c->dsaLogged = 1;
+        log_event(c, NOTE_DSA_BEFORE, c->newDsaStartL);
+        const u32 *d = c->dsaReal;
+        for (u32 i = 0; i < 24; i++)
+            log_event(c, NOTE_DSA_BEFORE, (d && !((u32)d & 3)) ? d[i] : 0xDEADu);
+        i32 biggest = 0, total = 0;
+        const i32 free = rheap_available(user_allocator(), &biggest);
+        const i32 cells = user_allocsize(&total);
+        log_event(c, NOTE_DSA_BEFORE, (u32)free);
+        log_event(c, NOTE_DSA_BEFORE, (u32)biggest);
+        log_event(c, NOTE_DSA_BEFORE, (u32)cells);
+        log_event(c, NOTE_DSA_BEFORE, (u32)total);
+        log_block(c);
+    }
     if (HOLD_THE_SCREEN)
         ((StartL)c->newDsaStartL)(c->dsaReal);
     log_event(c, NOTE_DSA_RESTART, 0x57A1);
@@ -8014,6 +8036,16 @@ extern "C" void *gate6_coeenv_static(u32, u32, Context *c)
     const u32 *real = (const u32 *)((u8 *)c->coeEnv + COEENV_BIAS);
     for (int i = 0; i < COEENV_VIEW_WORDS; i++)
         c->coeEnvView[i] = real[i];
+    // Round 119: the N91 (S60 3.0) dies in the first StartL, which is the
+    // first use of the session, the screen device and the window the game
+    // reads off this view. The bias was measured on 3.1 and 3.2 ROMs; the
+    // raw words say whether 3.0 lays CCoeEnv out the same way.
+    if (!c->coeLogged && c->coeEnv) {
+        c->coeLogged = 1;
+        for (u32 i = 0; i < 24; i++)
+            log_event(c, NOTE_COEENV_WORDS, c->coeEnv[i]);
+        log_block(c);
+    }
     if (c->oldUi)
         c->coeEnvView[OLD_COEENV_APPUI / 4] = (u32)c->oldUi;
     // The old iSystemGc (0x34; the 9.x one is twelve bytes along, so the
