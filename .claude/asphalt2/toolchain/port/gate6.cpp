@@ -1071,7 +1071,9 @@ struct Context {
     u32 realReadSection;    // efsrv's RFs::ReadFileSection, before our hook
     u32 holdTimer;          // the window-gc title's hold timer (CPeriodic), once started
     CallBack holdCb;
-    const void *lastBmp;    // the last frame the game blitted, for a repaint after a mode change
+    const void *lastBmp;    // the last frame the game blitted
+    u32 benchBgDone, benchFgDone;   // the bench's one background and one return, done
+    u32 benchBeats;
     u32 readsLogged;        // the first few reads only; a loading loop is thousands
     u32 *cleanupVt;         // the three-word vtable its stand-ins share: delete, any way in
     u32 *realScreenDev;     // the environment's CWsScreenDevice, 9.x
@@ -3894,7 +3896,7 @@ enum { FORCE_BACKGROUND_AT = 0, WS32_SET_ORDINAL_POSITION = 211,
        NEW_COEENV_ROOTWIN = 0x2c + COEENV_BIAS };
 static const u16 kWs32Name[] = { 'w','s','3','2','.','d','l','l' };
 
-static void bench_background(Context *c)
+static void bench_ordinal(Context *c, int pos)
 {
     typedef void (*SetOrdinal)(void *, int);
     u32 lib = 0;
@@ -3909,8 +3911,10 @@ static void bench_background(Context *c)
     log_event(c, NOTE_BACKGROUND, (u32)fn);
     log_block(c);
     if (fn && c->coeEnv)
-        ((SetOrdinal)fn)((u8 *)c->coeEnv + NEW_COEENV_ROOTWIN, -1);
+        ((SetOrdinal)fn)((u8 *)c->coeEnv + NEW_COEENV_ROOTWIN, pos);
 }
+
+static void bench_background(Context *c) { bench_ordinal(c, -1); }
 
 extern "C" void gate6_timer_runl(void *, u32, Context *c)
 {
@@ -6968,6 +6972,8 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
 // caller happened to leave there. The first thing done with it is a
 // dereference, so reaching this function at all was fatal. The emulator never
 // showed it because nothing in its fifteen thousand records calls Cancel.
+enum { ROM_VTABLE_FLOOR = 0x80000000u };   // every 9.x vtable this port has read sits above it
+
 extern "C" void gate6_cancel(u32 *self, u32, Context *c)
 {
     typedef void (*Cancel)(void *);
@@ -6976,7 +6982,20 @@ extern "C" void gate6_cancel(u32 *self, u32, Context *c)
         self = c->wrapTimer;
     else if (c->dsaShadow && self == c->dsaShadow)
         self = c->dsaReal;
-    else {
+    else if (GAME_CANCEL_ROM_OBJECTS && self && !((u32)self & 3) && self[0] >= ROM_VTABLE_FLOOR) {
+        // Round 115: an object the game made through a 9.x NewL -- Ashen's
+        // frame timer, `CPeriodic::NewL`, its vptr in euser's ROM -- which
+        // the real Cancel handles as it should. Dropped as a stray, the timer
+        // ran on under the background (405 ticks) and the resume's Start on
+        // the still-active object was E32USER-CBase 42, EReqAlreadyActive.
+        // An old-layout object of the game's own construction keeps its
+        // vptr in the image, below the ROM, and is still dropped below.
+        log_event(c, NOTE_STRAY, (u32)self);
+        if (!QUIET) log_block(c);
+        ((Cancel)c->newCancel)(self);
+        log_event(c, NOTE_CANCEL_OUT, (u32)self);
+        return;
+    } else {
         // The game's own four call sites are all on the timer or the direct
         // screen access object, so anything else got here without being
         // called -- a stray branch into the stub. Cancelling whatever that
@@ -7070,6 +7089,7 @@ enum { COEENV_SYSTEM_GC = 0x40 };
 enum { OLD_WINGC_SLOTS = 63, OLD_WINGC_BITBLT_FWD = 46 };
 extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp);   // below, with the picture modes
 static void hold_timer_start(Context *c);
+extern "C" void gate6_ui_foreground(void *self, u32 foreground, Context *c);
 static const u8 kWinGcSlot[OLD_WINGC_SLOTS] = {
     GC_NONE, 3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17,
     18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33,
@@ -7314,9 +7334,30 @@ extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
 // keeps it. The new fit shows at the game's next blit, which the blinking
 // menu cursor and the title's animation give within half a second, and the
 // window is cleared black under it then (clearPending).
+// Bench knobs, 0 when shipping: at these ticks the root window goes to the
+// back and comes to the front again, which is the phone's menu key and the
+// return to the game (round 115: the resume's E32USER-CBase 42).
+enum { BENCH_BACKGROUND_TICK = 0, BENCH_FOREGROUND_TICK = 0 };
+
 extern "C" int gate6_hold_tick_cb(void *p)
 {
-    hold_tick((Context *)p);
+    Context *c = (Context *)p;
+    hold_tick(c);
+    if (BENCH_BACKGROUND_TICK && (++c->benchBeats % 100) == 0) {   // bench: the timer's own pulse, every 10 s
+        log_event(c, NOTE_BACKGROUND, 0xC0DE0000u | (user_tickcount() & 0xFFFFu));
+        log_block(c);
+    }
+    // Sending the root window to the back (bench_ordinal) delivers no focus
+    // event in the emulator (E424, E425), so the knob calls the forwarder the
+    // framework would call: the game's own loss and gain handlers run.
+    if (BENCH_BACKGROUND_TICK && !c->benchBgDone && (i32)(user_tickcount() - (u32)BENCH_BACKGROUND_TICK) >= 0) {
+        c->benchBgDone = 1;
+        gate6_ui_foreground(c->wrapUi, 0, c);
+    }
+    if (BENCH_FOREGROUND_TICK && !c->benchFgDone && (i32)(user_tickcount() - (u32)BENCH_FOREGROUND_TICK) >= 0) {
+        c->benchFgDone = 1;
+        gate6_ui_foreground(c->wrapUi, 1, c);
+    }
     return 1;
 }
 

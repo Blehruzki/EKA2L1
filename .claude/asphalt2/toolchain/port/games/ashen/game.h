@@ -85,6 +85,13 @@ enum { GAME_SRC_ORIGIN = 0 };
 // GAME_CONTROL_W; a title on the port's own buffer has the modes already.
 #define GAME_SCREEN_MODES 1
 
+// CActive::Cancel from the game on an object that is neither the port's
+// wrapped timer nor its DSA shadow is dropped; 1 forwards it when the object
+// is a 9.x one (its vptr in the ROM), which a title that makes its timers
+// through CPeriodic::NewL needs: Ashen cancels its frame timer on going to
+// the background and starts it again on return (round 115).
+#define GAME_CANCEL_ROM_OBJECTS 1
+
 // The allocator: cells of 4 KB and up go straight back, smaller ones through
 // the quarantine; nothing is leaked; every allocation padded by 512 bytes,
 // which is what keeps a 9.x constructor's overrun off the next cell (E277).
@@ -124,5 +131,5 @@ enum { GAME_SRC_ORIGIN = 0 };
 #define GAME_APP_NAME "gate6ashe"
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 7
+#define GAME_BUILD 8
 #endif

@@ -217,6 +217,27 @@ Deactivate and map to 68 and 69, not 67 and 68 -- a Deactivate forwarded
 to Activate with a stray window is a null window in the emulator's
 server (E417, E418 under gdb). Count a slot map by code, not by eye.
 
+### 1.r A stray Cancel that was the game's frame timer (round 115)
+
+**Symptom.** Ashen on the N95 survives being put in the background and dies
+on return: `E32USER-CBase 42`, EReqAlreadyActive.
+
+**Cause.** The port's hook on `CActive::Cancel` forwards a Cancel only for
+its own wrapped timer and its DSA shadow; anything else was treated as a
+stray branch into the stub and dropped, which was right for the Asphalts
+(their four call sites are all on those two). Ashen makes its frame timer
+with `CPeriodic::NewL` -- a real 9.x object -- and cancels it on losing the
+foreground. Dropped, the timer ran on under the background (405 ticks),
+and the gain's `Start` on a still-active object is panic 42.
+
+**Fix.** `GAME_CANCEL_ROM_OBJECTS` (build 008): a stray Cancel on an object
+whose vptr is in the ROM (a 9.x object) goes to the real Cancel; one on an
+old-layout object, vptr in the image, is still dropped. The bench cannot
+background an app by sending its window back (E424, E425: no focus event
+from the emulator's window server), so the bench knob calls the port's
+foreground forwarder with 0 and then 1, which is the path the phone takes.
+E426 reproduced the panic, E427 cleared it.
+
 ## 2. Loading the N-Gage image
 
 **The entry point is an offset, entered in ARM mode with `lr = 0`.**

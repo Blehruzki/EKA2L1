@@ -124,6 +124,13 @@ enum { GAME_SRC_ORIGIN = 16 };
 // GAME_CONTROL_W; a title on the port's own buffer has the modes already.
 #define GAME_SCREEN_MODES 0
 
+// CActive::Cancel from the game on an object that is neither the port's
+// wrapped timer nor its DSA shadow is dropped; 1 forwards it when the object
+// is a 9.x one (its vptr in the ROM), which a title that makes its timers
+// through CPeriodic::NewL needs: Ashen cancels its frame timer on going to
+// the background and starts it again on return (round 115).
+#define GAME_CANCEL_ROM_OBJECTS 0
+
 // Quarantine the small cells only, as Asphalt 2 does. This was
 // 0x7fffffff -- hold everything -- from E271, when a vtable pointer written
 // over a freed cell's `next` link was sending the allocator into the ROM.
