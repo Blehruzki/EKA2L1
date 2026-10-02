@@ -449,6 +449,17 @@ From `kernel/eka/include/e32def.h`, `kernel/eka/euser/us_des.cpp`,
   ReleaseFont, each entry a thunk that expects the +4 subobject as `this`.
   A slot counted on paper is confirmed by what comes back: the font's
   `HeightInPixels` after the call (E437, E438).
+- `MWsClientClass` (W32STD.H) is `{ TInt32 iWsHandle; RWsBuffer* iBuffer; }`,
+  handle first, and it is the base of every window-server handle class:
+  `RWsSession`, `RWindowGroup`, `RWindow`, `RDirectScreenAccess`. A window
+  object's second word is therefore the session's buffer, the same pointer
+  the session itself holds, which is how a window can be told from any
+  other word in a control without knowing the control's layout (round 120,
+  E451 having compared the first word and matched nothing). Private
+  layouts measured on one ROM are measurements of that ROM: an N91 (S60
+  3.0) keeps `CCoeControl::iWin` elsewhere than 0x28 and gives
+  `CDirectScreenAccess` one more word before its window reference than
+  3.1 and 3.2 do.
 
 ## Sources
 

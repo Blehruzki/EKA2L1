@@ -6,7 +6,7 @@ the mechanism is not specific to one game's code; a universal fix still
 stays off for a title until a round of its own has run it there. Rounds are
 hardware; E-numbers are bench runs (ROUNDS.md).
 
-Shipping builds: Asphalt Urban GT **027** (`gate6a1`), Asphalt 2 **193**
+Shipping builds: Asphalt Urban GT **030** (`gate6a1`), Asphalt 2 **196**
 (`gate6`), Ashen **009** (`gate6ashe`). All verified on a Nokia N95 (S60 3.1)
 and the bench (RM-409 ROM, S60 3.2). A C5-00 run of Asphalt Urban GT 027 was
 never confirmed. No S60 3.0 phone has run any build to its menu (the N91
@@ -47,6 +47,7 @@ logs of round 118 are the open item).
 | the exit path: `CEikAppUi::Exit()` leaves KLeaveExit on 9.x; the hook exits the thread with 0 | round 113 | hardware (Ashen 005+; the Asphalts quit through their own `User::Exit`) |
 | the frame timer wrapper at priority -101, the DSA restart after an abort | rounds 100-103 | hardware |
 | the fault box (`g6box-<stem>.dat`) and the log (`g6box-<stem>.log`) | gate 6 | every round reads them |
+| the control's window and the DSA object's layout found at run time, validated against the session buffer, rather than read at offsets measured on 3.1/3.2 | round 120 | bench E454-E456; the N91 (S60 3.0) is the phone it was made for |
 
 ## Where each title saves
 

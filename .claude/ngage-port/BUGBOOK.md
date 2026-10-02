@@ -282,6 +282,54 @@ the old table is the 9.x Do* order shifted by two and the raw font's vptr
 already serves it; the stand-in is gone). Both would have been caught a
 round earlier by logging what the game got back -- the formatted length,
 the font's height -- instead of what it was given.
+### 1.p S60 3.0 keeps the control's window one word elsewhere (rounds 118-120)
+
+**Symptom.** Asphalt 2 and Asphalt Urban GT on a Nokia N91 (S60 3.0) show
+a white window and close, every launch, on both titles. The logs are
+identical in shape to the N95's until the first draw, then Urban GT takes
+a data abort at address 0 inside ws32 (pc just below `StartL`, a null in
+r1) and Asphalt 2 ends through the exception path.
+
+**Cause.** The port builds the game's old-layout CCoeControl by hand and
+fills its `iWin` (old 0x20) from the 9.x wrapper control's word at 0x28,
+an offset measured on 3.1 and 3.2 ROMs. On 3.0 that word is zero. The game
+handed the zero to `CDirectScreenAccess::NewL` as its window; NewL stores
+what it is given, and `StartL`'s first use of the window is the fault. The
+dump before StartL (770) showed it directly: the bench's object has the
+window reference at word 10 and the screen device at 11, the N91's has 0,
+0 and the device at 12 -- so 3.0's CDirectScreenAccess also carries one
+more word before the window than 3.2's, which would have put the port's
+measured gc, device and region offsets (0x1c, 0x20, 0x24) one word off as
+well. The CCoeEnv layout, the other suspect, matched the bench word for
+word (769).
+
+**Fix (builds 030 and 196).** A window is an object whose first word is
+the session's buffer (`MWsClientClass::iBuffer`, the base of every window
+handle, set from the session when the window is constructed), and the
+session's buffer sits in the real environment at 9.x 0x30. So the port
+validates instead of trusting: the measured word at 0x28 if it passes that
+test (3.1 and 3.2: unchanged behaviour), else the control's one word that
+passes it (3.0), else `DrawableWindow()`'s answer if it passes (Ashen
+imports that one), else the measured word as it was. The DSA offsets are
+found at run time: the window the port handed NewL is looked for in the
+real object before the first StartL, and the gc, device and region are the
+three words before it (W32STD.H's order).
+
+**The first cut of the fix was wrong, and the bench caught it (E448,
+E449).** It preferred the game's own import of `CCoeControl::Window()`,
+and on the RM-409 that import answered 0x140 for a window: old cone
+ordinal 231 does not land on `Window()` in a 9.x ROM, exactly the
+`epoc9.def` warning in the root CLAUDE.md, and nothing had noticed because
+the port's own stub answers the game's calls to it. Both Asphalts died at
+0x140 on the bench inside a minute. Hence the rule the final cut follows:
+no candidate is taken unvalidated, whatever its source.
+
+**What the three rounds cost, and why.** Round 118 could only say where
+(the first draw); round 119's witnesses said which call (StartL, never
+returning) but not what it was handed; round 120's dumps said that. Each
+round asked for one more thing the previous log could not contain. A
+private offset measured on two ROMs is a measurement of those two ROMs;
+the fix asks the ROM at hand instead.
 
 ## 2. Loading the N-Gage image
 

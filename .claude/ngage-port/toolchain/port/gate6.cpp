@@ -345,6 +345,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FPA = 764,          // doubles re-ordered for 9.x: the register helpers hooked, then the Math functions hooked
        NOTE_SCREEN_MODES = 765, // the window-gc title's screen: w<<16|h of the whole-screen wrapper, then mode<<16|inset
        NOTE_VA_LIST = 766,      // a FormatList re-pointed: the game's VA_LIST array, then the va pointer it held (first few only)
+       NOTE_CTL_WINDOW = 771,   // the wrapper's window: the word at 0x28, what Window() answered, the scan's index<<16|hit, then what the old control got
        NOTE_COEENV_WORDS = 769, // the first 24 words of the real 9.x CCoeEnv, once (round 119: is the layout the one the bias assumes)
        NOTE_DSA_BEFORE = 770,   // before StartL: the resolved StartL, 24 words of the real CDirectScreenAccess, then heap free, biggest, cells, bytes
        NOTE_THREAD_DONE = 768,  // a game thread's function returned: the function, then what it returned (the thread then exits)
@@ -1087,6 +1088,9 @@ struct Context {
     u32 *fakeScreenDev;     // and the two-vtable old-shaped stand-in the game asks fonts of
     u32 formatCalls;        // Format and FormatList calls logged (GAME_LOG_TEXT)
     u32 coeLogged, dsaLogged;   // the two one-time dumps of round 119
+    u32 ctlWindowFn;        // cone's CCoeControl::Window or DrawableWindow, as the game imports it (round 120)
+    u32 ctlWindow;          // the wrapper control's window, as handed to the game's old control
+    u32 dsaGcOff, dsaDevOff, dsaRgnOff;  // where the real CDirectScreenAccess keeps its gc, device and region on this ROM (0: the measured 3.2 offsets)
     u32 lastFmt[4];         // ... and the last one, so a frame's repeats are not
     u32 *fakeWinGc;         // and the old-vtable stand-in the game draws with
     u32 newDsaStartL;       // ws32's CDirectScreenAccess::StartL, as resolved
@@ -4099,6 +4103,15 @@ extern "C" void *gate6_ctimer_ctor(u32 *oldSelf, int priority, Context *c)
 enum { OLD_DSA_ACTIVE = 8, OLD_DSA_GC = 0x18, OLD_DSA_DEVICE = 0x1c,
        OLD_DSA_REGION = 0x20, OLD_DSA_BYTES = 0x28 };
 enum { NEW_DSA_GC = 0x1c, NEW_DSA_DEVICE = 0x20, NEW_DSA_REGION = 0x24 };
+// Round 120: those three were measured on S60 3.1 and 3.2. On 3.0 (an N91)
+// the real object carries one more word before the window reference, so
+// the offsets are found at run time instead -- the window the port handed
+// NewL is looked for in the object before the first StartL, and the gc,
+// device and region sit in the three words before it (W32STD.H's order).
+// Until then, or if it is not found, the measured offsets stand.
+static inline u32 dsa_gc_off(const Context *c)     { return c->dsaGcOff  ? c->dsaGcOff  : (u32)NEW_DSA_GC; }
+static inline u32 dsa_dev_off(const Context *c)    { return c->dsaDevOff ? c->dsaDevOff : (u32)NEW_DSA_DEVICE; }
+static inline u32 dsa_rgn_off(const Context *c)    { return c->dsaRgnOff ? c->dsaRgnOff : (u32)NEW_DSA_REGION; }
 enum { RGN_COUNT = 0, RGN_ERROR = 1, RGN_ALLOCED = 2, RGN_GRAN = 3,
        RGN_LIST = 4, RGN_GRAN_DEFAULT = 5 };
 enum { RGN_WORDS = 10, RGN_RECT_LIST = 4 };
@@ -4210,7 +4223,7 @@ enum { RGN_KEEP = 8, CLIP_NONE = 0, CLIP_ALL = 1, CLIP_BOX = 2, CLIP_RECTS = 3 }
 static void dsa_box(Context *c)
 {
     const u32 *real = c->dsaReal;
-    const u32 *rgn = (const u32 *)real[NEW_DSA_REGION / 4];
+    const u32 *rgn = (const u32 *)real[dsa_rgn_off(c) / 4];
     u32 l = 0, t = 0, r = 0, b = 0, n = 0, m = 0;
     const i32 *rect = 0;
     i32 kept[RGN_KEEP][4];
@@ -4311,12 +4324,12 @@ static void dsa_refresh(Context *c)
     // at three milestones instead of a hundred and seventy.
     shadow[OLD_DSA_ACTIVE / 4] =
         (HOLD_THE_SCREEN && !RELEASE_THE_SCREEN) ? real[OLD_DSA_ACTIVE / 4] : 1;
-    c->realGc = (u32 *)real[NEW_DSA_GC / 4];
+    c->realGc = (u32 *)real[dsa_gc_off(c) / 4];
     // Not the real graphics context: the game calls it by vtable slot, and the
     // two vtables do not line up. What it gets is the stand-in built below.
     shadow[OLD_DSA_GC / 4] = (u32)c->fakeGc;
-    shadow[OLD_DSA_DEVICE / 4] = real[NEW_DSA_DEVICE / 4];
-    shadow[OLD_DSA_REGION / 4] = real[NEW_DSA_REGION / 4];
+    shadow[OLD_DSA_DEVICE / 4] = real[dsa_dev_off(c) / 4];
+    shadow[OLD_DSA_REGION / 4] = real[dsa_rgn_off(c) / 4];
 }
 
 // Remember the observer the game passed, put ours in its place, keep what came
@@ -4743,6 +4756,18 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
         log_event(c, NOTE_DSA_BEFORE, (u32)biggest);
         log_event(c, NOTE_DSA_BEFORE, (u32)cells);
         log_event(c, NOTE_DSA_BEFORE, (u32)total);
+        // The window reference NewL stored, and the three members before it.
+        u32 k = 0;
+        if (d && !((u32)d & 3) && c->ctlWindow)
+            for (u32 i = 6; i < 20 && !k; i++)
+                if (d[i] == c->ctlWindow) k = i;
+        if (k >= 3) {
+            c->dsaGcOff = (k - 3) * 4;
+            c->dsaDevOff = (k - 2) * 4;
+            c->dsaRgnOff = (k - 1) * 4;
+        }
+        log_event(c, NOTE_DSA_BEFORE, 0x0FF5E700u | k);
+        log_event(c, NOTE_DSA_BEFORE, (dsa_gc_off(c) << 16) | (dsa_dev_off(c) << 8) | dsa_rgn_off(c));
         log_block(c);
     }
     if (HOLD_THE_SCREEN)
@@ -8231,7 +8256,50 @@ extern "C" void gate6_create_window(u32 *oldControl, int, Context *c)
             log_event(c, NOTE_SCREEN, 0x51E00000u | (sz[0] & 0xFFFF));
         }
     }
-    oldControl[OLD_CONTROL_WIN / 4] = ctl[NEW_CONTROL_WIN / 4];
+    // **The window, validated rather than read at 0x28 (round 120).** The
+    // word at 0x28 is where S60 3.1 and 3.2 keep CCoeControl::iWin; an N91
+    // (3.0) keeps a zero there, the game handed that zero to
+    // CDirectScreenAccess::NewL as its window, and the first StartL was a
+    // data abort at address 0 on both Asphalts. A window is an object whose
+    // second word is the session's buffer (MWsClientClass is {iWsHandle,
+    // iBuffer}, the base of every window handle, the buffer set from the
+    // session at construction -- E451 compared the first word and matched
+    // nothing), and the session's buffer is in the real environment at 9.x
+    // 0x30, with the root window group's at 0x3c saying the same. So: the
+    // measured word if it passes that test (3.1 and 3.2: unchanged
+    // behaviour), else the control's one word that passes it (3.0), else
+    // DrawableWindow()'s answer if it passes, else the measured word as it
+    // is. E448 is why nothing is taken on trust: the Asphalts' Window()
+    // import answered 0x140.
+    {
+        typedef u32 (*WindowOf)(const void *);
+        const u32 *env = (const u32 *)coeenv_static();
+        const u32 buffer = (env && !((u32)env & 3)) ? env[0x30 / 4] : 0u;
+        const u32 at28 = ctl[NEW_CONTROL_WIN / 4];
+        const u32 asked = c->ctlWindowFn ? ((WindowOf)c->ctlWindowFn)(ctl) : 0u;
+        u32 found = 0, index = 0;
+        for (u32 i = 1; i < 16 && !found && buffer; i++) {
+            const u32 *p = (const u32 *)ctl[i];
+            if (p && !((u32)p & 3) && (u32)p >= USER_LOW && (u32)p < ROM_VTABLE_FLOOR && p[1] == buffer) {
+                found = (u32)p;
+                index = i;
+            }
+        }
+        u32 win = at28;
+        if (buffer) {
+            const u32 *a = (const u32 *)at28, *q = (const u32 *)asked;
+            const int at28ok = a && !((u32)a & 3) && (u32)a >= USER_LOW && (u32)a < ROM_VTABLE_FLOOR && a[1] == buffer;
+            const int askedok = q && !((u32)q & 3) && (u32)q >= USER_LOW && (u32)q < ROM_VTABLE_FLOOR && q[1] == buffer;
+            win = at28ok ? at28 : found ? found : askedok ? asked : at28;
+        }
+        log_event(c, NOTE_CTL_WINDOW, at28);
+        log_event(c, NOTE_CTL_WINDOW, asked);
+        log_event(c, NOTE_CTL_WINDOW, (index << 16) | (found & 0xFFFF));
+        log_event(c, NOTE_CTL_WINDOW, win);
+        log_event(c, NOTE_CTL_WINDOW, buffer);
+        oldControl[OLD_CONTROL_WIN / 4] = win;
+        c->ctlWindow = win;
+    }
     c->wrapControl = ctl;
 }
 
@@ -10460,6 +10528,18 @@ static u32 load_and_start()
     }
     if (GAME_FPA_DOUBLES)
         fpa_install(ctx, iat, nImports);
+    // Round 120: the wrapper control's window is asked of cone through the
+    // game's own import of CCoeControl::Window() or DrawableWindow(), kept
+    // here as the real function before any trace is laid over it.
+    // E448: old cone 231, the Window() the Asphalts import, does not land on
+    // Window() in the RM-409 ROM (it answered 0x140 for a window), which is
+    // the epoc9.def warning in the root CLAUDE.md made real; the port's own
+    // stub answers the game's calls to it, so nothing had noticed. Only
+    // DrawableWindow() (old 55, Ashen) is taken, and its answer is validated
+    // like every other candidate.
+    if (nImports > IMPORT_CTL_DRAWABLE_WINDOW && IMPORT_CTL_DRAWABLE_WINDOW < kShimCount &&
+        (kShimTable[IMPORT_CTL_DRAWABLE_WINDOW] >> 24) == KIND_CALL)
+        ctx->ctlWindowFn = iat[IMPORT_CTL_DRAWABLE_WINDOW];
     if (GAME_VA_LIST) {
         if (GAME_LOG_TEXT && nImports > IMPORT_DES_FORMAT && IMPORT_DES_FORMAT < kShimCount &&
             (kShimTable[IMPORT_DES_FORMAT] >> 24) == KIND_CALL && ctx->spare + GUARD_BYTES <= ctx->spareEnd) {

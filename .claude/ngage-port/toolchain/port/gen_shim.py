@@ -450,6 +450,7 @@ HOOKS = {
     'IMPORT_CTL_SETRECT':             ('cone', 318),    # the Nokia SetRect export -- the wrapper is sized to the whole screen instead (round 114)
     'IMPORT_DES_FORMAT':              ('euser', 467),   # TDes16::Format(fmt, ...) -- logged under GAME_LOG_TEXT (round 116)
     'IMPORT_DES_FORMATLIST':          ('euser', 463),   # TDes16::FormatList(fmt, VA_LIST) -- the GCC98r2 array address re-pointed to its element for the EABI euser (round 116)
+    'IMPORT_CTL_DRAWABLE_WINDOW':     ('cone', 55),     # CCoeControl::DrawableWindow() const -- a candidate for the wrapper's window, validated against the session buffer (round 120)
     'IMPORT_APPUI_EXIT':              ('eikcore', 67),  # CEikAppUi::Exit() -- on 9.x a leave the framework catches; through the game's frames it is a terminate (round 113)
     'IMPORT_READ_FILE_SECTION':       ('efsrv', 129),   # RFs::ReadFileSection(name, pos, des, len) -- a missing `\Game.Id` answered with the card's six bytes (round 112)
     'IMPORT_WINDOW':                  ('cone', 231),
