@@ -48,6 +48,18 @@ logs of round 118 are the open item).
 | the frame timer wrapper at priority -101, the DSA restart after an abort | rounds 100-103 | hardware |
 | the fault box (`g6box-<stem>.dat`) and the log (`g6box-<stem>.log`) | gate 6 | every round reads them |
 
+## Where each title saves
+
+All three write to `C:\System\Apps\<STEM>\`, the N-Gage convention, and
+create that folder themselves; no package lists it, so an uninstall leaves
+the saves behind.
+
+| title | folder | settings | progress |
+|---|---|---|---|
+| Asphalt Urban GT | `c:\system\apps\6R67\` | `user.dat` | `user.dat` |
+| Asphalt 2 | `c:\system\apps\6RBC\` | `user.dat` | `user.dat` |
+| Ashen | `C:\System\Apps\6R21\` | `options.dat` (E445) | `savegameNN.sav` (from the image's format string; not yet seen written) |
+
 ## Bench knobs in `gate6.cpp` that must be 0 in a shipped build
 
 `BENCH_BACKGROUND_TICK`, `BENCH_FOREGROUND_TICK`, `LEAVE_RAW`, `WORKER_LOG`,

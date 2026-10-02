@@ -5,6 +5,17 @@
 //
 // Read off the image before anything ran: EKA1/GCC98r2, 354 imports across
 // 20 DLLs, UID3 0x101fd3e9, code 0xf2bfc bytes.
+//
+// **What the game writes, and where (E445).** Settings go to
+// `C:\System\Apps\6R21\options.dat` (512 bytes, written on leaving the
+// Options page) and progress to `C:\System\Apps\6R21\savegameNN.sav`
+// (the image's `%ssavegame%02d.sav`, the same directory prefix as
+// `%soptions.dat`). The game makes the directory itself, one level at a
+// time through `RFs::MkDir` (0xb2244, 0xb2390), then `RFile::Replace`;
+// the package lists none of it, so an uninstall leaves the folder and
+// its files behind, as Symbian does for anything an application creates
+// outside its package. The port does not touch these names: it rewrites
+// only `E:` names and refuses only writes aimed at the card.
 #ifndef GATE_GAME_H     // not GAME_H: that is an enum below
 #define GATE_GAME_H
 
