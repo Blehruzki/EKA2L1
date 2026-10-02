@@ -15,8 +15,10 @@
 enum { GAME_UID3 = 0x101fd3e9 };
 
 enum {
+    IMPORT_ADDDF3                      =   290,
     IMPORT_ADDTOSTACKL                 =    39,
     IMPORT_ADD_FOREGROUND_OBSERVER     = 65535,   // absent
+    IMPORT_APPUI_EXIT                  =   109,
     IMPORT_APP_RECT                    =   151,
     IMPORT_BASECONSTRUCTL              =    13,
     IMPORT_CANCEL                      =   192,
@@ -28,10 +30,13 @@ enum {
     IMPORT_CREATE_SESSION              = 65535,   // absent
     IMPORT_CTIMER_CTOR                 =   279,
     IMPORT_DELETE_OP                   =   292,
+    IMPORT_DIVDF3                      =   296,
     IMPORT_DLL_NAME                    = 65535,   // absent
     IMPORT_DSA_NEWL                    = 65535,   // absent
     IMPORT_DSA_STARTL                  = 65535,   // absent
+    IMPORT_EQDF2                       = 65535,   // absent
     IMPORT_EXIT                        = 65535,   // absent
+    IMPORT_EXTENDSFDF2                 = 65535,   // absent
     IMPORT_FILE_CREATE                 = 65535,   // absent
     IMPORT_FILE_OPEN                   =    92,
     IMPORT_FILE_READ                   = 65535,   // absent
@@ -39,14 +44,41 @@ enum {
     IMPORT_FILE_READ_STATIC            = 65535,   // absent
     IMPORT_FILE_REPLACE                =    95,
     IMPORT_FILE_SIZE                   =    96,
+    IMPORT_FIXDFSI                     = 65535,   // absent
+    IMPORT_FLOATSIDF                   =   298,
+    IMPORT_GEDF2                       = 65535,   // absent
+    IMPORT_GTDF2                       = 65535,   // absent
     IMPORT_LEAVE                       =   225,
     IMPORT_LEAVE_IF_ERROR              =   222,
     IMPORT_LEAVE_NOMEM                 =   224,
+    IMPORT_LEDF2                       = 65535,   // absent
     IMPORT_LIBRARY_LOAD                = 65535,   // absent
     IMPORT_LIBRARY_LOOKUP              = 65535,   // absent
+    IMPORT_LTDF2                       =   302,
     IMPORT_MALLOC                      = 65535,   // absent
+    IMPORT_MATH_ACOS                   = 65535,   // absent
+    IMPORT_MATH_ASIN                   = 65535,   // absent
+    IMPORT_MATH_ATAN                   = 65535,   // absent
+    IMPORT_MATH_ATAN2                  = 65535,   // absent
+    IMPORT_MATH_COS                    = 65535,   // absent
+    IMPORT_MATH_EXP                    = 65535,   // absent
+    IMPORT_MATH_FRAC                   = 65535,   // absent
+    IMPORT_MATH_INT                    =   220,
+    IMPORT_MATH_INT16                  = 65535,   // absent
+    IMPORT_MATH_INT_D                  = 65535,   // absent
+    IMPORT_MATH_LN                     = 65535,   // absent
+    IMPORT_MATH_LOG                    = 65535,   // absent
+    IMPORT_MATH_MOD                    = 65535,   // absent
+    IMPORT_MATH_POW                    =   238,
+    IMPORT_MATH_ROUND                  = 65535,   // absent
+    IMPORT_MATH_SIN                    =   253,
+    IMPORT_MATH_SQRT                   = 65535,   // absent
+    IMPORT_MATH_TAN                    = 65535,   // absent
     IMPORT_MDA_NEWL                    =   340,
     IMPORT_MSG_COMPLETE                = 65535,   // absent
+    IMPORT_MULDF3                      =   305,
+    IMPORT_NEDF2                       = 65535,   // absent
+    IMPORT_NEGDF2                      = 65535,   // absent
     IMPORT_PANIC                       =   234,
     IMPORT_READ_FILE_SECTION           =    93,
     IMPORT_REQUEST_COMPLETE            = 65535,   // absent
@@ -57,9 +89,11 @@ enum {
     IMPORT_SEND_RECEIVE                = 65535,   // absent
     IMPORT_SERVER_STARTL               = 65535,   // absent
     IMPORT_SET_AUTO_UPDATE             = 65535,   // absent
+    IMPORT_SUBDF3                      =   310,
     IMPORT_SYSTEM_GC                   =    75,
     IMPORT_THREAD_CREATE               =   202,
     IMPORT_THREAD_OPEN                 = 65535,   // absent
+    IMPORT_TRUNCDFSF2                  = 65535,   // absent
     IMPORT_USER_ALLOC                  =   184,
     IMPORT_USER_ALLOCL                 =   182,
     IMPORT_USER_ALLOCZ                 =   308,
@@ -77,12 +111,12 @@ enum {
 
 // Methods on CEikAppUi. A null `this` from the game is replaced
 // with the real app UI, when the game asks for it (GAME_FIX_APPUI_THIS).
-#define GATE_APPUI_METHODS  101, 104, 109, 112, 114, 116, 117, 118, 125, 127, 131, 133, 134, 135, 140, 141
-#define GATE_APPUI_METHOD_COUNT 16
+#define GATE_APPUI_METHODS  101, 104, 112, 114, 116, 117, 118, 125, 127, 131, 133, 134, 135, 140, 141
+#define GATE_APPUI_METHOD_COUNT 15
 
 // The trace lists: see MILESTONES and HOT in gen_shim.py. Both may be
 // empty, which is why gate6.cpp appends the two exits to the first.
-#define GATE_MILESTONES  87, 92, 86, 200, 202, 250, 247, 265, 193, 232, 275, 219, 252, 256, 340, 262, 182, 263, 224, 214,
+#define GATE_MILESTONES  87, 92, 86, 200, 202, 250, 247, 265, 193, 232, 275, 219, 252, 222, 256, 340, 262, 182, 263, 224, 214,
 #define GATE_HOT  312, 189, 304, 273, 260, 276, 176, 241,
 #define GATE_HOT_COUNT 8
 

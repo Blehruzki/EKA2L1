@@ -340,6 +340,9 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_READ_POS = 759,     // RFile::Read(pos, des, len): pos, len, then the result and the descriptor's length after
        NOTE_SIZE_ASKED = 760,   // RFile::Size: the size, then the result
        NOTE_GAME_ID = 761,      // RFs::ReadFileSection: the real result, then 1 when the shim answered a missing Game.Id
+       NOTE_LEAVE_RAW = 762,    // bench: a leave with LEAVE_RAW_REASON -- the hook's sp, then raw stack words from it
+       NOTE_EXIT_ASKED = 763,   // CEikAppUi::Exit() from the game: the thread exits with reason 0
+       NOTE_FPA = 764,          // doubles re-ordered for 9.x: the register helpers hooked, then the Math functions hooked
        NOTE_TRAP = 747,         // the trap bridge: 0x5E7 installed (then the original handler), 0xE11 entered (TTrap),
                                 // 0x1EA a leave (reason), 0x7E5 longjmp into (TTrap), 0xF0C the bench's forced leave
        NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
@@ -641,6 +644,7 @@ void gate6_trap_longjmp(void *trap, int reason);             // gate6.s, never r
 void *coecontrol_ctor(void *self);                    // CCoeControl::CCoeControl()
 void coecontrol_createwindowl(void *self);            // CCoeControl::CreateWindowL()
 void *user_allocz(int size);
+void user_exit(int reason);
 int user_alloclen(const void *cell);            // User::AllocLen
 void *cperiodic_newl(int priority);
 
@@ -1963,7 +1967,7 @@ enum { WORKER_NOTES = 1, WORKER_NOTE_MAX = 200 };
 // below -- gets the same story out of the box without the worker touching a
 // file at all, and an instrument that cannot be the fault is worth more than
 // one that might be.
-enum { WORKER_LOG = 0, WORKER_LOG_MAX = 1024 };
+enum { WORKER_LOG = 0, WORKER_LOG_MAX = 4096 };   // bench: 1 for round 113's sound thread (readwrk.py reads it); 0 when shipping
 
 static void worker_log(Context *c, u32 code, u32 from)
 {
@@ -7340,6 +7344,169 @@ static int name_is_game_id(const u32 *name)
     return len == TAIL || t[len - TAIL - 1] == '\\';
 }
 
+// ---------------------------------------------------------------------------
+// **A double's two words, the other way round.** GCC98r2 laid a double out
+// in the FPA order -- the word with the sign and exponent first -- and the
+// game's own constants say so: the pitch-table code at 0x78b98 keeps 2,
+// 1536, 8363, 0.5, 1048576 and 1 as `40000000 00000000`, `40980000
+// 00000000`... (round 113). EABI keeps the low word first. So a double
+// handed to dfpaeabi's `__aeabi_dadd` in r0:r1, or to euser's `Math::Pow`
+// through a reference, is read with its words crossed: the pitch table came
+// out as denormals, every voice stepped through its sample forty times too
+// slowly, and the music was a slow staircase of tiny values on the bench
+// (E403, E404) and "bass pulses" through the N95's speaker. The Asphalts
+// import no double helper at all, which is why they never showed it.
+//
+// Two shapes. The compiler helpers take their doubles in registers --
+// `__adddf3(a, b)` is r0:r1 and r2:r3, and answers in r0:r1 -- so a thunk
+// swaps each pair on the way in and the result on the way out, then the
+// slot's own answer (the real function, or the sign-shaping stub the
+// comparisons already have) runs as before. `Math::` takes references, so a
+// C handler copies each operand swapped, calls the real function and swaps
+// the result back into the game's output. Nothing else about the values
+// changes: it is the same IEEE double, stored the other way about.
+//
+//   push {lr} ; [swap r0,r1] ; [swap r2,r3] ; ldr ip, =target ; blx ip
+//   [swap r0,r1] ; pop {lr} ; bx lr
+enum { DSWAP_A = 1, DSWAP_B = 2, DSWAP_R = 4, DSWAP_BYTES = 16 * 4 };
+enum { FPA_BIN = DSWAP_A | DSWAP_B | DSWAP_R,   // __adddf3, __subdf3, __muldf3, __divdf3
+       FPA_CMP = DSWAP_A | DSWAP_B,             // __ltdf2 and the other comparisons
+       FPA_NEG = DSWAP_A | DSWAP_R,             // __negdf2
+       FPA_I2D = DSWAP_R,                       // __floatsidf, __extendsfdf2: a double comes back
+       FPA_D2I = DSWAP_A };                     // __fixdfsi, __truncdfsf2: a double goes in
+
+static u32 dswap_thunk(u8 *code, u32 target, u32 flags)
+{
+    u32 *b = (u32 *)code;
+    u32 n = 0;
+    b[n++] = 0xE92D4000;                        // stmdb sp!, {lr}
+    if (flags & DSWAP_A) { b[n++] = 0xE1A0C000; b[n++] = 0xE1A00001; b[n++] = 0xE1A0100C; }  // mov ip,r0; mov r0,r1; mov r1,ip
+    if (flags & DSWAP_B) { b[n++] = 0xE1A0C002; b[n++] = 0xE1A02003; b[n++] = 0xE1A0300C; }  // mov ip,r2; mov r2,r3; mov r3,ip
+    const u32 ldrAt = n++;                      // ldr ip, [pc, #..]  -> the literal, patched below
+    b[n++] = 0xE12FFF3C;                        // blx ip
+    if (flags & DSWAP_R) { b[n++] = 0xE1A0C000; b[n++] = 0xE1A00001; b[n++] = 0xE1A0100C; }
+    b[n++] = 0xE8BD4000;                        // ldmia sp!, {lr}
+    b[n++] = 0xE12FFF1E;                        // bx lr
+    const u32 lit = n++;
+    b[lit] = target;
+    b[ldrAt] = 0xE59FC000u | ((lit - (ldrAt + 2)) * 4);
+    user_imb_range(b, b + n);
+    return (u32)b;
+}
+
+// The Math functions. 9.x's take and answer TReal through references and
+// return a TInt; the real function's address rides in the context register
+// of the thunk, so one handler serves every function of a shape.
+typedef int (*Math1Fn)(void *out, const void *a);
+typedef int (*Math2Fn)(void *out, const void *a, const void *b);
+typedef int (*MathRoundFn)(void *out, const void *a, int digits);
+
+extern "C" int gate6_fpa_d2d(u32 *out, const u32 *a, u32 real)        // Math::Sin(TReal&, const TReal&) and its kind
+{
+    u32 x[2] __attribute__((aligned(8))) = { a[1], a[0] };
+    u32 r[2] __attribute__((aligned(8))) = { 0, 0 };
+    const int e = ((Math1Fn)real)(r, x);
+    out[0] = r[1];
+    out[1] = r[0];
+    return e;
+}
+
+extern "C" int gate6_fpa_dd2d(u32 *out, const u32 *a, const u32 *b, u32 real)   // Math::Pow(TReal&, const TReal&, const TReal&)
+{
+    u32 x[2] __attribute__((aligned(8))) = { a[1], a[0] };
+    u32 y[2] __attribute__((aligned(8))) = { b[1], b[0] };
+    u32 r[2] __attribute__((aligned(8))) = { 0, 0 };
+    const int e = ((Math2Fn)real)(r, x, y);
+    out[0] = r[1];
+    out[1] = r[0];
+    return e;
+}
+
+extern "C" int gate6_fpa_d2i(void *out, const u32 *a, u32 real)       // Math::Int(TInt32&, const TReal&), TInt16& the same
+{
+    u32 x[2] __attribute__((aligned(8))) = { a[1], a[0] };
+    return ((Math1Fn)real)(out, x);
+}
+
+extern "C" int gate6_fpa_round(u32 *out, const u32 *a, int digits, u32 real)   // Math::Round(TReal&, const TReal&, TInt)
+{
+    u32 x[2] __attribute__((aligned(8))) = { a[1], a[0] };
+    u32 r[2] __attribute__((aligned(8))) = { 0, 0 };
+    const int e = ((MathRoundFn)real)(r, x, digits);
+    out[0] = r[1];
+    out[1] = r[0];
+    return e;
+}
+
+enum { M_D2D = 1, M_DD2D = 2, M_D2I = 3, M_ROUND = 4 };
+static const struct { u16 index; u8 flags; } kFpaRegs[] = {
+    { IMPORT_ADDDF3, FPA_BIN }, { IMPORT_SUBDF3, FPA_BIN }, { IMPORT_MULDF3, FPA_BIN }, { IMPORT_DIVDF3, FPA_BIN },
+    { IMPORT_NEGDF2, FPA_NEG }, { IMPORT_FLOATSIDF, FPA_I2D }, { IMPORT_EXTENDSFDF2, FPA_I2D },
+    { IMPORT_FIXDFSI, FPA_D2I }, { IMPORT_TRUNCDFSF2, FPA_D2I },
+    { IMPORT_LTDF2, FPA_CMP }, { IMPORT_GTDF2, FPA_CMP }, { IMPORT_GEDF2, FPA_CMP },
+    { IMPORT_LEDF2, FPA_CMP }, { IMPORT_EQDF2, FPA_CMP }, { IMPORT_NEDF2, FPA_CMP },
+};
+static const struct { u16 index; u8 shape; } kFpaMath[] = {
+    { IMPORT_MATH_POW, M_DD2D }, { IMPORT_MATH_MOD, M_DD2D }, { IMPORT_MATH_ATAN2, M_DD2D },
+    { IMPORT_MATH_SIN, M_D2D }, { IMPORT_MATH_COS, M_D2D }, { IMPORT_MATH_TAN, M_D2D },
+    { IMPORT_MATH_SQRT, M_D2D }, { IMPORT_MATH_EXP, M_D2D }, { IMPORT_MATH_LN, M_D2D },
+    { IMPORT_MATH_LOG, M_D2D }, { IMPORT_MATH_FRAC, M_D2D }, { IMPORT_MATH_ASIN, M_D2D },
+    { IMPORT_MATH_ACOS, M_D2D }, { IMPORT_MATH_ATAN, M_D2D }, { IMPORT_MATH_INT_D, M_D2D },
+    { IMPORT_MATH_INT, M_D2I }, { IMPORT_MATH_INT16, M_D2I }, { IMPORT_MATH_ROUND, M_ROUND },
+};
+
+// After the import loop: each slot already holds its answer, which is what
+// the thunk calls. An absent import is 65535 and fails the bounds test.
+static void fpa_install(Context *c, u32 *iat, u32 nImports)
+{
+    u32 regs = 0, maths = 0;
+    for (u32 k = 0; k < sizeof kFpaRegs / sizeof kFpaRegs[0]; k++) {
+        const u32 i = kFpaRegs[k].index;
+        if (i >= nImports || i >= (u32)kShimCount || !iat[i] || c->spare + DSWAP_BYTES > c->spareEnd)
+            continue;
+        iat[i] = dswap_thunk(c->spare, iat[i], kFpaRegs[k].flags);
+        c->spare += DSWAP_BYTES;
+        regs++;
+    }
+    for (u32 k = 0; k < sizeof kFpaMath / sizeof kFpaMath[0]; k++) {
+        const u32 i = kFpaMath[k].index;
+        if (i >= nImports || i >= (u32)kShimCount || !iat[i] || c->spare + TRACE > c->spareEnd)
+            continue;
+        const void *real = (const void *)iat[i];
+        const u32 shape = kFpaMath[k].shape;
+        iat[i] = (shape == M_D2D)   ? ctx_thunk(c->spare, real, (u32)&gate6_fpa_d2d)
+               : (shape == M_D2I)   ? ctx_thunk(c->spare, real, (u32)&gate6_fpa_d2i)
+               : (shape == M_DD2D)  ? ctx3_thunk(c->spare, real, (u32)&gate6_fpa_dd2d)
+               :                      ctx3_thunk(c->spare, real, (u32)&gate6_fpa_round);
+        c->spare += TRACE;
+        maths++;
+    }
+    log_event(c, NOTE_FPA, regs);
+    log_event(c, NOTE_FPA, maths);
+}
+
+// Round 113. The game quits through `CEikAppUi::Exit()` -- image 0xb66cc,
+// the last thing its tick does once the quit flag at +0x90 is set. On 9.x
+// Exit() is a leave, bafl's KLeaveWithoutAlert (-1003), that the active
+// scheduler's catch turns into a quiet end of the application. Here the
+// throw has the game's own frames between it and that catch, and a throw
+// cannot unwind GCC98r2 frames: the game's trap at 0xb70d4 takes it, the
+// game re-throws it at 0xb7138 with nothing above, and the thread
+// terminates as `G6FLT`, with the phone's "Application closed" note (E398,
+// E400: the frames above the leave are eikcore, bafl, euser). So Exit() is
+// answered here: the record flushed, the thread exited with reason 0, the
+// quiet end the framework's catch would have reached. The main thread's
+// exit ends the process, sound threads included. The Asphalts never
+// import Exit(); they leave through User::Exit themselves.
+extern "C" void gate6_appui_exit(void *ui, u32, Context *c)
+{
+    (void)ui;
+    log_event(c, NOTE_EXIT_ASKED, 0xE817);
+    log_block(c);
+    box_flush(c);
+    user_exit(0);
+}
+
 // Five arguments, the fifth at [sp]; arg6_thunk puts the context under it,
 // so the handler sees the context fifth and the game's `len` sixth.
 extern "C" int gate6_read_file_section(void *fs, const u32 *name, i32 pos, u32 *des, Context *c, i32 len)
@@ -8280,8 +8447,23 @@ extern "C" void gate6_trap_unmark(void *self, u32, u32, Context *)
 }
 
 // TTrapHandler::Leave -- User::Leave is about to throw.
+// Bench knob, 0 when shipping: a leave carrying LEAVE_RAW_REASON dumps the
+// hook's own stack raw, as the fault handler does, so the frames above
+// euser's User::Leave say who raised it (round 113: -1003 from inside the
+// game's tick, through no import of the game's).
+enum { LEAVE_RAW = 0, LEAVE_RAW_REASON = -1003, LEAVE_RAW_WORDS = 128 };
+
 extern "C" void gate6_trap_leave(void *self, u32 reason, u32, Context *c)
 {
+    if (LEAVE_RAW && (int)reason == LEAVE_RAW_REASON) {
+        u32 sp;
+        __asm__ volatile ("mov %0, sp" : "=r"(sp));
+        log_event(c, NOTE_LEAVE_RAW, sp);
+        const u32 *w = (const u32 *)(sp & ~3u);
+        for (u32 i = 0; i < (u32)LEAVE_RAW_WORDS; i++)
+            log_event(c, NOTE_LEAVE_RAW, w[i]);
+        log_block(c);
+    }
     TrapHandler *h = (TrapHandler *)self;
     if (h->orig)
         ((Vt1)vt_of(h->orig)[2])(h->orig, reason);   // the cleanup stack, back to the mark
@@ -8422,6 +8604,7 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
                 const u32 *b = (const u32 *)((type >= 2) ? dp[2] : dp[1]);
                 log_event(c, NOTE_MDA_CODE, 0xB0000000u | k);
                 log_event(c, NOTE_MDA_CODE, dp[0]);
+                log_event(c, NOTE_MDA_CODE, (u32)b);      // the buffer itself, for a write watch
                 if (b && (u32)b >= 0x400000 && len <= 0x4000) {
                     u32 acc = 0, hits = 0;
                     for (u32 w = 0; w < len / 4; w++) {
@@ -9898,6 +10081,11 @@ static u32 load_and_start()
         iat[IMPORT_READ_FILE_SECTION] = arg6_thunk(ctx->spare, ctx, (u32)&gate6_read_file_section);
         ctx->spare += ARG6_BYTES;
     }
+    if (GAME_FPA_DOUBLES)
+        fpa_install(ctx, iat, nImports);
+    if (nImports > IMPORT_APPUI_EXIT && IMPORT_APPUI_EXIT < kShimCount &&
+        (kShimTable[IMPORT_APPUI_EXIT] >> 24) == KIND_CALL)
+        iat[IMPORT_APPUI_EXIT] = ctx_thunk(stub + SLOT * IMPORT_APPUI_EXIT, ctx, (u32)&gate6_appui_exit);
     if (nImports > IMPORT_CLEANUP_NEW && IMPORT_CLEANUP_NEW < kShimCount &&
         (kShimTable[IMPORT_CLEANUP_NEW] >> 24) == KIND_CALL) {
         ctx->realCleanupNew = iat[IMPORT_CLEANUP_NEW];

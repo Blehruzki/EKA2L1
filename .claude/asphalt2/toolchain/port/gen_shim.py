@@ -409,6 +409,44 @@ HOOKS = {
     'IMPORT_CLEANUP_NEW':             ('euser', 746),   # CTrapCleanup::New() -- a stand-in the game's old-ABI delete can reach (E381)
     'IMPORT_FILE_READ_POS':           ('efsrv', 142),   # RFile::Read(TInt, TDes8&, TInt) -- logged: round 111's pack read on the N95
     'IMPORT_FILE_SIZE':               ('efsrv', 185),   # RFile::Size(TInt&) -- logged, the same
+    # Round 113: GCC98r2 keeps a double's high word first (the FPA order) and
+    # EABI keeps it last, so every double that crosses to a 9.x helper or a
+    # Math function has its words swapped on the way in and out (gate6.cpp,
+    # dswap_thunk and the gate6_fpa_* handlers). The old euser ordinals.
+    'IMPORT_ADDDF3':                  ('euser', 1454),
+    'IMPORT_SUBDF3':                  ('euser', 1613),
+    'IMPORT_MULDF3':                  ('euser', 1570),
+    'IMPORT_DIVDF3':                  ('euser', 1512),
+    'IMPORT_NEGDF2':                  ('euser', 1579),
+    'IMPORT_FLOATSIDF':               ('euser', 1528),
+    'IMPORT_EXTENDSFDF2':             ('euser', 1525),
+    'IMPORT_FIXDFSI':                 ('euser', 1526),
+    'IMPORT_TRUNCDFSF2':              ('euser', 1615),
+    'IMPORT_LTDF2':                   ('euser', 1541),
+    'IMPORT_GTDF2':                   ('euser', 1534),
+    'IMPORT_GEDF2':                   ('euser', 1531),
+    'IMPORT_LEDF2':                   ('euser', 1537),
+    'IMPORT_EQDF2':                   ('euser', 1523),
+    'IMPORT_NEDF2':                   ('euser', 1578),
+    'IMPORT_MATH_POW':                ('euser', 834),
+    'IMPORT_MATH_MOD':                ('euser', 703),
+    'IMPORT_MATH_ATAN2':              ('euser', 6),
+    'IMPORT_MATH_SIN':                ('euser', 1082),
+    'IMPORT_MATH_COS':                ('euser', 254),
+    'IMPORT_MATH_TAN':                ('euser', 1131),
+    'IMPORT_MATH_SQRT':               ('euser', 1101),
+    'IMPORT_MATH_EXP':                ('euser', 398),
+    'IMPORT_MATH_LN':                 ('euser', 637),
+    'IMPORT_MATH_LOG':                ('euser', 662),
+    'IMPORT_MATH_FRAC':               ('euser', 468),
+    'IMPORT_MATH_ASIN':               ('euser', 4),
+    'IMPORT_MATH_ACOS':               ('euser', 1622),
+    'IMPORT_MATH_ATAN':               ('euser', 5),
+    'IMPORT_MATH_INT_D':              ('euser', 570),   # Math::Int(TReal&, const TReal&)
+    'IMPORT_MATH_INT':                ('euser', 571),   # Math::Int(TInt32&, const TReal&)
+    'IMPORT_MATH_INT16':              ('euser', 572),   # Math::Int(TInt16&, const TReal&)
+    'IMPORT_MATH_ROUND':              ('euser', 961),   # Math::Round(TReal&, const TReal&, TInt)
+    'IMPORT_APPUI_EXIT':              ('eikcore', 67),  # CEikAppUi::Exit() -- on 9.x a leave the framework catches; through the game's frames it is a terminate (round 113)
     'IMPORT_READ_FILE_SECTION':       ('efsrv', 129),   # RFs::ReadFileSection(name, pos, des, len) -- a missing `\Game.Id` answered with the card's six bytes (round 112)
     'IMPORT_WINDOW':                  ('cone', 231),
     'IMPORT_COECONTROL_CTOR':         ('cone', 236),
@@ -518,6 +556,7 @@ MILESTONES = [
     ('euser', 280), ('euser', 289), ('euser', 1016), ('euser', 954),
     ('euser', 1212), ('euser', 172),
     ('euser', 746), ('euser', 1343), ('euser', 569), ('euser', 1078),
+    ('euser', 627),   # User::LeaveIfError -- bench instrument for round 113's leave -1003
     ('euser', 1107), ('euser', 285),
     ('euser', 972), ('euser', 279), ('euser', 1398), ('euser', 1102),
     ('euser', 966), ('euser', 1414), ('euser', 209), ('euser', 1226),

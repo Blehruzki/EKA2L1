@@ -81,6 +81,16 @@ enum { GAME_SRC_ORIGIN = 16 };
 // Never asked for by this title: it runs on phones that have no such file.
 #define GAME_ANSWER_GAME_ID 0
 
+// GCC98r2 keeps a double's high word first (the FPA order); EABI keeps it
+// last. 1: every double crossing to a 9.x helper or Math function has its
+// words swapped both ways (round 113: Ashen's pitch table, built in doubles,
+// came out as denormals and the music as a slow staircase). A title that
+// imports no double helper is untouched either way.
+// 0 here until a round of its own: this title imports __adddf3, __muldf3,
+// __floatsidf, __extendsfdf2 and __truncdfsf2, so the swap would change
+// what it computes with them, and it has shipped and run on hardware as it is.
+#define GAME_FPA_DOUBLES 0
+
 // Cells this big or bigger go straight back to the heap; smaller ones wait
 // in the quarantine. 4 KB is where this title's use-after-free stops
 // reaching, measured over builds 150 to 172.

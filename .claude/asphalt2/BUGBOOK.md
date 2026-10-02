@@ -149,6 +149,49 @@ argument, so the first build handed a return address to efsrv as the length
 (E395, `FSCLIENT 27` EBadLength). `arg6_thunk` lifts the fifth argument above
 the context.
 
+### 1.u Quitting the game was a crash (round 113)
+
+**Symptom.** Ashen on the N95: `G6FLT 22500`, "Application closed", when
+the player confirms Quit. The log ends with a leave of -1003 inside the
+game's tick, re-thrown by the game at 0xb7138, and the terminate.
+
+**Cause.** The game quits through `CEikAppUi::Exit()`, the last thing its
+tick does once the quit flag is set. On 9.x `Exit()` is a leave -- bafl's
+`KLeaveWithoutAlert`, -1003 -- for the active scheduler's catch to turn
+into a quiet end. A C++ throw cannot unwind GCC98r2 frames, so the game's
+own trap takes it, the game re-throws, and with no trap above it the
+thread terminates. Found by replaying the N95's key sequence on the bench
+(E398) and dumping the leave hook's stack raw (E400): euser, bafl,
+eikcore, then the return from `Exit()` at 0xb66d0.
+
+**Fix.** `Exit()` hooked (build 005): the record flushed, the thread
+exited with reason 0. The main thread's exit ends the process. The
+Asphalts never import `Exit()`; they leave through `User::Exit` themselves.
+
+### 1.t Doubles the other way round (round 113)
+
+**Symptom.** Ashen's music is "bass pulses" on the N95. On the bench, with
+the wav-capture driver (E403): a 16 kHz stream whose samples sit at -28,
+-27... forty at a time, amplitude under 40, 75% of the energy below 100 Hz.
+
+**Cause.** GCC98r2 keeps a double's high word first (the FPA order) and
+EABI keeps it last. The game's pitch table is built in doubles -- its
+constants 2, 1536, 8363, 0.5, 1048576 and 1 read as those numbers only
+high word first -- through `__divdf3`, `__muldf3`, `__adddf3`,
+`__floatsidf`, `Math::Pow` and `Math::Int`, which the shim forwarded to
+dfpaeabi and 9.x euser as they were. Every value crossed with its words
+swapped: denormals in, the table garbage, each voice stepping forty
+times too slowly through its sample. Single floats are one word and never
+suffered. The Asphalts import `__adddf3`, `__muldf3`, `__floatsidf`,
+`__extendsfdf2` and `__truncdfsf2` and have shipped as they are; whatever
+they compute with them is wrong in the same way and has not shown.
+
+**Fix.** `GAME_FPA_DOUBLES` (build 006): a thunk on each register helper
+swaps r0:r1 and r2:r3 in and r0:r1 out (`dswap_thunk`), and a handler on
+each `Math::` function copies its operands swapped and swaps the result
+back. 6 helpers and 3 functions hooked in Ashen; music on the bench (E408).
+Off for the Asphalts until a round of their own.
+
 ## 2. Loading the N-Gage image
 
 **The entry point is an offset, entered in ARM mode with `lr = 0`.**

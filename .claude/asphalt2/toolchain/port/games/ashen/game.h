@@ -71,6 +71,13 @@ enum { GAME_SRC_ORIGIN = 0 };
 // read of a `\Game.Id` is answered with those six bytes, the real file first.
 #define GAME_ANSWER_GAME_ID 1
 
+// GCC98r2 keeps a double's high word first (the FPA order); EABI keeps it
+// last. 1: every double crossing to a 9.x helper or Math function has its
+// words swapped both ways (round 113: Ashen's pitch table, built in doubles,
+// came out as denormals and the music as a slow staircase). A title that
+// imports no double helper is untouched either way.
+#define GAME_FPA_DOUBLES 1
+
 // The allocator: cells of 4 KB and up go straight back, smaller ones through
 // the quarantine; nothing is leaked; every allocation padded by 512 bytes,
 // which is what keeps a 9.x constructor's overrun off the next cell (E277).
@@ -110,5 +117,5 @@ enum { GAME_SRC_ORIGIN = 0 };
 #define GAME_APP_NAME "gate6ashe"
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 4
+#define GAME_BUILD 6
 #endif
