@@ -220,6 +220,13 @@ namespace eka2l1::epoc {
     }
 
     void dsa::cancel(eka2l1::service::ipc_context &ctx, eka2l1::ws_cmd &cmd) {
+        // On the old DSA architecture the status registered in dsa_must_stop_notify_ is the client's own
+        // iStatus. ws32's DoCancel completes it with KErrCancel itself, immediately after this call
+        // returns. Completing it here as well would signal the thread's request semaphore twice for a
+        // single active object, and the stray token panics CActiveScheduler with E32USER-CBase 46.
+        // So drop our claim on the status first: ownership goes back to the client.
+        // (dsa::abort is server-initiated, the client is not cancelling, so it must still complete.)
+        dsa_must_stop_notify_.sts = 0;
         do_cancel();
         ctx.complete(epoc::error_none);
     }
