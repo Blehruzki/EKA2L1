@@ -228,6 +228,13 @@ namespace eka2l1::kernel {
     }
 
     int process::destroy() {
+        // A destroyed process must not stay in its parent's child list: the parent keeps raw pointers there and
+        // reads them back (e.g. the app exit callback in applist), which is a use-after-free once this object is freed.
+        if (parent_process_ && !kern->wipeout_in_progress()) {
+            auto &siblings = parent_process_->child_processes_;
+            siblings.erase(std::remove(siblings.begin(), siblings.end(), this), siblings.end());
+        }
+
         if (exit_type == entity_exit_type::pending) {
             kill(kernel::entity_exit_type::kill, u"Kill", 0);
         } else if (!kern->wipeout_in_progress()) {
