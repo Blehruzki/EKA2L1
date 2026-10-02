@@ -446,6 +446,8 @@ HOOKS = {
     'IMPORT_MATH_INT':                ('euser', 571),   # Math::Int(TInt32&, const TReal&)
     'IMPORT_MATH_INT16':              ('euser', 572),   # Math::Int(TInt16&, const TReal&)
     'IMPORT_MATH_ROUND':              ('euser', 961),   # Math::Round(TReal&, const TReal&, TInt)
+    'IMPORT_CTL_RECT':                ('cone', 160),    # CCoeControl::Rect() -- answered 176x208 while the wrapper is the whole screen (round 114)
+    'IMPORT_CTL_SETRECT':             ('cone', 318),    # the Nokia SetRect export -- the wrapper is sized to the whole screen instead (round 114)
     'IMPORT_APPUI_EXIT':              ('eikcore', 67),  # CEikAppUi::Exit() -- on 9.x a leave the framework catches; through the game's frames it is a terminate (round 113)
     'IMPORT_READ_FILE_SECTION':       ('efsrv', 129),   # RFs::ReadFileSection(name, pos, des, len) -- a missing `\Game.Id` answered with the card's six bytes (round 112)
     'IMPORT_WINDOW':                  ('cone', 231),

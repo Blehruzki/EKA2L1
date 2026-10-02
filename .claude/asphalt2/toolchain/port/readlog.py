@@ -199,6 +199,8 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          762: 'LEAVE raw: the hook sp, then stack words',
          763: 'EXIT asked (CEikAppUi::Exit): the thread exits with reason 0',
          764: 'FPA DOUBLES re-ordered for 9.x: register helpers hooked, then Math functions hooked',
+         765: 'SCREEN MODES (window-gc title): w<<16|h of the whole-screen wrapper, then mode<<16|inset',
+         825: 'MODE NOW, after a hold changed it', 824: 'CFG WROTE: mode<<16 | error', 838: 'SCREEN FIT pair', 839: 'SCREEN SRC', 840: 'SCREEN DST: inset<<16 | mode<<12 | first pixel',
          860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on / SOUND',
          852: 'image loaded at / sound msg', 853: 'chunk ends at / MDA CALL',
          854: 'APP UI VPTR CHANGED to / MDA arg', 855: 'decrypted literal / MDA vtable',

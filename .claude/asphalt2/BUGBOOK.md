@@ -192,6 +192,31 @@ each `Math::` function copies its operands swapped and swaps the result
 back. 6 helpers and 3 functions hooked in Ashen; music on the bench (E408).
 Off for the Asphalts until a round of their own.
 
+### 1.s The picture modes, for a title that draws through the window gc (round 114)
+
+**Symptom.** Holding C does nothing in Ashen; it cycles the picture mode
+in the Asphalts.
+
+**Cause.** Two paths. The Asphalts render into the port's own buffer and
+the port fits that to the panel; the hold's clock ticks in the port's
+frame loop. Ashen blits its 176x208 frame through the environment's
+`CWindowGc` into a wrapper control sized 176x208, so neither the fit nor
+the clock ever saw it.
+
+**Fix.** `GAME_SCREEN_MODES` (build 007): the wrapper takes the whole
+screen when the game asks for its 176x208, the game's `Rect()` still
+answers 176x208 (its frame bitmaps are sized from it: E372), the blit
+lands at the fitted rectangle through `DrawBitmap(TRect, bitmap)`, and a
+100 ms CPeriodic ticks the hold. No repaint of the port's own: drawn from
+the timer it either stopped the game's loop (E414, E415) or killed the
+emulator's window server (E420), and a hook on Deactivate never fires
+because Ashen activates its gc once and keeps it (E419). The new fit shows
+at the game's next blit, within half a second on a page with a blinking
+cursor. Along the way: old window-gc slots 52 and 53 are Activate and
+Deactivate and map to 68 and 69, not 67 and 68 -- a Deactivate forwarded
+to Activate with a stray window is a null window in the emulator's
+server (E417, E418 under gdb). Count a slot map by code, not by eye.
+
 ## 2. Loading the N-Gage image
 
 **The entry point is an offset, entered in ARM mode with `lr = 0`.**

@@ -29,6 +29,8 @@ enum {
     IMPORT_CREATE_CONTEXT              = 65535,   // absent
     IMPORT_CREATE_SESSION              =   267,
     IMPORT_CTIMER_CTOR                 =   332,
+    IMPORT_CTL_RECT                    = 65535,   // absent
+    IMPORT_CTL_SETRECT                 =    91,
     IMPORT_DELETE_OP                   =   346,
     IMPORT_DIVDF3                      = 65535,   // absent
     IMPORT_DLL_NAME                    =     2,

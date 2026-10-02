@@ -149,6 +149,17 @@ source of guessing in it. When a new platform question comes up: search,
 read the source, write the answer into `SYMBIAN.md` with its citation, and
 only then write code.
 
+## Features every title carries
+
+- **Hold C to cycle the picture mode.** C on a keypad, Backspace on a QWERTY
+  (`EStdKeyBackspace`, scancode 0x01): held about a second it steps the fit
+  (`FIT_*` in `screen_fit.h`: one to one, shape, fill, integer, full), then every
+  half second while held; a tap passes through to the game. The choice is
+  saved on release (`cfg_save`, `C:\` root) and read back at the next launch.
+  Universal: the Asphalts through the port's own buffer (`screen_layout`), a
+  window-gc title such as Ashen through `GAME_SCREEN_MODES` (round 114). A
+  new title must keep this working; test it on the bench by holding BackSpace.
+
 ## Self-tests
 
 `logringtest.py` covers the log format -- eight states, including the legacy

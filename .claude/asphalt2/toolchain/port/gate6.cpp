@@ -343,6 +343,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_LEAVE_RAW = 762,    // bench: a leave with LEAVE_RAW_REASON -- the hook's sp, then raw stack words from it
        NOTE_EXIT_ASKED = 763,   // CEikAppUi::Exit() from the game: the thread exits with reason 0
        NOTE_FPA = 764,          // doubles re-ordered for 9.x: the register helpers hooked, then the Math functions hooked
+       NOTE_SCREEN_MODES = 765, // the window-gc title's screen: w<<16|h of the whole-screen wrapper, then mode<<16|inset
        NOTE_TRAP = 747,         // the trap bridge: 0x5E7 installed (then the original handler), 0xE11 entered (TTrap),
                                 // 0x1EA a leave (reason), 0x7E5 longjmp into (TTrap), 0xF0C the bench's forced leave
        NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
@@ -1068,6 +1069,9 @@ struct Context {
     u32 realCleanupNew;     // euser's CTrapCleanup::New, before our hook
     u32 realReadPos, realSize;  // efsrv's RFile::Read(pos, des, len) and Size, before our hooks
     u32 realReadSection;    // efsrv's RFs::ReadFileSection, before our hook
+    u32 holdTimer;          // the window-gc title's hold timer (CPeriodic), once started
+    CallBack holdCb;
+    const void *lastBmp;    // the last frame the game blitted, for a repaint after a mode change
     u32 readsLogged;        // the first few reads only; a loading loop is thousands
     u32 *cleanupVt;         // the three-word vtable its stand-ins share: delete, any way in
     u32 *realScreenDev;     // the environment's CWsScreenDevice, 9.x
@@ -7063,7 +7067,9 @@ enum { COEENV_SYSTEM_GC = 0x40 };
 // the two agree. Entry 0 is the destructor, which nothing may call on the
 // environment's gc; 41 and 42 are gdi's DrawText(TDrawTextParam) and
 // Reserved, inherited both sides.
-enum { OLD_WINGC_SLOTS = 63 };
+enum { OLD_WINGC_SLOTS = 63, OLD_WINGC_BITBLT_FWD = 46 };
+extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp);   // below, with the picture modes
+static void hold_timer_start(Context *c);
 static const u8 kWinGcSlot[OLD_WINGC_SLOTS] = {
     GC_NONE, 3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17,
     18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33,
@@ -7183,12 +7189,149 @@ static void *wingc_standin(Context *c)
         c->spare += OLD_WINGC_SLOTS * GC_THUNK_BYTES;
         vt[2 + OLD_GC_DRAWTEXT] = (u32)&gate6_wgc_drawtext;
         vt[2 + OLD_GC_DRAWTEXTBOX] = (u32)&gate6_wgc_drawtextbox;
+        if (GAME_SCREEN_MODES && GAME_CONTROL_W)
+            vt[2 + OLD_WINGC_BITBLT_FWD] = (u32)&gate6_wgc_bitblt;
         obj[0] = (u32)vt;           // GCC98r2: the vptr points at the header
         obj[1] = (u32)c;
         c->fakeWinGc = obj;
         log_event(c, NOTE_WINGC, (u32)real);
     }
     return c->fakeWinGc;
+}
+
+// ---------------------------------------------------------------------------
+// **The picture modes for a title that draws through the window gc.** The
+// Asphalts draw into the port's own buffer and the port fits that to the
+// panel (screen_layout, cycled by holding C). Ashen draws each frame with
+// `CWindowGc::BitBlt((0,0), frame)` on the environment's gc -- old slot 46 of
+// the stand-in above -- into a wrapper control sized 176x208, so the C key
+// did nothing for it (round 114). Three pieces make the same modes work:
+// the wrapper control is sized to the whole screen when the game asks for
+// its 176x208 (the Nokia SetRect export, diverted to the wrapper), the
+// game's `Rect()` still answers 176x208 so its frame bitmaps keep their
+// size (E372: a 240-wide control gave it a sheared 240-wide bitmap), and the
+// blit lands at the fitted rectangle -- `DrawBitmap(TRect, bitmap)`, slot 39,
+// which the window server scales, or BitBlt at the offset when the mode is
+// one to one. The hold timer ticks in the blit, once a frame, and the
+// window is cleared black once after each change. The choice is saved as
+// the Asphalts' is (cfg_save on the key's release) and read back here.
+enum { NEW_COECONTROL_WHOLE_SCREEN = 50, NEW_COECONTROL_SIZE = 277, NEW_COECONTROL_DRAWABLE_WINDOW = 262 };
+// Old slots 52 and 53 are Activate(window) and Deactivate, 68 and 69 on
+// 9.x by the map above: a first cut that assumed 67 and 68 forwarded the
+// game's Deactivate to Activate with a stray window and the emulator's
+// window server died on the handle (E417, E418, gdb).
+enum { HOLD_TIMER_US = 100000 };
+enum { OLD_WINGC_BITBLT = 46, NEW_GC_DRAWBITMAP_RECT = 39, NEW_GC_BITBLT = 57, NEW_GC_CLEAR = 54,
+       NEW_GC_SET_BRUSH_COLOR = 18, NEW_GC_SET_BRUSH_STYLE = 19, ESOLID_BRUSH = 1 };
+
+extern "C" void gate6_ctl_rect(i32 *out, void *self, Context *c)
+{
+    (void)self; (void)c;
+    out[0] = 0; out[1] = 0; out[2] = (i32)GAME_CONTROL_W; out[3] = (i32)GAME_CONTROL_H;
+}
+
+extern "C" void gate6_ctl_setrect(void *self, const u32 *rect, Context *c)
+{
+    typedef void (*Whole)(void *);
+    typedef void (*SizeFn)(u32 *, const void *);
+    typedef void (*SetExtent)(void *, const u32 *, const u32 *);
+    (void)self;
+    u32 *wrap = c->wrapControl;
+    if (!wrap)
+        return;
+    Whole whole = (Whole)rlibrary_lookup(&c->cone, NEW_COECONTROL_WHOLE_SCREEN);
+    SizeFn size = (SizeFn)rlibrary_lookup(&c->cone, NEW_COECONTROL_SIZE);
+    if (!whole || !size) {
+        // As the stand-in SetRect did: the game's own rectangle.
+        SetExtent se = (SetExtent)rlibrary_lookup(&c->cone, NEW_COECONTROL_SETEXTENT);
+        const u32 sz[2] = { rect[2] - rect[0], rect[3] - rect[1] };
+        if (se)
+            se(wrap, rect, sz);
+        return;
+    }
+    status_pane_off(c);                 // the whole screen first, as the Asphalts take it
+    whole(wrap);
+    if (c->screenW)
+        return;                         // the game asks again on every page: the choice stands
+    u32 sz[2] = { 0, 0 };
+    size(sz, wrap);
+    if (!sz[0] || !sz[1])
+        return;
+    c->screenW = sz[0];
+    c->screenH = sz[1];
+    c->mode = (u32)SCREEN_MODE;
+    const u32 fromAvkon = avkon_inset(c);
+    c->topInset = c->paneGone ? 0u : (fromAvkon ? fromAvkon : (u32)INSET_DEFAULT);
+    cfg_load(c);                        // the player's last choice, over both
+    c->srcW = (u32)GAME_CONTROL_W;
+    screen_layout(c);
+    log_event(c, NOTE_SCREEN_MODES, (sz[0] << 16) | (sz[1] & 0xFFFF));
+    log_event(c, NOTE_SCREEN_MODES, (c->mode << 16) | (c->topInset & 0xFFFF));
+    log_block(c);
+}
+
+extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
+{
+    typedef void (*BitBltFn)(void *, const i32 *, const void *);
+    typedef void (*DrawBitmapFn)(void *, const i32 *, const void *);
+    typedef void (*ClearFn)(void *);
+    typedef void (*BrushColorFn)(void *, const u32 *);
+    typedef void (*BrushStyleFn)(void *, u32);
+    Context *c = (Context *)standin[1];
+    u32 *real = c->realWinGc;
+    const u32 *vt = (const u32 *)real[0];
+    c->lastBmp = bmp;
+    if (GAME_SCREEN_MODES && c->screenW)
+        hold_timer_start(c);
+    if (!GAME_SCREEN_MODES || !c->screenW || !c->dstW || !c->dstH) {
+        ((BitBltFn)vt[NEW_GC_BITBLT])(real, pt, bmp);
+        return;
+    }
+    if (c->clearPending) {
+        const u32 black = 0xFF000000u;      // TRgb: alpha 0xff, no colour
+        ((BrushColorFn)vt[NEW_GC_SET_BRUSH_COLOR])(real, &black);
+        ((BrushStyleFn)vt[NEW_GC_SET_BRUSH_STYLE])(real, ESOLID_BRUSH);
+        ((ClearFn)vt[NEW_GC_CLEAR])(real);
+        ((BrushStyleFn)vt[NEW_GC_SET_BRUSH_STYLE])(real, 0);   // ENullBrush, as a gc starts
+        c->clearPending = 0;
+    }
+    const i32 x = (i32)c->offX, y = (i32)c->offY;
+    if (c->dstW == (u32)GAME_CONTROL_W && c->dstH == (u32)GAME_CONTROL_H) {
+        const i32 at[2] = { x, y };
+        ((BitBltFn)vt[NEW_GC_BITBLT])(real, at, bmp);
+        return;
+    }
+    const i32 dst[4] = { x, y, x + (i32)c->dstW, y + (i32)c->dstH };
+    ((DrawBitmapFn)vt[NEW_GC_DRAWBITMAP_RECT])(real, dst, bmp);
+}
+
+// The hold's clock. The Asphalts tick it once a frame from the port's own
+// loop; a window-gc title blits only when it has something new, so a 100 ms
+// timer ticks it instead. No repaint of our own after a change: drawn from
+// the timer, with or without an Activate of ours, it either stopped the
+// game's loop or killed the emulator's window server (E415, E417-E420), and
+// a Deactivate hook never fired because Ashen activates its gc once and
+// keeps it. The new fit shows at the game's next blit, which the blinking
+// menu cursor and the title's animation give within half a second, and the
+// window is cleared black under it then (clearPending).
+extern "C" int gate6_hold_tick_cb(void *p)
+{
+    hold_tick((Context *)p);
+    return 1;
+}
+
+static void hold_timer_start(Context *c)
+{
+    if (c->holdTimer)
+        return;
+    c->holdTimer = 1;
+    void *t = cperiodic_newl(0);
+    if (!t)
+        return;
+    c->holdTimer = (u32)t;
+    c->holdCb.fn = &gate6_hold_tick_cb;
+    c->holdCb.ptr = c;
+    cperiodic_start(t, (int)HOLD_TIMER_US, (int)HOLD_TIMER_US, c->holdCb);
 }
 
 extern "C" void *gate6_system_gc(u32, u32, Context *c)
@@ -10083,6 +10226,12 @@ static u32 load_and_start()
     }
     if (GAME_FPA_DOUBLES)
         fpa_install(ctx, iat, nImports);
+    if (GAME_SCREEN_MODES && GAME_CONTROL_W) {
+        if (nImports > IMPORT_CTL_RECT && IMPORT_CTL_RECT < kShimCount)
+            iat[IMPORT_CTL_RECT] = ctx_thunk(stub + SLOT * IMPORT_CTL_RECT, ctx, (u32)&gate6_ctl_rect);
+        if (nImports > IMPORT_CTL_SETRECT && IMPORT_CTL_SETRECT < kShimCount)
+            iat[IMPORT_CTL_SETRECT] = ctx_thunk(stub + SLOT * IMPORT_CTL_SETRECT, ctx, (u32)&gate6_ctl_setrect);
+    }
     if (nImports > IMPORT_APPUI_EXIT && IMPORT_APPUI_EXIT < kShimCount &&
         (kShimTable[IMPORT_APPUI_EXIT] >> 24) == KIND_CALL)
         iat[IMPORT_APPUI_EXIT] = ctx_thunk(stub + SLOT * IMPORT_APPUI_EXIT, ctx, (u32)&gate6_appui_exit);
