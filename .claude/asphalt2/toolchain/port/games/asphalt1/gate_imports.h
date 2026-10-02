@@ -48,6 +48,7 @@ enum {
     IMPORT_MDA_NEWL                    =   385,
     IMPORT_MSG_COMPLETE                =   256,
     IMPORT_PANIC                       =   293,
+    IMPORT_READ_FILE_SECTION           = 65535,   // absent
     IMPORT_REQUEST_COMPLETE            =   303,
     IMPORT_SCREEN_INFO                 =   308,
     IMPORT_SCREEN_UPDATE               =    43,

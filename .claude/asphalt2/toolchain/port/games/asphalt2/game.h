@@ -74,6 +74,13 @@ enum { GAME_SRC_ORIGIN = 16 };
 // title that passes it on to direct screen access needs (E390).
 #define GAME_SCREEN_FONTS 0
 
+// The N-Gage card's `E:\Game.Id` -- six bytes, "N-Gage", at the card's root.
+// Ashen's engine init reads it (image 0x72214) and gives up when the read
+// fails (round 112); a SIS installs nothing at a drive's root. 1: a failed
+// read of a `\Game.Id` is answered with those six bytes, the real file first.
+// Never asked for by this title: it runs on phones that have no such file.
+#define GAME_ANSWER_GAME_ID 0
+
 // Cells this big or bigger go straight back to the heap; smaller ones wait
 // in the quarantine. 4 KB is where this title's use-after-free stops
 // reaching, measured over builds 150 to 172.

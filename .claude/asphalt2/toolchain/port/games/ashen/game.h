@@ -65,6 +65,12 @@ enum { GAME_SRC_ORIGIN = 0 };
 // title that passes it on to direct screen access needs (E390).
 #define GAME_SCREEN_FONTS 1
 
+// The N-Gage card's `E:\Game.Id` -- six bytes, "N-Gage", at the card's root.
+// Ashen's engine init reads it (image 0x72214) and gives up when the read
+// fails (round 112); a SIS installs nothing at a drive's root. 1: a failed
+// read of a `\Game.Id` is answered with those six bytes, the real file first.
+#define GAME_ANSWER_GAME_ID 1
+
 // The allocator: cells of 4 KB and up go straight back, smaller ones through
 // the quarantine; nothing is leaked; every allocation padded by 512 bytes,
 // which is what keeps a 9.x constructor's overrun off the next cell (E277).
@@ -104,5 +110,5 @@ enum { GAME_SRC_ORIGIN = 0 };
 #define GAME_APP_NAME "gate6ashe"
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 3
+#define GAME_BUILD 4
 #endif

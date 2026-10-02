@@ -121,6 +121,34 @@ Asphalts hand that word on to direct screen access, which reads a real
 regression run is what caught it, two minutes after the change: the shared
 file ships to every title, so every title runs before anything ships.
 
+### 1.v The N-Gage card's `Game.Id` (rounds 111, 112)
+
+**Symptom.** Ashen build 002 and 003 on the N95: a data abort reading 0x54
+inside the forwarded foreground event, before the first frame. The log shows
+`PackFile.Dat` opened (0), then `RFsBase::Close` and `UnTrap` at once; the
+bench goes on to size and read the pack.
+
+**Cause.** Not the pack. Right after opening it, the engine's init
+(image 0x720f8) reads `E:\Game.Id` -- `RFs::ReadFileSection(name, 0, des,
+0x64)` at 0x72214 -- and 0x72218 abandons the whole init when that fails,
+recording nothing. The resume routine later dereferences the engine object the
+init never made. `Game.Id` is the six-byte file ("N-Gage") at the root of an
+N-Gage card; the path is the literal "E:\" plus the name, whatever drive the
+game was installed to, and a SIS installs nothing at a drive's root. The
+bench's E: is the card dump and has the file, so 26 Ashen runs never saw it.
+`ReadFileSection` is not a milestone, so the read was invisible in the log;
+the disassembly between the open and the close found it, and E394 (the file
+hidden) reproduced the N95's abort, same address.
+
+**Fix.** `ReadFileSection` hooked (`GAME_ANSWER_GAME_ID`, build 004): the
+real read first, and a not-found on a name ending `\Game.Id` answered with
+the six bytes, logged as note 761. E396 (hidden) passes, record for record
+against E393. A hook of its own on the way: the handler has six arguments
+and `arg5_thunk` pushes the saved lr between the context and the game's fifth
+argument, so the first build handed a return address to efsrv as the length
+(E395, `FSCLIENT 27` EBadLength). `arg6_thunk` lifts the fifth argument above
+the context.
+
 ## 2. Loading the N-Gage image
 
 **The entry point is an offset, entered in ARM mode with `lr = 0`.**

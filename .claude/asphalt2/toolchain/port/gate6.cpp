@@ -339,6 +339,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_GCTEXT = 758,       // bitgdi stand-in: 0xF0 then the font on UseFont; 0x7E then x<<16|y, length, first chars on DrawText
        NOTE_READ_POS = 759,     // RFile::Read(pos, des, len): pos, len, then the result and the descriptor's length after
        NOTE_SIZE_ASKED = 760,   // RFile::Size: the size, then the result
+       NOTE_GAME_ID = 761,      // RFs::ReadFileSection: the real result, then 1 when the shim answered a missing Game.Id
        NOTE_TRAP = 747,         // the trap bridge: 0x5E7 installed (then the original handler), 0xE11 entered (TTrap),
                                 // 0x1EA a leave (reason), 0x7E5 longjmp into (TTrap), 0xF0C the bench's forced leave
        NOTE_BACKGROUND = 729,   // bench knob: the app sent itself to the back, and how
@@ -1062,6 +1063,7 @@ struct Context {
     u32 *bitGcVt;           // the old-shaped CFbsBitGc vtable every stand-in shares
     u32 realCleanupNew;     // euser's CTrapCleanup::New, before our hook
     u32 realReadPos, realSize;  // efsrv's RFile::Read(pos, des, len) and Size, before our hooks
+    u32 realReadSection;    // efsrv's RFs::ReadFileSection, before our hook
     u32 readsLogged;        // the first few reads only; a loading loop is thousands
     u32 *cleanupVt;         // the three-word vtable its stand-ins share: delete, any way in
     u32 *realScreenDev;     // the environment's CWsScreenDevice, 9.x
@@ -5255,6 +5257,34 @@ static u32 arg5_thunk(u8 *code, const void *ctx, u32 handler)
     return (u32)b;
 }
 
+// Five register-and-stack arguments plus the context: the game's fifth sits at
+// [sp] on entry, the saved lr goes under it, so a plain arg5_thunk would hand
+// the handler that lr as its sixth argument (E395: FSCLIENT 27, a length that
+// was a return address). This one lifts the fifth argument and pushes it back
+// above the context, so the handler sees (r0..r3, ctx, fifth):
+//
+//   push {lr} ; ldr lr, [sp, #4] ; ldr r12, =ctx ; stmdb sp!, {r12, lr}
+//   ldr r12, =handler ; blx r12 ; add sp, sp, #8 ; pop {lr} ; bx lr
+enum { ARG6_BYTES = 11 * 4 };
+
+static u32 arg6_thunk(u8 *code, const void *ctx, u32 handler)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE92D4000;                  // stmdb sp!, {lr}
+    b[1] = 0xE59DE004;                  // ldr   lr, [sp, #4]    the game's fifth argument
+    b[2] = 0xE59FC014;                  // ldr   r12, [pc, #20]  -> b[9]
+    b[3] = 0xE92D5000;                  // stmdb sp!, {r12, lr}  [sp] = ctx, [sp+4] = fifth
+    b[4] = 0xE59FC010;                  // ldr   r12, [pc, #16]  -> b[10]
+    b[5] = 0xE12FFF3C;                  // blx   r12
+    b[6] = 0xE28DD008;                  // add   sp, sp, #8
+    b[7] = 0xE8BD4000;                  // ldmia sp!, {lr}
+    b[8] = 0xE12FFF1E;                  // bx    lr
+    b[9] = (u32)ctx;
+    b[10] = handler;
+    user_imb_range(b, b + 11);
+    return (u32)b;
+}
+
 // The game creates two threads and neither is ever entered. Both calls come
 // through our own lookup -- old 289 -> new 1158 `RThread::Create` and old 954 ->
 // new 1795 `RThread::Resume` -- so both can be watched from here.
@@ -7270,6 +7300,75 @@ extern "C" int gate6_file_size_asked(void *file, i32 *size, Context *c)
     log_event(c, NOTE_SIZE_ASKED, size ? (u32)*size : 0xFFFFFFFFu);
     log_event(c, NOTE_SIZE_ASKED, (u32)r);
     return r;
+}
+
+// Round 112. Ashen's engine init reads `E:\Game.Id` -- the six-byte file at
+// the root of an N-Gage card, the text "N-Gage" -- with
+// `RFs::ReadFileSection(name, 0, des, 0x64)` at image 0x72214, right after
+// the pack is opened, and 0x72218 abandons the whole init when the read
+// fails. Nothing records that: no leave, no error kept. The resume routine
+// then dereferences the engine object the init never made, which is the data
+// abort reading 0x54 of round 111. The path is the literal "E:\" plus
+// "Game.Id", whatever drive the game was installed to, and a SIS puts nothing
+// at a drive's root. The bench had the card dump's game.id and so never saw
+// it; E394 reproduced the abort by hiding the file.
+//
+// The real read goes first, so a phone whose card still has the file is
+// answered by the file. When it comes back not-found and the name ends in
+// `\Game.Id`, the descriptor is filled with the six bytes a card holds and
+// KErrNone returned: exactly what the bench's read answers. The descriptor
+// is the game's `TPtr8(buf, 0, 0x64)`: type EPtr, maxLength in word 1, the
+// data pointer in word 2 (a TBuf8 keeps its data after word 1 instead).
+// This is the only ReadFileSection in the title (0xb2600 has the one caller).
+static const u8 kGameId[] = { 'N', '-', 'G', 'a', 'g', 'e' };
+
+static int name_is_game_id(const u32 *name)
+{
+    static const char kTail[] = "game.id";
+    enum { TAIL = sizeof kTail - 1 };
+    u32 len = 0;
+    const u16 *t = name_text(name, &len);
+    if (!t || len < TAIL || len > 270)
+        return 0;
+    for (u32 i = 0; i < TAIL; i++) {
+        u16 ch = t[len - TAIL + i];
+        if (ch >= 'A' && ch <= 'Z')
+            ch = (u16)(ch + ('a' - 'A'));
+        if (ch != (u16)kTail[i])
+            return 0;
+    }
+    return len == TAIL || t[len - TAIL - 1] == '\\';
+}
+
+// Five arguments, the fifth at [sp]; arg6_thunk puts the context under it,
+// so the handler sees the context fifth and the game's `len` sixth.
+extern "C" int gate6_read_file_section(void *fs, const u32 *name, i32 pos, u32 *des, Context *c, i32 len)
+{
+    typedef int (*Fn)(void *, const u32 *, i32, u32 *, i32);
+    const int r = ((Fn)c->realReadSection)(fs, name, pos, des, len);
+    int answered = 0;
+    if (GAME_ANSWER_GAME_ID && des && pos >= 0 && len >= 0 &&
+        (r == KErrNotFound || r == KErrPathNotFound || r == KErrNotReady) &&
+        name_is_game_id(name)) {
+        const u32 type = des[0] >> KTypeShift;
+        u8 *data = (type == EPtr) ? (u8 *)des[2]
+                 : (type == EBufType) ? (u8 *)(des + 2) : 0;
+        if (data) {
+            // Past the end reads nothing, as a six-byte file would answer.
+            u32 n = ((u32)pos < sizeof kGameId) ? sizeof kGameId - (u32)pos : 0;
+            if (n > (u32)len)
+                n = (u32)len;
+            if (n > des[1])
+                n = des[1];
+            for (u32 i = 0; i < n; i++)
+                data[i] = kGameId[(u32)pos + i];
+            des[0] = (type << KTypeShift) | n;
+            answered = 1;
+        }
+    }
+    log_event(c, NOTE_GAME_ID, (u32)r);
+    log_event(c, NOTE_GAME_ID, (u32)answered);
+    return answered ? 0 : r;
 }
 
 extern "C" void *gate6_cleanup_new(u32, u32, Context *c)
@@ -9790,6 +9889,14 @@ static u32 load_and_start()
         (kShimTable[IMPORT_FILE_SIZE] >> 24) == KIND_CALL) {
         ctx->realSize = iat[IMPORT_FILE_SIZE];
         iat[IMPORT_FILE_SIZE] = ctx_thunk(stub + SLOT * IMPORT_FILE_SIZE, ctx, (u32)&gate6_file_size_asked);
+    }
+    if (GAME_ANSWER_GAME_ID && nImports > IMPORT_READ_FILE_SECTION &&
+        IMPORT_READ_FILE_SECTION < kShimCount &&
+        (kShimTable[IMPORT_READ_FILE_SECTION] >> 24) == KIND_CALL &&
+        ctx->spare + ARG6_BYTES <= ctx->spareEnd) {
+        ctx->realReadSection = iat[IMPORT_READ_FILE_SECTION];
+        iat[IMPORT_READ_FILE_SECTION] = arg6_thunk(ctx->spare, ctx, (u32)&gate6_read_file_section);
+        ctx->spare += ARG6_BYTES;
     }
     if (nImports > IMPORT_CLEANUP_NEW && IMPORT_CLEANUP_NEW < kShimCount &&
         (kShimTable[IMPORT_CLEANUP_NEW] >> 24) == KIND_CALL) {

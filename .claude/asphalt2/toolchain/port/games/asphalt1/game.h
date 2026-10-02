@@ -100,6 +100,13 @@ enum { GAME_SRC_ORIGIN = 16 };
 // title that passes it on to direct screen access needs (E390).
 #define GAME_SCREEN_FONTS 0
 
+// The N-Gage card's `E:\Game.Id` -- six bytes, "N-Gage", at the card's root.
+// Ashen's engine init reads it (image 0x72214) and gives up when the read
+// fails (round 112); a SIS installs nothing at a drive's root. 1: a failed
+// read of a `\Game.Id` is answered with those six bytes, the real file first.
+// Never asked for by this title: it runs on phones that have no such file.
+#define GAME_ANSWER_GAME_ID 0
+
 // Quarantine the small cells only, as Asphalt 2 does. This was
 // 0x7fffffff -- hold everything -- from E271, when a vtable pointer written
 // over a freed cell's `next` link was sending the allocator into the ROM.
