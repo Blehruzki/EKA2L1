@@ -330,6 +330,36 @@ returning) but not what it was handed; round 120's dumps said that. Each
 round asked for one more thing the previous log could not contain. A
 private offset measured on two ROMs is a measurement of those two ROMs;
 the fix asks the ROM at hand instead.
+### 1.o A base-class veneer run with the wrong object (round 123)
+
+**Symptom.** Ashen build 010 on an N91 (S60 3.0): a white window, then the
+application grid, on every launch, after round 120's window fix had put
+the Asphalts right on the same phone.
+
+**Cause.** The port's wrapper control forwards the framework's Draw (9.x
+slot 41) and FocusChanged (26) to the game's old control's slots 24 and
+19. Ashen overrides neither: those slots hold the compiler's base-class
+veneers -- `ldr ip, [pc, #4]; ldr ip, [ip]; bx ip` through the game's
+import table -- straight back to cone's `CCoeControl::Draw` and
+`FocusChanged`. So cone's base Draw ran with the game's old-layout object
+as `this`. On 3.1 and 3.2 it read that object's words at the 9.2 offsets
+and happened to find something it could live with; on 3.0 it reads iWin
+one word earlier, found zero, and faulted at address 8. The trigger is
+the `KAknFullOrPartialForegroundGained` event 3.0 sends at launch, which
+provokes a framework redraw 3.1 does not; the same forwarding ran once per
+launch on 3.1 and 3.2 too, harmless only by the layout it landed on.
+
+**Fix (build 011).** The wrapper keeps its own base Draw and FocusChanged
+before hooking them, recognises a veneer in an old slot by its three
+instructions, and calls the base function on the wrapper instead. A real
+override still goes to the game's object, so the Asphalts, which override
+both slots, are untouched (E461 to E464).
+
+**The rule it adds.** A slot the game does not override must never be
+forwarded: a veneer is cone's own code expecting cone's own object. The
+same applies to any old-vtable forwarding the port does, and the record of
+which slots are veneers (772) is written at construction so the next
+title's layer can be read off the log before anything is forwarded.
 
 ## 2. Loading the N-Gage image
 

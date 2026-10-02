@@ -345,6 +345,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FPA = 764,          // doubles re-ordered for 9.x: the register helpers hooked, then the Math functions hooked
        NOTE_SCREEN_MODES = 765, // the window-gc title's screen: w<<16|h of the whole-screen wrapper, then mode<<16|inset
        NOTE_VA_LIST = 766,      // a FormatList re-pointed: the game's VA_LIST array, then the va pointer it held (first few only)
+       NOTE_CTL_VENEER = 772,   // the game's old control slots that are veneers into cone: a bit per slot, then the two base functions kept
        NOTE_CTL_WINDOW = 771,   // the wrapper's window: the word at 0x28, what Window() answered, the scan's index<<16|hit, then what the old control got
        NOTE_COEENV_WORDS = 769, // the first 24 words of the real 9.x CCoeEnv, once (round 119: is the layout the one the bias assumes)
        NOTE_DSA_BEFORE = 770,   // before StartL: the resolved StartL, 24 words of the real CDirectScreenAccess, then heap free, biggest, cells, bytes
@@ -1089,6 +1090,8 @@ struct Context {
     u32 formatCalls;        // Format and FormatList calls logged (GAME_LOG_TEXT)
     u32 coeLogged, dsaLogged;   // the two one-time dumps of round 119
     u32 ctlWindowFn;        // cone's CCoeControl::Window or DrawableWindow, as the game imports it (round 120)
+    u32 realCtlDraw, realCtlFocus;  // the wrapper's own Draw and FocusChanged, before the hooks (round 123)
+    u32 ctlVeneers;         // bit k set: the game's old control slot k is a veneer back into cone
     u32 ctlWindow;          // the wrapper control's window, as handed to the game's old control
     u32 dsaGcOff, dsaDevOff, dsaRgnOff;  // where the real CDirectScreenAccess keeps its gc, device and region on this ROM (0: the measured 3.2 offsets)
     u32 lastFmt[4];         // ... and the last one, so a frame's repeats are not
@@ -8098,14 +8101,46 @@ extern "C" void *gate6_coecontrol_ctor(u32 *self, u32, Context *c)
     return self;
 }
 
-extern "C" void gate6_control_draw(void *, u32 rect, Context *c)
+// **A slot the game does not override is a veneer back into cone.** Ashen's
+// control overrides its destructor and OfferKeyEventL and nothing else: old
+// slots 17 to 25 are three-instruction veneers (`ldr ip, [pc, #4]; ldr ip,
+// [ip]; bx ip`) through the game's import table to cone's own base methods.
+// Forwarding the wrapper's Draw (9.x slot 41) to such a slot runs cone's
+// base Draw -- "draws a blank control", through iWin and iCoeEnv -- with
+// the game's old-layout object as `this`. S60 3.1 and 3.2 read the old
+// object's words at their own offsets and happened to survive; an N91
+// (3.0) reads iWin one word earlier, finds a zero, and takes a data abort
+// at address 8 on the first framework redraw, which the foreground-gained
+// event it sends at launch provokes (round 123). So a veneer is recognised
+// by its shape, and the wrapper's own base function is called on the
+// wrapper instead; a real override still goes to the game's object.
+static int old_slot_is_veneer(const Context *c, u32 slot)
 {
-    old_call1(c->oldControl, OLD_CTL_DRAW, rect);
+    const u32 *obj = c->oldControl;
+    if (!obj || ((u32)obj & 3)) return 0;
+    const u32 *vt = (const u32 *)obj[0];
+    if (!vt || ((u32)vt & 3)) return 0;
+    const u32 *fn = (const u32 *)vt[2 + slot];
+    if (!fn || ((u32)fn & 3)) return 0;
+    return fn[0] == 0xE59FC004u && fn[1] == 0xE59CC000u && fn[2] == 0xE12FFF1Cu;
 }
 
-extern "C" void gate6_control_focus(void *, u32 drawNow, Context *c)
+extern "C" void gate6_control_draw(void *self, u32 rect, Context *c)
 {
-    old_call1(c->oldControl, OLD_CTL_FOCUS, drawNow);
+    typedef void (*Fn)(void *, u32);
+    if (old_slot_is_veneer(c, OLD_CTL_DRAW) && c->realCtlDraw)
+        ((Fn)c->realCtlDraw)(self, rect);
+    else
+        old_call1(c->oldControl, OLD_CTL_DRAW, rect);
+}
+
+extern "C" void gate6_control_focus(void *self, u32 drawNow, Context *c)
+{
+    typedef void (*Fn)(void *, u32);
+    if (old_slot_is_veneer(c, OLD_CTL_FOCUS) && c->realCtlFocus)
+        ((Fn)c->realCtlFocus)(self, drawNow);
+    else
+        old_call1(c->oldControl, OLD_CTL_FOCUS, drawNow);
 }
 
 // Input. The 9.x framework offers a key to every control on its stack, and the
@@ -8213,10 +8248,18 @@ extern "C" void gate6_create_window(u32 *oldControl, int, Context *c)
     coecontrol_ctor(ctl);
     {
         u32 *cvt = copy_vtable(vtable_of(ctl), CONTROL_SLOTS);
+        c->realCtlDraw = cvt[VT_HEADER + NEW_CTL_DRAW];
+        c->realCtlFocus = cvt[VT_HEADER + NEW_CTL_FOCUS];
         cvt[VT_HEADER + NEW_CTL_DRAW] = ctx_thunk(c->spare, c, (u32)&gate6_control_draw);
         c->spare += TRACE;
         cvt[VT_HEADER + NEW_CTL_FOCUS] = ctx_thunk(c->spare, c, (u32)&gate6_control_focus);
         c->spare += TRACE;
+        c->ctlVeneers = 0;
+        for (u32 k = 0; k < 32; k++)
+            if (old_slot_is_veneer(c, k)) c->ctlVeneers |= 1u << k;
+        log_event(c, NOTE_CTL_VENEER, c->ctlVeneers);
+        log_event(c, NOTE_CTL_VENEER, c->realCtlDraw);
+        log_event(c, NOTE_CTL_VENEER, c->realCtlFocus);
         if (BRIDGE_KEYS && c->cone) {
             const u32 offer = (u32)rlibrary_lookup(&c->cone, NEW_COECONTROL_OFFERKEY);
             for (int i = 0; offer && i < CONTROL_SLOTS; i++)

@@ -7,10 +7,10 @@ stays off for a title until a round of its own has run it there. Rounds are
 hardware; E-numbers are bench runs (ROUNDS.md).
 
 Shipping builds: Asphalt Urban GT **030** (`gate6a1`), Asphalt 2 **196**
-(`gate6`), Ashen **010** (`gate6ashe`). All verified on a Nokia N95 (S60 3.1)
+(`gate6`), Ashen **011** (`gate6ashe`). All verified on a Nokia N95 (S60 3.1)
 and the bench (RM-409 ROM, S60 3.2); the Asphalts also on a Nokia N91 (S60 3.0,
-round 121). Asphalt Urban GT 027 was confirmed on a Nokia C5-00 (S60 3.2, round 122). Ashen 010 carries
-round 120's fix and is with the N91 tester.
+round 121). Asphalt Urban GT 027 was confirmed on a Nokia C5-00 (S60 3.2, round 122). Ashen 010 reached the N91 and fell on a second 3.0 difference
+(round 123); 011 carries that fix and is with the tester.
 
 ## Fixes and features, by knob
 
@@ -48,6 +48,7 @@ round 120's fix and is with the N91 tester.
 | the frame timer wrapper at priority -101, the DSA restart after an abort | rounds 100-103 | hardware |
 | the fault box (`g6box-<stem>.dat`) and the log (`g6box-<stem>.log`) | gate 6 | every round reads them |
 | the control's window and the DSA object's layout found at run time, validated against the session buffer, rather than read at offsets measured on 3.1/3.2 | round 120 | bench E454-E456; the N91 (S60 3.0) is the phone it was made for |
+| an old control slot that is a base-class veneer into cone is not forwarded; the wrapper's own base function runs instead | round 123 | bench E461-E464; Ashen on the N91 |
 
 ## Where each title saves
 

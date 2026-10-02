@@ -202,6 +202,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          765: 'SCREEN MODES (window-gc title): w<<16|h of the whole-screen wrapper, then mode<<16|inset',
          766: 'VA_LIST re-pointed for FormatList: the game array, then the va pointer it held',
          768: 'THREAD DONE: a game thread function returned: the function, then its result',
+         772: 'CTL VENEER: a bit per old control slot that is a veneer into cone, then the wrapper base Draw and FocusChanged kept',
          771: 'CTL WINDOW: the word at 0x28, DrawableWindow() answer, scan index<<16|hit, what the old control got, then the session buffer',
          769: 'COEENV word (24, once): the real 9.x CCoeEnv from its first word',
          770: 'DSA BEFORE StartL (once): the resolved StartL, 24 words of the real CDirectScreenAccess, then heap free, biggest, cells, bytes, 0x0ff5e7xx the window index, then gc<<16|dev<<8|rgn offsets',
