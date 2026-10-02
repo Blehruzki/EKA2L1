@@ -328,7 +328,7 @@ namespace eka2l1 {
             break;
 
         default: {
-            LOG_ERROR(SERVICE_EFSRV, "Unknown FSServer client opcode {}!", ctx->msg->function);
+            ctx->complete_unhandled("FileServer");
             break;
         }
 
