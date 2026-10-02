@@ -22,8 +22,8 @@
 #include <utils/err.h>
 
 namespace eka2l1 {
-    backup_old_server::backup_old_server(eka2l1::system *sys)
-        : service::typical_server(sys, "BackupServer") {
+    backup_old_server::backup_old_server(eka2l1::system *sys, const char *server_name)
+        : service::typical_server(sys, server_name) {
     }
 
     void backup_old_server::connect(service::ipc_context &context) {
@@ -39,12 +39,28 @@ namespace eka2l1 {
     void backup_old_session::fetch(service::ipc_context *ctx) {
         switch (ctx->msg->function) {
         case 0x1F:
+            ctx->complete(epoc::error_none);
+            break;
+
+        case 0x20:
+            // EBakOpCodeBackupOperationEventReady. The real server leaves this pending when an
+            // observer is present (and the client always announces one first). EKA2L1 never
+            // performs a backup, so it is simply never completed. Completing it with KErrNone
+            // instead makes the client re-subscribe forever. The kernel completes it when the
+            // session closes.
+            if (!backup_observer_present_) {
+                ctx->complete(epoc::error_none);
+            }
+            break;
+
         case 0x22:
+            // EBakOpCodeSetBackupOperationObserverIsPresent (Send, not SendReceive)
+            backup_observer_present_ = (ctx->get_argument_value<std::uint32_t>(0).value_or(0) != 0);
             ctx->complete(epoc::error_none);
             break;
 
         default:
-            LOG_ERROR(SERVICE_BACKUP, "Unimplemented opcode for Old Backup server 0x{:X}", ctx->msg->function);
+            ctx->complete_unhandled("BackupServer");
             break;
         }
     }

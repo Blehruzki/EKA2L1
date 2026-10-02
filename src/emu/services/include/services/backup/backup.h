@@ -25,11 +25,13 @@
 namespace eka2l1 {
     class backup_old_server : public service::typical_server {
     public:
-        explicit backup_old_server(eka2l1::system *sys);
+        explicit backup_old_server(eka2l1::system *sys, const char *server_name = "BackupServer");
         void connect(service::ipc_context &context) override;
     };
 
     struct backup_old_session : public service::typical_session {
+        bool backup_observer_present_ = false;
+
         explicit backup_old_session(service::typical_server *serv, const kernel::uid ss_id, epoc::version client_version);
 
         void fetch(service::ipc_context *ctx) override;

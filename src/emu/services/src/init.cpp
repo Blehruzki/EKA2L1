@@ -253,6 +253,8 @@ namespace eka2l1 {
                 CREATE_SERVER(sys, redir_server);
                 CREATE_SERVER(sys, backup_old_server);
             } else {
+                // S60v3+ clients ask for the V2 name (__BACKUP_SERVER_NAME_V2 in backup_std.h).
+                CREATE_SERVER(sys, backup_old_server, "!BackupServer");
                 CREATE_SERVER(sys, goom_monitor_server);
                 CREATE_SERVER(sys, alf_streamer_server);
 
