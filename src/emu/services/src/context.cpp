@@ -31,8 +31,10 @@
 #include <config/config.h>
 
 #include <mutex>
+#include <map>
 #include <set>
 #include <string>
+#include <tuple>
 
 namespace eka2l1 {
     namespace service {
@@ -183,6 +185,63 @@ namespace eka2l1 {
             if (policy == "hang") {
                 // Deliberately leave the message outstanding, reproducing the old behaviour.
                 return;
+            }
+
+            // Loop detection. Completing an unrecognised opcode is right for a synchronous request,
+            // but an asynchronous notification request stays outstanding on a real device until the
+            // event happens; completing it makes the client re-subscribe at once and spin (measured:
+            // 263K sends in 10s of !EtelServer 24011 from Clock). We do not know which opcodes are
+            // notifiers, so instead count repeats per (server, opcode, calling thread) and, once an
+            // opcode keeps coming back, stop completing it. The message is left outstanding exactly
+            // like the "hang" policy above; the kernel completes it with error_session_closed when
+            // the session goes away (session::detatch), so nothing leaks.
+            {
+                // Hits at which an opcode starts being left pending: the first (K - 1) are completed.
+                constexpr std::uint32_t LOOP_PARK_THRESHOLD = 8;
+
+                // Upper bound on tracked keys. Hitting it only forgets old counts (each key then gets
+                // a fresh budget), which is harmless, whereas unbounded growth is not.
+                constexpr std::size_t MAX_TRACKED_KEYS = 4096;
+
+                // Keyed by thread unique id rather than pointer, so a recycled thread object does not
+                // inherit an old budget.
+                using hit_key = std::tuple<std::string, int, kernel::uid>;
+
+                static std::mutex hits_lock;
+                static std::map<hit_key, std::uint32_t> hits;
+
+                const kernel::uid thread_id = (msg && msg->own_thr) ? msg->own_thr->unique_id() : 0;
+                bool park = false;
+                bool first_park = false;
+
+                {
+                    const std::lock_guard<std::mutex> guard(hits_lock);
+
+                    if (hits.size() >= MAX_TRACKED_KEYS) {
+                        hits.clear();
+                    }
+
+                    std::uint32_t &count = hits[hit_key(name, opcode, thread_id)];
+
+                    if (count < LOOP_PARK_THRESHOLD) {
+                        // Saturates at the threshold, so it cannot overflow however long the loop runs.
+                        count++;
+                        first_park = (count == LOOP_PARK_THRESHOLD);
+                    }
+
+                    park = (count >= LOOP_PARK_THRESHOLD);
+                }
+
+                if (first_park) {
+                    // ERROR on purpose (see above): this tells us an app is stuck on a notifier.
+                    LOG_ERROR(SERVICE_TRACK, "Opcode 0x{:X} for {} hit {} times by thread {} (id {}), leaving it pending "
+                        "(likely an unimplemented notification request)", opcode, name, LOOP_PARK_THRESHOLD,
+                        (msg && msg->own_thr) ? msg->own_thr->name() : std::string("<unknown>"), thread_id);
+                }
+
+                if (park) {
+                    return;
+                }
             }
 
             if (prefer_success || (policy == "success")) {
