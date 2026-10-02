@@ -192,7 +192,7 @@ namespace eka2l1 {
             return;
 
         default:
-            LOG_ERROR(SERVICE_NOTIFIER, "Unimplemented opcode for Notifier server 0x{:X}", ctx->msg->function);
+            ctx->complete_unhandled("NotifierServer");
             break;
         }
     }

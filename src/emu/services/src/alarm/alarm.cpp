@@ -68,7 +68,7 @@ namespace eka2l1 {
             break;
 
         default:
-            LOG_ERROR(SERVICE_ALARM, "Unimplemented opcode for Alarm server 0x{:X}", ctx->msg->function);
+            ctx->complete_unhandled("AlarmServer");
             break;
         }
     }

@@ -80,7 +80,7 @@ namespace eka2l1 {
                 break;
 
             default:
-                LOG_ERROR(SERVICE_ACCESSORY, "Unimplemented opcode for Accessory single connection subsession 0x{:X}", ctx->msg->function);
+                ctx->complete_unhandled("AccessoryServer(subsession)");
                 break;
             }
         }
@@ -127,6 +127,6 @@ namespace eka2l1 {
             }
         }
 
-        LOG_ERROR(SERVICE_ACCESSORY, "Unimplemented opcode for accessory session 0x{:X}", ctx->msg->function);
+        ctx->complete_unhandled("AccessoryServer");
     }
 }

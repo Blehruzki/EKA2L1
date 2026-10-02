@@ -246,7 +246,7 @@ namespace eka2l1 {
             }
         }
 
-        LOG_ERROR(SERVICE_ESOCK, "Unimplemented opcode for Socket server 0x{:X}", ctx->msg->function);
+        ctx->complete_unhandled("SocketServer");
     }
 
     void socket_client_session::sr_get_by_number(eka2l1::service::ipc_context *ctx) {
