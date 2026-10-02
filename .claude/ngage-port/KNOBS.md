@@ -8,9 +8,9 @@ hardware; E-numbers are bench runs (ROUNDS.md).
 
 Shipping builds: Asphalt Urban GT **030** (`gate6a1`), Asphalt 2 **196**
 (`gate6`), Ashen **009** (`gate6ashe`). All verified on a Nokia N95 (S60 3.1)
-and the bench (RM-409 ROM, S60 3.2). A C5-00 run of Asphalt Urban GT 027 was
-never confirmed. No S60 3.0 phone has run any build to its menu (the N91
-logs of round 118 are the open item).
+and the bench (RM-409 ROM, S60 3.2); the Asphalts also on a Nokia N91 (S60 3.0,
+round 121). A C5-00 run of Asphalt Urban GT 027 was never confirmed. Ashen has
+not yet run on 3.0; its next build carries round 120's fix.
 
 ## Fixes and features, by knob
 
