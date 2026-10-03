@@ -131,6 +131,16 @@ enum { GAME_SRC_ORIGIN = 16 };
 // the background and starts it again on return (round 115).
 #define GAME_CANCEL_ROM_OBJECTS 0
 
+// 1 forwards a CActive::Cancel on an active object of the game's own class
+// too (vptr in the image). Off on the titles that shipped before it existed: none
+// of them cancels an object of its own.
+#define GAME_CANCEL_OWN_OBJECTS 0
+
+// 1 carries the wrapped CTimer's status and flags into the game's own object
+// after After and a forwarded Cancel, not only at RunL. Off on the titles
+// that shipped before it.
+#define GAME_TIMER_MIRROR 0
+
 // The game's variadic wrappers hand `TDes16::FormatList` a GCC98r2 VA_LIST:
 // a one-element array, passed as its address. The 9.x euser takes the va
 // pointer itself, so handed the address it reads the game's stack as the

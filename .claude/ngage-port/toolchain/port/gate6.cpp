@@ -346,6 +346,13 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_SCREEN_MODES = 765, // the window-gc title's screen: w<<16|h of the whole-screen wrapper, then mode<<16|inset
        NOTE_VA_LIST = 766,      // a FormatList re-pointed: the game's VA_LIST array, then the va pointer it held (first few only)
        NOTE_CTL_VENEER = 772,   // the game's old control slots that are veneers into cone: a bit per slot, then the two base functions kept
+       NOTE_OLD_DELETE = 773,   // a 9.x object the game owns given a vtable it can delete through: the real vtable, then the object
+       NOTE_DEFAULT_PATH = 774, // RFs::SetDefaultPath: the length kept, then SetSessionPath's answer; 0x5E55xxxx: a later Connect given it
+       NOTE_CLEANUP_ITEM = 775, // bench: the 9.x cleanup stack at a leave -- 0xC1EA0000|count, then each item's operation and pointer
+       NOTE_OLD_PUSH = 776,     // CleanupStack::PushL(CBase*) of one of the game's own objects: pushed as an item that runs its old destructor
+       NOTE_THREAD_OPEN = 777,  // RThread::Open by the game's own name for a thread the port renamed: the real answer, then Duplicate's
+       NOTE_FACTORY = 778,      // CEikonEnv::AppUiFactory() answered with the null-object factory: its address, then the dummy's
+       NOTE_OWN_CANCEL = 779,   // CActive::Cancel on an active object of the game's own class (vptr in the image), forwarded
        NOTE_CTL_WINDOW = 771,   // the wrapper's window: the word at 0x28, what Window() answered, the scan's index<<16|hit, then what the old control got
        NOTE_COEENV_WORDS = 769, // the first 24 words of the real 9.x CCoeEnv, once (round 119: is the layout the one the bias assumes)
        NOTE_DSA_BEFORE = 770,   // before StartL: the resolved StartL, 24 words of the real CDirectScreenAccess, then heap free, biggest, cells, bytes
@@ -497,11 +504,16 @@ struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
 // Every import gets a slot big enough for whichever thunk it needs.
 enum { SLOT = 48 };
 enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 5,
-       KIND_ARGSHIFT = 6, KIND_NEG = 7, KIND_DEC = 8, KIND_NOT = 9, KIND_SEXT1 = 10 };
+       KIND_ARGSHIFT = 6, KIND_NEG = 7, KIND_DEC = 8, KIND_NOT = 9, KIND_SEXT1 = 10,
+       KIND_ZEXT1_RADIX = 11 };
 enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
        LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5, LOCAL_TRUE = 6, LOCAL_SELF = 7,
        LOCAL_MEM_MOVE = 8, LOCAL_TRAP_UNTRAP = 9, LOCAL_RAMSIZES = 10,
-       LOCAL_SYSAGT_SETSTATUS = 11, LOCAL_SYSAGT_NOTIFY = 12, LOCAL_SYSAGT_CANCEL = 13 };
+       LOCAL_SYSAGT_SETSTATUS = 11, LOCAL_SYSAGT_NOTIFY = 12, LOCAL_SYSAGT_CANCEL = 13,
+       LOCAL_NEGDF2 = 14, LOCAL_TINT64_LOW = 15, LOCAL_TINT64_REAL = 16,
+       LOCAL_TINT64_ADD = 17, LOCAL_TINT64_SUB = 18, LOCAL_TINT64_MUL = 19, LOCAL_TINT64_DIV = 20,
+       LOCAL_TINT64_GE = 21, LOCAL_TINT64_LT = 22,
+       LOCAL_SET_WORD_2C = 23, LOCAL_GET_WORD_2C = 24, LOCAL_VOLUMEINFO_CTOR = 25 };
 
 // memmove. The game imports it from the C runtime and 9.x does not export it
 // under that name, so it is written here rather than forwarded. Overlap is the
@@ -621,6 +633,128 @@ extern "C" void gate6_pure_virtual()
 
 // Only the 16-bit Mem::Compare is still exported, so the 8-bit one lives here.
 // Symbian's contract: compare the common prefix, then the lengths.
+// ---------------------------------------------------------------------------
+// **EKA1's TInt64, round 125.** A class of two words, {TUint iLow; TInt
+// iHigh}, with its arithmetic exported from euser; 9.x made it a long long
+// and exports nothing. One imports the class: operator+= (`this` in r0, the
+// operand in r1, returns `this`), the three that make a new TInt64 -- the
+// game passes a hidden result pointer in r0, `this` in r1, the operand in
+// r2, and expects r0 back (0x11a2c, 0x119d8, 0x119c4) -- the two
+// comparisons, GetTInt and GetTReal. All in 32-bit halves: nothing here may
+// pull in a runtime helper the loader does not link.
+static inline u32 i64_add(u32 *lo, u32 *hi, u32 blo, u32 bhi)
+{
+    const u32 l = *lo + blo;
+    *hi = *hi + bhi + (l < *lo ? 1u : 0u);
+    *lo = l;
+    return l;
+}
+
+static inline void i64_sub(u32 *lo, u32 *hi, u32 blo, u32 bhi)
+{
+    const u32 borrow = (*lo < blo) ? 1u : 0u;
+    *lo -= blo;
+    *hi = *hi - bhi - borrow;
+}
+
+static inline void i64_neg(u32 *lo, u32 *hi)
+{
+    *lo = ~*lo + 1u;
+    *hi = ~*hi + (*lo == 0u ? 1u : 0u);
+}
+
+static inline int i64_lt(u32 alo, u32 ahi, u32 blo, u32 bhi)
+{
+    if (ahi != bhi) return (int)ahi < (int)bhi;
+    return alo < blo;
+}
+
+extern "C" u32 *gate6_tint64_add(u32 *a, const u32 *b)           // a += b
+{
+    i64_add(&a[0], &a[1], b[0], b[1]);
+    return a;
+}
+
+extern "C" u32 *gate6_tint64_sub(u32 *out, const u32 *a, const u32 *b)   // out = a - b
+{
+    u32 lo = a[0], hi = a[1];
+    i64_sub(&lo, &hi, b[0], b[1]);
+    out[0] = lo; out[1] = hi;
+    return out;
+}
+
+extern "C" u32 *gate6_tint64_mul(u32 *out, const u32 *a, const u32 *b)   // out = a * b, low 64 bits
+{
+    const unsigned long long p = (unsigned long long)a[0] * b[0];   // umull, no helper
+    out[0] = (u32)p;
+    out[1] = (u32)(p >> 32) + a[1] * b[0] + a[0] * b[1];
+    return out;
+}
+
+// Unsigned long division, a bit at a time: 64 steps of shift and compare.
+static void u64_div(u32 nlo, u32 nhi, u32 dlo, u32 dhi, u32 *qlo, u32 *qhi)
+{
+    u32 rlo = 0, rhi = 0, ql = 0, qh = 0;
+    for (int i = 63; i >= 0; i--) {
+        rhi = (rhi << 1) | (rlo >> 31);
+        rlo = (rlo << 1) | ((i >= 32 ? (nhi >> (i - 32)) : (nlo >> i)) & 1u);
+        if (rhi > dhi || (rhi == dhi && rlo >= dlo)) {
+            i64_sub(&rlo, &rhi, dlo, dhi);
+            if (i >= 32) qh |= 1u << (i - 32); else ql |= 1u << i;
+        }
+    }
+    *qlo = ql; *qhi = qh;
+}
+
+extern "C" u32 *gate6_tint64_div(u32 *out, const u32 *a, const u32 *b)   // out = a / b, towards zero
+{
+    u32 alo = a[0], ahi = a[1], blo = b[0], bhi = b[1];
+    const int neg = ((ahi ^ bhi) & 0x80000000u) != 0;
+    if ((int)ahi < 0) i64_neg(&alo, &ahi);
+    if ((int)bhi < 0) i64_neg(&blo, &bhi);
+    u32 qlo = 0, qhi = 0;
+    if (blo | bhi)                      // a divide by zero answers 0 rather than panicking the game
+        u64_div(alo, ahi, blo, bhi, &qlo, &qhi);
+    if (neg) i64_neg(&qlo, &qhi);
+    out[0] = qlo; out[1] = qhi;
+    return out;
+}
+
+extern "C" int gate6_tint64_ge(const u32 *a, const u32 *b) { return !i64_lt(a[0], a[1], b[0], b[1]); }
+extern "C" int gate6_tint64_lt(const u32 *a, const u32 *b) { return i64_lt(a[0], a[1], b[0], b[1]); }
+
+// TInt64::GetTReal(): the IEEE double, rounded to nearest even, answered in
+// r0:r1 in the game's FPA order (the sign-and-exponent word first), which a
+// 64-bit integer return puts there without any double crossing a helper.
+extern "C" unsigned long long gate6_tint64_real(const u32 *a)
+{
+    u32 lo = a[0], hi = a[1];
+    const u32 sign = hi & 0x80000000u;
+    if (sign) i64_neg(&lo, &hi);
+    if (!(lo | hi)) return 0;
+    int n = 63;                                     // the top set bit
+    while (!((n >= 32 ? hi >> (n - 32) : lo >> n) & 1u)) n--;
+    u32 mlo, mhi;                                   // the 53-bit mantissa, top bit at bit 52
+    u32 e = 1023u + (u32)n;
+    if (n > 52) {
+        const u32 sh = (u32)(n - 52);               // 1..11
+        mlo = (lo >> sh) | (hi << (32 - sh));
+        mhi = hi >> sh;
+        const u32 rem = lo & ((1u << sh) - 1u), half = 1u << (sh - 1);
+        if (rem > half || (rem == half && (mlo & 1u))) {
+            if (++mlo == 0u) mhi++;
+            if (mhi == 0x00200000u) { mhi = 0x00100000u; e++; }
+        }
+    } else {
+        const u32 sh = (u32)(52 - n);               // 0..52
+        if (sh >= 32)      { mhi = lo << (sh - 32); mlo = 0; }
+        else if (sh == 0)  { mhi = hi; mlo = lo; }
+        else               { mhi = (hi << sh) | (lo >> (32 - sh)); mlo = lo << sh; }
+    }
+    const u32 dhi = sign | (e << 20) | (mhi & 0x000FFFFFu);
+    return ((unsigned long long)mlo << 32) | dhi;   // r0 = dhi, r1 = mlo
+}
+
 extern "C" int gate6_mem_compare(const u8 *a, int la, const u8 *b, int lb)
 {
     const int n = (la < lb) ? la : lb;
@@ -707,6 +841,7 @@ u32 old_call2(const void *object, int slot, u32 a, u32 b);
 // Destructors stay 9.x: the wrapper is a real 9.x object and has to be torn
 // down as one. The old objects leak, which for now costs nothing.
 enum { VT_HEADER = 2 };
+enum { THREAD_MADE = 8, THREAD_MADE_NAME = 24 };   // RThread::Create records kept for RThread::Open by name (round 125)
 enum { APP_SLOTS = 18, SLOT_APP_DLL_UID = 5, SLOT_CREATE_DOCUMENT = 17 };
 enum { DOC_SLOTS = 23, SLOT_CREATE_APP_UI = 19 };
 enum { UI_SLOTS = 48, SLOT_UI_CONSTRUCT = 16 };
@@ -730,6 +865,13 @@ enum { OLD_CREATE_DOCUMENT = 12, OLD_UI_CONSTRUCT = 13, OLD_CREATE_APP_UI = 17 }
 // StopDisplayingMenuBar), and the 9.x slot each one answers (SYMBIAN.md,
 // the app UI vtable).
 enum { OLD_UI_FOREGROUND = 7, OLD_UI_SYSEVENT = 9, OLD_UI_COMMAND = 17 };
+// Round 125: One handles its keys in CCoeAppUi::HandleKeyEventL -- old slot
+// 6 (its vtable's sixth entry is in the image, the rest of the first
+// twenty-six are veneers), 9.x slot 7 (SYMBIAN.md, the app UI table), the
+// same one-slot shift as the three above. Its container does not override
+// OfferKeyEventL at all, so the control-side key bridge had nowhere to go.
+enum { OLD_UI_KEYEVENT = 6, SLOT_UI_KEYEVENT = 7 };
+enum { OLD_UI_COEENV = 4 };     // CCoeAppUi::iCoeEnv in the 7.0s layout, measured from One's ConstructL (round 125)
 // GCC98r2 puts two header words in front of an old vtable (old_call adds them).
 enum { OLD_VT_HEADER = 2 };
 
@@ -1025,6 +1167,8 @@ struct Context {
     u32 cone;               // and on cone, to find CCoeControl::OfferKeyEventL
     u32 eikcoctl;           // and on eikcoctl, for the status pane
     u32 bitgdi;             // and on bitgdi, to post the whole screen
+    u32 efsrv;              // and on efsrv, for RFs::SetSessionPath (round 125)
+    u32 euser;              // and on euser, for CleanupStack::PushL(TCleanupItem) (round 125)
     u32 paneTried;          // the status pane has been dealt with once
     u32 paneGone;           // and it reported itself invisible afterwards
     u32 newBaseConstructL;  // avkon's CAknAppUi::BaseConstructL, as resolved
@@ -1091,6 +1235,19 @@ struct Context {
     u32 coeLogged, dsaLogged;   // the two one-time dumps of round 119
     u32 ctlWindowFn;        // cone's CCoeControl::Window or DrawableWindow, as the game imports it (round 120)
     u32 realCtlDraw, realCtlFocus;  // the wrapper's own Draw and FocusChanged, before the hooks (round 123)
+    u32 realFindWildByDir, realFileManNewL;   // efsrv's, before the hooks that make their objects deletable (round 125)
+    u32 realFsEntry, realFsVolume;             // RFs::Entry and RFs::Volume, which fill a 9.x-sized object (round 125)
+    u32 realFsConnect;                         // RFs::Connect, before the hook that sets the session path
+    u32 setSessionPathFn;                      // RFs::SetSessionPath, resolved on the main thread for every thread's Connect
+    u32 realTimerAfter;                        // CTimer::After through its divert, for GAME_TIMER_MIRROR
+    u32 realPushLCBase;                        // CleanupStack::PushL(CBase*), before the hook for the game's own objects
+    u32 realThreadOpen;                        // RThread::Open(const TDesC&, TOwnerType), before the hook (round 125)
+    u32 *factoryStandin;                       // the null-object app UI factory, once built (round 125)
+    struct { u32 seq; u32 len; u16 name[THREAD_MADE_NAME]; } threadsMade[THREAD_MADE];   // the port's name index and the name the game gave each Create
+    u32 threadsMadeCount;
+    u32 defaultPathLen;                        // what the game gave RFs::SetDefaultPath, for every session it opens after
+    u16 defaultPath[256];
+    u32 oldDeleteReal[8], oldDeleteVt[8];      // per 9.x class: its vtable, and the three-word one the game gets
     u32 ctlVeneers;         // bit k set: the game's old control slot k is a veneer back into cone
     u32 ctlWindow;          // the wrapper control's window, as handed to the game's old control
     u32 dsaGcOff, dsaDevOff, dsaRgnOff;  // where the real CDirectScreenAccess keeps its gc, device and region on this ROM (0: the measured 3.2 offsets)
@@ -1175,6 +1332,7 @@ struct Context {
     u32 realFgEvent;        // ... and its HandleForegroundEventL
     u32 realSysEvent;       // ... HandleSystemEventL and HandleCommandL, the same
     u32 realCommand;
+    u32 oldKeyEvent, realKeyEvent;   // HandleKeyEventL, the game's old-slot override and the wrapper's own (round 125)
     u32 oldFgEvent;         // the game's own overrides of those three, on its old
     u32 oldSysEvent;        //   app UI (GAME_UI_FORWARD_EVENTS), 0 where it inherits
     u32 oldCommand;
@@ -1990,7 +2148,7 @@ enum { WORKER_NOTES = 1, WORKER_NOTE_MAX = 200 };
 // below -- gets the same story out of the box without the worker touching a
 // file at all, and an instrument that cannot be the fault is worth more than
 // one that might be.
-enum { WORKER_LOG = 0, WORKER_LOG_MAX = 4096 };   // bench: 1 for round 113's sound thread (readwrk.py reads it); 0 when shipping
+enum { WORKER_LOG = 0, WORKER_LOG_MAX = 4096 };   // bench: 1 for round 113's sound thread (readwrk.py reads it); 0 when shipping. Its file handle is the first worker's, so a second worker writes nothing (E511)
 
 static void worker_log(Context *c, u32 code, u32 from)
 {
@@ -2731,6 +2889,12 @@ enum { HAL_MEMORY_RAM_FREE = 16 };
 // undo it -- the overflow has already overwritten the next row -- so the pitch
 // the game uses has to be 192, and the only number we hand it is iScreenSize.
 // GAME_W, GAME_PITCH and GAME_H are per-game and live in game.h.
+// GAME_SRC_BPP too: the bytes a pixel the game writes into the buffer it is
+// given, 16 for every title that draws as an N-Gage does, 32 for one that
+// takes the display mode it is told (One, round 125).
+#ifndef GAME_SRC_BPP
+#define GAME_SRC_BPP 16
+#endif
 enum { OWN_SCREEN = 1, SCREEN_4K = 1, TELL_GAME_ITS_SIZE = 0 };
 // 0 = off. Set it to a frame number to drop that frame's raw buffer into
 // C:\g6code.bin, which is how the stride and the overflow were measured.
@@ -4076,6 +4240,36 @@ extern "C" void gate6_request_complete(u32 **status, int reason, Context *c)
 // stop queueing behind frames.
 enum { YIELD_TO_IDLE = 0, EPRIORITY_IDLE = -100, TIMER_PRIORITY = EPRIORITY_IDLE - 1 };
 
+// **The game's own view of its timer.** Everything the game does to its
+// CTimer goes to the wrapper, and the wrapper's state reaches the game's
+// object only when RunL carries it across. One arms its name-entry timer as
+// `if (iActive) Cancel(); After(t);` (image 0x1d1d8), and iActive is the
+// game's own word, +8, which nothing set while the wrapper was pending -- so
+// the second key inside a second skipped the Cancel and re-armed a pending
+// wrapper: E32USER-CBase 42, EReqAlreadyActive (E514-E516). With the knob on,
+// After and a forwarded Cancel carry the wrapper's status and flags across
+// as RunL does. Off for the titles that shipped before it.
+enum { EUSER_CTIMER_AFTER = 885 };          // CTimer::After(TTimeIntervalMicroSeconds32), euseru.def
+#ifndef GAME_TIMER_MIRROR
+#define GAME_TIMER_MIRROR 0
+#endif
+
+static void timer_mirror(Context *c)
+{
+    if (!GAME_TIMER_MIRROR || !c->oldTimer || !c->wrapTimer)
+        return;
+    c->oldTimer[ACTIVE_STATUS / 4] = c->wrapTimer[ACTIVE_STATUS / 4];
+    c->oldTimer[ACTIVE_ACTIVE / 4] = c->wrapTimer[ACTIVE_ACTIVE / 4];
+}
+
+extern "C" void gate6_timer_after(u32 *self, u32 interval, Context *c)
+{
+    typedef void (*After)(void *, u32);
+    ((After)c->realTimerAfter)(self, interval);     // the divert maps old to wrapper
+    if (self == c->oldTimer || self == c->wrapTimer)
+        timer_mirror(c);
+}
+
 extern "C" void *gate6_ctimer_ctor(u32 *oldSelf, int priority, Context *c)
 {
     c->oldTimer = oldSelf;
@@ -5063,8 +5257,17 @@ extern "C" void *gate6_alloc(int size, u32, Context *c)
 // that ever existed. Three of the four words read as deliberate: 0x56785733,
 // 0x10011234.
 enum { ANSWER_THE_CARD = 1, CARD_CID_ORDER = 0 };
+// Round 125: the identity is the title's, not the port's. One's retail dump
+// is named for its card -- `MMC-ID 567857f1-7d011234-b2b1879-6000400`, the
+// same four words in the same order as the crack's above -- and answered
+// with Asphalt 2's its protection decoded garbage and jumped through it
+// (E488). GAME_CARD_CID in game.h; the Asphalts and Ashen keep the words
+// they have shipped with.
+#ifndef GAME_CARD_CID
+#define GAME_CARD_CID 0x56785733, 0x10011234, 0x0b70194e, 0x16000400
+#endif
 static const u32 kCardCidBE[MMC_CID_WORDS + 1] = {
-    0x56785733, 0x10011234, 0x0b70194e, 0x16000400, 0x00000000,
+    GAME_CARD_CID, 0x00000000,
 };
 static const u32 kCardCidLE[MMC_CID_WORDS + 1] = {   // `nc.dat`, kept for the record
     0xbd81cbfb, 0xeb08cd1e, 0x6d341c6e, 0xe83e5d16, 0x00000000,
@@ -5473,6 +5676,17 @@ enum { STACK_WORDS = 51, STACK_TARGET = 46 };
 // The name is ours, four characters, one per create. Nothing reads it: the
 // port tells threads apart by their stacks, not their names.
 enum { KERR_ALREADY_EXISTS = -11, THREAD_NAME_CHARS = 4 };
+// **Round 125: a title that does call RThread::Open by that name.** One's
+// audio module creates its thread as "ToeAThr", and later opens it again
+// by that name to Resume() it -- a liveness check whose failure puts up a
+// warning note, "[aud] thread died 1" (E478). The rename above makes the
+// name unfindable, and on EKA2 `RThread::Open(name)` wants the full
+// `process::thread` name in any case. So each Create records the name the
+// game asked for beside the port's own, and an Open that the real function
+// refuses is retried with the full name: this process's
+// (`RHandleBase::FullName()` on the current-process handle, euseru.def @
+// 1515, inside the range the ROM agrees with) and `::g6wN`. A thread that
+// has ended fails that Open too, and the game hears it, as it should.
 
 // **A thread's function, witnessed on its way out.** Round 118: Asphalt 2
 // on an N91 (S60 3.0) ends with `User::Exit` from the stub's own thread
@@ -5495,6 +5709,17 @@ extern "C" int gate6_thread_run(void *arg, u32, const u32 *rec)
 
 extern "C" void gate6_thread_name(Context *c, u32 *regs)
 {
+    if (c->threadsMadeCount < (u32)THREAD_MADE) {
+        u32 len = 0;
+        const u16 *t = des_text((const u32 *)regs[1], &len);
+        if (t && len && len <= (u32)THREAD_MADE_NAME) {
+            c->threadsMade[c->threadsMadeCount].seq = c->nameSeq;
+            c->threadsMade[c->threadsMadeCount].len = len;
+            for (u32 i = 0; i < len; i++)
+                c->threadsMade[c->threadsMadeCount].name[i] = t[i];
+            c->threadsMadeCount++;
+        }
+    }
     if (c->spare + 8 + TRACE <= c->spareEnd && regs[2]) {
         u32 *rec = (u32 *)c->spare;
         c->spare += 8;
@@ -5513,6 +5738,48 @@ extern "C" void gate6_thread_name(Context *c, u32 *regs)
     regs[1] = (u32)c->nameDes;
     log_event(c, NOTE_THREAD_CREATE, 0x6E414D00u | (c->nameSeq & 0xFF));
     log_block(c);
+}
+
+enum { EUSER_HANDLE_FULLNAME = 1515, KCURRENT_PROCESS_HANDLE = 0xFFFF8000u, FULLNAME_WORDS = 2 + 256 / 2 };
+extern "C" int gate6_thread_open(u32 *self, const u32 *name, u32 type, Context *c)
+{
+    typedef int (*Open)(u32 *, const u32 *, u32);
+    typedef u32 *(*FullName)(u32 *, const u32 *);   // a TFullName comes back through a hidden pointer
+    const int r = ((Open)c->realThreadOpen)(self, name, type);
+    if (r == 0)
+        return 0;
+    u32 len = 0;
+    const u16 *t = des_text(name, &len);
+    for (u32 k = 0; t && k < c->threadsMadeCount; k++) {
+        if (c->threadsMade[k].len != len)
+            continue;
+        u32 i = 0;
+        while (i < len && c->threadsMade[k].name[i] == t[i])
+            i++;
+        if (i != len)
+            continue;
+        FullName fullName = c->euser ? (FullName)rlibrary_lookup(&c->euser, EUSER_HANDLE_FULLNAME) : 0;
+        if (!fullName)
+            break;
+        u32 full[FULLNAME_WORDS];
+        const u32 process = KCURRENT_PROCESS_HANDLE;
+        fullName(full, &process);
+        u32 n = full[0] & 0x0FFFFFFF;
+        u16 *text = (u16 *)(full + 2);
+        if (n + 6 <= 256) {
+            text[n++] = ':'; text[n++] = ':';
+            text[n++] = 'g'; text[n++] = '6'; text[n++] = 'w';
+            text[n++] = (u16)('0' + (c->threadsMade[k].seq & 0xF));
+            full[0] = ((u32)EBufType << KTypeShift) | n;
+        }
+        const int d = ((Open)c->realThreadOpen)(self, full, type);
+        log_event(c, NOTE_THREAD_OPEN, (u32)r);
+        log_event(c, NOTE_THREAD_OPEN, (u32)d);
+        return d;
+    }
+    log_event(c, NOTE_THREAD_OPEN, (u32)r);
+    log_event(c, NOTE_THREAD_OPEN, 0xFFFFFFFFu);
+    return r;
 }
 
 // Kept, and now only a witness: if a create still comes back
@@ -6536,8 +6803,12 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         // handed over together with a 176x208 size and the run died at the
         // first Update. Here it is always big enough for the device's own
         // screen.
-        u32 want = w * h * 2;
-        if (want < (u32)(SRC_PITCH_MAX * GAME_H * 2)) want = SRC_PITCH_MAX * GAME_H * 2;
+        // Round 125: One honours the display mode it is told (EColor16MU on
+        // every S60v3 so far) and writes four bytes a pixel, 176 to a row
+        // (stride.py on E491's dump: 704 bytes). GAME_SRC_BPP says which.
+        const u32 srcBytes = (u32)GAME_SRC_BPP >> 3;
+        u32 want = w * h * srcBytes;
+        if (want < (u32)(SRC_PITCH_MAX * GAME_H * srcBytes)) want = SRC_PITCH_MAX * GAME_H * srcBytes;
         c->gameScreen = (u16 *)user_allocz((int)want);
         if (c->gameScreen) {
             p[3] = (u32)c->gameScreen;
@@ -6572,6 +6843,17 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         }
     }
     if (!QUIET) log_block(c);
+    // **And every poll after the first.** The buffer is handed over where it
+    // is made, above, and only there -- which answered the Asphalts, which
+    // ask once. One asks again every frame, and past its splash it took the
+    // real address the later polls still carried and wrote its 176x208
+    // 32-bit frames straight into the panel's 240x320 buffer: the band of
+    // streaks across the top of E504's screenshots, while gate6_screen_update
+    // went on posting the first poll's buffer -- the splash -- over the middle
+    // (E505: the buffer's checksum never changed again, the posts went on).
+    // An N-Gage answered the same address every time; so does this.
+    if (OWN_SCREEN && c->gameScreen && p[2])
+        p[3] = (u32)c->gameScreen;
 }
 
 // 16 bits to 32, once a frame. The game's own screen is RGB565 on the N-Gage;
@@ -6688,10 +6970,16 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
                 continue;
             u8 *row = c->realScreen + (y + c->offY) * c->realPitch;
             const u16 *srow = src + c->srcOrigin + (u32)c->mapY[y] * (u32)c->srcPitch;
+            const u32 *srow32 = (const u32 *)src + c->srcOrigin + (u32)c->mapY[y] * (u32)c->srcPitch;
             for (u32 x = 0; x < c->dstW; x++) {
-                const u32 v = srow[c->mapX[x]];
+                const u32 v = (GAME_SRC_BPP == 32) ? 0u : srow[c->mapX[x]];
                 u32 r, g, b;
-                if (SCREEN_4K) {
+                if (GAME_SRC_BPP == 32) {           // EColor16MU: 0x00RRGGBB
+                    const u32 v32 = srow32[c->mapX[x]];
+                    r = (v32 >> 16) & 0xFF;
+                    g = (v32 >> 8) & 0xFF;
+                    b = v32 & 0xFF;
+                } else if (SCREEN_4K) {
                     r = ((v >> 8) & 0xF) * 17;
                     g = ((v >> 4) & 0xF) * 17;
                     b = (v & 0xF) * 17;
@@ -7063,6 +7351,22 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
 // showed it because nothing in its fifteen thousand records calls Cancel.
 enum { ROM_VTABLE_FLOOR = 0x80000000u };   // every 9.x vtable this port has read sits above it
 
+// **The game's own active objects.** One builds its timers itself: a CActive
+// subclass of its own around an RTimer (image+0x26628), thirty-five Cancel
+// sites. Dropping those as strays left the object marked active, and the
+// game's shutdown of one -- Cancel, RTimer::Close, CActive::Deque -- then
+// reached the real Cancel inside Deque, whose DoCancel found the timer handle
+// already closed and whose User::WaitForRequest waited for a completion that
+// could no longer come. Every later signal to the thread -- the pointer
+// event, every key -- was swallowed by that wait (E493 to E502: the thread
+// wakes once and sleeps again, the env's status complete and never run).
+// The old vtable's slot order coincides with EABI's for CActive (old k=1
+// DoCancel is EABI slot 3, the same word), which is what already lets the
+// scheduler run the game's RunL, so the real Cancel is the right one.
+#ifndef GAME_CANCEL_OWN_OBJECTS
+#define GAME_CANCEL_OWN_OBJECTS 0
+#endif
+
 extern "C" void gate6_cancel(u32 *self, u32, Context *c)
 {
     typedef void (*Cancel)(void *);
@@ -7084,6 +7388,16 @@ extern "C" void gate6_cancel(u32 *self, u32, Context *c)
         ((Cancel)c->newCancel)(self);
         log_event(c, NOTE_CANCEL_OUT, (u32)self);
         return;
+    } else if (GAME_CANCEL_OWN_OBJECTS && self && !((u32)self & 3) &&
+               self[0] >= c->codeBase && self[0] < c->codeBase + c->codeLen) {
+        // An object of the game's own class, see GAME_CANCEL_OWN_OBJECTS above.
+        log_event(c, NOTE_OWN_CANCEL, (u32)self);
+        log_event(c, NOTE_OWN_CANCEL, self[ACTIVE_STATUS / 4]);
+        log_event(c, NOTE_OWN_CANCEL, self[ACTIVE_ACTIVE / 4]);
+        if (!QUIET) log_block(c);
+        ((Cancel)c->newCancel)(self);
+        log_event(c, NOTE_CANCEL_OUT, (u32)self);
+        return;
     } else {
         // The game's own four call sites are all on the timer or the direct
         // screen access object, so anything else got here without being
@@ -7091,6 +7405,8 @@ extern "C" void gate6_cancel(u32 *self, u32, Context *c)
         // pointer happens to be is how the run ends; recording it and
         // returning is how the run carries on and says what came next.
         log_event(c, NOTE_STRAY, (u32)self);
+        log_event(c, NOTE_STRAY, (self && !((u32)self & 3)) ? self[0] : 0xBAD0u);   // its vptr: image, ROM, or neither
+        log_event(c, NOTE_STRAY, (self && !((u32)self & 3)) ? self[ACTIVE_ACTIVE / 4] : 0xBAD0u);
         if (!QUIET) log_block(c);
         return;
     }
@@ -7117,6 +7433,8 @@ extern "C" void gate6_cancel(u32 *self, u32, Context *c)
     if (!QUIET) log_block(c);
     ((Cancel)c->newCancel)(self);
     log_event(c, NOTE_CANCEL_OUT, (u32)self);
+    if (onTimer)
+        timer_mirror(c);
     if (onTimer) {
         log_event(c, NOTE_ACTIVE_ST, c->wrapTimer[ACTIVE_STATUS / 4]);
         log_event(c, NOTE_ACTIVE_FL, c->wrapTimer[ACTIVE_ACTIVE / 4]);
@@ -7550,6 +7868,268 @@ static u32 *bitgc_standin(Context *c, u32 *real)
 // result through r2 and killed the thread. Nothing else is ever called on
 // a CTrapCleanup, so the stand-in's table is three words of the delete
 // above: EABI slots 0 and 1 for a 9.x caller, old slot 0 for the game.
+// ---------------------------------------------------------------------------
+// **9.x objects the game owns and deletes, round 125.** `delete dir` in
+// GCC98r2 is a call through vtable word 2 with r1 = 3 -- the one destructor
+// entry, after the two header words -- and word 2 of a 9.x object's vtable
+// is `CBase::Extension_`, which writes its null result through r2 (E470:
+// `TFindFile::FindWildByDir` handed One a CDir, and freeing it wrote to
+// address 4; the CTrapCleanup of E381 died the same way). The CFbsBitGc and
+// CTrapCleanup answers are stand-in objects, which works when the game only
+// ever calls the object through its vtable; a CDir is also handed back to
+// `CDir::Count()` and `operator[]` as `this`, so the object must stay the
+// real one. Its vtable pointer is what changes: a copy of the real table
+// whose word 2 -- `CBase::Extension_` to 9.x, the destructor entry to the
+// game -- is the real deleting destructor instead. Everything else stays:
+// EABI slots 0 and 1 for a 9.x caller such as PopAndDestroy, and the
+// virtuals further along that the class's own code calls (E472: CFileMan
+// runs its copy through CFileBase's slot 4, and a three-word table sent it
+// to address 0). Nothing calls Extension_ on a CDir or a CFileMan. One
+// table per real vtable, kept in the context.
+enum { OLD_DELETE_VT_WORDS = 32 };
+static void old_deletable(Context *c, u32 *obj)
+{
+    if (!obj || ((u32)obj & 3) || !obj[0] || (obj[0] & 3))
+        return;
+    const u32 real = obj[0];
+    u32 k = 0;
+    for (; k < 8 && c->oldDeleteReal[k]; k++)
+        if (c->oldDeleteReal[k] == real)
+            break;
+    if (k == 8)
+        return;                             // more classes than expected: the game keeps the 9.x table
+    if (!c->oldDeleteReal[k]) {
+        u32 *vt = (u32 *)user_allocz(OLD_DELETE_VT_WORDS * 4);
+        if (!vt)
+            return;
+        for (u32 i = 0; i < (u32)OLD_DELETE_VT_WORDS; i++)
+            vt[i] = ((const u32 *)real)[i];
+        vt[2] = ((const u32 *)real)[1];     // old slot 0: the game's `delete`, r1 = 3 -> the deleting destructor
+        c->oldDeleteReal[k] = real;
+        c->oldDeleteVt[k] = (u32)vt;
+        log_event(c, NOTE_OLD_DELETE, real);
+    }
+    obj[0] = c->oldDeleteVt[k];
+    log_event(c, NOTE_OLD_DELETE, (u32)obj);
+}
+
+extern "C" int gate6_find_wild_by_dir(void *self, const void *name, const void *dir, u32 **out, Context *c)
+{
+    typedef int (*Fn)(void *, const void *, const void *, u32 **);
+    const int r = ((Fn)c->realFindWildByDir)(self, name, dir, out);
+    if (r == 0 && out)
+        old_deletable(c, *out);
+    return r;
+}
+
+extern "C" u32 *gate6_fileman_newl(void *fs, u32, Context *c)
+{
+    typedef u32 *(*Fn)(void *);
+    u32 *fm = ((Fn)c->realFileManNewL)(fs);
+    old_deletable(c, fm);
+    return fm;
+}
+
+// ---------------------------------------------------------------------------
+// **Two file-server structures that grew, round 125.** The game lays out a
+// `TEntry` on its stack at the 7.0s size, 0x220 bytes: iAtt, iSize,
+// iModified, iType, iName. 9.x's has two more words after the name
+// (iSizeHigh, iReserved: f32file.h), and both `TEntry::TEntry()` and
+// `RFs::Entry` write them -- eight bytes past the game's object, which in
+// One's 0x578f0 is where the frame's saved r4 and r5 sit (E471: the caller
+// came back with r5 = 0 and died on `TDes16::Copy`). `TVolumeInfo` is worse:
+// 9.x's `TDriveInfo` gained a fifth word (iConnectionBusType) so every field
+// after it moved, and the whole thing is 0x23c against the old 0x228.
+// The constructors become stand-ins -- TEntry's set only the two new words,
+// so nothing; TVolumeInfo's zero-fills, so zero the old size -- and the two
+// queries run against a buffer here and copy the old layout back, field by
+// field for the volume.
+enum { OLD_TENTRY_BYTES = 0x220, NEW_TENTRY_WORDS = 0x240 / 4,
+       OLD_TVOLUMEINFO_BYTES = 552, NEW_TVOLUMEINFO_WORDS = 640 / 4, VOLUME_NAME_WORDS = 516 / 4 };
+
+extern "C" int gate6_fs_entry(void *fs, const void *name, u32 *out, Context *c)
+{
+    typedef int (*Fn)(void *, const void *, u32 *);
+    u32 buf[NEW_TENTRY_WORDS];
+    const int r = ((Fn)c->realFsEntry)(fs, name, buf);
+    if (out && !((u32)out & 3))
+        for (u32 i = 0; i < (u32)OLD_TENTRY_BYTES / 4; i++)
+            out[i] = buf[i];
+    return r;
+}
+
+extern "C" int gate6_fs_volume(void *fs, u32 *out, int drive, Context *c)
+{
+    typedef int (*Fn)(void *, u32 *, int);
+    u32 buf[NEW_TVOLUMEINFO_WORDS];
+    const int r = ((Fn)c->realFsVolume)(fs, buf, drive);
+    if (out && !((u32)out & 3)) {
+        out[0] = buf[0]; out[1] = buf[1]; out[2] = buf[2]; out[3] = buf[3];   // TDriveInfo, less the 9.x bus type
+        out[4] = buf[5];                                                     // iUniqueID
+        out[5] = buf[6]; out[6] = buf[7];                                    // iSize: a TInt64 {low, high} is a long long
+        out[7] = buf[8]; out[8] = buf[9];                                    // iFree
+        for (u32 i = 0; i < (u32)VOLUME_NAME_WORDS; i++)                     // iName, a TBufC<256>
+            out[9 + i] = buf[10 + i];
+    }
+    return r;
+}
+
+extern "C" u32 *gate6_volumeinfo_ctor(u32 *obj)
+{
+    if (obj && !((u32)obj & 3))
+        for (u32 i = 0; i < (u32)OLD_TVOLUMEINFO_BYTES / 4; i++)
+            obj[i] = 0;
+    return obj;                 // a GCC98r2 constructor hands the object back
+}
+
+// ---------------------------------------------------------------------------
+// **The default path, round 125.** EKA1's `RFs::SetDefaultPath` set a
+// process-wide path that every file-server session inherited, and 9.x
+// removed it with platform security: the export is still there and panics
+// the caller ('FSInsecCli panic' 1, cl_insecure.cpp; E468). One sets it to
+// its own directory in its CreateDocumentL -- on a session it closes at
+// once -- and from then on opens files by drive-less names
+// (`\system\apps\6r58\Data\Parts\config.anm`), which the file server
+// completes from the session's path. A no-op (E470) left every later
+// session at `C:\`, the open failed, and the stream the game read without
+// checking had no source (E474). So the path is kept here, set on the
+// session it was given, and set again on every session the game connects
+// afterwards through 9.x's per-session `RFs::SetSessionPath`: efsrvu.def
+// and epoc9.def both put it at 44, and the ROM's efsrv exports 351.
+enum { EFSRV_SET_SESSION_PATH = 44 };
+
+static int apply_default_path(Context *c, void *fs)
+{
+    typedef int (*SetPath)(void *, const u32 *);
+    if (!c->defaultPathLen || !c->efsrv)
+        return -5;                                  // KErrNotSupported: nothing to apply with
+    // Resolved once, on the thread that owns the library handle, and kept: a
+    // worker's RFs::Connect lands here too (One's part loader, image+0x50c68,
+    // on its own thread), and RLibrary::Lookup through the main thread's handle
+    // from there fails -- so the worker's session kept its private default,
+    // C:\Private\<uid>\, and its drive-less "\system\apps\6r58\Data\Parts\
+    // Male.ppd" resolved onto drive C: and panicked "opening part dat" (E512).
+    // A function address is good in every thread of the process.
+    if (!c->setSessionPathFn && on_main_thread(c))
+        c->setSessionPathFn = (u32)rlibrary_lookup(&c->efsrv, EFSRV_SET_SESSION_PATH);
+    SetPath fn = (SetPath)c->setSessionPathFn;
+    if (!fn)
+        return -1;
+    u32 des[2 + 256 / 2];                           // a TBuf<256> over the kept text
+    des[0] = ((u32)EBuf << KTypeShift) | c->defaultPathLen;
+    des[1] = 256;
+    u16 *text = (u16 *)(des + 2);
+    for (u32 i = 0; i < c->defaultPathLen; i++)
+        text[i] = c->defaultPath[i];
+    return fn(fs, des);
+}
+
+extern "C" int gate6_set_default_path(void *fs, const u32 *path, Context *c)
+{
+    u32 len = 0;
+    const u16 *t = des_text(path, &len);
+    if (t && len && len <= 256) {
+        for (u32 i = 0; i < len; i++)
+            c->defaultPath[i] = t[i];
+        c->defaultPathLen = len;
+    }
+    log_event(c, NOTE_DEFAULT_PATH, len);
+    log_event(c, NOTE_DEFAULT_PATH, (u32)apply_default_path(c, fs));
+    return 0;                                       // what EKA1 answered
+}
+
+extern "C" int gate6_fs_connect(void *fs, int slots, Context *c)
+{
+    typedef int (*Fn)(void *, int);
+    const int r = ((Fn)c->realFsConnect)(fs, slots);
+    if (r == 0 && c->defaultPathLen)
+        log_event(c, NOTE_DEFAULT_PATH, 0x5E550000u | ((u32)apply_default_path(c, fs) & 0xFFFFu));
+    return r;
+}
+
+// ---------------------------------------------------------------------------
+// **CleanupStack::PushL(CBase*) with one of the game's own objects, round
+// 125.** 9.x pushes the item as `CBase::Delete`, which runs the object's
+// EABI deleting destructor -- vtable word 1. On a GCC98r2 vtable word 1 is
+// the second header word, 0, and the first leave that popped such an item
+// jumped to address 0 (E475; E477 showed the item). An object whose vtable
+// lies in the game's image is pushed instead as a TCleanupItem whose
+// operation calls the old destructor entry, word 2, with the in-charge flag
+// 3 (destroy and free), which is what `delete` compiles to in the game.
+// A 9.x object -- its vtable in the ROM, or one of the port's stand-ins --
+// goes to the real PushL as before. Pop, PopAndDestroy and Check see the
+// same pointer either way.
+enum { EUSER_PUSHL_ITEM = 207 };    // CleanupStack::PushL(TCleanupItem): euseru.def @ 207
+
+extern "C" void gate6_old_cbase_delete(void *obj)
+{
+    typedef void (*OldDtor)(void *, int);
+    const u32 *vt = (obj && !((u32)obj & 3)) ? (const u32 *)((const u32 *)obj)[0] : 0;
+    if (vt && vt[2])
+        ((OldDtor)vt[2])(obj, 3);
+}
+
+extern "C" void gate6_pushl_cbase(void *obj, u32, Context *c)
+{
+    typedef void (*Real)(void *);
+    typedef void (*PushItem)(u32, u32);     // a TCleanupItem by value: operation in r0, pointer in r1
+    const u32 vt = (obj && !((u32)obj & 3)) ? ((const u32 *)obj)[0] : 0u;
+    if (vt >= c->codeBase && vt < c->codeBase + c->codeLen && c->euser) {
+        PushItem push = (PushItem)rlibrary_lookup(&c->euser, EUSER_PUSHL_ITEM);
+        if (push) {
+            log_event(c, NOTE_OLD_PUSH, (u32)obj);
+            push((u32)&gate6_old_cbase_delete, (u32)obj);
+            return;
+        }
+    }
+    ((Real)c->realPushLCBase)(obj);
+}
+
+// ---------------------------------------------------------------------------
+// **The app UI factory, round 125.** One's container ConstructL asks
+// `CEikonEnv::AppUiFactory()` for the factory and calls its old slot 19,
+// then slot 2 of what comes back with EFalse -- the N-Gage idiom for
+// hiding a piece of screen furniture (a status pane or a button group) at
+// start-up. On 9.x the factory's slots are numbered differently (EIKAUFTY.H
+// gained DoLaunchPopupL, and the EABI table has no header), the slot it
+// landed on answered nothing, and the game read a null (E487). The port
+// builds the app UI with ENoScreenFurniture, so there is nothing to hide:
+// the factory the game gets is a null object -- every old slot answers a
+// dummy whose every old slot answers 0. Which slot 19 was in the 7.0s
+// interface is not measured; with this answer it does not have to be.
+enum { NULL_OBJECT_SLOTS = 48 };
+
+static u32 *null_object(Context *c, u32 answer)
+{
+    if (c->spare + 3 * 4 + 2 * 4 > c->spareEnd)
+        return 0;
+    u32 *thunk = (u32 *)c->spare;           // ldr r0, [pc, #-4]-style constant: ldr r0, [pc]; bx lr; .word answer
+    thunk[0] = 0xE59F0000;                  // ldr r0, [pc, #0]  -> thunk[2]
+    thunk[1] = 0xE12FFF1E;                  // bx  lr
+    thunk[2] = answer;
+    c->spare += 3 * 4;
+    user_imb_range(thunk, thunk + 3);
+    u32 *vt = (u32 *)user_allocz((2 + NULL_OBJECT_SLOTS) * 4);
+    u32 *obj = (u32 *)user_allocz(4);
+    if (!vt || !obj)
+        return 0;
+    for (u32 i = 0; i < (u32)NULL_OBJECT_SLOTS; i++)
+        vt[2 + i] = (u32)thunk;
+    obj[0] = (u32)(vt + 2);                 // the game indexes from the header's end, as old_call does
+    return obj;
+}
+
+extern "C" void *gate6_appui_factory(void *, u32, Context *c)
+{
+    if (!c->factoryStandin) {
+        u32 *dummy = null_object(c, 0);
+        c->factoryStandin = dummy ? null_object(c, (u32)dummy) : 0;
+        log_event(c, NOTE_FACTORY, (u32)c->factoryStandin);
+        log_event(c, NOTE_FACTORY, (u32)dummy);
+    }
+    return c->factoryStandin;
+}
+
 // **The pack reads, written down.** Round 111: on the N95 the game opened
 // its pack, and the next record is the close -- where the bench reads the
 // header and loads for a second. The reads are not milestones, so nothing
@@ -7714,6 +8294,7 @@ static const struct { u16 index; u8 flags; } kFpaRegs[] = {
     { IMPORT_ADDDF3, FPA_BIN }, { IMPORT_SUBDF3, FPA_BIN }, { IMPORT_MULDF3, FPA_BIN }, { IMPORT_DIVDF3, FPA_BIN },
     { IMPORT_NEGDF2, FPA_NEG }, { IMPORT_FLOATSIDF, FPA_I2D }, { IMPORT_EXTENDSFDF2, FPA_I2D },
     { IMPORT_FIXDFSI, FPA_D2I }, { IMPORT_TRUNCDFSF2, FPA_D2I },
+    { IMPORT_MATH_FRAND, FPA_I2D },         // Math::FRand(TInt64&) answers a double in r0:r1 (One, round 125)
     { IMPORT_LTDF2, FPA_CMP }, { IMPORT_GTDF2, FPA_CMP }, { IMPORT_GEDF2, FPA_CMP },
     { IMPORT_LEDF2, FPA_CMP }, { IMPORT_EQDF2, FPA_CMP }, { IMPORT_NEDF2, FPA_CMP },
 };
@@ -8121,7 +8702,14 @@ static int old_slot_is_veneer(const Context *c, u32 slot)
     const u32 *vt = (const u32 *)obj[0];
     if (!vt || ((u32)vt & 3)) return 0;
     const u32 *fn = (const u32 *)vt[2 + slot];
-    if (!fn || ((u32)fn & 3)) return 0;
+    // A veneer lives in the game's image. Round 125: One's container
+    // vtable is shorter than the 32 slots asked about, and the word past
+    // its end (0xFFFFFFC0) was read as a function (E484, E485).
+    // Compared without adding to fn: Asphalt Urban GT's word past the end is
+    // 0xFFFFFFFC, and fn + 12 wrapped to 8, passed, and was read (E517).
+    if (!fn || ((u32)fn & 3) || c->codeLen < 12 || (u32)fn < c->codeBase ||
+        (u32)fn - c->codeBase > c->codeLen - 12)
+        return 0;
     return fn[0] == 0xE59FC004u && fn[1] == 0xE59CC000u && fn[2] == 0xE12FFF1Cu;
 }
 
@@ -8939,7 +9527,12 @@ extern "C" void gate6_trap_unmark(void *self, u32, u32, Context *)
 // hook's own stack raw, as the fault handler does, so the frames above
 // euser's User::Leave say who raised it (round 113: -1003 from inside the
 // game's tick, through no import of the game's).
-enum { LEAVE_RAW = 0, LEAVE_RAW_REASON = -1003, LEAVE_RAW_WORDS = 128 };
+enum { LEAVE_RAW = 0, LEAVE_RAW_REASON = -1003, LEAVE_RAW_WORDS = 128 };   // bench: 1 and a reason to dump its leaves (One E476)
+// Bench knob, 0 when shipping: the 9.x cleanup stack's items, base to next,
+// before the leave pops them (E475: an item with a null operation was
+// called). CCleanup is {vptr, iBase, iTop, iNext}; an item is {operation,
+// pointer}, a null operation marking a level.
+enum { LOG_CLEANUP = 0, LOG_CLEANUP_ITEMS = 24 };   // bench: 1 dumps the cleanup stack at each leave (One E477)
 
 extern "C" void gate6_trap_leave(void *self, u32 reason, u32, Context *c)
 {
@@ -8953,6 +9546,17 @@ extern "C" void gate6_trap_leave(void *self, u32 reason, u32, Context *c)
         log_block(c);
     }
     TrapHandler *h = (TrapHandler *)self;
+    if (LOG_CLEANUP && h->iCleanup && !((u32)h->iCleanup & 3)) {
+        const u32 *base = (const u32 *)h->iCleanup[1], *next = (const u32 *)h->iCleanup[3];
+        const u32 n = (next > base && next - base < 4096) ? (u32)(next - base) / 2 : 0u;
+        log_event(c, NOTE_CLEANUP_ITEM, 0xC1EA0000u | n);
+        const u32 from = n > (u32)LOG_CLEANUP_ITEMS ? n - (u32)LOG_CLEANUP_ITEMS : 0u;
+        for (u32 i = from; i < n; i++) {
+            log_event(c, NOTE_CLEANUP_ITEM, base[2 * i]);
+            log_event(c, NOTE_CLEANUP_ITEM, base[2 * i + 1]);
+        }
+        log_block(c);
+    }
     if (h->orig)
         ((Vt1)vt_of(h->orig)[2])(h->orig, reason);   // the cleanup stack, back to the mark
     log_event(c, NOTE_TRAP, 0x1EA);
@@ -9610,6 +10214,18 @@ extern "C" void gate6_ui_sysevent(void *self, const void *event, Context *c)
         ((SysEvent)c->realSysEvent)(self, event);
 }
 
+extern "C" u32 gate6_ui_keyevent(void *self, const void *key, u32 type, Context *c)
+{
+    typedef u32 (*KeyEvent)(void *, const void *, u32);
+    if (key) {
+        log_event(c, NOTE_KEY, 0xA990000u | (((const u32 *)key)[1] & 0xFFFF));   // app UI: the scan code
+        log_event(c, NOTE_KEY, type);
+    }
+    if (GAME_UI_FORWARD_EVENTS && c->oldKeyEvent)
+        return ((KeyEvent)c->oldKeyEvent)(c->oldUi, key, type);
+    return ((KeyEvent)c->realKeyEvent)(self, key, type);
+}
+
 extern "C" void gate6_ui_command(void *self, u32 command, Context *c)
 {
     typedef void (*Command)(void *, u32);
@@ -9632,8 +10248,8 @@ static u32 old_override(const Context *c, const u32 *oldObj, u32 slot)
     if (!vt || ((u32)vt & 3))
         return 0;
     const u32 f = vt[OLD_VT_HEADER + slot];
-    if (f < c->codeBase || f + 12 > c->codeBase + c->codeLen || (f & 3))
-        return 0;
+    if (f < c->codeBase || c->codeLen < 12 || f - c->codeBase > c->codeLen - 12 || (f & 3))
+        return 0;                       // no f + 12: it wraps for a word near the top (E517)
     const u32 *w = (const u32 *)f;
     if (w[0] == 0xE59FC004 && w[1] == 0xE59CC000 && w[2] == 0xE12FFF1C)
         return 0;
@@ -9691,6 +10307,12 @@ extern "C" void *gate6_create_app_ui(void *self)
 
     Context *c = context_of(self);
     c->oldUi = (u32 *)oldUi;
+    // Round 125: the old CCoeAppUi's iCoeEnv is its word 1 -- One's ConstructL
+    // reads it (`ldr r0, [r6, #4]`) for AllocReadResourceAsDes16LC, and cone
+    // read a null environment's resource array (E482). The 7.0s constructor
+    // that set it is a framework constructor, a no-op here, so the word is
+    // given the view the game's own CCoeEnv::Static() answers, built now.
+    ((u32 *)oldUi)[OLD_UI_COEENV / 4] = (u32)gate6_coeenv_static(0, 0, c);
     old_vtable_dump(c, oldDoc, 2);              // the document, for comparison
     old_vtable_dump(c, (const u32 *)oldUi, 3);  // and the app UI, which is the question
 
@@ -9721,6 +10343,7 @@ extern "C" void *gate6_create_app_ui(void *self)
     c->realFgEvent = vt[VT_HEADER + SLOT_UI_FOREGROUND];
     c->realSysEvent = vt[VT_HEADER + SLOT_UI_SYSEVENT];
     c->realCommand = vt[VT_HEADER + SLOT_UI_COMMAND];
+    c->realKeyEvent = vt[VT_HEADER + SLOT_UI_KEYEVENT];
     if (c->spare + 2 * TRACE <= c->spareEnd) {
         vt[VT_HEADER + SLOT_UI_WSEVENT] = ctx3_thunk(c->spare, c, (u32)&gate6_ui_wsevent);
         c->spare += TRACE;
@@ -9732,6 +10355,9 @@ extern "C" void *gate6_create_app_ui(void *self)
         c->oldFgEvent = old_override(c, old, OLD_UI_FOREGROUND);
         c->oldSysEvent = old_override(c, old, OLD_UI_SYSEVENT);
         c->oldCommand = old_override(c, old, OLD_UI_COMMAND);
+        c->oldKeyEvent = old_override(c, old, OLD_UI_KEYEVENT);
+        if (c->oldKeyEvent)
+            log_event(c, NOTE_UI_FORWARD, (OLD_UI_KEYEVENT << 24) | (c->oldKeyEvent - c->codeBase));
         if (c->oldFgEvent)
             log_event(c, NOTE_UI_FORWARD, (OLD_UI_FOREGROUND << 24) | (c->oldFgEvent - c->codeBase));
         if (c->oldSysEvent)
@@ -9742,6 +10368,10 @@ extern "C" void *gate6_create_app_ui(void *self)
             vt[VT_HEADER + SLOT_UI_SYSEVENT] = ctx_thunk(c->spare, c, (u32)&gate6_ui_sysevent);
             c->spare += TRACE;
             vt[VT_HEADER + SLOT_UI_COMMAND] = ctx_thunk(c->spare, c, (u32)&gate6_ui_command);
+            c->spare += TRACE;
+        }
+        if (c->oldKeyEvent && c->spare + TRACE <= c->spareEnd) {
+            vt[VT_HEADER + SLOT_UI_KEYEVENT] = ctx3_thunk(c->spare, c, (u32)&gate6_ui_keyevent);
             c->spare += TRACE;
         }
     }
@@ -10324,6 +10954,37 @@ static u32 load_and_start()
                 s[0] = 0xE51FF004;
                 s[1] = (u32)&gate6_mem_move;
                 break;
+            case LOCAL_NEGDF2:              // flip the sign word where EABI keeps it; the FPA hook re-orders
+                s[0] = 0xE2211102;          // eor r1, r1, #0x80000000
+                s[1] = 0xE12FFF1E;          // bx  lr
+                break;
+            case LOCAL_TINT64_LOW:          // TInt64::GetTInt(): iLow
+                s[0] = 0xE5900000;          // ldr r0, [r0]
+                s[1] = 0xE12FFF1E;          // bx  lr
+                break;
+            case LOCAL_SET_WORD_2C:         // the RH-29 cone's 315: str r1, [r0, #0x2c]
+                s[0] = 0xE581102C;
+                s[1] = 0xE12FFF1E;          // bx  lr
+                break;
+            case LOCAL_GET_WORD_2C:         // and its 312: ldr r0, [r0, #0x2c]
+                s[0] = 0xE590002C;
+                s[1] = 0xE12FFF1E;          // bx  lr
+                break;
+            case LOCAL_VOLUMEINFO_CTOR:     // TVolumeInfo::TVolumeInfo(): zero the old size, not 9.x's
+                s[0] = 0xE51FF004;
+                s[1] = (u32)&gate6_volumeinfo_ctor;
+                break;
+            case LOCAL_TINT64_REAL: case LOCAL_TINT64_ADD: case LOCAL_TINT64_SUB:
+            case LOCAL_TINT64_MUL: case LOCAL_TINT64_DIV: case LOCAL_TINT64_GE: case LOCAL_TINT64_LT:
+                s[0] = 0xE51FF004;          // ldr pc, [pc, #-4]: the registers already fit the C signature
+                s[1] = ((entry & 0xFFFF) == LOCAL_TINT64_REAL) ? (u32)&gate6_tint64_real
+                     : ((entry & 0xFFFF) == LOCAL_TINT64_ADD)  ? (u32)&gate6_tint64_add
+                     : ((entry & 0xFFFF) == LOCAL_TINT64_SUB)  ? (u32)&gate6_tint64_sub
+                     : ((entry & 0xFFFF) == LOCAL_TINT64_MUL)  ? (u32)&gate6_tint64_mul
+                     : ((entry & 0xFFFF) == LOCAL_TINT64_DIV)  ? (u32)&gate6_tint64_div
+                     : ((entry & 0xFFFF) == LOCAL_TINT64_GE)   ? (u32)&gate6_tint64_ge
+                     :                                            (u32)&gate6_tint64_lt;
+                break;
             default:
                 s[0] = 0xE51FF004;
                 s[1] = (u32)&gate6_pure_virtual;
@@ -10344,15 +11005,22 @@ static u32 load_and_start()
             // GCC98r2 returned an eight-byte structure in r0 and r1; EABI wants
             // a buffer in r0 and pushes `this` to r1. Borrow eight bytes of
             // stack, let the callee fill them, and hand them back in registers.
+            // The arguments after `this` move up a register with it: the
+            // TParseBase getters take none, but TDesC16::Left(int) does, and
+            // the first version put `this` over the length (One, E516: a
+            // Left(this) read through the pointer 4). Up to two -- Mid(int,
+            // int) -- fit in r2 and r3. Eleven words of the twelve a slot has.
             s[0] = 0xE92D4010;              // push  {r4, lr}
             s[1] = 0xE24DD008;              // sub   sp, sp, #8
-            s[2] = 0xE1A01000;              // mov   r1, r0      -- `this`
-            s[3] = 0xE1A0000D;              // mov   r0, sp      -- the buffer
-            s[4] = 0xE59F4008;              // ldr   r4, [pc, #8]
-            s[5] = 0xE12FFF34;              // blx   r4
-            s[6] = 0xE8BD0003;              // ldmia sp!, {r0, r1}
-            s[7] = 0xE8BD8010;              // pop   {r4, pc}
-            s[8] = (u32)fn;
+            s[2] = 0xE1A03002;              // mov   r3, r2      -- second argument
+            s[3] = 0xE1A02001;              // mov   r2, r1      -- first argument
+            s[4] = 0xE1A01000;              // mov   r1, r0      -- `this`
+            s[5] = 0xE1A0000D;              // mov   r0, sp      -- the buffer
+            s[6] = 0xE59F4008;              // ldr   r4, [pc, #8]
+            s[7] = 0xE12FFF34;              // blx   r4
+            s[8] = 0xE8BD0003;              // ldmia sp!, {r0, r1}
+            s[9] = 0xE8BD8010;              // pop   {r4, pc}
+            s[10] = (u32)fn;
         } else if (kind == KIND_ARGSHIFT) {
             // A member function 9.x made free: drop `this` and move the rest
             // down a register.
@@ -10371,6 +11039,20 @@ static u32 load_and_start()
             s[1] = 0xE1A03FC1;              // mov r3, r1, asr #31
             s[2] = 0xE51FF004;              // ldr pc, [pc, #-4]
             s[3] = (u32)fn;
+        } else if (kind == KIND_ZEXT1_RADIX) {
+            // A TUint that became a TUint64 with a TRadix after it
+            // (AppendNum, NumUC): r1 goes to r2:r3 zero-extended and the
+            // radix, the fifth word, from r2 to the stack (One, round 125).
+            s[0] = 0xE92D4010;              // push {r4, lr}
+            s[1] = 0xE24DD008;              // sub  sp, sp, #8   -- keeps the eight-byte alignment
+            s[2] = 0xE58D2000;              // str  r2, [sp]     -- the radix
+            s[3] = 0xE3A03000;              // mov  r3, #0
+            s[4] = 0xE1A02001;              // mov  r2, r1
+            s[5] = 0xE59F4008;              // ldr  r4, [pc, #8] -> s[9]
+            s[6] = 0xE12FFF34;              // blx  r4
+            s[7] = 0xE28DD008;              // add  sp, sp, #8
+            s[8] = 0xE8BD8010;              // pop  {r4, pc}
+            s[9] = (u32)fn;
         } else if (kind == KIND_NEG || kind == KIND_DEC || kind == KIND_NOT) {
             // Forward, then shape the answer for a GCC98r2 caller: the EABI
             // comparisons answer 1 or 0 and libgcc's answered a sign.
@@ -10406,6 +11088,16 @@ static u32 load_and_start()
             nm[3] == 'e') {
             ctx->cone = libs[i];
         }
+        // euser, for the cleanup item push (round 125).
+        if (kShimDllLen[i] >= 5 && nm[0] == 'e' && nm[1] == 'u' && nm[2] == 's' &&
+            nm[3] == 'e' && nm[4] == 'r') {
+            ctx->euser = libs[i];
+        }
+        // efsrv, for the session path (round 125).
+        if (kShimDllLen[i] >= 5 && nm[0] == 'e' && nm[1] == 'f' && nm[2] == 's' &&
+            nm[3] == 'r' && nm[4] == 'v') {
+            ctx->efsrv = libs[i];
+        }
         // eikcoctl, for CEikStatusPane: see status_pane_off.
         if (kShimDllLen[i] >= 8 && nm[0] == 'e' && nm[1] == 'i' && nm[2] == 'k' &&
             nm[3] == 'c' && nm[4] == 'o' && nm[5] == 'c' && nm[6] == 't' &&
@@ -10433,6 +11125,14 @@ static u32 load_and_start()
     if (nImports > IMPORT_DLL_NAME)
         iat[IMPORT_DLL_NAME] = ctx_thunk(stub + SLOT * IMPORT_DLL_NAME,
                                          ctx, (u32)&gate6_dll_name);
+    // CApaApplication::AppFullName(), the same shape and the same answer. One
+    // calls it through its own application's old vtable (slot 6, from its
+    // CreateDocumentL at 0x5ac24) and takes DriveAndPath of the result as
+    // its data root; forwarded, 9.x apparc read the old object and died
+    // at address 0 (E466, E467).
+    if (nImports > IMPORT_APP_FULL_NAME)
+        iat[IMPORT_APP_FULL_NAME] = ctx_thunk(stub + SLOT * IMPORT_APP_FULL_NAME,
+                                              ctx, (u32)&gate6_dll_name);
     if (nImports > IMPORT_COEENV_STATIC)
         iat[IMPORT_COEENV_STATIC] = ctx_thunk(stub + SLOT * IMPORT_COEENV_STATIC,
                                               ctx, (u32)&gate6_coeenv_static);
@@ -10486,7 +11186,8 @@ static u32 load_and_start()
         // one on top of it, watching the wrong one.
         // ApplicationRect has its own diversion, on r1, because it returns a
         // structure; this thunk watches r0, which is the return buffer.
-        if (at == (u32)IMPORT_APP_RECT)
+        // ClientRect likewise, on r1, through the divert list (One, round 125).
+        if (at == (u32)IMPORT_APP_RECT || at == (u32)IMPORT_CLIENT_RECT)
             continue;
         if (ctx->spare + APPUI_THUNK_BYTES > ctx->spareEnd)
             break;
@@ -10541,6 +11242,13 @@ static u32 load_and_start()
             iat[j] = map_thunk(ctx->spare, was, cell, iat[j], kDiverts[k].arg);
             ctx->spare += APPUI_THUNK_BYTES;
         }
+        if (GAME_TIMER_MIRROR && kDiverts[k].object == ON_TIMER &&
+            (kShimTable[j] & 0xFFFF) == (u32)EUSER_CTIMER_AFTER &&
+            ctx->spare + TRACE <= ctx->spareEnd) {
+            ctx->realTimerAfter = iat[j];
+            iat[j] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_timer_after);
+            ctx->spare += TRACE;
+        }
     }
 
     if (nImports > IMPORT_CREATE_CONTEXT && IMPORT_CREATE_CONTEXT < kShimCount &&
@@ -10555,6 +11263,52 @@ static u32 load_and_start()
         ctx->realReadPos = iat[IMPORT_FILE_READ_POS];
         iat[IMPORT_FILE_READ_POS] = arg5_thunk(ctx->spare, ctx, (u32)&gate6_file_read_pos);
         ctx->spare += ARG5_BYTES;
+    }
+    if (nImports > IMPORT_FIND_WILD_BY_DIR && IMPORT_FIND_WILD_BY_DIR < kShimCount &&
+        (kShimTable[IMPORT_FIND_WILD_BY_DIR] >> 24) == KIND_CALL &&
+        ctx->spare + ARG5_BYTES <= ctx->spareEnd) {
+        ctx->realFindWildByDir = iat[IMPORT_FIND_WILD_BY_DIR];
+        iat[IMPORT_FIND_WILD_BY_DIR] = arg5_thunk(ctx->spare, ctx, (u32)&gate6_find_wild_by_dir);
+        ctx->spare += ARG5_BYTES;
+    }
+    if (nImports > IMPORT_FS_SET_DEFAULT_PATH && ctx->spare + TRACE <= ctx->spareEnd) {
+        iat[IMPORT_FS_SET_DEFAULT_PATH] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_set_default_path);
+        ctx->spare += TRACE;
+    }
+    if (nImports > IMPORT_FS_CONNECT && IMPORT_FS_CONNECT < kShimCount &&
+        (kShimTable[IMPORT_FS_CONNECT] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->realFsConnect = iat[IMPORT_FS_CONNECT];   // the trace thunk, when Connect is traced: it stays
+        iat[IMPORT_FS_CONNECT] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_fs_connect);
+        ctx->spare += TRACE;
+    }
+    if (nImports > IMPORT_APPUI_FACTORY)
+        iat[IMPORT_APPUI_FACTORY] = ctx_thunk(stub + SLOT * IMPORT_APPUI_FACTORY, ctx, (u32)&gate6_appui_factory);
+    if (nImports > IMPORT_THREAD_OPEN && IMPORT_THREAD_OPEN < kShimCount &&
+        (kShimTable[IMPORT_THREAD_OPEN] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->realThreadOpen = iat[IMPORT_THREAD_OPEN];
+        iat[IMPORT_THREAD_OPEN] = ctx3_thunk(ctx->spare, ctx, (u32)&gate6_thread_open);
+        ctx->spare += TRACE;
+    }
+    if (nImports > IMPORT_PUSHL_CBASE && IMPORT_PUSHL_CBASE < kShimCount &&
+        (kShimTable[IMPORT_PUSHL_CBASE] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->realPushLCBase = iat[IMPORT_PUSHL_CBASE];
+        iat[IMPORT_PUSHL_CBASE] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_pushl_cbase);
+        ctx->spare += TRACE;
+    }
+    if (nImports > IMPORT_FS_ENTRY && IMPORT_FS_ENTRY < kShimCount &&
+        (kShimTable[IMPORT_FS_ENTRY] >> 24) == KIND_CALL) {
+        ctx->realFsEntry = iat[IMPORT_FS_ENTRY];
+        iat[IMPORT_FS_ENTRY] = ctx3_thunk(stub + SLOT * IMPORT_FS_ENTRY, ctx, (u32)&gate6_fs_entry);
+    }
+    if (nImports > IMPORT_FS_VOLUME && IMPORT_FS_VOLUME < kShimCount &&
+        (kShimTable[IMPORT_FS_VOLUME] >> 24) == KIND_CALL) {
+        ctx->realFsVolume = iat[IMPORT_FS_VOLUME];
+        iat[IMPORT_FS_VOLUME] = ctx3_thunk(stub + SLOT * IMPORT_FS_VOLUME, ctx, (u32)&gate6_fs_volume);
+    }
+    if (nImports > IMPORT_FILEMAN_NEWL && IMPORT_FILEMAN_NEWL < kShimCount &&
+        (kShimTable[IMPORT_FILEMAN_NEWL] >> 24) == KIND_CALL) {
+        ctx->realFileManNewL = iat[IMPORT_FILEMAN_NEWL];
+        iat[IMPORT_FILEMAN_NEWL] = ctx_thunk(stub + SLOT * IMPORT_FILEMAN_NEWL, ctx, (u32)&gate6_fileman_newl);
     }
     if (nImports > IMPORT_FILE_SIZE && IMPORT_FILE_SIZE < kShimCount &&
         (kShimTable[IMPORT_FILE_SIZE] >> 24) == KIND_CALL) {
@@ -11075,6 +11829,12 @@ static u32 load_and_start()
     ctx->boxData[BOX_SPARE] = (u32)(ctx->spareEnd - ctx->spare);
     ctx->boxData[BOX_CTXSZ] = (u32)sizeof(Context);
     box_flush(ctx);
+    // BENCH (LOG_CLEANUP, E477): the port's trap handler on the main thread
+    // before the game runs, so a leave the game raises under a framework
+    // TRAP -- before its own first TTrap::Trap would have installed it --
+    // still passes through gate6_trap_leave and its dumps.
+    if (LOG_CLEANUP)
+        trap_handler(ctx);
 
     // Enter it. EKA1 calls a DLL's entry point with EDllProcessAttach first,
     // then apparc asks ordinal 1 for the application object.

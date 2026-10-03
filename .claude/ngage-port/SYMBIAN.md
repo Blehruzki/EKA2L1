@@ -461,6 +461,28 @@ From `kernel/eka/include/e32def.h`, `kernel/eka/euser/us_des.cpp`,
   `CDirectScreenAccess` one more word before its window reference than
   3.1 and 3.2 do.
 
+## File server, streams and structure returns (One, round 125)
+
+- **`RFs::SetDefaultPath` panics the caller on 9.x**: `FSInsecCli` 1, by
+  design (`userlibandfileserver/fileserver/sfsrv/cl_insecure.cpp`). The
+  per-session replacement is `RFs::SetSessionPath` (efsrv eabi @ 44). A new
+  session's path starts at the process's private directory on the system
+  drive, so a drive-less name resolves there unless the path is set.
+- **`TEntry` and `TVolumeInfo` grew.** 9.x `TEntry` adds `iSizeHigh` and a
+  reserved word (8 bytes); `TVolumeInfo` adds to `TDriveInfo` and appends the
+  cache fields (`f32file.h`). An EKA1 caller's stack buffer is too small.
+- **`MStreamBuf`'s virtuals keep their declaration order** but EABI drops the
+  two GCC98r2 header words: old offset `+0x28` (slot 8, `DoSeekL`) is EABI
+  `+0x20` (`s32buf.h`).
+- **A `TPtrC` returned by value** (8 bytes) comes back in r0:r1 under GCC98r2
+  and through a hidden result pointer in r0 under EABI, `this` in r1 and the
+  arguments after it: `TParseBase::Name()` and friends, `TDesC::Left/Right/Mid`.
+- **`CActive::Cancel`** calls `DoCancel` and then `User::WaitForRequest(iStatus)`
+  (`euser/cbase/ub_act.cpp`): a request that can no longer complete -- its
+  timer handle closed -- leaves the thread in that wait for good.
+- **`CActive::SetActive`** panics `E32USER-CBase 42` (`EReqAlreadyActive`,
+  `e32panic.h`) on an object already active.
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:

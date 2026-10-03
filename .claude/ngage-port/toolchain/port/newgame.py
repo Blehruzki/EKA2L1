@@ -51,6 +51,10 @@ TEMPLATE = r'''// %(caption)s -- %(stem)s. The hand-written half of this title's
 // 176). GAME_SRC_ORIGIN was 16 on both Asphalts and took eight rounds.
 enum { GAME_W = 176, GAME_PITCH = 176, GAME_H = 208 };
 enum { GAME_SRC_ORIGIN = 0 };
+// Bytes a pixel the game writes: 16 for a title that draws as an N-Gage does,
+// 32 for one that takes the display mode it is told (One). Measured, not
+// assumed: GAME_DUMP_FRAME and stride.py (One: 704-byte rows, 176 pixels).
+#define GAME_SRC_BPP 16
 
 // Asphalt-specific image patches and watches: off until this title shows a
 // need. See the Asphalt game.h files for what each one was for.
@@ -118,10 +122,21 @@ enum { GAME_SRC_ORIGIN = 0 };
 // the background and starts it again on return (round 115).
 #define GAME_CANCEL_ROM_OBJECTS 1
 
+// 1 forwards a CActive::Cancel on an active object of the game's own class
+// too (vptr in the image). A title that builds its own active objects around RTimer
+// needs it (One, E493 to E502); the old CActive vtable order coincides with
+// EABI's, so the real Cancel reaches the game's DoCancel.
+#define GAME_CANCEL_OWN_OBJECTS 1
+
+// 1 carries the wrapped CTimer's status and flags into the game's own object
+// after After and a forwarded Cancel, not only at RunL. A title that tests
+// iActive on its own CTimer needs it (One, E514-E516).
+#define GAME_TIMER_MIRROR 1
+
 // The game's variadic wrappers hand `TDes16::FormatList` a GCC98r2 VA_LIST:
 // a one-element array, passed as its address. The 9.x euser takes the va
 // pointer itself, so handed the address it reads the game's stack as the
-// arguments, and every `%s` comes out as a few glyphless characters. 1: the
+// arguments, and every `%%s` comes out as a few glyphless characters. 1: the
 // hook passes the array's element (round 116). A title that imports
 // FormatList needs this; one that does not is untouched by it.
 #define GAME_VA_LIST 1
@@ -163,6 +178,13 @@ enum { GAME_SRC_ORIGIN = 0 };
 // The name every installed file carries; it has to differ from every other
 // title's (Symbian will not let one package own another's file).
 #define GAME_APP_NAME "%(appname)s"
+
+// The card the copy protection expects, answered to the N-Gage MMC driver
+// by the port: four words. A retail dump carries them in its own name
+// (`MMC-ID 567857f1-7d011234-b2b1879-6000400` -> 0x567857f1, 0x7d011234,
+// 0x0b2b1879, 0x06000400: restore the leading zeros). Left out, the port
+// answers the Asphalt 2 crack's card (round 125).
+// #define GAME_CARD_CID 0x00000000, 0x00000000, 0x00000000, 0x00000000
 
 // Written into the log as its third record; bump with every package.
 #define GAME_BUILD 1
@@ -232,7 +254,11 @@ def main(argv):
     if libsdir:
         os.makedirs(LIBS, exist_ok=True)
         for f in os.listdir(libsdir):
-            shutil.copy2(os.path.join(libsdir, f), os.path.join(LIBS, f))
+            src_f = os.path.join(libsdir, f)
+            if os.path.isdir(src_f):      # One ships libs/framework and libs/plugins
+                shutil.copytree(src_f, os.path.join(LIBS, f), dirs_exist_ok=True)
+                continue
+            shutil.copy2(src_f, os.path.join(LIBS, f))
             nlibs += 1
     app = os.path.join(dst, stem + '.app')
     d = open(app, 'rb').read()

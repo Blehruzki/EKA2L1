@@ -643,3 +643,76 @@ regression signal only against the ticks.
   process (`FORCE_*`), all 0 when shipping.
 - `emurun.sh` writes every bench run into `ROUNDS.md` as a `TODO` row and
   `checkrec.py` refuses to let one stay; `rules.py` prints the four rules.
+
+## 12. One (6r58): the fourth title's first fifty stops
+
+Each of these is a class of bug, not a One quirk: check a new title for all
+of them before its first round.
+
+**TInt64 is a class on EKA1 and a `long long` on 9.x.** `E465-E467`. The
+game imports `TInt64::operator*`, `/`, `+=`, `GetTInt`, `GetTReal`, and the
+`TDes::Num(TInt)` family now takes `TInt64`. Fix: the class answered locally
+(`gate6_tint64_*`, 32-bit halves, no runtime helper), signature thunks
+(`KIND_SEXT1`, `KIND_ZEXT1_RADIX`). Key MANUAL entries by the **7.0 def
+spellings**, not the 9.x ones: a key that does not match is silently unused.
+
+**`RFs::SetDefaultPath` panics on 9.x** (FSInsecCli 1, `cl_insecure.cpp`).
+`E468-E475`. A no-op is not enough: drive-less names resolve against the
+session path, which on 9.x starts at the private directory. Fix: keep the
+path, `RFs::SetSessionPath` on every `Connect` (`gate6_fs_connect`). **Every
+thread's** `Connect`: resolve SetSessionPath once on the main thread and keep
+the address -- a worker's `RLibrary::Lookup` through the main thread's handle
+fails, and One's part loader then looked for `Male.ppd` on C: (`E511-E512`).
+
+**Objects 9.x made bigger overflow the game's stack.** `E472`. `TEntry`
+(+8) and `TVolumeInfo` (+cache fields). Fix: old-size stand-ins and copy-back
+hooks (`gate6_fs_entry`, `gate6_fs_volume`).
+
+**Deleting a 9.x object through the old vtable word.** `E471-E473`. The game
+`delete`s `CDir`/`CFileMan` via word 2 with in-charge 3; on EABI that word is
+`Extension_`. Fix: `old_deletable`, a full vtable copy with word 2 the
+deleting destructor. The reverse: `CleanupStack::PushL(CBase*)` of a game
+object runs EABI word 1, which is 0 on a GCC98r2 vtable -- `gate6_pushl_cbase`
+pushes a TCleanupItem running the old destructor (`E477-E478`).
+
+**Old `MStreamBuf` slot numbers in the game's code.** `E477-E478`, `E512-E513`.
+`ldr ip, [ip, #0x28]` is old slot 8, `DoSeekL`; on the 9.x object it is EABI
+slot 10. Unseeked reads: zlib `Z_DATA_ERROR`, then a 17 MB `AllocL` from a
+garbage count and `G6FLT 34200`. Fix: `GAME_CODE_PATCHES` to `+0x20`. Scan
+**every** `+0x28` call whose object is loaded from `[RReadStream]`, not only
+those in functions that call estor directly -- the first scan missed four.
+
+**Eight-byte structures returned by value.** `E474`, `E516`. GCC98r2 returns
+`TPtrC` in r0:r1; EABI takes a hidden pointer in r0. `KIND_SRET8`, and the stub
+must move the arguments up with `this`: the first version put `this` over
+`Left(int)`'s length. `TDesC::Left/Right/Mid` are struct returns too (Ashen
+imports `TDesC8::Mid`).
+
+**Threads found by name.** `E478-E482`. The port renames threads `g6wN`; the
+game's `RThread::Open(name)` fails and its audio thread "dies". Fix: retry with
+`FullName()` + `::g6wN`.
+
+**The card is per title.** `E488`. Codewave checks the card CID, which is the
+dump's MMC-ID (`GAME_CARD_CID`).
+
+**32-bit pixels, and the buffer on every poll.** `E489-E490`, `E507-E510`. One
+draws EColor16MU (`GAME_SRC_BPP 32`) and calls `UserSvr::ScreenInfo` every
+frame; the hook replaced the address only on the first poll, so past the splash
+the game wrote the real panel (the streak band) while the port posted the
+splash. Fix: hand back the port's buffer on every poll.
+
+**Keys never arrived: a Cancel the port dropped.** `E493-E503`. One wraps
+`RTimer` in a `CActive` of its own; its `Cancel` was dropped as a stray (vptr
+in the image), the object stayed active, `RTimer::Close` then `Deque`'s real
+Cancel waited forever in `User::WaitForRequest`, swallowing every signal.
+Found by the emulator's own traces (key shipper, event queue, request
+semaphore, the stack at the wait). Fix: `GAME_CANCEL_OWN_OBJECTS`.
+
+**The wrapped CTimer's state never reached the game's object.** `E514-E515`.
+`if (iActive) Cancel(); After(t);` read the game's +8 while the wrapper was
+pending: `E32USER-CBase 42`. Fix: `GAME_TIMER_MIRROR`.
+
+**Open: the fight-start rasteriser fault.** `E516`. Image `0x349a4`, the
+reciprocal table indexed by a y-span of ~17,000 px from one wild vertex. The
+bench runs at 3-11 frames a second and the game's clock is wall time
+(`0xa68cc`), so a speed-dependent animation step is a candidate; unproven.

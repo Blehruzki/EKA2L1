@@ -34,6 +34,9 @@ KIND_SRET8, KIND_ARGSHIFT = 5, 6
 # answer 0 for true), and sign-extend r1 into r2:r3 for a TInt that became a
 # TInt64 (TDes8::Num).
 KIND_NEG, KIND_DEC, KIND_NOT, KIND_SEXT1 = 7, 8, 9, 10
+# A TUint that became a TUint64 with a TRadix after it: r1 goes to r2:r3
+# zero-extended and the radix from r2 to the stack (One, round 125).
+KIND_ZEXT1_RADIX = 11
 
 # Where the two calling conventions actually disagree. GCC98r2 returned an
 # eight-byte structure in r0 and r1; EABI returns anything over four bytes
@@ -43,9 +46,25 @@ KIND_NEG, KIND_DEC, KIND_NOT, KIND_SEXT1 = 7, 8, 9, 10
 # shift them along as well.
 RETURNS_STRUCT = {
     'TParseBase::DriveAndPath() const',
+    # The rest of TParseBase's TPtrC getters, the same eight-byte TPtrC
+    # (FullName returns a reference and is not one). One, E473: Name()
+    # forwarded as a plain call read its hidden-pointer argument off the
+    # game's `this`.
+    'TParseBase::Name() const',
+    'TParseBase::Ext() const',
+    'TParseBase::NameAndExt() const',
+    'TParseBase::Path() const',
+    'TParseBase::Drive() const',
     # TProcessId wraps a TUint64, so it is eight bytes: two registers under
     # GCC98r2, a hidden pointer under EABI.
     'RProcess::Id(void) const',
+    # TPtrC16 / TPtrC8 by value from the descriptor slicers (One, E516:
+    # Left read its length register as `this`). The stub carries up to two
+    # arguments after `this` across.
+    'TDesC16::Left(int) const', 'TDesC16::Right(int) const',
+    'TDesC16::Mid(int) const', 'TDesC16::Mid(int, int) const',
+    'TDesC8::Left(int) const', 'TDesC8::Right(int) const',
+    'TDesC8::Mid(int) const', 'TDesC8::Mid(int, int) const',
 }
 
 # GCC98r2 put its compiler helpers in euser; EABI puts them in the runtime
@@ -63,6 +82,9 @@ HELPERS = {
     '__fixsfsi':     ('dfpaeabi', '__aeabi_f2iz',     KIND_CALL),
     '__floatsidf':   ('dfpaeabi', '__aeabi_i2d',      KIND_CALL),
     '__floatsisf':   ('dfpaeabi', '__aeabi_i2f',      KIND_CALL),
+    # One is the first title to import the double-to-int truncation; the
+    # FPA word order is handled by the same hook as __fixsfsi's kind.
+    '__fixdfsi':     ('dfpaeabi', '__aeabi_d2iz',     KIND_CALL),
     # __aeabi_idiv and __aeabi_uidiv sit at the end of the def and are absent
     # from shipped drtaeabi builds. divmod returns the quotient in r0, which is
     # exactly what these want, so use it and ignore the remainder in r1.
@@ -123,8 +145,19 @@ LOCAL_MEM_MOVE = 8
 LOCAL_TRAP_UNTRAP = 9
 LOCAL_RAMSIZES = 10
 LOCAL_SYSAGT_SETSTATUS, LOCAL_SYSAGT_NOTIFY, LOCAL_SYSAGT_CANCEL = 11, 12, 13
+# One (round 125). __negdf2 flips the sign word in the EABI position; the
+# FPA hook around it (GAME_FPA_DOUBLES) turns that into the game's order.
+# The TInt64 operators are the EKA1 class's -- {iLow, iHigh}, the three
+# that return a TInt64 through a hidden pointer in r0 with `this` in r1
+# (operator-, operator*, operator/ as the game calls them at 0x11a2c,
+# 0x119d8, 0x119c4) -- in C in gate6.cpp. GetTReal answers in the FPA order.
+LOCAL_NEGDF2, LOCAL_TINT64_LOW, LOCAL_TINT64_REAL = 14, 15, 16
+LOCAL_TINT64_ADD, LOCAL_TINT64_SUB, LOCAL_TINT64_MUL, LOCAL_TINT64_DIV = 17, 18, 19, 20
+LOCAL_TINT64_GE, LOCAL_TINT64_LT = 21, 22
+LOCAL_SET_WORD_2C, LOCAL_GET_WORD_2C = 23, 24
+LOCAL_VOLUMEINFO_CTOR = 25
 LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL,
-         'memmove': LOCAL_MEM_MOVE}
+         'memmove': LOCAL_MEM_MOVE, '__negdf2': LOCAL_NEGDF2}
 
 # Functions 9.x kept but moved, renamed or gave another argument. Each was
 # checked against the 9.x def rather than assumed; the rest of what does not
@@ -227,6 +260,56 @@ MANUAL = {
     # well have a path for it. If it turns out not to, this is where pretending
     # would go, and the two have to agree.
     'RSessionBase::SendReceive(int, void *) const': ('local', LOCAL_NOOP, KIND_LOCAL),
+
+    # One, round 125. The TInt-to-TInt64 family, as TDes8::Num above: the
+    # value sign-extends into r2:r3; with a TRadix behind it the TUint
+    # zero-extends there and the radix moves from r2 to the stack.
+    'TDes16::Num(int)': ('euser', 'TDes16::Num(long long)', KIND_SEXT1),
+    'TDes16::AppendNum(int)': ('euser', 'TDes16::AppendNum(long long)', KIND_SEXT1),
+    'TDes8::AppendNum(int)': ('euser', 'TDes8::AppendNum(long long)', KIND_SEXT1),
+    'TDes16::AppendNum(unsigned int, TRadix)':
+        ('euser', 'TDes16::AppendNum(unsigned long long, TRadix)', KIND_ZEXT1_RADIX),
+    'TDes8::AppendNum(unsigned int, TRadix)':
+        ('euser', 'TDes8::AppendNum(unsigned long long, TRadix)', KIND_ZEXT1_RADIX),
+    'TDes16::NumUC(unsigned int, TRadix)':
+        ('euser', 'TDes16::NumUC(unsigned long long, TRadix)', KIND_ZEXT1_RADIX),
+    # The EKA1 TInt64 {iLow, iHigh} and a long long are the same eight bytes,
+    # so a reference to one is a reference to the other. FRand answers a
+    # double in r0:r1, which the FPA hook (IMPORT_MATH_FRAND) re-orders.
+    'Math::Rand(TInt64 &)': ('euser', 'Math::Rand(long long&)', KIND_CALL),
+    'Math::FRand(TInt64 &)': ('euser', 'Math::FRand(long long&)', KIND_CALL),
+    # The rest of the class is gone from 9.x: written locally, see LOCAL_TINT64_*.
+    'TInt64::GetTInt(void) const': ('local', LOCAL_TINT64_LOW, KIND_LOCAL),
+    'TInt64::GetTReal(void) const': ('local', LOCAL_TINT64_REAL, KIND_LOCAL),
+    'TInt64::operator+=(TInt64 const &)': ('local', LOCAL_TINT64_ADD, KIND_LOCAL),
+    'TInt64::operator-(TInt64 const &) const': ('local', LOCAL_TINT64_SUB, KIND_LOCAL),   # hidden result pointer
+    'TInt64::operator*(TInt64 const &) const': ('local', LOCAL_TINT64_MUL, KIND_LOCAL),
+    'TInt64::operator/(TInt64 const &) const': ('local', LOCAL_TINT64_DIV, KIND_LOCAL),
+    'TInt64::operator>=(TInt64 const &) const': ('local', LOCAL_TINT64_GE, KIND_LOCAL),
+    'TInt64::operator<(TInt64 const &) const': ('local', LOCAL_TINT64_LT, KIND_LOCAL),
+    # euser's names are the 7.0 def's spellings ('(void)', 'const &'); the
+    # rest come out of gnuv2, or are keyed raw where it cannot read them.
+    # TRealX is laid out the same in both eras (e32math.h: iMantLo, iMantHi,
+    # iSign, iFlag, iExp) and every TRealX the game holds was made by 9.x.
+    'TRealX::operator unsigned int(void)': ('euser', 'TRealX::operator unsigned int() const', KIND_CALL),
+    '__vc__C4CDiri': ('efsrv', 'CDir::operator[](int) const', KIND_CALL),
+    'FFSSpaceBelowCriticalLevelL__SysUtilPRFsi':
+        ('sysutil', 'SysUtil::FFSSpaceBelowCriticalLevelL(RFs*, int)', KIND_CALL),
+    'PlpVariant::GetMachineIdL(TBuf<128> &)':
+        ('plpvariant', 'PlpVariant::GetMachineIdL(TBuf<128>&)', KIND_CALL),
+    'CnvUtfConverter::ConvertToUnicodeFromUtf8(TDes16 &, const TDesC8 &)':
+        ('charconv', 'CnvUtfConverter::ConvertToUnicodeFromUtf8(TDes16&, TDesC8 const&)', KIND_CALL),
+    # EKA2 has no RSemaphore::Count. One's only use (0x1290c) is
+    # Signal(-Count()) under a mutex -- wake whoever waits; a count of 0
+    # makes that Signal(0), which EKA2 accepts and does nothing with.
+    'RSemaphore::Count(void)': ('local', LOCAL_NOOP, KIND_LOCAL),
+    # estor names with a class passed by value, which gnuv2 cannot read.
+    'DoReadL__10TStreamBufR12MStreamInputG15TStreamTransfer':
+        ('estor', 'TStreamBuf::DoReadL(MStreamInput&, TStreamTransfer)', KIND_CALL),
+    'DoWriteL__10TStreamBufR13MStreamOutputG15TStreamTransfer':
+        ('estor', 'TStreamBuf::DoWriteL(MStreamOutput&, TStreamTransfer)', KIND_CALL),
+    'ReadL__11RReadStreamR6TDes16G5TChar':
+        ('estor', 'RReadStream::ReadL(TDes16&, TChar)', KIND_CALL),
 }
 
 
@@ -347,7 +430,51 @@ BY_ORDINAL = {
     ('sysagt', 12): ('local', LOCAL_SYSAGT_SETSTATUS, KIND_LOCAL),   # TSysAgentEvent::SetRequestStatus(TRequestStatus&)
     ('sysagt', 8): ('local', LOCAL_SYSAGT_NOTIFY, KIND_LOCAL),       # RSystemAgent::NotifyOnEvent(TSysAgentEvent&)
     ('sysagt', 4): ('local', LOCAL_SYSAGT_CANCEL, KIND_LOCAL),       # RSystemAgent::NotifyEventCancel()
+    # One, round 125. Three N-Gage additions past cone's epoc6 list, read
+    # out of the RH-29 ROM (cone.dll export directory): 315 is
+    # `str r1, [r0, #0x2c]; bx lr`, 312 is `ldr r0, [r0, #0x2c]; bx lr`,
+    # 314 is `movs r0, #0; bx lr`. The game calls 315 in its app UI's
+    # ConstructL on its freshly built container with the app UI's
+    # MObjectProvider sub-object (this+0x1c) -- the `SetMopParent(this)`
+    # idiom -- so the word is the old-layout control's MOP parent, and the
+    # stand-ins do to the game's object exactly what the ROM did.
+    ('cone', 315): ('local', LOCAL_SET_WORD_2C, KIND_LOCAL),
+    ('cone', 312): ('local', LOCAL_GET_WORD_2C, KIND_LOCAL),
+    ('cone', 314): ('local', LOCAL_NOOP, KIND_LOCAL),
+    # RFs::SetDefaultPath, old efsrv 168. 9.x keeps the export and panics the
+    # caller with it (cl_insecure.cpp: 'FSInsecCli panic' 1, E468): the
+    # process-wide default path went with platform security. A no-op (E470)
+    # left the game's drive-less file names resolving against C:\ (E474), so
+    # it is a hook: IMPORT_FS_SET_DEFAULT_PATH keeps the path and
+    # IMPORT_FS_CONNECT sets it on every later session. By ordinal, not
+    # MANUAL: a name that matches a 9.x export directly is forwarded before
+    # MANUAL is consulted (E469).
+    ('efsrv', 168): ('local', LOCAL_NOOP, KIND_LOCAL),
+    # TEntry and TVolumeInfo are bigger on 9.x than the game lays them out
+    # (f32file.h: two words after TEntry's name; TDriveInfo's bus type and
+    # the cache flags in TVolumeInfo), and both constructors write the new
+    # words -- past the game's object, onto its saved registers (E471).
+    # TEntry's sets nothing else, so nothing; TVolumeInfo's zero-fills, so a
+    # local zeroes the old size. RFs::Entry and RFs::Volume are hooks
+    # (IMPORT_FS_ENTRY, IMPORT_FS_VOLUME) that fill a buffer and copy back.
+    ('efsrv', 227): ('local', LOCAL_SELF, KIND_LOCAL),              # TEntry::TEntry()
+    ('efsrv', 212): ('local', LOCAL_VOLUMEINFO_CTOR, KIND_LOCAL),   # TVolumeInfo::TVolumeInfo()
 }
+
+
+def fallback_table(sigs):
+    """An epoc9.def list -> a def table {ordinal: (name, signature)}.
+
+    epoc9.def keeps the demangler's suffix on some names ('(complete object
+    constructor)', '(base object constructor)', on a few non-constructors
+    too); norm() cannot parse it, so it goes. The name column is the
+    signature itself: llvm-cxxfilt hands a non-symbol back unchanged.
+    """
+    table = {}
+    for o, sig in enumerate(sigs, 1):
+        sig = sig.replace(' (complete object constructor)', '').replace(' (base object constructor)', '')
+        table[o] = (sig, sig)
+    return table
 
 
 def _is_framework_ctor(sig):
@@ -397,6 +524,7 @@ HOOK_ABSENT = 0xFFFF
 
 HOOKS = {
     'IMPORT_DLL_NAME':                ('apparc', 13),
+    'IMPORT_APP_FULL_NAME':           ('apparc', 3),    # CApaApplication::AppFullName(): the same answer as DllName -- One takes its data path from it (round 125)
     'IMPORT_BASECONSTRUCTL':          ('avkon', 63),
     'IMPORT_SET_AUTO_UPDATE':         ('bitgdi', 105),
     'IMPORT_SCREEN_UPDATE':           ('bitgdi', 137),
@@ -408,6 +536,13 @@ HOOKS = {
     'IMPORT_CREATE_CONTEXT':          ('bitgdi', 23),   # CFbsDevice::CreateContext(CFbsBitGc*&) -- the result wrapped in the old-shaped stand-in (E373)
     'IMPORT_CLEANUP_NEW':             ('euser', 746),   # CTrapCleanup::New() -- a stand-in the game's old-ABI delete can reach (E381)
     'IMPORT_FILE_READ_POS':           ('efsrv', 142),   # RFile::Read(TInt, TDes8&, TInt) -- logged: round 111's pack read on the N95
+    'IMPORT_FIND_WILD_BY_DIR':        ('efsrv', 46),    # TFindFile::FindWildByDir: the CDir it hands back made deletable the old way (round 125)
+    'IMPORT_FILEMAN_NEWL':            ('efsrv', 106),   # CFileMan::NewL(RFs&): the same
+    'IMPORT_FS_ENTRY':                ('efsrv', 39),    # RFs::Entry(const TDesC&, TEntry&): filled at the old size (round 125)
+    'IMPORT_FS_VOLUME':               ('efsrv', 193),   # RFs::Volume(TVolumeInfo&, TInt): the same, field by field
+    'IMPORT_FS_SET_DEFAULT_PATH':     ('efsrv', 168),   # RFs::SetDefaultPath: kept, and set as the session path (round 125)
+    'IMPORT_FS_CONNECT':              ('efsrv', 18),    # RFs::Connect: the new session given the default path
+    'IMPORT_PUSHL_CBASE':             ('euser', 858),   # CleanupStack::PushL(CBase*): the game's own objects pushed with their old destructor (round 125)
     'IMPORT_FILE_SIZE':               ('efsrv', 185),   # RFile::Size(TInt&) -- logged, the same
     # Round 113: GCC98r2 keeps a double's high word first (the FPA order) and
     # EABI keeps it last, so every double that crosses to a 9.x helper or a
@@ -446,6 +581,7 @@ HOOKS = {
     'IMPORT_MATH_INT':                ('euser', 571),   # Math::Int(TInt32&, const TReal&)
     'IMPORT_MATH_INT16':              ('euser', 572),   # Math::Int(TInt16&, const TReal&)
     'IMPORT_MATH_ROUND':              ('euser', 961),   # Math::Round(TReal&, const TReal&, TInt)
+    'IMPORT_MATH_FRAND':              ('euser', 404),   # Math::FRand(TInt64&): a double comes back in r0:r1 (One, round 125)
     'IMPORT_CTL_RECT':                ('cone', 160),    # CCoeControl::Rect() -- answered 176x208 while the wrapper is the whole screen (round 114)
     'IMPORT_CTL_SETRECT':             ('cone', 318),    # the Nokia SetRect export -- the wrapper is sized to the whole screen instead (round 114)
     'IMPORT_DES_FORMAT':              ('euser', 467),   # TDes16::Format(fmt, ...) -- logged under GAME_LOG_TEXT (round 116)
@@ -492,6 +628,8 @@ HOOKS = {
     'IMPORT_DELETE_OP':               ('euser', 1504),
     'IMPORT_VEC_DELETE_OP':           ('euser', 1506),
     'IMPORT_APP_RECT':                ('eikcore', 233),
+    'IMPORT_APPUI_FACTORY':           ('eikcore', 16),    # CEikonEnv::AppUiFactory(): a null-object factory, since the furniture it would name is never built (One, round 125)
+    'IMPORT_CLIENT_RECT':             ('eikcore', 32),    # CEikAppUi::ClientRect(): a divert on r1 (DIVERTS); named here so the r0 app UI thunk leaves it alone (One, round 125)
     'IMPORT_MDA_NEWL':                ('mediaclientaudiostream', 2),
     'IMPORT_DSA_NEWL':                ('ws32', 348),
     'IMPORT_DSA_STARTL':              ('ws32', 350),
@@ -520,9 +658,11 @@ ON_APP_UI, ON_CONTROL, ON_TIMER, ON_GC = 0, 1, 2, 3
 
 DIVERTS = [
     ('eikcore', 233, 1, ON_APP_UI),   # CEikAppUi::ApplicationRect() const
+    ('eikcore', 32, 1, ON_APP_UI),    # CEikAppUi::ClientRect() const -- a TRect, so `this` is r1 (One, round 125; E483 took the r0 thunk)
     ('cone', 318, 0, ON_CONTROL),     # the Nokia export standing in for SetRect
     ('cone', 3, 0, ON_CONTROL),       # CCoeControl::ActivateL()
     ('cone', 114, 0, ON_CONTROL),     # CCoeControl::IsFocused() const
+    ('cone', 201, 0, ON_CONTROL),     # CCoeControl::SetExtentToWholeScreen() -- One's container, right after CreateWindowL (E486: cone read 0x48 off the old object)
     # Ashen, round 109: a title that draws through its control rather than
     # direct screen access calls these on its own old-layout control, and
     # cone reads 9.x offsets off it (E363: SystemGc walked to iCoeEnv at +0xc,
@@ -756,8 +896,14 @@ def build(image):
                for n, ords in e32imports.imports(d) for o in ords]
     defs = find_defs()
     new = {lib: defs[lib] for lib in {l for l, _o in imports} if lib in defs}
+    # A library with no .def in the release tree (estor, for One) is matched
+    # against EKA2L1's epoc9.def list instead -- the same directory the
+    # BY_ORDINAL and MANUAL targets fall back to below, so the two agree.
+    fallback = epocdb.load(EPOC9)
+    synth = {lib: fallback_table(fallback[lib]) for lib in {l for l, _o in imports}
+             if lib not in defs and lib in fallback}
     rows = shimtable.match(imports, {'euser': KERNEL + '/kernel/eka/bmarm/7.0-euseru.def'},
-                           new, epoc6=EPOC6)
+                           new, epoc6=EPOC6, new_tables=synth)
 
     new_index = {lib: shimtable.index(symdef.load(path)) for lib, path in new.items()}
 
@@ -769,17 +915,10 @@ def build(image):
     # (86) and every euser address checked against the ROM's export directory
     # in E265 to E270 came out right. So it stands in where the release has
     # nothing, and never overrides the release where it has something.
-    fallback = epocdb.load(EPOC9)
     for lib in {l for l, _o in imports}:
         if lib in new_index or lib not in fallback:
             continue
-        table = {}
-        for o, sig in enumerate(fallback[lib], 1):
-            # epoc9.def keeps the demangler's suffix on some names
-            # ('(complete object constructor)'); norm() cannot parse it.
-            sig = sig.replace(' (complete object constructor)', '')
-            table.setdefault(shimtable.norm(sig), o)
-        new_index[lib] = table
+        new_index[lib] = shimtable.index(fallback_table(fallback[lib]))
 
     helper_ords = {}
     for lib in ('dfpaeabi', 'drtaeabi', 'scppnwdl'):

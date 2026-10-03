@@ -19,10 +19,13 @@ enum {
     IMPORT_ADDTOSTACKL                 =    39,
     IMPORT_ADD_FOREGROUND_OBSERVER     = 65535,   // absent
     IMPORT_APPUI_EXIT                  =   109,
+    IMPORT_APPUI_FACTORY               = 65535,   // absent
+    IMPORT_APP_FULL_NAME               =     0,
     IMPORT_APP_RECT                    =   151,
     IMPORT_BASECONSTRUCTL              =    13,
     IMPORT_CANCEL                      =   192,
     IMPORT_CLEANUP_NEW                 =   232,
+    IMPORT_CLIENT_RECT                 = 65535,   // absent
     IMPORT_COECONTROL_CTOR             =    77,
     IMPORT_COEENV_STATIC               =    74,
     IMPORT_CREATEWINDOWL               =    43,
@@ -42,6 +45,7 @@ enum {
     IMPORT_EQDF2                       = 65535,   // absent
     IMPORT_EXIT                        = 65535,   // absent
     IMPORT_EXTENDSFDF2                 = 65535,   // absent
+    IMPORT_FILEMAN_NEWL                = 65535,   // absent
     IMPORT_FILE_CREATE                 = 65535,   // absent
     IMPORT_FILE_OPEN                   =    92,
     IMPORT_FILE_READ                   = 65535,   // absent
@@ -49,8 +53,13 @@ enum {
     IMPORT_FILE_READ_STATIC            = 65535,   // absent
     IMPORT_FILE_REPLACE                =    95,
     IMPORT_FILE_SIZE                   =    96,
+    IMPORT_FIND_WILD_BY_DIR            = 65535,   // absent
     IMPORT_FIXDFSI                     = 65535,   // absent
     IMPORT_FLOATSIDF                   =   298,
+    IMPORT_FS_CONNECT                  =    87,
+    IMPORT_FS_ENTRY                    = 65535,   // absent
+    IMPORT_FS_SET_DEFAULT_PATH         = 65535,   // absent
+    IMPORT_FS_VOLUME                   = 65535,   // absent
     IMPORT_GEDF2                       = 65535,   // absent
     IMPORT_GTDF2                       = 65535,   // absent
     IMPORT_LEAVE                       =   225,
@@ -68,6 +77,7 @@ enum {
     IMPORT_MATH_COS                    = 65535,   // absent
     IMPORT_MATH_EXP                    = 65535,   // absent
     IMPORT_MATH_FRAC                   = 65535,   // absent
+    IMPORT_MATH_FRAND                  = 65535,   // absent
     IMPORT_MATH_INT                    =   220,
     IMPORT_MATH_INT16                  = 65535,   // absent
     IMPORT_MATH_INT_D                  = 65535,   // absent
@@ -85,6 +95,7 @@ enum {
     IMPORT_NEDF2                       = 65535,   // absent
     IMPORT_NEGDF2                      = 65535,   // absent
     IMPORT_PANIC                       =   234,
+    IMPORT_PUSHL_CBASE                 =   242,
     IMPORT_READ_FILE_SECTION           =    93,
     IMPORT_REQUEST_COMPLETE            = 65535,   // absent
     IMPORT_SCREEN_INFO                 = 65535,   // absent

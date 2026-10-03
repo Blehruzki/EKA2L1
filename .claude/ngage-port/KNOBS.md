@@ -10,7 +10,8 @@ Shipping builds: Asphalt Urban GT **030** (`gate6a1`), Asphalt 2 **196**
 (`gate6`), Ashen **011** (`gate6ashe`). All verified on a Nokia N95 (S60 3.1)
 and the bench (RM-409 ROM, S60 3.2); the Asphalts also on a Nokia N91 (S60 3.0,
 round 121). Asphalt Urban GT 027 was confirmed on a Nokia C5-00 (S60 3.2, round 122). Ashen 010 reached the N91 and fell on a second 3.0 difference
-(round 123); 011 carries that fix and is with the tester.
+(round 123); 011 carries that fix, and round 124 confirmed all three titles on
+the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 
 ## Fixes and features, by knob
 
@@ -25,6 +26,10 @@ round 121). Asphalt Urban GT 027 was confirmed on a Nokia C5-00 (S60 3.2, round 
 | `GAME_FPA_DOUBLES` | 0 | 0 | 1 | yes | doubles crossing to 9.x helpers and `Math::` are word-swapped (FPA vs EABI order) | round 113; hardware. The Asphalts import five double helpers and stay 0 until a round of their own |
 | `GAME_SCREEN_MODES` | - | - | 1 | yes (window-gc titles) | hold C cycles the picture mode for a title drawing through the window gc; the Asphalts get the same through `screen_layout` | round 114; hardware (both paths) |
 | `GAME_CANCEL_ROM_OBJECTS` | 0 | 0 | 1 | yes | a stray `CActive::Cancel` on a 9.x object (vptr in ROM) is forwarded instead of dropped | round 115 (E426/E427); hardware rounds 115-117 |
+| `GAME_CANCEL_OWN_OBJECTS` | 0 | 0 | 0 | yes | a `CActive::Cancel` on an object of the game's own class (vptr in the image) is forwarded instead of dropped; One 1 | E493-E503 (One, bench) |
+| `GAME_TIMER_MIRROR` | 0 | 0 | 0 | yes | the wrapped CTimer's status and flags reach the game's object after After and a forwarded Cancel, not only at RunL; One 1 | E514-E515 (One, bench) |
+| `GAME_SRC_BPP` | 16 | 16 | 16 | yes | bytes a pixel the game writes into the ScreenInfo buffer; One 32 (EColor16MU) | E489-E490 (One, bench) |
+| `GAME_CARD_CID` | default | default | default | per title | the card identity the MMC driver answers Codewave with: the dump's MMC-ID; One 567857f1-7d011234-0b2b1879-06000400 | E488 (One, bench) |
 | `GAME_VA_LIST` | 0 | 0 | 1 | yes | `FormatList` gets the va pointer, not the GCC98r2 array's address | round 116 (E435/E437); hardware round 117. UGT imports no FormatList; Asphalt 2 imports `Format` only |
 | `GAME_IMAGE_WATCH`, `GAME_HOOK_UNCOMPRESS`, `GAME_Z_*` | 0 | 1 | 0 | no (Asphalt 2 addresses) | re-reads the app UI vtable slot every milestone; logs zlib `uncompress` calls | E253 is the warning: on any other image these addresses are wrong |
 | `GAME_FREE_BACK_FROM` | 4096 | 4096 | 4096 | yes | cells this size and up go straight back to the heap, smaller ones through the quarantine | round 92 |
@@ -67,3 +72,14 @@ the saves behind.
 `BENCH_BACKGROUND_TICK`, `BENCH_FOREGROUND_TICK`, `LEAVE_RAW`, `WORKER_LOG`,
 `TRACE_IMPORTS`. `rules.py` and the regression rows (E428, E439 and the like)
 are where that is checked.
+
+## One (6r58, `gate6one`), bench only
+
+Built from `newgame.py`'s template; on top of its defaults: `GAME_SRC_BPP 32`,
+`GAME_CARD_CID`, `GAME_CODE_PATCHES` (eight DoSeekL sites, old slot 8 to EABI
+slot 8), `GAME_CANCEL_OWN_OBJECTS 1`, `GAME_TIMER_MIRROR 1`. Shared fixes it
+needed that are always on: the session path on every Connect (any thread), the
+TEntry/TVolumeInfo stand-ins, `old_deletable`, `PushL(CBase*)`, thread open by
+full name, the null-object AppUiFactory, the ScreenInfo buffer on every poll,
+the two-argument struct-return stub. Reaches the fight's arena on the bench;
+the fight-start rasteriser fault (E516) is open.

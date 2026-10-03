@@ -107,14 +107,19 @@ def mangled_index(table):
     return out
 
 
-def match(image_imports, old_sources, new_sources, epoc6=None):
-    """-> [(index, lib, old ordinal, signature, new ordinal or None, source)]"""
+def match(image_imports, old_sources, new_sources, epoc6=None, new_tables=None):
+    """-> [(index, lib, old ordinal, signature, new ordinal or None, source)]
+
+    `new_tables` are 9.x def tables already loaded ({lib: {ordinal: (name,
+    signature)}}), for a library that has no .def file to name.
+    """
     db = epocdb.load(epoc6) if epoc6 else {}
     old_tables, new_index, new_mangled = {}, {}, {}
     for lib, path in old_sources.items():
         old_tables[lib] = (symdef.load(path), 'def')
-    for lib, path in new_sources.items():
-        table = symdef.load(path)
+    tables = {lib: symdef.load(path) for lib, path in new_sources.items()}
+    tables.update(new_tables or {})
+    for lib, table in tables.items():
         new_index[lib] = index(table)
         new_mangled[lib] = mangled_index(table)
 

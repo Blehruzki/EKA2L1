@@ -1,39 +1,32 @@
-// Ashen -- 6r21. The hand-written half of this title's layer; the
+// One -- 6r58. The hand-written half of this title's layer; the
 // generated half (`gate_imports.h`, `shim.cpp`) sits beside it, out of
 // gen_shim.py. Written by newgame.py with every knob at its safe default;
 // each one that a round changes gets its reason here, as the Asphalts' did.
 //
-// Read off the image before anything ran: EKA1/GCC98r2, 354 imports across
-// 20 DLLs, UID3 0x101fd3e9, code 0xf2bfc bytes.
-//
-// **What the game writes, and where (E445).** Settings go to
-// `C:\System\Apps\6R21\options.dat` (512 bytes, written on leaving the
-// Options page) and progress to `C:\System\Apps\6R21\savegameNN.sav`
-// (the image's `%ssavegame%02d.sav`, the same directory prefix as
-// `%soptions.dat`). The game makes the directory itself, one level at a
-// time through `RFs::MkDir` (0xb2244, 0xb2390), then `RFile::Replace`;
-// the package lists none of it, so an uninstall leaves the folder and
-// its files behind, as Symbian does for anything an application creates
-// outside its package. The port does not touch these names: it rewrites
-// only `E:` names and refuses only writes aimed at the card.
+// Read off the image before anything ran: EKA1/GCC98r2, 532 imports across
+// 21 DLLs, UID3 0x101fd409, code 0x156ff4 bytes.
 #ifndef GATE_GAME_H     // not GAME_H: that is an enum below
 #define GATE_GAME_H
 
-// `\system\apps\6r21\6r21.app`. Characters rather than a string: the
+// `\system\apps\6r58\6r58.app`. Characters rather than a string: the
 // paths are built as u16 arrays, and this image has no writable data.
-#define GAME_STEM_CHARS  '6','r','2','1'
+#define GAME_STEM_CHARS  '6','r','5','8'
 #define GAME_STEM_LEN    4
 
 // Our own application, not the game's: the game's UID3 is GAME_UID3 in
 // gate_imports.h, and the loader refuses an image that does not match it.
-#define GAME_APP_UID3    0xE0001008
-#define GAME_CAPTION     "Ashen"
+#define GAME_APP_UID3    0xE0001009
+#define GAME_CAPTION     "One"
 
 // **Placeholders.** Every N-Gage title so far draws 176x208; the stride is
 // measured by the frame dump, not assumed (Asphalt 2's is 192, Asphalt 1's
 // 176). GAME_SRC_ORIGIN was 16 on both Asphalts and took eight rounds.
 enum { GAME_W = 176, GAME_PITCH = 176, GAME_H = 208 };
 enum { GAME_SRC_ORIGIN = 0 };
+// Four bytes a pixel: One reads the screen device's display mode (EColor16MU
+// on S60v3) and draws for it, 176 to a row -- stride.py on the E491 dump
+// measured 704-byte rows. Every earlier title wrote 16-bit pixels.
+#define GAME_SRC_BPP 32
 
 // Asphalt-specific image patches and watches: off until this title shows a
 // need. See the Asphalt game.h files for what each one was for.
@@ -48,38 +41,54 @@ enum { GAME_SRC_ORIGIN = 0 };
 // title that calls CEikAppUi methods on its own app UI; harmless otherwise.
 #define GAME_FIX_APPUI_THIS 1
 
-// The game's own app UI overrides HandleForegroundEventL, HandleSystemEventL
-// and HandleCommandL (old slots 7, 9, 17) and starts its game loop from the
-// first (E368); the wrapper forwards those three slots to it.
+// Forward the app UI event slots a title overrides (HandleForegroundEventL,
+// HandleSystemEventL, HandleCommandL) to its own object. Ashen starts its game
+// loop from the first; the Asphalts never needed it. On: a title that
+// overrides none of them is unaffected (the wrapper reads its vtable).
 #define GAME_UI_FORWARD_EVENTS 1
 
-// The control's extent, and so Rect().Size(), which is what this title sizes
-// its frame bitmaps from (0xb5cfc/0xb5d38 -> CFbsBitmap::Create): the
-// N-Gage's 176x208, at the top left. 0 would be the whole screen (E372: a
-// 240-wide bitmap rendered at a 176 pitch, a sheared picture).
-#define GAME_CONTROL_W 176
-#define GAME_CONTROL_H 208
+// The control's extent, and so what Rect().Size() answers: 0 is the whole
+// screen. A title that sizes its frame bitmaps from its control wants the
+// N-Gage's 176x208 here (Ashen, E372).
+#define GAME_CONTROL_W 0
+#define GAME_CONTROL_H 0
 
-// Words of the image rewritten after loading: {offset, expected, new}. The
-// rasteriser's first edge setup at 0x8e1dc clamps the reciprocal-table
-// *pointer* to 0x1000 instead of the index (its twin at 0x8e5bc clamps the
-// index, sb): `cmp sb,#0x1000; movgt sb,#0x1000` with the table in sb and
-// the index in r8, so it read the first page of the address space, which an
-// N-Gage maps and EKA2 does not (E372: KERN-EXEC 3 at 0x1010 the moment the
-// attract mode drew its first span taller than two rows). Clamp r8 instead.
-#define GAME_CODE_PATCHES { 0x0008e1dc, 0xE3590A01, 0xE3580A01 }, { 0x0008e1e0, 0xC3A09A01, 0xC3A08A01 }
-#define GAME_CODE_PATCH_COUNT 2
+// Words of the image rewritten after loading, {offset, expected word, new
+// word}: for a bug of the game's own that EKA1 forgave (Ashen reads the
+// null page in its rasteriser). The expected word is checked; a mismatch
+// refuses to start.
+// One drives the stream buffer inside its RFileReadStream by the old vtable
+// slot numbers: `ldr ip, [ip, #0x28]` is old slot 8, MStreamBuf::DoSeekL
+// (the inline SeekL), and on the 9.x object estor built there +0x28 is
+// EABI slot 10 -- the seek never happened and the pak chunks inflated as
+// garbage (E475-E477, Z_DATA_ERROR). The four sites found by scanning
+// every virtual call at +0x28 in a function that also calls estor
+// (0x1d5f0's chunk reader, twice; 0x45520 and 0xf824c, a seek to the end
+// for the size right after Open) read EABI slot 8 instead, +0x20.
+// The scan missed the fighter-part reader, 0x65374, which calls estor only
+// through a helper: four seeks into the .ppd before each section (0x653dc,
+// 0x65438, 0x65494, 0x6554c), every one `ldr r0, [stream]; mov r1, #1`
+// then the old slot. Unseeked, the first ReadInt32L read garbage, the
+// AllocL of 12 bytes a vertex asked for 17 MB, and the loader thread left
+// with KErrNoMemory; the game's handler for that event leaves the same way
+// on the main thread with nothing to catch it, G6FLT 34200 (E512, E513).
+#define GAME_CODE_PATCHES { 0x0001d618, 0xE59CC028, 0xE59CC020 }, { 0x0001d758, 0xE59CC028, 0xE59CC020 }, \
+                          { 0x00045594, 0xE59CC028, 0xE59CC020 }, { 0x000f82dc, 0xE59CC028, 0xE59CC020 }, \
+                          { 0x000653dc, 0xE59CC028, 0xE59CC020 }, { 0x00065438, 0xE59CC028, 0xE59CC020 }, \
+                          { 0x00065494, 0xE59CC028, 0xE59CC020 }, { 0x0006554c, 0xE59CC028, 0xE59CC020 }
+#define GAME_CODE_PATCH_COUNT 8
 
 // The environment's screen device, as the game reads it off the view
 // (old iScreen, 0x3c): 1 hands it a stand-in that answers font requests by
 // the N-Gage font names (E384); 0 leaves the real 9.x device there, which a
-// title that passes it on to direct screen access needs (E390).
-#define GAME_SCREEN_FONTS 1
+// title that passes it on to direct screen access needs (E390). Off until a title asks for system fonts by the N-Gage names.
+#define GAME_SCREEN_FONTS 0
 
 // The N-Gage card's `E:\Game.Id` -- six bytes, "N-Gage", at the card's root.
 // Ashen's engine init reads it (image 0x72214) and gives up when the read
 // fails (round 112); a SIS installs nothing at a drive's root. 1: a failed
 // read of a `\Game.Id` is answered with those six bytes, the real file first.
+// Harmless when the title never asks.
 #define GAME_ANSWER_GAME_ID 1
 
 // GCC98r2 keeps a double's high word first (the FPA order); EABI keeps it
@@ -104,14 +113,16 @@ enum { GAME_SRC_ORIGIN = 0 };
 #define GAME_CANCEL_ROM_OBJECTS 1
 
 // 1 forwards a CActive::Cancel on an active object of the game's own class
-// too (vptr in the image). Off on the titles that shipped before it existed: none
-// of them cancels an object of its own.
-#define GAME_CANCEL_OWN_OBJECTS 0
+// too (vptr in the image). One wraps RTimer in a CActive subclass of its own and
+// cancels, closes and deques it when the splash ends; dropped, the Cancel left
+// the object active and the Deque's real Cancel waited forever on the closed
+// timer, swallowing every key (E493 to E502).
+#define GAME_CANCEL_OWN_OBJECTS 1
 
 // 1 carries the wrapped CTimer's status and flags into the game's own object
-// after After and a forwarded Cancel, not only at RunL. Off on the titles
-// that shipped before it.
-#define GAME_TIMER_MIRROR 0
+// after After and a forwarded Cancel, not only at RunL. One tests its own
+// iActive before re-arming its name-entry timer (E514-E516).
+#define GAME_TIMER_MIRROR 1
 
 // The game's variadic wrappers hand `TDes16::FormatList` a GCC98r2 VA_LIST:
 // a one-element array, passed as its address. The 9.x euser takes the va
@@ -153,12 +164,18 @@ enum { GAME_SRC_ORIGIN = 0 };
 #define GAME_BUNDLE_DATA 1
 #define GAME_VENDOR      "DeltaCharlie"
 // No backslashes and no apostrophes: a packager reads this out of the header.
-#define GAME_INSTALL_TEXT "Ashen N-Gage version, ported to S60v3 by DeltaCharlie."
+#define GAME_INSTALL_TEXT "One N-Gage version, ported to S60v3 by DeltaCharlie."
 
 // The name every installed file carries; it has to differ from every other
 // title's (Symbian will not let one package own another's file).
-#define GAME_APP_NAME "gate6ashe"
+#define GAME_APP_NAME "gate6one"
+
+// The card the protection expects, as the port answers the N-Gage MMC driver
+// (gate6_mmc_control): the four words of the dump's own name, `MMC-ID
+// 567857f1-7d011234-b2b1879-6000400`, with the leading zeros the name drops
+// (round 125, E488: Asphalt 2's words made the check decode garbage).
+#define GAME_CARD_CID 0x567857f1, 0x7d011234, 0x0b2b1879, 0x06000400
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 11
+#define GAME_BUILD 1
 #endif
