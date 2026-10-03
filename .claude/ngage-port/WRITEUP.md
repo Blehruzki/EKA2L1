@@ -68,7 +68,8 @@ To be confirmed against the 2603 article itself:
 
 ## Material
 
-`ROUNDS.md` (every run and hardware round, with its result), `BUGBOOK.md`
+`PORTING.md` (the long-form narrative already kept), `ROUNDS.md` (every run
+and hardware round, with its result), `BUGBOOK.md`
 (symptom, cause, fix and how it was found), `SYMBIAN.md` (the platform facts
 with citations), `KNOBS.md`, `RELEASE.md`, `shots/`, the per-title
 `game.h` comments, and the git history of the `ngage-port` branch.
