@@ -73,6 +73,12 @@ the saves behind.
 `TRACE_IMPORTS`. `rules.py` and the regression rows (E428, E439 and the like)
 are where that is checked.
 
+Per title in `game.h`, absent (so off) in a shipped build:
+`GAME_RANGE_PROBES` / `GAME_RANGE_PROBE_COUNT` (a register logged at game
+addresses, out of range or sampled every 256th pass; E522-E550) and
+`GAME_FPA_SELFTEST` (every float and double import called once with known
+answers; One's import numbers only; E535-E536).
+
 ## One (6r58, `gate6one`), bench only
 
 Built from `newgame.py`'s template; on top of its defaults: `GAME_SRC_BPP 32`,
@@ -81,5 +87,7 @@ slot 8), `GAME_CANCEL_OWN_OBJECTS 1`, `GAME_TIMER_MIRROR 1`. Shared fixes it
 needed that are always on: the session path on every Connect (any thread), the
 TEntry/TVolumeInfo stand-ins, `old_deletable`, `PushL(CBase*)`, thread open by
 full name, the null-object AppUiFactory, the ScreenInfo buffer on every poll,
-the two-argument struct-return stub. Reaches the fight's arena on the bench;
-the fight-start rasteriser fault (E516) is open.
+the two-argument struct-return stub, `KIND_DBL1` for a double passed by value.
+Asphalt 2's `kNop` is now applied to Asphalt 2 only (in One it broke the
+rasteriser's reciprocal table: the fight-start fault, E516-E527). The fight
+runs on the bench; the fighters never move (E527-E554, BUGBOOK section 12).

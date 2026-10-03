@@ -712,7 +712,31 @@ semaphore, the stack at the wait). Fix: `GAME_CANCEL_OWN_OBJECTS`.
 `if (iActive) Cancel(); After(t);` read the game's +8 while the wrapper was
 pending: `E32USER-CBase 42`. Fix: `GAME_TIMER_MIRROR`.
 
-**Open: the fight-start rasteriser fault.** `E516`. Image `0x349a4`, the
-reciprocal table indexed by a y-span of ~17,000 px from one wild vertex. The
-bench runs at 3-11 frames a second and the game's clock is wall time
-(`0xa68cc`), so a speed-dependent animation step is a candidate; unproven.
+**The fight-start rasteriser fault was another title's patch.** `E516-E527`.
+Image `0x349a4`, the reciprocal table read far past its end from one wild
+vertex. The table at `0x101b98` (entry n = 2^30/n) had entry 6602 reading
+`0xE1A00000`: Asphalt 2's `kNop` at `0x1082c0`, applied to every title. Found
+with range probes on the clipped vertices' projected x, which dumped the table
+entry. Fix: gate the write to Asphalt 2's UID. Lesson: **a hard-coded image
+offset belongs to one image**; every one must carry the title it was found in
+(UGT and Ashen escaped only because the offset lies past their code).
+
+**A double passed by value lands two registers apart.** `E531`, `E535-E536`.
+`TRealX::TRealX(double)` and `TDes::AppendNum(double, TRealFormat&)`:
+GCC98r2 passes the double in r1:r2 (high word first in the FPA order), EABI
+aligns it to r2:r3 and the next word goes to the stack. Forwarded plainly they
+read garbage. Fix: `KIND_DBL1` (`PASSES_DOUBLE` in `gen_shim.py`). The bench
+self-test `GAME_FPA_SELFTEST` calls every float and double import once through
+the game's slots with known answers (30 helpers, 9 Math functions): run it on
+any title that imports them.
+
+**Open: the fighters never move.** `E527-E554`. The fight runs (timer, rounds,
+menus) but neither fighter animates after FIGHT. Ruled out: keys, clock,
+TInt64, the arithmetic layer, audio position, round state (2 = fighting).
+What the probes show: both fighters keep the round-start animation index 0
+(`0x586f0`, by design) and never get another -- the anim-end transition at
+`[fighter+0x2b08]`, which `0x9dd98` applies through `0xa0d04`, is never
+scheduled. The AI keys its move map (`data/script/torro.aici`, 153 records,
+built correctly) on the current animation, finds nothing for 0, and never
+decides; the button logic sits behind the same scheduler. Next: the anim
+stepper that should schedule the transition.

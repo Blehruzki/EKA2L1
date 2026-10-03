@@ -505,7 +505,7 @@ struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
 enum { SLOT = 48 };
 enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 5,
        KIND_ARGSHIFT = 6, KIND_NEG = 7, KIND_DEC = 8, KIND_NOT = 9, KIND_SEXT1 = 10,
-       KIND_ZEXT1_RADIX = 11 };
+       KIND_ZEXT1_RADIX = 11, KIND_DBL1 = 12 };
 enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
        LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5, LOCAL_TRUE = 6, LOCAL_SELF = 7,
        LOCAL_MEM_MOVE = 8, LOCAL_TRAP_UNTRAP = 9, LOCAL_RAMSIZES = 10,
@@ -1240,6 +1240,8 @@ struct Context {
     u32 realFsConnect;                         // RFs::Connect, before the hook that sets the session path
     u32 setSessionPathFn;                      // RFs::SetSessionPath, resolved on the main thread for every thread's Connect
     u32 realTimerAfter;                        // CTimer::After through its divert, for GAME_TIMER_MIRROR
+    u32 rangeLogs;                             // GAME_RANGE_PROBES records so far
+    u32 rangeSamples[16];                      // ... and passes through each sampling probe
     u32 realPushLCBase;                        // CleanupStack::PushL(CBase*), before the hook for the game's own objects
     u32 realThreadOpen;                        // RThread::Open(const TDesC&, TOwnerType), before the hook (round 125)
     u32 *factoryStandin;                       // the null-object app UI factory, once built (round 125)
@@ -3462,6 +3464,76 @@ static void probe_plant(Context *c, u8 *base, const Probe &p, u32 marker)
     user_imb_range(b, b + 18);
     *site = 0xEA000000 | ((((u32)b - (u32)site - 8) >> 2) & 0x00FFFFFF);
     user_imb_range(site, site + 1);
+}
+
+// **A range probe (bench).** One register at a game address, recorded only
+// when it falls outside [0, max) -- a hot site, silent until the value that
+// matters -- with the second register alongside and, when that one points
+// into the heap, the 24 words it points at. max 1 samples instead: every
+// 256th pass through that site, six words. rb 13 is the stack as the probe
+// found it less the six registers it saved first, so words 0-5 of that dump
+// are the game's r0-r3, r12 and lr. Off unless a title lists sites in
+// GAME_RANGE_PROBES {at, ra, rb, max}; max 0 is GAME_RANGE_PROBE_MAX.
+#ifndef GAME_RANGE_PROBES
+#define GAME_RANGE_PROBES
+#define GAME_RANGE_PROBE_COUNT 0
+#endif
+#ifndef GAME_RANGE_PROBE_MAX
+#define GAME_RANGE_PROBE_MAX 0x08000000
+#endif
+enum { NOTE_RANGE_PROBE = 714, RANGE_PROBE_LOGS = 48 };
+struct RangeProbe { u32 at; u8 ra; u8 rb; u32 max; };
+static const RangeProbe kRangeProbe[GAME_RANGE_PROBE_COUNT + 1] = { GAME_RANGE_PROBES };
+
+extern "C" void gate6_range_probe(u32 marker, Context *c, u32 a, u32 b)
+{
+    const u32 max = (marker < (u32)GAME_RANGE_PROBE_COUNT && kRangeProbe[marker].max)
+                  ? kRangeProbe[marker].max : (u32)GAME_RANGE_PROBE_MAX;
+    const u32 mag = (marker == 0) ? a : (((int)a < 0) ? (u32)-(int)a : a);   // site 0 keeps the unsigned test (negative = out of range)
+    if (max == 1) {                                 // sampling mode: every 256th pass, whatever the value
+        if ((++c->rangeSamples[marker & 15] & 255) != 0 || c->rangeLogs >= (u32)RANGE_PROBE_LOGS * 4)
+            return;
+    } else if (mag < max || c->rangeLogs >= (u32)RANGE_PROBE_LOGS)
+        return;
+    c->rangeLogs++;
+    log_event(c, NOTE_RANGE_PROBE, marker);
+    log_event(c, NOTE_RANGE_PROBE, a);
+    log_event(c, NOTE_RANGE_PROBE, b);
+    if (b >= 0x400000 && b < 0x10000000 && !(b & 3))        // sampling dumps a short window
+        for (u32 i = 0; i < (max == 1 ? 6u : 24u); i++)
+            log_event(c, NOTE_RANGE_PROBE, ((const u32 *)b)[i]);
+    log_block(c);
+}
+
+static void range_probe_plant(Context *c, u8 *base, const RangeProbe &p, u32 marker)
+{
+    u32 *site = (u32 *)(base + p.at);
+    if (!crumb_safe(*site) || c->spare + PROBE_BYTES > c->spareEnd)
+        return;
+    u32 *b = (u32 *)c->spare;
+    c->spare += PROBE_BYTES;
+    b[0]  = 0xE92D500F;                 // stmdb sp!, {r0-r3, r12, lr}
+    b[1]  = 0xE1A02000 | p.ra;          // mov   r2, ra
+    b[2]  = 0xE1A03000 | p.rb;          // mov   r3, rb
+    b[3]  = 0xE10F0000;                 // mrs   r0, cpsr
+    b[4]  = 0xE92D0003;                 // stmdb sp!, {r0, r1}
+    b[5]  = 0xE59F0020;                 // ldr   r0, [pc, #32]  -> b[15] marker
+    b[6]  = 0xE59F1020;                 // ldr   r1, [pc, #32]  -> b[16] context
+    b[7]  = 0xE59FC020;                 // ldr   r12, [pc, #32] -> b[17] handler
+    b[8]  = 0xE12FFF3C;                 // blx   r12
+    b[9]  = 0xE8BD0003;                 // ldmia sp!, {r0, r1}
+    b[10] = 0xE128F000;                 // msr   cpsr_f, r0
+    b[11] = 0xE8BD500F;                 // ldmia sp!, {r0-r3, r12, lr}
+    b[12] = *site;                      // what stood here
+    b[13] = 0xE51FF004;                 // ldr   pc, [pc, #-4]
+    b[14] = (u32)(site + 1);
+    b[15] = marker;
+    b[16] = (u32)c;
+    b[17] = (u32)&gate6_range_probe;
+    user_imb_range(b, b + 18);
+    *site = 0xEA000000 | ((((u32)b - (u32)site - 8) >> 2) & 0x00FFFFFF);
+    user_imb_range(site, site + 1);
+    log_event(c, NOTE_RANGE_PROBE, 0x9A000000u | p.at);   // planted
 }
 
 // What the thunk saw, written out as one run of records. The order is the
@@ -8307,6 +8379,101 @@ static const struct { u16 index; u8 shape; } kFpaMath[] = {
     { IMPORT_MATH_INT, M_D2I }, { IMPORT_MATH_INT16, M_D2I }, { IMPORT_MATH_ROUND, M_ROUND },
 };
 
+// Bench knob: call each of One's float and double imports once, through the
+// slot the game calls, with values whose answers are known, and log the
+// registers that come back. Doubles go in the FPA order the game uses. The
+// indices are One's own import numbers. 0 ships.
+#ifndef GAME_FPA_SELFTEST
+#define GAME_FPA_SELFTEST 0
+#endif
+enum { NOTE_FPA_TEST = 715 };
+static void fpa_selftest(Context *c, const u32 *iat, u32 nImports)
+{
+    typedef unsigned long long (*F)(u32, u32, u32, u32);
+    struct T { u16 index; u32 a, b, c, d; };
+    static const T kTests[] = {
+        { 456, 0x40040000, 0, 0x40080000, 0 },      // __adddf3 2.5 + 3   -> 40160000 0
+        { 493, 0x40080000, 0, 0x40040000, 0 },      // __subdf3 3 - 2.5   -> 3fe00000 0
+        { 485, 0x40040000, 0, 0x40000000, 0 },      // __muldf3 2.5 * 2   -> 40140000 0
+        { 464, 0x40080000, 0, 0x40000000, 0 },      // __divdf3 3 / 2     -> 3ff80000 0
+        { 471, 0x40040000, 0, 0, 0 },               // __fixdfsi 2.5      -> 2
+        { 473, 7, 0, 0, 0 },                        // __floatsidf 7      -> 401c0000 0
+        { 477, 0x40080000, 0, 0x40000000, 0 },      // __gtdf2 3 > 2      -> > 0
+        { 477, 0x40000000, 0, 0x40080000, 0 },      // __gtdf2 2 > 3      -> <= 0
+        { 480, 0x40000000, 0, 0x40080000, 0 },      // __ltdf2 2 < 3      -> < 0
+        { 480, 0x40080000, 0, 0x40000000, 0 },      // __ltdf2 3 < 2      -> >= 0
+        { 476, 0x40000000, 0, 0x40000000, 0 },      // __gedf2 2 >= 2     -> >= 0
+        { 476, 0x40000000, 0, 0x40080000, 0 },      // __gedf2 2 >= 3     -> < 0
+        { 468, 0x40000000, 0, 0x40000000, 0 },      // __eqdf2 2 == 2     -> 0
+        { 468, 0x40000000, 0, 0x40080000, 0 },      // __eqdf2 2 == 3     -> != 0
+        { 487, 0x40000000, 0, 0x40080000, 0 },      // __nedf2 2 != 3     -> != 0
+        { 488, 0x40040000, 0, 0, 0 },               // __negdf2 2.5       -> c0040000 0
+        { 470, 0x40200000, 0, 0, 0 },               // __extendsfdf2 2.5f -> 40040000 0
+        { 495, 0x40040000, 0, 0, 0 },               // __truncdfsf2 2.5   -> 40200000
+        { 457, 0x40200000, 0x40400000, 0, 0 },      // __addsf3 2.5 + 3   -> 40b00000
+        { 494, 0x40400000, 0x40200000, 0, 0 },      // __subsf3 3 - 2.5   -> 3f000000
+        { 486, 0x40200000, 0x40000000, 0, 0 },      // __mulsf3 2.5 * 2   -> 40a00000
+        { 465, 0x40400000, 0x40000000, 0, 0 },      // __divsf3 3 / 2     -> 3fc00000
+        { 472, 0x40200000, 0, 0, 0 },               // __fixsfsi 2.5      -> 2
+        { 474, 7, 0, 0, 0 },                        // __floatsisf 7      -> 40e00000
+        { 478, 0x40400000, 0x40000000, 0, 0 },      // __gtsf2 3 > 2      -> > 0
+        { 481, 0x40000000, 0x40400000, 0, 0 },      // __ltsf2 2 < 3      -> < 0
+        { 481, 0x40400000, 0x40000000, 0, 0 },      // __ltsf2 3 < 2      -> >= 0
+        { 469, 0x40000000, 0x40000000, 0, 0 },      // __eqsf2 2 == 2     -> 0
+        { 469, 0x40000000, 0x40400000, 0, 0 },      // __eqsf2 2 == 3     -> != 0
+        { 489, 0x40200000, 0, 0, 0 },               // __negsf2 2.5       -> c0200000
+    };
+    for (u32 k = 0; k < sizeof kTests / sizeof kTests[0]; k++) {
+        const T &t = kTests[k];
+        if (t.index >= nImports || !iat[t.index])
+            continue;
+        const unsigned long long r = ((F)iat[t.index])(t.a, t.b, t.c, t.d);
+        log_event(c, NOTE_FPA_TEST, t.index);
+        log_event(c, NOTE_FPA_TEST, (u32)r);
+        log_event(c, NOTE_FPA_TEST, (u32)(r >> 32));
+    }
+    // TRealX from a float and from a double, then to a TUint: 7 both times.
+    typedef u32 (*G)(void *, u32, u32, u32);
+    u32 x[4] __attribute__((aligned(8))) = { 0, 0, 0, 0 };
+    if (444 < nImports && 491 < nImports && iat[444] && iat[491]) {
+        ((G)iat[444])(x, 0x40E00000, 0, 0);
+        log_event(c, NOTE_FPA_TEST, 444);
+        log_event(c, NOTE_FPA_TEST, ((G)iat[491])(x, 0, 0, 0));
+        log_event(c, NOTE_FPA_TEST, x[2]);
+    }
+    // The Math functions through their FPA handlers: out, then the operands.
+    typedef int (*M)(u32 *, const u32 *, const u32 *);
+    static const struct { u16 index; u32 a, b; } kMath[] = {
+        { 400, 0x40100000, 0 },             // Math::Sqrt 4        -> 40000000 0
+        { 304, 0, 0 },                      // Math::Cos 0         -> 3ff00000 0
+        { 398, 0, 0 },                      // Math::Sin 0         -> 0 0
+        { 406, 0, 0 },                      // Math::Tan 0         -> 0 0
+        { 253, 0x3ff00000, 0 },             // Math::ATan 1        -> 3fe921fb 54442d18
+        { 254, 0x3ff00000, 0x3ff00000 },    // Math::ATan(1, 1)    -> 3fe921fb 54442d18
+        { 370, 0x40000000, 0x40080000 },    // Math::Pow 2^3       -> 40200000 0
+        { 329, 0x40040000, 0 },             // Math::Frac 2.5      -> 3fe00000 0
+        { 498, 0x3ff00000, 0 },             // Math::ACos 1        -> 0 0
+    };
+    for (u32 k = 0; k < sizeof kMath / sizeof kMath[0]; k++) {
+        const u32 i = kMath[k].index;
+        if (i >= nImports || !iat[i])
+            continue;
+        u32 a[2] = { kMath[k].a, 0 }, b[2] = { kMath[k].b, 0 }, r[2] = { 0xdead, 0xdead };
+        const int e = ((M)iat[i])(r, a, b);
+        log_event(c, NOTE_FPA_TEST, i | ((u32)e << 16));
+        log_event(c, NOTE_FPA_TEST, r[0]);
+        log_event(c, NOTE_FPA_TEST, r[1]);
+    }
+    if (443 < nImports && 491 < nImports && iat[443] && iat[491]) {
+        x[0] = x[1] = x[2] = 0;
+        ((G)iat[443])(x, 0x401C0000, 0, 0);
+        log_event(c, NOTE_FPA_TEST, 443);
+        log_event(c, NOTE_FPA_TEST, ((G)iat[491])(x, 0, 0, 0));
+        log_event(c, NOTE_FPA_TEST, x[2]);
+    }
+    log_block(c);
+}
+
 // After the import loop: each slot already holds its answer, which is what
 // the thunk calls. An absent import is 65535 and fails the bounds test.
 static void fpa_install(Context *c, u32 *iat, u32 nImports)
@@ -8335,6 +8502,8 @@ static void fpa_install(Context *c, u32 *iat, u32 nImports)
     }
     log_event(c, NOTE_FPA, regs);
     log_event(c, NOTE_FPA, maths);
+    if (GAME_FPA_SELFTEST && GAME_UID3 == 0x101fd409u)   // the indices are One's
+        fpa_selftest(c, iat, nImports);
 }
 
 // ---------------------------------------------------------------------------
@@ -11053,6 +11222,21 @@ static u32 load_and_start()
             s[7] = 0xE28DD008;              // add  sp, sp, #8
             s[8] = 0xE8BD8010;              // pop  {r4, pc}
             s[9] = (u32)fn;
+        } else if (kind == KIND_DBL1) {
+            // A double by value after `this`: r1:r2 under GCC98r2, r2:r3
+            // under EABI (eight-byte aligned), and the word after it moves
+            // from r3 to the stack (TRealX(double), AppendNum(double,
+            // TRealFormat&)). In the FPA order r1 is the high word.
+            s[0] = 0xE92D4010;              // push {r4, lr}
+            s[1] = 0xE24DD008;              // sub  sp, sp, #8
+            s[2] = 0xE58D3000;              // str  r3, [sp]     -- the word after the double
+            s[3] = GAME_FPA_DOUBLES ? 0xE1A03001u : 0xE1A03002u;   // mov r3, r1 (high) | mov r3, r2
+            s[4] = GAME_FPA_DOUBLES ? 0xE1A00000u : 0xE1A02001u;   // nop (r2 is the low word) | mov r2, r1
+            s[5] = 0xE59F4008;              // ldr  r4, [pc, #8] -> s[9]
+            s[6] = 0xE12FFF34;              // blx  r4
+            s[7] = 0xE28DD008;              // add  sp, sp, #8
+            s[8] = 0xE8BD8010;              // pop  {r4, pc}
+            s[9] = (u32)fn;
         } else if (kind == KIND_NEG || kind == KIND_DEC || kind == KIND_NOT) {
             // Forward, then shape the answer for a GCC98r2 caller: the EABI
             // comparisons answer 1 or 0 and libgcc's answered a sign.
@@ -11551,13 +11735,22 @@ static u32 load_and_start()
                 user_imb_range(site, site + 1);
             }
 
-    if (NOP_THE_STORE)
+    // Asphalt 2's, and only Asphalt 2's: the offset means nothing in another
+    // image. In One it is inside the rasteriser's reciprocal table, entry
+    // 6602, and the nop turned 1/6602 into 0xE1A00000 -- every vertex at that
+    // depth projected forty times too far and the first fight died reading
+    // past the table (E516-E527). In UGT and Ashen it lies past the code.
+    if (NOP_THE_STORE && GAME_UID3 == 0x101fd42du)
         for (u32 i = 0; i < sizeof kNop / sizeof kNop[0]; i++)
             if (kNop[i] + 4 <= h->codeSize) {
                 u32 *site = (u32 *)(base + kNop[i]);
                 *site = 0xE1A00000;             // mov r0, r0
                 user_imb_range(site, site + 1);
             }
+
+    for (u32 i = 0; i < (u32)GAME_RANGE_PROBE_COUNT; i++)
+        if (kRangeProbe[i].at + 4 <= h->codeSize)
+            range_probe_plant(ctx, base, kRangeProbe[i], i);
 
     if (PLANT_PROBES)
         for (u32 i = 0; i < sizeof kProbe / sizeof kProbe[0]; i++)

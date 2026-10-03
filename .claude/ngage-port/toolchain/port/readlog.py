@@ -209,6 +209,8 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          776: 'OLD PUSH: CleanupStack::PushL(CBase*) of a game object, pushed as an item that runs its old destructor',
          777: 'THREAD OPEN: RThread::Open by the game\'s name for a thread the port renamed -- the real answer, then the Duplicate from the game\'s own handle (-1 none matched)',
          778: 'FACTORY: CEikonEnv::AppUiFactory() answered with the null-object factory -- its address, then the dummy every slot of it answers',
+         715: 'FPA SELFTEST: import, r0, r1',
+         714: 'RANGE PROBE: site index, the register out of range, the second register (0x9Axxxxxx: planted at)',
          779: 'OWN CANCEL: CActive::Cancel on an object of the game\'s own class, forwarded -- the object, its iStatus, its iFlags',
          771: 'CTL WINDOW: the word at 0x28, DrawableWindow() answer, scan index<<16|hit, what the old control got, then the session buffer',
          769: 'COEENV word (24, once): the real 9.x CCoeEnv from its first word',

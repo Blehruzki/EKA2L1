@@ -37,6 +37,10 @@ KIND_NEG, KIND_DEC, KIND_NOT, KIND_SEXT1 = 7, 8, 9, 10
 # A TUint that became a TUint64 with a TRadix after it: r1 goes to r2:r3
 # zero-extended and the radix from r2 to the stack (One, round 125).
 KIND_ZEXT1_RADIX = 11
+# A double by value after `this`: GCC98r2 passed it in r1:r2, EABI aligns it
+# to r2:r3, and the word after it (r3) goes to the stack. The words are in
+# the FPA order where the title has it (GAME_FPA_DOUBLES).
+KIND_DBL1 = 12
 
 # Where the two calling conventions actually disagree. GCC98r2 returned an
 # eight-byte structure in r0 and r1; EABI returns anything over four bytes
@@ -65,6 +69,19 @@ RETURNS_STRUCT = {
     'TDesC16::Mid(int) const', 'TDesC16::Mid(int, int) const',
     'TDesC8::Left(int) const', 'TDesC8::Right(int) const',
     'TDesC8::Mid(int) const', 'TDesC8::Mid(int, int) const',
+}
+
+# A double by value after `this` lands two registers apart in the two ABIs
+# (r1:r2, and r2:r3 under EABI's alignment), and in One its words are crossed
+# as well. Forwarded plainly, TRealX(double) read the low word and r3 as the
+# value, so the double-to-integer at 0xaae24 answered rubbish. These match by
+# ordinal, so the kind is laid over the match the way RETURNS_STRUCT's is.
+PASSES_DOUBLE = {
+    'TRealX::TRealX(double)',
+    'TDes16::AppendNum(double, TRealFormat const &)',
+    'TDes8::AppendNum(double, TRealFormat const &)',
+    'TDes16::Num(double, TRealFormat const &)',
+    'TDes8::Num(double, TRealFormat const &)',
 }
 
 # GCC98r2 put its compiler helpers in euser; EABI puts them in the runtime
@@ -964,6 +981,7 @@ def build(image):
             out.append((i, None, 0, sig, KIND_NONE))
 
     out = [(i, lib, o, sig, KIND_SRET8 if kind == KIND_CALL and sig in RETURNS_STRUCT
+            else KIND_DBL1 if kind == KIND_CALL and sig in PASSES_DOUBLE
             else kind) for i, lib, o, sig, kind in out]
 
     dlls = sorted({lib for _i, lib, _o, _s, kind in out if lib and kind != KIND_NONE})
