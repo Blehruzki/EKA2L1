@@ -628,6 +628,68 @@ namespace eka2l1::desktop {
             return EXCEPTION_CONTINUE_SEARCH;
         }
 
+        // Permanent, always-on first-chance hook for hardware faults only: access violation, heap
+        // corruption and stack buffer overrun. Vectored handlers run before any __try or catch on the
+        // faulting thread, so this still fires when an SEH-to-C++ translator (ENABLE_SEH_HANDLER) or a
+        // JIT frame without unwind info stops SetUnhandledExceptionFilter from ever being reached.
+        // Nothing in the emulator faults on purpose (no guard pages, no fault-driven memory emulation,
+        // no other vectored handlers), so these codes are rare and always real. C++ exceptions are
+        // deliberately not looked at. Purely diagnostic: always lets the exception continue unchanged.
+        static LONG CALLBACK log_hardware_fault(EXCEPTION_POINTERS *pointers) {
+            static thread_local bool in_handler = false;
+            static volatile LONG report_count = 0;
+
+            const EXCEPTION_RECORD *rec = pointers->ExceptionRecord;
+
+            switch (rec->ExceptionCode) {
+            case EXCEPTION_ACCESS_VIOLATION:
+            case 0xC0000374: // STATUS_HEAP_CORRUPTION
+            case 0xC0000409: // STATUS_STACK_BUFFER_OVERRUN
+                break;
+
+            default:
+                return EXCEPTION_CONTINUE_SEARCH;
+            }
+
+            if (in_handler || InterlockedIncrement(&report_count) > 8) {
+                return EXCEPTION_CONTINUE_SEARCH;
+            }
+
+            in_handler = true;
+
+            HMODULE module = nullptr;
+            char module_path[MAX_PATH] = {};
+
+            GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                reinterpret_cast<LPCSTR>(rec->ExceptionAddress), &module);
+            if (module) {
+                GetModuleFileNameA(module, module_path, MAX_PATH);
+            }
+
+            const char *module_name = module_path;
+            for (const char *p = module_path; *p; p++) {
+                if (*p == '\\' || *p == '/') {
+                    module_name = p + 1;
+                }
+            }
+
+            LOG_CRITICAL(SYSTEM, "[hardware fault] code=0x{:08x}, thread_id={}, fault_ip={:p} ({}+0x{:x})",
+                rec->ExceptionCode, GetCurrentThreadId(), rec->ExceptionAddress, module_name[0] ? module_name : "<no module, JIT or unmapped code>",
+                reinterpret_cast<std::uintptr_t>(rec->ExceptionAddress) - reinterpret_cast<std::uintptr_t>(module));
+
+            if (rec->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && rec->NumberParameters >= 2) {
+                const ULONG_PTR kind = rec->ExceptionInformation[0];
+                LOG_CRITICAL(SYSTEM, "[hardware fault] access violation {} address 0x{:x}", (kind == 0) ? "reading" : ((kind == 1) ? "writing" : "executing"),
+                    static_cast<unsigned long long>(rec->ExceptionInformation[1]));
+            }
+
+            // Captured from inside the handler: the faulting frame sits just past the ntdll dispatch frames.
+            log_symbolized_stack("hardware fault", 1);
+
+            in_handler = false;
+            return EXCEPTION_CONTINUE_SEARCH;
+        }
+
         static LONG WINAPI log_unhandled_seh_exception(EXCEPTION_POINTERS *pointers) {
             const EXCEPTION_RECORD *rec = pointers->ExceptionRecord;
 
@@ -680,6 +742,8 @@ namespace eka2l1::desktop {
         std::set_terminate(log_unhandled_exception_and_abort);
 #if EKA2L1_PLATFORM(WIN32) && defined(_MSC_VER)
         SetUnhandledExceptionFilter(log_unhandled_seh_exception);
+        // Always on: see log_hardware_fault. Hardware faults only, so it is silent in normal operation.
+        AddVectoredExceptionHandler(1, log_hardware_fault);
 #if defined(EKA2L1_FIRST_CHANCE_EXCEPTION_HOOK)
         // Opt-in diagnostic only: a first-chance hook runs on every C++ throw in the process.
         AddVectoredExceptionHandler(1, log_first_chance_bad_alloc);
