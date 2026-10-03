@@ -158,6 +158,9 @@ it is universal, and the round that settled it. Keep it current when a knob
 changes hands.
 `RELEASE.md` is the post that goes out with a build, and the per-title
 variables it takes.
+`WRITEUP.md` is the public account of the whole project the user asked for
+at the end, with its style reference and outline. When a bug would make a
+good story, add it there with its rows.
 
 - **Hold C to cycle the picture mode.** C on a keypad, Backspace on a QWERTY
   (`EStdKeyBackspace`, scancode 0x01): held about a second it steps the fit

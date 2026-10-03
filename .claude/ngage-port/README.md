@@ -21,6 +21,7 @@ loader.
 | Symbian facts, from the sources | `SYMBIAN.md` |
 | the long-form narrative of the port | `PORTING.md` |
 | the post that goes out with a build | `RELEASE.md` |
+| the public write-up of the whole project, for the end (style reference and outline) | `WRITEUP.md` |
 | shipped packages (loader-only ones tracked; the data-carrying ones are not) | `build/` |
 | screenshots cited by the record | `shots/` |
 | the first week's raw phone logs, cited by PORTING.md | `logs/` |
