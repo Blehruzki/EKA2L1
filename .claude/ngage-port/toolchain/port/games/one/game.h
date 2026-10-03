@@ -77,6 +77,10 @@ enum { GAME_SRC_ORIGIN = 0 };
                           { 0x000653dc, 0xE59CC028, 0xE59CC020 }, { 0x00065438, 0xE59CC028, 0xE59CC020 }, \
                           { 0x00065494, 0xE59CC028, 0xE59CC020 }, { 0x0006554c, 0xE59CC028, 0xE59CC020 }
 #define GAME_CODE_PATCH_COUNT 8
+// The pak reader's TStreamBuf subclass (0x36e70), whose overrides 9.x estor
+// calls: its eleven slots moved to EABI's address point (E555-E562).
+#define GAME_VTABLE_SHIFTS { 0x00152940, 11 }
+#define GAME_VTABLE_SHIFT_COUNT 1
 
 // The environment's screen device, as the game reads it off the view
 // (old iScreen, 0x3c): 1 hands it a stand-in that answers font requests by
@@ -154,6 +158,8 @@ enum { GAME_SRC_ORIGIN = 0 };
 // A tick every sixteenth traced event, for the boot's shape. On for the
 // first rounds.
 #define GAME_LOG_CLOCK 1
+
+
 
 // A diagnostic, per title and off: every UseFont and DrawText through the gc
 // stand-ins, with the text's descriptor raw (E385-E388). Thousands of

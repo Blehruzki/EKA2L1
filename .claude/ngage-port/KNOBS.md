@@ -27,6 +27,7 @@ the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 | `GAME_SCREEN_MODES` | - | - | 1 | yes (window-gc titles) | hold C cycles the picture mode for a title drawing through the window gc; the Asphalts get the same through `screen_layout` | round 114; hardware (both paths) |
 | `GAME_CANCEL_ROM_OBJECTS` | 0 | 0 | 1 | yes | a stray `CActive::Cancel` on a 9.x object (vptr in ROM) is forwarded instead of dropped | round 115 (E426/E427); hardware rounds 115-117 |
 | `GAME_CANCEL_OWN_OBJECTS` | 0 | 0 | 0 | yes | a `CActive::Cancel` on an object of the game's own class (vptr in the image) is forwarded instead of dropped; One 1 | E493-E503 (One, bench) |
+| `GAME_VTABLE_SHIFTS` | -- | -- | -- | yes | a game class's vtable moved down two words to EABI's address point, for a class whose overrides 9.x calls; One `{ 0x152940, 11 }` | E555-E562 (One, bench) |
 | `GAME_TIMER_MIRROR` | 0 | 0 | 0 | yes | the wrapped CTimer's status and flags reach the game's object after After and a forwarded Cancel, not only at RunL; One 1 | E514-E515 (One, bench) |
 | `GAME_SRC_BPP` | 16 | 16 | 16 | yes | bytes a pixel the game writes into the ScreenInfo buffer; One 32 (EColor16MU) | E489-E490 (One, bench) |
 | `GAME_CARD_CID` | default | default | default | per title | the card identity the MMC driver answers Codewave with: the dump's MMC-ID; One 567857f1-7d011234-0b2b1879-06000400 | E488 (One, bench) |
@@ -89,5 +90,8 @@ TEntry/TVolumeInfo stand-ins, `old_deletable`, `PushL(CBase*)`, thread open by
 full name, the null-object AppUiFactory, the ScreenInfo buffer on every poll,
 the two-argument struct-return stub, `KIND_DBL1` for a double passed by value.
 Asphalt 2's `kNop` is now applied to Asphalt 2 only (in One it broke the
-rasteriser's reciprocal table: the fight-start fault, E516-E527). The fight
-runs on the bench; the fighters never move (E527-E554, BUGBOOK section 12).
+rasteriser's reciprocal table: the fight-start fault, E516-E527).
+`GAME_VTABLE_SHIFTS { 0x152940, 11 }`: the pak reader's TStreamBuf vtable at
+EABI's address point, without which the animation table read as zeros and
+no fighter moved (E555-E562). Fights play on the bench: AI attacks, health,
+rounds.

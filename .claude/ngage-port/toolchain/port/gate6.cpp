@@ -2592,6 +2592,23 @@ enum { HOOK_UNCOMPRESS = GAME_HOOK_UNCOMPRESS, Z_REAL = GAME_Z_REAL, Z_BYTES = 1
 static const u32 kZSite[] = { GAME_Z_SITES };
 struct CodePatch { u32 at, expect, replace; };
 static const CodePatch kCodePatch[] = { GAME_CODE_PATCHES };
+// **A game class's vtable moved to EABI's address point** (GAME_VTABLE_SHIFTS
+// {at, slots}). GCC98r2 stores a vtable's start in the object -- two header
+// words, then slot 0 -- and EABI its first slot, so 9.x code calling slot k
+// of a game object lands on the game's slot k - 2. That is harmless until
+// 9.x calls the game's own overrides: One derives a TStreamBuf (the pak
+// reader at 0x36e70, vtable 0x152940) and 9.x RReadStream::ReadL called its
+// DoRelease for DoReadL, so torro.bin -- the fighters' animation table --
+// read as zeros and no fighter ever left its first animation (E555-E562).
+// Moving the slots down two words in place makes the object EABI-shaped;
+// the game's own calls into such a class are already EABI-shaped (the
+// DoSeekL sites in GAME_CODE_PATCHES).
+#ifndef GAME_VTABLE_SHIFTS
+#define GAME_VTABLE_SHIFTS { 0, 0 }
+#define GAME_VTABLE_SHIFT_COUNT 0
+#endif
+struct VtableShift { u32 at, slots; };
+static const VtableShift kVtableShift[] = { GAME_VTABLE_SHIFTS };
 // A decompression per resource is hundreds a run, and the failing one is the
 // last. Record every call up to this many, then only the ones that fail --
 // which keeps the log short enough to survive and still holds the answer.
@@ -10854,6 +10871,18 @@ static u32 load_and_start()
         *w = kCodePatch[i].replace;
         user_imb_range(w, w + 1);
         log_event(ctx, NOTE_PATCH, at);
+    }
+    for (u32 i = 0; i < (u32)GAME_VTABLE_SHIFT_COUNT; i++) {
+        const u32 at = kVtableShift[i].at, n = kVtableShift[i].slots;
+        if ((at & 3) || at + 4 * (n + 2) > h->codeSize) PANIC(CAT_HDR, 8);
+        u32 *v = (u32 *)(base + at);
+        // The two header words a GCC98r2 vtable starts with, and a first
+        // slot inside the image: anything else is not the vtable measured.
+        if (v[0] || v[1] || v[2] - (u32)base >= h->codeSize) PANIC(CAT_HDR, 9);
+        for (u32 k = 0; k < n; k++)
+            v[k] = v[k + 2];
+        user_imb_range(v, v + n + 2);
+        log_event(ctx, NOTE_PATCH, 0x5A000000u | at);
     }
 
     ctx->lastImport = 0xFFFF;               // nothing yet

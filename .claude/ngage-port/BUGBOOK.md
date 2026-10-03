@@ -730,13 +730,20 @@ self-test `GAME_FPA_SELFTEST` calls every float and double import once through
 the game's slots with known answers (30 helpers, 9 Math functions): run it on
 any title that imports them.
 
-**Open: the fighters never move.** `E527-E554`. The fight runs (timer, rounds,
-menus) but neither fighter animates after FIGHT. Ruled out: keys, clock,
-TInt64, the arithmetic layer, audio position, round state (2 = fighting).
-What the probes show: both fighters keep the round-start animation index 0
-(`0x586f0`, by design) and never get another -- the anim-end transition at
-`[fighter+0x2b08]`, which `0x9dd98` applies through `0xa0d04`, is never
-scheduled. The AI keys its move map (`data/script/torro.aici`, 153 records,
-built correctly) on the current animation, finds nothing for 0, and never
-decides; the button logic sits behind the same scheduler. Next: the anim
-stepper that should schedule the transition.
+**The fighters never moved: a game class's vtable read by 9.x code.**
+`E527-E562`. The fight ran (timer, rounds, menus) but neither fighter left
+its round-start animation, so the AI -- which keys its move map on the
+current animation -- never decided, and the button logic sat behind the same
+scheduler. The animation table, `torro.bin` out of the pak, was all zeros:
+One reads it with 9.x `RReadStream` through its **own** `TStreamBuf`
+subclass (`0x36e70`, vtable `0x152940`), and 9.x calls slot k at vptr + 4k
+while a GCC98r2 vptr is the vtable's start, two header words early. So
+`DoReadL` ran slot 0, `MStreamBuf::DoRelease`, and read nothing. Fix:
+`GAME_VTABLE_SHIFTS` moves the slots down two words in place. Found by
+following the frozen state back one step at a time with range probes:
+animation index never stored, its end event due but its op a no-op, the op
+table empty, the loader's buffer empty after `ReadL`. Lesson: **any game
+class that 9.x code calls virtually needs an EABI-shaped vtable** -- the
+mixin callback shift (`CB_SHIFT`) was the same bug; check every class the
+game derives from a 9.x base whose virtuals 9.x invokes (stream buffers,
+observers, callbacks).
