@@ -46,6 +46,7 @@ the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 | `GAME_SHIFT_PICKER` | 0 | 0 | 0 | yes | gone for good: the offset it hunted was `GAME_SRC_ORIGIN` (round 97) | off everywhere |
 | `GAME_BUNDLE_DATA` | 1 | 1 | 1 | yes | the game's files ship inside the SIS | since UGT 022 |
 | `GAME_AO_PRIORITIES` | none | none | none | yes | rewrites the priority a named `CActive::CActive` call site passes: a title's own self-completing frame loop goes below EPriorityIdle (One: {0x264f8, -101}) | round 128; bench E590 |
+| `GAME_MDA_WRITER_CB` | 0 | 0 | 0 | per image | where a title's audio writer keeps its stream callback; on, every 256th Position call logs the writer's written count and the stream's Position (One: 0xc) | round 129 |
 
 ## Shared mechanisms with no knob (every title)
 
@@ -63,6 +64,8 @@ the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 | the free quarantine's slot exchanged with `swp`, so two threads cannot free one cell twice | round 127 | bench E583 |
 | `RFsBase::Close` is efsrv `RFile::Close` (it was `RHandleBase::Close`, which closed nothing) | round 127 | bench E584-E585: One's save persists |
 | `G6PUR` carries the caller's return address (it said 0) | round 128 | -- |
+| from a direct-screen abort on, every record is flushed (the endgame budget) | round 129 | -- |
+| the stream's Position calls are logged for the first few only, like WriteL | round 129 | bench E613 |
 | hold C noted on the app UI's key path as well as the control's (`hold_key`), with the 100 ms hold timer, for a title that takes its keys in `HandleKeyEventL` (One) | round 126 | bench E577 |
 | per-call tracing without `TTrap::Trap`/`UnTrap`/`User::AllocL`, and `ScreenInfo` logged for its first 16 polls only; the allocator wraps on the title's own `kAlloc` (they were Asphalt 2's indices) | round 126 | bench E577-E580 |
 

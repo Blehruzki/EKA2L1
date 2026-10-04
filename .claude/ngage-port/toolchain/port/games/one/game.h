@@ -141,6 +141,9 @@ enum { GAME_SRC_ORIGIN = 8 };
 // minimize (round 128). {return address after `bl CActive::CActive`, priority}.
 #define GAME_AO_PRIORITIES { 0x000264f8, -101 }
 #define GAME_AO_PRIORITY_COUNT 1
+// The audio writer (image 0x1195c) keeps its stream callback at +0xc: its
+// written count and the stream's Position, every 256th poll (round 129).
+#define GAME_MDA_WRITER_CB 0xc
 
 // The game's variadic wrappers hand `TDes16::FormatList` a GCC98r2 VA_LIST:
 // a one-element array, passed as its address. The 9.x euser takes the va
@@ -198,5 +201,5 @@ enum { GAME_SRC_ORIGIN = 8 };
 #define GAME_CARD_CID 0x567857f1, 0x7d011234, 0x0b2b1879, 0x06000400
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 5
+#define GAME_BUILD 6
 #endif

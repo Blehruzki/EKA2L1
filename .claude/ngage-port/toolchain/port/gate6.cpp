@@ -1090,6 +1090,9 @@ struct Context {
     u32 timerCount;
     u32 realTimerDtor;      // 9.x CTimer::~CTimer, for a stand-in being destroyed
     u32 realActiveCtor;     // 9.x CActive::CActive(TInt), under GAME_AO_PRIORITIES
+    u32 mdaGameCb;          // the game's stream callback sub-object, as NewL was given it
+    u32 mdaPosCalls;        // Position calls seen, for rationing the writer dump
+    u32 mdaByThread[2][14]; // stream calls by slot, [0] the main thread, [1] any other
     u32 aoPrioritySaid;     // which GAME_AO_PRIORITIES sites have been logged (a bit each)
     u32 newTimerCtor;       // 9.x CTimer::CTimer(TInt), as the shim resolved it
     u32 timerThunks[3];     // DoCancel, RunL, RunError, built in the code chunk
@@ -1239,7 +1242,7 @@ struct Context {
     u32 holdTimer;          // the window-gc title's hold timer (CPeriodic), once started
     CallBack holdCb;
     const void *lastBmp;    // the last frame the game blitted
-    u32 benchBgDone, benchFgDone;   // the bench's one background and one return, done
+    u32 benchBgDone, benchFgDone, benchDeactDone;   // the bench's one background, one return and one view deactivation, done
     u32 realFormat, realFormatList; // euser's TDes16::Format and FormatList, before our hooks
     u32 formatLogs;
     u32 benchBeats;
@@ -3885,6 +3888,10 @@ static void worker_probe(Context *c, u32 index)
 static void heap_watch(Context *c, u32 where);
 
 enum { WORKER_EXC = 1 };
+// Bench knob, 0 when shipping: the main thread's scheduler queue every N
+// heartbeats (0x5C4Ennnn), priorities and flags (round 129: what runs when
+// One's loop is at -101).
+enum { BENCH_SCHED_BEATS = 0 };
 
 extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
 {
@@ -4246,6 +4253,8 @@ extern "C" int gate6_heartbeat(void *p)
 {
     Context *c = (Context *)p;
     c->beats++;
+    if (BENCH_SCHED_BEATS && !(c->beats % (u32)BENCH_SCHED_BEATS))
+        sched_dump(c, 0x5C4E0000u | (c->beats & 0xFFFFu));
     if (c->wrkExcSet != c->wrkExcSaid) {
         c->wrkExcSaid = c->wrkExcSet;
         log_event(c, NOTE_WRK_FAULT, 0xE5E70000u | (c->wrkExcSaid & 0xFFFFu));
@@ -4695,6 +4704,12 @@ extern "C" void gate6_dsa_slot0(void *, u32 reason, Context *c)
 {
     c->reached |= REACHED_ABORT;
     c->screenLost = 1;
+    // Round 129: a minimize ended KERN-EXEC 0 a moment after this, with the
+    // port's own restart the last thing on the card -- nothing after it was
+    // flushed. So from an abort on, the endgame flush: every record to disk,
+    // for ENDGAME_CALLS of them. The bench cannot reproduce that death.
+    if (!c->timerOff)
+        c->timerOff = (u32)ENDGAME_CALLS;
     log_event(c, NOTE_DSA_ABORT, reason);
     log_block(c);
     old_call1(c->oldObserver, 0, reason);
@@ -8207,6 +8222,11 @@ extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
 // back and comes to the front again, which is the phone's menu key and the
 // return to the game (round 115: the resume's E32USER-CBase 42).
 enum { BENCH_BACKGROUND_TICK = 0, BENCH_FOREGROUND_TICK = 0 };
+// Bench knob, 0 when shipping: at this tick the view server's half of a
+// minimize -- DeactivateActiveViewL on the wrapper, which walked the phone's
+// chain for the Asphalts (E346) -- from this timer, for a title (One) whose
+// frame loop is not the port's timer (round 129).
+enum { BENCH_DEACTIVATE_TICK = 0 };
 
 extern "C" int gate6_hold_tick_cb(void *p)
 {
@@ -8222,6 +8242,17 @@ extern "C" int gate6_hold_tick_cb(void *p)
     if (BENCH_BACKGROUND_TICK && !c->benchBgDone && (i32)(user_tickcount() - (u32)BENCH_BACKGROUND_TICK) >= 0) {
         c->benchBgDone = 1;
         gate6_ui_foreground(c->wrapUi, 0, c);
+    }
+    if (BENCH_DEACTIVATE_TICK && !c->benchDeactDone && c->wrapUi &&
+        (i32)(user_tickcount() - (u32)BENCH_DEACTIVATE_TICK) >= 0) {
+        typedef void (*Deactivate)(void *);
+        c->benchDeactDone = 1;
+        Deactivate d = (Deactivate)rlibrary_lookup(&c->cone, CONE_DEACTIVATE_ACTIVE_VIEW);
+        log_event(c, NOTE_DEACTIVATE, (u32)d);
+        log_block(c);
+        if (d) d(c->wrapUi);
+        log_event(c, NOTE_DEACTIVATE, 1);
+        log_block(c);
     }
     if (BENCH_FOREGROUND_TICK && !c->benchFgDone && (i32)(user_tickcount() - (u32)BENCH_FOREGROUND_TICK) >= 0) {
         c->benchFgDone = 1;
@@ -10201,6 +10232,16 @@ extern "C" int gate6_sysagt_cancel(void *, u32, u32, Context *c)
 // and, on -5 at 16 kHz, retries at 8 kHz -- so a working bridge shows as a
 // second slot-3 call with the 8 kHz enum (0x40) and the run going on. 0 ships.
 enum { FORCE_LEAVE_AT = 0 };
+// Per title: the writer dump above, and where the stream callback sits in
+// the writer object (One: +0xc). 0 is off. Shipped on for One: every 256th
+// Position call says how far the stream has played against how much the game
+// has written, which is the stutter's question on a phone (round 129).
+#ifndef GAME_MDA_WRITER_CB
+#define GAME_MDA_WRITER_CB 0
+#endif
+enum { MDA_WRITER_CB_AT = GAME_MDA_WRITER_CB };
+
+
 
 extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
 {
@@ -10211,12 +10252,16 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
     const int to = (slot < 14) ? kMdaMap[slot] : -1;
     // Same reasoning as the callback: slot 9 is `WriteL` and everything
     // else on this object is called about twenty times in a run.
-    const bool quiet = (slot == 9) && (c->mdaWrites >= (u32)MDA_QUIET_AFTER);
+    // And slot 11, Position, which One calls once a frame: fifty times a
+    // second, six records each, in a fight (round 129).
+    const bool quiet = ((slot == 9) && (c->mdaWrites >= (u32)MDA_QUIET_AFTER)) ||
+                       ((slot == 11) && (c->mdaPosCalls > (u32)MDA_QUIET_AFTER));
     if (!quiet) {
         log_event(c, NOTE_MDA_CALL, slot);
         log_event(c, NOTE_MDA_ARG, saved[1]);
         log_event(c, NOTE_MDA_ARG, saved[2]);
         log_event(c, NOTE_MDA_ARG, saved[3]);
+        log_event(c, NOTE_MDA_ARG, saved[4] - c->codeBase);   // who called: the trampoline pushed lr fifth
         mda_where(c, slot, saved[0]);
         log_block(c);
     }
@@ -10286,6 +10331,32 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
         }
     }
     u32 r = ((Any)rvt[to])(real, a1, saved[2], saved[3]);
+    // Bench (round 129): One's writer (image 0x1195c) polls Position and
+    // never writes. Its object is the callback's owner, the callback at +0xc;
+    // the words it decides on, and what Position answered.
+    if (slot == 11)
+        c->mdaPosCalls++;
+    if (slot < 14)
+        c->mdaByThread[on_main_thread(c) ? 0 : 1][slot]++;
+    if (MDA_WRITER_CB_AT && slot == 11 && c->mdaGameCb &&
+        (c->mdaPosCalls <= 8 || !(c->mdaPosCalls & 255))) {
+        const u32 *o = (const u32 *)(c->mdaGameCb - (u32)MDA_WRITER_CB_AT);
+        log_event(c, NOTE_MDA_CODE, 0xD0000000u | c->mdaPosCalls);
+        // Which thread drives a stream: WriteL and Position, main then other.
+        // One has two streams -- the sound thread makes its own for the menus
+        // -- so these count both, each on its own thread (E614-E616).
+        log_event(c, NOTE_MDA_CODE, c->mdaByThread[0][9]);
+        log_event(c, NOTE_MDA_CODE, c->mdaByThread[1][9]);
+        log_event(c, NOTE_MDA_CODE, c->mdaByThread[0][11]);
+        log_event(c, NOTE_MDA_CODE, c->mdaByThread[1][11]);
+        for (u32 off = 0x2c; off <= 0x88; off += 4)
+            log_event(c, NOTE_MDA_CODE, o[off / 4]);
+        if (r >= 0x400000 && !(r & 3)) {
+            log_event(c, NOTE_MDA_CODE, ((const u32 *)r)[0]);
+            log_event(c, NOTE_MDA_CODE, ((const u32 *)r)[1]);
+        }
+        log_block(c);
+    }
     if (!quiet) {
         log_event(c, NOTE_MDA_CALL, 0x100u | slot);     // and it came back
         log_event(c, NOTE_MDA_ARG, r);
@@ -10370,6 +10441,7 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
     // that puts word 1 back in r0 and jumps to the game's entry two slots
     // further on.
     void *cb = (void *)a[0];
+    c->mdaGameCb = (u32)cb;
     const u32 cbNeed = 8 + (u32)CB_SLOTS * 4 + (u32)CB_SLOTS * CB_TRAMP * 4;
     if (CB_PROXY && cb && c->spare && c->spare + cbNeed <= c->spareEnd) {
         u32 *gvt = *(u32 **)cb;

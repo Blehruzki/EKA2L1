@@ -845,3 +845,24 @@ starved, so the bench can only show the change is harmless. Lesson: **a title
 with its own frame loop needs the priority check the port's timer gets for
 free** -- look for the self-completing object (`User::RequestComplete` on its
 own iStatus, every frame) in a new title's first log.
+
+**Round 129: sound in the fight, a skip that spoils it, and a theory dropped.**
+`R129`, `E597-E617`. The priority change (round 128) worked: the stream opens
+at once and the fight has sound. Three findings from looking further:
+- *A count can mix two objects.* Stream calls counted by thread said the sound
+  thread drove the main thread's stream -- 1,097 writes -- and a marshal was
+  built to hand them over. It marshalled nothing: the sound thread makes its
+  **own** stream for the menus, and all its calls came before the main
+  thread's existed (E616). Count per object, not per slot, before building on
+  a count. The marshal came out.
+- *A probe that never fires is not evidence.* Range probes planted in the
+  audio writer (0x1195c) never reported though the code ran there (E607-E609);
+  the dispatch's caller, logged from the proxy, settled where the calls came
+  from. Cause of the probe's silence not found.
+- *The bench is blind to a stall it cannot tell from idling.* The skip that
+  spoils a fight on the phone could not be split on the bench (E599-E612).
+The minimize: the bench walks the whole chain, view server included
+(`BENCH_DEACTIVATE_TICK`, from the hold timer, for a title without the
+port's timer) and survives; the phone's log stops after the port's DSA
+restart because nothing after it was flushed. Build 006 flushes from every
+abort on.
