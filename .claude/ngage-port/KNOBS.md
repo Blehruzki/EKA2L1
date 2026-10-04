@@ -75,6 +75,8 @@ the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 | the watchdog writes a 6 KB slot per stall, four at most, each with every thread's registers (`RThread::Context`, euser 1796) twice 100 ms apart, and the main thread's stack from sp; thread handles duplicated process-owned (euser 121) at creation | round 131 | bench E634-E635 |
 | from focus lost to focus gained each audio stream is turned down to 0 on its next WriteL, from its own thread, and given back the game's volume after | round 131 | bench E638-E640 |
 | a screen update dropped while the screen was away is posted again once the port has it back (`replay_missed_frame`) | round 131 | -- (the bench never loses the screen) |
+| a partial screen frame (box or rectangles) counts as missed as well as a dropped one, and is posted again when the region is whole | round 132 | bench E654 |
+| each thread's CPU per beat (`RThread::GetCpuTime`, euser 1782) logged by the heartbeat | round 132 | bench E655 |
 
 ## Where each title saves
 
@@ -93,7 +95,9 @@ the saves behind.
 `BENCH_BACKGROUND_TICK`, `BENCH_FOREGROUND_TICK`, `BENCH_DEACTIVATE_TICK`,
 `BENCH_SCHED_BEATS`, `BENCH_FOCUSLOST_TICK`, `BENCH_FOCUSGAINED_TICK` (a real
 focus event through `HandleWsEventL` at that hold-timer tick), `BENCH_HANG_BEAT`
-(the main thread blocked 8 s at that beat, to fire the watchdog), `LEAVE_RAW`, `WORKER_LOG`,
+(the main thread blocked 8 s at that beat, to fire the watchdog), `BENCH_MINIMIZE_TICK` /
+`BENCH_RESTORE_TICK` / `BENCH_MINIMIZE_BOX` (a whole phone minimize: abort, restart into
+no region or a partial one, focus lost; focus gained, the region back), `LEAVE_RAW`, `WORKER_LOG`,
 `TRACE_IMPORTS`. `rules.py` and the regression rows (E428, E439 and the like)
 are where that is checked.
 
@@ -121,3 +125,7 @@ rounds. Round 125 on the N95: three bad handles the bench forgave, fixed
 in E567-E569; build 002 ships split, the loader and the data apart.
 Round 126: the loading thread's KERN-EXEC 3, hold C, the origin (`GAME_SRC_ORIGIN 8`)
 and the log volume behind the music's hiccups, in build 003 (E574-E580).
+
+One, round 132: `GAME_DEFER_WORKER_STOP 1` -- a Stop from any thread but
+the main one is held back and made from the stream's next callback (or a
+re-Open), never under the game's channel mutex. One only.

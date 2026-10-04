@@ -145,6 +145,12 @@ enum { GAME_SRC_ORIGIN = 8 };
 // written count and the stream's Position, every 256th poll (round 129).
 #define GAME_MDA_WRITER_CB 0xc
 
+// Round 132: the sound thread's Stop of its own stream, made under the
+// game's channel mutex, never returned on the N95 while the main thread
+// waited for that mutex. A Stop from any thread but main is made from the
+// stream's next callback instead (gate6_mda_call2, mda_owed_stop).
+#define GAME_DEFER_WORKER_STOP 1
+
 // The game's variadic wrappers hand `TDes16::FormatList` a GCC98r2 VA_LIST:
 // a one-element array, passed as its address. The 9.x euser takes the va
 // pointer itself, so handed the address it reads the game's stack as the
@@ -201,5 +207,5 @@ enum { GAME_SRC_ORIGIN = 8 };
 #define GAME_CARD_CID 0x567857f1, 0x7d011234, 0x0b2b1879, 0x06000400
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 8
+#define GAME_BUILD 9
 #endif

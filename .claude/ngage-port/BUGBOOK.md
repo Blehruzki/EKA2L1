@@ -891,3 +891,17 @@ hang after it went unrecorded. A slot per stall.
 *The bench knobs that ride the hold timer need the timer running.* One
 starts it only on a held C; E636 delivered nothing. The knobs start it
 themselves now.
+
+Round 132. *Two threads, one lock, one call that waits.* One's freeze was
+a deadlock the stall dump named whole: the sound thread inside the real
+CMdaAudioOutputStream::Stop, holding the game's channel mutex; the main
+thread waiting for that mutex. On the N-Gage no audio call waited on another
+thread; on S60 that Stop does not come back while the main thread is stuck.
+The port cannot change the lock, so it moves the call: a worker's Stop is made
+from the stream's next callback, where the worker holds nothing.
+*Registers beat records for a hang.* Three rounds of logs ended at the same
+place and could not say why; one dump with RThread::Context of every thread
+and the main stack said it in one reading.
+*Model the phone's sequence, not the symptom.* The bench minimize first
+modelled an empty region and showed nothing wrong (E653); the phone's own log
+had a partial region instead, and that shape is the one the fix answers.

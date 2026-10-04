@@ -6314,6 +6314,7 @@ namespace eka2l1::epoc {
         BRIDGE_REGISTER(0x85, timer_after_high_res), // Actually TimerHighRes
         BRIDGE_REGISTER(0x86, after), // Actually AfterHighRes
         BRIDGE_REGISTER(0x87, change_notifier_create),
+         BRIDGE_REGISTER(0x8C, thread_get_cpu_time),
         BRIDGE_REGISTER(0x9C, wait_dll_lock),
         BRIDGE_REGISTER(0x9D, release_dll_lock),
         BRIDGE_REGISTER(0x9E, library_attach),
@@ -6495,6 +6496,7 @@ namespace eka2l1::epoc {
         BRIDGE_REGISTER(0x84, timer_after_high_res), // Actually TimerHighRes
         BRIDGE_REGISTER(0x85, after), // Actually AfterHighRes
         BRIDGE_REGISTER(0x86, change_notifier_create),
+         BRIDGE_REGISTER(0x8B, thread_get_cpu_time),
         BRIDGE_REGISTER(0x9B, wait_dll_lock),
         BRIDGE_REGISTER(0x9C, release_dll_lock),
         BRIDGE_REGISTER(0x9D, library_attach),

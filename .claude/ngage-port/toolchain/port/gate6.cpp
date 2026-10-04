@@ -1106,11 +1106,16 @@ struct Context {
     u32 wdMain;             // a process-owned handle on the main thread, for RThread::Context
     u32 wdThr[4], wdThrN;   // the same for each thread the game made
     u32 fnDuplicate, fnContext, fnStackInfo, fnPriority;   // euser 121, 1796, 1801, 1800
+    u32 fnCpuTime, cpuSaid[5];   // RThread::GetCpuTime (euser 1782), and each thread's last reading, in us
     u32 bgMute;             // focus lost: the streams are turned down until it comes back
     u32 mdaObj[4], mdaVol[4], mdaMuted[4];   // each stream, the volume the game last set, and whether muted
+    u32 mdaCb[4], mdaPendStop[4];          // each stream's callback proxy, and a worker's Stop held back (round 132)
+    u32 mdaDeferN, mdaDeferDone, mdaDeferSaid;   // Stops held back, carried out later, and what the heartbeat said
     u32 mdaMuteN, mdaUnmuteN, mdaMuteVol, mdaMuteSaid;   // streams turned down and back, the last volume kept, and what the heartbeat said
     u32 lastUpdSelf, lastUpdRegion;   // the last screen update that reached the screen
     u32 missedUpd;          // and one was dropped while the screen was away
+    u32 benchMinStep;       // BENCH_MINIMIZE_TICK: where the minimize has got to
+    u32 updN, updDrawn, updSaid;   // screen updates asked for, drawn, and what the heartbeat said
     u32 kickObj[KICK_OBJS], kickN[KICK_OBJS], kickSaid[KICK_OBJS], kickCount;   // objects built at a GAME_AO_PRIORITIES site, and their self-completions
     u32 newTimerCtor;       // 9.x CTimer::CTimer(TInt), as the shim resolved it
     u32 timerThunks[3];     // DoCancel, RunL, RunError, built in the code chunk
@@ -4288,6 +4293,12 @@ static int sane_ptr(u32 p);
 // Bench knob, 0 when shipping: at this beat the main thread blocks for 8 s, so
 // the watchdog has a stall to write (a test of the test).
 enum { BENCH_HANG_BEAT = 0 };
+// Bench: a whole phone minimize, step by step (see gate6_hold_tick_cb). 0 ships.
+enum { BENCH_MINIMIZE_TICK = 0, BENCH_RESTORE_TICK = 0 };
+// And with BENCH_MINIMIZE_BOX the window keeps the top 190 rows (a popup over
+// the rest) instead of nothing, and the region comes back by the window
+// server's abort and restart rather than the game's StartL. 0 ships.
+enum { BENCH_MINIMIZE_BOX = 0 };
 enum { WATCHDOG = 1, WATCHDOG_STALL_S = 4, EUSER_USER_AFTER = 645, STALL_WORDS = 1536,
        STALL_MAGIC = 0x57A11000 };
 // Round 131: the one dump a launch was spent on a minimize -- the heartbeat
@@ -4307,7 +4318,7 @@ enum { WATCHDOG = 1, WATCHDOG_STALL_S = 4, EUSER_USER_AFTER = 645, STALL_WORDS =
 // the watchdog thread may use them: a game thread's own handle may be
 // EOwnerThread, and that from here would be KERN-EXEC 0.
 enum { WD_EPISODES = 4, EUSER_HANDLE_DUPLICATE = 121, EUSER_THREAD_CONTEXT = 1796,
-       EUSER_THREAD_PRIORITY = 1800, EUSER_THREAD_STACKINFO = 1801,
+       EUSER_THREAD_PRIORITY = 1800, EUSER_THREAD_STACKINFO = 1801, EUSER_THREAD_CPUTIME = 1782,
        CTX_WORDS = 18, MAIN_STACK_WORDS = 192, THR_STACK_WORDS = 64, STALL_THREADS = 0x7EAD0000 };
 static const u16 kStallPath[] = {'C',':','\\','g','6','s','t','a','l','l','-',GAME_STEM_CHARS,'.','d','a','t'};
 
@@ -4511,6 +4522,34 @@ extern "C" int gate6_heartbeat(void *p)
         c->mdaMuteSaid = (c->mdaMuteN << 16) | (c->mdaUnmuteN & 0xFFFFu);
         log_event(c, NOTE_MDA_CODE, 0x5A1C0000u);
         log_event(c, NOTE_MDA_CODE, c->mdaMuteSaid);
+    }
+    // CPU each thread used in the last beat, in milliseconds (round 132: the
+    // fight runs at half its rate until the first pause or minimize, and
+    // which thread has the other half is the question). Main first, then the
+    // game's threads in the order they were made; 0xC9000000 | i << 20 | ms.
+    if (c->fnCpuTime) {
+        typedef int (*Cpu)(const u32 *, u32 *);
+        for (u32 i = 0; i <= c->wdThrN && i < 5; i++) {
+            const u32 h = i ? c->wdThr[i - 1] : c->wdMain;
+            u32 t[2] = { 0, 0 };
+            if (!h || ((Cpu)c->fnCpuTime)(&h, t) != 0)
+                continue;
+            const u32 ms = (t[0] - c->cpuSaid[i]) / 1000u;
+            c->cpuSaid[i] = t[0];
+            log_event(c, NOTE_THREAD_HANDLE, 0xC9000000u | (i << 20) | (ms & 0xFFFFFu));
+        }
+    }
+    // Screen updates the game asked for since the last beat, and how many
+    // reached the screen (round 132: the pause screen not drawn on return).
+    if (c->updN != c->updSaid) {
+        log_event(c, NOTE_SCREEN, 0x5C0D0000u | ((c->updN - c->updSaid) & 0xFFFFu));
+        log_event(c, NOTE_SCREEN, (c->updDrawn << 8) | (c->clipMode << 4) | c->screenLost);
+        c->updSaid = c->updN;
+    }
+    if (((c->mdaDeferN << 16) | (c->mdaDeferDone & 0xFFFFu)) != c->mdaDeferSaid) {
+        c->mdaDeferSaid = (c->mdaDeferN << 16) | (c->mdaDeferDone & 0xFFFFu);
+        log_event(c, NOTE_MDA_CODE, 0x5A0D0000u);
+        log_event(c, NOTE_MDA_CODE, c->mdaDeferSaid);
     }
     if (c->wrkExcSet != c->wrkExcSaid) {
         c->wrkExcSaid = c->wrkExcSet;
@@ -5136,6 +5175,15 @@ static void dsa_box(Context *c)
             c->boxL = l; c->boxT = t; c->boxR = r; c->boxB = b;
         }
     }
+    // Bench (BENCH_MINIMIZE_TICK): behind the menu, the window has no region.
+    if (BENCH_MINIMIZE_TICK && c->benchMinStep >= 1 && c->benchMinStep <= 2) {
+        if (BENCH_MINIMIZE_BOX) {
+            mode = CLIP_BOX;
+            c->boxL = 0; c->boxT = 0; c->boxR = c->bufW; c->boxB = 190;
+        } else {
+            mode = CLIP_NONE;
+        }
+    }
     c->clipMode = mode;
     log_event(c, NOTE_DSA_RGN, n);
     for (u32 i = 0; i < n && i < 4u; i++) {
@@ -5591,7 +5639,7 @@ static void region_log(Context *c, const void *region)
 extern "C" void gate6_screen_update(void *self, const void *region, Context *c);
 static void replay_missed_frame(Context *c)
 {
-    if (!c->missedUpd || !c->lastUpdSelf || c->screenLost || c->clipMode == CLIP_NONE)
+    if (!c->missedUpd || !c->lastUpdSelf || c->screenLost || c->clipMode != CLIP_ALL)
         return;
     log_event(c, NOTE_DSA_RESTART, 0x57A9);
     gate6_screen_update((void *)c->lastUpdSelf, (const void *)c->lastUpdRegion, c);
@@ -5638,6 +5686,12 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
     if (HOLD_THE_SCREEN)
         ((StartL)c->newDsaStartL)(c->dsaReal);
     log_event(c, NOTE_DSA_RESTART, 0x57A1);
+    // Bench (BENCH_MINIMIZE_TICK): the game's StartL after the return is
+    // what gives the window its region back, as on the phone.
+    if (BENCH_MINIMIZE_TICK && !BENCH_MINIMIZE_BOX && c->benchMinStep == 2) {
+        c->benchMinStep = 3;
+        c->rgnN = 0xFFFFFFFFu;  // the emulator's region never changed: read it afresh
+    }
     dsa_refresh(c);
     replay_missed_frame(c);
     // Started, so the graphics context exists and the shadow has it -- and then
@@ -7617,6 +7671,12 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
     // between AbortNow and Restart a process may do neither. The game goes
     // on running -- it gets its frames, its timers and its sound, it simply
     // is not seen -- which is what backgrounding is supposed to look like.
+    c->updN++;
+    // Bench (BENCH_MINIMIZE_TICK): behind the menu, nothing reaches the screen.
+    if (BENCH_MINIMIZE_TICK && !BENCH_MINIMIZE_BOX && c->benchMinStep >= 1 && c->benchMinStep <= 2) {
+        c->missedUpd = 1;
+        return;
+    }
     if (c->screenLost) {
         c->missedUpd = 1;
         return;
@@ -7627,7 +7687,12 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
         c->missedUpd = 1;
         return;
     }
-    c->missedUpd = 0;
+    // Drawn only in part -- a box or rectangles, the phone's menu or a
+    // popup still over the window -- counts as missed too (round 132: the
+    // pause screen drawn on focus gained through the menu's box, then the
+    // full region back and nothing drawn into the rest).
+    c->missedUpd = (c->clipMode != CLIP_ALL);
+    c->updDrawn++;
     c->lastUpdSelf = (u32)self;
     c->lastUpdRegion = (u32)region;
     // One frame of the game's own buffer, raw, so the stride can be measured
@@ -8575,7 +8640,27 @@ enum { BENCH_DEACTIVATE_TICK = 0 };
 // app UI's HandleWsEventL, the event the N95 died inside on a minimize (round
 // 130); sending the window to the back delivers none on the emulator.
 enum { BENCH_FOCUSLOST_TICK = 0, BENCH_FOCUSGAINED_TICK = 0 };
+// Bench knobs, 0 when shipping: the whole of a phone minimize as the N95's
+// logs show it (rounds 129-132), which the emulator does not do by itself:
+// the window server aborts direct screen access (reason 1) and restarts it
+// at once into an empty region (the window is behind the menu), then focus
+// lost; on the way back, focus gained -- the game redraws its pause screen
+// here, into no region -- and the region whole again at the game's next
+// StartL. Each step calls the port's own handler, so the game's AbortNow,
+// Restart and focus code all run.
 extern "C" void gate6_ui_wsevent(void *self, const u32 *event, void *dest, Context *c);
+static void bench_hide(Context *c)
+{
+    if (BENCH_MINIMIZE_BOX) {
+        c->clipMode = CLIP_BOX;
+        c->boxL = 0; c->boxT = 0; c->boxR = c->bufW; c->boxB = 190;
+    } else {
+        c->clipMode = CLIP_NONE;
+    }
+}
+extern "C" void gate6_dsa_slot0(void *, u32 reason, Context *c);
+extern "C" void gate6_dsa_slot1(void *, u32 reason, Context *c);
+extern "C" void gate6_dsa_startl(void *, u32, Context *c);
 
 extern "C" int gate6_hold_tick_cb(void *p)
 {
@@ -8627,6 +8712,44 @@ extern "C" int gate6_hold_tick_cb(void *p)
         log_event(c, NOTE_DEACTIVATE, 0xF0C05012u);
         log_block(c);
     }
+    if (BENCH_MINIMIZE_TICK && c->benchMinStep == 0 && c->wrapUi && c->realWsEvent && c->dsaReal &&
+        (i32)(user_tickcount() - (u32)BENCH_MINIMIZE_TICK) >= 0) {
+        c->benchMinStep = 1;
+        log_event(c, NOTE_DEACTIVATE, 0xF0C06000u);
+        log_block(c);
+        gate6_dsa_slot0(0, 1, c);
+        gate6_dsa_slot1(0, 1, c);
+        bench_hide(c);                      // restarted behind the menu
+        u32 ev[16];
+        for (u32 i = 0; i < 16; i++) ev[i] = 0;
+        ev[0] = 10;                         // EEventFocusLost
+        gate6_ui_wsevent(c->wrapUi, ev, 0, c);
+        bench_hide(c);                      // and still, whatever the game did meanwhile
+        log_event(c, NOTE_DEACTIVATE, 0xF0C06001u);
+        log_block(c);
+    }
+    if (BENCH_RESTORE_TICK && c->benchMinStep == 1 &&
+        (i32)(user_tickcount() - (u32)BENCH_RESTORE_TICK) >= 0) {
+        c->benchMinStep = 2;
+        log_event(c, NOTE_DEACTIVATE, 0xF0C06011u);
+        log_block(c);
+        u32 ev[16];
+        for (u32 i = 0; i < 16; i++) ev[i] = 0;
+        ev[0] = 11;                         // EEventFocusGained, the region still empty
+        gate6_ui_wsevent(c->wrapUi, ev, 0, c);
+    }
+    // The box variant: the window server, not the game, gives the region
+    // back -- an abort and a restart as the covering window goes (round 132,
+    // records 7276-7811: a partial region through the whole absence).
+    if (BENCH_MINIMIZE_BOX && BENCH_RESTORE_TICK && c->benchMinStep == 2 &&
+        (i32)(user_tickcount() - (u32)BENCH_RESTORE_TICK - 32u) >= 0) {
+        c->benchMinStep = 3;
+        c->rgnN = 0xFFFFFFFFu;
+        gate6_dsa_slot0(0, 1, c);
+        gate6_dsa_slot1(0, 1, c);
+        log_event(c, NOTE_DEACTIVATE, 0xF0C06012u);
+        log_block(c);
+    }
     if (BENCH_FOREGROUND_TICK && !c->benchFgDone && (i32)(user_tickcount() - (u32)BENCH_FOREGROUND_TICK) >= 0) {
         c->benchFgDone = 1;
         gate6_ui_foreground(c->wrapUi, 1, c);
@@ -8639,7 +8762,7 @@ extern "C" int gate6_hold_tick_cb(void *p)
 // without a key. Nothing when they are all 0, as they are in a shipped build.
 static void bench_timer_kick(Context *c)
 {
-    if (BENCH_FOCUSLOST_TICK || BENCH_DEACTIVATE_TICK || BENCH_BACKGROUND_TICK)
+    if (BENCH_FOCUSLOST_TICK || BENCH_DEACTIVATE_TICK || BENCH_BACKGROUND_TICK || BENCH_MINIMIZE_TICK)
         hold_timer_start(c);
 }
 
@@ -10648,6 +10771,41 @@ static int mda_stream(Context *c, u32 obj)
     return -1;
 }
 
+// **Round 132: a deadlock across two threads and the audio server.** The
+// sound thread takes the game's channel mutex (code 0x133dc), and under it
+// stops its own stream (0x11930 -> slot 10). On the N95 that real Stop
+// never came back -- the stall dump has the sound thread parked in it --
+// while the main thread, mid screen change, waited at 0x13524 for the same
+// mutex. So nothing ran the main thread's active scheduler again, and
+// whatever the Stop was waiting on in the media server never came: ViewSrv
+// 11 after twenty seconds, or a picture frozen for good. The N-Gage's own
+// audio never made a thread wait on another's; S60's does.
+//
+// So a Stop from a thread other than the main one is not made there and
+// then. It is noted, the game is told it is done (Stop returns nothing),
+// and the real one is made from the stream's next callback -- where the
+// sound thread is in its active scheduler, holding nothing of the game's --
+// or before the stream is opened again. The real
+// Stop still calls MaoscPlayComplete(KErrCancel) itself, through the
+// callback proxy, so the game hears what it always heard, a little later.
+// Per title: One's is the only sound thread seen to stop its stream under a
+// lock the main thread wants; the shipping titles keep calling Stop where
+// they call it.
+#ifndef GAME_DEFER_WORKER_STOP
+#define GAME_DEFER_WORKER_STOP 0
+#endif
+enum { DEFER_WORKER_STOP = GAME_DEFER_WORKER_STOP };
+static void mda_owed_stop(Context *c, int si)
+{
+    typedef u32 (*Any)(void *, u32, u32, u32);
+    c->mdaPendStop[si] = 0;
+    const u32 *p = (const u32 *)c->mdaObj[si];
+    if (!p || !p[1] || !p[2])
+        return;
+    c->mdaDeferDone++;
+    ((Any)((const u32 *)p[2])[kMdaMap[10]])((void *)p[1], 0, 0, 0);
+}
+
 extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
 {
     typedef u32 (*Any)(void *, u32, u32, u32);
@@ -10740,11 +10898,26 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
     // once -- finds a free one (E638: two dead streams held both).
     if (slot == 2) {
         for (u32 i = 0; i < (u32)MDA_STREAMS; i++)
-            if (c->mdaObj[i] == saved[0])
+            if (c->mdaObj[i] == saved[0]) {
                 c->mdaObj[i] = 0;
+                c->mdaPendStop[i] = 0;      // the destructor stops it
+            }
     }
-    const int si = (BG_MUTE && slot != 2) ? mda_stream(c, saved[0]) : -1;
-    if (si >= 0) {
+    const int si = (slot != 2) ? mda_stream(c, saved[0]) : -1;
+    if (DEFER_WORKER_STOP && si >= 0) {
+        if (slot == 10 && !on_main_thread(c)) {
+            c->mdaPendStop[si] = 1;
+            c->mdaDeferN++;
+            return 0;
+        }
+        // An Open on it first carries out the Stop that is owed. Nothing
+        // else does: WriteL, SetVolume and Position come from the writer,
+        // which is where the game holds its mutex, and a stream that was
+        // never really stopped takes them as it always did.
+        if (c->mdaPendStop[si] && slot == 4)
+            mda_owed_stop(c, si);
+    }
+    if (BG_MUTE && si >= 0) {
         typedef u32 (*Vol)(void *, u32);
         Vol setVol = (Vol)rvt[kMdaMap[7]];
         if (slot == 7) {
@@ -10843,6 +11016,21 @@ enum { CB_TRACE = 1, CB_TRAMP = CB_TRACE ? 14 : 3 };
 // worked, and the first time this port has been in a position to read it.
 extern "C" void gate6_cb_call(u32 *saved, Context *c, u32 slot)
 {
+    // A Stop held back on this stream (round 132) is made now, before the
+    // game hears this callback: the thread is in its scheduler, not inside
+    // the game's mutex.
+    if (DEFER_WORKER_STOP)
+        for (u32 i = 0; i < (u32)MDA_STREAMS; i++)
+            if (c->mdaPendStop[i] && c->mdaCb[i] == saved[0]) {
+                // MaoscPlayComplete means the stream has stopped by itself
+                // (it ran dry): nothing is owed, and a Stop now would only
+                // tell the game twice.
+                if (slot == 2)
+                    c->mdaPendStop[i] = 0;
+                else
+                    mda_owed_stop(c, (int)i);
+                break;
+            }
     // Slot 1 is `MaoscBufferCopied` and it comes back once per buffer --
     // 71,775 of them in a two-and-a-half minute run. On the bench that is
     // merely a large log; on the phone it would be the whole log and a
@@ -11042,6 +11230,15 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
     // open question -- whether the server has freed the stream by the
     // time it says KErrCancel -- needs this one to answer it.
     c->mdaProxyObj = (u32)obj;
+    // And the stream's callback proxy beside it in the table, so a callback
+    // can carry out a Stop held back on this stream (gate6_cb_call).
+    {
+        const int si = mda_stream(c, (u32)obj);
+        if (si >= 0) {
+            c->mdaCb[si] = (u32)cb;
+            c->mdaPendStop[si] = 0;
+        }
+    }
     user_imb_range(obj, tramp + MDA_SLOTS * MDA_TRAMP);
     log_event(c, NOTE_SOUND, (u32)obj);
     log_block(c);
@@ -12264,6 +12461,7 @@ static u32 load_and_start()
         ctx->fnContext = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_CONTEXT);
         ctx->fnPriority = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_PRIORITY);
         ctx->fnStackInfo = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_STACKINFO);
+        ctx->fnCpuTime = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_CPUTIME);
     }
     if (ctx->efsrv)
         ctx->setSessionPathFn = (u32)rlibrary_lookup(&ctx->efsrv, EFSRV_SET_SESSION_PATH);
