@@ -747,3 +747,25 @@ class that 9.x code calls virtually needs an EABI-shaped vtable** -- the
 mixin callback shift (`CB_SHIFT`) was the same bug; check every class the
 game derives from a 9.x base whose virtuals 9.x invokes (stream buffers,
 observers, callbacks).
+
+**The first phone run: three bad handles the bench forgave.** `R125`,
+`E567-E569`. The N95 showed KERN-EXEC 0 then `G6FLT 40812`. The bench had
+run the same build for hours, because EKA2L1 declines a bad handle quietly;
+`EKA2L1_STRICTHANDLE=2` panics like a phone and found all three:
+- the sound thread used a main-thread library handle (the push hook's
+  `RLibrary::Lookup`): the thread died, and the main thread later read the
+  sound object it never made, the G6FLT. Fix: every function a hook may need
+  on another thread resolved at load (`pushItemFn`, `fullNameFn`,
+  `setSessionPathFn`);
+- the protection's four-byte `TRequestStatus` at sp+4, with its RLibrary at
+  sp+8 that 9.x euser's `iFlags` write corrupted. Fix: its dynamic
+  `RThread::Logon` and `User::WaitForRequest` get an eight-byte status of
+  the port's (`gate6_thread_logon`);
+- four CTimers held as one pair: the name entry's destructor ran 9.x
+  `CTimer::~CTimer` on its old-layout object at the fighter's SAVE. Fix:
+  `GAME_MULTI_TIMER`, a table of pairs, with `~CTimer` and `DoCancel` sent to
+  the stand-in. It is also why the fighter's save (`6R58.prf`) was never
+  written.
+Lesson: **run every new title under `EKA2L1_STRICTHANDLE=2` before its first
+hardware round.** One run would have saved this one.
+

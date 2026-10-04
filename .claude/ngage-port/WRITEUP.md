@@ -60,6 +60,8 @@ To be confirmed against the 2603 article itself:
    - S60 3.0 keeps the control's window one word elsewhere (rounds 118-120).
    - One: the crash that was Asphalt 2's patch (E516-E527), and the fighters
      who never moved: a vtable two words off (E527-E566).
+   - One's first phone run (round 125): three bad handles the emulator had
+     quietly forgiven, found by making it panic like a phone (E567-E569).
 6. **What carries over.** The checklist a new title goes through
    (`newgame.py`, `ordcheck.py`, BUGBOOK section 12), and the knobs table.
 7. **Results.** Every title, every phone it was confirmed on, and known

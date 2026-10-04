@@ -1075,6 +1075,10 @@ struct Context {
     u32 *oldControl;        // the game's CCoeControl, old layout
     u32 *oldTimer;          // the game's CTimer, old layout
     u32 *wrapTimer;         // the 9.x CTimer the scheduler owns
+    u32 *timerOld[8];       // GAME_MULTI_TIMER: every game CTimer ...
+    u32 *timerWrap[8];      // ... and the stand-in each one has
+    u32 timerCount;
+    u32 realTimerDtor;      // 9.x CTimer::~CTimer, for a stand-in being destroyed
     u32 newTimerCtor;       // 9.x CTimer::CTimer(TInt), as the shim resolved it
     u32 timerThunks[3];     // DoCancel, RunL, RunError, built in the code chunk
     u32 reached;            // which of the game's callbacks have been entered
@@ -1239,6 +1243,11 @@ struct Context {
     u32 realFsEntry, realFsVolume;             // RFs::Entry and RFs::Volume, which fill a 9.x-sized object (round 125)
     u32 realFsConnect;                         // RFs::Connect, before the hook that sets the session path
     u32 setSessionPathFn;                      // RFs::SetSessionPath, resolved on the main thread for every thread's Connect
+    u32 pushItemFn;                            // CleanupStack::PushL(TCleanupItem), likewise
+    u32 logonStatus[2];                        // the eight-byte TRequestStatus a diverted RThread::Logon gets
+    u32 *logonGame;                            // ... and the game's four-byte one it stands for, while pending
+    u32 realLogon, realWaitReq, logonThunk, waitReqThunk;
+    u32 fullNameFn;                            // RHandleBase::FullName, likewise
     u32 realTimerAfter;                        // CTimer::After through its divert, for GAME_TIMER_MIRROR
     u32 rangeLogs;                             // GAME_RANGE_PROBES records so far
     u32 rangeSamples[16];                      // ... and passes through each sampling probe
@@ -3991,7 +4000,91 @@ typedef void *(*TimerCtor)(void *self, int priority);
 enum { REACHED_ABORT = 1, REACHED_RESTART = 2, REACHED_DOCANCEL = 4, REACHED_RUNERROR = 8 };
 enum { REACHED_RUNL = 32 };   // the frame loop ran at least once
 
-extern "C" void gate6_timer_docancel(void *, u32, Context *c)
+// **Every CTimer the game makes, not only the last.** The stand-in design
+// came from the Asphalts, which make one CTimer -- the frame timer -- so the
+// context held one pair. One makes four (0x1d178 the name entry's, 0x5d378,
+// 0x5d438, 0x6f9a4): each construction overwrote the pair, every stand-in's
+// RunL ran the last game object's, and the name entry's destructor reached
+// 9.x CTimer::~CTimer on its old-layout object, which cancelled an RTimer
+// read from a word of the game's own -- KERN-EXEC 0 on the phone when the
+// fighter was saved (round 125, E569). With the knob on, a table of pairs:
+// whatever the game does to one of its timers goes to that timer's stand-in.
+#ifndef GAME_MULTI_TIMER
+#define GAME_MULTI_TIMER 0
+#endif
+enum { TIMERS_MAX = 8, NOTE_TIMER_PAIR = 716 };
+
+static int timer_of_old(const Context *c, const u32 *p)
+{
+    for (u32 i = 0; p && i < c->timerCount; i++)
+        if (c->timerOld[i] == p)
+            return (int)i;
+    return -1;
+}
+
+static int timer_of_wrap(const Context *c, const u32 *p)
+{
+    for (u32 i = 0; p && i < c->timerCount; i++)
+        if (c->timerWrap[i] == p)
+            return (int)i;
+    return -1;
+}
+
+// r0 through the table: a game timer becomes its stand-in, anything else
+// passes untouched (CActiveScheduler::Add sees every active object).
+extern "C" u32 *gate6_timer_map(u32 *self, Context *c)
+{
+    const int i = timer_of_old(c, self);
+    return (i >= 0) ? c->timerWrap[i] : self;
+}
+
+// The game destroying one of its timers: the stand-in is what the scheduler
+// holds, so it is the one 9.x destroys (cancelled, its RTimer closed, out of
+// the queue), and the pair leaves the table so the address can be reused.
+// The old ~CTimer is mapped to 9.x's deleting destructor (D0), so this frees
+// the stand-in as well; the game frees its own object, as GCC98r2 does --
+// before, D0 freed the game's object too, and the game freed it again.
+extern "C" void *gate6_ctimer_dtor(u32 *self, u32 inCharge, Context *c)
+{
+    typedef void *(*Dtor)(void *, u32);
+    const int i = timer_of_old(c, self);
+    if (i < 0)
+        return ((Dtor)c->realTimerDtor)(self, inCharge);
+    u32 *wrap = c->timerWrap[i];
+    log_event(c, NOTE_TIMER_PAIR, 0xD7000000u | (u32)i);
+    ((Dtor)c->realTimerDtor)(wrap, inCharge);
+    for (u32 k = (u32)i; k + 1 < c->timerCount; k++) {
+        c->timerOld[k] = c->timerOld[k + 1];
+        c->timerWrap[k] = c->timerWrap[k + 1];
+    }
+    c->timerCount--;
+    if (c->wrapTimer == wrap) {
+        c->oldTimer = c->timerCount ? c->timerOld[c->timerCount - 1] : 0;
+        c->wrapTimer = c->timerCount ? c->timerWrap[c->timerCount - 1] : 0;
+    }
+    return self;
+}
+
+//   stmdb sp!, {r1-r3, lr} ; ldr r1, =ctx ; ldr ip, =gate6_timer_map ; blx ip
+//   ldmia sp!, {r1-r3, lr} ; ldr pc, =target
+enum { TIMER_MAP_BYTES = 9 * 4 };
+static u32 timer_map_thunk(u8 *code, const void *ctx, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE92D400E;                  // stmdb sp!, {r1-r3, lr}
+    b[1] = 0xE59F100C;                  // ldr   r1, [pc, #12]  -> b[6]
+    b[2] = 0xE59FC00C;                  // ldr   ip, [pc, #12]  -> b[7]
+    b[3] = 0xE12FFF3C;                  // blx   ip
+    b[4] = 0xE8BD400E;                  // ldmia sp!, {r1-r3, lr}
+    b[5] = 0xE59FF004;                  // ldr   pc, [pc, #4]   -> b[8]
+    b[6] = (u32)ctx;
+    b[7] = (u32)&gate6_timer_map;
+    b[8] = target;
+    user_imb_range(b, b + 9);
+    return (u32)b;
+}
+
+extern "C" void gate6_timer_docancel(void *self, u32, Context *c)
 {
     c->reached |= REACHED_DOCANCEL;
     // Round 95: the frame loop stops and nothing says why. If this is
@@ -4035,6 +4128,8 @@ extern "C" void gate6_timer_docancel(void *, u32, Context *c)
     // `iTimer.Cancel()` is the call that both stops the timer and completes
     // the request exactly once, which is why the contract names it.
     u32 *w = c->wrapTimer;
+    if (GAME_MULTI_TIMER && timer_of_wrap(c, (const u32 *)self) >= 0)
+        w = (u32 *)self;                // this stand-in, whichever timer it is
     if (!w || !c->realDoCancel) {
         log_event(c, NOTE_DOCANCEL_OUT, 2);
         return;
@@ -4186,15 +4281,25 @@ static void bench_ordinal(Context *c, int pos)
 
 static void bench_background(Context *c) { bench_ordinal(c, -1); }
 
-extern "C" void gate6_timer_runl(void *, u32, Context *c)
+extern "C" void gate6_timer_runl(void *self, u32, Context *c)
 {
     c->reached |= REACHED_RUNL;
     c->frames++;
 
+    // Which timer this is: the last one made, unless the table says otherwise.
+    u32 *old = c->oldTimer, *wrap = c->wrapTimer;
+    if (GAME_MULTI_TIMER) {
+        const int i = timer_of_wrap(c, (const u32 *)self);
+        if (i >= 0) {
+            old = c->timerOld[i];
+            wrap = c->timerWrap[i];
+        }
+    }
+
     // The request completed into the wrapper, and the game reads the result out
     // of its own object, so carry it across before handing over.
-    c->oldTimer[ACTIVE_STATUS / 4] = c->wrapTimer[ACTIVE_STATUS / 4];
-    c->oldTimer[ACTIVE_ACTIVE / 4] = c->wrapTimer[ACTIVE_ACTIVE / 4];
+    old[ACTIVE_STATUS / 4] = wrap[ACTIVE_STATUS / 4];
+    old[ACTIVE_ACTIVE / 4] = wrap[ACTIVE_ACTIVE / 4];
 
     // The frame the game is about to draw reads the direct screen access
     // object, so its view of it is brought up to date first.
@@ -4254,7 +4359,7 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     }
     if (!QUIET && !CLOCK_EVERY_FRAME)
         log_block(c);
-    old_call(c->oldTimer, OLD_RUNL);
+    old_call(old, OLD_RUNL);
     if (CLOCK_EVERY_FRAME)
         log_event(c, NOTE_TICK, user_tickcount());
     log_event(c, NOTE_FRAME_END, c->frames);
@@ -4283,10 +4388,16 @@ extern "C" void gate6_timer_runl(void *, u32, Context *c)
     }
 }
 
-extern "C" u32 gate6_timer_runerror(void *, u32 error, Context *c)
+extern "C" u32 gate6_timer_runerror(void *self, u32 error, Context *c)
 {
     c->reached |= REACHED_RUNERROR;
-    return old_call1(c->oldTimer, OLD_RUNERROR, error);
+    u32 *old = c->oldTimer;
+    if (GAME_MULTI_TIMER) {
+        const int i = timer_of_wrap(c, (const u32 *)self);
+        if (i >= 0)
+            old = c->timerOld[i];
+    }
+    return old_call1(old, OLD_RUNERROR, error);
 }
 
 extern "C" void gate6_request_complete(u32 **status, int reason, Context *c)
@@ -4305,6 +4416,12 @@ extern "C" void gate6_request_complete(u32 **status, int reason, Context *c)
         *status = (u32 *)((u8 *)c->wrapTimer + ACTIVE_STATUS);
         c->completesMine++;
     }
+    for (u32 i = 0; GAME_MULTI_TIMER && i < c->timerCount; i++)
+        if (*status == (u32 *)((u8 *)c->timerOld[i] + ACTIVE_STATUS)) {
+            *status = (u32 *)((u8 *)c->timerWrap[i] + ACTIVE_STATUS);
+            c->completesMine++;
+            break;
+        }
     ((RequestComplete)c->newRequestComplete)(status, reason);
 }
 
@@ -4343,20 +4460,39 @@ enum { EUSER_CTIMER_AFTER = 885 };          // CTimer::After(TTimeIntervalMicroS
 #define GAME_TIMER_MIRROR 0
 #endif
 
+static void timer_mirror_pair(u32 *old, const u32 *wrap)
+{
+    if (!GAME_TIMER_MIRROR || !old || !wrap)
+        return;
+    old[ACTIVE_STATUS / 4] = wrap[ACTIVE_STATUS / 4];
+    old[ACTIVE_ACTIVE / 4] = wrap[ACTIVE_ACTIVE / 4];
+}
+
 static void timer_mirror(Context *c)
 {
-    if (!GAME_TIMER_MIRROR || !c->oldTimer || !c->wrapTimer)
+    timer_mirror_pair(c->oldTimer, c->wrapTimer);
+}
+
+// The pair a game call named, by either half; the last one made otherwise.
+static void timer_mirror_of(Context *c, const u32 *self)
+{
+    if (GAME_MULTI_TIMER) {
+        int i = timer_of_old(c, self);
+        if (i < 0)
+            i = timer_of_wrap(c, self);
+        if (i >= 0)
+            timer_mirror_pair(c->timerOld[i], c->timerWrap[i]);
         return;
-    c->oldTimer[ACTIVE_STATUS / 4] = c->wrapTimer[ACTIVE_STATUS / 4];
-    c->oldTimer[ACTIVE_ACTIVE / 4] = c->wrapTimer[ACTIVE_ACTIVE / 4];
+    }
+    if (self == c->oldTimer || self == c->wrapTimer)
+        timer_mirror(c);
 }
 
 extern "C" void gate6_timer_after(u32 *self, u32 interval, Context *c)
 {
     typedef void (*After)(void *, u32);
     ((After)c->realTimerAfter)(self, interval);     // the divert maps old to wrapper
-    if (self == c->oldTimer || self == c->wrapTimer)
-        timer_mirror(c);
+    timer_mirror_of(c, self);
 }
 
 extern "C" void *gate6_ctimer_ctor(u32 *oldSelf, int priority, Context *c)
@@ -4380,6 +4516,16 @@ extern "C" void *gate6_ctimer_ctor(u32 *oldSelf, int priority, Context *c)
     t[0] = (u32)(vt + VT_HEADER);
 
     c->wrapTimer = t;
+    if (GAME_MULTI_TIMER) {
+        int i = timer_of_old(c, oldSelf);          // a game object made again at the same address
+        if (i < 0)
+            i = (c->timerCount < (u32)TIMERS_MAX) ? (int)c->timerCount++ : TIMERS_MAX - 1;
+        c->timerOld[i] = oldSelf;
+        c->timerWrap[i] = t;
+        log_event(c, NOTE_TIMER_PAIR, (u32)i);
+        log_event(c, NOTE_TIMER_PAIR, (u32)oldSelf);
+        log_event(c, NOTE_TIMER_PAIR, (u32)t);
+    }
     return oldSelf;
 }
 
@@ -5847,7 +5993,7 @@ extern "C" int gate6_thread_open(u32 *self, const u32 *name, u32 type, Context *
             i++;
         if (i != len)
             continue;
-        FullName fullName = c->euser ? (FullName)rlibrary_lookup(&c->euser, EUSER_HANDLE_FULLNAME) : 0;
+        FullName fullName = (FullName)c->fullNameFn;   // resolved at load: see pushItemFn
         if (!fullName)
             break;
         u32 full[FULLNAME_WORDS];
@@ -7242,6 +7388,44 @@ extern "C" int gate6_file_seek(void *self, int mode, int *pos, Context *c)
     return err;
 }
 
+// **A TRequestStatus is four bytes on EKA1 and eight on EKA2** ({iStatus,
+// iFlags}). The protection at 0xb8354 keeps one at sp+4 with its RLibrary at
+// sp+8, then RThread::Logon on a worker and User::WaitForRequest, both looked
+// up through that RLibrary. 9.x's euser writes iFlags -- `aStatus = value`
+// sets or clears ERequestPending -- which is the RLibrary's handle word: on the
+// bench its bit 1 was cleared (0x...2f to 0x...2d) and the next Lookup used a
+// handle that does not exist, KERN-EXEC 0 on a phone (E567). So a Logon looked
+// up here gets an eight-byte status of ours, the game's four bytes read
+// pending, and the matching WaitForRequest waits on ours and copies the
+// result back. One outstanding at a time; a second goes straight through.
+enum { OLD_RTHREAD_LOGON = 669, OLD_USER_WAITFORREQUEST = 1210 };
+
+extern "C" void gate6_thread_logon(void *thread, u32 *status, Context *c)
+{
+    typedef void (*Logon)(void *, u32 *);
+    if (c->logonGame || !status) {
+        ((Logon)c->realLogon)(thread, status);
+        return;
+    }
+    c->logonStatus[0] = 0;
+    c->logonStatus[1] = 0;
+    c->logonGame = status;
+    *status = (u32)KREQUEST_PENDING;
+    ((Logon)c->realLogon)(thread, c->logonStatus);
+}
+
+extern "C" void gate6_wait_request(u32 *status, u32, Context *c)
+{
+    typedef void (*Wait)(u32 *);
+    if (status && status == c->logonGame) {
+        ((Wait)c->realWaitReq)(c->logonStatus);
+        *status = c->logonStatus[0];
+        c->logonGame = 0;
+        return;
+    }
+    ((Wait)c->realWaitReq)(status);
+}
+
 extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
 {
     note(c, (u32)ordinal, 'L');
@@ -7329,6 +7513,30 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
     const u32 fn = mapped
         ? ((u32 (*)(void *, int))c->newLibraryLookup)(lib, (int)mapped) : 0;
     log_event(c, NOTE_LOOKUP_RESULT, fn ? fn : c->noopFn);
+    if (fn && kind == LIB_EUSER && (ordinal == OLD_RTHREAD_LOGON || ordinal == OLD_USER_WAITFORREQUEST)) {
+        // Both thunks or neither: a diverted Logon needs the diverted wait,
+        // so both are built at the first of the two lookups.
+        if (!c->logonThunk && c->spare + 2 * TRACE <= c->spareEnd) {
+            c->logonThunk = ctx_thunk(c->spare, c, (u32)&gate6_thread_logon);
+            c->waitReqThunk = ctx_thunk(c->spare + TRACE, c, (u32)&gate6_wait_request);
+            c->spare += 2 * TRACE;
+        }
+        if (ordinal == OLD_RTHREAD_LOGON) {
+            c->realLogon = fn;
+            // The game asks for the wait only after calling Logon, so the
+            // real wait is resolved here, through the same library.
+            if (!c->realWaitReq && (u32)OLD_USER_WAITFORREQUEST <= kShimEuserCount &&
+                kShimEuser[OLD_USER_WAITFORREQUEST - 1])
+                c->realWaitReq = ((u32 (*)(void *, int))c->newLibraryLookup)(
+                    lib, (int)kShimEuser[OLD_USER_WAITFORREQUEST - 1]);
+        } else {
+            c->realWaitReq = fn;
+        }
+        // The Logon is diverted only when the wait it pairs with is known,
+        // or the game would wait on its own four bytes for ever.
+        if (c->logonThunk && c->realWaitReq)
+            return (ordinal == OLD_RTHREAD_LOGON) ? c->logonThunk : c->waitReqThunk;
+    }
     // Hand the game a diversion instead of the file call itself. The thunk is
     // built once and kept: the game asks for Read thirty times in a run, and
     // the spare arena is not big enough to spend a thunk on each.
@@ -7460,7 +7668,9 @@ extern "C" void gate6_cancel(u32 *self, u32, Context *c)
 {
     typedef void (*Cancel)(void *);
     log_event(c, NOTE_CANCEL, (u32)self);
-    if (c->oldTimer && c->wrapTimer && self == c->oldTimer)
+    if (GAME_MULTI_TIMER && timer_of_old(c, self) >= 0)
+        self = c->timerWrap[timer_of_old(c, self)];
+    else if (c->oldTimer && c->wrapTimer && self == c->oldTimer)
         self = c->wrapTimer;
     else if (c->dsaShadow && self == c->dsaShadow)
         self = c->dsaReal;
@@ -8163,8 +8373,8 @@ extern "C" void gate6_pushl_cbase(void *obj, u32, Context *c)
     typedef void (*Real)(void *);
     typedef void (*PushItem)(u32, u32);     // a TCleanupItem by value: operation in r0, pointer in r1
     const u32 vt = (obj && !((u32)obj & 3)) ? ((const u32 *)obj)[0] : 0u;
-    if (vt >= c->codeBase && vt < c->codeBase + c->codeLen && c->euser) {
-        PushItem push = (PushItem)rlibrary_lookup(&c->euser, EUSER_PUSHL_ITEM);
+    if (vt >= c->codeBase && vt < c->codeBase + c->codeLen) {
+        PushItem push = (PushItem)c->pushItemFn;     // resolved at load: see pushItemFn
         if (push) {
             log_event(c, NOTE_OLD_PUSH, (u32)obj);
             push((u32)&gate6_old_cbase_delete, (u32)obj);
@@ -11323,6 +11533,19 @@ static u32 load_and_start()
             ctx->bitgdi = libs[i];
         }
     }
+    // **Every function a hook may need on another thread, looked up now.**
+    // An RLibrary handle belongs to the thread that loaded it: a worker's
+    // RLibrary::Lookup through it is KERN-EXEC 0 on a phone and nothing at
+    // all on the bench. One's sound thread pushes a game object at 0x120fc,
+    // and the push hook's lookup there killed the thread on the N95 (round
+    // 125); the main thread then read the sound object it never made
+    // (G6FLT 40812). A function address is good in every thread.
+    if (ctx->euser) {
+        ctx->pushItemFn = (u32)rlibrary_lookup(&ctx->euser, EUSER_PUSHL_ITEM);
+        ctx->fullNameFn = (u32)rlibrary_lookup(&ctx->euser, EUSER_HANDLE_FULLNAME);
+    }
+    if (ctx->efsrv)
+        ctx->setSessionPathFn = (u32)rlibrary_lookup(&ctx->efsrv, EFSRV_SET_SESSION_PATH);
     if (!ctx->avkon) PANIC(CAT_LIB, -100);
 
     // The stub slot of a resolved import is spare -- its address went straight
@@ -11449,7 +11672,11 @@ static u32 load_and_start()
         // run ended in E32USER-CBase 41, EReqAlreadyAdded. Mapping -- swap
         // only the object we know is the old one, leave anything else alone
         // -- is the same thing for one object and correct for any number.
-        if (!GAME_DIVERT_MATCH || ctx->spare + APPUI_THUNK_BYTES > ctx->spareEnd) {
+        if (GAME_MULTI_TIMER && kDiverts[k].object == ON_TIMER && kDiverts[k].arg == 0 &&
+            ctx->spare + TIMER_MAP_BYTES <= ctx->spareEnd) {
+            iat[j] = timer_map_thunk(ctx->spare, ctx, iat[j]);   // through the table
+            ctx->spare += TIMER_MAP_BYTES;
+        } else if (!GAME_DIVERT_MATCH || ctx->spare + APPUI_THUNK_BYTES > ctx->spareEnd) {
             iat[j] = this_thunk(stub + SLOT * j, cell, iat[j], kDiverts[k].arg);
         } else {
             iat[j] = map_thunk(ctx->spare, was, cell, iat[j], kDiverts[k].arg);
@@ -11688,6 +11915,20 @@ static u32 load_and_start()
         ctx->timerThunks[1] = ctx_thunk(spare + 5 * TRACE, ctx, (u32)&gate6_timer_runl);
         ctx->timerThunks[2] = ctx_thunk(spare + 6 * TRACE, ctx, (u32)&gate6_timer_runerror);
         iat[IMPORT_CTIMER_CTOR] = ctx_thunk(spare + 7 * TRACE, ctx, (u32)&gate6_ctimer_ctor);
+    }
+    if (GAME_MULTI_TIMER) {
+        if (nImports > IMPORT_CTIMER_DTOR && IMPORT_CTIMER_DTOR < kShimCount &&
+            (kShimTable[IMPORT_CTIMER_DTOR] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
+            ctx->realTimerDtor = iat[IMPORT_CTIMER_DTOR];
+            iat[IMPORT_CTIMER_DTOR] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_ctimer_dtor);
+            ctx->spare += TRACE;
+        }
+        if (nImports > IMPORT_CTIMER_DOCANCEL && IMPORT_CTIMER_DOCANCEL < kShimCount &&
+            (kShimTable[IMPORT_CTIMER_DOCANCEL] >> 24) == KIND_CALL &&
+            ctx->spare + TIMER_MAP_BYTES <= ctx->spareEnd) {
+            iat[IMPORT_CTIMER_DOCANCEL] = timer_map_thunk(ctx->spare, ctx, iat[IMPORT_CTIMER_DOCANCEL]);
+            ctx->spare += TIMER_MAP_BYTES;
+        }
     }
 
     if (!TAKE_THE_SCREEN) {

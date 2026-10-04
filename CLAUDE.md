@@ -52,7 +52,7 @@ void such as `RThread::SetPriority` and `RThread::RequestSignal`, returns
 nothing at all. A real EKA2 kernel panics the calling thread **KERN-EXEC 0**:
 an unresolvable handle is a programming error, not an error code. So guest
 code that uses a closed, stale or wrong-thread handle runs here and dies on
-hardware. `EKA2L1_STRICTHANDLE=1` logs every rejected handle and `=2` panics
+hardware. `EKA2L1_STRICTHANDLE=1` logs every rejected handle, with the guest PC and LR, and `=2` panics
 the thread as a device would (`kernel_system::get_kernel_obj_raw`).
 
 Handle ownership is part of this: `EOwnerThread` handles are valid only in

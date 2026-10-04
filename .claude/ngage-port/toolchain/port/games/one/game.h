@@ -127,6 +127,11 @@ enum { GAME_SRC_ORIGIN = 0 };
 // after After and a forwarded Cancel, not only at RunL. One tests its own
 // iActive before re-arming its name-entry timer (E514-E516).
 #define GAME_TIMER_MIRROR 1
+// Every CTimer the game makes gets its own stand-in, kept in a table, and
+// its destructor and base DoCancel go to that stand-in: One makes four, and
+// the single pair the Asphalts need killed the phone at the fighter's save
+// (round 125, E569).
+#define GAME_MULTI_TIMER 1
 
 // The game's variadic wrappers hand `TDes16::FormatList` a GCC98r2 VA_LIST:
 // a one-element array, passed as its address. The 9.x euser takes the va
@@ -173,6 +178,9 @@ enum { GAME_SRC_ORIGIN = 0 };
 // The name every installed file carries; it has to differ from every other
 // title's (Symbian will not let one package own another's file).
 #define GAME_APP_NAME "gate6one"
+// The package the game's files travel in for a split install
+// (build_release.py --split): its own UID, so a loader update leaves it be.
+#define GAME_DATA_UID3   0xE0001109
 
 // The card the protection expects, as the port answers the N-Gage MMC driver
 // (gate6_mmc_control): the four words of the dump's own name, `MMC-ID
@@ -181,5 +189,5 @@ enum { GAME_SRC_ORIGIN = 0 };
 #define GAME_CARD_CID 0x567857f1, 0x7d011234, 0x0b2b1879, 0x06000400
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 1
+#define GAME_BUILD 2
 #endif

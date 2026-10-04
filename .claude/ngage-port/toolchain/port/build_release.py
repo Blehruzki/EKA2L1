@@ -31,6 +31,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 import buildapp
+import mksis
 import mkmbm
 import build_gate6            # for the import list, so the two cannot drift
 import picture                # for games/<name>/game.h, and its refusal to guess
@@ -99,14 +100,43 @@ def game_files(root, scratch, target_dir, rename, scramble):
     return out
 
 
-def main(out='.', game=DEFAULT_GAME, tree=None):
+def data_package(out, game, tree=None):
+    """The game's own files in a package of their own, for a split install.
+
+    A loader update on a phone is then a few hundred kilobytes instead of the
+    whole card. The data package carries its own UID, GAME_DATA_UID3, so
+    installing a new loader never touches it, and the files go where the
+    bundled package would put them: `!:\\system\\apps\\<stem>`, the image as
+    the scrambled `<stem>.bin`. The loader finds them the same way.
+    """
+    os.makedirs(out, exist_ok=True)
+    st = stem(game)
+    tree = tree or os.path.join(GAMES_ROOT, st)
+    caption = picture.setting(game, 'GAME_CAPTION')
+    vendor = picture.setting(game, 'GAME_VENDOR')
+    uid = picture.setting(game, 'GAME_DATA_UID3')
+    if not uid:
+        sys.exit('games/%s/game.h has no GAME_DATA_UID3: a split install needs one' % game)
+    target_dir = '!:\\system\\apps\\' + st
+    extra = game_files(tree, out, target_dir,
+                       {st + '.app': st + '.bin'},
+                       {st + '.app': (SCRAMBLE_KEY, SCRAMBLE_BYTES)})
+    name = picture.setting(game, 'GAME_APP_NAME') or 'gate6'
+    dst = os.path.join(out, name + '_data.sis')
+    mksis.build(dst, int(uid, 0), caption + ' data', vendor, extra)
+    total = sum(os.path.getsize(s) for s, _t in extra)
+    print('%s data: %d files, %.1f MB -> %s (%.1f MB)'
+          % (caption, len(extra), total / 1e6, dst, os.path.getsize(dst) / 1e6))
+
+
+def main(out='.', game=DEFAULT_GAME, tree=None, loader_only=False):
     os.makedirs(out, exist_ok=True)
     st = stem(game)
     tree = tree or os.path.join(GAMES_ROOT, st)
     caption = picture.setting(game, 'GAME_CAPTION')
     vendor = picture.setting(game, 'GAME_VENDOR')
     text = picture.setting(game, 'GAME_INSTALL_TEXT')
-    bundle = int(picture.setting(game, 'GAME_BUNDLE_DATA') or 0)
+    bundle = int(picture.setting(game, 'GAME_BUNDLE_DATA') or 0) and not loader_only
     target_dir = '!:\\system\\apps\\' + st
 
     icon = os.path.join(out, 'gate6.mbm')
@@ -135,6 +165,14 @@ def main(out='.', game=DEFAULT_GAME, tree=None):
 
 
 if __name__ == '__main__':
-    g, rest = picture.take_game_arg(sys.argv[1:])
-    main(rest[0] if rest else '.', g or DEFAULT_GAME,
-         rest[1] if len(rest) > 1 else None)
+    # --split: two packages, the loader alone and the data alone; a hardware
+    # round then reinstalls only the first (One, round 125).
+    args = sys.argv[1:]
+    split = '--split' in args
+    args = [a for a in args if a != '--split']
+    g, rest = picture.take_game_arg(args)
+    out = rest[0] if rest else '.'
+    tree = rest[1] if len(rest) > 1 else None
+    main(out, g or DEFAULT_GAME, tree, loader_only=split)
+    if split:
+        data_package(out, g or DEFAULT_GAME, tree)

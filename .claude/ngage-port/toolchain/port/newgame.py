@@ -132,6 +132,8 @@ enum { GAME_SRC_ORIGIN = 0 };
 // after After and a forwarded Cancel, not only at RunL. A title that tests
 // iActive on its own CTimer needs it (One, E514-E516).
 #define GAME_TIMER_MIRROR 1
+// A stand-in per game CTimer, not one for the last made (One, E569).
+#define GAME_MULTI_TIMER 1
 
 // The game's variadic wrappers hand `TDes16::FormatList` a GCC98r2 VA_LIST:
 // a one-element array, passed as its address. The 9.x euser takes the va

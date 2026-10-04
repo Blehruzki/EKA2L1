@@ -1092,8 +1092,9 @@ static int strict_handle_level() {
             const int level = strict_handle_level();
             if (level) {
                 LOG_ERROR(KERNEL, "BAD HANDLE 0x{:x} used by thread {} -- a device "
-                    "would panic KERN-EXEC 0 here", handle,
-                    target ? target->name() : std::string("?"));
+                    "would panic KERN-EXEC 0 here (pc 0x{:x} lr 0x{:x})", handle,
+                    target ? target->name() : std::string("?"),
+                    cpu_ ? cpu_->get_pc() : 0, cpu_ ? cpu_->get_lr() : 0);
                 if (level > 1 && target) {
                     target->kill(kernel::entity_exit_type::panic, u"KERN-EXEC", 0);
                 }

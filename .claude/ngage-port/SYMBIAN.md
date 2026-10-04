@@ -483,6 +483,28 @@ From `kernel/eka/include/e32def.h`, `kernel/eka/euser/us_des.cpp`,
 - **`CActive::SetActive`** panics `E32USER-CBase 42` (`EReqAlreadyActive`,
   `e32panic.h`) on an object already active.
 
+## Handles a phone refuses and EKA2L1 lets through (One, round 125)
+
+**A library handle belongs to the thread that loaded it.** `RLibrary::Load`
+ends in `RLoader::LoadLibrary`, which sets `info.iOwnerType=EOwnerThread`
+before it asks the loader (`kernel/eka/euser/us_ksvr.cpp`, line 5201). So
+`RLibrary::Lookup` from another thread through that handle is an unknown
+handle: KERN-EXEC 0 on a device. The port's own handles are loaded on the
+main thread, so a hook that can run on a worker must use a function address
+resolved there, never the handle (E567).
+
+**`TRequestStatus` is eight bytes on EKA2**: `TInt iStatus; TUint iFlags;`,
+with `EActive = 1` and `ERequestPending = 2` (`kernel/eka/include/e32cmn.h`,
+around line 2119). Its `operator=` writes both: `KRequestPending` sets bit 1
+of `iFlags`, anything else clears it (`kernel/eka/include/e32cmn.inl`, line
+2684). EKA1's was four bytes, so old code that keeps something right after a
+`TRequestStatus` on its stack has that word rewritten by 9.x euser (E568).
+
+**The bench.** EKA2L1 answers an unknown handle with an error code, not a
+panic. `EKA2L1_STRICTHANDLE=1` logs each one with the guest PC and LR,
+`=2` panics the thread as a device would. Run a new title under `=2` before
+its first hardware round.
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:

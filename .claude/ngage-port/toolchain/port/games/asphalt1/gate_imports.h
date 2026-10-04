@@ -32,6 +32,8 @@ enum {
     IMPORT_CREATE_CONTEXT              = 65535,   // absent
     IMPORT_CREATE_SESSION              =   267,
     IMPORT_CTIMER_CTOR                 =   332,
+    IMPORT_CTIMER_DOCANCEL             =   274,
+    IMPORT_CTIMER_DTOR                 =   322,
     IMPORT_CTL_DRAWABLE_WINDOW         = 65535,   // absent
     IMPORT_CTL_RECT                    = 65535,   // absent
     IMPORT_CTL_SETRECT                 =    91,

@@ -28,6 +28,8 @@ the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 | `GAME_CANCEL_ROM_OBJECTS` | 0 | 0 | 1 | yes | a stray `CActive::Cancel` on a 9.x object (vptr in ROM) is forwarded instead of dropped | round 115 (E426/E427); hardware rounds 115-117 |
 | `GAME_CANCEL_OWN_OBJECTS` | 0 | 0 | 0 | yes | a `CActive::Cancel` on an object of the game's own class (vptr in the image) is forwarded instead of dropped; One 1 | E493-E503 (One, bench) |
 | `GAME_VTABLE_SHIFTS` | -- | -- | -- | yes | a game class's vtable moved down two words to EABI's address point, for a class whose overrides 9.x calls; One `{ 0x152940, 11 }` | E555-E562 (One, bench) |
+| `GAME_MULTI_TIMER` | 0 | 0 | 0 | yes | every game CTimer gets its own stand-in in a table; ~CTimer and the base DoCancel go to it; One 1 | E569 (One, bench, strict handles) |
+| `GAME_DATA_UID3` | -- | -- | -- | -- | the data package's UID for a split install (`build_release.py --split`); One `0xE0001109` | round 125 |
 | `GAME_TIMER_MIRROR` | 0 | 0 | 0 | yes | the wrapped CTimer's status and flags reach the game's object after After and a forwarded Cancel, not only at RunL; One 1 | E514-E515 (One, bench) |
 | `GAME_SRC_BPP` | 16 | 16 | 16 | yes | bytes a pixel the game writes into the ScreenInfo buffer; One 32 (EColor16MU) | E489-E490 (One, bench) |
 | `GAME_CARD_CID` | default | default | default | per title | the card identity the MMC driver answers Codewave with: the dump's MMC-ID; One 567857f1-7d011234-0b2b1879-06000400 | E488 (One, bench) |
@@ -94,4 +96,5 @@ rasteriser's reciprocal table: the fight-start fault, E516-E527).
 `GAME_VTABLE_SHIFTS { 0x152940, 11 }`: the pak reader's TStreamBuf vtable at
 EABI's address point, without which the animation table read as zeros and
 no fighter moved (E555-E562). Fights play on the bench: AI attacks, health,
-rounds.
+rounds. Round 125 on the N95: three bad handles the bench forgave, fixed
+in E567-E569; build 002 ships split, the loader and the data apart.
