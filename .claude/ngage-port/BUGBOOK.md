@@ -769,3 +769,32 @@ run the same build for hours, because EKA2L1 declines a bad handle quietly;
 Lesson: **run every new title under `EKA2L1_STRICTHANDLE=2` before its first
 hardware round.** One run would have saved this one.
 
+
+**Round 126: four reports from the second phone run, fixed in build 003.**
+`R126`, `E574-E577`.
+- *KERN-EXEC 3 in `g6w2`, then KERN-EXEC 0 in One, at the VS fight's
+  loading screen.* g6w2 is the loading-screen thread (spinner, `loading.noa`),
+  created with the 8 KB stack the game asks for; the first loading screen ran
+  on the same thread and survived. The fault's pc was not recorded (the
+  exception handler is installed on the main thread only), so the cause is a
+  **guess**: a stack overflow, since on EKA2 the 9.x client code and the
+  port's hooks run on that stack too, and EKA2L1 runs the servers host-side.
+  Fix: `stack_thunk` raises any request below `STACK_RAISE` (0x8000). The
+  KERN-EXEC 0 after it is read as consequence. Round 127 confirms or not.
+- *Holding C did nothing.* One gets its keys through the app UI's
+  `HandleKeyEventL` (`gate6_ui_keyevent`), not the control's
+  `OfferKeyEventL`, and nothing ticked the hold because One's frame loop is
+  an active object of its own. Fix: `hold_key`, shared by both paths, and the
+  100 ms hold timer started from the app UI path.
+- *The picture sits a few pixels off, as Asphalt 1's did on the other side.*
+  The N-Gage frame buffer's 32-byte header, which is 8 pixels at 32 bpp.
+  `GAME_SRC_ORIGIN 8`, measured on a frame dump (E575).
+- *The music hiccups.* Suspected: the log. Round 126's log ran at about
+  131,000 records with a write and a flush to the card every block, on the
+  main thread. Three-quarters were noise: NOTE_SCREEN nine times a frame,
+  `TTrap::Trap`/`UnTrap`/`User::AllocL` traced on every call, and the
+  allocator census wrapping Asphalt 2's import **indices** -- in One index 409
+  is `TTrap::UnTrap`, so every UnTrap logged six records. All three cut. A
+  suspect, not a proof: round 127 says whether the music is smooth.
+Lesson: **a list of import indices is one title's.** Two arrays of Asphalt 2's
+numbers outlived the move to (DLL, ordinal) keys in E280.

@@ -134,7 +134,7 @@ enum {
 
 // The trace lists: see MILESTONES and HOT in gen_shim.py. Both may be
 // empty, which is why gate6.cpp appends the two exits to the first.
-#define GATE_MILESTONES  87, 92, 86, 200, 202, 250, 247, 265, 193, 232, 275, 219, 252, 222, 256, 340, 262, 182, 263, 224, 214,
+#define GATE_MILESTONES  87, 92, 86, 200, 202, 250, 247, 265, 193, 232, 275, 219, 252, 222, 256, 340, 224, 214,
 #define GATE_HOT  312, 189, 304, 273, 260, 276, 176, 241,
 #define GATE_HOT_COUNT 8
 

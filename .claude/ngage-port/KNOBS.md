@@ -57,6 +57,9 @@ the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 | the fault box (`g6box-<stem>.dat`) and the log (`g6box-<stem>.log`) | gate 6 | every round reads them |
 | the control's window and the DSA object's layout found at run time, validated against the session buffer, rather than read at offsets measured on 3.1/3.2 | round 120 | bench E454-E456; the N91 (S60 3.0) is the phone it was made for |
 | an old control slot that is a base-class veneer into cone is not forwarded; the wrapper's own base function runs instead | round 123 | bench E461-E464; Ashen on the N91 |
+| a game thread's stack request clamped to 64 KB and raised to at least 32 KB (`STACK_RAISE`): One's 8 KB loading thread fell KERN-EXEC 3 on the N95 | round 126 | bench E577-E580; a guess until round 127 |
+| hold C noted on the app UI's key path as well as the control's (`hold_key`), with the 100 ms hold timer, for a title that takes its keys in `HandleKeyEventL` (One) | round 126 | bench E577 |
+| per-call tracing without `TTrap::Trap`/`UnTrap`/`User::AllocL`, and `ScreenInfo` logged for its first 16 polls only; the allocator wraps on the title's own `kAlloc` (they were Asphalt 2's indices) | round 126 | bench E577-E580 |
 
 ## Where each title saves
 
@@ -98,3 +101,5 @@ EABI's address point, without which the animation table read as zeros and
 no fighter moved (E555-E562). Fights play on the bench: AI attacks, health,
 rounds. Round 125 on the N95: three bad handles the bench forgave, fixed
 in E567-E569; build 002 ships split, the loader and the data apart.
+Round 126: the loading thread's KERN-EXEC 3, hold C, the origin (`GAME_SRC_ORIGIN 8`)
+and the log volume behind the music's hiccups, in build 003 (E574-E580).

@@ -22,7 +22,7 @@
 // measured by the frame dump, not assumed (Asphalt 2's is 192, Asphalt 1's
 // 176). GAME_SRC_ORIGIN was 16 on both Asphalts and took eight rounds.
 enum { GAME_W = 176, GAME_PITCH = 176, GAME_H = 208 };
-enum { GAME_SRC_ORIGIN = 0 };
+enum { GAME_SRC_ORIGIN = 8 };
 // Four bytes a pixel: One reads the screen device's display mode (EColor16MU
 // on S60v3) and draws for it, 176 to a row -- stride.py on the E491 dump
 // measured 704-byte rows. Every earlier title wrote 16-bit pixels.
@@ -189,5 +189,5 @@ enum { GAME_SRC_ORIGIN = 0 };
 #define GAME_CARD_CID 0x567857f1, 0x7d011234, 0x0b2b1879, 0x06000400
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 2
+#define GAME_BUILD 3
 #endif

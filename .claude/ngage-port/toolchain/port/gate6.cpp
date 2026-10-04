@@ -1356,6 +1356,7 @@ struct Context {
     u32 holdSince;          // tick the mode key went down, 0 when it is up
     u32 holdNext;           // and the tick the next cycle is due
     u32 holdCycled;         // whether this hold has changed anything yet
+    u32 screenPolls;        // UserSvr::ScreenInfo calls, for rationing its records
     u32 cfgRead;            // the saved choice has been looked for once
     u32 cfg[CFG_WORDS];     // magic, version, mode, inset override, shift
     u32 cfgDes[2];          // ... and the descriptor it is read and written through
@@ -5835,6 +5836,15 @@ enum { NEW_RTHREAD_CREATE = CREATE_ORDINAL, NEW_RTHREAD_RESUME = 1795 };
 // actually give. A thread that then overflows says so as a KERN-EXEC 3, which
 // is a different and visible failure.
 enum { STACK_CEILING = 0x10000, STACK_FLOOR = 0x1000 };
+// Round 126: and a request below STACK_RAISE is raised to it. One's loading
+// thread, g6w2, asks for 8 KB -- which EKA1 gave and which ran there -- and
+// died KERN-EXEC 3 on the N95 at the second loading screen. On EKA2 the
+// 9.x client code and this port's own hooks run on that stack too; EKA2L1 runs
+// the servers host-side, which is why the bench never came near it. A guess
+// until a phone run says otherwise: the fault's pc was not recorded (the
+// exception handler is the main thread's only). The thunk encodes it as an
+// immediate (`cmp r7, #0x8000`), so changing it means changing b[8] and b[9].
+enum { STACK_RAISE = 0x8000 };
 enum { CLAMP_THREAD_STACK = 1 };
 enum { WATCH_SEM_RESULT = 1, LEND_THE_HEAP = 1 };
 
@@ -6044,27 +6054,31 @@ static u32 stack_thunk(u8 *code, const void *ctx, u32 target, u32 ceiling)
     b[5]  = 0xE59F8098;                 // ldr   r8, [pc, #152]  -> b[45]
     b[6]  = 0xE1580007;                 // cmp   r8, r7
     b[7]  = 0x31A07008;                 // movcc r7, r8
-    b[8]  = 0xE59D0020;                 // ldr   r0, [sp, #32]   -- aHeap
-    b[9]  = 0xE3500000;                 // cmp   r0, #0
-    b[10] = 0x059F0094;                 // ldreq r0, [pc, #148]  -> b[49]
-    b[11] = 0xE59D1024;                 // ldr   r1, [sp, #36]
-    b[12] = 0xE59D2028;                 // ldr   r2, [sp, #40]
-    b[13] = 0xE59D302C;                 // ldr   r3, [sp, #44]
-    b[14] = 0xE92D000F;                 // stmdb sp!, {r0-r3}
-    b[15] = 0xE1A00004;                 // mov   r0, r4
-    b[16] = 0xE1A01005;                 // mov   r1, r5
-    b[17] = 0xE1A02006;                 // mov   r2, r6
-    b[18] = 0xE1A03007;                 // mov   r3, r7
-    b[19] = 0xE59FC064;                 // ldr   r12, [pc, #100] -> b[46]
-    b[20] = 0xE1A0E00F;                 // mov   lr, pc
-    b[21] = 0xE12FFF1C;                 // bx    r12
-    b[22] = 0xE28DD010;                 // add   sp, sp, #16
-    b[23] = 0xE3700028;                 // cmn   r0, #40         -- KErrTooBig
-    b[24] = 0x1A000002;                 // bne   -> b[28]
-    b[25] = 0xE1B070A7;                 // movs  r7, r7, lsr #1
-    b[26] = 0xE3570A01;                 // cmp   r7, #0x1000  -- STACK_FLOOR
-    b[27] = 0x2AFFFFEB;                 // bcs   -> b[8]
-    b[28] = 0xE1A0A000;                 // mov   r10, r0
+    // Round 126: and up to STACK_RAISE. Done once, before the retry label,
+    // so a KErrTooBig still halves from here.
+    b[8]  = 0xE3570902;                 // cmp   r7, #0x8000  -- STACK_RAISE
+    b[9]  = 0x33A07902;                 // movcc r7, #0x8000
+    b[10] = 0xE59D0020;                 // ldr   r0, [sp, #32]   -- aHeap (retry)
+    b[11] = 0xE3500000;                 // cmp   r0, #0
+    b[12] = 0x059F008C;                 // ldreq r0, [pc, #140]  -> b[49]
+    b[13] = 0xE59D1024;                 // ldr   r1, [sp, #36]
+    b[14] = 0xE59D2028;                 // ldr   r2, [sp, #40]
+    b[15] = 0xE59D302C;                 // ldr   r3, [sp, #44]
+    b[16] = 0xE92D000F;                 // stmdb sp!, {r0-r3}
+    b[17] = 0xE1A00004;                 // mov   r0, r4
+    b[18] = 0xE1A01005;                 // mov   r1, r5
+    b[19] = 0xE1A02006;                 // mov   r2, r6
+    b[20] = 0xE1A03007;                 // mov   r3, r7
+    b[21] = 0xE59FC05C;                 // ldr   r12, [pc, #92]  -> b[46]
+    b[22] = 0xE1A0E00F;                 // mov   lr, pc
+    b[23] = 0xE12FFF1C;                 // bx    r12
+    b[24] = 0xE28DD010;                 // add   sp, sp, #16
+    b[25] = 0xE3700028;                 // cmn   r0, #40         -- KErrTooBig
+    b[26] = 0x1A000002;                 // bne   -> b[30]
+    b[27] = 0xE1B070A7;                 // movs  r7, r7, lsr #1
+    b[28] = 0xE3570A01;                 // cmp   r7, #0x1000  -- STACK_FLOOR
+    b[29] = 0x2AFFFFEB;                 // bcs   -> b[10]
+    b[30] = 0xE1A0A000;                 // mov   r10, r0
     // **And KErrAlreadyExists, which round 90 died on.** The game starts its
     // sound server a second time from the same call site without killing the
     // first, and EKA2 will not have two threads of one name in a process. r4
@@ -6077,14 +6091,12 @@ static u32 stack_thunk(u8 *code, const void *ctx, u32 target, u32 ceiling)
     // than keep staring at six instructions, the hook runs on **every**
     // create and decides in C, where it can say what it saw. It costs one
     // call per thread the game makes, which is two.
-    b[29] = 0xE1A01004;                 // mov   r1, r4          -- the RThread
-    b[30] = 0xE1A02005;                 // mov   r2, r5          -- its name
-    b[31] = 0xE59F3038;                 // ldr   r3, [pc, #56]   -> b[47]
-    b[32] = 0xE59FC040;                 // ldr   r12, [pc, #64]  -> b[50]
-    b[33] = 0xE12FFF3C;                 // blx   r12             -- r0 is still the error
-    b[34] = 0xE1A0A000;                 // mov   r10, r0         -- what it answered
-    b[35] = 0xE1A00000;                 // mov   r0, r0
-    b[36] = 0xE1A00000;                 // mov   r0, r0
+    b[31] = 0xE1A01004;                 // mov   r1, r4          -- the RThread
+    b[32] = 0xE1A02005;                 // mov   r2, r5          -- its name
+    b[33] = 0xE59F3030;                 // ldr   r3, [pc, #48]   -> b[47]
+    b[34] = 0xE59FC038;                 // ldr   r12, [pc, #56]  -> b[50]
+    b[35] = 0xE12FFF3C;                 // blx   r12             -- r0 is still the error
+    b[36] = 0xE1A0A000;                 // mov   r10, r0         -- what it answered
     b[37] = 0xE1A0000A;                 // mov   r0, r10
     b[38] = 0xE1A01007;                 // mov   r1, r7
     b[39] = 0xE59F2018;                 // ldr   r2, [pc, #24]   -> b[47]
@@ -6862,22 +6874,31 @@ static void column_map(Context *c)
         }
 }
 
+enum { SCREEN_POLLS_LOGGED = 16 };
+
 extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
 {
     typedef void (*Info)(u32 *);
     ((Info)c->screenInfo)(des);
     if (!des)
         return;
-    for (u32 i = 0; i < 3; i++)
-        log_event(c, NOTE_SCREEN, des[i]);
+    // The first few only. One asks once a frame, and nine records a frame
+    // was a quarter of round 126's log -- 34,000 of them, each block a write
+    // and a flush to the card on the main thread, under the music.
+    const int say = c->screenPolls < (u32)SCREEN_POLLS_LOGGED;
+    c->screenPolls++;
+    if (say)
+        for (u32 i = 0; i < 3; i++)
+            log_event(c, NOTE_SCREEN, des[i]);
     const u32 type = des[0] >> KTypeShift;
     u32 *p = (type == EBufC) ? des + 1
            : (type == EPtrC || type == EPtr) ? (u32 *)des[1]
            : (type == EBufType) ? des + 2 : (u32 *)des[2];
     if (!((u32)p >= 0x400000 && (u32)p < 0x10000000 && !((u32)p & 3)))
         return;
-    for (u32 i = 0; i < 6; i++)
-        log_event(c, NOTE_SCREEN, p[i]);
+    if (say)
+        for (u32 i = 0; i < 6; i++)
+            log_event(c, NOTE_SCREEN, p[i]);
 
     // Hand the game the screen it was built for, and keep the real one to copy
     // into. It is told 240x320 and writes 176x208 anyway -- 73,216 bytes of
@@ -9127,6 +9148,36 @@ extern "C" void gate6_control_focus(void *self, u32 drawNow, Context *c)
         old_call1(c->oldControl, OLD_CTL_FOCUS, drawNow);
 }
 
+// The hold's key half, for both places a key reaches the game: the control's
+// OfferKeyEventL above, and the app UI's HandleKeyEventL below, which is the
+// only one One gets its keys through (round 126: holding C did nothing). A key
+// that comes through both is noted twice, which changes nothing: the down
+// restarts the same clock, and an up that acted is consumed by the first.
+// 1 when the key is to be swallowed.
+static u32 hold_key(Context *c, const u32 *k, u32 type)
+{
+    enum { EEventKeyUp = 2, EEventKeyDown = 3 };
+    if (!PICK_ON_HOLD || k[1] != (u32)HOLD_KEY)
+        return 0;
+    if (type == (u32)EEventKeyDown) {
+        const u32 now = user_tickcount();
+        c->holdSince = now ? now : 1u;
+        c->holdNext = now + (u32)HOLD_FIRST_TICKS;
+        c->holdCycled = 0;
+    } else if (type == (u32)EEventKeyUp) {
+        const u32 acted = c->holdCycled;
+        c->holdSince = 0;
+        c->holdCycled = 0;
+        if (acted) {
+            cfg_save(c);                    // once per gesture, not per step
+            return 1;
+        }
+    } else if (c->holdCycled) {
+        return 1;
+    }
+    return 0;
+}
+
 // Input. The 9.x framework offers a key to every control on its stack, and the
 // wrapper control is on it -- AddToStackL is already diverted to put it there.
 // The game's own control is not a 9.x object and can never be on that stack, so
@@ -9156,24 +9207,8 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
         // whether this phone's clear key auto-repeats. A tap is passed
         // straight through -- the key is swallowed only once a hold has
         // actually changed something, and then until it is let go.
-        if (PICK_ON_HOLD && k[1] == (u32)HOLD_KEY) {
-            if (type == (u32)EEventKeyDown) {
-                const u32 now = user_tickcount();
-                c->holdSince = now ? now : 1u;
-                c->holdNext = now + (u32)HOLD_FIRST_TICKS;
-                c->holdCycled = 0;
-            } else if (type == (u32)EEventKeyUp) {
-                const u32 acted = c->holdCycled;
-                c->holdSince = 0;
-                c->holdCycled = 0;
-                if (acted) {
-                    cfg_save(c);            // once per gesture, not per step
-                    return 1;               // EKeyWasConsumed
-                }
-            } else if (c->holdCycled) {
-                return 1;
-            }
-        }
+        if (hold_key(c, k, type))
+            return 1;                       // EKeyWasConsumed
         if (SHIFT_PICKER && type == (u32)EEventKey) {
             const u32 code = k[0];
             if (code == (u32)KEY_SHIFT_LEFT)
@@ -10616,6 +10651,13 @@ extern "C" u32 gate6_ui_keyevent(void *self, const void *key, u32 type, Context 
     if (key) {
         log_event(c, NOTE_KEY, 0xA990000u | (((const u32 *)key)[1] & 0xFFFF));   // app UI: the scan code
         log_event(c, NOTE_KEY, type);
+        // Nothing on this path ticks the hold once a frame -- One's frame
+        // loop is an active object of its own, not the port's timer -- so
+        // the hold gets the 100 ms timer the window-gc titles use.
+        if (PICK_ON_HOLD && ((const u32 *)key)[1] == (u32)HOLD_KEY)
+            hold_timer_start(c);
+        if (hold_key(c, (const u32 *)key, type))
+            return 1;                       // EKeyWasConsumed
     }
     if (GAME_UI_FORWARD_EVENTS && c->oldKeyEvent)
         return ((KeyEvent)c->oldKeyEvent)(c->oldUi, key, type);
@@ -12255,7 +12297,10 @@ static u32 load_and_start()
             // doing, and would explain two runs of one build stopping eight milestones
             // apart -- it will be a zero in here.
             ctx->boxData[BOX_WRAPS] |= W_ALLOC;
-            static const u32 kAlloc[] = { 265, 269, 270, 332, 409 };
+            // The title's own allocators (kAlloc, by DLL and ordinal). This
+            // was `{ 265, 269, 270, 332, 409 }`, Asphalt 2's indices: in One
+            // 409 is TTrap::UnTrap, and the census below logged six records
+            // for every one of them, 31,000 in round 126's log.
         for (u32 i = 0; i < sizeof kAlloc / sizeof kAlloc[0]; i++) {
             const u32 j = kAlloc[i];
             if (j >= nImports || ctx->spare + 16 * 4 > ctx->spareEnd)
@@ -12268,9 +12313,8 @@ static u32 load_and_start()
     // And on the way in, for the census: result_thunk sees what came back,
     // which says nothing about how much was asked for or by whom.
     if (CENSUS_ALLOCS) {
-        static const u32 kCensus[] = { 265, 269, 270, 332, 409, 421 };
-        for (u32 i = 0; i < sizeof kCensus / sizeof kCensus[0]; i++) {
-            const u32 j = kCensus[i];
+        for (u32 i = 0; i < sizeof kAlloc / sizeof kAlloc[0]; i++) {
+            const u32 j = kAlloc[i];
             if (j >= nImports || ctx->spare + ARG_WORDS * 4 > ctx->spareEnd)
                 continue;
             iat[j] = arg_thunk(ctx->spare, ctx, j, iat[j]);

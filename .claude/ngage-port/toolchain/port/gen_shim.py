@@ -725,7 +725,10 @@ MILESTONES = [
     ('euser', 972), ('euser', 279), ('euser', 1398), ('euser', 1102),
     ('euser', 966), ('euser', 1414), ('euser', 209), ('euser', 1226),
     ('euser', 814), ('mediaclientaudiostream', 2),
-    ('euser', 1148), ('euser', 35), ('euser', 1164), ('euser', 629),
+    # Not ('euser', 1148), ('euser', 35), ('euser', 1164): TTrap::Trap,
+    # User::AllocL and TTrap::UnTrap. One calls them every frame, and they
+    # were 37,000 of round 126's 131,000 records.
+    ('euser', 629),
     ('euser', 476),
 ]
 
