@@ -210,6 +210,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          777: 'THREAD OPEN: RThread::Open by the game\'s name for a thread the port renamed -- the real answer, then the Duplicate from the game\'s own handle (-1 none matched)',
          778: 'FACTORY: CEikonEnv::AppUiFactory() answered with the null-object factory -- its address, then the dummy every slot of it answers',
          715: 'FPA SELFTEST: import, r0, r1',
+         718: 'AO PRIORITY: the constructor site, the priority it asked, the one given',
          717: 'WORKER FAULT (0xE5E7nnnn: nn game threads given the handler): 0xFA17000x, last import, handler sp, type, code, fault address, status, cpsr, r0..r15, then 24 stack words',
          716: 'TIMER PAIR: index, the game object, its stand-in (0xD70000nn: pair nn destroyed)',
          714: 'RANGE PROBE: site index, the register out of range, the second register (0x9Axxxxxx: planted at)',

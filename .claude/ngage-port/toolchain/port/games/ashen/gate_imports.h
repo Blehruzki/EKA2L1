@@ -23,6 +23,7 @@ enum {
     IMPORT_APP_FULL_NAME               =     0,
     IMPORT_APP_RECT                    =   151,
     IMPORT_BASECONSTRUCTL              =    13,
+    IMPORT_CACTIVE_CTOR                =   284,
     IMPORT_CANCEL                      =   192,
     IMPORT_CLEANUP_NEW                 =   232,
     IMPORT_CLIENT_RECT                 = 65535,   // absent

@@ -132,6 +132,15 @@ enum { GAME_SRC_ORIGIN = 8 };
 // the single pair the Asphalts need killed the phone at the fighter's save
 // (round 125, E569).
 #define GAME_MULTI_TIMER 1
+// One's frame loop is an active object of its own that completes itself
+// every frame (the kick at 0x26564; its class's constructor, 0x264e8, passes
+// priority -1): it is moved below
+// EPriorityIdle, as the port's frame timer is for the Asphalts, so it runs
+// when nothing else is ready. At -1 it starved the audio stream's callbacks
+// for a whole fight and left start-up objects to run at the first pause or
+// minimize (round 128). {return address after `bl CActive::CActive`, priority}.
+#define GAME_AO_PRIORITIES { 0x000264f8, -101 }
+#define GAME_AO_PRIORITY_COUNT 1
 
 // The game's variadic wrappers hand `TDes16::FormatList` a GCC98r2 VA_LIST:
 // a one-element array, passed as its address. The 9.x euser takes the va
@@ -189,5 +198,5 @@ enum { GAME_SRC_ORIGIN = 8 };
 #define GAME_CARD_CID 0x567857f1, 0x7d011234, 0x0b2b1879, 0x06000400
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 4
+#define GAME_BUILD 5
 #endif

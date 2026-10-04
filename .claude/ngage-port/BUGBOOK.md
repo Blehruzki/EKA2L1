@@ -829,3 +829,19 @@ Lessons: **a port-wide structure written from a hook is written by every
 thread** -- check each for a read-then-write; and **a mapping by name is a
 claim about the object**: RFsBase::Close on a session and on a subsession are
 different calls.
+
+**Round 128: silent fights, and a frame loop the port did not own.**
+`R128`, `E590-E592`. One's frame loop is a self-completing active object of
+the game's own (constructor 0x264e8, priority -1; it kicks itself at 0x26564
+with `User::RequestComplete` and `SetActive`). The 9.x scheduler always runs
+the highest-priority ready object (SYMBIAN.md), so for the length of a fight
+nothing below -1 in the main thread ran: the audio stream's open-complete
+arrived only at the pause (26,000 records after the Open), and the fight had
+no sound. It is round 102's starvation again; the Asphalts' fix was the port's
+own frame timer at -101, which One does not use. Fix: `GAME_AO_PRIORITIES`
+rewrites the priority a named `CActive::CActive` call site passes (the
+wrapper reads the return address); One's loop goes to -101. The bench never
+starved, so the bench can only show the change is harmless. Lesson: **a title
+with its own frame loop needs the priority check the port's timer gets for
+free** -- look for the self-completing object (`User::RequestComplete` on its
+own iStatus, every frame) in a new title's first log.

@@ -626,10 +626,15 @@ extern "C" void gate6_report(int code)
     PANIC(CAT_IMP, code);
 }
 
-// A call through a vtable slot the old binary never filled in.
+// A call through a vtable slot the old binary never filled in -- or one of
+// the port's stand-in slots it left unmapped (GC_NONE and the like). Round
+// 128 showed `G6PUR 0` and nothing else: this has no context to log with.
+// So the reason is the caller's return address, raw: an address in the game's
+// image (the log's `image loaded at` record gives the base) names the call site, and
+// one in the ROM names the 9.x caller.
 extern "C" void gate6_pure_virtual()
 {
-    PANIC(CAT_PURE, 0);
+    PANIC(CAT_PURE, (int)(u32)__builtin_return_address(0));
 }
 
 // Only the 16-bit Mem::Compare is still exported, so the 8-bit one lives here.
@@ -1084,6 +1089,8 @@ struct Context {
     u32 *timerWrap[8];      // ... and the stand-in each one has
     u32 timerCount;
     u32 realTimerDtor;      // 9.x CTimer::~CTimer, for a stand-in being destroyed
+    u32 realActiveCtor;     // 9.x CActive::CActive(TInt), under GAME_AO_PRIORITIES
+    u32 aoPrioritySaid;     // which GAME_AO_PRIORITIES sites have been logged (a bit each)
     u32 newTimerCtor;       // 9.x CTimer::CTimer(TInt), as the shim resolved it
     u32 timerThunks[3];     // DoCancel, RunL, RunError, built in the code chunk
     u32 reached;            // which of the game's callbacks have been entered
@@ -4514,6 +4521,57 @@ extern "C" void gate6_request_complete(u32 **status, int reason, Context *c)
 // well-behaved application's does; input and window-server events also
 // stop queueing behind frames.
 enum { YIELD_TO_IDLE = 0, EPRIORITY_IDLE = -100, TIMER_PRIORITY = EPRIORITY_IDLE - 1 };
+
+// **And a game's own self-completing active object, the same way (round
+// 128).** One's frame loop is not a timer the port wraps: it is an object of
+// the game's (constructor 0x264e8, priority -1) whose kick (0x26564) does
+// `User::RequestComplete` on itself and `SetActive` every frame. At -1 it
+// starves every lower-priority object in the main thread for as long as a
+// fight lasts: the audio stream's open-complete arrived only when the game
+// paused (round 128's log: 26,000 records after the Open), so the fight was
+// silent, and the objects queued at start-up ran first at a pause or a
+// minimize, against a stale state -- round 102's crash on the Asphalts.
+// GAME_AO_PRIORITIES {return address of the `bl CActive::CActive`, priority}
+// rewrites the priority one constructor passes; the wrapper runs for every
+// CActive the game builds and changes only those.
+#ifndef GAME_AO_PRIORITIES
+#define GAME_AO_PRIORITIES
+#define GAME_AO_PRIORITY_COUNT 0
+#endif
+struct AoPriority { u32 at; int priority; };
+static const AoPriority kAoPriority[GAME_AO_PRIORITY_COUNT + 1] = { GAME_AO_PRIORITIES };
+enum { NOTE_AO_PRIORITY = 718 };
+
+extern "C" void *gate6_cactive_ctor(void *self, int priority, u32 lr, Context *c)
+{
+    typedef void *(*Ctor)(void *, int);
+    const u32 at = lr - c->codeBase;
+    for (u32 i = 0; i < (u32)GAME_AO_PRIORITY_COUNT; i++)
+        if (kAoPriority[i].at == at) {
+            if (i < 32 && !(c->aoPrioritySaid & (1u << i))) {
+                c->aoPrioritySaid |= 1u << i;
+                log_event(c, NOTE_AO_PRIORITY, at);
+                log_event(c, NOTE_AO_PRIORITY, (u32)priority);
+                log_event(c, NOTE_AO_PRIORITY, (u32)kAoPriority[i].priority);
+            }
+            priority = kAoPriority[i].priority;
+            break;
+        }
+    return ((Ctor)c->realActiveCtor)(self, priority);
+}
+
+// `mov r2, lr` -- the game's return address -- then the context in r3.
+static u32 lr_ctx_thunk(u8 *code, const void *ctx, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE1A0200E;                  // mov r2, lr
+    b[1] = 0xE59F3000;                  // ldr r3, [pc, #0]  -> b[3]
+    b[2] = 0xE59FF000;                  // ldr pc, [pc, #0]  -> b[4]
+    b[3] = (u32)ctx;
+    b[4] = target;
+    user_imb_range(b, b + 5);
+    return (u32)b;
+}
 
 // **The game's own view of its timer.** Everything the game does to its
 // CTimer goes to the wrapper, and the wrapper's state reaches the game's
@@ -12058,6 +12116,13 @@ static u32 load_and_start()
             iat[IMPORT_CTIMER_DOCANCEL] = timer_map_thunk(ctx->spare, ctx, iat[IMPORT_CTIMER_DOCANCEL]);
             ctx->spare += TIMER_MAP_BYTES;
         }
+    }
+
+    if (GAME_AO_PRIORITY_COUNT && nImports > IMPORT_CACTIVE_CTOR && IMPORT_CACTIVE_CTOR < kShimCount &&
+        (kShimTable[IMPORT_CACTIVE_CTOR] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->realActiveCtor = iat[IMPORT_CACTIVE_CTOR];
+        iat[IMPORT_CACTIVE_CTOR] = lr_ctx_thunk(ctx->spare, ctx, (u32)&gate6_cactive_ctor);
+        ctx->spare += TRACE;
     }
 
     if (!TAKE_THE_SCREEN) {

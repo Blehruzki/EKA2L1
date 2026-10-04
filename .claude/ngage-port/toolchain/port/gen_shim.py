@@ -652,6 +652,7 @@ HOOKS = {
     'IMPORT_CTIMER_CTOR':             ('euser', 1377),
     'IMPORT_CTIMER_DTOR':             ('euser', 1264),   # CTimer::~CTimer(): sent to the stand-in (GAME_MULTI_TIMER, round 125)
     'IMPORT_CTIMER_DOCANCEL':         ('euser', 350),    # CTimer::DoCancel(): the same
+    'IMPORT_CACTIVE_CTOR':            ('euser', 1395),   # CActive::CActive(TInt): GAME_AO_PRIORITIES (One, round 128)
     'IMPORT_DELETE_OP':               ('euser', 1504),
     'IMPORT_VEC_DELETE_OP':           ('euser', 1506),
     'IMPORT_APP_RECT':                ('eikcore', 233),
