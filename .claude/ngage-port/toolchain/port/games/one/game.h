@@ -151,6 +151,15 @@ enum { GAME_SRC_ORIGIN = 8 };
 // stream's next callback instead (gate6_mda_call2, mda_owed_stop).
 #define GAME_DEFER_WORKER_STOP 1
 
+// The frame object's RunL in its vtable (class at 0x156294, slot word at
+// +0x10 holding 0x265ac), timed per beat (gate6_kick_runl).
+#define GAME_KICK_RUNL_SLOT 0x001562a4
+#define GAME_KICK_RUNL_FN   0x000265ac
+
+// Round 132: the writer keeps only 20-55 ms queued against the N95's Position;
+// Position is answered this far ahead, so it keeps that much more.
+#define GAME_MDA_POSITION_LEAD_US 100000
+
 // The game's variadic wrappers hand `TDes16::FormatList` a GCC98r2 VA_LIST:
 // a one-element array, passed as its address. The 9.x euser takes the va
 // pointer itself, so handed the address it reads the game's stack as the

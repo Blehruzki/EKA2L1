@@ -1106,9 +1106,11 @@ struct Context {
     u32 wdMain;             // a process-owned handle on the main thread, for RThread::Context
     u32 wdThr[4], wdThrN;   // the same for each thread the game made
     u32 fnDuplicate, fnContext, fnStackInfo, fnPriority;   // euser 121, 1796, 1801, 1800
+    u32 realKickRunL, fnFastCounter, kickRuns, kickRunTicks, kickBeatAt;   // the kick RunL, timed (round 132)
     u32 fnCpuTime, cpuSaid[5];   // RThread::GetCpuTime (euser 1782), and each thread's last reading, in us
     u32 bgMute;             // focus lost: the streams are turned down until it comes back
     u32 mdaObj[4], mdaVol[4], mdaMuted[4];   // each stream, the volume the game last set, and whether muted
+    u32 mdaPosCopy[4][2];                  // Position as answered, lead added (round 132)
     u32 mdaCb[4], mdaPendStop[4];          // each stream's callback proxy, and a worker's Stop held back (round 132)
     u32 mdaDeferN, mdaDeferDone, mdaDeferSaid;   // Stops held back, carried out later, and what the heartbeat said
     u32 mdaMuteN, mdaUnmuteN, mdaMuteVol, mdaMuteSaid;   // streams turned down and back, the last volume kept, and what the heartbeat said
@@ -4495,6 +4497,29 @@ static void watchdog_start(Context *c)
     log_block(c);
 }
 
+// **Where a slow frame's time goes** (round 132). One's fight runs at half
+// its rate until the first pause or minimize. The kick object's RunL is the
+// whole frame -- it hands the screen its tick (event 0x11) -- so the time
+// inside it, against the beat's own length, says whether the frame itself
+// costs twice as much (inside near 100%) or something else has the other
+// half (inside near 50%). User::FastCounter (euser 584), both measured with
+// it, so its frequency need not be known.
+#ifndef GAME_KICK_RUNL_SLOT
+#define GAME_KICK_RUNL_SLOT 0
+#define GAME_KICK_RUNL_FN 0
+#endif
+enum { EUSER_FAST_COUNTER = 584 };
+extern "C" void gate6_kick_runl(void *self, u32, Context *c)
+{
+    typedef void (*RunL)(void *);
+    typedef u32 (*Fast)();
+    const u32 t0 = c->fnFastCounter ? ((Fast)c->fnFastCounter)() : 0;
+    ((RunL)c->realKickRunL)(self);
+    if (c->fnFastCounter)
+        c->kickRunTicks += ((Fast)c->fnFastCounter)() - t0;
+    c->kickRuns++;
+}
+
 static void bench_timer_kick(Context *c);
 
 extern "C" int gate6_heartbeat(void *p)
@@ -4522,6 +4547,17 @@ extern "C" int gate6_heartbeat(void *p)
         c->mdaMuteSaid = (c->mdaMuteN << 16) | (c->mdaUnmuteN & 0xFFFFu);
         log_event(c, NOTE_MDA_CODE, 0x5A1C0000u);
         log_event(c, NOTE_MDA_CODE, c->mdaMuteSaid);
+    }
+    // The kick RunLs in the last beat, the fast-counter ticks spent inside
+    // them, and the ticks the beat itself took.
+    if (c->realKickRunL && c->fnFastCounter) {
+        const u32 now = ((u32 (*)())c->fnFastCounter)();
+        log_event(c, NOTE_AO_PRIORITY, 0x0BEF0000u | (c->kickRuns & 0xFFFFu));
+        log_event(c, NOTE_AO_PRIORITY, c->kickRunTicks);
+        log_event(c, NOTE_AO_PRIORITY, now - c->kickBeatAt);
+        c->kickBeatAt = now;
+        c->kickRuns = 0;
+        c->kickRunTicks = 0;
     }
     // CPU each thread used in the last beat, in milliseconds (round 132: the
     // fight runs at half its rate until the first pause or minimize, and
@@ -10795,6 +10831,10 @@ static int mda_stream(Context *c, u32 obj)
 #define GAME_DEFER_WORKER_STOP 0
 #endif
 enum { DEFER_WORKER_STOP = GAME_DEFER_WORKER_STOP };
+#ifndef GAME_MDA_POSITION_LEAD_US
+#define GAME_MDA_POSITION_LEAD_US 0
+#endif
+enum { MDA_POSITION_LEAD_US = GAME_MDA_POSITION_LEAD_US };
 static void mda_owed_stop(Context *c, int si)
 {
     typedef u32 (*Any)(void *, u32, u32, u32);
@@ -10938,6 +10978,25 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
         }
     }
     u32 r = ((Any)rvt[to])(real, a1, saved[2], saved[3]);
+    // **The stutter** (round 132). One's writer (0x1195c) keeps at most
+    // capacity (+0x44, 1280 samples, 80 ms at 16 kHz) between what it has
+    // written and what Position says has played, and writes again only when
+    // that falls under 1120; the phone's dumps show 320 to 880 samples --
+    // 20 to 55 ms -- in the whole pipeline, so any frame longer than that is
+    // a gap. The N-Gage's own stream evidently buffered behind the game's
+    // back; S60's reports closer to the speaker. So Position is answered
+    // GAME_MDA_POSITION_LEAD_US ahead of the truth, from a copy of ours (the
+    // real answer is a reference into the stream, not to be written), and
+    // the writer keeps that much more queued. Its own arithmetic clamps a
+    // lead past what it has written to "nothing queued", so the lead cannot
+    // run it backwards.
+    if (MDA_POSITION_LEAD_US && slot == 11 && si >= 0 && r >= 0x400000 && !(r & 3)) {
+        const u32 lo = ((const u32 *)r)[0], hi = ((const u32 *)r)[1];
+        const u32 nlo = lo + (u32)MDA_POSITION_LEAD_US;
+        c->mdaPosCopy[si][0] = nlo;
+        c->mdaPosCopy[si][1] = hi + (nlo < lo ? 1u : 0u);
+        r = (u32)c->mdaPosCopy[si];
+    }
     // Bench (round 129): One's writer (image 0x1195c) polls Position and
     // never writes. Its object is the callback's owner, the callback at +0xc;
     // the words it decides on, and what Position answered.
@@ -12868,6 +12927,19 @@ static u32 load_and_start()
         ctx->realActiveCtor = iat[IMPORT_CACTIVE_CTOR];
         iat[IMPORT_CACTIVE_CTOR] = lr_ctx_thunk(ctx->spare, ctx, (u32)&gate6_cactive_ctor);
         ctx->spare += TRACE;
+    }
+    // Round 132: the kick object's RunL, timed (GAME_KICK_RUNL_SLOT: the
+    // vtable word that holds it, and what it must hold). The word is the
+    // game's own, relocated, so it is checked before it is replaced.
+    if (GAME_KICK_RUNL_SLOT && GAME_KICK_RUNL_SLOT + 4 <= h->codeSize &&
+        ctx->spare + TRACE <= ctx->spareEnd) {
+        u32 *slot = (u32 *)(base + GAME_KICK_RUNL_SLOT);
+        if (*slot == (u32)base + (u32)GAME_KICK_RUNL_FN) {
+            ctx->realKickRunL = *slot;
+            *slot = ctx_thunk(ctx->spare, ctx, (u32)&gate6_kick_runl);
+            ctx->spare += TRACE;
+            ctx->fnFastCounter = (u32)rlibrary_lookup(&ctx->euser, EUSER_FAST_COUNTER);
+        }
     }
 
     if (!TAKE_THE_SCREEN) {

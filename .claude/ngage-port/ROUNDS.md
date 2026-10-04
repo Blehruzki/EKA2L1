@@ -731,6 +731,8 @@ them, and say so.
 | E659 | regression: asphalt2 on the shared layer as of One build 009 (partial-frame replay, CPU per beat, ThreadGetCpuTime in EKA2L1; the held-back Stop is One's only) | 33616 | `--` | Asphalt 2 clean 100 s: 89 beats, no fault; strict handles (=1): none |
 | E660 | regression: asphalt1 on the shared layer as of One build 009 (partial-frame replay, CPU per beat, ThreadGetCpuTime in EKA2L1; the held-back Stop is One's only) | 31662 | `--` | UGT clean 100 s: 84 beats, no fault; strict handles (=1): none |
 | E661 | regression: ashen on the shared layer as of One build 009 (rerun: the container restarted during the first) | 89331 | `--` | Ashen clean 100 s, the same 89,331 records as E644; strict handles (=1): none |
+| E662 | One bench, driven into a fight: Position answered 100 ms ahead (GAME_MDA_POSITION_LEAD_US) -- the writer's queue in its dumps -- and the kick RunL timed per beat (GAME_KICK_RUNL_SLOT, User::FastCounter) | 18464 | `--` | Both work as built. The writer sees Position 1,600 samples (100 ms) further on in every dump and keeps writing (state 2, written climbing ~16 samples a ms); on the bench the HLE stream's Position equals what was written, so the writer sees -1600, clamps to nothing queued and writes its full 1280 whenever the stream takes it -- the stream's own pacing, no runaway. The kick RunL timer reads: menus 26-40 a beat, fights 90-110, the RunL 100% of the beat on the bench (the main thread is never idle). On the phone that percentage is the slow phase's answer |
+| E663 | regression: asphalt2 with the round-133 shared code (Position lead and kick timing, both off unless a title sets them) | 35359 | `--` | Asphalt 2 clean 100 s; strict handles (=1): none |
 
 <!-- EMURUN -->
 

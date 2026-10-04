@@ -129,3 +129,9 @@ and the log volume behind the music's hiccups, in build 003 (E574-E580).
 One, round 132: `GAME_DEFER_WORKER_STOP 1` -- a Stop from any thread but
 the main one is held back and made from the stream's next callback (or a
 re-Open), never under the game's channel mutex. One only.
+
+One, round 133: `GAME_MDA_POSITION_LEAD_US 100000` -- the stream's Position
+answered 100 ms ahead, so the writer (0x1195c, 80 ms capacity) keeps that much
+more queued against the stutter; `GAME_KICK_RUNL_SLOT` / `_FN` -- the frame
+object's RunL timed per beat (0x0BEF records: runs, ticks inside, ticks in the
+beat). One only.
