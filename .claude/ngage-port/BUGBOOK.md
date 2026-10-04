@@ -798,3 +798,34 @@ hardware round.** One run would have saved this one.
   suspect, not a proof: round 127 says whether the music is smooth.
 Lesson: **a list of import indices is one title's.** Two arrays of Asphalt 2's
 numbers outlived the move to (DLL, ordinal) keys in E280.
+
+**Round 127: the VS fight still dies, and three things found looking.**
+`R127`, `E581-E585`.
+- *KERN-EXEC 3 in the loading thread, again, at 32 KB.* It dies in the
+  animation loader (image 0x5b0a8, `script\torro.anm`, 296 files), the box's
+  ring says (it holds every thread's traced imports; the log only the main
+  thread's). The same loader runs on the main thread at the fighter creator and
+  survives; the bench runs it on the loading thread and survives. Not yet
+  explained. Build 004 gives game threads the main thread's 64 KB, and **the
+  port's exception handler on every game thread** (installed at its first
+  traced import): the fault frame goes into the context and the main thread's
+  heartbeat logs it (`NOTE_WRK_FAULT`, 717), and the thread panics G6FLT with
+  the last import, so the next death names its instruction.
+- *A double free between threads in the port's own quarantine.* `gate6_free`
+  read a ring slot and wrote it back in two steps; two threads preempted in
+  between both freed the cell that was in it. The 9.x heap locks itself; the
+  ring did not. One's loading thread shares the main thread's heap. Fix: the
+  slot is exchanged with `swp`, the cell and its deallocator in one word.
+- *No file was ever closed.* `RFsBase::Close` was mapped to
+  `RHandleBase::Close`, which closes word 0 of an RFile -- the parent session's
+  handle, which 9.x marks KHandleNoClose inside a subsession, so the kernel
+  refused it. Every file every title opened stayed open on the file server; on
+  the bench One's fighter save lost the tail of its host stream and the game
+  deleted it as corrupt at the next launch (its zlib answered Z_BUF_ERROR).
+  Fix: efsrv `RFile::Close` (ordinal 300, disassembled: CloseSubSession(0x1c)),
+  in gen_shim's map and in the dynamic lookup. Found by three range probes on
+  the save's descriptors and a temporary log in the emulator's file server.
+Lessons: **a port-wide structure written from a hook is written by every
+thread** -- check each for a read-then-write; and **a mapping by name is a
+claim about the object**: RFsBase::Close on a session and on a subsession are
+different calls.

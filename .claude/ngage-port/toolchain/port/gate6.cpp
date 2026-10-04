@@ -323,6 +323,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FAULT_PC = 726,
        NOTE_FAULT_REG = 727,    // r0 to r12, in order, one record each
        NOTE_FAULT_PC_REL = 728, // pc as an offset into the game's image, when it is in it
+       NOTE_WRK_FAULT = 717,    // a game thread's fault: magic|1, last import, handler sp, the frame (type, code, addr, status, cpsr, r0-r15), 24 words at its sp
        NOTE_FAULT_SCAN = 744,   // the direct handler got only a TExcType; this frame was recovered from the stack
        NOTE_FAULT_ARG = 745,    // the raw value the handler was entered with: a frame pointer, or a bare TExcType
        NOTE_FAULT_RAW = 746,    // the handler's own sp, then raw stack words from it, for offline reading of the real frame
@@ -774,6 +775,7 @@ void eikappui_baseconstructl(void *self, int flags);  // CEikAppUi::BaseConstruc
 void *coeenv_static(void);                            // CCoeEnv::Static()
 void *cactivescheduler_current(void);                 // CActiveScheduler::Current()
 i32 user_setexceptionhandler(void *handler, u32 mask); // User::SetExceptionHandler
+void *user_exceptionhandler(void);                     // User::ExceptionHandler
 void user_leave(int reason);                          // User::Leave
 void user_requestcomplete(u32 **status, int reason);  // User::RequestComplete
 void *user_settraphandler(void *h);                   // User::SetTrapHandler -> the previous one
@@ -1001,7 +1003,7 @@ enum { OLD_DOCANCEL = 1, OLD_RUNL = 2, OLD_RUNERROR = 3 };
 // their numberings have nothing to do with each other, so the load is watched
 // to know which table a lookup should go through.
 enum { LIB_EUSER = 0, LIB_EFSRV = 1, LIB_OTHER = 2 };
-enum { OLD_RFSBASE_CLOSE = 15 };
+enum { OLD_RFSBASE_CLOSE = 15, EFSRV_RFILE_CLOSE = 300 };   // efsrvu.def @ 300, the RM-409 ROM's: CloseSubSession(0x1c)
 enum { OLD_RDEBUG_OPEN = 799, OLD_RTHREAD_ID = 533, OLD_RDEBUG_WRITEMEMORY = 1233 };
 
 // And one the pairing gets wrong. The N-Gage's euser exports 1679 functions
@@ -1064,6 +1066,9 @@ enum { WRAP_BYTES = 2048, WRAP_OLD = WRAP_BYTES / 4 - 1, WRAP_CTX = WRAP_BYTES /
 // What the shim needs to know and cannot keep in a global. Every wrapper holds
 // a pointer to it, so any of them can find it from `this`.
 enum { DYNLIB_MAX = 8 };
+
+// A game thread's fault frame, kept for the main thread: see gate6_fault.
+enum { WRK_FAULT_MAGIC = 0xFA170000, WRK_FAULT_STACK = 24, WRK_FAULT_WORDS = 3 + 21 + WRK_FAULT_STACK };
 
 struct Context {
     u32 *wrapUi;
@@ -1357,6 +1362,10 @@ struct Context {
     u32 holdNext;           // and the tick the next cycle is due
     u32 holdCycled;         // whether this hold has changed anything yet
     u32 screenPolls;        // UserSvr::ScreenInfo calls, for rationing its records
+    u32 excThunk;           // the exception handler's thunk, for the game's threads too
+    u32 wrkFault[WRK_FAULT_WORDS]; // a game thread's fault frame, for the main thread to log
+    u32 wrkFaultSaid;       // ... once
+    u32 wrkExcSet, wrkExcSaid; // handlers a game thread installed (answer 0), and how many logged
     u32 cfgRead;            // the saved choice has been looked for once
     u32 cfg[CFG_WORDS];     // magic, version, mode, inset override, shift
     u32 cfgDes[2];          // ... and the descriptor it is read and written through
@@ -1364,8 +1373,8 @@ struct Context {
     u32 fileOpenThunk;
     u32 allocHist[HIST_BUCKETS];    // calls per power-of-two size band
     u32 realFree[3];            // the deallocators as they resolved
-    void *quarPtr[QUARANTINE_CELLS];    // small cells held back
-    u8 quarWhich[QUARANTINE_CELLS];     // and which deallocator owns each
+    u32 quarCell[QUARANTINE_CELLS];     // small cells held back, each with
+                                        //   its deallocator in the low 2 bits
     u32 quarNext;
     u32 freedBytes;             // what has actually gone back
     u32 heapPeak;               // the most this process has ever held
@@ -1762,11 +1771,46 @@ static void sched_dump(Context *c, u32 why);
 // signature -- a cpsr with user-mode bits, followed by r0-r15 with a pc in
 // the image [0x10000000, +code] or the ROM [0x80000000, 0x90000000] -- with
 // full context rather than a lossy in-process guess.
+static int on_main_thread(Context *c);
+
 extern "C" void gate6_fault(Context *c, u32 arg)
 {
     c->reached |= REACHED_FAULT;
     u32 hsp;
     __asm__ volatile ("mov %0, sp" : "=r"(hsp));
+
+    // **A game thread's fault (round 127).** Nothing a worker logs reaches
+    // the file -- the log's RFile is the main thread's -- so the frame goes
+    // into the context, and the main thread's heartbeat writes it out within
+    // a second (gate6_heartbeat). The first fault wins. The thread then
+    // panics G6FLT with the last import and the exception type, in place of
+    // the bare KERN-EXEC 3 it died with before.
+    if (!on_main_thread(c)) {
+        const int ptr = arg >= 0x1000 && !(arg & 3);
+        if (!c->wrkFault[0]) {
+            c->wrkFault[1] = c->lastImport;
+            c->wrkFault[2] = hsp;
+            if (ptr) {
+                const u32 *f = (const u32 *)arg;
+                for (u32 i = 0; i < 21; i++)
+                    c->wrkFault[3 + i] = f[i];
+            } else {
+                c->wrkFault[3] = arg;
+            }
+            // Marked before the stack is read, so a second fault in the read
+            // still leaves the frame for the heartbeat.
+            c->wrkFault[0] = (u32)WRK_FAULT_MAGIC | (ptr ? 1u : 0u);
+            // The words at the faulting sp -- only when it lies just above
+            // this handler's own, on the same stack, where the kernel pushed
+            // the frame: a wild sp is itself the finding, and is in the frame.
+            const u32 sp = ptr ? ((const u32 *)arg)[FRAME_SP] & ~3u : 0u;
+            if (sp > hsp && sp - hsp < 0x1000)
+                for (u32 i = 0; i < (u32)WRK_FAULT_STACK; i++)
+                    c->wrkFault[24 + i] = ((const u32 *)sp)[i];
+        }
+        const u32 type = ptr ? ((const u32 *)arg)[FRAME_TYPE] & 63 : arg & 63;
+        PANIC(CAT_FLT, (int)(c->lastImport * 100 + type));
+    }
 
     log_event(c, NOTE_FAULT_ARG, arg);
 
@@ -3833,6 +3877,8 @@ static void worker_probe(Context *c, u32 index)
 
 static void heap_watch(Context *c, u32 where);
 
+enum { WORKER_EXC = 1 };
+
 extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
 {
     heap_watch(c, index);
@@ -3840,6 +3886,12 @@ extern "C" void gate6_trace(u32 index, Context *c, u32 caller)
     stack_mark(c);
     if (WORKER_PROBE && !on_main_thread(c))
         worker_probe(c, index);
+    // A game thread gets the main thread's exception handler at its first
+    // traced import -- a handler is per thread on EKA2, and without one a
+    // worker's fault is a bare KERN-EXEC 3 with no pc (rounds 126, 127).
+    if (WORKER_EXC && c->excThunk && !on_main_thread(c) && !user_exceptionhandler() &&
+        user_setexceptionhandler((void *)c->excThunk, 0xFFFFFFFF) == 0)
+        c->wrkExcSet++;
     if (worker_only_import(index) && on_main_thread(c))
         return;
     if (TRACE_IMPORTS)
@@ -4187,6 +4239,22 @@ extern "C" int gate6_heartbeat(void *p)
 {
     Context *c = (Context *)p;
     c->beats++;
+    if (c->wrkExcSet != c->wrkExcSaid) {
+        c->wrkExcSaid = c->wrkExcSet;
+        log_event(c, NOTE_WRK_FAULT, 0xE5E70000u | (c->wrkExcSaid & 0xFFFFu));
+    }
+    // A game thread's fault, caught by its handler (gate6_fault), written
+    // here because only this thread can write the log.
+    if (c->wrkFault[0] && !c->wrkFaultSaid) {
+        c->wrkFaultSaid = 1;
+        for (u32 i = 0; i < (u32)WRK_FAULT_WORDS; i++)
+            log_event(c, NOTE_WRK_FAULT, c->wrkFault[i]);
+        const u32 pc = c->wrkFault[3 + FRAME_PC];
+        if (c->codeBase && pc >= c->codeBase && pc < c->codeBase + c->codeLen)
+            log_event(c, NOTE_FAULT_PC_REL, pc - c->codeBase);
+        log_block(c);
+        box_flush(c);
+    }
     log_event(c, NOTE_BEAT, c->beats);
     log_event(c, NOTE_BEAT, user_tickcount());
     log_event(c, NOTE_BEAT, c->frames);
@@ -5420,14 +5488,26 @@ extern "C" void gate6_free(void *p, u32 which, Context *c)
         if (c->realFree[which]) ((Free)c->realFree[which])(p);
         return;
     }
+    // **Two threads free through here** -- One's loading thread shares the
+    // main thread's heap -- and the ring used to be read, then written: two
+    // frees preempted between the two both took the same slot and both freed
+    // the cell that was in it, a double free on the shared heap. The 9.x
+    // heap locks itself (CreateThreadHeap's aSingleThread is EFalse); this
+    // ring did not. Round 127: the loading thread KERN-EXEC 3 at the VS
+    // fight on the N95, never on the bench, whose threads do not preempt
+    // each other mid-function. So the slot is exchanged in one instruction,
+    // and the cell and its deallocator travel as one word (cells are word
+    // aligned; `which` is 0 to 2). Two frees on one slot now each get a
+    // different old word: the second frees the first's cell at once, which
+    // is only a quarantine skipped. A lost increment of quarNext is harmless.
     const u32 n = c->quarNext % (u32)QUARANTINE_CELLS;
-    void *const old = c->quarPtr[n];
-    const u32 owner = c->quarWhich[n];
-    c->quarPtr[n] = p;
-    c->quarWhich[n] = (u8)which;
     c->quarNext++;
-    if (old && c->realFree[owner])
-        ((Free)c->realFree[owner])(old);
+    u32 old = (u32)p | which;
+    u32 *const slot = &c->quarCell[n];
+    __asm__ volatile ("swp %0, %0, [%1]" : "+&r"(old) : "r"(slot) : "memory");
+    const u32 owner = old & 3;
+    if ((old & ~3u) && owner <= 2 && c->realFree[owner])
+        ((Free)c->realFree[owner])((void *)(old & ~3u));
 }
 
 // r0 is already the pointer, so the two spare argument registers carry which
@@ -5843,8 +5923,12 @@ enum { STACK_CEILING = 0x10000, STACK_FLOOR = 0x1000 };
 // the servers host-side, which is why the bench never came near it. A guess
 // until a phone run says otherwise: the fault's pc was not recorded (the
 // exception handler is the main thread's only). The thunk encodes it as an
-// immediate (`cmp r7, #0x8000`), so changing it means changing b[8] and b[9].
-enum { STACK_RAISE = 0x8000 };
+// immediate (`cmp r7, #0x10000`), so changing it means changing b[8] and b[9].
+// Round 127: 32 KB and the same death, in the animation loader (image
+// 0x5b0a8), which runs on the main thread's 64 KB at the fighter creator
+// and survives. 64 KB now, the ceiling: a game thread gets what the main
+// thread has, so the stack is no longer a difference between the two.
+enum { STACK_RAISE = 0x10000 };
 enum { CLAMP_THREAD_STACK = 1 };
 enum { WATCH_SEM_RESULT = 1, LEND_THE_HEAP = 1 };
 
@@ -6056,8 +6140,8 @@ static u32 stack_thunk(u8 *code, const void *ctx, u32 target, u32 ceiling)
     b[7]  = 0x31A07008;                 // movcc r7, r8
     // Round 126: and up to STACK_RAISE. Done once, before the retry label,
     // so a KErrTooBig still halves from here.
-    b[8]  = 0xE3570902;                 // cmp   r7, #0x8000  -- STACK_RAISE
-    b[9]  = 0x33A07902;                 // movcc r7, #0x8000
+    b[8]  = 0xE3570801;                 // cmp   r7, #0x10000 -- STACK_RAISE
+    b[9]  = 0x33A07801;                 // movcc r7, #0x10000
     b[10] = 0xE59D0020;                 // ldr   r0, [sp, #32]   -- aHeap (retry)
     b[11] = 0xE3500000;                 // cmp   r0, #0
     b[12] = 0x059F008C;                 // ldreq r0, [pc, #140]  -> b[49]
@@ -7474,11 +7558,13 @@ extern "C" u32 gate6_library_lookup(void *lib, int ordinal, Context *c)
             break;
         }
     } else if (kind == LIB_EFSRV) {
-        // 9.x stopped exporting RFsBase::Close from efsrv; it is the one it
-        // inherits, and euser still exports that.
+        // RFsBase::Close is called on an RFile, a subsession: RFile::Close,
+        // CloseSubSession(EFsFileSubClose). It was RHandleBase::Close, which
+        // closes the parent session's no-close handle and leaves the file
+        // open (round 127; gen_shim.py says the same for the static import).
         if (ordinal == OLD_RFSBASE_CLOSE)
-            return (u32)&rhandle_close;
-        if (ordinal >= 1 && (u32)ordinal <= kShimEfsrvCount)
+            mapped = EFSRV_RFILE_CLOSE;
+        else if (ordinal >= 1 && (u32)ordinal <= kShimEfsrvCount)
             mapped = kShimEfsrv[ordinal - 1];
     }
     // An RLibrary is an RHandleBase: one handle, at offset zero, and zero when
@@ -11262,6 +11348,7 @@ static u32 load_and_start()
         // never worked was `_start`, which did not dispatch the kernel's
         // re-entry for an exception (r4 == 4). See gate6.s.
         log_event(ctx, NOTE_EXC_INSTALL, (u32)user_setexceptionhandler(b, 0xFFFFFFFF));
+        ctx->excThunk = (u32)b;
 
     }
     for (u32 i = 0; i < nImports; i++) {

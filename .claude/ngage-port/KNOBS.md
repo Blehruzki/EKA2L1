@@ -57,7 +57,10 @@ the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 | the fault box (`g6box-<stem>.dat`) and the log (`g6box-<stem>.log`) | gate 6 | every round reads them |
 | the control's window and the DSA object's layout found at run time, validated against the session buffer, rather than read at offsets measured on 3.1/3.2 | round 120 | bench E454-E456; the N91 (S60 3.0) is the phone it was made for |
 | an old control slot that is a base-class veneer into cone is not forwarded; the wrapper's own base function runs instead | round 123 | bench E461-E464; Ashen on the N91 |
-| a game thread's stack request clamped to 64 KB and raised to at least 32 KB (`STACK_RAISE`): One's 8 KB loading thread fell KERN-EXEC 3 on the N95 | round 126 | bench E577-E580; a guess until round 127 |
+| a game thread's stack request clamped to 64 KB and raised to it (`STACK_RAISE`, 32 KB in build 003): the main thread's size | rounds 126, 127 | bench E583; 32 KB did not save One's loading thread on the N95 |
+| every game thread takes the port's exception handler; its fault frame is logged by the main thread's heartbeat (`NOTE_WRK_FAULT`) | round 127 | bench E582 (installs counted; EKA2L1 delivers no user exception) |
+| the free quarantine's slot exchanged with `swp`, so two threads cannot free one cell twice | round 127 | bench E583 |
+| `RFsBase::Close` is efsrv `RFile::Close` (it was `RHandleBase::Close`, which closed nothing) | round 127 | bench E584-E585: One's save persists |
 | hold C noted on the app UI's key path as well as the control's (`hold_key`), with the 100 ms hold timer, for a title that takes its keys in `HandleKeyEventL` (One) | round 126 | bench E577 |
 | per-call tracing without `TTrap::Trap`/`UnTrap`/`User::AllocL`, and `ScreenInfo` logged for its first 16 polls only; the allocator wraps on the title's own `kAlloc` (they were Asphalt 2's indices) | round 126 | bench E577-E580 |
 

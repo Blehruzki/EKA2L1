@@ -189,8 +189,16 @@ MANUAL = {
     'RThread::SetExceptionHandler(void (*)(TExcType), unsigned long)':
         ('euser', 'User::SetExceptionHandler(void (*)(TExcType), unsigned long)',
          KIND_ARGSHIFT),
-    # RFsBase went away; closing a session handle is RHandleBase::Close.
-    'RFsBase::Close()': ('euser', 'RHandleBase::Close()', KIND_CALL),
+    # RFsBase is the base of RFile, a *sub*session, and every title calls this
+    # on an RFile (none imports RDir, RFormat or RRawDisk). It was mapped to
+    # RHandleBase::Close, which closes word 0 -- the parent session's handle,
+    # which 9.x marks KHandleNoClose in a subsession (us_mes.cpp,
+    # DoCreateSubSession), so the kernel refused it and the file was never
+    # closed: every file a title opened stayed open on the file server, and
+    # on the bench One's fighter save lost its last unflushed bytes and was
+    # deleted as corrupt at the next launch (round 127). RFile::Close is
+    # CloseSubSession(EFsFileSubClose), efsrv 300 (RM-409 ROM, disassembled).
+    'RFsBase::Close()': ('efsrv', 'RFile::Close()', KIND_CALL),
     # 9.x ReAllocL takes a mode as a third argument. Zero is the old behaviour.
     'User1::ReAlloc1L(void *, int)': ('euser', 'User::ReAllocL(void*, int, int)', KIND_ARG3),
     # And the non-leaving one beside it, which Asphalt 2 does not import and
