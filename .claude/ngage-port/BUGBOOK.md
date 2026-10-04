@@ -866,3 +866,16 @@ The minimize: the bench walks the whole chain, view server included
 port's timer) and survives; the phone's log stops after the port's DSA
 restart because nothing after it was flushed. Build 006 flushes from every
 abort on.
+
+Round 130. *Deliver the real event, not its consequence.* The bench's
+window-to-back sends no focus event, so the minimize had never run the
+code the phone ran. Synthesizing `EEventFocusLost` through `HandleWsEventL`
+(`BENCH_FOCUSLOST_TICK`) reproduced it on the first try (E621): the copy
+protection, from decrypted code in a local chunk, calls `RThread::Suspend`
+on handle 5 through the game's own import table. Five is no handle; a device
+panics KERN-EXEC 0. Build 007 refuses the call (E624-E625). The flush armed
+at focus lost was a guess and changed nothing (E622) -- kept as an
+instrument, not as a fix.
+*A hang leaves no record unless something else is awake.* ViewSrv 11 means
+the main thread stopped; its own heartbeat cannot report that. The watchdog
+thread does (E627-E628).

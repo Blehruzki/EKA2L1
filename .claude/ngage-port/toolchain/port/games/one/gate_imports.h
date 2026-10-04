@@ -112,6 +112,8 @@ enum {
     IMPORT_SYSTEM_GC                   = 65535,   // absent
     IMPORT_THREAD_CREATE               =   312,
     IMPORT_THREAD_OPEN                 =   364,
+    IMPORT_THREAD_RESUME               =   386,
+    IMPORT_THREAD_SUSPEND              =   405,
     IMPORT_TRUNCDFSF2                  =   495,
     IMPORT_USER_ALLOC                  =   261,
     IMPORT_USER_ALLOCL                 =   259,

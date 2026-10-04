@@ -1072,6 +1072,8 @@ enum { WRAP_BYTES = 2048, WRAP_OLD = WRAP_BYTES / 4 - 1, WRAP_CTX = WRAP_BYTES /
 // a pointer to it, so any of them can find it from `this`.
 enum { DYNLIB_MAX = 8 };
 
+// Objects built at a GAME_AO_PRIORITIES site, counted (round 130).
+enum { KICK_OBJS = 16, NOTE_AO_PRIORITY = 718 };
 // A game thread's fault frame, kept for the main thread: see gate6_fault.
 enum { WRK_FAULT_MAGIC = 0xFA170000, WRK_FAULT_STACK = 24, WRK_FAULT_WORDS = 3 + 21 + WRK_FAULT_STACK };
 
@@ -1094,6 +1096,13 @@ struct Context {
     u32 mdaPosCalls;        // Position calls seen, for rationing the writer dump
     u32 mdaByThread[2][14]; // stream calls by slot, [0] the main thread, [1] any other
     u32 aoPrioritySaid;     // which GAME_AO_PRIORITIES sites have been logged (a bit each)
+    u32 threadCreateFn;     // the game's RThread::Create as the port installed it (the stack thunk)
+    u32 fnUserAfter;        // User::After, for the watchdog
+    u32 mainSched;          // the main thread's active scheduler, read by the watchdog
+    u32 wdThread;           // the watchdog's RThread, once made
+    u32 wdFs[4], wdFile[4]; // its own file session and file: nothing of the main thread's
+    u32 *wdBuf;             // the stall dump, built here and written once
+    u32 kickObj[KICK_OBJS], kickN[KICK_OBJS], kickSaid[KICK_OBJS], kickCount;   // objects built at a GAME_AO_PRIORITIES site, and their self-completions
     u32 newTimerCtor;       // 9.x CTimer::CTimer(TInt), as the shim resolved it
     u32 timerThunks[3];     // DoCancel, RunL, RunError, built in the code chunk
     u32 reached;            // which of the game's callbacks have been entered
@@ -1242,7 +1251,7 @@ struct Context {
     u32 holdTimer;          // the window-gc title's hold timer (CPeriodic), once started
     CallBack holdCb;
     const void *lastBmp;    // the last frame the game blitted
-    u32 benchBgDone, benchFgDone, benchDeactDone;   // the bench's one background, one return and one view deactivation, done
+    u32 benchBgDone, benchFgDone, benchDeactDone, benchFocusDone;   // the bench's one background, one return and one view deactivation, done
     u32 realFormat, realFormatList; // euser's TDes16::Format and FormatList, before our hooks
     u32 formatLogs;
     u32 benchBeats;
@@ -1320,6 +1329,7 @@ struct Context {
     u32 cardReplace;
     u32 cardControl;        // the DoControl diversion, with the context in r3
     u32 realResume;         // RThread::Resume, as resolved
+    u32 realSuspend;        // RThread::Suspend, the game's static import (round 130)
     u32 threadCreateThunk;
     u32 threadStackThunk;
     u32 threadResumeThunk;
@@ -4249,12 +4259,139 @@ static void sched_dump(Context *c, u32 why);
 // stopped, and that is a thing a port can restart.
 enum { HEARTBEAT = 1, BEAT_US = 1000000, BEAT_PRIORITY = 0 };
 
+extern "C" int gate6_thread_resume(u32 *self, u32, Context *c);
+
+enum { SCHED_QUEUE = 8, ACTIVE_LINK = 12, SCHED_WALK_MAX = 48 };
+static int sane_ptr(u32 p);
+
+// ---------------------------------------------------------------------------
+// **The watchdog (round 130).** One's main thread hung after a pause on the
+// N95: the screen froze, the heartbeat stopped, and the view server closed the
+// app (ViewSrv 11) -- with nothing in the log, because everything that writes
+// the log runs on the thread that was stuck. So a thread of the port's own,
+// made through the game's create path (shared heap, 64 KB stack), wakes once a
+// second; when the heartbeat has not moved for WATCHDOG_STALL_S seconds it
+// writes C:\g6stall-<stem>.dat once, with its own file session: the counters,
+// the last BOX_RING traced calls, the kick objects' counts, and the main
+// thread's scheduler queue read straight from memory (one process, one
+// address space). It touches no handle of the main thread's. readstall.py
+// reads it.
+// Bench knob, 0 when shipping: at this beat the main thread blocks for 8 s, so
+// the watchdog has a stall to write (a test of the test).
+enum { BENCH_HANG_BEAT = 0 };
+enum { WATCHDOG = 1, WATCHDOG_STALL_S = 4, EUSER_USER_AFTER = 645, STALL_WORDS = 1024,
+       STALL_MAGIC = 0x57A11000 };
+static const u16 kStallPath[] = {'C',':','\\','g','6','s','t','a','l','l','-',GAME_STEM_CHARS,'.','d','a','t'};
+
+static void stall_dump(Context *c)
+{
+    u32 *w = c->wdBuf;
+    u32 n = 0;
+    w[n++] = (u32)STALL_MAGIC;
+    w[n++] = c->beats;
+    w[n++] = c->traceCount;
+    w[n++] = c->lastImport;
+    w[n++] = c->frames;
+    w[n++] = c->completes;
+    w[n++] = c->kickCount;
+    for (u32 i = 0; i < (u32)KICK_OBJS; i++) { w[n++] = c->kickObj[i]; w[n++] = c->kickN[i]; }
+    w[n++] = (u32)BOX_RING;
+    for (u32 i = 0; i < (u32)BOX_RING; i++) { w[n++] = c->boxData[4 + i]; w[n++] = c->boxData[BOX_FROM + i]; }
+    // The main thread's queue, as sched_dump walks it, without its logging.
+    const u32 sched = c->mainSched;
+    u32 objs = 0;
+    const u32 at = n++;
+    if (sane_ptr(sched)) {
+        const u32 *q = (const u32 *)(sched + SCHED_QUEUE);
+        for (u32 link = q[0]; link != (u32)q && objs < (u32)SCHED_WALK_MAX && sane_ptr(link) &&
+             n + 6 < (u32)STALL_WORDS; objs++) {
+            const u32 *o = (const u32 *)(link - ACTIVE_LINK);
+            w[n++] = (u32)o;
+            w[n++] = o[0];
+            w[n++] = sane_ptr(o[0]) ? ((const u32 *)o[0])[4] : 0;
+            w[n++] = o[ACTIVE_STATUS / 4];
+            w[n++] = o[ACTIVE_ACTIVE / 4];
+            w[n++] = ((const u32 *)link)[2];
+            link = ((const u32 *)link)[0];
+        }
+    }
+    w[at] = objs;
+    if (fs_connect(c->wdFs, -1) != 0)
+        return;
+    Ptrc16 name;
+    name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kStallPath / 2);
+    name.text = kStallPath;
+    if (file_replace(c->wdFile, c->wdFs, &name, EFileWrite | EFileShareAny) != 0)
+        return;
+    u32 des[2];
+    des[0] = ((u32)EPtrC << KTypeShift) | (n * 4);
+    des[1] = (u32)w;
+    file_write_at(c->wdFile, 0, des);
+    file_flush(c->wdFile);
+    file_close(c->wdFile);
+}
+
+extern "C" int gate6_watchdog(void *p)
+{
+    typedef void (*After)(int);
+    Context *c = (Context *)p;
+    u32 last = c->beats, still = 0, written = 0;
+    for (;;) {
+        ((After)c->fnUserAfter)(1000000);
+        if (c->beats != last) {
+            last = c->beats;
+            still = 0;
+            continue;
+        }
+        if (++still >= (u32)WATCHDOG_STALL_S && !written) {
+            written = 1;
+            stall_dump(c);
+        }
+    }
+    return 0;
+}
+
+// From the heartbeat, on the main thread, once.
+static void watchdog_start(Context *c)
+{
+    typedef int (*Create)(u32 *, const u32 *, int (*)(void *), int, void *, void *, int);
+    if (!WATCHDOG || c->wdThread || !c->threadCreateFn)
+        return;
+    c->wdThread = 1;
+    c->fnUserAfter = (u32)rlibrary_lookup(&c->euser, EUSER_USER_AFTER);
+    c->mainSched = (u32)cactivescheduler_current();
+    c->wdBuf = (u32 *)user_allocz((int)(STALL_WORDS * 4));
+    if (!c->fnUserAfter || !c->wdBuf)
+        return;
+    static const u16 kWd[] = {'g','6','w','d'};
+    u32 nm[2] = { ((u32)EPtrC << KTypeShift) | 4u, (u32)kWd };
+    u32 th = 0;
+    const int err = ((Create)c->threadCreateFn)(&th, nm, &gate6_watchdog, 0x2000, 0, c, 0);
+    log_event(c, NOTE_THREAD_CREATE, 0x57A10000u | ((u32)err & 0xFFFFu));
+    if (err == 0) {
+        c->wdThread = th;
+        gate6_thread_resume(&th, 0, c);
+    }
+    log_block(c);
+}
+
 extern "C" int gate6_heartbeat(void *p)
 {
     Context *c = (Context *)p;
     c->beats++;
+    if (c->beats == 3)
+        watchdog_start(c);
+    if (BENCH_HANG_BEAT && c->beats == (u32)BENCH_HANG_BEAT && c->fnUserAfter)
+        ((void (*)(int))c->fnUserAfter)(8000000);   // bench: the main thread stops for 8 s
     if (BENCH_SCHED_BEATS && !(c->beats % (u32)BENCH_SCHED_BEATS))
         sched_dump(c, 0x5C4E0000u | (c->beats & 0xFFFFu));
+    // Which of the screens' kick objects completed itself since the last beat,
+    // and how often: index << 24 | count. Two at once is two screens running.
+    for (u32 i = 0; i < c->kickCount && i < (u32)KICK_OBJS; i++)
+        if (c->kickN[i] != c->kickSaid[i]) {
+            log_event(c, NOTE_AO_PRIORITY, 0x0BEA0000u | (i << 12) | ((c->kickN[i] - c->kickSaid[i]) & 0xFFFu));
+            c->kickSaid[i] = c->kickN[i];
+        }
     if (c->wrkExcSet != c->wrkExcSaid) {
         c->wrkExcSaid = c->wrkExcSet;
         log_event(c, NOTE_WRK_FAULT, 0xE5E70000u | (c->wrkExcSaid & 0xFFFFu));
@@ -4501,6 +4638,11 @@ extern "C" void gate6_request_complete(u32 **status, int reason, Context *c)
         *status = (u32 *)((u8 *)c->wrapTimer + ACTIVE_STATUS);
         c->completesMine++;
     }
+    for (u32 i = 0; i < c->kickCount && i < (u32)KICK_OBJS; i++)
+        if (*status == (u32 *)(c->kickObj[i] + ACTIVE_STATUS)) {
+            c->kickN[i]++;
+            break;
+        }
     for (u32 i = 0; GAME_MULTI_TIMER && i < c->timerCount; i++)
         if (*status == (u32 *)((u8 *)c->timerOld[i] + ACTIVE_STATUS)) {
             *status = (u32 *)((u8 *)c->timerWrap[i] + ACTIVE_STATUS);
@@ -4549,7 +4691,6 @@ enum { YIELD_TO_IDLE = 0, EPRIORITY_IDLE = -100, TIMER_PRIORITY = EPRIORITY_IDLE
 #endif
 struct AoPriority { u32 at; int priority; };
 static const AoPriority kAoPriority[GAME_AO_PRIORITY_COUNT + 1] = { GAME_AO_PRIORITIES };
-enum { NOTE_AO_PRIORITY = 718 };
 
 extern "C" void *gate6_cactive_ctor(void *self, int priority, u32 lr, Context *c)
 {
@@ -4564,6 +4705,17 @@ extern "C" void *gate6_cactive_ctor(void *self, int priority, u32 lr, Context *c
                 log_event(c, NOTE_AO_PRIORITY, (u32)kAoPriority[i].priority);
             }
             priority = kAoPriority[i].priority;
+            // Each one, not just the first: One builds one of these per game
+            // screen (ten sites call the class's constructor), and round 130's
+            // fight cut back to intro shots as if two screens were kicking.
+            {   // a ring: screens come and go, and an address may come back
+                const u32 k = c->kickCount % (u32)KICK_OBJS;
+                c->kickObj[k] = (u32)self;
+                c->kickN[k] = c->kickSaid[k] = 0;
+                log_event(c, NOTE_AO_PRIORITY, 0x0B1E0000u | (c->kickCount & 0xFFFFu));
+                log_event(c, NOTE_AO_PRIORITY, (u32)self);
+                c->kickCount++;
+            }
             break;
         }
     return ((Ctor)c->realActiveCtor)(self, priority);
@@ -6341,11 +6493,46 @@ extern "C" void gate6_sem_wait(void *self, u32, Context *c)
     log_block(c);
 }
 
+// **A thread handle the copy protection never had (round 130).** One's
+// decrypted protection code (it runs from its local code chunk, 0x70000000 on
+// the bench) suspends a thread on focus lost and resumes it on return -- on an
+// RThread whose handle is 5. An EKA2 handle carries an instance count in bits
+// 16-29, never zero for a live one; 5 is an EKA1-style small handle, or
+// nothing at all, and a phone panics the caller KERN-EXEC 0 on it: the
+// minimize deaths of rounds 128 to 130. A call on such a handle is logged and
+// skipped. The pseudo-handles (KCurrentThreadHandle and its process twin)
+// pass.
+static int handle_plausible(u32 h)
+{
+    if ((h & 0xFFFF7FFFu) == 0xFFFF0000u || (h & 0xFFFF7FFFu) == 0xFFFF0001u)
+        return 1;
+    return ((h >> 16) & 0x3FFFu) != 0;
+}
+enum { NOTE_THREAD_REFUSED = 719 };
+
+extern "C" void gate6_thread_suspend(u32 *self, u32, Context *c)
+{
+    typedef void (*Suspend)(void *);
+    const u32 h = self ? self[0] : 0;
+    if (!handle_plausible(h)) {
+        log_event(c, NOTE_THREAD_REFUSED, 0x5050u);     // Suspend
+        log_event(c, NOTE_THREAD_REFUSED, h);
+        log_block(c);
+        return;
+    }
+    ((Suspend)c->realSuspend)(self);
+}
+
 extern "C" int gate6_thread_resume(u32 *self, u32, Context *c)
 {
     typedef int (*Resume)(void *);
     log_event(c, NOTE_THREAD_RESUME, (u32)self);
     log_event(c, NOTE_THREAD_HANDLE, self ? self[0] : 0);
+    if (!handle_plausible(self ? self[0] : 0)) {
+        log_event(c, NOTE_THREAD_REFUSED, 0x4E50u);     // Resume
+        log_block(c);
+        return 0;
+    }
     const int err = ((Resume)c->realResume)(self);
     log_event(c, NOTE_THREAD_CREATE, (u32)err);
     log_block(c);
@@ -8227,6 +8414,11 @@ enum { BENCH_BACKGROUND_TICK = 0, BENCH_FOREGROUND_TICK = 0 };
 // chain for the Asphalts (E346) -- from this timer, for a title (One) whose
 // frame loop is not the port's timer (round 129).
 enum { BENCH_DEACTIVATE_TICK = 0 };
+// Bench knob, 0 when shipping: at this tick a real EEventFocusLost through the
+// app UI's HandleWsEventL, the event the N95 died inside on a minimize (round
+// 130); sending the window to the back delivers none on the emulator.
+enum { BENCH_FOCUSLOST_TICK = 0, BENCH_FOCUSGAINED_TICK = 0 };
+extern "C" void gate6_ui_wsevent(void *self, const u32 *event, void *dest, Context *c);
 
 extern "C" int gate6_hold_tick_cb(void *p)
 {
@@ -8252,6 +8444,30 @@ extern "C" int gate6_hold_tick_cb(void *p)
         log_block(c);
         if (d) d(c->wrapUi);
         log_event(c, NOTE_DEACTIVATE, 1);
+        log_block(c);
+    }
+    if (BENCH_FOCUSLOST_TICK && !c->benchFocusDone && c->wrapUi && c->realWsEvent &&
+        (i32)(user_tickcount() - (u32)BENCH_FOCUSLOST_TICK) >= 0) {
+        c->benchFocusDone = 1;
+        u32 ev[16];
+        for (u32 i = 0; i < 16; i++) ev[i] = 0;
+        ev[0] = 10;                     // EEventFocusLost (w32std.h), EEVENT_FOCUS_LOST below
+        log_event(c, NOTE_DEACTIVATE, 0xF0C05000u);
+        log_block(c);
+        gate6_ui_wsevent(c->wrapUi, ev, 0, c);
+        log_event(c, NOTE_DEACTIVATE, 0xF0C05001u);
+        log_block(c);
+    }
+    if (BENCH_FOCUSGAINED_TICK && c->benchFocusDone == 1 && c->wrapUi && c->realWsEvent &&
+        (i32)(user_tickcount() - (u32)BENCH_FOCUSGAINED_TICK) >= 0) {
+        c->benchFocusDone = 2;
+        u32 ev[16];
+        for (u32 i = 0; i < 16; i++) ev[i] = 0;
+        ev[0] = 11;                     // EEventFocusGained
+        log_event(c, NOTE_DEACTIVATE, 0xF0C05011u);
+        log_block(c);
+        gate6_ui_wsevent(c->wrapUi, ev, 0, c);
+        log_event(c, NOTE_DEACTIVATE, 0xF0C05012u);
         log_block(c);
     }
     if (BENCH_FOREGROUND_TICK && !c->benchFgDone && (i32)(user_tickcount() - (u32)BENCH_FOREGROUND_TICK) >= 0) {
@@ -10772,7 +10988,6 @@ enum { SLOT_UI_WSEVENT = 4, SLOT_UI_FOREGROUND = 8, SLOT_UI_SYSEVENT = 10, SLOT_
 // 12, which is the check that the layout is the one being walked.
 // `CActiveScheduler::Current()` is euser def index 427, unconfirmed; a wrong
 // function fails the same check.
-enum { SCHED_QUEUE = 8, ACTIVE_LINK = 12, SCHED_WALK_MAX = 48 };
 enum { EEVENT_FOCUS_LOST = 10, EEVENT_FOCUS_GAINED = 11,
        KAKN_FOREGROUND_LOST = 0x10281F37, KAKN_FOREGROUND_GAINED = 0x10281F36 };
 
@@ -10820,6 +11035,11 @@ extern "C" void gate6_ui_wsevent(void *self, const u32 *event, void *dest, Conte
 {
     typedef void (*WsEvent)(void *, const void *, void *);
     const u32 type = event ? event[0] : 0xFFFFFFFFu;
+    // Round 130: the N95 died inside the focus-lost handling of a minimize,
+    // with nothing after the event flushed. From focus lost on, every record
+    // goes to disk (the endgame budget), as from a DSA abort.
+    if (type == (u32)EEVENT_FOCUS_LOST && !c->timerOff)
+        c->timerOff = (u32)ENDGAME_CALLS;
     log_event(c, NOTE_WS_EVENT, type);
     ((WsEvent)c->realWsEvent)(self, event, dest);
     log_event(c, NOTE_WS_EVENT_DONE, type);
@@ -12190,6 +12410,19 @@ static u32 load_and_start()
         }
     }
 
+    // RThread::Suspend, refused on a handle no live object has (round 130).
+    if (IMPORT_THREAD_RESUME < nImports && ctx->spare + TRACE <= ctx->spareEnd &&
+        (kShimTable[IMPORT_THREAD_RESUME] >> 24) == KIND_CALL) {
+        if (!ctx->realResume)
+            ctx->realResume = iat[IMPORT_THREAD_RESUME];
+        iat[IMPORT_THREAD_RESUME] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_thread_resume);
+        ctx->spare += TRACE;
+    }
+    if (IMPORT_THREAD_SUSPEND < nImports && ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->realSuspend = iat[IMPORT_THREAD_SUSPEND];
+        iat[IMPORT_THREAD_SUSPEND] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_thread_suspend);
+        ctx->spare += TRACE;
+    }
     if (GAME_AO_PRIORITY_COUNT && nImports > IMPORT_CACTIVE_CTOR && IMPORT_CACTIVE_CTOR < kShimCount &&
         (kShimTable[IMPORT_CACTIVE_CTOR] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
         ctx->realActiveCtor = iat[IMPORT_CACTIVE_CTOR];
@@ -12465,7 +12698,7 @@ static u32 load_and_start()
     // calls, and the one in the lookup for the game's own dynamic calls.
     if (CLAMP_THREAD_STACK && IMPORT_THREAD_CREATE < nImports &&
         ctx->spare + STACK_WORDS * 4 <= ctx->spareEnd) {
-        iat[IMPORT_THREAD_CREATE] = stack_thunk(ctx->spare, ctx,
+        iat[IMPORT_THREAD_CREATE] = ctx->threadCreateFn = stack_thunk(ctx->spare, ctx,
                                                 iat[IMPORT_THREAD_CREATE],
                                                 STACK_CEILING);
         ctx->spare += STACK_WORDS * 4;

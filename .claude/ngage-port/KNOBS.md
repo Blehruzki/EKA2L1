@@ -68,6 +68,10 @@ the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 | the stream's Position calls are logged for the first few only, like WriteL | round 129 | bench E613 |
 | hold C noted on the app UI's key path as well as the control's (`hold_key`), with the 100 ms hold timer, for a title that takes its keys in `HandleKeyEventL` (One) | round 126 | bench E577 |
 | per-call tracing without `TTrap::Trap`/`UnTrap`/`User::AllocL`, and `ScreenInfo` logged for its first 16 polls only; the allocator wraps on the title's own `kAlloc` (they were Asphalt 2's indices) | round 126 | bench E577-E580 |
+| `RThread::Suspend`/`Resume` (euser 1122/954) refused on a handle with no instance bits that is not a pseudo-handle, logged `NOTE_THREAD_REFUSED` (719): One's protection suspends handle 5 at focus lost | round 130 | bench E621-E625 |
+| a watchdog thread (`g6wd`, from beat 3, for a title with a heartbeat) writes `C:\g6stall-<stem>.dat` after 4 s without one: the box ring and the main scheduler's queue; `readstall.py` | round 130 | bench E627-E628 |
+| every kick object's construction (0x0B1E) and self-completes per beat (0x0BEA), for a title with `GAME_AO_PRIORITIES` | round 130 | bench E626 |
+| every record flushed from an `EEventFocusLost` on, as from a DSA abort | round 130 | bench E622 |
 
 ## Where each title saves
 
@@ -83,7 +87,10 @@ the saves behind.
 
 ## Bench knobs in `gate6.cpp` that must be 0 in a shipped build
 
-`BENCH_BACKGROUND_TICK`, `BENCH_FOREGROUND_TICK`, `LEAVE_RAW`, `WORKER_LOG`,
+`BENCH_BACKGROUND_TICK`, `BENCH_FOREGROUND_TICK`, `BENCH_DEACTIVATE_TICK`,
+`BENCH_SCHED_BEATS`, `BENCH_FOCUSLOST_TICK`, `BENCH_FOCUSGAINED_TICK` (a real
+focus event through `HandleWsEventL` at that hold-timer tick), `BENCH_HANG_BEAT`
+(the main thread blocked 8 s at that beat, to fire the watchdog), `LEAVE_RAW`, `WORKER_LOG`,
 `TRACE_IMPORTS`. `rules.py` and the regression rows (E428, E439 and the like)
 are where that is checked.
 
