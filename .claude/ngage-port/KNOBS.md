@@ -72,6 +72,9 @@ the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 | a watchdog thread (`g6wd`, from beat 3, for a title with a heartbeat) writes `C:\g6stall-<stem>.dat` after 4 s without one: the box ring and the main scheduler's queue; `readstall.py` | round 130 | bench E627-E628 |
 | every kick object's construction (0x0B1E) and self-completes per beat (0x0BEA), for a title with `GAME_AO_PRIORITIES` | round 130 | bench E626 |
 | every record flushed from an `EEventFocusLost` on, as from a DSA abort | round 130 | bench E622 |
+| the watchdog writes a 6 KB slot per stall, four at most, each with every thread's registers (`RThread::Context`, euser 1796) twice 100 ms apart, and the main thread's stack from sp; thread handles duplicated process-owned (euser 121) at creation | round 131 | bench E634-E635 |
+| from focus lost to focus gained each audio stream is turned down to 0 on its next WriteL, from its own thread, and given back the game's volume after | round 131 | bench E638-E640 |
+| a screen update dropped while the screen was away is posted again once the port has it back (`replay_missed_frame`) | round 131 | -- (the bench never loses the screen) |
 
 ## Where each title saves
 

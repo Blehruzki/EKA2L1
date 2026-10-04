@@ -879,3 +879,15 @@ instrument, not as a fix.
 *A hang leaves no record unless something else is awake.* ViewSrv 11 means
 the main thread stopped; its own heartbeat cannot report that. The watchdog
 thread does (E627-E628).
+
+Round 131. *A worker's log line is no evidence either way.* The mute ran on
+the sound thread, and `log_event` drops a worker's records (WORKER_LOG 0), so
+the first bench run of it (E638) could not have shown it working. Counted
+instead, and the counts logged by the main thread (E639-E640). Before
+reading an absence, ask which thread would have written the record.
+*One dump a launch is spent by the first stall.* The heartbeat stops while
+the game is minimized, so build 007's single dump went on a minimize and the
+hang after it went unrecorded. A slot per stall.
+*The bench knobs that ride the hold timer need the timer running.* One
+starts it only on a held C; E636 delivered nothing. The knobs start it
+themselves now.

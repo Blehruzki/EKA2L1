@@ -1101,7 +1101,16 @@ struct Context {
     u32 mainSched;          // the main thread's active scheduler, read by the watchdog
     u32 wdThread;           // the watchdog's RThread, once made
     u32 wdFs[4], wdFile[4]; // its own file session and file: nothing of the main thread's
-    u32 *wdBuf;             // the stall dump, built here and written once
+    u32 *wdBuf;             // the stall dumps, one slot per stall, rewritten whole each time
+    u32 wdEpisodes;         // stalls dumped so far (round 131: the first was a minimize, not the hang)
+    u32 wdMain;             // a process-owned handle on the main thread, for RThread::Context
+    u32 wdThr[4], wdThrN;   // the same for each thread the game made
+    u32 fnDuplicate, fnContext, fnStackInfo, fnPriority;   // euser 121, 1796, 1801, 1800
+    u32 bgMute;             // focus lost: the streams are turned down until it comes back
+    u32 mdaObj[4], mdaVol[4], mdaMuted[4];   // each stream, the volume the game last set, and whether muted
+    u32 mdaMuteN, mdaUnmuteN, mdaMuteVol, mdaMuteSaid;   // streams turned down and back, the last volume kept, and what the heartbeat said
+    u32 lastUpdSelf, lastUpdRegion;   // the last screen update that reached the screen
+    u32 missedUpd;          // and one was dropped while the screen was away
     u32 kickObj[KICK_OBJS], kickN[KICK_OBJS], kickSaid[KICK_OBJS], kickCount;   // objects built at a GAME_AO_PRIORITIES site, and their self-completions
     u32 newTimerCtor;       // 9.x CTimer::CTimer(TInt), as the shim resolved it
     u32 timerThunks[3];     // DoCancel, RunL, RunError, built in the code chunk
@@ -4279,15 +4288,80 @@ static int sane_ptr(u32 p);
 // Bench knob, 0 when shipping: at this beat the main thread blocks for 8 s, so
 // the watchdog has a stall to write (a test of the test).
 enum { BENCH_HANG_BEAT = 0 };
-enum { WATCHDOG = 1, WATCHDOG_STALL_S = 4, EUSER_USER_AFTER = 645, STALL_WORDS = 1024,
+enum { WATCHDOG = 1, WATCHDOG_STALL_S = 4, EUSER_USER_AFTER = 645, STALL_WORDS = 1536,
        STALL_MAGIC = 0x57A11000 };
+// Round 131: the one dump a launch was spent on a minimize -- the heartbeat
+// stops while the game is away too -- and the hang that followed went
+// unrecorded. So a slot per stall, up to four, and the file rewritten whole
+// with every slot so far each time.
+//
+// And the hang's own question, which the ring cannot answer: where the main
+// thread *is*. Both round-131 hangs end after the stream's Stop came back,
+// with nothing traced after it -- a wait on an untraced call, or a loop.
+// `RThread::Context` (euser 1796) answers it from another thread: the
+// stopped thread's user registers, `TArmRegSet`, 18 words (DArmPlatThread::
+// Context; refused only for the calling thread). Two samples 100 ms apart
+// tell a loop (pc moves) from a wait (pc parked in euser's exec call), and
+// the main thread's stack from sp up says which game function it came from.
+// The handles are duplicates the port took as process-owned (euser 121), so
+// the watchdog thread may use them: a game thread's own handle may be
+// EOwnerThread, and that from here would be KERN-EXEC 0.
+enum { WD_EPISODES = 4, EUSER_HANDLE_DUPLICATE = 121, EUSER_THREAD_CONTEXT = 1796,
+       EUSER_THREAD_PRIORITY = 1800, EUSER_THREAD_STACKINFO = 1801,
+       CTX_WORDS = 18, MAIN_STACK_WORDS = 192, THR_STACK_WORDS = 64, STALL_THREADS = 0x7EAD0000 };
 static const u16 kStallPath[] = {'C',':','\\','g','6','s','t','a','l','l','-',GAME_STEM_CHARS,'.','d','a','t'};
+
+// One thread's registers into ctx[18]; 0 if the call is missing or refused.
+static int thread_regs(Context *c, u32 handle, u32 *ctx)
+{
+    typedef void (*Ctx)(const u32 *, u32 *);
+    for (u32 i = 0; i < (u32)CTX_WORDS; i++)
+        ctx[i] = 0;
+    if (!c->fnContext || !handle)
+        return 0;
+    u32 des[3] = { ((u32)EPtr << KTypeShift) | 0u, (u32)CTX_WORDS * 4, (u32)ctx };
+    ((Ctx)c->fnContext)(&handle, des);
+    return (des[0] & 0x0FFFFFFFu) == (u32)CTX_WORDS * 4;
+}
+
+static u32 stall_thread(Context *c, u32 *w, u32 n, u32 handle, u32 stackWords)
+{
+    typedef int (*Prio)(const u32 *);
+    typedef int (*Info)(const u32 *, u32 *);
+    typedef void (*After)(int);
+    u32 ctx[CTX_WORDS], again[CTX_WORDS], info[3] = { 0, 0, 0 };
+    w[n++] = handle;
+    w[n++] = (c->fnPriority && handle) ? (u32)((Prio)c->fnPriority)(&handle) : 0xFFFFFFFFu;
+    const int ok = thread_regs(c, handle, ctx);
+    for (u32 i = 0; i < (u32)CTX_WORDS; i++)
+        w[n++] = ctx[i];
+    ((After)c->fnUserAfter)(100000);
+    thread_regs(c, handle, again);
+    w[n++] = again[15];
+    w[n++] = again[14];
+    w[n++] = again[13];
+    const int si = (c->fnStackInfo && handle) ? ((Info)c->fnStackInfo)(&handle, info) : -1;
+    w[n++] = (si == 0) ? info[0] : 0;           // the top of the stack, one past its last word
+    w[n++] = (si == 0) ? info[1] : 0;           // and its limit
+    // The stack from sp up, never past the top StackInfo gave; without one,
+    // nothing -- a read past the end of the chunk would fault this thread.
+    const u32 sp = ctx[13];
+    u32 k = 0;
+    const u32 at = n++;
+    if (ok && si == 0 && sane_ptr(sp) && sp >= info[1] && sp < info[0])
+        for (; k < stackWords && sp + 4 * k < info[0] && n < (u32)STALL_WORDS; k++)
+            w[n++] = ((const u32 *)sp)[k];
+    w[at] = k;
+    return n;
+}
 
 static void stall_dump(Context *c)
 {
-    u32 *w = c->wdBuf;
+    if (c->wdEpisodes >= (u32)WD_EPISODES)
+        return;
+    u32 *w = c->wdBuf + c->wdEpisodes * (u32)STALL_WORDS;
     u32 n = 0;
-    w[n++] = (u32)STALL_MAGIC;
+    w[n++] = (u32)STALL_MAGIC | c->wdEpisodes;
     w[n++] = c->beats;
     w[n++] = c->traceCount;
     w[n++] = c->lastImport;
@@ -4304,7 +4378,7 @@ static void stall_dump(Context *c)
     if (sane_ptr(sched)) {
         const u32 *q = (const u32 *)(sched + SCHED_QUEUE);
         for (u32 link = q[0]; link != (u32)q && objs < (u32)SCHED_WALK_MAX && sane_ptr(link) &&
-             n + 6 < (u32)STALL_WORDS; objs++) {
+             n + 6 < (u32)STALL_WORDS - 640; objs++) {
             const u32 *o = (const u32 *)(link - ACTIVE_LINK);
             w[n++] = (u32)o;
             w[n++] = o[0];
@@ -4316,39 +4390,73 @@ static void stall_dump(Context *c)
         }
     }
     w[at] = objs;
+    // Round 131: the threads, main first, and the stream's counters.
+    const u32 nthr = 1 + c->wdThrN;
+    w[n++] = (u32)STALL_THREADS | nthr;
+    w[n++] = c->codeBase;
+    w[n++] = c->mdaPosCalls;
+    w[n++] = c->mdaWrites;
+    w[n++] = c->mdaByThread[0][9];
+    w[n++] = c->mdaByThread[1][9];
+    w[n++] = c->mdaByThread[0][11];
+    w[n++] = c->mdaByThread[1][11];
+    w[n++] = c->screenLost | (c->clipMode << 8) | (c->bgMute << 16);
+    n = stall_thread(c, w, n, c->wdMain, (u32)MAIN_STACK_WORDS);
+    for (u32 i = 0; i < c->wdThrN && n + 64 < (u32)STALL_WORDS; i++)
+        n = stall_thread(c, w, n, c->wdThr[i], (u32)THR_STACK_WORDS);
+    c->wdEpisodes++;
     if (fs_connect(c->wdFs, -1) != 0)
         return;
     Ptrc16 name;
     name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kStallPath / 2);
     name.text = kStallPath;
-    if (file_replace(c->wdFile, c->wdFs, &name, EFileWrite | EFileShareAny) != 0)
+    if (file_replace(c->wdFile, c->wdFs, &name, EFileWrite | EFileShareAny) != 0) {
+        rhandle_close(c->wdFs);
         return;
+    }
     u32 des[2];
-    des[0] = ((u32)EPtrC << KTypeShift) | (n * 4);
-    des[1] = (u32)w;
+    des[0] = ((u32)EPtrC << KTypeShift) | (c->wdEpisodes * (u32)STALL_WORDS * 4);
+    des[1] = (u32)c->wdBuf;
     file_write_at(c->wdFile, 0, des);
     file_flush(c->wdFile);
     file_close(c->wdFile);
+    rhandle_close(c->wdFs);
 }
 
 extern "C" int gate6_watchdog(void *p)
 {
     typedef void (*After)(int);
     Context *c = (Context *)p;
-    u32 last = c->beats, still = 0, written = 0;
+    u32 last = c->beats, still = 0, armed = 1;
     for (;;) {
         ((After)c->fnUserAfter)(1000000);
         if (c->beats != last) {
             last = c->beats;
             still = 0;
+            armed = 1;
             continue;
         }
-        if (++still >= (u32)WATCHDOG_STALL_S && !written) {
-            written = 1;
+        if (++still >= (u32)WATCHDOG_STALL_S && armed) {
+            armed = 0;
             stall_dump(c);
         }
     }
     return 0;
+}
+
+static const u16 kWdName[] = {'g','6','w','d'};
+
+// A process-owned duplicate of a thread handle valid in the calling thread
+// (KCurrentThreadHandle for the caller itself); 0 if it could not be had.
+static u32 thread_dup(Context *c, u32 handle)
+{
+    typedef int (*Dup)(u32 *, const u32 *, int);
+    if (!c->fnDuplicate || !handle)
+        return 0;
+    u32 h = handle;
+    const u32 self = 0xFFFF8001u;               // KCurrentThreadHandle: the source is this thread
+    const int err = ((Dup)c->fnDuplicate)(&h, &self, 0 /* EOwnerProcess */);
+    return (err == 0 && h != handle) ? h : 0;
 }
 
 // From the heartbeat, on the main thread, once.
@@ -4360,11 +4468,12 @@ static void watchdog_start(Context *c)
     c->wdThread = 1;
     c->fnUserAfter = (u32)rlibrary_lookup(&c->euser, EUSER_USER_AFTER);
     c->mainSched = (u32)cactivescheduler_current();
-    c->wdBuf = (u32 *)user_allocz((int)(STALL_WORDS * 4));
+    c->wdBuf = (u32 *)user_allocz((int)(WD_EPISODES * STALL_WORDS * 4));
     if (!c->fnUserAfter || !c->wdBuf)
         return;
-    static const u16 kWd[] = {'g','6','w','d'};
-    u32 nm[2] = { ((u32)EPtrC << KTypeShift) | 4u, (u32)kWd };
+    c->wdMain = thread_dup(c, 0xFFFF8001u);
+    log_event(c, NOTE_THREAD_CREATE, 0x57A20000u | (c->wdThrN << 12) | (c->wdMain ? 1u : 0u));
+    u32 nm[2] = { ((u32)EPtrC << KTypeShift) | 4u, (u32)kWdName };
     u32 th = 0;
     const int err = ((Create)c->threadCreateFn)(&th, nm, &gate6_watchdog, 0x2000, 0, c, 0);
     log_event(c, NOTE_THREAD_CREATE, 0x57A10000u | ((u32)err & 0xFFFFu));
@@ -4375,12 +4484,16 @@ static void watchdog_start(Context *c)
     log_block(c);
 }
 
+static void bench_timer_kick(Context *c);
+
 extern "C" int gate6_heartbeat(void *p)
 {
     Context *c = (Context *)p;
     c->beats++;
-    if (c->beats == 3)
+    if (c->beats == 3) {
         watchdog_start(c);
+        bench_timer_kick(c);
+    }
     if (BENCH_HANG_BEAT && c->beats == (u32)BENCH_HANG_BEAT && c->fnUserAfter)
         ((void (*)(int))c->fnUserAfter)(8000000);   // bench: the main thread stops for 8 s
     if (BENCH_SCHED_BEATS && !(c->beats % (u32)BENCH_SCHED_BEATS))
@@ -4392,6 +4505,13 @@ extern "C" int gate6_heartbeat(void *p)
             log_event(c, NOTE_AO_PRIORITY, 0x0BEA0000u | (i << 12) | ((c->kickN[i] - c->kickSaid[i]) & 0xFFFu));
             c->kickSaid[i] = c->kickN[i];
         }
+    // The background mute's counts, when they move: the mute and unmute run
+    // on whichever thread writes the stream, and only this one can log.
+    if (((c->mdaMuteN << 16) | (c->mdaUnmuteN & 0xFFFFu)) != c->mdaMuteSaid) {
+        c->mdaMuteSaid = (c->mdaMuteN << 16) | (c->mdaUnmuteN & 0xFFFFu);
+        log_event(c, NOTE_MDA_CODE, 0x5A1C0000u);
+        log_event(c, NOTE_MDA_CODE, c->mdaMuteSaid);
+    }
     if (c->wrkExcSet != c->wrkExcSaid) {
         c->wrkExcSaid = c->wrkExcSet;
         log_event(c, NOTE_WRK_FAULT, 0xE5E70000u | (c->wrkExcSaid & 0xFFFFu));
@@ -4852,6 +4972,8 @@ enum { RGN_WORDS = 10, RGN_RECT_LIST = 4 };
 // reason code goes in the log because the two cases are not the same: a
 // screensaver abort is followed by a Restart, and a "someone else owns the
 // screen now" abort may not be.
+static void replay_missed_frame(Context *c);
+
 extern "C" void gate6_dsa_slot0(void *, u32 reason, Context *c)
 {
     c->reached |= REACHED_ABORT;
@@ -4892,6 +5014,7 @@ extern "C" void gate6_dsa_slot1(void *, u32 reason, Context *c)
     dsa_refresh(c);
     c->clearPending = 1;
     c->screenLost = 0;
+    replay_missed_frame(c);
 }
 
 // CDirectScreenAccess is the one class the game reaches into rather than
@@ -5458,6 +5581,22 @@ static void region_log(Context *c, const void *region)
 // Nothing is drawn again in any of that stretch: the one Update is at
 // milestone 16 and the emulator's run ends at 170 without another. So holding
 // the screen through it buys nothing and can be given up for nothing.
+// Round 131: back from a minimize on the pause screen, the screen stayed as
+// the phone's menu had left it. The game redraws on focus gained, and that
+// one frame came while the window still had no region -- the port's restart
+// comes later, from the hold timer -- so it was dropped, and a pause screen
+// draws nothing more until a key is pressed. When the screen is ours again,
+// the last frame dropped is posted once more, with the device and region the
+// game last drew through (both its own long-lived objects).
+extern "C" void gate6_screen_update(void *self, const void *region, Context *c);
+static void replay_missed_frame(Context *c)
+{
+    if (!c->missedUpd || !c->lastUpdSelf || c->screenLost || c->clipMode == CLIP_NONE)
+        return;
+    log_event(c, NOTE_DSA_RESTART, 0x57A9);
+    gate6_screen_update((void *)c->lastUpdSelf, (const void *)c->lastUpdRegion, c);
+}
+
 extern "C" void gate6_dsa_startl(void *, u32, Context *c)
 {
     typedef void (*StartL)(void *);
@@ -5500,6 +5639,7 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
         ((StartL)c->newDsaStartL)(c->dsaReal);
     log_event(c, NOTE_DSA_RESTART, 0x57A1);
     dsa_refresh(c);
+    replay_missed_frame(c);
     // Started, so the graphics context exists and the shadow has it -- and then
     // given straight back, so the window server is not left waiting on a client
     // that has gone away to compute for ten seconds. The game is told it still
@@ -6342,6 +6482,16 @@ extern "C" int gate6_thread_open(u32 *self, const u32 *name, u32 type, Context *
 extern "C" int gate6_thread_exists(int err, void *self, const void *name,
                                    Context *c)
 {
+    // Round 131: a handle of the port's own on every thread the game makes,
+    // process-owned, for the watchdog's RThread::Context. Not the watchdog's.
+    if (err == 0 && self && c->wdThrN < 4 &&
+        !(name && ((const u32 *)name)[1] == (u32)kWdName)) {
+        const u32 h = thread_dup(c, ((const u32 *)self)[0]);
+        if (h)
+            c->wdThr[c->wdThrN++] = h;
+        log_event(c, NOTE_THREAD_HANDLE, 0x57A30000u | (h ? c->wdThrN : 0u));
+        log_block(c);
+    }
     if (err != KERR_ALREADY_EXISTS)
         return err;
     log_event(c, NOTE_THREAD_CREATE, 0xA11EAD00u);
@@ -7467,12 +7617,19 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
     // between AbortNow and Restart a process may do neither. The game goes
     // on running -- it gets its frames, its timers and its sound, it simply
     // is not seen -- which is what backgrounding is supposed to look like.
-    if (c->screenLost)
+    if (c->screenLost) {
+        c->missedUpd = 1;
         return;
+    }
     // Nor outside the region the window server granted -- and an empty one,
     // which is what a window behind the menu is given, means not at all.
-    if (c->clipMode == CLIP_NONE)
+    if (c->clipMode == CLIP_NONE) {
+        c->missedUpd = 1;
         return;
+    }
+    c->missedUpd = 0;
+    c->lastUpdSelf = (u32)self;
+    c->lastUpdRegion = (u32)region;
     // One frame of the game's own buffer, raw, so the stride can be measured
     // rather than guessed. Text is clipped at the right edge and neither the
     // reported screen size nor the blit explains it, so the question is what
@@ -8475,6 +8632,15 @@ extern "C" int gate6_hold_tick_cb(void *p)
         gate6_ui_foreground(c->wrapUi, 1, c);
     }
     return 1;
+}
+
+// The bench knobs above ride the hold timer, which a title that takes its
+// keys in the app UI starts only on a held C; with one of them set, start it
+// without a key. Nothing when they are all 0, as they are in a shipped build.
+static void bench_timer_kick(Context *c)
+{
+    if (BENCH_FOCUSLOST_TICK || BENCH_DEACTIVATE_TICK || BENCH_BACKGROUND_TICK)
+        hold_timer_start(c);
 }
 
 static void hold_timer_start(Context *c)
@@ -10459,6 +10625,29 @@ enum { MDA_WRITER_CB_AT = GAME_MDA_WRITER_CB };
 
 
 
+// Round 131: minimized, the pause menu's music played on. From focus lost
+// to focus gained each stream is turned down to 0 on its next WriteL, from
+// the thread that writes it -- a stream belongs to the thread that opened
+// it, and One has one in each of two threads -- and put back to the last
+// volume the game asked for when focus returns. The buffers are not touched:
+// whether a WriteL buffer is a mix or a sample kept for reuse is the game's
+// business. A volume the game sets while muted is kept for afterwards.
+enum { BG_MUTE = 1, MDA_STREAMS = 4 };
+static int mda_stream(Context *c, u32 obj)
+{
+    for (u32 i = 0; i < (u32)MDA_STREAMS; i++)
+        if (c->mdaObj[i] == obj)
+            return (int)i;
+    for (u32 i = 0; i < (u32)MDA_STREAMS; i++)
+        if (!c->mdaObj[i]) {
+            c->mdaObj[i] = obj;
+            c->mdaVol[i] = 0xFFFFFFFFu;     // not set yet
+            c->mdaMuted[i] = 0;
+            return (int)i;
+        }
+    return -1;
+}
+
 extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
 {
     typedef u32 (*Any)(void *, u32, u32, u32);
@@ -10544,6 +10733,35 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
                     log_event(c, NOTE_MDA_CODE, hits);
                 }
             }
+        }
+    }
+    // Slot 2 is the deleting destructor: the object's entry goes with it, so
+    // a stream made after it -- One's sound thread makes its own more than
+    // once -- finds a free one (E638: two dead streams held both).
+    if (slot == 2) {
+        for (u32 i = 0; i < (u32)MDA_STREAMS; i++)
+            if (c->mdaObj[i] == saved[0])
+                c->mdaObj[i] = 0;
+    }
+    const int si = (BG_MUTE && slot != 2) ? mda_stream(c, saved[0]) : -1;
+    if (si >= 0) {
+        typedef u32 (*Vol)(void *, u32);
+        Vol setVol = (Vol)rvt[kMdaMap[7]];
+        if (slot == 7) {
+            c->mdaVol[si] = a1;
+            if (c->mdaMuted[si])
+                a1 = 0;                     // asked for while away: kept, not played
+        } else if (slot == 9 && c->bgMute && !c->mdaMuted[si]) {
+            if (c->mdaVol[si] == 0xFFFFFFFFu)
+                c->mdaVol[si] = ((u32 (*)(void *))rvt[kMdaMap[5]])(real);   // MaxVolume
+            setVol(real, 0);
+            c->mdaMuted[si] = 1;
+            c->mdaMuteN++;                  // counted, not logged: this is usually a worker thread,
+            c->mdaMuteVol = c->mdaVol[si];  // and a worker's records never reach the log
+        } else if (slot == 9 && !c->bgMute && c->mdaMuted[si]) {
+            setVol(real, c->mdaVol[si]);
+            c->mdaMuted[si] = 0;
+            c->mdaUnmuteN++;
         }
     }
     u32 r = ((Any)rvt[to])(real, a1, saved[2], saved[3]);
@@ -11040,6 +11258,24 @@ extern "C" void gate6_ui_wsevent(void *self, const u32 *event, void *dest, Conte
     // goes to disk (the endgame budget), as from a DSA abort.
     if (type == (u32)EEVENT_FOCUS_LOST && !c->timerOff)
         c->timerOff = (u32)ENDGAME_CALLS;
+    // Round 131: minimized, the game went on playing its pause-menu music.
+    // An N-Gage never had a foreground to lose; on S60 a background app is
+    // heard. So from focus lost to focus gained every buffer either stream
+    // writes is silence (gate6_mda_call2). Set before the game's own handler,
+    // which is what starts the pause menu and its music.
+    if (BG_MUTE && type == (u32)EEVENT_FOCUS_LOST)
+        c->bgMute = 1;
+    if (type == (u32)EEVENT_FOCUS_GAINED)
+        c->bgMute = 0;
+    // And how many buffers each thread had written by then: whether the game
+    // goes on feeding a stream while it is away is what the mute rests on.
+    if (type == (u32)EEVENT_FOCUS_LOST || type == (u32)EEVENT_FOCUS_GAINED) {
+        log_event(c, NOTE_MDA_CODE, 0x5A1F0000u | type);
+        log_event(c, NOTE_MDA_CODE, c->mdaByThread[0][9]);
+        log_event(c, NOTE_MDA_CODE, c->mdaByThread[1][9]);
+        log_event(c, NOTE_MDA_CODE, (c->mdaMuteN << 16) | (c->mdaUnmuteN & 0xFFFFu));
+        log_event(c, NOTE_MDA_CODE, c->mdaMuteVol);
+    }
     log_event(c, NOTE_WS_EVENT, type);
     ((WsEvent)c->realWsEvent)(self, event, dest);
     log_event(c, NOTE_WS_EVENT_DONE, type);
@@ -12022,6 +12258,12 @@ static u32 load_and_start()
     if (ctx->euser) {
         ctx->pushItemFn = (u32)rlibrary_lookup(&ctx->euser, EUSER_PUSHL_ITEM);
         ctx->fullNameFn = (u32)rlibrary_lookup(&ctx->euser, EUSER_HANDLE_FULLNAME);
+        // The watchdog's, for the same reason: game threads are made before it
+        // is, and a duplicate is taken in whichever thread makes one.
+        ctx->fnDuplicate = (u32)rlibrary_lookup(&ctx->euser, EUSER_HANDLE_DUPLICATE);
+        ctx->fnContext = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_CONTEXT);
+        ctx->fnPriority = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_PRIORITY);
+        ctx->fnStackInfo = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_STACKINFO);
     }
     if (ctx->efsrv)
         ctx->setSessionPathFn = (u32)rlibrary_lookup(&ctx->efsrv, EFSRV_SET_SESSION_PATH);

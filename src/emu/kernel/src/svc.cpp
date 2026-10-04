@@ -2504,6 +2504,27 @@ namespace eka2l1::epoc {
         }
     }
 
+    // RThread::Context: another thread's user registers as TArmRegSet -- r0-r15,
+    // the flags and the DACR, 18 words. A device refuses the current thread
+    // (KErrAccessDenied); the call returns nothing either way.
+    BRIDGE_FUNC(void, thread_context, kernel::handle h, eka2l1::ptr<des8> context_des) {
+        kernel::thread *thr = kern->get<kernel::thread>(h);
+        process_ptr pr = kern->crr_process();
+        des8 *des = context_des.get(pr);
+
+        if (!thr || !des || (thr == kern->crr_thread())) {
+            return;
+        }
+
+        const arm::core::thread_context &ctx = thr->get_thread_context();
+        std::uint32_t regs[18] = {};
+        for (int i = 0; i < 16; i++) {
+            regs[i] = ctx.cpu_registers[i];
+        }
+        regs[16] = ctx.cpsr;
+        des->assign(pr, reinterpret_cast<const std::uint8_t *>(regs), sizeof(regs));
+    }
+
     BRIDGE_FUNC(void, thread_rendezvous, std::int32_t reason) {
         kern->crr_thread()->rendezvous(reason);
     }
@@ -6081,6 +6102,7 @@ namespace eka2l1::epoc {
         BRIDGE_REGISTER(0x5E, is_exception_handled),
         BRIDGE_REGISTER(0x5F, process_get_memory_info),
         BRIDGE_REGISTER(0x64, process_type),
+        BRIDGE_REGISTER(0x67, thread_context),
         BRIDGE_REGISTER(0x68, thread_create),
         BRIDGE_REGISTER(0x69, handle_open_object_by_find_handle),
         BRIDGE_REGISTER(0x6A, handle_close),
@@ -6262,6 +6284,7 @@ namespace eka2l1::epoc {
         BRIDGE_REGISTER(0x5E, is_exception_handled),
         BRIDGE_REGISTER(0x5F, process_get_memory_info),
         BRIDGE_REGISTER(0x64, process_type),
+         BRIDGE_REGISTER(0x67, thread_context),
         BRIDGE_REGISTER(0x68, thread_create),
         BRIDGE_REGISTER(0x69, handle_open_object_by_find_handle),
         BRIDGE_REGISTER(0x6A, handle_close),
@@ -6442,6 +6465,7 @@ namespace eka2l1::epoc {
         BRIDGE_REGISTER(0x5F, library_get_memory_info),
         BRIDGE_REGISTER(0x63, process_type),
         BRIDGE_REGISTER(0x65, chunk_top),
+         BRIDGE_REGISTER(0x66, thread_context),
         BRIDGE_REGISTER(0x67, thread_create),
         BRIDGE_REGISTER(0x68, handle_open_object_by_find_handle),
         BRIDGE_REGISTER(0x69, handle_close),
