@@ -505,6 +505,35 @@ panic. `EKA2L1_STRICTHANDLE=1` logs each one with the guest PC and LR,
 `=2` panics the thread as a device would. Run a new title under `=2` before
 its first hardware round.
 
+## The N-Gage SDK itself (round 133)
+
+`github.com/razvang-dev/Nokia-N-Gage-SDK-Toolchain` (cloned to the scratchpad,
+not this repository: the SDK is Nokia's) carries the Series 60 6.1 SDK the
+N-Gage titles were built with -- the headers, the ARMI import libraries, and
+the period compiler, GCC `2.9-psion-98r2` (`arm-epoc-pe-g++`), runnable on this
+Linux host. Three things follow, each checked:
+
+- **The old ordinals, by name.** Each ARMI `.lib` member holds its ordinal in
+  `.idata$5` (`0x8000nnnn`) beside the mangled name; read out, they are the
+  N-Gage export tables -- cone 317, euser 1,679, eikcore 290, ws32 357, fbscli
+  155, efsrv 231, avkon 2,274 -- where EKA2L1's `epoc6.def` lists names
+  without ordinals and falls short (cone 309, euser 1,646). Every hard-coded old
+  ordinal in `gen_shim.py`'s HOOKS that was spot-checked names what the port
+  says it does (euser 746, 858, 1122, 954, 1454, 1613; cone 8, 223, 226; bitgdi
+  23, 105, 137; efsrv 18, 142, 168; avkon 63; apparc 3, 13).
+- **The old layouts, compiled rather than inferred.** A probe built with the
+  period compiler (`#define private public`, offsets into a static array, read
+  from the `-S` output) gives: CActive 24 bytes, iStatus at 4;
+  CDirectScreenAccess 96 bytes, iGc 0x18, iScreenDevice 0x1c, iDrawingRegion
+  0x20 (the OLD_DSA_* the port measured from ROMs); TMdaAudioDataSettings 44
+  bytes, iSampleRate 0x1c, iChannels 0x20.
+- **The audio API as the games saw it.** `mdaaudiooutputstream.h` declares the
+  stream's virtuals in 9.x's order (SetAudioPropertiesL first), and
+  `mda/common/audio.h` the enums: 0x100 is 16000 Hz, 0x02000000 mono. One's Open
+  package (E664) is a TMdaAudioDataSettings with iSampleRate and iChannels 0.
+
+Use it before reading a layout or an ordinal off a game's code.
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:

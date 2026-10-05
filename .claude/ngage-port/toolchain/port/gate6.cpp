@@ -11273,23 +11273,14 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
     u32 *tramp = vt + MDA_SLOTS;
     c->spare += need;
     for (u32 k = 0; k < (u32)MDA_SLOTS; k++) {
-        // Not a shift: a table. The two builds declare the same methods in
-        // **different orders**, which the one-slot theory got wrong -- read
-        // off the game's own dispatch sites, its slot 3 takes
-        // `(TInt, 0x02000000)`, and 0x02000000 is
-        // `EMdaPriorityPreferenceQuality`, so slot 3 is `SetPriority`, which
-        // on 9.x is the *sixth* virtual and not the first. Each of these came
-        // from a call site:
-        //
-        //   3  `mov r2, #0x02000000` before the call     SetPriority
-        //   4  a pointer built at object+48, after NewL  Open
-        //   5  no arguments, result fed to slot 7        MaxVolume
-        //   7  takes what slot 5 returned                SetVolume
-        //   9  takes `[r7, r4, lsl #2]`, an array of descriptors   WriteL
-        //   10 no arguments, after a `cmn r1, #10`       Stop
-        //
-        // Slot 8 is called with `(100, 0)` and nothing identifies it, so it
-        // goes nowhere rather than somewhere wrong.
+        // The slot map is kMdaMap's. This comment once read slot 3 as
+        // SetPriority, from a 0x02000000 argument taken for a priority
+        // preference; the N-Gage SDK's own mdaaudiooutputstream.h settles
+        // it (round 133): the virtuals are declared SetAudioPropertiesL,
+        // Open, MaxVolume, Volume, SetVolume, SetPriority, WriteL, Stop,
+        // Position -- slots 3 to 11, the same order as 9.x -- and
+        // 0x02000000 is TMdaAudioDataSettings::EChannelsMono, 0x100
+        // ESampleRate16000Hz (mda/common/audio.h).
         const int to = kMdaMap[k];
         if (to < 0) {
             u32 *t0 = tramp + k * MDA_TRAMP;
