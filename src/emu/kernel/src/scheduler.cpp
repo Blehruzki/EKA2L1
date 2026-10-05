@@ -76,8 +76,12 @@ namespace eka2l1::kernel {
             run_core->save_context(oldt->ctx);
 
             if (oldt->state == thread_state::run) {
+                // Preempted, not blocked: the thread keeps what is left of its timeslice.
+                // EKA2 refreshes it only when the thread blocks (TScheduler::Remove) or is
+                // rotated (TScheduler::RotateReadyList), nkern/sched.cpp. Refreshing it here
+                // let any higher-priority wakeup inside one slice starve every other thread
+                // of the same priority: no round robin at all.
                 oldt->state = thread_state::ready;
-                oldt->time = oldt->timeslice;
             }
 
             oldt->decrease_access_count();
