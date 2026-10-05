@@ -1110,6 +1110,7 @@ struct Context {
     u32 fnCpuTime, cpuSaid[5];   // RThread::GetCpuTime (euser 1782), and each thread's last reading, in us
     u32 bgMute;             // focus lost: the streams are turned down until it comes back
     u32 mdaObj[4], mdaVol[4], mdaMuted[4];   // each stream, the volume the game last set, and whether muted
+    u32 mdaLast[4], mdaWr[4], mdaWrSaid[4], mdaEnd[4], mdaSaid[4];   // per stream: last call, writes, PlayCompletes (round 133)
     u32 mdaPosCopy[4][2];                  // Position as answered, lead added (round 132)
     u32 mdaCb[4], mdaPendStop[4];          // each stream's callback proxy, and a worker's Stop held back (round 132)
     u32 mdaDeferN, mdaDeferDone, mdaDeferSaid;   // Stops held back, carried out later, and what the heartbeat said
@@ -4547,6 +4548,19 @@ extern "C" int gate6_heartbeat(void *p)
         c->mdaMuteSaid = (c->mdaMuteN << 16) | (c->mdaUnmuteN & 0xFFFFu);
         log_event(c, NOTE_MDA_CODE, 0x5A1C0000u);
         log_event(c, NOTE_MDA_CODE, c->mdaMuteSaid);
+    }
+    // Each stream, when anything about it moved: its index and the last call
+    // made on it (0x80 set if from the main thread), the buffers written
+    // since the last beat, and its PlayCompletes (count, last error's low
+    // byte). Which streams are playing while a fight is slow is the question.
+    for (u32 i = 0; i < 4u; i++) {
+        const u32 sig = (c->mdaLast[i] << 24) ^ c->mdaWr[i] ^ (c->mdaEnd[i] << 12);
+        if (c->mdaObj[i] && sig != c->mdaSaid[i]) {
+            c->mdaSaid[i] = sig;
+            log_event(c, NOTE_MDA_CODE, 0x57E00000u | (i << 12) | (c->mdaLast[i] & 0xFFu));
+            log_event(c, NOTE_MDA_CODE, ((c->mdaWr[i] - c->mdaWrSaid[i]) << 16) | (c->mdaEnd[i] & 0xFFFFu));
+            c->mdaWrSaid[i] = c->mdaWr[i];
+        }
     }
     // The kick RunLs in the last beat, the fast-counter ticks spent inside
     // them, and the ticks the beat itself took.
@@ -10835,6 +10849,11 @@ enum { DEFER_WORKER_STOP = GAME_DEFER_WORKER_STOP };
 #define GAME_MDA_POSITION_LEAD_US 0
 #endif
 enum { MDA_POSITION_LEAD_US = GAME_MDA_POSITION_LEAD_US };
+#ifndef GAME_MDA_OPEN_RATE
+#define GAME_MDA_OPEN_RATE 0
+#define GAME_MDA_OPEN_CHANNELS 0
+#endif
+enum { MDA_OPEN_RATE = GAME_MDA_OPEN_RATE, MDA_OPEN_CHANNELS = GAME_MDA_OPEN_CHANNELS };
 static void mda_owed_stop(Context *c, int si)
 {
     typedef u32 (*Any)(void *, u32, u32, u32);
@@ -10866,6 +10885,35 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
         log_event(c, NOTE_MDA_ARG, saved[3]);
         log_event(c, NOTE_MDA_ARG, saved[4] - c->codeBase);   // who called: the trampoline pushed lr fifth
         mda_where(c, slot, saved[0]);
+        log_block(c);
+    }
+    // **Round 133: what the first Open asks for.** In the phone's logs the
+    // first fight of a launch ran at half rate (25-36 frames a second
+    // against 50-66) exactly until the fight stream was stopped and set up
+    // again -- a minimize, a pause, the end of a round -- in three of seven
+    // sessions, and the four fast ones never had a slow stretch to lose.
+    // The two setups differ in one thing the log now shows: the settings
+    // package One hands Open (its own TMdaAudioDataSettings, a TMdaPackage
+    // whose TPtr8 points at itself) has nothing in it -- rate and channels
+    // both 0 where 9.x's Open reads them, [r1,#0x1c] and [r1,#0x20] (E664).
+    // So the stream opens at the platform's default, and the game's
+    // SetAudioPropertiesL(16000 Hz, mono) arrives at an open, running
+    // stream; after a Stop it comes to a stopped one. What S60 does with the
+    // first is not in the published source -- a conversion on the way
+    // through would cost exactly a busy frame's worth. So an empty package
+    // is given, in place, the rate and channels the game sets straight after
+    // (GAME_MDA_OPEN_RATE, _CHANNELS): the first setup then matches the one
+    // that runs fast. The game reads neither field; its own setup follows
+    // unchanged.
+    if (slot == 4 && saved[1] >= 0x400000 && !(saved[1] & 3)) {
+        u32 *pk = (u32 *)saved[1];
+        for (u32 i = 0; i < 12; i++)
+            log_event(c, NOTE_MDA_CODE, pk[i]);
+        if (MDA_OPEN_RATE && (pk[0] & 0x0FFFFFFFu) >= 0x24u && pk[7] == 0 && pk[8] == 0) {
+            pk[7] = (u32)MDA_OPEN_RATE;
+            pk[8] = (u32)MDA_OPEN_CHANNELS;
+            log_event(c, NOTE_MDA_CODE, 0x0FE10000u);
+        }
         log_block(c);
     }
     if (FORCE_LEAVE_AT && slot == 3 && ++c->forceLeaveN == (u32)FORCE_LEAVE_AT) {
@@ -10944,6 +10992,10 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
             }
     }
     const int si = (slot != 2) ? mda_stream(c, saved[0]) : -1;
+    if (si >= 0 && slot < 14) {
+        c->mdaLast[si] = slot | (on_main_thread(c) ? 0x80u : 0u);
+        if (slot == 9) c->mdaWr[si]++;
+    }
     if (DEFER_WORKER_STOP && si >= 0) {
         if (slot == 10 && !on_main_thread(c)) {
             c->mdaPendStop[si] = 1;
@@ -11075,6 +11127,15 @@ enum { CB_TRACE = 1, CB_TRAMP = CB_TRACE ? 14 : 3 };
 // worked, and the first time this port has been in a position to read it.
 extern "C" void gate6_cb_call(u32 *saved, Context *c, u32 slot)
 {
+    // Round 133: what each stream hears back, counted (a worker's records
+    // never reach the log; the heartbeat writes these). PlayComplete's error
+    // says whether a stream ran dry (-10) or was stopped (-3).
+    for (u32 i = 0; i < (u32)MDA_STREAMS; i++)
+        if (c->mdaCb[i] && c->mdaCb[i] == saved[0]) {
+            if (slot == 2)
+                c->mdaEnd[i] = (c->mdaEnd[i] + 1) & 0xFFu | ((saved[1] & 0xFFu) << 8);
+            break;
+        }
     // A Stop held back on this stream (round 132) is made now, before the
     // game hears this callback: the thread is in its scheduler, not inside
     // the game's mutex.

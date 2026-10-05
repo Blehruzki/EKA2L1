@@ -160,6 +160,13 @@ enum { GAME_SRC_ORIGIN = 8 };
 // Position is answered this far ahead, so it keeps that much more.
 #define GAME_MDA_POSITION_LEAD_US 100000
 
+// Round 133, a candidate and OFF: One's Open package carries no rate or
+// channels (E664); these would give it the ones its setup sets straight after
+// (16000 Hz, mono). Not shipped: the fast first fights opened with the same
+// empty package, so it does not explain the slow ones (ROUNDS E664).
+#define GAME_MDA_OPEN_RATE     0
+#define GAME_MDA_OPEN_CHANNELS 0
+
 // The game's variadic wrappers hand `TDes16::FormatList` a GCC98r2 VA_LIST:
 // a one-element array, passed as its address. The 9.x euser takes the va
 // pointer itself, so handed the address it reads the game's stack as the
