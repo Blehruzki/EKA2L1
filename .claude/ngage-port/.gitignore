@@ -33,3 +33,7 @@ build/Ashen-*.sis
 # One: the commercial game data is never committed
 build/One-*.sis
 build/gate6one.sis
+
+# ngtest builds into its own build/ directory (objects, the linked images,
+# the card tree build.sh assembles); the source and build.sh are what count.
+toolchain/ngtest/build/

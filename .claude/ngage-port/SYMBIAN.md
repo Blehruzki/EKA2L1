@@ -534,6 +534,19 @@ Linux host. Three things follow, each checked:
 
 Use it before reading a layout or an ordinal off a game's code.
 
+## Timeslices: who gets a fresh one (round 133)
+
+`kernelhwsrv/kernel/eka/nkern/sched.cpp`: `TimesliceTick` counts the running
+thread's `iTime` down and asks for a reschedule at zero; `RotateReadyList`
+moves the thread to the back of its priority's list and gives it a fresh
+`iTimeslice`; `TScheduler::Remove` -- a thread blocking -- gives it a fresh one
+"for next time". Nothing else does. A thread preempted by a higher priority
+keeps what it had left and stays at the head of its list, so two busy
+threads of one priority alternate at the slice (`EDefaultUserTimeSliceMs`,
+20 ms, `kern_priv.h`) however often something above them wakes. EKA2L1 gave a
+fresh slice on every preemption, so they did not alternate at all; patched in
+`thread_scheduler::switch_context` (`E684-E685`).
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:

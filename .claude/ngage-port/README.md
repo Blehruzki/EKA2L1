@@ -15,6 +15,7 @@ loader.
 |---|---|
 | the working agreement, the four rules, the source ranking | `CLAUDE.md` |
 | the loader and shim, the per-title layers, the tools | `toolchain/port/` (its own `README.md` is the gate-by-gate history) |
+| ngtest: an N-Gage test app built with the period SDK (scratchpad, not here), run through the port to measure the platform -- streams, Stop, workers, timeslices | `toolchain/ngtest/` |
 | every knob and fix, per title | `KNOBS.md` |
 | every bench run and hardware round, in order | `ROUNDS.md` |
 | what went wrong and why, as a reference | `BUGBOOK.md` |

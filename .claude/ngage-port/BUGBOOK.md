@@ -626,7 +626,14 @@ apart (4); any stack size accepted (4); a bad handle returned instead of
 (4); SIS integrity not checked (2); no status pane painted (6); nothing
 ever covers the window, so no DSA abort, no focus loss, no view deactivation
 (8, 9) -- drive the framework from inside instead (`FORCE_*` knobs); a
-client-initiated DSA cancel completed twice (5, patched). The bench's
+client-initiated DSA cancel completed twice (5, patched); **no round robin
+between two ready threads of one priority** (patched, round 133: EKA2L1
+refreshed a thread's timeslice whenever it was preempted, so any
+higher-priority wakeup inside 20 ms kept the running thread's slice full and
+its equals starved -- a same-priority spinner made +0 in the main thread's
+busy second, and every worker stream fell silent while the main thread was
+busy, `E683-E686`; EKA2 refreshes it only on block or rotation,
+`nkern/sched.cpp`, see SYMBIAN.md). The bench's
 frame rate varies 20% run to run (`E350-E351`): a frame count is a
 regression signal only against the ticks.
 
@@ -671,7 +678,10 @@ hooks (`gate6_fs_entry`, `gate6_fs_volume`).
 **Deleting a 9.x object through the old vtable word.** `E471-E473`. The game
 `delete`s `CDir`/`CFileMan` via word 2 with in-charge 3; on EABI that word is
 `Extension_`. Fix: `old_deletable`, a full vtable copy with word 2 the
-deleting destructor. The reverse: `CleanupStack::PushL(CBase*)` of a game
+deleting destructor. Not covered: anything the game makes itself with `new`
+and a 9.x constructor -- a worker's `delete` of its own `CActiveScheduler`
+dies KERN-EXEC 3 with the scheduler's queue empty (ngtest, `E679-E682`). No
+title does it today; one that does needs the constructor import wrapped. The reverse: `CleanupStack::PushL(CBase*)` of a game
 object runs EABI word 1, which is 0 on a GCC98r2 vtable -- `gate6_pushl_cbase`
 pushes a TCleanupItem running the old destructor (`E477-E478`).
 

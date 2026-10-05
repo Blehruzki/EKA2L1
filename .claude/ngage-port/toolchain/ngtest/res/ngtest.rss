@@ -1,0 +1,7 @@
+NAME NGTS
+#include <eikon.rh>
+#include <avkon.rsg>
+#include <avkon.rh>
+RESOURCE RSS_SIGNATURE {}
+RESOURCE TBUF { buf = "ngtest"; }
+RESOURCE EIK_APP_INFO { status_pane = 0; cba = R_AVKON_SOFTKEYS_OPTIONS_EXIT; }
