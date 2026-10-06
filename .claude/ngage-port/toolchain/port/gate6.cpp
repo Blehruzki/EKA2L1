@@ -1103,6 +1103,8 @@ struct Context {
     u32 wdFs[4], wdFile[4]; // its own file session and file: nothing of the main thread's
     u32 wrkOwner;           // the thread id that opened the worker log: the only one that may write it (round 136)
     u32 realHandleClose;    // euser's RHandleBase::Close, behind gate6_handle_close
+    u32 thrLive[16];        // thread handles the game got from RThread::Create or Open and has not closed (round 137)
+    u32 thrLiveN;
     u32 *wdBuf;             // the stall dumps, one slot per stall, rewritten whole each time
     u32 wdEpisodes;         // stalls dumped so far (round 131: the first was a minimize, not the hang)
     u32 wdMain;             // a process-owned handle on the main thread, for RThread::Context
@@ -1551,6 +1553,7 @@ enum { TRACE = 48 };
 // the inside: a single probe planted at its third instruction took the run
 // from 1240 records to 553.
 static void log_event(Context *c, u32 code, u32 from);
+static void thr_live_add(Context *c, u32 h);   // round 137: thread handles the game holds
 // Declared here as well as defined below: a diagnostic that cannot flush
 // before the thing it is diagnosing is no diagnostic at all. E261 lost
 // every record it added because the buffer went down with the process.
@@ -6553,8 +6556,10 @@ extern "C" int gate6_thread_open(u32 *self, const u32 *name, u32 type, Context *
     typedef int (*Open)(u32 *, const u32 *, u32);
     typedef u32 *(*FullName)(u32 *, const u32 *);   // a TFullName comes back through a hidden pointer
     const int r = ((Open)c->realThreadOpen)(self, name, type);
-    if (r == 0)
+    if (r == 0) {
+        thr_live_add(c, self[0]);
         return 0;
+    }
     u32 len = 0;
     const u16 *t = des_text(name, &len);
     for (u32 k = 0; t && k < c->threadsMadeCount; k++) {
@@ -6580,6 +6585,8 @@ extern "C" int gate6_thread_open(u32 *self, const u32 *name, u32 type, Context *
             full[0] = ((u32)EBufType << KTypeShift) | n;
         }
         const int d = ((Open)c->realThreadOpen)(self, full, type);
+        if (d == 0)
+            thr_live_add(c, self[0]);
         log_event(c, NOTE_THREAD_OPEN, (u32)r);
         log_event(c, NOTE_THREAD_OPEN, (u32)d);
         return d;
@@ -6597,6 +6604,8 @@ extern "C" int gate6_thread_exists(int err, void *self, const void *name,
 {
     // Round 131: a handle of the port's own on every thread the game makes,
     // process-owned, for the watchdog's RThread::Context. Not the watchdog's.
+    if (err == 0 && self)
+        thr_live_add(c, ((const u32 *)self)[0]);
     if (err == 0 && self && c->wdThrN < 4 &&
         !(name && ((const u32 *)name)[1] == (u32)kWdName)) {
         const u32 h = thread_dup(c, ((const u32 *)self)[0]);
@@ -6773,16 +6782,76 @@ static int handle_plausible(u32 h)
 }
 enum { NOTE_THREAD_REFUSED = 719 };
 
+// **Round 137: a thread handle is good only if the game was given it.** The
+// protection's Suspend/Resume (one veneer in the decrypted chunk, +0xf8:
+// 0x700000f8 on the bench, 0x742640f8 on the N95) has carried 0, 2, 5 and 7
+// -- no EKA2 handle, refused by handle_plausible, and the minimize survived.
+// The N95's third minimize of round 137 died KERN-EXEC 0 between the
+// focus-lost record and the refusal note that had followed it every other
+// time: a hooked import is not traced, so a Suspend whose garbage word
+// happened to look well-formed went through to the kernel without a record.
+// Refusing by caller is wrong (E723: the chunk is the game's own decrypted
+// code too, and a Resume from +0x359c on a real handle was refused). So the
+// port keeps the thread handles the game actually holds -- every
+// RThread::Create and RThread::Open result (gate6_thread_exists,
+// gate6_thread_open), minus every RHandleBase::Close (gate6_handle_close) --
+// and a Suspend or Resume from the decrypted chunk on any other word is
+// refused and written down. A caller inside the image keeps the round-130
+// test alone (E724: the game Resumes a handle the port never saw handed
+// over -- 0x2b0025 from 0xb8318 -- and refusing it stalled the game at
+// beat 19), so the strict table applies only where the protection lives.
+// The pseudo-handle for the current thread passes. A full table fails open.
+static void thr_live_add(Context *c, u32 h)
+{
+    if (!h || h == 0xFFFFFFFFu)
+        return;
+    for (u32 i = 0; i < c->thrLiveN; i++)
+        if (c->thrLive[i] == h)
+            return;
+    if (c->thrLiveN < 16)
+        c->thrLive[c->thrLiveN++] = h;
+}
+
+static void thr_live_drop(Context *c, u32 h)
+{
+    for (u32 i = 0; i < c->thrLiveN; i++)
+        if (c->thrLive[i] == h) {
+            c->thrLive[i] = c->thrLive[--c->thrLiveN];
+            return;
+        }
+}
+
+static int thr_live_ok(Context *c, u32 h, u32 lr)
+{
+    if (!handle_plausible(h))
+        return 0;                           // no EKA2 handle at all: round 130's test
+    if ((h & 0xFFFF7FFFu) == 0xFFFF0001u)
+        return 1;                           // KCurrentThreadHandle
+    if (lr - c->codeBase < c->codeLen)
+        return 1;                           // the game's own code: as before round 137
+    if (c->thrLiveN >= 16)
+        return 1;                           // full: fail open
+    for (u32 i = 0; i < c->thrLiveN; i++)
+        if (c->thrLive[i] == h)
+            return 1;
+    return 0;
+}
+
 extern "C" void gate6_thread_suspend(u32 *self, u32, Context *c)
 {
     typedef void (*Suspend)(void *);
     const u32 h = self ? self[0] : 0;
-    if (!handle_plausible(h)) {
+    const u32 lr = (u32)__builtin_return_address(0);    // the thunk is a tail jump: the caller's
+    log_event(c, NOTE_THREAD_REFUSED, 0x5051u);
+    log_event(c, NOTE_THREAD_REFUSED, h);
+    log_event(c, NOTE_THREAD_REFUSED, lr - c->codeBase);
+    if (!thr_live_ok(c, h, lr)) {
         log_event(c, NOTE_THREAD_REFUSED, 0x5050u);     // Suspend
         log_event(c, NOTE_THREAD_REFUSED, h);
         log_block(c);
         return;
     }
+    log_block(c);
     ((Suspend)c->realSuspend)(self);
 }
 
@@ -6803,15 +6872,21 @@ extern "C" void gate6_handle_close(u32 *self, u32, Context *c)
 {
     typedef void (*Close)(void *);
     log_event(c, NOTE_CLOSE_HANDLE, self ? self[0] : 0);
+    if (self)
+        thr_live_drop(c, self[0]);
     ((Close)c->realHandleClose)(self);
 }
 
 extern "C" int gate6_thread_resume(u32 *self, u32, Context *c)
 {
     typedef int (*Resume)(void *);
+    const u32 lr = (u32)__builtin_return_address(0);
     log_event(c, NOTE_THREAD_RESUME, (u32)self);
     log_event(c, NOTE_THREAD_HANDLE, self ? self[0] : 0);
-    if (!handle_plausible(self ? self[0] : 0)) {
+    log_event(c, NOTE_THREAD_REFUSED, 0x4E51u);
+    log_event(c, NOTE_THREAD_REFUSED, self ? self[0] : 0);
+    log_event(c, NOTE_THREAD_REFUSED, lr - c->codeBase);
+    if (!thr_live_ok(c, self ? self[0] : 0, lr)) {
         log_event(c, NOTE_THREAD_REFUSED, 0x4E50u);     // Resume
         log_block(c);
         return 0;

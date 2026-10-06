@@ -656,6 +656,34 @@ regression signal only against the ticks.
 - `emurun.sh` writes every bench run into `ROUNDS.md` as a `TODO` row and
   `checkrec.py` refuses to let one stay; `rules.py` prints the four rules.
 
+### 12.x A minimize that dies at the focus-lost event (round 137)
+
+**Symptom.** One build 011 on the N95: several minimizes and returns fine,
+then one minimize KERN-EXEC 0 at once. The log ends on the port's
+`WS EVENT a` record -- not the Suspend-refusal note that followed it in
+every other minimize since build 007, nor the foreground event.
+
+**Cause (the best-supported reading).** The protection's `RThread::Suspend`
+on focus lost carries a word that is no handle -- 0, 2, 5, 7 so far -- and
+build 007's test refuses it. A hooked import is not traced, so a Suspend
+that *passes* leaves no record at all; a garbage word that happens to look
+well-formed goes to the kernel, which panics the main thread. The gap in the
+log is exactly that call.
+
+**Fix (build 012).** Every Suspend/Resume is written down with its handle and
+caller offset. The port keeps the thread handles the game actually holds
+(every `RThread::Create` and `Open` result, minus every `RHandleBase::Close`);
+a call from the decrypted code chunk -- where the protection is -- on any
+other word is refused. The game's own code keeps the old test: the strict
+rule refused a loader-thread Resume on a handle the port never saw handed
+over and stalled the game (E724). Confirmed on the bench E725; the N95 is
+round 138.
+
+**Still open from round 136:** two deaths a few beats *after* a mid-fight
+minimize, in a worker's `Close` (box: last import 288, no record in the log).
+The sound thread's Closes in round 137 were all its own thread-owned timer
+handle. Build 012 carries the Close record, so the next one names itself.
+
 ## 11a. Found by ngtest, the test app (round 134, bench and N95)
 
 **The ninth thread to trap: E32USER-CBase 66.** `E692`. The trap bridge
