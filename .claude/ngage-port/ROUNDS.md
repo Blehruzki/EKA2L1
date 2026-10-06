@@ -786,6 +786,7 @@ them, and say so.
 | E714 | regression: ashen on EKA2L1 freeing dead threads' own heaps, port with lasting tables and mda_where on the calling stream | 89331 | `--` | Ashen clean 100 s: the same 89,331 records as E644 to E702, no fault, no BAD HANDLE |
 | E715 | regression: One driven into fights, EKA2L1 freeing dead threads' own heaps, port with lasting tables and mda_where on the calling stream | 21659 | `--` | One driven 170 s into fights: 472 heartbeat records, no fault, no BAD HANDLE; no thread of One's ended in the run (0 heaps freed). Music one 106 ms dropout at the load point (as E691) |
 | E716 | negative check: ngtest 3 with the round-134 port (no lasting tables, mda_where on the last stream) on the final EKA2L1: must fail as the N95 did | 9506 | `0x4B012B0` | **Negative check passes**: the round-134 port on the final EKA2L1 fails exactly as the N95 -- C done=2, D done=12 twice, the log ends after E2, the main thread reading 0x4B012B0 -- so the bench catches what the fix fixes |
+| E717 | One build 010 as packaged (009 plus the round-134 shared fixes): launch check | 6813 | `--` | One build 010 as packaged: launches, 60 s through the title and menus, 85 heartbeat records, no fault, no BAD HANDLE. It is build 009 (E666-E668) plus the four round-134 shared fixes already regressed on One in E703 and E715; GAME_BUILD 10 is the only change since E715. For the N95 in place of 009 |
 
 <!-- EMURUN -->
 
