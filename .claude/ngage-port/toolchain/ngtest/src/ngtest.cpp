@@ -19,6 +19,20 @@
 //      stream playing); then the worker stops its stream while the main
 //      thread is in a two-second busy loop, and records how long its Stop took.
 //   D  two workers playing; a second of busy loop (two streams).
+//   E  a -101 frame loop with the main stream fed from its callbacks, then
+//      with a worker's stream too; the longest gap between copies.
+//   F  a spinner thread at the main thread's priority against a busy second,
+//      sampled every 100 ms: does one priority share the CPU.
+//   C2/C3  a worker's Stop with the main thread idle, then with it busy for
+//      five seconds across the Stop; twice each.
+//   G  One's writer as it is: an Open package with no rate or channels, then
+//      SetAudioPropertiesL; 1280-sample buffers, written when fewer than 1120
+//      are ahead by Position, one in flight. G1 as is, G2 with 1600 more
+//      ahead (the port's 100 ms Position lead), G3 as G1 with the frame loop.
+//   H  a stream opened and left with nothing for half a second, then one
+//      buffer: what it does starved, and how long the first copy takes.
+// Phase A runs three times, for the scatter. The screen is purple while it
+// runs, and the application closes itself at DONE.
 // No writable static data: an EKA1 .app has none, so everything hangs off
 // heap objects.
 
@@ -67,12 +81,12 @@ private:
     RFile iFile;
     };
 
-static void FillTone(TDes8& aBuf, TInt aPhase)
+static void FillTone(TDes8& aBuf, TInt aPhase, TInt aSamples = KBufSamples)
     {
     // A quiet square wave at 400 Hz: no floating point, no tables.
-    aBuf.SetLength(KBufBytes);
+    aBuf.SetLength(aSamples * 2);
     TUint16* p = (TUint16*)aBuf.Ptr();
-    for (TInt i = 0; i < KBufSamples; i++)
+    for (TInt i = 0; i < aSamples; i++)
         p[i] = (TUint16)((((aPhase + i) / 20) & 1) ? 1500 : (TUint16)-1500);
     }
 
@@ -82,6 +96,30 @@ static TInt64 PositionUs(CMdaAudioOutputStream* aStream)
     {
     return aStream->Position().Int64();
     }
+
+static TInt PositionSamples(CMdaAudioOutputStream* aStream)
+    {
+    return (TInt)(PositionUs(aStream) / TInt64(1000)).Low() * (KRate / 1000);
+    }
+
+// The gaps between one stream's buffer copies: the phone's own measure of a
+// dropout, since it has no capture to read.
+struct TGaps
+    {
+    TInt iLast, iMax, iOver150, iN;
+    void Reset() { iLast = 0; iMax = 0; iOver150 = 0; iN = 0; }
+    void Copy(TInt aNow)
+        {
+        if (iLast)
+            {
+            TInt g = aNow - iLast;
+            if (g > iMax) iMax = g;
+            if (g > 150) iOver150++;
+            }
+        iLast = aNow;
+        iN++;
+        }
+    };
 
 // ---------------------------------------------------------------------------
 // A worker: its own scheduler, its own stream, a fixed script, and its
@@ -98,6 +136,7 @@ struct TWorkerShared
     TInt iPlayCompleteErr;
     TInt iPlayCompleteInStop;
     TInt iDone;
+    TGaps iGaps;
     };
 
 class CWorkerPlayer : public CActive, public MMdaAudioOutputStreamCallback
@@ -138,7 +177,7 @@ public:
         }
     void MaoscBufferCopied(TInt aError, const TDesC8&)
         {
-        if (aError == KErrNone && !iStopped) { iShared->iBuffers++; Write(); }
+        if (aError == KErrNone && !iStopped) { iShared->iBuffers++; iShared->iGaps.Copy(NowMs()); Write(); }
         }
     void MaoscPlayComplete(TInt aError)
         {
@@ -258,15 +297,207 @@ private:
     };
 
 // ---------------------------------------------------------------------------
+// The application's one control: purple while the phases run. At DONE the
+// application closes itself (User::Exit, as the Asphalts quit, BUGBOOK 1.u):
+// a later redraw did not reach the screen through the port on the bench
+// (E696-E698: DrawNow, then DrawDeferred, never redrawn), and an app that
+// closes is a signal nobody can miss. Purple has red equal to blue: an
+// inline TRgb from the 6.1 headers packs its channels in the old order, and
+// 9.x reads red and blue swapped.
+class CBlank : public CCoeControl
+    {
+public:
+    void ConstructL(const TRect& aRect) { iColour = TRgb(128, 0, 128); CreateWindowL(); SetRect(aRect); ActivateL(); }
+    void Draw(const TRect&) const
+        {
+        CWindowGc& gc = SystemGc();
+        gc.SetBrushColor(iColour);
+        gc.SetBrushStyle(CGraphicsContext::ESolidBrush);
+        gc.Clear(Rect());
+        }
+private:
+    TRgb iColour;
+    };
+
+// ---------------------------------------------------------------------------
+// One stream on the main thread with a script of its own (phases G and H).
+// The runner starts it, gives it a fixed time and reads its counts back.
+enum { KOneSamples = 1280, KOneRefill = 1120 };   // One's writer, E662 and the round-132 dumps
+
+class CStreamProbe : public CActive, public MMdaAudioOutputStreamCallback
+    {
+public:
+    enum TMode { EOneWriter, EStarved };
+    CStreamProbe(CLog* aLog, TMode aMode, TInt aThreshold, TBool aEmptyPackage)
+        : CActive(EPriorityStandard), iLog(aLog), iMode(aMode), iThreshold(aThreshold),
+          iEmptyPackage(aEmptyPackage), iBufPtr(0, 0)
+        {
+        CActiveScheduler::Add(this);
+        }
+    ~CStreamProbe()
+        {
+        Cancel();
+        iTimer.Close();
+        delete iStream;
+        delete iBuf;
+        }
+    void StartL()
+        {
+        User::LeaveIfError(iTimer.CreateLocal());
+        iBuf = HBufC8::NewL(KBufBytes);
+        iBufPtr.Set(iBuf->Des());
+        iGaps.Reset();
+        iAheadMin = 0x7fffffff;
+        iAheadMax = -0x7fffffff;
+        iStream = CMdaAudioOutputStream::NewL(*this);
+        if (iEmptyPackage)
+            {
+            // As One hands it over (E664): rate and channels 0, the default.
+            iSettings.iSampleRate = 0;
+            iSettings.iChannels = 0;
+            }
+        else
+            {
+            iSettings.iSampleRate = TMdaAudioDataSettings::ESampleRate16000Hz;
+            iSettings.iChannels = TMdaAudioDataSettings::EChannelsMono;
+            }
+        iSettings.iFlags = TMdaAudioDataSettings::ENoNetworkRouting;
+        iSettings.iVolume = 1;
+        iT0 = NowMs();
+        iStream->Open(&iSettings);
+        }
+    // Ends the script: a Stop whose callbacks are not counted.
+    void Halt()
+        {
+        if (iHalted) return;
+        iHalted = ETrue;
+        Cancel();
+        if (iStream && iOpened)
+            {
+            TInt t0 = NowMs();
+            iStream->Stop();
+            iStopMs = NowMs() - t0;
+            }
+        }
+
+    void MaoscOpenComplete(TInt aError)
+        {
+        iOpenErr = aError;
+        iOpenMs = NowMs() - iT0;
+        if (aError != KErrNone || iHalted) return;
+        iOpened = ETrue;
+        TRAP(iPropsErr, iStream->SetAudioPropertiesL(TMdaAudioDataSettings::ESampleRate16000Hz, TMdaAudioDataSettings::EChannelsMono));
+        iStream->SetVolume(iStream->MaxVolume() / 4);
+        iStart = NowMs();
+        iTimer.After(iStatus, iMode == EStarved ? 500000 : 20000);
+        SetActive();
+        }
+    void MaoscBufferCopied(TInt aError, const TDesC8&)
+        {
+        if (iHalted) return;
+        iInFlight = EFalse;
+        if (aError != KErrNone) { iCopyErrs++; iCopyErr = aError; return; }
+        TInt now = NowMs();
+        iGaps.Copy(now);
+        if (!iFirstCopyMs)
+            {
+            iFirstCopyMs = now - iFirstWrite;
+            iFirstCopyPos = PositionSamples(iStream);
+            }
+        }
+    void MaoscPlayComplete(TInt aError)
+        {
+        if (iHalted) return;
+        iInFlight = EFalse;
+        iPlayCompletes++;
+        iPlayCompleteErr = aError;
+        if (aError == KErrUnderflow) iUnderflows++;
+        if (!iPlayCompleteMs) iPlayCompleteMs = NowMs() - (iFirstWrite ? iFirstWrite : iStart);
+        }
+    void Report(const TDesC& aTag)
+        {
+        iLog->Line(_L("%S open err=%d %d ms, props err=%d, stop %d ms"), &aTag, iOpenErr, iOpenMs, iPropsErr, iStopMs);
+        if (iMode == EOneWriter)
+            {
+            TInt avg = iAheadN ? iAheadSum / iAheadN : 0;
+            iLog->Line(_L("%S writes %d copies %d (errors %d, last %d), underflows %d of %d play-completes"),
+                &aTag, iWrites, iGaps.iN, iCopyErrs, iCopyErr, iUnderflows, iPlayCompletes);
+            iLog->Line(_L("%S ahead by Position, samples: min %d avg %d max %d over %d polls; copy gap max %d ms, %d over 150 ms"),
+                &aTag, iAheadMin, avg, iAheadMax, iAheadN, iGaps.iMax, iGaps.iOver150);
+            }
+        else
+            iLog->Line(_L("%S starved 500 ms: %d play-completes before the write; first copy %d ms after it at Position %d; play-complete err=%d at %d ms"),
+                &aTag, iEarlyCompletes, iFirstCopyMs, iFirstCopyPos, iPlayCompleteErr, iPlayCompleteMs);
+        }
+
+private:
+    void RunL()
+        {
+        if (iHalted) return;
+        if (iMode == EStarved)
+            {
+            if (!iFirstWrite)
+                {
+                iEarlyCompletes = iPlayCompletes;
+                iPlayCompletes = 0;
+                iPlayCompleteMs = 0;
+                iFirstWrite = NowMs();
+                Write(KBufSamples);
+                }
+            return;
+            }
+        // One's writer: by Position, top up one buffer when it runs low.
+        TInt ahead = iWritten - PositionSamples(iStream);
+        if (ahead < iAheadMin) iAheadMin = ahead;
+        if (ahead > iAheadMax) iAheadMax = ahead;
+        iAheadSum += ahead;
+        iAheadN++;
+        if (!iInFlight && ahead < iThreshold)
+            Write(KOneSamples);
+        iTimer.After(iStatus, 20000);
+        SetActive();
+        }
+    void DoCancel() { iTimer.Cancel(); }
+    void Write(TInt aSamples)
+        {
+        FillTone(iBufPtr, iWritten, aSamples);
+        iWritten += aSamples;
+        iWrites++;
+        iInFlight = ETrue;
+        if (!iFirstWrite) iFirstWrite = NowMs();
+        TRAPD(err, iStream->WriteL(iBufPtr));
+        if (err) { iInFlight = EFalse; iCopyErrs++; iCopyErr = err; }
+        }
+
+    CLog* iLog;
+    TMode iMode;
+    TInt iThreshold;
+    TBool iEmptyPackage;
+    CMdaAudioOutputStream* iStream;
+    TMdaAudioDataSettings iSettings;
+    HBufC8* iBuf;
+    TPtr8 iBufPtr;
+    RTimer iTimer;
+    TBool iOpened, iHalted, iInFlight;
+    TInt iT0, iStart, iOpenErr, iOpenMs, iPropsErr, iStopMs;
+    TInt iWritten, iWrites, iCopyErrs, iCopyErr, iUnderflows, iPlayCompletes, iPlayCompleteErr, iPlayCompleteMs;
+    TInt iAheadMin, iAheadMax, iAheadSum, iAheadN;
+    TInt iFirstWrite, iFirstCopyMs, iFirstCopyPos, iEarlyCompletes;
+    TGaps iGaps;
+    };
+
+// ---------------------------------------------------------------------------
 // The main thread's runner: one active object, a state machine of phases.
 class CRunner : public CActive, public MMdaAudioOutputStreamCallback
     {
 public:
     enum TState { EIdle, EAOpen, EAPlay, EAStop, EAStarve, EBDone, ECWarm, ECOneBusy, ECWaitStop, ECStopBusy,
-                  ECJoin, EDWarm, EDBusy, EDJoin, EEOpen, EEKick, EEKick2, EEEnd, EDone };
-    static CRunner* NewL()
+                  ECJoin, EDWarm, EDBusy, EDJoin, EEOpen, EEKick, EEKick2, EEEnd, EDone,
+                  EARepeat, EC2Log, EC3Busy, EC3Log, EGEnd, EHEnd };
+    static CRunner* NewL(CBlank* aBlank)
         {
         CRunner* self = new (ELeave) CRunner;
+        self->iBlank = aBlank;
         CleanupStack::PushL(self);
         self->ConstructL();
         CleanupStack::Pop(self);
@@ -276,6 +507,7 @@ public:
         {
         Cancel();
         iTimer.Close();
+        delete iProbe;
         delete iKick;
         delete iStream;
         delete iBuf;
@@ -287,7 +519,7 @@ public:
     void MaoscOpenComplete(TInt aError)
         {
         Cancel();               // the watchdog
-        iLog->Line(_L("A open-complete err=%d after %d ms"), aError, Ms() - iT0);
+        iLog->Line(_L("A%d open-complete err=%d after %d ms"), iARound + 1, aError, Ms() - iT0);
         if (aError != KErrNone) { Next(EBDone, 10); return; }
         TRAPD(err, iStream->SetAudioPropertiesL(TMdaAudioDataSettings::ESampleRate16000Hz, TMdaAudioDataSettings::EChannelsMono));
         TInt max = iStream->MaxVolume();
@@ -300,6 +532,7 @@ public:
             if (!iKick) iKick = new CKick;
             iKickStart = Ms();
             iKickCopies0 = iCopies;
+            iGaps.Reset();
             iKick->Go();
             Next(EEKick, 3000);
             return;
@@ -312,11 +545,12 @@ public:
         {
         iCopies++;
         if (aError != KErrNone) { iCopyErr = aError; iCopyErrs++; return; }
+        iGaps.Copy(Ms());
         TInt64 pos = PositionUs(iStream);
         TInt played = (TInt)(pos / TInt64(1000)).Low() * (KRate / 1000);
         if ((iCopies % 4) == 1 && !iPhaseE)
-            iLog->Line(_L("A copied #%d at %d ms (fast %u): written %d played %d ahead %d"),
-                iCopies, Ms() - iPlayStart, User::FastCounter(), iWritten, played, iWritten - played);
+            iLog->Line(_L("A%d copied #%d at %d ms (fast %u): written %d played %d ahead %d"),
+                iARound + 1, iCopies, Ms() - iPlayStart, User::FastCounter(), iWritten, played, iWritten - played);
         if (iPhaseE)
             {
             Write();
@@ -337,11 +571,11 @@ public:
         }
     void MaoscPlayComplete(TInt aError)
         {
-        iLog->Line(_L("A play-complete err=%d inside-stop=%d at %d ms"), aError, iInStop, Ms() - iPlayStart);
+        iLog->Line(_L("A%d play-complete err=%d inside-stop=%d at %d ms"), iARound + 1, aError, iInStop, Ms() - iPlayStart);
         if (!iInStop && iState == EAStarve)
             {
-            iLog->Line(_L("A underflow came %d ms after the last write"), Ms() - iLastWrite);
-            Next(EBDone, 200);
+            iLog->Line(_L("A%d underflow came %d ms after the last write"), iARound + 1, Ms() - iLastWrite);
+            Next(iARound < 2 ? EARepeat : EBDone, 200);
             }
         }
 
@@ -353,8 +587,10 @@ private:
         User::LeaveIfError(iTimer.CreateLocal());
         iBuf = HBufC8::NewL(KBufBytes);
         iBufPtr.Set(iBuf->Des());
-        iLog->Line(_L("ngtest 1: FastCounter %u, TickCount %u"), User::FastCounter(), User::TickCount());
+        iLog->Line(_L("ngtest 2: FastCounter %u, TickCount %u"), User::FastCounter(), User::TickCount());
         iT0 = Ms();
+        iStartMs = iT0;
+        iGaps.Reset();
         Next(EAOpen, 500);
         }
     // Real time in ms, from the clock rather than TickCount, whose rate is
@@ -383,8 +619,8 @@ private:
         iInStop = ETrue;
         iStream->Stop();
         iInStop = EFalse;
-        iLog->Line(_L("A Stop took %d ms (%u fast ticks); copies %d, errors %d (last %d)"),
-            Ms() - t0, User::FastCounter() - f0, iCopies, iCopyErrs, iCopyErr);
+        iLog->Line(_L("A%d Stop took %d ms (%u fast ticks); copies %d, errors %d (last %d); copy gap max %d ms, %d over 150 ms"),
+            iARound + 1, Ms() - t0, User::FastCounter() - f0, iCopies, iCopyErrs, iCopyErr, iGaps.iMax, iGaps.iOver150);
         // WriteL after a Stop, without Open: does the stream start again?
         iAfterStopWrites = 0;
         Next(EAStarve, 5000);   // a watchdog: the underflow moves the state on
@@ -416,9 +652,98 @@ private:
     void LogWorker(TInt aIndex)
         {
         TWorkerShared* s = iShared[aIndex];
+        if (!s) { iLog->Line(_L("worker %d: none"), aIndex); return; }
         iLog->Line(_L("worker %d: open err=%d buffers=%d stop %d ms (%u fast ticks), play-complete err=%d inside-stop=%d done=%d"),
             aIndex, s->iOpenErr, s->iBuffers, s->iStopEndMs - s->iStopStartMs,
             s->iStopEndTick - s->iStopStartTick, s->iPlayCompleteErr, s->iPlayCompleteInStop, s->iDone);
+        iLog->Line(_L("worker %d: copy gap max %d ms, %d over 150 ms"), aIndex, s->iGaps.iMax, s->iGaps.iOver150);
+        }
+    // A finished worker's thread and record, freed for the next phase. One
+    // still running keeps its record (leaked rather than freed under it).
+    void ReleaseWorker(TInt aIndex)
+        {
+        if (!iShared[aIndex]) return;
+        if (iThread[aIndex].ExitType() == EExitPending)
+            iLog->Line(_L("worker %d still running at release"), aIndex);
+        else
+            delete iShared[aIndex];
+        iShared[aIndex] = NULL;
+        iThread[aIndex].Close();
+        }
+
+    void StartC2()
+        {
+        StartWorker(0, 3000);
+        Next(EC2Log, 4500);
+        }
+    void StartG()
+        {
+        // G1 One's threshold, G2 1600 samples more (the port's lead), G3 G1
+        // with the frame loop running.
+        TInt threshold = (iRep == 1) ? KOneRefill + 1600 : KOneRefill;
+        iProbe = new (ELeave) CStreamProbe(iLog, CStreamProbe::EOneWriter, threshold, ETrue);
+        TRAPD(err, iProbe->StartL());
+        if (err) iLog->Line(_L("G%d start left %d"), iRep + 1, err);
+        if (iRep == 2)
+            {
+            if (!iKick) iKick = new CKick;
+            iKick->Go();
+            }
+        Next(EGEnd, 6000);
+        }
+    void StartH()
+        {
+        iProbe = new (ELeave) CStreamProbe(iLog, CStreamProbe::EStarved, 0, EFalse);
+        TRAPD(err, iProbe->StartL());
+        if (err) iLog->Line(_L("H%d start left %d"), iRep + 1, err);
+        Next(EHEnd, 2500);
+        }
+    // Phase F: a spinner at the main thread's priority against a busy
+    // second, its count read every 100 ms.
+    void RunSpinner(TInt aRep)
+        {
+        TSpinShared* sp = new TSpinShared;
+        sp->iStop = 0;
+        sp->iCount = 0;
+        sp->iSeenStop = -1;
+        sp->iArg = 0;
+        RThread spin;
+        TBuf<16> name;
+        name.Format(_L("ngspin%d"), aRep);
+        TInt err = spin.Create(name, SpinMain, 0x2000, 0x1000, 0x10000, sp);
+        if (err != KErrNone)
+            {
+            iLog->Line(_L("F%d spinner not created: %d"), aRep, err);
+            delete sp;
+            return;
+            }
+        TRequestStatus st;
+        spin.Logon(st);
+        if (aRep == 1)
+            iLog->Line(_L("F priorities: main %d, spinner %d"), (TInt)RThread().Priority(), (TInt)spin.Priority());
+        spin.Resume();
+        User::After(100000);        // let it through its startup and into the loop
+        TInt c0 = sp->iCount;
+        TInt d[10];
+        TInt n = 0;
+        TInt prev = c0;
+        for (TInt i = 0; i < 10; i++)
+            {
+            n += Busy(100);
+            TInt c = sp->iCount;
+            d[i] = c - prev;
+            prev = c;
+            }
+        sp->iStop = 1;
+        User::WaitForRequest(st);
+        iLog->Line(_L("F%d one second, main busy and a same-priority spinner: main %d iterations (%d%% of B), spinner +%d (%d in its first 100 ms alone)"),
+            aRep, n, Pct(n, iBusy0), prev - c0, c0);
+        iLog->Line(_L("F%d spinner per 100 ms: %d %d %d %d %d %d %d %d %d %d"),
+            aRep, d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8], d[9]);
+        if (sp->iSeenStop != 0)
+            iLog->Line(_L("F%d spinner saw stop at entry (%d): it never ran before the busy second"), aRep, sp->iSeenStop);
+        spin.Close();
+        delete sp;
         }
 
     void RunL()
@@ -478,10 +803,8 @@ private:
             }
         case ECJoin:
             LogWorker(0);
+            ReleaseWorker(0);
             StartWorker(1, 6000);
-            iThread[0].Close();
-            delete iShared[0];
-            iShared[0] = NULL;
             StartWorker(0, 6000);
             Next(EDWarm, 1500);
             break;
@@ -513,11 +836,10 @@ private:
             {
             iKick->Halt();
             TInt t = Ms() - iKickStart;
-            iLog->Line(_L("E frame loop, main stream playing: %d frames in %d ms, %d buffers copied"), iKick->iRuns, t, iCopies - iKickCopies0);
-            iThread[0].Close();
-            delete iShared[0];
-            iShared[0] = NULL;
-            iThread[1].Close();
+            iLog->Line(_L("E frame loop, main stream playing: %d frames in %d ms, %d buffers copied, copy gap max %d ms, %d over 150 ms"),
+                iKick->iRuns, t, iCopies - iKickCopies0, iGaps.iMax, iGaps.iOver150);
+            ReleaseWorker(0);
+            ReleaseWorker(1);
             StartWorker(0, 5000);
             Next(EEKick2, 1500);
             iState = EEKick2;
@@ -530,6 +852,7 @@ private:
                 iKickPhase = 2;
                 iKickStart = Ms();
                 iKickCopies0 = iCopies;
+                iGaps.Reset();
                 iKick->Go();
                 Next(EEKick2, 3000);
                 }
@@ -537,53 +860,99 @@ private:
                 {
                 iKick->Halt();
                 TInt t = Ms() - iKickStart;
-                iLog->Line(_L("E frame loop, main stream and a worker's playing: %d frames in %d ms, %d buffers copied"), iKick->iRuns, t, iCopies - iKickCopies0);
+                iLog->Line(_L("E frame loop, main stream and a worker's playing: %d frames in %d ms, %d buffers copied, copy gap max %d ms, %d over 150 ms"),
+                    iKick->iRuns, t, iCopies - iKickCopies0, iGaps.iMax, iGaps.iOver150);
                 Next(EEEnd, 2000);
                 }
             break;
         case EEEnd:
-            {
             if (iStream) iStream->Stop();
             LogWorker(0);
-            // Phase F.
-            TSpinShared* sp = new TSpinShared;
-            sp->iStop = 0;
-            sp->iCount = 0;
-            sp->iSeenStop = -1;
-            sp->iArg = 0;
-            RThread spin;
-            TInt err = spin.Create(_L("ngspin"), SpinMain, 0x2000, 0x1000, 0x10000, sp);
-            if (err == KErrNone)
-                {
-                TRequestStatus st;
-                spin.Logon(st);
-                iLog->Line(_L("F priorities: main %d, spinner %d"), (TInt)RThread().Priority(), (TInt)spin.Priority());
-                TInt t0 = NowMs();
-                spin.Resume();
-                TInt t1 = NowMs();
-                User::After(100000);        // let it through its startup and into the loop
-                TInt c0 = sp->iCount;
-                TInt n = Busy(1000);
-                TInt c1 = sp->iCount;
-                TInt t2 = NowMs();
-                sp->iStop = 1;
-                User::WaitForRequest(st);
-                iLog->Line(_L("F one second, main busy and a same-priority spinner: main %d iterations (%d%% of B), spinner %d"),
-                    n, Pct(n, iBusy0), sp->iCount);
-                TExitCategoryName cat = spin.ExitCategory();
-                iLog->Line(_L("F spinner: arg %08x (shared %08x), stop seen at entry %d, exit type %d reason %d category %S"),
-                    (TUint32)sp->iArg, (TUint32)sp, sp->iSeenStop, (TInt)spin.ExitType(), spin.ExitReason(), &cat);
-                iLog->Line(_L("F times from Resume: Resume returned %d ms, busy ended %d ms, spinner entered %d ms"),
-                    t1 - t0, t2 - t0, sp->iEntryMs - t0);
-                iLog->Line(_L("F spinner count: %d after the 100 ms sleep, %d after the busy second (+%d during it)"),
-                    c0, c1, c1 - c0);
-                spin.Close();
-                }
+            ReleaseWorker(0);
+            RunSpinner(1);
+            RunSpinner(2);
+            iRep = 0;
+            StartC2();
+            break;
+        case EARepeat:
+            delete iStream;
+            iStream = NULL;
+            iARound++;
+            iCopies = 0;
+            iWritten = 0;
+            iCopyErrs = 0;
+            iCopyErr = 0;
+            iGaps.Reset();
+            Next(EAOpen, 300);
+            break;
+        case EC2Log:
+            // C2: the worker stopped at 3 s with the main thread idle -- the
+            // baseline for C3's Stop under a busy main thread.
+            iLog->Line(_L("C2.%d worker's Stop with the main thread idle:"), iRep + 1);
+            LogWorker(0);
+            ReleaseWorker(0);
+            StartWorker(0, 3000);
+            Next(EC3Busy, 1000);
+            break;
+        case EC3Busy:
+            {
+            // C3: busy from 1 s to 6 s; the worker's Stop falls at 3 s.
+            TInt n = Busy(5000);
+            iLog->Line(_L("C3.%d busy 5 s across the worker's Stop: %d iterations (%d%% of B per second)"),
+                iRep + 1, n, Pct(n / 5, iBusy0));
+            Next(EC3Log, 1500);
+            break;
+            }
+        case EC3Log:
+            iLog->Line(_L("C3.%d worker's Stop with the main thread busy:"), iRep + 1);
+            LogWorker(0);
+            ReleaseWorker(0);
+            if (++iRep < 2)
+                StartC2();
             else
-                iLog->Line(_L("F spinner not created: %d"), err);
-            delete sp;
-            iLog->Line(_L("DONE"));
-            iState = EDone;
+                {
+                iRep = 0;
+                StartG();
+                }
+            break;
+        case EGEnd:
+            {
+            if (iRep == 2 && iKick) iKick->Halt();
+            iProbe->Halt();
+            TBuf<4> tag;
+            tag.Format(_L("G%d"), iRep + 1);
+            iProbe->Report(tag);
+            if (iRep == 2 && iKick)
+                iLog->Line(_L("G3 frame loop: %d frames in the run"), iKick->iRuns);
+            delete iProbe;
+            iProbe = NULL;
+            if (++iRep < 3)
+                StartG();
+            else
+                {
+                iRep = 0;
+                StartH();
+                }
+            break;
+            }
+        case EHEnd:
+            {
+            iProbe->Halt();
+            TBuf<4> tag;
+            tag.Format(_L("H%d"), iRep + 1);
+            iProbe->Report(tag);
+            delete iProbe;
+            iProbe = NULL;
+            if (++iRep < 2)
+                StartH();
+            else
+                {
+                iLog->Line(_L("DONE in %d s"), (Ms() - iStartMs) / 1000);
+                iState = EDone;
+                delete iLog;            // closed, so the file is whole before the process goes
+                iLog = NULL;
+                User::Exit(KErrNone);
+                }
             break;
             }
         default:
@@ -608,21 +977,10 @@ private:
     TInt iKickStart, iKickCopies0, iKickPhase;
     TWorkerShared* iShared[2];
     RThread iThread[2];
-    };
-
-// ---------------------------------------------------------------------------
-// The application, minimal: a black control and the runner.
-class CBlank : public CCoeControl
-    {
-public:
-    void ConstructL(const TRect& aRect) { CreateWindowL(); SetRect(aRect); ActivateL(); }
-    void Draw(const TRect&) const
-        {
-        CWindowGc& gc = SystemGc();
-        gc.SetBrushColor(KRgbBlack);
-        gc.SetBrushStyle(CGraphicsContext::ESolidBrush);
-        gc.Clear(Rect());
-        }
+    TInt iARound, iRep, iStartMs;
+    TGaps iGaps;
+    CStreamProbe* iProbe;
+    CBlank* iBlank;
     };
 
 class CNgAppUi : public CAknAppUi
@@ -634,7 +992,7 @@ public:
         iBlank = new (ELeave) CBlank;
         iBlank->ConstructL(ClientRect());
         AddToStackL(iBlank);
-        iRunner = CRunner::NewL();
+        iRunner = CRunner::NewL(iBlank);
         }
     ~CNgAppUi()
         {

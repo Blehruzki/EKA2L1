@@ -23,9 +23,9 @@ enum {
     IMPORT_APP_FULL_NAME               =     0,
     IMPORT_APP_RECT                    = 65535,   // absent
     IMPORT_BASECONSTRUCTL              =     4,
-    IMPORT_CACTIVE_CTOR                =   172,
+    IMPORT_CACTIVE_CTOR                =   171,
     IMPORT_CANCEL                      =   130,
-    IMPORT_CLEANUP_NEW                 =   147,
+    IMPORT_CLEANUP_NEW                 =   146,
     IMPORT_CLIENT_RECT                 =    72,
     IMPORT_COECONTROL_CTOR             =    56,
     IMPORT_COEENV_STATIC               = 65535,   // absent
@@ -38,15 +38,15 @@ enum {
     IMPORT_CTL_DRAWABLE_WINDOW         = 65535,   // absent
     IMPORT_CTL_RECT                    =    43,
     IMPORT_CTL_SETRECT                 = 65535,   // absent
-    IMPORT_DELETE_OP                   =   175,
-    IMPORT_DES_FORMAT                  =   142,
-    IMPORT_DES_FORMATLIST              =   141,
+    IMPORT_DELETE_OP                   =   174,
+    IMPORT_DES_FORMAT                  =   141,
+    IMPORT_DES_FORMATLIST              =   140,
     IMPORT_DIVDF3                      = 65535,   // absent
     IMPORT_DLL_NAME                    = 65535,   // absent
     IMPORT_DSA_NEWL                    = 65535,   // absent
     IMPORT_DSA_STARTL                  = 65535,   // absent
     IMPORT_EQDF2                       = 65535,   // absent
-    IMPORT_EXIT                        = 65535,   // absent
+    IMPORT_EXIT                        =   137,
     IMPORT_EXTENDSFDF2                 = 65535,   // absent
     IMPORT_FILEMAN_NEWL                = 65535,   // absent
     IMPORT_FILE_CREATE                 = 65535,   // absent
@@ -66,7 +66,7 @@ enum {
     IMPORT_GEDF2                       = 65535,   // absent
     IMPORT_GTDF2                       = 65535,   // absent
     IMPORT_LEAVE                       = 65535,   // absent
-    IMPORT_LEAVE_IF_ERROR              =   144,
+    IMPORT_LEAVE_IF_ERROR              =   143,
     IMPORT_LEAVE_NOMEM                 = 65535,   // absent
     IMPORT_LEDF2                       = 65535,   // absent
     IMPORT_LIBRARY_LOAD                = 65535,   // absent
@@ -92,15 +92,15 @@ enum {
     IMPORT_MATH_SIN                    = 65535,   // absent
     IMPORT_MATH_SQRT                   = 65535,   // absent
     IMPORT_MATH_TAN                    = 65535,   // absent
-    IMPORT_MDA_NEWL                    =   181,
+    IMPORT_MDA_NEWL                    =   180,
     IMPORT_MSG_COMPLETE                = 65535,   // absent
     IMPORT_MULDF3                      = 65535,   // absent
     IMPORT_NEDF2                       = 65535,   // absent
     IMPORT_NEGDF2                      = 65535,   // absent
     IMPORT_PANIC                       = 65535,   // absent
-    IMPORT_PUSHL_CBASE                 =   151,
+    IMPORT_PUSHL_CBASE                 =   150,
     IMPORT_READ_FILE_SECTION           = 65535,   // absent
-    IMPORT_REQUEST_COMPLETE            =   152,
+    IMPORT_REQUEST_COMPLETE            =   151,
     IMPORT_SCREEN_INFO                 = 65535,   // absent
     IMPORT_SCREEN_UPDATE               = 65535,   // absent
     IMPORT_SEM_CREATE                  = 65535,   // absent
@@ -112,12 +112,12 @@ enum {
     IMPORT_SYSTEM_GC                   =    54,
     IMPORT_THREAD_CREATE               = 65535,   // absent
     IMPORT_THREAD_OPEN                 = 65535,   // absent
-    IMPORT_THREAD_RESUME               =   153,
+    IMPORT_THREAD_RESUME               =   152,
     IMPORT_THREAD_SUSPEND              = 65535,   // absent
     IMPORT_TRUNCDFSF2                  = 65535,   // absent
     IMPORT_USER_ALLOC                  = 65535,   // absent
     IMPORT_USER_ALLOCL                 = 65535,   // absent
-    IMPORT_USER_ALLOCZ                 =   179,
+    IMPORT_USER_ALLOCZ                 =   178,
     IMPORT_USER_ALLOCZL                =   124,
     IMPORT_USER_FREE_OP                = 65535,   // absent
     IMPORT_VEC_DELETE_OP               = 65535,   // absent
@@ -136,13 +136,13 @@ enum {
 
 // The trace lists: see MILESTONES and HOT in gen_shim.py. Both may be
 // empty, which is why gate6.cpp appends the two exits to the first.
-#define GATE_MILESTONES  65, 64, 152, 153, 131, 147, 167, 143, 144, 157, 181,
-#define GATE_HOT  166, 169,
+#define GATE_MILESTONES  65, 64, 151, 152, 131, 146, 166, 142, 143, 156, 180,
+#define GATE_HOT  165, 168,
 #define GATE_HOT_COUNT 2
 
 // The diversions: see DIVERTS in gen_shim.py. {import, register,
 // which wrapper}, and an import the game does not have is left out.
-#define GATE_DIVERTS  { 72, 1, 0 }, { 20, 0, 1 }, { 43, 1, 1 }, { 38, 0, 1 }, { 49, 1, 1 }, { 44, 1, 1 }, { 6, 0, 0 }, { 8, 0, 0 }, { 125, 0, 2 }, { 155, 0, 2 },
+#define GATE_DIVERTS  { 72, 1, 0 }, { 20, 0, 1 }, { 43, 1, 1 }, { 38, 0, 1 }, { 49, 1, 1 }, { 44, 1, 1 }, { 6, 0, 0 }, { 8, 0, 0 }, { 125, 0, 2 }, { 154, 0, 2 },
 #define GATE_DIVERT_COUNT 10
 
 #endif

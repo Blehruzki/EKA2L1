@@ -1174,6 +1174,8 @@ struct Context {
     u32 mdaNewL;            // the real CMdaAudioOutputStream::NewL
     u32 mdaWrites;          // how many buffers have gone to it
     u32 mdaProxyObj;        // our stream proxy, so a callback can look at it
+    u32 mdaFreeObj, mdaFreeCb;  // stream and callback proxies given back, for the next NewL
+    u32 mdaQuarObj, mdaQuarCb;  // the last ones given back, held one free longer (mda_release)
     u32 mdaCopies;          // and how many it has said it copied
     u32 mode;               // how the picture is fitted: 1:1, shape-kept, or filled
     u32 clearPending;       // blank the framebuffer once, after any change
@@ -1243,8 +1245,7 @@ struct Context {
     u32 *dsaReal;           // the CDirectScreenAccess ws32 made
     u32 *dsaShadow;         // and the old-layout view of it the game holds
     u32 screenLost;         // the window server has taken the screen away
-    struct TrapHandler *trapHandlers[8]; // the port's TTrapHandler, one per thread that has trapped
-    u32 trapHandlerCount;
+    u32 trapHandlerCount;   // threads given the port's TTrapHandler, ever (a count only: see trap_handler)
     u32 trapVt[3];          // its vtable: Trap, UnTrap, Leave, as ctx thunks
     u32 trapLogs;           // enter records written so far (capped: the game traps every frame)
     u32 forceLeaveN;        // bench knob counter, see FORCE_LEAVE_AT
@@ -10576,7 +10577,7 @@ static void mda_where(Context *c, u32 slot, u32 proxy)
 // skipped, XLeaveException::GetReason is called on a dummy to balance the
 // Exec::LeaveStart the leave already made. Rounds 106 to 108: without this,
 // SetAudioPropertiesL leaving inside the game's TRAP ended in std::terminate.
-enum { TRAP_KINDS = 64, TRAP_THREADS = 8, TRAP_LOG_CAP = 64 };
+enum { TRAP_KINDS = 64, TRAP_LOG_CAP = 64 };
 struct TrapHandler {
     u32 vptr;               // -> c->trapVt
     u32 *iCleanup;          // **at offset 4, as TCleanupTrapHandler keeps it**: euser's
@@ -10598,12 +10599,19 @@ extern "C" void gate6_trap_mark(void *self, u32, u32, Context *c);
 extern "C" void gate6_trap_unmark(void *self, u32, u32, Context *c);
 extern "C" void gate6_trap_leave(void *self, u32 reason, u32, Context *c);
 
+// The installed handler is ours exactly when its vtable is c->trapVt: a
+// thread's first handler is always the TCleanupTrapHandler CTrapCleanup::New
+// made, with euser's vtable. Round 134 (ngtest): this was a table of eight
+// handlers, never emptied when a thread ended and matched by address alone.
+// The ninth thread to trap got no handler, so the game's TRAP marked nothing
+// and its first CleanupStack::PushL panicked E32USER-CBase 66
+// (EClnPushAtLevelZero); and a new thread's handler allocated where a dead
+// thread's had been would have matched the dead entry.
 static TrapHandler *trap_handler(Context *c)
 {
     u32 *cur = (u32 *)user_traphandler();
-    for (u32 i = 0; i < c->trapHandlerCount; i++)
-        if ((u32 *)c->trapHandlers[i] == cur)
-            return c->trapHandlers[i];
+    if (cur && c->trapVt[0] && cur[0] == (u32)c->trapVt)
+        return (TrapHandler *)cur;
     // No cleanup stack on this thread yet (CTrapCleanup::New not called):
     // nothing to wrap, and PushL would read a null CCleanup through us.
     // The game's trap then behaves as it did before the bridge.
@@ -10616,15 +10624,13 @@ static TrapHandler *trap_handler(Context *c)
         c->trapVt[1] = ctx3_thunk(c->spare, c, (u32)&gate6_trap_unmark); c->spare += TRACE;
         c->trapVt[2] = ctx3_thunk(c->spare, c, (u32)&gate6_trap_leave);  c->spare += TRACE;
     }
-    if (c->trapHandlerCount >= (u32)TRAP_THREADS)
-        return 0;
     TrapHandler *h = (TrapHandler *)user_allocz((int)sizeof *h);
     if (!h)
         return 0;
     h->vptr = (u32)c->trapVt;
     h->iCleanup = (u32 *)cur[1];
     h->orig = (u32 *)user_settraphandler(h);
-    c->trapHandlers[c->trapHandlerCount++] = h;
+    c->trapHandlerCount++;
     log_event(c, NOTE_TRAP, 0x5E7);
     log_event(c, NOTE_TRAP, (u32)h->orig);
     log_block(c);
@@ -10865,6 +10871,40 @@ static void mda_owed_stop(Context *c, int si)
     ((Any)((const u32 *)p[2])[kMdaMap[10]])((void *)p[1], 0, 0, 0);
 }
 
+// **Round 134: the proxies are given back.** Every NewL took about a
+// kilobyte of the spare arena -- the stream proxy (its vtable and fourteen
+// trampolines) and the callback proxy -- and nothing returned it, so the
+// twentieth stream of a launch found no room: its callback went to the
+// platform bare, and the first MaoscOpenComplete jumped to the mixin's
+// offset-to-top (ngtest, 0xffffffe8; the -4 of the comment at CB_PROXY).
+// One's sound thread makes a stream more than once a session. Now the
+// deleting destructor (slot 2) gives both back to a free list. The block
+// just given back is held one free longer: the trampoline the destructor
+// came through returns through three more of its words after this, and
+// another thread's NewL must not rewrite them under it.
+static u32 *mda_take(u32 *list)
+{
+    u32 *b = (u32 *)*list;
+    if (b)
+        *list = b[0];
+    return b;
+}
+
+static void mda_release(Context *c, u32 *obj)
+{
+    u32 *co = (u32 *)obj[3];
+    if (c->mdaQuarObj) {
+        ((u32 *)c->mdaQuarObj)[0] = c->mdaFreeObj;
+        c->mdaFreeObj = c->mdaQuarObj;
+    }
+    if (c->mdaQuarCb) {
+        ((u32 *)c->mdaQuarCb)[0] = c->mdaFreeCb;
+        c->mdaFreeCb = c->mdaQuarCb;
+    }
+    c->mdaQuarObj = (u32)obj;
+    c->mdaQuarCb = (u32)co;             // 0 when the stream had no callback proxy
+}
+
 extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
 {
     typedef u32 (*Any)(void *, u32, u32, u32);
@@ -10988,6 +11028,7 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
         for (u32 i = 0; i < (u32)MDA_STREAMS; i++)
             if (c->mdaObj[i] == saved[0]) {
                 c->mdaObj[i] = 0;
+                c->mdaCb[i] = 0;            // its callback proxy is given back too
                 c->mdaPendStop[i] = 0;      // the destructor stops it
             }
     }
@@ -11030,6 +11071,8 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
         }
     }
     u32 r = ((Any)rvt[to])(real, a1, saved[2], saved[3]);
+    if (slot == 2)
+        mda_release(c, obj);
     // **The stutter** (round 132). One's writer (0x1195c) keeps at most
     // capacity (+0x44, 1280 samples, 80 ms at 16 kHz) between what it has
     // written and what Position says has played, and writes again only when
@@ -11185,13 +11228,17 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
     void *cb = (void *)a[0];
     c->mdaGameCb = (u32)cb;
     const u32 cbNeed = 8 + (u32)CB_SLOTS * 4 + (u32)CB_SLOTS * CB_TRAMP * 4;
-    if (CB_PROXY && cb && c->spare && c->spare + cbNeed <= c->spareEnd) {
+    u32 *cbProxy = 0;
+    if (CB_PROXY && cb && (c->mdaFreeCb || (c->spare && c->spare + cbNeed <= c->spareEnd))) {
         u32 *gvt = *(u32 **)cb;
         if (gvt) {
-            u32 *co = (u32 *)c->spare;
+            u32 *co = mda_take(&c->mdaFreeCb);
+            if (!co) {
+                co = (u32 *)c->spare;
+                c->spare += cbNeed;
+            }
             u32 *cvt = co + 2;
             u32 *ct = cvt + CB_SLOTS;
-            c->spare += cbNeed;
             for (u32 k = 0; k < (u32)CB_SLOTS; k++) {
                 u32 *t = ct + k * CB_TRAMP;
                 if (CB_TRACE) {
@@ -11224,6 +11271,7 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
             log_event(c, NOTE_MDA_ARG, (u32)co);
             log_block(c);
             cb = (void *)co;
+            cbProxy = co;
         }
     }
     void *real = ((NewL)c->mdaNewL)(cb, (void *)a[1]);
@@ -11233,7 +11281,7 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
         return (u32)real;
     }
     const u32 need = 16 + (u32)MDA_SLOTS * 4 + (u32)MDA_SLOTS * MDA_TRAMP * 4;
-    if (!c->spare || c->spare + need > c->spareEnd) {
+    if (!c->mdaFreeObj && (!c->spare || c->spare + need > c->spareEnd)) {
         log_block(c);
         return (u32)real;                   // no room: give it the bare object
     }
@@ -11268,10 +11316,13 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
         }
         log_block(c);
     }
-    u32 *obj = (u32 *)c->spare;
+    u32 *obj = mda_take(&c->mdaFreeObj);
+    if (!obj) {
+        obj = (u32 *)c->spare;
+        c->spare += need;
+    }
     u32 *vt = obj + 4;
     u32 *tramp = vt + MDA_SLOTS;
-    c->spare += need;
     for (u32 k = 0; k < (u32)MDA_SLOTS; k++) {
         // The slot map is kMdaMap's. This comment once read slot 3 as
         // SetPriority, from a 0x02000000 argument taken for a priority
@@ -11336,6 +11387,7 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
     obj[0] = (u32)vt;
     obj[1] = (u32)real;
     obj[2] = (u32)rvt;
+    obj[3] = (u32)cbProxy;              // given back with it (mda_release)
     // Kept so a callback can look at the stream's state. The callback
     // arrives on the game's own object, not on this one, and round 94's
     // open question -- whether the server has freed the stream by the

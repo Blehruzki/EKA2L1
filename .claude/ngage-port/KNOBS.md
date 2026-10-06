@@ -77,6 +77,8 @@ the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 | a screen update dropped while the screen was away is posted again once the port has it back (`replay_missed_frame`) | round 131 | -- (the bench never loses the screen) |
 | a partial screen frame (box or rectangles) counts as missed as well as a dropped one, and is posted again when the region is whole | round 132 | bench E654 |
 | each thread's CPU per beat (`RThread::GetCpuTime`, euser 1782) logged by the heartbeat | round 132 | bench E655 |
+| the trap bridge finds a thread's handler by its vtable (`c->trapVt`), with no table: it held eight threads, never emptied, and the ninth thread to trap panicked E32USER-CBase 66 at its first PushL | round 134 | bench E692-E694 (ngtest's ninth worker), regressions E700-E703 |
+| stream and callback proxies given back at the stream's deleting destructor and reused (`mda_take`, `mda_release`, one held back a free): ~1 KB each NewL had come out of the spare arena for good, and about the twentieth stream of a launch went to the platform bare and crashed | round 134 | bench E693-E694 (ngtest), regressions E700-E703 |
 
 ## Where each title saves
 

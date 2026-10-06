@@ -651,6 +651,37 @@ regression signal only against the ticks.
 - `emurun.sh` writes every bench run into `ROUNDS.md` as a `TODO` row and
   `checkrec.py` refuses to let one stay; `rules.py` prints the four rules.
 
+## 11a. Found by ngtest, the test app (round 134)
+
+**The ninth thread to trap: E32USER-CBase 66.** `E692`. The trap bridge
+(section 9a, `E358`) kept its per-thread handlers in a table of eight,
+never emptied when a thread ended and matched by address. The ninth thread
+to trap got no handler, its TRAP marked nothing, and its first
+`CleanupStack::PushL` panicked `EClnPushAtLevelZero`; a new thread's
+cleanup handler allocated where a dead thread's had been would also have
+matched the dead entry. Fix: no table -- the installed handler is ours
+exactly when its vtable is `c->trapVt` (`E693`).
+
+**The twentieth stream: a jump to the callback's offset-to-top.** `E693-E694`.
+Each `CMdaAudioOutputStream::NewL` built a stream proxy and a callback
+proxy out of the spare arena, about a kilobyte, and nothing gave it back.
+When the arena ran out the platform got the game's callback bare, and the
+first `MaoscOpenComplete` jumped to entry zero of a GCC98r2 vtable: the
+mixin's offset-to-top (-24 in ngtest; the -4 of the comment at `CB_PROXY`
+in One's case). One makes a stream more than once a session. Fix: the
+deleting destructor gives both proxies to a free list, the last one held
+back a free because the destructor returns through its trampoline.
+
+**An inline `TRgb` is the wrong colour on 9.x.** `E696`. The 6.1 header
+packs `r | g<<8 | b<<16` (alpha 0), 9.x `r<<16 | g<<8 | b | 0xff000000`
+(`gdi.inl` in both): a brush colour built in the game's code shows with red
+and blue swapped. No title is known to draw with one; noted for the next.
+
+**A redraw asked for from a RunL never reached ngtest's screen** (`E696-E698`:
+`DrawNow`, then `DrawDeferred`; `Draw` ran once, at start). Not pursued:
+ngtest closes itself at DONE instead. A window-gc title that repaints only
+on request would show it.
+
 ## 12. One (6r58): the fourth title's first fifty stops
 
 Each of these is a class of bug, not a One quirk: check a new title for all

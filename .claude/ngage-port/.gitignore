@@ -37,3 +37,6 @@ build/gate6one.sis
 # ngtest builds into its own build/ directory (objects, the linked images,
 # the card tree build.sh assembles); the source and build.sh are what count.
 toolchain/ngtest/build/
+# ngtest packages carry the icon bitmap of the title it was built beside
+# (One's); handed over directly, not pushed.
+build/ngtest-S60v3-*.sis
