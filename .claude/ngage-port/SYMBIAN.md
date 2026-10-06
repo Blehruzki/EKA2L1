@@ -547,6 +547,31 @@ threads of one priority alternate at the slice (`EDefaultUserTimeSliceMs`,
 fresh slice on every preemption, so they did not alternate at all; patched in
 `thread_scheduler::switch_context` (`E684-E685`).
 
+## A thread's heap dies with it (round 134)
+
+`CreateThreadHeap` (`common/heap_hybrid.cpp`) gives a thread with heap sizes
+its own `$HEAP` chunk; the first allocator a thread switches to is recorded
+as `DThread::iCreatedAllocator` (`ExecHandler::HeapSwitch`, sexec.cpp); and
+when the thread dies `DThread::CloseCreatedHeap` (kernel/sthread.cpp) drops
+one reference (`RUserAllocator::Close`) and, at the last, closes every handle
+in the heap's handle list -- the chunk goes, and anything left in it is an
+unmapped page. A heap shared with `RThread::Create(..., RAllocator*)` was
+`Open`ed by the new thread (`UserHeap::SetupThreadHeap`, up_utl.cpp), so it
+survives. Anything one thread allocates for others to use belongs on a heap
+that outlives it.
+
+## The N95's audio stream, measured (ngtest, round 134)
+
+From `CMdaAudioOutputStream` on the N95, 16 kHz mono, 1,600-sample buffers:
+Open completes in 45 ms; the stream takes its first several buffers at once
+and then keeps ~5,800-6,400 samples (360-400 ms) between what was written and
+what `Position` reports played; `Stop` takes ~50 ms and calls
+`MaoscPlayComplete(KErrCancel)` from inside itself; `Position` reads 0 after a
+Stop; and a stream restarted by `WriteL` after its Stop and then starved
+reported **no** `MaoscPlayComplete` within five seconds (on the bench it is
+`KErrUnderflow` after ~600 ms). A worker's Stop took 7-30 ms with the main
+thread busy.
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:

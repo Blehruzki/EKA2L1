@@ -8938,6 +8938,29 @@ static u32 *bitgc_standin(Context *c, u32 *real)
 // to address 0). Nothing calls Extension_ on a CDir or a CFileMan. One
 // table per real vtable, kept in the context.
 enum { OLD_DELETE_VT_WORDS = 32 };
+
+// **A table every thread uses must outlive the thread that made it.**
+// Round 134 (ngtest on the N95): user_allocz takes from the *calling*
+// thread's heap, and the CTrapCleanup stand-in's vtable was made by the
+// first thread to call CTrapCleanup::New -- always a game worker. When that
+// worker ended its heap went with it, and every later `delete cleanup` read
+// a vtable from an unmapped page: G6FLT nn12, EExcPageFault, on the phone
+// only (EKA2L1 leaves a dead thread's heap readable). The old_deletable
+// tables are made by whoever first frees a CDir, and One's part loader is
+// a worker. Both now come out of the spare arena, which is the process's.
+static u32 *lasting_allocz(Context *c, u32 bytes)
+{
+    bytes = (bytes + 3) & ~3u;
+    if (c->spare && c->spare + bytes <= c->spareEnd) {
+        u32 *p = (u32 *)c->spare;
+        c->spare += bytes;
+        for (u32 i = 0; i < bytes / 4; i++)
+            p[i] = 0;
+        return p;
+    }
+    return (u32 *)user_allocz((int)bytes);   // no room: this thread's, as before
+}
+
 static void old_deletable(Context *c, u32 *obj)
 {
     if (!obj || ((u32)obj & 3) || !obj[0] || (obj[0] & 3))
@@ -8950,7 +8973,7 @@ static void old_deletable(Context *c, u32 *obj)
     if (k == 8)
         return;                             // more classes than expected: the game keeps the 9.x table
     if (!c->oldDeleteReal[k]) {
-        u32 *vt = (u32 *)user_allocz(OLD_DELETE_VT_WORDS * 4);
+        u32 *vt = lasting_allocz(c, OLD_DELETE_VT_WORDS * 4);
         if (!vt)
             return;
         for (u32 i = 0; i < (u32)OLD_DELETE_VT_WORDS; i++)
@@ -9649,7 +9672,7 @@ extern "C" void *gate6_cleanup_new(u32, u32, Context *c)
     if (!real)
         return 0;
     if (!c->cleanupVt) {
-        u32 *vt = (u32 *)user_allocz(3 * 4);
+        u32 *vt = lasting_allocz(c, 3 * 4);
         if (!vt) PANIC(CAT_MEM, -42);
         vt[0] = vt[1] = vt[2] = (u32)&gate6_bitgc_delete;
         c->cleanupVt = vt;
@@ -10893,6 +10916,8 @@ static u32 *mda_take(u32 *list)
 static void mda_release(Context *c, u32 *obj)
 {
     u32 *co = (u32 *)obj[3];
+    if (c->mdaProxyObj == (u32)obj)
+        c->mdaProxyObj = 0;             // its stream is gone
     if (c->mdaQuarObj) {
         ((u32 *)c->mdaQuarObj)[0] = c->mdaFreeObj;
         c->mdaFreeObj = c->mdaQuarObj;
@@ -11209,8 +11234,18 @@ extern "C" void gate6_cb_call(u32 *saved, Context *c, u32 slot)
     // `MaoscPlayComplete`, and round 94 has it arriving with -3 on both
     // titles when the app goes to the background -- so what the object
     // looks like right then is the first thing the next log has to say.
-    if (c->mdaProxyObj)
-        mda_where(c, 10u, c->mdaProxyObj);
+    // The stream that is calling back, found by its callback proxy: round 134
+    // read the *last stream made* here, and in ngtest that was a worker's,
+    // freed with the worker -- the main thread's next PlayComplete read a dead
+    // heap and took a page fault (the N95's log ends there).
+    u32 where = 0;
+    for (u32 i = 0; i < (u32)MDA_STREAMS; i++)
+        if (c->mdaCb[i] && c->mdaCb[i] == saved[0]) {
+            where = c->mdaObj[i];
+            break;
+        }
+    if (where)
+        mda_where(c, 10u, where);
     log_block(c);
 }
 

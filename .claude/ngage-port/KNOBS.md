@@ -79,6 +79,8 @@ the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 | each thread's CPU per beat (`RThread::GetCpuTime`, euser 1782) logged by the heartbeat | round 132 | bench E655 |
 | the trap bridge finds a thread's handler by its vtable (`c->trapVt`), with no table: it held eight threads, never emptied, and the ninth thread to trap panicked E32USER-CBase 66 at its first PushL | round 134 | bench E692-E694 (ngtest's ninth worker), regressions E700-E703 |
 | stream and callback proxies given back at the stream's deleting destructor and reused (`mda_take`, `mda_release`, one held back a free): ~1 KB each NewL had come out of the spare arena for good, and about the twentieth stream of a launch went to the platform bare and crashed | round 134 | bench E693-E694 (ngtest), regressions E700-E703 |
+| the CTrapCleanup stand-in's vtable and old_deletable's tables come from the spare arena (`lasting_allocz`), not the calling thread's heap, which dies with the thread | round 134 | N95 (ngtest build 001: G6FLT 13112), bench E704-E716 |
+| a stream callback logs the state of its own stream (by its callback proxy), not of the last stream made | round 134 | N95 (ngtest build 001), bench E704-E705 |
 
 ## Where each title saves
 

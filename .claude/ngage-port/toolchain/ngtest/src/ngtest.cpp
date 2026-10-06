@@ -587,7 +587,7 @@ private:
         User::LeaveIfError(iTimer.CreateLocal());
         iBuf = HBufC8::NewL(KBufBytes);
         iBufPtr.Set(iBuf->Des());
-        iLog->Line(_L("ngtest 2: FastCounter %u, TickCount %u"), User::FastCounter(), User::TickCount());
+        iLog->Line(_L("ngtest 3: FastCounter %u, TickCount %u"), User::FastCounter(), User::TickCount());
         iT0 = Ms();
         iStartMs = iT0;
         iGaps.Reset();
@@ -772,8 +772,11 @@ private:
             StopMainStream();
             break;
         case EAStarve:
-            iLog->Line(_L("A no play-complete after starving; going on"));
-            Next(EBDone, 10);
+            // The N95 (round 134): a stream restarted by WriteL after its Stop
+            // and then starved said nothing in five seconds. That is a
+            // result, and the repeats still run.
+            iLog->Line(_L("A%d no play-complete in 5 s after starving (last write %d ms ago)"), iARound + 1, Ms() - iLastWrite);
+            Next(iARound < 2 ? EARepeat : EBDone, 10);
             break;
         case EBDone:
             {

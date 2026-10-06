@@ -651,7 +651,7 @@ regression signal only against the ticks.
 - `emurun.sh` writes every bench run into `ROUNDS.md` as a `TODO` row and
   `checkrec.py` refuses to let one stay; `rules.py` prints the four rules.
 
-## 11a. Found by ngtest, the test app (round 134)
+## 11a. Found by ngtest, the test app (round 134, bench and N95)
 
 **The ninth thread to trap: E32USER-CBase 66.** `E692`. The trap bridge
 (section 9a, `E358`) kept its per-thread handlers in a table of eight,
@@ -671,6 +671,24 @@ mixin's offset-to-top (-24 in ngtest; the -4 of the comment at `CB_PROXY`
 in One's case). One makes a stream more than once a session. Fix: the
 deleting destructor gives both proxies to a free list, the last one held
 back a free because the destructor returns through its trampoline.
+
+**A shared table on a dead thread's heap: G6FLT nn12 at `delete cleanup`.**
+Round 134 on the N95 (`E704-E716`). `user_allocz` takes from the calling
+thread's heap, and the CTrapCleanup stand-in's vtable (`c->cleanupVt`) was
+made by the first thread to call `CTrapCleanup::New` -- always a game
+worker. When that worker ended, EKA2 freed its heap (`DThread::
+CloseCreatedHeap`, kernel/sthread.cpp), and every later `delete cleanup`
+read its vtable from an unmapped page: EExcPageFault, type 12. The
+old_deletable tables had the same exposure (One's part loader is a worker).
+EKA2L1 kept dead heaps readable, so the bench never saw it until it was
+taught to free them. Fix: `lasting_allocz`, from the spare arena. Rule: a
+table cached in the context is built from memory the process owns.
+
+**The main thread read a dead worker's stream.** Same round. `gate6_cb_call`
+logged the state of `c->mdaProxyObj` -- the *last stream made*, a worker's --
+on every OpenComplete and PlayComplete, so once that worker was gone the
+main stream's next Stop faulted the main thread. Fix: describe the stream
+that is calling back, found by its callback proxy.
 
 **An inline `TRgb` is the wrong colour on 9.x.** `E696`. The 6.1 header
 packs `r | g<<8 | b<<16` (alpha 0), 9.x `r<<16 | g<<8 | b | 0xff000000`
