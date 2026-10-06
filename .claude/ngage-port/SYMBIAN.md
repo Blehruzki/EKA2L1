@@ -560,17 +560,28 @@ unmapped page. A heap shared with `RThread::Create(..., RAllocator*)` was
 survives. Anything one thread allocates for others to use belongs on a heap
 that outlives it.
 
-## The N95's audio stream, measured (ngtest, round 134)
+## The N95's audio stream, measured (ngtest, rounds 134-135)
 
-From `CMdaAudioOutputStream` on the N95, 16 kHz mono, 1,600-sample buffers:
-Open completes in 45 ms; the stream takes its first several buffers at once
-and then keeps ~5,800-6,400 samples (360-400 ms) between what was written and
-what `Position` reports played; `Stop` takes ~50 ms and calls
-`MaoscPlayComplete(KErrCancel)` from inside itself; `Position` reads 0 after a
-Stop; and a stream restarted by `WriteL` after its Stop and then starved
-reported **no** `MaoscPlayComplete` within five seconds (on the bench it is
-`KErrUnderflow` after ~600 ms). A worker's Stop took 7-30 ms with the main
-thread busy.
+From `CMdaAudioOutputStream` on the N95, 16 kHz mono, 1,600-sample buffers,
+build 002 (round 135) with every phase three or two times over:
+
+- Open completes in 40-62 ms; the first `MaoscBufferCopied` comes ~93 ms
+  after the first `WriteL` (the bench: 0-22 ms).
+- Fed as fast as it copies, the stream keeps **5,760-6,400 samples
+  (360-400 ms)** between what was written and what `Position` reports
+  played, taking its first buffers almost at once (copy #5 at ~230 ms). The
+  bench keeps 1,600.
+- `Stop` takes 49-53 ms and calls `MaoscPlayComplete(KErrCancel)` from inside
+  itself; `Position` reads 0 afterwards. A worker thread's `Stop` takes
+  29-35 ms **whether the main thread is idle or busy** across it.
+- **The stream never reports `KErrUnderflow`.** Restarted by `WriteL` after a
+  Stop and starved for five seconds (three times), or opened fresh, given one
+  buffer and starved (twice): no `MaoscPlayComplete` at all. EKA2L1's stream
+  patch reports -10 after 500 ms of starvation and stops the stream
+  (`KWaitBufferTimeInMicroseconds`, src/patch/mediaclientaudiostream).
+- One or two streams playing cost the main thread nothing measurable.
+- Threads of one priority share the CPU: a spinner made ~2.46 M per 100 ms
+  in every sample while the main thread kept ~60% of its solo rate.
 
 ## Sources
 

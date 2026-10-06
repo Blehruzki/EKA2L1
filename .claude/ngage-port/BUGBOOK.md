@@ -633,7 +633,12 @@ higher-priority wakeup inside 20 ms kept the running thread's slice full and
 its equals starved -- a same-priority spinner made +0 in the main thread's
 busy second, and every worker stream fell silent while the main thread was
 busy, `E683-E686`; EKA2 refreshes it only on block or rotation,
-`nkern/sched.cpp`, see SYMBIAN.md). The bench's
+`nkern/sched.cpp`, see SYMBIAN.md). Audio, measured on the N95 by ngtest (round 135): the phone never
+reports `KErrUnderflow` (the bench's stream patch does after 500 ms and
+stops the stream), keeps ~375 ms queued by `Position` (the bench 100 ms),
+and copies the first buffer ~93 ms after it is written (the bench at once);
+SYMBIAN.md has the numbers. A title that runs dry is therefore *stopped* on
+the bench and *still open, starved* on the phone. The bench's
 frame rate varies 20% run to run (`E350-E351`): a frame count is a
 regression signal only against the ticks.
 
