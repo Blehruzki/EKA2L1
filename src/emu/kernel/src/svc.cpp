@@ -178,6 +178,7 @@ namespace eka2l1::epoc {
         kernel::thread_local_data *local_data = current_local_data(kern);
         eka2l1::ptr<void> old_heap = local_data->heap;
         local_data->heap = new_heap;
+        kern->crr_thread()->note_heap_switch(new_heap.ptr_address());
 
         return old_heap;
     }

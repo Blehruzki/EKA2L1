@@ -396,10 +396,57 @@ namespace eka2l1 {
             return 0;
         }
 
+        // A dead thread's heap goes with it, as DThread::CloseCreatedHeap does on EKA2
+        // (kernel/sthread.cpp): one reference fewer on the first allocator the thread
+        // switched to, and when that was the last, every handle in its handle list
+        // closed -- which frees the heap's chunk. Without this a thread's heap
+        // outlived it here and read back fine, where a device takes a page fault.
+        // RAllocator: vtable, iAccessCount (+4), iHandleCount (+8), iHandles (+12).
+        void thread::close_created_heap() {
+            static constexpr std::uint32_t MAX_HANDLES = 32;     // RAllocator::EMaxHandles
+
+            const address heap = created_heap_;
+            created_heap_ = 0;
+            process *pr = owning_process();
+            if (!heap || !pr || pr->get_exit_type() != entity_exit_type::pending)
+                return;
+            // The main thread's heap is the process's, and goes with the process. On EKA2
+            // the main thread holds a reference to it, so a worker sharing it never takes
+            // the count to zero; here that count has been seen to read one after a sharing
+            // worker's RAllocator::Open, so the process's heap is left alone explicitly.
+            thread *primary = pr->get_primary_thread();
+            if (primary == this || (primary && primary->created_heap_ == heap))
+                return;
+
+            std::uint32_t *words = reinterpret_cast<std::uint32_t *>(pr->get_ptr_on_addr_space(heap));
+            if (!words)
+                return;
+            const std::uint32_t access = words[1];
+            LOG_TRACE(KERNEL, "Thread {} dies: its first heap 0x{:x} had {} references, {} handles", obj_name, heap, access, words[2]);
+            words[1] = access - 1;
+            if (access != 1)
+                return;                 // still shared
+
+            const std::uint32_t count = words[2];
+            if (count > MAX_HANDLES)
+                return;
+            const std::uint32_t *list = reinterpret_cast<const std::uint32_t *>(pr->get_ptr_on_addr_space(words[3]));
+            if (!list)
+                return;
+            std::uint32_t handles[MAX_HANDLES];
+            std::memcpy(handles, list, count * sizeof(std::uint32_t));
+            for (std::uint32_t i = 0; i < count; i++) {
+                if (handles[i])
+                    pr->process_handles.close(handles[i]);
+            }
+        }
+
         void thread::do_cleanup() {
             // Close all thread handles
-            if (!kern->wipeout_in_progress())
+            if (!kern->wipeout_in_progress()) {
+                close_created_heap();
                 thread_handles.reset();
+            }
 
             kern->free_msg(sync_msg);
             cleanup_detachs();

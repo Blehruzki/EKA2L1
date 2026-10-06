@@ -74,6 +74,15 @@ own host-side resets, which are an order of magnitude more frequent. The other
 probes are `EKA2L1_WATCH`, `EKA2L1_WATCHVAL`, `EKA2L1_WATCHPC` and
 `EKA2L1_RWATCH` in `src/emu/cpu/src/dyncom/armstate.cpp`.
 
+A dead thread's own heap is freed, as EKA2's `DThread::CloseCreatedHeap`
+does (`thread::close_created_heap` in `src/emu/kernel/src/thread.cpp`): the
+first allocator the thread switched to loses a reference, and at the last its
+handles are closed, unmapping the chunk. Before this, memory a dead thread had
+allocated stayed readable here and was a page fault on hardware. The process's
+own heap is left alone explicitly: a worker that shares it reads an access
+count one lower than EKA2 would (after euser's `RAllocator::Open`), a separate
+discrepancy not yet run down.
+
 EKA2L1 accepts SIS packages that a real device rejects, because it verifies none
 of the integrity fields a device checks: the per-file SHA-1 in each
 `SISFileDescription`, the E32 image header CRC32, `SISControllerChecksum` /

@@ -199,6 +199,7 @@ namespace eka2l1 {
             chunk_ptr local_data_chunk;
 
             thread_local_data *ldata;
+            address created_heap_ = 0;
             thread_scheduler *scheduler;
 
             sema_ptr request_sema;
@@ -334,6 +335,7 @@ namespace eka2l1 {
             ~thread() {}
 
             void do_cleanup();
+            void close_created_heap();
             int destroy() override;
 
             chunk_ptr get_stack_chunk();
@@ -409,6 +411,12 @@ namespace eka2l1 {
 
             thread_local_data *get_local_data() {
                 return ldata;
+            }
+
+            // The first allocator the thread switched to, as EKA2's DThread::iCreatedAllocator.
+            void note_heap_switch(const address new_heap) {
+                if (!created_heap_ && new_heap)
+                    created_heap_ = new_heap;
             }
 
             thread_scheduler *get_scheduler() {
