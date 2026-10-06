@@ -82,6 +82,7 @@ the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 | the CTrapCleanup stand-in's vtable and old_deletable's tables come from the spare arena (`lasting_allocz`), not the calling thread's heap, which dies with the thread | round 134 | N95 (ngtest build 001: G6FLT 13112), bench E704-E716 |
 | a stream callback logs the state of its own stream (by its callback proxy), not of the last stream made | round 134 | N95 (ngtest build 001), bench E704-E705 |
 | every `RThread::Suspend`/`Resume` logged with its handle and caller (NOTE 719: 0x5051/0x4E51); a call from the game's decrypted code chunk is allowed only on a thread handle the game got from `RThread::Create` or `Open` and has not closed (`thr_live_*`), a call from the image keeps round 130's well-formedness test | round 137 | bench E723-E725; N95 round 138 |
+| after the game's `StartL` with the whole region (a return from a minimize), the heartbeat posts the game's frame again at its next two beats (0x57AA): the window server's repaint of the window it brings to the front can land after the game's one post-return frame | round 138 | bench E728; N95 round 139 |
 
 ## Where each title saves
 
@@ -97,7 +98,7 @@ the saves behind.
 
 ## Bench knobs in `gate6.cpp` that must be 0 in a shipped build
 
-Exception: One builds 011 and 012 (rounds 136-137) ship `WORKER_LOG 1` on purpose, as a
+Exception: One builds 011 to 013 (rounds 136-138) ship `WORKER_LOG 1` on purpose, as a
 diagnostic -- single-writer since round 136, so it cannot be the fault it was
 in round 64 -- together with the `RHandleBase::Close` handle record (NOTE 707).
 Both go back to their shipping state after the round.

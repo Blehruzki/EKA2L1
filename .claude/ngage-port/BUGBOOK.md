@@ -684,6 +684,28 @@ minimize, in a worker's `Close` (box: last import 288, no record in the log).
 The sound thread's Closes in round 137 were all its own thread-owned timer
 handle. Build 012 carries the Close record, so the next one names itself.
 
+### 12.y The pause menu stays undrawn after a return until a key (round 138)
+
+**Symptom.** One build 012 on the N95: back from a minimize, the screen
+sometimes shows nothing of the pause menu until a scroll, and then only the
+item the scroll selected.
+
+**What the log says.** The game draws nothing while away (the heartbeat
+stops too; round 131), and exactly one frame after its own `StartL` on the
+return -- then nothing until a key. That frame is posted with the full
+region (POST_FULL_REGION). The port's missed-frame replay (round 132) had
+nothing to replay and rightly did not fire (its guards, 0x57A8, E726-E727).
+The window server repaints the window it has just brought to the front
+(SYMBIAN.md: `ScheduleRegionUpdate` after an abort); when that repaint lands
+after the game's one frame, the panel keeps the repaint, and the next key
+draws one item into it. Nothing in the log orders the two, and the bench
+cannot show a repaint over a DSA frame.
+
+**Fix (build 013).** The heartbeat posts the game's frame again at its next
+two beats after a `StartL` with the whole region (0x57AA): the buffer still
+holds the frame, and a frame already showing is redrawn with itself. Bench
+E728; the N95 says whether the order was the cause.
+
 ## 11a. Found by ngtest, the test app (round 134, bench and N95)
 
 **The ninth thread to trap: E32USER-CBase 66.** `E692`. The trap bridge

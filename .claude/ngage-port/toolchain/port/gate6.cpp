@@ -1121,6 +1121,7 @@ struct Context {
     u32 mdaMuteN, mdaUnmuteN, mdaMuteVol, mdaMuteSaid;   // streams turned down and back, the last volume kept, and what the heartbeat said
     u32 lastUpdSelf, lastUpdRegion;   // the last screen update that reached the screen
     u32 missedUpd;          // and one was dropped while the screen was away
+    u32 repostBeats;        // round 138: frames to post again from the heartbeat after a StartL
     u32 benchMinStep;       // BENCH_MINIMIZE_TICK: where the minimize has got to
     u32 updN, updDrawn, updSaid;   // screen updates asked for, drawn, and what the heartbeat said
     u32 kickObj[KICK_OBJS], kickN[KICK_OBJS], kickSaid[KICK_OBJS], kickCount;   // objects built at a GAME_AO_PRIORITIES site, and their self-completions
@@ -4535,6 +4536,8 @@ extern "C" void gate6_kick_runl(void *self, u32, Context *c)
 
 static void bench_timer_kick(Context *c);
 
+extern "C" void gate6_screen_update(void *self, const void *region, Context *c);
+
 extern "C" int gate6_heartbeat(void *p)
 {
     Context *c = (Context *)p;
@@ -4542,6 +4545,11 @@ extern "C" int gate6_heartbeat(void *p)
     if (c->beats == 3) {
         watchdog_start(c);
         bench_timer_kick(c);
+    }
+    if (c->repostBeats && c->lastUpdSelf && !c->screenLost && c->clipMode == 1u) {   // CLIP_ALL, declared below
+        c->repostBeats--;
+        log_event(c, NOTE_DSA_RESTART, 0x57AA);
+        gate6_screen_update((void *)c->lastUpdSelf, (const void *)c->lastUpdRegion, c);
     }
     if (BENCH_HANG_BEAT && c->beats == (u32)BENCH_HANG_BEAT && c->fnUserAfter)
         ((void (*)(int))c->fnUserAfter)(8000000);   // bench: the main thread stops for 8 s
@@ -5701,8 +5709,15 @@ static void region_log(Context *c, const void *region)
 extern "C" void gate6_screen_update(void *self, const void *region, Context *c);
 static void replay_missed_frame(Context *c)
 {
-    if (!c->missedUpd || !c->lastUpdSelf || c->screenLost || c->clipMode != CLIP_ALL)
+    if (!c->missedUpd || !c->lastUpdSelf || c->screenLost || c->clipMode != CLIP_ALL) {
+        // Round 138: no replay in ~30 returns on the N95, nor on the bench's
+        // model -- which guard, written down: 0x57A8, then missed | self<<1 |
+        // lost<<2 | clip<<4.
+        log_event(c, NOTE_DSA_RESTART, 0x57A8);
+        log_event(c, NOTE_DSA_RESTART, (c->missedUpd ? 1u : 0u) | (c->lastUpdSelf ? 2u : 0u) |
+                                       (c->screenLost ? 4u : 0u) | (c->clipMode << 4));
         return;
+    }
     log_event(c, NOTE_DSA_RESTART, 0x57A9);
     gate6_screen_update((void *)c->lastUpdSelf, (const void *)c->lastUpdRegion, c);
 }
@@ -5756,6 +5771,18 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
     }
     dsa_refresh(c);
     replay_missed_frame(c);
+    // **Round 138: the frame after a return is posted again, twice, from the
+    // heartbeat.** The N95's game draws exactly one frame after its StartL on
+    // a return from a minimize and then nothing until a key -- and that frame
+    // sometimes never shows: the window server repaints the window it has
+    // just brought to the front (SYMBIAN.md, direct screen access), and when
+    // its repaint lands after the game's one frame the panel keeps the
+    // repaint until the next key draws one menu item into it. Nothing in the
+    // log orders the two; the fix needs no order: the game's buffer still
+    // holds the frame, so the heartbeat posts it again at its next two beats
+    // (0x57AA). A frame already showing is redrawn with itself.
+    if (c->clipMode == CLIP_ALL)
+        c->repostBeats = 2;
     // Started, so the graphics context exists and the shadow has it -- and then
     // given straight back, so the window server is not left waiting on a client
     // that has gone away to compute for ten seconds. The game is told it still
@@ -8885,6 +8912,10 @@ extern "C" int gate6_hold_tick_cb(void *p)
     if (BENCH_RESTORE_TICK && c->benchMinStep == 1 &&
         (i32)(user_tickcount() - (u32)BENCH_RESTORE_TICK) >= 0) {
         c->benchMinStep = 2;
+        // Round 138: the N95's game draws its pause menu while away (1-18
+        // updates a beat, all missed); the bench's draws nothing. So the model
+        // supplies the one thing the phone's return has and the bench's lacks.
+        c->missedUpd = 1;
         log_event(c, NOTE_DEACTIVATE, 0xF0C06011u);
         log_block(c);
         u32 ev[16];
