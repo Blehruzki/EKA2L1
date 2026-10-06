@@ -1030,6 +1030,8 @@ namespace eka2l1 {
         return pr;
     }
 
+static int strict_handle_level();
+
     int kernel_system::close(std::uint32_t handle) {
         kernel::handle_inspect_info info = kernel::inspect_handle(handle);
 
@@ -1037,15 +1039,36 @@ namespace eka2l1 {
             return -1;
         }
 
+        int result = 0;
+
         if (info.handle_array_local) {
-            return crr_thread()->thread_handles.close(handle);
+            result = crr_thread()->thread_handles.close(handle);
+        } else if (info.handle_array_kernel) {
+            result = kernel_handles_.close(handle);
+        } else {
+            result = crr_process()->process_handles.close(handle);
         }
 
-        if (info.handle_array_kernel) {
-            return kernel_handles_.close(handle);
+        // A close that found nothing to close -- a freed slot, a stale instance, or a
+        // thread-owned handle closed from another thread -- is KERN-EXEC 0 on a device
+        // (ExecHandler::HandleClose, kernel/sexec.cpp) as much as any other executive
+        // call on a bad handle. It went through none of the strict-handle checks above,
+        // so a bad Close ran quietly here and killed the thread on hardware.
+        if (result < 0) {
+            const int level = strict_handle_level();
+            if (level) {
+                kernel::thread *target = crr_thread();
+                LOG_ERROR(KERNEL, "BAD HANDLE 0x{:x} closed by thread {} -- a device "
+                    "would panic KERN-EXEC 0 here (pc 0x{:x} lr 0x{:x})", handle,
+                    target ? target->name() : std::string("?"),
+                    cpu_ ? cpu_->get_pc() : 0, cpu_ ? cpu_->get_lr() : 0);
+                if (level > 1 && target) {
+                    target->kill(kernel::entity_exit_type::panic, u"KERN-EXEC", 0);
+                }
+            }
         }
 
-        return crr_process()->process_handles.close(handle);
+        return result;
     }
 
 // **A handle EKA2 would have killed the process for.**
