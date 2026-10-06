@@ -655,6 +655,7 @@ HOOKS = {
     'IMPORT_CACTIVE_CTOR':            ('euser', 1395),   # CActive::CActive(TInt): GAME_AO_PRIORITIES (One, round 128)
     'IMPORT_THREAD_SUSPEND':          ('euser', 1122),   # RThread::Suspend(): refused on an impossible handle (One, round 130)
     'IMPORT_THREAD_RESUME':           ('euser', 954),   # RThread::Resume(): the same
+    'IMPORT_HANDLE_CLOSE':            ('euser', 172),   # RHandleBase::Close(): the handle word logged before the call (round 136: a worker's Close died KERN-EXEC 0 on the N95)
     'IMPORT_DELETE_OP':               ('euser', 1504),
     'IMPORT_VEC_DELETE_OP':           ('euser', 1506),
     'IMPORT_APP_RECT':                ('eikcore', 233),

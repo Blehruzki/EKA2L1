@@ -1101,6 +1101,8 @@ struct Context {
     u32 mainSched;          // the main thread's active scheduler, read by the watchdog
     u32 wdThread;           // the watchdog's RThread, once made
     u32 wdFs[4], wdFile[4]; // its own file session and file: nothing of the main thread's
+    u32 wrkOwner;           // the thread id that opened the worker log: the only one that may write it (round 136)
+    u32 realHandleClose;    // euser's RHandleBase::Close, behind gate6_handle_close
     u32 *wdBuf;             // the stall dumps, one slot per stall, rewritten whole each time
     u32 wdEpisodes;         // stalls dumped so far (round 131: the first was a minimize, not the hang)
     u32 wdMain;             // a process-owned handle on the main thread, for RThread::Context
@@ -2242,7 +2244,7 @@ enum { WORKER_NOTES = 1, WORKER_NOTE_MAX = 200 };
 // below -- gets the same story out of the box without the worker touching a
 // file at all, and an instrument that cannot be the fault is worth more than
 // one that might be.
-enum { WORKER_LOG = 0, WORKER_LOG_MAX = 4096 };   // bench: 1 for round 113's sound thread (readwrk.py reads it); 0 when shipping. Its file handle is the first worker's, so a second worker writes nothing (E511)
+enum { WORKER_LOG = 1, WORKER_LOG_MAX = 65536 };   // bench: 1 for round 113's sound thread (readwrk.py reads it); 0 when shipping. Its file handle is the first worker's, so a second worker writes nothing (E511)
 
 static void worker_log(Context *c, u32 code, u32 from)
 {
@@ -2260,9 +2262,15 @@ static void worker_log(Context *c, u32 code, u32 from)
                          EFileWrite | EFileShareAny) != 0)
             return;
         c->wrkPos = 0;
+        c->wrkOwner = this_thread_id();
         c->wrkState = 1;
     }
-    if (c->wrkState != 1 || c->wrkPos >= (u32)WORKER_LOG_MAX * 8)
+    // Round 136: the session and file are the opening thread's. A second
+    // worker writing them is a cross-thread handle -- KERN-EXEC 0 on a device
+    // (E719 on the bench under EKA2L1_STRICTHANDLE=2) -- so only the opener
+    // writes, and the file is one thread's story: the first worker to trace,
+    // which is the sound thread in One.
+    if (c->wrkState != 1 || c->wrkPos >= (u32)WORKER_LOG_MAX * 8 || this_thread_id() != c->wrkOwner)
         return;
     // Two workers share this file -- the game's polling one and the
     // SoundServer thread -- and a record says nothing about which wrote it.
@@ -6776,6 +6784,26 @@ extern "C" void gate6_thread_suspend(u32 *self, u32, Context *c)
         return;
     }
     ((Suspend)c->realSuspend)(self);
+}
+
+// **Round 136: every Close, with the handle it was given.** One build 010 on
+// the N95 died KERN-EXEC 0 twice in a Close that a worker made after a
+// minimize during a fight (both boxes: last import 288; neither log has the
+// call, as a worker's records never reach it). EKA2 panics a Close of a
+// handle that resolves to nothing (ExecHandler::HandleClose, sexec.cpp);
+// the bench did not, until EKA2L1 was taught to (E720), and even then the
+// bench's sound thread made no such Close. So the record: the handle word,
+// then the import's own trace record names the caller. On a worker this goes
+// to the worker log; on the main thread to the log, 869 records a session.
+// The import's own trace record comes first (the trace stub runs before
+// this thunk), so in the log the caller is the line above the handle.
+enum { NOTE_CLOSE_HANDLE = 707 };
+
+extern "C" void gate6_handle_close(u32 *self, u32, Context *c)
+{
+    typedef void (*Close)(void *);
+    log_event(c, NOTE_CLOSE_HANDLE, self ? self[0] : 0);
+    ((Close)c->realHandleClose)(self);
 }
 
 extern "C" int gate6_thread_resume(u32 *self, u32, Context *c)
@@ -13054,6 +13082,12 @@ static u32 load_and_start()
         if (!ctx->realResume)
             ctx->realResume = iat[IMPORT_THREAD_RESUME];
         iat[IMPORT_THREAD_RESUME] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_thread_resume);
+        ctx->spare += TRACE;
+    }
+    if (IMPORT_HANDLE_CLOSE < nImports && ctx->spare + TRACE <= ctx->spareEnd &&
+        (kShimTable[IMPORT_HANDLE_CLOSE] >> 24) == KIND_CALL) {
+        ctx->realHandleClose = iat[IMPORT_HANDLE_CLOSE];
+        iat[IMPORT_HANDLE_CLOSE] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_handle_close);
         ctx->spare += TRACE;
     }
     if (IMPORT_THREAD_SUSPEND < nImports && ctx->spare + TRACE <= ctx->spareEnd) {

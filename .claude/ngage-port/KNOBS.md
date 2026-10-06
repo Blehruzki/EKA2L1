@@ -96,6 +96,11 @@ the saves behind.
 
 ## Bench knobs in `gate6.cpp` that must be 0 in a shipped build
 
+Exception: One build 011 (round 136) ships `WORKER_LOG 1` on purpose, as a
+diagnostic -- single-writer since round 136, so it cannot be the fault it was
+in round 64 -- together with the `RHandleBase::Close` handle record (NOTE 707).
+Both go back to their shipping state after the round.
+
 `BENCH_BACKGROUND_TICK`, `BENCH_FOREGROUND_TICK`, `BENCH_DEACTIVATE_TICK`,
 `BENCH_SCHED_BEATS`, `BENCH_FOCUSLOST_TICK`, `BENCH_FOCUSGAINED_TICK` (a real
 focus event through `HandleWsEventL` at that hold-timer tick), `BENCH_HANG_BEAT`

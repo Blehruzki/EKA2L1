@@ -65,6 +65,7 @@ enum {
     IMPORT_FS_VOLUME                   =   116,
     IMPORT_GEDF2                       =   476,
     IMPORT_GTDF2                       =   477,
+    IMPORT_HANDLE_CLOSE                =   288,
     IMPORT_LEAVE                       =   343,
     IMPORT_LEAVE_IF_ERROR              =   341,
     IMPORT_LEAVE_NOMEM                 =   342,
