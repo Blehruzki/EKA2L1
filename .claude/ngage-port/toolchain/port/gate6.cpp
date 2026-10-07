@@ -1126,6 +1126,9 @@ struct Context {
     u32 gameScreenBytes;    // (its size), ...
     u32 snapValid, snapPending, awayUpd;  // taken; to be compared at the first frame back; updates asked while away
     u32 benchSpoiled;       // BENCH_SPOIL_FRAME: done once
+    u32 blitSum, blitSumN;  // round 140: the frame buffer's middle band as the last blit left it, and which blit
+    u32 halAddrSaid;        // round 140: HAL's EDisplayMemoryAddress as last logged
+    u32 dumpAfterBlit;      // round 140: write the frame buffer after this blit
     u32 benchMinStep;       // BENCH_MINIMIZE_TICK: where the minimize has got to
     u32 updN, updDrawn, updSaid;   // screen updates asked for, drawn, and what the heartbeat said
     u32 kickObj[KICK_OBJS], kickN[KICK_OBJS], kickSaid[KICK_OBJS], kickCount;   // objects built at a GAME_AO_PRIORITIES site, and their self-completions
@@ -2998,6 +3001,13 @@ enum { WATCH_THE_SCREEN = 1 };
 // and EKA2L1 answers 32 for it regardless, which would shift the picture.
 enum { HAL_BITS_PER_PIXEL = 76, HAL_OFFSET_TO_FIRST_PIXEL = 79,
        HAL_OFFSET_BETWEEN_LINES = 80, HAL_DISPLAY_MODE = 84, ASK_HAL = 1 };
+// Round 140: HALData::EDisplayMemoryAddress is 78 (hal_data.h, counted). The
+// screen address UserSvr::ScreenInfo answers is kept from the first poll;
+// the game polls every frame, so the hook sees every later answer too, and
+// a device that flips between two frame buffers would show it there. Logged
+// when it moves (0x5C1F, the old, the new) and, with REBIND_SCREEN_ADDRESS,
+// followed. HAL's own word once a beat when it moves (0x5C1E, then it).
+enum { HAL_DISPLAY_MEMORY_ADDRESS = 78, REBIND_SCREEN_ADDRESS = 1 };
 // `HALData::EMemoryRAM` is 15 in this numbering, which `kernel/hal.def` states
 // outright, so `EMemoryRAMFree` is 16. It is the one number that says whether
 // the *phone* has run out rather than this process. Build 172's logs show a
@@ -4542,6 +4552,8 @@ static void bench_timer_kick(Context *c);
 
 extern "C" void gate6_screen_update(void *self, const void *region, Context *c);
 
+static u32 fb_band_sum(const Context *c);
+
 extern "C" int gate6_heartbeat(void *p)
 {
     Context *c = (Context *)p;
@@ -4626,6 +4638,20 @@ extern "C" int gate6_heartbeat(void *p)
         log_event(c, NOTE_SCREEN, 0x5C0D0000u | ((c->updN - c->updSaid) & 0xFFFFu));
         log_event(c, NOTE_SCREEN, (c->updDrawn << 8) | (c->clipMode << 4) | c->screenLost);
         c->updSaid = c->updN;
+    }
+    if (ASK_HAL && c->gameScreen) {    // round 140: where HAL says the frame buffer is, when it moves
+        int addr = 0;
+        if (!hal_get(HAL_DISPLAY_MEMORY_ADDRESS, &addr) && (u32)addr != c->halAddrSaid) {
+            c->halAddrSaid = (u32)addr;
+            log_event(c, NOTE_SCREEN, 0x5C1E0000u);
+            log_event(c, NOTE_SCREEN, (u32)addr);
+        }
+    }
+    if (c->blitSumN) {              // round 140: the frame buffer since the last blit
+        log_event(c, NOTE_SCREEN, 0x5C0E0000u);
+        log_event(c, NOTE_SCREEN, fb_band_sum(c));
+        log_event(c, NOTE_SCREEN, c->blitSum);
+        log_event(c, NOTE_SCREEN, c->blitSumN);
     }
     if (((c->mdaDeferN << 16) | (c->mdaDeferDone & 0xFFFFu)) != c->mdaDeferSaid) {
         c->mdaDeferSaid = (c->mdaDeferN << 16) | (c->mdaDeferDone & 0xFFFFu);
@@ -5068,7 +5094,43 @@ enum { OLD_DSA_ACTIVE = 8, OLD_DSA_GC = 0x18, OLD_DSA_DEVICE = 0x1c,
 // mechanism is at gate6_screen_update. BENCH_SPOIL_FRAME blackens the
 // middle of the frame once at the modelled return so the bench exercises
 // the restore; 0 in a shipped build.
-enum { RESTORE_RETURN_FRAME = 1, BENCH_SPOIL_FRAME = 0 };
+// Round 140: the restore put back (0x57AC) made the menu's absence certain, and
+// the comparison said the frame back differs from the snapshot only in the
+// bottom ten rows -- the menu band is the same in both, and the panel shows no
+// menu. So the game's buffer is not where the menu is lost. Compare and log
+// only; the restore is off. REPOST_AFTER_START (round 138's 0x57AA) is off
+// too: it never changed anything and it is one more blit after a return.
+enum { RESTORE_RETURN_FRAME = 0, BENCH_SPOIL_FRAME = 0, REPOST_AFTER_START = 0 };
+// Round 140 (bench): write the game's whole buffer to the dump file at AbortNow,
+// so what the game keeps in its buffer can be compared with what the panel
+// shows. 0 in a shipped build.
+// Round 140, for the N95 (build 015, a diagnostic): the game's buffer and the
+// frame buffer written to C:\g6code-6r58.bin at every AbortNow, and the frame
+// buffer again after the first blit back. What the game keeps, what the port
+// wrote, and what the panel shows (the person's eyes) are then three separate
+// facts. ~750 KB a minimize; 0 in a shipped build.
+enum { DUMP_AT_ABORT = 1, DUMP_AFTER_RETURN = 1 };
+// Round 140: what is in the frame buffer. The panel on the N95 shows no pause
+// menu after a return while the game's buffer holds the same picture as
+// before (0x57AB: the menu band identical) -- so either the blit's pixels
+// are not where the panel reads, or something writes over them. One word in
+// four of the middle half of the frame buffer, summed: once right after each
+// blit (kept), and again at each heartbeat (0x5C0E, then the sum now, then
+// the sum the blit left, then the blit's number). Equal: nothing touched the
+// buffer since the blit. Different: something did.
+static u32 fb_band_sum(const Context *c)
+{
+    if (!c->realScreen || !c->realPitch || c->bufH < 4)
+        return 0;
+    u32 sum = 0;
+    const u32 words = c->realPitch >> 2;
+    for (u32 y = c->bufH >> 2; y < (c->bufH >> 2) * 3; y += 2) {
+        const u32 *row = (const u32 *)(c->realScreen + y * c->realPitch);
+        for (u32 x = 0; x < words; x += 4)
+            sum = sum * 31u + row[x];
+    }
+    return sum;
+}
 enum { NEW_DSA_GC = 0x1c, NEW_DSA_DEVICE = 0x20, NEW_DSA_REGION = 0x24 };
 // Round 120: those three were measured on S60 3.1 and 3.2. On 3.0 (an N91)
 // the real object carries one more word before the window reference, so
@@ -5101,6 +5163,21 @@ enum { RGN_WORDS = 10, RGN_RECT_LIST = 4 };
 // screen now" abort may not be.
 static void replay_missed_frame(Context *c);
 
+static void dump_region(Context *c, const u8 *address, u32 length);
+
+// The frame buffer as the port sees it: a header (words a row, rows, bits a
+// pixel, 0xFBxx the moment), then the rows.
+static void dump_framebuffer(Context *c, u32 tag)
+{
+    if (!c->realScreen || !c->realPitch || !c->bufH)
+        return;
+    u32 head[4];
+    head[0] = c->realPitch >> 2; head[1] = c->bufH;
+    head[2] = c->realBpp; head[3] = tag;
+    dump_region(c, (const u8 *)head, sizeof head);
+    dump_region(c, c->realScreen, c->realPitch * c->bufH);
+}
+
 extern "C" void gate6_dsa_slot0(void *, u32 reason, Context *c)
 {
     c->reached |= REACHED_ABORT;
@@ -5125,6 +5202,14 @@ extern "C" void gate6_dsa_slot0(void *, u32 reason, Context *c)
             c->snapValid = 1;
         }
         c->awayUpd = 0;
+    }
+    if (DUMP_AT_ABORT && c->gameScreen && c->gameScreenBytes) {
+        u32 head[4];
+        head[0] = (u32)GAME_PITCH; head[1] = (u32)GAME_H;
+        head[2] = (u32)GAME_SRC_BPP; head[3] = (u32)GAME_SRC_ORIGIN;
+        dump_region(c, (const u8 *)head, sizeof head);
+        dump_region(c, (const u8 *)c->gameScreen, c->gameScreenBytes);
+        dump_framebuffer(c, 0xFB01);     // and the panel's buffer as the game leaves it
     }
     old_call1(c->oldObserver, 0, reason);
 }
@@ -5816,12 +5901,14 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
     // log orders the two; the fix needs no order: the game's buffer still
     // holds the frame, so the heartbeat posts it again at its next two beats
     // (0x57AA). A frame already showing is redrawn with itself.
-    if (c->clipMode == CLIP_ALL)
+    if (REPOST_AFTER_START && c->clipMode == CLIP_ALL)
         c->repostBeats = 2;
     if (c->clipMode == CLIP_ALL && c->snapValid) {
         c->snapValid = 0;
         c->snapPending = 1;
     }
+    if (DUMP_AFTER_RETURN && c->clipMode == CLIP_ALL)
+        c->dumpAfterBlit = 1;           // round 140: the frame buffer after the first blit back
     // Started, so the graphics context exists and the shadow has it -- and then
     // given straight back, so the window server is not left waiting on a client
     // that has gone away to compute for ten seconds. The game is told it still
@@ -7667,6 +7754,17 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
     if (say)
         for (u32 i = 0; i < 6; i++)
             log_event(c, NOTE_SCREEN, p[i]);
+    if (c->gameScreen && c->screenBase && p[3] && p[3] != (u32)c->screenBase) {
+        log_event(c, NOTE_SCREEN, 0x5C1F0000u);
+        log_event(c, NOTE_SCREEN, (u32)c->screenBase);
+        log_event(c, NOTE_SCREEN, p[3]);
+        log_block(c);
+        if (REBIND_SCREEN_ADDRESS) {
+            c->screenBase = (u8 *)p[3];
+            c->realScreen = c->screenBase + c->firstPixel;
+            c->clearPending = 1;
+        }
+    }
 
     // Hand the game the screen it was built for, and keep the real one to copy
     // into. It is told 240x320 and writes 176x208 anyway -- 73,216 bytes of
@@ -8135,6 +8233,12 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
                 }
             }
         }
+    }
+    c->blitSum = fb_band_sum(c);
+    c->blitSumN = c->updDrawn;
+    if (c->dumpAfterBlit) {             // round 140: the frame buffer as the first blit back left it
+        c->dumpAfterBlit = 0;
+        dump_framebuffer(c, 0xFB02);
     }
     // **And the composited framebuffer, at the same frames as the source.**
     //

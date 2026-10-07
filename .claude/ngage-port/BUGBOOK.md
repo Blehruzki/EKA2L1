@@ -718,7 +718,24 @@ the game's buffer before the blit (0x57AC); the game's later rectangles then
 land on the picture they were drawn for. A game that drew while away keeps
 its frame. The bench cannot lose the menu (E729/E730: a menu comes back
 whole), so E731 blackens the frame back by hand (`BENCH_SPOIL_FRAME`) to
-exercise the restore. Settled by round 140.
+exercise the restore. 
+**Round 140 overturned it.** Build 014 on the N95: eight returns, and the
+comparison says the frame back differs from the AbortNow snapshot only in
+the bottom ten rows (seven times) or is a full redraw (once); the menu band
+is identical before and after -- and the panel shows no menu after any of
+the eight, now every time. The game's buffer is not where the menu is lost;
+the restore only reverted the game's bottom strip. The bench's dumps
+(E734-E736) show text in general goes through the game's buffer, but the
+pause menu was never caught paused there. Two readings remain -- the pause
+menu drawn through the DSA graphics context straight into the frame buffer,
+which every whole-buffer blit of ours paints over; or our blit after a
+return landing in a buffer the panel is not showing (two frame buffers,
+the address read once) -- and build 015 instruments both: the frame
+buffer's band summed after each blit and at each beat (0x5C0E), the
+ScreenInfo address checked every frame and followed (0x5C1F), HAL's
+display address (0x5C1E), and dumps of both buffers at AbortNow and of
+the frame buffer after the first blit back (`C:\g6code-6r58.bin`,
+`dump32.py`). Restore and re-posts off. Open.
 
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 
