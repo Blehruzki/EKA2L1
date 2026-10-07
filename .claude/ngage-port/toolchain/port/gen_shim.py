@@ -743,6 +743,10 @@ MILESTONES = [
     # were 37,000 of round 126's 131,000 records.
     ('euser', 629),
     ('euser', 476),
+    # Round 147 (Ashen): the save path. The N95 showed Opens of the save
+    # slots and nothing of what created one, because Replace, Write, Flush,
+    # MkDir and Delete were never traced.
+    ('efsrv', 151), ('efsrv', 200), ('efsrv', 50), ('efsrv', 86), ('efsrv', 29),
 ]
 
 # HOT: the ones that fire thousands of times a second and say nothing.

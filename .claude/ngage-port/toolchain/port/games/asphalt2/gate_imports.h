@@ -70,6 +70,7 @@ enum {
     IMPORT_LEAVE_IF_ERROR              =   322,
     IMPORT_LEAVE_NOMEM                 =   323,
     IMPORT_LEDF2                       = 65535,   // absent
+    IMPORT_LEX16_VAL_REAL              = 65535,   // absent
     IMPORT_LIBRARY_LOAD                =   325,
     IMPORT_LIBRARY_LOOKUP              =   326,
     IMPORT_LTDF2                       = 65535,   // absent
@@ -138,7 +139,7 @@ enum {
 
 // The trace lists: see MILESTONES and HOT in gen_shim.py. Both may be
 // empty, which is why gate6.cpp appends the two exits to the first.
-#define GATE_MILESTONES  100, 109, 110, 99, 325, 326, 283, 45, 46, 350, 296, 299, 362, 353, 374, 281, 330, 386, 319, 363, 322, 367, 298, 357, 295, 397, 366, 355, 400, 285, 376, 339, 458, 323, 315,
+#define GATE_MILESTONES  100, 109, 110, 99, 325, 326, 283, 45, 46, 350, 296, 299, 362, 353, 374, 281, 330, 386, 319, 363, 322, 367, 298, 357, 295, 397, 366, 355, 400, 285, 376, 339, 458, 323, 315, 111, 104, 107, 102,
 #define GATE_HOT  424, 425, 274, 287, 272, 417, 383, 369, 389, 264, 344,
 #define GATE_HOT_COUNT 11
 

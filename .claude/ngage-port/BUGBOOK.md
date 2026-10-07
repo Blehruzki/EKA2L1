@@ -994,6 +994,74 @@ entry size at the wrong word (iKeyOffset) and declined; E841: the arena's
 seven files loaded again after the fighters', 24% zero samples after the
 return against 69%.
 
+### 12.ac Ashen: the sound stops in chapter 1, and Continue hangs the game (round 147)
+
+**Symptom.** Ashen build 009 on the N95: the sound stops after a while in
+chapter 1; later, Continue at a chapter-2 checkpoint hangs the game (the
+view server then closes it). One hour's log, 130,850 records.
+
+**What the log says.** The main thread's waits on the sound thread's
+semaphores (the port's `gate6_sem_wait`, NOTE 836): the first thread's
+start-up handshake signalled in one slice (4712), a join signalled (15130),
+then a join at 43163 that was **never signalled** -- the port gave up after
+two seconds and let the game carry on, which closed the semaphores under a
+live thread. From there: a second sound thread whose ready signal never
+came (46308), another join never signalled (80069), the third
+`RThread::Create` refused **KErrAlreadyExists** (84165: the first thread
+still exists), and the final join at 130848, where the log ends.
+
+**Cause.** Ashen's sound thread (code+0xb470c) writes one 1 KB buffer per
+`MaoscBufferCopied` (0xb4b18, on 0 or -10 only) and restarts after
+`MaoscPlayComplete(KErrUnderflow)` (0xb4a7c -> 0xb49a8); its periodic is
+cancelled once the chain runs (0xb4c7c), so between callbacks it has nothing
+of its own, and the exit flag the main thread sets (0x72988: bit 0x800 of
+the sound manager's word at +0x54) is read only from a callback. The N-Gage's
+stream reported `KErrUnderflow` when it ran dry; **the N95's never does**
+(ngtest, round 135, SYMBIAN.md); the emulator's does after 500 ms. So one
+copy that comes back with an error -- a buffer the audio policy threw away
+arrives as `KErrAbort` -- and the thread writes nothing more, the stream
+drains silently, the thread is deaf, and the main thread's join waits for a
+signal that cannot come. On the bench, modelled with the emulator's own
+underflow swallowed and one copy made `KErrAbort` (E846), the music stops at
+that copy and the join at New Game times out exactly as the N95's did.
+
+**Fix (build 012, Ashen).** `GAME_MDA_UNDERFLOW_TICKS 32`: a timer the port
+makes in the stream's own thread at its first write (`mda_underflow_watch`,
+every 100 ms) tells the game `MaoscPlayComplete(KErrUnderflow)` once a
+written stream has had nothing queued for 32 ticks (500 ms, the emulator's
+own figure), which is what the N-Gage's stream did for it. The game then
+writes again, or, with the exit flag set, stops its scheduler and signals the
+join. On the same model (E847) the music returns within a second of the
+aborted copy and the join at New Game completes. Codes 0x5A36 (watch
+armed), 0x5A35 (underflow told); bench knobs `BENCH_DROP_UNDERFLOW` and
+`BENCH_ABORT_COPY_AT`, 0 when shipping. Off for a title without the define:
+One's streams are the main thread's and the sound thread's own protocol
+(12.w), and were not changed.
+
+**Found on the way.** Every title's build but One's had been broken since
+build 019 (`IMPORT_LEX16_VAL_REAL` existed only in One's import table), so
+the first three bench runs of this round ran a stale binary and read a stale
+log as their own (E845 says how it was caught: the binary's date). The
+import tables are regenerated for all five.
+
+### 12.ad Ashen: "Game Deck Memory Full" -- no save is written (round 147, open)
+
+**Symptom.** Ashen build 009 on the N95: saving at a checkpoint or changing
+the options ends in "Game Deck Memory Full"; no save appears.
+
+**What is known.** The bench saves options (E445, E848: `C:\System\Apps\6R21\options.dat`,
+788 bytes, the size the N95 read at its own start). The N95's log has every
+`RFile::Open` of the save slots (`savegame01..04.sav`: -1 at the first
+scan, then -14 `KErrInUse` on slot 01 at every later scan) and **no Size of
+a written file in the whole hour**, so the save never reached the game's
+write routine (0xb56b8); the open path either found no free slot (0xb240c,
+four slots of twelve bytes, a flag byte each) or had its `RFile::Replace`
+fail in the wrapper (0xb5824) -- and `Replace`, `Write`, `Flush` and
+`MkDir` were not traced, so the log cannot say which, nor what holds
+`savegame01.sav` open. Build 012 traces them and records each Replace's
+result and drive letter (NOTE 698). Not fixed: the next N95 log is what
+names it.
+
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 
 **Symptom.** The end key during a fight: "Application closed: One G6FLT

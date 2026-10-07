@@ -118,7 +118,7 @@ focus event through `HandleWsEventL` at that hold-timer tick), `BENCH_HANG_BEAT`
 (the main thread blocked 8 s at that beat, to fire the watchdog), `BENCH_MINIMIZE_TICK` /
 `BENCH_RESTORE_TICK` / `BENCH_MINIMIZE_BOX` (a whole phone minimize: abort, restart into
 no region or a partial one, focus lost; focus gained, the region back), `LEAVE_RAW`, `WORKER_LOG`,
-`TRACE_IMPORTS`. `rules.py` and the regression rows (E428, E439 and the like)
+`TRACE_IMPORTS`, `BENCH_DROP_UNDERFLOW` / `BENCH_ABORT_COPY_AT` (round 147's N95 stream model). `rules.py` and the regression rows (E428, E439 and the like)
 are where that is checked.
 
 Per title in `game.h`, absent (so off) in a shipped build:
@@ -189,3 +189,15 @@ game's own reload after a minimize resolves them again; without it the arena's
 samples alone were never reloaded and the wind stayed silent (BUGBOOK 12.ab,
 E837/E841). The ids stay -1 until the game's reload at the resume (E842: put
 back sooner, the fix is undone). A title without the defines has it off. One only.
+
+Ashen, round 147 (build 012): `GAME_MDA_UNDERFLOW_TICKS 32` (**on**) -- the
+port tells a stream's owner thread `MaoscPlayComplete(KErrUnderflow)` once
+the stream it wrote has had nothing queued for 32 ticks (500 ms), from a
+timer made in that thread (`mda_underflow_watch`, 0x5A36 armed, 0x5A35 told).
+Ashen's sound thread writes one buffer per copy and restarts only on that
+complete, which the N95's stream never sends (BUGBOOK 12.ac). Off (0) on every
+other title. Bench knobs beside it, 0 when shipping: `BENCH_DROP_UNDERFLOW`
+(the emulator's own underflow swallowed, as the phone) and `BENCH_ABORT_COPY_AT`
+(the Nth copy made KErrAbort) -- the model E846/E847 ran on. Also traced now
+on every title: `RFile::Replace`, `Write`, `Flush`, `RFs::MkDir`, `Delete`
+(gen_shim MILESTONES), and each Replace's result and drive letter (NOTE 698).

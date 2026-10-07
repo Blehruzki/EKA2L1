@@ -195,6 +195,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          758: 'GC TEXT: f0 then font (UseFont); 7e then x<<16|y, length, first chars (DrawText)',
          759: 'FILE READ(pos, des, len): pos, len, result, length after',
          760: 'FILE SIZE: size, then result',
+         698: 'FILE REPLACE (through the card hook): result, then length<<16 | drive letter<<8 | colon',
          761: 'GAME.ID read (ReadFileSection): the real result, then 1 when the shim answered it',
          762: 'LEAVE raw: the hook sp, then stack words',
          763: 'EXIT asked (0xE817 CEikAppUi::Exit from the game; 0xE818 HandleCommandL(EEikCmdExit), the red key): the thread exits with reason 0',

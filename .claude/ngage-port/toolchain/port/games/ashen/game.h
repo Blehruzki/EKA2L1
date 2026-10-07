@@ -160,5 +160,11 @@ enum { GAME_SRC_ORIGIN = 0 };
 #define GAME_APP_NAME "gate6ashe"
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 11
+// Round 147: the sound thread writes one buffer per MaoscBufferCopied and
+// relies on MaoscPlayComplete(KErrUnderflow) to restart; the N95's stream
+// never reports it, so a missed write left the thread deaf and the join at
+// 0xb4ea4 unsignalled (round 147). The port tells the underflow itself after
+// 32 ticks (500 ms, the emulator's figure) with nothing queued.
+#define GAME_MDA_UNDERFLOW_TICKS 32
+#define GAME_BUILD 12
 #endif

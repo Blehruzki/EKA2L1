@@ -280,6 +280,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_DES = 892,     // ... three words of that descriptor
        NOTE_FILE_RET = 893,     // ... and what the call answered
        NOTE_FILE_SIZE = 894,    // RFile::Size, and the size it answered
+       NOTE_FILE_REPLACE = 698,  // RFile::Replace through the card hook: its result, then the name's length word (round 147)
        NOTE_FILE_OPEN = 897,    // what RFile::Open answered
        NOTE_FILE_PATH = 898,    // ... and the name it was asked for
        NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
@@ -1123,6 +1124,10 @@ struct Context {
     u32 mdaCb[4], mdaPendStop[4];          // each stream's callback proxy, and a worker's Stop held back (round 132)
     u32 wkStopTimer, wkStopThread, wkStopArmed;   // round 142: the sound thread's own one-shot that carries a held-back Stop out
     u32 mdaToldStop[4], mdaPendThread[4];   // round 143: the game already heard PlayComplete(-3) for this Stop; the thread that owes it
+    u32 mdaPlaying[4], mdaQueued[4], mdaIdleTick[4], mdaWrThread[4];   // round 147: the stream has been written since its last complete; buffers written and not yet copied; the tick of the last copy
+    u32 ufTimer, ufThread, ufTold;          // round 147: the port's underflow timer in the sound thread (mda_underflow_watch), and how many it told
+    CallBack ufCb;
+    u32 benchCopies;                        // bench: BufferCopied callbacks seen (BENCH_ABORT_COPY_AT)
     CallBack wkStopCb;
     u32 mdaDeferN, mdaDeferDone, mdaDeferSaid;   // Stops held back, carried out later, and what the heartbeat said
     u32 mdaMuteN, mdaUnmuteN, mdaMuteVol, mdaMuteSaid;   // streams turned down and back, the last volume kept, and what the heartbeat said
@@ -6498,7 +6503,13 @@ extern "C" int gate6_card_replace(void *f, void *fs, const u32 *name, u32 mode, 
         log_event(c, NOTE_CARD_REFUSED, 2);
         return KErrAccessDenied;
     }
-    return ((FileCall)c->realReplace)(f, fs, on_the_real_drive(name, c), mode);
+    const int err = ((FileCall)c->realReplace)(f, fs, on_the_real_drive(name, c), mode);
+    u32 nlen = 0;
+    const u16 *nt = name_text(name, &nlen);
+    log_event(c, NOTE_FILE_REPLACE, (u32)err);
+    log_event(c, NOTE_FILE_REPLACE, (nlen << 16) | (nt && nlen > 1 ? ((u32)nt[0] << 8) | nt[1] : 0));   // length, then the drive letter and the colon
+    log_block(c);
+    return err;
 }
 
 // These take four arguments, so r0 to r3 are all spoken for and no ctx_thunk
@@ -11320,6 +11331,9 @@ static int mda_stream(Context *c, u32 obj)
 #ifndef GAME_DEFER_WORKER_STOP
 #define GAME_DEFER_WORKER_STOP 0
 #endif
+#ifndef GAME_MDA_UNDERFLOW_TICKS
+#define GAME_MDA_UNDERFLOW_TICKS 0     // round 147: 0 off; else PlayComplete(KErrUnderflow) is told after this many ticks (1/64 s) with nothing queued
+#endif
 enum { DEFER_WORKER_STOP = GAME_DEFER_WORKER_STOP };
 // Round 143 (bench): a held-back Stop that is never carried out and never
 // answered -- what the N95 gets when the sound thread exits before the
@@ -11508,6 +11522,77 @@ static void mda_release(Context *c, u32 *obj)
     c->mdaQuarCb = (u32)co;             // 0 when the stream had no callback proxy
 }
 
+// **Round 147: the stream that runs dry says nothing on the N95.** Ashen's
+// sound thread (0xb470c) writes one buffer per MaoscBufferCopied and restarts
+// after MaoscPlayComplete(KErrUnderflow) (0xb4a7c -> 0xb49a8); its periodic
+// is cancelled once the chain runs (0xb4c7c), so between callbacks it has
+// nothing of its own. The N-Gage's stream reported KErrUnderflow when it ran
+// dry and the emulator's reports it after 500 ms (SYMBIAN.md); the N95's
+// never does (ngtest, round 135). So when a copied buffer is not followed
+// by a write -- a buffer the policy aborted (0xb4b18 writes on 0 and -10
+// only), a leave in WriteL -- the thread is deaf for good: no sound, and the
+// exit flag the main thread sets (0x72988, mgr word 0x54 bit 0x800) is never
+// seen, the join at 0xb4ea4 never signalled (round 147's log: 836 ffffffff
+// three times, a second thread on the same object, the third Create
+// KErrAlreadyExists, the hang). This timer, made in the stream's own
+// thread on its first write, tells the game PlayComplete(KErrUnderflow)
+// itself once a written stream has had nothing queued for
+// GAME_MDA_UNDERFLOW_TICKS, which is what the bench's stream had been
+// doing for it all along. Off for a title that does not define it.
+enum { MDA_UNDERFLOW_TICKS = GAME_MDA_UNDERFLOW_TICKS, UF_PERIOD_US = 100000, KErrUnderflow = -10 };
+// Bench knobs, 0 when shipping: the N95's stream modelled on the emulator's.
+// BENCH_DROP_UNDERFLOW swallows every MaoscPlayComplete(KErrUnderflow) the
+// emulator's stream sends by itself (the phone sends none); BENCH_ABORT_COPY_AT
+// turns the Nth MaoscBufferCopied of the run into KErrAbort (-39), the shape
+// a buffer the audio policy threw away arrives in, which Ashen answers with
+// no write (0xb4b18). Together they put the sound thread where round 147's
+// N95 had it: silent and deaf.
+enum { BENCH_DROP_UNDERFLOW = 0, BENCH_ABORT_COPY_AT = 0, KErrAbort = -39 };
+extern "C" int gate6_underflow_cb(void *p)
+{
+    Context *c = (Context *)p;
+    const u32 me = this_thread_id();
+    const u32 now = user_tickcount();
+    for (u32 i = 0; i < (u32)MDA_STREAMS; i++) {
+        if (!c->mdaObj[i] || !c->mdaPlaying[i] || c->mdaQueued[i] || c->mdaWrThread[i] != me)
+            continue;
+        if ((i32)(now - c->mdaIdleTick[i]) < (i32)MDA_UNDERFLOW_TICKS)
+            continue;
+        const u32 *co = (const u32 *)c->mdaCb[i];
+        void *gcb = co ? (void *)co[1] : 0;
+        const u32 *gvt = gcb ? *(const u32 **)gcb : 0;
+        c->mdaPlaying[i] = 0;               // as the N-Gage's stream: stopped until the next write
+        if (gvt && gvt[2 + CB_SHIFT]) {
+            typedef void (*Complete)(void *, int);
+            c->ufTold++;
+            log_event(c, NOTE_MDA_CODE, 0x5A350000u | (c->ufTold << 8) | i);
+            ((Complete)gvt[2 + CB_SHIFT])(gcb, KErrUnderflow);
+        }
+    }
+    return 0;
+}
+static void mda_underflow_watch(Context *c, int si)
+{
+    if (!MDA_UNDERFLOW_TICKS || si < 0)
+        return;
+    const u32 me = this_thread_id();
+    c->mdaWrThread[si] = me;                // the thread that writes it is the one that hears it
+    if (c->ufTimer && c->ufThread != me) {  // made in a sound thread that has gone
+        c->ufTimer = 0;
+    }
+    if (!c->ufTimer) {
+        void *t = cperiodic_newl(0);
+        if (!t)
+            return;
+        c->ufTimer = (u32)t;
+        c->ufThread = me;
+        c->ufCb.fn = &gate6_underflow_cb;
+        c->ufCb.ptr = c;
+        cperiodic_start(t, UF_PERIOD_US, UF_PERIOD_US, c->ufCb);
+        log_event(c, NOTE_MDA_CODE, 0x5A360000u | (u32)si);   // the underflow watch armed in this thread
+    }
+}
+
 extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
 {
     typedef u32 (*Any)(void *, u32, u32, u32);
@@ -11671,6 +11756,17 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
         if (slot == 4)
             c->mdaToldStop[si] = 0;         // a new life for the stream; the next Stop is told afresh
     }
+    if (MDA_UNDERFLOW_TICKS && si >= 0) {
+        if (slot == 9) {                    // WriteL: a buffer queued, the stream playing
+            c->mdaQueued[si]++;
+            c->mdaPlaying[si] = 1;
+            c->mdaIdleTick[si] = user_tickcount();
+            mda_underflow_watch(c, si);
+        } else if (slot == 10 || slot == 4) {   // Stop, Open: nothing queued, nothing playing
+            c->mdaQueued[si] = 0;
+            c->mdaPlaying[si] = 0;
+        }
+    }
     if (BG_MUTE && si >= 0) {
         typedef u32 (*Vol)(void *, u32);
         Vol setVol = (Vol)rvt[kMdaMap[7]];
@@ -11790,6 +11886,31 @@ extern "C" void gate6_mda_call(u32 *saved, Context *c, u32 slot)
 // worked, and the first time this port has been in a position to read it.
 extern "C" void gate6_cb_call(u32 *saved, Context *c, u32 slot)
 {
+    if (BENCH_DROP_UNDERFLOW && slot == 2 && saved[1] == (u32)KErrUnderflow) {
+        for (u32 i = 0; i < (u32)MDA_STREAMS; i++)
+            if (c->mdaCb[i] && c->mdaCb[i] == saved[0]) {
+                log_event(c, NOTE_MDA_CODE, 0x5A370000u | i);   // bench: the emulator's own underflow, dropped
+                cb_swallow(c, (int)i);
+                return;                     // and not counted: in the model it never happened
+            }
+    }
+    if (BENCH_ABORT_COPY_AT && slot == 1 && ++c->benchCopies == (u32)BENCH_ABORT_COPY_AT) {
+        log_event(c, NOTE_MDA_CODE, 0x5A380000u | (saved[1] & 0xFFFFu));   // bench: this copy made KErrAbort
+        saved[1] = (u32)KErrAbort;          // the trampoline restores r1 from here
+    }
+    if (MDA_UNDERFLOW_TICKS)
+        for (u32 i = 0; i < (u32)MDA_STREAMS; i++)
+            if (c->mdaCb[i] && c->mdaCb[i] == saved[0]) {
+                if (slot == 1) {            // MaoscBufferCopied: one fewer queued, the idle clock from now
+                    if (c->mdaQueued[i])
+                        c->mdaQueued[i]--;
+                    c->mdaIdleTick[i] = user_tickcount();
+                } else if (slot == 2) {     // MaoscPlayComplete: the stream has stopped
+                    c->mdaQueued[i] = 0;
+                    c->mdaPlaying[i] = 0;
+                }
+                break;
+            }
     // Round 133: what each stream hears back, counted (a worker's records
     // never reach the log; the heartbeat writes these). PlayComplete's error
     // says whether a stream ran dry (-10) or was stopped (-3).
