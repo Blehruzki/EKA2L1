@@ -143,8 +143,15 @@ Round 126: the loading thread's KERN-EXEC 3, hold C, the origin (`GAME_SRC_ORIGI
 and the log volume behind the music's hiccups, in build 003 (E574-E580).
 
 One, round 132: `GAME_DEFER_WORKER_STOP 1` -- a Stop from any thread but
-the main one is held back and made from the stream's next callback (or a
-re-Open), never under the game's channel mutex. One only.
+the main one is held back, never made under the game's channel mutex. One
+only. Until build 016 it was made only at the stream's next Open ("the
+next callback" never came: the writer stops writing and the N95's stream
+never underflows), and when no sound was opened for a whole fight the owed
+MaoscPlayComplete kept One's intro screen alive under the fight -- the
+fight glitch, rounds 130-142. **Round 142 (build 017): the Stop hook arms
+a CPeriodic made in the sound thread itself for a millisecond, and its
+callback carries every owed Stop out once the thread is back in its
+scheduler (0x5A0E armed, 0x5A0F done).**
 
 One, round 133: `GAME_MDA_POSITION_LEAD_US 100000` -- the stream's Position
 answered 100 ms ahead, so the writer (0x1195c, 80 ms capacity) keeps that much

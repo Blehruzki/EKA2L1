@@ -1117,6 +1117,8 @@ struct Context {
     u32 mdaLast[4], mdaWr[4], mdaWrSaid[4], mdaEnd[4], mdaSaid[4];   // per stream: last call, writes, PlayCompletes (round 133)
     u32 mdaPosCopy[4][2];                  // Position as answered, lead added (round 132)
     u32 mdaCb[4], mdaPendStop[4];          // each stream's callback proxy, and a worker's Stop held back (round 132)
+    u32 wkStopTimer, wkStopThread, wkStopArmed;   // round 142: the sound thread's own one-shot that carries a held-back Stop out
+    CallBack wkStopCb;
     u32 mdaDeferN, mdaDeferDone, mdaDeferSaid;   // Stops held back, carried out later, and what the heartbeat said
     u32 mdaMuteN, mdaUnmuteN, mdaMuteVol, mdaMuteSaid;   // streams turned down and back, the last volume kept, and what the heartbeat said
     u32 lastUpdSelf, lastUpdRegion;   // the last screen update that reached the screen
@@ -11253,6 +11255,67 @@ static void mda_owed_stop(Context *c, int si)
     ((Any)((const u32 *)p[2])[kMdaMap[10]])((void *)p[1], 0, 0, 0);
 }
 
+// **Round 142: the held-back Stop is carried out as soon as the sound
+// thread is back in its scheduler, not at the next Open.** "Nothing else
+// does" was the rule since round 132, and it cost the fight: the real Stop
+// delivers MaoscPlayComplete(KErrCancel), and One's screen flow waits for
+// it -- the intro's voice sample is stopped under the channel mutex, the
+// complete is owed, and when no other sound is opened the intro screen
+// never ends. The fight screen comes up over it anyway, both tick, the
+// camera cuts between their shots every couple of frames, and the keys go
+// to the screen underneath (round 142's video; round 130 saw the same cuts).
+// The N95's sound never opened again for the whole fight, so the complete
+// came 12,000 records late (5A0D: N 6, done 5 all that time); the bench's
+// came at the next Open a beat or two later, which is why it never showed.
+//
+// So the Stop hook arms a CPeriodic made in the sound thread itself -- its
+// scheduler, its heap -- for a millisecond. The callback runs when the
+// thread has let go of the game's mutex and is back in its scheduler,
+// which is where round 132 wanted the real Stop made; it stops every
+// stream that is owed one and cancels itself. A thread id tells a timer
+// made in a sound thread that has since died (One makes a new one per
+// fight) from one that is still good; the dead one went with its heap and
+// is only forgotten. 0x5A0E armed, 0x5A0F carried out (then how many).
+extern "C" int gate6_owed_stops_cb(void *p)
+{
+    Context *c = (Context *)p;
+    typedef void (*Cancel)(void *);
+    if (c->wkStopTimer && c->newCancel)
+        ((Cancel)c->newCancel)((void *)c->wkStopTimer);
+    c->wkStopArmed = 0;
+    u32 n = 0;
+    for (u32 i = 0; i < (u32)MDA_STREAMS; i++)
+        if (c->mdaPendStop[i]) {
+            mda_owed_stop(c, (int)i);
+            n++;
+        }
+    log_event(c, NOTE_MDA_CODE, 0x5A0F0000u | n);
+    return 0;
+}
+
+static void mda_owed_stop_soon(Context *c, int si)
+{
+    const u32 me = this_thread_id();
+    if (c->wkStopTimer && c->wkStopThread != me) {    // made in a sound thread that has gone
+        c->wkStopTimer = 0;
+        c->wkStopArmed = 0;
+    }
+    if (!c->wkStopTimer) {
+        void *t = cperiodic_newl(0);
+        if (!t)
+            return;
+        c->wkStopTimer = (u32)t;
+        c->wkStopThread = me;
+        c->wkStopCb.fn = &gate6_owed_stops_cb;
+        c->wkStopCb.ptr = c;
+    }
+    log_event(c, NOTE_MDA_CODE, 0x5A0E0000u | (u32)si | (c->wkStopArmed ? 0x100u : 0u));
+    if (c->wkStopArmed)
+        return;
+    c->wkStopArmed = 1;
+    cperiodic_start((void *)c->wkStopTimer, 1000, 10000000, c->wkStopCb);
+}
+
 // **Round 134: the proxies are given back.** Every NewL took about a
 // kilobyte of the spare arena -- the stream proxy (its vtable and fourteen
 // trampolines) and the callback proxy -- and nothing returned it, so the
@@ -11425,6 +11488,7 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
         if (slot == 10 && !on_main_thread(c)) {
             c->mdaPendStop[si] = 1;
             c->mdaDeferN++;
+            mda_owed_stop_soon(c, si);      // round 142
             return 0;
         }
         // An Open on it first carries out the Stop that is owed. Nothing

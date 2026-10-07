@@ -759,6 +759,34 @@ DSA for the game; after a restart the game did not answer, the screen is
 nobody's (`dsaIdle`, clip NONE, 0x57AE) until the game's own `StartL`.
 Bench E739-E740; settled by round 142.
 
+### 12.w The fight glitch: two screens ticking, the keys dead (rounds 130-142)
+
+**Symptom.** Some fights, never the first: the picture cuts every two or
+three frames between two camera shots of the same fight, the fighter does
+not answer the keys, pause and minimize still work, the next fight is as
+bad, and only a restart clears it (round 142's video; round 130 called it
+"cut back to intro shots"). Never on the bench.
+
+**Cause.** Round 132 made a Stop from the sound thread an owed one -- the
+real `CMdaAudioOutputStream::Stop` had deadlocked under the game's channel
+mutex against the main thread -- and the owed Stop was carried out only at
+the stream's next Open. The real Stop is what delivers
+`MaoscPlayComplete(KErrCancel)` (round 135: inside Stop, on the N95), and
+One's screen flow waits for it. The intro's voice sample is stopped under
+the mutex at the fight's start; when the fight opens no other sound, the
+complete never comes, the intro screen never ends, the fight screen comes
+up over it, both tick, and the keys go to the one underneath. Round 142's
+log: the deferred-Stop counter (5A0D) read N=6 done=5 for 12,300 records,
+the whole glitched fight, where every other owed Stop was carried out
+within a beat or two. The bench's next Open always came a beat later.
+
+**Fix (build 017).** The Stop hook arms a `CPeriodic` made in the sound
+thread itself (its scheduler, its heap) for a millisecond; the callback runs
+once the thread is back in its scheduler, holding nothing of the game's,
+and carries every owed Stop out (0x5A0E armed, 0x5A0F done). A thread id
+tells a timer made in a sound thread that has since died from a live one.
+Bench E741-E742; settled by round 143.
+
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 
 **Symptom.** The end key during a fight: "Application closed: One G6FLT
