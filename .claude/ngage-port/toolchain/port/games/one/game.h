@@ -160,6 +160,16 @@ enum { GAME_SRC_ORIGIN = 8 };
 // (0x12c: 7/7 live on the bench, E787-E789/E795-E798). See gate6_tick_count.
 #define GAME_TICK_SEED_LR    0x000c5d2c
 #define GAME_TICK_SEED_VALUE 0x12c
+// Round 145: the arena's REPE ambience list, so a minimize does not lose it
+// (gate6.cpp, ambience_forget). The game's TLS object comes from code+aae0c;
+// the sound manager is at +0x6914 of it, its arena list at +0x58: an RArray of
+// 0x64-byte entries -- TBuf<32> name, type at +0x48 (0 ONCE, 1 REPE), period
+// and weight, the sample id at +0x5c (-1 until resolved), last fired at +0x60.
+#define GAME_GLOBAL_FN       0x000aae0c
+#define GAME_SOUNDMGR_OFF    0x6914
+#define GAME_AMBIENCE_LIST   0x58
+#define GAME_AMBIENCE_ENTRY  0x64
+#define GAME_AMBIENCE_ID     0x5c
 
 // Round 132: the writer keeps only 20-55 ms queued against the N95's Position;
 // Position is answered this far ahead, so it keeps that much more.
@@ -228,5 +238,5 @@ enum { GAME_SRC_ORIGIN = 8 };
 #define GAME_CARD_CID 0x567857f1, 0x7d011234, 0x0b2b1879, 0x06000400
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 19
+#define GAME_BUILD 20
 #endif

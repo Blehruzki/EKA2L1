@@ -174,5 +174,14 @@ Universal, round 144 (build 019 of One): **`TLex16::Val(TReal64&)` in FPA word
 order** -- a parsed double written through a reference by the 9.x euser now
 reaches the game high word first, as every other double already did
 (`kFpaMath`, shape `M_LEXVAL`, hook `IMPORT_LEX16_VAL_REAL`). It is what made
-every arena's ambience silent (BUGBOOK 12.x). A fix, not a knob: on wherever
+every arena's ambience silent (BUGBOOK 12.aa). A fix, not a knob: on wherever
 the import exists, absent and harmless where it does not.
+
+One, round 145 (build 020): `GAME_GLOBAL_FN 0x000aae0c` / `GAME_SOUNDMGR_OFF
+0x6914` / `GAME_AMBIENCE_LIST 0x58` / `GAME_AMBIENCE_ENTRY 0x64` /
+`GAME_AMBIENCE_ID 0x5c` (**on**) -- the arena's REPE ambience list, whose
+sample ids the port sets back to -1 at focus gained (`ambience_forget`) so the
+game's own reload after a minimize resolves them again; without it the arena's
+samples alone were never reloaded and the wind stayed silent (BUGBOOK 12.ab,
+E837/E841). The ids stay -1 until the game's reload at the resume (E842: put
+back sooner, the fix is undone). A title without the defines has it off. One only.

@@ -907,7 +907,7 @@ boot+load (E823-E828) and the full-fight batch (E829-E832). **Confirmed on the
 N95, round 144: six fresh sessions, six clean fights.** Closed. The earlier window
 shim (E801-E820) is gone; its lesson -- a tick leap faults the game's timers
 -- is why the substitution is a plausible small tick, not a marker value.
-### 12.x The arenas' ambience is silent: TLex16::Val(TReal64&) in the wrong word order (round 144)
+### 12.aa The arenas' ambience is silent: TLex16::Val(TReal64&) in the wrong word order (round 144)
 
 **Symptom.** Round 144, build 018: on the Himalayas map (arena file
 `kyberpass`) the wind does not blow during a fight; blows, grunts and music are
@@ -942,6 +942,55 @@ logged (NOTE_FPA 0xF1.., then the two words) but the parsing thread's records
 reach no log on the bench, so the audio is the bench's proof and the phone the
 final one. A title without the import has the hook absent (65535) and is
 unaffected.
+
+### 12.ab The arena's ambience stops after a minimize and return (round 145)
+
+**Symptom.** One build 019 on the N95: the wind plays through a fight until
+the game is minimized and brought back; from then on the fight has its blows
+and no ambience, for the rest of the fight. The game's own pause (the menu
+from a key) does not do it.
+
+**Bench.** Reproduced with the modelled minimize (`BENCH_MINIMIZE_TICK` /
+`BENCH_RESTORE_TICK`) and CONTINUE from the pause menu (E837: the worker's
+stream 69% zero samples after the return against 0-1% with the ambience),
+absent across the game's own pause (E838: 29%), unchanged with the port's
+background mute off (E839: 73%). The first two bench runs were confounded
+by the attack key, which is also the menu's select (E835, E836).
+
+**Cause.** The game's own foreground handling. On focus lost the sound
+manager (code+0x48d54) requests the effects stream off and gives back every
+decoded sample: 0x1216c deletes each entry of the player's sample array and
+resets it. After the return -- with the resume, some 1,600 records after the
+foreground handler on the bench, not inside it -- it loads the two fighters'
+sets again (0x47ffc, 0x481d4) and the arena's set (0x483f4) **only for
+entries whose sample id is still -1**. The arena's REPE entries -- parsed from
+`data/arenas/<arena>.fx` into an RArray the manager keeps at +0x58, 0x64
+bytes each: TBuf<32> name, type at +0x48, period and weight, the id at
++0x5c, last fired at +0x60 -- kept the ids they resolved at the fight's
+start, which now name slots past the end of the rebuilt array. The
+scheduler (0x458b4: every <period> seconds, a Math::FRand draw against the
+weight) goes on firing, play(id) finds nothing. Both logs show it: after the
+return the game opens loading.noa and the 42 fighter files again, and not one
+of the arena's (ship, shipwave, sea, wind, seagull on the bench's harbour;
+wave0/1, seagull1/3 on the phone's). Whether the N-Gage's own task switch did
+the same is not known; the code is the game's.
+
+**Fix (build 020, One).** `ambience_forget` (gate6.cpp) runs at focus
+gained, before the game's handler: through the game's TLS object
+(`GAME_GLOBAL_FN`), the manager (`GAME_SOUNDMGR_OFF`) and the list
+(`GAME_AMBIENCE_LIST`), read in the 9.x euser's RArrayBase layout (iCount,
+iEntries, iEntrySize), it sets every entry's id to -1, so the game's own
+reload resolves the arena's set along with the fighters'. The manager keeps
+the list pointer after a fight ends, so nothing is written unless the list
+looks like one: entry size 0x64, a sane count, and in every entry a TBuf<32>
+name, a type of 0 or 1 and an id small or -1. The ids stay -1 until the
+game's reload: that is the state the parser leaves them in until the fight's
+start resolves them, and putting the old id back as soon as the handler
+returned undid the fix (E842), because the reload comes later. Codes 0x5A30
+(no list), 0x5A31 (size, count), 0x5A32 (ids forgotten). E840 read the
+entry size at the wrong word (iKeyOffset) and declined; E841: the arena's
+seven files loaded again after the fighters', 24% zero samples after the
+return against 69%.
 
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 

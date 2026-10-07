@@ -1114,7 +1114,7 @@ struct Context {
     u32 realKickRunL, fnFastCounter, kickRuns, kickRunTicks, kickBeatAt;   // the kick RunL, timed (round 132)
     u32 realTickCount;      // euser 674 User::TickCount, the game's own reads (round 143 tick shim)
     u32 tickSeedHits;       // how many times the seed read was answered with the constant
-    u32 realLexVal, lexValTold;   // TLex16::Val(TReal64&) as resolved, and how many parses were logged (round 144)
+    u32 realLexVal, lexValTold;     // TLex16::Val(TReal64&) as resolved, and how many parses were logged (round 144)
     u32 fnCpuTime, cpuSaid[5];   // RThread::GetCpuTime (euser 1782), and each thread's last reading, in us
     u32 bgMute;             // focus lost: the streams are turned down until it comes back
     u32 mdaObj[4], mdaVol[4], mdaMuted[4];   // each stream, the volume the game last set, and whether muted
@@ -4543,6 +4543,13 @@ static void watchdog_start(Context *c)
 #ifndef GAME_KICK_RUNL_SLOT
 #define GAME_KICK_RUNL_SLOT 0
 #define GAME_KICK_RUNL_FN 0
+#endif
+#ifndef GAME_GLOBAL_FN
+#define GAME_GLOBAL_FN 0             // round 145: the ambience list, see ambience_forget
+#define GAME_SOUNDMGR_OFF 0
+#define GAME_AMBIENCE_LIST 0
+#define GAME_AMBIENCE_ENTRY 0
+#define GAME_AMBIENCE_ID 0
 #endif
 enum { EUSER_FAST_COUNTER = 584 };
 enum { EUSER_TICK_COUNT = 674 };   // User::TickCount(void), 9.x ordinal (confirmed by measurement; CLAUDE.md)
@@ -12301,10 +12308,69 @@ extern "C" void gate6_ui_wsevent(void *self, const u32 *event, void *dest, Conte
 // the old object; the diversion on that import (gen_shim DIVERTS, avkon 757
 // and 803) hands the base the wrapper, so avkon runs once, on the object it
 // can read, in the order the game wrote.
+// **Round 145: the arena's ambience dies with a minimize.** One's sound
+// manager answers focus lost by giving back every decoded sample (0x48d54 ->
+// 0x1216c resets the player's sample array). After the return the game
+// loads the two fighters' sets again (0x47ffc, 0x481d4: on the bench some
+// 1,600 records after the foreground handler, with the resume) -- and the
+// arena's set (0x483f4) only for entries whose sample id is still -1. The
+// REPE entries parsed from data/arenas/<arena>.fx kept the ids they resolved
+// at the fight's start, which now name slots past the end of the rebuilt
+// array: the scheduler fires (0x458b4), play(id) finds nothing, and the wind
+// is gone until the next fight, on the bench (E837) and the N95 (round 145)
+// alike, while the game's own pause -- which gives nothing back -- keeps it
+// (E838). Whether the N-Gage's own task switch did the same is not known.
+// So at focus gained, before the game's handler, every entry's id is set
+// back to -1 -- the state the parser leaves them in until the fight's start
+// resolves them -- and the game's own reload resolves them again with the
+// fighters' (E841). Putting an id back when the handler returned with it
+// still -1 was tried and undid the fix: the reload comes later (E842).
+// The list is reached as the game reaches it: its TLS object
+// (code+GAME_GLOBAL_FN), the manager at +GAME_SOUNDMGR_OFF, the RArray at
+// +GAME_AMBIENCE_LIST, read in the 9.x euser's layout (e32cmn.h: iCount,
+// iEntries, iEntrySize, iKeyOffset, iAllocated), since it is the 9.x
+// constructor and Append that filled it in. The manager keeps that pointer
+// after the fight (0x49844 sets it, nothing clears it), so before anything
+// is written the list has to look like one: the parsed entry size (0x64),
+// a sane count, and in every entry a TBuf<32> name, a type of 0 or 1 and an
+// id that is small or -1. A block the heap has taken back fails that.
+static void ambience_forget(Context *c)
+{
+    typedef u32 (*Global)(void);
+    if (!GAME_GLOBAL_FN || !c->codeBase)
+        return;
+    const u32 g = ((Global)(c->codeBase + GAME_GLOBAL_FN))();
+    if (!g || g < 0x400000) return;
+    const u32 mgr = *(const u32 *)(g + GAME_SOUNDMGR_OFF);
+    if (!mgr || mgr < 0x400000) return;
+    const u32 *arr = *(const u32 **)(mgr + GAME_AMBIENCE_LIST);
+    if (!arr || (u32)arr < 0x400000) {
+        log_event(c, NOTE_MDA_CODE, 0x5A300000u);          // no arena list
+        return;
+    }
+    const u32 n = arr[0], base = arr[1], size = arr[2];
+    log_event(c, NOTE_MDA_CODE, 0x5A310000u | ((size & 0xFF) << 8) | (n & 0xFF));
+    if (size != (u32)GAME_AMBIENCE_ENTRY || n == 0 || n > 64 || !base || base < 0x400000)
+        return;
+    for (u32 i = 0; i < n; i++) {
+        const u32 *e = (const u32 *)(base + i * size);
+        const u32 id = e[GAME_AMBIENCE_ID / 4];
+        if ((e[0] >> 28) != 3 || (e[0] & 0x0FFFFFFFu) > 32 || e[0x48 / 4] > 1 ||
+            (id != 0xFFFFFFFFu && id > 4096)) {
+            log_event(c, NOTE_MDA_CODE, 0x5A330000u | i);   // not a REPE entry: left alone
+            return;
+        }
+    }
+    for (u32 i = 0; i < n; i++)
+        *(u32 *)(base + i * size + GAME_AMBIENCE_ID) = 0xFFFFFFFFu;
+    log_event(c, NOTE_MDA_CODE, 0x5A320000u | n);           // ids forgotten: the game's reload resolves them
+}
 extern "C" void gate6_ui_foreground(void *self, u32 foreground, Context *c)
 {
     typedef void (*FgEvent)(void *, u32);
     log_event(c, NOTE_FG_EVENT, foreground);
+    if (foreground)
+        ambience_forget(c);                 // round 145, before the game's own reload
     if (GAME_UI_FORWARD_EVENTS && c->oldFgEvent)
         ((FgEvent)c->oldFgEvent)(c->oldUi, foreground);
     else
