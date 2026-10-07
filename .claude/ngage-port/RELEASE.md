@@ -26,6 +26,7 @@ Please report any bugs you find. Happy <verb>ing!🙂
 | Asphalt Urban GT | `6r67` | `gate6-6r67.cfg` | `user.dat` |
 | Asphalt 2 | `6rbc` | `gate6-6rbc.cfg` | `user.dat` |
 | Ashen | `6r21` | `gate6-6r21.cfg` | `savegameNN.sav` (progress), `options.dat` (settings) |
+| One | `6r58` | `gate6-6r58.cfg` | `6R58.prf` (the fighter profile), `6R58.set` (settings) |
 
 Later builds of a title say what changed since the last post instead of
 "First public build"; the feature lines stay, since every build carries them.

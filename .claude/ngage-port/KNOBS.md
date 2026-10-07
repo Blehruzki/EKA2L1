@@ -100,6 +100,7 @@ the saves behind.
 | Asphalt Urban GT | `c:\system\apps\6R67\` | `user.dat` | `user.dat` |
 | Asphalt 2 | `c:\system\apps\6RBC\` | `user.dat` | `user.dat` |
 | Ashen | `C:\System\Apps\6R21\` | `options.dat` (E445) | `savegameNN.sav` (from the image's format string; not yet seen written) |
+| One | `C:\System\Apps\6R58\` | `6R58.set` (52 bytes) | `6R58.prf`, the fighter profile (12.8 KB; E584-E585 made it persist) |
 
 ## Bench knobs in `gate6.cpp` that must be 0 in a shipped build
 
@@ -107,6 +108,9 @@ Exception: One builds 011 to 013 (rounds 136-138) ship `WORKER_LOG 1` on purpose
 diagnostic -- single-writer since round 136, so it cannot be the fault it was
 in round 64 -- together with the `RHandleBase::Close` handle record (NOTE 707).
 Both go back to their shipping state after the round.
+`WORKER_LOG 1` then stayed on through One builds 014 to 020 for the sound-thread
+work of rounds 139-145 (`C:\g6wrk.log`, 64 KB); build 021, the first public One
+build, has it at 0 again.
 
 `BENCH_BACKGROUND_TICK`, `BENCH_FOREGROUND_TICK`, `BENCH_DEACTIVATE_TICK`,
 `BENCH_SCHED_BEATS`, `BENCH_FOCUSLOST_TICK`, `BENCH_FOCUSGAINED_TICK` (a real

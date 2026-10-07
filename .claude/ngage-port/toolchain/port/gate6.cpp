@@ -2263,7 +2263,7 @@ enum { WORKER_NOTES = 1, WORKER_NOTE_MAX = 200 };
 // below -- gets the same story out of the box without the worker touching a
 // file at all, and an instrument that cannot be the fault is worth more than
 // one that might be.
-enum { WORKER_LOG = 1, WORKER_LOG_MAX = 65536 };   // bench: 1 for round 113's sound thread (readwrk.py reads it); 0 when shipping. Its file handle is the first worker's, so a second worker writes nothing (E511)
+enum { WORKER_LOG = 0, WORKER_LOG_MAX = 65536 };   // bench: 1 for round 113's sound thread (readwrk.py reads it); 0 when shipping. Its file handle is the first worker's, so a second worker writes nothing (E511)
 
 static void worker_log(Context *c, u32 code, u32 from)
 {
