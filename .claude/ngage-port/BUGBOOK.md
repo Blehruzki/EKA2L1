@@ -780,12 +780,40 @@ log: the deferred-Stop counter (5A0D) read N=6 done=5 for 12,300 records,
 the whole glitched fight, where every other owed Stop was carried out
 within a beat or two. The bench's next Open always came a beat later.
 
-**Fix (build 017).** The Stop hook arms a `CPeriodic` made in the sound
-thread itself (its scheduler, its heap) for a millisecond; the callback runs
-once the thread is back in its scheduler, holding nothing of the game's,
-and carries every owed Stop out (0x5A0E armed, 0x5A0F done). A thread id
-tells a timer made in a sound thread that has since died from a live one.
-Bench E741-E742; settled by round 143.
+**What it is not (build 017's one-shot, refuted).** Build 017 armed a
+`CPeriodic` in the sound thread to carry the owed Stop out there (0x5A0E/0x5A0F;
+bench E741). It was first read as the cause when the bench threw "dead" fights
+(E746, E747): the fighter stands still for 60 s, no hit lands, the keys do
+nothing. But the dead fight recurs with the one-shot **off** (E748-E760,
+E769-E771) and with the fake-complete on or off, under every sound knob tried.
+The audio Stop is not the discriminator.
+
+**What it is (the one.cwa read).** Every bench fight splits cleanly in two, and
+the split is exact across 17 fights (E746-E771): a **live** fight reads the
+whole `one.cwa` archive -- 15-16 chunks of 0x800, the copy-protection's card
+write-probe fired 408 times -- and a **dead** fight reads 4 KB (2 chunks), probes
+once, closes the file (RFile::Close, efsrv 300, from code+e8680) and runs the
+fight without its data. 408 probes <=> live in 6 of 6; 1 probe <=> dead in 11 of
+11. The N95 logs show the same: rounds 140 and 142 (live) read 408 times, 141
+and 143 (dead, the glitched ones) read once. So the glitch is the archive
+failing to load, not the sound.
+
+**Where the split is decided.** A 12M-entry PC trace of the main thread (the
+emulator's `EKA2L1_PCTRACE`, armed at the stream-read wrapper code+f35b0) is
+bit-identical between a live run (E763) and a dead one (E761) for the first
+~23,000 block entries of the read, then parts **inside the game's own
+obfuscated decompressor** -- at the state dispatch code+d233c, or the per-byte
+transform loop code+b6408, depending on the run. No port shim sits between the
+last shared block and the divergence: the registers the port hands the read
+(f35b0: the RFile, the descriptor, a 0x400 request) are identical in both, and
+so are the decompressor's inputs (code+36dc4/b3f90). The branch is the game's
+own, on a value it computes. The two remaining non-deterministic inputs to that
+loop are the emulator's timing (User::TickCount, read through code+b8738 by the
+cca10/ccacc interval routine the reader leans on) and `Math::Random`; a
+read-before-write of the decompressor's working buffer (uninitialised heap,
+which the emulator fills unlike hardware) is the other candidate and is not yet
+ruled out. The next diagnostic is a write-watch on that buffer; until it says
+which, there is no build.
 
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 

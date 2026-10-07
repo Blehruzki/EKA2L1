@@ -151,7 +151,7 @@ MaoscPlayComplete kept One's intro screen alive under the fight -- the
 fight glitch, rounds 130-142. **Round 142 (build 017): the Stop hook arms
 a CPeriodic made in the sound thread itself for a millisecond, and its
 callback carries every owed Stop out once the thread is back in its
-scheduler (0x5A0E armed, 0x5A0F done).**
+scheduler (0x5A0E armed, 0x5A0F done).** **Round 143 (build 018): that one-shot killed the sound thread on the bench (E746-E747: a fight nobody moves in) and on the N95; off. The game is told PlayComplete(KErrCancel) inside its own Stop instead (`FAKE_STOP_COMPLETE`, 0x5A2E), the real Stop waits for the next Open with its own complete swallowed (0x5A2F), an owed Stop of a dead thread is dropped (0x5A2D).**
 
 One, round 133: `GAME_MDA_POSITION_LEAD_US 100000` -- the stream's Position
 answered 100 ms ahead, so the writer (0x1195c, 80 ms capacity) keeps that much

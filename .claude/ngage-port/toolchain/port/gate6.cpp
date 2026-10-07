@@ -1118,6 +1118,7 @@ struct Context {
     u32 mdaPosCopy[4][2];                  // Position as answered, lead added (round 132)
     u32 mdaCb[4], mdaPendStop[4];          // each stream's callback proxy, and a worker's Stop held back (round 132)
     u32 wkStopTimer, wkStopThread, wkStopArmed;   // round 142: the sound thread's own one-shot that carries a held-back Stop out
+    u32 mdaToldStop[4], mdaPendThread[4];   // round 143: the game already heard PlayComplete(-3) for this Stop; the thread that owes it
     CallBack wkStopCb;
     u32 mdaDeferN, mdaDeferDone, mdaDeferSaid;   // Stops held back, carried out later, and what the heartbeat said
     u32 mdaMuteN, mdaUnmuteN, mdaMuteVol, mdaMuteSaid;   // streams turned down and back, the last volume kept, and what the heartbeat said
@@ -11235,6 +11236,49 @@ static int mda_stream(Context *c, u32 obj)
 #define GAME_DEFER_WORKER_STOP 0
 #endif
 enum { DEFER_WORKER_STOP = GAME_DEFER_WORKER_STOP };
+// Round 143 (bench): a held-back Stop that is never carried out and never
+// answered -- what the N95 gets when the sound thread exits before the
+// one-shot fires. 0 in a shipped build.
+enum { CB_PROXY = 1, CB_SLOTS = 3, CB_SHIFT = 2 };
+enum { CB_TRACE = 1, CB_TRAMP = CB_TRACE ? 18 : 3 };   // round 143: +4, the swallow stub
+enum { BENCH_DROP_OWED_STOP = 0 };
+// Round 143: the game is told MaoscPlayComplete(KErrCancel) *inside* its own
+// Stop, as an N-Gage told it (round 135 measured the N95 doing the same),
+// whether or not the real Stop can be made there; the real one, when it is
+// made, has its own complete swallowed (one callback, through the stub in
+// the proxy's trampoline). 0 reproduces round 143 on the bench with
+// BENCH_DROP_OWED_STOP.
+enum { FAKE_STOP_COMPLETE = 1 };
+// Round 143: build 017's one-shot was made in the sound thread inside the
+// game's own Stop call -- CPeriodic::NewL on that thread's heap, untrapped --
+// and the N95's sound thread never got past that Stop (its log ends at
+// 0x5A0E, without the RSemaphore::Signal that follows every Stop in rounds
+// 136-142). Off: the real Stop waits for the stream's next Open again.
+enum { ONESHOT_OWED_STOP = 0 };
+static u32 *cb_tramp(Context *c, int si, u32 k)
+{
+    u32 *co = (u32 *)c->mdaCb[si];
+    if (!CB_TRACE || !co)
+        return 0;
+    return co + 2 + CB_SLOTS + k * CB_TRAMP;
+}
+static void cb_swallow(Context *c, int si)
+{
+    u32 *t = cb_tramp(c, si, 2);
+    if (t && t[13] != (u32)&t[14])
+        t[13] = (u32)&t[14];
+}
+static int cb_swallowing(Context *c, int si)
+{
+    u32 *t = cb_tramp(c, si, 2);
+    return t && t[13] == (u32)&t[14];
+}
+static void cb_unswallow(Context *c, int si)
+{
+    u32 *t = cb_tramp(c, si, 2);
+    if (t && t[13] == (u32)&t[14])
+        t[13] = t[17];
+}
 #ifndef GAME_MDA_POSITION_LEAD_US
 #define GAME_MDA_POSITION_LEAD_US 0
 #endif
@@ -11251,8 +11295,35 @@ static void mda_owed_stop(Context *c, int si)
     const u32 *p = (const u32 *)c->mdaObj[si];
     if (!p || !p[1] || !p[2])
         return;
+    // Round 143: owed by a sound thread that has gone (One starts one per
+    // fight; the N95's log 30 has the first one's last act a Stop, and the
+    // next thread's stream at the same address). Its handles went with it
+    // and its stream with them: nothing to stop, and a Stop on whatever
+    // now sits at the address would be on another object.
+    if (c->mdaPendThread[si] && c->mdaPendThread[si] != this_thread_id()) {
+        log_event(c, NOTE_MDA_CODE, 0x5A2D0000u | (u32)si);
+        c->mdaDeferDone++;
+        return;
+    }
     c->mdaDeferDone++;
+    if (BENCH_DROP_OWED_STOP) {
+        log_event(c, NOTE_MDA_CODE, 0x5A0D0D0Du);   // dropped on purpose
+        return;
+    }
+    // The game has already heard this Stop's complete (FAKE_STOP_COMPLETE);
+    // the real Stop's own, which the N95 delivers inside the call, goes to
+    // the stub. If none came inside, the stub is put back: a complete that
+    // comes later is some other event's.
+    if (c->mdaToldStop[si])
+        cb_swallow(c, si);
     ((Any)((const u32 *)p[2])[kMdaMap[10]])((void *)p[1], 0, 0, 0);
+    if (c->mdaToldStop[si]) {
+        if (cb_swallowing(c, si)) {
+            cb_unswallow(c, si);
+            log_event(c, NOTE_MDA_CODE, 0x5A2C0000u | (u32)si);
+        }
+        c->mdaToldStop[si] = 0;
+    }
 }
 
 // **Round 142: the held-back Stop is carried out as soon as the sound
@@ -11477,6 +11548,7 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
                 c->mdaObj[i] = 0;
                 c->mdaCb[i] = 0;            // its callback proxy is given back too
                 c->mdaPendStop[i] = 0;      // the destructor stops it
+                c->mdaToldStop[i] = 0;
             }
     }
     const int si = (slot != 2) ? mda_stream(c, saved[0]) : -1;
@@ -11487,8 +11559,22 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
     if (DEFER_WORKER_STOP && si >= 0) {
         if (slot == 10 && !on_main_thread(c)) {
             c->mdaPendStop[si] = 1;
+            c->mdaPendThread[si] = this_thread_id();
             c->mdaDeferN++;
-            mda_owed_stop_soon(c, si);      // round 142
+            if (ONESHOT_OWED_STOP && !BENCH_DROP_OWED_STOP)
+                mda_owed_stop_soon(c, si);      // round 142
+            // Round 143: the complete, now, where the game expects it.
+            if (FAKE_STOP_COMPLETE && !c->mdaToldStop[si] && c->mdaCb[si]) {
+                typedef void (*Complete)(void *, int);
+                const u32 *co = (const u32 *)c->mdaCb[si];
+                void *gcb = (void *)co[1];
+                const u32 *gvt = gcb ? *(const u32 **)gcb : 0;
+                if (gvt && gvt[2 + CB_SHIFT]) {
+                    c->mdaToldStop[si] = 1;
+                    log_event(c, NOTE_MDA_CODE, 0x5A2E0000u | (u32)si);
+                    ((Complete)gvt[2 + CB_SHIFT])(gcb, -3);
+                }
+            }
             return 0;
         }
         // An Open on it first carries out the Stop that is owed. Nothing
@@ -11497,6 +11583,8 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
         // never really stopped takes them as it always did.
         if (c->mdaPendStop[si] && slot == 4)
             mda_owed_stop(c, si);
+        if (slot == 4)
+            c->mdaToldStop[si] = 0;         // a new life for the stream; the next Stop is told afresh
     }
     if (BG_MUTE && si >= 0) {
         typedef u32 (*Vol)(void *, u32);
@@ -11610,8 +11698,7 @@ extern "C" void gate6_mda_call(u32 *saved, Context *c, u32 slot)
 // offset-to-top of a secondary base: -4, because the game's callback is a
 // mixin sub-object four bytes into its sound object. The run jumped to
 // 0xfffffffc and died there.
-enum { CB_PROXY = 1, CB_SLOTS = 3, CB_SHIFT = 2 };
-enum { CB_TRACE = 1, CB_TRAMP = CB_TRACE ? 14 : 3 };
+// (CB_PROXY, CB_SLOTS, CB_SHIFT, CB_TRACE and CB_TRAMP are declared above mda_owed_stop, which needs them first)
 
 // What the stream is telling the game. Slot 0 is `MaoscOpenComplete`, and
 // its one argument is the error -- which is the answer to whether the open
@@ -11632,7 +11719,20 @@ extern "C" void gate6_cb_call(u32 *saved, Context *c, u32 slot)
     // the game's mutex.
     if (DEFER_WORKER_STOP)
         for (u32 i = 0; i < (u32)MDA_STREAMS; i++)
-            if (c->mdaPendStop[i] && c->mdaCb[i] == saved[0]) {
+            if (c->mdaCb[i] == saved[0]) {
+                // Round 143: the game was told its Stop's complete already
+                // (FAKE_STOP_COMPLETE) -- or, on the bench reproducing the
+                // N95 (BENCH_DROP_OWED_STOP), must not be told at all: the
+                // emulator's stream completes by itself when the writer
+                // stops, the N95's never does (round 135). Either way this
+                // one goes to the stub.
+                if (slot == 2 && (c->mdaToldStop[i] || (BENCH_DROP_OWED_STOP && c->mdaPendStop[i]))) {
+                    log_event(c, NOTE_MDA_CODE, 0x5A2F0000u | i);
+                    cb_swallow(c, (int)i);
+                    c->mdaToldStop[i] = 0;
+                }
+                if (!c->mdaPendStop[i])
+                    break;
                 // MaoscPlayComplete means the stream has stopped by itself
                 // (it ran dry): nothing is owed, and a Stop now would only
                 // tell the game twice.
@@ -11714,6 +11814,14 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
                     t[11] = (u32)&gate6_cb_call;
                     t[12] = 0;
                     t[13] = gvt[k + CB_SHIFT];
+                    // Round 143: the swallow stub. With t[13] pointed here,
+                    // one callback goes nowhere -- and the stub puts the
+                    // game's entry back into t[13] itself, so it swallows
+                    // exactly one, however late it comes.
+                    t[14] = 0xE59FC004;     // ldr  ip, [pc, #4]   -> t[17], the game's entry
+                    t[15] = 0xE50FC010;     // str  ip, [pc, #-16] -> t[13]
+                    t[16] = 0xE12FFF1E;     // bx   lr
+                    t[17] = gvt[k + CB_SHIFT];
                 } else {
                     t[0] = 0xE5900004;      // ldr r0, [r0, #4]
                     t[1] = 0xE51FF004;      // ldr pc, [pc, #-4]

@@ -368,6 +368,19 @@ moving; the window server draws into it while the game is away (the task
 switcher is in the dump) and nothing but the client's blits touch it after
 a return (the band checksum, 0x5C0E).
 
+## The audio stream: what Stop delivers, and what running dry does
+
+Measured, not read: on the N95 `CMdaAudioOutputStream::Stop` takes 49-53 ms
+and delivers `MaoscPlayComplete(KErrCancel)` *inside* the call, on the
+calling thread (ngtest, round 135); a stream whose writer stops writing
+plays on and never reports `KErrUnderflow` (same round). On the emulator
+the same stream reports `MaoscPlayComplete(KErrUnderflow)` by itself about
+ten records after the writer's last buffer (E743, the sound thread's log,
+721-723). A game whose screen flow waits for the complete -- One's intro
+does -- therefore behaves on the bench as if every Stop were answered, and
+on the device only when the Stop is really made or the complete really
+sent (round 143).
+
 Round 96 showed a *second* backgrounding path in which slots 10, 21 and 24 do
 not fire at all and the game cancels its own frame timer instead. Both end in
 KERN-EXEC 0. Do not assume which one a given report is.

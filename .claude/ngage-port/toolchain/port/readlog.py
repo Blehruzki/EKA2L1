@@ -225,7 +225,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on / SOUND',
          852: 'image loaded at / sound msg', 853: 'chunk ends at / MDA CALL',
          854: 'APP UI VPTR CHANGED to / MDA arg', 855: 'decrypted literal / MDA vtable',
-         856: '  and it points at a word / MDA code (0x5A0D0000 then deferred Stops N<<16|done; 0x5A0Exx a worker Stop held back on stream xx, +0x100 already armed; 0x5A0Fn the one-shot carried n out)',
+         856: '  and it points at a word / MDA code (0x5A0D0000 then deferred Stops N<<16|done; 0x5A0Exx a worker Stop held back on stream xx, +0x100 already armed; 0x5A0Fn the one-shot carried n out; 0x5A2Cxx no complete came inside the real Stop, stub put back; 0x5A2Dxx owed by a thread that has gone; 0x5A2Exx the game told PlayComplete(-3) inside its own Stop; 0x5A2Fxx a later complete swallowed)',
          857: 'r5 = / MDA CALLBACK', 858: '    word', 859: '    text', 870: 'returned', 871: '  by import',
          872: '  asked for', 873: 'about to call import',
          890: 'ordinal asked of a library that is not open',

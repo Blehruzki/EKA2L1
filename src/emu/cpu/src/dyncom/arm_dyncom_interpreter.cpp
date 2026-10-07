@@ -20,8 +20,78 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 #include <cpu/arm_interface.h>
+
+// EKA2L1_PCTRACE=lo:hi:path -- a trace of block entries whose PC lies in
+// [lo, hi), each as two words (pc, sp), started by the first block entry at
+// EKA2L1_PCTRACE_START (hex; unset means from the first instruction) and
+// capped at EKA2L1_PCTRACE_MAX entries (default 16M). A diagnostic for finding
+// where two runs of the same guest code part: trace both, compare.
+namespace {
+struct pc_trace {
+    std::uint32_t lo = 0, hi = 0, start = 0;
+    std::uint64_t max = 16u << 20, n = 0;
+    bool armed = false, on = false;
+    std::FILE *f = nullptr;
+    std::uint32_t buf[2 * 4096];
+    std::uint32_t fill = 0;
+    // EKA2L1_PCTRACE_REGS=pc,pc,... (hex): at a block entry on one of these,
+    // the pc and r0..r15 go to <path>.regs, at most 200k such entries.
+    std::uint32_t regpc[16]; int nregpc = 0;
+    std::FILE *rf = nullptr; std::uint64_t nreg = 0;
+
+    pc_trace() {
+        const char *w = std::getenv("EKA2L1_PCTRACE");
+        if (!w) return;
+        char *end = nullptr;
+        lo = static_cast<std::uint32_t>(std::strtoul(w, &end, 16));
+        if (!end || *end != ':') return;
+        hi = static_cast<std::uint32_t>(std::strtoul(end + 1, &end, 16));
+        if (!end || *end != ':') return;
+        f = std::fopen(end + 1, "wb");
+        if (!f) return;
+        const char *st = std::getenv("EKA2L1_PCTRACE_START");
+        start = st ? static_cast<std::uint32_t>(std::strtoul(st, nullptr, 16)) : 0;
+        const char *mx = std::getenv("EKA2L1_PCTRACE_MAX");
+        if (mx) max = std::strtoull(mx, nullptr, 10);
+        on = (start == 0);
+        armed = true;
+        const char *rp = std::getenv("EKA2L1_PCTRACE_REGS");
+        if (rp) {
+            std::string path = std::string(end + 1) + ".regs";
+            rf = std::fopen(path.c_str(), "wb");
+            while (rp && *rp && nregpc < 16) {
+                regpc[nregpc++] = static_cast<std::uint32_t>(std::strtoul(rp, &end, 16));
+                rp = (end && *end == ',') ? end + 1 : nullptr;
+            }
+        }
+    }
+    inline void regs(std::uint32_t pc, const std::uint32_t *r) {
+        if (!rf || !on || nreg >= 200000) return;
+        for (int i = 0; i < nregpc; i++) {
+            if (regpc[i] == pc) {
+                std::fwrite(&pc, 4, 1, rf); std::fwrite(r, 4, 16, rf); std::fflush(rf); nreg++;
+                return;
+            }
+        }
+    }
+    void flush() {
+        if (f && fill) { std::fwrite(buf, 4, fill, f); std::fflush(f); fill = 0; }
+    }
+    inline void hit(std::uint32_t pc, std::uint32_t sp, const std::uint32_t *r) {
+        if (!armed) return;
+        if (!on) { if (pc != start) return; on = true; }
+        if (pc < lo || pc >= hi) return;
+        if (rf) regs(pc, r);
+        if (n >= max) { if (f) { flush(); std::fclose(f); f = nullptr; armed = false; } return; }
+        buf[fill++] = pc; buf[fill++] = sp; n++;
+        if (fill == 2 * 4096) flush();
+    }
+};
+pc_trace g_pc_trace;
+}
 
 #define RM BITS(sht_oper, 0, 3)
 #define RS BITS(sht_oper, 8, 11)
@@ -2661,6 +2731,7 @@ unsigned InterpreterMainLoop(ARMul_State *cpu, std::uint32_t &num_instrs) {
     LOAD_NZCVT;
 DISPATCH : {
     PROF_BLOCK_ENTER(cpu);
+    g_pc_trace.hit(cpu->Reg[15], cpu->Reg[13], cpu->Reg.data());
     if (!cpu->NirqSig) {
         if (!(cpu->Cpsr & 0x80)) {
             goto END;

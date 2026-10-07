@@ -73,6 +73,12 @@ in `kernel_system::reset_inactivity_time` instead mixes in the window server's
 own host-side resets, which are an order of magnitude more frequent. The other
 probes are `EKA2L1_WATCH`, `EKA2L1_WATCHVAL`, `EKA2L1_WATCHPC` and
 `EKA2L1_RWATCH` in `src/emu/cpu/src/dyncom/armstate.cpp`.
+`EKA2L1_PCTRACE=lo:hi:path` writes every basic-block entry whose PC falls in
+[lo, hi) to a file as (pc, sp) word pairs, armed from the first entry at
+`EKA2L1_PCTRACE_START` and capped at `EKA2L1_PCTRACE_MAX`; with
+`EKA2L1_PCTRACE_REGS=pc,pc,...` it also dumps r0-r15 at those block entries to
+`<path>.regs`. It is for finding where two runs of the same guest code part
+(the dispatch loop in `src/emu/cpu/src/dyncom/arm_dyncom_interpreter.cpp`).
 
 A dead thread's own heap is freed, as EKA2's `DThread::CloseCreatedHeap`
 does (`thread::close_created_heap` in `src/emu/kernel/src/thread.cpp`): the
