@@ -159,11 +159,13 @@ more queued against the stutter; `GAME_KICK_RUNL_SLOT` / `_FN` -- the frame
 object's RunL timed per beat (0x0BEF records: runs, ticks inside, ticks in the
 beat). One only.
 
-One, round 143: `GAME_TICK_SHIM` (**off**, experimental) -- intercepts the
-game's `User::TickCount` and, during the `one.cwa` load window, feeds it a
-controlled tick, to stop the archive loader reading short when host timing
-jitters (the fight glitch, BUGBOOK 12.w). Plumbed and proven to reach the
-loader (E805/E813/E814) but not yet a reliable fix (E807-E820), so it ships
-off. `GAME_TICK_SHIM_SHIFT` / `_CALLS` set the window cadence and length. The
-emulator-side `EKA2L1_CYCLETICK` (EMU_PATCHES.md) is the deterministic bench
-this is developed against. One only.
+One, round 143: `GAME_TICK_SEED_LR 0x000c5d2c` / `GAME_TICK_SEED_VALUE 0x12c`
+(**on**, build 018) -- the archive reader seeds its Mersenne Twister from
+`User::TickCount` at construction and decodes `one.cwa` by it, so the fight
+glitch was the seed landing wrong (BUGBOOK 12.w). The loader diverts the game's
+TickCount import through an lr-passing thunk and answers the one read whose
+return address is the seed site with a tick whose seed reads the archive whole;
+every other read is real. 6/6 live on the wall-clock bench that split 6:11
+(E823-E828), full fights E829-E832. A title without the two defines has it
+off. The emulator-side `EKA2L1_CYCLETICK` (EMU_PATCHES.md) is the deterministic
+bench the seed was found and verified on. One only.

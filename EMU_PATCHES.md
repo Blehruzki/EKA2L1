@@ -42,5 +42,6 @@ the emulator.
 - `EKA2L1_CYCLETICK` was built to settle the N-Gage port's round-143 fight
   glitch (the game's archive loader branches on `User::TickCount`, which the
   emulator otherwise serves from jittery host wall time). See
-  `.claude/ngage-port/BUGBOOK.md` §12.w for the full account and the chosen
-  `<ips>`.
+  `.claude/ngage-port/BUGBOOK.md` §12.w: it made the bench deterministic (50 instr/us
+  reliably live, 200 reliably dead), which is how the game's tick-seeded PRNG was
+  found; the phone fix itself is in the port (`GAME_TICK_SEED_*`, KNOBS.md).

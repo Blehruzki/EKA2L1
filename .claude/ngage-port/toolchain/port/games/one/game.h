@@ -155,6 +155,11 @@ enum { GAME_SRC_ORIGIN = 8 };
 // +0x10 holding 0x265ac), timed per beat (gate6_kick_runl).
 #define GAME_KICK_RUNL_SLOT 0x001562a4
 #define GAME_KICK_RUNL_FN   0x000265ac
+// Round 143: the archive reader seeds its PRNG from User::TickCount at code+c5d28
+// (return address c5d2c); answered with a tick whose seed reads the archive whole
+// (0x12c: 7/7 live on the bench, E787-E789/E795-E798). See gate6_tick_count.
+#define GAME_TICK_SEED_LR    0x000c5d2c
+#define GAME_TICK_SEED_VALUE 0x12c
 
 // Round 132: the writer keeps only 20-55 ms queued against the N95's Position;
 // Position is answered this far ahead, so it keeps that much more.
@@ -223,5 +228,5 @@ enum { GAME_SRC_ORIGIN = 8 };
 #define GAME_CARD_CID 0x567857f1, 0x7d011234, 0x0b2b1879, 0x06000400
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 17
+#define GAME_BUILD 18
 #endif

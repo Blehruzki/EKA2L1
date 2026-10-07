@@ -233,7 +233,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          878: 'tick', 879: 'cell size', 881: 'buffer sits in the cell at',
          880: 'OVERFLOW: the server was given a maximum of',
          882: 'probe b', 883: 'free', 884: '  matched a live cell of',
-         900: 'tick shim armed (base)',
+         699: 'TICK SEED: the archive reader\'s PRNG seed read, answered with the constant; the real tick it would have been (0xD1nnnnnn: TickCount slots diverted at load)',
          885: '  DOUBLE FREE of', 886: '  STRAY: never allocated',
          887: '  cell header word',
          888: '    next cell', 889: '  called from',

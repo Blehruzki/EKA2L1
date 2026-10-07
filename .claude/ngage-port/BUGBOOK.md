@@ -868,27 +868,34 @@ live band on real hardware. The cycle tick gives that work a reproducible bench
 -- set 200 instr/us for a guaranteed-dead load, add the shim, confirm it flips to
 live.
 
-**Port shim attempt (r143, GAME_TICK_SHIM, off).** Built the phone-side shim:
-the loader intercepts the game's `User::TickCount` (euser 674, confirmed by
-measurement) by scanning the import table for the resolved address and
-diverting it to `gate6_tick_count`; a load window arms on the `one.cwa` open
-(name matched by a tail `cwa` scan -- the name is a type-4 descriptor with a
-length word before the text, so a fixed-offset suffix read the wrong
-characters, E806/E812) and lasts a bounded number of reads, during which the
-game sees a controlled tick, reverting to the real clock after so gameplay
-pacing is untouched. The plumbing is proven: E805 shows the divert resolving
-and taking one slot, E813 the window arming, E814 the loader actually reading
-the shimmed values. But no transform tried makes the wall-clock bench reliably
-live: a real-tick base with a slow cadence stayed on the wall-clock split
-(E807-E812), and a fixed large base to force determinism faulted the game at a
-tick-derived address (E815-E820, fault 0x3FFFE7FC). The shim is therefore left
-**off** -- plumbed and documented, not shipped on a guess (rule 4). The likely
-missing piece: the loader reads another wall-clock source (FastCounter 584 or
-NTickCount) that the shim does not yet control, and/or the exact interval
-formula (cca10/ccacc) must be cracked so the shimmed values can be aimed rather
-than guessed. The deterministic bench (CYCLETICK=200, reliably dead) is the
-harness for that work. KNOBS.md carries the switch.
+**The mechanism, found (r143).** The reader seeds a Mersenne Twister from
+`User::TickCount` at its construction: code+c5d28 reads the tick, hashes it
+(a bijective multiply chain), and passes it to `init_genrand` at c58b0 -- the
+624-word state at obj+0x9c4, `mti` 0x270 at +0x9c0; the generator's lazy
+default seed is a custom constant, 0xac2ddf7b. The bytes the reader then
+decodes depend on that seed, including the Uint32 count at code+5be4c of how
+much more to load: with the seed the 50 instr/us bench gives (tick 0x12c) it is
+0x19765 and the archive reads whole; with 200's (tick 0x4b) it is 0 and the
+reader closes after 4 KB. Everything else that looked like a suspect is not:
+the interval check (cca10/ccacc) is clean in every run, live or dead -- its
+budget is 45 s (E821/E822 registers); `Math::Random` only enters when that
+check trips; the two other construction-time reads (ab594, ab5e0) discard
+their result; and FastCounter and NTickCount are never reached -- the game
+imports neither, statically or by lookup, and NTickCount does not exist in
+its ABI. During the load the main thread is the only one reading TickCount
+(815 reads = two interval stamps per underflow). So the seed read is the one
+tick that enters the data, on the bench and on the phone alike.
 
+**Fix (build 018): `GAME_TICK_SEED_LR` / `GAME_TICK_SEED_VALUE`.** The game's
+TickCount import is diverted through an lr-passing thunk, and the one read
+whose return address is code+c5d2c is answered with 0x12c -- a seed the bench
+has read the archive whole with every time -- while every other TickCount read
+stays real, so pacing and the interval checks are untouched. No window, no
+counter, no clock arithmetic: one read, identified by where it came from.
+Wall-clock bench, no CYCLETICK, where launches split 6:11 before: **6/6 live**
+boot+load (E823-E828) and the full-fight batch (E829-E832). The earlier window
+shim (E801-E820) is gone; its lesson -- a tick leap faults the game's timers
+-- is why the substitution is a plausible small tick, not a marker value.
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 
 **Symptom.** The end key during a fight: "Application closed: One G6FLT
