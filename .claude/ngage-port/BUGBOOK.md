@@ -735,7 +735,29 @@ buffer's band summed after each blit and at each beat (0x5C0E), the
 ScreenInfo address checked every frame and followed (0x5C1F), HAL's
 display address (0x5C1E), and dumps of both buffers at AbortNow and of
 the frame buffer after the first blit back (`C:\g6code-6r58.bin`,
-`dump32.py`). Restore and re-posts off. Open.
+`dump32.py`). Restore and re-posts off.
+
+**Round 141 settled it, and it was the port's own StartL.** The dumps say
+the frame buffer is one buffer, the address never moves, and after a return
+nothing but the port writes it (the band checksum reads SAME at every beat)
+-- what the panel showed was the port's blit, and the menu, when it came,
+came through the game's buffer. It was in neither buffer at AbortNow because
+the game had not drawn it: these minimizes were from the running fight, and
+One pauses itself on losing the screen and draws the menu on the return. The
+log splits the returns: the good ones have the game's `StartL` one record
+after the foreground event, inside its handler; the bad ones have the
+handler run without it and the `StartL` ~350 records later, from the frame
+timer. The frame function (`0x44fa0`) starts the DSA only when the shadow's
++8 -- the real object's active word -- reads 0, and when it reads active
+with the game's own flag clear it draws nothing. The port's `StartL` at the
+minimize's restart (0x57A7, since round 60) left the real object active on
+an empty region; whether that request had completed by the handler's frame
+was timing. A real N-Gage never starts the DSA behind the game's back.
+
+**Fix (build 016).** `START_FOR_THE_GAME 0`: the port does not start the
+DSA for the game; after a restart the game did not answer, the screen is
+nobody's (`dsaIdle`, clip NONE, 0x57AE) until the game's own `StartL`.
+Bench E739-E740; settled by round 142.
 
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 

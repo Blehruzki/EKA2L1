@@ -352,6 +352,22 @@ slots 11 and 10, 21, 24 — `HandleCommandL(0x100)`. The game's own handler
 runs from there (round 139: One's dies in it; `gate6_ui_command` now answers
 the command itself).
 
+## Direct screen access: who starts it
+
+`CDirectScreenAccess::StartL` is the client's call; the server never makes it.
+After an `AbortNow` the object is inactive until the client's own `StartL`,
+and a client that starts it on a condition of its own (One's frame function,
+`0x44fa0`: start only when the object reads inactive, draw nothing when it
+reads active and its own flag is clear) sees exactly two states on a device.
+The port's `StartL` on the game's behalf (rounds 60-140, 0x57A7) made a third
+-- active, on an empty region, pending -- and round 141 found the game's
+pause menu skipped whenever the return landed in it. Measured on the N95
+(round 141): the frame buffer is one buffer, `UserSvr::ScreenInfo` and
+`HALData::EDisplayMemoryAddress` (78) both 0xcb400000, the address never
+moving; the window server draws into it while the game is away (the task
+switcher is in the dump) and nothing but the client's blits touch it after
+a return (the band checksum, 0x5C0E).
+
 Round 96 showed a *second* backgrounding path in which slots 10, 21 and 24 do
 not fire at all and the game cancels its own frame timer instead. Both end in
 KERN-EXEC 0. Do not assume which one a given report is.

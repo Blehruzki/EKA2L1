@@ -275,7 +275,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
  746: 'FAULT raw: handler sp, then stack words',
  748: 'SYSAGT: a11 armed (then the status), ca0 cancelled, bad second notify',
  747: 'TRAP: 5e7 handler installed (orig), e11 enter (TTrap), 1ea leave (reason), 7e5 longjmp (TTrap), f0c bench forced leave',
- 781: 'DSA ABORTED by wserv, reason', 782: 'DSA RESTART, reason (0x57a7: StartL by us; 0x57a0 StartL entered, 0x57a1 StartL returned; 0x57a8 replay declined, then its guards; 0x57a9 replayed; 0x57aa posted again from the heartbeat; 0x57ab the first frame back compared with the AbortNow snapshot: words differing, first row<<16|last row, updates asked while away; 0x57ac the snapshot put back; 0x57ad the comparison expired unused, at a heartbeat or a key)'}
+ 781: 'DSA ABORTED by wserv, reason', 782: 'DSA RESTART, reason (0x57a7: StartL by us; 0x57a0 StartL entered, 0x57a1 StartL returned; 0x57a8 replay declined, then its guards; 0x57a9 replayed; 0x57aa posted again from the heartbeat; 0x57ab the first frame back compared with the AbortNow snapshot: words differing, first row<<16|last row, updates asked while away; 0x57ac the snapshot put back; 0x57ad the comparison expired unused, at a heartbeat or a key; 0x57ae a restart the game did not answer: the screen is nobody\'s until its StartL)'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework

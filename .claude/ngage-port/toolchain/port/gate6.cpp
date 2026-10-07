@@ -1129,6 +1129,7 @@ struct Context {
     u32 blitSum, blitSumN;  // round 140: the frame buffer's middle band as the last blit left it, and which blit
     u32 halAddrSaid;        // round 140: HAL's EDisplayMemoryAddress as last logged
     u32 dumpAfterBlit;      // round 140: write the frame buffer after this blit
+    u32 dsaIdle;            // round 141: a restart the game did not answer with StartL; the screen is nobody's until it does
     u32 benchMinStep;       // BENCH_MINIMIZE_TICK: where the minimize has got to
     u32 updN, updDrawn, updSaid;   // screen updates asked for, drawn, and what the heartbeat said
     u32 kickObj[KICK_OBJS], kickN[KICK_OBJS], kickSaid[KICK_OBJS], kickCount;   // objects built at a GAME_AO_PRIORITIES site, and their self-completions
@@ -5101,6 +5102,9 @@ enum { OLD_DSA_ACTIVE = 8, OLD_DSA_GC = 0x18, OLD_DSA_DEVICE = 0x1c,
 // only; the restore is off. REPOST_AFTER_START (round 138's 0x57AA) is off
 // too: it never changed anything and it is one more blit after a return.
 enum { RESTORE_RETURN_FRAME = 0, BENCH_SPOIL_FRAME = 0, REPOST_AFTER_START = 0 };
+// Round 141: whether the port starts the DSA itself at a restart the game did
+// not answer (rounds 60-140: yes, 0x57A7). See gate6_dsa_slot1.
+enum { START_FOR_THE_GAME = 0 };
 // Round 140 (bench): write the game's whole buffer to the dump file at AbortNow,
 // so what the game keeps in its buffer can be compared with what the panel
 // shows. 0 in a shipped build.
@@ -5109,7 +5113,7 @@ enum { RESTORE_RETURN_FRAME = 0, BENCH_SPOIL_FRAME = 0, REPOST_AFTER_START = 0 }
 // buffer again after the first blit back. What the game keeps, what the port
 // wrote, and what the panel shows (the person's eyes) are then three separate
 // facts. ~750 KB a minimize; 0 in a shipped build.
-enum { DUMP_AT_ABORT = 1, DUMP_AFTER_RETURN = 1 };
+enum { DUMP_AT_ABORT = 0, DUMP_AFTER_RETURN = 0 };
 // Round 140: what is in the frame buffer. The panel on the N95 shows no pause
 // menu after a return while the game's buffer holds the same picture as
 // before (0x57AB: the menu band identical) -- so either the blit's pixels
@@ -5231,10 +5235,30 @@ extern "C" void gate6_dsa_slot1(void *, u32 reason, Context *c)
     // its region as it was before the abort, and drawing on that region is
     // the residual frame all over again. ws32's own RunL has just acknowledged
     // the abort, so a new request is in order.
-    if (c->dsaReal && c->newDsaStartL && !(c->dsaReal[OLD_DSA_ACTIVE / 4] & 1)) {
+    //
+    // **Round 141: that StartL of ours is what loses the pause menu.** The
+    // game's frame function (0x44fa0) starts the DSA itself only when the
+    // object reads inactive (its +8, the shadow's copy of the real one) --
+    // and when it reads active with the game's own "started" flag clear, it
+    // draws nothing at all. Our StartL at the minimize's restart leaves the
+    // real object active (a request pending on an empty region); at the
+    // return the game's foreground handler runs its frame function, finds
+    // the object active, and skips the frame that carries the menu. Whether
+    // the request has completed by then is timing, which is round 139's
+    // "sometimes" and round 141's two returns in five (the good two had the
+    // StartL inside the foreground handler, the bad three only in a later
+    // RunL, once the object read inactive). A real N-Gage never starts the
+    // DSA behind the game's back, so the game never meets this state. Now
+    // (START_FOR_THE_GAME 0) the port does not either: the screen is marked
+    // nobody's (dsaIdle: the clip reads NONE whatever the stale region
+    // says) until the game's own StartL, which the hook below answers.
+    if (START_FOR_THE_GAME && c->dsaReal && c->newDsaStartL && !(c->dsaReal[OLD_DSA_ACTIVE / 4] & 1)) {
         typedef void (*StartL)(void *);
         log_event(c, NOTE_DSA_RESTART, 0x57A7);
         ((StartL)c->newDsaStartL)(c->dsaReal);
+    } else if (c->dsaReal && !(c->dsaReal[OLD_DSA_ACTIVE / 4] & 1)) {
+        log_event(c, NOTE_DSA_RESTART, 0x57AE);
+        c->dsaIdle = 1;
     }
     dsa_refresh(c);
     c->clearPending = 1;
@@ -5365,6 +5389,8 @@ static void dsa_box(Context *c)
             c->boxL = l; c->boxT = t; c->boxR = r; c->boxB = b;
         }
     }
+    if (c->dsaIdle)                 // round 141: nobody's screen until the game's StartL
+        mode = CLIP_NONE;
     // Bench (BENCH_MINIMIZE_TICK): behind the menu, the window has no region.
     if (BENCH_MINIMIZE_TICK && c->benchMinStep >= 1 && c->benchMinStep <= 2) {
         if (BENCH_MINIMIZE_BOX) {
@@ -5889,6 +5915,7 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
         c->benchMinStep = 3;
         c->rgnN = 0xFFFFFFFFu;  // the emulator's region never changed: read it afresh
     }
+    c->dsaIdle = 0;                 // round 141: the game has the screen again
     dsa_refresh(c);
     replay_missed_frame(c);
     // **Round 138: the frame after a return is posted again, twice, from the
