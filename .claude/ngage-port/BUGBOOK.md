@@ -907,6 +907,42 @@ boot+load (E823-E828) and the full-fight batch (E829-E832). **Confirmed on the
 N95, round 144: six fresh sessions, six clean fights.** Closed. The earlier window
 shim (E801-E820) is gone; its lesson -- a tick leap faults the game's timers
 -- is why the substitution is a plausible small tick, not a marker value.
+### 12.x The arenas' ambience is silent: TLex16::Val(TReal64&) in the wrong word order (round 144)
+
+**Symptom.** Round 144, build 018: on the Himalayas map (arena file
+`kyberpass`) the wind does not blow during a fight; blows, grunts and music are
+fine. Every arena has ambience -- the boxing gym's water drops and siren,
+tatami's drums, the rooftop's wind and wings -- and none of it had ever played
+in the port. Nobody had noticed until the wind.
+
+**Cause.** Ambience is data: `data/arenas/<arena>.fx` is UTF-16 text, one
+`REPE <period s> <weight> <sample.noi>` line per sound, and the game's scheduler
+plays each sample about every <period> seconds. The loader (code+0x45450..)
+parses the two numbers with euser's `TLex16::Val(TReal64&)` (import 413). The
+9.x euser writes the double through the reference in EABI word order, low word
+first; the GCC98r2 game reads a double high word first. So "4.0"
+(0x40100000_00000000) came back as 0x00000000_40100000, a denormal near zero,
+and "0.1" as 0x9999999A_3FB99999, a huge negative -- and the scheduler never
+fired. The port already re-orders doubles passed by value (`TRealX(double)`,
+`AppendNum(double)`), returned (`GetTReal`) and the `Math::` by-reference
+family (`M_D2D`); a *parsed* double written through a reference was the one
+shape left. Blows never go through `Val`, which is why the fight had its hits
+and not its wind. Not the port's audio path: the phone's logs show every
+`MaoscPlayComplete` as -3 (Stop), no policy error, and the game mixes all
+effects into one 16 kHz stream.
+
+**Fix (build 019, shared).** `IMPORT_LEX16_VAL_REAL` (gen_shim HOOKS, euser
+1199) and the `M_LEXVAL` shape in `kFpaMath`: `gate6_fpa_lexval` round-trips
+the value -- what the game holds goes in swapped, the result comes back swapped
+into the game's order -- so a `Val` that fails and leaves the value alone still
+reads back as it was. Bench, one fight on the same arena: silence 63% -> 25%,
+the long silent runs halved, mean level 2.6x, the gaps between blows filled
+(E833/E834); the Math-hook count at install 9 -> 10. The first six parses are
+logged (NOTE_FPA 0xF1.., then the two words) but the parsing thread's records
+reach no log on the bench, so the audio is the bench's proof and the phone the
+final one. A title without the import has the hook absent (65535) and is
+unaffected.
+
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 
 **Symptom.** The end key during a fight: "Application closed: One G6FLT

@@ -169,3 +169,10 @@ every other read is real. 6/6 live on the wall-clock bench that split 6:11
 (E823-E828), full fights E829-E832. A title without the two defines has it
 off. The emulator-side `EKA2L1_CYCLETICK` (EMU_PATCHES.md) is the deterministic
 bench the seed was found and verified on. One only.
+
+Universal, round 144 (build 019 of One): **`TLex16::Val(TReal64&)` in FPA word
+order** -- a parsed double written through a reference by the 9.x euser now
+reaches the game high word first, as every other double already did
+(`kFpaMath`, shape `M_LEXVAL`, hook `IMPORT_LEX16_VAL_REAL`). It is what made
+every arena's ambience silent (BUGBOOK 12.x). A fix, not a knob: on wherever
+the import exists, absent and harmless where it does not.
