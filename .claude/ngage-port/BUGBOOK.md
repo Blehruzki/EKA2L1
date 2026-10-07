@@ -903,7 +903,8 @@ has read the archive whole with every time -- while every other TickCount read
 stays real, so pacing and the interval checks are untouched. No window, no
 counter, no clock arithmetic: one read, identified by where it came from.
 Wall-clock bench, no CYCLETICK, where launches split 6:11 before: **6/6 live**
-boot+load (E823-E828) and the full-fight batch (E829-E832). The earlier window
+boot+load (E823-E828) and the full-fight batch (E829-E832). **Confirmed on the
+N95, round 144: six fresh sessions, six clean fights.** Closed. The earlier window
 shim (E801-E820) is gone; its lesson -- a tick leap faults the game's timers
 -- is why the substitution is a plausible small tick, not a marker value.
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
