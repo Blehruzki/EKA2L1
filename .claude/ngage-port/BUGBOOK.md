@@ -945,6 +945,8 @@ unaffected.
 
 ### 12.ab The arena's ambience stops after a minimize and return (round 145)
 
+**Closed on the N95, round 146 (build 020).**
+
 **Symptom.** One build 019 on the N95: the wind plays through a fight until
 the game is minimized and brought back; from then on the fight has its blows
 and no ambience, for the rest of the fight. The game's own pause (the menu
