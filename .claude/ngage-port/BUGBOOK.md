@@ -684,27 +684,61 @@ minimize, in a worker's `Close` (box: last import 288, no record in the log).
 The sound thread's Closes in round 137 were all its own thread-owned timer
 handle. Build 012 carries the Close record, so the next one names itself.
 
-### 12.y The pause menu stays undrawn after a return until a key (round 138)
+### 12.y The pause menu stays undrawn after a return until a key (rounds 138-139)
 
-**Symptom.** One build 012 on the N95: back from a minimize, the screen
-sometimes shows nothing of the pause menu until a scroll, and then only the
-item the scroll selected.
+**Symptom.** One builds 012-013 on the N95: back from a minimize with the
+game paused, the panel sometimes shows the fight scene with no pause menu
+over it; the next scroll draws only the item it selected, and the header
+("GAME PAUSED") may never come back. Round 138's first video, frame by frame
+(2 fps): returns at 5.5, 15.5, 24, 47, 89.5 and 95 s whole; at 32, 71.5 and
+85 s the scene alone.
 
-**What the log says.** The game draws nothing while away (the heartbeat
-stops too; round 131), and exactly one frame after its own `StartL` on the
-return -- then nothing until a key. That frame is posted with the full
-region (POST_FULL_REGION). The port's missed-frame replay (round 132) had
-nothing to replay and rightly did not fire (its guards, 0x57A8, E726-E727).
-The window server repaints the window it has just brought to the front
-(SYMBIAN.md: `ScheduleRegionUpdate` after an abort); when that repaint lands
-after the game's one frame, the panel keeps the repaint, and the next key
-draws one item into it. Nothing in the log orders the two, and the bench
-cannot show a repaint over a DSA frame.
+**What the log says.** The game draws nothing while away when paused (round
+139: no update asked between the abort and the return in either paused
+return; the fight and a load *do* draw while away, 4-24 updates, dropped)
+and exactly one frame after its own `StartL` on the return. The image says
+what that frame is: `0x44eac` takes a rectangle, `0x44fa0` starts the DSA if
+the game's own flag (+0x58) is clear and the object reads inactive, then
+copies the rectangle from its back buffer to the screen (`0x18240`: the
+whole buffer when the rectangle covers the screen, else that part) and calls
+`Update` on the DSA's device with the DSA's region. The menu is drawn in such
+rectangles over a buffer the game expects to persist. The port blits the
+whole buffer every time, so a panel showing the scene without the menu means
+**the game's own buffer lost the menu** -- and build 013's re-posts (0x57AA)
+fired twice after all seven returns of round 139 and changed nothing, as
+they could not. Why the game's post-return frame sometimes carries the menu
+and sometimes not is still inside the game (its AbortNow/Restart handlers
+were not found; the observer is the screen object +0x30).
 
-**Fix (build 013).** The heartbeat posts the game's frame again at its next
-two beats after a `StartL` with the whole region (0x57AA): the buffer still
-holds the frame, and a frame already showing is redrawn with itself. Bench
-E728; the N95 says whether the order was the cause.
+**Fix (build 014).** The port keeps the picture as it was at AbortNow and,
+at the first frame back (after a `StartL` or a server restart with the whole
+region), compares the game's buffer with it (0x57AB). When the game drew
+nothing while away and the frame lost something, the snapshot goes back into
+the game's buffer before the blit (0x57AC); the game's later rectangles then
+land on the picture they were drawn for. A game that drew while away keeps
+its frame. The bench cannot lose the menu (E729/E730: a menu comes back
+whole), so E731 blackens the frame back by hand (`BENCH_SPOIL_FRAME`) to
+exercise the restore. Settled by round 140.
+
+### 12.z The red key dies G6FLT 38212 (rounds 138-139)
+
+**Symptom.** The end key during a fight: "Application closed: One G6FLT
+38212" (round 138's first video; round 139's log ends there).
+
+**Cause.** Avkon turns the end key into `KAknUidValueEndKeyCloseEvent` and,
+for an application that is not a system one, `KAknShutOrHideApp`
+(`AknAppUi.cpp`, `HandleWsEventL`), which reaches the wrapper as
+`HandleCommandL(EEikCmdExit)`. One's handler (`0x439ac`) answers 0x100 with a
+virtual call on its own app UI -- old slot 2, a ROM function on the
+old-layout object -- and then `CEikAppUi::Exit()`. The virtual call dies
+first: data abort reading 0x80 off a null pointer at a ROM pc (0x82cf1d20
+on the N95; the fault handler's 382 is the frame loop's RequestComplete, the
+last traced import, not the caller). Round 138 read the same code as round
+136's mid-fight death; it is not.
+
+**Fix (build 014).** `gate6_ui_command` answers `EEikCmdExit` itself: flush
+the record, `User::Exit(0)` (0xE818), as `gate6_appui_exit` answers the
+`Exit()` the game would have reached. Nothing else is on the game's path.
 
 ## 11a. Found by ngtest, the test app (round 134, bench and N95)
 

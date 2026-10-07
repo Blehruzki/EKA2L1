@@ -1122,6 +1122,10 @@ struct Context {
     u32 lastUpdSelf, lastUpdRegion;   // the last screen update that reached the screen
     u32 missedUpd;          // and one was dropped while the screen was away
     u32 repostBeats;        // round 138: frames to post again from the heartbeat after a StartL
+    u8 *snap;               // round 139: the game's buffer as it was at AbortNow ...
+    u32 gameScreenBytes;    // (its size), ...
+    u32 snapValid, snapPending, awayUpd;  // taken; to be compared at the first frame back; updates asked while away
+    u32 benchSpoiled;       // BENCH_SPOIL_FRAME: done once
     u32 benchMinStep;       // BENCH_MINIMIZE_TICK: where the minimize has got to
     u32 updN, updDrawn, updSaid;   // screen updates asked for, drawn, and what the heartbeat said
     u32 kickObj[KICK_OBJS], kickN[KICK_OBJS], kickSaid[KICK_OBJS], kickCount;   // objects built at a GAME_AO_PRIORITIES site, and their self-completions
@@ -4546,6 +4550,13 @@ extern "C" int gate6_heartbeat(void *p)
         watchdog_start(c);
         bench_timer_kick(c);
     }
+    // Round 139: the snapshot comparison is for the frame the game posts in
+    // the same RunL as its StartL. A beat later it is some other frame --
+    // a key's -- and must not be judged, let alone put back (0x57AD).
+    if (c->snapPending) {
+        c->snapPending = 0;
+        log_event(c, NOTE_DSA_RESTART, 0x57AD);
+    }
     if (c->repostBeats && c->lastUpdSelf && !c->screenLost && c->clipMode == 1u) {   // CLIP_ALL, declared below
         c->repostBeats--;
         log_event(c, NOTE_DSA_RESTART, 0x57AA);
@@ -5051,6 +5062,13 @@ extern "C" void *gate6_ctimer_ctor(u32 *oldSelf, int priority, Context *c)
 // The layouts dsa_box and the shadow need; commented where they used to sit.
 enum { OLD_DSA_ACTIVE = 8, OLD_DSA_GC = 0x18, OLD_DSA_DEVICE = 0x1c,
        OLD_DSA_REGION = 0x20, OLD_DSA_BYTES = 0x28 };
+// Round 139: the frame back from a minimize, compared with the one that was
+// showing when the screen was taken (0x57AB), and put back when the game
+// drew nothing while away and the frame lost something (0x57AC). The
+// mechanism is at gate6_screen_update. BENCH_SPOIL_FRAME blackens the
+// middle of the frame once at the modelled return so the bench exercises
+// the restore; 0 in a shipped build.
+enum { RESTORE_RETURN_FRAME = 1, BENCH_SPOIL_FRAME = 0 };
 enum { NEW_DSA_GC = 0x1c, NEW_DSA_DEVICE = 0x20, NEW_DSA_REGION = 0x24 };
 // Round 120: those three were measured on S60 3.1 and 3.2. On 3.0 (an N91)
 // the real object carries one more word before the window reference, so
@@ -5095,6 +5113,19 @@ extern "C" void gate6_dsa_slot0(void *, u32 reason, Context *c)
         c->timerOff = (u32)ENDGAME_CALLS;
     log_event(c, NOTE_DSA_ABORT, reason);
     log_block(c);
+    // Round 139: keep the picture as it is at this moment (see
+    // RESTORE_RETURN_FRAME at gate6_screen_update).
+    if (RESTORE_RETURN_FRAME && c->gameScreen && c->gameScreenBytes) {
+        if (!c->snap)
+            c->snap = (u8 *)user_allocz((int)c->gameScreenBytes);
+        if (c->snap) {
+            const u32 *a = (const u32 *)c->gameScreen;
+            u32 *b = (u32 *)c->snap;
+            for (u32 i = 0; i < (c->gameScreenBytes >> 2); i++) b[i] = a[i];
+            c->snapValid = 1;
+        }
+        c->awayUpd = 0;
+    }
     old_call1(c->oldObserver, 0, reason);
 }
 
@@ -5124,6 +5155,10 @@ extern "C" void gate6_dsa_slot1(void *, u32 reason, Context *c)
     c->clearPending = 1;
     c->screenLost = 0;
     replay_missed_frame(c);
+    if (c->clipMode == 1u && c->snapValid) {   // CLIP_ALL, declared below: the server gave the screen back itself (round 132's box)
+        c->snapValid = 0;
+        c->snapPending = 1;
+    }
 }
 
 // CDirectScreenAccess is the one class the game reaches into rather than
@@ -5783,6 +5818,10 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
     // (0x57AA). A frame already showing is redrawn with itself.
     if (c->clipMode == CLIP_ALL)
         c->repostBeats = 2;
+    if (c->clipMode == CLIP_ALL && c->snapValid) {
+        c->snapValid = 0;
+        c->snapPending = 1;
+    }
     // Started, so the graphics context exists and the shadow has it -- and then
     // given straight back, so the window server is not left waiting on a client
     // that has gone away to compute for ten seconds. The game is told it still
@@ -7796,6 +7835,7 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         if (want < (u32)(SRC_PITCH_MAX * GAME_H * srcBytes)) want = SRC_PITCH_MAX * GAME_H * srcBytes;
         c->gameScreen = (u16 *)user_allocz((int)want);
         if (c->gameScreen) {
+            c->gameScreenBytes = want;
             p[3] = (u32)c->gameScreen;
             // And the size it was built for -- which changes **nothing** the
             // game draws, settled by E229/E230: four shots per run at
@@ -7860,12 +7900,14 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
     }
     if (c->screenLost) {
         c->missedUpd = 1;
+        c->awayUpd++;
         return;
     }
     // Nor outside the region the window server granted -- and an empty one,
     // which is what a window behind the menu is given, means not at all.
     if (c->clipMode == CLIP_NONE) {
         c->missedUpd = 1;
+        c->awayUpd++;
         return;
     }
     // Drawn only in part -- a box or rectangles, the phone's menu or a
@@ -7876,6 +7918,58 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
     c->updDrawn++;
     c->lastUpdSelf = (u32)self;
     c->lastUpdRegion = (u32)region;
+    // **Round 139: the first frame back from a minimize, against the last
+    // one shown before it.** Round 138's video, frame by frame: back from the
+    // phone's menu with the game paused, the panel sometimes shows the fight
+    // scene with no pause menu over it, and the next key draws only the item
+    // it selected. The game draws its menu in dirty rectangles (0x44eac:
+    // the rectangle, 0x18240: copied to the screen only when it covers the
+    // screen, else in part) over a buffer it expects to persist; it draws
+    // nothing while away (rounds 138-139: no update asked between the abort
+    // and the return when paused) and exactly one frame after its own
+    // StartL on the return (0x44fa0: StartL, copy, Update). So when that
+    // frame lacks the menu, the game's own buffer lost it, and no post of
+    // ours can bring it back -- build 013's re-posts (0x57AA) changed nothing.
+    // What the port does have is the picture as it was at AbortNow (the
+    // snapshot gate6_dsa_slot0 takes). Compared here, word for word, and
+    // logged (0x57AB: words that differ, then first row<<16|last row, then
+    // updates asked while away); and when the game drew nothing while away
+    // -- so nothing it did there can have changed its picture on purpose --
+    // and the frame lost something, the snapshot is put back into the game's
+    // buffer before the blit (0x57AC). Its later dirty rectangles then land
+    // on the picture they were drawn for. A game that drew while away (the
+    // fight, a loading screen) keeps its frame.
+    if (c->snapPending) {
+        c->snapPending = 0;
+        if (c->snap && c->gameScreen && c->gameScreenBytes) {
+            enum { ROW_WORDS = (GAME_PITCH * (GAME_SRC_BPP >> 3)) >> 2 };
+            u32 *a = (u32 *)c->gameScreen;
+            const u32 *b = (const u32 *)c->snap;
+            const u32 n = c->gameScreenBytes >> 2;
+            if (BENCH_SPOIL_FRAME && !c->benchSpoiled && c->benchMinStep >= 2) {
+                c->benchSpoiled = 1;        // the bench has no phone menu: spoil the frame by hand
+                for (u32 i = 60u * ROW_WORDS; i < 150u * ROW_WORDS && i < n; i++) a[i] = 0;
+            }
+            u32 diff = 0, firstRow = 0xFFFFu, lastRow = 0, row = 0, col = 0;
+            for (u32 i = 0; i < n; i++) {
+                if (a[i] != b[i]) {
+                    diff++;
+                    if (firstRow == 0xFFFFu) firstRow = row;
+                    lastRow = row;
+                }
+                if (++col == (u32)ROW_WORDS) { col = 0; row++; }
+            }
+            log_event(c, NOTE_DSA_RESTART, 0x57AB);
+            log_event(c, NOTE_DSA_RESTART, diff);
+            log_event(c, NOTE_DSA_RESTART, (firstRow << 16) | (lastRow & 0xFFFFu));
+            log_event(c, NOTE_DSA_RESTART, c->awayUpd);
+            if (RESTORE_RETURN_FRAME && diff && !c->awayUpd) {
+                for (u32 i = 0; i < n; i++) a[i] = b[i];
+                log_event(c, NOTE_DSA_RESTART, 0x57AC);
+            }
+            log_block(c);
+        }
+    }
     // One frame of the game's own buffer, raw, so the stride can be measured
     // rather than guessed. Text is clipped at the right edge and neither the
     // reported screen size nor the blit explains it, so the question is what
@@ -8912,9 +9006,9 @@ extern "C" int gate6_hold_tick_cb(void *p)
     if (BENCH_RESTORE_TICK && c->benchMinStep == 1 &&
         (i32)(user_tickcount() - (u32)BENCH_RESTORE_TICK) >= 0) {
         c->benchMinStep = 2;
-        // Round 138: the N95's game draws its pause menu while away (1-18
-        // updates a beat, all missed); the bench's draws nothing. So the model
-        // supplies the one thing the phone's return has and the bench's lacks.
+        // Round 138 read the N95's game as drawing while away; round 139's
+        // log says it does when a fight or a load is running and not when
+        // paused. The forced miss stays: E727 is the replay's test.
         c->missedUpd = 1;
         log_event(c, NOTE_DEACTIVATE, 0xF0C06011u);
         log_block(c);
@@ -11851,6 +11945,10 @@ extern "C" u32 gate6_ui_keyevent(void *self, const void *key, u32 type, Context 
     typedef u32 (*KeyEvent)(void *, const void *, u32);
     if (key) {
         log_event(c, NOTE_KEY, 0xA990000u | (((const u32 *)key)[1] & 0xFFFF));   // app UI: the scan code
+    if (c->snapPending) {               // round 139: a key's frame is not the one after StartL (0x57AD)
+        c->snapPending = 0;
+        log_event(c, NOTE_DSA_RESTART, 0x57AD);
+    }
         log_event(c, NOTE_KEY, type);
         // Nothing on this path ticks the hold once a frame -- One's frame
         // loop is an active object of its own, not the port's timer -- so
@@ -11865,10 +11963,30 @@ extern "C" u32 gate6_ui_keyevent(void *self, const void *key, u32 type, Context 
     return ((KeyEvent)c->realKeyEvent)(self, key, type);
 }
 
+// Round 139: the red key. Avkon turns the end key into KAknUidValueEndKeyCloseEvent
+// and, for an application that is not a system one, into KAknShutOrHideApp
+// (AknAppUi.cpp, HandleWsEventL), which reaches the wrapper as
+// HandleCommandL(EEikCmdExit). One's HandleCommandL (0x439ac) answers 0x100
+// with a virtual call on its own app UI -- old slot 2, a ROM function given
+// the old-layout object -- and then CEikAppUi::Exit(). The virtual call dies
+// first: a data abort reading 0x80 off a null pointer at a ROM pc, G6FLT
+// 38212 (rounds 138 and 139, and 138's first video). Nothing else is on that
+// path -- no save, no sound stop -- so the port answers the command the way
+// gate6_appui_exit answers the Exit the game would have reached: flush the
+// record and leave with reason 0. The game's own EXIT (its menu) is not this
+// command and still goes through CEikAppUi::Exit.
+enum { EEikCmdExit = 0x100 };
+
 extern "C" void gate6_ui_command(void *self, u32 command, Context *c)
 {
     typedef void (*Command)(void *, u32);
     log_event(c, NOTE_UI_COMMAND, command);
+    if (command == (u32)EEikCmdExit) {
+        log_event(c, NOTE_EXIT_ASKED, 0xE818);
+        log_block(c);
+        box_flush(c);
+        user_exit(0);
+    }
     if (GAME_UI_FORWARD_EVENTS && c->oldCommand)
         ((Command)c->oldCommand)(c->oldUi, command);
     else

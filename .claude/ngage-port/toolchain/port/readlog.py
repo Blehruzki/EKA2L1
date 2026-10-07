@@ -197,7 +197,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          760: 'FILE SIZE: size, then result',
          761: 'GAME.ID read (ReadFileSection): the real result, then 1 when the shim answered it',
          762: 'LEAVE raw: the hook sp, then stack words',
-         763: 'EXIT asked (CEikAppUi::Exit): the thread exits with reason 0',
+         763: 'EXIT asked (0xE817 CEikAppUi::Exit from the game; 0xE818 HandleCommandL(EEikCmdExit), the red key): the thread exits with reason 0',
          764: 'FPA DOUBLES re-ordered for 9.x: register helpers hooked, then Math functions hooked',
          765: 'SCREEN MODES (window-gc title): w<<16|h of the whole-screen wrapper, then mode<<16|inset',
          766: 'VA_LIST re-pointed for FormatList: the game array, then the va pointer it held',
@@ -221,7 +221,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          769: 'COEENV word (24, once): the real 9.x CCoeEnv from its first word',
          770: 'DSA BEFORE StartL (once): the resolved StartL, 24 words of the real CDirectScreenAccess, then heap free, biggest, cells, bytes, 0x0ff5e7xx the window index, then gc<<16|dev<<8|rgn offsets',
          767: 'FORMAT CALL (GAME_LOG_TEXT): f0a7 Format / f0a8 FormatList, three words of the format text, the argument word, (bare %s) its two words; f0a9 then the length produced',
-         825: 'MODE NOW, after a hold changed it', 824: 'CFG WROTE: mode<<16 | error', 838: 'SCREEN FIT pair', 839: 'SCREEN SRC', 840: 'SCREEN DST: inset<<16 | mode<<12 | first pixel',
+         825: 'MODE NOW, after a hold changed it', 824: 'CFG WROTE: mode<<16 | error', 834: 'SCREEN: a word of the TScreenInfoV01 the game is given; 0x5C0Dnnnn screen updates asked since the last beat, then drawn<<8 | clip<<4 | lost', 835: 'KEY: a key event as handed to the game (0xA99000ss the scan code at the app UI)', 868: 'THREAD HANDLE: the handle in the object; 0xC9i00mmm CPU ms of thread i in the last beat', 869: 'THREAD RESUME: the object Resume was called on', 865: 'FRAME: the game RunL about to run', 866: 'FRAME END', 867: 'THREAD CREATE: what RThread::Create or Resume answered', 838: 'SCREEN FIT pair', 839: 'SCREEN SRC', 840: 'SCREEN DST: inset<<16 | mode<<12 | first pixel',
          860: 'slot entered', 850: 'Cancel on / ngage lr', 851: 'STRAY Cancel on / SOUND',
          852: 'image loaded at / sound msg', 853: 'chunk ends at / MDA CALL',
          854: 'APP UI VPTR CHANGED to / MDA arg', 855: 'decrypted literal / MDA vtable',
@@ -275,7 +275,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
  746: 'FAULT raw: handler sp, then stack words',
  748: 'SYSAGT: a11 armed (then the status), ca0 cancelled, bad second notify',
  747: 'TRAP: 5e7 handler installed (orig), e11 enter (TTrap), 1ea leave (reason), 7e5 longjmp (TTrap), f0c bench forced leave',
- 781: 'DSA ABORTED by wserv, reason', 782: 'DSA RESTART, reason (0x57a7: StartL by us; 0x57a0 StartL entered, 0x57a1 StartL returned)'}
+ 781: 'DSA ABORTED by wserv, reason', 782: 'DSA RESTART, reason (0x57a7: StartL by us; 0x57a0 StartL entered, 0x57a1 StartL returned; 0x57a8 replay declined, then its guards; 0x57a9 replayed; 0x57aa posted again from the heartbeat; 0x57ab the first frame back compared with the AbortNow snapshot: words differing, first row<<16|last row, updates asked while away; 0x57ac the snapshot put back; 0x57ad the comparison expired unused, at a heartbeat or a key)'}
 
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework

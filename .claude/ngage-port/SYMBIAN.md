@@ -328,6 +328,30 @@ log. When the app does not close, the shutter reports to
 `ROomMonitorSession`: this is the low-memory mechanism, and a fat background
 process is what it is for.
 
+**The end (red) key is the same command by another road.** `CAknAppUi::HandleWsEventL`
+(`AknAppUi.cpp`):
+
+```cpp
+case KAknUidValueEndKeyCloseEvent:
+    {
+    CEikonEnv* env = iEikonEnv;
+    if ( env && !env->IsSystem() ) // System apps are not closed
+        {
+        // Close or hide the application.
+        TWsEvent event;
+        event.SetType( KAknShutOrHideApp );
+        event.SetTimeNow();
+        CAknAppUiBase::HandleWsEventL( event, aDestination );
+        }
+    break;
+    }
+```
+
+In the log: `WS EVENT type 101f87f0` (the close event's UID), then app UI
+slots 11 and 10, 21, 24 — `HandleCommandL(0x100)`. The game's own handler
+runs from there (round 139: One's dies in it; `gate6_ui_command` now answers
+the command itself).
+
 Round 96 showed a *second* backgrounding path in which slots 10, 21 and 24 do
 not fire at all and the game cancels its own frame timer instead. Both end in
 KERN-EXEC 0. Do not assume which one a given report is.
