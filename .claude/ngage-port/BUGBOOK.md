@@ -761,11 +761,21 @@ Bench E739-E740; settled by round 142.
 
 ### 12.w The fight glitch: two screens ticking, the keys dead (rounds 130-142)
 
-**Symptom.** Some fights, never the first: the picture cuts every two or
-three frames between two camera shots of the same fight, the fighter does
-not answer the keys, pause and minimize still work, the next fight is as
-bad, and only a restart clears it (round 142's video; round 130 called it
-"cut back to intro shots"). Never on the bench.
+**Symptom.** Some *sessions*, from their first fight on: the picture cuts
+every two or three frames between two camera shots of the same fight, the
+fighter does not answer the keys, pause and minimize still work, every later
+fight in that session is as bad, and only a restart clears it (round 142's
+video and words: "I can even exit and enter a new fight during the same
+gameplay and it will still be bugged. I have to restart the app"; round 130
+called it "cut back to intro shots"). An earlier draft of this entry said
+"never the first fight" -- wrong, and the user's memory was right: in every
+N95 log (rounds 139-143) the archive is read exactly once per session, at the
+first fight's load, and the later fights (their threads appear, no new
+`one.cwa` open, no new probe batch) reuse what that read produced. So a
+session's fate is rolled once, at its first fight, and inherited; that is also
+why the bench's one-fight-per-launch runs were the right test and no
+second-fight case was left unexercised. Reproduced on the bench from round 143
+(E746 on).
 
 **Cause.** Round 132 made a Stop from the sound thread an owed one -- the
 real `CMdaAudioOutputStream::Stop` had deadlocked under the game's channel
