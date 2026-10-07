@@ -607,6 +607,7 @@ HOOKS = {
     'IMPORT_MATH_INT16':              ('euser', 572),   # Math::Int(TInt16&, const TReal&)
     'IMPORT_MATH_ROUND':              ('euser', 961),   # Math::Round(TReal&, const TReal&, TInt)
     'IMPORT_MATH_FRAND':              ('euser', 404),   # Math::FRand(TInt64&): a double comes back in r0:r1 (One, round 125)
+    'IMPORT_LEX16_VAL_REAL':          ('euser', 1199),  # TLex16::Val(TReal64&): 9.x writes the double in EABI word order, the game reads FPA order (One, round 144)
     'IMPORT_CTL_RECT':                ('cone', 160),    # CCoeControl::Rect() -- answered 176x208 while the wrapper is the whole screen (round 114)
     'IMPORT_CTL_SETRECT':             ('cone', 318),    # the Nokia SetRect export -- the wrapper is sized to the whole screen instead (round 114)
     'IMPORT_DES_FORMAT':              ('euser', 467),   # TDes16::Format(fmt, ...) -- logged under GAME_LOG_TEXT (round 116)

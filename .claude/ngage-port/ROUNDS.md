@@ -903,6 +903,7 @@ them, and say so.
 | E831 | One bench, round 143, build-018 candidate (tick seed answered at c5d2c with 0x12c), wall clock, fight 3 of 4 (full fight, keys mashed): alive (motion>20) or dead (<12)? | 23384 | `--` | Live: motion 24.2, 408 probes, 23,382 records, no fault. |
 | E832 | One bench, round 143, build-018 candidate (tick seed answered at c5d2c with 0x12c), wall clock, fight 4 of 4 (full fight, keys mashed): alive (motion>20) or dead (<12)? | 22969 | `--` | Live: motion 22.3, 408 probes, 22,967 records, no fault. **4/4 live full fights at normal pace on the wall-clock bench** (plus 6/6 boot+load, E823-E828) where the same bench split 6:11 before the fix. Shipped as One build 018 (loader-only SIS; the data package is unchanged). |
 | E833 | One bench, round 143, build 018, audio captured (EKA2L1_AUDIO_CAPTURE_DIR), one fight: which streams carry sound, is there a continuous ambience track? 1 of 1 (full fight, keys mashed): alive (motion>20) or dead (<12)? | 22780 | `--` | TODO |
+| E834 | One bench, round 143, build 019 candidate (TLex16::Val(TReal64&) answered in FPA order), audio captured, one fight: do the arena REPE ambience samples now play (bursts between hits), and what did Val parse? 1 of 1 (full fight, keys mashed): alive (motion>20) or dead (<12)? | 23164 | `--` | TODO |
 
 <!-- EMURUN -->
 

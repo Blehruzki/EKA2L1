@@ -1114,6 +1114,7 @@ struct Context {
     u32 realKickRunL, fnFastCounter, kickRuns, kickRunTicks, kickBeatAt;   // the kick RunL, timed (round 132)
     u32 realTickCount;      // euser 674 User::TickCount, the game's own reads (round 143 tick shim)
     u32 tickSeedHits;       // how many times the seed read was answered with the constant
+    u32 realLexVal, lexValTold;   // TLex16::Val(TReal64&) as resolved, and how many parses were logged (round 144)
     u32 fnCpuTime, cpuSaid[5];   // RThread::GetCpuTime (euser 1782), and each thread's last reading, in us
     u32 bgMute;             // focus lost: the streams are turned down until it comes back
     u32 mdaObj[4], mdaVol[4], mdaMuted[4];   // each stream, the volume the game last set, and whether muted
@@ -9731,6 +9732,36 @@ typedef int (*Math1Fn)(void *out, const void *a);
 typedef int (*Math2Fn)(void *out, const void *a, const void *b);
 typedef int (*MathRoundFn)(void *out, const void *a, int digits);
 
+// TLex16::Val(TReal64&) (round 144). The 9.x euser writes the parsed double
+// through the reference in EABI word order (low word first); the GCC98r2
+// game reads a double high word first, so "4.0" came back as a denormal
+// near zero and "0.1" as a huge negative -- and the arenas' ambience
+// scheduler (data/arenas/*.fx: REPE <period> <weight> <sample>), which
+// parses both with this call, never fired. Hits never go through it, which
+// is why the fight had its blows and not its wind. The value is round-tripped:
+// what the game holds goes in swapped (Val leaves it alone on an error), and
+// what comes back is swapped into the game's order. The first few parses are
+// logged (NOTE_FPA, 0xF1.. then the two words) so the bench can read them.
+// No writable statics in this image (.bss is discarded by the flat link), so
+// the real function and the log counter live in the context, which the thunk
+// hands over in r2.
+extern "C" int gate6_fpa_lexval(void *lex, u32 *out, Context *c)
+{
+    typedef int (*ValFn)(void *, void *);
+    u32 r[2] __attribute__((aligned(8))) = { out[1], out[0] };
+    const int e = ((ValFn)c->realLexVal)(lex, r);
+    out[0] = r[1];
+    out[1] = r[0];
+    if (c->lexValTold < 6) {
+        c->lexValTold++;
+        log_event(c, NOTE_FPA, 0xF1000000u | ((u32)e & 0xFFFF));   // 0xF1....: a TLex16::Val(TReal64&) parse, then its two words (high, low)
+        log_event(c, NOTE_FPA, out[0]);
+        log_event(c, NOTE_FPA, out[1]);
+        log_block(c);
+    }
+    return e;
+}
+
 extern "C" int gate6_fpa_d2d(u32 *out, const u32 *a, u32 real)        // Math::Sin(TReal&, const TReal&) and its kind
 {
     u32 x[2] __attribute__((aligned(8))) = { a[1], a[0] };
@@ -9768,7 +9799,7 @@ extern "C" int gate6_fpa_round(u32 *out, const u32 *a, int digits, u32 real)   /
     return e;
 }
 
-enum { M_D2D = 1, M_DD2D = 2, M_D2I = 3, M_ROUND = 4 };
+enum { M_D2D = 1, M_DD2D = 2, M_D2I = 3, M_ROUND = 4, M_LEXVAL = 5 };
 static const struct { u16 index; u8 flags; } kFpaRegs[] = {
     { IMPORT_ADDDF3, FPA_BIN }, { IMPORT_SUBDF3, FPA_BIN }, { IMPORT_MULDF3, FPA_BIN }, { IMPORT_DIVDF3, FPA_BIN },
     { IMPORT_NEGDF2, FPA_NEG }, { IMPORT_FLOATSIDF, FPA_I2D }, { IMPORT_EXTENDSFDF2, FPA_I2D },
@@ -9778,6 +9809,7 @@ static const struct { u16 index; u8 flags; } kFpaRegs[] = {
     { IMPORT_LEDF2, FPA_CMP }, { IMPORT_EQDF2, FPA_CMP }, { IMPORT_NEDF2, FPA_CMP },
 };
 static const struct { u16 index; u8 shape; } kFpaMath[] = {
+    { IMPORT_LEX16_VAL_REAL, M_LEXVAL },    // TLex16::Val(TReal64&): the parsed double written back in FPA order (round 144)
     { IMPORT_MATH_POW, M_DD2D }, { IMPORT_MATH_MOD, M_DD2D }, { IMPORT_MATH_ATAN2, M_DD2D },
     { IMPORT_MATH_SIN, M_D2D }, { IMPORT_MATH_COS, M_D2D }, { IMPORT_MATH_TAN, M_D2D },
     { IMPORT_MATH_SQRT, M_D2D }, { IMPORT_MATH_EXP, M_D2D }, { IMPORT_MATH_LN, M_D2D },
@@ -9900,7 +9932,10 @@ static void fpa_install(Context *c, u32 *iat, u32 nImports)
             continue;
         const void *real = (const void *)iat[i];
         const u32 shape = kFpaMath[k].shape;
+        if (shape == M_LEXVAL)
+            c->realLexVal = (u32)real;
         iat[i] = (shape == M_D2D)   ? ctx_thunk(c->spare, real, (u32)&gate6_fpa_d2d)
+               : (shape == M_LEXVAL) ? ctx_thunk(c->spare, c, (u32)&gate6_fpa_lexval)
                : (shape == M_D2I)   ? ctx_thunk(c->spare, real, (u32)&gate6_fpa_d2i)
                : (shape == M_DD2D)  ? ctx3_thunk(c->spare, real, (u32)&gate6_fpa_dd2d)
                :                      ctx3_thunk(c->spare, real, (u32)&gate6_fpa_round);

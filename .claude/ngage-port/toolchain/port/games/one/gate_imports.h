@@ -70,6 +70,7 @@ enum {
     IMPORT_LEAVE_IF_ERROR              =   341,
     IMPORT_LEAVE_NOMEM                 =   342,
     IMPORT_LEDF2                       = 65535,   // absent
+    IMPORT_LEX16_VAL_REAL              =   413,
     IMPORT_LIBRARY_LOAD                =   345,
     IMPORT_LIBRARY_LOOKUP              =   346,
     IMPORT_LTDF2                       =   480,
