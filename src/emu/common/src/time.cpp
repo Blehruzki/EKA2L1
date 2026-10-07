@@ -213,7 +213,34 @@ namespace eka2l1::common {
         }
     };
 
+    // EKA2L1_DETTICK: a deterministic virtual clock in place of the wall clock.
+    // microseconds() advances by a fixed step on each read, so the value the
+    // guest sees at a given point in its own instruction stream is the same on
+    // every launch. A diagnostic for guest code whose control flow depends on
+    // User::TickCount (which EKA2L1 otherwise serves from host wall time, and
+    // so varies run to run with host load). The step defaults to 50 us and is
+    // overridable with EKA2L1_DETTICK=<microseconds-per-read>.
+    struct deterministic_teletimer : public teletimer {
+        std::uint64_t now_ = 0;
+        std::uint64_t step_;
+        std::uint32_t target_freq_;
+        explicit deterministic_teletimer(const std::uint32_t freq, std::uint64_t step)
+            : step_(step), target_freq_(freq) {}
+        void start() override { now_ = 0; }
+        void stop() override {}
+        bool set_target_frequency(const std::uint32_t freq) override { target_freq_ = freq; return true; }
+        std::uint64_t ticks() override { return multiply_and_divide_qwords(microseconds(), target_freq_, 1000000); }
+        std::uint64_t microseconds() override { now_ += step_; return now_; }
+        std::uint64_t nanoseconds() override { return microseconds() * 1000; }
+    };
+
     std::unique_ptr<teletimer> make_teletimer(const std::uint32_t target_frequency) {
+        const char *det = std::getenv("EKA2L1_DETTICK");
+        if (det) {
+            std::uint64_t step = std::strtoull(det, nullptr, 10);
+            if (step == 0) step = 50;
+            return std::make_unique<deterministic_teletimer>(target_frequency, step);
+        }
         return std::make_unique<basic_teletimer_micro>(target_frequency);
     }
 

@@ -79,6 +79,13 @@ probes are `EKA2L1_WATCH`, `EKA2L1_WATCHVAL`, `EKA2L1_WATCHPC` and
 `EKA2L1_PCTRACE_REGS=pc,pc,...` it also dumps r0-r15 at those block entries to
 `<path>.regs`. It is for finding where two runs of the same guest code part
 (the dispatch loop in `src/emu/cpu/src/dyncom/arm_dyncom_interpreter.cpp`).
+`EKA2L1_DETTICK=<microseconds-per-read>` (default 50) swaps the host wall
+clock behind `User::TickCount` for a deterministic virtual clock that
+advances a fixed step on each read (`basic_teletimer_micro` ->
+`deterministic_teletimer` in `src/emu/common/src/time.cpp`). It is for
+isolating guest code whose control flow depends on the tick; it distorts
+pacing and stalls boot at small steps, so it is a diagnostic, not a clock to
+run on.
 
 A dead thread's own heap is freed, as EKA2's `DThread::CloseCreatedHeap`
 does (`thread::close_created_heap` in `src/emu/kernel/src/thread.cpp`): the

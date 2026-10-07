@@ -812,8 +812,41 @@ loop are the emulator's timing (User::TickCount, read through code+b8738 by the
 cca10/ccacc interval routine the reader leans on) and `Math::Random`; a
 read-before-write of the decompressor's working buffer (uninitialised heap,
 which the emulator fills unlike hardware) is the other candidate and is not yet
-ruled out. The next diagnostic is a write-watch on that buffer; until it says
-which, there is no build.
+ruled out. It is neither. Each bench fight is a fresh process, so its heap is
+zero-filled on first fault; an uninitialised read would be deterministic
+(zero) and give the same outcome every launch, yet the outcome varies. And
+two dead runs diverge from *each other* at different points in the same
+decompressor loop (E761/E764), so the deciding value is consumed repeatedly
+and changes run to run.
+
+**Root cause (confirmed): the wall-clock tick.** The decompressor leans on
+an interval routine (cca10/ccacc) that reads `User::TickCount` through
+code+b8738 and mixes it (with `Math::Random`) into the loop's control flow --
+a timing-adaptive loader. EKA2L1 serves `User::TickCount` from the host wall
+clock: `tick_count` in `src/emu/kernel/src/svc.cpp` divides
+`ntimer::microseconds()`, and that is `basic_teletimer_micro::microseconds()`
+in `src/emu/common/src/time.cpp`, which returns real elapsed microseconds
+since start. So the tick the game reads jitters with host load every launch,
+and the loader lands live or dead by luck. The real N95 is intermittent for
+the same reason -- its own timing-sensitive loop -- just in a narrower band,
+so the user hits it only now and then.
+
+Proof: `EKA2L1_DETTICK=<us-per-read>` swaps a deterministic virtual clock in
+(same file). The outcome becomes a clean function of the step --
+small steps stall the boot (E772-E774, E780/E781), 2000 bails (E775), and
+10 ms per read reads the archive whole on every one of three launches
+(E776-E779) where wall-clock launches split 6:11 live:dead. Timing, not
+memory, decides it.
+
+**Fix direction (no build yet).** The deterministic per-read clock is a
+diagnostic, not the fix: it distorts frame pacing (the live runs do ~2%
+fewer records) and stalls boot at small steps. The right fix is a steady,
+emulated-time tick -- one that advances in proportion to emulated CPU work
+rather than host wall time, as a device's 64 Hz system tick does in lockstep
+with its fixed-rate CPU. That keeps the loader in the full-read band and is a
+genuine emulator-fidelity improvement, not a game-specific hack. It is a
+global change to how `User::TickCount` / the fast counter advance, so it
+wants the user's go-ahead before it is built and shipped.
 
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 
