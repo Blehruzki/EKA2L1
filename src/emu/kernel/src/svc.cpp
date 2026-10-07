@@ -3098,21 +3098,24 @@ namespace eka2l1::epoc {
         const std::uint64_t DEFAULT_FAST_COUNTER_PERIOD = (common::microsecs_per_sec / epoc::HIGH_RES_TIMER_HZ);
 
         ntimer *timing = kern->get_ntimer();
-        return static_cast<std::uint32_t>(timing->microseconds() / DEFAULT_FAST_COUNTER_PERIOD);
+        const std::uint64_t us = common::cycle_tick_ips() ? common::cycle_tick_microseconds() : timing->microseconds();
+        return static_cast<std::uint32_t>(us / DEFAULT_FAST_COUNTER_PERIOD);
     }
 
     BRIDGE_FUNC(std::uint32_t, ntick_count) {
         const std::uint64_t DEFAULT_NTICK_PERIOD = (common::microsecs_per_sec / epoc::NANOKERNEL_HZ);
 
         ntimer *timing = kern->get_ntimer();
-        return static_cast<std::uint32_t>(timing->microseconds() / DEFAULT_NTICK_PERIOD);
+        const std::uint64_t us = common::cycle_tick_ips() ? common::cycle_tick_microseconds() : timing->microseconds();
+        return static_cast<std::uint32_t>(us / DEFAULT_NTICK_PERIOD);
     }
 
     BRIDGE_FUNC(std::uint32_t, tick_count) {
         const std::uint64_t DEFAULT_TICK_PERIOD = (common::microsecs_per_sec / epoc::TICK_TIMER_HZ);
 
         ntimer *timing = kern->get_ntimer();
-        std::uint32_t res = static_cast<std::uint32_t>((timing->microseconds() / DEFAULT_TICK_PERIOD));
+        const std::uint64_t us = common::cycle_tick_ips() ? common::cycle_tick_microseconds() : timing->microseconds();
+        std::uint32_t res = static_cast<std::uint32_t>((us / DEFAULT_TICK_PERIOD));
 
         if (kern->is_eka1()) {
             // TODO: This is unverified mask used for compatible with Worms War party

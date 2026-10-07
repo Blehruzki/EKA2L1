@@ -86,6 +86,13 @@ advances a fixed step on each read (`basic_teletimer_micro` ->
 isolating guest code whose control flow depends on the tick; it distorts
 pacing and stalls boot at small steps, so it is a diagnostic, not a clock to
 run on.
+`EKA2L1_CYCLETICK=<instructions-per-microsecond>` is the shippable version of
+that idea: the guest tick SVCs (`tick_count`, `ntick_count`, the fast counter
+in `src/emu/kernel/src/svc.cpp`) read a monotonic count of emulated
+instructions over the given rate instead of host wall time, so guest-visible
+time advances with emulated work. The counter is fed from the dyncom core
+(`src/emu/cpu/src/dyncom/arm_dyncom.cpp`), so it is dyncom-only. Every
+emulator switch is indexed in `EMU_PATCHES.md`.
 
 A dead thread's own heap is freed, as EKA2's `DThread::CloseCreatedHeap`
 does (`thread::close_created_heap` in `src/emu/kernel/src/thread.cpp`): the

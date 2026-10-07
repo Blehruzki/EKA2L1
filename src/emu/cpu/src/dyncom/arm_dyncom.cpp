@@ -18,6 +18,7 @@
  */
 
 #include <cpu/dyncom/arm_dyncom.h>
+#include <common/time.h>
 #include <cpu/dyncom/arm_dyncom_interpreter.h>
 #include <cpu/dyncom/arm_dyncom_trans.h>
 
@@ -43,6 +44,7 @@ namespace eka2l1::arm {
         state_->NumInstrsToExecute = instruction_count;
 
         InterpreterMainLoop(state_.get(), ticks_executed_);
+        common::add_cpu_cycles(ticks_executed_);
     }
 
     void dyncom_core::stop() {
@@ -54,6 +56,7 @@ namespace eka2l1::arm {
         state_->NumInstrsToExecute = 1;
 
         InterpreterMainLoop(state_.get(), ticks_executed_);
+        common::add_cpu_cycles(ticks_executed_);
     }
 
     std::uint32_t dyncom_core::get_reg(size_t idx) {

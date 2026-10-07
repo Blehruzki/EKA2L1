@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -36,6 +37,28 @@ namespace eka2l1::common {
 
     inline std::uint64_t us_to_ns(const std::uint64_t us) {
         return us * 1000;
+    }
+
+    // Cycle-proportional tick (EKA2L1_CYCLETICK=<instructions-per-microsecond>).
+    // A monotonic count of emulated guest instructions, fed by the CPU core, so
+    // that guest-facing time can advance with emulated work instead of host
+    // wall time. Only the guest tick SVCs read it (kernel/svc.cpp); the host
+    // scheduler keeps its own wall clock. See EMU_PATCHES.md.
+    extern std::atomic<std::uint64_t> g_cpu_cycle_counter;
+
+    inline void add_cpu_cycles(const std::uint64_t n) {
+        g_cpu_cycle_counter.fetch_add(n, std::memory_order_relaxed);
+    }
+
+    // Non-zero when EKA2L1_CYCLETICK is set to a positive value: the guest
+    // instructions-per-microsecond the tick SVCs should assume.
+    std::uint64_t cycle_tick_ips();
+
+    // Virtual microseconds from the cycle counter at that rate. Meaningful only
+    // when cycle_tick_ips() != 0.
+    inline std::uint64_t cycle_tick_microseconds() {
+        const std::uint64_t ips = cycle_tick_ips();
+        return ips ? (g_cpu_cycle_counter.load(std::memory_order_relaxed) / ips) : 0;
     }
 
     /**

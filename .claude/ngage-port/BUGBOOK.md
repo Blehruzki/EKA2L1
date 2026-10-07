@@ -845,8 +845,28 @@ emulated-time tick -- one that advances in proportion to emulated CPU work
 rather than host wall time, as a device's 64 Hz system tick does in lockstep
 with its fixed-rate CPU. That keeps the loader in the full-read band and is a
 genuine emulator-fidelity improvement, not a game-specific hack. It is a
-global change to how `User::TickCount` / the fast counter advance, so it
-wants the user's go-ahead before it is built and shipped.
+global change to how `User::TickCount` / the fast counter advance.
+
+**Built (r143): `EKA2L1_CYCLETICK`.** The guest tick SVCs now read a monotonic
+count of emulated instructions (fed from the dyncom core) over a configured
+instructions-per-microsecond rate, instead of host wall time; the host event
+scheduler keeps its own wall clock, so the change is confined to what the guest
+reads. Off by default (wall clock); indexed in `EMU_PATCHES.md`. At 50 instr/us
+the bench reads the archive whole on every launch and plays full fights live
+(motion ~23; E787-E789 and E795-E798, 7/7 live), where wall-clock launches split
+6:11. The live/dead outcome is non-monotonic in the rate (50 and 5000 live, 200
+and 1000 dead; E782-E794), so it is not a plain elapsed-time threshold, but it is
+now *stable* at each rate -- the coin flip is gone.
+
+**What this is and is not.** It fixes the **bench**: a deterministic emulator
+that reads the archive reliably, plus a reliably-dead regime (200 instr/us) to
+test against. It does **not** fix the user's N95 -- the phone runs the game
+natively, not on EKA2L1, so its own timing-sensitive loader is untouched. The
+phone fix must be port-side: the gate6 shim already wraps the game's euser
+imports, so it can wrap `User::TickCount` (euser 1137) to keep the loader in the
+live band on real hardware. The cycle tick gives that work a reproducible bench
+-- set 200 instr/us for a guaranteed-dead load, add the shim, confirm it flips to
+live.
 
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 

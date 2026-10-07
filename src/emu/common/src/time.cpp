@@ -42,6 +42,16 @@
 #endif
 
 namespace eka2l1::common {
+    std::atomic<std::uint64_t> g_cpu_cycle_counter{0};
+
+    std::uint64_t cycle_tick_ips() {
+        static const std::uint64_t ips = []() -> std::uint64_t {
+            const char *w = std::getenv("EKA2L1_CYCLETICK");
+            return w ? std::strtoull(w, nullptr, 10) : 0;
+        }();
+        return ips;
+    }
+
     std::uint64_t get_current_utc_time_in_microseconds_since_epoch() {
         return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     }
