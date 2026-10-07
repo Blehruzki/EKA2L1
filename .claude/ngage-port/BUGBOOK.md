@@ -868,6 +868,27 @@ live band on real hardware. The cycle tick gives that work a reproducible bench
 -- set 200 instr/us for a guaranteed-dead load, add the shim, confirm it flips to
 live.
 
+**Port shim attempt (r143, GAME_TICK_SHIM, off).** Built the phone-side shim:
+the loader intercepts the game's `User::TickCount` (euser 674, confirmed by
+measurement) by scanning the import table for the resolved address and
+diverting it to `gate6_tick_count`; a load window arms on the `one.cwa` open
+(name matched by a tail `cwa` scan -- the name is a type-4 descriptor with a
+length word before the text, so a fixed-offset suffix read the wrong
+characters, E806/E812) and lasts a bounded number of reads, during which the
+game sees a controlled tick, reverting to the real clock after so gameplay
+pacing is untouched. The plumbing is proven: E805 shows the divert resolving
+and taking one slot, E813 the window arming, E814 the loader actually reading
+the shimmed values. But no transform tried makes the wall-clock bench reliably
+live: a real-tick base with a slow cadence stayed on the wall-clock split
+(E807-E812), and a fixed large base to force determinism faulted the game at a
+tick-derived address (E815-E820, fault 0x3FFFE7FC). The shim is therefore left
+**off** -- plumbed and documented, not shipped on a guess (rule 4). The likely
+missing piece: the loader reads another wall-clock source (FastCounter 584 or
+NTickCount) that the shim does not yet control, and/or the exact interval
+formula (cca10/ccacc) must be cracked so the shimmed values can be aimed rather
+than guessed. The deterministic bench (CYCLETICK=200, reliably dead) is the
+harness for that work. KNOBS.md carries the switch.
+
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 
 **Symptom.** The end key during a fight: "Application closed: One G6FLT

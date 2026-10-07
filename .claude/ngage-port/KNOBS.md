@@ -158,3 +158,12 @@ answered 100 ms ahead, so the writer (0x1195c, 80 ms capacity) keeps that much
 more queued against the stutter; `GAME_KICK_RUNL_SLOT` / `_FN` -- the frame
 object's RunL timed per beat (0x0BEF records: runs, ticks inside, ticks in the
 beat). One only.
+
+One, round 143: `GAME_TICK_SHIM` (**off**, experimental) -- intercepts the
+game's `User::TickCount` and, during the `one.cwa` load window, feeds it a
+controlled tick, to stop the archive loader reading short when host timing
+jitters (the fight glitch, BUGBOOK 12.w). Plumbed and proven to reach the
+loader (E805/E813/E814) but not yet a reliable fix (E807-E820), so it ships
+off. `GAME_TICK_SHIM_SHIFT` / `_CALLS` set the window cadence and length. The
+emulator-side `EKA2L1_CYCLETICK` (EMU_PATCHES.md) is the deterministic bench
+this is developed against. One only.

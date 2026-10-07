@@ -283,6 +283,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_OPEN = 897,    // what RFile::Open answered
        NOTE_FILE_PATH = 898,    // ... and the name it was asked for
        NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
+       NOTE_TICK_SHIM = 900,    // the tick-shim window armed on a .cwa open, and the base tick
        NOTE_FILE_HEAD = 861,    // the first three words of a name descriptor
        NOTE_CARD_REFUSED = 862, // a write to the game card, refused as a card would
        NOTE_CARD_CALL = 863,    // the driver asked for the card's identity, and where to put it
@@ -1111,6 +1112,8 @@ struct Context {
     u32 wdThr[4], wdThrN;   // the same for each thread the game made
     u32 fnDuplicate, fnContext, fnStackInfo, fnPriority;   // euser 121, 1796, 1801, 1800
     u32 realKickRunL, fnFastCounter, kickRuns, kickRunTicks, kickBeatAt;   // the kick RunL, timed (round 132)
+    u32 realTickCount;      // euser 674 User::TickCount, the game's own reads (round 143 tick shim)
+    u32 tickShimLeft, tickShimBase, tickShimCount;   // the archive-load window: calls left, base tick, call counter
     u32 fnCpuTime, cpuSaid[5];   // RThread::GetCpuTime (euser 1782), and each thread's last reading, in us
     u32 bgMute;             // focus lost: the streams are turned down until it comes back
     u32 mdaObj[4], mdaVol[4], mdaMuted[4];   // each stream, the volume the game last set, and whether muted
@@ -4541,6 +4544,7 @@ static void watchdog_start(Context *c)
 #define GAME_KICK_RUNL_FN 0
 #endif
 enum { EUSER_FAST_COUNTER = 584 };
+enum { EUSER_TICK_COUNT = 674 };   // User::TickCount(void), 9.x ordinal (confirmed by measurement; CLAUDE.md)
 extern "C" void gate6_kick_runl(void *self, u32, Context *c)
 {
     typedef void (*RunL)(void *);
@@ -7154,6 +7158,55 @@ static u32 open_thunk(u8 *code, const void *ctx, u32 target, u32 handler)
     return (u32)b;
 }
 
+// Round 143: the tick shim. One's archive loader (the obfuscated reader of
+// `one.cwa`) folds `User::TickCount` into the decompressor through an interval
+// routine (code+cca10/ccacc), so the bytes it produces -- and the count it
+// reads for how much more to load -- depend on host timing. On the N95 that
+// comes out right most runs and wrong some runs: the glitched fight is the
+// archive read short, the game then running without its data. The fix makes the
+// game's own TickCount reads independent of real time *during the load window*,
+// advancing one tick per few reads to match the cadence a good run shows on the
+// bench (cca2c stepped ~1 per four reads), and reverts to the real clock after
+// so gameplay pacing is untouched. The window is armed when a `.cwa` opens and
+// lasts GAME_TICK_SHIM_CALLS reads; a later fight that reopens the archive
+// re-arms it. GAME_TICK_SHIM turns the whole thing off.
+enum { GAME_TICK_SHIM = 0, GAME_TICK_SHIM_SHIFT = 2, GAME_TICK_SHIM_CALLS = 40000 };
+enum : unsigned { GAME_TICK_SHIM_BASE = 0x40000000u };
+
+// ctx_thunk hands the context in r2 (r0/r1 pass through untouched), so the
+// context is this function's third parameter even though TickCount takes none.
+extern "C" u32 gate6_tick_count(u32, u32, Context *c)
+{
+    const u32 real = c->realTickCount ? ((u32 (*)())c->realTickCount)() : 0;
+    if (GAME_TICK_SHIM && c->tickShimLeft) {
+        c->tickShimLeft--;
+        return c->tickShimBase + (c->tickShimCount++ >> GAME_TICK_SHIM_SHIFT);
+    }
+    return real;
+}
+
+// Is this open on the game's archive? The name is decoded to UTF-16 in
+// gate6_file_open, but its base depends on the descriptor type (a type-4 name
+// carries a length word in front of the text), so a fixed `.cwa` offset reads
+// the wrong characters. Scan the tail for a `cwa` run instead -- robust to a
+// word of base offset -- staying within one char past the nominal length.
+static int name_is_cwa(const u16 *text, u32 chars)
+{
+    if (chars < 3)
+        return 0;
+    // A type-4 name carries a two-u16 length word in front of the text, so the
+    // run can sit up to two positions past the nominal length; scan a little
+    // further. File-name descriptors have ample buffer slack (KMaxFileName).
+    const u32 end = chars + 3;
+    for (u32 p = 0; p + 2 < end; p++) {
+        const u16 a = text[p], b = text[p + 1], c = text[p + 2];
+        if ((a == 'c' || a == 'C') && (b == 'w' || b == 'W') &&
+            (c == 'a' || c == 'A'))
+            return 1;
+    }
+    return 0;
+}
+
 // Which file, and whether it opened. The name is a TDesC16 in one of the four
 // layouts the game uses, decoded the same way gate6_library_load decodes a
 // library name, and written down two characters to a record so the path can be
@@ -7181,6 +7234,21 @@ extern "C" void gate6_file_open(u32 err, const u32 *name, Context *c)
             length = 2 * OPEN_NAME_WORDS;
         for (u32 i = 0; i + 1 < length; i += 2)
             log_event(c, NOTE_FILE_PATH, (u32)text[i] | ((u32)text[i + 1] << 16));
+        // Arm the tick-shim window on the archive's open (err 0 == it opened).
+        // length here is the full character count of the name.
+        const u32 nchars = name[0] & 0x0FFFFFFF;
+        if (GAME_TICK_SHIM && err == 0 && c->realTickCount &&
+            name_is_cwa(text, nchars)) {
+            // Base at the real tick on arm: a large fixed base (0x40000000,
+            // tried) stalls the load -- the game's own timers go haywire when
+            // tick leaps -- so keep it near real time. (This alone is not yet a
+            // reliable fix; see BUGBOOK 12.w.)
+            c->tickShimBase = ((u32 (*)())c->realTickCount)();
+            c->tickShimCount = 0;
+            c->tickShimLeft = GAME_TICK_SHIM_CALLS;
+            log_event(c, NOTE_TICK_SHIM, c->tickShimBase);
+            log_block(c);
+        }
     }
     log_block(c);
 }
@@ -13640,6 +13708,30 @@ static u32 load_and_start()
             ctx->spare += TRACE;
             ctx->fnFastCounter = (u32)rlibrary_lookup(&ctx->euser, EUSER_FAST_COUNTER);
         }
+    }
+
+    // Round 143: the tick shim. Find every import slot the game resolved to
+    // euser's User::TickCount (9.x ordinal 674, confirmed by measurement) and
+    // divert it to gate6_tick_count, keeping the real address to chain to. A
+    // scan rather than a named IMPORT_ constant because the game reaches
+    // TickCount only by ordinal, and the slot index is whatever the image's
+    // import order gives.
+    if (GAME_TICK_SHIM) {
+        const u32 realTick = (u32)rlibrary_lookup(&ctx->euser, EUSER_TICK_COUNT);
+        u32 diverted = 0;
+        if (realTick) {
+            ctx->realTickCount = realTick;
+            for (u32 i = 0; i < nImports; i++) {
+                if (iat[i] == realTick && ctx->spare + TRACE <= ctx->spareEnd) {
+                    iat[i] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_tick_count);
+                    ctx->spare += TRACE;
+                    diverted++;
+                }
+            }
+        }
+        log_event(ctx, NOTE_TICK_SHIM, realTick);
+        log_event(ctx, NOTE_TICK_SHIM, (0xD1 << 24) | diverted);
+        log_block(ctx);
     }
 
     if (!TAKE_THE_SCREEN) {
