@@ -102,6 +102,11 @@ enum { GAME_SRC_ORIGIN = 0 };
 // than OG on the N95. Needs GAME_SCREEN_MODES. See scale_frame.
 #define GAME_PORT_SCALER 1
 
+// Round 150: in the non-integer modes, destination pixels that straddle a
+// source pixel boundary are blended by area (filter_frame); 1:1 and integer
+// stay pixel-sharp. Costs a few milliseconds a frame on the N95.
+#define GAME_SCALE_FILTER 1
+
 // CActive::Cancel from the game on an object that is neither the port's
 // wrapped timer nor its DSA shadow is dropped; 1 forwards it when the object
 // is a 9.x one (its vptr in the ROM), which a title that makes its timers
@@ -172,5 +177,5 @@ enum { GAME_SRC_ORIGIN = 0 };
 // 0xb4ea4 unsignalled (round 147). The port tells the underflow itself after
 // 32 ticks (500 ms, the emulator's figure) with nothing queued.
 #define GAME_MDA_UNDERFLOW_TICKS 32
-#define GAME_BUILD 13
+#define GAME_BUILD 14
 #endif

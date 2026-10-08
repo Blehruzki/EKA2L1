@@ -7,7 +7,7 @@ stays off for a title until a round of its own has run it there. Rounds are
 hardware; E-numbers are bench runs (ROUNDS.md).
 
 Shipping builds: Asphalt Urban GT **030** (`gate6a1`), Asphalt 2 **196**
-(`gate6`), Ashen **013** (`gate6ashe`: 012 confirmed on the N95 in round 148, 013 adds the port scaler, hardware pending). All verified on a Nokia N95 (S60 3.1)
+(`gate6`), Ashen **013** (`gate6ashe`: 012 confirmed on the N95 in round 148, 013 adds the port scaler, confirmed smoother on the N95 in round 150; 014 adds the area filter, hardware pending). All verified on a Nokia N95 (S60 3.1)
 and the bench (RM-409 ROM, S60 3.2); the Asphalts also on a Nokia N91 (S60 3.0,
 round 121). Asphalt Urban GT 027 was confirmed on a Nokia C5-00 (S60 3.2, round 122). Ashen 010 reached the N91 and fell on a second 3.0 difference
 (round 123); 011 carries that fix, and round 124 confirmed all three titles on
@@ -18,7 +18,8 @@ the N95 and the N91. One (`gate6one`) ships as **022** (round 149): 021 died at 
 | knob | Asphalt UGT | Asphalt 2 | Ashen | universal | what it does | settled |
 |---|---|---|---|---|---|---|
 | `GAME_FIX_APPUI_THIS` | 1 | 0 | 1 | yes | CEikAppUi methods get the real 9.x app UI as `this` instead of the game's old one | E264/E265, hardware since UGT 00x; Asphalt 2 never needed it |
-| `GAME_PORT_SCALER` | -- | -- | 1 | yes, for a window-gc title with `GAME_SCREEN_MODES` | the fitted modes' frames are scaled by the port (the Asphalts' Bresenham maps, a 4K-to-16MU table) into a bitmap of the panel's format and blitted one to one, instead of the window server's scaled `DrawBitmap`, which ran the stretched modes slower than OG; the four CFbsBitmap entries come off the game's own imports (0x5CA0..0x5CA3) | round 150: bench E856 (every mode's geometry and colours as before); hardware pending |
+| `GAME_PORT_SCALER` | -- | -- | 1 | yes, for a window-gc title with `GAME_SCREEN_MODES` | the fitted modes' frames are scaled by the port (the Asphalts' Bresenham maps, a 4K-to-16MU table) into a bitmap of the panel's format and blitted one to one, instead of the window server's scaled `DrawBitmap`, which ran the stretched modes slower than OG; the four CFbsBitmap entries come off the game's own imports (0x5CA0..0x5CA3) | round 150: bench E856 (every mode's geometry and colours as before); the N95, smoother in the full stretched mode |
+| `GAME_SCALE_FILTER` | -- | -- | 1 | yes, on the port scaler | in the non-integer modes a destination pixel that straddles a source boundary is the two source pixels blended by area (`filter_frame`, weights from `screen_fit`, no division); pixels inside one source pixel are copied, so 1:1 and integer stay sharp. Even strokes instead of every fourth column doubled | round 150: bench E857 (zoom and colour count), host check of the weights; hardware pending (the cost per frame) |
 | `GAME_UI_FORWARD_EVENTS` | 0 | 0 | 1 | yes | the wrapper forwards foreground, system event and command to the game's own app UI overrides | E368; Ashen hardware rounds 113-117 |
 | `GAME_CONTROL_W/H` | 0 | 0 | 176x208 | yes | the control's extent for a title that sizes bitmaps from `Rect()`; 0 = whole screen | E372; Ashen hardware |
 | `GAME_CODE_PATCHES` | none | none | 2 words | per image | words of the image rewritten after loading (Ashen: a reciprocal-table clamp that read page 0) | E372; Ashen hardware |

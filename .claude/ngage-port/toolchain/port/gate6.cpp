@@ -1215,6 +1215,8 @@ struct Context {
     u32 scalerOff;          // the port scaler gave up this launch: DrawBitmap from here on
     u8 mapX[MAP_MAX];       // destination column -> source column, Bresenham
     u8 mapY[MAP_MAX];       // and the same down
+    u8 wX[MAP_MAX], wY[MAP_MAX];   // round 150: the filter's blend weight toward the next source pixel, 0 to copy
+    u32 *conv;              // the frame converted to EColor16MU before filtering, srcW x srcH words
     u32 boxData[BOX_WORDS];
     u32 pathIndex;          // which layout the game was loaded from
     u32 dataDrive;          // and the drive it is really on, as a letter
@@ -4567,6 +4569,9 @@ static void watchdog_start(Context *c)
 #ifndef GAME_PORT_SCALER
 #define GAME_PORT_SCALER 0           // round 150: the window-gc title's frame scaled here, not by the window server
 #endif
+#ifndef GAME_SCALE_FILTER
+#define GAME_SCALE_FILTER 0          // round 150: area-weighted blending at source pixel boundaries in the non-integer modes
+#endif
 #ifndef GAME_PREPARE_EXIT_NOOP
 #define GAME_PREPARE_EXIT_NOOP 0     // round 149: CAknAppUi::PrepareToExit on the game's own app UI, see gate6_appui_prepare_exit
 #endif
@@ -7813,6 +7818,8 @@ static void screen_layout(Context *c)
     f.mode = c->mode;
     f.mapX = c->mapX;
     f.mapY = c->mapY;
+    f.wX = c->wX;
+    f.wY = c->wY;
     f.mapMax = (u32)sizeof c->mapX;
     screen_fit(&f);
     c->bufW = f.bufW;
@@ -9157,6 +9164,67 @@ static u32 *scaled_bitmap(Context *c)
     return bmp;
 }
 
+// **The filter, round 150.** Nearest neighbour at 1.36x makes every fourth
+// column twice as wide as its neighbours, and the same down, which is what
+// the stretched modes looked like. This is an area-weighted resample: a
+// destination pixel that lies wholly inside one source pixel is a copy of
+// it, and one that straddles a boundary is the two source pixels blended by
+// how much of it lies in each -- the weights screen_fit computed beside the
+// maps. So pixels stay sharp where they can and the uneven widths go; at an
+// integer ratio every weight is 0 and this is never called. The frame is
+// converted to EColor16MU once (srcW x srcH words), then each output pixel
+// blends up to four of those: red and blue together in one word, green in
+// the other, eight-bit weights, no division.
+static inline u32 blend_16mu(u32 p, u32 q, u32 w)
+{
+    const u32 iw = 256u - w;
+    const u32 rb = (((p & 0x00FF00FFu) * iw + (q & 0x00FF00FFu) * w) >> 8) & 0x00FF00FFu;
+    const u32 g  = (((p & 0x0000FF00u) * iw + (q & 0x0000FF00u) * w) >> 8) & 0x0000FF00u;
+    return rb | g;
+}
+
+static int filter_frame(Context *c, const u16 *s, u32 pitch, u32 *d)
+{
+    const u32 sw = (u32)GAME_CONTROL_W, sh = (u32)GAME_CONTROL_H;
+    if (!c->conv) {
+        c->conv = (u32 *)user_allocz((int)(sw * sh * 4u));
+        if (!c->conv)
+            return 0;
+    }
+    const u32 *lut = c->lut4k;
+    u32 *conv = c->conv;
+    for (u32 y = 0; y < sh; y++) {
+        const u16 *srow = s + y * pitch;
+        u32 *crow = conv + y * sw;
+        for (u32 x = 0; x < sw; x++)
+            crow[x] = lut[srow[x] & 0xFFF];
+    }
+    const u32 w = c->dstW;
+    const u8 *mx = c->mapX, *wx = c->wX;
+    for (u32 y = 0; y < c->dstH; y++) {
+        const u32 sy = c->mapY[y];
+        const u32 wy = c->wY[y];
+        const u32 *r0 = conv + sy * sw;
+        const u32 *r1 = (wy && sy + 1 < sh) ? r0 + sw : r0;
+        u32 *drow = d + y * w;
+        if (!wy) {
+            for (u32 x = 0; x < w; x++) {
+                const u32 sx = mx[x];
+                drow[x] = wx[x] ? blend_16mu(r0[sx], r0[sx + 1], wx[x]) : r0[sx];
+            }
+        } else {
+            for (u32 x = 0; x < w; x++) {
+                const u32 sx = mx[x];
+                const u32 bw = wx[x];
+                const u32 top = bw ? blend_16mu(r0[sx], r0[sx + 1], bw) : r0[sx];
+                const u32 bot = bw ? blend_16mu(r1[sx], r1[sx + 1], bw) : r1[sx];
+                drow[x] = blend_16mu(top, bot, wy);
+            }
+        }
+    }
+    return 1;
+}
+
 static int scale_frame(Context *c, const void *src, u32 *dstBmp)
 {
     typedef u32 *(*Data)(const void *);
@@ -9177,16 +9245,18 @@ static int scale_frame(Context *c, const void *src, u32 *dstBmp)
     const u32 *lut = c->lut4k;
     const u32 pitch = ((u32)GAME_CONTROL_W * 2u + 3u) / 4u * 2u;    // EColor4K: 16 bits a pixel, rows to a word
     const u32 w = c->dstW;
-    for (u32 y = 0; y < c->dstH; y++) {
-        const u16 *srow = s + (u32)c->mapY[y] * pitch;
-        u32 *drow = d + y * w;
-        const u8 *mx = c->mapX;
-        for (u32 x = 0; x < w; x++)
-            drow[x] = lut[srow[mx[x]] & 0xFFF];
-    }
+    const int filtered = GAME_SCALE_FILTER && !fit_is_exact(c->mode) && filter_frame(c, s, pitch, d);
+    if (!filtered)
+        for (u32 y = 0; y < c->dstH; y++) {
+            const u16 *srow = s + (u32)c->mapY[y] * pitch;
+            u32 *drow = d + y * w;
+            const u8 *mx = c->mapX;
+            for (u32 x = 0; x < w; x++)
+                drow[x] = lut[srow[mx[x]] & 0xFFF];
+        }
     if (!c->scalerOff) {                // once: the first frame through here
         c->scalerOff = 2;
-        log_event(c, NOTE_PORT_SCALER, 0x5CA30000u | (c->dstW << 8 & 0xFF00) | (c->dstH & 0xFF));
+        log_event(c, NOTE_PORT_SCALER, (filtered ? 0x5CA40000u : 0x5CA30000u) | (c->dstW << 8 & 0xFF00) | (c->dstH & 0xFF));
     }
     return 1;
 }

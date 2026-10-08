@@ -60,12 +60,30 @@ struct ScreenFit {
     // is the ceiling on how large the picture may be drawn.
     unsigned char *mapX, *mapY;
     unsigned mapMax;
+    // In, optional (null: not wanted): per destination pixel, how much of it
+    // lies in the *next* source pixel, 0..255 of 256 -- the blend weight of
+    // the area-weighted filter (round 150). 0 means the pixel is copied; it
+    // is 0 everywhere in an exact mode, so those stay pixel-sharp.
+    unsigned char *wX, *wY;
     // Out.
     unsigned bufW, bufH;        // what the clear has to cover
     unsigned dstW, dstH;        // how big the picture is drawn
     unsigned offX, offY;        // and where, from the top left of the panel
     unsigned clamped;           // 1 if mapMax, not the panel, decided the size
 };
+
+// Unsigned division by shift and subtract: the image has no `__aeabi_uidiv`,
+// and this runs once per layout over at most mapMax entries, not per pixel.
+static unsigned fit_udiv(unsigned a, unsigned b)
+{
+    unsigned q = 0, r = 0;
+    if (!b) return 0;
+    for (int i = 31; i >= 0; i--) {
+        r = (r << 1) | ((a >> i) & 1u);
+        if (r >= b) { r -= b; q |= 1u << i; }
+    }
+    return q;
+}
 
 static void screen_fit(ScreenFit *f)
 {
@@ -160,25 +178,48 @@ static void screen_fit(ScreenFit *f)
         { unsigned src = 0, k = 0;
           for (unsigned i = 0; i < dw; i++) {
               f->mapX[i] = (unsigned char)(src < sw ? src : sw - 1);
+              if (f->wX) f->wX[i] = 0;
               if (++k == scale) { k = 0; src++; }
           } }
         { unsigned src = 0, k = 0;
           for (unsigned i = 0; i < dh; i++) {
               f->mapY[i] = (unsigned char)(src < sh ? src : sh - 1);
+              if (f->wY) f->wY[i] = 0;
               if (++k == scale) { k = 0; src++; }
           } }
     } else {
+        // The weight falls out of the same accumulation: after the step for
+        // pixel i, `acc` is (i+1)*sw - src*dw, the part of destination pixel
+        // i (sw units long) that lies in source pixel `src`. A boundary that
+        // fell inside the pixel moved `src` on by exactly one; one that fell
+        // on its edge leaves acc 0; a step of two or more is a downscale,
+        // which this filter does not do, so nearest there (a host check
+        // against the exact area formula agrees to within one on every
+        // upscaling panel; the one disagreement is a downscaled landscape
+        // column whose end lands exactly on a source edge).
         { unsigned src = 0, acc = 0;
           for (unsigned i = 0; i < dw; i++) {
               f->mapX[i] = (unsigned char)(src < sw ? src : sw - 1);
+              const unsigned before = src;
               acc += sw;
               while (acc >= dw) { acc -= dw; src++; }
+              if (f->wX) {
+                  unsigned w = (src == before + 1 && i + 1 < dw && src < sw && acc < sw)
+                             ? fit_udiv(acc * 256u, sw) : 0u;
+                  f->wX[i] = (unsigned char)(w > 255u ? 255u : w);
+              }
           } }
         { unsigned src = 0, acc = 0;
           for (unsigned i = 0; i < dh; i++) {
               f->mapY[i] = (unsigned char)(src < sh ? src : sh - 1);
+              const unsigned before = src;
               acc += sh;
               while (acc >= dh) { acc -= dh; src++; }
+              if (f->wY) {
+                  unsigned w = (src == before + 1 && i + 1 < dh && src < sh && acc < sh)
+                             ? fit_udiv(acc * 256u, sh) : 0u;
+                  f->wY[i] = (unsigned char)(w > 255u ? 255u : w);
+              }
           } }
     }
 

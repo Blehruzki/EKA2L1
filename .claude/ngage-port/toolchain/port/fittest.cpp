@@ -23,6 +23,7 @@ typedef unsigned u32;
 // real clamp from one it imposed itself.
 enum { MAPMAX = 1024 };
 static unsigned char mapX[MAPMAX], mapY[MAPMAX];
+static unsigned char wX[MAPMAX], wY[MAPMAX];
 
 struct Panel { const char *name; unsigned w, h; };
 
@@ -103,6 +104,8 @@ static void run(const Panel &p, unsigned mode, unsigned inset, unsigned mapMax,
     f.screenW = p.w; f.screenH = p.h; f.topInset = inset;
     f.srcW = 176; f.srcH = 208; f.mode = mode;
     f.mapX = mapX; f.mapY = mapY; f.mapMax = mapMax;
+    std::memset(wX, 0xAA, sizeof wX); std::memset(wY, 0xAA, sizeof wY);
+    f.wX = wX; f.wY = wY;
     screen_fit(&f);
 
     const unsigned appliedInset = (inset < p.h) ? inset : 0u;
@@ -145,6 +148,31 @@ static void run(const Panel &p, unsigned mode, unsigned inset, unsigned mapMax,
         if (mapX[i] < mapX[i - 1]) { check(false, "mapX is not monotonic", p, mode, f); break; }
     for (unsigned i = 1; i < f.dstH; i++)
         if (mapY[i] < mapY[i - 1]) { check(false, "mapY is not monotonic", p, mode, f); break; }
+
+    // 5b. The filter weights (round 150). A weight says "blend with the
+    //     next source pixel", so it may only be set where the next
+    //     destination pixel reads exactly the next source pixel; an exact
+    //     mode has none, which is what keeps 1:1 and integer pixel-sharp.
+    for (unsigned i = 0; i < f.dstW; i++) {
+        if (fit_is_exact(mode) && wX[i]) { check(false, "an exact mode has a blend weight", p, mode, f); break; }
+        if (wX[i] && !(i + 1 < f.dstW && mapX[i + 1] == mapX[i] + 1)) {
+            check(false, "wX set where the next pixel is not the next source pixel", p, mode, f); break;
+        }
+    }
+    for (unsigned i = 0; i < f.dstH; i++) {
+        if (fit_is_exact(mode) && wY[i]) { check(false, "an exact mode has a blend weight", p, mode, f); break; }
+        if (wY[i] && !(i + 1 < f.dstH && mapY[i + 1] == mapY[i] + 1)) {
+            check(false, "wY set where the next pixel is not the next source pixel", p, mode, f); break;
+        }
+    }
+    if (!fit_is_exact(mode) && f.dstW > f.srcW) {
+        // Upscaling by a non-integer ratio puts a boundary inside most
+        // destination pixels: at least a third of them must blend, or the
+        // weights were not written.
+        unsigned n = 0;
+        for (unsigned i = 0; i < f.dstW; i++) n += wX[i] != 0;
+        check(n * 3 >= f.dstW - f.srcW, "too few blend weights for a non-integer upscale", p, mode, f);
+    }
 
     // 6. Mode-specific promises.
     if (mode == FIT_ONE_TO_ONE) {
