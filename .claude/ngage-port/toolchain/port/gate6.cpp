@@ -6864,6 +6864,13 @@ extern "C" int gate6_thread_exists(int err, void *self, const void *name,
             c->wdThr[c->wdThrN++] = h;
         log_event(c, NOTE_THREAD_HANDLE, 0x57A30000u | (h ? c->wdThrN : 0u));
         log_block(c);
+        // Round 152: Ashen makes its sound thread at every level start and
+        // restart, and the restart halved the frame rate with the main thread
+        // doing twice the work a frame. The active objects on the main
+        // thread's scheduler at that moment, each time: a population that
+        // grows by a level's worth is an object the teardown left running.
+        if (GAME_SCREEN_MODES)
+            sched_dump(c, 0x7C3Au);
     }
     if (err != KERR_ALREADY_EXISTS)
         return err;
@@ -9274,11 +9281,11 @@ static int scale_frame(Context *c, const void *src, u32 *dstBmp)
     return 1;
 }
 
-static void blit_rate_note(Context *c, u32 (*fast)(void))
+static void blit_rate_note(Context *c)
 {
     if ((++c->blitN & 63u) != 0)
         return;
-    const u32 now = fast ? fast() : 0;
+    const u32 now = user_tickcount();
     log_event(c, NOTE_PORT_SCALER, 0x5CA50000u | (c->blitSwitches & 0xFFFFu));
     log_event(c, NOTE_PORT_SCALER, 0x5CA60000u | (c->blitScalerFast & 0xFFFFFFu));
     log_event(c, NOTE_PORT_SCALER, 0x5CA70000u | ((now - c->blitFast0) & 0xFFFFFFu));
@@ -9328,17 +9335,17 @@ extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
     // The N95's frame rate halved after a level restart; this says whether
     // the port's loop or the game's own frame got slower, and whether the
     // game started blitting more than one bitmap a frame.
-    typedef u32 (*Fast)(void);
-    if (!c->fnFastCounter)
-        c->fnFastCounter = (u32)rlibrary_lookup(&c->euser, EUSER_FAST_COUNTER);
-    const Fast fast = (Fast)c->fnFastCounter;
+    // Round 152: euser ordinal 584 is not a fast counter on the N95 (it
+    // answered a constant per call); the sums are in User::TickCount (674,
+    // confirmed; 64 a second), a blit's own scaler time is 0 or 1 of them
+    // and sixty-four blits make the sum a measurement.
     if (bmp != c->lastBlitBmp) { c->blitSwitches++; c->lastBlitBmp = bmp; }
     if (GAME_PORT_SCALER && c->scalerOff != 1 && c->fbsCtor && c->fbsCreate && c->fbsData && c->fbsMode) {
         u32 *sb = scaled_bitmap(c);
-        const u32 t0 = fast ? fast() : 0;
+        const u32 t0 = user_tickcount();
         const int ok = sb && scale_frame(c, bmp, sb);
-        if (fast) c->blitScalerFast += fast() - t0;
-        blit_rate_note(c, fast);
+        c->blitScalerFast += user_tickcount() - t0;
+        blit_rate_note(c);
         if (ok) {
             const i32 at[2] = { x, y };
             ((BitBltFn)vt[NEW_GC_BITBLT])(real, at, sb);
@@ -9347,7 +9354,7 @@ extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
         c->scalerOff = 1;
         log_event(c, NOTE_PORT_SCALER, 0x5CA20000u | (sb ? 1u : 0u));
     }
-    blit_rate_note(c, fast);
+    blit_rate_note(c);
     const i32 dst[4] = { x, y, x + (i32)c->dstW, y + (i32)c->dstH };
     ((DrawBitmapFn)vt[NEW_GC_DRAWBITMAP_RECT])(real, dst, bmp);
 }
