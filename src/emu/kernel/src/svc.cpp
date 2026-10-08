@@ -5943,6 +5943,36 @@ namespace eka2l1::epoc {
         return chn->do_request(request_nof_info, func, args[0], args[1], false);
     }
 
+    // Exec::ChannelRequest(handle, function, a1, a2), the one call every
+    // RBusLogicalChannel control, request and cancel goes through on EKA2
+    // (us_exec.cpp): a control passes the function and its two arguments; a
+    // request passes ~reqno, the TRequestStatus, and a pointer to its two
+    // arguments; a cancel passes KMaxTInt and the request mask.
+    BRIDGE_FUNC(std::int32_t, channel_request, const kernel::handle h, const std::int32_t function,
+        eka2l1::ptr<void> a1, eka2l1::ptr<void> a2) {
+        ldd::channel *chn = kern->get<ldd::channel>(h);
+
+        if (!chn) {
+            return epoc::error_bad_handle;
+        }
+
+        if (function == 0x7FFFFFFF) {
+            LOG_TRACE(KERNEL, "Channel cancel stubbed, mask 0x{:X}", a1.ptr_address());
+            return epoc::error_none;
+        }
+
+        if (function < 0) {
+            kernel::process *pr = kern->crr_process();
+            eka2l1::ptr<epoc::request_status> status(a1.ptr_address());
+            const std::uint32_t *args = reinterpret_cast<const std::uint32_t *>(a2.get(pr));
+            epoc::notify_info info(status, kern->crr_thread());
+            return chn->do_request(info, static_cast<std::uint32_t>(~function), eka2l1::ptr<void>(args ? args[0] : 0),
+                eka2l1::ptr<void>(args ? args[1] : 0), false);
+        }
+
+        return chn->do_control(kern->crr_thread(), static_cast<std::uint32_t>(function), a1, a2);
+    }
+
     // TChannelCreateInfo8, as Exec::ChannelCreate receives it.
     struct logical_channel_create_info {
         epoc::version version;
@@ -6422,6 +6452,7 @@ namespace eka2l1::epoc {
         BRIDGE_REGISTER(0x02, chunk_size),
         BRIDGE_REGISTER(0x03, chunk_max_size),
         BRIDGE_REGISTER(0x05, tick_count),
+        BRIDGE_REGISTER(0x0A, channel_request),
         BRIDGE_REGISTER(0x0B, math_rand),
         BRIDGE_REGISTER(0x0C, imb_range),
         BRIDGE_REGISTER(0x0E, library_lookup),
@@ -6512,6 +6543,9 @@ namespace eka2l1::epoc {
         BRIDGE_REGISTER(0x7D, server_create),
         BRIDGE_REGISTER(0x7E, session_create),
         BRIDGE_REGISTER(0x7F, session_create_from_handle),
+        BRIDGE_REGISTER(0x80, logical_device_load),
+        BRIDGE_REGISTER(0x81, logical_device_free),
+        BRIDGE_REGISTER(0x82, logical_channel_create),
         BRIDGE_REGISTER(0x83, timer_create),
         BRIDGE_REGISTER(0x84, timer_after_high_res), // Actually TimerHighRes
         BRIDGE_REGISTER(0x85, after), // Actually AfterHighRes

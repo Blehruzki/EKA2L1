@@ -56,3 +56,30 @@ ROM's own audio-stream DLL instead of the emulator's stand-in, and an app's
 (RM-92) DLL exports the same 17 entries as 3.2's, and audio ran with the 3.1
 order applied. A rebuild copies the maps into `build/bin/patch`, so edit the
 source copy.
+
+## S60 3.0 direct screen access
+
+Not a switch: always on, and only reached by an S60 3.0 (epoc91) firmware.
+The emulator swaps in its own `scdv.dll` on 3.1 and up, but its patch map has
+no `[epoc91]` section, so a 3.0 firmware runs the ROM's screen driver -- which
+talks to the phone's LCD driver, `GenericLcd_Lcd.ldd`, through an
+RBusLogicalChannel (ngage-port r159):
+
+- **Kernel calls.** `0x82` ChannelCreate and `0x0A` ChannelRequest on the
+  9.1/9.3 table (`svc_register_funcs_v93`), with `0x80`/`0x81`
+  DeviceLoad/DeviceFree. The 9.x slow numbering is two lower than the ^3 list
+  from 0x7D up. ChannelRequest follows us_exec.cpp: a positive function is
+  DoControl(fn, a1, a2), a negative one DoRequest(~fn, status, args[0],
+  args[1]), and KMaxTInt a cancel (stubbed). `kernel/src/svc.cpp`.
+- **The LCD channel.** `ldd/src/lcd/lcd.cpp` (factory "Lcd", registered as
+  `lcd` and `genericlcd`) answers what scdv asks, read off the N80 ROM's
+  own LDD (its control dispatcher at 0xf80b7780): 0x1001 the frame buffer (the
+  window server's screen chunk), 0x2001 the update session (a shared
+  0x2000-byte chunk holding 0x1A0 dirty rectangles and their count at 0x1A00,
+  the mode asked for, a mask of one bit per TDisplayMode, a flag and four
+  orientation words; a mode outside the mask is KErrNotSupported), 0x2003
+  flush, 0x2005 the mode, 0x2006 whether a mode is supported, 0x2008
+  orientation 0, 0x200B scale 1. A flush (0x2003) and every request put the
+  frame buffer on screen through `dispatch::update_screen`, the call the
+  emulator's own scdv makes, then complete at once. Anything else is logged
+  as `Unhandled Lcd control` (class `Ldd.Lcd`).

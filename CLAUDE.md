@@ -103,6 +103,13 @@ own heap is left alone explicitly: a worker that shares it reads an access
 count one lower than EKA2 would (after euser's `RAllocator::Open`), a separate
 discrepancy not yet run down.
 
+S60 3.0 (epoc91) firmwares run the ROM's own screen driver, which needs the
+phone's LCD driver: kernel calls 0x82 (ChannelCreate) and 0x0A
+(ChannelRequest) and a `GenericLcd_Lcd` channel (`src/emu/ldd/src/lcd/`),
+modelled on the N80's own LDD. Before them, any app using direct screen access
+on a 3.0 firmware died in its first `CDirectScreenAccess::StartL`. Details in
+`EMU_PATCHES.md`.
+
 EKA2L1 accepts SIS packages that a real device rejects, because it verifies none
 of the integrity fields a device checks: the per-file SHA-1 in each
 `SISFileDescription`, the E32 image header CRC32, `SISControllerChecksum` /

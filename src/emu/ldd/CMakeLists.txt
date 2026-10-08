@@ -4,6 +4,7 @@ add_library(epocldd
         include/ldd/ecomm/ecomm.h
         include/ldd/ekeyb/ekeyb.h
         include/ldd/hal/hal.h
+        include/ldd/lcd/lcd.h
         include/ldd/mmcif/consts.h
         include/ldd/mmcif/mmcif.h
         include/ldd/oldcamera/oldcamera.h
@@ -12,6 +13,7 @@ add_library(epocldd
         src/ecomm/ecomm.cpp
         src/ekeyb/ekeyb.cpp
         src/hal/hal.cpp
+        src/lcd/lcd.cpp
         src/mmcif/mmcif.cpp
         src/oldcamera/oldcamera.cpp
         src/videodriver/videodriver.cpp
@@ -23,6 +25,7 @@ target_link_libraries(epocldd
         PRIVATE
         common
         epoc
+        epocdispatch
         epocmem
         epockern
         epocpkg
