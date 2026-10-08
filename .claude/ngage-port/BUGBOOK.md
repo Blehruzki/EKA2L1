@@ -1160,6 +1160,10 @@ the fight runs on the N80 firmware at 26 FPS; E882: 3.2 unchanged. Build 027's
 context repair (0x57B0) stays; it is harmless and was not the cause. Waiting on
 the N73.
 
+**Round 160.** Build 027 on the N73: the identical fault (pc 0xf8b602d4, lr
+0xf8b67c67, r12 at DrawNow's entry), the 0x57B0 repair never fired. 027 was
+built before the cause was known; 028 is the build that addresses it.
+
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 
 **Symptom.** The end key during a fight: "Application closed: One G6FLT
