@@ -152,7 +152,7 @@ enum {
 
 // The diversions: see DIVERTS in gen_shim.py. {import, register,
 // which wrapper}, and an import the game does not have is left out.
-#define GATE_DIVERTS  { 128, 1, 0 }, { 36, 0, 1 }, { 57, 0, 1 }, { 73, 0, 1 }, { 60, 0, 1 }, { 71, 1, 1 }, { 66, 1, 1 }, { 13, 0, 0 }, { 15, 0, 0 }, { 33, 0, 3 }, { 296, 0, 2 }, { 257, 0, 2 }, { 255, 0, 2 }, { 389, 0, 2 },
-#define GATE_DIVERT_COUNT 14
+#define GATE_DIVERTS  { 128, 1, 0 }, { 36, 0, 1 }, { 57, 0, 1 }, { 73, 0, 1 }, { 44, 0, 1 }, { 60, 0, 1 }, { 71, 1, 1 }, { 66, 1, 1 }, { 13, 0, 0 }, { 15, 0, 0 }, { 33, 0, 3 }, { 296, 0, 2 }, { 257, 0, 2 }, { 255, 0, 2 }, { 389, 0, 2 },
+#define GATE_DIVERT_COUNT 15
 
 #endif

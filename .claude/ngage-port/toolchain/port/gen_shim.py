@@ -701,6 +701,12 @@ DIVERTS = [
     ('cone', 3, 0, ON_CONTROL),       # CCoeControl::ActivateL()
     ('cone', 114, 0, ON_CONTROL),     # CCoeControl::IsFocused() const
     ('cone', 201, 0, ON_CONTROL),     # CCoeControl::SetExtentToWholeScreen() -- One's container, right after CreateWindowL (E486: cone read 0x48 off the old object)
+    # One, round 159: its one DrawNow, on its own control at the first frame.
+    # S60 3.0's cone keeps a control's flags behind a pointer at +0x2c (3.1
+    # and 3.2: a plain word at +0x24); the old object has a zero there, and
+    # the read 8 past it is the N73's death (E878 on the N80 firmware: pc and
+    # lr at the same offsets from the DrawNow entry as the N73's).
+    ('cone', 53, 0, ON_CONTROL),      # CCoeControl::DrawNow() const
     # Ashen, round 109: a title that draws through its control rather than
     # direct screen access calls these on its own old-layout control, and
     # cone reads 9.x offsets off it (E363: SystemGc walked to iCoeEnv at +0xc,

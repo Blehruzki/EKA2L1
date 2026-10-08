@@ -1119,7 +1119,7 @@ box's file name and `sane_ptr` (the scheduler dump, whose RunL addresses
 the N73's 0xF8000000 ROM had failed too). 023's duplicate answer stays.
 Bench E863; the N73 pending.
 
-### 12.ag The N73 dies in its first frame, right after `SetClippingRegion` (rounds 156-158, open)
+### 12.ag The N73 dies in its first frame, right after `SetClippingRegion` (rounds 156-159; fixed on the bench, build 028)
 
 **Symptom.** One 024-026 on an N73: past the thread open, the game reaches its
 screen setup and dies reading 8 off a null pointer at a ROM pc, the next thing
@@ -1142,6 +1142,23 @@ reproduce the death (E874): One's 3.2 frame never reads it.
 StartL's device with bitgdi 148 (0x57B0; works on the bench, E873); 026's
 dumps (0x57AF, 32 words of the context) and the `SetClippingRegion` wrapper
 (0x5E7C) stay. A guess at the fix, and a measurement either way.
+
+**Cause (round 159).** Not bitgdi: `CCoeControl::DrawNow`, which One calls
+once (image 0x43748) on its own old-layout control. S60 3.0's cone keeps a
+control's flags behind a pointer at +0x2C (`ldr r0,[this+0x2c]; ldr r0,[r0,#8]`);
+3.1 and 3.2 keep them as a plain word at +0x24. The old object has a zero at
++0x2C, so 3.0 reads address 8 and 3.2 reads a word that happens to pass. With
+the emulator taught 3.0's LCD driver (kernel calls 0x82 and 0xA, and
+`GenericLcd_Lcd`'s controls read off the ROM's own LDD), the N80 bench
+reproduces it exactly: E878's pc and lr sit at -0x785 and +0x720E from the
+DrawNow entry in r12, the same offsets as the N73's fault box.
+
+**Fix (build 028).** `DrawNow` (old cone 53) is in `DIVERTS`: the map thunk
+swaps the game's control for the wrapper, as for `ActivateL` and
+`SetExtentToWholeScreen` (12.x's E281 is the same bug on another method). E881:
+the fight runs on the N80 firmware at 26 FPS; E882: 3.2 unchanged. Build 027's
+context repair (0x57B0) stays; it is harmless and was not the cause. Waiting on
+the N73.
 
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 
