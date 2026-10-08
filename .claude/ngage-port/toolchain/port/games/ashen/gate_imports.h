@@ -49,6 +49,10 @@ enum {
     IMPORT_EQDF2                       = 65535,   // absent
     IMPORT_EXIT                        = 65535,   // absent
     IMPORT_EXTENDSFDF2                 = 65535,   // absent
+    IMPORT_FBS_BITMAP_CREATE           =   313,
+    IMPORT_FBS_BITMAP_CTOR             =   317,
+    IMPORT_FBS_DATA_ADDRESS            =   314,
+    IMPORT_FBS_DISPLAY_MODE            =   315,
     IMPORT_FILEMAN_NEWL                = 65535,   // absent
     IMPORT_FILE_CREATE                 = 65535,   // absent
     IMPORT_FILE_OPEN                   =    92,

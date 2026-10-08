@@ -282,6 +282,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_SIZE = 894,    // RFile::Size, and the size it answered
        NOTE_FILE_REPLACE = 698,  // RFile::Replace through the card hook: its result, then the name's length word (round 147)
        NOTE_IMAGE_READ = 697,    // the game reading its own image through the .bin rename: bytes put back, then the read position (round 149)
+       NOTE_PORT_SCALER = 696,   // the window-gc title's frame scaled by the port into its own bitmap (0x5CA1 made, 0x5CA2 fell back, 0x5CA3 first frame)
        NOTE_FILE_OPEN = 897,    // what RFile::Open answered
        NOTE_FILE_PATH = 898,    // ... and the name it was asked for
        NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
@@ -1207,6 +1208,11 @@ struct Context {
     u32 mode;               // how the picture is fitted: 1:1, shape-kept, or filled
     u32 clearPending;       // blank the framebuffer once, after any change
     u32 dstW, dstH;         // how big the picture is drawn
+    u32 fbsCtor, fbsCreate, fbsData, fbsMode;   // 9.x CFbsBitmap entries, read off the game's own imports (round 150)
+    u32 *scaled[8];         // the port's screen-format bitmap per picture mode, made on first use
+    u32 scaledW[8], scaledH[8];
+    u32 *lut4k;             // EColor4K pixel -> EColor16MU word, 4,096 entries, built on first use
+    u32 scalerOff;          // the port scaler gave up this launch: DrawBitmap from here on
     u8 mapX[MAP_MAX];       // destination column -> source column, Bresenham
     u8 mapY[MAP_MAX];       // and the same down
     u32 boxData[BOX_WORDS];
@@ -4557,6 +4563,9 @@ static void watchdog_start(Context *c)
 #define GAME_AMBIENCE_LIST 0
 #define GAME_AMBIENCE_ENTRY 0
 #define GAME_AMBIENCE_ID 0
+#endif
+#ifndef GAME_PORT_SCALER
+#define GAME_PORT_SCALER 0           // round 150: the window-gc title's frame scaled here, not by the window server
 #endif
 #ifndef GAME_PREPARE_EXIT_NOOP
 #define GAME_PREPARE_EXIT_NOOP 0     // round 149: CAknAppUi::PrepareToExit on the game's own app UI, see gate6_appui_prepare_exit
@@ -9106,6 +9115,82 @@ extern "C" void gate6_ctl_setrect(void *self, const u32 *rect, Context *c)
     log_block(c);
 }
 
+// **The port's own scaler for the window-gc title, round 150.** The fitted
+// modes went through `CWindowGc::DrawBitmap(TRect, bitmap)`, which the
+// window server scales in bitgdi's generic path -- a line at a time, read,
+// convert, stretch, write, from the game's EColor4K into the panel's
+// EColor16MU -- and on a single core that is paid for out of the game's
+// own frame time: the stretched modes ran visibly slower than one to one
+// (the user, after round 148). Here the frame is scaled by the port
+// instead, through the same Bresenham maps the Asphalts use, into a
+// bitmap of the panel's format and the fitted size, and that bitmap is
+// blitted one to one -- the window server's fast path, the one the OG mode
+// has always had. One bitmap per picture mode, made on first use (the
+// modes are cycled a few times a session, not a few times a second); the
+// CFbsBitmap entries are the game's own imports, resolved by the shim, so
+// no ordinal is guessed here. Anything unexpected -- a frame that is not
+// 4K, a Create that fails -- turns the scaler off for the launch and the
+// DrawBitmap path takes over, so the worst case is the old picture.
+enum { EColor4K = 10, EColor16MU = 11, FBS_BITMAP_BYTES = 128 };
+
+static u32 *scaled_bitmap(Context *c)
+{
+    typedef void (*Ctor)(void *);
+    typedef int (*Create)(void *, const u32 *, u32);
+    const u32 m = c->mode < 8 ? c->mode : 0;
+    if (c->scaled[m] && c->scaledW[m] == c->dstW && c->scaledH[m] == c->dstH)
+        return c->scaled[m];
+    if (c->scaled[m])
+        return 0;                       // a mode's size changed under it: not expected
+    u32 *bmp = (u32 *)user_allocz(FBS_BITMAP_BYTES);
+    if (!bmp)
+        return 0;
+    ((Ctor)c->fbsCtor)(bmp);
+    const u32 size[2] = { c->dstW, c->dstH };
+    const int err = ((Create)c->fbsCreate)(bmp, size, EColor16MU);
+    log_event(c, NOTE_PORT_SCALER, 0x5CA10000u | (m << 12) | ((u32)err & 0xFFF));
+    if (err)
+        return 0;
+    c->scaled[m] = bmp;
+    c->scaledW[m] = c->dstW;
+    c->scaledH[m] = c->dstH;
+    return bmp;
+}
+
+static int scale_frame(Context *c, const void *src, u32 *dstBmp)
+{
+    typedef u32 *(*Data)(const void *);
+    typedef u32 (*Mode)(const void *);
+    if (((Mode)c->fbsMode)(src) != (u32)EColor4K)
+        return 0;
+    if (!c->lut4k) {
+        c->lut4k = (u32 *)user_allocz(4096 * 4);
+        if (!c->lut4k)
+            return 0;
+        for (u32 v = 0; v < 4096; v++)
+            c->lut4k[v] = (((v >> 8) & 0xF) * 17u << 16) | (((v >> 4) & 0xF) * 17u << 8) | ((v & 0xF) * 17u);
+    }
+    const u16 *s = (const u16 *)((Data)c->fbsData)(src);
+    u32 *d = ((Data)c->fbsData)(dstBmp);
+    if (!s || !d)
+        return 0;
+    const u32 *lut = c->lut4k;
+    const u32 pitch = ((u32)GAME_CONTROL_W * 2u + 3u) / 4u * 2u;    // EColor4K: 16 bits a pixel, rows to a word
+    const u32 w = c->dstW;
+    for (u32 y = 0; y < c->dstH; y++) {
+        const u16 *srow = s + (u32)c->mapY[y] * pitch;
+        u32 *drow = d + y * w;
+        const u8 *mx = c->mapX;
+        for (u32 x = 0; x < w; x++)
+            drow[x] = lut[srow[mx[x]] & 0xFFF];
+    }
+    if (!c->scalerOff) {                // once: the first frame through here
+        c->scalerOff = 2;
+        log_event(c, NOTE_PORT_SCALER, 0x5CA30000u | (c->dstW << 8 & 0xFF00) | (c->dstH & 0xFF));
+    }
+    return 1;
+}
+
 extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
 {
     typedef void (*BitBltFn)(void *, const i32 *, const void *);
@@ -9136,6 +9221,16 @@ extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
         const i32 at[2] = { x, y };
         ((BitBltFn)vt[NEW_GC_BITBLT])(real, at, bmp);
         return;
+    }
+    if (GAME_PORT_SCALER && c->scalerOff != 1 && c->fbsCtor && c->fbsCreate && c->fbsData && c->fbsMode) {
+        u32 *sb = scaled_bitmap(c);
+        if (sb && scale_frame(c, bmp, sb)) {
+            const i32 at[2] = { x, y };
+            ((BitBltFn)vt[NEW_GC_BITBLT])(real, at, sb);
+            return;
+        }
+        c->scalerOff = 1;
+        log_event(c, NOTE_PORT_SCALER, 0x5CA20000u | (sb ? 1u : 0u));
     }
     const i32 dst[4] = { x, y, x + (i32)c->dstW, y + (i32)c->dstH };
     ((DrawBitmapFn)vt[NEW_GC_DRAWBITMAP_RECT])(real, dst, bmp);
@@ -13816,6 +13911,19 @@ static u32 load_and_start()
             iat[IMPORT_CTL_RECT] = ctx_thunk(stub + SLOT * IMPORT_CTL_RECT, ctx, (u32)&gate6_ctl_rect);
         if (nImports > IMPORT_CTL_SETRECT && IMPORT_CTL_SETRECT < kShimCount)
             iat[IMPORT_CTL_SETRECT] = ctx_thunk(stub + SLOT * IMPORT_CTL_SETRECT, ctx, (u32)&gate6_ctl_setrect);
+        // Round 150: the four CFbsBitmap entries the port's scaler calls, as
+        // the shim resolved them for the game. A missing or non-call one
+        // leaves its field zero and the scaler stays off.
+        if (GAME_PORT_SCALER) {
+            const u32 want[4] = { IMPORT_FBS_BITMAP_CTOR, IMPORT_FBS_BITMAP_CREATE,
+                                  IMPORT_FBS_DATA_ADDRESS, IMPORT_FBS_DISPLAY_MODE };
+            u32 *into[4] = { &ctx->fbsCtor, &ctx->fbsCreate, &ctx->fbsData, &ctx->fbsMode };
+            for (u32 i = 0; i < 4; i++)
+                if (nImports > want[i] && want[i] < kShimCount && (kShimTable[want[i]] >> 24) == KIND_CALL)
+                    *into[i] = iat[want[i]];
+            log_event(ctx, NOTE_PORT_SCALER, 0x5CA00000u | (ctx->fbsCtor ? 8u : 0u) | (ctx->fbsCreate ? 4u : 0u) |
+                                             (ctx->fbsData ? 2u : 0u) | (ctx->fbsMode ? 1u : 0u));
+        }
     }
     if (nImports > IMPORT_APPUI_EXIT && IMPORT_APPUI_EXIT < kShimCount &&
         (kShimTable[IMPORT_APPUI_EXIT] >> 24) == KIND_CALL)

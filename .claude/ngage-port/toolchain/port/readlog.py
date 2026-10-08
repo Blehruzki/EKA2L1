@@ -197,6 +197,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          760: 'FILE SIZE: size, then result',
          698: 'FILE REPLACE (through the card hook): result, then length<<16 | drive letter<<8 | colon',
          697: 'IMAGE READ (round 149): 0x1Ahhhhhh the game opened its own image through the .bin rename, handle hhhhhh; then per read, bytes put back<<24 | position',
+         696: 'PORT SCALER (round 150): 0x5CA0000f the CFbsBitmap entries found (8 ctor, 4 Create, 2 DataAddress, 1 DisplayMode); 0x5CA1mrrr bitmap made for mode m, Create result rrr; 0x5CA2000x fell back to DrawBitmap (1 the frame was not 4K or unreadable, 0 no bitmap); 0x5CA3wwhh the first frame scaled, dstW<<8 (low byte) | dstH (low byte)',
          761: 'GAME.ID read (ReadFileSection): the real result, then 1 when the shim answered it',
          762: 'LEAVE raw: the hook sp, then stack words',
          763: 'EXIT asked (0xE817 CEikAppUi::Exit from the game; 0xE818 HandleCommandL(EEikCmdExit), the red key; 0xE819 PrepareToExit answered with nothing, the Exit follows): the thread exits with reason 0',

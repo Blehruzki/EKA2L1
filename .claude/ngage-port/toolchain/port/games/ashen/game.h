@@ -96,6 +96,12 @@ enum { GAME_SRC_ORIGIN = 0 };
 // GAME_CONTROL_W; a title on the port's own buffer has the modes already.
 #define GAME_SCREEN_MODES 1
 
+// Round 150: the fitted modes' frames are scaled by the port into a bitmap
+// of the panel's format and blitted one to one, instead of through the
+// window server's scaled DrawBitmap, which ran the stretched modes slower
+// than OG on the N95. Needs GAME_SCREEN_MODES. See scale_frame.
+#define GAME_PORT_SCALER 1
+
 // CActive::Cancel from the game on an object that is neither the port's
 // wrapped timer nor its DSA shadow is dropped; 1 forwards it when the object
 // is a 9.x one (its vptr in the ROM), which a title that makes its timers
@@ -166,5 +172,5 @@ enum { GAME_SRC_ORIGIN = 0 };
 // 0xb4ea4 unsignalled (round 147). The port tells the underflow itself after
 // 32 ticks (500 ms, the emulator's figure) with nothing queued.
 #define GAME_MDA_UNDERFLOW_TICKS 32
-#define GAME_BUILD 12
+#define GAME_BUILD 13
 #endif
