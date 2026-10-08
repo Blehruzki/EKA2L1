@@ -1141,6 +1141,7 @@ struct Context {
     u32 mdaCb[4], mdaPendStop[4];          // each stream's callback proxy, and a worker's Stop held back (round 132)
     u32 wkStopTimer, wkStopThread, wkStopArmed;   // round 142: the sound thread's own one-shot that carries a held-back Stop out
     u32 mdaToldStop[4], mdaPendThread[4];   // round 143: the game already heard PlayComplete(-3) for this Stop; the thread that owes it
+    u32 dsaAfterLogged;     // round 156: the words StartL left, logged once
     u32 imgHandle, imgPos;  // round 149: the RFile the game opened its own image on through the .bin rename, and how far it has read
     u32 mdaPlaying[4], mdaQueued[4], mdaIdleTick[4], mdaWrThread[4];   // round 147: the stream has been written since its last complete; buffers written and not yet copied; the tick of the last copy
     u32 ufTimer, ufThread, ufTold;          // round 147: the port's underflow timer in the sound thread (mda_underflow_watch), and how many it told
@@ -5984,6 +5985,28 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
     }
     c->dsaIdle = 0;                 // round 141: the game has the screen again
     dsa_refresh(c);
+    // Round 156: what StartL left in the object, once. The N73 (S60 3.0)
+    // comes back from its first StartL and the game's next two calls, on the
+    // screen device and the context the shadow then hands it, die in
+    // SetClippingRegion with a null `this` -- so here are the three words
+    // the shadow reads, and the first words of what they point at
+    // (0x57AF, gc, device, region, then four of the gc and four of the device).
+    if (!c->dsaAfterLogged) {
+        c->dsaAfterLogged = 1;
+        const u32 *real = c->dsaReal;
+        const u32 gc = real ? real[dsa_gc_off(c) / 4] : 0xDEADu;
+        const u32 dev = real ? real[dsa_dev_off(c) / 4] : 0xDEADu;
+        const u32 rgn = real ? real[dsa_rgn_off(c) / 4] : 0xDEADu;
+        log_event(c, NOTE_DSA_RESTART, 0x57AF);
+        log_event(c, NOTE_DSA_RESTART, gc);
+        log_event(c, NOTE_DSA_RESTART, dev);
+        log_event(c, NOTE_DSA_RESTART, rgn);
+        for (u32 i = 0; i < 4; i++)
+            log_event(c, NOTE_DSA_RESTART, (user_ptr(gc) && !(gc & 3)) ? ((const u32 *)gc)[i] : 0xDEADu);
+        for (u32 i = 0; i < 4; i++)
+            log_event(c, NOTE_DSA_RESTART, (user_ptr(dev) && !(dev & 3)) ? ((const u32 *)dev)[i] : 0xDEADu);
+        log_block(c);
+    }
     replay_missed_frame(c);
     // **Round 138: the frame after a return is posted again, twice, from the
     // heartbeat.** The N95's game draws exactly one frame after its StartL on

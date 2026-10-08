@@ -284,7 +284,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
 # How many slots of each wrapper's vtable are a copy of a real one. Past that
 # is the margin gate6.cpp pads with, and a call landing there is the framework
 # asking for a slot the class was not measured to have.
-OBJECTS = {1: ('app', 18), 2: ('doc', 23), 3: ('appui', 45),
+OBJECTS = {1: ('app; 0x57AF (round 156) after the first StartL: the gc, device and region words the shadow reads, then four words of the gc and four of the device (0xDEAD unreadable)', 18), 2: ('doc', 23), 3: ('appui', 45),
            4: ('control', 44), 5: ('timer', 6)}
 
 

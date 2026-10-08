@@ -11,7 +11,7 @@ Shipping builds: Asphalt Urban GT **030** (`gate6a1`), Asphalt 2 **196**
 and the bench (RM-409 ROM, S60 3.2); the Asphalts also on a Nokia N91 (S60 3.0,
 round 121). Asphalt Urban GT 027 was confirmed on a Nokia C5-00 (S60 3.2, round 122). Ashen 010 reached the N91 and fell on a second 3.0 difference
 (round 123); 011 carries that fix, and round 124 confirmed all three titles on
-the N95 and the N91. One (`gate6one`) ships as **024** (round 155: the N73 loads the image at 0x7DA00000 and the port's pointer test stopped at 0x10000000; 022 in round 149): 021 died at launch on every install without the original `6r58.app` beside the package's `6r58.bin`.
+the N95 and the N91. One (`gate6one`) ships as **025** (round 156: the N73 reaches its screen setup and the context off the direct-screen-access shadow is null, instrumented; round 155: the N73 loads the image at 0x7DA00000 and the port's pointer test stopped at 0x10000000; 022 in round 149): 021 died at launch on every install without the original `6r58.app` beside the package's `6r58.bin`.
 
 ## Fixes and features, by knob
 
