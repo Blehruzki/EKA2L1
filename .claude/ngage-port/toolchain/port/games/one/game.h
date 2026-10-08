@@ -244,5 +244,5 @@ enum { GAME_SRC_ORIGIN = 8 };
 #define GAME_CARD_CID 0x567857f1, 0x7d011234, 0x0b2b1879, 0x06000400
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 22
+#define GAME_BUILD 23
 #endif

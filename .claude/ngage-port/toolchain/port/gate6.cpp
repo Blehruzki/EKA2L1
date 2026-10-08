@@ -6821,6 +6821,30 @@ extern "C" int gate6_thread_open(u32 *self, const u32 *name, u32 type, Context *
             i++;
         if (i != len)
             continue;
+        // Round 154: the N73 (S60 3.0) answers the open by full name with
+        // KErrNotFound too, where the N95 finds it, and One then runs its
+        // sound-thread handshake on a handle it never got: a data abort at 0
+        // in the ROM a few records later, at every launch. The port holds a
+        // process-owned duplicate of every thread it made (gate6_thread_exists,
+        // wdThr, in creation order), so the game is answered from that: a
+        // duplicate of the port's own handle, with the owner type the game
+        // asked for. No name, no process full name, nothing the ROM version
+        // can spell differently. The full-name open stays as the fallback.
+        const u32 seq = c->threadsMade[k].seq;
+        if (seq < c->wdThrN && seq < 4 && c->wdThr[seq] && c->fnDuplicate) {
+            typedef int (*Dup)(u32 *, const u32 *, int);
+            u32 h = c->wdThr[seq];
+            const u32 me = 0xFFFF8001u;         // KCurrentThreadHandle: the source is this thread
+            const int e = ((Dup)c->fnDuplicate)(&h, &me, (int)type);
+            if (e == 0 && h && h != c->wdThr[seq]) {
+                self[0] = h;
+                thr_live_add(c, h);
+                log_event(c, NOTE_THREAD_OPEN, (u32)r);
+                log_event(c, NOTE_THREAD_OPEN, 0x0D000000u | (seq << 16) | (h & 0xFFFFu));
+                return 0;
+            }
+            log_event(c, NOTE_THREAD_OPEN, 0x0DBAD000u | ((u32)e & 0xFFFu));
+        }
         FullName fullName = (FullName)c->fullNameFn;   // resolved at load: see pushItemFn
         if (!fullName)
             break;

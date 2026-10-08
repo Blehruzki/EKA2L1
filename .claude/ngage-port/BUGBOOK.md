@@ -1098,6 +1098,21 @@ exit, E855 the build running clean. Hardware: pending.
 `.app`; the shipped layout was never run anywhere before round 149. Rule 4's
 "what state did the bench never enter" includes the install layout.
 
+### 12.af A Nokia N73 (S60 3.0) dies in the ROM at launch, two records after the sound thread is opened by name (round 154)
+
+**Symptom.** Build 022 on an N73: the title never appears; the log ends in a
+data abort reading 0 at a ROM pc, right after `THREAD OPEN -1, -1`. The
+same package runs on an N95 8GB.
+
+**Cause.** The port renames the game's threads (`g6wN`) and, when the game
+opens one by its own name, re-opens it by the process full name. That
+spelling works on 3.1 and fails with KErrNotFound on the N73's 3.0 ROM, so
+the game's RThread stays unopened and its handshake dereferences nothing.
+
+**Fix (build 023).** The port keeps a process-owned duplicate of every
+thread it made; the open is answered with a duplicate of that, owner type
+as asked (0x0Dsshhhh), the full-name open kept as the fallback. Bench E862.
+
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 
 **Symptom.** The end key during a fight: "Application closed: One G6FLT

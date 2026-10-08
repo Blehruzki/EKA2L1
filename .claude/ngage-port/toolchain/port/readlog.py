@@ -210,7 +210,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          774: 'DEFAULT PATH: SetDefaultPath -- the length kept, then SetSessionPath; 0x5E55xxxx a later Connect given it (xxxx the answer)',
          775: 'CLEANUP ITEM (bench): 0xC1EA0000|count, then each item of the 9.x cleanup stack, operation then pointer, a null operation marking a level',
          776: 'OLD PUSH: CleanupStack::PushL(CBase*) of a game object, pushed as an item that runs its old destructor',
-         777: 'THREAD OPEN: RThread::Open by the game\'s name for a thread the port renamed -- the real answer, then the Duplicate from the game\'s own handle (-1 none matched)',
+         777: 'THREAD OPEN: RThread::Open by the game\'s name for a thread the port renamed -- the real answer, then the Duplicate from the game\'s own handle (-1 none matched); 0x0Dsshhhh (round 154) answered with a duplicate of the port\'s own handle for thread ss, 0x0DBADeee that duplicate failed with error eee and the full name was tried',
          778: 'FACTORY: CEikonEnv::AppUiFactory() answered with the null-object factory -- its address, then the dummy every slot of it answers',
          715: 'FPA SELFTEST: import, r0, r1',
          719: 'THREAD CALL (0x5051 Suspend, 0x4E51 Resume: the handle, then the caller offset; 0x5050/0x4E50 REFUSED, then the handle)',
