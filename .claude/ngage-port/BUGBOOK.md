@@ -1104,14 +1104,20 @@ exit, E855 the build running clean. Hardware: pending.
 data abort reading 0 at a ROM pc, right after `THREAD OPEN -1, -1`. The
 same package runs on an N95 8GB.
 
-**Cause.** The port renames the game's threads (`g6wN`) and, when the game
-opens one by its own name, re-opens it by the process full name. That
-spelling works on 3.1 and fails with KErrNotFound on the N73's 3.0 ROM, so
-the game's RThread stays unopened and its handshake dereferences nothing.
+**Cause (round 155).** The N73 loads the image at 0x7DA00000; the N95 at
+0x4600000. The port's descriptor reader (`des_text`) rejected any pointer
+at or above 0x10000000, and One's thread names are literals in the image,
+so on the N73 the name the game opened by read as nothing, no made thread
+matched, and the game's RThread stayed unopened -- its handshake then
+dereferenced nothing. Round 154 blamed the full-name open on 3.0; build 023
+answered the open from the port's own duplicate handle (0x0Dsshhhh) and
+died identically, because that path sits after the name match.
 
-**Fix (build 023).** The port keeps a process-owned duplicate of every
-thread it made; the open is answered with a duplicate of that, owner type
-as asked (0x0Dsshhhh), the full-name open kept as the fallback. Bench E862.
+**Fix (build 024).** `user_ptr`: an address from 0x400000 up to the
+pseudo-handles counts as the process's, in `des_text`, the probes, the
+box's file name and `sane_ptr` (the scheduler dump, whose RunL addresses
+the N73's 0xF8000000 ROM had failed too). 023's duplicate answer stays.
+Bench E863; the N73 pending.
 
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 

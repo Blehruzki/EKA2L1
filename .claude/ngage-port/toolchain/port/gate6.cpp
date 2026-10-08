@@ -98,6 +98,21 @@ extern const u32 kShimEuserCount;
 // then (for a modifiable one) a maximum length, then the data pointer.
 enum { EBufC = 0, EPtrC = 1, EPtr = 2, EBufType = 3, KTypeShift = 28 };
 
+// **An address this process could plausibly own**, for the reads the port
+// makes of the game's own pointers. The upper bound was 0x10000000 until
+// round 155: the N95 loads the image at 0x4600000, and the N73 (S60 3.0)
+// at 0x7DA00000, so a literal in the image -- One's thread names among
+// them -- read as no pointer at all there, and the thread opened by name
+// was never matched. Everything below the pseudo-handles and the small
+// negative error codes is a pointer worth a look; the ROM is user-readable
+// on every phone this has run on (vtables at 0x80000000 on the N95,
+// 0xF8000000 on the N73).
+static inline int user_ptr(u32 p)
+{
+    return p >= 0x400000u && p < 0xFFFF0000u;
+}
+
+
 // The record: four counters and a ring of the last sixteen imports, which is
 // what says what the game was doing rather than only how far it had got.
 // The record: four counters, a ring of the last sixteen imports, the same
@@ -1779,7 +1794,7 @@ static void watch_note(Context *c)
     // a value that passes the range test and faults on the read is exactly the
     // fault being studied, reproduced by the instrument.
     const u32 v = o[1];
-    if (c->watchFromProbe && v >= 0x400000 && v < 0x10000000 && !(v & 3))
+    if (c->watchFromProbe && user_ptr(v) && !(v & 3))
         log_event(c, NOTE_WATCH_AT240, ((const u32 *)(v + 0x240))[0]);
 }
 
@@ -3093,7 +3108,7 @@ extern "C" void gate6_crumb_r5(u32 marker, Context *c, u32 site, u32 r5)
     // And the first four words of whatever it points at, when that is an
     // address this process could plausibly own: the question at the node is
     // always what is in it, not only where it is.
-    if (r5 >= 0x400000 && r5 < 0x10000000 && !(r5 & 3))
+    if (user_ptr(r5) && !(r5 & 3))
         for (u32 i = 0; i < 4; i++)
             log_event(c, NOTE_R5_AT, ((const u32 *)r5)[i]);
     log_block(c);
@@ -3221,7 +3236,7 @@ extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
 // and the game uses more than one. -> the text, or zero.
 static const u16 *des_text(const u32 *d, u32 *length)
 {
-    if (!d || ((u32)d & 3) || (u32)d < 0x400000 || (u32)d >= 0x10000000)
+    if (!d || ((u32)d & 3) || !user_ptr((u32)d))
         return 0;
     *length = d[0] & 0x0FFFFFFF;
     // Measured, not deduced: the names this game hands RFile::Open carry type
@@ -3408,7 +3423,7 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
         // Into the box, always: it rides the write the box was making anyway,
         // and it turns "it stopped at a read" into "it stopped on this file".
         if (t && n <= 256 && !((u32)t & 1) &&
-            (u32)t >= 0x400000 && (u32)t < 0x10000000) {
+            user_ptr((u32)t)) {
             const u32 chars = 2 * BOX_NAME_WORDS;
             const u32 from = (n > chars) ? n - chars : 0;
             for (u32 i = 0; i < BOX_NAME_WORDS; i++) {
@@ -3425,7 +3440,7 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
         // The tail, because the path is long and the name is at the end of it.
         enum { NAME_CHARS = 24 };
         if (t && n <= 256 && !((u32)t & 1) &&
-            (u32)t >= 0x400000 && (u32)t < 0x10000000)
+            user_ptr((u32)t))
             for (u32 i = ((n > NAME_CHARS) ? n - NAME_CHARS : 0) & ~1u; i < n; i += 2)
                 log_event(c, NOTE_TEXT, t[i] | ((i + 1 < n) ? (t[i + 1] << 16) : 0));
         log_block(c);
@@ -3435,7 +3450,7 @@ extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
     // will write into, and what it says about itself is the whole question:
     // type and length in the first word, maximum in the second, and the buffer
     // in the third.
-    if (a1 >= 0x400000 && a1 < 0x10000000 && !(a1 & 3)) {
+    if (user_ptr(a1) && !(a1 & 3)) {
         for (u32 i = 0; i < 3; i++)
             log_event(c, NOTE_R5_AT, ((const u32 *)a1)[i]);
         // And the cell the buffer belongs to, if we saw it allocated: its size
@@ -3575,13 +3590,13 @@ extern "C" void gate6_probe(u32 marker, Context *c, u32 a, u32 b)
     // address this process owns. Half of what a probe is asked is about what
     // is at the pointer, not what the pointer is.
     enum { PROBE_WORDS = LOG_ANYWAY ? 8 : 4 };
-    if (a >= 0x400000 && a < 0x10000000 && !(a & 3))
+    if (user_ptr(a) && !(a & 3))
         for (u32 i = 0; i < PROBE_WORDS; i++)
             log_event(c, NOTE_R5_AT, ((const u32 *)a)[i]);
     // The watched word, from the first probe's object, on every probe after
     // it. One record, and it turns a scatter of registers into a timeline of
     // one field.
-    if (marker == (u32)PROBE_FIRST && a >= 0x400000 && a < 0x10000000 && !(a & 3)) {
+    if (marker == (u32)PROBE_FIRST && user_ptr(a) && !(a & 3)) {
         c->watchAt = a;
         c->lastWatch = ((const u32 *)a)[1];
         c->watchFromProbe = 1;
@@ -3659,7 +3674,7 @@ extern "C" void gate6_range_probe(u32 marker, Context *c, u32 a, u32 b)
     log_event(c, NOTE_RANGE_PROBE, marker);
     log_event(c, NOTE_RANGE_PROBE, a);
     log_event(c, NOTE_RANGE_PROBE, b);
-    if (b >= 0x400000 && b < 0x10000000 && !(b & 3))        // sampling dumps a short window
+    if (user_ptr(b) && !(b & 3))        // sampling dumps a short window
         for (u32 i = 0; i < (max == 1 ? 6u : 24u); i++)
             log_event(c, NOTE_RANGE_PROBE, ((const u32 *)b)[i]);
     log_block(c);
@@ -7393,7 +7408,7 @@ extern "C" int gate6_file_read_static(void *self, u32 *des, Context *c)
     // contents, so the contents are the question: plaintext means the archive
     // is being read correctly and the check is about something else, noise
     // means the key is wrong.
-    if (READ_DATA_WORDS && !err && des && des[2] >= 0x400000 && des[2] < 0x10000000) {
+    if (READ_DATA_WORDS && !err && des && user_ptr(des[2])) {
         const u32 have = (des[0] & 0x0FFFFFFF) / 4;
         const u32 n = have < (u32)READ_DATA_WORDS ? have : (u32)READ_DATA_WORDS;
         for (u32 i = 0; i < n; i++)
@@ -7953,7 +7968,7 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
     u32 *p = (type == EBufC) ? des + 1
            : (type == EPtrC || type == EPtr) ? (u32 *)des[1]
            : (type == EBufType) ? des + 2 : (u32 *)des[2];
-    if (!((u32)p >= 0x400000 && (u32)p < 0x10000000 && !((u32)p & 3)))
+    if (!(user_ptr((u32)p) && !((u32)p & 3)))
         return;
     if (say)
         for (u32 i = 0; i < 6; i++)
@@ -12671,8 +12686,9 @@ static int sane_ptr(u32 p)
 {
     // Heap and chunks, then RAM-loaded code (0x70000000 on the emulator) and
     // ROM: E341 found a vtable at 0x70115c00 and read its RunL as 0.
-    return !(p & 3) && ((p >= 0x400000 && p < 0x10000000) ||
-                        (p >= 0x70000000u && p < 0x90000000u));
+    // Round 155: the N73's ROM is at 0xF8000000, outside both of those, and
+    // its dump read every RunL as 0; user_ptr covers it.
+    return !(p & 3) && user_ptr(p);
 }
 
 static void sched_dump(Context *c, u32 why)
