@@ -1386,7 +1386,23 @@ namespace eka2l1::epoc {
 
     BRIDGE_FUNC(eka2l1::ptr<void>, leave_start) {
         kernel::thread *thr = kern->crr_thread();
-        LOG_TRACE(KERNEL, "Leave started! Guess leave code: {}", static_cast<std::int32_t>(kern->get_cpu()->get_reg(0)));
+        LOG_TRACE(KERNEL, "Leave started! Guess leave code: {}, lr 0x{:X}", static_cast<std::int32_t>(kern->get_cpu()->get_reg(0)),
+            kern->get_cpu()->get_reg(14));
+        // The return addresses above User::Leave: every stack word that looks
+        // like code (ROM or RAM-loaded), the first 64 words of the stack.
+        if (const char *e = std::getenv("EKA2L1_LEAVESTACK")) {
+            const std::uint32_t sp = kern->get_cpu()->get_reg(13);
+            std::string line;
+            for (std::uint32_t i = 0; i < 64; i++) {
+                const std::uint32_t *w = reinterpret_cast<const std::uint32_t *>(kern->crr_process()->get_ptr_on_addr_space(sp + i * 4));
+                if (!w)
+                    break;
+                if ((*w >= 0x70000000u && *w < 0x80000000u) || *w >= 0xF0000000u || (*w >= 0x80000000u && *w < 0x90000000u))
+                    line += fmt::format(" {:X}", *w);
+            }
+            LOG_TRACE(KERNEL, "Leave stack:{}", line);
+            (void)e;
+        }
 
         thr->increase_leave_depth();
 

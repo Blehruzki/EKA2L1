@@ -27,7 +27,19 @@ STEM=$(sed -n "s/.*GAME_STEM_CHARS[[:space:]]*//p" "$P/games/$GAME/game.h" | tr 
 
 export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe QT_QPA_PLATFORM=xcb DISPLAY=:99
 pgrep -x Xvfb >/dev/null || { nohup Xvfb :99 -screen 0 1280x900x24 >"$S/xvfb.log" 2>&1 & sleep 3; }
-(cd "$P" && python3 build_gate6.py "$S/out" "$GAME") || exit 1
+# Round 158: built as the release builds it -- with the icon, whose MIF the
+# caption resource names. Without it the S60 3.0 app list hands aknicon a
+# bare drive root and the launch leaves -28 (E870); a package always has it.
+(cd "$P" && python3 -c "
+import os, sys, build_release as r, build_gate6, mkmbm, picture
+out, game = sys.argv[1], sys.argv[2]
+os.makedirs(out, exist_ok=True)
+st = r.stem(game); tree = os.path.join(r.GAMES_ROOT, st)
+icon = os.path.join(out, 'gate6.mbm')
+mkmbm.build(os.path.join(tree, st + '.aif'), icon, list(r.ICON_BITMAPS))
+build_gate6.build(out, caption=picture.setting(game, 'GAME_CAPTION'), icon=icon,
+                  vendor=picture.setting(game, 'GAME_VENDOR'), game=game)
+" "$S/out" "$GAME") || exit 1
 # Under the name that title installs as -- two games cannot both be gate6.exe,
 # on a phone or here. See GAME_APP_NAME.
 APPNAME=$(sed -n 's/.*GAME_APP_NAME[[:space:]]*"\([^"]*\)".*/\1/p' "$P/games/$GAME/game.h")
@@ -35,10 +47,14 @@ APPNAME=${APPNAME:-gate6}
 cp "$S/out/$APPNAME.exe" $D/sys/bin/$APPNAME.exe
 cp "$S/out/$APPNAME.rsc" $D/resource/apps/$APPNAME.rsc
 cp "$S/out/${APPNAME}_reg.rsc" $D/private/10003a3f/import/apps/${APPNAME}_reg.rsc
+# Round 158: the icon too, as a package installs it. Without it the S60 3.0
+# app list names the icon file as the bare drive root, aknicon leaves -28, and
+# the launch dies in the cleanup (E870); 3.2 never asked for it.
+[ -f "$S/out/$APPNAME.mif" ] && cp "$S/out/$APPNAME.mif" $D/resource/apps/$APPNAME.mif
 # KEEPOLD=1 leaves whatever is on the drive alone, which is how the sweep of
 # the old rotated log names is tested: the port has to delete them itself.
 [ -n "$KEEPOLD" ] || rm -f $C/g6box-$STEM*.log $D/g6box-$STEM*.dat $C/g6box-$STEM*.dat
-(cd /home/user/EKA2L1/build/bin && timeout -k 5 -s KILL "${TMO:-120}" ./eka2l1_qt --device RM-409 --run $UID3 >"$S/g6.log" 2>&1)
+(cd /home/user/EKA2L1/build/bin && timeout -k 5 -s KILL "${TMO:-120}" ./eka2l1_qt --device "${DEVICE:-RM-409}" --run $UID3 >"$S/g6.log" 2>&1)
 # The emulator does not always go on SIGTERM, and a run left behind holds its
 # memory and a few per cent of a core. Enough of them and a later launch cannot
 # allocate the image -- which is where the G6MEM panics were coming from -- and

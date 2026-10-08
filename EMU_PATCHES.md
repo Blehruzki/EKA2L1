@@ -26,6 +26,7 @@ the emulator.
 
 | Variable | What it logs | Where | Added |
 |---|---|---|---|
+| `EKA2L1_LEAVESTACK=1` | With every `User::Leave` (already logged with its code, and now its LR), the stack words above it that look like code, so the leaving caller can be named against a ROM's export table. | `kernel/src/svc.cpp` (`leave_start`) | ngage-port r158 |
 | `EKA2L1_PCTRACE=lo:hi:path` | Every basic-block entry whose PC is in `[lo,hi)` as `(pc, sp)` word pairs; armed from the first entry at `EKA2L1_PCTRACE_START`, capped at `EKA2L1_PCTRACE_MAX`. With `EKA2L1_PCTRACE_REGS=pc,pc,...` also dumps `r0`–`r15` at those PCs to `<path>.regs`. For finding where two runs of the same guest code part. | `cpu/src/dyncom/arm_dyncom_interpreter.cpp` | ngage-port r143 |
 | `EKA2L1_WATCH=addr[:end]` | Guest writes into `[addr,end)` with value, PC and LR (capped ~400). | `cpu/src/dyncom/armstate.cpp` | emulator |
 | `EKA2L1_WATCHVAL=v` | Narrows `EKA2L1_WATCH` to writes of value `v`. | same | emulator |
@@ -45,3 +46,13 @@ the emulator.
   `.claude/ngage-port/BUGBOOK.md` §12.w: it made the bench deterministic (50 instr/us
   reliably live, 200 reliably dead), which is how the game's tick-seeded PRNG was
   found; the phone fix itself is in the port (`GAME_TICK_SEED_*`, KNOBS.md).
+
+## Patch maps
+
+`src/patch/mediaclientaudiostream/group/mediaclientaudiostream.dll.map` gained
+an `[epoc91]` section (ngage-port r158): without it an S60 3.0 firmware ran the
+ROM's own audio-stream DLL instead of the emulator's stand-in, and an app's
+`CMdaAudioOutputStream::NewL` resolved to an unrelocated `0x817f`. The N80
+(RM-92) DLL exports the same 17 entries as 3.2's, and audio ran with the 3.1
+order applied. A rebuild copies the maps into `build/bin/patch`, so edit the
+source copy.

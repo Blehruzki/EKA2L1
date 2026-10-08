@@ -1142,6 +1142,7 @@ struct Context {
     u32 wkStopTimer, wkStopThread, wkStopArmed;   // round 142: the sound thread's own one-shot that carries a held-back Stop out
     u32 mdaToldStop[4], mdaPendThread[4];   // round 143: the game already heard PlayComplete(-3) for this Stop; the thread that owes it
     u32 dsaAfterLogged;     // round 156: the words StartL left, logged once
+    u32 benchGcCleared;     // round 158: BENCH_DSA_NO_DEVICE has cleared the context's device once
     u32 imgHandle, imgPos;  // round 149: the RFile the game opened its own image on through the .bin rename, and how far it has read
     u32 mdaPlaying[4], mdaQueued[4], mdaIdleTick[4], mdaWrThread[4];   // round 147: the stream has been written since its last complete; buffers written and not yet copied; the tick of the last copy
     u32 ufTimer, ufThread, ufTold;          // round 147: the port's underflow timer in the sound thread (mda_underflow_watch), and how many it told
@@ -5967,6 +5968,47 @@ extern "C" int gate6_gc_setclip(void *gc, const void *rgn, Context *c)
     return ((Fn)c->realSetClip)(real, rgn);
 }
 
+// **The context with no device, round 158.** The N73 (S60 3.0) dies on its
+// first frame reading 8 off a null pointer: the shape of bitgdi's
+// `ldr r0, [gc, #0x70]; ldr r0, [r0, #8]`, the context's device and a word
+// of it, read the same way by the 3.0 (N80, RM-92) and 3.2 (RM-409) ROMs.
+// StartL itself is instruction-for-instruction the same on both: it makes
+// the screen device (bitgdi 247) and activates the context on it (bitgdi
+// 148, CFbsBitGc::Activate(CFbsDevice*)) -- so on the N73 something left the
+// context unactivated, and the port does not need to know what. After each
+// StartL, if the context's device word is null and StartL left a device,
+// the context is activated on it with that same export (0x57B0, then the
+// context, the device, and the word after). BENCH_DSA_NO_DEVICE clears the
+// word first, on the bench, so the repair runs where it can be watched.
+enum { GC_DEVICE_OFF = 0x70, BITGDI_GC_ACTIVATE = 148, BENCH_DSA_NO_DEVICE = 0, BENCH_NO_REPAIR = 0 };
+
+static void dsa_gc_activate(Context *c)
+{
+    typedef void (*Activate)(void *, void *);
+    const u32 *real = c->dsaReal;
+    if (!real || !c->bitgdi)
+        return;
+    u32 *gc = (u32 *)real[dsa_gc_off(c) / 4];
+    u32 *dev = (u32 *)real[dsa_dev_off(c) / 4];
+    if (!gc || !user_ptr((u32)gc) || ((u32)gc & 3) || !dev || !user_ptr((u32)dev) || ((u32)dev & 3))
+        return;
+    if (BENCH_DSA_NO_DEVICE && !c->benchGcCleared) {
+        c->benchGcCleared = 1;
+        gc[GC_DEVICE_OFF / 4] = 0;
+    }
+    if (gc[GC_DEVICE_OFF / 4] || BENCH_NO_REPAIR)
+        return;
+    Activate act = (Activate)rlibrary_lookup(&c->bitgdi, BITGDI_GC_ACTIVATE);
+    if (!act)
+        return;
+    act(gc, dev);
+    log_event(c, NOTE_DSA_RESTART, 0x57B0);
+    log_event(c, NOTE_DSA_RESTART, (u32)gc);
+    log_event(c, NOTE_DSA_RESTART, (u32)dev);
+    log_event(c, NOTE_DSA_RESTART, gc[GC_DEVICE_OFF / 4]);
+    log_block(c);
+}
+
 extern "C" void gate6_dsa_startl(void *, u32, Context *c)
 {
     typedef void (*StartL)(void *);
@@ -6016,6 +6058,7 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
     }
     c->dsaIdle = 0;                 // round 141: the game has the screen again
     dsa_refresh(c);
+    dsa_gc_activate(c);
     // Round 156: what StartL left in the object, once. The N73 (S60 3.0)
     // comes back from its first StartL and the game's next two calls, on the
     // screen device and the context the shadow then hands it, die in

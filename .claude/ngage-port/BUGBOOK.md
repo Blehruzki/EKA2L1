@@ -1119,6 +1119,30 @@ box's file name and `sane_ptr` (the scheduler dump, whose RunL addresses
 the N73's 0xF8000000 ROM had failed too). 023's duplicate answer stays.
 Bench E863; the N73 pending.
 
+### 12.ag The N73 dies in its first frame, right after `SetClippingRegion` (rounds 156-158, open)
+
+**Symptom.** One 024-026 on an N73: past the thread open, the game reaches its
+screen setup and dies reading 8 off a null pointer at a ROM pc, the next thing
+after `CFbsScreenDevice::SetAutoUpdate` and `CFbsBitGc::SetClippingRegion`.
+
+**What is known.** StartL left a gc, device and region of the same shape as
+the bench's (0x57AF). With the N80 (S60 3.0) firmware on the bench (round 158):
+3.0's StartL is instruction-for-instruction 3.2's -- it makes the screen device
+(bitgdi 247) and activates the context on it (bitgdi 148) -- and 3.0's
+`SetClippingRegion` stores the region without touching the device. The read
+`ldr r0, [gc, #0x70]; ldr r0, [r0, #8]` (the context's device, then +8) is
+bitgdi's, in the export after `SetClippingRegion`, and matches the fault.
+
+**What the bench cannot do.** EKA2L1 runs the N80 firmware up to StartL, where
+3.0 opens the LCD driver (`GenericLcd_Lcd`) and makes kernel calls 0x82 and 0xA
+the emulator lacks (E872). Clearing the device word on the 3.2 bench does not
+reproduce the death (E874): One's 3.2 frame never reads it.
+
+**Build 027.** After StartL, a context with no device is activated on
+StartL's device with bitgdi 148 (0x57B0; works on the bench, E873); 026's
+dumps (0x57AF, 32 words of the context) and the `SetClippingRegion` wrapper
+(0x5E7C) stay. A guess at the fix, and a measurement either way.
+
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 
 **Symptom.** The end key during a fight: "Application closed: One G6FLT
