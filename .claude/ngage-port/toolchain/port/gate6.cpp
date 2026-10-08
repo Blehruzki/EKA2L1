@@ -1213,6 +1213,8 @@ struct Context {
     u32 scaledW[8], scaledH[8];
     u32 *lut4k;             // EColor4K pixel -> EColor16MU word, 4,096 entries, built on first use
     u32 scalerOff;          // the port scaler gave up this launch: DrawBitmap from here on
+    u32 blitN, blitSwitches, blitScalerFast, blitFast0;   // round 151: blits counted; how many changed bitmap; fast-counter ticks inside the scaler; the counter at the window's start
+    const void *lastBlitBmp;
     u8 mapX[MAP_MAX];       // destination column -> source column, Bresenham
     u8 mapY[MAP_MAX];       // and the same down
     u8 wX[MAP_MAX], wY[MAP_MAX];   // round 150: the filter's blend weight toward the next source pixel, 0 to copy
@@ -4594,6 +4596,28 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c);
 
 static u32 fb_band_sum(const Context *c);
 
+
+// CPU each thread used since the last call, in milliseconds (round 132: the
+// fight runs at half its rate until the first pause or minimize, and which
+// thread has the other half is the question). Main first, then the game's
+// threads in the order they were made; 0xC9000000 | i << 20 | ms. Called
+// from the heartbeat, and from the window-gc title's blit count (round 151).
+static void thread_cpu_note(Context *c)
+{
+    if (!c->fnCpuTime)
+        return;
+    typedef int (*Cpu)(const u32 *, u32 *);
+    for (u32 i = 0; i <= c->wdThrN && i < 5; i++) {
+        const u32 h = i ? c->wdThr[i - 1] : c->wdMain;
+        u32 t[2] = { 0, 0 };
+        if (!h || ((Cpu)c->fnCpuTime)(&h, t) != 0)
+            continue;
+        const u32 ms = (t[0] - c->cpuSaid[i]) / 1000u;
+        c->cpuSaid[i] = t[0];
+        log_event(c, NOTE_THREAD_HANDLE, 0xC9000000u | (i << 20) | (ms & 0xFFFFFu));
+    }
+}
+
 extern "C" int gate6_heartbeat(void *p)
 {
     Context *c = (Context *)p;
@@ -4660,18 +4684,7 @@ extern "C" int gate6_heartbeat(void *p)
     // fight runs at half its rate until the first pause or minimize, and
     // which thread has the other half is the question). Main first, then the
     // game's threads in the order they were made; 0xC9000000 | i << 20 | ms.
-    if (c->fnCpuTime) {
-        typedef int (*Cpu)(const u32 *, u32 *);
-        for (u32 i = 0; i <= c->wdThrN && i < 5; i++) {
-            const u32 h = i ? c->wdThr[i - 1] : c->wdMain;
-            u32 t[2] = { 0, 0 };
-            if (!h || ((Cpu)c->fnCpuTime)(&h, t) != 0)
-                continue;
-            const u32 ms = (t[0] - c->cpuSaid[i]) / 1000u;
-            c->cpuSaid[i] = t[0];
-            log_event(c, NOTE_THREAD_HANDLE, 0xC9000000u | (i << 20) | (ms & 0xFFFFFu));
-        }
-    }
+    thread_cpu_note(c);
     // Screen updates the game asked for since the last beat, and how many
     // reached the screen (round 132: the pause screen not drawn on return).
     if (c->updN != c->updSaid) {
@@ -9261,6 +9274,23 @@ static int scale_frame(Context *c, const void *src, u32 *dstBmp)
     return 1;
 }
 
+static void blit_rate_note(Context *c, u32 (*fast)(void))
+{
+    if ((++c->blitN & 63u) != 0)
+        return;
+    const u32 now = fast ? fast() : 0;
+    log_event(c, NOTE_PORT_SCALER, 0x5CA50000u | (c->blitSwitches & 0xFFFFu));
+    log_event(c, NOTE_PORT_SCALER, 0x5CA60000u | (c->blitScalerFast & 0xFFFFFFu));
+    log_event(c, NOTE_PORT_SCALER, 0x5CA70000u | ((now - c->blitFast0) & 0xFFFFFFu));
+    log_event(c, NOTE_TICK, user_tickcount());
+    if (!c->wdMain)                     // the watchdog sets this on the titles that run it; the blit is on the main thread
+        c->wdMain = thread_dup(c, 0xFFFF8001u);
+    thread_cpu_note(c);                 // which thread has the time: main, then the game's threads
+    c->blitSwitches = 0;
+    c->blitScalerFast = 0;
+    c->blitFast0 = now;
+}
+
 extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
 {
     typedef void (*BitBltFn)(void *, const i32 *, const void *);
@@ -9292,9 +9322,24 @@ extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
         ((BitBltFn)vt[NEW_GC_BITBLT])(real, at, bmp);
         return;
     }
+    // Round 151: the blit rate and the scaler's share of it, every 64 blits
+    // (0x5CA5 how many of the 64 changed bitmap, 0x5CA6 fast-counter ticks
+    // spent in the scaler, 0x5CA7 fast-counter ticks elapsed, then the tick).
+    // The N95's frame rate halved after a level restart; this says whether
+    // the port's loop or the game's own frame got slower, and whether the
+    // game started blitting more than one bitmap a frame.
+    typedef u32 (*Fast)(void);
+    if (!c->fnFastCounter)
+        c->fnFastCounter = (u32)rlibrary_lookup(&c->euser, EUSER_FAST_COUNTER);
+    const Fast fast = (Fast)c->fnFastCounter;
+    if (bmp != c->lastBlitBmp) { c->blitSwitches++; c->lastBlitBmp = bmp; }
     if (GAME_PORT_SCALER && c->scalerOff != 1 && c->fbsCtor && c->fbsCreate && c->fbsData && c->fbsMode) {
         u32 *sb = scaled_bitmap(c);
-        if (sb && scale_frame(c, bmp, sb)) {
+        const u32 t0 = fast ? fast() : 0;
+        const int ok = sb && scale_frame(c, bmp, sb);
+        if (fast) c->blitScalerFast += fast() - t0;
+        blit_rate_note(c, fast);
+        if (ok) {
             const i32 at[2] = { x, y };
             ((BitBltFn)vt[NEW_GC_BITBLT])(real, at, sb);
             return;
@@ -9302,6 +9347,7 @@ extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
         c->scalerOff = 1;
         log_event(c, NOTE_PORT_SCALER, 0x5CA20000u | (sb ? 1u : 0u));
     }
+    blit_rate_note(c, fast);
     const i32 dst[4] = { x, y, x + (i32)c->dstW, y + (i32)c->dstH };
     ((DrawBitmapFn)vt[NEW_GC_DRAWBITMAP_RECT])(real, dst, bmp);
 }

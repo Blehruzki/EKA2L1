@@ -177,5 +177,5 @@ enum { GAME_SRC_ORIGIN = 0 };
 // 0xb4ea4 unsignalled (round 147). The port tells the underflow itself after
 // 32 ticks (500 ms, the emulator's figure) with nothing queued.
 #define GAME_MDA_UNDERFLOW_TICKS 32
-#define GAME_BUILD 14
+#define GAME_BUILD 15
 #endif
