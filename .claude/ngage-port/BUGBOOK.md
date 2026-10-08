@@ -517,7 +517,7 @@ one runtime constant here.
 
 **The status-pane band.** `R76-78`, `R87-89`. A band across the top was the
 status pane; `ENoScreenFurniture` did not remove it; the inset is asked of
-Avkon (56 on the N95, 48 on a 5320) and the picture laid out below it; the
+Avkon (58 on the N95 -- round 87; 56 was the hardcoded guess -- 48 on a 5320) and the picture laid out below it; the
 full-screen mode posts a region of the port's own covering the whole panel
 (`Update(const TRegion&)`), because `CFbsScreenDevice::Update(void)` kills
 the game on the phone (`R88`). `SetFullScreenApp` is called before the

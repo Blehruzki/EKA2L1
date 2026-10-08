@@ -151,6 +151,15 @@ source of guessing in it. When a new platform question comes up: search,
 read the source, write the answer into `SYMBIAN.md` with its citation, and
 only then write code.
 
+## Devices and OS versions
+
+`DEVICES.md` is the table of what differs between S60 3.0, 3.1 and 3.2 and
+between the phones that have reported: each difference, what it broke, what
+covers it, and the round. **Read it before proposing a round on a phone or an
+edition not yet confirmed**, and add a row when a round finds a difference.
+Every private offset the port reads was measured on 3.1 or 3.2 first, and
+three times one of them was different on 3.0.
+
 ## Features every title carries
 
 `KNOBS.md` is the table: every knob and fix, which title has it on, whether
