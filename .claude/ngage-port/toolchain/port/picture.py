@@ -66,10 +66,14 @@ def setting(game, name):
 # `RLine::EnumerateCall` when this image's 251 is `User::AllocL`. A wrong name
 # is worse than no name, because it reads as a finding. Same rule as the
 # geometry: ask for a game, or be given the path, or refuse.
-IMAGE_ROOTS = (
+# GATE6_IMAGE_ROOT names a directory to try first, laid out the same way
+# (<root>/<stem>/<stem>.app): the bench tree can then carry the shipped
+# `<stem>.bin` alone while the tools still read the original (round 149).
+IMAGE_ROOTS = tuple(
+    ([os.environ['GATE6_IMAGE_ROOT']] if os.environ.get('GATE6_IMAGE_ROOT') else []) + [
     '/root/.local/share/EKA2L1/data/drives/e/system/apps',
     '/root/.local/share/EKA2L1/data/drives/e.ngage/system/apps',
-)
+])
 
 
 def stem(game):

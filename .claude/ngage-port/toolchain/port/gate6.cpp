@@ -281,6 +281,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_RET = 893,     // ... and what the call answered
        NOTE_FILE_SIZE = 894,    // RFile::Size, and the size it answered
        NOTE_FILE_REPLACE = 698,  // RFile::Replace through the card hook: its result, then the name's length word (round 147)
+       NOTE_IMAGE_READ = 697,    // the game reading its own image through the .bin rename: bytes put back, then the read position (round 149)
        NOTE_FILE_OPEN = 897,    // what RFile::Open answered
        NOTE_FILE_PATH = 898,    // ... and the name it was asked for
        NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
@@ -1124,6 +1125,7 @@ struct Context {
     u32 mdaCb[4], mdaPendStop[4];          // each stream's callback proxy, and a worker's Stop held back (round 132)
     u32 wkStopTimer, wkStopThread, wkStopArmed;   // round 142: the sound thread's own one-shot that carries a held-back Stop out
     u32 mdaToldStop[4], mdaPendThread[4];   // round 143: the game already heard PlayComplete(-3) for this Stop; the thread that owes it
+    u32 imgHandle, imgPos;  // round 149: the RFile the game opened its own image on through the .bin rename, and how far it has read
     u32 mdaPlaying[4], mdaQueued[4], mdaIdleTick[4], mdaWrThread[4];   // round 147: the stream has been written since its last complete; buffers written and not yet copied; the tick of the last copy
     u32 ufTimer, ufThread, ufTold;          // round 147: the port's underflow timer in the sound thread (mda_underflow_watch), and how many it told
     CallBack ufCb;
@@ -4556,6 +4558,9 @@ static void watchdog_start(Context *c)
 #define GAME_AMBIENCE_ENTRY 0
 #define GAME_AMBIENCE_ID 0
 #endif
+#ifndef GAME_PREPARE_EXIT_NOOP
+#define GAME_PREPARE_EXIT_NOOP 0     // round 149: CAknAppUi::PrepareToExit on the game's own app UI, see gate6_appui_prepare_exit
+#endif
 enum { EUSER_FAST_COUNTER = 584 };
 enum { EUSER_TICK_COUNT = 674 };   // User::TickCount(void), 9.x ordinal (confirmed by measurement; CLAUDE.md)
 extern "C" void gate6_kick_runl(void *self, u32, Context *c)
@@ -6448,6 +6453,14 @@ extern "C" int gate6_card_open(void *f, void *fs, const u32 *name, u32 mode, Con
         log_event(c, NOTE_CARD_REFUSED, mode);
         return KErrAccessDenied;
     }
+    // Round 149: the game reads its own image back -- E:\system\apps\6r58\6r58.app,
+    // opened through the three replaced file calls and read end to end in
+    // 8 KB pieces -- and through the rename that read lands on the scrambled
+    // `.bin`. The handle is kept so the reads can put the 32 bytes back
+    // (image_read_fix); on a `.app` install nothing is renamed and nothing kept.
+    u32 nlen0 = 0;
+    const u16 *ntext0 = name_text(name, &nlen0);
+    const int imageOpen = c->imageIsBin && ntext0 && nlen0 && nlen0 <= 270 && ends_with_app(ntext0, nlen0);
     name = on_the_real_drive(name, c);
     if (SUBSTITUTE_BAD_NAMES && name_is_rubbish(name)) {
         const u16 *t = (SUBSTITUTE_FILE == 0) ? kSubst0
@@ -6462,6 +6475,11 @@ extern "C" int gate6_card_open(void *f, void *fs, const u32 *name, u32 mode, Con
         return ((FileCall)c->realOpen)(f, fs, (const u32 *)&subst, mode);
     }
     const int err = ((FileCall)c->realOpen)(f, fs, name, mode);
+    if (imageOpen && err == 0 && f) {
+        c->imgHandle = *(const u32 *)f;     // RHandleBase::iHandle, the object's first word
+        c->imgPos = 0;
+        log_event(c, NOTE_IMAGE_READ, 0x1A000000u | (c->imgHandle & 0xFFFFFF));
+    }
     // Round 109: on an E: install the game's `E:` names go to E: as they are,
     // and a C5-00's pack opens came back -18, KErrNotReady, from a drive the
     // loader had read the image off ten seconds earlier. The image probe
@@ -7248,6 +7266,38 @@ extern "C" void gate6_file_open(u32 err, const u32 *name, Context *c)
 }
 
 
+// **The game's read of its own image, round 149.** `build_release.py` XORs
+// the first IMAGE_SCRAMBLE_BYTES of the image so the installer takes it as
+// data (`6r58.bin`), and the loader undoes that on its own copy. The game
+// reads the same file back through the rename (gate6_card_open) and would
+// see the scrambled bytes -- on the bench that is E854: the open and 8 KB
+// reads succeed and the game dies later, at image 0x1fc910, on what it made
+// of them. So a read on that handle has the bytes it covers put back, by
+// position: sequential reads keep their own count, a positional read says
+// where it is. Once the count is past the scrambled bytes the handle is
+// forgotten, so a later file given the same handle value is left alone.
+static void image_read_fix(Context *c, const void *self, u32 *des, int err, i32 at)
+{
+    if (!c->imgHandle || !self || !des || err)
+        return;
+    if (*(const u32 *)self != c->imgHandle)
+        return;
+    const u32 type = des[0] >> KTypeShift;
+    u8 *data = (type == EPtr) ? (u8 *)des[2] : (type == EBufType) ? (u8 *)(des + 2) : 0;
+    const u32 got = des[0] & 0x0FFFFFFF;
+    const u32 pos = (at >= 0) ? (u32)at : c->imgPos;
+    u32 fixed = 0;
+    if (data)
+        for (u32 i = 0; i < got && pos + i < (u32)IMAGE_SCRAMBLE_BYTES; i++, fixed++)
+            data[i] ^= (u8)IMAGE_SCRAMBLE;
+    log_event(c, NOTE_IMAGE_READ, (fixed << 24) | (pos & 0xFFFFFF));
+    if (at < 0) {
+        c->imgPos += got;
+        if (c->imgPos >= (u32)IMAGE_SCRAMBLE_BYTES)
+            c->imgHandle = 0;
+    }
+}
+
 extern "C" int gate6_file_read(void *self, u32 *des, Context *c)
 {
     typedef int (*Read)(void *, u32 *);
@@ -7256,6 +7306,7 @@ extern "C" int gate6_file_read(void *self, u32 *des, Context *c)
         for (u32 i = 0; i < 3; i++)
             log_event(c, NOTE_FILE_DES, des[i]);
     const int err = ((Read)c->fileRead)(self, des);
+    image_read_fix(c, self, des, err, -1);
     log_event(c, NOTE_FILE_RET, (u32)err);
     if (des)
         log_event(c, NOTE_FILE_DES, des[0]);
@@ -7276,6 +7327,7 @@ extern "C" int gate6_file_read_static(void *self, u32 *des, Context *c)
         for (u32 i = 0; i < 3; i++)
             log_event(c, NOTE_FILE_DES, des[i]);
     const int err = ((Read)c->fileReadStatic)(self, des);
+    image_read_fix(c, self, des, err, -1);
     log_event(c, NOTE_FILE_RET, (u32)err);
     if (des)
         log_event(c, NOTE_FILE_DES, des[0]);
@@ -9442,13 +9494,23 @@ extern "C" u32 *gate6_fileman_newl(void *fs, u32, Context *c)
 // so nothing; TVolumeInfo's zero-fills, so zero the old size -- and the two
 // queries run against a buffer here and copy the old layout back, field by
 // field for the volume.
+enum { BENCH_ENTRY_NO_REWRITE = 0 };   // bench: 1 makes the game's Entry on its own .app fail on a .bin install
 enum { OLD_TENTRY_BYTES = 0x220, NEW_TENTRY_WORDS = 0x240 / 4,
        OLD_TVOLUMEINFO_BYTES = 552, NEW_TVOLUMEINFO_WORDS = 640 / 4, VOLUME_NAME_WORDS = 516 / 4 };
 
-extern "C" int gate6_fs_entry(void *fs, const void *name, u32 *out, Context *c)
+extern "C" int gate6_fs_entry(void *fs, const u32 *name, u32 *out, Context *c)
 {
     typedef int (*Fn)(void *, const void *, u32 *);
     u32 buf[NEW_TENTRY_WORDS];
+    // Round 149: the same two rewrites the opens get. One asks Entry for its
+    // own `\system\apps\6R58\6R58.app` at every foreground gain and quits
+    // if it is not there -- and an installed image is `6r58.bin`. Every
+    // hardware round before 149 had the original `.app` on the card beside
+    // it, and so did the bench, which is why no run had ever entered this.
+    // BENCH_ENTRY_NO_REWRITE leaves the name alone, to walk the quit path
+    // on purpose (E853).
+    if (!BENCH_ENTRY_NO_REWRITE)
+        name = on_the_real_drive(name, c);
     const int r = ((Fn)c->realFsEntry)(fs, name, buf);
     if (out && !((u32)out & 3))
         for (u32 i = 0; i < (u32)OLD_TENTRY_BYTES / 4; i++)
@@ -9637,6 +9699,7 @@ extern "C" int gate6_file_read_pos(void *file, i32 pos, u32 *des, i32 len, Conte
 {
     typedef int (*Fn)(void *, i32, u32 *, i32);
     const int r = ((Fn)c->realReadPos)(file, pos, des, len);
+    image_read_fix(c, file, des, r, pos);
     if (c->readsLogged < (u32)FILE_READS_LOGGED) {
         c->readsLogged++;
         log_event(c, NOTE_READ_POS, (u32)pos);
@@ -10090,6 +10153,27 @@ extern "C" void gate6_appui_exit(void *ui, u32, Context *c)
     log_block(c);
     box_flush(c);
     user_exit(0);
+}
+
+// **PrepareToExit, round 149.** The game's way out is `PrepareToExit();
+// Exit();` -- old slot 2 of its own app UI, then CEikAppUi::Exit() -- and it
+// takes it from two places: HandleCommandL on the red key (12.z, answered
+// above the call since round 139) and its HandleForegroundEventL, which
+// asks `RFs::Entry` for its own `\system\apps\6R58\6R58.app` at every
+// foreground gain and leaves if the file is not there. Old slot 2 resolves
+// to avkon's CAknAppUi::PrepareToExit, and that runs on the game's
+// old-layout object and reads a 9.x member it has not got: a data abort at
+// 0x80 off a null, G6FLT 28812 (rounds 138 and 149). The import is not in
+// GATE_APPUI_METHODS -- those are CEikAppUi's -- and the wrapper's own
+// PrepareToExit is not wanted either: gate6_appui_exit leaves the process
+// without it. So the call is answered with nothing, the record flushed, and
+// the Exit that follows does the leaving.
+extern "C" void gate6_appui_prepare_exit(void *ui, u32, Context *c)
+{
+    (void)ui;
+    log_event(c, NOTE_EXIT_ASKED, 0xE819);
+    log_block(c);
+    box_flush(c);
 }
 
 // Five arguments, the fifth at [sp]; arg6_thunk puts the context under it,
@@ -13736,6 +13820,11 @@ static u32 load_and_start()
     if (nImports > IMPORT_APPUI_EXIT && IMPORT_APPUI_EXIT < kShimCount &&
         (kShimTable[IMPORT_APPUI_EXIT] >> 24) == KIND_CALL)
         iat[IMPORT_APPUI_EXIT] = ctx_thunk(stub + SLOT * IMPORT_APPUI_EXIT, ctx, (u32)&gate6_appui_exit);
+    if (GAME_PREPARE_EXIT_NOOP && nImports > IMPORT_APPUI_PREPARE_EXIT &&
+        IMPORT_APPUI_PREPARE_EXIT < kShimCount &&
+        (kShimTable[IMPORT_APPUI_PREPARE_EXIT] >> 24) == KIND_CALL)
+        iat[IMPORT_APPUI_PREPARE_EXIT] = ctx_thunk(stub + SLOT * IMPORT_APPUI_PREPARE_EXIT, ctx,
+                                                   (u32)&gate6_appui_prepare_exit);
     if (nImports > IMPORT_CLEANUP_NEW && IMPORT_CLEANUP_NEW < kShimCount &&
         (kShimTable[IMPORT_CLEANUP_NEW] >> 24) == KIND_CALL) {
         ctx->realCleanupNew = iat[IMPORT_CLEANUP_NEW];

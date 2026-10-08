@@ -11,7 +11,7 @@ Shipping builds: Asphalt Urban GT **030** (`gate6a1`), Asphalt 2 **196**
 and the bench (RM-409 ROM, S60 3.2); the Asphalts also on a Nokia N91 (S60 3.0,
 round 121). Asphalt Urban GT 027 was confirmed on a Nokia C5-00 (S60 3.2, round 122). Ashen 010 reached the N91 and fell on a second 3.0 difference
 (round 123); 011 carries that fix, and round 124 confirmed all three titles on
-the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
+the N95 and the N91. One (`gate6one`) ships as **022** (round 149): 021 died at launch on every install without the original `6r58.app` beside the package's `6r58.bin`.
 
 ## Fixes and features, by knob
 
@@ -88,6 +88,8 @@ the N95 and the N91. One (`gate6one`) is on the bench only, not shipped.
 | the screen address `UserSvr::ScreenInfo` answers is checked at every poll (the game polls once a frame) and followed when it moves (`REBIND_SCREEN_ADDRESS`, 0x5C1F: the old, the new); HAL's `EDisplayMemoryAddress` (78) logged when it moves (0x5C1E); the frame buffer's middle band summed after each blit and at each heartbeat (0x5C0E: now, as the blit left it, which blit) | round 140 | bench E736-E737 (the band reads exactly what the blit left; HAL answers nothing on the emulator); N95 round 141 |
 | **the port no longer starts the DSA at a restart the game did not answer** (`START_FOR_THE_GAME 0`; 0x57AE instead of 0x57A7): the screen is nobody's (clip NONE, `dsaIdle`) until the game's own StartL. One's frame function starts the DSA only when the object reads inactive and draws nothing when it reads active with its own flag clear; our StartL left it active on an empty region, so the frame that carries the pause menu was skipped whenever the request had not completed by the return (rounds 139-141) | round 141 | bench E739-E740; N95 round 142 |
 | **diagnostic, One build 015 only** (`DUMP_AT_ABORT`, `DUMP_AFTER_RETURN`, 0 when shipping): the game's buffer and the frame buffer written to `C:\g6code-6r58.bin` at every AbortNow (0xFB01) and the frame buffer after the first blit back (0xFB02); `dump32.py` renders them | round 140 | bench E737; N95 round 141 (5.2 MB, read: the menu was not yet drawn at AbortNow, the fight was running; off again in 016) |
+| **the game's own image under its installed name** (round 149): `RFs::Entry` gets the opens' `.app`-to-`.bin` rewrite (`on_the_real_drive`), and a read through the renamed open has the 32 scrambled bytes put back (`image_read_fix`, NOTE 697); universal, active only when the loader itself read a `.bin` | round 149 | bench E852 (the death reproduced), E854 (Entry alone is not enough), E855 (clean); hardware pending |
+| **`GAME_PREPARE_EXIT_NOOP`** (One 1, the others 0): `CAknAppUi::PrepareToExit` called by the game on its own old-layout app UI is answered with nothing (0xE819); the `CEikAppUi::Exit` that follows does the leaving. Without it the game's quit path is a data abort at 0x80 (12.z, round 149) | round 149 | bench E853 (a clean exit down the quit path) |
 
 ## Where each title saves
 

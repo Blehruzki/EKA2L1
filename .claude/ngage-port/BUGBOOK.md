@@ -1062,6 +1062,42 @@ fail in the wrapper (0xb5824) -- and `Replace`, `Write`, `Flush` and
 result and drive letter (NOTE 698). Not fixed: the next N95 log is what
 names it.
 
+**Closed by observation (round 148).** Build 012 saves on the N95, the
+options too, with nothing done to the save path but the tracing. The
+failure went with 12.ac: the save was asked for on a thread the game had
+given up on. Which call failed is not established.
+
+### 12.ae `G6FLT 28812` at launch on every install without the original `6r58.app` (round 149)
+
+**Symptom.** One build 021 from the zip, or from the bundled package, on
+any phone that never had the card dump copied to it: "Application closed:
+One G6FLT 28812" a second after the title appears. The user's own N95,
+which has the dump's `6r58.app` beside the install, never showed it.
+
+**Cause.** One's HandleForegroundEventL (image 0x4353c, through 0x436c4)
+asks `RFs::Entry` for `\system\apps\6R58\6R58.app` at every foreground
+gain and quits when it is not there: `PrepareToExit()` on its own app UI
+(old slot 2, which resolves to avkon's CAknAppUi::PrepareToExit and reads a
+9.x member the old-layout object has not got -- the red key's death, 12.z)
+then `CEikAppUi::Exit()`. Every package since build 002 carries the image as
+the scrambled `6r58.bin`, so the file the game asks for is not there. The
+opens had the `.app`-to-`.bin` rewrite since Asphalt 2; `Entry` did not.
+And the game also reads its own image back, end to end in 8 KB pieces,
+through that rewrite: with Entry fixed alone the bench died later, at
+image 0x1fc910, on the 32 scrambled bytes (E854).
+
+**Fix (build 022).** `gate6_fs_entry` applies `on_the_real_drive`; the
+game's read of its own image through the renamed open has the scrambled
+bytes put back (`image_read_fix`, NOTE 697); and PrepareToExit on the
+game's own app UI is answered with nothing (`GAME_PREPARE_EXIT_NOOP`,
+0xE819), so a quit path, should the game take one, is an exit and not an
+abort. Bench E852 reproduced the death on a `.bin`-only tree, E853 the clean
+exit, E855 the build running clean. Hardware: pending.
+
+**Lesson.** The bench tree and the user's phone both had the original
+`.app`; the shipped layout was never run anywhere before round 149. Rule 4's
+"what state did the bench never enter" includes the install layout.
+
 ### 12.z The red key dies G6FLT 38212 (rounds 138-139)
 
 **Symptom.** The end key during a fight: "Application closed: One G6FLT

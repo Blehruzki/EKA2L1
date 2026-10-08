@@ -28,5 +28,7 @@ Please report any bugs you find. Happy <verb>ing!🙂
 | Ashen | `6r21` | `gate6-6r21.cfg` | `savegameNN.sav` (progress), `options.dat` (settings) |
 | One | `6r58` | `gate6-6r58.cfg` | `6R58.prf` (the fighter profile), `6R58.set` (settings) |
 
+One 022's post (round 149) is `One-build022-post.md` in the session scratchpad: it says 021 could not start on an install without the card dump's `6r58.app`, and that 022 runs from the package alone.
+
 Later builds of a title say what changed since the last post instead of
 "First public build"; the feature lines stay, since every build carries them.

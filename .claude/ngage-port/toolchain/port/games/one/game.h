@@ -41,6 +41,12 @@ enum { GAME_SRC_ORIGIN = 8 };
 // title that calls CEikAppUi methods on its own app UI; harmless otherwise.
 #define GAME_FIX_APPUI_THIS 1
 
+// Round 149: the game's exit idiom calls CAknAppUi::PrepareToExit (old slot 2)
+// on its own app UI before CEikAppUi::Exit; the 9.x method reads a member
+// the old object has not got (G6FLT 28812). Answered with nothing; see
+// gate6_appui_prepare_exit.
+#define GAME_PREPARE_EXIT_NOOP 1
+
 // Forward the app UI event slots a title overrides (HandleForegroundEventL,
 // HandleSystemEventL, HandleCommandL) to its own object. Ashen starts its game
 // loop from the first; the Asphalts never needed it. On: a title that
@@ -238,5 +244,5 @@ enum { GAME_SRC_ORIGIN = 8 };
 #define GAME_CARD_CID 0x567857f1, 0x7d011234, 0x0b2b1879, 0x06000400
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 21
+#define GAME_BUILD 22
 #endif

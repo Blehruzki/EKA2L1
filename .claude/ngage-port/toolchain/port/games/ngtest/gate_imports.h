@@ -20,6 +20,7 @@ enum {
     IMPORT_ADD_FOREGROUND_OBSERVER     = 65535,   // absent
     IMPORT_APPUI_EXIT                  =    81,
     IMPORT_APPUI_FACTORY               = 65535,   // absent
+    IMPORT_APPUI_PREPARE_EXIT          =    14,
     IMPORT_APP_FULL_NAME               =     0,
     IMPORT_APP_RECT                    = 65535,   // absent
     IMPORT_BASECONSTRUCTL              =     4,
