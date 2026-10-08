@@ -68,6 +68,7 @@ enum {
     IMPORT_FS_ENTRY                    =    98,
     IMPORT_FS_SET_DEFAULT_PATH         =   113,
     IMPORT_FS_VOLUME                   =   116,
+    IMPORT_GC_SETCLIP                  =    33,
     IMPORT_GEDF2                       =   476,
     IMPORT_GTDF2                       =   477,
     IMPORT_HANDLE_CLOSE                =   288,

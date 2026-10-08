@@ -68,6 +68,7 @@ enum {
     IMPORT_FS_ENTRY                    = 65535,   // absent
     IMPORT_FS_SET_DEFAULT_PATH         = 65535,   // absent
     IMPORT_FS_VOLUME                   = 65535,   // absent
+    IMPORT_GC_SETCLIP                  = 65535,   // absent
     IMPORT_GEDF2                       = 65535,   // absent
     IMPORT_GTDF2                       = 65535,   // absent
     IMPORT_HANDLE_CLOSE                =   193,

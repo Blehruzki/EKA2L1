@@ -552,6 +552,7 @@ HOOKS = {
     'IMPORT_APP_FULL_NAME':           ('apparc', 3),    # CApaApplication::AppFullName(): the same answer as DllName -- One takes its data path from it (round 125)
     'IMPORT_BASECONSTRUCTL':          ('avkon', 63),
     'IMPORT_SET_AUTO_UPDATE':         ('bitgdi', 105),
+    'IMPORT_GC_SETCLIP':              ('bitgdi', 111),  # CFbsBitGc::SetClippingRegion(const TRegion*) -- wrapped after the divert, logged (round 157)
     'IMPORT_SCREEN_UPDATE':           ('bitgdi', 137),
     'IMPORT_ADD_FOREGROUND_OBSERVER': ('cone', 8),
     'IMPORT_ADDTOSTACKL':             ('cone', 12),

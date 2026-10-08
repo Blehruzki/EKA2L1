@@ -1312,6 +1312,7 @@ struct Context {
     u32 box0L, box0T, box0R, box0B, box0Set; // the first region's box: the
                             // title's own window, as wserv first granted it
     u32 *realGc;            // the 9.x CFbsBitGc inside it
+    u32 realSetClip, setClipLogged;   // round 157: CFbsBitGc::SetClippingRegion as resolved, and whether its first call was logged
     u32 *fakeGc;            // and the old-vtable stand-in the game calls
     u32 *realWinGc;         // the environment's 9.x CWindowGc (SystemGc)
     u32 realCreateContext;  // bitgdi's CFbsDevice::CreateContext, before our hook
@@ -5936,6 +5937,36 @@ static void replay_missed_frame(Context *c)
     gate6_screen_update((void *)c->lastUpdSelf, (const void *)c->lastUpdRegion, c);
 }
 
+// **CFbsBitGc::SetClippingRegion, round 157.** The N73 (S60 3.0) dies inside
+// it: the ROM's code reads the context's device and a word at +8 of that,
+// and the device read as null -- while the gc, device and region StartL left
+// in the direct-screen-access object looked whole (0x57AF). So the call is
+// wrapped after the divert: what the game passed, what the divert would map
+// it to, and the real gc's words are logged once (0x5E7C), then the real
+// function runs on the mapped context -- or, if the mapped context has no
+// device where the bench's keeps one, the call is answered KErrNone and
+// skipped, which loses a clip and keeps the process.
+extern "C" int gate6_gc_setclip(void *gc, const void *rgn, Context *c)
+{
+    typedef int (*Fn)(void *, const void *);
+    void *real = (gc == (void *)c->fakeGc && c->realGc) ? (void *)c->realGc : gc;
+    if (!c->setClipLogged) {
+        c->setClipLogged = 1;
+        log_event(c, NOTE_DSA_RESTART, 0x5E7C);
+        log_event(c, NOTE_DSA_RESTART, (u32)gc);
+        log_event(c, NOTE_DSA_RESTART, (u32)rgn);
+        log_event(c, NOTE_DSA_RESTART, (u32)c->fakeGc);
+        log_event(c, NOTE_DSA_RESTART, (u32)c->realGc);
+        log_event(c, NOTE_DSA_RESTART, (u32)real);
+        for (u32 i = 0; i < 4; i++)
+            log_event(c, NOTE_DSA_RESTART, (rgn && user_ptr((u32)rgn) && !((u32)rgn & 3)) ? ((const u32 *)rgn)[i] : 0xDEADu);
+        log_block(c);
+    }
+    if (!real || !user_ptr((u32)real))
+        return 0;
+    return ((Fn)c->realSetClip)(real, rgn);
+}
+
 extern "C" void gate6_dsa_startl(void *, u32, Context *c)
 {
     typedef void (*StartL)(void *);
@@ -6001,9 +6032,9 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
         log_event(c, NOTE_DSA_RESTART, gc);
         log_event(c, NOTE_DSA_RESTART, dev);
         log_event(c, NOTE_DSA_RESTART, rgn);
-        for (u32 i = 0; i < 4; i++)
+        for (u32 i = 0; i < 32; i++)
             log_event(c, NOTE_DSA_RESTART, (user_ptr(gc) && !(gc & 3)) ? ((const u32 *)gc)[i] : 0xDEADu);
-        for (u32 i = 0; i < 4; i++)
+        for (u32 i = 0; i < 8; i++)
             log_event(c, NOTE_DSA_RESTART, (user_ptr(dev) && !(dev & 3)) ? ((const u32 *)dev)[i] : 0xDEADu);
         log_block(c);
     }
@@ -13948,6 +13979,11 @@ static u32 load_and_start()
                                              &ctx->wrapUi, &ctx->wrapControl,
                                              iat[IMPORT_ADDTOSTACKL]);
 
+    // Round 157: the shim's own entry for SetClippingRegion, before the divert
+    // below folds its gc map around it; gate6_gc_setclip calls this one.
+    if (nImports > IMPORT_GC_SETCLIP && IMPORT_GC_SETCLIP < kShimCount &&
+        (kShimTable[IMPORT_GC_SETCLIP] >> 24) == KIND_CALL)
+        ctx->realSetClip = iat[IMPORT_GC_SETCLIP];
     for (u32 k = 0; k < sizeof kDiverts / sizeof kDiverts[0]; k++) {
         const u32 j = kDiverts[k].import;
         // An import the shim could not answer keeps its reporting stub: sending
@@ -13991,6 +14027,12 @@ static u32 load_and_start()
             iat[j] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_timer_after);
             ctx->spare += TRACE;
         }
+    }
+    // Round 157: SetClippingRegion wrapped over its divert (the diverts loop
+    // above gave it the gc map; the real entry is the shim's, not the thunk's).
+    if (ctx->realSetClip && nImports > IMPORT_GC_SETCLIP && ctx->spare + TRACE <= ctx->spareEnd) {
+        iat[IMPORT_GC_SETCLIP] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_gc_setclip);
+        ctx->spare += TRACE;
     }
 
     if (nImports > IMPORT_CREATE_CONTEXT && IMPORT_CREATE_CONTEXT < kShimCount &&
