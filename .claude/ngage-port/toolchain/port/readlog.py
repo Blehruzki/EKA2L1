@@ -200,7 +200,7 @@ NOTES = {794: 'OLD VTABLE object / vtable / mark (2 doc, 3 app UI)', 795: '   ol
          696: 'PORT SCALER (round 150): 0x5CA0000f the CFbsBitmap entries found (8 ctor, 4 Create, 2 DataAddress, 1 DisplayMode); 0x5CA1mrrr bitmap made for mode m, Create result rrr; 0x5CA2000x fell back to DrawBitmap (1 the frame was not 4K or unreadable, 0 no bitmap); 0x5CA3wwhh the first frame scaled, dstW<<8 (low byte) | dstH (low byte); 0x5CA4wwhh the same, through the area-weighted filter; every 64 blits (round 151): 0x5CA5nnnn how many of them changed bitmap, 0x5CA6tttttt ticks (1/64 s) inside the scaler, 0x5CA7tttttt ticks elapsed, then the tick and each thread\'s CPU ms (0xC9); build 015 used euser 584 for the sums, which is not a counter',
          761: 'GAME.ID read (ReadFileSection): the real result, then 1 when the shim answered it',
          762: 'LEAVE raw: the hook sp, then stack words',
-         763: 'EXIT asked (0xE817 CEikAppUi::Exit from the game; 0xE818 HandleCommandL(EEikCmdExit), the red key; 0xE819 PrepareToExit answered with nothing, the Exit follows): the thread exits with reason 0',
+         763: 'EXIT asked (0xE817 CEikAppUi::Exit from the game; 0xE818 HandleCommandL(EEikCmdExit), the red key; 0xE819 PrepareToExit answered with nothing, the Exit follows; 0xE81E an engine QUIT: the block at state 5, or mailbox 6 then 1, closed by the launcher part): the thread exits with reason 0',
          764: 'FPA DOUBLES re-ordered for 9.x: register helpers hooked, then Math functions hooked',
          765: 'SCREEN MODES (window-gc title): w<<16|h of the whole-screen wrapper, then mode<<16|inset',
          766: 'VA_LIST re-pointed for FormatList: the game array, then the va pointer it held',

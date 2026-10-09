@@ -308,7 +308,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_OPEN = 897,    // what RFile::Open answered
        NOTE_FILE_PATH = 898,    // ... and the name it was asked for
        NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
-       NOTE_ENGINE = 640,       // an AirPlay engine title (GAME_ENGINE_LXCE): 0x1Exxxxxx the layout (imports, then relocations), 0x2E the thread's create result, 0x3E resumed, 0x4E bitgdi's Update resolved (bit 0), 0x5E/0x6E/0x7E a flip's samples, 0x8E the I3D shared memory made (the error; 0x8EBAD000 no CreateGlobal), 0xBE the hidden screen furniture made, 0xCE a ROM vtable shadowed (count, then the vtable), 0xDE the front end's port started by StartApp (the error), 0xDF that hook installed (bit 0 RProcess::Create found, bit 1 Resume), 0xEE a GAME_ENGINE_INIT function called (its image address), 0xFE the wrapper's root group declines the focus (bit 0: the export found), 0xAE CreateBitmapL("*") sent to the game's .mbm (the id), 0x9E the mailbox answered, 0x9F the state word sampled then the mailbox (0xe4), slots 1-3, and once the focus is handed, the focused group and ours (GAME_ENGINE_LAUNCHER)
+       NOTE_ENGINE = 640,       // an AirPlay engine title (GAME_ENGINE_LXCE): 0x1Exxxxxx the layout (imports, then relocations), 0x2E the thread's create result, 0x3E resumed, 0x4E bitgdi's Update resolved (bit 0), 0x5E/0x6E/0x7E a flip's samples, 0x8E the I3D shared memory made (the error; 0x8EBAD000 no CreateGlobal), 0xBE the hidden screen furniture made, 0xCE a ROM vtable shadowed (count, then the vtable), 0xCF one refused, its slot +8 not an Extension_ (then the vtable and that slot), 0xDE the front end's port started by StartApp (the error), 0xDF that hook installed (bit 0 RProcess::Create found, bit 1 Resume), 0xEE a GAME_ENGINE_INIT function called (its image address), 0xFE the wrapper's root group declines the focus (bit 0: the export found), 0xAE CreateBitmapL("*") sent to the game's .mbm (the id), 0x9E the mailbox answered, 0x9F the state word sampled then the mailbox (0xe4), slots 1-3, and once the focus is handed, the focused group and ours (GAME_ENGINE_LAUNCHER)
        NOTE_TICK_SHIM = 699,    // the tick seed read answered: the real tick it replaced (0xD1nnnnnn: slots diverted at load)
        NOTE_FILE_HEAD = 861,    // the first three words of a name descriptor
        NOTE_CARD_REFUSED = 862, // a write to the game card, refused as a card would
@@ -369,7 +369,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_SIZE_ASKED = 760,   // RFile::Size: the size, then the result
        NOTE_GAME_ID = 761,      // RFs::ReadFileSection: the real result, then 1 when the shim answered a missing Game.Id
        NOTE_LEAVE_RAW = 762,    // bench: a leave with LEAVE_RAW_REASON -- the hook's sp, then raw stack words from it
-       NOTE_EXIT_ASKED = 763,   // CEikAppUi::Exit() from the game: the thread exits with reason 0
+       NOTE_EXIT_ASKED = 763,   // CEikAppUi::Exit() from the game: the thread exits with reason 0 (0xE81E: an engine's QUIT -- the block at state 5, or mailbox 6 then 1 -- closed by the launcher part)
        NOTE_FPA = 764,          // doubles re-ordered for 9.x: the register helpers hooked, then the Math functions hooked
        NOTE_SCREEN_MODES = 765, // the window-gc title's screen: w<<16|h of the whole-screen wrapper, then mode<<16|inset
        NOTE_VA_LIST = 766,      // a FormatList re-pointed: the game's VA_LIST array, then the va pointer it held (first few only)
@@ -1424,6 +1424,7 @@ struct Context {
     u32 *hiddenFurniture;   // the stand-in Cba() and StatusPane() answer with
     u32 shadowFrom[16], shadowTo[16], shadowN;   // ROM vtables and their shadows (gate6_shadow)
     u32 shadowAdapter;      //   the slot +8 adapter they share
+    u32 extCBase, extCActive;   //   CBase::Extension_ and CActive::Extension_: the slot +8 a shadow may replace
     u32 processCreate, processResume;   // RProcess::Create and Resume, for gate6_start_frontend
     u16 ownMbm[48];         //   and the game's own .mbm, on its real drive
     u32 chunkCreateGlobal;  //   RChunk::CreateGlobal, as resolved
@@ -1435,6 +1436,9 @@ struct Context {
     u32 shmLogTicks;        //   ticks, for the watcher's samples
     u32 focusHanded;        //   the wrapper's group has declined the focus (engine_root_unfocusable)
     u32 mdaNoteWrites, mdaNoteCopies;   // GAME_MDA_RDEBUG: WriteL and BufferCopied notes so far
+    u32 realGetEvent;       // GAME_ENGINE_LXCE: RWsSession::GetEvent, as resolved (gate6_engine_get_event)
+    u32 cfgSavePending;     //   a hold's save, owed to the main thread
+    u32 engineQuitting;     //   GAME_ENGINE_LAUNCHER: the engine asked to quit (mailbox 6)
     u32 wsGetFocus, wsIdentifier;   //   for the watcher's samples: the focused group, ours
     u32 posts;              //   frames the engine flipped (its ERedraw events)
     u32 realSuspend;        // RThread::Suspend, the game's static import (round 130)
@@ -5589,6 +5593,30 @@ static u32 dsa_thunk(u8 *code, const void *cell, const void *observer, u32 targe
     return (u32)b;
 }
 
+// **Deleting the stand-in (E996).** The game holds the old-layout view of
+// its CDirectScreenAccess (dsaShadow), which had no vtable: word 0 was 0.
+// No title deleted it until Colin McRae's QUIT -- its teardown deletes the
+// object through slot +4 (GAME_CODE_PATCHES' "delete the CDirectScreenAccess",
+// moved there from GCC 2.x's +8) and read 0x4 off the null vtable, a
+// KERN-EXEC 3 on the engine's thread. So the stand-in gets a vtable whose
+// every slot is this: the real object ws32 made is deleted through its own
+// deleting destructor (EABI slot 1), and forgotten. Any slot does it, so a
+// GCC 2.x delete (+8, flag 3), a patched one (+4) and a complete destructor
+// (+0) all land here. The stand-in itself is the port's and stays.
+enum { DSA_SHADOW_VT_SLOTS = 8 };
+extern "C" void gate6_dsa_shadow_delete(void *, u32 flags, Context *c)
+{
+    typedef void (*Dtor)(void *);
+    u32 *real = c->dsaReal;
+    log_event(c, NOTE_DSA_RESTART, 0xDE7E0000u | (flags & 0xFFFFu));
+    if (!real)
+        return;
+    c->dsaReal = 0;
+    const u32 *rvt = (const u32 *)real[0];
+    if (rvt && rvt[1])
+        ((Dtor)rvt[1])(real);
+}
+
 // The game blits its finished frame with iGc->vtable[46](TPoint&, CFbsBitmap*)
 // -- by slot, not by name -- and the two vtables do not line up: the 7.0s
 // CFbsBitGc has 51 virtuals, 9.x has more and in a different order, starting
@@ -7903,6 +7931,10 @@ static void cfg_save(Context *c)
 // frame loop is not.
 static void hold_tick(Context *c)
 {
+    if (PICK_ON_HOLD && c->cfgSavePending && on_main_thread(c)) {
+        c->cfgSavePending = 0;
+        cfg_save(c);
+    }
     if (!PICK_ON_HOLD || !c->holdSince)
         return;
     const u32 now = user_tickcount();
@@ -10881,7 +10913,14 @@ static u32 hold_key(Context *c, const u32 *k, u32 type)
         c->holdSince = 0;
         c->holdCycled = 0;
         if (acted) {
-            cfg_save(c);                    // once per gesture, not per step
+            // Once per gesture, not per step -- and on the main thread, whose
+            // file server handle cfg_save uses: an engine title's keys arrive
+            // on its own thread (gate6_engine_get_event), so there the save
+            // waits for the next hold tick.
+            if (on_main_thread(c))
+                cfg_save(c);
+            else
+                c->cfgSavePending = 1;
             return 1;
         }
     } else if (c->holdCycled) {
@@ -13333,7 +13372,8 @@ extern "C" void *gate6_create_bitmap(void *env, const u32 *name, int id, Context
 //
 //   cmp r1, #3 ; bhi ext ; ldr r12, [r0] ; tst r1, #1 ; ldrne pc, [r12, #4]
 //   ldr pc, [r12, #0] ; ext: ldr r12, [r0] ; ldr pc, [r12, #-12]
-enum { SHADOW_SLOTS = 160, SHADOW_MAX = 16, SHADOW_ADAPTER_WORDS = 8, RESULT_THUNK_WORDS = 10 };
+enum { SHADOW_SLOTS = 160, SHADOW_MAX = 16, SHADOW_ADAPTER_WORDS = 8, RESULT_THUNK_WORDS = 10,
+       EUSER_CBASE_EXTENSION = 2123, EUSER_CACTIVE_EXTENSION = 2128 };
 static void shadow_adapter(Context *c)
 {
     if (c->shadowAdapter || c->spare + SHADOW_ADAPTER_WORDS * 4 > c->spareEnd)
@@ -13359,6 +13399,25 @@ extern "C" u32 *gate6_shadow(u32 *obj, Context *c)
         }
     if (c->shadowN >= (u32)SHADOW_MAX)
         return obj;
+    // Only a class whose slot +8 is an Extension_ (CBase's or CActive's):
+    // the adapter takes r1 <= 3 for a delete, which is safe only where the
+    // real slot +8 is a call whose first argument is a UID. Anything else is
+    // left alone, and said (0xCF, then the vtable and its slot +8).
+    // A DLL's vtable reaches euser's Extension_ through its own veneer,
+    // `ldr pc, [pc, #-4]` and the target (E999: CMsvSession's, msgs.dll; the
+    // ws32 and apgrfx classes the same), so the check looks through one.
+    u32 s8 = ((const u32 *)vp)[2];
+    if (s8 >= 0x80000000u && !(s8 & 3) && ((const u32 *)s8)[0] == 0xE51FF004u)
+        s8 = ((const u32 *)s8)[1];
+    if (!c->extCBase || (s8 != c->extCBase && s8 != c->extCActive)) {
+        note(c, 0xCF, 'C');
+        note(c, vp >> 16, 'v');
+        note(c, vp & 0xFFFFu, 'w');
+        log_event(c, NOTE_ENGINE, 0xCF000000u);
+        log_event(c, NOTE_ENGINE, vp);
+        log_event(c, NOTE_ENGINE, ((const u32 *)vp)[2]);
+        return obj;
+    }
     u32 *mem = (u32 *)user_allocz((SHADOW_SLOTS + 3) * 4);
     if (!mem)
         return obj;
@@ -13371,6 +13430,12 @@ extern "C" u32 *gate6_shadow(u32 *obj, Context *c)
     c->shadowTo[c->shadowN] = (u32)(mem + 3);
     c->shadowN++;
     obj[0] = (u32)(mem + 3);
+    // Also on RDebug: an engine's factories run on its own thread, whose
+    // records wait for a main-thread flush (E961). "G6C" the count, then the
+    // vtable's halves as "G6v"/"G6w".
+    note(c, c->shadowN, 'C');
+    note(c, vp >> 16, 'v');
+    note(c, vp & 0xFFFFu, 'w');
     log_event(c, NOTE_ENGINE, 0xCE000000u | (c->shadowN & 0xFFu));
     log_event(c, NOTE_ENGINE, vp);
     return obj;
@@ -13524,7 +13589,7 @@ static void engine_root_unfocusable(Context *c)
 #ifndef GAME_ENGINE_LAUNCHER
 #define GAME_ENGINE_LAUNCHER 0
 #endif
-enum { I3D_MAILBOX = 0xE4 / 4, I3D_ASK = 3, I3D_ANSWER = 4, SHM_WATCH_US = 500000, SHM_WATCH_TICKS = 4 };
+enum { I3D_MAILBOX = 0xE4 / 4, I3D_ASK = 3, I3D_ANSWER = 4, I3D_QUIT = 6, I3D_CLOSE_ME = 1, I3D_STATE_EXIT = 5, SHM_WATCH_US = 500000, SHM_WATCH_TICKS = 4 };
 
 extern "C" int gate6_engine_shm_watch(void *p)
 {
@@ -13555,6 +13620,33 @@ extern "C" int gate6_engine_shm_watch(void *p)
         c->focusHanded = 1;
         engine_root_unfocusable(c);
         log_block(c);
+    }
+    // **QUIT (E995).** The engine's way out is two requests: 6, spinning
+    // until the launcher clears the word (0x4492e8, no timeout), then 1,
+    // waiting up to 8 s for a clear (0x44926c) -- the time a launcher takes to
+    // close it. Unanswered, QUIT's Yes left a white screen and a live process
+    // for good. So 6 is cleared and remembered, and a 1 after it ends the
+    // game as the launcher would: the record flushed, the process exited with
+    // 0 (gate6_appui_exit's way), engine thread and all. A 1 with no 6 before
+    // it is the engine's other use of that request (three script opcodes) and
+    // is left to its timeout, as before. 0x9E logs each answer.
+    if (b[I3D_MAILBOX] == (u32)I3D_QUIT) {
+        log_event(c, NOTE_ENGINE, 0x9E000000u | (u32)I3D_QUIT);
+        log_block(c);
+        c->engineQuitting = 1;
+        b[I3D_MAILBOX] = 0;
+        return 1;
+    }
+    // And once the engine has gone -- its teardown done, its slot cleared,
+    // the state word set to 5, the block's "everyone exits" (the front end
+    // quits on it, 0x1098; E1000: after the 6 was answered the engine ended
+    // this way and never posted the 1) -- the launcher ends the game too.
+    if (b[2] == (u32)I3D_STATE_EXIT ||
+        (b[I3D_MAILBOX] == (u32)I3D_CLOSE_ME && c->engineQuitting)) {
+        log_event(c, NOTE_EXIT_ASKED, 0xE81E);
+        log_block(c);
+        box_flush(c);
+        user_exit(0);
     }
     if (b[I3D_MAILBOX] != (u32)I3D_ASK) {
         c->shmTicks = 0;
@@ -13622,6 +13714,29 @@ extern "C" int gate6_start_frontend(void *session, const void *cmdLine, Context 
 #endif
 }
 
+// **Hold C on an engine title.** The picture-mode picker hears C through
+// the wrapper's key handlers (hold_key), and since the engine's own window
+// group took the focus (engine_root_unfocusable) no key reaches them: E991,
+// C held 4 s on Colin's menu, no step and no gate6-6r66.cfg. The engine reads
+// its keys itself with RWsSession::GetEvent (old ws32 118), so the port reads
+// them there: after the real call, a key event with C's scan code goes
+// through hold_key, and one the hold has acted on becomes EEventNull, which
+// the engine's switch ignores (0x4a7724). A TWsEvent is iType, iHandle, an
+// eight-byte iTime, then the TKeyEvent (the engine reads it at +0x10). This
+// runs on the engine's thread: the hold's clock is the main thread's 100 ms
+// timer (hold_timer_start, from engine_start), and the save waits for it.
+extern "C" void gate6_engine_get_event(void *session, u32 *ev, Context *c)
+{
+    typedef void (*GetEvent)(void *, u32 *);
+    enum { EEventNull = 0, EEventKey = 1, EEventKeyDown = 3 };
+    ((GetEvent)c->realGetEvent)(session, ev);
+    if (!PICK_ON_HOLD || !ev || ev[0] < (u32)EEventKey || ev[0] > (u32)EEventKeyDown)
+        return;
+    const u32 *k = ev + 4;
+    if (k[1] == (u32)HOLD_KEY && hold_key(c, k, ev[0]))
+        ev[0] = (u32)EEventNull;
+}
+
 static void engine_start(Context *c)
 {
     // RThread::Create(name, fn, stack, RAllocator *heap, TAny *ptr,
@@ -13633,6 +13748,8 @@ static void engine_start(Context *c)
     typedef void (*ResumeFn)(const u32 *self);
     if (!c->threadCreateFn || !c->realResume) PANIC(CAT_LIB, -60);
     engine_shared_memory(c);
+    if (PICK_ON_HOLD && c->realGetEvent)
+        hold_timer_start(c);                // the hold's clock, on this thread (gate6_engine_get_event)
     if (GAME_ENGINE_LAUNCHER && c->engineShmBlock) {
         void *t = cperiodic_newl(0);
         if (t) {
@@ -15035,8 +15152,16 @@ static u32 load_and_start()
         ctx->dsaShadow = (u32 *)user_allocz(OLD_DSA_BYTES);
         u32 *gcVt = (u32 *)user_allocz((2 + OLD_GC_SLOTS) * 4);
         ctx->fakeGc = (u32 *)user_allocz(4);
-        if (!ctx->dsaShadow || !gcVt || !ctx->fakeGc) PANIC(CAT_MEM, -37);
+        u32 *shadowVt = (u32 *)user_allocz(DSA_SHADOW_VT_SLOTS * 4);
+        if (!ctx->dsaShadow || !gcVt || !ctx->fakeGc || !shadowVt) PANIC(CAT_MEM, -37);
         u8 *gcRoom = ctx->spare;
+        if (gcRoom + TRACE > ctx->spareEnd)
+            PANIC(CAT_MEM, -38);
+        const u32 del = ctx_thunk(gcRoom, ctx, (u32)&gate6_dsa_shadow_delete);
+        gcRoom += TRACE;
+        for (u32 i = 0; i < (u32)DSA_SHADOW_VT_SLOTS; i++)
+            shadowVt[i] = del;
+        ctx->dsaShadow[0] = (u32)shadowVt;  // a delete through any slot (gate6_dsa_shadow_delete)
         if (gcRoom + OLD_GC_SLOTS * GC_THUNK_BYTES > ctx->spareEnd)
             PANIC(CAT_MEM, -38);
         for (u32 i = 0; i < OLD_GC_SLOTS; i++)
@@ -15149,10 +15274,19 @@ static u32 load_and_start()
         ctx->spare += TRACE;
     }
     // ROM objects from factories, shadowed for a GCC 2.x delete (gate6_shadow).
+    // E997: Colin McRae's QUIT tears down a CMsvSession (OpenSyncL) and a
+    // CWsScreenDevice the old way, and its startup deletes a
+    // CApaWindowGroupName so; the rest are the engine's other factories.
     {
-        const u32 idx[4] = { IMPORT_SHADOW_PERIODIC, IMPORT_SHADOW_BUFFLAT,
-                             IMPORT_SHADOW_DESC8FLAT, IMPORT_SHADOW_DESC16FLAT };
-        for (u32 k = 0; k < 4; k++) {
+        ctx->extCBase = (u32)rlibrary_lookup(&ctx->euser, EUSER_CBASE_EXTENSION);
+        ctx->extCActive = (u32)rlibrary_lookup(&ctx->euser, EUSER_CACTIVE_EXTENSION);
+        const u32 idx[] = { IMPORT_SHADOW_PERIODIC, IMPORT_SHADOW_BUFFLAT,
+                            IMPORT_SHADOW_DESC8FLAT, IMPORT_SHADOW_DESC16FLAT,
+                            IMPORT_SHADOW_MSVSESSION, IMPORT_SHADOW_SCREENDEVICE,
+                            IMPORT_SHADOW_WGNAME, IMPORT_SHADOW_FILEMAN,
+                            IMPORT_SHADOW_CMDLINE, IMPORT_SHADOW_SDPAGENT,
+                            IMPORT_SHADOW_SDPPATTERN };
+        for (u32 k = 0; k < sizeof idx / sizeof idx[0]; k++) {
             const u32 j = idx[k];
             if (j >= nImports || j >= kShimCount || (kShimTable[j] >> 24) != KIND_CALL ||
                 ctx->spare + RESULT_THUNK_WORDS * 4 + SHADOW_ADAPTER_WORDS * 4 > ctx->spareEnd)
@@ -15192,6 +15326,13 @@ static u32 load_and_start()
         ctx->processResume = (u32)rlibrary_lookup(&ctx->euser, EUSER_PROCESS_RESUME);
         iat[IMPORT_START_APP] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_start_frontend);
         log_event(ctx, NOTE_ENGINE, 0xDF000000u | (ctx->processCreate ? 1u : 0u) | (ctx->processResume ? 2u : 0u));
+        ctx->spare += TRACE;
+    }
+    // An engine's RWsSession::GetEvent: hold C for the picture modes (gate6_engine_get_event).
+    if (GAME_ENGINE_LXCE && IMPORT_WS_GET_EVENT < nImports && IMPORT_WS_GET_EVENT < kShimCount &&
+        (kShimTable[IMPORT_WS_GET_EVENT] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->realGetEvent = iat[IMPORT_WS_GET_EVENT];
+        iat[IMPORT_WS_GET_EVENT] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_engine_get_event);
         ctx->spare += TRACE;
     }
     // An engine's flip: UserSvr::AddEvent(ERedraw) posts the frame (gate6_engine_add_event).

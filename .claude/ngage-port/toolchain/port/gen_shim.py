@@ -688,6 +688,7 @@ HOOKS = {
     'IMPORT_RWIN_END_REDRAW':         ('ws32', 103),    # RWindow::EndRedraw()
     'IMPORT_DEF_MODE_COLORS':         ('ws32', 300),    # RWsSession::GetDefModeMaxNumColors: the N-Gage's EColor4K for a 16-bit title (Colin McRae, E892)
     'IMPORT_ADD_EVENT':               ('euser', 9),     # UserSvr::AddEvent: an AirPlay engine's ERedraw is its frame done (Colin McRae, E908)
+    'IMPORT_WS_GET_EVENT':            ('ws32', 118),    # RWsSession::GetEvent: an AirPlay engine reads its own keys; hold C is read there (Colin McRae, E991)
     'IMPORT_START_APP':               ('apgrfx', 96),   # RApaLsSession::StartApp: an AirPlay engine starts its front end, whose port is another loader (Colin McRae, E959)
     'IMPORT_CHUNK_CREATE_GLOBAL':     ('euser', 275),   # RChunk::CreateGlobal: the port makes an AirPlay engine's I3D shared memory, as its launcher did (Colin McRae, E914)
     'IMPORT_CREATE_BITMAP':           ('eikcore', 44),  # CEikonEnv::CreateBitmapL: "*" is the game's own .mbm, not the loader's (Colin McRae's front end, E952)
@@ -699,6 +700,13 @@ HOOKS = {
     'IMPORT_SHADOW_BUFFLAT':          ('euser', 733),   # CBufFlat::NewL(int)
     'IMPORT_SHADOW_DESC8FLAT':        ('bafl', 162),    # CDesC8ArrayFlat::CDesC8ArrayFlat(int)
     'IMPORT_SHADOW_DESC16FLAT':       ('bafl', 166),    # CDesC16ArrayFlat::CDesC16ArrayFlat(int)
+    'IMPORT_SHADOW_MSVSESSION':       ('msgs', 151),    # CMsvSession::OpenSyncL(MMsvSessionObserver &): deleted the old way at QUIT (Colin, E997)
+    'IMPORT_SHADOW_SCREENDEVICE':     ('ws32', 276),    # CWsScreenDevice::CWsScreenDevice(RWsSession &) -- a constructor, returns this
+    'IMPORT_SHADOW_WGNAME':           ('apgrfx', 63),   # CApaWindowGroupName::NewL(const RWsSession &, int)
+    'IMPORT_SHADOW_FILEMAN':          ('efsrv', 106),   # CFileMan::NewL(RFs &)
+    'IMPORT_SHADOW_CMDLINE':          ('apparc', 36),   # CApaCommandLine::NewLC()
+    'IMPORT_SHADOW_SDPAGENT':         ('sdpagent', 6),  # CSdpAgent::NewL(MSdpAgentNotifier &, const TBTDevAddr &)
+    'IMPORT_SHADOW_SDPPATTERN':       ('sdpdatabase', 58),  # CSdpSearchPattern::NewL()
     'IMPORT_HANDLE_CLOSE':            ('euser', 172),   # RHandleBase::Close(): the handle word logged before the call (round 136: a worker's Close died KERN-EXEC 0 on the N95)
     'IMPORT_DELETE_OP':               ('euser', 1504),
     'IMPORT_VEC_DELETE_OP':           ('euser', 1506),

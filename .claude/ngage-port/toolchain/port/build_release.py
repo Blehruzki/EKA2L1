@@ -100,6 +100,37 @@ def game_files(root, scratch, target_dir, rename, scramble):
     return out
 
 
+def engine_image(game, tree, scratch, target_dir, have):
+    """-> [(local, target)]: an AirPlay engine title's `<stem>.lxe`, if the
+    tree does not already carry it.
+
+    The loader runs the engine from `<stem>.lxe`, the image lxce.py inflates
+    out of the game's own `<stem>.nax` (gate6.cpp, beside kLayoutApps). A card
+    dump has the `.nax` and no `.lxe`; the bench tree had one only because a
+    bench run left it there. So the package makes its own, and a `.lxe` that
+    is already in the tree must be that same inflation -- a stale one would
+    ship an engine the code patches were not measured against.
+    """
+    if picture.setting(game, 'GAME_ENGINE_LXCE') not in ('1',):
+        return []
+    import lxce
+    st = stem(game)
+    nax = os.path.join(tree, st + '.nax')
+    if not os.path.exists(nax):
+        sys.exit('%s: an engine title with no %s.nax in %s' % (game, st, tree))
+    raw = lxce.unpack(nax)
+    lxe = os.path.join(tree, st + '.lxe')
+    if (st + '.lxe') in have:
+        if open(lxe, 'rb').read() != raw:
+            sys.exit('%s: %s is not the inflation of %s.nax -- remove it or regenerate it'
+                     % (game, lxe, st))
+        return []
+    local = os.path.join(scratch, st + '.lxe')
+    open(local, 'wb').write(raw)
+    print('engine image: %s.lxe inflated from %s.nax (%d bytes)' % (st, st, len(raw)))
+    return [(local, target_dir + '\\' + st + '.lxe')]
+
+
 def data_package(out, game, tree=None):
     """The game's own files in a package of their own, for a split install.
 
@@ -121,6 +152,7 @@ def data_package(out, game, tree=None):
     extra = game_files(tree, out, target_dir,
                        {st + '.app': st + '.bin'},
                        {st + '.app': (SCRAMBLE_KEY, SCRAMBLE_BYTES)})
+    extra += engine_image(game, tree, out, target_dir, set(os.listdir(tree)))
     name = picture.setting(game, 'GAME_APP_NAME') or 'gate6'
     dst = os.path.join(out, name + '_data.sis')
     mksis.build(dst, int(uid, 0), caption + ' data', vendor, extra)
@@ -148,6 +180,7 @@ def main(out='.', game=DEFAULT_GAME, tree=None, loader_only=False):
         extra = game_files(tree, out, target_dir,
                            {st + '.app': st + '.bin'},
                            {st + '.app': (SCRAMBLE_KEY, SCRAMBLE_BYTES)})
+        extra += engine_image(game, tree, out, target_dir, set(os.listdir(tree)))
         total = sum(os.path.getsize(s) for s, _t in extra)
         print('game files: %d, %.1f MB' % (len(extra), total / 1e6))
         for _local, target in extra:

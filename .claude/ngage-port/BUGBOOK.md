@@ -1680,3 +1680,48 @@ callback table as GCC 2.x and expected a crash) loses to one PC trace.
 Every title's captures carry an empty 44.1 kHz stereo `stream00`; it is not
 the title's.*
 
+### 13.r Hold C dead on an engine title (E991-E993)
+The picker hears C through the wrapper's key handlers; once the engine's own
+window group took the focus (13.l) none reached them -- E991, no step, no
+cfg. **Fix:** the engine's RWsSession::GetEvent (old ws32 118) is wrapped:
+a key event with C's scan code goes through hold_key, and one the hold acted
+on becomes EEventNull (`gate6_engine_get_event`). It runs on the engine's
+thread, so the clock is the main thread's 100 ms hold timer and the save is
+deferred to it (`cfgSavePending`): cfg_save's file handle is the main
+thread's. E992: six steps in a 4 s hold, saved; E993: read back at launch.
+*Lesson: a fix that moves where input goes moves every feature that listens
+for input. The focus hand-over (E969) broke this and nothing said so until
+the rule was tested by hand.*
+
+### 13.s QUIT leaves a white screen, then three crashes (E994-E1001)
+Yes on QUIT posted 6 in the I3D mailbox and spun for the launcher to clear
+it; unanswered, the game hung white. Answered (the launcher part clears 6),
+the engine's teardown ran into three bugs, one after another:
+1. **Its DSA delete read a null vtable** (0x4a8044, KERN-EXEC 3): the game
+   holds the port's old-layout stand-in for the CDirectScreenAccess, which
+   had no vtable -- no title had deleted it, the Asphalts leave by
+   User::Exit. **Fix (shared):** the stand-in gets a vtable whose every slot
+   deletes the real object and forgets it (`gate6_dsa_shadow_delete`).
+2. **CMsvSession deleted the GCC 2.x way** (+8 on a ROM CActive:
+   CActive::Extension_ writing 0): 13.n's bug on a factory the shadow list
+   lacked. **Fix (shared):** the list widened -- CMsvSession::OpenSyncL,
+   CWsScreenDevice's constructor, CApaWindowGroupName::NewL (deleted so at
+   startup too), CFileMan, CApaCommandLine, the SDP pair -- behind a check
+   that the class's slot +8 is CBase's or CActive's Extension_.
+3. **The check refused them all** (E999): a DLL's vtable reaches euser's
+   Extension_ through its own veneer, `ldr pc, [pc, #-4]`. The check looks
+   through one.
+Then the engine finishes -- save written, block at state 5, "everyone
+exits" -- and **the launcher part ends the process on state 5** (0xE81E);
+the 6-then-1 path the engine also has is kept. E1001: a clean exit 0.
+*Lesson: a path no run had taken (the game's own exit) held three latent
+bugs in shared code. Walk every exit the game offers before a round.*
+
+### 13.t The release had no engine image (E990)
+The package shipped `6r66.lxe` only because a bench run had left it in the
+game folder; from a card dump it would have shipped none and the phone would
+have had nothing to run. **Fix:** build_release.py inflates it from
+`<stem>.nax` for an engine title, and refuses a `.lxe` in the tree that is
+not that inflation. E990 installed the package with the emulator's installer
+on an emptied E: and C: and played.
+

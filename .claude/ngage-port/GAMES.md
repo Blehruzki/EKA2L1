@@ -215,7 +215,10 @@ difference breaks; the fix is shared unless named.
   engine's own scancode map, shots/e981-colin-driving.png), with sound: the
   engine's own thread plays 16 kHz mono straight into the 9.x stream, music
   with the engine note mixed in, nothing from the port (E982-E986, the
-  paced capture backend). Open: sound on a phone; the multiplayer side, which
+  paced capture backend). Also benched: the N80 firmware (S60 3.0, 352x416:
+  menus, keys, a stage, sound; loads slower, E987-E989); the release package
+  installed with the emulator's installer on an emptied E: and C: (E990);
+  hold C (E992-E993); QUIT to a clean exit (E1001). Open: sound on a phone; the multiplayer side, which
   may start the front end (`games/colin2` reaches its UI and frame timer
   alone, E958, and quits there by design without a block); whether the
   focus hand-over survives a phone's app switch; its `.cwa` protection; the
@@ -244,7 +247,7 @@ hardware coverage above with DEVICES.md's phone table.
 | code | 615 KB | 1556 KB | 970 KB | 1371 KB | 25 KB | 4 KB | 224 KB |
 | imports / DLLs | 391 / 21 | 462 / 21 | 354 / 20 | 532 / 21 | 181 / 7 | 0 / 0 | 583 / 22 |
 | imports the shim leaves as stubs | 14 | 14 | 8 | 7 | 7 | 11 | 67 |
-| hooks present / defined | 63 / 130 | 69 / 130 | 60 / 130 | 88 / 130 | 27 / 130 | 43 / 130 | 45 / 130 |
+| hooks present / defined | 63 / 138 | 69 / 138 | 60 / 138 | 89 / 138 | 27 / 138 | 51 / 138 | 46 / 138 |
 | diversions (old object to wrapper) | 14 | 14 | 14 | 15 | 10 | 2 | 13 |
 | game files / size | 7 / 9.9 MB | 122 / 27.6 MB | 7 / 15.3 MB | 1075 / 27.4 MB | 2 / 0.0 MB | 28 / 32.4 MB | 28 / 32.4 MB |
 | split data package | no | no | no | yes | no | no | no |

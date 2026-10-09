@@ -127,9 +127,16 @@ enum {
     IMPORT_SERVER_STARTL               = 65535,   // absent
     IMPORT_SET_AUTO_UPDATE             = 65535,   // absent
     IMPORT_SHADOW_BUFFLAT              = 65535,   // absent
+    IMPORT_SHADOW_CMDLINE              =     6,
     IMPORT_SHADOW_DESC16FLAT           = 65535,   // absent
     IMPORT_SHADOW_DESC8FLAT            = 65535,   // absent
+    IMPORT_SHADOW_FILEMAN              =    37,
+    IMPORT_SHADOW_MSVSESSION           =   251,
     IMPORT_SHADOW_PERIODIC             =   152,
+    IMPORT_SHADOW_SCREENDEVICE         =   317,
+    IMPORT_SHADOW_SDPAGENT             =   254,
+    IMPORT_SHADOW_SDPPATTERN           =   263,
+    IMPORT_SHADOW_WGNAME               =     1,
     IMPORT_START_APP                   =     3,
     IMPORT_SUBDF3                      = 65535,   // absent
     IMPORT_SYSTEM_GC                   = 65535,   // absent
@@ -145,6 +152,7 @@ enum {
     IMPORT_USER_FREE_OP                = 65535,   // absent
     IMPORT_VEC_DELETE_OP               =   219,
     IMPORT_WINDOW                      = 65535,   // absent
+    IMPORT_WS_GET_EVENT                =   295,
 };
 
 // Imports that are a method on CCoeEnv. The game holds a copy of the
