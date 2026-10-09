@@ -73,6 +73,15 @@ EABI's (`CWindowGc` Activate/Deactivate/BitBlt and five deleting
 destructors, E921), and its flip made always direct (E931). Draws into a
 176x184 EColor4K `CFbsBitmap`, copies it to the `ScreenInfo` address + 0x20
 and says `UserSvr::AddEvent(ERedraw)`, which the port answers with a post.
+The port also plays the N-Gage **launcher**, I3D participant 2
+(`GAME_ENGINE_LAUNCHER`): it answers the engine's mailbox and hands the
+engine's own window group the focus, since the engine reads its keys itself
+(E962-E971). And it calls one engine function the N-Gage never needed,
+0x45b0b0, which sets the block interpreter's 24-bit link base for an engine
+loaded above 16 MB (`GAME_ENGINE_INIT`, E965). The game's **front end**,
+`6r66_2.app`, is a second loader (`games/colin2`, `gate6col2`, I3D
+participant 3), started by the engine's StartApp hook
+(`GAME_ENGINE_FRONTEND_EXE`); single player never asks for it (E962).
 Data: `cmr05.dat` and per-country `.dz` packs, opened through estlib.
 Protection: Codewave (`6r66.cwa`, absent on the bench).
 
@@ -197,14 +206,16 @@ difference breaks; the fix is shared unless named.
   observation in round 148 (saves work); which call had failed was never
   established.
 - **One:** the N73 (12.ag), build 028 waiting on the phone.
-- **Colin McRae 2005:** the engine runs on the bench to its splash
-  (IDEAWORKS3D!, shots/e946-colin-ideaworks-splash.png), then starts the
-  game's **front end**, `6r66_2.app` -- an ordinary N-Gage Avkon application
-  (583 imports, 67 unanswered) -- and waits for it in the I3D block's mailbox
-  (offset 0xe4, E950). Nothing runs that app yet; answered blind, the engine
-  dies in its script (E951). Next: port the front end as a second loader and
-  send the engine's `StartApp` to it. Also not yet: input, sound, the
-  window-gc path's white (E922-E930), its `.cwa` protection, a phone.
+- **Colin McRae 2005:** plays on the bench, menu to stage: the engine's own
+  main menu, the attract demo, and with keys RALLY -> mode, difficulty,
+  driver, tag, car, transmission, country, stage, weather, service area,
+  RACE -> Finland stage 1 running with its HUD (E966-E976;
+  shots/e966-colin-menu.png, e976-colin-stage.png). Open: the throttle key
+  (held Up and 5 gave 0-2 MPH, E976); sound; the multiplayer side, which
+  may start the front end (`games/colin2` reaches its UI and frame timer
+  alone, E958, and quits there by design without a block); whether the
+  focus hand-over survives a phone's app switch; its `.cwa` protection; the
+  window-gc path's white (E922-E930); a phone.
 
 ## For the write-up
 
@@ -220,163 +231,172 @@ hardware coverage above with DEVICES.md's phone table.
 <!-- titles.py begin -->
 ### Identity, image and package
 
-|  | Asphalt UGT | Asphalt 2 | Ashen | One | ngtest | Colin McRae 2005 |
-| --- | --- | --- | --- | --- | --- | --- |
-| stem | `6r67` | `6rbc` | `6r21` | `6r58` | `ngtest` | `6r66` |
-| loader app | `gate6a1` | `gate6` | `gate6ashe` | `gate6one` | `gate6ngte` | `gate6coli` |
-| build in the tree | 030 | 196 | 016 | 028 | 002 | 001 |
-| game UID3 | 0x101fd3fc | 0x101fd42d | 0x101fd3e9 | 0x101fd409 | 0x10205e7a | 0x00000000 |
-| code | 615 KB | 1556 KB | 970 KB | 1371 KB | 25 KB | 4 KB |
-| imports / DLLs | 391 / 21 | 462 / 21 | 354 / 20 | 532 / 21 | 181 / 7 | 0 / 0 |
-| imports the shim leaves as stubs | 14 | 14 | 8 | 7 | 7 | 11 |
-| hooks present / defined | 63 / 122 | 68 / 122 | 59 / 122 | 87 / 122 | 27 / 122 | 41 / 122 |
-| diversions (old object to wrapper) | 14 | 14 | 14 | 15 | 10 | 2 |
-| game files / size | 7 / 9.9 MB | 122 / 27.6 MB | 7 / 15.3 MB | 1075 / 27.4 MB | 2 / 0.0 MB | 28 / 32.4 MB |
-| split data package | no | no | no | yes | no | no |
-| N-Gage-only libraries | bluetooth, etel, gamecomms, msgs, nokiafc | arenaframework, bluetooth, etel, gamecomms, gameutils, nokiafc | arenafoundation, bluetooth, gamecomms, insock, msgs, nokiafc, plpvariant, sysagt | arenaframework, etel, gamecomms, gameutils, nokiafc, plpvariant | -- | -- |
+|  | Asphalt UGT | Asphalt 2 | Ashen | One | ngtest | Colin McRae 2005 | Colin McRae front end |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| stem | `6r67` | `6rbc` | `6r21` | `6r58` | `ngtest` | `6r66` | `6r66_2` |
+| loader app | `gate6a1` | `gate6` | `gate6ashe` | `gate6one` | `gate6ngte` | `gate6coli` | `gate6col2` |
+| build in the tree | 030 | 196 | 016 | 028 | 002 | 001 | 001 |
+| game UID3 | 0x101fd3fc | 0x101fd42d | 0x101fd3e9 | 0x101fd409 | 0x10205e7a | 0x00000000 | 0x101fd417 |
+| code | 615 KB | 1556 KB | 970 KB | 1371 KB | 25 KB | 4 KB | 224 KB |
+| imports / DLLs | 391 / 21 | 462 / 21 | 354 / 20 | 532 / 21 | 181 / 7 | 0 / 0 | 583 / 22 |
+| imports the shim leaves as stubs | 14 | 14 | 8 | 7 | 7 | 11 | 67 |
+| hooks present / defined | 63 / 130 | 69 / 130 | 60 / 130 | 88 / 130 | 27 / 130 | 43 / 130 | 45 / 130 |
+| diversions (old object to wrapper) | 14 | 14 | 14 | 15 | 10 | 2 | 13 |
+| game files / size | 7 / 9.9 MB | 122 / 27.6 MB | 7 / 15.3 MB | 1075 / 27.4 MB | 2 / 0.0 MB | 28 / 32.4 MB | 28 / 32.4 MB |
+| split data package | no | no | no | yes | no | no | no |
+| N-Gage-only libraries | bluetooth, etel, gamecomms, msgs, nokiafc | arenaframework, bluetooth, etel, gamecomms, gameutils, nokiafc | arenafoundation, bluetooth, gamecomms, insock, msgs, nokiafc, plpvariant, sysagt | arenaframework, etel, gamecomms, gameutils, nokiafc, plpvariant | -- | -- | sysagt |
 
 ### What the imports say
 
 `x` where the title imports a call of that kind (any overload). Names as gen_shim gives them; the direct-screen-access calls go by an older name and are not listed (the Asphalts and One use it, Ashen does not).
 
-| call | Asphalt UGT | Asphalt 2 | Ashen | One | ngtest | Colin McRae 2005 |
-| --- | --- | --- | --- | --- | --- | --- |
-| display: framebuffer poll | x | x |  | x |  |  |
-| display: screen device update | x | x |  | x |  |  |
-| display: clipping region | x | x |  | x |  |  |
-| display: bitmap rendering | x | x | x |  |  |  |
-| display: window gc |  |  | x |  | x |  |
-| display: HAL display query | x | x |  |  |  |  |
-| control: DrawNow |  |  |  | x |  |  |
-| control: SetExtentToWholeScreen |  |  |  | x |  |  |
-| control: DrawableWindow |  |  | x |  |  |  |
-| sound: audio stream | x | x | x | x | x |  |
-| threads: RThread::Create | x | x | x | x | x |  |
-| threads: RThread::Open by name | x | x |  | x |  |  |
-| threads: RThread::Suspend |  | x |  | x |  |  |
-| threads: RSemaphore | x | x | x | x |  |  |
-| threads: RMutex |  |  |  | x |  |  |
-| threads: RCriticalSection |  | x |  |  |  |  |
-| timing: CTimer | x | x | x | x |  |  |
-| timing: CPeriodic |  | x | x | x |  |  |
-| timing: CIdle |  |  | x |  |  |  |
-| timing: RTimer |  |  | x | x | x |  |
-| files: RFile::Replace |  | x | x | x | x |  |
-| files: RFile::Seek | x | x |  | x |  |  |
-| files: RFs::MkDir | x | x | x | x |  |  |
-| files: zlib uncompress | x |  |  |  |  |  |
-| maths: Math:: (doubles) |  | x | x | x |  |  |
-| maths: TLex16::Val(double) |  |  |  | x |  |  |
-| maths: TRealFormat |  |  |  | x |  |  |
-| text: Format |  | x | x | x | x |  |
-| text: FormatList |  |  | x |  | x |  |
-| other: RLibrary |  | x |  | x |  |  |
-| other: RChunk |  | x |  | x |  |  |
-| other: sockets | x | x | x | x |  |  |
+| call | Asphalt UGT | Asphalt 2 | Ashen | One | ngtest | Colin McRae 2005 | Colin McRae front end |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| display: framebuffer poll | x | x |  | x |  |  |  |
+| display: screen device update | x | x |  | x |  |  |  |
+| display: clipping region | x | x |  | x |  |  |  |
+| display: bitmap rendering | x | x | x |  |  |  |  |
+| display: window gc |  |  | x |  | x |  | x |
+| display: HAL display query | x | x |  |  |  |  |  |
+| control: DrawNow |  |  |  | x |  |  | x |
+| control: SetExtentToWholeScreen |  |  |  | x |  |  |  |
+| control: DrawableWindow |  |  | x |  |  |  |  |
+| sound: audio stream | x | x | x | x | x |  |  |
+| threads: RThread::Create | x | x | x | x | x |  |  |
+| threads: RThread::Open by name | x | x |  | x |  |  |  |
+| threads: RThread::Suspend |  | x |  | x |  |  |  |
+| threads: RSemaphore | x | x | x | x |  |  | x |
+| threads: RMutex |  |  |  | x |  |  |  |
+| threads: RCriticalSection |  | x |  |  |  |  |  |
+| timing: CTimer | x | x | x | x |  |  | x |
+| timing: CPeriodic |  | x | x | x |  |  | x |
+| timing: CIdle |  |  | x |  |  |  |  |
+| timing: RTimer |  |  | x | x | x |  | x |
+| files: RFile::Replace |  | x | x | x | x |  |  |
+| files: RFile::Seek | x | x |  | x |  |  |  |
+| files: RFs::MkDir | x | x | x | x |  |  | x |
+| files: zlib uncompress | x |  |  |  |  |  |  |
+| maths: Math:: (doubles) |  | x | x | x |  |  |  |
+| maths: TLex16::Val(double) |  |  |  | x |  |  |  |
+| maths: TRealFormat |  |  |  | x |  |  |  |
+| text: Format |  | x | x | x | x |  |  |
+| text: FormatList |  |  | x |  | x |  |  |
+| other: RLibrary |  | x |  | x |  |  | x |
+| other: RChunk |  | x |  | x |  |  | x |
+| other: sockets | x | x | x | x |  |  |  |
 
 ### cone `CCoeControl` calls, for S60 3.0
 
 Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on the game's old-layout control reads a flags pointer that is not there (DEVICES.md); **d** marks a call diverted to the wrapper. An undiverted one is safe only if it reaches cone through a slot the port routes (base-class veneers) or never runs on the old object: check on the N80 bench.
 
-| method | Asphalt UGT | Asphalt 2 | Ashen | One | ngtest | Colin McRae 2005 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `ActivateL()` | d | d | d | d | d |  |
-| `CCoeControl()` | x | x | x | x | x |  |
-| `ComponentControl(int) const` | x | x | x | x | x |  |
-| `ConstructFromResourceL(TResourceReader &)` | x | x | x | x | x |  |
-| `CountComponentControls() const` | x | x | x | x | x |  |
-| `CreateWindowL()` | x | x | x | x | x |  |
-| `Draw(const TRect &) const` |  |  | x | x |  |  |
-| `DrawNow() const` |  |  |  | d |  |  |
-| `DrawableWindow() const` |  |  | d |  |  |  |
-| `FocusChanged(TDrawNow)` | x | x | x | x | x |  |
-| `GetColorUseListL(CArrayFix<TCoeColorUse> &) const` | x | x | x | x | x |  |
-| `GetHelpContext(TCoeHelpContext &) const` | x | x | x | x | x |  |
-| `HandlePointerBufferReadyL()` | x | x | x | x | x |  |
-| `HandlePointerEventL(const TPointerEvent &)` | x | x | x | x | x |  |
-| `HandleResourceChange(int)` | x | x | x | x | x |  |
-| `HasBorder() const` | x | x | x | x | x |  |
-| `InputCapabilities() const` | x | x |  | x | x |  |
-| `IsFocused() const` | d | d |  | d |  |  |
-| `MakeVisible(int)` | d | d | d | d | d |  |
-| `MinimumSize()` | x | x | x | x | x |  |
-| `OfferKeyEventL(const TKeyEvent &, TEventCode)` |  |  | x | x | x |  |
-| `PositionChanged()` | x | x | x | x | x |  |
-| `PrepareForFocusGainL()` | x | x | x | x | x |  |
-| `PrepareForFocusLossL()` | x | x | x | x | x |  |
-| `Rect() const` |  |  | d |  | d |  |
-| `Reserved_2()` | x | x | x | x | x |  |
-| `SetAdjacent(int)` | x | x | x | x | x |  |
-| `SetContainerWindowL(const CCoeControl &)` | d | d | d | d | d |  |
-| `SetDimmed(int)` | x | x | x | x | x |  |
-| `SetExtentToWholeScreen()` |  |  |  | d |  |  |
-| `SetNeighbor(CCoeControl *)` | x | x | x | x | x |  |
-| `SetRect(const TRect &)` |  |  |  |  | x |  |
-| `SizeChanged()` | x | x | x | x | x |  |
-| `SystemGc() const` |  |  | x |  | x |  |
-| `Window() const` | x | x |  | x |  |  |
-| `WriteInternalStateL(RWriteStream &) const` | x | x | x | x | x |  |
-| `~CCoeControl()` | x | x | x | x | x |  |
+| method | Asphalt UGT | Asphalt 2 | Ashen | One | ngtest | Colin McRae 2005 | Colin McRae front end |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ActivateL()` | d | d | d | d | d |  | d |
+| `CCoeControl()` | x | x | x | x | x |  | x |
+| `ComponentControl(int) const` | x | x | x | x | x |  | x |
+| `ConstructFromResourceL(TResourceReader &)` | x | x | x | x | x |  | x |
+| `CountComponentControls() const` | x | x | x | x | x |  | x |
+| `CreateWindowL()` | x | x | x | x | x |  | x |
+| `Draw(const TRect &) const` |  |  | x | x |  |  | x |
+| `DrawDeferred() const` |  |  |  |  |  |  | x |
+| `DrawNow() const` |  |  |  | d |  |  | d |
+| `DrawableWindow() const` |  |  | d |  |  |  |  |
+| `FocusChanged(TDrawNow)` | x | x | x | x | x |  | x |
+| `GetColorUseListL(CArrayFix<TCoeColorUse> &) const` | x | x | x | x | x |  | x |
+| `GetHelpContext(TCoeHelpContext &) const` | x | x | x | x | x |  | x |
+| `HandlePointerBufferReadyL()` | x | x | x | x | x |  | x |
+| `HandlePointerEventL(const TPointerEvent &)` | x | x | x | x | x |  | x |
+| `HandleResourceChange(int)` | x | x | x | x | x |  | x |
+| `HasBorder() const` | x | x | x | x | x |  | x |
+| `InputCapabilities() const` | x | x |  | x | x |  | x |
+| `IsFocused() const` | d | d |  | d |  |  |  |
+| `MakeVisible(int)` | d | d | d | d | d |  | d |
+| `MinimumSize()` | x | x | x | x | x |  | x |
+| `OfferKeyEventL(const TKeyEvent &, TEventCode)` |  |  | x | x | x |  | x |
+| `PositionChanged()` | x | x | x | x | x |  | x |
+| `PrepareForFocusGainL()` | x | x | x | x | x |  | x |
+| `PrepareForFocusLossL()` | x | x | x | x | x |  | x |
+| `Rect() const` |  |  | d |  | d |  | d |
+| `Reserved_2()` | x | x | x | x | x |  | x |
+| `SetAdjacent(int)` | x | x | x | x | x |  | x |
+| `SetContainerWindowL(const CCoeControl &)` | d | d | d | d | d |  | d |
+| `SetDimmed(int)` | x | x | x | x | x |  | x |
+| `SetExtentToWholeScreen()` |  |  |  | d |  |  |  |
+| `SetFocus(int, TDrawNow)` |  |  |  |  |  |  | x |
+| `SetFocusing(int)` |  |  |  |  |  |  | x |
+| `SetNeighbor(CCoeControl *)` | x | x | x | x | x |  | x |
+| `SetPosition(const TPoint &)` |  |  |  |  |  |  | x |
+| `SetRect(const TRect &)` |  |  |  |  | x |  |  |
+| `SetSize(const TSize &)` |  |  |  |  |  |  | x |
+| `Size() const` |  |  |  |  |  |  | x |
+| `SizeChanged()` | x | x | x | x | x |  | x |
+| `SystemGc() const` |  |  | x |  | x |  | x |
+| `Window() const` | x | x |  | x |  |  |  |
+| `WriteInternalStateL(RWriteStream &) const` | x | x | x | x | x |  | x |
+| `~CCoeControl()` | x | x | x | x | x |  | x |
 
 ### Knobs in `game.h`
 
 `·` = not defined: the default in `gate6.cpp`, off or empty (`GAME_SRC_BPP` 16, `GAME_CARD_CID` the generic card). What each does: KNOBS.md.
 
-| knob | Asphalt UGT | Asphalt 2 | Ashen | One | ngtest | Colin McRae 2005 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `GAME_ALLOC_PAD` | 512 | 0 | 512 | 512 | 512 | 512 |
-| `GAME_AMBIENCE_ENTRY` | · | · | · | 0x64 | · | · |
-| `GAME_AMBIENCE_ID` | · | · | · | 0x5c | · | · |
-| `GAME_AMBIENCE_LIST` | · | · | · | 0x58 | · | · |
-| `GAME_ANSWER_GAME_ID` | 0 | 0 | 1 | 1 | 1 | 1 |
-| `GAME_AO_PRIORITIES` | · | · | · | 1 entry | · | · |
-| `GAME_BUNDLE_DATA` | 1 | 1 | 1 | 1 | 1 | 1 |
-| `GAME_CANCEL_OWN_OBJECTS` | 0 | 0 | 0 | 1 | 1 | 1 |
-| `GAME_CANCEL_ROM_OBJECTS` | 0 | 0 | 1 | 1 | 1 | 1 |
-| `GAME_CARD_CID` | · | · | · | 0x567857f1,… | · | · |
-| `GAME_CODE_PATCHES` | 0 entries | 0 entries | 2 entries | 8 entries | 0 entries | 19 entries |
-| `GAME_CONTROL_H` | 0 | 0 | 208 | 0 | 0 | 0 |
-| `GAME_CONTROL_W` | 0 | 0 | 176 | 0 | 0 | 0 |
-| `GAME_DEFER_WORKER_STOP` | · | · | · | 1 | · | · |
-| `GAME_DIVERT_MATCH` | 1 | 0 | 1 | 1 | 1 | 1 |
-| `GAME_DUMP_FRAME` | 0 | 0 | 0 | 0 | 0 | 0 |
-| `GAME_DUMP_SCREEN` | 1 | 0 | 0 | 0 | 0 | 0 |
-| `GAME_ENGINE_FRONTEND_STUB` | · | · | · | · | · | 0 |
-| `GAME_ENGINE_LXCE` | · | · | · | · | · | 1 |
-| `GAME_ENGINE_SHM_CHARS` | · | · | · | · | · | 'I','3','D'… |
-| `GAME_FIX_APPUI_THIS` | 1 | 0 | 1 | 1 | 1 | 1 |
-| `GAME_FPA_DOUBLES` | 0 | 0 | 1 | 1 | 1 | 1 |
-| `GAME_FREE_BACK_FROM` | 4096 | 4096 | 4096 | 4096 | 4096 | 4096 |
-| `GAME_GLOBAL_FN` | · | · | · | 0x000aae0c | · | · |
-| `GAME_HOOK_UNCOMPRESS` | 0 | 1 | 0 | 0 | 0 | 0 |
-| `GAME_IMAGE_WATCH` | 0 | 1 | 0 | 0 | 0 | 0 |
-| `GAME_IMAGE_WATCH_SITES` | 0 | 0x0013c1fc,… | 0 | 0 | 0 | 0 |
-| `GAME_KICK_RUNL_FN` | · | · | · | 0x000265ac | · | · |
-| `GAME_KICK_RUNL_SLOT` | · | · | · | 0x001562a4 | · | · |
-| `GAME_LEAK_ALL` | 0 | 0 | 0 | 0 | 0 | 0 |
-| `GAME_LOG_CLOCK` | 1 | 0 | 1 | 1 | 1 | 1 |
-| `GAME_LOG_TEXT` | 0 | 0 | 0 | 0 | 0 | 0 |
-| `GAME_MDA_OPEN_CHANNELS` | · | · | · | 0 | · | · |
-| `GAME_MDA_OPEN_RATE` | · | · | · | 0 | · | · |
-| `GAME_MDA_POSITION_LEAD_US` | · | · | · | 100000 | · | · |
-| `GAME_MDA_UNDERFLOW_TICKS` | · | · | 32 | · | · | · |
-| `GAME_MDA_WRITER_CB` | · | · | · | 0xc | · | · |
-| `GAME_MULTI_TIMER` | · | · | · | 1 | 1 | 1 |
-| `GAME_PICTURE_MEASURED` | 1 | 1 | 0 | 0 | 0 | 0 |
-| `GAME_PORT_SCALER` | · | · | 1 | · | · | · |
-| `GAME_PREPARE_EXIT_NOOP` | · | · | · | 1 | · | · |
-| `GAME_SCALE_FILTER` | · | · | 1 | · | · | · |
-| `GAME_SCREEN_FONTS` | 0 | 0 | 1 | 0 | 0 | 0 |
-| `GAME_SCREEN_MODES` | 0 | 0 | 1 | 1 | 1 | 1 |
-| `GAME_SHIFT_PICKER` | 0 | 0 | 0 | 0 | 0 | 0 |
-| `GAME_SOUNDMGR_OFF` | · | · | · | 0x6914 | · | · |
-| `GAME_SRC_BPP` | · | · | · | 32 | 16 | 16 |
-| `GAME_TICK_SEED_LR` | · | · | · | 0x000c5d2c | · | · |
-| `GAME_TICK_SEED_VALUE` | · | · | · | 0x12c | · | · |
-| `GAME_TIMER_MIRROR` | 0 | 0 | 0 | 1 | 1 | 1 |
-| `GAME_UI_FORWARD_EVENTS` | 0 | 0 | 1 | 1 | 1 | 1 |
-| `GAME_VA_LIST` | 0 | 0 | 1 | 1 | 1 | 1 |
-| `GAME_VTABLE_SHIFTS` | · | · | · | 1 entry | · | · |
-| `GAME_Z_REAL` | 0 | 0x000d4f88 | 0 | 0 | 0 | 0 |
-| `GAME_Z_SITES` | 0 | 0x00033a74,… | 0 | 0 | 0 | 0 |
+| knob | Asphalt UGT | Asphalt 2 | Ashen | One | ngtest | Colin McRae 2005 | Colin McRae front end |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `GAME_ALLOC_PAD` | 512 | 0 | 512 | 512 | 512 | 512 | 512 |
+| `GAME_AMBIENCE_ENTRY` | · | · | · | 0x64 | · | · | · |
+| `GAME_AMBIENCE_ID` | · | · | · | 0x5c | · | · | · |
+| `GAME_AMBIENCE_LIST` | · | · | · | 0x58 | · | · | · |
+| `GAME_ANSWER_GAME_ID` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
+| `GAME_AO_PRIORITIES` | · | · | · | 1 entry | · | · | · |
+| `GAME_BUNDLE_DATA` | 1 | 1 | 1 | 1 | 1 | 1 | 1 |
+| `GAME_CANCEL_OWN_OBJECTS` | 0 | 0 | 0 | 1 | 1 | 1 | 1 |
+| `GAME_CANCEL_ROM_OBJECTS` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
+| `GAME_CARD_CID` | · | · | · | 0x567857f1,… | · | · | · |
+| `GAME_CODE_PATCHES` | 0 entries | 0 entries | 2 entries | 8 entries | 0 entries | 19 entries | 0 entries |
+| `GAME_CONTROL_H` | 0 | 0 | 208 | 0 | 0 | 0 | 0 |
+| `GAME_CONTROL_W` | 0 | 0 | 176 | 0 | 0 | 0 | 0 |
+| `GAME_DEFER_WORKER_STOP` | · | · | · | 1 | · | · | · |
+| `GAME_DIR_CHARS` | · | · | · | · | · | · | '6','r','6'… |
+| `GAME_DIVERT_MATCH` | 1 | 0 | 1 | 1 | 1 | 1 | 1 |
+| `GAME_DUMP_FRAME` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `GAME_DUMP_SCREEN` | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `GAME_ENGINE_FRONTEND_EXE` | · | · | · | · | · | 'g','a','t'… | · |
+| `GAME_ENGINE_INIT` | · | · | · | · | · | 0x45b0b0 | · |
+| `GAME_ENGINE_LAUNCHER` | · | · | · | · | · | 1 | · |
+| `GAME_ENGINE_LXCE` | · | · | · | · | · | 1 | · |
+| `GAME_ENGINE_SHM_CHARS` | · | · | · | · | · | 'I','3','D'… | · |
+| `GAME_FIX_APPUI_THIS` | 1 | 0 | 1 | 1 | 1 | 1 | 1 |
+| `GAME_FPA_DOUBLES` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
+| `GAME_FREE_BACK_FROM` | 4096 | 4096 | 4096 | 4096 | 4096 | 4096 | 4096 |
+| `GAME_GLOBAL_FN` | · | · | · | 0x000aae0c | · | · | · |
+| `GAME_HOOK_UNCOMPRESS` | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| `GAME_IMAGE_WATCH` | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| `GAME_IMAGE_WATCH_SITES` | 0 | 0x0013c1fc,… | 0 | 0 | 0 | 0 | 0 |
+| `GAME_KICK_RUNL_FN` | · | · | · | 0x000265ac | · | · | · |
+| `GAME_KICK_RUNL_SLOT` | · | · | · | 0x001562a4 | · | · | · |
+| `GAME_LEAK_ALL` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `GAME_LOG_CLOCK` | 1 | 0 | 1 | 1 | 1 | 1 | 1 |
+| `GAME_LOG_TEXT` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `GAME_MDA_OPEN_CHANNELS` | · | · | · | 0 | · | · | · |
+| `GAME_MDA_OPEN_RATE` | · | · | · | 0 | · | · | · |
+| `GAME_MDA_POSITION_LEAD_US` | · | · | · | 100000 | · | · | · |
+| `GAME_MDA_UNDERFLOW_TICKS` | · | · | 32 | · | · | · | · |
+| `GAME_MDA_WRITER_CB` | · | · | · | 0xc | · | · | · |
+| `GAME_MULTI_TIMER` | · | · | · | 1 | 1 | 1 | 1 |
+| `GAME_PICTURE_MEASURED` | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
+| `GAME_PORT_SCALER` | · | · | 1 | · | · | · | · |
+| `GAME_PREPARE_EXIT_NOOP` | · | · | · | 1 | · | · | · |
+| `GAME_SCALE_FILTER` | · | · | 1 | · | · | · | · |
+| `GAME_SCREEN_FONTS` | 0 | 0 | 1 | 0 | 0 | 0 | 1 |
+| `GAME_SCREEN_MODES` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
+| `GAME_SHIFT_PICKER` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `GAME_SOUNDMGR_OFF` | · | · | · | 0x6914 | · | · | · |
+| `GAME_SRC_BPP` | · | · | · | 32 | 16 | 16 | 16 |
+| `GAME_TICK_SEED_LR` | · | · | · | 0x000c5d2c | · | · | · |
+| `GAME_TICK_SEED_VALUE` | · | · | · | 0x12c | · | · | · |
+| `GAME_TIMER_MIRROR` | 0 | 0 | 0 | 1 | 1 | 1 | 1 |
+| `GAME_UI_FORWARD_EVENTS` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
+| `GAME_VA_LIST` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
+| `GAME_VTABLE_SHIFTS` | · | · | · | 1 entry | · | · | · |
+| `GAME_Z_REAL` | 0 | 0x000d4f88 | 0 | 0 | 0 | 0 | 0 |
+| `GAME_Z_SITES` | 0 | 0x00033a74,… | 0 | 0 | 0 | 0 | 0 |
 <!-- titles.py end -->

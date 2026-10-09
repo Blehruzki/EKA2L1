@@ -22,7 +22,7 @@ UID3=$(sed -n 's/.*GAME_APP_UID3[[:space:]]*\(0x[0-9A-Fa-f]*\).*/\1/p' "$P/games
 # The log, box and dump are named after the title's stem now, so two games on
 # one machine do not truncate each other's records. Same source as the paths
 # the loader builds: GAME_STEM_CHARS.
-STEM=$(sed -n "s/.*GAME_STEM_CHARS[[:space:]]*//p" "$P/games/$GAME/game.h" | tr -cd "0-9A-Za-z")
+STEM=$(sed -n "s/.*GAME_STEM_CHARS[[:space:]]*//p" "$P/games/$GAME/game.h" | tr -cd "0-9A-Za-z_")
 [ -n "$STEM" ] || { echo "no GAME_STEM_CHARS in games/$GAME/game.h"; exit 1; }
 
 export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe QT_QPA_PLATFORM=xcb DISPLAY=:99
@@ -34,7 +34,7 @@ pgrep -x Xvfb >/dev/null || { nohup Xvfb :99 -screen 0 1280x900x24 >"$S/xvfb.log
 import os, sys, build_release as r, build_gate6, mkmbm, picture
 out, game = sys.argv[1], sys.argv[2]
 os.makedirs(out, exist_ok=True)
-st = r.stem(game); tree = os.path.join(r.GAMES_ROOT, st)
+st = r.stem(game); tree = os.path.join(r.GAMES_ROOT, picture.folder(game))
 icon = os.path.join(out, 'gate6.mbm')
 mkmbm.build(os.path.join(tree, st + '.aif'), icon, list(r.ICON_BITMAPS))
 build_gate6.build(out, caption=picture.setting(game, 'GAME_CAPTION'), icon=icon,

@@ -19,6 +19,8 @@ enum {
     IMPORT_ADDTOSTACKL                 =    46,
     IMPORT_ADD_EVENT                   = 65535,   // absent
     IMPORT_ADD_FOREGROUND_OBSERVER     = 65535,   // absent
+    IMPORT_AKN_CBA                     = 65535,   // absent
+    IMPORT_AKN_STATUS_PANE             = 65535,   // absent
     IMPORT_APPUI_EXIT                  = 65535,   // absent
     IMPORT_APPUI_FACTORY               = 65535,   // absent
     IMPORT_APPUI_PREPARE_EXIT          =    29,
@@ -33,6 +35,7 @@ enum {
     IMPORT_COECONTROL_CTOR             =    82,
     IMPORT_COEENV_STATIC               =    79,
     IMPORT_CREATEWINDOWL               =    51,
+    IMPORT_CREATE_BITMAP               = 65535,   // absent
     IMPORT_CREATE_CONTEXT              = 65535,   // absent
     IMPORT_CREATE_SESSION              =   267,
     IMPORT_CTIMER_CTOR                 =   332,
@@ -123,6 +126,11 @@ enum {
     IMPORT_SEND_RECEIVE                =   309,
     IMPORT_SERVER_STARTL               =   313,
     IMPORT_SET_AUTO_UPDATE             =    41,
+    IMPORT_SHADOW_BUFFLAT              = 65535,   // absent
+    IMPORT_SHADOW_DESC16FLAT           = 65535,   // absent
+    IMPORT_SHADOW_DESC8FLAT            = 65535,   // absent
+    IMPORT_SHADOW_PERIODIC             = 65535,   // absent
+    IMPORT_START_APP                   = 65535,   // absent
     IMPORT_SUBDF3                      = 65535,   // absent
     IMPORT_SYSTEM_GC                   = 65535,   // absent
     IMPORT_THREAD_CREATE               =   268,

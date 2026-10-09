@@ -81,5 +81,15 @@ in its `.app` at all but in a compressed engine its own loader unpacks at run
 time, and the engine carries a message for whoever unpacks it: "I3D is
 recruiting talented hackers". A good opening for that title's story.
 
+Colin McRae's second act (E957-E976, BUGBOOK 13.j-13.l): six rounds porting
+the game's front end on a misreading -- the mailbox the engine waited on was
+the launcher's, and the front end never reads it -- then the fix that
+mattered sitting unused in the image all along: a block interpreter that
+packs pointers into 24 bits, and the one function that sets their base,
+which nothing on the N-Gage ever needed to call. One call, and the engine
+goes from a fault to its main menu, attract demo and a stage. The last three
+rounds of keys went to the wrong X window, a trap written down 840 rows
+earlier (E131).
+
 Add to this list as the project goes: when a story would make a good section,
 note it here with its rows.

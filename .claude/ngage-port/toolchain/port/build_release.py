@@ -111,13 +111,13 @@ def data_package(out, game, tree=None):
     """
     os.makedirs(out, exist_ok=True)
     st = stem(game)
-    tree = tree or os.path.join(GAMES_ROOT, st)
+    tree = tree or os.path.join(GAMES_ROOT, picture.folder(game))
     caption = picture.setting(game, 'GAME_CAPTION')
     vendor = picture.setting(game, 'GAME_VENDOR')
     uid = picture.setting(game, 'GAME_DATA_UID3')
     if not uid:
         sys.exit('games/%s/game.h has no GAME_DATA_UID3: a split install needs one' % game)
-    target_dir = '!:\\system\\apps\\' + st
+    target_dir = '!:\\system\\apps\\' + picture.folder(game)
     extra = game_files(tree, out, target_dir,
                        {st + '.app': st + '.bin'},
                        {st + '.app': (SCRAMBLE_KEY, SCRAMBLE_BYTES)})
@@ -132,12 +132,12 @@ def data_package(out, game, tree=None):
 def main(out='.', game=DEFAULT_GAME, tree=None, loader_only=False):
     os.makedirs(out, exist_ok=True)
     st = stem(game)
-    tree = tree or os.path.join(GAMES_ROOT, st)
+    tree = tree or os.path.join(GAMES_ROOT, picture.folder(game))
     caption = picture.setting(game, 'GAME_CAPTION')
     vendor = picture.setting(game, 'GAME_VENDOR')
     text = picture.setting(game, 'GAME_INSTALL_TEXT')
     bundle = int(picture.setting(game, 'GAME_BUNDLE_DATA') or 0) and not loader_only
-    target_dir = '!:\\system\\apps\\' + st
+    target_dir = '!:\\system\\apps\\' + picture.folder(game)
 
     icon = os.path.join(out, 'gate6.mbm')
     got = mkmbm.build(os.path.join(tree, st + '.aif'), icon, list(ICON_BITMAPS))

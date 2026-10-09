@@ -1569,10 +1569,78 @@ the same bytes, whole window and all.
 *Identical screenshots are a reading of when the shots were taken, not proof
 of a frozen display.* Sample densely before concluding a freeze.
 
-### 13.j White after the splash: the front end nobody runs (E948-E951)
-After its splash the engine starts `6r66_2.app` (RApaLsSession::StartApp),
-posts 3 in the I3D block's mailbox (0xe4) and spins for an answer above 3.
-That app is the game's front end, an N-Gage Avkon application the port does
-not run. Answering 4 from a bench stand-in gets the engine past the wait and
-into its script, where it dies on a script pointer that maps nothing (E951):
-the front end's choices are needed. Open: port 6r66_2.app.
+### 13.j White after the splash: the launcher's mailbox (E948-E951, corrected E962)
+After its splash the engine posts 3 in the I3D block's mailbox (0xe4) and
+spins for an answer above 3, 5 meaning cancel (0x449214). E948 read this as
+"the engine started its front end, `6r66_2.app`, and waits for it", and
+E951 as "the front end's choices are needed". Both wrong: the front end
+never touches 0xe4 (its block reads are +0xd4 and +0xdc), and the engine
+starts it only from script opcodes not on the single-player path (E962,
+from the binary; a hooked StartApp never fired). The mailbox is the
+launcher's, participant 2 -- the N-Gage launcher the port replaces. **Fix:**
+the port answers 4 two seconds after the ask (`GAME_ENGINE_LAUNCHER`, which
+began as the bench stand-in `GAME_ENGINE_FRONTEND_STUB`). The fault after the
+answer is 13.k's, not missing front-end state.
+*Lesson: when a hypothesis names a party ("the front end"), find in the
+binary who reads the word before porting the party. The front end cost six
+rounds (E952-E958) on a path single player never takes -- though its port
+is kept, in `games/colin2`, for the multiplayer side.*
+
+### 13.k The interpreter jumps into nothing (0x185B18C, E951, E963-E965)
+After the mailbox, the engine thread (renamed COLIN) faults reading
+0x185B18C at 0x459e24: a block interpreter (0x459d68) whose blocks link to
+each other by the low 24 bits of their address, rebuilt as
+`[0x560b98] | link`, plus 16 MB below a limit (the image's pointer 0x3cc214,
+relocated). The base word is never written (EKA2L1_WATCH, E964): on the
+N-Gage the engine loaded under 16 MB and a zero base was right. Here it
+loads at 0x4700000, and 0x485B18C decodes as 0x185B18C. Its setter exists
+-- 0x45b0b0, `base = limit & 0xFF000000` -- and nothing in the image calls
+it. **Fix:** the port calls it once, relocated, before the engine thread
+starts (`GAME_ENGINE_INIT 0x45b0b0`). The engine then reaches its own main
+menu, attract demo and races (E966, E976).
+*Lesson: code that packs pointers into fewer bits was written for an
+address map; an image that never calls its own fix-up still carries it.
+Search the image for the store before writing one.*
+
+### 13.l Keys go nowhere (E967-E971)
+The engine reads input through its own RWsSession and focusable window
+group (`Construct(2, ETrue)`), as it did in a process of its own. Sharing
+the port's process, the wrapper app UI's root group held the focus.
+**Fix:** the wrapper's group declines the focus
+(`RWindowGroup::EnableReceiptOfFocus(EFalse)`, ws32 148) once the engine's
+group is in its block slot (the launcher's watcher). Declined earlier, in
+ConstructL, it left no focusable group and EKA2L1's window server segfaulted
+(E968; a phone allows it). The watcher's samples confirmed the engine's
+group focused (E970).
+*Harness trap, already in E131 and missed: `xdotool search --name EKA2L1 |
+head -1` is Qt's selection-owner window and swallows every key. Use
+`--onlyvisible` and `windowactivate`, as `holdtest.sh` does. Three rounds
+(E967-E970) tested keys that never left the harness.*
+
+### 13.m The front end quits by itself (E958)
+Run alone, 6r66_2.app finds no I3D block, makes one, and being participant
+3, not 2, sets the state to 5 and exits through a one-tick timer whose
+observer is CEikAppUi::Exit (+0x1b950, +0x50c0). Not a bug: it is only ever
+meant to open a block the engine (or launcher) made.
+
+### 13.n A GCC 2.x delete on a ROM object (E957)
+The front end deletes its CPeriodic the EKA1 way, vtable slot +8 with 3 in
+r1; on an EABI vtable slot +8 is CBase::Extension_, which wrote through r2.
+**Fix (shared):** objects returned by `CPeriodic::NewL`, `CBufFlat::NewL`
+and the `CDesC8/16ArrayFlat` constructors get a per-class shadow of their
+vtable whose slot +8 is an adapter: r1 <= 3 goes to the EABI deleting or
+complete destructor, anything else to the real Extension_ (`gate6_shadow`).
+For CBase-derived classes the slots past +8 line up between the two ABIs,
+so only +8 needs it. Inert on the Asphalts, whose timer is the port's own
+(E977).
+
+### 13.o The front end's first stops (E952-E956)
+`games/colin2` loads 6r66_2.app with the ordinary loader (`GAME_DIR_CHARS`
+6r66: its folder is not its stem). Four stops, each fixed in the shared
+layer: `CEikonEnv::CreateBitmapL("*")` -- the application's own store, here
+the loader's -- sent to the game's `.mbm` on its drive (E952), on
+`CCoeEnv::Static()` rather than the control's old +8 word (E953); the old
+iScreen read with N-Gage MGraphicsDeviceMap slots, so `GAME_SCREEN_FONTS 1`
+(E954); `Cba()` and `StatusPane()` on an app UI built with
+ENoScreenFurniture, answered with one hidden stand-in control whose every
+slot does nothing (E955-E956, `gate6_hidden_furniture`).

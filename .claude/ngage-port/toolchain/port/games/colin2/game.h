@@ -1,28 +1,32 @@
-// Colin McRae 2005 -- 6r66. The hand-written half of this title's layer; the
+// Colin McRae 2005 -- 6r66_2. The hand-written half of this title's layer; the
 // generated half (`gate_imports.h`, `shim.cpp`) sits beside it, out of
 // gen_shim.py. Written by newgame.py with every knob at its safe default;
 // each one that a round changes gets its reason here, as the Asphalts' did.
 //
-// Read off the image before anything ran: EKA1/AirPlay LXCE, 326 imports across
-// 18 DLLs, UID3 0x00000000, code 0x606600 bytes.
+// Read off the image before anything ran: EKA1/GCC98r2, 583 imports across
+// 22 DLLs, UID3 0x101fd417, code 0x382f0 bytes.
 #ifndef GATE_GAME_H     // not GAME_H: that is an enum below
 #define GATE_GAME_H
 
-// `\system\apps\6r66\6r66.app`. Characters rather than a string: the
+// `\system\apps\6r66_2\6r66_2.app`. Characters rather than a string: the
 // paths are built as u16 arrays, and this image has no writable data.
-#define GAME_STEM_CHARS  '6','r','6','6'
-#define GAME_STEM_LEN    4
+#define GAME_STEM_CHARS  '6','r','6','6','_','2'
+#define GAME_STEM_LEN    6
+// Colin McRae's front end lives beside the engine, in the engine's folder:
+// `\\system\\apps\\6r66\\6r66_2.app`, started by the engine with
+// RApaLsSession::StartApp (E948).
+#define GAME_DIR_CHARS   '6','r','6','6'
 
 // Our own application, not the game's: the game's UID3 is GAME_UID3 in
 // gate_imports.h, and the loader refuses an image that does not match it.
-#define GAME_APP_UID3    0xE000100B
+#define GAME_APP_UID3    0xE000100C
 #define GAME_CAPTION     "Colin McRae 2005"
 
 // **Placeholders.** Every N-Gage title so far draws 176x208; the stride is
 // measured by the frame dump, not assumed (Asphalt 2's is 192, Asphalt 1's
 // 176). GAME_SRC_ORIGIN was 16 on both Asphalts and took eight rounds.
 enum { GAME_W = 176, GAME_PITCH = 176, GAME_H = 208 };
-enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address + 0x20 (0x4a8224), as the N-Gage framebuffer starts
+enum { GAME_SRC_ORIGIN = 0 };
 // Bytes a pixel the game writes: 16 for a title that draws as an N-Gage does,
 // 32 for one that takes the display mode it is told (One). Measured, not
 // assumed: GAME_DUMP_FRAME and stride.py (One: 704-byte rows, 176 pixels).
@@ -57,60 +61,14 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // word}: for a bug of the game's own that EKA1 forgave (Ashen reads the
 // null page in its rasteriser). The expected word is checked; a mismatch
 // refuses to start.
-// **The engine's own SetActive reads EKA1's CActive (E885).** On EKA1
-// TRequestStatus is one word and CActive::iActive the next, at +8; on EKA2
-// TRequestStatus is two -- the value, then iFlags -- and +8 is the flags. A
-// 9.x request that marks the status pending sets ERequestPending there, so
-// the engine's inlined SetActive (0x538a0c: `if (word8) Panic("Already
-// Active"); word8 = 1`) panicked on its first request. Its objects are real
-// 9.x CActives on the 9.x scheduler, so it is made to do what 9.x SetActive
-// does -- test and set EActive, bit 0, and keep the pending bit -- and its
-// destructor's "Still Active on Destruct" check (0x538d58) tests the same
-// bit. Offsets from the image base 0x400000.
-// The engine calls ROM objects through their vtables at the N-Gage's GCC 2.x
-// slot offsets, and 9.x's EABI vtables have moved them (E921, read out of both
-// ROMs' ws32: the N-Gage CWindowGc vptr 0x505938c0, RM-409 _ZTV9CWindowGc).
-// Its window gc's Activate and Deactivate at +0xd8/+0xdc are Clear() and
-// Clear(TRect) on 9.x -- a Clear on a gc never activated, WSERV 9 on a phone
-// and a host crash in EKA2L1 -- so they become +0x110/+0x114; BitBlt(TPoint,
-// CFbsBitmap*, TRect) at +0xc4 becomes +0xe8; and the teardown's GCC 2.x
-// deleting destructor (+0x08, flag 3) on its ROM objects -- the gc, both
-// CFbsBitmaps, the CDirectScreenAccess, the CActiveScheduler -- becomes EABI's
-// deleting destructor, +0x04 (CBase declares the destructor first, so every
-// one of them has D1, D0 in its first two slots). CWsScreenDevice::CreateContext
-// sits at +0x18 in both layouts and needs nothing.
-// The flip's own choice (0x4a8440) is the window gc except for ten seconds
-// after a key goes down (the key handler 0x4a7658 stamps 0x54b45c); it is
-// made to answer "direct" always, so every frame takes the port's path: the
-// engine copies it to the ScreenInfo address and says ERedraw, which the port
-// posts through the engine's own CDirectScreenAccess (E931). The window-gc
-// path shows only white on the bench (E922-E930), for a reason not yet found.
-#define GAME_CODE_PATCHES { 0x00138a18, 0xE3530000, 0xE3130001 }, \
-                          { 0x00138a28, 0xE3A03001, 0xE3833001 }, \
-                          { 0x00138d70, 0xE3530000, 0xE3130001 }, \
-                          { 0x000a7cb4, 0xE596C0D8, 0xE596C110 }, /* redraw: Activate */ \
-                          { 0x000a83d8, 0xE596C0D8, 0xE596C110 }, /* begin draw: Activate */ \
-                          { 0x000a8514, 0xE595C0D8, 0xE595C110 }, /* flip: Activate */ \
-                          { 0x000a7d08, 0xE593C0DC, 0xE593C114 }, /* redraw: Deactivate */ \
-                          { 0x000a842c, 0xE593C0DC, 0xE593C114 }, /* end draw: Deactivate */ \
-                          { 0x000a85a4, 0xE593C0DC, 0xE593C114 }, /* flip: Deactivate */ \
-                          { 0x000a86d8, 0xE59CC0C4, 0xE59CC0E8 }, /* draw: BitBlt */ \
-                          { 0x000a8734, 0xE59CC0C4, 0xE59CC0E8 }, /* draw: BitBlt */ \
-                          { 0x000a8760, 0xE59CC0C4, 0xE59CC0E8 }, /* draw: BitBlt */ \
-                          { 0x000a71e8, 0x1593C008, 0x1593C004 }, /* delete the gc */ \
-                          { 0x000a8004, 0x1593C008, 0x1593C004 }, /* delete a CFbsBitmap */ \
-                          { 0x000a8028, 0x1593C008, 0x1593C004 }, /* delete a CFbsBitmap */ \
-                          { 0x000a8044, 0x1593C008, 0x1593C004 }, /* delete the CDirectScreenAccess */ \
-                          { 0x000a7260, 0x1593C008, 0x1593C004 }, /* delete the CActiveScheduler */ \
-                          { 0x000a8440, 0xE92D4000, 0xE3A00001 }, /* the flip always direct: mov r0, #1 */ \
-                          { 0x000a8444, 0xE59F3024, 0xE12FFF1E }  /*   bx lr */
-#define GAME_CODE_PATCH_COUNT 19
+#define GAME_CODE_PATCHES { 0, 0, 0 }
+#define GAME_CODE_PATCH_COUNT 0
 
 // The environment's screen device, as the game reads it off the view
 // (old iScreen, 0x3c): 1 hands it a stand-in that answers font requests by
 // the N-Gage font names (E384); 0 leaves the real 9.x device there, which a
 // title that passes it on to direct screen access needs (E390). Off until a title asks for system fonts by the N-Gage names.
-#define GAME_SCREEN_FONTS 0
+#define GAME_SCREEN_FONTS 1   // the front end reads iScreen off the environment and asks it for fonts through the old MGraphicsDeviceMap slots (E954)
 
 // The N-Gage card's `E:\Game.Id` -- six bytes, "N-Gage", at the card's root.
 // Ashen's engine init reads it (image 0x72214) and gives up when the read
@@ -197,7 +155,7 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 
 // The name every installed file carries; it has to differ from every other
 // title's (Symbian will not let one package own another's file).
-#define GAME_APP_NAME "gate6coli"
+#define GAME_APP_NAME "gate6col2"
 
 // The card the copy protection expects, answered to the N-Gage MMC driver
 // by the port: four words. A retail dump carries them in its own name
@@ -208,22 +166,4 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 
 // Written into the log as its third record; bump with every package.
 #define GAME_BUILD 1
-
-// **An AirPlay engine, not an app** (PORTING.md, Colin McRae). The image
-// is `6r66.lxe`, the engine lxce.py inflated out of `6r66.nax`: the loader
-// lays it out, relocates it, fills its import directory from the shim
-// and runs its entry in a thread of its own, with the 9.x application
-// standing in for the card's launcher.
-#define GAME_ENGINE_LXCE 1
-#define GAME_ENGINE_LAUNCHER 1   // the port plays the N-Gage launcher: answers the engine's I3D mailbox, hands its window group the focus (E962-E968)
-// The engine's I3D shared memory: made by the launcher on the N-Gage, and by
-// the port here (engine_shared_memory). The name is in the image, after the
-// engine's thread name COLIN.
-// The front end's port, which the engine's StartApp starts in place of 6r66_2.app (gate6_start_frontend).
-#define GAME_ENGINE_FRONTEND_EXE 'g','a','t','e','6','c','o','l','2','.','e','x','e'
-// The engine's own set-up its N-Gage load never needed: 0x45b0b0 sets the
-// block interpreter's link base from its limit (E964; see gate6.cpp).
-#define GAME_ENGINE_INIT 0x45b0b0
-#define GAME_ENGINE_SHM_CHARS 'I','3','D','_','S','H','A','R','E','D','_','M','E','M','O','R','Y','_','C','O','L','I','N'
-
 #endif

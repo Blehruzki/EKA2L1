@@ -93,6 +93,16 @@ def stem(game):
     return ''.join(re.findall(r"'(.)'", m.group(1)))
 
 
+def folder(game):
+    """The directory a title's files live in, out of GAME_DIR_CHARS -- the stem
+    unless game.h says otherwise. Colin McRae's front end is
+    `\\system\\apps\\6r66\\6r66_2.app`: stem 6r66_2, folder 6r66.
+    """
+    path = os.path.join(GAMES, game, 'game.h')
+    m = re.search(r"#define\s+GAME_DIR_CHARS\s+(.*)", open(path).read()) if os.path.isfile(path) else None
+    return ''.join(re.findall(r"'(.)'", m.group(1))) if m else stem(game)
+
+
 def image(game=None, path=None):
     """The title's `<stem>.app` -- or an exit saying which game to name."""
     if path:
@@ -106,7 +116,7 @@ def image(game=None, path=None):
     st = stem(game)
     tried = []
     for root in IMAGE_ROOTS:
-        cand = os.path.join(root, st, st + '.app')
+        cand = os.path.join(root, folder(game), st + '.app')
         tried.append(cand)
         if os.path.isfile(cand):
             return cand

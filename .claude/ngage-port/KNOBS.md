@@ -95,6 +95,10 @@ the N95 and the N91. One (`gate6one`) ships as **028** (round 159: the N73's dea
 | **diagnostic, One build 015 only** (`DUMP_AT_ABORT`, `DUMP_AFTER_RETURN`, 0 when shipping): the game's buffer and the frame buffer written to `C:\g6code-6r58.bin` at every AbortNow (0xFB01) and the frame buffer after the first blit back (0xFB02); `dump32.py` renders them | round 140 | bench E737; N95 round 141 (5.2 MB, read: the menu was not yet drawn at AbortNow, the fight was running; off again in 016) |
 | **the game's own image under its installed name** (round 149): `RFs::Entry` gets the opens' `.app`-to-`.bin` rewrite (`on_the_real_drive`), and a read through the renamed open has the 32 scrambled bytes put back (`image_read_fix`, NOTE 697); universal, active only when the loader itself read a `.bin` | round 149 | bench E852 (the death reproduced), E854 (Entry alone is not enough), E855 (clean); hardware pending |
 | **`GAME_PREPARE_EXIT_NOOP`** (One 1, the others 0): `CAknAppUi::PrepareToExit` called by the game on its own old-layout app UI is answered with nothing (0xE819); the `CEikAppUi::Exit` that follows does the leaving. Without it the game's quit path is a data abort at 0x80 (12.z, round 149) | round 149 | bench E853 (a clean exit down the quit path) |
+| ROM objects from `CPeriodic::NewL`, `CBufFlat::NewL` and the `CDesC8/16ArrayFlat` constructors get a shadow vtable whose slot +8 takes a GCC 2.x delete (`gate6_shadow`) | E958 | bench: Colin's front end; inert on Asphalt 2 (E977) |
+| `CEikonEnv::CreateBitmapL("*")` sent to the game's own `.mbm`, on `CCoeEnv::Static()` | E952-E953 | bench: Colin's front end |
+| `Cba()` and `StatusPane()` answered with one hidden stand-in control | E955-E956 | bench: Colin's front end |
+| `GAME_DIR_CHARS`: a title whose folder is not its stem (default: the stem) | E952 | bench: Colin's front end (`6r66\6r66_2.app`) |
 
 ## Where each title saves
 
@@ -208,3 +212,11 @@ other title. Bench knobs beside it, 0 when shipping: `BENCH_DROP_UNDERFLOW`
 (the Nth copy made KErrAbort) -- the model E846/E847 ran on. Also traced now
 on every title: `RFile::Replace`, `Write`, `Flush`, `RFs::MkDir`, `Delete`
 (gen_shim MILESTONES), and each Replace's result and drive letter (NOTE 698).
+
+## AirPlay engine titles (`GAME_ENGINE_LXCE`; Colin McRae only)
+
+| knob | Colin McRae | meaning | settled |
+|---|---|---|---|
+| `GAME_ENGINE_LAUNCHER` | 1 | the port plays the N-Gage launcher, I3D participant 2: answers the engine's mailbox (0xe4: 3 -> 4) and, once the engine's group is in slot 1, the wrapper's root group declines the focus so the engine hears its keys. Was the bench stand-in `GAME_ENGINE_FRONTEND_STUB` | E962-E971, bench |
+| `GAME_ENGINE_INIT` | 0x45b0b0 | engine functions (image addresses) called once before its thread starts: Colin's sets the block interpreter's 24-bit link base | E965, bench |
+| `GAME_ENGINE_FRONTEND_EXE` | gate6col2.exe | what the engine's `RApaLsSession::StartApp` starts in place of the N-Gage front end `.app` | installed E962; never yet called |

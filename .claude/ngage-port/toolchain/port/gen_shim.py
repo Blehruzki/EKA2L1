@@ -688,7 +688,17 @@ HOOKS = {
     'IMPORT_RWIN_END_REDRAW':         ('ws32', 103),    # RWindow::EndRedraw()
     'IMPORT_DEF_MODE_COLORS':         ('ws32', 300),    # RWsSession::GetDefModeMaxNumColors: the N-Gage's EColor4K for a 16-bit title (Colin McRae, E892)
     'IMPORT_ADD_EVENT':               ('euser', 9),     # UserSvr::AddEvent: an AirPlay engine's ERedraw is its frame done (Colin McRae, E908)
+    'IMPORT_START_APP':               ('apgrfx', 96),   # RApaLsSession::StartApp: an AirPlay engine starts its front end, whose port is another loader (Colin McRae, E959)
     'IMPORT_CHUNK_CREATE_GLOBAL':     ('euser', 275),   # RChunk::CreateGlobal: the port makes an AirPlay engine's I3D shared memory, as its launcher did (Colin McRae, E914)
+    'IMPORT_CREATE_BITMAP':           ('eikcore', 44),  # CEikonEnv::CreateBitmapL: "*" is the game's own .mbm, not the loader's (Colin McRae's front end, E952)
+    'IMPORT_AKN_CBA':                 ('avkon', 251),   # CAknAppUi::Cba(): a hidden stand-in (the port's app UI has no screen furniture; E956)
+    'IMPORT_AKN_STATUS_PANE':         ('avkon', 1816),  # CAknAppUi::StatusPane(): likewise
+    # ROM objects the game is handed, given a shadow vtable whose slot +8 takes
+    # a GCC 2.x delete (E957; gate6_shadow). Factories of four arguments or fewer.
+    'IMPORT_SHADOW_PERIODIC':         ('euser', 738),   # CPeriodic::NewL(int)
+    'IMPORT_SHADOW_BUFFLAT':          ('euser', 733),   # CBufFlat::NewL(int)
+    'IMPORT_SHADOW_DESC8FLAT':        ('bafl', 162),    # CDesC8ArrayFlat::CDesC8ArrayFlat(int)
+    'IMPORT_SHADOW_DESC16FLAT':       ('bafl', 166),    # CDesC16ArrayFlat::CDesC16ArrayFlat(int)
     'IMPORT_HANDLE_CLOSE':            ('euser', 172),   # RHandleBase::Close(): the handle word logged before the call (round 136: a worker's Close died KERN-EXEC 0 on the N95)
     'IMPORT_DELETE_OP':               ('euser', 1504),
     'IMPORT_VEC_DELETE_OP':           ('euser', 1506),

@@ -308,7 +308,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_OPEN = 897,    // what RFile::Open answered
        NOTE_FILE_PATH = 898,    // ... and the name it was asked for
        NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
-       NOTE_ENGINE = 640,       // an AirPlay engine title (GAME_ENGINE_LXCE): 0x1Exxxxxx the layout (imports, then relocations), 0x2E the thread's create result, 0x3E resumed, 0x4E bitgdi's Update resolved (bit 0), 0x5E/0x6E/0x7E a flip's samples, 0x8E the I3D shared memory made (the error; 0x8EBAD000 no CreateGlobal), 0x9E the mailbox answered, 0x9F the state word sampled then the mailbox (0xe4) and slots 1-3 (GAME_ENGINE_FRONTEND_STUB)
+       NOTE_ENGINE = 640,       // an AirPlay engine title (GAME_ENGINE_LXCE): 0x1Exxxxxx the layout (imports, then relocations), 0x2E the thread's create result, 0x3E resumed, 0x4E bitgdi's Update resolved (bit 0), 0x5E/0x6E/0x7E a flip's samples, 0x8E the I3D shared memory made (the error; 0x8EBAD000 no CreateGlobal), 0xBE the hidden screen furniture made, 0xCE a ROM vtable shadowed (count, then the vtable), 0xDE the front end's port started by StartApp (the error), 0xDF that hook installed (bit 0 RProcess::Create found, bit 1 Resume), 0xEE a GAME_ENGINE_INIT function called (its image address), 0xFE the wrapper's root group declines the focus (bit 0: the export found), 0xAE CreateBitmapL("*") sent to the game's .mbm (the id), 0x9E the mailbox answered, 0x9F the state word sampled then the mailbox (0xe4), slots 1-3, and once the focus is handed, the focused group and ours (GAME_ENGINE_LAUNCHER)
        NOTE_TICK_SHIM = 699,    // the tick seed read answered: the real tick it replaced (0xD1nnnnnn: slots diverted at load)
        NOTE_FILE_HEAD = 861,    // the first three words of a name descriptor
        NOTE_CARD_REFUSED = 862, // a write to the game card, refused as a card would
@@ -609,8 +609,13 @@ struct E32 {
 // ours: the search tried `E:\system\apps\6rbc\`, `E:\6rbc.app` and
 // `C:\6rbc.app` and never `C:\system\apps\6rbc\`, which is the layout a
 // C: install actually uses.
+// The folder is the stem unless a title says otherwise (GAME_DIR_CHARS):
+// Colin McRae's front end is `\\system\\apps\\6r66\\6r66_2.app`.
+#ifndef GAME_DIR_CHARS
+#define GAME_DIR_CHARS GAME_STEM_CHARS
+#endif
 static const u16 kLayoutApps[] = {'?',':','\\','s','y','s','t','e','m','\\','a','p','p','s','\\',
-                                  GAME_STEM_CHARS,'\\',GAME_STEM_CHARS,'.','a','p','p'};
+                                  GAME_DIR_CHARS,'\\',GAME_STEM_CHARS,'.','a','p','p'};
 static const u16 kLayoutRoot[] = {'?',':','\\',GAME_STEM_CHARS,'.','a','p','p'};
 // E first, because that is where every install so far has put it and a hit on
 // the first candidate costs one open. C next, then the mass-memory letters.
@@ -639,7 +644,7 @@ enum { IMAGE_SCRAMBLE = 0xA5, IMAGE_SCRAMBLE_BYTES = 32 };
 // nothing changes at all.
 static const u16 kPath0[] = {'E',':','\\',GAME_STEM_CHARS,'.','a','p','p'};
 static const u16 kPath2[] = {'E',':','\\','s','y','s','t','e','m','\\','a','p','p','s','\\',
-                             GAME_STEM_CHARS,'\\',GAME_STEM_CHARS,'.','a','p','p'};
+                             GAME_DIR_CHARS,'\\',GAME_STEM_CHARS,'.','a','p','p'};
 
 // Every import points here, through a 16-byte stub carrying its own report
 // code. That code is `import count * 1000 + index`, because a panic gives us
@@ -1415,13 +1420,21 @@ struct Context {
     u32 realRwin[4];        // RWindow's two constructors, BeginRedraw(TRect), EndRedraw, as resolved
     u32 realDefMode;        // RWsSession::GetDefModeMaxNumColors, as resolved
     u32 realAddEvent;       // GAME_ENGINE_LXCE: UserSvr::AddEvent, as resolved
+    u32 realCreateBitmap;   // CEikonEnv::CreateBitmapL, as resolved
+    u32 *hiddenFurniture;   // the stand-in Cba() and StatusPane() answer with
+    u32 shadowFrom[16], shadowTo[16], shadowN;   // ROM vtables and their shadows (gate6_shadow)
+    u32 shadowAdapter;      //   the slot +8 adapter they share
+    u32 processCreate, processResume;   // RProcess::Create and Resume, for gate6_start_frontend
+    u16 ownMbm[48];         //   and the game's own .mbm, on its real drive
     u32 chunkCreateGlobal;  //   RChunk::CreateGlobal, as resolved
     u32 engineShm;          //   the I3D shared memory the port made for it (an RChunk)
     u32 *engineShmBlock;    //   its aligned block (state at word 2)
-    u32 shmTimer;           //   GAME_ENGINE_FRONTEND_STUB: the watcher (a CPeriodic)
+    u32 shmTimer;           //   GAME_ENGINE_LAUNCHER: the watcher (a CPeriodic)
     CallBack shmCb;         //   and its callback
     u32 shmTicks;           //   ticks the mailbox has held the engine's ask
     u32 shmLogTicks;        //   ticks, for the watcher's samples
+    u32 focusHanded;        //   the wrapper's group has declined the focus (engine_root_unfocusable)
+    u32 wsGetFocus, wsIdentifier;   //   for the watcher's samples: the focused group, ours
     u32 posts;              //   frames the engine flipped (its ERedraw events)
     u32 realSuspend;        // RThread::Suspend, the game's static import (round 130)
     u32 threadCreateThunk;
@@ -13245,6 +13258,136 @@ extern "C" u32 gate6_app_dll_uid(void *)
 // ConstructL starts the engine -- laid out and linked by load_and_start --
 // in a thread of this process, where the launcher started a process.
 
+// **"*" is the game's bitmap file, not ours.** CEikonEnv::CreateBitmapL("*", id)
+// asks for the application's own bitmap store. On the N-Gage that was the
+// game's `<stem>.mbm` beside its .app; on S60v3 the application is the
+// port's loader, whose store has its icon and nothing else, so the call
+// leaves -- uncaught, through the game's frames: Colin McRae's front end
+// died G6FLT 6553500 building its first control (E952). The name is
+// swapped for the game's own .mbm, on the drive the game was found on.
+// And the environment is the real one: the game passes its control's word
+// at +8, iCoeEnv on EKA1 and another member on 9.x, and with a real file
+// name CreateBitmapL went into that object's iEikEnvExtra -- 0x10 -- and
+// died reading 0x14 (E953). CCoeEnv::Static() is the CEikonEnv.
+static const u16 kOwnMbm[] = {'E',':','\\','s','y','s','t','e','m','\\','a','p','p','s','\\',
+                              GAME_DIR_CHARS,'\\',GAME_STEM_CHARS,'.','m','b','m'};
+extern "C" void *gate6_create_bitmap(void *env, const u32 *name, int id, Context *c)
+{
+    typedef void *(*Fn)(void *, const void *, int);
+    (void)env;
+    env = coeenv_static();
+    u32 len = 0;
+    const u16 *t = des_text(name, &len);
+    if (t && len == 1 && t[0] == '*' && sizeof kOwnMbm / 2 <= sizeof c->ownMbm / 2) {
+        const u32 n = (u32)(sizeof kOwnMbm / 2);
+        for (u32 i = 0; i < n; i++)
+            c->ownMbm[i] = kOwnMbm[i];
+        if (c->dataDrive)
+            c->ownMbm[0] = (u16)c->dataDrive;
+        Ptrc16 own;
+        own.lengthAndType = ((u32)EPtrC << KTypeShift) | n;
+        own.text = c->ownMbm;
+        log_event(c, NOTE_ENGINE, 0xAE000000u | ((u32)id & 0xFFFFu));
+        return ((Fn)c->realCreateBitmap)(env, &own, id);
+    }
+    return ((Fn)c->realCreateBitmap)(env, name, id);
+}
+
+// **A GCC 2.x delete on a 9.x object.** The game destroys an object through
+// vtable slot +8 with 3 in r1: GCC 2.x's in-charge deleting destructor. A
+// ROM object it was handed has an EABI vtable, where slot +8 is
+// CBase::Extension_ -- Colin McRae's front end deleted its CPeriodic so, and
+// Extension_ wrote through r2 (E957). So every ROM object the game is handed
+// by a factory gets a shadow of its class's vtable: the same words, header
+// and all (the vptr still points at slot 0, typeinfo at -4), except slot +8,
+// which is an adapter. An old destructor call (r1 <= 3, bit 0 to delete)
+// goes to EABI's deleting (+4) or complete (+0) destructor; anything else is
+// a real extension call (the ids are UIDs) and goes to the original
+// Extension_, kept in the word before the shadow's header. The 9.x code that
+// owns the object calls through the same slots it always did.
+//
+//   cmp r1, #3 ; bhi ext ; ldr r12, [r0] ; tst r1, #1 ; ldrne pc, [r12, #4]
+//   ldr pc, [r12, #0] ; ext: ldr r12, [r0] ; ldr pc, [r12, #-12]
+enum { SHADOW_SLOTS = 160, SHADOW_MAX = 16, SHADOW_ADAPTER_WORDS = 8, RESULT_THUNK_WORDS = 10 };
+static void shadow_adapter(Context *c)
+{
+    if (c->shadowAdapter || c->spare + SHADOW_ADAPTER_WORDS * 4 > c->spareEnd)
+        return;
+    u32 *b = (u32 *)c->spare;
+    b[0] = 0xE3510003; b[1] = 0x8A000003; b[2] = 0xE590C000; b[3] = 0xE3110001;
+    b[4] = 0x159CF004; b[5] = 0xE59CF000; b[6] = 0xE590C000; b[7] = 0xE51CF00C;
+    user_imb_range(b, b + SHADOW_ADAPTER_WORDS);
+    c->spare += SHADOW_ADAPTER_WORDS * 4;
+    c->shadowAdapter = (u32)b;
+}
+extern "C" u32 *gate6_shadow(u32 *obj, Context *c)
+{
+    if (!obj || ((u32)obj & 3) || !user_ptr((u32)obj) || !c->shadowAdapter)
+        return obj;
+    const u32 vp = obj[0];
+    if (vp < 0x80000000u || (vp & 3))       // only a ROM class's vtable
+        return obj;
+    for (u32 i = 0; i < c->shadowN; i++)
+        if (c->shadowFrom[i] == vp || c->shadowTo[i] == vp) {
+            obj[0] = c->shadowTo[i];
+            return obj;
+        }
+    if (c->shadowN >= (u32)SHADOW_MAX)
+        return obj;
+    u32 *mem = (u32 *)user_allocz((SHADOW_SLOTS + 3) * 4);
+    if (!mem)
+        return obj;
+    const u32 *orig = (const u32 *)vp;
+    mem[0] = orig[2];                       // the original slot +8, for the ext path
+    for (u32 i = 0; i < (u32)SHADOW_SLOTS + 2; i++)
+        mem[1 + i] = orig[(int)i - 2];      // header (offset-to-top, typeinfo), then the slots
+    mem[3 + 2] = c->shadowAdapter;
+    c->shadowFrom[c->shadowN] = vp;
+    c->shadowTo[c->shadowN] = (u32)(mem + 3);
+    c->shadowN++;
+    obj[0] = (u32)(mem + 3);
+    log_event(c, NOTE_ENGINE, 0xCE000000u | (c->shadowN & 0xFFu));
+    log_event(c, NOTE_ENGINE, vp);
+    return obj;
+}
+// After a factory of four arguments or fewer: shadow what it returns.
+//   stmdb sp!, {r4, lr} ; ldr r12, target ; blx r12 ; ldr r1, ctx
+//   ldr r12, gate6_shadow ; blx r12 ; ldmia sp!, {r4, pc}
+static u32 result_thunk(u8 *code, const void *ctx, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE92D4010; b[1] = 0xE59FC010; b[2] = 0xE12FFF3C; b[3] = 0xE59F100C;
+    b[4] = 0xE59FC00C; b[5] = 0xE12FFF3C; b[6] = 0xE8BD8010;
+    b[7] = target; b[8] = (u32)ctx; b[9] = (u32)&gate6_shadow;
+    user_imb_range(b, b + RESULT_THUNK_WORDS);
+    return (u32)b;
+}
+
+// **The screen furniture a title hides, which the port never built.**
+// Colin McRae's front end calls Cba() and StatusPane() on its own app UI in
+// ConstructL and hides each -- MakeVisible(EFalse), old CCoeControl slot
+// +0x10 (game 0xe94-0xec4). The port's app UI is built with
+// ENoScreenFurniture (BaseConstructL), so there is neither; avkon read the
+// old object's iEikonEnv and faulted (E955), and with the call diverted to
+// the wrapper the answer was null (E956). Both answer with one stand-in
+// control instead, every old slot of which does nothing and returns 0.
+enum { FURNITURE_SLOTS = 64 };
+extern "C" int gate6_furniture_noop(void) { return 0; }
+extern "C" void *gate6_hidden_furniture(void *, u32, Context *c)
+{
+    if (!c->hiddenFurniture) {
+        u32 *vt = (u32 *)user_allocz((2 + FURNITURE_SLOTS) * 4);
+        u32 *obj = (u32 *)user_allocz(16 * 4);
+        if (!vt || !obj) PANIC(CAT_MEM, -45);
+        for (u32 i = 0; i < (u32)FURNITURE_SLOTS; i++)
+            vt[2 + i] = (u32)&gate6_furniture_noop;
+        obj[0] = (u32)vt;           // GCC98r2: the vptr points at the header
+        c->hiddenFurniture = obj;
+        log_event(c, NOTE_ENGINE, 0xBE000000u);
+    }
+    return c->hiddenFurniture;
+}
+
 // The engine's thread. Its own name, so the logs and a phone's task list
 // say which thread is the game's.
 static const u16 kEngineThreadName[] = { 'g', '6', 'e', 'n', 'g' };
@@ -13304,17 +13447,57 @@ static void engine_shared_memory(Context *c)
 #endif
 }
 
-// **Bench: the front end stood in for (GAME_ENGINE_FRONTEND_STUB).** After
-// its splash the engine starts 6r66_2.app -- the game's front end, an
-// ordinary N-Gage application -- with RApaLsSession::StartApp, then posts 3
-// in the block's mailbox word (offset 0xe4, 0x49ec04) and spins until the
-// other side answers above 3 (5 meaning cancel; 0x449214), then clears it
-// (E951; the state word stays 1, E950). Nothing on S60v3 runs that EKA1 .app,
-// so nothing answers. To see what the engine does with no front-end choices,
-// a main-thread watcher answers 4 two seconds after the 3 appears. An
-// experiment, off in anything shipped.
-#ifndef GAME_ENGINE_FRONTEND_STUB
-#define GAME_ENGINE_FRONTEND_STUB 0
+// **An engine hears keys through its own window group.** The AirPlay engine
+// makes a focusable group of its own (RWindowGroup::Construct(2, ETrue),
+// 0x4a6f68) and reads its events itself -- EventReady and GetEvent on its own
+// session -- as it did in a process of its own on the N-Gage. Here it shares
+// the process with the wrapper app UI, whose root group the framework made,
+// put in front and focused first, so every key went to a group that has no
+// one reading it (E967: the menu never moved). The wrapper's group draws
+// nothing and reads nothing, so it declines the focus
+// (RWindowGroup::EnableReceiptOfFocus(EFalse), ws32 148), and the window
+// server gives it to the next focusable group: the engine's. Only once that
+// group exists -- the launcher's watcher waits for the engine's window group
+// in its block slot -- so there is never a moment with no focusable group,
+// which the emulator's window server does not survive (E968, a segfault on
+// the bench; a phone allows it). 0xFE logs it (bit 0: the export found).
+enum { WS32_ENABLE_RECEIPT_OF_FOCUS = 148, WS32_GET_FOCUS_WINDOW_GROUP = 32, WS32_GROUP_IDENTIFIER = 389 };
+
+static void engine_root_unfocusable(Context *c)
+{
+    typedef void (*Enable)(void *, int);
+    u32 lib = 0;
+    Ptrc16 nm, none;
+    nm.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kWs32Name / 2);
+    nm.text = kWs32Name;
+    none.lengthAndType = (u32)EPtrC << KTypeShift;
+    none.text = 0;
+    void *fn = 0;
+    if (!rlibrary_load(&lib, &nm, &none)) {
+        fn = rlibrary_lookup(&lib, (int)WS32_ENABLE_RECEIPT_OF_FOCUS);
+        c->wsGetFocus = (u32)rlibrary_lookup(&lib, (int)WS32_GET_FOCUS_WINDOW_GROUP);
+        c->wsIdentifier = (u32)rlibrary_lookup(&lib, (int)WS32_GROUP_IDENTIFIER);
+    }
+    log_event(c, NOTE_ENGINE, 0xFE000000u | (fn ? 1u : 0u));
+    if (fn && c->coeEnv)
+        ((Enable)fn)((u8 *)c->coeEnv + NEW_COEENV_ROOTWIN, 0);
+}
+
+// **The launcher's part (GAME_ENGINE_LAUNCHER).** The I3D block has three
+// participants: the engine (1), the N-Gage launcher that started it (2) and
+// the front end, 6r66_2.app (3). The port is the launcher -- it made the
+// block (engine_shared_memory) -- and the launcher's other duty is the
+// block's mailbox (offset 0xe4): after its splash the engine posts 3 there
+// and spins until the answer is above 3, 5 meaning cancel (0x449214). The
+// front end never touches that word (its block reads are +0xd4 and +0xdc,
+// E962), and answered 4 the engine goes on to its own main menu and attract
+// demo (E966): the menu is the engine's, and single player never starts the
+// front end. So a main-thread watcher answers 4 two seconds after the 3
+// appears, and hands the focus to the engine's window group once the engine
+// has put it in its slot (engine_root_unfocusable). It began as a bench
+// stand-in for the front end (E949-E951); E962 showed whose duty it was.
+#ifndef GAME_ENGINE_LAUNCHER
+#define GAME_ENGINE_LAUNCHER 0
 #endif
 enum { I3D_MAILBOX = 0xE4 / 4, I3D_ASK = 3, I3D_ANSWER = 4, SHM_WATCH_US = 500000, SHM_WATCH_TICKS = 4 };
 
@@ -13332,6 +13515,20 @@ extern "C" int gate6_engine_shm_watch(void *p)
         log_event(c, NOTE_ENGINE, b[I3D_MAILBOX]);
         for (u32 i = 1; i <= 3; i++)
             log_event(c, NOTE_ENGINE, b[0xF0 / 4 + i]);
+        // Then the group the window server focuses, and the wrapper's own
+        // (RWsSession::GetFocusWindowGroup, ws32 32; RWindowGroup::Identifier,
+        // ws32 389): whose keys these are, against the engine's in slot 1.
+        typedef int (*GetFocus)(const void *);
+        typedef int (*Identifier)(const void *);
+        if (c->wsGetFocus && c->wsIdentifier && c->coeEnv) {
+            log_event(c, NOTE_ENGINE, (u32)((GetFocus)c->wsGetFocus)((u8 *)c->coeEnv + 0x20 + COEENV_BIAS));
+            log_event(c, NOTE_ENGINE, (u32)((Identifier)c->wsIdentifier)((u8 *)c->coeEnv + NEW_COEENV_ROOTWIN));
+        }
+        log_block(c);
+    }
+    if (!c->focusHanded && b[0xF0 / 4 + I3D_SHM_ENGINE]) {
+        c->focusHanded = 1;
+        engine_root_unfocusable(c);
         log_block(c);
     }
     if (b[I3D_MAILBOX] != (u32)I3D_ASK) {
@@ -13347,6 +13544,59 @@ extern "C" int gate6_engine_shm_watch(void *p)
     return 1;
 }
 
+// **The front end, started as its port.** When its script asks for it
+// (0x49f194, reached only from script opcodes, 0x47e4bc and 0x47e598 -- not
+// on the single-player path, E962, though E948 read it as following the
+// splash), the engine starts `e:\SYSTEM\apps\6r66\6r66_2.app` with
+// RApaLsSession::StartApp: an EKA1 .app nothing on 9.x can run. Its port is
+// its own loader, GAME_ENGINE_FRONTEND_EXE (Colin McRae's: games/colin2,
+// gate6col2.exe), so StartApp starts that process instead, whatever the
+// command line names. The two meet in the I3D block this process made
+// (engine_shared_memory): the front end opens it as participant 3 and waits
+// for its turn. Answered with the create's error, as StartApp's own; 0xDE
+// logs it. Installed and its exports found (E962); never yet called.
+#ifdef GAME_ENGINE_FRONTEND_EXE
+static const u16 kFrontendExe[] = { GAME_ENGINE_FRONTEND_EXE };
+#endif
+enum { EUSER_PROCESS_CREATE = 1324, EUSER_PROCESS_RESUME = 1326 };
+
+extern "C" int gate6_start_frontend(void *session, const void *cmdLine, Context *c)
+{
+    (void)session; (void)cmdLine;
+#ifdef GAME_ENGINE_FRONTEND_EXE
+    typedef int (*Create)(u32 *self, const Ptrc16 *name, const Ptrc16 *args, int owner);
+    typedef void (*Resume)(const u32 *self);
+    // Looked up at install, on the main thread: the RLibrary handle is the
+    // main thread's, and the engine calls StartApp from its own.
+    Create create = (Create)c->processCreate;
+    Resume resume = (Resume)c->processResume;
+    int r = -1;                                         // KErrNotFound
+    if (create && resume) {
+        Ptrc16 nm, none;
+        nm.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kFrontendExe / sizeof kFrontendExe[0]);
+        nm.text = kFrontendExe;
+        none.lengthAndType = (u32)EPtrC << KTypeShift;
+        none.text = kFrontendExe;
+        u32 process = 0;
+        r = create(&process, &nm, &none, 0 /* EOwnerProcess */);
+        if (!r) {
+            resume(&process);
+            rhandle_close(&process);
+        }
+    }
+    // The engine thread's record waits for the main thread's next flush, so
+    // the result is also said on RDebug, which any thread reaches: "G6S" then
+    // the error's low half.
+    note(c, (u32)r & 0xFFFFu, 'S');
+    log_event(c, NOTE_ENGINE, 0xDE000000u | ((u32)r & 0xFFFFFFu));
+    log_block(c);
+    return r;
+#else
+    (void)c;
+    return -5;                                          // KErrNotSupported
+#endif
+}
+
 static void engine_start(Context *c)
 {
     // RThread::Create(name, fn, stack, RAllocator *heap, TAny *ptr,
@@ -13358,7 +13608,7 @@ static void engine_start(Context *c)
     typedef void (*ResumeFn)(const u32 *self);
     if (!c->threadCreateFn || !c->realResume) PANIC(CAT_LIB, -60);
     engine_shared_memory(c);
-    if (GAME_ENGINE_FRONTEND_STUB && c->engineShmBlock) {
+    if (GAME_ENGINE_LAUNCHER && c->engineShmBlock) {
         void *t = cperiodic_newl(0);
         if (t) {
             c->shmTimer = (u32)t;
@@ -14873,10 +15123,52 @@ static u32 load_and_start()
         iat[IMPORT_DEF_MODE_COLORS] = ctx3_thunk(ctx->spare, ctx, (u32)&gate6_def_mode);
         ctx->spare += TRACE;
     }
+    // ROM objects from factories, shadowed for a GCC 2.x delete (gate6_shadow).
+    {
+        const u32 idx[4] = { IMPORT_SHADOW_PERIODIC, IMPORT_SHADOW_BUFFLAT,
+                             IMPORT_SHADOW_DESC8FLAT, IMPORT_SHADOW_DESC16FLAT };
+        for (u32 k = 0; k < 4; k++) {
+            const u32 j = idx[k];
+            if (j >= nImports || j >= kShimCount || (kShimTable[j] >> 24) != KIND_CALL ||
+                ctx->spare + RESULT_THUNK_WORDS * 4 + SHADOW_ADAPTER_WORDS * 4 > ctx->spareEnd)
+                continue;
+            shadow_adapter(ctx);
+            iat[j] = result_thunk(ctx->spare, ctx, iat[j]);
+            ctx->spare += RESULT_THUNK_WORDS * 4;
+        }
+    }
+    // Cba() and StatusPane(): the hidden stand-in (gate6_hidden_furniture).
+    {
+        const u32 idx[2] = { IMPORT_AKN_CBA, IMPORT_AKN_STATUS_PANE };
+        for (u32 k = 0; k < 2; k++) {
+            const u32 j = idx[k];
+            if (j >= nImports || j >= kShimCount || (kShimTable[j] >> 24) != KIND_CALL ||
+                ctx->spare + TRACE > ctx->spareEnd)
+                continue;
+            iat[j] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_hidden_furniture);
+            ctx->spare += TRACE;
+        }
+    }
+    // CEikonEnv::CreateBitmapL("*") to the game's own .mbm (gate6_create_bitmap).
+    if (IMPORT_CREATE_BITMAP < nImports && IMPORT_CREATE_BITMAP < kShimCount &&
+        (kShimTable[IMPORT_CREATE_BITMAP] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->realCreateBitmap = iat[IMPORT_CREATE_BITMAP];
+        iat[IMPORT_CREATE_BITMAP] = ctx3_thunk(ctx->spare, ctx, (u32)&gate6_create_bitmap);
+        ctx->spare += TRACE;
+    }
     // An engine's I3D shared memory is made with its own RChunk::CreateGlobal (engine_shared_memory).
     if (GAME_ENGINE_LXCE && IMPORT_CHUNK_CREATE_GLOBAL < nImports && IMPORT_CHUNK_CREATE_GLOBAL < kShimCount &&
         (kShimTable[IMPORT_CHUNK_CREATE_GLOBAL] >> 24) == KIND_CALL)
         ctx->chunkCreateGlobal = iat[IMPORT_CHUNK_CREATE_GLOBAL];
+    // An engine's RApaLsSession::StartApp starts its front end's port (gate6_start_frontend).
+    if (GAME_ENGINE_LXCE && IMPORT_START_APP < nImports && IMPORT_START_APP < kShimCount &&
+        (kShimTable[IMPORT_START_APP] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->processCreate = (u32)rlibrary_lookup(&ctx->euser, EUSER_PROCESS_CREATE);
+        ctx->processResume = (u32)rlibrary_lookup(&ctx->euser, EUSER_PROCESS_RESUME);
+        iat[IMPORT_START_APP] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_start_frontend);
+        log_event(ctx, NOTE_ENGINE, 0xDF000000u | (ctx->processCreate ? 1u : 0u) | (ctx->processResume ? 2u : 0u));
+        ctx->spare += TRACE;
+    }
     // An engine's flip: UserSvr::AddEvent(ERedraw) posts the frame (gate6_engine_add_event).
     if (GAME_ENGINE_LXCE && IMPORT_ADD_EVENT < nImports && IMPORT_ADD_EVENT < kShimCount &&
         (kShimTable[IMPORT_ADD_EVENT] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
@@ -15323,6 +15615,28 @@ static u32 load_and_start()
     // application built here, with nothing of the game's behind it.
     if (GAME_ENGINE_LXCE) {
         ctx->gameEntry = (u32)(base + (lxEntry - lxBase));
+#ifdef GAME_ENGINE_INIT
+        // **The engine's own set-up that its N-Gage load never needed.**
+        // Colin's block interpreter (0x459d68) keeps each block's link to the
+        // next as the low 24 bits of its address, and rebuilds it as
+        // `base | link`, plus 16 MB below a limit -- the image's own pointer
+        // 0x3cc214, relocated, just under where the engine loads (E964). The
+        // base is set by 0x45b0b0 (limit & 0xFF000000), which nothing in the
+        // image calls: on the N-Gage the engine loaded under 16 MB and a zero
+        // base was already right. Here it loads at 0x4700000, a link into its
+        // own data decodes into the wrong 16 MB (0x485B18C as 0x185B18C), and
+        // the interpreter faults in nothing mapped. With the base set, a link
+        // decodes into [limit, limit + 16 MB), which holds the whole image. So the port calls each GAME_ENGINE_INIT function
+        // (image addresses; leaves that only touch the engine's globals) once,
+        // relocated and before the engine's thread exists. 0xEE logs each.
+        {
+            const u32 init[] = { GAME_ENGINE_INIT };
+            for (u32 i = 0; i < sizeof init / sizeof init[0]; i++) {
+                ((void (*)(void))(base + (init[i] - lxBase)))();
+                log_event(ctx, NOTE_ENGINE, 0xEE000000u | (init[i] & 0xFFFFFFu));
+            }
+        }
+#endif
         u32 *wrap = (u32 *)user_allocz(WRAP_BYTES);
         if (!wrap) PANIC(CAT_MEM, -20);
         eikapplication_ctor(wrap);
