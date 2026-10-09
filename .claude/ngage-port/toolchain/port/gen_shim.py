@@ -945,6 +945,14 @@ def build(image):
     d = open(image, 'rb').read()
     imports = [(n.split('[')[0].split('{')[0].lower(), o)
                for n, ords in e32imports.imports(d) for o in ords]
+    return build_imports(imports)
+
+
+def build_imports(imports):
+    """The same pairing for any list of (library, old ordinal): an E32
+    image's import section, or the import table of an engine the game loads
+    itself and resolves through RLibrary::Lookup (Colin McRae's AirPlay
+    engine, `lxce.py`)."""
     defs = find_defs()
     new = {lib: defs[lib] for lib in {l for l, _o in imports} if lib in defs}
     # A library with no .def in the release tree (estor, for One) is matched

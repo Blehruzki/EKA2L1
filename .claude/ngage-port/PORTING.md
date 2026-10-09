@@ -7222,3 +7222,59 @@ Seventh and eighth time the instrument was the finding -- and the
 wrong-file retraction above is the ninth, caught only because the question
 "do the games need cracking?" sent me back to look at what the input
 actually was.
+
+## Colin McRae Rally 2005 (6r66): an AirPlay engine, not an app
+
+Read on 2026-10-09 from the retail dump (v03.06-prd-4204THA). Every title so
+far was one EKA1 `.app` the loader runs in place of the original. This one is
+not, and the port has to change shape for it.
+
+**What is on the card.**
+
+| file | what it is |
+|---|---|
+| `6r66.app` (416 bytes) | a truncated stub; the card's `ngagegamestarter.txt` points at `\system\apps\6r66_1\6r66_1.app` instead |
+| `6r66_1.app` (15 KB, in the other dump under `scratchpad/games/Colin_McRae`) | the launcher, "COLIN" by Ideaworks3D: an Avkon app that creates the global chunk `I3D_SHARED_MEMORY_COLIN`, starts `6r66.nax` and manages its window group |
+| `6r66.nax` (622 KB) | **the game**: an EKA1 EXE whose code is AirPlay's 5 KB loader (byte for byte `\system\programs\airplayserver.exe`'s) with a 617 KB gzip stream appended |
+| `6r66_2.app` (241 KB, "GsbApp") | Game Services: online login, league, uploads, clip exchange; `cryptoshim`/`bigint` for the login. Not needed to play |
+| `*.dz`, `game_data.dz`, `configfile0-4.cfg`, `cmr05.dat` | the tracks (eight countries), the game data, settings |
+
+**The loader** (`lxce.py` documents it step by step): it inflates its own tail
+into an `RChunk`, applies PE base relocations (type 3 only), fills a PE
+import directory with `RLibrary::Load` + `RLibrary::Lookup(ordinal)` on the
+libraries it names the E32 way (`EUSER[100039e5].DLL`), flushes the cache and
+`bx`es to the entry with no arguments. The inflated engine (magic `LXCE`) is
+1.4 MB: text 1.24 MB, rdata, a 4.9 MB bss, 13,523 relocations, base
+0x400000, entry 0x401000, 6.3 MB once laid out.
+
+**The engine's imports**, 326 by ordinal from 18 libraries, none of them
+cone, avkon or bitgdi: it is a bare window-server client. Display is direct
+screen access (ws32 348/350, as the Asphalts and One) plus
+`UserSvr::ScreenInfo` and `CFbsBitmap`/`TBitmapUtil`, so the framebuffer
+machinery applies -- but with no bitgdi `Update`, the port needs its own
+moment to post a frame. Input is raw window-server events and priority keys;
+sound the MDA stream; plus estlib (45), esock (25) and the Bluetooth stack
+for multiplayer, sysagt, apgrfx/apparc (to start Game Services).
+`gen_shim.build_imports` maps them as it maps any image's: **281 forwarded,
+26 local, 19 unanswered** -- nine Bluetooth security calls (multiplayer),
+five ws32 calls the tables mis-pair (`GetEvent`, `GetFocusWindowGroup`,
+`GetPriorityKey`, `FetchMessage`, `GetInvalidRegion`) and
+`SimulateRawEvent`, `memset`, `RThread::Rename`, and the audio stream's
+constructor (old ordinal 2, which the other titles reach through a hook).
+
+**The plan: gate6 does the loader's job itself.** Not running the EKA1 EXE
+saves emulating `RProcess::FileName`, `RLibrary` and a second process:
+
+1. Host side: `lxce.py --out` inflates the engine at package time; the SIS
+   carries `6r66.lxe`.
+2. gen_shim takes the engine's import list as the title's import list, so
+   every hook and diversion keyed by import index works as for the others.
+3. gate6, for an engine title: one `RChunk::CreateLocalCode` (EKA2 data
+   chunks do not execute on ARMv6), sections copied to their offsets from
+   the base, relocations applied, every import slot filled with the shim's
+   resolved entry for its index, `User::IMB_Range`, and the entry run in a
+   thread of its own with a large stack. The Avkon app stays as the
+   launcher's stand-in and creates `I3D_SHARED_MEMORY_COLIN`.
+4. Then the 19, the frame post, input focus between the app's window group
+   and the engine's, the data paths (`configfile%d.cfg` on E:,
+   `C:\system\apps\GameMgr\6r66.cfg`, `C:\system\apps\6r66\updates`).

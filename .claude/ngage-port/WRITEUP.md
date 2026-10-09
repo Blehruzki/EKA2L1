@@ -76,5 +76,10 @@ and hardware round, with its result), `BUGBOOK.md`
 with citations), `KNOBS.md`, `RELEASE.md`, `shots/`, the per-title
 `game.h` comments, and the git history of the `ngage-port` branch.
 
+Colin McRae Rally 2005 (PORTING.md, the AirPlay section): the game is not
+in its `.app` at all but in a compressed engine its own loader unpacks at run
+time, and the engine carries a message for whoever unpacks it: "I3D is
+recruiting talented hackers". A good opening for that title's story.
+
 Add to this list as the project goes: when a story would make a good section,
 note it here with its rows.
