@@ -116,6 +116,7 @@ the saves behind.
 | Asphalt 2 | `c:\system\apps\6RBC\` | `user.dat` | `user.dat` |
 | Ashen | `C:\System\Apps\6R21\` | `options.dat` (E445) | `savegameNN.sav` (from the image's format string; not yet seen written) |
 | One | `C:\System\Apps\6R58\` | `6R58.set` (52 bytes) | `6R58.prf`, the fighter profile (12.8 KB; E584-E585 made it persist) |
+| Colin McRae 2005 | `C:\system\apps\6r66\` | not identified (`configfile0.cfg` is opened beside the data, E1006, but not shown to be settings) | `cmr_save_info.dat`, `gameinfo.dat` (written at QUIT, E1000; on C: whatever the install drive, E1027) |
 
 ## Bench knobs in `gate6.cpp` that must be 0 in a shipped build
 
