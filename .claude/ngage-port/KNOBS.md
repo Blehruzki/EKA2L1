@@ -101,6 +101,8 @@ the N95 and the N91. One (`gate6one`) ships as **028** (round 159: the N73's dea
 | `GAME_DIR_CHARS`: a title whose folder is not its stem (default: the stem) | E952 | bench: Colin's front end (`6r66\6r66_2.app`) |
 | the DSA stand-in has a vtable whose every slot deletes the real CDirectScreenAccess (`gate6_dsa_shadow_delete`) | E997-E1001 | bench: Colin's QUIT; Asphalt 2 and One unchanged (E1002-E1003) |
 | shadow vtables refuse a class whose slot +8 (through one DLL veneer) is not CBase's or CActive's Extension_; the list now also CMsvSession, CWsScreenDevice, CApaWindowGroupName, CFileMan, CApaCommandLine, the SDP pair | E999-E1001 | bench: Colin; One shadows one class, clean (E1002) |
+| **the E: fiction for estlib and RFs's named calls**: `fopen`, `wfopen`, `mkdir`, `unlink`, `RFs::SetSessionPath`, `MkDirAll`, `Modified` get the same E:-to-real-drive rewrite as RFile's opens (`gate6_fopen` and the rest) | E1005-E1007 | bench: Colin installed on C:; the Asphalts' fopen/MkDirAll pass through on E: (E1021, E1023) |
+| a StartL on a DSA that is already running is answered without a second Request, which wserv would panic EWservPanicDirectMisuse (`gate6_dsa_startl`, 0x57A2) | E1017-E1018 | bench: Colin; never taken on One or the Asphalts (E1020-E1023) |
 
 ## Where each title saves
 
@@ -223,3 +225,6 @@ on every title: `RFile::Replace`, `Write`, `Flush`, `RFs::MkDir`, `Delete`
 | `GAME_ENGINE_INIT` | 0x45b0b0 | engine functions (image addresses) called once before its thread starts: Colin's sets the block interpreter's 24-bit link base | E965, bench |
 | `GAME_MDA_RDEBUG` | 0 | bench: NewL, every stream call and callback through the port's MDA proxy on RDebug (any thread). Showed Colin's engine never enters the proxy | E984, diagnostic |
 | `GAME_ENGINE_FRONTEND_EXE` | gate6col2.exe | what the engine's `RApaLsSession::StartApp` starts in place of the N-Gage front end `.app` | installed E962; never yet called |
+| (with `GAME_ENGINE_LAUNCHER`) the hand-back | -- | back from an app switch: when the wrapper's group arrives at ordinal 0 with the focus elsewhere, the engine's group goes to the front (0x6B), and the engine's next post cancels and restarts its DSA (`dsa_kick`, "G6K") | E1009-E1015, E1019, bench |
+| `GAME_BENCH_SWITCH_AT` / `_FOR` | 0 / 10 | bench: another app's group in front at AT s, the wrapper's group back FOR s later (`bench_switch`, 0x5B) | E1008-E1015, diagnostic |
+| `GAME_BENCH_DSA_ABORT_AT` / `_KICK` | 0 / 0 | bench: a phone's DSA abort and restart on the engine's thread at that post; KICK puts the hand-back's kick between them | E1016-E1018, diagnostic |

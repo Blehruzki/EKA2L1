@@ -308,7 +308,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_OPEN = 897,    // what RFile::Open answered
        NOTE_FILE_PATH = 898,    // ... and the name it was asked for
        NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
-       NOTE_ENGINE = 640,       // an AirPlay engine title (GAME_ENGINE_LXCE): 0x1Exxxxxx the layout (imports, then relocations), 0x2E the thread's create result, 0x3E resumed, 0x4E bitgdi's Update resolved (bit 0), 0x5E/0x6E/0x7E a flip's samples, 0x8E the I3D shared memory made (the error; 0x8EBAD000 no CreateGlobal), 0xBE the hidden screen furniture made, 0xCE a ROM vtable shadowed (count, then the vtable), 0xCF one refused, its slot +8 not an Extension_ (then the vtable and that slot), 0xDE the front end's port started by StartApp (the error), 0xDF that hook installed (bit 0 RProcess::Create found, bit 1 Resume), 0xEE a GAME_ENGINE_INIT function called (its image address), 0xFE the wrapper's root group declines the focus (bit 0: the export found), 0xAE CreateBitmapL("*") sent to the game's .mbm (the id), 0x9E the mailbox answered, 0x9F the state word sampled then the mailbox (0xe4), slots 1-3, and once the focus is handed, the focused group and ours (GAME_ENGINE_LAUNCHER)
+       NOTE_ENGINE = 640,       // an AirPlay engine title (GAME_ENGINE_LXCE): 0x1Exxxxxx the layout (imports, then relocations), 0x2E the thread's create result, 0x3E resumed, 0x4E bitgdi's Update resolved (bit 0), 0x5E/0x6E/0x7E a flip's samples, 0x8E the I3D shared memory made (the error; 0x8EBAD000 no CreateGlobal), 0xBE the hidden screen furniture made, 0xCE a ROM vtable shadowed (count, then the vtable), 0xCF one refused, its slot +8 not an Extension_ (then the vtable and that slot), 0xDE the front end's port started by StartApp (the error), 0xDF that hook installed (bit 0 RProcess::Create found, bit 1 Resume), 0xEE a GAME_ENGINE_INIT function called (its image address), 0xFE the wrapper's root group declines the focus (bit 0: the export found), 0x5B01 the bench's other app in front (its two construct errors), 0x5B02 the wrapper's group brought back (GAME_BENCH_SWITCH_AT), 0x6B the engine's group handed the front back after a switch (its id), 0x7F the engine's frames posted so far (in each 0x9F sample), 0x8F the post path's state (bit 0 screen lost, bit 1 DSA idle, clip mode at bit 4; then the refused posts, then the reached flags), 0xAE CreateBitmapL("*") sent to the game's .mbm (the id), 0x9E the mailbox answered, 0x9F the state word sampled then the mailbox (0xe4), slots 1-3, and once the focus is handed, the focused group and ours (GAME_ENGINE_LAUNCHER)
        NOTE_TICK_SHIM = 699,    // the tick seed read answered: the real tick it replaced (0xD1nnnnnn: slots diverted at load)
        NOTE_FILE_HEAD = 861,    // the first three words of a name descriptor
        NOTE_CARD_REFUSED = 862, // a write to the game card, refused as a card would
@@ -1439,7 +1439,17 @@ struct Context {
     u32 realGetEvent;       // GAME_ENGINE_LXCE: RWsSession::GetEvent, as resolved (gate6_engine_get_event)
     u32 cfgSavePending;     //   a hold's save, owed to the main thread
     u32 engineQuitting;     //   GAME_ENGINE_LAUNCHER: the engine asked to quit (mailbox 6)
+    u32 benchSwitchTicks, benchOtherApp;   // GAME_BENCH_SWITCH_AT: the watcher's ticks, the other app's group
+    u32 dsaStarts;          //   an engine's StartL calls, for its RDebug note
+    u32 dsaKick;            //   start the engine's DSA again at its next post (after a hand-back)
+    u32 activeCancel;       //   CActive::Cancel (euser 1088), for that restart
+    u32 realFopen, realWfopen, realMkdir, realUnlink, realSessionPath, realMkDirAll, realModified;   // the E: fiction's other calls (E1005)
+    char fopenName[272];    //   fopen's name, translated
+    u16 wfopenName[272];    //   wfopen's
     u32 wsGetFocus, wsIdentifier;   //   for the watcher's samples: the focused group, ours
+    u32 wsOrdinalPos, wsSetWgOrdinal;   //   the hand-back after an app switch (E1009)
+    u32 rootWasFront;       //   the wrapper's group was in front at the last tick
+    u32 benchAbortDone;     //   GAME_BENCH_DSA_ABORT_AT: done
     u32 posts;              //   frames the engine flipped (its ERedraw events)
     u32 realSuspend;        // RThread::Suspend, the game's static import (round 130)
     u32 threadCreateThunk;
@@ -5293,6 +5303,8 @@ static void dump_framebuffer(Context *c, u32 tag)
 
 extern "C" void gate6_dsa_slot0(void *, u32 reason, Context *c)
 {
+    if (GAME_ENGINE_LXCE)
+        note(c, reason & 0xFFFFu, 'A');     // an engine's DSA lives on its thread: RDebug, not the record (E1012)
     c->reached |= REACHED_ABORT;
     c->screenLost = 1;
     // Round 129: a minimize ended KERN-EXEC 0 a moment after this, with the
@@ -5329,6 +5341,8 @@ extern "C" void gate6_dsa_slot0(void *, u32 reason, Context *c)
 
 extern "C" void gate6_dsa_slot1(void *, u32 reason, Context *c)
 {
+    if (GAME_ENGINE_LXCE)
+        note(c, reason & 0xFFFFu, 'R');
     c->reached |= REACHED_RESTART;
     log_event(c, NOTE_DSA_RESTART, reason);
     log_block(c);
@@ -6075,6 +6089,8 @@ static void dsa_gc_activate(Context *c)
 extern "C" void gate6_dsa_startl(void *, u32, Context *c)
 {
     typedef void (*StartL)(void *);
+    if (GAME_ENGINE_LXCE)
+        note(c, ++c->dsaStarts, 'S');       // as the abort and restart notes (E1012)
     // Round 118: on an N91 the record ends inside the first StartL -- no
     // leave, no return, no fault -- so the call is bracketed: 0x57A0 going
     // in, 0x57A1 coming back. A leave skips the second.
@@ -6110,8 +6126,19 @@ extern "C" void gate6_dsa_startl(void *, u32, Context *c)
         log_event(c, NOTE_DSA_BEFORE, (dsa_gc_off(c) << 16) | (dsa_dev_off(c) << 8) | dsa_rgn_off(c));
         log_block(c);
     }
-    if (HOLD_THE_SCREEN)
+    // **E1017: never a second StartL on a running DSA.** wserv answers a
+    // Request for a session already running with EWservPanicDirectMisuse
+    // (nonnga Direct.CPP, CWsDirectScreenAccess::Request), and a running DSA
+    // has its region already; so a StartL that finds the object active is
+    // answered as if it had run. The launcher's kick (dsa_kick) can start it
+    // between ws32's RunL and the CIdle that runs the game's Restart.
+    if (HOLD_THE_SCREEN && !(c->dsaReal && (c->dsaReal[OLD_DSA_ACTIVE / 4] & 1)))
         ((StartL)c->newDsaStartL)(c->dsaReal);
+    else if (HOLD_THE_SCREEN) {
+        log_event(c, NOTE_DSA_RESTART, 0x57A2);
+        if (GAME_ENGINE_LXCE)
+            note(c, c->dsaStarts, 'D');     // "G6D": that StartL answered without a second Request
+    }
     log_event(c, NOTE_DSA_RESTART, 0x57A1);
     // Bench (BENCH_MINIMIZE_TICK): the game's StartL after the return is
     // what gives the window its region back, as on the phone.
@@ -6706,6 +6733,85 @@ extern "C" int gate6_card_open(void *f, void *fs, const u32 *name, u32 mode, Con
         }
     }
     return err;
+}
+
+// **The fiction for the C library and RFs's other named calls (E1005).**
+// on_the_real_drive covered RFile's Open, Create and Replace, which is how
+// the .app titles reach their files. Colin McRae's engine reaches its data
+// through estlib -- fopen and wfopen on E:\system\apps\6r66\*.dz, mkdir and
+// unlink beside them -- and names its directory to RFs::SetSessionPath, MkDirAll and Modified, none of
+// which were translated: installed on C:, every data open failed and the
+// engine stopped at "Ideaworks3D: Error loading game data". The C-library
+// names get buffers of their own, because the engine calls them on its own
+// thread while the main thread may be using swapText.
+static const char *fopen_name(const char *name, Context *c)
+{
+    if (!name || !c->dataDrive || c->dataDrive == 'E' || !(name[0] == 'e' || name[0] == 'E') || name[1] != ':')
+        return name;
+    u32 n = 0;
+    while (n < sizeof c->fopenName - 1 && name[n]) {
+        c->fopenName[n] = name[n];
+        n++;
+    }
+    if (name[n])
+        return name;                        // too long to copy: left as it was
+    c->fopenName[n] = 0;
+    c->fopenName[0] = (char)c->dataDrive;
+    return c->fopenName;
+}
+
+extern "C" void *gate6_fopen(const char *name, const char *mode, Context *c)
+{
+    typedef void *(*Fopen)(const char *, const char *);
+    return ((Fopen)c->realFopen)(fopen_name(name, c), mode);
+}
+
+extern "C" int gate6_mkdir(const char *name, u32 mode, Context *c)
+{
+    typedef int (*Mkdir)(const char *, u32);
+    return ((Mkdir)c->realMkdir)(fopen_name(name, c), mode);
+}
+
+extern "C" int gate6_unlink(const char *name, u32, Context *c)
+{
+    typedef int (*Unlink)(const char *);
+    return ((Unlink)c->realUnlink)(fopen_name(name, c));
+}
+
+extern "C" void *gate6_wfopen(const u16 *name, const u16 *mode, Context *c)
+{
+    typedef void *(*Wfopen)(const u16 *, const u16 *);
+    if (name && c->dataDrive && c->dataDrive != 'E' && (name[0] == 'e' || name[0] == 'E') && name[1] == ':') {
+        u32 n = 0;
+        while (n < sizeof c->wfopenName / 2 - 1 && name[n]) {
+            c->wfopenName[n] = name[n];
+            n++;
+        }
+        if (!name[n]) {
+            c->wfopenName[n] = 0;
+            c->wfopenName[0] = (u16)c->dataDrive;
+            name = c->wfopenName;
+        }
+    }
+    return ((Wfopen)c->realWfopen)(name, mode);
+}
+
+extern "C" int gate6_fs_session_path(void *fs, const u32 *name, Context *c)
+{
+    typedef int (*Fn)(void *, const u32 *);
+    return ((Fn)c->realSessionPath)(fs, on_the_real_drive(name, c));
+}
+
+extern "C" int gate6_fs_mkdirall(void *fs, const u32 *name, Context *c)
+{
+    typedef int (*Fn)(void *, const u32 *);
+    return ((Fn)c->realMkDirAll)(fs, on_the_real_drive(name, c));
+}
+
+extern "C" int gate6_fs_modified(void *fs, const u32 *name, void *time, Context *c)
+{
+    typedef int (*Fn)(void *, const u32 *, void *);
+    return ((Fn)c->realModified)(fs, on_the_real_drive(name, c), time);
 }
 
 extern "C" int gate6_card_create(void *f, void *fs, const u32 *name, u32 mode, Context *c)
@@ -13373,7 +13479,7 @@ extern "C" void *gate6_create_bitmap(void *env, const u32 *name, int id, Context
 //   cmp r1, #3 ; bhi ext ; ldr r12, [r0] ; tst r1, #1 ; ldrne pc, [r12, #4]
 //   ldr pc, [r12, #0] ; ext: ldr r12, [r0] ; ldr pc, [r12, #-12]
 enum { SHADOW_SLOTS = 160, SHADOW_MAX = 16, SHADOW_ADAPTER_WORDS = 8, RESULT_THUNK_WORDS = 10,
-       EUSER_CBASE_EXTENSION = 2123, EUSER_CACTIVE_EXTENSION = 2128 };
+       EUSER_CBASE_EXTENSION = 2123, EUSER_CACTIVE_EXTENSION = 2128, EUSER_CACTIVE_CANCEL = 1088 };
 static void shadow_adapter(Context *c)
 {
     if (c->shadowAdapter || c->spare + SHADOW_ADAPTER_WORDS * 4 > c->spareEnd)
@@ -13551,7 +13657,8 @@ static void engine_shared_memory(Context *c)
 // in its block slot -- so there is never a moment with no focusable group,
 // which the emulator's window server does not survive (E968, a segfault on
 // the bench; a phone allows it). 0xFE logs it (bit 0: the export found).
-enum { WS32_ENABLE_RECEIPT_OF_FOCUS = 148, WS32_GET_FOCUS_WINDOW_GROUP = 32, WS32_GROUP_IDENTIFIER = 389 };
+enum { WS32_ENABLE_RECEIPT_OF_FOCUS = 148, WS32_GET_FOCUS_WINDOW_GROUP = 32, WS32_GROUP_IDENTIFIER = 389,
+       WS32_ORDINAL_POSITION = 421, WS32_SET_WG_ORDINAL = 62 };
 
 static void engine_root_unfocusable(Context *c)
 {
@@ -13567,6 +13674,8 @@ static void engine_root_unfocusable(Context *c)
         fn = rlibrary_lookup(&lib, (int)WS32_ENABLE_RECEIPT_OF_FOCUS);
         c->wsGetFocus = (u32)rlibrary_lookup(&lib, (int)WS32_GET_FOCUS_WINDOW_GROUP);
         c->wsIdentifier = (u32)rlibrary_lookup(&lib, (int)WS32_GROUP_IDENTIFIER);
+        c->wsOrdinalPos = (u32)rlibrary_lookup(&lib, (int)WS32_ORDINAL_POSITION);
+        c->wsSetWgOrdinal = (u32)rlibrary_lookup(&lib, (int)WS32_SET_WG_ORDINAL);
     }
     log_event(c, NOTE_ENGINE, 0xFE000000u | (fn ? 1u : 0u));
     if (fn && c->coeEnv)
@@ -13591,12 +13700,89 @@ static void engine_root_unfocusable(Context *c)
 #endif
 enum { I3D_MAILBOX = 0xE4 / 4, I3D_ASK = 3, I3D_ANSWER = 4, I3D_QUIT = 6, I3D_CLOSE_ME = 1, I3D_STATE_EXIT = 5, SHM_WATCH_US = 500000, SHM_WATCH_TICKS = 4 };
 
+// **Bench: a phone's app switch, from the window server's side
+// (GAME_BENCH_SWITCH_AT, seconds after the engine starts; 0 off).** Nothing on
+// the bench takes the foreground from the engine, so the watcher does what
+// another application and apparc would: at AT another focusable group with a
+// full-screen window comes to the front (the other app; it covers the
+// engine's direct screen access), and GAME_BENCH_SWITCH_FOR seconds later the
+// wrapper's root group goes back to ordinal 0, as TApaTask::BringToForeground
+// does with an application's group -- the other app left alive behind it.
+// 0x5B logs each step. Off in anything shipped.
+#ifndef GAME_BENCH_SWITCH_AT
+#define GAME_BENCH_SWITCH_AT 0
+#endif
+#ifndef GAME_BENCH_SWITCH_FOR
+#define GAME_BENCH_SWITCH_FOR 10
+#endif
+#ifndef GAME_BENCH_DSA_ABORT_AT
+#define GAME_BENCH_DSA_ABORT_AT 0
+#endif
+#ifndef GAME_BENCH_DSA_ABORT_KICK
+#define GAME_BENCH_DSA_ABORT_KICK 0
+#endif
+enum { WS32_WG_CTOR = 158, WS32_WG_CONSTRUCT = 157, WS32_WIN_CTOR = 278, WS32_WIN_CONSTRUCT = 275,
+       WS32_WIN_SET_EXTENT = 277, WS32_WIN_ACTIVATE = 107, WS32_SET_ORDINAL = 211, WS32_FLUSH = 69,
+       WS32_SESSION_CTOR = 76, WS32_SESSION_CONNECT = 70 };
+
+static void bench_switch(Context *c)
+{
+    if (!GAME_BENCH_SWITCH_AT || !c->coeEnv)
+        return;
+    const u32 t = ++c->benchSwitchTicks;
+    const u32 away = (u32)GAME_BENCH_SWITCH_AT * 2, back = away + (u32)GAME_BENCH_SWITCH_FOR * 2;
+    if (t != away && t != back)
+        return;
+    typedef void (*Fn1)(void *);
+    typedef void (*Fn2)(void *, u32);
+    typedef int (*Fn3)(void *, u32, u32);
+    typedef void (*FnPP)(void *, const void *, const void *);
+    u32 lib = 0;
+    Ptrc16 nm, none;
+    nm.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kWs32Name / 2);
+    nm.text = kWs32Name;
+    none.lengthAndType = (u32)EPtrC << KTypeShift;
+    none.text = 0;
+    if (rlibrary_load(&lib, &nm, &none))
+        return;
+    void *session = (u8 *)c->coeEnv + 0x20 + COEENV_BIAS;
+    void *root = (u8 *)c->coeEnv + NEW_COEENV_ROOTWIN;
+    if (t == away) {
+        // On a session of its own, as another process's would be: on cone's,
+        // its redraw comes to cone's redrawer, whose handle check panics the
+        // thread CONE 46 (E1008 -- the bench's own fault, not the port's).
+        u32 *ws = (u32 *)user_allocz(64), *wg = (u32 *)user_allocz(64), *win = (u32 *)user_allocz(64);
+        if (!ws || !wg || !win)
+            return;
+        ((Fn1)rlibrary_lookup(&lib, WS32_SESSION_CTOR))(ws);
+        const int e0 = ((Fn3)rlibrary_lookup(&lib, WS32_SESSION_CONNECT))(ws, 0, 0);
+        session = ws;
+        ((Fn2)rlibrary_lookup(&lib, WS32_WG_CTOR))(wg, (u32)session);
+        const int e1 = ((Fn3)rlibrary_lookup(&lib, WS32_WG_CONSTRUCT))(wg, 0xB0B0u, 1);
+        ((Fn2)rlibrary_lookup(&lib, WS32_WIN_CTOR))(win, (u32)session);
+        const int e2 = ((Fn3)rlibrary_lookup(&lib, WS32_WIN_CONSTRUCT))(win, (u32)wg, 0xB0B1u);
+        const i32 pt[2] = { 0, 0 }, sz[2] = { 800, 800 };
+        ((FnPP)rlibrary_lookup(&lib, WS32_WIN_SET_EXTENT))(win, pt, sz);
+        ((Fn1)rlibrary_lookup(&lib, WS32_WIN_ACTIVATE))(win);
+        ((Fn2)rlibrary_lookup(&lib, WS32_SET_ORDINAL))(wg, 0);
+        ((Fn1)rlibrary_lookup(&lib, WS32_FLUSH))(session);
+        c->benchOtherApp = (u32)wg;
+        log_event(c, NOTE_ENGINE, 0x5B010000u | (((u32)e0 & 0xFu) << 12) | (((u32)e1 & 0xFu) << 8) | ((u32)e2 & 0xFFu));
+    } else {
+        ((Fn2)rlibrary_lookup(&lib, WS32_SET_ORDINAL))(root, 0);
+        ((Fn1)rlibrary_lookup(&lib, WS32_FLUSH))(session);
+        log_event(c, NOTE_ENGINE, 0x5B020000u);
+    }
+    log_block(c);
+}
+
 extern "C" int gate6_engine_shm_watch(void *p)
 {
     Context *c = (Context *)p;
     u32 *b = c->engineShmBlock;
     if (!b)
         return 1;
+    bench_switch(c);
     // Every eighth tick, for the first 256: the state word, then slots 1-3
     // (0x9Fssssss, then three words).
     c->shmLogTicks++;
@@ -13614,12 +13800,54 @@ extern "C" int gate6_engine_shm_watch(void *p)
             log_event(c, NOTE_ENGINE, (u32)((GetFocus)c->wsGetFocus)((u8 *)c->coeEnv + 0x20 + COEENV_BIAS));
             log_event(c, NOTE_ENGINE, (u32)((Identifier)c->wsIdentifier)((u8 *)c->coeEnv + NEW_COEENV_ROOTWIN));
         }
+        // Then the engine's frames so far (its ERedraw posts), to tell an
+        // engine that stopped drawing from frames that stopped showing.
+        log_event(c, NOTE_ENGINE, 0x7F000000u | (c->posts & 0xFFFFFFu));
+        // And the post path's state: 0x8F, bit 0 the screen lost (an abort,
+        // no restart yet), bit 1 the DSA nobody's, the clip mode at bit 4;
+        // then the posts refused so far, then the reached flags (abort,
+        // restart among them).
+        log_event(c, NOTE_ENGINE, 0x8F000000u | (c->screenLost ? 1u : 0u) | (c->dsaIdle ? 2u : 0u) |
+                                  ((c->clipMode & 0xFu) << 4));
+        log_event(c, NOTE_ENGINE, c->awayUpd);
+        log_event(c, NOTE_ENGINE, c->reached);
         log_block(c);
     }
     if (!c->focusHanded && b[0xF0 / 4 + I3D_SHM_ENGINE]) {
         c->focusHanded = 1;
         engine_root_unfocusable(c);
         log_block(c);
+    }
+    // **Back from an app switch (E1009).** A phone brings an application
+    // back by its registered group -- TApaTask::BringToForeground puts the
+    // wrapper's root group at ordinal 0 -- and that group declines the
+    // focus, so the engine's group stayed behind the other application: the
+    // bench's switch left a black screen and the other app with every key.
+    // The N-Gage launcher handed the screen over by moving a participant's
+    // group to the front (SetWindowGroupOrdinalPosition, as the engine's own
+    // 0x49fb78 does), so the launcher part does the same: when the wrapper's
+    // group is in front and the focus is not the engine's, the engine's group
+    // goes to ordinal 0. While another application is in front the wrapper's
+    // group is not, and nothing moves. 0x6B logs each hand-back.
+    if (c->focusHanded && c->wsOrdinalPos && c->wsSetWgOrdinal && c->wsGetFocus && c->coeEnv) {
+        typedef int (*Ordinal)(const void *);
+        typedef int (*GetFocus)(const void *);
+        typedef void (*SetWgOrdinal)(void *, int, int);
+        void *session = (u8 *)c->coeEnv + 0x20 + COEENV_BIAS;
+        const u32 engineWg = b[0xF0 / 4 + I3D_SHM_ENGINE];
+        // Once each time the wrapper's group arrives in front: OrdinalPosition
+        // counts only among groups of its own priority (WINBASE.CPP), so a
+        // high-priority note over the engine can leave it reading 0 with the
+        // focus elsewhere, and the hand-back would repeat every tick.
+        const u32 front = ((Ordinal)c->wsOrdinalPos)((u8 *)c->coeEnv + NEW_COEENV_ROOTWIN) == 0;
+        const u32 arrived = front && !c->rootWasFront;
+        c->rootWasFront = front;
+        if (engineWg && arrived && (u32)((GetFocus)c->wsGetFocus)(session) != engineWg) {
+            ((SetWgOrdinal)c->wsSetWgOrdinal)(session, (int)engineWg, 0);
+            c->dsaKick = 1;                 // the engine's next post starts its DSA again (gate6_engine_add_event)
+            log_event(c, NOTE_ENGINE, 0x6B000000u | (engineWg & 0xFFFFu));
+            log_block(c);
+        }
     }
     // **QUIT (E995).** The engine's way out is two requests: 6, spinning
     // until the launcher clears the word (0x4492e8, no timeout), then 1,
@@ -13906,6 +14134,30 @@ extern "C" u32 gate6_def_mode(void *ws, int *colors, int *greys, Context *c)
 enum { BITGDI_UPDATE_REGION = 58, RAW_EVENT_REDRAW = 5 };
 static const u16 kBitgdiDll[] = { 'b', 'i', 't', 'g', 'd', 'i', '.', 'd', 'l', 'l' };
 
+static void dsa_kick(Context *c)
+{
+    if (!c->dsaKick || !c->dsaReal || !c->newDsaStartL)
+        return;
+    typedef void (*StartL)(void *);
+    c->dsaKick = 0;
+    typedef void (*Cancel)(void *);
+    // E1014: the DSA reads active -- no abort completed its request, yet
+    // its region emptied -- so it is cancelled first (CActive::Cancel,
+    // euser 1088, which runs its DoCancel) and then started.
+    if ((c->dsaReal[OLD_DSA_ACTIVE / 4] & 1) && c->activeCancel)
+        ((Cancel)c->activeCancel)(c->dsaReal);
+    if (!(c->dsaReal[OLD_DSA_ACTIVE / 4] & 1)) {
+        ((StartL)c->newDsaStartL)(c->dsaReal);
+        c->dsaIdle = 0;
+        c->screenLost = 0;
+        c->clearPending = 1;
+        dsa_refresh(c);
+        note(c, 1, 'K');
+    } else {
+        note(c, 0xAC, 'K');
+    }
+}
+
 extern "C" int gate6_engine_add_event(const u32 *ev, u32, Context *c)
 {
     typedef int (*Fn)(const u32 *);
@@ -13928,6 +14180,42 @@ extern "C" int gate6_engine_add_event(const u32 *ev, u32, Context *c)
         log_block(c);
     }
     c->posts++;
+    // Bench: a phone's DSA abort and restart, on the engine's thread as the
+    // client library runs them (GAME_BENCH_DSA_ABORT_AT, a post count; 0
+    // off): the request ended (CActive::Cancel, as wserv's completion would),
+    // then AbortNow and Restart through the port's observer, the engine's own
+    // behind it. The bench's window server sends neither (E1013).
+    if (GAME_BENCH_DSA_ABORT_AT && !c->benchAbortDone && c->posts >= (u32)GAME_BENCH_DSA_ABORT_AT &&
+        c->dsaReal && c->activeCancel) {
+        typedef void (*Cancel)(void *);
+        c->benchAbortDone = 1;
+        note(c, 0xAB, 'B');
+        if (c->dsaReal[OLD_DSA_ACTIVE / 4] & 1)
+            ((Cancel)c->activeCancel)(c->dsaReal);
+        gate6_dsa_slot0(0, 1, c);
+        // GAME_BENCH_DSA_ABORT_KICK: a hand-back's kick landing between
+        // ws32's RunL (the abort acknowledged) and the CIdle that runs the
+        // engine's Restart -- the order a phone can produce.
+        if (GAME_BENCH_DSA_ABORT_KICK) {
+            c->dsaKick = 1;
+            dsa_kick(c);
+        }
+        gate6_dsa_slot1(0, 1, c);
+        note(c, (c->dsaIdle ? 1u : 0u) | (c->dsaKick ? 2u : 0u), 'B');
+    }
+    // **The screen back after an app switch (E1013).** Covered by another
+    // application, the engine's DSA region empties; brought back by the
+    // launcher's hand-back, nothing starts the DSA again -- the engine calls
+    // StartL only while it sets up, and the port's restart path (gate6_dsa_
+    // slot1) leaves the DSA nobody's until the game's own StartL -- so every
+    // frame after was refused and the screen stayed black. The hand-back sets
+    // dsaKick, and here, on the engine's own thread (the DSA is its object),
+    // the next post starts the real DSA again if it is inactive and reads its
+    // region afresh. Colin's flip is direct (GAME_CODE_PATCHES), so the engine
+    // keeps no DSA state of its own for this to disturb. A guess: that StartL
+    // does not leave here (it would on no memory), as the port's other direct
+    // StartL calls assume. "G6K" says each kick: 1 started, 0xAC still active after the Cancel.
+    dsa_kick(c);
     // **The region read before there was a buffer to clip it to.** dsa_box
     // clips the DSA's region to the port's buffer (bufW x bufH), and the
     // engine's StartL comes before the port has laid the buffer out -- the
@@ -15278,6 +15566,7 @@ static u32 load_and_start()
     // CWsScreenDevice the old way, and its startup deletes a
     // CApaWindowGroupName so; the rest are the engine's other factories.
     {
+        ctx->activeCancel = (u32)rlibrary_lookup(&ctx->euser, EUSER_CACTIVE_CANCEL);
         ctx->extCBase = (u32)rlibrary_lookup(&ctx->euser, EUSER_CBASE_EXTENSION);
         ctx->extCActive = (u32)rlibrary_lookup(&ctx->euser, EUSER_CACTIVE_EXTENSION);
         const u32 idx[] = { IMPORT_SHADOW_PERIODIC, IMPORT_SHADOW_BUFFLAT,
@@ -15327,6 +15616,27 @@ static u32 load_and_start()
         iat[IMPORT_START_APP] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_start_frontend);
         log_event(ctx, NOTE_ENGINE, 0xDF000000u | (ctx->processCreate ? 1u : 0u) | (ctx->processResume ? 2u : 0u));
         ctx->spare += TRACE;
+    }
+    // The E: fiction for estlib's fopen/wfopen and RFs's named calls (E1005).
+    {
+        struct { u32 idx; u32 *real; u32 fn; int ctx3; } h[] = {
+            { IMPORT_FOPEN, &ctx->realFopen, (u32)&gate6_fopen, 0 },
+            { IMPORT_WFOPEN, &ctx->realWfopen, (u32)&gate6_wfopen, 0 },
+            { IMPORT_MKDIR, &ctx->realMkdir, (u32)&gate6_mkdir, 0 },
+            { IMPORT_UNLINK, &ctx->realUnlink, (u32)&gate6_unlink, 0 },
+            { IMPORT_FS_SESSION_PATH, &ctx->realSessionPath, (u32)&gate6_fs_session_path, 0 },
+            { IMPORT_FS_MKDIRALL, &ctx->realMkDirAll, (u32)&gate6_fs_mkdirall, 0 },
+            { IMPORT_FS_MODIFIED, &ctx->realModified, (u32)&gate6_fs_modified, 1 },
+        };
+        for (u32 k = 0; k < sizeof h / sizeof h[0]; k++) {
+            const u32 j = h[k].idx;
+            if (j >= nImports || j >= kShimCount || (kShimTable[j] >> 24) != KIND_CALL ||
+                ctx->spare + TRACE > ctx->spareEnd)
+                continue;
+            *h[k].real = iat[j];
+            iat[j] = h[k].ctx3 ? ctx3_thunk(ctx->spare, ctx, h[k].fn) : ctx_thunk(ctx->spare, ctx, h[k].fn);
+            ctx->spare += TRACE;
+        }
     }
     // An engine's RWsSession::GetEvent: hold C for the picture modes (gate6_engine_get_event).
     if (GAME_ENGINE_LXCE && IMPORT_WS_GET_EVENT < nImports && IMPORT_WS_GET_EVENT < kShimCount &&

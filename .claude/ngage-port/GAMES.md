@@ -218,10 +218,13 @@ difference breaks; the fix is shared unless named.
   paced capture backend). Also benched: the N80 firmware (S60 3.0, 352x416:
   menus, keys, a stage, sound; loads slower, E987-E989); the release package
   installed with the emulator's installer on an emptied E: and C: (E990);
-  hold C (E992-E993); QUIT to a clean exit (E1001). Open: sound on a phone; the multiplayer side, which
-  may start the front end (`games/colin2` reaches its UI and frame timer
-  alone, E958, and quits there by design without a block); whether the
-  focus hand-over survives a phone's app switch; its `.cwa` protection; the
+  hold C (E992-E993); QUIT to a clean exit (E1001); installed on C:
+  (E1006-E1007); an app switch and back, and a DSA abort and restart
+  (E1015-E1019); ten minutes of the attract loop (E1026). Open: sound on a
+  phone; the multiplayer side, which may start the front end
+  (`games/colin2` reaches its UI and frame timer alone, E958, and quits
+  there by design without a block); a phone's own app switch (the bench's
+  is a model of it); its `.cwa` protection; the
   window-gc path's white (E922-E930); a phone.
 
 ## For the write-up
@@ -247,7 +250,7 @@ hardware coverage above with DEVICES.md's phone table.
 | code | 615 KB | 1556 KB | 970 KB | 1371 KB | 25 KB | 4 KB | 224 KB |
 | imports / DLLs | 391 / 21 | 462 / 21 | 354 / 20 | 532 / 21 | 181 / 7 | 0 / 0 | 583 / 22 |
 | imports the shim leaves as stubs | 14 | 14 | 8 | 7 | 7 | 11 | 67 |
-| hooks present / defined | 63 / 138 | 69 / 138 | 60 / 138 | 89 / 138 | 27 / 138 | 51 / 138 | 46 / 138 |
+| hooks present / defined | 65 / 145 | 71 / 145 | 60 / 145 | 89 / 145 | 27 / 145 | 58 / 145 | 47 / 145 |
 | diversions (old object to wrapper) | 14 | 14 | 14 | 15 | 10 | 2 | 13 |
 | game files / size | 7 / 9.9 MB | 122 / 27.6 MB | 7 / 15.3 MB | 1075 / 27.4 MB | 2 / 0.0 MB | 28 / 32.4 MB | 28 / 32.4 MB |
 | split data package | no | no | no | yes | no | no | no |
@@ -354,6 +357,10 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_AMBIENCE_LIST` | · | · | · | 0x58 | · | · | · |
 | `GAME_ANSWER_GAME_ID` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
 | `GAME_AO_PRIORITIES` | · | · | · | 1 entry | · | · | · |
+| `GAME_BENCH_DSA_ABORT_AT` | · | · | · | · | · | 0 | · |
+| `GAME_BENCH_DSA_ABORT_KICK` | · | · | · | · | · | 0 | · |
+| `GAME_BENCH_SWITCH_AT` | · | · | · | · | · | 0 | · |
+| `GAME_BENCH_SWITCH_FOR` | · | · | · | · | · | 10 | · |
 | `GAME_BUNDLE_DATA` | 1 | 1 | 1 | 1 | 1 | 1 | 1 |
 | `GAME_CANCEL_OWN_OBJECTS` | 0 | 0 | 0 | 1 | 1 | 1 | 1 |
 | `GAME_CANCEL_ROM_OBJECTS` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |

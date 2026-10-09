@@ -70,8 +70,12 @@ enum {
     IMPORT_FIND_WILD_BY_DIR            = 65535,   // absent
     IMPORT_FIXDFSI                     = 65535,   // absent
     IMPORT_FLOATSIDF                   =   415,
+    IMPORT_FOPEN                       =   226,
     IMPORT_FS_CONNECT                  =   100,
     IMPORT_FS_ENTRY                    = 65535,   // absent
+    IMPORT_FS_MKDIRALL                 =   106,
+    IMPORT_FS_MODIFIED                 = 65535,   // absent
+    IMPORT_FS_SESSION_PATH             = 65535,   // absent
     IMPORT_FS_SET_DEFAULT_PATH         = 65535,   // absent
     IMPORT_FS_VOLUME                   = 65535,   // absent
     IMPORT_GC_SETCLIP                  =    46,
@@ -107,6 +111,7 @@ enum {
     IMPORT_MATH_SQRT                   = 65535,   // absent
     IMPORT_MATH_TAN                    = 65535,   // absent
     IMPORT_MDA_NEWL                    =   458,
+    IMPORT_MKDIR                       = 65535,   // absent
     IMPORT_MSG_COMPLETE                =   285,
     IMPORT_MULDF3                      =   418,
     IMPORT_NEDF2                       = 65535,   // absent
@@ -145,12 +150,14 @@ enum {
     IMPORT_THREAD_RESUME               =   353,
     IMPORT_THREAD_SUSPEND              =   370,
     IMPORT_TRUNCDFSF2                  =   423,
+    IMPORT_UNLINK                      = 65535,   // absent
     IMPORT_USER_ALLOC                  =   270,
     IMPORT_USER_ALLOCL                 =   269,
     IMPORT_USER_ALLOCZ                 =   421,
     IMPORT_USER_ALLOCZL                =   265,
     IMPORT_USER_FREE_OP                =   315,
     IMPORT_VEC_DELETE_OP               =   410,
+    IMPORT_WFOPEN                      = 65535,   // absent
     IMPORT_WINDOW                      =    87,
     IMPORT_WS_GET_EVENT                = 65535,   // absent
 };

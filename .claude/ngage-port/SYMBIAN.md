@@ -435,6 +435,22 @@ window is sent behind it. The region is an `RRegion` in screen coordinates:
 `iCount`, `iError`, `iAllocedRects`, `iGranularity`, then the pointer to
 its `TRect`s.
 
+**A second StartL on a running session kills the client.** `StartL` makes a
+new `RDirectScreenAccess::Request` and `SetActive` every time (nonnga
+`CLIENT/RDirect.CPP`); the server's `CWsDirectScreenAccess::Request`
+(`SERVER/Direct.CPP`) accepts a session only when it is idle or completed,
+and otherwise panics the client `EWservPanicDirectMisuse`. So nothing may start
+a DSA that its owner's `Restart` will start again: the restart runs from a
+`CIdle` after `RunL`, and a start that lands in between is the second
+(E1017; the port's guard is `gate6_dsa_startl`).
+
+**`OrdinalPosition` counts only among equals.** A window's
+`OrdinalPosition()` skips siblings of higher ordinal priority
+(`CWsWindowBase::OrdinalPosition(EFalse)`, `SERVER/WINBASE.CPP`); the
+`FullOrdinalPosition` variant counts them. So a window group reading 0 is not
+necessarily in front: a high-priority group (a global note, an alert) can be
+over it.
+
 ## Leaves, TRAP and the trap handler on 9.x
 
 From `kernel/eka/euser/us_trp.cpp`, `us_exec.cpp`, `cbase/ub_cln.cpp`,

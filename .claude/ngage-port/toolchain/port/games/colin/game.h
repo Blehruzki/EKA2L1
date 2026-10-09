@@ -232,3 +232,14 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // (GAME_MDA_RDEBUG, gate6.cpp). The engine's thread drives its stream and its
 // records never reach the file (E961). Diagnostic; 0 in a shipped build.
 #define GAME_MDA_RDEBUG 0
+
+// Bench: a phone's app switch from the window server's side (gate6.cpp,
+// bench_switch): another app's group in front at AT seconds, the wrapper's
+// group brought back FOR seconds later. 0 in anything shipped.
+#define GAME_BENCH_SWITCH_AT 0
+#define GAME_BENCH_SWITCH_FOR 10
+// Bench: a phone's DSA abort and restart on the engine's thread at that
+// post (gate6_engine_add_event, E1016); KICK puts the launcher's kick
+// between them (E1017-E1018). 0 in anything shipped.
+#define GAME_BENCH_DSA_ABORT_AT 0
+#define GAME_BENCH_DSA_ABORT_KICK 0

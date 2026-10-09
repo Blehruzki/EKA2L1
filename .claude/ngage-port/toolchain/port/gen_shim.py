@@ -688,6 +688,13 @@ HOOKS = {
     'IMPORT_RWIN_END_REDRAW':         ('ws32', 103),    # RWindow::EndRedraw()
     'IMPORT_DEF_MODE_COLORS':         ('ws32', 300),    # RWsSession::GetDefModeMaxNumColors: the N-Gage's EColor4K for a 16-bit title (Colin McRae, E892)
     'IMPORT_ADD_EVENT':               ('euser', 9),     # UserSvr::AddEvent: an AirPlay engine's ERedraw is its frame done (Colin McRae, E908)
+    'IMPORT_FOPEN':                   ('estlib', 58),   # fopen: the E: fiction for the C library (Colin's engine reads its data so, E1005)
+    'IMPORT_WFOPEN':                  ('estlib', 319),  # wfopen
+    'IMPORT_MKDIR':                   ('estlib', 113),  # mkdir
+    'IMPORT_UNLINK':                  ('estlib', 123),  # unlink
+    'IMPORT_FS_SESSION_PATH':         ('efsrv', 178),   # RFs::SetSessionPath(const TDesC&)
+    'IMPORT_FS_MKDIRALL':             ('efsrv', 85),    # RFs::MkDirAll(const TDesC&)
+    'IMPORT_FS_MODIFIED':             ('efsrv', 87),    # RFs::Modified(const TDesC&, TTime&) const
     'IMPORT_WS_GET_EVENT':            ('ws32', 118),    # RWsSession::GetEvent: an AirPlay engine reads its own keys; hold C is read there (Colin McRae, E991)
     'IMPORT_START_APP':               ('apgrfx', 96),   # RApaLsSession::StartApp: an AirPlay engine starts its front end, whose port is another loader (Colin McRae, E959)
     'IMPORT_CHUNK_CREATE_GLOBAL':     ('euser', 275),   # RChunk::CreateGlobal: the port makes an AirPlay engine's I3D shared memory, as its launcher did (Colin McRae, E914)

@@ -1725,3 +1725,55 @@ have had nothing to run. **Fix:** build_release.py inflates it from
 not that inflation. E990 installed the package with the emulator's installer
 on an emptied E: and C: and played.
 
+
+### 13.u Installed on C:, "Error loading game data" (E1005-E1007)
+The E: fiction (the game told it lives on E:, its names put back on the real
+drive) covered RFile's Open, Create and Replace, which is how the .app
+titles reach their files. Colin's engine reaches its data through estlib --
+fopen and wfopen on `E:\system\apps\6r66\*.dz`, mkdir and unlink -- and names
+its folder to RFs::SetSessionPath, MkDirAll and Modified. Installed on C:,
+every data open failed. **Fix (shared):** those seven calls are translated
+too (`gate6_fopen` and the rest; the C-library names get their own buffers,
+since the engine calls them on its own thread). E1006 plays from C:, E1007
+quits from C:. The Asphalts pick up the fopen and MkDirAll hooks; on E: they
+pass through (E1021, E1023).
+*Lesson: the bench installs to E:, so a fiction about E: is never tested
+there. Install on the other drive before a round.*
+
+### 13.v Back from an app switch: black, and deaf (E1008-E1015, E1019)
+Nothing on the bench takes the foreground, so `GAME_BENCH_SWITCH_AT` does what
+another application and apparc would: another group with a full-screen window
+in front, then the wrapper's group back at ordinal 0 (as
+TApaTask::BringToForeground does). Two bugs, one after the other:
+1. **The keys went to the other app** (E1009). The wrapper's group declines
+   the focus (13.o), so bringing it back left the engine's group behind. **Fix:**
+   the launcher part hands back. When the wrapper's group arrives at ordinal
+   0 and the focus is not the engine's, the engine's group goes to the front
+   (SetWindowGroupOrdinalPosition, as the N-Gage launcher and the engine's
+   own 0x49fb78 do). It fires once per arrival: OrdinalPosition counts only
+   among groups of the same priority (WINBASE.CPP), so a high-priority note
+   can leave the wrapper reading 0.
+2. **The picture stayed black** (E1010-E1014). The engine drew on, but its
+   DSA region had emptied when covered, and the bench's window server sent
+   no abort or restart, so the region never came back. **Fix:** the hand-back
+   sets a kick, and the engine's next post (on its own thread) cancels the
+   DSA if active (CActive::Cancel, euser 1088), starts it, and reads the
+   region afresh (`dsa_kick`). E1015 and E1019 come back to the menu, and
+   the keys work.
+On a phone the abort and restart do come, and the engine's own Restart
+calls StartL (E1016, by a bench knob that runs both on the engine's thread:
+`GAME_BENCH_DSA_ABORT_AT`). E1013's reading that it would not was wrong.
+*Lesson: when the bench cannot take the foreground, ask the window server to
+do it from inside the process (as with 13.k's view deactivation).*
+
+### 13.w The kick and the game's Restart: two StartLs on one DSA (E1017-E1018)
+On a phone the hand-back's kick can land between ws32's RunL (the abort
+acknowledged) and the CIdle that runs the game's Restart. The Restart's StartL
+then finds the DSA running. wserv answers a Request for a running session
+with **EWservPanicDirectMisuse** (nonnga Direct.CPP), so the game dies.
+`GAME_BENCH_DSA_ABORT_KICK` reproduces that order; on the bench the engine
+then called StartL on every frame (E1017). **Fix (shared):** `gate6_dsa_startl`
+answers a StartL on an active DSA without a second Request (0x57A2, "G6D").
+E1018 is clean. The other titles never take the guard (E1020-E1023).
+*Lesson: a fix that starts something behind the game's back must ask what
+the game will start next. Round 141 was the same question.*
