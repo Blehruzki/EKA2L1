@@ -33,3 +33,18 @@ One 022's post (round 149) is `One-build022-post.md` in the session scratchpad: 
 
 Later builds of a title say what changed since the last post instead of
 "First public build"; the feature lines stay, since every build carries them.
+
+## A zip release (the files and the loader)
+
+For a file manager or a card reader: the `system` folder, the loader-only SIS
+(`build_release.py --split`; it stops at the data package when the title has
+no `GAME_DATA_UID3`, after the loader is built), and a README, as One 022-028
+and Colin McRae 002 shipped. **Stage the folder with `stage_zip.py`**, which
+copies build_release's own file list, so the zip is the bundled package's
+layout byte for byte. One's 021 zip was laid out by hand, never run, and
+quit on every phone without the dump's `.app` (BUGBOOK 12.ae). Then run it
+on a bench emptied of the title, its saves and any leftovers: the loader
+installed, the folder copied by hand, no `<stem>.app` anywhere (Colin:
+E1028 the drive on E:, E1029 the data on C: with the loader on E: and QUIT,
+E1030 an app switch). Check the zip by extracting it and diffing it against
+the tree the bench ran.
