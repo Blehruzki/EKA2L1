@@ -1044,7 +1044,7 @@ the first three bench runs of this round ran a stale binary and read a stale
 log as their own (E845 says how it was caught: the binary's date). The
 import tables are regenerated for all five.
 
-### 12.ad Ashen: "Game Deck Memory Full" -- no save is written (round 147, open)
+### 12.ad Ashen: "Game Deck Memory Full" -- no save is written (round 147; closed by observation, round 148)
 
 **Symptom.** Ashen build 009 on the N95: saving at a checkpoint or changing
 the options ends in "Game Deck Memory Full"; no save appears.

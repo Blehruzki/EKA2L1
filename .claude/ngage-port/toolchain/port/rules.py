@@ -109,7 +109,7 @@ def main():
 
 # ---- rule 4 ---------------------------------------------------------------
 
-SELF_TESTS = ('logringtest.py',)
+SELF_TESTS = ('logringtest.py', 'titles.py --check')   # a script and its arguments
 # Compiled on the host and run. `columntest.cpp` exists because the bench
 # cannot reach the geometry the bug lived in: EKA2L1's frame buffer line is
 # the screen width and every phone's is wider, so build 008's shift was
@@ -169,12 +169,13 @@ def rule4():
     print('RULE 4 -- reviewed, not guessed')
     bad = 0
     for t in SELF_TESTS:
-        p = os.path.join(HERE, t)
+        script, *args = t.split()
+        p = os.path.join(HERE, script)
         if not os.path.isfile(p):
             print('  %-20s MISSING' % t)
             bad += 1
             continue
-        r = subprocess.run([sys.executable, p], capture_output=True, text=True)
+        r = subprocess.run([sys.executable, p] + args, capture_output=True, text=True)
         print('  %-20s %s' % (t, 'pass' if r.returncode == 0 else '** FAIL **'))
         bad += (r.returncode != 0)
     import tempfile

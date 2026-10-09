@@ -70,7 +70,7 @@ To be confirmed against the 2603 article itself:
 
 ## Material
 
-`PORTING.md` (the long-form narrative already kept), `ROUNDS.md` (every run
+`GAMES.md` (the titles compared: the "what carries over" and "results" material), `DEVICES.md` (editions and phones), `PORTING.md` (the long-form narrative already kept), `ROUNDS.md` (every run
 and hardware round, with its result), `BUGBOOK.md`
 (symptom, cause, fix and how it was found), `SYMBIAN.md` (the platform facts
 with citations), `KNOBS.md`, `RELEASE.md`, `shots/`, the per-title

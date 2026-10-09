@@ -11,6 +11,9 @@ The rule this file exists for, learnt three times (rounds 120, 123, 159):
 **a layout measured on one ROM is a measurement of that ROM.** Every private
 offset the port reads was first measured on 3.1 or 3.2 and then broke on 3.0.
 
+How each difference reaches each title -- which titles take the path it
+breaks, and which packages carry the fix -- is in `GAMES.md`.
+
 Sources: `ROUNDS.md` (rounds and E-rows cited), `BUGBOOK.md` (sections
 cited), `SYMBIAN.md`, the comments in `toolchain/port/gate6.cpp`.
 
@@ -83,7 +86,7 @@ every vtable slot in the shim's tables.
 | Nokia N79 | 3.2 | predicted 2,048-pixel line, as the C5-00 | numeric | -- | none reported (logs in round 83) | untested |
 | Nokia E65 | recorded as 3.0 from its log (ROM at 0xF8xxxxxx); Nokia lists the E65 as 3.1 -- unverified | -- | numeric | -- | none | Asphalt 2 192 died in the first direct-screen start (round 109), before the round-120 fixes; never re-tested |
 | 5320 (RM-409), bench | 3.2 (FP2) | 240x320; status pane 48 | -- | 0x4600000 | every title, every build | EKA2L1 swaps in its own `scdv.dll` |
-| N80 (RM-92), bench | 3.0 | 352x416, EColor16MU (its own wsini.ini) | -- | 0x4700000 | One 028 (E881) | EKA2L1's own `scdv` has no 3.0 map, so the ROM's runs on the emulator's LCD driver |
+| N80 (RM-92), bench | 3.0 | 352x416, EColor16MU (its own wsini.ini); one of the panels in `fittest.cpp`'s eight known failures (the fitted modes' map clamp) | -- | 0x4700000 | One 028 (E881) | EKA2L1's own `scdv` has no 3.0 map, so the ROM's runs on the emulator's LCD driver |
 
 Panels the port has only been designed against (`fittest.cpp`, no phone has
 reported): 320x240 landscape (E71), 360x640 (5800/N97), 800x352 inner (E90),

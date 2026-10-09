@@ -18,6 +18,7 @@ loader.
 | ngtest: an N-Gage test app built with the period SDK (scratchpad, not here), run through the port to measure the platform -- streams, Stop, workers, timeslices | `toolchain/ngtest/` |
 | every knob and fix, per title | `KNOBS.md` |
 | what differs per S60 edition and per phone | `DEVICES.md` |
+| the titles side by side: shared, one title's, lacking, exposure per edition | `GAMES.md` (tables from `titles.py`) |
 | every bench run and hardware round, in order | `ROUNDS.md` |
 | what went wrong and why, as a reference | `BUGBOOK.md` |
 | Symbian facts, from the sources | `SYMBIAN.md` |
