@@ -308,7 +308,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_OPEN = 897,    // what RFile::Open answered
        NOTE_FILE_PATH = 898,    // ... and the name it was asked for
        NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
-       NOTE_ENGINE = 640,       // an AirPlay engine title (GAME_ENGINE_LXCE): 0x1Exxxxxx the layout (imports, then relocations), 0x2E the thread's create result, 0x3E resumed, 0x4E bitgdi's Update resolved (bit 0), 0x5E/0x6E/0x7E a flip's samples, 0x8E the I3D shared memory made (the error; 0x8EBAD000 no CreateGlobal)
+       NOTE_ENGINE = 640,       // an AirPlay engine title (GAME_ENGINE_LXCE): 0x1Exxxxxx the layout (imports, then relocations), 0x2E the thread's create result, 0x3E resumed, 0x4E bitgdi's Update resolved (bit 0), 0x5E/0x6E/0x7E a flip's samples, 0x8E the I3D shared memory made (the error; 0x8EBAD000 no CreateGlobal), 0x9E the mailbox answered, 0x9F the state word sampled then the mailbox (0xe4) and slots 1-3 (GAME_ENGINE_FRONTEND_STUB)
        NOTE_TICK_SHIM = 699,    // the tick seed read answered: the real tick it replaced (0xD1nnnnnn: slots diverted at load)
        NOTE_FILE_HEAD = 861,    // the first three words of a name descriptor
        NOTE_CARD_REFUSED = 862, // a write to the game card, refused as a card would
@@ -1417,6 +1417,11 @@ struct Context {
     u32 realAddEvent;       // GAME_ENGINE_LXCE: UserSvr::AddEvent, as resolved
     u32 chunkCreateGlobal;  //   RChunk::CreateGlobal, as resolved
     u32 engineShm;          //   the I3D shared memory the port made for it (an RChunk)
+    u32 *engineShmBlock;    //   its aligned block (state at word 2)
+    u32 shmTimer;           //   GAME_ENGINE_FRONTEND_STUB: the watcher (a CPeriodic)
+    CallBack shmCb;         //   and its callback
+    u32 shmTicks;           //   ticks the mailbox has held the engine's ask
+    u32 shmLogTicks;        //   ticks, for the watcher's samples
     u32 posts;              //   frames the engine flipped (its ERedraw events)
     u32 realSuspend;        // RThread::Suspend, the game's static import (round 130)
     u32 threadCreateThunk;
@@ -13293,9 +13298,53 @@ static void engine_shared_memory(Context *c)
     b[0] = I3D_SHM_VERSION;
     b[1] = I3D_SHM_TAG;
     b[2] = I3D_SHM_ENGINE;
+    c->engineShmBlock = b;
 #else
     (void)c;
 #endif
+}
+
+// **Bench: the front end stood in for (GAME_ENGINE_FRONTEND_STUB).** After
+// its splash the engine starts 6r66_2.app -- the game's front end, an
+// ordinary N-Gage application -- with RApaLsSession::StartApp, then posts 3
+// in the block's mailbox word (offset 0xe4, 0x49ec04) and spins until the
+// other side answers above 3 (5 meaning cancel; 0x449214), then clears it
+// (E951; the state word stays 1, E950). Nothing on S60v3 runs that EKA1 .app,
+// so nothing answers. To see what the engine does with no front-end choices,
+// a main-thread watcher answers 4 two seconds after the 3 appears. An
+// experiment, off in anything shipped.
+#ifndef GAME_ENGINE_FRONTEND_STUB
+#define GAME_ENGINE_FRONTEND_STUB 0
+#endif
+enum { I3D_MAILBOX = 0xE4 / 4, I3D_ASK = 3, I3D_ANSWER = 4, SHM_WATCH_US = 500000, SHM_WATCH_TICKS = 4 };
+
+extern "C" int gate6_engine_shm_watch(void *p)
+{
+    Context *c = (Context *)p;
+    u32 *b = c->engineShmBlock;
+    if (!b)
+        return 1;
+    // Every eighth tick, for the first 256: the state word, then slots 1-3
+    // (0x9Fssssss, then three words).
+    c->shmLogTicks++;
+    if (c->shmLogTicks < 256 && !(c->shmLogTicks & 7)) {
+        log_event(c, NOTE_ENGINE, 0x9F000000u | (b[2] & 0xFFFFFFu));
+        log_event(c, NOTE_ENGINE, b[I3D_MAILBOX]);
+        for (u32 i = 1; i <= 3; i++)
+            log_event(c, NOTE_ENGINE, b[0xF0 / 4 + i]);
+        log_block(c);
+    }
+    if (b[I3D_MAILBOX] != (u32)I3D_ASK) {
+        c->shmTicks = 0;
+        return 1;
+    }
+    if (++c->shmTicks < (u32)SHM_WATCH_TICKS)
+        return 1;
+    c->shmTicks = 0;
+    log_event(c, NOTE_ENGINE, 0x9E000000u | (b[I3D_MAILBOX] & 0xFFu));
+    log_block(c);
+    b[I3D_MAILBOX] = I3D_ANSWER;
+    return 1;
 }
 
 static void engine_start(Context *c)
@@ -13309,6 +13358,15 @@ static void engine_start(Context *c)
     typedef void (*ResumeFn)(const u32 *self);
     if (!c->threadCreateFn || !c->realResume) PANIC(CAT_LIB, -60);
     engine_shared_memory(c);
+    if (GAME_ENGINE_FRONTEND_STUB && c->engineShmBlock) {
+        void *t = cperiodic_newl(0);
+        if (t) {
+            c->shmTimer = (u32)t;
+            c->shmCb.fn = &gate6_engine_shm_watch;
+            c->shmCb.ptr = c;
+            cperiodic_start(t, (int)SHM_WATCH_US, (int)SHM_WATCH_US, c->shmCb);
+        }
+    }
     Ptrc16 nm;
     nm.lengthAndType = ((u32)EPtrC << KTypeShift) |
                        (u32)(sizeof kEngineThreadName / sizeof kEngineThreadName[0]);

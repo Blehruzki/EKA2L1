@@ -1561,9 +1561,18 @@ into the panel's own 32-bit buffer, because the `ScreenInfo` hook read a
 `TPtr8`'s maximum length as its pointer and returned early. `EPtr`'s pointer
 is the third word.
 
-### 13.i The bench display stops following the frames (E935-E944, open)
-Every frame reaches the port's buffer, the panel's framebuffer and EKA2L1's
-DSA texture (watches and an `update_screen` probe), and the display shows
-the first few and then holds one. Asphalt 2 on the same build animates.
-Not the posting thread (E942), not the window server's composition (E938,
-E943). Open, and an emulator question.
+### 13.i "The bench display stops following the frames" (E935-E944) -- a misreading
+The frames were shown all along: E946 caught the engine's IDEAWORKS3D!
+splash on the panel, and gdb found no host thread stuck. The shots had kept
+landing on white phases, and a white frame with an unchanged FPS figure is
+the same bytes, whole window and all.
+*Identical screenshots are a reading of when the shots were taken, not proof
+of a frozen display.* Sample densely before concluding a freeze.
+
+### 13.j White after the splash: the front end nobody runs (E948-E951)
+After its splash the engine starts `6r66_2.app` (RApaLsSession::StartApp),
+posts 3 in the I3D block's mailbox (0xe4) and spins for an answer above 3.
+That app is the game's front end, an N-Gage Avkon application the port does
+not run. Answering 4 from a bench stand-in gets the engine past the wait and
+into its script, where it dies on a script pointer that maps nothing (E951):
+the front end's choices are needed. Open: port 6r66_2.app.

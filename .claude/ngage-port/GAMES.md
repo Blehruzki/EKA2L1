@@ -197,11 +197,13 @@ difference breaks; the fix is shared unless named.
   observation in round 148 (saves work); which call had failed was never
   established.
 - **One:** the N73 (12.ag), build 028 waiting on the phone.
-- **Colin McRae 2005:** runs on the bench to its intro and posts every frame
-  (E936-E939: the frames reach the emulator's framebuffer and its DSA
-  texture), but the bench display stops following them after the first few
-  (E940), where Asphalt 2 animates (E941, E944) -- an emulator question, not
-  settled. Not yet: input, sound through its `g6w0` thread, the
+- **Colin McRae 2005:** the engine runs on the bench to its splash
+  (IDEAWORKS3D!, shots/e946-colin-ideaworks-splash.png), then starts the
+  game's **front end**, `6r66_2.app` -- an ordinary N-Gage Avkon application
+  (583 imports, 67 unanswered) -- and waits for it in the I3D block's mailbox
+  (offset 0xe4, E950). Nothing runs that app yet; answered blind, the engine
+  dies in its script (E951). Next: port the front end as a second loader and
+  send the engine's `StartApp` to it. Also not yet: input, sound, the
   window-gc path's white (E922-E930), its `.cwa` protection, a phone.
 
 ## For the write-up
@@ -339,6 +341,7 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_DIVERT_MATCH` | 1 | 0 | 1 | 1 | 1 | 1 |
 | `GAME_DUMP_FRAME` | 0 | 0 | 0 | 0 | 0 | 0 |
 | `GAME_DUMP_SCREEN` | 1 | 0 | 0 | 0 | 0 | 0 |
+| `GAME_ENGINE_FRONTEND_STUB` | · | · | · | · | · | 0 |
 | `GAME_ENGINE_LXCE` | · | · | · | · | · | 1 |
 | `GAME_ENGINE_SHM_CHARS` | · | · | · | · | · | 'I','3','D'… |
 | `GAME_FIX_APPUI_THIS` | 1 | 0 | 1 | 1 | 1 | 1 |

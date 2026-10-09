@@ -215,6 +215,7 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // and runs its entry in a thread of its own, with the 9.x application
 // standing in for the card's launcher.
 #define GAME_ENGINE_LXCE 1
+#define GAME_ENGINE_FRONTEND_STUB 0   // bench experiment (E949-E951): answer the engine's I3D mailbox with no front end; it then dies in its script
 // The engine's I3D shared memory: made by the launcher on the N-Gage, and by
 // the port here (engine_shared_memory). The name is in the image, after the
 // engine's thread name COLIN.
