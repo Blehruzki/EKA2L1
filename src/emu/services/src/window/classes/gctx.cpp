@@ -29,6 +29,7 @@
 #include <services/window/util.h>
 #include <services/window/window.h>
 
+#include <kernel/thread.h>
 #include <system/epoc.h>
 
 #include <common/cvt.h>
@@ -1094,6 +1095,32 @@ namespace eka2l1::epoc {
 
         if (need_to_set_flushed) {
             flushed = false;
+        }
+
+        // A drawing or attribute command on a gc that is not active. The S60 3.x
+        // window server lets only Activate, Deactivate, Free and TestInvariant
+        // through without a window and panics the client EWservPanicGcNotActive,
+        // WSERV 9, for anything else (CWsGc::CommandL -> DoDrawing0L,
+        // nonnga/SERVER/gc.cpp). Every handler here dereferences the window, so
+        // this used to crash the emulator instead: an old title calling the gc
+        // through a moved vtable slot reached Clear() before any Activate.
+        if (!attached_window) {
+            using handler_by_val = void (graphic_context::*)(service::ipc_context &, ws_cmd);
+            using handler_by_ref = void (graphic_context::*)(service::ipc_context &, ws_cmd &);
+            const handler_by_val *by_val = handler.target<handler_by_val>();
+            const handler_by_ref *by_ref = handler.target<handler_by_ref>();
+            const bool no_window_needed = (by_val && (*by_val == &graphic_context::active))
+                || (by_ref && ((*by_ref == &graphic_context::deactive) || (*by_ref == &graphic_context::destroy)));
+
+            if (!no_window_needed) {
+                kernel::thread *client_thread = ctx.msg ? ctx.msg->own_thr : nullptr;
+                LOG_ERROR(SERVICE_WINDOW, "Graphics context opcode {} on a gc that is not active: WSERV 9 (EWservPanicGcNotActive) for {}",
+                    cmd.header.op, client_thread ? client_thread->name() : std::string("?"));
+                if (client_thread) {
+                    client_thread->kill(kernel::entity_exit_type::panic, u"WSERV", 9);
+                }
+                return true;
+            }
         }
 
         handler(this, ctx, cmd);

@@ -83,3 +83,15 @@ RBusLogicalChannel (ngage-port r159):
   frame buffer on screen through `dispatch::update_screen`, the call the
   emulator's own scdv makes, then complete at once. Anything else is logged
   as `Unhandled Lcd control` (class `Ldd.Lcd`).
+
+## A drawing command on an inactive window gc
+
+Not a switch: always on. A graphics-context command other than Activate,
+Deactivate or Free on a gc with no window attached now panics the client
+**WSERV 9** (`EWservPanicGcNotActive`), as the S60 3.x window server does
+(`CWsGc::CommandL` -> `DoDrawing0L`, `nonnga/SERVER/gc.cpp`). Every handler in
+`services/src/window/classes/gctx.cpp` dereferences the window, so such a
+command used to crash the emulator itself -- an EKA1 title calling the gc
+through a GCC 2.x vtable slot reached `Clear()` before any `Activate`
+(ngage-port E920). The check is in `graphic_context::execute_command` and
+logs the opcode and the thread before the panic.
