@@ -159,6 +159,7 @@ enum {
     IMPORT_VEC_DELETE_OP               =   219,
     IMPORT_WFOPEN                      =   110,
     IMPORT_WINDOW                      = 65535,   // absent
+    IMPORT_WS_EVENT_READY              =   292,
     IMPORT_WS_GET_EVENT                =   295,
 };
 

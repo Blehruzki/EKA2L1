@@ -1811,3 +1811,38 @@ every bench with =1 and prints the count.
 *Lesson: the bench's leniency is a known gap, written in the root CLAUDE.md,
 and a probe for it existed. A build goes out only after a run under
 `EKA2L1_STRICTHANDLE=2`.*
+
+### 13.y Build 003 on the N95: no keys, drawn over every app, End fatal (round 162, E1047-E1057)
+**Symptom.** The menu draws and no key works; switching to another app leaves
+the game's picture on top of everything; End leaves it up until about a
+demo's start, then the main thread dies at rounds 101-102's frame (pc
+0x807344c6). Every lenient bench run had played.
+**Cause.** Two, the first hiding everything else:
+1. **An EKA1 one-word TRequestStatus spilling into the next field.** The
+   engine keeps its window-server event status at object +0x50 and its own
+   stop flag at +0x54. EKA2's `EventReady` sets the status pending through
+   `TRequestStatus::operator=`, which also sets ERequestPending in the second
+   word (+0x54); the kernel's completion writes the status word only
+   (`DThread::RequestComplete`, sizeof(TInt)), so the flag stays 2 and the
+   engine's wait loop (0x4a7308) returns at once: it never reads an event,
+   never runs an active object (the DSA's abort is never answered, so wserv
+   gives up and the engine draws over everything), never sees End. EKA2L1
+   cleared the bit on every completion, so the bench worked.
+2. **End answered by nobody.** The engine-mode app UI took CAknAppUi's
+   HandleCommandL, which ignores EEikCmdExit; Avkon's shutter came later and
+   died in cone, as in rounds 101-102.
+**Fix.** (1) `gate6_engine_event_ready` wraps the engine's EventReady and
+puts the word after the status back as it was. (2) The engine-mode app UI's
+HandleCommandL is `gate6_ui_command`: EEikCmdExit flushes and leaves (0xE818).
+**Found and judged with `EKA2L1_KERNREQ=1`,** a new emulator switch that
+completes requests as EKA2 does: it reproduced the dead keys (E1047), the fix
+cleared them (E1048), `GAME_BENCH_ENDKEY_AT` sent Avkon's own close event to
+show End ignored (E1049) and then answered (E1050), the battery is clean under
+it and STRICTHANDLE=2 (E1051-E1054), One and Asphalt 2 -- phone-proven -- run
+under it unchanged (E1055-E1056), and build 004 from the zip layout (E1057).
+`emurun.sh` now runs every bench with it.
+*Lesson: E885 found this class (EKA1's one-word TRequestStatus) in the
+engine's active objects and patched them; a raw, polled status was the same
+bug where no CActive was looking. And an emulator that is kinder than the
+kernel hides it: when the bench and the phone disagree, find what the
+emulator does that the platform source does not.*

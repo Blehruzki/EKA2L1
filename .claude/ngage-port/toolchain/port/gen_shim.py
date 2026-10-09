@@ -706,6 +706,7 @@ HOOKS = {
     'IMPORT_FS_MKDIRALL':             ('efsrv', 85),    # RFs::MkDirAll(const TDesC&)
     'IMPORT_FS_MODIFIED':             ('efsrv', 87),    # RFs::Modified(const TDesC&, TTime&) const
     'IMPORT_WS_GET_EVENT':            ('ws32', 118),    # RWsSession::GetEvent: an AirPlay engine reads its own keys; hold C is read there (Colin McRae, E991)
+    'IMPORT_WS_EVENT_READY':          ('ws32', 105),    # RWsSession::EventReady: an engine's one-word TRequestStatus, the word after it kept (round 162)
     'IMPORT_START_APP':               ('apgrfx', 96),   # RApaLsSession::StartApp: an AirPlay engine starts its front end, whose port is another loader (Colin McRae, E959)
     'IMPORT_CHUNK_CREATE_GLOBAL':     ('euser', 275),   # RChunk::CreateGlobal: the port makes an AirPlay engine's I3D shared memory, as its launcher did (Colin McRae, E914)
     'IMPORT_CREATE_BITMAP':           ('eikcore', 44),  # CEikonEnv::CreateBitmapL: "*" is the game's own .mbm, not the loader's (Colin McRae's front end, E952)

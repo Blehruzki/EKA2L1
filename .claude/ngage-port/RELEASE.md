@@ -51,10 +51,15 @@ the tree the bench ran.
 
 ## Before any build goes out: the phone's handle rules
 
-Run the title once under `EKA2L1_STRICTHANDLE=2` (exported before `emurun.sh`
-or `runinstalled.sh`) through start, keys and quit, and see no `BAD HANDLE` in
+Run the title once under `EKA2L1_STRICTHANDLE=2` and `EKA2L1_KERNREQ=1` (exported
+before `emurun.sh` or `runinstalled.sh`) through start, keys and quit, and see no `BAD HANDLE` in
 the log. EKA2L1 answers a stale, foreign-thread or garbage handle with an
 error; a phone panics the thread KERN-EXEC 0. Colin McRae build 002 passed
 thirty lenient bench runs and died at launch on the N95 on two of them
 (round 161, BUGBOOK 13.x). `emurun.sh` now logs them on every run (=1) and
 prints the count.
+
+`EKA2L1_KERNREQ=1` completes requests as EKA2's kernel does, the status word
+only; the emulator's own completion also cleared the pending bit in the word
+after, and Colin build 003 took no keys on the N95 because of it (round 162).
+`emurun.sh` sets it by default.

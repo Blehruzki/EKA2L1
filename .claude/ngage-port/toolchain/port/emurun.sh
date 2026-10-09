@@ -59,6 +59,13 @@ cp "$S/out/${APPNAME}_reg.rsc" $D/private/10003a3f/import/apps/${APPNAME}_reg.rs
 # 002 passed thirty bench runs and died at launch on the N95 on exactly that.
 # EKA2L1_STRICTHANDLE=2 in the caller's environment panics as a device does.
 export EKA2L1_STRICTHANDLE="${EKA2L1_STRICTHANDLE:-1}"
+# Round 162: and requests complete as EKA2's kernel completes them, the status
+# word only (EKA2L1_KERNREQ=1, src/emu/utils/include/utils/reqsts.h). The
+# emulator's own completion also cleared ERequestPending in the word after,
+# which hid an EKA1 one-word TRequestStatus spilling into the next field: Colin
+# build 003 took no keys on the N95 and passed every lenient bench run.
+# EKA2L1_KERNREQ=0 in the caller's environment brings the old behaviour back.
+export EKA2L1_KERNREQ="${EKA2L1_KERNREQ:-1}"
 (cd /home/user/EKA2L1/build/bin && timeout -k 5 -s KILL "${TMO:-120}" ./eka2l1_qt --device "${DEVICE:-RM-409}" --run $UID3 >"$S/g6.log" 2>&1)
 # The emulator does not always go on SIGTERM, and a run left behind holds its
 # memory and a few per cent of a core. Enough of them and a later launch cannot

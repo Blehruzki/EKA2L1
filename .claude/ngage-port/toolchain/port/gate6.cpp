@@ -1438,6 +1438,7 @@ struct Context {
     u32 focusHanded;        //   the wrapper's group has declined the focus (engine_root_unfocusable)
     u32 mdaNoteWrites, mdaNoteCopies;   // GAME_MDA_RDEBUG: WriteL and BufferCopied notes so far
     u32 realGetEvent;       // GAME_ENGINE_LXCE: RWsSession::GetEvent, as resolved (gate6_engine_get_event)
+    u32 realEventReady;     //   RWsSession::EventReady, as resolved (gate6_engine_event_ready)
     u32 cfgSavePending;     //   a hold's save, owed to the main thread
     u32 engineQuitting;     //   GAME_ENGINE_LAUNCHER: the engine asked to quit (mailbox 6)
     u32 benchSwitchTicks, benchOtherApp;   // GAME_BENCH_SWITCH_AT: the watcher's ticks, the other app's group
@@ -13754,6 +13755,17 @@ enum { I3D_MAILBOX = 0xE4 / 4, I3D_ASK = 3, I3D_ANSWER = 4, I3D_QUIT = 6, I3D_CL
 #ifndef GAME_BENCH_DSA_ABORT_AT
 #define GAME_BENCH_DSA_ABORT_AT 0
 #endif
+// Bench: the end key as Avkon receives it (GAME_BENCH_ENDKEY_AT, seconds; 0
+// off): KAknUidValueEndKeyCloseEvent sent to the wrapper's own window group
+// (RWsSession::SendEventToWindowGroup, ws32 45), which CAknAppUi::HandleWsEventL
+// turns into KAknShutOrHideApp and HandleCommandL(EEikCmdExit) (SYMBIAN.md).
+// 0x5B03 logs it. Round 162.
+#ifndef GAME_BENCH_ENDKEY_AT
+#define GAME_BENCH_ENDKEY_AT 0
+#endif
+#ifndef BENCH_NO_ENGINE_COMMAND
+#define BENCH_NO_ENGINE_COMMAND 0       // bench: the engine app UI's end-key answer left out, to test the test
+#endif
 #ifndef GAME_BENCH_DSA_ABORT_KICK
 #define GAME_BENCH_DSA_ABORT_KICK 0
 #endif
@@ -13761,11 +13773,37 @@ enum { WS32_WG_CTOR = 158, WS32_WG_CONSTRUCT = 157, WS32_WIN_CTOR = 278, WS32_WI
        WS32_WIN_SET_EXTENT = 277, WS32_WIN_ACTIVATE = 107, WS32_SET_ORDINAL = 211, WS32_FLUSH = 69,
        WS32_SESSION_CTOR = 76, WS32_SESSION_CONNECT = 70 };
 
+enum { WS32_SEND_EVENT_TO_WG = 45, AKN_END_KEY_CLOSE_EVENT = 0x101F87F0 };
+
 static void bench_switch(Context *c)
 {
-    if (!GAME_BENCH_SWITCH_AT || !c->coeEnv)
+    if ((!GAME_BENCH_SWITCH_AT && !GAME_BENCH_ENDKEY_AT) || !c->coeEnv)
         return;
     const u32 t = ++c->benchSwitchTicks;
+    if (GAME_BENCH_ENDKEY_AT && t == (u32)GAME_BENCH_ENDKEY_AT * 2 && c->wsIdentifier) {
+        typedef int (*Identifier)(const void *);
+        typedef void (*SendWg)(void *, int, const u32 *);
+        typedef void (*Fn1)(void *);
+        u32 lib = 0;
+        Ptrc16 nm, none;
+        nm.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kWs32Name / 2);
+        nm.text = kWs32Name;
+        none.lengthAndType = (u32)EPtrC << KTypeShift;
+        none.text = 0;
+        if (!rlibrary_load(&lib, &nm, &none)) {
+            void *session = (u8 *)c->coeEnv + 0x20 + COEENV_BIAS;
+            const int wg = ((Identifier)c->wsIdentifier)((u8 *)c->coeEnv + NEW_COEENV_ROOTWIN);
+            u32 ev[16];
+            for (u32 i = 0; i < 16; i++) ev[i] = 0;
+            ev[0] = (u32)AKN_END_KEY_CLOSE_EVENT;           // TWsEvent::iType
+            log_event(c, NOTE_ENGINE, 0x5B030000u | ((u32)wg & 0xFFFFu));
+            log_block(c);
+            ((SendWg)rlibrary_lookup(&lib, WS32_SEND_EVENT_TO_WG))(session, wg, ev);
+            ((Fn1)rlibrary_lookup(&lib, WS32_FLUSH))(session);
+        }
+    }
+    if (!GAME_BENCH_SWITCH_AT)
+        return;
     const u32 away = (u32)GAME_BENCH_SWITCH_AT * 2, back = away + (u32)GAME_BENCH_SWITCH_FOR * 2;
     if (t != away && t != back)
         return;
@@ -14001,6 +14039,26 @@ extern "C" void gate6_engine_get_event(void *session, u32 *ev, Context *c)
         ev[0] = (u32)EEventNull;
 }
 
+// **Round 162: the word after the engine's event status.** The engine keeps
+// its window-server event TRequestStatus in EKA1's one-word layout at object
+// +0x50 and its own stop flag at +0x54. EKA2's EventReady sets the status
+// pending through TRequestStatus::operator=, which also sets ERequestPending
+// in the second word -- the flag -- and the kernel's completion writes the
+// status word only (DThread::RequestComplete, sizeof(TInt)), so the flag stays
+// 2 and the engine's wait loop (0x4a7308) returns at once: no event read, no
+// active object run, the DSA's abort never answered. EKA2L1 cleared the bit on
+// every completion, so the bench never saw it (EKA2L1_KERNREQ=1 makes it
+// complete as EKA2 does, E1047). The status is the engine's own, polled, never
+// a CActive's, so nothing on 9.x reads that word: it is put back as it was.
+extern "C" void gate6_engine_event_ready(void *session, u32 *status, Context *c)
+{
+    typedef void (*EventReady)(void *, u32 *);
+    const u32 keep = status ? status[1] : 0;
+    ((EventReady)c->realEventReady)(session, status);
+    if (status)
+        status[1] = keep;
+}
+
 static void engine_start(Context *c)
 {
     // RThread::Create(name, fn, stack, RAllocator *heap, TAny *ptr,
@@ -14086,6 +14144,16 @@ extern "C" void *gate6_engine_app_ui(void *self)
     ui[WRAP_CTX] = ((const u32 *)self)[WRAP_CTX];
     u32 *vt = copy_vtable(akn, AKN_APPUI_SLOTS);
     vt[VT_HEADER + SLOT_UI_CONSTRUCT] = (u32)&gate6_engine_construct;
+    // Round 162: the end key. Avkon makes it HandleCommandL(EEikCmdExit)
+    // (12.z), and CAknAppUi's own answers nothing: the game stayed up, and
+    // Avkon's shutter came later and died in cone (rounds 101-102's frame,
+    // pc 0x807344c6). The engine-mode app UI answers it as every other
+    // title's does: flush the record and leave (gate6_ui_command, 0xE818).
+    c->realCommand = vt[VT_HEADER + SLOT_UI_COMMAND];
+    if (!BENCH_NO_ENGINE_COMMAND && c->spare + TRACE <= c->spareEnd) {
+        vt[VT_HEADER + SLOT_UI_COMMAND] = ctx_thunk(c->spare, c, (u32)&gate6_ui_command);
+        c->spare += TRACE;
+    }
     ui[0] = (u32)(vt + VT_HEADER);
     c->wrapUi = ui;
     c->wrapUiVptr = ui[0];
@@ -15693,6 +15761,13 @@ static u32 load_and_start()
         (kShimTable[IMPORT_WS_GET_EVENT] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
         ctx->realGetEvent = iat[IMPORT_WS_GET_EVENT];
         iat[IMPORT_WS_GET_EVENT] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_engine_get_event);
+        ctx->spare += TRACE;
+    }
+    // An engine's RWsSession::EventReady: its status's second word kept (round 162).
+    if (GAME_ENGINE_LXCE && IMPORT_WS_EVENT_READY < nImports && IMPORT_WS_EVENT_READY < kShimCount &&
+        (kShimTable[IMPORT_WS_EVENT_READY] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->realEventReady = iat[IMPORT_WS_EVENT_READY];
+        iat[IMPORT_WS_EVENT_READY] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_engine_event_ready);
         ctx->spare += TRACE;
     }
     // An engine's flip: UserSvr::AddEvent(ERedraw) posts the frame (gate6_engine_add_event).

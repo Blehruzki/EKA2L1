@@ -451,6 +451,15 @@ a DSA that its owner's `Restart` will start again: the restart runs from a
 necessarily in front: a high-priority group (a global note, an alert) can be
 over it.
 
+**A request's completion writes the status word only.** `DThread::RequestComplete`
+(kernel/eka/kernel/sthread.cpp) copies `sizeof(TInt)` to the client's
+`TRequestStatus`; the second word, `iFlags`, whose `ERequestPending` bit
+`TRequestStatus::operator=(KRequestPending)` sets on the client side
+(e32cmn.inl), is cleared only by the active scheduler as it dispatches
+(cbase/ub_act.cpp). So an EKA1 binary with a one-word status followed by a
+field of its own finds that field ORed with 2 after every request, for good
+(round 162; EKA2L1 cleared it on completion until `EKA2L1_KERNREQ=1`).
+
 ## Leaves, TRAP and the trap handler on 9.x
 
 From `kernel/eka/euser/us_trp.cpp`, `us_exec.cpp`, `cbase/ub_cln.cpp`,
