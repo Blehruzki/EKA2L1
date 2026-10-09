@@ -110,6 +110,14 @@ modelled on the N80's own LDD. Before them, any app using direct screen access
 on a 3.0 firmware died in its first `CDirectScreenAccess::StartL`. Details in
 `EMU_PATCHES.md`.
 
+A completed request clears `ERequestPending` in the second word of the
+client's `TRequestStatus` here; EKA2's kernel writes the status word only
+(`DThread::RequestComplete`, `sizeof(TInt)`) and leaves the flag for the active
+scheduler. Code that polls a raw status in EKA1's one-word layout, with a field
+of its own after it, therefore works here and sees that field ORed with 2 on a
+phone. `EKA2L1_KERNREQ=1` completes as EKA2 does (`request_status::set` in
+`src/emu/utils/include/utils/reqsts.h`).
+
 EKA2L1 accepts SIS packages that a real device rejects, because it verifies none
 of the integrity fields a device checks: the per-file SHA-1 in each
 `SISFileDescription`, the E32 image header CRC32, `SISControllerChecksum` /

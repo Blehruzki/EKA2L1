@@ -17,6 +17,14 @@ namespace eka2l1 {
 
 /* Header only request status */
 namespace eka2l1::epoc {
+    // EKA2L1_KERNREQ=1: a completion writes the status word only, as EKA2's
+    // DThread::RequestComplete does (sizeof(TInt)); the flags word, and its
+    // ERequestPending bit, is left for the active scheduler to clear when it
+    // dispatches. Off, the emulator clears the bit on every completion, which
+    // a device never does -- and code that keeps a raw TRequestStatus in an
+    // EKA1 one-word layout then works here and not on a phone.
+    bool kernel_completion_keeps_flags();
+
     // Don't change the structure! Specifically no more fields and no vtable!
     struct request_status {
         static constexpr int pending_status = static_cast<int>(0x80000001);
@@ -35,7 +43,7 @@ namespace eka2l1::epoc {
             if (!is_eka1) {
                 if (sts == pending_status) {
                     flags |= pending;
-                } else {
+                } else if (!kernel_completion_keeps_flags()) {
                     flags &= ~pending;
                 }
             }

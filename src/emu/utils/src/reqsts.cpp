@@ -24,7 +24,17 @@
 #include <common/chunkyseri.h>
 #include <utils/reqsts.h>
 
+#include <cstdlib>
+
 namespace eka2l1::epoc {
+    bool kernel_completion_keeps_flags() {
+        static const bool keep = [] {
+            const char *v = std::getenv("EKA2L1_KERNREQ");
+            return v && (v[0] == '1');
+        }();
+        return keep;
+    }
+
     void request_status::do_state(common::chunkyseri &seri) {
         seri.absorb(status);
         seri.absorb(flags);
