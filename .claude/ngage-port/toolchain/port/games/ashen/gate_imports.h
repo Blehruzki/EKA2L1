@@ -17,6 +17,7 @@ enum { GAME_UID3 = 0x101fd3e9 };
 enum {
     IMPORT_ADDDF3                      =   290,
     IMPORT_ADDTOSTACKL                 =    39,
+    IMPORT_ADD_EVENT                   = 65535,   // absent
     IMPORT_ADD_FOREGROUND_OBSERVER     = 65535,   // absent
     IMPORT_APPUI_EXIT                  =   109,
     IMPORT_APPUI_FACTORY               = 65535,   // absent
@@ -26,6 +27,7 @@ enum {
     IMPORT_BASECONSTRUCTL              =    13,
     IMPORT_CACTIVE_CTOR                =   284,
     IMPORT_CANCEL                      =   192,
+    IMPORT_CHUNK_CREATE_GLOBAL         = 65535,   // absent
     IMPORT_CLEANUP_NEW                 =   232,
     IMPORT_CLIENT_RECT                 = 65535,   // absent
     IMPORT_COECONTROL_CTOR             =    77,
@@ -39,6 +41,7 @@ enum {
     IMPORT_CTL_DRAWABLE_WINDOW         =    45,
     IMPORT_CTL_RECT                    =    64,
     IMPORT_CTL_SETRECT                 =    85,
+    IMPORT_DEF_MODE_COLORS             = 65535,   // absent
     IMPORT_DELETE_OP                   =   292,
     IMPORT_DES_FORMAT                  =   213,
     IMPORT_DES_FORMATLIST              =   212,
@@ -109,6 +112,10 @@ enum {
     IMPORT_PUSHL_CBASE                 =   242,
     IMPORT_READ_FILE_SECTION           =    93,
     IMPORT_REQUEST_COMPLETE            = 65535,   // absent
+    IMPORT_RWIN_BEGIN_REDRAW           = 65535,   // absent
+    IMPORT_RWIN_CTOR                   = 65535,   // absent
+    IMPORT_RWIN_CTOR_WS                = 65535,   // absent
+    IMPORT_RWIN_END_REDRAW             = 65535,   // absent
     IMPORT_SCREEN_INFO                 = 65535,   // absent
     IMPORT_SCREEN_UPDATE               = 65535,   // absent
     IMPORT_SEM_CREATE                  =   200,

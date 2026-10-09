@@ -180,6 +180,23 @@ LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL,
 # checked against the 9.x def rather than assumed; the rest of what does not
 # match is genuinely gone (CServer, CSession, TTrap, TInt64) and needs writing.
 MANUAL = {
+    # Colin McRae's engine (E891). 9.x made these RWsSession and RWindow
+    # getters const, which is all that kept them from pairing.
+    'RWsSession::GetEvent(TWsEvent &)': ('ws32', 'RWsSession::GetEvent(TWsEvent&) const', KIND_CALL),
+    'RWsSession::GetFocusWindowGroup()': ('ws32', 'RWsSession::GetFocusWindowGroup() const', KIND_CALL),
+    'RWsSession::GetPriorityKey(TWsPriorityKeyEvent &)':
+        ('ws32', 'RWsSession::GetPriorityKey(TWsPriorityKeyEvent&) const', KIND_CALL),
+    'RWsSession::FetchMessage(TUid &, TPtr8 &, const TWsEvent &)':
+        ('ws32', 'RWsSession::FetchMessage(TUid&, TPtr8&, TWsEvent const&) const', KIND_CALL),
+    'RWindow::GetInvalidRegion(RRegion &)': ('ws32', 'RWindow::GetInvalidRegion(RRegion&) const', KIND_CALL),
+    # A raw event into the window server needs SwEvent on 9.x, which no port
+    # application has, and 9.x's TRawEvent carries iTicks after iType, so
+    # the by-value event would arrive shifted anyway. Answered with nothing.
+    'SimulateRawEvent__10RWsSessionG9TRawEvent': ('local', LOCAL_NOOP, KIND_LOCAL),
+    # estlib's memset is euser's on 9.x; RThread::Rename became the static
+    # User::RenameThread, of the calling thread (the engine renames its own).
+    'memset': ('euser', 'memset', KIND_CALL),
+    'RThread::Rename(TDesC16 const &) const': ('euser', 'User::RenameThread(TDesC16 const&)', KIND_ARGSHIFT),
     # The exception handler moved from RThread to User -- and with it went the
     # object. The game calls it on an RThread, so `this` is in r0 and the two
     # real arguments are in r1 and r2; User::SetExceptionHandler wants them in
@@ -662,6 +679,16 @@ HOOKS = {
     'IMPORT_CACTIVE_CTOR':            ('euser', 1395),   # CActive::CActive(TInt): GAME_AO_PRIORITIES (One, round 128)
     'IMPORT_THREAD_SUSPEND':          ('euser', 1122),   # RThread::Suspend(): refused on an impossible handle (One, round 130)
     'IMPORT_THREAD_RESUME':           ('euser', 954),   # RThread::Resume(): the same
+    # RWindow is 8 bytes on EKA1 and 24 on 9.x (RDrawableWindow's draw rect at
+    # +8): these four write the extra 16 and are run on a full-size copy
+    # (Colin McRae, E890: the constructor zeroed the engine's saved registers).
+    'IMPORT_RWIN_CTOR':               ('ws32', 283),    # RWindow::RWindow()
+    'IMPORT_RWIN_CTOR_WS':            ('ws32', 284),    # RWindow::RWindow(RWsSession &)
+    'IMPORT_RWIN_BEGIN_REDRAW':       ('ws32', 11),     # RWindow::BeginRedraw(const TRect &)
+    'IMPORT_RWIN_END_REDRAW':         ('ws32', 103),    # RWindow::EndRedraw()
+    'IMPORT_DEF_MODE_COLORS':         ('ws32', 300),    # RWsSession::GetDefModeMaxNumColors: the N-Gage's EColor4K for a 16-bit title (Colin McRae, E892)
+    'IMPORT_ADD_EVENT':               ('euser', 9),     # UserSvr::AddEvent: an AirPlay engine's ERedraw is its frame done (Colin McRae, E908)
+    'IMPORT_CHUNK_CREATE_GLOBAL':     ('euser', 275),   # RChunk::CreateGlobal: the port makes an AirPlay engine's I3D shared memory, as its launcher did (Colin McRae, E914)
     'IMPORT_HANDLE_CLOSE':            ('euser', 172),   # RHandleBase::Close(): the handle word logged before the call (round 136: a worker's Close died KERN-EXEC 0 on the N95)
     'IMPORT_DELETE_OP':               ('euser', 1504),
     'IMPORT_VEC_DELETE_OP':           ('euser', 1506),
@@ -739,6 +766,11 @@ DIVERTS = [
 # not the per-frame ones -- see the note in gate6.cpp about flushing to a
 # memory card.
 MILESTONES = [
+    # A window-server client's own windows (Colin McRae's engine, E898):
+    # group and window construction, extent, activation, ordinal positions,
+    # the default mode, the DSA's NewL/StartL.
+    ('ws32', 46), ('ws32', 51), ('ws32', 206), ('ws32', 291), ('ws32', 211),
+    ('ws32', 239), ('ws32', 300), ('ws32', 348), ('ws32', 350),
     ('efsrv', 18), ('efsrv', 121), ('efsrv', 136), ('efsrv', 15),
     ('euser', 644), ('euser', 672), ('euser', 180),
     ('bitgdi', 105), ('bitgdi', 111), ('euser', 926),
@@ -941,11 +973,23 @@ def emit_hooks(indices, path, image, uid3=0, coeenv=(), appui=(),
     return sum(1 for v in indices.values() if v != HOOK_ABSENT)
 
 
-def build(image):
+def image_imports(image):
+    """(imports, uid3) for an E32 image, or for an AirPlay engine (`.nax`,
+    or the inflated `.lxe` lxce.py writes) -- whose import directory is the
+    game's import list, and which carries no UID, so the loader's image check
+    is off (0) for it."""
     d = open(image, 'rb').read()
-    imports = [(n.split('[')[0].split('{')[0].lower(), o)
-               for n, ords in e32imports.imports(d) for o in ords]
-    return build_imports(imports)
+    if image.lower().endswith(('.nax', '.lxe')):
+        import lxce
+        raw = d if d[:4] == b'LXCE' else lxce.unpack(d)
+        return lxce.import_list(lxce.parse(raw)), 0
+    return ([(n.split('[')[0].split('{')[0].lower(), o)
+             for n, ords in e32imports.imports(d) for o in ords],
+            e32imports.header(d)['uid3'])
+
+
+def build(image):
+    return build_imports(image_imports(image)[0])
 
 
 def build_imports(imports):
@@ -1106,12 +1150,9 @@ def emit(rows, dlls, path):
 if __name__ == '__main__':
     rows, dlls = build(sys.argv[1])
     n = emit(rows, dlls, sys.argv[2])
-    imports = [(nm.split('[')[0].split('{')[0].lower(), o)
-               for nm, ords in e32imports.imports(open(sys.argv[1], 'rb').read())
-               for o in ords]
+    imports, uid3 = image_imports(sys.argv[1])
     idx = hook_indices(imports)
     hpath = os.path.join(os.path.dirname(os.path.abspath(sys.argv[2])), 'gate_imports.h')
-    uid3 = e32imports.header(open(sys.argv[1], 'rb').read())['uid3']
     env = coeenv_methods(imports, epocdb.load(EPOC6),
                          {v for v in idx.values() if v != HOOK_ABSENT})
     hooked = {v for v in idx.values() if v != HOOK_ABSENT}

@@ -20,9 +20,9 @@ sys.path.insert(0, HERE)
 import e32imports  # noqa: E402
 import readlog  # noqa: E402
 
-TITLES = ('asphalt1', 'asphalt2', 'ashen', 'one', 'ngtest')
+TITLES = ('asphalt1', 'asphalt2', 'ashen', 'one', 'ngtest', 'colin')
 LABEL = {'asphalt1': 'Asphalt UGT', 'asphalt2': 'Asphalt 2', 'ashen': 'Ashen',
-         'one': 'One', 'ngtest': 'ngtest'}
+         'one': 'One', 'ngtest': 'ngtest', 'colin': 'Colin McRae 2005'}
 GAMES_MD = os.path.join(HERE, '..', '..', 'GAMES.md')
 BEGIN, END = '<!-- titles.py begin -->', '<!-- titles.py end -->'
 

@@ -17,6 +17,7 @@ enum { GAME_UID3 = 0x101fd42d };
 enum {
     IMPORT_ADDDF3                      =   405,
     IMPORT_ADDTOSTACKL                 =    51,
+    IMPORT_ADD_EVENT                   = 65535,   // absent
     IMPORT_ADD_FOREGROUND_OBSERVER     =    50,
     IMPORT_APPUI_EXIT                  = 65535,   // absent
     IMPORT_APPUI_FACTORY               = 65535,   // absent
@@ -26,6 +27,7 @@ enum {
     IMPORT_BASECONSTRUCTL              =     9,
     IMPORT_CACTIVE_CTOR                = 65535,   // absent
     IMPORT_CANCEL                      =   279,
+    IMPORT_CHUNK_CREATE_GLOBAL         = 65535,   // absent
     IMPORT_CLEANUP_NEW                 =   330,
     IMPORT_CLIENT_RECT                 = 65535,   // absent
     IMPORT_COECONTROL_CTOR             =    89,
@@ -39,6 +41,7 @@ enum {
     IMPORT_CTL_DRAWABLE_WINDOW         = 65535,   // absent
     IMPORT_CTL_RECT                    = 65535,   // absent
     IMPORT_CTL_SETRECT                 =    98,
+    IMPORT_DEF_MODE_COLORS             = 65535,   // absent
     IMPORT_DELETE_OP                   =   408,
     IMPORT_DES_FORMAT                  =   314,
     IMPORT_DES_FORMATLIST              = 65535,   // absent
@@ -109,6 +112,10 @@ enum {
     IMPORT_PUSHL_CBASE                 =   345,
     IMPORT_READ_FILE_SECTION           = 65535,   // absent
     IMPORT_REQUEST_COMPLETE            =   350,
+    IMPORT_RWIN_BEGIN_REDRAW           = 65535,   // absent
+    IMPORT_RWIN_CTOR                   = 65535,   // absent
+    IMPORT_RWIN_CTOR_WS                = 65535,   // absent
+    IMPORT_RWIN_END_REDRAW             = 65535,   // absent
     IMPORT_SCREEN_INFO                 =   356,
     IMPORT_SCREEN_UPDATE               =    47,
     IMPORT_SEM_CREATE                  =   296,
@@ -145,7 +152,7 @@ enum {
 
 // The trace lists: see MILESTONES and HOT in gen_shim.py. Both may be
 // empty, which is why gate6.cpp appends the two exits to the first.
-#define GATE_MILESTONES  100, 109, 110, 99, 325, 326, 283, 45, 46, 350, 296, 299, 362, 353, 374, 281, 330, 386, 319, 363, 322, 367, 298, 357, 295, 397, 366, 355, 400, 285, 376, 339, 458, 323, 315, 111, 104, 107, 102,
+#define GATE_MILESTONES  460, 461, 100, 109, 110, 99, 325, 326, 283, 45, 46, 350, 296, 299, 362, 353, 374, 281, 330, 386, 319, 363, 322, 367, 298, 357, 295, 397, 366, 355, 400, 285, 376, 339, 458, 323, 315, 111, 104, 107, 102,
 #define GATE_HOT  424, 425, 274, 287, 272, 417, 383, 369, 389, 264, 344,
 #define GATE_HOT_COUNT 11
 

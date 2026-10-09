@@ -25,6 +25,13 @@
 // ... and what this game is, which is not generated: see games/<name>/game.h.
 #include "game.h"
 
+// An AirPlay engine title (Colin McRae Rally 2005): the image is the engine
+// `<stem>.lxe`, laid out and linked here, run in a thread of its own. Off
+// for every title whose game is an `.app`. See lxce.py for the format.
+#ifndef GAME_ENGINE_LXCE
+#define GAME_ENGINE_LXCE 0
+#endif
+
 typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned int u32;
@@ -301,6 +308,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_OPEN = 897,    // what RFile::Open answered
        NOTE_FILE_PATH = 898,    // ... and the name it was asked for
        NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
+       NOTE_ENGINE = 640,       // an AirPlay engine title (GAME_ENGINE_LXCE): 0x1Exxxxxx the layout (imports, then relocations), 0x2E the thread's create result, 0x3E resumed, 0x4E bitgdi's Update resolved (bit 0), 0x5E/0x6E/0x7E a flip's samples, 0x8E the I3D shared memory made (the error; 0x8EBAD000 no CreateGlobal)
        NOTE_TICK_SHIM = 699,    // the tick seed read answered: the real tick it replaced (0xD1nnnnnn: slots diverted at load)
        NOTE_FILE_HEAD = 861,    // the first three words of a name descriptor
        NOTE_CARD_REFUSED = 862, // a write to the game card, refused as a card would
@@ -1351,8 +1359,9 @@ struct Context {
     u32 realPushLCBase;                        // CleanupStack::PushL(CBase*), before the hook for the game's own objects
     u32 realThreadOpen;                        // RThread::Open(const TDesC&, TOwnerType), before the hook (round 125)
     u32 *factoryStandin;                       // the null-object app UI factory, once built (round 125)
-    struct { u32 seq; u32 len; u16 name[THREAD_MADE_NAME]; } threadsMade[THREAD_MADE];   // the port's name index and the name the game gave each Create
+    struct { u32 seq; u32 slot; u32 len; u16 name[THREAD_MADE_NAME]; } threadsMade[THREAD_MADE];   // the port's name index, its wdThr slot (0xFF: none) and the name the game gave each Create
     u32 threadsMadeCount;
+    u32 namePending;        // 1 + the threadsMade entry whose Create is in flight (0: none)
     u32 defaultPathLen;                        // what the game gave RFs::SetDefaultPath, for every session it opens after
     u16 defaultPath[256];
     u32 oldDeleteReal[8], oldDeleteVt[8];      // per 9.x class: its vtable, and the three-word one the game gets
@@ -1402,6 +1411,13 @@ struct Context {
     u32 cardReplace;
     u32 cardControl;        // the DoControl diversion, with the context in r3
     u32 realResume;         // RThread::Resume, as resolved
+    u32 engineThread;       // GAME_ENGINE_LXCE: the engine's thread handle
+    u32 realRwin[4];        // RWindow's two constructors, BeginRedraw(TRect), EndRedraw, as resolved
+    u32 realDefMode;        // RWsSession::GetDefModeMaxNumColors, as resolved
+    u32 realAddEvent;       // GAME_ENGINE_LXCE: UserSvr::AddEvent, as resolved
+    u32 chunkCreateGlobal;  //   RChunk::CreateGlobal, as resolved
+    u32 engineShm;          //   the I3D shared memory the port made for it (an RChunk)
+    u32 posts;              //   frames the engine flipped (its ERedraw events)
     u32 realSuspend;        // RThread::Suspend, the game's static import (round 130)
     u32 threadCreateThunk;
     u32 threadStackThunk;
@@ -6887,7 +6903,9 @@ extern "C" void gate6_thread_name(Context *c, u32 *regs)
         const u16 *t = des_text((const u32 *)regs[1], &len);
         if (t && len && len <= (u32)THREAD_MADE_NAME) {
             c->threadsMade[c->threadsMadeCount].seq = c->nameSeq;
+            c->threadsMade[c->threadsMadeCount].slot = 0xFFu;
             c->threadsMade[c->threadsMadeCount].len = len;
+            c->namePending = c->threadsMadeCount + 1;
             for (u32 i = 0; i < len; i++)
                 c->threadsMade[c->threadsMadeCount].name[i] = t[i];
             c->threadsMadeCount++;
@@ -6942,13 +6960,20 @@ extern "C" int gate6_thread_open(u32 *self, const u32 *name, u32 type, Context *
         // duplicate of the port's own handle, with the owner type the game
         // asked for. No name, no process full name, nothing the ROM version
         // can spell differently. The full-name open stays as the fallback.
+        // **By the slot its Create filled, not by its name's number** (E909):
+        // the port's own threads take wdThr slots too -- an engine title's
+        // g6eng is wdThr[0] -- and a refused Create numbers a name without
+        // filling a slot. Indexed by the name, Colin McRae's open of its sound
+        // thread (g6w0) was answered with a duplicate of the engine's own
+        // thread, which then waited on itself for good.
         const u32 seq = c->threadsMade[k].seq;
-        if (seq < c->wdThrN && seq < 4 && c->wdThr[seq] && c->fnDuplicate) {
+        const u32 slot = c->threadsMade[k].slot;
+        if (slot < c->wdThrN && slot < 4 && c->wdThr[slot] && c->fnDuplicate) {
             typedef int (*Dup)(u32 *, const u32 *, int);
-            u32 h = c->wdThr[seq];
+            u32 h = c->wdThr[slot];
             const u32 me = 0xFFFF8001u;         // KCurrentThreadHandle: the source is this thread
             const int e = ((Dup)c->fnDuplicate)(&h, &me, (int)type);
-            if (e == 0 && h && h != c->wdThr[seq]) {
+            if (e == 0 && h && h != c->wdThr[slot]) {
                 self[0] = h;
                 thr_live_add(c, h);
                 log_event(c, NOTE_THREAD_OPEN, (u32)r);
@@ -6993,11 +7018,18 @@ extern "C" int gate6_thread_exists(int err, void *self, const void *name,
     // process-owned, for the watchdog's RThread::Context. Not the watchdog's.
     if (err == 0 && self)
         thr_live_add(c, ((const u32 *)self)[0]);
+    // The Create gate6_thread_name numbered, if this is it (the port's own
+    // creates, the engine's thread and the watchdog, are not numbered).
+    const u32 pending = c->namePending;
+    c->namePending = 0;
     if (err == 0 && self && c->wdThrN < 4 &&
         !(name && ((const u32 *)name)[1] == (u32)kWdName)) {
         const u32 h = thread_dup(c, ((const u32 *)self)[0]);
-        if (h)
+        if (h) {
+            if (pending && pending <= c->threadsMadeCount)
+                c->threadsMade[pending - 1].slot = c->wdThrN;
             c->wdThr[c->wdThrN++] = h;
+        }
         log_event(c, NOTE_THREAD_HANDLE, 0x57A30000u | (h ? c->wdThrN : 0u));
         log_block(c);
         // Round 152: Ashen makes its sound thread at every level start and
@@ -8062,9 +8094,20 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         for (u32 i = 0; i < 3; i++)
             log_event(c, NOTE_SCREEN, des[i]);
     const u32 type = des[0] >> KTypeShift;
+    // Where the TScreenInfoV01 is, by the descriptor's type (e32des8.h):
+    // TBufC length then data; TPtrC length, pointer; TPtr length, maximum,
+    // pointer; TBuf length, maximum, data; and type 4 its third word, as
+    // des_text measured it for the game's own names. **TPtr's pointer is
+    // the third word, not the second** (E934): Colin McRae's window code asks
+    // through a TPtr8 (0x4a81b4), and with the maximum length (0x18) read as
+    // the pointer the hook returned early and the engine kept the panel's own
+    // address, copying its frames straight into it -- white 4K pixel pairs
+    // read as 32-bit pixels, a magenta band across the top.
     u32 *p = (type == EBufC) ? des + 1
-           : (type == EPtrC || type == EPtr) ? (u32 *)des[1]
-           : (type == EBufType) ? des + 2 : (u32 *)des[2];
+           : (type == EPtrC) ? (u32 *)des[1]
+           : (type == EPtr) ? (u32 *)des[2]
+           : (type == EBufType) ? des + 2
+           : (u32 *)des[2];
     if (!(user_ptr((u32)p) && !((u32)p & 3)))
         return;
     if (say)
@@ -13187,6 +13230,288 @@ extern "C" u32 gate6_app_dll_uid(void *)
     return (u32)GAME_APP_UID3;  // TUid is one word, returned in r0
 }
 
+// ---- an engine title (GAME_ENGINE_LXCE) -------------------------------------
+//
+// Colin McRae Rally 2005 has no application object for the port to wrap: on
+// the card, a launcher app (`6r66_1.app`) starts the engine as a program of
+// its own, and the engine is a bare window-server client from there. Here
+// the 9.x application, document and app UI are the framework's own objects,
+// with the one slot each that matters pointed at the port, and the app UI's
+// ConstructL starts the engine -- laid out and linked by load_and_start --
+// in a thread of this process, where the launcher started a process.
+
+// The engine's thread. Its own name, so the logs and a phone's task list
+// say which thread is the game's.
+static const u16 kEngineThreadName[] = { 'g', '6', 'e', 'n', 'g' };
+static const u16 kAvkonDll[] = { 'a', 'v', 'k', 'o', 'n', '.', 'd', 'l', 'l' };
+
+static void engine_update_resolve(Context *c);
+
+// **The engine's I3D shared memory, which its launcher made.** The engine
+// joins a global chunk, I3D_SHARED_MEMORY_<name> (0x49f8bc, participant 1,
+// its window group in slot 1): if it opens, the engine checks its header (3,
+// then 0x100) and waits, asleep, until the state word names it (0x49ecc4); if
+// it does not, the engine makes the chunk itself and -- being participant 1,
+// not 2 -- puts itself straight into state 5, exit (E913: 0x49f9dc, the run
+// loop then quits at once and the engine tears down). Participant 2 is the
+// N-Gage launcher the port replaces. So the port makes the chunk as the
+// launcher would have: 0x103 bytes, the header, every slot empty (so the
+// engine notifies nobody), and the state word 1, the engine's turn. The
+// handle is the process's and is never closed: the chunk lives as long as
+// the game.
+#ifdef GAME_ENGINE_SHM_CHARS
+static const u16 kEngineShm[] = { GAME_ENGINE_SHM_CHARS };
+#endif
+enum { I3D_SHM_BYTES = 0x103, I3D_SHM_ZERO = 0x100, I3D_SHM_VERSION = 3, I3D_SHM_TAG = 0x100,
+       I3D_SHM_ENGINE = 1 };
+
+static void engine_shared_memory(Context *c)
+{
+#ifdef GAME_ENGINE_SHM_CHARS
+    typedef int (*CreateGlobal)(u32 *chunk, const Ptrc16 *name, int size, int maxSize, int owner);
+    if (!c->chunkCreateGlobal) {
+        log_event(c, NOTE_ENGINE, 0x8EBAD000u);
+        log_block(c);
+        return;
+    }
+    Ptrc16 nm;
+    nm.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kEngineShm / sizeof kEngineShm[0]);
+    nm.text = kEngineShm;
+    const int r = ((CreateGlobal)c->chunkCreateGlobal)(&c->engineShm, &nm, I3D_SHM_BYTES,
+                                                       I3D_SHM_BYTES, 0 /* EOwnerProcess */);
+    log_event(c, NOTE_ENGINE, 0x8E000000u | ((u32)r & 0xFFFFFFu));
+    log_block(c);
+    if (r) {
+        c->engineShm = 0;
+        return;
+    }
+    // Aligned as the engine aligns it (0x49f944), and cleared as it clears a block it makes.
+    u8 *base = chunk_base(&c->engineShm);
+    u32 *b = (u32 *)(((u32)base + 3) & ~3u);
+    for (u32 i = 0; i < (u32)I3D_SHM_ZERO / 4; i++)
+        b[i] = 0;
+    b[0] = I3D_SHM_VERSION;
+    b[1] = I3D_SHM_TAG;
+    b[2] = I3D_SHM_ENGINE;
+#else
+    (void)c;
+#endif
+}
+
+static void engine_start(Context *c)
+{
+    // RThread::Create(name, fn, stack, RAllocator *heap, TAny *ptr,
+    // TOwnerType) as the engine's own import resolved it, through the stack
+    // thunk every game thread goes through. A null heap is the creating
+    // thread's: the engine shares the process heap, as it had its process's.
+    typedef int (*CreateFn)(u32 *self, const Ptrc16 *name, u32 fn, int stack,
+                            void *heap, void *ptr, int owner);
+    typedef void (*ResumeFn)(const u32 *self);
+    if (!c->threadCreateFn || !c->realResume) PANIC(CAT_LIB, -60);
+    engine_shared_memory(c);
+    Ptrc16 nm;
+    nm.lengthAndType = ((u32)EPtrC << KTypeShift) |
+                       (u32)(sizeof kEngineThreadName / sizeof kEngineThreadName[0]);
+    nm.text = kEngineThreadName;
+    const int r = ((CreateFn)c->threadCreateFn)(&c->engineThread, &nm, c->gameEntry,
+                                                0x10000, 0, 0, 0 /* EOwnerProcess */);
+    log_event(c, NOTE_ENGINE, 0x2E000000u | ((u32)r & 0xFFFFFF));
+    log_block(c);
+    if (r) PANIC(CAT_LIB, r);
+    ((ResumeFn)c->realResume)(&c->engineThread);
+    log_event(c, NOTE_ENGINE, 0x3E000000u);
+    log_block(c);
+    engine_update_resolve(c);
+}
+
+extern "C" void gate6_engine_construct(void *self)
+{
+    Context *c = context_of(self);
+    box_start(c);
+    c->wrapUi = (u32 *)self;
+    c->coeEnv = (u32 *)coeenv_static();     // as the framebuffer titles keep it
+    // Avkon's own base construction, as every title's BaseConstructL import
+    // resolves (avkon 2924, the shim's pairing for old avkon 63, on phones
+    // since round 76): CEikAppUi's leaves avkon's members unset and the
+    // first avkon call after it reads 0x14 off a null (E883). No furniture:
+    // the engine's window is the whole screen.
+    enum { AKN_APPUI_BASE_CONSTRUCTL = 2924 };
+    typedef void (*BaseConstructL)(void *, int);
+    BaseConstructL bc = (BaseConstructL)rlibrary_lookup(&c->avkon, AKN_APPUI_BASE_CONSTRUCTL);
+    if (!bc) PANIC(CAT_LIB, -61);
+    bc(self, ENoScreenFurniture);
+    c->baseDone = 1;
+    engine_start(c);
+}
+
+extern "C" void *gate6_engine_app_ui(void *self)
+{
+    Context *c = context_of(self);
+    u32 *ui = (u32 *)user_allocz(WRAP_BYTES);
+    if (!ui) PANIC(CAT_MEM, -31);
+    coeappui_ctor(ui);
+    eikappui_ctor(ui);
+    typedef void (*Ctor)(void *);
+    Ctor base = (Ctor)rlibrary_lookup(&c->avkon, AKN_APPUI_BASE_CTOR);
+    const u32 *akn = (const u32 *)rlibrary_lookup(&c->avkon, AKN_APPUI_VTABLE);
+    if (!base || !akn) PANIC(CAT_LIB, -1);
+    if (akn[0] != 0) PANIC(CAT_LIB, -2);
+    for (int i = 0; i < AKN_APPUI_SLOTS; i++)
+        if (!akn[VT_HEADER + i]) PANIC(CAT_LIB, -(3 + i));
+    base(ui);
+    ui[WRAP_OLD] = 0;
+    ui[WRAP_CTX] = ((const u32 *)self)[WRAP_CTX];
+    u32 *vt = copy_vtable(akn, AKN_APPUI_SLOTS);
+    vt[VT_HEADER + SLOT_UI_CONSTRUCT] = (u32)&gate6_engine_construct;
+    ui[0] = (u32)(vt + VT_HEADER);
+    c->wrapUi = ui;
+    c->wrapUiVptr = ui[0];
+    return ui;
+}
+
+extern "C" void *gate6_engine_document(void *self)
+{
+    u32 *doc = (u32 *)user_allocz(WRAP_BYTES);
+    if (!doc) PANIC(CAT_MEM, -32);
+    akndocument_ctor(doc, self);
+    doc[WRAP_OLD] = 0;
+    doc[WRAP_CTX] = ((const u32 *)self)[WRAP_CTX];
+    u32 *vt = copy_vtable(vtable_of(doc), DOC_SLOTS);
+    vt[VT_HEADER + SLOT_CREATE_APP_UI] = (u32)&gate6_engine_app_ui;
+    doc[0] = (u32)(vt + VT_HEADER);
+    return doc;
+}
+
+
+// **RWindow is three times the size on 9.x.** EKA1's is MWsClientClass's two
+// words, iWsHandle and iBuffer; 9.x's RDrawableWindow adds a TRect (the draw
+// rect) at +8, which both constructors zero, BeginRedraw(const TRect&) sets
+// and EndRedraw zeroes (RM-409 ws32 278, 279, 265, 276, disassembled). Code
+// built against EKA1 gives an RWindow eight bytes -- Colin McRae's engine on
+// its stack, where the constructor's 16 zero bytes landed on the saved
+// registers and a callee-saved r6 came back null (E890). So the four run on
+// a full-size copy, and only the eight bytes the caller owns go back.
+enum { RWIN_WORDS_9X = 6, RWIN_CTOR = 0, RWIN_CTOR_WS = 1, RWIN_BEGIN = 2, RWIN_END = 3 };
+
+static void rwin_run(u32 *self, u32 fn, u32 arg, int withArg, int copyIn)
+{
+    typedef void (*Fn0)(u32 *);
+    typedef void (*Fn1)(u32 *, u32);
+    u32 t[RWIN_WORDS_9X] = { 0, 0, 0, 0, 0, 0 };
+    if (copyIn) { t[0] = self[0]; t[1] = self[1]; }
+    if (withArg) ((Fn1)fn)(t, arg);
+    else ((Fn0)fn)(t);
+    self[0] = t[0];
+    self[1] = t[1];
+}
+
+extern "C" u32 *gate6_rwin_ctor(u32 *self, u32, Context *c)
+{ rwin_run(self, c->realRwin[RWIN_CTOR], 0, 0, 0); return self; }
+extern "C" u32 *gate6_rwin_ctor_ws(u32 *self, u32 ws, Context *c)
+{ rwin_run(self, c->realRwin[RWIN_CTOR_WS], ws, 1, 0); return self; }
+extern "C" void gate6_rwin_begin_redraw(u32 *self, u32 rect, Context *c)
+{ rwin_run(self, c->realRwin[RWIN_BEGIN], rect, 1, 1); }
+extern "C" void gate6_rwin_end_redraw(u32 *self, u32, Context *c)
+{ rwin_run(self, c->realRwin[RWIN_END], 0, 0, 1); }
+
+
+// **The display mode a window-server client is told.** The N-Gage's panel
+// is EColor4K, and a title that asks the window server -- Colin McRae's
+// engine, through RWsSession::GetDefModeMaxNumColors -- builds its renderer
+// only for EColor4K or EColor64K and calls through a null one otherwise
+// (E892: the bench answered EColor16MU). A title the port gives a 16-bit
+// buffer is told the mode the port reads that buffer as (SCREEN_4K: RGB444),
+// 4,096 colours and no greys; a 32-bit one keeps the real answer.
+extern "C" u32 gate6_def_mode(void *ws, int *colors, int *greys, Context *c)
+{
+    typedef u32 (*Fn)(void *, int *, int *);
+    if (GAME_SRC_BPP == 32 || !SCREEN_4K)
+        return ((Fn)c->realDefMode)(ws, colors, greys);
+    if (colors) *colors = 4096;
+    if (greys) *greys = 0;
+    return (u32)EColor4K;
+}
+
+
+// **A frame the engine says it has finished.** The framebuffer titles say
+// when a frame is done -- CFbsScreenDevice::Update, which the port answers by
+// blitting its buffer to the panel and posting it. Colin McRae's engine
+// imports no bitgdi. Its flip (0x4a84a0) copies the frame it drew in a
+// CFbsBitmap to the address UserSvr::ScreenInfo gave it, plus 0x20 (the
+// N-Gage framebuffer's first pixel: GAME_SRC_ORIGIN 16), and then tells the
+// kernel with UserSvr::AddEvent(TRawEvent::ERedraw) (0x4a85e0). So that event
+// is the engine's Update: answered by posting the port's buffer through the
+// engine's own CDirectScreenAccess screen device and the same Update every
+// framebuffer title's import resolves (bitgdi 58), on the engine's thread,
+// which made the screen access. Forwarded, ERedraw would ask the window
+// server to repaint the screen over the frame; 9.x refuses it anyway without
+// SwEvent. Builds before E908 posted from a 30 Hz timer on the main thread
+// instead: 240x320 blits from interpreted code, thirty a second, while the
+// engine was still converting its textures; and a timer there posting only
+// new frames (E942) got 26-50 posts in 45 s against several hundred flips,
+// starved by the engine's two threads, and changed nothing on the bench.
+// On the bench the frames reach the emulator (update_screen uploads each
+// one, E939) and the display stops following them after the first few
+// (E940) -- an emulator question, open; Asphalt 2 animates (E941, E944).
+enum { BITGDI_UPDATE_REGION = 58, RAW_EVENT_REDRAW = 5 };
+static const u16 kBitgdiDll[] = { 'b', 'i', 't', 'g', 'd', 'i', '.', 'd', 'l', 'l' };
+
+extern "C" int gate6_engine_add_event(const u32 *ev, u32, Context *c)
+{
+    typedef int (*Fn)(const u32 *);
+    if (!ev || ev[0] != (u32)RAW_EVENT_REDRAW)
+        return c->realAddEvent ? ((Fn)c->realAddEvent)(ev) : 0;
+    void *dev = c->dsaReal ? (void *)c->dsaReal[dsa_dev_off(c) / 4] : 0;
+    // The first four flips and then every 64th, to the 2048th, say which of the
+    // things a post needs are there: 0x5Exxxxxx, bit 0 the DSA, 1 its device,
+    // 2 Update, 3 the screen size, 4 the port's buffer, 5 the DSA idle (nobody's
+    // until its StartL), 6 the screen lost (an abort with no restart yet), the
+    // clip mode at bit 8; then 0x6E, the region's right and bottom edges; then
+    // 0x7E, the posts gate6_screen_update has refused so far (awayUpd).
+    if (c->posts < 4 || (c->posts < 2048 && !(c->posts & 63))) {
+        log_event(c, NOTE_ENGINE, 0x5E000000u | (c->dsaReal ? 1u : 0u) | (dev ? 2u : 0u) |
+                                  (c->screenUpdate ? 4u : 0u) | (c->screenW && c->screenH ? 8u : 0u) |
+                                  (c->gameScreen ? 0x10u : 0u) | (c->dsaIdle ? 0x20u : 0u) |
+                                  (c->screenLost ? 0x40u : 0u) | ((c->clipMode & 0xFFu) << 8));
+        log_event(c, NOTE_ENGINE, 0x6E000000u | ((c->rgnR & 0xFFFu) << 12) | (c->rgnB & 0xFFFu));
+        log_event(c, NOTE_ENGINE, 0x7E000000u | (c->awayUpd & 0xFFFFFFu));
+        log_block(c);
+    }
+    c->posts++;
+    // **The region read before there was a buffer to clip it to.** dsa_box
+    // clips the DSA's region to the port's buffer (bufW x bufH), and the
+    // engine's StartL comes before the port has laid the buffer out -- the
+    // Asphalts call ScreenInfo and post first -- so every rectangle clipped
+    // to nothing and the region stayed empty (E901: the window server had
+    // granted the window 240x320, one rectangle; E902: read again, CLIP_ALL).
+    // dsa_box returns at once when nothing changed.
+    if (c->dsaReal && c->bufW && c->bufH && c->clipMode == CLIP_NONE && !c->dsaIdle)
+        dsa_box(c);
+    if (!dev || !c->screenUpdate || !c->screenW || !c->screenH)
+        return 0;
+    gate6_screen_update(dev, 0, c);
+    return 0;
+}
+
+// bitgdi's Update(const TRegion&), which the engine never imports.
+static void engine_update_resolve(Context *c)
+{
+    if (!c->screenUpdate) {
+        if (!c->bitgdi) {
+            Ptrc16 bn;
+            bn.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kBitgdiDll / 2);
+            bn.text = kBitgdiDll;
+            Ptrc16 none;
+            none.lengthAndType = (u32)EPtrC << KTypeShift;
+            none.text = 0;
+            if (rlibrary_load(&c->bitgdi, &bn, &none)) c->bitgdi = 0;
+        }
+        if (c->bitgdi)
+            c->screenUpdate = (u32)rlibrary_lookup(&c->bitgdi, BITGDI_UPDATE_REGION);
+    }
+    log_event(c, NOTE_ENGINE, 0x4E000000u | (c->screenUpdate ? 1u : 0u));
+    log_block(c);
+}
 static u32 load_and_start(void);   // -> the wrapper the framework gets
 
 extern "C" void *gate6_new_application()
@@ -13265,7 +13590,14 @@ static u32 load_and_start()
                 // `6rbc.bin`. A hand-copied N-Gage dump still has `.app`,
                 // and both have to work.
                 for (int nm = 0; nm < 2; nm++) {
-                    if (nm) {
+                    if (GAME_ENGINE_LXCE) {
+                        // The engine lxce.py inflated, `<stem>.lxe`: not an
+                        // E32 image, so it travels under its own name.
+                        if (nm) break;
+                        cand[lens[i] - 3] = 'l';
+                        cand[lens[i] - 2] = 'x';
+                        cand[lens[i] - 1] = 'e';
+                    } else if (nm) {
                         cand[lens[i] - 3] = 'b';
                         cand[lens[i] - 2] = 'i';
                         cand[lens[i] - 1] = 'n';
@@ -13291,6 +13623,11 @@ static u32 load_and_start()
         chosenDrive = fbDrive;
         for (int k = 0; k < lens[chosenLayout]; k++) cand[k] = layouts[chosenLayout][k];
         cand[0] = chosenDrive;
+        if (GAME_ENGINE_LXCE) {
+            cand[lens[chosenLayout] - 3] = 'l';
+            cand[lens[chosenLayout] - 2] = 'x';
+            cand[lens[chosenLayout] - 1] = 'e';
+        }
         Ptrc16 name;
         name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)lens[chosenLayout];
         name.text = cand;
@@ -13328,7 +13665,7 @@ static u32 load_and_start()
     // and the only way an executable travels in a SIS is not looking like
     // one. Thirty-two bytes covers the UID triple, the checksum and the
     // 'EPOC' signature -- everything at the front that says E32 image.
-    if (chosenBin && size >= IMAGE_SCRAMBLE_BYTES)
+    if (!GAME_ENGINE_LXCE && chosenBin && size >= IMAGE_SCRAMBLE_BYTES)
         for (int i = 0; i < IMAGE_SCRAMBLE_BYTES; i++)
             raw[i] ^= (u8)IMAGE_SCRAMBLE;
 
@@ -13344,56 +13681,154 @@ static u32 load_and_start()
     file_close(file);
 
     const E32 *h = (const E32 *)raw;
-    if (h->sig != 0x434F5045) PANIC(CAT_HDR, 1);            // 'EPOC'
-    if (h->uid1 != 0x10000079) PANIC(CAT_HDR, 2);           // a polymorphic DLL
-    if (h->cpu != 0x2000 && h->cpu != 0x1000) PANIC(CAT_HDR, 3);  // must be EKA1
-    if (h->compression) PANIC(CAT_HDR, 4);
-    if (h->textSize > h->codeSize) PANIC(CAT_HDR, 5);
-    // The image this build was generated against. `gate_imports.h` and
-    // `gate4_shim.cpp` come out of one game together and say nothing true
-    // about any other: a hook index from the wrong game is not an error, it
-    // is a call to the wrong function, which on a phone is a reboot with
-    // nothing to show for it. One comparison closes the whole class.
-    if (GAME_UID3 && h->uid3 != (u32)GAME_UID3) PANIC(CAT_HDR, 7);
-
-    const u32 nImports = (h->codeSize - h->textSize) / 4;
-    const u32 stubBytes = nImports * SLOT;
-    const u32 traceBytes = nImports * TRACE + 480 * TRACE;  // spares for our own thunks
-    const u32 chunkSize = h->codeSize + stubBytes + traceBytes;
-
+    u32 nImports = 0, imgSize = 0, stubBytes = 0, traceBytes = 0, chunkSize = 0;
     u32 chunk[2] = { 0, 0 };
-    err = chunk_createlocalcode(chunk, (int)chunkSize, (int)chunkSize, 0);
-    if (err) PANIC(CAT_MEM, err);
-    u8 *base = chunk_base(chunk);
-    if (!base) PANIC(CAT_MEM, 0x0BADBA5E);
-
-    for (u32 i = 0; i < h->codeSize; i++)
-        base[i] = raw[h->codeOffset + i];
-
-    // Rebase. Type 3 is KInferredRelocType and this image has no data section,
-    // so every relocation lands in the code we just copied.
-    const u32 delta = (u32)base - h->codeBase;
-    u32 relocated = 0;
-    if (h->codeRelocOffset) {
-        const u8 *sec = raw + h->codeRelocOffset;
-        const u32 secSize = *(const u32 *)sec;
-        u32 o = 8;
-        while (o < secSize + 8) {
-            const u32 pageBase = *(const u32 *)(sec + o);
-            const u32 blockSize = *(const u32 *)(sec + o + 4);
-            if (blockSize < 8 || (blockSize & 1)) break;
-            for (u32 k = 0; k < (blockSize - 8) / 2; k++) {
-                const u16 e = *(const u16 *)(sec + o + 8 + 2 * k);
-                if (!e) continue;
-                const u32 at = pageBase + (e & 0x0FFF);
-                if (at + 4 > h->codeSize) PANIC(CAT_HDR, 6);
-                *(u32 *)(base + at) += delta;
+    u8 *base = 0;
+    u32 lxBase = 0, lxEntry = 0;
+    u32 *lxSlot = 0;                // GAME_ENGINE_LXCE: each import's slot, as an offset in the chunk
+    u32 lxRelocs = 0;
+    if (GAME_ENGINE_LXCE) {
+        // **The engine, laid out as AirPlay's own loader lays it out**
+        // (`6r66.nax`'s code at 0x8b0-0xe74, lxce.py): five sections at their
+        // addresses from the image base, the bss zeroed, PE base relocations
+        // of type 3 against the chunk, and the import directory filled at the
+        // end from the shim, in directory order -- the order gen_shim read it.
+        enum { LXCE_MAGIC = 0x4543584Cu, LXCE_HEADER = 0x38, LX_BSS = 1, LX_IDATA = 3, LX_RELOC = 4 };
+        const u32 *w = (const u32 *)raw;
+        if ((u32)size < (u32)LXCE_HEADER || w[0] != (u32)LXCE_MAGIC) PANIC(CAT_HDR, 1);
+        lxBase = w[2];
+        lxEntry = w[3];
+        u32 va[5], sz[5], at[5], end = 0, o = LXCE_HEADER;
+        for (u32 k = 0; k < 5; k++) {
+            va[k] = w[4 + 2 * k];
+            sz[k] = w[5 + 2 * k];
+            if (va[k] < lxBase || va[k] - lxBase > 0x4000000u || sz[k] > 0x4000000u) PANIC(CAT_HDR, 2);
+            if (va[k] - lxBase + sz[k] > end) end = va[k] - lxBase + sz[k];
+            at[k] = 0;
+            if (k != (u32)LX_BSS) { at[k] = o; o += sz[k]; }
+        }
+        if (o != (u32)size) PANIC(CAT_HDR, 3);
+        if (lxEntry < lxBase || lxEntry - lxBase >= end) PANIC(CAT_HDR, 5);
+        imgSize = (end + 15) & ~15u;
+        // A relative address in the image, as an offset into the raw file.
+        #define LX_RAW(rva) ({ u32 r_ = (rva), f_ = 0xFFFFFFFFu; \
+            for (u32 q_ = 0; q_ < 5; q_++) \
+                if (q_ != (u32)LX_BSS && r_ >= va[q_] - lxBase && r_ < va[q_] - lxBase + sz[q_]) \
+                    f_ = at[q_] + r_ - (va[q_] - lxBase); \
+            f_; })
+        // Count the imports first: the stubs and the trace arena are sized by it.
+        {
+            u32 d = LX_RAW(va[LX_IDATA] - lxBase);
+            if (d == 0xFFFFFFFFu) PANIC(CAT_HDR, 4);
+            for (;; d += 20) {
+                const u32 *desc = (const u32 *)(raw + d);
+                if (!desc[3]) break;
+                u32 t = LX_RAW(desc[0] ? desc[0] : desc[4]);
+                if (t == 0xFFFFFFFFu) PANIC(CAT_HDR, 4);
+                for (; *(const u32 *)(raw + t); t += 4)
+                    nImports++;
+            }
+        }
+        stubBytes = nImports * SLOT;
+        traceBytes = nImports * TRACE + 480 * TRACE;
+        chunkSize = imgSize + stubBytes + traceBytes;
+        err = chunk_createlocalcode(chunk, (int)chunkSize, (int)chunkSize, 0);
+        if (err) PANIC(CAT_MEM, err);
+        base = chunk_base(chunk);
+        if (!base) PANIC(CAT_MEM, 0x0BADBA5E);
+        for (u32 k = 0; k < imgSize / 4; k++)
+            ((u32 *)base)[k] = 0;
+        for (u32 k = 0; k < 5; k++) {
+            if (k == (u32)LX_BSS) continue;
+            u8 *dst = base + (va[k] - lxBase);
+            for (u32 b = 0; b < sz[k]; b++)
+                dst[b] = raw[at[k] + b];
+        }
+        const u32 delta = (u32)base - lxBase;
+        u32 relocated = 0;
+        for (u32 r = at[LX_RELOC]; r + 8 <= at[LX_RELOC] + sz[LX_RELOC]; ) {
+            const u32 page = *(const u32 *)(raw + r);
+            const u32 block = *(const u32 *)(raw + r + 4);
+            if (!page || block < 8) break;
+            for (u32 k = 0; k < (block - 8) / 2; k++) {
+                const u16 e = *(const u16 *)(raw + r + 8 + 2 * k);
+                if (!(e >> 12)) continue;
+                if (e >> 12 != 3) PANIC(CAT_HDR, 6);
+                const u32 off = page + (e & 0x0FFF);
+                if (off + 4 > imgSize) PANIC(CAT_HDR, 6);
+                *(u32 *)(base + off) += delta;
                 relocated++;
             }
-            o += blockSize;
+            r += block;
         }
+        if (!relocated) PANIC(CAT_HDR, 7);
+        // Each import's slot, in directory order.
+        lxSlot = (u32 *)user_alloc((int)(nImports * 4 + 4));
+        if (!lxSlot) PANIC(CAT_MEM, -41);
+        {
+            u32 n = 0, d = LX_RAW(va[LX_IDATA] - lxBase);
+            for (;; d += 20) {
+                const u32 *desc = (const u32 *)(raw + d);
+                if (!desc[3]) break;
+                u32 t = LX_RAW(desc[0] ? desc[0] : desc[4]);
+                for (u32 k = 0; *(const u32 *)(raw + t + 4 * k); k++)
+                    lxSlot[n++] = desc[4] + 4 * k;
+            }
+        }
+        #undef LX_RAW
+        lxRelocs = relocated;
+    } else {
+        if (h->sig != 0x434F5045) PANIC(CAT_HDR, 1);            // 'EPOC'
+        if (h->uid1 != 0x10000079) PANIC(CAT_HDR, 2);           // a polymorphic DLL
+        if (h->cpu != 0x2000 && h->cpu != 0x1000) PANIC(CAT_HDR, 3);  // must be EKA1
+        if (h->compression) PANIC(CAT_HDR, 4);
+        if (h->textSize > h->codeSize) PANIC(CAT_HDR, 5);
+        // The image this build was generated against. `gate_imports.h` and
+        // `gate4_shim.cpp` come out of one game together and say nothing true
+        // about any other: a hook index from the wrong game is not an error, it
+        // is a call to the wrong function, which on a phone is a reboot with
+        // nothing to show for it. One comparison closes the whole class.
+        if (GAME_UID3 && h->uid3 != (u32)GAME_UID3) PANIC(CAT_HDR, 7);
+
+        nImports = (h->codeSize - h->textSize) / 4;
+        imgSize = h->codeSize;
+        stubBytes = nImports * SLOT;
+        traceBytes = nImports * TRACE + 480 * TRACE;  // spares for our own thunks
+        chunkSize = imgSize + stubBytes + traceBytes;
+
+        err = chunk_createlocalcode(chunk, (int)chunkSize, (int)chunkSize, 0);
+        if (err) PANIC(CAT_MEM, err);
+        base = chunk_base(chunk);
+        if (!base) PANIC(CAT_MEM, 0x0BADBA5E);
+
+        for (u32 i = 0; i < h->codeSize; i++)
+            base[i] = raw[h->codeOffset + i];
+
+        // Rebase. Type 3 is KInferredRelocType and this image has no data section,
+        // so every relocation lands in the code we just copied.
+        const u32 delta = (u32)base - h->codeBase;
+        u32 relocated = 0;
+        if (h->codeRelocOffset) {
+            const u8 *sec = raw + h->codeRelocOffset;
+            const u32 secSize = *(const u32 *)sec;
+            u32 o = 8;
+            while (o < secSize + 8) {
+                const u32 pageBase = *(const u32 *)(sec + o);
+                const u32 blockSize = *(const u32 *)(sec + o + 4);
+                if (blockSize < 8 || (blockSize & 1)) break;
+                for (u32 k = 0; k < (blockSize - 8) / 2; k++) {
+                    const u16 e = *(const u16 *)(sec + o + 8 + 2 * k);
+                    if (!e) continue;
+                    const u32 at = pageBase + (e & 0x0FFF);
+                    if (at + 4 > h->codeSize) PANIC(CAT_HDR, 6);
+                    *(u32 *)(base + at) += delta;
+                    relocated++;
+                }
+                o += blockSize;
+            }
+        }
+        if (!relocated) PANIC(CAT_HDR, 7);
     }
-    if (!relocated) PANIC(CAT_HDR, 7);
 
 
     // Load the 9.x libraries the forwarding table names. Resolving at run time
@@ -13417,8 +13852,14 @@ static u32 load_and_start()
     // table, which on EKA1 sits at the end of the code section.
     //   ldr r0, [pc, #0]   -> the report code
     //   ldr pc, [pc, #0]   -> gate6_report
-    u32 *iat = (u32 *)(base + h->textSize);
-    u8 *stub = base + h->codeSize;
+    // An engine's import slots are spread over one array per library: they
+    // are resolved into a table of their own here, by the same code, and
+    // copied into the slots once every hook is in (below, before the cache
+    // is put right).
+    u32 *iat = GAME_ENGINE_LXCE ? (u32 *)user_allocz((int)(nImports * 4 + 4))
+                                : (u32 *)(base + h->textSize);
+    if (!iat) PANIC(CAT_MEM, -42);
+    u8 *stub = base + imgSize;
     u8 *trace = stub + stubBytes;
     u32 forwarded = 0, missing = 0;
 
@@ -13433,7 +13874,7 @@ static u32 load_and_start()
     ctx->dataDrive = chosenDrive;
     ctx->imageIsBin = (u32)chosenBin;
     ctx->codeBase = (u32)base;
-    ctx->codeLen = h->codeSize;
+    ctx->codeLen = imgSize;
 
     // **Words of the game rewritten in place** (GAME_CODE_PATCHES): a bug of
     // the game's own that EKA1 forgave and EKA2 does not. Each one names the
@@ -13443,7 +13884,7 @@ static u32 load_and_start()
     // words are code and carry none.
     for (u32 i = 0; i < (u32)GAME_CODE_PATCH_COUNT; i++) {
         const u32 at = kCodePatch[i].at;
-        if (at + 4 > h->codeSize || (at & 3)) PANIC(CAT_HDR, 8);
+        if (at + 4 > imgSize || (at & 3)) PANIC(CAT_HDR, 8);
         u32 *w = (u32 *)(base + at);
         if (*w != kCodePatch[i].expect) PANIC(CAT_HDR, 9);
         *w = kCodePatch[i].replace;
@@ -13452,11 +13893,11 @@ static u32 load_and_start()
     }
     for (u32 i = 0; i < (u32)GAME_VTABLE_SHIFT_COUNT; i++) {
         const u32 at = kVtableShift[i].at, n = kVtableShift[i].slots;
-        if ((at & 3) || at + 4 * (n + 2) > h->codeSize) PANIC(CAT_HDR, 8);
+        if ((at & 3) || at + 4 * (n + 2) > imgSize) PANIC(CAT_HDR, 8);
         u32 *v = (u32 *)(base + at);
         // The two header words a GCC98r2 vtable starts with, and a first
         // slot inside the image: anything else is not the vtable measured.
-        if (v[0] || v[1] || v[2] - (u32)base >= h->codeSize) PANIC(CAT_HDR, 9);
+        if (v[0] || v[1] || v[2] - (u32)base >= imgSize) PANIC(CAT_HDR, 9);
         for (u32 k = 0; k < n; k++)
             v[k] = v[k + 2];
         user_imb_range(v, v + n + 2);
@@ -13543,6 +13984,10 @@ static u32 load_and_start()
             // -- round 71 lost a round to exactly that -- and until now the
             // only way to tell was to recognise the record format.
             log_event(ctx, NOTE_BUILD, (u32)GAME_BUILD);
+            if (GAME_ENGINE_LXCE) {
+                log_event(ctx, NOTE_ENGINE, 0x1E000000u | nImports);
+                log_event(ctx, NOTE_ENGINE, 0x1E000000u | (lxRelocs & 0xFFFFFF));
+            }
             // Round 109: a C5-00's pack opens answered KErrNotReady and the
             // log could not say which drive the loader had chosen.
             log_event(ctx, NOTE_CHOSEN, ((u32)chosenDrive << 16) |
@@ -13922,14 +14367,26 @@ static u32 load_and_start()
     }
     if (ctx->efsrv)
         ctx->setSessionPathFn = (u32)rlibrary_lookup(&ctx->efsrv, EFSRV_SET_SESSION_PATH);
+    // An engine imports nothing from avkon, and the app UI still needs it.
+    if (!ctx->avkon && GAME_ENGINE_LXCE) {
+        Ptrc16 an;
+        an.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kAvkonDll / 2);
+        an.text = kAvkonDll;
+        Ptrc16 none;
+        none.lengthAndType = (u32)EPtrC << KTypeShift;
+        none.text = 0;
+        if (rlibrary_load(&ctx->avkon, &an, &none)) ctx->avkon = 0;
+    }
     if (!ctx->avkon) PANIC(CAT_LIB, -100);
 
     // The stub slot of a resolved import is spare -- its address went straight
     // into the table -- so the diversions are built there.
-    if (nImports <= IMPORT_BASECONSTRUCTL) PANIC(CAT_SHIM, (int)nImports);
-    ctx->newBaseConstructL = iat[IMPORT_BASECONSTRUCTL];
-    iat[IMPORT_BASECONSTRUCTL] = ctx_thunk(stub + SLOT * IMPORT_BASECONSTRUCTL,
-                                           ctx, (u32)&gate6_baseconstructl);
+    if (!GAME_ENGINE_LXCE) {
+        if (nImports <= IMPORT_BASECONSTRUCTL) PANIC(CAT_SHIM, (int)nImports);
+        ctx->newBaseConstructL = iat[IMPORT_BASECONSTRUCTL];
+        iat[IMPORT_BASECONSTRUCTL] = ctx_thunk(stub + SLOT * IMPORT_BASECONSTRUCTL,
+                                               ctx, (u32)&gate6_baseconstructl);
+    }
 
     if (nImports > IMPORT_CREATEWINDOWL)
         iat[IMPORT_CREATEWINDOWL] = ctx_thunk(stub + SLOT * IMPORT_CREATEWINDOWL,
@@ -14336,6 +14793,39 @@ static u32 load_and_start()
         }
     }
 
+    // RWindow's four size-sensitive calls, on a full-size copy.
+    {
+        const u32 idx[4] = { IMPORT_RWIN_CTOR, IMPORT_RWIN_CTOR_WS,
+                             IMPORT_RWIN_BEGIN_REDRAW, IMPORT_RWIN_END_REDRAW };
+        const u32 fn[4] = { (u32)&gate6_rwin_ctor, (u32)&gate6_rwin_ctor_ws,
+                            (u32)&gate6_rwin_begin_redraw, (u32)&gate6_rwin_end_redraw };
+        for (u32 k = 0; k < 4; k++) {
+            const u32 j = idx[k];
+            if (j >= nImports || j >= kShimCount || (kShimTable[j] >> 24) != KIND_CALL ||
+                ctx->spare + TRACE > ctx->spareEnd)
+                continue;
+            ctx->realRwin[k] = iat[j];
+            iat[j] = ctx_thunk(ctx->spare, ctx, fn[k]);
+            ctx->spare += TRACE;
+        }
+    }
+    if (IMPORT_DEF_MODE_COLORS < nImports && IMPORT_DEF_MODE_COLORS < kShimCount &&
+        (kShimTable[IMPORT_DEF_MODE_COLORS] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->realDefMode = iat[IMPORT_DEF_MODE_COLORS];
+        iat[IMPORT_DEF_MODE_COLORS] = ctx3_thunk(ctx->spare, ctx, (u32)&gate6_def_mode);
+        ctx->spare += TRACE;
+    }
+    // An engine's I3D shared memory is made with its own RChunk::CreateGlobal (engine_shared_memory).
+    if (GAME_ENGINE_LXCE && IMPORT_CHUNK_CREATE_GLOBAL < nImports && IMPORT_CHUNK_CREATE_GLOBAL < kShimCount &&
+        (kShimTable[IMPORT_CHUNK_CREATE_GLOBAL] >> 24) == KIND_CALL)
+        ctx->chunkCreateGlobal = iat[IMPORT_CHUNK_CREATE_GLOBAL];
+    // An engine's flip: UserSvr::AddEvent(ERedraw) posts the frame (gate6_engine_add_event).
+    if (GAME_ENGINE_LXCE && IMPORT_ADD_EVENT < nImports && IMPORT_ADD_EVENT < kShimCount &&
+        (kShimTable[IMPORT_ADD_EVENT] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->realAddEvent = iat[IMPORT_ADD_EVENT];
+        iat[IMPORT_ADD_EVENT] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_engine_add_event);
+        ctx->spare += TRACE;
+    }
     // RThread::Suspend, refused on a handle no live object has (round 130).
     if (IMPORT_THREAD_RESUME < nImports && ctx->spare + TRACE <= ctx->spareEnd &&
         (kShimTable[IMPORT_THREAD_RESUME] >> 24) == KIND_CALL) {
@@ -14364,7 +14854,7 @@ static u32 load_and_start()
     // Round 132: the kick object's RunL, timed (GAME_KICK_RUNL_SLOT: the
     // vtable word that holds it, and what it must hold). The word is the
     // game's own, relocated, so it is checked before it is replaced.
-    if (GAME_KICK_RUNL_SLOT && GAME_KICK_RUNL_SLOT + 4 <= h->codeSize &&
+    if (GAME_KICK_RUNL_SLOT && GAME_KICK_RUNL_SLOT + 4 <= imgSize &&
         ctx->spare + TRACE <= ctx->spareEnd) {
         u32 *slot = (u32 *)(base + GAME_KICK_RUNL_SLOT);
         if (*slot == (u32)base + (u32)GAME_KICK_RUNL_FN) {
@@ -14404,10 +14894,10 @@ static u32 load_and_start()
 
     if (PLANT_WALK)
         for (u32 i = 0; i < sizeof kWalkCrumb / sizeof kWalkCrumb[0]; i++)
-            if (kWalkCrumb[i] + 4 <= h->codeSize)
+            if (kWalkCrumb[i] + 4 <= imgSize)
                 crumb_plant_r5(ctx, base, kWalkCrumb[i], CRUMB_WALK_FIRST + i);
 
-    if (PATCH_THE_CHECK && CHECK_LITERAL_AT + 4 <= h->codeSize) {
+    if (PATCH_THE_CHECK && CHECK_LITERAL_AT + 4 <= imgSize) {
         u8 *standin = (u8 *)user_allocz(LICENCE_STANDIN_BYTES);
         if (standin) {
             for (u32 i = 0; i < sizeof kCheckPatch / sizeof kCheckPatch[0]; i++) {
@@ -14460,12 +14950,12 @@ static u32 load_and_start()
 
     if (HOOK_UNCOMPRESS)
         for (u32 i = 0; i < sizeof kZSite / sizeof kZSite[0]; i++)
-            if (kZSite[i] + 4 <= h->codeSize)
+            if (kZSite[i] + 4 <= imgSize)
                 zhook_plant(ctx, base, kZSite[i], kZSite[i]);
 
     if (PATCH_GATE_TWO)
         for (u32 i = 0; i < sizeof kGateTwo / sizeof kGateTwo[0]; i++)
-            if (kGateTwo[i].at + 4 <= h->codeSize) {
+            if (kGateTwo[i].at + 4 <= imgSize) {
                 u32 *site = (u32 *)(base + kGateTwo[i].at);
                 *site = kGateTwo[i].word;
                 user_imb_range(site, site + 1);
@@ -14478,29 +14968,29 @@ static u32 load_and_start()
     // past the table (E516-E527). In UGT and Ashen it lies past the code.
     if (NOP_THE_STORE && GAME_UID3 == 0x101fd42du)
         for (u32 i = 0; i < sizeof kNop / sizeof kNop[0]; i++)
-            if (kNop[i] + 4 <= h->codeSize) {
+            if (kNop[i] + 4 <= imgSize) {
                 u32 *site = (u32 *)(base + kNop[i]);
                 *site = 0xE1A00000;             // mov r0, r0
                 user_imb_range(site, site + 1);
             }
 
     for (u32 i = 0; i < (u32)GAME_RANGE_PROBE_COUNT; i++)
-        if (kRangeProbe[i].at + 4 <= h->codeSize)
+        if (kRangeProbe[i].at + 4 <= imgSize)
             range_probe_plant(ctx, base, kRangeProbe[i], i);
 
     if (PLANT_PROBES)
         for (u32 i = 0; i < sizeof kProbe / sizeof kProbe[0]; i++)
-            if (kProbe[i].at + 4 <= h->codeSize)
+            if (kProbe[i].at + 4 <= imgSize)
                 probe_plant(ctx, base, kProbe[i], PROBE_FIRST + i);
 
     if (PLANT_WORKERS)
         for (u32 i = 0; i < sizeof kWorkerCrumb / sizeof kWorkerCrumb[0]; i++)
-            if (kWorkerCrumb[i] + 4 <= h->codeSize)
+            if (kWorkerCrumb[i] + 4 <= imgSize)
                 crumb_plant(ctx, base, kWorkerCrumb[i], CRUMB_WORKER_FIRST + i);
 
     if (PLANT_CRUMBS)
         for (u32 i = 0; i < sizeof kCrumb / sizeof kCrumb[0]; i++)
-            if (kCrumb[i] + 4 <= h->codeSize)
+            if (kCrumb[i] + 4 <= imgSize)
                 crumb_plant(ctx, base, kCrumb[i], CRUMB_FIRST + i);
 
     // Last, so that it records every import however it ended up being answered.
@@ -14749,6 +15239,9 @@ static u32 load_and_start()
     // Everything above -- the image, the stubs, every thunk -- was written as
     // data and is about to be run as code, so the caches are put right over
     // the whole chunk before anything in it is entered.
+    if (GAME_ENGINE_LXCE)
+        for (u32 j = 0; j < nImports; j++)
+            *(u32 *)(base + lxSlot[j]) = iat[j];
     user_imb_range(base, base + chunkSize);
 
     // Everything is wrapped by now, so the setup's own state goes down once,
@@ -14766,6 +15259,23 @@ static u32 load_and_start()
     // still passes through gate6_trap_leave and its dumps.
     if (LOG_CLEANUP)
         trap_handler(ctx);
+
+    // An engine is entered in a thread of its own, from the app UI's
+    // ConstructL (gate6_engine_construct); the framework gets the 9.x
+    // application built here, with nothing of the game's behind it.
+    if (GAME_ENGINE_LXCE) {
+        ctx->gameEntry = (u32)(base + (lxEntry - lxBase));
+        u32 *wrap = (u32 *)user_allocz(WRAP_BYTES);
+        if (!wrap) PANIC(CAT_MEM, -20);
+        eikapplication_ctor(wrap);
+        wrap[WRAP_OLD] = 0;
+        wrap[WRAP_CTX] = (u32)ctx;
+        u32 *vt = copy_vtable(vtable_of(wrap), APP_SLOTS);
+        vt[VT_HEADER + SLOT_APP_DLL_UID] = (u32)&gate6_app_dll_uid;
+        vt[VT_HEADER + SLOT_CREATE_DOCUMENT] = (u32)&gate6_engine_document;
+        wrap[0] = (u32)(vt + VT_HEADER);
+        return (u32)wrap;
+    }
 
     // Enter it. EKA1 calls a DLL's entry point with EDllProcessAttach first,
     // then apparc asks ordinal 1 for the application object.

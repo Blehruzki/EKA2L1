@@ -46,6 +46,8 @@ RAW = ('text', 'rdata', 'idata', 'reloc')        # in file order; bss has none
 def unpack(nax):
     """The inflated engine out of a `.nax` (or the bytes of one)."""
     d = open(nax, 'rb').read() if isinstance(nax, str) else nax
+    if d[:4] == b'LXCE':
+        return d                     # already inflated: a `.lxe`
     m = re.search(rb'\x1f\x8b\x08', d[0x7c:])
     if not m:
         raise ValueError('no gzip stream after the loader')

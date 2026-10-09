@@ -73,6 +73,11 @@ every vtable slot in the shim's tables.
 | Icons are MIF, not MBM | An empty box in the app grid | The package carries a MIF | round 83 |
 | A drive without ready media answers -18 (`KErrNotReady`), e.g. no card, or a card mounted over USB | A phone-memory install opened the game's pack on E: | The game's `E:` paths are rewritten to the install drive, with a retry | rounds 109-110; BUGBOOK 1.z |
 | A SIS is integrity-checked (per-file SHA-1, CRCs, signature); the emulator checks none | -- | Nothing validated only on the bench is proven | root CLAUDE.md |
+| `TRequestStatus` is two words (value, then `iFlags` with `EActive` at bit 0); EKA1's was one | An inlined `SetActive` that tests the second word read `iFlags` as "already active": Colin McRae's "Already Active" panic | The engine's three code words test and set bit 0 (`GAME_CODE_PATCHES`) | E884-E886 |
+| `RWindow` is 24 bytes (`RDrawableWindow` adds a draw rect at +8); EKA1's was 8 | The constructors, `BeginRedraw(TRect)` and `EndRedraw` wrote 16 bytes past an 8-byte stack temporary, over saved registers | Those four run on a full-size copy (`IMPORT_RWIN_*`) | E886-E891 |
+| C++ vtables are EABI's: the vptr points at slot 0, the destructor is two slots (complete, then deleting at +4), and later classes moved methods (`CWindowGc::Activate` +0xd8 -> +0x110) | A title calling a ROM object through its old slot calls something else: Colin's `Activate` was `Clear()` on an inactive gc (WSERV 9 on a phone; a host crash in EKA2L1), its deletes landed on another method | Per-title code words to the 9.x slots, read out of both ROMs' ws32 (`_ZTV9CWindowGc` against the N-Gage's `CWindowGc` vptr) | E920-E921 |
+| `RWsSession::SimulateRawEvent` needs `SwEvent`, and its by-value `TRawEvent` gained `iTicks` | -- | Answered as an empty local | E891 |
+| Several `RWsSession`/`RWindow` getters became `const` (`GetEvent`, `GetFocusWindowGroup`, `GetPriorityKey`, `FetchMessage`, `GetInvalidRegion`) | Unpaired imports | `gen_shim.py` MANUAL pairings | E891 |
 
 ## By phone
 

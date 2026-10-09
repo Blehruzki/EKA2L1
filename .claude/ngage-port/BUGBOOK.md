@@ -1497,3 +1497,73 @@ and the main stack said it in one reading.
 *Model the phone's sequence, not the symptom.* The bench minimize first
 modelled an empty region and showed nothing wrong (E653); the phone's own log
 had a partial region instead, and that shape is the one the fix answers.
+
+## 13. Colin McRae 2005 (6r66): an AirPlay engine, from E883
+
+The fifth title, and the first that is not an N-Gage application at all:
+its `.app` is a launcher, and the game is an Ideaworks3D AirPlay engine
+(`6r66.nax`, inflating to an `LXCE` image; `lxce.py`) that the port lays out
+and runs in a thread of its own (`GAME_ENGINE_LXCE`). Most of what it hit is
+EKA1 against EKA2 in the engine's own code, where no import can be swapped.
+
+### 13.a A null read (0x14) in avkon while the app UI is built (E883)
+`CEikAppUi::BaseConstructL(ENoAppResourceFile)` leaves avkon's members
+unset. Fixed as every title's base construction is: avkon 2924 with
+`ENoScreenFurniture`.
+
+### 13.b "Already Active" (E-32 E11) at the engine's first request (E884-E886)
+The engine's inlined `SetActive` and destructor check test the word after
+`iStatus` -- on EKA1 the next member, on EKA2 the request's own `iFlags`.
+Three code words now test and set bit 0, `EActive`, as 9.x does.
+
+### 13.c Writing 0x28 through a null `this` (E886-E890)
+Found by PC trace (the object was fine on entry; a callee-saved register came
+back zero) and then by write watch: 9.x `RWindow` is 24 bytes, the engine's
+stack temporary 8, and the constructor, `BeginRedraw(TRect)` and `EndRedraw`
+wrote the rest over saved r4-r7. Those four run on a full-size copy. The
+first watch was void: its 400-write cap filled with stack traffic (E889).
+
+### 13.d A null renderer, `vptr` read off 0 (E892)
+The engine builds its renderer only for EColor4K or EColor64K from
+`GetDefModeMaxNumColors`. Answered EColor4K, the mode the port reads a
+16-bit buffer as.
+
+### 13.e The engine waits for good on its own thread (E909)
+Its sound-thread shutdown opens the thread by name; the open fails (the port
+renamed it) and the port answers from `wdThr` -- indexed by the name's
+number, while the port's own `g6eng` holds slot 0. Colin got a duplicate of
+itself. Each named thread now records the slot its Create filled.
+
+### 13.f The engine exits at once, tearing its window down (E910-E913)
+Its I3D shared memory, `I3D_SHARED_MEMORY_COLIN`, was the launcher's to
+make: finding none, the engine (participant 1) makes it and sets its own
+state to 5, exit. The port makes the chunk before the engine starts, header
+3/0x100, state 1 (`engine_shared_memory`). The teardown it showed was
+behind 13.g's crash: a GCC 2.x deleting destructor called through an EABI
+vtable.
+
+### 13.g The emulator itself segfaults (E917-E920; two rows misread first)
+"Black" screenshots with no emulator window in them were a dead host process.
+gdb: `graphic_context::clear` on a null window. The engine called its window
+gc's `Activate` and `Deactivate` at GCC 2.x slots +0xd8/+0xdc, which are
+`Clear()` and `Clear(TRect)` in 9.x's vtable (read out of both ROMs' ws32).
+Sixteen code words move every gc call and the five ROM-object deletes to
+9.x's slots; EKA2L1 now panics WSERV 9 for a command on an inactive gc, as
+the S60 3.x server does, instead of crashing.
+*A screenshot with no window in it is not a black screen.* Measure the whole
+frame, not the panel, before reading the panel.
+
+### 13.h White, then black under a magenta band (E921-E934)
+The window-gc path showed white on the bench (the window server has the
+bitmap, uploads it, and composes white -- not settled). The flip is made
+always direct (E931). Then the magenta band: white 4K pixel pairs written
+into the panel's own 32-bit buffer, because the `ScreenInfo` hook read a
+`TPtr8`'s maximum length as its pointer and returned early. `EPtr`'s pointer
+is the third word.
+
+### 13.i The bench display stops following the frames (E935-E944, open)
+Every frame reaches the port's buffer, the panel's framebuffer and EKA2L1's
+DSA texture (watches and an `update_screen` probe), and the display shows
+the first few and then holds one. Asphalt 2 on the same build animates.
+Not the posting thread (E942), not the window server's composition (E938,
+E943). Open, and an emulator question.

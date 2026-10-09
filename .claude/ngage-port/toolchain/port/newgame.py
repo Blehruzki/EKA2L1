@@ -266,6 +266,20 @@ def main(argv):
     d = open(app, 'rb').read()
     h = e32imports.header(d)
     imps = e32imports.imports(d)
+    # An AirPlay title (Colin McRae Rally 2005) keeps the game in a `.nax`
+    # beside a stub `.app`: the image for everything below is the engine,
+    # inflated once here into `<stem>.lxe`, which is what the loader reads.
+    nax = os.path.join(dst, stem + '.nax')
+    engine = os.path.isfile(nax)
+    if engine:
+        import lxce
+        raw = lxce.unpack(nax)
+        info = lxce.parse(raw)
+        app = os.path.join(dst, stem + '.lxe')
+        open(app, 'wb').write(raw)
+        imps = [(lib, ords) for lib, _iat, ords in info['imports']]
+        h = dict(h, eka1=1, abi='AirPlay LXCE', uid3=0,
+                 code_size=max(a + n for a, n in info['sections'].values()) - info['base'])
 
     # 3. game.h.
     os.makedirs(gdir)
@@ -276,6 +290,17 @@ def main(argv):
         abi=('EKA1/' if h['eka1'] else 'EKA2/') + h['abi'],
         nimports=sum(len(o) for _n, o in imps), ndlls=len(imps),
         uid3=h['uid3'], code=h['code_size']))
+    if engine:
+        gh = os.path.join(gdir, 'game.h')
+        text = open(gh).read()
+        cut = text.rindex('#endif')
+        block = ('\n// **An AirPlay engine, not an app** (PORTING.md, Colin McRae). The image\n'
+                    '// is `%s.lxe`, the engine lxce.py inflated out of `%s.nax`: the loader\n'
+                    '// lays it out, relocates it, fills its import directory from the shim\n'
+                    '// and runs its entry in a thread of its own, with the 9.x application\n'
+                    '// standing in for the card\'s launcher.\n'
+                    '#define GAME_ENGINE_LXCE 1\n\n' % (stem, stem))
+        open(gh, 'w').write(text[:cut] + block + text[cut:])
 
     # 4. The generated half, and its report.
     print('%s: %s (stem %s), %d files to %s, %d DLLs to %s' % (
