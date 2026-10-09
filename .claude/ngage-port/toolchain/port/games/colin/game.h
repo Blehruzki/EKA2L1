@@ -227,3 +227,8 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 #define GAME_ENGINE_SHM_CHARS 'I','3','D','_','S','H','A','R','E','D','_','M','E','M','O','R','Y','_','C','O','L','I','N'
 
 #endif
+
+// Bench: the audio path on RDebug -- NewL, every stream call, every callback
+// (GAME_MDA_RDEBUG, gate6.cpp). The engine's thread drives its stream and its
+// records never reach the file (E961). Diagnostic; 0 in a shipped build.
+#define GAME_MDA_RDEBUG 0

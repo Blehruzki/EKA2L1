@@ -219,4 +219,5 @@ on every title: `RFile::Replace`, `Write`, `Flush`, `RFs::MkDir`, `Delete`
 |---|---|---|---|
 | `GAME_ENGINE_LAUNCHER` | 1 | the port plays the N-Gage launcher, I3D participant 2: answers the engine's mailbox (0xe4: 3 -> 4) and, once the engine's group is in slot 1, the wrapper's root group declines the focus so the engine hears its keys. Was the bench stand-in `GAME_ENGINE_FRONTEND_STUB` | E962-E971, bench |
 | `GAME_ENGINE_INIT` | 0x45b0b0 | engine functions (image addresses) called once before its thread starts: Colin's sets the block interpreter's 24-bit link base | E965, bench |
+| `GAME_MDA_RDEBUG` | 0 | bench: NewL, every stream call and callback through the port's MDA proxy on RDebug (any thread). Showed Colin's engine never enters the proxy | E984, diagnostic |
 | `GAME_ENGINE_FRONTEND_EXE` | gate6col2.exe | what the engine's `RApaLsSession::StartApp` starts in place of the N-Gage front end `.app` | installed E962; never yet called |

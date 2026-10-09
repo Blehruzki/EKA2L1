@@ -212,7 +212,10 @@ difference breaks; the fix is shared unless named.
   RACE -> Finland stage 1 running with its HUD (E966-E976;
   shots/e966-colin-menu.png, e976-colin-stage.png), and driven: 5 throttle,
   7 brake and reverse, the arrows steer, a softkey pauses (E978-E981; the
-  engine's own scancode map, shots/e981-colin-driving.png). Open: sound; the multiplayer side, which
+  engine's own scancode map, shots/e981-colin-driving.png), with sound: the
+  engine's own thread plays 16 kHz mono straight into the 9.x stream, music
+  with the engine note mixed in, nothing from the port (E982-E986, the
+  paced capture backend). Open: sound on a phone; the multiplayer side, which
   may start the front end (`games/colin2` reaches its UI and frame timer
   alone, E958, and quits there by design without a block); whether the
   focus hand-over survives a phone's app switch; its `.cwa` protection; the
@@ -380,6 +383,7 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_MDA_OPEN_CHANNELS` | · | · | · | 0 | · | · | · |
 | `GAME_MDA_OPEN_RATE` | · | · | · | 0 | · | · | · |
 | `GAME_MDA_POSITION_LEAD_US` | · | · | · | 100000 | · | · | · |
+| `GAME_MDA_RDEBUG` | · | · | · | · | · | 0 | · |
 | `GAME_MDA_UNDERFLOW_TICKS` | · | · | 32 | · | · | · | · |
 | `GAME_MDA_WRITER_CB` | · | · | · | 0xc | · | · | · |
 | `GAME_MULTI_TIMER` | · | · | · | 1 | 1 | 1 | 1 |

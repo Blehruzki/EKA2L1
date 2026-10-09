@@ -1434,6 +1434,7 @@ struct Context {
     u32 shmTicks;           //   ticks the mailbox has held the engine's ask
     u32 shmLogTicks;        //   ticks, for the watcher's samples
     u32 focusHanded;        //   the wrapper's group has declined the focus (engine_root_unfocusable)
+    u32 mdaNoteWrites, mdaNoteCopies;   // GAME_MDA_RDEBUG: WriteL and BufferCopied notes so far
     u32 wsGetFocus, wsIdentifier;   //   for the watcher's samples: the focused group, ours
     u32 posts;              //   frames the engine flipped (its ERedraw events)
     u32 realSuspend;        // RThread::Suspend, the game's static import (round 130)
@@ -12092,6 +12093,19 @@ static void mda_underflow_watch(Context *c, int si)
     }
 }
 
+// **Bench: the audio path on RDebug (GAME_MDA_RDEBUG).** An engine title
+// drives its stream from its own thread, whose records wait for a main-thread
+// flush that never comes (E961), so the record cannot say what the stream was
+// asked. RDebug reaches the emulator's log from any thread: "G6N" a NewL (the
+// object's low half), "G6M" a stream call (the old slot, then the first
+// argument's halves as "G6h"/"G6l"), "G6K" a callback (its slot, then the
+// error's low half as "G6e"). WriteL and BufferCopied stop after
+// MDA_RDEBUG_MAX each. A diagnostic, per title.
+#ifndef GAME_MDA_RDEBUG
+#define GAME_MDA_RDEBUG 0
+#endif
+enum { MDA_RDEBUG_MAX = 24 };
+
 extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
 {
     typedef u32 (*Any)(void *, u32, u32, u32);
@@ -12099,6 +12113,11 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
     void *real = (void *)obj[1];
     u32 *rvt = (u32 *)obj[2];
     const int to = (slot < 14) ? kMdaMap[slot] : -1;
+    if (GAME_MDA_RDEBUG && (slot != 9 || c->mdaNoteWrites++ < (u32)MDA_RDEBUG_MAX)) {
+        note(c, slot, 'M');
+        note(c, saved[1] >> 16, 'h');
+        note(c, saved[1] & 0xFFFFu, 'l');
+    }
     // Same reasoning as the callback: slot 9 is `WriteL` and everything
     // else on this object is called about twenty times in a run.
     // And slot 11, Position, which One calls once a frame: fifty times a
@@ -12385,6 +12404,10 @@ extern "C" void gate6_mda_call(u32 *saved, Context *c, u32 slot)
 // worked, and the first time this port has been in a position to read it.
 extern "C" void gate6_cb_call(u32 *saved, Context *c, u32 slot)
 {
+    if (GAME_MDA_RDEBUG && (slot != 1 || c->mdaNoteCopies++ < (u32)MDA_RDEBUG_MAX)) {
+        note(c, slot, 'K');
+        note(c, saved[1] & 0xFFFFu, 'e');
+    }
     if (BENCH_DROP_UNDERFLOW && slot == 2 && saved[1] == (u32)KErrUnderflow) {
         for (u32 i = 0; i < (u32)MDA_STREAMS; i++)
             if (c->mdaCb[i] && c->mdaCb[i] == saved[0]) {
@@ -12546,6 +12569,8 @@ extern "C" u32 gate6_mda_newl(u32 *a, Context *c)
         }
     }
     void *real = ((NewL)c->mdaNewL)(cb, (void *)a[1]);
+    if (GAME_MDA_RDEBUG)
+        note(c, (u32)real & 0xFFFFu, 'N');
     log_event(c, NOTE_SOUND, (u32)real);
     if (!real || !MDA_PROXY) {
         log_block(c);

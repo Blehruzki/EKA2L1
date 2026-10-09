@@ -1660,3 +1660,23 @@ table, though the right one maps to W), 1 resumes from the pause menu.
 the converse holds too -- one number read off a picture is not the
 picture.*
 
+### 13.q "No sound" -- there was sound all along (E982-E986)
+Colin's sound was listed open only because nothing on the bench had listened.
+With the paced capture backend (`EKA2L1_AUDIO_CAPTURE_DIR`, used since E675)
+the engine's stream is there: 16 kHz mono from 10-13 s on. E982 read it as
+broken -- 97% of the energy under 300 Hz, the same every second -- and E983's
+GAME_FPA_DOUBLES 0 changed nothing. The capture's transients sit on a 111 ms
+grid (sixteenths at about 135 BPM) under pitch-dropping kicks and a bass
+line: a bass-heavy track, correctly paced. Throttle on and off in a stage
+moves the 1.2-4 kHz band by 3-8x and back (E985): the engine note is mixed
+in. The path is the engine's own: a sound thread (0x5009d8), NewL straight
+to the 9.x CMdaAudioOutputStream (the port's MDA proxy is never entered,
+E984's RDebug trace), Open on an empty package, SetAudioPropertiesL(16000,
+mono) in MaoscOpenComplete, a 40 ms CPeriodic feeding it; a PC trace showed
+OpenComplete once and BufferCopied 141 times (E986).
+*Lessons: "the spectrum is low" is not "the audio is wrong" -- check the
+rhythm before the pitch. And a static reading of a vtable (E985 read the
+callback table as GCC 2.x and expected a crash) loses to one PC trace.
+Every title's captures carry an empty 44.1 kHz stereo `stream00`; it is not
+the title's.*
+
