@@ -54,6 +54,11 @@ cp "$S/out/${APPNAME}_reg.rsc" $D/private/10003a3f/import/apps/${APPNAME}_reg.rs
 # KEEPOLD=1 leaves whatever is on the drive alone, which is how the sweep of
 # the old rotated log names is tested: the port has to delete them itself.
 [ -n "$KEEPOLD" ] || rm -f $C/g6box-$STEM*.log $D/g6box-$STEM*.dat $C/g6box-$STEM*.dat
+# Round 161: every run reports the handles EKA2L1 lets through and a phone
+# answers with KERN-EXEC 0 (EKA2L1_STRICTHANDLE=1, log only). Colin's build
+# 002 passed thirty bench runs and died at launch on the N95 on exactly that.
+# EKA2L1_STRICTHANDLE=2 in the caller's environment panics as a device does.
+export EKA2L1_STRICTHANDLE="${EKA2L1_STRICTHANDLE:-1}"
 (cd /home/user/EKA2L1/build/bin && timeout -k 5 -s KILL "${TMO:-120}" ./eka2l1_qt --device "${DEVICE:-RM-409}" --run $UID3 >"$S/g6.log" 2>&1)
 # The emulator does not always go on SIGTERM, and a run left behind holds its
 # memory and a few per cent of a core. Enough of them and a later launch cannot
@@ -90,5 +95,7 @@ open(path, 'w').write(s[:j] + row + s[j:])
 PY
 flock -u 9
 echo "records: $REC   launches: ${LAUNCHES:-?}   ends: $FAULT   -> logged as E$N in ROUNDS.md (finish its last column)"
+BADH=$(grep -a -c "BAD HANDLE" "$S/g6.log" 2>/dev/null)
+[ "${BADH:-0}" -gt 0 ] && echo "** bad handles: $BADH -- a phone panics KERN-EXEC 0 at the first (grep 'BAD HANDLE' $S/g6.log) **"
 echo
 python3 "$P/rules.py"

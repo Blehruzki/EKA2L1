@@ -48,3 +48,13 @@ installed, the folder copied by hand, no `<stem>.app` anywhere (Colin:
 E1028 the drive on E:, E1029 the data on C: with the loader on E: and QUIT,
 E1030 an app switch). Check the zip by extracting it and diffing it against
 the tree the bench ran.
+
+## Before any build goes out: the phone's handle rules
+
+Run the title once under `EKA2L1_STRICTHANDLE=2` (exported before `emurun.sh`
+or `runinstalled.sh`) through start, keys and quit, and see no `BAD HANDLE` in
+the log. EKA2L1 answers a stale, foreign-thread or garbage handle with an
+error; a phone panics the thread KERN-EXEC 0. Colin McRae build 002 passed
+thirty lenient bench runs and died at launch on the N95 on two of them
+(round 161, BUGBOOK 13.x). `emurun.sh` now logs them on every run (=1) and
+prints the count.

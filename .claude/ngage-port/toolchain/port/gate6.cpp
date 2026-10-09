@@ -541,7 +541,8 @@ enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPA
        LOCAL_NEGDF2 = 14, LOCAL_TINT64_LOW = 15, LOCAL_TINT64_REAL = 16,
        LOCAL_TINT64_ADD = 17, LOCAL_TINT64_SUB = 18, LOCAL_TINT64_MUL = 19, LOCAL_TINT64_DIV = 20,
        LOCAL_TINT64_GE = 21, LOCAL_TINT64_LT = 22,
-       LOCAL_SET_WORD_2C = 23, LOCAL_GET_WORD_2C = 24, LOCAL_VOLUMEINFO_CTOR = 25 };
+       LOCAL_SET_WORD_2C = 23, LOCAL_GET_WORD_2C = 24, LOCAL_VOLUMEINFO_CTOR = 25,
+       LOCAL_HANDLE_CTOR = 26 };
 
 // memmove. The game imports it from the C runtime and 9.x does not export it
 // under that name, so it is written here rather than forwarded. Overlap is the
@@ -1483,6 +1484,9 @@ struct Context {
     u32 modeShot;           // how many modes the cycling test has captured
     u32 insetAsked;         // Avkon has been asked for the main pane once
     u32 insetFromAvkon;     // and this is what it said, 0 for "would not say"
+    i32 insetRect[4];       //   its raw answer, judged once the screen is known (round 161)
+    u32 insetGot, insetJudged;
+    u32 cfgGot, cfgApplied; //   cfg_load: bytes read on the main thread, and applied (round 161)
     u32 timerOff;           // imports left to write the box on every call
     u32 completes;          // completions seen by the hook, all destinations
     u32 completesMine;      // ... and the ones aimed at the frame timer
@@ -7888,6 +7892,12 @@ static void status_pane_off(Context *c)
     typedef int (*IsVisible)(const void *);
     if (!HIDE_STATUS_PANE || c->paneTried || !c->avkon || !c->wrapUi)
         return;
+    // Round 161: the library handle and the app UI are the main thread's,
+    // and a phone panics any other thread that uses them KERN-EXEC 0. An
+    // engine title asks for its screen on its own thread, so engine_start
+    // does this first, on the main one.
+    if (!on_main_thread(c))
+        return;
     c->paneTried = 1;
 
     if (PANE_SET_FULLSCREEN) {
@@ -7934,17 +7944,29 @@ static u32 avkon_inset(Context *c)
     typedef void (*MetricsRect)(int, i32 *);
     if (!ASK_AVKON_INSET || !c->avkon)
         return 0;
-    if (c->insetAsked)
+    // Asked once, and only on the main thread (round 161: the library handle
+    // is that thread's; engine_start asks before the engine's thread runs).
+    // The answer is judged once the screen's height is known, which for
+    // every caller but engine_start is at the first call, as before.
+    if (!c->insetAsked) {
+        if (!on_main_thread(c))
+            return 0;
+        c->insetAsked = 1;
+        MetricsRect fn = (MetricsRect)rlibrary_lookup(&c->avkon, AKN_LAYOUT_METRICS_RECT);
+        log_event(c, NOTE_INSET_FN, (u32)fn);
+        if (!fn)
+            return 0;
+        i32 *q = c->insetRect;
+        q[0] = q[1] = q[2] = q[3] = -1;     // TRect: tl.x, tl.y, br.x, br.y
+        fn(AKN_MAIN_PANE, q);
+        c->insetGot = 1;
+        log_event(c, NOTE_INSET_RECT, ((u32)q[0] << 16) | ((u32)q[1] & 0xFFFF));
+        log_event(c, NOTE_INSET_RECT, ((u32)q[2] << 16) | ((u32)q[3] & 0xFFFF));
+    }
+    if (!c->insetGot || c->insetJudged || !c->screenH)
         return c->insetFromAvkon;
-    c->insetAsked = 1;
-    MetricsRect fn = (MetricsRect)rlibrary_lookup(&c->avkon, AKN_LAYOUT_METRICS_RECT);
-    log_event(c, NOTE_INSET_FN, (u32)fn);
-    if (!fn)
-        return 0;
-    i32 r[4] = { -1, -1, -1, -1 };      // TRect: tl.x, tl.y, br.x, br.y
-    fn(AKN_MAIN_PANE, r);
-    log_event(c, NOTE_INSET_RECT, ((u32)r[0] << 16) | ((u32)r[1] & 0xFFFF));
-    log_event(c, NOTE_INSET_RECT, ((u32)r[2] << 16) | ((u32)r[3] & 0xFFFF));
+    c->insetJudged = 1;
+    const i32 *r = c->insetRect;
     // Believe it only if it describes a plausible main pane: a top edge in
     // the upper half of the screen, a bottom below the top, and nothing
     // outside the panel. Anything else means the ordinal was not what we
@@ -7962,9 +7984,13 @@ static void column_map(Context *c);
 // The saved choice, read once. A file that is missing, short, or carrying a
 // magic or version this build does not know is simply not there: the caller
 // keeps its own default. Nothing here can fail in a way that stops the game.
-static void cfg_load(Context *c)
+// The file into c->cfg, once, on the main thread only: boxFs is that
+// thread's session, and a phone panics any other thread that uses it
+// KERN-EXEC 0 (round 161, an engine title's screen query on its own thread).
+// engine_start reads it first; cfg_load applies it wherever it is called.
+static void cfg_read(Context *c)
 {
-    if (c->cfgRead)
+    if (c->cfgRead || !on_main_thread(c))
         return;
     c->cfgRead = 1;
     u32 file[4] = { 0, 0, 0, 0 };
@@ -7989,6 +8015,16 @@ static void cfg_load(Context *c)
         return;
     if (c->cfg[0] != (u32)CFG_MAGIC)
         return;
+    c->cfgGot = got;
+}
+
+static void cfg_load(Context *c)
+{
+    cfg_read(c);
+    if (c->cfgApplied || !c->cfgGot)
+        return;
+    c->cfgApplied = 1;
+    const u32 got = c->cfgGot;
     // **A version-1 file still counts.** Every phone this port runs on has
     // one: four words, magic, version, mode and inset. Refusing it because
     // the shift was added would throw away a screen mode the person chose
@@ -13975,6 +14011,15 @@ static void engine_start(Context *c)
                             void *heap, void *ptr, int owner);
     typedef void (*ResumeFn)(const u32 *self);
     if (!c->threadCreateFn || !c->realResume) PANIC(CAT_LIB, -60);
+    // Round 161: the engine asks for its screen on its own thread, and the
+    // port's answer took the status pane down, asked Avkon for the main pane
+    // and read the picture mode there -- through the main thread's library
+    // and file-server handles, which a phone answers with KERN-EXEC 0 on the
+    // engine's thread. So all three happen here, on the main thread, and the
+    // screen query finds them done.
+    status_pane_off(c);
+    avkon_inset(c);
+    cfg_read(c);
     engine_shared_memory(c);
     if (PICK_ON_HOLD && c->realGetEvent)
         hold_timer_start(c);                // the hold's clock, on this thread (gate6_engine_get_event)
@@ -14864,6 +14909,11 @@ static u32 load_and_start()
                 break;
             case LOCAL_SELF:                // a constructor with nothing to do
                 s[0] = 0xE12FFF1E;          // bx  lr     -- r0 is still the object
+                break;
+            case LOCAL_HANDLE_CTOR:         // RHandleBase's constructor: iHandle = 0 (round 161)
+                s[0] = 0xE3A01000;          // mov r1, #0
+                s[1] = 0xE5801000;          // str r1, [r0]
+                s[2] = 0xE12FFF1E;          // bx  lr     -- r0 is still the object
                 break;
             case LOCAL_TRUE:                // a predicate that is always yes
                 s[0] = 0xE3A00001;          // mov r0, #1

@@ -173,6 +173,11 @@ LOCAL_TINT64_ADD, LOCAL_TINT64_SUB, LOCAL_TINT64_MUL, LOCAL_TINT64_DIV = 17, 18,
 LOCAL_TINT64_GE, LOCAL_TINT64_LT = 21, 22
 LOCAL_SET_WORD_2C, LOCAL_GET_WORD_2C = 23, 24
 LOCAL_VOLUMEINFO_CTOR = 25
+# Round 161: an R-class constructor whose library 9.x removed. RHandleBase's
+# constructor zeroes the handle; the whole-library no-op returned 0 and left
+# the word as the stack had it, so the engine's later RHandleBase::Close was
+# handed a stale clock value -- KERN-EXEC 0 on a phone (EKA2L1 lets it pass).
+LOCAL_HANDLE_CTOR = 26
 LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL,
          'memmove': LOCAL_MEM_MOVE, '__negdf2': LOCAL_NEGDF2}
 
@@ -472,6 +477,11 @@ BY_ORDINAL = {
     ('sysagt', 12): ('local', LOCAL_SYSAGT_SETSTATUS, KIND_LOCAL),   # TSysAgentEvent::SetRequestStatus(TRequestStatus&)
     ('sysagt', 8): ('local', LOCAL_SYSAGT_NOTIFY, KIND_LOCAL),       # RSystemAgent::NotifyOnEvent(TSysAgentEvent&)
     ('sysagt', 4): ('local', LOCAL_SYSAGT_CANCEL, KIND_LOCAL),       # RSystemAgent::NotifyEventCancel()
+    # RSystemAgent::RSystemAgent(): the handle zeroed, as RHandleBase's own
+    # constructor does. Connect stays a no-op that answers KErrNone, so the
+    # handle stays 0 and the game's Close of it is the null-handle no-op
+    # (round 161: Colin's engine closed a stack word holding a clock value).
+    ('sysagt', 18): ('local', LOCAL_HANDLE_CTOR, KIND_LOCAL),
     # One, round 125. Three N-Gage additions past cone's epoc6 list, read
     # out of the RH-29 ROM (cone.dll export directory): 315 is
     # `str r1, [r0, #0x2c]; bx lr`, 312 is `ldr r0, [r0, #0x2c]; bx lr`,

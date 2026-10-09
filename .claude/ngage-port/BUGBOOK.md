@@ -1777,3 +1777,37 @@ answers a StartL on an active DSA without a second Request (0x57A2, "G6D").
 E1018 is clean. The other titles never take the guard (E1020-E1023).
 *Lesson: a fix that starts something behind the game's back must ask what
 the game will start next. Round 141 was the same question.*
+
+### 13.x Build 002 dies at launch on the N95: `g6eng KERN-EXEC 0`, then stuck, then `G6FLT 32212` (round 161, E1031-E1046)
+**Symptom.** The engine thread starts and is gone before it draws: the block
+stays at state 1, no frame is posted, the screen hangs as if loading, and End
+gives a fault on the main thread's way out. Thirty bench runs had passed.
+**Cause.** Two kinds of handle a phone refuses and EKA2L1 lets through (root
+CLAUDE.md: the emulator returns an error where EKA2 panics KERN-EXEC 0):
+1. **The main thread's handles on the engine's thread.** The engine asks for
+   its screen on its own thread, and the port's answer (the first-time branch
+   of the screen query) took the status pane down, asked Avkon for the main
+   pane and read the picture-mode file -- `RLibrary::Lookup` on the main
+   thread's avkon handle, and `RFile::Open` through its file-server session.
+   On the bench the lookups simply failed (so the pane was never hidden and
+   the inset was the default 56); on the N95 the first one killed the thread.
+2. **`RSystemAgent` built on the stack and closed** (engine 0x4a6b60). 9.x has
+   no System Agent and the shim answered its whole library with a no-op, so
+   the constructor never zeroed the handle; the word was whatever the stack
+   held -- a clock value after the first key -- and `RHandleBase::Close` gave
+   it to the kernel. Hidden behind the first: it fires at the first key.
+**Fix.** (1) `engine_start` takes the pane down, asks Avkon and reads the
+cfg on the main thread before the engine's thread exists; `status_pane_off`,
+`avkon_inset` and `cfg_read` refuse to run on any other thread, and the
+screen query applies the cached answers (the inset is now Avkon's 48).
+(2) `RSystemAgent::RSystemAgent()` (sysagt 18) is answered as RHandleBase's
+constructor, `iHandle = 0` (`LOCAL_HANDLE_CTOR`, shared: Colin's front end
+and Ashen import it too), so the Close is the null-handle no-op.
+**Found and judged with `EKA2L1_STRICTHANDLE`:** =1 named the handles (E1031),
+=2 reproduced the phone exactly (E1032), and the fixed build is clean under =2
+through start, keys, a drive, QUIT, hold C and its read-back, and an app switch
+(E1036-E1041), and from the zip on fresh drives (E1046). `emurun.sh` now runs
+every bench with =1 and prints the count.
+*Lesson: the bench's leniency is a known gap, written in the root CLAUDE.md,
+and a probe for it existed. A build goes out only after a run under
+`EKA2L1_STRICTHANDLE=2`.*

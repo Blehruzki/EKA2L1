@@ -102,6 +102,8 @@ the N95 and the N91. One (`gate6one`) ships as **028** (round 159: the N73's dea
 | the DSA stand-in has a vtable whose every slot deletes the real CDirectScreenAccess (`gate6_dsa_shadow_delete`) | E997-E1001 | bench: Colin's QUIT; Asphalt 2 and One unchanged (E1002-E1003) |
 | shadow vtables refuse a class whose slot +8 (through one DLL veneer) is not CBase's or CActive's Extension_; the list now also CMsvSession, CWsScreenDevice, CApaWindowGroupName, CFileMan, CApaCommandLine, the SDP pair | E999-E1001 | bench: Colin; One shadows one class, clean (E1002) |
 | **the E: fiction for estlib and RFs's named calls**: `fopen`, `wfopen`, `mkdir`, `unlink`, `RFs::SetSessionPath`, `MkDirAll`, `Modified` get the same E:-to-real-drive rewrite as RFile's opens (`gate6_fopen` and the rest) | E1005-E1007 | bench: Colin installed on C:; the Asphalts' fopen/MkDirAll pass through on E: (E1021, E1023) |
+| Avkon (status pane, main-pane inset) and the picture-mode file read only on the main thread; an engine title does both in `engine_start`, before its thread exists (`status_pane_off`, `avkon_inset`, `cfg_read`) | round 161, E1031-E1046 | bench: Colin under STRICTHANDLE=2; One, the Asphalts, Ashen unchanged (E1042-E1045) |
+| `RSystemAgent::RSystemAgent()` (sysagt 18) zeroes its handle, as RHandleBase's constructor does (`LOCAL_HANDLE_CTOR`) | round 161, E1035-E1036 | Colin, Colin's front end, Ashen (the titles that import it) |
 | a StartL on a DSA that is already running is answered without a second Request, which wserv would panic EWservPanicDirectMisuse (`gate6_dsa_startl`, 0x57A2) | E1017-E1018 | bench: Colin; never taken on One or the Asphalts (E1020-E1023) |
 
 ## Where each title saves
