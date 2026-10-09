@@ -210,8 +210,9 @@ difference breaks; the fix is shared unless named.
   main menu, the attract demo, and with keys RALLY -> mode, difficulty,
   driver, tag, car, transmission, country, stage, weather, service area,
   RACE -> Finland stage 1 running with its HUD (E966-E976;
-  shots/e966-colin-menu.png, e976-colin-stage.png). Open: the throttle key
-  (held Up and 5 gave 0-2 MPH, E976); sound; the multiplayer side, which
+  shots/e966-colin-menu.png, e976-colin-stage.png), and driven: 5 throttle,
+  7 brake and reverse, the arrows steer, a softkey pauses (E978-E981; the
+  engine's own scancode map, shots/e981-colin-driving.png). Open: sound; the multiplayer side, which
   may start the front end (`games/colin2` reaches its UI and frame timer
   alone, E958, and quits there by design without a block); whether the
   focus hand-over survives a phone's app switch; its `.cwa` protection; the

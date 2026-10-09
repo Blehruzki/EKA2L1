@@ -1644,3 +1644,19 @@ iScreen read with N-Gage MGraphicsDeviceMap slots, so `GAME_SCREEN_FONTS 1`
 (E954); `Cba()` and `StatusPane()` on an app UI built with
 ENoScreenFurniture, answered with one hidden stand-in control whose every
 slot does nothing (E955-E956, `gate6_hidden_furniture`).
+
+### 13.p "The throttle does nothing" (E976) -- a misreading, and the controls (E978-E981)
+E976 held Up and 5 and read 0-2 MPH off the HUD, so the throttle went down as
+unknown. Its shots during the 5 hold show the car carried from the gantry
+onto the stage: I read the digits and not the picture. Settled by
+measurement rather than more guessing: the engine keeps a 256-byte
+scancode -> engine key table (object + 4, filled by 0x4a6654; EKA2L1_WATCH
+over all memory narrowed to that PC listed every entry, E978), tracks each
+key's down/up state (0x4a6660), and the game script remaps it twice. Then
+each candidate held in a stage: **5 throttle, 7 brake and reverse, the
+arrows steer, either softkey pauses** (the softkeys are taken before the
+table, though the right one maps to W), 1 resumes from the pause menu.
+*Lesson: CLAUDE.md's rule-4 list says "a picture is not a measurement";
+the converse holds too -- one number read off a picture is not the
+picture.*
+
