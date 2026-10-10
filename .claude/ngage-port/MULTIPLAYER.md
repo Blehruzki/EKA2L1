@@ -102,13 +102,18 @@ UpdateAttributeL(8, 0).
 `duo.sh` runs two instances (A hosts, B joins). B's search lists A
 ("Select a Host: EKA2L1"), B selects it, the RFCOMM link comes up, and the
 game's own session runs: A at "SINGLE RALLY" (difficulty, country), B in the
-lobby ("Waiting for game to start", car, transmission, Ready). Not yet
-driven: starting the race from both sides.
+lobby ("Waiting for game to start", car, transmission, Ready). B's Ready
+then faults (E1127): `strcpy` of player 0's name (0x4ba274), NULL because
+in mode 2 the name is the driver profile's and player 0 has none -- the
+profile is loaded only by DRIVER SELECT's Load (0x4bcb68), which the
+multiplayer path never passes, even with a profile on disk (E1132-E1134;
+`duo_profile.sh` creates one in both trees).
 
 ## Next steps, in order
 
-1. Drive both into a race on the bench (A: OK; B: Ready), and see the race
-   data go both ways.
+1. B's driver: load it first (DRIVER SELECT, Load) and then Join; and read
+   where the mode (2 against 4, the multiplayer name table) is set on each
+   side. Then drive both into a race and see the race data go both ways.
 2. HCI scan-enable ioctls on 9.x: what they answer; a stand-in if refused.
 3. The phone: LocalServices is the gate. A self-signed package for phones
    that grant it, and on the N95 nothing until its install policy does.
