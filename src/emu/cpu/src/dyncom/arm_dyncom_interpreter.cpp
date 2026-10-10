@@ -29,6 +29,9 @@
 // EKA2L1_PCTRACE_START (hex; unset means from the first instruction) and
 // capped at EKA2L1_PCTRACE_MAX entries (default 16M). A diagnostic for finding
 // where two runs of the same guest code part: trace both, compare.
+// EKA2L1_PCTRACE_FLUSH=n writes the buffer out every n entries (default and
+// most 4096): a run ended by SIGKILL loses only what came after the last
+// write, so n=1 keeps a trace whose end is the interesting part.
 namespace {
 struct pc_trace {
     std::uint32_t lo = 0, hi = 0, start = 0;
@@ -36,9 +39,11 @@ struct pc_trace {
     bool armed = false, on = false;
     std::FILE *f = nullptr;
     std::uint32_t buf[2 * 4096];
-    std::uint32_t fill = 0;
+    std::uint32_t fill = 0, flush_at = 2 * 4096;
     // EKA2L1_PCTRACE_REGS=pc,pc,... (hex): at a block entry on one of these,
-    // the pc and r0..r15 go to <path>.regs, at most 200k such entries.
+    // the pc and r0..r15 go to <path>.regs, at most 200k such entries. These
+    // are taken wherever the pc is, inside [lo, hi) or not, and after the
+    // trace itself has reached its cap.
     std::uint32_t regpc[16]; int nregpc = 0;
     std::FILE *rf = nullptr; std::uint64_t nreg = 0;
 
@@ -56,6 +61,11 @@ struct pc_trace {
         start = st ? static_cast<std::uint32_t>(std::strtoul(st, nullptr, 16)) : 0;
         const char *mx = std::getenv("EKA2L1_PCTRACE_MAX");
         if (mx) max = std::strtoull(mx, nullptr, 10);
+        const char *fl = std::getenv("EKA2L1_PCTRACE_FLUSH");
+        if (fl) {
+            const unsigned long k = std::strtoul(fl, nullptr, 10);
+            if (k >= 1 && k <= 4096) flush_at = 2 * static_cast<std::uint32_t>(k);
+        }
         on = (start == 0);
         armed = true;
         const char *rp = std::getenv("EKA2L1_PCTRACE_REGS");
@@ -83,11 +93,11 @@ struct pc_trace {
     inline void hit(std::uint32_t pc, std::uint32_t sp, const std::uint32_t *r) {
         if (!armed) return;
         if (!on) { if (pc != start) return; on = true; }
+        if (rf) regs(pc, r);                // anywhere: a narrow range can watch a whole run
         if (pc < lo || pc >= hi) return;
-        if (rf) regs(pc, r);
-        if (n >= max) { if (f) { flush(); std::fclose(f); f = nullptr; armed = false; } return; }
+        if (n >= max) { if (f) { flush(); std::fclose(f); f = nullptr; if (!rf) armed = false; } return; }
         buf[fill++] = pc; buf[fill++] = sp; n++;
-        if (fill == 2 * 4096) flush();
+        if (fill >= flush_at) flush();
     }
 };
 pc_trace g_pc_trace;

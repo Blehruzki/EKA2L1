@@ -1424,6 +1424,8 @@ struct Context {
     u32 realCreateBitmap;   // CEikonEnv::CreateBitmapL, as resolved
     u32 *hiddenFurniture;   // the stand-in Cba() and StatusPane() answer with
     u32 shadowFrom[16], shadowTo[16], shadowN;   // ROM vtables and their shadows (gate6_shadow)
+    u32 sdpThunks, sdpFrom[4], sdpTo[4], sdpN;   // the SDP builder's GCC 2.x shadows (gate6_sdp_builder)
+    u32 sdpdbFrom[4], sdpdbTo[4], sdpdbN, realSdpdbCtor;   // RSdpDatabases at 9.2's size (gate6_sdpdb_this)
     u32 shadowAdapter;      //   the slot +8 adapter they share
     u32 extCBase, extCActive;   //   CBase::Extension_ and CActive::Extension_: the slot +8 a shadow may replace
     u32 processCreate, processResume;   // RProcess::Create and Resume, for gate6_start_frontend
@@ -13744,16 +13746,148 @@ extern "C" u32 *gate6_shadow(u32 *obj, Context *c)
     log_event(c, NOTE_ENGINE, vp);
     return obj;
 }
-// After a factory of four arguments or fewer: shadow what it returns.
+// After a factory of four arguments or fewer: fn(what it returns, ctx).
 //   stmdb sp!, {r4, lr} ; ldr r12, target ; blx r12 ; ldr r1, ctx
-//   ldr r12, gate6_shadow ; blx r12 ; ldmia sp!, {r4, pc}
-static u32 result_thunk(u8 *code, const void *ctx, u32 target)
+//   ldr r12, fn ; blx r12 ; ldmia sp!, {r4, pc}
+static u32 result_fn_thunk(u8 *code, const void *ctx, u32 target, u32 fn)
 {
     u32 *b = (u32 *)code;
     b[0] = 0xE92D4010; b[1] = 0xE59FC010; b[2] = 0xE12FFF3C; b[3] = 0xE59F100C;
     b[4] = 0xE59FC00C; b[5] = 0xE12FFF3C; b[6] = 0xE8BD8010;
-    b[7] = target; b[8] = (u32)ctx; b[9] = (u32)&gate6_shadow;
+    b[7] = target; b[8] = (u32)ctx; b[9] = fn;
     user_imb_range(b, b + RESULT_THUNK_WORDS);
+    return (u32)b;
+}
+// ... and shadow it (gate6_shadow).
+static u32 result_thunk(u8 *code, const void *ctx, u32 target)
+{
+    return result_fn_thunk(code, ctx, target, (u32)&gate6_shadow);
+}
+
+// **The SDP record, built through GCC 2.x slots on a 9.x list.** Colin
+// McRae's engine builds its service record's protocol list itself (0x4aec18):
+// CSdpAttrValueDES::NewDESL, then MSdpElementBuilder calls on the list's
+// builder sub-object (+4), each on the object the last one returned. It
+// calls them at GCC 2.x offsets, slot k at +8+4k behind the two header
+// words; 9.x's builder vtable is EABI, slot k at +4k, so every call lands
+// two slots on (StartListL's +0x2c is BuildURLL) -- the leave E1105 found.
+// The order of the twelve slots is the same on both (btsdp.h). So each
+// builder the engine is handed gets a shadow in GCC 2.x layout: the
+// original vtable in the word before it, its two header words, then twelve
+// shared thunks. Thunk k calls the original's slot k with the same
+// arguments and shadows what it returns, which is the next builder: this,
+// a new child list (BuildDESL), or the parent (EndListL). 9.x's own code
+// never calls these slots on the lists it builds (CSdpAttrValueList; the
+// record goes to the database through the primary vtable's visitor), so the
+// shadow is the engine's alone. Only a ROM vtable is shadowed: an engine
+// builder (a parent it passed in) already has the engine's layout.
+//
+//   stmdb sp!, {r4, lr} ; ldr r12, [r0] ; ldr r12, [r12, #-4]
+//   ldr r12, [r12, #4k] ; blx r12 ; ldr r1, ctx ; ldr r12, fn ; blx r12
+//   ldmia sp!, {r4, pc}
+enum { SDP_SLOTS = 12, SDP_THUNK_WORDS = 11, SDP_SHADOW_MAX = 4 };
+extern "C" u32 *gate6_sdp_builder(u32 *b, Context *c)
+{
+    if (!b || ((u32)b & 3) || !user_ptr((u32)b) || !c->sdpThunks)
+        return b;
+    const u32 vp = b[0];
+    for (u32 i = 0; i < c->sdpN; i++) {
+        if (c->sdpTo[i] == vp)
+            return b;
+        if (c->sdpFrom[i] == vp) {
+            b[0] = c->sdpTo[i];
+            return b;
+        }
+    }
+    if (vp < 0x80000000u || (vp & 3) || c->sdpN >= (u32)SDP_SHADOW_MAX)
+        return b;
+    u32 *mem = (u32 *)user_allocz((3 + SDP_SLOTS) * 4);
+    if (!mem)
+        return b;
+    const u32 *orig = (const u32 *)vp;
+    mem[0] = vp;                            // the thunks' way back to the real slots
+    mem[1] = orig[-2];
+    mem[2] = orig[-1];
+    for (u32 k = 0; k < (u32)SDP_SLOTS; k++)
+        mem[3 + k] = c->sdpThunks + k * SDP_THUNK_WORDS * 4;
+    c->sdpFrom[c->sdpN] = vp;
+    c->sdpTo[c->sdpN] = (u32)(mem + 1);
+    c->sdpN++;
+    b[0] = (u32)(mem + 1);
+    log_event(c, NOTE_ENGINE, 0x5D000000u | c->sdpN);
+    log_event(c, NOTE_ENGINE, vp);
+    return b;
+}
+// After CSdpAttrValueDES::NewDESL: the list's builder sub-object shadowed.
+extern "C" u32 *gate6_sdp_new_des(u32 *des, Context *c)
+{
+    if (des && !((u32)des & 3) && user_ptr((u32)des))
+        gate6_sdp_builder(des + 1, c);
+    return des;
+}
+static u32 sdp_thunks(u8 *code, const void *ctx)
+{
+    for (u32 k = 0; k < (u32)SDP_SLOTS; k++) {
+        u32 *b = (u32 *)code + k * SDP_THUNK_WORDS;
+        b[0] = 0xE92D4010; b[1] = 0xE590C000; b[2] = 0xE51CC004; b[3] = 0xE59CC000 | (4 * k);
+        b[4] = 0xE12FFF3C; b[5] = 0xE59F1008; b[6] = 0xE59FC008; b[7] = 0xE12FFF3C;
+        b[8] = 0xE8BD8010; b[9] = (u32)ctx; b[10] = (u32)&gate6_sdp_builder;
+    }
+    user_imb_range((u32 *)code, (u32 *)code + SDP_SLOTS * SDP_THUNK_WORDS);
+    return (u32)code;
+}
+
+// **RSdpDatabase is 0x18 bytes on 9.2, 0x10 on 6.1.** The RM-409 ROM's
+// constructor (sdpdatabase 41) writes a vtable at +0, the subsession at +4
+// and +8, and iBuffer at +0x14, which every update and CreateServiceRecordL
+// deletes and reallocates and Close frees (ordinals 33, 37, 40,
+// disassembled). Colin McRae's engine gives its RSdpDatabase 0x10 bytes, at
+// +8 in its SDP object, with the record handle after it at +0x18 and the
+// record-state counter at +0x1c -- so the ROM's iBuffer is the engine's
+// counter. The engine increments it between its last two updates (0x40e100),
+// and the next `delete iBuffer` frees a pointer one byte off: USER 42 on
+// COLIN (E1107, E1110). So each RSdpDatabase the engine constructs gets a
+// 9.2-sized one on the side, and all eight of its imported calls run on
+// that: the constructor through gate6_sdpdb_ctor, the rest through a thunk
+// that swaps r0 and goes on to the real call with r1-r3 as they were. The
+// engine never reads its RSdpDatabase's words itself (0x40df84, 0x40dfc8,
+// 0x40e0d8, 0x40e124: it keeps its own connected flag at +0x20).
+//
+//   stmdb sp!, {r1-r3, lr} ; ldr r1, ctx ; ldr r12, gate6_sdpdb_this
+//   blx r12 ; ldmia sp!, {r1-r3, lr} ; ldr pc, target
+enum { SDPDB_BYTES = 0x40, SDPDB_MAX = 4, THIS_THUNK_WORDS = 9 };   // 0x18 measured on RM-409; room for a firmware not measured
+extern "C" u32 *gate6_sdpdb_this(u32 *self, Context *c)
+{
+    for (u32 i = 0; i < c->sdpdbN; i++)
+        if (c->sdpdbFrom[i] == (u32)self)
+            return (u32 *)c->sdpdbTo[i];
+    return self;                            // not constructed through the port: as before
+}
+extern "C" u32 *gate6_sdpdb_ctor(u32 *self, u32, Context *c)
+{
+    typedef u32 *(*Fn)(u32 *);
+    u32 *side = gate6_sdpdb_this(self, c);
+    if (side == self && c->sdpdbN < (u32)SDPDB_MAX) {
+        side = (u32 *)user_allocz(SDPDB_BYTES);
+        if (side) {
+            c->sdpdbFrom[c->sdpdbN] = (u32)self;
+            c->sdpdbTo[c->sdpdbN] = (u32)side;
+            c->sdpdbN++;
+            log_event(c, NOTE_ENGINE, 0x5DB00000u | c->sdpdbN);
+        } else {
+            side = self;
+        }
+    }
+    ((Fn)c->realSdpdbCtor)(side);           // a reconstruction reuses the side: Close freed its buffer
+    return self;
+}
+static u32 this_thunk(u8 *code, const void *ctx, u32 target)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE92D400E; b[1] = 0xE59F100C; b[2] = 0xE59FC00C; b[3] = 0xE12FFF3C;
+    b[4] = 0xE8BD400E; b[5] = 0xE59FF004;
+    b[6] = (u32)ctx; b[7] = (u32)&gate6_sdpdb_this; b[8] = target;
+    user_imb_range(b, b + THIS_THUNK_WORDS);
     return (u32)b;
 }
 
@@ -16101,6 +16235,35 @@ static u32 load_and_start()
             shadow_adapter(ctx);
             iat[j] = result_thunk(ctx->spare, ctx, iat[j]);
             ctx->spare += RESULT_THUNK_WORDS * 4;
+        }
+    }
+    // CSdpAttrValueDES::NewDESL: the builder in GCC 2.x layout (gate6_sdp_builder).
+    if (IMPORT_SDP_NEW_DES < nImports && IMPORT_SDP_NEW_DES < kShimCount &&
+        (kShimTable[IMPORT_SDP_NEW_DES] >> 24) == KIND_CALL &&
+        ctx->spare + (SDP_SLOTS * SDP_THUNK_WORDS + RESULT_THUNK_WORDS) * 4 <= ctx->spareEnd) {
+        ctx->sdpThunks = sdp_thunks(ctx->spare, ctx);
+        ctx->spare += SDP_SLOTS * SDP_THUNK_WORDS * 4;
+        iat[IMPORT_SDP_NEW_DES] = result_fn_thunk(ctx->spare, ctx, iat[IMPORT_SDP_NEW_DES],
+                                                  (u32)&gate6_sdp_new_des);
+        ctx->spare += RESULT_THUNK_WORDS * 4;
+    }
+    // RSdpDatabase: its constructor and calls on a 9.2-sized object (gate6_sdpdb_this).
+    {
+        const u32 idx[7] = { IMPORT_SDPDB_OPEN, IMPORT_SDPDB_CLOSE, IMPORT_SDPDB_CREATE_RECORD,
+                             IMPORT_SDPDB_DELETE_RECORD, IMPORT_SDPDB_UPDATE_VALUE,
+                             IMPORT_SDPDB_UPDATE_DES16, IMPORT_SDPDB_UPDATE_UINT };
+        u32 ok = IMPORT_SDPDB_CTOR < nImports && IMPORT_SDPDB_CTOR < kShimCount &&
+                 (kShimTable[IMPORT_SDPDB_CTOR] >> 24) == KIND_CALL;
+        for (u32 k = 0; k < 7; k++)
+            ok &= idx[k] < nImports && idx[k] < kShimCount && (kShimTable[idx[k]] >> 24) == KIND_CALL;
+        if (ok && ctx->spare + TRACE + 7 * THIS_THUNK_WORDS * 4 <= ctx->spareEnd) {
+            ctx->realSdpdbCtor = iat[IMPORT_SDPDB_CTOR];
+            iat[IMPORT_SDPDB_CTOR] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_sdpdb_ctor);
+            ctx->spare += TRACE;
+            for (u32 k = 0; k < 7; k++) {
+                iat[idx[k]] = this_thunk(ctx->spare, ctx, iat[idx[k]]);
+                ctx->spare += THIS_THUNK_WORDS * 4;
+            }
         }
     }
     // Cba() and StatusPane(): the hidden stand-in (gate6_hidden_furniture).

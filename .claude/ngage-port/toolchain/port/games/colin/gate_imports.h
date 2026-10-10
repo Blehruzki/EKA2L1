@@ -128,6 +128,15 @@ enum {
     IMPORT_RWIN_END_REDRAW             =   290,
     IMPORT_SCREEN_INFO                 =   176,
     IMPORT_SCREEN_UPDATE               = 65535,   // absent
+    IMPORT_SDPDB_CLOSE                 =   258,
+    IMPORT_SDPDB_CREATE_RECORD         =   260,
+    IMPORT_SDPDB_CTOR                  =   268,
+    IMPORT_SDPDB_DELETE_RECORD         =   261,
+    IMPORT_SDPDB_OPEN                  =   264,
+    IMPORT_SDPDB_UPDATE_DES16          =   266,
+    IMPORT_SDPDB_UPDATE_UINT           =   267,
+    IMPORT_SDPDB_UPDATE_VALUE          =   265,
+    IMPORT_SDP_NEW_DES                 =   262,
     IMPORT_SEM_CREATE                  = 65535,   // absent
     IMPORT_SEM_WAIT                    = 65535,   // absent
     IMPORT_SEND_RECEIVE                = 65535,   // absent

@@ -77,7 +77,7 @@ probes are `EKA2L1_WATCH`, `EKA2L1_WATCHVAL`, `EKA2L1_WATCHPC` and
 [lo, hi) to a file as (pc, sp) word pairs, armed from the first entry at
 `EKA2L1_PCTRACE_START` and capped at `EKA2L1_PCTRACE_MAX`; with
 `EKA2L1_PCTRACE_REGS=pc,pc,...` it also dumps r0-r15 at those block entries to
-`<path>.regs`. It is for finding where two runs of the same guest code part
+`<path>.regs` (taken anywhere, so a range of `0:4` watches a whole run); `EKA2L1_PCTRACE_FLUSH=n` writes every n entries so a SIGKILLed run keeps its tail. It is for finding where two runs of the same guest code part
 (the dispatch loop in `src/emu/cpu/src/dyncom/arm_dyncom_interpreter.cpp`).
 `EKA2L1_DETTICK=<microseconds-per-read>` (default 50) swaps the host wall
 clock behind `User::TickCount` for a deterministic virtual clock that

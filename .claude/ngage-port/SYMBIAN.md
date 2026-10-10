@@ -764,6 +764,31 @@ is given with `TBTSockAddr::SetSecurity(TBTServiceSecurity const&)` before the
 bind. An N-Gage title that registers security through `RBTSecuritySettings`
 has nothing to call; its listener keeps 9.x's default security.
 
+## SDP on 9.x: the builder's slots, and RSdpDatabase's size (Colin, round 172)
+
+- **`MSdpElementBuilder`'s twelve virtuals are in the same order on 6.1 and
+  9.x** -- BuildUnknownL, BuildNilL, BuildUintL, BuildIntL, BuildUUIDL,
+  BuildBooleanL, BuildStringL, BuildDESL, BuildDEAL, StartListL, EndListL,
+  BuildURLL (oss.fcl.sf.os.bt, `btsdp/inc/btsdp.h`; MSEB_ExtensionInterfaceL
+  is not virtual). Only the vtable layout differs: GCC 2.x puts slot k at
+  +8+4k, EABI at +4k. `CSdpAttrValueList` is `CSdpAttrValue` (a CBase, vptr
+  only) then the builder mixin, so the builder is at +4 on both.
+  `StartListL` returns this, `BuildDESL` a new child list (NewDESL(this),
+  appended), `EndListL` the parent passed to NewDESL (`SDPAttrValue.cpp`).
+  9.x's own code calls none of these slots on a list it builds: the record
+  reaches the database through `CAttrEncoderVisitor`, the primary vtable.
+- **`RSdpDatabase` on the RM-409 ROM is 0x18 bytes**, measured by
+  disassembly: the constructor (sdpdatabase 41) writes a vtable at +0, zero
+  at +4 and +8 (the subsession, SubSessionHandle read at +8) and at +0x14;
+  `UpdateAttributeL(.., CSdpAttrValue&)` (33) and CreateServiceRecordL's
+  helper (37) `delete iBuffer` at +0x14 and store the new one there; Close
+  (40) frees it. A 6.1 caller's RSdpDatabase is 0x10 bytes (Colin's engine:
+  +8 to +0x18 of its SDP object, its own fields after). `RSdp` is one word on
+  both (ordinal 141 writes +0 only).
+- **The SDP server checks LocalServices** (sdpnetdb's `KLOCAL_SERVICES`); on
+  the bench it is the ROM's real server, so a package without the capability
+  gets -46 from it there as on a phone (E1106).
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:

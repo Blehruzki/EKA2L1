@@ -758,6 +758,17 @@ HOOKS = {
     'IMPORT_SHADOW_CMDLINE':          ('apparc', 36),   # CApaCommandLine::NewLC()
     'IMPORT_SHADOW_SDPAGENT':         ('sdpagent', 6),  # CSdpAgent::NewL(MSdpAgentNotifier &, const TBTDevAddr &)
     'IMPORT_SHADOW_SDPPATTERN':       ('sdpdatabase', 58),  # CSdpSearchPattern::NewL()
+    'IMPORT_SDP_NEW_DES':             ('sdpdatabase', 46),  # CSdpAttrValueDES::NewDESL(MSdpElementBuilder *): its builder given GCC 2.x slots (round 172)
+    # RSdpDatabase: 0x10 bytes on 6.1, 0x18 on 9.2 (iBuffer at +0x14); all
+    # eight run on a 9.2-sized object (gate6_sdpdb_this, round 172).
+    'IMPORT_SDPDB_CTOR':              ('sdpdatabase', 116), # RSdpDatabase::RSdpDatabase()
+    'IMPORT_SDPDB_OPEN':              ('sdpdatabase', 70),  # RSdpDatabase::Open(RSdp &)
+    'IMPORT_SDPDB_CLOSE':             ('sdpdatabase', 22),  # RSdpDatabase::Close()
+    'IMPORT_SDPDB_CREATE_RECORD':     ('sdpdatabase', 28),  # RSdpDatabase::CreateServiceRecordL(const TUUID &, unsigned long &)
+    'IMPORT_SDPDB_DELETE_RECORD':     ('sdpdatabase', 30),  # RSdpDatabase::DeleteRecordL(unsigned long)
+    'IMPORT_SDPDB_UPDATE_VALUE':      ('sdpdatabase', 91),  # RSdpDatabase::UpdateAttributeL(unsigned long, unsigned short, CSdpAttrValue &)
+    'IMPORT_SDPDB_UPDATE_DES16':      ('sdpdatabase', 93),  # RSdpDatabase::UpdateAttributeL(unsigned long, unsigned short, const TDesC16 &)
+    'IMPORT_SDPDB_UPDATE_UINT':       ('sdpdatabase', 94),  # RSdpDatabase::UpdateAttributeL(unsigned long, unsigned short, unsigned int)
     'IMPORT_HANDLE_CLOSE':            ('euser', 172),   # RHandleBase::Close(): the handle word logged before the call (round 136: a worker's Close died KERN-EXEC 0 on the N95)
     'IMPORT_DELETE_OP':               ('euser', 1504),
     'IMPORT_VEC_DELETE_OP':           ('euser', 1506),

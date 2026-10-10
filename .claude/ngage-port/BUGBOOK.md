@@ -2044,3 +2044,33 @@ to none, the package unsigned again.
 *Lesson: a lock that is local on the bench can be global on a phone. A
 platform primitive whose scope changed between OS versions (here at 9.3) is
 a difference to look for, not to discover.*
+
+### 13.ah Host on the bench: the SDP record's builder through GCC 2.x slots, and an RSdpDatabase too small for 9.2 (round 172, E1106-E1111)
+**Symptom.** E1105: after Host the engine sat behind the wrapper's window,
+stuck in a `CActive::Cancel` inside its display teardown, with the SDP
+registration (0x40dfc8) below it on the stack.
+**Causes, three, one behind the other.** (1) Without LocalServices the ROM's
+own SdpServer refuses the engine: a Leave -46 straight after `RSdp::Connect`
+(E1106) -- the phone's refusal, reproduced, because SDP on the bench runs
+the ROM's server while esock is the emulator's own code and checks nothing.
+With the capability (bench only) the record build is reached. (2) The engine
+builds its protocol list itself (0x4aec18) through `MSdpElementBuilder` at
+GCC 2.x offsets, slot k at +8+4k; 9.x's builder vtable is EABI, slot k at
++4k, so every call would land two slots on (StartListL's +0x2c is
+BuildURLL). (3) The RM-409 ROM's `RSdpDatabase` is 0x18 bytes, with iBuffer
+at +0x14 (constructor, ordinal 41; updates and CreateServiceRecordL delete
+and reallocate it; Close frees it); the engine's is 0x10 bytes at +8 of its
+SDP object, so iBuffer is the engine's record-state counter at +0x1c. The
+engine increments it between its last two updates (0x40e100) and the next
+`delete iBuffer` panics USER 42 on COLIN (E1107, E1110).
+**Fixes.** `gate6_sdp_builder`: each ROM builder the engine is handed
+(NewDESL's list at +4, then whatever each builder call returns) gets a
+shadow vtable in GCC 2.x layout, whose twelve shared thunks call the real
+slot and shadow the result (E1108: every call lands, the record goes in).
+`gate6_sdpdb_this`: each RSdpDatabase the engine constructs gets a
+9.2-sized one on the side, and all eight imported calls run on it (E1111).
+Host then runs to the game's own Bluetooth screens: "connection lost" when
+nobody joins, as a one-instance bench must give (E1112-E1116).
+*Lesson: a class's size is part of its ABI, and an R class can grow. The
+first bytes past the old size are the caller's next field, and the bug
+shows up only when the caller writes that field.*

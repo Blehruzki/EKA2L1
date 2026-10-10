@@ -55,10 +55,12 @@ on any phone that grants the capability.
 | `RFCOMM GetOpt 1` | `KRFCOMMGetAvailableServerChannel` | same | ok |
 | HCI scan-enable ioctls 14/15 (0x402c50, 0x402d88) | supported | same numbers, deprecated for P&S (bt_subscribe.h) | **open**: check what 9.x answers |
 | `RBTSecuritySettings`, `TBTServiceSecurity` | btmanclient | gone; security via `TBTSockAddr::SetSecurity` | stand-ins: registration "done", default security (round 166) |
-| SDP record (0x40dfc8) | sdpdatabase, GCC 2.x builder | 9.x `CSdpAttrValueDES` (EABI vtable) | **open**: leaves on the bench (E1105) |
+| SDP record (0x40dfc8): the builder | sdpdatabase, GCC 2.x builder | 9.x `CSdpAttrValueDES` (EABI vtable) | **fixed**: `gate6_sdp_builder`, a GCC 2.x shadow per builder (E1108) |
+| SDP record: `RSdpDatabase` | 0x10 bytes | 0x18 on RM-409, iBuffer at +0x14 (the engine's counter) | **fixed**: `gate6_sdpdb_this`, a 9.2-sized object on the side (E1110-E1111) |
+| SDP server | -- | the ROM's own, checks LocalServices: -46 without it (E1106) | the capability gate again; the bench builds with 0x4000 to get past it |
 | Device-selection notifier, `TBTDeviceResponseParams` | btextnotifiers 6.1 layout | 9.x layout | **open**: compare layouts (join) |
 | `TBTSockAddr`, `TInquirySockAddr` | 6.1 layouts | 9.x adds security / fields | **open**: compare (join) |
-| Leave in the host path | caught | unwinds into the display's teardown; on 9.2 phones under the global bitmap heap lock (13.ag) | lock released on leave (012); the teardown itself still hangs on the bench in a `CActive::Cancel` (E1105) |
+| Leave in the host path | caught | unwinds into the display's teardown; on 9.2 phones under the global bitmap heap lock (13.ag) | lock released on leave (012); E1105's leave was the SDP server's -46 (E1106); with the record fixed, Host reaches the game's own Bluetooth screens (E1111) |
 
 ## The bench
 
@@ -75,13 +77,24 @@ Next for the bench: two instances (a second HOME, a copy of the drives,
 direct-IP friends on 127.0.0.1 with their port offsets), host on one and
 join on the other.
 
+## Where Host stands (E1111-E1116)
+
+With LocalServices (bench build), Host runs the whole N-Gage path on the
+9.x platform: RFCOMM listen on channel 21, `Accept` pending, the security
+stand-ins, the SDP record in the ROM's database. The engine then polls its
+host object (0x4025ec error?, 0x402520 connected?) until its menu script
+gives up -- "Bluetooth connection lost" about 25 s on, with no joiner -- and
+the next MULTIPLAYER entry reads the network object's leftover state as
+"busy" until a new Host or Join clears it (0x402264). The host object's RunL
+(0x4ae7f4) takes a completed `Accept` to state 2 (connected) and
+UpdateAttributeL(8, 0).
+
 ## Next steps, in order
 
-1. The SDP record build (0x40dfc8): find the leave; shadow the DES
-   builder's vtable for the engine's GCC 2.x slots, or answer the record
-   with a stand-in.
-2. The display-teardown hang in `CActive::Cancel` (E1105): which active
-   object, and why its DoCancel never completes on the bench.
+1. Join (0x4ae4bc): the device-selection notifier (`TBTDeviceResponseParams`)
+   and the `TBTSockAddr` / `TInquirySockAddr` layouts, 6.1 against 9.x.
+2. The two-instance bench: a second HOME and drives, direct-IP friends on
+   127.0.0.1 with port offsets; host on one, join on the other, and see the
+   host's `Accept` complete.
 3. HCI scan-enable ioctls on 9.x: what they answer; a stand-in if refused.
-4. Join: notifier and address layouts; then the two-instance bench.
-5. A self-signed LocalServices package for phones that grant it.
+4. A self-signed LocalServices package for phones that grant it.
