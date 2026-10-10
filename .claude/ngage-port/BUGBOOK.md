@@ -2098,3 +2098,23 @@ second word of its status -- the receive status, read as a failure.
 *Lesson: a GCC 2.x interface the platform calls back is the builder
 problem reversed, and needs the reverse fix; and round 162's one-word
 status reappears wherever an EKA1 program put two statuses together.*
+
+### 13.aj A worker thread's first real throw: no C++ exception globals (round 172, E1136-E1139)
+**Symptom.** On the duo bench, a joiner that selected a device not hosting
+yet died at once on its engine thread: an access violation reading 0x8 in
+drtaeabi's `__cxa_allocate_exception`, after a Leave from the SDP agent
+(-111 first, then -6401 once the emulator answered as an empty database).
+**Cause.** A 9.x leave becomes a C++ throw whenever the port's trap handler
+is not the one catching it -- here a 9.x TRAP inside the SDP agent's RunL --
+and the throw takes the thread's exception globals from drtaeabi's TLS.
+eexe's `CallThrdProcEntry` builds a `TCppRTExceptionsGlobals` on every
+thread's stack; the port's `_start` is hand-written, and only `gate6_main`
+built one, for the main thread. Every worker thread, an engine's included,
+had a null TLS. The same ROM code on a phone dies the same way: a joiner
+selecting a phone nearby that is not hosting.
+**Fix.** gate6.s: the thread branch of `_start` constructs one on the new
+thread's stack (512 bytes) before calling the thread function. Shared code:
+every title gets it. Verified in E1148: the same -6401 Leave, now caught,
+and the game's own "Connection request failed".
+*Lesson: hand-written startup code inherits every duty of the startup code
+it replaces, per thread as well as per process.*

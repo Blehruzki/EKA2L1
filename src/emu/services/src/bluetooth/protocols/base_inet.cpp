@@ -26,6 +26,10 @@
 #include <utils/reqsts.h>
 
 #include <common/log.h>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <mutex>
 #include <kernel/kernel.h>
 
 extern "C" {
@@ -33,6 +37,31 @@ extern "C" {
 }
 
 namespace eka2l1::epoc::bt {
+    namespace {
+        // EKA2L1_BTDUMP=path: every Bluetooth-over-IP socket payload, one line
+        // each -- milliseconds, socket, S(ent) or R(eceived), length, hex. For
+        // reading what two instances say to each other (ngage-port E1143).
+        void bt_dump(const void *sock, const char dir, const std::uint8_t *data, const std::int64_t len) {
+            static std::FILE *f = []() -> std::FILE * {
+                const char *p = std::getenv("EKA2L1_BTDUMP");
+                return p ? std::fopen(p, "w") : nullptr;
+            }();
+            if (!f || !data || len <= 0) {
+                return;
+            }
+            static std::mutex lock;
+            const std::lock_guard<std::mutex> guard(lock);
+            static const auto t0 = std::chrono::steady_clock::now();
+            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+            std::fprintf(f, "%lld %p %c %lld ", static_cast<long long>(ms), sock, dir, static_cast<long long>(len));
+            for (std::int64_t i = 0; i < len; i++) {
+                std::fprintf(f, "%02x", data[i]);
+            }
+            std::fputc('\n', f);
+            std::fflush(f);
+        }
+    }
+
     btinet_socket::btinet_socket(btlink_inet_protocol *protocol, std::unique_ptr<epoc::socket::socket> &inet_socket)
         : inet_socket_(std::move(inet_socket))
         , info_asker_(reinterpret_cast<midman_inet*>(protocol->get_midman()))
@@ -301,12 +330,22 @@ namespace eka2l1::epoc::bt {
     }
 
     void btinet_socket::send(const std::uint8_t *data, const std::uint32_t data_size, std::uint32_t *sent_size, const epoc::socket::saddress *addr, std::uint32_t flags, epoc::notify_info &complete_info) {
+        bt_dump(this, 'S', data, data_size);
         inet_socket_->send(data, data_size, sent_size, addr, flags, complete_info);
     }
 
     void btinet_socket::receive(std::uint8_t *data, const std::uint32_t data_size, std::uint32_t *recv_size, epoc::socket::saddress *addr,
         std::uint32_t flags, epoc::notify_info &complete_info, epoc::socket::receive_done_callback done_callback) {
         // TODO: Hook back in case of receiving address (convert it to virtual BT addr)
+        if (std::getenv("EKA2L1_BTDUMP")) {
+            done_callback = [this, data, done_callback](const std::int64_t received) {
+                bt_dump(this, 'R', data, received);
+                if (done_callback) {
+                    done_callback(received);
+                }
+            };
+        }
+
         inet_socket_->receive(data, data_size, recv_size, addr, flags, complete_info, done_callback);
     }
 

@@ -46,6 +46,7 @@ namespace eka2l1::epoc::bt {
         , bt_port_asker_(reinterpret_cast<midman_inet*>(protocol->get_midman()))
         , sdp_connect_(nullptr)
         , connected_(false)
+        , peer_without_responder_(false)
         , provided_result_(nullptr)
         , store_to_temp_buffer_(false)
         , target_pdu_buffer_(nullptr)
@@ -199,6 +200,24 @@ namespace eka2l1::epoc::bt {
 
         kernel_system *kern = current_query_notify_.requester->get_kernel_object_owner();
 
+        // A friend whose midman answered but on whose SDP port nothing listens
+        // is up and simply has no SDP server running yet (here the ROM's
+        // SdpServer starts with the guest's first RSdp::Connect). A phone's
+        // Bluetooth stack always answers SDP, with no records if it has none,
+        // so the peer is treated as an empty database rather than as a failed
+        // connect -- which sent a joiner down an error path a phone never
+        // takes (ngage-port E1136-E1137).
+        if (status == UV_ECONNREFUSED) {
+            LOG_TRACE(SERVICE_BLUETOOTH, "SDP peer has no responder up; answering its queries as an empty database");
+            peer_without_responder_ = true;
+
+            kern->lock();
+            current_query_notify_.complete(epoc::error_none);
+            kern->unlock();
+
+            return;
+        }
+
         if (status < 0) {
             LOG_ERROR(SERVICE_BLUETOOTH, "Connect to SDP server failed with libuv error code {}", status);
 
@@ -227,6 +246,8 @@ namespace eka2l1::epoc::bt {
     void sdp_inet_net_database::handle_connect_query(const char *record_buf, const std::uint32_t record_size) {
         const sdp_connect_query *query = reinterpret_cast<const sdp_connect_query*>(record_buf);
         midman_inet *midman = reinterpret_cast<midman_inet*>(protocol_->get_midman());
+
+        peer_without_responder_ = false;
 
         epoc::socket::saddress friend_addr_real;
         if (!midman->get_friend_address(query->addr_, friend_addr_real)) {
@@ -311,6 +332,17 @@ namespace eka2l1::epoc::bt {
     }
 
     void sdp_inet_net_database::handle_service_query(const char *record_buf, const std::uint32_t record_size) {
+        if (peer_without_responder_) {
+            // ServiceSearchResponse parameters for no match: total 0, current 0,
+            // no continuation. Delivered from the loop, as a real response is.
+            inet_pro_->get_looper()->one_shot([this]() {
+                static const std::uint8_t EMPTY_SEARCH[5] = { 0, 0, 0, 0, 0 };
+                handle_normal_query_complete(EMPTY_SEARCH, sizeof(EMPTY_SEARCH));
+            });
+
+            return;
+        }
+
         pdu_packet_builder_.new_packet();
         pdu_packet_builder_.set_pdu_id(SDP_PDU_SERVICE_SEARCH_REQUEST);
         pdu_packet_builder_.put_byte(de_header(6, 5));      // DES header
@@ -347,6 +379,22 @@ namespace eka2l1::epoc::bt {
     }
     
     void sdp_inet_net_database::handle_encoded_query(const char *record_buf, const std::uint32_t record_size) {
+        if (peer_without_responder_) {
+            // An empty database has no record whose attributes could be asked for.
+            inet_pro_->get_looper()->one_shot([this]() {
+                if (current_query_notify_.empty()) {
+                    return;
+                }
+
+                kernel_system *kern = current_query_notify_.requester->get_kernel_object_owner();
+                kern->lock();
+                current_query_notify_.complete(error_sdp_peer_error);
+                kern->unlock();
+            });
+
+            return;
+        }
+
         pdu_packet_builder_.new_packet();
 
         const sdp_encoded_query *query_base_all = reinterpret_cast<const sdp_encoded_query*>(record_buf);

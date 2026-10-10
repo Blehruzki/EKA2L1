@@ -491,6 +491,21 @@ From `kernel/eka/euser/us_trp.cpp`, `us_exec.cpp`, `cbase/ub_cln.cpp`,
   the thread's exception handler, called with the `TExcType` alone. That
   is how an uncaught leave shows up as a `TExcType 0` with no frame.
 
+## Every thread needs its C++ exception globals (Colin, round 172)
+
+- A leave on 9.x is a C++ throw, and `__cxa_allocate_exception` (drtaeabi
+  177) takes the thread's `__cxa_eh_globals` from drtaeabi's own TLS
+  (`EH_GLOBALS` is `Dll::Tls()` on the device, `compsupp/symaehabi/
+  unwind_env.h`); on EPOC32 it never allocates them lazily
+  (`cppsemantics.cpp`, `__cxa_get_globals`).
+- They are a `TCppRTExceptionsGlobals` (drtaeabi 204, whose constructor
+  calls `Dll::SetTls(this)`), which eexe's `CallThrdProcEntry`
+  (`callfirstprocessfn.cpp`, called from `uc_exe.cpp`'s `_E32Startup`)
+  builds on the stack of **every** thread before its function runs. An
+  image not linked against eexe.lib must do that itself for each thread it
+  starts, not only the first: the port did it in `gate6_main` alone, and a
+  worker's first real throw read a null TLS (E1136-E1138).
+
 ## VA_LIST, and the vtable of a class with two polymorphic bases
 
 From `kernel/eka/include/e32def.h`, `kernel/eka/euser/us_des.cpp`,

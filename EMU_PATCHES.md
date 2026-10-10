@@ -29,6 +29,7 @@ the emulator.
 |---|---|---|---|
 | `EKA2L1_LEAVESTACK=1` | With every `User::Leave` (already logged with its code, and now its LR), the stack words above it that look like code, so the leaving caller can be named against a ROM's export table. | `kernel/src/svc.cpp` (`leave_start`) | ngage-port r158 |
 | `EKA2L1_PCTRACE=lo:hi:path` | Every basic-block entry whose PC is in `[lo,hi)` as `(pc, sp)` word pairs; armed from the first entry at `EKA2L1_PCTRACE_START`, capped at `EKA2L1_PCTRACE_MAX`. With `EKA2L1_PCTRACE_REGS=pc,pc,...` also dumps `r0`–`r15` at those PCs to `<path>.regs`, wherever the PC is and after the cap, so a range that traces nothing (`0:4`) watches a whole run. `EKA2L1_PCTRACE_FLUSH=n` writes the buffer every `n` entries (1 to 4096, default 4096), so a run ended by SIGKILL keeps its tail. For finding where two runs of the same guest code part. | `cpu/src/dyncom/arm_dyncom_interpreter.cpp` | ngage-port r143 |
+| `EKA2L1_BTDUMP=path` | Every Bluetooth-over-IP socket payload (`btinet_socket` send and completed receive), one line each: milliseconds, socket, `S`/`R`, length, hex. For reading what two instances say to each other. | `services/src/bluetooth/protocols/base_inet.cpp` | ngage-port r172 |
 | `EKA2L1_WATCH=addr[:end]` | Guest writes into `[addr,end)` with value, PC and LR (capped ~400). | `cpu/src/dyncom/armstate.cpp` | emulator |
 | `EKA2L1_WATCHVAL=v` | Narrows `EKA2L1_WATCH` to writes of value `v`. | same | emulator |
 | `EKA2L1_WATCHPC=lo:hi` | Narrows `EKA2L1_WATCH` to writes from PC in `[lo,hi)`. | same | emulator |
@@ -96,6 +97,19 @@ command used to crash the emulator itself -- an EKA1 title calling the gc
 through a GCC 2.x vtable slot reached `Clear()` before any `Activate`
 (ngage-port E920). The check is in `graphic_context::execute_command` and
 logs the opcode and the thread before the panic.
+
+## A peer with no SDP responder up answers as an empty database
+
+Not a switch: always on (`services/src/bluetooth/protocols/sdp/sdp_inet.cpp`).
+A Bluetooth-over-IP friend whose midman answers but on whose SDP port nothing
+listens -- here the ROM's `SdpServer`, which starts only with a guest's first
+`RSdp::Connect`, so any instance not yet registering a service -- used to fail
+the guest's SDP connect with `KErrCouldNotConnect`. A phone's Bluetooth stack
+always answers SDP, with no records when it has none, so a TCP refusal
+(`UV_ECONNREFUSED`) on that port now completes the connect, a service search
+returns zero records, and an attribute request gets an SDP error. A joiner
+that picked a friend not hosting yet went down an error path a phone never
+takes and died there (ngage-port E1136-E1137).
 
 ## Bluetooth over IP on a host without IPv6
 

@@ -47,6 +47,7 @@ namespace eka2l1::epoc::bt {
         std::shared_ptr<libuv::task> send_pdu_packet_task_;
 
         bool connected_;
+        bool peer_without_responder_;   // reachable, nothing on its SDP port: an empty database
         pdu_builder pdu_packet_builder_;
         std::vector<char> pdu_response_buffer_;
         std::vector<char> stored_query_buffer_;

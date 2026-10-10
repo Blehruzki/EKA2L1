@@ -109,11 +109,28 @@ profile is loaded only by DRIVER SELECT's Load (0x4bcb68), which the
 multiplayer path never passes, even with a profile on disk (E1132-E1134;
 `duo_profile.sh` creates one in both trees).
 
+## Where the session stands (E1135-E1149)
+
+- A joiner needs a driver selected when the session starts: in a multiplayer
+  rally (mode 1 or 2) the name sent in its player-info message (0x47d90c,
+  sent when the host's 344-byte settings arrive, not on Ready) is player 0's
+  profile's. DRIVER SELECT reverts a driver you back out of (0x479114), so
+  the driver must be the current one at boot: the game selects the driver
+  `gameinfo.dat` names (0x4bcb68), and saves it when a stage starts
+  (`duo_loadrace.sh` puts the bench there). With that, no fault (E1148).
+- The host's settings go out when it presses OK on SINGLE RALLY; until then
+  only an 8-byte ping (`11 00 ...`) crosses the link (`EKA2L1_BTDUMP`).
+- Selecting a device that is not hosting now ends in the game's own
+  "Connection request failed" (exception globals for worker threads, 13.aj;
+  the emulator's empty SDP database for a peer with no responder).
+- Open: Host sometimes hangs behind the wrapper's window (E1148), as before
+  round 171's mailbox fix; intermittent.
+
 ## Next steps, in order
 
-1. B's driver: load it first (DRIVER SELECT, Load) and then Join; and read
-   where the mode (2 against 4, the multiplayer name table) is set on each
-   side. Then drive both into a race and see the race data go both ways.
-2. HCI scan-enable ioctls on 9.x: what they answer; a stand-in if refused.
-3. The phone: LocalServices is the gate. A self-signed package for phones
+1. Host and join again from the saved-driver state, both sides watched, into
+   the race; read the race traffic.
+2. The intermittent host hang (E1148).
+3. HCI scan-enable ioctls on 9.x: what they answer; a stand-in if refused.
+4. The phone: LocalServices is the gate. A self-signed package for phones
    that grant it, and on the N95 nothing until its install policy does.

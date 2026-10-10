@@ -52,8 +52,20 @@ _start:
     @ running at all": everything the kernel sees is identical, and the only
     @ difference is whether the game's own code executes on a second thread.
     .set RUN_WORKERS, 1
+    @ And its C++ exception globals first, as eexe's CallThrdProcEntry does
+    @ for every thread (compsupp/symaehabi/callfirstprocessfn.cpp): a
+    @ TCppRTExceptionsGlobals on the thread's own stack, whose constructor sets
+    @ drtaeabi's TLS to it. gate6_main makes one for the main thread; a worker
+    @ had none, so the first 9.x leave on it that became a real throw -- one
+    @ under 9.x's own TRAP, out of the port's trap handler's reach -- read a
+    @ null TLS in __cxa_allocate_exception: Colin's engine thread, on a
+    @ joiner's SDP error path (ngage-port E1136-E1138). 512 bytes holds it with
+    @ room and keeps sp 8-aligned; it lives as long as the thread does.
 2:  mov  r0, #0
 .if RUN_WORKERS
+    sub  sp, sp, #512
+    mov  r0, sp
+    bl   cpprt_globals_ctor     @ r5 survives: callee-saved
     ldr  r12, [r5, #8]          @ iFunction
     ldr  r0,  [r5, #12]         @ iPtr
     mov  lr, pc
