@@ -361,6 +361,7 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_BENCH_CALL_FN` | · | · | · | · | · | 0x7df80 | · |
 | `GAME_BENCH_DSA_ABORT_AT` | · | · | · | · | · | 0 | · |
 | `GAME_BENCH_DSA_ABORT_KICK` | · | · | · | · | · | 0 | · |
+| `GAME_BENCH_DUMP_AT` | · | · | · | · | · | 0 | · |
 | `GAME_BENCH_ENDKEY_AT` | · | · | · | · | · | 0 | · |
 | `GAME_BENCH_ENDKEY_ENGINE` | · | · | · | · | · | 0 | · |
 | `GAME_BENCH_ENGINE_DIES` | · | · | · | · | · | 0 | · |
@@ -374,7 +375,7 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_CANCEL_ROM_OBJECTS` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
 | `GAME_CAPABILITIES` | · | · | · | · | · | 0 | · |
 | `GAME_CARD_CID` | · | · | · | 0x567857f1,… | · | · | · |
-| `GAME_CODE_PATCHES` | 0 entries | 0 entries | 2 entries | 8 entries | 0 entries | 20 entries | 0 entries |
+| `GAME_CODE_PATCHES` | 0 entries | 0 entries | 2 entries | 8 entries | 0 entries | 21 entries | 0 entries |
 | `GAME_CONTROL_H` | 0 | 0 | 208 | 0 | 0 | 0 | 0 |
 | `GAME_CONTROL_W` | 0 | 0 | 176 | 0 | 0 | 0 | 0 |
 | `GAME_DEFER_WORKER_STOP` | · | · | · | 1 | · | · | · |
@@ -396,6 +397,7 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_IMAGE_WATCH_SITES` | 0 | 0x0013c1fc,… | 0 | 0 | 0 | 0 | 0 |
 | `GAME_KICK_RUNL_FN` | · | · | · | 0x000265ac | · | · | · |
 | `GAME_KICK_RUNL_SLOT` | · | · | · | 0x001562a4 | · | · | · |
+| `GAME_LAUNCHER_CLEARS_1` | · | · | · | · | · | 1 | · |
 | `GAME_LEAK_ALL` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | `GAME_LOG_CLOCK` | 1 | 0 | 1 | 1 | 1 | 1 | 1 |
 | `GAME_LOG_TEXT` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
