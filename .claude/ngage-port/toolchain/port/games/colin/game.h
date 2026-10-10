@@ -207,7 +207,7 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // #define GAME_CARD_CID 0x00000000, 0x00000000, 0x00000000, 0x00000000
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 8
+#define GAME_BUILD 9
 
 // **An AirPlay engine, not an app** (PORTING.md, Colin McRae). The image
 // is `6r66.lxe`, the engine lxce.py inflated out of `6r66.nax`: the loader
@@ -268,3 +268,11 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // the launcher's watch must turn into an exit (round 166). 0 in anything
 // shipped.
 #define GAME_BENCH_ENGINE_DIES 0
+// Round 167: the watchdog runs (at absolute 23) and ends the process when the
+// main thread has not moved for this many seconds, its stall dump written at
+// 4 s and again at the end (gate6.cpp, gate6_watchdog). Build 008's host froze
+// the whole N95 with the engine thread alive and the main thread stopped.
+#define GAME_WATCHDOG_KILL_S 12
+// Bench: the main thread blocks for 30 s at that second (round 167). 0 in
+// anything shipped.
+#define GAME_BENCH_MAIN_HANG_AT 0

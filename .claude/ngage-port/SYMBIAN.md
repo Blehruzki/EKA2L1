@@ -683,6 +683,15 @@ of the pointer, then the call), and the kernel writes the status word only.
 So for a one-word EKA1 status with something of its own after it, complete
 through `RThread::RequestComplete` on `KCurrentThreadHandle`.
 
+**The highest an application thread may go, and ending yourself.** An
+absolute priority passes `RThread::SetPriority` unchecked up to
+EPriorityAbsoluteHigh (500, absolute 23, kern_priv.h); only the
+EPriorityAbsoluteRealTime values need ProtServ (sexec.cpp,
+`ExecHandler::ThreadSetPriority`). A relative priority above 24 is capped
+without it (sthread.cpp). `RProcess::Kill` on a process of the same security
+zone -- itself -- needs no capability (server.cpp, `ExecHandler::ProcessKill`;
+PowerMgmt only for another's). On RM-409: euser 1786 SetPriority, 1320 Kill.
+
 **9.x's btmanclient has no `RBTSecuritySettings`.** Its 84 exports (RM-409,
 EKA2L1's `epoc9.def`) carry RBTMan, the registry and comm-port settings;
 `TBTServiceSecurity` lives in bluetooth.dll on 9.x, and a listener's security

@@ -1443,6 +1443,7 @@ struct Context {
     u32 fnExitType, fnExitReason;   // RThread::ExitType, ExitReason (euser 1799, 1781): the engine's watch (round 166)
     u32 fnThreadReqComplete;        // RThread::RequestComplete (euser 1790): gate6_complete_r2
     u32 fnWaitForRequest, benchDieCalls;   // bench (GAME_BENCH_ENGINE_DIES): User::WaitForRequest, euser 604
+    u32 fnSetPriority, fnProcessKill;      // RThread::SetPriority, RProcess::Kill (euser 1786, 1320): the watchdog (round 167)
     u32 wsLogged;           //   the wrapper's window-server events logged so far (round 165)
     u32 cfgSavePending;     //   a hold's save, owed to the main thread
     u32 engineQuitting;     //   GAME_ENGINE_LAUNCHER: the engine asked to quit (mailbox 6)
@@ -4452,6 +4453,7 @@ enum { WATCHDOG = 1, WATCHDOG_STALL_S = 4, EUSER_USER_AFTER = 645, STALL_WORDS =
 enum { WD_EPISODES = 4, EUSER_HANDLE_DUPLICATE = 121, EUSER_THREAD_CONTEXT = 1796,
        EUSER_THREAD_PRIORITY = 1800, EUSER_THREAD_STACKINFO = 1801, EUSER_THREAD_CPUTIME = 1782,
        EUSER_THREAD_EXIT_TYPE = 1799, EUSER_THREAD_EXIT_REASON = 1781, EUSER_THREAD_REQ_COMPLETE = 1790,
+       EUSER_THREAD_SET_PRIORITY = 1786, EUSER_PROCESS_KILL = 1320,
        CTX_WORDS = 18, MAIN_STACK_WORDS = 192, THR_STACK_WORDS = 64, STALL_THREADS = 0x7EAD0000 };
 static const u16 kStallPath[] = {'C',':','\\','g','6','s','t','a','l','l','-',GAME_STEM_CHARS,'.','d','a','t'};
 
@@ -4567,9 +4569,29 @@ static void stall_dump(Context *c)
     rhandle_close(c->wdFs);
 }
 
+// **The watchdog as the last way out (round 167).** Colin McRae's host on
+// the N95, build 008: the engine stopped drawing, its main thread went on
+// for some sixteen seconds and then stopped too, and the phone answered no
+// key, the power key included -- the engine thread never died, so 008's
+// watch (0xE820) had nothing to see. Whatever holds the phone -- a thread
+// of ours that never blocks (the engine's sound thread runs at absolute 22),
+// or the window server waiting on a client of ours -- is the process's, and
+// ending the process releases it. So for a title with GAME_WATCHDOG_KILL_S,
+// the watchdog runs at EPriorityAbsoluteHigh, absolute 23 (kern_priv.h; the
+// highest an application may take without ProtServ, sexec.cpp), above
+// anything the game makes, and when the main thread has not moved for that
+// many seconds it writes the stall dump a second time and kills the process
+// (RProcess::Kill on itself, which needs no capability, server.cpp). The
+// dumps -- each thread's registers, the main thread's stack -- say what it was.
+#ifndef GAME_WATCHDOG_KILL_S
+#define GAME_WATCHDOG_KILL_S 0
+#endif
+enum { EPRIORITY_ABSOLUTE_HIGH = 500, KCURRENT_PROCESS = 0xFFFF8000u, WATCHDOG_KILL_REASON = 0x57A11 };
+
 extern "C" int gate6_watchdog(void *p)
 {
     typedef void (*After)(int);
+    typedef void (*Kill)(const u32 *, int);
     Context *c = (Context *)p;
     u32 last = c->beats, still = 0, armed = 1;
     for (;;) {
@@ -4583,6 +4605,11 @@ extern "C" int gate6_watchdog(void *p)
         if (++still >= (u32)WATCHDOG_STALL_S && armed) {
             armed = 0;
             stall_dump(c);
+        }
+        if (GAME_WATCHDOG_KILL_S && still == (u32)GAME_WATCHDOG_KILL_S && c->fnProcessKill) {
+            stall_dump(c);                  // where everything is at the end
+            const u32 self = KCURRENT_PROCESS;
+            ((Kill)c->fnProcessKill)(&self, WATCHDOG_KILL_REASON);
         }
     }
     return 0;
@@ -4623,6 +4650,11 @@ static void watchdog_start(Context *c)
     log_event(c, NOTE_THREAD_CREATE, 0x57A10000u | ((u32)err & 0xFFFFu));
     if (err == 0) {
         c->wdThread = th;
+        if (GAME_WATCHDOG_KILL_S && c->fnSetPriority) {
+            typedef void (*SetPri)(const u32 *, int);
+            ((SetPri)c->fnSetPriority)(&th, EPRIORITY_ABSOLUTE_HIGH);
+            log_event(c, NOTE_THREAD_CREATE, 0x57A40000u | (u32)GAME_WATCHDOG_KILL_S);
+        }
         gate6_thread_resume(&th, 0, c);
     }
     log_block(c);
@@ -11967,6 +11999,12 @@ extern "C" int gate6_sysagt_cancel(void *, u32, u32, Context *c)
 #ifndef GAME_BENCH_ENGINE_DIES
 #define GAME_BENCH_ENGINE_DIES 0
 #endif
+// Bench (round 167): at that second the main thread blocks for 30 s in the
+// engine watcher, so the watchdog has a stall to dump and a process to end
+// (GAME_WATCHDOG_KILL_S). 0 ships.
+#ifndef GAME_BENCH_MAIN_HANG_AT
+#define GAME_BENCH_MAIN_HANG_AT 0
+#endif
 
 // **A request 9.x has no server for, answered "done" at once** (round 166).
 // Colin McRae's host registers its Bluetooth security with
@@ -13988,6 +14026,17 @@ extern "C" int gate6_engine_shm_watch(void *p)
     if (!b)
         return 1;
     bench_switch(c);
+    // Round 167: this tick is an engine title's heartbeat -- the framebuffer
+    // titles' (gate6_heartbeat) starts on a first frame an engine never
+    // posts through the port -- so the watchdog has a count to watch, and
+    // starts here, on the main thread, three seconds in.
+    if (GAME_WATCHDOG_KILL_S) {
+        c->beats++;
+        if (c->beats == 6)
+            watchdog_start(c);
+        if (GAME_BENCH_MAIN_HANG_AT && c->beats == (u32)GAME_BENCH_MAIN_HANG_AT * 2 && c->fnUserAfter)
+            ((void (*)(int))c->fnUserAfter)(30000000);   // bench: the main thread stops for 30 s
+    }
     // **The engine's thread gone, for any reason** (round 166). Nothing
     // watched it: a panic there left the process up with the engine's
     // window group still focused, its socket listening and its sound
@@ -15430,6 +15479,11 @@ static u32 load_and_start()
         ctx->fnThreadReqComplete = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_REQ_COMPLETE);
         if (GAME_BENCH_ENGINE_DIES)
             ctx->fnWaitForRequest = (u32)rlibrary_lookup(&ctx->euser, 604);
+        // Round 167, the RM-409 ROM again: 1786 loads the handle and makes the
+        // executive call with the priority as given; 1320 is
+        // ProcessKill(handle, EExitKill, reason, no category).
+        ctx->fnSetPriority = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_SET_PRIORITY);
+        ctx->fnProcessKill = (u32)rlibrary_lookup(&ctx->euser, EUSER_PROCESS_KILL);
     }
     if (ctx->efsrv)
         ctx->setSessionPathFn = (u32)rlibrary_lookup(&ctx->efsrv, EFSRV_SET_SESSION_PATH);

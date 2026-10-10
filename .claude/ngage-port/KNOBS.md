@@ -239,6 +239,8 @@ on every title: `RFile::Replace`, `Write`, `Flush`, `RFs::MkDir`, `Delete`
 | `GAME_BENCH_ENDKEY_ENGINE` | 0 | bench: `GAME_BENCH_ENDKEY_AT`'s event sent to the engine's group, where the phone's end key lands | E1071-E1072, diagnostic |
 | `GAME_BENCH_ENGINE_DIES` | 0 | bench: at the engine thread's Nth GetEvent, the host's request completion (verdict in the panic number) and then G6IMP 326031, for the launcher's engine watch (0xE820) | E1077-E1080, diagnostic |
 | `BENCH_COMPLETE_VIA_USER` | 0 | bench: `gate6_complete_r2` through User::RequestComplete, to test the test (326902) | E1079, diagnostic |
+| `GAME_WATCHDOG_KILL_S` | Colin 12 | the watchdog for an engine title, at absolute 23; the stall dump at 4 s, again and RProcess::Kill (0x57A11) when the main thread has not moved for this many seconds | round 167, E1084-E1086 |
+| `GAME_BENCH_MAIN_HANG_AT` | 0 | bench: the main thread blocks 30 s at that second, for the watchdog's dumps and kill | E1084, diagnostic |
 | `GAME_BENCH_SHUTDOWN_AT` | 0 | bench: the task switcher's close event to the wrapper's group at that second (0x5B04) | E1066-E1067, diagnostic |
 | `GAME_BENCH_ENDKEY_AT` | 0 | bench: Avkon's end-key close event sent to the wrapper's group at that second (0x5B03) | E1049-E1050, diagnostic |
 | `GAME_BENCH_DSA_ABORT_AT` / `_KICK` | 0 / 0 | bench: a phone's DSA abort and restart on the engine's thread at that post; KICK puts the hand-back's kick between them | E1016-E1018, diagnostic |

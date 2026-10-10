@@ -1946,3 +1946,29 @@ exit (E1077-E1080).
 path calls it -- list them for every title, and walk each one's callers
 before a build goes out. And a thread the port starts and nobody watches is
 a process that can outlive its reason to exist.*
+
+### 13.ad Build 008 on the N95: the host still freezes the phone, the engine thread alive (round 167, E1084-E1086)
+**Symptom.** As 13.ac, with the log this time: the engine's frames stop,
+the engine calls User::Leave within four seconds, the main thread samples on
+for some sixteen seconds and stops. No 0xE820: the engine thread never died.
+**Cause.** Not yet named. 13.ac's ten Bluetooth stand-ins took the host past
+the panic and into a Leave further on, and something then stopped the main
+thread and the phone with it. No record could say what: the engine thread's
+records reach no file on a phone, and the stall watchdog that answers
+"where is every thread" was never started for an engine title -- it hung off
+the heartbeat, which starts on a framebuffer title's first frame.
+**Fix (build 009), an instrument and a floor.** The engine watcher's tick is
+now an engine title's heartbeat, so the watchdog starts there, and with
+`GAME_WATCHDOG_KILL_S` (Colin 12) it runs at EPriorityAbsoluteHigh -- absolute
+23, above the sound thread's 22 and the most an application may take without
+ProtServ. When the main thread has not moved for 4 s it writes
+`C:\g6stall-6r66.dat` (each game thread's registers twice, the main thread's
+stack); at 12 s it writes it again and kills its own process (RProcess::Kill,
+0x57A11), which a process may do to itself without a capability. Whatever of
+ours holds the phone -- a thread that never blocks, the window server waiting
+on a client of ours -- goes with the process. `GAME_BENCH_MAIN_HANG_AT` blocks
+the main thread 30 s: two dumps, every thread killed with 358929 (E1084); no
+misfire in a race (E1085) or 20 s in the background (E1086).
+*Lesson: an instrument that starts on a title's first frame does not exist
+for a title that never takes that path. Check which of the port's safety
+nets a new kind of title actually gets.*
