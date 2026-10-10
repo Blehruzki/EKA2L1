@@ -1887,3 +1887,21 @@ the exit, no shutter.
 *Lesson: a bench test that passes through a component the phone breaks
 proves nothing about the phone. Read the platform's whole path for the event
 and intercept it before the first piece the phone has shown to fail.*
+
+### 13.ab Build 006 on the N95: End still survives once (round 165, E1071-E1073)
+**Cause.** The end key's close event goes to the **focused** window group.
+In One that was the wrapper's root group, so its app UI saw it (12.z); in
+Colin the focused group is the engine's own -- the wrapper's declines the focus
+(13.o) -- so build 006's answer in the wrapper's HandleWsEventL never ran. The
+engine's event loop dropped the event; the phone brought its idle screen
+forward. After a return, the second End met the death that follows a return
+(rounds 101-102's frame, euser's async callback into cone, not yet named).
+**Fix.** `gate6_engine_get_event`, the engine's own GetEvent (where hold C
+is read), catches the close event and `KAknShutOrHideApp`, hands the engine
+EEventNull, and tells the main thread, which leaves at its next watcher tick
+(0xE81C). `GAME_BENCH_ENDKEY_ENGINE` sends the event to the engine's group:
+nothing without the catch (E1071), an exit with it (E1072). The wrapper's app
+UI now logs its first 96 events (NOTE 710), for the death if it shows again.
+*Lesson: before answering an event, find which window group it is sent to --
+and in a title that hands the focus to another group, that group is where the
+phone's keys, and its end key, go.*

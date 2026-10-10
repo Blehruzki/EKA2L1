@@ -1439,6 +1439,8 @@ struct Context {
     u32 mdaNoteWrites, mdaNoteCopies;   // GAME_MDA_RDEBUG: WriteL and BufferCopied notes so far
     u32 realGetEvent;       // GAME_ENGINE_LXCE: RWsSession::GetEvent, as resolved (gate6_engine_get_event)
     u32 realEventReady;     //   RWsSession::EventReady, as resolved (gate6_engine_event_ready)
+    u32 endKeySeen;         //   the end key's close event reached the engine's group (round 165)
+    u32 wsLogged;           //   the wrapper's window-server events logged so far (round 165)
     u32 cfgSavePending;     //   a hold's save, owed to the main thread
     u32 engineQuitting;     //   GAME_ENGINE_LAUNCHER: the engine asked to quit (mailbox 6)
     u32 benchSwitchTicks, benchOtherApp;   // GAME_BENCH_SWITCH_AT: the watcher's ticks, the other app's group
@@ -13304,6 +13306,14 @@ enum { AKN_UID_END_KEY_CLOSE = 0x101F87F0, AKN_SHUT_OR_HIDE_APP = 0x10285A1D }; 
 extern "C" void gate6_engine_wsevent(void *self, const u32 *event, void *dest, Context *c)
 {
     typedef void (*WsEvent)(void *, const void *, void *);
+    // Round 165: what reaches the wrapper's app UI, the first 96 events (main
+    // thread, so they reach the record) -- the instrument for the death that
+    // follows a return, if it remains.
+    if (event && c->wsLogged < 96) {
+        c->wsLogged++;
+        log_event(c, NOTE_WS_EVENT, event[0]);
+        log_block(c);
+    }
     if (event && (event[0] == (u32)AKN_UID_END_KEY_CLOSE || event[0] == (u32)AKN_SHUT_OR_HIDE_APP)) {
         log_event(c, NOTE_EXIT_ASKED, 0xE81D);
         log_block(c);
@@ -13811,6 +13821,15 @@ enum { I3D_MAILBOX = 0xE4 / 4, I3D_ASK = 3, I3D_ANSWER = 4, I3D_QUIT = 6, I3D_CL
 // Bench: the task switcher's close as apparc sends it (GAME_BENCH_SHUTDOWN_AT,
 // seconds; 0 off): an EEventUser whose data is EApaSystemEventShutdown, to the
 // wrapper's own group (0x5B04). Round 163.
+// Bench: GAME_BENCH_ENDKEY_ENGINE 1 sends GAME_BENCH_ENDKEY_AT's close event to
+// the engine's window group (I3D slot 1), the focused one, where the phone's
+// end key lands (round 165); 0 to the wrapper's.
+#ifndef BENCH_NO_ENGINE_ENDKEY
+#define BENCH_NO_ENGINE_ENDKEY 0        // bench: the engine GetEvent's end-key catch left out, to test the test
+#endif
+#ifndef GAME_BENCH_ENDKEY_ENGINE
+#define GAME_BENCH_ENDKEY_ENGINE 0
+#endif
 #ifndef GAME_BENCH_SHUTDOWN_AT
 #define GAME_BENCH_SHUTDOWN_AT 0
 #endif
@@ -13851,7 +13870,9 @@ static void bench_switch(Context *c)
         none.text = 0;
         if (!rlibrary_load(&lib, &nm, &none)) {
             void *session = (u8 *)c->coeEnv + 0x20 + COEENV_BIAS;
-            const int wg = ((Identifier)c->wsIdentifier)((u8 *)c->coeEnv + NEW_COEENV_ROOTWIN);
+            int wg = ((Identifier)c->wsIdentifier)((u8 *)c->coeEnv + NEW_COEENV_ROOTWIN);
+            if (endKey && GAME_BENCH_ENDKEY_ENGINE && c->engineShmBlock)
+                wg = (int)c->engineShmBlock[0xF0 / 4 + I3D_SHM_ENGINE];
             u32 ev[16];
             for (u32 i = 0; i < 16; i++) ev[i] = 0;
             if (endKey) {
@@ -13922,6 +13943,12 @@ extern "C" int gate6_engine_shm_watch(void *p)
     if (!b)
         return 1;
     bench_switch(c);
+    if (c->endKeySeen) {                    // round 165: the end key, seen on the engine's thread
+        log_event(c, NOTE_EXIT_ASKED, 0xE81C);
+        log_block(c);
+        box_flush(c);
+        user_exit(0);
+    }
     // Every eighth tick, for the first 256: the state word, then slots 1-3
     // (0x9Fssssss, then three words).
     c->shmLogTicks++;
@@ -14097,6 +14124,17 @@ extern "C" void gate6_engine_get_event(void *session, u32 *ev, Context *c)
     typedef void (*GetEvent)(void *, u32 *);
     enum { EEventNull = 0, EEventKey = 1, EEventKeyDown = 3 };
     ((GetEvent)c->realGetEvent)(session, ev);
+    // **Round 165: the end key arrives here.** Its close event goes to the
+    // focused window group, which for an engine is the engine's own (the
+    // wrapper's declines the focus), so the wrapper's HandleWsEventL
+    // (gate6_engine_wsevent) never saw it and the engine dropped it. This is
+    // the engine's thread: the main thread is told, and leaves at its next
+    // watcher tick (gate6_engine_shm_watch, 0xE81C).
+    if (!BENCH_NO_ENGINE_ENDKEY && ev && (ev[0] == (u32)AKN_UID_END_KEY_CLOSE || ev[0] == (u32)AKN_SHUT_OR_HIDE_APP)) {
+        c->endKeySeen = 1;
+        ev[0] = 0;                          // EEventNull: the engine sees nothing
+        return;
+    }
     if (!PICK_ON_HOLD || !ev || ev[0] < (u32)EEventKey || ev[0] > (u32)EEventKeyDown)
         return;
     const u32 *k = ev + 4;

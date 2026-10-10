@@ -207,7 +207,7 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // #define GAME_CARD_CID 0x00000000, 0x00000000, 0x00000000, 0x00000000
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 6
+#define GAME_BUILD 7
 
 // **An AirPlay engine, not an app** (PORTING.md, Colin McRae). The image
 // is `6r66.lxe`, the engine lxce.py inflated out of `6r66.nax`: the loader
@@ -260,3 +260,6 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // the wrapper's group at that second (gate6.cpp, round 163, E1066-E1067). 0 in
 // anything shipped.
 #define GAME_BENCH_SHUTDOWN_AT 0
+// ... and 1 sends it to the engine's group, the focused one, where the
+// phone's end key lands (round 165, E1071-E1072). 0 in anything shipped.
+#define GAME_BENCH_ENDKEY_ENGINE 0
