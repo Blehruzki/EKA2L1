@@ -13291,6 +13291,28 @@ extern "C" void gate6_engine_sysevent(void *self, const u32 *event, Context *c)
     ((SysEvent)c->realSysEvent)(self, event);
 }
 
+// **Round 164: the end key, before Avkon.** Avkon turns the end key's
+// KAknUidValueEndKeyCloseEvent into KAknShutOrHideApp, and that into
+// CAknEnv::ShutOrHideAppL (AknAppUi.cpp, aknenv.cpp): hide the app, or run the
+// app shutter -- the shutter whose RunL died in cone on the N95 (rounds
+// 101-102, 163, 164), so the first End did nothing and the second was fatal.
+// HandleCommandL only ever came from inside that shutter (the emulator's
+// survives to it, which is why E1050 passed). So the engine-mode app UI takes
+// both events in HandleWsEventL and leaves: flush, exit 0 (0xE81D).
+enum { AKN_UID_END_KEY_CLOSE = 0x101F87F0, AKN_SHUT_OR_HIDE_APP = 0x10285A1D };   // akndef.h
+
+extern "C" void gate6_engine_wsevent(void *self, const u32 *event, void *dest, Context *c)
+{
+    typedef void (*WsEvent)(void *, const void *, void *);
+    if (event && (event[0] == (u32)AKN_UID_END_KEY_CLOSE || event[0] == (u32)AKN_SHUT_OR_HIDE_APP)) {
+        log_event(c, NOTE_EXIT_ASKED, 0xE81D);
+        log_block(c);
+        box_flush(c);
+        user_exit(0);
+    }
+    ((WsEvent)c->realWsEvent)(self, event, dest);
+}
+
 // An old vtable entry the game wrote, as opposed to one it inherited: inside
 // the image, and not the import veneer (`ldr ip, [pc, #4]; ldr ip, [ip];
 // bx ip`) every inherited slot of an old table points at -- those are inside
@@ -13792,6 +13814,9 @@ enum { I3D_MAILBOX = 0xE4 / 4, I3D_ASK = 3, I3D_ANSWER = 4, I3D_QUIT = 6, I3D_CL
 #ifndef GAME_BENCH_SHUTDOWN_AT
 #define GAME_BENCH_SHUTDOWN_AT 0
 #endif
+#ifndef BENCH_NO_ENGINE_WSEVENT
+#define BENCH_NO_ENGINE_WSEVENT 0       // bench: the engine app UI's end-key answer left out, to test the test
+#endif
 #ifndef BENCH_NO_ENGINE_SYSEVENT
 #define BENCH_NO_ENGINE_SYSEVENT 0      // bench: the engine app UI's shutdown answer left out, to test the test
 #endif
@@ -14192,6 +14217,12 @@ extern "C" void *gate6_engine_app_ui(void *self)
     c->realCommand = vt[VT_HEADER + SLOT_UI_COMMAND];
     if (!BENCH_NO_ENGINE_COMMAND && c->spare + TRACE <= c->spareEnd) {
         vt[VT_HEADER + SLOT_UI_COMMAND] = ctx_thunk(c->spare, c, (u32)&gate6_ui_command);
+        c->spare += TRACE;
+    }
+    // Round 164: and the end key itself, before Avkon (gate6_engine_wsevent).
+    c->realWsEvent = vt[VT_HEADER + SLOT_UI_WSEVENT];
+    if (!BENCH_NO_ENGINE_WSEVENT && c->spare + TRACE <= c->spareEnd) {
+        vt[VT_HEADER + SLOT_UI_WSEVENT] = ctx3_thunk(c->spare, c, (u32)&gate6_engine_wsevent);
         c->spare += TRACE;
     }
     // Round 163: and the task switcher's close (gate6_engine_sysevent).

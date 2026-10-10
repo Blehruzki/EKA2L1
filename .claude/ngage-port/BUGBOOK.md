@@ -1870,3 +1870,20 @@ first (E1067).
 title's entry first -- One's knob was the fix. And a reading in the record
 (E984: "the engine never goes through the proxy") is a measurement of its day;
 re-measure before building on it.*
+
+### 13.aa Build 005 on the N95: End does nothing, then the second End dies (round 164, E1069-E1070)
+**Cause.** End reaches Avkon as `KAknUidValueEndKeyCloseEvent`, which
+`CAknAppUi::HandleWsEventL` turns into `KAknShutOrHideApp` and
+`CAknEnv::ShutOrHideAppL` into "hide" or `RunAppShutter()` (AknAppUi.cpp,
+aknenv.cpp) -- never `HandleSystemEventL`, and `HandleCommandL` only from inside
+the shutter. Build 004's `HandleCommandL` answer (13.y) and build 005's
+`HandleSystemEventL` answer (13.z) both sat behind a shutter that dies in cone
+on the N95. E1050's bench test passed because the emulator's shutter survives
+long enough to call `HandleCommandL`.
+**Fix.** `gate6_engine_wsevent`: the engine-mode app UI's `HandleWsEventL`
+takes the end-key close event and `KAknShutOrHideApp` (akndef.h, 0x10285A1D)
+and leaves (0xE81D) before Avkon sees them. E1069: the close event straight to
+the exit, no shutter.
+*Lesson: a bench test that passes through a component the phone breaks
+proves nothing about the phone. Read the platform's whole path for the event
+and intercept it before the first piece the phone has shown to fail.*
