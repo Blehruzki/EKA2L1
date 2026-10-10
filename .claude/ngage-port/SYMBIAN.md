@@ -722,6 +722,31 @@ Wait and Signal on it. So on S60 3.0 and 3.1 (9.1, 9.2) a thread between
 Begin and End holds up every bitmap user in the phone, the window server
 included. 9.3+ (S60 3.2 and later) has no such lock.
 
+**Why the N95 refused LocalServices (round 171, from the installer's own
+source, oss.fcl.sf.mw.appinstall).** The signed range is what mksis signs:
+`CSecurityManager::SignedSize` sums Info, Options, Languages,
+Prerequisites, Properties, [Logo] and InstallBlock, each header + length +
+padding, and `CSignatureVerifier` checks RSA PKCS#1 v1.5 over SHA-1 with a
+DigestInfo -- openssl's own format. And "Required application access not
+granted" is `EUiCapabilitiesCannotBeGranted`, raised by
+`installmachine.cpp` only when a package asks for a system capability, or
+for a user capability while `AllowGrantUserCapabilities` is false; unsigned
+and self-signed packages are one trust class
+(`ESisPackageUnsignedOrSelfSigned`). The reference policy
+(`swiconfig/swi/swipolicy.ini`) is `AllowUnsigned = false`,
+`AllowGrantUserCapabilities = true`, user capabilities NetworkServices
+LocalServices ReadUserData WriteUserData Location UserEnvironment. The
+user's N95 installs unsigned packages, so its policy is not the reference
+one, and it refused LocalServices unsigned and self-signed alike: it grants
+no user capability (or not that one) to an uncertified package. A stock
+phone does the opposite -- refuses every unsigned package, grants
+LocalServices to a self-signed one.
+
+**Bluetooth sockets need LocalServices** (oss.fcl.sf.os.bt: the Bluetooth
+SAP checks it for every protocol under it -- avctpsap.cpp says so --
+and SDP's net database checks `KLOCAL_SERVICES`, sdpnetdb.cpp). There is no
+Bluetooth path on S60v3 for an executable without it.
+
 **9.x's btmanclient has no `RBTSecuritySettings`.** Its 84 exports (RM-409,
 EKA2L1's `epoc9.def`) carry RBTMan, the registry and comm-port settings;
 `TBTServiceSecurity` lives in bluetooth.dll on 9.x, and a listener's security
