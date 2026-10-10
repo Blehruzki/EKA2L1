@@ -30,7 +30,61 @@ def _find(node, t):
     return None
 
 
-def build(dst, uid, name, vendor, files, template=TEMPLATE):
+# **Self-signing (round 168).** A phone installs an unsigned package only
+# while nothing in it asks for a capability; Colin's build 010 asked for
+# LocalServices and the N95 said "Required application access not granted".
+# A self-signed package may carry the user-grantable ones (LocalServices,
+# NetworkServices, ReadUserData, WriteUserData, Location, UserEnvironment).
+# The layout is Ensymble's (sisfile.py, which phones of the time accepted):
+# the signature is RSA/SHA-1 (PKCS#1 v1.5) over the SISController's
+# **contents** -- every field before the signatures, headers and padding
+# included, the controller's own header not -- and goes in a
+# SISSignatureCertificateChain {SISArray<SISSignature>, SISCertificateChain},
+# between the install block and the SISDataIndex. The certificate is the
+# port's own (selfsign/: RSA-1024, sha1WithRSA, 2006-2046), with no trust
+# value at all: it signs, it does not vouch.
+SIG_CHAIN, SIGNATURE, BLOB, SIG_ALGORITHM, CERT_CHAIN, DATA_INDEX = 39, 36, 37, 38, 22, 40
+CTRL_CHECKSUM, DATA_CHECKSUM = 34, 35
+SHA1_RSA = '1.2.840.113549.1.1.5'
+SELFSIGN = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'selfsign')
+
+
+def crc16_ccitt(data):
+    """SISControllerChecksum / SISDataChecksum: CRC-16/CCITT, initial 0, over
+    the whole SISCompressed controller field and the whole SISData field,
+    headers included (checked against EKA2L1's template, whose two stored
+    values this reproduces)."""
+    v = 0
+    for c in data:
+        v ^= c << 8
+        for _ in range(8):
+            v = ((v << 1) ^ 0x1021) if v & 0x8000 else v << 1
+            v &= 0xFFFF
+    return v
+
+
+def sign_controller(ctrl, keydir=SELFSIGN):
+    """Insert a self-signed SISSignatureCertificateChain into `ctrl`."""
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+    ctrl.kids = [k for k in ctrl.kids if k.t != SIG_CHAIN]
+    before = [k for k in ctrl.kids if k.t != DATA_INDEX]
+    after = [k for k in ctrl.kids if k.t == DATA_INDEX]
+    signed = b''.join(k.ser() for k in before)
+    key = serialization.load_pem_private_key(
+        open(os.path.join(keydir, 'selfsign.key'), 'rb').read(), password=None)
+    sig = key.sign(signed, padding.PKCS1v15(), hashes.SHA1())
+    cert = open(os.path.join(keydir, 'selfsign.cer'), 'rb').read()
+    chain = sisrw.F(SIG_CHAIN, kids=[
+        sisrw.F(ARRAY, elem=SIGNATURE, kids=[sisrw.F(SIGNATURE, kids=[
+            sisrw.F(SIG_ALGORITHM, kids=[sisrw.F(STRING, raw=_u16(SHA1_RSA))]),
+            sisrw.F(BLOB, raw=sig)])]),
+        sisrw.F(CERT_CHAIN, kids=[sisrw.F(BLOB, raw=cert)])])
+    ctrl.kids = before + [chain] + after
+    return signed, sig
+
+
+def build(dst, uid, name, vendor, files, template=TEMPLATE, sign=False):
     """files: [(local path, install target)], the target like '!:\\sys\\bin\\x.exe'.
 
     A target of `None` makes the entry a **display text** instead of an
@@ -70,8 +124,19 @@ def build(dst, uid, name, vendor, files, template=TEMPLATE):
             target or '', hashlib.sha1(payload).digest(), len(packed), len(payload),
             index, op, op_op)))
 
+    if sign:
+        sign_controller(ctrl)
     cbuf = bytearray(ctrl.ser())
     ctrl_node.raw = struct.pack('<IQ', 1, len(cbuf)) + zlib.compress(bytes(cbuf), 9)
+    # The two checksums, which until round 168 kept the template's values:
+    # the N95 installed every such package, so it does not check them, but
+    # a stale checksum is a wrong field all the same.
+    data_node = [k for k in contents.kids if k.t == sisrw.DATA][0]
+    for k in contents.kids:
+        if k.t == CTRL_CHECKSUM:
+            k.raw = struct.pack('<H', crc16_ccitt(ctrl_node.ser()))
+        elif k.t == DATA_CHECKSUM:
+            k.raw = struct.pack('<H', crc16_ccitt(data_node.ser()))
 
     import mke32
     head = bytearray(head)

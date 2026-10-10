@@ -49,6 +49,13 @@ E1028 the drive on E:, E1029 the data on C: with the loader on E: and QUIT,
 E1030 an app switch). Check the zip by extracting it and diffing it against
 the tree the bench ran.
 
+## Before any build goes out: the package itself
+
+`python3 toolchain/port/sischeck.py <package.sis>` must exit 0: both checksums
+right and, for a package whose exe asks for a capability (`GAME_CAPABILITIES`),
+a self-signature openssl verifies. A phone refuses an unsigned package that
+asks for a capability (round 169); the emulator installs anything.
+
 ## Before any build goes out: the phone's handle rules
 
 Run the title once under `EKA2L1_STRICTHANDLE=2` and `EKA2L1_KERNREQ=1` (exported

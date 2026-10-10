@@ -1994,3 +1994,23 @@ same path, and the watchdog is what stands under it.
 calls needs its capability declared, and the bench will never say which are
 missing -- list them from the imports (esock on a Bluetooth protocol:
 LocalServices; RHostResolver on the net: NetworkServices).*
+
+### 13.af Build 010 on the N95: "Required application access not granted" (round 169, E1092-E1093)
+**Symptom.** The installer refuses build 010 outright.
+**Cause.** Every package the port ever built was **unsigned** (mksis edits
+EKA2L1's unsigned sample), and the N95 installs an unsigned package only
+while no exe in it asks for a capability. 010 asked for LocalServices.
+Also found: mksis never recomputed the SISControllerChecksum and
+SISDataChecksum, so every package carried the template's -- and the N95
+installed them all, so it does not check them.
+**Fix (build 011).** A package whose exe asks for a capability is
+**self-signed** (mksis `sign_controller`, Ensymble's layout: RSA/SHA-1 over
+the controller's contents, a SISSignatureCertificateChain before the
+SISDataIndex), with the port's own certificate (`selfsign/`, RSA-1024,
+sha1WithRSA, 2006-2046 -- no trust value; the key is in the repository on
+purpose). Packages that ask for nothing stay unsigned, as before. Both
+checksums are now computed. `sischeck.py` reads a package back with a parser
+of its own and verifies the signature with openssl (and fails a tampered one).
+*Lesson: an installer's rules are a phone's, not the emulator's -- a
+capability is three gates (exe header, package signature, installer policy)
+and the bench checks none of them.*

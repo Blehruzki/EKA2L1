@@ -161,7 +161,10 @@ def build(name, uid3, caption, out, imports=(), sources=None, icon=None,
         files.append((icon_mif, '!:\\resource\\apps\\%s.mif' % name))
     files += list(extra)
 
-    mksis.build(p(name + '.sis'), uid3, caption, vendor, files)
+    # Signed when the exe asks for a capability (round 168): a phone refuses
+    # an unsigned package that does, and installs one that asks for none.
+    mksis.build(p(name + '.sis'), uid3, caption, vendor, files,
+                sign=bool(e32.get('caps')))
     print('%s: %d bytes of code, %d relocations, %d imports, %d files -> %s (%.1f MB)'
           % (name, len(flats[0]), len(offsets),
              sum(len(o) for _d, o in blocks), len(files), p(name + '.sis'),

@@ -700,6 +700,17 @@ installer accepted. Bluetooth sockets (esock on BTLinkManager, L2CAP, RFCOMM)
 need LocalServices -- the SDK's documentation, not yet a measurement here
 (round 168 is the test). The port's loader declared none until build 010.
 
+**Signing, as the N95 enforces it** (rounds 168-169). An unsigned package
+installs while no exe in it declares a capability; one that declares
+LocalServices is refused, "Required application access not granted". A
+self-signed package may carry the user-grantable capabilities (the SWI
+policy's user set: LocalServices, NetworkServices, ReadUserData,
+WriteUserData, Location, UserEnvironment) -- the SDK's account, to be
+confirmed by build 011. The SISController checksums are not checked: every
+package before build 011 carried stale ones and installed. Signature layout:
+Ensymble 0.29 `sisfile.py` (RSA/SHA-1 over the controller's contents, the
+chain between the install block and the data index).
+
 **9.x's btmanclient has no `RBTSecuritySettings`.** Its 84 exports (RM-409,
 EKA2L1's `epoc9.def`) carry RBTMan, the registry and comm-port settings;
 `TBTServiceSecurity` lives in bluetooth.dll on 9.x, and a listener's security
