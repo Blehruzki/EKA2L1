@@ -96,3 +96,17 @@ command used to crash the emulator itself -- an EKA1 title calling the gc
 through a GCC 2.x vtable slot reached `Clear()` before any `Activate`
 (ngage-port E920). The check is in `graphic_context::execute_command` and
 logs the opcode and the thread before the panic.
+
+## Bluetooth over IP on a host without IPv6
+
+Not a switch: always on. The Bluetooth emulation (`services/src/bluetooth/
+protocols`) carried RFCOMM, L2CAP and SDP over IPv6 sockets only, so on a host
+with no IPv6 -- a container, where every AF_INET6 socket fails EAFNOSUPPORT --
+the first `RSocket::Bind` on a Bluetooth socket crashed the emulator
+(`btinet_socket::bind` on an inet socket that was never created; ngage-port
+E1100). `epoc::internet::host_supports_ipv6()` probes once; without IPv6 the
+RFCOMM and L2CAP factories, the bind address, the discovery, SDP and asker
+sockets use IPv4, and friend addresses stay IPv4 instead of being mapped. And
+`inet_socket::open` now reports libuv's own error on a failed init (it printed
+`errno`) and frees the handle it never initialised, which used to reach
+`uv_close` later.
