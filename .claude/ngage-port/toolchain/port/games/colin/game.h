@@ -117,6 +117,10 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 #define GAME_SOCK_WRITE_KEEP 0x00002734
 #define GAME_SOCK_RECV_KEEP0 0x000025d4
 #define GAME_SOCK_RECV_KEEP1 0x00002840
+// The joiner's player-info builder (0x47d90c): its five calls to the name and tag
+// getters (0x4ba274, 0x4ba2fc), whose NULL for a guest joiner is read as "" (round 172).
+#define GAME_NULL_NAME_SITES 0x0007d92c, 0x0007d940, 0x0007d954, 0x0007d96c, 0x0007d97c
+#define GAME_NULL_NAME_COUNT 5
 
 // The environment's screen device, as the game reads it off the view
 // (old iScreen, 0x3c): 1 hands it a stand-in that answers font requests by

@@ -3936,6 +3936,45 @@ static void zhook_plant(Context *c, u8 *base, u32 at, u32 marker)
     log_event(c, NOTE_PLANT_OK, marker);
 }
 
+// **A name the game asks for and gets as NULL (round 172).** Colin's joiner
+// builds its player-info message (0x47d90c) as soon as the host's settings
+// arrive: strcpy and strlen of player 0's driver name and tag (0x4ba274,
+// 0x4ba2fc), which are NULL for a guest -- no profile slot in a multiplayer
+// rally (modes 1-2) -- and the engine thread faulted reading address 0
+// (E1127-E1159). No route through the game gives a joiner a driver that
+// survives into the session (records, E1135-E1159), and whether the N-Gage
+// read address 0 harmlessly is not settled. So, a guess written down: at
+// those call sites (GAME_NULL_NAME_SITES) a NULL name reads as the empty
+// string -- what a zero byte at address 0 would have given -- and the
+// message goes out with an empty name. Every other caller of the getters,
+// many of which test for NULL themselves, is left alone. NOTE_PLANT_OK logs
+// each site with 0x4E000000 | offset; a site that is not a bl is skipped.
+//   stmdb sp!, {r4, lr} ; ldr r12, getter ; blx r12 ; cmp r0, #0
+//   ldreq r0, "" ; ldmia sp!, {r4, pc}
+#ifndef GAME_NULL_NAME_SITES
+#define GAME_NULL_NAME_SITES 0
+#define GAME_NULL_NAME_COUNT 0
+#endif
+static const u32 kNullNameSite[] = { GAME_NULL_NAME_SITES };
+static const u32 kEmptyName = 0;
+enum { NULL_NAME_WORDS = 8 };
+static void null_name_plant(Context *c, u8 *base, u32 at)
+{
+    u32 *site = (u32 *)(base + at);
+    if ((*site & 0xFF000000u) != 0xEB000000u || c->spare + NULL_NAME_WORDS * 4 > c->spareEnd)
+        return;
+    i32 off = (i32)(*site << 8) >> 6;           // the bl's own target, sign-extended
+    const u32 getter = (u32)site + 8 + (u32)off;
+    u32 *b = (u32 *)c->spare;
+    b[0] = 0xE92D4010; b[1] = 0xE59FC00C; b[2] = 0xE12FFF3C; b[3] = 0xE3500000;
+    b[4] = 0x059F0004; b[5] = 0xE8BD8010; b[6] = getter; b[7] = (u32)&kEmptyName;
+    user_imb_range(b, b + NULL_NAME_WORDS);
+    c->spare += NULL_NAME_WORDS * 4;
+    *site = 0xEB000000u | ((((u32)b - (u32)site - 8) >> 2) & 0x00FFFFFFu);
+    user_imb_range(site, site + 1);
+    log_event(c, NOTE_PLANT_OK, 0x4E000000u | at);
+}
+
 static void crumb_plant_r5(Context *c, u8 *base, u32 at, u32 marker)
 {
     u32 *site = 0, original = 0;
@@ -16629,6 +16668,9 @@ static u32 load_and_start()
         iat[IMPORT_FILE_REPLACE] = ctx->cardReplace;
     }
 
+    for (u32 i = 0; i < (u32)GAME_NULL_NAME_COUNT; i++)
+        if (kNullNameSite[i] + 4 <= imgSize && !(kNullNameSite[i] & 3))
+            null_name_plant(ctx, base, kNullNameSite[i]);
     if (HOOK_UNCOMPRESS)
         for (u32 i = 0; i < sizeof kZSite / sizeof kZSite[0]; i++)
             if (kZSite[i] + 4 <= imgSize)
