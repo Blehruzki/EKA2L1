@@ -71,7 +71,7 @@ def uid_checksum(uid1, uid2, uid3):
 
 
 def build(code, uid3, entry=0, stack=0x2000, heap_min=0x1000, heap_max=0x100000,
-          uid2=0, code_base=0x8000, when=None, reloc_offsets=(), imports=()):
+          uid2=0, code_base=0x8000, when=None, reloc_offsets=(), imports=(), caps=0):
     import importsec, relocs
     code = bytes(code)
     code += b'\0' * (-len(code) % 4)
@@ -118,7 +118,11 @@ def build(code, uid3, entry=0, stack=0x2000, heap_min=0x1000, heap_max=0x100000,
     u32(0x7c, len(code) + len(import_section) + len(reloc_section))  # past the header
     u32(0x80, uid3)            # secure id
     u32(0x84, 0)               # vendor id
-    u32(0x88, 0); u32(0x8c, 0)                       # capabilities
+    # Capabilities, TCapabilitySet's two words (e32capability.h: bit n is
+    # TCapability n). A phone's kernel checks them on every protected call
+    # whatever the installer let through; the emulator checks none, which is
+    # how Colin's Bluetooth ran on the bench and failed on the N95 (round 168).
+    u32(0x88, caps & 0xFFFFFFFF); u32(0x8c, caps >> 32)
     u32(0x90, 0)               # exception descriptor
     u32(0x94, 0)               # spare
     u16(0x98, 0); h[0x9a] = 0; h[0x9b] = 0           # export description

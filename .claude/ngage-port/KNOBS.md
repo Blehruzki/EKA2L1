@@ -241,6 +241,7 @@ on every title: `RFile::Replace`, `Write`, `Flush`, `RFs::MkDir`, `Delete`
 | `BENCH_COMPLETE_VIA_USER` | 0 | bench: `gate6_complete_r2` through User::RequestComplete, to test the test (326902) | E1079, diagnostic |
 | `GAME_WATCHDOG_KILL_S` | Colin 12 | the watchdog for an engine title, at absolute 23; the stall dump at 4 s, again and RProcess::Kill (0x57A11) when the main thread has not moved for this many seconds | round 167, E1084-E1086 |
 | `GAME_BENCH_MAIN_HANG_AT` | 0 | bench: the main thread blocks 30 s at that second, for the watchdog's dumps and kill | E1084, diagnostic |
+| `GAME_CAPABILITIES` | Colin 0x4000 (LocalServices); others unset (none) | the exe header's capability set (mke32 `caps`), what the title's protected calls need from a phone's kernel; the emulator enforces none | round 168, E1091 |
 | `GAME_BENCH_SHUTDOWN_AT` | 0 | bench: the task switcher's close event to the wrapper's group at that second (0x5B04) | E1066-E1067, diagnostic |
 | `GAME_BENCH_ENDKEY_AT` | 0 | bench: Avkon's end-key close event sent to the wrapper's group at that second (0x5B03) | E1049-E1050, diagnostic |
 | `GAME_BENCH_DSA_ABORT_AT` / `_KICK` | 0 / 0 | bench: a phone's DSA abort and restart on the engine's thread at that post; KICK puts the hand-back's kick between them | E1016-E1018, diagnostic |

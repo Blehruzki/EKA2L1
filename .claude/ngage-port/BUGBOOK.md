@@ -1972,3 +1972,25 @@ misfire in a race (E1085) or 20 s in the background (E1086).
 *Lesson: an instrument that starts on a title's first frame does not exist
 for a title that never takes that path. Check which of the port's safety
 nets a new kind of title actually gets.*
+
+### 13.ae Build 009 on the N95: the host, and a charger plugged in mid-intro, stall -- and close (round 168, E1088-E1091)
+**Symptom.** The game freezes and, twelve seconds later, closes (009's
+watchdog); the phone comes back. The same with the charger plugged in during
+the intro.
+**Cause.** The watchdog's dump (C:\g6stall-6r66.dat): the last traced call is
+User::Leave from the engine's "is Bluetooth on?" (0x449d64 -- a Bluetooth
+link-manager socket, FindProtocol, Open, GetOpt; any error leaves), and the
+engine thread is inside that leave, in its display's destructors, in a ROM
+wait, with the main thread parked in a synchronous call from cone. And the
+loader's exe header declared **no capabilities** (mke32 wrote 0): on a phone
+every Bluetooth socket call needs LocalServices, so the check could only
+fail there, while the emulator enforces no capability and let it pass.
+**Fix (build 010).** `GAME_CAPABILITIES` (game.h, a TCapabilitySet mask)
+goes into the exe header; Colin declares LocalServices (0x4000),
+user-grantable. Still open: why the leave destroys the live display and why
+that destruction hangs a phone -- any other Bluetooth error would take the
+same path, and the watchdog is what stands under it.
+*Lesson: the emulator checks no capability. Every protected API a title
+calls needs its capability declared, and the bench will never say which are
+missing -- list them from the imports (esock on a Bluetooth protocol:
+LocalServices; RHostResolver on the net: NetworkServices).*

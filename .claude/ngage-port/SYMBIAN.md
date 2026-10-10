@@ -692,6 +692,14 @@ without it (sthread.cpp). `RProcess::Kill` on a process of the same security
 zone -- itself -- needs no capability (server.cpp, `ExecHandler::ProcessKill`;
 PowerMgmt only for another's). On RM-409: euser 1786 SetPriority, 1320 Kill.
 
+**Capabilities are checked by the phone's kernel and servers, not by the
+emulator.** The exe header's TCapabilitySet (offset 0x88, two words; bit n is
+`TCapability` n, e32capability.h: NetworkServices 13, LocalServices 14) is
+what every protected call is checked against at run time, whatever the
+installer accepted. Bluetooth sockets (esock on BTLinkManager, L2CAP, RFCOMM)
+need LocalServices -- the SDK's documentation, not yet a measurement here
+(round 168 is the test). The port's loader declared none until build 010.
+
 **9.x's btmanclient has no `RBTSecuritySettings`.** Its 84 exports (RM-409,
 EKA2L1's `epoc9.def`) carry RBTMan, the registry and comm-port settings;
 `TBTServiceSecurity` lives in bluetooth.dll on 9.x, and a listener's security

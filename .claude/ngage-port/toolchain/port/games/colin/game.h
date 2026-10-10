@@ -207,7 +207,7 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // #define GAME_CARD_CID 0x00000000, 0x00000000, 0x00000000, 0x00000000
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 9
+#define GAME_BUILD 10
 
 // **An AirPlay engine, not an app** (PORTING.md, Colin McRae). The image
 // is `6r66.lxe`, the engine lxce.py inflated out of `6r66.nax`: the loader
@@ -273,6 +273,12 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // 4 s and again at the end (gate6.cpp, gate6_watchdog). Build 008's host froze
 // the whole N95 with the engine thread alive and the main thread stopped.
 #define GAME_WATCHDOG_KILL_S 12
+// Round 168: the loader's capabilities (the exe header, TCapabilitySet bits).
+// LocalServices (14) is what a Bluetooth socket needs on a phone: without it
+// the engine's "is Bluetooth on?" (0x449d64) got KErrPermissionDenied and
+// left -- multiplayer, and a charger plugged in mid-intro, froze the N95.
+// User-grantable; the emulator enforces no capability at all.
+#define GAME_CAPABILITIES 0x4000
 // Bench: the main thread blocks for 30 s at that second (round 167). 0 in
 // anything shipped.
 #define GAME_BENCH_MAIN_HANG_AT 0

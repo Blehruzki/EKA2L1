@@ -75,7 +75,11 @@ def build(out='.', caption=None, game=DEFAULT_GAME, **kw):
                # there; on 9.x the framework underneath it is deeper, and a
                # stack that runs out is a fault with nothing to say for itself.
                stack=0x10000,
-               heap_max=0x4000000, **kw)
+               heap_max=0x4000000,
+               # Round 168: what the title's own calls need from a phone's
+               # kernel (GAME_CAPABILITIES, a TCapabilitySet mask; none when
+               # unset, as every build before 010 shipped).
+               caps=int(game_setting(game, 'GAME_CAPABILITIES') or '0', 0), **kw)
 
 
 if __name__ == '__main__':

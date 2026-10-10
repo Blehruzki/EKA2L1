@@ -245,7 +245,7 @@ hardware coverage above with DEVICES.md's phone table.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | stem | `6r67` | `6rbc` | `6r21` | `6r58` | `ngtest` | `6r66` | `6r66_2` |
 | loader app | `gate6a1` | `gate6` | `gate6ashe` | `gate6one` | `gate6ngte` | `gate6coli` | `gate6col2` |
-| build in the tree | 030 | 196 | 016 | 028 | 002 | 009 | 001 |
+| build in the tree | 030 | 196 | 016 | 028 | 002 | 010 | 001 |
 | game UID3 | 0x101fd3fc | 0x101fd42d | 0x101fd3e9 | 0x101fd409 | 0x10205e7a | 0x00000000 | 0x101fd417 |
 | code | 615 KB | 1556 KB | 970 KB | 1371 KB | 25 KB | 4 KB | 224 KB |
 | imports / DLLs | 391 / 21 | 462 / 21 | 354 / 20 | 532 / 21 | 181 / 7 | 0 / 0 | 583 / 22 |
@@ -369,6 +369,7 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_BUNDLE_DATA` | 1 | 1 | 1 | 1 | 1 | 1 | 1 |
 | `GAME_CANCEL_OWN_OBJECTS` | 0 | 0 | 0 | 1 | 1 | 1 | 1 |
 | `GAME_CANCEL_ROM_OBJECTS` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
+| `GAME_CAPABILITIES` | · | · | · | · | · | 0x4000 | · |
 | `GAME_CARD_CID` | · | · | · | 0x567857f1,… | · | · | · |
 | `GAME_CODE_PATCHES` | 0 entries | 0 entries | 2 entries | 8 entries | 0 entries | 19 entries | 0 entries |
 | `GAME_CONTROL_H` | 0 | 0 | 208 | 0 | 0 | 0 | 0 |
