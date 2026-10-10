@@ -1905,3 +1905,44 @@ UI now logs its first 96 events (NOTE 710), for the death if it shows again.
 *Lesson: before answering an event, find which window group it is sent to --
 and in a title that hands the focus to another group, that group is where the
 phone's keys, and its end key, go.*
+
+### 13.ac Build 007 on the N95: hosting a multiplayer game freezes the whole phone (round 166, E1074-E1082)
+**Symptom.** MULTIPLAYER -> Host a Game, with Bluetooth on: the picture stops
+where it is, the music plays on, and no key answers -- not even the power
+key; only a battery pull brings the phone back. No log (the next launch
+replaces it).
+**Cause.** Two faults in a row, the first certain from the binary, the second
+read from the platform's priority table:
+1. The host's path (engine 0x4ae8a0) opens an RFCOMM socket, binds, listens,
+   accepts, and then registers the service's Bluetooth security
+   (0x4ae9bc): `TBTServiceSecurity`, `RBTSecuritySettings::Open`,
+   `RegisterService`, `User::WaitForRequest`. 9.x's btmanclient has no
+   `RBTSecuritySettings` (security travels with the listener's TBTSockAddr,
+   `TBTSockAddr::SetSecurity`, in bluetooth.dll), so all ten of Colin's
+   Bluetooth imports had stayed reporting stubs, and the first, the
+   `TBTServiceSecurity` constructor, panicked the engine's thread G6IMP
+   326031.
+2. Nothing watched the engine's thread. The process lived on with the dead
+   thread's window group still focused and its socket listening -- and its
+   sound thread playing, at EPriorityRealTime, which in a foreground process
+   is absolute priority 22 (sthread.cpp, `ThreadPriorityTable`): above every
+   application and above sysap, which answers the power key. The bench has
+   no Bluetooth (Host only says "Bluetooth connection is busy", E1074-E1076),
+   so the path could not be entered here.
+**Fix (build 008).** The ten imports answered as an accepted registration:
+constructors return the object, setters and Open/Close return KErrNone, and
+`RegisterService` completes its status at once through
+`RThread::RequestComplete` -- the word only, since the status is the engine's
+one-word EKA1 one with a cleanup item's function pointer after it, and
+`User::RequestComplete` would have ORed ERequestPending into that pointer
+(`gate6_complete_r2`). And the launcher part's watcher ends the process
+the moment the engine's thread is not running (RThread::ExitType, 0xE820,
+then the exit type and reason), so a death there can no longer leave a
+process behind it. `GAME_BENCH_ENGINE_DIES` runs both on the engine's thread:
+the completion's verdict in the panic number (326031 right, 326902 for the
+User::RequestComplete variant -- the test tested, E1079), then the watch's
+exit (E1077-E1080).
+*Lesson: an import left as a reporting stub is a crash waiting in whatever
+path calls it -- list them for every title, and walk each one's callers
+before a build goes out. And a thread the port starts and nobody watches is
+a process that can outlive its reason to exist.*

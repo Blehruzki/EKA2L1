@@ -661,6 +661,35 @@ build 002 (round 135) with every phase three or two times over:
 - Threads of one priority share the CPU: a spinner made ~2.46 M per 100 ms
   in every sample while the main thread kept ~60% of its solo rate.
 
+## Thread priorities, and the Bluetooth security 9.x moved (Colin, round 166)
+
+**A relative priority becomes an absolute one through a table**
+(`kernel/eka/kernel/sthread.cpp`, `ThreadPriorityTable`, indexed by process
+priority and thread priority). In a **foreground** process: MuchLess 10,
+Less 11, Normal 12, More 13, MuchMore 14, **RealTime 22**. The system server
+rows run Normal at 21 and More at 24 (23 with
+`SYMBIAN_CURB_SYSTEMSERVER_PRIORITIES`); a High process (sysap's class) runs
+Normal at 19. Anything above 24 needs ProtServ and is capped without it, so
+22 is allowed to any application -- and is above every application thread and
+above sysap. An application thread at EPriorityRealTime that stops blocking
+takes the phone with it, power key included.
+
+**`User::RequestComplete` touches the word after the status.** It is
+`*aStatus = KRequestPending; RThread().RequestComplete(aStatus, aReason);`
+(`euser/us_func.cpp`), and the assignment is `TRequestStatus::operator=`,
+which sets ERequestPending in the second word. `RThread::RequestComplete` is a
+bare executive call (`epoc/arm/uc_exec.cia`; on RM-409, euser 1790: ldrex/strex
+of the pointer, then the call), and the kernel writes the status word only.
+So for a one-word EKA1 status with something of its own after it, complete
+through `RThread::RequestComplete` on `KCurrentThreadHandle`.
+
+**9.x's btmanclient has no `RBTSecuritySettings`.** Its 84 exports (RM-409,
+EKA2L1's `epoc9.def`) carry RBTMan, the registry and comm-port settings;
+`TBTServiceSecurity` lives in bluetooth.dll on 9.x, and a listener's security
+is given with `TBTSockAddr::SetSecurity(TBTServiceSecurity const&)` before the
+bind. An N-Gage title that registers security through `RBTSecuritySettings`
+has nothing to call; its listener keeps 9.x's default security.
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:

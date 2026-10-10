@@ -178,6 +178,10 @@ LOCAL_VOLUMEINFO_CTOR = 25
 # the word as the stack had it, so the engine's later RHandleBase::Close was
 # handed a stale clock value -- KERN-EXEC 0 on a phone (EKA2L1 lets it pass).
 LOCAL_HANDLE_CTOR = 26
+# Round 166: an asynchronous call 9.x removed whose answer is "done, and
+# fine" -- the request status in r2 completed with KErrNone at once, word
+# only, through RThread::RequestComplete (gate6_complete_r2).
+LOCAL_COMPLETE_R2 = 27
 LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL,
          'memmove': LOCAL_MEM_MOVE, '__negdf2': LOCAL_NEGDF2}
 
@@ -482,6 +486,31 @@ BY_ORDINAL = {
     # handle stays 0 and the game's Close of it is the null-handle no-op
     # (round 161: Colin's engine closed a stack word holding a clock value).
     ('sysagt', 18): ('local', LOCAL_HANDLE_CTOR, KIND_LOCAL),
+    # Colin McRae's multiplayer (round 166). Hosting a game opens an RFCOMM
+    # socket, binds, listens and accepts -- all still in 9.x's esock -- and
+    # then registers the service's Bluetooth security through
+    # RBTSecuritySettings and TBTServiceSecurity (engine 0x4ae9bc). 9.x has
+    # neither in btmanclient: a listener's security travels with its
+    # TBTSockAddr there. Every one of these was the reporting stub, so the
+    # host's first call killed the engine's thread with G6IMP 326031 -- and
+    # on the N95 that left a phone that answered no key, the power key
+    # included. They now do what an accepted registration does, nothing,
+    # and the socket keeps 9.x's default security.
+    ('btmanclient', 61): ('local', LOCAL_SELF, KIND_LOCAL),          # TBTServiceSecurity::TBTServiceSecurity()
+    ('btmanclient', 62): ('local', LOCAL_SELF, KIND_LOCAL),          # TBTServiceSecurity::TBTServiceSecurity(TUid, int, int)
+    ('btmanclient', 40): ('local', LOCAL_NOOP, KIND_LOCAL),          # TBTServiceSecurity::SetAuthentication(int)
+    ('btmanclient', 43): ('local', LOCAL_NOOP, KIND_LOCAL),          # TBTServiceSecurity::SetAuthorisation(int)
+    ('btmanclient', 46): ('local', LOCAL_NOOP, KIND_LOCAL),          # TBTServiceSecurity::SetChannelID(int)
+    ('btmanclient', 51): ('local', LOCAL_NOOP, KIND_LOCAL),          # TBTServiceSecurity::SetEncryption(int)
+    ('btmanclient', 33): ('local', LOCAL_NOOP, KIND_LOCAL),          # RBTSecuritySettings::Open(RBTMan&): KErrNone
+    ('btmanclient', 15): ('local', LOCAL_NOOP, KIND_LOCAL),          # RBTSecuritySettings::Close()
+    ('btmanclient', 37): ('local', LOCAL_COMPLETE_R2, KIND_LOCAL),   # RBTSecuritySettings::RegisterService(sec, TRequestStatus&)
+    # The joiner's: old bluetooth 25, two arguments (the TBTDevAddr, an empty
+    # TBuf16<128>) at engine 0x4ae564, its result zero-terminated and copied
+    # into a buffer nothing reads. The N-Gage SDK's import library reads as
+    # SetReadable there, the use as GetReadable; either way an empty buffer
+    # and KErrNone change nothing the engine looks at.
+    ('bluetooth', 25): ('local', LOCAL_NOOP, KIND_LOCAL),
     # One, round 125. Three N-Gage additions past cone's epoc6 list, read
     # out of the RH-29 ROM (cone.dll export directory): 315 is
     # `str r1, [r0, #0x2c]; bx lr`, 312 is `ldr r0, [r0, #0x2c]; bx lr`,

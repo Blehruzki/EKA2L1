@@ -542,7 +542,7 @@ enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPA
        LOCAL_TINT64_ADD = 17, LOCAL_TINT64_SUB = 18, LOCAL_TINT64_MUL = 19, LOCAL_TINT64_DIV = 20,
        LOCAL_TINT64_GE = 21, LOCAL_TINT64_LT = 22,
        LOCAL_SET_WORD_2C = 23, LOCAL_GET_WORD_2C = 24, LOCAL_VOLUMEINFO_CTOR = 25,
-       LOCAL_HANDLE_CTOR = 26 };
+       LOCAL_HANDLE_CTOR = 26, LOCAL_COMPLETE_R2 = 27 };
 
 // memmove. The game imports it from the C runtime and 9.x does not export it
 // under that name, so it is written here rather than forwarded. Overlap is the
@@ -1440,6 +1440,9 @@ struct Context {
     u32 realGetEvent;       // GAME_ENGINE_LXCE: RWsSession::GetEvent, as resolved (gate6_engine_get_event)
     u32 realEventReady;     //   RWsSession::EventReady, as resolved (gate6_engine_event_ready)
     u32 endKeySeen;         //   the end key's close event reached the engine's group (round 165)
+    u32 fnExitType, fnExitReason;   // RThread::ExitType, ExitReason (euser 1799, 1781): the engine's watch (round 166)
+    u32 fnThreadReqComplete;        // RThread::RequestComplete (euser 1790): gate6_complete_r2
+    u32 fnWaitForRequest, benchDieCalls;   // bench (GAME_BENCH_ENGINE_DIES): User::WaitForRequest, euser 604
     u32 wsLogged;           //   the wrapper's window-server events logged so far (round 165)
     u32 cfgSavePending;     //   a hold's save, owed to the main thread
     u32 engineQuitting;     //   GAME_ENGINE_LAUNCHER: the engine asked to quit (mailbox 6)
@@ -4448,6 +4451,7 @@ enum { WATCHDOG = 1, WATCHDOG_STALL_S = 4, EUSER_USER_AFTER = 645, STALL_WORDS =
 // EOwnerThread, and that from here would be KERN-EXEC 0.
 enum { WD_EPISODES = 4, EUSER_HANDLE_DUPLICATE = 121, EUSER_THREAD_CONTEXT = 1796,
        EUSER_THREAD_PRIORITY = 1800, EUSER_THREAD_STACKINFO = 1801, EUSER_THREAD_CPUTIME = 1782,
+       EUSER_THREAD_EXIT_TYPE = 1799, EUSER_THREAD_EXIT_REASON = 1781, EUSER_THREAD_REQ_COMPLETE = 1790,
        CTX_WORDS = 18, MAIN_STACK_WORDS = 192, THR_STACK_WORDS = 64, STALL_THREADS = 0x7EAD0000 };
 static const u16 kStallPath[] = {'C',':','\\','g','6','s','t','a','l','l','-',GAME_STEM_CHARS,'.','d','a','t'};
 
@@ -11953,6 +11957,47 @@ extern "C" int gate6_sysagt_cancel(void *, u32, u32, Context *c)
     return 0;
 }
 
+// Bench (round 166): at the engine thread's Nth GetEvent, the host's two
+// steps the bench has no Bluetooth to reach. gate6_complete_r2 on a one-word
+// status with a sentinel word after it, then User::WaitForRequest on it
+// (0xE821: the status, then the sentinel, which must read 0 and 0x5E5E5E5C, bit 1 clear so a spilled ERequestPending shows;
+// the panic's number below says the same); then the panic the reporting stub raised on the N95, G6IMP 326031, on this
+// thread -- which the launcher part's watch must turn into the process's exit
+// (0xE820). 0 ships.
+#ifndef GAME_BENCH_ENGINE_DIES
+#define GAME_BENCH_ENGINE_DIES 0
+#endif
+
+// **A request 9.x has no server for, answered "done" at once** (round 166).
+// Colin McRae's host registers its Bluetooth security with
+// RBTSecuritySettings::RegisterService(security, status) and then
+// User::WaitForRequest(status) -- and btmanclient on 9.x has no such class.
+// The status is the engine's own one-word EKA1 TRequestStatus on its stack,
+// with a cleanup item's function pointer in the word after it (0x4aea60),
+// so it is completed as EKA2's kernel completes, the status word only:
+// RThread::RequestComplete on the current thread, never User::RequestComplete,
+// whose `*aStatus = KRequestPending` is TRequestStatus::operator= and sets the
+// flag bit in that next word. The signal it raises is the one the engine's
+// WaitForRequest takes.
+#ifndef BENCH_COMPLETE_VIA_USER
+#define BENCH_COMPLETE_VIA_USER 0       // bench: through User::RequestComplete instead, to test the test
+#endif
+extern "C" int gate6_complete_r2(void *, void *, u32 *status, Context *c)
+{
+    typedef void (*Complete)(const u32 *thread, u32 **status, int reason);
+    if (!status || !c->fnThreadReqComplete)
+        return 0;
+    const u32 self = 0xFFFF8001u;           // KCurrentThreadHandle
+    u32 *s = status;
+    if (BENCH_COMPLETE_VIA_USER) {
+        user_requestcomplete(&s, 0);
+        return 0;
+    }
+    *status = (u32)KREQUEST_PENDING;        // the word only; the kernel writes the answer
+    ((Complete)c->fnThreadReqComplete)(&self, &s, 0);
+    return 0;
+}
+
 // Bench knob: the Nth SetAudioPropertiesL (slot 3) leaves with KErrNotSupported
 // instead of being forwarded. The game's own code at 0x14398 traps that call
 // and, on -5 at 16 kHz, retries at 8 kHz -- so a working bridge shows as a
@@ -13943,6 +13988,24 @@ extern "C" int gate6_engine_shm_watch(void *p)
     if (!b)
         return 1;
     bench_switch(c);
+    // **The engine's thread gone, for any reason** (round 166). Nothing
+    // watched it: a panic there left the process up with the engine's
+    // window group still focused, its socket listening and its sound
+    // thread -- EPriorityRealTime, absolute 22 in a foreground process,
+    // above every application and sysap (sthread.cpp) -- still playing, and
+    // on the N95 the phone answered no key at all, the power key included.
+    // So the launcher part ends the process the moment the thread is not
+    // running, as the N-Gage launcher's own participant would have gone
+    // with it: the exit type, then the reason (a panic's number) recorded.
+    typedef int (*ExitInfo)(const u32 *);
+    if (c->engineThread && c->fnExitType && ((ExitInfo)c->fnExitType)(&c->engineThread) != 3) {
+        log_event(c, NOTE_EXIT_ASKED, 0xE820);  // EExitPending is 3; anything else is a dead thread
+        log_event(c, NOTE_EXIT_ASKED, (u32)((ExitInfo)c->fnExitType)(&c->engineThread));
+        log_event(c, NOTE_EXIT_ASKED, c->fnExitReason ? (u32)((ExitInfo)c->fnExitReason)(&c->engineThread) : 0);
+        log_block(c);
+        box_flush(c);
+        user_exit(0);
+    }
     if (c->endKeySeen) {                    // round 165: the end key, seen on the engine's thread
         log_event(c, NOTE_EXIT_ASKED, 0xE81C);
         log_block(c);
@@ -14134,6 +14197,22 @@ extern "C" void gate6_engine_get_event(void *session, u32 *ev, Context *c)
         c->endKeySeen = 1;
         ev[0] = 0;                          // EEventNull: the engine sees nothing
         return;
+    }
+    if (GAME_BENCH_ENGINE_DIES && ++c->benchDieCalls == (u32)GAME_BENCH_ENGINE_DIES) {
+        typedef void (*Wait)(u32 *);
+        u32 st[2] = { 0, 0x5E5E5E5Cu };
+        gate6_complete_r2(0, 0, st, c);
+        if (c->fnWaitForRequest)
+            ((Wait)c->fnWaitForRequest)(st);
+        log_event(c, NOTE_EXIT_ASKED, 0xE821);
+        log_event(c, NOTE_EXIT_ASKED, st[0]);
+        log_event(c, NOTE_EXIT_ASKED, st[1]);
+        log_block(c);
+        // A worker's records may not reach the log, so the panic's number
+        // carries the verdict too: 326031 if both words are right, else
+        // 326900 plus 1 for a wrong status and 2 for a touched sentinel.
+        const int bad = (st[0] != 0 ? 1 : 0) | (st[1] != 0x5E5E5E5Cu ? 2 : 0);
+        gate6_report(bad ? 326900 + bad : 326031);
     }
     if (!PICK_ON_HOLD || !ev || ev[0] < (u32)EEventKey || ev[0] > (u32)EEventKeyDown)
         return;
@@ -15093,6 +15172,13 @@ static u32 load_and_start()
             case LOCAL_SELF:                // a constructor with nothing to do
                 s[0] = 0xE12FFF1E;          // bx  lr     -- r0 is still the object
                 break;
+            case LOCAL_COMPLETE_R2:         // complete r2's request now (round 166), context in r3
+                s[0] = 0xE59F3004;          // ldr r3, [pc, #4]  -> the context
+                s[1] = 0xE59FF004;          // ldr pc, [pc, #4]
+                s[2] = 0;
+                s[3] = (u32)ctx;
+                s[4] = (u32)&gate6_complete_r2;
+                break;
             case LOCAL_HANDLE_CTOR:         // RHandleBase's constructor: iHandle = 0 (round 161)
                 s[0] = 0xE3A01000;          // mov r1, #0
                 s[1] = 0xE5801000;          // str r1, [r0]
@@ -15335,6 +15421,15 @@ static u32 load_and_start()
         ctx->fnPriority = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_PRIORITY);
         ctx->fnStackInfo = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_STACKINFO);
         ctx->fnCpuTime = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_CPUTIME);
+        // Round 166, checked against the RM-409 ROM's export directory: 1799
+        // and 1781 load the handle and make a handle-based executive call;
+        // 1790 swaps the status pointer to zero (ldrex/strex) as
+        // RThread::RequestComplete does.
+        ctx->fnExitType = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_EXIT_TYPE);
+        ctx->fnExitReason = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_EXIT_REASON);
+        ctx->fnThreadReqComplete = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_REQ_COMPLETE);
+        if (GAME_BENCH_ENGINE_DIES)
+            ctx->fnWaitForRequest = (u32)rlibrary_lookup(&ctx->euser, 604);
     }
     if (ctx->efsrv)
         ctx->setSessionPathFn = (u32)rlibrary_lookup(&ctx->efsrv, EFSRV_SET_SESSION_PATH);
