@@ -4591,6 +4591,12 @@ static void stall_dump(Context *c)
 #ifndef GAME_WATCHDOG_KILL_S
 #define GAME_WATCHDOG_KILL_S 0
 #endif
+// Bench (round 171): the watchdog writes its dump at that many seconds after
+// it starts, whether or not the main thread has stalled -- where every game
+// thread is, on demand. 0 ships.
+#ifndef GAME_BENCH_DUMP_AT
+#define GAME_BENCH_DUMP_AT 0
+#endif
 enum { EPRIORITY_ABSOLUTE_HIGH = 500, KCURRENT_PROCESS = 0xFFFF8000u, WATCHDOG_KILL_REASON = 0x57A11 };
 
 extern "C" int gate6_watchdog(void *p)
@@ -4598,9 +4604,11 @@ extern "C" int gate6_watchdog(void *p)
     typedef void (*After)(int);
     typedef void (*Kill)(const u32 *, int);
     Context *c = (Context *)p;
-    u32 last = c->beats, still = 0, armed = 1;
+    u32 last = c->beats, still = 0, armed = 1, secs = 0;
     for (;;) {
         ((After)c->fnUserAfter)(1000000);
+        if (GAME_BENCH_DUMP_AT && ++secs == (u32)GAME_BENCH_DUMP_AT)
+            stall_dump(c);              // bench: every thread's registers at that second, stalled or not
         if (c->beats != last) {
             last = c->beats;
             still = 0;
@@ -13888,6 +13896,9 @@ static void engine_root_unfocusable(Context *c)
 #ifndef GAME_ENGINE_LAUNCHER
 #define GAME_ENGINE_LAUNCHER 0
 #endif
+#ifndef GAME_LAUNCHER_CLEARS_1
+#define GAME_LAUNCHER_CLEARS_1 0
+#endif
 enum { I3D_MAILBOX = 0xE4 / 4, I3D_ASK = 3, I3D_ANSWER = 4, I3D_QUIT = 6, I3D_CLOSE_ME = 1, I3D_STATE_EXIT = 5, SHM_WATCH_US = 500000, SHM_WATCH_TICKS = 4 };
 
 // **Bench: a phone's app switch, from the window server's side
@@ -14169,7 +14180,13 @@ extern "C" int gate6_engine_shm_watch(void *p)
         box_flush(c);
         user_exit(0);
     }
-    if (b[I3D_MAILBOX] != (u32)I3D_ASK) {
+    // Round 171: a 1 with no 6 before it is cleared too, two seconds on, as
+    // a launcher would. The engine's 0x44926c gives up on it after 8 s, but
+    // its script opcodes post 1 and wait for the clear with no timeout: on
+    // Host a Game the engine sat behind the wrapper's window for good (the
+    // N95, round 171, and the bench, E1103). GAME_LAUNCHER_CLEARS_1 1.
+    const int pending1 = GAME_LAUNCHER_CLEARS_1 && b[I3D_MAILBOX] == (u32)I3D_CLOSE_ME && !c->engineQuitting;
+    if (b[I3D_MAILBOX] != (u32)I3D_ASK && !pending1) {
         c->shmTicks = 0;
         return 1;
     }
@@ -14178,7 +14195,7 @@ extern "C" int gate6_engine_shm_watch(void *p)
     c->shmTicks = 0;
     log_event(c, NOTE_ENGINE, 0x9E000000u | (b[I3D_MAILBOX] & 0xFFu));
     log_block(c);
-    b[I3D_MAILBOX] = I3D_ANSWER;
+    b[I3D_MAILBOX] = pending1 ? 0u : (u32)I3D_ANSWER;
     return 1;
 }
 

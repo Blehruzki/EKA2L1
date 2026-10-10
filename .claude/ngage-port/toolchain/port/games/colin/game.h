@@ -104,8 +104,9 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
                           { 0x000a7260, 0x1593C008, 0x1593C004 }, /* delete the CActiveScheduler */ \
                           { 0x000a8440, 0xE92D4000, 0xE3A00001 }, /* the flip always direct: mov r0, #1 */ \
                           { 0x000a8444, 0xE59F3024, 0xE12FFF1E }, /*   bx lr */ \
-                          { 0x00049e58, 0x1B035823, 0xE1A00000 }  /* the Bluetooth check answers "off", never leaves (round 170) */
-#define GAME_CODE_PATCH_COUNT 20
+                          { 0x00049e58, 0x1B035823, 0xE1A00000 }, /* the link check: an error reads as no links, never a Leave (round 170) */ \
+                          { 0x00049e1c, 0xE1A01006, 0xE3A01003 }  /* its option: 6.1's KLMGetACLLinkCount (0) is 9.x's 3 (round 171) */
+#define GAME_CODE_PATCH_COUNT 21
 
 // The environment's screen device, as the game reads it off the view
 // (old iScreen, 0x3c): 1 hands it a stand-in that answers font requests by
@@ -277,6 +278,10 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // Round 170: the engine's TBitmapUtil lock -- 9.1/9.2's global bitmap heap
 // mutex -- let go around its sleeps, waits and leaves (gate6.cpp).
 #define GAME_BMU_YIELD 1
+// Round 171: the launcher part clears a 1 (no 6 before it) after 2 s.
+#define GAME_LAUNCHER_CLEARS_1 1
+// Bench: the watchdog's dump at that second, stalled or not. 0 in anything shipped.
+#define GAME_BENCH_DUMP_AT 0
 // Round 168: the loader's capabilities (the exe header, TCapabilitySet bits).
 // LocalServices (14) is what a Bluetooth socket needs on a phone: without it
 // the engine's "is Bluetooth on?" (0x449d64) got KErrPermissionDenied and

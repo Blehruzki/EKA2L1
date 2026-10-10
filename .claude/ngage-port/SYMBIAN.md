@@ -747,6 +747,16 @@ SAP checks it for every protocol under it -- avctpsap.cpp says so --
 and SDP's net database checks `KLOCAL_SERVICES`, sdpnetdb.cpp). There is no
 Bluetooth path on S60v3 for an executable without it.
 
+**Bluetooth socket option numbers moved between 6.1 and 9.x** (round 171).
+N-Gage SDK `caseinc/BT_SOCK.H`: `KSolBtLM` 0x1011, `enum TBTLMOptions
+{ KLMGetACLLinkCount, KLMGetACLLinkArray }` and `enum TBTLMIoctls
+{ KLMDisconnectACLIoctl, KLMSetPacketTypeIoctl, KLMWaitForSCONotificationIoctl }`.
+9.x `bluetoothclientlib/inc/lmoptions.h`: `TBTLMOptions` opens with
+`ELMOutboundACLSize, ELMInboundACLSize, KLMGetACLHandle, KLMGetACLLinkCount,
+KLMGetACLLinkArray, ...` -- the level kept its number and the names their
+meaning, but every value moved. An N-Gage binary's numbers have to be
+translated, not forwarded.
+
 **9.x's btmanclient has no `RBTSecuritySettings`.** Its 84 exports (RM-409,
 EKA2L1's `epoc9.def`) carry RBTMan, the registry and comm-port settings;
 `TBTServiceSecurity` lives in bluetooth.dll on 9.x, and a listener's security

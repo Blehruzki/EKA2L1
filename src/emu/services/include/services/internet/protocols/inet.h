@@ -167,6 +167,12 @@ namespace eka2l1::epoc::internet {
 
     bool retrieve_local_ip_info(epoc::socket::saddress &broadcast, epoc::socket::saddress *myip = nullptr);
 
+    // Whether the host can open an IPv6 socket at all (probed once). The
+    // Bluetooth-over-IP emulation is IPv6 throughout and falls back to IPv4
+    // on a host without it -- a container, say -- where every IPv6 socket
+    // fails with EAFNOSUPPORT.
+    bool host_supports_ipv6();
+
     struct inet_socket : public socket::socket {
     private:
         inet_bridged_protocol *papa_;

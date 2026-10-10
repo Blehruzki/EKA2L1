@@ -47,6 +47,26 @@ extern "C" {
 #include <uvlooper/uvlooper.h>
 
 namespace eka2l1::epoc::internet {
+    bool host_supports_ipv6() {
+        static const bool supported = []() {
+#if EKA2L1_PLATFORM(WIN32)
+            const SOCKET probe = ::socket(AF_INET6, SOCK_STREAM, 0);
+            if (probe == INVALID_SOCKET) {
+                return false;
+            }
+            ::closesocket(probe);
+#else
+            const int probe = ::socket(AF_INET6, SOCK_STREAM, 0);
+            if (probe < 0) {
+                return false;
+            }
+            ::close(probe);
+#endif
+            return true;
+        }();
+        return supported;
+    }
+
     std::unique_ptr<epoc::socket::socket> inet_bridged_protocol::make_socket(const std::uint32_t family_id, const std::uint32_t protocol_id, const socket::socket_type sock_type) {
         std::unique_ptr<epoc::socket::socket> sock = std::make_unique<inet_socket>(this);
         inet_socket *sock_casted = reinterpret_cast<inet_socket*>(sock.get());
@@ -232,7 +252,19 @@ namespace eka2l1::epoc::internet {
         kern->lock();
 
         if (params.result_ < 0) {
-            LOG_ERROR(SERVICE_INTERNET, "Socket failed to be initialize, error code={}", errno);
+            // The libuv result, not errno: libuv reports through its return value.
+            LOG_ERROR(SERVICE_INTERNET, "Socket failed to be initialize, error code={} ({})", params.result_,
+                uv_strerror(params.result_));
+
+            // The handle was never initialised, so it must not reach uv_close at
+            // close_down(): freeing it here is the whole of its cleanup.
+            if (protocol_id == INET_TCP_PROTOCOL_ID) {
+                delete reinterpret_cast<uv_tcp_t *>(opaque_handle_);
+            } else {
+                delete reinterpret_cast<uv_udp_t *>(opaque_handle_);
+            }
+
+            opaque_handle_ = nullptr;
             return false;
         }
 

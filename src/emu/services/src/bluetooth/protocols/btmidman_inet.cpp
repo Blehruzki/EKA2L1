@@ -119,7 +119,7 @@ namespace eka2l1::epoc::bt {
 
         sockaddr_in6 addr_bind;
         std::memset(&addr_bind, 0, sizeof(sockaddr_in6));
-        addr_bind.sin6_family = (discovery_mode_ == DISCOVERY_MODE_LAN) ? AF_INET : AF_INET6;
+        addr_bind.sin6_family = ((discovery_mode_ == DISCOVERY_MODE_LAN) || !epoc::internet::host_supports_ipv6()) ? AF_INET : AF_INET6;
         addr_bind.sin6_port = htons(static_cast<std::uint16_t>(port_));
 
         // Nothing else reports on this socket, so an unchecked failure here
@@ -381,7 +381,7 @@ namespace eka2l1::epoc::bt {
 
     void midman_inet::add_friend(epoc::bt::friend_info &info) {
         const std::lock_guard<std::mutex> guard(friends_lock_);
-        if (info.real_addr_.family_ == epoc::internet::INET_ADDRESS_FAMILY) {
+        if ((info.real_addr_.family_ == epoc::internet::INET_ADDRESS_FAMILY) && epoc::internet::host_supports_ipv6()) {
             // Convert to ipv6
             epoc::internet::sinet6_address converted_addr;
             std::memset(&converted_addr, 0, sizeof(epoc::socket::saddress));

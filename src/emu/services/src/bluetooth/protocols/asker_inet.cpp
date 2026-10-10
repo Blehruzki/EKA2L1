@@ -17,6 +17,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <services/internet/protocols/inet.h>
 #include <services/bluetooth/protocols/asker_inet.h>
 #include <services/bluetooth/protocols/btmidman_inet.h>
 #include <services/bluetooth/protocols/common_inet.h>
@@ -199,7 +200,7 @@ namespace eka2l1::epoc::bt {
 
                     sockaddr_in6 bind;
                     std::memset(&bind, 0, sizeof(sockaddr_in6));
-                    bind.sin6_family = AF_INET6;
+                    bind.sin6_family = epoc::internet::host_supports_ipv6() ? AF_INET6 : AF_INET;
 
                     asker_->bind(*reinterpret_cast<sockaddr*>(&bind));
                 }

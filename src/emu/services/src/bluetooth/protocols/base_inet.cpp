@@ -126,7 +126,7 @@ namespace eka2l1::epoc::bt {
         midman_inet *midman = reinterpret_cast<midman_inet*>(protocol_->get_midman());
 
         std::memset(addr_to_bind.user_data_, 0, sizeof(addr_to_bind.user_data_));
-        addr_to_bind.family_ = internet::INET6_ADDRESS_FAMILY;
+        addr_to_bind.family_ = (internet::host_supports_ipv6() ? internet::INET6_ADDRESS_FAMILY : internet::INET_ADDRESS_FAMILY);
 
         std::uint16_t guest_port = addr_to_bind.port_;
 
