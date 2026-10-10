@@ -106,7 +106,7 @@ the first `RSocket::Bind` on a Bluetooth socket crashed the emulator
 (`btinet_socket::bind` on an inet socket that was never created; ngage-port
 E1100). `epoc::internet::host_supports_ipv6()` probes once; without IPv6 the
 RFCOMM and L2CAP factories, the bind address, the discovery, SDP and asker
-sockets use IPv4, and friend addresses stay IPv4 instead of being mapped. And
+sockets use IPv4, and friend addresses stay IPv4 instead of being mapped -- both the ones learnt from a stranger's call and, since ngage-port E1121, the ones in the config's `internet-bluetooth-friends`, which `update_friend_list` used to prefix with `::ffff:` (so a direct-IP friend could never be asked for its device address and inquiry found nobody). And
 `inet_socket::open` now reports libuv's own error on a failed init (it printed
 `errno`) and frees the handle it never initialised, which used to reach
 `uv_close` later.

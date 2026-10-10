@@ -250,7 +250,7 @@ hardware coverage above with DEVICES.md's phone table.
 | code | 615 KB | 1556 KB | 970 KB | 1371 KB | 25 KB | 4 KB | 224 KB |
 | imports / DLLs | 391 / 21 | 462 / 21 | 354 / 20 | 532 / 21 | 181 / 7 | 0 / 0 | 583 / 22 |
 | imports the shim leaves as stubs | 14 | 14 | 8 | 7 | 7 | 1 | 67 |
-| hooks present / defined | 66 / 159 | 72 / 159 | 61 / 159 | 90 / 159 | 29 / 159 | 72 / 159 | 49 / 159 |
+| hooks present / defined | 66 / 161 | 72 / 161 | 61 / 161 | 90 / 161 | 29 / 161 | 74 / 161 | 49 / 161 |
 | diversions (old object to wrapper) | 14 | 14 | 14 | 15 | 10 | 2 | 13 |
 | game files / size | 7 / 9.9 MB | 122 / 27.6 MB | 7 / 15.3 MB | 1075 / 27.4 MB | 2 / 0.0 MB | 28 / 32.4 MB | 28 / 32.4 MB |
 | split data package | no | no | no | yes | no | no | no |
@@ -415,6 +415,9 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_SCREEN_FONTS` | 0 | 0 | 1 | 0 | 0 | 0 | 1 |
 | `GAME_SCREEN_MODES` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
 | `GAME_SHIFT_PICKER` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `GAME_SOCK_RECV_KEEP0` | · | · | · | · | · | 0x000025d4 | · |
+| `GAME_SOCK_RECV_KEEP1` | · | · | · | · | · | 0x00002840 | · |
+| `GAME_SOCK_WRITE_KEEP` | · | · | · | · | · | 0x00002734 | · |
 | `GAME_SOUNDMGR_OFF` | · | · | · | 0x6914 | · | · | · |
 | `GAME_SRC_BPP` | · | · | · | 32 | 16 | 16 | 16 |
 | `GAME_TICK_SEED_LR` | · | · | · | 0x000c5d2c | · | · | · |
@@ -422,7 +425,7 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_TIMER_MIRROR` | 0 | 0 | 0 | 1 | 1 | 1 | 1 |
 | `GAME_UI_FORWARD_EVENTS` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
 | `GAME_VA_LIST` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
-| `GAME_VTABLE_SHIFTS` | · | · | · | 1 entry | · | · | · |
+| `GAME_VTABLE_SHIFTS` | · | · | · | 1 entry | · | 1 entry | · |
 | `GAME_WATCHDOG_KILL_S` | · | · | · | · | · | 12 | · |
 | `GAME_Z_REAL` | 0 | 0x000d4f88 | 0 | 0 | 0 | 0 | 0 |
 | `GAME_Z_SITES` | 0 | 0x00033a74,… | 0 | 0 | 0 | 0 | 0 |

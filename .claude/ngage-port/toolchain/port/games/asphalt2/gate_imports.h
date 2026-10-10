@@ -153,6 +153,8 @@ enum {
     IMPORT_SHADOW_SDPAGENT             = 65535,   // absent
     IMPORT_SHADOW_SDPPATTERN           = 65535,   // absent
     IMPORT_SHADOW_WGNAME               = 65535,   // absent
+    IMPORT_SOCK_RECV1                  = 65535,   // absent
+    IMPORT_SOCK_WRITE                  = 65535,   // absent
     IMPORT_START_APP                   = 65535,   // absent
     IMPORT_SUBDF3                      = 65535,   // absent
     IMPORT_SYSTEM_GC                   = 65535,   // absent

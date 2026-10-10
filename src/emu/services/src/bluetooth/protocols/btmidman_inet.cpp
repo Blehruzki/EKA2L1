@@ -706,11 +706,19 @@ lookup:
                 invalid_address_indicies.push_back(FRIEND_UPDATE_ERROR_INVALID_PORT_NUMBER | static_cast<std::uint32_t>(i));
             } else {
                 std::string ip_str = addrs[i].addr_;
-                if (addrs[i].addr_.find(':') == std::string::npos) {
-                    ip_str = std::string("::ffff:") + ip_str;
-                }
+                const bool dotted = (addrs[i].addr_.find(':') == std::string::npos);
 
-                res = uv_ip6_addr(ip_str.data(), addrs[i].port_, &in_temp);
+                if (dotted && !internet::host_supports_ipv6()) {
+                    // No IPv6 here: every Bluetooth-over-IP socket is IPv4, so a
+                    // v4-mapped friend could never be sent to. Keep it IPv4.
+                    res = uv_ip4_addr(ip_str.data(), addrs[i].port_, reinterpret_cast<sockaddr_in*>(&in_temp));
+                } else {
+                    if (dotted) {
+                        ip_str = std::string("::ffff:") + ip_str;
+                    }
+
+                    res = uv_ip6_addr(ip_str.data(), addrs[i].port_, &in_temp);
+                }
 
                 if (res != 0) {
                     invalid_address_indicies.push_back(FRIEND_UPDATE_ERROR_INVALID_ADDR | static_cast<std::uint32_t>(i));

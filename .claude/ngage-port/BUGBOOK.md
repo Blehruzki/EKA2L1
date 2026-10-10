@@ -2074,3 +2074,27 @@ nobody joins, as a one-instance bench must give (E1112-E1116).
 *Lesson: a class's size is part of its ABI, and an R class can grow. The
 first bytes past the old size are the caller's next field, and the bug
 shows up only when the caller writes that field.*
+
+### 13.ai Join on the two-instance bench: four walls between "No Drivers Found" and a lobby (round 172, E1118-E1125)
+**Bench.** `duo.sh`: two emulator instances, the second on its own data
+copy and its own X display (one display overlaps the windows and splits
+the focus, E1118), direct-IP Bluetooth to each other on 127.0.0.1. A hosts,
+B joins.
+**Walls, in the order met.** (1) "No Drivers Found" (E1120): the emulator
+stores a direct-IP friend as v4-mapped IPv6 and this host has no IPv6, so
+the friend query could not be sent -- emulator fix, a dotted friend stays
+IPv4. (2) Selecting the host faulted at pc 0xfffffffc (E1122): the 9.x SDP
+agent called the engine's `MSdpAgentNotifier` at EABI slot 0, the GCC 2.x
+table's header word. `gate6_san_adapter` hands NewL an EABI notifier that
+forwards to the engine's slots (and shadows the attribute value, which the
+engine deletes the old way). The engine's attribute visitor, called only
+by 9.x's AcceptVisitorL, is moved to EABI slots in place
+(`GAME_VTABLE_SHIFTS`). (3) Connected, then "connection lost" on both
+(E1123-E1124): the network object keeps EKA1 one-word statuses side by side
+(Write +0x10, receive +0x14), and 9.x's Write sets ERequestPending in the
+second word of its status -- the receive status, read as a failure.
+`keep_thunk` puts that word back at those call sites only. Then A reaches
+"SINGLE RALLY" and B the lobby, "Waiting for game to start" (E1125).
+*Lesson: a GCC 2.x interface the platform calls back is the builder
+problem reversed, and needs the reverse fix; and round 162's one-word
+status reappears wherever an EKA1 program put two statuses together.*

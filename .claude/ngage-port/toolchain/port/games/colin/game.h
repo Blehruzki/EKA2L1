@@ -107,6 +107,16 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
                           { 0x00049e58, 0x1B035823, 0xE1A00000 }, /* the link check: an error reads as no links, never a Leave (round 170) */ \
                           { 0x00049e1c, 0xE1A01006, 0xE3A01003 }  /* its option: 6.1's KLMGetACLLinkCount (0) is 9.x's 3 (round 171) */
 #define GAME_CODE_PATCH_COUNT 21
+// The engine's SDP attribute visitor (0x4e0e8c, vtable 0x53d95c: VisitAttributeValueL,
+// StartListL, EndListL), which only 9.x's CSdpAttrValue::AcceptVisitorL calls --
+// at EABI's slots, two words before GCC 2.x's. Moved down in place (round 172).
+#define GAME_VTABLE_SHIFTS { 0x0013d95c, 3 }
+#define GAME_VTABLE_SHIFT_COUNT 1
+// The network object's socket calls, whose statuses are EKA1 one-word ones side
+// by side (Write +0x10, receive +0x14, length +0x18): their return addresses.
+#define GAME_SOCK_WRITE_KEEP 0x00002734
+#define GAME_SOCK_RECV_KEEP0 0x000025d4
+#define GAME_SOCK_RECV_KEEP1 0x00002840
 
 // The environment's screen device, as the game reads it off the view
 // (old iScreen, 0x3c): 1 hands it a stand-in that answers font requests by

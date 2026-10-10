@@ -769,6 +769,8 @@ HOOKS = {
     'IMPORT_SDPDB_UPDATE_VALUE':      ('sdpdatabase', 91),  # RSdpDatabase::UpdateAttributeL(unsigned long, unsigned short, CSdpAttrValue &)
     'IMPORT_SDPDB_UPDATE_DES16':      ('sdpdatabase', 93),  # RSdpDatabase::UpdateAttributeL(unsigned long, unsigned short, const TDesC16 &)
     'IMPORT_SDPDB_UPDATE_UINT':       ('sdpdatabase', 94),  # RSdpDatabase::UpdateAttributeL(unsigned long, unsigned short, unsigned int)
+    'IMPORT_SOCK_WRITE':              ('esock', 201),   # RSocket::Write(const TDesC8 &, TRequestStatus &): an EKA1 status's next word kept (keep_thunk, round 172)
+    'IMPORT_SOCK_RECV1':              ('esock', 152),   # RSocket::RecvOneOrMore(TDes8 &, unsigned, TRequestStatus &, TSockXfrLength &): likewise
     'IMPORT_HANDLE_CLOSE':            ('euser', 172),   # RHandleBase::Close(): the handle word logged before the call (round 136: a worker's Close died KERN-EXEC 0 on the N95)
     'IMPORT_DELETE_OP':               ('euser', 1504),
     'IMPORT_VEC_DELETE_OP':           ('euser', 1506),

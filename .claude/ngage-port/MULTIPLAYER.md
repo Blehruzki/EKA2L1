@@ -58,8 +58,11 @@ on any phone that grants the capability.
 | SDP record (0x40dfc8): the builder | sdpdatabase, GCC 2.x builder | 9.x `CSdpAttrValueDES` (EABI vtable) | **fixed**: `gate6_sdp_builder`, a GCC 2.x shadow per builder (E1108) |
 | SDP record: `RSdpDatabase` | 0x10 bytes | 0x18 on RM-409, iBuffer at +0x14 (the engine's counter) | **fixed**: `gate6_sdpdb_this`, a 9.2-sized object on the side (E1110-E1111) |
 | SDP server | -- | the ROM's own, checks LocalServices: -46 without it (E1106) | the capability gate again; the bench builds with 0x4000 to get past it |
-| Device-selection notifier, `TBTDeviceResponseParams` | btextnotifiers 6.1 layout | 9.x layout | **open**: compare layouts (join) |
-| `TBTSockAddr`, `TInquirySockAddr` | 6.1 layouts | 9.x adds security / fields | **open**: compare (join) |
+| Discovery | the engine's own: RHostResolver inquiry, names, then CSdpAgent | same calls | **works** on the bench (E1121); `TBTDeviceResponseParams` is only a container |
+| `MSdpAgentNotifier` (the engine's, called by 9.x) | GCC 2.x, 3 slots | EABI, 4 slots | **fixed**: `gate6_san_adapter` (E1123) |
+| `MSdpAttributeValueVisitor` (the engine's) | GCC 2.x | EABI | **fixed**: `GAME_VTABLE_SHIFTS` 0x13d95c (E1123) |
+| Socket statuses, one word each, side by side | EKA1 | 9.x sets ERequestPending in the next word | **fixed**: `keep_thunk` at the network object's sites (E1125) |
+| `TBTSockAddr`, `TInquirySockAddr` | 6.1 layouts | 9.x adds security / fields | works for connect and inquiry on the bench (E1121-E1125) |
 | Leave in the host path | caught | unwinds into the display's teardown; on 9.2 phones under the global bitmap heap lock (13.ag) | lock released on leave (012); E1105's leave was the SDP server's -46 (E1106); with the record fixed, Host reaches the game's own Bluetooth screens (E1111) |
 
 ## The bench
@@ -73,9 +76,14 @@ AF_INET6 socket fails EAFNOSUPPORT), which crashed the emulator on Host
 when it is false; the inet socket's init failure reports libuv's code and
 frees its half-made handle (E1101). The emulator enforces no capability.
 
-Next for the bench: two instances (a second HOME, a copy of the drives,
-direct-IP friends on 127.0.0.1 with their port offsets), host on one and
-join on the other.
+Two instances: `toolchain/port/duo.sh` builds once, installs into the
+usual tree and a copy of it under a second HOME, gives each direct-IP
+discovery with its own midman port and port offset (35689/15000,
+35690/16000) and the other as its friend, runs B on its own Xvfb display
+(:98), drives A to Host and B to Join (`duo_host.sh`, `duo_join.sh`, a
+frame every 4 s), puts A's config back and logs the run as an E row.
+`DUO_ENV_A` / `DUO_ENV_B` give one instance its own variables (a trace
+path each).
 
 ## Where Host stands (E1111-E1116)
 
@@ -89,12 +97,18 @@ the next MULTIPLAYER entry reads the network object's leftover state as
 (0x4ae7f4) takes a completed `Accept` to state 2 (connected) and
 UpdateAttributeL(8, 0).
 
+## Where Join stands (E1118-E1125)
+
+`duo.sh` runs two instances (A hosts, B joins). B's search lists A
+("Select a Host: EKA2L1"), B selects it, the RFCOMM link comes up, and the
+game's own session runs: A at "SINGLE RALLY" (difficulty, country), B in the
+lobby ("Waiting for game to start", car, transmission, Ready). Not yet
+driven: starting the race from both sides.
+
 ## Next steps, in order
 
-1. Join (0x4ae4bc): the device-selection notifier (`TBTDeviceResponseParams`)
-   and the `TBTSockAddr` / `TInquirySockAddr` layouts, 6.1 against 9.x.
-2. The two-instance bench: a second HOME and drives, direct-IP friends on
-   127.0.0.1 with port offsets; host on one, join on the other, and see the
-   host's `Accept` complete.
-3. HCI scan-enable ioctls on 9.x: what they answer; a stand-in if refused.
-4. A self-signed LocalServices package for phones that grant it.
+1. Drive both into a race on the bench (A: OK; B: Ready), and see the race
+   data go both ways.
+2. HCI scan-enable ioctls on 9.x: what they answer; a stand-in if refused.
+3. The phone: LocalServices is the gate. A self-signed package for phones
+   that grant it, and on the N95 nothing until its install policy does.

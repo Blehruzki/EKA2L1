@@ -1426,6 +1426,7 @@ struct Context {
     u32 shadowFrom[16], shadowTo[16], shadowN;   // ROM vtables and their shadows (gate6_shadow)
     u32 sdpThunks, sdpFrom[4], sdpTo[4], sdpN;   // the SDP builder's GCC 2.x shadows (gate6_sdp_builder)
     u32 sdpdbFrom[4], sdpdbTo[4], sdpdbN, realSdpdbCtor;   // RSdpDatabases at 9.2's size (gate6_sdpdb_this)
+    u32 sanVtable, sanFrom[4], sanTo[4], sanN, shadowForce;  // the SDP agent's notifiers in EABI layout (gate6_san_adapter)
     u32 shadowAdapter;      //   the slot +8 adapter they share
     u32 extCBase, extCActive;   //   CBase::Extension_ and CActive::Extension_: the slot +8 a shadow may replace
     u32 processCreate, processResume;   // RProcess::Create and Resume, for gate6_start_frontend
@@ -2824,6 +2825,15 @@ static const CodePatch kCodePatch[] = { GAME_CODE_PATCHES };
 // Moving the slots down two words in place makes the object EABI-shaped;
 // the game's own calls into such a class are already EABI-shaped (the
 // DoSeekL sites in GAME_CODE_PATCHES).
+// Return addresses (image offsets) of a title's socket calls whose status
+// is an EKA1 one-word one with a live word after it (keep_thunk). 0: none.
+#ifndef GAME_SOCK_WRITE_KEEP
+#define GAME_SOCK_WRITE_KEEP 0
+#endif
+#ifndef GAME_SOCK_RECV_KEEP0
+#define GAME_SOCK_RECV_KEEP0 0
+#define GAME_SOCK_RECV_KEEP1 0
+#endif
 #ifndef GAME_VTABLE_SHIFTS
 #define GAME_VTABLE_SHIFTS { 0, 0 }
 #define GAME_VTABLE_SHIFT_COUNT 0
@@ -13715,7 +13725,7 @@ extern "C" u32 *gate6_shadow(u32 *obj, Context *c)
     u32 s8 = ((const u32 *)vp)[2];
     if (s8 >= 0x80000000u && !(s8 & 3) && ((const u32 *)s8)[0] == 0xE51FF004u)
         s8 = ((const u32 *)s8)[1];
-    if (!c->extCBase || (s8 != c->extCBase && s8 != c->extCActive)) {
+    if (!c->shadowForce && (!c->extCBase || (s8 != c->extCBase && s8 != c->extCActive))) {
         note(c, 0xCF, 'C');
         note(c, vp >> 16, 'v');
         note(c, vp & 0xFFFFu, 'w');
@@ -13881,13 +13891,128 @@ extern "C" u32 *gate6_sdpdb_ctor(u32 *self, u32, Context *c)
     ((Fn)c->realSdpdbCtor)(side);           // a reconstruction reuses the side: Close freed its buffer
     return self;
 }
-static u32 this_thunk(u8 *code, const void *ctx, u32 target)
+static u32 this_thunk(u8 *code, const void *ctx, u32 target, u32 fn = (u32)&gate6_sdpdb_this)
 {
     u32 *b = (u32 *)code;
     b[0] = 0xE92D400E; b[1] = 0xE59F100C; b[2] = 0xE59FC00C; b[3] = 0xE12FFF3C;
     b[4] = 0xE8BD400E; b[5] = 0xE59FF004;
-    b[6] = (u32)ctx; b[7] = (u32)&gate6_sdpdb_this; b[8] = target;
+    b[6] = (u32)ctx; b[7] = fn; b[8] = target;
     user_imb_range(b, b + THIS_THUNK_WORDS);
+    return (u32)b;
+}
+
+// **The SDP agent's notifier, the other way round.** A joiner's engine
+// hands CSdpAgent::NewL its own MSdpAgentNotifier (the finder at +4, vtable
+// 0x53d904: the three slots behind GCC 2.x's two header words, the first
+// -4). 9.x's agent calls slot k at +4k, so its first callback,
+// NextRecordRequestComplete, jumped to the header word 0xfffffffc (E1122).
+// So NewL is given a small object of the port's instead: an EABI vtable of
+// the four slots 9.x declares (btsdp.h; the fourth, MSAN_ExtensionInterface,
+// answers "none" and 9.x's own code never calls it), each passing the call
+// on to the engine's slot k at +8+4k with the engine's notifier in r0. The
+// attribute value AttributeRequestResult hands over is the engine's to
+// delete, which it does the GCC 2.x way (slot +8, r1 3: 0x40eb68); its
+// class's slot +8 is CSdpAttrValue's own Extension_, so the value is
+// shadowed by force (gate6_shadow's adapter) before the engine sees it.
+//
+//   slots 0, 2: ldr r0, [r0, #4] ; ldr r12, [r0] ; ldr pc, [r12, #8+4k]
+//   slot 1:     stmdb sp!, {r0-r2, lr} ; ldr r1, [r0, #8] ; mov r0, r3
+//               ldr r12, gate6_shadow_value ; blx r12 ; mov r3, r0
+//               ldmia sp!, {r0-r2, lr} ; then as slot 0, at +0xc
+//   slot 3:     mov r3, #0 ; str r3, [r2] ; bx lr
+enum { SAN_MAX = 4, SAN_CODE_WORDS = 3 + 11 + 3 + 3, SAN_TABLE_WORDS = 2 + 4 };
+extern "C" u32 *gate6_shadow_value(u32 *obj, Context *c)
+{
+    c->shadowForce = 1;
+    obj = gate6_shadow(obj, c);
+    c->shadowForce = 0;
+    return obj;
+}
+extern "C" u32 *gate6_san_adapter(u32 *notifier, Context *c)
+{
+    if (!notifier || !c->sanVtable)
+        return notifier;
+    for (u32 i = 0; i < c->sanN; i++)
+        if (c->sanFrom[i] == (u32)notifier)
+            return (u32 *)c->sanTo[i];
+    if (c->sanN >= (u32)SAN_MAX)
+        return notifier;
+    u32 *a = (u32 *)user_allocz(3 * 4);
+    if (!a)
+        return notifier;
+    a[0] = c->sanVtable;
+    a[1] = (u32)notifier;
+    a[2] = (u32)c;
+    c->sanFrom[c->sanN] = (u32)notifier;
+    c->sanTo[c->sanN] = (u32)a;
+    c->sanN++;
+    log_event(c, NOTE_ENGINE, 0x5DA00000u | c->sanN);
+    return a;
+}
+static void san_build(Context *c)
+{
+    u32 *code = (u32 *)c->spare;
+    u32 *t = code + SAN_CODE_WORDS;
+    u32 *b = code;
+    b[0] = 0xE5900004; b[1] = 0xE590C000; b[2] = 0xE59CF008;              // slot 0
+    b += 3;
+    b[0] = 0xE92D4007; b[1] = 0xE5901008; b[2] = 0xE1A00003; b[3] = 0xE59FC014;
+    b[4] = 0xE12FFF3C; b[5] = 0xE1A03000; b[6] = 0xE8BD4007; b[7] = 0xE5900004;
+    b[8] = 0xE590C000; b[9] = 0xE59CF00C; b[10] = (u32)&gate6_shadow_value;  // slot 1
+    b += 11;
+    b[0] = 0xE5900004; b[1] = 0xE590C000; b[2] = 0xE59CF010;              // slot 2
+    b += 3;
+    b[0] = 0xE3A03000; b[1] = 0xE5823000; b[2] = 0xE12FFF1E;              // slot 3
+    t[0] = 0; t[1] = 0;                     // offset to top, typeinfo
+    t[2] = (u32)code; t[3] = (u32)(code + 3); t[4] = (u32)(code + 14); t[5] = (u32)(code + 17);
+    user_imb_range(code, t + SAN_TABLE_WORDS);
+    c->spare += (SAN_CODE_WORDS + SAN_TABLE_WORDS) * 4;
+    c->sanVtable = (u32)(t + 2);
+}
+
+// **Two EKA1 request statuses side by side (round 172).** Colin's network
+// object (0x402128) keeps its socket Write status at +0x10 and its receive
+// status at +0x14, one word each, EKA1's TRequestStatus; the receive's
+// transfer length follows at +0x18. On 9.x `RSocket::Write` sets its status
+// pending through TRequestStatus::operator=, which also sets ERequestPending
+// (2) in the status's second word -- here the receive status -- and the
+// engine read a pending 0x80000003, or a completed 2, as a failed receive and
+// dropped the link: "connection lost" on both phones the moment a joiner
+// connected (E1124). RecvOneOrMore does the same to the length's descriptor
+// header. So at those call sites (GAME_SOCK_*_KEEP, return addresses) the
+// word after the status is put back -- only if it reads exactly what it was
+// with 2 added, so a completion landing meanwhile is never overwritten. Any
+// other caller (0x4ae5f4's Write, on a 9.x CActive that SetActive then
+// relies on) goes straight to the real call.
+//
+//   ldr r12, site0 ; cmp lr, r12 ; ldrne r12, site1 ; cmpne lr, r12
+//   ldrne pc, target ; stmdb sp!, {r4-r6, lr} ; add r4, rN, #4 ; ldr r5, [r4]
+//   [ldr r6, [sp, #16] ; sub sp, sp, #8 ; str r6, [sp]]  -- one stack argument
+//   ldr r12, target ; blx r12 ; [add sp, sp, #8] ; ldr r6, [r4]
+//   orr r12, r5, #2 ; cmp r6, r12 ; streq r5, [r4] ; ldmia sp!, {r4-r6, pc}
+enum { KEEP_THUNK_WORDS = 24 };
+static u32 keep_thunk(u8 *code, u32 target, u32 site0, u32 site1, u32 statusReg, u32 stackArgs)
+{
+    u32 *b = (u32 *)code, n = 0;
+    u32 ldrSite0 = n++, cmp0 = n++, ldrSite1 = n++, cmp1 = n++, jmp = n++;
+    (void)cmp0; (void)cmp1;
+    b[1] = 0xE15E000C; b[3] = 0x115E000C;
+    b[n++] = 0xE92D4070;
+    b[n++] = 0xE2804004u | (statusReg << 16);
+    b[n++] = 0xE5945000;
+    if (stackArgs) { b[n++] = 0xE59D6010; b[n++] = 0xE24DD008; b[n++] = 0xE58D6000; }
+    const u32 ldrTarget = n++;
+    b[n++] = 0xE12FFF3C;
+    if (stackArgs) b[n++] = 0xE28DD008;
+    b[n++] = 0xE5946000; b[n++] = 0xE385C002; b[n++] = 0xE156000C; b[n++] = 0x05845000; b[n++] = 0xE8BD8070;
+    const u32 lit0 = n++, lit1 = n++, litT = n++;
+    b[lit0] = site0; b[lit1] = site1; b[litT] = target;
+    // ldr rd, [pc, #off]: off = literal - (this + 8), in bytes
+    b[ldrSite0] = 0xE59FC000u | ((lit0 - ldrSite0 - 2) * 4);
+    b[ldrSite1] = 0x159FC000u | ((lit1 - ldrSite1 - 2) * 4);
+    b[jmp] = 0x159FF000u | ((litT - jmp - 2) * 4);
+    b[ldrTarget] = 0xE59FC000u | ((litT - ldrTarget - 2) * 4);
+    user_imb_range(b, b + n);
     return (u32)b;
 }
 
@@ -16265,6 +16390,30 @@ static u32 load_and_start()
                 ctx->spare += THIS_THUNK_WORDS * 4;
             }
         }
+    }
+    // CSdpAgent::NewL: the engine's notifier behind an EABI one (gate6_san_adapter),
+    // on top of the result thunk the shadow loop above already put there.
+    if (IMPORT_SHADOW_SDPAGENT < nImports && IMPORT_SHADOW_SDPAGENT < kShimCount &&
+        (kShimTable[IMPORT_SHADOW_SDPAGENT] >> 24) == KIND_CALL && ctx->shadowAdapter &&
+        ctx->spare + (SAN_CODE_WORDS + SAN_TABLE_WORDS + THIS_THUNK_WORDS) * 4 <= ctx->spareEnd) {
+        san_build(ctx);
+        iat[IMPORT_SHADOW_SDPAGENT] = this_thunk(ctx->spare, ctx, iat[IMPORT_SHADOW_SDPAGENT],
+                                                 (u32)&gate6_san_adapter);
+        ctx->spare += THIS_THUNK_WORDS * 4;
+    }
+    // RSocket::Write and RecvOneOrMore at the title's raw-status sites (keep_thunk).
+    if (GAME_SOCK_WRITE_KEEP && IMPORT_SOCK_WRITE < nImports && IMPORT_SOCK_WRITE < kShimCount &&
+        (kShimTable[IMPORT_SOCK_WRITE] >> 24) == KIND_CALL && ctx->spare + KEEP_THUNK_WORDS * 4 <= ctx->spareEnd) {
+        const u32 site = ctx->codeBase + (u32)GAME_SOCK_WRITE_KEEP;
+        iat[IMPORT_SOCK_WRITE] = keep_thunk(ctx->spare, iat[IMPORT_SOCK_WRITE], site, site, 2, 0);
+        ctx->spare += KEEP_THUNK_WORDS * 4;
+    }
+    if (GAME_SOCK_RECV_KEEP0 && IMPORT_SOCK_RECV1 < nImports && IMPORT_SOCK_RECV1 < kShimCount &&
+        (kShimTable[IMPORT_SOCK_RECV1] >> 24) == KIND_CALL && ctx->spare + KEEP_THUNK_WORDS * 4 <= ctx->spareEnd) {
+        const u32 s0 = ctx->codeBase + (u32)GAME_SOCK_RECV_KEEP0;
+        const u32 s1 = GAME_SOCK_RECV_KEEP1 ? ctx->codeBase + (u32)GAME_SOCK_RECV_KEEP1 : s0;
+        iat[IMPORT_SOCK_RECV1] = keep_thunk(ctx->spare, iat[IMPORT_SOCK_RECV1], s0, s1, 3, 1);
+        ctx->spare += KEEP_THUNK_WORDS * 4;
     }
     // Cba() and StatusPane(): the hidden stand-in (gate6_hidden_furniture).
     {
