@@ -109,28 +109,39 @@ profile is loaded only by DRIVER SELECT's Load (0x4bcb68), which the
 multiplayer path never passes, even with a profile on disk (E1132-E1134;
 `duo_profile.sh` creates one in both trees).
 
-## Where the session stands (E1135-E1149)
+## Where the session stands (E1135-E1159)
 
-- A joiner needs a driver selected when the session starts: in a multiplayer
-  rally (mode 1 or 2) the name sent in its player-info message (0x47d90c,
-  sent when the host's 344-byte settings arrive, not on Ready) is player 0's
-  profile's. DRIVER SELECT reverts a driver you back out of (0x479114), so
-  the driver must be the current one at boot: the game selects the driver
-  `gameinfo.dat` names (0x4bcb68), and saves it when a stage starts
-  (`duo_loadrace.sh` puts the bench there). With that, no fault (E1148).
-- The host's settings go out when it presses OK on SINGLE RALLY; until then
-  only an 8-byte ping (`11 00 ...`) crosses the link (`EKA2L1_BTDUMP`).
-- Selecting a device that is not hosting now ends in the game's own
-  "Connection request failed" (exception globals for worker threads, 13.aj;
-  the emulator's empty SDP database for a peer with no responder).
-- Open: Host sometimes hangs behind the wrapper's window (E1148), as before
-  round 171's mailbox fix; intermittent.
+- The session's protocol, read off the link (`EKA2L1_BTDUMP`): after the
+  SDP exchange only an 8-byte ping (`11 00 ...`) every 2.6 s, until the
+  host presses OK on SINGLE RALLY and sends a 344-byte type-2 settings
+  message; the joiner's handler (0x47d810) takes mode, car and transmission
+  from it and at once sends its own 64-byte type-3 player info (0x47d90c),
+  whose first field is player 0's name -- then the host's lobby offers Start
+  (E1154).
+- That name is the joiner's driver profile's (modes 1-2). It is NULL for a
+  guest, and the joiner faults in `strcpy`. A driver does not survive into a
+  join: DRIVER SELECT's own handler clears an invalid one (0x479114),
+  quitting a stage clears all sixteen (0x468dc0 -> 0x4bdd28) unless a
+  connected session is up, and the boot-time match against the save
+  (0x4bcb68) has never matched here. Only once, with the host hung, did the
+  joiner survive (E1148). The per-race player setup at 0x4d7868 ("USING
+  CACHED DRIVER" / "CREATING AS GUEST" / "FORCING LOAD FROM MEMORY CARD") is
+  where a joiner's driver should come from; not yet read.
+- Selecting a device that is not hosting ends in the game's own "Connection
+  request failed" (exception globals for worker threads, 13.aj; the
+  emulator's empty SDP database).
+- The host sometimes hangs behind the wrapper's window right after its
+  launcher ask (E1148, E1153, E1155): intermittent, not yet dumped.
+- Bench tools: `duo.sh` with `DUO_SAVE_A/B` (save snapshots), key scripts
+  `duo_host*.sh`, `duo_join.sh`, `duo_loadjoin.sh`, `duo_loadrace.sh`,
+  `duo_racejoin.sh`, `duo_profile.sh`, `duo_idle.sh`; the game's attract demo
+  starts after about 65 s idle on the main menu (E1138).
 
 ## Next steps, in order
 
-1. Host and join again from the saved-driver state, both sides watched, into
-   the race; read the race traffic.
-2. The intermittent host hang (E1148).
+1. The joiner's driver: read the player setup at 0x4d7868 and how a guest is
+   meant to get a name; whether a phone would fault the same way.
+2. The intermittent host hang (E1148, E1153, E1155): the watchdog's dump.
 3. HCI scan-enable ioctls on 9.x: what they answer; a stand-in if refused.
 4. The phone: LocalServices is the gate. A self-signed package for phones
    that grant it, and on the N95 nothing until its install policy does.

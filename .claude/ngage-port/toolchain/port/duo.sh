@@ -66,6 +66,17 @@ open(path, 'w').write(s)
 PY
 }
 install "$HA"; install "$HB"
+# DUO_SAVE_A / DUO_SAVE_B: a snapshot of a title's save directory to put back
+# first -- Colin's joiner needs its driver current in gameinfo.dat, and any
+# stage a key script wanders into rewrites that file (E1151).
+for side in A B; do
+    snap=$(eval echo "\${DUO_SAVE_$side}")
+    tree=$([ $side = A ] && echo "$HA" || echo "$HB")
+    if [ -n "$snap" ] && [ -d "$snap" ]; then
+        dst="$tree/data/drives/c/system/apps/$STEM"
+        rm -rf "${dst:?}"; cp -a "$snap" "$dst"
+    fi
+done
 cp "$HA/config.yml" "$S/duo_configA.yml"
 netconf "$HA/config.yml" 35689 15000 35690
 cp "$HB/config.yml" "$S/duo_configB.yml"
