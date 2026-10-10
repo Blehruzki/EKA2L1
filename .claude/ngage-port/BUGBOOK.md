@@ -1846,3 +1846,27 @@ engine's active objects and patched them; a raw, polled status was the same
 bug where no CActive was looking. And an emulator that is kinder than the
 kernel hides it: when the bench and the phone disagree, find what the
 emulator does that the platform source does not.*
+
+### 13.z Build 004 on the N95: the sound stutters, and closing from the task switcher dies (round 163, E1058-E1068)
+**Stutter.** The engine's feeder (0x50157c) is One's writer over again
+(round 132): it writes `clamp(target - (written - Position), min, max)` with
+one buffer in flight at its 40 ms timer -- target 94 ms, at most 47 ms a write,
+12 ms at least (E1060-E1061, by register trace and `EKA2L1_WATCH`). Against the
+N95's `Position`, which reports nearer the speaker than the N-Gage's did, a
+94 ms cushion that refills only 1.18x faster than it plays leaves gaps.
+**Fix:** `GAME_MDA_POSITION_LEAD_US 150000`, the knob One got for the same
+writer (the engine's stream does pass through the port's MDA proxy: E1062,
+where E984 had read the opposite). The bench shows no gap added and the music
+clean where the run without it dropped out (E1063-E1065); the size is a guess
+against One's 100 ms.
+**Death.** A system shutdown event (`EApaSystemEventShutdown`, the task
+switcher's close) reached `CAknAppUi::HandleSystemEventL`, which runs Avkon's
+app shutter; its RunL died in cone before reaching HandleCommandL -- rounds
+101-102's frame, pc 0x807344c6. **Fix:** `gate6_engine_sysevent` answers the
+event itself: flush and leave (0xE81F). `GAME_BENCH_SHUTDOWN_AT` sends the
+event as apparc does; the bench's shutter survives (E1066), the answer comes
+first (E1067).
+*Lessons: when a title reports what another one already had, read that
+title's entry first -- One's knob was the fix. And a reading in the record
+(E984: "the engine never goes through the proxy") is a measurement of its day;
+re-measure before building on it.*

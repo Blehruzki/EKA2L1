@@ -13268,6 +13268,29 @@ extern "C" void gate6_ui_command(void *self, u32 command, Context *c)
         ((Command)c->realCommand)(self, command);
 }
 
+// **Round 163: the task switcher's close.** It sends EApaSystemEventShutdown
+// (APGTASK.H: 1; the secure one 100) to the application's group, and
+// CAknAppUi::HandleSystemEventL answers by running Avkon's app shutter
+// (CAknEnv::RunAppShutter, AknAppUi.cpp), whose RunL walks the control stack
+// before it reaches HandleCommandL -- and on the N95 died there, in cone, at
+// rounds 101-102's frame (pc 0x807344c6). The engine-mode app UI answers the
+// event itself, as gate6_ui_command answers the end key: flush and leave
+// (0xE81F). Everything else goes to Avkon's own handler.
+enum { APA_SYSTEM_EVENT_SHUTDOWN = 1, APA_SYSTEM_EVENT_SECURE_SHUTDOWN = 100 };
+
+extern "C" void gate6_engine_sysevent(void *self, const u32 *event, Context *c)
+{
+    typedef void (*SysEvent)(void *, const void *);
+    const u32 what = event ? event[4] : 0;      // *(TApaSystemEvent *)TWsEvent::EventData(), at +16
+    if (what == (u32)APA_SYSTEM_EVENT_SHUTDOWN || what == (u32)APA_SYSTEM_EVENT_SECURE_SHUTDOWN) {
+        log_event(c, NOTE_EXIT_ASKED, 0xE81F);
+        log_block(c);
+        box_flush(c);
+        user_exit(0);
+    }
+    ((SysEvent)c->realSysEvent)(self, event);
+}
+
 // An old vtable entry the game wrote, as opposed to one it inherited: inside
 // the image, and not the import veneer (`ldr ip, [pc, #4]; ldr ip, [ip];
 // bx ip`) every inherited slot of an old table points at -- those are inside
@@ -13763,6 +13786,15 @@ enum { I3D_MAILBOX = 0xE4 / 4, I3D_ASK = 3, I3D_ANSWER = 4, I3D_QUIT = 6, I3D_CL
 #ifndef GAME_BENCH_ENDKEY_AT
 #define GAME_BENCH_ENDKEY_AT 0
 #endif
+// Bench: the task switcher's close as apparc sends it (GAME_BENCH_SHUTDOWN_AT,
+// seconds; 0 off): an EEventUser whose data is EApaSystemEventShutdown, to the
+// wrapper's own group (0x5B04). Round 163.
+#ifndef GAME_BENCH_SHUTDOWN_AT
+#define GAME_BENCH_SHUTDOWN_AT 0
+#endif
+#ifndef BENCH_NO_ENGINE_SYSEVENT
+#define BENCH_NO_ENGINE_SYSEVENT 0      // bench: the engine app UI's shutdown answer left out, to test the test
+#endif
 #ifndef BENCH_NO_ENGINE_COMMAND
 #define BENCH_NO_ENGINE_COMMAND 0       // bench: the engine app UI's end-key answer left out, to test the test
 #endif
@@ -13777,10 +13809,12 @@ enum { WS32_SEND_EVENT_TO_WG = 45, AKN_END_KEY_CLOSE_EVENT = 0x101F87F0 };
 
 static void bench_switch(Context *c)
 {
-    if ((!GAME_BENCH_SWITCH_AT && !GAME_BENCH_ENDKEY_AT) || !c->coeEnv)
+    if ((!GAME_BENCH_SWITCH_AT && !GAME_BENCH_ENDKEY_AT && !GAME_BENCH_SHUTDOWN_AT) || !c->coeEnv)
         return;
     const u32 t = ++c->benchSwitchTicks;
-    if (GAME_BENCH_ENDKEY_AT && t == (u32)GAME_BENCH_ENDKEY_AT * 2 && c->wsIdentifier) {
+    const int endKey = GAME_BENCH_ENDKEY_AT && t == (u32)GAME_BENCH_ENDKEY_AT * 2;
+    const int shutdown = GAME_BENCH_SHUTDOWN_AT && t == (u32)GAME_BENCH_SHUTDOWN_AT * 2;
+    if ((endKey || shutdown) && c->wsIdentifier) {
         typedef int (*Identifier)(const void *);
         typedef void (*SendWg)(void *, int, const u32 *);
         typedef void (*Fn1)(void *);
@@ -13795,8 +13829,14 @@ static void bench_switch(Context *c)
             const int wg = ((Identifier)c->wsIdentifier)((u8 *)c->coeEnv + NEW_COEENV_ROOTWIN);
             u32 ev[16];
             for (u32 i = 0; i < 16; i++) ev[i] = 0;
-            ev[0] = (u32)AKN_END_KEY_CLOSE_EVENT;           // TWsEvent::iType
-            log_event(c, NOTE_ENGINE, 0x5B030000u | ((u32)wg & 0xFFFFu));
+            if (endKey) {
+                ev[0] = (u32)AKN_END_KEY_CLOSE_EVENT;       // TWsEvent::iType
+                log_event(c, NOTE_ENGINE, 0x5B030000u | ((u32)wg & 0xFFFFu));
+            } else {
+                ev[0] = 1000;                               // EEventUser
+                ev[4] = (u32)APA_SYSTEM_EVENT_SHUTDOWN;     // its data: the system event
+                log_event(c, NOTE_ENGINE, 0x5B040000u | ((u32)wg & 0xFFFFu));
+            }
             log_block(c);
             ((SendWg)rlibrary_lookup(&lib, WS32_SEND_EVENT_TO_WG))(session, wg, ev);
             ((Fn1)rlibrary_lookup(&lib, WS32_FLUSH))(session);
@@ -14152,6 +14192,12 @@ extern "C" void *gate6_engine_app_ui(void *self)
     c->realCommand = vt[VT_HEADER + SLOT_UI_COMMAND];
     if (!BENCH_NO_ENGINE_COMMAND && c->spare + TRACE <= c->spareEnd) {
         vt[VT_HEADER + SLOT_UI_COMMAND] = ctx_thunk(c->spare, c, (u32)&gate6_ui_command);
+        c->spare += TRACE;
+    }
+    // Round 163: and the task switcher's close (gate6_engine_sysevent).
+    c->realSysEvent = vt[VT_HEADER + SLOT_UI_SYSEVENT];
+    if (!BENCH_NO_ENGINE_SYSEVENT && c->spare + TRACE <= c->spareEnd) {
+        vt[VT_HEADER + SLOT_UI_SYSEVENT] = ctx_thunk(c->spare, c, (u32)&gate6_engine_sysevent);
         c->spare += TRACE;
     }
     ui[0] = (u32)(vt + VT_HEADER);

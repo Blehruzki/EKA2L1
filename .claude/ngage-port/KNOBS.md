@@ -105,6 +105,7 @@ the N95 and the N91. One (`gate6one`) ships as **028** (round 159: the N73's dea
 | Avkon (status pane, main-pane inset) and the picture-mode file read only on the main thread; an engine title does both in `engine_start`, before its thread exists (`status_pane_off`, `avkon_inset`, `cfg_read`) | round 161, E1031-E1046 | bench: Colin under STRICTHANDLE=2; One, the Asphalts, Ashen unchanged (E1042-E1045) |
 | `RSystemAgent::RSystemAgent()` (sysagt 18) zeroes its handle, as RHandleBase's constructor does (`LOCAL_HANDLE_CTOR`) | round 161, E1035-E1036 | Colin, Colin's front end, Ashen (the titles that import it) |
 | an engine's `RWsSession::EventReady` keeps the word after its one-word status (`gate6_engine_event_ready`) | round 162, E1047-E1048 | Colin (`GAME_ENGINE_LXCE`) |
+| an engine-mode app UI answers EApaSystemEventShutdown (the task switcher's close) with flush-and-leave, before Avkon's shutter (`gate6_engine_sysevent`, 0xE81F) | round 163, E1066-E1067 | Colin |
 | an engine-mode app UI answers EEikCmdExit (the end key) with `gate6_ui_command`: flush and leave, 0xE818 | round 162, E1049-E1050 | Colin |
 | a StartL on a DSA that is already running is answered without a second Request, which wserv would panic EWservPanicDirectMisuse (`gate6_dsa_startl`, 0x57A2) | E1017-E1018 | bench: Colin; never taken on One or the Asphalts (E1020-E1023) |
 
@@ -232,5 +233,7 @@ on every title: `RFile::Replace`, `Write`, `Flush`, `RFs::MkDir`, `Delete`
 | `GAME_ENGINE_FRONTEND_EXE` | gate6col2.exe | what the engine's `RApaLsSession::StartApp` starts in place of the N-Gage front end `.app` | installed E962; never yet called |
 | (with `GAME_ENGINE_LAUNCHER`) the hand-back | -- | back from an app switch: when the wrapper's group arrives at ordinal 0 with the focus elsewhere, the engine's group goes to the front (0x6B), and the engine's next post cancels and restarts its DSA (`dsa_kick`, "G6K") | E1009-E1015, E1019, bench |
 | `GAME_BENCH_SWITCH_AT` / `_FOR` | 0 / 10 | bench: another app's group in front at AT s, the wrapper's group back FOR s later (`bench_switch`, 0x5B) | E1008-E1015, diagnostic |
+| `GAME_MDA_POSITION_LEAD_US` | 150000 | the stream's Position answered 150 ms ahead, so the engine's feeder keeps that much more queued (One's knob, round 132) | round 163, E1060-E1065; a guess at the size |
+| `GAME_BENCH_SHUTDOWN_AT` | 0 | bench: the task switcher's close event to the wrapper's group at that second (0x5B04) | E1066-E1067, diagnostic |
 | `GAME_BENCH_ENDKEY_AT` | 0 | bench: Avkon's end-key close event sent to the wrapper's group at that second (0x5B03) | E1049-E1050, diagnostic |
 | `GAME_BENCH_DSA_ABORT_AT` / `_KICK` | 0 / 0 | bench: a phone's DSA abort and restart on the engine's thread at that post; KICK puts the hand-back's kick between them | E1016-E1018, diagnostic |

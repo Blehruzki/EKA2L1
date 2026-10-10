@@ -207,7 +207,7 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // #define GAME_CARD_CID 0x00000000, 0x00000000, 0x00000000, 0x00000000
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 4
+#define GAME_BUILD 5
 
 // **An AirPlay engine, not an app** (PORTING.md, Colin McRae). The image
 // is `6r66.lxe`, the engine lxce.py inflated out of `6r66.nax`: the loader
@@ -233,6 +233,16 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // records never reach the file (E961). Diagnostic; 0 in a shipped build.
 #define GAME_MDA_RDEBUG 0
 
+// Round 163: the sound stutters on the N95. The engine's feeder (0x50157c)
+// writes clamp(target - (written - Position), min, max) -- target 94 ms, at
+// most 47 ms a write, one buffer in flight at its 40 ms timer (E1060-E1061) --
+// One's writer exactly (BUGBOOK, round 132), whose 20-55 ms cushion against
+// the N95's Position stuttered. Position is answered this far ahead, so the
+// feeder keeps that much more queued: about 244 ms in all, inside the N95
+// stream's measured ~375 ms (round 135). A guess at the size: One's 100 ms
+// gave it ~180 ms; Colin's feeder refills only 1.18x faster than it plays.
+#define GAME_MDA_POSITION_LEAD_US 150000
+
 // Bench: a phone's app switch from the window server's side (gate6.cpp,
 // bench_switch): another app's group in front at AT seconds, the wrapper's
 // group brought back FOR seconds later. 0 in anything shipped.
@@ -246,3 +256,7 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // Bench: the end key's close event to the wrapper's group at that second
 // (gate6.cpp, round 162, E1049-E1050). 0 in anything shipped.
 #define GAME_BENCH_ENDKEY_AT 0
+// Bench: the task switcher's close (EEventUser, EApaSystemEventShutdown) to
+// the wrapper's group at that second (gate6.cpp, round 163, E1066-E1067). 0 in
+// anything shipped.
+#define GAME_BENCH_SHUTDOWN_AT 0
