@@ -2014,3 +2014,33 @@ of its own and verifies the signature with openssl (and fails a tampered one).
 *Lesson: an installer's rules are a phone's, not the emulator's -- a
 capability is three gates (exe header, package signature, installer policy)
 and the bench checks none of them.*
+
+### 13.ag The phone-wide freezes, named: the engine holds 9.2's global bitmap heap lock (round 170, E1094-E1097)
+**Symptom.** Rounds 166-168: hosting, or a charger plugged in mid-intro,
+stops every application and the power key with the music playing on; 009's
+watchdog turned it into a close.
+**Cause.** Before Symbian 9.3, `CFbsBitmap::LockHeap` -- which
+`TBitmapUtil::Begin` takes -- is a Wait on a **global mutex** that the Font
+and Bitmap Server takes before anything that can move a large bitmap, and
+allocating one, from any process, can (fbs docs, "Heap Locking in the Font
+and Bitmap Server"). The N95 is 9.2. Colin's engine holds that lock through
+all of its game logic -- its frame yield (0x44eaa0) is End, the event wait,
+Begin -- so any stop inside the game logic stops the bitmap server and the
+window server behind it. The Bluetooth check's Leave (round 168) unwound past
+the next End, into `~CFbsBitmap`, which waited on the server, which waited on
+the lock the engine still held. The phone dump's engine stack (game+a8034,
+the return from deleting the bitmap at +0x38) is exactly there. The emulator,
+and 9.3+ phones (the bench's RM-409 among them), have no such lock.
+**Fix (build 012).** `GAME_BMU_YIELD`: the engine's TBitmapUtil Begin/End go
+through the port and are counted; when the engine thread sleeps
+(User::After), waits (User::WaitForRequest) or leaves (gate6_trap_leave,
+before the cleanup stack runs any destructor), every lock it holds is let go,
+and after a sleep or wait taken again; an End with nothing held is never
+passed on. And without LocalServices (the N95 refused it unsigned and
+self-signed, rounds 169-170) the check can only fail there, so its Leave
+becomes a nop (0x49e58): Bluetooth reads as off, and the engine asks the
+launcher to turn it on (mailbox 3, which the port answers). Capabilities back
+to none, the package unsigned again.
+*Lesson: a lock that is local on the bench can be global on a phone. A
+platform primitive whose scope changed between OS versions (here at 9.3) is
+a difference to look for, not to discover.*

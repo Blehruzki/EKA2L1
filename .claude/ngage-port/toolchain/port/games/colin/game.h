@@ -103,8 +103,9 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
                           { 0x000a8044, 0x1593C008, 0x1593C004 }, /* delete the CDirectScreenAccess */ \
                           { 0x000a7260, 0x1593C008, 0x1593C004 }, /* delete the CActiveScheduler */ \
                           { 0x000a8440, 0xE92D4000, 0xE3A00001 }, /* the flip always direct: mov r0, #1 */ \
-                          { 0x000a8444, 0xE59F3024, 0xE12FFF1E }  /*   bx lr */
-#define GAME_CODE_PATCH_COUNT 19
+                          { 0x000a8444, 0xE59F3024, 0xE12FFF1E }, /*   bx lr */ \
+                          { 0x00049e58, 0x1B035823, 0xE1A00000 }  /* the Bluetooth check answers "off", never leaves (round 170) */
+#define GAME_CODE_PATCH_COUNT 20
 
 // The environment's screen device, as the game reads it off the view
 // (old iScreen, 0x3c): 1 hands it a stand-in that answers font requests by
@@ -207,7 +208,7 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // #define GAME_CARD_CID 0x00000000, 0x00000000, 0x00000000, 0x00000000
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 11
+#define GAME_BUILD 12
 
 // **An AirPlay engine, not an app** (PORTING.md, Colin McRae). The image
 // is `6r66.lxe`, the engine lxce.py inflated out of `6r66.nax`: the loader
@@ -273,12 +274,23 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // 4 s and again at the end (gate6.cpp, gate6_watchdog). Build 008's host froze
 // the whole N95 with the engine thread alive and the main thread stopped.
 #define GAME_WATCHDOG_KILL_S 12
+// Round 170: the engine's TBitmapUtil lock -- 9.1/9.2's global bitmap heap
+// mutex -- let go around its sleeps, waits and leaves (gate6.cpp).
+#define GAME_BMU_YIELD 1
 // Round 168: the loader's capabilities (the exe header, TCapabilitySet bits).
 // LocalServices (14) is what a Bluetooth socket needs on a phone: without it
 // the engine's "is Bluetooth on?" (0x449d64) got KErrPermissionDenied and
 // left -- multiplayer, and a charger plugged in mid-intro, froze the N95.
 // User-grantable; the emulator enforces no capability at all.
-#define GAME_CAPABILITIES 0x4000
+#define GAME_CAPABILITIES 0
+// Round 170: and back to none -- the N95 refused LocalServices both unsigned
+// (010) and self-signed (011), and installs a package that asks for nothing.
+// Without it the engine's Bluetooth check (0x449d64) can only fail there; the
+// code patch at 0x49e58 makes that failure an "off" instead of a Leave.
+// Bench: call the engine's 0x47df80 (a Bluetooth-check dialog handler) on its
+// thread at its Nth GetEvent (round 170). 0 in anything shipped.
+#define GAME_BENCH_CALL_AT 0
+#define GAME_BENCH_CALL_FN 0x7df80
 // Bench: the main thread blocks for 30 s at that second (round 167). 0 in
 // anything shipped.
 #define GAME_BENCH_MAIN_HANG_AT 0

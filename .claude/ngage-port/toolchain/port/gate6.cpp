@@ -1444,6 +1444,11 @@ struct Context {
     u32 fnThreadReqComplete;        // RThread::RequestComplete (euser 1790): gate6_complete_r2
     u32 fnWaitForRequest, benchDieCalls;   // bench (GAME_BENCH_ENGINE_DIES): User::WaitForRequest, euser 604
     u32 fnSetPriority, fnProcessKill;      // RThread::SetPriority, RProcess::Kill (euser 1786, 1320): the watchdog (round 167)
+    u32 benchCallCalls;                    // bench (GAME_BENCH_CALL_AT): GetEvents counted
+    // Round 170: the engine's TBitmapUtil locks -- 9.1/9.2's global bitmap
+    // heap mutex -- tracked so they can be let go around its waits and leaves.
+    u32 realBmuBegin, realBmuEnd, realUserAfter, realWaitRequest;
+    u32 bmuOwner, bmuDepth, bmuUtil[4], bmuPoint[4][2], bmuReleases, bmuSaid;
     u32 wsLogged;           //   the wrapper's window-server events logged so far (round 165)
     u32 cfgSavePending;     //   a hold's save, owed to the main thread
     u32 engineQuitting;     //   GAME_ENGINE_LAUNCHER: the engine asked to quit (mailbox 6)
@@ -11902,6 +11907,7 @@ enum { LEAVE_RAW = 0, LEAVE_RAW_REASON = -1003, LEAVE_RAW_WORDS = 128 };   // be
 // pointer}, a null operation marking a level.
 enum { LOG_CLEANUP = 0, LOG_CLEANUP_ITEMS = 24 };   // bench: 1 dumps the cleanup stack at each leave (One E477)
 
+static void bmu_leave(Context *c);     // round 170, with the engine's bitmap heap lock below
 extern "C" void gate6_trap_leave(void *self, u32 reason, u32, Context *c)
 {
     if (LEAVE_RAW && (int)reason == LEAVE_RAW_REASON) {
@@ -11913,6 +11919,7 @@ extern "C" void gate6_trap_leave(void *self, u32 reason, u32, Context *c)
             log_event(c, NOTE_LEAVE_RAW, w[i]);
         log_block(c);
     }
+    bmu_leave(c);                       // round 170: the bitmap heap lock, before any destructor runs
     TrapHandler *h = (TrapHandler *)self;
     if (LOG_CLEANUP && h->iCleanup && !((u32)h->iCleanup & 3)) {
         const u32 *base = (const u32 *)h->iCleanup[1], *next = (const u32 *)h->iCleanup[3];
@@ -12004,6 +12011,14 @@ extern "C" int gate6_sysagt_cancel(void *, u32, u32, Context *c)
 // (GAME_WATCHDOG_KILL_S). 0 ships.
 #ifndef GAME_BENCH_MAIN_HANG_AT
 #define GAME_BENCH_MAIN_HANG_AT 0
+#endif
+// Bench (round 170): at the engine thread's Nth GetEvent, call the engine's
+// own function at image offset GAME_BENCH_CALL_FN on that thread -- a path the
+// bench never takes by itself (the Bluetooth check's dialog handlers,
+// 0x47df80 and 0x47def8). 0 ships.
+#ifndef GAME_BENCH_CALL_AT
+#define GAME_BENCH_CALL_AT 0
+#define GAME_BENCH_CALL_FN 0
 #endif
 
 // **A request 9.x has no server for, answered "done" at once** (round 166).
@@ -14247,6 +14262,11 @@ extern "C" void gate6_engine_get_event(void *session, u32 *ev, Context *c)
         ev[0] = 0;                          // EEventNull: the engine sees nothing
         return;
     }
+    if (GAME_BENCH_CALL_AT && ++c->benchCallCalls == (u32)GAME_BENCH_CALL_AT && c->codeBase) {
+        log_event(c, NOTE_EXIT_ASKED, 0xE822);
+        ((void (*)())(c->codeBase + (u32)GAME_BENCH_CALL_FN))();
+        log_event(c, NOTE_EXIT_ASKED, 0xE823);   // and it came back
+    }
     if (GAME_BENCH_ENGINE_DIES && ++c->benchDieCalls == (u32)GAME_BENCH_ENGINE_DIES) {
         typedef void (*Wait)(u32 *);
         u32 st[2] = { 0, 0x5E5E5E5Cu };
@@ -14268,6 +14288,105 @@ extern "C" void gate6_engine_get_event(void *session, u32 *ev, Context *c)
     const u32 *k = ev + 4;
     if (k[1] == (u32)HOLD_KEY && hold_key(c, k, ev[0]))
         ev[0] = (u32)EEventNull;
+}
+
+// **The global bitmap heap lock, let go when the engine stops (round 170).**
+// Before Symbian 9.3 a large bitmap lives in a global heap the Font and Bitmap
+// Server defragments, and CFbsBitmap::LockHeap -- which TBitmapUtil::Begin
+// takes -- is a Wait on a **global mutex** the server waits on before anything
+// that can move one (fbs docs, "Heap Locking in the Font and Bitmap Server").
+// The N95 is 9.2. Colin's engine holds that lock through all of its game
+// logic: its frame yield (0x44eaa0) is End, the event wait, Begin. So on a
+// phone, any stop inside the game logic stops every application that touches
+// a large bitmap -- the window server among them -- and a Leave out of it
+// (the Bluetooth check, 0x449e58, round 168) unwinds into ~CFbsBitmap, which
+// waits on the server, which waits on the lock this thread holds: the whole
+// phone frozen, the audio playing on (rounds 166-168). The emulator has no
+// such lock; 9.3 and later phones neither.
+//
+// So the engine's Begin and End go through here and are counted (with the
+// object and point of each Begin), and when the engine thread sleeps
+// (User::After), waits (User::WaitForRequest) or leaves (gate6_trap_leave),
+// every lock it holds is let go first -- and after a sleep or wait taken
+// again, in order. End with nothing held is not passed on: a mutex signalled
+// by a thread that does not hold it panics. GAME_BMU_YIELD turns it on.
+#ifndef GAME_BMU_YIELD
+#define GAME_BMU_YIELD 0
+#endif
+typedef void (*BmuBegin)(u32 *, const i32 *);
+typedef void (*BmuEnd)(u32 *);
+
+static void bmu_release(Context *c)
+{
+    if (!c->bmuDepth || c->bmuOwner != this_thread_id())
+        return;
+    for (u32 i = c->bmuDepth < 4 ? c->bmuDepth : 4; i-- > 0;)
+        ((BmuEnd)c->realBmuEnd)((u32 *)c->bmuUtil[i]);
+    c->bmuReleases++;
+}
+
+static void bmu_retake(Context *c)
+{
+    if (!c->bmuDepth || c->bmuOwner != this_thread_id())
+        return;
+    for (u32 i = 0; i < c->bmuDepth && i < 4; i++)
+        ((BmuBegin)c->realBmuBegin)((u32 *)c->bmuUtil[i], (const i32 *)c->bmuPoint[i]);
+}
+
+extern "C" void gate6_bmu_begin(u32 *util, const i32 *pt, Context *c)
+{
+    ((BmuBegin)c->realBmuBegin)(util, pt);
+    if (c->bmuDepth < 4) {
+        c->bmuOwner = this_thread_id();
+        c->bmuUtil[c->bmuDepth] = (u32)util;
+        c->bmuPoint[c->bmuDepth][0] = pt ? (u32)pt[0] : 0;
+        c->bmuPoint[c->bmuDepth][1] = pt ? (u32)pt[1] : 0;
+    }
+    c->bmuDepth++;
+}
+
+extern "C" void gate6_bmu_end(u32 *util, u32, Context *c)
+{
+    if (!c->bmuDepth) {
+        if (c->bmuSaid < 8) { c->bmuSaid++; log_event(c, NOTE_ENGINE, 0xB3E0DEADu); }   // an End with nothing held: not passed on
+        return;
+    }
+    // Out of order is allowed: the entry for this object goes, wherever it is.
+    u32 at = c->bmuDepth - 1;
+    for (u32 i = c->bmuDepth < 4 ? c->bmuDepth : 4; i-- > 0;)
+        if (c->bmuUtil[i] == (u32)util) { at = i; break; }
+    for (u32 i = at; i + 1 < c->bmuDepth && i + 1 < 4; i++) {
+        c->bmuUtil[i] = c->bmuUtil[i + 1];
+        c->bmuPoint[i][0] = c->bmuPoint[i + 1][0];
+        c->bmuPoint[i][1] = c->bmuPoint[i + 1][1];
+    }
+    c->bmuDepth--;
+    ((BmuEnd)c->realBmuEnd)(util);
+}
+
+extern "C" void gate6_user_after(u32 us, u32, Context *c)
+{
+    bmu_release(c);
+    ((void (*)(u32))c->realUserAfter)(us);
+    bmu_retake(c);
+}
+
+extern "C" void gate6_engine_wait_request(u32 *status, u32, Context *c)
+{
+    bmu_release(c);
+    ((void (*)(u32 *))c->realWaitRequest)(status);
+    bmu_retake(c);
+}
+
+// The leave's half: everything held let go before the cleanup stack unwinds
+// into destructors (~CFbsBitmap among them), and forgotten -- the frames that
+// took the locks are gone, and their Ends will never come.
+static void bmu_leave(Context *c)
+{
+    if (!GAME_BMU_YIELD || !c->bmuDepth || c->bmuOwner != this_thread_id())
+        return;
+    bmu_release(c);
+    c->bmuDepth = 0;
 }
 
 // **Round 162: the word after the engine's event status.** The engine keeps
@@ -16026,6 +16145,24 @@ static u32 load_and_start()
         ctx->realGetEvent = iat[IMPORT_WS_GET_EVENT];
         iat[IMPORT_WS_GET_EVENT] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_engine_get_event);
         ctx->spare += TRACE;
+    }
+    // An engine's TBitmapUtil and its waits: the global bitmap heap lock let go (round 170).
+    if (GAME_BMU_YIELD) {
+        const u32 want[4] = { IMPORT_BMU_BEGIN, IMPORT_BMU_END, IMPORT_USER_AFTER, IMPORT_WAIT_FOR_REQUEST };
+        u32 *real[4] = { &ctx->realBmuBegin, &ctx->realBmuEnd, &ctx->realUserAfter, &ctx->realWaitRequest };
+        const u32 fn[4] = { (u32)&gate6_bmu_begin, (u32)&gate6_bmu_end, (u32)&gate6_user_after,
+                            (u32)&gate6_engine_wait_request };
+        u32 ok = 1;
+        for (u32 i = 0; i < 4; i++)
+            ok &= want[i] < nImports && want[i] < kShimCount && (kShimTable[want[i]] >> 24) == KIND_CALL;
+        if (ok && ctx->spare + 4 * TRACE <= ctx->spareEnd) {
+            for (u32 i = 0; i < 4; i++) {
+                *real[i] = iat[want[i]];
+                iat[want[i]] = ctx_thunk(ctx->spare, ctx, fn[i]);
+                ctx->spare += TRACE;
+            }
+        }
+        log_event(ctx, NOTE_ENGINE, 0xB3E00000u | ok);   // 1: the four installed
     }
     // An engine's RWsSession::EventReady: its status's second word kept (round 162).
     if (GAME_ENGINE_LXCE && IMPORT_WS_EVENT_READY < nImports && IMPORT_WS_EVENT_READY < kShimCount &&

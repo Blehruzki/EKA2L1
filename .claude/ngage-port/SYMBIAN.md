@@ -711,6 +711,17 @@ package before build 011 carried stale ones and installed. Signature layout:
 Ensymble 0.29 `sisfile.py` (RSA/SHA-1 over the controller's contents, the
 chain between the install block and the data index).
 
+**Before 9.3 the bitmap heap lock is global** (fbs docs, "Heap Locking in
+the Font and Bitmap Server"; the 9.3+ source in symbiansource keeps
+`LockHeap` only as `BeginDataAccess` and says why). Large bitmaps lived in one
+global heap the Font and Bitmap Server defragmented, moving their data; the
+server waited on a global mutex before anything that could trigger that
+(allocating a large bitmap, from any process, could), and `LockHeap` /
+`UnlockHeap` -- and `TBitmapUtil::Begin` / `End`, which call them -- were
+Wait and Signal on it. So on S60 3.0 and 3.1 (9.1, 9.2) a thread between
+Begin and End holds up every bitmap user in the phone, the window server
+included. 9.3+ (S60 3.2 and later) has no such lock.
+
 **9.x's btmanclient has no `RBTSecuritySettings`.** Its 84 exports (RM-409,
 EKA2L1's `epoc9.def`) carry RBTMan, the registry and comm-port settings;
 `TBTServiceSecurity` lives in bluetooth.dll on 9.x, and a listener's security

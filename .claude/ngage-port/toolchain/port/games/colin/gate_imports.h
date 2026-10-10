@@ -27,6 +27,8 @@ enum {
     IMPORT_APP_FULL_NAME               = 65535,   // absent
     IMPORT_APP_RECT                    = 65535,   // absent
     IMPORT_BASECONSTRUCTL              = 65535,   // absent
+    IMPORT_BMU_BEGIN                   =   240,
+    IMPORT_BMU_END                     =   243,
     IMPORT_CACTIVE_CTOR                =   209,
     IMPORT_CANCEL                      =   125,
     IMPORT_CHUNK_CREATE_GLOBAL         =   136,
@@ -151,12 +153,14 @@ enum {
     IMPORT_THREAD_SUSPEND              =   188,
     IMPORT_TRUNCDFSF2                  = 65535,   // absent
     IMPORT_UNLINK                      =    90,
+    IMPORT_USER_AFTER                  =   116,
     IMPORT_USER_ALLOC                  = 65535,   // absent
     IMPORT_USER_ALLOCL                 =   117,
     IMPORT_USER_ALLOCZ                 =   234,
     IMPORT_USER_ALLOCZL                =   113,
     IMPORT_USER_FREE_OP                = 65535,   // absent
     IMPORT_VEC_DELETE_OP               =   219,
+    IMPORT_WAIT_FOR_REQUEST            =   192,
     IMPORT_WFOPEN                      =   110,
     IMPORT_WINDOW                      = 65535,   // absent
     IMPORT_WS_EVENT_READY              =   292,
