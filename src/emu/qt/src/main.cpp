@@ -36,9 +36,17 @@
 #include <QStandardPaths>
 #include <QTranslator>
 
+#include <cstdio>
 #include <memory>
 
 int main(int argc, char *argv[]) {
+#if EKA2L1_PLATFORM(WIN32)
+    // Every guest RFile is backed by a C stdio stream, and the MSVC runtime caps those at 512 by default.
+    // A guest that keeps a few hundred files open (the N-Gage shell does) exhausts it, after which every
+    // fopen fails with EMFILE and the guest sees spurious KErrNotFound/EOF. Raise it to the CRT maximum.
+    _setmaxstdio(8192);
+#endif
+
     QApplication a(argc, argv);
 
     QCoreApplication::setOrganizationName("EKA2L1");
