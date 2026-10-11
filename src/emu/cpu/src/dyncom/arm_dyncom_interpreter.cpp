@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 #include <string>
 
 #include <cpu/arm_interface.h>
@@ -46,6 +47,13 @@ struct pc_trace {
     // trace itself has reached its cap.
     std::uint32_t regpc[16]; int nregpc = 0;
     std::FILE *rf = nullptr; std::uint64_t nreg = 0;
+    // EKA2L1_PCTRACE_REGRING=n with EKA2L1_PCTRACE_DUMPAT=pc: the register
+    // entries go round a ring of the last n in memory instead of to the file,
+    // and the ring is written out, oldest first, when a block at DUMPAT is
+    // entered -- for the moments before an event whose time is not known in
+    // advance (ngage-port: Colin's link drop, E1240).
+    std::vector<std::uint32_t> ring; std::size_t ringn = 0, ringpos = 0; std::uint64_t ringfill = 0;
+    std::uint32_t dumpat = 0;
 
     pc_trace() {
         const char *w = std::getenv("EKA2L1_PCTRACE");
@@ -68,6 +76,14 @@ struct pc_trace {
         }
         on = (start == 0);
         armed = true;
+        const char *rr = std::getenv("EKA2L1_PCTRACE_REGRING");
+        const char *da = std::getenv("EKA2L1_PCTRACE_DUMPAT");
+        if (rr && da) {
+            ringn = static_cast<std::size_t>(std::strtoul(rr, nullptr, 10));
+            dumpat = static_cast<std::uint32_t>(std::strtoul(da, nullptr, 16));
+            if (ringn)
+                ring.assign(ringn * 17, 0);
+        }
         const char *rp = std::getenv("EKA2L1_PCTRACE_REGS");
         if (rp) {
             std::string path = std::string(end + 1) + ".regs";
@@ -79,7 +95,31 @@ struct pc_trace {
         }
     }
     inline void regs(std::uint32_t pc, const std::uint32_t *r) {
-        if (!rf || !on || nreg >= 200000) return;
+        if (!rf || !on) return;
+        if (ringn) {
+            if (pc == dumpat) {
+                // Out, oldest first, then the trigger's own entry; once.
+                const std::size_t count = ringfill < ringn ? static_cast<std::size_t>(ringfill) : ringn;
+                const std::size_t start = (ringpos + ringn - count) % ringn;
+                for (std::size_t k = 0; k < count; k++)
+                    std::fwrite(&ring[((start + k) % ringn) * 17], 4, 17, rf);
+                std::fwrite(&pc, 4, 1, rf); std::fwrite(r, 4, 16, rf); std::fflush(rf);
+                ringn = 0;
+                return;
+            }
+            for (int i = 0; i < nregpc; i++) {
+                if (regpc[i] == pc) {
+                    std::uint32_t *e = &ring[ringpos * 17];
+                    e[0] = pc;
+                    std::memcpy(e + 1, r, 16 * 4);
+                    ringpos = (ringpos + 1) % ringn;
+                    ringfill++;
+                    return;
+                }
+            }
+            return;
+        }
+        if (nreg >= 200000) return;
         for (int i = 0; i < nregpc; i++) {
             if (regpc[i] == pc) {
                 std::fwrite(&pc, 4, 1, rf); std::fwrite(r, 4, 16, rf); std::fflush(rf); nreg++;

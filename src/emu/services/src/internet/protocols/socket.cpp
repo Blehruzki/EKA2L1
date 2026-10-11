@@ -21,6 +21,9 @@
 
 #include <common/platform.h>
 #include <cstdlib>
+#include <cstdio>
+#include <mutex>
+#include <chrono>
 #include <common/thread.h>
 #include <utils/des.h>
 #include <utils/err.h>
@@ -935,6 +938,27 @@ namespace eka2l1::epoc::internet {
     // whole write at once, so guest code that assumes a message arrives in one
     // receive works here and can fail between two phones. A bench switch, off
     // by default (ngage-port, Colin McRae's network pump).
+    // EKA2L1_BTRECVLOG=<path>: every step of a Bluetooth stream receive, with
+    // the host's milliseconds -- the guest's request (and what was buffered),
+    // an immediate completion, the network thread's read start, a delivery,
+    // a completion, a cancel -- for finding a receive that never completes
+    // (ngage-port E1238: the guest re-armed and nothing came, while the peer
+    // went on sending). A bench instrument, off by default.
+    static void bt_recv_log(const void *sock, const char *what, long long a = 0, long long b = 0) {
+        static std::FILE *f = []() -> std::FILE * {
+            const char *p = std::getenv("EKA2L1_BTRECVLOG");
+            return p ? std::fopen(p, "w") : nullptr;
+        }();
+        if (!f)
+            return;
+        static std::mutex m;
+        const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        std::lock_guard<std::mutex> g(m);
+        std::fprintf(f, "%lld %p %s %lld %lld\n", static_cast<long long>(now), sock, what, a, b);
+        std::fflush(f);
+    }
+
     static std::size_t bt_split_cap() {
         static const std::size_t cap = []() -> std::size_t {
             const char *e = std::getenv("EKA2L1_BTSPLIT");
@@ -1008,6 +1032,8 @@ namespace eka2l1::epoc::internet {
 
     void inet_socket::handle_tcp_delivery(const std::int64_t bytes_read_arg, const void *buf_ptr) {
         const uv_buf_t *buf = reinterpret_cast<const uv_buf_t*>(buf_ptr);
+        if (send_buffered_)
+            bt_recv_log(this, "delivery", bytes_read_arg, recv_done_info_.empty() ? 0 : 1);
         kernel_system *kern = nullptr;
 
         if (!recv_done_info_.empty()) {
@@ -1078,6 +1104,8 @@ namespace eka2l1::epoc::internet {
 
         // Just complete now!
         if (!recv_done_info_.empty()) {
+            if (send_buffered_)
+                bt_recv_log(this, "done-delivery", bytes_taken, error_code);
             recv_done_info_.complete(error_code);
         }
 
@@ -1101,6 +1129,8 @@ namespace eka2l1::epoc::internet {
             return;
         }
 
+        if (send_buffered_)
+            bt_recv_log(this, "read-start", recv_done_info_.empty() ? 0 : 1);
         int start_err = uv_read_start(tcp_stream, [](uv_handle_t *handle, std::size_t suggested_size, uv_buf_t *buf) {
             reinterpret_cast<inet_socket*>(handle->data)->prepare_buffer_for_recv(suggested_size, buf);
         }, [](uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
@@ -1109,16 +1139,22 @@ namespace eka2l1::epoc::internet {
 
         if (start_err != 0) {
             LOG_TRACE(SERVICE_BLUETOOTH, "Error trying to receive TCP data. Libuv's error code is {}", start_err);
+            if (send_buffered_)
+                bt_recv_log(this, "read-start-error", start_err);
         }
     }
 
     void inet_socket::receive(std::uint8_t *data, const std::uint32_t data_size, std::uint32_t *recv_size, epoc::socket::saddress *addr_ptr,
         std::uint32_t flags, epoc::notify_info &complete_info, epoc::socket::receive_done_callback callback) {
         if (!recv_done_info_.empty()) {
+            if (send_buffered_)
+                bt_recv_log(this, "in-use", data_size);
             complete_info.complete(epoc::error_in_use);
             return;
         }
 
+        if (send_buffered_)
+            bt_recv_log(this, "request", data_size, stream_data_buffer_ ? static_cast<long long>(stream_data_buffer_->size()) : -1);
         bytes_read_ = recv_size;
         read_dest_ = data;
         recv_size_ = data_size;
@@ -1161,16 +1197,22 @@ namespace eka2l1::epoc::internet {
                         receive_done_cb_ = nullptr;
                     }
 
+                    if (send_buffered_)
+                        bt_recv_log(this, "done-buffered", static_cast<long long>(size_to_pop), static_cast<long long>(stream_data_buffer_->size()));
                     recv_done_info_.complete(epoc::error_none);
                     return;
                 }
             }
         }
         
+        if (send_buffered_)
+            bt_recv_log(this, "post-read");
         looper_->post_task(recv_task_);
     }
 
     void inet_socket::tcp_cancel_recv_impl_async() {
+        if (send_buffered_)
+            bt_recv_log(this, "cancel-run", recv_done_info_.empty() ? 0 : 1);
         if (recv_done_info_.empty()) {
             return;
         }
@@ -1208,6 +1250,8 @@ namespace eka2l1::epoc::internet {
     }
 
     void inet_socket::cancel_receive() {
+        if (send_buffered_)
+            bt_recv_log(this, "cancel", recv_done_info_.empty() ? 0 : 1);
         if (recv_done_info_.empty()) {
             return;
         }
