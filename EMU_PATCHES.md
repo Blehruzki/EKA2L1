@@ -111,6 +111,23 @@ returns zero records, and an attribute request gets an SDP error. A joiner
 that picked a friend not hosting yet went down an error path a phone never
 takes and died there (ngage-port E1136-E1137).
 
+## A Bluetooth stream Write completes once it is queued
+
+Not a switch: always on for Bluetooth-over-IP sockets (`btinet_socket::send`
+sets `inet_socket::set_send_buffered`, `services/src/internet/protocols/
+socket.cpp`). A phone's RFCOMM takes a Write into the mux's queue and ESock
+completes the request once all of it is taken (`TRfcommStateOpen::Send`,
+os/bt `rfcommstates.cpp`), so a short Write is complete before the writer
+runs again. The emulator completed it only when its libuv thread had written
+it to the host socket, so a guest that wrote twice in a row raced that thread:
+Colin McRae's engine treats a send while the last Write still reads pending as
+a lost link, and the host's Start (two messages back to back) went through or
+dropped the session by chance (ngage-port E1161-E1163). The data is now copied,
+the request completed at once, and the write queued to the libuv thread with
+its own buffer; a later failure surfaces as the link's next receive error, as
+on a device. (That ESock completes on queueing is read from the RFCOMM SAP's
+contract; ESock's own source was not available.)
+
 ## Bluetooth over IP on a host without IPv6
 
 Not a switch: always on. The Bluetooth emulation (`services/src/bluetooth/

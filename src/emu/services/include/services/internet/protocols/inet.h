@@ -198,6 +198,7 @@ namespace eka2l1::epoc::internet {
 
         std::size_t recv_size_;
         bool take_available_only_;
+        bool send_buffered_ = false;
         bool reuse_addr_ = false;
         bool reuse_addr_changed_ = false;
 
@@ -291,6 +292,13 @@ namespace eka2l1::epoc::internet {
             std::uint8_t *buffer, const std::size_t avail_size) override;
         bool set_option(const std::uint32_t option_id, const std::uint32_t option_family,
             std::uint8_t *buffer, const std::size_t avail_size) override;
+
+        /// A stream send completes once its data is copied and queued, as a device's
+        /// socket server completes a Write once the protocol has taken it, rather
+        /// than when the host write finishes.
+        void set_send_buffered(const bool buffered) {
+            send_buffered_ = buffered;
+        }
 
         void cancel_receive() override;
         void cancel_send() override;

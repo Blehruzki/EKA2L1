@@ -331,6 +331,14 @@ namespace eka2l1::epoc::bt {
 
     void btinet_socket::send(const std::uint8_t *data, const std::uint32_t data_size, std::uint32_t *sent_size, const epoc::socket::saddress *addr, std::uint32_t flags, epoc::notify_info &complete_info) {
         bt_dump(this, 'S', data, data_size);
+        // RFCOMM takes a Write into the mux's queue and ESock completes it once all
+        // of it is taken (TRfcommStateOpen::Send), so a device's Write is complete
+        // before the writer runs again. Colin's engine sends twice back to back and
+        // drops the link if the first is still pending (E1162). The inner socket is
+        // made by accept for an incoming link, so it is set here, at each send.
+        if (inet_socket_) {
+            reinterpret_cast<epoc::internet::inet_socket *>(inet_socket_.get())->set_send_buffered(true);
+        }
         inet_socket_->send(data, data_size, sent_size, addr, flags, complete_info);
     }
 

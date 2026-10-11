@@ -3975,6 +3975,46 @@ static void null_name_plant(Context *c, u8 *base, u32 at)
     log_event(c, NOTE_PLANT_OK, 0x4E000000u | at);
 }
 
+// **A profile the game reads through without a test (round 172).** The same
+// state as the NULL name above, a multiplayer player 0 with no profile slot,
+// reaches the service area's RACE tab: 0x4e9328 runs for player 0 only and,
+// when 0x4ba460 calls it not valid, reads a byte of its profile record
+// (0x4bad30, NULL for slot none) at +0x228 and branches on bit 7 -- a fault at
+// 0x4e9370 on both instances (E1165-E1169). Nothing in the multiplayer flow
+// gives player 0 a driver (no DRIVER SELECT, no boot load, no session message:
+// E1167-E1169), and two unguarded reads of it would both be harmless if the
+// N-Gage read low memory as zeros -- not settled. So the same written-down
+// guess: at each site (GAME_NULL_SKIP_SITES, pairs of a bl to the getter and
+// the offset a zero read would have branched to) a NULL answer returns to
+// that offset instead of the next instruction. The target must not depend on
+// registers the skipped code sets (0x4e9420 sets r4 and r5 again before use).
+// NOTE_PLANT_OK logs 0x4F000000 | offset.
+//   stmdb sp!, {r4, lr} ; ldr r12, getter ; blx r12 ; cmp r0, #0
+//   ldmia sp!, {r4, lr} ; ldreq lr, skip ; bx lr
+#ifndef GAME_NULL_SKIP_SITES
+#define GAME_NULL_SKIP_SITES 0, 0
+#define GAME_NULL_SKIP_COUNT 0
+#endif
+static const u32 kNullSkip[] = { GAME_NULL_SKIP_SITES };
+enum { NULL_SKIP_WORDS = 9 };
+static void null_skip_plant(Context *c, u8 *base, u32 at, u32 skip)
+{
+    u32 *site = (u32 *)(base + at);
+    if ((*site & 0xFF000000u) != 0xEB000000u || c->spare + NULL_SKIP_WORDS * 4 > c->spareEnd)
+        return;
+    i32 off = (i32)(*site << 8) >> 6;           // the bl's own target, sign-extended
+    const u32 getter = (u32)site + 8 + (u32)off;
+    u32 *b = (u32 *)c->spare;
+    b[0] = 0xE92D4010; b[1] = 0xE59FC010; b[2] = 0xE12FFF3C; b[3] = 0xE3500000;
+    b[4] = 0xE8BD4010; b[5] = 0x059FE004; b[6] = 0xE12FFF1E;
+    b[7] = getter; b[8] = (u32)base + skip;
+    user_imb_range(b, b + NULL_SKIP_WORDS);
+    c->spare += NULL_SKIP_WORDS * 4;
+    *site = 0xEB000000u | ((((u32)b - (u32)site - 8) >> 2) & 0x00FFFFFFu);
+    user_imb_range(site, site + 1);
+    log_event(c, NOTE_PLANT_OK, 0x4F000000u | at);
+}
+
 static void crumb_plant_r5(Context *c, u8 *base, u32 at, u32 marker)
 {
     u32 *site = 0, original = 0;
@@ -16671,6 +16711,11 @@ static u32 load_and_start()
     for (u32 i = 0; i < (u32)GAME_NULL_NAME_COUNT; i++)
         if (kNullNameSite[i] + 4 <= imgSize && !(kNullNameSite[i] & 3))
             null_name_plant(ctx, base, kNullNameSite[i]);
+    for (u32 i = 0; i < (u32)GAME_NULL_SKIP_COUNT; i++) {
+        const u32 at = kNullSkip[2 * i], skip = kNullSkip[2 * i + 1];
+        if (at + 4 <= imgSize && skip + 4 <= imgSize && !((at | skip) & 3))
+            null_skip_plant(ctx, base, at, skip);
+    }
     if (HOOK_UNCOMPRESS)
         for (u32 i = 0; i < sizeof kZSite / sizeof kZSite[0]; i++)
             if (kZSite[i] + 4 <= imgSize)

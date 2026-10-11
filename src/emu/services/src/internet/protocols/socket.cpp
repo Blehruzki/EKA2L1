@@ -804,9 +804,48 @@ namespace eka2l1::epoc::internet {
         }
     }
 
+    // A buffered write owns its request and its copy of the data until libuv is done
+    // with both: the guest's request has long completed, and the guest's buffer may
+    // already hold the next message.
+    struct buffered_write {
+        uv_write_t req_;
+        std::vector<char> data_;
+    };
+
     void inet_socket::send(const std::uint8_t *data, std::uint32_t data_size, std::uint32_t *sent_size, const epoc::socket::saddress *addr_ptr, std::uint32_t flags, epoc::notify_info &complete_info) {
         if (!send_done_info_.empty()) {
             complete_info.complete(epoc::error_in_use);
+            return;
+        }
+
+        if (send_buffered_ && (protocol_ == INET_TCP_PROTOCOL_ID) && opaque_handle_) {
+            buffered_write *write = new buffered_write;
+            write->data_.assign(reinterpret_cast<const char *>(data), reinterpret_cast<const char *>(data) + data_size);
+
+            if (sent_size) {
+                *sent_size = data_size;
+            }
+
+            // Posted tasks run in order, so writes keep their order, and one posted
+            // before a close runs before it. A close cancels a write still queued in
+            // libuv, whose callback then frees it.
+            looper_->one_shot([handle = opaque_handle_, write]() {
+                uv_buf_t buf = uv_buf_init(write->data_.data(), static_cast<std::uint32_t>(write->data_.size()));
+                const int err = uv_write(&write->req_, reinterpret_cast<uv_stream_t *>(handle), &buf, 1, [](uv_write_t *req, int status) {
+                    if ((status < 0) && (status != UV_ECANCELED)) {
+                        LOG_ERROR(SERVICE_INTERNET, "Buffered TCP write failed with libuv's error {}", status);
+                    }
+
+                    delete reinterpret_cast<buffered_write *>(req);
+                });
+
+                if (err < 0) {
+                    LOG_ERROR(SERVICE_INTERNET, "Buffered TCP write could not start, libuv's error {}", err);
+                    delete write;
+                }
+            });
+
+            complete_info.complete(epoc::error_none);
             return;
         }
 
