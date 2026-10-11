@@ -14068,9 +14068,18 @@ static void san_build(Context *c)
 //   ldrne pc, target ; stmdb sp!, {r4-r6, lr} ; add r4, rN, #4 ; ldr r5, [r4]
 //   [ldr r6, [sp, #16] ; sub sp, sp, #8 ; str r6, [sp]]  -- one stack argument
 //   ldr r12, target ; blx r12 ; [add sp, sp, #8] ; ldr r6, [r4]
-//   orr r12, r5, #2 ; cmp r6, r12 ; streq r5, [r4] ; ldmia sp!, {r4-r6, pc}
-enum { KEEP_THUNK_WORDS = 24 };
-static u32 keep_thunk(u8 *code, u32 target, u32 site0, u32 site1, u32 statusReg, u32 stackArgs)
+//   orr r12, r5, #2 ; cmp r6, r12 ; streq r5, [r4]
+//   [cmp r6, #2 ; moveq r12, #0 ; streq r12, [r4]] ; ldmia sp!, {r4-r6, pc}
+// **And a completion between the look and the OR (E1191).** The receive can
+// complete -- its status 0 -- after the thunk read the word (pending) and
+// before Write's operator= ORs in the 2: the word ends 2, matches neither, and
+// the engine took a receive status of 2 for a failed link and dropped a race
+// 20 s in (E1188-E1191). A kernel completes a request whenever it likes, so a
+// phone has the same window. Where the next word is itself a request status
+// (statusWord, the Write site), 2 can only be KErrNone with the flag ORed in
+// -- no receive completes with 2 -- and is put back to 0.
+enum { KEEP_THUNK_WORDS = 28 };
+static u32 keep_thunk(u8 *code, u32 target, u32 site0, u32 site1, u32 statusReg, u32 stackArgs, u32 statusWord)
 {
     u32 *b = (u32 *)code, n = 0;
     u32 ldrSite0 = n++, cmp0 = n++, ldrSite1 = n++, cmp1 = n++, jmp = n++;
@@ -14083,7 +14092,9 @@ static u32 keep_thunk(u8 *code, u32 target, u32 site0, u32 site1, u32 statusReg,
     const u32 ldrTarget = n++;
     b[n++] = 0xE12FFF3C;
     if (stackArgs) b[n++] = 0xE28DD008;
-    b[n++] = 0xE5946000; b[n++] = 0xE385C002; b[n++] = 0xE156000C; b[n++] = 0x05845000; b[n++] = 0xE8BD8070;
+    b[n++] = 0xE5946000; b[n++] = 0xE385C002; b[n++] = 0xE156000C; b[n++] = 0x05845000;
+    if (statusWord) { b[n++] = 0xE3560002; b[n++] = 0x03A0C000; b[n++] = 0x0584C000; }
+    b[n++] = 0xE8BD8070;
     const u32 lit0 = n++, lit1 = n++, litT = n++;
     b[lit0] = site0; b[lit1] = site1; b[litT] = target;
     // ldr rd, [pc, #off]: off = literal - (this + 8), in bytes
@@ -16497,14 +16508,14 @@ static u32 load_and_start()
     if (GAME_SOCK_WRITE_KEEP && IMPORT_SOCK_WRITE < nImports && IMPORT_SOCK_WRITE < kShimCount &&
         (kShimTable[IMPORT_SOCK_WRITE] >> 24) == KIND_CALL && ctx->spare + KEEP_THUNK_WORDS * 4 <= ctx->spareEnd) {
         const u32 site = ctx->codeBase + (u32)GAME_SOCK_WRITE_KEEP;
-        iat[IMPORT_SOCK_WRITE] = keep_thunk(ctx->spare, iat[IMPORT_SOCK_WRITE], site, site, 2, 0);
+        iat[IMPORT_SOCK_WRITE] = keep_thunk(ctx->spare, iat[IMPORT_SOCK_WRITE], site, site, 2, 0, 1);
         ctx->spare += KEEP_THUNK_WORDS * 4;
     }
     if (GAME_SOCK_RECV_KEEP0 && IMPORT_SOCK_RECV1 < nImports && IMPORT_SOCK_RECV1 < kShimCount &&
         (kShimTable[IMPORT_SOCK_RECV1] >> 24) == KIND_CALL && ctx->spare + KEEP_THUNK_WORDS * 4 <= ctx->spareEnd) {
         const u32 s0 = ctx->codeBase + (u32)GAME_SOCK_RECV_KEEP0;
         const u32 s1 = GAME_SOCK_RECV_KEEP1 ? ctx->codeBase + (u32)GAME_SOCK_RECV_KEEP1 : s0;
-        iat[IMPORT_SOCK_RECV1] = keep_thunk(ctx->spare, iat[IMPORT_SOCK_RECV1], s0, s1, 3, 1);
+        iat[IMPORT_SOCK_RECV1] = keep_thunk(ctx->spare, iat[IMPORT_SOCK_RECV1], s0, s1, 3, 1, 0);
         ctx->spare += KEEP_THUNK_WORDS * 4;
     }
     // Cba() and StatusPane(): the hidden stand-in (gate6_hidden_furniture).
