@@ -123,6 +123,16 @@ namespace eka2l1::epoc {
         if (scr) {
             scr->need_update_visible_regions(true);
         }
+
+        // Orphan the children while they are still alive. The member `top` is destroyed right after this body and,
+        // being a plain canvas_interface rather than a canvas_base, it never unlinks itself from us. ~window would
+        // then walk the freed top_canvas through our dangling `child` pointer, writing to it and following its
+        // (freed) sibling link.
+        while (child != nullptr) {
+            window *next = child->sibling;
+            child->parent = nullptr;
+            child = next;
+        }
     }
 
     void window_group::queue_message_data(const std::uint8_t *data, const std::size_t data_size) {
