@@ -137,6 +137,34 @@ multiplayer path never passes, even with a profile on disk (E1132-E1134;
   `duo_racejoin.sh`, `duo_profile.sh`, `duo_idle.sh`; the game's attract demo
   starts after about 65 s idle on the main menu (E1138).
 
+## Where the race stands (E1160-E1181)
+
+- **Start reaches the rally.** The host's Start sends type 3 (its player) and
+  type 1 (the settings again, byte 0 = 1) back to back; the engine's send
+  (0x402698) calls a second send while the first Write still reads pending a
+  lost link. The emulator now completes a Bluetooth stream Write once queued,
+  as RFCOMM does (EMU_PATCHES.md), and both instances go through the FINLAND
+  briefing to the service area with the link up (E1161-E1163).
+- **The race setup reads every player's driver profile.** At the RACE tab
+  (0x4e9370) and in the race-init loop (0x509c5c, from the general race setup
+  0x48f408) the engine reads player i's profile record (getters 0x4bad30,
+  0x4baa44: 44 callers, none tests for NULL). Player 0 has none in a session,
+  and the remote player never has one (its info lives in a separate network
+  table, 0x4b024c). The loop is skipped only by 0x4c9034, a global test that
+  needs game mode 4; mode 4 is set only from data (a championship file or the
+  settings message), and the multiplayer path sends 1 or 2 (E1140).
+- **No front-end route gives player 0 a driver that survives.** DRIVERS is a
+  profile viewer that unbinds on leaving (E1172-E1179); RALLY's DRIVER SELECT
+  binds with the valid bit 0 and its exit clears an invalid driver, Play As
+  included (E1180-E1181). E1159's "per-race player setup" (0x4d7828) is the
+  saved-championship loader.
+- **Bench guesses written down:** a NULL name reads as "" at the joiner's info
+  builder (GAME_NULL_NAME_SITES, E1160) and the RACE tab's NULL profile takes
+  the zero-byte branch (GAME_NULL_SKIP_SITES, E1170); the next NULL read
+  (0x509ca0) shows covering reads one by one is the wrong road.
+- **Next:** the type 4 handler (0x44962c -> 0x4b0304, 0x4ae03c) and whatever
+  should send it; whether it sets mode 4 or binds the session's players.
+
 ## Next steps, in order
 
 1. The joiner's driver: read the player setup at 0x4d7868 and how a guest is
