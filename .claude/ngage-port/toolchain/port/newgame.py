@@ -14,14 +14,15 @@ are what the first runs are for.
 
     GAME=<name> ./emurun.sh "E<n>: <name> first launch"
 """
-import os, re, shutil, subprocess, sys, zipfile
+import os, re, shutil, subprocess, sys, tempfile, zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import e32imports
 
 GAMES = os.path.join(HERE, 'games')
-E_DRIVE = '/root/.local/share/EKA2L1/data/drives/e'
+import paths
+E_DRIVE = paths.E_DRIVE       # the bench's E: drive, or a kit's own (paths.py)
 APPS = os.path.join(E_DRIVE, 'system', 'apps')
 LIBS = os.path.join(E_DRIVE, 'system', 'libs')
 FIRST_UID = 0xE0001006
@@ -240,7 +241,7 @@ def main(argv):
     # 1. The card dump, unpacked.
     work = src
     if zipfile.is_zipfile(src):
-        work = os.path.join('/tmp', 'newgame-' + name)
+        work = os.path.join(tempfile.gettempdir(), 'newgame-' + name)
         shutil.rmtree(work, ignore_errors=True)
         with zipfile.ZipFile(src) as z:
             z.extractall(work)

@@ -37,7 +37,8 @@ import build_gate6            # for the import list, so the two cannot drift
 import picture                # for games/<name>/game.h, and its refusal to guess
 
 DEFAULT_GAME = 'asphalt2'
-GAMES_ROOT = '/root/.local/share/EKA2L1/data/drives/e/system/apps'
+import paths
+GAMES_ROOT = paths.APPS      # the bench's E: drive, or a kit's own (paths.py)
 
 # Back on for build 171, and innocent all along. It was pulled for build 168
 # on one argument -- it is the last entry, so the installer reaches it at the

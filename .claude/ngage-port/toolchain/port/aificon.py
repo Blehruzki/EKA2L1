@@ -20,8 +20,8 @@ import zlib
 
 HEADER_LEN = 40
 FIRST = 20
-PALETTE_H = os.path.join('/home/user/EKA2L1', 'src', 'emu', 'services',
-                         'include', 'services', 'fbs', 'palette.h')
+import paths
+PALETTE_H = paths.PALETTE_H
 
 
 def palette(which='old'):

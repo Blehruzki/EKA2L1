@@ -19,11 +19,12 @@ import os, re, sys
 
 import e32imports, epocdb, gnuv2, shimtable, symdef
 
-ROOT = '/home/user/symbiansource'
+import paths
+ROOT = paths.SYMBIAN_SOURCE
 KERNEL = ROOT + '/oss.fcl.sf.os.kernelhwsrv'
 COMPSUPP = KERNEL + '/kernel/eka/compsupp/eabi'
-EPOC6 = '/home/user/EKA2L1/src/emu/bridge/include/bridge/epoc6.def'
-EPOC9 = '/home/user/EKA2L1/src/emu/bridge/include/bridge/epoc9.def'
+EPOC6 = paths.EPOC6_DEF
+EPOC9 = paths.EPOC9_DEF
 
 # Each table entry is  kind << 24 | dll index << 16 | ordinal.
 KIND_NONE, KIND_CALL, KIND_REM, KIND_LOCAL, KIND_ARG3 = 0, 1, 2, 3, 4

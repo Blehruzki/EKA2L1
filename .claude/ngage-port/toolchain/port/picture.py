@@ -69,9 +69,10 @@ def setting(game, name):
 # GATE6_IMAGE_ROOT names a directory to try first, laid out the same way
 # (<root>/<stem>/<stem>.app): the bench tree can then carry the shipped
 # `<stem>.bin` alone while the tools still read the original (round 149).
+import paths
 IMAGE_ROOTS = tuple(
     ([os.environ['GATE6_IMAGE_ROOT']] if os.environ.get('GATE6_IMAGE_ROOT') else []) + [
-    '/root/.local/share/EKA2L1/data/drives/e/system/apps',
+    paths.APPS,
     '/root/.local/share/EKA2L1/data/drives/e.ngage/system/apps',
 ])
 

@@ -12,8 +12,8 @@ import hashlib, os, struct, sys, zlib
 import sisrw, sisadd
 
 STRING, ARRAY, UID, INFO, FILEDESC, INSTALLBLOCK = 1, 2, 9, 14, 24, 28
-TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        *(['..'] * 4 + ['native', 'EKA2L1HWD', 'sis', 'EKA21LHW.sis']))
+import paths
+TEMPLATE = paths.SIS_TEMPLATE
 
 
 def _u16(s):
