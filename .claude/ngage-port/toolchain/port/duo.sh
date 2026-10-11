@@ -95,6 +95,13 @@ sleep 2
 (cd /home/user/EKA2L1/build/bin && env $DUO_ENV_B DISPLAY=:98 HOME="$S/home2" timeout -k 5 -s KILL "${TMO:-200}" ./eka2l1_qt --device "${DEVICE:-RM-409}" --run $UID3 >"$S/duoB.log" 2>&1) &
 sleep 20
 PA=$(pgrep -x eka2l1_qt | head -1); PB=$(pgrep -x eka2l1_qt | sed -n 2p)
+# The emulators first for the CPU: on this 4-core box two of them, their
+# Xvfbs, the key scripts' screenshots and an autopilot each saturate it, and
+# an instance starved for a second stops acking -- the peer's one-frame
+# window fills and both call the link lost (E1234). A phone runs alone.
+# Every thread: a nice value is per thread on Linux, and the emulated CPU's
+# thread exists by now.
+for t in /proc/"$PA"/task/* /proc/"$PB"/task/*; do renice -n -10 -p "${t##*/}" >/dev/null 2>&1; done
 WA=$(xdotool search --onlyvisible --pid "$PA" 2>/dev/null | head -1)
 WB=$(DISPLAY=:98 xdotool search --onlyvisible --pid "$PB" 2>/dev/null | head -1)
 echo "A pid $PA win $WA   B pid $PB win $WB"

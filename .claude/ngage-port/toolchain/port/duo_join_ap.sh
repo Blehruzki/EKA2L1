@@ -11,5 +11,5 @@ at 60; k Down; at 61; k Return; at 72; k Return   # Join a Game, select the host
 at 108; k Down; at 109; k Down; at 110; k Left; at 111; k Return   # Ready: Yes
 at 134; k Return   # Continue on the briefing
 at 140; k Right; at 141; k Right; at 142; k Right; at 144; k Return; at 148; k Return; at 152; k Return
-at 190; python3 "$(dirname "$0")/autopilot.py" "$W" "${AP_SECS:-480}" "${O}_ap.log"
+at 194; python3 "$(dirname "$0")/autopilot.py" "$W" "${AP_SECS:-480}" "${O}_ap.log"
 wait

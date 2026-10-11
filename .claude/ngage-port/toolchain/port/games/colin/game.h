@@ -109,6 +109,20 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
                           { 0x00049890, 0x0A00000A, 0x0A000037 }, /* the pump: a body still short after its 10 reads waits for the next frame */ \
                           { 0x000498c4, 0x0AFFFFBB, 0xE1A00000 }  /*   and one finished on the 10th read is a message, not a lost link */
 #define GAME_CODE_PATCH_COUNT 23
+// **The receive on a status of the port's own (E1243).** The engine's network
+// object keeps its Write status at +0x10 and its receive status at +0x14, one
+// EKA1 word each, and 9.x's RSocket::Write ORs ERequestPending (2) into the
+// word after its status -- the receive status -- with a load, an OR and a
+// store on the engine's thread. A receive completing between the load and the
+// store is overwritten with "pending": the engine polls for a receive that
+// has already come, its acks stop counting, its window fills and both flow
+// controls call the link lost. Round 172's put-back (keep_thunk, Write site
+// 0x2734) had its own window of the same kind (E1241); with it gone the race
+// in operator= alone still dropped a race (E1242: the receive re-armed at
+// 0x402840, the emulator completed it with 12 bytes, 638 reads found it
+// pending). So the receive is armed on a status the port owns
+// (own_status_thunk): the arming calls' return addresses, and the engine's
+// two reads of +0x14 in the read (0x402760, 0x402858), which answer from it.
 // **The network pump's body read (0x44976c, called once a frame).** A message
 // is an 8-byte header (type, length) and a body. The header is read across
 // frames: short, the pump returns and goes on next frame. The body is not: up
@@ -138,9 +152,15 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 #define GAME_VTABLE_SHIFT_COUNT 1
 // The network object's socket calls, whose statuses are EKA1 one-word ones side
 // by side (Write +0x10, receive +0x14, length +0x18): their return addresses.
-#define GAME_SOCK_WRITE_KEEP 0x00002734
-#define GAME_SOCK_RECV_KEEP0 0x000025d4
-#define GAME_SOCK_RECV_KEEP1 0x00002840
+// 0x00002734 until E1241: its put-back raced the receive's completion (above).
+// The receive's put-back (0x25d4, 0x2840 until E1243) is moot on its own status.
+#define GAME_SOCK_WRITE_KEEP 0
+#define GAME_SOCK_RECV_KEEP0 0
+#define GAME_SOCK_RECV_KEEP1 0
+#define GAME_SOCK_RECV_OWN0 0x000025d4
+#define GAME_SOCK_RECV_OWN1 0x00002840
+#define GAME_SOCK_RECV_READS 0x00002760, 0x00002858
+#define GAME_SOCK_RECV_READ_COUNT 2
 // The joiner's player-info builder (0x47d90c): its five calls to the name and tag
 // getters (0x4ba274, 0x4ba2fc), whose NULL for a guest joiner is read as "" (round 172).
 #define GAME_NULL_NAME_SITES 0x0007d92c, 0x0007d940, 0x0007d954, 0x0007d96c, 0x0007d97c

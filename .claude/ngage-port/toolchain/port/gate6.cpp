@@ -2836,6 +2836,17 @@ static const CodePatch kCodePatch[] = { GAME_CODE_PATCHES };
 #define GAME_SOCK_RECV_KEEP0 0
 #define GAME_SOCK_RECV_KEEP1 0
 #endif
+// A receive armed with a status of the port's own (own_status_thunk): the
+// return addresses of the title's arming calls, and the offsets of each
+// `ldr rD, [rB, #off]` that reads the engine's status word. 0: none.
+#ifndef GAME_SOCK_RECV_OWN0
+#define GAME_SOCK_RECV_OWN0 0
+#define GAME_SOCK_RECV_OWN1 0
+#endif
+#ifndef GAME_SOCK_RECV_READS
+#define GAME_SOCK_RECV_READS 0
+#define GAME_SOCK_RECV_READ_COUNT 0
+#endif
 #ifndef GAME_VTABLE_SHIFTS
 #define GAME_VTABLE_SHIFTS { 0, 0 }
 #define GAME_VTABLE_SHIFT_COUNT 0
@@ -14183,6 +14194,75 @@ static u32 keep_thunk(u8 *code, u32 target, u32 site0, u32 site1, u32 statusReg,
     return (u32)b;
 }
 
+// **The receive's own request status (E1243).** keep_thunk put the word after
+// the Write's status back, and a receive completing between its read and its
+// store was lost (E1241); without it the receive still went missing (E1242),
+// because the race is in 9.x itself: TRequestStatus::operator= (e32cmn.inl)
+// sets the Write's ERequestPending with `iFlags |= 2`, a load, an OR and a
+// store from the engine's thread, on the word that is the receive status. A
+// completion written between the load and the store -- the kernel completes
+// from the socket server's side, at any instruction of the engine's -- is
+// overwritten with the pending value it was loaded as, and the engine polls
+// a receive that has already come for ever. On the bench the window is the
+// emulator's libuv thread against its CPU thread; on a phone it is a
+// preemption between two instructions, rarer and not impossible.
+// So the receive is never armed on that word. At the title's arming calls
+// (GAME_SOCK_RECV_OWN*, return addresses) the status argument becomes a
+// two-word TRequestStatus of the port's own, P = { engine word, iStatus,
+// iFlags }, which nothing else writes; each read of the engine's word
+// (GAME_SOCK_RECV_READS) becomes a call that answers from P and copies it
+// into the engine's word, for anything else that looks there. Another
+// object's read (its word is not the one P stands for) reads its own word.
+//   arm:  ldr r12, site0 ; cmp lr, r12 ; ldrne r12, site1 ; cmpne lr, r12
+//         ldrne pc, target ; ldr r12, P ; str rS, [r12] ; add rS, r12, #4
+//         ldr pc, target                  -- a tail call: lr is the engine's
+//   read: ldr r12, P ; ldr rD, [r12] ; sub rD, rD, rB ; cmp rD, #off
+//         ldrne rD, [rB, #off] ; bxne lr ; ldr rD, [r12, #4]
+//         str rD, [rB, #off] ; bx lr
+// The read clobbers r12, lr and the flags: each site's next instruction must
+// set the flags and its lr must be dead (both reads in Colin's 0x402740 are
+// followed by a cmp, and that function saved lr on entry). NOTE_PLANT_OK logs
+// each read site with 0x5E000000 | offset; a site that is not such a ldr is
+// skipped.
+enum { OWN_ARM_WORDS = 13, OWN_READ_WORDS = 10 };
+static u32 own_status_thunk(u8 *code, u32 target, u32 site0, u32 site1, u32 statusReg, u32 *p)
+{
+    u32 *b = (u32 *)code;
+    b[0] = 0xE59FC01C; b[1] = 0xE15E000C; b[2] = 0x159FC018; b[3] = 0x115E000C;
+    b[4] = 0x159FF014; b[5] = 0xE59FC014;
+    b[6] = 0xE58C0000u | (statusReg << 12);                 // str rS, [r12]
+    b[7] = 0xE28C0004u | (statusReg << 12);                 // add rS, r12, #4
+    b[8] = 0xE59FF004;
+    b[9] = site0; b[10] = site1; b[11] = target; b[12] = (u32)p;
+    user_imb_range(b, b + OWN_ARM_WORDS);
+    return (u32)b;
+}
+
+static void own_status_read_plant(Context *c, u8 *base, u32 at, u32 *p)
+{
+    u32 *site = (u32 *)(base + at);
+    const u32 insn = *site, rB = (insn >> 16) & 15, rD = (insn >> 12) & 15, off = insn & 0xFFF;
+    if ((insn & 0xFFF00000u) != 0xE5900000u || rB == rD || rB >= 12 || rD >= 12 || off > 0xFF ||
+        c->spare + OWN_READ_WORDS * 4 > c->spareEnd)
+        return;
+    u32 *b = (u32 *)c->spare;
+    b[0] = 0xE59FC01C;
+    b[1] = 0xE59C0000u | (rD << 12);                         // ldr rD, [r12]
+    b[2] = 0xE0400000u | (rD << 16) | (rD << 12) | rB;       // sub rD, rD, rB
+    b[3] = 0xE3500000u | (rD << 16) | off;                   // cmp rD, #off
+    b[4] = (insn & 0x0FFFFFFFu) | 0x10000000u;               // ldrne rD, [rB, #off]
+    b[5] = 0x112FFF1E;                                       // bxne lr
+    b[6] = 0xE59C0004u | (rD << 12);                         // ldr rD, [r12, #4]
+    b[7] = 0xE5800000u | (rB << 16) | (rD << 12) | off;      // str rD, [rB, #off]
+    b[8] = 0xE12FFF1E;
+    b[9] = (u32)p;
+    user_imb_range(b, b + OWN_READ_WORDS);
+    c->spare += OWN_READ_WORDS * 4;
+    *site = 0xEB000000u | ((((u32)b - (u32)site - 8) >> 2) & 0x00FFFFFFu);
+    user_imb_range(site, site + 1);
+    log_event(c, NOTE_PLANT_OK, 0x5E000000u | at);
+}
+
 // **The screen furniture a title hides, which the port never built.**
 // Colin McRae's front end calls Cba() and StatusPane() on its own app UI in
 // ConstructL and hides each -- MakeVisible(EFalse), old CCoeControl slot
@@ -16619,6 +16699,20 @@ static u32 load_and_start()
         const u32 s1 = GAME_SOCK_RECV_KEEP1 ? ctx->codeBase + (u32)GAME_SOCK_RECV_KEEP1 : s0;
         iat[IMPORT_SOCK_RECV1] = keep_thunk(ctx->spare, iat[IMPORT_SOCK_RECV1], s0, s1, 3, 1, 0);
         ctx->spare += KEEP_THUNK_WORDS * 4;
+    }
+    // RecvOneOrMore at the title's arming sites, on a status of the port's own.
+    if (GAME_SOCK_RECV_OWN0 && IMPORT_SOCK_RECV1 < nImports && IMPORT_SOCK_RECV1 < kShimCount &&
+        (kShimTable[IMPORT_SOCK_RECV1] >> 24) == KIND_CALL && ctx->spare + OWN_ARM_WORDS * 4 <= ctx->spareEnd) {
+        static const u32 kRead[] = { GAME_SOCK_RECV_READS };
+        u32 *p = (u32 *)user_allocz(3 * 4);
+        if (!p) PANIC(CAT_MEM, -45);
+        const u32 s0 = ctx->codeBase + (u32)GAME_SOCK_RECV_OWN0;
+        const u32 s1 = GAME_SOCK_RECV_OWN1 ? ctx->codeBase + (u32)GAME_SOCK_RECV_OWN1 : s0;
+        iat[IMPORT_SOCK_RECV1] = own_status_thunk(ctx->spare, iat[IMPORT_SOCK_RECV1], s0, s1, 3, p);
+        ctx->spare += OWN_ARM_WORDS * 4;
+        for (u32 i = 0; i < (u32)GAME_SOCK_RECV_READ_COUNT; i++)
+            if (kRead[i] + 4 <= imgSize && !(kRead[i] & 3))
+                own_status_read_plant(ctx, base, kRead[i], p);
     }
     // Cba() and StatusPane(): the hidden stand-in (gate6_hidden_furniture).
     {
