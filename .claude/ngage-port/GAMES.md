@@ -418,9 +418,12 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_SCREEN_FONTS` | 0 | 0 | 1 | 0 | 0 | 0 | 1 |
 | `GAME_SCREEN_MODES` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
 | `GAME_SHIFT_PICKER` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `GAME_SOCK_RECV_KEEP0` | · | · | · | · | · | 0x000025d4 | · |
-| `GAME_SOCK_RECV_KEEP1` | · | · | · | · | · | 0x00002840 | · |
-| `GAME_SOCK_WRITE_KEEP` | · | · | · | · | · | 0x00002734 | · |
+| `GAME_SOCK_RECV_KEEP0` | · | · | · | · | · | 0 | · |
+| `GAME_SOCK_RECV_KEEP1` | · | · | · | · | · | 0 | · |
+| `GAME_SOCK_RECV_OWN0` | · | · | · | · | · | 0x000025d4 | · |
+| `GAME_SOCK_RECV_OWN1` | · | · | · | · | · | 0x00002840 | · |
+| `GAME_SOCK_RECV_READS` | · | · | · | · | · | 0x00002760,… | · |
+| `GAME_SOCK_WRITE_KEEP` | · | · | · | · | · | 0 | · |
 | `GAME_SOUNDMGR_OFF` | · | · | · | 0x6914 | · | · | · |
 | `GAME_SRC_BPP` | · | · | · | 32 | 16 | 16 | 16 |
 | `GAME_TICK_SEED_LR` | · | · | · | 0x000c5d2c | · | · | · |
