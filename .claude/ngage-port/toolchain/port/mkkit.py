@@ -1,106 +1,91 @@
 #!/usr/bin/env python3
-"""mkkit.py -- the portable kit: this toolchain, off this machine.
+"""mkkit.py -- the compiler kit: an SDK-free S60v3 build, for handing on.
 
-    mkkit.py <out dir>        -> <out dir>/ngage-port-kit.zip
+    mkkit.py <out dir>        -> <out dir>/s60v3-compiler-kit.zip
 
-Everything the build reads, and nothing it does not need:
+Only the build itself and its notes. The port stays here: no loader, no shim,
+no title layers, no project records.
 
-  build.py            kit_build.py: a card dump in, a .sis out
-  README.md           kit_README.md: what to install, how to run it, and how
-                      the copy protection and Glimmerati were worked out
-  port/               the scripts, the loader's sources (gate6.cpp/.s,
-                      screen_fit.h, flat.ld) and every title's layer
-                      (games/<name>/game.h, shim.cpp, gate_imports.h)
-  port/kitdata/       what paths.py looks for in a kit: the Symbian release's
-                      eabi/*.def files and the N-Gage euser .def, laid out as in
-                      the release; EKA2L1's epoc6/epoc9 lists, its palette header
-                      and the SIS template; an empty card folder (e/)
-  docs/               the project's records, for reading
+  README.md     kit/README.md: install, build, write your own, and the
+                copy-protection method as a description
+  build.py      kit/build.py: sources in, .sis out
+  flat.ld       kit/flat.ld, the linker script
+  hello/        kit/hello: a working example
+  tools/        the steps after the linker -- mke32, importsec, relocs, mkreg,
+                mkloc, rscwrite, mksis, sisrw, sisadd -- with kit/paths.py and
+                EKA2L1's sample .sis, which mksis builds from; their
+                comments that tell the port's history and their self-tests
+                (which read the port's bench files) are left out
 
-No game data: a title's layer is the port's code, and the card is the
-user's own dump. A build never writes into the kit's port/ except a new
-title's games/<name>/ and the card copy under kitdata/e/.
+LLVM is not in it: the README sends the user to llvm.org's own release.
 """
 import os
+import re
 import shutil
 import sys
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PROJECT = os.path.normpath(os.path.join(HERE, '..', '..'))       # .claude/ngage-port
+KIT = os.path.join(HERE, 'kit')
 sys.path.insert(0, HERE)
 import paths
 
-PORT_EXT = ('.py', '.cpp', '.h', '.s', '.sh')
-PORT_SKIP = {'mkkit.py', 'kit_build.py', 'kit_README.md'}
-DOCS = ('PORTING.md', 'SYMBIAN.md', 'BUGBOOK.md', 'GAMES.md', 'KNOBS.md',
-        'DEVICES.md', 'MULTIPLAYER.md')
+NAME = 's60v3-compiler-kit'
+# The port's own history in the tools' comments stays here.
+PORT_WORDS = re.compile(r'gate6|colin|glimmerati|asphalt|ashen|n-?gage|\bround \d|'
+                        r'\bbuild \d|\bport\b|\bport\'s|N95', re.I)
+
+TOOLS = ('mke32.py', 'importsec.py', 'relocs.py', 'mkreg.py', 'mkloc.py',
+         'rscwrite.py', 'mksis.py', 'sisrw.py', 'sisadd.py')
 
 
-def symbian_defs(dst):
-    """The .def files gen_shim.py reads, keeping the release's layout so its
-    relative paths (KERNEL, COMPSUPP, bmarm/7.0-euseru.def) still resolve."""
-    root = paths.SYMBIAN_SOURCE
-    n = 0
-    for dirpath, _dirs, files in os.walk(root):
-        low = dirpath.lower()
-        for f in files:
-            if not f.lower().endswith('.def'):
-                continue
-            if 'eabi' in low or f == '7.0-euseru.def':
-                rel = os.path.relpath(os.path.join(dirpath, f), root)
-                out = os.path.join(dst, rel)
-                os.makedirs(os.path.dirname(out), exist_ok=True)
-                shutil.copy2(os.path.join(dirpath, f), out)
-                n += 1
-    return n
+def clean(src, dst):
+    """Copy a tool without the port in it: drop each run of `#` comment lines
+    that mentions the port, and the self-tests (they rebuild files from the
+    port's own bench and import modules the kit does not carry)."""
+    lines = open(src).read().split('\n')
+    for i, line in enumerate(lines):
+        if line.startswith('def selftest'):
+            lines = lines[:i]
+            break
+    out, block = [], []
+    for line in lines + ['']:
+        if line.lstrip().startswith('#'):
+            block.append(line)
+            continue
+        if not any(PORT_WORDS.search(b) for b in block):
+            out += block
+        block = []
+        out.append(line)
+    text = '\n'.join(out[:-1]).rstrip() + '\n'
+    left = [l for l in text.split('\n') if PORT_WORDS.search(l)]
+    if left:
+        sys.exit('mkkit: %s still names the port:\n  %s' % (src, '\n  '.join(left)))
+    open(dst, 'w').write(text)
 
 
 def build(out_dir):
-    stage = os.path.join(out_dir, 'ngage-port-kit')
+    stage = os.path.join(out_dir, NAME)
     shutil.rmtree(stage, ignore_errors=True)
-    port = os.path.join(stage, 'port')
-    os.makedirs(port)
+    tools = os.path.join(stage, 'tools')
+    os.makedirs(tools)
+    for f in TOOLS:
+        clean(os.path.join(HERE, f), os.path.join(tools, f))
+    shutil.copy2(os.path.join(KIT, 'paths.py'), tools)
+    shutil.copy2(paths.SIS_TEMPLATE, os.path.join(tools, 'EKA21LHW.sis'))
+    for f in ('README.md', 'build.py', 'flat.ld'):
+        shutil.copy2(os.path.join(KIT, f), stage)
+    shutil.copytree(os.path.join(KIT, 'hello'), os.path.join(stage, 'hello'),
+                    ignore=shutil.ignore_patterns('out', '__pycache__'))
 
-    for f in sorted(os.listdir(HERE)):
-        if f.endswith(PORT_EXT) and f not in PORT_SKIP and os.path.isfile(os.path.join(HERE, f)):
-            shutil.copy2(os.path.join(HERE, f), port)
-    shutil.copy2(os.path.join(HERE, 'flat.ld'), port)
-    for g in sorted(os.listdir(os.path.join(HERE, 'games'))):
-        src = os.path.join(HERE, 'games', g)
-        if not os.path.isdir(src):
-            continue
-        os.makedirs(os.path.join(port, 'games', g))
-        for f in os.listdir(src):
-            if f.endswith(('.h', '.cpp')):
-                shutil.copy2(os.path.join(src, f), os.path.join(port, 'games', g))
-
-    kd = os.path.join(port, 'kitdata')
-    ndefs = symbian_defs(os.path.join(kd, 'symbian'))
-    for src, name in ((paths.EPOC6_DEF, 'epoc6.def'), (paths.EPOC9_DEF, 'epoc9.def'),
-                      (paths.PALETTE_H, 'palette.h'), (paths.SIS_TEMPLATE, 'EKA21LHW.sis')):
-        shutil.copy2(src, os.path.join(kd, name))
-    for d in (('e', 'system', 'apps'), ('e', 'system', 'libs')):
-        os.makedirs(os.path.join(kd, *d), exist_ok=True)
-        open(os.path.join(kd, *d, '.keep'), 'w').close()
-
-    shutil.copy2(os.path.join(HERE, 'kit_build.py'), os.path.join(stage, 'build.py'))
-    shutil.copy2(os.path.join(HERE, 'kit_README.md'), os.path.join(stage, 'README.md'))
-    docs = os.path.join(stage, 'docs')
-    os.makedirs(docs)
-    for f in DOCS:
-        shutil.copy2(os.path.join(PROJECT, f), docs)
-    shutil.copy2(os.path.join(HERE, 'README.md'), os.path.join(docs, 'PORT-HISTORY.md'))
-
-    zpath = os.path.join(out_dir, 'ngage-port-kit.zip')
+    zpath = os.path.join(out_dir, NAME + '.zip')
     with zipfile.ZipFile(zpath, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for dirpath, _dirs, files in os.walk(stage):
             for f in sorted(files):
                 full = os.path.join(dirpath, f)
                 z.write(full, os.path.relpath(full, out_dir))
-    nfiles = sum(len(fs) for _d, _s, fs in os.walk(stage))
-    print('kit: %d files (%d .def files), %s (%.1f MB)'
-          % (nfiles, ndefs, zpath, os.path.getsize(zpath) / 1e6))
+    n = sum(len(fs) for _d, _s, fs in os.walk(stage))
+    print('kit: %d files, %s (%.0f KB)' % (n, zpath, os.path.getsize(zpath) / 1e3))
     return zpath
 
 
