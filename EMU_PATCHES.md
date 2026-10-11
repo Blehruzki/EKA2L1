@@ -139,6 +139,15 @@ listening. Colin McRae's host left with -2 at "Host a Game" and sat behind
 its wrapper's window for good about one run in five (ngage-port E1148-E1186).
 The result is now stored first and starts at 0.
 
+## A socket task that runs after the socket closed
+
+Not a switch: a bug fix (`services/src/internet/protocols/socket.cpp`). A
+receive cancel, a read delivery, a receive start or a send posted to the
+libuv thread can run after the guest closed the socket, when `close_down()`
+has already let the handle go; `uv_read_stop(NULL)` then crashed the whole
+emulator (ngage-port E1194, mid-race). Each async step now checks the handle
+and still completes the guest's request.
+
 ## Bluetooth over IP on a host without IPv6
 
 Not a switch: always on. The Bluetooth emulation (`services/src/bluetooth/

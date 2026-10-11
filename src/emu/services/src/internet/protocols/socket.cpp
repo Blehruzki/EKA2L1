@@ -793,6 +793,10 @@ namespace eka2l1::epoc::internet {
     void inet_socket::tcp_send_impl_async() {
         uv_stream_t *stream = reinterpret_cast<uv_stream_t *>(opaque_handle_);
         uv_write_t *write = reinterpret_cast<uv_write_t *>(opaque_write_info_);
+        if (!stream || !write) {
+            complete_send_done_info(UV_EBADF);
+            return;
+        }
 
         int err = uv_write(write, stream, &send_buf_, 1, [](uv_write_t *req, int status) {
             inet_socket *socket = reinterpret_cast<inet_socket *>(req->data);
@@ -941,7 +945,9 @@ namespace eka2l1::epoc::internet {
         }
 
         // No need, you should stop for now
-        uv_udp_recv_stop(reinterpret_cast<uv_udp_t*>(opaque_handle_));
+        if (opaque_handle_) {
+            uv_udp_recv_stop(reinterpret_cast<uv_udp_t*>(opaque_handle_));
+        }
 
         kernel_system *kern = nullptr;
 
@@ -1039,7 +1045,9 @@ namespace eka2l1::epoc::internet {
         }
 
         // No need, you should stop for now
-        uv_read_stop(reinterpret_cast<uv_stream_t*>(opaque_handle_));
+        if (opaque_handle_) {
+            uv_read_stop(reinterpret_cast<uv_stream_t*>(opaque_handle_));
+        }
         kern->lock();
 
         if (receive_done_cb_) {
@@ -1068,6 +1076,9 @@ namespace eka2l1::epoc::internet {
 
     void inet_socket::tcp_recv_impl_async() {
         uv_stream_t *tcp_stream = reinterpret_cast<uv_stream_t*>(opaque_handle_);
+        if (!tcp_stream) {
+            return;
+        }
 
         int start_err = uv_read_start(tcp_stream, [](uv_handle_t *handle, std::size_t suggested_size, uv_buf_t *buf) {
             reinterpret_cast<inet_socket*>(handle->data)->prepare_buffer_for_recv(suggested_size, buf);
@@ -1141,7 +1152,11 @@ namespace eka2l1::epoc::internet {
             return;
         }
 
-        uv_read_stop(reinterpret_cast<uv_stream_t*>(opaque_handle_));
+        // A task posted before the guest closed the socket runs after close_down()
+        // has let the handle go: complete the request, touch no handle.
+        if (opaque_handle_) {
+            uv_read_stop(reinterpret_cast<uv_stream_t*>(opaque_handle_));
+        }
 
         // Don't call
         receive_done_cb_ = nullptr;
@@ -1158,8 +1173,10 @@ namespace eka2l1::epoc::internet {
             return;
         }
 
-        uv_udp_recv_stop(reinterpret_cast<uv_udp_t *>(opaque_handle_));
-        
+        if (opaque_handle_) {
+            uv_udp_recv_stop(reinterpret_cast<uv_udp_t *>(opaque_handle_));
+        }
+
         kernel_system *kern = recv_done_info_.requester->get_kernel_object_owner();
 
         kern->lock();

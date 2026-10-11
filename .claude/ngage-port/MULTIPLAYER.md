@@ -165,6 +165,36 @@ multiplayer path never passes, even with a profile on disk (E1132-E1134;
 - **Next:** the type 4 handler (0x44962c -> 0x4b0304, 0x4ae03c) and whatever
   should send it; whether it sets mode 4 or binds the session's players.
 
+## Where it stands (E1182-E1195): a two-player race runs on the bench
+
+- **The launcher's answer is "Bluetooth on".** The engine's mailbox ask
+  (0x449214) takes 5 as true; every caller reads it as Bluetooth on. The port
+  answered 4, so MULTIPLAYER showed "Bluetooth connection is busy" and went to
+  Host/Join by a back way that skips its DRIVER SELECT (0x47d204 -> 0x47d0c0)
+  and the real HOST GAME screen -- the reason every session before reached the
+  race with no driver. GAME_LAUNCHER_BT_ON answers 5 (E1184-E1187).
+- **The emulator's listen race** (set_listen_event signalled before storing an
+  uninitialised result) was every "host hang" at Host a Game (E1186).
+- **A receive completing inside RSocket::Write** left the receive status 2
+  (ERequestPending ORed into the EKA1 word after the Write's status); the
+  engine called it a failed link 20 s into a race. keep_thunk now puts an
+  exact 2 back to 0 at the Write site (E1191-E1193). A phone has this window
+  too.
+- **A closed socket's queued libuv task** crashed the host emulator in
+  uv_read_stop(NULL) mid-race (E1194); guarded.
+- **Result (E1195):** guests from MULTIPLAYER's DRIVER SELECT, HOST GAME,
+  join, Rally, OK, Ready, Start, the briefing, RACE -- both instances race
+  FINLAND STAGE 1 for over two minutes with each other's car on screen.
+  Protocol: type 3 player info (names), type 1 start, type 4 race-start
+  handshake (each side once, waits for the peer's), then type 5 (40 B car
+  state, sequenced) acked by type 6 (12 B) at about 15 a second each way.
+- **Bench guesses still on for Colin** (GAME_NULL_NAME_SITES,
+  GAME_NULL_SKIP_SITES) were needed only without a driver; with the real flow
+  they should never fire -- a run with both off is the next check.
+- **Next:** that check; a stage to the finish (steering in the key script);
+  then the hardware question: the N95 refuses LocalServices (round 170), so the
+  Bluetooth calls need a signed package or a phone that grants it.
+
 ## Next steps, in order
 
 1. The joiner's driver: read the player setup at 0x4d7868 and how a guest is
