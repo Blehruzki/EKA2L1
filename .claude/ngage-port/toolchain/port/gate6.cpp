@@ -1416,6 +1416,8 @@ struct Context {
     u32 cardCreate;
     u32 cardReplace;
     u32 cardControl;        // the DoControl diversion, with the context in r3
+    u32 cardCid[5];         // the card ID out of cid.txt beside the game, when there is one
+    u32 cardCidSet;         // ... and that there was (card_cid_file)
     u32 realResume;         // RThread::Resume, as resolved
     u32 engineThread;       // GAME_ENGINE_LXCE: the engine's thread handle
     u32 realRwin[4];        // RWindow's two constructors, BeginRedraw(TRect), EndRedraw, as resolved
@@ -6665,11 +6667,86 @@ extern "C" u32 gate6_mmc_control(u32, u32 op, u32 *info, Context *c)
     log_event(c, NOTE_CARD_CALL, (u32)info);
     log_block(c);
     if (info) {
-        const u32 *cid = CARD_CID_ORDER ? kCardCidLE : kCardCidBE;
+        const u32 *cid = c->cardCidSet ? c->cardCid : CARD_CID_ORDER ? kCardCidLE : kCardCidBE;
         for (u32 i = 0; i <= MMC_CID_WORDS; i++)
             info[i] = ANSWER_THE_CARD ? cid[i] : (i == MMC_CID_WORDS ? MMC_CARD_TYPE_ROM : 0);
     }
     return 0;
+}
+
+// **The card ID from a file, when one is given.** GAME_CARD_CID is one card's
+// four words, compiled in; another dump of the same game is another card, and
+// a prebuilt loader cannot be rebuilt for it. `C:\gate6-<stem>.cid` holds the
+// four words in hex, as a dumper writes them in the folder name: any
+// separators, leading zeros optional (`b1e97d1-d8011855-b37d817-6000400`).
+// Exactly four words or the file is ignored and GAME_CARD_CID stands. Logged
+// as NOTE_CARD_CALL 0xC1D0000n, n the words read, so a run says which it used.
+//
+// Not on E:, beside the game or anywhere else. Two runs with the right ID
+// read and answered -- from `E:\system\apps\6r37\cid.txt` (E1208) and from
+// `E:\gate6-6r37.cid` (E1214) -- both fault after the same 2,851 records,
+// and the same file on C: runs (E1211, E1213). Other titles' files on E: do not do it, so it may be the
+// name carrying the stem; not settled. (E1210, first read as a third, was a
+// wrong ID.) So C: only, beside the saved picture choice, which is per title
+// for the same reason.
+static const u16 kCidPath[] = {'C',':','\\','g','a','t','e','6','-',
+                               GAME_STEM_CHARS,'.','c','i','d'};
+
+static void card_cid_file(Context *c, u32 *fs)
+{
+    const int n = (int)(sizeof kCidPath / 2);
+    const u16 *path = kCidPath;
+    Ptrc16 name;
+    name.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)n;
+    name.text = path;
+    u32 file[4] = { 0, 0, 0, 0 };
+    if (file_open(file, fs, &name, EFileRead | EFileShareAny) != 0)
+        return;
+    u8 text[96];
+    u32 des[3] = { ((u32)EPtr << KTypeShift) | 0u, (u32)sizeof text, (u32)text };
+    const i32 err = file_read(file, des);
+    file_close(file);
+    if (err != 0)
+        return;
+    const u32 got = des[0] & 0x0FFFFFFF;
+    u32 words[MMC_CID_WORDS + 1];
+    // Strict, because a lenient reader finds hex in prose: "not a card id"
+    // is four words to one (a, ca, d, d), and that was answered (E1210).
+    // Hex digits, a `0x` prefix, and the separators a person types between
+    // words; anything else and the file is not a card ID. A UTF-8 byte-order
+    // mark in front, which Windows editors write, is skipped.
+    u32 count = 0, digits = 0, v = 0;
+    u32 i = (got >= 3 && text[0] == 0xEF && text[1] == 0xBB && text[2] == 0xBF) ? 3 : 0;
+    for (; i <= got; i++) {
+        const u32 ch = i < got ? text[i] : ' ';
+        const u32 lo = ch | 0x20;
+        const int d = (ch >= '0' && ch <= '9') ? (int)(ch - '0')
+                    : (lo >= 'a' && lo <= 'f') ? (int)(lo - 'a' + 10) : -1;
+        // `0x` in front of a word is a prefix, not a digit and a separator.
+        if (lo == 'x' && digits == 1 && v == 0) {
+            digits = 0;
+            continue;
+        }
+        const bool sep = ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' ||
+                         ch == '-' || ch == ',' || ch == ':';
+        if (d < 0 && !sep) { count = 99; break; }
+        if (d >= 0) {
+            if (++digits > 8) { count = 99; break; }
+            v = (v << 4) | (u32)d;
+        } else if (digits) {
+            if (count < MMC_CID_WORDS) words[count] = v;
+            count++;
+            digits = 0;
+            v = 0;
+        }
+    }
+    log_event(c, NOTE_CARD_CALL, 0xC1D00000u | (count & 0xFFFF));
+    if (count != MMC_CID_WORDS)
+        return;
+    for (u32 i = 0; i < MMC_CID_WORDS; i++)
+        c->cardCid[i] = words[i];
+    c->cardCid[MMC_CID_WORDS] = kCardCidBE[MMC_CID_WORDS];
+    c->cardCidSet = 1;
 }
 
 // The one difference between the two machines is a loop. The game opens a file
@@ -15465,6 +15542,7 @@ static u32 load_and_start()
     // And where the bytes really are, for the translation in the file calls.
     ctx->dataDrive = chosenDrive;
     ctx->imageIsBin = (u32)chosenBin;
+    card_cid_file(ctx, fs);
     ctx->codeBase = (u32)base;
     ctx->codeLen = imgSize;
 
