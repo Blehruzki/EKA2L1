@@ -195,7 +195,10 @@ enum { GAME_SRC_ORIGIN = 0 };
 
 
 def find_app(root):
-    """-> (stem, apps_dir, libs_dir or None) under an extracted card dump."""
+    """-> (stem, apps_dir, libs_dir or None, the .app's own file name) under an
+    extracted card dump. The stem comes back lower-case, as every title's is;
+    the card's own names can be either case (Glimmerati's press card has
+    `6R37/6R37.APP`), and a phone's FAT does not care."""
     for dirpath, dirs, files in os.walk(root):
         for f in files:
             if f.lower().endswith('.app'):
@@ -203,7 +206,7 @@ def find_app(root):
                 if os.path.basename(dirpath).lower() == stem.lower():
                     sysdir = os.path.dirname(os.path.dirname(dirpath))
                     libs = os.path.join(sysdir, 'libs')
-                    return stem, dirpath, libs if os.path.isdir(libs) else None
+                    return stem.lower(), dirpath, libs if os.path.isdir(libs) else None, f
     raise SystemExit('no system/apps/<stem>/<stem>.app in %s' % root)
 
 
@@ -244,7 +247,7 @@ def main(argv):
         if not caption:
             top = sorted(os.listdir(work))[0]
             caption = top.split(' (')[0].strip()
-    stem, appsdir, libsdir = find_app(work)
+    stem, appsdir, libsdir, appfile = find_app(work)
     caption = caption or stem
 
     # 2. On the bench, where picture.py, emurun.sh and build_release.py look.
@@ -252,6 +255,12 @@ def main(argv):
     if os.path.isdir(dst):
         shutil.rmtree(dst)
     shutil.copytree(appsdir, dst)
+    # The packager and the loader name the card's files in lower case; a
+    # phone's FAT is case-blind, the bench's file system is not.
+    for f in os.listdir(dst):
+        if f != f.lower():
+            os.rename(os.path.join(dst, f), os.path.join(dst, f.lower()))
+    appfile = appfile.lower()
     nlibs = 0
     if libsdir:
         os.makedirs(LIBS, exist_ok=True)
@@ -262,14 +271,14 @@ def main(argv):
                 continue
             shutil.copy2(src_f, os.path.join(LIBS, f))
             nlibs += 1
-    app = os.path.join(dst, stem + '.app')
+    app = os.path.join(dst, appfile)
     d = open(app, 'rb').read()
     h = e32imports.header(d)
     imps = e32imports.imports(d)
     # An AirPlay title (Colin McRae Rally 2005) keeps the game in a `.nax`
     # beside a stub `.app`: the image for everything below is the engine,
     # inflated once here into `<stem>.lxe`, which is what the loader reads.
-    nax = os.path.join(dst, stem + '.nax')
+    nax = next((os.path.join(dst, f) for f in os.listdir(dst) if f.lower() == stem + '.nax'), '')
     engine = os.path.isfile(nax)
     if engine:
         import lxce

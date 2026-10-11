@@ -533,7 +533,7 @@ struct Ptr8 { u32 lengthAndType; int maxLength; u8 *ptr; };
 enum { SLOT = 48 };
 enum { KIND_CALL = 1, KIND_REM = 2, KIND_LOCAL = 3, KIND_ARG3 = 4, KIND_SRET8 = 5,
        KIND_ARGSHIFT = 6, KIND_NEG = 7, KIND_DEC = 8, KIND_NOT = 9, KIND_SEXT1 = 10,
-       KIND_ZEXT1_RADIX = 11, KIND_DBL1 = 12 };
+       KIND_ZEXT1_RADIX = 11, KIND_DBL1 = 12, KIND_ARGS56 = 13 };
 enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPARE = 3,
        LOCAL_TRAP_ENTER = 4, LOCAL_TINT64_SET = 5, LOCAL_TRUE = 6, LOCAL_SELF = 7,
        LOCAL_MEM_MOVE = 8, LOCAL_TRAP_UNTRAP = 9, LOCAL_RAMSIZES = 10,
@@ -542,7 +542,7 @@ enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPA
        LOCAL_TINT64_ADD = 17, LOCAL_TINT64_SUB = 18, LOCAL_TINT64_MUL = 19, LOCAL_TINT64_DIV = 20,
        LOCAL_TINT64_GE = 21, LOCAL_TINT64_LT = 22,
        LOCAL_SET_WORD_2C = 23, LOCAL_GET_WORD_2C = 24, LOCAL_VOLUMEINFO_CTOR = 25,
-       LOCAL_HANDLE_CTOR = 26, LOCAL_COMPLETE_R2 = 27 };
+       LOCAL_HANDLE_CTOR = 26, LOCAL_COMPLETE_R2 = 27, LOCAL_STANDIN = 28, LOCAL_NOTFOUND = 29 };
 
 // memmove. The game imports it from the C runtime and 9.x does not export it
 // under that name, so it is written here rather than forwarded. Overlap is the
@@ -15726,6 +15726,17 @@ static u32 load_and_start()
                 s[3] = (u32)ctx;
                 s[4] = (u32)&gate6_complete_r2;
                 break;
+            case LOCAL_STANDIN:             // a removed class's NewL: the do-nothing stand-in (Glimmerati)
+                s[0] = 0xE59F2004;          // ldr r2, [pc, #4]  -> the context
+                s[1] = 0xE59FF004;          // ldr pc, [pc, #4]
+                s[2] = 0;
+                s[3] = (u32)ctx;
+                s[4] = (u32)&gate6_hidden_furniture;
+                break;
+            case LOCAL_NOTFOUND:            // a query with nothing to report: KErrNotFound
+                s[0] = 0xE3E00000;          // mvn r0, #0
+                s[1] = 0xE12FFF1E;          // bx  lr
+                break;
             case LOCAL_HANDLE_CTOR:         // RHandleBase's constructor: iHandle = 0 (round 161)
                 s[0] = 0xE3A01000;          // mov r1, #0
                 s[1] = 0xE5801000;          // str r1, [r0]
@@ -15855,6 +15866,19 @@ static u32 load_and_start()
             s[2] = 0xE1A02003;              // mov r2, r3
             s[3] = 0xE51FF004;              // ldr pc, [pc, #-4]
             s[4] = (u32)fn;
+        } else if (kind == KIND_ARGS56) {
+            // Two arguments 9.x added past the registers, both defaulted to 0
+            // (UserHeap::ChunkHeap's aAlign and aSingleThread; Glimmerati).
+            s[0] = 0xE92D4010;              // push {r4, lr}
+            s[1] = 0xE24DD008;              // sub  sp, sp, #8   -- the fifth and sixth words
+            s[2] = 0xE3A0C000;              // mov  r12, #0
+            s[3] = 0xE58DC000;              // str  r12, [sp]
+            s[4] = 0xE58DC004;              // str  r12, [sp, #4]
+            s[5] = 0xE59F4008;              // ldr  r4, [pc, #8] -> s[9]
+            s[6] = 0xE12FFF34;              // blx  r4
+            s[7] = 0xE28DD008;              // add  sp, sp, #8
+            s[8] = 0xE8BD8010;              // pop  {r4, pc}
+            s[9] = (u32)fn;
         } else if (kind == KIND_ARG3) {
             s[0] = 0xE3A02000;              // mov r2, #0    -- the added argument
             s[1] = 0xE51FF004;              // ldr pc, [pc, #-4]

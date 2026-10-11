@@ -41,6 +41,11 @@ KIND_ZEXT1_RADIX = 11
 # to r2:r3, and the word after it (r3) goes to the stack. The words are in
 # the FPA order where the title has it (GAME_FPA_DOUBLES).
 KIND_DBL1 = 12
+# Glimmerati (round 172): a 9.x function that grew two defaulted arguments
+# past the four registers -- UserHeap::ChunkHeap's aAlign and aSingleThread.
+# Called with the EKA1 four, it would read them off the caller's stack; the
+# thunk passes 0 for both, the defaults (e32std.h).
+KIND_ARGS56 = 13
 
 # Where the two calling conventions actually disagree. GCC98r2 returned an
 # eight-byte structure in r0 and r1; EABI returns anything over four bytes
@@ -182,6 +187,16 @@ LOCAL_HANDLE_CTOR = 26
 # fine" -- the request status in r2 completed with KErrNone at once, word
 # only, through RThread::RequestComplete (gate6_complete_r2).
 LOCAL_COMPLETE_R2 = 27
+# Glimmerati (round 172): Series 60 2nd Edition's CIntConnectionInitiator
+# (intconninit.dll), which S60v3 dropped. The platform layer makes one at
+# start-up (NewL, ordinal 5, from PlatformNGage::NewLC) and asks it for the
+# active internet access point on every resume (GetActiveIap, ordinal 1, from
+# PlatformNGage::Resume and RunL), taking any non-zero answer as "no
+# connection". NewL answers the port's do-nothing stand-in object (every
+# virtual slot returns 0, so a later delete through it is harmless) and
+# GetActiveIap answers KErrNotFound: no access point, which is the truth.
+LOCAL_STANDIN = 28
+LOCAL_NOTFOUND = 29
 LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL,
          'memmove': LOCAL_MEM_MOVE, '__negdf2': LOCAL_NEGDF2}
 
@@ -189,6 +204,10 @@ LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL,
 # checked against the 9.x def rather than assumed; the rest of what does not
 # match is genuinely gone (CServer, CSession, TTrap, TInt64) and needs writing.
 MANUAL = {
+    # Glimmerati's platform layer makes its own heap (round 172). 9.x added
+    # aAlign and aSingleThread after aGrowBy, both defaulted (KIND_ARGS56).
+    'UserHeap1::ChunkHeap(TDesC16 const *, int, int, int)':
+        ('euser', 'UserHeap::ChunkHeap(TDesC16 const*, int, int, int, int, int)', KIND_ARGS56),
     # Colin McRae's engine (E891). 9.x made these RWsSession and RWindow
     # getters const, which is all that kept them from pairing.
     'RWsSession::GetEvent(TWsEvent &)': ('ws32', 'RWsSession::GetEvent(TWsEvent&) const', KIND_CALL),
@@ -427,6 +446,10 @@ BY_ORDINAL = {
     # with the ASCII name "N-Gage", to this. Nothing on an S60v3 phone would
     # ever show that message, so it succeeds and does nothing.
     ('nokiafc', 1): ('local', LOCAL_NOOP, KIND_LOCAL),
+    # CIntConnectionInitiator::NewL() and ::GetActiveIap(TUint32&) -- see
+    # LOCAL_STANDIN (Glimmerati, round 172).
+    ('intconninit.dll', 5): ('local', LOCAL_STANDIN, KIND_LOCAL),   # no UID in its name, so the key keeps .dll
+    ('intconninit.dll', 1): ('local', LOCAL_NOTFOUND, KIND_LOCAL),
     # A Nokia addition past cone's ordinary exports -- in the ROM it copies a
     # size, compares it against something keyed by UID 0x101f8a5a and a factor
     # of 0.4, and adjusts. The game calls it on its control with the rectangle
