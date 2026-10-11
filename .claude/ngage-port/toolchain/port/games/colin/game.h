@@ -121,6 +121,11 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // getters (0x4ba274, 0x4ba2fc), whose NULL for a guest joiner is read as "" (round 172).
 #define GAME_NULL_NAME_SITES 0x0007d92c, 0x0007d940, 0x0007d954, 0x0007d96c, 0x0007d97c
 #define GAME_NULL_NAME_COUNT 5
+// The RACE tab's read of player 0's profile (0x4e9340, bl 0x4bad30) branches
+// as a zero byte would (0x4e9420) when the profile is NULL (gate6.cpp
+// null_skip_plant; E1165-E1169). A guess, as the names are.
+#define GAME_NULL_SKIP_SITES 0x000e9340, 0x000e9420
+#define GAME_NULL_SKIP_COUNT 1
 
 // The environment's screen device, as the game reads it off the view
 // (old iScreen, 0x3c): 1 hands it a stand-in that answers font requests by

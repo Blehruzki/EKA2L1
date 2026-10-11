@@ -409,6 +409,7 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_MDA_WRITER_CB` | · | · | · | 0xc | · | · | · |
 | `GAME_MULTI_TIMER` | · | · | · | 1 | 1 | 1 | 1 |
 | `GAME_NULL_NAME_SITES` | · | · | · | · | · | 0x0007d92c,… | · |
+| `GAME_NULL_SKIP_SITES` | · | · | · | · | · | 0x000e9340,… | · |
 | `GAME_PICTURE_MEASURED` | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
 | `GAME_PORT_SCALER` | · | · | 1 | · | · | · | · |
 | `GAME_PREPARE_EXIT_NOOP` | · | · | · | 1 | · | · | · |
