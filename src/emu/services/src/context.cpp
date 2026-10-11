@@ -458,7 +458,23 @@ namespace eka2l1 {
                     return;
                 }
 
-                LOG_WARN(SERVICE_TRACK, "Unimplemented IPC call: 0x{:x} for server: {}", func, obj_name);
+                // An opcode with no entry in the dispatch table still has to be answered.
+                // Logging and returning leaves the message outstanding and the calling
+                // guest thread waiting forever: no panic, no error, no exit, it simply
+                // stops. That is how !CentralRepository opcode 4 stalled PlayServer while
+                // it held the global playserver.exe mutex, which in turn blocked every
+                // other N-Gage process behind it.
+                //
+                // The servers that dispatch through a switch already route their default
+                // case here; this is the same gap on the REGISTER_IPC path, which was
+                // missed when those were swept. complete_unhandled carries the loop-aware
+                // parking, so an unimplemented notification request still will not spin.
+                ipc_context context;
+
+                context.sys = sys;
+                context.msg = process_msg;
+
+                context.complete_unhandled(obj_name.c_str());
                 return;
             }
 
