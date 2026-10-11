@@ -560,8 +560,9 @@ namespace eka2l1::epoc::internet {
     }
 
     void inet_socket::set_listen_event(const int listen_event_result) {
-        listen_event_.set();
+        // The result first: set() wakes listen(), which reads it at once.
         listen_event_result_ = listen_event_result;
+        listen_event_.set();
     }
 
     void inet_socket::listen_impl_async() {

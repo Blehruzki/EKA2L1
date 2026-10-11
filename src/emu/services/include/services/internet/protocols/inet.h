@@ -214,7 +214,7 @@ namespace eka2l1::epoc::internet {
 
         common::event open_event_;
         common::event listen_event_;
-        int listen_event_result_;
+        int listen_event_result_ = 0;
 
         std::function<void(void*)> socket_accepted_hook_;
         std::mutex hook_lock_;

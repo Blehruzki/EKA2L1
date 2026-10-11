@@ -299,6 +299,9 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 #define GAME_BMU_YIELD 1
 // Round 171: the launcher part clears a 1 (no 6 before it) after 2 s.
 #define GAME_LAUNCHER_CLEARS_1 1
+// The launcher answers the engine's asks "Bluetooth on" (5), so MULTIPLAYER
+// opens its DRIVER SELECT (gate6.cpp, GAME_LAUNCHER_BT_ON; E1184).
+#define GAME_LAUNCHER_BT_ON 1
 // Bench: the watchdog's dump at that second, stalled or not. 0 in anything shipped.
 #define GAME_BENCH_DUMP_AT 0
 // Round 168: the loader's capabilities (the exe header, TCapabilitySet bits).

@@ -14237,7 +14237,20 @@ static void engine_root_unfocusable(Context *c)
 #ifndef GAME_LAUNCHER_CLEARS_1
 #define GAME_LAUNCHER_CLEARS_1 0
 #endif
-enum { I3D_MAILBOX = 0xE4 / 4, I3D_ASK = 3, I3D_ANSWER = 4, I3D_QUIT = 6, I3D_CLOSE_ME = 1, I3D_STATE_EXIT = 5, SHM_WATCH_US = 500000, SHM_WATCH_TICKS = 4 };
+// **What the answer means (round 172).** The ask carries no code: the engine
+// writes 3, spins until the word is above 3, takes "5" as true (0x449214) and
+// clears it. Every caller reads that true as "Bluetooth is on": the boot ask
+// keeps it (0x47bef4 -> 0x5491a3, 0x478454), the MULTIPLAYER entry opens the
+// multiplayer DRIVER SELECT on it (0x47d204 -> 0x47d0c0) and otherwise re-asks
+// or shows "Bluetooth connection is busy" (0x47d118 -> 0x4824b4), and a
+// session re-asks every 2 s (0x47d3c0). Answered 4, a multiplayer player never
+// passes a DRIVER SELECT and reaches the race with no driver (E1165-E1183).
+// GAME_LAUNCHER_BT_ON 1 answers 5. The "5 means cancel" above was a reading
+// of the boot ask alone (E966).
+#ifndef GAME_LAUNCHER_BT_ON
+#define GAME_LAUNCHER_BT_ON 0
+#endif
+enum { I3D_MAILBOX = 0xE4 / 4, I3D_ASK = 3, I3D_ANSWER = 4, I3D_ANSWER_ON = 5, I3D_QUIT = 6, I3D_CLOSE_ME = 1, I3D_STATE_EXIT = 5, SHM_WATCH_US = 500000, SHM_WATCH_TICKS = 4 };
 
 // **Bench: a phone's app switch, from the window server's side
 // (GAME_BENCH_SWITCH_AT, seconds after the engine starts; 0 off).** Nothing on
@@ -14533,7 +14546,7 @@ extern "C" int gate6_engine_shm_watch(void *p)
     c->shmTicks = 0;
     log_event(c, NOTE_ENGINE, 0x9E000000u | (b[I3D_MAILBOX] & 0xFFu));
     log_block(c);
-    b[I3D_MAILBOX] = pending1 ? 0u : (u32)I3D_ANSWER;
+    b[I3D_MAILBOX] = pending1 ? 0u : (u32)(GAME_LAUNCHER_BT_ON ? I3D_ANSWER_ON : I3D_ANSWER);
     return 1;
 }
 

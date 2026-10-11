@@ -397,6 +397,7 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_IMAGE_WATCH_SITES` | 0 | 0x0013c1fc,… | 0 | 0 | 0 | 0 | 0 |
 | `GAME_KICK_RUNL_FN` | · | · | · | 0x000265ac | · | · | · |
 | `GAME_KICK_RUNL_SLOT` | · | · | · | 0x001562a4 | · | · | · |
+| `GAME_LAUNCHER_BT_ON` | · | · | · | · | · | 1 | · |
 | `GAME_LAUNCHER_CLEARS_1` | · | · | · | · | · | 1 | · |
 | `GAME_LEAK_ALL` | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | `GAME_LOG_CLOCK` | 1 | 0 | 1 | 1 | 1 | 1 | 1 |

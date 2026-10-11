@@ -128,6 +128,17 @@ its own buffer; a later failure surfaces as the link's next receive error, as
 on a device. (That ESock completes on queueing is read from the RFCOMM SAP's
 contract; ESock's own source was not available.)
 
+## A listen that succeeded read as failed
+
+Not a switch: a bug fix (`inet_socket::set_listen_event`, `services/src/
+internet/protocols/socket.cpp`). The libuv thread signalled the waiting
+`listen()` before it stored the result, and the result field was never
+initialised, so the guest thread could wake first and read garbage: an
+intermittent `KErrGeneral` from `RSocket::Listen` on a socket that was
+listening. Colin McRae's host left with -2 at "Host a Game" and sat behind
+its wrapper's window for good about one run in five (ngage-port E1148-E1186).
+The result is now stored first and starts at 0.
+
 ## Bluetooth over IP on a host without IPv6
 
 Not a switch: always on. The Bluetooth emulation (`services/src/bluetooth/
