@@ -347,12 +347,26 @@ namespace eka2l1 {
                     const std::uint32_t this_ptr = cpu_core->get_reg(5);
                     const std::uint32_t real_r6 = cpu_core->get_reg(6);
 
-                    // Trust hardware only the first time this loop instance ("this"
-                    // pointer) is seen; every hit after that uses our own tracked count
-                    // instead of whatever the guest's r6 currently holds, since r6 isn't
-                    // provably safe from being disturbed elsewhere in the loop body.
+                    // Trust hardware the first time this loop instance ("this" pointer) is
+                    // seen; every hit after that uses our own tracked count instead of
+                    // whatever the guest's r6 currently holds, since r6 isn't provably safe
+                    // from being disturbed elsewhere in the loop body.
+                    //
+                    // The same object runs this loop more than once, and each run restarts
+                    // its index at zero, so the entry left behind by the previous run is
+                    // stale. Hardware counting backwards is what tells us that happened:
+                    // drop the entry and believe the guest again. Without this, the second
+                    // call inherits the first call's final index, the `Count() > r6` test is
+                    // already false on the first iteration, and the routine reports a size
+                    // one record long. The caller sizes its receive buffer from that, the
+                    // server then writes a full record into it and leaves with KErrOverflow,
+                    // and gametitlemetadata.dll internalises from the empty buffer and dies
+                    // with KErrEof - which killed PlayServer before the shell ever drew.
                     auto it = ngage_gtm_fix_loop_index_.find(this_ptr);
-                    const std::uint32_t base_index = (it != ngage_gtm_fix_loop_index_.end()) ? it->second : real_r6;
+                    const bool stale_entry = (it != ngage_gtm_fix_loop_index_.end()) && (real_r6 < it->second);
+                    const std::uint32_t base_index = ((it != ngage_gtm_fix_loop_index_.end()) && !stale_entry)
+                        ? it->second
+                        : real_r6;
                     const std::uint32_t next_index = base_index + 1;
                     ngage_gtm_fix_loop_index_[this_ptr] = next_index;
 
