@@ -197,6 +197,7 @@ target_link_libraries(eka2l1_qt PRIVATE
     uvw
     j2me
     stb
+    sqlite3
     yaml-cpp)
 
 if (ENABLE_DISCORD_RICH_PRESENCE)

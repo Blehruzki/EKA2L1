@@ -35,6 +35,7 @@ bool list_app_option_handler(eka2l1::common::arg_parser *parser, void *userdata,
 bool list_devices_option_handler(eka2l1::common::arg_parser *parser, void *userdata, std::string *err);
 bool fullscreen_option_handler(eka2l1::common::arg_parser *parser, void *userdata, std::string *err);
 bool mount_card_option_handler(eka2l1::common::arg_parser *parser, void *userdata, std::string *err);
+bool import_ngage_licenses_option_handler(eka2l1::common::arg_parser *parser, void *userdata, std::string *err);
 bool device_set_option_handler(eka2l1::common::arg_parser *parser, void *userdata, std::string *err);
 bool keybind_profile_option_handler(eka2l1::common::arg_parser *parser, void *userdata, std::string *err);
 bool set_mmcid_option_handler(eka2l1::common::arg_parser *parser, void *userdata, std::string *err);

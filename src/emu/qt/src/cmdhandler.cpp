@@ -38,6 +38,10 @@
 
 #include <kernel/kernel.h>
 #include <services/applist/applist.h>
+#include <services/drm/rights/rights.h>
+
+#include <fstream>
+#include <sstream>
 
 #include <utils/apacmd.h>
 #include <vfs/vfs.h>
@@ -453,6 +457,57 @@ bool run_ngage_game_option_handler(eka2l1::common::arg_parser *parser, void *use
     }
 
     emu->app_launch_from_command_line = true;
+    return true;
+}
+
+bool import_ngage_licenses_option_handler(eka2l1::common::arg_parser *parser, void *userdata, std::string *err) {
+    const char *path = parser->next_token();
+
+    if (!path) {
+        *err = "Request to import N-Gage licenses, but path to the .ng2l file was not given";
+        return false;
+    }
+
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        *err = std::string("Can't open N-Gage license file: ") + path;
+        return false;
+    }
+
+    std::ostringstream ss;
+    ss << file.rdbuf();
+    const std::string content = ss.str();
+
+    desktop::emulator *emu = reinterpret_cast<desktop::emulator *>(userdata);
+    kernel_system *kern = emu->symsys->get_kernel_system();
+
+    eka2l1::rights_server *rightsserv = nullptr;
+    if (kern) {
+        rightsserv = reinterpret_cast<eka2l1::rights_server *>(
+            kern->get_by_name<service::server>(eka2l1::RIGHTS_SERVER_NAME));
+    }
+
+    if (!rightsserv) {
+        *err = "Can't get the rights server (is DRM enabled in the configuration?)";
+        return false;
+    }
+
+    std::vector<std::string> success_games;
+    std::vector<std::string> failed_games;
+
+    if (!rightsserv->import_ng2l(content, success_games, failed_games)) {
+        *err = "N-Gage license import failed: the file is not a valid ng2l document";
+        return false;
+    }
+
+    for (const std::string &name : success_games) {
+        std::cout << "Imported N-Gage license for: " << name << std::endl;
+    }
+    for (const std::string &name : failed_games) {
+        std::cout << "Failed to import N-Gage license for: " << name << std::endl;
+    }
+
+    std::cout << success_games.size() << " license(s) imported, " << failed_games.size() << " failed." << std::endl;
     return true;
 }
 

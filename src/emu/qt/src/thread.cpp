@@ -783,6 +783,10 @@ namespace eka2l1::desktop {
             keybind_profile_option_handler);
         parser.add("--mmcid, --cid, -cid", "Set the MMC-ID for the mounted card", set_mmcid_option_handler);
         parser.add("--runng, --appng, -rng, -ang", "Run a single N-Gage game inside the E drive", run_ngage_game_option_handler);
+        parser.add("--importng2l, --ng2l", "Import N-Gage 2.0 game licenses from a .ng2l (YAML) file.\n"
+                                           "\t The keys it contains are written to the DRM rights database so purchased titles can run.\n"
+                                           "\t Example: eka2l1 --ng2l mylicenses.ng2l",
+            import_ngage_licenses_option_handler);
 
 #if ENABLE_PYTHON_SCRIPTING
         parser.add("--gendocs", "Generate Python documentation", python_docgen_option_handler);
