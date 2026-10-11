@@ -395,6 +395,10 @@ namespace eka2l1::kernel {
             kern->destroy(info.code_chunk);
         }
 
+        // The info may still sit in the code dump collector's list, which holds raw pointers to it. Leaving it there
+        // makes the next collector add()/clean_impl() write to or read from this freed attached_info.
+        kern->get_codedump_collector().remove(info);
+
         info.closing_lib_link.deque();
         info.process_link.deque();
 

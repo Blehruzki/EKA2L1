@@ -44,8 +44,11 @@ namespace eka2l1::kernel {
         in_list_count_ = 0;
     }
 
+    // Note: double_linked_queue_element::alone() is next == previous, which is also true for the only element of a
+    // queue (both point at the queue head). Every function here therefore tests for membership with next != nullptr
+    // instead, since deque() always resets both links.
     void codedump_collector::add(kernel::codeseg::attached_info &attach_info) {
-        if (!attach_info.garbage_link.alone()) {
+        if (attach_info.garbage_link.next != nullptr) {
             return;
         }
 
@@ -59,7 +62,7 @@ namespace eka2l1::kernel {
     }
 
     void codedump_collector::remove(kernel::codeseg::attached_info &attach_info) {
-        if (attach_info.garbage_link.alone()) {
+        if (attach_info.garbage_link.next == nullptr) {
             return;
         }
 
@@ -70,7 +73,7 @@ namespace eka2l1::kernel {
     }
 
     void codedump_collector::add(kernel::codeseg *seg) {
-        if (!seg->garbage_link.alone()) {
+        if (seg->garbage_link.next != nullptr) {
             return;
         }
 
@@ -85,7 +88,7 @@ namespace eka2l1::kernel {
     }
 
     void codedump_collector::remove(kernel::codeseg *seg) {
-        if (seg->garbage_link.alone()) {
+        if (seg->garbage_link.next == nullptr) {
             return;
         }
 
