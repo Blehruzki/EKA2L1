@@ -20,6 +20,7 @@
 #include <services/internet/protocols/inet.h>
 
 #include <common/platform.h>
+#include <cstdlib>
 #include <common/thread.h>
 #include <utils/des.h>
 #include <utils/err.h>
@@ -927,6 +928,21 @@ namespace eka2l1::epoc::internet {
         looper_->post_task(send_task_);
     }
 
+    // EKA2L1_BTSPLIT=<n>: a Bluetooth stream receive that takes what is
+    // available (RecvOneOrMore) is handed at most n bytes, the rest kept for
+    // the next one. RFCOMM is a byte stream and a phone's radio delivers it in
+    // pieces of its own choosing; loopback TCP almost always hands over a
+    // whole write at once, so guest code that assumes a message arrives in one
+    // receive works here and can fail between two phones. A bench switch, off
+    // by default (ngage-port, Colin McRae's network pump).
+    static std::size_t bt_split_cap() {
+        static const std::size_t cap = []() -> std::size_t {
+            const char *e = std::getenv("EKA2L1_BTSPLIT");
+            return e ? static_cast<std::size_t>(std::strtoul(e, nullptr, 10)) : 0;
+        }();
+        return cap;
+    }
+
     void inet_socket::prepare_buffer_for_recv(const std::size_t suggested_size, void *buf_ptr) {
         uv_buf_t *buf = reinterpret_cast<uv_buf_t*>(buf_ptr);
         temp_buffer_.resize(suggested_size);
@@ -1013,8 +1029,10 @@ namespace eka2l1::epoc::internet {
         } else {
             // We must ensure that if we want to take the data immediately, there must be nothing left in the ring buffer
             // Else we would create data disorder, leading to corruption
+            const std::size_t split = (send_buffered_ && take_available_only_) ? bt_split_cap() : 0;
             if (take_available_only_ && (!stream_data_buffer_ || (stream_data_buffer_->size() == 0))
-                && (recv_size_ >= static_cast<std::size_t>(bytes_read_arg))) {
+                && (recv_size_ >= static_cast<std::size_t>(bytes_read_arg))
+                && (!split || (static_cast<std::size_t>(bytes_read_arg) <= split))) {
                 // Avoid adding things overhead, so we just gonna copy paste, and done :)
                 memcpy(read_dest_, buf->base, static_cast<std::size_t>(bytes_read_arg));
                 if (bytes_read_) {
@@ -1029,8 +1047,11 @@ namespace eka2l1::epoc::internet {
 
                 stream_data_buffer_->push(buf->base, static_cast<std::size_t>(bytes_read_arg));
                 if (take_available_only_ || (recv_size_ <= stream_data_buffer_->size())) {
-                    auto got_data = stream_data_buffer_->pop(common::min<std::size_t>(static_cast<std::size_t>(recv_size_),
-                        stream_data_buffer_->size()));
+                    std::size_t want = common::min<std::size_t>(static_cast<std::size_t>(recv_size_),
+                        stream_data_buffer_->size());
+                    if (split)
+                        want = common::min<std::size_t>(want, split);
+                    auto got_data = stream_data_buffer_->pop(want);
 
                     memcpy(read_dest_, got_data.data(), got_data.size());
                     if (bytes_read_) {
@@ -1125,6 +1146,8 @@ namespace eka2l1::epoc::internet {
             if (stream_data_buffer_ && stream_data_buffer_->size()) {
                 if (take_available_only_ || (data_size <= stream_data_buffer_->size())) {
                     std::size_t size_to_pop = common::min<std::size_t>(data_size, stream_data_buffer_->size());
+                    if (send_buffered_ && take_available_only_ && bt_split_cap())
+                        size_to_pop = common::min<std::size_t>(size_to_pop, bt_split_cap());
                     std::vector<char> data_result = stream_data_buffer_->pop(size_to_pop);
 
                     if (recv_size) {

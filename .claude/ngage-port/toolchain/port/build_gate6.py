@@ -78,8 +78,13 @@ def build(out='.', caption=None, game=DEFAULT_GAME, **kw):
                heap_max=0x4000000,
                # Round 168: what the title's own calls need from a phone's
                # kernel (GAME_CAPABILITIES, a TCapabilitySet mask; none when
-               # unset, as every build before 010 shipped).
-               caps=int(game_setting(game, 'GAME_CAPABILITIES') or '0', 0), **kw)
+               # unset, as every build before 010 shipped). NGPORT_CAPS in the
+               # environment overrides it for one build: duo.sh sets
+               # LocalServices, which the ROM's SdpServer demands of a host
+               # (E1106-E1107) and which the committed game.h leaves out --
+               # E1215-E1225 hunted a "host hang" that was only that.
+               caps=int(os.environ.get('NGPORT_CAPS') or
+                        game_setting(game, 'GAME_CAPABILITIES') or '0', 0), **kw)
 
 
 if __name__ == '__main__':

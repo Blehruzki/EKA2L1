@@ -32,6 +32,11 @@ pgrep -f "Xvfb :99" >/dev/null || { nohup Xvfb :99 -screen 0 1280x900x24 >"$S/xv
 pgrep -f "Xvfb :98" >/dev/null || { nohup Xvfb :98 -screen 0 1280x900x24 >"$S/xvfb98.log" 2>&1 & sleep 3; }
 pgrep -x eka2l1_qt >/dev/null && { echo "an emulator is already running"; exit 1; }
 
+# LocalServices for the bench's build, whatever the committed game.h says
+# (shipped builds carry none, round 170): the ROM's SdpServer refuses a host
+# without it (KErrPermissionDenied, E1106), the joiner then finds no record,
+# and every host looks hung. E1215-E1225 were that.
+export NGPORT_CAPS="${NGPORT_CAPS:-0x4000}"
 (cd "$P" && python3 -c "
 import os, sys, build_release as r, build_gate6, mkmbm, picture
 out, game = sys.argv[1], sys.argv[2]

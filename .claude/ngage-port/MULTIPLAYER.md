@@ -195,11 +195,69 @@ multiplayer path never passes, even with a profile on disk (E1132-E1134;
   then the hardware question: the N95 refuses LocalServices (round 170), so the
   Bluetooth calls need a signed package or a phone that grants it.
 
+## The protocol, from the dispatch table (read from the binary)
+
+The receive pump (0x44976c, once a frame) reads an 8-byte header (type,
+length) and the body, and finds the handler in an 18-entry table at 0x53ee54.
+Every send goes through 0x449a54(type, data, length).
+
+| type | handler | sent by | what it is |
+|---|---|---|---|
+| 1, 2 | 0x47d810 | 0x47d7f8, 0x47dadc | the start and the settings (2 is the 344-byte lobby settings) |
+| 3 | 0x449610 | 0x47da00 | player info (the name) |
+| 4 | 0x44962c | 0x486e08 | the race-start handshake |
+| 5 | 0x449578 | the car update | car state, 40 B, sequenced; acked only in game state 3 |
+| 6 | 0x4495d4 | 0x4495c0 | the ack of a type 5 (its sequence); taken only in state 3 |
+| 7 | 0x44964c | 0x4ca488 (0x4b0394) | a split time: checkpoint index and time, filed per player (0x4afd94); index 8 is the finish |
+| 8 | 0x449678 | 0x4870e0 (0x4b034c) | a time penalty (the added time and the running total) |
+| 9, 10, 11, 12, 15 | 0x4496ac ... 0x47d150 | 0x4b03f4 ... 0x4b0454 | session ends and quits; 11 and 12 put up a message (0x46211c) |
+| 13, 14 | 0x44951c, 0x44955c | 0x48eac8, 0x48eb88, 0x49b800 | not yet read |
+| 17 | 0x44974c (nothing) | 0x449808 | the keep-alive, every 250 ms when idle |
+
+## Where it stands (E1196-E1227)
+
+- **The drop is named (E1199): the type-5 flow control (0x44999c).** A type 5
+  is held while two are unacked; held over a second and 20 more, the link is
+  lost. The peer acks only in game state 3, so the window fills only when one
+  side stops acking. Not latency (25-41 ms round trips against a 55 ms frame).
+  3 of 11 runs dropped (E1196, E1197, E1199), none of the next 6.
+- **The pump could not take a message in pieces (E1226-E1227) -- fixed.** Its
+  body read is ten back-to-back polls of the one RecvOneOrMore the engine
+  keeps going; a body still short after them went to its handler part-filled
+  and the rest was read as the next header (the stream out of step from
+  there: no acks, a lost link), and one finished on the tenth read exactly was
+  called a lost link. RFCOMM between two phones is a byte stream with no
+  promise of one receive per Write; loopback TCP nearly always hands a write
+  over whole, which is why the bench rarely showed it. Two code patches
+  (game.h: 0x449890 a short body waits for the next frame, as the header
+  does; 0x4498c4 a finished one always dispatches). The emulator's
+  `EKA2L1_BTSPLIT=<n>` splits every Bluetooth receive to show it: unpatched,
+  the first 344-byte message ended the session (E1226); patched, a whole
+  session and race ran in 23-byte pieces with no drop (E1227). Whether it is
+  also the cause of the rare drop is open -- it is a mechanism that ends a
+  race the way the drop does.
+- **A bench trap, now closed (E1215-E1225).** Hosting needs LocalServices:
+  the ROM's SdpServer refuses the host's record without it (-46, E1106), the
+  joiner's SDP query then finds nothing ("SDP peer has no responder up") and
+  its Join reads "Connection request failed", while the host sits in its
+  HOST GAME wait looking hung. The committed game.h carries no capability
+  (round 170), so every duo after a commit built without it. duo.sh now
+  builds with LocalServices itself (NGPORT_CAPS).
+- **The engine runs 0x4300000 above its image addresses** (its chunk is at
+  0x4700000): every PCTRACE range, start and register PC for the engine is
+  image address + 0x4300000 (E1222, E1223).
+- **The bench guesses are not needed** with the real flow (E1196: both off,
+  no faults).
+
 ## Next steps, in order
 
-1. The joiner's driver: read the player setup at 0x4d7868 and how a guest is
-   meant to get a name; whether a phone would fault the same way.
-2. The intermittent host hang (E1148, E1153, E1155): the watchdog's dump.
+1. A stage to the finish on the bench (autopilot.py drives both cars from the
+   screen): the split times (type 7), the finish (index 8), and what the two
+   sides do after it.
+2. The phone. LocalServices is the gate, on a phone as on the bench: without
+   it nobody can host. A package that asks for it must be signed; a
+   self-signed one is accepted by phones with the stock install policy and
+   refused by the N95 (rounds 169-170). So a multiplayer build is a second,
+   self-signed loader package with GAME_CAPABILITIES 0x4000, for people with
+   two such phones.
 3. HCI scan-enable ioctls on 9.x: what they answer; a stand-in if refused.
-4. The phone: LocalServices is the gate. A self-signed package for phones
-   that grant it, and on the N95 nothing until its install policy does.

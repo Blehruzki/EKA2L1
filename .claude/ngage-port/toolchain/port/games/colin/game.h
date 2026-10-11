@@ -105,8 +105,32 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
                           { 0x000a8440, 0xE92D4000, 0xE3A00001 }, /* the flip always direct: mov r0, #1 */ \
                           { 0x000a8444, 0xE59F3024, 0xE12FFF1E }, /*   bx lr */ \
                           { 0x00049e58, 0x1B035823, 0xE1A00000 }, /* the link check: an error reads as no links, never a Leave (round 170) */ \
-                          { 0x00049e1c, 0xE1A01006, 0xE3A01003 }  /* its option: 6.1's KLMGetACLLinkCount (0) is 9.x's 3 (round 171) */
-#define GAME_CODE_PATCH_COUNT 21
+                          { 0x00049e1c, 0xE1A01006, 0xE3A01003 }, /* its option: 6.1's KLMGetACLLinkCount (0) is 9.x's 3 (round 171) */ \
+                          { 0x00049890, 0x0A00000A, 0x0A000037 }, /* the pump: a body still short after its 10 reads waits for the next frame */ \
+                          { 0x000498c4, 0x0AFFFFBB, 0xE1A00000 }  /*   and one finished on the 10th read is a message, not a lost link */
+#define GAME_CODE_PATCH_COUNT 23
+// **The network pump's body read (0x44976c, called once a frame).** A message
+// is an 8-byte header (type, length) and a body. The header is read across
+// frames: short, the pump returns and goes on next frame. The body is not: up
+// to ten reads back to back (0x449888), each a poll of the one RecvOneOrMore
+// the engine keeps going (0x402740) -- so a body that has not all arrived
+// yet does not arrive during them. Then, as shipped:
+//   - still short after the tenth (r4 = -1): the handler runs on a part-filled
+//     message, the count is reset, and the rest of that body is read as the
+//     next header -- the stream is out of step from there, and a side whose
+//     stream is out of step stops acking, which ends the race at the type-5
+//     flow control (0x44999c, E1199) or at "no handler" (0x449918);
+//   - finished by the tenth read exactly (r4 = 0): the link is called lost
+//     (0x4498c4 -> 0x4497b8).
+// Neither happens while a message arrives whole, which loopback TCP almost
+// always does. RFCOMM between two phones is a byte stream: nothing in it
+// keeps one Write to one receive, and a receive that lands between a header
+// and the rest of its body is all it takes. (The engine flushes as soon as a
+// message is queued and again once a frame, 0x449b74 and 0x44981c, so most
+// Writes carry one message; that does not make them arrive whole.) Patched: short
+// after the tenth read returns (0x449974) with the bytes kept, as the header
+// does, and the next frame reads on; finished on any read dispatches. On the
+// bench EKA2L1_BTSPLIT=<n> splits every receive to show it.
 // The engine's SDP attribute visitor (0x4e0e8c, vtable 0x53d95c: VisitAttributeValueL,
 // StartListL, EndListL), which only 9.x's CSdpAttrValue::AcceptVisitorL calls --
 // at EABI's slots, two words before GCC 2.x's. Moved down in place (round 172).

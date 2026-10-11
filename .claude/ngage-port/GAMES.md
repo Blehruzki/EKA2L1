@@ -375,7 +375,7 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_CANCEL_ROM_OBJECTS` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
 | `GAME_CAPABILITIES` | · | · | · | · | · | 0 | · |
 | `GAME_CARD_CID` | · | · | · | 0x567857f1,… | · | · | · |
-| `GAME_CODE_PATCHES` | 0 entries | 0 entries | 2 entries | 8 entries | 0 entries | 21 entries | 0 entries |
+| `GAME_CODE_PATCHES` | 0 entries | 0 entries | 2 entries | 8 entries | 0 entries | 23 entries | 0 entries |
 | `GAME_CONTROL_H` | 0 | 0 | 208 | 0 | 0 | 0 | 0 |
 | `GAME_CONTROL_W` | 0 | 0 | 176 | 0 | 0 | 0 | 0 |
 | `GAME_DEFER_WORKER_STOP` | · | · | · | 1 | · | · | · |
