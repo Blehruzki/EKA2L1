@@ -47,10 +47,18 @@ DEAD, LIFT, SHARP = 7, 26, 52
 LOST_AFTER, STUCK_AFTER, REVERSE_FOR, GRACE, TURN_FOR = 1.0, 1.5, 3.0, 1.5, 4.0
 NO_PROGRESS = 20.0    # seconds without the progress marker moving: back out and try the other way
 # The finish: the marker past FINISH_PROG and the HUD gone for FINISH_AFTER s
-# (the replay is on). Then hands off the wheel, and AFTER_KEY tapped every
-# AFTER_EVERY s to go on from the replay (E1250: held 7 never left it).
+# (the replay is on). Then hands off the wheel, and Return every AFTER_EVERY s
+# (held 7 never left the replay, E1250) through STAGE TIME and the results to
+# OPTIONS (E1259). What then is the role's (AP_ROLE):
+#   host  -- OPTIONS has Continue, Restart Rally, Exit, and while the other car
+#            is on the stage "Waiting for other player" with Continue greyed
+#            and the cursor on Restart Rally: no keys while that shows, then
+#            Up and Return for Continue, then Return every AFTER_EVERY s on.
+#   join  -- the joiner's OPTIONS has only Quit game: two Returns (STAGE TIME,
+#            the results), then nothing; the host takes both on.
+#   solo  -- Return every AFTER_EVERY s (the default).
 FINISH_PROG, FINISH_AFTER, AFTER_EVERY = 230, 3.0, 15.0
-AFTER_KEY = os.environ.get('AP_AFTER_KEY', 'Return')
+ROLE = os.environ.get('AP_ROLE', 'solo')
 # Target speeds (MPH) by bend: E1230's car reached 35 MPH in two seconds and
 # missed the first bend, a left-hander just past the start.
 V_STRAIGHT, V_BEND, V_SHARP, V_OVER = 30, 20, 12, 8
@@ -265,6 +273,15 @@ def wrong_way(g):
     return int((w.sum(1) > 6).sum()) >= 7
 
 
+def waiting(g):
+    """OPTIONS' "Waiting for other player": grey text (110-215) at rows 173-185
+    on the white page -- 500-550 such pixels with it, none without (E1259)."""
+    w = g[173:186, 20:180]
+    page = float((w.min(2) > 230).mean())          # the white page: a replay's scenery is grey too
+    m = w.max(2)
+    return page > 0.45 and int(((m >= 110) & (m < 215)).sum()) > 200   # E1259: 0.59 and 545 with it
+
+
 def hud(g):
     """The race HUD's bottom-left box (the stage clock): half its pixels dark
     and a fifth bright in the race, none of either in the replay that follows
@@ -317,6 +334,7 @@ def main(argv):
     wall_since, best_prog, best_at = None, -1, t0
     caution_until = 0.0
     no_hud_since, finished_at, next_after = None, None, 0.0
+    after_taps, seen_wait, continued = 0, False, False
     note, note_until = None, 0.0
     frames = (argv[2] + '.frames') if len(argv) > 2 else None
     if frames:
@@ -349,12 +367,30 @@ def main(argv):
                           % (now - t0, best_prog, now - no_hud_since))
                 log.flush()
             if finished_at is not None:
-                if now >= next_after:
+                wait_now = waiting(g)
+                if wait_now and not seen_wait:
+                    seen_wait = True
+                    log.write('%6.1f after the finish: Waiting for other player\n' % (now - t0))
+                    log.flush()
+                taps = []
+                if ROLE == 'host' and seen_wait and not continued:
+                    if not wait_now:
+                        taps = ['Up', 'Return']         # Continue, now the other car is in
+                        continued = True
+                        next_after = now + AFTER_EVERY
+                elif ROLE == 'join' and after_taps >= 2:
+                    pass
+                elif now >= next_after:
+                    taps = ['Return']
                     next_after = now + AFTER_EVERY
-                    keys.hold([AFTER_KEY])
+                for k in taps:
+                    keys.hold([k])
                     time.sleep(0.15)
                     keys.hold([])
-                    log.write('%6.1f after the finish: %s, HUD %s\n' % (now - t0, AFTER_KEY, 'up' if hud(g) else 'off'))
+                    time.sleep(0.6)
+                if taps:
+                    after_taps += 1
+                    log.write('%6.1f after the finish: %s, HUD %s\n' % (now - t0, '+'.join(taps), 'up' if hud(g) else 'off'))
                     log.flush()
                 time.sleep(max(0.0, 0.1 - (time.time() - now)))
                 continue

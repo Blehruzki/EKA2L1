@@ -11,7 +11,7 @@ at 60; k Down; at 61; k Return; at 72; k Return   # Join a Game, select the host
 at 108; k Down; at 109; k Down; at 110; k Left; at 111; k Return   # Ready: Yes
 at 134; k Return   # Continue on the briefing
 at 140; k Right; at 141; k Right; at 142; k Right; at 144; k Return; at 148; k Return; at 152; k Return
-at 194; python3 "$(dirname "$0")/autopilot.py" "$W" "${AP_B_SECS:-${AP_SECS:-480}}" "${O}_ap.log"   # AP_B_SECS=0: B sits at the start
+at 194; AP_ROLE=join python3 "$(dirname "$0")/autopilot.py" "$W" "${AP_B_SECS:-${AP_SECS:-480}}" "${O}_ap.log"   # AP_B_SECS=0: B sits at the start
 # B_PAUSE=1 (with AP_B_SECS=0): B opens its pause menu (F2) once the race is
 # on, so its emulator draws a menu instead of the stage and A's has more of
 # the machine -- if a multiplayer pause is B's alone (E1255 tries it).

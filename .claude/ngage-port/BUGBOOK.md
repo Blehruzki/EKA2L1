@@ -2118,3 +2118,34 @@ every title gets it. Verified in E1148: the same -6401 Leave, now caught,
 and the game's own "Connection request failed".
 *Lesson: hand-written startup code inherits every duty of the startup code
 it replaces, per thread as well as per process.*
+
+### 13.ak Races dropped 20 s to 7 min in: a receive completed and lost (E1234-E1244)
+**Symptom.** On the duo bench, a race ran a while and then "connection lost"
+on both, at a random moment (23 s to 434 s into the race). Neither the CPU
+(every emulator thread at nice -10, E1235) nor the game state (E1236-E1238)
+was it.
+**Cause.** The engine's network object keeps its Write status at +0x10 and
+its receive status at +0x14, one EKA1 word each (13.ai). 9.x's
+`TRequestStatus::operator=` (e32cmn.inl) sets the Write's ERequestPending with
+`iFlags |= 2` -- a load, an OR and a store from the engine's thread, on the
+word that is the receive status. A receive completed between the load and the
+store is overwritten with the pending value it was loaded as: the engine polls
+for a receive that has already come, stops reading, its acks stop counting,
+its two-message window fills and both flow controls call the link lost.
+13.ai's `keep_thunk`, which put the word back after each Write, had a window
+of the same kind (E1241 caught it there in a 200,000-entry register ring); with
+it removed the race in operator= alone still dropped a race (E1242: the
+emulator's receive trace completes the request with 12 bytes, and 638 reads
+after it find 0x80000001). Every drop had its last delivery in the same
+millisecond as its read start -- data already waiting, so the completion came
+straight back while the engine was about to Write. On a phone the window is a
+preemption between two instructions: rarer, not impossible.
+**Fix.** `own_status_thunk` (Colin's `GAME_SOCK_RECV_OWN*`,
+`GAME_SOCK_RECV_READS`): the receive is armed on a two-word status the port
+owns, which nothing else writes, and the engine's two reads of +0x14 are
+calls that answer from it (and copy it into +0x14). Verified: no drop in four
+long runs since (E1243 1,100 s, E1251 3,000 s, E1258 2,300 s, E1259 to both
+cars' finish); E1244's plant notes show the reads patched.
+*Lesson: two request statuses side by side are one bug in two halves. Putting
+the neighbour word back after the platform writes it is itself a race; the fix
+is a status nothing else touches.*
