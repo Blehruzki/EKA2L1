@@ -249,11 +249,33 @@ Every send goes through 0x449a54(type, data, length).
 - **The bench guesses are not needed** with the real flow (E1196: both off,
   no faults).
 
+## Where it stands (E1228-E1278): a whole rally stage, and on to the next
+
+- **The drop is gone.** Races dropped 20 s to 7 min in: 9.x's `RSocket::Write`
+  sets ERequestPending in the word after its status -- the engine's EKA1
+  receive status -- with a load, OR and store, and a receive completed in
+  between was lost (BUGBOOK 13.ak). The receive now runs on a status of the
+  port's own (`own_status_thunk`); no drop since, in every long run.
+- **A stage, both cars, to the finish** (E1259, E1278): every split time
+  (type 7) crosses both ways, the finish (index 8) included, each send answered
+  by the other side's receive with the same hundredths. Then on both STAGE TIME
+  (both players' splits), the results, and OPTIONS: the host's Continue /
+  Restart Rally / Exit, with "Waiting for other player" and Continue greyed
+  until the other car is in; the joiner's only "Quit game". A pause on either
+  side pauses both ("adg has paused the game", E1255).
+- **Stage 2** (E1278): the host's Continue loads FINLAND STAGE 2 on both, and
+  both sit at its start line with the clock running and the other car on the
+  strip.
+- The bench drives with `autopilot.py`: from the screen, or -- reliably --
+  along a recorded path (`games/colin/path_full.npy`, Finland stage 1) steered
+  by the car's pose read from the game's memory (EKA2L1_MEMSNAP live; the car
+  records at 0x48f6924 single-player, 0x48f6ab4 and 0x48f75f8 two-player,
+  record 0 the local car on both sides).
+
 ## Next steps, in order
 
-1. A stage to the finish on the bench (autopilot.py drives both cars from the
-   screen): the split times (type 7), the finish (index 8), and what the two
-   sides do after it.
+1. The rest of a rally on the bench: stage 2 onward needs a path per stage
+   (mkpath.py / extendpath.py from a drive), and the rally's end screens.
 2. The phone. LocalServices is the gate, on a phone as on the bench: without
    it nobody can host. A package that asks for it must be signed; a
    self-signed one is accepted by phones with the stock install policy and
