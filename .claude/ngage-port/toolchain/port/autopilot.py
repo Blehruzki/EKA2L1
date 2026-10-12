@@ -274,10 +274,22 @@ def hud(g):
 
 
 def progress(g):
-    """The car's marker in the strip: red in multiplayer (E1243); single-player
-    has none, only a bar from x 2 that grows -- grey, each finished split
-    dark red or green after (E1248) -- so its end: the first white pixel."""
+    """The car's own place in the strip across the top (x 0 the start, 240
+    the finish). In multiplayer each car is a block: your own dark green
+    (34,102,17), the other car red (187,0,0) -- on A's screen in E1243 A's
+    green block at 55-59 and B's red at 67-72, on B's the colours swapped.
+    Until E1257 the red block was read as your own, so each car followed the
+    other's progress, and with the other car parked at the start (E1252-
+    E1257) the no-progress escape reversed a car that was driving fine every
+    20 s. Where the two blocks overlap the red one is drawn over yours, so it
+    stands in. Single-player has neither, only a bar from x 2 that grows --
+    grey, each finished split dark red or green after (E1248) -- so its end:
+    the first white pixel."""
     top = g[4:8]
+    own = (top[:, :, 0] < 60) & (top[:, :, 1] > 80) & (top[:, :, 1] < 130) & (top[:, :, 2] < 40)
+    xs = np.where(own)[1]
+    if len(xs):
+        return int(xs.max())
     red = (top[:, :, 0] > 150) & (top[:, :, 1] < 90) & (top[:, :, 2] < 90)
     xs = np.where(red)[1]
     if len(xs):
