@@ -61,6 +61,9 @@ def main(folder):
     proj = {}
     exec(open(os.path.join(folder, 'project.py')).read(), proj)
     name, uid3, caption = proj['NAME'], proj['UID3'], proj['CAPTION']
+    if not 0xA0000000 <= uid3 <= 0xAFFFFFFF:
+        print('build.py: warning: UID3 0x%08X is outside 0xA0000000-0xAFFFFFFF, the range for '
+              'unsigned programs; a phone may refuse to start it (see README, "UID3").' % uid3)
     out = os.path.join(folder, 'out')
     os.makedirs(out, exist_ok=True)
     p = lambda n: os.path.join(out, n)

@@ -43,7 +43,7 @@ def build(out='.', caption=None, game=DEFAULT_GAME, **kw):
     `shim.cpp` and `gate_imports.h` and its hand-written `game.h`. One source
     tree, one binary per game.
     """
-    uid3 = int(game_setting(game, 'GAME_APP_UID3'), 0)
+    uid3 = buildapp.check_release_uid(int(game_setting(game, 'GAME_APP_UID3'), 0), 'GAME_APP_UID3')
     caption = caption or game_setting(game, 'GAME_CAPTION')
     return buildapp.build('gate6', uid3, caption, out,
                appname=game_setting(game, 'GAME_APP_NAME') or 'gate6',

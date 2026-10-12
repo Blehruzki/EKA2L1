@@ -2149,3 +2149,25 @@ cars' finish); E1244's plant notes show the reads patched.
 *Lesson: two request statuses side by side are one bug in two halves. Putting
 the neighbour word back after the platform writes it is itself a race; the fix
 is a status nothing else touches.*
+
+### 13.al An E72 will not start a test-range UID (Colin build 012, E1279)
+**Symptom.** A user's Nokia E72 installed Colin build 012 and the Menu
+answered "Unable to execute file for security reasons" at launch: no log, no
+box, the loader never ran a line of ours.
+**Cause.** Every title's UID3 was in Symbian's test range, 0xE0000000-
+0xEFFFFFFF, which is for development only; the range for applications
+distributed unsigned is 0xA0000000-0xAFFFFFFF. N95, N91 and C5-00 ran the test
+range; this E72 does not. The user moved the package to 0xA000100B -- UID3 and
+SID, the resource files, the checksums -- and it ran. Measured against ours,
+nothing else differs (SYMBIAN.md "UID ranges"). Which layer of the E72
+refuses is not in our sources.
+**Fix.** Every title's `GAME_APP_UID3` (and One's data package UID) moved to
+0xA00010xx, the low digits kept; `buildapp.check_release_uid` refuses a release
+UID outside the unprotected range; `newgame.py` allocates from it; the compiler
+kit's README and example say the same and its build warns. Colin's release
+build now has the user's resource files byte for byte. The first 0xA build of
+a title is a new package owning the old one's files, so the old build must be
+uninstalled first (RELEASE.md).
+*Lesson: "unsigned installs fine" is two questions -- the installer's and the
+launcher's -- and a range the documentation calls test-only is a bet on every
+firmware's leniency.*

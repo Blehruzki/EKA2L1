@@ -804,6 +804,44 @@ has nothing to call; its listener keeps 9.x's default security.
   the bench it is the ROM's real server, so a package without the capability
   gets -46 from it there as on a phone (E1106).
 
+## UID ranges, and what a phone does with each (Colin build 012 on an E72, E1279)
+
+- **Symbian Signed's allocation** (S60 3rd Edition C++ Developer's Library,
+  "Application UIDs"): **0xE0000000-0xEFFFFFFF is the test range** -- any
+  number, unregistered, "for testing purposes"; **0xA0000000-0xAFFFFFFF is the
+  unprotected range**, for applications distributed without Symbian Signed
+  (unsigned or self-signed, freeware); 0x20000000-0x2FFFFFFF is protected and
+  needs a trusted signature. An application's UID3 is also its SID, the
+  package's UID, and the UID in its `_reg.rsc` and localisable `.rsc`; changing
+  it means every occurrence (the same page).
+- **What phones did with the test range**: every title shipped at 0xE00010xx
+  until build 012 of Colin, and phones ran them -- N95 (3.1), N91 (3.0), C5-00
+  (3.2: Asphalt Urban GT 027). A user's **Nokia E72** (3.2) installed Colin
+  build 012 (0xE000100B) and the Menu refused to start it, "Unable to execute
+  file for security reasons", no log; the same package with only the UID moved
+  to 0xA000100B ran. Measured: the two packages differ in nothing else -- the
+  exe's UID3, SID, the UID checksum, the header CRC and the one copy of the UID
+  in the code (`AppDllUid`), and three bytes in each resource file; per-file
+  SHA-1s, capabilities (none) and vendor ID (0) are identical and correct.
+- **Why the E72 refuses, not settled.** The message is the Menu's for a launch
+  denied -- the loader's KErrPermissionDenied (`sf_ldr.cpp`, `RLdrReq::
+  CheckSecInfo`; for an image on a memory card also a missing or stale
+  `C:\sys\hash\<name>`, `sf_lepoc.cpp` `CompareHashL`, which goes by file name,
+  not UID). Neither depends on the UID range in the kernel source we have, so
+  the refusal comes from something above it on that firmware (the Menu or the
+  application architecture), which is not in our sources. A device that refuses
+  the test range is within the rules: the range was never meant to ship.
+- **So**: every release UID is in the unprotected range
+  (`buildapp.check_release_uid` refuses anything else; `NGPORT_TEST_UID=1` for a
+  bench experiment). The titles moved from 0xE00010xx to 0xA00010xx, keeping
+  the low digits (Colin 0xA000100B, the user's own choice). A phone installs a
+  package only if no other package owns its files ("Update error"), so the
+  0xA build of a title is a different package from its 0xE builds: **the old
+  build has to be uninstalled first.** The emulator enforces neither rule.
+- A number in 0xA0000000-0xAFFFFFFF was meant to be allocated by Symbian Signed;
+  that service is gone, so a collision with some other unsigned application
+  using the same number is possible, and unlikely in 0xA00010xx.
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:
@@ -811,6 +849,9 @@ Cloned by `toolchain/port/getsources.sh`:
 - `SymbianSource/oss.FCL.sf.mw.classicui` — cone, uikon, Avkon
 - `SymbianSource/oss.FCL.sf.os.kernelhwsrv` — euser and the kernel
 - `SymbianSource/oss.FCL.sf.os.graphics` — the window server
+
+UID ranges: "Application UIDs", S60 3rd Edition C++ Developer's Library v1.1
+(docs.huihoo.com/symbian/s60-3rd-edition-cpp-developers-library-v1.1/GUID-EA05F9B6-52C7-4BD9-8B9A-4BA3456E70B5.html).
 
 Documentation: the S60 3rd/5th edition C++ developer library (system panic
 reference, class reference) and the Symbian Developer Library, both mirrored

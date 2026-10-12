@@ -1,6 +1,6 @@
 # What build.py needs to know about this program.
 NAME = 'hello'                 # hello.exe on the phone
-UID3 = 0xE0001F01              # 0xE0000000-0xEFFFFFFF: unprotected, no signing needed
+UID3 = 0xA0001F01              # 0xA0000000-0xAFFFFFFF: the unprotected range, for unsigned apps
 CAPTION = 'Hello'              # the name in the phone's menu
 
 # Every import stub in the sources, by DLL. The DLL is named as an SDK build

@@ -26,7 +26,11 @@
 
 // Our own application, not the game's: the game's UID3 is GAME_UID3 in
 // gate_imports.h, and the loader refuses an image that does not match it.
-#define GAME_APP_UID3    0xE0001008
+// In the unprotected range, 0xA0000000-0xAFFFFFFF, as every shipped UID is
+// (buildapp.check_release_uid): an E72 would not start Colin build 012 at
+// 0xE000100B, the test range ("Unable to execute file for security reasons"),
+// and ran it at 0xA000100B (E1279, SYMBIAN.md "UID ranges").
+#define GAME_APP_UID3    0xA0001008
 #define GAME_CAPTION     "Ashen"
 
 // **Placeholders.** Every N-Gage title so far draws 176x208; the stride is

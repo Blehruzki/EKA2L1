@@ -47,6 +47,27 @@ def no_writable_statics(elf):
                 '  Make them const, or build the value on the stack.' % size)
 
 
+# Symbian's UID3 ranges for a package installed without a trusted signature
+# (Symbian Signed's allocation, SYMBIAN.md "UID ranges"): 0xA0000000-0xAFFFFFFF
+# is the unprotected range, for applications distributed unsigned or
+# self-signed; 0xE0000000-0xEFFFFFFF is the test range, for development only.
+# Every title shipped in the test range until an E72 refused to start one
+# (Colin build 012: "Unable to execute file for security reasons") and the same
+# package at 0xA000100B ran (E1279). So a release build -- the title loaders
+# and their data packages -- must use the unprotected range; NGPORT_TEST_UID=1
+# lets a deliberate bench experiment through.
+UNPROTECTED_UIDS = (0xA0000000, 0xAFFFFFFF)
+
+
+def check_release_uid(uid, what='UID3'):
+    lo, hi = UNPROTECTED_UIDS
+    if not lo <= uid <= hi and os.environ.get('NGPORT_TEST_UID') != '1':
+        sys.exit('%s 0x%08X is outside the unprotected range 0x%08X-0x%08X; a phone may '
+                 'refuse to run it (SYMBIAN.md "UID ranges"). NGPORT_TEST_UID=1 to build anyway.'
+                 % (what, uid, lo, hi))
+    return uid
+
+
 def sh(*args):
     sp.run(args, check=True, cwd=HERE)
 

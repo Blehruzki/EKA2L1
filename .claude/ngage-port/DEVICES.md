@@ -90,6 +90,7 @@ every vtable slot in the shim's tables.
 | Nokia N73 | 3.0 | 240x320 | numeric | 0x7DA00000 / 0x7E400000 | none yet | One dies in `DrawNow` at the first frame (12.ag); build 028 fixes it on the bench, waiting on the phone |
 | Nokia N91 | 3.0 | 176x208; 32-bit framebuffer, first pixel 32 bytes in | numeric | -- | Asphalt Urban GT 030, Asphalt 2 196 (round 121), Ashen 011 (round 124) | One never run on it |
 | Nokia C5-00 | 3.2 | 240x320; 2,048-pixel line | numeric | -- | Asphalt Urban GT 027 (round 122) | Asphalt 2, Ashen, One not reported |
+| Nokia E72 | 3.2 | 320x240 landscape | QWERTY | -- | Colin McRae 2005 012 with its UID moved to 0xA000100B (a user's own package) | build 012 as shipped, UID3 0xE000100B (the test range): "Unable to execute file for security reasons" at launch, no log -- every release UID is now 0xA00010xx (SYMBIAN.md "UID ranges", E1279) |
 | Nokia N79 | 3.2 | predicted 2,048-pixel line, as the C5-00 | numeric | -- | none reported (logs in round 83) | untested |
 | Nokia E65 | recorded as 3.0 from its log (ROM at 0xF8xxxxxx); Nokia lists the E65 as 3.1 -- unverified | -- | numeric | -- | none | Asphalt 2 192 died in the first direct-screen start (round 109), before the round-120 fixes; never re-tested |
 | 5320 (RM-409), bench | 3.2 (FP2) | 240x320; status pane 48 | -- | 0x4600000 | every title, every build | EKA2L1 swaps in its own `scdv.dll` |

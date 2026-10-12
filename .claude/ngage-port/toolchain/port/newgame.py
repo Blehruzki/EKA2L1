@@ -25,7 +25,7 @@ import paths
 E_DRIVE = paths.E_DRIVE       # the bench's E: drive, or a kit's own (paths.py)
 APPS = os.path.join(E_DRIVE, 'system', 'apps')
 LIBS = os.path.join(E_DRIVE, 'system', 'libs')
-FIRST_UID = 0xE0001006
+FIRST_UID = 0xA0001006       # the unprotected range (buildapp.check_release_uid)
 
 TEMPLATE = r'''// %(caption)s -- %(stem)s. The hand-written half of this title's layer; the
 // generated half (`gate_imports.h`, `shim.cpp`) sits beside it, out of

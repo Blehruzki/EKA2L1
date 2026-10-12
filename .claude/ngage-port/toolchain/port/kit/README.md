@@ -47,9 +47,15 @@ list. The rules:
   fine; anything that changes goes on the stack or the heap. `build.py`
   refuses a build that has writable statics, because a phone faults on the
   first write (the emulator does not).
-- **UID3** in 0xE0000000-0xEFFFFFFF needs no signing. The package is unsigned
+- **UID3** in 0xA0000000-0xAFFFFFFF, the unprotected range: Symbian's range
+  for applications distributed without a trusted signature. Not
+  0xE0000000-0xEFFFFFFF, the test range: it installs and runs on most phones,
+  but it is for development only, and an E72 refused to start a program from
+  it ("Unable to execute file for security reasons") that ran once moved to
+  0xA. Pick a number of your own in the 0xA range -- the program's SID, the
+  package UID and both resource files all carry it. The package is unsigned
   and asks for no capabilities, which S60v3 installs with a warning. Calls that
-  need a capability (Bluetooth, network, …) then fail on a phone even though
+  need a capability (Bluetooth, network, ...) then fail on a phone even though
   they work in the emulator.
 - `start.s` is the entry point an SDK build would get from `eexe.lib`. Keep
   it, and put your program in `hello_main` (or rename it).

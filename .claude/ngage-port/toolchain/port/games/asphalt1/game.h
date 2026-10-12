@@ -21,7 +21,11 @@
 
 // Our own application, not the game's. The game's own UID3 is GAME_UID3 in
 // gate_imports.h, and the loader refuses an image that does not match it.
-#define GAME_APP_UID3    0xE0001007
+// In the unprotected range, 0xA0000000-0xAFFFFFFF, as every shipped UID is
+// (buildapp.check_release_uid): an E72 would not start Colin build 012 at
+// 0xE000100B, the test range ("Unable to execute file for security reasons"),
+// and ran it at 0xA000100B (E1279, SYMBIAN.md "UID ranges").
+#define GAME_APP_UID3    0xA0001007
 #define GAME_CAPTION     "Asphalt Urban GT"
 
 // **Placeholders, not measurements.** Asphalt 2's pitch of 192 against a
@@ -236,7 +240,7 @@ enum { GAME_SRC_ORIGIN = 16 };
 // The name every installed file carries. It has to differ from every
 // other title's: Symbian will not let one package write a file another
 // package owns, and the installer answers "Update error". The package
-// UIDs already differed (0xE0001007 against 0xE0001006) and that is not
+// UIDs already differed (0xA0001007 against 0xA0001006; 0xE00010xx before E1279) and that is not
 // the thing it checks -- the file names are.
 #define GAME_APP_NAME "gate6a1"
 

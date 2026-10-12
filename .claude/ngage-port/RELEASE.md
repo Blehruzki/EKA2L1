@@ -51,6 +51,14 @@ the tree the bench ran.
 
 ## Before any build goes out: the package itself
 
+**UIDs**: every release UID is in the unprotected range 0xA0000000-0xAFFFFFFF
+(the build refuses anything else; SYMBIAN.md "UID ranges"). The first build of
+a title at its 0xA UID is a different package from its 0xE builds and owns the
+same files, so a phone refuses it while an old build is installed ("Update
+error"). Its post says so: *"Uninstall any earlier build of <Title> first
+(Settings -> Application manager); your save file is kept."*
+
+
 `python3 toolchain/port/sischeck.py <package.sis>` must exit 0: both checksums
 right and, for a package whose exe asks for a capability (`GAME_CAPABILITIES`),
 a self-signature openssl verifies. A phone refuses an unsigned package that

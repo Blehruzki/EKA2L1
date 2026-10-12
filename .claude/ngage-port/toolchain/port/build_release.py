@@ -156,7 +156,7 @@ def data_package(out, game, tree=None):
     extra += engine_image(game, tree, out, target_dir, set(os.listdir(tree)))
     name = picture.setting(game, 'GAME_APP_NAME') or 'gate6'
     dst = os.path.join(out, name + '_data.sis')
-    mksis.build(dst, int(uid, 0), caption + ' data', vendor, extra)
+    mksis.build(dst, buildapp.check_release_uid(int(uid, 0), 'GAME_DATA_UID3'), caption + ' data', vendor, extra)
     total = sum(os.path.getsize(s) for s, _t in extra)
     print('%s data: %d files, %.1f MB -> %s (%.1f MB)'
           % (caption, len(extra), total / 1e6, dst, os.path.getsize(dst) / 1e6))
