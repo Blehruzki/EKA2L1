@@ -336,6 +336,8 @@ class Follower:
     def tick(self, now, pose, mph):
         x, z, h = pose
         i, off = self.nearest(x, z)
+        if i >= len(self.p) - 10 and off < 15:
+            self.done = True                    # a partial path's end: the caller hands over
         look = int(np.clip(6 + 0.4 * mph, 8, 22))
         t = self.p[min(len(self.p) - 1, i + look)]
         ang = (np.arctan2(t[1] - z, t[0] - x) - h + np.pi) % (2 * np.pi) - np.pi
@@ -376,6 +378,7 @@ class Follower:
         return want, steer, pulse, 'i %5d off %4.1f ang %4d bend %3d' % (i, off, int(np.degrees(ang)), int(np.degrees(bend)))
     last_throttle = False
     back_steer = 0.0
+    done = False
 
 
 def waiting(g):
@@ -508,6 +511,10 @@ def main(argv):
                     log.flush()
                 time.sleep(max(0.0, 0.1 - (time.time() - now)))
                 continue
+            if follow and pose and follow.done:
+                log.write('%6.1f the path ends (point %d): the screen drives from here\n' % (now - t0, follow.i))
+                log.flush()
+                follow = None
             if follow and pose:
                 want, steer, pulse, info = follow.tick(now, pose, speed(g))
                 if steer and pulse > 0:
