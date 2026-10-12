@@ -309,8 +309,11 @@ TURN_AHEAD = 35
 
 
 class Follower:
+    STUCK_S, STUCK_M = 2.5, 1.0
+
     def __init__(self, path):
         self.p = np.load(path)
+        self.hist = []
         self.i = None
         self.stuck_since, self.back_until = None, 0.0
 
@@ -348,18 +351,22 @@ class Follower:
         if off > 8:
             target = min(target, 12)
         want = []
-        # Stuck: throttle held, speed 0-3, for 2 s -> back off 2.5 s on the
-        # opposite lock, which also undoes a nose-first meeting with a tree.
+        # Stuck: less than STUCK_M metres in the last STUCK_S s with the throttle
+        # held -> back off 2.5 s on the opposite lock, which also undoes a
+        # nose-first meeting with a tree. By position, not the HUD's speed: a car
+        # pinned against a bank spins its wheels at 18 MPH and goes nowhere
+        # (E1272, ten minutes at one point of the path).
+        self.hist.append((now, x, z))
+        while self.hist and now - self.hist[0][0] > self.STUCK_S:
+            self.hist.pop(0)
         if now < self.back_until:
             steer = 'Left' if self.back_steer > 0 else 'Right'
             return ['7'], steer, 1.0, 'off %4.1f BACK' % off
-        if mph <= 3 and self.last_throttle:
-            if self.stuck_since is None:
-                self.stuck_since = now
-            elif now - self.stuck_since > 2.0:
-                self.back_until, self.back_steer, self.stuck_since = now + 2.5, ang * STEER_SIGN, None
-        else:
-            self.stuck_since = None
+        t_old, x_old, z_old = self.hist[0]
+        if (self.last_throttle and now - t_old > self.STUCK_S - 0.3 and now > self.back_until + 3.0
+                and np.hypot(x - x_old, z - z_old) < self.STUCK_M):
+            self.back_until, self.back_steer = now + 2.5, ang * STEER_SIGN
+            self.hist = []
         # Facing away from the path (more than 100 degrees): full lock at a crawl.
         right = ang * STEER_SIGN > 0
         steer = 'Right' if right else 'Left'
