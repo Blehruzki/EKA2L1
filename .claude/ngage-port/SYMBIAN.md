@@ -804,6 +804,36 @@ has nothing to call; its listener keeps 9.x's default security.
   the bench it is the ROM's real server, so a package without the capability
   gets -46 from it there as on a phone (E1106).
 
+## Capabilities in a package: declared, granted, then checked (rounds 169-170, E1280)
+
+Read from Symbian's appinstall sources (`installationservices/swi/source`):
+
+- **SISFileDescription** is Target, MIMEType, then an optional
+  **SISCapabilities** (field type 41, a capability bit set in 32-bit words,
+  `sisfile/sisfiledescription.cpp`), then the Hash, the operation words, the
+  lengths and the index. makesis fills it from the executable's E32 header and
+  leaves it out when the exe asks for nothing (`secureswitools/swisistools/
+  source/sisxlibrary/siscapabilities.cpp`).
+- **Granting** (`swis/server/installmachine.cpp`, `CheckAndGrantCapabilitiesL`),
+  before the copy: the union of the declared capabilities, minus what the
+  signing chain's constraints allow; system capabilities left over are refused,
+  user-grantable ones are put to the user if the policy allows granting.
+- **Checking** (`swis/server/securitycheckutil.cpp`), as each exe or dll is
+  copied: the E32 header's capabilities must equal the declaration *exactly*,
+  or `KErrCapabilitiesMismatch` -> `EUiCapabilitiesCannotBeGranted`, which the
+  S60 installer shows as **"Required application access not granted"** -- in
+  the middle of the progress bar, after the user has been asked nothing.
+- **Signatures** (`securitymanager/securitymanager.cpp`): the data signed is the
+  raw controller after its own header, Info through InstallBlock (plus any
+  earlier signature chains); RSA is checked as PKCS#1 v1.5 over a DER
+  DigestInfo. A signature that does not verify is fatal before installing
+  (`ESignatureCouldNotBeValidated`); a chain that cannot be validated to a
+  trusted root is put to the user, as for an unsigned package.
+- So a package whose exe asks for LocalServices needs: the header bit, the same
+  bit declared in its file description, and a signature (self-signed will do,
+  LocalServices being user-grantable). The port's packages lacked the second
+  until E1280; `sischeck.py` now checks all three.
+
 ## UID ranges, and what a phone does with each (Colin build 012 on an E72, E1279)
 
 - **Symbian Signed's allocation** (S60 3rd Edition C++ Developer's Library,

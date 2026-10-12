@@ -277,9 +277,11 @@ Every send goes through 0x449a54(type, data, length).
 1. The rest of a rally on the bench: stage 2 onward needs a path per stage
    (mkpath.py / extendpath.py from a drive), and the rally's end screens.
 2. The phone. LocalServices is the gate, on a phone as on the bench: without
-   it nobody can host. A package that asks for it must be signed; a
-   self-signed one is accepted by phones with the stock install policy and
-   refused by the N95 (rounds 169-170). So a multiplayer build is a second,
-   self-signed loader package with GAME_CAPABILITIES 0x4000, for people with
-   two such phones.
+   it nobody can host. Rounds 169-170's refusal ("Required application access
+   not granted", unsigned and self-signed alike) was the package, not the
+   phone: the exe's capabilities were never declared in its file description,
+   and the installer requires them to match the header (E1280, SYMBIAN.md
+   "Capabilities in a package"). Fixed; the next multiplayer build is the
+   self-signed package with GAME_CAPABILITIES 0x4000, and its install on a
+   phone is what is left to see.
 3. HCI scan-enable ioctls on 9.x: what they answer; a stand-in if refused.

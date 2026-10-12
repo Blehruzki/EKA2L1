@@ -2014,6 +2014,18 @@ of its own and verifies the signature with openssl (and fails a tampered one).
 *Lesson: an installer's rules are a phone's, not the emulator's -- a
 capability is three gates (exe header, package signature, installer policy)
 and the bench checks none of them.*
+**Corrected after E1279 (E1280): the real cause was a fourth gate.** The
+self-signature was never the problem. A SIS file description declares its
+executable's capabilities (SISCapabilities, field 41); the installer grants
+from the declarations and then, copying each exe, requires the header's
+capabilities to equal them exactly (`SecurityCheckUtil::
+CompareHeaderAndExeCapabilities` -> `EUiCapabilitiesCannotBeGranted`, "Required
+application access not granted"). mksis never wrote the field, so 010 (unsigned)
+and 011 (self-signed) both failed the same way in the middle of the install,
+with no capability question first -- the user's account of 011 exactly.
+`sisadd.make_filedesc` now declares an exe's header capabilities, as makesis
+does, and `sischeck.py` fails a package whose declaration and header differ
+(it flags 010 and 011 as packaged). See SYMBIAN.md "Capabilities in a package".
 
 ### 13.ag The phone-wide freezes, named: the engine holds 9.2's global bitmap heap lock (round 170, E1094-E1097)
 **Symptom.** Rounds 166-168: hosting, or a charger plugged in mid-intro,

@@ -122,7 +122,7 @@ def build(dst, uid, name, vendor, files, template=TEMPLATE, sign=False):
                      else (sisadd.OP_INSTALL, 0))
         desc_arr.kids.append(sisrw.F(FILEDESC, raw=sisadd.make_filedesc(
             target or '', hashlib.sha1(payload).digest(), len(packed), len(payload),
-            index, op, op_op)))
+            index, op, op_op, caps=sisadd.exe_capabilities(payload) if target else 0)))
 
     if sign:
         sign_controller(ctrl)
