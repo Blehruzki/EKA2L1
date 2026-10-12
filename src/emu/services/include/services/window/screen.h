@@ -190,6 +190,14 @@ namespace eka2l1::epoc {
         void sync_screen_buffer_data(drivers::graphics_driver *driver);
 
         /**
+         * rief Check whether the DSA screen buffer of a mode is stored upside-down relative to the display.
+         *
+         * Rotations 90 and 180 are stored flipped, except a landscape mode at 180 degrees (N95 landscape,
+         * mode number 3): content written into the buffer for that mode is already upright.
+         */
+        static bool is_buffer_flipped_mode(const epoc::config::screen_mode &mode);
+
+        /**
          * \brief Set screen mode.
          */
         void set_screen_mode(window_server *winserv, drivers::graphics_driver *drv, const int mode);

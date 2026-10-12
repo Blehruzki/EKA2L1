@@ -258,8 +258,9 @@ namespace eka2l1::dispatch {
                 }
 
                 // 270 rotation clock-wise makes screen content comes from the top where camera lies, to down where the ports reside.
-                // That makes it a standard, non-flip landscape. 0 is obviously standard too. Therefore mode 90 and 180 needs flip.
-                const float rotation_draw = ((mode_info.rotation == 90) || (mode_info.rotation == 180)) ? 180.0f : 0.0f;
+                // That makes it a standard, non-flip landscape. 0 is obviously standard too. Therefore mode 90 and 180 needs flip, apart from
+                // landscape 180 (see is_buffer_flipped_mode).
+                const float rotation_draw = epoc::screen::is_buffer_flipped_mode(mode_info) ? 180.0f : 0.0f;
 
                 eka2l1::rect source_rect { eka2l1::vec2(0, 0), mode_info.size };
                 eka2l1::rect dest_rect = source_rect;

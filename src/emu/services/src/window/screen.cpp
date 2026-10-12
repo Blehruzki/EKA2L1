@@ -154,6 +154,15 @@ namespace eka2l1::epoc {
         delete pitcher;
     }
 
+    bool screen::is_buffer_flipped_mode(const epoc::config::screen_mode &mode) {
+        if (mode.rotation == 180) {
+            // Landscape at 180 (N95-style landscape) is written upright by the app. Only portrait 180 is flipped.
+            return mode.size.x <= mode.size.y;
+        }
+
+        return mode.rotation == 90;
+    }
+
     void screen::sync_screen_buffer_data(drivers::graphics_driver *driver) {
         std::uint8_t *buffer_ptr = screen_buffer_ptr();
         const config::screen_mode &crrmode = current_mode();
@@ -161,7 +170,7 @@ namespace eka2l1::epoc {
         drivers::read_bitmap(driver, screen_texture, eka2l1::point(0, 0), eka2l1::object_size(crrmode.size),
             get_bpp_from_display_mode(disp_mode), buffer_ptr);
 
-        if ((crrmode.rotation == 90) || (crrmode.rotation == 180)) {
+        if (is_buffer_flipped_mode(crrmode)) {
             const std::uint32_t current_pitch = epoc::get_byte_width(crrmode.size.x, epoc::get_bpp_from_display_mode(disp_mode));
             flip_screen_image(buffer_ptr, current_pitch, crrmode.size.y);
         }
