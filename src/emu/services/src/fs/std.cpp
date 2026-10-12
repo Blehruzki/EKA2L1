@@ -22,7 +22,33 @@
 
 #include <common/cvt.h>
 
+#include <algorithm>
+#include <mutex>
+#include <unordered_map>
+
 namespace eka2l1::epoc::fs {
+    namespace {
+        // Lowercased full path -> true if the guest wants the archive attribute set, false if cleared.
+        std::mutex archive_override_lock;
+        std::unordered_map<std::string, bool> archive_override;
+
+        std::string archive_override_key(const std::string &path) {
+            std::string key = path;
+            std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return key;
+        }
+    }
+
+    void set_entry_archive_override(const std::string &full_path, const std::uint32_t set_mask, const std::uint32_t clear_mask) {
+        if (!((set_mask | clear_mask) & entry_att_archive)) {
+            return;
+        }
+
+        std::lock_guard<std::mutex> guard(archive_override_lock);
+        // Same rule as the real file server: set is applied after clear.
+        archive_override[archive_override_key(full_path)] = (set_mask & entry_att_archive) != 0;
+    }
+
     std::string get_server_name_through_epocver(const epocver ver) {
         if (ver < epocver::eka2) {
             return "FileServer";
@@ -61,6 +87,18 @@ namespace eka2l1::epoc::fs {
 
             default:
                 break;
+            }
+        }
+
+        if (info.type == io_component_type::file) {
+            std::lock_guard<std::mutex> guard(archive_override_lock);
+
+            if (!archive_override.empty()) {
+                auto ite = archive_override.find(archive_override_key(info.full_path));
+
+                if (ite != archive_override.end()) {
+                    attrib = ite->second ? (attrib | entry_att_archive) : (attrib & ~entry_att_archive);
+                }
             }
         }
 

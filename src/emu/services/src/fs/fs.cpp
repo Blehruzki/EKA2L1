@@ -850,6 +850,8 @@ namespace eka2l1 {
             return;
         }
 
+        epoc::fs::set_entry_archive_override(entry_hle->full_path, set_att_mask, clear_att_mask);
+
         ctx->complete(epoc::error_none);
     }
 

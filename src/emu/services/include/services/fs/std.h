@@ -201,5 +201,15 @@ namespace eka2l1::epoc::fs {
 
     std::string get_server_name_through_epocver(const epocver ver);
     std::uint32_t build_attribute_from_entry_info(entry_info &info);
+
+    /**
+     * @brief Remember that a guest cleared/set the archive attribute of a file with RFs::SetEntry.
+     *
+     * The host VFS does not store Symbian attributes, and every file is reported with the archive
+     * attribute set. Guests use "clear the archive bit" as a "this file has been picked up" mark
+     * (the N-Gage installer does this on the .n-gage packages that PlayServer's file monitor scans).
+     * The override is kept in memory for the lifetime of the emulator process.
+     */
+    void set_entry_archive_override(const std::string &full_path, const std::uint32_t set_mask, const std::uint32_t clear_mask);
     void build_symbian_entry_from_emulator_entry(io_system *io, entry_info &info, epoc::fs::entry &sym_entry);
 }
