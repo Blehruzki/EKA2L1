@@ -58,19 +58,12 @@ STEER_FULL = 45       # an error this size (px) holds the arrow the whole tick
 # The pace notes' warning triangle comes before the turn and is gone in it:
 # 10 MPH from when it shows until 3 s after (E1237 met the hairpin at 25).
 V_CAUTION, CAUTION_HOLD = 10, 3.0
-# The bend sign (pace_note) is shown before the bend and gone in it, so it is
-# held NOTE_HOLD s. While it is, and the far band has lost the road (it has
-# turned out of sight), steer the sign's way at NOTE_STEER px rather than at
-# the near band's middle: E1252's car met the first left with only the near
-# band seeing road, right of centre, and steered right into the trees.
-NOTE_HOLD, NOTE_STEER = 4.0, 30
-# Under a bend sign the near band's aim keeps within HUG_NEAR px of that
-# side's edge (road_centre), and a far band whose road goes the other way is
-# not followed: at E1253's first left the stage turns off a Y out of sight,
-# the far band sees only the other branch, and the middle of the two led the
-# car into the trees between them. Typical road widths in the near band are
-# 80-150 px (E1250), so 40 px leaves a road's own middle mostly alone.
-HUG_NEAR = 40
+# The bend sign (pace_note) is held NOTE_HOLD s, and a yellow one (a tighter
+# bend) caps the speed at V_SHARP. It is not steered by: it comes well before
+# its bend -- at the first left, 15 s and a right-hand kink before (E1250's car
+# took the kink right and went on) -- and steering its way at once put the
+# car into the trees there twice (E1253, E1254).
+NOTE_HOLD = 4.0
 # "000" in the HUD: rows 303-317, x 62-89 of the game's picture, bright
 # (> 180) pixels as a 15x28 bit pattern, from E1228's stopped cars.
 ZERO_HEX = ('00000000000000078f1e1078f1e10ef9f310ef9f310ef9f310870e1108f1e3108f1e31'
@@ -208,25 +201,14 @@ def connected_road(mask):
     return out
 
 
-def road_centre(region, rows, side=0, hug=0):
+def road_centre(region, rows):
     """The middle of the joined road over `rows`: per row with 8 or more
-    road pixels, halfway between its first and last; the median of those.
-    With `side` (a bend sign's way), no further than `hug` px in from that
-    side's edge: where the stage turns off a wider gravel spread, the spread
-    joins it into one blob whose middle is the wrong way (E1253's first left,
-    the left road and the spread to its right one run from x 80 to 180). A
-    road narrower than 2 x hug keeps its middle."""
+    road pixels, halfway between its first and last; the median of those."""
     xs = []
     for y in range(*rows):
         cols = np.where(region[y])[0]
-        if len(cols) < 8:
-            continue
-        mid = (cols[0] + cols[-1]) / 2.0
-        if side < 0:
-            mid = min(mid, cols[0] + hug)
-        elif side > 0:
-            mid = max(mid, cols[-1] - hug)
-        xs.append(mid)
+        if len(cols) >= 8:
+            xs.append((cols[0] + cols[-1]) / 2.0)
     return float(np.median(xs)) if len(xs) >= 4 else None
 
 
@@ -339,9 +321,8 @@ def main(argv):
                 note, note_until = pn, now + NOTE_HOLD
             elif now >= note_until:
                 note = None
-            side = note[0] if note else 0
             far = road_centre(region, FAR)
-            near = road_centre(region, NEAR, side, HUG_NEAR)
+            near = road_centre(region, NEAR)
             if frames and now >= next_frame:
                 next_frame = now + 2.0
                 Image.fromarray(g.astype(np.uint8)).save(os.path.join(frames, '%05d.png' % int((now - t0) * 10)))
@@ -437,9 +418,7 @@ def main(argv):
                 want = ['7', 'Right' if road_side < 0 else 'Left']
             else:
                 aim = far if far is not None else near if near is not None else loose
-                if far is not None and near is not None and note and (far - near) * note[0] < 0:
-                    aim = near                          # the far road goes against the sign (HUG_NEAR)
-                elif far is not None and near is not None:
+                if far is not None and near is not None:
                     aim = 0.4 * far + 0.6 * near    # nearer: aiming far cuts the bend into the trees (E1233)
                     if abs(far - near) > 40:
                         # In a hairpin the far band takes in whatever grey is
@@ -448,8 +427,6 @@ def main(argv):
                         # 65, the car on into the house).
                         aim = near
                 err = (aim - 120) if aim is not None else last_err
-                if note and far is None and near is not None:
-                    err = note[0] * NOTE_STEER
                 last_err = err
                 track_x = far if far is not None else 120.0
                 want = []
