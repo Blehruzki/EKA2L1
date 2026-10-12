@@ -182,6 +182,10 @@ public:
     // case worth seeing, a pointer that was one thing and is now another.
     static std::uint32_t rwatch_addr;
     void ReportRead(std::uint32_t address, std::uint32_t value) const;
+    // A read with no side effects: false for an unmapped address, where
+    // ReadMemory32 would raise the guest's access violation. For probes.
+    bool PeekMemory32(std::uint32_t address, std::uint32_t *value) const;
+
     std::uint32_t ReadMemory32(std::uint32_t address) const {
         std::uint32_t value;
         if (std::uint32_t *ptr = reinterpret_cast<std::uint32_t *>(mem_cache_->lookup(address)))

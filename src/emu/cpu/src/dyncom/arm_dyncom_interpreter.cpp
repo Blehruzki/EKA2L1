@@ -190,8 +190,16 @@ struct mem_snap {
             std::chrono::steady_clock::now().time_since_epoch()).count());
         if (last && now - last < ms) return;
         last = now;
-        for (std::uint32_t i = 0; i < len / 4; i++)
-            buf[i] = cpu->ReadMemory32(addr + i * 4);
+        // An unmapped page reads as zeros, a page at a time (PeekMemory32 has no
+        // side effects; ReadMemory32 would raise the guest's access violation).
+        for (std::uint32_t i = 0; i < len / 4; i++) {
+            if (!cpu->PeekMemory32(addr + i * 4, &buf[i])) {
+                const std::uint32_t page_end = ((addr + i * 4) | 0xFFFu) + 1;
+                for (; i < len / 4 && addr + i * 4 < page_end; i++)
+                    buf[i] = 0;
+                i--;
+            }
+        }
         if (!max) {
             const std::string tmp = path + ".tmp";
             if (std::FILE *f = std::fopen(tmp.c_str(), "wb")) {

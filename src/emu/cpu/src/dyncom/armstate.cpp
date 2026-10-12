@@ -306,6 +306,10 @@ std::uint16_t ARMul_State::ReadMemory16Slow(std::uint32_t address) const {
     return value;
 }
 
+bool ARMul_State::PeekMemory32(std::uint32_t address, std::uint32_t *value) const {
+    return core->read_32bit(address, value);
+}
+
 std::uint32_t ARMul_State::ReadMemory32Slow(std::uint32_t address) const {
     std::uint32_t value = 0;
     bool result = core->read_32bit(address, &value);
