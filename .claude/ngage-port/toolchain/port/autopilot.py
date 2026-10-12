@@ -217,10 +217,17 @@ def wrong_way(g):
 
 
 def progress(g):
+    """The car's marker in the strip: red in multiplayer (E1243); single-player
+    has none, only a bar from x 2 that grows -- grey, each finished split
+    dark red or green after (E1248) -- so its end: the first white pixel."""
     top = g[4:8]
     red = (top[:, :, 0] > 150) & (top[:, :, 1] < 90) & (top[:, :, 2] < 90)
     xs = np.where(red)[1]
-    return int(xs.max()) if len(xs) else -1
+    if len(xs):
+        return int(xs.max())
+    white = np.where(g[5, 2:].min(1) > 230)[0]
+    x = 2 + (int(white[0]) if len(white) else 238)
+    return x - 1 if x > 3 else -1
 
 
 def main(argv):
