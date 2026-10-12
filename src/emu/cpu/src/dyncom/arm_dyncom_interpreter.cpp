@@ -146,7 +146,9 @@ pc_trace g_pc_trace;
 // EKA2L1_MEMSNAP=addr:len:ms:path -- every `ms` milliseconds of host time, the
 // guest's [addr, addr+len) as raw little-endian words to `path` with a
 // five-digit sequence number appended (path.00000, path.00001, ...), at most
-// EKA2L1_MEMSNAP_MAX of them (default 1000). Taken only while the PC is inside
+// EKA2L1_MEMSNAP_MAX of them (default 1000); with EKA2L1_MEMSNAP_MAX=0 one live
+// file instead, `path` itself, replaced whole each time (written to path.tmp and
+// renamed), for a reader outside to follow. Taken only while the PC is inside
 // EKA2L1_MEMSNAP_PC=lo:hi (hex), so that the address space is the right
 // process's -- a local chunk's address means another thing in another process.
 // Looked at once every 65,536 block entries. For finding a game's state in its
@@ -190,6 +192,15 @@ struct mem_snap {
         last = now;
         for (std::uint32_t i = 0; i < len / 4; i++)
             buf[i] = cpu->ReadMemory32(addr + i * 4);
+        if (!max) {
+            const std::string tmp = path + ".tmp";
+            if (std::FILE *f = std::fopen(tmp.c_str(), "wb")) {
+                std::fwrite(buf.data(), 4, buf.size(), f);
+                std::fclose(f);
+                std::rename(tmp.c_str(), path.c_str());
+            }
+            return;
+        }
         char name[16];
         std::snprintf(name, sizeof(name), ".%05u", seq);
         if (std::FILE *f = std::fopen((path + name).c_str(), "wb")) {

@@ -19,6 +19,9 @@ done
 k() { timeout 5 xdotool windowactivate --sync "$W" 2>/dev/null; timeout 5 xdotool key --window "$W" $1; }
 shot() { timeout 10 import -window "$W" ${O}_$1.png 2>/dev/null; }
 ( for t in $(seq 8 4 160); do at $t; shot $(printf %03d $t)s; done ) &
+# The keys are timed from the main menu, not the launch: a cold boot is 20 s
+# slower (E1264). t0 moves so the first Return lands at 30 as before.
+python3 "$(dirname "$0")/waitmenu.py" "$W" && t0=$(( $(date +%s) - 30 ))
 at 30; k Return; at 34; k Return; at 38; k Return
 at 42; k Up; at 43; k Up; at 44; k Return; at 48; k Return
 for t in 54 58 62 66 70 74 78 82; do at $t; k Return; done

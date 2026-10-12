@@ -273,6 +273,111 @@ def wrong_way(g):
     return int((w.sum(1) > 6).sum()) >= 7
 
 
+# The car's pose from the game's memory (E1263): eight (x, y, z) 16.16 triples
+# from runtime 0x48f6924, y up and 65536 to the metre; the first four the body's
+# corners, 0 and 1 the front (their mid against 2 and 3's lies within 2 degrees
+# of the direction of travel). The emulator writes them to AP_CARFILE
+# (EKA2L1_MEMSNAP=48f6924:60:50:<file> with EKA2L1_MEMSNAP_MAX=0).
+CARFILE = os.environ.get('AP_CARFILE')
+
+
+def car_pose():
+    """(x, z, heading) in metres and radians, or None."""
+    if not CARFILE:
+        return None
+    try:
+        raw = open(CARFILE, 'rb').read(96)
+    except OSError:
+        return None
+    if len(raw) < 48:
+        return None
+    w = np.frombuffer(raw[:48], dtype='<i4').astype(np.float64).reshape(4, 3) / 65536.0
+    x, z = w[:, 0].mean(), w[:, 2].mean()
+    hx = w[0, 0] + w[1, 0] - w[2, 0] - w[3, 0]
+    hz = w[0, 2] + w[1, 2] - w[2, 2] - w[3, 2]
+    return float(x), float(z), float(np.arctan2(hz, hx))
+
+
+# Following a recorded path (mkpath.py) instead of the screen: AP_PATH, an
+# (n, 2) array of (x, z) metres one metre apart. Pure pursuit: the point
+# LOOK m along the path past the nearest one, steered at with the angle
+# between it and the heading; the speed from how much the path turns in the
+# next TURN_AHEAD m. STEER_SIGN: +1 if Right makes the heading angle grow.
+PATH = os.environ.get('AP_PATH')
+STEER_SIGN = int(os.environ.get('AP_STEER_SIGN', '-1'))
+TURN_AHEAD = 35
+
+
+class Follower:
+    def __init__(self, path):
+        self.p = np.load(path)
+        self.i = None
+        self.stuck_since, self.back_until = None, 0.0
+
+    def nearest(self, x, z):
+        if self.i is None:
+            lo, hi = 0, len(self.p)
+        else:
+            lo, hi = max(0, self.i - 40), min(len(self.p), self.i + 120)
+        d = np.hypot(self.p[lo:hi, 0] - x, self.p[lo:hi, 1] - z)
+        k = int(np.argmin(d))
+        if self.i is not None and d[k] > 30:            # lost: search the whole path
+            d = np.hypot(self.p[:, 0] - x, self.p[:, 1] - z)
+            lo, k = 0, int(np.argmin(d))
+        self.i = lo + k
+        return self.i, float(d[k])
+
+    def heading_at(self, i):
+        j = min(len(self.p) - 1, i + 3)
+        i = max(0, j - 6)
+        v = self.p[j] - self.p[i]
+        return float(np.arctan2(v[1], v[0]))
+
+    def tick(self, now, pose, mph):
+        x, z, h = pose
+        i, off = self.nearest(x, z)
+        look = int(np.clip(6 + 0.4 * mph, 8, 22))
+        t = self.p[min(len(self.p) - 1, i + look)]
+        ang = (np.arctan2(t[1] - z, t[0] - x) - h + np.pi) % (2 * np.pi) - np.pi
+        h0 = self.heading_at(i)
+        h1 = self.heading_at(min(len(self.p) - 1, i + TURN_AHEAD))
+        bend = abs((h1 - h0 + np.pi) % (2 * np.pi) - np.pi)
+        target = 32 if bend < 0.3 else 22 if bend < 0.8 else 14 if bend < 1.4 else 10
+        if off > 8:
+            target = min(target, 12)
+        want = []
+        # Stuck: throttle held, speed 0-3, for 2 s -> back off 2.5 s on the
+        # opposite lock, which also undoes a nose-first meeting with a tree.
+        if now < self.back_until:
+            steer = 'Left' if self.back_steer > 0 else 'Right'
+            return ['7'], steer, 1.0, 'off %4.1f BACK' % off
+        if mph <= 3 and self.last_throttle:
+            if self.stuck_since is None:
+                self.stuck_since = now
+            elif now - self.stuck_since > 2.0:
+                self.back_until, self.back_steer, self.stuck_since = now + 2.5, ang * STEER_SIGN, None
+        else:
+            self.stuck_since = None
+        # Facing away from the path (more than 100 degrees): full lock at a crawl.
+        right = ang * STEER_SIGN > 0
+        steer = 'Right' if right else 'Left'
+        mag = abs(ang)
+        if mag < np.radians(3):
+            steer, pulse = None, 0.0
+        else:
+            pulse = min(1.0, mag / np.radians(25))
+        if mag > np.radians(100):
+            target = min(target, 8)
+        if mph < target:
+            want.append('5')
+        elif mph > target + 8 and mph > 12:
+            want.append('7')
+        self.last_throttle = '5' in want
+        return want, steer, pulse, 'i %5d off %4.1f ang %4d bend %3d' % (i, off, int(np.degrees(ang)), int(np.degrees(bend)))
+    last_throttle = False
+    back_steer = 0.0
+
+
 def waiting(g):
     """OPTIONS' "Waiting for other player": grey text (110-215) at rows 173-185
     on the white page -- 500-550 such pixels with it, none without (E1259)."""
@@ -334,9 +439,11 @@ def main(argv):
     wall_since, best_prog, best_at = None, -1, t0
     caution_until = 0.0
     no_hud_since, finished_at, next_after = None, None, 0.0
+    last_keys, follow = '', (Follower(PATH) if PATH else None)
     after_taps, seen_wait, continued = 0, False, False
     note, note_until = None, 0.0
     frames = (argv[2] + '.frames') if len(argv) > 2 else None
+    track = open(argv[2] + '.pose', 'w') if (len(argv) > 2 and CARFILE) else None
     if frames:
         os.makedirs(frames, exist_ok=True)
     try:
@@ -344,6 +451,10 @@ def main(argv):
             now = time.time()
             g = grab(dpy, win)
             p_now = progress(g)
+            pose = car_pose()
+            if track and pose:
+                track.write('%.2f %.3f %.3f %.4f %d %d %s\n' % (now - t0, pose[0], pose[1], pose[2], p_now,
+                                                           speed(g), last_keys or '-'))
             m = road_mask(g)
             region = connected_road(m)
             pn = pace_note(g)
@@ -392,6 +503,22 @@ def main(argv):
                     after_taps += 1
                     log.write('%6.1f after the finish: %s, HUD %s\n' % (now - t0, '+'.join(taps), 'up' if hud(g) else 'off'))
                     log.flush()
+                time.sleep(max(0.0, 0.1 - (time.time() - now)))
+                continue
+            if follow and pose:
+                want, steer, pulse, info = follow.tick(now, pose, speed(g))
+                if steer and pulse > 0:
+                    keys.hold(want + [steer])
+                    time.sleep(0.09 * pulse)
+                keys.hold(want)
+                last_keys = '+'.join(sorted(want + ([steer] if steer and pulse > 0 else [])))
+                best = max(best, p_now)
+                if now >= next_log:
+                    next_log = now + 1.0
+                    log.write('%6.1f prog %3d %s %2d mph keys %s\n' % (now - t0, p_now, info, speed(g), last_keys or '-'))
+                    log.flush()
+                    if track:
+                        track.flush()
                 time.sleep(max(0.0, 0.1 - (time.time() - now)))
                 continue
             backwards = wrong_way(g)
@@ -498,6 +625,7 @@ def main(argv):
                 keys.hold(want + [steer])
                 time.sleep(0.09 * pulse)
             keys.hold(want)
+            last_keys = '+'.join(sorted(want + ([steer] if steer and pulse > 0 else [])))
             steer = None
             p = progress(g)
             best = max(best, p)
@@ -509,6 +637,8 @@ def main(argv):
                              (' NOTE%s%d' % ('L' if note[0] < 0 else 'R', note[1])) if note else '',
                              '+'.join(sorted(want)) or '-'))
                 log.flush()
+                if track:
+                    track.flush()
             time.sleep(max(0.0, 0.1 - (time.time() - now)))
     finally:
         keys.hold([])
