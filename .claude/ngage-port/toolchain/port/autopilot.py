@@ -450,7 +450,10 @@ def main(argv):
         while time.time() - t0 < seconds:
             now = time.time()
             g = grab(dpy, win)
-            p_now = progress(g)
+            # Only while the race HUD is up: a menu or loading screen has no strip,
+            # and the single-player bar's end then read 239 -- a finish at 3 s,
+            # before the car had moved (E1267).
+            p_now = progress(g) if hud(g) else -1
             pose = car_pose()
             if track and pose:
                 track.write('%.2f %.3f %.3f %.4f %d %d %s\n' % (now - t0, pose[0], pose[1], pose[2], p_now,
@@ -627,7 +630,7 @@ def main(argv):
             keys.hold(want)
             last_keys = '+'.join(sorted(want + ([steer] if steer and pulse > 0 else [])))
             steer = None
-            p = progress(g)
+            p = p_now
             best = max(best, p)
             if now >= next_log:
                 next_log = now + 1.0
