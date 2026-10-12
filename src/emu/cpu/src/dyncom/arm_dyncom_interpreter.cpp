@@ -22,6 +22,7 @@
 #include <cstring>
 #include <vector>
 #include <string>
+#include <chrono>
 
 #include <cpu/arm_interface.h>
 
@@ -141,6 +142,64 @@ struct pc_trace {
     }
 };
 pc_trace g_pc_trace;
+
+// EKA2L1_MEMSNAP=addr:len:ms:path -- every `ms` milliseconds of host time, the
+// guest's [addr, addr+len) as raw little-endian words to `path` with a
+// five-digit sequence number appended (path.00000, path.00001, ...), at most
+// EKA2L1_MEMSNAP_MAX of them (default 1000). Taken only while the PC is inside
+// EKA2L1_MEMSNAP_PC=lo:hi (hex), so that the address space is the right
+// process's -- a local chunk's address means another thing in another process.
+// Looked at once every 65,536 block entries. For finding a game's state in its
+// memory by comparing snapshots against what its screen shows (ngage-port:
+// Colin's car, E1263).
+struct mem_snap {
+    bool on = false;
+    std::uint32_t addr = 0, len = 0, pclo = 0, pchi = 0xFFFFFFFFu, count = 0, seq = 0, max = 1000;
+    std::uint64_t ms = 1000, last = 0;
+    std::string path;
+    std::vector<std::uint32_t> buf;
+
+    mem_snap() {
+        const char *w = std::getenv("EKA2L1_MEMSNAP");
+        if (!w) return;
+        char *end = nullptr;
+        addr = static_cast<std::uint32_t>(std::strtoul(w, &end, 16));
+        if (!end || *end != ':') return;
+        len = static_cast<std::uint32_t>(std::strtoul(end + 1, &end, 16)) & ~3u;
+        if (!end || *end != ':') return;
+        ms = std::strtoull(end + 1, &end, 10);
+        if (!end || *end != ':' || !len) return;
+        path = end + 1;
+        const char *r = std::getenv("EKA2L1_MEMSNAP_PC");
+        if (r) {
+            pclo = static_cast<std::uint32_t>(std::strtoul(r, &end, 16));
+            if (end && *end == ':') pchi = static_cast<std::uint32_t>(std::strtoul(end + 1, nullptr, 16));
+        }
+        const char *mx = std::getenv("EKA2L1_MEMSNAP_MAX");
+        if (mx) max = static_cast<std::uint32_t>(std::strtoul(mx, nullptr, 10));
+        buf.resize(len / 4);
+        on = true;
+    }
+    inline void hit(ARMul_State *cpu) {
+        if (!on || (++count & 0xFFFF)) return;
+        const std::uint32_t pc = cpu->Reg[15];
+        if (pc < pclo || pc >= pchi) return;
+        const std::uint64_t now = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+        if (last && now - last < ms) return;
+        last = now;
+        for (std::uint32_t i = 0; i < len / 4; i++)
+            buf[i] = cpu->ReadMemory32(addr + i * 4);
+        char name[16];
+        std::snprintf(name, sizeof(name), ".%05u", seq);
+        if (std::FILE *f = std::fopen((path + name).c_str(), "wb")) {
+            std::fwrite(buf.data(), 4, buf.size(), f);
+            std::fclose(f);
+        }
+        if (++seq >= max) on = false;
+    }
+};
+mem_snap g_mem_snap;
 }
 
 #define RM BITS(sht_oper, 0, 3)
@@ -2782,6 +2841,7 @@ unsigned InterpreterMainLoop(ARMul_State *cpu, std::uint32_t &num_instrs) {
 DISPATCH : {
     PROF_BLOCK_ENTER(cpu);
     g_pc_trace.hit(cpu->Reg[15], cpu->Reg[13], cpu->Reg.data());
+    g_mem_snap.hit(cpu);
     if (!cpu->NirqSig) {
         if (!(cpu->Cpsr & 0x80)) {
             goto END;
