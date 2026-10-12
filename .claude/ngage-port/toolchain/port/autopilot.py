@@ -46,6 +46,11 @@ FAR, NEAR = (150, 182), (182, 210)
 DEAD, LIFT, SHARP = 7, 26, 52
 LOST_AFTER, STUCK_AFTER, REVERSE_FOR, GRACE, TURN_FOR = 1.0, 1.5, 3.0, 1.5, 4.0
 NO_PROGRESS = 20.0    # seconds without the progress marker moving: back out and try the other way
+# The finish: the marker past FINISH_PROG and the HUD gone for FINISH_AFTER s
+# (the replay is on). Then hands off the wheel, and AFTER_KEY tapped every
+# AFTER_EVERY s to go on from the replay (E1250: held 7 never left it).
+FINISH_PROG, FINISH_AFTER, AFTER_EVERY = 230, 3.0, 15.0
+AFTER_KEY = os.environ.get('AP_AFTER_KEY', 'Return')
 # Target speeds (MPH) by bend: E1230's car reached 35 MPH in two seconds and
 # missed the first bend, a left-hander just past the start.
 V_STRAIGHT, V_BEND, V_SHARP, V_OVER = 30, 20, 12, 8
@@ -216,6 +221,14 @@ def wrong_way(g):
     return int((w.sum(1) > 6).sum()) >= 7
 
 
+def hud(g):
+    """The race HUD's bottom-left box (the stage clock): half its pixels dark
+    and a fifth bright in the race, none of either in the replay that follows
+    the finish (E1250's frames)."""
+    box = g[304:318, 2:60]
+    return float((box.max(2) < 50).mean()) > 0.3 and float((box.min(2) > 200).mean()) > 0.1
+
+
 def progress(g):
     """The car's marker in the strip: red in multiplayer (E1243); single-player
     has none, only a bar from x 2 that grows -- grey, each finished split
@@ -247,6 +260,7 @@ def main(argv):
     road_side, v, steer = 0, 0, None
     wall_since, best_prog, best_at = None, -1, t0
     caution_until = 0.0
+    no_hud_since, finished_at, next_after = None, None, 0.0
     frames = (argv[2] + '.frames') if len(argv) > 2 else None
     if frames:
         os.makedirs(frames, exist_ok=True)
@@ -262,6 +276,26 @@ def main(argv):
             if frames and now >= next_frame:
                 next_frame = now + 2.0
                 Image.fromarray(g.astype(np.uint8)).save(os.path.join(frames, '%05d.png' % int((now - t0) * 10)))
+            if hud(g) or best_prog < FINISH_PROG:
+                no_hud_since = None
+            elif no_hud_since is None:
+                no_hud_since = now
+            if finished_at is None and no_hud_since is not None and now - no_hud_since > FINISH_AFTER:
+                finished_at = now
+                keys.hold([])
+                log.write('%6.1f FINISHED: progress %d, the HUD gone %.1f s\n'
+                          % (now - t0, best_prog, now - no_hud_since))
+                log.flush()
+            if finished_at is not None:
+                if now >= next_after:
+                    next_after = now + AFTER_EVERY
+                    keys.hold([AFTER_KEY])
+                    time.sleep(0.15)
+                    keys.hold([])
+                    log.write('%6.1f after the finish: %s, HUD %s\n' % (now - t0, AFTER_KEY, 'up' if hud(g) else 'off'))
+                    log.flush()
+                time.sleep(max(0.0, 0.1 - (time.time() - now)))
+                continue
             backwards = wrong_way(g)
             if caution(g):
                 caution_until = now + CAUTION_HOLD
