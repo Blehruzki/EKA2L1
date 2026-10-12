@@ -64,6 +64,13 @@ V_CAUTION, CAUTION_HOLD = 10, 3.0
 # the near band's middle: E1252's car met the first left with only the near
 # band seeing road, right of centre, and steered right into the trees.
 NOTE_HOLD, NOTE_STEER = 4.0, 30
+# Under a bend sign the near band's aim keeps within HUG_NEAR px of that
+# side's edge (road_centre), and a far band whose road goes the other way is
+# not followed: at E1253's first left the stage turns off a Y out of sight,
+# the far band sees only the other branch, and the middle of the two led the
+# car into the trees between them. Typical road widths in the near band are
+# 80-150 px (E1250), so 40 px leaves a road's own middle mostly alone.
+HUG_NEAR = 40
 # "000" in the HUD: rows 303-317, x 62-89 of the game's picture, bright
 # (> 180) pixels as a 15x28 bit pattern, from E1228's stopped cars.
 ZERO_HEX = ('00000000000000078f1e1078f1e10ef9f310ef9f310ef9f310870e1108f1e3108f1e31'
@@ -201,14 +208,25 @@ def connected_road(mask):
     return out
 
 
-def road_centre(region, rows):
+def road_centre(region, rows, side=0, hug=0):
     """The middle of the joined road over `rows`: per row with 8 or more
-    road pixels, halfway between its first and last; the median of those."""
+    road pixels, halfway between its first and last; the median of those.
+    With `side` (a bend sign's way), no further than `hug` px in from that
+    side's edge: where the stage turns off a wider gravel spread, the spread
+    joins it into one blob whose middle is the wrong way (E1253's first left,
+    the left road and the spread to its right one run from x 80 to 180). A
+    road narrower than 2 x hug keeps its middle."""
     xs = []
     for y in range(*rows):
         cols = np.where(region[y])[0]
-        if len(cols) >= 8:
-            xs.append((cols[0] + cols[-1]) / 2.0)
+        if len(cols) < 8:
+            continue
+        mid = (cols[0] + cols[-1]) / 2.0
+        if side < 0:
+            mid = min(mid, cols[0] + hug)
+        elif side > 0:
+            mid = max(mid, cols[-1] - hug)
+        xs.append(mid)
     return float(np.median(xs)) if len(xs) >= 4 else None
 
 
@@ -316,8 +334,14 @@ def main(argv):
             p_now = progress(g)
             m = road_mask(g)
             region = connected_road(m)
+            pn = pace_note(g)
+            if pn:
+                note, note_until = pn, now + NOTE_HOLD
+            elif now >= note_until:
+                note = None
+            side = note[0] if note else 0
             far = road_centre(region, FAR)
-            near = road_centre(region, NEAR)
+            near = road_centre(region, NEAR, side, HUG_NEAR)
             if frames and now >= next_frame:
                 next_frame = now + 2.0
                 Image.fromarray(g.astype(np.uint8)).save(os.path.join(frames, '%05d.png' % int((now - t0) * 10)))
@@ -344,11 +368,6 @@ def main(argv):
             backwards = wrong_way(g)
             if caution(g):
                 caution_until = now + CAUTION_HOLD
-            pn = pace_note(g)
-            if pn:
-                note, note_until = pn, now + NOTE_HOLD
-            elif now >= note_until:
-                note = None
             # A wall is grey too, and joins the road where it stands on it --
             # but it stands up: road never reaches rows 120-145 and fills the
             # far band to ~1250 px; a building ahead puts 900-1950 px up there
@@ -418,7 +437,9 @@ def main(argv):
                 want = ['7', 'Right' if road_side < 0 else 'Left']
             else:
                 aim = far if far is not None else near if near is not None else loose
-                if far is not None and near is not None:
+                if far is not None and near is not None and note and (far - near) * note[0] < 0:
+                    aim = near                          # the far road goes against the sign (HUG_NEAR)
+                elif far is not None and near is not None:
                     aim = 0.4 * far + 0.6 * near    # nearer: aiming far cuts the bend into the trees (E1233)
                     if abs(far - near) > 40:
                         # In a hairpin the far band takes in whatever grey is
