@@ -58,6 +58,12 @@ STEER_FULL = 45       # an error this size (px) holds the arrow the whole tick
 # The pace notes' warning triangle comes before the turn and is gone in it:
 # 10 MPH from when it shows until 3 s after (E1237 met the hairpin at 25).
 V_CAUTION, CAUTION_HOLD = 10, 3.0
+# The bend sign (pace_note) is shown before the bend and gone in it, so it is
+# held NOTE_HOLD s. While it is, and the far band has lost the road (it has
+# turned out of sight), steer the sign's way at NOTE_STEER px rather than at
+# the near band's middle: E1252's car met the first left with only the near
+# band seeing road, right of centre, and steered right into the trees.
+NOTE_HOLD, NOTE_STEER = 4.0, 30
 # "000" in the HUD: rows 303-317, x 62-89 of the game's picture, bright
 # (> 180) pixels as a 15x28 bit pattern, from E1228's stopped cars.
 ZERO_HEX = ('00000000000000078f1e1078f1e10ef9f310ef9f310ef9f310870e1108f1e3108f1e31'
@@ -214,6 +220,44 @@ def caution(g):
     return int(((t[:, :, 0] > 200) & (t[:, :, 1] > 170) & (t[:, :, 2] < 90)).sum()) > 25
 
 
+def pace_note(g):
+    """The pace note's bend sign at the top: a filled square (green, or yellow
+    for a tighter bend) with a black arrow whose head leans the bend's way --
+    as (direction -1 left / +1 right, 1 green / 2 yellow), or None. The warning
+    triangle beside it fills only half its box and is passed over. Measured on
+    E1250's frames: the arrow's top third sits 3-4 px left of its bottom third
+    in a left, 3-5 right in a right, 12 right in a yellow right."""
+    t = g[8:52, 40:200]
+    r, gr, b = t[:, :, 0], t[:, :, 1], t[:, :, 2]
+    green = (gr > 150) & (r < 150) & (b < 90)
+    yellow = (r > 200) & (gr > 170) & (b < 90)
+    col = green | yellow
+    cols = col.any(0)
+    x = 0
+    while x < cols.size:
+        if not cols[x]:
+            x += 1
+            continue
+        x0 = x
+        while x < cols.size and cols[x]:
+            x += 1
+        seg = col[:, x0:x]
+        ys = np.where(seg.any(1))[0]
+        y0, y1 = int(ys.min()), int(ys.max()) + 1
+        if x - x0 < 14 or y1 - y0 < 10 or seg[y0:y1].mean() < 0.6:
+            continue
+        dark = t[y0:y1, x0:x].max(2) < 70
+        n = dark.shape[0] // 3
+        top, bot = np.where(dark[:n])[1], np.where(dark[-n:])[1]
+        if len(top) < 3 or len(bot) < 3:
+            continue
+        d = float(top.mean() - bot.mean())
+        if abs(d) < 2:
+            continue
+        return (1 if d > 0 else -1), (2 if yellow[y0:y1, x0:x].sum() > green[y0:y1, x0:x].sum() else 1)
+    return None
+
+
 def wrong_way(g):
     """The game's "wrong way": seven or more rows of white text at rows
     70-84, x 70-170 (E1229's frames: 8-10 with it, 0-3 without)."""
@@ -261,6 +305,7 @@ def main(argv):
     wall_since, best_prog, best_at = None, -1, t0
     caution_until = 0.0
     no_hud_since, finished_at, next_after = None, None, 0.0
+    note, note_until = None, 0.0
     frames = (argv[2] + '.frames') if len(argv) > 2 else None
     if frames:
         os.makedirs(frames, exist_ok=True)
@@ -299,6 +344,11 @@ def main(argv):
             backwards = wrong_way(g)
             if caution(g):
                 caution_until = now + CAUTION_HOLD
+            pn = pace_note(g)
+            if pn:
+                note, note_until = pn, now + NOTE_HOLD
+            elif now >= note_until:
+                note = None
             # A wall is grey too, and joins the road where it stands on it --
             # but it stands up: road never reaches rows 120-145 and fills the
             # far band to ~1250 px; a building ahead puts 900-1950 px up there
@@ -377,6 +427,8 @@ def main(argv):
                         # 65, the car on into the house).
                         aim = near
                 err = (aim - 120) if aim is not None else last_err
+                if note and far is None and near is not None:
+                    err = note[0] * NOTE_STEER
                 last_err = err
                 track_x = far if far is not None else 120.0
                 want = []
@@ -390,6 +442,8 @@ def main(argv):
                 target = V_STRAIGHT if abs(err) < LIFT else V_BEND if abs(err) < SHARP else V_SHARP
                 if now < caution_until or (loose is not None and far is None and near is None):
                     target = min(target, V_CAUTION)
+                if note and note[1] >= 2:
+                    target = min(target, V_SHARP)
                 if v < target:
                     want.append('5')
                 elif v > target + V_OVER and v > V_SHARP:
@@ -403,9 +457,10 @@ def main(argv):
             best = max(best, p)
             if now >= next_log:
                 next_log = now + 1.0
-                log.write('%6.1f prog %3d err %6.1f share %.2f %2d mph%s%s keys %s\n'
+                log.write('%6.1f prog %3d err %6.1f share %.2f %2d mph%s%s%s keys %s\n'
                           % (now - t0, p, last_err, share, v,
                              ' WRONGWAY' if backwards else '', ' WALL' if wall else '',
+                             (' NOTE%s%d' % ('L' if note[0] < 0 else 'R', note[1])) if note else '',
                              '+'.join(sorted(want)) or '-'))
                 log.flush()
             time.sleep(max(0.0, 0.1 - (time.time() - now)))
