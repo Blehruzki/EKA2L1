@@ -273,119 +273,75 @@ def wrong_way(g):
     return int((w.sum(1) > 6).sum()) >= 7
 
 
-# The car's pose from the game's memory (E1263): eight (x, y, z) 16.16 triples
-# from runtime 0x48f6924, y up and 65536 to the metre; the first four the body's
-# corners, 0 and 1 the front (their mid against 2 and 3's lies within 2 degrees
-# of the direction of travel). The emulator writes them to AP_CARFILE
-# (EKA2L1_MEMSNAP=48f6924:60:50:<file> with EKA2L1_MEMSNAP_MAX=0).
+# The car's pose from the game's memory (E1263): (x, y, z) 16.16 triples, y up
+# and 65536 to the metre, the body's four corners first, 0 and 1 the front
+# (their mid against 2 and 3's lies within 2 degrees of the direction of
+# travel). Single-player keeps them at runtime 0x48f6924, a two-player session
+# 400 bytes on at 0x48f6ab4 (E1275), so the emulator writes the window
+# 0x48f6900-0x48f6c00 to AP_CARFILE (EKA2L1_MEMSNAP=48f6900:300:50:<file> with
+# EKA2L1_MEMSNAP_MAX=0) and car_pose finds the corners in it: the first four
+# consecutive triples at one height (within 0.5 m) whose sides are a car's
+# (1-5 m) away from the origin. A two-player session has a record per car,
+# 0xb44 bytes apart -- on the host the host's car first, at 0x48f6ab4, the
+# joiner's at 0x48f75f8 (E1275: each moved with its own car's progress) -- so
+# the window runs to 0x48f7700 (EKA2L1_MEMSNAP=48f6900:e00:...) and AP_CAR
+# picks the record (0, the first, by default).
 CARFILE = os.environ.get('AP_CARFILE')
+CAR_INDEX = int(os.environ.get('AP_CAR', '0'))
+CAR_STRIDE = 0xb44 // 4
+CAR_WINDOW = 0x48f6900
+_corner_at = [None]
 
 
-def car_pose():
-    """(x, z, heading) in metres and radians, or None."""
-    if not CARFILE:
+def _corners(w, k):
+    c = w[k:k + 12].reshape(4, 3)
+    if np.ptp(c[:, 1]) > 0.5 or np.abs(c[:, [0, 2]]).min() < 10:
         return None
-    try:
-        raw = open(CARFILE, 'rb').read(96)
-    except OSError:
-        return None
-    if len(raw) < 48:
-        return None
-    w = np.frombuffer(raw[:48], dtype='<i4').astype(np.float64).reshape(4, 3) / 65536.0
-    x, z = w[:, 0].mean(), w[:, 2].mean()
-    hx = w[0, 0] + w[1, 0] - w[2, 0] - w[3, 0]
-    hz = w[0, 2] + w[1, 2] - w[2, 2] - w[3, 2]
+    d01 = np.hypot(*(c[0, [0, 2]] - c[1, [0, 2]]))
+    d02 = np.hypot(*(c[0, [0, 2]] - c[2, [0, 2]]))
+    return c if 1.0 < d01 < 5.0 and 1.0 < d02 < 5.0 else None
+
+
+def _pose(c):
+    x, z = c[:, 0].mean(), c[:, 2].mean()
+    hx = c[0, 0] + c[1, 0] - c[2, 0] - c[3, 0]
+    hz = c[0, 2] + c[1, 2] - c[2, 2] - c[3, 2]
     return float(x), float(z), float(np.arctan2(hz, hx))
 
 
-# Following a recorded path (mkpath.py) instead of the screen: AP_PATH, an
-# (n, 2) array of (x, z) metres one metre apart. Pure pursuit: the point
-# LOOK m along the path past the nearest one, steered at with the angle
-# between it and the heading; the speed from how much the path turns in the
-# next TURN_AHEAD m. STEER_SIGN: +1 if Right makes the heading angle grow.
-PATH = os.environ.get('AP_PATH')
-STEER_SIGN = int(os.environ.get('AP_STEER_SIGN', '-1'))
-TURN_AHEAD = 35
+def car_poses():
+    """Every car's (x, z, heading) in the window, first record first."""
+    if not CARFILE:
+        return []
+    try:
+        raw = open(CARFILE, 'rb').read()
+    except OSError:
+        return []
+    w = np.frombuffer(raw[:len(raw) // 4 * 4], dtype='<i4').astype(np.float64) / 65536.0
+    c = None
+    if _corner_at[0] is not None and _corner_at[0] + 12 <= len(w):
+        c = _corners(w, _corner_at[0])
+    if c is None:
+        for k in range(0, len(w) - 11):
+            c = _corners(w, k)
+            if c is not None:
+                _corner_at[0] = k
+                break
+    if c is None:
+        return []
+    out = [_pose(c)]
+    k = _corner_at[0] + CAR_STRIDE
+    if k + 12 <= len(w):
+        c2 = _corners(w, k)
+        if c2 is not None:
+            out.append(_pose(c2))
+    return out
 
 
-class Follower:
-    STUCK_S, STUCK_M = 2.5, 1.0
-
-    def __init__(self, path):
-        self.p = np.load(path)
-        self.hist = []
-        self.i = None
-        self.stuck_since, self.back_until = None, 0.0
-
-    def nearest(self, x, z):
-        if self.i is None:
-            lo, hi = 0, len(self.p)
-        else:
-            lo, hi = max(0, self.i - 40), min(len(self.p), self.i + 120)
-        d = np.hypot(self.p[lo:hi, 0] - x, self.p[lo:hi, 1] - z)
-        k = int(np.argmin(d))
-        if self.i is not None and d[k] > 30:            # lost: search the whole path
-            d = np.hypot(self.p[:, 0] - x, self.p[:, 1] - z)
-            lo, k = 0, int(np.argmin(d))
-        self.i = lo + k
-        return self.i, float(d[k])
-
-    def heading_at(self, i):
-        j = min(len(self.p) - 1, i + 3)
-        i = max(0, j - 6)
-        v = self.p[j] - self.p[i]
-        return float(np.arctan2(v[1], v[0]))
-
-    def tick(self, now, pose, mph):
-        x, z, h = pose
-        i, off = self.nearest(x, z)
-        if i >= len(self.p) - 10 and off < 15:
-            self.done = True                    # a partial path's end: the caller hands over
-        look = int(np.clip(6 + 0.4 * mph, 8, 22))
-        t = self.p[min(len(self.p) - 1, i + look)]
-        ang = (np.arctan2(t[1] - z, t[0] - x) - h + np.pi) % (2 * np.pi) - np.pi
-        h0 = self.heading_at(i)
-        h1 = self.heading_at(min(len(self.p) - 1, i + TURN_AHEAD))
-        bend = abs((h1 - h0 + np.pi) % (2 * np.pi) - np.pi)
-        target = 32 if bend < 0.3 else 22 if bend < 0.8 else 14 if bend < 1.4 else 10
-        if off > 8:
-            target = min(target, 12)
-        want = []
-        # Stuck: less than STUCK_M metres in the last STUCK_S s with the throttle
-        # held -> back off 2.5 s on the opposite lock, which also undoes a
-        # nose-first meeting with a tree. By position, not the HUD's speed: a car
-        # pinned against a bank spins its wheels at 18 MPH and goes nowhere
-        # (E1272, ten minutes at one point of the path).
-        self.hist.append((now, x, z))
-        while self.hist and now - self.hist[0][0] > self.STUCK_S:
-            self.hist.pop(0)
-        if now < self.back_until:
-            steer = 'Left' if self.back_steer > 0 else 'Right'
-            return ['7'], steer, 1.0, 'off %4.1f BACK' % off
-        t_old, x_old, z_old = self.hist[0]
-        if (self.last_throttle and now - t_old > self.STUCK_S - 0.3 and now > self.back_until + 3.0
-                and np.hypot(x - x_old, z - z_old) < self.STUCK_M):
-            self.back_until, self.back_steer = now + 2.5, ang * STEER_SIGN
-            self.hist = []
-        # Facing away from the path (more than 100 degrees): full lock at a crawl.
-        right = ang * STEER_SIGN > 0
-        steer = 'Right' if right else 'Left'
-        mag = abs(ang)
-        if mag < np.radians(3):
-            steer, pulse = None, 0.0
-        else:
-            pulse = min(1.0, mag / np.radians(25))
-        if mag > np.radians(100):
-            target = min(target, 8)
-        if mph < target:
-            want.append('5')
-        elif mph > target + 8 and mph > 12:
-            want.append('7')
-        self.last_throttle = '5' in want
-        return want, steer, pulse, 'i %5d off %4.1f ang %4d bend %3d' % (i, off, int(np.degrees(ang)), int(np.degrees(bend)))
-    last_throttle = False
-    back_steer = 0.0
-    done = False
+def car_pose():
+    """This car's (x, z, heading) in metres and radians (AP_CAR), or None."""
+    poses = car_poses()
+    return poses[CAR_INDEX] if CAR_INDEX < len(poses) else None
 
 
 def waiting(g):
@@ -464,10 +420,13 @@ def main(argv):
             # and the single-player bar's end then read 239 -- a finish at 3 s,
             # before the car had moved (E1267).
             p_now = progress(g) if hud(g) else -1
-            pose = car_pose()
+            poses = car_poses()
+            pose = poses[CAR_INDEX] if CAR_INDEX < len(poses) else None
             if track and pose:
-                track.write('%.2f %.3f %.3f %.4f %d %d %s\n' % (now - t0, pose[0], pose[1], pose[2], p_now,
-                                                           speed(g), last_keys or '-'))
+                other = poses[1 - CAR_INDEX] if len(poses) == 2 else None
+                track.write('%.2f %.3f %.3f %.4f %d %d %s%s\n' % (now - t0, pose[0], pose[1], pose[2], p_now,
+                                                             speed(g), last_keys or '-',
+                                                             (' %.3f %.3f' % other[:2]) if other else ''))
             m = road_mask(g)
             region = connected_road(m)
             pn = pace_note(g)

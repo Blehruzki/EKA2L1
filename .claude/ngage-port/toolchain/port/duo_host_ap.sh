@@ -15,5 +15,5 @@ at 100; k Down; at 101; k Down; at 102; k Return   # OK: the settings go out, th
 at 120; k Down; at 121; k Down; at 122; k Return   # Start, after the joiner's Ready
 at 134; k Return   # Continue on the briefing
 at 140; k Right; at 141; k Right; at 142; k Right; at 144; k Return; at 148; k Return; at 152; k Return
-at 190; AP_CARFILE="${AP_CARFILE_A:-$AP_CARFILE}" AP_ROLE=host python3 "$(dirname "$0")/autopilot.py" "$W" "${AP_SECS:-480}" "${O}_ap.log"
+at 190; AP_CAR="${AP_CAR_A:-0}" AP_CARFILE="${AP_CARFILE_A:-$AP_CARFILE}" AP_ROLE=host python3 "$(dirname "$0")/autopilot.py" "$W" "${AP_SECS:-480}" "${O}_ap.log"
 wait
