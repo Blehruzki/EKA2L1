@@ -429,7 +429,11 @@ def main(argv):
                 # Off the road (on grass, nothing grey joined to the car): head
                 # for the most grey column in the lower picture, slowly, rather
                 # than reversing in place (E1237's B: 108 reverses in a field).
-                cols = np.convolve(m[175:215].sum(0), np.ones(9), 'same')
+                # Rows 140-215, not just the band ahead of the car: from a field
+                # the road is often in sight further off -- on E1251's off-road
+                # frames 9 of 11 had a grey column over 60 there, 5 of 11 in rows
+                # 175-215 (E1260's B wandered fields for half an hour).
+                cols = np.convolve(m[140:215].sum(0), np.ones(9), 'same')
                 if cols.max() > 60:
                     loose = float(np.argmax(cols))
             if far is not None or near is not None or loose is not None:
