@@ -344,6 +344,96 @@ def car_pose():
     return poses[CAR_INDEX] if CAR_INDEX < len(poses) else None
 
 
+# Following a recorded path (mkpath.py) instead of the screen: AP_PATH, an
+# (n, 2) array of (x, z) metres one metre apart. Pure pursuit: the point
+# LOOK m along the path past the nearest one, steered at with the angle
+# between it and the heading; the speed from how much the path turns in the
+# next TURN_AHEAD m. STEER_SIGN: +1 if Right makes the heading angle grow.
+PATH = os.environ.get('AP_PATH')
+STEER_SIGN = int(os.environ.get('AP_STEER_SIGN', '-1'))
+TURN_AHEAD = 35
+
+
+class Follower:
+    STUCK_S, STUCK_M = 2.5, 1.0
+
+    def __init__(self, path):
+        self.p = np.load(path)
+        self.hist = []
+        self.i = None
+        self.stuck_since, self.back_until = None, 0.0
+
+    def nearest(self, x, z):
+        if self.i is None:
+            lo, hi = 0, len(self.p)
+        else:
+            lo, hi = max(0, self.i - 40), min(len(self.p), self.i + 120)
+        d = np.hypot(self.p[lo:hi, 0] - x, self.p[lo:hi, 1] - z)
+        k = int(np.argmin(d))
+        if self.i is not None and d[k] > 30:            # lost: search the whole path
+            d = np.hypot(self.p[:, 0] - x, self.p[:, 1] - z)
+            lo, k = 0, int(np.argmin(d))
+        self.i = lo + k
+        return self.i, float(d[k])
+
+    def heading_at(self, i):
+        j = min(len(self.p) - 1, i + 3)
+        i = max(0, j - 6)
+        v = self.p[j] - self.p[i]
+        return float(np.arctan2(v[1], v[0]))
+
+    def tick(self, now, pose, mph):
+        x, z, h = pose
+        i, off = self.nearest(x, z)
+        if i >= len(self.p) - 10 and off < 15:
+            self.done = True                    # a partial path's end: the caller hands over
+        look = int(np.clip(6 + 0.4 * mph, 8, 22))
+        t = self.p[min(len(self.p) - 1, i + look)]
+        ang = (np.arctan2(t[1] - z, t[0] - x) - h + np.pi) % (2 * np.pi) - np.pi
+        h0 = self.heading_at(i)
+        h1 = self.heading_at(min(len(self.p) - 1, i + TURN_AHEAD))
+        bend = abs((h1 - h0 + np.pi) % (2 * np.pi) - np.pi)
+        target = 32 if bend < 0.3 else 22 if bend < 0.8 else 14 if bend < 1.4 else 10
+        if off > 8:
+            target = min(target, 12)
+        want = []
+        # Stuck: less than STUCK_M metres in the last STUCK_S s with the throttle
+        # held -> back off 2.5 s on the opposite lock, which also undoes a
+        # nose-first meeting with a tree. By position, not the HUD's speed: a car
+        # pinned against a bank spins its wheels at 18 MPH and goes nowhere
+        # (E1272, ten minutes at one point of the path).
+        self.hist.append((now, x, z))
+        while self.hist and now - self.hist[0][0] > self.STUCK_S:
+            self.hist.pop(0)
+        if now < self.back_until:
+            steer = 'Left' if self.back_steer > 0 else 'Right'
+            return ['7'], steer, 1.0, 'off %4.1f BACK' % off
+        t_old, x_old, z_old = self.hist[0]
+        if (self.last_throttle and now - t_old > self.STUCK_S - 0.3 and now > self.back_until + 3.0
+                and np.hypot(x - x_old, z - z_old) < self.STUCK_M):
+            self.back_until, self.back_steer = now + 2.5, ang * STEER_SIGN
+            self.hist = []
+        # Facing away from the path (more than 100 degrees): full lock at a crawl.
+        right = ang * STEER_SIGN > 0
+        steer = 'Right' if right else 'Left'
+        mag = abs(ang)
+        if mag < np.radians(3):
+            steer, pulse = None, 0.0
+        else:
+            pulse = min(1.0, mag / np.radians(25))
+        if mag > np.radians(100):
+            target = min(target, 8)
+        if mph < target:
+            want.append('5')
+        elif mph > target + 8 and mph > 12:
+            want.append('7')
+        self.last_throttle = '5' in want
+        return want, steer, pulse, 'i %5d off %4.1f ang %4d bend %3d' % (i, off, int(np.degrees(ang)), int(np.degrees(bend)))
+    last_throttle = False
+    back_steer = 0.0
+    done = False
+
+
 def waiting(g):
     """OPTIONS' "Waiting for other player": grey text (110-215) at rows 173-185
     on the white page -- 500-550 such pixels with it, none without (E1259)."""
