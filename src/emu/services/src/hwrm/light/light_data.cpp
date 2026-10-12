@@ -25,6 +25,21 @@
 #include <services/context.h>
 
 namespace eka2l1::epoc::hwrm::light {
+    // The status property is an integer, packed with 2 bits of status per target (16 targets), the way the S60 HWRM
+    // light client (hwrmlightclient.dll) reads it with RProperty::Get(TInt&). Defining it as binary data made that Get
+    // fail with KErrArgument, and the client then leaves with it.
+    static constexpr std::size_t PACKED_STATUS_TARGET_COUNT = 16;
+
+    static std::int32_t pack_light_status(const std::array<target_info, MAXIMUM_LIGHT> &infos) {
+        std::uint32_t packed = 0;
+
+        for (std::size_t i = 0; i < PACKED_STATUS_TARGET_COUNT; i++) {
+            packed |= (infos[i].status_ & 3) << (i * 2);
+        }
+
+        return static_cast<std::int32_t>(packed);
+    }
+
     bool resource_data::initialise_components(kernel_system *kern) {
         // Create and define the property. Remember to destroy later.
         infos_prop_ = kern->create<service::property>();
@@ -38,8 +53,8 @@ namespace eka2l1::epoc::hwrm::light {
         infos_prop_->first = eka2l1::epoc::hwrm::SERVICE_UID;
         infos_prop_->second = eka2l1::epoc::hwrm::light::LIGHT_STATUS_PROP_KEY;
 
-        // Define and allocate the size that fit our maximum need.
-        infos_prop_->define(service::property_type::bin_data, MAXIMUM_LIGHT * sizeof(target_info));
+        // Define as an integer property, packed 2 bits per target.
+        infos_prop_->define(service::property_type::int_data, sizeof(std::int32_t));
 
         // Initialise all the light with default value
         for (std::size_t i = 0; i < infos_.size(); i++) {
@@ -48,7 +63,7 @@ namespace eka2l1::epoc::hwrm::light {
         }
 
         // Publish the default value of the property
-        if (!infos_prop_->set(reinterpret_cast<std::uint8_t *>(&infos_[0]), MAXIMUM_LIGHT * sizeof(target_info))) {
+        if (!infos_prop_->set_int(pack_light_status(infos_))) {
             LOG_ERROR(SERVICE_HWRM, "Failed to publish default value of light infos to created property. Abort.");
             return false;
         }
@@ -72,7 +87,7 @@ namespace eka2l1::epoc::hwrm::light {
         find_result->status_ = sts;
 
         // Publish the resource to property.
-        if (!infos_prop_->set(reinterpret_cast<std::uint8_t *>(&infos_[0]), MAXIMUM_LIGHT * sizeof(target_info))) {
+        if (!infos_prop_->set_int(pack_light_status(infos_))) {
             LOG_ERROR(SERVICE_HWRM, "Failed to publish updated value of light infos to light status property. Abort.");
             return false;
         }
