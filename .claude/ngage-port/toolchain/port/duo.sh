@@ -101,7 +101,11 @@ PA=$(pgrep -x eka2l1_qt | head -1); PB=$(pgrep -x eka2l1_qt | sed -n 2p)
 # window fills and both call the link lost (E1234). A phone runs alone.
 # Every thread: a nice value is per thread on Linux, and the emulated CPU's
 # thread exists by now.
-for t in /proc/"$PA"/task/* /proc/"$PB"/task/*; do renice -n -10 -p "${t##*/}" >/dev/null 2>&1; done
+for t in /proc/"$PA"/task/*; do renice -n -10 -p "${t##*/}" >/dev/null 2>&1; done
+# DUO_NICE_B: B's own nice value (default -10, as A's). 19 leaves B the machine
+# A does not use, for a run where only A drives (E1256; B's pause pauses A too,
+# E1255).
+for t in /proc/"$PB"/task/*; do renice -n "${DUO_NICE_B:--10}" -p "${t##*/}" >/dev/null 2>&1; done
 WA=$(xdotool search --onlyvisible --pid "$PA" 2>/dev/null | head -1)
 WB=$(DISPLAY=:98 xdotool search --onlyvisible --pid "$PB" 2>/dev/null | head -1)
 echo "A pid $PA win $WA   B pid $PB win $WB"
