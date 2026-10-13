@@ -1327,6 +1327,7 @@ struct Context {
     u32 box0L, box0T, box0R, box0B, box0Set; // the first region's box: the
                             // title's own window, as wserv first granted it
     u32 *realGc;            // the 9.x CFbsBitGc inside it
+    u32 dsaBltRectFwd;      // the DSA stand-in's old slot 47 as it forwarded, BitBlt(pt, bmp, rect) (gate6_dsa_bitblt_rect)
     u32 realSetClip, setClipLogged;   // round 157: CFbsBitGc::SetClippingRegion as resolved, and whether its first call was logged
     u32 *fakeGc;            // and the old-vtable stand-in the game calls
     u32 *realWinGc;         // the environment's 9.x CWindowGc (SystemGc)
@@ -6049,7 +6050,7 @@ enum { GC_THUNK_BYTES = 20 };
 // runs exactly as before -- the direct screen access still starts, the
 // clipping region is still set, the state machine is untouched -- and only
 // BitBlt does nothing. If it still goes down, the drawing is not the cause.
-enum { DRAW_THE_FRAME = 1, OLD_GC_BITBLT = 46 };
+enum { DRAW_THE_FRAME = 1, OLD_GC_BITBLT = 46, OLD_GC_BITBLT_RECT = 47 };
 
 // The other half of the drawing, and the half the last experiment left alone.
 // Turning the blit off proved nothing about the screen itself, because direct
@@ -9553,6 +9554,7 @@ enum { COEENV_SYSTEM_GC = 0x40 };
 enum { OLD_WINGC_SLOTS = 63, OLD_WINGC_BITBLT_FWD = 46 };
 extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp);   // below, with the picture modes
 extern "C" void gate6_dsa_bitblt(u32 *standin, const i32 *pt, const void *bmp);   // the same, for the DSA gc
+extern "C" void gate6_dsa_bitblt_rect(u32 *standin, const i32 *pt, const void *bmp, const i32 *rect);
 static void hold_timer_start(Context *c);
 extern "C" void gate6_ui_foreground(void *self, u32 foreground, Context *c);
 static const u8 kWinGcSlot[OLD_WINGC_SLOTS] = {
@@ -9988,6 +9990,22 @@ extern "C" void gate6_dsa_bitblt(u32 *standin, const i32 *pt, const void *bmp)
 {
     Context *c = (Context *)standin[1];
     fitted_blit(c, c->realGc, pt, bmp);
+}
+// Glimmerati blits with the source-rectangle overload, BitBlt(pt, bmp, rect)
+// -- old slot 47, at 0x18a54 before its CFbsScreenDevice::Update() -- so
+// slot 46 alone changed nothing (E1301). A blit of the whole frame from its
+// origin is the frame, and is fitted; any other part goes out as it did.
+extern "C" void gate6_dsa_bitblt_rect(u32 *standin, const i32 *pt, const void *bmp, const i32 *rect)
+{
+    typedef void (*Fwd)(void *, const i32 *, const void *, const i32 *);
+    Context *c = (Context *)standin[1];
+    if (rect && rect[0] == 0 && rect[1] == 0 &&
+        rect[2] >= (i32)GAME_CONTROL_W && rect[3] >= (i32)GAME_CONTROL_H &&
+        (!pt || (pt[0] == 0 && pt[1] == 0))) {
+        fitted_blit(c, c->realGc, pt, bmp);
+        return;
+    }
+    ((Fwd)c->dsaBltRectFwd)(standin, pt, bmp, rect);
 }
 
 // The hold's clock. The Asphalts tick it once a frame from the port's own
@@ -16723,8 +16741,11 @@ static u32 load_and_start()
             user_imb_range(b, b + 2);
         }
         ctx->spare = gcRoom + OLD_GC_SLOTS * GC_THUNK_BYTES;
-        if (GAME_SCREEN_MODES && GAME_CONTROL_W && DRAW_THE_FRAME)
+        if (GAME_SCREEN_MODES && GAME_CONTROL_W && DRAW_THE_FRAME) {
             gcVt[2 + OLD_GC_BITBLT] = (u32)&gate6_dsa_bitblt;
+            ctx->dsaBltRectFwd = gcVt[2 + OLD_GC_BITBLT_RECT];
+            gcVt[2 + OLD_GC_BITBLT_RECT] = (u32)&gate6_dsa_bitblt_rect;
+        }
         // GCC98r2 keeps the two header words in the table and points at them.
         ctx->fakeGc[0] = (u32)gcVt;
         ctx->fakeGc[1] = (u32)ctx;
