@@ -779,7 +779,9 @@ exports (RM-92, 9.1, and RM-409, 9.3: `FormatTypeField` 306, `MajorServiceClass`
 service class (16-bit) +0x1a, major device class +0x1c, minor +0x1d, IAC +0x20,
 action +0x24 of the object -- the 6.1 SDK's `BTUserPtr() = UserPtr() +
 sizeof(SBTAddr)`, with that six-byte struct rounded to 8. RM-92 has no
-`ResultFlags`/`Rssi` exports at all. The Symbian Foundation os/bt source
+`ResultFlags`/`Rssi` exports at all. The N-Gage's own (NEM-4 `bluetooth.dll`,
+`TInquirySockAddr(const TSockAddr&)`) copies its 16 bytes of inquiry fields
+from +0x18: the same layout on 6.1. The Symbian Foundation os/bt source
 (`bluetoothclientlib/inc/bt_sock.h`) puts the address inside `SInquiryAddr` and
 moves every field after it 8 bytes earlier; that is a later Symbian, not any
 S60 3.x phone. **Read layouts from the ROM of the phone in question, not from

@@ -308,8 +308,9 @@ to check first: the game version on the N-Gage's card against the port's data
 (a different build may refuse the session), and the SDP record. The cheapest
 first test of all is an N-Gage hosting and an S60v3 phone joining: the
 N-Gage makes itself visible, and the patched joiner lists it. The other way
-round is blocked by the N-Gage's own filter: an original N-Gage joiner drops
-an S60v3 host on its service class, and a self-signed app cannot change the
+round works when the S60v3 host's service class passes the N-Gage's own
+filter: an N91 hosting for an N-Gage raced (round 174); an N95 may not pass
+(round 173, its class unmeasured), and a self-signed app cannot change the
 class the phone advertises (KPropertyKeyBluetoothSetDeviceClass needs
 NetworkControl).
 

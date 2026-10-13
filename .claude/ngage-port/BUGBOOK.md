@@ -2191,11 +2191,12 @@ running the game.
 **Cause.** The joiner filters what its inquiry finds by one byte of the
 result's address, read through its own accessor at +0x16, +4 = +0x1a
 (0x40e6e0), and lists a device only for 0, 2, 0x1f or 0x80. On the phones'
-own bluetooth.dll (RM-92 9.1, RM-409 9.3) +0x1a is the major service class
-(+0x1c is the device class). An N-Gage-era phone advertises object transfer
-and telephony -- low byte 0x80, listed (the 6630); an S60 3.x camera phone
-adds networking and capturing -- 0xD0, dropped (the N95). The N95's exact
-class was not measured; the mechanism is reproduced on the bench (E1288).
+own bluetooth.dll (RM-92 9.1, RM-409 9.3) and on the N-Gage's (NEM-4) +0x1a
+is the major service class (+0x1c is the device class). The 6630 passed, and
+so did an N91 hosting for an original N-Gage (round 174); the N95 did not.
+Which of its service bits drops it is unmeasured (a camera alone does not:
+the N91 has one) -- positioning, 0x08, for its GPS would. The mechanism is
+reproduced on the bench with an assumed class (E1288).
 **The wrong turn first.** E1284-E1287 read the inquiry layout from the os/bt
 source, which is later than every S60 3.x phone and moves the fields 8
 bytes; the "fix" moved the joiner's IAC to where the phones keep the action
