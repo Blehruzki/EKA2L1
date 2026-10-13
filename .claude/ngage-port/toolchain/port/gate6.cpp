@@ -1328,6 +1328,7 @@ struct Context {
                             // title's own window, as wserv first granted it
     u32 *realGc;            // the 9.x CFbsBitGc inside it
     u32 dsaBltRectFwd;      // the DSA stand-in's old slot 47 as it forwarded, BitBlt(pt, bmp, rect) (gate6_dsa_bitblt_rect)
+    u32 dsaRectCalls;       //   how many times it has been called
     u32 realSetClip, setClipLogged;   // round 157: CFbsBitGc::SetClippingRegion as resolved, and whether its first call was logged
     u32 *fakeGc;            // and the old-vtable stand-in the game calls
     u32 *realWinGc;         // the environment's 9.x CWindowGc (SystemGc)
@@ -9706,6 +9707,9 @@ enum { NEW_COECONTROL_WHOLE_SCREEN = 50, NEW_COECONTROL_SIZE = 277, NEW_COECONTR
 // game's Deactivate to Activate with a stray window and the emulator's
 // window server died on the handle (E417, E418, gdb).
 enum { HOLD_TIMER_US = 100000 };
+// 58 and 40 are the source-rectangle neighbours of 57 and 39: BitBlt(pt,
+// bmp, rect) and DrawBitmap(TRect, bmp, TRect), old slots 47 and 38 in kGcSlot.
+enum { NEW_GC_BITBLT_RECT = 58, NEW_GC_DRAWBITMAP_RECT_SRC = 40 };
 enum { OLD_WINGC_BITBLT = 46, NEW_GC_DRAWBITMAP_RECT = 39, NEW_GC_BITBLT = 57, NEW_GC_CLEAR = 54,
        NEW_GC_SET_BRUSH_COLOR = 18, NEW_GC_SET_BRUSH_STYLE = 19, ESOLID_BRUSH = 1 };
 
@@ -9915,7 +9919,7 @@ static void blit_rate_note(Context *c)
 // gc (Ashen, gate6_wgc_bitblt) or the direct-screen-access CFbsBitGc
 // (Glimmerati, gate6_dsa_bitblt). Both are CBitmapContexts, so BitBlt,
 // DrawBitmap(TRect), Clear and the brush calls sit at the same EABI slots.
-static void fitted_blit(Context *c, u32 *real, const i32 *pt, const void *bmp)
+static void fitted_blit(Context *c, u32 *real, const i32 *pt, const void *bmp, const i32 *src)
 {
     typedef void (*BitBltFn)(void *, const i32 *, const void *);
     typedef void (*DrawBitmapFn)(void *, const i32 *, const void *);
@@ -9926,8 +9930,13 @@ static void fitted_blit(Context *c, u32 *real, const i32 *pt, const void *bmp)
     c->lastBmp = bmp;
     if (GAME_SCREEN_MODES && c->screenW)
         hold_timer_start(c);
+    typedef void (*BitBltRectFn)(void *, const i32 *, const void *, const i32 *);
+    typedef void (*DrawBitmapSrcFn)(void *, const i32 *, const void *, const i32 *);
     if (!GAME_SCREEN_MODES || !c->screenW || !c->dstW || !c->dstH) {
-        ((BitBltFn)vt[NEW_GC_BITBLT])(real, pt, bmp);
+        if (src)
+            ((BitBltRectFn)vt[NEW_GC_BITBLT_RECT])(real, pt, bmp, src);
+        else
+            ((BitBltFn)vt[NEW_GC_BITBLT])(real, pt, bmp);
         return;
     }
     if (c->clearPending) {
@@ -9941,7 +9950,18 @@ static void fitted_blit(Context *c, u32 *real, const i32 *pt, const void *bmp)
     const i32 x = (i32)c->offX, y = (i32)c->offY;
     if (c->dstW == (u32)GAME_CONTROL_W && c->dstH == (u32)GAME_CONTROL_H) {
         const i32 at[2] = { x, y };
-        ((BitBltFn)vt[NEW_GC_BITBLT])(real, at, bmp);
+        if (src)
+            ((BitBltRectFn)vt[NEW_GC_BITBLT_RECT])(real, at, bmp, src);
+        else
+            ((BitBltFn)vt[NEW_GC_BITBLT])(real, at, bmp);
+        return;
+    }
+    if (src) {
+        // A part of a bigger bitmap (Glimmerati's view at (40,24) of its
+        // frame): scaled by the gc itself; the port scaler takes whole bitmaps.
+        blit_rate_note(c);
+        const i32 dst[4] = { x, y, x + (i32)c->dstW, y + (i32)c->dstH };
+        ((DrawBitmapSrcFn)vt[NEW_GC_DRAWBITMAP_RECT_SRC])(real, dst, bmp, src);
         return;
     }
     // Round 151: the blit rate and the scaler's share of it, every 64 blits
@@ -9977,7 +9997,7 @@ static void fitted_blit(Context *c, u32 *real, const i32 *pt, const void *bmp)
 extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
 {
     Context *c = (Context *)standin[1];
-    fitted_blit(c, c->realWinGc, pt, bmp);
+    fitted_blit(c, c->realWinGc, pt, bmp, 0);
 }
 
 // **The picture modes for a title that blits through direct screen access**
@@ -9989,20 +10009,33 @@ extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
 extern "C" void gate6_dsa_bitblt(u32 *standin, const i32 *pt, const void *bmp)
 {
     Context *c = (Context *)standin[1];
-    fitted_blit(c, c->realGc, pt, bmp);
+    fitted_blit(c, c->realGc, pt, bmp, 0);
 }
 // Glimmerati blits with the source-rectangle overload, BitBlt(pt, bmp, rect)
 // -- old slot 47, at 0x18a54 before its CFbsScreenDevice::Update() -- so
-// slot 46 alone changed nothing (E1301). A blit of the whole frame from its
-// origin is the frame, and is fitted; any other part goes out as it did.
+// slot 46 alone changed nothing (E1301), and its rectangle is the 176x208
+// view at (40,24) of a bigger bitmap (E1304). A 176x208 part put at the
+// origin is the frame, and is fitted; anything else goes out as it did.
 extern "C" void gate6_dsa_bitblt_rect(u32 *standin, const i32 *pt, const void *bmp, const i32 *rect)
 {
     typedef void (*Fwd)(void *, const i32 *, const void *, const i32 *);
     Context *c = (Context *)standin[1];
-    if (rect && rect[0] == 0 && rect[1] == 0 &&
-        rect[2] >= (i32)GAME_CONTROL_W && rect[3] >= (i32)GAME_CONTROL_H &&
+    // The first few calls, logged: the point, the rectangle, the bitmap
+    // (0x5C2A0000 | call, then pt x<<16|y, rect tl, rect br, bmp).
+    if (c->dsaRectCalls < 4) {
+        log_event(c, NOTE_SCREEN, 0x5C2A0000u | c->dsaRectCalls);
+        log_event(c, NOTE_SCREEN, pt ? (((u32)pt[0] << 16) | ((u32)pt[1] & 0xFFFF)) : 0xFFFFFFFFu);
+        log_event(c, NOTE_SCREEN, rect ? (((u32)rect[0] << 16) | ((u32)rect[1] & 0xFFFF)) : 0xFFFFFFFFu);
+        log_event(c, NOTE_SCREEN, rect ? (((u32)rect[2] << 16) | ((u32)rect[3] & 0xFFFF)) : 0xFFFFFFFFu);
+        log_event(c, NOTE_SCREEN, (u32)bmp);
+        log_block(c);
+    }
+    c->dsaRectCalls++;
+    // The frame: a 176x208 part of the bitmap, wherever in it, put at the
+    // origin. E1304's first calls: (0,0) from (40,24)-(216,232).
+    if (rect && rect[2] - rect[0] == (i32)GAME_CONTROL_W && rect[3] - rect[1] == (i32)GAME_CONTROL_H &&
         (!pt || (pt[0] == 0 && pt[1] == 0))) {
-        fitted_blit(c, c->realGc, pt, bmp);
+        fitted_blit(c, c->realGc, pt, bmp, rect);
         return;
     }
     ((Fwd)c->dsaBltRectFwd)(standin, pt, bmp, rect);
