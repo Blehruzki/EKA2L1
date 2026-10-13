@@ -8,14 +8,12 @@ what is fixed, and what is next. Sources are named per claim, as in SYMBIAN.md.
 
 Every Bluetooth socket and SDP session needs **LocalServices**
 (oss.fcl.sf.os.bt: the Bluetooth SAP checks it; sdpnetdb.cpp checks
-`KLOCAL_SERVICES`). The user's N95 refuses to grant it to an uncertified
-package, unsigned (build 010) or self-signed (011): its install policy is
-modified (it accepts unsigned packages, which the reference policy forbids)
-and grants no user capability (SYMBIAN.md, round 171, from the installer's
-own source). So on that phone multiplayer cannot work until the phone's
-policy changes. A stock phone refuses every unsigned package but grants
-LocalServices to a self-signed one: `GAME_CAPABILITIES 0x4000` plus mksis's
-self-signing (round 169) is the package for those phones.
+`KLOCAL_SERVICES`). Rounds 169-170 read the N95's refusal as the phone's
+policy; it was the package: the exe's capabilities were never declared in
+its SIS file description, which the installer requires to match the header
+(E1280, SYMBIAN.md "Capabilities in a package"). Declared and self-signed
+(build 013's multiplayer loader), the N95 installed it without a question
+and hosted to "Waiting for players" (round 172).
 
 Everything below is the other half: the engine's own path, which has to work
 on any phone that grants the capability.
@@ -276,12 +274,8 @@ Every send goes through 0x449a54(type, data, length).
 
 1. The rest of a rally on the bench: stage 2 onward needs a path per stage
    (mkpath.py / extendpath.py from a drive), and the rally's end screens.
-2. The phone. LocalServices is the gate, on a phone as on the bench: without
-   it nobody can host. Rounds 169-170's refusal ("Required application access
-   not granted", unsigned and self-signed alike) was the package, not the
-   phone: the exe's capabilities were never declared in its file description,
-   and the installer requires them to match the header (E1280, SYMBIAN.md
-   "Capabilities in a package"). Fixed; the next multiplayer build is the
-   self-signed package with GAME_CAPABILITIES 0x4000, and its install on a
-   phone is what is left to see.
+2. The phone. Round 172: the self-signed multiplayer loader installs on the
+   N95 (LocalServices granted silently) and Host a Game reaches "Waiting for
+   players" without a freeze. **Pinned by the user:** a join from a second
+   phone, and the single-player 013 loader after uninstalling 012 (N95, E72).
 3. HCI scan-enable ioctls on 9.x: what they answer; a stand-in if refused.
