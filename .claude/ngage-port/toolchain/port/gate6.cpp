@@ -12736,18 +12736,24 @@ extern "C" u32 gate6_mda_call2(u32 *saved, Context *c, u32 slot)
         if (k == 0 || k == 40 || k == 160 || k == 320 || k == 640) {
             const u32 *dp = (const u32 *)a1;
             if (dp) {
-                // The type is the top four bits of word 0. `EPtrC` (1)
-                // keeps the data pointer in word 1; `EPtr` (2) and the
-                // `TDes8` shapes above it have `iMaxLength` there and the
-                // pointer in word 2. The first peek read word 1 for both
-                // and got 2000 -- a length, not an address.
+                // The type is the top four bits of word 0 (e32des8.h):
+                // TBufC (0) data from word 1, TPtrC (1) the pointer in word
+                // 1, TPtr (2) the pointer in word 2, TBuf (3) data from
+                // word 2, TBufCPtr (4) the pointer in word 2. The first peek
+                // read word 1 for all and got 2000 -- a length, not an
+                // address; the second read word 2 as a pointer for every type
+                // from 2 up, and Glimmerati's TBuf8 buffers handed it their
+                // first samples as one (E1297, E1300: 0xFFB5FFE7, 0xFFCE0000).
                 const u32 type = dp[0] >> 28;
                 const u32 len = dp[0] & 0x0FFFFFFFu;
-                const u32 *b = (const u32 *)((type >= 2) ? dp[2] : dp[1]);
+                const u32 *b = (type == EBufC) ? dp + 1
+                             : (type == EPtrC) ? (const u32 *)dp[1]
+                             : (type == EBufType) ? dp + 2
+                             : (const u32 *)dp[2];
                 log_event(c, NOTE_MDA_CODE, 0xB0000000u | k);
                 log_event(c, NOTE_MDA_CODE, dp[0]);
                 log_event(c, NOTE_MDA_CODE, (u32)b);      // the buffer itself, for a write watch
-                if (b && (u32)b >= 0x400000 && len <= 0x4000) {
+                if (b && user_ptr((u32)b) && (u32)b < 0x80000000u && !((u32)b & 3) && len <= 0x4000) {
                     u32 acc = 0, hits = 0;
                     for (u32 w = 0; w < len / 4; w++) {
                         acc |= b[w];
