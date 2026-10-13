@@ -87,7 +87,10 @@ netconf "$HA/config.yml" 35689 15000 35690
 cp "$HB/config.yml" "$S/duo_configB.yml"
 netconf "$HB/config.yml" 35690 16000 35689
 
-export EKA2L1_STRICTHANDLE="${EKA2L1_STRICTHANDLE:-1}" EKA2L1_KERNREQ="${EKA2L1_KERNREQ:-1}"
+# EKA2L1_BTSTRICT: inquiries answered as a device's host resolver answers them
+# (an N-Gage inquiry address in 6.1's layout found hosts here and none on a
+# phone, round 173).
+export EKA2L1_STRICTHANDLE="${EKA2L1_STRICTHANDLE:-1}" EKA2L1_KERNREQ="${EKA2L1_KERNREQ:-1}" EKA2L1_BTSTRICT="${EKA2L1_BTSTRICT:-1}"
 rm -f "$S"/duoA_*.png "$S"/duoB_*.png
 # DUO_ENV_A / DUO_ENV_B: VAR=value words for one instance only (a trace path each).
 (cd /home/user/EKA2L1/build/bin && env $DUO_ENV_A timeout -k 5 -s KILL "${TMO:-200}" ./eka2l1_qt --device "${DEVICE:-RM-409}" --run $UID3 >"$S/duoA.log" 2>&1) &

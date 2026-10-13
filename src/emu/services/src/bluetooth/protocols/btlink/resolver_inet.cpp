@@ -18,6 +18,9 @@
  */
 
 #include <common/log.h>
+
+#include <cstdlib>
+#include <cstring>
 #include <services/bluetooth/btmidman.h>
 #include <services/bluetooth/protocols/base_inet.h>
 #include <services/bluetooth/protocols/btlink/btlink_inet.h>
@@ -110,6 +113,47 @@ namespace eka2l1::epoc::bt {
     void btlink_inet_host_resolver::get_by_address(epoc::socket::saddress &addr, epoc::socket::name_entry *result, epoc::notify_info &info) {
         inquiry_socket_address &cast_addr = static_cast<inquiry_socket_address&>(addr);
         inquiry_info *info_addr_in = cast_addr.get_inquiry_info();
+
+        // EKA2L1_BTSTRICT=1: refuse what a device's CBTHostResolver::GetByAddress
+        // refuses (os/bt btstack/linkmgr/hostresolver.cpp). A cache-only
+        // request (KHostResCache, 0x20) completes at once from the inquiry
+        // cache, and there is none here, so an all-zero address is never in it;
+        // a request that asks neither an inquiry nor a name is KErrArgument;
+        // an inquiry on an IAC other than the general (0x9E8B33) or limited
+        // (0x9E8B00) one is KErrNotSupported. Off, the action flags' name bit
+        // is all that is read, which let an N-Gage title's 6.1-layout address
+        // (IAC 0, flags 0x33) discover here when it does not on a device.
+        static const bool strict = [] {
+            const char *v = std::getenv("EKA2L1_BTSTRICT");
+            return v && v[0] == '1';
+        }();
+        if (strict) {
+            const std::uint8_t act = info_addr_in->action_flags_;
+            const std::uint32_t iac = info_addr_in->iac_;
+            const std::uint8_t *raw = reinterpret_cast<const std::uint8_t *>(info_addr_in);
+            LOG_INFO(SERVICE_BLUETOOTH, "Inquiry asked: family 0x{:X}, user bytes {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} | {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} | {:02X} {:02X} {:02X} {:02X} | {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X}",
+                addr.family_, raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7], raw[8], raw[9], raw[10], raw[11],
+                raw[12], raw[13], raw[14], raw[15], raw[16], raw[17], raw[18], raw[19], raw[20], raw[21], raw[22], raw[23]);
+            bool zero_addr = true;
+            for (std::size_t i = 0; i < sizeof(info_addr_in->addr_); i++) {
+                if (reinterpret_cast<const std::uint8_t *>(&info_addr_in->addr_)[i]) {
+                    zero_addr = false;
+                }
+            }
+            int refuse = 0;
+            if ((act & INQUIRY_ACTION_CACHE_ONLY) && zero_addr) {
+                refuse = epoc::error_not_found;
+            } else if (!(act & (INQUIRY_ACTION_INCLUDE_ADDR | INQUIRY_ACTION_INCLUDE_NAME))) {
+                refuse = epoc::error_argument;
+            } else if ((act & INQUIRY_ACTION_INCLUDE_ADDR) && (iac != INQUIRY_IAC_GENERAL) && (iac != INQUIRY_IAC_LIMITED)) {
+                refuse = epoc::error_not_supported;
+            }
+            if (refuse) {
+                LOG_WARN(SERVICE_BLUETOOTH, "Inquiry refused as a device would (action 0x{:X}, IAC 0x{:X}): {}", act, iac, refuse);
+                info.complete(refuse);
+                return;
+            }
+        }
 
         if (info_addr_in->action_flags_ & INQUIRY_ACTION_INCLUDE_NAME) {
             need_name_ = true;
@@ -236,9 +280,9 @@ namespace eka2l1::epoc::bt {
             } else {
                 inquiry_socket_address &cast_addr = static_cast<inquiry_socket_address&>(friend_name_entry_->addr_);
                 inquiry_info *info_addr_in = cast_addr.get_inquiry_info();
-                info_addr_in->addr_ = *dvc_addr_res;
+                std::memcpy(info_addr_in->addr_, dvc_addr_res->addr_, sizeof(info_addr_in->addr_));
 
-                midman->add_device_address_mapping(index, info_addr_in->addr_);
+                midman->add_device_address_mapping(index, *dvc_addr_res);
 
                 friend_querier_.get_device_name_async(addr, [this, manual_direct_search](const char *result, const char result_length) {
                     kernel_system *kern = friend_retrieve_info_.requester->get_kernel_object_owner();

@@ -772,6 +772,29 @@ KLMGetACLLinkArray, ...` -- the level kept its number and the names their
 meaning, but every value moved. An N-Gage binary's numbers have to be
 translated, not forwarded.
 
+**`TInquirySockAddr`'s fields moved 8 bytes earlier between 6.1 and 9.x**
+(round 173). 6.1 (N-Gage SDK `caseinc/BT_SOCK.H`, `.INL`): `SInquiryAddr` {format,
+major service class, major and minor device class, IAC, flags} sits at
+`BTUserPtr()` = `UserPtr() + sizeof(SBTAddr)`, and GCC 2.x on ARM rounds that
+six-byte struct to 8 -- so the IAC is at +0x20 of the object and the flags at
++0x24, which is where Colin's joiner writes them. 9.x (`bluetoothclientlib/inc/
+bt_sock.h`, `btlib/btsock.cpp`): `SInquiryAddr` starts at `UserPtr()` with the
+`TBTDevAddr` inside it -- format +0x16, device class +0x1a, IAC +0x1c, action
+flags +0x20. The device-class bytes coincide; the IAC and flags do not. 9.x's
+`CBTHostResolver::GetByAddress` (`btstack/linkmgr/hostresolver.cpp`) answers a
+`KHostResCache` (0x20) request from the cache at once and refuses an IAC other
+than KGIAC/KLIAC with KErrNotSupported.
+
+**A self-signed app cannot make a phone discoverable on 9.x** (round 173).
+`KHCIReadScanEnableIoctl` (14) and `KHCIWriteScanEnableIoctl` (15) are
+deprecated in 9.x's `bt_sock.h` in favour of publish and subscribe; the L2CAP
+SAP's `Ioctl` handles only `KSolBtL2CAP` and answers anything else
+KErrNotSupported (`btstack/l2cap/l2sap.cpp`); the HCI SAP takes only the vendor
+ioctls (`VendorSAP.cpp`). `KPropertyKeyBluetoothSetScanningStatus` is defined
+with LocalServices **and** NetworkControl for read and write
+(`btstack/linkmgr/linkmgr.cpp`, `bt_subscribe_sec.h`). Discoverability is the
+phone's "My phone's visibility" setting.
+
 **9.x's btmanclient has no `RBTSecuritySettings`.** Its 84 exports (RM-409,
 EKA2L1's `epoc9.def`) carry RBTMan, the registry and comm-port settings;
 `TBTServiceSecurity` lives in bluetooth.dll on 9.x, and a listener's security

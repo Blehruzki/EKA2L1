@@ -51,7 +51,8 @@ on any phone that grants the capability.
 | Link check `GetOpt(KSolBtLM 0x1011, n)` | n = 0 `KLMGetACLLinkCount` (caseinc/BT_SOCK.H) | 0 is `ELMOutboundACLSize`; the count is 3 (lmoptions.h) | **fixed for every title**: the loader's RSocket::GetOpt hook translates 6.1's 0 and 1 at KSolBtLM to 9.x's 3 and 4 (gate6_sock_getopt, E1283); was Colin's code patch 0x49e1c (E1099) |
 | Link check failing (no capability) | -- | Leave | **fixed**: nop at 0x49e58, reads "no links" (round 170) |
 | `RFCOMM GetOpt 1` | `KRFCOMMGetAvailableServerChannel` | same | ok |
-| HCI scan-enable ioctls 14/15 (0x402c50, 0x402d88) | supported | same numbers, deprecated for P&S (bt_subscribe.h) | **open**: check what 9.x answers |
+| HCI scan-enable ioctls 14/15 (read 0x402b98, write 3 or 0 at 0x402c98), on an L2CAP socket | the host's way to be discoverable | deprecated; the L2CAP SAP answers KErrNotSupported (l2sap.cpp); the P&S replacement needs NetworkControl | **cannot be fixed by a self-signed app**: a host is visible only with "My phone's visibility: Shown to all" (round 173) |
+| Inquiry address (joiner, 0x40e568) | IAC at +0x20, flags at +0x24 (SBTAddr rounded to 8) | IAC at +0x1c, flags at +0x20 (address inside SInquiryAddr): 6.1's reads as IAC 0, action 0x33 (cache-only) | **fixed for every title**: RHostResolver::GetByAddress/Next hooked (gate6_resolver_get_by_address, E1287); the bench refuses it as a device does under EKA2L1_BTSTRICT (E1286) |
 | `RBTSecuritySettings`, `TBTServiceSecurity` | btmanclient | gone; security via `TBTSockAddr::SetSecurity` | stand-ins: registration "done", default security (round 166) |
 | SDP record (0x40dfc8): the builder | sdpdatabase, GCC 2.x builder | 9.x `CSdpAttrValueDES` (EABI vtable) | **fixed**: `gate6_sdp_builder`, a GCC 2.x shadow per builder (E1108) |
 | SDP record: `RSdpDatabase` | 0x10 bytes | 0x18 on RM-409, iBuffer at +0x14 (the engine's counter) | **fixed**: `gate6_sdpdb_this`, a 9.2-sized object on the side (E1110-E1111) |
@@ -278,4 +279,8 @@ Every send goes through 0x449a54(type, data, length).
    N95 (LocalServices granted silently) and Host a Game reaches "Waiting for
    players" without a freeze. **Pinned by the user:** a join from a second
    phone, and the single-player 013 loader after uninstalling 012 (N95, E72).
-3. HCI scan-enable ioctls on 9.x: what they answer; a stand-in if refused.
+3. Round 173 (N95 host, N73 join): no host seen; the N73 listed a 6630.
+   Fixed the joiner's inquiry address (E1287); a host is visible only when
+   its owner sets "Shown to all" (the scan-enable ioctls are refused on 9.x).
+   Open: Join with Bluetooth off leaves the game alive and its screen gone --
+   the launcher answers every ask "Bluetooth on" (GAME_LAUNCHER_BT_ON).

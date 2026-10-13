@@ -122,6 +122,8 @@ enum {
     IMPORT_PUSHL_CBASE                 =   165,
     IMPORT_READ_FILE_SECTION           = 65535,   // absent
     IMPORT_REQUEST_COMPLETE            =   168,
+    IMPORT_RESOLVER_GET_BY_ADDRESS     =    49,
+    IMPORT_RESOLVER_NEXT               =    55,
     IMPORT_RWIN_BEGIN_REDRAW           =   281,
     IMPORT_RWIN_CTOR                   =   318,
     IMPORT_RWIN_CTOR_WS                =   319,

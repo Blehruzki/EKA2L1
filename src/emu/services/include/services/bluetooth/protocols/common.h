@@ -20,6 +20,7 @@
 #pragma once
 
 #include <services/socket/common.h>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 
@@ -120,7 +121,14 @@ namespace eka2l1::epoc::bt {
 
     enum inquiry_action {
         INQUIRY_ACTION_INCLUDE_ADDR = 1,
-        INQUIRY_ACTION_INCLUDE_NAME = 2
+        INQUIRY_ACTION_INCLUDE_NAME = 2,
+        INQUIRY_ACTION_IGNORE_CACHE = 16,
+        INQUIRY_ACTION_CACHE_ONLY = 32
+    };
+
+    enum inquiry_access_code : std::uint32_t {
+        INQUIRY_IAC_GENERAL = 0x9E8B33,     ///< KGIAC
+        INQUIRY_IAC_LIMITED = 0x9E8B00      ///< KLIAC
     };
 
     enum major_service_class {
@@ -155,8 +163,12 @@ namespace eka2l1::epoc::bt {
     };
 
 #pragma pack(push, 1)
+    // TInquirySockAddr::SInquiryAddr (os/bt bluetoothclientlib/inc/bt_sock.h):
+    // the address is a TBTDevAddr, six bytes, so the format byte follows it at
+    // 6 and the IAC sits at 12, the action flags at 16. A device_address here
+    // (six bytes and a padding word) put every field after it two bytes late.
     struct inquiry_info {
-        device_address addr_;
+        std::uint8_t addr_[6];
         std::uint8_t format_type_field_;
         std::uint8_t padding_;
         std::uint16_t major_service_class_;
@@ -168,6 +180,8 @@ namespace eka2l1::epoc::bt {
         std::int8_t rssi_;
     };
 #pragma pack(pop)
+
+    static_assert(offsetof(inquiry_info, iac_) == 12 && offsetof(inquiry_info, action_flags_) == 16 && sizeof(inquiry_info) == 19);
     
     struct inquiry_socket_address : public socket::saddress {
         inquiry_info *get_inquiry_info() {

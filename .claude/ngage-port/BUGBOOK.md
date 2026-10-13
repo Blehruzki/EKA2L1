@@ -2183,3 +2183,28 @@ uninstalled first (RELEASE.md).
 *Lesson: "unsigned installs fine" is two questions -- the installer's and the
 launcher's -- and a range the documentation calls test-only is a bet on every
 firmware's leniency.*
+
+### 13.am Join finds no host between phones: 6.1's inquiry address, and a host that cannot make itself visible (round 173, E1284-E1287)
+**Symptom.** N95 8GB hosting, N73 joining: neither saw the other, but the
+N73's JOIN GAME listed a nearby Nokia 6630 (Bluetooth on, "Shown to all")
+that was not running the game.
+**Cause.** Two, from the binary and os/bt's source. The joiner writes its
+TInquirySockAddr itself -- 6.1's SetIAC and SetAction are inline -- with
+KGIAC at +0x20 and the flags at +0x24, 6.1's offsets (its SBTAddr rounds to
+8 bytes). 9.x moved the address into SInquiryAddr: it reads IAC 0 and action
+0x33 there, a cache-only lookup of a zero address and an IAC it refuses. The
+N73's 9.1 stack still inquired (it found the 6630); a 9.2 joiner likely does
+not. And the host makes itself discoverable with KHCIWriteScanEnableIoctl,
+which 9.x's L2CAP SAP answers KErrNotSupported; its replacement key needs
+NetworkControl. A host on S60v3 is visible only if its owner set "Shown to
+all". The bench missed the first because EKA2L1's own inquiry struct padded
+the address to 8 bytes and read every field two bytes late, and checked
+nothing but the name bit.
+**Fix.** The loader hooks RHostResolver::GetByAddress and Next for every
+title and moves a 6.1 IAC and flags to 9.x's offsets
+(gate6_resolver_get_by_address). EKA2L1's inquiry_info is at 9.x's offsets,
+and EKA2L1_BTSTRICT=1 (on in duo.sh) refuses what a device refuses: without
+the hook the bench now reads "No Drivers Found", with it the duo joins and
+races. The host's visibility stays the player's setting.
+*Lesson: an emulated struct is a claim about a layout too; check its offsets
+against the platform header before trusting a bench that "works".*

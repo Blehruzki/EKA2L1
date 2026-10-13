@@ -23,6 +23,7 @@ the emulator.
 | `EKA2L1_STRICTHANDLE=1\|2` | off (lenient) | `1` logs every rejected handle with guest PC/LR; `2` panics the thread **KERN-EXEC 0** as a device would, instead of returning an error code or nothing. | `kernel/src/kernel.cpp` (`get_kernel_obj_raw`) | emulator |
 | `EKA2L1_KERNREQ=1` | off (the emulator clears `ERequestPending`) | A request's completion writes the status word only, as EKA2's `DThread::RequestComplete` does (`sizeof(TInt)`); the `iFlags` word is left for the active scheduler. Off, the emulator also clears the pending bit on completion, which a device never does, so an EKA1 one-word `TRequestStatus` followed by a field of the program's own works here and not on a phone. | `utils/include/utils/reqsts.h` (`request_status::set`), `utils/src/reqsts.cpp` | emulator |
 | `EKA2L1_BTSPLIT=<n>` | off (a receive takes everything available) | A Bluetooth-over-IP stream receive that takes what is available (`RecvOneOrMore`) is handed **at most `<n>` bytes**, the rest kept for the next receive. RFCOMM is a byte stream that a phone's radio delivers in pieces; loopback TCP almost always hands a whole write over at once, so guest code that assumes one message per receive passes here and fails between phones. | `services/src/internet/protocols/socket.cpp` (`bt_split_cap`) | ngage-port |
+| `EKA2L1_BTSTRICT=1` | off (only the inquiry's name bit is read) | A Bluetooth host-resolver inquiry is refused as a device's `CBTHostResolver::GetByAddress` refuses it (os/bt `btstack/linkmgr/hostresolver.cpp`): a cache-only request (`KHostResCache`) for an all-zero address completes `KErrNotFound`, one asking neither inquiry nor name `KErrArgument`, an inquiry on an IAC other than `KGIAC`/`KLIAC` `KErrNotSupported`; each request's raw address is logged. An N-Gage title's inquiry address in 6.1's layout (IAC 0, action 0x33 as 9.x reads it) discovered hosts here and none on a phone. `duo.sh` turns it on. | `services/src/bluetooth/protocols/btlink/resolver_inet.cpp` (`get_by_address`) | ngage-port |
 
 ## Diagnostics (observe only)
 
@@ -114,6 +115,16 @@ always answers SDP, with no records when it has none, so a TCP refusal
 returns zero records, and an attribute request gets an SDP error. A joiner
 that picked a friend not hosting yet went down an error path a phone never
 takes and died there (ngage-port E1136-E1137).
+
+## The inquiry address at 9.x's offsets
+
+`inquiry_info` (`services/include/services/bluetooth/protocols/common.h`) began with a
+`device_address`, six bytes and a padding word, where 9.x's `TInquirySockAddr::SInquiryAddr`
+(os/bt `bluetoothclientlib/inc/bt_sock.h`) has a six-byte `TBTDevAddr`. Every field after it
+was two bytes late: the IAC read at +14 instead of +12, the action flags at +18 instead of
++16, and a result's major device class written where a device keeps the IAC. The address is
+six raw bytes now, and a `static_assert` holds the IAC at 12 and the flags at 16 (ngage-port,
+round 173).
 
 ## A Bluetooth stream Write completes once it is queued
 
