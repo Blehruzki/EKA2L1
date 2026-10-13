@@ -271,6 +271,43 @@ Every send goes through 0x449a54(type, data, length).
   records at 0x48f6924 single-player, 0x48f6ab4 and 0x48f75f8 two-player,
   record 0 the local car on both sides).
 
+## Device combinations: Bluetooth version and OS version (round 173)
+
+The user's question: phones with Bluetooth 1.2 and 2.0, OS 9.1 to 9.3, and an
+original N-Gage running the game, in any pairing. What reaches the game and
+what does not, with the source for each.
+
+**The radio version does not reach the game.** Bluetooth is backward
+compatible: a 2.0+EDR phone talks to a 1.1 or 1.2 one at basic rate (721
+kbit/s), and the stack's APIs are the same whatever the radio. The game's
+traffic is small -- a 40-byte car update and a 12-byte ack about 15 times a
+second each way, under 2 KB/s -- so basic rate has room to spare. 1.2's
+adaptive hopping and interlaced scan make discovery faster and links steadier
+in a crowded 2.4 GHz band; they change no call. Radios: N-Gage QD 1.1
+(GSMArena, Phonescoop), N73 2.0+EDR (Wikipedia), E72 2.0 (PhoneArena).
+
+**What does differ, and where it is handled:**
+
+| Difference | Between | What it does | State |
+|---|---|---|---|
+| ACL packet size (DH5 against 2-DH5/3-DH5) and RFCOMM frame size | any two radios | the same message arrives in different pieces | handled: the pump's two code patches (E1226-E1227); the bench shows it with EKA2L1_BTSPLIT |
+| Inquiry address layout | 6.1 game on any 9.x | IAC and flags read 8 bytes early | fixed for 9.x, every title (E1287); an N-Gage's own stack reads 6.1's layout, nothing to do |
+| How strictly the host resolver checks it | 9.1 (lenient: the N73 still searched) against later 9.x (KHostResCache, the IAC check) | a 9.2/9.3 joiner found nothing before E1287 | fixed by the same translation |
+| Making the host visible (HCI scan enable) | 6.1 works; every 9.x refuses it | an S60v3 host is found only with "Shown to all" | the player's setting; an N-Gage host makes itself visible |
+| Link security | 6.1 registers none (0x4ae9bc(0, 0, 0, channel)); 9.x's TBTSockAddr defaults to none | no pairing on either side | matches: 9.x's default is the game's request (btsock.cpp) |
+| Secure Simple Pairing (Bluetooth 2.1+) | a 2.1 phone (Symbian^3 era) with anyone | "Just Works" may ask a 2.1 pair to confirm; with a 1.x/2.0 peer it falls back to legacy, and no security is asked | not measured; no S60v3 phone so far is 2.1 |
+| Device-class filter in the joiner (0x40e770: misc, phone, uncategorised) | any | lists phones only | same offset on 6.1 and 9.x; an N-Gage reports phone |
+
+**An original N-Gage in the session.** The engine and its protocol are the
+same binary on both, so the messages agree. The SDP record an S60v3 host
+publishes is built by the engine's own code through the port's GCC 2.x
+builder shadow (13.ah); an N-Gage joiner reads it with its own SDP agent, and
+nothing has compared the bytes with an N-Gage host's record yet. Two things
+to check first: the game version on the N-Gage's card against the port's data
+(a different build may refuse the session), and the SDP record. The cheapest
+first test of all is an N-Gage hosting and an S60v3 phone joining: the
+N-Gage makes itself visible, so the visibility setting is out of the way.
+
 ## Next steps, in order
 
 1. The rest of a rally on the bench: stage 2 onward needs a path per stage

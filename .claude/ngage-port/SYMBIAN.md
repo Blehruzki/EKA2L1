@@ -795,6 +795,14 @@ with LocalServices **and** NetworkControl for read and write
 (`btstack/linkmgr/linkmgr.cpp`, `bt_subscribe_sec.h`). Discoverability is the
 phone's "My phone's visibility" setting.
 
+**9.x's default socket security is "none", which is what an N-Gage host
+registers** (round 173). `TBTSockAddr::TBTSockAddr()` (`btlib/btsock.cpp`)
+sets authorisation off, authentication `EMitmNotRequired`, encryption off, no
+passkey minimum. Colin's host calls its registration as 0x4ae9bc(0, 0, 0,
+channel): `SetAuthentication(0)`, `SetEncryption(0)`, `SetAuthorisation(0)` on
+a `TBTServiceSecurity` for RFCOMM. So the port's no-op stand-ins for
+`RBTSecuritySettings` lose nothing on that source.
+
 **9.x's btmanclient has no `RBTSecuritySettings`.** Its 84 exports (RM-409,
 EKA2L1's `epoc9.def`) carry RBTMan, the registry and comm-port settings;
 `TBTServiceSecurity` lives in bluetooth.dll on 9.x, and a listener's security
