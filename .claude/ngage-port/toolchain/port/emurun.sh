@@ -27,6 +27,10 @@ STEM=$(sed -n "s/.*GAME_STEM_CHARS[[:space:]]*//p" "$P/games/$GAME/game.h" | tr 
 
 export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe QT_QPA_PLATFORM=xcb DISPLAY=:99
 pgrep -x Xvfb >/dev/null || { nohup Xvfb :99 -screen 0 1280x900x24 >"$S/xvfb.log" 2>&1 & sleep 3; }
+# A phone sends one key-down and one key-up for a held key. The X server's
+# autorepeat sends up/down pairs while it is held, and each one restarted the
+# hold-C timer: holds that did not step (E1338, E1339). Off, as on a phone.
+python3 -c "from Xlib import display, X; d = display.Display(':99'); d.change_keyboard_control(auto_repeat_mode=X.AutoRepeatModeOff); d.sync()" 2>/dev/null
 # Round 158: built as the release builds it -- with the icon, whose MIF the
 # caption resource names. Without it the S60 3.0 app list hands aknicon a
 # bare drive root and the launch leaves -28 (E870); a package always has it.
@@ -96,8 +100,11 @@ s = open(path).read()
 marker = '<!-- EMURUN -->'
 row = '| %s | %s | %s | `%s` | TODO |\n' % (num, change, rec, fault)
 i = s.index(marker)
-j = s.rindex('\n', 0, i)          # the blank line before the marker
-j = s.rindex('\n', 0, j) + 1      # end of the last table row
+# Just after the last table row above the marker, blank line or not: a
+# hand edit that dropped the blank line once put every new row above the
+# previous one (E1327, E1336).
+j = s.rindex('\n| ', 0, i) + 1    # start of the last row
+j = s.index('\n', j) + 1           # and its end
 open(path, 'w').write(s[:j] + row + s[j:])
 PY
 flock -u 9

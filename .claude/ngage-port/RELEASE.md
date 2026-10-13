@@ -49,6 +49,13 @@ E1028 the drive on E:, E1029 the data on C: with the loader on E: and QUIT,
 E1030 an app switch). Check the zip by extracting it and diffing it against
 the tree the bench ran.
 
+## Before any build goes out: the shared features
+
+The battery in CLAUDE.md ("Hardware rounds"), on the build's exact code:
+hold C through every mode, the choice saved and read back, a tap passing
+through, a minimize and return, the title's own Quit, into play. Each step
+logged; no battery on record, no build.
+
 ## Before any build goes out: the package itself
 
 **UIDs**: every release UID is in the unprotected range 0xA0000000-0xAFFFFFFF

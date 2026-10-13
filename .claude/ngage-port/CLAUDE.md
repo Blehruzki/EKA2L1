@@ -199,6 +199,23 @@ out. Add to it whenever a format grows a state.
 
 ## Hardware rounds
 
+**Run the shared-feature battery on the exact code of a build before it goes
+out** -- the person holding the phone asked for this after Glimmerati 001
+went out tested only on its own fixes. On the bench, with that build's
+source and every bench knob back to 0 except where a step needs one:
+1. Boot to the title's menu; no fault; the log and box written.
+2. Hold C (BackSpace) through every picture mode, each one drawn; a tap of C
+   passes through without a step; the choice written to `C:\gate6-<stem>.cfg`.
+3. Relaunch: the choice read back (`saved choice read`), the menu in that mode.
+4. Minimize and return (`BENCH_BACKGROUND_TICK` / `FOREGROUND`): no fault,
+   the title drawing after the return, keys and hold C working after it.
+5. Leave through the title's own Quit: the process ends without a fault.
+6. Into play (a race, a fight, a level) with the keys that matter.
+7. `rules.py`: every self-test passing.
+Log each step as its row; a build whose battery is not on record does not go
+out. The Glimmerati rows (E1338-E1342) are a template, with
+`glimwait.py`-style menu detection rather than fixed timings.
+
 Minimise them. A round costs a person's evening; a bench run costs ninety
 seconds. Before asking for one, ask what it can establish that `emurun.sh`
 cannot, and say so. Never run `emurun.sh` while another run is in flight.
