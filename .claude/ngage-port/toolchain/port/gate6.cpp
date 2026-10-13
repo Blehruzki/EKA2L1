@@ -9552,6 +9552,7 @@ enum { COEENV_SYSTEM_GC = 0x40 };
 // Reserved, inherited both sides.
 enum { OLD_WINGC_SLOTS = 63, OLD_WINGC_BITBLT_FWD = 46 };
 extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp);   // below, with the picture modes
+extern "C" void gate6_dsa_bitblt(u32 *standin, const i32 *pt, const void *bmp);   // the same, for the DSA gc
 static void hold_timer_start(Context *c);
 extern "C" void gate6_ui_foreground(void *self, u32 foreground, Context *c);
 static const u8 kWinGcSlot[OLD_WINGC_SLOTS] = {
@@ -9908,15 +9909,17 @@ static void blit_rate_note(Context *c)
     c->blitFast0 = now;
 }
 
-extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
+// The fitted blit, for whichever real gc stands behind the game's: the window
+// gc (Ashen, gate6_wgc_bitblt) or the direct-screen-access CFbsBitGc
+// (Glimmerati, gate6_dsa_bitblt). Both are CBitmapContexts, so BitBlt,
+// DrawBitmap(TRect), Clear and the brush calls sit at the same EABI slots.
+static void fitted_blit(Context *c, u32 *real, const i32 *pt, const void *bmp)
 {
     typedef void (*BitBltFn)(void *, const i32 *, const void *);
     typedef void (*DrawBitmapFn)(void *, const i32 *, const void *);
     typedef void (*ClearFn)(void *);
     typedef void (*BrushColorFn)(void *, const u32 *);
     typedef void (*BrushStyleFn)(void *, u32);
-    Context *c = (Context *)standin[1];
-    u32 *real = c->realWinGc;
     const u32 *vt = (const u32 *)real[0];
     c->lastBmp = bmp;
     if (GAME_SCREEN_MODES && c->screenW)
@@ -9967,6 +9970,24 @@ extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
     blit_rate_note(c);
     const i32 dst[4] = { x, y, x + (i32)c->dstW, y + (i32)c->dstH };
     ((DrawBitmapFn)vt[NEW_GC_DRAWBITMAP_RECT])(real, dst, bmp);
+}
+
+extern "C" void gate6_wgc_bitblt(u32 *standin, const i32 *pt, const void *bmp)
+{
+    Context *c = (Context *)standin[1];
+    fitted_blit(c, c->realWinGc, pt, bmp);
+}
+
+// **The picture modes for a title that blits through direct screen access**
+// (Glimmerati, round 176's bench). Its frames go out as BitBlt((0,0), frame)
+// on the DSA's gc -- old slot 46 of the stand-in the port gives it -- which
+// forwarded one to one to the real CFbsBitGc: the 176x208 picture at the
+// panel's top left, and holding C did nothing. With GAME_SCREEN_MODES and a
+// GAME_CONTROL_W the slot is this, and the frame lands fitted as Ashen's does.
+extern "C" void gate6_dsa_bitblt(u32 *standin, const i32 *pt, const void *bmp)
+{
+    Context *c = (Context *)standin[1];
+    fitted_blit(c, c->realGc, pt, bmp);
 }
 
 // The hold's clock. The Asphalts tick it once a frame from the port's own
@@ -16670,7 +16691,7 @@ static u32 load_and_start()
         // graphics context inside it.
         ctx->dsaShadow = (u32 *)user_allocz(OLD_DSA_BYTES);
         u32 *gcVt = (u32 *)user_allocz((2 + OLD_GC_SLOTS) * 4);
-        ctx->fakeGc = (u32 *)user_allocz(4);
+        ctx->fakeGc = (u32 *)user_allocz(8);    // the vptr, then the context (gate6_dsa_bitblt)
         u32 *shadowVt = (u32 *)user_allocz(DSA_SHADOW_VT_SLOTS * 4);
         if (!ctx->dsaShadow || !gcVt || !ctx->fakeGc || !shadowVt) PANIC(CAT_MEM, -37);
         u8 *gcRoom = ctx->spare;
@@ -16696,8 +16717,11 @@ static u32 load_and_start()
             user_imb_range(b, b + 2);
         }
         ctx->spare = gcRoom + OLD_GC_SLOTS * GC_THUNK_BYTES;
+        if (GAME_SCREEN_MODES && GAME_CONTROL_W && DRAW_THE_FRAME)
+            gcVt[2 + OLD_GC_BITBLT] = (u32)&gate6_dsa_bitblt;
         // GCC98r2 keeps the two header words in the table and points at them.
         ctx->fakeGc[0] = (u32)gcVt;
+        ctx->fakeGc[1] = (u32)ctx;
 
         iat[IMPORT_DSA_NEWL] = dsa_thunk(spare + 8 * TRACE, &ctx->oldObserver, obs,
                                          iat[IMPORT_DSA_NEWL], &ctx->dsaReal,

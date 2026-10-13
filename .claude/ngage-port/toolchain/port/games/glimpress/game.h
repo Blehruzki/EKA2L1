@@ -54,8 +54,10 @@ enum { GAME_SRC_ORIGIN = 0 };
 // The control's extent, and so what Rect().Size() answers: 0 is the whole
 // screen. A title that sizes its frame bitmaps from its control wants the
 // N-Gage's 176x208 here (Ashen, E372).
-#define GAME_CONTROL_W 0
-#define GAME_CONTROL_H 0
+// Glimmerati: the N-Gage's 176x208, so GAME_SCREEN_MODES has a size to fit
+// (E1207 drew one to one at the top left with 0).
+#define GAME_CONTROL_W 176
+#define GAME_CONTROL_H 208
 
 // Words of the image rewritten after loading, {offset, expected word, new
 // word}: for a bug of the game's own that EKA1 forgave (Ashen reads the
@@ -90,6 +92,10 @@ enum { GAME_SRC_ORIGIN = 0 };
 // frame's BitBlt lands at the fitted rectangle (round 114). Needs
 // GAME_CONTROL_W; a title on the port's own buffer has the modes already.
 #define GAME_SCREEN_MODES 1
+
+// Round 150's scaler and area filter, as Ashen ships them (see Ashen's game.h).
+#define GAME_PORT_SCALER 1
+#define GAME_SCALE_FILTER 1
 
 // CActive::Cancel from the game on an object that is neither the port's
 // wrapped timer nor its DSA shadow is dropped; 1 forwards it when the object
