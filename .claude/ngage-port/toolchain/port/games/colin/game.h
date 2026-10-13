@@ -108,11 +108,10 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
                           { 0x000a7260, 0x1593C008, 0x1593C004 }, /* delete the CActiveScheduler */ \
                           { 0x000a8440, 0xE92D4000, 0xE3A00001 }, /* the flip always direct: mov r0, #1 */ \
                           { 0x000a8444, 0xE59F3024, 0xE12FFF1E }, /*   bx lr */ \
-                          { 0x00049e58, 0x1B035823, 0xE1A00000 }, /* the link check: an error reads as no links, never a Leave (round 170) */ \
-                          { 0x00049e1c, 0xE1A01006, 0xE3A01003 }, /* its option: 6.1's KLMGetACLLinkCount (0) is 9.x's 3 (round 171) */ \
+                          { 0x00049e58, 0x1B035823, 0xE1A00000 }, /* the link check: an error reads as no links, never a Leave (round 170); its option number is translated for every title (gate6_sock_getopt) */ \
                           { 0x00049890, 0x0A00000A, 0x0A000037 }, /* the pump: a body still short after its 10 reads waits for the next frame */ \
                           { 0x000498c4, 0x0AFFFFBB, 0xE1A00000 }  /*   and one finished on the 10th read is a message, not a lost link */
-#define GAME_CODE_PATCH_COUNT 23
+#define GAME_CODE_PATCH_COUNT 22
 // **The receive on a status of the port's own (E1243).** The engine's network
 // object keeps its Write status at +0x10 and its receive status at +0x14, one
 // EKA1 word each, and 9.x's RSocket::Write ORs ERequestPending (2) into the

@@ -48,7 +48,7 @@ on any phone that grants the capability.
 
 | Item | N-Gage (6.1) | S60v3 (9.x) | State |
 |---|---|---|---|
-| Link check `GetOpt(KSolBtLM 0x1011, n)` | n = 0 `KLMGetACLLinkCount` (caseinc/BT_SOCK.H) | 0 is `ELMOutboundACLSize`; the count is 3 (lmoptions.h) | **fixed**: code patch 0x49e1c (E1099) |
+| Link check `GetOpt(KSolBtLM 0x1011, n)` | n = 0 `KLMGetACLLinkCount` (caseinc/BT_SOCK.H) | 0 is `ELMOutboundACLSize`; the count is 3 (lmoptions.h) | **fixed for every title**: the loader's RSocket::GetOpt hook translates 6.1's 0 and 1 at KSolBtLM to 9.x's 3 and 4 (gate6_sock_getopt, E1283); was Colin's code patch 0x49e1c (E1099) |
 | Link check failing (no capability) | -- | Leave | **fixed**: nop at 0x49e58, reads "no links" (round 170) |
 | `RFCOMM GetOpt 1` | `KRFCOMMGetAvailableServerChannel` | same | ok |
 | HCI scan-enable ioctls 14/15 (0x402c50, 0x402d88) | supported | same numbers, deprecated for P&S (bt_subscribe.h) | **open**: check what 9.x answers |

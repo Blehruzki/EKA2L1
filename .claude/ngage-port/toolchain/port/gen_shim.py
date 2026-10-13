@@ -648,6 +648,8 @@ HOOKS = {
     'IMPORT_FS_VOLUME':               ('efsrv', 193),   # RFs::Volume(TVolumeInfo&, TInt): the same, field by field
     'IMPORT_FS_SET_DEFAULT_PATH':     ('efsrv', 168),   # RFs::SetDefaultPath: kept, and set as the session path (round 125)
     'IMPORT_FS_CONNECT':              ('efsrv', 18),    # RFs::Connect: the new session given the default path
+    'IMPORT_SOCK_GETOPT':             ('esock', 87),    # RSocket::GetOpt(name, level, TDes8&): 6.1's Bluetooth link-manager option numbers made 9.x's (gate6_sock_getopt)
+    'IMPORT_SOCK_GETOPT_INT':         ('esock', 88),    # RSocket::GetOpt(name, level, TInt&): the same (Colin asks its RFCOMM server channel through it)
     'IMPORT_PUSHL_CBASE':             ('euser', 858),   # CleanupStack::PushL(CBase*): the game's own objects pushed with their old destructor (round 125)
     'IMPORT_FILE_SIZE':               ('efsrv', 185),   # RFile::Size(TInt&) -- logged, the same
     # Round 113: GCC98r2 keeps a double's high word first (the FPA order) and

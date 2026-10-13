@@ -1353,6 +1353,8 @@ struct Context {
     u32 realFindWildByDir, realFileManNewL;   // efsrv's, before the hooks that make their objects deletable (round 125)
     u32 realFsEntry, realFsVolume;             // RFs::Entry and RFs::Volume, which fill a 9.x-sized object (round 125)
     u32 realFsConnect;                         // RFs::Connect, before the hook that sets the session path
+    u32 realSockGetOpt;                        // RSocket::GetOpt, before the 6.1 -> 9.x option translation (gate6_sock_getopt)
+    u32 realSockGetOptInt;                     // RSocket::GetOpt(name, level, TInt&), the same (gate6_sock_getopt_int)
     u32 setSessionPathFn;                      // RFs::SetSessionPath, resolved on the main thread for every thread's Connect
     u32 pushItemFn;                            // CleanupStack::PushL(TCleanupItem), likewise
     u32 logonStatus[2];                        // the eight-byte TRequestStatus a diverted RThread::Logon gets
@@ -12238,6 +12240,42 @@ extern "C" int gate6_complete_r2(void *, void *, u32 *status, Context *c)
     return 0;
 }
 
+// **Bluetooth link-manager option numbers, 6.1 to 9.x** (Colin, E1098-E1099;
+// shared since round 172). The level KSolBtLM (0x1011) kept its number, but
+// 9.x put three options in front of 6.1's two (SYMBIAN.md "Bluetooth socket
+// option numbers moved"): 6.1's KLMGetACLLinkCount 0 and KLMGetACLLinkArray 1
+// are 9.x's 3 and 4, and 9.x's 0 and 1 are the ACL packet sizes. An N-Gage
+// binary can only mean the 6.1 pair, so those two are translated for every
+// title; anything else at that level, and every other level, is forwarded as
+// it came. Colin's engine asks the count before it hosts (0x449d64), and an
+// untranslated 0 asked a size instead -- "Bluetooth connection is busy".
+// GetOpt(aOptionName, aOptionLevel, aOption): the name comes first (es_sock.h).
+enum { KSOL_BT_LM = 0x1011, LM61_ACL_LINK_COUNT = 0, LM61_ACL_LINK_ARRAY = 1,
+       LM9X_ACL_LINK_COUNT = 3, LM9X_ACL_LINK_ARRAY = 4 };
+static u32 bt_lm_option(u32 name, u32 level)
+{
+    if (level != (u32)KSOL_BT_LM)
+        return name;
+    if (name == (u32)LM61_ACL_LINK_COUNT)
+        return LM9X_ACL_LINK_COUNT;
+    if (name == (u32)LM61_ACL_LINK_ARRAY)
+        return LM9X_ACL_LINK_ARRAY;
+    return name;
+}
+extern "C" int gate6_sock_getopt(void *sock, u32 name, u32 level, u32 *des, Context *c)
+{
+    typedef int (*Fn)(void *, u32, u32, u32 *);
+    return ((Fn)c->realSockGetOpt)(sock, bt_lm_option(name, level), level, des);
+}
+// The TInt& overload (old esock 88; epoc6.def's ordinal, confirmed by use:
+// Colin's host asks GetOpt(1, KSolBtRFCOMM 0x1013, TInt&) through it at
+// 0x4ae904 for a free server channel, and listens on what it answers).
+extern "C" int gate6_sock_getopt_int(void *sock, u32 name, u32 level, i32 *value, Context *c)
+{
+    typedef int (*Fn)(void *, u32, u32, i32 *);
+    return ((Fn)c->realSockGetOptInt)(sock, bt_lm_option(name, level), level, value);
+}
+
 // Bench knob: the Nth SetAudioPropertiesL (slot 3) leaves with KErrNotSupported
 // instead of being forwarded. The game's own code at 0x14398 traps that call
 // and, on -5 at 16 kHz, retries at 8 kHz -- so a working bridge shows as a
@@ -16364,6 +16402,18 @@ static u32 load_and_start()
         ctx->realFsConnect = iat[IMPORT_FS_CONNECT];   // the trace thunk, when Connect is traced: it stays
         iat[IMPORT_FS_CONNECT] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_fs_connect);
         ctx->spare += TRACE;
+    }
+    if (nImports > IMPORT_SOCK_GETOPT && IMPORT_SOCK_GETOPT < kShimCount &&
+        (kShimTable[IMPORT_SOCK_GETOPT] >> 24) == KIND_CALL && ctx->spare + ARG5_BYTES <= ctx->spareEnd) {
+        ctx->realSockGetOpt = iat[IMPORT_SOCK_GETOPT];   // the trace thunk, when GetOpt is traced: it stays
+        iat[IMPORT_SOCK_GETOPT] = arg5_thunk(ctx->spare, ctx, (u32)&gate6_sock_getopt);
+        ctx->spare += ARG5_BYTES;
+    }
+    if (nImports > IMPORT_SOCK_GETOPT_INT && IMPORT_SOCK_GETOPT_INT < kShimCount &&
+        (kShimTable[IMPORT_SOCK_GETOPT_INT] >> 24) == KIND_CALL && ctx->spare + ARG5_BYTES <= ctx->spareEnd) {
+        ctx->realSockGetOptInt = iat[IMPORT_SOCK_GETOPT_INT];
+        iat[IMPORT_SOCK_GETOPT_INT] = arg5_thunk(ctx->spare, ctx, (u32)&gate6_sock_getopt_int);
+        ctx->spare += ARG5_BYTES;
     }
     if (nImports > IMPORT_APPUI_FACTORY)
         iat[IMPORT_APPUI_FACTORY] = ctx_thunk(stub + SLOT * IMPORT_APPUI_FACTORY, ctx, (u32)&gate6_appui_factory);

@@ -6,6 +6,10 @@ at() { while [ $(( $(date +%s) - t0 )) -lt $1 ]; do sleep 0.5; done; }
 k() { timeout 5 xdotool windowactivate --sync "$W" 2>/dev/null; timeout 5 xdotool key --window "$W" $1; }
 shot() { timeout 10 import -window "$W" ${O}_$1.png 2>/dev/null; }
 ( for t in $(seq 8 10 700); do at $t; shot $(printf %03d $t)s; done ) &
+# The keys are timed from the main menu, not the launch, as in solo_ap.sh: a
+# slow boot left A's first Right on a white screen and sent it into RALLY
+# (the GetOpt duo, after E1281). t0 moves so the first key lands as before.
+python3 "$(dirname "$0")/waitmenu.py" "$W" && t0=$(( $(date +%s) - 28 ))
 at 29; k Right; at 32; k Return; at 39; k Return; at 43; k 2; at 46; k 3; at 49; k 4; at 53; k Return
 at 60; k Down; at 61; k Return; at 72; k Return   # Join a Game, select the host: the lobby
 at 108; k Down; at 109; k Down; at 110; k Left; at 111; k Return   # Ready: Yes
