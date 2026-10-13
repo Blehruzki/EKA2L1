@@ -119,6 +119,13 @@ namespace eka2l1::epoc::bt {
         }
     };
 
+    // EKA2L1_BTOFF=1: the radio is switched off, as a phone's Bluetooth
+    // setting does. Searches, name lookups and outgoing links complete
+    // KErrHardwareNotAvailable, as os/bt's host resolver answers with its
+    // hardware off (btstack/linkmgr/hostresolver.cpp, HWState() == EOff).
+    bool bt_radio_off();
+    void bt_set_radio_off(const bool off);
+
     enum inquiry_action {
         INQUIRY_ACTION_INCLUDE_ADDR = 1,
         INQUIRY_ACTION_INCLUDE_NAME = 2,

@@ -326,5 +326,13 @@ NetworkControl).
    The N95 was "Shown to all"; the joiner's host filter dropped it on its
    service class (fixed, E1289). A host is visible only with "Shown to all"
    (the scan-enable ioctls are refused on 9.x).
-   Open: Join with Bluetooth off leaves the game alive and its screen gone --
-   the launcher answers every ask "Bluetooth on" (GAME_LAUNCHER_BT_ON).
+   Join with Bluetooth off left the game alive and its screen gone (an
+   N95, round 173). The launcher answered every ask "Bluetooth on"; the
+   N-Gage's made it true. GAME_LAUNCHER_BT_POWER (E1291-E1293) answers each
+   ask after the boot one from S60's power notifier, which asks the player
+   to switch Bluetooth on: Yes and the game goes on. No, and the engine
+   still opens Host and Join by its back way (E1184, E1292) -- on the bench
+   that ends in its own "Bluetooth connection lost"; what takes the screen
+   on a phone is not in the engine and not measured (round 176 asks for the
+   files). Join itself never asks (0x47def8); MULTIPLAYER (0x47d204) and
+   Host (0x47de9c) do.

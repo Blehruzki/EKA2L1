@@ -19,6 +19,7 @@
 
 #include <common/log.h>
 
+#include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <services/bluetooth/btmidman.h>
@@ -113,6 +114,12 @@ namespace eka2l1::epoc::bt {
     void btlink_inet_host_resolver::get_by_address(epoc::socket::saddress &addr, epoc::socket::name_entry *result, epoc::notify_info &info) {
         inquiry_socket_address &cast_addr = static_cast<inquiry_socket_address&>(addr);
         inquiry_info *info_addr_in = cast_addr.get_inquiry_info();
+
+        if (bt_radio_off()) {
+            LOG_WARN(SERVICE_BLUETOOTH, "Inquiry with the radio off (EKA2L1_BTOFF): KErrHardwareNotAvailable");
+            info.complete(epoc::error_hardware_not_avail);
+            return;
+        }
 
         // EKA2L1_BTSTRICT=1: refuse an inquiry the way os/bt's
         // CBTHostResolver::GetByAddress does (btstack/linkmgr/hostresolver.cpp):
@@ -348,7 +355,28 @@ namespace eka2l1::epoc::bt {
         }
     }
 
+    static std::atomic<int> radio_off_state{ -1 };     // -1: not read from EKA2L1_BTOFF yet
+
+    bool bt_radio_off() {
+        int v = radio_off_state.load();
+        if (v < 0) {
+            const char *e = std::getenv("EKA2L1_BTOFF");
+            int expected = -1;
+            radio_off_state.compare_exchange_strong(expected, (e && e[0] == '1') ? 1 : 0);
+            v = radio_off_state.load();
+        }
+        return v == 1;
+    }
+
+    void bt_set_radio_off(const bool off) {
+        radio_off_state.store(off ? 1 : 0);
+    }
+
     void btlink_inet_host_resolver::next(epoc::socket::name_entry *result, epoc::notify_info &info) {        
+        if (bt_radio_off()) {
+            info.complete(epoc::error_hardware_not_avail);
+            return;
+        }
         const std::unique_lock<std::mutex> guard(lock_);
 
         if (!friend_retrieve_info_.empty()) {

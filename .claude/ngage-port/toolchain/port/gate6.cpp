@@ -308,7 +308,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_OPEN = 897,    // what RFile::Open answered
        NOTE_FILE_PATH = 898,    // ... and the name it was asked for
        NOTE_ALLOC_FAIL = 899,   // a User::Alloc that came back empty, and its size
-       NOTE_ENGINE = 640,       // an AirPlay engine title (GAME_ENGINE_LXCE): 0x1Exxxxxx the layout (imports, then relocations), 0x2E the thread's create result, 0x3E resumed, 0x4E bitgdi's Update resolved (bit 0), 0x5E/0x6E/0x7E a flip's samples, 0x8E the I3D shared memory made (the error; 0x8EBAD000 no CreateGlobal), 0xBE the hidden screen furniture made, 0xCE a ROM vtable shadowed (count, then the vtable), 0xCF one refused, its slot +8 not an Extension_ (then the vtable and that slot), 0xDE the front end's port started by StartApp (the error), 0xDF that hook installed (bit 0 RProcess::Create found, bit 1 Resume), 0xEE a GAME_ENGINE_INIT function called (its image address), 0xFE the wrapper's root group declines the focus (bit 0: the export found), 0x5B01 the bench's other app in front (its two construct errors), 0x5B02 the wrapper's group brought back (GAME_BENCH_SWITCH_AT), 0x6B the engine's group handed the front back after a switch (its id), 0x7F the engine's frames posted so far (in each 0x9F sample), 0x8F the post path's state (bit 0 screen lost, bit 1 DSA idle, clip mode at bit 4; then the refused posts, then the reached flags), 0xAE CreateBitmapL("*") sent to the game's .mbm (the id), 0x9E the mailbox answered, 0x9F the state word sampled then the mailbox (0xe4), slots 1-3, and once the focus is handed, the focused group and ours (GAME_ENGINE_LAUNCHER)
+       NOTE_ENGINE = 640,       // an AirPlay engine title (GAME_ENGINE_LXCE): 0x1Exxxxxx the layout (imports, then relocations), 0x2E the thread's create result, 0x3E resumed, 0x4E bitgdi's Update resolved (bit 0), 0x5E/0x6E/0x7E a flip's samples, 0x8E the I3D shared memory made (the error; 0x8EBAD000 no CreateGlobal), 0xBE the hidden screen furniture made, 0xCE a ROM vtable shadowed (count, then the vtable), 0xCF one refused, its slot +8 not an Extension_ (then the vtable and that slot), 0xDE the front end's port started by StartApp (the error), 0xDF that hook installed (bit 0 RProcess::Create found, bit 1 Resume), 0xEE a GAME_ENGINE_INIT function called (its image address), 0xFE the wrapper's root group declines the focus (bit 0: the export found), 0x5B01 the bench's other app in front (its two construct errors), 0x5B02 the wrapper's group brought back (GAME_BENCH_SWITCH_AT), 0x6B the engine's group handed the front back after a switch (its id), 0x7F the engine's frames posted so far (in each 0x9F sample), 0x8F the post path's state (bit 0 screen lost, bit 1 DSA idle, clip mode at bit 4; then the refused posts, then the reached flags), 0xAE CreateBitmapL("*") sent to the game's .mbm (the id), 0x9E the mailbox answered, 0xB701 the Bluetooth power check's thread made (the error), 0xB702 its answer (bit 0 on, then the notifier's error at bits 8-15; GAME_LAUNCHER_BT_POWER), 0x9F the state word sampled then the mailbox (0xe4), slots 1-3, and once the focus is handed, the focused group and ours (GAME_ENGINE_LAUNCHER)
        NOTE_TICK_SHIM = 699,    // the tick seed read answered: the real tick it replaced (0xD1nnnnnn: slots diverted at load)
        NOTE_FILE_HEAD = 861,    // the first three words of a name descriptor
        NOTE_CARD_REFUSED = 862, // a write to the game card, refused as a card would
@@ -1450,6 +1450,11 @@ struct Context {
     u32 fnExitType, fnExitReason;   // RThread::ExitType, ExitReason (euser 1799, 1781): the engine's watch (round 166)
     u32 fnThreadReqComplete;        // RThread::RequestComplete (euser 1790): gate6_complete_r2
     u32 fnWaitForRequest, benchDieCalls;   // bench (GAME_BENCH_ENGINE_DIES): User::WaitForRequest, euser 604
+    u32 fnNotifierCtor, fnNotifierConnect, fnNotifierStart;   // RNotifier (euser 1434, 1432, 1428): GAME_LAUNCHER_BT_POWER
+    u32 btPowerThread;      //   the power check's thread while it runs
+    volatile u32 btPowerDone, btPowerOn, btPowerErr;   //   its answer, written by that thread
+    u32 btPowerState;       //   0 idle, 1 running
+    u32 btMemoBeat, btMemoOn, btMemoValid, shmBeats, asksAnswered;
     u32 fnSetPriority, fnProcessKill;      // RThread::SetPriority, RProcess::Kill (euser 1786, 1320): the watchdog (round 167)
     u32 benchCallCalls;                    // bench (GAME_BENCH_CALL_AT): GetEvents counted
     // Round 170: the engine's TBitmapUtil locks -- 9.1/9.2's global bitmap
@@ -14456,6 +14461,97 @@ static void engine_root_unfocusable(Context *c)
 #ifndef GAME_LAUNCHER_BT_ON
 #define GAME_LAUNCHER_BT_ON 0
 #endif
+// **The answer made true: Bluetooth switched on as the N-Gage's launcher did
+// (round 175, GAME_LAUNCHER_BT_POWER).** GAME_LAUNCHER_BT_ON answers every
+// ask "on", and at MULTIPLAYER (0x47d204) "on" opens Host and Join; anything
+// else keeps the player out -- the engine posts 1 and asks again if its boot
+// ask said on (0x47d118), then shows its own message (0x4824b4, 0x4824c0). So
+// with the radio off, Join ran on a dead radio, and on an N95 the game's
+// screen went and never came back (round 173's video). Every ask after the
+// boot one is now answered from S60's Bluetooth power notifier
+// (btnotifierapi.h, KPowerModeSettingNotifierUid 0x100059E2): it answers at
+// once when the radio is on, and otherwise asks the user to switch it on.
+// The notifier runs on a short-lived thread of its own -- waiting on it on the
+// main thread would stall it under the watchdog, and an unwaited completion
+// there is a stray signal for the active scheduler. Its answer is kept 10 s
+// when on (a session asks every 2 s, 0x47d3c0) and 60 s when off: with the
+// radio off every check is a question on the screen, and a session that goes
+// on after a No would ask one every few seconds (E1292 checked five times in
+// two minutes). No notifier, or no thread: answered on, as before.
+#ifndef GAME_LAUNCHER_BT_POWER
+#define GAME_LAUNCHER_BT_POWER 0
+#endif
+enum { KPOWER_MODE_NOTIFIER_UID = 0x100059E2, BT_MEMO_ON_BEATS = 20, BT_MEMO_OFF_BEATS = 120 };
+static const u16 kBtPowerThreadName[] = { 'g', '6', 'b', 't', 'p', 'w', 'r' };
+
+extern "C" int gate6_bt_power_thread(void *ptr)
+{
+    Context *c = (Context *)ptr;
+    typedef void (*Ctor)(u32 *);
+    typedef int (*Connect)(u32 *);
+    typedef void (*Start)(u32 *, u32 *, u32, const u32 *, u32 *);
+    typedef void (*Wait)(u32 *);
+    u32 notifier[8] = { 0 };                // RNotifier is 20 bytes
+    u32 on = 1;
+    ((Ctor)c->fnNotifierCtor)(notifier);
+    int err = ((Connect)c->fnNotifierConnect)(notifier);
+    if (!err) {
+        // TPckgBuf<TBool>, a TBuf8<4>: length and type, maximum, the value.
+        u32 param[3] = { ((u32)EBufType << KTypeShift) | 4u, 4u, 0u };
+        u32 result[3] = { ((u32)EBufType << KTypeShift) | 4u, 4u, 1u };
+        u32 status[2] = { 0, 0 };
+        ((Start)c->fnNotifierStart)(notifier, status, (u32)KPOWER_MODE_NOTIFIER_UID, param, result);
+        ((Wait)c->fnWaitForRequest)(status);
+        err = (int)status[0];
+        if (!err)
+            on = result[2] ? 1u : 0u;
+        rhandle_close(notifier);
+    }
+    c->btPowerErr = (u32)err;
+    c->btPowerOn = on;
+    c->btPowerDone = 1;
+    return 0;
+}
+
+// 1 on, 0 off, -1 not known yet (asked; the watcher comes back next beat).
+static int bt_power_answer(Context *c)
+{
+    typedef int (*CreateFn)(u32 *self, const Ptrc16 *name, u32 fn, int stack,
+                            void *heap, void *ptr, int owner);
+    typedef void (*ResumeFn)(const u32 *self);
+    if (c->btMemoValid &&
+        c->shmBeats - c->btMemoBeat < (u32)(c->btMemoOn ? BT_MEMO_ON_BEATS : BT_MEMO_OFF_BEATS))
+        return (int)c->btMemoOn;
+    if (c->btPowerState == 1) {
+        if (!c->btPowerDone)
+            return -1;
+        rhandle_close(&c->btPowerThread);
+        c->btPowerThread = 0;
+        c->btPowerState = 0;
+        c->btMemoValid = 1;
+        c->btMemoOn = c->btPowerOn;
+        c->btMemoBeat = c->shmBeats;
+        log_event(c, NOTE_ENGINE, 0xB7020000u | (c->btPowerOn ? 1u : 0u) | ((c->btPowerErr & 0xFFu) << 8));
+        log_block(c);
+        return (int)c->btPowerOn;
+    }
+    if (!c->fnNotifierCtor || !c->fnNotifierConnect || !c->fnNotifierStart || !c->fnWaitForRequest ||
+        !c->threadCreateFn || !c->realResume)
+        return 1;
+    Ptrc16 nm;
+    nm.lengthAndType = ((u32)EPtrC << KTypeShift) |
+                       (u32)(sizeof kBtPowerThreadName / sizeof kBtPowerThreadName[0]);
+    nm.text = kBtPowerThreadName;
+    c->btPowerDone = 0;
+    const int r = ((CreateFn)c->threadCreateFn)(&c->btPowerThread, &nm, (u32)&gate6_bt_power_thread,
+                                                0x4000, 0, c, 0 /* EOwnerProcess */);
+    log_event(c, NOTE_ENGINE, 0xB7010000u | ((u32)r & 0xFFFFu));
+    if (r)
+        return 1;
+    c->btPowerState = 1;
+    ((ResumeFn)c->realResume)(&c->btPowerThread);
+    return -1;
+}
 enum { I3D_MAILBOX = 0xE4 / 4, I3D_ASK = 3, I3D_ANSWER = 4, I3D_ANSWER_ON = 5, I3D_QUIT = 6, I3D_CLOSE_ME = 1, I3D_STATE_EXIT = 5, SHM_WATCH_US = 500000, SHM_WATCH_TICKS = 4 };
 
 // **Bench: a phone's app switch, from the window server's side
@@ -14743,16 +14839,29 @@ extern "C" int gate6_engine_shm_watch(void *p)
     // Host a Game the engine sat behind the wrapper's window for good (the
     // N95, round 171, and the bench, E1103). GAME_LAUNCHER_CLEARS_1 1.
     const int pending1 = GAME_LAUNCHER_CLEARS_1 && b[I3D_MAILBOX] == (u32)I3D_CLOSE_ME && !c->engineQuitting;
+    c->shmBeats++;
     if (b[I3D_MAILBOX] != (u32)I3D_ASK && !pending1) {
         c->shmTicks = 0;
         return 1;
     }
     if (++c->shmTicks < (u32)SHM_WATCH_TICKS)
         return 1;
+    u32 answer = GAME_LAUNCHER_BT_ON ? I3D_ANSWER_ON : I3D_ANSWER;
+    if (!pending1 && GAME_LAUNCHER_BT_POWER && GAME_LAUNCHER_BT_ON && c->asksAnswered) {
+        const int on = bt_power_answer(c);
+        if (on < 0)
+            return 1;                       // the notifier is still asking; the engine spins on
+        answer = on ? I3D_ANSWER_ON : I3D_ANSWER;
+    }
     c->shmTicks = 0;
     log_event(c, NOTE_ENGINE, 0x9E000000u | (b[I3D_MAILBOX] & 0xFFu));
     log_block(c);
-    b[I3D_MAILBOX] = pending1 ? 0u : (u32)(GAME_LAUNCHER_BT_ON ? I3D_ANSWER_ON : I3D_ANSWER);
+    if (!pending1) {
+        c->asksAnswered++;
+        b[I3D_MAILBOX] = answer;
+    } else {
+        b[I3D_MAILBOX] = 0;
+    }
     return 1;
 }
 
@@ -16195,8 +16304,18 @@ static u32 load_and_start()
         ctx->fnExitType = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_EXIT_TYPE);
         ctx->fnExitReason = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_EXIT_REASON);
         ctx->fnThreadReqComplete = (u32)rlibrary_lookup(&ctx->euser, EUSER_THREAD_REQ_COMPLETE);
-        if (GAME_BENCH_ENGINE_DIES)
+        if (GAME_BENCH_ENGINE_DIES || GAME_LAUNCHER_BT_POWER)
             ctx->fnWaitForRequest = (u32)rlibrary_lookup(&ctx->euser, 604);
+        // Round 175, checked against the RM-92 and RM-409 ROMs' export
+        // directories: 1434 zeroes a 20-byte object (handle, a TPtr8, a
+        // pointer), 1432 makes a session at version 1.0.110, 1428 sends
+        // request 5 asynchronously with the status, the UID and both
+        // descriptors -- RNotifier(), Connect(), StartNotifierAndGetResponse().
+        if (GAME_LAUNCHER_BT_POWER) {
+            ctx->fnNotifierCtor = (u32)rlibrary_lookup(&ctx->euser, 1434);
+            ctx->fnNotifierConnect = (u32)rlibrary_lookup(&ctx->euser, 1432);
+            ctx->fnNotifierStart = (u32)rlibrary_lookup(&ctx->euser, 1428);
+        }
         // Round 167, the RM-409 ROM again: 1786 loads the handle and makes the
         // executive call with the priority as given; 1320 is
         // ProcessKill(handle, EExitKill, reason, no category).

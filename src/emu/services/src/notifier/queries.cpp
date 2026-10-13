@@ -28,6 +28,7 @@ namespace eka2l1::epoc::notifier {
         ADD_PLUGIN(note_display_plugin);
         ADD_PLUGIN(keylock_plugin);
         ADD_PLUGIN(bluetooth_device_selection_plugin);
+        ADD_PLUGIN(bluetooth_power_mode_plugin);
 #undef ADD_PLUGIN
 
         std::sort(plugins.begin(), plugins.end(), [](const plugin_instance &lhs, const plugin_instance &rhs) {

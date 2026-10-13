@@ -54,4 +54,24 @@ namespace eka2l1::epoc::notifier {
         void on_stranger_call(epoc::socket::saddress &addr, std::uint32_t index_in_list) override;
         void on_no_more_strangers() override;
     };
+
+    // S60's Bluetooth power-mode notifier (btnotifierapi.h,
+    // KPowerModeSettingNotifierUid): answers ETrue at once when the radio is
+    // on, otherwise asks the user to switch it on and answers whether they did.
+    // Here the question is answered by EKA2L1_BTOFF_ANSWER: 1 switches the
+    // radio on (EKA2L1_BTOFF) and answers ETrue, anything else answers EFalse.
+    class bluetooth_power_mode_plugin : public plugin_base {
+    public:
+        explicit bluetooth_power_mode_plugin(kernel_system *kern)
+            : plugin_base(kern) {
+        }
+
+        epoc::uid unique_id() const override {
+            return 0x100059E2;
+        }
+
+        void handle(epoc::desc8 *request, epoc::des8 *response, epoc::notify_info &complete_info) override;
+        void cancel() override {
+        }
+    };
 }

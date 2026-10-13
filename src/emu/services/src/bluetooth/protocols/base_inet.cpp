@@ -198,6 +198,11 @@ namespace eka2l1::epoc::bt {
     }
 
     void btinet_socket::connect(const epoc::socket::saddress &addr, epoc::notify_info &info) {
+        if (bt_radio_off()) {
+            LOG_WARN(SERVICE_BLUETOOTH, "Connect with the radio off (EKA2L1_BTOFF): KErrHardwareNotAvailable");
+            info.complete(epoc::error_hardware_not_avail);
+            return;
+        }
         midman_inet *midman = reinterpret_cast<midman_inet*>(protocol_->get_midman());
   
         if (addr.family_ != BTADDR_PROTOCOL_FAMILY_ID) {

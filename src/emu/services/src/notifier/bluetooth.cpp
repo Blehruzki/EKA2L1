@@ -22,6 +22,7 @@
 #include <utils/err.h>
 
 #include <array>
+#include <cstdlib>
 #include <cstring>
 
 namespace eka2l1::epoc::notifier {
@@ -191,5 +192,26 @@ namespace eka2l1::epoc::notifier {
         state->generation.fetch_add(1, std::memory_order_acq_rel);
         complete_info.complete(result);
         state->kern->unlock();
+    }
+
+    void bluetooth_power_mode_plugin::handle(epoc::desc8 *, epoc::des8 *response, epoc::notify_info &complete_info) {
+        bool on = !epoc::bt::bt_radio_off();
+        if (!on) {
+            const char *answer = std::getenv("EKA2L1_BTOFF_ANSWER");
+            if (answer && answer[0] == '1') {
+                epoc::bt::bt_set_radio_off(false);
+                on = true;
+            }
+            LOG_INFO(SERVICE_NOTIFIER, "Bluetooth power query: the radio is off, the answer is {}", on ? "switch it on" : "no");
+        }
+        if (response) {
+            kernel::process *pr = complete_info.requester->owning_process();
+            std::int32_t *value = reinterpret_cast<std::int32_t *>(response->get_pointer(pr));
+            if (value && response->get_max_length(pr) >= sizeof(std::int32_t)) {
+                *value = on ? 1 : 0;
+                response->set_length(pr, sizeof(std::int32_t));
+            }
+        }
+        complete_info.complete(epoc::error_none);
     }
 }

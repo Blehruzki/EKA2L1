@@ -276,7 +276,7 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // #define GAME_CARD_CID 0x00000000, 0x00000000, 0x00000000, 0x00000000
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 14
+#define GAME_BUILD 15
 
 // **An AirPlay engine, not an app** (PORTING.md, Colin McRae). The image
 // is `6r66.lxe`, the engine lxce.py inflated out of `6r66.nax`: the loader
@@ -350,6 +350,10 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // The launcher answers the engine's asks "Bluetooth on" (5), so MULTIPLAYER
 // opens its DRIVER SELECT (gate6.cpp, GAME_LAUNCHER_BT_ON; E1184).
 #define GAME_LAUNCHER_BT_ON 1
+// Round 175: every ask after the boot one answered from S60's Bluetooth power
+// notifier, so MULTIPLAYER with the radio off asks to switch it on, and stays
+// out of Host and Join if the player says no (gate6.cpp).
+#define GAME_LAUNCHER_BT_POWER 1
 // Bench: the watchdog's dump at that second, stalled or not. 0 in anything shipped.
 #define GAME_BENCH_DUMP_AT 0
 // Round 168: the loader's capabilities (the exe header, TCapabilitySet bits).
