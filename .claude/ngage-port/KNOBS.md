@@ -27,6 +27,7 @@ the N95 and the N91. One (`gate6one`) ships as **028** (round 159: the N73's dea
 | `GAME_CONTROL_W/H` | 0 | 0 | 176x208 | yes | the control's extent for a title that sizes bitmaps from `Rect()`; 0 = whole screen | E372; Ashen hardware |
 | `GAME_CODE_PATCHES` | none | none | 2 words | per image | words of the image rewritten after loading (Ashen: a reciprocal-table clamp that read page 0) | E372; Ashen hardware |
 | `GAME_SCREEN_FONTS` | 0 | 0 | 1 | yes | a stand-in screen device that answers the N-Gage font names with the system font at that pixel height (slot 18) and releases through the map table | E384, round 116 (E437/E438); hardware round 117 |
+| `GAME_ARENA_STANDIN` | 0 | 0 | 0 | no, per title (Glimmerati 1) | arenaframework 155 and 156 (N-Gage Arena's framework and rankings NewLs) answered with the do-nothing stand-in instead of the shared 0; with Glimmerati's code patches its Arena entry leaves through its own "connection lost" menu (BUGBOOK 14.b) | E1311-E1327 |
 | `GAME_ANSWER_GAME_ID` | 0 | 0 | 1 | yes | a failed read of `\Game.Id` is answered with "N-Gage" | round 112; hardware |
 | `GAME_FPA_DOUBLES` | 0 | 0 | 1 | yes | doubles crossing to 9.x helpers and `Math::` are word-swapped (FPA vs EABI order) | round 113; hardware. The Asphalts import five double helpers and stay 0 until a round of their own |
 | `GAME_SCREEN_MODES` | - | - | 1 | yes (window-gc titles) | hold C cycles the picture mode for a title drawing through the window gc; the Asphalts get the same through `screen_layout` | round 114; hardware (both paths) |

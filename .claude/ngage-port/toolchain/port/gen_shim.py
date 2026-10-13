@@ -475,6 +475,11 @@ BY_ORDINAL = {
     # called on whatever the first returns.
     ('avkon', 874): ('local', LOCAL_NOOP, KIND_LOCAL),
     ('avkon', 1272): ('local', LOCAL_NOOP, KIND_LOCAL),
+    # CAknKeySoundSystem::PopContext, the push's other half, on the same null:
+    # forwarded, it read address 4 the first time Glimmerati lost the
+    # foreground (its HandleForegroundEventL pops on the way out, E1328). Every
+    # title imports it; the others never reach it.
+    ('avkon', 1213): ('local', LOCAL_NOOP, KIND_LOCAL),
     # And the third of that family. CAknAppUi::SetKeyBlockMode is not virtual
     # and writes CAknAppUiBase's own members, which the game's app UI does not
     # have: avkon writes at its own offsets into an object that is not one of

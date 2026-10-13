@@ -905,6 +905,20 @@ Read from Symbian's appinstall sources (`installationservices/swi/source`):
   that service is gone, so a collision with some other unsigned application
   using the same number is possible, and unlikely in 0xA00010xx.
 
+## RHeap's fields, and the inline Size() (Glimmerati, E1308-E1314)
+
+`RHeap::Size() const` was exported by EKA1 (old euser 1085, `Size__C6RHeap1`)
+and is inline on 9.x: `iTop - iBase`. No S60v3 euser exports a replacement;
+`RAllocator::Size() const` at euser 2533 is Symbian^3's, past the RM-409's
+2,229 exports and the RM-92's 2,184. The ^3 header keeps the old fields "so
+that previously inline functions continue to work" (e32cmn.h, class RHeap):
+after RAllocator (vptr, iAccessCount, iHandleCount, iHandles, iFlags,
+iCellCount, iTotalAllocSize: 0x1C bytes) come iMinLength, iMaxLength (+0x20),
+iOffset, iGrowBy, iChunkHandle, an RFastLock (two words), iBase (+0x38),
+iTop (+0x3C). Measured on RM-409 through the port's answer: the standard heap
+0x40cf88 of 0x4000000 and Glimmerati's auxiliary heap 0x3acf88 of 0x3af000,
+each a page-aligned top less a 0x78 header.
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:

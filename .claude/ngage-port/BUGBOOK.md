@@ -2212,3 +2212,59 @@ an S60v3 host, which cannot change the class it advertises (NetworkControl).
 *Lesson: the platform source is a version, not the platform. When a layout
 matters, read it from the ROM of the phone in question -- three ROMs were on
 this machine the whole time.*
+
+## 14. Glimmerati (6r37): a DSA title with its own platform layer, from E1207
+
+### 14.a A forward to an export no phone has: RHeap::Size() (E1308-E1314)
+**Symptom.** G6IMP 398302 in the menus: import 302 of 398 still on its
+reporting stub, though the shim table had an answer for it.
+**Cause.** Old euser 1085 is `RHeap::Size() const`. 9.x made it inline
+(`iTop - iBase`; e32cmn.h keeps the fields so old inlines still work), and a
+MANUAL row forwarded it to `RAllocator::Size()`, euser 2533 -- a Symbian^3
+export, past the RM-409's 2,229 and the RM-92's 2,184. The run-time lookup
+failed and the stub stayed. Ashen carried the same row.
+**Fix.** LOCAL_HEAP_SIZE reads +0x3C minus +0x38; the logged sizes (a
+page-aligned top less a 0x78 header, below iMaxLength) confirm the offsets.
+`shimreach.py` (in rules.py) now checks every title's forwards against both
+ROMs' export counts; it found Colin 2's eikctl 699 the same way.
+*Lesson: a .def from a later release is a superset. Check the ordinal
+against the phone's ROM, not the def it came from.*
+
+### 14.b N-Gage Arena: a menu entry whose service is gone (E1311-E1327)
+**Symptom.** Choosing N-Gage Arena: KERN-EXEC 3 at 0x706e8. Answered with a
+stand-in: the Arena logo for good, Back included.
+**Cause.** The title's Arena state machine (0x70544 on +0x24) makes the
+framework (arenaframework 155) under a TRAP and loads its vtable with no null
+check; the N-Gage-only answer is 0. With a stand-in it logs in and then waits
+for a ProgressReport no framework sends. Skipping to the exit misses the heap
+marker state 2 sets (FATAL ERROR, E1316); a report from inside the state
+machine arms the frame loop twice (the title's assert, E1317);
+EAuthLoginFailed clears the flag the data store is reopened by (E1319); and
+the store closed for the Arena UI is read by the menu music (E1322).
+**Fix.** GAME_ARENA_STANDIN (155 and 156 the stand-in, Glimmerati only), and
+code patches: the Arena timer reports EFinished once while waiting, Logout's
+success is taken as ELogoutComplete, data.zip stays open. The player gets the
+title's own "GPRS connection lost!" and Back.
+*Lesson: when a service is gone, find the title's own failure path and feed
+it the event it expects, from where the real one would come.*
+
+### 14.c The shadow DSA said "active" after a Cancel (E1321-E1326)
+**Symptom.** After any Suspend the picture froze; FlipPage called
+StartDrawingL every 32 frames and nothing reached the DSA's StartL.
+**Cause.** The game holds the port's old-layout shadow of the DSA.
+gate6_cancel sends a Cancel on it to the real object and never copied the
+real one's status words back, so the shadow's word +8 (6.1's iActive) read 3
+for good, and StartDrawingL returns at once on it.
+**Fix.** dsa_mirror_active after a Cancel through the shadow (shared;
+Asphalt 2 and One unchanged under the same minimize, E1331-E1332).
+
+### 14.d A minimize popped a key-sound context on null (E1328-E1330)
+**Symptom.** KERN-EXEC 3 in avkon, reading address 4, the moment the title
+lost the foreground.
+**Cause.** Its HandleForegroundEventL(EFalse) calls KeySounds() and then
+CAknKeySoundSystem::PopContext() on the result. KeySounds and PushContextL
+were no-ops (9.x's KeySounds is inline on a field our app UI lacks), so the
+sound system is null; PopContext was still forwarded.
+**Fix.** avkon 1213 a no-op with the other two (shared; every title imports
+it, none had reached it). The minimize now survives and draws after the
+return.
