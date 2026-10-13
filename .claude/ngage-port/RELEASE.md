@@ -58,6 +58,11 @@ same files, so a phone refuses it while an old build is installed ("Update
 error"). Its post says so: *"Uninstall any earlier build of <Title> first
 (Settings -> Application manager); your save file is kept."*
 
+**A capability is granted silently.** Do not promise a question: the N95 installed
+build 013's self-signed multiplayer loader (LocalServices) without one (round 172).
+A finished install means granted; a refused grant stops the install with
+"Required application access not granted" (rounds 169-170).
+
 
 `python3 toolchain/port/sischeck.py <package.sis>` must exit 0: both checksums
 right and, for a package whose exe asks for a capability (`GAME_CAPABILITIES`),
