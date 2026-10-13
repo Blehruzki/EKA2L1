@@ -314,6 +314,20 @@ filter: an N91 hosting for an N-Gage raced (round 174); an N95 may not pass
 class the phone advertises (KPropertyKeyBluetoothSetDeviceClass needs
 NetworkControl).
 
+## Backlog (the user's decision, after round 176 was sent)
+
+Kept for later, in no order:
+- A whole stage to the finish on phones: end screens, the host's Continue, stage 2.
+- The single-player loader on the E72 (the UID change never confirmed there).
+- An original N-Gage joining an S60v3 camera phone (an N95 hosting).
+- The N95's and N91's Bluetooth class of device, measured (why 173's N95 was dropped).
+- Stage 2 onward on the bench (a recorded path per stage).
+- Whether the engine drops a peer that goes quiet (a timeout not found, not ruled out).
+- The README and RELEASE notes carried forward from 014's zip (Bluetooth on, "Shown to all", the power question).
+
+Decided: from build 016 Colin ships one loader, the self-signed one with
+LocalServices (GAME_CAPABILITIES 0x4000).
+
 ## Next steps, in order
 
 1. The rest of a rally on the bench: stage 2 onward needs a path per stage

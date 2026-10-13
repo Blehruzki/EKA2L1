@@ -58,6 +58,11 @@ same files, so a phone refuses it while an old build is installed ("Update
 error"). Its post says so: *"Uninstall any earlier build of <Title> first
 (Settings -> Application manager); your save file is kept."*
 
+**Colin ships one loader from build 016**, self-signed with LocalServices
+(the user's decision): 013-015 split it into an unsigned single-player loader
+and a multiplayer one, and every phone that tried the multiplayer one installed
+it (N95, N73, N91).
+
 **A capability is granted silently.** Do not promise a question: the N95 installed
 build 013's self-signed multiplayer loader (LocalServices) without one (round 172).
 A finished install means granted; a refused grant stops the install with

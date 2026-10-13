@@ -361,9 +361,12 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
 // the engine's "is Bluetooth on?" (0x449d64) got KErrPermissionDenied and
 // left -- multiplayer, and a charger plugged in mid-intro, froze the N95.
 // User-grantable; the emulator enforces no capability at all.
-#define GAME_CAPABILITIES 0
-// Round 170: and back to none -- the N95 refused LocalServices both unsigned
-// (010) and self-signed (011), and installs a package that asks for nothing.
+// Round 170 took it back out after the N95 refused 010 and 011; the refusal
+// was the package's (the capability undeclared in its SIS, E1280), and build
+// 013's self-signed multiplayer loader installed on the N95, N73 and N91.
+// From build 016 the one loader is that one (the user's decision): self-signed,
+// LocalServices (buildapp signs any package whose exe asks for a capability).
+#define GAME_CAPABILITIES 0x4000
 // Without it the engine's Bluetooth check (0x449d64) can only fail there; the
 // code patch at 0x49e58 makes that failure an "off" instead of a Leave.
 // Bench: call the engine's 0x47df80 (a Bluetooth-check dialog handler) on its

@@ -70,7 +70,10 @@ def main():
     hw = [(n, c) for n, c in hw if not n.startswith('E')]
     emu = rows(text, 'E')
 
-    pending_hw = [n for n, c in hw if 'pending' in ' '.join(c).lower()]
+    # Awaiting hardware: the result cell (the third after the number) still
+    # opens with "Pending". Any mention of the word anywhere in the row counted
+    # before, and kept rounds 99, 103 and 162 on the list long after they closed.
+    pending_hw = [n for n, c in hw if len(c) > 2 and c[2].lstrip('* ').lower().startswith('pending')]
     unfinished = [n for n, c in emu + hw if c and c[-1].strip() == 'TODO']
 
     print('RULE 1 -- results logged before the next step')
