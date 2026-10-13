@@ -304,6 +304,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_SIZE = 894,    // RFile::Size, and the size it answered
        NOTE_FILE_REPLACE = 698,  // RFile::Replace through the card hook: its result, then the name's length word (round 147)
        NOTE_IMAGE_READ = 697,    // the game reading its own image through the .bin rename: bytes put back, then the read position (round 149)
+       NOTE_EDITION = 694,      // which edition the image is: bit 24 GAME_ALT_CODE_SIZE's, then the code size
        NOTE_HEAP_SIZE = 695,    // RHeap::Size() answered by the port (LOCAL_HEAP_SIZE): the first four calls, the size then iMaxLength
        NOTE_PORT_SCALER = 696,   // the window-gc title's frame scaled by the port into its own bitmap (0x5CA1 made, 0x5CA2 fell back, 0x5CA3 first frame)
        NOTE_FILE_OPEN = 897,    // what RFile::Open answered
@@ -1425,6 +1426,7 @@ struct Context {
     u32 cardControl;        // the DoControl diversion, with the context in r3
     u32 cardCid[5];         // the card ID out of cid.txt beside the game, when there is one
     u32 cardCidSet;         // ... and that there was (card_cid_file)
+    u32 altEdition;         // the image is GAME_ALT_CODE_SIZE's edition: its patches, its card
     u32 realResume;         // RThread::Resume, as resolved
     u32 engineThread;       // GAME_ENGINE_LXCE: the engine's thread handle
     u32 realRwin[4];        // RWindow's two constructors, BeginRedraw(TRect), EndRedraw, as resolved
@@ -2828,6 +2830,19 @@ enum { HOOK_UNCOMPRESS = GAME_HOOK_UNCOMPRESS, Z_REAL = GAME_Z_REAL, Z_BYTES = 1
 static const u32 kZSite[] = { GAME_Z_SITES };
 struct CodePatch { u32 at, expect, replace; };
 static const CodePatch kCodePatch[] = { GAME_CODE_PATCHES };
+// **A second edition of the same title** (game.h): the same imports and the
+// same UID3, so the same shim, but its code moved. Told apart by the code
+// size; it brings its own patch table and its own card, since a Codewave
+// title's data is decrypted with the card it shipped on. Glimmerati: the press
+// v0.50 is GAME_CODE_PATCHES and GAME_CARD_CID, the retail v0.51 these.
+#ifndef GAME_ALT_CODE_SIZE
+#define GAME_ALT_CODE_SIZE 0
+#endif
+#ifndef GAME_ALT_CODE_PATCHES
+#define GAME_ALT_CODE_PATCHES { 0, 0, 0 }
+#define GAME_ALT_CODE_PATCH_COUNT 0
+#endif
+static const CodePatch kAltCodePatch[] = { GAME_ALT_CODE_PATCHES };
 // **A game class's vtable moved to EABI's address point** (GAME_VTABLE_SHIFTS
 // {at, slots}). GCC98r2 stores a vtable's start in the object -- two header
 // words, then slot 0 -- and EABI its first slot, so 9.x code calling slot k
@@ -6687,6 +6702,12 @@ enum { ANSWER_THE_CARD = 1, CARD_CID_ORDER = 0 };
 static const u32 kCardCidBE[MMC_CID_WORDS + 1] = {
     GAME_CARD_CID, 0x00000000,
 };
+#ifndef GAME_ALT_CARD_CID
+#define GAME_ALT_CARD_CID GAME_CARD_CID
+#endif
+static const u32 kAltCardCidBE[MMC_CID_WORDS + 1] = {
+    GAME_ALT_CARD_CID, 0x00000000,
+};
 static const u32 kCardCidLE[MMC_CID_WORDS + 1] = {   // `nc.dat`, kept for the record
     0xbd81cbfb, 0xeb08cd1e, 0x6d341c6e, 0xe83e5d16, 0x00000000,
 };
@@ -6705,7 +6726,8 @@ extern "C" u32 gate6_mmc_control(u32, u32 op, u32 *info, Context *c)
     log_event(c, NOTE_CARD_CALL, (u32)info);
     log_block(c);
     if (info) {
-        const u32 *cid = c->cardCidSet ? c->cardCid : CARD_CID_ORDER ? kCardCidLE : kCardCidBE;
+        const u32 *cid = c->cardCidSet ? c->cardCid : CARD_CID_ORDER ? kCardCidLE
+                       : c->altEdition ? kAltCardCidBE : kCardCidBE;
         for (u32 i = 0; i <= MMC_CID_WORDS; i++)
             info[i] = ANSWER_THE_CARD ? cid[i] : (i == MMC_CID_WORDS ? MMC_CARD_TYPE_ROM : 0);
     }
@@ -15911,12 +15933,16 @@ static u32 load_and_start()
     // random word in any other (E281 again), and a mismatch refuses to start
     // rather than running patched nonsense. After relocation, since the
     // words are code and carry none.
-    for (u32 i = 0; i < (u32)GAME_CODE_PATCH_COUNT; i++) {
-        const u32 at = kCodePatch[i].at;
+    ctx->altEdition = GAME_ALT_CODE_SIZE && h->codeSize == (u32)GAME_ALT_CODE_SIZE;
+    log_event(ctx, NOTE_EDITION, (ctx->altEdition << 24) | (h->codeSize & 0xFFFFFF));
+    const CodePatch *patches = ctx->altEdition ? kAltCodePatch : kCodePatch;
+    const u32 nPatches = ctx->altEdition ? (u32)GAME_ALT_CODE_PATCH_COUNT : (u32)GAME_CODE_PATCH_COUNT;
+    for (u32 i = 0; i < nPatches; i++) {
+        const u32 at = patches[i].at;
         if (at + 4 > imgSize || (at & 3)) PANIC(CAT_HDR, 8);
         u32 *w = (u32 *)(base + at);
-        if (*w != kCodePatch[i].expect) PANIC(CAT_HDR, 9);
-        *w = kCodePatch[i].replace;
+        if (*w != patches[i].expect) PANIC(CAT_HDR, 9);
+        *w = patches[i].replace;
         user_imb_range(w, w + 1);
         log_event(ctx, NOTE_PATCH, at);
     }

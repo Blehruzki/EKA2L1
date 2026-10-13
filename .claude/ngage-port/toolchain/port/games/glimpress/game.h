@@ -102,6 +102,25 @@ enum { GAME_SRC_ORIGIN = 0 };
                           { 0x00070880, 0xEB0097AD, 0xE1A00000 }, /* state 3: data.zip stays open (was bl close, 0x9673c) */ \
                           { 0x00070c24, 0xEB0096CC, 0xE1A00000 }  /* state 7: so no reopen (was bl 0x9675c) */
 #define GAME_CODE_PATCH_COUNT 11
+// The retail edition, v04225-0.51-prd-1605THR: the same 396 imports and UID3
+// as the press v0.50 this port was built on, its code 0x2b8 bytes shorter.
+// The Arena state machine sits at the same addresses and differs only in
+// branches out of it and literal pools (0x70544-0x71740 compared word by
+// word), so the patches are the same words; three of the words they replace
+// are branches to code that moved, and those expected words are retail's.
+#define GAME_ALT_CODE_SIZE 0x1716b8
+#define GAME_ALT_CODE_PATCHES { 0x00071140, 0xE5940000, 0xE5943024 }, \
+                              { 0x00071144, 0xE5903124, 0xE3530004 }, \
+                              { 0x00071148, 0xE593C0B8, 0x1A00005B }, \
+                              { 0x0007114c, 0xE1A0E00F, 0xE1A00004 }, \
+                              { 0x00071150, 0xE12FFF1C, 0xE3A0101E }, \
+                              { 0x00071154, 0xE31000FF, 0xEB00005B }, \
+                              { 0x00071158, 0x1B023B76, 0xEA000057 }, /* blne 0xfff38 in retail */ \
+                              { 0x00070ca8, 0xE59F0010, 0xE3A03008 }, \
+                              { 0x00070cac, 0xEBFE69BD, 0xE5863024 }, \
+                              { 0x00070880, 0xEB0096FD, 0xE1A00000 }, /* bl 0x9647c in retail */ \
+                              { 0x00070c24, 0xEB00961C, 0xE1A00000 }  /* bl 0x9649c in retail */
+#define GAME_ALT_CODE_PATCH_COUNT 11
 
 // The environment's screen device, as the game reads it off the view
 // (old iScreen, 0x3c): 1 hands it a stand-in that answers font requests by
@@ -210,6 +229,9 @@ enum { GAME_SRC_ORIGIN = 0 };
 // CWPROTLIB (MMCCHECKS: the card read through MBusDev, IsMMCWriteable1), the
 // same family as One's.
 #define GAME_CARD_CID 0x0b1e97d1, 0xd8011855, 0x0b37d817, 0x06000400
+// And the retail card's, for GAME_ALT_CODE_SIZE's edition: its dump is named
+// `MMC-ID 5075817-6c0100c6-b24184a-7000400`.
+#define GAME_ALT_CARD_CID 0x05075817, 0x6c0100c6, 0x0b24184a, 0x07000400
 
 // Written into the log as its third record; bump with every package.
 #define GAME_BUILD 1
