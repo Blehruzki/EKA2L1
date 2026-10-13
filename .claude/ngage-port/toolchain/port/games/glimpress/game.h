@@ -63,8 +63,45 @@ enum { GAME_SRC_ORIGIN = 0 };
 // word}: for a bug of the game's own that EKA1 forgave (Ashen reads the
 // null page in its rasteriser). The expected word is checked; a mismatch
 // refuses to start.
-#define GAME_CODE_PATCHES { 0, 0, 0 }
-#define GAME_CODE_PATCH_COUNT 0
+// **N-Gage Arena, with no Arena** (E1308-E1326). Choosing it runs the title's
+// Arena state machine (0x70544, switch on +0x24): 2 enter -- the auxiliary
+// heap torn down, the "ArenaRankings" marker set, the framework made
+// (arenaframework 155, given this object's ProgressReport observer at +0x10)
+// and its timer; 3 log in -- Suspend, the data store closed, Login, the timer
+// started; 4 wait for ProgressReport; 7 stopped -- the data store reopened if
+// logged in, the output restarted, Logout; 8 log out -- the timer and the
+// framework deleted; 9 leave, through the heap remade, the marker freed and the
+// "connection lost" menu. The service shut in 2010 and no framework exists to
+// report, so:
+//  - GAME_ARENA_STANDIN answers 155 and 156 with the do-nothing stand-in: the
+//    shared 0 had state 2 load the framework's vtable from null (E1311);
+//  - the Arena timer's callback, while the state is 4, reports EFinished (30)
+//    to the title's own handler, once -- from the timer, not the state
+//    machine, which runs inside the frame RunL and would arm the frame loop
+//    twice (the title's assert, line 0x39, E1317); EFinished rather than
+//    EAuthLoginFailed, which clears the logged-in flag that state 7 reopens
+//    the data by (E1319);
+//  - Logout's success is taken as ELogoutComplete (state 8);
+//  - the data store is not closed in state 3 or reopened in state 7: the menu
+//    music streams from data.zip, and between the two it read a null FILE*
+//    (E1322). The N-Gage closed it to make room for the Arena UI.
+// The player sees the title's own "Community Options -- GPRS connection
+// lost!" and Back returns to the main menu (E1326). Skipping state 2 instead
+// left the marker unset and the exit's free was the title's FATAL ERROR
+// (E1316).
+#define GAME_ARENA_STANDIN 1
+#define GAME_CODE_PATCHES { 0x00071140, 0xE5940000, 0xE5943024 }, /* Arena timer, logged in: ldr r3, [r4, #0x24] */ \
+                          { 0x00071144, 0xE5903124, 0xE3530004 }, /* cmp r3, #4 -- still waiting? */ \
+                          { 0x00071148, 0xE593C0B8, 0x1A00005B }, /* bne the callback's exit (0x712bc) */ \
+                          { 0x0007114c, 0xE1A0E00F, 0xE1A00004 }, /* mov r0, r4 */ \
+                          { 0x00071150, 0xE12FFF1C, 0xE3A0101E }, /* mov r1, #30 (EFinished) */ \
+                          { 0x00071154, 0xE31000FF, 0xEB00005B }, /* bl ProgressReport (0x712c8) */ \
+                          { 0x00071158, 0x1B023C20, 0xEA000057 }, /* b the callback's exit */ \
+                          { 0x00070ca8, 0xE59F0010, 0xE3A03008 }, /* state 7, Logout returned 0: mov r3, #8 */ \
+                          { 0x00070cac, 0xEBFE69BD, 0xE5863024 }, /* str r3, [r6, #0x24]: ELogoutComplete's state */ \
+                          { 0x00070880, 0xEB0097AD, 0xE1A00000 }, /* state 3: data.zip stays open (was bl close, 0x9673c) */ \
+                          { 0x00070c24, 0xEB0096CC, 0xE1A00000 }  /* state 7: so no reopen (was bl 0x9675c) */
+#define GAME_CODE_PATCH_COUNT 11
 
 // The environment's screen device, as the game reads it off the view
 // (old iScreen, 0x3c): 1 hands it a stand-in that answers font requests by

@@ -44,6 +44,11 @@ ROM9 = '/root/.local/share/EKA2L1/data/roms/rm-409/SYM.ROM'
 OLD_DEFS = {'euser': gen_shim.KERNEL + '/kernel/eka/bmarm/7.0-euseru.def'}
 ASPHALT = [os.path.join(os.path.dirname(os.path.abspath(__file__)), p)
            for p in ('../../../../.claude/ngage-port/toolchain/port/6rbc_orig.app',)]
+# These are the instructions' big-endian spellings and the ROM's bytes are
+# little-endian (Thumb `bx lr` is 70 47), so is_stub never matches. Left so:
+# with the order fixed it flags every empty default body -- CCoeControl's
+# FocusChanged, Draw and the rest, dozens per title -- and an empty body is
+# no sign of def drift (shimreach.py, E1308).
 BX_LR = ('4770', 'e12fff1e')
 
 

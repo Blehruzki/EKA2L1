@@ -304,6 +304,7 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_FILE_SIZE = 894,    // RFile::Size, and the size it answered
        NOTE_FILE_REPLACE = 698,  // RFile::Replace through the card hook: its result, then the name's length word (round 147)
        NOTE_IMAGE_READ = 697,    // the game reading its own image through the .bin rename: bytes put back, then the read position (round 149)
+       NOTE_HEAP_SIZE = 695,    // RHeap::Size() answered by the port (LOCAL_HEAP_SIZE): the first four calls, the size then iMaxLength
        NOTE_PORT_SCALER = 696,   // the window-gc title's frame scaled by the port into its own bitmap (0x5CA1 made, 0x5CA2 fell back, 0x5CA3 first frame)
        NOTE_FILE_OPEN = 897,    // what RFile::Open answered
        NOTE_FILE_PATH = 898,    // ... and the name it was asked for
@@ -542,7 +543,8 @@ enum { LOCAL_NEGSF2 = 0, LOCAL_PURE_VIRTUAL = 1, LOCAL_NOOP = 2, LOCAL_MEM_COMPA
        LOCAL_TINT64_ADD = 17, LOCAL_TINT64_SUB = 18, LOCAL_TINT64_MUL = 19, LOCAL_TINT64_DIV = 20,
        LOCAL_TINT64_GE = 21, LOCAL_TINT64_LT = 22,
        LOCAL_SET_WORD_2C = 23, LOCAL_GET_WORD_2C = 24, LOCAL_VOLUMEINFO_CTOR = 25,
-       LOCAL_HANDLE_CTOR = 26, LOCAL_COMPLETE_R2 = 27, LOCAL_STANDIN = 28, LOCAL_NOTFOUND = 29 };
+       LOCAL_HANDLE_CTOR = 26, LOCAL_COMPLETE_R2 = 27, LOCAL_STANDIN = 28, LOCAL_NOTFOUND = 29,
+       LOCAL_HEAP_SIZE = 30 };
 
 // memmove. The game imports it from the C runtime and 9.x does not export it
 // under that name, so it is written here rather than forwarded. Overlap is the
@@ -1329,6 +1331,7 @@ struct Context {
     u32 *realGc;            // the 9.x CFbsBitGc inside it
     u32 dsaBltRectFwd;      // the DSA stand-in's old slot 47 as it forwarded, BitBlt(pt, bmp, rect) (gate6_dsa_bitblt_rect)
     u32 dsaRectCalls;       //   how many times it has been called
+    u32 heapSizeCalls;      // RHeap::Size() calls logged (gate6_heap_size)
     u32 realSetClip, setClipLogged;   // round 157: CFbsBitGc::SetClippingRegion as resolved, and whether its first call was logged
     u32 *fakeGc;            // and the old-vtable stand-in the game calls
     u32 *realWinGc;         // the environment's 9.x CWindowGc (SystemGc)
@@ -5716,6 +5719,26 @@ static int in_rects(const Context *c, u32 x, u32 y)
     return 0;
 }
 
+// The two words the game's inline IsActive and its status checks read, copied
+// from the real object. Also after a Cancel the game sends through the shadow
+// (gate6_cancel): the real one is idle then, and a shadow still reading
+// "active" is a title that never calls StartL again -- Glimmerati's
+// OutputNGage::StartDrawingL returns at once on it, so after a Suspend
+// (N-Gage Arena, E1325) the picture never came back.
+static void dsa_mirror_active(Context *c)
+{
+    if (!c->dsaReal || !c->dsaShadow)
+        return;
+    const u32 *real = c->dsaReal;
+    u32 *shadow = c->dsaShadow;
+    shadow[ACTIVE_STATUS / 4] = real[ACTIVE_STATUS / 4];
+    // The game reads this before it will do anything, so when the real screen
+    // is not being held it has to be told otherwise -- without it the run stops
+    // at three milestones instead of a hundred and seventy.
+    shadow[OLD_DSA_ACTIVE / 4] =
+        (HOLD_THE_SCREEN && !RELEASE_THE_SCREEN) ? real[OLD_DSA_ACTIVE / 4] : 1;
+}
+
 static void dsa_refresh(Context *c)
 {
     if (!c->dsaReal || !c->dsaShadow)
@@ -5723,12 +5746,7 @@ static void dsa_refresh(Context *c)
     const u32 *real = c->dsaReal;
     u32 *shadow = c->dsaShadow;
     dsa_box(c);
-    shadow[ACTIVE_STATUS / 4] = real[ACTIVE_STATUS / 4];
-    // The game reads this before it will do anything, so when the real screen
-    // is not being held it has to be told otherwise -- without it the run stops
-    // at three milestones instead of a hundred and seventy.
-    shadow[OLD_DSA_ACTIVE / 4] =
-        (HOLD_THE_SCREEN && !RELEASE_THE_SCREEN) ? real[OLD_DSA_ACTIVE / 4] : 1;
+    dsa_mirror_active(c);
     c->realGc = (u32 *)real[dsa_gc_off(c) / 4];
     // Not the real graphics context: the game calls it by vtable slot, and the
     // two vtables do not line up. What it gets is the stand-in built below.
@@ -9423,11 +9441,20 @@ enum { ROM_VTABLE_FLOOR = 0x80000000u };   // every 9.x vtable this port has rea
 #ifndef GAME_CANCEL_OWN_OBJECTS
 #define GAME_CANCEL_OWN_OBJECTS 0
 #endif
+// **N-Gage Arena's NewLs answered with the do-nothing stand-in** (game.h).
+// The shared answer for an N-Gage-only library is 0, and Glimmerati's Arena
+// state loads the framework's vtable from it with no null check (E1311).
+// With the stand-in it runs its own state machine; its code patches make it
+// leave through its own "connection lost" menu (games/glimpress/game.h).
+#ifndef GAME_ARENA_STANDIN
+#define GAME_ARENA_STANDIN 0
+#endif
 
 extern "C" void gate6_cancel(u32 *self, u32, Context *c)
 {
     typedef void (*Cancel)(void *);
     log_event(c, NOTE_CANCEL, (u32)self);
+    const int onShadow = c->dsaShadow && self == c->dsaShadow;
     if (GAME_MULTI_TIMER && timer_of_old(c, self) >= 0)
         self = c->timerWrap[timer_of_old(c, self)];
     else if (c->oldTimer && c->wrapTimer && self == c->oldTimer)
@@ -9492,6 +9519,8 @@ extern "C" void gate6_cancel(u32 *self, u32, Context *c)
     if (!QUIET) log_block(c);
     ((Cancel)c->newCancel)(self);
     log_event(c, NOTE_CANCEL_OUT, (u32)self);
+    if (onShadow)
+        dsa_mirror_active(c);
     if (onTimer)
         timer_mirror(c);
     if (onTimer) {
@@ -14384,6 +14413,31 @@ static void own_status_read_plant(Context *c, u8 *base, u32 at, u32 *p)
     log_event(c, NOTE_PLANT_OK, 0x5E000000u | at);
 }
 
+// **RHeap::Size() const, which 9.x made inline.** Old euser 1085
+// (`Size__C6RHeap1`) has no export on any 9.x phone: the function became
+// `iTop - iBase` in the header. The ^3 release exports a
+// `RAllocator::Size() const` at 2533, and the shim forwarded there -- past
+// the 2,229 exports of the RM-409 euser, so the lookup failed and the
+// reporting stub killed Glimmerati in its menus (E1308,
+// G6IMP 398302). The fields are where the ^3 header keeps them "so that
+// previously inline functions continue to work" (e32cmn.h, class RHeap):
+// RAllocator's vptr and six words, then iMinLength, iMaxLength (+0x20),
+// iOffset, iGrowBy, iChunkHandle, an RFastLock (two words), iBase (+0x38),
+// iTop (+0x3C). The first calls are logged with iMaxLength beside the size,
+// which is the check that the offsets are right: a page multiple no larger
+// than the maximum.
+enum { HEAP_MAX_LENGTH = 0x20, HEAP_BASE = 0x38, HEAP_TOP = 0x3C, HEAP_SIZE_LOGGED = 4 };
+extern "C" int gate6_heap_size(const u8 *heap, Context *c)
+{
+    const int size = (int)(*(const u32 *)(heap + HEAP_TOP) - *(const u32 *)(heap + HEAP_BASE));
+    if (c->heapSizeCalls < (u32)HEAP_SIZE_LOGGED) {
+        c->heapSizeCalls++;
+        log_event(c, NOTE_HEAP_SIZE, (u32)size);
+        log_event(c, NOTE_HEAP_SIZE, *(const u32 *)(heap + HEAP_MAX_LENGTH));
+    }
+    return size;
+}
+
 // **The screen furniture a title hides, which the port never built.**
 // Colin McRae's front end calls Cba() and StatusPane() on its own app UI in
 // ConstructL and hides each -- MakeVisible(EFalse), old CCoeControl slot
@@ -16084,7 +16138,9 @@ static u32 load_and_start()
             continue;
         }
 
-        const u32 entry = (i < kShimCount) ? kShimTable[i] : 0;
+        u32 entry = (i < kShimCount) ? kShimTable[i] : 0;
+        if (GAME_ARENA_STANDIN && (i == (u32)IMPORT_ARENA_NEWL || i == (u32)IMPORT_ARENA_STATS_NEWL))
+            entry = ((u32)KIND_LOCAL << 24) | LOCAL_STANDIN;
         const u32 kind = entry >> 24;
         if (!kind)
             continue;
@@ -16115,6 +16171,13 @@ static u32 load_and_start()
                 s[2] = 0;
                 s[3] = (u32)ctx;
                 s[4] = (u32)&gate6_hidden_furniture;
+                break;
+            case LOCAL_HEAP_SIZE:           // RHeap::Size() const, inline on 9.x: context in r1
+                s[0] = 0xE59F1004;          // ldr r1, [pc, #4]  -> the context
+                s[1] = 0xE59FF004;          // ldr pc, [pc, #4]
+                s[2] = 0;
+                s[3] = (u32)ctx;
+                s[4] = (u32)&gate6_heap_size;
                 break;
             case LOCAL_NOTFOUND:            // a query with nothing to report: KErrNotFound
                 s[0] = 0xE3E00000;          // mvn r0, #0

@@ -26,6 +26,8 @@ enum {
     IMPORT_APPUI_PREPARE_EXIT          =    20,
     IMPORT_APP_FULL_NAME               =     0,
     IMPORT_APP_RECT                    =   158,
+    IMPORT_ARENA_NEWL                  =     5,
+    IMPORT_ARENA_STATS_NEWL            =     6,
     IMPORT_BASECONSTRUCTL              =     7,
     IMPORT_BMU_BEGIN                   = 65535,   // absent
     IMPORT_BMU_END                     = 65535,   // absent

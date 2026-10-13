@@ -198,6 +198,9 @@ LOCAL_COMPLETE_R2 = 27
 # GetActiveIap answers KErrNotFound: no access point, which is the truth.
 LOCAL_STANDIN = 28
 LOCAL_NOTFOUND = 29
+# RHeap::Size() const, inline on 9.x (iTop - iBase): `RAllocator::Size()` is a
+# ^3 export (2533) no phone has, and forwarding there was G6IMP at E1308.
+LOCAL_HEAP_SIZE = 30
 LOCAL = {'__negsf2': LOCAL_NEGSF2, '__pure_virtual': LOCAL_PURE_VIRTUAL,
          'memmove': LOCAL_MEM_MOVE, '__negdf2': LOCAL_NEGDF2}
 
@@ -308,7 +311,7 @@ MANUAL = {
     'TDes8::Num(int)': ('euser', 'TDes8::Num(long long)', KIND_SEXT1),
     # The current thread's heap, which is all the game ever asks about.
     'RThread::Heap(void)': ('euser', 'User::Allocator()', KIND_CALL),
-    'RHeap1::Size(void) const': ('euser', 'RAllocator::Size() const', KIND_CALL),
+    'RHeap1::Size(void) const': ('local', LOCAL_HEAP_SIZE, KIND_LOCAL),
     'RThread::GetRamSizes(int &, int &)': ('local', LOCAL_RAMSIZES, KIND_LOCAL),
     'CnvUtfConverter::ConvertFromUnicodeToUtf8(TDes8 &, const TDesC16 &)':
         ('charconv', 'CnvUtfConverter::ConvertFromUnicodeToUtf8(TDes8&, TDesC16 const&)', KIND_CALL),
@@ -555,6 +558,13 @@ BY_ORDINAL = {
     # MANUAL: a name that matches a 9.x export directly is forwarded before
     # MANUAL is consulted (E469).
     ('efsrv', 168): ('local', LOCAL_NOOP, KIND_LOCAL),
+    # CEikSecretEditor::FocusChanged(TDrawNow), old eikctl 124, in Colin McRae's
+    # front end (shimreach.py). It matches by name, to the ^3 eikctl's 699 --
+    # past the RM-409's 692 exports and the RM-92's 603. On 9.x the class does
+    # not override it (Symbian^3 added the override), so what a 9.x secret
+    # editor runs is CCoeControl's, and that body is empty (COECNTRL.CPP).
+    # By ordinal for the reason above: a direct name match beats MANUAL.
+    ('eikctl', 124): ('cone', 'CCoeControl::FocusChanged(TDrawNow)', KIND_CALL),
     # TEntry and TVolumeInfo are bigger on 9.x than the game lays them out
     # (f32file.h: two words after TEntry's name; TDriveInfo's bus type and
     # the cache flags in TVolumeInfo), and both constructors write the new
@@ -648,6 +658,8 @@ HOOKS = {
     'IMPORT_FS_VOLUME':               ('efsrv', 193),   # RFs::Volume(TVolumeInfo&, TInt): the same, field by field
     'IMPORT_FS_SET_DEFAULT_PATH':     ('efsrv', 168),   # RFs::SetDefaultPath: kept, and set as the session path (round 125)
     'IMPORT_FS_CONNECT':              ('efsrv', 18),    # RFs::Connect: the new session given the default path
+    'IMPORT_ARENA_NEWL':              ('arenaframework', 155),   # N-Gage Arena's framework NewL: the stand-in under GAME_ARENA_STANDIN (Glimmerati, E1311-E1326); 0 elsewhere (One imports it too)
+    'IMPORT_ARENA_STATS_NEWL':        ('arenaframework', 156),   # ... and the Arena rankings' stat array NewL, the same
     'IMPORT_SOCK_GETOPT':             ('esock', 87),    # RSocket::GetOpt(name, level, TDes8&): 6.1's Bluetooth link-manager option numbers made 9.x's (gate6_sock_getopt)
     'IMPORT_SOCK_GETOPT_INT':         ('esock', 88),    # RSocket::GetOpt(name, level, TInt&): the same (Colin asks its RFCOMM server channel through it)
     'IMPORT_PUSHL_CBASE':             ('euser', 858),   # CleanupStack::PushL(CBase*): the game's own objects pushed with their old destructor (round 125)
