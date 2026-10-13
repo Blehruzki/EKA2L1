@@ -772,18 +772,18 @@ KLMGetACLLinkArray, ...` -- the level kept its number and the names their
 meaning, but every value moved. An N-Gage binary's numbers have to be
 translated, not forwarded.
 
-**`TInquirySockAddr`'s fields moved 8 bytes earlier between 6.1 and 9.x**
-(round 173). 6.1 (N-Gage SDK `caseinc/BT_SOCK.H`, `.INL`): `SInquiryAddr` {format,
-major service class, major and minor device class, IAC, flags} sits at
-`BTUserPtr()` = `UserPtr() + sizeof(SBTAddr)`, and GCC 2.x on ARM rounds that
-six-byte struct to 8 -- so the IAC is at +0x20 of the object and the flags at
-+0x24, which is where Colin's joiner writes them. 9.x (`bluetoothclientlib/inc/
-bt_sock.h`, `btlib/btsock.cpp`): `SInquiryAddr` starts at `UserPtr()` with the
-`TBTDevAddr` inside it -- format +0x16, device class +0x1a, IAC +0x1c, action
-flags +0x20. The device-class bytes coincide; the IAC and flags do not. 9.x's
-`CBTHostResolver::GetByAddress` (`btstack/linkmgr/hostresolver.cpp`) answers a
-`KHostResCache` (0x20) request from the cache at once and refuses an IAC other
-than KGIAC/KLIAC with KErrNotSupported.
+**`TInquirySockAddr` on S60 3.x phones keeps 6.1's layout; the os/bt source
+does not** (round 173, E1288). Read from the phones' own `bluetooth.dll`
+exports (RM-92, 9.1, and RM-409, 9.3: `FormatTypeField` 306, `MajorServiceClass`
+256, `MajorClassOfDevice` 257, `IAC` 259, `Action` 260): format +0x18, major
+service class (16-bit) +0x1a, major device class +0x1c, minor +0x1d, IAC +0x20,
+action +0x24 of the object -- the 6.1 SDK's `BTUserPtr() = UserPtr() +
+sizeof(SBTAddr)`, with that six-byte struct rounded to 8. RM-92 has no
+`ResultFlags`/`Rssi` exports at all. The Symbian Foundation os/bt source
+(`bluetoothclientlib/inc/bt_sock.h`) puts the address inside `SInquiryAddr` and
+moves every field after it 8 bytes earlier; that is a later Symbian, not any
+S60 3.x phone. **Read layouts from the ROM of the phone in question, not from
+the source release.**
 
 **A self-signed app cannot make a phone discoverable on 9.x** (round 173).
 `KHCIReadScanEnableIoctl` (14) and `KHCIWriteScanEnableIoctl` (15) are

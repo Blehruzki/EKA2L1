@@ -52,7 +52,8 @@ on any phone that grants the capability.
 | Link check failing (no capability) | -- | Leave | **fixed**: nop at 0x49e58, reads "no links" (round 170) |
 | `RFCOMM GetOpt 1` | `KRFCOMMGetAvailableServerChannel` | same | ok |
 | HCI scan-enable ioctls 14/15 (read 0x402b98, write 3 or 0 at 0x402c98), on an L2CAP socket | the host's way to be discoverable | deprecated; the L2CAP SAP answers KErrNotSupported (l2sap.cpp); the P&S replacement needs NetworkControl | **cannot be fixed by a self-signed app**: a host is visible only with "My phone's visibility: Shown to all" (round 173) |
-| Inquiry address (joiner, 0x40e568) | IAC at +0x20, flags at +0x24 (SBTAddr rounded to 8) | IAC at +0x1c, flags at +0x20 (address inside SInquiryAddr): 6.1's reads as IAC 0, action 0x33 (cache-only) | **fixed for every title**: RHostResolver::GetByAddress/Next hooked (gate6_resolver_get_by_address, E1287); the bench refuses it as a device does under EKA2L1_BTSTRICT (E1286) |
+| Inquiry address (joiner, 0x40e568) | IAC at +0x20, flags at +0x24 | the same on S60 3.x phones (RM-92, RM-409 bluetooth.dll); only the later os/bt source moves them | **no difference** (the E1287 translation was for the source's layout and is reverted) |
+| Joiner's host filter (0x40e6e0: the byte at +0x1a must be 0, 2, 0x1f or 0x80) | +0x1a is the major service class's low byte: N-Gage-era phones advertise 0x80 | S60 3.x camera phones advertise networking and capturing too (0xD0): dropped | **fixed for Colin**: reads the major device class at +0x1c (code patch 0xe6e0, E1289); an original N-Gage joining still drops S60v3 hosts |
 | `RBTSecuritySettings`, `TBTServiceSecurity` | btmanclient | gone; security via `TBTSockAddr::SetSecurity` | stand-ins: registration "done", default security (round 166) |
 | SDP record (0x40dfc8): the builder | sdpdatabase, GCC 2.x builder | 9.x `CSdpAttrValueDES` (EABI vtable) | **fixed**: `gate6_sdp_builder`, a GCC 2.x shadow per builder (E1108) |
 | SDP record: `RSdpDatabase` | 0x10 bytes | 0x18 on RM-409, iBuffer at +0x14 (the engine's counter) | **fixed**: `gate6_sdpdb_this`, a 9.2-sized object on the side (E1110-E1111) |
@@ -291,8 +292,8 @@ in a crowded 2.4 GHz band; they change no call. Radios: N-Gage QD 1.1
 | Difference | Between | What it does | State |
 |---|---|---|---|
 | ACL packet size (DH5 against 2-DH5/3-DH5) and RFCOMM frame size | any two radios | the same message arrives in different pieces | handled: the pump's two code patches (E1226-E1227); the bench shows it with EKA2L1_BTSPLIT |
-| Inquiry address layout | 6.1 game on any 9.x | IAC and flags read 8 bytes early | fixed for 9.x, every title (E1287); an N-Gage's own stack reads 6.1's layout, nothing to do |
-| How the host resolver reads it | 9.1: most likely the cache bit -- the N73 listed a 6630 it had seen before and not the N95, which was "Shown to all"; later 9.x: a cache lookup of a zero address and a refused IAC | no joiner on S60v3 searched the air before E1287 | fixed by the same translation; the 9.1 reading to confirm (ROUNDS 173) |
+| Inquiry address layout | none on real phones | the phones keep 6.1's layout (their ROMs); only the later os/bt source differs | nothing to do |
+| The joiner's host filter (service class low byte) | an S60 3.x camera phone as host, any joiner running the original filter | the host is found and dropped: the N95 in round 173 | fixed in the port (code patch 0xe6e0); an original N-Gage joiner cannot be patched |
 | Making the host visible (HCI scan enable) | 6.1 works; every 9.x refuses it | an S60v3 host is found only with "Shown to all" | the player's setting; an N-Gage host makes itself visible |
 | Link security | 6.1 registers none (0x4ae9bc(0, 0, 0, channel)); 9.x's TBTSockAddr defaults to none | no pairing on either side | matches: 9.x's default is the game's request (btsock.cpp) |
 | Secure Simple Pairing (Bluetooth 2.1+) | a 2.1 phone (Symbian^3 era) with anyone | "Just Works" may ask a 2.1 pair to confirm; with a 1.x/2.0 peer it falls back to legacy, and no security is asked | not measured; no S60v3 phone so far is 2.1 |
@@ -306,7 +307,11 @@ nothing has compared the bytes with an N-Gage host's record yet. Two things
 to check first: the game version on the N-Gage's card against the port's data
 (a different build may refuse the session), and the SDP record. The cheapest
 first test of all is an N-Gage hosting and an S60v3 phone joining: the
-N-Gage makes itself visible, so the visibility setting is out of the way.
+N-Gage makes itself visible, and the patched joiner lists it. The other way
+round is blocked by the N-Gage's own filter: an original N-Gage joiner drops
+an S60v3 host on its service class, and a self-signed app cannot change the
+class the phone advertises (KPropertyKeyBluetoothSetDeviceClass needs
+NetworkControl).
 
 ## Next steps, in order
 
@@ -317,7 +322,8 @@ N-Gage makes itself visible, so the visibility setting is out of the way.
    players" without a freeze. **Pinned by the user:** a join from a second
    phone, and the single-player 013 loader after uninstalling 012 (N95, E72).
 3. Round 173 (N95 host, N73 join): no host seen; the N73 listed a 6630.
-   Fixed the joiner's inquiry address (E1287); a host is visible only when
-   its owner sets "Shown to all" (the scan-enable ioctls are refused on 9.x).
+   The N95 was "Shown to all"; the joiner's host filter dropped it on its
+   service class (fixed, E1289). A host is visible only with "Shown to all"
+   (the scan-enable ioctls are refused on 9.x).
    Open: Join with Bluetooth off leaves the game alive and its screen gone --
    the launcher answers every ask "Bluetooth on" (GAME_LAUNCHER_BT_ON).

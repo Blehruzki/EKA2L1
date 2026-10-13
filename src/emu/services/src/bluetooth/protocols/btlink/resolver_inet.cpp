@@ -114,15 +114,15 @@ namespace eka2l1::epoc::bt {
         inquiry_socket_address &cast_addr = static_cast<inquiry_socket_address&>(addr);
         inquiry_info *info_addr_in = cast_addr.get_inquiry_info();
 
-        // EKA2L1_BTSTRICT=1: refuse what a device's CBTHostResolver::GetByAddress
-        // refuses (os/bt btstack/linkmgr/hostresolver.cpp). A cache-only
-        // request (KHostResCache, 0x20) completes at once from the inquiry
-        // cache, and there is none here, so an all-zero address is never in it;
-        // a request that asks neither an inquiry nor a name is KErrArgument;
-        // an inquiry on an IAC other than the general (0x9E8B33) or limited
-        // (0x9E8B00) one is KErrNotSupported. Off, the action flags' name bit
-        // is all that is read, which let an N-Gage title's 6.1-layout address
-        // (IAC 0, flags 0x33) discover here when it does not on a device.
+        // EKA2L1_BTSTRICT=1: refuse an inquiry the way os/bt's
+        // CBTHostResolver::GetByAddress does (btstack/linkmgr/hostresolver.cpp):
+        // a cache-only request (KHostResCache, 0x20) for an all-zero address
+        // completes KErrNotFound; one asking neither an inquiry nor a name,
+        // KErrArgument; an inquiry on an IAC other than KGIAC or KLIAC,
+        // KErrNotSupported. That source is later than any S60 3.x phone (its
+        // struct layout is not theirs, see inquiry_info), so these checks are
+        // its rules, not a phone's measured ones. Off, the action flags' name
+        // bit is all that is read. Each request's raw address is logged.
         static const bool strict = [] {
             const char *v = std::getenv("EKA2L1_BTSTRICT");
             return v && v[0] == '1';
@@ -135,8 +135,8 @@ namespace eka2l1::epoc::bt {
                 addr.family_, raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7], raw[8], raw[9], raw[10], raw[11],
                 raw[12], raw[13], raw[14], raw[15], raw[16], raw[17], raw[18], raw[19], raw[20], raw[21], raw[22], raw[23]);
             bool zero_addr = true;
-            for (std::size_t i = 0; i < sizeof(info_addr_in->addr_); i++) {
-                if (reinterpret_cast<const std::uint8_t *>(&info_addr_in->addr_)[i]) {
+            for (std::size_t i = 0; i < sizeof(info_addr_in->addr_.addr_); i++) {
+                if (info_addr_in->addr_.addr_[i]) {
                     zero_addr = false;
                 }
             }
@@ -266,7 +266,16 @@ namespace eka2l1::epoc::bt {
         inquiry_socket_address &cast_addr = static_cast<inquiry_socket_address&>(friend_name_entry_->addr_);
         inquiry_info *info_addr_in = cast_addr.get_inquiry_info();
 
-        info_addr_in->major_service_class_ = MAJOR_SERVICE_TELEPHONY;
+        // EKA2L1_BTSERVICE=<hex>: the major service classes a found device
+        // advertises (CoD bits 13-23 as Symbian keeps them, 11 bits). Default
+        // telephony alone. An S60 3.x camera phone with dial-up networking also
+        // sets networking, capturing and object transfer (0x2D0), and an N-Gage
+        // title that reads the low byte as a filter rejects it (round 173).
+        static const std::uint16_t service = [] {
+            const char *v = std::getenv("EKA2L1_BTSERVICE");
+            return static_cast<std::uint16_t>(v ? std::strtoul(v, nullptr, 0) : static_cast<unsigned long>(MAJOR_SERVICE_TELEPHONY));
+        }();
+        info_addr_in->major_service_class_ = service;
         info_addr_in->major_device_class_ = MAJOR_DEVICE_PHONE;
         info_addr_in->minor_device_class_ = MINOR_DEVICE_PHONE_CECULLAR;
         cast_addr.family_ = BTADDR_PROTOCOL_FAMILY_ID;
@@ -280,9 +289,9 @@ namespace eka2l1::epoc::bt {
             } else {
                 inquiry_socket_address &cast_addr = static_cast<inquiry_socket_address&>(friend_name_entry_->addr_);
                 inquiry_info *info_addr_in = cast_addr.get_inquiry_info();
-                std::memcpy(info_addr_in->addr_, dvc_addr_res->addr_, sizeof(info_addr_in->addr_));
+                info_addr_in->addr_ = *dvc_addr_res;
 
-                midman->add_device_address_mapping(index, *dvc_addr_res);
+                midman->add_device_address_mapping(index, info_addr_in->addr_);
 
                 friend_querier_.get_device_name_async(addr, [this, manual_direct_search](const char *result, const char result_length) {
                     kernel_system *kern = friend_retrieve_info_.requester->get_kernel_object_owner();

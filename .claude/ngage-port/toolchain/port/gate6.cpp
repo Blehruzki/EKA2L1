@@ -1355,8 +1355,6 @@ struct Context {
     u32 realFsConnect;                         // RFs::Connect, before the hook that sets the session path
     u32 realSockGetOpt;                        // RSocket::GetOpt, before the 6.1 -> 9.x option translation (gate6_sock_getopt)
     u32 realSockGetOptInt;                     // RSocket::GetOpt(name, level, TInt&), the same (gate6_sock_getopt_int)
-    u32 realResolverGetByAddress;              // RHostResolver::GetByAddress, before the inquiry address is laid out for 9.x (gate6_resolver_get_by_address)
-    u32 realResolverNext;                      // RHostResolver::Next, the same (gate6_resolver_next)
     u32 setSessionPathFn;                      // RFs::SetSessionPath, resolved on the main thread for every thread's Connect
     u32 pushItemFn;                            // CleanupStack::PushL(TCleanupItem), likewise
     u32 logonStatus[2];                        // the eight-byte TRequestStatus a diverted RThread::Logon gets
@@ -12278,58 +12276,6 @@ extern "C" int gate6_sock_getopt_int(void *sock, u32 name, u32 level, i32 *value
     return ((Fn)c->realSockGetOptInt)(sock, bt_lm_option(name, level), level, value);
 }
 
-// **A Bluetooth inquiry address, 6.1's layout made 9.x's** (round 173). An
-// N-Gage title fills its TInquirySockAddr itself -- SetIAC and SetAction are
-// inline in 6.1 (caseinc/BT_SOCK.INL) -- at 6.1's offsets: the inquiry fields
-// follow an SBTAddr that GCC 2.x rounds to 8 bytes, so the IAC is at +0x20 of
-// the object (the descriptor header, family and port, the address padded to
-// 8, then format, service class, device class, IAC) and the action flags at
-// +0x24. 9.x put the address inside SInquiryAddr (bluetoothclientlib
-// bt_sock.h), so its IAC is at +0x1c and its action flags at +0x20. Colin's
-// joiner (0x40e568) writes KGIAC and KHostResInquiry|KHostResName, which 9.x
-// reads as IAC 0 and action 0x33 -- KHostResCache among them, a lookup of an
-// all-zero address in the inquiry cache that completes at once with nothing,
-// and an IAC 9.x refuses besides (linkmgr hostresolver.cpp). "No Drivers
-// Found" on the bench under EKA2L1_BTSTRICT=1. The device-class fields the
-// engine reads back (+0x1a) are at the same offsets on both.
-//
-// The 6.1 layout is recognised by its IAC: a general or limited inquiry
-// access code at +0x20, where 9.x keeps the action, result and RSSI bytes.
-enum { KBT_ADDR_FAMILY = 0x101, KGIAC_6 = 0x9E8B33, KLIAC_6 = 0x9E8B00,
-       SA_FAMILY = 0x08, SA61_IAC = 0x20, SA61_ACTION = 0x24,
-       SA9X_IAC = 0x1C, SA9X_ACTION = 0x20, SA9X_RESULT = 0x21, SA9X_RSSI = 0x22,
-       NAME_ENTRY_ADDR = 8 + 0x208 };      // TPckgBuf<TNameRecord>: the header, iName, then iAddr
-static void inquiry_addr_to_9x(u8 *sa)
-{
-    if (!sa || ((u32)sa & 3) || !user_ptr((u32)sa))
-        return;
-    const u32 family = *(const u32 *)(sa + SA_FAMILY);     // all four offsets are word-aligned
-    const u32 iac = *(const u32 *)(sa + SA61_IAC);
-    if (family != (u32)KBT_ADDR_FAMILY || (iac != (u32)KGIAC_6 && iac != (u32)KLIAC_6))
-        return;
-    const u8 action = sa[SA61_ACTION];
-    *(u32 *)(sa + SA9X_IAC) = iac;
-    sa[SA9X_ACTION] = action;
-    sa[SA9X_RESULT] = 0;
-    sa[SA9X_RSSI] = 0;
-    sa[SA61_ACTION] = 0;
-}
-extern "C" int gate6_resolver_get_by_address(void *resolver, u8 *addr, u8 *entry, u32 *status, Context *c)
-{
-    typedef int (*Fn)(void *, u8 *, u8 *, u32 *);
-    inquiry_addr_to_9x(addr);
-    if (entry)
-        inquiry_addr_to_9x(entry + NAME_ENTRY_ADDR);
-    return ((Fn)c->realResolverGetByAddress)(resolver, addr, entry, status);
-}
-extern "C" int gate6_resolver_next(void *resolver, u8 *entry, u32 *status, Context *c)
-{
-    typedef int (*Fn)(void *, u8 *, u32 *);
-    if (entry)
-        inquiry_addr_to_9x(entry + NAME_ENTRY_ADDR);
-    return ((Fn)c->realResolverNext)(resolver, entry, status);
-}
-
 // Bench knob: the Nth SetAudioPropertiesL (slot 3) leaves with KErrNotSupported
 // instead of being forwarded. The game's own code at 0x14398 traps that call
 // and, on -5 at 16 kHz, retries at 8 kHz -- so a working bridge shows as a
@@ -16462,18 +16408,6 @@ static u32 load_and_start()
         ctx->realSockGetOpt = iat[IMPORT_SOCK_GETOPT];   // the trace thunk, when GetOpt is traced: it stays
         iat[IMPORT_SOCK_GETOPT] = arg5_thunk(ctx->spare, ctx, (u32)&gate6_sock_getopt);
         ctx->spare += ARG5_BYTES;
-    }
-    if (nImports > IMPORT_RESOLVER_GET_BY_ADDRESS && IMPORT_RESOLVER_GET_BY_ADDRESS < kShimCount &&
-        (kShimTable[IMPORT_RESOLVER_GET_BY_ADDRESS] >> 24) == KIND_CALL && ctx->spare + ARG5_BYTES <= ctx->spareEnd) {
-        ctx->realResolverGetByAddress = iat[IMPORT_RESOLVER_GET_BY_ADDRESS];
-        iat[IMPORT_RESOLVER_GET_BY_ADDRESS] = arg5_thunk(ctx->spare, ctx, (u32)&gate6_resolver_get_by_address);
-        ctx->spare += ARG5_BYTES;
-    }
-    if (nImports > IMPORT_RESOLVER_NEXT && IMPORT_RESOLVER_NEXT < kShimCount &&
-        (kShimTable[IMPORT_RESOLVER_NEXT] >> 24) == KIND_CALL && ctx->spare + TRACE <= ctx->spareEnd) {
-        ctx->realResolverNext = iat[IMPORT_RESOLVER_NEXT];
-        iat[IMPORT_RESOLVER_NEXT] = ctx3_thunk(ctx->spare, ctx, (u32)&gate6_resolver_next);
-        ctx->spare += TRACE;
     }
     if (nImports > IMPORT_SOCK_GETOPT_INT && IMPORT_SOCK_GETOPT_INT < kShimCount &&
         (kShimTable[IMPORT_SOCK_GETOPT_INT] >> 24) == KIND_CALL && ctx->spare + ARG5_BYTES <= ctx->spareEnd) {

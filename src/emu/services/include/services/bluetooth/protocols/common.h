@@ -163,25 +163,27 @@ namespace eka2l1::epoc::bt {
     };
 
 #pragma pack(push, 1)
-    // TInquirySockAddr::SInquiryAddr (os/bt bluetoothclientlib/inc/bt_sock.h):
-    // the address is a TBTDevAddr, six bytes, so the format byte follows it at
-    // 6 and the IAC sits at 12, the action flags at 16. A device_address here
-    // (six bytes and a padding word) put every field after it two bytes late.
+    // TInquirySockAddr's user data as S60 3.x phones lay it out, read from
+    // their own bluetooth.dll (RM-92, 9.1; RM-409, 9.3: FormatTypeField +0x18,
+    // MajorServiceClass +0x1a, MajorClassOfDevice +0x1c, MinorClassOfDevice
+    // +0x1d, IAC +0x20, Action +0x24 of the TSockAddr, user data from +0x10) --
+    // the N-Gage's layout too. The later os/bt source puts the address inside
+    // the struct and moves every field after it up by 8 bytes; no S60 3.x
+    // phone does that, and neither may this.
     struct inquiry_info {
-        std::uint8_t addr_[6];
+        device_address addr_;
         std::uint8_t format_type_field_;
         std::uint8_t padding_;
         std::uint16_t major_service_class_;
         std::uint8_t major_device_class_;
         std::uint8_t minor_device_class_;
+        std::uint16_t padding2_;
         std::uint32_t iac_;
         std::uint8_t action_flags_;
-        std::uint8_t result_flags_;
-        std::int8_t rssi_;
     };
 #pragma pack(pop)
 
-    static_assert(offsetof(inquiry_info, iac_) == 12 && offsetof(inquiry_info, action_flags_) == 16 && sizeof(inquiry_info) == 19);
+    static_assert(offsetof(inquiry_info, major_service_class_) == 10 && offsetof(inquiry_info, major_device_class_) == 12 && offsetof(inquiry_info, iac_) == 16 && offsetof(inquiry_info, action_flags_) == 20);
     
     struct inquiry_socket_address : public socket::saddress {
         inquiry_info *get_inquiry_info() {

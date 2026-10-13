@@ -2184,29 +2184,30 @@ uninstalled first (RELEASE.md).
 launcher's -- and a range the documentation calls test-only is a bet on every
 firmware's leniency.*
 
-### 13.am Join finds no host between phones: 6.1's inquiry address, and a host that cannot make itself visible (round 173, E1284-E1287)
-**Symptom.** N95 8GB hosting, N73 joining: neither saw the other, but the
-N73's JOIN GAME listed a nearby Nokia 6630 (Bluetooth on, "Shown to all")
-that was not running the game.
-**Cause.** Two, from the binary and os/bt's source. The joiner writes its
-TInquirySockAddr itself -- 6.1's SetIAC and SetAction are inline -- with
-KGIAC at +0x20 and the flags at +0x24, 6.1's offsets (its SBTAddr rounds to
-8 bytes). 9.x moved the address into SInquiryAddr: it reads IAC 0 and action
-0x33 there, a cache-only lookup of a zero address and an IAC it refuses. The N95
-was "Shown to all" (the user's answer), so the likeliest reading is that the
-N73's 9.1 stack took the cache bit and listed only devices already in its
-inquiry cache -- the 6630, seen before -- and never searched; not yet
-confirmed (ROUNDS 173). And the host makes itself discoverable with KHCIWriteScanEnableIoctl,
-which 9.x's L2CAP SAP answers KErrNotSupported; its replacement key needs
-NetworkControl. A host on S60v3 is visible only if its owner set "Shown to
-all". The bench missed the first because EKA2L1's own inquiry struct padded
-the address to 8 bytes and read every field two bytes late, and checked
-nothing but the name bit.
-**Fix.** The loader hooks RHostResolver::GetByAddress and Next for every
-title and moves a 6.1 IAC and flags to 9.x's offsets
-(gate6_resolver_get_by_address). EKA2L1's inquiry_info is at 9.x's offsets,
-and EKA2L1_BTSTRICT=1 (on in duo.sh) refuses what a device refuses: without
-the hook the bench now reads "No Drivers Found", with it the duo joins and
-races. The host's visibility stays the player's setting.
-*Lesson: an emulated struct is a claim about a layout too; check its offsets
-against the platform header before trusting a bench that "works".*
+### 13.am Join finds no host between phones: a filter on the wrong byte (round 173, E1284-E1289)
+**Symptom.** N95 8GB hosting ("Shown to all"), N73 joining: the N73's JOIN
+GAME never listed the N95, but listed a nearby Nokia 6630 that was not
+running the game.
+**Cause.** The joiner filters what its inquiry finds by one byte of the
+result's address, read through its own accessor at +0x16, +4 = +0x1a
+(0x40e6e0), and lists a device only for 0, 2, 0x1f or 0x80. On the phones'
+own bluetooth.dll (RM-92 9.1, RM-409 9.3) +0x1a is the major service class
+(+0x1c is the device class). An N-Gage-era phone advertises object transfer
+and telephony -- low byte 0x80, listed (the 6630); an S60 3.x camera phone
+adds networking and capturing -- 0xD0, dropped (the N95). The N95's exact
+class was not measured; the mechanism is reproduced on the bench (E1288).
+**The wrong turn first.** E1284-E1287 read the inquiry layout from the os/bt
+source, which is later than every S60 3.x phone and moves the fields 8
+bytes; the "fix" moved the joiner's IAC to where the phones keep the action
+byte. The phones' own ROMs keep 6.1's layout, the engine's request was right,
+and the translation was reverted before any build carried it.
+**Fix.** Colin's filter reads the major device class (+0x1c; code patch
+0xe6e0), so every phone is listed. EKA2L1's inquiry_info is at the phones'
+offsets (a static_assert holds them), and EKA2L1_BTSERVICE=0x2D0 (on in
+duo.sh) makes found devices advertise what an S60 3.x camera phone does:
+unpatched the duo reads "No Drivers Found", patched it joins and races.
+An original N-Gage joining still runs the unpatched filter and will not list
+an S60v3 host, which cannot change the class it advertises (NetworkControl).
+*Lesson: the platform source is a version, not the platform. When a layout
+matters, read it from the ROM of the phone in question -- three ROMs were on
+this machine the whole time.*

@@ -109,9 +109,10 @@ enum { GAME_SRC_ORIGIN = 16 };   // the engine writes at the ScreenInfo address 
                           { 0x000a8440, 0xE92D4000, 0xE3A00001 }, /* the flip always direct: mov r0, #1 */ \
                           { 0x000a8444, 0xE59F3024, 0xE12FFF1E }, /*   bx lr */ \
                           { 0x00049e58, 0x1B035823, 0xE1A00000 }, /* the link check: an error reads as no links, never a Leave (round 170); its option number is translated for every title (gate6_sock_getopt) */ \
+                          { 0x0000e6e0, 0xE5D07004, 0xE5D07006 }, /* the joiner's host filter reads the major device class (+0x1c), not the service class's low byte (+0x1a) (round 173) */ \
                           { 0x00049890, 0x0A00000A, 0x0A000037 }, /* the pump: a body still short after its 10 reads waits for the next frame */ \
                           { 0x000498c4, 0x0AFFFFBB, 0xE1A00000 }  /*   and one finished on the 10th read is a message, not a lost link */
-#define GAME_CODE_PATCH_COUNT 22
+#define GAME_CODE_PATCH_COUNT 23
 // **The receive on a status of the port's own (E1243).** The engine's network
 // object keeps its Write status at +0x10 and its receive status at +0x14, one
 // EKA1 word each, and 9.x's RSocket::Write ORs ERequestPending (2) into the

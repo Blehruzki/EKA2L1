@@ -250,7 +250,7 @@ hardware coverage above with DEVICES.md's phone table.
 | code | 615 KB | 1556 KB | 970 KB | 1371 KB | 25 KB | 4 KB | 224 KB |
 | imports / DLLs | 391 / 21 | 462 / 21 | 354 / 20 | 532 / 21 | 181 / 7 | 0 / 0 | 583 / 22 |
 | imports the shim leaves as stubs | 14 | 14 | 8 | 7 | 7 | 1 | 67 |
-| hooks present / defined | 67 / 165 | 73 / 165 | 64 / 165 | 91 / 165 | 29 / 165 | 78 / 165 | 49 / 165 |
+| hooks present / defined | 67 / 163 | 73 / 163 | 64 / 163 | 91 / 163 | 29 / 163 | 76 / 163 | 49 / 163 |
 | diversions (old object to wrapper) | 14 | 14 | 14 | 15 | 10 | 2 | 13 |
 | game files / size | 7 / 9.9 MB | 122 / 27.6 MB | 7 / 15.3 MB | 1075 / 27.4 MB | 2 / 0.0 MB | 28 / 32.4 MB | 28 / 32.4 MB |
 | split data package | no | no | no | yes | no | no | no |
@@ -375,7 +375,7 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 | `GAME_CANCEL_ROM_OBJECTS` | 0 | 0 | 1 | 1 | 1 | 1 | 1 |
 | `GAME_CAPABILITIES` | · | · | · | · | · | 0 | · |
 | `GAME_CARD_CID` | · | · | · | 0x567857f1,… | · | · | · |
-| `GAME_CODE_PATCHES` | 0 entries | 0 entries | 2 entries | 8 entries | 0 entries | 22 entries | 0 entries |
+| `GAME_CODE_PATCHES` | 0 entries | 0 entries | 2 entries | 8 entries | 0 entries | 23 entries | 0 entries |
 | `GAME_CONTROL_H` | 0 | 0 | 208 | 0 | 0 | 0 | 0 |
 | `GAME_CONTROL_W` | 0 | 0 | 176 | 0 | 0 | 0 | 0 |
 | `GAME_DEFER_WORKER_STOP` | · | · | · | 1 | · | · | · |
