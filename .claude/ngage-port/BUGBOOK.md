@@ -2192,9 +2192,11 @@ that was not running the game.
 TInquirySockAddr itself -- 6.1's SetIAC and SetAction are inline -- with
 KGIAC at +0x20 and the flags at +0x24, 6.1's offsets (its SBTAddr rounds to
 8 bytes). 9.x moved the address into SInquiryAddr: it reads IAC 0 and action
-0x33 there, a cache-only lookup of a zero address and an IAC it refuses. The
-N73's 9.1 stack still inquired (it found the 6630); a 9.2 joiner likely does
-not. And the host makes itself discoverable with KHCIWriteScanEnableIoctl,
+0x33 there, a cache-only lookup of a zero address and an IAC it refuses. The N95
+was "Shown to all" (the user's answer), so the likeliest reading is that the
+N73's 9.1 stack took the cache bit and listed only devices already in its
+inquiry cache -- the 6630, seen before -- and never searched; not yet
+confirmed (ROUNDS 173). And the host makes itself discoverable with KHCIWriteScanEnableIoctl,
 which 9.x's L2CAP SAP answers KErrNotSupported; its replacement key needs
 NetworkControl. A host on S60v3 is visible only if its owner set "Shown to
 all". The bench missed the first because EKA2L1's own inquiry struct padded

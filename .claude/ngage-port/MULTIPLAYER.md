@@ -292,7 +292,7 @@ in a crowded 2.4 GHz band; they change no call. Radios: N-Gage QD 1.1
 |---|---|---|---|
 | ACL packet size (DH5 against 2-DH5/3-DH5) and RFCOMM frame size | any two radios | the same message arrives in different pieces | handled: the pump's two code patches (E1226-E1227); the bench shows it with EKA2L1_BTSPLIT |
 | Inquiry address layout | 6.1 game on any 9.x | IAC and flags read 8 bytes early | fixed for 9.x, every title (E1287); an N-Gage's own stack reads 6.1's layout, nothing to do |
-| How strictly the host resolver checks it | 9.1 (lenient: the N73 still searched) against later 9.x (KHostResCache, the IAC check) | a 9.2/9.3 joiner found nothing before E1287 | fixed by the same translation |
+| How the host resolver reads it | 9.1: most likely the cache bit -- the N73 listed a 6630 it had seen before and not the N95, which was "Shown to all"; later 9.x: a cache lookup of a zero address and a refused IAC | no joiner on S60v3 searched the air before E1287 | fixed by the same translation; the 9.1 reading to confirm (ROUNDS 173) |
 | Making the host visible (HCI scan enable) | 6.1 works; every 9.x refuses it | an S60v3 host is found only with "Shown to all" | the player's setting; an N-Gage host makes itself visible |
 | Link security | 6.1 registers none (0x4ae9bc(0, 0, 0, channel)); 9.x's TBTSockAddr defaults to none | no pairing on either side | matches: 9.x's default is the game's request (btsock.cpp) |
 | Secure Simple Pairing (Bluetooth 2.1+) | a 2.1 phone (Symbian^3 era) with anyone | "Just Works" may ask a 2.1 pair to confirm; with a 1.x/2.0 peer it falls back to legacy, and no security is asked | not measured; no S60v3 phone so far is 2.1 |
