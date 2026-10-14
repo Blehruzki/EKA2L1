@@ -82,6 +82,21 @@ def main():
     print('  emulator runs written up:   %d, through %s' % (len(emu), emu[-1][0] if emu else '-'))
     if unfinished:
         print('  NOT LOGGED: %s  <-- fix before anything else' % ', '.join(unfinished))
+    # Each table in number order, file order: a row written into the wrong
+    # place reads as missing to a reader and to `through` above (rounds 179-181
+    # sat in the emulator table, inserted after the first text that matched
+    # "| 178 |").
+    def order_breaks(table, key):
+        out, prev = [], None
+        for n, _ in table:
+            v = key(n)
+            if prev is not None and v <= prev:
+                out.append(n)
+            prev = v
+        return out
+    misplaced = order_breaks(hw, int) + order_breaks(emu, lambda n: int(n[1:]))
+    if misplaced:
+        print('  OUT OF ORDER: %s  <-- a row written into the wrong place' % ', '.join(misplaced))
     if pending_hw:
         print('  awaiting hardware: round %s' % ', '.join(pending_hw))
     print('  last commit touching the record: %s' % last_commit_touching())
