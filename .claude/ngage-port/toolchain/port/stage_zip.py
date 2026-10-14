@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""stage_zip.py <out dir> --game <name>: the game's files for a zip release.
+"""stage_zip.py <out dir> [tree] --game <name>: the game's files for a zip release.
+
+The tree defaults to the bench's E: drive; give a card dump's own
+`system/apps/<folder>` for another edition (Glimmerati's retail beside the
+press the bench carries).
 
 Lays out `<out>/stage/system/apps/<folder>/` with exactly the files, names and
 bytes the bundled package installs -- build_release's own list (game_files,
@@ -19,10 +23,10 @@ import build_release as r
 import picture
 
 
-def stage(out, game):
+def stage(out, game, tree=None):
     st = r.stem(game)
     folder = picture.folder(game)
-    tree = os.path.join(r.GAMES_ROOT, folder)
+    tree = tree or os.path.join(r.GAMES_ROOT, folder)
     scratch = os.path.join(out, '_scratch')
     os.makedirs(scratch, exist_ok=True)
     target_dir = '!:\\system\\apps\\' + folder
@@ -41,4 +45,4 @@ if __name__ == '__main__':
     g, rest = picture.take_game_arg(sys.argv[1:])
     if not g or not rest:
         sys.exit(__doc__)
-    stage(rest[0], g)
+    stage(rest[0], g, rest[1] if len(rest) > 1 else None)
