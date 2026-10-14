@@ -119,6 +119,27 @@ void ARMul_State::ReportWatch(std::uint32_t address, std::uint32_t data, std::ui
         return;
     }
 
+    // EKA2L1_WATCHONCE=1: each writing PC reported once (the first 64) -- what
+    // code writes into a block at all, a framebuffer say, rather than the
+    // first few hundred of its stores (ngage-port: Asphalt 2's renderer).
+    static const bool once = [] {
+        const char *w = std::getenv("EKA2L1_WATCHONCE");
+        return w && *w == '1';
+    }();
+    if (once) {
+        static std::uint32_t pcs[64];
+        static int npcs = 0;
+        for (int k = 0; k < npcs; k++)
+            if (pcs[k] == Reg[15])
+                return;
+        if (npcs >= 64)
+            return;
+        pcs[npcs++] = Reg[15];
+        LOG_ERROR(eka2l1::CPU_DYNCOM, "WATCH: pc 0x{:X} (lr 0x{:X}) writes {} bytes of 0x{:X} to 0x{:X} (writer {} of the watch)",
+            Reg[15], Reg[14], width, data, address, npcs);
+        return;
+    }
+
     // A range watch over the ROM catches a runaway memset, which is thousands
     // of writes and only the first few say anything.
     static std::uint32_t reported = 0;

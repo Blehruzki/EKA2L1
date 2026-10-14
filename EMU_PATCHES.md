@@ -42,6 +42,7 @@ the emulator.
 | `EKA2L1_WATCH=addr[:end]` | Guest writes into `[addr,end)` with value, PC and LR (capped ~400). | `cpu/src/dyncom/armstate.cpp` | emulator |
 | `EKA2L1_WATCHVAL=v` | Narrows `EKA2L1_WATCH` to writes of value `v`. | same | emulator |
 | `EKA2L1_WATCHPC=lo:hi` | Narrows `EKA2L1_WATCH` to writes from PC in `[lo,hi)`. | same | emulator |
+| `EKA2L1_WATCHONCE=1` | off | With `EKA2L1_WATCH`, each writing PC is reported once (the first 64) instead of the first 400 stores: what code writes into a block at all -- a game's back buffer, say (ngage-port E1444: Asphalt 2's 63 writers). | `cpu/src/dyncom/armstate.cpp` (`ReportWatch`) | ngage-port |
 | `EKA2L1_RWATCH=addr` or `lo:hi` | Reads of the word at `addr` -- by LDR, LDRB/LDRH of any of its bytes, or an LDM that covers it -- first few, then only on change, with PC/LR. A range `lo:hi` reports each reading PC once (the first 64). `EKA2L1_RWATCH_PC=lo:hi` keeps only reads made by code in that range, one line each time it enters another 4 KB page: the extent and order of a checksum's window (ngage-port E1382, E1393). | same | emulator |
 | `EKA2L1_INACTIVITY=1` | Counts guest `User::ResetInactivityTime` calls at the bridged SVC. | `kernel/src/svc.cpp` (`clear_inactivity_time`) | emulator |
 | `EKA2L1_SCREEN` | Window-server screen instrument. | `services/src/window/window.cpp` | emulator |

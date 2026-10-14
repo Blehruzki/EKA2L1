@@ -63,3 +63,49 @@ draws (E135, E229/E230). Each title is its own reverse-engineering job.
   change that fixes one can shear the other (E133-E135's pitch lesson).
 - The 2D side gains nothing without new art, which is outside the port.
 - Weeks of bench rounds before the first phone build, per title.
+
+## Step 1, done: where Asphalt 2 bakes its 176x208 (E1443-E1444, `nativescan.py`)
+
+How it draws, measured on the bench (image at 0x4700000):
+- Its own back buffer of 73,216 bytes (176x208 at 16 bits; the pixels are
+  4K, 12 bits in a 16-bit cell, the top nibble masked at present time). The
+  screen object keeps `[0]` = the buffer and `[4]` = buffer + 0x1600, row
+  16: **the 3D view is 176x176, rows 16-191**, with a 16-row band above and
+  below for the HUD. The fills clip both x and y to 175 (img+0xb714,
+  0xbb84, 0xbf90).
+- The present (img+0xa6c74, called from 0x973fc) clears the two bands,
+  optionally blends a 256-pixel-pitch overlay into the view (a 50% average
+  of 12-bit pixels), and memcpys the 73,216 bytes to the screen surface's
+  pixels (`+0x1c`), which is `iScreenAddress + 0x20` from the loader's
+  `ScreenInfo` (img+0x393ec).
+- 63 PCs in the image write the back buffer during a boot and the attract
+  race (`EKA2L1_WATCHONCE`), in 22 functions: two assembly blitters at the
+  image's start (0x434, 0xfd4: parametrised, the caller builds a
+  {flags, 176, 208} descriptor on the stack, img+0xba124), the span fills
+  (0xb9008 and 0xb92d8, four-byte stores of pixel pairs), a family of
+  textured and blended span routines (0xaf3ac-0xb04b0), sprite and text
+  blitters (0x34cc8-0x38ba4, 0x50c1c-0x50e38, 0x7eda4), the fills.
+
+What a native 240x320 patch has to change, by kind:
+
+| kind | sites | the shape of the patch |
+|---|---|---|
+| row stride 352, written as `y*11<<5` (add, add, lsl #5) | 30 sites in 21 functions | 480 = 15<<5: `add t,y,y,lsl#1 ; add t,t,t,lsl#2 ; lsl #5` -- the same three words. Landscape 640 = 5<<7: two words and a nop |
+| width 176 / 352 / 175 as immediates (`cmp #0xb0`, `addgt #0x160`, `cmp #0xaf`) | one to six per renderer function; ~60 in the 21 functions, more in callers | 240 = 0xf0, 480 = 0x1e0, 239 = 0xef: all ARM immediates |
+| height 208 / 207 | the surface sites and the present | 320 = 0x140 is an immediate; 319 is not (a cmp against 0x140 with the condition changed) |
+| buffer size 73,216 | 5 literal words (img+0x8438, 0x5a60c, 0x9eb10, 0xa70f8, 0xac05c) | 153,600 in the literal |
+| the bands: 0x1600 (16 rows), 0x10800 (rows 192 on) | the present, the screen object's constructor | 16*480 = 0x1e00 (an immediate); (320-16)*480 = 0x23a00 is not (a literal or two adds) |
+| surfaces made 176x208 (`surface_init`, img+0x5409c) | 7 call sites, one 150 wide, 4 from registers; the stack descriptors at 0xba124/0xba1cc | per site |
+| the half width 88 and the horizon 125 in the perspective span (img+0xb9008: `#0x58`, `#0x7d`) | the span function; the polygon rasteriser's own centres not yet found | 120; the horizon moves with the view's height |
+
+So roughly 100-130 words, in some 30 functions, all of a few shapes, and
+all behind the Codewave hash (written at the data-archive open, as
+Glimmerati's). Asphalt Urban GT draws the same way (`nativescan.py` on it:
+16 stride sites in 11 functions, no 73,216 literal -- it sizes its buffer
+another way), so the method carries, the sites do not.
+
+Still unknown before step 2: the polygon rasteriser's projection centre
+(the immediates 0x58/0x68 in the engine's big functions are stack offsets
+and unrelated adds, not it); the HUD's coordinates (step 4); whether the
+game clips sprites against the surface's own width field (`+4`) or the
+immediates -- the span routines use the immediates.
