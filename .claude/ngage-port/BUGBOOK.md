@@ -2344,3 +2344,26 @@ retail boots passed (E1402-E1406), and the race drove (E1401).
 *Lesson: a Codewave title checks its own code. Every code patch on one is a
 lottery ticket for an exit during loading, at a rate set by how much of the
 code the patches span -- and the "intermittent" exit was that all along.*
+
+### 14.h The full-screen modes slow on a phone: the port scaler never ran (round 179, E1413-E1422)
+**Symptom.** N95, build 003: the frame rate drops in the full-screen mode, as
+Ashen's did before round 150.
+**Cause.** Two things kept Glimmerati off the port scaler (`GAME_PORT_SCALER`),
+so its fitted modes were drawn by the window server's scaled DrawBitmap -- 7
+to 13 blits a second in the phone's log. The scaler takes its four CFbsBitmap
+entries off the game's own imports, and Glimmerati imports no
+`CFbsBitmap::DisplayMode()` (0x5CA0000E on the phone and the bench alike);
+and it blits `BitBlt(pt, bmp, rect)` -- the 176x208 view at (40,24) of a
+256x256 bitmap -- which `fitted_blit` always handed to the gc's own scaled
+draw, the scaler taking whole bitmaps only (E1413). The bench's host scales
+fast, so it never showed.
+**Fix.** The game's `CFbsBitmap::Create` is wrapped and each bitmap's size and
+mode kept (`gate6_fbs_create`, 0x5CA9); the scaler reads a source rectangle
+at the width Create gave (`scale_frame`'s `rect`), and takes the mode from
+Create too; `DisplayMode` is also taken from fbscli 109 when not imported
+(0x5CA8). A rectangle it cannot read goes to the gc for that blit only.
+Glimmerati's frames now go through the scaler and filter in every fitted
+mode, races included (E1414-E1421); Ashen unchanged (E1422).
+*Lesson: a knob that is on is not a path that runs. The first record of the
+phone's log said the scaler had three of its four entries, and every
+64-blit report after it said 0 ticks inside the scaler.*

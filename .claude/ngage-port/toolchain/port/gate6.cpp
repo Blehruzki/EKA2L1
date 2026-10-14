@@ -1243,6 +1243,9 @@ struct Context {
     u32 clearPending;       // blank the framebuffer once, after any change
     u32 dstW, dstH;         // how big the picture is drawn
     u32 fbsCtor, fbsCreate, fbsData, fbsMode;   // 9.x CFbsBitmap entries, read off the game's own imports (round 150)
+    u32 fbsMadeBmp[4], fbsMadeWH[4], fbsMadeMode[4], fbsMadeN;   // the game's last CFbsBitmap::Creates: object, w<<16|h, mode (round 179)
+    u32 rectFallbackSaid;   // a source-rectangle blit the scaler could not take has been logged once
+    u32 fbsMadeSaid;        // how many of those creates have been logged (six)
     u32 *scaled[8];         // the port's screen-format bitmap per picture mode, made on first use
     u32 scaledW[8], scaledH[8];
     u32 *lut4k;             // EColor4K pixel -> EColor16MU word, 4,096 entries, built on first use
@@ -5073,6 +5076,8 @@ enum { FORCE_DEACTIVATE_AT = 0, CONE_DEACTIVATE_ACTIVE_VIEW = 224 };
 enum { FORCE_BACKGROUND_AT = 0, WS32_SET_ORDINAL_POSITION = 211,
        NEW_COEENV_ROOTWIN = 0x2c + COEENV_BIAS };
 static const u16 kWs32Name[] = { 'w','s','3','2','.','d','l','l' };
+static const u16 kFbscliName[] = { 'f','b','s','c','l','i','.','d','l','l' };
+enum { FBSCLI_BITMAP_DISPLAY_MODE = 109 };   // CFbsBitmap::DisplayMode() const (round 179)
 
 static void bench_ordinal(Context *c, int pos)
 {
@@ -9974,11 +9979,32 @@ static int filter_frame(Context *c, const u16 *s, u32 pitch, u32 *d)
     return 1;
 }
 
-static int scale_frame(Context *c, const void *src, u32 *dstBmp)
+// What the game's own CFbsBitmap::Create said of a bitmap: w<<16|h, and its
+// mode in *mode; 0 when the port did not see it made (gate6_fbs_create).
+static u32 fbs_made(const Context *c, const void *bmp, u32 *mode)
+{
+    for (u32 i = 0; i < 4; i++)
+        if (c->fbsMadeBmp[i] && c->fbsMadeBmp[i] == (u32)bmp) {
+            *mode = c->fbsMadeMode[i];
+            return c->fbsMadeWH[i];
+        }
+    return 0;
+}
+
+// `rect`, when given, is the GAME_CONTROL_W x H part of a bigger bitmap the
+// game blits (Glimmerati's view at (40,24) of its frame): the rows are then
+// as wide as Create made the bitmap, and the frame starts at the rectangle.
+static int scale_frame(Context *c, const void *src, u32 *dstBmp, const i32 *rect = 0)
 {
     typedef u32 *(*Data)(const void *);
     typedef u32 (*Mode)(const void *);
-    if (((Mode)c->fbsMode)(src) != (u32)EColor4K)
+    u32 madeMode = 0;
+    const u32 made = fbs_made(c, src, &madeMode);
+    if (rect) {
+        if (!made || madeMode != (u32)EColor4K || rect[0] < 0 || rect[1] < 0 ||
+            (u32)rect[2] > (made >> 16) || (u32)rect[3] > (made & 0xFFFF))
+            return 0;
+    } else if (made ? madeMode != (u32)EColor4K : (!c->fbsMode || ((Mode)c->fbsMode)(src) != (u32)EColor4K))
         return 0;
     if (!c->lut4k) {
         c->lut4k = (u32 *)user_allocz(4096 * 4);
@@ -9992,7 +10018,10 @@ static int scale_frame(Context *c, const void *src, u32 *dstBmp)
     if (!s || !d)
         return 0;
     const u32 *lut = c->lut4k;
-    const u32 pitch = ((u32)GAME_CONTROL_W * 2u + 3u) / 4u * 2u;    // EColor4K: 16 bits a pixel, rows to a word
+    const u32 srcW = rect ? (made >> 16) : (u32)GAME_CONTROL_W;
+    const u32 pitch = (srcW * 2u + 3u) / 4u * 2u;       // EColor4K: 16 bits a pixel, rows to a word
+    if (rect)
+        s += (u32)rect[1] * pitch + (u32)rect[0];
     const u32 w = c->dstW;
     const int filtered = GAME_SCALE_FILTER && !fit_is_exact(c->mode) && filter_frame(c, s, pitch, d);
     if (!filtered)
@@ -10031,6 +10060,34 @@ static void blit_rate_note(Context *c)
 // gc (Ashen, gate6_wgc_bitblt) or the direct-screen-access CFbsBitGc
 // (Glimmerati, gate6_dsa_bitblt). Both are CBitmapContexts, so BitBlt,
 // DrawBitmap(TRect), Clear and the brush calls sit at the same EABI slots.
+// The game's CFbsBitmap::Create, kept track of (round 179): the port scaler
+// needs a source bitmap's width and mode, and a title may import neither
+// SizeInPixels nor DisplayMode. The last four bitmaps made, by object; the
+// first six creates logged (0x5CA9mmmm the mode, then w<<16|h, then the result).
+extern "C" int gate6_fbs_create(void *bmp, const i32 *size, u32 mode, Context *c)
+{
+    typedef int (*Create)(void *, const i32 *, u32);
+    const int err = ((Create)c->fbsCreate)(bmp, size, mode);
+    const u32 wh = size ? (((u32)size[0] & 0xFFFF) << 16) | ((u32)size[1] & 0xFFFF) : 0;
+    if (err == 0 && bmp && size) {
+        u32 k = 0;
+        while (k < 4 && c->fbsMadeBmp[k] != (u32)bmp)
+            k++;
+        if (k == 4)
+            k = c->fbsMadeN++ & 3;
+        c->fbsMadeBmp[k] = (u32)bmp;
+        c->fbsMadeWH[k] = wh;
+        c->fbsMadeMode[k] = mode;
+    }
+    if (c->fbsMadeSaid < 6) {
+        c->fbsMadeSaid++;
+        log_event(c, NOTE_PORT_SCALER, 0x5CA90000u | (mode & 0xFFFF));
+        log_event(c, NOTE_PORT_SCALER, wh);
+        log_event(c, NOTE_PORT_SCALER, (u32)err);
+    }
+    return err;
+}
+
 static void fitted_blit(Context *c, u32 *real, const i32 *pt, const void *bmp, const i32 *src)
 {
     typedef void (*BitBltFn)(void *, const i32 *, const void *);
@@ -10070,8 +10127,34 @@ static void fitted_blit(Context *c, u32 *real, const i32 *pt, const void *bmp, c
     }
     if (src) {
         // A part of a bigger bitmap (Glimmerati's view at (40,24) of its
-        // frame): scaled by the gc itself; the port scaler takes whole bitmaps.
-        blit_rate_note(c);
+        // frame). Round 179: through the port scaler too, when the game's
+        // own Create said how wide the bitmap is -- the gc's scaled draw is
+        // what ran the N95's full-screen mode at 7-13 blits a second.
+        if (bmp != c->lastBlitBmp) { c->blitSwitches++; c->lastBlitBmp = bmp; }
+        if (GAME_PORT_SCALER && c->scalerOff != 1 && c->fbsCtor && c->fbsCreate && c->fbsData &&
+            src[2] - src[0] == (i32)GAME_CONTROL_W && src[3] - src[1] == (i32)GAME_CONTROL_H) {
+            u32 *sb = scaled_bitmap(c);
+            const u32 t0 = user_tickcount();
+            const int ok = sb && scale_frame(c, bmp, sb, src);
+            c->blitScalerFast += user_tickcount() - t0;
+            blit_rate_note(c);
+            if (ok) {
+                const i32 at[2] = { x, y };
+                ((BitBltFn)vt[NEW_GC_BITBLT])(real, at, sb);
+                return;
+            }
+            // No bitmap of ours: off for good. A frame it cannot read (a
+            // bitmap it did not see made, or not 4K): this blit goes to the
+            // gc, logged the first time, and the next is tried again.
+            if (!sb)
+                c->scalerOff = 1;
+            if (!sb || !c->rectFallbackSaid) {
+                c->rectFallbackSaid = 1;
+                log_event(c, NOTE_PORT_SCALER, 0x5CA20000u | (sb ? 2u : 0u));
+            }
+        } else {
+            blit_rate_note(c);
+        }
         const i32 dst[4] = { x, y, x + (i32)c->dstW, y + (i32)c->dstH };
         ((DrawBitmapSrcFn)vt[NEW_GC_DRAWBITMAP_RECT_SRC])(real, dst, bmp, src);
         return;
@@ -10087,7 +10170,7 @@ static void fitted_blit(Context *c, u32 *real, const i32 *pt, const void *bmp, c
     // confirmed; 64 a second), a blit's own scaler time is 0 or 1 of them
     // and sixty-four blits make the sum a measurement.
     if (bmp != c->lastBlitBmp) { c->blitSwitches++; c->lastBlitBmp = bmp; }
-    if (GAME_PORT_SCALER && c->scalerOff != 1 && c->fbsCtor && c->fbsCreate && c->fbsData && c->fbsMode) {
+    if (GAME_PORT_SCALER && c->scalerOff != 1 && c->fbsCtor && c->fbsCreate && c->fbsData) {
         u32 *sb = scaled_bitmap(c);
         const u32 t0 = user_tickcount();
         const int ok = sb && scale_frame(c, bmp, sb);
@@ -16849,6 +16932,29 @@ static u32 load_and_start()
             for (u32 i = 0; i < 4; i++)
                 if (nImports > want[i] && want[i] < kShimCount && (kShimTable[want[i]] >> 24) == KIND_CALL)
                     *into[i] = iat[want[i]];
+            // Round 179: Glimmerati imports three of the four and not
+            // DisplayMode, so its scaler never ran and its full-screen frames
+            // went through the window server's scaled DrawBitmap -- 7 to 13
+            // blits a second on the N95, Ashen's rate before round 150. The
+            // missing one is taken from fbscli itself: CFbsBitmap::DisplayMode()
+            // const, ordinal 109, as Ashen's shim forwards it (its scaler ran on
+            // the N95 with it, rounds 150-153); scale_frame checks the answer is
+            // EColor4K before using a frame, so a wrong entry only turns it off.
+            if (!ctx->fbsMode && ctx->fbsCtor && ctx->fbsCreate && ctx->fbsData) {
+                u32 lib = 0;
+                Ptrc16 nm, none;
+                nm.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kFbscliName / 2);
+                nm.text = kFbscliName;
+                none.lengthAndType = (u32)EPtrC << KTypeShift;
+                none.text = 0;
+                if (!rlibrary_load(&lib, &nm, &none))
+                    ctx->fbsMode = (u32)rlibrary_lookup(&lib, FBSCLI_BITMAP_DISPLAY_MODE);
+                log_event(ctx, NOTE_PORT_SCALER, 0x5CA80000u | (ctx->fbsMode ? 1u : 0u));
+            }
+            if (ctx->fbsCreate && ctx->spare + TRACE <= ctx->spareEnd) {
+                iat[IMPORT_FBS_BITMAP_CREATE] = ctx3_thunk(ctx->spare, ctx, (u32)&gate6_fbs_create);
+                ctx->spare += TRACE;
+            }
             log_event(ctx, NOTE_PORT_SCALER, 0x5CA00000u | (ctx->fbsCtor ? 8u : 0u) | (ctx->fbsCreate ? 4u : 0u) |
                                              (ctx->fbsData ? 2u : 0u) | (ctx->fbsMode ? 1u : 0u));
         }
