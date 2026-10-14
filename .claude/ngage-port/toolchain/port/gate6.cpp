@@ -1427,6 +1427,7 @@ struct Context {
     u32 cardCid[5];         // the card ID out of cid.txt beside the game, when there is one
     u32 cardCidSet;         // ... and that there was (card_cid_file)
     u32 altEdition;         // the image is GAME_ALT_CODE_SIZE's edition: its patches, its card
+    u32 patchPending;       // GAME_CODE_PATCHES checked, not yet written (GAME_PATCH_AT_OPEN_CHARS)
     u32 realResume;         // RThread::Resume, as resolved
     u32 engineThread;       // GAME_ENGINE_LXCE: the engine's thread handle
     u32 realRwin[4];        // RWindow's two constructors, BeginRedraw(TRect), EndRedraw, as resolved
@@ -2843,6 +2844,23 @@ static const CodePatch kCodePatch[] = { GAME_CODE_PATCHES };
 #define GAME_ALT_CODE_PATCH_COUNT 0
 #endif
 static const CodePatch kAltCodePatch[] = { GAME_ALT_CODE_PATCHES };
+// **Patches written late, at the first open of a named file** (game.h:
+// GAME_PATCH_AT_OPEN_CHARS, the end of the name, lower case). Glimmerati's
+// Codewave protection hashes a window of the code in memory against the image
+// file during loading -- a window that moves from launch to launch -- and
+// quits when a patched word is in it (E1382; 3 of 3 boots failed with the span
+// routines patched, 3 of 3 passed with the words written back, E1377-E1379).
+// The file's bytes cannot carry the words instead: the protection makes more
+// of them than the hash (E1389-E1392). So the words are checked at load and
+// written when the game first opens a file that only comes after the hash --
+// its data archive -- and before anything that runs the patched code.
+#ifdef GAME_PATCH_AT_OPEN_CHARS
+static const u16 kPatchAtOpen[] = { GAME_PATCH_AT_OPEN_CHARS };
+enum { PATCH_AT_OPEN = 1 };
+#else
+static const u16 kPatchAtOpen[] = { 0 };
+enum { PATCH_AT_OPEN = 0 };
+#endif
 // **A game class's vtable moved to EABI's address point** (GAME_VTABLE_SHIFTS
 // {at, slots}). GCC98r2 stores a vtable's start in the object -- two header
 // words, then slot 0 -- and EABI its first slot, so 9.x code calling slot k
@@ -6902,6 +6920,41 @@ static int name_is_rubbish(const u32 *name)
     return len < 8 || text[0] < 0x20 || text[1] < 0x20;
 }
 
+// GAME_CODE_PATCHES, written: at load, or at GAME_PATCH_AT_OPEN_CHARS's open.
+// Every word was checked against its expected value at load.
+static void code_patches_write(Context *c)
+{
+    const CodePatch *patches = c->altEdition ? kAltCodePatch : kCodePatch;
+    const u32 n = c->altEdition ? (u32)GAME_ALT_CODE_PATCH_COUNT : (u32)GAME_CODE_PATCH_COUNT;
+    for (u32 i = 0; i < n; i++) {
+        u32 *w = (u32 *)(c->codeBase + patches[i].at);
+        *w = patches[i].replace;
+        user_imb_range(w, w + 1);
+        log_event(c, NOTE_PATCH, patches[i].at);
+    }
+    c->patchPending = 0;
+}
+
+// The name ends with GAME_PATCH_AT_OPEN_CHARS, whatever the case: a TDesC16's
+// text (RFile::Open), or with len 0 a C string (estlib's fopen -- Glimmerati
+// opens its data archive so, through its own RFile inside estlib, E1400).
+static int ends_with_patch_name(const u16 *t, u32 len, const char *cs = 0)
+{
+    const u32 n = sizeof kPatchAtOpen / sizeof kPatchAtOpen[0];
+    if (cs)
+        for (len = 0; len < 512 && cs[len]; len++) {}
+    if (!PATCH_AT_OPEN || (!t && !cs) || len < n)
+        return 0;
+    for (u32 i = 0; i < n; i++) {
+        u16 ch = cs ? (u16)(u8)cs[len - n + i] : t[len - n + i];
+        if (ch >= 'A' && ch <= 'Z')
+            ch = (u16)(ch + ('a' - 'A'));
+        if (ch != kPatchAtOpen[i])
+            return 0;
+    }
+    return 1;
+}
+
 // `E:` is a fiction the game is kept inside: it is told its own path is on
 // E: whatever drive it was installed to, its own compiled-in `E:` paths then
 // agree with that, and the read-only-card protection -- which tests the
@@ -6973,6 +7026,10 @@ extern "C" int gate6_card_open(void *f, void *fs, const u32 *name, u32 mode, Con
     // (image_read_fix); on a `.app` install nothing is renamed and nothing kept.
     u32 nlen0 = 0;
     const u16 *ntext0 = name_text(name, &nlen0);
+    if (c->patchPending && nlen0 <= 270 && ends_with_patch_name(ntext0, nlen0)) {
+        log_event(c, NOTE_PATCH, 0x5A110000u);                  // the open they waited for
+        code_patches_write(c);
+    }
     const int imageOpen = c->imageIsBin && ntext0 && nlen0 && nlen0 <= 270 && ends_with_app(ntext0, nlen0);
     name = on_the_real_drive(name, c);
     if (SUBSTITUTE_BAD_NAMES && name_is_rubbish(name)) {
@@ -7047,6 +7104,10 @@ static const char *fopen_name(const char *name, Context *c)
 extern "C" void *gate6_fopen(const char *name, const char *mode, Context *c)
 {
     typedef void *(*Fopen)(const char *, const char *);
+    if (c->patchPending && name && ends_with_patch_name(0, 0, name)) {
+        log_event(c, NOTE_PATCH, 0x5A110001u);                  // the open they waited for, by fopen
+        code_patches_write(c);
+    }
     return ((Fopen)c->realFopen)(fopen_name(name, c), mode);
 }
 
@@ -15942,9 +16003,12 @@ static u32 load_and_start()
         if (at + 4 > imgSize || (at & 3)) PANIC(CAT_HDR, 8);
         u32 *w = (u32 *)(base + at);
         if (*w != patches[i].expect) PANIC(CAT_HDR, 9);
-        *w = patches[i].replace;
-        user_imb_range(w, w + 1);
-        log_event(ctx, NOTE_PATCH, at);
+    }
+    if (PATCH_AT_OPEN && nPatches) {
+        ctx->patchPending = 1;
+        log_event(ctx, NOTE_PATCH, 0x5A100000u | nPatches);     // checked, held back
+    } else {
+        code_patches_write(ctx);
     }
     for (u32 i = 0; i < (u32)GAME_VTABLE_SHIFT_COUNT; i++) {
         const u32 at = kVtableShift[i].at, n = kVtableShift[i].slots;

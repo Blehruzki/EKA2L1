@@ -72,6 +72,9 @@ export EKA2L1_STRICTHANDLE="${EKA2L1_STRICTHANDLE:-1}"
 # build 003 took no keys on the N95 and passed every lenient bench run.
 # EKA2L1_KERNREQ=0 in the caller's environment brings the old behaviour back.
 export EKA2L1_KERNREQ="${EKA2L1_KERNREQ:-1}"
+# The N95's ARM11 stores a written-back SP from `push {..., sp, ...}`; an ARM9
+# and the emulator by default store the original (BUGBOOK 14.f, round 178).
+export EKA2L1_STMNEWBASE="${EKA2L1_STMNEWBASE:-1}"
 (cd /home/user/EKA2L1/build/bin && timeout -k 5 -s KILL "${TMO:-120}" ./eka2l1_qt --device "${DEVICE:-RM-409}" --run $UID3 >"$S/g6.log" 2>&1)
 # The emulator does not always go on SIGTERM, and a run left behind holds its
 # memory and a few per cent of a core. Enough of them and a later launch cannot

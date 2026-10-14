@@ -33,7 +33,50 @@ std::uint32_t ARMul_State::rwatch_addr = []() -> std::uint32_t {
     return w ? static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) : 0;
 }();
 
+std::uint32_t ARMul_State::rwatch_end = []() -> std::uint32_t {
+    const char *w = std::getenv("EKA2L1_RWATCH");
+    if (!w)
+        return 0;
+    const char *colon = std::strchr(w, ':');
+    return colon ? static_cast<std::uint32_t>(std::strtoul(colon + 1, nullptr, 16))
+                 : static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) + 4;
+}();
+
 void ARMul_State::ReportRead(std::uint32_t address, std::uint32_t value) const {
+    // EKA2L1_RWATCH_PC=lo:hi: only reads made by code in that range, each
+    // reported when it enters a 4 KB page other than the last one reported --
+    // the extent and order of what one routine reads (a checksum's window).
+    static const std::uint32_t pc_lo = [] {
+        const char *w = std::getenv("EKA2L1_RWATCH_PC");
+        return w ? static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) : 0u;
+    }();
+    static const std::uint32_t pc_hi = [] {
+        const char *w = std::getenv("EKA2L1_RWATCH_PC");
+        const char *colon = w ? std::strchr(w, ':') : nullptr;
+        return colon ? static_cast<std::uint32_t>(std::strtoul(colon + 1, nullptr, 16)) : 0u;
+    }();
+    if (pc_hi) {
+        static std::uint32_t last_page = 0xFFFFFFFFu;
+        if (Reg[15] < pc_lo || Reg[15] >= pc_hi || (address >> 12) == last_page)
+            return;
+        last_page = address >> 12;
+        LOG_ERROR(eka2l1::CPU_DYNCOM, "RWATCH: page 0x{:X} entered at 0x{:X} from pc 0x{:X}", address & ~0xFFFu, address, Reg[15]);
+        return;
+    }
+    if (rwatch_end - rwatch_addr > 4) {
+        static std::uint32_t pcs[64];
+        static int npcs = 0;
+        for (int k = 0; k < npcs; k++)
+            if (pcs[k] == Reg[15])
+                return;
+        if (npcs < 64) {
+            pcs[npcs++] = Reg[15];
+            LOG_ERROR(eka2l1::CPU_DYNCOM, "RWATCH: read 0x{:X} at 0x{:X} from pc 0x{:X} lr 0x{:X} (pc {} of the range)",
+                value, address, Reg[15], Reg[14], npcs);
+        }
+        return;
+    }
+
     static std::uint32_t first = 0;
     static std::uint32_t seen = 0;
 

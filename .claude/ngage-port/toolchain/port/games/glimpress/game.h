@@ -102,6 +102,16 @@ enum { GAME_SRC_ORIGIN = 0 };
 // One's loop (round 128) and the port's own timer.
 #define GAME_AO_PRIORITIES { 0x00061a3c, -101 }
 #define GAME_AO_PRIORITY_COUNT 1
+// The rasteriser's four span routines (0x208e8, 0x20cd4, 0x21124, 0x217dc,
+// both editions) save with `push {r4-r12, sp, lr}` and return with
+// `pop {r4-r12, sp, lr}`: SP in the list of an STM and of an LDM that writes
+// back to SP. ARM calls both results UNPREDICTABLE; the N-Gage's ARM920T and
+// this bench give back the caller's SP, the N95's ARM11 gives back an SP one
+// frame (44 bytes) low -- the rasteriser's own pop then takes its saved vertex
+// pointer at [sp+0x38] for LR and jumps into the vertex data: round 177/178's
+// race crash, pc = lr = 0x4ae0b50, fault SP 0x2c short (E1359). r3 for SP
+// keeps the 44-byte frame; the routines never read their saved words, and r3
+// is a scratch register to their caller.
 #define GAME_CODE_PATCHES { 0x00071140, 0xE5940000, 0xE5943024 }, /* Arena timer, logged in: ldr r3, [r4, #0x24] */ \
                           { 0x00071144, 0xE5903124, 0xE3530004 }, /* cmp r3, #4 -- still waiting? */ \
                           { 0x00071148, 0xE593C0B8, 0x1A00005B }, /* bne the callback's exit (0x712bc) */ \
@@ -112,8 +122,16 @@ enum { GAME_SRC_ORIGIN = 0 };
                           { 0x00070ca8, 0xE59F0010, 0xE3A03008 }, /* state 7, Logout returned 0: mov r3, #8 */ \
                           { 0x00070cac, 0xEBFE69BD, 0xE5863024 }, /* str r3, [r6, #0x24]: ELogoutComplete's state */ \
                           { 0x00070880, 0xEB0097AD, 0xE1A00000 }, /* state 3: data.zip stays open (was bl close, 0x9673c) */ \
-                          { 0x00070c24, 0xEB0096CC, 0xE1A00000 }  /* state 7: so no reopen (was bl 0x9675c) */
-#define GAME_CODE_PATCH_COUNT 11
+                          { 0x00070c24, 0xEB0096CC, 0xE1A00000 }, /* state 7: so no reopen (was bl 0x9675c) */ \
+                          { 0x000208e8, 0xE92D7FF0, 0xE92D5FF8 }, /* span routine 1: push {r3-r12, lr}, was push {r4-r12, sp, lr} */ \
+                          { 0x00020a90, 0xE8BD7FF0, 0xE8BD5FF8 }, /* pop {r3-r12, lr}, was pop {r4-r12, sp, lr} */ \
+                          { 0x00020cd4, 0xE92D7FF0, 0xE92D5FF8 }, /* span routine 2: push {r3-r12, lr}, was push {r4-r12, sp, lr} */ \
+                          { 0x00020e38, 0xE8BD7FF0, 0xE8BD5FF8 }, \
+                          { 0x00021124, 0xE92D7FF0, 0xE92D5FF8 }, /* span routine 3: push {r3-r12, lr}, was push {r4-r12, sp, lr} */ \
+                          { 0x000212c4, 0xE8BD7FF0, 0xE8BD5FF8 }, \
+                          { 0x000217dc, 0xE92D7FF0, 0xE92D5FF8 }, /* span routine 4: push {r3-r12, lr}, was push {r4-r12, sp, lr} */ \
+                          { 0x00021994, 0xE8BD7FF0, 0xE8BD5FF8 }
+#define GAME_CODE_PATCH_COUNT 19
 // The retail edition, v04225-0.51-prd-1605THR: the same 396 imports and UID3
 // as the press v0.50 this port was built on, its code 0x2b8 bytes shorter.
 // The Arena state machine sits at the same addresses and differs only in
@@ -131,8 +149,22 @@ enum { GAME_SRC_ORIGIN = 0 };
                               { 0x00070ca8, 0xE59F0010, 0xE3A03008 }, \
                               { 0x00070cac, 0xEBFE69BD, 0xE5863024 }, \
                               { 0x00070880, 0xEB0096FD, 0xE1A00000 }, /* bl 0x9647c in retail */ \
-                              { 0x00070c24, 0xEB00961C, 0xE1A00000 }  /* bl 0x9649c in retail */
-#define GAME_ALT_CODE_PATCH_COUNT 11
+                              { 0x00070c24, 0xEB00961C, 0xE1A00000 }, /* bl 0x9649c in retail */ \
+                              { 0x000208e8, 0xE92D7FF0, 0xE92D5FF8 }, \
+                              { 0x00020a90, 0xE8BD7FF0, 0xE8BD5FF8 }, \
+                              { 0x00020cd4, 0xE92D7FF0, 0xE92D5FF8 }, \
+                              { 0x00020e38, 0xE8BD7FF0, 0xE8BD5FF8 }, \
+                              { 0x00021124, 0xE92D7FF0, 0xE92D5FF8 }, \
+                              { 0x000212c4, 0xE8BD7FF0, 0xE8BD5FF8 }, \
+                              { 0x000217dc, 0xE92D7FF0, 0xE92D5FF8 }, \
+                              { 0x00021994, 0xE8BD7FF0, 0xE8BD5FF8 }
+#define GAME_ALT_CODE_PATCH_COUNT 19
+// The copy protection hashes a window of the code in memory against the
+// image file during loading, a different window each launch, and quit the
+// title when a patched word was in it (E1382). So the patches are written at
+// the first open of the data archive, which comes after the hash and before
+// any race or the Arena (GAME_PATCH_AT_OPEN_CHARS in gate6.cpp, BUGBOOK 14.g).
+#define GAME_PATCH_AT_OPEN_CHARS 'd','a','t','a','.','z','i','p'
 
 // The environment's screen device, as the game reads it off the view
 // (old iScreen, 0x3c): 1 hands it a stand-in that answers font requests by
@@ -246,5 +278,5 @@ enum { GAME_SRC_ORIGIN = 0 };
 #define GAME_ALT_CARD_CID 0x05075817, 0x6c0100c6, 0x0b24184a, 0x07000400
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 2
+#define GAME_BUILD 3
 #endif

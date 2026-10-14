@@ -34,6 +34,7 @@ ARM9 phones. The ROM is at 0xF8xxxxxx and the game image loads high.
 | `CCoeEnv` layout | Nothing: the 12-byte bias measured on 3.1/3.2 holds on 3.0 | -- | round 120 (N91) |
 | The screen is written through the LCD driver (`GenericLcd_Lcd.ldd`), not HAL attributes | Bench only: EKA2L1 lacked the kernel calls (0x82, 0xA) and the driver | Emulator, round 159: `src/emu/ldd/src/lcd/` | E872-E881 |
 | The app list needs the loader's icon (MIF) | Bench only: a bench build without one never appeared | `emurun.sh` builds with the icon, as the release does | round 158 |
+| The CPU: an ARM11 (ARMv6) where the N-Gage has an ARM9; where ARM leaves a result UNPREDICTABLE they can differ. An STM that stores its own written-back base (`push {..., sp, ...}`) stores the new SP on the N95, the original on an ARM9 and on the bench; heap is no-execute on ARMv6 | Glimmerati's span routines returned SP one frame low; the race load jumped into vertex data (G6FLT 29112) | The routines patched (`GAME_CODE_PATCHES`); `stmbase.py` scans an image; the bench's `EKA2L1_STMNEWBASE=1`, on in emurun.sh | round 178 |
 
 ### S60 3.1 -- Symbian 9.2, Feature Pack 1 (N95, N95 8GB)
 

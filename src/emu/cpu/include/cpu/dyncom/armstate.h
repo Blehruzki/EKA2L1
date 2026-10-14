@@ -167,20 +167,34 @@ public:
     // little-endian value (matching the previous TLB-hit behaviour); writes swap
     // first so the stored bytes match.
     std::uint8_t ReadMemory8(std::uint32_t address) const {
+        std::uint8_t value;
         if (std::uint8_t *ptr = mem_cache_->lookup(address))
-            return *ptr;
-        return ReadMemory8Slow(address);
+            value = *ptr;
+        else
+            value = ReadMemory8Slow(address);
+        if (rwatch_addr && address < rwatch_end && address + 4 > rwatch_addr)
+            ReportRead(address, value);
+        return value;
     }
     std::uint16_t ReadMemory16(std::uint32_t address) const {
+        std::uint16_t value;
         if (std::uint16_t *ptr = reinterpret_cast<std::uint16_t *>(mem_cache_->lookup(address)))
-            return *ptr;
-        return ReadMemory16Slow(address);
+            value = *ptr;
+        else
+            value = ReadMemory16Slow(address);
+        if (rwatch_addr && address < rwatch_end && address + 4 > rwatch_addr)
+            ReportRead(address, value);
+        return value;
     }
-    // The read half of the same idea: EKA2L1_RWATCH logs what a word read
-    // at that address answers with. Every read for the first few, and after
+    // The read half of the same idea: EKA2L1_RWATCH logs what a read of the
+    // word at that address answers with -- LDR, LDRB/LDRH of any of its bytes,
+    // or an LDM that covers it. Every read for the first few, and after
     // that only an answer that differs from the first one -- which is the
     // case worth seeing, a pointer that was one thing and is now another.
+    // "lo:hi" watches a half-open range instead, and then reports each
+    // reading PC once (the first 64): what reads a block of code at all.
     static std::uint32_t rwatch_addr;
+    static std::uint32_t rwatch_end;
     void ReportRead(std::uint32_t address, std::uint32_t value) const;
     // A read with no side effects: false for an unmapped address, where
     // ReadMemory32 would raise the guest's access violation. For probes.
@@ -192,7 +206,7 @@ public:
             value = *ptr;
         else
             value = ReadMemory32Slow(address);
-        if (rwatch_addr && address == rwatch_addr)
+        if (rwatch_addr && address < rwatch_end && address + 4 > rwatch_addr)
             ReportRead(address, value);
         return value;
     }
@@ -283,6 +297,11 @@ public:
     };
 
     std::uint32_t ReadMemory32Block(std::uint32_t address, block_cursor &c) const {
+        if (rwatch_addr && address < rwatch_end && address + 4 > rwatch_addr) {
+            const std::uint32_t value = ReadMemory32(address);
+            c.page_host = nullptr;
+            return value;
+        }
         const std::uint32_t page_off = address & static_cast<std::uint32_t>(mem_cache_->page_mask);
         if (c.page_host && (address - page_off) == c.page_base)
             return *reinterpret_cast<std::uint32_t *>(c.page_host + page_off);

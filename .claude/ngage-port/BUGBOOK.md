@@ -2283,8 +2283,64 @@ Open and then the race's volume and writes with no open-complete between. The
 bench gives the phone's exact audio record, silence included. The crash came
 on that never-opened stream's path (the 3.1 stack handed a buffer back, the
 game wrote again, and faulted); the bench cannot reproduce that part.
+*Wrong:* round 178 had the sound and the same crash, word for word. The crash
+is 14.f's, and has nothing to do with the audio.
 **Fix.** GAME_AO_PRIORITIES {0x61a3c, -101}, both editions: the open-complete
 comes at once and the title sets its audio up as on the bench (build 002).
 *Lesson: BUGBOOK 12's own line -- look for the self-completing object in a
 new title's first log -- was there, and was not read. A bench whose firmware
 queues differently cannot show starvation; force it.*
+
+### 14.f An ARM9 push of SP, popped on an ARM11 (rounds 177-178, E1356-E1363)
+**Symptom.** N95, either build: G6FLT 29112 loading a race, a prefetch abort
+with pc = lr = 0x4ae0b50, a heap address; identical stack in both rounds. The
+bench raced.
+**Cause.** The rasteriser (0x20168) calls one of four span routines (0x208e8,
+0x20cd4, 0x21124, 0x217dc), each saving with `push {r4-r12, sp, lr}` and
+returning with `pop {r4-r12, sp, lr}` -- SP stored by an STM that writes back
+to SP, and loaded by an LDM that does too. ARM leaves both UNPREDICTABLE. An
+ARM9 (the N-Gage) and EKA2L1 store the original SP; the N95's ARM11 stores the
+written-back one, so the pop returns SP 44 bytes low, the rasteriser's own
+`pop {r4-sl, lr}` takes its saved third vertex pointer ([sp+0x38]) for LR, and
+`bx lr` jumps into vertex data -- no-execute on ARMv6. Read off the phone's
+fault words: SP 0x2c short of the rasteriser's frame, with its saved r4-r10,
+LR (img+0x530b4) and both stack arguments (the routine img+0x208e8 among them)
+above it in place; the bench's register dump at the rasteriser's entry (E1358)
+had the same values 0x400000 higher.
+**Fix.** The eight words patched to `push/pop {r3-r12, lr}`, both editions
+(same offsets): the same 44-byte frame without SP in the list; the routines
+never read their saved words, and r3 is scratch to their caller. Reproduced
+and fixed on the bench with the emulator's `EKA2L1_STMNEWBASE=1`, which stores
+as the ARM11 does (E1361, E1363); emurun.sh now runs with it on. No other
+title's image has such an instruction (`stmbase.py`). The patched words then
+tripped the copy protection's hash (14.g), so they are written after it.
+*Lesson: the bench's CPU is an ARM9 where the ISA says "unpredictable" and an
+ARM11 phone differs; and a fault's "jump target" can be data that a corrupted
+SP handed to a return. Lay the fault's stack words against the frames before
+calling an address code.*
+
+### 14.g The copy protection hashes the code: patches written after it (E1359-E1406)
+**Symptom.** With 14.f's eight words patched, the title quit in its loading
+(EXIT 0xE817, before the menu) in most launches -- eight of thirteen; with
+the eleven older patches alone, about two in thirty (E1329, E1334: read then
+as a timeout).
+**Cause.** The Codewave protection reads the whole image file
+(E:\system\apps\6r37\6r37.app, 64 KB at a time) and hashes a window of the
+code in memory against it -- a SHA-style digest over bytes, the hasher at
+0xc74xx-0xc79xx decrypted at run time -- a different window each launch.
+A patched word inside the window fails it; a worker (resumed from 0xd41cc in
+retail) retries and the title exits. Measured: 3 of 3 boots failed with the
+span words, 3 of 3 passed with the same entries writing back the original
+words (E1377-E1379); a range read watch caught the hasher reading the first
+span routine byte by byte in the failing launch (E1382). Giving the file's
+bytes the patched words is no way out: the protection makes more of them than
+the hash, and the title died at once on a garbage pointer (E1389-E1392).
+**Fix.** The words are checked at load and written at the first open of
+data.zip (`GAME_PATCH_AT_OPEN_CHARS`), which comes after the hash in every
+launch measured (E1393-E1395) and before anything that runs them (a race, the
+Arena). Glimmerati opens it with estlib's `fopen`, not RFile, so the check is
+in `gate6_fopen` as well as `gate6_card_open` (E1399-E1400). Five of five
+retail boots passed (E1402-E1406), and the race drove (E1401).
+*Lesson: a Codewave title checks its own code. Every code patch on one is a
+lottery ticket for an exit during loading, at a rate set by how much of the
+code the patches span -- and the "intermittent" exit was that all along.*

@@ -118,6 +118,13 @@ of its own after it, therefore works here and sees that field ORed with 2 on a
 phone. `EKA2L1_KERNREQ=1` completes as EKA2 does (`request_status::set` in
 `src/emu/utils/include/utils/reqsts.h`).
 
+An STM with writeback that stores its own base register (`push {..., sp,
+...}`) stores the original base here, as an ARM9 does; the N95's ARM11 stores
+the written-back one, and ARM calls the value UNPREDICTABLE. Nor does the
+emulator enforce no-execute: a jump into heap data runs it here and is a
+prefetch abort on an ARMv6 phone. `EKA2L1_STMNEWBASE=1` stores as the ARM11
+does (`STM_INST` in `src/emu/cpu/src/dyncom/arm_dyncom_interpreter.cpp`).
+
 EKA2L1 accepts SIS packages that a real device rejects, because it verifies none
 of the integrity fields a device checks: the per-file SHA-1 in each
 `SISFileDescription`, the E32 image header CRC32, `SISControllerChecksum` /

@@ -4898,9 +4898,34 @@ STM_INST : {
                 cpu->WriteMemory32Block(addr, cpu->Reg[15] + 8, stm_cur);
             }
         } else {
+            // EKA2L1_STMNEWBASE=1: an STM with writeback whose base is in the list
+            // and is not its lowest register stores the written-back base, not
+            // the original. ARM calls the stored value UNPREDICTABLE; this is what
+            // the N95's ARM11 measured (ngage-port round 178: Glimmerati's
+            // `push {r4-r12, sp, lr}` ... `pop {r4-r12, sp, lr}` came back one
+            // frame low). Off, the original is stored, as an ARM9 does.
+            static const bool stm_new_base = [] {
+                const char *e = std::getenv("EKA2L1_STMNEWBASE");
+                return e && *e == '1';
+            }();
+            const bool base_lowest = (inst & ((1u << Rn) - 1)) == 0;
             for (unsigned int i = 0; i < 15; i++) {
                 if (BIT(inst_cream->inst, i)) {
-                    if (i == Rn)
+                    if (i == Rn && stm_new_base && BIT(inst, 21) && !base_lowest) {
+                        // Each such STM is reported once, by its PC (the first 64).
+                        static std::uint32_t seen[64];
+                        static int nseen = 0;
+                        bool had = false;
+                        for (int k = 0; k < nseen; k++)
+                            had |= seen[k] == cpu->Reg[15];
+                        if (!had && nseen < 64) {
+                            seen[nseen++] = cpu->Reg[15];
+                            LOG_INFO(eka2l1::CPU_DYNCOM, "STMNEWBASE: pc {:#010x} inst {:08x} stores {:#x}, not {:#x}",
+                                cpu->Reg[15], inst, cpu->Reg[Rn], old_RN);
+                        }
+                        cpu->WriteMemory32Block(addr, cpu->Reg[Rn], stm_cur);
+                    }
+                    else if (i == Rn)
                         cpu->WriteMemory32Block(addr, old_RN, stm_cur);
                     else
                         cpu->WriteMemory32Block(addr, cpu->Reg[i], stm_cur);
