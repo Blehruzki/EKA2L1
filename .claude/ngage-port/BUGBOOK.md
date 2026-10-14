@@ -2375,3 +2375,24 @@ picture (E1424-E1426).
 *Lesson: a knob that is on is not a path that runs. The first record of the
 phone's log said the scaler had three of its four entries, and every
 64-blit report after it said 0 ticks inside the scaler.*
+
+### 14.i A black screen on S60 3.0 -- the bench's, not the phones' (E1346-E1347, E1433-E1438)
+**Symptom.** On the RM-92 (N80, S60 3.0) firmware the title opened its sound
+stream and drew nothing: 0 FPS, the menu never seen. Parked as "a 3.0
+problem of its own" in round 177 and not looked at again until the user
+asked.
+**Cause.** EKA2L1, not the port. S60 3.0's euser is built for ARMv5 and has
+no ldrex/strex, so RCriticalSection::Wait and ::Signal (exports 459 and 461
+of the RM-92 ROM) ask the kernel for LockedDec and LockedInc -- fast execs
+0x0B and 0x0A -- which EKA2L1 had in its EKA1 tables only. Wait got its own
+argument back for the old value and blocked on a semaphore nobody would
+signal. Found by giving EKA2L1's "Unimplement system call" message the
+caller's pc and lr (0xF81E86D8: the return into Wait). S60 3.1 and 3.2 do the
+same two with ldrex/strex and never call them, which is why the N95 never
+met it -- and a 3.0 phone's kernel has them, so no phone ever would.
+**Fix.** In the emulator: LockedInc and LockedDec on its 9.x call table
+(`svc.cpp`). Glimmerati then boots, races and steps all five picture modes
+on the RM-92 at the N80's 352x416 (E1435-E1437); the RM-409 unchanged
+(E1438). No loader change, no new build.
+*Lesson: a fault seen only on the bench is a question about the bench first.
+And "for later" needs a row that says who comes back to it.*

@@ -1166,7 +1166,13 @@ namespace eka2l1::hle {
         auto res = svc_funcs_.find(svcnum);
 
         if (res == svc_funcs_.end()) {
-            LOG_ERROR(KERNEL, "Unimplement system call: 0x{:X}!", svcnum);
+            {
+                // Where it came from: on a 9.1 ROM the stub's caller is in r12 by now
+                // (kernel_system::call_svc moved the pc there), and lr is the caller's own.
+                arm::core *cpu = kern_->get_cpu();
+                LOG_ERROR(KERNEL, "Unimplement system call: 0x{:X}! pc 0x{:X} lr 0x{:X} r0 0x{:X} r1 0x{:X}",
+                    svcnum, cpu->get_pc(), cpu->get_lr(), cpu->get_reg(0), cpu->get_reg(1));
+            }
 
             kern_->unlock();
             return false;

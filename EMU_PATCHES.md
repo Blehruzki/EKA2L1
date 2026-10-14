@@ -95,6 +95,19 @@ RBusLogicalChannel (ngage-port r159):
   emulator's own scdv makes, then complete at once. Anything else is logged
   as `Unhandled Lcd control` (class `Ldd.Lcd`).
 
+**LockedInc and LockedDec (fast execs 0x0A and 0x0B on 9.1).** S60 3.0's
+euser, built for ARMv5, has RCriticalSection::Wait and ::Signal ask the
+kernel for these (S60 3.1 and later use ldrex/strex). EKA2L1 had them in
+its EKA1 tables only, so on a 3.0 firmware the first contended Wait blocked
+for good (ngage-port: Glimmerati's black screen, BUGBOOK 14.i). Now on the
+9.x table (`svc.cpp`, `locked_inc_32` / `locked_dec_32`). The
+"Unimplement system call" message now carries the caller's pc, lr, r0 and
+r1 (`lib_manager::call_svc`). Still open, seen while doing this: slow exec
+0x53 is unimplemented on both 9.1 and 9.3 (euser export 601's, called
+thousands of times by Glimmerati, harmlessly so far); and `safe_inc_32` /
+`safe_dec_32` (fast execs 0x15/0x16) increment the pointer rather than the
+value it points at.
+
 ## A drawing command on an inactive window gc
 
 Not a switch: always on. A graphics-context command other than Activate,

@@ -6434,6 +6434,14 @@ namespace eka2l1::epoc {
         BRIDGE_REGISTER(0x00800006, set_active_scheduler),
         BRIDGE_REGISTER(0x00800008, trap_handler),
         BRIDGE_REGISTER(0x00800009, set_trap_handler),
+        // LockedInc and LockedDec: the S60 3.0 (9.1, ARMv5) euser's
+        // RCriticalSection::Signal and ::Wait call them on iBlocked (exports 461
+        // and 459 of the RM-92 ROM, through stubs at 0xf81d9dec/0xf81d9df4); 9.2+
+        // ROMs built for ARMv6 do the same with ldrex/strex and never ask. Missing,
+        // Wait read its own argument back for the old value and blocked on a
+        // semaphore nobody signals (ngage-port: Glimmerati's black screen on 3.0).
+        BRIDGE_REGISTER(0x0080000A, locked_inc_32),
+        BRIDGE_REGISTER(0x0080000B, locked_dec_32),
         BRIDGE_REGISTER(0x0080000D, debug_mask),
         BRIDGE_REGISTER(0x0080000F, fast_counter),
         BRIDGE_REGISTER(0x00800010, ntick_count),

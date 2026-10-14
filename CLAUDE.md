@@ -109,6 +109,9 @@ phone's LCD driver: kernel calls 0x82 (ChannelCreate) and 0x0A
 modelled on the N80's own LDD. Before them, any app using direct screen access
 on a 3.0 firmware died in its first `CDirectScreenAccess::StartL`. Details in
 `EMU_PATCHES.md`.
+The same firmwares' ARMv5 euser asks the kernel for `LockedInc` and
+`LockedDec` (fast execs 0x0A, 0x0B) in every `RCriticalSection`, which the
+9.x call table now has; without them the first contended wait hung.
 
 A completed request clears `ERequestPending` in the second word of the
 client's `TRequestStatus` here; EKA2's kernel writes the status word only
