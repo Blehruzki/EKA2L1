@@ -1255,7 +1255,7 @@ struct Context {
     u8 mapX[MAP_MAX];       // destination column -> source column, Bresenham
     u8 mapY[MAP_MAX];       // and the same down
     u8 wX[MAP_MAX], wY[MAP_MAX];   // round 150: the filter's blend weight toward the next source pixel, 0 to copy
-    u32 *conv;              // the frame converted to EColor16MU before filtering, srcW x srcH words
+    u32 *conv;              // the filter's frame in byte lanes, its weights and its 4K table (filter_frame)
     u32 boxData[BOX_WORDS];
     u32 pathIndex;          // which layout the game was loaded from
     u32 dataDrive;          // and the drive it is really on, as a letter
@@ -9926,55 +9926,116 @@ static u32 *scaled_bitmap(Context *c)
 // how much of it lies in each -- the weights screen_fit computed beside the
 // maps. So pixels stay sharp where they can and the uneven widths go; at an
 // integer ratio every weight is 0 and this is never called. The frame is
-// converted to EColor16MU once (srcW x srcH words), then each output pixel
-// blends up to four of those: red and blue together in one word, green in
-// the other, eight-bit weights, no division.
-static inline u32 blend_16mu(u32 p, u32 q, u32 w)
+// converted once and each output pixel is up to four source pixels blended
+// by those weights (the arithmetic below, round 180).
+
+// Round 180: the first version of this, three two-word blends a pixel, cost the N95 22 ms a frame in the full mode,
+// half of every frame (64-blit reports, logs/glim-004-n95), so the filter now
+// works in one word per pixel. The frame is 4K -- four bits a channel -- and
+// is held as R<<16 | G<<8 | B, each channel 0..15 in a byte of its own; with
+// the four taps' weights in sixteenths summing to 16 (`filter_weights`), a
+// channel's weighted sum is at most 15 * 16 = 240 and never carries into the
+// next byte, so the whole bilinear sum is one multiply and three
+// multiply-adds, already in EColor16MU's 0x00RRGGBB order, and `x + (x >> 4)`
+// per byte takes 240 to 255 as the 4K table's v * 17 does. Positions are
+// rounded to a sixteenth of a pixel (screen_fit's weights are 1/256). The
+// same picture; what changed is the arithmetic.
+//
+// The weights of the four taps for a horizontal weight wx and a vertical wy,
+// both 0..16 (of the next column and the next row): top-left | top-right<<8
+// | bottom-left<<16 | bottom-right<<24, summing to 16, each within one of
+// its exact value (largest remainder; checked for all 289 pairs).
+static u32 filter_weights(u32 wx, u32 wy)
 {
-    const u32 iw = 256u - w;
-    const u32 rb = (((p & 0x00FF00FFu) * iw + (q & 0x00FF00FFu) * w) >> 8) & 0x00FF00FFu;
-    const u32 g  = (((p & 0x0000FF00u) * iw + (q & 0x0000FF00u) * w) >> 8) & 0x0000FF00u;
-    return rb | g;
+    u32 p[4] = { (16 - wx) * (16 - wy), wx * (16 - wy), (16 - wx) * wy, wx * wy };   // 1/256ths
+    u32 w[4], rem[4], sum = 0;
+    for (u32 i = 0; i < 4; i++) {
+        w[i] = p[i] >> 4;
+        rem[i] = p[i] & 15;
+        sum += w[i];
+    }
+    for (; sum < 16; sum++) {
+        u32 best = 0;
+        for (u32 i = 1; i < 4; i++)
+            if (rem[i] > rem[best])
+                best = i;
+        w[best]++;
+        rem[best] = 0;
+    }
+    return w[0] | (w[1] << 8) | (w[2] << 16) | (w[3] << 24);
+}
+
+enum { FILTER_MAX_W = 512 };
+
+// One output row of the filter: from one source row (a row whose vertical
+// weight is 0), or from two. Functions of their own, so that their few
+// pointers stay in registers: inlined into scale_frame at -O1 the loop
+// reloaded its bounds and bases from the stack at every pixel.
+__attribute__((noinline))
+static void filter_row2(u32 *d, const u32 *r0, const u8 *mx, const u8 *col, u32 w)
+{
+    u32 *const end = d + w;
+    while (d < end) {
+        const u32 sx = *mx++, b = *col++;
+        const u32 v = r0[sx] * (16u - b) + r0[sx + 1] * b;
+        *d++ = v + ((v >> 4) & 0x000F0F0Fu);
+    }
+}
+
+__attribute__((noinline))
+static void filter_row4(u32 *d, const u32 *r0, const u32 *r1, const u8 *mx, const u8 *col,
+                        const u32 *wrow, u32 w)
+{
+    u32 *const end = d + w;
+    while (d < end) {
+        const u32 sx = *mx++, k = wrow[*col++];
+        const u32 v = r0[sx] * (k & 0xFFu) + r0[sx + 1] * ((k >> 8) & 0xFFu) +
+                      r1[sx] * ((k >> 16) & 0xFFu) + r1[sx + 1] * (k >> 24);
+        *d++ = v + ((v >> 4) & 0x000F0F0Fu);
+    }
 }
 
 static int filter_frame(Context *c, const u16 *s, u32 pitch, u32 *d)
 {
     const u32 sw = (u32)GAME_CONTROL_W, sh = (u32)GAME_CONTROL_H;
+    // One allocation: the frame in byte lanes (a spare row and word past it,
+    // read with weight 0 at the right and bottom edges), the 17 x 17 weights,
+    // and the 4K-to-lanes table.
+    const u32 convWords = sw * (sh + 1) + 1;
     if (!c->conv) {
-        c->conv = (u32 *)user_allocz((int)(sw * sh * 4u));
+        c->conv = (u32 *)user_allocz((int)((convWords + 17u * 17u + 4096u) * 4u));
         if (!c->conv)
             return 0;
+        u32 *wt = c->conv + convWords, *lane = wt + 17 * 17;
+        for (u32 wy = 0; wy <= 16; wy++)
+            for (u32 wx = 0; wx <= 16; wx++)
+                wt[wy * 17 + wx] = filter_weights(wx, wy);
+        for (u32 v = 0; v < 4096; v++)
+            lane[v] = ((v & 0xF00) << 8) | ((v & 0x0F0) << 4) | (v & 0x00F);
     }
-    const u32 *lut = c->lut4k;
+    const u32 w = c->dstW;
+    if (w > FILTER_MAX_W)
+        return 0;
     u32 *conv = c->conv;
+    const u32 *wt = conv + convWords, *lane = wt + 17 * 17;
     for (u32 y = 0; y < sh; y++) {
         const u16 *srow = s + y * pitch;
         u32 *crow = conv + y * sw;
         for (u32 x = 0; x < sw; x++)
-            crow[x] = lut[srow[x] & 0xFFF];
+            crow[x] = lane[srow[x] & 0xFFF];
     }
-    const u32 w = c->dstW;
-    const u8 *mx = c->mapX, *wx = c->wX;
+    u8 col[FILTER_MAX_W];                       // each column's weight in sixteenths
+    for (u32 x = 0; x < w; x++)
+        col[x] = (u8)((c->wX[x] + 8u) >> 4);
+    const u8 *mx = c->mapX;
     for (u32 y = 0; y < c->dstH; y++) {
         const u32 sy = c->mapY[y];
-        const u32 wy = c->wY[y];
+        const u32 wy = (c->wY[y] + 8u) >> 4;
         const u32 *r0 = conv + sy * sw;
-        const u32 *r1 = (wy && sy + 1 < sh) ? r0 + sw : r0;
-        u32 *drow = d + y * w;
-        if (!wy) {
-            for (u32 x = 0; x < w; x++) {
-                const u32 sx = mx[x];
-                drow[x] = wx[x] ? blend_16mu(r0[sx], r0[sx + 1], wx[x]) : r0[sx];
-            }
-        } else {
-            for (u32 x = 0; x < w; x++) {
-                const u32 sx = mx[x];
-                const u32 bw = wx[x];
-                const u32 top = bw ? blend_16mu(r0[sx], r0[sx + 1], bw) : r0[sx];
-                const u32 bot = bw ? blend_16mu(r1[sx], r1[sx + 1], bw) : r1[sx];
-                drow[x] = blend_16mu(top, bot, wy);
-            }
-        }
+        if (!wy)
+            filter_row2(d + y * w, r0, mx, col, w);
+        else
+            filter_row4(d + y * w, r0, (sy + 1 < sh) ? r0 + sw : r0, mx, col, wt + wy * 17, w);
     }
     return 1;
 }

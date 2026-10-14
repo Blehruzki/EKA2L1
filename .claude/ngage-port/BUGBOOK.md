@@ -2364,6 +2364,14 @@ Create too; `DisplayMode` is also taken from fbscli 109 when not imported
 (0x5CA8). A rectangle it cannot read goes to the gc for that blit only.
 Glimmerati's frames now go through the scaler and filter in every fitted
 mode, races included (E1414-E1421); Ashen unchanged (E1422).
+Round 180 (build 004 on the N95): smoother, not as smooth as 1:1 -- the
+scaler itself took 22 ms a frame, half of each, in the full mode. Build 005
+does the filter's arithmetic in one word per pixel: the 4K frame held as
+byte lanes (each channel 0..15), weights in sixteenths summing to 16, so the
+four taps are one multiply and three multiply-adds with no carries, already
+in 0x00RRGGBB order; and the row loops as functions of their own, whose
+pointers stay in registers. 47% less scaler time on the bench for the same
+picture (E1424-E1426).
 *Lesson: a knob that is on is not a path that runs. The first record of the
 phone's log said the scaler had three of its four entries, and every
 64-blit report after it said 0 ticks inside the scaler.*
