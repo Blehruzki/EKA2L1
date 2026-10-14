@@ -31,6 +31,8 @@ Please report any bugs you find. Happy <verb>ing!🙂
 | Glimmerati | `6r37` | `gate6-6r37.cfg` | `profile.xh` (player profile), `clubcard0-11.cch`, `strymde.grdb` / `.bak` (story) |
 
 Glimmerati 001's zips (press v0.50 and retail v0.51, one loader) and their README are in the session scratchpad's `rel001/`; both layouts ran on an emptied bench (E1343 on E:, E1344 on C:). Build 003 (the span routines, BUGBOOK 14.f; patches written after the protection's hash, 14.g) went out the same way from `rel003/`, the game folders unchanged from 001, after the battery on its code (E1407-E1412). Build 004 (the port scaler for Glimmerati's source-rectangle blit, BUGBOOK 14.h) from `rel004/`, after E1416-E1423. Build 005 (the filter in byte lanes, round 180) from `rel005/`, after E1424-E1432.
+
+**Owed to Glimmerati's README at its next build, whatever the build is for** (the user, after round 181): the controls gain key 7 (brake, and reverse) and key 6 (nitro); the known issue "Reversing has not been confirmed yet" goes; and the "What is new" section lists the fixes since the last zip.
 A full-game zip is about 49 MB and the chat's upload limit is 30 MB: send it as a two-part zip (`zip -s 25m`, a `.z01` and a `.zip`, which 7-Zip and WinRAR open), rejoined (`zip -s 0`) and diffed against the tested contents before it goes.
 
 One 022's post (round 149) is `One-build022-post.md` in the session scratchpad: it says 021 could not start on an install without the card dump's `6r58.app`, and that 022 runs from the package alone.
