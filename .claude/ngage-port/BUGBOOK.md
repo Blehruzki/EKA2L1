@@ -2268,3 +2268,23 @@ sound system is null; PopContext was still forwarded.
 **Fix.** avkon 1213 a no-op with the other two (shared; every title imports
 it, none had reached it). The minimize now survives and draws after the
 return.
+
+### 14.e Silent on a phone, and dead loading a race: the frame loop starved the audio (round 177, E1345-E1355)
+**Symptom.** N95, retail card, build 001: no sound at all, and G6FLT 29112 (a
+prefetch abort into a heap address) while a race loaded. The bench had sound
+and raced on both editions.
+**Cause.** Round 128 again. Glimmerati's platform runs its frame loop as a
+self-completing active object (platform+0x128, built at 0x61a38 with priority
+-20, User::RequestComplete on itself every frame), and the scheduler always
+runs the highest-priority ready object. The audio stream's open-complete
+queues below -20 on the N95's S60 3.1 and never ran: the phone's log has the
+Open and then the race's volume and writes with no open-complete between. The
+5320's 3.2 on the bench queues it higher; forced to starve (+100, E1348) the
+bench gives the phone's exact audio record, silence included. The crash came
+on that never-opened stream's path (the 3.1 stack handed a buffer back, the
+game wrote again, and faulted); the bench cannot reproduce that part.
+**Fix.** GAME_AO_PRIORITIES {0x61a3c, -101}, both editions: the open-complete
+comes at once and the title sets its audio up as on the bench (build 002).
+*Lesson: BUGBOOK 12's own line -- look for the self-completing object in a
+new title's first log -- was there, and was not read. A bench whose firmware
+queues differently cannot show starvation; force it.*

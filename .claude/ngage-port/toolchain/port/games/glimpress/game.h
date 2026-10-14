@@ -90,6 +90,18 @@ enum { GAME_SRC_ORIGIN = 0 };
 // left the marker unset and the exit's free was the title's FATAL ERROR
 // (E1316).
 #define GAME_ARENA_STANDIN 1
+// **The frame loop below everything else** (round 177). The platform runs
+// its frame loop as a self-completing active object -- platform+0x128,
+// built at 0x61a38 (both editions) with priority -20, User::RequestComplete
+// on itself from 0x63094 every frame -- and the scheduler always runs the
+// highest-priority ready object, so nothing below -20 in the main thread
+// ran on the N95: the audio stream's open-complete never came, the game had
+// no sound, and it died loading a race on the never-opened stream's path.
+// The 3.2 bench queues that callback higher and never starved; forced to
+// starve (+100, E1348) it gives the phone's exact audio record. -101, as
+// One's loop (round 128) and the port's own timer.
+#define GAME_AO_PRIORITIES { 0x00061a3c, -101 }
+#define GAME_AO_PRIORITY_COUNT 1
 #define GAME_CODE_PATCHES { 0x00071140, 0xE5940000, 0xE5943024 }, /* Arena timer, logged in: ldr r3, [r4, #0x24] */ \
                           { 0x00071144, 0xE5903124, 0xE3530004 }, /* cmp r3, #4 -- still waiting? */ \
                           { 0x00071148, 0xE593C0B8, 0x1A00005B }, /* bne the callback's exit (0x712bc) */ \
@@ -234,5 +246,5 @@ enum { GAME_SRC_ORIGIN = 0 };
 #define GAME_ALT_CARD_CID 0x05075817, 0x6c0100c6, 0x0b24184a, 0x07000400
 
 // Written into the log as its third record; bump with every package.
-#define GAME_BUILD 1
+#define GAME_BUILD 2
 #endif
