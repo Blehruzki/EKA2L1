@@ -3542,18 +3542,24 @@ namespace eka2l1::epoc {
         return is_exception_handled(kern, h, type, true);
     }
 
+    // User::SafeInc / SafeDec: add or take one only while the value is above
+    // zero (__e32_atomic_tas_ord32(&v, 1, +-1, 0) in euser's up_utl.cpp), and
+    // answer the value before. These moved the pointer, not the value, so the
+    // count never changed.
     BRIDGE_FUNC(std::int32_t, safe_inc_32, eka2l1::ptr<std::int32_t> val_ptr) {
         std::int32_t *val = val_ptr.get(kern->crr_process());
-        std::int32_t org_val = *val;
-        *val > 0 ? val++ : 0;
+        const std::int32_t org_val = *val;
+        if (org_val > 0)
+            (*val)++;
 
         return org_val;
     }
 
     BRIDGE_FUNC(std::int32_t, safe_dec_32, eka2l1::ptr<std::int32_t> val_ptr) {
         std::int32_t *val = val_ptr.get(kern->crr_process());
-        std::int32_t org_val = *val;
-        *val > 0 ? val-- : 0;
+        const std::int32_t org_val = *val;
+        if (org_val > 0)
+            (*val)--;
 
         return org_val;
     }
@@ -6516,6 +6522,10 @@ namespace eka2l1::epoc {
         BRIDGE_REGISTER(0x4D, dll_tls),
         BRIDGE_REGISTER(0x4E, hal_function),
         BRIDGE_REGISTER(0x51, process_command_line_length),
+        // User::InactivityTime (euser export 601 calls this stub on the RM-92 and
+        // the RM-409 alike; 634, ResetInactivityTime, the 0x54 beside it).
+        // Unregistered, the guest read whatever was in r0 for the seconds idle.
+        BRIDGE_REGISTER(0x53, get_inactivity_time),
         BRIDGE_REGISTER(0x54, clear_inactivity_time),
         BRIDGE_REGISTER(0x55, debug_print),
         BRIDGE_REGISTER(0x59, exception_handler),

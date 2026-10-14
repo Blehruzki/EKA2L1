@@ -102,11 +102,14 @@ its EKA1 tables only, so on a 3.0 firmware the first contended Wait blocked
 for good (ngage-port: Glimmerati's black screen, BUGBOOK 14.i). Now on the
 9.x table (`svc.cpp`, `locked_inc_32` / `locked_dec_32`). The
 "Unimplement system call" message now carries the caller's pc, lr, r0 and
-r1 (`lib_manager::call_svc`). Still open, seen while doing this: slow exec
-0x53 is unimplemented on both 9.1 and 9.3 (euser export 601's, called
-thousands of times by Glimmerati, harmlessly so far); and `safe_inc_32` /
-`safe_dec_32` (fast execs 0x15/0x16) increment the pointer rather than the
-value it points at.
+r1 (`lib_manager::call_svc`). Found while doing this and fixed with it:
+slow exec 0x53 is User::InactivityTime on 9.1 and 9.3 alike (euser export 601
+calls its stub on the RM-92 and the RM-409; 634, ResetInactivityTime --
+measured -- calls the 0x54 beside it), unregistered until now, so the guest
+read r0's leftover for the seconds idle; and `safe_inc_32` / `safe_dec_32`
+(fast execs 0x15/0x16) moved the pointer, not the value, so a SafeInc never
+counted. With both, a Glimmerati race on either firmware makes no
+unimplemented kernel call at all.
 
 ## A drawing command on an inactive window gc
 
