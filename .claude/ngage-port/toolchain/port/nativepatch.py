@@ -30,7 +30,7 @@ the plan); the rows come in these kinds:
 Everything here is a guess until E-rows say the picture is right (rule 4):
 an immediate 176 in a renderer function could be something else, and a
 site this does not know about shears the picture (E133-E135). E1446-E1452
-and E1453-E1460 are the record: 173 words, the attract race drawn 240
+and E1453-E1462 are the record: 192 words, the attract race drawn 240
 wide about column 120 with the HUD in its place.
 """
 import struct, sys, os
@@ -127,6 +127,30 @@ SITES = {
     0xb9554: (0x77, 'row sibling: a full row is 120 words'),
     0xb95f4: (0x15000, 'row sibling: copy bound, 176 rows (179)'),
     0x88c4: (0x15000, 'view clear (0x88c0): 176 rows (179)'),
+    # E1461 (the user: triangles missing at the right): each rasteriser
+    # emits a scanline only if its left x is at most 175 (`cmp r1, #0xaf`
+    # before the span call, with `cmp ip, #0` on the right x), so a span
+    # starting past the old edge was dropped. Nineteen tests, five
+    # rasterisers; their `cmp r2/r3, #0xaf` on [vertex+4] are rows and stay.
+    0x8e8c: (239, 'rasteriser 88e4: span left x <= 175'),
+    0x8f4c: (239, 'rasteriser 88e4: span left x <= 175'),
+    0x9004: (239, 'rasteriser 88e4: span left x <= 175'),
+    0x90a4: (239, 'rasteriser 88e4: span left x <= 175'),
+    0x96e0: (239, 'rasteriser 9138: span left x <= 175'),
+    0x97a0: (239, 'rasteriser 9138: span left x <= 175'),
+    0x9858: (239, 'rasteriser 9138: span left x <= 175'),
+    0x98f8: (239, 'rasteriser 9138: span left x <= 175'),
+    0x9f34: (239, 'rasteriser 998c: span left x <= 175'),
+    0x9ff4: (239, 'rasteriser 998c: span left x <= 175'),
+    0xa0ac: (239, 'rasteriser 998c: span left x <= 175'),
+    0xa14c: (239, 'rasteriser 998c: span left x <= 175'),
+    0xa658: (239, 'rasteriser a1e0: span left x <= 175'),
+    0xa764: (239, 'rasteriser a1e0: span left x <= 175'),
+    0xa864: (239, 'rasteriser a1e0: span left x <= 175'),
+    0xa94c: (239, 'rasteriser a1e0: span left x <= 175'),
+    0xb4fc: (239, 'rasteriser ac64: span left x <= 175'),
+    0xb5c0: (239, 'rasteriser ac64: span left x <= 175'),
+    0xb670: (239, 'rasteriser ac64: span left x <= 175'),
     # E1451: the column walker (0x11bbfc, and its twin 0x11bd44) clips x to
     # [0, 175] and the row it computes to [0, 175]; the x bounds widen, the
     # row bound (0x11bca0, 0x11bdf0: the view's 176 rows) stays.
