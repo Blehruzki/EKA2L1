@@ -1436,6 +1436,7 @@ struct Context {
     u8 *nativeBack;         // GAME_NATIVE_W: the title's 3D back buffer (its allocation of GAME_W*GAME_H*2 + 16 KB)
     u32 stripCleared;       // ... and that a 2D frame's strip has been cleared once (logged)
     u32 copiesSaid;         // ... whole-surface copies logged so far (the first few: src, dst)
+    u32 gameExc;            // GAME_KEEP_CATCHER: the title's own exception handler, given the type after the fault is logged (round 182)
     u32 realResume;         // RThread::Resume, as resolved
     u32 engineThread;       // GAME_ENGINE_LXCE: the engine's thread handle
     u32 realRwin[4];        // RWindow's two constructors, BeginRedraw(TRect), EndRedraw, as resolved
@@ -2038,6 +2039,10 @@ extern "C" void gate6_fault(Context *c, u32 arg)
     sched_dump(c, 0xFA17);
     log_block(c);
     box_flush(c);
+    // Round 182: the title's own handler, if it had one, gets the type now
+    // that the frame is on file (gate6_set_exc). Asphalt 2's is User::Exit(0).
+    if (GAME_KEEP_CATCHER && c->gameExc)
+        ((void (*)(u32))c->gameExc)(type);
     PANIC(CAT_FLT, (int)(c->lastImport * 100 + (type & 63)));
 }
 
@@ -3217,6 +3222,9 @@ enum { HAL_MEMORY_RAM_FREE = 16 };
 // takes the display mode it is told (One, round 125).
 #ifndef GAME_NATIVE_W
 #define GAME_NATIVE_W 0     // NATIVE240.md: the game's renderer patched to this width
+#endif
+#ifndef GAME_KEEP_CATCHER
+#define GAME_KEEP_CATCHER 0
 #endif
 #ifndef GAME_2D_W
 #define GAME_2D_W GAME_W    // ... and the width its 2D screens still draw (176)
@@ -6717,6 +6725,29 @@ extern "C" void *gate6_alloc(int size, u32, Context *c)
     if (GAME_NATIVE_W && size == (int)(GAME_W * GAME_H * 2 + 0x4000))
         c->nativeBack = p;
     return p;
+}
+
+// Round 182: Asphalt 2 installs an exception handler of its own in its
+// ConstructL (img+0x3926c: RThread::SetExceptionHandler(img+0x253c, all
+// exceptions), which the shim forwards to User::SetExceptionHandler), and
+// img+0x253c is `User::Exit(0)` and nothing else. So a fault on the main
+// thread -- a data abort, or an uncaught throw's std::terminate raising
+// EExcGeneral -- ended the process with one record, `User::Exit` from
+// euser's exception trampoline (0x80380887 on the N95), the port's catcher
+// having been replaced the moment the game started; build 199's race died
+// that way two seconds after the countdown. With GAME_KEEP_CATCHER the
+// install is recorded and refused: the catcher stays, logs the frame and
+// the registers, and then hands the type to the game's handler, so the
+// game still ends the way it chose, and the log says where.
+extern "C" i32 gate6_set_exc(void *thread, u32 handler, u32 mask, Context *c)
+{
+    (void)thread;
+    (void)mask;
+    c->gameExc = handler;
+    log_event(c, NOTE_EXC_INSTALL, 0x5A240000u);     // the title's own handler, kept aside
+    log_event(c, NOTE_EXC_INSTALL, handler);
+    log_block(c);
+    return 0;
 }
 
 // NATIVE240 (E1466): a 2D screen -- the title, the loading page, every
@@ -17890,6 +17921,14 @@ static u32 load_and_start()
         iat[IMPORT_MEM_COPY] = ctx3_thunk(ctx->spare, ctx, (u32)&gate6_mem_copy);
         ctx->spare += TRACE;
         log_event(ctx, NOTE_PATCH, 0x5A200000u | (u32)IMPORT_MEM_COPY);   // the copy hook is in
+    }
+
+    // Round 182: the title's own exception handler recorded, not installed
+    // (gate6_set_exc), so the catcher above keeps the main thread.
+    if (GAME_KEEP_CATCHER && IMPORT_SET_EXC != HOOK_ABSENT && IMPORT_SET_EXC < nImports &&
+        ctx->spare + TRACE <= ctx->spareEnd) {
+        iat[IMPORT_SET_EXC] = ctx3_thunk(ctx->spare, ctx, (u32)&gate6_set_exc);
+        ctx->spare += TRACE;
     }
 
     if (WRAP_ALLOCATORS) {

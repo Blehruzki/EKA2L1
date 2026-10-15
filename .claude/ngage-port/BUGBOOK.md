@@ -2415,3 +2415,28 @@ frames measure lit over columns 180-239 again, menus black (E1499).
 behind a switch that is off, is two greps. And measure the strip: a
 thumbnail of a 240-wide frame with 64 black columns looks like a 240-wide
 frame.*
+
+### 14.k A race that ends in silence: the game's own exception handler is User::Exit(0) (round 182, E1505-E1506)
+**Symptom.** Build 199 on the N95: every race ends two seconds after the
+countdown. The log's last record is `User::Exit` from euser (LR
+0x80380887, Thumb), no fault, no leave, nothing from the port.
+**Cause.** Asphalt 2's ConstructL (img+0x3926c) calls
+`RThread::SetExceptionHandler(img+0x253c, KExceptionAll)`, which the shim
+forwards to `User::SetExceptionHandler` -- replacing the catcher the port
+installed before the game ran -- and img+0x253c is one instruction:
+`User::Exit(0)`. Any exception on the main thread, a data abort or the
+`std::terminate` an uncaught throw ends in, exits the process with that
+one record. It is the only tail call into the Exit stub that euser could
+return into (the others are HandleCommandL(EEikCmdExit), called from
+avkon, and a bounds assert, called with bl). Only Asphalt 2 imports the
+function; Urban GT never replaced the catcher, which is why its faults
+have always had frames.
+**Fix (diagnostic).** `GAME_KEEP_CATCHER`: the import (euser ordinal 985,
+index 359 -- not 855, TDesC8::Ptr, which E1505 hooked by mistake and died
+KERN-EXEC 3 at once) goes to `gate6_set_exc`, which records the handler
+and answers 0; `gate6_fault` logs the frame, the registers and the queue,
+then hands the type to the game's handler. The next phone log names the
+instruction. The fault itself is open.
+*Lesson: when the last record is an exit from a ROM address, find every
+`b` into the Exit stub, not just every `bl`; and read the ordinal off the
+image's import table, not off the name.*

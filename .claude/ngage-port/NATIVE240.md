@@ -251,3 +251,15 @@ p + 0x1600). Logged: `0x5A220000` then the back buffer's address, and the
 first eight whole copies as `0x5A23000n` (bit 8 set when from the back
 buffer), source, destination. On the bench the race measures 58.8-147.2
 over columns 180-239 and every menu page 0.0 (E1499).
+
+## Round 182: build 199 on the N95, and build 200 (E1505-E1506)
+
+The strip is back on the phone, and the race ends two seconds after the
+countdown, every time: the log's last record is `User::Exit` from euser's
+exception trampoline, nothing before it. That is the game's own exception
+handler, `User::Exit(0)` at img+0x253c, installed at ConstructL over the
+port's catcher (BUGBOOK 14.k). So the 240-wide race takes a fault on the
+main thread that the bench never takes -- the known hardware differences
+(alignment, no-execute, a chunk's committed top) are the suspects, and the
+instruction is not yet known. Build 200 keeps the catcher in front
+(`GAME_KEEP_CATCHER`): the next phone log carries the frame and registers.

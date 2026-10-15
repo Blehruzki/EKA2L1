@@ -145,6 +145,7 @@ enum {
     IMPORT_SEND_RECEIVE                = 65535,   // absent
     IMPORT_SERVER_STARTL               = 65535,   // absent
     IMPORT_SET_AUTO_UPDATE             = 65535,   // absent
+    IMPORT_SET_EXC                     = 65535,   // absent
     IMPORT_SHADOW_BUFFLAT              = 65535,   // absent
     IMPORT_SHADOW_CMDLINE              =     6,
     IMPORT_SHADOW_DESC16FLAT           = 65535,   // absent

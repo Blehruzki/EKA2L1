@@ -215,6 +215,12 @@ enum { GAME_SRC_ORIGIN = 16 };
 // phone's top to the player's left) and L270 (to the right), shape and
 // full each; the arrows and 2/4/6/8 turn with the picture (rotate_key).
 #define GAME_LANDSCAPE 1
-#define GAME_BUILD 199
+// Round 182: the title installs its own exception handler at ConstructL,
+// and it is User::Exit(0) -- build 199's race ended two seconds after the
+// countdown with only that in the log. The port's catcher is kept in
+// front of it (gate6_set_exc): the fault's frame is logged first, then the
+// title's handler gets the type.
+#define GAME_KEEP_CATCHER 1
+#define GAME_BUILD 200
 
 #endif

@@ -744,6 +744,7 @@ HOOKS = {
     # turned into a handle on the thread that is already there. Round 90.
     'IMPORT_THREAD_OPEN':             ('euser', 803),
     'IMPORT_EXIT':                    ('euser', 397),
+    'IMPORT_SET_EXC':                 ('euser', 985),   # RThread::SetExceptionHandler (ordinal 985; 855 is TDesC8::Ptr, E1505) -- GAME_KEEP_CATCHER records the title's handler and keeps the port's catcher (round 182)
     'IMPORT_USER_FREE_OP':            ('euser', 476),
     'IMPORT_LEAVE_IF_ERROR':          ('euser', 627),
     'IMPORT_LEAVE_NOMEM':             ('euser', 629),
