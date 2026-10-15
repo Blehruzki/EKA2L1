@@ -211,6 +211,10 @@ enum { GAME_SRC_ORIGIN = 16 };
 // was last overwritten -- round 71 read two build-139 logs as build 141's
 // and spent the round on it. Bump this with every package that goes to the
 // phone; `rules.py` checks it against the newest package in build/.
-#define GAME_BUILD 197
+// Round 182: the N95 is tested sideways. Hold C past full for L90 (the
+// phone's top to the player's left) and L270 (to the right), shape and
+// full each; the arrows and 2/4/6/8 turn with the picture (rotate_key).
+#define GAME_LANDSCAPE 1
+#define GAME_BUILD 198
 
 #endif

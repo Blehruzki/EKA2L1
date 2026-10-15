@@ -40,7 +40,7 @@ static const Panel kPanels[] = {
     { "exactly the source",     176, 208 },
 };
 
-static const char *kModeName[FIT_MODES] = { "1:1", "aspect", "fill", "int", "full" };
+static const char *kModeName[FIT_MODES] = { "1:1", "aspect", "fill", "int", "full", "L90", "L90full", "L270", "L270full" };
 
 // Failures are collapsed by (panel, mode, reason, whether the clamp was in
 // force), because the inset sweep runs the same case fifty times and a wall
@@ -108,6 +108,13 @@ static void run(const Panel &p, unsigned mode, unsigned inset, unsigned mapMax,
     f.wX = wX; f.wY = wY;
     screen_fit(&f);
 
+    // A landscape mode (round 182) turns the picture a quarter: the sums
+    // see the source's height along the panel's width, mapX names source
+    // rows and mapY source columns, and the inset is ignored as in full.
+    const unsigned rot = fit_rotation(mode);
+    const unsigned base = fit_base(mode);
+    const unsigned sw = rot ? f.srcH : f.srcW, sh = rot ? f.srcW : f.srcH;
+
     const unsigned appliedInset = (inset < p.h) ? inset : 0u;
 
     // 1. The picture is on the panel. Nothing else matters if this fails:
@@ -119,20 +126,20 @@ static void run(const Panel &p, unsigned mode, unsigned inset, unsigned mapMax,
     // 2. It clears the status band it was told to.
     // An exact mode is allowed to sit above the band, but only when that is
     // the one way to show the whole source; every other mode must stay clear.
-    if (mode != FIT_FULL
-        && !(fit_is_exact(mode) && p.h > appliedInset && p.h - appliedInset < f.srcH))
+    if (base != FIT_FULL && !rot
+        && !(fit_is_exact(base) && p.h > appliedInset && p.h - appliedInset < sh))
         check(f.offY >= appliedInset || f.dstH == 0, "picture starts above the inset",
               p, mode, f);
 
     // 3. Every map entry addresses a real source pixel. An entry past the
     //    source reads another row; an entry past 255 cannot be stored at all.
     for (unsigned i = 0; i < f.dstW; i++)
-        if (mapX[i] >= f.srcW) {
+        if (mapX[i] >= sw) {
             check(false, "mapX addresses past the source width", p, mode, f);
             break;
         }
     for (unsigned i = 0; i < f.dstH; i++)
-        if (mapY[i] >= f.srcH) {
+        if (mapY[i] >= sh) {
             check(false, "mapY addresses past the source height", p, mode, f);
             break;
         }
@@ -154,60 +161,60 @@ static void run(const Panel &p, unsigned mode, unsigned inset, unsigned mapMax,
     //     destination pixel reads exactly the next source pixel; an exact
     //     mode has none, which is what keeps 1:1 and integer pixel-sharp.
     for (unsigned i = 0; i < f.dstW; i++) {
-        if (fit_is_exact(mode) && wX[i]) { check(false, "an exact mode has a blend weight", p, mode, f); break; }
+        if (fit_is_exact(base) && wX[i]) { check(false, "an exact mode has a blend weight", p, mode, f); break; }
         if (wX[i] && !(i + 1 < f.dstW && mapX[i + 1] == mapX[i] + 1)) {
             check(false, "wX set where the next pixel is not the next source pixel", p, mode, f); break;
         }
     }
     for (unsigned i = 0; i < f.dstH; i++) {
-        if (fit_is_exact(mode) && wY[i]) { check(false, "an exact mode has a blend weight", p, mode, f); break; }
+        if (fit_is_exact(base) && wY[i]) { check(false, "an exact mode has a blend weight", p, mode, f); break; }
         if (wY[i] && !(i + 1 < f.dstH && mapY[i + 1] == mapY[i] + 1)) {
             check(false, "wY set where the next pixel is not the next source pixel", p, mode, f); break;
         }
     }
-    if (!fit_is_exact(mode) && f.dstW > f.srcW) {
+    if (!fit_is_exact(base) && f.dstW > sw) {
         // Upscaling by a non-integer ratio puts a boundary inside most
         // destination pixels: at least a third of them must blend, or the
         // weights were not written.
         unsigned n = 0;
         for (unsigned i = 0; i < f.dstW; i++) n += wX[i] != 0;
-        check(n * 3 >= f.dstW - f.srcW, "too few blend weights for a non-integer upscale", p, mode, f);
+        check(n * 3 >= f.dstW - sw, "too few blend weights for a non-integer upscale", p, mode, f);
     }
 
     // 6. Mode-specific promises.
-    if (mode == FIT_ONE_TO_ONE) {
+    if (base == FIT_ONE_TO_ONE) {
         for (unsigned i = 0; i < f.dstW; i++)
             if (mapX[i] != i) { check(false, "1:1 does not map pixel for pixel", p, mode, f); break; }
     }
-    if (fit_is_exact(mode)) {
+    if (fit_is_exact(base)) {
         // An exact mode must show all of the source unless the panel itself
         // is genuinely too small. Before phase 3 it cropped whenever the
         // usable height was under 208, losing 56 rows -- over a quarter of
         // the frame -- on a panel exactly the source's own size.
-        check(f.dstH >= f.srcH || p.h < f.srcH,
+        check(f.dstH >= sh || p.h < sh,
               "an exact mode crops the source vertically", p, mode, f);
-        check(f.dstW >= f.srcW || p.w < f.srcW,
+        check(f.dstW >= sw || p.w < sw,
               "an exact mode crops the source horizontally", p, mode, f);
         // And it must be a whole multiple, or the pixels are not exact.
-        if (f.dstW >= f.srcW && f.dstH >= f.srcH) {
-            const unsigned nx = f.dstW / f.srcW, ny = f.dstH / f.srcH;
-            check(f.dstW == nx * f.srcW, "width is not a whole multiple", p, mode, f);
-            check(f.dstH == ny * f.srcH, "height is not a whole multiple", p, mode, f);
+        if (f.dstW >= sw && f.dstH >= sh) {
+            const unsigned nx = f.dstW / sw, ny = f.dstH / sh;
+            check(f.dstW == nx * sw, "width is not a whole multiple", p, mode, f);
+            check(f.dstH == ny * sh, "height is not a whole multiple", p, mode, f);
             check(nx == ny, "the two axes scale differently", p, mode, f);
         }
     }
-    if (mode == FIT_SHAPE && f.dstW && f.dstH) {
+    if (base == FIT_SHAPE && f.dstW && f.dstH) {
         // Keeping the shape means the ratio survives. One output pixel of
         // slack each way, which is what integer accumulation costs.
-        const long lhs = (long)f.dstW * 208, rhs = (long)f.dstH * 176;
-        const long slack = 208L + 176L;
+        const long lhs = (long)f.dstW * sh, rhs = (long)f.dstH * sw;
+        const long slack = (long)sh + (long)sw;
         check(lhs - rhs <= slack && rhs - lhs <= slack, "aspect not kept", p, mode, f);
     }
-    if (mode == FIT_FILL && !f.clamped) {
+    if (base == FIT_FILL && !f.clamped) {
         check(f.dstW == p.w, "fill does not reach the side edges", p, mode, f);
         check(f.dstH == p.h - appliedInset, "fill does not reach the bottom", p, mode, f);
     }
-    if (mode == FIT_FULL && !f.clamped) {
+    if (base == FIT_FULL && !f.clamped) {
         // Full screen means the whole panel, whatever the inset says. If it
         // leaves a single row or column over it has missed its one job.
         check(f.dstW == p.w, "full does not reach the side edges", p, mode, f);

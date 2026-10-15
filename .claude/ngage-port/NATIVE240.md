@@ -214,3 +214,20 @@ What the phone will say that the bench cannot: the frame rate (the
 64-blit reports in the log, `readlog.py`) and whether the 3D at 240 wide
 holds up at the N95's speed. The picture modes to use are 1:1 or shape
 (the same at this width); fill and full stretch 208 rows to 272 or 320.
+
+## Landscape (E1488-E1497, build 198)
+
+The N95 is tested sideways, so the loader turns the picture and the keys
+itself rather than asking the framework for landscape. Four modes follow
+full in the C-hold cycle, for titles with `GAME_LANDSCAPE 1`: L90 shape
+and L90 full (the picture turned clockwise, upright for a phone held with
+its top to the player's left), L270 shape and L270 full (the other way).
+`screen_fit` computes them as shape or full with the source's width and
+height swapped, so `mapX` names source rows and `mapY` source columns, and
+`fitted_blit` reads the maps that way (`c->rot`). The arrows and the digits
+2, 4, 6 and 8 turn with the picture (`rotate_key`: under L90 the key that
+points to the phone's top is the game's left; under L270 its right), on
+both key paths, the event copied rather than rewritten. Proven in a race:
+under L90 the phone's 6 accelerates, under L270 its 4 (E1491, E1492).
+At this width L90 shape is 240x277 letterboxed on the N95; L90 full is the
+whole panel at 1.33 x 1.15.

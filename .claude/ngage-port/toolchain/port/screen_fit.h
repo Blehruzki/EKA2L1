@@ -35,7 +35,29 @@
 //            one. It differs from fill in exactly one way -- fill stops at
 //            the top of the status band, full does not.
 enum { FIT_ONE_TO_ONE = 0, FIT_SHAPE = 1, FIT_FILL = 2, FIT_INTEGER = 3,
-       FIT_FULL = 4, FIT_MODES = 5 };
+       FIT_FULL = 4,
+       // Landscape (round 182, the N95 held sideways): the picture turned
+       // a quarter, its shape kept or stretched over the whole panel. L90
+       // turns it clockwise -- the game's up points to the panel's right,
+       // the phone's top at the player's left; L270 the other way. The
+       // keys turn with it (rotate_key in gate6.cpp).
+       FIT_L90_SHAPE = 5, FIT_L90_FULL = 6, FIT_L270_SHAPE = 7, FIT_L270_FULL = 8,
+       FIT_MODES = 9 };
+
+// 0, or quarter turns clockwise: 1 for the L90 modes, 3 for the L270 ones.
+static unsigned fit_rotation(unsigned mode)
+{
+    return mode >= (unsigned)FIT_L90_SHAPE ? (mode >= (unsigned)FIT_L270_SHAPE ? 3u : 1u) : 0u;
+}
+
+// The mode's shape as the sums below see it: a landscape mode is shape or
+// full with the source's width and height swapped.
+static unsigned fit_base(unsigned mode)
+{
+    if (mode < (unsigned)FIT_L90_SHAPE)
+        return mode;
+    return ((mode - (unsigned)FIT_L90_SHAPE) & 1u) ? (unsigned)FIT_FULL : (unsigned)FIT_SHAPE;
+}
 // 1:1 and integer are the modes that promise exact pixels. If the source does
 // not fit below the status band on some panel they do **not** crop it -- they
 // centre it in the whole panel instead and let the band overlap the top. The
@@ -67,6 +89,7 @@ struct ScreenFit {
     unsigned char *wX, *wY;
     // Out.
     unsigned bufW, bufH;        // what the clear has to cover
+    unsigned rot;               // 0, or quarter turns clockwise (1, 3): the landscape modes
     unsigned dstW, dstH;        // how big the picture is drawn
     unsigned offX, offY;        // and where, from the top left of the panel
     unsigned clamped;           // 1 if mapMax, not the panel, decided the size
@@ -90,8 +113,15 @@ static void screen_fit(ScreenFit *f)
     const unsigned bw = f->screenW;
     const unsigned inset = (f->topInset < f->screenH) ? f->topInset : 0u;
     const unsigned bh = f->screenH - inset;
-    const unsigned sw = f->srcW;
-    const unsigned sh = f->srcH;
+    const unsigned rot = fit_rotation(f->mode);
+    const unsigned base = fit_base(f->mode);
+    // Turned a quarter, the source's height runs along the panel's width:
+    // every sum below is in panel terms, so the two are swapped here and
+    // mapX then names source rows and mapY source columns (the blit reads
+    // them so, by f->rot).
+    const unsigned sw = rot ? f->srcH : f->srcW;
+    const unsigned sh = rot ? f->srcW : f->srcH;
+    f->rot = rot;
 
     f->bufW = bw;
     f->bufH = f->screenH;       // the clear still covers the whole panel
@@ -110,24 +140,24 @@ static void screen_fit(ScreenFit *f)
     // rather than losing rows off the bottom. Everything downstream -- the
     // centring, the bounds -- then works against that taller area.
     unsigned useH = bh, useTop = inset;
-    if (fit_is_exact(f->mode) && bh < sh && f->screenH >= sh) {
+    if (fit_is_exact(base) && bh < sh && f->screenH >= sh) {
         useH = f->screenH;
         useTop = 0;
     }
 
     // Full screen ignores the band outright: that is the whole of its
     // purpose, so it is decided before anything else looks at the inset.
-    if (f->mode == (unsigned)FIT_FULL) {
+    if (base == (unsigned)FIT_FULL || rot) {   // and a landscape mode has no band to keep out of
         useH = f->screenH;
         useTop = 0;
     }
 
     unsigned dw, dh;
     unsigned scale = 1;                 // how many output pixels per source one
-    if (f->mode == (unsigned)FIT_ONE_TO_ONE) {
+    if (base == (unsigned)FIT_ONE_TO_ONE) {
         dw = sw < bw ? sw : bw;
         dh = sh < useH ? sh : useH;
-    } else if (f->mode == (unsigned)FIT_INTEGER) {
+    } else if (base == (unsigned)FIT_INTEGER) {
         // The largest whole multiple that fits. One is always allowed, so
         // this degrades to 1:1 on a panel too small to double.
         unsigned n = 1;
@@ -138,7 +168,7 @@ static void screen_fit(ScreenFit *f)
         dh = n * sh;
         if (dw > bw) { dw = sw < bw ? sw : bw; scale = 1; }   // cannot fit once
         if (dh > useH) { dh = sh < useH ? sh : useH; scale = 1; }
-    } else if (f->mode == (unsigned)FIT_FILL || f->mode == (unsigned)FIT_FULL) {
+    } else if (base == (unsigned)FIT_FILL || base == (unsigned)FIT_FULL) {
         // Both axes to the edges of whatever area the mode is using. The two
         // scales differ, and by little enough on a portrait panel to be worth
         // the exact fit -- though not on a landscape one, where E231 measured
@@ -170,7 +200,7 @@ static void screen_fit(ScreenFit *f)
 
     // Which source pixel each output pixel reads: nearest neighbour, stepped
     // by accumulation, one add per output pixel.
-    if (fit_is_exact(f->mode)) {
+    if (fit_is_exact(base)) {
         // 1:1 is the identity; an n-times integer scale repeats each source
         // pixel n times. Counted, not divided -- `scale` is already known and
         // a variable divide would want `__aeabi_uidiv`, which this image does

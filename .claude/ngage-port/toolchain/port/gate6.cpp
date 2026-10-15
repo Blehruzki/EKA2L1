@@ -1252,6 +1252,7 @@ struct Context {
     u32 scalerOff;          // the port scaler gave up this launch: DrawBitmap from here on
     u32 blitN, blitSwitches, blitScalerFast, blitFast0;   // round 151: blits counted; how many changed bitmap; fast-counter ticks inside the scaler; the counter at the window's start
     const void *lastBlitBmp;
+    u32 rot;                // 0, or quarter turns clockwise (1, 3): the landscape modes (screen_fit)
     u8 mapX[MAP_MAX];       // destination column -> source column, Bresenham
     u8 mapY[MAP_MAX];       // and the same down
     u8 wX[MAP_MAX], wY[MAP_MAX];   // round 150: the filter's blend weight toward the next source pixel, 0 to copy
@@ -8168,9 +8169,15 @@ enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
 // whatever is left over is at the top, where the band already is, and none
 // of it is taken out of the picture.
 #include "screen_fit.h"
+// The four landscape modes (round 182) only where the title says so: the
+// turned maps are read by fitted_blit, and a window-gc title's own modes or
+// the port scaler's frame know nothing of them.
+#ifndef GAME_LANDSCAPE
+#define GAME_LANDSCAPE 0
+#endif
 enum { MODE_ONE_TO_ONE = FIT_ONE_TO_ONE, MODE_SHAPE = FIT_SHAPE,
        MODE_FILL = FIT_FILL, MODE_INTEGER = FIT_INTEGER, MODE_FULL = FIT_FULL,
-       MODE_COUNT = FIT_MODES };
+       MODE_COUNT = GAME_LANDSCAPE ? FIT_MODES : FIT_L90_SHAPE };
 // The default when nothing has been chosen. Aspect, because it is the only
 // mode that holds 176:208 -- within 0.6% on every panel measured (E235) --
 // where fill is +7.4% on an N95 and +105.5% on a landscape E71.
@@ -8590,6 +8597,7 @@ static void screen_layout(Context *c)
     f.wY = c->wY;
     f.mapMax = (u32)sizeof c->mapX;
     screen_fit(&f);
+    c->rot = f.rot;
     c->bufW = f.bufW;
     c->bufH = f.bufH;
     c->dstW = f.dstW;
@@ -9105,11 +9113,18 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
             u8 *row = c->realScreen + (y + c->offY) * c->realPitch;
             const u16 *srow = src + c->srcOrigin + (u32)c->mapY[y] * (u32)c->srcPitch;
             const u32 *srow32 = (const u32 *)src + c->srcOrigin + (u32)c->mapY[y] * (u32)c->srcPitch;
+            // Landscape (round 182): the panel's row is a source column
+            // (mapY names it) and its columns run down a source row (mapX
+            // names those); L90 reads the row backwards, L270 the column.
+            const u32 rot = c->rot;
+            const u32 gx = rot == 1 ? c->mapY[y] : rot == 3 ? c->mapY[c->dstH - 1 - y] : 0;
             for (u32 x = 0; x < c->dstW; x++) {
-                const u32 v = (GAME_SRC_BPP == 32) ? 0u : srow[c->mapX[x]];
+                const u32 gy = rot ? c->mapX[rot == 1 ? c->dstW - 1 - x : x] : 0;
+                const u32 v = (GAME_SRC_BPP == 32) ? 0u
+                            : rot ? src[c->srcOrigin + gy * (u32)c->srcPitch + gx] : srow[c->mapX[x]];
                 u32 r, g, b;
                 if (GAME_SRC_BPP == 32) {           // EColor16MU: 0x00RRGGBB
-                    const u32 v32 = srow32[c->mapX[x]];
+                    const u32 v32 = rot ? ((const u32 *)src)[c->srcOrigin + gy * (u32)c->srcPitch + gx] : srow32[c->mapX[x]];
                     r = (v32 >> 16) & 0xFF;
                     g = (v32 >> 8) & 0xFF;
                     b = v32 & 0xFF;
@@ -11687,8 +11702,38 @@ static u32 hold_key(Context *c, const u32 *k, u32 type)
 // and is unchanged between EKA1 and 9.x, so it goes over as the pointer it is.
 // The answer is a TKeyResponse -- 0 not consumed, 1 consumed -- and is passed
 // straight back, so anything the game does not want still reaches avkon.
+// Landscape (round 182): the keys turn with the picture. In L90 the phone's
+// top is at the player's left, so the key that points to the top (Up, 2)
+// is the game's left; in L270 the game's right. Arrows and the digits that
+// double for them (2, 4, 6, 8), by iCode and iScanCode alike; every other
+// key, the hold of C included, goes through untouched. The event is copied,
+// never written through the framework's pointer.
+static const u32 *rotate_key(const Context *c, const u32 *k, u32 *out)
+{
+    if (!c->rot)
+        return k;
+    enum { ECodeLeft = 0xF805, ECodeRight = 0xF806, ECodeUp = 0xF807, ECodeDown = 0xF808,
+           EScanLeft = 0x0E, EScanRight = 0x0F, EScanUp = 0x10, EScanDown = 0x11 };
+    // up, right, down, left: a quarter turn clockwise of the picture takes
+    // the player's up to the phone's right, so a key is read one place on
+    // (L90) or one back (L270) round this ring.
+    static const u32 codes[4] = { ECodeUp, ECodeRight, ECodeDown, ECodeLeft };
+    static const u32 scans[4] = { EScanUp, EScanRight, EScanDown, EScanLeft };
+    static const u32 digits[4] = { '2', '6', '8', '4' };
+    const u32 step = (c->rot == 1) ? 3u : 1u;       // L90: Up -> Left; L270: Up -> Right
+    out[0] = k[0]; out[1] = k[1]; out[2] = k[2]; out[3] = k[3];
+    for (u32 i = 0; i < 4; i++) {
+        if (k[0] == codes[i]) out[0] = codes[(i + step) & 3];
+        if (k[1] == scans[i]) out[1] = scans[(i + step) & 3];
+        if (k[0] == digits[i]) out[0] = digits[(i + step) & 3];
+        if (k[1] == digits[i]) out[1] = digits[(i + step) & 3];
+    }
+    return out;
+}
+
 extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context *c)
 {
+    u32 turned[4];
     if (key) {
         const u32 *k = (const u32 *)key;
         log_event(c, NOTE_KEY, k[0]);       // iCode
@@ -11750,6 +11795,8 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
     }
     if (!c->oldControl)
         return 0;
+    if (key)
+        key = rotate_key(c, (const u32 *)key, turned);
     const u32 r = old_call2(c->oldControl, OLD_CTL_OFFERKEY, (u32)key, type);
     log_event(c, NOTE_KEY, r);
     if (!QUIET) log_block(c);
@@ -13938,6 +13985,9 @@ extern "C" u32 gate6_ui_keyevent(void *self, const void *key, u32 type, Context 
         if (hold_key(c, (const u32 *)key, type))
             return 1;                       // EKeyWasConsumed
     }
+    u32 turned[4];
+    if (key)
+        key = rotate_key(c, (const u32 *)key, turned);     // landscape: the keys turn with the picture
     if (GAME_UI_FORWARD_EVENTS && c->oldKeyEvent)
         return ((KeyEvent)c->oldKeyEvent)(c->oldUi, key, type);
     return ((KeyEvent)c->realKeyEvent)(self, key, type);
