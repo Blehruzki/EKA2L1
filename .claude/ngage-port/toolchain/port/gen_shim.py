@@ -732,6 +732,7 @@ HOOKS = {
     'IMPORT_USER_ALLOCZL':            ('euser', 3),
     'IMPORT_USER_ALLOCL':             ('euser', 35),
     'IMPORT_USER_ALLOC':              ('euser', 45),
+    'IMPORT_MEM_COPY':                ('euser', 2),     # Mem::Copy -- NATIVE240: the present's copy of a 2D surface to the screen, its strip right of the old width cleared (E1466)
     'IMPORT_USER_ALLOCZ':             ('euser', 1582),
     'IMPORT_MALLOC':                  ('estlib', 3),
     'IMPORT_CANCEL':                  ('euser', 152),

@@ -31,10 +31,15 @@
 // NATIVE240.md, step 2: with GAME_NATIVE_W the game's renderer is patched
 // to a 240-pixel-wide buffer (native240.h, from nativepatch.py) and the
 // loader reads its rows 240 wide; the height stays 208 and the 3D view 176
-// rows tall for now. A bench knob: 0 when shipping.
+// rows tall for now. 0 here; a build that wants it passes
+// NGPORT_CXXFLAGS=-DGAME_NATIVE_W=240 (buildapp.py), the bench battery and
+// the release alike, so the two cannot differ.
+#ifndef GAME_NATIVE_W
 #define GAME_NATIVE_W 0
+#endif
 #if GAME_NATIVE_W
 enum { GAME_W = GAME_NATIVE_W, GAME_PITCH = GAME_NATIVE_W, GAME_H = 208 };
+#define GAME_2D_W 176       // the 2D screens still draw 176 wide (gate6_mem_copy clears the rest); a macro, as gate6.cpp tests it with #ifndef (E1478)
 #else
 enum { GAME_W = 176, GAME_PITCH = 192, GAME_H = 208 };
 #endif
@@ -206,6 +211,6 @@ enum { GAME_SRC_ORIGIN = 16 };
 // was last overwritten -- round 71 read two build-139 logs as build 141's
 // and spent the round on it. Bump this with every package that goes to the
 // phone; `rules.py` checks it against the newest package in build/.
-#define GAME_BUILD 196
+#define GAME_BUILD 197
 
 #endif

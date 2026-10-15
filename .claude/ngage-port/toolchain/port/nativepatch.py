@@ -232,9 +232,15 @@ def main(argv):
         elif word(x) == w_old * h * 2 + 0x4000:
             rows.append((x, word(x), w_new * h * 2 + 0x4000, 'lit w*h*2 + 16K (the screen buffer allocation)'))
 
-    # surfaces: mov r2, #176 before each surface_init call
+    # surfaces: mov r2, #176 before each surface_init call -- those that
+    # wrap the screen's pixels. E1476: 0x5ad68 and 0x11c894 wrap the title's
+    # own 176-wide pictures (decoded into [obj+0x368] and [obj+0x33c]); made
+    # 240 wide they showed the decode's leftovers beside every menu.
+    SURFACE_IS_PICTURE = set()      # E1477: both are compose buffers and must be 240; left as a hook
     si = ns.surface_init(code, md, w_old, h)
     for c in ns.callers(code, si):
+        if any(c - 4 * k in SURFACE_IS_PICTURE for k in range(1, 9)):
+            continue
         for k in range(1, 9):
             y = c - 4 * k
             i = list(md.disasm(code[y:y + 4], y))

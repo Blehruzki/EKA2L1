@@ -115,6 +115,7 @@ enum {
     IMPORT_MATH_SQRT                   = 65535,   // absent
     IMPORT_MATH_TAN                    = 65535,   // absent
     IMPORT_MDA_NEWL                    = 65535,   // absent
+    IMPORT_MEM_COPY                    =   397,
     IMPORT_MKDIR                       = 65535,   // absent
     IMPORT_MSG_COMPLETE                = 65535,   // absent
     IMPORT_MULDF3                      = 65535,   // absent

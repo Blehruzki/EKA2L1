@@ -143,8 +143,14 @@ void ARMul_State::ReportWatch(std::uint32_t address, std::uint32_t data, std::ui
     // A range watch over the ROM catches a runaway memset, which is thousands
     // of writes and only the first few say anything.
     static std::uint32_t reported = 0;
+    // EKA2L1_WATCHMAX raises the cap (ngage-port: a strip rewritten every
+    // frame by a text blit filled the 400 before its other writers showed).
+    static const std::uint32_t cap = [] {
+        const char *w = std::getenv("EKA2L1_WATCHMAX");
+        return w ? static_cast<std::uint32_t>(std::strtoul(w, nullptr, 10)) : 400u;
+    }();
 
-    if (++reported > 400) {
+    if (++reported > cap) {
         return;
     }
 

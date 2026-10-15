@@ -245,12 +245,12 @@ hardware coverage above with DEVICES.md's phone table.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | stem | `6r67` | `6rbc` | `6r21` | `6r58` | `ngtest` | `6r66` | `6r66_2` |
 | loader app | `gate6a1` | `gate6` | `gate6ashe` | `gate6one` | `gate6ngte` | `gate6coli` | `gate6col2` |
-| build in the tree | 030 | 196 | 016 | 028 | 002 | 015 | 001 |
+| build in the tree | 030 | 197 | 016 | 028 | 002 | 015 | 001 |
 | game UID3 | 0x101fd3fc | 0x101fd42d | 0x101fd3e9 | 0x101fd409 | 0x10205e7a | 0x00000000 | 0x101fd417 |
 | code | 615 KB | 1556 KB | 970 KB | 1371 KB | 25 KB | 4 KB | 224 KB |
 | imports / DLLs | 391 / 21 | 462 / 21 | 354 / 20 | 532 / 21 | 181 / 7 | 0 / 0 | 583 / 22 |
 | imports the shim leaves as stubs | 14 | 14 | 8 | 7 | 7 | 1 | 67 |
-| hooks present / defined | 67 / 165 | 73 / 165 | 64 / 165 | 92 / 165 | 29 / 165 | 76 / 165 | 49 / 165 |
+| hooks present / defined | 68 / 166 | 74 / 166 | 65 / 166 | 93 / 166 | 29 / 166 | 77 / 166 | 50 / 166 |
 | diversions (old object to wrapper) | 14 | 14 | 14 | 15 | 10 | 2 | 13 |
 | game files / size | 7 / 9.9 MB | 122 / 27.6 MB | 7 / 15.3 MB | 1075 / 27.4 MB | 2 / 0.0 MB | 28 / 32.4 MB | 28 / 32.4 MB |
 | split data package | no | no | no | yes | no | no | no |
@@ -351,6 +351,7 @@ Every `CCoeControl` method the title imports. On S60 3.0 a cone method run on th
 
 | knob | Asphalt UGT | Asphalt 2 | Ashen | One | ngtest | Colin McRae 2005 | Colin McRae front end |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| `GAME_2D_W` | · | 176 | · | · | · | · | · |
 | `GAME_ALLOC_PAD` | 512 | 0 | 512 | 512 | 512 | 512 | 512 |
 | `GAME_AMBIENCE_ENTRY` | · | · | · | 0x64 | · | · | · |
 | `GAME_AMBIENCE_ID` | · | · | · | 0x5c | · | · | · |

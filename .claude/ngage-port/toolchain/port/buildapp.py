@@ -101,7 +101,11 @@ def build(name, uid3, caption, out, imports=(), sources=None, icon=None,
     inc = ['-I' + incdir] if incdir else []
     for src in cpp:
         obj = p(os.path.basename(src) + '.o')
-        sh('clang', *CXXFLAGS, *inc, '-c', '-o', obj, os.path.join(HERE, src))
+        # NGPORT_CXXFLAGS adds flags for one build (NATIVE240 step 3: the
+        # release and its bench battery built with -DGAME_NATIVE_W=240 while
+        # the committed game.h keeps the knob at 0).
+        more = os.environ.get('NGPORT_CXXFLAGS', '').split()
+        sh('clang', *CXXFLAGS, *more, *inc, '-c', '-o', obj, os.path.join(HERE, src))
         objs.append(obj)
     asm = p(name + '.s.o')
     sh('clang', '--target=armv5-none-eabi', '-c', '-o', asm,

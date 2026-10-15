@@ -178,3 +178,39 @@ Still open before step 3: the tunnel wall above; the menus and the race
 start on a 240 buffer are untested (the attract race only); the 0x84f4
 family (eight sprite blitters clipping to 176) and 0x353d8's 176 are left
 as 2D for now.
+
+## Step 3: the build for the phone (E1463-E1487, Asphalt 2 build 197)
+
+The release and its bench battery are both built with
+`NGPORT_CXXFLAGS=-DGAME_NATIVE_W=240` (buildapp.py passes it to the
+compiler; `game.h` keeps the knob at 0, as a `#ifndef`), so the two cannot
+differ. What the first menu run found and what it took:
+
+- The menus drew their 176 columns right and 64 columns of noise beside
+  them: the menu is composed into a surface that is now 240 wide, after its
+  backdrop was inflated in place into the same buffer, and the columns the
+  picture does not cover keep the inflate's leftovers. Every menu frame
+  reaches the screen through one Mem::Copy of the whole surface, so the
+  loader hooks Mem::Copy (`IMPORT_MEM_COPY`, euser ordinal 2, in every
+  title's `gate_imports.h`) and, on a whole-frame copy from anything but
+  the 3D back buffer, clears columns `GAME_2D_W` to `GAME_W` of the
+  destination (`gate6_mem_copy`). The 3D present copies from the back
+  buffer and is left alone. Twelve runs to get there, two of them lost to
+  the same trap: `#ifdef` on a name that `gate_imports.h` and `game.h`
+  declare as an enum constant compiles the code out (E1469, E1478).
+- The shared-feature battery on this code: boot to the menu (E1479); the
+  five modes by holding C, the tap, the file (E1480: at this width shape
+  and integer are 1:1, fill is 240x272, full 240x320); the mode read back
+  on relaunch (E1481); background and foreground by the bench ticks
+  (E1487); the game's own EXIT, YES on its prompt, User::Exit(0) (E1484);
+  a race -- ARCADE, SINGLE RACE, 4X4 SUV, the Hummer, San Francisco, key
+  2 to accelerate and 5 for nitro (E1486). No fault in any of them.
+- A watch address is good for one exe: the game's heap moved with every
+  change to the loader (E1453, E1473), and the loader's own buffer with it
+  (E1476). Measure on the frozen code, or log the addresses from the
+  loader.
+
+What the phone will say that the bench cannot: the frame rate (the
+64-blit reports in the log, `readlog.py`) and whether the 3D at 240 wide
+holds up at the N95's speed. The picture modes to use are 1:1 or shape
+(the same at this width); fill and full stretch 208 rows to 272 or 320.

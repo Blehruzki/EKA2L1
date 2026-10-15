@@ -1431,6 +1431,9 @@ struct Context {
     u32 cardCidSet;         // ... and that there was (card_cid_file)
     u32 altEdition;         // the image is GAME_ALT_CODE_SIZE's edition: its patches, its card
     u32 patchPending;       // GAME_CODE_PATCHES checked, not yet written (GAME_PATCH_AT_OPEN_CHARS)
+    u32 realMemCopy;        // GAME_NATIVE_W: Mem::Copy, as resolved (gate6_mem_copy)
+    u8 *nativeBack;         // GAME_NATIVE_W: the title's 3D back buffer (its allocation of GAME_W*GAME_H*2 + 16 KB)
+    u32 stripCleared;       // ... and that a 2D frame's strip has been cleared once (logged)
     u32 realResume;         // RThread::Resume, as resolved
     u32 engineThread;       // GAME_ENGINE_LXCE: the engine's thread handle
     u32 realRwin[4];        // RWindow's two constructors, BeginRedraw(TRect), EndRedraw, as resolved
@@ -3210,6 +3213,12 @@ enum { HAL_MEMORY_RAM_FREE = 16 };
 // GAME_SRC_BPP too: the bytes a pixel the game writes into the buffer it is
 // given, 16 for every title that draws as an N-Gage does, 32 for one that
 // takes the display mode it is told (One, round 125).
+#ifndef GAME_NATIVE_W
+#define GAME_NATIVE_W 0     // NATIVE240.md: the game's renderer patched to this width
+#endif
+#ifndef GAME_2D_W
+#define GAME_2D_W GAME_W    // ... and the width its 2D screens still draw (176)
+#endif
 #ifndef GAME_SRC_BPP
 #define GAME_SRC_BPP 16
 #endif
@@ -6683,7 +6692,39 @@ extern "C" void *gate6_alloc(int size, u32, Context *c)
     if (ZERO_THE_SLACK)
         for (int i = size, n = user_alloclen(p); i < n; i++)
             p[i] = 0;
+    // NATIVE240 (E1463): the title's full-screen surfaces are allocated at
+    // the patched 240-wide size and its image loader fills 176 columns of
+    // each row, so the 64 to their right were whatever the heap held -- noise
+    // beside every menu. Every big allocation starts black; the 3D view and
+    // the HUD overwrite theirs, the menus' backdrops keep it.
+    if (GAME_NATIVE_W && size >= 0x10000)
+        for (int i = 0; i < size; i++)
+            p[i] = 0;
+    if (GAME_NATIVE_W && size == (int)(GAME_W * GAME_H * 2 + 0x4000))
+        c->nativeBack = p;
     return p;
+}
+
+// NATIVE240 (E1466): a 2D screen -- the title, the loading page, every
+// menu -- is a 176-wide picture decoded in place into a surface that is
+// now 240 wide, and the 64 columns to its right keep the decode's
+// leftovers; on the 176-pitch buffer the pixels covered them. The game
+// hands such a frame to the screen with one Mem::Copy of the whole
+// surface, as it does the 3D back buffer, whose columns are all real; so
+// a whole-surface copy from anything but the back buffer gets those
+// columns cleared in the screen. The 3D view and the HUD never pass here.
+extern "C" void *gate6_mem_copy(void *dst, const void *src, int n, Context *c)
+{
+    typedef void *(*MemCopy)(void *, const void *, int);
+    void *r = ((MemCopy)c->realMemCopy)(dst, src, n);
+    if (GAME_NATIVE_W && n == (int)(GAME_W * GAME_H * 2) && src != (const void *)c->nativeBack) {
+        if (!c->stripCleared) { c->stripCleared = 1; log_event(c, NOTE_PATCH, 0x5A210000u); }   // the first 2D frame cleared
+        u8 *p = (u8 *)dst + GAME_2D_W * 2;
+        for (u32 y = 0; y < (u32)GAME_H; y++, p += GAME_W * 2)
+            for (u32 i = 0; i < (u32)(GAME_W - GAME_2D_W) * 2; i++)
+                p[i] = 0;
+    }
+    return r;
 }
 
 // `nc.dat` next to the game is sixteen bytes and nothing else:
@@ -17763,6 +17804,16 @@ static u32 load_and_start()
         ctx->spare + TRACE <= ctx->spareEnd) {
         iat[IMPORT_USER_ALLOC] = ctx_thunk(ctx->spare, ctx, (u32)&gate6_alloc);
         ctx->spare += TRACE;
+    }
+
+    // (E1469: `#ifdef` on an enum constant compiled this out; every title's
+    // gate_imports.h carries the name, HOOK_ABSENT where the title lacks it.)
+    if (GAME_NATIVE_W && IMPORT_MEM_COPY != HOOK_ABSENT && IMPORT_MEM_COPY < nImports &&
+        ctx->spare + TRACE <= ctx->spareEnd) {
+        ctx->realMemCopy = iat[IMPORT_MEM_COPY];
+        iat[IMPORT_MEM_COPY] = ctx3_thunk(ctx->spare, ctx, (u32)&gate6_mem_copy);
+        ctx->spare += TRACE;
+        log_event(ctx, NOTE_PATCH, 0x5A200000u | (u32)IMPORT_MEM_COPY);   // the copy hook is in
     }
 
     if (WRAP_ALLOCATORS) {

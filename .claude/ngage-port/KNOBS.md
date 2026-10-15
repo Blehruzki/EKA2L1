@@ -57,6 +57,8 @@ the N95 and the N91. One (`gate6one`) ships as **028** (round 159: the N73's dea
 | `GAME_BUNDLE_DATA` | 1 | 1 | 1 | yes | the game's files ship inside the SIS | since UGT 022 |
 | `GAME_AO_PRIORITIES` | none | none | none | yes | rewrites the priority a named `CActive::CActive` call site passes: a title's own self-completing frame loop goes below EPriorityIdle (One: {0x264f8, -101}) | round 128; bench E590 |
 | `GAME_MDA_WRITER_CB` | 0 | 0 | 0 | per image | where a title's audio writer keeps its stream callback; on, every 256th Position call logs the writer's written count and the stream's Position (One: 0xc) | round 129 |
+| `GAME_NATIVE_W` | 0 | 0 (240 through `NGPORT_CXXFLAGS` for build 197) | 0 | no (a title's own patch table, `native240.h`) | NATIVE240.md: the renderer patched to a wider buffer, the loader reading rows that wide; big allocations zeroed, `Mem::Copy` hooked to clear the 2D screens' right columns | E1446-E1487 |
+| `GAME_2D_W` | -- | 176 | -- | with GAME_NATIVE_W | the width the title's 2D screens still draw; a macro, not an enum (E1478) | E1478 |
 
 ## Shared mechanisms with no knob (every title)
 

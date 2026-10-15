@@ -197,3 +197,5 @@ sockets use IPv4, and friend addresses stay IPv4 instead of being mapped -- both
 `inet_socket::open` now reports libuv's own error on a failed init (it printed
 `errno`) and frees the handle it never initialised, which used to reach
 `uv_close` later.
+
+- `EKA2L1_WATCHMAX=<n>`: the cap on reported writes of a plain `EKA2L1_WATCH` (400 by default; a word rewritten every frame filled it before its other writers showed, ngage-port E1471). `src/emu/cpu/src/dyncom/armstate.cpp`.
