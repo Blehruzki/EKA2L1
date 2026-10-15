@@ -2396,3 +2396,22 @@ on the RM-92 at the N80's 352x416 (E1435-E1437); the RM-409 unchanged
 (E1438). No loader change, no new build.
 *Lesson: a fault seen only on the bench is a question about the bench first.
 And "for later" needs a row that says who comes back to it.*
+
+### 14.j The 240-wide view missing its right strip: the loader's own hook (E1498-E1499, build 199)
+**Symptom.** Build 198 on the N95, every mode: the picture is the first
+176 columns of the 240, the car at two thirds of the width. The bench's race
+frames the same, read as "240 wide" from thumbnails for three rows.
+**Cause.** The port. The Mem::Copy hook that blanks the decode leftovers
+beside a 176-wide 2D screen (14.h's sibling, E1466) exempts the 3D back
+buffer by pointer, and the pointer was recorded in `gate6_alloc` -- a
+wrapper that `PAD_THE_ALLOCATIONS = 0` never installs. So it was 0, every
+present counted as a 2D frame, and the 3D view lost its right 64 columns on
+the way to the screen.
+**Fix.** The back buffer is recorded in `gate6_result`, the allocator result
+wrapper that is installed, from the allocation of the picture plus 16 KB,
+and the hook tests the copy's source against that allocation's range. Race
+frames measure lit over columns 180-239 again, menus black (E1499).
+*Lesson: a hook that depends on a field, and the code that writes the field
+behind a switch that is off, is two greps. And measure the strip: a
+thumbnail of a 240-wide frame with 64 black columns looks like a 240-wide
+frame.*

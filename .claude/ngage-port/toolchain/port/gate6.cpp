@@ -1435,6 +1435,7 @@ struct Context {
     u32 realMemCopy;        // GAME_NATIVE_W: Mem::Copy, as resolved (gate6_mem_copy)
     u8 *nativeBack;         // GAME_NATIVE_W: the title's 3D back buffer (its allocation of GAME_W*GAME_H*2 + 16 KB)
     u32 stripCleared;       // ... and that a 2D frame's strip has been cleared once (logged)
+    u32 copiesSaid;         // ... whole-surface copies logged so far (the first few: src, dst)
     u32 realResume;         // RThread::Resume, as resolved
     u32 engineThread;       // GAME_ENGINE_LXCE: the engine's thread handle
     u32 realRwin[4];        // RWindow's two constructors, BeginRedraw(TRect), EndRedraw, as resolved
@@ -3329,9 +3330,30 @@ extern "C" void gate6_crumb(u32 marker, Context *c, u32 site)
 // marker would no longer mean the case was entered.
 // Same stub with `mov r3, r5` inserted before the call, so the handler is
 // handed the register as a fourth argument. The literals move by one word.
-// A thunk that lets the call happen and then records what came back, which a
-// trace on the way in cannot do. Used on the allocators, to find which
-// allocation produced an object the game later walks.
+
+// Which imports take a byte count as their first argument. HBufC16::New is
+// in characters rather than bytes, which the census does not correct for --
+// the band it lands in is one out and the shape is the same.
+// The routes this game has to the heap. `gen_shim` finds each by (DLL,
+// ordinal), so the list is right in any title; an import the game does not
+// have comes out as HOOK_ABSENT and is skipped. Both the padding that goes
+// on them and the size census below read this.
+// (Ahead of gate6_result, which reads it for the back buffer: E1498.)
+enum { HOOK_ABSENT = 0xFFFF };
+static const u16 kAlloc[] = { IMPORT_USER_ALLOC, IMPORT_USER_ALLOCL,
+                              IMPORT_USER_ALLOCZ, IMPORT_USER_ALLOCZL,
+                              IMPORT_MALLOC };
+
+static int is_allocator(u32 index)
+{
+    // Was six indices measured in Asphalt 2, which name six unrelated
+    // imports in any other game.
+    for (u32 i = 0; i < sizeof kAlloc / sizeof kAlloc[0]; i++)
+        if (kAlloc[i] != (u16)HOOK_ABSENT && kAlloc[i] == (u16)index)
+            return 1;
+    return 0;
+}
+
 // One line of the watched field, from wherever it is called. The field lives
 // in the game's memory at a fixed address once the first probe has named it,
 // and every wrapped import is a station we already own -- no game byte is
@@ -3350,6 +3372,17 @@ extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
         c->allocPtr[n] = result;
         c->allocLen[n] = arg;
         c->allocNext++;
+        // NATIVE240 (E1498): the 3D back buffer is the one allocation of the
+        // picture plus 16 KB (img+0x8404, through the AllocL wrapper). It was
+        // recorded in gate6_alloc, which PAD_THE_ALLOCATIONS = 0 never
+        // installs -- so nativeBack stayed 0 and gate6_mem_copy cleared the
+        // 3D view's right strip on every present: the phone's missing strip
+        // (build 198's photos) and the bench's, which a thumbnail hid.
+        if (GAME_NATIVE_W && is_allocator(index) && arg == (u32)(GAME_W * GAME_H * 2 + 0x4000)) {
+            c->nativeBack = (u8 *)result;
+            log_event(c, NOTE_PATCH, 0x5A220000u);
+            log_event(c, NOTE_PATCH, result);
+        }
     }
     // RFile::Open is the other way round -- zero is success there -- so it is
     // recorded whatever it says, and the record's existence is the point: it
@@ -3401,29 +3434,6 @@ static const u16 *des_text(const u32 *d, u32 *length)
     case EBufType: return (const u16 *)(d + 2);     // length, max, then the text
     default:       return (const u16 *)d[2];        // length, max, then a pointer
     }
-}
-
-// Which imports take a byte count as their first argument. HBufC16::New is
-// in characters rather than bytes, which the census does not correct for --
-// the band it lands in is one out and the shape is the same.
-// The routes this game has to the heap. `gen_shim` finds each by (DLL,
-// ordinal), so the list is right in any title; an import the game does not
-// have comes out as HOOK_ABSENT and is skipped. Both the padding that goes
-// on them and the size census below read this.
-enum { HOOK_ABSENT = 0xFFFF };
-
-static const u16 kAlloc[] = { IMPORT_USER_ALLOC, IMPORT_USER_ALLOCL,
-                              IMPORT_USER_ALLOCZ, IMPORT_USER_ALLOCZL,
-                              IMPORT_MALLOC };
-
-static int is_allocator(u32 index)
-{
-    // Was six indices measured in Asphalt 2, which name six unrelated
-    // imports in any other game.
-    for (u32 i = 0; i < sizeof kAlloc / sizeof kAlloc[0]; i++)
-        if (kAlloc[i] != (u16)HOOK_ABSENT && kAlloc[i] == (u16)index)
-            return 1;
-    return 0;
 }
 
 extern "C" void gate6_arg(u32 index, Context *c, u32 a0, u32 a1)
@@ -3682,6 +3692,9 @@ static u32 arg_thunk(u8 *code, Context *ctx, u32 value, u32 target)
     return (u32)b;
 }
 
+// A thunk that lets the call happen and then records what came back, which a
+// trace on the way in cannot do. Used on the allocators, to find which
+// allocation produced an object the game later walks.
 static u32 result_thunk(u8 *code, const void *ctx, u32 value, u32 target)
 {
     u32 *b = (u32 *)code;
@@ -6718,7 +6731,20 @@ extern "C" void *gate6_mem_copy(void *dst, const void *src, int n, Context *c)
 {
     typedef void *(*MemCopy)(void *, const void *, int);
     void *r = ((MemCopy)c->realMemCopy)(dst, src, n);
-    if (GAME_NATIVE_W && n == (int)(GAME_W * GAME_H * 2) && src != (const void *)c->nativeBack) {
+    if (GAME_NATIVE_W && n == (int)(GAME_W * GAME_H * 2)) {
+        // The present reads the back buffer from a band offset into its
+        // allocation (img+0x840c keeps p + 0x1600 beside p), so the test is
+        // the range, not the pointer.
+        const u32 off = (u32)((const u8 *)src - c->nativeBack);
+        const int fromBack = c->nativeBack && off < (u32)(GAME_W * GAME_H * 2 + 0x4000);
+        if (c->copiesSaid < 8) {
+            c->copiesSaid++;
+            log_event(c, NOTE_PATCH, 0x5A230000u | (fromBack ? 0x100 : 0) | c->copiesSaid);
+            log_event(c, NOTE_PATCH, (u32)src);
+            log_event(c, NOTE_PATCH, (u32)dst);
+        }
+        if (fromBack)
+            return r;
         if (!c->stripCleared) { c->stripCleared = 1; log_event(c, NOTE_PATCH, 0x5A210000u); }   // the first 2D frame cleared
         u8 *p = (u8 *)dst + GAME_2D_W * 2;
         for (u32 y = 0; y < (u32)GAME_H; y++, p += GAME_W * 2)

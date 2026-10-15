@@ -215,6 +215,6 @@ enum { GAME_SRC_ORIGIN = 16 };
 // phone's top to the player's left) and L270 (to the right), shape and
 // full each; the arrows and 2/4/6/8 turn with the picture (rotate_key).
 #define GAME_LANDSCAPE 1
-#define GAME_BUILD 198
+#define GAME_BUILD 199
 
 #endif

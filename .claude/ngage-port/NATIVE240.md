@@ -231,3 +231,23 @@ both key paths, the event copied rather than rewritten. Proven in a race:
 under L90 the phone's 6 accelerates, under L270 its 4 (E1491, E1492).
 At this width L90 shape is 240x277 letterboxed on the N95; L90 full is the
 whole panel at 1.33 x 1.15.
+
+## Build 199: the strip the hook took (E1498-E1499)
+
+Build 198's photos showed the first 176 columns of the picture in every
+mode, portrait and both turns, and the bench's own race frames had the
+same: columns 180-239 at 0.0, a thing the thumbnails had hidden and E1496
+had read as "240 wide". The cause was the loader, not the patches. The
+Mem::Copy hook (E1466) clears the right 64 columns of every whole-surface
+copy *except* the 3D back buffer's, and it knew the back buffer by
+`nativeBack` -- which `gate6_alloc` records, and `gate6_alloc` is only
+installed under `PAD_THE_ALLOCATIONS`, which is 0. So `nativeBack` was
+never set and every present was treated as a 2D frame. The pointer is now
+taken in `gate6_result`, the allocator result wrapper that is installed,
+from the one allocation of the picture plus 16 KB (img+0x8404), and the
+hook tests the copy's source against that allocation's range rather than
+its start, since the present reads from a band offset into it (img+0x840c:
+p + 0x1600). Logged: `0x5A220000` then the back buffer's address, and the
+first eight whole copies as `0x5A23000n` (bit 8 set when from the back
+buffer), source, destination. On the bench the race measures 58.8-147.2
+over columns 180-239 and every menu page 0.0 (E1499).
