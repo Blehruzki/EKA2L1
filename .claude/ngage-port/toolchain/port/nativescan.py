@@ -17,8 +17,9 @@ change:
            width and a height as halfwords at +4 and +6 of its object) with
            the immediates the caller moves into r2 and r3
 
-Asphalt 2 (E1443-E1444): 30 stride sites in 21 functions, the present at
-img+0xa6c74, buffers of 73,216 bytes at five literals.
+Asphalt 2 (E1443-E1446): 17 stride sites in 12 functions (all below
+img+0xc0000: the fills and the span families), the present at img+0xa6c74,
+buffers of 73,216 bytes at five literals.
 """
 import collections, struct, sys
 
@@ -74,9 +75,18 @@ def stride_sites(code, md, mult):
         if not (len(pa) == 4 and pa[1] == pa[2] and pa[3] == 'lsl #2' and
                 len(pb) == 4 and pb[1] == pa[1] and pb[2] == pa[0] and pb[3] == 'lsl #1'):
             continue
+        # The lsl #5 must make an address: `add rd, base, t, lsl #5` with a
+        # base that is neither y nor t. E1446: an `add t,t,t,lsl#5` or an
+        # `rsb t,y,t,lsl#5` after the same two adds is a constant
+        # multiplication (33t, 351y...) in the engine's arithmetic, and the
+        # 13 such sites above img+0xc0000 patched as strides killed the boot.
+        y, t = pa[1], pb[0]
         for k in range(2, 7):
             c = list(md.disasm(code[x + 4 * k:x + 4 * k + 4], x + 4 * k))
-            if c and 'lsl #5' in c[0].op_str and pb[0] in c[0].op_str:
+            if not c or c[0].mnemonic != 'add':
+                continue
+            pc = [p.strip() for p in c[0].op_str.split(',')]
+            if len(pc) == 4 and pc[2] == t and pc[3] == 'lsl #5' and pc[1] not in (y, t):
                 out.append(x)
                 break
     return out

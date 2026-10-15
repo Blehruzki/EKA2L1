@@ -28,7 +28,16 @@
 // panel pitch is 192 with 176 visible. Reading the buffer differently cannot
 // undo it -- the overflow has already overwritten the next row -- so the pitch
 // the game uses has to be 192, and the only number we hand it is iScreenSize.
+// NATIVE240.md, step 2: with GAME_NATIVE_W the game's renderer is patched
+// to a 240-pixel-wide buffer (native240.h, from nativepatch.py) and the
+// loader reads its rows 240 wide; the height stays 208 and the 3D view 176
+// rows tall for now. A bench knob: 0 when shipping.
+#define GAME_NATIVE_W 0
+#if GAME_NATIVE_W
+enum { GAME_W = GAME_NATIVE_W, GAME_PITCH = GAME_NATIVE_W, GAME_H = 208 };
+#else
 enum { GAME_W = 176, GAME_PITCH = 192, GAME_H = 208 };
+#endif
 
 // Where the picture starts inside the game's own buffer. Sixteen, measured:
 // the blit reads from source pixel sixteen, and reading from column zero
@@ -68,9 +77,14 @@ enum { GAME_SRC_ORIGIN = 16 };
 #define GAME_CONTROL_W 0
 #define GAME_CONTROL_H 0
 
-// No words of the image rewritten after loading (see Ashen's game.h).
+// No words of the image rewritten after loading (see Ashen's game.h) --
+// unless the native-width prototype is on, whose patches are generated.
+#if GAME_NATIVE_W
+#include "native240.h"
+#else
 #define GAME_CODE_PATCHES { 0, 0, 0 }
 #define GAME_CODE_PATCH_COUNT 0
+#endif
 
 // The environment's screen device, as the game reads it off the view
 // (old iScreen, 0x3c): 1 hands it a stand-in that answers font requests by
