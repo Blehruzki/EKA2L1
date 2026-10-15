@@ -30,8 +30,8 @@ the plan); the rows come in these kinds:
 Everything here is a guess until E-rows say the picture is right (rule 4):
 an immediate 176 in a renderer function could be something else, and a
 site this does not know about shears the picture (E133-E135). E1446-E1452
-is the record: 143 words, the attract race drawn 240 wide with the HUD in
-its place; one near tunnel wall still ends at the old edge.
+and E1453-E1460 are the record: 173 words, the attract race drawn 240
+wide about column 120 with the HUD in its place.
 """
 import struct, sys, os
 
@@ -58,11 +58,20 @@ HALF_WIDTH_FUNCS = [0xb9008, 0xb92d8, 0xbe848]
 # The present's `mov r3, #0xb0` at 0xa6f70 is a row count (the overlay's 176
 # rows) as well as the width: left alone, and the shift that made 16 rows of
 # it is replaced by the new band offset.
-LEAVE = {0xa6f70}
+LEAVE = {0xa6f70, 0x8584, 0x8658}      # and the line drawers' row clips (E1455)
 BY_HAND = {0xa6f74: ('lsl r2, r3, #5 -> mov r2, #0x1e00 (16 rows of 480)', 0xE3A02C1E),
            # the sky walker clips its row count with the same r2 it multiplies
            # the pitch by: the clip stays 176 rows, the factor becomes 240
-           0xba070: ('movge r3, r2 -> movge r3, #0xb0 (row clip kept at 176)', 0xA3A030B0)}
+           0xba070: ('movge r3, r2 -> movge r3, #0xb0 (row clip kept at 176)', 0xA3A030B0),
+           # the vertex projection (0x11baec and its twin 0x11bb60) starts
+           # both screen coordinates at 88 from one register; x's read-back
+           # before the add becomes the new centre, y keeps the 88 (E1455)
+           0x11bb34: ('ldr r3, [r4] -> mov r3, #0x78 (projection centre x 88 -> 120)', 0xE3A03078),
+           0x11bbac: ('ldr r3, [r4] -> mov r3, #0x78 (projection centre x 88 -> 120, the twin)', 0xE3A03078),
+           # the perspective column routine's y*11<<5 whose base register is
+           # the row register reused (E1458): the same two words as a stride
+           0xb91c8: ('add sl, r2, r2, lsl #2 -> add sl, r2, r2, lsl #1 (stride, base reg reused)', 0xE082A082),
+           0xb91cc: ('add sl, r2, sl, lsl #1 -> add sl, sl, sl, lsl #2 (stride, base reg reused)', 0xE08AA10A)}
 
 
 # Single sites in functions whose other immediates mean something else
@@ -93,6 +102,31 @@ SITES = {
     0xaf154: (240, 'screen descriptor on the stack (0xae940)'),
     0xbcd90: (240, 'screen descriptor on the stack (0xbcd44)'),
     0xbd67c: (240, 'screen descriptor on the stack (0xbd648)'),
+    # E1455: the car is polygons through the triangle clipper (0xaa28) and
+    # the rasteriser family 0x84f4-0xac64, and the projection that places
+    # every vertex is 0x11baec/0x11bb60 (BY_HAND below). The clipper rejects
+    # a triangle whose least x is past 175 (three tests on [v+0]); its six
+    # tests on [v+4] are rows and stay. The two line drawers (0x84f4,
+    # 0x85c8) are stride functions now, so the immediate rule widens their
+    # x clips; the row they interpolate is clipped to 175 too, in LEAVE.
+    0xaa78: (239, 'triangle clipper: least x past the right edge'),
+    0xaabc: (239, 'triangle clipper: least x past the right edge'),
+    0xaac8: (239, 'triangle clipper: least x past the right edge'),
+    # E1458: the perspective column routine (0xb9008: the sky and ground
+    # under a tilted camera) and its row sibling (0xb92d8). 176 rows of the
+    # new pitch, 0x14a00, is not an immediate: 0x15000 bounds the copy at
+    # 179 rows (the overrun is in the band the present clears), and the
+    # clamp subtracts 0x7e0 so the clamped row is still row 175.
+    0xb920c: (0x76, 'column routine: row step (480-8)/4'),
+    0xb9278: (0x76, 'column routine: row step (480-8)/4'),
+    0xb92bc: (0x3b, 'column routine: last column, 60 columns of 4'),
+    0xb91d0: (0x1e, 'column routine: centre column 22 -> 30'),
+    0xb913c: (0x15000, 'column routine: copy bound, 176 rows (179 for want of an immediate)'),
+    0xb926c: (0x7e0, 'column routine: clamp to row 175 from the 179-row bound'),
+    0xb9534: (0x77, 'row sibling: a full row is 120 words'),
+    0xb9554: (0x77, 'row sibling: a full row is 120 words'),
+    0xb95f4: (0x15000, 'row sibling: copy bound, 176 rows (179)'),
+    0x88c4: (0x15000, 'view clear (0x88c0): 176 rows (179)'),
     # E1451: the column walker (0x11bbfc, and its twin 0x11bd44) clips x to
     # [0, 175] and the row it computes to [0, 175]; the x bounds widen, the
     # row bound (0x11bca0, 0x11bdf0: the view's 176 rows) stays.
@@ -185,6 +219,10 @@ def main(argv):
                     rows.append((y, word(y), with_imm(word(y), w_new), 'surface width'))
                 break
 
+    # a SITES or BY_HAND word outranks the rule that also matched it
+    named = set(SITES) | set(BY_HAND)
+    byhand = [why for why, new in BY_HAND.values()]
+    rows = [r for r in rows if r[0] not in named or r[3].startswith('site ') or r[3] in byhand]
     rows.sort()
     seen = set()
     for r in rows:

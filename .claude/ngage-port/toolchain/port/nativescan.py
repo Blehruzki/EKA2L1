@@ -86,7 +86,10 @@ def stride_sites(code, md, mult):
             if not c or c[0].mnemonic != 'add':
                 continue
             pc = [p.strip() for p in c[0].op_str.split(',')]
-            if len(pc) == 4 and pc[2] == t and pc[3] == 'lsl #5' and pc[1] not in (y, t):
+            # lsl #5 makes a byte address (y*352); lsl #4 a pixel one
+            # (y*176, doubled at the store: the line drawers 0x84f4/0x85c8
+            # and the column walkers, E1455)
+            if len(pc) == 4 and pc[2] == t and pc[3] in ('lsl #5', 'lsl #4') and pc[1] not in (y, t):
                 out.append(x)
                 break
     return out
