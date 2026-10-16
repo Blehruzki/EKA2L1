@@ -61,6 +61,8 @@ the N95 and the N91. One (`gate6one`) ships as **028** (round 159: the N73's dea
 | `GAME_2D_W` | -- | 176 | -- | with GAME_NATIVE_W | the width the title's 2D screens still draw; a macro, not an enum (E1478) | E1478 |
 | `GAME_LANDSCAPE` | 0 | 1 | 0 | no (a title opts in) | the four landscape modes after full in the C-hold cycle, the picture turned a quarter by the loader's own blit and the arrows and 2/4/6/8 turned with it | E1488-E1497 |
 | `GAME_KEEP_CATCHER` | 0 | 1 | 0 | no (only Asphalt 2 imports RThread::SetExceptionHandler) | the title's own exception handler recorded and refused (`gate6_set_exc`), so the port's catcher keeps the main thread; after the fault is logged the title's handler gets the type | round 182, E1506 |
+| the turned picture modes only on a panel taller than it is wide (`mode_count`): on a wide panel (E71, E72) the cycle stops at full and the keys are never turned; a saved turned mode falls back to its upright base (`0x5A29` in the log). `BENCH_LANDSCAPE_PANEL` pretends a wide panel on the bench | round 186 | universal: the panel's shape, not a phone list | bench E1542 |
+| QWERTY digits (`qwerty_key`): on a phone whose HAL EKeyboard says full keyboard, a key whose iCode is a digit, `*` or `#` but whose scan code is a letter's (the function key held or locked) gets the digit's scan code, so the printed digits play as a keypad. Arrows stay arrows. The raw HAL answer is logged (`0x5A28`). `BENCH_KBD` forces the type on the bench | round 186 | universal, inert on a keypad phone | bench E1543 (the rule in the path; a QWERTY phone's log settles the letters' scan codes for the function-key-free step) |
 
 ## Shared mechanisms with no knob (every title)
 

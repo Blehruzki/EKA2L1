@@ -2492,3 +2492,16 @@ phone it reports any spill the bench never drew, and absorbs it.
 *Lesson: a label on a patch is a claim; E1513's audit read the immediates
 in the stride functions and left the SITES as labelled. A site is the
 same constant with a comment, and the comment can be wrong.*
+
+### 14.n Every title but Asphalt 2 stopped compiling at build 200 (round 186)
+**Symptom.** `gate6.cpp` compiled for Asphalt 2 and failed for every other
+title: `GAME_KEEP_CATCHER` undeclared in `gate6_fault`.
+**Cause.** The knob's `#ifndef` default was added beside the other NATIVE240
+defaults, 1,200 lines below the fault handler that reads it; Asphalt 2's
+`game.h` defines it, so its build never noticed. Three commits (builds
+200-204) left the shared loader in a state no other title could build.
+**Fix.** The default sits right after `game.h` is included, and
+`alltitles.py` (in rules.py's self-tests) compiles the loader for every
+title. Nothing shipped broken: no other title was built in between.
+*Lesson: the shared loader is built for one title at a time, so a change
+to it is not compiled for the others until someone asks.*

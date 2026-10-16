@@ -127,7 +127,7 @@ def main():
 
 # ---- rule 4 ---------------------------------------------------------------
 
-SELF_TESTS = ('logringtest.py', 'titles.py --check', 'shimreach.py')   # a script and its arguments
+SELF_TESTS = ('logringtest.py', 'titles.py --check', 'shimreach.py', 'alltitles.py')   # a script and its arguments
 # Compiled on the host and run. `columntest.cpp` exists because the bench
 # cannot reach the geometry the bug lived in: EKA2L1's frame buffer line is
 # the screen width and every phone's is wider, so build 008's shift was

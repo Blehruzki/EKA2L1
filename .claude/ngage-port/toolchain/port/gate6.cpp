@@ -24,6 +24,10 @@
 #include "gate_imports.h"
 // ... and what this game is, which is not generated: see games/<name>/game.h.
 #include "game.h"
+// Per-title knobs read before the defaults block below (gate6_fault reads this one).
+#ifndef GAME_KEEP_CATCHER
+#define GAME_KEEP_CATCHER 0
+#endif
 
 // An AirPlay engine title (Colin McRae Rally 2005): the image is the engine
 // `<stem>.lxe`, laid out and linked here, run in a thread of its own. Off
@@ -1253,6 +1257,7 @@ struct Context {
     u32 blitN, blitSwitches, blitScalerFast, blitFast0;   // round 151: blits counted; how many changed bitmap; fast-counter ticks inside the scaler; the counter at the window's start
     const void *lastBlitBmp;
     u32 rot;                // 0, or quarter turns clockwise (1, 3): the landscape modes (screen_fit)
+    u32 kbd;                // HAL EKeyboard: 1 a keypad, 2 a full QWERTY (round 186: the digit rule), 0 unknown
     u8 mapX[MAP_MAX];       // destination column -> source column, Bresenham
     u8 mapY[MAP_MAX];       // and the same down
     u8 wX[MAP_MAX], wY[MAP_MAX];   // round 150: the filter's blend weight toward the next source pixel, 0 to copy
@@ -3224,9 +3229,6 @@ enum { HAL_MEMORY_RAM_FREE = 16 };
 // takes the display mode it is told (One, round 125).
 #ifndef GAME_NATIVE_W
 #define GAME_NATIVE_W 0     // NATIVE240.md: the game's renderer patched to this width
-#endif
-#ifndef GAME_KEEP_CATCHER
-#define GAME_KEEP_CATCHER 0
 #endif
 #ifndef GAME_NATIVE_SLACK
 #define GAME_NATIVE_SLACK 0x4000   // the back buffer's margin beyond w*h*2 (native240.h sets it)
@@ -8278,7 +8280,20 @@ enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
 #endif
 enum { MODE_ONE_TO_ONE = FIT_ONE_TO_ONE, MODE_SHAPE = FIT_SHAPE,
        MODE_FILL = FIT_FILL, MODE_INTEGER = FIT_INTEGER, MODE_FULL = FIT_FULL,
-       MODE_COUNT = GAME_LANDSCAPE ? FIT_MODES : FIT_L90_SHAPE };
+       MODE_COUNT_PORTRAIT = GAME_LANDSCAPE ? FIT_MODES : FIT_L90_SHAPE };
+// Round 186: the turned modes are for a panel taller than it is wide -- the
+// N95's 240x320, where the player turns the phone to get a wide picture. On
+// a panel already wider than tall (the E71 and E72's 320x240) the upright
+// modes are the wide picture, and a quarter turn would stand it on end, so
+// the cycle stops at full there and the keys are never turned. The panel's
+// shape is the one test; no list of phones. BENCH_LANDSCAPE_PANEL pretends
+// a wide panel on the bench's 240x320 (E1542).
+enum { BENCH_LANDSCAPE_PANEL = 0 };
+static u32 mode_count(const Context *c)
+{
+    const int wide = BENCH_LANDSCAPE_PANEL || (c->screenW && c->screenH && c->screenW > c->screenH);
+    return wide ? (u32)FIT_L90_SHAPE : (u32)MODE_COUNT_PORTRAIT;
+}
 // The default when nothing has been chosen. Aspect, because it is the only
 // mode that holds 176:208 -- within 0.6% on every panel measured (E235) --
 // where fill is +7.4% on an N95 and +105.5% on a landscape E71.
@@ -8528,7 +8543,7 @@ static void cfg_load(Context *c)
     const u32 ver = c->cfg[1];
     if (ver < 1 || ver > (u32)CFG_VERSION)
         return;
-    if (c->cfg[2] < (u32)MODE_COUNT)
+    if (c->cfg[2] < mode_count(c))
         c->mode = c->cfg[2];
     if (c->cfg[3])
         c->topInset = c->cfg[3];
@@ -8577,7 +8592,7 @@ static void hold_tick(Context *c)
     const u32 now = user_tickcount();
     if ((i32)(now - c->holdNext) < 0)
         return;
-    c->mode = (c->mode + 1) % (u32)MODE_COUNT;
+    c->mode = (c->mode + 1 < mode_count(c)) ? c->mode + 1 : 0u;   // no `%`: freestanding, no __aeabi_uidivmod
     c->holdNext = now + (u32)HOLD_REPEAT_TICKS;
     c->holdCycled = 1;
     screen_layout(c);
@@ -8945,6 +8960,12 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         const int firstTime = !c->screenW;
         c->screenW = w;
         c->screenH = h;
+        // Round 186: a turned mode saved by a portrait phone, read on a wide
+        // panel (one card in two phones), falls back to its upright base.
+        if (c->mode >= mode_count(c)) {
+            c->mode = fit_base(c->mode);
+            log_event(c, NOTE_MODE_NOW, 0x5A290000u | c->mode);
+        }
         if (firstTime) {
             c->mode = (u32)SCREEN_MODE;
             // Take the whole screen first, so the main pane Avkon then
@@ -9323,7 +9344,7 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
     }
     if (MODE_CYCLE_FRAMES && c->frames > (u32)DUMP_SCREEN_FIRST
         && c->frames % (u32)MODE_CYCLE_FRAMES == 0
-        && c->modeShot < (u32)MODE_COUNT) {
+        && c->modeShot < mode_count(c)) {
         // Snapshot this mode, then move to the next one. The picture is
         // dumped before the change so the descriptor and the pixels agree.
         if (DUMP_SCREEN && c->realScreen && c->realPitch && c->screenH) {
@@ -9334,7 +9355,7 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
             dump_region(c, c->realScreen, c->realPitch * c->screenH);
         }
         c->modeShot++;
-        c->mode = (c->mode + 1) % (u32)MODE_COUNT;
+        c->mode = (c->mode + 1 < mode_count(c)) ? c->mode + 1 : 0u;   // no `%`: freestanding, no __aeabi_uidivmod
         screen_layout(c);
     }
     if (LOG_POSTED_REGION && c->regionLogs < (u32)REGION_LOGS) {
@@ -11809,6 +11830,33 @@ static u32 hold_key(Context *c, const u32 *k, u32 type)
 // double for them (2, 4, 6, 8), by iCode and iScanCode alike; every other
 // key, the hold of C included, goes through untouched. The event is copied,
 // never written through the framework's pointer.
+// Round 186: a QWERTY phone (HAL says EKeyboard_Full) has its digits on
+// letter keys behind the function key, and a game reads the scan code, so
+// the key printed "5" arrives as the letter's scan code and the game
+// ignores it. With the function key held, or locked by pressing it twice,
+// the window server gives the digit in iCode while the scan code stays the
+// letter's; this copies the digit over the scan code, so the printed
+// digits play as a keypad does. `*` and `#` the same (their keypad scan
+// codes are 0x2A and 0x7F). Arrows are left as arrows. The next step, the
+// printed overlay without the function key, needs the letters' scan codes
+// from a QWERTY phone's log (NOTE_KEY carries them) and is not guessed.
+// BENCH_KBD forces the type on the bench (0: as HAL says).
+enum { BENCH_KBD = 0, HAL_KEYBOARD = 24, KBD_FULL = 2 };
+static const u32 *qwerty_key(const Context *c, const u32 *k, u32 *out)
+{
+    if (!(c->kbd & (u32)KBD_FULL))
+        return k;
+    const u32 code = k[0];
+    u32 scan = 0;
+    if (code >= '0' && code <= '9') scan = code;
+    else if (code == '*') scan = 0x2A;
+    else if (code == '#') scan = 0x7F;
+    if (!scan || k[1] == scan)
+        return k;
+    out[0] = k[0]; out[1] = scan; out[2] = k[2]; out[3] = k[3];
+    return out;
+}
+
 static const u32 *rotate_key(const Context *c, const u32 *k, u32 *out)
 {
     if (!c->rot)
@@ -11871,7 +11919,7 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
         if (SCREEN_PICKER && type == (u32)EEventKey) {
             const u32 code = k[0];
             if (code == (u32)KEY_MODE) {
-                c->mode = (c->mode + 1) % (u32)MODE_COUNT;
+                c->mode = (c->mode + 1 < mode_count(c)) ? c->mode + 1 : 0u;   // no `%`: freestanding, no __aeabi_uidivmod
                 screen_layout(c);
                 log_block(c);
                 return 1;                   // EKeyWasConsumed
@@ -11896,8 +11944,9 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
     }
     if (!c->oldControl)
         return 0;
+    u32 digit[4];
     if (key)
-        key = rotate_key(c, (const u32 *)key, turned);
+        key = rotate_key(c, qwerty_key(c, (const u32 *)key, digit), turned);
     const u32 r = old_call2(c->oldControl, OLD_CTL_OFFERKEY, (u32)key, type);
     log_event(c, NOTE_KEY, r);
     if (!QUIET) log_block(c);
@@ -14086,9 +14135,9 @@ extern "C" u32 gate6_ui_keyevent(void *self, const void *key, u32 type, Context 
         if (hold_key(c, (const u32 *)key, type))
             return 1;                       // EKeyWasConsumed
     }
-    u32 turned[4];
+    u32 turned[4], digit[4];
     if (key)
-        key = rotate_key(c, (const u32 *)key, turned);     // landscape: the keys turn with the picture
+        key = rotate_key(c, qwerty_key(c, (const u32 *)key, digit), turned);     // QWERTY digits, then landscape: the keys turn with the picture
     if (GAME_UI_FORWARD_EVENTS && c->oldKeyEvent)
         return ((KeyEvent)c->oldKeyEvent)(c->oldUi, key, type);
     return ((KeyEvent)c->realKeyEvent)(self, key, type);
@@ -16489,6 +16538,14 @@ static u32 load_and_start()
         // re-entry for an exception (r4 == 4). See gate6.s.
         log_event(ctx, NOTE_EXC_INSTALL, (u32)user_setexceptionhandler(b, 0xFFFFFFFF));
         ctx->excThunk = (u32)b;
+        // Round 186: which keyboard this phone has (HAL EKeyboard), for the
+        // digit rule in qwerty_key; the raw answer in the log either way.
+        {
+            int kb = 0;
+            if (hal_get(HAL_KEYBOARD, &kb)) kb = -1;
+            ctx->kbd = BENCH_KBD ? (u32)BENCH_KBD : (u32)kb;
+            log_event(ctx, NOTE_KEY, 0x5A280000u | ((u32)kb & 0xFFFFu));
+        }
 
     }
     for (u32 i = 0; i < nImports; i++) {
