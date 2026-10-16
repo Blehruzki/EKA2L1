@@ -73,6 +73,19 @@ LEAVE = {0xa6f70, 0x8584, 0x8658,      # and the line drawers' row clips (E1455)
          0xb9460, 0xb9464, 0xb94b8, 0xb94bc,  # row routine 0xb92d8: row clamps (r4 feeds the row stride)
          0xb91f8, 0xb91fc}                  # column routine 0xb9008: rows per column
 BY_HAND = {0xa6f74: ('lsl r2, r3, #5 -> mov r2, #0x1e00 (16 rows of 480)', 0xE3A02C1E),
+           # Round 185 (E1530-E1534): the frustum. 0xb06bc builds the four
+           # clip planes the vertex transform (0xb221c) flags against, each a
+           # unit normal (cos, sin) of the half-angle atan(88 / f) -- 88.0f is
+           # one shared literal, the view's half-width and half-height. The
+           # left and right planes kept the 88-pixel half-angle at 240 wide,
+           # so a triangle whose vertices all lay in the outer 32 columns of
+           # either side was culled before the clipper saw it: the pop-in and
+           # the cut assets at the edges. The horizontal block starts by
+           # taking f; it now takes 3f/4, so atan(88 / 0.75f) = atan(117 / f):
+           # the planes open to 117 of the 120 columns (the one-instruction
+           # approximation of 88/120; a 3-column sliver at the very edge is
+           # the cost). The vertical planes keep 88, the view's half-height.
+           0xb0784: ('mov r0, sl -> sub r0, sl, sl, lsr #2 (frustum: left and right planes from 3f/4)', 0xE04A012A),
            # the sky walker clips its row count with the same r2 it multiplies
            # the pitch by: the clip stays 176 rows, the factor becomes 240
            0xba070: ('movge r3, r2 -> movge r3, #0xb0 (row clip kept at 176)', 0xA3A030B0),
@@ -236,6 +249,14 @@ def main(argv):
                 rows.append((x, w, with_imm(w, m[v]), 'imm %d -> %d in func %x' % (v, m[v], f)))
     for x, (why, new) in BY_HAND.items():
         rows.append((x, word(x), new, why))
+    # --far N: the far plane (E1535). The vertex transform 0xb221c flags a
+    # vertex out of depth when z + 0x7f9b exceeds the literal 0x9723 at
+    # 0xb2294, i.e. z > 6024; a bigger literal draws further, at the cost of
+    # the triangles it admits. An experiment knob until a round settles it.
+    if '--far' in argv:
+        far = int(argv[argv.index('--far') + 1], 0)
+        assert word(0xb2294) == 0x9723
+        rows.append((0xb2294, 0x9723, far, 'lit far plane 0x9723 -> 0x%x (z <= %d)' % (far, far - 0x7f9b)))
     for x, (v, why) in SITES.items():
         rows.append((x, word(x), with_imm(word(x), v), 'site %d -> %d: %s' % (ns.imm_of(word(x)), v, why)))
 

@@ -299,3 +299,30 @@ have died now runs on and says so. `native240.h` carries
 Reading the log for it: `readlog.py <log> --game asphalt2 --tail 100000 |
 grep "from 5a2[567]"`. Rows below the picture are
 `(0x1de20 + offset - 0x1e00) / 480`.
+
+## Round 185: the side culling, and build 204 (E1530-E1541)
+
+Build 203 ran three tracks on the N95 without a death and without a pad
+record. The user's next question was the pop-in at the edges. It is not
+an immediate: the vertex transform (img+0xb221c) flags every vertex
+against four frustum planes it reads from the renderer object, and the
+triangle walker drops a triangle whose three vertices fail the same
+plane; the object-level bounding test (0xb2098) reads the same planes.
+They are built once by img+0xb06bc, in float, as unit normals (cos, sin)
+of atan(88 / f) with f = 125 -- 88.0f is one literal, the view's
+half-width and half-height both -- so the left and right planes still cut
+at the 176-wide view. No 120.0f literal exists in reach and the block has
+no spare instruction, so the horizontal block's first instruction, which
+takes f, now takes 3f/4: atan(88 / 0.75 f) = atan(117.3 / f), the planes
+at 117 of the 120 columns (BY_HAND 0xb0784). A three-column sliver at the
+very edge is the one-instruction cost; the vertical planes keep 88. The
+bench's straight drive culls almost nothing either way (E1533-E1534); the
+phone's tracks will say.
+
+Step 5's far plane was tried: the depth test's literal (0x9723 at
+0xb2294, z <= 6,024) doubled draws nothing more (E1536). What one sees in
+the distance is the track's own segment streaming. `nativepatch.py --far
+N` keeps the experiment, off by default.
+
+The pause menu's 176-wide view is the Mem::Copy hook doing its job on a
+2D compose surface (E1466); it belongs to step 4.
