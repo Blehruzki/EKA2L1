@@ -270,8 +270,10 @@ enum { MAP_MAX = 1024 };
 // for a source origin of 0, and the origin is 16 now -- so that shift is
 // the wrong correction applied twice. Mode and inset are still read from
 // an older file; the shift is not.
-enum { CFG_MAGIC = 0x46433647, CFG_VERSION = 3, CFG_WORDS = 5,
-       CFG_V1_WORDS = 4 };
+// Version 4 (round 187): a sixth word, how the arrows turn (keyTurn). A
+// version-3 file is five words and is read as before; the turn defaults.
+enum { CFG_MAGIC = 0x46433647, CFG_VERSION = 4, CFG_WORDS = 6,
+       CFG_V1_WORDS = 4, CFG_V3_WORDS = 5 };
 // FREE_BACK_FROM is per game: E271 found Asphalt 1 writing a vtable pointer
 // into a freed cell's `next` link during boot, so that title hands nothing
 // back at all and the quarantine takes everything.
@@ -507,7 +509,8 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_PANE_FN = 826,      // a status-pane entry point, as resolved
        NOTE_PANE_OBJ = 827,     // the CEikStatusPane the app UI handed back
        NOTE_PANE_GONE = 828,    // 1 if it then reported itself invisible
-       NOTE_PANE_STEP = 829 };  // a pane call that returned, by number
+       NOTE_PANE_STEP = 829,    // a pane call that returned, by number
+       NOTE_MENU = 901 };       // the hold's menu (round 187): 0x4D450001 opened, 0x4D45000d closed (bit 1: saved), 0x4D4Bcccc a key it took, 0x4D54000t the arrows' turn chosen
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 enum { BOX_MDA = BOX_STACK + 1 };   // what CMdaAudioOutputStream::NewL resolved to
@@ -1555,6 +1558,13 @@ struct Context {
     u32 holdSince;          // tick the mode key went down, 0 when it is up
     u32 holdNext;           // and the tick the next cycle is due
     u32 holdCycled;         // whether this hold has changed anything yet
+    u32 menuOpen;           // the hold's menu is up (round 187): the keys are its, the picture dimmed under it
+    u32 menuRow;            //   the row the cursor is on: picture, keys, back
+    u32 menuDirty;          //   a choice changed while it was up, written when it closes
+    u32 menuLastCode, menuLastTick; // the last press it took, so one press through both key paths counts once
+    u32 menuCDown;          //   C is still down from the hold that opened it: its repeats are not a close
+    u32 keysDown[8];        // the scan codes the game has seen go down and not yet up (key_track)
+    u32 keyTurn;            // how the arrows turn (cfg word 5): 0 with the picture, 1 as L90, 2 as L270, 3 never
     u32 screenPolls;        // UserSvr::ScreenInfo calls, for rationing its records
     u32 excThunk;           // the exception handler's thunk, for the game's threads too
     u32 wrkFault[WRK_FAULT_WORDS]; // a game thread's fault frame, for the main thread to log
@@ -1734,6 +1744,7 @@ static void new_vtable_dump(Context *c, const u32 *vt, u32 slots, u32 mark)
 }
 static void heap_peak(Context *c);
 static void hold_tick(Context *c);
+static void menu_open(Context *c);
 // **The game's own resource file.**
 //
 // On an N-Gage the application *is* `6r67.app`, so the framework opens
@@ -8278,6 +8289,15 @@ enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
 #ifndef GAME_LANDSCAPE
 #define GAME_LANDSCAPE 0
 #endif
+// The hold's menu (round 187) instead of the blind cycle, for the titles
+// the loader blits itself: it is drawn over the loader's own blit, and a
+// window-gc title's frame goes through the gc, where there is nothing to
+// draw it on. Those keep the cycle.
+#ifndef GAME_HOLD_MENU
+#define GAME_HOLD_MENU (!GAME_SCREEN_MODES)
+#endif
+enum { HOLD_MENU = GAME_HOLD_MENU };
+enum { MENU_ROW_PICTURE = 0, MENU_ROW_KEYS = 1, MENU_ROW_BACK = 2, MENU_ROWS = 3 };
 enum { MODE_ONE_TO_ONE = FIT_ONE_TO_ONE, MODE_SHAPE = FIT_SHAPE,
        MODE_FILL = FIT_FILL, MODE_INTEGER = FIT_INTEGER, MODE_FULL = FIT_FULL,
        MODE_COUNT_PORTRAIT = GAME_LANDSCAPE ? FIT_MODES : FIT_L90_SHAPE };
@@ -8547,8 +8567,12 @@ static void cfg_load(Context *c)
         c->mode = c->cfg[2];
     if (c->cfg[3])
         c->topInset = c->cfg[3];
-    if (ver >= 3 && got >= (u32)(CFG_WORDS * 4))
+    if (ver >= 3 && got >= (u32)(CFG_V3_WORDS * 4))
         c->shiftX = (i32)c->cfg[4];
+    if (ver >= 4 && got >= (u32)(CFG_WORDS * 4)) {
+        c->keyTurn = c->cfg[5] & 3u;
+        log_event(c, NOTE_MENU, 0x4D540000u | c->keyTurn);   // the turn read back
+    }
     log_event(c, NOTE_CFG_READ, (c->cfg[2] << 16) | (c->cfg[3] & 0xFFFF));
     log_event(c, NOTE_SHIFT, (u32)c->shiftX);
 }
@@ -8569,6 +8593,7 @@ static void cfg_save(Context *c)
     c->cfg[2] = c->mode;
     c->cfg[3] = c->topInset;
     c->cfg[4] = (u32)c->shiftX;
+    c->cfg[5] = c->keyTurn;
     u32 des[2];
     des[0] = ((u32)EPtrC << KTypeShift) | (u32)(CFG_WORDS * 4);
     des[1] = (u32)c->cfg;
@@ -8592,6 +8617,17 @@ static void hold_tick(Context *c)
     const u32 now = user_tickcount();
     if ((i32)(now - c->holdNext) < 0)
         return;
+    if (HOLD_MENU) {
+        // Round 187: the hold opens the menu and that is all it does; the
+        // steps are the menu's keys. holdCycled swallows the release, as
+        // for a cycle; holdSince 0 stops the clock so a longer hold does
+        // nothing more.
+        c->holdCycled = 1;
+        c->holdSince = 0;
+        if (!c->menuOpen)
+            menu_open(c);
+        return;
+    }
     c->mode = (c->mode + 1 < mode_count(c)) ? c->mode + 1 : 0u;   // no `%`: freestanding, no __aeabi_uidivmod
     c->holdNext = now + (u32)HOLD_REPEAT_TICKS;
     c->holdCycled = 1;
@@ -9051,6 +9087,182 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
 // 16 bits to 32, once a frame. The game's own screen is RGB565 on the N-Gage;
 // SCREEN_4K reads it as RGB444 instead, which is the other layout an N-Gage
 // title might use, and one run tells which.
+
+// **Drawing the hold's menu (round 187).** Over the loader's own blit, in
+// the panel's own format, after the picture is down: a box in the middle
+// of the panel, the picture under it halved (one shift a pixel, in 16, 24
+// and 32 bits), and the text in a five-by-seven font the loader carries
+// itself -- there is no font server on this path, and the game's fonts
+// are the game's. Twice the size on a panel 300 or more across or down
+// (240x320, 320x240), once on a smaller one. The box turns with the
+// picture: in a landscape mode the player is holding the phone sideways,
+// so the menu's rows run along the panel's columns (menu_at maps the
+// menu's own coordinates onto the panel's exactly as the blit maps the
+// picture's). Written at the panel's raw columns -- the column map's
+// shift (shiftX, 0 on every phone that has reported) is not applied.
+// Only when the whole window is the loader's to draw (CLIP_ALL): with a
+// box or a popup over it the menu simply does not show.
+static const char kFontChars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ -./:<>";
+static const u8 kFont[43][7] = {
+    { 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E },   // 0
+    { 0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E },   // 1
+    { 0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F },   // 2
+    { 0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E },   // 3
+    { 0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02 },   // 4
+    { 0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E },   // 5
+    { 0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E },   // 6
+    { 0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08 },   // 7
+    { 0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E },   // 8
+    { 0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C },   // 9
+    { 0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11 },   // A
+    { 0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E },   // B
+    { 0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E },   // C
+    { 0x1C, 0x12, 0x11, 0x11, 0x11, 0x12, 0x1C },   // D
+    { 0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F },   // E
+    { 0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10 },   // F
+    { 0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F },   // G
+    { 0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11 },   // H
+    { 0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E },   // I
+    { 0x07, 0x02, 0x02, 0x02, 0x02, 0x12, 0x0C },   // J
+    { 0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11 },   // K
+    { 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F },   // L
+    { 0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11 },   // M
+    { 0x11, 0x11, 0x19, 0x15, 0x13, 0x11, 0x11 },   // N
+    { 0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E },   // O
+    { 0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10 },   // P
+    { 0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D },   // Q
+    { 0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11 },   // R
+    { 0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E },   // S
+    { 0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04 },   // T
+    { 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E },   // U
+    { 0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04 },   // V
+    { 0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0A },   // W
+    { 0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11 },   // X
+    { 0x11, 0x11, 0x11, 0x0A, 0x04, 0x04, 0x04 },   // Y
+    { 0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F },   // Z
+    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },   // space
+    { 0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00 },   // -
+    { 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C },   // .
+    { 0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x00 },   // /
+    { 0x00, 0x0C, 0x0C, 0x00, 0x0C, 0x0C, 0x00 },   // :
+    { 0x02, 0x04, 0x08, 0x10, 0x08, 0x04, 0x02 },   // <
+    { 0x08, 0x04, 0x02, 0x01, 0x02, 0x04, 0x08 },   // >
+};
+
+
+static void fb_put(Context *c, u32 px, u32 py, u32 rgb)
+{
+    if (px >= c->bufW || py >= c->bufH)
+        return;
+    u8 *row = c->realScreen + py * c->realPitch;
+    const u32 r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+    if (c->realBpp == 16) {
+        ((u16 *)row)[px] = (u16)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
+    } else if (c->realBpp == 24) {
+        u8 *p8 = row + px * 3;
+        p8[0] = (u8)b; p8[1] = (u8)g; p8[2] = (u8)r;
+    } else {
+        ((u32 *)row)[px] = 0xFF000000u | (r << 16) | (g << 8) | b;
+    }
+}
+
+static void fb_dim(Context *c, u32 px, u32 py)
+{
+    if (px >= c->bufW || py >= c->bufH)
+        return;
+    u8 *row = c->realScreen + py * c->realPitch;
+    if (c->realBpp == 16) {
+        ((u16 *)row)[px] = (u16)((((u16 *)row)[px] >> 1) & 0x7BEFu);
+    } else if (c->realBpp == 24) {
+        u8 *p8 = row + px * 3;
+        p8[0] >>= 1; p8[1] >>= 1; p8[2] >>= 1;
+    } else {
+        ((u32 *)row)[px] = 0xFF000000u | ((((u32 *)row)[px] >> 1) & 0x7F7F7Fu);
+    }
+}
+
+// The menu's (x, y) -- x along the player's row -- onto the panel's, by
+// the picture's turn: see the blit in gate6_screen_update for the same map.
+static void menu_at(const Context *c, u32 lx, u32 ly, u32 *px, u32 *py)
+{
+    if (c->rot == 1) { *px = c->bufW - 1 - ly; *py = lx; }
+    else if (c->rot == 3) { *px = ly; *py = c->bufH - 1 - lx; }
+    else { *px = lx; *py = ly; }
+}
+
+static void menu_glyph(Context *c, u32 lx, u32 ly, char ch, u32 sc, u32 rgb)
+{
+    u32 i = 0;
+    while (kFontChars[i] && kFontChars[i] != ch)
+        i++;
+    if (!kFontChars[i])
+        return;
+    for (u32 r = 0; r < 7; r++) {
+        const u32 bits = kFont[i][r];
+        for (u32 col = 0; col < 5; col++) {
+            if (!(bits & (0x10u >> col)))
+                continue;
+            for (u32 j = 0; j < sc; j++)
+                for (u32 k = 0; k < sc; k++) {
+                    u32 px, py;
+                    menu_at(c, lx + col * sc + k, ly + r * sc + j, &px, &py);
+                    fb_put(c, px, py, rgb);
+                }
+        }
+    }
+}
+
+// Draws s, returns the x after it. Six columns a character.
+static u32 menu_text(Context *c, u32 lx, u32 ly, const char *s, u32 sc, u32 rgb)
+{
+    for (; *s; s++, lx += 6 * sc)
+        menu_glyph(c, lx, ly, *s, sc, rgb);
+    return lx;
+}
+
+static const char kModeNames[FIT_MODES][11] = {
+    "1:1", "SHAPE", "FILL", "INTEGER", "FULL", "L90 SHAPE", "L90 FULL", "L270 SHAPE", "L270 FULL" };
+static const char kTurnNames[4][5] = { "AUTO", "L90", "L270", "OFF" };
+
+static void menu_draw(Context *c)
+{
+    if (!HOLD_MENU || !c->menuOpen || !c->realScreen || !c->bufW || !c->bufH || c->clipMode != CLIP_ALL)
+        return;
+    const u32 lw = c->rot ? c->bufH : c->bufW, lh = c->rot ? c->bufW : c->bufH;
+    const u32 sc = (lw >= 300 || lh >= 300) ? 2u : 1u;
+    u32 bw = 116u * sc, bh = 54u * sc;
+    if (bw > lw) bw = lw;
+    if (bh > lh) bh = lh;
+    const u32 bx = (lw - bw) >> 1, by = (lh - bh) >> 1;
+    for (u32 ly = by; ly < by + bh; ly++)
+        for (u32 lx = bx; lx < bx + bw; lx++) {
+            u32 px, py;
+            menu_at(c, lx, ly, &px, &py);
+            fb_dim(c, px, py);
+        }
+    enum { WHITE = 0xFFFFFF, YELLOW = 0xFFE040, GREY = 0xB0B0B0 };
+    const u32 x0 = bx + 4 * sc, lhgt = 8 * sc;
+    u32 y = by + 3 * sc;
+    menu_text(c, x0, y, "SCREEN", sc, WHITE);
+    y += lhgt;
+    const u32 pic = c->menuRow == (u32)MENU_ROW_PICTURE;
+    menu_text(c, x0, y, pic ? "> PICTURE" : "  PICTURE", sc, pic ? YELLOW : WHITE);
+    y += lhgt;
+    u32 x = menu_text(c, x0 + 12 * sc, y, "< ", sc, pic ? YELLOW : GREY);
+    x = menu_text(c, x, y, kModeNames[c->mode < (u32)FIT_MODES ? c->mode : 0u], sc, pic ? YELLOW : GREY);
+    menu_text(c, x, y, " >", sc, pic ? YELLOW : GREY);
+    y += lhgt;
+    const u32 keys = c->menuRow == (u32)MENU_ROW_KEYS;
+    menu_text(c, x0, y, keys ? "> KEYS" : "  KEYS", sc, keys ? YELLOW : WHITE);
+    y += lhgt;
+    x = menu_text(c, x0 + 12 * sc, y, "< ", sc, keys ? YELLOW : GREY);
+    x = menu_text(c, x, y, kTurnNames[c->keyTurn & 3u], sc, keys ? YELLOW : GREY);
+    menu_text(c, x, y, " >", sc, keys ? YELLOW : GREY);
+    y += lhgt;
+    const u32 back = c->menuRow == (u32)MENU_ROW_BACK;
+    menu_text(c, x0, y, back ? "> BACK" : "  BACK", sc, back ? YELLOW : WHITE);
+}
+
 extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
 {
     typedef void (*Update)(void *, const void *);
@@ -9312,6 +9524,7 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
     }
     c->blitSum = fb_band_sum(c);
     c->blitSumN = c->updDrawn;
+    menu_draw(c);                       // round 187: the hold's menu, over the picture
     if (c->dumpAfterBlit) {             // round 140: the frame buffer as the first blit back left it
         c->dumpAfterBlit = 0;
         dump_framebuffer(c, 0xFB02);
@@ -11799,6 +12012,8 @@ static u32 hold_key(Context *c, const u32 *k, u32 type)
         c->holdSince = 0;
         c->holdCycled = 0;
         if (acted) {
+            if (c->menuOpen)
+                return 1;               // the menu saves when it closes
             // Once per gesture, not per step -- and on the main thread, whose
             // file server handle cfg_save uses: an engine title's keys arrive
             // on its own thread (gate6_engine_get_event), so there the save
@@ -11824,6 +12039,10 @@ static u32 hold_key(Context *c, const u32 *k, u32 type)
 // and is unchanged between EKA1 and 9.x, so it goes over as the pointer it is.
 // The answer is a TKeyResponse -- 0 not consumed, 1 consumed -- and is passed
 // straight back, so anything the game does not want still reaches avkon.
+// Round 187: the arrows' key codes were 0xF805-0xF808 from round 182 to
+// build 205, which e32keys.h says are PageDown, Insert, Left and Right; the
+// scan codes were right, and this title reads those, so the turn worked
+// (E1550 caught it: the menu read the bench's Right, 0xF808, as Down).
 // Landscape (round 182): the keys turn with the picture. In L90 the phone's
 // top is at the player's left, so the key that points to the top (Up, 2)
 // is the game's left; in L270 the game's right. Arrows and the digits that
@@ -11857,11 +12076,11 @@ static const u32 *qwerty_key(const Context *c, const u32 *k, u32 *out)
     return out;
 }
 
-static const u32 *rotate_key(const Context *c, const u32 *k, u32 *out)
+static const u32 *turn_key(const u32 *k, u32 *out, u32 rot)
 {
-    if (!c->rot)
+    if (!rot)
         return k;
-    enum { ECodeLeft = 0xF805, ECodeRight = 0xF806, ECodeUp = 0xF807, ECodeDown = 0xF808,
+    enum { ECodeLeft = 0xF807, ECodeRight = 0xF808, ECodeUp = 0xF809, ECodeDown = 0xF80A,   // e32keys.h TKeyCode (SYMBIAN.md, round 187)
            EScanLeft = 0x0E, EScanRight = 0x0F, EScanUp = 0x10, EScanDown = 0x11 };
     // up, right, down, left: a quarter turn clockwise of the picture takes
     // the player's up to the phone's right, so a key is read one place on
@@ -11869,7 +12088,7 @@ static const u32 *rotate_key(const Context *c, const u32 *k, u32 *out)
     static const u32 codes[4] = { ECodeUp, ECodeRight, ECodeDown, ECodeLeft };
     static const u32 scans[4] = { EScanUp, EScanRight, EScanDown, EScanLeft };
     static const u32 digits[4] = { '2', '6', '8', '4' };
-    const u32 step = (c->rot == 1) ? 3u : 1u;       // L90: Up -> Left; L270: Up -> Right
+    const u32 step = (rot == 1) ? 3u : 1u;          // L90: Up -> Left; L270: Up -> Right
     out[0] = k[0]; out[1] = k[1]; out[2] = k[2]; out[3] = k[3];
     for (u32 i = 0; i < 4; i++) {
         if (k[0] == codes[i]) out[0] = codes[(i + step) & 3];
@@ -11878,6 +12097,161 @@ static const u32 *rotate_key(const Context *c, const u32 *k, u32 *out)
         if (k[1] == digits[i]) out[1] = digits[(i + step) & 3];
     }
     return out;
+}
+
+// Round 187: the turn the keys get. By default the picture's; the menu's
+// KEYS row can pin it to L90 or L270 or switch it off, for a phone whose
+// keypad is laid out so that the turned ring reads wrong (an E72 held
+// sideways has its arrows under the thumb either way), or a player who
+// would rather the game's own left stayed left.
+static u32 key_turn(const Context *c)
+{
+    return c->keyTurn == 1 ? 1u : c->keyTurn == 2 ? 3u : c->keyTurn == 3 ? 0u : c->rot;
+}
+
+static const u32 *rotate_key(const Context *c, const u32 *k, u32 *out)
+{
+    return turn_key(k, out, key_turn(c));
+}
+
+// **The hold's menu (round 187).** Holding C used to step the picture mode
+// blind, once a half second, and a player who wanted the mode before last
+// went round again; and the arrows' turn had no switch at all. Now the hold
+// opens a menu over the picture -- drawn by the loader over its own blit
+// (menu_draw), the picture dimmed under it so the choice is seen live --
+// and the keys are the menu's until it closes:
+//
+//   Up/Down (2/8)   the row: PICTURE, KEYS, BACK
+//   Left/Right (4/6) the row's value, the picture refitted at once
+//   Select (OK, 5)   the same as Right; on BACK, close
+//   C, right softkey close
+//
+// The game keeps running underneath (nothing here stops its frame loop:
+// a title that reads the tick for its physics would jump on a resume the
+// loader did behind its back, and a race with the menu up is a race the
+// player chose to pause by other means). What it does not get is a key:
+// presses and the key events are swallowed, releases are passed through,
+// so whatever was held when the menu opened lets go in the game rather
+// than sticking down until the next press. The choice is written once,
+// on close, if it changed.
+
+static void menu_reblit(Context *c)
+{
+    if (c->lastUpdSelf)
+        gate6_screen_update((void *)c->lastUpdSelf, (const void *)c->lastUpdRegion, c);
+}
+
+static void menu_open(Context *c)
+{
+    c->menuOpen = 1;
+    c->menuRow = (u32)MENU_ROW_PICTURE;
+    c->menuDirty = 0;
+    c->menuCDown = 1;       // E1549: the held C repeats its key event (iCode 0, scan 1) and closed the menu it had just opened
+    log_event(c, NOTE_MENU, 0x4D450001u);
+    log_block(c);
+    menu_reblit(c);
+}
+
+static void menu_close(Context *c)
+{
+    c->menuOpen = 0;
+    // The dimmed box reaches past the picture into the bars, which the
+    // blit never rewrites: blank the buffer once, as a layout change does.
+    c->clearPending = 1;
+    log_event(c, NOTE_MENU, 0x4D450000u | (c->menuDirty ? 2u : 0u));
+    if (c->menuDirty) {
+        c->menuDirty = 0;
+        if (on_main_thread(c))
+            cfg_save(c);
+        else
+            c->cfgSavePending = 1;
+    }
+    log_block(c);
+    menu_reblit(c);
+}
+
+static void menu_step(Context *c, i32 dir)
+{
+    if (c->menuRow == (u32)MENU_ROW_PICTURE) {
+        const u32 n = mode_count(c);
+        c->mode = dir > 0 ? (c->mode + 1 < n ? c->mode + 1 : 0u) : (c->mode ? c->mode - 1 : n - 1);
+        c->menuDirty = 1;
+        screen_layout(c);
+        log_event(c, NOTE_MODE_NOW, c->mode);
+    } else if (c->menuRow == (u32)MENU_ROW_KEYS) {
+        c->keyTurn = (c->keyTurn + (dir > 0 ? 1u : 3u)) & 3u;
+        c->menuDirty = 1;
+        log_event(c, NOTE_MENU, 0x4D540000u | c->keyTurn);
+    }
+    log_block(c);
+    menu_reblit(c);
+}
+
+// The keys the game has been handed a down for and no up yet, by scan
+// code, kept at the two places a key is handed over. Only the release of
+// a key the game saw go down gets through while the menu is up, and that
+// one must: a game that reads the key state would otherwise keep the key
+// down until the next press of it. (E1551 blamed the releases for a race
+// starting under the menu; E1554 showed that to be the game's own demo
+// after half a minute idle, with no key at all.)
+static void key_track(Context *c, const u32 *k, u32 type)
+{
+    enum { EEventKeyUp = 2, EEventKeyDown = 3 };
+    const u32 scan = k[1] & 0xFFu;
+    if (type == (u32)EEventKeyDown)
+        c->keysDown[scan >> 5] |= 1u << (scan & 31u);
+    else if (type == (u32)EEventKeyUp)
+        c->keysDown[scan >> 5] &= ~(1u << (scan & 31u));
+}
+
+// 1 when the key is the menu's. The menu's own arrows follow the picture's
+// turn, not the KEYS setting: the player is looking at a turned menu.
+static u32 menu_key(Context *c, const u32 *k, u32 type)
+{
+    enum { EEventKey = 1, EEventKeyUp = 2, EEventKeyDown = 3 };
+    enum { ECodeLeft = 0xF807, ECodeRight = 0xF808, ECodeUp = 0xF809, ECodeDown = 0xF80A,   // e32keys.h TKeyCode (SYMBIAN.md, round 187)
+           ECodeBackspace = 0x08, ECodeEnter = 0x0D, ECodeSoftRight = 0xF843, ECodeSelect = 0xF845,
+           EScanBackspace = 0x01 };
+    if (!c->menuOpen)
+        return 0;
+    if (type == (u32)EEventKeyUp) {
+        if (k[1] == (u32)EScanBackspace)
+            c->menuCDown = 0;
+        const u32 scan = k[1] & 0xFFu;
+        return (c->keysDown[scan >> 5] & (1u << (scan & 31u))) ? 0u : 1u;   // the game's release, or nobody's
+    }
+    if (type != (u32)EEventKey)
+        return 1;
+    u32 turned[4];
+    const u32 *t = turn_key(k, turned, c->rot);
+    const u32 code = t[0];
+    const u32 now = user_tickcount();
+    if (code == c->menuLastCode && (now - c->menuLastTick) < 3u)
+        return 1;                           // one press, seen on both key paths
+    c->menuLastCode = code;
+    c->menuLastTick = now;
+    log_event(c, NOTE_MENU, 0x4D4B0000u | (code & 0xFFFFu));
+    if (code == (u32)ECodeUp || code == '2') {
+        c->menuRow = c->menuRow ? c->menuRow - 1 : (u32)MENU_ROWS - 1;
+        menu_reblit(c);
+    } else if (code == (u32)ECodeDown || code == '8') {
+        c->menuRow = (c->menuRow + 1 < (u32)MENU_ROWS) ? c->menuRow + 1 : 0u;
+        menu_reblit(c);
+    } else if (code == (u32)ECodeLeft || code == '4') {
+        menu_step(c, -1);
+    } else if (code == (u32)ECodeRight || code == '6') {
+        menu_step(c, 1);
+    } else if (code == (u32)ECodeSelect || code == (u32)ECodeEnter || code == '5') {
+        if (c->menuRow == (u32)MENU_ROW_BACK)
+            menu_close(c);
+        else
+            menu_step(c, 1);
+    } else if (code == (u32)ECodeSoftRight) {
+        menu_close(c);
+    } else if ((code == (u32)ECodeBackspace || t[1] == (u32)EScanBackspace) && !c->menuCDown) {
+        menu_close(c);
+    }
+    return 1;
 }
 
 extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context *c)
@@ -11901,6 +12275,8 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
         // whether this phone's clear key auto-repeats. A tap is passed
         // straight through -- the key is swallowed only once a hold has
         // actually changed something, and then until it is let go.
+        if (HOLD_MENU && menu_key(c, k, type))
+            return 1;                       // EKeyWasConsumed: the menu's
         if (hold_key(c, k, type))
             return 1;                       // EKeyWasConsumed
         if (SHIFT_PICKER && type == (u32)EEventKey) {
@@ -11945,8 +12321,10 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
     if (!c->oldControl)
         return 0;
     u32 digit[4];
-    if (key)
+    if (key) {
+        key_track(c, (const u32 *)key, type);
         key = rotate_key(c, qwerty_key(c, (const u32 *)key, digit), turned);
+    }
     const u32 r = old_call2(c->oldControl, OLD_CTL_OFFERKEY, (u32)key, type);
     log_event(c, NOTE_KEY, r);
     if (!QUIET) log_block(c);
@@ -14132,12 +14510,16 @@ extern "C" u32 gate6_ui_keyevent(void *self, const void *key, u32 type, Context 
         // the hold gets the 100 ms timer the window-gc titles use.
         if (PICK_ON_HOLD && ((const u32 *)key)[1] == (u32)HOLD_KEY)
             hold_timer_start(c);
+        if (HOLD_MENU && menu_key(c, (const u32 *)key, type))
+            return 1;                       // EKeyWasConsumed: the menu's
         if (hold_key(c, (const u32 *)key, type))
             return 1;                       // EKeyWasConsumed
     }
     u32 turned[4], digit[4];
-    if (key)
+    if (key) {
+        key_track(c, (const u32 *)key, type);
         key = rotate_key(c, qwerty_key(c, (const u32 *)key, digit), turned);     // QWERTY digits, then landscape: the keys turn with the picture
+    }
     if (GAME_UI_FORWARD_EVENTS && c->oldKeyEvent)
         return ((KeyEvent)c->oldKeyEvent)(c->oldUi, key, type);
     return ((KeyEvent)c->realKeyEvent)(self, key, type);

@@ -181,11 +181,16 @@ variables it takes.
 at the end, with its style reference and outline. When a bug would make a
 good story, add it there with its rows.
 
-- **Hold C to cycle the picture mode.** C on a keypad, Backspace on a QWERTY
-  (`EStdKeyBackspace`, scancode 0x01): held about a second it steps the fit
-  (`FIT_*` in `screen_fit.h`: one to one, shape, fill, integer, full), then every
-  half second while held; a tap passes through to the game. The choice is
-  saved on release (`cfg_save`, `C:\` root) and read back at the next launch.
+- **Hold C for the picture mode.** C on a keypad, Backspace on a QWERTY
+  (`EStdKeyBackspace`, scancode 0x01): held about a second. On a title the
+  loader blits itself (the Asphalts; `GAME_HOLD_MENU`) it opens a menu drawn
+  over the picture (round 187, `menu_draw`): PICTURE steps the fit live
+  (`FIT_*` in `screen_fit.h`: one to one, shape, fill, integer, full) with
+  Left/Right or 4/6, KEYS sets how the arrows turn (AUTO, L90, L270, OFF),
+  BACK, C or the right softkey closes and saves (`cfg_save`, `C:\` root,
+  read back at the next launch). A window-gc title keeps the blind cycle:
+  a step every half second while held, saved on release. A tap passes
+  through to the game either way.
   Universal: the Asphalts through the port's own buffer (`screen_layout`), a
   window-gc title such as Ashen through `GAME_SCREEN_MODES` (round 114). A
   title with `GAME_LANDSCAPE 1` (Asphalt 2) has four more modes after full,
@@ -207,8 +212,10 @@ out** -- the person holding the phone asked for this after Glimmerati 001
 went out tested only on its own fixes. On the bench, with that build's
 source and every bench knob back to 0 except where a step needs one:
 1. Boot to the title's menu; no fault; the log and box written.
-2. Hold C (BackSpace) through every picture mode, each one drawn; a tap of C
-   passes through without a step; the choice written to `C:\gate6-<stem>.cfg`.
+2. Hold C (BackSpace) through every picture mode, each one drawn (on a
+   menu title: the menu open, Right through every mode, KEYS stepped, BACK);
+   a tap of C passes through without a step; the choice written to
+   `C:\gate6-<stem>.cfg`.
 3. Relaunch: the choice read back (`saved choice read`), the menu in that mode.
 4. Minimize and return (`BENCH_BACKGROUND_TICK` / `FOREGROUND`): no fault,
    the title drawing after the return, keys and hold C working after it.

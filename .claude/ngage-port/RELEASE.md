@@ -14,7 +14,7 @@ First public build of my port of <Title> (N-Gage) to S60v3
 
 Features:
 **- Full game, wrapped up in a nice, convenient .sis file.** Just install & play
-**- Screen mode**: Press and hold the C button (Backspace on QWERTY devices) to cycle through the different screen modes. Release the button to set the desired mode. Your choice is now saved to gate6-<stem>.cfg in C:\
+**- Screen menu**: Press and hold the C button (Backspace on QWERTY devices) for a second to open the screen menu over the game. PICTURE: Left/Right (or 4/6) steps through the screen modes and you see each one as you go. KEYS: how the arrows turn in a sideways mode (AUTO follows the picture; L90, L270 or OFF). BACK, C or the right softkey closes it, and your choice is saved to gate6-<stem>.cfg in C:\
 **- Save file persistence**: Your <save file> save file will stay untouched in case you want to uninstall the game or update it to a new version. It is always stored in C:\system\apps\<stem>
 **- Game files location**: in !:\system\apps\<stem> (where "!:" can be either C:\ or E:\, depending on where you decided to install the game).
 

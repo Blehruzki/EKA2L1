@@ -919,6 +919,31 @@ iTop (+0x3C). Measured on RM-409 through the port's answer: the standard heap
 0x40cf88 of 0x4000000 and Glimmerati's auxiliary heap 0x3acf88 of 0x3af000,
 each a page-aligned top less a 0x78 header.
 
+## Key codes: TKeyCode and TStdScanCode (round 187, E1550)
+
+`kernel/eka/include/e32keys.h` (kernelhwsrv). `TKeyCode` is the `iCode` of a
+`TKeyEvent`, `TStdScanCode` its `iScanCode`; the non-character codes count
+up from `ENonCharacterKeyBase` 0xF800 in declaration order, so the arrows
+are **not** 0xF805-0xF808, which rounds 182-186 had them as:
+
+| key | iCode (`TKeyCode`) | iScanCode (`TStdScanCode`) |
+|---|---|---|
+| Backspace / C | `EKeyBackspace` 0x08 | `EStdKeyBackspace` 0x01 |
+| Enter | `EKeyEnter` 0x0D | `EStdKeyEnter` 0x03 |
+| PageDown, Insert | 0xF805, 0xF806 | |
+| Left arrow | `EKeyLeftArrow` 0xF807 | `EStdKeyLeftArrow` 0x0E |
+| Right arrow | `EKeyRightArrow` 0xF808 | `EStdKeyRightArrow` 0x0F |
+| Up arrow | `EKeyUpArrow` 0xF809 | `EStdKeyUpArrow` 0x10 |
+| Down arrow | `EKeyDownArrow` 0xF80A | `EStdKeyDownArrow` 0x11 |
+| left softkey | `EKeyDevice0` 0xF842 | `EStdKeyDevice0` 0xA4 |
+| right softkey | `EKeyDevice1` 0xF843 | `EStdKeyDevice1` 0xA5 |
+| selection key (OK) | `EKeyDevice3` 0xF845 | `EStdKeyDevice3` 0xA7 |
+
+The bench agrees (E1550: xdotool's Right arrived as iCode 0xF808, scan
+0x0F; Return as 0xF845, scan 0xA7). `rotate_key`'s iCode ring was wrong
+from round 182 to build 205 and nobody noticed because Asphalt 2 reads the
+scan code, which was right.
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:

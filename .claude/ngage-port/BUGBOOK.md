@@ -2505,3 +2505,27 @@ defaults, 1,200 lines below the fault handler that reads it; Asphalt 2's
 title. Nothing shipped broken: no other title was built in between.
 *Lesson: the shared loader is built for one title at a time, so a change
 to it is not compiled for the others until someone asks.*
+
+### 14.o The arrows' key codes were PageDown, Insert, Left, Right (round 187, E1550)
+**Symptom.** The hold's menu read the bench's Right (iCode 0xF808) as Down
+and nothing stepped. `rotate_key` had carried the same table since round
+182: `0xF805`-`0xF808` for Left, Right, Up, Down.
+**Cause.** The codes were written from memory. `e32keys.h` counts the
+non-character codes up from 0xF800 in declaration order, and the arrows
+come after PageDown and Insert: Left is 0xF807, Right 0xF808, Up 0xF809,
+Down 0xF80A (SYMBIAN.md). The scan codes 0x0E-0x11 were right, and Asphalt
+2 reads the scan code, which is why the turned keys worked on the N95 for
+five rounds with the iCode half of the ring wrong.
+**Fix.** Both tables from the header. *Lesson: a constant from memory is a
+guess (rule 4); the header was ten minutes away in the source clone.*
+
+### 14.p The hold's menu closed in the same hold that opened it (round 187, E1549)
+**Symptom.** Hold C: the menu opens (0x4D450001) and closes two records
+later; the release writes the file; every key after it is the game's.
+**Cause.** A held key repeats its EEventKey (on the bench every 6-7 ticks,
+with iCode 0 and the scan code 0x01), and the menu's close key is C by scan
+code. The repeat of the hold that opened it was the first key the menu saw.
+**Fix.** The menu ignores C until it has seen C's release once
+(`menuCDown`). *Lesson: "ask what state the bench run never entered" has a
+twin: ask what key is still down when the new state begins.*
+
