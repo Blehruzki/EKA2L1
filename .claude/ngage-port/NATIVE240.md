@@ -263,3 +263,17 @@ main thread that the bench never takes -- the known hardware differences
 (alignment, no-execute, a chunk's committed top) are the suspects, and the
 instruction is not yet known. Build 200 keeps the catcher in front
 (`GAME_KEEP_CATCHER`): the next phone log carries the frame and registers.
+
+## Round 183: the frame, and build 202 (E1511-E1519)
+
+Build 200's catcher named the death: a prefetch abort at 0xff00000e from
+the triangle walker, through a triangle whose word at +8 held two pixels.
+The triangle array is the cell right after the 3D back buffer, and the
+sprite blits were writing into it: the view is 176 rows tall as well as
+176 wide, and the immediate rule had widened the blits' row clips with
+the width, so sprites drew 32 rows past the picture (BUGBOOK 14.l). The
+bench never put a car low enough; a watch on the margin found the one
+spiller (E1513). Build 202 leaves sixteen row-clip words at 175/176
+(`LEAVE` in `nativepatch.py`, each read off the code) and keeps build
+201's margin in rows -- 47 rows of the new width, `GAME_NATIVE_SLACK` in
+`native240.h` for the loader's back-buffer tests.

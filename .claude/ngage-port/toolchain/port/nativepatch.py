@@ -58,7 +58,20 @@ HALF_WIDTH_FUNCS = [0xb9008, 0xb92d8, 0xbe848]
 # The present's `mov r3, #0xb0` at 0xa6f70 is a row count (the overlay's 176
 # rows) as well as the width: left alone, and the shift that made 16 rows of
 # it is replaced by the new band offset.
-LEAVE = {0xa6f70, 0x8584, 0x8658}      # and the line drawers' row clips (E1455)
+LEAVE = {0xa6f70, 0x8584, 0x8658,      # and the line drawers' row clips (E1455)
+         # Round 183 (E1513): the 3D view is 176 rows tall as well as 176
+         # wide, so a 175/176 in a row test is the view's height and stays.
+         # The width rule had widened these to 239/240, and the sprite
+         # blits drew down to row 239 -- 32 rows past the picture, through
+         # the margin, into the triangle array in the next heap cell; the
+         # N95 died on the first car low in the frame. Read off the code:
+         # each is a test on the y of the pair (x at +0, y at +4).
+         0xb800, 0xb8b8, 0xb8bc,            # sprite blit 0xb714: y0 test, y1 clamp
+         0xbc4c, 0xbcc8, 0xbccc,            # scaled sprite blit 0xbb84: y0 test, y1 clamp
+         0xc0d4, 0xc1bc,                    # line drawer 0xbf90: the y test in each branch
+         0xbe998, 0xbea08,                  # 0xbe848: y test, y-3..y+3 test
+         0xb9460, 0xb9464, 0xb94b8, 0xb94bc,  # row routine 0xb92d8: row clamps (r4 feeds the row stride)
+         0xb91f8, 0xb91fc}                  # column routine 0xb9008: rows per column
 BY_HAND = {0xa6f74: ('lsl r2, r3, #5 -> mov r2, #0x1e00 (16 rows of 480)', 0xE3A02C1E),
            # the sky walker clips its row count with the same r2 it multiplies
            # the pitch by: the clip stays 176 rows, the factor becomes 240
@@ -225,12 +238,20 @@ def main(argv):
 
     # literals: the buffer size, and the screen object's own allocation of
     # it plus 16 KB (img+0x8434, E1447: the memset of the patched size ran
-    # off the end of a heap chunk sized by the unpatched one)
+    # off the end of a heap chunk sized by the unpatched one). The 16 KB is
+    # overdraw margin in rows -- 16 above the picture (the band offset
+    # 0x1600) and 30.5 below -- so it scales with the row: kept at 16 KB,
+    # the 240-wide buffer had 18 rows below, and on the N95 the renderer's
+    # spill below the picture reached the next heap cell, a triangle array,
+    # 0x3c bytes past the buffer's end (round 182, BUGBOOK 14.l). 47 rows
+    # of the new width keeps both margins.
+    slack_old = 0x4000
+    slack_new = -(-slack_old // (w_old * 2)) * (w_new * 2)
     for x in range(0, len(code) - 4, 4):
         if word(x) == w_old * h * 2:
             rows.append((x, word(x), w_new * h * 2, 'lit w*h*2'))
-        elif word(x) == w_old * h * 2 + 0x4000:
-            rows.append((x, word(x), w_new * h * 2 + 0x4000, 'lit w*h*2 + 16K (the screen buffer allocation)'))
+        elif word(x) == w_old * h * 2 + slack_old:
+            rows.append((x, word(x), w_new * h * 2 + slack_new, 'lit w*h*2 + slack (the screen buffer allocation: %d rows of margin)' % (slack_new // (w_new * 2))))
 
     # surfaces: mov r2, #176 before each surface_init call -- those that
     # wrap the screen's pixels. E1476: 0x5ad68 and 0x11c894 wrap the title's
@@ -265,6 +286,8 @@ def main(argv):
         for k, (at, exp, new, why) in enumerate(rows):
             f.write('    { 0x%08x, 0x%08X, 0x%08X }%s /* %s */ \\\n' % (at, exp, new, ',' if k + 1 < len(rows) else ' ', why))
         f.write('\n#define GAME_CODE_PATCH_COUNT %d\n' % len(rows))
+        f.write('// The back buffer is allocated w*h*2 plus this (gate6_result, gate6_mem_copy read it).\n')
+        f.write('#define GAME_NATIVE_SLACK 0x%X\n' % slack_new)
     kinds = {}
     for r in rows:
         kinds[r[3].split(':')[0].split(' ')[0]] = kinds.get(r[3].split(':')[0].split(' ')[0], 0) + 1

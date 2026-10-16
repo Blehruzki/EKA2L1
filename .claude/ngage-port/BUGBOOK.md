@@ -2440,3 +2440,31 @@ instruction. The fault itself is open.
 *Lesson: when the last record is an exit from a ROM address, find every
 `b` into the Exit stub, not just every `bl`; and read the ordinal off the
 image's import table, not off the name.*
+
+### 14.l The 240-wide race dies at the start: sprites clipped to the new width in rows (round 183, E1511-E1519)
+**Symptom.** Build 199 and 200 on the N95: every race ends two seconds
+after the countdown. Build 200's catcher (14.k) names it: a prefetch abort
+at pc 0xff00000e from the triangle walker (img+0xb4498), calling through
+a triangle whose word at +8 reads 0x0478085d -- two dark pixels where a
+pointer should be.
+**Cause.** The triangle array is the heap cell right after the 3D back
+buffer (0x9b5034 against a buffer at 0x9989f8 of 0x1c600 bytes), and the
+sprite blits were writing past the buffer into it. The 3D view is 176
+pixels wide *and* 176 rows tall (the 32 rows under it are the HUD), and
+`nativepatch.py`'s immediate rule widened every 175 and 176 in the
+renderer functions to 239 and 240 -- the row clips of the sprite blits
+(0xb714, 0xbb84), a line drawer (0xbf90), 0xbe848 and the sky's row and
+column routines among them. Sprites then drew down to row 239, 32 rows
+past the picture, through the overdraw margin (which, kept at 16 KB, had
+itself shrunk from 30 rows to 18 on the wider pitch) and into the
+triangles. The bench has the same neighbour (E1511) and a watch on the
+margin shows the one spiller (E1513, img+0xbf4c); it had not reached the
+cell in the bench's races because no car sat low enough in the frame.
+**Fix.** Sixteen words in `LEAVE` (E1513 lists them, each read off the
+code as a test on the pair's y), and the margin kept in rows: 47 rows of
+the new width, emitted as `GAME_NATIVE_SLACK` for the loader's back-buffer
+tests (build 201). Build 202 carries both; its margin watch shows no
+renderer write below the picture (E1515).
+*Lesson: a width that equals a height is two constants, and a rule that
+widens "176" widens both. Every immediate a rule touches needs reading
+for what it measures, not what it equals.*

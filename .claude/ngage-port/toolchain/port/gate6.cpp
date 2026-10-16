@@ -3226,6 +3226,9 @@ enum { HAL_MEMORY_RAM_FREE = 16 };
 #ifndef GAME_KEEP_CATCHER
 #define GAME_KEEP_CATCHER 0
 #endif
+#ifndef GAME_NATIVE_SLACK
+#define GAME_NATIVE_SLACK 0x4000   // the back buffer's margin beyond w*h*2 (native240.h sets it)
+#endif
 #ifndef GAME_2D_W
 #define GAME_2D_W GAME_W    // ... and the width its 2D screens still draw (176)
 #endif
@@ -3386,7 +3389,7 @@ extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
         // installs -- so nativeBack stayed 0 and gate6_mem_copy cleared the
         // 3D view's right strip on every present: the phone's missing strip
         // (build 198's photos) and the bench's, which a thumbnail hid.
-        if (GAME_NATIVE_W && is_allocator(index) && arg == (u32)(GAME_W * GAME_H * 2 + 0x4000)) {
+        if (GAME_NATIVE_W && is_allocator(index) && arg == (u32)(GAME_W * GAME_H * 2 + GAME_NATIVE_SLACK)) {
             c->nativeBack = (u8 *)result;
             log_event(c, NOTE_PATCH, 0x5A220000u);
             log_event(c, NOTE_PATCH, result);
@@ -6722,7 +6725,7 @@ extern "C" void *gate6_alloc(int size, u32, Context *c)
     if (GAME_NATIVE_W && size >= 0x10000)
         for (int i = 0; i < size; i++)
             p[i] = 0;
-    if (GAME_NATIVE_W && size == (int)(GAME_W * GAME_H * 2 + 0x4000))
+    if (GAME_NATIVE_W && size == (int)(GAME_W * GAME_H * 2 + GAME_NATIVE_SLACK))
         c->nativeBack = p;
     return p;
 }
@@ -6767,7 +6770,7 @@ extern "C" void *gate6_mem_copy(void *dst, const void *src, int n, Context *c)
         // allocation (img+0x840c keeps p + 0x1600 beside p), so the test is
         // the range, not the pointer.
         const u32 off = (u32)((const u8 *)src - c->nativeBack);
-        const int fromBack = c->nativeBack && off < (u32)(GAME_W * GAME_H * 2 + 0x4000);
+        const int fromBack = c->nativeBack && off < (u32)(GAME_W * GAME_H * 2 + GAME_NATIVE_SLACK);
         if (c->copiesSaid < 8) {
             c->copiesSaid++;
             log_event(c, NOTE_PATCH, 0x5A230000u | (fromBack ? 0x100 : 0) | c->copiesSaid);
