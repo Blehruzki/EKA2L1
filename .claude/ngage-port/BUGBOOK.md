@@ -2529,3 +2529,22 @@ code. The repeat of the hold that opened it was the first key the menu saw.
 (`menuCDown`). *Lesson: "ask what state the bench run never entered" has a
 twin: ask what key is still down when the new state begins.*
 
+### 14.q The hold's menu was invisible on the N95 (round 187, E1560-E1561)
+**Symptom.** Build 206 on the N95: the menu opens, takes its keys, steps
+the mode, saves on close -- the log has every record -- and nothing of it
+is ever on the panel.
+**Cause.** `menu_draw` drew only under `CLIP_ALL`. On the N95 the window's
+first region is (0,58)-(240,320), under the status pane, and that becomes
+the "first box" `CLIP_ALL` is defined against; after the first window-server
+abort and restart the region is the full screen (0,0)-(240,320), one
+rectangle, not that box -- so the game runs under `CLIP_BOX` for the rest
+of its life, and the blit (which tests every pixel against the box) draws
+while the menu declines. The bench's region is `CLIP_ALL` from start to
+end: the state the eleven bench rounds never entered.
+**Fix.** Every menu pixel tested against the granted region as the blit's
+are (`fb_in`: the buffer, the box, the rectangles). `BENCH_CLIP_BOX` grants
+the bench a box from the first region on, so the state can be entered at
+will. *Lesson: a condition copied from one instrument ("whole window only")
+into another is a guess about the phone's state; the clip mode had been in
+the log since round 88 and a grep would have said 2.*
+

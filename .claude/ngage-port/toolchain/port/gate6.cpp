@@ -4647,6 +4647,10 @@ enum { BENCH_MINIMIZE_TICK = 0, BENCH_RESTORE_TICK = 0 };
 // the rest) instead of nothing, and the region comes back by the window
 // server's abort and restart rather than the game's StartL. 0 ships.
 enum { BENCH_MINIMIZE_BOX = 0 };
+// Bench: the window granted as a box of this many rows from the first
+// region on (CLIP_BOX, the N95's state in round 187 with the full screen
+// as its box), so what the loader draws under a box can be seen. 0 ships.
+enum { BENCH_CLIP_BOX = 0 };
 enum { WATCHDOG = 1, WATCHDOG_STALL_S = 4, EUSER_USER_AFTER = 645, STALL_WORDS = 1536,
        STALL_MAGIC = 0x57A11000 };
 // Round 131: the one dump a launch was spent on a minimize -- the heartbeat
@@ -5820,6 +5824,10 @@ static void dsa_box(Context *c)
         } else {
             mode = CLIP_NONE;
         }
+    }
+    if (BENCH_CLIP_BOX && mode != CLIP_NONE) {
+        mode = CLIP_BOX;
+        c->boxL = 0; c->boxT = 0; c->boxR = c->bufW; c->boxB = (u32)BENCH_CLIP_BOX;
     }
     c->clipMode = mode;
     log_event(c, NOTE_DSA_RGN, n);
@@ -9100,8 +9108,9 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
 // menu's own coordinates onto the panel's exactly as the blit maps the
 // picture's). Written at the panel's raw columns -- the column map's
 // shift (shiftX, 0 on every phone that has reported) is not applied.
-// Only when the whole window is the loader's to draw (CLIP_ALL): with a
-// box or a popup over it the menu simply does not show.
+// Every pixel is tested against the region the window server granted
+// (fb_in), as the blit's are; behind a popup the menu is cut like the
+// picture under it.
 static const char kFontChars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ -./:<>";
 static const u8 kFont[43][7] = {
     { 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E },   // 0
@@ -9150,9 +9159,26 @@ static const u8 kFont[43][7] = {
 };
 
 
-static void fb_put(Context *c, u32 px, u32 py, u32 rgb)
+// A panel pixel the loader may write now: inside the buffer, and inside
+// what the window server granted (round 187: the N95 runs the race under
+// CLIP_BOX, the full screen as one rectangle that is not the first box it
+// granted, and the menu that asked for CLIP_ALL was never drawn there).
+static int fb_in(const Context *c, u32 px, u32 py)
 {
     if (px >= c->bufW || py >= c->bufH)
+        return 0;
+    if (c->clipMode == CLIP_ALL)
+        return 1;
+    if (c->clipMode == CLIP_NONE)
+        return 0;
+    if (px - c->boxL >= c->boxR - c->boxL || py - c->boxT >= c->boxB - c->boxT)
+        return 0;
+    return c->clipMode != CLIP_RECTS || in_rects(c, px, py);
+}
+
+static void fb_put(Context *c, u32 px, u32 py, u32 rgb)
+{
+    if (!fb_in(c, px, py))
         return;
     u8 *row = c->realScreen + py * c->realPitch;
     const u32 r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
@@ -9168,7 +9194,7 @@ static void fb_put(Context *c, u32 px, u32 py, u32 rgb)
 
 static void fb_dim(Context *c, u32 px, u32 py)
 {
-    if (px >= c->bufW || py >= c->bufH)
+    if (!fb_in(c, px, py))
         return;
     u8 *row = c->realScreen + py * c->realPitch;
     if (c->realBpp == 16) {
@@ -9226,7 +9252,7 @@ static const char kTurnNames[4][5] = { "AUTO", "L90", "L270", "OFF" };
 
 static void menu_draw(Context *c)
 {
-    if (!HOLD_MENU || !c->menuOpen || !c->realScreen || !c->bufW || !c->bufH || c->clipMode != CLIP_ALL)
+    if (!HOLD_MENU || !c->menuOpen || !c->realScreen || !c->bufW || !c->bufH || c->clipMode == CLIP_NONE)
         return;
     const u32 lw = c->rot ? c->bufH : c->bufW, lh = c->rot ? c->bufW : c->bufH;
     const u32 sc = (lw >= 300 || lh >= 300) ? 2u : 1u;
