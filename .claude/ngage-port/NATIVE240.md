@@ -277,3 +277,25 @@ spiller (E1513). Build 202 leaves sixteen row-clip words at 175/176
 (`LEAVE` in `nativepatch.py`, each read off the code) and keeps build
 201's margin in rows -- 47 rows of the new width, `GAME_NATIVE_SLACK` in
 `native240.h` for the loader's back-buffer tests.
+
+## Round 184: the HUD site, and the canary pad (E1520-E1525, build 203)
+
+Build 202 ran 45 seconds on the N95 and died the same way, one word past
+the new margin. The writer this time was the HUD's bottom-left element:
+its y centre, `mov ip, #0xaf` at img+0xa2388, was in SITES as an x clip
+and had been widened to 239, so a 44 x 35 sprite was drawn at rows 209 to
+243 (BUGBOOK 14.m). It stays at 175. The back buffer also carries a
+canary pad now: 136 rows (64 KB) after the 47-row margin, allocated by
+the patched literal, patterned by the loader when the buffer is recorded
+and read every heartbeat (`gate6_pad_check`). A byte that is not the
+pattern is logged as `0x5A25` + first offset, `0x5A26` + last, `0x5A27` +
+frame, and the pad is patterned again. On the bench it caught the HUD
+write before the fix (E1521) and is silent after (E1525); on a phone it
+reports what the bench never drew and absorbs it, so a race that would
+have died now runs on and says so. `native240.h` carries
+`GAME_NATIVE_SLACK` (margin plus pad), `GAME_NATIVE_PAD_AT` and
+`GAME_NATIVE_PAD` for the loader.
+
+Reading the log for it: `readlog.py <log> --game asphalt2 --tail 100000 |
+grep "from 5a2[567]"`. Rows below the picture are
+`(0x1de20 + offset - 0x1e00) / 480`.

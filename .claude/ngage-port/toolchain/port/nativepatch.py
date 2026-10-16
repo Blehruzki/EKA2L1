@@ -96,7 +96,10 @@ SITES = {
     0xa1390: (240, 'blit descriptor width in 0x9e920'),
     0xa1440: (240, 'blit descriptor width in 0x9e920'),
     0xa1590: (240, 'blit descriptor width in 0x9e920'),
-    0xa2388: (239, 'scene renderer: x clip 175'),
+    # 0xa2388 `mov ip, #0xaf` is the y centre of the HUD's bottom-left element
+    # (E1523: 44 x 35 at x 20, rising with [sb+0x5c4]), not an x clip: it was
+    # here as 239 and put the sprite at rows 209-243, past the margin -- the
+    # N95's second death (round 184). It stays 175.
     0xa2c7c: (239, 'scene renderer: on-screen test x <= 175'),
     0xa2cac: (120, 'scene renderer: 88 - w/2, a sprite centred on the screen'),
     0xa2ccc: (120, 'scene renderer: x - 88'),
@@ -247,11 +250,18 @@ def main(argv):
     # of the new width keeps both margins.
     slack_old = 0x4000
     slack_new = -(-slack_old // (w_old * 2)) * (w_new * 2)
+    # Round 184: and a canary pad after the margin -- 136 rows, 64 KB --
+    # that the loader fills with a pattern and reads every heartbeat
+    # (gate6_pad_check): any byte changed in it is a write the old layout
+    # would have put in the next heap cell, logged with its depth and the
+    # frame, on the phone as on the bench. The pad absorbs it as well.
+    pad_rows = int(argv[argv.index('--pad') + 1]) if '--pad' in argv else 136
+    pad_new = pad_rows * w_new * 2
     for x in range(0, len(code) - 4, 4):
         if word(x) == w_old * h * 2:
             rows.append((x, word(x), w_new * h * 2, 'lit w*h*2'))
         elif word(x) == w_old * h * 2 + slack_old:
-            rows.append((x, word(x), w_new * h * 2 + slack_new, 'lit w*h*2 + slack (the screen buffer allocation: %d rows of margin)' % (slack_new // (w_new * 2))))
+            rows.append((x, word(x), w_new * h * 2 + slack_new + pad_new, 'lit w*h*2 + slack (the screen buffer allocation: %d rows of margin, %d of canary pad)' % (slack_new // (w_new * 2), pad_rows)))
 
     # surfaces: mov r2, #176 before each surface_init call -- those that
     # wrap the screen's pixels. E1476: 0x5ad68 and 0x11c894 wrap the title's
@@ -287,7 +297,10 @@ def main(argv):
             f.write('    { 0x%08x, 0x%08X, 0x%08X }%s /* %s */ \\\n' % (at, exp, new, ',' if k + 1 < len(rows) else ' ', why))
         f.write('\n#define GAME_CODE_PATCH_COUNT %d\n' % len(rows))
         f.write('// The back buffer is allocated w*h*2 plus this (gate6_result, gate6_mem_copy read it).\n')
-        f.write('#define GAME_NATIVE_SLACK 0x%X\n' % slack_new)
+        f.write('#define GAME_NATIVE_SLACK 0x%X\n' % (slack_new + pad_new))
+        f.write('// ... of which the last GAME_NATIVE_PAD bytes, from GAME_NATIVE_PAD_AT, are the canary pad (gate6_pad_check).\n')
+        f.write('#define GAME_NATIVE_PAD_AT 0x%X\n' % (w_new * h * 2 + slack_new))
+        f.write('#define GAME_NATIVE_PAD 0x%X\n' % pad_new)
     kinds = {}
     for r in rows:
         kinds[r[3].split(':')[0].split(' ')[0]] = kinds.get(r[3].split(':')[0].split(' ')[0], 0) + 1

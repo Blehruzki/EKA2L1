@@ -2468,3 +2468,27 @@ renderer write below the picture (E1515).
 *Lesson: a width that equals a height is two constants, and a rule that
 widens "176" widens both. Every immediate a rule touches needs reading
 for what it measures, not what it equals.*
+
+### 14.m The 240-wide race dies at 45 s: a HUD y taken for an x (round 184, E1520-E1525)
+**Symptom.** Build 202 on the N95: the race runs 45 seconds, then the same
+death as 14.l, mid-nitro -- the first triangle after the buffer holding two
+pixels, one word past 31 rows of margin.
+**Cause.** `nativepatch.py`'s SITES carried img+0xa2388, `mov ip, #0xaf`,
+as "scene renderer: x clip 175" and widened it to 239. It is the y centre
+of the HUD's bottom-left element (44 x 35, centred on x 20, rising with a
+counter), 175 being the view's bottom row; at 239 the sprite's rows ran
+209-243 through the clipped blit 0x50610, which trusts its callers for
+the height. The original engine spilled this sprite below the picture as
+well, into its 30 rows of margin; a wider row made the same rows deeper.
+**Found by.** A write watch over the margin during a 90 s nitro drive
+(E1520, two pixels from the span copiers, whose lr is clobbered), the
+copiers' entries traced (E1522: rows 209-243 from inside 0x50610), then
+0x50610's entries traced (E1523: caller img+0xa2430, y 226 = ip - h/2).
+**Fix.** The site out of the table, 0xa2388 at 175 (build 203). And a
+canary pad: 136 rows beyond the margin, patterned, read every heartbeat
+(`gate6_pad_check`, 0x5A25/26/27), which caught this write on the bench
+before the fix and is silent after (E1521, E1525). The pad ships: on a
+phone it reports any spill the bench never drew, and absorbs it.
+*Lesson: a label on a patch is a claim; E1513's audit read the immediates
+in the stride functions and left the SITES as labelled. A site is the
+same constant with a comment, and the comment can be wrong.*

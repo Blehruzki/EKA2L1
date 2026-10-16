@@ -1437,6 +1437,8 @@ struct Context {
     u32 stripCleared;       // ... and that a 2D frame's strip has been cleared once (logged)
     u32 copiesSaid;         // ... whole-surface copies logged so far (the first few: src, dst)
     u32 gameExc;            // GAME_KEEP_CATCHER: the title's own exception handler, given the type after the fault is logged (round 182)
+    u32 padHits;            // GAME_NATIVE_PAD: heartbeats that found the canary pad written (round 184)
+    u32 padDeepest;         // ... and the deepest byte offset into the pad seen
     u32 realResume;         // RThread::Resume, as resolved
     u32 engineThread;       // GAME_ENGINE_LXCE: the engine's thread handle
     u32 realRwin[4];        // RWindow's two constructors, BeginRedraw(TRect), EndRedraw, as resolved
@@ -3229,6 +3231,10 @@ enum { HAL_MEMORY_RAM_FREE = 16 };
 #ifndef GAME_NATIVE_SLACK
 #define GAME_NATIVE_SLACK 0x4000   // the back buffer's margin beyond w*h*2 (native240.h sets it)
 #endif
+#ifndef GAME_NATIVE_PAD
+#define GAME_NATIVE_PAD 0          // ... of which this much, from GAME_NATIVE_PAD_AT, is the canary pad
+#define GAME_NATIVE_PAD_AT 0
+#endif
 #ifndef GAME_2D_W
 #define GAME_2D_W GAME_W    // ... and the width its 2D screens still draw (176)
 #endif
@@ -3393,6 +3399,11 @@ extern "C" void gate6_result(u32 index, Context *c, u32 result, u32 arg)
             c->nativeBack = (u8 *)result;
             log_event(c, NOTE_PATCH, 0x5A220000u);
             log_event(c, NOTE_PATCH, result);
+            if (GAME_NATIVE_PAD) {              // round 184: the canary pad, patterned once
+                u8 *q = (u8 *)result + GAME_NATIVE_PAD_AT;
+                for (u32 i = 0; i < (u32)GAME_NATIVE_PAD; i++)
+                    q[i] = 0x5A;
+            }
         }
     }
     // RFile::Open is the other way round -- zero is success there -- so it is
@@ -4927,10 +4938,40 @@ static void thread_cpu_note(Context *c)
     }
 }
 
+// Round 184: the canary pad after the 3D back buffer's margin (native240.h:
+// GAME_NATIVE_PAD_AT, GAME_NATIVE_PAD), read once a beat. A byte that is
+// not the pattern is a write the old layout would have put in the next
+// heap cell -- the triangle array on the N95, rounds 182-183 -- logged as
+// 0x5A25 + the first dirty offset, 0x5A26 + the last, 0x5A27 + the frame,
+// and the pad patterned again so the next beat reports anew. The pad also
+// absorbs the write, so the game runs on where builds 199-202 died.
+static void pad_check(Context *c)
+{
+    if (!GAME_NATIVE_PAD || !c->nativeBack)
+        return;
+    u8 *q = c->nativeBack + GAME_NATIVE_PAD_AT;
+    u32 first = (u32)GAME_NATIVE_PAD, last = 0;
+    for (u32 i = 0; i < (u32)GAME_NATIVE_PAD; i++)
+        if (q[i] != 0x5A) {
+            if (i < first) first = i;
+            last = i;
+            q[i] = 0x5A;
+        }
+    if (first == (u32)GAME_NATIVE_PAD)
+        return;
+    c->padHits++;
+    if (last > c->padDeepest) c->padDeepest = last;
+    log_event(c, NOTE_PATCH, 0x5A250000u | (first & 0xFFFFu));
+    log_event(c, NOTE_PATCH, 0x5A260000u | (last & 0xFFFFu));
+    log_event(c, NOTE_PATCH, 0x5A270000u | (c->frames & 0xFFFFu));
+    log_block(c);
+}
+
 extern "C" int gate6_heartbeat(void *p)
 {
     Context *c = (Context *)p;
     c->beats++;
+    pad_check(c);
     if (c->beats == 3) {
         watchdog_start(c);
         bench_timer_kick(c);
