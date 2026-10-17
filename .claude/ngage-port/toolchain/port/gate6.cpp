@@ -1566,6 +1566,8 @@ struct Context {
     u32 keysDown[8];        // the scan codes the game has seen go down and not yet up (key_track)
     u32 keyTurn;            // how the arrows turn (cfg word 5): 0 with the picture, 1 as L90, 2 as L270, 3 never
     u32 screenPolls;        // UserSvr::ScreenInfo calls, for rationing its records
+    u32 modeTurned;         // round 188: the turned mode put aside while the OS has the screen wide (+1; 0 none)
+    u32 osTurns;            //   EEventScreenDeviceChanged events seen
     u32 excThunk;           // the exception handler's thunk, for the game's threads too
     u32 wrkFault[WRK_FAULT_WORDS]; // a game thread's fault frame, for the main thread to log
     u32 wrkFaultSaid;       // ... once
@@ -1745,6 +1747,7 @@ static void new_vtable_dump(Context *c, const u32 *vt, u32 slots, u32 mark)
 static void heap_peak(Context *c);
 static void hold_tick(Context *c);
 static void menu_open(Context *c);
+static void screen_turned(Context *c, u32 why);
 // **The game's own resource file.**
 //
 // On an N-Gage the application *is* `6r67.app`, so the framework opens
@@ -4651,6 +4654,9 @@ enum { BENCH_MINIMIZE_BOX = 0 };
 // region on (CLIP_BOX, the N95's state in round 187 with the full screen
 // as its box), so what the loader draws under a box can be seen. 0 ships.
 enum { BENCH_CLIP_BOX = 0 };
+// Bench: the screen pretended turned by the phone at this tick, and back 500
+// ticks later (screen_turned, round 188). 0 ships.
+enum { BENCH_TURN_TICK = 0 };
 enum { WATCHDOG = 1, WATCHDOG_STALL_S = 4, EUSER_USER_AFTER = 645, STALL_WORDS = 1536,
        STALL_MAGIC = 0x57A11000 };
 // Round 131: the one dump a launch was spent on a minimize -- the heartbeat
@@ -5248,6 +5254,8 @@ extern "C" void gate6_timer_runl(void *self, u32, Context *c)
         cfg_save(c);
     }
     hold_tick(c);
+    if (BENCH_TURN_TICK && c->osTurns < 2u && (i32)(user_tickcount() - (u32)BENCH_TURN_TICK - c->osTurns * 500u) >= 0)
+        screen_turned(c, 0xBE);         // bench: the screen pretended turned, and back
     if (HEAP_PEAK_STEP)
         heap_peak(c);
     if (HEAP_EVERY_FRAMES && !(c->frames % (u32)HEAP_EVERY_FRAMES))
@@ -8823,6 +8831,69 @@ static void column_map(Context *c)
             c->rowWraps = 1;
             break;
         }
+}
+
+// **Round 188: the phone turns its own screen.** The N95's slide, opened
+// the other way for the media keys, puts the window server in landscape:
+// every direct-screen client is aborted, the app UI gets
+// EEventScreenDeviceChanged (w32std.h, 20), and the panel shows the display
+// turned a quarter. Build 207 knew nothing of it: it read the screen's size
+// once, from the game's first UserSvr::ScreenInfo, and went on drawing a
+// 240x320 picture that the phone then turned -- an upright mode came out
+// sideways, which is what the player wanted of the slide, and a turned mode
+// came out turned twice. So at the event the screen is asked again: HAL's
+// width, height, mode and line (31, 32, 84, 80) and UserSvr::ScreenInfo's
+// size, all logged (0x5A2A then the three words), and when the size the
+// kernel reports has changed the picture is laid out again for it
+// (0x5A2B), a turned mode put aside while the panel is wide (mode_count)
+// and taken back when it is tall again. What the N95 actually answers after
+// the slide is the question the next log settles; nothing here assumes it.
+// BENCH_TURN_TICK pretends the answer swapped at that tick, and back 500
+// ticks later, so the path runs on the bench.
+enum { HAL_DISPLAY_XPIXELS = 31, HAL_DISPLAY_YPIXELS = 32 };
+static void screen_turned(Context *c, u32 why)
+{
+    typedef void (*Info)(u32 *);
+    int xp = 0, yp = 0, mode = -1, pitch = 0;
+    if (hal_get(HAL_DISPLAY_XPIXELS, &xp)) xp = -1;
+    if (hal_get(HAL_DISPLAY_YPIXELS, &yp)) yp = -1;
+    if (hal_get(HAL_DISPLAY_MODE, &mode)) mode = -1;
+    pitch = mode >= 0 ? mode : 0;
+    if (hal_get(HAL_OFFSET_BETWEEN_LINES, &pitch)) pitch = -1;
+    u32 des[8];
+    for (u32 i = 0; i < 8; i++) des[i] = 0;
+    des[0] = ((u32)EBufType << KTypeShift) | 24u;    // TPckgBuf<TScreenInfoV01>: EBuf, 24 bytes
+    des[1] = 24u;
+    u32 w = 0, h = 0;
+    if (c->screenInfo) {
+        ((Info)c->screenInfo)(des);
+        w = des[6]; h = des[7];
+    }
+    if (BENCH_TURN_TICK && why == 0xBE) {
+        if (c->modeTurned || c->screenW > c->screenH) { w = 240; h = 320; }   // and back
+        else { w = c->screenH; h = c->screenW; }
+    }
+    c->osTurns++;
+    log_event(c, NOTE_SCREEN, 0x5A2A0000u | (why & 0xFFFFu));
+    log_event(c, NOTE_SCREEN, ((u32)xp << 16) | ((u32)yp & 0xFFFFu));
+    log_event(c, NOTE_SCREEN, ((u32)mode << 16) | ((u32)pitch & 0xFFFFu));
+    log_event(c, NOTE_SCREEN, (w << 16) | (h & 0xFFFFu));
+    if (w && h && w < 4096 && h < 4096 && c->gameScreen && (w != c->screenW || h != c->screenH)) {
+        c->screenW = w;
+        c->screenH = h;
+        if (c->mode >= mode_count(c)) {
+            c->modeTurned = c->mode + 1;
+            c->mode = fit_base(c->mode);
+            log_event(c, NOTE_MODE_NOW, 0x5A290000u | c->mode);
+        } else if (c->modeTurned && c->modeTurned - 1 < mode_count(c)) {
+            c->mode = c->modeTurned - 1;
+            c->modeTurned = 0;
+            log_event(c, NOTE_MODE_NOW, 0x5A2C0000u | c->mode);
+        }
+        screen_layout(c);
+        log_event(c, NOTE_SCREEN, 0x5A2B0000u | (c->mode & 0xFFu));
+    }
+    log_block(c);
 }
 
 enum { SCREEN_POLLS_LOGGED = 16 };
@@ -14350,7 +14421,8 @@ enum { SLOT_UI_WSEVENT = 4, SLOT_UI_FOREGROUND = 8, SLOT_UI_SYSEVENT = 10, SLOT_
 // 12, which is the check that the layout is the one being walked.
 // `CActiveScheduler::Current()` is euser def index 427, unconfirmed; a wrong
 // function fails the same check.
-enum { EEVENT_FOCUS_LOST = 10, EEVENT_FOCUS_GAINED = 11,
+enum { EEVENT_SCREEN_CHANGED = 20,   // w32std.h EEventScreenDeviceChanged (round 188)
+       EEVENT_FOCUS_LOST = 10, EEVENT_FOCUS_GAINED = 11,
        KAKN_FOREGROUND_LOST = 0x10281F37, KAKN_FOREGROUND_GAINED = 0x10281F36 };
 
 static int sane_ptr(u32 p)
@@ -14412,6 +14484,8 @@ extern "C" void gate6_ui_wsevent(void *self, const u32 *event, void *dest, Conte
         c->bgMute = 1;
     if (type == (u32)EEVENT_FOCUS_GAINED)
         c->bgMute = 0;
+    if (type == (u32)EEVENT_SCREEN_CHANGED)
+        screen_turned(c, type);          // round 188: the phone turned its screen
     // And how many buffers each thread had written by then: whether the game
     // goes on feeding a stream while it is away is what the mute rests on.
     if (type == (u32)EEVENT_FOCUS_LOST || type == (u32)EEVENT_FOCUS_GAINED) {
