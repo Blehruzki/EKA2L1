@@ -221,6 +221,15 @@ enum { GAME_SRC_ORIGIN = 16 };
 // front of it (gate6_set_exc): the fault's frame is logged first, then the
 // title's handler gets the type.
 #define GAME_KEEP_CATCHER 1
-#define GAME_BUILD 210
+#define GAME_BUILD 211
 
 #endif
+// Round 191: the KEY SETTINGS ids live in the game object -- entry 0 of
+// the table the title's TLS word points at (0xc8b2c, 0x11fbe4) -- with the
+// settings at +0xE3E0 (0x4e6c4) and the seven saved ids at +0x64 in them
+// (the save writer 0xa93b0): TURN LEFT, TURN RIGHT, ACCELERATOR, BRAKES,
+// TURBO, CHANGE VIEW, REAR VIEW. Verified on the bench by changing one
+// and reading it back (E1593-E1594).
+#define GAME_TLS_FN 0xc8b2c
+#define GAME_KEYS_AT 0xE444
+#define GAME_KEYS_WORDS 2   // the seven chosen-key bytes at settings+0x64 and the eighth at +0x6b

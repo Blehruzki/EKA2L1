@@ -8318,6 +8318,20 @@ enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
 #ifndef GAME_HOLD_MENU
 #define GAME_HOLD_MENU (!GAME_SCREEN_MODES)
 #endif
+// Round 191: where the title keeps the keys its player chose (Asphalt 2's
+// KEY SETTINGS), as key ids, so the loader can stand the nav keys in for
+// them sideways: the title's own TLS getter (code + GAME_TLS_FN, returning
+// the word whose table's entry 0 is the game object), and the ids at this
+// offset in the game object (0: neither known).
+#ifndef GAME_TLS_FN
+#define GAME_TLS_FN 0
+#endif
+#ifndef GAME_KEYS_AT
+#define GAME_KEYS_AT 0
+#endif
+#ifndef GAME_KEYS_WORDS
+#define GAME_KEYS_WORDS 8
+#endif
 enum { HOLD_MENU = GAME_HOLD_MENU };
 enum { MENU_ROW_PICTURE = 0, MENU_ROW_KEYS = 1, MENU_ROW_BACK = 2, MENU_ROWS = 3 };
 enum { MODE_ONE_TO_ONE = FIT_ONE_TO_ONE, MODE_SHAPE = FIT_SHAPE,
@@ -12282,9 +12296,45 @@ static void menu_reblit(Context *c)
         gate6_screen_update((void *)c->lastUpdSelf, (const void *)c->lastUpdRegion, c);
 }
 
+// The title's chosen keys, read off its engine object and logged (0x4B59,
+// then two words of ids): the instrument for round 191's bench, and the
+// read the sideways mapping will use.
+// Round 191: the title's game object is entry 0 of the table its TLS
+// word points at (0xc8b2c: UserSvr::DllTls(0x10000000); 0x11fbe4: the
+// entry), and the settings sit at +0xE3E0 in it (0x4e6c4), the chosen key
+// ids at +0x64 in those (the save writer 0xa93b0).
+static const u8 *game_keys(const Context *c)
+{
+    typedef u32 (*Tls)(void);
+    if (!GAME_KEYS_AT || !GAME_TLS_FN || !c->codeBase)
+        return 0;
+    const u32 tls = ((Tls)(c->codeBase + GAME_TLS_FN))();
+    if (!user_ptr(tls) || (tls & 3))
+        return 0;
+    const u32 table = *(const u32 *)tls;
+    if (!user_ptr(table) || (table & 3))
+        return 0;
+    const u32 game = *(const u32 *)table;
+    if (!user_ptr(game) || (game & 3))
+        return 0;
+    return (const u8 *)game + GAME_KEYS_AT;
+}
+
+static void game_keys_note(Context *c)
+{
+    const u8 *k = game_keys(c);
+    if (!k)
+        return;
+    log_event(c, NOTE_MENU, 0x4B590000u);
+    log_event(c, NOTE_MENU, (u32)k);
+    for (u32 i = 0; i < (u32)GAME_KEYS_WORDS; i++)
+        log_event(c, NOTE_MENU, ((const u32 *)k)[i]);
+}
+
 static void menu_open(Context *c)
 {
     c->menuOpen = 1;
+    game_keys_note(c);
     c->menuRow = (u32)MENU_ROW_PICTURE;
     c->menuDirty = 0;
     c->menuCDown = 1;       // E1549: the held C repeats its key event (iCode 0, scan 1) and closed the menu it had just opened
