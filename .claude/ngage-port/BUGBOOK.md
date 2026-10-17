@@ -2548,3 +2548,23 @@ will. *Lesson: a condition copied from one instrument ("whole window only")
 into another is a guess about the phone's state; the clip mode had been in
 the log since round 88 and a grep would have said 2.*
 
+### 14.r The slide turns the screen under the picture (rounds 188-189, E1567-E1573)
+**Symptom.** With the N95's slide opened for the media keys, a picture
+already turned by the loader (L90, L270) came out turned twice; after
+build 208, upright but 240 columns wide in a 320-wide screen, the phone's
+idle screen showing in the rest.
+**Cause.** The phone turns its display: the window server goes to
+landscape, aborts every direct-screen client and sends
+EEventScreenDeviceChanged; `UserSvr::ScreenInfo` then answers 320x240
+(HAL's width and height do not change). The loader read the size once, at
+the game's first query, and the game's window -- the wrapper control,
+sized to the whole screen at the start -- kept its 240x320, so the window
+server clipped it to (0,0)-(240,240).
+**Fix.** At the event the screen is asked again and the picture laid out
+for the answer, a turned mode put aside while the panel is wide and taken
+back after; the wrapper control is set to the whole screen again; Avkon's
+main pane is re-asked for the turned layout's inset; the file keeps the
+player's mode, not the one the turn put in its place. *Lesson: a size read
+once is a size assumed forever; the phone had been sending the event all
+along, logged as "WS EVENT type 0x14" and never looked at.*
+

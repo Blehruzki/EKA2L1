@@ -221,6 +221,6 @@ enum { GAME_SRC_ORIGIN = 16 };
 // front of it (gate6_set_exc): the fault's frame is logged first, then the
 // title's handler gets the type.
 #define GAME_KEEP_CATCHER 1
-#define GAME_BUILD 208
+#define GAME_BUILD 209
 
 #endif

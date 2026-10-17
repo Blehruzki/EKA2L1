@@ -1568,6 +1568,9 @@ struct Context {
     u32 screenPolls;        // UserSvr::ScreenInfo calls, for rationing its records
     u32 modeTurned;         // round 188: the turned mode put aside while the OS has the screen wide (+1; 0 none)
     u32 osTurns;            //   EEventScreenDeviceChanged events seen
+    u32 screenW0, screenH0; //   the screen as first reported, to tell a turn from a wide phone
+    u32 osTurned;           //   the phone has its screen turned from that
+    u32 insetTurned;        //   and the main pane's top Avkon reports while it is
     u32 excThunk;           // the exception handler's thunk, for the game's threads too
     u32 wrkFault[WRK_FAULT_WORDS]; // a game thread's fault frame, for the main thread to log
     u32 wrkFaultSaid;       // ... once
@@ -8606,7 +8609,7 @@ static void cfg_save(Context *c)
         return;
     c->cfg[0] = (u32)CFG_MAGIC;
     c->cfg[1] = (u32)CFG_VERSION;
-    c->cfg[2] = c->mode;
+    c->cfg[2] = c->modeTurned ? c->modeTurned - 1 : c->mode;   // the player's mode, not the one the phone's turn put in its place
     c->cfg[3] = c->topInset;
     c->cfg[4] = (u32)c->shiftX;
     c->cfg[5] = c->keyTurn;
@@ -8755,7 +8758,7 @@ static void screen_layout(Context *c)
     ScreenFit f;
     f.screenW = c->screenW;
     f.screenH = c->screenH;
-    f.topInset = c->topInset;
+    f.topInset = c->osTurned ? c->insetTurned : c->topInset;   // round 188: the turned layout's own inset
     f.srcW = c->srcW ? c->srcW : (u32)GAME_W;
     f.srcH = (u32)GAME_H;
     f.mode = c->mode;
@@ -8777,7 +8780,8 @@ static void screen_layout(Context *c)
     // screen_fit ignores an inset taller than the panel, so recompute rather
     // than log what was asked for -- screenfit.py reads these two as a pair
     // and it already went wrong once by mixing the two origins up.
-    const u32 inset = (c->topInset < c->screenH) ? c->topInset : 0u;
+    const u32 top = c->osTurned ? c->insetTurned : c->topInset;
+    const u32 inset = (top < c->screenH) ? top : 0u;
     const u32 usableH = c->screenH - inset;
     log_event(c, NOTE_SCREEN_FIT, (f.bufW << 16) | (usableH & 0xFFFF));
     log_event(c, NOTE_SCREEN_FIT, (c->dstW << 16) | (c->dstH & 0xFFFF));
@@ -8851,6 +8855,7 @@ static void column_map(Context *c)
 // BENCH_TURN_TICK pretends the answer swapped at that tick, and back 500
 // ticks later, so the path runs on the bench.
 enum { HAL_DISPLAY_XPIXELS = 31, HAL_DISPLAY_YPIXELS = 32 };
+enum { NEW_COECONTROL_WHOLE_SCREEN = 50, NEW_COECONTROL_SIZE = 277, NEW_COECONTROL_DRAWABLE_WINDOW = 262 };
 static void screen_turned(Context *c, u32 why)
 {
     typedef void (*Info)(u32 *);
@@ -8879,8 +8884,28 @@ static void screen_turned(Context *c, u32 why)
     log_event(c, NOTE_SCREEN, ((u32)mode << 16) | ((u32)pitch & 0xFFFFu));
     log_event(c, NOTE_SCREEN, (w << 16) | (h & 0xFFFFu));
     if (w && h && w < 4096 && h < 4096 && c->gameScreen && (w != c->screenW || h != c->screenH)) {
+        typedef void (*Whole)(void *);
+        if (!c->screenW0) { c->screenW0 = c->screenW; c->screenH0 = c->screenH; }
         c->screenW = w;
         c->screenH = h;
+        c->osTurned = (w != c->screenW0 || h != c->screenH0);
+        // Round 188's log: the window kept its 240x320 and the phone showed
+        // the idle screen in the 80 columns beside it. The wrapper control
+        // is the window: the whole screen again, as at the start.
+        Whole whole = c->cone ? (Whole)rlibrary_lookup(&c->cone, NEW_COECONTROL_WHOLE_SCREEN) : 0;
+        if (whole && c->wrapControl) {
+            whole(c->wrapControl);
+            log_event(c, NOTE_SCREEN, 0x5A2D0000u);
+        }
+        // And the main pane of this layout, from Avkon again (the pane is
+        // not gone on the N95: 58 rows are kept clear in portrait, and the
+        // turned layout has its own figure).
+        c->insetAsked = 0;
+        c->insetJudged = 0;
+        c->insetGot = 0;
+        const u32 fromAvkon = avkon_inset(c);
+        c->insetTurned = c->paneGone ? 0u : fromAvkon;
+        log_event(c, NOTE_SCREEN, 0x5A2E0000u | (c->insetTurned & 0xFFFFu));
         if (c->mode >= mode_count(c)) {
             c->modeTurned = c->mode + 1;
             c->mode = fit_base(c->mode);
@@ -10306,7 +10331,6 @@ static void *wingc_standin(Context *c)
 // one to one. The hold timer ticks in the blit, once a frame, and the
 // window is cleared black once after each change. The choice is saved as
 // the Asphalts' is (cfg_save on the key's release) and read back here.
-enum { NEW_COECONTROL_WHOLE_SCREEN = 50, NEW_COECONTROL_SIZE = 277, NEW_COECONTROL_DRAWABLE_WINDOW = 262 };
 // Old slots 52 and 53 are Activate(window) and Deactivate, 68 and 69 on
 // 9.x by the map above: a first cut that assumed 67 and 68 forwarded the
 // game's Deactivate to Activate with a stray window and the emulator's
