@@ -195,8 +195,11 @@ good story, add it there with its rows.
   window-gc title such as Ashen through `GAME_SCREEN_MODES` (round 114). A
   title with `GAME_LANDSCAPE 1` (Asphalt 2) has four more modes after full,
   the picture turned a quarter each way and the keys turned with it -- on
-  a panel taller than it is wide only; a wide panel (E72) stops at full. A
-  new title must keep this working; test it on the bench by holding BackSpace.
+  a panel taller than it is wide only; a wide panel (E72) stops at full. On
+  a phone that turns its own screen (the N95's slide, round 189) the quarter
+  is the phone's: L90 is then the base fit as the phone holds it, L270 the
+  same half round (`rot` 2), arrows likewise. A new title must keep this
+  working; test it on the bench by holding BackSpace.
 
 ## Self-tests
 

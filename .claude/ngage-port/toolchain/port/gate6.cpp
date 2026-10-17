@@ -1566,7 +1566,6 @@ struct Context {
     u32 keysDown[8];        // the scan codes the game has seen go down and not yet up (key_track)
     u32 keyTurn;            // how the arrows turn (cfg word 5): 0 with the picture, 1 as L90, 2 as L270, 3 never
     u32 screenPolls;        // UserSvr::ScreenInfo calls, for rationing its records
-    u32 modeTurned;         // round 188: the turned mode put aside while the OS has the screen wide (+1; 0 none)
     u32 osTurns;            //   EEventScreenDeviceChanged events seen
     u32 screenW0, screenH0; //   the screen as first reported, to tell a turn from a wide phone
     u32 osTurned;           //   the phone has its screen turned from that
@@ -4660,6 +4659,10 @@ enum { BENCH_CLIP_BOX = 0 };
 // Bench: the screen pretended turned by the phone at this tick, and back 500
 // ticks later (screen_turned, round 188). 0 ships.
 enum { BENCH_TURN_TICK = 0 };
+// Bench: the phone pretended to have turned its own screen, at the bench's
+// size, from the start -- L90 then draws upright and L270 half round, on a
+// panel the bench can show (round 189). 0 ships.
+enum { BENCH_OS_TURNED = 0 };
 enum { WATCHDOG = 1, WATCHDOG_STALL_S = 4, EUSER_USER_AFTER = 645, STALL_WORDS = 1536,
        STALL_MAGIC = 0x57A11000 };
 // Round 131: the one dump a launch was spent on a minimize -- the heartbeat
@@ -8330,7 +8333,11 @@ enum { MODE_ONE_TO_ONE = FIT_ONE_TO_ONE, MODE_SHAPE = FIT_SHAPE,
 enum { BENCH_LANDSCAPE_PANEL = 0 };
 static u32 mode_count(const Context *c)
 {
-    const int wide = BENCH_LANDSCAPE_PANEL || (c->screenW && c->screenH && c->screenW > c->screenH);
+    // Round 189: a panel the phone itself has turned wide (the N95's slide)
+    // keeps the turned modes: there L90 is the picture as the phone holds
+    // it (its own landscape, the nav keys to the right) and L270 the same
+    // turned half round (the nav keys to the left); see screen_layout.
+    const int wide = BENCH_LANDSCAPE_PANEL || (c->screenW && c->screenH && c->screenW > c->screenH && !c->osTurned);
     return wide ? (u32)FIT_L90_SHAPE : (u32)MODE_COUNT_PORTRAIT;
 }
 // The default when nothing has been chosen. Aspect, because it is the only
@@ -8609,7 +8616,7 @@ static void cfg_save(Context *c)
         return;
     c->cfg[0] = (u32)CFG_MAGIC;
     c->cfg[1] = (u32)CFG_VERSION;
-    c->cfg[2] = c->modeTurned ? c->modeTurned - 1 : c->mode;   // the player's mode, not the one the phone's turn put in its place
+    c->cfg[2] = c->mode;
     c->cfg[3] = c->topInset;
     c->cfg[4] = (u32)c->shiftX;
     c->cfg[5] = c->keyTurn;
@@ -8761,14 +8768,14 @@ static void screen_layout(Context *c)
     f.topInset = c->osTurned ? c->insetTurned : c->topInset;   // round 188: the turned layout's own inset
     f.srcW = c->srcW ? c->srcW : (u32)GAME_W;
     f.srcH = (u32)GAME_H;
-    f.mode = c->mode;
+    f.mode = c->osTurned ? fit_base(c->mode) : c->mode;   // round 189: the phone's turn supplies the quarter
     f.mapX = c->mapX;
     f.mapY = c->mapY;
     f.wX = c->wX;
     f.wY = c->wY;
     f.mapMax = (u32)sizeof c->mapX;
     screen_fit(&f);
-    c->rot = f.rot;
+    c->rot = c->osTurned ? (fit_rotation(c->mode) == 3u ? 2u : 0u) : f.rot;   // L270 on a turned phone: half round
     c->bufW = f.bufW;
     c->bufH = f.bufH;
     c->dstW = f.dstW;
@@ -8849,9 +8856,14 @@ static void column_map(Context *c)
 // width, height, mode and line (31, 32, 84, 80) and UserSvr::ScreenInfo's
 // size, all logged (0x5A2A then the three words), and when the size the
 // kernel reports has changed the picture is laid out again for it
-// (0x5A2B), a turned mode put aside while the panel is wide (mode_count)
-// and taken back when it is tall again. What the N95 actually answers after
-// the slide is the question the next log settles; nothing here assumes it.
+// (0x5A2B). Round 189 settled what the N95 answers: ScreenInfo 320x240
+// with the slide open, HAL unchanged, the window not resized by anyone --
+// so the wrapper control is set to the whole screen again (0x5A2D) and
+// Avkon's main pane re-asked (0x5A2E). On such a phone the turned modes
+// stay (mode_count): the quarter turn is the phone's, so L90 is the base
+// fit as the phone holds it and L270 the same turned half round, the
+// arrows likewise (key_turn). A phone wide to begin with (E72) still has
+// no turned modes.
 // BENCH_TURN_TICK pretends the answer swapped at that tick, and back 500
 // ticks later, so the path runs on the bench.
 enum { HAL_DISPLAY_XPIXELS = 31, HAL_DISPLAY_YPIXELS = 32 };
@@ -8875,7 +8887,7 @@ static void screen_turned(Context *c, u32 why)
         w = des[6]; h = des[7];
     }
     if (BENCH_TURN_TICK && why == 0xBE) {
-        if (c->modeTurned || c->screenW > c->screenH) { w = 240; h = 320; }   // and back
+        if (c->osTurned || c->screenW > c->screenH) { w = 240; h = 320; }   // and back
         else { w = c->screenH; h = c->screenW; }
     }
     c->osTurns++;
@@ -8906,14 +8918,9 @@ static void screen_turned(Context *c, u32 why)
         const u32 fromAvkon = avkon_inset(c);
         c->insetTurned = c->paneGone ? 0u : fromAvkon;
         log_event(c, NOTE_SCREEN, 0x5A2E0000u | (c->insetTurned & 0xFFFFu));
-        if (c->mode >= mode_count(c)) {
-            c->modeTurned = c->mode + 1;
+        if (c->mode >= mode_count(c)) {             // a turned mode on a phone that is wide to begin with
             c->mode = fit_base(c->mode);
             log_event(c, NOTE_MODE_NOW, 0x5A290000u | c->mode);
-        } else if (c->modeTurned && c->modeTurned - 1 < mode_count(c)) {
-            c->mode = c->modeTurned - 1;
-            c->modeTurned = 0;
-            log_event(c, NOTE_MODE_NOW, 0x5A2C0000u | c->mode);
         }
         screen_layout(c);
         log_event(c, NOTE_SCREEN, 0x5A2B0000u | (c->mode & 0xFFu));
@@ -9100,6 +9107,7 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         const int firstTime = !c->screenW;
         c->screenW = w;
         c->screenH = h;
+        if (BENCH_OS_TURNED) { c->osTurned = 1; c->screenW0 = h; c->screenH0 = w; }
         // Round 186: a turned mode saved by a portrait phone, read on a wide
         // panel (one card in two phones), falls back to its upright base.
         if (c->mode >= mode_count(c)) {
@@ -9309,6 +9317,7 @@ static void menu_at(const Context *c, u32 lx, u32 ly, u32 *px, u32 *py)
 {
     if (c->rot == 1) { *px = c->bufW - 1 - ly; *py = lx; }
     else if (c->rot == 3) { *px = ly; *py = c->bufH - 1 - lx; }
+    else if (c->rot == 2) { *px = c->bufW - 1 - lx; *py = c->bufH - 1 - ly; }   // round 189: half round
     else { *px = lx; *py = ly; }
 }
 
@@ -9350,7 +9359,8 @@ static void menu_draw(Context *c)
 {
     if (!HOLD_MENU || !c->menuOpen || !c->realScreen || !c->bufW || !c->bufH || c->clipMode == CLIP_NONE)
         return;
-    const u32 lw = c->rot ? c->bufH : c->bufW, lh = c->rot ? c->bufW : c->bufH;
+    const u32 quarter = (c->rot == 1 || c->rot == 3);
+    const u32 lw = quarter ? c->bufH : c->bufW, lh = quarter ? c->bufW : c->bufH;
     const u32 sc = (lw >= 300 || lh >= 300) ? 2u : 1u;
     u32 bw = 116u * sc, bh = 54u * sc;
     if (bw > lw) bw = lw;
@@ -9567,20 +9577,23 @@ extern "C" void gate6_screen_update(void *self, const void *region, Context *c)
             if (!rowIn && !c->rowWraps)
                 continue;
             u8 *row = c->realScreen + (y + c->offY) * c->realPitch;
-            const u16 *srow = src + c->srcOrigin + (u32)c->mapY[y] * (u32)c->srcPitch;
-            const u32 *srow32 = (const u32 *)src + c->srcOrigin + (u32)c->mapY[y] * (u32)c->srcPitch;
+            const u32 rot = c->rot;
+            const u32 ry0 = (rot == 2) ? c->dstH - 1 - y : y;             // round 189: half round, the rows from the bottom
+            const u16 *srow = src + c->srcOrigin + (u32)c->mapY[ry0] * (u32)c->srcPitch;
+            const u32 *srow32 = (const u32 *)src + c->srcOrigin + (u32)c->mapY[ry0] * (u32)c->srcPitch;
             // Landscape (round 182): the panel's row is a source column
             // (mapY names it) and its columns run down a source row (mapX
             // names those); L90 reads the row backwards, L270 the column.
-            const u32 rot = c->rot;
+            const u32 quarter = (rot == 1 || rot == 3);
             const u32 gx = rot == 1 ? c->mapY[y] : rot == 3 ? c->mapY[c->dstH - 1 - y] : 0;
             for (u32 x = 0; x < c->dstW; x++) {
-                const u32 gy = rot ? c->mapX[rot == 1 ? c->dstW - 1 - x : x] : 0;
+                const u32 gy = quarter ? c->mapX[rot == 1 ? c->dstW - 1 - x : x] : 0;
+                const u32 sx = c->mapX[rot == 2 ? c->dstW - 1 - x : x];   // and the columns from the right
                 const u32 v = (GAME_SRC_BPP == 32) ? 0u
-                            : rot ? src[c->srcOrigin + gy * (u32)c->srcPitch + gx] : srow[c->mapX[x]];
+                            : quarter ? src[c->srcOrigin + gy * (u32)c->srcPitch + gx] : srow[sx];
                 u32 r, g, b;
                 if (GAME_SRC_BPP == 32) {           // EColor16MU: 0x00RRGGBB
-                    const u32 v32 = rot ? ((const u32 *)src)[c->srcOrigin + gy * (u32)c->srcPitch + gx] : srow32[c->mapX[x]];
+                    const u32 v32 = quarter ? ((const u32 *)src)[c->srcOrigin + gy * (u32)c->srcPitch + gx] : srow32[sx];
                     r = (v32 >> 16) & 0xFF;
                     g = (v32 >> 8) & 0xFF;
                     b = v32 & 0xFF;
@@ -12209,7 +12222,7 @@ static const u32 *turn_key(const u32 *k, u32 *out, u32 rot)
     static const u32 codes[4] = { ECodeUp, ECodeRight, ECodeDown, ECodeLeft };
     static const u32 scans[4] = { EScanUp, EScanRight, EScanDown, EScanLeft };
     static const u32 digits[4] = { '2', '6', '8', '4' };
-    const u32 step = (rot == 1) ? 3u : 1u;          // L90: Up -> Left; L270: Up -> Right
+    const u32 step = (rot == 1) ? 3u : (rot == 2) ? 2u : 1u;   // L90: Up -> Left; L270: Up -> Right; half round: Up -> Down
     out[0] = k[0]; out[1] = k[1]; out[2] = k[2]; out[3] = k[3];
     for (u32 i = 0; i < 4; i++) {
         if (k[0] == codes[i]) out[0] = codes[(i + step) & 3];
@@ -12227,7 +12240,14 @@ static const u32 *turn_key(const u32 *k, u32 *out, u32 rot)
 // would rather the game's own left stayed left.
 static u32 key_turn(const Context *c)
 {
-    return c->keyTurn == 1 ? 1u : c->keyTurn == 2 ? 3u : c->keyTurn == 3 ? 0u : c->rot;
+    // Round 189: on a phone that turned its own screen the arrows arrive
+    // already turned by it (the N95's log: Right for the key pointing
+    // right), so L90 there is no turn and L270 a half one -- the same as
+    // the picture's rot. A pinned L90 or L270 follows the same rule.
+    const u32 want = c->keyTurn == 1 ? 1u : c->keyTurn == 2 ? 3u : c->keyTurn == 3 ? 0u : c->rot;
+    if (c->osTurned && (want == 1u || want == 3u))
+        return want == 3u ? 2u : 0u;
+    return want;
 }
 
 static const u32 *rotate_key(const Context *c, const u32 *k, u32 *out)
@@ -14508,8 +14528,6 @@ extern "C" void gate6_ui_wsevent(void *self, const u32 *event, void *dest, Conte
         c->bgMute = 1;
     if (type == (u32)EEVENT_FOCUS_GAINED)
         c->bgMute = 0;
-    if (type == (u32)EEVENT_SCREEN_CHANGED)
-        screen_turned(c, type);          // round 188: the phone turned its screen
     // And how many buffers each thread had written by then: whether the game
     // goes on feeding a stream while it is away is what the mute rests on.
     if (type == (u32)EEVENT_FOCUS_LOST || type == (u32)EEVENT_FOCUS_GAINED) {
@@ -14522,6 +14540,12 @@ extern "C" void gate6_ui_wsevent(void *self, const u32 *event, void *dest, Conte
     log_event(c, NOTE_WS_EVENT, type);
     ((WsEvent)c->realWsEvent)(self, event, dest);
     log_event(c, NOTE_WS_EVENT_DONE, type);
+    // Round 189: after the framework's own handling, not before it -- the
+    // whole-screen extent is the screen device's size, and cone brings
+    // that up to date inside HandleWsEventL (build 209 asked before, got
+    // the old 240x320, and the window stayed cut to 240x240).
+    if (type == (u32)EEVENT_SCREEN_CHANGED)
+        screen_turned(c, type);          // round 188: the phone turned its screen
     // The two events on the way to the background, and the queue after each:
     // whatever runs next is in it now, with its request already complete.
     if (type == (u32)EEVENT_FOCUS_LOST || type == (u32)KAKN_FOREGROUND_LOST ||

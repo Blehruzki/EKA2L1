@@ -2568,3 +2568,17 @@ player's mode, not the one the turn put in its place. *Lesson: a size read
 once is a size assumed forever; the phone had been sending the event all
 along, logged as "WS EVENT type 0x14" and never looked at.*
 
+### 14.s The window stayed 240x240 through the turn (round 190, E1573)
+**Symptom.** Build 209 set the wrapper control to the whole screen at the
+turn and the region after it was still (0,0)-(240,240), with the slide
+open and after it closed.
+**Cause.** The call ran before the framework's own `HandleWsEventL` for
+`EEventScreenDeviceChanged`, and `SetExtentToWholeScreen` takes the
+screen device's size, which cone updates inside that handler: the whole
+screen it set was the old one. The bench could not say: its screen never
+changes size.
+**Fix.** The turn is handled after the framework's handler. *Lesson: an
+event handler that calls the framework's own handler has two places to
+act, and which one is right depends on what the framework's does; read
+cone's `HandleWsEventL` before choosing.*
+
