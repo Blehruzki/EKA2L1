@@ -944,6 +944,25 @@ The bench agrees (E1550: xdotool's Right arrived as iCode 0xF808, scan
 from round 182 to build 205 and nobody noticed because Asphalt 2 reads the
 scan code, which was right.
 
+## A direct-screen post refreshes the rectangles it names (round 192)
+
+`CFbsScreenDevice::Update(const TRegion& aRegion)` is one line:
+`iDrawDevice->Update(aRegion)` (graphics,
+`graphicsdeviceinterface/bitgdi/sbit/SCREENDV.CPP` 374-376). The generic
+screen driver's `CGenericScreenDevice<T>::Update(const TRegion&)` calls
+`UpdateRegion(aRegion[ii])` for each rectangle -- the bounding rectangle
+when there are more than `KMaxUpdateRegionRectangles` -- and
+`UpdateRegion` hands that one rectangle, de-oriented for the current
+rotation, to the LCD (`screendriver/sgeneric/scdraw.inl` 99-140). Nothing
+else is sent: a panel shows what it was last given inside the posted
+rectangles and keeps the rest. So a client that posts a region smaller
+than the screen leaves the remainder stale however much it wrote into the
+frame buffer. The N95's slide (round 192): the loader kept posting the
+portrait 240x320 region on the 320x240 screen and the right 80 columns
+stayed frozen. EKA2L1 uploaded the whole frame buffer on every post and
+could not show it; it keeps unposted pixels now (`EKA2L1_FULLPOST=1` for
+the old way, `EMU_PATCHES.md`).
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:
