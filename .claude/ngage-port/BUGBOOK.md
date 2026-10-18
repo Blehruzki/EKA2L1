@@ -2647,3 +2647,18 @@ until the first 3D present, so every frame before the eighth read as a
 race. Round 192's nav keys carried the same test.
 **Fix.** No race until a 3D present has been seen (`map_target`). *Lesson: a
 "seen recently" test on a frame counter needs a "seen at all".*
+
+### 14.x The media keys never reached the loader's RemCon target (round 194)
+**Symptom.** Build 213 on the N95: the music player still came up and no
+media key could be given to an action; the waits for a key timed out.
+**Cause.** Not the loader's code -- the target opened (OpenTargetL 0) -- but
+the platform's routing: the target selector gives RemCon commands only to a
+fixed list of secure IDs in a ROM resource, and the keys are taken from the
+raw events by a window-server animation before any application sees them
+(SYMBIAN.md). The bench could not show it: the ROM's remconserver runs on
+EKA2L1, but nothing there sends media commands, and the bench knob fed the
+target from inside.
+**Fix.** None an ordinary application can make. *Lesson: "the target opens"
+and "the knob's command maps" proved the half of the chain the loader owns;
+the half that decided the outcome was a resource file in the ROM, readable
+on the bench from the start. Read the routing before building on it.*

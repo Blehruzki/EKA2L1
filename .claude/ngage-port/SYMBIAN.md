@@ -1003,8 +1003,18 @@ answers each command with a response through an active object, queued when
 one is outstanding (PPSSPP's Symbian port, `SymbianMediaKeys.cpp`, the
 working example). A click (a short press) has no release; PPSSPP sends its
 key up 80 ms later. Which target the selector picks with two open is the
-selector's; the expectation (the music player not launching while the
-title's target is open and in front) is the phone's to confirm.
+selector's -- and **on these phones it is a fixed list (round 194)**:
+`remcontspcontroller.dll` (CRemConTspController, CTSPAllowedTargetsTable,
+CRemConTspActiveMpObserver) reads `z:\resource\remcontspallowedtargets.rsc`,
+on the RM-409 seven secure IDs (0x10282EA9, 0x102072C3 the music player,
+0x101FF976, 0x10005A3E twice, 0x2000009B, 0x100058B3 the phone app), and gives
+commands to nothing else. The N95's log: the title's target open, not one
+command in a whole session. Before RemCon, `keypublisherplugin.dll` -- a
+window-server animation (UID2 0x10003B22, CWindowAnim, MEventHandler) --
+takes the keys out of the raw event stream and publishes them through the
+key event framework (keyeventfw.dll, `z:\resource\AknKeyEventMap.rsc`) to
+`mmkeybearer.dll`; no application sees them as key events. Only code in the
+window server reaches them.
 
 Ordinals and layouts, read from the RM-409 ROM's code (`romimg.py`, then
 disassembly): remconinterfacebase 21 `CRemConInterfaceSelector::NewL` (new
