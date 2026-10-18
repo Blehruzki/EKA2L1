@@ -2638,3 +2638,12 @@ started turned (0x5A31): the panel is the base and the turned modes stay.
 Avkon's pane at that moment goes to the turned inset. The upright inset is
 asked at the first turn upright, and a save made before then stores none.
 
+
+### 14.w The first eight frames read as a race (round 193, E1632)
+**Symptom.** On the bench a media key mapped to TURBO, sent seconds after
+the launch, was given to the game as the turbo, long before any race.
+**Cause.** The race test was `frames - present3D <= 8`, and present3D is 0
+until the first 3D present, so every frame before the eighth read as a
+race. Round 192's nav keys carried the same test.
+**Fix.** No race until a 3D present has been seen (`map_target`). *Lesson: a
+"seen recently" test on a frame counter needs a "seen at all".*

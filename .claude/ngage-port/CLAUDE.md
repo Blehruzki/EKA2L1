@@ -186,9 +186,18 @@ good story, add it there with its rows.
   loader blits itself (the Asphalts; `GAME_HOLD_MENU`) it opens a menu drawn
   over the picture (round 187, `menu_draw`): PICTURE steps the fit live
   (`FIT_*` in `screen_fit.h`: one to one, shape, fill, integer, full) with
-  Left/Right or 4/6, KEYS sets how the arrows turn (AUTO, L90, L270, OFF),
+  Left/Right or 4/6, ARROWS sets how the arrows turn (AUTO, L90, L270, OFF),
   BACK, C or the right softkey closes and saves (`cfg_save`, `C:\` root,
-  read back at the next launch). A window-gc title keeps the blind cycle:
+  read back at the next launch). On a title whose chosen keys the loader
+  reads (`GAME_KEYS_AT`, Asphalt 2) a KEY MAP row opens the key mapper's
+  page (round 193): MODE (AUTO: the player's keys and the nav keys standing
+  in sideways; CUSTOM: the player's keys only; OFF), one row per action of
+  the title's KEY SETTINGS showing its key (the player's in white, the
+  title's own in grey), Select waits for a key ("PRESS A KEY...", any key or
+  media key; C cancels, five seconds time out), Left/Right gives the action
+  its own key back, RESET ALL, BACK. The keys apply in races only. The
+  media keys reach the loader through a RemCon target of its own
+  (`remcon_start`), which also keeps them from the music player. A window-gc title keeps the blind cycle:
   a step every half second while held, saved on release. A tap passes
   through to the game either way.
   Universal: the Asphalts through the port's own buffer (`screen_layout`), a

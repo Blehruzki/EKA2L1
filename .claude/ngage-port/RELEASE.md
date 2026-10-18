@@ -14,7 +14,7 @@ First public build of my port of <Title> (N-Gage) to S60v3
 
 Features:
 **- Full game, wrapped up in a nice, convenient .sis file.** Just install & play
-**- Screen menu**: Press and hold the C button (Backspace on QWERTY devices) for a second to open the screen menu over the game. PICTURE: Left/Right (or 4/6) steps through the screen modes and you see each one as you go. KEYS: how the arrows turn in a sideways mode (AUTO follows the picture; L90, L270 or OFF). BACK, C or the right softkey closes it, and your choice is saved to gate6-<stem>.cfg in C:\
+**- Screen menu**: Press and hold the C button (Backspace on QWERTY devices) for a second to open the screen menu over the game. PICTURE: Left/Right (or 4/6) steps through the screen modes and you see each one as you go. ARROWS: how the arrows turn in a sideways mode (AUTO follows the picture; L90, L270 or OFF). <KEY MAP, on a title that has it: give any key -- the media keys and QWERTY keys too -- to any game action: select the action, press the key. MODE AUTO also lets the nav keys steer when the screen is sideways; CUSTOM uses only your keys; OFF uses only the game's own KEY SETTINGS. RESET ALL clears them. While the game is open the media keys no longer start the music player.> BACK, C or the right softkey closes it, and your choice is saved to gate6-<stem>.cfg in C:\
 **- Save file persistence**: Your <save file> save file will stay untouched in case you want to uninstall the game or update it to a new version. It is always stored in C:\system\apps\<stem>
 **- Game files location**: in !:\system\apps\<stem> (where "!:" can be either C:\ or E:\, depending on where you decided to install the game).
 

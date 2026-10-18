@@ -221,7 +221,7 @@ enum { GAME_SRC_ORIGIN = 16 };
 // front of it (gate6_set_exc): the fault's frame is logged first, then the
 // title's handler gets the type.
 #define GAME_KEEP_CATCHER 1
-#define GAME_BUILD 212
+#define GAME_BUILD 213
 
 #endif
 // Round 192: the KEY SETTINGS ids are eight words at +0xE310 of the game
@@ -239,3 +239,7 @@ enum { GAME_SRC_ORIGIN = 16 };
 #define GAME_KEYS_AT 0xE314
 #define GAME_KEYS_WORDS 8
 #define GAME_KEYS_DEFAULT { 0x13, 0x14, 6, 8, 3, 2, 9, 7 }
+// The KEY MAP page's names for the eight, as KEY SETTINGS lists them
+// (round 193): turn left, turn right, accelerator, brakes, turbo, change
+// view, rear view, horn -- six characters, for the menu's key column.
+#define GAME_KEY_NAMES { "TURN L", "TURN R", "ACCEL", "BRAKES", "TURBO", "VIEW", "REAR", "HORN" }

@@ -988,6 +988,58 @@ Read from the window server's source (graphics, `windowing/windowserver/nonnga/S
   is 177 (op 0x13) and `SetAppScreenMode` is 460 (op 0x22). Both were read from
   the code at the export.
 
+## The media keys are RemCon commands, not key events (round 193)
+
+On an S60 3rd edition phone with media keys (the N95's slide: play/pause,
+stop, next, previous; and the volume keys) an application does not get key
+events for them. The ROM (RM-409's `z:\sys\bin`, the same family) carries
+the chain: `mmkeybearer.dll`, a bearer that turns the presses into Remote
+Control framework commands; `remcontargetselectorplugin.dll`, the target
+selector; `mpxmediakeyhandler.dll`, the music player's own target, which
+launches the player. An application that wants the keys opens a core API
+target of its own -- `CRemConInterfaceSelector::NewL`,
+`CRemConCoreApiTarget::NewL(selector, observer)`, `OpenTargetL` -- and
+answers each command with a response through an active object, queued when
+one is outstanding (PPSSPP's Symbian port, `SymbianMediaKeys.cpp`, the
+working example). A click (a short press) has no release; PPSSPP sends its
+key up 80 ms later. Which target the selector picks with two open is the
+selector's; the expectation (the music player not launching while the
+title's target is open and in front) is the phone's to confirm.
+
+Ordinals and layouts, read from the RM-409 ROM's code (`romimg.py`, then
+disassembly): remconinterfacebase 21 `CRemConInterfaceSelector::NewL` (new
+0xB8), 9 `OpenTargetL` (KErrInUse when a target is already open), 29
+`TargetOpened`; remconcoreapi 63 `CRemConCoreApiTarget::NewL(selector,
+observer)` (new 0x214), 144 `SendResponse(status, op, error)` (PlayResponse,
+23, passes op 0x44 to the same code). The observer's vtable (remconcoreapi
+142, exported): MrccatoCommand, MrccatoPlay, MrccatoTuneFunction,
+MrccatoSelectDiskFunction, MrccatoSelectAvInputFunction,
+MrccatoSelectAudioInputFunction; no destructor. Operation ids
+(remconcoreapi.h): VolumeUp 0x41, VolumeDown 0x42, Mute 0x43, Play 0x44,
+Stop 0x45, Pause 0x46, Rewind 0x48, FastForward 0x49, Forward 0x4B,
+Backward 0x4C, PausePlayFunction 0x61; actions Press 0, Release 1, Click 2.
+euser (its own eabi .def, and the ROM): 1091 `CActive::CActive(TInt)`,
+1090 `SetActive`, 424 `CActiveScheduler::Add`, 1940 CActive's vtable (D1,
+D0, Extension_, DoCancel, RunL, RunError). EKA2L1 runs the ROM's own
+remconserver: the target opens on the bench (E1631).
+
+## How a key remapper reaches every key: MagicKey (round 193)
+
+MagicKey 1.0 (the player's copy) is four binaries: the app, a daemon, and
+two window-server animation DLLs (UID2 0x10003B22, KAnimDllUid), KeyMap.Dll
+and KeyFetch.Dll, each with one export (the animation factory) and the
+window server's capabilities (PowerMgmt, ReadDeviceData, WriteDeviceData,
+ProtServ). The daemon loads KeyMap into the window server (`RAnimDll::Load`,
+`RAnim::Construct` on a sprite), sends it the table with `RAnim::Command`,
+and follows which application is in front (`GetFocusWindowGroup`,
+`GetWindowGroupClientThreadId`) to swap tables per application. The app
+loads KeyFetch the same way to capture the key the user presses. An
+animation in the window server sees raw events before any capture, so it
+reaches every key, media and camera keys included -- at the price of system
+capabilities, which only a developer-signed or hacked install grants. The
+loader takes the half that needs none: its own target for the media keys,
+and its own key handling for the rest.
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:

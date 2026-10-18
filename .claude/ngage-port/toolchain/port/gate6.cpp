@@ -272,8 +272,8 @@ enum { MAP_MAX = 1024 };
 // an older file; the shift is not.
 // Version 4 (round 187): a sixth word, how the arrows turn (keyTurn). A
 // version-3 file is five words and is read as before; the turn defaults.
-enum { CFG_MAGIC = 0x46433647, CFG_VERSION = 4, CFG_WORDS = 6,
-       CFG_V1_WORDS = 4, CFG_V3_WORDS = 5 };
+enum { CFG_MAGIC = 0x46433647, CFG_VERSION = 5, CFG_WORDS = 11,
+       CFG_V1_WORDS = 4, CFG_V3_WORDS = 5, CFG_V4_WORDS = 6 };   // v5 (round 193): the key mapper's mode, then its eight keys two to a word
 // FREE_BACK_FROM is per game: E271 found Asphalt 1 writing a vtable pointer
 // into a freed cell's `next` link during boot, so that title hands nothing
 // back at all and the quarantine takes everything.
@@ -510,7 +510,9 @@ enum { NOTE_LITERAL = 855,      // a pointer the decryptor wrote, and what it po
        NOTE_PANE_OBJ = 827,     // the CEikStatusPane the app UI handed back
        NOTE_PANE_GONE = 828,    // 1 if it then reported itself invisible
        NOTE_PANE_STEP = 829,    // a pane call that returned, by number
-       NOTE_MENU = 901 };       // the hold's menu (round 187): 0x4D450001 opened, 0x4D45000d closed (bit 1: saved), 0x4D4Bcccc a key it took, 0x4D54000t the arrows' turn chosen
+       NOTE_MENU = 901,         // the hold's menu (round 187): 0x4D450001 opened, 0x4D45000d closed (bit 1: saved), 0x4D4Bcccc a key it took, 0x4D54000t the arrows' turn chosen
+       NOTE_KEYMAP = 902,       // round 193, the key mapper: 0x4B4D00ss a key given to the game as scan ss, then the key pressed; 0x4B43000a action a given the key that follows (0x4B430Fxx: the capture cancelled); 0x4B4F000m the mode chosen; 0x4B520000 all cleared
+       NOTE_REMCON = 903 };     // round 193, the media keys (RemCon): 0x52430000|stage then a value (1 selector, 2 target, 3 opened, 4 responder, 0xE the leave), 0x5243C000|op then the action
 enum { BOX_FROM = 4 + BOX_RING, BOX_PATH = BOX_FROM + BOX_RING };
 enum { BOX_SLOT = BOX_PATH + 1, BOX_FRAMES = BOX_SLOT + 1, BOX_STACK = BOX_FRAMES + 1 };
 enum { BOX_MDA = BOX_STACK + 1 };   // what CMdaAudioOutputStream::NewL resolved to
@@ -1570,6 +1572,24 @@ struct Context {
     u32 benchModeSteps;     //   BENCH_SCREENMODE_TICK: switches made
     u32 present3D;          // round 192: the frame of the title's last 3D present (gate6_mem_copy): a race is on
     u32 navSaid;            //   nav-key translations logged so far
+    u32 mapMode;            // round 193, the key mapper (cfg word 6): 0 AUTO (the player's keys, and the nav keys sideways), 1 CUSTOM (the player's keys only), 2 OFF
+    u16 mapKey[8];          //   per title action, the key the player gave it: a scan code, or 0x100 | a RemCon operation; 0 none (cfg words 7-10)
+    u16 heldIn[8];          //   keys handed to the game rewritten at their down: the key pressed ...
+    u8 heldOut[8];          //   ... the scan the game was given for it, so its release goes to the same one
+    u32 heldUp[8];          //   a RemCon click's release, due at this tick; 0 none
+    u32 mapSaid;            //   mapper records logged so far
+    u32 menuPage;           // the hold's menu page: 0 the screen, 1 the key map
+    u32 menuCapture;        //   1 + the action waiting for its key ("PRESS A KEY..."); 0 none
+    u32 menuCaptureTick;    //   when the wait began, for its timeout
+    u32 menuSwallow;        //   1 + a scan whose EEventKey is the captured press's, not a menu key
+    u32 remconState;        // the media keys' RemCon target: 0 not tried, 1 open, 2 failed
+    u32 *remconTarget;      //   CRemConCoreApiTarget, for the responses
+    u32 *remconAo;          //   our CActive the responses complete
+    u32 remconFn[2];        //   SendResponse, CActive::SetActive
+    u32 remconQ[8], remconQn; //  responses waiting for it
+    u32 remconSaid;         //   RemCon commands logged so far
+    u32 benchRemconStep;    //   BENCH_REMCON_TICK: steps made
+    u32 benchRemconFrom;    //   ... timed from this tick
     u32 screenW0, screenH0; //   the screen as first reported, to tell a turn from a wide phone
     u32 osTurned;           //   the phone has its screen turned from that
     u32 insetUprightDue;    //   started turned: the upright inset still to be asked (round 192)
@@ -8404,7 +8424,20 @@ enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
 #define GAME_KEYS_DEFAULT { 0, 0, 0, 0, 0, 0, 0, 0 }
 #endif
 enum { HOLD_MENU = GAME_HOLD_MENU };
-enum { MENU_ROW_PICTURE = 0, MENU_ROW_KEYS = 1, MENU_ROW_BACK = 2, MENU_ROWS = 3 };
+// Round 193: a title whose chosen keys the loader can read (GAME_KEYS_AT)
+// gets a fourth row, KEY MAP, and behind it a page of its own: the
+// mapper's mode, one row per action of the title's KEY SETTINGS, RESET,
+// BACK (map_* below).
+enum { MENU_ROW_PICTURE = 0, MENU_ROW_KEYS = 1, MENU_ROW_KEYMAP = GAME_KEYS_AT ? 2 : 99,
+       MENU_ROW_BACK = GAME_KEYS_AT ? 3 : 2, MENU_ROWS = MENU_ROW_BACK + 1 };
+enum { MAP_ROW_MODE = 0, MAP_ROW_ACTION = 1, MAP_ROW_RESET = MAP_ROW_ACTION + 8, MAP_ROW_BACK = MAP_ROW_RESET + 1,
+       MAP_ROWS = MAP_ROW_BACK + 1 };
+enum { MAP_AUTO = 0, MAP_CUSTOM = 1, MAP_OFF = 2, MAP_MODES = 3, MAP_HELD = 8, MAP_REMCON = 0x100,
+       MAP_CAPTURE_TICKS = 320, MAP_CLICK_TICKS = 6, MAP_SAID_MAX = 48 };
+#ifndef GAME_KEY_NAMES
+#define GAME_KEY_NAMES { "KEY 1", "KEY 2", "KEY 3", "KEY 4", "KEY 5", "KEY 6", "KEY 7", "KEY 8" }
+#endif
+static u32 map_label(Context *c, u32 action, char *buf);   // the key an action has, named; 0 none, 1 the player's, 2 the title's own
 enum { MODE_ONE_TO_ONE = FIT_ONE_TO_ONE, MODE_SHAPE = FIT_SHAPE,
        MODE_FILL = FIT_FILL, MODE_INTEGER = FIT_INTEGER, MODE_FULL = FIT_FULL,
        MODE_COUNT_PORTRAIT = GAME_LANDSCAPE ? FIT_MODES : FIT_L90_SHAPE };
@@ -8680,9 +8713,17 @@ static void cfg_load(Context *c)
         c->topInset = c->cfg[3];
     if (ver >= 3 && got >= (u32)(CFG_V3_WORDS * 4))
         c->shiftX = (i32)c->cfg[4];
-    if (ver >= 4 && got >= (u32)(CFG_WORDS * 4)) {
+    if (ver >= 4 && got >= (u32)(CFG_V4_WORDS * 4)) {
         c->keyTurn = c->cfg[5] & 3u;
         log_event(c, NOTE_MENU, 0x4D540000u | c->keyTurn);   // the turn read back
+    }
+    if (ver >= 5 && got >= (u32)(CFG_WORDS * 4)) {     // round 193: the key mapper
+        c->mapMode = c->cfg[6] < 3u ? c->cfg[6] : 0u;
+        for (u32 i = 0; i < 8; i++)
+            c->mapKey[i] = (u16)((c->cfg[7 + (i >> 1)] >> ((i & 1u) * 16)) & 0x1FFu);
+        log_event(c, NOTE_KEYMAP, 0x4B4F0000u | c->mapMode);
+        for (u32 i = 0; i < 4; i++)
+            log_event(c, NOTE_KEYMAP, c->cfg[7 + i]);
     }
     log_event(c, NOTE_CFG_READ, (c->cfg[2] << 16) | (c->cfg[3] & 0xFFFF));
     log_event(c, NOTE_SHIFT, (u32)c->shiftX);
@@ -8705,6 +8746,9 @@ static void cfg_save(Context *c)
     c->cfg[3] = c->insetUprightDue ? 0u : c->topInset;   // started turned and never upright: no upright inset yet (0 asks Avkon)
     c->cfg[4] = (u32)c->shiftX;
     c->cfg[5] = c->keyTurn;
+    c->cfg[6] = c->mapMode;
+    for (u32 i = 0; i < 4; i++)
+        c->cfg[7 + i] = (u32)c->mapKey[2 * i] | ((u32)c->mapKey[2 * i + 1] << 16);
     u32 des[2];
     des[0] = ((u32)EPtrC << KTypeShift) | (u32)(CFG_WORDS * 4);
     des[1] = (u32)c->cfg;
@@ -8717,8 +8761,16 @@ static void cfg_save(Context *c)
 // Called once a frame. The hold is timed here rather than off key repeats,
 // because whether a clear key auto-repeats is a per-phone question and the
 // frame loop is not.
+static void map_tick(Context *c);
+static void remcon_start(Context *c);
+static void bench_remcon(Context *c);
 static void hold_tick(Context *c)
 {
+    if (GAME_KEYS_AT) {
+        remcon_start(c);                // once, on the main thread, with the title running
+        map_tick(c);
+        bench_remcon(c);
+    }
     if (PICK_ON_HOLD && c->cfgSavePending && on_main_thread(c)) {
         c->cfgSavePending = 0;
         cfg_save(c);
@@ -9347,8 +9399,8 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
 // Every pixel is tested against the region the window server granted
 // (fb_in), as the blit's are; behind a popup the menu is cut like the
 // picture under it.
-static const char kFontChars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ -./:<>";
-static const u8 kFont[43][7] = {
+static const char kFontChars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ -./:<>+";
+static const u8 kFont[44][7] = {
     { 0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E },   // 0
     { 0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E },   // 1
     { 0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F },   // 2
@@ -9392,6 +9444,7 @@ static const u8 kFont[43][7] = {
     { 0x00, 0x0C, 0x0C, 0x00, 0x0C, 0x0C, 0x00 },   // :
     { 0x02, 0x04, 0x08, 0x10, 0x08, 0x04, 0x02 },   // <
     { 0x08, 0x04, 0x02, 0x01, 0x02, 0x04, 0x08 },   // >
+    { 0x00, 0x04, 0x04, 0x1F, 0x04, 0x04, 0x00 },   // +
 };
 
 
@@ -9494,7 +9547,8 @@ static void menu_draw(Context *c)
     const u32 quarter = (c->rot == 1 || c->rot == 3);
     const u32 lw = quarter ? c->bufH : c->bufW, lh = quarter ? c->bufW : c->bufH;
     const u32 sc = (lw >= 300 || lh >= 300) ? 2u : 1u;
-    u32 bw = 116u * sc, bh = 54u * sc;
+    const u32 rows = c->menuPage ? (u32)MAP_ROWS + 1u : (u32)MENU_ROWS + 3u;   // the title line, and the two value lines of page 0
+    u32 bw = 116u * sc, bh = (rows * 8u + 6u) * sc;
     if (bw > lw) bw = lw;
     if (bh > lh) bh = lh;
     const u32 bx = (lw - bw) >> 1, by = (lh - bh) >> 1;
@@ -9507,6 +9561,36 @@ static void menu_draw(Context *c)
     enum { WHITE = 0xFFFFFF, YELLOW = 0xFFE040, GREY = 0xB0B0B0 };
     const u32 x0 = bx + 4 * sc, lhgt = 8 * sc;
     u32 y = by + 3 * sc;
+    if (c->menuPage) {
+        static const char kModes[3][7] = { "AUTO", "CUSTOM", "OFF" };
+        static const char kActs[8][8] = GAME_KEY_NAMES;
+        menu_text(c, x0, y, c->menuCapture ? "PRESS A KEY..." : "KEY MAP", sc, c->menuCapture ? YELLOW : WHITE);
+        y += lhgt;
+        for (u32 r = 0; r < (u32)MAP_ROWS; r++, y += lhgt) {
+            const u32 on = c->menuRow == r;
+            const u32 ink = on ? YELLOW : WHITE;
+            u32 x = menu_text(c, x0, y, on ? "> " : "  ", sc, ink);
+            if (r == (u32)MAP_ROW_MODE) {
+                x = menu_text(c, x, y, "MODE  < ", sc, ink);
+                x = menu_text(c, x, y, kModes[c->mapMode < 3u ? c->mapMode : 0u], sc, ink);
+                menu_text(c, x, y, " >", sc, ink);
+            } else if (r == (u32)MAP_ROW_RESET) {
+                menu_text(c, x, y, "RESET ALL", sc, ink);
+            } else if (r == (u32)MAP_ROW_BACK) {
+                menu_text(c, x, y, "BACK", sc, ink);
+            } else {
+                const u32 a = r - (u32)MAP_ROW_ACTION;
+                menu_text(c, x, y, kActs[a], sc, ink);
+                char name[12];
+                const u32 kind = map_label(c, a, name);
+                const u32 waiting = c->menuCapture == a + 1u;
+                // the player's own key in white (yellow on the cursor), the title's in grey
+                menu_text(c, x0 + 66 * sc, y, waiting ? "..." : name, sc,
+                          waiting ? YELLOW : kind == 1u ? ink : GREY);
+            }
+        }
+        return;
+    }
     menu_text(c, x0, y, "SCREEN", sc, WHITE);
     y += lhgt;
     const u32 pic = c->menuRow == (u32)MENU_ROW_PICTURE;
@@ -9517,12 +9601,17 @@ static void menu_draw(Context *c)
     menu_text(c, x, y, " >", sc, pic ? YELLOW : GREY);
     y += lhgt;
     const u32 keys = c->menuRow == (u32)MENU_ROW_KEYS;
-    menu_text(c, x0, y, keys ? "> KEYS" : "  KEYS", sc, keys ? YELLOW : WHITE);
+    menu_text(c, x0, y, keys ? "> ARROWS" : "  ARROWS", sc, keys ? YELLOW : WHITE);
     y += lhgt;
     x = menu_text(c, x0 + 12 * sc, y, "< ", sc, keys ? YELLOW : GREY);
     x = menu_text(c, x, y, kTurnNames[c->keyTurn & 3u], sc, keys ? YELLOW : GREY);
     menu_text(c, x, y, " >", sc, keys ? YELLOW : GREY);
     y += lhgt;
+    if (GAME_KEYS_AT) {
+        const u32 km = c->menuRow == (u32)MENU_ROW_KEYMAP;
+        menu_text(c, x0, y, km ? "> KEY MAP >" : "  KEY MAP >", sc, km ? YELLOW : WHITE);
+        y += lhgt;
+    }
     const u32 back = c->menuRow == (u32)MENU_ROW_BACK;
     menu_text(c, x0, y, back ? "> BACK" : "  BACK", sc, back ? YELLOW : WHITE);
 }
@@ -12423,41 +12512,475 @@ static u32 code_of_scan(u32 scan)
     default: return 0;
     }
 }
-static const u32 *nav_key(Context *c, const u32 *k, u32 *out)
+// The scan the title is given for one of its actions: the id the player
+// chose in KEY SETTINGS (game_keys), its default for a word of 0.
+static u32 map_scan_of(Context *c, u32 action)
 {
     static const u32 kDefault[8] = GAME_KEYS_DEFAULT;
-    if (!GAME_KEYS_AT || !(c->osTurned || c->rot))
-        return k;
-    if (c->frames - c->present3D > (u32)NAV_RACE_FRAMES)
-        return k;
     const u32 *ids = (const u32 *)game_keys(c);
-    if (!ids)
-        return k;
-    const u32 scan = k[1] & 0xFFu;
-    u32 action;
-    switch (scan) {
-    case 0x0E: action = 0; break;       // Left: turn left
-    case 0x0F: action = 1; break;       // Right: turn right
-    case 0x10: action = 2; break;       // Up: accelerator
-    case 0x11: action = 3; break;       // Down: brakes
-    case 0xA7: action = 4; break;       // select: turbo
-    default: return k;
-    }
-    u32 id = ids[action];
+    u32 id = ids ? ids[action] : 0u;
     if (!id || id >= 0x19)
         id = kDefault[action];
-    const u32 want = (id < 0x19) ? kScanOfId[id] : 0;
-    if (!want || want == scan)
+    return (id < 0x19) ? kScanOfId[id] : 0u;
+}
+
+// The nav keys as the chosen keys, while the picture is turned (round 192):
+// the action a turned arrow or the selection key stands for, or 8 for none.
+static u32 nav_action(const Context *c, const u32 *k)
+{
+    if (!k || !(c->osTurned || c->rot))
+        return 8;
+    switch (k[1] & 0xFFu) {
+    case 0x0E: return 0;        // Left: turn left
+    case 0x0F: return 1;        // Right: turn right
+    case 0x10: return 2;        // Up: accelerator
+    case 0x11: return 3;        // Down: brakes
+    case 0xA7: return 4;        // select: turbo
+    default: return 8;
+    }
+}
+
+// **Round 193: the key mapper.** What the title is given for a key pressed in
+// a race, decided once at its down and kept until its up (heldIn/heldOut),
+// so a release always reaches the key the press reached even when the race
+// ended, the menu opened or the mode changed in between:
+//   OFF     nothing is rewritten;
+//   CUSTOM  a key the player gave an action (the KEY MAP page, mapKey: the
+//           physical key, before the arrows turn) becomes the key the title
+//           has for that action;
+//   AUTO    that, and the nav keys stand in for the chosen keys while the
+//           picture is turned (round 192), as before.
+// Outside a race (no 3D present in eight frames) nothing is rewritten: the
+// menus keep their own keys. phys is the key as pressed: a scan code, or
+// MAP_REMCON | a RemCon operation for a media key; k the turned event, or 0.
+static u32 map_target(Context *c, u32 phys, const u32 *k)
+{
+    if (!GAME_KEYS_AT || c->mapMode >= (u32)MAP_OFF)
+        return 0;
+    if (!c->present3D || c->frames - c->present3D > (u32)NAV_RACE_FRAMES)
+        return 0;                       // no race yet (E1632: the first eight frames read as one), or none now
+    for (u32 a = 0; a < 8; a++)
+        if (c->mapKey[a] && c->mapKey[a] == phys)
+            return map_scan_of(c, a);
+    if (c->mapMode == (u32)MAP_AUTO) {
+        const u32 a = nav_action(c, k);
+        if (a < 8) {
+            const u32 want = map_scan_of(c, a);
+            return want != (k[1] & 0xFFu) ? want : 0u;
+        }
+    }
+    return 0;
+}
+
+static int held_of(const Context *c, u32 phys)
+{
+    for (u32 i = 0; i < (u32)MAP_HELD; i++)
+        if (c->heldIn[i] == phys)
+            return (int)i;
+    return -1;
+}
+
+static int held_put(Context *c, u32 phys, u32 want)
+{
+    int i = held_of(c, 0);
+    if (i < 0)
+        i = 0;                          // eight keys down at once: the oldest goes
+    c->heldIn[i] = (u16)phys;
+    c->heldOut[i] = (u8)want;
+    c->heldUp[i] = 0;
+    if (c->mapSaid < (u32)MAP_SAID_MAX) {
+        c->mapSaid++;
+        log_event(c, NOTE_KEYMAP, 0x4B4D0000u | want);
+        log_event(c, NOTE_KEYMAP, phys);
+    }
+    return i;
+}
+
+static void held_drop(Context *c, int i)
+{
+    c->heldIn[i] = 0;
+    c->heldOut[i] = 0;
+    c->heldUp[i] = 0;
+}
+
+// At the two places a key is handed over: raw is the event as it came,
+// k after the QWERTY digits and the turn.
+static const u32 *map_key(Context *c, const u32 *raw, const u32 *k, u32 type, u32 *out)
+{
+    enum { EEventKey = 1, EEventKeyUp = 2, EEventKeyDown = 3 };
+    if (!GAME_KEYS_AT)
         return k;
-    out[0] = code_of_scan(want);
+    const u32 phys = raw[1] & 0x1FFu;
+    if (!phys)
+        return k;
+    int i = held_of(c, phys);
+    if (type == (u32)EEventKeyDown) {
+        if (i >= 0)
+            held_drop(c, i);            // a down whose up never came (focus lost): decide afresh
+        const u32 want = map_target(c, phys, k);
+        i = want ? held_put(c, phys, want) : -1;
+    }
+    if (i < 0)
+        return k;
+    const u32 want = c->heldOut[i];
+    if (type == (u32)EEventKeyUp)
+        held_drop(c, i);
+    out[0] = k[0] ? code_of_scan(want) : 0u;
     out[1] = want;
     out[2] = k[2];
     out[3] = k[3];
-    if (c->navSaid < 16) {
-        c->navSaid++;
-        log_event(c, NOTE_KEY, 0x4E410000u | (scan << 8) | want);
-    }
     return out;
+}
+
+static void key_track(Context *c, const u32 *k, u32 type);
+// A key event of the loader's making, into the title's own control as the
+// window server's would arrive: a media key has no event of its own here.
+static void map_inject(Context *c, u32 scan, u32 type)
+{
+    enum { EEventKey = 1 };
+    if (!c->oldControl || !scan)
+        return;
+    u32 ev[4] = { type == (u32)EEventKey ? code_of_scan(scan) : 0u, scan, 0, 0 };
+    key_track(c, ev, type);             // the menu then lets its release through
+    old_call2(c->oldControl, OLD_CTL_OFFERKEY, (u32)ev, type);
+}
+
+static void menu_reblit(Context *c);
+static void map_capture(Context *c, u32 phys);
+
+// A media key (RemCon), press, release or click: the menu's while it is up
+// (the capture), the title's through the mapper in a race, nobody's
+// otherwise -- but never the music player's, which is the point of the
+// target: while it is open and the title in front, the target selector
+// gives the keys to it (remcon_start).
+static void map_remcon(Context *c, u32 op, u32 act)
+{
+    enum { EEventKey = 1, EEventKeyUp = 2, EEventKeyDown = 3 };
+    enum { PRESS = 0, RELEASE = 1, CLICK = 2 };
+    const u32 phys = (u32)MAP_REMCON | (op & 0xFFu);
+    if (c->remconSaid < (u32)MAP_SAID_MAX) {
+        c->remconSaid++;
+        log_event(c, NOTE_REMCON, 0x5243C000u | (op & 0xFFFu));
+        log_event(c, NOTE_REMCON, act);
+    }
+    if (HOLD_MENU && c->menuOpen) {
+        if (c->menuCapture && act != (u32)RELEASE)
+            map_capture(c, phys);
+        return;
+    }
+    int i = held_of(c, phys);
+    if (act == (u32)RELEASE) {
+        if (i >= 0) {
+            map_inject(c, c->heldOut[i], EEventKeyUp);
+            held_drop(c, i);
+        }
+        return;
+    }
+    if (i < 0) {
+        const u32 want = map_target(c, phys, 0);
+        if (!want)
+            return;
+        i = held_put(c, phys, want);
+        map_inject(c, want, EEventKeyDown);
+        map_inject(c, want, EEventKey);
+    }
+    if (act == (u32)CLICK) {            // a click has no release: one comes a few frames on (map_tick)
+        const u32 due = user_tickcount() + (u32)MAP_CLICK_TICKS;
+        c->heldUp[i] = due ? due : 1u;
+    }
+}
+
+// Once a frame (hold_tick): the clicks' releases, and the capture's timeout.
+static void map_tick(Context *c)
+{
+    enum { EEventKeyUp = 2 };
+    if (!GAME_KEYS_AT)
+        return;
+    const u32 now = user_tickcount();
+    for (u32 i = 0; i < (u32)MAP_HELD; i++)
+        if (c->heldIn[i] && c->heldUp[i] && (i32)(now - c->heldUp[i]) >= 0) {
+            map_inject(c, c->heldOut[i], EEventKeyUp);
+            held_drop(c, (int)i);
+        }
+    if (c->menuCapture && (i32)(now - c->menuCaptureTick - (u32)MAP_CAPTURE_TICKS) >= 0) {
+        log_event(c, NOTE_KEYMAP, 0x4B430F00u | (c->menuCapture - 1u));
+        c->menuCapture = 0;
+        menu_reblit(c);
+    }
+}
+
+// Names short enough for the menu's key column (seven characters).
+static void map_name(u32 code, char *b)
+{
+    static const char kHex[] = "0123456789ABCDEF";
+    const char *n = 0;
+    if (code & (u32)MAP_REMCON) {
+        switch (code & 0xFFu) {
+        case 0x41: n = "VOL+"; break;   case 0x42: n = "VOL-"; break;
+        case 0x43: n = "MUTE"; break;   case 0x44: case 0x61: n = "PLAY"; break;
+        case 0x45: n = "STOP"; break;   case 0x46: n = "PAUSE"; break;
+        case 0x47: n = "REC"; break;    case 0x48: n = "REW"; break;
+        case 0x49: n = "FFWD"; break;   case 0x4B: n = "NEXT"; break;
+        case 0x4C: n = "PREV"; break;
+        default: break;
+        }
+        if (!n) { b[0] = 'M'; b[1] = kHex[(code >> 4) & 15]; b[2] = kHex[code & 15]; b[3] = 0; return; }
+    } else if ((code >= '0' && code <= '9') || (code >= 'A' && code <= 'Z')) {
+        b[0] = (char)code; b[1] = 0; return;
+    } else {
+        switch (code) {
+        case 0x0E: n = "LEFT"; break;   case 0x0F: n = "RIGHT"; break;
+        case 0x10: n = "UP"; break;     case 0x11: n = "DOWN"; break;
+        case 0xA7: n = "OK"; break;     case 0xA4: n = "LSOFT"; break;
+        case 0xA5: n = "RSOFT"; break;  case 0x01: n = "C"; break;
+        case 0x2A: n = "STAR"; break;   case 0x7F: n = "HASH"; break;
+        case 0x02: n = "TAB"; break;    case 0x03: n = "ENTER"; break;
+        case 0x05: n = "SPACE"; break;  case 0x12: case 0x13: n = "SHIFT"; break;
+        case 0x14: case 0x15: n = "ALT"; break;
+        case 0x16: case 0x17: n = "CTRL"; break;
+        case 0x18: case 0x19: n = "FN"; break;
+        case 0x79: n = "COMMA"; break;  case 0x7A: n = "."; break;
+        case 0xA2: n = "VOL+"; break;   case 0xA3: n = "VOL-"; break;
+        case 0xC4: n = "CALL"; break;   case 0xC5: n = "END"; break;
+        case 0xB4: n = "MENU"; break;
+        default: break;
+        }
+        if (!n) { b[0] = 'K'; b[1] = kHex[(code >> 8) & 15]; b[2] = kHex[(code >> 4) & 15]; b[3] = kHex[code & 15]; b[4] = 0; return; }
+    }
+    u32 i = 0;
+    for (; n[i] && i < 7; i++)
+        b[i] = n[i];
+    b[i] = 0;
+}
+
+static u32 map_label(Context *c, u32 action, char *buf)
+{
+    if (action >= 8) {
+        buf[0] = 0;
+        return 0;
+    }
+    if (c->mapKey[action]) {
+        map_name(c->mapKey[action], buf);
+        return 1;
+    }
+    const u32 scan = map_scan_of(c, action);
+    if (!scan) {
+        buf[0] = '-';
+        buf[1] = 0;
+        return 0;
+    }
+    map_name(scan, buf);
+    return 2;
+}
+
+// The key pressed while the KEY MAP page waits ("PRESS A KEY..."): given to
+// the action, and taken from any other action that had it. C cancels.
+static void map_capture(Context *c, u32 phys)
+{
+    enum { EScanBackspace = 0x01 };
+    const u32 a = c->menuCapture - 1u;
+    c->menuCapture = 0;
+    if (phys == (u32)EScanBackspace || a >= 8) {
+        log_event(c, NOTE_KEYMAP, 0x4B430F00u | (a & 0xFFu));
+    } else {
+        for (u32 b = 0; b < 8; b++)
+            if (c->mapKey[b] == phys)
+                c->mapKey[b] = 0;
+        c->mapKey[a] = (u16)phys;
+        c->menuDirty = 1;
+        log_event(c, NOTE_KEYMAP, 0x4B430000u | a);
+        log_event(c, NOTE_KEYMAP, phys);
+    }
+    if (!(phys & (u32)MAP_REMCON))
+        c->menuSwallow = phys + 1u;     // its EEventKey is the press's, not a menu key
+    log_block(c);
+    menu_reblit(c);
+}
+
+// ---- the media keys: a RemCon core target of the title's own ------------
+//
+// The N95's media keys (play/pause, stop, next/previous on the slide, and
+// the volume keys) are not key events in an application. A bearer in the
+// ROM (mmkeybearer.dll) turns them into Remote Control framework commands,
+// and the target selector plug-in hands each one to the foreground
+// application if it has a core target open, else to the music player's
+// handler (mpxmediakeyhandler.dll) -- which launches the player. So the
+// loader opens a target (round 193): the keys come here while the title is
+// in front, the mapper can give them to actions, and the player stays shut.
+// Every command is answered (SendResponse), one at a time through an active
+// object of ours, the rest queued, as PPSSPP's Symbian port does. Ordinals
+// read out of the RM-409 ROM: remconinterfacebase 21 NewL (new 0xB8), 9
+// OpenTargetL (KErrInUse if one is open); remconcoreapi 63 NewL(selector,
+// observer) (new 0x214), 144 SendResponse (the PlayResponse wrapper passes
+// op 0x44 to the same code). The observer's slots, from the exported
+// vtable (remconcoreapi 142): MrccatoCommand, MrccatoPlay, then four
+// others, no destructor. euser 1091 CActive::CActive, 1090 SetActive, 424
+// CActiveScheduler::Add, 1940 CActive's vtable (D1, D0, Extension_,
+// DoCancel, RunL, RunError).
+enum { REMCON_BASE_NEWL = 21, REMCON_BASE_OPEN_TARGET = 9, REMCON_CORE_NEWL = 63,
+       REMCON_CORE_SEND_RESPONSE = 144, EUSER_CACTIVE_CTOR = 1091, EUSER_CACTIVE_SET_ACTIVE = 1090,
+       EUSER_SCHEDULER_ADD = 424, EUSER_CACTIVE_VTABLE = 1940, REMCON_OBS_SLOTS = 6,
+       BENCH_REMCON_TICK = 0, BENCH_REMCON_OP = 0x45 };
+static const u16 kRemconBaseName[] = { 'r','e','m','c','o','n','i','n','t','e','r','f','a','c','e','b','a','s','e','.','d','l','l' };
+static const u16 kRemconCoreName[] = { 'r','e','m','c','o','n','c','o','r','e','a','p','i','.','d','l','l' };
+extern "C" int gate6_trap_enter_c(void *trap, int *result, void *ctx) __asm__("gate6_trap_enter");
+extern "C" void gate6_trap_untrap(Context *c);
+
+// A leaving call, made with the port's own trap (gate6_trap_enter): 0 and
+// *out its answer, or the leave's reason.
+static int __attribute__((noinline)) trap_call(Context *c, u32 fn, u32 a0, u32 a1, u32 *out)
+{
+    u32 trap[24];
+    volatile int r = 0;
+    if (gate6_trap_enter_c(trap, (int *)&r, c))
+        return r ? r : -1;
+    *out = ((u32 (*)(u32, u32))fn)(a0, a1);
+    gate6_trap_untrap(c);
+    return 0;
+}
+
+static void remcon_respond(Context *c, u32 op)
+{
+    typedef void (*Send)(void *, void *, u32, int);
+    typedef void (*SetActive)(void *);
+    if (c->remconState != 1u)
+        return;
+    u32 *ao = c->remconAo;
+    if (ao[ACTIVE_STATUS / 4 + 1] & 1u) {           // TRequestStatus::EActive: one is out
+        if (c->remconQn < 8u)
+            c->remconQ[c->remconQn++] = op;
+        return;
+    }
+    ((Send)c->remconFn[0])(c->remconTarget, ao + ACTIVE_STATUS / 4, op, 0);
+    ((SetActive)c->remconFn[1])(ao);
+}
+
+extern "C" void gate6_remcon_command(u32, u32 op, u32 act, Context *c)
+{
+    map_remcon(c, op, act);
+    remcon_respond(c, op);
+}
+
+extern "C" void gate6_remcon_play(u32, u32, u32 act, Context *c)
+{
+    map_remcon(c, 0x44, act);
+    remcon_respond(c, 0x44);
+}
+
+extern "C" void gate6_remcon_other(void) {}
+
+extern "C" void gate6_remcon_runl(void *, u32, Context *c)
+{
+    if (!c->remconQn)
+        return;
+    const u32 op = c->remconQ[0];
+    for (u32 i = 1; i < c->remconQn; i++)
+        c->remconQ[i - 1] = c->remconQ[i];
+    c->remconQn--;
+    remcon_respond(c, op);
+}
+
+extern "C" void gate6_remcon_docancel(void *, u32, Context *) {}
+
+static void remcon_start(Context *c)
+{
+    typedef void (*Ctor)(void *, int);
+    typedef void (*Add)(void *);
+    if (c->remconState || !on_main_thread(c) || !c->euser)
+        return;
+    c->remconState = 2;
+    if (c->spare + 5 * TRACE > c->spareEnd)
+        return;
+    u32 libBase = 0, libCore = 0;
+    Ptrc16 nm, none;
+    none.lengthAndType = (u32)EPtrC << KTypeShift;
+    none.text = 0;
+    nm.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kRemconBaseName / 2);
+    nm.text = kRemconBaseName;
+    const int e1 = rlibrary_load(&libBase, &nm, &none);
+    nm.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kRemconCoreName / 2);
+    nm.text = kRemconCoreName;
+    const int e2 = rlibrary_load(&libCore, &nm, &none);
+    log_event(c, NOTE_REMCON, 0x52430000u);
+    log_event(c, NOTE_REMCON, ((u32)e1 << 16) | ((u32)e2 & 0xFFFFu));
+    if (e1 || e2) {
+        log_block(c);
+        return;
+    }
+    const u32 selNew = (u32)rlibrary_lookup(&libBase, REMCON_BASE_NEWL);
+    const u32 open = (u32)rlibrary_lookup(&libBase, REMCON_BASE_OPEN_TARGET);
+    const u32 tgtNew = (u32)rlibrary_lookup(&libCore, REMCON_CORE_NEWL);
+    c->remconFn[0] = (u32)rlibrary_lookup(&libCore, REMCON_CORE_SEND_RESPONSE);
+    c->remconFn[1] = (u32)rlibrary_lookup(&c->euser, EUSER_CACTIVE_SET_ACTIVE);
+    const u32 ctor = (u32)rlibrary_lookup(&c->euser, EUSER_CACTIVE_CTOR);
+    const u32 add = (u32)rlibrary_lookup(&c->euser, EUSER_SCHEDULER_ADD);
+    const u32 *aoVt = (const u32 *)rlibrary_lookup(&c->euser, EUSER_CACTIVE_VTABLE);
+    if (!selNew || !open || !tgtNew || !c->remconFn[0] || !c->remconFn[1] || !ctor || !add || !aoVt) {
+        log_event(c, NOTE_REMCON, 0x524300EEu);
+        log_block(c);
+        return;
+    }
+    // The observer: a vptr at slot 0, MrccatoCommand and MrccatoPlay ours.
+    u32 *obs = (u32 *)user_allocz(4);
+    u32 *vt = (u32 *)user_allocz(REMCON_OBS_SLOTS * 4);
+    u32 *ao = (u32 *)user_allocz(64);
+    if (!obs || !vt || !ao)
+        return;
+    vt[0] = ctx3_thunk(c->spare, c, (u32)&gate6_remcon_command); c->spare += TRACE;
+    vt[1] = ctx3_thunk(c->spare, c, (u32)&gate6_remcon_play);    c->spare += TRACE;
+    for (u32 i = 2; i < (u32)REMCON_OBS_SLOTS; i++)
+        vt[i] = (u32)&gate6_remcon_other;
+    obs[0] = (u32)vt;
+    u32 sel = 0, tgt = 0, dummy = 0;
+    int r = trap_call(c, selNew, 0, 0, &sel);
+    log_event(c, NOTE_REMCON, 0x52430001u);
+    log_event(c, NOTE_REMCON, r ? (u32)r : sel);
+    if (r || !sel) { log_block(c); return; }
+    r = trap_call(c, tgtNew, sel, (u32)obs, &tgt);
+    log_event(c, NOTE_REMCON, 0x52430002u);
+    log_event(c, NOTE_REMCON, r ? (u32)r : tgt);
+    if (r || !tgt) { log_block(c); return; }
+    r = trap_call(c, open, sel, 0, &dummy);
+    log_event(c, NOTE_REMCON, 0x52430003u);
+    log_event(c, NOTE_REMCON, (u32)r);
+    if (r) { log_block(c); return; }
+    // The responder: a CActive of ours on the scheduler.
+    ((Ctor)ctor)(ao, 0);
+    u32 *aov = copy_vtable(aoVt, TIMER_SLOTS);
+    aov[VT_HEADER + NEW_DOCANCEL] = ctx_thunk(c->spare, c, (u32)&gate6_remcon_docancel); c->spare += TRACE;
+    aov[VT_HEADER + NEW_RUNL] = ctx_thunk(c->spare, c, (u32)&gate6_remcon_runl);         c->spare += TRACE;
+    ao[0] = (u32)(aov + VT_HEADER);
+    ((Add)add)(ao);
+    c->remconAo = ao;
+    c->remconTarget = (u32 *)tgt;
+    c->remconState = 1;
+    log_event(c, NOTE_REMCON, 0x52430004u);
+    log_event(c, NOTE_REMCON, (u32)ao);
+    log_block(c);
+}
+
+// Bench (BENCH_REMCON_TICK): the media key BENCH_REMCON_OP as RemCon would
+// deliver it, from the observer's own entry, timed from the first race
+// frame (or from the menu's wait for a key, so a capture can be tested):
+// a click BENCH_REMCON_TICK ticks on, a press 400 later, its release 1200
+// after that. 0 ships.
+static void bench_remcon(Context *c)
+{
+    if (!BENCH_REMCON_TICK || c->benchRemconStep >= 3u)
+        return;
+    static const u32 kAt[3] = { 0, 400, 1600 };
+    static const u32 kAct[3] = { 2, 0, 1 };
+    if (!c->benchRemconFrom) {
+        if ((c->present3D && c->frames - c->present3D <= (u32)NAV_RACE_FRAMES) || c->menuCapture)
+            c->benchRemconFrom = user_tickcount();
+        return;
+    }
+    if ((i32)(user_tickcount() - c->benchRemconFrom - (u32)BENCH_REMCON_TICK - kAt[c->benchRemconStep]) < 0)
+        return;
+    log_event(c, NOTE_REMCON, 0x5243BE00u | c->benchRemconStep);
+    gate6_remcon_command(0, (u32)BENCH_REMCON_OP, kAct[c->benchRemconStep], c);
+    c->benchRemconStep++;
+    log_block(c);
 }
 
 // **The hold's menu (round 187).** Holding C used to step the picture mode
@@ -12539,6 +13062,9 @@ static void menu_open(Context *c)
     c->menuOpen = 1;
     game_keys_note(c);
     c->menuRow = (u32)MENU_ROW_PICTURE;
+    c->menuPage = 0;
+    c->menuCapture = 0;
+    c->menuSwallow = 0;
     c->menuDirty = 0;
     c->menuCDown = 1;       // E1549: the held C repeats its key event (iCode 0, scan 1) and closed the menu it had just opened
     log_event(c, NOTE_MENU, 0x4D450001u);
@@ -12549,6 +13075,8 @@ static void menu_open(Context *c)
 static void menu_close(Context *c)
 {
     c->menuOpen = 0;
+    c->menuPage = 0;
+    c->menuCapture = 0;
     // The dimmed box reaches past the picture into the bars, which the
     // blit never rewrites: blank the buffer once, as a layout change does.
     c->clearPending = 1;
@@ -12566,7 +13094,25 @@ static void menu_close(Context *c)
 
 static void menu_step(Context *c, i32 dir)
 {
-    if (c->menuRow == (u32)MENU_ROW_PICTURE) {
+    if (c->menuPage) {
+        if (c->menuRow == (u32)MAP_ROW_MODE) {
+            c->mapMode = dir > 0 ? (c->mapMode + 1 < (u32)MAP_MODES ? c->mapMode + 1 : 0u)
+                                 : (c->mapMode ? c->mapMode - 1 : (u32)MAP_MODES - 1);
+            c->menuDirty = 1;
+            log_event(c, NOTE_KEYMAP, 0x4B4F0000u | c->mapMode);
+        } else if (c->menuRow - (u32)MAP_ROW_ACTION < 8u && c->mapKey[c->menuRow - (u32)MAP_ROW_ACTION]) {
+            c->mapKey[c->menuRow - (u32)MAP_ROW_ACTION] = 0;   // Left or Right on an action: its own key back
+            c->menuDirty = 1;
+            log_event(c, NOTE_KEYMAP, 0x4B430E00u | (c->menuRow - (u32)MAP_ROW_ACTION));
+        }
+        log_block(c);
+        menu_reblit(c);
+        return;
+    }
+    if (c->menuRow == (u32)MENU_ROW_KEYMAP) {
+        c->menuPage = 1;
+        c->menuRow = (u32)MAP_ROW_MODE;
+    } else if (c->menuRow == (u32)MENU_ROW_PICTURE) {
         const u32 n = mode_count(c);
         c->mode = dir > 0 ? (c->mode + 1 < n ? c->mode + 1 : 0u) : (c->mode ? c->mode - 1 : n - 1);
         c->menuDirty = 1;
@@ -12614,8 +13160,14 @@ static u32 menu_key(Context *c, const u32 *k, u32 type)
         const u32 scan = k[1] & 0xFFu;
         return (c->keysDown[scan >> 5] & (1u << (scan & 31u))) ? 0u : 1u;   // the game's release, or nobody's
     }
+    if (c->menuCapture && type == (u32)EEventKeyDown) {
+        map_capture(c, k[1] & 0x1FFu);              // the key as pressed, before any turn
+        return 1;
+    }
     if (type != (u32)EEventKey)
         return 1;
+    if (c->menuCapture)
+        return 1;                                   // the selection key's own repeats
     u32 turned[4];
     const u32 *t = turn_key(k, turned, c->rot);
     const u32 code = t[0];
@@ -12624,22 +13176,44 @@ static u32 menu_key(Context *c, const u32 *k, u32 type)
         return 1;                           // one press, seen on both key paths
     c->menuLastCode = code;
     c->menuLastTick = now;
+    if (c->menuSwallow && (k[1] & 0x1FFu) == c->menuSwallow - 1u) {
+        c->menuSwallow = 0;                 // the captured key's own EEventKey (after the duplicate test, so the other path drops it too)
+        return 1;
+    }
+    c->menuSwallow = 0;
     log_event(c, NOTE_MENU, 0x4D4B0000u | (code & 0xFFFFu));
+    const u32 rows = c->menuPage ? (u32)MAP_ROWS : (u32)MENU_ROWS;
     if (code == (u32)ECodeUp || code == '2') {
-        c->menuRow = c->menuRow ? c->menuRow - 1 : (u32)MENU_ROWS - 1;
+        c->menuRow = c->menuRow ? c->menuRow - 1 : rows - 1;
         menu_reblit(c);
     } else if (code == (u32)ECodeDown || code == '8') {
-        c->menuRow = (c->menuRow + 1 < (u32)MENU_ROWS) ? c->menuRow + 1 : 0u;
+        c->menuRow = (c->menuRow + 1 < rows) ? c->menuRow + 1 : 0u;
         menu_reblit(c);
     } else if (code == (u32)ECodeLeft || code == '4') {
         menu_step(c, -1);
     } else if (code == (u32)ECodeRight || code == '6') {
         menu_step(c, 1);
     } else if (code == (u32)ECodeSelect || code == (u32)ECodeEnter || code == '5') {
-        if (c->menuRow == (u32)MENU_ROW_BACK)
+        if (c->menuPage && c->menuRow == (u32)MAP_ROW_BACK) {
+            c->menuPage = 0;
+            c->menuRow = (u32)MENU_ROW_KEYMAP;
+            menu_reblit(c);
+        } else if (c->menuPage && c->menuRow == (u32)MAP_ROW_RESET) {
+            for (u32 a = 0; a < 8; a++)
+                c->mapKey[a] = 0;
+            c->menuDirty = 1;
+            log_event(c, NOTE_KEYMAP, 0x4B520000u);
+            menu_reblit(c);
+        } else if (c->menuPage && c->menuRow - (u32)MAP_ROW_ACTION < 8u) {
+            c->menuCapture = c->menuRow - (u32)MAP_ROW_ACTION + 1u;   // the next key down is the action's
+            c->menuCaptureTick = now;
+            log_event(c, NOTE_KEYMAP, 0x4B570000u | (c->menuCapture - 1u));
+            menu_reblit(c);
+        } else if (!c->menuPage && c->menuRow == (u32)MENU_ROW_BACK) {
             menu_close(c);
-        else
+        } else {
             menu_step(c, 1);
+        }
     } else if (code == (u32)ECodeSoftRight) {
         menu_close(c);
     } else if ((code == (u32)ECodeBackspace || t[1] == (u32)EScanBackspace) && !c->menuCDown) {
@@ -12717,7 +13291,7 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
     u32 digit[4], nav[4];
     if (key) {
         key_track(c, (const u32 *)key, type);
-        key = nav_key(c, rotate_key(c, qwerty_key(c, (const u32 *)key, digit), turned), nav);
+        key = map_key(c, (const u32 *)key, rotate_key(c, qwerty_key(c, (const u32 *)key, digit), turned), type, nav);
     }
     const u32 r = old_call2(c->oldControl, OLD_CTL_OFFERKEY, (u32)key, type);
     log_event(c, NOTE_KEY, r);
@@ -14919,7 +15493,7 @@ extern "C" u32 gate6_ui_keyevent(void *self, const void *key, u32 type, Context 
     u32 turned[4], digit[4], nav[4];
     if (key) {
         key_track(c, (const u32 *)key, type);
-        key = nav_key(c, rotate_key(c, qwerty_key(c, (const u32 *)key, digit), turned), nav);   // QWERTY digits, the turn with the picture, then the nav keys as the chosen keys sideways in a race
+        key = map_key(c, (const u32 *)key, rotate_key(c, qwerty_key(c, (const u32 *)key, digit), turned), type, nav);   // QWERTY digits, the turn with the picture, then the key mapper (the player's keys, the nav keys sideways) in a race
     }
     if (GAME_UI_FORWARD_EVENTS && c->oldKeyEvent)
         return ((KeyEvent)c->oldKeyEvent)(c->oldUi, key, type);
