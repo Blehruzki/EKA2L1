@@ -86,6 +86,8 @@ namespace eka2l1::epoc {
         std::unique_ptr<epoc::window> root;
         drivers::handle screen_texture; ///< Server handle to texture of the screen
         drivers::handle dsa_texture;    ///< Texture use for temporary DSA transfer
+        std::vector<std::uint8_t> dsa_shown;   ///< What the panel shows: the framebuffer as the posted rectangles last left it (dispatch update_screen)
+        std::size_t dsa_shown_pitch = 0;       ///< ... at this pitch
 
         epoc::display_mode disp_mode;
 

@@ -17,6 +17,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <cstring>
+#include <cstdlib>
 #include <common/log.h>
 #include <config/config.h>
 #include <dispatch/dispatcher.h>
@@ -288,8 +290,58 @@ namespace eka2l1::dispatch {
                 eka2l1::drivers::filter_option filter = (kern->get_config()->nearest_neighbor_filtering ? eka2l1::drivers::filter_option::nearest : eka2l1::drivers::filter_option::linear);
                 drivers::graphics_command_builder builder;
 
-                // Only one rectangle for now!
-                builder.update_bitmap(scr->dsa_texture, data_ptr, buffer_size, { 0, 0 }, screen_size,
+                // A panel keeps what it was last given: a direct-screen client's
+                // Update(const TRegion&) refreshes the rectangles it names and
+                // nothing else, and a client that posts a region smaller than
+                // the screen leaves the rest showing whatever was there (an
+                // N95 with its slide open, ngage-port round 192: a loader that
+                // kept posting its portrait 240x320 region after the phone
+                // went 320x240 left the right 80 columns stale). So the texture
+                // is fed from a copy that only the posted rectangles update.
+                // The list arrives as the guest's TRect (top-left, bottom-right),
+                // which is what bitgdi and the scdv patch hand over.
+                // EKA2L1_FULLPOST=1 brings the old whole-buffer upload back.
+                static const bool full_post = (std::getenv("EKA2L1_FULLPOST") != nullptr);
+                const char *upload_ptr = data_ptr;
+
+                if (!full_post) {
+                    std::vector<std::uint8_t> &shown = scr->dsa_shown;
+                    const std::size_t bytes_per_pixel = bits_per_pixel / 8;
+
+                    if ((shown.size() != buffer_size) || (scr->dsa_shown_pitch != screen_pitch)) {
+                        shown.assign(data_ptr, data_ptr + buffer_size);
+                        scr->dsa_shown_pitch = screen_pitch;
+                    } else {
+                        for (std::uint32_t i = 0; i < num_rects; i++) {
+                            const std::int32_t *tr = reinterpret_cast<const std::int32_t *>(rect_list + i);
+                            const std::int32_t left = common::max<std::int32_t>(tr[0], 0);
+                            const std::int32_t top = common::max<std::int32_t>(tr[1], 0);
+                            const std::int32_t right = common::min<std::int32_t>(tr[2], screen_size.x);
+                            const std::int32_t bottom = common::min<std::int32_t>(tr[3], screen_size.y);
+
+                            if ((right <= left) || (bottom <= top)) {
+                                continue;
+                            }
+
+                            const std::size_t row_bytes = static_cast<std::size_t>(right - left) * bytes_per_pixel;
+                            const std::size_t x_bytes = static_cast<std::size_t>(left) * bytes_per_pixel;
+
+                            for (std::int32_t y = top; y < bottom; y++) {
+                                const std::size_t off = static_cast<std::size_t>(y) * screen_pitch + x_bytes;
+
+                                if (off + row_bytes > buffer_size) {
+                                    break;
+                                }
+
+                                std::memcpy(shown.data() + off, data_ptr + off, row_bytes);
+                            }
+                        }
+                    }
+
+                    upload_ptr = reinterpret_cast<const char *>(shown.data());
+                }
+
+                builder.update_bitmap(scr->dsa_texture, upload_ptr, buffer_size, { 0, 0 }, screen_size,
                     pixels_per_line);
 
                 // NOTE: This is a hack for some apps that dont fill alpha

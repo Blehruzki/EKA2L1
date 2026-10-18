@@ -2582,3 +2582,22 @@ event handler that calls the framework's own handler has two places to
 act, and which one is right depends on what the framework's does; read
 cone's `HandleWsEventL` before choosing.*
 
+### 14.t The frozen strip with the slide open (round 192, E1604)
+**Symptom.** With the N95's slide open the right 80 columns of the panel
+show a stale frame -- a vertical strip that never moves, undimmed under
+the screen menu -- in every mode; closed, nothing is wrong.
+**Cause.** The region the loader hands `CFbsScreenDevice::Update(const
+TRegion&)` on every post is built once, from the first screen size
+(`fullRgnReady`), so on the 320x240 screen it went on posting
+(0,0)-(240,320). The blit wrote all 320 columns; the panel refreshes
+only what is posted and kept what it had in the rest. The bench could
+not show it: EKA2L1 uploaded the whole framebuffer on every post whatever
+region it was given.
+**Fix.** The region is rebuilt at the turn (`screen_turned`, 0x5A2F). The
+emulator now keeps unposted pixels as a panel does (`EKA2L1_FULLPOST=1`
+for the old upload), and `BENCH_SCREENMODE_TICK` switches the window
+server's own screen mode on the bench, the N95's slide from outside the
+loader. *Lesson: "built once, as soon as the screen size is known" is a
+size assumed forever; the second such bug in a week (14.r), both in the
+same function's neighbours.*
+

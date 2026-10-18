@@ -1567,6 +1567,7 @@ struct Context {
     u32 keyTurn;            // how the arrows turn (cfg word 5): 0 with the picture, 1 as L90, 2 as L270, 3 never
     u32 screenPolls;        // UserSvr::ScreenInfo calls, for rationing its records
     u32 osTurns;            //   EEventScreenDeviceChanged events seen
+    u32 benchModeSteps;     //   BENCH_SCREENMODE_TICK: switches made
     u32 screenW0, screenH0; //   the screen as first reported, to tell a turn from a wide phone
     u32 osTurned;           //   the phone has its screen turned from that
     u32 insetTurned;        //   and the main pane's top Avkon reports while it is
@@ -4663,6 +4664,12 @@ enum { BENCH_TURN_TICK = 0 };
 // size, from the start -- L90 then draws upright and L270 half round, on a
 // panel the bench can show (round 189). 0 ships.
 enum { BENCH_OS_TURNED = 0 };
+// Bench: the window server itself put in screen mode 1 at this tick and back
+// in mode 0 600 ticks later (CWsScreenDevice::SetScreenMode on the
+// environment's screen device), which is what the N95's slide does: the
+// framework's EEventScreenDeviceChanged, the DSA aborts, ScreenInfo's new
+// size, all of it from outside the loader (round 192). 0 ships.
+enum { BENCH_SCREENMODE_TICK = 0 };
 enum { WATCHDOG = 1, WATCHDOG_STALL_S = 4, EUSER_USER_AFTER = 645, STALL_WORDS = 1536,
        STALL_MAGIC = 0x57A11000 };
 // Round 131: the one dump a launch was spent on a minimize -- the heartbeat
@@ -5177,6 +5184,10 @@ extern "C" void gate6_cancel(u32 *self, u32, Context *c);
 // does by itself when the phone takes the foreground away. The event comes
 // back through the same receiver and the same cone path the phone dies in.
 enum { FORCE_DEACTIVATE_AT = 0, CONE_DEACTIVATE_ACTIVE_VIEW = 224 };
+// Round 192: CWsScreenDevice::SetScreenMode(TInt), ws32 177 by epoc9.def's
+// order (SetOrdinalPosition, 211 by the same count, is confirmed on the
+// N95); the bench's RM-409 export table is the proof when it is back.
+enum { WS32_SET_SCREEN_MODE = 177 };
 enum { FORCE_BACKGROUND_AT = 0, WS32_SET_ORDINAL_POSITION = 211,
        NEW_COEENV_ROOTWIN = 0x2c + COEENV_BIAS };
 static const u16 kWs32Name[] = { 'w','s','3','2','.','d','l','l' };
@@ -5262,6 +5273,25 @@ extern "C" void gate6_timer_runl(void *self, u32, Context *c)
     hold_tick(c);
     if (BENCH_TURN_TICK && c->osTurns < 2u && (i32)(user_tickcount() - (u32)BENCH_TURN_TICK - c->osTurns * 500u) >= 0)
         screen_turned(c, 0xBE);         // bench: the screen pretended turned, and back
+    if (BENCH_SCREENMODE_TICK && c->benchModeSteps < 2u && c->realScreenDev &&
+        (i32)(user_tickcount() - (u32)BENCH_SCREENMODE_TICK - c->benchModeSteps * 600u) >= 0) {
+        typedef void (*SetMode)(void *, int);
+        u32 lib = 0;
+        Ptrc16 nm, none;
+        nm.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kWs32Name / 2);
+        nm.text = kWs32Name;
+        none.lengthAndType = (u32)EPtrC << KTypeShift;
+        none.text = 0;
+        void *fn = 0;
+        if (!rlibrary_load(&lib, &nm, &none))
+            fn = rlibrary_lookup(&lib, (int)WS32_SET_SCREEN_MODE);
+        log_event(c, NOTE_SCREEN, 0x5A300000u | (c->benchModeSteps & 0xFFu));
+        log_event(c, NOTE_SCREEN, (u32)fn);
+        log_block(c);
+        if (fn)
+            ((SetMode)fn)(c->realScreenDev, c->benchModeSteps ? 0 : 1);   // bench: the window server's own landscape, and back
+        c->benchModeSteps++;
+    }
     if (HEAP_PEAK_STEP)
         heap_peak(c);
     if (HEAP_EVERY_FRAMES && !(c->frames % (u32)HEAP_EVERY_FRAMES))
@@ -8932,6 +8962,13 @@ static void screen_turned(Context *c, u32 why)
         const u32 fromAvkon = avkon_inset(c);
         c->insetTurned = c->paneGone ? 0u : fromAvkon;
         log_event(c, NOTE_SCREEN, 0x5A2E0000u | (c->insetTurned & 0xFFFFu));
+        // Round 192: the region every post names was built once, from the
+        // first screen size, and a 240x320 region on a 320x240 screen left
+        // the right 80 columns of the panel showing whatever was there --
+        // the frozen strip of rounds 190-191. Built again from the new size
+        // at the next post (gate6_screen_update, 0x5A2F here).
+        c->fullRgnReady = 0;
+        log_event(c, NOTE_SCREEN, 0x5A2F0000u | ((w & 0xFFu) << 8) | (h & 0xFFu));
         if (c->mode >= mode_count(c)) {             // a turned mode on a phone that is wide to begin with
             c->mode = fit_base(c->mode);
             log_event(c, NOTE_MODE_NOW, 0x5A290000u | c->mode);
