@@ -12743,6 +12743,13 @@ static void map_name(u32 code, char *b)
         case 0xA2: n = "VOL+"; break;   case 0xA3: n = "VOL-"; break;
         case 0xC4: n = "CALL"; break;   case 0xC5: n = "END"; break;
         case 0xB4: n = "MENU"; break;
+        // Mechanism switches (MagicKey's own scan-code table, SYMBIAN.md):
+        // a slide or twist phone's open/close, not a key a player presses.
+        // Named here only so the capture shows something readable if one
+        // ever reaches this path; nothing captures or maps them specially.
+        case 0xA8: n = "GRIP-O"; break; case 0xA9: n = "GRIP-C"; break;
+        case 0xAC: n = "TWST-O"; break; case 0xAD: n = "TWST-C"; break;
+        case 0xAE: n = "FLIP-O"; break; case 0xAF: n = "FLIP-C"; break;
         default: break;
         }
         if (!n) { b[0] = 'K'; b[1] = kHex[(code >> 8) & 15]; b[2] = kHex[(code >> 4) & 15]; b[3] = kHex[code & 15]; b[4] = 0; return; }

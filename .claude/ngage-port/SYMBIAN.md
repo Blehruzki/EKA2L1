@@ -1050,6 +1050,29 @@ capabilities, which only a developer-signed or hacked install grants. The
 loader takes the half that needs none: its own target for the media keys,
 and its own key handling for the rest.
 
+**MagicKey's own scan-code table** (`MagicKey.r01`, its UK English resource:
+203 `(0x10..0xFF, name)` pairs, the picker for "maps to") is a usable
+reference for naming `TStdScanCode` values this port has no other source
+for -- read correctly it agrees with `e32keys.h` everywhere both are known
+(arrows, lock keys, F1-F24, 0xA2/0xA3 VolumeUp/VolumeDown) and fills in the
+device-specific range (0xA0-0xFF) that header leaves as `EStdKeyDeviceN` /
+`EStdKeyApplicationN` generics: `0xA4` CBA1, `0xA5` CBA2 (the two softkeys,
+named `LSOFT`/`RSOFT` in this port's own table), `0xA7` OK (select), `0xA8`
+GripOpen, `0xA9` GripClose, `0xAC` TwistOpen, `0xAD` TwistClose, `0xAE`
+FlipOpen, `0xAF` FlipClose (mechanism switches, not key presses -- a
+candybar phone will never send them), `0xB6` Play, `0xB7` Stop, `0xB8`
+Forward, `0xB9` Rewind (media-button names on the same numeric codes a
+keypad digit would use -- real `TStdScanCode` values, not RemCon operation
+ids, so an app that *does* see one needs no special capture for it).
+Checked against the N95's own build-213 log (round 194, 89,842 records):
+`0xAC`/`0xAD`/`0xA8` appear at the slide's own open/close, confirming
+TwistOpen/TwistClose/GripOpen for what round 194 could previously only call
+"the slide's own switches"; none of `0xA2`, `0xA3`, `0xB6`-`0xB9` appear at
+all, in a session where the player pressed the phone's media keys
+repeatedly -- a second, independent confirmation that this phone's media
+keys never reach an application as ordinary key events (the RemCon-only
+routing above), not merely that this port never asked for the right code.
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:
