@@ -1568,6 +1568,8 @@ struct Context {
     u32 screenPolls;        // UserSvr::ScreenInfo calls, for rationing its records
     u32 osTurns;            //   EEventScreenDeviceChanged events seen
     u32 benchModeSteps;     //   BENCH_SCREENMODE_TICK: switches made
+    u32 present3D;          // round 192: the frame of the title's last 3D present (gate6_mem_copy): a race is on
+    u32 navSaid;            //   nav-key translations logged so far
     u32 screenW0, screenH0; //   the screen as first reported, to tell a turn from a wide phone
     u32 osTurned;           //   the phone has its screen turned from that
     u32 insetTurned;        //   and the main pane's top Avkon reports while it is
@@ -1750,6 +1752,7 @@ static void new_vtable_dump(Context *c, const u32 *vt, u32 slots, u32 mark)
 static void heap_peak(Context *c);
 static void hold_tick(Context *c);
 static void menu_open(Context *c);
+static const u8 *game_keys(const Context *c);
 static void screen_turned(Context *c, u32 why);
 // **The game's own resource file.**
 //
@@ -6883,8 +6886,10 @@ extern "C" void *gate6_mem_copy(void *dst, const void *src, int n, Context *c)
             log_event(c, NOTE_PATCH, (u32)src);
             log_event(c, NOTE_PATCH, (u32)dst);
         }
-        if (fromBack)
+        if (fromBack) {
+            c->present3D = c->frames;   // round 192: the race is drawing
             return r;
+        }
         if (!c->stripCleared) { c->stripCleared = 1; log_event(c, NOTE_PATCH, 0x5A210000u); }   // the first 2D frame cleared
         u8 *p = (u8 *)dst + GAME_2D_W * 2;
         for (u32 y = 0; y < (u32)GAME_H; y++, p += GAME_W * 2)
@@ -8361,6 +8366,12 @@ enum { SRC_PITCH_MIN = 160, SRC_PITCH_MAX = 256 };
 #endif
 #ifndef GAME_KEYS_WORDS
 #define GAME_KEYS_WORDS 8
+#endif
+// The ids the title uses when a chosen-key word is 0 (its own defaults, in
+// the KEY SETTINGS order: turn left, turn right, accelerator, brakes, turbo,
+// change view, rear view, horn).
+#ifndef GAME_KEYS_DEFAULT
+#define GAME_KEYS_DEFAULT { 0, 0, 0, 0, 0, 0, 0, 0 }
 #endif
 enum { HOLD_MENU = GAME_HOLD_MENU };
 enum { MENU_ROW_PICTURE = 0, MENU_ROW_KEYS = 1, MENU_ROW_BACK = 2, MENU_ROWS = 3 };
@@ -12306,6 +12317,74 @@ static const u32 *rotate_key(const Context *c, const u32 *k, u32 *out)
     return turn_key(k, out, key_turn(c));
 }
 
+// **Round 192: the nav keys stand in for the chosen keys sideways.** A
+// player sideways on an N95 with the slide open has the nav keys and the
+// media keys and no keypad, and the title's KEY SETTINGS may put steering,
+// accelerator, brakes and turbo anywhere on the keypad (this player: 1, 2,
+// 5, 0, 6). So while the picture is turned -- by the loader's L90/L270 or
+// by the phone's own screen -- and a race is drawing (the 3D present seen
+// within the last eight frames; the pause menu and the rest of the title
+// keep their arrows), Left and Right become the chosen turn keys, Up the
+// accelerator, Down the brakes and the selection key the turbo: the key
+// event's scan code (which is what the title reads) rewritten to the one
+// whose id the title chose, after the arrows have turned with the picture.
+// The ids are read off the title's own object (game_keys, 8 words), a 0
+// meaning its default. A key already the chosen one passes untouched.
+enum { NAV_RACE_FRAMES = 8 };
+static const u8 kScanOfId[0x19] = {
+    0, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,   // ids 1-10: '0'-'9'
+    0x7F, 0x2A,                     // 11 '#', 12 '*'
+    0, 0, 0xA4, 0xA5, 0,            // 15, 16: the softkeys
+    0x10, 0x0E, 0x0F, 0x11,         // 0x12 Up, 0x13 Left, 0x14 Right, 0x15 Down
+    0xA7, 0x01, 0x12 };             // 0x16 select, 0x17 C, 0x18
+static u32 code_of_scan(u32 scan)
+{
+    if (scan >= 0x30 && scan <= 0x39) return scan;
+    switch (scan) {
+    case 0x7F: return '#';  case 0x2A: return '*';
+    case 0x0E: return 0xF807; case 0x0F: return 0xF808; case 0x10: return 0xF809; case 0x11: return 0xF80A;
+    case 0xA7: return 0xF845; case 0xA4: return 0xF842; case 0xA5: return 0xF843;
+    case 0x01: return 0x08;
+    default: return 0;
+    }
+}
+static const u32 *nav_key(Context *c, const u32 *k, u32 *out)
+{
+    static const u32 kDefault[8] = GAME_KEYS_DEFAULT;
+    if (!GAME_KEYS_AT || !(c->osTurned || c->rot))
+        return k;
+    if (c->frames - c->present3D > (u32)NAV_RACE_FRAMES)
+        return k;
+    const u32 *ids = (const u32 *)game_keys(c);
+    if (!ids)
+        return k;
+    const u32 scan = k[1] & 0xFFu;
+    u32 action;
+    switch (scan) {
+    case 0x0E: action = 0; break;       // Left: turn left
+    case 0x0F: action = 1; break;       // Right: turn right
+    case 0x10: action = 2; break;       // Up: accelerator
+    case 0x11: action = 3; break;       // Down: brakes
+    case 0xA7: action = 4; break;       // select: turbo
+    default: return k;
+    }
+    u32 id = ids[action];
+    if (!id || id >= 0x19)
+        id = kDefault[action];
+    const u32 want = (id < 0x19) ? kScanOfId[id] : 0;
+    if (!want || want == scan)
+        return k;
+    out[0] = code_of_scan(want);
+    out[1] = want;
+    out[2] = k[2];
+    out[3] = k[3];
+    if (c->navSaid < 16) {
+        c->navSaid++;
+        log_event(c, NOTE_KEY, 0x4E410000u | (scan << 8) | want);
+    }
+    return out;
+}
+
 // **The hold's menu (round 187).** Holding C used to step the picture mode
 // blind, once a half second, and a player who wanted the mode before last
 // went round again; and the arrows' turn had no switch at all. Now the hold
@@ -12548,10 +12627,10 @@ extern "C" u32 gate6_control_offerkey(void *, const void *key, u32 type, Context
     }
     if (!c->oldControl)
         return 0;
-    u32 digit[4];
+    u32 digit[4], nav[4];
     if (key) {
         key_track(c, (const u32 *)key, type);
-        key = rotate_key(c, qwerty_key(c, (const u32 *)key, digit), turned);
+        key = nav_key(c, rotate_key(c, qwerty_key(c, (const u32 *)key, digit), turned), nav);
     }
     const u32 r = old_call2(c->oldControl, OLD_CTL_OFFERKEY, (u32)key, type);
     log_event(c, NOTE_KEY, r);
@@ -14750,10 +14829,10 @@ extern "C" u32 gate6_ui_keyevent(void *self, const void *key, u32 type, Context 
         if (hold_key(c, (const u32 *)key, type))
             return 1;                       // EKeyWasConsumed
     }
-    u32 turned[4], digit[4];
+    u32 turned[4], digit[4], nav[4];
     if (key) {
         key_track(c, (const u32 *)key, type);
-        key = rotate_key(c, qwerty_key(c, (const u32 *)key, digit), turned);     // QWERTY digits, then landscape: the keys turn with the picture
+        key = nav_key(c, rotate_key(c, qwerty_key(c, (const u32 *)key, digit), turned), nav);   // QWERTY digits, the turn with the picture, then the nav keys as the chosen keys sideways in a race
     }
     if (GAME_UI_FORWARD_EVENTS && c->oldKeyEvent)
         return ((KeyEvent)c->oldKeyEvent)(c->oldUi, key, type);
