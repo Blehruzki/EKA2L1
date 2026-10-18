@@ -25,6 +25,8 @@
 #include <qt/mainwindow.h>
 #include <qt/state.h>
 #include <system/devices.h>
+#include <system/installation/rpkg.h>
+#include <common/fileutils.h>
 
 #include <package/manager.h>
 
@@ -494,3 +496,60 @@ bool python_docgen_option_handler(eka2l1::common::arg_parser *parser, void *user
     return false;
 }
 #endif
+
+// A device installed from the command line: `--installdevice <SYM.ROM> [SYM.RPKG]`,
+// what the Install Device dialog does, for a bench that has no desktop (the
+// ngage-port bench, round 192). The ROM is copied beside the device's files as
+// the dialog copies it.
+bool installdevice_option_handler(eka2l1::common::arg_parser *parser, void *userdata, std::string *err) {
+    const char *rom_path = parser->next_token();
+
+    if (!rom_path) {
+        *err = "Request to install a device, but the ROM path not given";
+        return false;
+    }
+
+    const char *rpkg_path = parser->peek_token();
+    if (rpkg_path && rpkg_path[0] == '-') {
+        rpkg_path = nullptr;
+    } else if (rpkg_path) {
+        parser->next_token();
+    }
+
+    desktop::emulator *emu = reinterpret_cast<desktop::emulator *>(userdata);
+    eka2l1::device_manager *dvcmngr = emu->symsys->get_device_manager();
+    const std::string storage = emu->conf.storage;
+    const std::string root_z_path = eka2l1::add_path(storage, "drives/z/");
+    const std::string rom_resident_path = eka2l1::add_path(storage, "roms/");
+
+    eka2l1::common::create_directories(rom_resident_path);
+
+    auto progress_cb = [](const std::size_t, const std::size_t) {};
+    auto cancel_cb = []() { return false; };
+
+    std::string firmware_code;
+    eka2l1::device_installation_error error = eka2l1::device_installation_none;
+
+    if (rpkg_path) {
+        error = eka2l1::loader::install_rpkg(dvcmngr, rpkg_path, root_z_path, firmware_code, progress_cb, cancel_cb);
+    } else {
+        error = eka2l1::loader::install_rom(dvcmngr, rom_path, rom_resident_path, root_z_path, progress_cb, cancel_cb);
+    }
+
+    if (error != eka2l1::device_installation_none) {
+        *err = "Device installation failed with code " + std::to_string(static_cast<int>(error));
+        return false;
+    }
+
+    dvcmngr->save_devices();
+
+    if (rpkg_path) {
+        const std::string rom_directory = eka2l1::add_path(storage, eka2l1::add_path("roms", firmware_code + "\\"));
+        eka2l1::common::create_directories(rom_directory);
+        eka2l1::common::copy_file(rom_path, eka2l1::add_path(rom_directory, "SYM.ROM"), true);
+    }
+
+    eka2l1::device *lastest = dvcmngr->lastest();
+    std::cout << "Installed device " << (lastest ? lastest->model : std::string("?")) << " (" << firmware_code << ")" << std::endl;
+    return true;
+}

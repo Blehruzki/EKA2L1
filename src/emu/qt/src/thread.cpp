@@ -377,6 +377,7 @@ namespace eka2l1::desktop {
                                "\t\t\t Example: --device RH-29",
             device_set_option_handler);
         parser.add("--install, -i", "Install a SIS.", app_install_option_handler);
+        parser.add("--installdevice", "Install a device from a ROM, with its RPKG when one is given: --installdevice <SYM.ROM> [SYM.RPKG]", installdevice_option_handler);
         parser.add("--remove, -r", "Remove an package.", package_remove_option_handler);
         parser.add("--fullscreen, -f", "Display the emulator in fullscreen.", fullscreen_option_handler);
         parser.add("--mount, -m", "Load a folder/zip as a Game Card ROM.", mount_card_option_handler);

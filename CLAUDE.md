@@ -23,6 +23,8 @@ fork's branches. Changes stay local unless asked otherwise.
 Configured with CMake, `RelWithDebInfo`, into `build/`; the Qt frontend lands at
 `build/bin/eka2l1_qt`. System dependencies that are not vendored and must be
 present: SDL2, and Qt6 `LinguistTools`, `Svg`, `Network` and `OpenGLWidgets`.
+A device can be installed without the desktop dialog:
+`eka2l1_qt --installdevice <SYM.ROM> [SYM.RPKG]` (`src/emu/qt/src/cmdhandler.cpp`).
 
 ## Gotchas
 

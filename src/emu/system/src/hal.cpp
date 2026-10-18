@@ -33,6 +33,8 @@
 #include <drivers/graphics/graphics.h>
 #include <utils/des.h>
 
+#include <cstdlib>
+
 #include <config/config.h>
 
 #define REGISTER_HAL_FUNC(op, hal_name, func) \
@@ -159,10 +161,16 @@ namespace eka2l1::epoc {
         window_server *winserv_;
 
         static void get_screen_info_from_scr_object(epoc::screen *scr, epoc::screen_info_v1 &info) {
+            // UserSvr::ScreenInfo on an N95 reports the size of the screen mode the
+            // window server is in (320x240 with the slide open, 240x320 closed) while
+            // HAL's EDisplayXPixels/YPixels keep the panel's physical size, so the
+            // current mode's size is reported here. EKA2L1_PHYSINFO=1 brings the old
+            // physical size back (ngage-port round 192).
+            static const bool physical = (std::getenv("EKA2L1_PHYSINFO") != nullptr);
             info.window_handle_valid_ = false;
             info.screen_address_valid_ = true;
             info.screen_address_ = scr->screen_buffer_chunk->base(nullptr).cast<void>();
-            info.screen_size_ = scr->size();
+            info.screen_size_ = physical ? scr->size() : scr->current_mode().size;
         }
 
         void get_video_info_from_scr_object(epoc::screen *scr, const epoc::display_mode &mode, epoc::video_info_v1 &info) {

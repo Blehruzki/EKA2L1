@@ -422,6 +422,15 @@ namespace eka2l1::epoc {
             // Force a visible region update when the next screen redraw comes
             if (is_visible()) {
                 scr->need_update_visible_regions(true);
+
+                // A window with direct screen access gets its region settled now, as
+                // wserv's SetExtentL does through AbortDsaIfRequired: a changed region
+                // aborts the DSA (ETerminateRegion) so the client restarts on the new
+                // one. Left to the next server redraw, a running DSA never saw it and
+                // kept drawing inside the old grant (ngage-port round 192, E1613).
+                if (is_dsa_active()) {
+                    scr->recalculate_visible_regions(true);
+                }
             }
         }
     }
