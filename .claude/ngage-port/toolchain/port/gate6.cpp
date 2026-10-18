@@ -1572,6 +1572,7 @@ struct Context {
     u32 navSaid;            //   nav-key translations logged so far
     u32 screenW0, screenH0; //   the screen as first reported, to tell a turn from a wide phone
     u32 osTurned;           //   the phone has its screen turned from that
+    u32 insetUprightDue;    //   started turned: the upright inset still to be asked (round 192)
     u32 insetTurned;        //   and the main pane's top Avkon reports while it is
     u32 excThunk;           // the exception handler's thunk, for the game's threads too
     u32 wrkFault[WRK_FAULT_WORDS]; // a game thread's fault frame, for the main thread to log
@@ -1751,6 +1752,7 @@ static void new_vtable_dump(Context *c, const u32 *vt, u32 slots, u32 mark)
 }
 static void heap_peak(Context *c);
 static void hold_tick(Context *c);
+static u32 *env_screen_device(Context *c);   // CCoeEnv::ScreenDevice, 9.x layout
 static void menu_open(Context *c);
 static const u8 *game_keys(const Context *c);
 static void screen_turned(Context *c, u32 why);
@@ -3219,6 +3221,7 @@ enum { WATCH_THE_SCREEN = 1 };
 // and EKA2L1 answers 32 for it regardless, which would shift the picture.
 enum { HAL_BITS_PER_PIXEL = 76, HAL_OFFSET_TO_FIRST_PIXEL = 79,
        HAL_OFFSET_BETWEEN_LINES = 80, HAL_DISPLAY_MODE = 84, ASK_HAL = 1 };
+enum { HAL_DISPLAY_XPIXELS = 31, HAL_DISPLAY_YPIXELS = 32 };
 // Round 140: HALData::EDisplayMemoryAddress is 78 (hal_data.h, counted). The
 // screen address UserSvr::ScreenInfo answers is kept from the first poll;
 // the game polls every frame, so the hook sees every later answer too, and
@@ -4672,7 +4675,13 @@ enum { BENCH_OS_TURNED = 0 };
 // environment's screen device), which is what the N95's slide does: the
 // framework's EEventScreenDeviceChanged, the DSA aborts, ScreenInfo's new
 // size, all of it from outside the loader (round 192). 0 ships.
-enum { BENCH_SCREENMODE_TICK = 0 };
+// HOLD: ticks before the switch back. TURNED: the turned mode's index, 2 for
+// the RM-409's rotation-270 320x240 (wsini.ini mode 3), which the emulator
+// shows as its buffer lies; it flips a rotation-90 mode. FROM_TURNED: a
+// launch already turned (the app's compat screen-mode set to TURNED), so the
+// knob goes upright first and back.
+enum { BENCH_SCREENMODE_TICK = 0, BENCH_SCREENMODE_HOLD = 2000, BENCH_SCREENMODE_TURNED = 2,
+       BENCH_SCREENMODE_FROM_TURNED = 0 };
 enum { WATCHDOG = 1, WATCHDOG_STALL_S = 4, EUSER_USER_AFTER = 645, STALL_WORDS = 1536,
        STALL_MAGIC = 0x57A11000 };
 // Round 131: the one dump a launch was spent on a minimize -- the heartbeat
@@ -5190,7 +5199,9 @@ enum { FORCE_DEACTIVATE_AT = 0, CONE_DEACTIVATE_ACTIVE_VIEW = 224 };
 // Round 192: CWsScreenDevice::SetScreenMode(TInt), ws32 177 by epoc9.def's
 // order (SetOrdinalPosition, 211 by the same count, is confirmed on the
 // N95); the bench's RM-409 export table is the proof when it is back.
-enum { WS32_SET_SCREEN_MODE = 177 };
+// Both read out of the RM-409 ROM (round 192): 177 sends op 0x13 and 460 op
+// 0x22 with its int, the window server's SetScreenMode and SetAppScreenMode.
+enum { WS32_SET_SCREEN_MODE = 177, WS32_SET_APP_SCREEN_MODE = 460 };
 enum { FORCE_BACKGROUND_AT = 0, WS32_SET_ORDINAL_POSITION = 211,
        NEW_COEENV_ROOTWIN = 0x2c + COEENV_BIAS };
 static const u16 kWs32Name[] = { 'w','s','3','2','.','d','l','l' };
@@ -5216,6 +5227,12 @@ static void bench_ordinal(Context *c, int pos)
 }
 
 static void bench_background(Context *c) { bench_ordinal(c, -1); }
+
+static int bench_mode_next(const Context *c)   // BENCH_SCREENMODE_TICK: the mode for this switch
+{
+    const int first = BENCH_SCREENMODE_FROM_TURNED ? 0 : (int)BENCH_SCREENMODE_TURNED;
+    return c->benchModeSteps ? (int)BENCH_SCREENMODE_TURNED - first : first;
+}
 
 extern "C" void gate6_timer_runl(void *self, u32, Context *c)
 {
@@ -5276,23 +5293,36 @@ extern "C" void gate6_timer_runl(void *self, u32, Context *c)
     hold_tick(c);
     if (BENCH_TURN_TICK && c->osTurns < 2u && (i32)(user_tickcount() - (u32)BENCH_TURN_TICK - c->osTurns * 500u) >= 0)
         screen_turned(c, 0xBE);         // bench: the screen pretended turned, and back
-    if (BENCH_SCREENMODE_TICK && c->benchModeSteps < 2u && c->realScreenDev &&
-        (i32)(user_tickcount() - (u32)BENCH_SCREENMODE_TICK - c->benchModeSteps * 600u) >= 0) {
+    if (BENCH_SCREENMODE_TICK && c->benchModeSteps < 2u && c->coeEnv &&
+        (i32)(user_tickcount() - (u32)BENCH_SCREENMODE_TICK - c->benchModeSteps * (u32)BENCH_SCREENMODE_HOLD) >= 0) {
         typedef void (*SetMode)(void *, int);
+        // The environment's own CWsScreenDevice (E1609: realScreenDev is set
+        // only on the font stand-in path, which this title never takes).
+        u32 *dev = env_screen_device(c);
         u32 lib = 0;
         Ptrc16 nm, none;
         nm.lengthAndType = ((u32)EPtrC << KTypeShift) | (u32)(sizeof kWs32Name / 2);
         nm.text = kWs32Name;
         none.lengthAndType = (u32)EPtrC << KTypeShift;
         none.text = 0;
-        void *fn = 0;
-        if (!rlibrary_load(&lib, &nm, &none))
+        void *fn = 0, *app = 0;
+        if (!rlibrary_load(&lib, &nm, &none)) {
             fn = rlibrary_lookup(&lib, (int)WS32_SET_SCREEN_MODE);
+            app = rlibrary_lookup(&lib, (int)WS32_SET_APP_SCREEN_MODE);
+        }
         log_event(c, NOTE_SCREEN, 0x5A300000u | (c->benchModeSteps & 0xFFu));
         log_event(c, NOTE_SCREEN, (u32)fn);
+        log_event(c, NOTE_SCREEN, (u32)app);
         log_block(c);
-        if (fn)
-            ((SetMode)fn)(c->realScreenDev, c->benchModeSteps ? 0 : 1);   // bench: the window server's own landscape, and back
+        if (fn && dev)
+            ((SetMode)fn)(dev, bench_mode_next(c));   // bench: the window server's own landscape, and back
+        // And the application's own screen device put in that mode, which
+        // on an N95 Avkon's layout switch does (CAknEnv::LoadAknLayoutL ->
+        // CWsScreenDevice::SetScreenSizeAndRotation) and the 5320's Avkon,
+        // with no landscape layout, does not (E1614): without it the
+        // wrapper control's SetExtentToWholeScreen is told the old size.
+        if (app && dev)
+            ((SetMode)app)(dev, bench_mode_next(c));
         c->benchModeSteps++;
     }
     if (HEAP_PEAK_STEP)
@@ -8672,7 +8702,7 @@ static void cfg_save(Context *c)
     c->cfg[0] = (u32)CFG_MAGIC;
     c->cfg[1] = (u32)CFG_VERSION;
     c->cfg[2] = c->mode;
-    c->cfg[3] = c->topInset;
+    c->cfg[3] = c->insetUprightDue ? 0u : c->topInset;   // started turned and never upright: no upright inset yet (0 asks Avkon)
     c->cfg[4] = (u32)c->shiftX;
     c->cfg[5] = c->keyTurn;
     u32 des[2];
@@ -8921,7 +8951,6 @@ static void column_map(Context *c)
 // no turned modes.
 // BENCH_TURN_TICK pretends the answer swapped at that tick, and back 500
 // ticks later, so the path runs on the bench.
-enum { HAL_DISPLAY_XPIXELS = 31, HAL_DISPLAY_YPIXELS = 32 };
 enum { NEW_COECONTROL_WHOLE_SCREEN = 50, NEW_COECONTROL_SIZE = 277, NEW_COECONTROL_DRAWABLE_WINDOW = 262 };
 static void screen_turned(Context *c, u32 why)
 {
@@ -8956,6 +8985,13 @@ static void screen_turned(Context *c, u32 why)
         c->screenW = w;
         c->screenH = h;
         c->osTurned = (w != c->screenW0 || h != c->screenH0);
+        // The line pitch of the new layout, from HAL, when it is one (the
+        // N95 keeps 1280 either way; the bench's window server lays its
+        // buffer out for the mode, 960 upright and 1280 turned, E1611).
+        if (pitch > 0 && (u32)pitch >= w * (c->realBpp >> 3) && (u32)pitch <= 0x10000u) {
+            c->realPitch = (u32)pitch;
+            c->derivedPitch = c->realPitch;
+        }
         // Round 188's log: the window kept its 240x320 and the phone showed
         // the idle screen in the 80 columns beside it. The wrapper control
         // is the window: the whole screen again, as at the start.
@@ -8971,7 +9007,13 @@ static void screen_turned(Context *c, u32 why)
         c->insetJudged = 0;
         c->insetGot = 0;
         const u32 fromAvkon = avkon_inset(c);
-        c->insetTurned = c->paneGone ? 0u : fromAvkon;
+        if (c->osTurned) {
+            c->insetTurned = c->paneGone ? 0u : fromAvkon;
+        } else if (c->insetUprightDue) {        // started turned: the upright pane, now it can be asked
+            c->insetUprightDue = 0;
+            if (fromAvkon)
+                c->topInset = fromAvkon;
+        }
         log_event(c, NOTE_SCREEN, 0x5A2E0000u | (c->insetTurned & 0xFFFFu));
         // Round 192: the region every post names was built once, from the
         // first screen size, and a 240x320 region on a 320x240 screen left
@@ -9170,6 +9212,22 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
         c->screenW = w;
         c->screenH = h;
         if (BENCH_OS_TURNED) { c->osTurned = 1; c->screenW0 = h; c->screenH0 = w; }
+        // Round 192: an N95 launched with the slide open. ScreenInfo says
+        // 320x240 and HAL's panel 240x320 (round 189: HAL does not follow
+        // the slide), so the panel is the base and the phone is turned now;
+        // taken for a wide panel instead, L270 was dropped and the slide
+        // shut later read as the turn. A truly wide panel (the E72) says
+        // the same size both ways and is left alone.
+        int hx = 0, hy = 0;
+        if (firstTime && !c->screenW0 && w != h &&
+            !hal_get(HAL_DISPLAY_XPIXELS, &hx) && !hal_get(HAL_DISPLAY_YPIXELS, &hy) &&
+            (u32)hx == h && (u32)hy == w) {
+            c->osTurned = 1;
+            c->screenW0 = (u32)hx;
+            c->screenH0 = (u32)hy;
+            log_event(c, NOTE_SCREEN, 0x5A310000u);
+            log_event(c, NOTE_SCREEN, ((u32)hx << 16) | ((u32)hy & 0xFFFFu));
+        }
         // Round 186: a turned mode saved by a portrait phone, read on a wide
         // panel (one card in two phones), falls back to its upright base.
         if (c->mode >= mode_count(c)) {
@@ -9187,10 +9245,22 @@ extern "C" void gate6_screen_info(u32 *des, u32, Context *c)
             const u32 fromAvkon = avkon_inset(c);
             c->topInset = c->paneGone ? 0u
                         : (fromAvkon ? fromAvkon : (u32)INSET_DEFAULT);
+            // Started turned (round 192): what Avkon answers now is the
+            // turned layout's pane, not the upright one cfg_save keeps, so
+            // it goes to the turned inset and the upright one is asked at
+            // the first turn upright (screen_turned).
+            if (c->osTurned && !BENCH_OS_TURNED) {
+                c->insetTurned = c->paneGone ? 0u : fromAvkon;
+                c->topInset = c->paneGone ? 0u : (u32)INSET_DEFAULT;
+                c->insetUprightDue = !c->paneGone;
+            }
             // And then whatever the player chose last time, which overrides
             // both. Read after the defaults so that a config carrying only a
             // mode still gets this device's inset.
+            const u32 insetBefore = c->topInset;
             cfg_load(c);
+            if (c->topInset != insetBefore)     // an upright inset saved by an upright launch stands
+                c->insetUprightDue = 0;
         }
         screen_format(c);
         log_event(c, NOTE_SCREEN, (u32)bpp);
@@ -12069,6 +12139,11 @@ extern "C" void gate6_screen_release(u32 *self4, u32 *font, Context *c)
     ((Fn)((const u32 *)map[0])[NEW_MAP_RELEASE_FONT])((void *)map, font);
 }
 
+static u32 *env_screen_device(Context *c)
+{
+    return c->coeEnv ? (u32 *)((const u32 *)c->coeEnv)[NEW_COEENV_SCREEN / 4] : 0;
+}
+
 static u32 *screen_standin(Context *c)
 {
     if (c->fakeScreenDev)
@@ -12436,6 +12511,7 @@ static const u8 *game_keys(const Context *c)
     return (const u8 *)game + GAME_KEYS_AT;
 }
 
+enum { BENCH_KEYS_SEARCH = 0 };
 static void game_keys_note(Context *c)
 {
     const u8 *k = game_keys(c);
@@ -12445,6 +12521,17 @@ static void game_keys_note(Context *c)
     log_event(c, NOTE_MENU, (u32)k);
     for (u32 i = 0; i < (u32)GAME_KEYS_WORDS; i++)
         log_event(c, NOTE_MENU, ((const u32 *)k)[i]);
+    // Bench: the game object searched for this player's five chosen ids as
+    // words (2 3 6 1 7, the user.dat of round 191), each offset logged
+    // 0x4B5A0000 then the offset. 0 ships.
+    if (BENCH_KEYS_SEARCH) {
+        const u32 *g = (const u32 *)(k - GAME_KEYS_AT);
+        for (u32 i = 0; i + 5 < 0x10000u / 4; i++)
+            if (g[i] == 2 && g[i + 1] == 3 && g[i + 2] == 6 && g[i + 3] == 1 && g[i + 4] == 7) {
+                log_event(c, NOTE_MENU, 0x4B5A0000u);
+                log_event(c, NOTE_MENU, i * 4);
+            }
+    }
 }
 
 static void menu_open(Context *c)

@@ -221,7 +221,7 @@ enum { GAME_SRC_ORIGIN = 16 };
 // front of it (gate6_set_exc): the fault's frame is logged first, then the
 // title's handler gets the type.
 #define GAME_KEEP_CATCHER 1
-#define GAME_BUILD 211
+#define GAME_BUILD 212
 
 #endif
 // Round 192: the KEY SETTINGS ids are eight words at +0xE310 of the game
@@ -231,7 +231,11 @@ enum { GAME_SRC_ORIGIN = 16 };
 // same eight words 0x3C bytes from its end (the player's: 2 3 6 1 7 4 5 2,
 // keys 1 2 5 0 6 3 4 1); a word of 0 is the title's default. Logged at the
 // hold's menu (0x4B59); the nav keys stand in for them sideways (nav_key).
+// Measured with the player's save loaded (E1622: the words 2 3 6 1 7 found
+// at +0xE314; +0xE310 holds 0). Build 211 read +0xE310, from the save
+// writer's order, and steered the nav keys one action off (E1621). The
+// defaults are the image's own table (0x10179e80: 13 14 6 8 3 2 9 7).
 #define GAME_TLS_FN 0xc8b2c
-#define GAME_KEYS_AT 0xE310
+#define GAME_KEYS_AT 0xE314
 #define GAME_KEYS_WORDS 8
-#define GAME_KEYS_DEFAULT { 0x13, 0x14, 6, 8, 1, 2, 9, 7 }
+#define GAME_KEYS_DEFAULT { 0x13, 0x14, 6, 8, 3, 2, 9, 7 }

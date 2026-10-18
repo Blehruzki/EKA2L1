@@ -2601,3 +2601,40 @@ loader. *Lesson: "built once, as soon as the screen size is known" is a
 size assumed forever; the second such bug in a week (14.r), both in the
 same function's neighbours.*
 
+**Reproduced and verified on the bench (E1609-E1616, E1624).** The bench
+only showed it once the emulator behaved as the N95 does at every step of
+the slide: `UserSvr::ScreenInfo` following the screen mode
+(`EKA2L1_PHYSINFO=1` for the old answer), a window's new extent settling its
+direct screen access at once (wserv's `AbortDsaIfRequired`), and the app's
+screen device told the mode, as Avkon's layout switch tells it on the N95
+(the knob calls ws32 460, `SetAppScreenMode`). Then E1615, with the reset
+disabled, showed the right 80 columns frozen beside the live picture. E1616
+and E1624 have the reset enabled, and nothing is frozen.
+
+### 14.u The nav keys steered one action off (round 192, E1621-E1623)
+**Symptom.** On the bench with this player's own save, Up held in a turned
+race left the car at 0 km/h, and select fired the turbo.
+**Cause.** The chosen key ids were read at game+0xE310, an offset taken
+from the save writer's order and never measured on a loaded save. They
+start one word later. The default table in game.h also had the turbo as 1
+where the image's own table says 3.
+**Fix.** A search of the game object for the player's ids found them at
++0xE314 (E1622). `GAME_KEYS_AT` 0xE314, and the defaults copied from the
+image (0x10179e80). Up then becomes 5 and the car runs at 200 km/h
+(E1623). *Lesson: a fresh bench save is all defaults, and an offset off by
+one word reads defaults just as well; test with the player's own save.*
+
+### 14.v A phone launched with its slide open was taken for a wide panel (round 192, E1620, E1625)
+**Symptom.** Found by reading the code against the player's start-turned
+video. An N95 started with the slide open reports 320x240 at the first
+`ScreenInfo`. The loader took that for a wide panel such as the E72's, so
+L270 fell back to its upright base. When the slide shut, the upright screen
+was read as the turn.
+**Cause.** The base the turn is measured from was the first screen size
+reported.
+**Fix.** At the first `ScreenInfo`, HAL's panel size (31/32), which does not
+follow the slide, is compared with it. When the two are swapped the phone
+started turned (0x5A31): the panel is the base and the turned modes stay.
+Avkon's pane at that moment goes to the turned inset. The upright inset is
+asked at the first turn upright, and a save made before then stores none.
+

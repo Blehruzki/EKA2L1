@@ -963,6 +963,31 @@ stayed frozen. EKA2L1 uploaded the whole frame buffer on every post and
 could not show it; it keeps unposted pixels now (`EKA2L1_FULLPOST=1` for
 the old way, `EMU_PATCHES.md`).
 
+## What a screen-mode change does to a window and its DSA (round 192)
+
+Read from the window server's source (graphics, `windowing/windowserver/nonnga/SERVER`):
+
+- **The app's screen device keeps its own size.** `DWsScreenDevice` answers
+  `SizeInPixels` (`EWsSdOpPixelSize`) from `iAppScreenSizeInPixels`, set at
+  construction and changed only by `SetAppScreenMode` and
+  `SetScreenSizeAndRotation` (`scrdev.cpp` 182-187, 355-446).
+  `CScreen::doSetScreenMode` changes the screen's mode, revalidates the window
+  groups and sends `EEventScreenDeviceChanged` (`screen.cpp` 799-814). It does
+  not touch an app device's size.
+- **Avkon sets it.** `CAknAppUiBase::HandleScreenDeviceChangedL` forwards
+  `KAknHardwareLayoutSwitch` (`AknAppUi.cpp` 943-949), and
+  `CAknEnv::LoadAknLayoutL` puts the new layout's size on the app's device
+  with `SetScreenSizeAndRotation` (`aknenv.cpp` 1328). A ROM whose Avkon has
+  no layout for the mode, such as the 5320's, leaves the device at the old size.
+- **A new extent can abort the DSA.** `CWsClientWindow::SetExtentL` leads to
+  `CWsWindow::AbortDsaIfRequired`, which aborts each DSA whose region changed
+  with `ETerminateRegion` (`WINDOW.CPP` 366, 391-421). The client restarts on
+  the new region. On the N95 this is the second abort after the slide, right
+  after the wrapper's `SetExtentToWholeScreen` (phone211 recs 88835-88846).
+- **The ws32 ordinals** on the RM-409 ROM (`romimg.py`): `CWsScreenDevice::SetScreenMode`
+  is 177 (op 0x13) and `SetAppScreenMode` is 460 (op 0x22). Both were read from
+  the code at the export.
+
 ## Sources
 
 Cloned by `toolchain/port/getsources.sh`:
