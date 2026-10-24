@@ -178,5 +178,11 @@ this directory touches the check. The bench was left with the original exe.
 ## Where it stands
 
 The question the user asked -- why this Asphalt is the slow one -- is answered
-by measurement above. Applying the fixes needs a changed exe, which the game's
-protection prevents, so the rewrite work stops at a verified routine.
+by measurement above. Round A3 found that the check on a changed exe is made
+by the N-Gage platform on the game's code, not by the game, and that the
+`.EXEv` record is not a plain table of digests. Getting a changed exe past the
+platform's check is circumventing it, so the work on running a modified exe
+stops here, and nothing in this directory goes further into that check. The
+rewrite in `patch/fill.c`, its equivalence test, the profile and the bench
+instruments stay as findings. The bench was left with the original exe and the
+`dynarmic` setting.
