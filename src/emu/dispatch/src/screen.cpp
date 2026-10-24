@@ -20,6 +20,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <common/log.h>
+#include <common/time.h>
 #include <config/config.h>
 #include <dispatch/dispatcher.h>
 #include <dispatch/screen.h>
@@ -213,6 +214,26 @@ namespace eka2l1::dispatch {
     }
 
     BRIDGE_FUNC_DISPATCHER(void, update_screen, const std::uint32_t screen_number, const std::uint32_t num_rects, const eka2l1::rect *rect_list) {
+        // EKA2L1_FRAMESTAT=<n>: every n direct-screen posts, log the post count, the
+        // guest instructions executed since the last report (dyncom only) and the
+        // host time, so a frame's cost can be read as emulated work, not host speed.
+        if (static const std::uint32_t every = []() -> std::uint32_t {
+                const char *v = std::getenv("EKA2L1_FRAMESTAT");
+                return v ? static_cast<std::uint32_t>(std::strtoul(v, nullptr, 10)) : 0;
+            }(); every) {
+            static std::uint64_t posts = 0, last_instr = 0, last_exec = 0, last_host = common::get_current_utc_time_in_microseconds_since_epoch();
+            if ((++posts % every) == 0) {
+                const std::uint64_t instr = common::g_cpu_cycle_counter.load(std::memory_order_relaxed);
+                const std::uint64_t exec = common::g_cpu_exec_ns.load(std::memory_order_relaxed) / 1000;
+                const std::uint64_t host = common::get_current_utc_time_in_microseconds_since_epoch();
+                LOG_INFO(HLE_DISPATCHER, "Framestat: posts {} instr/post {} cpu us/post {} host us/post {}", posts, (instr - last_instr) / every,
+                    (exec - last_exec) / every, (host - last_host) / every);
+                last_instr = instr;
+                last_exec = exec;
+                last_host = host;
+            }
+        }
+
         dispatch::dispatcher *dispatcher = sys->get_dispatcher();
         drivers::graphics_driver *driver = sys->get_graphics_driver();
         kernel_system *kern = sys->get_kernel_system();

@@ -54,6 +54,17 @@ namespace eka2l1::common {
     // instructions-per-microsecond the tick SVCs should assume.
     std::uint64_t cycle_tick_ips();
 
+    // CPU speed cap (EKA2L1_CPUCAP=<instructions-per-microsecond>). Called by the
+    // CPU core after each run with the instructions it executed and the host time
+    // that took; sleeps the emulator thread whenever guest code ran faster than the
+    // modelled phone, so emulated work never outpaces it while timers and the clock
+    // stay on host time. A no-op when unset. See EMU_PATCHES.md.
+    void cpu_cap_throttle(const std::uint64_t instructions, const std::uint64_t host_ns);
+
+    // Host nanoseconds the CPU core has spent executing guest code, plus any
+    // sleep the cap added for it: the guest's CPU time as the bench runs it.
+    extern std::atomic<std::uint64_t> g_cpu_exec_ns;
+
     // Virtual microseconds from the cycle counter at that rate. Meaningful only
     // when cycle_tick_ips() != 0.
     inline std::uint64_t cycle_tick_microseconds() {

@@ -22,6 +22,7 @@
  */
 
 #include <chrono>
+#include <thread>
 #include <common/algorithm.h>
 #include <common/platform.h>
 #include <common/time.h>
@@ -43,6 +44,7 @@
 
 namespace eka2l1::common {
     std::atomic<std::uint64_t> g_cpu_cycle_counter{0};
+    std::atomic<std::uint64_t> g_cpu_exec_ns{0};
 
     std::uint64_t cycle_tick_ips() {
         static const std::uint64_t ips = []() -> std::uint64_t {
@@ -50,6 +52,40 @@ namespace eka2l1::common {
             return w ? std::strtoull(w, nullptr, 10) : 0;
         }();
         return ips;
+    }
+
+    void cpu_cap_throttle(const std::uint64_t instructions, const std::uint64_t host_ns) {
+        static const std::uint64_t ips = []() -> std::uint64_t {
+            const char *w = std::getenv("EKA2L1_CPUCAP");
+            return w ? std::strtoull(w, nullptr, 10) : 0;
+        }();
+        g_cpu_exec_ns.fetch_add(host_ns, std::memory_order_relaxed);
+        if (!ips) {
+            return;
+        }
+
+        // Debt: how much longer the modelled CPU would have taken to execute what
+        // the host just executed, in nanoseconds. Only time inside the CPU core
+        // counts, so idle waits and host-side services neither bank credit nor
+        // eat into it. Paid off in sleeps of at least kSleepNs: a sleep costs tens
+        // of microseconds of overshoot, so a sleep per short time slice would hold
+        // the guest below the cap. The measured length of each sleep is what is
+        // subtracted, which absorbs that overshoot too.
+        static constexpr std::int64_t kSleepNs = 1000000;
+        static std::int64_t debt_ns = 0;
+
+        debt_ns += static_cast<std::int64_t>((instructions * 1000) / ips) - static_cast<std::int64_t>(host_ns);
+
+        if (debt_ns > kSleepNs) {
+            const auto before = std::chrono::steady_clock::now();
+            std::this_thread::sleep_for(std::chrono::nanoseconds(debt_ns));
+            const std::int64_t slept = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - before).count();
+            g_cpu_exec_ns.fetch_add(slept, std::memory_order_relaxed);
+            debt_ns -= slept;
+        } else if (debt_ns < -kSleepNs) {
+            // The host was slower than the cap: no credit carried forward.
+            debt_ns = 0;
+        }
     }
 
     std::uint64_t get_current_utc_time_in_microseconds_since_epoch() {

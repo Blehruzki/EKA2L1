@@ -17,6 +17,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <chrono>
 #include <cpu/dyncom/arm_dyncom.h>
 #include <common/time.h>
 #include <cpu/dyncom/arm_dyncom_interpreter.h>
@@ -43,8 +44,11 @@ namespace eka2l1::arm {
         ticks_executed_ = 0;
         state_->NumInstrsToExecute = instruction_count;
 
+        const auto start = std::chrono::steady_clock::now();
         InterpreterMainLoop(state_.get(), ticks_executed_);
         common::add_cpu_cycles(ticks_executed_);
+        common::cpu_cap_throttle(ticks_executed_,
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count());
     }
 
     void dyncom_core::stop() {

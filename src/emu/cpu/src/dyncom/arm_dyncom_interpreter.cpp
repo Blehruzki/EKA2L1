@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+#include <unordered_map>
 #include <string>
 #include <chrono>
 
@@ -142,6 +143,58 @@ struct pc_trace {
     }
 };
 pc_trace g_pc_trace;
+
+// EKA2L1_PCPROF=path -- an exact profile: at each block entry, the instructions
+// executed since the previous one (the bulk-loop step included) are credited to
+// the block that ran them, keyed by that block's first PC. Starts after
+// EKA2L1_PCPROF_SKIP instructions (default 0) and is written to `path` as
+// "pc instructions" lines, largest first, once EKA2L1_PCPROF_LEN instructions
+// (default 2,000,000,000) have been credited. The instructions a run executes
+// after its last block entry are not credited; the header says how many were.
+// For naming the code a guest spends its time in (ngage-port: Asphalt 4).
+struct pc_prof {
+    bool on = false;
+    std::uint64_t skip = 0, len = 2000000000ull, seen = 0, credited = 0;
+    std::uint32_t prev_pc = 0, prev_count = 0;
+    std::unordered_map<std::uint32_t, std::uint64_t> counts;
+    std::string path;
+
+    pc_prof() {
+        const char *w = std::getenv("EKA2L1_PCPROF");
+        if (!w) return;
+        path = w;
+        if (const char *s = std::getenv("EKA2L1_PCPROF_SKIP")) skip = std::strtoull(s, nullptr, 10);
+        if (const char *l = std::getenv("EKA2L1_PCPROF_LEN")) len = std::strtoull(l, nullptr, 10);
+        counts.reserve(1 << 16);
+        on = true;
+    }
+    inline void hit(std::uint32_t pc, std::uint32_t count) {
+        if (!on) return;
+        // A new run starts its count from zero: nothing to credit across the boundary.
+        if (count >= prev_count) {
+            const std::uint32_t d = count - prev_count;
+            seen += d;
+            if (seen > skip) {
+                counts[prev_pc] += d;
+                credited += d;
+                if (credited >= len) dump();
+            }
+        }
+        prev_pc = pc;
+        prev_count = count;
+    }
+    void dump() {
+        on = false;
+        std::vector<std::pair<std::uint32_t, std::uint64_t>> v(counts.begin(), counts.end());
+        std::sort(v.begin(), v.end(), [](const auto &a, const auto &b) { return a.second > b.second; });
+        std::FILE *f = std::fopen(path.c_str(), "w");
+        if (!f) return;
+        std::fprintf(f, "# credited %" PRIu64 " instructions, after skipping %" PRIu64 ", %zu blocks\n", credited, skip, v.size());
+        for (const auto &e : v) std::fprintf(f, "%08X %" PRIu64 "\n", e.first, e.second);
+        std::fclose(f);
+    }
+};
+pc_prof g_pc_prof;
 
 // EKA2L1_MEMSNAP=addr:len:ms:path -- every `ms` milliseconds of host time, the
 // guest's [addr, addr+len) as raw little-endian words to `path` with a
@@ -2859,6 +2912,7 @@ unsigned InterpreterMainLoop(ARMul_State *cpu, std::uint32_t &num_instrs) {
     LOAD_NZCVT;
 DISPATCH : {
     PROF_BLOCK_ENTER(cpu);
+    g_pc_prof.hit(cpu->Reg[15], num_instrs);
     g_pc_trace.hit(cpu->Reg[15], cpu->Reg[13], cpu->Reg.data());
     g_mem_snap.hit(cpu);
     if (!cpu->NirqSig) {

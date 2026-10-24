@@ -73,11 +73,82 @@ The N-Gage app also installs its own `libc`, `libm`, `libz`, `libstdcpp`,
 drive snapshot from before it was taken (scratchpad
 `drives-before-ngage.tgz`) in case the gate6 bench needs the old state back.
 
+## The bench made to run at a phone's speed (round A1)
+
+The game paces itself by the NGI runtime's clock, `runtime.dll` ordinal 11,
+which reads `TTime::UniversalTime()` (euser 855), and drives its loop from
+`CPeriodic`/`RTimer`. Both are host wall-clock time in the emulator, so
+`EKA2L1_CYCLETICK` (tick SVCs only) cannot model the phone here. Instead the
+emulator got a **CPU speed cap**, `EKA2L1_CPUCAP=<instructions per µs>`
+(`EMU_PATCHES.md`): guest code never runs faster than the cap, and timers and
+the clock keep phone-like proportions. Checked: capped at 50, the guest
+measured 50.0. Needs `cpu: dyncom` in `config.yml` (the gate6 bench uses
+dynarmic: put it back afterwards).
+
+Frames are counted at the direct-screen post (`EKA2L1_FRAMESTAT`). The game's
+own `CFPSCounter` (code +0x3B84..+0x3C72, `FPS:%3s.%1s %d` at +0x3C80) is
+dead code: nothing calls it.
+
+**Cost per frame, uncapped dyncom** (instructions are host-independent):
+
+| scene | instructions per frame |
+|---|---|
+| "Activer le son ?" menu, static | 11,210,6xx, constant to the 6th digit |
+| demo race | 7-13 M, mostly 9-11 M |
+
+**Calibration.** The demo race at about 9.5 M instructions a frame gives the
+N95's 10-15 fps (user, by eye) at roughly **115 instructions per µs**: about
+2.9 cycles an instruction at 332 MHz. That figure absorbs everything a phone
+pays and the bench does not count (cache misses, the window server, audio) and
+rests on an estimate by eye. It is a guess until the phone measures a frame
+rate. Uncapped, this container's interpreter runs 130-160, so at 115 the cap
+is barely above it here and will bite on a faster PC.
+
+## Where the time goes (round A1, `EKA2L1_PCPROF`)
+
+Exact profiles: the menu over instructions 2-3 G, the race over 9-12 G.
+
+| image | menu | race |
+|---|---|---|
+| asphalt4_ngi.exe | 93.1% | 92.0% |
+| ngibackbuffer.dll (one block, +CCB8) | 6.9% | 7.1% |
+| drtaeabi.dll (division helpers among it) | 0.0% | 0.5% |
+
+**Software division is not the problem**: 0.5% at most. Suspect 2 dropped.
+
+**The menu** (a still screen, 11.2 M instructions a frame):
+- 65%: `+29736`, the generic sprite painter. Per pixel it re-tests the
+  sprite's format flags (4- or 8-bit palette, alpha mask), converts the
+  palette entry from RGB888 to RGB565 (`+298F4..+2991E`), reads a second alpha
+  nibble, and switches on an effect mode (`[r7+0x34]`). The background is a
+  full-screen sprite drawn through it every frame.
+- 18% + 10%: a translucent rectangle fill, `+2ABAA`, calling a 565 blend
+  function `+52F44` (about 20 Thumb instructions) **once per pixel**: the
+  white wash over the menu background, every frame.
+- 7%: the back buffer's own copy to the panel.
+
+**The race**:
+- 35%: `+333F4`, the textured span filler. Per pixel: affine texture step,
+  texel fetch, a pseudo-random dither step (`muls` by a constant, add), a
+  saturating 565 add for the light; with eight low registers it spills to the
+  stack and reloads inside the pixel (`str r2,[sp,#8]` / `ldr r2,[sp,#8]`).
+- 16%: `+33964`, its transparent twin (`+33B16`: texel, skip if 0, store;
+  about 13 Thumb instructions a pixel).
+- 6.5% `+2E1C8`, then a long tail of 1-3% functions.
+
+So the cost is pixel loops written in Thumb, on every pixel, every frame,
+whether or not anything changed. The fixes that follow are rewrites of those
+loops in ARM with everything in registers, and fast paths that skip the
+general case: a cached 565 palette, an opaque 8-bit sprite path, a two-pixel
+blend. The finish-animation slowdown is likely more of the same (full-screen
+overlays and effect sprites on top of the 3D), still to be measured.
+
 ## Next
 
-1. Frame rate on the bench, from the demo race: count frames (the FPS counter,
-   or the NGI back-buffer flips).
-2. Profile the demo race: `EKA2L1_PCTRACE` over the game's code range, block
-   entries weighted by block size, to name the functions that take the time.
-3. The same through a race finish, for the user's slowdown there.
-4. How the frame reaches the panel: the NGI back buffer and page scaler.
+1. The race finish, profiled, for the user's slowdown there.
+2. A patching route for the exe: room for new ARM code, and whether the
+   platform checks `ASPHALT4_NGI.EXEv` against a changed exe.
+3. First rewrites, measured by instructions per frame on the same scenes:
+   the alpha fill (`+2ABAA`/`+52F44`), the sprite painter's opaque 8-bit
+   path, the two span fillers.
+4. An on-screen frame counter in a phone build, to calibrate the cap.
