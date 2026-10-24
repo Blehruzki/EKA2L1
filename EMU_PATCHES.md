@@ -36,6 +36,7 @@ the emulator.
 | Variable | What it logs | Where | Added |
 |---|---|---|---|
 | `EKA2L1_LEAVESTACK=1` | With every `User::Leave` (already logged with its code, and now its LR), the stack words above it that look like code, so the leaving caller can be named against a ROM's export table. | `kernel/src/svc.cpp` (`leave_start`) | ngage-port r158 |
+| `EKA2L1_PANICSTACK=1` | A thread that panics itself (`User::Panic`, via `Exec::ThreadKill`) logs its PC and LR and every stack word that lands inside a loaded image, each as `image+offset`. Stack scanning finds stale words too: a real return address follows a `BL`/`BLX`. Built to find the N-Gage 2.0 PlayServer's USER 8, which was the install bug below. | `kernel/src/svc.cpp` (`thread_kill`) | ngage-port, Asphalt 4 |
 | `EKA2L1_PCTRACE=lo:hi:path` | Every basic-block entry whose PC is in `[lo,hi)` as `(pc, sp)` word pairs; armed from the first entry at `EKA2L1_PCTRACE_START`, capped at `EKA2L1_PCTRACE_MAX`. With `EKA2L1_PCTRACE_REGS=pc,pc,...` also dumps `r0`–`r15` at those PCs to `<path>.regs`, wherever the PC is and after the cap, so a range that traces nothing (`0:4`) watches a whole run. `EKA2L1_PCTRACE_FLUSH=n` writes the buffer every `n` entries (1 to 4096, default 4096), so a run ended by SIGKILL keeps its tail. For finding where two runs of the same guest code part. | `cpu/src/dyncom/arm_dyncom_interpreter.cpp` | ngage-port r143 |
 | `EKA2L1_BTRECVLOG=path` | Every step of a Bluetooth-over-IP stream receive, with host milliseconds: the guest's request (and the bytes already buffered), an immediate completion, the network thread's read start, a delivery, a completion, a cancel. For telling a receive the emulator never completes from one the guest never asks for. | `services/src/internet/protocols/socket.cpp` (`bt_recv_log`) | ngage-port |
 | `EKA2L1_PCTRACE_REGRING=n` + `EKA2L1_PCTRACE_DUMPAT=pc` | With `EKA2L1_PCTRACE_REGS`: the register entries go round a ring of the last `n` in memory, written to `<path>.regs` (oldest first) when a block at `DUMPAT` is entered -- the moments before an event whose time is not known in advance. | `cpu/src/dyncom/arm_dyncom_interpreter.cpp` (`pc_trace`) | ngage-port |
@@ -214,3 +215,24 @@ sockets use IPv4, and friend addresses stay IPv4 instead of being mapped -- both
 `uv_close` later.
 
 - `EKA2L1_WATCHMAX=<n>`: the cap on reported writes of a plain `EKA2L1_WATCH` (400 by default; a word rewritten every frame filled it before its other writers showed, ngage-port E1471). `src/emu/cpu/src/dyncom/armstate.cpp`.
+
+## A package that spells one new directory two ways
+
+Not a switch: a fix, always on. The SIS installer resolved every file's host
+path before it extracted any of them (`ss_interpreter::interpret`, through
+`io_system::get_raw_path`). Resolution is case-insensitive against what is on
+disk, but at that point nothing was. A package that names the same new
+directory in two spellings therefore got two host directories. The N-Gage 2.0
+app 1.40 does this (`!:\private\20007b39\backup_registration.xml` beside
+`!:\Private\20007B39\Arena\config.xml`), and so does Asphalt 4
+(`2001092b` and `2001092B`). On a case-sensitive host the two directories
+hide each other: every later lookup resolves to one and never sees the
+other's files. The PlayServer looked for `Arena\config.xml`, was sent to the
+twin without it, and panicked **USER 8** (`TDes16::Replace(0, 1, "C")` on the
+empty path it got back). No N-Gage 2.0 game started.
+
+Each target is now resolved again at extraction, after the files before it are
+on disk (`ss_interpreter::extract_target_info::virtual_path_`, resolved in the
+extraction loop of `sis_script_interpreter.cpp`). A device with packages
+already installed under the old code keeps its twin directories; reinstall
+them. To find any: `find <drives> -type d | awk '{print tolower($0)}' | sort | uniq -d`.

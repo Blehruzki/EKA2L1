@@ -67,6 +67,7 @@ namespace eka2l1 {
 
             struct extract_target_info {
                 std::string file_path_;
+                std::u16string virtual_path_;
                 std::uint32_t data_unit_index_;
                 std::uint16_t data_unit_block_index_;
             };

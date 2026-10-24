@@ -657,6 +657,7 @@ namespace eka2l1 {
 
                         if (!install_data->data_units.fields.empty()) {
                             std::string raw_path;
+                            std::u16string virtual_path;
                             if (!file_target.empty()) {
                                 const std::string install_path = get_install_path(file->target.unicode_string, install_drive);
                                 const std::optional<std::u16string> raw_path_opt = io->get_raw_path(common::utf8_to_ucs2(install_path));
@@ -665,10 +666,12 @@ namespace eka2l1 {
                                     return false;
                                 }
                                 raw_path = common::ucs2_to_utf8(*raw_path_opt);
+                                virtual_path = common::utf8_to_ucs2(install_path);
                             }
 
                             extract_target_info info;
                             info.file_path_ = raw_path;
+                            info.virtual_path_ = virtual_path;
                             info.data_unit_block_index_ = file->idx;
                             info.data_unit_index_ = crr_blck_idx;
 
@@ -798,6 +801,18 @@ namespace eka2l1 {
 
                 for (; n < extract_targets.size(); n++) {
                     extract_target_info &target = extract_targets[n];
+
+                    // Resolve again now that the earlier targets are on disk. Every path was
+                    // resolved before anything was extracted, so two spellings of one new
+                    // directory in a package (\private\20007b39\ and \Private\20007B39\, as
+                    // the N-Gage 2.0 app has) each resolved to themselves and became two host
+                    // directories, and later case-insensitive lookups only ever found one.
+                    if (!target.virtual_path_.empty()) {
+                        if (const std::optional<std::u16string> now = io->get_raw_path(target.virtual_path_)) {
+                            target.file_path_ = common::ucs2_to_utf8(*now);
+                        }
+                    }
+
                     if (!extract_file(target.file_path_, target.data_unit_block_index_, target.data_unit_index_)) {
                         cancel_requested = true;
                         break;

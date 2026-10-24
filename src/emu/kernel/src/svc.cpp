@@ -2417,6 +2417,34 @@ namespace eka2l1::epoc {
             exit_category = reason_des.get(pr)->to_std_string(pr);
         }
 
+        // EKA2L1_PANICSTACK=1: a thread panicking itself logs its PC, its LR and the
+        // stack words that land in a loaded image, each as image+offset, so the code
+        // that raised the panic can be named without a debugger.
+        if ((etype == kernel::entity_exit_type::panic) && (thr == kern->crr_thread()) && std::getenv("EKA2L1_PANICSTACK")) {
+            auto name_addr = [&](const std::uint32_t a) -> std::string {
+                for (auto &obj : kern->get_codeseg_list()) {
+                    codeseg_ptr cs = reinterpret_cast<codeseg_ptr>(obj.get());
+                    const std::uint32_t base = cs->get_code_run_addr(pr);
+                    if (base && (a >= base) && (a < base + cs->get_code_size())) {
+                        return fmt::format("{}+{:X}", cs->name(), a - base);
+                    }
+                }
+                return "";
+            };
+            const std::uint32_t sp = kern->get_cpu()->get_reg(13);
+            std::string line = fmt::format(" pc {:X} {} lr {:X} {} |", kern->get_cpu()->get_pc(), name_addr(kern->get_cpu()->get_pc()),
+                kern->get_cpu()->get_lr(), name_addr(kern->get_cpu()->get_lr()));
+            for (std::uint32_t i = 0; i < 128; i++) {
+                const std::uint32_t *w = reinterpret_cast<const std::uint32_t *>(pr->get_ptr_on_addr_space(sp + i * 4));
+                if (!w)
+                    break;
+                const std::string n = name_addr(*w & ~1u);
+                if (!n.empty())
+                    line += fmt::format(" [{:X}]{}", i * 4, n);
+            }
+            LOG_TRACE(KERNEL, "Panic stack ({} {}):{}", exit_category, reason, line);
+        }
+
         thr->kill(etype, common::utf8_to_ucs2(exit_category), reason);
         return epoc::error_none;
     }
