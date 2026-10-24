@@ -175,6 +175,51 @@ mechanism, and that is out of scope for this work. The profile, the analysis,
 the verified fill rewrite and the tools stay here as findings; nothing in
 this directory touches the check. The bench was left with the original exe.
 
+## Why it runs worse than Asphalt 3 (round A4) -- the answer
+
+Both games profiled the same way, unmodified, on the capped dyncom bench.
+Asphalt 3 is "Asphalt 3: Street Rules" (UID 0x2000AFE3); it boots to a
+language menu, then a sound prompt, then runs a demo race on its own, exactly
+like Asphalt 4. So the comparison is demo-race to demo-race.
+
+**Cost per frame, measured in guest instructions (host-independent):**
+
+| scene | Asphalt 3 | Asphalt 4 | A4 / A3 |
+|---|---|---|---|
+| demo race | **7.14 M/frame** (84 frames) | **9.50 M/frame** (196 frames) | **1.33x** |
+| static menu | 7.66 M/frame | 11.21 M/frame | 1.46x |
+
+On the same phone CPU, 33% more work a frame in the race is 33% fewer frames a
+second. **That is the regression the user sees: Asphalt 4 is not doing
+anything new for the money -- it is the same kind of frame, costing a third
+more.**
+
+**Where the difference is, and is not:**
+- **Same renderer.** Both import no OpenGL ES and carry the same `Lib3D`
+  software rasteriser (`CMesh`, `TFace`, `TFakeZFace`, `CSoftLine3D`; A3 also
+  has `CShadow_Low/High`). Neither uses the MBX.
+- **Same output size.** The platform's back-buffer-to-screen copy
+  (`ngibackbuffer.dll +CCB8`, the single biggest block in both) costs about
+  700K instructions a frame in each -- identical -- so both render the same
+  240x320 frame. A4 is not drawing a bigger or extra frame.
+- **Same delivery, same engine type.** ~90% of each race frame is the game's
+  own code; the rest is the shared back buffer. Division is negligible in both.
+- **The extra 2.4 M/frame is entirely A4's own pixel shading.** Both spend the
+  bulk in a few span-filler functions (A3 `+7BA4A`/`+7C9B0`/`+5D962`; A4
+  `+333F4`/`+33964`/`+2E1C8`). A4's readable inner loop (`+33594`) shades each
+  pixel with a texture fetch, a dither/noise step (xor chains), and a
+  saturating 565 light add, spilling to and from the stack every pixel because
+  Thumb's eight registers do not hold the working set. A4 simply does more
+  arithmetic per pixel than A3 for a frame that looks, to the eye and to the
+  frame-copy cost, the same size and the same kind.
+
+So the honest answer to "how is the newer game slower": it renders the same
+sized frame with a heavier per-pixel shader, in Thumb, and gains about a third
+in cost for no change a player would call an improvement. The lever for a
+faster build is that span-filler -- fewer operations per pixel, or ARM with the
+working set in registers (the `patch/fill.c` approach, applied to the shader).
+No game was modified to establish any of this; it is all measurement.
+
 ## Where it stands
 
 The question the user asked -- why this Asphalt is the slow one in absolute
