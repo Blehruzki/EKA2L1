@@ -177,12 +177,23 @@ this directory touches the check. The bench was left with the original exe.
 
 ## Where it stands
 
-The question the user asked -- why this Asphalt is the slow one -- is answered
-by measurement above. Round A3 found that the check on a changed exe is made
-by the N-Gage platform on the game's code, not by the game, and that the
-`.EXEv` record is not a plain table of digests. Getting a changed exe past the
-platform's check is circumventing it, so the work on running a modified exe
-stops here, and nothing in this directory goes further into that check. The
-rewrite in `patch/fill.c`, its equivalence test, the profile and the bench
+The question the user asked -- why this Asphalt is the slow one in absolute
+terms -- is answered where the time goes (above): the game's own per-pixel
+loops in Thumb. **What is not yet done is the comparison the user actually
+asked for: why it runs worse than Asphalt 3.** That needs Asphalt 3 profiled
+the same way (resolution, per-frame pixel work, effect count) and has not been
+started -- it needs the Asphalt 3 package.
+
+On the integrity check (round A3), earlier claims here were overstated and are
+corrected: it is **not** established that the check is "the platform, not the
+game." The byte of a changed exe is read back through a ROM libc routine called
+from a platform DLL (`ngifilemanagerfactory`), but both observed failures ran
+through *game* code -- a divide-by-zero at `asphalt4_ngi.exe+2D4AA` for the
+patched build, a different fault via `+4B8E0` for a one-byte string change. So
+the check may be game-side, platform-side, or both; it has not been cleanly
+localised. What is established: the `.EXEv` record is not a plain CRC/MD5/SHA
+table of any obvious region of the file (`tools/exev.py`).
+
+The rewrite in `patch/fill.c`, its equivalence test, the profile and the bench
 instruments stay as findings. The bench was left with the original exe and the
 `dynarmic` setting.
