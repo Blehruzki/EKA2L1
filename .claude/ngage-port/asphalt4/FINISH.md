@@ -86,11 +86,48 @@ unmodified exe), which corroborates round A4:
   urban stretch or a tunnel with traffic reaches 10-13 M -- more geometry and
   more shaded pixels cost more, as expected of the software renderer.
 
-**To actually measure the finish**, one of:
-1. Capture it on the phone (the user reaches it in normal play) -- a photo of
-   the finish with the FPS counter would do, if a build exposes it.
-2. A save state taken at a race finish on the bench, loaded under the profiler.
-3. A better autopilot, or a scripted input that completes a lap.
+## Update (round A6): the autopilot now finishes the race; no per-frame spike seen
 
-The honest status: the finish slowdown is reported by the user and is plausible
-from the renderer's shape, but it has not been measured here.
+`tools/autodrive.py` was rewritten and now **completes a full three-lap Instant
+Play race** and crosses the finish. What it took:
+- **Fast capture.** An Xlib sub-rectangle grab (~5 ms) instead of spawning a
+  capture tool, so the loop runs ~15 Hz and can react at racing speed.
+- **Continuous proportional steering** holding the d-pad toward the road centroid.
+- **The key fix: recovery must not over-rotate.** A long corrective turn at a
+  junction spins the car until it faces back down the track; the game then shows
+  "WRONG WAY / REVERSE" and stops counting, so the lap never completes. That is
+  why the round-A5 versions never cleared a lap. Short, gentle recovery clears
+  junctions without turning the car around. It now does laps 1, 2 and 3.
+
+**The finish was reached and the race-end cost captured** (dyncom, FRAMESTAT,
+`meas.log`): across the racing-to-garage transition the per-frame cost is
+**mean 7.95 M, peak 10.26 M** -- the same regime as steady racing (~8-9.5 M),
+dropping to ~6 M on the static tuning/garage menu afterward. **No per-frame
+instruction spike at the race end.**
+
+**But the finish/results *animation* itself is not cleanly isolated.** The
+autopilot holds accelerate, which also confirms menus, so it rushes through the
+results screen into the garage before it can be measured; an attempt to make it
+idle at the finish mis-fired mid-race (a no-road stretch at a wall/tunnel looks
+the same as the results screen to the detector; the speedometer's presence is
+the better discriminator and is not yet wired in). So what is shown is that the
+race-end *transition frames* cost no more than racing -- not a clean reading of
+a slow-motion finish cinematic, if one plays.
+
+**What this says about the user's report.** On the bench the CPU cost per frame
+does **not** jump when the race ends. So the "much worse at the finish" seen on
+the phone is most likely **not** a per-frame CPU/renderer spike. More likely
+candidates, none yet measured: the results screen rendering a detailed rotating
+3D car (heavier individual frames, fewer of them), a load/stream hitch as the
+race tears down, or audio. Confirming which needs a clean finish capture.
+
+**To nail the finish animation**, the cheapest routes:
+1. Capture it on the phone (the user reaches it in normal play) -- a photo, or
+   a count of how long the slowdown lasts, pins what it is.
+2. Wire the speedometer-presence check into the autopilot so it idles exactly
+   at the race end and the results sequence plays untouched under FRAMESTAT.
+3. A save state at a race finish, loaded under the profiler.
+
+The honest status: the autopilot finishes the race, and the race-end transition
+costs no more per frame than racing; a distinct finish-animation slowdown was
+reported on the phone but has not been reproduced or isolated on the bench.

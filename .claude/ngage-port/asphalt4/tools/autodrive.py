@@ -93,15 +93,27 @@ def run(dur):
             stuck_ticks = 0
         last_mean = mean
 
-        # Finish/results screen: the road is gone from the band for a sustained
-        # stretch while the picture still changes (an animation, not a stall).
-        # A wall or tunnel is brief and is cleared by stuck-recovery, so a long
-        # no-road-but-moving stretch is the race having ended.
-        noroad_ticks = noroad_ticks + 1 if (frac < 0.08 and moving) else 0
-        if noroad_ticks >= 40:                    # ~3 s
-            print('FINISH detected', flush=True)
+        # Finish/results: once the race has been running a while, a sustained
+        # stretch with no road in the band is the race ending (the results /
+        # finish sequence has no road). Release EVERYTHING and idle so that
+        # sequence plays untouched -- holding accelerate here skips through it
+        # into the garage menu before it can be measured. If road comes back
+        # (a false trigger behind a wall or banner), resume driving.
+        armed = (time.time() > (t_end - dur) + 90)
+        noroad_ticks = noroad_ticks + 1 if frac < 0.08 else 0
+        if armed and noroad_ticks >= 15:          # ~1 s with no road
+            print('FINISH idle', flush=True)
             steer(None); release('5')
-            return
+            while time.time() < t_end:
+                buf, w, h = _grab(root, X)
+                _, f2, _, _ = road_info_from_rgba(buf, w, h)
+                if f2 > 0.30:                     # road is back: it was a false alarm
+                    press('5'); last_mean = None; noroad_ticks = 0
+                    break
+                time.sleep(0.1)
+            else:
+                return
+            continue
 
         if stuck_ticks >= 12:                     # ~0.8 s with no change: nudge out
             # Keep the nudge SHORT. A long turn here over-rotates the car at a
