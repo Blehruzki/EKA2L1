@@ -143,12 +143,40 @@ general case: a cached 565 palette, an opaque 8-bit sprite path, a two-pixel
 blend. The finish-animation slowdown is likely more of the same (full-screen
 overlays and effect sprites on top of the 3D), still to be measured.
 
-## Next
+## A first rewrite, and the exe's protection (round A2)
 
-1. The race finish, profiled, for the user's slowdown there.
-2. A patching route for the exe: room for new ARM code, and whether the
-   platform checks `ASPHALT4_NGI.EXEv` against a changed exe.
-3. First rewrites, measured by instructions per frame on the same scenes:
-   the alpha fill (`+2ABAA`/`+52F44`), the sprite painter's opaque 8-bit
-   path, the two span fillers.
-4. An on-screen frame counter in a phone build, to calibrate the cap.
+`patch/fill.c` replaces the translucent fill `+2ABAA`: the same arithmetic
+(`C*a + P*(16-a)` is `(C-P)*a + 16P` modulo 2^32), `C*a` formed once a
+rectangle, 13 ARM instructions a pixel against about 35 Thumb ones and a call.
+`tools/a4patch.py` appends compiled ARM code (`-fropi`, no relocations
+needed) to the code section, shifts the later sections, writes an entry
+veneer (Thumb `bx pc` into ARM, then `b`) and fixes the header CRC.
+`tools/equiv.py` runs original and patched images under unicorn from the
+original entry point: **1,000 random cases byte-identical**, including clipped
+and off-screen rectangles and out-of-range alphas. The test was tested: the
+original changes exactly the 5,000 pixels of a 100x50 fill, and a deliberately
+broken replacement fails on the second case.
+
+**The patched exe does not run, and neither does any changed exe.** The
+patched build died while loading: a division by zero at `+2D4AA` (divisor
+`[r4+8]` = 0, through `__aeabi_idiv0` / `__rt_div0`, USER-EXEC 3), right after
+the game opened `ASPHALT4_NGI.EXEv`. A control with **one byte changed in a
+dead string** (`FPS:` to `FPT:` in the unused FPS counter's format, no code
+touched, CRC fixed) died too, differently (E32USER-CBase 65). The original
+runs for minutes every time. The code that names the game's own executable
+(`ASPHALT4_NGI.EXE`, literal at `+4C208`, used at `+4BE26`/`+4BE54`) is
+deliberately obfuscated: control-flow flattened through a dispatcher at
+`+50F8C`, with junk bytes after each call. So the exe is protected against
+modification: a changed file trips a check that sabotages the run later.
+
+Getting a modified exe past that check (patching the check, regenerating its
+record, or hiding changes from it at run time) is defeating a protection
+mechanism, and that is out of scope for this work. The profile, the analysis,
+the verified fill rewrite and the tools stay here as findings; nothing in
+this directory touches the check. The bench was left with the original exe.
+
+## Where it stands
+
+The question the user asked -- why this Asphalt is the slow one -- is answered
+by measurement above. Applying the fixes needs a changed exe, which the game's
+protection prevents, so the rewrite work stops at a verified routine.
