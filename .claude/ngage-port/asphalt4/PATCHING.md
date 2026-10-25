@@ -198,3 +198,42 @@ reloads): ~1.8x fewer instructions and all per-pixel stack traffic gone.
 
 Remaining filler: the menu sprite painter (`+29736`). The two race-frame
 fillers (textured + transparent, ~51% of a race frame) are now both done.
+
+## Update: menu sprite painter -- the win is an algorithmic hoist, not a Thumb->ARM rewrite
+
+The painter at `+29736` is not a tight span like the other two. It is a full
+palettized sprite blitter (~500 instructions): clip setup, X/Y flip, 4-bit and
+8-bit indexed source, an optional alpha plane, and a 5-way blend-mode switch
+(0 opaque/colour-keyed, 1 luminance, 2 per-channel RGB via external `blx`
+calls, 3 invert, 4 constant-fill), wrapped in a nested X/Y loop. So "rewrite
+the inner loop in ARM" is the wrong frame for it.
+
+The real waste is in the per-pixel core (`+298D8..+2991E`): for every pixel it
+walks the palette struct and converts a palette entry (3 colour bytes) to RGB565
+-- bank ptr -> palette ptr -> colorkey -> colour-table ptr -> 3 byte loads ->
+shifts, ~24 instructions and **7 memory loads per pixel**. That result depends
+only on the pixel's palette index and the sprite's palette, both constant for
+the whole blit.
+
+Verified that the conversion is a pure function of (palette, index):
+`renderer/palconv_harness.py` runs the shipped block under unicorn against
+`palconv_model.py` and they match **3000/3000** over random palettes, indices
+and colorkeys. The RGB565 packing is
+`((B>>3)<<11) | ((G>>2)<<5) | (R>>3)` from `colortab[i*3..i*3+2]`, and the
+pixel is transparent iff `palette.colorkey == index`.
+
+So the optimization is to hoist that conversion into a per-blit lookup table
+(`renderer/a4_sprite_lut.c`, `a4_build_lut()` -- <=256 entries, built once;
+its output matches the model over 2000 random palettes x 256 entries). The
+common menu path (8-bit source, no flip, mode 0 / no alpha) then reduces to
+`a4_paint_row_keyed()`: index -> lut -> keyed store, which clang compiles to an
+**8-instruction inner loop with zero per-pixel palette work** (ldrb, cmp,
+conditional lut load + store, advance) -- down from ~24 insn and 7 loads for the
+conversion alone. This is the inner-loop shape of the hot path, not a drop-in
+for the whole multi-mode function (the LUT hoist applies to every mode that
+reads palette colours, but only this path is a self-contained leaf; the RGB and
+luminance modes also call external routines).
+
+All three fillers that dominate their frames are now accounted for: textured and
+transparent with verified bit-exact ARM rewrites, and the sprite painter with a
+verified-pure conversion and the LUT-hoist it unlocks.
