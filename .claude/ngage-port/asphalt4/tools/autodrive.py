@@ -21,10 +21,30 @@ BX0, BX1, BY0, BY1 = 185, 760, 355, 450
 TARGET = (450 - BX0) / (BX1 - BX0)   # where the car's lane centre falls in the band
 DEADZONE = 0.05
 
+# the speedometer gauge FACE (bottom-right). A tight box on the white dial, not
+# the scene around it: ~0.80 bright whether the scene behind is a bright street
+# or a dark tunnel (the dial is a bright overlay), and gone on the results /
+# garage screen. An earlier, looser box dropped below threshold in dark tunnels
+# and false-triggered the finish there; this one does not.
+SX0, SY0, SW, SH = 805, 600, 53, 55
+SPEEDO_ABSENT = 0.30        # below this, the dial is gone -> race ended
+SPEEDO_PRESENT = 0.45       # above this during idle -> false alarm, resume
+
 
 def _grab(root, X):
     raw = root.get_image(BX0, BY0, BX1 - BX0, BY1 - BY0, X.ZPixmap, 0xffffffff)
     return raw.data, BX1 - BX0, BY1 - BY0
+
+
+def speedo_bright(root, X):
+    """fraction of bright pixels in the speedometer region -- high while racing."""
+    raw = root.get_image(SX0, SY0, SW, SH, X.ZPixmap, 0xffffffff).data
+    bright = n = 0
+    for i in range(0, len(raw) - 3, 4 * 2):           # every other pixel
+        if (raw[i] + raw[i + 1] + raw[i + 2]) // 3 > 150:
+            bright += 1
+        n += 1
+    return bright / n if n else 0.0
 
 
 def road_info_from_rgba(buf, w, h, step=3):
@@ -93,21 +113,20 @@ def run(dur):
             stuck_ticks = 0
         last_mean = mean
 
-        # Finish/results: once the race has been running a while, a sustained
-        # stretch with no road in the band is the race ending (the results /
-        # finish sequence has no road). Release EVERYTHING and idle so that
-        # sequence plays untouched -- holding accelerate here skips through it
-        # into the garage menu before it can be measured. If road comes back
-        # (a false trigger behind a wall or banner), resume driving.
-        armed = (time.time() > (t_end - dur) + 90)
-        noroad_ticks = noroad_ticks + 1 if frac < 0.08 else 0
-        if armed and noroad_ticks >= 15:          # ~1 s with no road
+        # Race end: the speedometer overlay is gone. This is the reliable signal
+        # -- the gauge stays up through tunnels and walls (which is what fooled
+        # the no-road detector mid-race), and only disappears on the results /
+        # garage screen. When it has been gone ~1 s, the race is over: release
+        # everything and idle so the finish/results sequence plays untouched
+        # (holding accelerate would confirm through it into the garage before it
+        # can be measured). If the gauge comes back it was a false alarm.
+        armed = time.time() > (t_end - dur) + 90
+        noroad_ticks = noroad_ticks + 1 if speedo_bright(root, X) < SPEEDO_ABSENT else 0
+        if armed and noroad_ticks >= 15:          # ~1 s with no speedometer
             print('FINISH idle', flush=True)
             steer(None); release('5')
             while time.time() < t_end:
-                buf, w, h = _grab(root, X)
-                _, f2, _, _ = road_info_from_rgba(buf, w, h)
-                if f2 > 0.30:                     # road is back: it was a false alarm
+                if speedo_bright(root, X) > SPEEDO_PRESENT:   # gauge back: false alarm
                     press('5'); last_mean = None; noroad_ticks = 0
                     break
                 time.sleep(0.1)
