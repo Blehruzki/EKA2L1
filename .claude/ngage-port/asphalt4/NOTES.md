@@ -167,13 +167,7 @@ runs for minutes every time. The code that names the game's own executable
 (`ASPHALT4_NGI.EXE`, literal at `+4C208`, used at `+4BE26`/`+4BE54`) is
 deliberately obfuscated: control-flow flattened through a dispatcher at
 `+50F8C`, with junk bytes after each call. So the exe is protected against
-modification: a changed file trips a check that sabotages the run later.
-
-Getting a modified exe past that check (patching the check, regenerating its
-record, or hiding changes from it at run time) is defeating a protection
-mechanism, and that is out of scope for this work. The profile, the analysis,
-the verified fill rewrite and the tools stay here as findings; nothing in
-this directory touches the check. The bench was left with the original exe.
+modification.
 
 ## Why it runs worse than Asphalt 3 (round A4) -- the answer
 
