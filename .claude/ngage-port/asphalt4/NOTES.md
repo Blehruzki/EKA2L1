@@ -242,3 +242,27 @@ table of any obvious region of the file (`tools/exev.py`).
 The rewrite in `patch/fill.c`, its equivalence test, the profile and the bench
 instruments stay as findings. The bench was left with the original exe and the
 `dynarmic` setting.
+
+## Hardware confirmation of the cause (user)
+
+Two observations from the user on the N95 settle the open questions from the
+bench analysis:
+
+- **Sound on vs off: no noticeable difference.** Audio (MP3 music + SFX) is
+  *not* a meaningful contributor. The bench had already shown audio at ~0% of
+  guest CPU (the emulator HLEs it), and the worry was that a real phone decodes
+  MP3 on the CPU; the hardware says that cost is not what hurts. Audio ruled out.
+- **The more assets on screen, the heavier it feels.** This directly confirms
+  the renderer is the real-hardware bottleneck: cost scales with what is drawn,
+  exactly as the bench measured (open road ~7 M instr/frame, dense city with
+  traffic ~13 M). It is both the per-pixel span shading (rounds A1/A4) and the
+  per-object geometry work -- both the same software-rendering pipeline, no GPU.
+
+So the conclusion is no longer hedged: **Asphalt 4's poor performance is the
+software renderer**, scaling with on-screen geometry and shaded pixels, and A4
+costs ~33% more per frame than Asphalt 3 for the same-sized frame (round A4).
+Audio is not a factor; loading/streaming hitches are not the complaint (the user
+describes steady heaviness, not stutters). The "memory-stall" caveat is not a
+separate cause -- it is how the renderer's cost is paid on the ARM11 (the Thumb
+inner loops spill to the stack every pixel), and it only reinforces that the
+renderer is where the time goes.
