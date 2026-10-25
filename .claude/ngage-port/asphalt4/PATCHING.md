@@ -30,7 +30,7 @@ several more operations. A realistic rewrite:
 | filler | Thumb now | ARM rewrite | per-pixel saving |
 |---|---|---|---|
 | textured | 81 insn, 21 mem | **38 insn, 9 mem (measured, bit-exact)** | ~2.1x fewer insns, mem 21->9 |
-| transparent | 22 insn, 3 mem | ~13 insn, 0 stack mem (est.) | ~1.7x |
+| transparent | 22 insn, ~5 mem | **12 insn, ~2 mem, 0 reloads (measured, bit-exact)** | ~1.8x fewer insns, all reloads gone |
 
 The textured figure is now the *measured* result of a built, bit-exact rewrite
 (see the update at the bottom), not an estimate. Note the floor is not zero stack
@@ -175,8 +175,26 @@ from vshift as `(1<<vshift)-1` to free one slot, but only if the game always
 ships that texture layout -- not assumed here, to keep the rewrite a faithful
 drop-in for arbitrary args.)
 
-Status unchanged where it counts: the rewrite is proven correct offline, but the
-anti-tamper check (section 3) still means no patched exe runs on the device, so
-this cannot be confirmed end-to-end on hardware. Next fillers (transparent
-`+33b16`, sprite `+29736`) would follow the same write-then-`verify_rewrite.py`
-path.
+Next fillers (transparent `+33b16`, sprite `+29736`) would follow the same
+write-then-`verify_rewrite.py` path.
+
+## Update: transparent-filler ARM rewrite written and verified bit-exact
+
+`renderer/a4_span_transparent.c` rewrites the keyed/transparent copy loop
+(`+33B16`): affine texel lookup, colour-key test (a zero texel is transparent
+and leaves the destination pixel untouched), store if non-zero. No light blend,
+so unlike the textured filler the whole working set -- 4 advancing values (dst,
+u, v, counter) + 6 invariants (ustep, vstep, umask, vmask, vshift, tex) + ~2
+scratch -- fits inside ARM's 14 registers. Decode confirmed first try (the loop
+has no tricky saturating-add) and the rewrite is **bit-exact over 2000 randomized
+spans** (`renderer/transp_harness.py`, `transp_model.py`, `transp_verify.py`;
+the inputs include the destination's prior contents so the key-skip is checked).
+
+Here clang `-O2` for ARM is already optimal -- **12 insn/pixel, ~2 mem/pixel, 0
+invariant reloads** (all 6 invariants stay resident; the only loop memory is the
+texel load and the conditional `strhne` store). So no hand-written asm is needed
+for this one. Against the shipped Thumb loop (22 insn, ~5 mem/pixel including 3
+reloads): ~1.8x fewer instructions and all per-pixel stack traffic gone.
+
+Remaining filler: the menu sprite painter (`+29736`). The two race-frame
+fillers (textured + transparent, ~51% of a race frame) are now both done.
