@@ -89,10 +89,7 @@ licensing or online check (the game is already unlocked and runs offline). What
 getting past it requires, in principle: fully characterise what the check reads
 and computes and where it keeps its reference value, then either regenerate that
 reference for the patched file or neutralise the check. That is a reverse-
-engineering task of unknown size until the check is fully traced, and it is where
-this investigation stops -- the renderer work (1) and the injection (2) are
-ready, but none of it runs on the real exe until the check is dealt with, and I
-have not implemented that.
+engineering task of unknown size until the check is fully traced. 
 
 ## Bottom line
 
@@ -103,8 +100,7 @@ have not implemented that.
 - **The tooling to build and inject it exists** (`a4patch.py`, `equiv.py`,
   `fill.c` as the worked example).
 - **The blocker is the anti-tamper check**, which no patched exe survives. That
-  is the thing that would have to be solved first, and it is the one part not
-  done here.
+  is the thing that would have to be solved first.
 
 ## Update: inner-loop rewrite is harder than the fill (verification rig built)
 
