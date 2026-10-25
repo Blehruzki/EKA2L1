@@ -179,3 +179,27 @@ is specifically on a *won* race, that sequence is the one thing left to capture
 Tools used: `tools/autodrive.py` (now finishes races and idles at the end) and
 the throwaway `finwatch.py` gauge watcher. No game modified; bench restored to
 `dynarmic`.
+
+
+## Won-race sequence (round A8): not reachable with the autopilot
+
+Asked to capture a *won* race's victory/results sequence. It is not practical
+on the bench:
+- **No difficulty setting.** Options -> Gameplay has only units (km/h/mph) and a
+  "vehicles eliminated" toggle; Options -> Controls has only the control
+  orientation. Nothing makes the AI beatable.
+- **Nitro is already used.** Holding accelerate (`5`) fires nitro (the "x1
+  NITRO" flames), so there is no extra speed lever the autopilot is missing.
+- **The autopilot cannot win.** Across a race it holds 8th of 8 the whole way
+  (position checked at 45 s intervals: 8/8 throughout) -- it road-follows but is
+  far slower than the AI, which is why the finish it reaches is "RACE LOST".
+  Winning would need near-optimal high-speed driving for three laps against
+  seven AI cars, a much larger problem than lane-keeping and not worth the
+  many long runs it would take with no real prospect of a win.
+
+So the won-race victory sequence was not captured. The cheapest way to see it
+is the phone: win a race in normal play and glance at (or photograph) the
+victory screen. What round A7 established still holds for the end-of-race state
+that was measured -- no per-frame cost spike -- and a victory screen, being a
+richer 2D/overlay sequence, is unlikely to behave differently in per-frame CPU
+terms, though that is a prediction, not a measurement.
