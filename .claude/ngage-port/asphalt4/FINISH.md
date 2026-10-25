@@ -203,3 +203,12 @@ victory screen. What round A7 established still holds for the end-of-race state
 that was measured -- no per-frame cost spike -- and a victory screen, being a
 richer 2D/overlay sequence, is unlikely to behave differently in per-frame CPU
 terms, though that is a prediction, not a measurement.
+
+## Hardware confirmation (user)
+
+The user confirms the frame rate at the finish is **the same whether the race is
+won or lost**. That corroborates the round-A7 bench finding on real hardware:
+the end-of-race screen is not a per-frame cost event, and the won-race sequence
+(which could not be driven to on the bench) behaves no differently, so leaving
+it uncaptured costs nothing. The finish is not where Asphalt 4's slowness lives;
+the steady-race per-pixel software rendering (rounds A1, A4) is.
