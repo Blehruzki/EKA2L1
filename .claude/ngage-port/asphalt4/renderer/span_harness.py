@@ -2,8 +2,8 @@
 code +3357A..+3361C) under unicorn with controlled inputs, and compare its output
 to span_model.py. Proves the decode is correct. venv/bin/python (needs unicorn).
 """
-import random, struct, sys
-sys.path.insert(0, '/tmp/claude-0/-home-user-EKA2L1/ec0d1fd1-56fb-5d4c-9116-ef9f3a4e0d5a/scratchpad/a4tools')
+import os, random, struct, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import span_model
 from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB
 from unicorn.arm_const import (UC_ARM_REG_R0, UC_ARM_REG_R4, UC_ARM_REG_R7,
@@ -12,7 +12,9 @@ from unicorn.arm_const import (UC_ARM_REG_R0, UC_ARM_REG_R4, UC_ARM_REG_R7,
 CODEBASE = 0x8000
 LOOP = 0x3357A
 STOP = 0x3361C
-CODE = open('/tmp/claude-0/-home-user-EKA2L1/ec0d1fd1-56fb-5d4c-9116-ef9f3a4e0d5a/scratchpad/a4/a4.code', 'rb').read()
+# a4.code is the exe's extracted code section (not checked in -- it is game
+# data). Regenerate it from the user's asphalt4_ngi.exe and point A4_CODE at it.
+CODE = open(os.environ.get('A4_CODE', 'a4.code'), 'rb').read()
 
 STACK, TEX, DST, COV = 0x70000000, 0x60000000, 0x61000000, 0x62000000
 SP = STACK + 0x8000

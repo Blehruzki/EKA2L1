@@ -1,15 +1,14 @@
 """span_trace.py -- single-step the ORIGINAL textured span inner loop for one
 pixel under unicorn, logging registers at each instruction, to find where the
 reimplementation diverges. No running exe needed."""
-import struct, sys
-sys.path.insert(0, '/tmp/claude-0/-home-user-EKA2L1/ec0d1fd1-56fb-5d4c-9116-ef9f3a4e0d5a/scratchpad/a4tools')
+import os, struct, sys
 from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_HOOK_CODE
 from unicorn.arm_const import (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3,
                                UC_ARM_REG_R4, UC_ARM_REG_R7, UC_ARM_REG_R12, UC_ARM_REG_LR,
                                UC_ARM_REG_SP)
 
 CODEBASE, LOOP, STOP = 0x8000, 0x3357A, 0x3361C
-CODE = open('/tmp/claude-0/-home-user-EKA2L1/ec0d1fd1-56fb-5d4c-9116-ef9f3a4e0d5a/scratchpad/a4/a4.code', 'rb').read()
+CODE = open(os.environ.get('A4_CODE', 'a4.code'), 'rb').read()
 STACK, TEX, DST, COV = 0x70000000, 0x60000000, 0x61000000, 0x62000000
 SP = STACK + 0x8000
 

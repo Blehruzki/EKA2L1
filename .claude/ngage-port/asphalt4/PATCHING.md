@@ -27,10 +27,17 @@ registers. The whole working set then stays in registers and every one of those
 stack accesses disappears; ARM's barrel shifter and conditional execution fold
 several more operations. A realistic rewrite:
 
-| filler | Thumb now | ARM rewrite (est.) | per-pixel saving |
+| filler | Thumb now | ARM rewrite | per-pixel saving |
 |---|---|---|---|
-| textured | 81 insn, 21 mem | ~30 insn, 0 stack mem | ~2.5x fewer insns, all per-pixel stack traffic gone |
-| transparent | 22 insn, 3 mem | ~13 insn, 0 stack mem | ~1.7x |
+| textured | 81 insn, 21 mem | **38 insn, 9 mem (measured, bit-exact)** | ~2.1x fewer insns, mem 21->9 |
+| transparent | 22 insn, 3 mem | ~13 insn, 0 stack mem (est.) | ~1.7x |
+
+The textured figure is now the *measured* result of a built, bit-exact rewrite
+(see the update at the bottom), not an estimate. Note the floor is not zero stack
+traffic: the loop has 16 values that must stay live across it (6 advancing:
+dst, cov, u, v, light, counter; 10 invariant) and the saturating blend needs 4
+scratch registers, so with ARM's 14 usable registers exactly 6 invariants must
+be reloaded per pixel. The earlier "~30 insn, 0 stack" was optimistic.
 
 Those two are ~51% of a race frame. Halving their cost is roughly **-25% frame
 cost** on the bench's instruction count; on real hardware the gain should be
@@ -140,3 +147,36 @@ prerequisite for the ARM/register rewrite. Remaining: write the rewrite (keep th
 it against the original with the same rig; then the transparent filler and the
 menu sprite painter. The device-test wall (anti-tamper) is unchanged and still
 gates any on-hardware confirmation.
+
+## Update: textured-filler ARM rewrite written and verified bit-exact
+
+Both forms of the rewrite are in `renderer/`, each **bit-exact over 2000
+randomized spans** against the original loop (run through `verify_rewrite.py`,
+which drives the shipped Thumb loop and the rewrite on identical inputs under
+unicorn and requires byte-identical output):
+
+- `a4_span_textured.c` -- the C rewrite. clang `-O2` for ARM: **43 insn/pixel,
+  13 mem/pixel** (10 invariant reloads + texel load + 2 stores). clang even
+  reloads K1/K2 from the literal pool each pixel.
+- `a4_span_textured.s` -- hand-tuned ARM hitting the register floor: **38
+  insn/pixel, 9 mem/pixel** (6 invariant reloads + texel + 2 stores). Keeps the
+  6 advancing values plus the 4 hottest invariants (K1, K2, tex, umask) resident
+  and reloads only the 6 cold invariants (vmask, vshift, ustep, vstep, thresh,
+  lightmask) straight from the incoming stack args -- no spill stores.
+
+Measured against the shipped Thumb loop (81 insn, 21 mem/pixel): the hand-tuned
+version is **2.1x fewer instructions and 2.3x less per-pixel memory traffic**.
+That traffic cut is the part that should matter most on an ARM11.
+
+Why not zero stack traffic (the register-pressure floor): 16 values live across
+the whole loop and the blend peaks at 4 scratch registers; 16 + 4 > 14, so at
+least 6 invariants must come from memory each pixel. (umask could be derived
+from vshift as `(1<<vshift)-1` to free one slot, but only if the game always
+ships that texture layout -- not assumed here, to keep the rewrite a faithful
+drop-in for arbitrary args.)
+
+Status unchanged where it counts: the rewrite is proven correct offline, but the
+anti-tamper check (section 3) still means no patched exe runs on the device, so
+this cannot be confirmed end-to-end on hardware. Next fillers (transparent
+`+33b16`, sprite `+29736`) would follow the same write-then-`verify_rewrite.py`
+path.
