@@ -122,3 +122,21 @@ rewrite needs more careful single-step reverse engineering of the blend than has
 been done, and even once correct it still cannot be confirmed end-to-end on the
 device because of the anti-tamper check. The rig is the reusable part; the
 bit-exact model is unfinished.
+
+## Update: inner loop now reverse-engineered and verified bit-exact
+
+Single-stepped the original loop under unicorn (`renderer/span_trace.py`) to find
+the divergence. Root cause: the Thumb disassembler was mis-rendering the operand
+order of some two-register ALU ops (showing e.g. `ands r1,r2` where the hardware
+does `ands r2,r1`), so the reimplementation of the saturating-add used a constant
+`0x800` for the green-channel carry where the original uses the *computed* carry.
+The trace gave the true data-flow; with the fix the model is **bit-exact: 2000/
+2000 randomized spans match the original** (`renderer/span_model.py`, checked by
+`renderer/span_harness.py`).
+
+So the textured filler is now fully understood and reproducible, which is the
+prerequisite for the ARM/register rewrite. Remaining: write the rewrite (keep the
+~12-value working set in ARM's registers, drop all 21 per-pixel spills) and verify
+it against the original with the same rig; then the transparent filler and the
+menu sprite painter. The device-test wall (anti-tamper) is unchanged and still
+gates any on-hardware confirmation.

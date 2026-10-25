@@ -1,9 +1,4 @@
-"""span_model_wip.py -- WORK IN PROGRESS, NOT yet bit-exact. span_harness.py
-shows only a minority of pixels match the original, so the decode below (esp.
-the saturating-add) is still wrong somewhere. Kept as the current best decode
-and the starting point for single-step fixing, not as a finished model.
-
-Original intent: bit-exact Python reimplementation of Asphalt 4's textured+light
+"""span_model.py -- bit-exact Python reimplementation of Asphalt 4's textured+light
 span inner loop (shipped Thumb at code +3357A), transcribed op-for-op from the
 disassembly. Used to verify understanding against the original run under unicorn.
 
@@ -23,18 +18,20 @@ K1, K2 = 0x0019660D, 0x3C6EF35F
 
 
 def sat565(texel, lc):
-    # transcription of +335C6..+33602 (per-channel saturating RGB565 add)
-    s = (texel + lc) & M32                 # +335C6 raw sum
-    x = (texel ^ lc) & M32                 # +335C8 texel^lc
-    c1 = ((x ^ s) & 0x20) & M32            # +335D0/D2 carry at bit5 boundary
-    s = (s - c1) & M32                     # +335D8
-    y = (s ^ x) & M32                      # +335DE
-    c2 = (y & 0x800) & M32                 # +335E4 carry at bit11 boundary
-    s2 = (s - c2) & M32                    # +335E6  (= sum-c1-c2, saved sp+0xC)
-    c3 = (s2 & 0x10000) & M32              # +335EE carry at bit16 (overflow)
-    carries = (c3 | 0x800 | c1) & M32      # +335F6/F8  combined carry bits
-    mask = (carries - ((carries >> 4) & M32)) & M32   # +335FC/FE  r - (r>>4)
-    return (s2 | mask) & 0xFFFF            # +33602 output (strh -> 16 bits)
+    # per-channel saturating RGB565 add, derived from a single-step trace of the
+    # original (+335C6..+33602). NB: an earlier version used a constant 0x800 for
+    # the green carry, which was a disassembler operand-order misread; the real
+    # green carry is computed (c2 below), confirmed bit-exact by span_harness.
+    s = (texel + lc) & M32                 # sum
+    x = (texel ^ lc) & M32
+    c1 = ((x ^ s) & 0x20) & M32            # carry at the blue/green boundary (bit5)
+    s_a = (s - c1) & M32
+    c2 = (((s_a ^ x) & 0x800)) & M32       # carry at the green/red boundary (bit11)
+    s2 = (s_a - c2) & M32
+    c3 = (s2 & 0x10000) & M32              # carry out of red (bit16)
+    carries = (c3 | c2 | c1) & M32         # the carries that actually occurred
+    mask = (carries - ((carries >> 4) & M32)) & M32
+    return (s2 | mask) & 0xFFFF
 
 
 def span(light, u, v, ustep, vstep, umask, vmask, vshift, thresh, lightmask, tex, n):
