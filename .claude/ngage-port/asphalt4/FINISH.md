@@ -131,3 +131,51 @@ race tears down, or audio. Confirming which needs a clean finish capture.
 The honest status: the autopilot finishes the race, and the race-end transition
 costs no more per frame than racing; a distinct finish-animation slowdown was
 reported on the phone but has not been reproduced or isolated on the bench.
+
+## Clean capture (round A7): the finish costs no more per frame than racing
+
+The autopilot was given a reliable race-end detector -- a tight box on the
+**speedometer dial face** (bright ~0.8 whether the scene behind is a lit street
+or a dark tunnel; gone only on the results screen), counted as the finish only
+after it stays gone ~14 s (a cinematic such as TAKEDOWN hides the HUD only
+briefly and then it returns). On that signal the autopilot releases every key
+and idles, so the end-of-race screen plays untouched under FRAMESTAT instead of
+being skipped by held accelerate.
+
+It worked. The autopilot drove a full three-lap Instant Play race (came 8th),
+and at the finish the game showed **"RACE LOST -- DO YOU WANT TO RETRY? YES/NO"**
+-- a dialog over the dimmed, frozen race scene (`a4/F-real-*.png`, frame 3776+).
+That is the end-of-race state, captured cleanly.
+
+**Per-frame cost (same dyncom run, FRAMESTAT, `dmeas.log`):**
+
+| | mean | peak/max |
+|---|---|---|
+| steady racing (frames 3000-3760) | 5.81 M | 10.56 M |
+| **finish screen** (RACE LOST dialog, 3790-4030) | **5.20 M** | **7.58 M** |
+
+The transition is smooth, no spike (per-frame 3760-3820 stays 4-7 M throughout).
+**The finish screen costs *less* per frame than racing, not more** -- it is a 2D
+dialog over a dimmed, frozen 3D scene, so there is less to draw than active
+racing with traffic and effects.
+
+**So the phone's "much worse at the finish" is not a per-frame CPU/renderer
+spike.** On the bench the race end is cheaper per frame, not dearer. Whatever
+the slowdown is on hardware, the per-frame instruction cost does not explain it.
+Remaining candidates, none measured and all outside what instructions-per-frame
+captures: a load/stream or allocation hitch as the race tears down and the
+results screen builds, memory pressure, or audio. These would show as a stall
+(a few very long frames or a pause), not as every frame being heavier -- a
+wall-clock frame-time trace or the phone would catch that; the instruction
+counter would not.
+
+**One caveat on scope.** This is the *lost*-race dialog (the autopilot finished
+last). A won race may play a different sequence -- a victory screen, standings,
+a rotating 3D car -- that was not captured here. But for the end-of-race state
+that was measured, there is no per-frame cost increase. If the user's slowdown
+is specifically on a *won* race, that sequence is the one thing left to capture
+(drive to a win, or reach it on the phone).
+
+Tools used: `tools/autodrive.py` (now finishes races and idles at the end) and
+the throwaway `finwatch.py` gauge watcher. No game modified; bench restored to
+`dynarmic`.
