@@ -98,3 +98,27 @@ have not implemented that.
 - **The blocker is the anti-tamper check**, which no patched exe survives. That
   is the thing that would have to be solved first, and it is the one part not
   done here.
+
+## Update: inner-loop rewrite is harder than the fill (verification rig built)
+
+Started the textured-filler rewrite (user request). Built a loop-level
+verification rig (`renderer/span_harness.py`): it runs the *original* inner loop
+(Thumb `+3357A..+3361C`) under unicorn with controlled inputs and compares to a
+reimplementation -- the same bit-exact-or-nothing check used for the fill, but at
+loop granularity, needing no running exe.
+
+**Result: the first-pass reimplementation is not bit-exact** -- only a minority
+of pixels match (`renderer/span_model_wip.py`). The loop decodes structurally
+(affine texel lookup + a per-pixel light gradient added with a saturating RGB565
+blend, then clears a coverage byte), but the exact blend is not yet reproduced:
+a faithful-looking transcription of the saturating-add ops still diverges, so an
+op or a register-dataflow detail is still misread. This is unlike the rectangle
+fill, which was simple enough to get right first try and verify at 1,000 cases.
+
+So the honest status of the optimization: the *target* is certain (81 instr/px,
+21 stack spills -> an ARM/register rewrite is a clear ~2.5x win) and the rig to
+prove a rewrite correct offline exists and works -- but producing the bit-exact
+rewrite needs more careful single-step reverse engineering of the blend than has
+been done, and even once correct it still cannot be confirmed end-to-end on the
+device because of the anti-tamper check. The rig is the reusable part; the
+bit-exact model is unfinished.
