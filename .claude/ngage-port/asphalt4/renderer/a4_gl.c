@@ -312,6 +312,9 @@ void a4_gl_flush(void)
      * bottom-up; flip to the top-left surface. */
     for (int y0 = 0; y0 < VP_H; y0 += STRIP) {
         gl_readpixels(0, y0, VP_W, STRIP, GL_RGBA, GL_UNSIGNED_BYTE, rb);
+#ifdef A4_READBACK_ONLY
+        continue;                                        /* measurement: readback cost without the blit */
+#endif
         for (int sy = 0; sy < STRIP; sy++) {
             int screen_y = VP_H - 1 - (y0 + sy);
             if (screen_y < CLIP_TOP) continue;           /* leave the HUD banner to software */
