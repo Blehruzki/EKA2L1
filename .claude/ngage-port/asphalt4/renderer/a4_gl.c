@@ -1,35 +1,35 @@
-/* a4_gl.c -- MBX stage 3b: render ONE of the game's real textured triangles on
- * the GPU. a4_prim.c (the +0x300B2 capture) deep-copies one textured triangle's
- * geometry + RGB565 texels into the shared A4_TRI struct; this code, driven once
- * per frame by the fps detour, brings up a GL ES 1.1 context on a small pbuffer,
- * uploads that texture, draws the triangle under an ortho matching its screen
- * bounding box, reads the pbuffer back and blits it (contiguous, 1b-style) into
- * the game's back buffer. So the game's own geometry + texture are rendered by
- * the bench's POWERVR renderer -- the first real piece of Asphalt 4's 3D on the
- * GPU. It renders to a corner, not over the software scene (that composite is
- * stage 4).
+/* a4_gl.c -- MBX stage 4: render the frame's textured 3D on the GPU.
  *
- * Function pointers come from a4_gl_iat[] (a4_gl.s), filled by the loader from
- * the libGLES_CM import; indices must match a4_gl.s and injector GL_IMPORT_ORDINALS.
+ * a4_prim.c forwards every textured primitive (+0x300B2) to a4_gl_draw_prim,
+ * which keeps a GL ES 1.1 context on a 320x240 pbuffer (the game's viewport),
+ * caches each texture by its desc+0x30 pointer (uploaded once as RGB565), and
+ * draws the triangle under an ortho matching the 320x240 screen. The fps detour
+ * (+0x1E6) calls a4_gl_frame once per frame, which reads the pbuffer back and
+ * blits it into the game's surface (ctx[0x4c] = A4_GL_BB), replacing the
+ * software scene -- a correctness proof that the whole textured scene renders on
+ * the GPU. (The software path still runs; skipping it + compositing the 2D HUD
+ * is the perf step. On device the pbuffer+readback is a pixmap surface instead.)
+ *
+ * Function pointers: a4_gl_iat[] (a4_gl.s), filled by the libGLES_CM import.
  */
 #include <stdint.h>
 
-#define A4_GL_SCRATCH 0x00401000u       /* GL bring-up state */
-#define A4_TRI        0x00402000u       /* shared with a4_prim.c */
-#define A4_GL_READBUF 0x00405000u       /* 64x64 RGBA readback */
-#define A4_GL_BB      0x00400700u       /* back-buffer base (a4_cachebb_tramp) */
-#define A4_GL_MAGIC   0x6C900DE2u
-#define A4_TRI_MAGIC  0x7121CAB2u
-#define PBW 64
-#define PBH 64
-#define BLIT_OFF 6000                   /* back-buffer index for the blit, clear of the gauge */
+#define A4_GL_SCRATCH 0x00401000u
+#define A4_GL_READBUF 0x00410000u        /* 320*240*4 = 0x4B000 */
+#define A4_GL_BB      0x00400700u        /* surface base, from a4_cachebb_tramp */
+#define A4_GL_MAGIC   0x6C900DE4u
+#define VP_W 320
+#define VP_H 240
+#define FB_STRIDE 720                    /* game surface stride in uint16 (gauge calibration) */
+#define NCACHE 256
+#define START_AFTER 100000u              /* skip the intro video + menu (their own graphics) */
 
 /* EGL */
 #define EGL_WIDTH 0x3057
 #define EGL_HEIGHT 0x3056
 #define EGL_NONE 0x3038
-#define GLES_CONFIG 6u                  /* 0b110: 32bpp ES1.1 */
-/* GL ES 1.1 enums */
+#define GLES_CONFIG 6u
+/* GL enums */
 #define GL_TRIANGLES 0x0004
 #define GL_FLAT 0x1D00
 #define GL_FIXED 0x140C
@@ -53,134 +53,147 @@
 #define GL_TEXTURE_ENV 0x2300
 #define GL_TEXTURE_ENV_MODE 0x2200
 #define GL_REPLACE 0x1E01
-#define FX 0x10000                      /* 1.0 in 16.16 */
+#define FX 0x10000
 
 extern volatile uint32_t *a4_gl_iat_ptr(void);
 
-struct a4_tri_draw {
-    uint32_t magic, ready, seen;
-    int32_t  x[3], y[3], u[3], v[3];
-    uint32_t tw, th, tex_addr;
-    uint16_t tex[64 * 64];
+struct glr {
+    uint32_t up, frames, prims, errc, ntex, seen;
+    uint32_t cache_ptr[NCACHE];
+    uint32_t cache_id[NCACHE];
 };
-struct a4_gl_state { uint32_t up; uint32_t err; uint32_t texid; uint32_t frames; };
 
-void a4_gl_spike(void)
+/* small typed views of the IAT */
+#define F(i) (a4_gl_iat_ptr()[i])       /* pc-relative getter; no writable globals */
+static int   egl_get_display(int d){ return ((int(*)(int))F(0))(d); }
+static int   egl_initialize(int d,int*a,int*b){ return ((int(*)(int,int*,int*))F(1))(d,a,b); }
+static int   egl_pbuffer(int d,uint32_t c,int*a){ return ((int(*)(int,uint32_t,int*))F(2))(d,c,a); }
+static int   egl_context(int d,uint32_t c,int s,int*a){ return ((int(*)(int,uint32_t,int,int*))F(3))(d,c,s,a); }
+static int   egl_make_current(int d,int r,int w,int c){ return ((int(*)(int,int,int,int))F(4))(d,r,w,c); }
+static void  gl_viewport(int x,int y,int w,int h){ ((void(*)(int,int,int,int))F(5))(x,y,w,h); }
+static void  gl_clear(uint32_t m){ ((void(*)(uint32_t))F(7))(m); }
+static void  gl_finish(void){ ((void(*)(void))F(8))(); }
+static void  gl_readpixels(int x,int y,int w,int h,uint32_t f,uint32_t t,void*p){ ((void(*)(int,int,int,int,uint32_t,uint32_t,void*))F(9))(x,y,w,h,f,t,p); }
+static void  gl_gentex(int n,uint32_t*t){ ((void(*)(int,uint32_t*))F(10))(n,t); }
+static void  gl_bindtex(uint32_t tg,uint32_t t){ ((void(*)(uint32_t,uint32_t))F(11))(tg,t); }
+static void  gl_teximage(uint32_t tg,int l,int ifmt,int w,int h,int b,uint32_t f,uint32_t t,const void*p){ ((void(*)(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*))F(12))(tg,l,ifmt,w,h,b,f,t,p); }
+static void  gl_texparamx(uint32_t tg,uint32_t p,int v){ ((void(*)(uint32_t,uint32_t,int))F(13))(tg,p,v); }
+static void  gl_enable(uint32_t c){ ((void(*)(uint32_t))F(14))(c); }
+static void  gl_matrixmode(uint32_t m){ ((void(*)(uint32_t))F(15))(m); }
+static void  gl_loadidentity(void){ ((void(*)(void))F(16))(); }
+static void  gl_orthox(int l,int r,int b,int t,int n,int f){ ((void(*)(int,int,int,int,int,int))F(17))(l,r,b,t,n,f); }
+static void  gl_enableclient(uint32_t a){ ((void(*)(uint32_t))F(18))(a); }
+static void  gl_vertexptr(int s,uint32_t t,int st,const void*p){ ((void(*)(int,uint32_t,int,const void*))F(19))(s,t,st,p); }
+static void  gl_texcoordptr(int s,uint32_t t,int st,const void*p){ ((void(*)(int,uint32_t,int,const void*))F(20))(s,t,st,p); }
+static void  gl_color4x(int r,int g,int b,int a){ ((void(*)(int,int,int,int))F(21))(r,g,b,a); }
+static void  gl_drawarrays(uint32_t m,int f,int c){ ((void(*)(uint32_t,int,int))F(22))(m,f,c); }
+static void  gl_shademodel(uint32_t m){ ((void(*)(uint32_t))F(23))(m); }
+static void  gl_texenvx(uint32_t tg,uint32_t p,int v){ ((void(*)(uint32_t,uint32_t,int))F(24))(tg,p,v); }
+
+static int bringup(volatile struct glr *s)
+{
+    int disp = egl_get_display(0);                 if (!disp) return 0;
+    int a=0,b=0; if (!egl_initialize(disp,&a,&b))   return 0;
+    int pb[] = { EGL_WIDTH, VP_W, EGL_HEIGHT, VP_H, EGL_NONE, 0, 0 };
+    int surf = egl_pbuffer(disp, GLES_CONFIG, pb);  if (!surf) return 0;
+    int ctx  = egl_context(disp, GLES_CONFIG, 0, 0);if (!ctx)  return 0;
+    if (!egl_make_current(disp, surf, surf, ctx))   return 0;
+    gl_viewport(0,0,VP_W,VP_H);
+    gl_enable(GL_TEXTURE_2D);
+    gl_shademodel(GL_FLAT);
+    gl_texenvx(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    gl_color4x(FX,FX,FX,FX);
+    gl_enableclient(GL_VERTEX_ARRAY);
+    gl_enableclient(GL_TEXTURE_COORD_ARRAY);
+    gl_matrixmode(GL_PROJECTION); gl_loadidentity();
+    gl_orthox(0, VP_W*FX, VP_H*FX, 0, -FX, FX);     /* top-left origin */
+    gl_matrixmode(GL_MODELVIEW); gl_loadidentity();
+    return 1;
+}
+
+static uint32_t tex_for(volatile struct glr *s, uint32_t tsaddr)
+{
+    uint32_t *ts = (uint32_t *)tsaddr;
+    for (uint32_t i = 0; i < s->ntex; i++)
+        if (s->cache_ptr[i] == tsaddr) return s->cache_id[i];
+    /* miss: upload */
+    uint32_t w = ts[1] + 1, h = ts[2] + 1;
+    const void *pix = (const void *)ts[3];
+    if (!pix || w > 1024 || h > 1024) return 0;
+    uint32_t id = 0;
+    gl_gentex(1, &id);
+    gl_bindtex(GL_TEXTURE_2D, id);
+    gl_teximage(GL_TEXTURE_2D, 0, GL_RGB, (int)w, (int)h, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, pix);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    if (s->ntex < NCACHE) { s->cache_ptr[s->ntex] = tsaddr; s->cache_id[s->ntex] = id; s->ntex++; }
+    return id;
+}
+
+void a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 {
     volatile uint32_t *iat = a4_gl_iat_ptr();
-    if (iat[0] < 0x10000u) return;                   /* not a GL build */
-    volatile struct a4_tri_draw *tri = (volatile struct a4_tri_draw *)A4_TRI;
-    if (tri->magic != A4_TRI_MAGIC || !tri->ready) return;
-    volatile struct a4_gl_state *s = (volatile struct a4_gl_state *)A4_GL_SCRATCH;
-
-    /* resolve the calls we use */
-    int (*eglGetDisplay)(int)                        = (void *)iat[0];
-    int (*eglInitialize)(int, int *, int *)          = (void *)iat[1];
-    int (*eglCreatePbuffer)(int, uint32_t, int *)    = (void *)iat[2];
-    int (*eglCreateContext)(int, uint32_t, int, int*)= (void *)iat[3];
-    int (*eglMakeCurrent)(int, int, int, int)        = (void *)iat[4];
-    void (*glViewport)(int, int, int, int)           = (void *)iat[5];
-    void (*glClearColorx)(int, int, int, int)        = (void *)iat[6];
-    void (*glClear)(uint32_t)                        = (void *)iat[7];
-    void (*glFinish)(void)                           = (void *)iat[8];
-    void (*glReadPixels)(int,int,int,int,uint32_t,uint32_t,void*) = (void *)iat[9];
-    void (*glGenTextures)(int, uint32_t *)           = (void *)iat[10];
-    void (*glBindTexture)(uint32_t, uint32_t)        = (void *)iat[11];
-    void (*glTexImage2D)(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*) = (void *)iat[12];
-    void (*glTexParameterx)(uint32_t, uint32_t, int) = (void *)iat[13];
-    void (*glEnable)(uint32_t)                       = (void *)iat[14];
-    void (*glMatrixMode)(uint32_t)                   = (void *)iat[15];
-    void (*glLoadIdentity)(void)                     = (void *)iat[16];
-    void (*glOrthox)(int,int,int,int,int,int)        = (void *)iat[17];
-    void (*glEnableClientState)(uint32_t)            = (void *)iat[18];
-    void (*glVertexPointer)(int,uint32_t,int,const void*)   = (void *)iat[19];
-    void (*glTexCoordPointer)(int,uint32_t,int,const void*) = (void *)iat[20];
-    void (*glColor4x)(int, int, int, int)            = (void *)iat[21];
-    void (*glDrawArrays)(uint32_t, int, int)         = (void *)iat[22];
-    void (*glShadeModel)(uint32_t)                   = (void *)iat[23];
-    void (*glTexEnvx)(uint32_t, uint32_t, int)       = (void *)iat[24];
-    uint32_t (*glGetError)(void)                     = (void *)iat[25];
-
-    if (s->up != A4_GL_MAGIC) {                       /* one-time bring-up + upload */
-        int disp = eglGetDisplay(0);            if (!disp) return;
-        int maj = 0, min = 0;
-        if (!eglInitialize(disp, &maj, &min))   return;
-        int pb[] = { EGL_WIDTH, PBW, EGL_HEIGHT, PBH, EGL_NONE, 0, 0 };
-        int surf = eglCreatePbuffer(disp, GLES_CONFIG, pb);   if (!surf) return;
-        int ctx  = eglCreateContext(disp, GLES_CONFIG, 0, 0); if (!ctx)  return;
-        if (!eglMakeCurrent(disp, surf, surf, ctx)) return;
-
-        uint32_t tid = 0;
-        glGenTextures(1, &tid);
-        glBindTexture(GL_TEXTURE_2D, tid);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, (int)tri->tw, (int)tri->th, 0,
-                     GL_RGB, GL_UNSIGNED_SHORT_5_6_5, (const void *)tri->tex);
-        glTexParameterx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameterx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameterx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameterx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexEnvx(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-        glEnable(GL_TEXTURE_2D);
-        glShadeModel(GL_FLAT);
-        glColor4x(FX, FX, FX, FX);
-        glEnableClientState(GL_VERTEX_ARRAY);
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-        s->texid = tid;
+    if (iat[0] < 0x10000u || !(flags & 1)) return;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    if (++s->seen < START_AFTER) return;             /* past the intro video + menu */
+    if (s->up != A4_GL_MAGIC) {
+        if (!bringup(s)) return;                     /* glr is bss-zeroed */
         s->up = A4_GL_MAGIC;
     }
+    if (s->prims == 0) gl_clear(GL_COLOR_BUFFER_BIT);   /* first prim of the frame */
 
-    /* per-frame draw of the captured triangle, zoomed to its bounding box */
-    int minx = tri->x[0], maxx = tri->x[0], miny = tri->y[0], maxy = tri->y[0];
-    for (int i = 1; i < 3; i++) {
-        if (tri->x[i] < minx) minx = tri->x[i];
-        if (tri->x[i] > maxx) maxx = tri->x[i];
-        if (tri->y[i] < miny) miny = tri->y[i];
-        if (tri->y[i] > maxy) maxy = tri->y[i];
-    }
-    if (maxx == minx) maxx++;
-    if (maxy == miny) maxy++;
-
-    /* textures are power-of-two, so divide-by-dim is a shift (no libgcc idiv in
-     * freestanding). raw U/V are texel<<4, so normalized 16.16 =
-     * U*65536/(16*w) = (U*4096) >> log2(w). (U=512 on a 32-wide tex -> 1.0.) */
+    uint32_t tsaddr = desc[0x30 / 4];
+    if (!tsaddr) return;
+    uint32_t *ts = (uint32_t *)tsaddr;
+    uint32_t tw = ts[1] + 1, th = ts[2] + 1;
     int wsh = 0, hsh = 0;
-    for (uint32_t w = tri->tw; w > 1; w >>= 1) wsh++;
-    for (uint32_t h = tri->th; h > 1; h >>= 1) hsh++;
+    for (uint32_t w = tw; w > 1; w >>= 1) wsh++;
+    for (uint32_t h = th; h > 1; h >>= 1) hsh++;
+
     int16_t pos[6];
     int32_t uv[6];
+    const uint32_t voff[3] = { 0x0C, 0x18, 0x24 };
     for (int i = 0; i < 3; i++) {
-        pos[i * 2]     = (int16_t)tri->x[i];
-        pos[i * 2 + 1] = (int16_t)tri->y[i];
-        uv[i * 2]     = (tri->u[i] * 4096) >> wsh;
-        uv[i * 2 + 1] = (tri->v[i] * 4096) >> hsh;
+        uint32_t *vp = (uint32_t *)desc[voff[i] / 4];
+        pos[i*2]   = (int16_t)(int32_t)vp[0];
+        pos[i*2+1] = (int16_t)(int32_t)vp[1];
+        uv[i*2]    = ((int32_t)desc[voff[i]/4 + 1] * 4096) >> wsh;
+        uv[i*2+1]  = ((int32_t)desc[voff[i]/4 + 2] * 4096) >> hsh;
     }
+    uint32_t id = tex_for(s, tsaddr);
+    gl_bindtex(GL_TEXTURE_2D, id);
+    gl_vertexptr(2, GL_SHORT, 0, pos);
+    gl_texcoordptr(2, GL_FIXED, 0, uv);
+    gl_drawarrays(GL_TRIANGLES, 0, 3);
+    s->prims++;
+}
 
-    glViewport(0, 0, PBW, PBH);
-    glClearColorx(FX / 4, 0, FX / 4, FX);            /* dark magenta so the tri stands out */
-    glClear(GL_COLOR_BUFFER_BIT);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glOrthox(minx * FX, maxx * FX, maxy * FX, miny * FX, -FX, FX);  /* Y flipped */
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    glBindTexture(GL_TEXTURE_2D, s->texid);
-    glVertexPointer(2, GL_SHORT, 0, pos);
-    glTexCoordPointer(2, GL_FIXED, 0, uv);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
-    glFinish();
-    s->err = glGetError();
+void a4_gl_frame(void)
+{
+    volatile uint32_t *iat = a4_gl_iat_ptr();
+    if (iat[0] < 0x10000u) return;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    if (s->up != A4_GL_MAGIC || s->prims == 0) return;
 
+    gl_finish();
     uint32_t *rb = (uint32_t *)A4_GL_READBUF;
-    glReadPixels(0, 0, PBW, PBH, GL_RGBA, GL_UNSIGNED_BYTE, rb);
+    gl_readpixels(0, 0, VP_W, VP_H, GL_RGBA, GL_UNSIGNED_BYTE, rb);
 
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
     if (bb) {
         volatile uint16_t *fb = (volatile uint16_t *)bb;
-        for (int i = 0; i < PBW * PBH; i++) {
-            uint32_t px = rb[i];
-            uint32_t r = px & 0xFF, g = (px >> 8) & 0xFF, b = (px >> 16) & 0xFF;
-            fb[BLIT_OFF + i] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+        for (int y = 0; y < VP_H; y++) {
+            const uint32_t *src = rb + (VP_H - 1 - y) * VP_W;   /* GL is bottom-up */
+            volatile uint16_t *dstrow = fb + y * FB_STRIDE;
+            for (int x = 0; x < VP_W; x++) {
+                uint32_t px = src[x];
+                uint32_t r = px & 0xFF, g = (px >> 8) & 0xFF, b = (px >> 16) & 0xFF;
+                dstrow[x] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+            }
         }
     }
+    s->prims = 0;
     s->frames++;
 }

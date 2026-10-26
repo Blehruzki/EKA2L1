@@ -335,6 +335,31 @@ Architecture decided (device-accurate, bench-testable where EKA2L1 allows):
 Open before the renderer: confirm the viewport W/H, and the per-frame batch +
 texture-cache sizing. This is the next build.
 
+### Viewport confirmed, full-frame renderer written (WIP, not yet working)
+
+- **Viewport = 320x240** (measured: `+0x2FF60` culls against `*[(ctx+0x40100)+0x10]`
+  = 320 and `+0x14` = 240). So GL renders at 320x240 under `glOrthox(0,320,240,0)`,
+  matching the game's screen space.
+- Wrote the renderer: `a4_gl.c` keeps a GL ES 1.1 context on a 320x240 pbuffer,
+  a texture cache keyed on `desc+0x30` (upload RGB565 once), draws each textured
+  primitive, and at the present detour reads the pbuffer back and blits it (Y
+  flipped, stride 720) into the surface at `ctx[0x4c]`. `a4_prim.c` forwards every
+  primitive; `a4_fps_tick` calls `a4_gl_frame`. Gated to start after the intro
+  video + menu (`seen > 100000`) -- drawing during the intro video segfaulted the
+  emulator (the video's own graphics), which the gate fixes.
+- **Not working yet.** The first gated run throws a per-frame prefetch abort:
+  the game's present does a vtable call through `r3`, and `r3` comes back
+  `0x474009E5` -- the object at `r4+0x20` has a clobbered vtable
+  (`0x47400xxx`). It fires ~806x and slows the game so it never even reaches the
+  `seen>100000` gate (stopped at 98789). New to this build (the capture-only run
+  had zero such faults), so the renderer corrupts guest state somewhere on the
+  per-primitive or per-frame path. Root-causing this is the next step; the
+  one-triangle stage-3b path (which shares most of this code) did NOT fault, so
+  the regression is in the per-prim forwarding / frame-flush added for stage 4.
+
+The shippable build remains clean v5; this renderer is committed as WIP behind
+`--gl --capture` (and fully stripped by `--clean`).
+
 ## Earlier (3b part 1): texture format decoded
 
 Captured the full per-triangle memory (geometry + the texture struct at
@@ -363,9 +388,9 @@ software scene -- that composite is stage 4).
 
 ## Status
 
-Stages 0, 1, 1b, 2, 3a, 3b complete -- a real Asphalt 4 textured triangle now
-renders on the GPU from injected code, bench-verified. Foundation proven end to
-end (inject -> link
+Stages 0, 1, 1b, 2, 3a, 3b complete; stage 4 in progress (viewport pinned at
+320x240, full-frame renderer written but WIP -- a per-frame vtable corruption to
+root-cause). Foundation proven end to end (inject -> link
 libGLES_CM past the guard -> ES1.1 context -> GPU render -> presented frame), and
 the game's 3D pipeline is mapped down to the per-triangle hook `+0x300AE`, with
 one real textured triangle now drawn by the GPU. Stage 4: drive ALL the frame's

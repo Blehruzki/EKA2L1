@@ -46,7 +46,7 @@
 typedef uint32_t (*tick_fn)(void);
 typedef int (*home_fn)(void *ttime);    /* TTime::HomeTime(this): fills 8-byte us */
 
-void a4_gl_spike(void);                 /* MBX pbuffer spike (renderer/a4_gl.c); self-gated */
+void a4_gl_frame(void);                 /* MBX frame flush (renderer/a4_gl.c); self-gated */
 
 struct a4_fps_state {
     uint32_t magic;
@@ -82,7 +82,7 @@ void a4_fps_tick(tick_fn tc, home_fn ht)
         return;
     }
 
-    a4_gl_spike();                      /* MBX pbuffer spike; no-op unless GL linked */
+    a4_gl_frame();                      /* MBX: flush the GPU frame; no-op unless GL linked */
 
     uint32_t dt = tick - s->last_tick;
     s->last_tick = tick;
