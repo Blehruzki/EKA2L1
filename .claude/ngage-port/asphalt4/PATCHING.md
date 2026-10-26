@@ -275,3 +275,35 @@ exceeds A3 (round A4). The large remaining levers are the per-span *setup* code
 (16% of the frame, unexamined), the `+2E1C8` function (6.5%, unexamined), and
 reducing the *amount* of work drawn (spans, overdraw, draw distance, geometry),
 which is the asset route in the `.bar` archives.
+
+## Update: the inner-loop injection contract, and why pixel-equivalence is not enough
+
+To finish the fill work (enable the transparent filler + use the hand-tuned
+textured asm) the rewrites must be injected as the shipped functions' *inner
+loops*, and a drop-in needs more than matching the span's pixels: it must leave
+the registers the surrounding function reads after the loop. Both contracts are
+now pinned and verified (`renderer/exit_verify.py`, A4_CODE pointing at the
+extracted code):
+
+- **Textured `+333F4`.** The function loops per span (`+3352C`..`+3361C`) and
+  the inner pixel loop is `+3357A`..`+3361C`. The loop advances a per-pixel LCG
+  dither `light = light*K1 + K2` (K1=0x0019660D, K2=0x3C6EF35F); its final value
+  lives in **r7**, is carried to the next span, and is saved to `[ctx+0x48]` for
+  the next polygon. So the drop-in's exit contract is **r7 = final light,
+  r4 = dst + 2n, r0 = cov + n**; r5/r6 (per-span base coords) are preserved and
+  ip/lr are recomputed by the per-span setup so they don't matter. `a4_span_textured`
+  now returns the final light (pixel writes unchanged); `exit_verify.py` checks
+  **pixels + exit light + pointer advance, 2000/2000**. A shim that got the exit
+  light subtly wrong would look right on a static frame and corrupt the dither
+  across spans on hardware -- the bug the bench never enters.
+- **Transparent `+33964`.** This is a multi-mode polygon rasterizer (blend-mode
+  switch on `[ctx+0x64]`); the hot path's inner loop `+33B16`..`+33B40` is the
+  last thing the function does -- it exits the loop and immediately returns
+  (`add sp,#0x34; pop`). Nothing is carried or saved, so the exit contract is
+  just the pixel writes, already verified 2000/2000 (`transp_verify.py`).
+
+**Handoff:** the verified rewrites (`renderer/a4_span_textured.{c,s}` returning
+final light, `renderer/a4_span_transparent.c`) plus these contracts are enough
+to inject both with the existing v1 inner-loop injector. The emulator-side
+verification of the resulting build (bench head-to-head, dither continuity) is
+the measurement step.

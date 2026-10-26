@@ -18,7 +18,11 @@
 #define K1 0x0019660Du
 #define K2 0x3C6EF35Fu
 
-void a4_span_textured(uint16_t *dst, uint8_t *cov, int n,
+/* Returns the final light accumulator after n steps. The shipped loop leaves
+ * this in r7 at the loop exit (+3361C) and the function saves it to [ctx+0x48]
+ * for the next span/polygon, so a drop-in replacement must reproduce it, not
+ * just the pixels. The pixel writes are byte-identical to the void version. */
+uint32_t a4_span_textured(uint16_t *dst, uint8_t *cov, int n,
                       uint32_t u, uint32_t v, uint32_t ustep, uint32_t vstep,
                       uint32_t umask, uint32_t vmask, uint32_t vshift,
                       const uint16_t *tex,
@@ -51,4 +55,5 @@ void a4_span_textured(uint16_t *dst, uint8_t *cov, int n,
         u += ustep;
         v += vstep;
     }
+    return light;
 }
