@@ -24,9 +24,9 @@
  * the wrapper's [0..7] and the struct its [0] points at ([0..7]). */
 struct a4_rawtri {
     uint32_t flags, desc_addr;
-    uint32_t desc[16];
-    uint32_t vwrap[3][8];
-    uint32_t vderef[3][8];   /* words at [vwrap[i][0]] if it looks like a pointer */
+    uint32_t desc[16];       /* desc[0..15]: vtable,flags,?,{vptr,U,V}x3,texture,... */
+    uint32_t vtx[3][8];      /* each vptr -> { X, Y, Z/W, ... } */
+    uint32_t texs[16];       /* the texture struct at desc[0x30] */
 };
 struct a4_prim_cap {
     uint32_t magic, count, seen;
@@ -51,11 +51,10 @@ void a4_prim_capture(uint32_t *ctx, uint32_t *desc, uint32_t flags)
     t->flags = flags;
     t->desc_addr = (uint32_t)desc;
     for (int i = 0; i < 16; i++) t->desc[i] = desc[i];
-    const uint32_t voff[3] = { 0x0C, 0x18, 0x24 };
-    for (int i = 0; i < 3; i++) {
-        uint32_t vaddr = desc[voff[i] / 4];
-        dump8(t->vwrap[i], vaddr);
-        dump8(t->vderef[i], t->vwrap[i][0]);         /* [vwrap[0]] if a pointer */
-    }
+    const uint32_t voff[3] = { 0x0C, 0x18, 0x24 };    /* {vptr,U,V} triples */
+    for (int i = 0; i < 3; i++)
+        dump8(t->vtx[i], desc[voff[i] / 4]);          /* vptr -> {X,Y,Z/W,...} */
+    uint32_t *ts = (uint32_t *)desc[0x30 / 4];        /* texture struct */
+    for (int i = 0; i < 16; i++) t->texs[i] = ts ? ts[i] : 0;
     c->count++;
 }
