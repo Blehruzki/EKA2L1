@@ -104,7 +104,7 @@ def build_blob(link_addr, tmp, clean=False):
             if os.path.basename(src) == 'a4_tramp.s':
                 flags += ['-x', 'assembler-with-cpp'] + (['-DA4_CLEAN'] if clean else [])
         else:
-            flags = CFLAGS + extra
+            flags = CFLAGS + extra + (['-DA4_CLEAN'] if clean else [])
         subprocess.check_call(['clang', *flags, '-c', src, '-o', o])
         objs.append(o)
     ld = os.path.join(tmp, 'a4.ld')
