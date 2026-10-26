@@ -478,3 +478,34 @@ spread reproduces the mechanism and the straddle.
 `a4_stock_gauge.exe` (sha256 5e6df31d…) ships to the owner alongside v5: bake its
 hash (`make_loader_hashes.py <exe> <patched factory DLL> <outdir>`) with the same
 patched DLL, deploy both, and the two gauges read side by side.
+
+## Update: baked stock-gauge booted on the bench -- gauge counts presents, not posts
+
+The owner baked `a4_stock_gauge.exe` (sha256 5e6df31d…, loader SHA-1 29d9f768…)
+with the patched factory DLL + regenerated 20-byte hash records and returned the
+four-file set. Installed on the bench (E:\sys\bin + C:\sys\hash), **it boots clean
+-- the guard accepts it**, no KERN-EXEC 3, gauge active. First gauge build booted
+on the bench since the guard went version-specific.
+
+Run on dyncom at `EKA2L1_CPUCAP=115` (phone-like), gauge `disp` read live via
+`MEMSNAP` of the scratch, `FRAMESTAT=1` alongside:
+
+- **Gauge `disp` across the demo: 22, 24, 27, 28, 27 fps** -- mid-20s, swinging
+  with scene.
+- **FRAMESTAT: ~1,323 direct-screen posts vs ~3,963 gauge frames = ~3:1.** The
+  gauge's `+0x1E6` detour counts the game's *present-loop* calls, which fire ~3x
+  per EKA2L1 direct-screen post. So `disp` is the present rate, **not** the panel
+  post rate; on the bench the true post rate at this cap is ~8.6/s (host us/post
+  p50 ≈ 117 ms). The present count is the same guest code on bench and phone, so
+  the owner's by-eye phone reading and the bench `disp` are the same quantity --
+  which is why both land near 27 -- but neither is asserted to equal the panel's
+  refresh. Worth a note beside the gauge: it reads the game's present cadence.
+- **CPU work per frame: p5 5.5 M → p50 10.9 M → p95 13.0 M instr, a ~2.4x swing.**
+  This is the phone-independent scene signal. A tunnel-sparse frame (toward 5.5 M)
+  renders ~2.4x faster than a crowded one (toward 13 M) -- the mechanism that puts
+  the tunnel above 30 and crowded streets below, as the owner reported.
+
+(No usable bench screenshot: `import -window root` of the Xvfb root captured an
+empty 278-byte image -- the GL-composited Qt window isn't on the root. The `disp`
+MEMSNAP is the objective record, and the owner has already read the gauge on the
+phone.) Bench restored to stock (stock exe+DLL, aside hashes, dynarmic).
