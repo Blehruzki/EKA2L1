@@ -546,6 +546,32 @@ phone. If the GPU build's bar is clearly longer, the ~50% CPU is translating to
 real fps and zero-copy is worth building; if GL fails to start on the phone the
 build falls back to software and the bars match.
 
+## Stage 6: run-length batching (no depth) -- floor fixed, transparency exposed
+
+The depth-sorted batch (stage 5) rendered the depth-ordered scene with wrong
+occlusion on the real MBX (the floor/road dropped out), a divergence the bench's
+HLE GL never showed. Stage 6 drops the depth buffer entirely: it accumulates the
+captured triangles in arrival order and draws them back in that order, merging
+only *consecutive* same-texture triangles into one glDrawArrays. This is
+byte-identical to the per-triangle path that rendered correctly, just ~2.7x fewer
+GL calls -- it cannot occlude wrongly.
+
+Bench (RM-409, LA race, `--gl --capture`): the **road and ground render
+correctly** (the floor is back), up=MAGIC, bstep 6, ~536 prims/frame, 0 faults,
+errc 0. So the depth/occlusion glitch is solved.
+
+It exposes a separate, pre-existing bug: the **trees and sprites draw as solid
+black boxes**. The GPU path renders every captured prim opaque (GL_REPLACE, no
+alpha), but the game's transparent prims use a colorkey -- the software
+transparent filler (`+0x33B16`) *skips texel value 0* (black = transparent). So
+the captured transparent sprites show their black background instead of keying it
+out. Two fixes: (a) only GPU-render the opaque prims and leave the transparent
+ones to software (needs the opaque/transparent flag bit at the +0x300B2 capture,
+not yet decoded -- the dispatch at +0x300C6 tests flag bits 1/0/3 to pick
+rasterizers sub_2fbdc / sub_2f6fc / ...), or (b) upload with a 1-bit alpha keyed
+on texel==0 and enable GL_ALPHA_TEST. (a) is simpler and keeps the expensive
+opaque road on the GPU.
+
 ## Is the game fps-capped? No -- it is compute-bound (measured)
 
 The obvious worry, after a 51% guest-instruction cut gave no device fps: the
