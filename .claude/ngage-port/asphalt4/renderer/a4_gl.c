@@ -15,14 +15,15 @@
 #include <stdint.h>
 
 #define A4_GL_SCRATCH 0x00401000u
-#define A4_GL_READBUF 0x00410000u        /* 320*240*4 = 0x4B000 */
+#define A4_GL_READBUF 0x00403000u        /* one strip: 320*STRIP*4 */
 #define A4_GL_BB      0x00400700u        /* surface base, from a4_cachebb_tramp */
+#define STRIP 16                         /* readback strip height (keeps image .bss small) */
 #define A4_GL_MAGIC   0x6C900DE4u
 #define VP_W 320
 #define VP_H 240
-#define FB_STRIDE 720                    /* game surface stride in uint16 (gauge calibration) */
+#define FB_STRIDE VP_W                   /* 320x240 render surface: stride = width (320) */
 #define NCACHE 256
-#define START_AFTER 100000u              /* skip the intro video + menu (their own graphics) */
+#define START_AFTER 50000u               /* skip the intro video; reachable on the bench */
 
 /* EGL */
 #define EGL_WIDTH 0x3057
@@ -178,19 +179,24 @@ void a4_gl_frame(void)
     if (s->up != A4_GL_MAGIC || s->prims == 0) return;
 
     gl_finish();
-    uint32_t *rb = (uint32_t *)A4_GL_READBUF;
-    gl_readpixels(0, 0, VP_W, VP_H, GL_RGBA, GL_UNSIGNED_BYTE, rb);
-
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
     if (bb) {
+        uint32_t *rb = (uint32_t *)A4_GL_READBUF;
         volatile uint16_t *fb = (volatile uint16_t *)bb;
-        for (int y = 0; y < VP_H; y++) {
-            const uint32_t *src = rb + (VP_H - 1 - y) * VP_W;   /* GL is bottom-up */
-            volatile uint16_t *dstrow = fb + y * FB_STRIDE;
-            for (int x = 0; x < VP_W; x++) {
-                uint32_t px = src[x];
-                uint32_t r = px & 0xFF, g = (px >> 8) & 0xFF, b = (px >> 16) & 0xFF;
-                dstrow[x] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+        /* read the pbuffer back in horizontal strips through a small buffer, so
+         * the image .bss stays tiny (a full-frame buffer in .bss corrupts the
+         * game's load-time layout). GL is bottom-up; flip to the top-left surface. */
+        for (int y0 = 0; y0 < VP_H; y0 += STRIP) {
+            gl_readpixels(0, y0, VP_W, STRIP, GL_RGBA, GL_UNSIGNED_BYTE, rb);
+            for (int sy = 0; sy < STRIP; sy++) {
+                int screen_y = VP_H - 1 - (y0 + sy);
+                const uint32_t *src = rb + sy * VP_W;
+                volatile uint16_t *dstrow = fb + screen_y * FB_STRIDE;
+                for (int x = 0; x < VP_W; x++) {
+                    uint32_t px = src[x];
+                    uint32_t r = px & 0xFF, g = (px >> 8) & 0xFF, b = (px >> 16) & 0xFF;
+                    dstrow[x] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                }
             }
         }
     }

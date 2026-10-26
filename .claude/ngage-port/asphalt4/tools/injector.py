@@ -57,7 +57,8 @@ GL_IMPORT_ORDINALS = [14, 17, 4, 3, 18, 132, 33, 31, 58, 108,
                       67, 29, 125, 127, 56, 90, 82, 99, 57, 131,
                       120, 39, 54, 116, 123, 68]   # must match a4_gl.s a4_gl_iat
 GL_SCRATCH = 0x00401000         # must match A4_GL_SCRATCH in a4_gl.c
-GL_SCRATCH_SIZE = 0x5A000       # covers GL state + the 320x240 readback at 0x410000 (..0x45B000)         # headroom over sizeof(struct a4_gl_state)
+GL_SCRATCH_SIZE = 0x8000        # GL state + strip readback at 0x403000; kept small --
+                                # a large image .bss corrupts the game's load-time layout
 
 # fps instrumentation: carve scratch out of the grown .bss, and a User::TickCount
 # IAT slot the detour resolves pc-relatively.

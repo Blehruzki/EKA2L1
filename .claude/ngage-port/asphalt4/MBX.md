@@ -335,7 +335,35 @@ Architecture decided (device-accurate, bench-testable where EKA2L1 allows):
 Open before the renderer: confirm the viewport W/H, and the per-frame batch +
 texture-cache sizing. This is the next build.
 
-### Viewport confirmed, full-frame renderer written (WIP, not yet working)
+### Result: the full textured 3D scene renders on the GPU
+
+Done (correctness). The renderer brings up a GL ES 1.1 context on a 320x240
+pbuffer, caches each texture by `desc+0x30` (RGB565 upload once), draws every
+textured primitive, and at the present detour reads the pbuffer back (in strips)
+and blits it into the game's surface. Bench run: `up` latched, **41 textures
+cached, ~741 prims/frame, 13 frames flushed, 0 faults**; a mid-screen read of
+the surface afterward held **179 distinct colours** -- a varied textured scene,
+not the uniform software sky. Asphalt 4's whole textured 3D scene is being drawn
+by the bench's POWERVR renderer and landed in the frame the game presents.
+
+Two bugs fixed along the way (rule 4, both caught by the fault address, not
+guessed):
+- **A large image `.bss` corrupts the game.** Growing `.bss` to ~372 KB for a
+  full-frame readback made the game fault ~806x/frame at load (a load-time layout
+  clash, not an address my code writes). Shrinking the `.bss` and reading the
+  pbuffer back in strips through a small buffer fixed it (806 -> 0).
+- **The surface stride is 320, not 720.** The gauge's 720 was the scaled display
+  path; the 3D render surface is 320x240, stride 320. Blitting at 720 overran the
+  surface (`0x911088`+..) into the next object at `0x936B60` -- exactly the fault
+  address -- clobbering its vtable. Stride 320 fixed it (frames 0 -> 13).
+
+Remaining to make it the shipping edition (perf, not correctness): skip the
+software rasterizer for GPU-drawn prims (the CPU win -- currently both run);
+composite the 2D HUD over the GPU 3D instead of the full-frame overwrite; and on
+device use a pixmap surface bound to `0x911088` (zero-copy) instead of readback.
+Then measure against the software path.
+
+### Viewport confirmed, full-frame renderer written (earlier WIP)
 
 - **Viewport = 320x240** (measured: `+0x2FF60` culls against `*[(ctx+0x40100)+0x10]`
   = 320 and `+0x14` = 240). So GL renders at 320x240 under `glOrthox(0,320,240,0)`,
@@ -388,9 +416,10 @@ software scene -- that composite is stage 4).
 
 ## Status
 
-Stages 0, 1, 1b, 2, 3a, 3b complete; stage 4 in progress (viewport pinned at
-320x240, full-frame renderer written but WIP -- a per-frame vtable corruption to
-root-cause). Foundation proven end to end (inject -> link
+Stages 0, 1, 1b, 2, 3a, 3b complete; stage 4 core done -- the full textured 3D
+scene renders on the GPU into the game's surface (41 textures, ~741 prims/frame,
+0 faults), remaining work is perf (skip software, composite HUD, device pixmap).
+Foundation proven end to end (inject -> link
 libGLES_CM past the guard -> ES1.1 context -> GPU render -> presented frame), and
 the game's 3D pipeline is mapped down to the per-triangle hook `+0x300AE`, with
 one real textured triangle now drawn by the GPU. Stage 4: drive ALL the frame's
