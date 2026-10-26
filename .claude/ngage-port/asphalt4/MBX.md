@@ -81,6 +81,61 @@ game's window on the bench proves intractable, the edition reduces to
 ARM11-specific CPU tuning (STM new-base, scheduling), which is not the GPU win
 the owner asked for -- so stage 1 is the go/no-go.
 
+## Stage 1 findings -- feasibility is positive on every point checked
+
+- **EKA2L1's EGL is complete**, not stubs: `egl_get_display`, `egl_initialize`,
+  `egl_choose_config`, `egl_create_window_surface` (takes the guest's WS32
+  window), `egl_create_pbuffer_surface`, `egl_create_context`,
+  `egl_make_current`, `egl_swap_buffers` all in `dispatch/.../egl/egl.cpp`.
+- **The `libGLES_CM` calling surface is mapped.** EKA2L1 patches the ROM
+  `libgles_cm.dll` export at ordinal N to HLE dispatch `0x1100+(N-1)`
+  (`gles1/register.h` patch table) and binds each dispatch number to a named
+  Khronos symbol (`register.cpp`), so register.cpp in dispatch order *is* the
+  DLL's ordinal table. The EGL block is the standard alphabetical DEF freeze,
+  confirming the numbering matches the real ROM DLL. Ordinals a spike needs:
+
+  | call | ord | call | ord |
+  |---|---|---|---|
+  | eglChooseConfig | 1 | eglCreateContext | 3 |
+  | eglCreatePbufferSurface | 4 | eglCreateWindowSurface | 6 |
+  | eglGetDisplay | 14 | eglInitialize | 17 |
+  | eglMakeCurrent | 18 | eglSwapBuffers | 22 |
+  | glClear | 31 | glClearColorx | 33 |
+  | glDrawArrays | 54 | glEnableClientState | 57 |
+  | glVertexPointer | 131 | glViewport | 132 |
+
+- **Linking `libGLES_CM` into the game is mechanical.** Import section is EABI
+  format at `+0xB9BA0`: a size word, then `dll_ref_count` (12) entries of
+  `{name_off, count, count x code-offset}`, then the name block. Each code-offset
+  holds `ord|(adj<<16)` and the loader overwrites it with the resolved address --
+  the IAT, which sits in the code section (euser's at `+0x50CC0`, runtime's at
+  `+0x50CF8`; the fps detour already resolves these pc-relatively). To add GL:
+  append a 13th entry (name `libgles_cm.dll`, the ordinals above), point its
+  import-blocks at fresh IAT words placed in the appended blob, bump
+  `dll_ref_count`, fix the trailing section offsets + E32 CRC.
+- **The loader matches on base filename.** `libmanager.cpp get_real_dll_name`
+  strips the `{version}` / `[uid]` decoration, so a plain `libgles_cm.dll`
+  import entry resolves to the patched ROM library. No UID guess needed.
+
+**One open dependency:** `eglCreateWindowSurface` (ord 6) needs the game's
+`RWindow`. For the first spike that is sidestepped with
+`eglCreatePbufferSurface` (ord 4) -- render offscreen, read back / MEMSNAP the
+result -- which proves the whole call path (link -> context -> draw -> GL output
+on the bench's POWERVR renderer) without touching the game's windowing. Binding
+to the real window and compositing is stage 1b.
+
+## Build plan for the spike (next)
+
+1. Injector gains an **add-import** step (new `libgles_cm.dll` entry + IAT slots
+   in the blob); verify the rebuilt image's imports parse and it still boots.
+2. `renderer/a4_gl.c` + trampoline: resolve the GL IAT slots pc-relatively,
+   `eglGetDisplay/Initialize/ChooseConfig/CreatePbufferSurface/CreateContext/
+   MakeCurrent`, then `glClearColorx` + `glClear` + one `glDrawArrays` triangle,
+   `glFinish`; MEMSNAP/read-back the pbuffer to confirm pixels.
+3. Bench: confirm EKA2L1's `POWERVR` renderer executes the calls and the pbuffer
+   holds the cleared colour + triangle. That is the go/no-go result.
+
 ## Status
 
-Stage 0 complete. Stage 1 next.
+Stage 0 complete. Stage 1: emulator-side feasibility confirmed, calling surface
+and link mechanics mapped; building the pbuffer spike next. No blocker found.
