@@ -509,3 +509,42 @@ Run on dyncom at `EKA2L1_CPUCAP=115` (phone-like), gauge `disp` read live via
 empty 278-byte image -- the GL-composited Qt window isn't on the root. The `disp`
 MEMSNAP is the objective record, and the owner has already read the gauge on the
 phone.) Bench restored to stock (stock exe+DLL, aside hashes, dynarmic).
+
+## Update: v5 vs stock head-to-head on the bench (both baked, both boot)
+
+v5 baked the same way (`make_loader_hashes.py` on `a4_general_v5.exe` + the
+unchanged patched factory DLL; exe SHA-1 1c7e2523…) and **boots clean on the
+bench** too. Both gauge builds now run under the guard. Same config as the stock
+run: dyncom, `CPUCAP=115`, gauge `disp` live, `FRAMESTAT=1`.
+
+The demo is non-deterministic (different scenes each run), so the comparison is
+distribution-to-distribution over the gameplay frames (>3 M instr), not frame to
+frame. **Instructions per frame:**
+
+| percentile | stock | v5 | v5 reduction |
+|---|---|---|---|
+| p25 | 9.66 M | 8.77 M | -9.2% |
+| p50 (median) | 10.86 M | 9.14 M | **-15.8%** |
+| p75 | 11.21 M | 9.54 M | -14.9% |
+| p90 | 12.28 M | 10.79 M | -12.2% |
+| p95 (heavy) | 12.96 M | 11.55 M | -10.8% |
+| mean | 11.14 M | 9.84 M | **-11.7%** |
+
+A consistent **~12% off the frame, 10-16% across the whole working range**, and
+the win holds in the heavy tail (p75-p95) where the per-pixel span fillers
+dominate -- which is exactly where the owner reports it on device: the
+race-finish spinning-camera (a heavy full-screen effect) runs smooth on v5 and
+choppy on stock, and the frame rate is "slightly better on all scenarios." This
+is larger than the ~6% the earlier v1 note measured, because v5 carries more
+hooks than v1 (transparent inner loop + the two vec-math leaves on top of fill +
+textured), and because FRAMESTAT counts the whole frame -- the render-only
+reduction is larger than the 12% whole-frame figure. Gauge `disp` corroborates:
+v5 peaked 30-33 where stock peaked 28, both ~27 median.
+
+(The p5 bucket read v5 *higher* -- 7.74 M vs 5.51 M -- which is scene-mix noise,
+not a regression: the sparsest 5% of frames barely touch the fillers, and the two
+non-deterministic runs sampled different near-empty frames there. The rewrites
+cannot make a frame with no spans slower than the Thumb original; the veneer
+overhead is a few instructions, not 2 M.)
+
+Bench restored to stock. The owner confirmed the gain on the N95-3 independently.
