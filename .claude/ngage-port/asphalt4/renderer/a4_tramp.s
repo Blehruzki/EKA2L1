@@ -119,6 +119,21 @@ a4_cachebb_tramp:
         .global a4_bb_addr
 a4_bb_addr:
         .word   0x00400700          @ A4_FPS_BB (absolute; data loads at its linked base)
+
+@ ---- MBX stage 3a: primitive capture, inserted at draw_primitive +0x300B2
+@ (just after the prologue push/sub, so lr is already saved on the stack and
+@ r0/r1/r2 still hold ctx/desc/flags). Records the triangle via a4_prim_capture,
+@ then re-executes the two displaced Thumb moves (movs r5,r0 ; movs r4,r2) and
+@ returns to +0x300B6. lr is free to clobber here -- the real return was saved
+@ by the push at +0x300AE and is restored by the function's pop {r4,r5,pc}. ----
+        .global a4_prim_capture_tramp
+a4_prim_capture_tramp:
+        push    {r0, r1, r2, r3, r12, lr}
+        bl      a4_prim_capture     @ (ctx=r0, desc=r1, flags=r2); preserves r4-r11
+        pop     {r0, r1, r2, r3, r12, lr}
+        mov     r5, r0              @ displaced +300B2: movs r5, r0
+        mov     r4, r2              @ displaced +300B4: movs r4, r2
+        bx      lr                  @ -> +0x300B6 (Thumb; lr from the BLX)
 #endif  /* A4_CLEAN */
 
 @ ---- transparent: inner loop +33B16; loop exit falls straight into the

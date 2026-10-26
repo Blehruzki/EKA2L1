@@ -252,9 +252,36 @@ Open for stage 3: the texture format at `desc+0x30` (paletted; cf.
 exact light source. Batching at the submission loops (vs. per-triangle at
 `+0x300AE`) is a later optimization.
 
+## Stage 3a: the format, measured live -- and it corrects the stage-2 guess
+
+A capture detour at `+0x300B2` (`renderer/a4_prim.c`, injector `--capture`)
+recorded raw memory of real gameplay primitives (after 100k textured prims, i.e.
+past the menu). Reading the actual bytes corrected the stage-2 disassembly read
+of which pointer holds what (rule 4: measure, don't assume):
+
+- **`desc`** = `{ vtable@0, flags@4, ?@8, then three {vptr, U, V} triples at
+  +0x0C / +0x18 / +0x24, texture* @0x30 }`. The setup `+0x2FF60` passes the
+  *addresses of the triples* (`&desc[+0x0C]`, ...) to the rasterizer, not the
+  vertex pointers -- so the rasterizer's `[r5]` is `vptr`, `[r5+4]`=U, `[r5+8]`=V.
+  **U and V live in the desc triple, not in the vertex** (the stage-2 note had
+  them in the vertex -- wrong).
+- **vertex (`vptr`)** = `{ X@0, Y@4, Z/W@8, ... }`: screen-space X,Y inline, and
+  Z/W (`vptr[8]`) is the perspective input to `0x522C8`.
+- Verified on a live triangle: v0=(256,86), v1=(263,86), v2=(263,73), UVs
+  (1008,688)/(1536,688)/(1536,1360), one texture `0x022BEF70` for the primitive.
+  X,Y are plainly screen coordinates; U,V are texel-scale (to be divided by the
+  texture dimensions for GL's [0,1]).
+
+So the per-triangle GL draw at `+0x300AE` reads, for each of the three triples:
+`vptr[0]`=X, `vptr[1]`=Y, `vptr[2]`=Z/W, and the triple's U,V; plus the one
+texture at `desc+0x30`. Still open for stage 3b: the texture format at
+`desc+0x30` (dimensions + paletted decode) and the exact X/Y coordinate scale
+(viewport), both needed to emit the GL triangle in the right place with the
+right texels.
+
 ## Status
 
-Stages 0, 1, 1b, 2 complete. Foundation proven end to end (inject -> link
+Stages 0, 1, 1b, 2, 3a complete. Foundation proven end to end (inject -> link
 libGLES_CM past the guard -> ES1.1 context -> GPU render -> presented frame), and
 the game's 3D pipeline is mapped down to the per-triangle hook `+0x300AE` and its
 vertex/UV/texture format. Stage 3: at `+0x300AE`, convert one real textured

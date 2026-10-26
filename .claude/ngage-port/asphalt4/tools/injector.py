@@ -39,7 +39,15 @@ SOURCES = [os.path.join(REND, 'a4_tramp.s'),
            os.path.join(REND, 'a4_fps.c'),
            os.path.join(REND, 'a4_gl.s'),
            os.path.join(REND, 'a4_gl.c'),
+           os.path.join(REND, 'a4_prim.c'),
            os.path.join(HERE, '..', 'patch', 'fill.c')]
+
+# MBX stage 3a: capture textured-triangle data at draw_primitive +0x300B2 (just
+# after its prologue). BLX detour that re-executes the two displaced moves. Added
+# only with --capture; grows .bss for the capture scratch.
+CAPTURE_HOOKS = {0x300B2: 'a4_prim_capture_tramp'}
+PRIM_SCRATCH = 0x00401800       # must match A4_PRIM_SCRATCH in a4_prim.c
+PRIM_SCRATCH_SIZE = 0x800
 
 # MBX/PowerVR spike: link libGLES_CM and fill its IAT (the a4_gl_iat .word slots
 # in a4_gl.s) so the loader resolves these ordinals. Order must match a4_gl.s /
@@ -79,7 +87,7 @@ def u32(d, o): return struct.unpack_from('<I', d, o)[0]
 def build_blob(link_addr, tmp, clean=False):
     # clean builds carry none of the measurement code: drop the fps/GL sources,
     # and the fps/cache trampolines in a4_tramp.s are #ifdef'd out via -DA4_CLEAN.
-    MEASURE_SRCS = {'a4_fps.c', 'a4_gl.c', 'a4_gl.s'}
+    MEASURE_SRCS = {'a4_fps.c', 'a4_gl.c', 'a4_gl.s', 'a4_prim.c'}
     sources = [s for s in SOURCES if not (clean and os.path.basename(s) in MEASURE_SRCS)]
     objs = []
     for src in sources:
@@ -204,7 +212,7 @@ def add_gl_import(out, iat_code_off):
     return out
 
 
-def main(src_exe, out_exe, measure_only=False, gl=False, clean=False):
+def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=False):
     # measure_only: ship the STOCK renderer with ONLY the fps gauge wired in
     # (INSERT_HOOKS + CACHE_HOOKS + grown bss), skipping the span/vec rewrites
     # (FILL_HOOKS + LOOP_HOOKS). This is the baseline build: same gauge, same
@@ -216,7 +224,8 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False):
     loop_hooks = {} if measure_only else LOOP_HOOKS
     insert_hooks = {} if clean else INSERT_HOOKS      # fps detour
     cache_hooks = {} if clean else CACHE_HOOKS        # back-buffer cache
-    if clean: gl = False
+    capture_hooks = CAPTURE_HOOKS if capture else {}  # stage-3a primitive capture
+    if clean: gl = False; capture = False
 
     d = bytearray(open(src_exe, 'rb').read())
     assert u32(d, 0x1C) == 0, 'compressed image: inflate it first'
@@ -255,6 +264,9 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False):
     for off, tramp in cache_hooks.items():
         blx_insert(code, off, syms[tramp])
         print('cache  +%06X -> %s +%06X (4-byte BLX detour)' % (off, tramp, syms[tramp] - LINK_BASE))
+    for off, tramp in capture_hooks.items():
+        blx_insert(code, off, syms[tramp])
+        print('cap    +%06X -> %s +%06X (4-byte BLX detour)' % (off, tramp, syms[tramp] - LINK_BASE))
 
     grow = len(code) - code_size
     out = bytearray(d[:code_off]) + code + d[code_off + code_size:]
@@ -265,6 +277,7 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False):
     if not clean:                                   # clean builds carry no scratch
         top = FPS_SCRATCH + FPS_SCRATCH_SIZE
         if gl: top = max(top, GL_SCRATCH + GL_SCRATCH_SIZE)
+        if capture: top = max(top, PRIM_SCRATCH + PRIM_SCRATCH_SIZE)
         need = top - (data_base + data_size)
         if need > bss_size:
             assert FPS_SCRATCH >= data_base + data_size, 'fps scratch overlaps initialised data'
@@ -280,7 +293,8 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False):
     print('code %X -> %X (+%d), image %d bytes' % (code_size, len(code), grow, len(out)))
 
 if __name__ == '__main__':
-    flags = {'--measure-only', '--gl', '--clean'}
+    flags = {'--measure-only', '--gl', '--clean', '--capture'}
     args = [a for a in sys.argv[1:] if a not in flags]
     main(args[0], args[1], measure_only='--measure-only' in sys.argv,
-         gl='--gl' in sys.argv, clean='--clean' in sys.argv)
+         gl='--gl' in sys.argv, clean='--clean' in sys.argv,
+         capture='--capture' in sys.argv)
