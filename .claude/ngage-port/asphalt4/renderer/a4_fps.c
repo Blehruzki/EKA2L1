@@ -47,6 +47,9 @@ typedef uint32_t (*tick_fn)(void);
 typedef int (*home_fn)(void *ttime);    /* TTime::HomeTime(this): fills 8-byte us */
 
 void a4_gl_frame(void);                 /* MBX frame flush (renderer/a4_gl.c); self-gated */
+#ifdef A4_GAUGE
+int  a4_gl_state(void);                 /* 0 not-linked,1 no-bringup,2-6 step,7 up */
+#endif
 
 struct a4_fps_state {
     uint32_t magic;
@@ -120,8 +123,22 @@ void a4_fps_tick(tick_fn tc, home_fn ht)
     if (bb) {
         volatile uint16_t *fb = (volatile uint16_t *)bb;
         uint32_t cur = s->disp; if (cur > GAUGE_FS) cur = GAUGE_FS;
+        uint16_t bright = COL_BRIGHT;
+#ifdef A4_GAUGE
+        /* Colour AND length of the bar report GL state on the phone:
+         *  - GREEN bar, length = fps  : GL is up and running (gst 7).
+         *  - RED bar, empty           : libGLES_CM did not link (gst 0).
+         *  - YELLOW bar, length = step : linked but the context didn't come up;
+         *    read where it ends against the 15 / 30 / 45 ticks to get the step
+         *    (step*8 fps: 1=8 before 15, 2=16 just past 15, 3=24, 4=32 just past
+         *    30, 5=40, 6=48 past 45) -- which EGL call failed. */
+        int gst = a4_gl_state();
+        if (gst == 0)      { bright = COL_REF30; cur = 0; }               /* red, empty */
+        else if (gst != 7) { bright = 0xFFE0u;  cur = (uint32_t)gst * 8; } /* yellow */
+        /* gst==7: green, cur stays = real fps */
+#endif
         gauge_run(fb, 0, GAUGE_FS * GAUGE_PER, COL_DIM);      /* 0..60 reference */
-        gauge_run(fb, 0, cur * GAUGE_PER, COL_BRIGHT);        /* 0..fps bright */
+        gauge_run(fb, 0, cur * GAUGE_PER, bright);            /* length+colour = fps or GL state */
         /* reference ticks (drawn last, always visible): 30 red, 15/45 white */
         gauge_run(fb, 30 * GAUGE_PER, 30 * GAUGE_PER + GAUGE_PER, COL_REF30);
         gauge_run(fb, 15 * GAUGE_PER, 15 * GAUGE_PER + GAUGE_PER / 2, COL_REF);

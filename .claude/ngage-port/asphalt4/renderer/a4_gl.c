@@ -65,6 +65,7 @@ extern volatile uint32_t *a4_gl_iat_ptr(void);
 struct glr {
     uint32_t up, frames, prims, errc, ntex, seen;
     uint32_t flushed;                 /* GPU world already composited into this frame */
+    uint32_t bstep;                   /* furthest EGL/GL bring-up step reached (diag) */
     uint32_t cache_ptr[NCACHE];
     uint32_t cache_id[NCACHE];
 };
@@ -106,12 +107,13 @@ static void  gl_texenvx(uint32_t tg,uint32_t p,int v){ ((void(*)(uint32_t,uint32
 
 static int bringup(volatile struct glr *s)
 {
-    int disp = egl_get_display(0);                 if (!disp) return 0;
-    int a=0,b=0; if (!egl_initialize(disp,&a,&b))   return 0;
+    s->bstep = 1;                                                  /* entered bring-up */
+    int disp = egl_get_display(0);                 if (!disp) return 0; s->bstep = 2;
+    int a=0,b=0; if (!egl_initialize(disp,&a,&b))   return 0;       s->bstep = 3;
     int pb[] = { EGL_WIDTH, VP_W, EGL_HEIGHT, VP_H, EGL_NONE, 0, 0 };
-    int surf = egl_pbuffer(disp, GLES_CONFIG, pb);  if (!surf) return 0;
-    int ctx  = egl_context(disp, GLES_CONFIG, 0, 0);if (!ctx)  return 0;
-    if (!egl_make_current(disp, surf, surf, ctx))   return 0;
+    int surf = egl_pbuffer(disp, GLES_CONFIG, pb);  if (!surf) return 0; s->bstep = 4;
+    int ctx  = egl_context(disp, GLES_CONFIG, 0, 0);if (!ctx)  return 0; s->bstep = 5;
+    if (!egl_make_current(disp, surf, surf, ctx))   return 0;       s->bstep = 6;
     gl_viewport(0,0,VP_W,VP_H);
     gl_enable(GL_TEXTURE_2D);
     gl_shademodel(GL_FLAT);
@@ -245,6 +247,21 @@ void a4_gl_fill_hook(void *fill_pixels)
 {
     (void)fill_pixels;
     a4_gl_flush();
+}
+
+/* GL bring-up state, for the on-screen diagnostic in a measurement build:
+ *   0 = libGLES_CM did not link (the import never resolved)
+ *   1 = linked, but bring-up never entered (no textured prim past the threshold)
+ *   2..6 = bring-up reached this EGL step (2 display, 3 init, 4 pbuffer,
+ *          5 context) but the next failed
+ *   7 = make-current/context fully up and running on the GPU
+ * Used by a4_fps.c to colour the gauge and show the step. */
+int a4_gl_state(void)
+{
+    volatile uint32_t *iat = a4_gl_iat_ptr();
+    if (iat[0] < 0x10000u) return 0;               /* libGLES_CM not linked */
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    return 1 + (int)s->bstep;                      /* 1..7 */
 }
 
 /* Present detour (once per frame): flush as a fallback in case no 2D fill ran
