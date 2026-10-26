@@ -39,6 +39,10 @@ a4_gl_iat:
         .word   116     @ [23] glShadeModel
         .word   123     @ [24] glTexEnvx
         .word   68      @ [25] glGetError
+        .word   1       @ [26] eglChooseConfig  (batched renderer: depth config)
+        .word   55      @ [27] glDrawElements   (batched indexed draw)
+        .word   48      @ [28] glDepthFunc
+        .word   35      @ [29] glClearDepthx
         .global a4_gl_iat_end
 a4_gl_iat_end:
 

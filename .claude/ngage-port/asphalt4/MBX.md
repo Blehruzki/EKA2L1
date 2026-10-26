@@ -546,15 +546,97 @@ phone. If the GPU build's bar is clearly longer, the ~50% CPU is translating to
 real fps and zero-copy is worth building; if GL fails to start on the phone the
 build falls back to software and the bars match.
 
+## Device result: no gain, and why (per-triangle driver overhead)
+
+Two gauge builds (stock+gauge, GPU-skip no-blit+gauge) went to the phone. The
+owner's reading: **the bars match, no felt gain.** GL did start on device (the
+owner saw the green "up" state), so this is not a silent software fallback -- it
+is a real wash. The video the owner sent corroborates ~26 fps (14% duplicate
+frames by frame-count), against stock's ~27.
+
+The cause is the shape of the GL traffic, not whether the GPU is used. Stage 4
+issued **one draw per triangle**: bindtex + glVertexPointer + glTexCoordPointer +
+glDrawArrays(3), ~490 times a frame, ~2000 GL calls. On the bench those calls are
+HLE (host-side, free); on the N95 the **MBX driver runs every one of them on the
+ARM CPU** -- command validation, state flushes (the MBX is a tile-based deferred
+renderer, so a texture bind between draws flushes the tile buffer), and submit
+overhead. That per-command ARM cost replaces, roughly one-for-one, the
+rasteriser work the skip removed. Net ARM load ~unchanged -> fps ~unchanged. The
+bench could never show this (its GL is free); only the phone could, and did.
+
+Measured texture churn in the LA race (capture): ~490 tris/frame, 23 distinct
+textures, **179 texture changes (37%)** in arrival order. The fix is to stop
+issuing per-triangle commands.
+
+## Stage 5: the batched renderer
+
+`renderer/a4_gl.c`, rewritten. `a4_gl_draw_prim` no longer draws; it only
+**accumulates** each triangle (pos x,y,z + texcoord u,v) into frame buffers in
+the grown .bss and records its texture-cache index. At the 3D->2D boundary
+(`a4_gl_flush`) the frame's triangles are **counting-sorted by texture** and
+issued as **one `glDrawElements` per texture** -- ~23 draws and ~23 binds a frame
+instead of ~490 of each. Grouping reorders triangles, so painter's order is lost;
+a **depth buffer** restores it, keyed on the game's own per-vertex Z/W (`vtx[2]`,
+larger = closer).
+
+Details, and the guesses named (rule 4):
+- **Depth direction / ortho z sign.** Not derivable cleanly from the ES1.1 ortho
+  convention, so isolated behind `DEPTH_FUNC` (`GL_GREATER`), `CLEAR_DEPTH` (0)
+  and a symmetric `Z_RANGE` (`+/-32767*FX`, wide enough that z in [1,32766] is
+  never clipped whichever sign the ortho uses) -- then **verified by eye on the
+  bench**: occlusion is correct first try (road to horizon, palm in front of the
+  hills, houses behind roadside trees, player car in front, no z-fighting). If a
+  future scene renders inside-out, flip `DEPTH_FUNC` to `GL_LESS` and
+  `CLEAR_DEPTH` to `FX`.
+- **Depth config.** The pbuffer now asks `eglChooseConfig` for a config with
+  `EGL_DEPTH_SIZE>=16` (every EKA2L1 config is D24S8, but the device's config 6
+  may have no depth), falling back to config 6. New IAT ordinals (verified
+  against the ROM: ord = dispatch - 0x1100 + 1): eglChooseConfig 1, glDrawElements
+  55, glDepthFunc 48, glClearDepthx 35 (`a4_gl.s` [26]-[29]).
+- **Buffers.** pos int16[3], uv int32[2] (GL_FIXED), uint16 index, uint16 per-tri
+  texidx, from 0x408000; `MAXT`=640 (an overflow triangle draws immediately, still
+  depth-correct). `GL_SCRATCH_SIZE` grown 0x8000 -> 0xF000 (bss top 0x410000). The
+  bigger .bss did **not** corrupt the load layout -- boots clean.
+
+Bench-verified (RM-409, LA race, composite build 770672 bytes): renders
+correctly, **0 faults**, and the GPU path confirmed live by a `glr` memory
+snapshot mid-race -- up=MAGIC, bstep=6 (full context), seen=57326 (past the
+START_AFTER threshold), **prims=572 grouped into ntex=31 texture draws** (~18x
+fewer draw calls/binds than stage 4), flushed=1.
+
+The proof that the *batched* draws render correctly, not that software is
+quietly covering for them: once GL is up, `a4_gl_draw_prim` returns 1 for every
+textured triangle, so the game skips its own software rasteriser for the 3D --
+yet in the seen=57326 frame the full textured scene (road, trees, cars, houses)
+is present and correctly occluded. Had the grouped `glDrawElements` failed, that
+3D would be *absent* (only the software sky and HUD), masked back to the
+software layer by the magenta sentinel. It is there and right, so the batch
+drew it. (`errc` in `glr` is a dead field -- declared, never written -- so it is
+not evidence either way; the scene is.)
+
+The bench cannot measure the win: batching changes the count of *native MBX*
+commands, which is free on the bench's HLE GL and not counted in FRAMESTAT's
+guest instructions either. The decisive test is on the phone -- batched
+no-blit+gauge vs stock+gauge, directly comparable to the per-triangle wash above.
+If the batched bar is now longer, the ~18x fewer driver commands translated to
+ARM headroom and the zero-copy pixmap is worth building; if it is still a wash,
+the readback (not the draw count) is the wall and `eglCreatePixmapSurface` is the
+only lever left.
+
 ## Status
 
 Stages 0, 1, 1b, 2, 3a, 3b complete; stage 4 core done -- the full textured 3D
 scene renders on the GPU into the game's surface (41 textures, ~741 prims/frame,
-0 faults). The software-rasterizer skip is implemented and renders; its CPU win
-is a device measurement (see above), with the `-DA4_NO_BLIT` build as the
-instrument. The 2D HUD now composites correctly over the GPU 3D with no artifacts
+0 faults). Stage 5 done on the bench: the per-triangle draws are batched by
+texture with a depth buffer (~490 draws/binds -> ~23), renders correctly, 0
+faults, GPU path confirmed live. The device wash (stage 4, per-triangle) is
+diagnosed as MBX per-command ARM overhead; the batched build is the fix to
+re-test on the phone. The software-rasterizer skip is implemented and renders;
+its CPU win is a device measurement (see above), with the `-DA4_NO_BLIT` build as
+the instrument. The 2D HUD composites correctly over the GPU 3D with no artifacts
 (the former top bar was our own fps gauge, now suppressed in GL builds -- see
-above). Remaining on this track: device pixmap.
+above). Remaining on this track: device re-test of the batched build, then the
+device pixmap (zero-copy) if the readback proves to be the wall.
 Foundation proven end to end (inject -> link
 libGLES_CM past the guard -> ES1.1 context -> GPU render -> presented frame), and
 the game's 3D pipeline is mapped down to the per-triangle hook `+0x300AE`, with

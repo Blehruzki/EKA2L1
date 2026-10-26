@@ -56,10 +56,15 @@ PRIM_SCRATCH_SIZE = 0x2200
 GL_IMPORT_DLL = 'libgles_cm.dll'
 GL_IMPORT_ORDINALS = [14, 17, 4, 3, 18, 132, 33, 31, 58, 108,
                       67, 29, 125, 127, 56, 90, 82, 99, 57, 131,
-                      120, 39, 54, 116, 123, 68]   # must match a4_gl.s a4_gl_iat
+                      120, 39, 54, 116, 123, 68,
+                      1, 55, 48, 35]   # [26] eglChooseConfig [27] glDrawElements
+                                       # [28] glDepthFunc     [29] glClearDepthx
+                                       # must match a4_gl.s a4_gl_iat
 GL_SCRATCH = 0x00401000         # must match A4_GL_SCRATCH in a4_gl.c
-GL_SCRATCH_SIZE = 0x8000        # GL state + strip readback at 0x403000; kept small --
-                                # a large image .bss corrupts the game's load-time layout
+GL_SCRATCH_SIZE = 0xF000        # GL state + strip readback at 0x403000 + batch buffers
+                                # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as
+                                # small as the batch allows -- a large image .bss corrupts
+                                # the game's load-time layout
 
 # fps instrumentation: carve scratch out of the grown .bss, and a User::TickCount
 # IAT slot the detour resolves pc-relatively.
