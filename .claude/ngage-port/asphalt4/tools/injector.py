@@ -47,7 +47,7 @@ SOURCES = [os.path.join(REND, 'a4_tramp.s'),
 # only with --capture; grows .bss for the capture scratch.
 CAPTURE_HOOKS = {0x300B2: 'a4_prim_capture_tramp'}
 PRIM_SCRATCH = 0x00402000       # A4_TRI_SCRATCH in a4_prim.c (shared with a4_gl.c)
-PRIM_SCRATCH_SIZE = 0x2100
+PRIM_SCRATCH_SIZE = 0x2200
 
 # MBX/PowerVR spike: link libGLES_CM and fill its IAT (the a4_gl_iat .word slots
 # in a4_gl.s) so the loader resolves these ordinals. Order must match a4_gl.s /

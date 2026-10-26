@@ -25,6 +25,11 @@ struct a4_tri_draw {
     uint32_t tw, th;                     /* texture dimensions */
     uint32_t tex_addr;                   /* source texture pointer (for the record) */
     uint16_t tex[MAXDIM * MAXDIM];       /* copied RGB565 texels */
+    /* stage-4 viewport recon: the render context and its draw surface */
+    uint32_t ctx_addr;
+    uint32_t ctx_dump[32];               /* ctx[0..31] */
+    uint32_t surf_addr;                  /* ctx[0x4c] = the surface the 3D renders into */
+    uint32_t surf_dump[16];              /* surface[0..15] */
 };
 
 void a4_prim_capture(uint32_t *ctx, uint32_t *desc, uint32_t flags)
@@ -50,5 +55,11 @@ void a4_prim_capture(uint32_t *ctx, uint32_t *desc, uint32_t flags)
     }
     t->tw = w; t->th = h; t->tex_addr = (uint32_t)pix;
     for (uint32_t i = 0; i < w * h; i++) t->tex[i] = pix[i];
+    /* stage-4: record the render context and its draw surface for the viewport */
+    t->ctx_addr = (uint32_t)ctx;
+    for (int i = 0; i < 32; i++) t->ctx_dump[i] = ctx[i];
+    uint32_t *surf = (uint32_t *)ctx[0x4C / 4];
+    t->surf_addr = (uint32_t)surf;
+    for (int i = 0; i < 16; i++) t->surf_dump[i] = surf ? surf[i] : 0;
     t->ready = 1;
 }

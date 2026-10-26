@@ -304,6 +304,37 @@ exactly 2.0, which `GL_REPEAT` wraps to texel 0, collapsing all three texcoords
 to one texel). The raw U/V are `texel<<4`, so the scale is `U*4096 >> log2(w)`
 (U=512 on a 32-wide tex -> 1.0); with that, the texture renders.
 
+## Stage 4 (started): the full-frame renderer
+
+Stage 4 turns the one-triangle proof into the actual edition: every textured
+primitive of the frame drawn on the GPU into the game's real surface, the
+software rasterizer skipped, the 2D HUD composited over it, measured against the
+software path. It is the largest stage; this is the first recon piece.
+
+Captured the render context and its draw surface at `+0x300B2`:
+- The 3D **surface is `ctx[0x4c]` = `0x911088`, raw RGB565 pixels, no header**
+  (dumped all `0x75BF`, the current sky colour) -- the same buffer the gauge/
+  stage-1b blit already reach and the game presents. So GL output must land here.
+- Width/height are **not** in the surface; they are in `ctx` (candidates
+  `ctx+0x70`=600, `ctx+0x78`=0xA0=160, to be confirmed against the cull bounds
+  `+0x2FF60` reads). `ctx+0x10..0x40` is a 1/n reciprocal table (the perspective
+  divide `0x522C8` uses it); `ctx+0x54` holds the current texture.
+
+Architecture decided (device-accurate, bench-testable where EKA2L1 allows):
+1. Per textured primitive at `+0x300AE`: look the texture up in a cache keyed on
+   `desc+0x30` (upload RGB565 once, reuse), append the triangle to a GL batch.
+2. Frame boundary (the present detour `+0x1E6`): flush the batch to a GL surface
+   the size of the game's screen, then present.
+3. On device, the GL surface is a pixmap bound to `0x911088` (zero-copy); on the
+   bench (no pixmap surface in EKA2L1) a pbuffer + one full-frame blit stands in
+   for correctness, and the real CPU win is measured on the phone (or by adding
+   pixmap-surface support to EKA2L1).
+4. Skip the software rasterizer for prims drawn on the GPU; leave non-textured
+   prims and the 2D HUD on the software path, composited.
+
+Open before the renderer: confirm the viewport W/H, and the per-frame batch +
+texture-cache sizing. This is the next build.
+
 ## Earlier (3b part 1): texture format decoded
 
 Captured the full per-triangle memory (geometry + the texture struct at
