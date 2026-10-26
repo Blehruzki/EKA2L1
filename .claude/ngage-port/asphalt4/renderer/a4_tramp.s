@@ -78,15 +78,25 @@ a4_fps_tramp:
         @ takes arguments in r1/r2 that the surrounding code computed before +0x1E6,
         @ and the tick/draw calls would clobber them. r4 is callee-saved by them.
         push    {r0, r1, r2, r3, r12, lr}
-        ldr     r12, a4_fps_tick_iat
-        add     r12, pc, r12        @ r12 = &IAT[User::TickCount]  (pc = placeholder addr)
+        @ Resolve two euser imports pc-relatively and pass them to a4_fps_tick,
+        @ which calls them: User::TickCount (ord 674, monotonic, for the ring) and
+        @ TTime::HomeTime (ord 859, real microseconds, so the window is one real
+        @ second and the frame count is true fps).
+        ldr     r0, a4_fps_tick_iat
+        add     r0, pc, r0          @ pc = a4_fps_tick_iat addr
         b       2f
         .global a4_fps_tick_iat
 a4_fps_tick_iat:
         .word   0xDEADBEEF          @ patched: (code+0x50CE8) - (this word's addr)
-2:      ldr     r12, [r12]          @ TickCount runtime address
-        blx     r12                 @ r0 = User::TickCount()
-        bl      a4_fps_tick         @ a4_fps_tick(r0); draws overlay; preserves r4-r11
+2:      ldr     r0, [r0]            @ r0 = &User::TickCount (arg0)
+        ldr     r1, a4_fps_home_iat
+        add     r1, pc, r1          @ pc = a4_fps_home_iat addr
+        b       3f
+        .global a4_fps_home_iat
+a4_fps_home_iat:
+        .word   0xDEADBEEF          @ patched: (code+0x50CF0) - (this word's addr)
+3:      ldr     r1, [r1]            @ r1 = &TTime::HomeTime (arg1)
+        bl      a4_fps_tick         @ a4_fps_tick(tickcount_fn, hometime_fn); preserves r4-r11
         pop     {r0, r1, r2, r3, r12, lr}   @ restore the pre-hook r0-r3,r12
         ldr     r0, [r4, #0x20]     @ displaced 0x1E6: ldr r0,[r4,#0x20]
         ldr     r3, [r0]            @ displaced 0x1E8: ldr r3,[r0]

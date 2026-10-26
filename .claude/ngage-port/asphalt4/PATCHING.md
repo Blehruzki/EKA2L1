@@ -415,3 +415,14 @@ bit-exact (1500/1500), the game boots, the ring fills with per-frame deltas, and
 the bar renders as a clean solid band over the race (no stripes). The new
 `EKA2L1_PCMEM` probe (`EMU_PATCHES.md`) was used to find the render context's
 surface base.
+
+**True fps + reference ticks.** The gauge needed a scale, so the tick also reads
+`TTime::HomeTime` (euser ord 859, IAT `+0x50CF0`, also imported) for real
+microseconds and closes the window at one real second -- making the per-window
+frame count **true fps**, on bench and phone alike (the trampoline now resolves
+both euser imports pc-relatively and passes them to `a4_fps_tick`, which calls
+them). Reference ticks are painted into the bar: **red at 30 fps**, white at 15
+and 45. Green reaching past the red tick means above 30. Bench reads ~33 fps for
+the capped demo; on a phone at ~12 fps the green falls well short of the red 30
+line. Both euser calls preserve r4-r11, and the detour saves r0-r3/r12 so the
+present call's arguments survive (a dropped r2 there was an early USER-87 crash).

@@ -43,10 +43,13 @@ SOURCES = [os.path.join(REND, 'a4_tramp.s'),
 # IAT slot the detour resolves pc-relatively.
 FPS_SCRATCH = 0x00400400        # must match A4_FPS_SCRATCH in a4_fps.c
 FPS_SCRATCH_SIZE = 0x400        # headroom over sizeof(struct a4_fps_state)
-TICKCOUNT_IAT = 0x50CE8         # euser ord 674 import slot (code offset)
-# BLX-insertion detour: overwrite the 4 bytes at this code offset with a Thumb
-# BLX to the trampoline; the trampoline re-executes the displaced instructions.
-INSERT_HOOKS = {0x1E6: ('a4_fps_tramp', 'a4_fps_tick_iat', TICKCOUNT_IAT)}
+TICKCOUNT_IAT = 0x50CE8         # euser ord 674 (User::TickCount) import slot
+HOMETIME_IAT  = 0x50CF0         # euser ord 859 (TTime::HomeTime) import slot
+# BLX-insertion detour: overwrite the 4 bytes at this code offset with a Thumb BLX
+# to the trampoline; the trampoline re-executes the displaced instructions and
+# resolves each listed (placeholder symbol -> IAT code offset) pc-relatively.
+INSERT_HOOKS = {0x1E6: ('a4_fps_tramp', [('a4_fps_tick_iat', TICKCOUNT_IAT),
+                                         ('a4_fps_home_iat', HOMETIME_IAT)])}
 # plain BLX-insertion detours that just re-execute their displaced instructions
 # (no IAT to patch): back-buffer-base cache at the textured filler's +0x33412.
 CACHE_HOOKS = {0x33412: 'a4_cachebb_tramp'}
@@ -133,11 +136,12 @@ def main(src_exe, out_exe):
         ph_link = syms[retsym]
         word = ((LINK_BASE + ret_off) | 1) - ph_link
         struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
-    # fps detour: patch its TickCount-IAT placeholder (pc at the add == placeholder addr)
-    for entry, (tramp, iatsym, iat_off) in INSERT_HOOKS.items():
-        ph_link = syms[iatsym]
-        word = (LINK_BASE + iat_off) - ph_link
-        struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
+    # fps detour: patch each IAT placeholder (pc at the add == placeholder addr)
+    for entry, (tramp, iats) in INSERT_HOOKS.items():
+        for iatsym, iat_off in iats:
+            ph_link = syms[iatsym]
+            word = (LINK_BASE + iat_off) - ph_link
+            struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
 
     code = bytearray(d[code_off:code_off + code_size])
     code += b'\0' * (new_off - code_size) + blob
@@ -150,7 +154,7 @@ def main(src_exe, out_exe):
         n = veneer(code, off, syms[tramp])
         print('loop   +%06X -> %s +%06X, returns +%06X (%d-byte veneer)'
               % (off, tramp, syms[tramp] - LINK_BASE, ret_off, n))
-    for off, (tramp, iatsym, iat_off) in INSERT_HOOKS.items():
+    for off, (tramp, iats) in INSERT_HOOKS.items():
         blx_insert(code, off, syms[tramp])
         print('fps    +%06X -> %s +%06X (4-byte BLX detour)' % (off, tramp, syms[tramp] - LINK_BASE))
     for off, tramp in CACHE_HOOKS.items():

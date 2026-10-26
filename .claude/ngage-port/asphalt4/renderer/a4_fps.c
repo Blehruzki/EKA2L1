@@ -33,40 +33,50 @@
 #define A4_FPS_MAGIC   0xF95C0DE1u
 #define RING 128
 
-/* TICK_RATE: User::TickCount units per window. The per-window frame count is the
- * gauge value and, when the window is one second, is fps directly. The raw
- * frames/span in the ring let the reader recover exact fps for any tick rate, so
- * the gauge needs only to be proportional (good enough to compare two builds). */
-#define TICK_RATE 1000u
+/* The window is one real second (1,000,000 us from TTime::HomeTime), so the
+ * per-window frame count is true fps. Reference ticks give the scale. */
+#define WIN_US    1000000u
+#define GAUGE_FS  60u                   /* full-scale fps */
+#define GAUGE_PER 80u                   /* pixels per fps along the contiguous run */
+#define COL_BRIGHT 0x07E0u              /* green = current fps */
+#define COL_DIM    0x2965u              /* dim green = full-scale reference */
+#define COL_REF30  0xF800u              /* red tick = 30 fps baseline */
+#define COL_REF    0xFFFFu              /* white ticks = 15 / 45 fps */
 
-/* Gauge: full scale and pixels-per-unit for the contiguous bar. */
-#define GAUGE_FS  60u
-#define GAUGE_PER 80u
-#define COL_BRIGHT 0x07E0u              /* green */
-#define COL_DIM    0x2965u              /* dim green reference */
+typedef uint32_t (*tick_fn)(void);
+typedef int (*home_fn)(void *ttime);    /* TTime::HomeTime(this): fills 8-byte us */
 
 struct a4_fps_state {
     uint32_t magic;
     uint32_t last_tick;
     uint32_t frames;       /* total frames since init */
-    uint32_t win_frames;   /* frames in the current window */
-    uint32_t win_start;    /* tick at window start */
-    uint32_t disp;         /* frames counted in the last closed window */
+    uint32_t win_frames;   /* frames in the current one-second window */
+    uint32_t win_start_us; /* HomeTime us at window start */
+    uint32_t disp;         /* fps: frames in the last closed one-second window */
     uint32_t min_dt, max_dt, sum_dt;
-    uint32_t last_span;    /* ticks the last window actually spanned (for calibration) */
+    uint32_t ttime[2];     /* TTime buffer for HomeTime (64-bit us) */
     uint32_t ring_pos;
     uint32_t ring[RING];   /* recent per-frame tick deltas */
 };
 
-void a4_fps_tick(uint32_t tick)
+static void gauge_run(volatile uint16_t *fb, uint32_t from, uint32_t to, uint16_t col)
+{
+    for (uint32_t i = from; i < to; i++) fb[i] = col;
+}
+
+void a4_fps_tick(tick_fn tc, home_fn ht)
 {
     volatile struct a4_fps_state *s = (volatile struct a4_fps_state *)A4_FPS_SCRATCH;
 
+    uint32_t tick = tc();
+    ht((void *)s->ttime);
+    uint32_t us = s->ttime[0];
+
     if (s->magic != A4_FPS_MAGIC) {
         for (int i = 0; i < RING; i++) s->ring[i] = 0;
-        s->last_tick = tick; s->frames = 0; s->win_frames = 0; s->win_start = tick;
+        s->last_tick = tick; s->frames = 0; s->win_frames = 0; s->win_start_us = us;
         s->disp = 0; s->min_dt = 0xFFFFFFFFu; s->max_dt = 0; s->sum_dt = 0;
-        s->last_span = 0; s->ring_pos = 0; s->magic = A4_FPS_MAGIC;
+        s->ring_pos = 0; s->magic = A4_FPS_MAGIC;
         return;
     }
 
@@ -80,12 +90,10 @@ void a4_fps_tick(uint32_t tick)
     s->ring[s->ring_pos] = dt;
     s->ring_pos = (s->ring_pos + 1) & (RING - 1);
 
-    uint32_t span = tick - s->win_start;
-    if (span >= TICK_RATE) {
-        s->disp = s->win_frames;
-        s->last_span = span;
+    if ((uint32_t)(us - s->win_start_us) >= WIN_US) {   /* one real second elapsed */
+        s->disp = s->win_frames;                        /* == fps */
         s->win_frames = 0;
-        s->win_start = tick;
+        s->win_start_us = us;
         s->sum_dt = 0; s->min_dt = 0xFFFFFFFFu; s->max_dt = 0;
     }
 
@@ -93,7 +101,11 @@ void a4_fps_tick(uint32_t tick)
     if (bb) {
         volatile uint16_t *fb = (volatile uint16_t *)bb;
         uint32_t cur = s->disp; if (cur > GAUGE_FS) cur = GAUGE_FS;
-        for (uint32_t i = 0; i < GAUGE_FS * GAUGE_PER; i++) fb[i] = COL_DIM;
-        for (uint32_t i = 0; i < cur * GAUGE_PER; i++) fb[i] = COL_BRIGHT;
+        gauge_run(fb, 0, GAUGE_FS * GAUGE_PER, COL_DIM);      /* 0..60 reference */
+        gauge_run(fb, 0, cur * GAUGE_PER, COL_BRIGHT);        /* 0..fps bright */
+        /* reference ticks (drawn last, always visible): 30 red, 15/45 white */
+        gauge_run(fb, 30 * GAUGE_PER, 30 * GAUGE_PER + GAUGE_PER, COL_REF30);
+        gauge_run(fb, 15 * GAUGE_PER, 15 * GAUGE_PER + GAUGE_PER / 2, COL_REF);
+        gauge_run(fb, 45 * GAUGE_PER, 45 * GAUGE_PER + GAUGE_PER / 2, COL_REF);
     }
 }
