@@ -144,6 +144,30 @@ struct pc_trace {
 };
 pc_trace g_pc_trace;
 
+// EKA2L1_PCMEM=path + EKA2L1_PCMEM_AT=pc:reg:len,...: at a block entry on one of
+// those PCs, the `len` bytes at the address in r<reg> are appended to `path` as
+// (pc, address, len) words then the bytes. For reading an argument/struct a
+// routine is entered with. At most 100k records.
+struct pc_mem {
+    struct at { std::uint32_t pc, reg, len; };
+    std::vector<at> ats; std::FILE *f = nullptr; std::uint64_t n = 0;
+    pc_mem() {
+        const char *w = std::getenv("EKA2L1_PCMEM"); const char *a = std::getenv("EKA2L1_PCMEM_AT");
+        if (!w || !a) return; f = std::fopen(w, "wb"); if (!f) return;
+        while (a && *a) { char *e=nullptr; at x{};
+            x.pc=(std::uint32_t)std::strtoul(a,&e,16); if(!e||*e!=':')break;
+            x.reg=(std::uint32_t)std::strtoul(e+1,&e,10); if(!e||*e!=':'||x.reg>15)break;
+            x.len=(std::uint32_t)std::strtoul(e+1,&e,16); if(x.len>0x10000)x.len=0x10000;
+            ats.push_back(x); a=(e&&*e==',')?e+1:nullptr; } }
+    inline void hit(ARMul_State *cpu) {
+        if (!f || n>=100000) return; const std::uint32_t pc=cpu->Reg[15];
+        for (const at &e: ats) { if (e.pc!=pc) continue;
+            const std::uint32_t p=cpu->Reg[e.reg]; std::vector<std::uint8_t> b(e.len,0);
+            for (std::uint32_t i=0;i<e.len;i++){std::uint32_t w=0; if(cpu->PeekMemory32((p+i)&~3u,&w)) b[i]=(std::uint8_t)(w>>(8*((p+i)&3)));}
+            const std::uint32_t hd[3]={pc,p,e.len}; std::fwrite(hd,4,3,f); std::fwrite(b.data(),1,b.size(),f); std::fflush(f); n++; } }
+};
+pc_mem g_pc_mem;
+
 // EKA2L1_PCPROF=path -- an exact profile: at each block entry, the instructions
 // executed since the previous one (the bulk-loop step included) are credited to
 // the block that ran them, keyed by that block's first PC. Starts after
@@ -2915,6 +2939,7 @@ DISPATCH : {
     g_pc_prof.hit(cpu->Reg[15], num_instrs);
     g_pc_trace.hit(cpu->Reg[15], cpu->Reg[13], cpu->Reg.data());
     g_mem_snap.hit(cpu);
+    g_pc_mem.hit(cpu);
     if (!cpu->NirqSig) {
         if (!(cpu->Cpsr & 0x80)) {
             goto END;

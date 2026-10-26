@@ -65,6 +65,49 @@ a4_tex_tramp:
 a4_tex_ret:
         .word   0xDEADBEEF
 
+@ ---- fps instrumentation: detour planted just BEFORE the present call (+0x1E6),
+@ so the overlay a4_fps_tick draws into the back buffer lands on the finished
+@ frame and is carried by the present copy (hooking after the present would be
+@ overwritten by the next frame's render). Reached by a Thumb BLX, lr = +0x1EA.
+@ Reads User::TickCount (euser ord 674, IAT +0x50CE8, pc-relative so portable),
+@ calls a4_fps_tick(tick), then re-executes the two displaced loads
+@ (ldr r0,[r4,#0x20] ; ldr r3,[r0]) and returns into the present call. ----
+        .global a4_fps_tramp
+a4_fps_tramp:
+        @ Save ALL caller-saved regs: the present call just past the return site
+        @ takes arguments in r1/r2 that the surrounding code computed before +0x1E6,
+        @ and the tick/draw calls would clobber them. r4 is callee-saved by them.
+        push    {r0, r1, r2, r3, r12, lr}
+        ldr     r12, a4_fps_tick_iat
+        add     r12, pc, r12        @ r12 = &IAT[User::TickCount]  (pc = placeholder addr)
+        b       2f
+        .global a4_fps_tick_iat
+a4_fps_tick_iat:
+        .word   0xDEADBEEF          @ patched: (code+0x50CE8) - (this word's addr)
+2:      ldr     r12, [r12]          @ TickCount runtime address
+        blx     r12                 @ r0 = User::TickCount()
+        bl      a4_fps_tick         @ a4_fps_tick(r0); draws overlay; preserves r4-r11
+        pop     {r0, r1, r2, r3, r12, lr}   @ restore the pre-hook r0-r3,r12
+        ldr     r0, [r4, #0x20]     @ displaced 0x1E6: ldr r0,[r4,#0x20]
+        ldr     r3, [r0]            @ displaced 0x1E8: ldr r3,[r0]
+        bx      lr                  @ -> +0x1EA (continues into the present call)
+
+@ ---- cache the back-buffer base: inserted at the textured filler's +0x33412,
+@ where r2 = ctx[0x4c] (the surface the 3D renders into). Stashes it at a fixed
+@ scratch word so the fps overlay can draw into the frame. Re-executes the two
+@ displaced loads first (sp unchanged, so [sp,#0x60] is valid), then stashes;
+@ uses only r12 as scratch (dead here -- the inner loop's u-accum is set later). ----
+        .global a4_cachebb_tramp
+a4_cachebb_tramp:
+        ldr     r1, [sp, #0x60]     @ displaced: ldr r1,[sp,#0x60]
+        ldr     r1, [r1, #0x10]     @ displaced: ldr r1,[r1,#0x10]
+        ldr     r12, a4_bb_addr
+        str     r2, [r12]           @ *(a4_bb_addr) = back-buffer base
+        bx      lr
+        .global a4_bb_addr
+a4_bb_addr:
+        .word   0x00400700          @ A4_FPS_BB (absolute; data loads at its linked base)
+
 @ ---- transparent: inner loop +33B16; loop exit falls straight into the
 @ function epilogue (+33B42: add sp,#0x34; pop). Nothing is carried, so the
 @ contract is pixels only; return to +33B42 and let the epilogue run. ----

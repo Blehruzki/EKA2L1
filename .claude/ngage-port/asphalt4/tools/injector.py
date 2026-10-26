@@ -36,7 +36,20 @@ SOURCES = [os.path.join(REND, 'a4_tramp.s'),
            os.path.join(REND, 'a4_span_textured.c'),
            os.path.join(REND, 'a4_span_transparent.c'),
            os.path.join(REND, 'a4_vec.s'),
+           os.path.join(REND, 'a4_fps.c'),
            os.path.join(HERE, '..', 'patch', 'fill.c')]
+
+# fps instrumentation: carve scratch out of the grown .bss, and a User::TickCount
+# IAT slot the detour resolves pc-relatively.
+FPS_SCRATCH = 0x00400400        # must match A4_FPS_SCRATCH in a4_fps.c
+FPS_SCRATCH_SIZE = 0x400        # headroom over sizeof(struct a4_fps_state)
+TICKCOUNT_IAT = 0x50CE8         # euser ord 674 import slot (code offset)
+# BLX-insertion detour: overwrite the 4 bytes at this code offset with a Thumb
+# BLX to the trampoline; the trampoline re-executes the displaced instructions.
+INSERT_HOOKS = {0x1E6: ('a4_fps_tramp', 'a4_fps_tick_iat', TICKCOUNT_IAT)}
+# plain BLX-insertion detours that just re-execute their displaced instructions
+# (no IAT to patch): back-buffer-base cache at the textured filler's +0x33412.
+CACHE_HOOKS = {0x33412: 'a4_cachebb_tramp'}
 
 # whole-function entry offset -> replacement symbol (same contract, returns normally)
 FILL_HOOKS = {0x2ABAA: 'a4_fill_alpha',   # translucent rectangle fill
@@ -88,6 +101,24 @@ def veneer(code, off, target_link):
     code[arm:arm + 4] = struct.pack('<I', 0xEA000000 | (disp & 0xFFFFFF))
     return arm + 4 - off
 
+def blx_insert(code, off, target_link):
+    """Overwrite the 4 bytes at code offset `off` with a Thumb BLX to an ARM
+    target (two-halfword, ARMv5 encoding). Self-checks the encoding by
+    disassembling it back with capstone -- a wrong BLX would be a hard fault."""
+    import capstone
+    pc = LINK_BASE + off
+    offset = target_link - ((pc + 4) & ~3)          # BLX bases on Align(PC+4,4)
+    assert offset % 2 == 0 and -(1 << 22) <= offset < (1 << 22), offset
+    hw1 = 0xF000 | ((offset >> 12) & 0x7FF)
+    hw2 = 0xE800 | ((offset >> 1) & 0x7FF)          # H=01 -> BLX
+    code[off:off + 4] = struct.pack('<HH', hw1, hw2)
+    md = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB)
+    ins = next(md.disasm(bytes(code[off:off + 4]), pc))
+    want = '#0x%x' % (target_link)
+    if ins.mnemonic != 'blx' or want not in ins.op_str:
+        raise AssertionError('BLX encode check failed: %s %s (wanted blx %s)'
+                             % (ins.mnemonic, ins.op_str, want))
+
 def main(src_exe, out_exe):
     d = bytearray(open(src_exe, 'rb').read())
     assert u32(d, 0x1C) == 0, 'compressed image: inflate it first'
@@ -102,6 +133,11 @@ def main(src_exe, out_exe):
         ph_link = syms[retsym]
         word = ((LINK_BASE + ret_off) | 1) - ph_link
         struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
+    # fps detour: patch its TickCount-IAT placeholder (pc at the add == placeholder addr)
+    for entry, (tramp, iatsym, iat_off) in INSERT_HOOKS.items():
+        ph_link = syms[iatsym]
+        word = (LINK_BASE + iat_off) - ph_link
+        struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
 
     code = bytearray(d[code_off:code_off + code_size])
     code += b'\0' * (new_off - code_size) + blob
@@ -114,10 +150,23 @@ def main(src_exe, out_exe):
         n = veneer(code, off, syms[tramp])
         print('loop   +%06X -> %s +%06X, returns +%06X (%d-byte veneer)'
               % (off, tramp, syms[tramp] - LINK_BASE, ret_off, n))
+    for off, (tramp, iatsym, iat_off) in INSERT_HOOKS.items():
+        blx_insert(code, off, syms[tramp])
+        print('fps    +%06X -> %s +%06X (4-byte BLX detour)' % (off, tramp, syms[tramp] - LINK_BASE))
+    for off, tramp in CACHE_HOOKS.items():
+        blx_insert(code, off, syms[tramp])
+        print('cache  +%06X -> %s +%06X (4-byte BLX detour)' % (off, tramp, syms[tramp] - LINK_BASE))
 
     grow = len(code) - code_size
     out = bytearray(d[:code_off]) + code + d[code_off + code_size:]
     struct.pack_into('<I', out, 0x30, len(code))
+    # grow .bss so the fps scratch is backed by zero-mapped writable data
+    data_base, data_size, bss_size = u32(out, 0x50), u32(out, 0x34), u32(out, 0x44)
+    need = (FPS_SCRATCH + FPS_SCRATCH_SIZE) - (data_base + data_size)
+    if need > bss_size:
+        assert FPS_SCRATCH >= data_base + data_size, 'fps scratch overlaps initialised data'
+        struct.pack_into('<I', out, 0x44, need)
+        print('bss    %#x -> %#x (fps scratch at %#x)' % (bss_size, need, FPS_SCRATCH))
     for field in (0x68, 0x6C, 0x70, 0x74):          # data, import, code reloc, data reloc offsets
         v = u32(out, field)
         if v: struct.pack_into('<I', out, field, v + grow)

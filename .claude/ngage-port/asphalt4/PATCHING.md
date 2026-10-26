@@ -377,3 +377,41 @@ them needs relocation handling and is left for now.
 
 `tools/injector.py` now plants all five hooks (fill + two vec leaves + the two
 filler inner loops) into one general edition.
+
+## Update: on-device measurement tool (frame-time log + on-screen fps gauge)
+
+Added so the general edition's effect can be read on real hardware, where the
+bench can't resolve it. Three new detours in the injector (all BLX-insertion,
+4 bytes, re-executing their displaced instructions):
+
+- **fps tick** at `+0x1E6` (just before the per-frame present call, so the
+  overlay lands on the finished frame and is carried by the present copy). It
+  reads `User::TickCount()` -- which the game imports (euser ord 674, IAT
+  `+0x50CE8`), resolved pc-relatively so it is load-address independent -- and
+  calls `a4_fps_tick` (`renderer/a4_fps.c`).
+- **back-buffer cache** at the textured filler's `+0x33412`, where `r2 = ctx[0x4c]`
+  is the surface the 3D renders into; stashed so the overlay can draw portably.
+
+State (counters + a 128-entry ring of per-frame tick deltas) lives in a fixed
+scratch carved from the image's `.bss`, which the injector grows (`bss_size`
+bumped); the data section loads at its linked base so the absolute scratch
+address is valid at runtime. A bench `MEMSNAP` of the scratch reads the exact
+frames/deltas -- the objective record.
+
+The game's imports are minimal (no efsrv, no TLS/malloc), so the requested
+`C:\gate6-a4fps.log` file -- reachable only through Open C `libc`, whose ordinals
+aren't identified -- was left as best-effort and is **not** implemented; the ring
+(bench) and the on-screen gauge (phone) cover the need.
+
+**On-screen gauge.** The back buffer has an unusual stride (720 uint16, found by
+a vertical-line calibration) and the display path turns 2D writes into stripes
+(a bench artifact, and the phone's path may differ again), so a 2D digit readout
+can't be drawn reliably. A *contiguous* run of pixels maps to a contiguous screen
+region on any stride/scale, so the gauge is a contiguous bar: a dim full-scale
+reference with a bright run on top whose length is the per-window frame count.
+Its bright fraction tracks fps, which is what lets a **stock-vs-patched run be
+compared by eye** (longer green = faster). Verified on the bench: the hooks stay
+bit-exact (1500/1500), the game boots, the ring fills with per-frame deltas, and
+the bar renders as a clean solid band over the race (no stripes). The new
+`EKA2L1_PCMEM` probe (`EMU_PATCHES.md`) was used to find the render context's
+surface base.
