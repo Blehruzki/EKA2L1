@@ -511,6 +511,41 @@ Verified on the bench (stock vs. composite, same race): sky, player car, the 3D
 scene, minimap, speedometer, boost bar and position/lap/WANTED all render
 correctly, no top bar, 0 faults.
 
+## CPU win: bench preview, and the on-device measurement
+
+The win is moving the textured-3D rasterization off the ARM core onto the MBX.
+The honest measurement is on the phone, but a bench preview is defensible here
+because FRAMESTAT counts *guest* instructions: the guest-side cost of issuing a
+GL call is counted, the host GL work is not -- and on the device the GL work is
+the MBX (native), not guest instructions either. With `-DA4_NO_BLIT` there is
+also no readback to confound it, and no glFinish stall (dropped on that path).
+
+Measured (FRAMESTAT, dyncom, instr/frame):
+
+| scene                         | stock (sw) | GPU-skip (no-blit) | reduction |
+|-------------------------------|-----------:|-------------------:|----------:|
+| idle start line (controlled)  |      9.57M |              4.83M |    49.5%  |
+| LA race, held accelerate      |      9.53M |              4.65M |    51.2%  |
+
+Two independent scenes both land at ~50%. Stock sits at a near-constant ~9.5M
+regardless of scene (the software rasterizer fills the whole 320x240 every
+frame -- a roughly fixed cost); the GPU path removes about half of it. The GPU
+path is confirmed genuinely active, not a fallback (glr live: up=MAGIC,
+~500 prims/frame drawn on GL, 23 textures, past the START_AFTER threshold,
+0 faults).
+
+Caveats carried to the device: the ~50% is guest CPU; realised fps also needs
+the MBX to keep up (trivially, for ~500 tris) and needs zero-copy (pixmap) to
+avoid the readback -- the no-blit build models that but is not the playable
+build. A playable fast build still needs `eglCreatePixmapSurface` implemented.
+
+On-device instrument: `a4_fps.c`'s on-screen gauge, forced on in a GL build with
+`-DA4_GAUGE`. Two gauge builds shipped to the owner -- stock+gauge and
+GPU-skip+gauge -- to compare the bright-green bar (fps) in the same scene on the
+phone. If the GPU build's bar is clearly longer, the ~50% CPU is translating to
+real fps and zero-copy is worth building; if GL fails to start on the phone the
+build falls back to software and the bars match.
+
 ## Status
 
 Stages 0, 1, 1b, 2, 3a, 3b complete; stage 4 core done -- the full textured 3D
