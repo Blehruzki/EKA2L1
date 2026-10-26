@@ -46,6 +46,7 @@ SOURCES = [os.path.join(REND, 'a4_tramp.s'),
 # after its prologue). BLX detour that re-executes the two displaced moves. Added
 # only with --capture; grows .bss for the capture scratch.
 CAPTURE_HOOKS = {0x300B2: 'a4_prim_capture_tramp'}
+CAPTURE_SKIP_RET = 0x300E0      # draw_primitive epilogue; GPU-drawn prims return here
 PRIM_SCRATCH = 0x00402000       # A4_TRI_SCRATCH in a4_prim.c (shared with a4_gl.c)
 PRIM_SCRATCH_SIZE = 0x2200
 
@@ -249,6 +250,12 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             ph_link = syms[iatsym]
             word = (LINK_BASE + iat_off) - ph_link
             struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
+    # capture/skip trampoline: patch a4_skip_ret to draw_primitive's epilogue
+    # (+0x300E0, where the GPU-drawn path returns, skipping the software rasterizer)
+    if capture:
+        ph_link = syms['a4_skip_ret']
+        word = ((LINK_BASE + CAPTURE_SKIP_RET) | 1) - ph_link
+        struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
 
     code = bytearray(d[code_off:code_off + code_size])
     code += b'\0' * (new_off - code_size) + blob

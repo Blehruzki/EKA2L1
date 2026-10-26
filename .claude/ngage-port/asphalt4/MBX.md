@@ -414,11 +414,63 @@ upload the RGB565 texture, `glVertexPointer`(screen X,Y)/`glTexCoordPointer`
 GPU (to a pbuffer + blit, the stage-1b path, so it does not yet fight the
 software scene -- that composite is stage 4).
 
+## Stage 4 perf: software-rasterizer skip + the measurement problem
+
+The dispatcher hook now returns a flag. `a4_gl_draw_prim` returns 1 when the
+GPU drew the primitive and 0 to fall through; `a4_prim_capture_tramp` (in
+`renderer/a4_tramp.s`) branches on it -- 0 re-executes the two displaced Thumb
+moves and continues into the software rasterizer, 1 returns straight out of
+`draw_primitive` via its own epilogue (`+0x300E0`, r0=0 as the cull path
+returns), so the software span-fill never runs for a GPU-drawn triangle. The
+injector patches the `a4_skip_ret` placeholder to `(code+0x300E0)|1` (Thumb).
+This is the CPU win: the triangle rasterization moves off the ARM core.
+
+**Why the bench cannot measure that win, and what does.** Two bench-only
+distortions sit between the bench number and the device:
+
+1. **HLE GL is host-side.** EKA2L1 runs `libGLES_CM` as host dispatch, so the
+   guest instructions a `glDrawArrays` costs on the bench are near zero, while
+   on the device each call drives the real MBX/PowerVR driver. FRAMESTAT counts
+   guest instructions, so it *understates* the device GL cost and *overstates*
+   the net saving.
+2. **No zero-copy surface on the bench.** The device target is a pixmap surface
+   bound to the game's own `0x911088` buffer (no copy back). EKA2L1's
+   `eglCreatePixmapSurface` is stubbed out, so the bench has to render to a
+   pbuffer and copy the pixels back by hand -- a ~76800-pixel guest blit every
+   frame that the device path does not have. That blit alone roughly cancels
+   the span-fill saving in the bench FRAMESTAT, which is why the skip build
+   measured ~unchanged instr/frame (~11.2M vs stock ~10.9M) in the stage-4-core
+   run.
+
+So the instrument for the real number is a build that renders + skips but does
+*not* blit: `A4_EXTRA_CFLAGS="-DA4_NO_BLIT"` compiles `a4_gl_frame` to drop the
+readback+blit (early return after `glFinish`), modelling the device's zero-copy
+path. Built as `a4_glnoblit.exe` (`--gl --capture`, 769216 bytes, builds
+clean). The honest reading of it is still a *lower bound* on the device saving
+because of distortion (1): the device pays GL-call cost the bench does not.
+**The decisive measurement is on the phone** -- stock vs. the GPU-skip build,
+frame rate in a crowded scene -- per the project's "a picture is not a
+measurement; give the instrument to the person holding the phone" rule.
+
+Not logged as a bench row: the Asphalt 4 FRAMESTAT launch (N-Gage title via the
+`ngiplay` launcher `0x20003B78`, which stops at the Arena showroom UI and needs
+a keypress to start the game) was not reproducible from state saved to disk this
+session -- the autodrive navigation ran inline in an earlier turn. Re-deriving
+it is bench rounds spent on a confounded proxy, so it is deferred to the device
+run instead.
+
+Still open after this: composite the 2D HUD over the GPU 3D (today the readback
+path overwrites the whole surface), and the device zero-copy pixmap
+(`eglCreatePixmapSurface`, which would need implementing in EKA2L1 or is
+device-only).
+
 ## Status
 
 Stages 0, 1, 1b, 2, 3a, 3b complete; stage 4 core done -- the full textured 3D
 scene renders on the GPU into the game's surface (41 textures, ~741 prims/frame,
-0 faults), remaining work is perf (skip software, composite HUD, device pixmap).
+0 faults). The software-rasterizer skip is implemented and renders; its CPU win
+is a device measurement (see above), with the `-DA4_NO_BLIT` build as the
+instrument. Remaining: HUD composite, device pixmap.
 Foundation proven end to end (inject -> link
 libGLES_CM past the guard -> ES1.1 context -> GPU render -> presented frame), and
 the game's 3D pipeline is mapped down to the per-triangle hook `+0x300AE`, with

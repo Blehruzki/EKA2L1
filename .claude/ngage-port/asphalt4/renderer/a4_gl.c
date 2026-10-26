@@ -133,20 +133,22 @@ static uint32_t tex_for(volatile struct glr *s, uint32_t tsaddr)
     return id;
 }
 
-void a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
+/* returns 1 if the primitive was drawn on the GPU (the caller skips the software
+ * rasterizer), 0 if it should fall through to software. */
+int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 {
     volatile uint32_t *iat = a4_gl_iat_ptr();
-    if (iat[0] < 0x10000u || !(flags & 1)) return;
+    if (iat[0] < 0x10000u || !(flags & 1)) return 0;
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
-    if (++s->seen < START_AFTER) return;             /* past the intro video + menu */
+    if (++s->seen < START_AFTER) return 0;           /* past the intro video + menu */
     if (s->up != A4_GL_MAGIC) {
-        if (!bringup(s)) return;                     /* glr is bss-zeroed */
+        if (!bringup(s)) return 0;                   /* glr is bss-zeroed */
         s->up = A4_GL_MAGIC;
     }
     if (s->prims == 0) gl_clear(GL_COLOR_BUFFER_BIT);   /* first prim of the frame */
 
     uint32_t tsaddr = desc[0x30 / 4];
-    if (!tsaddr) return;
+    if (!tsaddr) return 0;
     uint32_t *ts = (uint32_t *)tsaddr;
     uint32_t tw = ts[1] + 1, th = ts[2] + 1;
     int wsh = 0, hsh = 0;
@@ -169,6 +171,7 @@ void a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     gl_texcoordptr(2, GL_FIXED, 0, uv);
     gl_drawarrays(GL_TRIANGLES, 0, 3);
     s->prims++;
+    return 1;                                        /* drawn on the GPU; skip software */
 }
 
 void a4_gl_frame(void)
@@ -179,6 +182,11 @@ void a4_gl_frame(void)
     if (s->up != A4_GL_MAGIC || s->prims == 0) return;
 
     gl_finish();
+#ifdef A4_NO_BLIT
+    /* measurement build: skip the readback+blit to isolate the guest CPU cost
+     * (device uses a zero-copy pixmap surface, so there is no blit there). */
+    s->prims = 0; s->frames++; return;
+#endif
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
     if (bb) {
         uint32_t *rb = (uint32_t *)A4_GL_READBUF;

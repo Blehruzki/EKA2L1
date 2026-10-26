@@ -129,11 +129,23 @@ a4_bb_addr:
         .global a4_prim_capture_tramp
 a4_prim_capture_tramp:
         push    {r0, r1, r2, r3, r12, lr}
-        bl      a4_prim_capture     @ (ctx=r0, desc=r1, flags=r2); preserves r4-r11
+        bl      a4_prim_capture     @ ret r0: 1 = GPU drew it (skip software), 0 = continue
+        cmp     r0, #0
+        bne     1f
         pop     {r0, r1, r2, r3, r12, lr}
         mov     r5, r0              @ displaced +300B2: movs r5, r0
         mov     r4, r2              @ displaced +300B4: movs r4, r2
-        bx      lr                  @ -> +0x300B6 (Thumb; lr from the BLX)
+        bx      lr                  @ -> +0x300B6 (Thumb; software rasterizer runs)
+1:      @ GPU drew it: return from draw_primitive via its own epilogue (+0x300E0:
+        @ add sp,#0x14 ; pop {r4,r5,pc}), with r0=0 as the cull path returns.
+        pop     {r0, r1, r2, r3, r12, lr}   @ balance the push (sp back to post-prologue)
+        mov     r0, #0
+        ldr     r12, a4_skip_ret
+        add     r12, pc, r12        @ pc(add)+8 == a4_skip_ret addr
+        bx      r12                 @ -> +0x300E0
+        .global a4_skip_ret
+a4_skip_ret:
+        .word   0xDEADBEEF          @ patched: (code+0x300E0 | 1) - this word's addr
 #endif  /* A4_CLEAN */
 
 @ ---- transparent: inner loop +33B16; loop exit falls straight into the
