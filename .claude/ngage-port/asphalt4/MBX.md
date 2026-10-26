@@ -558,25 +558,41 @@ it is not so.
   (`runtime.dll`), which does own a `CPeriodic` -- but at a **10 ms (100 fps)**
   interval (the only frame-shaped constant in it), a ceiling far above the
   achieved rate, not a binding cap.
-- **Direct bench measurement (wall-clock post rate, same LA race, dynarmic):**
+- **The game's own UI exceeds 30 fps when the work is light** -- 32-33 fps on the
+  tip screens, 61 fps on the intro video (seen in bench screenshots). A hard
+  25/30 fps cap could not produce 61 fps. So the loop is compute-bound, not
+  timer-paced.
 
-  | build | instr/frame | bench fps |
-  |---|---:|---:|
-  | stock (software)        | ~9.5M | **12.8** |
-  | GPU-skip no-blit (batched) | ~4.7M | **24.1** |
+That the loop is compute-bound means freeing CPU *should* raise fps. Whether it
+does on the device is a separate, still-open question (see the correction below).
 
-  **1.88x the frame rate for 2x less work** -- almost linear. A capped loop would
-  have pinned the GPU-skip build at the cap, not nearly doubled it. Corroborated
-  by the game's own UI posting at 32-33 fps on the tip screens and 61 fps on the
-  intro video (seen in bench screenshots): no hard 25/30 fps ceiling.
+**Measurement correction (important).** An earlier version of this section put a
+"stock 12.8 fps vs GPU-skip 24.1 fps = 1.88x" table here and concluded the CPU
+headroom converts to fps. That fps came from counting posts over a window while
+**autodrive** drove -- and autodrive takes a different route each run, so one run
+sat in open road and another in dense downtown. The 2x was **scene variance, not
+the skip**. Retracted. Frame *rate* measured over an uncontrolled autodrive is
+not a measurement here; only instructions-per-frame at a **fixed** scene is.
 
-So the loop is **compute-bound, and the CPU headroom is convertible** -- on the
-bench, where HLE GL is free, offloading the rasteriser nearly doubles fps. The
-device gains nothing only because the offload is *not* free on the real MBX
-(next section). The bench structurally cannot show that gap: it is the same
-reason the depth-batched composite renders perfectly here and glitches on the
-phone. Settling the device cost needs on-device instrumentation (a gauge that
-reports prims-actually-taken + glGetError), not another bench run.
+Controlled instead (idle start-line, no input, same scene both runs, FRAMESTAT
+instr/frame median):
+
+| build | instr/frame |
+|---|---:|
+| no-skip (software, with the ARM span rewrites) | **8.11M** |
+| force-skip (skip the captured prims, no GL)     | **3.92M** |
+
+So the primitive skip is real: it cuts ~52% of guest instructions at that scene
+(matching the independent 9.57M->4.83M start-line number recorded earlier), and
+the skipped prims leave the picture looking the same (force-skip vs no-skip
+frames are indistinguishable by eye). What is NOT established is that this CPU
+saving turns into fps on the phone -- the clean test is the `A4_FORCE_SKIP`
+build (skip in software, no GL at all): if it is faster on the device it
+converts; if not, it does not.
+
+Also retracted: the earlier read that the phone's no-blit probe "showed live 3D,
+so software is not being skipped." A no-blit build shows live 3D on the **bench**
+too (the non-captured prims still render); it does not indicate the skip failed.
 
 ## On-device probe gauge (crack the black box)
 
