@@ -108,6 +108,8 @@ struct glr {
     uint32_t up, frames, prims, errc, ntex, seen;
     uint32_t flushed;                 /* GPU world already composited into this frame */
     uint32_t bstep;                   /* furthest EGL/GL bring-up step reached (diag) */
+    uint32_t last_prims;              /* prims of the last completed frame (device probe) */
+    uint32_t depthcfg;                /* 1 if eglChooseConfig granted a depth config */
     uint32_t cache_ptr[NCACHE];
     uint32_t cache_id[NCACHE];
 };
@@ -151,6 +153,7 @@ static int   egl_choose_config(int d,const int*a,uint32_t*c,int n,int*num){ retu
 static void  gl_drawelements(uint32_t m,int c,uint32_t t,const void*i){ ((void(*)(uint32_t,int,uint32_t,const void*))F(27))(m,c,t,i); }
 static void  gl_depthfunc(uint32_t f){ ((void(*)(uint32_t))F(28))(f); }
 static void  gl_cleardepthx(int d){ ((void(*)(int))F(29))(d); }
+static uint32_t gl_geterror(void){ return ((uint32_t(*)(void))F(25))(); }   /* glGetError, device probe */
 
 static int bringup(volatile struct glr *s)
 {
@@ -162,7 +165,7 @@ static int bringup(volatile struct glr *s)
     uint32_t cfg = GLES_CONFIG;
     int ca[] = { EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_DEPTH_SIZE, 16, EGL_NONE };
     uint32_t got = 0; int num = 0;
-    if (egl_choose_config(disp, ca, &got, 1, &num) && num > 0) cfg = got;
+    if (egl_choose_config(disp, ca, &got, 1, &num) && num > 0) { cfg = got; s->depthcfg = 1; }
     int pb[] = { EGL_WIDTH, VP_W, EGL_HEIGHT, VP_H, EGL_NONE, 0, 0 };
     int surf = egl_pbuffer(disp, cfg, pb);          if (!surf) return 0; s->bstep = 4;
     int ctx  = egl_context(disp, cfg, 0, 0);        if (!ctx)  return 0; s->bstep = 5;
@@ -180,6 +183,7 @@ static int bringup(volatile struct glr *s)
     gl_matrixmode(GL_PROJECTION); gl_loadidentity();
     gl_orthox(0, VP_W*FX, VP_H*FX, 0, -Z_RANGE, Z_RANGE);   /* top-left origin; z symmetric */
     gl_matrixmode(GL_MODELVIEW); gl_loadidentity();
+    { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a bring-up GL error */
     return 1;
 }
 
@@ -326,8 +330,10 @@ void a4_gl_flush(void)
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
     if (s->up != A4_GL_MAGIC || s->prims == 0 || s->flushed) return;
     s->flushed = 1;
+    s->last_prims = s->prims;                            /* frame's prim count, captured once (device probe) */
 
     batch_draw(s);                                       /* issue the frame's draws */
+    { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a draw GL error (device probe) */
 
 #ifdef A4_NO_BLIT
     /* measurement build: skip the readback+blit to isolate the guest CPU cost
@@ -398,4 +404,28 @@ void a4_gl_frame(void)
     s->prims = 0;
     s->flushed = 0;
     s->frames++;
+}
+
+/* Device probe accessors (read by a4_fps.c's -DA4_GAUGE gauge). Each returns a
+ * neutral value when GL is not linked, so the gauge degrades cleanly. */
+int a4_gl_prims(void)
+{
+    volatile uint32_t *iat = a4_gl_iat_ptr();
+    if (iat[0] < 0x10000u) return 0;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    return (int)s->last_prims;
+}
+int a4_gl_errc(void)
+{
+    volatile uint32_t *iat = a4_gl_iat_ptr();
+    if (iat[0] < 0x10000u) return 0;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    return (int)s->errc;
+}
+int a4_gl_depthcfg(void)
+{
+    volatile uint32_t *iat = a4_gl_iat_ptr();
+    if (iat[0] < 0x10000u) return 0;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    return (int)s->depthcfg;
 }

@@ -578,6 +578,31 @@ reason the depth-batched composite renders perfectly here and glitches on the
 phone. Settling the device cost needs on-device instrumentation (a gauge that
 reports prims-actually-taken + glGetError), not another bench run.
 
+## On-device probe gauge (crack the black box)
+
+The bench cannot see device GL, so the gauge was turned into a telemetry channel.
+`a4_gl.c` now keeps, per frame, the GL error (`glGetError`, IAT ord 68, sticky
+first non-zero), the triangles the GPU path actually took (`last_prims`, captured
+in `a4_gl_flush` -- once a frame, when `prims` is complete, not in the
+present detour where a double-fire clobbered it to 0), and whether
+`eglChooseConfig` granted a depth config (`depthcfg`). Accessors
+`a4_gl_prims/errc/depthcfg`. Under `-DA4_GAUGE` (`a4_fps.c`) the gauge draws two
+contiguous bands instead of the fps bar:
+
+- **Band 1 (from pixel 0):** red stub = libGLES not linked; yellow (len=step) =
+  bring-up stalled; **green, len = prims taken** (ticks at 100/300/500). A long
+  green bar = the scene is being offloaded; an (almost) empty green bar = GL is
+  up but the GPU is taking nothing (software still draws it) -- the central
+  unknown from the phone videos.
+- **Band 2 (lower):** magenta (rows = `(errc&7)+1`) = a GL error, enum readable;
+  green short = no error + depth config; orange = no error but **no depth config**
+  on this device (explains a depth-batched composite glitch).
+
+Bench-verified (RM-409, LA race, `--gl --capture -DA4_NO_BLIT -DA4_GAUGE`): the
+probe reads up=MAGIC, bstep=6, **last_prims 591-612**, errc=0, depthcfg=1 -- the
+"offload healthy" baseline. On the phone a departure from that (empty band 1,
+magenta band 2, orange band 2) names the fault in one round.
+
 ## Device result: no gain, and why (per-triangle driver overhead)
 
 Two gauge builds (stock+gauge, GPU-skip no-blit+gauge) went to the phone. The

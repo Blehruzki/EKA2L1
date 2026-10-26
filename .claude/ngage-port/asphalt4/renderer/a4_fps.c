@@ -49,6 +49,9 @@ typedef int (*home_fn)(void *ttime);    /* TTime::HomeTime(this): fills 8-byte u
 void a4_gl_frame(void);                 /* MBX frame flush (renderer/a4_gl.c); self-gated */
 #ifdef A4_GAUGE
 int  a4_gl_state(void);                 /* 0 not-linked,1 no-bringup,2-6 step,7 up */
+int  a4_gl_prims(void);                 /* triangles the GPU path took last frame */
+int  a4_gl_errc(void);                  /* first glGetError seen (0 = none) */
+int  a4_gl_depthcfg(void);              /* 1 = eglChooseConfig granted a depth config */
 #endif
 
 struct a4_fps_state {
@@ -122,27 +125,57 @@ void a4_fps_tick(tick_fn tc, home_fn ht)
     uint32_t bb = *(volatile uint32_t *)A4_FPS_BB;
     if (bb) {
         volatile uint16_t *fb = (volatile uint16_t *)bb;
-        uint32_t cur = s->disp; if (cur > GAUGE_FS) cur = GAUGE_FS;
-        uint16_t bright = COL_BRIGHT;
 #ifdef A4_GAUGE
-        /* Colour AND length of the bar report GL state on the phone:
-         *  - GREEN bar, length = fps  : GL is up and running (gst 7).
-         *  - RED bar, empty           : libGLES_CM did not link (gst 0).
-         *  - YELLOW bar, length = step : linked but the context didn't come up;
-         *    read where it ends against the 15 / 30 / 45 ticks to get the step
-         *    (step*8 fps: 1=8 before 15, 2=16 just past 15, 3=24, 4=32 just past
-         *    30, 5=40, 6=48 past 45) -- which EGL call failed. */
+        /* Device GL probe -- two contiguous bands from the top of the back buffer
+         * (a contiguous run maps to a contiguous screen region at any stride).
+         *
+         * BAND 1 (from pixel 0): "is the GPU taking the scene?"
+         *   - RED stub          : libGLES_CM did not link (gst 0).
+         *   - YELLOW, len=step   : linked, context did not come up (gst 2..6).
+         *   - GREEN, len=prims   : GL up; the bar length is the triangles the GPU
+         *     path actually took last frame, against ticks at 100/300/500 prims.
+         *     An (almost) EMPTY green bar = GL up but the scene is NOT being
+         *     offloaded (software still draws it) -- the key thing to catch.
+         *
+         * BAND 2 (a second run, lower on screen): health.
+         *   - MAGENTA, len=rows  : a GL error occurred; rows = (errc & 7)+1, so the
+         *     specific glGetError enum (0x500..0x505) is readable.
+         *   - GREEN short        : no GL error AND a depth config was granted.
+         *   - ORANGE (2 rows)    : no GL error but NO depth config on this device
+         *     (config 6 has no depth) -- explains a depth-batched composite glitch. */
+        #define PRIM_PER 6u
+        #define PRIM_FS  640u
+        #define ROWPX    320u
+        #define B2_START (ROWPX * 20u)
         int gst = a4_gl_state();
-        if (gst == 0)      { bright = COL_REF30; cur = 0; }               /* red, empty */
-        else if (gst != 7) { bright = 0xFFE0u;  cur = (uint32_t)gst * 8; } /* yellow */
-        /* gst==7: green, cur stays = real fps */
-#endif
+        int prims = a4_gl_prims(); if (prims < 0) prims = 0;
+        if ((uint32_t)prims > PRIM_FS) prims = (int)PRIM_FS;
+        uint16_t col; uint32_t len;
+        if (gst == 0)      { col = COL_REF30; len = 40u; }                       /* red stub */
+        else if (gst != 7) { col = 0xFFE0u;  len = (uint32_t)gst * 100u; }        /* yellow: step */
+        else               { col = COL_BRIGHT; len = (uint32_t)prims * PRIM_PER; }/* green: prims */
+        gauge_run(fb, 0, PRIM_FS * PRIM_PER, COL_DIM);                            /* 0..640 scale */
+        gauge_run(fb, 0, len, col);
+        gauge_run(fb, 100u*PRIM_PER, 100u*PRIM_PER + 30u, COL_REF);              /* 100 prims */
+        gauge_run(fb, 300u*PRIM_PER, 300u*PRIM_PER + 30u, COL_REF30);            /* 300 prims */
+        gauge_run(fb, 500u*PRIM_PER, 500u*PRIM_PER + 30u, COL_REF);              /* 500 prims */
+        uint32_t errc = (uint32_t)a4_gl_errc();
+        if (errc != 0)
+            gauge_run(fb, B2_START, B2_START + ((errc & 7u) + 1u) * ROWPX, 0xF81Fu); /* magenta */
+        else if (a4_gl_depthcfg())
+            gauge_run(fb, B2_START, B2_START + ROWPX, COL_BRIGHT);               /* green: ok+depth */
+        else
+            gauge_run(fb, B2_START, B2_START + 2u*ROWPX, 0xFD20u);               /* orange: no depth */
+#else
+        /* software measurement build: the plain fps bar (green, length = fps,
+         * ticks at 15/30/45). */
+        uint32_t cur = s->disp; if (cur > GAUGE_FS) cur = GAUGE_FS;
         gauge_run(fb, 0, GAUGE_FS * GAUGE_PER, COL_DIM);      /* 0..60 reference */
-        gauge_run(fb, 0, cur * GAUGE_PER, bright);            /* length+colour = fps or GL state */
-        /* reference ticks (drawn last, always visible): 30 red, 15/45 white */
+        gauge_run(fb, 0, cur * GAUGE_PER, COL_BRIGHT);        /* length = fps */
         gauge_run(fb, 30 * GAUGE_PER, 30 * GAUGE_PER + GAUGE_PER, COL_REF30);
         gauge_run(fb, 15 * GAUGE_PER, 15 * GAUGE_PER + GAUGE_PER / 2, COL_REF);
         gauge_run(fb, 45 * GAUGE_PER, 45 * GAUGE_PER + GAUGE_PER / 2, COL_REF);
+#endif
     }
 #endif
 }
