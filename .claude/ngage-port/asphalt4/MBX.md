@@ -279,7 +279,32 @@ texture at `desc+0x30`. Still open for stage 3b: the texture format at
 (viewport), both needed to emit the GL triangle in the right place with the
 right texels.
 
-## Stage 3b (in progress): texture format decoded; GL draw next
+## Stage 3b result: a real Asphalt 4 textured triangle on the GPU
+
+Done. `a4_prim.c` (the +0x300B2 capture) picks the first gameplay textured
+primitive whose texture is <= 64x64, deep-copies its geometry + RGB565 texels
+into a shared struct; `a4_gl.c`, once per frame via the fps detour, brings up a
+GL ES 1.1 context on a 64x64 pbuffer, uploads that texture
+(`glTexImage2D` RGB565), and draws the triangle under an ortho matching its
+screen bounding box (`glVertexPointer` GL_SHORT positions, `glTexCoordPointer`
+GL_FIXED UVs, `glDrawArrays(GL_TRIANGLES)`), then reads the pbuffer back and
+blits it into the game's back buffer (the 1b path -- a corner, not over the
+software scene; that composite is stage 4).
+
+Bench, baked, booted: no fault, `glGetError` == 0, texture uploaded (id 1), drew
+252 frames. The back-buffer blit held **12 distinct colours** -- ~2080 px of the
+magenta clear background and ~2016 px of the texture (dominant `0xFFDF` plus ten
+detail colours), the triangle covering ~half its bounding box. The game's own
+geometry and texture, rendered by the bench's POWERVR renderer, in the presented
+frame.
+
+Review catch (rule 4): the first draw came back a single uniform colour -- the
+UV scale was 2x too large (`U*8192` made U=512 on a 32-wide texture land at
+exactly 2.0, which `GL_REPEAT` wraps to texel 0, collapsing all three texcoords
+to one texel). The raw U/V are `texel<<4`, so the scale is `U*4096 >> log2(w)`
+(U=512 on a 32-wide tex -> 1.0); with that, the texture renders.
+
+## Earlier (3b part 1): texture format decoded
 
 Captured the full per-triangle memory (geometry + the texture struct at
 `desc+0x30`) for live gameplay primitives and decoded it:
@@ -307,10 +332,13 @@ software scene -- that composite is stage 4).
 
 ## Status
 
-Stages 0, 1, 1b, 2, 3a complete; 3b in progress (format fully decoded, GL draw
-next). Foundation proven end to end (inject -> link
+Stages 0, 1, 1b, 2, 3a, 3b complete -- a real Asphalt 4 textured triangle now
+renders on the GPU from injected code, bench-verified. Foundation proven end to
+end (inject -> link
 libGLES_CM past the guard -> ES1.1 context -> GPU render -> presented frame), and
-the game's 3D pipeline is mapped down to the per-triangle hook `+0x300AE` and its
-vertex/UV/texture format. Stage 3: at `+0x300AE`, convert one real textured
-triangle's data to a GL draw (texture upload + the ortho setup), software path
-still running the rest, and diff on the bench.
+the game's 3D pipeline is mapped down to the per-triangle hook `+0x300AE`, with
+one real textured triangle now drawn by the GPU. Stage 4: drive ALL the frame's
+textured primitives through GL into the game's actual render surface (not a
+corner) -- a texture cache keyed on `desc+0x30`, batched draws, the correct
+viewport from the render context, and the software 2D HUD composited over the
+GPU 3D -- then measure the win against the software renderer.

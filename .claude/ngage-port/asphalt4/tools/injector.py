@@ -46,16 +46,18 @@ SOURCES = [os.path.join(REND, 'a4_tramp.s'),
 # after its prologue). BLX detour that re-executes the two displaced moves. Added
 # only with --capture; grows .bss for the capture scratch.
 CAPTURE_HOOKS = {0x300B2: 'a4_prim_capture_tramp'}
-PRIM_SCRATCH = 0x00401800       # must match A4_PRIM_SCRATCH in a4_prim.c
-PRIM_SCRATCH_SIZE = 0x800
+PRIM_SCRATCH = 0x00402000       # A4_TRI_SCRATCH in a4_prim.c (shared with a4_gl.c)
+PRIM_SCRATCH_SIZE = 0x2100
 
 # MBX/PowerVR spike: link libGLES_CM and fill its IAT (the a4_gl_iat .word slots
 # in a4_gl.s) so the loader resolves these ordinals. Order must match a4_gl.s /
 # a4_gl.c. Added only with --gl.
 GL_IMPORT_DLL = 'libgles_cm.dll'
-GL_IMPORT_ORDINALS = [14, 17, 4, 3, 18, 132, 33, 31, 58, 108]
+GL_IMPORT_ORDINALS = [14, 17, 4, 3, 18, 132, 33, 31, 58, 108,
+                      67, 29, 125, 127, 56, 90, 82, 99, 57, 131,
+                      120, 39, 54, 116, 123, 68]   # must match a4_gl.s a4_gl_iat
 GL_SCRATCH = 0x00401000         # must match A4_GL_SCRATCH in a4_gl.c
-GL_SCRATCH_SIZE = 0x480         # headroom over sizeof(struct a4_gl_state)
+GL_SCRATCH_SIZE = 0x8000        # covers GL state + A4_TRI (0x402000) + readback (0x405000..0x409000)         # headroom over sizeof(struct a4_gl_state)
 
 # fps instrumentation: carve scratch out of the grown .bss, and a User::TickCount
 # IAT slot the detour resolves pc-relatively.

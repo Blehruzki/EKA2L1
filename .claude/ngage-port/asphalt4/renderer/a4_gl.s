@@ -13,16 +13,32 @@
         .global a4_gl_iat
         .align  2
 a4_gl_iat:
-        .word   14      @ [0] eglGetDisplay
-        .word   17      @ [1] eglInitialize
-        .word   4       @ [2] eglCreatePbufferSurface
-        .word   3       @ [3] eglCreateContext
-        .word   18      @ [4] eglMakeCurrent
-        .word   132     @ [5] glViewport
-        .word   33      @ [6] glClearColorx
-        .word   31      @ [7] glClear
-        .word   58      @ [8] glFinish
-        .word   108     @ [9] glReadPixels
+        .word   14      @ [0]  eglGetDisplay
+        .word   17      @ [1]  eglInitialize
+        .word   4       @ [2]  eglCreatePbufferSurface
+        .word   3       @ [3]  eglCreateContext
+        .word   18      @ [4]  eglMakeCurrent
+        .word   132     @ [5]  glViewport
+        .word   33      @ [6]  glClearColorx
+        .word   31      @ [7]  glClear
+        .word   58      @ [8]  glFinish
+        .word   108     @ [9]  glReadPixels
+        .word   67      @ [10] glGenTextures
+        .word   29      @ [11] glBindTexture
+        .word   125     @ [12] glTexImage2D
+        .word   127     @ [13] glTexParameterx
+        .word   56      @ [14] glEnable
+        .word   90      @ [15] glMatrixMode
+        .word   82      @ [16] glLoadIdentity
+        .word   99      @ [17] glOrthox
+        .word   57      @ [18] glEnableClientState
+        .word   131     @ [19] glVertexPointer
+        .word   120     @ [20] glTexCoordPointer
+        .word   39      @ [21] glColor4x
+        .word   54      @ [22] glDrawArrays
+        .word   116     @ [23] glShadeModel
+        .word   123     @ [24] glTexEnvx
+        .word   68      @ [25] glGetError
         .global a4_gl_iat_end
 a4_gl_iat_end:
 

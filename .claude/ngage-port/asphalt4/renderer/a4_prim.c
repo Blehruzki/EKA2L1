@@ -1,60 +1,54 @@
-/* a4_prim.c -- MBX stage 3a: capture the game's textured-triangle data at the
- * per-primitive dispatcher (+0x300AE) to verify the stage-2 format against live
- * data before emitting any GL. a4_prim_capture(ctx, desc, flags) records the
- * first few textured primitives (flags bit 0) into a fixed scratch a bench
- * MEMSNAP reads; it changes nothing the game sees.
+/* a4_prim.c -- MBX stage 3b: capture one real textured triangle at the
+ * per-primitive dispatcher (+0x300B2) into a shared struct that a4_gl.c draws
+ * on the GPU. Picks the first textured primitive (flags bit 0), past the menu,
+ * whose texture is small enough to copy (<= 64x64), and deep-copies its
+ * geometry + RGB565 texels so the draw is independent of the game's texture
+ * lifetime. Changes nothing the game renders.
  *
- * Format pinned in stage 2 (MBX.md):
- *   desc:   v0*@0x0C, v1*@0x18, v2*@0x24, texture*@0x30, flags selects rasterizer
- *   vertex: position*@0x00, U@0x04, V@0x08
- *   position: X@0x00, Y@0x04, Z/W@0x08  (screen-space, post-projection)
- *
- * Build: clang --target=armv5te-none-eabi -marm -O2 -ffreestanding -fno-builtin
- *              -fropi -c a4_prim.c -o a4_prim.o
+ * Format (stage 2 + 3a, measured): desc = { ..., 3x {vptr,U,V} @0xC/0x18/0x24,
+ * texture*@0x30 }; vptr -> {X@0, Y@4, Z/W@8}; texture = { [1]=w-1, [2]=h-1,
+ * [3]=RGB565 pixels, [5]=log2(w) }.
  */
 #include <stdint.h>
 
-#define A4_PRIM_SCRATCH 0x00401800u     /* kept in sync with injector.py */
-#define A4_PRIM_MAGIC   0x7121CAB1u
-#define NCAP 4
-#define START_AFTER 100000u             /* skip the menu/loader; capture gameplay prims */
+#define A4_TRI_SCRATCH 0x00402000u      /* kept in sync with injector.py + a4_gl.c */
+#define A4_TRI_MAGIC   0x7121CAB2u
+#define MAXDIM 64
+#define START_AFTER 100000u             /* skip menu/loader; capture a gameplay prim */
 
-/* Raw dump so the struct layout is decoded by inspection, not assumption:
- * desc[0..15], then for each of the 3 vertex pointers (desc+0xC/0x18/0x24):
- * the wrapper's [0..7] and the struct its [0] points at ([0..7]). */
-struct a4_rawtri {
-    uint32_t flags, desc_addr;
-    uint32_t desc[16];       /* desc[0..15]: vtable,flags,?,{vptr,U,V}x3,texture,... */
-    uint32_t vtx[3][8];      /* each vptr -> { X, Y, Z/W, ... } */
-    uint32_t texs[16];       /* the texture struct at desc[0x30] */
+struct a4_tri_draw {
+    uint32_t magic;
+    uint32_t ready;
+    uint32_t seen;
+    int32_t  x[3], y[3];                 /* screen positions */
+    int32_t  u[3], v[3];                 /* raw texel-scale UVs */
+    uint32_t tw, th;                     /* texture dimensions */
+    uint32_t tex_addr;                   /* source texture pointer (for the record) */
+    uint16_t tex[MAXDIM * MAXDIM];       /* copied RGB565 texels */
 };
-struct a4_prim_cap {
-    uint32_t magic, count, seen;
-    struct a4_rawtri tri[NCAP];
-};
-
-static void dump8(volatile uint32_t *dst, uint32_t addr)
-{
-    uint32_t *p = (uint32_t *)addr;
-    for (int i = 0; i < 8; i++) dst[i] = p ? p[i] : 0;
-}
 
 void a4_prim_capture(uint32_t *ctx, uint32_t *desc, uint32_t flags)
 {
-    volatile struct a4_prim_cap *c = (volatile struct a4_prim_cap *)A4_PRIM_SCRATCH;
-    if (c->magic != A4_PRIM_MAGIC) { c->magic = A4_PRIM_MAGIC; c->count = 0; c->seen = 0; }
-    if (!(flags & 1)) return;                        /* textured only */
-    c->seen++;
-    if (c->seen < START_AFTER || c->count >= NCAP) return;
+    volatile struct a4_tri_draw *t = (volatile struct a4_tri_draw *)A4_TRI_SCRATCH;
+    if (t->magic != A4_TRI_MAGIC) { t->magic = A4_TRI_MAGIC; t->ready = 0; t->seen = 0; }
+    if (t->ready || !(flags & 1)) return;
+    if (++t->seen < START_AFTER) return;
 
-    volatile struct a4_rawtri *t = &c->tri[c->count];
-    t->flags = flags;
-    t->desc_addr = (uint32_t)desc;
-    for (int i = 0; i < 16; i++) t->desc[i] = desc[i];
-    const uint32_t voff[3] = { 0x0C, 0x18, 0x24 };    /* {vptr,U,V} triples */
-    for (int i = 0; i < 3; i++)
-        dump8(t->vtx[i], desc[voff[i] / 4]);          /* vptr -> {X,Y,Z/W,...} */
-    uint32_t *ts = (uint32_t *)desc[0x30 / 4];        /* texture struct */
-    for (int i = 0; i < 16; i++) t->texs[i] = ts ? ts[i] : 0;
-    c->count++;
+    uint32_t *ts = (uint32_t *)desc[0x30 / 4];       /* texture struct */
+    if (!ts) return;
+    uint32_t w = ts[1] + 1, h = ts[2] + 1;
+    const uint16_t *pix = (const uint16_t *)ts[3];
+    if (w > MAXDIM || h > MAXDIM || !pix) return;    /* wait for a copyable one */
+
+    const uint32_t voff[3] = { 0x0C, 0x18, 0x24 };
+    for (int i = 0; i < 3; i++) {
+        uint32_t *vp = (uint32_t *)desc[voff[i] / 4];
+        t->x[i] = (int32_t)vp[0];
+        t->y[i] = (int32_t)vp[1];
+        t->u[i] = (int32_t)desc[voff[i] / 4 + 1];
+        t->v[i] = (int32_t)desc[voff[i] / 4 + 2];
+    }
+    t->tw = w; t->th = h; t->tex_addr = (uint32_t)pix;
+    for (uint32_t i = 0; i < w * h; i++) t->tex[i] = pix[i];
+    t->ready = 1;
 }
