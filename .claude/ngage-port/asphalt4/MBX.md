@@ -135,7 +135,42 @@ to the real window and compositing is stage 1b.
 3. Bench: confirm EKA2L1's `POWERVR` renderer executes the calls and the pbuffer
    holds the cleared colour + triangle. That is the go/no-go result.
 
+## Stage 1 result: GO -- GL rendering proven on the bench from injected code
+
+The pbuffer spike (`renderer/a4_gl.c` + `a4_gl.s`, injector `--gl`) works end to
+end. `a4_fps_tick` calls `a4_gl_spike` once per frame; it brings up EGL ES and
+clears a pbuffer to green, recording progress in scratch `0x401000` a MEMSNAP
+reads. Built `--measure-only --gl` from the stock image, baked, run on the bench:
+
+- **The import injection and the guard both accept it.** The loader logs
+  `libgles_cm.dll (UID3=0x101FCABD) runtime code: 0x8062e1c8` -- a new static
+  import, resolved, booting clean under the patched factory DLL + a regenerated
+  loader hash. Adding an imported DLL does **not** trip the module guard.
+- **Full EGL ES bring-up succeeds:** `eglGetDisplay`->1, `eglInitialize`->1
+  (EGL 1.4), `eglCreatePbufferSurface`->1, `eglCreateContext`->1,
+  `eglMakeCurrent`->1. Scratch latched `magic`, `step` 11, `attempts` 1.
+- **Real pixels render.** `glClearColorx(0,1,0,1)` + `glClear` + `glReadPixels`
+  read back `0xff00ff00` (RGBA bytes 00,ff,00,ff = opaque green) across all
+  16x16 -- injected game code drove the bench's POWERVR renderer to actual
+  output.
+
+Two findings worth keeping (rule 4):
+- **The blob must be fully position independent.** A plain C `extern a4_gl_iat[]`
+  compiled to an absolute literal-pool address (link space `0xC2xxx`) that
+  nothing relocates -- it faulted reading `0xc2284` at runtime. Fixed by
+  resolving `&a4_gl_iat` pc-relatively in asm (`a4_gl_iat_ptr`) and passing the
+  pointer to C. Any future blob data-symbol reference needs the same.
+- **EKA2L1's `glReadPixels` is ES2-only** (`get_es2_active_context` rejects a
+  non-ES2 context). An ES1.1 context renders fine but cannot read back on the
+  bench; the green proof was taken through an ES2 context
+  (`A4_GL_READBACK_ES2`, a diagnostic toggle). The shipped MBX path stays
+  ES1.1 -- that is the fixed-function hardware the N95's MBX actually is -- and
+  its visual proof comes in stage 1b via a window surface, where output is
+  presented to the screen rather than read back.
+
 ## Status
 
-Stage 0 complete. Stage 1: emulator-side feasibility confirmed, calling surface
-and link mechanics mapped; building the pbuffer spike next. No blocker found.
+Stages 0-1 complete. The risky foundation is proven: link libGLES_CM past the
+guard, bring up an ES context, render on the bench. Next is stage 1b -- bind an
+EGL window surface to the game's RWindow so GL output composites to the screen
+(the one open dependency), then stage 2: find the game's triangle stream.

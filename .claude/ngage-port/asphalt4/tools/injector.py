@@ -37,7 +37,17 @@ SOURCES = [os.path.join(REND, 'a4_tramp.s'),
            os.path.join(REND, 'a4_span_transparent.c'),
            os.path.join(REND, 'a4_vec.s'),
            os.path.join(REND, 'a4_fps.c'),
+           os.path.join(REND, 'a4_gl.s'),
+           os.path.join(REND, 'a4_gl.c'),
            os.path.join(HERE, '..', 'patch', 'fill.c')]
+
+# MBX/PowerVR spike: link libGLES_CM and fill its IAT (the a4_gl_iat .word slots
+# in a4_gl.s) so the loader resolves these ordinals. Order must match a4_gl.s /
+# a4_gl.c. Added only with --gl.
+GL_IMPORT_DLL = 'libgles_cm.dll'
+GL_IMPORT_ORDINALS = [14, 17, 4, 3, 18, 132, 33, 31, 58, 108]
+GL_SCRATCH = 0x00401000         # must match A4_GL_SCRATCH in a4_gl.c
+GL_SCRATCH_SIZE = 0x480         # headroom over sizeof(struct a4_gl_state)
 
 # fps instrumentation: carve scratch out of the grown .bss, and a User::TickCount
 # IAT slot the detour resolves pc-relatively.
@@ -71,7 +81,9 @@ def build_blob(link_addr, tmp):
     for src in SOURCES:
         o = os.path.join(tmp, os.path.basename(src) + '.o')
         # assembly doesn't take the C-only codegen flags (-Werror would reject them)
-        flags = ['--target=armv5te-none-eabi', '-marm', '-fropi'] if src.endswith('.s') else CFLAGS
+        extra = os.environ.get('A4_EXTRA_CFLAGS', '').split()
+        flags = (['--target=armv5te-none-eabi', '-marm', '-fropi'] if src.endswith('.s')
+                 else CFLAGS + extra)
         subprocess.check_call(['clang', *flags, '-c', src, '-o', o])
         objs.append(o)
     ld = os.path.join(tmp, 'a4.ld')
@@ -122,7 +134,68 @@ def blx_insert(code, off, target_link):
         raise AssertionError('BLX encode check failed: %s %s (wanted blx %s)'
                              % (ins.mnemonic, ins.op_str, want))
 
-def main(src_exe, out_exe, measure_only=False):
+def add_gl_import(out, iat_code_off):
+    """Append a libgles_cm.dll import entry (EABI import section) whose import
+    blocks point at the a4_gl_iat slots (code offsets), so the loader resolves
+    GL_IMPORT_ORDINALS in place. Rebuilds the import section, shifts the reloc
+    sections after it, bumps dll_ref_count, and re-verifies the slots hold the
+    expected ordinals. Returns the new image bytes."""
+    code_off   = u32(out, 0x64)
+    dll_count  = u32(out, 0x54)
+    imp_off    = u32(out, 0x6C)
+    code_reloc = u32(out, 0x70)
+    data_reloc = u32(out, 0x74)
+    old_sect   = out[imp_off:code_reloc]
+
+    # parse existing entries: each {name_off(u32), count(u32), count*u32 words}
+    entries = []                              # (raw_name_bytes, [words])
+    o = 4
+    for _ in range(dll_count):
+        name_off, count = struct.unpack_from('<II', old_sect, o); o += 8
+        words = list(struct.unpack_from('<%dI' % count, old_sect, o)) if count else []
+        o += 4 * count
+        end = old_sect.index(b'\0', name_off)
+        entries.append((bytes(old_sect[name_off:end]), words))
+
+    # the new entry's import blocks are the a4_gl_iat slot code offsets; verify
+    # each slot currently holds its expected ordinal (rule 4: test the assumption)
+    gl_words = []
+    for i, ordinal in enumerate(GL_IMPORT_ORDINALS):
+        slot = iat_code_off + 4 * i
+        have = u32(out, code_off + slot)
+        assert have == ordinal, 'a4_gl_iat[%d]=%d, expected ord %d' % (i, have, ordinal)
+        gl_words.append(slot)
+    entries.append((GL_IMPORT_DLL.encode('latin1'), gl_words))
+
+    # rebuild: [size][entries...][names]; name_off is relative to imp_off
+    hdr_bytes = 4
+    entries_bytes = sum(8 + 4 * len(w) for _, w in entries)
+    names_base = hdr_bytes + entries_bytes
+    names, name_offs, seen = bytearray(), [], {}
+    for name, _ in entries:
+        if name not in seen:
+            seen[name] = names_base + len(names)
+            names += name + b'\0'
+        name_offs.append(seen[name])
+    content = bytearray()
+    content += struct.pack('<I', hdr_bytes + entries_bytes + len(names))   # size word
+    for (name, words), noff in zip(entries, name_offs):
+        content += struct.pack('<II', noff, len(words))
+        content += struct.pack('<%dI' % len(words), *words) if words else b''
+    content += names
+    content += b'\0' * (-len(content) % 4)                                 # pad to 4
+
+    delta = len(content) - len(old_sect)
+    out = out[:imp_off] + content + out[code_reloc:]
+    struct.pack_into('<I', out, 0x54, dll_count + 1)                        # dll_ref_count
+    struct.pack_into('<I', out, 0x70, code_reloc + delta)                  # code reloc offset
+    if data_reloc: struct.pack_into('<I', out, 0x74, data_reloc + delta)   # data reloc offset
+    print('import +libgles_cm.dll (%d ords), section %#x -> %#x (dll_ref %d)'
+          % (len(gl_words), len(old_sect), len(content), dll_count + 1))
+    return out
+
+
+def main(src_exe, out_exe, measure_only=False, gl=False):
     # measure_only: ship the STOCK renderer with ONLY the fps gauge wired in
     # (INSERT_HOOKS + CACHE_HOOKS + grown bss), skipping the span/vec rewrites
     # (FILL_HOOKS + LOOP_HOOKS). This is the baseline build: same gauge, same
@@ -171,20 +244,27 @@ def main(src_exe, out_exe, measure_only=False):
     grow = len(code) - code_size
     out = bytearray(d[:code_off]) + code + d[code_off + code_size:]
     struct.pack_into('<I', out, 0x30, len(code))
-    # grow .bss so the fps scratch is backed by zero-mapped writable data
+    # grow .bss so the fps (and, with --gl, GL) scratch is backed by zero-mapped
+    # writable data
     data_base, data_size, bss_size = u32(out, 0x50), u32(out, 0x34), u32(out, 0x44)
-    need = (FPS_SCRATCH + FPS_SCRATCH_SIZE) - (data_base + data_size)
+    top = FPS_SCRATCH + FPS_SCRATCH_SIZE
+    if gl: top = max(top, GL_SCRATCH + GL_SCRATCH_SIZE)
+    need = top - (data_base + data_size)
     if need > bss_size:
         assert FPS_SCRATCH >= data_base + data_size, 'fps scratch overlaps initialised data'
         struct.pack_into('<I', out, 0x44, need)
-        print('bss    %#x -> %#x (fps scratch at %#x)' % (bss_size, need, FPS_SCRATCH))
+        print('bss    %#x -> %#x (scratch top %#x)' % (bss_size, need, top))
     for field in (0x68, 0x6C, 0x70, 0x74):          # data, import, code reloc, data reloc offsets
         v = u32(out, field)
         if v: struct.pack_into('<I', out, field, v + grow)
+    if gl:
+        out = add_gl_import(out, syms['a4_gl_iat'] - LINK_BASE)
     out = bytearray(e32crc.fix(bytes(out)))
     open(out_exe, 'wb').write(out)
     print('code %X -> %X (+%d), image %d bytes' % (code_size, len(code), grow, len(out)))
 
 if __name__ == '__main__':
-    args = [a for a in sys.argv[1:] if a != '--measure-only']
-    main(args[0], args[1], measure_only='--measure-only' in sys.argv)
+    flags = {'--measure-only', '--gl'}
+    args = [a for a in sys.argv[1:] if a not in flags]
+    main(args[0], args[1], measure_only='--measure-only' in sys.argv,
+         gl='--gl' in sys.argv)
