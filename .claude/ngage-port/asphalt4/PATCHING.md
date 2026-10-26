@@ -335,3 +335,45 @@ hardware, and because the code layout differs from v1 (textured hand-asm +
 transparent now enabled, vs v1's textured-clang only) the owner re-validates the
 guard and regenerates the loader hashes for this exact image. Bench measurement
 of the baked build is the next step.
+
+## Update: the general edition boots and the whole-frame bench can't resolve it
+
+The owner baked the general edition and it boots and renders on the capped
+dyncom bench with no fault. Head-to-head on the attract demo:
+
+| build | race mean | median | p10-p90 |
+|---|---|---|---|
+| stock | 8.20 M | 7.60 M | 5.6-11.2 M |
+| v1 (textured-clang only) | 7.73 M | 7.45 M | 5.3-10.4 M |
+| general (textured-asm + transparent) | 8.01 M | 7.82 M | 5.5-10.7 M |
+
+These are **indistinguishable**: the attract demo renders different scenes each
+run and that scene-to-scene variation (the 5-11 M spread) dwarfs the ~6% we are
+trying to resolve, so the whole-frame number across independent demo runs is
+noise. The scene-independent facts stand -- textured 81->38 insn/px, transparent
+22->12, both realized and verified in-image -- but a trustworthy whole-frame
+bench delta needs an identical workload (a deterministic demo replay) or the
+phone. The phone, especially the slower GPU-less S60v3 targets, is the judge.
+
+## Update: #2, the fixed-point vector leaves (vec_add, vec_mulsub)
+
+Two hot pure leaves in the Lib3D math library, rewritten in hand-tuned ARM
+(`renderer/a4_vec.s`) and injected as whole-function replacements (plain entry
+veneers -- no trampoline, since they return normally):
+
+- `+51D96` `a4_vec_add(a, b)`      : `a[i] += b[i]`, i=0..3
+- `+51DB8` `a4_vec_mulsub(a, s, b)`: `a[i] -= s*b[i]`, i=0..3
+
+The shipped Thumb versions do 8 scattered `ldr`/`str` per call; forced
+`ldmia/stmia` collapses those into 3 bursts, giving **24 instructions vs 36 and
+8->3 memory transfers per call** -- a win both on the bench (fewer instructions)
+and, more importantly, in memory pattern on the ARM11. Bit-exact over 4000
+random cases (`renderer/a4_vec_verify.py`) and verified again in the produced
+image (8000/8000). Combined these are ~3% of the race frame, so the realized
+saving is small (~1-1.5% of frame on the bench); they are free and fidelity-
+preserving. The larger math functions (`+51E44`, `+51F08`, `+51E94`) reference
+global tables through pc-relative literals (absolute addresses), so rewriting
+them needs relocation handling and is left for now.
+
+`tools/injector.py` now plants all five hooks (fill + two vec leaves + the two
+filler inner loops) into one general edition.

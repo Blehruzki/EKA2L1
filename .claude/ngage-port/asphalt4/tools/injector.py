@@ -35,10 +35,13 @@ CFLAGS = ['--target=armv5te-none-eabi', '-marm', '-mtune=arm1136j-s', '-O2', '-f
 SOURCES = [os.path.join(REND, 'a4_tramp.s'),
            os.path.join(REND, 'a4_span_textured.c'),
            os.path.join(REND, 'a4_span_transparent.c'),
+           os.path.join(REND, 'a4_vec.s'),
            os.path.join(HERE, '..', 'patch', 'fill.c')]
 
-# function entry offset -> replacement symbol (same contract, returns normally)
-FILL_HOOKS = {0x2ABAA: 'a4_fill_alpha'}
+# whole-function entry offset -> replacement symbol (same contract, returns normally)
+FILL_HOOKS = {0x2ABAA: 'a4_fill_alpha',   # translucent rectangle fill
+              0x51D96: 'a4_vec_add',       # vec4 += vec4  (Lib3D math leaf)
+              0x51DB8: 'a4_vec_mulsub'}    # vec4 -= s*vec4 (Lib3D math leaf)
 # inner-loop entry offset -> (trampoline symbol, return-placeholder symbol, return offset)
 LOOP_HOOKS = {
     0x3357A: ('a4_tex_tramp',    'a4_tex_ret',    0x3361C),
