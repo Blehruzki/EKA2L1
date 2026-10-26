@@ -307,3 +307,31 @@ final light, `renderer/a4_span_transparent.c`) plus these contracts are enough
 to inject both with the existing v1 inner-loop injector. The emulator-side
 verification of the resulting build (bench head-to-head, dither continuity) is
 the measurement step.
+
+## Update: inner-loop injector built and the injected image verified bit-exact
+
+`tools/injector.py` builds the general performance edition from the stock exe:
+it compiles the trampolines (`renderer/a4_tramp.s`) + the two span rewrites +
+the alpha fill into one `-fropi` blob appended past the code section, plants a
+Thumb->ARM veneer at each inner-loop entry (`+3357A` textured, `+33B16`
+transparent) and at the fill entry (`+2ABAA`), patches each trampoline's
+return-displacement placeholder to branch back into the Thumb function
+(`+3361C`, `+33B42`), shifts the later sections and recomputes the E32 CRC. No
+absolute address is written, so the relocation sections are untouched; code
+grows ~944 bytes.
+
+Each trampoline was proven a correct mid-function drop-in in isolation
+(`renderer/tramp_verify.py`, `renderer/transp_tramp_verify.py`: 2000/2000 each,
+checking pixels + exit light + end pointers + preserved r5/r6 + coverage), and
+then the **produced image** was exercised end-to-end
+(`renderer/inject_check.py`): entering the planted Thumb veneers and running
+through the appended trampolines and rewrites reproduces the original loops over
+**1500/1500** random spans each, for both fillers, including the landing back in
+the Thumb function. So the injected renderer is bit-exact with the stock one;
+the only behavioural change is speed.
+
+This produces an exe only; it still needs the owner's integrity step to run on
+hardware, and because the code layout differs from v1 (textured hand-asm +
+transparent now enabled, vs v1's textured-clang only) the owner re-validates the
+guard and regenerates the loader hashes for this exact image. Bench measurement
+of the baked build is the next step.
