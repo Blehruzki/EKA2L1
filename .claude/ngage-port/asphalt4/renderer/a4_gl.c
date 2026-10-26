@@ -205,12 +205,15 @@ void a4_gl_flush(void)
     if (s->up != A4_GL_MAGIC || s->prims == 0 || s->flushed) return;
     s->flushed = 1;
 
-    gl_finish();
 #ifdef A4_NO_BLIT
     /* measurement build: skip the readback+blit to isolate the guest CPU cost
-     * (device uses a zero-copy pixmap surface, so there is no blit there). */
+     * (device uses a zero-copy pixmap surface, so there is no blit there). No
+     * glFinish either -- it is only needed to make the readback below see a
+     * finished frame; here it would just stall the CPU on the GPU and distort
+     * the measurement (the GPU runs async). */
     return;
 #endif
+    gl_finish();                                         /* needed before glReadPixels */
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
     if (!bb) return;
     uint32_t *rb = (uint32_t *)A4_GL_READBUF;

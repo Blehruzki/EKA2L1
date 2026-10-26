@@ -61,7 +61,14 @@ struct a4_fps_state {
     uint32_t ring[RING];   /* recent per-frame tick deltas */
 };
 
-#ifndef A4_GL
+/* The GL build omits the on-screen gauge by default (it would paint over the top
+ * HUD banner); -DA4_GAUGE forces it back on for a GL *measurement* build, where
+ * reading fps by eye on the phone is the whole point. */
+#if !defined(A4_GL) || defined(A4_GAUGE)
+#define A4_DRAW_GAUGE 1
+#endif
+
+#ifdef A4_DRAW_GAUGE
 static void gauge_run(volatile uint16_t *fb, uint32_t from, uint32_t to, uint16_t col)
 {
     for (uint32_t i = from; i < to; i++) fb[i] = col;
@@ -103,11 +110,12 @@ void a4_fps_tick(tick_fn tc, home_fn ht)
         s->sum_dt = 0; s->min_dt = 0xFFFFFFFFu; s->max_dt = 0;
     }
 
-#ifndef A4_GL
+#ifdef A4_DRAW_GAUGE
     /* On-screen gauge: a contiguous bar from the top-left of the back buffer.
      * The GL/composite build renders for real, so it omits the gauge (it would
      * paint a green bar over the top HUD banner) -- the fps ring above is still
-     * kept, and a4_gl_frame() above still flushes the GPU frame. */
+     * kept, and a4_gl_frame() above still flushes the GPU frame. A GL measurement
+     * build (-DA4_GAUGE) keeps it, to read fps by eye on the phone. */
     uint32_t bb = *(volatile uint32_t *)A4_FPS_BB;
     if (bb) {
         volatile uint16_t *fb = (volatile uint16_t *)bb;
