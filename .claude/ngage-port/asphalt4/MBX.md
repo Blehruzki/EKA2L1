@@ -546,6 +546,38 @@ phone. If the GPU build's bar is clearly longer, the ~50% CPU is translating to
 real fps and zero-copy is worth building; if GL fails to start on the phone the
 build falls back to software and the bars match.
 
+## Is the game fps-capped? No -- it is compute-bound (measured)
+
+The obvious worry, after a 51% guest-instruction cut gave no device fps: the
+game paces to a fixed frame rate, so freeing the CPU just idles it. Checked, and
+it is not so.
+
+- **The game imports no timer.** Of euser it pulls only clock *readers*
+  (`TickCount` 674, `UniversalTime` 855, `HomeTime` 859) -- no `RTimer`, no
+  `User::After`, no `CPeriodic`. The loop is driven from the NGI runtime
+  (`runtime.dll`), which does own a `CPeriodic` -- but at a **10 ms (100 fps)**
+  interval (the only frame-shaped constant in it), a ceiling far above the
+  achieved rate, not a binding cap.
+- **Direct bench measurement (wall-clock post rate, same LA race, dynarmic):**
+
+  | build | instr/frame | bench fps |
+  |---|---:|---:|
+  | stock (software)        | ~9.5M | **12.8** |
+  | GPU-skip no-blit (batched) | ~4.7M | **24.1** |
+
+  **1.88x the frame rate for 2x less work** -- almost linear. A capped loop would
+  have pinned the GPU-skip build at the cap, not nearly doubled it. Corroborated
+  by the game's own UI posting at 32-33 fps on the tip screens and 61 fps on the
+  intro video (seen in bench screenshots): no hard 25/30 fps ceiling.
+
+So the loop is **compute-bound, and the CPU headroom is convertible** -- on the
+bench, where HLE GL is free, offloading the rasteriser nearly doubles fps. The
+device gains nothing only because the offload is *not* free on the real MBX
+(next section). The bench structurally cannot show that gap: it is the same
+reason the depth-batched composite renders perfectly here and glitches on the
+phone. Settling the device cost needs on-device instrumentation (a gauge that
+reports prims-actually-taken + glGetError), not another bench run.
+
 ## Device result: no gain, and why (per-triangle driver overhead)
 
 Two gauge builds (stock+gauge, GPU-skip no-blit+gauge) went to the phone. The
