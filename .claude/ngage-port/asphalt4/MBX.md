@@ -464,13 +464,51 @@ path overwrites the whole surface), and the device zero-copy pixmap
 (`eglCreatePixmapSurface`, which would need implementing in EKA2L1 or is
 device-only).
 
+## Stage 4 perf: 2D HUD composite
+
+The stage-4-core blit overwrote the whole surface with the GPU 3D, erasing the
+sky, the player car and the entire HUD (position, lap, WANTED, minimap, boost
+bar, speedometer). The composite fixes that so the HUD renders correctly over
+the GPU 3D. Two pieces, both in `renderer/a4_gl.c`:
+
+- **Sentinel colour-key mask.** The pbuffer is cleared to magenta
+  (`glClearColorx(1,0,1,1)`) each frame; `a4_gl_flush` reads it back and blits
+  only the non-magenta pixels. Pixels the GPU never drew (the sky, and anything
+  the software layer owns) are left untouched, so the software sky and the
+  player car survive instead of being painted over with a black scene.
+- **Composite at the 3D->2D boundary, not at present.** The present detour runs
+  after the whole frame (3D + HUD) is built, so a blit there lands on top of the
+  HUD. Instead `a4_gl_flush` is triggered from `a4_gl_fill_hook`, called at the
+  frame's first `a4_fill_alpha` (`patch/fill.c`) -- the first 2D translucent
+  fill, which marks the end of the 3D pass -- so the software HUD, drawn
+  afterwards, paints over the composited GPU 3D. `a4_gl_frame` (present) still
+  flushes as a fallback for a HUD-less frame. A per-frame `flushed` flag makes it
+  idempotent. The blit also skips the top `CLIP_TOP` rows (the HUD banner, which
+  the game's scene fill at `x0 y11 w320 h229` shows is outside the 3D viewport),
+  so GPU scene pixels do not leak into the position/lap/WANTED strip.
+
+On the device this is a zero-copy pixmap and there is no readback at all; the
+compositing ordering (software sky under, GPU 3D, software HUD over) is the same.
+
+Verified on the bench (stock vs. composite, same race): sky, player car, the
+3D scene, minimap, speedometer, boost bar, position/lap/WANTED all render
+correctly, 0 faults. One artifact remains: a thin green bar at the very top edge
+(the HUD banner strip), present only with the GL composite active. It is
+software-drawn in a surface region the composite does not write to (proven: it
+survives `CLIP_TOP`, which removes all GPU blitting from those rows, and the GPU
+readback there is sentinel), and stock has no bar there -- root cause not yet
+found; likely bench/emulator-specific, to be confirmed on the device. Not a
+blocker for the composite, which is otherwise correct.
+
 ## Status
 
 Stages 0, 1, 1b, 2, 3a, 3b complete; stage 4 core done -- the full textured 3D
 scene renders on the GPU into the game's surface (41 textures, ~741 prims/frame,
 0 faults). The software-rasterizer skip is implemented and renders; its CPU win
 is a device measurement (see above), with the `-DA4_NO_BLIT` build as the
-instrument. Remaining: HUD composite, device pixmap.
+instrument. The 2D HUD now composites correctly over the GPU 3D (see above),
+bar one thin top-edge artifact. Remaining: run down the top-bar artifact, device
+pixmap.
 Foundation proven end to end (inject -> link
 libGLES_CM past the guard -> ES1.1 context -> GPU render -> presented frame), and
 the game's 3D pipeline is mapped down to the per-triangle hook `+0x300AE`, with

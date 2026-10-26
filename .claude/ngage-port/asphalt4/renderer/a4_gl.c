@@ -22,6 +22,10 @@
 #define VP_W 320
 #define VP_H 240
 #define FB_STRIDE VP_W                   /* 320x240 render surface: stride = width (320) */
+#define CLIP_TOP 11                      /* top rows are the HUD banner, not the 3D viewport
+                                          * (the frame's scene fill is x0 y11 w320 h229) --
+                                          * the blit must not touch them or GPU scene pixels
+                                          * leak into the position/lap/WANTED strip. */
 #define NCACHE 256
 #define START_AFTER 50000u               /* skip the intro video; reachable on the bench */
 
@@ -60,9 +64,17 @@ extern volatile uint32_t *a4_gl_iat_ptr(void);
 
 struct glr {
     uint32_t up, frames, prims, errc, ntex, seen;
+    uint32_t flushed;                 /* GPU world already composited into this frame */
     uint32_t cache_ptr[NCACHE];
     uint32_t cache_id[NCACHE];
 };
+
+/* sentinel the pbuffer is cleared to each frame: pixels the GPU never drew read
+ * back as pure magenta, so the blit can leave them to the software layer (sky,
+ * car, HUD) instead of painting a black scene over everything. */
+#define SENTINEL_R 0xFFu
+#define SENTINEL_G 0x00u
+#define SENTINEL_B 0xFFu
 
 /* small typed views of the IAT */
 #define F(i) (a4_gl_iat_ptr()[i])       /* pc-relative getter; no writable globals */
@@ -72,6 +84,7 @@ static int   egl_pbuffer(int d,uint32_t c,int*a){ return ((int(*)(int,uint32_t,i
 static int   egl_context(int d,uint32_t c,int s,int*a){ return ((int(*)(int,uint32_t,int,int*))F(3))(d,c,s,a); }
 static int   egl_make_current(int d,int r,int w,int c){ return ((int(*)(int,int,int,int))F(4))(d,r,w,c); }
 static void  gl_viewport(int x,int y,int w,int h){ ((void(*)(int,int,int,int))F(5))(x,y,w,h); }
+static void  gl_clearcolorx(int r,int g,int b,int a){ ((void(*)(int,int,int,int))F(6))(r,g,b,a); }
 static void  gl_clear(uint32_t m){ ((void(*)(uint32_t))F(7))(m); }
 static void  gl_finish(void){ ((void(*)(void))F(8))(); }
 static void  gl_readpixels(int x,int y,int w,int h,uint32_t f,uint32_t t,void*p){ ((void(*)(int,int,int,int,uint32_t,uint32_t,void*))F(9))(x,y,w,h,f,t,p); }
@@ -145,7 +158,11 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         if (!bringup(s)) return 0;                   /* glr is bss-zeroed */
         s->up = A4_GL_MAGIC;
     }
-    if (s->prims == 0) gl_clear(GL_COLOR_BUFFER_BIT);   /* first prim of the frame */
+    if (s->prims == 0) {                                /* first prim of the frame */
+        s->flushed = 0;
+        gl_clearcolorx(FX, 0, FX, FX);                  /* magenta sentinel (see SENTINEL_*) */
+        gl_clear(GL_COLOR_BUFFER_BIT);
+    }
 
     uint32_t tsaddr = desc[0x30 / 4];
     if (!tsaddr) return 0;
@@ -174,40 +191,69 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     return 1;                                        /* drawn on the GPU; skip software */
 }
 
-void a4_gl_frame(void)
+/* Composite the GPU-rendered world into the game's surface. Called at the 3D->2D
+ * boundary (the frame's first a4_fill_alpha, via a4_gl_fill_hook) so the software
+ * HUD, drawn afterwards, lands on top -- and masked by the magenta sentinel so
+ * only pixels the GPU actually drew replace the software layer (the sky, the
+ * player car and the HUD panels the GPU did not draw are left untouched). On the
+ * device this is a zero-copy pixmap and there is no readback at all. */
+void a4_gl_flush(void)
 {
     volatile uint32_t *iat = a4_gl_iat_ptr();
     if (iat[0] < 0x10000u) return;
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
-    if (s->up != A4_GL_MAGIC || s->prims == 0) return;
+    if (s->up != A4_GL_MAGIC || s->prims == 0 || s->flushed) return;
+    s->flushed = 1;
 
     gl_finish();
 #ifdef A4_NO_BLIT
     /* measurement build: skip the readback+blit to isolate the guest CPU cost
      * (device uses a zero-copy pixmap surface, so there is no blit there). */
-    s->prims = 0; s->frames++; return;
+    return;
 #endif
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
-    if (bb) {
-        uint32_t *rb = (uint32_t *)A4_GL_READBUF;
-        volatile uint16_t *fb = (volatile uint16_t *)bb;
-        /* read the pbuffer back in horizontal strips through a small buffer, so
-         * the image .bss stays tiny (a full-frame buffer in .bss corrupts the
-         * game's load-time layout). GL is bottom-up; flip to the top-left surface. */
-        for (int y0 = 0; y0 < VP_H; y0 += STRIP) {
-            gl_readpixels(0, y0, VP_W, STRIP, GL_RGBA, GL_UNSIGNED_BYTE, rb);
-            for (int sy = 0; sy < STRIP; sy++) {
-                int screen_y = VP_H - 1 - (y0 + sy);
-                const uint32_t *src = rb + sy * VP_W;
-                volatile uint16_t *dstrow = fb + screen_y * FB_STRIDE;
-                for (int x = 0; x < VP_W; x++) {
-                    uint32_t px = src[x];
-                    uint32_t r = px & 0xFF, g = (px >> 8) & 0xFF, b = (px >> 16) & 0xFF;
-                    dstrow[x] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
-                }
+    if (!bb) return;
+    uint32_t *rb = (uint32_t *)A4_GL_READBUF;
+    volatile uint16_t *fb = (volatile uint16_t *)bb;
+    /* read the pbuffer back in horizontal strips through a small buffer, so the
+     * image .bss stays tiny (a full-frame buffer in .bss corrupts the game's
+     * load-time layout). GL is bottom-up; flip to the top-left surface. */
+    for (int y0 = 0; y0 < VP_H; y0 += STRIP) {
+        gl_readpixels(0, y0, VP_W, STRIP, GL_RGBA, GL_UNSIGNED_BYTE, rb);
+        for (int sy = 0; sy < STRIP; sy++) {
+            int screen_y = VP_H - 1 - (y0 + sy);
+            if (screen_y < CLIP_TOP) continue;           /* leave the HUD banner to software */
+            const uint32_t *src = rb + sy * VP_W;
+            volatile uint16_t *dstrow = fb + screen_y * FB_STRIDE;
+            for (int x = 0; x < VP_W; x++) {
+                uint32_t px = src[x];
+                uint32_t r = px & 0xFF, g = (px >> 8) & 0xFF, b = (px >> 16) & 0xFF;
+                if (r == SENTINEL_R && g == SENTINEL_G && b == SENTINEL_B)
+                    continue;                           /* GPU drew nothing here; keep software pixel */
+                dstrow[x] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
             }
         }
     }
+}
+
+/* The frame's first 2D translucent fill marks the end of the 3D pass: composite
+ * the GPU world now, before the HUD paints. Called from patch/fill.c. */
+void a4_gl_fill_hook(void *fill_pixels)
+{
+    (void)fill_pixels;
+    a4_gl_flush();
+}
+
+/* Present detour (once per frame): flush as a fallback in case no 2D fill ran
+ * this frame, then start the next frame. */
+void a4_gl_frame(void)
+{
+    volatile uint32_t *iat = a4_gl_iat_ptr();
+    if (iat[0] < 0x10000u) return;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    if (s->up != A4_GL_MAGIC) return;
+    a4_gl_flush();                                      /* fallback for a HUD-less frame */
     s->prims = 0;
+    s->flushed = 0;
     s->frames++;
 }

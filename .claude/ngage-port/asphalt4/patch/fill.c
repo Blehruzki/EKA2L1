@@ -19,8 +19,18 @@ struct surface {
     int32_t *height;      /* +0x50 */
 };
 
+#ifndef A4_CLEAN
+/* The MBX GL build composites the GPU-rendered 3D world into the surface on the
+ * frame's first translucent fill (the 3D->2D boundary), so the HUD lands on top.
+ * Absent from the clean v5 build, which drops a4_gl.c. */
+void a4_gl_fill_hook(void *fill_pixels);
+#endif
+
 void a4_fill_alpha(struct surface *s, int x, int y, int w, int h, uint32_t colour, uint32_t alpha)
 {
+#ifndef A4_CLEAN
+    a4_gl_fill_hook(s->pixels);
+#endif
     const int width = *s->width;
     if (width <= x) return;
     const int height = *s->height;
