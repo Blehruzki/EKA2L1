@@ -72,6 +72,8 @@ a4_tex_ret:
 @ Reads User::TickCount (euser ord 674, IAT +0x50CE8, pc-relative so portable),
 @ calls a4_fps_tick(tick), then re-executes the two displaced loads
 @ (ldr r0,[r4,#0x20] ; ldr r3,[r0]) and returns into the present call. ----
+@ measurement trampolines (fps detour + back-buffer cache); omitted in --clean builds
+#ifndef A4_CLEAN
         .global a4_fps_tramp
 a4_fps_tramp:
         @ Save ALL caller-saved regs: the present call just past the return site
@@ -117,6 +119,7 @@ a4_cachebb_tramp:
         .global a4_bb_addr
 a4_bb_addr:
         .word   0x00400700          @ A4_FPS_BB (absolute; data loads at its linked base)
+#endif  /* A4_CLEAN */
 
 @ ---- transparent: inner loop +33B16; loop exit falls straight into the
 @ function epilogue (+33B42: add sp,#0x34; pop). Nothing is carried, so the

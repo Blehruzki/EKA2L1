@@ -76,14 +76,23 @@ LOOP_HOOKS = {
 
 def u32(d, o): return struct.unpack_from('<I', d, o)[0]
 
-def build_blob(link_addr, tmp):
+def build_blob(link_addr, tmp, clean=False):
+    # clean builds carry none of the measurement code: drop the fps/GL sources,
+    # and the fps/cache trampolines in a4_tramp.s are #ifdef'd out via -DA4_CLEAN.
+    MEASURE_SRCS = {'a4_fps.c', 'a4_gl.c', 'a4_gl.s'}
+    sources = [s for s in SOURCES if not (clean and os.path.basename(s) in MEASURE_SRCS)]
     objs = []
-    for src in SOURCES:
+    for src in sources:
         o = os.path.join(tmp, os.path.basename(src) + '.o')
-        # assembly doesn't take the C-only codegen flags (-Werror would reject them)
+        # assembly doesn't take the C-only codegen flags (-Werror would reject them);
+        # a4_tramp.s has #ifdef, so it is always run through the asm preprocessor.
         extra = os.environ.get('A4_EXTRA_CFLAGS', '').split()
-        flags = (['--target=armv5te-none-eabi', '-marm', '-fropi'] if src.endswith('.s')
-                 else CFLAGS + extra)
+        if src.endswith('.s'):
+            flags = ['--target=armv5te-none-eabi', '-marm', '-fropi']
+            if os.path.basename(src) == 'a4_tramp.s':
+                flags += ['-x', 'assembler-with-cpp'] + (['-DA4_CLEAN'] if clean else [])
+        else:
+            flags = CFLAGS + extra
         subprocess.check_call(['clang', *flags, '-c', src, '-o', o])
         objs.append(o)
     ld = os.path.join(tmp, 'a4.ld')
@@ -195,13 +204,19 @@ def add_gl_import(out, iat_code_off):
     return out
 
 
-def main(src_exe, out_exe, measure_only=False, gl=False):
+def main(src_exe, out_exe, measure_only=False, gl=False, clean=False):
     # measure_only: ship the STOCK renderer with ONLY the fps gauge wired in
     # (INSERT_HOOKS + CACHE_HOOKS + grown bss), skipping the span/vec rewrites
     # (FILL_HOOKS + LOOP_HOOKS). This is the baseline build: same gauge, same
     # scale, so a user can read stock fps by eye against the optimized build.
+    # clean: ship ONLY the performance rewrites (FILL_HOOKS + LOOP_HOOKS), with
+    # no fps gauge, no back-buffer cache, no GL, no grown .bss -- a pure v5 with
+    # none of the measurement instrumentation installed.
     fill_hooks = {} if measure_only else FILL_HOOKS
     loop_hooks = {} if measure_only else LOOP_HOOKS
+    insert_hooks = {} if clean else INSERT_HOOKS      # fps detour
+    cache_hooks = {} if clean else CACHE_HOOKS        # back-buffer cache
+    if clean: gl = False
 
     d = bytearray(open(src_exe, 'rb').read())
     assert u32(d, 0x1C) == 0, 'compressed image: inflate it first'
@@ -209,7 +224,7 @@ def main(src_exe, out_exe, measure_only=False, gl=False):
     new_off = (code_size + 15) & ~15
     blob_base = LINK_BASE + new_off
     with tempfile.TemporaryDirectory() as tmp:
-        blob, syms = build_blob(blob_base, tmp)
+        blob, syms = build_blob(blob_base, tmp, clean=clean)
     # patch each loop hook's return-displacement placeholder: r12 = pc(add)+8 =
     # placeholder_link; want r12 = return_link|1 (Thumb), so word = target - placeholder.
     for entry, (tramp, retsym, ret_off) in loop_hooks.items():
@@ -217,7 +232,7 @@ def main(src_exe, out_exe, measure_only=False, gl=False):
         word = ((LINK_BASE + ret_off) | 1) - ph_link
         struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
     # fps detour: patch each IAT placeholder (pc at the add == placeholder addr)
-    for entry, (tramp, iats) in INSERT_HOOKS.items():
+    for entry, (tramp, iats) in insert_hooks.items():
         for iatsym, iat_off in iats:
             ph_link = syms[iatsym]
             word = (LINK_BASE + iat_off) - ph_link
@@ -234,10 +249,10 @@ def main(src_exe, out_exe, measure_only=False, gl=False):
         n = veneer(code, off, syms[tramp])
         print('loop   +%06X -> %s +%06X, returns +%06X (%d-byte veneer)'
               % (off, tramp, syms[tramp] - LINK_BASE, ret_off, n))
-    for off, (tramp, iats) in INSERT_HOOKS.items():
+    for off, (tramp, iats) in insert_hooks.items():
         blx_insert(code, off, syms[tramp])
         print('fps    +%06X -> %s +%06X (4-byte BLX detour)' % (off, tramp, syms[tramp] - LINK_BASE))
-    for off, tramp in CACHE_HOOKS.items():
+    for off, tramp in cache_hooks.items():
         blx_insert(code, off, syms[tramp])
         print('cache  +%06X -> %s +%06X (4-byte BLX detour)' % (off, tramp, syms[tramp] - LINK_BASE))
 
@@ -247,13 +262,14 @@ def main(src_exe, out_exe, measure_only=False, gl=False):
     # grow .bss so the fps (and, with --gl, GL) scratch is backed by zero-mapped
     # writable data
     data_base, data_size, bss_size = u32(out, 0x50), u32(out, 0x34), u32(out, 0x44)
-    top = FPS_SCRATCH + FPS_SCRATCH_SIZE
-    if gl: top = max(top, GL_SCRATCH + GL_SCRATCH_SIZE)
-    need = top - (data_base + data_size)
-    if need > bss_size:
-        assert FPS_SCRATCH >= data_base + data_size, 'fps scratch overlaps initialised data'
-        struct.pack_into('<I', out, 0x44, need)
-        print('bss    %#x -> %#x (scratch top %#x)' % (bss_size, need, top))
+    if not clean:                                   # clean builds carry no scratch
+        top = FPS_SCRATCH + FPS_SCRATCH_SIZE
+        if gl: top = max(top, GL_SCRATCH + GL_SCRATCH_SIZE)
+        need = top - (data_base + data_size)
+        if need > bss_size:
+            assert FPS_SCRATCH >= data_base + data_size, 'fps scratch overlaps initialised data'
+            struct.pack_into('<I', out, 0x44, need)
+            print('bss    %#x -> %#x (scratch top %#x)' % (bss_size, need, top))
     for field in (0x68, 0x6C, 0x70, 0x74):          # data, import, code reloc, data reloc offsets
         v = u32(out, field)
         if v: struct.pack_into('<I', out, field, v + grow)
@@ -264,7 +280,7 @@ def main(src_exe, out_exe, measure_only=False, gl=False):
     print('code %X -> %X (+%d), image %d bytes' % (code_size, len(code), grow, len(out)))
 
 if __name__ == '__main__':
-    flags = {'--measure-only', '--gl'}
+    flags = {'--measure-only', '--gl', '--clean'}
     args = [a for a in sys.argv[1:] if a not in flags]
     main(args[0], args[1], measure_only='--measure-only' in sys.argv,
-         gl='--gl' in sys.argv)
+         gl='--gl' in sys.argv, clean='--clean' in sys.argv)
