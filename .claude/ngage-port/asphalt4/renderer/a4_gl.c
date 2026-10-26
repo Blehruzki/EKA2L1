@@ -54,6 +54,8 @@
 #define EGL_WIDTH 0x3057
 #define EGL_HEIGHT 0x3056
 #define EGL_NONE 0x3038
+#define EGL_SURFACE_TYPE 0x3033
+#define EGL_PIXMAP_BIT 0x0002            /* probe: does the device offer a pixmap config? */
 #define GLES_CONFIG 6u
 /* GL enums */
 #define GL_TRIANGLES 0x0004
@@ -89,6 +91,7 @@ struct glr {
     uint32_t bstep;                   /* furthest EGL/GL bring-up step reached (diag) */
     uint32_t last_prims;              /* prims of the last completed frame (device probe) */
     uint32_t depthcfg;                /* unused in stage 6 (no depth); kept for the probe */
+    uint32_t pixmapcap;               /* 1 = device offers a pixmap-capable EGL config */
     uint32_t cache_ptr[NCACHE];
     uint32_t cache_id[NCACHE];
     uint32_t cache_tr[NCACHE];         /* 1 = texture is a colorkey (transparent) sprite */
@@ -128,12 +131,19 @@ static void  gl_drawarrays(uint32_t m,int f,int c){ ((void(*)(uint32_t,int,int))
 static void  gl_shademodel(uint32_t m){ ((void(*)(uint32_t))F(23))(m); }
 static void  gl_texenvx(uint32_t tg,uint32_t p,int v){ ((void(*)(uint32_t,uint32_t,int))F(24))(tg,p,v); }
 static uint32_t gl_geterror(void){ return ((uint32_t(*)(void))F(25))(); }   /* device probe */
+static int   egl_choose_config(int d,const int*a,uint32_t*c,int n,int*num){ return ((int(*)(int,const int*,uint32_t*,int,int*))F(26))(d,a,c,n,num); }
 
 static int bringup(volatile struct glr *s)
 {
     s->bstep = 1;                                                  /* entered bring-up */
     int disp = egl_get_display(0);                 if (!disp) return 0; s->bstep = 2;
     int a=0,b=0; if (!egl_initialize(disp,&a,&b))   return 0;       s->bstep = 3;
+    /* PROBE: does this device's GL offer a pixmap-capable config? That decides
+     * whether the zero-copy "render straight into the backbuffer" path is possible
+     * on the N95 (vs. the current glReadPixels readback). */
+    { int pca[] = { EGL_SURFACE_TYPE, EGL_PIXMAP_BIT, EGL_NONE };
+      uint32_t pcfg = 0; int pnum = 0;
+      if (egl_choose_config(disp, pca, &pcfg, 1, &pnum) && pnum > 0) s->pixmapcap = 1; }
     int pb[] = { EGL_WIDTH, VP_W, EGL_HEIGHT, VP_H, EGL_NONE, 0, 0 };
     int surf = egl_pbuffer(disp, GLES_CONFIG, pb);  if (!surf) return 0; s->bstep = 4;
     int ctx  = egl_context(disp, GLES_CONFIG, 0, 0);if (!ctx)  return 0; s->bstep = 5;
@@ -358,6 +368,13 @@ int a4_gl_depthcfg(void)
     if (iat[0] < 0x10000u) return 0;
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
     return (int)s->depthcfg;
+}
+int a4_gl_pixmapcap(void)
+{
+    volatile uint32_t *iat = a4_gl_iat_ptr();
+    if (iat[0] < 0x10000u) return 0;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    return (int)s->pixmapcap;
 }
 
 /* Present detour (once per frame): flush as a fallback in case no 2D fill ran

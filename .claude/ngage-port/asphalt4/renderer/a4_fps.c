@@ -52,6 +52,7 @@ int  a4_gl_state(void);                 /* 0 not-linked,1 no-bringup,2-6 step,7 
 int  a4_gl_prims(void);                 /* triangles the GPU path took last frame */
 int  a4_gl_errc(void);                  /* first glGetError seen (0 = none) */
 int  a4_gl_depthcfg(void);              /* 1 = eglChooseConfig granted a depth config */
+int  a4_gl_pixmapcap(void);             /* 1 = device offers a pixmap-capable EGL config */
 #endif
 
 struct a4_fps_state {
@@ -159,13 +160,17 @@ void a4_fps_tick(tick_fn tc, home_fn ht)
         gauge_run(fb, 100u*PRIM_PER, 100u*PRIM_PER + 30u, COL_REF);              /* 100 prims */
         gauge_run(fb, 300u*PRIM_PER, 300u*PRIM_PER + 30u, COL_REF30);            /* 300 prims */
         gauge_run(fb, 500u*PRIM_PER, 500u*PRIM_PER + 30u, COL_REF);              /* 500 prims */
+        /* BAND 2 = the pixmap-capability probe (the N95 question):
+         *   magenta      = a GL error occurred (enum = rows)
+         *   GREEN 3 rows = device offers a pixmap-capable config -> zero-copy is possible
+         *   RED 1 row    = no pixmap config -> zero-copy dead on this device */
         uint32_t errc = (uint32_t)a4_gl_errc();
         if (errc != 0)
             gauge_run(fb, B2_START, B2_START + ((errc & 7u) + 1u) * ROWPX, 0xF81Fu); /* magenta */
-        else if (a4_gl_depthcfg())
-            gauge_run(fb, B2_START, B2_START + ROWPX, COL_BRIGHT);               /* green: ok+depth */
+        else if (a4_gl_pixmapcap())
+            gauge_run(fb, B2_START, B2_START + 3u*ROWPX, COL_BRIGHT);            /* green: pixmap OK */
         else
-            gauge_run(fb, B2_START, B2_START + 2u*ROWPX, 0xFD20u);               /* orange: no depth */
+            gauge_run(fb, B2_START, B2_START + ROWPX, COL_REF30);                /* red: no pixmap */
 #else
         /* software measurement build: the plain fps bar (green, length = fps,
          * ticks at 15/30/45). */

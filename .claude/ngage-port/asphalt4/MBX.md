@@ -572,6 +572,38 @@ rasterizers sub_2fbdc / sub_2f6fc / ...), or (b) upload with a 1-bit alpha keyed
 on texel==0 and enable GL_ALPHA_TEST. (a) is simpler and keeps the expensive
 opaque road on the GPU.
 
+## The N95's MBX, from the datasheets (why the GPU route is right)
+
+The N95 is a TI OMAP 2420: ARM11 + **PowerVR MBX with the VGP vertex
+co-processor** (hardware transform/lighting -- the full MBX, not the cut-down
+MBX Lite). OpenGL ES 1.x fixed-function, tile-based deferred renderer.
+Throughput is quoted 1.7-3.7M tris/s and 135-300M px/s **at 100 MHz**, and the
+OMAP 2420 runs its core at ~50-66 MHz -- so roughly half: ~67-150M px/s,
+~0.85-1.85M tris/s. This game needs ~77k px x 60 fps = **4.6M px/s** and ~490
+tris x 60 = **30k tris/s**. The MBX has ~15-30x the fill and ~30-60x the
+geometry headroom needed for 60 fps. **It is nowhere near the bottleneck -- it
+sits idle while the ARM does everything in software.** This is the whole case for
+the GPU route: the hardware can clearly do it (as the iPhone's MBX did), the port
+just never used it.
+
+## Pixmap probe: does the N95 support zero-copy render-to-backbuffer?
+
+The no-readback path needs an EGL **pixmap** surface (render straight into the
+game's backbuffer bitmap). Symbian's EGL *can* bind GL to a `CFbsBitmap` but it
+"is not guaranteed to be supported on all EGL implementations" -- so the N95 must
+be asked directly. (EKA2L1 itself lacks pixmap: `eglCreatePixmapSurface` is
+commented out; upstream PR #865 adds it and can be ported to the fork to bench
+the path 1:1.)
+
+The probe (`a4_gl_pixmapcap`, built `--gl --capture -DA4_NO_BLIT -DA4_GAUGE`):
+bring-up calls `eglChooseConfig` with `EGL_SURFACE_TYPE = EGL_PIXMAP_BIT`; if it
+returns a config, the device offers pixmap surfaces. Reported on gauge band 2:
+GREEN (3 rows) = supported, RED = not, magenta = GL error. Band 1 stays the GL
+state. Bench-verified: band 1 green (GL up), band 2 **red** -- correct, EKA2L1
+offers no pixmap config, so the probe reads true. The N95 reading is the answer:
+green -> zero-copy viable, build it (port PR #865 + render into the backbuffer);
+red -> zero-copy dead on the N95, refocus on widening the offload instead.
+
 ## Stage 6a: transparency fixed by colorkey texture scan
 
 Fix (a) from the previous section, the simpler one, works. On upload each texture
