@@ -490,39 +490,26 @@ the GPU 3D. Two pieces, both in `renderer/a4_gl.c`:
 On the device this is a zero-copy pixmap and there is no readback at all; the
 compositing ordering (software sky under, GPU 3D, software HUD over) is the same.
 
-Verified on the bench (stock vs. composite, same race): sky, player car, the
-3D scene, minimap, speedometer, boost bar, position/lap/WANTED all render
-correctly, 0 faults. One artifact remains: a thin green/red/white bar at the very
-top edge (the HUD banner strip), present only when the primitive-capture hook is
-installed. It is written by the game itself into its own surface (0x911088,
-confirmed by reading that memory), not by any composite code -- the composite
-never touches those rows (`CLIP_TOP`), and the GPU readback there is the magenta
-sentinel.
+The top-of-screen green bar was our own fps gauge, not a render fault. `a4_fps.c`
+paints a contiguous bar from the back buffer's first pixel (bright green = fps,
+red tick at 30, white at 15/45), which lands on the top rows of the screen -- the
+HUD banner strip. It is in every non-`--clean` build, so it showed up the moment
+the GL build drew a real HUD under it. The GL build renders for real and does not
+want the measurement overlay, so `a4_fps.c` now suppresses the gauge under
+`-DA4_GL` (passed by the injector for `--gl` builds) while still calling
+`a4_gl_frame()` to flush the GPU frame and still keeping the fps ring. The
+measurement (`--measure-only`) build keeps the gauge.
 
-**Root cause (run down, bench rounds E-series).** The bar is a *runtime
-code-integrity response in the game*, triggered by the one byte-level change the
-GPU path cannot avoid: the capture detour overwrites `draw_primitive`'s first two
-Thumb instructions at `+0x300B2` with a BLX. Isolation, each a bench run:
+(A long mis-diagnosis preceded this: the gauge is present in every build used to
+test, so isolating "capture detour on/off" never removed it, and it was wrongly
+read as a game integrity response to the `+0x300B2` code change. The tell was
+that `--clean` -- the one build without the gauge -- was also the one without the
+bar. Lesson: when an artifact is in every test build, suspect the thing every
+test build carries before the thing under test.)
 
-- Not the blit, the fill-hook, or GL -- a capture build with no blit, no
-  fill-hook and no GL (`--capture` without `--gl`) still shows it.
-- Not a dyncom recompilation quirk -- it is identical under dynarmic.
-- Not the hook's work or its per-prim cost -- a *passthrough* trampoline that
-  does nothing but re-execute the two displaced moves and return (functionally
-  identical to stock, zero added behaviour) still shows it. The only thing left
-  is the changed code bytes at `+0x300B2`.
-- The clean v5 build modifies other code (the fill/loop veneers at `+0x2ABAA`,
-  `+0x3357A`, ...) and has no bar, so the game checks a specific region that
-  includes `draw_primitive` but not those points.
-
-So the game detects the modification at `draw_primitive` and degrades the HUD
-banner in response. Making it go away means either not modifying that region (but
-that is exactly where primitives must be captured) or stopping the game reacting
-to the modification -- i.e. defeating an integrity check. That is anti-tamper
-work, which stays with the project owner, not this performance track. The
-composite rendering itself is correct; the bar is the game's response to the hook,
-and whether it also appears on the device depends on the owner's tamper handling
-there.
+Verified on the bench (stock vs. composite, same race): sky, player car, the 3D
+scene, minimap, speedometer, boost bar and position/lap/WANTED all render
+correctly, no top bar, 0 faults.
 
 ## Status
 
@@ -530,11 +517,9 @@ Stages 0, 1, 1b, 2, 3a, 3b complete; stage 4 core done -- the full textured 3D
 scene renders on the GPU into the game's surface (41 textures, ~741 prims/frame,
 0 faults). The software-rasterizer skip is implemented and renders; its CPU win
 is a device measurement (see above), with the `-DA4_NO_BLIT` build as the
-instrument. The 2D HUD now composites correctly over the GPU 3D (see above). The
-one remaining artifact, a bar in the top HUD banner, is run down: it is the
-game's own code-integrity response to the capture hook's byte change at
-`draw_primitive`, so it is anti-tamper work for the project owner, not this
-performance track (see above). Remaining on this track: device pixmap.
+instrument. The 2D HUD now composites correctly over the GPU 3D with no artifacts
+(the former top bar was our own fps gauge, now suppressed in GL builds -- see
+above). Remaining on this track: device pixmap.
 Foundation proven end to end (inject -> link
 libGLES_CM past the guard -> ES1.1 context -> GPU render -> presented frame), and
 the game's 3D pipeline is mapped down to the per-triangle hook `+0x300AE`, with

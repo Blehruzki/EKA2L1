@@ -61,10 +61,12 @@ struct a4_fps_state {
     uint32_t ring[RING];   /* recent per-frame tick deltas */
 };
 
+#ifndef A4_GL
 static void gauge_run(volatile uint16_t *fb, uint32_t from, uint32_t to, uint16_t col)
 {
     for (uint32_t i = from; i < to; i++) fb[i] = col;
 }
+#endif
 
 void a4_fps_tick(tick_fn tc, home_fn ht)
 {
@@ -101,6 +103,11 @@ void a4_fps_tick(tick_fn tc, home_fn ht)
         s->sum_dt = 0; s->min_dt = 0xFFFFFFFFu; s->max_dt = 0;
     }
 
+#ifndef A4_GL
+    /* On-screen gauge: a contiguous bar from the top-left of the back buffer.
+     * The GL/composite build renders for real, so it omits the gauge (it would
+     * paint a green bar over the top HUD banner) -- the fps ring above is still
+     * kept, and a4_gl_frame() above still flushes the GPU frame. */
     uint32_t bb = *(volatile uint32_t *)A4_FPS_BB;
     if (bb) {
         volatile uint16_t *fb = (volatile uint16_t *)bb;
@@ -112,4 +119,5 @@ void a4_fps_tick(tick_fn tc, home_fn ht)
         gauge_run(fb, 15 * GAUGE_PER, 15 * GAUGE_PER + GAUGE_PER / 2, COL_REF);
         gauge_run(fb, 45 * GAUGE_PER, 45 * GAUGE_PER + GAUGE_PER / 2, COL_REF);
     }
+#endif
 }

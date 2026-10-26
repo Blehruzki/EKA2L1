@@ -88,9 +88,11 @@ LOOP_HOOKS = {
 
 def u32(d, o): return struct.unpack_from('<I', d, o)[0]
 
-def build_blob(link_addr, tmp, clean=False):
+def build_blob(link_addr, tmp, clean=False, gl=False):
     # clean builds carry none of the measurement code: drop the fps/GL sources,
     # and the fps/cache trampolines in a4_tramp.s are #ifdef'd out via -DA4_CLEAN.
+    # GL builds render for real, so a4_fps.c suppresses its on-screen fps gauge
+    # (the green bar) under -DA4_GL while still driving the GPU frame flush.
     MEASURE_SRCS = {'a4_fps.c', 'a4_gl.c', 'a4_gl.s', 'a4_prim.c'}
     sources = [s for s in SOURCES if not (clean and os.path.basename(s) in MEASURE_SRCS)]
     objs = []
@@ -104,7 +106,7 @@ def build_blob(link_addr, tmp, clean=False):
             if os.path.basename(src) == 'a4_tramp.s':
                 flags += ['-x', 'assembler-with-cpp'] + (['-DA4_CLEAN'] if clean else [])
         else:
-            flags = CFLAGS + extra + (['-DA4_CLEAN'] if clean else [])
+            flags = CFLAGS + extra + (['-DA4_CLEAN'] if clean else []) + (['-DA4_GL'] if gl else [])
         subprocess.check_call(['clang', *flags, '-c', src, '-o', o])
         objs.append(o)
     ld = os.path.join(tmp, 'a4.ld')
@@ -237,7 +239,7 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
     new_off = (code_size + 15) & ~15
     blob_base = LINK_BASE + new_off
     with tempfile.TemporaryDirectory() as tmp:
-        blob, syms = build_blob(blob_base, tmp, clean=clean)
+        blob, syms = build_blob(blob_base, tmp, clean=clean, gl=gl)
     # patch each loop hook's return-displacement placeholder: r12 = pc(add)+8 =
     # placeholder_link; want r12 = return_link|1 (Thumb), so word = target - placeholder.
     for entry, (tramp, retsym, ret_off) in loop_hooks.items():
