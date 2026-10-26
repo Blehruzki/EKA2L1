@@ -91,6 +91,7 @@ struct glr {
     uint32_t depthcfg;                /* unused in stage 6 (no depth); kept for the probe */
     uint32_t cache_ptr[NCACHE];
     uint32_t cache_id[NCACHE];
+    uint32_t cache_tr[NCACHE];         /* 1 = texture is a colorkey (transparent) sprite */
 };
 
 /* sentinel the pbuffer is cleared to each frame: pixels the GPU never drew read
@@ -151,17 +152,25 @@ static int bringup(volatile struct glr *s)
     return 1;
 }
 
-/* texture cache: returns the GL texture name for desc+0x30, uploading on a miss.
- * 0 on failure (caller falls through to software). */
-static uint32_t tex_for(volatile struct glr *s, uint32_t tsaddr)
+/* texture cache: returns the cache INDEX for desc+0x30, uploading on a miss and
+ * flagging whether the texture is a colorkey (transparent) sprite -- the game's
+ * software filler treats texel value 0 as transparent, so a texture with many 0
+ * texels is a sprite we must leave to software (the GPU would draw its black
+ * background opaque). -1 on failure (caller falls through to software). */
+static int tex_index(volatile struct glr *s, uint32_t tsaddr)
 {
     uint32_t *ts = (uint32_t *)tsaddr;
     for (uint32_t i = 0; i < s->ntex; i++)
-        if (s->cache_ptr[i] == tsaddr) return s->cache_id[i];
+        if (s->cache_ptr[i] == tsaddr) return (int)i;
     uint32_t w = ts[1] + 1, h = ts[2] + 1;
     const void *pix = (const void *)ts[3];
-    if (!pix || w > 1024 || h > 1024) return 0;
-    if (s->ntex >= NCACHE) return 0;
+    if (!pix || w > 1024 || h > 1024) return -1;
+    if (s->ntex >= NCACHE) return -1;
+    /* colorkey scan: >=1/8 of the texels pure 0 (black) -> a transparent sprite */
+    const uint16_t *px16 = (const uint16_t *)pix;
+    uint32_t total = w * h, zeros = 0;
+    for (uint32_t i = 0; i < total; i++) if (px16[i] == 0) zeros++;
+    uint32_t tr = (zeros * 8u >= total) ? 1u : 0u;
     uint32_t id = 0;
     gl_gentex(1, &id);
     gl_bindtex(GL_TEXTURE_2D, id);
@@ -170,8 +179,9 @@ static uint32_t tex_for(volatile struct glr *s, uint32_t tsaddr)
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    s->cache_ptr[s->ntex] = tsaddr; s->cache_id[s->ntex] = id; s->ntex++;
-    return id;
+    int idx = (int)s->ntex;
+    s->cache_ptr[idx] = tsaddr; s->cache_id[idx] = id; s->cache_tr[idx] = tr; s->ntex++;
+    return idx;
 }
 
 /* returns 1 if the primitive was taken by the GPU path (the caller skips the
@@ -201,8 +211,10 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     for (uint32_t w = tw; w > 1; w >>= 1) wsh++;
     for (uint32_t h = th; h > 1; h >>= 1) hsh++;
 
-    uint32_t id = tex_for(s, tsaddr);
-    if (!id) return 0;
+    int ti = tex_index(s, tsaddr);
+    if (ti < 0) return 0;
+    if (s->cache_tr[ti]) return 0;                   /* transparent sprite: leave to software */
+    uint32_t id = s->cache_id[ti];
 
     int16_t p[6];
     int32_t uv[6];

@@ -572,6 +572,19 @@ rasterizers sub_2fbdc / sub_2f6fc / ...), or (b) upload with a 1-bit alpha keyed
 on texel==0 and enable GL_ALPHA_TEST. (a) is simpler and keeps the expensive
 opaque road on the GPU.
 
+## Stage 6a: transparency fixed by colorkey texture scan
+
+Fix (a) from the previous section, the simpler one, works. On upload each texture
+is scanned for the colorkey (texel value 0, what the software transparent filler
+skips); a texture that is >=1/8 colorkey is a transparent sprite, and
+`a4_gl_draw_prim` returns 0 for prims using it -- those stay in software, where
+the colorkey is handled. Only opaque textures (the road, buildings) go to the
+GPU. No flag decoding needed, and it is robust: an opaque texture with a few
+black texels just misses the GPU and renders in software (correct, only not
+offloaded). Bench (LA race): the road renders on the GPU, the palm trees and
+sprites render in software with their transparency intact -- no black boxes, no
+missing floor, scene correct. This is the clean build.
+
 ## Is the game fps-capped? No -- it is compute-bound (measured)
 
 The obvious worry, after a 51% guest-instruction cut gave no device fps: the
