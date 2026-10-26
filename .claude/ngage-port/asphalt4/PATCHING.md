@@ -426,3 +426,55 @@ and 45. Green reaching past the red tick means above 30. Bench reads ~33 fps for
 the capped demo; on a phone at ~12 fps the green falls well short of the red 30
 line. Both euser calls preserve r4-r11, and the detour saves r0-r3/r12 so the
 present call's arguments survive (a dropped r2 there was an early USER-87 crash).
+
+## Update: stock baseline build (gauge only) + the heavy-vs-light fps pattern confirmed
+
+The gauge lets a patched build be read by eye, but there was no way to read the
+**stock** build the same way (unpatched, it draws no bar). So `injector.py` got a
+`--measure-only` mode: it wires in only the measurement detours (fps tick `+0x1E6`,
+back-buffer cache `+0x33412`) and the grown `.bss`, and **skips** the renderer
+rewrites (`FILL_HOOKS` + `LOOP_HOOKS`). The result, `a4_stock_gauge.exe`, is the
+**stock renderer with the same gauge, same scale, same 30-fps red tick** -- the
+visual baseline to hold the optimized build against.
+
+Proven correct offline, not on the bench, because the bench can't boot a modified
+exe: `restore_orig.sh` put the **stock** factory DLL back, and the stock module
+guard crashes any tampered image (KERN-EXEC 3, "access violation reading 0x8",
+during boot -- the guard's own trap, reproduced identically by v5 and by
+`a4_stock_gauge`; the plain stock exe boots fine). Running a gauge build on the
+bench needs the owner's patched factory DLL + a regenerated hash, which is the
+owner's integrity bake. Instead, `a4_stock_gauge.exe` was diffed against
+phone-confirmed `v5`: **identical everywhere except** the five renderer sites
+(`+0x2ABAA, +0x3357A, +0x33B16, +0x51D96, +0x51DB8`, left at stock bytes) and two
+dead trampoline-return placeholders (`a4_tex_ret`, `a4_transp_ret`, never reached
+with the loops stock). The fps/cache detours and the blob are byte-identical to
+v5. So it is a strict subset of v5's edits; since v5 boots and gauges on the phone,
+this does too. (Caught in review: the old `asphalt4_onebyte.exe` source had one
+corrupted byte -- 'S'->'T' in the dead `FPS:` debug string at `+0x3C82`, NOTES:89;
+rebuilt from the true stock image so the subset relation is exact.)
+
+**The heavy-vs-light fps swing (user: "<30 in crowded streets, >30 in the LA
+tunnel, ~27 avg").** Confirmed on the bench by measuring the *stock* exe (no guard
+issue) with `EKA2L1_FRAMESTAT=1` on dyncom: instructions per frame **is** the fps
+signal, since fps = rate / (instr per frame). Over 1,340 demo-race frames:
+
+| percentile | instr/frame | relative speed |
+|---|---|---|
+| p5  (sparse) | 8.24 M | fastest |
+| p50 (median) | 10.6 M | |
+| p95 (crowded)| 12.5 M | slowest |
+
+A **~1.5x spread** between the sparsest and busiest frames (and down to ~3 M on
+empty transition frames). It is scene-driven -- the cost is the per-pixel span
+fillers, so it rises with the textured/transparent pixels on screen: many cars +
+traffic fill far more span than an empty tunnel. Scaled to the owner's reported
+27-fps average (their phone ~2.6x the N95-by-eye 115 instr/us estimate), the band
+runs **~36 fps on the sparse frames down to ~24 fps on the crowded ones, ~68% of
+frames under 30** -- straddling 30 exactly where reported: crowded streets below,
+empty tunnel above. The absolute numbers scale with the phone; the ratio does not.
+Not driven to the literal LA tunnel on the bench, but the demo's own scene-cost
+spread reproduces the mechanism and the straddle.
+
+`a4_stock_gauge.exe` (sha256 5e6df31d…) ships to the owner alongside v5: bake its
+hash (`make_loader_hashes.py <exe> <patched factory DLL> <outdir>`) with the same
+patched DLL, deploy both, and the two gauges read side by side.

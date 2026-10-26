@@ -122,7 +122,14 @@ def blx_insert(code, off, target_link):
         raise AssertionError('BLX encode check failed: %s %s (wanted blx %s)'
                              % (ins.mnemonic, ins.op_str, want))
 
-def main(src_exe, out_exe):
+def main(src_exe, out_exe, measure_only=False):
+    # measure_only: ship the STOCK renderer with ONLY the fps gauge wired in
+    # (INSERT_HOOKS + CACHE_HOOKS + grown bss), skipping the span/vec rewrites
+    # (FILL_HOOKS + LOOP_HOOKS). This is the baseline build: same gauge, same
+    # scale, so a user can read stock fps by eye against the optimized build.
+    fill_hooks = {} if measure_only else FILL_HOOKS
+    loop_hooks = {} if measure_only else LOOP_HOOKS
+
     d = bytearray(open(src_exe, 'rb').read())
     assert u32(d, 0x1C) == 0, 'compressed image: inflate it first'
     code_off, code_size = u32(d, 0x64), u32(d, 0x30)
@@ -132,7 +139,7 @@ def main(src_exe, out_exe):
         blob, syms = build_blob(blob_base, tmp)
     # patch each loop hook's return-displacement placeholder: r12 = pc(add)+8 =
     # placeholder_link; want r12 = return_link|1 (Thumb), so word = target - placeholder.
-    for entry, (tramp, retsym, ret_off) in LOOP_HOOKS.items():
+    for entry, (tramp, retsym, ret_off) in loop_hooks.items():
         ph_link = syms[retsym]
         word = ((LINK_BASE + ret_off) | 1) - ph_link
         struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
@@ -147,10 +154,10 @@ def main(src_exe, out_exe):
     code += b'\0' * (new_off - code_size) + blob
     code += b'\0' * (-len(code) % 4)
 
-    for off, sym in FILL_HOOKS.items():
+    for off, sym in fill_hooks.items():
         n = veneer(code, off, syms[sym])
         print('fill   +%06X -> +%06X (%d-byte veneer)' % (off, syms[sym] - LINK_BASE, n))
-    for off, (tramp, retsym, ret_off) in LOOP_HOOKS.items():
+    for off, (tramp, retsym, ret_off) in loop_hooks.items():
         n = veneer(code, off, syms[tramp])
         print('loop   +%06X -> %s +%06X, returns +%06X (%d-byte veneer)'
               % (off, tramp, syms[tramp] - LINK_BASE, ret_off, n))
@@ -179,4 +186,5 @@ def main(src_exe, out_exe):
     print('code %X -> %X (+%d), image %d bytes' % (code_size, len(code), grow, len(out)))
 
 if __name__ == '__main__':
-    main(sys.argv[1], sys.argv[2])
+    args = [a for a in sys.argv[1:] if a != '--measure-only']
+    main(args[0], args[1], measure_only='--measure-only' in sys.argv)
