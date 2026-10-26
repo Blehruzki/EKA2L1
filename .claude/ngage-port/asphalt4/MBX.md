@@ -207,10 +207,56 @@ it will render the 3D into the backbuffer directly -- a pixmap surface
 or an FBO-to-bitmap blit. The readback path proven here is the portable
 fallback and the plumbing proof.
 
+## Stage 2 result: the triangle-submission point and vertex format
+
+Disassembled up from the span fillers (static, capstone; the stock image).
+
+**Call chain (bottom-up):**
+`textured span filler +0x333F4`  <-  `scanline rasterizer +0x2F6FC`  <-
+`per-primitive dispatcher +0x300AE`  <-  submission loops `+0x34798`,
+`+0x347EA`, `+0x35D3A`.
+
+**The hook point is `+0x300AE`:** `draw_primitive(r0=ctx, r1=desc, r2=flags)`.
+It copies `[desc+0x30]` (the texture) into `ctx+0x54`, calls the setup
+`+0x2FF60` (back-face / off-screen cull + sort the 3 vertices by Y, writing the
+3 sorted vertex pointers to a 3-word scratch), then dispatches by `flags` bits
+to one of ~8 rasterizers: **bit 0 = textured (`+0x2F6FC`)**, bit 1 = `+0x2FBDC`,
+and others (`+0x2F358, +0x2EFB4, +0x2ECB4, +0x2E910, +0x2E56C, +0x2E1C8`) for the
+other shade/blend modes. So every rendered triangle of every mode passes through
+`+0x300AE` with its geometry and texture in hand -- the single place to divert to
+GL.
+
+**Primitive descriptor `desc`:**
+`v0* @+0x0C, v1* @+0x18, v2* @+0x24` (three vertex pointers, 0x0C apart),
+`texture* @+0x30`, and `flags` chooses the rasterizer.
+
+**Vertex wrapper** (what each `vN*` points at):
+`position* @+0x00, U @+0x04, V @+0x08`.
+**Position** `P` (what `vN[0]` points at): `X @+0x00, Y @+0x04, Z/W @+0x08`
+(screen-space, post-projection). `+0x2F6FC` reads `[vN]`,`[vN+4]`,`[vN+8]` for
+P/U/V and multiplies U,V by a per-vertex perspective factor
+`0x522C8(ctx, P.ZW)` (a 1/w reciprocal) -- i.e. **perspective-correct textured
+triangles**, which is exactly what GL ES 1.1 does in hardware. Lighting is the
+per-pixel `light`/`lightmask`/`thresh` the filler already consumes (a shade
+ramp); whether its source is per-vertex or per-primitive is a stage-3 detail.
+
+**What this means for GL:** at `+0x300AE`, feed GL the 3 `(X,Y)` screen
+positions (`glVertexPointer`), the 3 `(U,V)` (`glTexCoordPointer`), the depth
+`Z/W`, and bind the texture from `desc+0x30`; `glDrawArrays(GL_TRIANGLES,0,3)`
+and let the GPU do the perspective-correct mapping and depth test. Because the
+positions are already in screen space, GL runs under an ortho projection -- no
+need to recover the game's model/view/projection matrices for a first cut.
+
+Open for stage 3: the texture format at `desc+0x30` (paletted; cf.
+`renderer/a4_sprite_lut.c`, `palconv_*`) and its GL upload/conversion, and the
+exact light source. Batching at the submission loops (vs. per-triangle at
+`+0x300AE`) is a later optimization.
+
 ## Status
 
-Stages 0, 1, 1b complete -- the GPU path from injected code to the presented
-frame is proven end to end on the bench. Next, stage 2: disassemble up from the
-span fillers to the triangle-submission point and pin the vertex/UV/texture/
-light format, so the game's 3D can start going to the GPU instead of the
-software rasterizer.
+Stages 0, 1, 1b, 2 complete. Foundation proven end to end (inject -> link
+libGLES_CM past the guard -> ES1.1 context -> GPU render -> presented frame), and
+the game's 3D pipeline is mapped down to the per-triangle hook `+0x300AE` and its
+vertex/UV/texture format. Stage 3: at `+0x300AE`, convert one real textured
+triangle's data to a GL draw (texture upload + the ortho setup), software path
+still running the rest, and diff on the bench.
