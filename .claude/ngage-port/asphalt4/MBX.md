@@ -572,6 +572,39 @@ rasterizers sub_2fbdc / sub_2f6fc / ...), or (b) upload with a 1-bit alpha keyed
 on texel==0 and enable GL_ALPHA_TEST. (a) is simpler and keeps the expensive
 opaque road on the GPU.
 
+## The overlooked cost: our own composite hands back the whole offload saving
+
+Measured deterministically (FRAMESTAT instr/frame, fixed idle start-line scene,
+same renderer):
+
+| build | instr/frame |
+|---|---:|
+| stock software (no offload)            | 8.11M |
+| composite: offload + readback + blit   | **8.17M** |
+| readback only (glReadPixels, no blit)  | 8.49M |
+| no-blit: offload, no readback          | **4.96M** |
+
+The offload saves **3.15M** (39% of the frame) -- the prize. The composite costs
+**3.2-3.5M** -- it gives the entire saving back; net ~= stock. That is the
+no-gain, deterministically, and it is *our* code, not the MBX or a cap.
+
+Attribution: readback-only ~= composite, so the per-pixel sentinel blit loop
+(~17 instr/drawn px, ~9/sentinel px) is **negligible** and the whole cost is
+the **`glReadPixels` readback** -- ~3.2M for only **15 calls** (one per 16-row
+STRIP), ~215K per call, which points at **per-call overhead**, not per-pixel.
+On the N95 that is worse still: each glReadPixels forces a full tile-flush and
+pipeline sync on the tile-based MBX, and `STRIP=16` (chosen to keep the readback
+buffer tiny in .bss) makes that 15 syncs a frame.
+
+So the lever is not the blit and not zero-copy (which the N95 lacks): **cut the
+number and extent of readbacks.** Step 1 (no memory growth): track the screen-row
+extent the GPU drew each frame (`miny/maxy`) and read back only the strips
+covering it -- the road is the bottom ~half, so roughly half the calls. Step 2:
+fewer, larger strips (a bigger readback buffer) and/or 565 readback (half the
+bytes, no 32->16 conversion; device-plausible via the ES1.1 implementation read
+format, but EKA2L1 rejects non-RGBA/UBYTE reads from the default framebuffer --
+a one-line emulator tweak to bench it).
+
 ## The N95's MBX, from the datasheets (why the GPU route is right)
 
 The N95 is a TI OMAP 2420: ARM11 + **PowerVR MBX with the VGP vertex

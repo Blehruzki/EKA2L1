@@ -92,6 +92,8 @@ struct glr {
     uint32_t last_prims;              /* prims of the last completed frame (device probe) */
     uint32_t depthcfg;                /* unused in stage 6 (no depth); kept for the probe */
     uint32_t pixmapcap;               /* 1 = device offers a pixmap-capable EGL config */
+    uint32_t miny, maxy;              /* screen-row extent the GPU drew this frame (top-down);
+                                       * the readback covers only these rows */
     uint32_t cache_ptr[NCACHE];
     uint32_t cache_id[NCACHE];
     uint32_t cache_tr[NCACHE];         /* 1 = texture is a colorkey (transparent) sprite */
@@ -209,6 +211,7 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     }
     if (s->prims == 0) {                                /* first prim of the frame */
         s->flushed = 0;
+        s->miny = VP_H; s->maxy = 0;                    /* empty drawn-row extent */
         gl_clearcolorx(FX, 0, FX, FX);                  /* magenta sentinel (see SENTINEL_*) */
         gl_clear(GL_COLOR_BUFFER_BIT);
     }
@@ -235,6 +238,14 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         p[i*2+1] = (int16_t)(int32_t)vp[1];
         uv[i*2]   = ((int32_t)desc[voff[i]/4 + 1] * 4096) >> wsh;
         uv[i*2+1] = ((int32_t)desc[voff[i]/4 + 2] * 4096) >> hsh;
+    }
+    /* grow the frame's drawn-row extent, so the readback covers only the rows
+     * the GPU touched (the readback, not the blit, is the composite's cost). */
+    for (int i = 0; i < 3; i++) {
+        int32_t y = p[i*2+1];
+        if (y < 0) y = 0; else if (y >= VP_H) y = VP_H - 1;
+        if ((uint32_t)y < s->miny) s->miny = (uint32_t)y;
+        if ((uint32_t)y > s->maxy) s->maxy = (uint32_t)y;
     }
 
     uint32_t n = s->prims;
@@ -310,7 +321,13 @@ void a4_gl_flush(void)
     volatile uint16_t *fb = (volatile uint16_t *)bb;
     /* read the pbuffer back in horizontal strips through a small buffer. GL is
      * bottom-up; flip to the top-left surface. */
-    for (int y0 = 0; y0 < VP_H; y0 += STRIP) {
+    /* Read back only the strips covering the rows the GPU drew. Screen rows are
+     * top-down, GL rows bottom-up: screen [miny,maxy] -> GL [H-1-maxy, H-1-miny].
+     * y0 steps on STRIP multiples and VP_H is one, so a strip never over-reads. */
+    if (s->miny > s->maxy) return;                       /* nothing drawn */
+    int gl_lo = VP_H - 1 - (int)s->maxy; if (gl_lo < 0) gl_lo = 0;
+    int gl_hi = VP_H - 1 - (int)s->miny; if (gl_hi > VP_H - 1) gl_hi = VP_H - 1;
+    for (int y0 = (gl_lo / STRIP) * STRIP; y0 <= gl_hi; y0 += STRIP) {
         gl_readpixels(0, y0, VP_W, STRIP, GL_RGBA, GL_UNSIGNED_BYTE, rb);
 #ifdef A4_READBACK_ONLY
         continue;                                        /* measurement: readback cost without the blit */
