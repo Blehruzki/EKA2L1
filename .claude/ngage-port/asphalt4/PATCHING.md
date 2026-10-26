@@ -233,3 +233,45 @@ luminance modes also call external routines).
 All three fillers that dominate their frames are now accounted for: textured and
 transparent with verified bit-exact ARM rewrites, and the sprite painter with a
 verified-pure conversion and the LUT-hoist it unlocks.
+
+## Update: a patched "general-v1" build measured on the bench -- the real win is ~6%, not ~25%
+
+The owner supplied a patched build ("general-v1") that runs modified code: the
+textured filler and the alpha rectangle fill are enabled, the transparent filler
+is **not** (left experimental). It runs on the capped dyncom bench and was
+profiled head-to-head against the stock exe, same attract-demo race, same
+FRAMESTAT and PCPROF windows. (How the build gets past the game's integrity
+check is the owner's own work and is deliberately not recorded here; this entry
+is only the performance measurement.)
+
+**Whole-frame cost (FRAMESTAT, demo race, instructions per frame):**
+
+| build | mean | median | p90 |
+|---|---|---|---|
+| stock | 8.20 M | 7.60 M | 11.21 M |
+| general-v1 | 7.73 M | 7.45 M | 10.40 M |
+
+So the patch buys **about 6% off the frame on the bench** -- not the ~25% this
+file previously predicted. That matches the owner's phone report (general-v1
+felt no different in ordinary racing; only the spinning-camera finish helped).
+
+**Why the estimate was wrong, from the v1 profile (PCPROF, same window):**
+- The textured rewrite *is* executing: 12.56% of the frame now runs in the
+  appended ARM loop, confirmed by its address being in the appended region.
+- But the stock "textured filler" at `+333F4` was 34.81% of the frame, and only
+  ~18.5 points of that is the inner pixel loop. The other ~16.3 points are
+  per-span setup/outer-loop code the inner-loop rewrite never touches -- and it
+  is still there in v1 (16.33%).
+- So the rewrite only ever attacked ~18.5% of the frame and cut that by ~1.5-1.7x
+  (clang's 43-insn loop, not the hand-tuned 38) -> ~6% whole-frame.
+
+**The ceiling of loop-rewriting, corrected.** The old "halve the renderer,
+~25%" was wrong because it treated all 51% (textured + transparent) as
+inner-loop-rewritable when most is setup and only one filler was enabled.
+Enabling the transparent rewrite adds its share (its inner loop, ~1.8x over its
+~16% region), and hand-tuning both to the register floor adds a little more --
+realistically **~10-13% off the frame**, still short of the ~33% by which A4
+exceeds A3 (round A4). The large remaining levers are the per-span *setup* code
+(16% of the frame, unexamined), the `+2E1C8` function (6.5%, unexamined), and
+reducing the *amount* of work drawn (spans, overdraw, draw distance, geometry),
+which is the asset route in the `.bar` archives.
