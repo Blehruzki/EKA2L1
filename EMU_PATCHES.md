@@ -240,3 +240,17 @@ on disk (`ss_interpreter::extract_target_info::virtual_path_`, resolved in the
 extraction loop of `sis_script_interpreter.cpp`). A device with packages
 already installed under the old code keeps its twin directories; reinstall
 them. To find any: `find <drives> -type d | awk '{print tolower($0)}' | sort | uniq -d`.
+
+## glReadPixels from a GL ES 1.1 context
+
+`gl_read_pixels_emu` (`src/emu/dispatch/src/libraries/gles2/gles2.cpp`) resolved
+the active context with `get_es2_active_context`, which returns null for any
+context that is not GLES2. So `glReadPixels` from a GL ES 1.1 context silently
+returned nothing -- the caller's buffer was left untouched. ES 1.1 has no user
+framebuffer objects, so its read is in fact the simpler case: always the bound
+surface. It now resolves the context with `get_es_shared_active_context` and
+takes the FBO path only for a GLES2 context; an ES1.1 context reads its bound
+surface (the pbuffer/window bitmap) as the no-FBO branch already did. ES2
+behaviour is unchanged. Found building the Asphalt 4 MBX edition, whose ES1.1
+pbuffer spike needs readback to verify on the bench; a real device's
+libGLES_CM reads ES1.1 pixels too, so this is bench/device parity, not a hack.

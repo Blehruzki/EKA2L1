@@ -2749,19 +2749,24 @@ APPLY_PENDING_ROUTES:
     
     BRIDGE_FUNC_LIBRARY(void, gl_read_pixels_emu, std::int32_t x, std::int32_t y, std::int32_t width, std::int32_t height, std::uint32_t format,
         std::uint32_t type, void *data_ptr) {
-        egl_context_es2 *ctx = get_es2_active_context(sys);
+        // glReadPixels is valid from an ES1.1 context too (it has no user FBOs,
+        // so it always reads the bound surface). Resolve the active context
+        // generically and only take the FBO path for ES2.
+        egl_context_es_shared *ctx = get_es_shared_active_context(sys);
         if (!ctx) {
             return;
         }
 
         dispatcher *dp = sys->get_dispatcher();
         dispatch::egl_controller &controller = dp->get_egl_controller();
-        gles_framebuffer_object *fb_obj = get_binded_framebuffer_object_gles(ctx, controller);
-
-        // Framebuffer handle on driver side still 0 = not drawn anything yet. Don't waste time
-        // Maybe we should still read though. No one knows
-        if ((!fb_obj && (ctx->binded_framebuffer_ != 0)) || (fb_obj && !fb_obj->handle_value())) {
-            return;
+        gles_framebuffer_object *fb_obj = nullptr;
+        if (ctx->context_type() == EGL_GLES2_CONTEXT) {
+            egl_context_es2 *ctx2 = reinterpret_cast<egl_context_es2 *>(ctx);
+            fb_obj = get_binded_framebuffer_object_gles(ctx2, controller);
+            // Framebuffer handle on driver side still 0 = not drawn anything yet.
+            if ((!fb_obj && (ctx2->binded_framebuffer_ != 0)) || (fb_obj && !fb_obj->handle_value())) {
+                return;
+            }
         }
 
         if (fb_obj) {

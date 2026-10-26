@@ -168,9 +168,49 @@ Two findings worth keeping (rule 4):
   its visual proof comes in stage 1b via a window surface, where output is
   presented to the screen rather than read back.
 
+## Stage 1b result: GL output reaches the presented frame
+
+The original plan was an EGL *window* surface bound to the game's `RWindow`.
+Two bench facts redirected it (and neither was a dead end):
+- EKA2L1's `eglCreatePixmapSurface` is commented out and ES1 `glReadPixels` was
+  ES2-only, so neither zero-copy nor readback into the game's backbuffer worked
+  out of the box; and
+- the game owns no `RWindow` of its own -- windowing lives inside `runtime.dll`,
+  so a window surface would mean digging the window object out of the runtime.
+
+The game already presents its **software backbuffer** (base `0x911088`, cached
+by `a4_cachebb_tramp` at `0x400700`), and the fps gauge proves that buffer
+reaches the screen. So the route taken is GL -> backbuffer -> the game's own
+present:
+
+1. Made EKA2L1's `glReadPixels` work from an ES1.1 context (a one-call-site
+   emulator fix; `EMU_PATCHES.md`). ES1.1 is the real MBX API, and a device's
+   libGLES_CM reads ES1 pixels too, so this is bench/device parity.
+2. `a4_gl.c` clears the pbuffer to **blue** (distinct from the gauge's green),
+   `glReadPixels` into guest memory, then copies it as a **contiguous run**
+   into the backbuffer -- contiguous because the display path stripes 2D writes
+   (the same reason the gauge is a contiguous bar; a first 2D blit landed
+   scattered).
+
+Bench, ES1.1 build, baked, booted: no fault, GL scratch latched
+(`magic`, EGL 1.4, pbuffer/context/makeCurrent all 1, `pixel0` blue), and a
+MEMSNAP of the backbuffer at the GL run read **128/128 pixels = 0x001F (blue)**.
+GL-rendered pixels are in the frame the game presents.
+
+**The foundation is complete.** Injected code links libGLES_CM past the guard,
+brings up an ES1.1 context, renders on the GPU, and lands the result in the
+presented frame -- all bench-verified, all device-shaped.
+
+Shipping note: the final edition will not read back + copy every frame (slow);
+it will render the 3D into the backbuffer directly -- a pixmap surface
+(zero-copy) on a real device, which EKA2L1 would need to implement to bench 1:1,
+or an FBO-to-bitmap blit. The readback path proven here is the portable
+fallback and the plumbing proof.
+
 ## Status
 
-Stages 0-1 complete. The risky foundation is proven: link libGLES_CM past the
-guard, bring up an ES context, render on the bench. Next is stage 1b -- bind an
-EGL window surface to the game's RWindow so GL output composites to the screen
-(the one open dependency), then stage 2: find the game's triangle stream.
+Stages 0, 1, 1b complete -- the GPU path from injected code to the presented
+frame is proven end to end on the bench. Next, stage 2: disassemble up from the
+span fillers to the triangle-submission point and pin the vertex/UV/texture/
+light format, so the game's 3D can start going to the GPU instead of the
+software rasterizer.

@@ -18,9 +18,16 @@
 #include <stdint.h>
 
 #define A4_GL_SCRATCH 0x00401000u       /* kept in sync with injector.py */
+#define A4_GL_BB      0x00400700u        /* back-buffer base, stashed by a4_cachebb_tramp (== A4_FPS_BB) */
 #define A4_GL_MAGIC   0x6C900DE1u        /* "GL done" */
 #define GLW 16
 #define GLH 16
+/* The display path stripes 2D writes, so (like the fps gauge) the GL result is
+ * copied as a CONTIGUOUS run -- which maps to a contiguous screen region at any
+ * stride. GL clears to blue (distinct from the gauge's green) so its pixels are
+ * unmistakably GL-sourced in the presented frame. */
+#define BLIT_OFF 6000                    /* contiguous back-buffer index, clear of the gauge (0..4800) */
+#define BLIT_RUN 1200                    /* length of the GL run */
 
 /* EGL / GL constants (Khronos values; EKA2L1 and a real device agree) */
 #define EGL_WIDTH            0x3057
@@ -65,20 +72,39 @@ struct a4_gl_state {
     int32_t  surface;
     int32_t  context;
     int32_t  make_current_ret;
-    uint32_t pixel0;      /* first pixel read back (expect 0x00FF00FF = green RGBA) */
+    uint32_t pixel0;      /* first pixel read back (expect 0xFFFF0000 = opaque blue RGBA) */
     uint32_t pixels[GLW * GLH];
 };
+
+/* Blit the GL-rendered pixels (RGBA8888) into the game's back buffer (RGB565)
+ * so the game's own present carries them to the screen -- the backbuffer->screen
+ * link the fps gauge already proves. This is the stage-1b proof that GL output
+ * reaches the frame; the shipped edition will instead render the 3D into the
+ * backbuffer directly (pixmap surface / zero-copy on device). */
+static void a4_gl_blit(volatile struct a4_gl_state *g)
+{
+    uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
+    if (!bb) return;
+    volatile uint16_t *fb = (volatile uint16_t *)bb;
+    for (uint32_t i = 0; i < BLIT_RUN; i++) {
+        uint32_t px = g->pixels[i & (GLW * GLH - 1)];     /* GL output, RGBA8888 */
+        uint32_t r = px & 0xFF, gc = (px >> 8) & 0xFF, b = (px >> 16) & 0xFF;
+        fb[BLIT_OFF + i] = (uint16_t)(((r >> 3) << 11) | ((gc >> 2) << 5) | (b >> 3));
+    }
+}
 
 void a4_gl_spike(void)
 {
     volatile struct a4_gl_state *g = (volatile struct a4_gl_state *)A4_GL_SCRATCH;
-    if (g->magic == A4_GL_MAGIC)
-        return;                                  /* already proven; latch off */
     volatile uint32_t *a4_gl_iat = a4_gl_iat_ptr();
     /* Safe in builds without the GL import: unresolved slots still hold the
      * raw ordinals (< 0x10000); a resolved address is a code/ROM pointer. */
     if (a4_gl_iat[0] < 0x10000u)
         return;
+    if (g->magic == A4_GL_MAGIC) {               /* already rendered: keep it on screen */
+        a4_gl_blit(g);
+        return;
+    }
     g->attempts++;
 
     fn_get_display   eglGetDisplay   = (fn_get_display)   a4_gl_iat[0];
@@ -127,11 +153,12 @@ void a4_gl_spike(void)
     if (!mc) return;
 
     g->step = 6;  glViewport(0, 0, GLW, GLH);
-    g->step = 7;  glClearColorx(0, FIXED_ONE, 0, FIXED_ONE);   /* opaque green */
+    g->step = 7;  glClearColorx(0, 0, FIXED_ONE, FIXED_ONE);   /* opaque BLUE (distinct from gauge green) */
     g->step = 8;  glClear(GL_COLOR_BUFFER_BIT);
     g->step = 9;  glFinish();
     g->step = 10; glReadPixels(0, 0, GLW, GLH, GL_RGBA, GL_UNSIGNED_BYTE, (void *)g->pixels);
     g->pixel0 = g->pixels[0];
     g->step = 11;
     g->magic = A4_GL_MAGIC;                      /* success: latch */
+    a4_gl_blit(g);                               /* show it this frame too */
 }
