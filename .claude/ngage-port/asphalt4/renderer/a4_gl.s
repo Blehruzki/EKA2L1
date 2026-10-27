@@ -81,8 +81,7 @@ a4_ws_iat_end:
         .global a4_cone_iat
         .align  2
 a4_cone_iat:
-        .word   182     @ [0] CCoeEnv::Static()
-        .word   717     @ [1] CCoeEnv::RootWin(TInt)
+        .word   182     @ [0] CCoeEnv::Static()   (RootWin 717 removed: absent on S60 3.1, breaks the device loader)
         .global a4_cone_iat_end
 a4_cone_iat_end:
         .global a4_cone_iat_ptr

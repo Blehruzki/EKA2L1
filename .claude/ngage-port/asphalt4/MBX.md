@@ -1285,3 +1285,22 @@ when it presents, visible when it does not. Read it:
 - **software game + RED bar** -> the scan bailed on 3.1 (0xC0 cone Static
   missing, 0xC2 no session matched the heuristic, 0xC3 no group); the length
   encodes which, and the handle/heap heuristics need the N95's encodings.
+
+## Device load error -5, and the fix: do not import a 3.2-only ordinal
+
+The first app-session build would not start on the N95: "Unable to start game
+(error -5)" = `KErrNotSupported` at load. Cause: the cone import included
+`RootWin` ordinal **717**. The bench ROM (RM-409, 5320, S60 3.2) has 717 and
+its loader tolerated it (left the slot 0 when it would not resolve); the N95
+(S60 3.1) is an older edition whose cone does not export 717, and a real
+loader REJECTS an image whose import cannot be resolved -> the image never
+loads. The second-session WSERV-6 build imported only ws32 (all present on
+3.1) and loaded; adding a 3.2-only cone ordinal is what broke it.
+
+Fix: import `cone` **182 (Static) only** -- a universal export across S60 3.x
+-- and leave the window group to the content scan, which never needed RootWin.
+Rule for this project: an import ordinal is a per-edition claim; importing one
+the target edition lacks is a load failure, not a runtime one, so it cannot be
+caught by a bench on a different edition. Prefer the lowest, oldest ordinal
+that does the job, and resolve the rest by measurement at run time.
+

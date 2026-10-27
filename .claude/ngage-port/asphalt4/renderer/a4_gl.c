@@ -165,8 +165,6 @@ extern volatile uint32_t *a4_cone_iat_ptr(void);
 #define C(i) (a4_cone_iat_ptr()[i])
 static void *coe_static(void){ return ((void*(*)(void))C(0))(); }                 /* CCoeEnv::Static() */
 
-static void *coe_rootwin(void *env, int scr) __attribute__((unused));   /* RootWin(717) does not resolve on the bench; kept for reference */
-static void *coe_rootwin(void *env, int scr){ return ((void*(*)(void*,int))C(1))(env, scr); }
 static int  ws_flush(void *w){ return ((int(*)(void*))W(2))(w); }
 static void gl_disable(uint32_t c){ ((void(*)(uint32_t))F(32))(c); }
 static int  rw_construct(void *r, void *parent, uint32_t h){ return ((int(*)(void*,void*,uint32_t))W(8))(r, parent, h); }
