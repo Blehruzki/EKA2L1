@@ -1456,3 +1456,12 @@ livelock), not a data/DLL gap, and the RM-320 graphics path has its own holes
 oracle for the 3.1 window path it is not paying off. The remaining way to the
 3.1 framework layout without this is the phone telemetry round (a safe build
 that dumps CCoeEnv and cannot panic), or banking the bench-safe CPU rewrites.
+
+**The livelock, named:** resolving the ping-pong PCs against the N95 euser --
+the worker thread is in **`RFastLock::Wait`** (euser ord 1416, a fast
+mutex/semaphore); Main is in euser a little above it. Two threads contend on a
+fast lock and make no progress. Open C (libc/libpthread), which the game now
+uses heavily, is built on these locks, so this is most likely an Open C
+pthread-mutex contention that EKA2L1's fast-lock scheduling does not resolve
+fairly on the RM-320 run (it does on RM-409). That is an emulator
+scheduler/sync issue, deep and uncertain to fix, not a missing file.
