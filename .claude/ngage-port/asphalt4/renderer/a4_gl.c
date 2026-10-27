@@ -27,7 +27,10 @@
 #define A4_GL_SCRATCH 0x00401000u
 #define A4_GL_READBUF 0x00403000u        /* one strip: 320*STRIP*4, ends at 0x408000 */
 #define A4_GL_BB      0x00400700u        /* surface base, from a4_cachebb_tramp */
-#define STRIP 16                         /* readback strip height (keeps image .bss small) */
+#ifndef STRIP
+#define STRIP 16                         /* readback strip height (keeps image .bss small);
+                                          * -DSTRIP=n overrides, for the per-call-overhead test */
+#endif
 #define A4_GL_MAGIC   0x6C900DE6u
 #define VP_W 320
 #define VP_H 240
