@@ -1836,7 +1836,16 @@ namespace eka2l1::epoc {
     }
 
     bool bitmap_backed_canvas::draw(drivers::graphics_command_builder &builder) {
-        if (!driver_win_id || !can_be_physically_seen()) {
+        // An EGL window surface created on this window attaches its presented bitmap as
+        // background_surface_ (canvas_base::attach_surface). Such a window may carry NO
+        // backing bitmap of its own (driver_win_id == 0): a GPU client presenting purely
+        // through eglSwapBuffers never sends a bitmap handle. Backed-up windows take no
+        // redraw events, which is exactly why a DSA/N-Gage title with no CCoeControl must
+        // present this way (see .claude/ngage-port). So draw whichever content exists --
+        // the backing bitmap and/or the attached surface -- rather than bailing on a
+        // missing backing bitmap.
+        const bool has_surface = (background_surface_.surface != nullptr);
+        if ((!driver_win_id && !has_surface) || !can_be_physically_seen()) {
             // No need to redraw this window yet. It doesn't even have any content ready.
             return false;
         }
@@ -1866,12 +1875,18 @@ namespace eka2l1::epoc {
 
         builder.set_feature(drivers::graphics_feature::blend, true);
 
-        eka2l1::drivers::filter_option filter = (client->get_ws().get_kernel_system()->get_config()->nearest_neighbor_filtering ?
-            eka2l1::drivers::filter_option::nearest : eka2l1::drivers::filter_option::linear);
+        if (driver_win_id) {
+            eka2l1::drivers::filter_option filter = (client->get_ws().get_kernel_system()->get_config()->nearest_neighbor_filtering ?
+                eka2l1::drivers::filter_option::nearest : eka2l1::drivers::filter_option::linear);
 
-        builder.set_texture_filter(driver_win_id, false, filter);
-        builder.set_texture_filter(driver_win_id, true, filter);
-        builder.draw_bitmap(driver_win_id, 0, draw_dest_rect, eka2l1::rect({ 0, 0 }, { 0, 0 }), eka2l1::vec2(0, 0), 0.0f, 0);
+            builder.set_texture_filter(driver_win_id, false, filter);
+            builder.set_texture_filter(driver_win_id, true, filter);
+            builder.draw_bitmap(driver_win_id, 0, draw_dest_rect, eka2l1::rect({ 0, 0 }, { 0, 0 }), eka2l1::vec2(0, 0), 0.0f, 0);
+        }
+
+        // Composite the attached surface (the EGL window surface) over any backing
+        // bitmap; no-op when nothing is attached.
+        draw_surface(builder, background_surface_);
 
         return true;
     }

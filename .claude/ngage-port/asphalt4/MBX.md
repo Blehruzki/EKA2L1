@@ -1928,3 +1928,44 @@ window is proven cone-safe through 109 orientations and needs only an EKA2L1
 compositing path (bitmap_backed_canvas EGL, mirroring draw_surface_window) to
 present on the bench -- a smaller, self-contained emulator change that also matches
 the device's real "no redraw events" backed-up semantics.
+
+## SOLVED: the backed-up window presents (EKA2L1 compositing fix)
+
+Took the recommended path. Fixed EKA2L1 so a bitmap_backed_canvas composites its
+attached EGL surface, then built the backed-up renderer (A4_WINDOW + A4_PERSP +
+A4_BACKUP, the poison-handle backed-up window) and benched RM-320 against the
+fixed emulator.
+
+The fix, in two parts (`src/emu/services/src/window/classes/winuser.cpp`,
+`bitmap_backed_canvas::draw`):
+1. The EGL surface is attached as `background_surface_` for ANY canvas
+   (canvas_base::attach_surface), and eglSwapBuffers publishes each GPU frame into
+   it, but only redraw_msg_canvas::draw composited it. Added
+   `draw_surface(builder, background_surface_)` to bitmap_backed_canvas::draw.
+2. First bench (bk2) was still black: draw() bailed at the top with
+   `if (!driver_win_id ...) return false`, and our backed-up window carries NO
+   backing bitmap (we never send a bitmap handle -- it exists only for EGL), so
+   driver_win_id stays 0. Reworked draw() to proceed when EITHER a backing bitmap
+   or an attached surface exists, draw the bitmap only if present, then composite
+   the surface. (`on_activate` is empty for backed-up; driver_win_id is only set
+   when the client sends a bitmap, which we never do.)
+
+**Result (bk3, RM-320, NODSA): the GPU race PRESENTS through the backed-up
+window.** winstep=7, last_prims ~480-566, 2000+ frames, ntex 75. Screenshot: the
+Asphalt 4 road, buildings, trees and houses all from the GL 3D pass, perspective
+-correct (A4_PERSP), with the sky as the GL magenta sentinel (NODSA suppresses the
+software sky-fill that covers it on a real composite). black% fell from 87 (bk2)
+to ~3; 900-1457 unique colours.
+
+**And it is cone-safe through the whole race including orientations:** CONE=0,
+WSERV=0, no crash -- the backed-up window takes no redraw events, so cone's
+redrawer never touches our handle, dissolving the dilemma that killed the
+redraw+crafted-control window at the first orientation. Only KERN-EXEC is the
+expected ngilightserver EXCLFAULT.
+
+So the GPU window-surface present path is bench-validated: cone-safe AND presents.
+Remaining for a phone round: the device's PowerVR/MBX EGL must present a backed-up
+window surface (the bench now does; device untested), and the sky/HUD software
+layer must still composite with the GPU 3D on a real (non-NODSA) screen.
+Documented in EMU_PATCHES.md ("A backed-up window composites its attached (EGL)
+surface").

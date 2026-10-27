@@ -258,3 +258,27 @@ surface (the pbuffer/window bitmap) as the no-FBO branch already did. ES2
 behaviour is unchanged. Found building the Asphalt 4 MBX edition, whose ES1.1
 pbuffer spike needs readback to verify on the bench; a real device's
 libGLES_CM reads ES1.1 pixels too, so this is bench/device parity, not a hack.
+
+## A backed-up window composites its attached (EGL) surface
+
+A window-server client can create an **EGL window surface** on any client window;
+EKA2L1 attaches the surface's presented bitmap to the canvas as
+`background_surface_` (`canvas_base::attach_surface`), and `eglSwapBuffers`
+publishes each GPU frame into it. `redraw_msg_canvas::draw` composited that
+attachment (via `draw_surface`), but `bitmap_backed_canvas::draw` drew only its
+own backing bitmap (`driver_win_id`) and, worse, bailed at the top when there was
+no backing bitmap (`if (!driver_win_id ...) return false;`). So a GPU client that
+presented purely through `eglSwapBuffers` on a **backed-up** window -- never
+sending a bitmap handle, so `driver_win_id` stays 0 -- showed nothing: the
+attached surface was never drawn.
+
+`bitmap_backed_canvas::draw` now proceeds when either a backing bitmap or an
+attached surface exists, draws the backing bitmap only if present, and then
+composites `background_surface_` with `draw_surface` (a no-op when nothing is
+attached). This mirrors the redraw canvas and is the path a DSA/N-Gage title with
+no `CCoeControl` must use: a backed-up window takes no redraw events, so cone's
+redrawer never touches its client handle (a redraw window's does, which on this
+shared session corrupts the app at the first orientation -- see
+`.claude/ngage-port/asphalt4/MBX.md`). Verified on RM-320: the Asphalt 4 GPU 3D
+pass presents through a backed-up window across a full race including orientation
+changes, no CONE/WSERV panic. `src/emu/services/src/window/classes/winuser.cpp`.
