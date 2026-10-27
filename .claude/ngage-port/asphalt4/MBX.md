@@ -1428,3 +1428,31 @@ difference is a device-specific N-Gage-platform/window-server behaviour in
 EKA2L1's RM-320 config, not the Open C fix. So the N95 edition now BOOTS on
 the bench but is not yet a rendering oracle; getting it to the render loop is
 a separate EKA2L1 RM-320 investigation.
+
+## Why RM-320 boots but will not render: a two-thread livelock in init
+
+Pushed RM-320 toward rendering. The game boots (OpenC fix), runs its full
+startup, creates the FIRST screen device (the launcher's), loads the entire
+NAF/HTTP transition stack -- then DEADLOCKS, never creating the SECOND screen
+device (Asphalt 4's own 3D surface) that immediately precedes rendering.
+
+Established by a 210 s run: it is not slow and not polling -- the property
+polls FREEZE at 154 and FRAMESTAT stays 0 for 180 s. The steady state is a
+tight two-thread ping-pong that never progresses:
+  Main [asphalt4_ngi] pc=0x8039fa9c  <->  worker 01d0...  pc=0x8039f840
+(both in ROM euser). The last forward progress before the freeze: spawn
+`baksrvs` (!BackupServer), rendezvous `!ecomserver`, then "Sending a blind
+sync message" -- and silence. RM-320 did ~203 ecomserver ops and 2 blind
+syncs before freezing; RM-409 does ~503 and 5, and renders. Same EKA2L1
+binary, same libraries, same screen/property/NAF activity on both -- the
+divergence is a subtle service/scheduler interaction that completes on the
+RM-409 (5320/3.2) config and livelocks on the RM-320 (N95/3.1) config.
+
+**Assessment.** The N95 *launch* is fixed (it boots, 328 modules, window
+server + CCoeEnv up) -- the original question is answered. But making it
+*render* is a deep EKA2L1 scheduler/platform-init bug (a two-thread euser
+livelock), not a data/DLL gap, and the RM-320 graphics path has its own holes
+("Corrupted graphics command list", stubbed window-GC draws). As a rendering
+oracle for the 3.1 window path it is not paying off. The remaining way to the
+3.1 framework layout without this is the phone telemetry round (a safe build
+that dumps CCoeEnv and cannot panic), or banking the bench-safe CPU rewrites.
