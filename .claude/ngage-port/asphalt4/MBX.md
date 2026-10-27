@@ -1122,3 +1122,34 @@ colourkey scan, late in a race when more textures are live than `NCACHE`).
 Round 0 goes out again as `a4_fpsbar_stock`, `a4_fpsbar_noblit`,
 `a4_fpsbar_gl`, each with the fps bar: full green rows x4 + the partial row,
 red tick = 30, white = 15 and 45.
+
+## Round 0, with the fps bar: the offload pays, the readback is the wall
+
+Three recordings (sped up to fit), whole races: **stock** sits below the red
+30 line almost the whole race and gets heavier when the screen is busy;
+**noblit** (offload, nothing read back) is smoother and crosses 30 repeatedly;
+**gl** (offload + the fixed composite) is the worst of the three -- down to
+~8 fps while drifting -- and shows the wobbly floor and the black-backed trees
+again, with the car and the HUD now present (the composite point fix held).
+
+What this settles:
+- **The GPU route is real on the N95.** With the textured-opaque mode on the
+  MBX and no readback the game is faster than software by eye and by the bar.
+  Row 1/2 of the decision table, not row 3: the driver's per-draw cost is not
+  the wall.
+- **The readback is the wall, and worse than the bench could show.** The
+  composite costs more on the phone than the offload saves, by a wide margin;
+  pipelining did nothing for it. On a tile-based GPU a `glReadPixels` is a
+  forced render + flush + a copy out through the driver, fifteen times a frame.
+  The "wobbly floor" is consistent with the read landing on a frame the GPU has
+  not finished (tiles half-written), which pipelining by one frame does not
+  prevent if the driver renders at the read.
+- **The black-backed trees** come with the composite builds only and late in a
+  race: a texture-cache entry reused across a texture reload (a stale
+  `cache_tr`/image under a recycled address) is the suspect; not reproduced in
+  36 s on the bench.
+
+Decision: **no more work on the readback composite.** The inverted design
+(phase 1: GPU presents through a window surface; phase 2: the whole 3D pass
+on the GPU in painter's order; phase 3: the HUD as GL quads) is the only path
+the data supports. The no-blit build is the proof it is worth it.
