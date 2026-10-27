@@ -1895,3 +1895,36 @@ Fixing that (mirroring redraw_msg_canvas::draw_surface_window) turns the
 already-cone-safe backed-up path into a bench-validated present, then one phone
 round. That is the cleaner foundation than RE-ing the ws32 redraw fault and then
 still not knowing whether an empty redraw blanks the EGL surface on the device.
+
+## The crafted-control crash is the ORIENTATION redraw (not frame 1)
+
+Pinned the cc1 crash from the log: it fires immediately after `[SCDV-HLE]
+Orientation set to 2`, and the "last instruction" is 0x46696820 = the ASCII
+"Fih " -- i.e. the game's Main thread JUMPED INTO A DATA STRING (a corrupted
+return/pointer), not a clean field read. So frames 1-147 (incl. our window's
+initial redraw) were fine; the fault is the FIRST orientation change.
+
+Mechanism: our window is a redraw window sharing the app's RWsSession/RWsBuffer
+(required -- libGLES_CM resolves the session via CCoeEnv::Static()->WsSession, and
+a 2nd session can't back the EGL surface the app uses). With a non-zero handle,
+cone's CCoeRedrawer SERVICES our window's redraws -- HandleRedrawEvent ->
+Window().BeginRedraw/EndRedraw, writing + flushing the shared buffer. At
+orientation, EKA2L1 resizes our fixed-size (320x240) injected window and
+re-invalidates it (handle_extent_changed -> invalidate -> queue_redraw), and
+servicing that rotated-screen redraw corrupts guest state. handle-0 never hit this
+(cone skips a 0 handle); the backed-up window never hit it across 109 orientations
+(no redraw events at all). ws32's MWsClientClass::Write derefs iBuffer with no null
+guard, so a null-buffer dummy window can't make the servicing a no-op either.
+
+On a real device, cone servicing redraws and flushing the shared buffer is the
+normal path every app uses, so this specific corruption is most likely an EKA2L1
+bench artifact (its rotate/resize handling of a surface-backed redraw window) -- but
+the bench cannot validate through orientation as-is.
+
+**State of the redraw window:** it is the first build to clear BOTH handle panics
+and present the GPU pass (147 frames), but it dies at the first orientation, and the
+remaining blocker is now EKA2L1 bench behaviour, not the renderer. The backed-up
+window is proven cone-safe through 109 orientations and needs only an EKA2L1
+compositing path (bitmap_backed_canvas EGL, mirroring draw_surface_window) to
+present on the bench -- a smaller, self-contained emulator change that also matches
+the device's real "no redraw events" backed-up semantics.
