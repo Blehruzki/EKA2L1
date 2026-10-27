@@ -1690,3 +1690,43 @@ coords), proving the two halves are both needed. Indexed in EMU_PATCHES.md.
 the GPU pass does not yet take the sky/background and the non-textured primitive
 modes. Taking the whole 3D pass (all `flags` rasterizer modes + the background)
 and adding a depth buffer is step 2; that removes the magenta.
+
+## Phase 2, step 2 attempt: the whole pass needs more than flags 1 (findings)
+
+Tried to extend the GPU pass beyond the perspective-correct textured mode. Two
+things stand in the way, both characterized on the bench (NODSA screenshots +
+memsnap captures), neither a quick add:
+
+1. **The rest of the geometry is a different render mode.** A flags histogram of
+   every draw_primitive (before the textured-only filter) over a race:
+   - low-nibble 1 (bit0, the +0x2F6FC perspective-textured rasterizer): ~51k prims
+     -- this is what the GPU path takes now.
+   - low-nibble 0: ~116k prims (~2.3x), also carrying a texture. BUT capturing
+     their descriptors showed the full flags is **0x4000** (bit0=0): a DIFFERENT
+     rasterizer path, not +0x2F6FC. Geometry/UVs are the same desc layout (sane
+     v0 x,y, ZW~1600, sane U,V, one texture 0x01f46240 for a tight screen
+     cluster), but bit0=0 means the game does not texture them through the
+     perspective path -- likely flat/gouraud-shaded or alpha-blended. Drawing
+     them as plain textured (what the current path does) overdraws the screen
+     with a flat fill. Taking them correctly needs disassembling the dispatcher
+     (+0x300AE) to see how flags->rasterizer maps and what 0x4000 shades (vertex
+     colour? blend?), then emitting the matching GL state. Also needs a **depth
+     buffer** (they interleave with the flags-1 geometry in Z): scaffolded it
+     (A4_DEPTH -- EGL EGL_DEPTH_SIZE, GL_DEPTH_TEST, z = ZW>>3 into an ortho
+     [0,4096] range, depth clear bit; no new GL IAT funcs needed, defaults
+     GL_LESS/clear 1.0 suffice) and it is correct, but reverted with the flags-0
+     attempt since the mode is wrong until its shading is known.
+2. **The sky is not draw_primitive geometry.** No primitive of any flags mode
+   has a vertex in the top ~sky band (all minY >= 77 except a few flags-1 at the
+   horizon). The magenta sky is simply where nothing draws -- the game fills the
+   sky by another path (a framebuffer fill / gradient, not a triangle), so it
+   can't be captured at the +0x300B2 hook. Removing the magenta means either
+   finding that fill, drawing our own sky, or making the window colorkey the
+   sentinel so the software sky composites through (phase-3 territory).
+
+**Status.** Phase 2's substantive step is done and shipped: the
+perspective-correct textured 3D pass (flags 1) on the GPU, wobble fixed. The
+"whole pass" completion (the 0x4000 shaded mode + depth, and the sky) is a
+larger RE task, scoped above. Good checkpoint to confirm the perspective pass on
+the phone (the MBX GPU) and/or decide whether the 0x4000 mode is worth the RE for
+the perf it would offload, before sinking rounds into it.
