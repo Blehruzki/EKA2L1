@@ -1075,3 +1075,41 @@ early-race fill (an overlay that exists only for the first seconds) put the
 flush in the right place and then went away. The fix is a boundary that is
 not a side effect of the HUD's content: the draw-order trace (`regs_order.py`)
 is to say where the 3D pass ends and what the car's mode is.
+
+**The draw order of a race frame** (`EKA2L1_PCTRACE_REGS` at `+300AE` with
+r2 = flags, `+29736`, `+2ABAA`, `ngibackbuffer +CB70`; `trace_order.regs`,
+`regs_order.py`; a4_opaque at the start line, ~1,390 draws a frame):
+
+```
+P1x99  (P1 | P2 | P0 interleaved, ~600)  P1x155  (P32 | P0 interleaved, ~800)  Sx17
+```
+
+- `P1x99` first: the sky/background, textured. Then the world: textured
+  (`1`), the bit-1 mode (`2`) and flat (`0`) **interleaved in painter's order**.
+- `P1x155`: a block of 155 textured triangles drawn after the world -- the
+  player's car (nearest, so last). It is flags 1, so the GPU path *takes* it
+  unless its texture fails the colourkey scan; it does not show in the
+  composite, so its textures (black tyres, windows: texel 0 is black in 565)
+  are read as colourkey and handed back to software -- which is why it was
+  overwritten rather than drawn late.
+- `P32 | P0`, ~800: a mode with bit 5 that no earlier note lists, interleaved
+  with flat -- by position (after the car) and count, the trees and roadside
+  billboards with their shadows; all software.
+- `Sx17`: the HUD. **No `F` at all**: a race frame has no translucent fill
+  through `fill.c`, so the old boundary hook never fired and the flush fell to
+  the frame end, after the car and the HUD.
+- Flags over the tail: 0 x22352, 1 x18620, 2 x1824, 32 x12466. The textured
+  mode is 34% of the primitives; the opaque-textured share the GPU takes is
+  less than that after the colourkey hand-back.
+
+**Fix (`composite_prev`): the composite moves to the frame's first primitive.**
+The GPU frame drawn at the previous frame's end is read back and blitted
+before any of this frame's software draws, so the car, trees and HUD land on
+top of it in painter's order; `a4_gl_flush` at the frame end only clears and
+draws. One frame of latency for the GPU world, as the pipelined build already
+had; the readback follows the draw by the present plus the game logic (~2.4M
+instructions), less than a full frame of GPU time, but the MBX needs a
+fraction of that for ~300 triangles. The fill hook is a no-op. Builds:
+`a4_gl` (clean), `a4_fpsbar_gl`, `a4_fpsbar_noblit` (`-DA4_FPSBAR`: the plain
+fps bar kept in a GL build, over the top HUD banner). Bench check: `shots.sh`
+on `a4_fpsbar_gl`.

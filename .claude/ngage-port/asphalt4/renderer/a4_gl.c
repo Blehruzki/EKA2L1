@@ -209,6 +209,8 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr)
 /* returns 1 if the primitive was taken by the GPU path (the caller skips the
  * software rasteriser), 0 to fall through. The triangle is accumulated in arrival
  * order and drawn later, in a4_gl_flush; an overflow past MAXT is drawn now. */
+static void composite_prev(volatile struct glr *s);
+
 int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 {
     volatile uint32_t *iat = a4_gl_iat_ptr();
@@ -222,8 +224,14 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     if (s->prims == 0) {                                /* first prim of the frame */
         s->flushed = 0;
         s->miny = VP_H; s->maxy = 0;                    /* empty drawn-row extent */
-        /* no clear here: the pbuffer still holds the previous frame, which the
-         * pipelined readback in a4_gl_flush composites before clearing+drawing. */
+        /* Composite the previous frame's GPU image NOW, before this frame's
+         * software draws (the car, the trees, the HUD) land on top of it in
+         * painter's order. The old 3D->2D boundary was the frame's first
+         * translucent fill, which a race frame does not have (draw-order trace,
+         * MBX.md): the flush fell to the frame end and overwrote the car and
+         * the bottom HUD -- the device glitch. The pbuffer still holds the
+         * frame drawn at the previous frame's end; it is cleared in a4_gl_flush. */
+        composite_prev(s);
     }
 
     uint32_t tsaddr = desc[0x30 / 4];
@@ -307,25 +315,15 @@ static void batch_draw(volatile struct glr *s)
 /* Composite the GPU-rendered world into the game's surface, at the 3D->2D
  * boundary (a4_gl_fill_hook), masked by the magenta sentinel so only pixels the
  * GPU drew replace the software layer. On device this is a zero-copy pixmap. */
-void a4_gl_flush(void)
+/* Read back and blit the GPU frame drawn at the previous frame's end: the
+ * previous frame's drawn extent (pminy..pmaxy), sentinel-masked. Called at the
+ * first primitive of a frame; the GPU had the present and the game logic to
+ * finish it (~2.4M instructions), so the read should not stall on a real GPU. */
+static void composite_prev(volatile struct glr *s)
 {
-    volatile uint32_t *iat = a4_gl_iat_ptr();
-    if (iat[0] < 0x10000u) return;
-    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
-    if (s->up != A4_GL_MAGIC || s->prims == 0 || s->flushed) return;
-    s->flushed = 1;
-    s->last_prims = s->prims;                            /* frame's prim count (device probe) */
-
-    /* PIPELINED READBACK. The readback's cost is a per-frame sync (~2.6M guest
-     * instr on the bench; the tile-flush + pipeline stall on the MBX): reading
-     * the frame we *just* drew forces the GPU to finish it. So read back the
-     * PREVIOUS frame instead -- it had a whole frame of CPU work to complete on
-     * the GPU, so the read does not stall -- then clear and draw this frame,
-     * which completes in the background during the next frame. One pbuffer, no
-     * glFinish, one frame of 3D latency (~38 ms at 26 fps). */
 #ifndef A4_NO_BLIT
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
-    if (bb && s->pminy <= s->pmaxy) {                    /* 1. composite the previous frame */
+    if (bb && s->pminy <= s->pmaxy) {
     uint32_t *rb = (uint32_t *)A4_GL_READBUF;
     volatile uint16_t *fb = (volatile uint16_t *)bb;
     /* strips covering only the rows the previous frame drew. Screen rows are
@@ -354,24 +352,42 @@ void a4_gl_flush(void)
     }
     }
 #endif /* !A4_NO_BLIT */
+#ifdef A4_NO_BLIT
+    (void)s;
+#endif
+}
 
-    /* 2. clear, then draw THIS frame; it finishes on the GPU while the CPU does
-     * the next frame's work, and the next flush reads it back without waiting. */
+void a4_gl_flush(void)
+{
+    volatile uint32_t *iat = a4_gl_iat_ptr();
+    if (iat[0] < 0x10000u) return;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    if (s->up != A4_GL_MAGIC || s->prims == 0 || s->flushed) return;
+    s->flushed = 1;
+    s->last_prims = s->prims;                            /* frame's prim count (device probe) */
+
+    /* PIPELINED: this frame's primitives are drawn now, at the frame's end, and
+     * read back at the NEXT frame's first primitive (composite_prev), so the
+     * readback never waits on the frame just drawn. One pbuffer, no glFinish,
+     * one frame of latency for the GPU world against the software layers. */
+
+    /* clear, then draw THIS frame; it finishes on the GPU during the present
+     * and the next frame's logic, and composite_prev reads it back then. */
     gl_clearcolorx(FX, 0, FX, FX);                       /* magenta sentinel (see SENTINEL_*) */
     gl_clear(GL_COLOR_BUFFER_BIT);
     batch_draw(s);                                       /* issue the frame's draws */
     { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a draw GL error */
 
-    /* 3. this frame's drawn extent is what the next flush composites */
+    /* this frame's drawn extent is what composite_prev reads back next frame */
     s->pminy = s->miny; s->pmaxy = s->maxy;
 }
 
-/* The frame's first 2D translucent fill marks the end of the 3D pass: composite
- * the GPU world now, before the HUD paints. Called from patch/fill.c. */
+/* Formerly the 3D->2D boundary (the frame's first translucent fill). A race
+ * frame has no such fill, so the boundary is now the frame's first primitive
+ * (composite_prev) and the frame end (a4_gl_frame). Kept for patch/fill.c. */
 void a4_gl_fill_hook(void *fill_pixels)
 {
     (void)fill_pixels;
-    a4_gl_flush();
 }
 
 /* GL bring-up state, for the on-screen diagnostic in a measurement build:
@@ -415,15 +431,15 @@ int a4_gl_pixmapcap(void)
     return (int)s->pixmapcap;
 }
 
-/* Present detour (once per frame): flush as a fallback in case no 2D fill ran
- * this frame, then start the next frame. */
+/* Present detour (once per frame): draw the frame's captured primitives on the
+ * GPU, then start the next frame. */
 void a4_gl_frame(void)
 {
     volatile uint32_t *iat = a4_gl_iat_ptr();
     if (iat[0] < 0x10000u) return;
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
     if (s->up != A4_GL_MAGIC) return;
-    a4_gl_flush();                                      /* fallback for a HUD-less frame */
+    a4_gl_flush();                                      /* draw this frame on the GPU */
     s->prims = 0;
     s->flushed = 0;
     s->frames++;
