@@ -1200,3 +1200,41 @@ flickers -> the runtime does not clip or the DSB flips regardless; the
 copy must be stopped another way; (c) nothing GL at all -> the N95's
 `eglCreateWindowSurface` wants something else of the window (the runtime's
 own `ngiOpenGLControl` path is the fallback to read).
+
+## Phase 1 device round: WSERV 6 (invalid window handle), and what it rules in
+
+The device panicked **WSERV 6** (`EWservPanicWindow`, invalid window handle,
+`windowserver/SERVER/w32cmd.h`) shortly into a race. Verified against the
+hardware before the next step (rule 4):
+
+- **Every ws32 ordinal used is in the RM-409 ROM and matches its def name**
+  (`romimg` over `z:\sys\bin\ws32.dll`, 580 exports): 76/70/69 session,
+  158/157/148 group, 211/212 ordinal-position, 278/275/277 window,
+  107/81/99/268. 157 is `Construct(TUint32,TBool)` (the focusable overload),
+  not a screen-device one. So the calls are right; the ordinals are not it.
+- **The object sizes fit.** RWsSession (MWsClientClass+RSessionBase+iPimpl
+  ~24 b), RWindowGroup (8 b), RWindow (RDrawableWindow = MWsClientClass + TRect
+  = 24 b) all inside the 0x20 slots. Not a layout overlap.
+- **The bench cannot catch it.** EKA2L1's window server indexes its object
+  vector and never panics an unknown handle (`get_object`); the "parent ID
+  0x0 -> root" and "handle invalid 0" log lines fire for the game's own
+  top-level groups too, so they are benign. The window built on the bench
+  (winstep 6, surface made, 7k swaps). WSERV 6 is device-only, as the DSA gap
+  is (CLAUDE.md).
+
+**What WSERV 6 points at:** the platform's EGL takes a *native window* and
+drives the window server with it; a raw `RWindow` we built in a second
+`RWsSession` is not what it expects. The platform's own GL path proves the
+shape: `ngiOpenGLControl.dll` never constructs a window -- it receives one
+(`RWindow::SetExtent` on a window passed in) from a `CCoeControl`, and
+`ngidisplay.dll` makes its window through `CCoeControl::CreateWindowL`
+(cone 25) on the app's own window group, not a parallel session. So the
+device-safe native window is the runtime's existing one, not ours.
+
+**Next step is bench-side, no hardware round:** find the runtime's live
+`RWindow` (ngidisplay/runtime own it; a window object is MWsClientClass, so
+its second word is the session's RWsBuffer -- SYMBIAN.md's test for "is this a
+window") by tracing/memsnapping ngidisplay around its `CreateWindowL`, and
+bind the EGL window surface to that handle instead of a window of our own.
+That removes the second session, the focus juggling and the front-priority
+group -- all of which the device had to accept and one of which it refused.
