@@ -1730,3 +1730,50 @@ perspective-correct textured 3D pass (flags 1) on the GPU, wobble fixed. The
 larger RE task, scoped above. Good checkpoint to confirm the perspective pass on
 the phone (the MBX GPU) and/or decide whether the 0x4000 mode is worth the RE for
 the perf it would offload, before sinking rounds into it.
+
+## Phase 1 device round #2: WSERV 4, and the window-handle dilemma (cone vs wserv)
+
+Phone round of the perspective build (handle 0): the game rendered correctly in
+software up to a race, then **WSERV 4** ("Application closed / Main / WSERV 4",
+video) the moment the GPU path engaged -- and NO green fps bar, so bringup/present
+never completed. WSERV 4 = **EWservPanicNullHandle** ("null handle given as a
+handle value", `w32cmd.h`): the real window server rejects a **0 client handle at
+RWindow::Construct**. The bench's window server is lenient and accepted 0 (which
+is why the bench was green) -- a bench/device gap that hid this.
+
+So the window's client handle is pinned between two validators, both of which the
+bench under-enforces:
+- **cone** (shared app session): `CCoeRedrawer::RunL` and the WS-event handler
+  reinterpret the client handle as `CCoeControl*`. Redraw asserts `handle&3==0`
+  (unaligned -> CONE 46) then, if non-zero, calls `HandleRedrawEvent`; the event
+  path calls `HandleWsEventL(ev, (CCoeControl*)handle)`. So the handle must be 0
+  (skipped) or a real control.
+- **window server**: the client handle must be **non-zero** (WSERV 4).
+
+0 fails wserv; a non-zero fake fails cone. Tried a **crafted minimal CCoeControl**
+as the handle (iFlags@0x1C=0 so IsReadyToDraw() is false -> no draw; iWin@0x20=our
+RWindow so HandleRedrawEvent's Window().BeginRedraw/EndRedraw hit a valid window;
+offsets from CCoeControl = CBase-vptr, MObjectProvider-vptr, iContext, iPosition,
+iSize, iFlags, iWin). On the bench it **cleared CONE 46 (redraw path safe, CONE=0)**
+-- real progress -- but then crashed `Access violation 0xFFFFFFFF` in ws32 (called
+from euser, NOT cone's redraw) right after an orientation change. Comparison: the
+handle-0 builds survived 45-95 orientation events with no such crash; the crafted
+control crashed after 2. So the non-zero handle also goes through cone's **event**
+path (`HandleWsEventL`), and a minimal fake control is not safe there. Reverted.
+
+**Conclusion.** An injected RWindow in the app's cone session needs a client
+handle that is a **real, fully-constructed CCoeControl** (safe for cone's redraw
+AND event paths) and non-zero (wserv). A fake won't do. Options for the next step,
+in rough order of robustness:
+1. Find the app's own top CCoeControl (via CCoeEnv->iAppUi->control stack) and use
+   its address as the handle -- safe for all cone paths. Needs the N-Gage app to
+   have a conventional control (uncertain for a DSA title) and a scan to find it.
+2. Make our window a **backed-up window** (RBackedUpWindow) or otherwise event-
+   free, so it never reaches cone's redraw/event paths at all -- then any non-zero
+   handle is fine. Needs confirming EGL accepts a backed-up window as its native
+   window.
+3. A different present mechanism that avoids the app's window/cone entirely.
+
+The perspective-correct GPU 3D render itself is proven correct (bench, NODSA); the
+blocker is purely the window-present plumbing fighting the framework. Good point to
+decide how far to push the plumbing vs. bank the render and move on.
