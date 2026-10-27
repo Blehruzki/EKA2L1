@@ -85,6 +85,29 @@ a4_cone_iat:
         .word   182     @ [0] CCoeEnv::Static()   (RootWin 717 removed: absent on S60 3.1, breaks the device loader)
         .global a4_cone_iat_end
 a4_cone_iat_end:
+
+@ efsrv import address table (A4_TEL): the build has no efsrv of its own, so the
+@ injector adds one to write the telemetry files the owner retrieves. Ordinals
+@ from the fileserver eabi def; all <= the N95 efsrv.dll's 351 exports, so the
+@ same functions there (ordinals are append-only). RFs::Close (390) is past that
+@ count and is NOT used -- the files stay open and are flushed after each write.
+        .global a4_efs_iat
+        .align  2
+a4_efs_iat:
+        .word   68      @ [0] RFs::Connect(TInt)
+        .word   108     @ [1] RFile::Replace(RFs&, const TDesC16&, TUint)
+        .word   101     @ [2] RFile::Write(TInt aPos, const TDesC8&)  (positioned, sync)
+        .word   96      @ [3] RFile::Flush()
+        .global a4_efs_iat_end
+a4_efs_iat_end:
+        .global a4_efs_iat_ptr
+        .align  2
+a4_efs_iat_ptr:
+        ldr     r0, 8f
+7:      add     r0, pc, r0          @ pc here = 7b + 8 (ARM)
+        bx      lr
+8:      .word   a4_efs_iat - (7b + 8)
+
         .global a4_cone_iat_ptr
         .align  2
 a4_cone_iat_ptr:

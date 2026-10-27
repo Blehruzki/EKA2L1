@@ -117,6 +117,9 @@
 #define FX 0x10000
 
 extern volatile uint32_t *a4_gl_iat_ptr(void);
+#ifdef A4_TEL
+extern void a4_tel_tick(void);   /* a4_tel.c: on-device telemetry/capture */
+#endif
 
 struct glr {
     uint32_t up, frames, prims, errc, ntex, seen;
@@ -703,5 +706,8 @@ int a4_gl_frame(uint32_t fps)
     s->prims = 0;
     s->flushed = 0;
     s->frames++;
+#ifdef A4_TEL
+    a4_tel_tick();   /* on-device capture every frame (not prim-gated): C:\a4telN.dat */
+#endif
     return presented;
 }

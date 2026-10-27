@@ -40,6 +40,7 @@ SOURCES = [os.path.join(REND, 'a4_tramp.s'),
            os.path.join(REND, 'a4_gl.s'),
            os.path.join(REND, 'a4_gl.c'),
            os.path.join(REND, 'a4_prim.c'),
+           os.path.join(REND, 'a4_tel.c'),
            os.path.join(HERE, '..', 'patch', 'fill.c')]
 
 # MBX stage 3a: capture textured-triangle data at draw_primitive +0x300B2 (just
@@ -67,6 +68,11 @@ WS_IMPORT_DLL = 'ws32.dll'
 WS_IMPORT_ORDINALS = [76, 70, 69, 158, 157, 148, 211, 278, 275, 277, 107, 81, 99, 268, 212, 197]
 CONE_IMPORT_DLL = 'cone.dll'
 CONE_IMPORT_ORDINALS = [182]        # CCoeEnv::Static() only (717 RootWin is 3.2+, absent on the N95's 3.1 -> loader error -5)
+# A4_TEL: on-device telemetry file writer (a4_tel.c). The game imports no efsrv,
+# so add one. Ordinals from the fileserver eabi def, all <= the N95 efsrv.dll's
+# 351 exports (append-only, so the same functions). Must match a4_gl.s a4_efs_iat.
+EFS_IMPORT_DLL = 'efsrv.dll'
+EFS_IMPORT_ORDINALS = [68, 108, 101, 96]   # RFs::Connect, RFile::Replace, RFile::Write(pos), RFile::Flush
 GL_SCRATCH = 0x00401000         # must match A4_GL_SCRATCH in a4_gl.c
 GL_SCRATCH_SIZE = 0x12000       # GL state + strip readback + batch buffers (4-wide UV for A4_PERSP)
                                 # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as
@@ -105,7 +111,7 @@ def build_blob(link_addr, tmp, clean=False, gl=False):
     # and the fps/cache trampolines in a4_tramp.s are #ifdef'd out via -DA4_CLEAN.
     # GL builds render for real, so a4_fps.c suppresses its on-screen fps gauge
     # (the green bar) under -DA4_GL while still driving the GPU frame flush.
-    MEASURE_SRCS = {'a4_fps.c', 'a4_gl.c', 'a4_gl.s', 'a4_prim.c'}
+    MEASURE_SRCS = {'a4_fps.c', 'a4_gl.c', 'a4_gl.s', 'a4_prim.c', 'a4_tel.c'}
     sources = [s for s in SOURCES if not (clean and os.path.basename(s) in MEASURE_SRCS)]
     objs = []
     for src in sources:
@@ -316,6 +322,8 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             out = add_gl_import(out, syms['a4_ws_iat'] - LINK_BASE, WS_IMPORT_DLL, WS_IMPORT_ORDINALS)
         if 'a4_cone_iat' in syms:
             out = add_gl_import(out, syms['a4_cone_iat'] - LINK_BASE, CONE_IMPORT_DLL, CONE_IMPORT_ORDINALS)
+        if 'a4_efs_iat' in syms and 'A4_TEL' in os.environ.get('A4_EXTRA_CFLAGS', ''):
+            out = add_gl_import(out, syms['a4_efs_iat'] - LINK_BASE, EFS_IMPORT_DLL, EFS_IMPORT_ORDINALS)
     out = bytearray(e32crc.fix(bytes(out)))
     open(out_exe, 'wb').write(out)
     print('code %X -> %X (+%d), image %d bytes' % (code_size, len(code), grow, len(out)))
