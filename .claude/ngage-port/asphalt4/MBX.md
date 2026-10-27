@@ -1304,3 +1304,38 @@ the target edition lacks is a load failure, not a runtime one, so it cannot be
 caught by a bench on a different edition. Prefer the lowest, oldest ordinal
 that does the job, and resolve the rest by measurement at run time.
 
+
+## The N95 ROM installed, and why phase 1 is not benchable
+
+The user supplied the N95 8GB ROM; installed as **RM-320** (Nokia N95,
+epoc93fp1 = **S60 3.1 FP1**), alongside RM-409 (5320, 3.2). Findings:
+
+- **The emulated N95 cannot boot the game.** Stock `asphalt4_ngi.exe` on
+  RM-320: **KERN-EXEC 3** at boot, 0 frames (2048 access-violation reads, PC
+  -> 0). The whole bench (190+ rounds) was built on RM-409; EKA2L1's 3.1
+  support (or the N-Gage platform setup for it) does not run this title. So
+  the one edition I can bench (3.2) is not the target, and the target (3.1)
+  does not run on the bench. **The 3.1 window path is not benchable; the phone
+  is the only oracle for it.**
+- **cone ordinals are stable across editions** (182 is byte-identical on both
+  ROMs and worked as `Static()` on the bench), so that is not the problem.
+- **Device `a4_window` (cone 182 only) result: CONE 46** =
+  `ECoePanicInvalidHandle` (`cone/src/coepanic.h`), ~15 s into a race, after
+  the race ran in software. So bring-up ran, the content scan found the WRONG
+  objects under 3.1's different CCoeEnv layout, and the window built on them
+  carried a handle the framework later rejected. (The fps bar showed, software
+  rendered -> the GPU window was not presenting.)
+- **cone 717 (RootWin) must not be imported:** it loads on the bench (3.2) but
+  gives device load error **-5** (`KErrNotSupported`) on the N95 -- a 3.2-only
+  / placeholder slot on 3.1. Import `Static` (182) only.
+
+**Consequence.** The content scan (`a4_gl.c` bringup) is tuned to RM-409's 3.2
+CCoeEnv (session = heap iBuffer + kernel handle at word+2; group = ws handle +
+same iBuffer). On 3.1 those word positions / handle encodings differ, so it
+mis-identifies. Fixing it blind costs one hardware round per guess, which the
+project's rules forbid. Next step is a **measurement, not a guess**: a safe
+telemetry build that reads CCoeEnv on the phone and reports its layout (writes
+the first words to a file on C:, or encodes them on screen) WITHOUT creating a
+window, so it cannot panic -- one round yields the 3.1 layout, then the window
+code is written correctly for it. Pending the user's call on spending that
+round vs. banking the bench-safe CPU-loop rewrites (~10-13%) first.
