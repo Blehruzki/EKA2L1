@@ -1339,3 +1339,35 @@ the first words to a file on C:, or encodes them on screen) WITHOUT creating a
 window, so it cannot panic -- one round yields the 3.1 layout, then the window
 code is written correctly for it. Pending the user's call on spending that
 round vs. banking the bench-safe CPU-loop rewrites (~10-13%) first.
+
+## Why the game will not launch on the N95 ROM: OpenC is missing
+
+Traced the RM-320 boot crash. Stock `asphalt4_ngi.exe` faults at its first
+instruction after `$HEAP` is created: **access violation at 0x0** (KERN-EXEC
+3), PC=0, LR=0x7004b998. The call is `+0x4b994 bl +0x50f64` -- an import
+veneer whose slot holds a raw ordinal, i.e. unresolved. The slot is
+**libc.dll ordinal 2** (the game imports `libc{...}[10207369]`, the Open C
+standard library), and the log says **"Can't find libc.dll"**.
+
+Cause: **the N95 ROM contains no Open C / PIPS libraries** (libc, libm, libz,
+libpthread all absent from `z:\rm-320\sys\bin`); the 5320 ROM (RM-409) has
+them built in, which is the only reason the whole bench ever ran. Open C is a
+separate runtime that a real N95 has installed (the game needs it,
+UID 0x10207369, ordinals up to 349+). So the game runs on the user's phone
+(Open C installed) and on RM-409 (Open C in ROM), but not on a bare emulated
+N95.
+
+Tried supplying the PIPS libs the N-Gage package bundles
+(`ngapp/x_inner/libc.dll`): the crash advanced from KERN-EXEC 3 to
+**USER 7** (`ETDes16BadDescriptorType`) -- because the bundled `libc.dll` is a
+different library (UID **0x20002339**, only **178 exports**), not the Open C
+libc the game links against (0x10207369, 349+ exports). It resolves by name
+but has the wrong ordinals. Removed it again (it was on the shared E: drive
+and would shadow RM-409's ROM libc and break the working bench).
+
+**Status:** the launch failure is diagnosed. The fix is to install the Open C
+3.1 runtime into the emulated N95, which is not present in any extracted files
+here (only Open C *stub* SIS in the 5320 ROM, and the wrong bundled libc). To
+proceed, either the Open C `stdlibs` SIS for S60 3.1 is needed, or the 3.1
+framework layout is extracted statically from the N95's own `cone.dll`
+(no boot) to fix the window scan directly. Pending the user's call.
