@@ -110,6 +110,7 @@ struct glr {
                                        * readback composites (it is what the pbuffer holds) */
     uint32_t disp, surf, winstep;     /* A4_WINDOW: display, window surface, how far the window got */
     uint32_t wvis;                    /* A4_WINDOW: our window is visible (hidden while the game is in 2D) */
+    uint32_t idle2d;                  /* A4_WINDOW: consecutive present hooks with no 3D primitives */
     uint32_t cache_ptr[NCACHE];
     uint32_t cache_id[NCACHE];
     uint32_t cache_tr[NCACHE];         /* 1 = texture is a colorkey (transparent) sprite */
@@ -530,14 +531,20 @@ int a4_gl_frame(uint32_t fps)
 #ifdef A4_WINDOW
     if (s->surf) {
         void *ws = (void *)A4_WS_OBJ, *win = (uint8_t *)A4_WS_OBJ + 0x40;
+        /* The present hook fires more than once a game frame (the runtime's
+         * cadence, ~1.5x in the profile), so a hook with no primitives is not a
+         * 2D frame; only a run of them is (a menu). While our window is up the
+         * game's present is skipped every time, or a software frame reaches
+         * the panel between two of ours. */
         if (had) {                                      /* a 3D frame: the GPU presents */
+            s->idle2d = 0;
             if (!s->wvis) { rw_setvisible(win, 1); ws_flush(ws); s->wvis = 1; }
             bar_draw(fps);
             egl_swap((int)s->disp, (int)s->surf);
-            presented = 1;
-        } else if (s->wvis) {                           /* a 2D frame (menu): the game presents */
+        } else if (++s->idle2d > 30u && s->wvis) {       /* 2D for a while (menu): the game presents */
             rw_setvisible(win, 0); ws_flush(ws); s->wvis = 0;
         }
+        presented = (int)s->wvis;
     }
 #else
     (void)had;
