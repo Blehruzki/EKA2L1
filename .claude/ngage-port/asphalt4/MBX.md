@@ -1113,3 +1113,12 @@ fraction of that for ~300 triangles. The fill hook is a no-op. Builds:
 `a4_gl` (clean), `a4_fpsbar_gl`, `a4_fpsbar_noblit` (`-DA4_FPSBAR`: the plain
 fps bar kept in a GL build, over the top HUD banner). Bench check: `shots.sh`
 on `a4_fpsbar_gl`.
+Bench check passed (`shots_fix_*.png`, twelve shots over 36 s at the start
+line): the car, the minimap over the grass, the trees and the HUD are all
+present on top of the GPU-drawn road and hills, in every shot; the fps bar
+reads at the top. The device's "trees with black backgrounds" did not show on
+the bench and stays open (suspect: a texture cache slot reused after the
+colourkey scan, late in a race when more textures are live than `NCACHE`).
+Round 0 goes out again as `a4_fpsbar_stock`, `a4_fpsbar_noblit`,
+`a4_fpsbar_gl`, each with the fps bar: full green rows x4 + the partial row,
+red tick = 30, white = 15 and 45.
