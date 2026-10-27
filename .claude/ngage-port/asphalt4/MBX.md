@@ -2116,3 +2116,33 @@ race (into the glitch), retrieves C:\a4tel0..3.dat, sends them; a4tel_decode.py 
 the counters and decodes each framebuffer (tries the recorded 320 stride and 720).
 This settles both open questions at once: the exact on-device composite (clean vs the
 stride/stripe artifact PATCHING saw at 720) AND the counters (prims, bb, last_prims).
+
+## Phone round 2 (telemetry): the checkerboard is FIXED; harness works on hardware
+
+Owner ran the blit+A4_TEL build and sent C:\a4tel0..3.dat. The on-device telemetry
+loop works end to end -- first pixel-exact data off the phone, no video.
+
+Headers (all 4, the ring's last captures, capidx 146-149, fcount ~1200): magic a4TL,
+**errc=0** (no GL error), bstep=6 (context current), **last_prims=283, ntex=106**
+(GPU rendering a full scene), stride=320 and the framebuffer decodes CLEANLY at 320
+(so the 720 stride PATCHING saw for the gauge does not apply to A4_GL_BB), bb=0x70C0E0.
+winstep=0/wvis=0 as expected for the blit path (no window).
+
+**The opaque-565 fix worked: no checkerboard/screen-door.** The composite is clean --
+GPU 3D + software HUD + the "ARE YOU SURE?" quit dialog (the 4 files are the paused
+quit screen, where the owner stopped). Scene renders (palms, buildings, mountains,
+billboard all present); it is a dusk track, dim (mean brightness ~53/255), so the
+distant tree line reads as dark silhouette.
+
+Remaining per owner: "wobbly floor, black background trees, choppy, esp. drifting."
+These are temporal/perf and invisible in paused frames. So v2 telemetry adds the
+a4_fps_state block (fps = last-1s window count, min/max frame dt, the 128-frame delta
+ring) to every file -- choppiness is then readable from one file even if its
+framebuffer is paused. TEL_EVERY=30 so the 4-file ring spans ~10s and keeps active
+race frames (the wobble needs an active frame to see). v2 bench-validated (ver=3, fps
+block decodes). sha256 ef93e32d1f1be2f29265791ed2c0a68de58c6d886d82d8f1bc98f794bcd90f48.
+
+Open question for the owner: is this track this dark in the STOCK game too? GPU uses
+GL_REPLACE (no light modulation), which would make it brighter than software if
+anything, so the darkness is likely the track's own dusk art, not a GPU bug -- but a
+stock-vs-GPU look on the same track settles it.

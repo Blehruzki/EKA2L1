@@ -25,8 +25,12 @@ extern volatile uint32_t *a4_efs_iat_ptr(void);
 #ifndef TEL_EVERY
 #define TEL_EVERY 24              /* frames between captures (~1-2 s at race fps) */
 #endif
-#define TEL_RING  4               /* number of ring files C:\a4tel0..3.dat */
+#ifndef TEL_RING
+#define TEL_RING  4               /* number of ring files C:\a4telN.dat */
+#endif
 #define A4_GL_SCRATCH 0x00401000u
+#define A4_FPS_SCRATCH 0x00400400u /* a4_fps_state: disp(fps), min/max_dt, 128-delta ring */
+#define FPS_BYTES 560u            /* sizeof(struct a4_fps_state): 140 words */
 #define A4_GL_BB      0x00400700u /* holds the game framebuffer pointer (cache hook) */
 #define A4_TEL_SCRATCH 0x00400800u
 #define VP_W 320
@@ -100,10 +104,12 @@ void a4_tel_tick(void)
 
     /* header: magic, version, geometry, then the glr counters we read on the
      * bench via MEMSNAP (same field order). */
+    volatile uint32_t *fp = (volatile uint32_t *)A4_FPS_SCRATCH;  /* a4_fps_state */
+
     uint32_t h[32];
     int i = 0;
     h[i++] = TEL_MAGIC;
-    h[i++] = 2;                       /* version */
+    h[i++] = 3;                       /* version 3: adds the a4_fps block */
     h[i++] = t->caps;                 /* capture index */
     h[i++] = t->fcount;
     h[i++] = VP_W; h[i++] = VP_H; h[i++] = FB_STRIDE; h[i++] = FB_BYTES;
@@ -115,14 +121,21 @@ void a4_tel_tick(void)
     h[i++] = g[18]; /* wvis */      h[i++] = g[19]; /* idle2d */
     h[i++] = g[11]; /* miny */      h[i++] = g[12]; /* maxy */
     h[i++] = g[13]; /* pminy */     h[i++] = g[14]; /* pmaxy */
+    h[i++] = fp[5];  /* fps (a4_fps disp: frames in the last 1s window) */
+    h[i++] = fp[6];  /* min_dt */   h[i++] = fp[7];  /* max_dt */
+    h[i++] = FPS_BYTES;              /* [26] fps block size; block follows the 128B header */
     while (i < 32) h[i++] = 0;
 
     void *f = &t->rfile[t->caps % TEL_RING];
     struct des hd = { DES(sizeof h), h };
     t->dbg_wrc = efs_writep(f, 0, &hd);
+    /* a4_fps_state block (fps + the 128-frame delta ring): quantifies choppiness
+     * over the preceding ~128 frames, even when the framebuffer is a paused one. */
+    struct des pd = { DES(FPS_BYTES), (const void *)A4_FPS_SCRATCH };
+    efs_writep(f, (int)sizeof h, &pd);
     if (bb >= 0x00080000u && bb < 0x80000000u) {
         struct des fd = { DES(FB_BYTES), (const void *)bb };
-        efs_writep(f, (int)sizeof h, &fd);
+        efs_writep(f, (int)sizeof h + (int)FPS_BYTES, &fd);
     }
     efs_flush(f);
     t->caps++;
