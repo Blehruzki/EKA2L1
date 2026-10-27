@@ -130,6 +130,15 @@ emulator enforce no-execute: a jump into heap data runs it here and is a
 prefetch abort on an ARMv6 phone. `EKA2L1_STMNEWBASE=1` stores as the ARM11
 does (`STM_INST` in `src/emu/cpu/src/dyncom/arm_dyncom_interpreter.cpp`).
 
+EKA2L1 aborts a direct-screen-access session only on a screen-mode change
+(`window_dsa_abort_walker`, `src/emu/services/src/window/screen.cpp`) and
+draws the whole DSA framebuffer over the screen on every post
+(`src/emu/dispatch/src/screen.cpp`); a window brought in front of the DSA
+owner changes neither. A device aborts the session and restarts it with the
+visible region, empty while covered, so a DSA client that clips to its region
+stops drawing. Code that covers a DSA application with a window of its own
+therefore shows nothing here and works on a phone.
+
 EKA2L1 accepts SIS packages that a real device rejects, because it verifies none
 of the integrity fields a device checks: the per-file SHA-1 in each
 `SISFileDescription`, the E32 image header CRC32, `SISControllerChecksum` /

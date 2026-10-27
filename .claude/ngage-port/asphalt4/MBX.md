@@ -1153,3 +1153,50 @@ Decision: **no more work on the readback composite.** The inverted design
 (phase 1: GPU presents through a window surface; phase 2: the whole 3D pass
 on the GPU in painter's order; phase 3: the HUD as GL quads) is the only path
 the data supports. The no-blit build is the proof it is worth it.
+
+## Phase 1 on the bench: window up, swap up, present skipped -- and why the bench cannot show it
+
+`-DA4_WINDOW` (a4_gl.c, a4_gl.s, injector): a `ws32` import table beside the GL
+one; at bring-up our own `RWsSession`, a window group that declines focus at
+ordinal priority 1000, a full-screen 565 `RWindow`, `eglChooseConfig` for a
+window-type 16-bit config, `eglCreateWindowSurface`; at the frame end the
+batch is drawn, the fps bar as GL quads, `eglSwapBuffers`. The present detour
+returns 1 while our window is up and the trampoline steps over the game's
+present call (`+1EA/+1EC`, the `[this+0x80]->vtable[5]` call). The window
+hides after 30 present hooks without a 3D primitive (a menu) and shows again
+on the next.
+
+Bench (`glr` snapshots, `trace_skip.regs`): bring-up `winstep 6`, `bstep 6`,
+`disp 1 surf 1`, 7,147 GPU frames swapped, `errc 0`; `+1EA` never entered in
+the race (the skip holds), `+1CE` (the game's frame function) 3x per post. But
+the panel shows the game's software frame, static. The reason is in the
+runtime and the emulator:
+
+- **The runtime posts on its own.** `ngibackbuffer +CB70` (the 565 -> 32
+  convert into the hardware bitmap) is reached from `+3608`, a virtual call
+  `[obj+0xC]->vtable[2](region, buffer)` taken when `+6690(window)` says the
+  DSA region is the whole window; otherwise the code at `+360C` walks the
+  region's rects (`[window+0x58]`, `RRegion`, euser 1833) and copies each
+  through `vtable[4]` -- **the runtime clips to its DSA region**, and with an
+  empty region copies nothing. The game's `+1EC` call is not what posts.
+- **The emulator never shrinks that region.** EKA2L1 aborts a DSA only on a
+  screen-mode change (`screen.cpp:562`) and draws the whole `dsa_texture`
+  over the screen on every post (`dispatch/src/screen.cpp`); a window placed
+  in front of the DSA owner changes nothing. A device does the opposite
+  (SYMBIAN.md: `PossibleVisibilityChangedEvent -> IsAbortRequired`, abort,
+  restart with the visible region, empty while covered). So on the phone the
+  runtime's copy stops the moment our window is in front, and on the bench it
+  cannot. The bench has proven the mechanics that are ours (window, surface,
+  swap, skip); the region behaviour is the platform's, documented, and only
+  the phone can show it.
+
+Device test `a4_window` (built with `-DA4_FPSBAR`): in a race, expected the
+GPU world (road, hills, sky) with the GL fps bar at the top and **no car, no
+HUD, no trees** (software layers are not presented -- that is phase 2/3), and
+the fps number is the true "GPU presents" rate with the runtime's convert
+gone; in the menus, the software screen as before. Outcomes: (a) as expected
+-> phase 1 proven, on to phase 2; (b) the software frame shows through or
+flickers -> the runtime does not clip or the DSB flips regardless; the
+copy must be stopped another way; (c) nothing GL at all -> the N95's
+`eglCreateWindowSurface` wants something else of the window (the runtime's
+own `ngiOpenGLControl` path is the fallback to read).
