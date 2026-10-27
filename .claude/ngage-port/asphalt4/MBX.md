@@ -1044,3 +1044,34 @@ Estimate with the HUD on the GPU as well: ~1.2M floor + ~0.3M 3D transform/sort
 ~4.7x stock, ~80 fps on the bench's instr/s figure for the phone -- 60 with
 margin for the figure being optimistic. Phase 3 is redefined: HUD painter and
 translucent fills to GL, software buffer never presented.
+
+## Round 0 result, and the composite's real bug (bench-reproduced)
+
+The user ran `a4_opaque`, `a4_opaque_noblit` and `a4_pipelined` on the N95,
+same track: **no difference in speed by eye** between the three (row 3 of the
+decision table), and the two composite builds showed the same glitch a few
+seconds into the race: the player's car vanishes, the floor near it goes
+wobbly/dark, the trees get black backgrounds; the no-blit floor is blank out to
+a distance (by design). Frames from the recordings at 2/8/14/17 s: at 8 s the
+car, minimap, nitro bar and speedometer are all present; at 14 s and after, the
+car and every bottom HUD element are gone while the top HUD (position, lap,
+WANTED) survives.
+
+**The bench reproduces it, and had been showing it all along.** `shots.sh`
+(a4_opaque, start-line scene, twelve screenshots over 36 s): no car, no minimap,
+no bottom HUD in any of them -- the same state the phone reaches after a few
+seconds. My "renders correctly (road, grass, trees, opponents)" read of the
+pipelined screenshot missed exactly the things that are missing. Rule 4: a
+picture is not a measurement, and a reading of it is only as good as the
+checklist it was read against -- the player's car was not on mine.
+
+The signature names the cause: everything software-drawn **over GPU-drawn
+ground** (the car, the bottom HUD, the minimap over the grass) is lost, and
+everything over the **sky** (sentinel, not GPU-drawn) survives. So the
+composite lands *after* the car and the HUD have been painted -- the
+frame-end fallback in `a4_gl_frame`, not the 3D->2D boundary. The boundary
+hook is the frame's first translucent fill through `fill.c`; on the phone some
+early-race fill (an overlay that exists only for the first seconds) put the
+flush in the right place and then went away. The fix is a boundary that is
+not a side effect of the HUD's content: the draw-order trace (`regs_order.py`)
+is to say where the 3D pass ends and what the car's mode is.
