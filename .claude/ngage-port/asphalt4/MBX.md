@@ -990,3 +990,21 @@ upload ~0.4M: **~3.0M a frame** -> 168M/3.0M = **~55 fps**, and ~62 if the
 sprite painter's race work is billboards. The 60 is back on the table, on this
 scene's numbers; a driving profile (AI, physics under load) is next, and the
 device's instr/s figure is the other unknown.
+
+**Driving profile** (same build, accelerate held from 6 s after the start,
+SKIP 6.0G, 0.5G credited, window median **5.03M/frame**, `prof_noblit_drive.txt`):
+`+CCB8` 18.3% (0.92M: fewer presents per longer frame -- the runtime's cadence
+again), sprite painter 12.2% (0.61M), transparent filler 6.1% (0.31M),
+`+3015E` 5.3% + `+33EA8` 5.1% + `+33F8C` 4.7% + `+333F4` 3.4% (span modes and
+per-primitive setup still in software, 0.93M), our code 8.1% (0.41M), blend
+fills 5.5% (0.28M), `+2E1C8`/`+2ECB4`/`+2FF60` 6.1% (0.31M). New under load:
+`+2C4A4` 2.1%, `+2CE90` 0.6% (collision/physics, by position). Everything that
+is not drawing: **~1.2M** (the `+345E4` family 0.24, `+2C4A4` 0.14, the
+`+35xxx` family 0.16, `+CE8C` 0.08, `+3115C`/`+31246` 0.12, euser/drtaeabi
+0.09, tail ~0.3).
+
+Inverted-design estimate mid-race: 1.2M floor + 0.61 sprite painter + 0.28
+blend fills + ~0.3 3D transform/sort + ~0.4 submission + ~0.4 HUD upload =
+**~3.2M -> ~52 fps**, ~60 if the sprite painter's race work is billboards that
+move to GL. Next bench question, binary and cheap: what `+29736` paints during
+a race (HUD only, or the trees and cars) -- count its calls and their sizes.
