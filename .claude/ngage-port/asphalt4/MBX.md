@@ -1008,3 +1008,39 @@ blend fills + ~0.3 3D transform/sort + ~0.4 submission + ~0.4 HUD upload =
 **~3.2M -> ~52 fps**, ~60 if the sprite painter's race work is billboards that
 move to GL. Next bench question, binary and cheap: what `+29736` paints during
 a race (HUD only, or the trees and cars) -- count its calls and their sizes.
+
+## What the sprite painter draws in a race: the HUD only (register trace)
+
+`EKA2L1_PCTRACE_REGS` at `+29736` through 40 s of driving on the no-blit build
+(`trace_sprites.regs`, 19,276 entries; the runtime-present marker was mistyped
+as `0x70909B70` for `0x7090CB70` and never fired, so frames are counted by the
+one call per frame at (1,5)). The tail 40% of the run, 391 frames:
+
+- **18 calls a frame** (min 18, median 18, max 35), every one at a **fixed
+  HUD position**: the position counter (1,0); lap text (34,5) (137,5) (213,5)
+  (141,25) (148,25) (155,25); the speed gauge, one call per segment at
+  (17..36, 220); the bottom items (209,210) (241,226) (263,183); the speed
+  digits (236..257, 213). `+29DF1` and `+29BB1` are the occasional text
+  banners at y=43..66 (0.8 a frame together).
+- Four callers (`+29B1D` 12.6/frame, `+2A077` 6.2, `+29DF1` 0.7, `+29BB1` 0.1),
+  seven sprite/font objects in r0 (r7, the one whose `[r7+0x34]` is the effect
+  mode), one destination surface in r1 for all calls (`[r1+4]` pixels,
+  `[r1+8]`/`[r1+0xA]` size, `[r1+0x38..0x3E]` the clip rect; I had the two
+  arguments the other way round when reading the prologue).
+- **No billboards.** Nothing varies with the camera; the trees and the cars go
+  through the 3D span fillers (the transparent filler `+33964` is where they
+  show in the profile).
+
+So the painter's 0.61M a frame is ~32K instructions per small HUD blit -- the
+generic per-pixel path plus a setup cost paid twenty times, once per gauge
+segment. It does not move to GL by itself, but it **can be made to**: 18 quads
+a frame from seven small atlas textures, which is the cheapest thing a GPU
+does, and then the game touches the software buffer not at all -- no HUD
+layer to clear, convert and upload (the ~0.4M of phase 3 goes too), and the
+translucent HUD fills (`+2ABAA` family, 0.28M) become alpha quads.
+
+Estimate with the HUD on the GPU as well: ~1.2M floor + ~0.3M 3D transform/sort
++ ~0.5M submission (3D runs + 18 HUD quads + fills) = **~2.0M a frame**,
+~4.7x stock, ~80 fps on the bench's instr/s figure for the phone -- 60 with
+margin for the figure being optimistic. Phase 3 is redefined: HUD painter and
+translucent fills to GL, software buffer never presented.
