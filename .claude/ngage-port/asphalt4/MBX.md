@@ -2093,3 +2093,26 @@ by reading 565 directly instead of RGBA+convert.)
 
 Next: phone-round a4_blit.exe to (1) confirm the clean composite on real hardware
 and (2) measure fps vs software -- the readback cost on the MBX is the open question.
+
+## On-device telemetry/capture harness (A4_TEL) -- bench-validated, phone build out
+
+To stop debugging from shaky videos, the build now writes files the owner retrieves
+(same loop as the gate6 logs). a4_tel.c + an added efsrv import (a4_gl.s a4_efs_iat:
+Connect 68, Replace 108, Write@pos 101, Flush 96; all <= the N95's 351 efsrv exports)
+write a ring of 4 files C:\a4tel0..3.dat, each = [128B header: magic a4TL, geometry,
+the glr counters] + [the game framebuffer A4_GL_BB, 320x240x2]. Ticked every frame
+from a4_gl_frame so capture is continuous; the ring holds the last 4 moments.
+
+Bench (RM-320, blit build): all efsrv calls return 0, 4 files materialise, headers
+parse, and the framebuffers decode to the exact clean composite (GPU 3D + software
+HUD) -- pixel-exact, from a file. (First attempt wrote files but misnamed by an
+off-by-one in the ring digit; fixed. Captures first plateaued because the tick was
+prim-gated in a4_gl_flush and bench prims stop after the ngilightserver EXCLFAULT
+kill; moved to a4_gl_frame, now continuous.)
+
+Phone build out: blit path + A4_TEL, A4_PERSP, TEL_EVERY=8, sha256
+ccae0befc0a37428c7acd76c375f3628a5c09b41825443f005f2ce5e1fffd337. The owner plays a
+race (into the glitch), retrieves C:\a4tel0..3.dat, sends them; a4tel_decode.py reads
+the counters and decodes each framebuffer (tries the recorded 320 stride and 720).
+This settles both open questions at once: the exact on-device composite (clean vs the
+stride/stripe artifact PATCHING saw at 720) AND the counters (prims, bb, last_prims).
