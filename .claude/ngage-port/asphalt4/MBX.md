@@ -1392,3 +1392,39 @@ backend: imports bluetooth/sdpagent/bteng), which matches by name and crashes
 relocated to RM-320. So one file is needed from the user's N95 Open C install:
 **backend.dll, UID 0x102828d5** (part of openc_stdlibs). With it the chain
 should complete.
+
+## N95 bench: launch FIXED (Open C installed); boots but stalls at the launcher
+
+Root cause of "won't launch on the N95 ROM" = **the N95 ROM has no Open C /
+PIPS runtime** (the 5320 ROM has it built in, the only reason the bench worked).
+The game imports `libc[10207369]` + the Open C stack and dies at the first
+libc call without them. Fix, with the user's N95 Open C libs:
+
+**Install (reproducible):** copy to `e:\sys\bin` (the loader searches the
+game's own drive first, not C:):
+- From the user's `OpenC_RM320.zip`: libc (0x10207369, 596 exp), libm, libz,
+  libpthread, libstdcpp, libssl, libcrypto, libcrypt, libdl, libcipcserver.
+- `backend.dll` **UID 0x102828d5** (the Open C POSIX backend; user supplied
+  separately -- not in the zip, and the game bundle's `backend.dll` is a
+  different lib, UID 0x20001074 = NAF Bluetooth, which crashes libc).
+- `rpipe.dll` + `pipelib.ldd` from the game bundle (`ngapp/x_inner`).
+Same UIDs as the 5320 ROM's Open C, so RM-409 is unaffected (verified: it
+still renders with these on E:).
+
+**Result:** the game now boots on RM-320 -- 328 modules load, no crash, the
+window server and app UI come up (**CCoeEnv exists**), the NAF/Arena online
+init runs and its -17004 leaves are trapped and bounded (11, same as RM-409).
+Progression over the fix: KERN-EXEC 3 (no libc) -> USER 7 (wrong bundled
+libc) -> libc init crash (no backend) -> backend crash (wrong backend) ->
+boots with the right backend.
+
+**Still stalls at the N-Gage launcher (black), before the game's render loop.**
+EKA2L1 stubs the launcher's window-GC drawing on RM-320 ("Store draw command
+stubbed") -> black; the Main thread then idles in ROM (euser wait,
+ping-ponging with a NAF worker) and never enters Asphalt 4's own render loop,
+so FRAMESTAT stays 0 and the injected hooks / a PC-filtered memsnap never fire
+(the game is in ROM/NAF code, not its own). RM-409 gets past this; the
+difference is a device-specific N-Gage-platform/window-server behaviour in
+EKA2L1's RM-320 config, not the Open C fix. So the N95 edition now BOOTS on
+the bench but is not yet a rendering oracle; getting it to the render loop is
+a separate EKA2L1 RM-320 investigation.
