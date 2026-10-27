@@ -1969,3 +1969,30 @@ window surface (the bench now does; device untested), and the sky/HUD software
 layer must still composite with the GPU 3D on a real (non-NODSA) screen.
 Documented in EMU_PATCHES.md ("A backed-up window composites its attached (EGL)
 surface").
+
+## Phone build handed out: backed-up GPU present (present-diagnostic round)
+
+Built the phone artifact from committed source: `asphalt4_ngi.exe`, A4_WINDOW +
+A4_PERSP + A4_BACKUP, --gl --capture. sha256 bf605bc49f1c6b370b3d62d75032e4a898
+17f5fc857e1fd895f5a826da24971c -- byte-identical to the bench-validated bk3 image
+(boot + full race + orientations, CONE=0/WSERV=0, GPU presents on the bench with
+the backed-up compositing fix). The EKA2L1 fix is bench-only; the phone runs the
+real PowerVR/MBX EGL + real window server, which is the untested question.
+
+Owner bakes (owns the bypass): `make_loader_hashes.py asphalt4_ngi.exe
+ngifilemanagerfactory_2001092b.dll <out>`, install the four-file set
+(E:\sys\bin\{exe,dll} + C:\sys\hash\{exe,dll}).
+
+What the round establishes that the bench cannot: whether the real N95 EGL
+presents a BACKED-UP window surface. No NODSA on the phone, so expected outcomes
+in a race:
+- GPU 3D with a MAGENTA sky (the GL sentinel; no software sky composite yet) =>
+  backed-up EGL PRESENTS on device (success).
+- Black where the game was => our window is up/occluding the DSA but EGL is not
+  presenting into it.
+- Unchanged software race => our window never came up (unlikely; bench winstep=7).
+Menus render normally (software); the GPU window only appears on the first in-race
+3D frame.
+
+Validation on record for this exact image: boot, full race, orientation changes
+(bench). NOT run: the hold-C picture-mode / background-foreground / quit battery.
