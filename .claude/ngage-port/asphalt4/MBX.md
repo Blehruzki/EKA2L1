@@ -1996,3 +1996,40 @@ Menus render normally (software); the GPU window only appears on the first in-ra
 
 Validation on record for this exact image: boot, full race, orientation changes
 (bench). NOT run: the hold-C picture-mode / background-foreground / quit battery.
+
+## Phone round 1 (backed-up GPU present): runs, GPU activates, but screen-door glitch
+
+Owner ran the backed-up build on the N95 (video). Result:
+- Boots, menus and the first ~16s of the race render NORMALLY (software; the GPU
+  window only comes up on the first in-race 3D frame). No crash through the round.
+- A few seconds in (~16-17s, when the GPU window activates) the whole screen turns
+  into a fine regular CHECKERBOARD / screen-door mesh -- the software HUD (WANTED,
+  lap, position) is meshed too, so it is a present/compositing-level artifact, not
+  just the GPU surface. The scene stays recognisable (blue sky, buildings, road)
+  under the mesh.
+- **No magenta anywhere** (0% across all glitched frames), though the bench GPU
+  present always shows a magenta sentinel sky. Measured from the video frames.
+
+So backed-up EGL does light up on the device (the glitch onset tracks the GPU
+window activating), but the on-device present is wrong. A regular two-shade
+checkerboard = the N95 window server **screen-door (dither) alpha-compositing** our
+window. The bench composites opaque (draw_surface blend off), so it never showed
+this.
+
+Leading cause: our EGL window config asked only `EGL_BUFFER_SIZE 16`, so the device
+was free to hand us a 16-bit config WITH alpha (RGBA4444/5551), which the N95 then
+screen-doors. Fix: request an explicit OPAQUE 565 config (EGL_RED 5, GREEN 6,
+BLUE 5, **EGL_ALPHA_SIZE 0**). Bench re-run (o565): no regression -- winstep 7,
+presents, magenta sentinel, CONE=0/WSERV=0. The checkerboard itself is not
+bench-reproducible (bench composites opaque), so the fix goes to a phone round.
+
+**This build is self-diagnosing** on the next round, because the magenta sentinel is
+kept:
+- clean GPU 3D + a MAGENTA sky  => the alpha-config was the cause, FIXED (then the
+  magenta sky is the known phase-1 cosmetic: software sky/HUD compositing is next).
+- still a blue software mesh, no magenta => our window is NOT presenting its GPU
+  content, only corrupting the display (a different bug); investigate the surface
+  present, not the config.
+
+Build: a4_backup565.exe, A4_WINDOW+A4_PERSP+A4_BACKUP, sha256
+38717eea9ded7ef170b1d6c2153851cd712a0375d69c83be64c17c2ac967d5a7.

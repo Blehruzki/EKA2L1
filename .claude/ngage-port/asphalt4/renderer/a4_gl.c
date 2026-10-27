@@ -80,6 +80,10 @@
  * RWindow object is ours (in scratch), the session and buffer are the app's. */
 #define EGL_WINDOW_BIT 0x0004
 #define EGL_BUFFER_SIZE 0x3020
+#define EGL_ALPHA_SIZE 0x3021
+#define EGL_BLUE_SIZE  0x3022
+#define EGL_GREEN_SIZE 0x3023
+#define EGL_RED_SIZE   0x3024
 #define ECOLOR64K 7                      /* TDisplayMode: the game's 565 surface */
 #define A4_WS_OBJ 0x00402800u            /* our RWindow object (MWsClientClass + TRect) */
 #define A4_CTRL_OBJ 0x00402840u          /* our crafted CCoeControl (client handle); free
@@ -295,7 +299,15 @@ static int bringup(volatile struct glr *s)
     rw_nontransparent(win);
     rw_activate(win); rw_setvisible(win, 1);
     ws_flush((void *)appsess);          s->winstep = 5;
-    int ca[] = { EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_BUFFER_SIZE, 16, EGL_NONE };
+    /* Ask for an OPAQUE 565 config explicitly. Requesting only EGL_BUFFER_SIZE 16
+     * lets the device pick a 16-bit config WITH alpha (RGBA4444/5551); the N95
+     * window server then screen-door (dither) composites our window -- the
+     * checkerboard glitch seen on hardware. EGL_ALPHA_SIZE 0 + 5/6/5 forces the
+     * native no-alpha surface, so the window composites opaque. (The bench always
+     * composited opaque, so it never showed this; keep 565 explicit for parity.) */
+    int ca[] = { EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+                 EGL_RED_SIZE, 5, EGL_GREEN_SIZE, 6, EGL_BLUE_SIZE, 5,
+                 EGL_ALPHA_SIZE, 0, EGL_BUFFER_SIZE, 16, EGL_NONE };
     uint32_t cfg = 0; int ncfg = 0;
     if (!egl_choose_config(disp, ca, &cfg, 1, &ncfg) || ncfg < 1) return 0; s->winstep = 6;
     int surf = egl_window_surface(disp, cfg, win, 0); if (!surf) return 0; s->bstep = 4; s->winstep = 7;
