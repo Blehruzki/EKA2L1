@@ -164,8 +164,9 @@ extern volatile uint32_t *a4_cone_iat_ptr(void);
 #define W(i) (a4_ws_iat_ptr()[i])
 #define C(i) (a4_cone_iat_ptr()[i])
 static void *coe_static(void){ return ((void*(*)(void))C(0))(); }                 /* CCoeEnv::Static() */
-static void *coe_rootwin(void *env, int scr) __attribute__((unused));
-static void *coe_rootwin(void *env, int scr){ return ((void*(*)(void*,int))C(1))(env, scr); }  /* RootWin(TInt) */
+
+static void *coe_rootwin(void *env, int scr) __attribute__((unused));   /* RootWin(717) does not resolve on the bench; kept for reference */
+static void *coe_rootwin(void *env, int scr){ return ((void*(*)(void*,int))C(1))(env, scr); }
 static int  ws_flush(void *w){ return ((int(*)(void*))W(2))(w); }
 static void gl_disable(uint32_t c){ ((void(*)(uint32_t))F(32))(c); }
 static int  rw_construct(void *r, void *parent, uint32_t h){ return ((int(*)(void*,void*,uint32_t))W(8))(r, parent, h); }
@@ -197,35 +198,39 @@ static int bringup(volatile struct glr *s)
      * session. The app's own window/DSA region is occluded where ours sits -- on
      * the device the runtime's DSA copy then stops there (CLAUDE.md gap: the
      * bench draws the DSA regardless, so the bench cannot show this). */
-    /* RootWin (cone 717) does not resolve on the bench, so find the app session
-     * and root group inside CCoeEnv by layout instead. DIAG build: dump CCoeEnv
-     * to A4_GL_READBUF and bail, so the bench can report its member offsets. */
+    /* The native window must live in the app's own window-server session, the
+     * one libGLES_CM resolves via CCoeEnv::Static()->WsSession(). Get CCoeEnv
+     * (cone Static, 182, resolves), then find iWsSession and iRootWin INSIDE it
+     * by content, not by a fixed offset -- the layout differs across S60
+     * editions (SYMBIAN.md), and the bench ROM (RM-409 = Nokia 5320, 3.2) is a
+     * different edition from the N95 (3.1), so a measured offset would be wrong
+     * on the phone. Both members are MWsClientClass {iWsHandle, iBuffer}; the
+     * session has its RSessionBase kernel handle at word+2, the group has a
+     * window-server handle at word+0 and the same iBuffer. */
     if (C(0) < 0x10000u) { s->winstep = 0xC0; return 0; }
     void *env = coe_static();           s->winstep = 1; if (!env) return 0;
     s->env = (uint32_t)env;
-    void *grp = 0;      /* app root window group (filled from CCoeEnv layout) */
-#ifdef A4_COE_DUMP
-    { volatile uint32_t *dst = (volatile uint32_t *)A4_GL_READBUF;
-      volatile uint32_t *src = (volatile uint32_t *)env;
-      for (int i = 0; i < 0x80; i++) dst[i] = src[i];   /* 0x200 bytes of CCoeEnv */
-      s->winstep = 0xD0; return 0; }
-#endif
-    if (!grp) { s->winstep = 0xC1; return 0; }   /* layout not wired yet */
-    uint32_t appbuf = ((volatile uint32_t *)grp)[1];    /* RWsBuffer* shared by the session */
-    if (!appbuf) return 0;
-    /* find the app's RWsSession inside CCoeEnv: a value member whose iBuffer
-     * (second word) is this same RWsBuffer; search a bounded window of CCoeEnv. */
-    uint32_t appsess = 0;
-    for (int o = 0; o < 0x200; o += 4) {
-        if (((volatile uint32_t *)env)[o / 4] == appbuf && o >= 4) { appsess = (uint32_t)env + o - 4; break; }
+    volatile uint32_t *e = (volatile uint32_t *)env;
+    uint32_t appbuf = 0, appsess = 0, grp = 0;
+    /* pass 1: the RWsSession -- word[1] a heap pointer, word[2] a kernel handle */
+    for (int o = 0; o + 3 <= 0x80; o++) {
+        uint32_t b = e[o + 1], hk = e[o + 2];
+        if (b >= 0x00080000u && b < 0x10000000u && hk >= 0x40000000u) { appsess = (uint32_t)env + 4 * o; appbuf = b; break; }
     }
-    s->appbuf = appbuf; s->appsess = appsess;   /* env/grp hold the raw cone slots (diag) */
-    if (!appsess) return 0;             s->winstep = 3;
+    if (!appsess) { s->winstep = 0xC2; return 0; }
+    /* pass 2: the RWindowGroup -- a different member whose iBuffer is the same,
+     * preceded by a window-server handle (nonzero, not a pointer). */
+    for (int o = 0; o + 2 <= 0x80; o++) {
+        uint32_t h = e[o], b = e[o + 1];
+        if (b == appbuf && h != 0 && h < 0x00080000u && ((uint32_t)env + 4 * o) != appsess) { grp = (uint32_t)env + 4 * o; break; }
+    }
+    if (!grp) { s->winstep = 0xC3; return 0; }
+    s->appbuf = appbuf; s->appsess = appsess; s->grp = grp;   s->winstep = 3;
     /* build our RWindow object: MWsClientClass {iWsHandle=0, iBuffer=appbuf} */
     uint8_t *wsb = (uint8_t *)A4_WS_OBJ; void *win = wsb;
     for (int i = 0; i < 0x20; i++) wsb[i] = 0;
     ((volatile uint32_t *)win)[1] = appbuf;
-    if (rw_construct(win, grp, A4_GL_MAGIC) != 0) return 0;   s->winstep = 4;
+    if (rw_construct(win, (void *)grp, A4_GL_MAGIC) != 0) return 0;   s->winstep = 4;
     rw_setdispmode(win, ECOLOR64K);
     { int pt[2] = { 0, 0 }, sz[2] = { VP_W, VP_H }; rw_setextent(win, pt, sz); }
     rw_nontransparent(win);
