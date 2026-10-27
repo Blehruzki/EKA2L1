@@ -899,3 +899,50 @@ textured primitives through GL into the game's actual render surface (not a
 corner) -- a texture cache keyed on `desc+0x30`, batched draws, the correct
 viewport from the render context, and the software 2D HUD composited over the
 GPU 3D -- then measure the win against the software renderer.
+
+## The plan from here (written after the pipelined result)
+
+**Round 0 -- the device A/B, three builds, same renderer (stage 6a), same
+track, same spot.** `a4_opaque` (readback + composite, floor visible),
+`a4_opaque_noblit` (no readback, floor blank), `a4_pipelined` (readback of the
+previous frame). The one measurement the bench cannot make:
+
+| noblit vs opaque | pipelined vs opaque | meaning | next |
+|---|---|---|---|
+| noblit clearly smoother | pipelined ~ noblit | readback is the cost, and it is the sync | pipelined is a shippable interim; proceed to phase 1 |
+| noblit clearly smoother | pipelined ~ opaque | readback is the cost: the transfer/per-call, not the sync | only the inverted design (phase 1-3) removes it |
+| all three the same | -- | readback is not the phone's cost; the driver's per-draw overhead is | the GPU route's economics must be measured on the device (a draw-count A/B) before any more stages |
+
+**Phase 1 -- the zero-copy exit (window surface).** From the binaries: how
+`ngibackbuffer.dll` presents (DSA or window blit) and where its `RWindow` is;
+whether `ngiOpenGLControl.dll` can be brought up in the process. Deliverable: a
+build that draws a GL quad to the panel through `eglSwapBuffers` while the
+game runs. Gain: none yet; it proves the exit. Bench-provable for the window
+surface mechanics (the emulator implements it); 1-2 device rounds for the N95
+driver and the runtime's screen ownership.
+
+**Phase 2 -- the whole 3D pass on the GPU, in submission order.** Capture every
+mode at `+0x300AE` (textured opaque, transparent/colourkey as 5551 textures
+with alpha test, flat fills, the rest of the ~8), draw them in order, no depth
+test. Bench-provable per mode by pixel comparison against the software
+rasterizer. Gain: the ~64% rendering share becomes ~3% of GL submission; the
+floor/transparency class of glitches is gone at the root because painter's
+order is kept.
+
+**Phase 3 -- the HUD as a layer, the game's own copy stubbed.** Clear the
+software buffer to a key colour, convert the 2D pass to 5551 with alpha,
+upload, draw over the scene, swap; `ngibackbuffer +CCB8` (7%) is dead. ~0.4M
+a frame. Bench-provable.
+
+**Phase 4 -- itemise the rest.** `EKA2L1_PCPROF` on the remaining ~3.3M: what
+is logic, what is still drawing, what is sound. Anything found is the margin
+between ~40 and 45+.
+
+**Expected:** 9.5M -> ~4.0M instr/frame, ~2.4x: **~40-42 fps at phone speed
+from 17.7**, with 45+ depending on phase 4. Device rounds: 1 (round 0) + 1-2
+(phase 1) + 1 (phase 2) + 1 (phase 3), about five. Risks, named: the window
+handle (phase 1 may find the runtime owns the panel through DSA and fights a
+GL window); the MBX driver's per-draw cost (round 0's third row); the logic
+floor (phase 4 may find nothing to trim, leaving ~40). If round 0 lands on
+its third row the GPU route is capped by the driver and the goal of 45 is
+not reachable on this title; the CPU-side rewrites are worth ~10-13%.
