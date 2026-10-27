@@ -164,6 +164,7 @@ extern volatile uint32_t *a4_cone_iat_ptr(void);
 #define W(i) (a4_ws_iat_ptr()[i])
 #define C(i) (a4_cone_iat_ptr()[i])
 static void *coe_static(void){ return ((void*(*)(void))C(0))(); }                 /* CCoeEnv::Static() */
+static void *coe_rootwin(void *env, int scr) __attribute__((unused));
 static void *coe_rootwin(void *env, int scr){ return ((void*(*)(void*,int))C(1))(env, scr); }  /* RootWin(TInt) */
 static int  ws_flush(void *w){ return ((int(*)(void*))W(2))(w); }
 static void gl_disable(uint32_t c){ ((void(*)(uint32_t))F(32))(c); }
@@ -196,8 +197,20 @@ static int bringup(volatile struct glr *s)
      * session. The app's own window/DSA region is occluded where ours sits -- on
      * the device the runtime's DSA copy then stops there (CLAUDE.md gap: the
      * bench draws the DSA regardless, so the bench cannot show this). */
+    /* RootWin (cone 717) does not resolve on the bench, so find the app session
+     * and root group inside CCoeEnv by layout instead. DIAG build: dump CCoeEnv
+     * to A4_GL_READBUF and bail, so the bench can report its member offsets. */
+    if (C(0) < 0x10000u) { s->winstep = 0xC0; return 0; }
     void *env = coe_static();           s->winstep = 1; if (!env) return 0;
-    void *grp = coe_rootwin(env, 0);    s->winstep = 2; if (!grp) return 0;
+    s->env = (uint32_t)env;
+    void *grp = 0;      /* app root window group (filled from CCoeEnv layout) */
+#ifdef A4_COE_DUMP
+    { volatile uint32_t *dst = (volatile uint32_t *)A4_GL_READBUF;
+      volatile uint32_t *src = (volatile uint32_t *)env;
+      for (int i = 0; i < 0x80; i++) dst[i] = src[i];   /* 0x200 bytes of CCoeEnv */
+      s->winstep = 0xD0; return 0; }
+#endif
+    if (!grp) { s->winstep = 0xC1; return 0; }   /* layout not wired yet */
     uint32_t appbuf = ((volatile uint32_t *)grp)[1];    /* RWsBuffer* shared by the session */
     if (!appbuf) return 0;
     /* find the app's RWsSession inside CCoeEnv: a value member whose iBuffer
@@ -206,7 +219,7 @@ static int bringup(volatile struct glr *s)
     for (int o = 0; o < 0x200; o += 4) {
         if (((volatile uint32_t *)env)[o / 4] == appbuf && o >= 4) { appsess = (uint32_t)env + o - 4; break; }
     }
-    s->env = (uint32_t)env; s->grp = (uint32_t)grp; s->appbuf = appbuf; s->appsess = appsess;
+    s->appbuf = appbuf; s->appsess = appsess;   /* env/grp hold the raw cone slots (diag) */
     if (!appsess) return 0;             s->winstep = 3;
     /* build our RWindow object: MWsClientClass {iWsHandle=0, iBuffer=appbuf} */
     uint8_t *wsb = (uint8_t *)A4_WS_OBJ; void *win = wsb;
