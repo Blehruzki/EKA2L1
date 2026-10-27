@@ -1465,3 +1465,71 @@ uses heavily, is built on these locks, so this is most likely an Open C
 pthread-mutex contention that EKA2L1's fast-lock scheduling does not resolve
 fairly on the RM-320 run (it does on RM-409). That is an emulator
 scheduler/sync issue, deep and uncertain to fix, not a missing file.
+
+## RM-320 RENDERS: the livelock root-caused and fixed (EKA2L1_EXCLFAULT)
+
+The N95 bench now runs Asphalt 4's race loop. Root cause fully traced, fix in
+the emulator, verified by screenshot on RM-320 and no regression on RM-409.
+
+**The livelock, traced end to end.** With a scheduler probe
+(`EKA2L1_SCHEDDIAG`, new in `scheduler.cpp`: logs the outgoing thread's state,
+wait-object and PC on every reschedule), the steady state was:
+`ngilightserver`'s **Main** thread spinning in euser (state=run, no wait
+object), while `asphalt4_ngi`'s worker sat blocked (state=wait_fast_sema) on a
+request semaphore the light server would complete. Resolving the spin PC
+against the N95 euser export table (romimg: 2229 exports, so a real ordinal,
+not a def guess) gave **ordinal 1416 = `RFastLock::Wait()`**, and the N95 (3.1)
+euser is the **SWP/1 ms-backoff variant** of it (arch-5 style, implemented with
+ldrex/strex) -- the 5320 (3.2) euser is the clean ldrex-and-block variant, so
+this spin shape only exists on 3.1.
+
+Capturing r0/r2 at the spin: the lock pointer was **0x34** and the value read
+was **0** every time -- i.e. `RFastLock::Wait` on a lock at address ~0x30, a
+**null object**. The caller (saved LR) was euser **ordinal 696 =
+`RHeap::Reset()`** (`RHeap::Reset` does `add r5, this, #0x30` -> `RFastLock::Wait`
+on `&iLock`, so iCount at this+0x34 = 0x34 means **the RHeap `this` is NULL**).
+Reading the real stack (in the process's own address space) gave the caller of
+`RHeap::Reset`: **`ngilightserver.exe +0x324`**, a `blx r2` where
+`r2 = (*this->[0x1c])->vtable[5]` -- a virtual `Reset()` on a null member
+(`this->[0x1c] == 0`). The function is a **destructor** (sets the vtable,
+destroys sub-objects, calls `Reset`), running during a **leave unwind**: the
+sequence right before it is `ngilightserver` querying the HWRM Light service
+(EKA2L1 stubs "get supported targets" with -1), attaching a property, then
+`User::LeaveIfError` leaving with **-6 (KErrArgument)** / **-12
+(KErrPathNotFound)** (chain through efsrv + ecomserver). So an init step fails
+on the emulated N95, a half-built object's destructor runs, and it makes a
+virtual call through a null allocator pointer.
+
+**Why it hung the whole system (the emulator half).** That null dereference is
+an `ldrex [0x34]`. On an ARMv6 device this is a data abort -> KERN-EXEC 3, and
+the light server thread dies. EKA2L1's exclusive monitor instead read the
+unmapped address back as **0** and let the following `strex` spin-fail forever
+(`exclusive_monitor::exclusive_read*` ignored the read's success flag). So a
+guest null-deref that kills a thread on hardware became an infinite busy-spin
+here, and the light server never completed the game worker's request. This is
+the same family as the other known gaps (EKA2L1 declines quietly where a device
+kills the process).
+
+**The fix: `EKA2L1_EXCLFAULT=1`** (`src/emu/cpu/src/12l1r/exclusive_monitor.cpp`,
+used by the dyncom core). An exclusive load whose target is unmapped now raises
+the guest access violation, which the kernel turns into KERN-EXEC 3 on the
+faulting thread -- as a device does. Off by default (the rest of the bench
+relies on the lenient reads), opt-in for the N95 bench. Indexed in
+`EMU_PATCHES.md`.
+
+**Result (round-equivalent, both verified this session):**
+- RM-320, `EKA2L1_EXCLFAULT=1`: `ngilightserver` Main dies cleanly
+  ("Access violation reading address 0x34 in thread Main" -> "KERN-EXEC exit
+  code 3"), the worker unblocks, the game reaches its render loop. FRAMESTAT
+  0 -> 813 posts; drove into a race, **520 race frames, median ~9.4M
+  instr/frame**; screenshot shows the in-race 3D view + speedo HUD (rotated,
+  = N95 landscape orientation -- cosmetic, irrelevant to instruction counts).
+- RM-409 regression (default, EXCLFAULT off, same new binary): still renders
+  upright, **541 race frames, median 9.31M** -- unchanged. The switch is a
+  no-op on any access that succeeds, so it cannot affect the 5320 bench.
+
+**Bench status:** RM-320 is now a working rendering oracle for the N95 (3.1)
+edition. Run it with `EKA2L1_EXCLFAULT=1`. Open C install (libc 0x10207369 +
+backend 0x102828d5 + rpipe) remains the prerequisite. Next: use it to read the
+real 3.1 CCoeEnv layout for the window-path (phase 1) GPU work, and to take
+edition-accurate perf numbers.

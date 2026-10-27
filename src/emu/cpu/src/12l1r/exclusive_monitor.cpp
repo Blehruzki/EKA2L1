@@ -19,7 +19,19 @@
 
 #include <cpu/12l1r/exclusive_monitor.h>
 
+#include <cstdlib>
+
 namespace eka2l1::arm::r12l1 {
+    // EKA2L1_EXCLFAULT=1: an exclusive load (LDREX/LDREXB/..) whose target is not
+    // mapped raises the guest's access violation -- as an ARMv6 device does, where
+    // it is a data abort that panics the thread (KERN-EXEC 3). EKA2L1 otherwise
+    // reads such an address back as zero and lets the following STREX spin-fail
+    // forever, so a guest that dereferences a null pointer through an atomic (e.g.
+    // the N95 N-Gage runtime's ngilightserver, which calls RHeap::Reset on a null
+    // allocator while unwinding a failed construction) hangs the whole system here
+    // instead of dying as it would on hardware. Off by default so the lenient
+    // behaviour the rest of the bench relies on is unchanged; see EMU_PATCHES.md.
+    static const bool excl_fault = (std::getenv("EKA2L1_EXCLFAULT") != nullptr);
     exclusive_monitor::exclusive_monitor(const std::size_t processor_count)
         :
 #if R12L1_ENABLE_FUZZ
@@ -75,11 +87,19 @@ namespace eka2l1::arm::r12l1 {
         unlock();
     }
 
+    void exclusive_monitor::fault_read(core *cc, address vaddr) {
+        // Match a device: an unmapped exclusive load is a data abort. The kernel's
+        // handler kills the faulting thread with KERN-EXEC 3.
+        if (excl_fault && cc->exception_handler) {
+            cc->exception_handler(exception_type_access_violation_read, vaddr);
+        }
+    }
+
     std::uint8_t exclusive_monitor::exclusive_read8(core *cc, address vaddr) {
         return read_and_mark<std::uint8_t>(cc->core_number(), vaddr, [&]() -> std::uint8_t {
-            // TODO: Access violation if there is
             std::uint8_t val = 0;
-            read_8bit(cc, vaddr, &val);
+            if (!read_8bit(cc, vaddr, &val))
+                fault_read(cc, vaddr);
 
             return val;
         });
@@ -87,9 +107,9 @@ namespace eka2l1::arm::r12l1 {
 
     std::uint16_t exclusive_monitor::exclusive_read16(core *cc, address vaddr) {
         return read_and_mark<std::uint16_t>(cc->core_number(), vaddr, [&]() -> std::uint16_t {
-            // TODO: Access violation if there is
             std::uint16_t val = 0;
-            read_16bit(cc, vaddr, &val);
+            if (!read_16bit(cc, vaddr, &val))
+                fault_read(cc, vaddr);
 
             return val;
         });
@@ -97,9 +117,9 @@ namespace eka2l1::arm::r12l1 {
 
     std::uint32_t exclusive_monitor::exclusive_read32(core *cc, address vaddr) {
         return read_and_mark<std::uint32_t>(cc->core_number(), vaddr, [&]() -> std::uint32_t {
-            // TODO: Access violation if there is
             std::uint32_t val = 0;
-            read_32bit(cc, vaddr, &val);
+            if (!read_32bit(cc, vaddr, &val))
+                fault_read(cc, vaddr);
 
             return val;
         });
@@ -107,9 +127,9 @@ namespace eka2l1::arm::r12l1 {
 
     std::uint64_t exclusive_monitor::exclusive_read64(core *cc, address vaddr) {
         return read_and_mark<std::uint64_t>(cc->core_number(), vaddr, [&]() -> std::uint64_t {
-            // TODO: Access violation if there is
             std::uint64_t val = 0;
-            read_64bit(cc, vaddr, &val);
+            if (!read_64bit(cc, vaddr, &val))
+                fault_read(cc, vaddr);
 
             return val;
         });

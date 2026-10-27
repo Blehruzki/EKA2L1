@@ -105,6 +105,10 @@ namespace eka2l1::arm::r12l1 {
 #endif
 
     private:
+        // Raise the guest access violation for an unmapped exclusive load, when
+        // EKA2L1_EXCLFAULT is set (see exclusive_monitor.cpp).
+        void fault_read(core *cc, address vaddr);
+
         bool check_and_clear(const std::size_t processor_id, vaddress address);
 
         void lock();

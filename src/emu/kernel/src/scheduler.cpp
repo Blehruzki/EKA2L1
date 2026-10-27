@@ -211,6 +211,19 @@ namespace eka2l1::kernel {
             if (next_thread != last_pick) {
                 last_pick = next_thread;
                 kernel::process *np = next_thread ? next_thread->owning_process() : nullptr;
+                // EKA2L1_SCHEDDIAG: also report the OUTGOING thread's state and the
+                // object it is waiting on, to diagnose a two-thread wait livelock.
+                // EKA2L1_SCHEDDIAG: also report the OUTGOING thread's state and the
+                // object it is waiting on, alongside its PC. Diagnoses two-thread
+                // wait/spin livelocks (which thread blocks on what, which spins).
+                static const bool sched_diag = (std::getenv("EKA2L1_SCHEDDIAG") != nullptr);
+                if (sched_diag && crr_thread) {
+                    kernel::kernel_obj *wo = crr_thread->wait_obj;
+                    LOG_TRACE(KERNEL, "  yield: {} state={} waitobj={} pc=0x{:x}",
+                        crr_thread->name(), static_cast<int>(crr_thread->current_state()),
+                        wo ? wo->name() : std::string("-"),
+                        crr_thread->get_thread_context().get_pc());
+                }
                 LOG_TRACE(KERNEL, "reschedule: {} -> {} [{}] pc = 0x{:x}",
                     crr_thread ? crr_thread->name() : std::string("(none)"),
                     next_thread ? next_thread->name() : std::string("(none)"),
