@@ -72,6 +72,7 @@ a4_ws_iat:
         .word   99      @ [12] RWindowBase::SetRequiredDisplayMode(TDisplayMode)
         .word   268     @ [13] RWindow::SetNonTransparent()
         .word   212     @ [14] RWindowTreeNode::SetOrdinalPosition(TInt, TInt): position AND priority
+        .word   197     @ [15] RBackedUpWindow::Construct(parent, TDisplayMode, TUint32)
         .global a4_ws_iat_end
 a4_ws_iat_end:
 @ cone import address table (A4_WINDOW): CCoeEnv::Static() and RootWin() give the

@@ -177,10 +177,14 @@ static void *coe_static(void){ return ((void*(*)(void))C(0))(); }               
 
 static int  ws_flush(void *w){ return ((int(*)(void*))W(2))(w); }
 static void gl_disable(uint32_t c){ ((void(*)(uint32_t))F(32))(c); }
+static int  rw_construct(void *r, void *parent, uint32_t h) __attribute__((unused));
 static int  rw_construct(void *r, void *parent, uint32_t h){ return ((int(*)(void*,void*,uint32_t))W(8))(r, parent, h); }
+static int  rw_construct_backup(void *r, void *parent, int dmode, uint32_t h) __attribute__((unused));
+static int  rw_construct_backup(void *r, void *parent, int dmode, uint32_t h){ return ((int(*)(void*,void*,int,uint32_t))W(15))(r, parent, dmode, h); }
 static void rw_setextent(void *r, const int *pt, const int *sz){ ((void(*)(void*,const int*,const int*))W(9))(r, pt, sz); }
 static void rw_activate(void *r){ ((void(*)(void*))W(10))(r); }
 static void rw_setvisible(void *r, int v){ ((void(*)(void*,int))W(11))(r, v); }
+static int  rw_setdispmode(void *r, int m) __attribute__((unused));
 static int  rw_setdispmode(void *r, int m){ return ((int(*)(void*,int))W(12))(r, m); }
 static void rw_nontransparent(void *r){ ((void(*)(void*))W(13))(r); }
 static int  egl_window_surface(int d, uint32_t c, void *win, const int *a){ return ((int(*)(int,uint32_t,void*,const int*))F(30))(d, c, win, a); }
@@ -238,18 +242,24 @@ static int bringup(volatile struct glr *s)
     uint8_t *wsb = (uint8_t *)A4_WS_OBJ; void *win = wsb;
     for (int i = 0; i < 0x20; i++) wsb[i] = 0;
     ((volatile uint32_t *)win)[1] = appbuf;
-    /* Client handle 0, NOT A4_GL_MAGIC. The app shares its window-server session
-     * with us, so our window's redraw events pass through the app's cone
-     * CCoeRedrawer::RunL, which reinterprets the client handle as a CCoeControl*
-     * (coepriv.cpp). It first asserts (handle & 3) == 0 -- an unaligned handle
-     * panics the app CONE 46 (ECoePanicInvalidHandle) the moment the server
-     * sends our window a redraw (a focus/exposure change mid-race -- which is why
-     * A4_GL_MAGIC, ending ...E6, survived ~15 s then killed it on the N95). 0 is
-     * aligned (no panic) AND makes `window` NULL, so RunL's `if (window)` skips
-     * HandleRedrawEvent -- the redraw is consumed harmlessly. We present every
-     * frame via eglSwapBuffers, so we never need the server's redraw protocol. */
+#ifdef A4_BACKUP
+    /* A BACKED-UP window (window_type backed_up). The server maintains its bitmap
+     * and redraws it itself, so the client gets NO redraw events -- the app's cone
+     * CCoeRedrawer never sees our window, dissolving the client-handle dilemma
+     * (cone wanted 0-or-a-real-control, the window server wants non-zero: WSERV 4).
+     * EGL still accepts it (same window_kind::client). Construct takes the display
+     * mode. The handle here is a deliberate POISON value (unmapped, aligned,
+     * non-zero): if a backed-up window truly bypasses cone, nothing dereferences
+     * it and the race runs; if cone ever does touch it, the fault address is this
+     * value, proving it does not. */
+    if (rw_construct_backup(win, (void *)grp, ECOLOR64K, 0x7FFFFFFCu) != 0) return 0;   s->winstep = 4;
+#else
+    /* Client handle 0: aligned so cone's redrawer assert passes and `window` is
+     * NULL (redraw skipped), but the real window server rejects a null handle at
+     * Construct (WSERV 4) -- so this path works only on the lenient bench. */
     if (rw_construct(win, (void *)grp, 0) != 0) return 0;   s->winstep = 4;
     rw_setdispmode(win, ECOLOR64K);
+#endif
     { int pt[2] = { 0, 0 }, sz[2] = { VP_W, VP_H }; rw_setextent(win, pt, sz); }
     rw_nontransparent(win);
     rw_activate(win); rw_setvisible(win, 1);

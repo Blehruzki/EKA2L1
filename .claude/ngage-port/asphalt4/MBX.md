@@ -1777,3 +1777,40 @@ in rough order of robustness:
 The perspective-correct GPU 3D render itself is proven correct (bench, NODSA); the
 blocker is purely the window-present plumbing fighting the framework. Good point to
 decide how far to push the plumbing vs. bank the render and move on.
+
+## Option 1 (backed-up window): dissolves the cone dilemma, but doesn't present
+
+Pursued the backed-up-window idea to escape the client-handle dilemma. Added ws32
+RBackedUpWindow::Construct (ord 197, from WS322U.DEF -- same def whose ord 81 =
+SetVisible matches our IAT, so the N95 ordinals line up) and built our window as
+window_type backed_up (A4_BACKUP), with a deliberate POISON client handle
+(0x7FFFFFFC, unmapped/aligned/non-zero) to detect any cone deref.
+
+**Result (bench): the cone dilemma is solved.** Full race, **109 orientation
+events** (the crafted control died after 2), poison handle **never faulted**
+(no "reading 0x7FFFFFFC"), no CONE, no WSERV -- so a backed-up window gets no
+redraw AND no event callbacks: cone never touches our handle, and the window
+server takes the non-zero handle. The whole WSERV-4-vs-CONE-46 bind disappears.
+
+**But it doesn't present.** With the DSA suppressed (NODSA) the GPU content is
+black. Cause: EKA2L1 composites an EGL window surface only for the REDRAW canvas
+(`redraw_msg_canvas::draw_surface_window`, winuser.cpp); the `bitmap_backed_canvas`
+has no equivalent, so the EGL surface never reaches the screen. And whether the
+real N95 PowerVR EGL presents a backed-up window at all is unknown (EGL window
+surfaces are normally RWindow/redraw).
+
+**So the two window types trade off exactly oppositely:**
+- redraw window: **presents** (proven, NODSA shows the 3D) but is cone-fragile
+  (handle must be 0-or-real-control; 0 -> device WSERV 4; fake -> event-path crash).
+- backed-up window: **cone-safe** (no callbacks at all) but doesn't present (EKA2L1
+  only composites EGL for redraw canvases; device support unknown).
+
+**Recommended path: redraw window + the app's own real CCoeControl as the handle.**
+A real, fully-constructed control is safe for every cone path (redraw and event),
+and the redraw window presents. It is fully bench-validatable (the bench reproduces
+both the CONE 46 and the event-path crash) and uses only proven mechanisms, so it
+is the most likely to work on the device. The open question is whether this N-Gage
+(DSA) title has a findable top CCoeControl (via CCoeEnv->iAppUi->control stack);
+if it does not, fall back to fixing EKA2L1's backed-up present + a phone round to
+test device backed-up EGL. A4_BACKUP code kept (gated off) as the cone-safe
+building block; ws32 ord 197 added.

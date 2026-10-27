@@ -64,7 +64,7 @@ GL_IMPORT_ORDINALS = [14, 17, 4, 3, 18, 132, 33, 31, 58, 108,
 # A4_WINDOW: the window the GPU presents into is our own (a4_gl.c, bringup);
 # these are the a4_ws_iat slots in a4_gl.s, same mechanism as the GL table.
 WS_IMPORT_DLL = 'ws32.dll'
-WS_IMPORT_ORDINALS = [76, 70, 69, 158, 157, 148, 211, 278, 275, 277, 107, 81, 99, 268, 212]
+WS_IMPORT_ORDINALS = [76, 70, 69, 158, 157, 148, 211, 278, 275, 277, 107, 81, 99, 268, 212, 197]
 CONE_IMPORT_DLL = 'cone.dll'
 CONE_IMPORT_ORDINALS = [182]        # CCoeEnv::Static() only (717 RootWin is 3.2+, absent on the N95's 3.1 -> loader error -5)
 GL_SCRATCH = 0x00401000         # must match A4_GL_SCRATCH in a4_gl.c
