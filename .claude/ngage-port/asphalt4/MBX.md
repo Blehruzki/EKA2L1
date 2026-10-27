@@ -2146,3 +2146,10 @@ Open question for the owner: is this track this dark in the STOCK game too? GPU 
 GL_REPLACE (no light modulation), which would make it brighter than software if
 anything, so the darkness is likely the track's own dusk art, not a GPU bug -- but a
 stock-vs-GPU look on the same track settles it.
+
+## Correction: the "dark scene" was the pause dimming, not the track
+
+Owner clarified the game dims the screen while paused. All 4 round-2 files were the
+quit/pause screen, so the dimness and dark tree-line were the pause overlay, not dusk
+art and not a GPU issue. The brightness question is closed. Only wobble + choppiness
+remain, and both need active (unpaused) frames + the v2 fps/timing block.
