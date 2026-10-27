@@ -2070,3 +2070,26 @@ validate -- the bench shows the real composite through the game's DSA, matching 
 device. Open cost: the per-frame glReadPixels (the readback the window path existed
 to avoid) -- correctness first, then measure whether MBX readback meets the speed
 goal.
+
+## Blit path bench-validated as the device-correct present (no NODSA)
+
+Built the pre-window pbuffer path (-DA4_PERSP, no A4_WINDOW/BACKUP) and benched RM-320
+WITHOUT NODSA (blit1, sha f64d9f69...). Result: a CLEAN composite -- GPU 3D (road,
+car, traffic, scenery, perspective-correct) with the software HUD preserved (WANTED,
+lap, position, minimap, speedometer, nitro), no magenta, no mesh, no cone/wserv. The
+GPU 3D replaces the software fill in the game's OWN framebuffer (composite_prev
+blits non-sentinel pixels into A4_GL_BB), which the game posts via its own DSA -- so
+it is visible on the bench with the normal DSA draw (no NODSA), exactly as the device
+posts. GPU and software are always aligned because the blit writes in the game's
+framebuffer coords (the bench happened to be in the 180 orientation; GPU followed it,
+confirming alignment rather than a flip bug).
+
+This is the device-correct architecture the round-1 review pointed to: no second
+surface competing with the live DSA, so nothing for the DSA to overwrite. Tradeoff:
+it reintroduces the per-frame glReadPixels the window path was built to avoid. The
+software fillers it removes were ~81 instr/pixel (PATCHING.md), so it is plausibly a
+net win, but only a device fps measurement decides. (Readback could later be halved
+by reading 565 directly instead of RGBA+convert.)
+
+Next: phone-round a4_blit.exe to (1) confirm the clean composite on real hardware
+and (2) measure fps vs software -- the readback cost on the MBX is the open question.
