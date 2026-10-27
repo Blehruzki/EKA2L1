@@ -1858,3 +1858,40 @@ satisfies every cone path. The round-? crafted control crashed precisely because
 its iFlags/iWin were wrong (it hit the Draw block on a redraw-during-orientation);
 this craft removes that root cause. Bench-validatable (redraw window presents).
 Open risk: does cone's BeginRedraw/EndRedraw blank the EGL surface? -- bench shows it.
+
+## Crafted control: dissolves BOTH handle panics, GPU presents -- but redraw
+## servicing faults in ws32
+
+Built the crafted control done right: a zeroed 0x28-byte CCoeControl at 0x402840
+with iFlags=0 (so IsReadyToDraw() is false and HandleRedrawEvent skips its whole
+draw block) and iWin(+0x20) -> our own window, used as the redraw window's client
+handle. Benched RM-320, NODSA, memsnap.
+
+**Result -- the two hard blockers are gone.** winstep=7 (EGL window surface + context
+up), ctrlh=0x402840, **frames=147, prims=71, 24 textures** -- the GPU 3D pass ran
+and presented. **CONE=0** (the aligned crafted control passes cone's IsHandleValid
+and HandleRedrawEvent runs without panicking), **WSERV=0** (the non-zero handle
+passes the device null-handle check). stkcount=0 reconfirmed. This is the first
+build to clear both the WSERV-4 and the CONE-46 at once.
+
+**But it crashes after ~147 frames**, uniquely (kernel AV 0xFFFFFFFF = 1 here, 0 in
+every handle-0 / backed-up run): the GAME's own Main thread, executing **ws32.dll**
+(pc 0x806c8cd4, ws32 base 0x806c8658; lr in euser's active-scheduler/IPC path),
+reads 0xFFFFFFFF -> KERN-EXEC 3 -> Domino cascade -> host halt. The one behavioural
+difference from the working handle-0 build is that a non-zero handle makes cone's
+CCoeRedrawer actually SERVICE our window's redraws -- HandleRedrawEvent ->
+Window().BeginRedraw/EndRedraw on our injected window -- and that servicing faults
+in ws32. (The window object is big enough: a full RWindow is only 0x18 bytes --
+iWsHandle@0, iBuffer@4, iDrawRect@8..0x18 -- all inside our zeroed 0x20, so
+SetDrawRect does not overflow. The fault is elsewhere in the ws32 redraw path, not
+pinned to an instruction; the ROM disasm at the run address is not linear.)
+
+**Reading:** the redraw window's very nature -- it gets redraw events that cone
+services through ws32 -- is the recurring fight (first the handle, now the servicing
+of an injected window). A BACKED-UP window takes NO redraw events at all (proven:
+poison handle, 109 orientations, zero faults), so this entire class is absent; its
+only gap is that EKA2L1 does not composite an EGL surface for bitmap_backed_canvas.
+Fixing that (mirroring redraw_msg_canvas::draw_surface_window) turns the
+already-cone-safe backed-up path into a bench-validated present, then one phone
+round. That is the cleaner foundation than RE-ing the ws32 redraw fault and then
+still not knowing whether an empty redraw blanks the EGL surface on the device.
