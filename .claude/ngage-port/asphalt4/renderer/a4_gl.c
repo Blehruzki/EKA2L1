@@ -48,9 +48,19 @@
  * MAXT caps the frame; an overflow triangle is drawn immediately. Sizes must fit
  * under GL_SCRATCH + GL_SCRATCH_SIZE in injector.py (top 0x410000). */
 #define MAXT 640
+/* Texcoord components per vertex: 2 (s,t) affine, or 4 (s,t,0,q) projective for
+ * perspective-correct texturing (A4_PERSP). GL ES 1.1 samples a 2D texture at
+ * (s/q, t/q), so interpolating (u/w, v/w, 1/w) across the triangle and dividing
+ * per fragment reproduces the game's own perspective-correct mapping (the road
+ * stops wobbling). q = 1/ZW; ZW (vptr[2]) is the vertex w. */
+#ifdef A4_PERSP
+#define UVC 4u
+#else
+#define UVC 2u
+#endif
 #define A4_GL_POS   0x00408000u                      /* int16[2] * (3*MAXT) = 0x1E00 */
-#define A4_GL_UV    (A4_GL_POS + (3u*MAXT*2u*2u))     /* int32[2] * (3*MAXT) = 0x3C00 */
-#define A4_GL_TEXID (A4_GL_UV  + (3u*MAXT*2u*4u))     /* uint32   * MAXT     = 0x0A00 */
+#define A4_GL_UV    (A4_GL_POS + (3u*MAXT*2u*2u))     /* int32[UVC] * (3*MAXT) */
+#define A4_GL_TEXID (A4_GL_UV  + (3u*MAXT*UVC*4u))    /* uint32   * MAXT     = 0x0A00 */
                                                       /* end 0x40E600 */
 
 /* EGL */
@@ -311,6 +321,24 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr)
  * order and drawn later, in a4_gl_flush; an overflow past MAXT is drawn now. */
 static void composite_prev(volatile struct glr *s);
 
+#ifdef A4_PERSP
+/* Unsigned 32/32 divide by restoring shift-subtract -- the renderer is
+ * freestanding (no libgcc), so neither hardware divide nor a compiler __aeabi
+ * helper is available; this uses only shifts, compares and subtracts. Used for
+ * the per-vertex reciprocal 1/w (2^22 / ZW). ~32 iterations; a few per triangle,
+ * well under 2% of the frame. */
+static uint32_t a4_udiv(uint32_t num, uint32_t den)
+{
+    if (den == 0) return 0xFFFFFFFFu;
+    uint32_t q = 0, r = 0;
+    for (int i = 31; i >= 0; --i) {
+        r = (r << 1) | ((num >> i) & 1u);
+        if (r >= den) { r -= den; q |= (1u << i); }
+    }
+    return q;
+}
+#endif
+
 int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 {
     volatile uint32_t *iat = a4_gl_iat_ptr();
@@ -348,14 +376,29 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     uint32_t id = s->cache_id[ti];
 
     int16_t p[6];
-    int32_t uv[6];
+    int32_t uv[3 * UVC];
     const uint32_t voff[3] = { 0x0C, 0x18, 0x24 };
     for (int i = 0; i < 3; i++) {
         uint32_t *vp = (uint32_t *)desc[voff[i] / 4];
         p[i*2]   = (int16_t)(int32_t)vp[0];
         p[i*2+1] = (int16_t)(int32_t)vp[1];
-        uv[i*2]   = ((int32_t)desc[voff[i]/4 + 1] * 4096) >> wsh;
-        uv[i*2+1] = ((int32_t)desc[voff[i]/4 + 2] * 4096) >> hsh;
+        int32_t un = ((int32_t)desc[voff[i]/4 + 1] * 4096) >> wsh;   /* U_norm * 65536 */
+        int32_t vn = ((int32_t)desc[voff[i]/4 + 2] * 4096) >> hsh;   /* V_norm * 65536 */
+#ifdef A4_PERSP
+        /* q = 1/w (ZW is w). s = U_norm*q, t = V_norm*q (GL_FIXED); GL samples
+         * (s/q, t/q) per fragment -> perspective-correct. The absolute scale of
+         * q cancels in the division, so any fixed multiple of 1/ZW works; 2^22
+         * keeps q and s*q in int32/int64 range for ZW in ~[8, 2^16]. */
+        int32_t zw = (int32_t)vp[2];
+        uint32_t iw = a4_udiv(1u << 22, (uint32_t)(zw > 0 ? zw : 1));
+        uv[i*UVC + 0] = (int32_t)(((int64_t)un * (int32_t)iw) >> 16);
+        uv[i*UVC + 1] = (int32_t)(((int64_t)vn * (int32_t)iw) >> 16);
+        uv[i*UVC + 2] = 0;
+        uv[i*UVC + 3] = (int32_t)iw;
+#else
+        uv[i*UVC + 0] = un;
+        uv[i*UVC + 1] = vn;
+#endif
     }
     /* grow the frame's drawn-row extent, so the readback covers only the rows
      * the GPU touched (the readback, not the blit, is the composite's cost). */
@@ -370,7 +413,7 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     if (n >= MAXT) {                                /* batch full: draw this one now */
         gl_bindtex(GL_TEXTURE_2D, id);
         gl_vertexptr(2, GL_SHORT, 0, p);
-        gl_texcoordptr(2, GL_FIXED, 0, uv);
+        gl_texcoordptr((int)UVC, GL_FIXED, 0, uv);
         gl_drawarrays(GL_TRIANGLES, 0, 3);
         return 1;
     }
@@ -379,7 +422,7 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     uint32_t *TEXID = (uint32_t *)A4_GL_TEXID;
     uint32_t vb = n * 3;                            /* first vertex of this triangle */
     for (int k = 0; k < 6; k++) POS[vb*2 + k] = p[k];
-    for (int k = 0; k < 6; k++) UV[vb*2 + k]  = uv[k];
+    for (uint32_t k = 0; k < 3u*UVC; k++) UV[vb*UVC + k] = uv[k];
     TEXID[n] = id;
     s->prims = n + 1;
     return 1;
@@ -396,7 +439,7 @@ static void batch_draw(volatile struct glr *s)
     uint32_t *TEXID = (uint32_t *)A4_GL_TEXID;
 
     gl_vertexptr(2, GL_SHORT, 0, (const void *)A4_GL_POS);
-    gl_texcoordptr(2, GL_FIXED, 0, (const void *)A4_GL_UV);
+    gl_texcoordptr((int)UVC, GL_FIXED, 0, (const void *)A4_GL_UV);
 
     uint32_t run_start = 0;
     uint32_t cur = TEXID[0];

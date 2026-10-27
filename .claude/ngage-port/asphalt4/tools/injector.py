@@ -68,7 +68,7 @@ WS_IMPORT_ORDINALS = [76, 70, 69, 158, 157, 148, 211, 278, 275, 277, 107, 81, 99
 CONE_IMPORT_DLL = 'cone.dll'
 CONE_IMPORT_ORDINALS = [182]        # CCoeEnv::Static() only (717 RootWin is 3.2+, absent on the N95's 3.1 -> loader error -5)
 GL_SCRATCH = 0x00401000         # must match A4_GL_SCRATCH in a4_gl.c
-GL_SCRATCH_SIZE = 0xF000        # GL state + strip readback at 0x403000 + batch buffers
+GL_SCRATCH_SIZE = 0x12000       # GL state + strip readback + batch buffers (4-wide UV for A4_PERSP)
                                 # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as
                                 # small as the batch allows -- a large image .bss corrupts
                                 # the game's load-time layout

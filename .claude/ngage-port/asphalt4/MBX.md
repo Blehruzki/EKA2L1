@@ -1650,3 +1650,43 @@ screen. The GPU-present pipe works end to end.
 `EKA2L1_NODSA` is a diagnostic (env-gated, off by default); the principled fix
 (clip the DSA to the DSA-owner window's visible region, as a device does) is a
 larger emulator change left for later. Indexed in EMU_PATCHES.md.
+
+## Phase 2, step 1: perspective-correct texturing (the wobble fix)
+
+The phase-1 GPU road wobbled because it was textured AFFINELY. Confirmed from the
+capture code: phase 1 read the already-projected screen (X,Y) and raw (U,V) and
+drew them under a 2D ortho projection with 2-component texcoords, so GL
+interpolated U,V linearly in screen space. The game itself textures
+perspective-correctly (it multiplies U,V by a per-vertex 1/w). The big near-field
+road triangles span the most depth, so affine mapping warps/swims there -- the
+wobble.
+
+**Measured the perspective input.** vptr[2] (the vertex's Z/W) captured for road
+triangles: near vertex (screen y=241) ZW~202, far (y=122) ZW~1009 -- ZW grows
+with distance, so **ZW is w** (depth), and 1/w is proportional to 1/ZW (also ~
+linear in screen y, as a ground plane should be).
+
+**The fix is two halves that only work together:**
+1. **Renderer (`A4_PERSP`, `a4_gl.c`):** per vertex compute iw = 2^22/ZW with a
+   self-contained shift-subtract divide (`a4_udiv` -- the renderer is freestanding,
+   no libgcc, so no hardware divide or float), and emit 4-component projective
+   texcoords (U_norm*iw, V_norm*iw, 0, iw) = (s,t,0,q) with q = 1/w. UV batch
+   buffer widened to 4 (GL_SCRATCH_SIZE bumped to 0x12000).
+2. **Emulator (`EKA2L1_TEXPROJ`, `gles1/shadergen.cpp`):** EKA2L1's GL ES 1.1
+   fragment shader sampled `texture(tex, mTexCoord.xy)`, ignoring the q
+   coordinate -- a GL conformance gap (GL samples at (s/q, t/q)). Added the
+   divide, gated by the env var, default off. q defaults to 1 for a 2-wide
+   texcoord, so it is a no-op for ordinary content. With it, GL interpolates
+   (s,t,q) across the triangle (affinely, since our ortho w=1) and divides per
+   fragment: Sum(U_norm/w)/Sum(1/w) = the perspective-correct U_norm.
+
+**Result (RM-320, A4_PERSP build + EKA2L1_TEXPROJ + NODSA, in a race):** the GPU
+road is textured perspective-correctly -- lane markings and asphalt foreshorten
+to the vanishing point, grass/kerb/buildings all correct, no wobble. Without
+TEXPROJ the same build showed flat untextured solids (q ignored -> wrong sample
+coords), proving the two halves are both needed. Indexed in EMU_PATCHES.md.
+
+**Remaining phase 2:** the magenta sky / sprites are still the software layer --
+the GPU pass does not yet take the sky/background and the non-textured primitive
+modes. Taking the whole 3D pass (all `flags` rasterizer modes + the background)
+and adding a depth buffer is step 2; that removes the magenta.
