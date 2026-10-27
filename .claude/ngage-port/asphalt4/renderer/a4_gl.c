@@ -228,7 +228,17 @@ static int bringup(volatile struct glr *s)
     uint8_t *wsb = (uint8_t *)A4_WS_OBJ; void *win = wsb;
     for (int i = 0; i < 0x20; i++) wsb[i] = 0;
     ((volatile uint32_t *)win)[1] = appbuf;
-    if (rw_construct(win, (void *)grp, A4_GL_MAGIC) != 0) return 0;   s->winstep = 4;
+    /* Client handle 0, NOT A4_GL_MAGIC. The app shares its window-server session
+     * with us, so our window's redraw events pass through the app's cone
+     * CCoeRedrawer::RunL, which reinterprets the client handle as a CCoeControl*
+     * (coepriv.cpp). It first asserts (handle & 3) == 0 -- an unaligned handle
+     * panics the app CONE 46 (ECoePanicInvalidHandle) the moment the server
+     * sends our window a redraw (a focus/exposure change mid-race -- which is why
+     * A4_GL_MAGIC, ending ...E6, survived ~15 s then killed it on the N95). 0 is
+     * aligned (no panic) AND makes `window` NULL, so RunL's `if (window)` skips
+     * HandleRedrawEvent -- the redraw is consumed harmlessly. We present every
+     * frame via eglSwapBuffers, so we never need the server's redraw protocol. */
+    if (rw_construct(win, (void *)grp, 0) != 0) return 0;   s->winstep = 4;
     rw_setdispmode(win, ECOLOR64K);
     { int pt[2] = { 0, 0 }, sz[2] = { VP_W, VP_H }; rw_setextent(win, pt, sz); }
     rw_nontransparent(win);

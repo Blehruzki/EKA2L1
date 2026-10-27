@@ -1557,3 +1557,58 @@ screenshot that the sample was an actual race (countdown + HUD + traffic).
 ~11.6 fps on the N95. Reaching 45-60 fps means ~2.0-2.6M instr/frame, a 4-5x
 cut -- in line with the inverted-design estimate (~2-3.2M/frame -> ~52-80 fps).
 That is the number to beat.
+
+## Phase 1 wired on RM-320: the window-surface path brings up and survives a race (CONE 46 fixed)
+
+With RM-320 now rendering (EKA2L1_EXCLFAULT), the 3.1 window path is benchable at
+last -- the "measurement, not a guess" the record was waiting on. Built the
+A4_WINDOW variant (`A4_EXTRA_CFLAGS=-DA4_WINDOW injector.py ... --gl --capture`;
+the GPU draw-prim hook at +0x300B2 needs `--capture`), ran it on RM-320, and read
+the state by memsnap of the renderer scratch (0x401000) rather than the on-screen
+winstep bar -- a measurement.
+
+**First run reproduced the device CONE 46 on the bench** (`Main panicked CONE 46`,
+~mid-race), with `winstep 7, bstep 6, surf 1, errc 0`: bring-up "succeeded" then
+cone panicked. So the bench is now a faithful oracle for this bug.
+
+**The record's hypothesis was wrong: the CCoeEnv scan is correct on 3.1.** Dumped
+the real CCoeEnv (memsnap at `env`) and decoded it against the Symbian class
+layout (`W32STD.H`): `RWsSession : MWsClientClass {iWsHandle@0, iBuffer@4},
+RSessionBase {iHandle@8}` (12 bytes, no own data), immediately followed by
+`RWindowGroup : RWindowTreeNode : MWsClientClass {iWsHandle@0, iBuffer@4}`. In the
+dump (env=...2e0): env+0x2c = {iWsHandle 0x124, iBuffer=appbuf, iHandle 0x400a0003
+= kernel handle} = **iWsSession**; env+0x38 = {iWsHandle 0x20002, iBuffer=appbuf}
+= **iRootWin**. These are EXACTLY what the content scan picked. The 3.1/3.2
+layouts agree here; the scan was never the problem.
+
+**The real cause of CONE 46 (from cone source, not a guess):** our window shares
+the app's window-server session, so its redraw events pass through the app's
+`CCoeRedrawer::RunL` (`COEPRIV.CPP`), which does
+`__ASSERT_ALWAYS(IsHandleValid(handle), Panic(ECoePanicInvalidHandle))` then
+`CCoeControl* w = (CCoeControl*)handle; if (w) w->HandleRedrawEvent(...)`.
+`IsHandleValid(h) = (h & 3) == 0` -- a bare 4-byte-alignment check. Our client
+handle was `A4_GL_MAGIC = 0x6C900DE6`; `0x...E6 & 3 == 2` -> unaligned -> the
+assert fires **CONE 46** the first time the server sends our window a redraw (a
+focus/exposure change mid-race -- which is why it survived ~15 s, not instantly).
+The scan, the session, the group were all fine; one odd-valued handle did it.
+
+**Fix (one line, `a4_gl.c` bringup):** construct our RWindow with client handle
+**0**, not A4_GL_MAGIC. 0 is aligned (`IsHandleValid(0)` true -> no panic) AND
+makes `w` NULL, so `if (w)` skips `HandleRedrawEvent` -- the redraw is consumed
+harmlessly. We present every frame via `eglSwapBuffers`, so the server's redraw
+protocol is never needed. (An aligned *nonzero* handle would pass the assert then
+deref a wild CCoeControl* -- 0 is the only safe choice.)
+
+**Result (RM-320, EKA2L1_EXCLFAULT, full 60 s race, memsnap + log):**
+`winstep 7, bstep 6, surf 1, errc 0`, 2127 present-frames, `egl_swap` firing on
+every 3D frame, **no CONE/WSERV/panic** -- the game runs the whole race with the
+window-surface present path live. Screenshot: the game races; our GL window's
+green fps bar shows at the top, the DSA software frame over the rest (EKA2L1 draws
+the DSA framebuffer regardless -- the CLAUDE.md gap -- so present-OVER-software is
+still only provable on the phone; bring-up and survival are proven here).
+
+**Status.** Phase 1 (GPU presents through a window surface in the app's own
+session) is wired and stable on the N95 (3.1) bench. ws32 ordinals, cone 182,
+the CCoeEnv scan and the EGL window surface are all confirmed on 3.1. Remaining
+phase-1 question (does the window present over the DSA frame) is the phone's to
+answer; then phase 2 (whole 3D pass) and 3 (HUD).
