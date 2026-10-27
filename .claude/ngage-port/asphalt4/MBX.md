@@ -1814,3 +1814,47 @@ is the most likely to work on the device. The open question is whether this N-Ga
 if it does not, fall back to fixing EKA2L1's backed-up present + a phone round to
 test device backed-up EGL. A4_BACKUP code kept (gated off) as the cone-safe
 building block; ws32 ord 197 added.
+
+## The app has NO CCoeControl: the stack is structurally empty
+
+Went ahead with the redraw+real-control plan: resolve the app's top CCoeControl
+and use its address as the window's client handle. Taught a4_gl.c the measured
+chain (CCoeEnv+0x24 = iAppUi; CCoeAppUi+0x0C = iStack; CArrayFixBase iCount@0x04,
+iBase@0x14; CBufFlat iPtr@0x10; SStackedControl 16B, iControl first) and had it walk
+the stack, log it to the diag struct, and pick the first window-owning control
+(iWin@+0x20 live) -- else bail (winstep 0xC4). Benched RM-320, NODSA, memsnap 0x401000.
+
+**Result: stkcount = 0.** The chain resolves perfectly and deterministically
+(env=0xD002E0, iAppUi=0xD028A0, iStack=0xD009C8 -- iAppUi/env identical to a prior
+run's live dump), but the stack is empty. Confirmed by dumping the objects directly
+(not via my chain):
+- iStack @0xD009C8: vptr=0x8078C650 (real ROM vtable), **iGranularity=2**,
+  **iLength=0x10** -- both exactly what `CCoeControlStack()` sets, so this IS the
+  cone control stack -- **iCount=0, iBase=NULL**. Empty, no buffer ever allocated.
+- AppUi @0xD028A0: vptr=**0x701031CC (the GAME's code, 0x70xxxxxx)** -- the gate6
+  shim supplies its OWN CCoeAppUi subclass; iCoeEnv@+0x04=0xD002E0 (=env, confirms
+  +0x04), iStack@+0x0C=0xD009C8 (confirms +0x0C). A DSA title: it draws direct and
+  never pushes a control.
+
+So there is no real CCoeControl to use as the client handle. The approved
+real-control path has nothing to point at. (The game process ran the full race;
+the only KERN-EXEC 3 is the expected ngilightserver EXCLFAULT kill -- `ldrex [0x34]`,
+same as every handle-0 run -- the RM-320 render fix, not a regression.)
+
+## But a CRAFTED control can now be done right (the earlier one's root cause)
+
+CCoeRedrawer::RunL does `((CCoeControl*)handle)->HandleRedrawEvent(rect)`, and
+HandleRedrawEvent (COECNTRL.CPP:1388) is `Window().BeginRedraw(rect); if
+(IsReadyToDraw()){...Draw()...} Window().EndRedraw();`. IsReadyToDraw() (line 313) is
+`((iFlags&(EInvisible|EActivated))==EActivated) || (iFlags&EBackedUpWindow)` -- so
+**iFlags=0 makes it false**, and the whole draw block (ActivateGc, virtual Draw,
+DrawComponents) is skipped. What's left is BeginRedraw/EndRedraw on the control's
+iWin. Point iWin (+0x20) at OUR OWN window and cone's redraw of our window becomes
+a no-op redraw that VALIDATES our window (killing the redraw storm) and touches
+nothing else. HandleWsEventL derefs aDestination only for pointer events (none on
+the keypad-only N95); orientation (EEventScreenDeviceChanged) does not. So a
+minimal craft -- vtable stub, iFlags@+0x1C=0, iWin@+0x20=A4_WS_OBJ, rest zero --
+satisfies every cone path. The round-? crafted control crashed precisely because
+its iFlags/iWin were wrong (it hit the Draw block on a redraw-during-orientation);
+this craft removes that root cause. Bench-validatable (redraw window presents).
+Open risk: does cone's BeginRedraw/EndRedraw blank the EGL surface? -- bench shows it.

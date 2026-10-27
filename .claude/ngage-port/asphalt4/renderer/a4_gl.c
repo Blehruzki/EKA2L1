@@ -125,6 +125,9 @@ struct glr {
     uint32_t wvis;                    /* A4_WINDOW: our window is visible (hidden while the game is in 2D) */
     uint32_t idle2d;                  /* A4_WINDOW: consecutive present hooks with no 3D primitives */
     uint32_t env, grp, appbuf, appsess; /* A4_WINDOW diag: CCoeEnv, root group, shared RWsBuffer, app session */
+    uint32_t appui, istack, stkcount;  /* A4_WINDOW diag: CCoeAppUi, its control stack, #controls on it */
+    uint32_t ctrl[8], ctrlwin[8];      /* A4_WINDOW diag: the stack's iControl + each control's iWin (+0x20) */
+    uint32_t ctrlh;                    /* A4_WINDOW diag: the CCoeControl* chosen as our window's client handle */
     uint32_t cache_ptr[NCACHE];
     uint32_t cache_id[NCACHE];
     uint32_t cache_tr[NCACHE];         /* 1 = texture is a colorkey (transparent) sprite */
@@ -254,10 +257,55 @@ static int bringup(volatile struct glr *s)
      * value, proving it does not. */
     if (rw_construct_backup(win, (void *)grp, ECOLOR64K, 0x7FFFFFFCu) != 0) return 0;   s->winstep = 4;
 #else
-    /* Client handle 0: aligned so cone's redrawer assert passes and `window` is
-     * NULL (redraw skipped), but the real window server rejects a null handle at
-     * Construct (WSERV 4) -- so this path works only on the lenient bench. */
-    if (rw_construct(win, (void *)grp, 0) != 0) return 0;   s->winstep = 4;
+    /* A REDRAW window with the app's own real CCoeControl as the client handle.
+     * The device panics a null handle at Construct (WSERV 4, cliwin.cpp), so 0 is
+     * out; cone's CCoeRedrawer::RunL asserts (handle&3)==0 (CONE 46) then does
+     * window=(CCoeControl*)handle; if(window) window->HandleRedrawEvent() -- so the
+     * handle must be a 4-byte-aligned, non-null, FULLY-FORMED control (valid vtable
+     * and iWin), which a crafted stub was not (it crashed in the event path). The
+     * app's own top control is the one safe value: aligned, non-null, and real.
+     * cone's duplicate-handle check is _DEBUG-only (cliwin.cpp), so sharing the
+     * app window's handle does not panic a release ROM.
+     *
+     * Resolve it by the measured chain: CCoeEnv+0x24 = iAppUi (RFs sits between it
+     * and iWsSession@0x2c), CCoeAppUi+0x0C = iStack (CCoeControlStack, a
+     * CArrayFixFlat<SStackedControl>); CArrayFixBase iCount@0x04, iBase@0x14;
+     * CBufFlat iPtr@0x10; SStackedControl is 16 bytes, iControl first. A control is
+     * window-owning iff iWin (CCoeControl+0x20) is a live pointer -- required, since
+     * HandleRedrawEvent calls Window().BeginRedraw. */
+    uint32_t appui = e[0x24 / 4];      s->appui = appui;
+    uint32_t ctrlh = 0;
+    if (appui >= 0x00080000u && appui < 0x10000000u) {
+        volatile uint32_t *au = (volatile uint32_t *)appui;
+        uint32_t stk = au[0x0C / 4];   s->istack = stk;
+        if (stk >= 0x00080000u && stk < 0x10000000u) {
+            volatile uint32_t *st = (volatile uint32_t *)stk;
+            uint32_t cnt = st[0x04 / 4], buf = st[0x14 / 4];   s->stkcount = cnt;
+            if (cnt > 0 && cnt < 64 && buf >= 0x00080000u && buf < 0x10000000u) {
+                uint32_t data = ((volatile uint32_t *)buf)[0x10 / 4];
+                if (data >= 0x00080000u && data < 0x10000000u) {
+                    volatile uint32_t *d = (volatile uint32_t *)data;
+                    /* capture the whole stack for the record; pick the FIRST
+                     * (bottom, = the app's main control) window-owning one. */
+                    for (uint32_t i = 0; i < cnt && i < 8; i++) {
+                        uint32_t c = d[i * 4];
+                        uint32_t w = (c >= 0x00080000u && c < 0x10000000u)
+                                     ? ((volatile uint32_t *)c)[0x20 / 4] : 0;
+                        s->ctrl[i] = c; s->ctrlwin[i] = w;
+                    }
+                    for (uint32_t i = 0; i < cnt; i++) {
+                        uint32_t c = d[i * 4];
+                        if (c < 0x00080000u || c >= 0x10000000u || (c & 3)) continue;
+                        uint32_t w = ((volatile uint32_t *)c)[0x20 / 4];
+                        if (w >= 0x00080000u && w < 0x10000000u) { ctrlh = c; break; }
+                    }
+                }
+            }
+        }
+    }
+    s->ctrlh = ctrlh;
+    if (!ctrlh) { s->winstep = 0xC4; return 0; }   /* no usable control: report back */
+    if (rw_construct(win, (void *)grp, ctrlh) != 0) return 0;   s->winstep = 4;
     rw_setdispmode(win, ECOLOR64K);
 #endif
     { int pt[2] = { 0, 0 }, sz[2] = { VP_W, VP_H }; rw_setextent(win, pt, sz); }
