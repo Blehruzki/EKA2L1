@@ -58,13 +58,13 @@ GL_IMPORT_ORDINALS = [14, 17, 4, 3, 18, 132, 33, 31, 58, 108,
                       67, 29, 125, 127, 56, 90, 82, 99, 57, 131,
                       120, 39, 54, 116, 123, 68,
                       1, 55, 48, 35,   # [26] eglChooseConfig [27] glDrawElements
-                      6, 22]           # [30] eglCreateWindowSurface [31] eglSwapBuffers
+                      6, 22, 36]       # [30] eglCreateWindowSurface [31] eglSwapBuffers [32] glDisable
                                        # [28] glDepthFunc     [29] glClearDepthx
                                        # must match a4_gl.s a4_gl_iat
 # A4_WINDOW: the window the GPU presents into is our own (a4_gl.c, bringup);
 # these are the a4_ws_iat slots in a4_gl.s, same mechanism as the GL table.
 WS_IMPORT_DLL = 'ws32.dll'
-WS_IMPORT_ORDINALS = [76, 70, 69, 158, 157, 148, 211, 278, 275, 277, 107, 81, 99, 268]
+WS_IMPORT_ORDINALS = [76, 70, 69, 158, 157, 148, 211, 278, 275, 277, 107, 81, 99, 268, 212]
 GL_SCRATCH = 0x00401000         # must match A4_GL_SCRATCH in a4_gl.c
 GL_SCRATCH_SIZE = 0xF000        # GL state + strip readback at 0x403000 + batch buffers
                                 # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as

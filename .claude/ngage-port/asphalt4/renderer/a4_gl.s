@@ -45,6 +45,7 @@ a4_gl_iat:
         .word   35      @ [29] glClearDepthx
         .word   6       @ [30] eglCreateWindowSurface (A4_WINDOW: the GPU presents)
         .word   22      @ [31] eglSwapBuffers
+        .word   36      @ [32] glDisable (A4_WINDOW: the fps bar is untextured quads)
         .global a4_gl_iat_end
 a4_gl_iat_end:
 
@@ -70,6 +71,7 @@ a4_ws_iat:
         .word   81      @ [11] RWindowBase::SetVisible(TBool)
         .word   99      @ [12] RWindowBase::SetRequiredDisplayMode(TDisplayMode)
         .word   268     @ [13] RWindow::SetNonTransparent()
+        .word   212     @ [14] RWindowTreeNode::SetOrdinalPosition(TInt, TInt): position AND priority
         .global a4_ws_iat_end
 a4_ws_iat_end:
         .global a4_ws_iat_ptr

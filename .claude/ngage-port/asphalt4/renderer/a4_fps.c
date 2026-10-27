@@ -46,7 +46,7 @@
 typedef uint32_t (*tick_fn)(void);
 typedef int (*home_fn)(void *ttime);    /* TTime::HomeTime(this): fills 8-byte us */
 
-void a4_gl_frame(void);                 /* MBX frame flush (renderer/a4_gl.c); self-gated */
+int a4_gl_frame(uint32_t fps);           /* returns 1 when the GPU presented (skip the game's present) */                 /* MBX frame flush (renderer/a4_gl.c); self-gated */
 #ifdef A4_GAUGE
 int  a4_gl_state(void);                 /* 0 not-linked,1 no-bringup,2-6 step,7 up */
 int  a4_gl_prims(void);                 /* triangles the GPU path took last frame */
@@ -84,7 +84,7 @@ static void gauge_run(volatile uint16_t *fb, uint32_t from, uint32_t to, uint16_
 }
 #endif
 
-void a4_fps_tick(tick_fn tc, home_fn ht)
+int a4_fps_tick(tick_fn tc, home_fn ht)
 {
     volatile struct a4_fps_state *s = (volatile struct a4_fps_state *)A4_FPS_SCRATCH;
 
@@ -97,10 +97,10 @@ void a4_fps_tick(tick_fn tc, home_fn ht)
         s->last_tick = tick; s->frames = 0; s->win_frames = 0; s->win_start_us = us;
         s->disp = 0; s->min_dt = 0xFFFFFFFFu; s->max_dt = 0; s->sum_dt = 0;
         s->ring_pos = 0; s->magic = A4_FPS_MAGIC;
-        return;
+        return 0;
     }
 
-    a4_gl_frame();                      /* MBX: flush the GPU frame; no-op unless GL linked */
+    int gpu = a4_gl_frame(s->disp);     /* MBX: draw/present the GPU frame; no-op unless GL linked */
 
     uint32_t dt = tick - s->last_tick;
     s->last_tick = tick;
@@ -185,4 +185,5 @@ void a4_fps_tick(tick_fn tc, home_fn ht)
 #endif
     }
 #endif
+    return gpu;
 }

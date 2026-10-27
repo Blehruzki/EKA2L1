@@ -109,6 +109,7 @@ struct glr {
     uint32_t pminy, pmaxy;            /* extent of the PREVIOUS frame -- what the pipelined
                                        * readback composites (it is what the pbuffer holds) */
     uint32_t disp, surf, winstep;     /* A4_WINDOW: display, window surface, how far the window got */
+    uint32_t wvis;                    /* A4_WINDOW: our window is visible (hidden while the game is in 2D) */
     uint32_t cache_ptr[NCACHE];
     uint32_t cache_id[NCACHE];
     uint32_t cache_tr[NCACHE];         /* 1 = texture is a colorkey (transparent) sprite */
@@ -161,7 +162,8 @@ static int  ws_flush(void *w){ return ((int(*)(void*))W(2))(w); }
 static void wg_ctor(void *g, void *w){ ((void(*)(void*,void*))W(3))(g, w); }
 static int  wg_construct(void *g, uint32_t h, int focusable){ return ((int(*)(void*,uint32_t,int))W(4))(g, h, focusable); }
 static void wg_focus(void *g, int on){ ((void(*)(void*,int))W(5))(g, on); }
-static void wn_ordinal(void *n, int pos){ ((void(*)(void*,int))W(6))(n, pos); }
+static void wn_ordinal(void *n, int pos, int pri){ ((void(*)(void*,int,int))W(14))(n, pos, pri); }   /* position and priority */
+static void gl_disable(uint32_t c){ ((void(*)(uint32_t))F(32))(c); }
 static void rw_ctor(void *r, void *w){ ((void(*)(void*,void*))W(7))(r, w); }
 static int  rw_construct(void *r, void *parent, uint32_t h){ return ((int(*)(void*,void*,uint32_t))W(8))(r, parent, h); }
 static void rw_setextent(void *r, const int *pt, const int *sz){ ((void(*)(void*,const int*,const int*))W(9))(r, pt, sz); }
@@ -192,7 +194,7 @@ static int bringup(volatile struct glr *s)
     for (int i = 0; i < 0x60; i++) wsb[i] = 0;
     ws_ctor(ws);        s->winstep = 1; if (ws_connect(ws) != 0) return 0;
     wg_ctor(wg, ws);    s->winstep = 2; if (wg_construct(wg, (uint32_t)wg, 0) != 0) return 0;
-    wg_focus(wg, 0); wn_ordinal(wg, 0);
+    wg_focus(wg, 0); wn_ordinal(wg, 0, 1000);           /* front, above the game's group (ECoeWinPriorityAlwaysAtFront) */
     rw_ctor(win, ws);   s->winstep = 3; if (rw_construct(win, wg, (uint32_t)win) != 0) return 0;
     rw_setdispmode(win, ECOLOR64K);
     { int pt[2] = { 0, 0 }, sz[2] = { VP_W, VP_H }; rw_setextent(win, pt, sz); }
@@ -203,7 +205,7 @@ static int bringup(volatile struct glr *s)
     if (!egl_choose_config(disp, ca, &cfg, 1, &ncfg) || ncfg < 1) return 0; s->winstep = 5;
     int surf = egl_window_surface(disp, cfg, win, 0); if (!surf) return 0; s->bstep = 4; s->winstep = 6;
     int ctx  = egl_context(disp, cfg, 0, 0);          if (!ctx)  return 0; s->bstep = 5;
-    s->disp = (uint32_t)disp; s->surf = (uint32_t)surf;
+    s->disp = (uint32_t)disp; s->surf = (uint32_t)surf; s->wvis = 1;
 #else
     int pb[] = { EGL_WIDTH, VP_W, EGL_HEIGHT, VP_H, EGL_NONE, 0, 0 };
     int surf = egl_pbuffer(disp, GLES_CONFIG, pb);  if (!surf) return 0; s->bstep = 4;
@@ -431,9 +433,6 @@ void a4_gl_flush(void)
     gl_clear(GL_COLOR_BUFFER_BIT);
     batch_draw(s);                                       /* issue the frame's draws */
     { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a draw GL error */
-#ifdef A4_WINDOW
-    egl_swap((int)s->disp, (int)s->surf);               /* the GPU presents this frame */
-#endif
 
     /* this frame's drawn extent is what composite_prev reads back next frame */
     s->pminy = s->miny; s->pmaxy = s->maxy;
@@ -488,16 +487,63 @@ int a4_gl_pixmapcap(void)
     return (int)s->pixmapcap;
 }
 
-/* Present detour (once per frame): draw the frame's captured primitives on the
- * GPU, then start the next frame. */
-void a4_gl_frame(void)
+#ifdef A4_WINDOW
+/* The fps bar as GL: untextured quads along the top rows of the window, the
+ * same scale as the software bar (4 px per fps, red tick at 30, white at 15
+ * and 45), because the software buffer is not presented while the GPU is. */
+static void bar_quad(int x0, int y0, int x1, int y1, int r, int g, int b)
 {
+    int16_t q[12] = { (int16_t)x0,(int16_t)y0, (int16_t)x1,(int16_t)y0, (int16_t)x1,(int16_t)y1,
+                      (int16_t)x0,(int16_t)y0, (int16_t)x1,(int16_t)y1, (int16_t)x0,(int16_t)y1 };
+    gl_color4x(r, g, b, FX);
+    gl_vertexptr(2, GL_SHORT, 0, q);
+    gl_drawarrays(GL_TRIANGLES, 0, 6);
+}
+static void bar_draw(uint32_t fps)
+{
+    if (fps > 60u) fps = 60u;
+    gl_disable(GL_TEXTURE_2D);
+    bar_quad(0, 0, 240, 8, FX/4, FX/4, FX/4);               /* 0..60 reference, dim */
+    bar_quad(0, 0, (int)fps * 4, 8, 0, FX, 0);              /* length = fps, green */
+    bar_quad(120, 0, 122, 8, FX, 0, 0);                     /* 30 */
+    bar_quad(60, 0, 61, 8, FX, FX, FX);                     /* 15 */
+    bar_quad(180, 0, 181, 8, FX, FX, FX);                   /* 45 */
+    gl_color4x(FX, FX, FX, FX);
+    gl_enable(GL_TEXTURE_2D);
+}
+#endif
+
+/* Present detour (once per frame): draw the frame's captured primitives on the
+ * GPU, then start the next frame. Returns 1 when the GPU presented the frame
+ * itself (A4_WINDOW), so the detour skips the game's own present -- the 565 ->
+ * 32-bit convert into the hardware bitmap that would paint over the window. */
+int a4_gl_frame(uint32_t fps)
+{
+    (void)fps;
     volatile uint32_t *iat = a4_gl_iat_ptr();
-    if (iat[0] < 0x10000u) return;
+    if (iat[0] < 0x10000u) return 0;
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
-    if (s->up != A4_GL_MAGIC) return;
+    if (s->up != A4_GL_MAGIC) return 0;
+    uint32_t had = s->prims;
     a4_gl_flush();                                      /* draw this frame on the GPU */
+    int presented = 0;
+#ifdef A4_WINDOW
+    if (s->surf) {
+        void *ws = (void *)A4_WS_OBJ, *win = (uint8_t *)A4_WS_OBJ + 0x40;
+        if (had) {                                      /* a 3D frame: the GPU presents */
+            if (!s->wvis) { rw_setvisible(win, 1); ws_flush(ws); s->wvis = 1; }
+            bar_draw(fps);
+            egl_swap((int)s->disp, (int)s->surf);
+            presented = 1;
+        } else if (s->wvis) {                           /* a 2D frame (menu): the game presents */
+            rw_setvisible(win, 0); ws_flush(ws); s->wvis = 0;
+        }
+    }
+#else
+    (void)had;
+#endif
     s->prims = 0;
     s->flushed = 0;
     s->frames++;
+    return presented;
 }

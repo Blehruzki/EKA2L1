@@ -99,10 +99,12 @@ a4_fps_home_iat:
         .word   0xDEADBEEF          @ patched: (code+0x50CF0) - (this word's addr)
 3:      ldr     r1, [r1]            @ r1 = &TTime::HomeTime (arg1)
         bl      a4_fps_tick         @ a4_fps_tick(tickcount_fn, hometime_fn); preserves r4-r11
-        pop     {r0, r1, r2, r3, r12, lr}   @ restore the pre-hook r0-r3,r12
+        cmp     r0, #0              @ 1 = the GPU presented this frame (A4_WINDOW)
+        pop     {r0, r1, r2, r3, r12, lr}   @ restore the pre-hook r0-r3,r12 (flags kept)
         ldr     r0, [r4, #0x20]     @ displaced 0x1E6: ldr r0,[r4,#0x20]
         ldr     r3, [r0]            @ displaced 0x1E8: ldr r3,[r0]
-        bx      lr                  @ -> +0x1EA (continues into the present call)
+        addne   lr, lr, #4          @ GPU presented: skip +0x1EA/+0x1EC (ldr r3,[r3,#0x14]; blx r3), the game's present
+        bx      lr                  @ -> +0x1EA (the present call) or +0x1EE (past it)
 
 @ ---- cache the back-buffer base: inserted at the textured filler's +0x33412,
 @ where r2 = ctx[0x4c] (the surface the 3D renders into). Stashes it at a fixed
