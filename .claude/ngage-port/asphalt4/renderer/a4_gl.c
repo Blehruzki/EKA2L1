@@ -60,6 +60,16 @@
 #define EGL_SURFACE_TYPE 0x3033
 #define EGL_PIXMAP_BIT 0x0002            /* probe: does the device offer a pixmap config? */
 #define GLES_CONFIG 6u
+#ifdef A4_WINDOW
+/* The GPU presents: an EGL window surface on a window of our own, swapped at
+ * the frame end; no pbuffer, no readback. The window-server objects live in
+ * the scratch: RWsSession (8 bytes), RWindowGroup (8), RWindow (24 on 9.x:
+ * MWsClientClass + TRect iDrawRect), 32 bytes apart. */
+#define EGL_WINDOW_BIT 0x0004
+#define EGL_BUFFER_SIZE 0x3020
+#define ECOLOR64K 7                      /* TDisplayMode: the game's 565 surface */
+#define A4_WS_OBJ 0x00402800u
+#endif
 /* GL enums */
 #define GL_TRIANGLES 0x0004
 #define GL_FLAT 0x1D00
@@ -98,6 +108,7 @@ struct glr {
     uint32_t miny, maxy;              /* screen-row extent the GPU drew this frame (top-down) */
     uint32_t pminy, pmaxy;            /* extent of the PREVIOUS frame -- what the pipelined
                                        * readback composites (it is what the pbuffer holds) */
+    uint32_t disp, surf, winstep;     /* A4_WINDOW: display, window surface, how far the window got */
     uint32_t cache_ptr[NCACHE];
     uint32_t cache_id[NCACHE];
     uint32_t cache_tr[NCACHE];         /* 1 = texture is a colorkey (transparent) sprite */
@@ -113,6 +124,7 @@ struct glr {
 #define F(i) (a4_gl_iat_ptr()[i])       /* pc-relative getter; no writable globals */
 static int   egl_get_display(int d){ return ((int(*)(int))F(0))(d); }
 static int   egl_initialize(int d,int*a,int*b){ return ((int(*)(int,int*,int*))F(1))(d,a,b); }
+static int   egl_pbuffer(int d,uint32_t c,int*a) __attribute__((unused));   /* unused in -DA4_WINDOW */
 static int   egl_pbuffer(int d,uint32_t c,int*a){ return ((int(*)(int,uint32_t,int*))F(2))(d,c,a); }
 static int   egl_context(int d,uint32_t c,int s,int*a){ return ((int(*)(int,uint32_t,int,int*))F(3))(d,c,s,a); }
 static int   egl_make_current(int d,int r,int w,int c){ return ((int(*)(int,int,int,int))F(4))(d,r,w,c); }
@@ -140,6 +152,26 @@ static void  gl_shademodel(uint32_t m){ ((void(*)(uint32_t))F(23))(m); }
 static void  gl_texenvx(uint32_t tg,uint32_t p,int v){ ((void(*)(uint32_t,uint32_t,int))F(24))(tg,p,v); }
 static uint32_t gl_geterror(void){ return ((uint32_t(*)(void))F(25))(); }   /* device probe */
 static int   egl_choose_config(int d,const int*a,uint32_t*c,int n,int*num){ return ((int(*)(int,const int*,uint32_t*,int,int*))F(26))(d,a,c,n,num); }
+#ifdef A4_WINDOW
+extern volatile uint32_t *a4_ws_iat_ptr(void);
+#define W(i) (a4_ws_iat_ptr()[i])
+static void ws_ctor(void *w){ ((void(*)(void*))W(0))(w); }
+static int  ws_connect(void *w){ return ((int(*)(void*))W(1))(w); }
+static int  ws_flush(void *w){ return ((int(*)(void*))W(2))(w); }
+static void wg_ctor(void *g, void *w){ ((void(*)(void*,void*))W(3))(g, w); }
+static int  wg_construct(void *g, uint32_t h, int focusable){ return ((int(*)(void*,uint32_t,int))W(4))(g, h, focusable); }
+static void wg_focus(void *g, int on){ ((void(*)(void*,int))W(5))(g, on); }
+static void wn_ordinal(void *n, int pos){ ((void(*)(void*,int))W(6))(n, pos); }
+static void rw_ctor(void *r, void *w){ ((void(*)(void*,void*))W(7))(r, w); }
+static int  rw_construct(void *r, void *parent, uint32_t h){ return ((int(*)(void*,void*,uint32_t))W(8))(r, parent, h); }
+static void rw_setextent(void *r, const int *pt, const int *sz){ ((void(*)(void*,const int*,const int*))W(9))(r, pt, sz); }
+static void rw_activate(void *r){ ((void(*)(void*))W(10))(r); }
+static void rw_setvisible(void *r, int v){ ((void(*)(void*,int))W(11))(r, v); }
+static int  rw_setdispmode(void *r, int m){ return ((int(*)(void*,int))W(12))(r, m); }
+static void rw_nontransparent(void *r){ ((void(*)(void*))W(13))(r); }
+static int  egl_window_surface(int d, uint32_t c, void *win, const int *a){ return ((int(*)(int,uint32_t,void*,const int*))F(30))(d, c, win, a); }
+static int  egl_swap(int d, int sf){ return ((int(*)(int,int))F(31))(d, sf); }
+#endif
 
 static int bringup(volatile struct glr *s)
 {
@@ -152,9 +184,31 @@ static int bringup(volatile struct glr *s)
     { int pca[] = { EGL_SURFACE_TYPE, EGL_PIXMAP_BIT, EGL_NONE };
       uint32_t pcfg = 0; int pnum = 0;
       if (egl_choose_config(disp, pca, &pcfg, 1, &pnum) && pnum > 0) s->pixmapcap = 1; }
+#ifdef A4_WINDOW
+    /* our own window: session, a group that never takes focus (the game's keeps
+     * it, and keeps its keys), a full-screen 565 window in front, activated and
+     * flushed before EGL sees it. Each step that can fail reports in winstep. */
+    uint8_t *wsb = (uint8_t *)A4_WS_OBJ; void *ws = wsb, *wg = wsb + 0x20, *win = wsb + 0x40;
+    for (int i = 0; i < 0x60; i++) wsb[i] = 0;
+    ws_ctor(ws);        s->winstep = 1; if (ws_connect(ws) != 0) return 0;
+    wg_ctor(wg, ws);    s->winstep = 2; if (wg_construct(wg, (uint32_t)wg, 0) != 0) return 0;
+    wg_focus(wg, 0); wn_ordinal(wg, 0);
+    rw_ctor(win, ws);   s->winstep = 3; if (rw_construct(win, wg, (uint32_t)win) != 0) return 0;
+    rw_setdispmode(win, ECOLOR64K);
+    { int pt[2] = { 0, 0 }, sz[2] = { VP_W, VP_H }; rw_setextent(win, pt, sz); }
+    rw_nontransparent(win);
+    rw_activate(win); rw_setvisible(win, 1); ws_flush(ws); s->winstep = 4;
+    int ca[] = { EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_BUFFER_SIZE, 16, EGL_NONE };
+    uint32_t cfg = 0; int ncfg = 0;
+    if (!egl_choose_config(disp, ca, &cfg, 1, &ncfg) || ncfg < 1) return 0; s->winstep = 5;
+    int surf = egl_window_surface(disp, cfg, win, 0); if (!surf) return 0; s->bstep = 4; s->winstep = 6;
+    int ctx  = egl_context(disp, cfg, 0, 0);          if (!ctx)  return 0; s->bstep = 5;
+    s->disp = (uint32_t)disp; s->surf = (uint32_t)surf;
+#else
     int pb[] = { EGL_WIDTH, VP_W, EGL_HEIGHT, VP_H, EGL_NONE, 0, 0 };
     int surf = egl_pbuffer(disp, GLES_CONFIG, pb);  if (!surf) return 0; s->bstep = 4;
     int ctx  = egl_context(disp, GLES_CONFIG, 0, 0);if (!ctx)  return 0; s->bstep = 5;
+#endif
     if (!egl_make_current(disp, surf, surf, ctx))   return 0;       s->bstep = 6;
     gl_viewport(0,0,VP_W,VP_H);
     gl_enable(GL_TEXTURE_2D);
@@ -321,7 +375,7 @@ static void batch_draw(volatile struct glr *s)
  * finish it (~2.4M instructions), so the read should not stall on a real GPU. */
 static void composite_prev(volatile struct glr *s)
 {
-#ifndef A4_NO_BLIT
+#if !defined(A4_NO_BLIT) && !defined(A4_WINDOW)
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
     if (bb && s->pminy <= s->pmaxy) {
     uint32_t *rb = (uint32_t *)A4_GL_READBUF;
@@ -351,8 +405,8 @@ static void composite_prev(volatile struct glr *s)
         }
     }
     }
-#endif /* !A4_NO_BLIT */
-#ifdef A4_NO_BLIT
+#endif /* !A4_NO_BLIT && !A4_WINDOW */
+#if defined(A4_NO_BLIT) || defined(A4_WINDOW)
     (void)s;
 #endif
 }
@@ -377,6 +431,9 @@ void a4_gl_flush(void)
     gl_clear(GL_COLOR_BUFFER_BIT);
     batch_draw(s);                                       /* issue the frame's draws */
     { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a draw GL error */
+#ifdef A4_WINDOW
+    egl_swap((int)s->disp, (int)s->surf);               /* the GPU presents this frame */
+#endif
 
     /* this frame's drawn extent is what composite_prev reads back next frame */
     s->pminy = s->miny; s->pmaxy = s->maxy;

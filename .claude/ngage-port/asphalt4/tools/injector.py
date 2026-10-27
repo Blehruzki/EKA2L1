@@ -57,9 +57,14 @@ GL_IMPORT_DLL = 'libgles_cm.dll'
 GL_IMPORT_ORDINALS = [14, 17, 4, 3, 18, 132, 33, 31, 58, 108,
                       67, 29, 125, 127, 56, 90, 82, 99, 57, 131,
                       120, 39, 54, 116, 123, 68,
-                      1, 55, 48, 35]   # [26] eglChooseConfig [27] glDrawElements
+                      1, 55, 48, 35,   # [26] eglChooseConfig [27] glDrawElements
+                      6, 22]           # [30] eglCreateWindowSurface [31] eglSwapBuffers
                                        # [28] glDepthFunc     [29] glClearDepthx
                                        # must match a4_gl.s a4_gl_iat
+# A4_WINDOW: the window the GPU presents into is our own (a4_gl.c, bringup);
+# these are the a4_ws_iat slots in a4_gl.s, same mechanism as the GL table.
+WS_IMPORT_DLL = 'ws32.dll'
+WS_IMPORT_ORDINALS = [76, 70, 69, 158, 157, 148, 211, 278, 275, 277, 107, 81, 99, 268]
 GL_SCRATCH = 0x00401000         # must match A4_GL_SCRATCH in a4_gl.c
 GL_SCRATCH_SIZE = 0xF000        # GL state + strip readback at 0x403000 + batch buffers
                                 # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as
@@ -162,7 +167,7 @@ def blx_insert(code, off, target_link):
         raise AssertionError('BLX encode check failed: %s %s (wanted blx %s)'
                              % (ins.mnemonic, ins.op_str, want))
 
-def add_gl_import(out, iat_code_off):
+def add_gl_import(out, iat_code_off, dll=GL_IMPORT_DLL, ordinals=GL_IMPORT_ORDINALS):
     """Append a libgles_cm.dll import entry (EABI import section) whose import
     blocks point at the a4_gl_iat slots (code offsets), so the loader resolves
     GL_IMPORT_ORDINALS in place. Rebuilds the import section, shifts the reloc
@@ -188,12 +193,12 @@ def add_gl_import(out, iat_code_off):
     # the new entry's import blocks are the a4_gl_iat slot code offsets; verify
     # each slot currently holds its expected ordinal (rule 4: test the assumption)
     gl_words = []
-    for i, ordinal in enumerate(GL_IMPORT_ORDINALS):
+    for i, ordinal in enumerate(ordinals):
         slot = iat_code_off + 4 * i
         have = u32(out, code_off + slot)
-        assert have == ordinal, 'a4_gl_iat[%d]=%d, expected ord %d' % (i, have, ordinal)
+        assert have == ordinal, '%s iat[%d]=%d, expected ord %d' % (dll, i, have, ordinal)
         gl_words.append(slot)
-    entries.append((GL_IMPORT_DLL.encode('latin1'), gl_words))
+    entries.append((dll.encode('latin1'), gl_words))
 
     # rebuild: [size][entries...][names]; name_off is relative to imp_off
     hdr_bytes = 4
@@ -218,8 +223,8 @@ def add_gl_import(out, iat_code_off):
     struct.pack_into('<I', out, 0x54, dll_count + 1)                        # dll_ref_count
     struct.pack_into('<I', out, 0x70, code_reloc + delta)                  # code reloc offset
     if data_reloc: struct.pack_into('<I', out, 0x74, data_reloc + delta)   # data reloc offset
-    print('import +libgles_cm.dll (%d ords), section %#x -> %#x (dll_ref %d)'
-          % (len(gl_words), len(old_sect), len(content), dll_count + 1))
+    print('import +%s (%d ords), section %#x -> %#x (dll_ref %d)'
+          % (dll, len(gl_words), len(old_sect), len(content), dll_count + 1))
     return out
 
 
@@ -305,6 +310,8 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         if v: struct.pack_into('<I', out, field, v + grow)
     if gl:
         out = add_gl_import(out, syms['a4_gl_iat'] - LINK_BASE)
+        if 'a4_ws_iat' in syms:
+            out = add_gl_import(out, syms['a4_ws_iat'] - LINK_BASE, WS_IMPORT_DLL, WS_IMPORT_ORDINALS)
     out = bytearray(e32crc.fix(bytes(out)))
     open(out_exe, 'wb').write(out)
     print('code %X -> %X (+%d), image %d bytes' % (code_size, len(code), grow, len(out)))

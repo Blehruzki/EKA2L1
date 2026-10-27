@@ -43,8 +43,42 @@ a4_gl_iat:
         .word   55      @ [27] glDrawElements   (batched indexed draw)
         .word   48      @ [28] glDepthFunc
         .word   35      @ [29] glClearDepthx
+        .word   6       @ [30] eglCreateWindowSurface (A4_WINDOW: the GPU presents)
+        .word   22      @ [31] eglSwapBuffers
         .global a4_gl_iat_end
 a4_gl_iat_end:
+
+@ ws32 import address table (A4_WINDOW): the window the GPU presents into is our
+@ own -- a session, a window group that declines focus, a full-screen window --
+@ so nothing of the runtime's has to be found. Ordinals from the window server's
+@ eabi def (WS322U.DEF); the N-Gage DLLs import the same numbers (runtime.dll
+@ 70/76, ngidisplay 81/99/211/277), which is the check that they are 9.2's.
+        .global a4_ws_iat
+        .align  2
+a4_ws_iat:
+        .word   76      @ [0]  RWsSession::RWsSession()
+        .word   70      @ [1]  RWsSession::Connect()
+        .word   69      @ [2]  RWsSession::Flush()
+        .word   158     @ [3]  RWindowGroup::RWindowGroup(RWsSession&)
+        .word   157     @ [4]  RWindowGroup::Construct(TUint32, TBool)
+        .word   148     @ [5]  RWindowGroup::EnableReceiptOfFocus(TBool)
+        .word   211     @ [6]  RWindowTreeNode::SetOrdinalPosition(TInt)
+        .word   278     @ [7]  RWindow::RWindow(RWsSession&)
+        .word   275     @ [8]  RWindow::Construct(const RWindowTreeNode&, TUint32)
+        .word   277     @ [9]  RWindow::SetExtent(const TPoint&, const TSize&)
+        .word   107     @ [10] RWindowBase::Activate()
+        .word   81      @ [11] RWindowBase::SetVisible(TBool)
+        .word   99      @ [12] RWindowBase::SetRequiredDisplayMode(TDisplayMode)
+        .word   268     @ [13] RWindow::SetNonTransparent()
+        .global a4_ws_iat_end
+a4_ws_iat_end:
+        .global a4_ws_iat_ptr
+        .align  2
+a4_ws_iat_ptr:
+        ldr     r0, 4f
+3:      add     r0, pc, r0          @ pc here = 3b + 8 (ARM)
+        bx      lr
+4:      .word   a4_ws_iat - (3b + 8)
 
 @ a4_gl_iat_ptr() -> &a4_gl_iat, computed pc-relatively so the blob stays fully
 @ position independent. A C `extern a4_gl_iat[]` reference compiles to an
