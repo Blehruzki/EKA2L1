@@ -1533,3 +1533,27 @@ edition. Run it with `EKA2L1_EXCLFAULT=1`. Open C install (libc 0x10207369 +
 backend 0x102828d5 + rpipe) remains the prerequisite. Next: use it to read the
 real 3.1 CCoeEnv layout for the window-path (phase 1) GPU work, and to take
 edition-accurate perf numbers.
+
+## Race bench on RM-320 (first time it renders) -- and RM-409 parity
+
+Controlled run (`benchrace.sh`): boot -> menu -> enter race (6x Return) ->
+**hold accelerate** -> sample `FRAMESTAT` instr/post over ~40 s. RM-320 with
+`EKA2L1_EXCLFAULT=1`. instr/frame is host-independent; N95 fps from the
+NOTES.md calibration (115 instructions/us).
+
+| device (edition)        | race frames | median | mean  | p10   | p90    | N95 fps @115/us |
+|-------------------------|-------------|--------|-------|-------|--------|-----------------|
+| RM-320 (N95, 3.1)       | 459         | 9.88M  | 9.55M | 8.07M | 12.07M | 11.6 (9.5-14.3) |
+| RM-409 (5320, 3.2)      | 463         | 9.89M  | 9.72M | 8.25M | 11.96M | 11.6 (9.6-13.9) |
+
+**The two editions render the race at the same per-frame cost (median 9.88M vs
+9.89M, within 0.1%).** So RM-320 is now a faithful rendering oracle, matching
+the long-validated RM-409 bench. The figure agrees with the earlier calibration
+(~9.5M/frame), the user's by-eye 10-15 fps on the real N95, and the emulator's
+own on-screen counter (it showed "12 FPS" mid-race, RM-320). Verified in a
+screenshot that the sample was an actual race (countdown + HUD + traffic).
+
+**Baseline for the GPU work.** The software race costs ~9.9M instr/frame =
+~11.6 fps on the N95. Reaching 45-60 fps means ~2.0-2.6M instr/frame, a 4-5x
+cut -- in line with the inverted-design estimate (~2-3.2M/frame -> ~52-80 fps).
+That is the number to beat.
