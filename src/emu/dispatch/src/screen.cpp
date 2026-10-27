@@ -400,7 +400,13 @@ namespace eka2l1::dispatch {
                 builder.set_texture_filter(scr->dsa_texture, true, filter);
                 builder.set_texture_filter(scr->dsa_texture, false, filter);
 
-                builder.draw_bitmap(scr->dsa_texture, 0, dest_rect, source_rect, eka2l1::vec2(0, 0), rotation_draw, 0);
+                // EKA2L1_NODSA=1: diagnostic -- skip drawing the DSA framebuffer over
+                // the screen, so only the window-server composite is shown. Used to see
+                // whether a window (e.g. the Asphalt 4 GPU present window) composites over
+                // the DSA, which the normal path hides by drawing the DSA last regardless.
+                static const bool no_dsa = (std::getenv("EKA2L1_NODSA") != nullptr);
+                if (!no_dsa)
+                    builder.draw_bitmap(scr->dsa_texture, 0, dest_rect, source_rect, eka2l1::vec2(0, 0), rotation_draw, 0);
                 builder.bind_bitmap(0);
 
                 drivers::command_list retrieved = builder.retrieve_command_list();

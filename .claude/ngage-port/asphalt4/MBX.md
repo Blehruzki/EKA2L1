@@ -1612,3 +1612,41 @@ session) is wired and stable on the N95 (3.1) bench. ws32 ordinals, cone 182,
 the CCoeEnv scan and the EGL window surface are all confirmed on 3.1. Remaining
 phase-1 question (does the window present over the DSA frame) is the phone's to
 answer; then phase 2 (whole 3D pass) and 3 (HUD).
+
+## Phase 1 PROVEN on the bench: the GPU window presents the 3D world (EKA2L1_NODSA)
+
+The one thing the bench "could not show" -- the GPU window presenting over the
+software -- it can now, by removing the emulator gap that hid it. EKA2L1 draws
+the DSA framebuffer over the whole screen on every post regardless of windows in
+front (CLAUDE.md gap: a device aborts/clips the DSA to the visible region). Added
+`EKA2L1_NODSA=1` (`dispatch/src/screen.cpp`): skip drawing the DSA framebuffer, so
+only the window-server composite shows -- which includes our GPU present window.
+
+**Result (RM-320, A4_WINDOW + EXCLFAULT + NODSA, in a race):** the screen shows
+**our window's GPU content** -- the 3D track rendered by the GPU (road, kerbs,
+grass, buildings, trees, lampposts, all the textured triangles a4_gl_draw_prim
+captured), live and moving frame to frame, drawn upright. The sky and other
+undrawn areas are **magenta** = the pbuffer/window SENTINEL clear (pixels the GPU
+never drew). **No car, no HUD, no speedo, no minimap** -- those are the software
+2D layer, which our window does not contain. This is exactly the record's
+phase-1 success picture ("GPU world on screen + no car/HUD/sprites -> phase 1
+works"), now seen on the bench instead of needing the phone.
+
+So, measured and shown on the N95 edition: the EGL window surface is created in
+the app's session (winstep 7), the GPU draws the captured 3D into it, and
+eglSwapBuffers presents it to a real window the window server composites to the
+screen. The GPU-present pipe works end to end.
+
+**What this leaves for the phone and for phases 2-3:**
+- On a device our window is opaque and fullscreen, so it fully covers the DSA --
+  the device shows this same picture (GPU 3D + magenta sky + no HUD). NODSA on the
+  bench faithfully previews that. The phone round is now a confirmation, not a
+  discovery.
+- Magenta sky / missing sprites+HUD is phase 1 BY DESIGN (GPU does the textured
+  3D only). Phase 2 = move the whole 3D pass (incl. sky/background) onto the GPU;
+  phase 3 = the HUD/sprites, or make the window colorkey-transparent on the
+  sentinel so the software layer composites through. Either removes the magenta.
+
+`EKA2L1_NODSA` is a diagnostic (env-gated, off by default); the principled fix
+(clip the DSA to the DSA-owner window's visible region, as a device does) is a
+larger emulator change left for later. Indexed in EMU_PATCHES.md.
