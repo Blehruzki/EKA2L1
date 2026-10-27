@@ -71,7 +71,9 @@ struct a4_fps_state {
 /* The GL build omits the on-screen gauge by default (it would paint over the top
  * HUD banner); -DA4_GAUGE forces it back on for a GL *measurement* build, where
  * reading fps by eye on the phone is the whole point. */
-#if !defined(A4_GL) || defined(A4_GAUGE)
+/* -DA4_FPSBAR: a GL build that keeps the plain fps bar (a device fps number
+ * for the GPU route, over the top HUD banner, like the software measure build). */
+#if !defined(A4_GL) || defined(A4_GAUGE) || defined(A4_FPSBAR)
 #define A4_DRAW_GAUGE 1
 #endif
 
@@ -126,7 +128,7 @@ void a4_fps_tick(tick_fn tc, home_fn ht)
     uint32_t bb = *(volatile uint32_t *)A4_FPS_BB;
     if (bb) {
         volatile uint16_t *fb = (volatile uint16_t *)bb;
-#ifdef A4_GAUGE
+#if defined(A4_GAUGE) && !defined(A4_FPSBAR)
         /* Device GL probe -- two contiguous bands from the top of the back buffer
          * (a contiguous run maps to a contiguous screen region at any stride).
          *
