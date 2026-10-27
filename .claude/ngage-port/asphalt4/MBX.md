@@ -946,3 +946,47 @@ GL window); the MBX driver's per-draw cost (round 0's third row); the logic
 floor (phase 4 may find nothing to trim, leaving ~40). If round 0 lands on
 its third row the GPU route is capped by the driver and the goal of 45 is
 not reachable on this title; the CPU-side rewrites are worth ~10-13%.
+
+## Phase 4 done early: the "remaining 3.3M" itemised (exact PCPROF, no-blit build)
+
+`EKA2L1_PCPROF` on `a4_opaque_noblit` (the textured-opaque mode on the GPU,
+nothing read back), 0.5G instructions after SKIP 6.0G, the idle start-line
+scene, FRAMESTAT median 4.57M/frame in the window (~109 frames). The
+navigation had to be driven off the log: profiling halves the boot rate, and a
+first run pressed its Returns before the menu was up and profiled the menu
+(kept as `prof_menu_noblit.txt`: +298F4/+298D2/+29A9C sprite-painter blocks,
+as round A1 said).
+
+| what | where | share | per frame |
+|---|---|---:|---:|
+| **565 -> 32-bit convert of the whole back buffer for the panel** | `ngibackbuffer.dll +CCB8` (ARM, 10 instr per 2 px, `and 0xf800/0x7e0/0x1f`, 32-bit stores) | 26.2% | **1.20M** |
+| 2D sprite painter (HUD, car/tree sprites) | `+29736` | 14.0% | 0.64M |
+| transparent (colourkey) span filler, still software | `+33964` | 8.6% | 0.39M |
+| 3D pipeline: `+2E1C8` (5.0), `+2ECB4` (1.7), `+2FF60` (1.0), `+2F6FC`, `+300AE` | | 8.7% | 0.40M |
+| another span mode still in software | `+33F8C` | 5.0% | 0.23M |
+| our injected code (capture, texture scan, GL submission, span rewrites) | `+B9F50..+BA358` | 7.1% | 0.32M |
+| textured filler on the colourkey prims we hand back | `+333F4` | 3.1% | 0.14M |
+| 565 blend / translucent fill family | `+522A4`, `+51E44`, `+52E44`, `+52FAA` | 6.5% | 0.30M |
+| `+345E4`, `+349F8`, `+349B0`, `+34B1A` (mesh/transform?) | | 5.5% | 0.25M |
+| `+35D3A`, `+35A28`, `+3598C`, `+35FDA` (physics?) | | 3.0% | 0.14M |
+| `+CE8C`, `+CF6E` | | 1.7% | 0.08M |
+| `+3115C`, `+031246`, `+026E28`, `+050060` | | 3.7% | 0.17M |
+| euser, drtaeabi (division) | | 1.4% | 0.06M |
+| tail | | ~5% | ~0.25M |
+
+**The non-rendering floor at this scene is ~1.0M, not 3.3M.** The "logic"
+share was 100 minus the rendering blocks named in round A1; the rest was
+rendering too, just not in those blocks. The biggest single item, 1.2M, is the
+runtime converting the game's 565 buffer to 32-bit for the panel, every
+present (`+CCB8` is 0.78M a frame in the stock profile, 7%; here it runs ~1.5
+presents a frame, so it is on the runtime's cadence, not the game's). In the
+inverted design the game's buffer is never presented, so that conversion and
+the window server's copy of it both go.
+
+Inverted-design estimate at this scene: keep the ~1.0M floor, the sprite
+painter 0.64M (if the HUD is what it paints; billboards can move to GL), the
+blend fills 0.30M, the 3D transform/sort 0.40M, our submission ~0.3M, the HUD
+upload ~0.4M: **~3.0M a frame** -> 168M/3.0M = **~55 fps**, and ~62 if the
+sprite painter's race work is billboards. The 60 is back on the table, on this
+scene's numbers; a driving profile (AI, physics under load) is next, and the
+device's instr/s figure is the other unknown.
