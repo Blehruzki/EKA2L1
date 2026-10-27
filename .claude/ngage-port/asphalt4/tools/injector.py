@@ -65,6 +65,8 @@ GL_IMPORT_ORDINALS = [14, 17, 4, 3, 18, 132, 33, 31, 58, 108,
 # these are the a4_ws_iat slots in a4_gl.s, same mechanism as the GL table.
 WS_IMPORT_DLL = 'ws32.dll'
 WS_IMPORT_ORDINALS = [76, 70, 69, 158, 157, 148, 211, 278, 275, 277, 107, 81, 99, 268, 212]
+CONE_IMPORT_DLL = 'cone.dll'
+CONE_IMPORT_ORDINALS = [182, 717]   # CCoeEnv::Static(), RootWin(TInt)
 GL_SCRATCH = 0x00401000         # must match A4_GL_SCRATCH in a4_gl.c
 GL_SCRATCH_SIZE = 0xF000        # GL state + strip readback at 0x403000 + batch buffers
                                 # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as
@@ -312,6 +314,8 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         out = add_gl_import(out, syms['a4_gl_iat'] - LINK_BASE)
         if 'a4_ws_iat' in syms:
             out = add_gl_import(out, syms['a4_ws_iat'] - LINK_BASE, WS_IMPORT_DLL, WS_IMPORT_ORDINALS)
+        if 'a4_cone_iat' in syms:
+            out = add_gl_import(out, syms['a4_cone_iat'] - LINK_BASE, CONE_IMPORT_DLL, CONE_IMPORT_ORDINALS)
     out = bytearray(e32crc.fix(bytes(out)))
     open(out_exe, 'wb').write(out)
     print('code %X -> %X (+%d), image %d bytes' % (code_size, len(code), grow, len(out)))

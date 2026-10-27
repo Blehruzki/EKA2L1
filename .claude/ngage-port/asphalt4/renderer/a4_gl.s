@@ -74,6 +74,25 @@ a4_ws_iat:
         .word   212     @ [14] RWindowTreeNode::SetOrdinalPosition(TInt, TInt): position AND priority
         .global a4_ws_iat_end
 a4_ws_iat_end:
+@ cone import address table (A4_WINDOW): CCoeEnv::Static() and RootWin() give the
+@ app's own window-server session and root window group, so the EGL window is
+@ created in the session libGLES_CM uses internally (CCoeEnv::Static()->WsSession),
+@ which a second session is not -- the device's WSERV 6 (invalid window handle).
+        .global a4_cone_iat
+        .align  2
+a4_cone_iat:
+        .word   182     @ [0] CCoeEnv::Static()
+        .word   717     @ [1] CCoeEnv::RootWin(TInt)
+        .global a4_cone_iat_end
+a4_cone_iat_end:
+        .global a4_cone_iat_ptr
+        .align  2
+a4_cone_iat_ptr:
+        ldr     r0, 6f
+5:      add     r0, pc, r0          @ pc here = 5b + 8 (ARM)
+        bx      lr
+6:      .word   a4_cone_iat - (5b + 8)
+
         .global a4_ws_iat_ptr
         .align  2
 a4_ws_iat_ptr:

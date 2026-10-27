@@ -61,14 +61,17 @@
 #define EGL_PIXMAP_BIT 0x0002            /* probe: does the device offer a pixmap config? */
 #define GLES_CONFIG 6u
 #ifdef A4_WINDOW
-/* The GPU presents: an EGL window surface on a window of our own, swapped at
- * the frame end; no pbuffer, no readback. The window-server objects live in
- * the scratch: RWsSession (8 bytes), RWindowGroup (8), RWindow (24 on 9.x:
- * MWsClientClass + TRect iDrawRect), 32 bytes apart. */
+/* The GPU presents through an EGL window surface. The native window must live
+ * in the app's OWN window-server session, because libGLES_CM resolves the
+ * session internally via CCoeEnv::Static()->WsSession(); a window in a second
+ * session is an invalid handle to it (the device's WSERV 6). So we take the
+ * app's session and root group from CCoeEnv (cone Static/RootWin) and create
+ * our RWindow as a child of the app's root group, in the app's session -- the
+ * RWindow object is ours (in scratch), the session and buffer are the app's. */
 #define EGL_WINDOW_BIT 0x0004
 #define EGL_BUFFER_SIZE 0x3020
 #define ECOLOR64K 7                      /* TDisplayMode: the game's 565 surface */
-#define A4_WS_OBJ 0x00402800u
+#define A4_WS_OBJ 0x00402800u            /* our RWindow object (MWsClientClass + TRect) */
 #endif
 /* GL enums */
 #define GL_TRIANGLES 0x0004
@@ -111,6 +114,7 @@ struct glr {
     uint32_t disp, surf, winstep;     /* A4_WINDOW: display, window surface, how far the window got */
     uint32_t wvis;                    /* A4_WINDOW: our window is visible (hidden while the game is in 2D) */
     uint32_t idle2d;                  /* A4_WINDOW: consecutive present hooks with no 3D primitives */
+    uint32_t env, grp, appbuf, appsess; /* A4_WINDOW diag: CCoeEnv, root group, shared RWsBuffer, app session */
     uint32_t cache_ptr[NCACHE];
     uint32_t cache_id[NCACHE];
     uint32_t cache_tr[NCACHE];         /* 1 = texture is a colorkey (transparent) sprite */
@@ -156,16 +160,13 @@ static uint32_t gl_geterror(void){ return ((uint32_t(*)(void))F(25))(); }   /* d
 static int   egl_choose_config(int d,const int*a,uint32_t*c,int n,int*num){ return ((int(*)(int,const int*,uint32_t*,int,int*))F(26))(d,a,c,n,num); }
 #ifdef A4_WINDOW
 extern volatile uint32_t *a4_ws_iat_ptr(void);
+extern volatile uint32_t *a4_cone_iat_ptr(void);
 #define W(i) (a4_ws_iat_ptr()[i])
-static void ws_ctor(void *w){ ((void(*)(void*))W(0))(w); }
-static int  ws_connect(void *w){ return ((int(*)(void*))W(1))(w); }
+#define C(i) (a4_cone_iat_ptr()[i])
+static void *coe_static(void){ return ((void*(*)(void))C(0))(); }                 /* CCoeEnv::Static() */
+static void *coe_rootwin(void *env, int scr){ return ((void*(*)(void*,int))C(1))(env, scr); }  /* RootWin(TInt) */
 static int  ws_flush(void *w){ return ((int(*)(void*))W(2))(w); }
-static void wg_ctor(void *g, void *w){ ((void(*)(void*,void*))W(3))(g, w); }
-static int  wg_construct(void *g, uint32_t h, int focusable){ return ((int(*)(void*,uint32_t,int))W(4))(g, h, focusable); }
-static void wg_focus(void *g, int on){ ((void(*)(void*,int))W(5))(g, on); }
-static void wn_ordinal(void *n, int pos, int pri){ ((void(*)(void*,int,int))W(14))(n, pos, pri); }   /* position and priority */
 static void gl_disable(uint32_t c){ ((void(*)(uint32_t))F(32))(c); }
-static void rw_ctor(void *r, void *w){ ((void(*)(void*,void*))W(7))(r, w); }
 static int  rw_construct(void *r, void *parent, uint32_t h){ return ((int(*)(void*,void*,uint32_t))W(8))(r, parent, h); }
 static void rw_setextent(void *r, const int *pt, const int *sz){ ((void(*)(void*,const int*,const int*))W(9))(r, pt, sz); }
 static void rw_activate(void *r){ ((void(*)(void*))W(10))(r); }
@@ -188,23 +189,39 @@ static int bringup(volatile struct glr *s)
       uint32_t pcfg = 0; int pnum = 0;
       if (egl_choose_config(disp, pca, &pcfg, 1, &pnum) && pnum > 0) s->pixmapcap = 1; }
 #ifdef A4_WINDOW
-    /* our own window: session, a group that never takes focus (the game's keeps
-     * it, and keeps its keys), a full-screen 565 window in front, activated and
-     * flushed before EGL sees it. Each step that can fail reports in winstep. */
-    uint8_t *wsb = (uint8_t *)A4_WS_OBJ; void *ws = wsb, *wg = wsb + 0x20, *win = wsb + 0x40;
-    for (int i = 0; i < 0x60; i++) wsb[i] = 0;
-    ws_ctor(ws);        s->winstep = 1; if (ws_connect(ws) != 0) return 0;
-    wg_ctor(wg, ws);    s->winstep = 2; if (wg_construct(wg, (uint32_t)wg, 0) != 0) return 0;
-    wg_focus(wg, 0); wn_ordinal(wg, 0, 1000);           /* front, above the game's group (ECoeWinPriorityAlwaysAtFront) */
-    rw_ctor(win, ws);   s->winstep = 3; if (rw_construct(win, wg, (uint32_t)win) != 0) return 0;
+    /* The native window must be in the app's own session. Take the session and
+     * root group from CCoeEnv; create our RWindow as a child of the root group,
+     * sharing the app's RWsBuffer. The window object is ours (scratch), so the
+     * app's framework never sees it, but the server and EGL do, in the right
+     * session. The app's own window/DSA region is occluded where ours sits -- on
+     * the device the runtime's DSA copy then stops there (CLAUDE.md gap: the
+     * bench draws the DSA regardless, so the bench cannot show this). */
+    void *env = coe_static();           s->winstep = 1; if (!env) return 0;
+    void *grp = coe_rootwin(env, 0);    s->winstep = 2; if (!grp) return 0;
+    uint32_t appbuf = ((volatile uint32_t *)grp)[1];    /* RWsBuffer* shared by the session */
+    if (!appbuf) return 0;
+    /* find the app's RWsSession inside CCoeEnv: a value member whose iBuffer
+     * (second word) is this same RWsBuffer; search a bounded window of CCoeEnv. */
+    uint32_t appsess = 0;
+    for (int o = 0; o < 0x200; o += 4) {
+        if (((volatile uint32_t *)env)[o / 4] == appbuf && o >= 4) { appsess = (uint32_t)env + o - 4; break; }
+    }
+    s->env = (uint32_t)env; s->grp = (uint32_t)grp; s->appbuf = appbuf; s->appsess = appsess;
+    if (!appsess) return 0;             s->winstep = 3;
+    /* build our RWindow object: MWsClientClass {iWsHandle=0, iBuffer=appbuf} */
+    uint8_t *wsb = (uint8_t *)A4_WS_OBJ; void *win = wsb;
+    for (int i = 0; i < 0x20; i++) wsb[i] = 0;
+    ((volatile uint32_t *)win)[1] = appbuf;
+    if (rw_construct(win, grp, A4_GL_MAGIC) != 0) return 0;   s->winstep = 4;
     rw_setdispmode(win, ECOLOR64K);
     { int pt[2] = { 0, 0 }, sz[2] = { VP_W, VP_H }; rw_setextent(win, pt, sz); }
     rw_nontransparent(win);
-    rw_activate(win); rw_setvisible(win, 1); ws_flush(ws); s->winstep = 4;
+    rw_activate(win); rw_setvisible(win, 1);
+    ws_flush((void *)appsess);          s->winstep = 5;
     int ca[] = { EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_BUFFER_SIZE, 16, EGL_NONE };
     uint32_t cfg = 0; int ncfg = 0;
-    if (!egl_choose_config(disp, ca, &cfg, 1, &ncfg) || ncfg < 1) return 0; s->winstep = 5;
-    int surf = egl_window_surface(disp, cfg, win, 0); if (!surf) return 0; s->bstep = 4; s->winstep = 6;
+    if (!egl_choose_config(disp, ca, &cfg, 1, &ncfg) || ncfg < 1) return 0; s->winstep = 6;
+    int surf = egl_window_surface(disp, cfg, win, 0); if (!surf) return 0; s->bstep = 4; s->winstep = 7;
     int ctx  = egl_context(disp, cfg, 0, 0);          if (!ctx)  return 0; s->bstep = 5;
     s->disp = (uint32_t)disp; s->surf = (uint32_t)surf; s->wvis = 1;
 #else
@@ -530,7 +547,7 @@ int a4_gl_frame(uint32_t fps)
     int presented = 0;
 #ifdef A4_WINDOW
     if (s->surf) {
-        void *ws = (void *)A4_WS_OBJ, *win = (uint8_t *)A4_WS_OBJ + 0x40;
+        void *appsess = (void *)s->appsess, *win = (void *)A4_WS_OBJ;
         /* The present hook fires more than once a game frame (the runtime's
          * cadence, ~1.5x in the profile), so a hook with no primitives is not a
          * 2D frame; only a run of them is (a menu). While our window is up the
@@ -538,11 +555,11 @@ int a4_gl_frame(uint32_t fps)
          * the panel between two of ours. */
         if (had) {                                      /* a 3D frame: the GPU presents */
             s->idle2d = 0;
-            if (!s->wvis) { rw_setvisible(win, 1); ws_flush(ws); s->wvis = 1; }
+            if (!s->wvis) { rw_setvisible(win, 1); ws_flush(appsess); s->wvis = 1; }
             bar_draw(fps);
             egl_swap((int)s->disp, (int)s->surf);
         } else if (++s->idle2d > 30u && s->wvis) {       /* 2D for a while (menu): the game presents */
-            rw_setvisible(win, 0); ws_flush(ws); s->wvis = 0;
+            rw_setvisible(win, 0); ws_flush(appsess); s->wvis = 0;
         }
         presented = (int)s->wvis;
     }
