@@ -1371,3 +1371,24 @@ here (only Open C *stub* SIS in the 5320 ROM, and the wrong bundled libc). To
 proceed, either the Open C `stdlibs` SIS for S60 3.1 is needed, or the 3.1
 framework layout is extracted statically from the N95's own `cone.dll`
 (no boot) to fix the window scan directly. Pending the user's call.
+
+## Open C supplied -> game loads, blocked on one file: backend.dll (0x102828d5)
+
+The user supplied the N95's Open C runtime (libc 0x10207369/596 exports, libm,
+libz, libpthread, libstdcpp, libssl, libcrypto, libcrypt, libdl). Placed on
+E:\sys\bin (the loader searches the game's own drive first, not C:). Result:
+the game loads its whole dependency tree -- 50 modules -- and gets deep into
+Open C init before faulting. Each layer resolved revealed the next:
+  KERN-EXEC 3 (no libc) -> USER 7 (wrong bundled libc 0x20002339) ->
+  libc loads -> crash in libc init (missing backend) -> add bundle backend ->
+  crash INSIDE backend.
+
+The remaining block: **Open C libc imports `backend{...}[102828d5].dll`** --
+the Open C POSIX backend. It is NOT in the supplied zip. The game package
+bundles a *different* `backend.dll` (UID **0x20001074**, the NAF Bluetooth/SDP
+backend: imports bluetooth/sdpagent/bteng), which matches by name and crashes
+(wrong ordinals) when libc calls into it. The correct backend
+(UID 0x102828d5) exists only XIP-baked in the 5320 ROM, which cannot be
+relocated to RM-320. So one file is needed from the user's N95 Open C install:
+**backend.dll, UID 0x102828d5** (part of openc_stdlibs). With it the chain
+should complete.
