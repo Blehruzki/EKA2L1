@@ -95,8 +95,9 @@ struct glr {
     uint32_t last_prims;              /* prims of the last completed frame (device probe) */
     uint32_t depthcfg;                /* unused in stage 6 (no depth); kept for the probe */
     uint32_t pixmapcap;               /* 1 = device offers a pixmap-capable EGL config */
-    uint32_t miny, maxy;              /* screen-row extent the GPU drew this frame (top-down);
-                                       * the readback covers only these rows */
+    uint32_t miny, maxy;              /* screen-row extent the GPU drew this frame (top-down) */
+    uint32_t pminy, pmaxy;            /* extent of the PREVIOUS frame -- what the pipelined
+                                       * readback composites (it is what the pbuffer holds) */
     uint32_t cache_ptr[NCACHE];
     uint32_t cache_id[NCACHE];
     uint32_t cache_tr[NCACHE];         /* 1 = texture is a colorkey (transparent) sprite */
@@ -118,7 +119,8 @@ static int   egl_make_current(int d,int r,int w,int c){ return ((int(*)(int,int,
 static void  gl_viewport(int x,int y,int w,int h){ ((void(*)(int,int,int,int))F(5))(x,y,w,h); }
 static void  gl_clearcolorx(int r,int g,int b,int a){ ((void(*)(int,int,int,int))F(6))(r,g,b,a); }
 static void  gl_clear(uint32_t m){ ((void(*)(uint32_t))F(7))(m); }
-static void  gl_finish(void){ ((void(*)(void))F(8))(); }
+static void  gl_finish(void) __attribute__((unused));
+static void  gl_finish(void){ ((void(*)(void))F(8))(); }   /* unused since the pipelined readback; kept for A/B builds */
 static void  gl_readpixels(int x,int y,int w,int h,uint32_t f,uint32_t t,void*p){ ((void(*)(int,int,int,int,uint32_t,uint32_t,void*))F(9))(x,y,w,h,f,t,p); }
 static void  gl_gentex(int n,uint32_t*t){ ((void(*)(int,uint32_t*))F(10))(n,t); }
 static void  gl_bindtex(uint32_t tg,uint32_t t){ ((void(*)(uint32_t,uint32_t))F(11))(tg,t); }
@@ -163,6 +165,10 @@ static int bringup(volatile struct glr *s)
     gl_matrixmode(GL_PROJECTION); gl_loadidentity();
     gl_orthox(0, VP_W*FX, VP_H*FX, 0, -FX, FX);      /* top-left origin, 2D (no depth) */
     gl_matrixmode(GL_MODELVIEW); gl_loadidentity();
+    gl_clearcolorx(FX, 0, FX, FX);                   /* sentinel-clear once, so the first pipelined
+                                                      * readback (before any draw) is all-sentinel */
+    gl_clear(GL_COLOR_BUFFER_BIT);
+    s->pminy = VP_H; s->pmaxy = 0;                   /* nothing to read back yet */
     { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a bring-up GL error */
     return 1;
 }
@@ -215,8 +221,8 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     if (s->prims == 0) {                                /* first prim of the frame */
         s->flushed = 0;
         s->miny = VP_H; s->maxy = 0;                    /* empty drawn-row extent */
-        gl_clearcolorx(FX, 0, FX, FX);                  /* magenta sentinel (see SENTINEL_*) */
-        gl_clear(GL_COLOR_BUFFER_BIT);
+        /* no clear here: the pbuffer still holds the previous frame, which the
+         * pipelined readback in a4_gl_flush composites before clearing+drawing. */
     }
 
     uint32_t tsaddr = desc[0x30 / 4];
@@ -309,27 +315,23 @@ void a4_gl_flush(void)
     s->flushed = 1;
     s->last_prims = s->prims;                            /* frame's prim count (device probe) */
 
-    batch_draw(s);                                       /* issue the frame's draws */
-    { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a draw GL error */
-
-#ifdef A4_NO_BLIT
-    /* measurement build: skip the readback+blit to isolate the guest CPU cost.
-     * No glFinish either -- it would just stall the CPU on the GPU here. */
-    return;
-#endif
-    gl_finish();                                         /* needed before glReadPixels */
+    /* PIPELINED READBACK. The readback's cost is a per-frame sync (~2.6M guest
+     * instr on the bench; the tile-flush + pipeline stall on the MBX): reading
+     * the frame we *just* drew forces the GPU to finish it. So read back the
+     * PREVIOUS frame instead -- it had a whole frame of CPU work to complete on
+     * the GPU, so the read does not stall -- then clear and draw this frame,
+     * which completes in the background during the next frame. One pbuffer, no
+     * glFinish, one frame of 3D latency (~38 ms at 26 fps). */
+#ifndef A4_NO_BLIT
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
-    if (!bb) return;
+    if (bb && s->pminy <= s->pmaxy) {                    /* 1. composite the previous frame */
     uint32_t *rb = (uint32_t *)A4_GL_READBUF;
     volatile uint16_t *fb = (volatile uint16_t *)bb;
-    /* read the pbuffer back in horizontal strips through a small buffer. GL is
-     * bottom-up; flip to the top-left surface. */
-    /* Read back only the strips covering the rows the GPU drew. Screen rows are
+    /* strips covering only the rows the previous frame drew. Screen rows are
      * top-down, GL rows bottom-up: screen [miny,maxy] -> GL [H-1-maxy, H-1-miny].
      * y0 steps on STRIP multiples and VP_H is one, so a strip never over-reads. */
-    if (s->miny > s->maxy) return;                       /* nothing drawn */
-    int gl_lo = VP_H - 1 - (int)s->maxy; if (gl_lo < 0) gl_lo = 0;
-    int gl_hi = VP_H - 1 - (int)s->miny; if (gl_hi > VP_H - 1) gl_hi = VP_H - 1;
+    int gl_lo = VP_H - 1 - (int)s->pmaxy; if (gl_lo < 0) gl_lo = 0;
+    int gl_hi = VP_H - 1 - (int)s->pminy; if (gl_hi > VP_H - 1) gl_hi = VP_H - 1;
     for (int y0 = (gl_lo / STRIP) * STRIP; y0 <= gl_hi; y0 += STRIP) {
         gl_readpixels(0, y0, VP_W, STRIP, GL_RGBA, GL_UNSIGNED_BYTE, rb);
 #ifdef A4_READBACK_ONLY
@@ -349,6 +351,18 @@ void a4_gl_flush(void)
             }
         }
     }
+    }
+#endif /* !A4_NO_BLIT */
+
+    /* 2. clear, then draw THIS frame; it finishes on the GPU while the CPU does
+     * the next frame's work, and the next flush reads it back without waiting. */
+    gl_clearcolorx(FX, 0, FX, FX);                       /* magenta sentinel (see SENTINEL_*) */
+    gl_clear(GL_COLOR_BUFFER_BIT);
+    batch_draw(s);                                       /* issue the frame's draws */
+    { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a draw GL error */
+
+    /* 3. this frame's drawn extent is what the next flush composites */
+    s->pminy = s->miny; s->pmaxy = s->maxy;
 }
 
 /* The frame's first 2D translucent fill marks the end of the 3D pass: composite

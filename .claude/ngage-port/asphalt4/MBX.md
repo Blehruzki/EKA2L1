@@ -596,14 +596,91 @@ On the N95 that is worse still: each glReadPixels forces a full tile-flush and
 pipeline sync on the tile-based MBX, and `STRIP=16` (chosen to keep the readback
 buffer tiny in .bss) makes that 15 syncs a frame.
 
-So the lever is not the blit and not zero-copy (which the N95 lacks): **cut the
-number and extent of readbacks.** Step 1 (no memory growth): track the screen-row
-extent the GPU drew each frame (`miny/maxy`) and read back only the strips
-covering it -- the road is the bottom ~half, so roughly half the calls. Step 2:
-fewer, larger strips (a bigger readback buffer) and/or 565 readback (half the
-bytes, no 32->16 conversion; device-plausible via the ES1.1 implementation read
-format, but EKA2L1 rejects non-RGBA/UBYTE reads from the default framebuffer --
-a one-line emulator tweak to bench it).
+**Mechanism, pinned by two more deterministic runs.** Row-range readback (only
+the rows the GPU drew) changed nothing (8.21M) -- but a `glr` memsnap shows the
+drawn extent at that scene is rows 17..239, **92% of the screen**, so no strips
+were saved; the run was the wrong scene, not a refutation. The clean isolation
+is more calls over the same rows: `STRIP=8` (30 calls) cost **8.80M** vs ~8.2M
+for 15 -- only ~0.6M more, ~40K per call. So per-call overhead is real but
+small, and the dominant **~2.6M is a fixed per-frame cost**: a **per-frame sync**.
+Reading back the frame we *just* drew forces the GPU to finish it (the forced
+render on the bench; the tile-flush + pipeline stall on the MBX). Trimming
+strips, rows or bytes cannot touch it.
+
+**The fix: pipelined (one-frame-deferred) readback.** At each flush, read back
+and composite the *previous* frame -- it had a whole frame of CPU work to finish
+on the GPU, so the read does not stall -- then clear and draw this frame, which
+completes in the background. One pbuffer, no `glFinish`, one frame of 3D
+latency (~38 ms at 26 fps, imperceptible). Implemented in `a4_gl_flush`
+(`pminy/pmaxy` carry the previous frame's extent; the sentinel clear moves to
+after the readback, with one clear at bring-up so the first read is
+all-sentinel). Expected on the bench: composite falls from ~8.2M toward no-blit
+(4.96M) + the ~0.6M per-call term -- the offload's 3.15M saving realised rather
+than handed back. Caveat: if the bench's software GL renders lazily *on* the
+readback's flush, the bench may still pay the render there even though a real
+GPU would not; the device A/B is the ground truth either way.
+
+**Result: pipelined = 8.03M (n=115), composite 8.17M.** The bench does not
+move, and the emulator's source says why it cannot: `gl_read_pixels_emu`
+(`gles2.cpp:2817`) calls `flush_to_driver` and then `read_bitmap`, a
+`send_sync_command` that blocks the guest's host thread on a condvar until the
+driver thread has run *every queued command* (`itc.cpp:31`). The draws are
+queued, not executed, until that flush; llvmpipe rasterises at the flush. So on
+the bench the previous frame's draws are still executed inside the readback,
+whichever frame is read -- there is no GPU running concurrently with the guest
+to pipeline against. The ~2.6M "per-frame" cost is host wall time inside that
+blocking call, seen by the guest as extra timer/wserv work per frame. The
+device has a real asynchronous GPU; only the device A/B
+(`a4_opaque` vs `a4_opaque_noblit`, and `a4_pipelined` vs `a4_opaque`) can say
+whether the readback is its cost too. Pipelined build renders correctly on the
+bench (`idle_cmp_pipelined.png`: road, grass, trees, opponents).
+
+## Re-analysis of the engine plan: what was overlooked
+
+1. **The ceiling.** The race frame is ~9.5M instr: ~64% rendering, the rest
+   (~3.3M) logic, physics, AI, sound and the long tail. The phone runs ~168M
+   instr/s at the measured 17.7 fps. With **all** rendering offloaded for
+   free and a zero-cost composite, that is 168/3.3 = ~50 fps. With *any*
+   readback composite (3.2M here) it is ~25 fps. **45+ fps is reachable only
+   with no readback at all**, and only with the whole rendering pass gone,
+   not one mode of eight.
+2. **The composite's direction is wrong for a tile-based GPU.** GPU -> CPU is
+   the one transfer the MBX is worst at (tile flush + pipeline sync + a copy
+   out of the render target through the driver), and it is the only direction
+   that needs the GPU to be *finished*. CPU -> GPU (a `glTexSubImage2D` of a
+   320x240 layer, ~150 KB) is the cheap direction and stalls nothing. The
+   design should be inverted: **the GPU is the presenter** -- window surface,
+   `eglSwapBuffers` -- and whatever stays in software is uploaded as a texture
+   and drawn as a full-screen quad. No `glReadPixels`, no sentinel blit, and
+   the game's own back-buffer-to-panel copy (`ngibackbuffer.dll +CCB8`, 7%)
+   becomes dead.
+3. **Partial offload breaks painter's order; full offload keeps it for free.**
+   Lib3D has no z-buffer: it sorts faces and paints in order. Offloading one
+   mode and merging the GPU layer wholesale onto software pixels *is* the
+   floor-glitch and transparency class of bugs (stages 5-6a). GL draws in
+   submission order, which is painter's order, so offloading **every** 3D mode
+   preserves correctness with no depth test at all, and leaves only the 2D/HUD
+   pass in software -- drawn after the flush point, so it is a clean top layer.
+4. **The window.** The pixmap probe was red, so a window surface is the only
+   zero-copy exit, and the game owns no `RWindow` (it lives in `runtime.dll` /
+   `ngibackbuffer.dll`, which imports WS32). But the platform's own GL path,
+   `ngiOpenGLControl.dll`, exists precisely to hand an N-Gage title an EGL
+   window -- the supported route, which the game declined. Research item:
+   how `ngibackbuffer` presents (DSA vs window blit) and where its `RWindow`
+   is, or whether `ngiOpenGLControl` can be brought up beside it.
+5. **The HUD layer.** With the 3D pass fully on the GPU the software buffer
+   holds only what the 2D pass draws. Clear it to a key colour at frame start
+   (~40-80K instr), convert 565 -> 5551 with alpha 0 on the key (~300K for
+   76.8K px, ES 1.1 has no colour key), upload, draw over the scene. ~0.4M a
+   frame against the 3.2M readback.
+
+Estimate for the inverted design: 3.3M logic + ~0.4M HUD layer + ~0.3M GL
+submission (~40-60 batched draw calls) = ~4.0M a frame, ~2.4x stock, **~40-42
+fps at phone speed** on the current numbers -- near the 45 target, not over
+it, unless the long tail of the "logic" share has rendering in it still (it
+has not been itemised; `EKA2L1_PCPROF` can). What the current numbers cannot
+settle: the MBX driver's per-draw-call cost on the N95, and the device's
+readback cost; the A/B pair in the user's hands answers the second.
 
 ## The N95's MBX, from the datasheets (why the GPU route is right)
 
