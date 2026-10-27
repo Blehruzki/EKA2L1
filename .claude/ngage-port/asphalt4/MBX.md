@@ -1238,3 +1238,50 @@ window") by tracing/memsnapping ngidisplay around its `CreateWindowL`, and
 bind the EGL window surface to that handle instead of a window of our own.
 That removes the second session, the focus juggling and the front-priority
 group -- all of which the device had to accept and one of which it refused.
+
+## Phase 1, take 2: the window in the app's own session (WSERV 6 resolved)
+
+The device WSERV 6 was a window built in a SECOND window-server session.
+Symbian's `libGLES_CM` resolves the session internally via
+`CCoeEnv::Static()->WsSession()`, so a window in any other session is an
+invalid handle to it. Fix: create the EGL window in the app's OWN session.
+
+Found by tracing (bench, stock build): the app window the game's DSA uses is
+`CDirectScreenAccess::NewL`'s 3rd arg (r2) -- a real `RWindow` (iBuffer ==
+session iBuffer, the SYMBIAN.md test). But the only pointer to it is the DSA
+object's `iWindow`, with no stable root reachable from the game exe. And the
+game exe has no cone/ws32/EGL imports -- the window flows framework -> runtime
+-> ngibackbuffer. So we take the app's session and root group from `CCoeEnv`
+instead.
+
+`CCoeEnv::Static()` (cone 182) resolves on the bench; `RootWin` (717) does
+**not** (slot 0, though 717 is in the ROM cone's 729 exports) -- an emulator
+resolver gap at that ordinal. So we read `CCoeEnv`'s `iWsSession` and
+`iRootWin` by **content, not offset**: the bench ROM is RM-409 (Nokia 5320,
+S60 **3.2**), a different edition from the N95 (**3.1**), and private offsets
+differ across editions (SYMBIAN.md), so a measured offset would be wrong on
+the phone. The scan (bringup, `a4_gl.c`): the RWsSession is the member with a
+heap `iBuffer` at word+1 and a kernel handle (>=0x40000000) at word+2; the
+RWindowGroup is the member with a window-server handle (nonzero, <0x80000) at
+word+0 and the same `iBuffer`. Our `RWindow` is built as a child of that group,
+sharing the app's `RWsBuffer`; the object is ours (scratch), the session and
+buffer the app's.
+
+Bench (RM-409): `winstep 7`, EGL window surface created (`surf=1`), `errc 0`,
+7481 frames, no crash; env/session/group/buffer all sane
+(0x900358/0x900384/0x900390/0x900a40). As far as the bench can go -- it draws
+the DSA framebuffer regardless of our window (the CLAUDE.md gap), so it cannot
+show the window itself.
+
+**Device test (`a4_window`, `-DA4_FPSBAR`):** a winstep bar is drawn on the
+bottom row of the SOFTWARE buffer every frame -- occluded by the GPU window
+when it presents, visible when it does not. Read it:
+- **GPU world on screen (road/hills/sky) + fps bar, no car/HUD/trees** -> phase
+  1 works; the scan ported to 3.1. On to phase 2 (whole 3D pass) and 3 (HUD).
+- **software game + GREEN bottom bar** -> window up (winstep 7) but not
+  presenting: EGL/DSA interaction, not the handle.
+- **software game + YELLOW bar** -> a bring-up step mid-way (bar length =
+  winstep*8 px: 7 steps = 56 px).
+- **software game + RED bar** -> the scan bailed on 3.1 (0xC0 cone Static
+  missing, 0xC2 no session matched the heuristic, 0xC3 no group); the length
+  encodes which, and the handle/heap heuristics need the N95's encodings.

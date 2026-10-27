@@ -46,7 +46,8 @@
 typedef uint32_t (*tick_fn)(void);
 typedef int (*home_fn)(void *ttime);    /* TTime::HomeTime(this): fills 8-byte us */
 
-int a4_gl_frame(uint32_t fps);           /* returns 1 when the GPU presented (skip the game's present) */                 /* MBX frame flush (renderer/a4_gl.c); self-gated */
+int a4_gl_frame(uint32_t fps);           /* returns 1 when the GPU presented (skip the game's present) */
+int a4_gl_winstep(void);                  /* A4_WINDOW bring-up progress (diagnostic) */                 /* MBX frame flush (renderer/a4_gl.c); self-gated */
 #ifdef A4_GAUGE
 int  a4_gl_state(void);                 /* 0 not-linked,1 no-bringup,2-6 step,7 up */
 int  a4_gl_prims(void);                 /* triangles the GPU path took last frame */
@@ -101,6 +102,23 @@ int a4_fps_tick(tick_fn tc, home_fn ht)
     }
 
     int gpu = a4_gl_frame(s->disp);     /* MBX: draw/present the GPU frame; no-op unless GL linked */
+#ifdef A4_WINDOW
+    /* Always paint a short winstep bar at the bottom-left of the SOFTWARE back
+     * buffer. When the GPU window is up and presenting it occludes this (the
+     * device shows the GPU frame); when bring-up bailed, the software screen is
+     * what the panel shows, and this bar reports how far it got. Rows of 320 px
+     * at the very bottom: length = winstep, colour by outcome. */
+    { uint32_t bb = *(volatile uint32_t *)A4_FPS_BB;
+      if (bb) {
+        volatile uint16_t *fb = (volatile uint16_t *)bb;
+        int ws = a4_gl_winstep();
+        uint16_t col = (ws == 7) ? 0x07E0u : (ws >= 0xC0 ? 0xF800u : 0xFFE0u); /* green ok / red bail / yellow mid */
+        uint32_t row = 239u * 320u;                     /* bottom row of a 320x240 surface */
+        for (uint32_t i = 0; i < 320u; i++) fb[row + i] = 0u;           /* clear the row */
+        uint32_t n = ((uint32_t)(ws & 0xFF)) * 8u; if (n > 320u) n = 320u;
+        for (uint32_t i = 0; i < n; i++) fb[row + i] = col;             /* length = winstep*8 */
+      } }
+#endif
 
     uint32_t dt = tick - s->last_tick;
     s->last_tick = tick;

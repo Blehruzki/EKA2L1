@@ -523,6 +523,18 @@ int a4_gl_pixmapcap(void)
     return (int)s->pixmapcap;
 }
 
+/* A4_WINDOW diagnostic: how far window bring-up got. 0 = not entered; 7 = the
+ * EGL window surface is up; 0xC0..0xC3 = a bring-up step bailed (cone Static
+ * missing / no session found / no group found); see bringup(). */
+int a4_gl_winstep(void)
+{
+    volatile uint32_t *iat = a4_gl_iat_ptr();
+    if (iat[0] < 0x10000u) return 0;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    if (s->up != A4_GL_MAGIC && s->winstep == 0) return 0;
+    return (int)s->winstep;
+}
+
 #ifdef A4_WINDOW
 /* The fps bar as GL: untextured quads along the top rows of the window, the
  * same scale as the software bar (4 px per fps, red tick at 30, white at 15
