@@ -2033,3 +2033,40 @@ kept:
 
 Build: a4_backup565.exe, A4_WINDOW+A4_PERSP+A4_BACKUP, sha256
 38717eea9ded7ef170b1d6c2153851cd712a0375d69c83be64c17c2ac967d5a7.
+
+## Thorough review of phone round 1: the window's GPU content is NOT shown on device
+
+Re-examined the round-1 video frame-by-frame at 10 fps.
+- The glitch alternates at ~1.2 s between (A) a recognisable scene with a fine
+  checkerboard mesh and (B) a washed-out, vertically-smeared frame. The owner's
+  "every second or so it tries a normal scene then goes back glitching" is this A/B
+  cycle.
+- **No magenta sentinel anywhere, including in the clear (A) frames.** Measured the
+  sky region: software frame (t=10) blue 82% / magenta 0%; glitch "clear" frames
+  (t=17.5, 26.5) blue 78-88% / magenta 0%. On the BENCH the GPU sky is always
+  magenta (a huge region). Its total absence on device is decisive.
+
+Conclusion: the backed-up window's EGL content is **not being presented on the
+device**. What is on screen is the game's own software race (blue sky), and our
+window only corrupts it -- a screen-door mesh plus a ~1.2 s fight. The game draws
+via **CDirectScreenAccess (direct to the screen framebuffer, bypassing the window
+server)**; the bench hid this because EKA2L1 does not abort/clip DSA under a
+covering window (CLAUDE.md gap) and our NODSA switch suppressed the DSA entirely, so
+our window had the screen to itself. On hardware the live DSA overwrites/fights our
+window, and the EGL window-surface content never wins. So "does the N95 present a
+backed-up EGL window surface?" is, in the presence of the live DSA, effectively NO.
+
+The opaque-565 fix (v2) addresses the mesh's alpha but not this: it cannot make the
+GPU content win against the DSA. v2 is still worth one run as a clean confirm (its
+kept magenta sentinel: magenta on screen => content IS presented; blue mesh =>
+confirmed not).
+
+Implication: a separate window competing with the game's DSA is the wrong
+architecture on device. The device-correct present is the **pbuffer + readback +
+sentinel-masked blit into the game's OWN framebuffer** (composite_prev, the
+pre-window path): the GPU 3D replaces the software fill in the buffer the game
+already posts via DSA, so there is no second surface to fight. It needs no NODSA to
+validate -- the bench shows the real composite through the game's DSA, matching the
+device. Open cost: the per-frame glReadPixels (the readback the window path existed
+to avoid) -- correctness first, then measure whether MBX readback meets the speed
+goal.
