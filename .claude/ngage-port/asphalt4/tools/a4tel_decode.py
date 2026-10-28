@@ -4,13 +4,17 @@ import sys, struct, os
 from PIL import Image
 NAMES=['magic','ver','capidx','fcount','W','H','stride','fbbytes','bb','up','frames',
        'prims','errc','ntex','bstep','last_prims','winstep','wvis','idle2d','miny','maxy',
-       'pminy','pmaxy','fps','min_dt','max_dt','fps_bytes']
+       'pminy','pmaxy','fps','min_dt','max_dt','fps_bytes',
+       'gl_renders','gl_calls','gl_tris','gl_maxcalls','gl_lastcalls']
 for fn in sys.argv[1:]:
     d=open(fn,'rb').read()
     if len(d)<128: print(fn,'too short'); continue
     h=struct.unpack('<32I',d[:128])
     print('\n%s (%d bytes)'%(fn,len(d)))
     for i,n in enumerate(NAMES): print('  %-10s %d'%(n,h[i]))
+    if h[27]:
+        print('  GL census: %d renders, %.0f draw calls/render, %.0f triangles/render, max %d calls, last %d'
+              % (h[27], h[28]/h[27], h[29]/h[27], h[30], h[31]))
     ver=h[1]; fpsb=h[26] if ver>=3 else 0; fboff=128+fpsb
     if fpsb>=560:
         fs=struct.unpack('<140I', d[128:128+560])

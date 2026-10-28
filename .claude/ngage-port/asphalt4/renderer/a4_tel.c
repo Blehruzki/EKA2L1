@@ -143,6 +143,11 @@ void a4_tel_tick(uint32_t had)
     h[i++] = fp[5];  /* fps (a4_fps disp: frames in the last 1s window) */
     h[i++] = fp[6];  /* min_dt */   h[i++] = fp[7];  /* max_dt */
     h[i++] = FPS_BYTES;              /* [26] fps block size; block follows the 128B header */
+    {   /* [27..31] GL draw-call census (a4_gl.c, scratch 0x412000): renders, total draw
+         * calls, total triangles, max calls in one render, calls in the last render */
+        volatile uint32_t *rd = (volatile uint32_t *)0x00412000u;
+        h[i++] = rd[0]; h[i++] = rd[1]; h[i++] = rd[2]; h[i++] = rd[3]; h[i++] = rd[5];
+    }
     while (i < 32) h[i++] = 0;
 
     void *f = &t->rfile[t->caps % TEL_RING];
