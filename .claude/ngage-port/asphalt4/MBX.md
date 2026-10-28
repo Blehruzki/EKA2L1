@@ -2330,3 +2330,28 @@ decides "render the scene this iteration or not", in a region-based present engi
 Next decisive measurement: capture the caller (lr at DoPresent entry) for real vs empty
 presents -- same caller => a render/skip conditional inside one loop; different callers
 => the 3D render has its own cadence separate from the HUD/region presents.
+
+## RE map toward the render gate (static), and the vtable wall
+
+Traced the 3D render path statically in a4code.bin (baseline), bottom-up from the hook:
+- draw_primitive  = function 0x300AE (hook at +0x300B2). (this, desc, flags); desc[0x30]
+  is the texture addr a4_gl reads.
+- Its 4 callers live in 3 mesh-draw funcs: 0x34798, 0x347EA, 0x35D3A.
+- All three are called from ONE per-object render dispatcher, 0x31246, which switches on
+  the object's flags (obj->4 bits) to pick the mesh path and writes obj->0x64 (a render
+  mode) around the call.
+- 0x31246 has ZERO direct BL callers: the scene traversal invokes it VIRTUALLY (node
+  vtable). The static bl-climb ends here.
+
+So the "render scene or not" gate sits above a virtual call and cannot be reached by
+bl-climbing. It needs a dynamic trace: capture the DoPresent (0x1CE) caller's return
+address (on the stack at the 0x1E6 hook) for real-render vs empty presents. Same caller
+=> a render/skip conditional inside one race loop (patch that condition). Different
+callers => the 3D render is driven on its own cadence (e.g. a redraw/idle active object)
+separate from the HUD/region presents. That caller is statically analysable once named.
+
+Risk to weigh before changing anything (rule 4): the ~1/3 cadence may be an intentional
+"render 3D every Nth frame" optimisation the physics/timing assumes. If physics is
+time-stepped (dt-based) raising the render rate is safe and just adds frames; if it is
+per-render-step, raising it speeds the game up or destabilises it. Must confirm the
+update/step is decoupled from the render before shipping a rate change.
