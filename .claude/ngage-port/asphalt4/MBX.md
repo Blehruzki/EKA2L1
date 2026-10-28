@@ -2206,3 +2206,27 @@ colorkey sprites (a palm) show the sky through their gaps, not black. sha256
 3f2e57f13a6fda717e7b9ff20a7513030668e1f227ead3ceaae73da2d597088f (blit + A4_PERSP +
 A4_TEL, TEL_EVERY=30). Phone round confirms the trees + gives active frames for the
 wobble and fps for the choppy.
+
+## Phone round 6 (colorkey build 3f2e57f1): BLACK TREES FIXED on hardware
+
+User re-downloaded/reinstalled the colorkey build, redid everything. 4 files; a4tel1
+(capidx 1, fcount 60, ntex 43, last_prims 640, errc 0) and a4tel3 (capidx 3, fcount
+120, ntex 46, last_prims 554, errc 0, bb 7391072) are fresh active driving frames from
+THIS build -- NOT repeats of round-4/5: those were stale a4tel0/a4tel2 (capidx 10/12,
+ntex 67). a4tel0/a4tel2 this round are again the stale leftovers.
+- COLORKEY FIXED: zoomed the palm-tree row (a4tel3) and the right palm (a4tel1) -- the
+  foliage now shows sky/buildings through its gaps, green leaves on a clean edge, NO
+  black boxes. The GPU alpha-test colorkey holds on real MBX hardware. errc=0 both
+  frames: the 5551 upload + glAlphaFuncx + glTexSubImage2D are all accepted on-device.
+- CHECKERBOARD stays fixed; scenes are correct GPU composites (car, road, traffic, HUD,
+  daylight), no screen-door.
+- CHOPPY still present and now measured on the fixed build: fps 24-25 (a4_fps disp),
+  frame-delta ring a hard periodic cadence `1 1 5` (and `1 2 9` spikes) -- two fast
+  frames then a ~5-tick stall, every third frame. min_dt 0-1, max_dt 5. This is the
+  per-frame glReadPixels GPU->CPU sync in the blit path: the game's DSA still owns the
+  panel, so every GPU frame is read back into A4_GL_BB and the game posts it. The
+  readback is the hitch. The window-surface present path (eglCreateWindowSurface +
+  RBackedUpWindow + the winuser.cpp compositing fix, already built & bench-proven)
+  removes the readback entirely -- that is the choppy fix, pending a phone round.
+- WOBBLE: still not visible statically; both frames show straight road edges, no gross
+  affine. Likely the choppy hitch under fast camera motion.
