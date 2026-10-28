@@ -80,6 +80,19 @@ a4_fps_tramp:
         @ takes arguments in r1/r2 that the surrounding code computed before +0x1E6,
         @ and the tick/draw calls would clobber them. r4 is callee-saved by them.
         push    {r0, r1, r2, r3, r12, lr}
+#ifdef A4_LRCAP
+        @ stash DoPresent's caller return address (its push {r4,lr} frame sits just
+        @ above our 6-word push: [sp+28]) so a4_gl_frame can histogram which call site
+        @ presents on a real-render vs an empty frame. r2/r3 are restored by the pop
+        @ below before the present, so clobbering them here is safe.
+        ldr     r2, [sp, #28]
+        ldr     r3, a4_lrcap_slot_addr
+        str     r2, [r3]
+        b       9f
+a4_lrcap_slot_addr:
+        .word   0x00400840
+9:
+#endif
         @ Resolve two euser imports pc-relatively and pass them to a4_fps_tick,
         @ which calls them: User::TickCount (ord 674, monotonic, for the ring) and
         @ TTime::HomeTime (ord 859, real microseconds, so the window is one real

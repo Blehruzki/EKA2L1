@@ -123,7 +123,9 @@ def build_blob(link_addr, tmp, clean=False, gl=False):
         if src.endswith('.s'):
             flags = ['--target=armv5te-none-eabi', '-marm', '-fropi']
             if os.path.basename(src) == 'a4_tramp.s':
-                flags += ['-x', 'assembler-with-cpp'] + (['-DA4_CLEAN'] if clean else [])
+                # forward only -D defines from A4_EXTRA_CFLAGS (asm rejects C codegen flags)
+                defs = [f for f in extra if f.startswith('-D')]
+                flags += ['-x', 'assembler-with-cpp'] + defs + (['-DA4_CLEAN'] if clean else [])
         else:
             flags = CFLAGS + extra + (['-DA4_CLEAN'] if clean else []) + (['-DA4_GL'] if gl else [])
         subprocess.check_call(['clang', *flags, '-c', src, '-o', o])

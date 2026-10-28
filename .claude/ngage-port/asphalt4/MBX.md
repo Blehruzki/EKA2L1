@@ -2355,3 +2355,41 @@ Risk to weigh before changing anything (rule 4): the ~1/3 cadence may be an inte
 time-stepped (dt-based) raising the render rate is safe and just adds frames; if it is
 per-render-step, raising it speeds the game up or destabilises it. Must confirm the
 update/step is decoupled from the render before shipping a rate change.
+
+## RE breakthrough: the race loop and its time-paced render gate (lr-capture)
+
+Added an lr-capture instrument (a4_tramp.s stashes DoPresent's caller return addr at
+0x400840 under -DA4_LRCAP; a4_gl.c histograms it split by whether 3D was drawn). Bench
+run, MEMSNAP of the histogram: during a race, DoPresent (0x1CE) is called from exactly
+THREE sites, each 15x over 15 cycles:
+  0x950  present(arg1=-1,  arg2=1)  -> 0 real, 15 empty
+  0x97E  present(arg1=0xa, arg2=0)  -> 0 real, 15 empty
+  0x9A6  present(arg1=0xa, arg2=0)  -> 15 real, 0 empty   (the one after the scene render)
+All three are in ONE function, the race loop at 0x808. So the 3:1 is literal: the race
+loop presents three times per cycle and renders the 3D scene once (only 0x9A6 carries new
+geometry). The guard at 0x954 (pause / game-state 0x21,0x22 / r4[0x1c] / presenting flag
+r4[0x6c]) passes every racing frame, so it is not the gate.
+
+The loop is TIME-PACED via euser imports -- a dedicated euser IAT veneer block at
+0x50cf0..: HomeTime=ord 859 (confirmed, same slot a4_tramp.s uses), plus ords 10 and 11
+and 413. The loop head reads a 64-bit value from the euser import at veneer 0x50cfc (def
+ord 11) into [sp]/[sp+4] and [r4+0x7c] (0x838-0x840); 0x1916 (called right before the
+real present at 0x994) does a time-delta compare: (t[0x2c] - r5[0x34]) >> 8 vs 0x7d<<5 =
+4000, i.e. a frame-interval threshold.
+
+KEY: this clock is euser imports called DIRECTLY, NOT the tick_count/ntick_count SVCs.
+That is exactly why the CYCLETICK sweep (D2) was flat -- CYCLETICK only rewrites those
+SVCs, not these euser calls. So the "fixed new-frame rate" is a time-delta gate in the
+race loop driven by a euser clock import, with a ~4000-unit interval threshold (0x1916).
+
+Rule 4 (def-vs-ROM trap): ord 674=TickCount and 859=HomeTime are confirmed (romimg +
+a4_tramp.s measurement), so def and ROM agree at least up to 674; ords 10/11/413 are
+below that so likely CHeartbeat::NewL/RunL and TSglQueIterBase per the def -- BUT ord 11
+is called returning a 64-bit value used as time, which RunL would not, so the ROM
+function at ord 11 (romimg: euser+0x803a6da5) must be disassembled to name it before any
+patch. NOT yet resolved against the ROM by disassembly; do not trust the def name here.
+
+Next: (a) disassemble the ord 10/11/413 ROM functions to name the clock; (b) decode the
+0x1916 threshold and whether [r4+0x7c]/r5[0x34] dt also drives physics (dt-scaled => safe
+to raise the render rate; frame-locked => raising it speeds the game up). Only then craft
+the patch.

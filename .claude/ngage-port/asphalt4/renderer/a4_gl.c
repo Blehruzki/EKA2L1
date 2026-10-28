@@ -730,6 +730,19 @@ int a4_gl_frame(uint32_t fps)
      * the blit build; read them back via MEMSNAP (g[9]=empty, g[10]=real). */
     if (had) s->pixmapcap++; else s->depthcfg++;
 #endif
+#ifdef A4_LRCAP
+    /* histogram the DoPresent caller (stashed at 0x400840 by a4_fps_tramp) split by
+     * whether 3D geometry was drawn this frame (had). Table at 0x400A00:
+     * [0]=n, then n entries of (caller, real_count, empty_count). MEMSNAP reads it. */
+    {
+        uint32_t caller = *(volatile uint32_t *)0x00400840u;
+        volatile uint32_t *tab = (volatile uint32_t *)0x00400A00u;
+        uint32_t n = tab[0], i;
+        for (i = 0; i < n; i++) if (tab[1 + i*3] == caller) break;
+        if (i == n && n < 40u) { tab[1 + i*3] = caller; tab[1 + i*3 + 1] = 0; tab[1 + i*3 + 2] = 0; tab[0] = n + 1; }
+        if (i < 40u) { if (had) tab[1 + i*3 + 1]++; else tab[1 + i*3 + 2]++; }
+    }
+#endif
     a4_gl_flush();                                      /* draw this frame on the GPU */
     int presented = 0;
 #ifdef A4_WINDOW
