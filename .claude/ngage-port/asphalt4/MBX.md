@@ -2454,3 +2454,29 @@ then the 3D on top, then swap. Open issues: POT texture size (320x240 -> 512x256
 and HUD-over-3D ordering (bb-as-background puts HUD under the 3D; the HUD sits at screen
 edges so the overlap may be minor, or draw the HUD strip again on top). Real work, not a
 bake. Did NOT ship a4_winsurf to the phone -- it would show a magenta sky.
+
+## FIX: perspective distortion (the "wobble") -- inverted 1/w in A4_PERSP
+
+The owner identified the real artifact (not temporal wobble): straight road markings (a
+zebra crossing) stay straight far away but BOW into a smooth "U"/horseshoe as they near the
+car -- worst at the bottom of the screen (most foreshortened). That is perspective-incorrect
+texture mapping on the ground plane, and the smooth curve (not a triangle-edge "V") pointed
+at A4_PERSP, not affine.
+
+Root cause, MEASURED (A4_VTXDUMP: dump each triangle's (screen-y, vp[2]) via MEMSNAP):
+vp[2] is RECIPROCAL depth (1/z ~= 1/w), not z/w. It is LARGER nearer the bottom of the
+screen (nearer): mean vp2 2305 at y[0,60) (far) rising to 3941 at y[60,120) (near), and
+11298->14602 across y 84->97 on buildings. A4_PERSP was INVERTING it (iw = 2^22/vp[2] ~ z),
+so the GL perspective weight q came out proportional to w instead of 1/w -- inverted
+perspective, which GL interpolates smoothly into the U-bow.
+
+Fix (a4_gl.c, A4_PERSP path): use vp[2] DIRECTLY as q=1/w (iw = vp[2]), no inversion.
+s=(un*iw)>>16, q=iw, so s/q = U_norm with correct perspective-correct interpolation.
+a4_udiv is now unused (kept, marked unused). Bench: errc=0, scene renders clean, road
+straight. The decisive before/after is the zebra crossing, which the short bench race does
+not reach -- confirm on the phone.
+
+This fix is in the texcoord path, so it applies to BOTH the blit and the window-surface
+builds. The shippable build for confirming it is blit+persp(fixed)+colorkey+TEL
+(a4_perspfix.exe) -- correct compositing (sky/HUD), still choppy (readback), but the
+distortion gone. The window-surface choppy fix still needs upload-composite work.

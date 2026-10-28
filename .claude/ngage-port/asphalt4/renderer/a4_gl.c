@@ -420,6 +420,7 @@ static void composite_prev(volatile struct glr *s);
  * helper is available; this uses only shifts, compares and subtracts. Used for
  * the per-vertex reciprocal 1/w (2^22 / ZW). ~32 iterations; a few per triangle,
  * well under 2% of the frame. */
+static uint32_t a4_udiv(uint32_t num, uint32_t den) __attribute__((unused));
 static uint32_t a4_udiv(uint32_t num, uint32_t den)
 {
     if (den == 0) return 0xFFFFFFFFu;
@@ -479,12 +480,14 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         int32_t un = ((int32_t)desc[voff[i]/4 + 1] * 4096) >> wsh;   /* U_norm * 65536 */
         int32_t vn = ((int32_t)desc[voff[i]/4 + 2] * 4096) >> hsh;   /* V_norm * 65536 */
 #ifdef A4_PERSP
-        /* q = 1/w (ZW is w). s = U_norm*q, t = V_norm*q (GL_FIXED); GL samples
-         * (s/q, t/q) per fragment -> perspective-correct. The absolute scale of
-         * q cancels in the division, so any fixed multiple of 1/ZW works; 2^22
-         * keeps q and s*q in int32/int64 range for ZW in ~[8, 2^16]. */
-        int32_t zw = (int32_t)vp[2];
-        uint32_t iw = a4_udiv(1u << 22, (uint32_t)(zw > 0 ? zw : 1));
+        /* vp[2] is RECIPROCAL depth (1/z ~= 1/w): measured larger at the bottom of
+         * the screen (nearer) than the top (farther) -- MBX.md "perspective distortion".
+         * So it is already the q=1/w the GL perspective divide wants; use it DIRECTLY.
+         * (The old code inverted it, iw=2^22/vp[2] ~ z, which gave q ~ w -- inverted
+         * perspective that smoothly bowed straight road markings into a "U".)
+         * s = U_norm*q, t = V_norm*q (GL_FIXED); GL samples (s/q, t/q) per fragment.
+         * un/vn are U_norm*65536, so s=(un*q)>>16 keeps s/q = U_norm. */
+        uint32_t iw = (uint32_t)vp[2]; if ((int32_t)iw <= 0) iw = 1;
         uv[i*UVC + 0] = (int32_t)(((int64_t)un * (int32_t)iw) >> 16);
         uv[i*UVC + 1] = (int32_t)(((int64_t)vn * (int32_t)iw) >> 16);
         uv[i*UVC + 2] = 0;
@@ -503,6 +506,24 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         if ((uint32_t)y > s->maxy) s->maxy = (uint32_t)y;
     }
 
+#ifdef A4_VTXDUMP
+    /* perspective diagnosis: record each triangle's 3 (screen-y, vp[2]) pairs so we can
+     * see offline whether vp[2] grows or shrinks toward the bottom of the screen (z vs
+     * 1/z). Table at 0x400B00: [0]=count, then count*6 words (y0,zw0,y1,zw1,y2,zw2).
+     * Reset at the frame's first prim (prims==0). Read via MEMSNAP. */
+    {
+        volatile uint32_t *vt = (volatile uint32_t *)0x00400B00u;
+        uint32_t vn2 = vt[0];                /* accumulate across frames: catches ground tris */
+        if (vn2 < 80u) {
+            for (int i = 0; i < 3; i++) {
+                uint32_t *vpd = (uint32_t *)desc[voff[i] / 4];
+                vt[1 + vn2*6 + i*2 + 0] = (uint32_t)(int32_t)(int16_t)(int32_t)vpd[1];
+                vt[1 + vn2*6 + i*2 + 1] = vpd[2];
+            }
+            vt[0] = vn2 + 1;
+        }
+    }
+#endif
     uint32_t n = s->prims;
     if (n >= MAXT) {                                /* batch full: draw this one now */
         gl_bindtex(GL_TEXTURE_2D, id);
