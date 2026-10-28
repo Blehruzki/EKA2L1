@@ -97,9 +97,16 @@ void a4_tel_tick(void)
     }
 
     t->fcount++;
+    /* Grab the first TEL_RING ACTIVE-3D captures and then STOP (do not cycle).
+     * Exiting a race goes through the pause menu, whose frames otherwise fill the
+     * ring; capturing only early driving and then freezing keeps live race frames.
+     * "Active 3D" = the last frame drew real geometry (last_prims big); menus draw
+     * little, so this skips the menu/boot frames without a fixed frame count. */
+    volatile uint32_t *g = (volatile uint32_t *)A4_GL_SCRATCH;
+    if (t->caps >= TEL_RING) return;             /* ring filled once: freeze on early race */
+    if (g[8] < 100u) return;                     /* g[8]=last_prims: not an active 3D scene */
     if ((t->fcount % TEL_EVERY) != 0) return;
 
-    volatile uint32_t *g = (volatile uint32_t *)A4_GL_SCRATCH;
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
 
     /* header: magic, version, geometry, then the glr counters we read on the

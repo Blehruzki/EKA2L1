@@ -2153,3 +2153,20 @@ Owner clarified the game dims the screen while paused. All 4 round-2 files were 
 quit/pause screen, so the dimness and dark tree-line were the pause overlay, not dusk
 art and not a GPU issue. The brightness question is closed. Only wobble + choppiness
 remain, and both need active (unpaused) frames + the v2 fps/timing block.
+
+## Phone round 3 (telemetry v2): fps signal in, but pictures still the pause menu
+
+Owner sent 4 files; 3 fresh (capidx 10-12, the stale a4tel1 was a leftover v1 file).
+All framebuffers were the PAUSE/quit menu again -- exiting goes through the menu,
+which fills the 10s ring faster than it spans. But the fps block gave real signal:
+errc=0, last_prims up to 485 (busy scene), and fps reads ~17 in the active window vs
+85 on the paused menu (85 = trivial menu rendering; so the real race fps is ~17 --
+low, matching "choppy"). The frame-delta ring shows uneven pacing (alternating
+fast/slow frames, occasional spikes). bb=0x70C0E0, stride 320 clean.
+
+So fps/choppiness is now measurable, but the WOBBLE still needs an active framebuffer.
+v3 telemetry fixes the capture: gate on an active 3D scene (last_prims>100, skips
+menu/boot) and STOP after the first TEL_RING captures (do not cycle), so early driving
+is kept and the later exit-menu never overwrites it. Bench-validated: captures are
+clean active race frames (daylight race, no menu), stops after the ring fills. sha256
+d673c7644f24748ccfdc2bbd58c7828d9cc2062aa107386a9b62799c1213a33a.
