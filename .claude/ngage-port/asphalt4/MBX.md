@@ -2782,3 +2782,88 @@ New defect seen in the depth build: the speed-camera signs over the tunnel mouth
 boxes (stock: "80", "km/h"; also black in KINDVIS run 2). The spans read texels from
 desc+0x10, the uploader from desc+0x0C; or the signs are textures the game redraws (a speed
 display) that the cache uploads once. Probed next (A4_TEXPROBE).
+
+Probe result (A4_TEXPROBE, one bench race through the tunnel): 144 uploads, desc+0x0C ==
+desc+0x10 in all, row shift == width in all, no texel pointer moved and no 64-sample
+content change after upload. Neither texture theory. The signs are MODE 1 of the default
+span (the 0x104000 class, 14.6% of calls), read from 0x339e4: per texel T = tex[i] (0
+transparent), M = map2[i] (ctx[0x5c], the texture's layout); if M the texel is
+T + table[M]/4 (ctx[0x60]; quarter = ((C&0xF7DE)>>1 & 0xF7DE)>>1), summed with the carry
+trick at 0x33a3c -- texture space only. Black base + table-lit segments = a black box when
+drawn as the plain key. Fix (round 10): the mode-1 texture is baked (m1_texel, keyed
+desc|1), and once a present a hash of the table entries it uses ([lo, hi] of its M values,
+or 64 sampled texels when that range is over 1024) re-bakes it on a change. Bench: the
+gantry shows the "80" limit signs and the "74 km/h" speed displays; the traffic light's
+lamp lit; ~1 re-bake a render (a table that animates every frame); errc 0, leaks 0.
+The phone build records the re-baked texels and their time per window (header words 55,
+56) -- the cost on the phone is unmeasured.
+
+Same-frame instrument A4_DUALCAP (bench only): software draws every triangle (the stock
+picture) and the GPU draws them too; each capture carries both, the GPU image read back
+after the framebuffer. tools/dualcmp.py: per-pixel differences are dominated by sampling
+offsets and mode 4's road grain (not reproduced), so the metric is 8x8 blocks fully drawn
+by the GPU whose mean differs by more than 1/8 in a channel. First attempt's GPU image had
+lines every 16 rows -- the dump wrote its 565 row into the RGBA strip it was converting
+(fixed: in place). Two attempts with the depth and no-depth builds sat at the start line
+(the dual frame is slow, the key went down before the race and was not seen again):
+telerun3.sh re-presses accelerate every 10 s.
+
+Same-frame comparison (A4_DUALCAP, depth build and no-depth build, telerun3): the
+object-sized differences are (a) 2D effects the game draws over the 3D (the turn chevrons,
+"URBAN HAVOC", the takedown letterbox -- expected), (b) the car's shadow darker on the GPU
+(overlapping shadow triangles darken twice: the stamp map is not reproduced), (c) the
+roadside chevron BOARDS present in software and absent from the GPU image -- not taken by
+any class. The depth/no-depth runs did not land on comparable scenes (different laps), so
+they do not yet measure the depth change itself.
+
+CORRECTION, census: the round-9 census (187,282 calls) was taken before the pusher fix, so
+it covered only the first ~18 GPU frames of a race. A full race through lap 3 (r10_fh,
+3,170,159 calls, census now appended to the captures): persp 0x4001 29.2%, shadows 0x20
+24.0%, default mode 1 0x104000 17.7%, 0x4000 12.6%, 0x20000 6.0%, flat 0x20002 2.2%,
+persp mode 4 (0x8020001/0x8021001) 3.2%, additive 0x10008 1.3% (+0x8 0.1%), and a class
+the short census missed: 0x14100 (1.1%) + 0x411100 -> 0x2e56c, span 0x33ea8:
+dst + (T - dst) * a/16, a the top nibble of a byte alpha map at desc+0x2c, no colour key --
+the chevron boards. A4_TAKEALPHA: RGBA8888 with alpha (a>>4)*16, GL_SRC_ALPHA /
+GL_ONE_MINUS_SRC_ALPHA (leak-checked: a part-transparent texel over the sentinel would mix
+with magenta).
+Shadows once a pixel: the pbuffer config asks depth + stencil (then depth alone, then
+config 6); with stencil bits, shadow runs pass where stencil == 0 and INCR it, cleared with
+the frame -- the span's stamp map. Telemetry header word 57 = stencil bits.
+
+The alpha class never reached the GPU in the first try: A4_ALPHAHIST counted 0 uploads.
+Its descriptor (probed): +0x0C = 0, +0x10 = the texels, +0x2C = the alpha map, 64x64.
+Every span reads texels from +0x10; the uploader read +0x0C (equal on all 144 textures the
+other classes use -- A4_TEXPROBE), so tex_index refused it (no pixels) and software drew
+it. All texel reads now use +0x10 (TS_PIX). Its alpha nibbles: 24% zero, 32.5% full, 43%
+in between -- genuinely soft, so blended, not cut out.
+Additive OFF again (A4_TAKEADD dropped from the phone build): with it the leak check fired
+for the first time -- 102 and 76 pixels, the police helicopter's rotor against the sky, all
+R=31 B=31 G=2..24, i.e. magenta + a glow (an alpha blend would not saturate R and B). The
+sentinel cannot be blended over; round 9 drew additive in software without complaint, and
+KINDVIS put it over the road (streaks) and the sky (rotor), where on top is right.
+Mode-1 cost: the texture re-baked every render is the PLAYER'S CAR body (A4_M1PROBE /
+A4_M1VIS: 01f46780, 256x256, M 4189-30236, 30-64 of the first 64 table entries changing a
+frame -- its paint reflection), 8-18 ms a render on the bench. A mode-1 texture of 16K
+texels or more now re-bakes at most every 8 presents (M1_BIG, M1_BIG_EVERY): 0.9-7 ms a
+render on the bench. The table's address is out of the signature (contents decide).
+
+Battery on the exact phone binary (r10_phone = -DA4_HPERSP -DA4_TAKEDEF -DA4_TAKEFLAT
+-DA4_TAKESHADOW -DA4_TAKEALPHA -DA4_ZBUF -DCLIP_TOP=0 -DA4_TEL -DTEL_EVERY=40 -DTEL_RING=8
+-DTEL_CYCLE -DA4_ABCYCLE, --gl --capture; sha256
+8bc3b0c28369bcd3993a4ba2d56b38ff2da007674dab980ba5d23a11d0b7c7f9; telerun3 160 s, lap 2
+through the tunnel): framestat 2939, faults 1 (the known boot fault only), errc 0 in all
+eight, pbuffer config 2 with 24 depth and 8 stencil bits, dual_frames 1, leak.py 0 in all
+eight, ~360 draw calls and ~1410 triangles a render (shadows and the new kinds), mode-1
+re-bakes 2-19 a window. Pictures (by eye): the gantry's "60" / "74 km/h", chevron boards,
+shadows under the cars, the car's paint, tunnel walls clean.
+
+Rule 4 -- guesses, named: (1) the N95 offers a depth (and stencil) pbuffer config -- if not,
+zbits/sbits read 0 and it draws as round 9 did, in the header; (2) the MBX honours GL_GEQUAL
+on 16+ bit depth with z = min(128/ZW, 1) -- bench-proven only; (3) the alpha class blended
+over pixels the GPU did not draw (sky) mixes with magenta -- leak.py cannot see a partial
+blend (it keys on additive's saturated R and B); (4) the car re-bake cost on the phone
+(header words 55-56 measure it); (5) glFlush / 565 effect on the phone (the A/B measures
+it); (6) shadows: the stencil once-a-pixel matches the span's stamp only where the stamp
+toggles per frame (0x31c70), mode 4's coverage clear not reproduced.
+States the bench never entered: the MBX; a phone without a stencil config; the takedown
+camera cuts with depth (one frame of stale composite on a cut, inherent to the pipeline).

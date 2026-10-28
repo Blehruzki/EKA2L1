@@ -9,7 +9,7 @@ NAMES=['magic','ver','capidx','fcount','W','H','stride','fbbytes','bb','up','fra
        'gl_renders','gl_calls','gl_tris','gl_maxcalls','gl_lastcalls',
        # v4
        'ab_mode','w_renders','w_nticks','w_comp','w_read','w_draw','w_glflush','w_calls','w_tris',
-       'ntick_now','tick_now','home_us','rd_fmt','rd_type','rd_err','flat_tris','add_tris','dual_frames','shad_tris','pb_config','depth_bits','m1_rebakes','ntex_now']
+       'ntick_now','tick_now','home_us','rd_fmt','rd_type','rd_err','flat_tris','add_tris','dual_frames','shad_tris','pb_config','depth_bits','m1_rebakes','ntex_now','w_m1texels','w_m1ticks','stencil_bits']
 for fn in sys.argv[1:]:
     d=open(fn,'rb').read()
     if len(d)<128: print(fn,'too short'); continue

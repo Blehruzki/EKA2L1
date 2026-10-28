@@ -46,7 +46,7 @@ extern void a4_gl_dumpgpu(void (*wr)(int, const void *, int), int base);
 #define TEL_HDR_WORDS 64          /* version 4: 256-byte header (3 had 32 words) */
 #define A4_PERF ((volatile uint32_t *)0x00412C00u)   /* a4_gl.c PF_*: same order */
 enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
-       PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_N };
+       PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_N };
 #define EFILE_WRITE 0x200u
 #define DES(len) ((1u<<28) | ((uint32_t)(len)))  /* TPtrC iLength: EPtrC(1)<<28 | len */
 
@@ -184,6 +184,8 @@ void a4_tel_tick(uint32_t had)
         h[i++] = a4_gl_rdinfo(3); h[i++] = a4_gl_rdinfo(4);   /* pbuffer config, depth bits */
         h[i++] = pf[PF_M1BAKE];                                /* mode-1 re-bakes (total) */
         h[i++] = a4_gl_rdinfo(5);                              /* textures in the cache */
+        h[i++] = pf[PF_M1TEX]; h[i++] = pf[PF_M1T];            /* this window: texels re-baked, ticks */
+        h[i++] = a4_gl_rdinfo(6);                              /* stencil bits */
     }
     while (i < TEL_HDR_WORDS) h[i++] = 0;
 
@@ -201,6 +203,20 @@ void a4_tel_tick(uint32_t had)
 #ifdef A4_DUALCAP
     a4_gl_dumpgpu(dual_wr, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES);
 #endif
+#ifdef A4_ALPHAHIST
+    {   struct des ad = { DES(33u * 4u), (const void *)0x00412D00u };
+        efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES, &ad); }
+#endif
+#ifdef A4_M1PROBE
+    {   struct des md = { DES(33u * 4u), (const void *)0x00412E00u };
+        efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES, &md); }
+#endif
+#ifdef A4_FLAGHIST
+    {   /* the (flags, mode) census, a4_gl.c 0x412D00, 122 words, after the framebuffer */
+        struct des cd = { DES(122u * 4u), (const void *)0x00412D00u };
+        efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES, &cd);
+    }
+#endif
     efs_flush(f);
     t->caps++;
     {   /* next window: reset the timers after the write, so its cost is in no window */
@@ -209,7 +225,7 @@ void a4_tel_tick(uint32_t had)
         pf[PF_MODE] = (pf[PF_MODE] + 1u) & 3u;    /* AB_FLUSH x AB_565, one mode a window */
 #endif
         pf[PF_RENDERS] = 0; pf[PF_COMP] = 0; pf[PF_READ] = 0; pf[PF_DRAW] = 0;
-        pf[PF_GLFLUSH] = 0; pf[PF_CALLS] = 0; pf[PF_TRIS] = 0;
+        pf[PF_GLFLUSH] = 0; pf[PF_CALLS] = 0; pf[PF_TRIS] = 0; pf[PF_M1TEX] = 0; pf[PF_M1T] = 0;
         pf[PF_T0] = a4_ntick();
     }
 }

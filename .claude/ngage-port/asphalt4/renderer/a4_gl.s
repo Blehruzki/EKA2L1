@@ -53,6 +53,9 @@ a4_gl_iat:
                         @      31 glClear, both proven on the N95 -- the only GL ES 1.1 name there)
         .word   59      @ [36] glFlush       (kick the tile renderer at the frame end)
         .word   69      @ [37] glGetIntegerv (the implementation's read format, OES_read_format)
+        .word   117     @ [38] glStencilFunc  (shadows darken a pixel once a frame, as the
+        .word   119     @ [39] glStencilOp     game's per-frame stamp map does)
+        .word   36      @ [40] glClearStencil
         .global a4_gl_iat_end
 a4_gl_iat_end:
 
