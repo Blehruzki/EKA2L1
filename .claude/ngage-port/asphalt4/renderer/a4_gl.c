@@ -711,6 +711,12 @@ static void batch_draw(uint32_t nt)
     }
     gl_bindtex(GL_TEXTURE_2D, cur);                 /* final run */
     gl_drawarrays(GL_TRIANGLES, (int)(run_start*3), (int)((nt - run_start)*3));
+#ifdef A4_RUNDIAG
+    {   /* draw calls this frame (one per same-texture run); folded at flush */
+        uint32_t runs = 1; for (uint32_t t = 1; t < nt; t++) if (TEXID[t] != TEXID[t-1]) runs++;
+        ((volatile uint32_t *)0x00412000u)[4] += runs;
+    }
+#endif
 }
 
 /* Composite the GPU-rendered world into the game's surface, at the 3D->2D
@@ -783,6 +789,12 @@ void a4_gl_flush(void)
      * and the next frame's logic, and composite_prev reads it back then. */
     batch_draw(s->bfill);
     s->bfill = 0;
+#ifdef A4_RUNDIAG
+    {   /* 0x412000: [0] frames [1] draw calls [2] triangles [3] max calls in a frame */
+        volatile uint32_t *rd = (volatile uint32_t *)0x00412000u;
+        rd[0]++; rd[1] += rd[4]; rd[2] += s->prims; if (rd[4] > rd[3]) rd[3] = rd[4]; rd[4] = 0;
+    }
+#endif
     { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a draw GL error */
 
     /* this frame's drawn extent is what composite_prev reads back next frame */
