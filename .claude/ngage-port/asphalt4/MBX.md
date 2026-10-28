@@ -2272,3 +2272,27 @@ Rule 4: over-present ratio + byte-identical duplicates are measured (counters,
 array-equality); the black-band mechanism's "why black in that scene" is inferred.
 Verified the #ifdef'd instruments are inert -- ship build sha stays 3f2e57f1 -- after
 catching and fixing an unconditional actframes++ that had shifted it (+8 bytes).
+
+## Bench diagnosis D2: choppy is NOT tick-gated (tick-variation test)
+
+Swept the emulated guest clock on the present-diag build (a4_gl_frame real-vs-empty
+counter), reading the real-present fraction at post 400. Default dyncom (wall clock)
+gave 27.6% real. EKA2L1_CYCLETICK (instruction-based guest tick, feeds fast_counter /
+ntick_count / tick_count):
+  CYCLETICK=50  -> 33.3% real
+  CYCLETICK=200 -> 33.3% real
+  CYCLETICK=800 -> 34.7% real
+A 16x change in tick rate moves the real fraction by ~1 point. The game produces new
+geometry on ~1/3 of presents REGARDLESS of how fast guest-visible time advances, so the
+3:1 present:render cadence is structural, not gated on User::TickCount / elapsed time.
+
+Conclusion: choppy/wobble cannot be fixed by tick tuning (CYCLETICK/DETTICK). The game
+re-presents each rendered world-state ~3x by its own loop structure (the present path at
++0x1E6 runs ~3x per draw_primitive batch), and that cadence is independent of the clock.
+GPU offload speeds each render but cannot raise the game's new-frame rate. The phone's
+1-1-5 dt cadence is the same 3:1 (two quick re-presents, one slow render).
+
+Open question for the goal (smoothness): is our effective motion rate (~1/3 of present
+fps) better or worse than STOCK software? Next cheap bench test: count real renders/sec
+for the stock build vs the GPU build over the same race window -- that decides whether
+GPU offload helped motion or merely raised the (duplicated) present count.
