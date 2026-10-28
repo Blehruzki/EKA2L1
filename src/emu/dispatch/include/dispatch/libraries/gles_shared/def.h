@@ -380,6 +380,15 @@ namespace eka2l1::dispatch {
 
         explicit egl_context_es_shared();
 
+        // After a synchronous read-back (glReadPixels) every command submitted before it has
+        // executed, so the transfer buffers can be reused from the start, as at a swap. Without
+        // this a client that renders to a pbuffer and never swaps grows the pushers by a buffer
+        // on every flush.
+        void recycle_transfer_buffers() {
+            vertex_buffer_pusher_.done_frame();
+            index_buffer_pusher_.done_frame();
+        }
+
         virtual gles_driver_texture *binded_texture() {
             return nullptr;
         }

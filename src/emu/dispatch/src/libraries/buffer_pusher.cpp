@@ -58,7 +58,7 @@ namespace eka2l1::dispatch {
     }
 
     void graphics_buffer_pusher::flush(drivers::graphics_command_builder &builder) {
-        for (std::uint8_t i = 0; i <= current_buffer_; i++) {
+        for (std::size_t i = 0; i <= current_buffer_; i++) {
             if (i == buffers_.size()) {
                 break;
             }

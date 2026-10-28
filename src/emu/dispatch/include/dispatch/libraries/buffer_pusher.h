@@ -38,7 +38,7 @@ namespace eka2l1::dispatch {
         };
 
         std::vector<buffer_info> buffers_;
-        std::uint8_t current_buffer_;
+        std::size_t current_buffer_;   // was uint8_t: flush() looped forever past 255 buffers
         std::size_t size_per_buffer_;
 
         void add_buffer();

@@ -2826,6 +2826,9 @@ APPLY_PENDING_ROUTES:
             drivers::read_framebuffer(drv, fb_obj->handle_value(), eka2l1::vec2(x, y), eka2l1::vec2(width, height),
                 format_for_read, data_type_for_read, data_ptr);
         }
+
+        // The read waited for the driver, so the draws that used the transfer buffers are done.
+        ctx->recycle_transfer_buffers();
     }
 
     BRIDGE_FUNC_LIBRARY(void, gl_delete_renderbuffers_emu, std::int32_t n, std::uint32_t *rbs) {
