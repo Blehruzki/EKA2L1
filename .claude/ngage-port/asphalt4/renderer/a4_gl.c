@@ -97,7 +97,10 @@
 #define GL_SHORT 0x1402
 #define GL_UNSIGNED_BYTE 0x1401
 #define GL_UNSIGNED_SHORT_5_6_5 0x8363
+#define GL_UNSIGNED_SHORT_5_5_5_1 0x8034
 #define GL_COLOR_BUFFER_BIT 0x4000
+#define GL_ALPHA_TEST 0x0BC0
+#define GL_GREATER 0x0204
 #define GL_RGB 0x1907
 #define GL_RGBA 0x1908
 #define GL_TEXTURE_2D 0x0DE1
@@ -181,6 +184,8 @@ static void  gl_shademodel(uint32_t m){ ((void(*)(uint32_t))F(23))(m); }
 static void  gl_texenvx(uint32_t tg,uint32_t p,int v){ ((void(*)(uint32_t,uint32_t,int))F(24))(tg,p,v); }
 static uint32_t gl_geterror(void){ return ((uint32_t(*)(void))F(25))(); }   /* device probe */
 static int   egl_choose_config(int d,const int*a,uint32_t*c,int n,int*num){ return ((int(*)(int,const int*,uint32_t*,int,int*))F(26))(d,a,c,n,num); }
+static void  gl_alphafuncx(uint32_t func,int ref){ ((void(*)(uint32_t,int))F(33))(func,ref); }   /* A4_TEL colorkey: alpha test */
+static void  gl_texsubimage(uint32_t tg,int l,int xo,int yo,int w,int h,uint32_t f,uint32_t t,const void*p){ ((void(*)(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*))F(34))(tg,l,xo,yo,w,h,f,t,p); }
 #ifdef A4_WINDOW
 extern volatile uint32_t *a4_ws_iat_ptr(void);
 extern volatile uint32_t *a4_cone_iat_ptr(void);
@@ -326,6 +331,8 @@ static int bringup(volatile struct glr *s)
     gl_enable(GL_TEXTURE_2D);
     gl_shademodel(GL_FLAT);
     gl_texenvx(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    gl_enable(GL_ALPHA_TEST);                         /* colorkey: discard texel-0 (alpha 0) */
+    gl_alphafuncx(GL_GREATER, 0);                     /* keep fragments with alpha > 0 */
     gl_color4x(FX,FX,FX,FX);
     gl_enableclient(GL_VERTEX_ARRAY);
     gl_enableclient(GL_TEXTURE_COORD_ARRAY);
@@ -354,15 +361,45 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr)
     const void *pix = (const void *)ts[3];
     if (!pix || w > 1024 || h > 1024) return -1;
     if (s->ntex >= NCACHE) return -1;
-    /* colorkey scan: >=1/8 of the texels pure 0 (black) -> a transparent sprite */
+    /* The game's software filler treats texel value 0 (pure black) as transparent.
+     * A texture with ANY such texel, GPU-drawn opaque, shows black where software
+     * shows through (the "black background trees"). Handle it ON the GPU: a colorkey
+     * texture is uploaded as 5551 with alpha=0 on the zero texels, and the alpha
+     * test (enabled in bring-up) discards them -- matching software exactly, and
+     * keeping the sprite on the GPU (no slow software fallback). Opaque textures
+     * (no zero texels) stay 565; GL_REPLACE on an RGB texture yields alpha 1, so the
+     * alpha test passes and they are unaffected. */
     const uint16_t *px16 = (const uint16_t *)pix;
     uint32_t total = w * h, zeros = 0;
     for (uint32_t i = 0; i < total; i++) if (px16[i] == 0) zeros++;
-    uint32_t tr = (zeros * 8u >= total) ? 1u : 0u;
+    uint32_t tr = (zeros > 0) ? 1u : 0u;              /* colorkey (has transparent texels) */
     uint32_t id = 0;
     gl_gentex(1, &id);
     gl_bindtex(GL_TEXTURE_2D, id);
-    gl_teximage(GL_TEXTURE_2D, 0, GL_RGB, (int)w, (int)h, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, pix);
+    if (tr) {
+        /* allocate 5551, then convert+upload in row strips through the readback
+         * scratch (free here: composite_prev ran at the frame's first prim). */
+        gl_teximage(GL_TEXTURE_2D, 0, GL_RGBA, (int)w, (int)h, 0, GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, 0);
+        uint16_t *conv = (uint16_t *)A4_GL_READBUF;   /* 0x403000..0x408000 = 10240 u16 */
+        /* convert+upload in row strips, filling conv until the next row won't fit
+         * (no integer divide -- the freestanding blob has no __aeabi_uidiv). */
+        uint32_t y0 = 0, nrow = 0;
+        for (uint32_t y = 0; y < h; y++) {
+            for (uint32_t x = 0; x < w; x++) {
+                uint16_t t16 = px16[y * w + x];
+                conv[nrow * w + x] = (uint16_t)((t16 & 0xF800) | (((t16 >> 6) & 0x1F) << 6)
+                                                | ((t16 & 0x1F) << 1) | (t16 ? 1u : 0u));
+            }
+            nrow++;
+            if ((nrow + 1) * w > 10240u || y == h - 1) {   /* strip full, or last row */
+                gl_texsubimage(GL_TEXTURE_2D, 0, 0, (int)y0, (int)w, (int)nrow,
+                               GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, conv);
+                y0 = y + 1; nrow = 0;
+            }
+        }
+    } else {
+        gl_teximage(GL_TEXTURE_2D, 0, GL_RGB, (int)w, (int)h, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, pix);
+    }
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -428,7 +465,8 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 
     int ti = tex_index(s, tsaddr);
     if (ti < 0) return 0;
-    if (s->cache_tr[ti]) return 0;                   /* transparent sprite: leave to software */
+    /* colorkey sprites are now GPU-drawn with alpha test (5551 upload), so no
+     * software fallback -- s->cache_tr is kept for diagnostics only. */
     uint32_t id = s->cache_id[ti];
 
     int16_t p[6];

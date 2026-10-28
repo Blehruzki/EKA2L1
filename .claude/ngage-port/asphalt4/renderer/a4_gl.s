@@ -46,6 +46,8 @@ a4_gl_iat:
         .word   6       @ [30] eglCreateWindowSurface (A4_WINDOW: the GPU presents)
         .word   22      @ [31] eglSwapBuffers
         .word   36      @ [32] glDisable (A4_WINDOW: the fps bar is untextured quads)
+        .word   28      @ [33] glAlphaFuncx (A4_TEL colorkey: GPU alpha test for sprites)
+        .word   128     @ [34] glTexSubImage2D (A4_TEL colorkey: strip-upload 5551 any size)
         .global a4_gl_iat_end
 a4_gl_iat_end:
 

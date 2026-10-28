@@ -2170,3 +2170,39 @@ menu/boot) and STOP after the first TEL_RING captures (do not cycle), so early d
 is kept and the later exit-menu never overwrites it. Bench-validated: captures are
 clean active race frames (daylight race, no menu), stops after the ring fills. sha256
 d673c7644f24748ccfdc2bbd58c7828d9cc2062aa107386a9b62799c1213a33a.
+
+## Phone round 4 (v3 gate): first ACTIVE driving frame -- diagnosed all 3 issues
+
+v3's active-gate+freeze worked: a4tel3.dat is a real active driving capture (capidx 3,
+bright 148, last_prims 554, fps 25; the other 3 slots were stale leftovers the user
+didn't overwrite). The frame is a clean GPU composite (car, road, traffic, HUD,
+daylight) -- so:
+- CHECKERBOARD stays fixed, GPU healthy (errc=0, ntex 46, bstep 6).
+- "Black background trees" = COLORKEY: tree/foliage sprites and the distant tree-line
+  render with BLACK backgrounds (clear black blobs/jagged band vs the sky). The game's
+  software treats texel 0 as transparent; the GPU drew it opaque. The old >=1/8 scan
+  missed these (small transparent fraction), and lowering it would push opaque
+  building textures to the slow software filler (worse choppy).
+- "Choppy" = measured: fps ~17-25, and a regular frame-delta pattern 1 1 5 1 1 5
+  (two fast frames then a ~5x stall), i.e. a periodic hitch. Likely the per-frame
+  glReadPixels sync + sprites falling to software.
+- "Wobbly floor" = not visible in a static frame; the road shows no gross affine
+  distortion. May be temporal, or the choppy hitch during fast camera motion.
+
+## Fix: GPU alpha-test colorkey (black trees) -- bench-validated, phone build out
+
+Instead of a threshold, handle colorkey ON the GPU. tex_index now uploads any texture
+with a zero texel as RGBA 5551 (alpha=0 on the zero texels, converted+strip-uploaded
+through the readback scratch via glTexSubImage2D), and bring-up enables the alpha test
+(glAlphaFuncx GREATER 0) to discard them -- matching the software "texel 0 =
+transparent" exactly and keeping the sprite on the GPU (no software fallback, which
+also helps choppy). Opaque 565 textures get alpha 1 (GL_REPLACE on RGB) and pass the
+test unchanged. Two GL imports added, resolved via EKA2L1's dispatch table (matches
+the ROM): glAlphaFuncx=28 (0x111B), glTexSubImage2D=128 (0x117F); cross-checked the
+scheme (glTexImage2D 0x117C=125, glClearColorx 0x1120=33, glViewport 0x1183=132).
+
+Bench: errc=0 (5551 + alpha test + glTexSubImage2D all accepted), scene renders,
+colorkey sprites (a palm) show the sky through their gaps, not black. sha256
+3f2e57f13a6fda717e7b9ff20a7513030668e1f227ead3ceaae73da2d597088f (blit + A4_PERSP +
+A4_TEL, TEL_EVERY=30). Phone round confirms the trees + gives active frames for the
+wobble and fps for the choppy.
