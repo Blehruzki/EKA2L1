@@ -16,6 +16,14 @@
  * occlude wrongly; it just issues ~2.7x fewer GL calls (one per texture *run*,
  * not per triangle). No depth buffer, no sort, nothing for the MBX to get wrong.
  *
+ * Round 10: stage 5's phone failure was never diagnosed (whether config 6 even has a
+ * depth buffer was not known), and depth is in the game itself: its perspective span
+ * (0x333f4, the flags-1 class) DOES depth-test, against a per-frame 1/z buffer; its
+ * other spans do not touch it. A4_ZBUF reproduces exactly that: depth = min(ZK/ZW, 1)
+ * on the flags-1 triangles, GL_GEQUAL, cleared to 0 each frame, every other class
+ * drawn untested in arrival order. Every class a race uses is now taken (KIND_*), so
+ * nothing software lands on top of the GPU image out of order.
+ *
  * The composite (readback + sentinel-masked blit) is unchanged; on device it is
  * a zero-copy pixmap and A4_NO_BLIT skips the readback for CPU measurement.
  *
@@ -145,7 +153,48 @@
 #define GL_TEXTURE_ENV 0x2300
 #define GL_TEXTURE_ENV_MODE 0x2200
 #define GL_REPLACE 0x1E01
+#define GL_BLEND 0x0BE2
+#define GL_ONE 1
+#define GL_IMPLEMENTATION_COLOR_READ_TYPE_OES   0x8B9A
+#define GL_IMPLEMENTATION_COLOR_READ_FORMAT_OES 0x8B9B
 #define FX 0x10000
+
+/* What a batched triangle is drawn as: the top nibble of its TEXID word (the low
+ * bits are the GL texture name, or for a flat triangle its RGB565 colour). A run is
+ * a stretch of equal words, so a kind change also starts a new glDrawArrays. */
+#define KIND_TEX  0u     /* textured, colour key (flags 1 and the default rasterizer) */
+#define KIND_FLAT 1u     /* flat colour, opaque (flags 2: 0x2fbdc -> span 0x33b46) */
+#define KIND_ADD  2u     /* textured, saturating add (flags 8: 0x2f358 -> span 0x33d18) */
+#define KIND_SHAD 3u     /* untextured darken, dst*12/16 (flags 0x20: 0x2ecb4 -> 0x33f8c) */
+#define KIND_TEXZ 4u     /* KIND_TEX, depth-tested and depth-writing (flags 1 under A4_ZBUF) */
+#define GL_DEPTH_TEST 0x0B71
+#define GL_DEPTH_BUFFER_BIT 0x0100
+#define GL_GEQUAL 0x0206
+#define GL_DEPTH_BITS 0x0D56
+#define EGL_PBUFFER_BIT 0x0001
+#define EGL_DEPTH_SIZE 0x3025
+#ifndef EGL_RED_SIZE                     /* (A4_WINDOW defines these too) */
+#define EGL_BLUE_SIZE  0x3022
+#define EGL_GREEN_SIZE 0x3023
+#define EGL_RED_SIZE   0x3024
+#endif
+#ifndef ZK
+#define ZK 128           /* depth = min(ZK/ZW, 1); near road vertices sit at ZW ~200 */
+#endif
+#define GL_ZERO 0
+#define GL_SRC_ALPHA 0x0302
+
+/* GL phase timers and the per-window A/B mode (round 10). a4_tel.c writes them into
+ * each capture's header and starts the next window; ticks are User::NTickCount. */
+#define A4_PERF ((volatile uint32_t *)0x00412C00u)
+enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
+       PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_N };
+#define AB_FLUSH 1u      /* glFlush after the frame's last batch (start the tile render) */
+#define AB_565   2u      /* read back RGB565 when the implementation says it is its format */
+#ifndef A4_ABMODE
+#define A4_ABMODE 0u     /* the mode when nothing cycles it (no A4_ABCYCLE) */
+#endif
+extern uint32_t a4_ntick(void);         /* a4_gl.s: User::NTickCount's fast exec */
 
 extern volatile uint32_t *a4_gl_iat_ptr(void);
 #ifdef A4_TEL
@@ -174,7 +223,18 @@ struct glr {
     uint32_t cache_tr[NCACHE];         /* 1 = texture is a colorkey (transparent) sprite */
     uint32_t bfill;                    /* triangles in the batch buffers (drawn when MAXT) */
     uint32_t lasthit;                  /* tex_index: cache slot of the previous lookup */
+    uint32_t dual;                     /* the first GPU frame: software draws it too (no
+                                        * previous GPU image to composite yet) */
+    uint32_t rdfmt, rdtype, rderr;     /* OES_read_format probe: the implementation's read
+                                        * format/type, and the GL error the probe left */
+    uint32_t fmode;                    /* the A/B mode this frame runs in (AB_*) */
+    uint32_t zcfg, zbits;              /* A4_ZBUF: the pbuffer config chosen, its depth bits */
+    uint32_t cache_m1r[NCACHE];        /* mode-1 entry: the [lo, hi] of map values it uses */
+    uint32_t cache_ck[NCACHE];         /* mode-1 entry: m1_sig of the table at its last bake */
+    uint32_t cache_fr[NCACHE];         /* mode-1 entry: the present it was last checked in */
 };
+
+_Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlaps the readback strip");
 
 /* sentinel the pbuffer is cleared to each frame: pixels the GPU never drew read
  * back as pure magenta, so the blit can leave them to the software layer. */
@@ -215,6 +275,14 @@ static void  gl_texenvx(uint32_t tg,uint32_t p,int v){ ((void(*)(uint32_t,uint32
 static uint32_t gl_geterror(void){ return ((uint32_t(*)(void))F(25))(); }   /* device probe */
 static int   egl_choose_config(int d,const int*a,uint32_t*c,int n,int*num){ return ((int(*)(int,const int*,uint32_t*,int,int*))F(26))(d,a,c,n,num); }
 static void  gl_alphafuncx(uint32_t func,int ref){ ((void(*)(uint32_t,int))F(33))(func,ref); }   /* A4_TEL colorkey: alpha test */
+static void  gl_disable(uint32_t c){ ((void(*)(uint32_t))F(32))(c); }
+static void  gl_blendfunc(uint32_t sf,uint32_t df){ ((void(*)(uint32_t,uint32_t))F(35))(sf,df); }
+static void  gl_flush(void){ ((void(*)(void))F(36))(); }
+static void  gl_getintegerv(uint32_t pn,int*v){ ((void(*)(uint32_t,int*))F(37))(pn,v); }
+static void  gl_depthfunc(uint32_t f) __attribute__((unused));
+static void  gl_depthfunc(uint32_t f){ ((void(*)(uint32_t))F(28))(f); }
+static void  gl_cleardepthx(int d) __attribute__((unused));
+static void  gl_cleardepthx(int d){ ((void(*)(int))F(29))(d); }
 static void  gl_texsubimage(uint32_t tg,int l,int xo,int yo,int w,int h,uint32_t f,uint32_t t,const void*p){ ((void(*)(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*))F(34))(tg,l,xo,yo,w,h,f,t,p); }
 #ifdef A4_WINDOW
 extern volatile uint32_t *a4_ws_iat_ptr(void);
@@ -224,7 +292,6 @@ extern volatile uint32_t *a4_cone_iat_ptr(void);
 static void *coe_static(void){ return ((void*(*)(void))C(0))(); }                 /* CCoeEnv::Static() */
 
 static int  ws_flush(void *w){ return ((int(*)(void*))W(2))(w); }
-static void gl_disable(uint32_t c){ ((void(*)(uint32_t))F(32))(c); }
 static int  rw_construct(void *r, void *parent, uint32_t h) __attribute__((unused));
 static int  rw_construct(void *r, void *parent, uint32_t h){ return ((int(*)(void*,void*,uint32_t))W(8))(r, parent, h); }
 static int  rw_construct_backup(void *r, void *parent, int dmode, uint32_t h) __attribute__((unused));
@@ -353,8 +420,21 @@ static int bringup(volatile struct glr *s)
     s->disp = (uint32_t)disp; s->surf = (uint32_t)surf; s->wvis = 1;
 #else
     int pb[] = { EGL_WIDTH, VP_W, EGL_HEIGHT, VP_H, EGL_NONE, 0, 0 };
-    int surf = egl_pbuffer(disp, GLES_CONFIG, pb);  if (!surf) return 0; s->bstep = 4;
-    int ctx  = egl_context(disp, GLES_CONFIG, 0, 0);if (!ctx)  return 0; s->bstep = 5;
+    uint32_t pcfg = GLES_CONFIG;
+#ifdef A4_ZBUF
+    /* A pbuffer config WITH a depth buffer: the game depth-tests its perspective class
+     * (span 0x333f4 keeps a per-frame 1/z buffer). Config 6, used until now, is a fixed
+     * index whose depth on the N95 was never known -- stage 5's depth build lost the road
+     * on the phone and was abandoned without that being checked. Falls back to config 6;
+     * glGetIntegerv(GL_DEPTH_BITS) below then says whether depth is really there. */
+    { int za[] = { EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RED_SIZE, 5, EGL_GREEN_SIZE, 6,
+                   EGL_BLUE_SIZE, 5, EGL_DEPTH_SIZE, 16, EGL_NONE };
+      uint32_t c = 0; int n = 0;
+      if (egl_choose_config(disp, za, &c, 1, &n) && n > 0) pcfg = c; }
+#endif
+    s->zcfg = pcfg;
+    int surf = egl_pbuffer(disp, pcfg, pb);  if (!surf) return 0; s->bstep = 4;
+    int ctx  = egl_context(disp, pcfg, 0, 0);if (!ctx)  return 0; s->bstep = 5;
 #endif
     if (!egl_make_current(disp, surf, surf, ctx))   return 0;       s->bstep = 6;
     gl_viewport(0,0,VP_W,VP_H);
@@ -374,6 +454,22 @@ static int bringup(volatile struct glr *s)
     gl_clear(GL_COLOR_BUFFER_BIT);
     s->pminy = VP_H; s->pmaxy = 0;                   /* nothing to read back yet */
     { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a bring-up GL error */
+    /* The read format the implementation prefers besides RGBA/UNSIGNED_BYTE (GL ES 1.1,
+     * OES_read_format). The composite reads 565 only where this says RGB/565 (AB_565). Its
+     * own error is kept apart, so an implementation without the query cannot set errc. */
+    { int f = 0, t = 0;
+      gl_getintegerv(GL_IMPLEMENTATION_COLOR_READ_FORMAT_OES, &f);
+      gl_getintegerv(GL_IMPLEMENTATION_COLOR_READ_TYPE_OES, &t);
+      s->rdfmt = (uint32_t)f; s->rdtype = (uint32_t)t; s->rderr = gl_geterror(); }
+#ifdef A4_ZBUF
+    /* The game's test passes when the pixel's 1/z is >= the stored one, the buffer zeroed
+     * each frame (0x31c70 -> 0x2def4): GL_GEQUAL on depth = min(ZK/ZW, 1), cleared to 0.
+     * No depth bits -> zbits 0 -> the flags-1 triangles draw untested, as before. */
+    { int zb = 0; gl_getintegerv(GL_DEPTH_BITS, &zb); s->zbits = (uint32_t)zb;
+      gl_cleardepthx(0); gl_depthfunc(GL_GEQUAL);
+      if (zb > 0) gl_clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; } }
+#endif
     return 1;
 }
 
@@ -410,24 +506,129 @@ static uint32_t tex_ck(const uint32_t *ts)
 }
 #endif
 
-static int tex_index(volatile struct glr *s, uint32_t tsaddr)
+
+/* Mode 1 of the default span (0x33964 with ctx[0x64] == 1: the 0x104000 class, ~15% of
+ * calls). Per texel: T = tex[i] (0 = transparent); M = map2[i] (ctx[0x5c], the texture's
+ * own layout); if M, the texel is T plus a quarter of table[M] (ctx[0x60], 16-bit colours),
+ * summed with the span's own carry trick (0x33a3c). A function of texture space alone, so
+ * it is baked into the GL texture. A black base whose lit parts come from the table is why
+ * the speed-camera signs drew as black boxes (round 10); the table can change between
+ * frames (a speed display), so each present the table entries the texture uses are hashed
+ * and a change re-bakes it. */
+static inline uint16_t m1_texel(uint32_t T, uint32_t M, const uint16_t *tab)
+{
+    if (!M) return (uint16_t)T;
+    uint32_t q = tab[M];
+    q = (((q & 0xF7DEu) >> 1) & 0xF7DEu) >> 1;
+    uint32_t sum = T + q;
+    uint32_t cy = (T ^ sum ^ q) & 0x10820u;
+    return (uint16_t)((cy - (cy >> 4)) | sum);
+}
+
+/* the table the span would use: ctx[0x60], moved on 80 bytes a pixel of width when the
+ * frame is not wider than tall (0x339ec; the 320x240 race frame is not moved) */
+static const uint16_t *m1_table(const uint32_t *gctx)
+{
+    const uint32_t *base = (const uint32_t *)((uintptr_t)gctx + 0x40100u);
+    uint32_t fw = *(const uint32_t *)base[0x10 / 4], fh = *(const uint32_t *)base[0x14 / 4];
+    uintptr_t t = gctx[0x60 / 4];
+    if (fw <= fh) t += fw * 80u;
+    return (const uint16_t *)t;
+}
+
+/* Hash of what a mode-1 bake read from the table, plus the map and table addresses:
+ * every table[M] for M in [lo, hi] when that range is small, else 64 texels' worth. */
+static uint32_t m1_sig(const uint16_t *map2, const uint16_t *tab, uint32_t lohi, uint32_t n)
+{
+    uint32_t c = 0x811C9DC5u ^ (uint32_t)(uintptr_t)map2 ^ ((uint32_t)(uintptr_t)tab << 1);
+    uint32_t lo = lohi & 0xFFFFu, hi = lohi >> 16;
+    if (lo > hi) return c;                          /* no M at all: nothing to track */
+    if (hi - lo <= 1024u) {
+        for (uint32_t m = lo; m <= hi; m++) c = (c ^ tab[m]) * 16777619u;
+    } else {
+        uint32_t step = n >> 6; if (!step) step = 1;
+        for (uint32_t k = 0; k < n; k += step) c = (c ^ tab[map2[k]]) * 16777619u;
+    }
+    return c;
+}
+
+/* Upload texture ts into GL texture id (bound here). tr: 5551 with alpha 0 on the zero
+ * texels (else 565); alloc: (re)specify the level first. map2/tab non-null: the mode-1
+ * bake. Converted in row strips through the readback scratch (free here: composite_prev
+ * ran at the frame's first triangle). Returns the [lo, hi] range of M seen (lo > hi when
+ * none). No integer divide: the freestanding blob has no __aeabi_uidiv. */
+static uint32_t tex_upload(uint32_t id, const uint32_t *ts, uint32_t tr, int alloc,
+                           const uint16_t *map2, const uint16_t *tab)
+{
+    uint32_t w = ts[1] + 1, h = ts[2] + 1;
+    const uint16_t *px16 = (const uint16_t *)ts[3];
+    uint32_t lo = 0xFFFFu, hi = 0;
+    gl_bindtex(GL_TEXTURE_2D, id);
+    uint32_t fmt = tr ? GL_RGBA : GL_RGB, typ = tr ? GL_UNSIGNED_SHORT_5_5_5_1 : GL_UNSIGNED_SHORT_5_6_5;
+    if (!tr && !map2) {                             /* plain opaque: straight from the game */
+        gl_teximage(GL_TEXTURE_2D, 0, (int)fmt, (int)w, (int)h, 0, fmt, typ, px16);
+        return 1;                                   /* lo > hi */
+    }
+    if (alloc) gl_teximage(GL_TEXTURE_2D, 0, (int)fmt, (int)w, (int)h, 0, fmt, typ, 0);
+    uint16_t *conv = (uint16_t *)A4_GL_READBUF;   /* 0x403000..0x408000 = 10240 u16 */
+    uint32_t y0 = 0, nrow = 0;
+    for (uint32_t y = 0; y < h; y++) {
+        for (uint32_t x = 0; x < w; x++) {
+            uint32_t i = y * w + x, t16 = px16[i];
+            if (map2 && t16) {
+                uint32_t M = map2[i];
+                if (M) { if (M < lo) lo = M; if (M > hi) hi = M; }
+                t16 = m1_texel(t16, M, tab);
+            }
+            conv[nrow * w + x] = tr ? (uint16_t)((t16 & 0xF800) | (((t16 >> 6) & 0x1F) << 6)
+                                                 | ((t16 & 0x1F) << 1) | (px16[i] ? 1u : 0u))
+                                    : (uint16_t)t16;
+        }
+        nrow++;
+        if ((nrow + 1) * w > 10240u || y == h - 1) {  /* strip full, or last row */
+            gl_texsubimage(GL_TEXTURE_2D, 0, 0, (int)y0, (int)w, (int)nrow, fmt, typ, conv);
+            y0 = y + 1; nrow = 0;
+        }
+    }
+    return lo | (hi << 16);
+}
+
+/* texture cache: the cache INDEX for desc+0x30 (and, for a mode-1 triangle, its map and
+ * table), uploading on a miss. A mode-1 entry is keyed desc|1 (descriptors are word
+ * aligned), so a texture drawn both ways has two GL textures. -1 on failure (the caller
+ * falls through to software). */
+static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint32_t *gctx, int m1)
 {
     uint32_t *ts = (uint32_t *)tsaddr;
+    uint32_t key = tsaddr | (m1 ? 1u : 0u);
+    int i = -1;
 #ifndef A4_TEXCHK
     /* consecutive triangles usually share a texture: try the previous slot first
      * (the linear search below runs per triangle over up to NCACHE entries) */
-    { uint32_t li = s->lasthit; if (li < s->ntex && s->cache_ptr[li] == tsaddr) return (int)li; }
+    { uint32_t li = s->lasthit; if (li < s->ntex && s->cache_ptr[li] == key) i = (int)li; }
 #endif
-    for (uint32_t i = 0; i < s->ntex; i++)
-        if (s->cache_ptr[i] == tsaddr) {
-            s->lasthit = i;
+    for (uint32_t k = 0; i < 0 && k < s->ntex; k++)
+        if (s->cache_ptr[k] == key) {
+            s->lasthit = k; i = (int)k;
 #ifdef A4_TEXCHK
             TC_N[0]++;
-            if (TC_PX[i] != ts[3]) { TC_N[1]++; TC_N[4] = tsaddr; }
-            else if (TC_CK[i] != tex_ck(ts)) { TC_N[3]++; TC_N[4] = tsaddr; }
+            if (TC_PX[k] != ts[3]) { TC_N[1]++; TC_N[4] = tsaddr; }
+            else if (TC_CK[k] != tex_ck(ts)) { TC_N[3]++; TC_N[4] = tsaddr; }
 #endif
-            return (int)i;
         }
+    if (i >= 0) {
+        if (m1 && s->cache_fr[i] != s->frames) {    /* once a present: has the table moved? */
+            s->cache_fr[i] = s->frames;
+            const uint16_t *map2 = (const uint16_t *)gctx[0x5c / 4], *tab = m1_table(gctx);
+            uint32_t n = (ts[1] + 1) * (ts[2] + 1);
+            if (m1_sig(map2, tab, s->cache_m1r[i], n) != s->cache_ck[i]) {
+                s->cache_m1r[i] = tex_upload(s->cache_id[i], ts, s->cache_tr[i], 0, map2, tab);
+                s->cache_ck[i] = m1_sig(map2, tab, s->cache_m1r[i], n);
+                A4_PERF[PF_M1BAKE]++;
+            }
+        }
+        return i;
+    }
     uint32_t w = ts[1] + 1, h = ts[2] + 1;
     const void *pix = (const void *)ts[3];
     if (!pix || w > 1024 || h > 1024) return -1;
@@ -442,41 +643,21 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr)
      * alpha test passes and they are unaffected. */
     const uint16_t *px16 = (const uint16_t *)pix;
     uint32_t total = w * h, zeros = 0;
-    for (uint32_t i = 0; i < total; i++) if (px16[i] == 0) zeros++;
+    for (uint32_t k = 0; k < total; k++) if (px16[k] == 0) zeros++;
     uint32_t tr = (zeros > 0) ? 1u : 0u;              /* colorkey (has transparent texels) */
     uint32_t id = 0;
     gl_gentex(1, &id);
-    gl_bindtex(GL_TEXTURE_2D, id);
-    if (tr) {
-        /* allocate 5551, then convert+upload in row strips through the readback
-         * scratch (free here: composite_prev ran at the frame's first prim). */
-        gl_teximage(GL_TEXTURE_2D, 0, GL_RGBA, (int)w, (int)h, 0, GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, 0);
-        uint16_t *conv = (uint16_t *)A4_GL_READBUF;   /* 0x403000..0x408000 = 10240 u16 */
-        /* convert+upload in row strips, filling conv until the next row won't fit
-         * (no integer divide -- the freestanding blob has no __aeabi_uidiv). */
-        uint32_t y0 = 0, nrow = 0;
-        for (uint32_t y = 0; y < h; y++) {
-            for (uint32_t x = 0; x < w; x++) {
-                uint16_t t16 = px16[y * w + x];
-                conv[nrow * w + x] = (uint16_t)((t16 & 0xF800) | (((t16 >> 6) & 0x1F) << 6)
-                                                | ((t16 & 0x1F) << 1) | (t16 ? 1u : 0u));
-            }
-            nrow++;
-            if ((nrow + 1) * w > 10240u || y == h - 1) {   /* strip full, or last row */
-                gl_texsubimage(GL_TEXTURE_2D, 0, 0, (int)y0, (int)w, (int)nrow,
-                               GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, conv);
-                y0 = y + 1; nrow = 0;
-            }
-        }
-    } else {
-        gl_teximage(GL_TEXTURE_2D, 0, GL_RGB, (int)w, (int)h, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, pix);
-    }
+    const uint16_t *map2 = 0, *tab = 0;
+    if (m1) { map2 = (const uint16_t *)gctx[0x5c / 4]; tab = m1_table(gctx); }
+    uint32_t r = tex_upload(id, ts, tr, 1, map2, tab);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     int idx = (int)s->ntex;
-    s->cache_ptr[idx] = tsaddr; s->cache_id[idx] = id; s->cache_tr[idx] = tr; s->ntex++;
+    s->cache_ptr[idx] = key; s->cache_id[idx] = id; s->cache_tr[idx] = tr; s->ntex++;
+    s->cache_m1r[idx] = r; s->cache_fr[idx] = s->frames;
+    s->cache_ck[idx] = m1 ? m1_sig(map2, tab, r, total) : 0;
 #ifdef A4_TEXCHK
     TC_PX[idx] = ts[3]; TC_CK[idx] = tex_ck(ts); TC_N[5]++;
 #endif
@@ -526,27 +707,82 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         if (i < 40u) fh[3+i*3]++; else fh[121]++;
     }
 #endif
-#ifdef A4_TAKEDEF
-    /* Also take the game's DEFAULT rasterizer (0x2e1c8): flags with none of the
-     * draw_primitive dispatch bits 0x1 0x2 0x8 0x10 0x20 0x40 0x100 (0x4000, 0x104000,
-     * 0x20000, 0x10000 -- ~47% of all triangles in a race). Its span (0x33964) is a
-     * colour key -- texel 0 leaves the pixel -- which the 5551 upload + alpha test already
-     * reproduce; span mode 1 (ctx[0x64]==1) also adds 1/4 of a per-scanline table colour
-     * indexed by a second map, not reproduced (drawn as the plain key). Same descriptor
-     * layout as flags 1. Drawn in arrival order with the flags-1 triangles, so the game's
-     * painter's order between them is kept. */
-    if (iat[0] < 0x10000u || !((flags & 1u) || (flags & 0x17Bu) == 0u)) return 0;
+    if (iat[0] < 0x10000u) return 0;
+    /* Which rasterizer the game would use: draw_primitive (0x300AE) tests flags in the
+     * order 0x2, 0x1, 0x8, 0x10, 0x20, 0x40, 0x100, else the default (MBX.md). Anything
+     * left to software is drawn ON TOP of the previous frame's GPU image (it lands after
+     * the composite), whatever the game's draw order says -- so every class taken here
+     * is one less source of things showing through walls. */
+    uint32_t kind;
+    int m1 = 0;                                     /* default span in its mode 1 (tex_index) */
+    if (flags & 2u) {
+        /* 0x2fbdc: untextured, the colour in desc+0x30 (its low half; a zero word draws
+         * nothing). Solid when neither 0x4 nor 0x8 (span 0x33b46); 0x4 is a 50% blend
+         * (0x33b86), 0x8 a stipple (0x33c44) -- those two stay software: blending on the
+         * GPU would mix with the sentinel where the GPU drew nothing. A race uses only
+         * the solid one (0x20002, 1.6% of calls: the grey/khaki "slabs", round 9). */
+#ifdef A4_TAKEFLAT
+        if (flags & 0xCu) return 0;
+        kind = KIND_FLAT;
 #else
-    if (iat[0] < 0x10000u || !(flags & 1)) return 0;
+        return 0;
 #endif
+    } else if (flags & 1u) {
+        /* 0x2f6fc, perspective textured. Its span depth-tests (see A4_ZBUF); the other
+         * classes neither test nor write the game's 1/z buffer. */
+#ifdef A4_ZBUF
+        kind = KIND_TEXZ;
+#else
+        kind = KIND_TEX;
+#endif
+    } else if (flags & 8u) {
+        /* 0x2f358 -> span 0x33d18: affine textured, dst + texel per channel, saturating
+         * (0x10008, 0.2%: glows). GL_ONE/GL_ONE is the same sum -- but over the sentinel
+         * (pixels whose content is the software layer, e.g. the sky) it adds to magenta. */
+#ifdef A4_TAKEADD
+        kind = KIND_ADD;
+#else
+        return 0;
+#endif
+    } else if ((flags & 0x30u) == 0x20u) {
+        /* 0x2ecb4 -> span 0x33f8c: shadows, dst*12/16 (22% of calls). The span keeps a
+         * screen-sized byte map so an overlap darkens once; GL_ZERO/GL_SRC_ALPHA at alpha
+         * 12/16 darkens again where two shadow triangles overlap. */
+#ifdef A4_TAKESHADOW
+        kind = KIND_SHAD;
+#else
+        return 0;
+#endif
+    } else if (flags & 0x150u) {
+        return 0;                                    /* 0x10/0x40/0x100: none in a race */
+    } else {
+#ifdef A4_TAKEDEF
+        /* The game's DEFAULT rasterizer (0x2e1c8): 0x4000, 0x104000, 0x20000, 0x10000 --
+         * ~47% of all triangles in a race. Its span (0x33964) is a colour key -- texel 0
+         * leaves the pixel -- which the 5551 upload + alpha test already reproduce; span
+         * mode 1 (ctx[0x64]==1) also adds 1/4 of a per-scanline table colour indexed by a
+         * second map, not reproduced (drawn as the plain key). Same descriptor layout as
+         * flags 1. Mode 1 (ctx[0x64] == 1) is baked into its texture (m1_texel). */
+        kind = KIND_TEX;
+        m1 = gctx[0x64 / 4] == 1u;
+#else
+        return 0;
+#endif
+    }
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
     if (++s->seen < START_AFTER) return 0;           /* past the intro video + menu */
     if (s->up != A4_GL_MAGIC) {
         if (!bringup(s)) return 0;                   /* glr is bss-zeroed */
         s->up = A4_GL_MAGIC;
+        s->dual = 1;                                 /* see the return below */
     }
     if (s->prims == 0) {                                /* first prim of the frame */
         s->flushed = 0;
+#if defined(A4_TEL) && defined(A4_ABCYCLE)
+        s->fmode = A4_PERF[PF_MODE];                   /* a4_tel.c steps it per capture window */
+#else
+        s->fmode = A4_ABMODE;
+#endif
         s->miny = VP_H; s->maxy = 0;                    /* empty drawn-row extent */
         /* Composite the previous frame's GPU image NOW, before this frame's
          * software draws (the car, the trees, the HUD) land on top of it in
@@ -555,28 +791,41 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
          * MBX.md): the flush fell to the frame end and overwrote the car and
          * the bottom HUD -- the device glitch. The pbuffer still holds the
          * frame drawn at the previous frame's end. */
-        composite_prev(s);
+        { uint32_t t0 = a4_ntick(); composite_prev(s); A4_PERF[PF_COMP] += a4_ntick() - t0; }
         /* Clear for THIS frame now, after the readback of the previous one, so a
          * batch drawn mid-frame (when the batch buffers fill) is kept. The clear used
          * to be at the frame end, which erased every triangle past the batch size. */
         gl_clearcolorx(FX, 0, FX, FX);                   /* magenta sentinel (see SENTINEL_*) */
-        gl_clear(GL_COLOR_BUFFER_BIT);
+        gl_clear(s->zbits ? (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT) : GL_COLOR_BUFFER_BIT);
         s->bfill = 0;
     }
 
-    uint32_t tsaddr = desc[0x30 / 4];
-    if (!tsaddr) return 0;
-    uint32_t *ts = (uint32_t *)tsaddr;
-    uint32_t tw = ts[1] + 1, th = ts[2] + 1;
+#ifdef A4_SWONLY
+    /* reference build: GL up and the frame counted (so telemetry captures it), but
+     * nothing drawn on the GPU -- every triangle is the game's own software, i.e. the
+     * stock picture, for comparing captures against */
+    s->prims++;
+    return 0;
+#endif
+    uint32_t tsaddr = desc[0x30 / 4];               /* texture descriptor, or flat colour */
+    if (!tsaddr && kind != KIND_SHAD) return 0;
     int wsh = 0, hsh = 0;
-    for (uint32_t w = tw; w > 1; w >>= 1) wsh++;
-    for (uint32_t h = th; h > 1; h >>= 1) hsh++;
-
-    int ti = tex_index(s, tsaddr);
-    if (ti < 0) return 0;
-    /* colorkey sprites are now GPU-drawn with alpha test (5551 upload), so no
-     * software fallback -- s->cache_tr is kept for diagnostics only. */
-    uint32_t id = s->cache_id[ti];
+    uint32_t id;                                    /* the triangle's TEXID word */
+    if (kind == KIND_SHAD) {
+        id = KIND_SHAD << 28;                       /* desc+0x30 unused by 0x33f8c */
+    } else if (kind == KIND_FLAT) {
+        id = (KIND_FLAT << 28) | (tsaddr & 0xFFFFu);
+    } else {
+        uint32_t *ts = (uint32_t *)tsaddr;
+        uint32_t tw = ts[1] + 1, th = ts[2] + 1;
+        for (uint32_t w = tw; w > 1; w >>= 1) wsh++;
+        for (uint32_t h = th; h > 1; h >>= 1) hsh++;
+        int ti = tex_index(s, tsaddr, gctx, m1);
+        if (ti < 0) return 0;
+        /* colorkey sprites are GPU-drawn with alpha test (5551 upload), so no software
+         * fallback -- s->cache_tr is kept for diagnostics only. */
+        id = (kind << 28) | s->cache_id[ti];
+    }
 
     int16_t p[6];
     int32_t uv[3 * UVC];
@@ -585,8 +834,11 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         uint32_t *vp = (uint32_t *)desc[voff[i] / 4];
         p[i*2]   = (int16_t)(int32_t)vp[0];
         p[i*2+1] = (int16_t)(int32_t)vp[1];
-        int32_t un = ((int32_t)desc[voff[i]/4 + 1] * 4096) >> wsh;   /* U_norm * 65536 */
-        int32_t vn = ((int32_t)desc[voff[i]/4 + 2] * 4096) >> hsh;   /* V_norm * 65536 */
+        int32_t un = 0, vn = 0;                     /* flat/shadow triangles sample nothing */
+        if (kind == KIND_TEX || kind == KIND_TEXZ || kind == KIND_ADD) {
+            un = ((int32_t)desc[voff[i]/4 + 1] * 4096) >> wsh;      /* U_norm * 65536 */
+            vn = ((int32_t)desc[voff[i]/4 + 2] * 4096) >> hsh;      /* V_norm * 65536 */
+        }
 #if defined(A4_PERSP) && !defined(A4_HPERSP)
         /* q = 1/w (ZW is w: it grows with distance, measured on road triangles --
          * MBX.md "Measured the perspective input"). s = U_norm*q, t = V_norm*q
@@ -633,12 +885,18 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
             if (ay > m) m = ay;
         }
         int shift = (26 - bitlen(m)) - bitlen(zmax);
+        /* depth (A4_ZBUF, flags 1 only): z_ndc = ZK/ZW, the game's 1/z up to scale. The
+         * ortho maps z_clip = -z, so z = -ZK*2^shift over w = ZW*2^shift; clamped to w so
+         * z_ndc <= 1 and no vertex is ever clipped by the depth range (a near vertex just
+         * saturates). Window depth is interpolated linearly on screen, as 1/z is. */
+        int32_t zq = 0;
+        if (kind == KIND_TEXZ) zq = shift >= 0 ? (ZK << shift) : (ZK >> -shift);
         for (int i = 0; i < 3; i++) {
             int32_t W = (int32_t)(shift >= 0 ? (zw[i] << shift) : (zw[i] >> -shift));
             if (W < 1) W = 1;
             P[i*4+0] = (int32_t)p[i*2]   * W;
             P[i*4+1] = (int32_t)p[i*2+1] * W;
-            P[i*4+2] = 0;
+            P[i*4+2] = -(zq < W ? zq : W);
             P[i*4+3] = W;
         }
     }
@@ -662,7 +920,7 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     }
 #endif
     if (s->bfill >= MAXT) {                         /* batch full: draw it, then refill */
-        batch_draw(s->bfill);
+        uint32_t t0 = a4_ntick(); batch_draw(s->bfill); A4_PERF[PF_DRAW] += a4_ntick() - t0;
         s->bfill = 0;
     }
     uint32_t n = s->bfill;
@@ -680,12 +938,75 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     TEXID[n] = id;
     s->bfill = n + 1;
     s->prims++;                                     /* the frame's total (not capped) */
-    return 1;
+    if (kind == KIND_FLAT) A4_PERF[PF_FLAT]++;
+    else if (kind == KIND_ADD) A4_PERF[PF_ADD]++;
+    else if (kind == KIND_SHAD) A4_PERF[PF_SHAD]++;
+    /* The first GPU frame has no previous GPU image to composite, so its GPU-taken
+     * triangles would be missing for a frame (the countdown flash: 76% of the scene,
+     * round 9). Let software draw that frame as well; the GPU still draws it, and the
+     * next frame composites it as usual. */
+#ifdef A4_DUALCAP
+    return 0;                                       /* bench instrument: software draws it all */
+#else
+    return s->dual ? 0 : 1;
+#endif
+}
+
+/* Undo what entering a kind changed, back to the bring-up state (KIND_TEX). */
+static void kind_leave(uint32_t st)
+{
+    if (st == KIND_FLAT || st == KIND_SHAD) { gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX); }
+    if (st == KIND_ADD || st == KIND_SHAD) gl_disable(GL_BLEND);
+    if (st == KIND_TEXZ) gl_disable(GL_DEPTH_TEST);
+}
+
+/* One run of equal TEXID words: switch GL state if its kind differs from the
+ * previous run's (*st), then draw. The state left between runs is the kind's own;
+ * batch_draw restores KIND_TEX (the bring-up state) when it is done. */
+static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st)
+{
+    uint32_t kind = mat >> 28;
+    if (kind == KIND_TEXZ && !((volatile struct glr *)A4_GL_SCRATCH)->zbits)
+        kind = KIND_TEX;                            /* no depth buffer: draw untested */
+#ifdef A4_KINDVIS
+    /* diagnosis: flat triangles bright green, additive ones bright cyan, shadows bright
+     * red, all opaque and untextured, so a capture shows which class an object is */
+    if (kind == KIND_FLAT || kind == KIND_ADD || kind == KIND_SHAD) {
+        kind_leave(*st);
+        gl_disable(GL_TEXTURE_2D);
+        *st = KIND_FLAT;
+        if (kind == KIND_FLAT) gl_color4x(0, FX, 0, FX);
+        else if (kind == KIND_ADD) gl_color4x(0, FX, FX, FX);
+        else gl_color4x(FX, 0, 0, FX);                 /* shadows red */
+        gl_drawarrays(GL_TRIANGLES, (int)(first*3), (int)(count*3));
+        return;
+    }
+#endif
+    if (kind != *st) {
+        kind_leave(*st);
+        if (kind == KIND_FLAT) gl_disable(GL_TEXTURE_2D);
+        else if (kind == KIND_TEXZ) gl_enable(GL_DEPTH_TEST);
+        else if (kind == KIND_ADD) { gl_enable(GL_BLEND); gl_blendfunc(GL_ONE, GL_ONE); }
+        else if (kind == KIND_SHAD) {
+            gl_disable(GL_TEXTURE_2D); gl_enable(GL_BLEND); gl_blendfunc(GL_ZERO, GL_SRC_ALPHA);
+            gl_color4x(0, 0, 0, (FX * 12) / 16);     /* dst * 12/16 */
+        }
+        *st = kind;
+    }
+    if (kind == KIND_FLAT) {
+        /* RGB565 -> GL_FIXED, c*FX/31 (or /63) without a divide; exact at both ends */
+        uint32_t r = (mat >> 11) & 31u, g = (mat >> 5) & 63u, b = mat & 31u;
+        gl_color4x(r == 31u ? FX : (int)(r * 2114u), g == 63u ? FX : (int)(g * 1040u + (g >> 2)),
+                   b == 31u ? FX : (int)(b * 2114u), FX);
+    } else if (kind != KIND_SHAD) {
+        gl_bindtex(GL_TEXTURE_2D, mat & 0x0FFFFFFFu);
+    }
+    gl_drawarrays(GL_TRIANGLES, (int)(first*3), (int)(count*3));
 }
 
 /* Draw the accumulated frame in arrival order, one glDrawArrays per run of
- * consecutive same-texture triangles. Identical pixels to the per-triangle path;
- * just fewer GL calls. No depth, no sort. */
+ * consecutive equal TEXID words (same texture or colour, same kind). Identical
+ * pixels to the per-triangle path; just fewer GL calls. No depth, no sort. */
 static void batch_draw(uint32_t nt)
 {
     if (nt == 0) return;
@@ -699,18 +1020,17 @@ static void batch_draw(uint32_t nt)
 #endif
     gl_texcoordptr((int)UVC, GL_FIXED, 0, (const void *)A4_GL_UV);
 
-    uint32_t run_start = 0;
+    uint32_t run_start = 0, st = KIND_TEX;
     uint32_t cur = TEXID[0];
     for (uint32_t t = 1; t < nt; t++) {
         if (TEXID[t] != cur) {
-            gl_bindtex(GL_TEXTURE_2D, cur);
-            gl_drawarrays(GL_TRIANGLES, (int)(run_start*3), (int)((t - run_start)*3));
+            draw_run(cur, run_start, t - run_start, &st);
             run_start = t;
             cur = TEXID[t];
         }
     }
-    gl_bindtex(GL_TEXTURE_2D, cur);                 /* final run */
-    gl_drawarrays(GL_TRIANGLES, (int)(run_start*3), (int)((nt - run_start)*3));
+    draw_run(cur, run_start, nt - run_start, &st);  /* final run */
+    kind_leave(st);
 #if defined(A4_RUNDIAG) || defined(A4_TEL)
     {   /* draw calls this frame (one per same-texture run); folded at flush */
         uint32_t runs = 1; for (uint32_t t = 1; t < nt; t++) if (TEXID[t] != TEXID[t-1]) runs++;
@@ -728,6 +1048,9 @@ static void batch_draw(uint32_t nt)
  * finish it (~2.4M instructions), so the read should not stall on a real GPU. */
 static void composite_prev(volatile struct glr *s)
 {
+#ifdef A4_DUALCAP
+    return;                                         /* the game's own picture stays untouched */
+#endif
 #if !defined(A4_NO_BLIT) && !defined(A4_WINDOW)
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
     if (bb && s->pminy <= s->pmaxy) {
@@ -738,11 +1061,37 @@ static void composite_prev(volatile struct glr *s)
      * y0 steps on STRIP multiples and VP_H is one, so a strip never over-reads. */
     int gl_lo = VP_H - 1 - (int)s->pmaxy; if (gl_lo < 0) gl_lo = 0;
     int gl_hi = VP_H - 1 - (int)s->pminy; if (gl_hi > VP_H - 1) gl_hi = VP_H - 1;
+    /* RGB565 straight from the implementation when it names that as its read format:
+     * half the bytes, and the surface's own format (no conversion in the driver) */
+    int r565 = (s->fmode & AB_565) && s->rdfmt == GL_RGB && s->rdtype == GL_UNSIGNED_SHORT_5_6_5;
     for (int y0 = (gl_lo / STRIP) * STRIP; y0 <= gl_hi; y0 += STRIP) {
-        gl_readpixels(0, y0, VP_W, STRIP, GL_RGBA, GL_UNSIGNED_BYTE, rb);
+        uint32_t t0 = a4_ntick();
+        if (r565) gl_readpixels(0, y0, VP_W, STRIP, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, rb);
+        else      gl_readpixels(0, y0, VP_W, STRIP, GL_RGBA, GL_UNSIGNED_BYTE, rb);
+        A4_PERF[PF_READ] += a4_ntick() - t0;
 #ifdef A4_READBACK_ONLY
         continue;                                        /* measurement: readback cost without the blit */
 #endif
+        if (r565) {
+            const uint16_t *rb16 = (const uint16_t *)rb;
+            for (int sy = 0; sy < STRIP; sy++) {
+                int screen_y = VP_H - 1 - (y0 + sy);
+                if (screen_y < CLIP_TOP) continue;
+                const uint16_t *src = rb16 + sy * VP_W;
+                volatile uint16_t *dstrow = fb + screen_y * FB_STRIDE;
+                for (int x = 0; x < VP_W; x++) {
+                    uint16_t px = src[x];
+                    if (px == 0xF81Fu) {                 /* the sentinel, 565 (255,0,255) */
+#ifdef A4_SENTINEL_VIS
+                        dstrow[x] = (uint16_t)0x07E0;
+#endif
+                        continue;
+                    }
+                    dstrow[x] = px;
+                }
+            }
+            continue;
+        }
         for (int sy = 0; sy < STRIP; sy++) {
             int screen_y = VP_H - 1 - (y0 + sy);
             if (screen_y < CLIP_TOP) continue;           /* leave the HUD banner to software */
@@ -787,15 +1136,24 @@ void a4_gl_flush(void)
     /* draw the rest of THIS frame (the clear was at its first primitive, and any
      * full batch was drawn as it filled); it finishes on the GPU during the present
      * and the next frame's logic, and composite_prev reads it back then. */
-    batch_draw(s->bfill);
+    { uint32_t t0 = a4_ntick(); batch_draw(s->bfill); A4_PERF[PF_DRAW] += a4_ntick() - t0; }
     s->bfill = 0;
+    if (s->fmode & AB_FLUSH) {
+        /* A tile renderer (the MBX) renders nothing until something makes it: without
+         * this the frame is only rendered when composite_prev's first glReadPixels asks,
+         * and the pipelining buys nothing. */
+        uint32_t t0 = a4_ntick(); gl_flush(); A4_PERF[PF_GLFLUSH] += a4_ntick() - t0;
+    }
+    if (s->dual) { s->dual = 0; A4_PERF[PF_DUAL]++; }
 #if defined(A4_RUNDIAG) || defined(A4_TEL)
     {   /* 0x412000: [0] frames [1] draw calls [2] triangles [3] max calls in a frame
          * [5] calls in the last frame (a4_tel.c writes these into the capture header) */
         volatile uint32_t *rd = (volatile uint32_t *)0x00412000u;
+        A4_PERF[PF_CALLS] += rd[4]; A4_PERF[PF_TRIS] += s->prims;
         rd[0]++; rd[1] += rd[4]; rd[2] += s->prims; if (rd[4] > rd[3]) rd[3] = rd[4]; rd[5] = rd[4]; rd[4] = 0;
     }
 #endif
+    A4_PERF[PF_RENDERS]++;
     { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a draw GL error */
 
     /* this frame's drawn extent is what composite_prev reads back next frame */
@@ -819,6 +1177,48 @@ int a4_gl_state(void)
     if (iat[0] < 0x10000u) return 0;
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
     return 1 + (int)s->bstep;
+}
+
+#ifdef A4_DUALCAP
+/* Bench instrument (round 10): the GPU's picture of the frame just drawn, read back now
+ * (the pbuffer holds it until the next frame's first triangle) as top-down RGB565 rows,
+ * the sentinel as 0xF81F, handed to wr() strip by strip -- a4_tel.c appends it to the
+ * capture, beside the software picture of the same frame (A4_DUALCAP makes software draw
+ * every triangle as well). */
+void a4_gl_dumpgpu(void (*wr)(int pos, const void *p, int len), int base)
+{
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    if (s->up != A4_GL_MAGIC) return;
+    uint32_t *rb = (uint32_t *)A4_GL_READBUF;
+    uint16_t *out = (uint16_t *)(A4_GL_READBUF + VP_W * STRIP * 2);   /* second half of the strip buffer */
+    for (int y0 = 0; y0 < VP_H; y0 += STRIP) {
+        gl_readpixels(0, y0, VP_W, STRIP, GL_RGBA, GL_UNSIGNED_BYTE, rb);
+        for (int sy = STRIP - 1; sy >= 0; sy--) {     /* GL rows bottom-up -> screen rows */
+            const uint32_t *src = rb + sy * VP_W;
+            for (int x = 0; x < VP_W; x++) {
+                uint32_t px = src[x], r = px & 0xFF, g = (px >> 8) & 0xFF, b = (px >> 16) & 0xFF;
+                out[x] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+            }
+            int screen_y = VP_H - 1 - (y0 + sy);
+            wr(base + screen_y * VP_W * 2, out, VP_W * 2);
+        }
+    }
+}
+#endif
+
+/* Bring-up facts for the telemetry header: 0/1/2 the OES_read_format probe (format,
+ * type, its error), 3 the pbuffer config, 4 its depth bits. */
+uint32_t a4_gl_rdinfo(int k)
+{
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    switch (k) {
+    case 0: return s->rdfmt;
+    case 1: return s->rdtype;
+    case 2: return s->rderr;
+    case 3: return s->zcfg;
+    case 4: return s->zbits;
+    default: return s->ntex;
+    }
 }
 
 /* Device probe accessors (read by a4_fps.c's -DA4_GAUGE gauge). */

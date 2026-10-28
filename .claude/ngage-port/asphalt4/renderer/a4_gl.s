@@ -45,9 +45,14 @@ a4_gl_iat:
         .word   35      @ [29] glClearDepthx
         .word   6       @ [30] eglCreateWindowSurface (A4_WINDOW: the GPU presents)
         .word   22      @ [31] eglSwapBuffers
-        .word   36      @ [32] glDisable (A4_WINDOW: the fps bar is untextured quads)
+        .word   52      @ [32] glDisable (was 36 = glClearStencil until round 10; only the
+                        @      unshipped A4_WINDOW fps bar used it; flat prims need it now)
         .word   28      @ [33] glAlphaFuncx (A4_TEL colorkey: GPU alpha test for sprites)
         .word   128     @ [34] glTexSubImage2D (A4_TEL colorkey: strip-upload 5551 any size)
+        .word   30      @ [35] glBlendFunc   (additive prims; between 29 glBindTexture and
+                        @      31 glClear, both proven on the N95 -- the only GL ES 1.1 name there)
+        .word   59      @ [36] glFlush       (kick the tile renderer at the frame end)
+        .word   69      @ [37] glGetIntegerv (the implementation's read format, OES_read_format)
         .global a4_gl_iat_end
 a4_gl_iat_end:
 
@@ -137,3 +142,17 @@ a4_gl_iat_ptr:
 0:      add     r0, pc, r0          @ pc here = 0b + 8 (ARM)
         bx      lr
 1:      .word   a4_gl_iat - (0b + 8)
+
+@ a4_ntick() -> User::NTickCount(), the nanokernel tick (its period on the N95 is not
+@ known -- a4_tel.c records it beside User::TickCount so the pair calibrates it), for
+@ timing the GL phases on the phone. Called as its fast exec directly, so no import is added: euser's own export
+@ (RM-320 ordinal 2103, read off the ROM -- the Thumb export at 0x803a855a BLXes the
+@ ARM stub at 0x8039fb18, `swi 0x800010; bx lr`) is exactly this. Fast exec 0x0F
+@ (ordinal 584, FastCounter) is NOT used: it answers a constant on the N95
+@ (DEVICES.md, round 152). ARM state: EKA2 reads a 24-bit SWI number only from an
+@ ARM SWI.
+        .global a4_ntick
+        .align  2
+a4_ntick:
+        swi     0x800010
+        bx      lr

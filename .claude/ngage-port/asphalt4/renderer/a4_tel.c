@@ -20,6 +20,11 @@
 #ifdef A4_TEL
 
 extern volatile uint32_t *a4_efs_iat_ptr(void);
+extern uint32_t a4_ntick(void);              /* a4_gl.s: User::NTickCount */
+extern uint32_t a4_gl_rdinfo(int k);         /* a4_gl.c: the read-format probe */
+#ifdef A4_DUALCAP
+extern void a4_gl_dumpgpu(void (*wr)(int, const void *, int), int base);
+#endif
 #define EF(i) (a4_efs_iat_ptr()[i])
 
 #ifndef TEL_EVERY
@@ -38,6 +43,10 @@ extern volatile uint32_t *a4_efs_iat_ptr(void);
 #define FB_STRIDE 320
 #define FB_BYTES  ((uint32_t)VP_W * VP_H * 2u)   /* 150 KB: blit-proven mapped */
 #define TEL_MAGIC 0x4C546134u     /* "a4TL" */
+#define TEL_HDR_WORDS 64          /* version 4: 256-byte header (3 had 32 words) */
+#define A4_PERF ((volatile uint32_t *)0x00412C00u)   /* a4_gl.c PF_*: same order */
+enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
+       PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_N };
 #define EFILE_WRITE 0x200u
 #define DES(len) ((1u<<28) | ((uint32_t)(len)))  /* TPtrC iLength: EPtrC(1)<<28 | len */
 
@@ -71,6 +80,16 @@ static int efs_writep(void *rfile, int pos, const void *des8) {
 static int efs_flush(void *rfile) {
     return ((int (*)(void *))EF(3))(rfile);
 }
+
+#ifdef A4_DUALCAP
+/* a4_gl_dumpgpu's writer: into the capture being written (caps not yet advanced) */
+static void dual_wr(int pos, const void *p, int len)
+{
+    struct tel *t = (struct tel *)A4_TEL_SCRATCH;
+    struct des d = { DES((uint32_t)len), p };
+    efs_writep(&t->rfile[t->caps % TEL_RING], pos, &d);
+}
+#endif
 
 /* Called on every present from a4_gl_frame; had = 3D primitives drawn since the
  * previous present (0 on the two re-presents of each game iteration and in menus). */
@@ -125,10 +144,10 @@ void a4_tel_tick(uint32_t had)
      * bench via MEMSNAP (same field order). */
     volatile uint32_t *fp = (volatile uint32_t *)A4_FPS_SCRATCH;  /* a4_fps_state */
 
-    uint32_t h[32];
+    uint32_t h[TEL_HDR_WORDS];
     int i = 0;
     h[i++] = TEL_MAGIC;
-    h[i++] = 3;                       /* version 3: adds the a4_fps block */
+    h[i++] = 4;                       /* version 4: 64-word header (the GL phase timers) */
     h[i++] = t->caps;                 /* capture index */
     h[i++] = t->fcount;
     h[i++] = VP_W; h[i++] = VP_H; h[i++] = FB_STRIDE; h[i++] = FB_BYTES;
@@ -148,7 +167,25 @@ void a4_tel_tick(uint32_t had)
         volatile uint32_t *rd = (volatile uint32_t *)0x00412000u;
         h[i++] = rd[0]; h[i++] = rd[1]; h[i++] = rd[2]; h[i++] = rd[3]; h[i++] = rd[5];
     }
-    while (i < 32) h[i++] = 0;
+    {   /* [32..] the window since the previous capture (round 10): its A/B mode, renders,
+         * length and the GL phases inside it, all in User::NTickCount ticks; then the
+         * clocks now (NTickCount, TickCount, HomeTime us) so captures calibrate the
+         * NTickCount period; the read-format probe; flat/additive/dual counts (totals). */
+        volatile uint32_t *pf = A4_PERF;
+        uint32_t now = a4_ntick();
+        h[i++] = pf[PF_MODE];   h[i++] = pf[PF_RENDERS]; h[i++] = now - pf[PF_T0];
+        h[i++] = pf[PF_COMP];   h[i++] = pf[PF_READ];    h[i++] = pf[PF_DRAW];
+        h[i++] = pf[PF_GLFLUSH]; h[i++] = pf[PF_CALLS];  h[i++] = pf[PF_TRIS];
+        h[i++] = now;           h[i++] = fp[1];  /* a4_fps last_tick (User::TickCount) */
+        h[i++] = fp[9];                          /* a4_fps ttime[0] (HomeTime, low word, us) */
+        h[i++] = a4_gl_rdinfo(0); h[i++] = a4_gl_rdinfo(1); h[i++] = a4_gl_rdinfo(2);
+        h[i++] = pf[PF_FLAT];   h[i++] = pf[PF_ADD];     h[i++] = pf[PF_DUAL];
+        h[i++] = pf[PF_SHAD];
+        h[i++] = a4_gl_rdinfo(3); h[i++] = a4_gl_rdinfo(4);   /* pbuffer config, depth bits */
+        h[i++] = pf[PF_M1BAKE];                                /* mode-1 re-bakes (total) */
+        h[i++] = a4_gl_rdinfo(5);                              /* textures in the cache */
+    }
+    while (i < TEL_HDR_WORDS) h[i++] = 0;
 
     void *f = &t->rfile[t->caps % TEL_RING];
     struct des hd = { DES(sizeof h), h };
@@ -161,8 +198,20 @@ void a4_tel_tick(uint32_t had)
         struct des fd = { DES(FB_BYTES), (const void *)bb };
         efs_writep(f, (int)sizeof h + (int)FPS_BYTES, &fd);
     }
+#ifdef A4_DUALCAP
+    a4_gl_dumpgpu(dual_wr, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES);
+#endif
     efs_flush(f);
     t->caps++;
+    {   /* next window: reset the timers after the write, so its cost is in no window */
+        volatile uint32_t *pf = A4_PERF;
+#ifdef A4_ABCYCLE
+        pf[PF_MODE] = (pf[PF_MODE] + 1u) & 3u;    /* AB_FLUSH x AB_565, one mode a window */
+#endif
+        pf[PF_RENDERS] = 0; pf[PF_COMP] = 0; pf[PF_READ] = 0; pf[PF_DRAW] = 0;
+        pf[PF_GLFLUSH] = 0; pf[PF_CALLS] = 0; pf[PF_TRIS] = 0;
+        pf[PF_T0] = a4_ntick();
+    }
 }
 
 #else

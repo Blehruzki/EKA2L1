@@ -2679,3 +2679,106 @@ Rule 4 -- guesses, named: (1) the MBX driver's per-glDrawArrays cost (291 calls/
 for every draw costs something on PowerVR (unmeasured); (3) the crash-scene choppiness
 (round 8 capidx 11, 17-21 ticks a render) -- cause unknown; more GPU work may help or not.
 States the bench never entered: the MBX itself; a long session past one race.
+
+## Phone round 9 (r9_phone 27e232b9): lamp posts not reported; the software classes left
+
+Owner: (1) in the countdown, for an instant, 2/3 of the scenery gone (photo 1); (2) photos
+2-4: scenery drawn as flat grey / khaki / dark slabs over trees and markers ("loading
+incorrectly, or low poly/texture"); (3) tunnel: light bulbs showing through the wall that
+should hide them, and a patch of road ahead seen through the wall (photos 5, 6); (4)
+choppiness as usual. Round 8's lamp posts were not reported again.
+Telemetry (8 files, ring capidx 14-21; not repeats of round 8 -- new build, TAKEDEF):
+errc 0, ntex 144-147. GL census ON THE PHONE: ~300 draw calls/render, ~1030 triangles/
+render, max 566 calls. Real-render rhythm 2-5-0 / 2-6-0 ticks per game iteration (7-8
+ticks, 109-125 ms) against round 8's normal 1-1-4 / 1-1-5 (6-7): NOT faster on the phone,
+although the same change cut bench guest instructions per post 27%. So the phone frame is
+not bound by the software rasterizer now; the GPU side is the suspect (per-call driver
+cost, the driver's vertex work, the readback, and the tile renderer rendering only when
+the readback asks -- the blit path never calls glFlush) -- all unmeasured. Round 10 times
+them.
+
+Causes, from the image (draw_primitive's span fillers disassembled):
+- (1) the first GPU frame (START_AFTER) has no previous GPU image to composite, so every
+  GPU-taken triangle is missing for that frame -- 76% of the scene since TAKEDEF (round 8
+  logged the same frame as a road dropout and called it benign).
+- (2)(3) the classes still drawn in software, which land AFTER the composite and so on top
+  of every GPU object whatever the game's draw order:
+  - 0x2fbdc (flags 0x2) is UNTEXTURED: desc+0x30 is an RGB565 colour (a zero word draws
+    nothing); flags 4/8 pick 0x33b86 (50% blend, mask 0x0eee) / 0x33c44 (stipple), else
+    0x33b46 (solid). A race uses only the solid one: 0x20002, 1.6% of calls -- the slabs.
+  - 0x2f358 (flags 0x8) -> 0x33d18: affine textured, dst + texel per channel, saturating
+    (0x10008, 0.2%: glows).
+  - 0x2ecb4 (flags 0x20) -> 0x33f8c: shadows -- dst*12/16 where a screen-sized byte map
+    differs from a stamp, then the stamp is written (so overlaps darken once). 22%.
+  The bench shows it too: the r9 bench tunnel capture (capidx 42) has yellow dots on the
+  left wall.
+- Found on the way: IAT slot [32], "glDisable", held ordinal 36 = glClearStencil (the
+  alphabetical libgles_cm def; ROM-matching per this file's ordinal note). Only the
+  unshipped A4_WINDOW fps bar used it. Corrected to 52 in round 10.
+
+## Round 10 bench: every race class on the GPU, the game's own 1/z buffer, phase timers
+
+Built on round 9 (r9_phone). Not repeats of: rounds 7-9 builds (no flat/additive/shadow
+class, no depth, no timers).
+
+KINDVIS (flat green, additive cyan, shadows red, all opaque; bench, full race, lap 2 to
+the tunnel; the first attempt sat at the start line -- xdotool "XGetInputFocus" warning,
+no key reached the game; rerun with a fresh Xvfb):
+- flat (0x20002) = distant hill / ground LOD slabs at the horizon -- the phone's photo 3
+  spot (a hillside right of the road in The Hills);
+- additive (0x10008) = the speed streaks and sparks around the player's car, over the GPU
+  road;
+- shadows (0x20) = the cars' shadows; with GPU draw order they sit UNDER the car (the car
+  covers them), so the game draws shadows before the car;
+- the tunnel's wall lamps are none of these: ordinary textured triangles.
+
+THE FINDING: the opaque perspective span (0x333f4, flags 1, 29% of calls) depth-tests.
+Its non-mode-4 path (0x337a4) per pixel: `if (zbuf[p] > z) skip; else if (texel) {
+zbuf[p] = z; write }`, z the span's interpolated 1/w (it indexes the reciprocal table),
+zbuf = *(ctx+0x40100+0x18), 32 bits a pixel. 0x31c70 (begin-frame: toggles the shadow
+stamp byte, bumps a frame counter) calls 0x2def4, which zero-fills it every frame. Mode
+4's lower rows (the loop at 0x3357A we rewrote as a4_span_textured) skip the depth test:
+they add per-pixel LCG noise and clear the shadow coverage byte. The default span
+(0x33964), flat, additive and shadow spans neither test nor write it. So the stock game
+is NOT painter's order for the perspective class -- the GPU's arrival order lets a
+farther perspective triangle drawn later overwrite a nearer one: walls that do not hide
+what is behind them (the tunnel lamps, the road ahead, round 8's lamp posts).
+Stage 5's depth build "lost the road on the phone" with a fixed config 6 whose depth was
+never checked and a z linear in ZW; the cause was never diagnosed.
+
+A4_ZBUF reproduces the game's rule: flags-1 triangles only, depth = min(128/ZW, 1) per
+vertex (z = -ZK*2^shift over w = ZW*2^shift through the ortho; the clamp keeps every
+vertex inside the depth range, so nothing is ever clipped), GL_GEQUAL, depth cleared to 0
+at each frame's first triangle, all other classes drawn with the depth test off (so they
+neither test nor write, like their spans). pbuffer from eglChooseConfig(PBUFFER, 565,
+DEPTH>=16), falling back to config 6; glGetIntegerv(GL_DEPTH_BITS) decides, 0 -> the old
+untested drawing. Bench: config 2, 24 depth bits, errc 0.
+
+Also in the build: A4_TAKEFLAT (solid flat only; the 50%/stipple variants stay software
+-- a blend would mix with the sentinel), A4_TAKEADD (GL_ONE/GL_ONE), A4_TAKESHADOW
+(GL_ZERO/GL_SRC_ALPHA at 12/16; the span's once-per-pixel stamp is not reproduced, so
+overlapping shadow triangles darken twice), the first GPU frame drawn by software as well
+(dual), and per-window A/B of glFlush at the frame end x RGB565 readback (OES_read_format
+probe; the emulator now answers it, EMU_PATCHES.md), with User::NTickCount phase timers
+(fast exec 0x10, RM-320 euser ordinal 2103 read off the ROM; 584 = FastCounter is the
+constant one on the N95, DEVICES.md).
+
+Sentinel-leak check (tools/leak.py in the scratchpad: pixels a blended GPU triangle over
+the magenta clear would leave -- 0.75*magenta, or magenta+glow): 0 in all eight captures
+of the depth build, 0 in the stock reference and earlier builds. Test-the-test: the stock
+count of the first draft of the additive predicate was ~1000 a capture (it matched white);
+narrowed to pinks (G <= 40), stock reads 0.
+
+Bench timers (ms, 1 ntick = 1 ms on the bench: 3419 nticks over 219 TickCount ticks),
+per render, composite (read): noflush RGBA 15.4-18.3 (7.6-8.8); flush RGBA 12.1-13.3
+(3.4-4.1); noflush 565 12.4-14.8 (7.4-9.8); flush 565 7.8-8.9 (3.4-4.1). Total per render
+~85 in every mode (llvmpipe renders on host threads, so the bench cannot show the phone's
+gain -- the phone round measures it).
+
+Stock reference (A4_SWONLY: GL up, nothing drawn on the GPU; captures = the game's own
+picture): the tunnel's left wall is clean -- none of the small floating dots the GPU
+builds show there.
+New defect seen in the depth build: the speed-camera signs over the tunnel mouth are black
+boxes (stock: "80", "km/h"; also black in KINDVIS run 2). The spans read texels from
+desc+0x10, the uploader from desc+0x0C; or the signs are textures the game redraws (a speed
+display) that the cache uploads once. Probed next (A4_TEXPROBE).
