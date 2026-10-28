@@ -2296,3 +2296,37 @@ Open question for the goal (smoothness): is our effective motion rate (~1/3 of p
 fps) better or worse than STOCK software? Next cheap bench test: count real renders/sec
 for the stock build vs the GPU build over the same race window -- that decides whether
 GPU offload helped motion or merely raised the (duplicated) present count.
+
+## Bench diagnosis D3: stock-vs-GPU present rate + the present architecture
+
+Present rate over a 40s race window (RM-320, FRAMESTAT posts / wall-time):
+  STOCK (a4_clean_final, software raster) : 11.2 presents/sec
+  GPU   (a4_persp, blit+persp)            :  7.1 presents/sec
+CAVEAT: the bench forces LIBGL_ALWAYS_SOFTWARE=1 (llvmpipe), so "GPU" here is SOFTWARE
+GL -- slower than the game's own raster. This is a bench artifact; it does NOT predict the
+phone, which has a real MBX. What it DOES establish: the rate tracks render cost (11.2 vs
+7.1), so the loop is render-bound -- there is no hard frame cap limiting it on the bench.
+So on the phone, if MBX is faster than the native software raster, present rate (and thus
+motion, at the fixed ratio below) rises. Comparing GPU-vs-stock for real must be done on
+the phone (stock-phone present rate not yet measured).
+
+Present/render architecture (static RE of the baseline image, a4code.bin):
+- The present is a wrapper at code-offset 0x1CE: DoPresent(this,arg1,arg2) sets
+  this->0x6c=1, calls this->0x20->vtable[0x14] (the real present), clears the flag. The
+  a4_gl_frame hook sits at its inner call 0x1E6.
+- DoPresent has 17 call sites. It is REGION-BASED: callers pass arg1 = a region/mode id
+  (e.g. 0x14 at 0x39888, 0x1e at 0x12DE6, and -1 for "full" which reads *(this+0x80)).
+  So the game presents partial regions from many places, not one frame-loop present.
+- The 3D world render (draw_primitive at 0x300B2, the a4_gl_draw_prim hook) runs on only
+  ~28% of DoPresent calls (present-diag: 16 real vs 42 empty). Captured frames are
+  byte-identical across the ~3 presents between renders, so the whole frame (3D + HUD) is
+  frozen, not just the 3D.
+
+So the "fixed new-frame rate" the owner wants raised is: the 3D scene is re-rendered on
+~1 of every ~3-4 presents, and this is tick-independent (D2) and render-bound (D3), i.e.
+a structural gate in the game's own update/render path -- not a timer and not our shim.
+Finding that gate means tracing from draw_primitive (0x300B2) up to the conditional that
+decides "render the scene this iteration or not", in a region-based present engine.
+Next decisive measurement: capture the caller (lr at DoPresent entry) for real vs empty
+presents -- same caller => a render/skip conditional inside one loop; different callers
+=> the 3D render has its own cadence separate from the HUD/region presents.
