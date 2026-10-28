@@ -2523,3 +2523,50 @@ plain (U,V) texcoords; every 3D GPU interpolates perspective-correctly against c
 does not depend on q. And the overflow: clear at the frame's first primitive (after the
 readback), draw the batch whenever MAXT fills, draw the rest at flush -- nothing erased, no
 frame limit (MAXT is now a batch size: 512 under HPERSP for the 16-byte positions).
+
+## Round 8 bench validation: HPERSP straight without TEXPROJ; overflow fixed; phone build
+
+Test-the-test first: two runs of the same build do NOT land on the same frame (capture
+moment varies with host timing; MAD 22 between them), so build-vs-build pixel diffs are
+invalid. Used a frame-independent metric instead -- tools in the session scratchpad
+(lanefit2.py): track the left edge of the pale-yellow centre line (e8e8c8) up the road
+and fit x = a*y + b; a straight texture line on a flat road stays straight under correct
+perspective and kinks at triangle edges under affine. Full-length tracks (89-99 rows,
+y112-210):
+  REF  (A4_PERSP + EKA2L1_TEXPROJ, known correct)  max resid 6.33 / 5.38 px, kink 0.045 / 0.163
+  HPERSP (no TEXPROJ)                              max resid 5.40 px,         kink 0.083
+  AFFINE                                           max resid 15.08 px,        kink 0.471 (slope flips)
+The metric separates affine from correct (it passes its own test), and HPERSP matches
+the reference WITHOUT the emulator's q patch -- the property the MBX needs. (Short
+11-row tracks at y200-210 locked onto the pale speedometer; discarded.)
+
+Overflow fix exercised with -DMAXT=64 (a ~400-triangle frame drawn in 7 mid-frame
+batches): road complete, errc=0. HPERSP's 4-component GL_FIXED positions: errc=0 in every
+run.
+
+Ruled out on the way (A4_TEXCHK, cache validation): 5408 cache hits, 0 pixel-pointer
+changes, 0 content changes -- the descriptor-keyed texture cache is not serving stale
+textures. The race-start road dropout seen on the bench (old and new builds alike) is the
+one-frame START_AFTER bring-up transition: no GPU composite that frame (no sentinel green
+anywhere), triangles after the switch only on the pbuffer until the next frame. One frame,
+once; not the phone's recurring popping (that was the 640 overflow).
+
+Telemetry: the capture gate is now "this present drew >=100 3D primitives" (had), not
+last_prims (which stays high through the pause menu). So captures are distinct real
+renders (not the 3x re-presents) and a cycling ring (TEL_CYCLE) keeps the LAST race
+captures before a pause. Verified: TEL_EVERY=1 run, 18 captures, files hold capidx 10-17
+in slot capidx%8, consecutive captures 45-56% of pixels different, road correct.
+
+Phone build r8_phone.exe = -DA4_HPERSP -DA4_TEL -DTEL_EVERY=40 -DTEL_RING=8 -DTEL_CYCLE
+(blit present, colorkey). sha256 ac5d37ac6fd77b1738bf4a5217da976961eaa849302cb0e0d67dfcd1a0169b7e. Bench: GL up, frames 69, errc 0, ntex 24, only the
+known boot fault (read 0x34, ngilightserver, EXCLFAULT) present in every build. Telemetry:
+8 files C:\a4tel0..7.dat, one capture per 40 real renders (~3-5 s on the phone), ring =
+roughly the last half-minute of racing before the player pauses.
+
+Rule 4 -- guesses, named: (1) that the MBX divides q per vertex (inferred from rounds 6/7;
+HPERSP does not depend on it either way); (2) that the MBX driver interpolates against the
+clip w of 4-component GL_FIXED positions -- standard GL ES 1.1, bench-proven, unproven on
+this device; (3) the 2^26 position headroom is a guess at a fixed-point vertex pipeline.
+States the bench never entered: frames over 512 triangles (only via the forced MAXT=64);
+far-off-screen vertices (large |x| shrinks W precision); the pause/resume path for the
+telemetry ring (had==0 in a pause is inferred from the present-diag, not run).

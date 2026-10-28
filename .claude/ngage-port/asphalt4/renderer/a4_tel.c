@@ -72,8 +72,9 @@ static int efs_flush(void *rfile) {
     return ((int (*)(void *))EF(3))(rfile);
 }
 
-/* Called once per rendered frame from a4_gl_flush. */
-void a4_tel_tick(void)
+/* Called on every present from a4_gl_frame; had = 3D primitives drawn since the
+ * previous present (0 on the two re-presents of each game iteration and in menus). */
+void a4_tel_tick(uint32_t had)
 {
     struct tel *t = (struct tel *)A4_TEL_SCRATCH;    /* .bss-zeroed at load */
     t->dbg_iat0 = a4_efs_iat_ptr()[0];
@@ -106,12 +107,17 @@ void a4_tel_tick(void)
 #ifndef TEL_CYCLE
     if (t->caps >= TEL_RING) return;             /* ring filled once: freeze on early race */
 #endif
-    if (g[8] < 100u) return;                     /* g[8]=last_prims: not an active 3D scene */
-#ifdef TEL_SKIP
+    /* Only presents that carried a real 3D render: the two re-presents of each game
+     * iteration (had == 0) would be byte-identical duplicates, and the pause menu
+     * draws no 3D, so a cycling ring (TEL_CYCLE) keeps the last race captures before
+     * the player pauses to quit instead of filling with menu frames. (The old gate,
+     * g[8] = last_prims, stays high through a pause.) TEL_EVERY counts these. */
+    if (had < 100u) return;
     t->actframes++;
+#ifdef TEL_SKIP
     if (t->actframes < TEL_SKIP) return;         /* skip early race: capture deeper, at speed */
 #endif
-    if ((t->fcount % TEL_EVERY) != 0) return;
+    if ((t->actframes % TEL_EVERY) != 0) return;
 
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
 
@@ -155,5 +161,5 @@ void a4_tel_tick(void)
 }
 
 #else
-void a4_tel_tick(void) {}
+void a4_tel_tick(uint32_t had) { (void)had; }
 #endif /* A4_TEL */

@@ -58,12 +58,16 @@
  * (U,V) texcoords with 1/W weighting -- what every 3D GPU does natively. It does not
  * depend on the texcoord q being divided per fragment, which A4_PERSP needs (the bench
  * only does that with EKA2L1_TEXPROJ, and the N95's MBX evidently does not). */
+#ifndef MAXT
 #define MAXT 512
+#endif
 #define POSC 4u                         /* int32 (GL_FIXED) x*W, y*W, 0, W */
 #define POSB 4u
 #define UVC 2u
 #else
+#ifndef MAXT
 #define MAXT 640
+#endif
 #define POSC 2u                         /* int16 (GL_SHORT) x, y */
 #define POSB 2u
 /* Texcoord components per vertex: 2 (s,t) affine, or 4 (s,t,0,q) projective
@@ -138,7 +142,7 @@
 
 extern volatile uint32_t *a4_gl_iat_ptr(void);
 #ifdef A4_TEL
-extern void a4_tel_tick(void);   /* a4_tel.c: on-device telemetry/capture */
+extern void a4_tel_tick(uint32_t had);   /* a4_tel.c: on-device telemetry/capture */
 #endif
 
 struct glr {
@@ -370,11 +374,46 @@ static int bringup(volatile struct glr *s)
  * software filler treats texel value 0 as transparent, so a texture with many 0
  * texels is a sprite we must leave to software (the GPU would draw its black
  * background opaque). -1 on failure (caller falls through to software). */
+#ifdef A4_TEXCHK
+/* Diagnosis: is a cached GL texture still the texture the game means? The cache is
+ * keyed by the descriptor address only. Per entry keep the pixel pointer and a
+ * 16-texel checksum taken at upload (free scratch above the batch buffers, 0x412000),
+ * and on every hit count a changed pointer or changed content. Counters at 0x412800:
+ * [0] hits [1] pointer changed [3] content changed [4] last stale descriptor [5] uploads. */
+#define TC_PX ((volatile uint32_t *)0x00412000u)
+#define TC_CK ((volatile uint32_t *)0x00412400u)
+#define TC_N  ((volatile uint32_t *)0x00412800u)
+static uint32_t tex_ck(const uint32_t *ts)
+{
+    uint32_t w = ts[1] + 1, h = ts[2] + 1;
+    const uint16_t *px = (const uint16_t *)ts[3];
+    if (!px) return 0;
+    int lw = 0, lh = 0;
+    for (uint32_t v = w; v > 1; v >>= 1) lw++;
+    for (uint32_t v = h; v > 1; v >>= 1) lh++;
+    int sh = lw + lh - 4; if (sh < 0) sh = 0;
+    uint32_t c = (w << 16) ^ h;
+    for (uint32_t k = 0; k < 16u; k++) {
+        uint32_t idx = k << sh;
+        if (idx >= w * h) break;
+        c = c * 31u + px[idx];
+    }
+    return c;
+}
+#endif
+
 static int tex_index(volatile struct glr *s, uint32_t tsaddr)
 {
     uint32_t *ts = (uint32_t *)tsaddr;
     for (uint32_t i = 0; i < s->ntex; i++)
-        if (s->cache_ptr[i] == tsaddr) return (int)i;
+        if (s->cache_ptr[i] == tsaddr) {
+#ifdef A4_TEXCHK
+            TC_N[0]++;
+            if (TC_PX[i] != ts[3]) { TC_N[1]++; TC_N[4] = tsaddr; }
+            else if (TC_CK[i] != tex_ck(ts)) { TC_N[3]++; TC_N[4] = tsaddr; }
+#endif
+            return (int)i;
+        }
     uint32_t w = ts[1] + 1, h = ts[2] + 1;
     const void *pix = (const void *)ts[3];
     if (!pix || w > 1024 || h > 1024) return -1;
@@ -424,6 +463,9 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr)
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     int idx = (int)s->ntex;
     s->cache_ptr[idx] = tsaddr; s->cache_id[idx] = id; s->cache_tr[idx] = tr; s->ntex++;
+#ifdef A4_TEXCHK
+    TC_PX[idx] = ts[3]; TC_CK[idx] = tex_ck(ts); TC_N[5]++;
+#endif
     return idx;
 }
 
@@ -854,7 +896,7 @@ int a4_gl_frame(uint32_t fps)
     s->flushed = 0;
     s->frames++;
 #ifdef A4_TEL
-    a4_tel_tick();   /* on-device capture every frame (not prim-gated): C:\a4telN.dat */
+    a4_tel_tick(had);   /* on-device capture: C:\a4telN.dat; had = 3D prims this present */
 #endif
     return presented;
 }
