@@ -2570,3 +2570,46 @@ this device; (3) the 2^26 position headroom is a guess at a fixed-point vertex p
 States the bench never entered: frames over 512 triangles (only via the forced MAXT=64);
 far-off-screen vertices (large |x| shrinks W precision); the pause/resume path for the
 telemetry ring (had==0 in a pause is inferred from the present-diag, not run).
+
+## Phone round 8 (r8_phone ac5d37ac): DISTORTION FIXED; popping gone; new reports = the software mode
+
+Owner: the zebra-crossing distortion is gone (A4_HPERSP works on the MBX -- confirms the
+vertex-w approach; the q-per-vertex inference stands). Remaining: lamp posts / traffic
+lights misplaced or wrongly occluded (photos 1, 2, 6); scenery that vanishes and reappears
+as you approach (photos 4, 5); a blue strip across the top in the tunnel, present for
+several builds (photo 6); choppiness, captured by driving past the tunnel.
+Telemetry: 13 captures, ring held capidx 5-12 (the cycling ring and the had-gate work on
+the device). Not repeats of round 7: new build (HPERSP + overflow fix), new gate.
+- capidx 8 has 758 triangles (> the old 640 cap, > the 512 batch): road complete -- the
+  batch-flush path works on hardware; no overflow popping in any capture.
+- CHOPPY = capidx 11, NOT the tunnel: a crash/takedown ("URBAN HAVOC", a car airborne, a
+  red/white barrier filling the right half, player at 53 km/h). fps 15 and the ring before
+  it shows the real-render frame at 17-21 ticks instead of 4-5 (1 1 18 / 1 1 20 / ...),
+  ~3 game frames/s sustained over ~12 s. The tunnel entrance right after (capidx 12, 176
+  triangles) is back to normal (1 1 5). capidx 10 (fps 48, many 0-tick deltas) is a
+  low-render stretch. Normal sections: fps 27-30, 1-1-4/1-1-5 (readback-bound).
+- BLUE STRIP = CLIP_TOP, measured: tunnel frame rows 0-4 are sky blue (60a0d0, 489cc8),
+  row 24 is the tunnel ceiling (303830). The composite deliberately skips rows < 11 (they
+  keep the software sky backdrop), so it only shows where the scene there is not sky.
+
+Explanation for the lamp posts and the vanishing scenery is in this file already ("Phase
+2, step 2 attempt"): ~116k of ~167k draw_primitive calls per race are flags 0x4000, a
+DIFFERENT rasterizer than the flags-1 perspective path the GPU takes, so ~70% of the 3D is
+still SOFTWARE. Software triangles land on top of a GPU image composited from the PREVIOUS
+frame (one game frame = ~9 m at 270 km/h and ~8 renders/s): misplaced, wrong occlusion,
+and a software object drawn before the frame's first GPU triangle is painted over by the
+composite -> vanishes, depending on draw order.
+
+draw_primitive (0x300AE) dispatch, read from the image -- a priority chain on flags:
+0x2 -> 0x2fbdc (passes flags&4, flags&8); 0x1 -> 0x2f6fc (persp textured, GPU);
+0x8 -> 0x2f358; 0x10 -> 0x2efb4; 0x20 -> 0x2ecb4; 0x40 -> 0x2e910; 0x100 -> 0x2e56c;
+otherwise (0x4000) -> 0x2e1c8. NB bit 1 is tested BEFORE bit 0, and the hook takes any
+bit-0 flags. Span fillers: 0x2f6fc -> 0x333f4 (opaque textured loop 0x3357A);
+0x2e1c8 -> 0x33964, the TRANSPARENT span (loop 0x33B16 = a4_transp_tramp): texel 0 leaves
+the pixel, else writes it -- a pure COLOUR KEY, affine; second loop 0x33AD6 = the same with
+a per-channel saturating ADD of a constant before the write (no blending with the
+background). The span switches on ctx[0x64], the per-object mode 0x31246 sets from object
+flags: mode 3 -> add ctx[0x70]; modes 1/2 -> table-driven variants (ctx[0x60]/ctx[0x5c]);
+otherwise plain colour key. So 0x4000 is drawable on the GPU with the existing 5551 colour
+key + alpha test, and the add with GL_ADD texenv + the constant as the vertex colour (GL ES
+GL_ADD saturates). The earlier "flat fill" attempt drew it opaque, before the colour key.

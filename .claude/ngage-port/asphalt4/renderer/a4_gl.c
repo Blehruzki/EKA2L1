@@ -35,10 +35,17 @@
 #define VP_W 320
 #define VP_H 240
 #define FB_STRIDE VP_W                   /* 320x240 render surface: stride = width (320) */
+#ifndef CLIP_TOP
 #define CLIP_TOP 11                      /* top rows are the HUD banner, not the 3D viewport
                                           * (the frame's scene fill is x0 y11 w320 h229) --
                                           * the blit must not touch them or GPU scene pixels
-                                          * leak into the position/lap/WANTED strip. */
+                                          * leak into the position/lap/WANTED strip.
+                                          * That was when the composite ran at the frame
+                                          * end, over the HUD; it now runs at the frame's
+                                          * first GPU triangle, before the HUD, and these
+                                          * rows show the sky backdrop in a tunnel (the
+                                          * "blue banner"). -DCLIP_TOP=0 composites them. */
+#endif
 #define NCACHE 256
 #define START_AFTER 50000u               /* skip the intro video; reachable on the bench */
 
@@ -500,7 +507,31 @@ static uint32_t a4_udiv(uint32_t num, uint32_t den)
 int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 {
     volatile uint32_t *iat = a4_gl_iat_ptr();
+#ifdef A4_FLAGHIST
+    /* mode census: every draw_primitive by (flags, ctx[0x64] -- the per-object span
+     * mode the transparent/opaque spans switch on). Table at 0x412000: [0]=n, then n
+     * entries (flags, mode, count), max 40; [121] = calls that found the table full. */
+    {
+        volatile uint32_t *fh = (volatile uint32_t *)0x00412000u;
+        uint32_t md = gctx[0x64 / 4], nn = fh[0], i;
+        for (i = 0; i < nn; i++) if (fh[1+i*3] == flags && fh[2+i*3] == md) break;
+        if (i == nn) { if (nn < 40u) { fh[1+i*3] = flags; fh[2+i*3] = md; fh[3+i*3] = 0; fh[0] = nn + 1; } else i = 99; }
+        if (i < 40u) fh[3+i*3]++; else fh[121]++;
+    }
+#endif
+#ifdef A4_TAKEDEF
+    /* Also take the game's DEFAULT rasterizer (0x2e1c8): flags with none of the
+     * draw_primitive dispatch bits 0x1 0x2 0x8 0x10 0x20 0x40 0x100 (0x4000, 0x104000,
+     * 0x20000, 0x10000 -- ~47% of all triangles in a race). Its span (0x33964) is a
+     * colour key -- texel 0 leaves the pixel -- which the 5551 upload + alpha test already
+     * reproduce; span mode 1 (ctx[0x64]==1) also adds 1/4 of a per-scanline table colour
+     * indexed by a second map, not reproduced (drawn as the plain key). Same descriptor
+     * layout as flags 1. Drawn in arrival order with the flags-1 triangles, so the game's
+     * painter's order between them is kept. */
+    if (iat[0] < 0x10000u || !((flags & 1u) || (flags & 0x17Bu) == 0u)) return 0;
+#else
     if (iat[0] < 0x10000u || !(flags & 1)) return 0;
+#endif
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
     if (++s->seen < START_AFTER) return 0;           /* past the intro video + menu */
     if (s->up != A4_GL_MAGIC) {
