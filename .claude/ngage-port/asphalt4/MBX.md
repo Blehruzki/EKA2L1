@@ -2426,3 +2426,31 @@ faster => higher render/motion rate. It also lets us drop the 2 redundant game p
 (our hook already skips the game's present under A4_WINDOW). No risky engine rate-patch is
 needed, and the physics-coupling worry is moot (we are not changing any rate, just the
 per-frame render cost).
+
+## Window-surface build bench test: fast, but compositing gap (NOT yet shippable)
+
+Built a4_winsurf.exe (-DA4_WINDOW -DA4_BACKUP -DA4_PERSP -DA4_TEL, sha 52faa8ba). Bench
+(RM-320): framestat 897 over the same race where the blit build did ~464 -- ~2x the frame
+rate, with the a4_fps ring now mostly 0/1-tick deltas and fps 37->87 (the hard 1-1-5
+cadence gone), errc=0. So removing the per-frame glReadPixels roughly DOUBLES the rate even
+on slow llvmpipe; on real MBX the win is larger. This confirms the readback was the
+bottleneck (the whole point).
+
+BUT it is not visually shippable as-is:
+- The GPU window shows MAGENTA (the sentinel clear) through the sky and has NO HUD. The GPU
+  only draws the 3D geometry; the game draws the sky and HUD in SOFTWARE into bb, and the
+  window path (unlike the blit path's readback composite) never puts that software layer on
+  the GPU surface. So the sky/HUD are lost.
+- Some bench frames show the whole image vertically flipped / fighting the software frame.
+  That is the documented bench gap (EKA2L1 does not abort the game's DSA under our window,
+  CLAUDE.md), so the GPU window and the game's full-screen DSA post alternate. Bench noise;
+  on the device the DSA aborts under the window. But it means the BENCH CANNOT fully
+  validate the window present -- only the device can.
+
+So the window path's real, device-relevant problem is compositing the software sky+HUD onto
+the GPU surface WITHOUT the readback. The fix is upload-composite: upload bb (sky+HUD) as a
+background texture (CPU->GPU upload is cheaper than the GPU->CPU readback on MBX), draw it,
+then the 3D on top, then swap. Open issues: POT texture size (320x240 -> 512x256 + clamp)
+and HUD-over-3D ordering (bb-as-background puts HUD under the 3D; the HUD sits at screen
+edges so the overlap may be minor, or draw the HUD strip again on top). Real work, not a
+bake. Did NOT ship a4_winsurf to the phone -- it would show a magenta sky.
