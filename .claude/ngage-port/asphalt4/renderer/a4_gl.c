@@ -173,6 +173,7 @@ struct glr {
     uint32_t cache_id[NCACHE];
     uint32_t cache_tr[NCACHE];         /* 1 = texture is a colorkey (transparent) sprite */
     uint32_t bfill;                    /* triangles in the batch buffers (drawn when MAXT) */
+    uint32_t lasthit;                  /* tex_index: cache slot of the previous lookup */
 };
 
 /* sentinel the pbuffer is cleared to each frame: pixels the GPU never drew read
@@ -412,8 +413,14 @@ static uint32_t tex_ck(const uint32_t *ts)
 static int tex_index(volatile struct glr *s, uint32_t tsaddr)
 {
     uint32_t *ts = (uint32_t *)tsaddr;
+#ifndef A4_TEXCHK
+    /* consecutive triangles usually share a texture: try the previous slot first
+     * (the linear search below runs per triangle over up to NCACHE entries) */
+    { uint32_t li = s->lasthit; if (li < s->ntex && s->cache_ptr[li] == tsaddr) return (int)li; }
+#endif
     for (uint32_t i = 0; i < s->ntex; i++)
         if (s->cache_ptr[i] == tsaddr) {
+            s->lasthit = i;
 #ifdef A4_TEXCHK
             TC_N[0]++;
             if (TC_PX[i] != ts[3]) { TC_N[1]++; TC_N[4] = tsaddr; }
