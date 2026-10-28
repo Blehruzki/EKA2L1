@@ -51,7 +51,7 @@ struct tel {
     int32_t  dbg_crc;            /* diag: RFs::Connect result */
     int32_t  dbg_rrc;            /* diag: RFile::Replace result (last) */
     int32_t  dbg_wrc;            /* diag: RFile::Write result (last) */
-    uint32_t _pad;
+    uint32_t actframes;          /* active-3D frames seen (TEL_SKIP gating) */
     uint8_t  rfs[32];
     uint8_t  rfile[TEL_RING][32];
 };
@@ -103,8 +103,14 @@ void a4_tel_tick(void)
      * "Active 3D" = the last frame drew real geometry (last_prims big); menus draw
      * little, so this skips the menu/boot frames without a fixed frame count. */
     volatile uint32_t *g = (volatile uint32_t *)A4_GL_SCRATCH;
+#ifndef TEL_CYCLE
     if (t->caps >= TEL_RING) return;             /* ring filled once: freeze on early race */
+#endif
     if (g[8] < 100u) return;                     /* g[8]=last_prims: not an active 3D scene */
+#ifdef TEL_SKIP
+    t->actframes++;
+    if (t->actframes < TEL_SKIP) return;         /* skip early race: capture deeper, at speed */
+#endif
     if ((t->fcount % TEL_EVERY) != 0) return;
 
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;

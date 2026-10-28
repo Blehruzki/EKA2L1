@@ -581,8 +581,14 @@ static void composite_prev(volatile struct glr *s)
             for (int x = 0; x < VP_W; x++) {
                 uint32_t px = src[x];
                 uint32_t r = px & 0xFF, g = (px >> 8) & 0xFF, b = (px >> 16) & 0xFF;
-                if (r == SENTINEL_R && g == SENTINEL_G && b == SENTINEL_B)
+                if (r == SENTINEL_R && g == SENTINEL_G && b == SENTINEL_B) {
+#ifdef A4_SENTINEL_VIS
+                    /* diagnosis: paint GPU-didn't-draw (software-kept) pixels bright
+                     * green, so the retained software region is visible in the capture. */
+                    dstrow[x] = (uint16_t)0x07E0;
+#endif
                     continue;                           /* GPU drew nothing here; keep software pixel */
+                }
                 dstrow[x] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
             }
         }
@@ -718,6 +724,12 @@ int a4_gl_frame(uint32_t fps)
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
     if (s->up != A4_GL_MAGIC) return 0;
     uint32_t had = s->prims;
+#ifdef A4_PRESENTDIAG
+    /* choppy/wobble diagnosis: count presents that carried new geometry vs presents
+     * with none (a re-present of the same world). depthcfg/pixmapcap are unused in
+     * the blit build; read them back via MEMSNAP (g[9]=empty, g[10]=real). */
+    if (had) s->pixmapcap++; else s->depthcfg++;
+#endif
     a4_gl_flush();                                      /* draw this frame on the GPU */
     int presented = 0;
 #ifdef A4_WINDOW

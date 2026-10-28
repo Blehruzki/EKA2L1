@@ -2230,3 +2230,45 @@ ntex 67). a4tel0/a4tel2 this round are again the stale leftovers.
   removes the readback entirely -- that is the choppy fix, pending a phone round.
 - WOBBLE: still not visible statically; both frames show straight road edges, no gross
   affine. Likely the choppy hitch under fast camera motion.
+
+## Bench diagnosis D1: choppy+wobble = over-present; black band = software-kept region
+
+Ran the colorkey build's renderer on the bench (RM-320) with three instruments, no phone
+round. Results measured, not eyeballed.
+
+CHOPPY + WOBBLE -- same root cause, MEASURED:
+- 8 consecutive frames captured (a4_tel.c TEL_CYCLE + TEL_EVERY=1, ring of 8): the
+  320x240x16 framebuffer is BYTE-IDENTICAL for runs of 2-3 frames, then jumps. Each
+  group has its own last_prims (282 / 277 / 272), i.e. a distinct real render duplicated.
+  The bb pointer is constant (0xD0E9C0, single buffer) -> not a stale-buffer capture
+  artifact.
+- Present-diag counters (a4_gl_frame: had>0 vs had==0, read via MEMSNAP of g9/g10):
+  42 EMPTY presents vs 16 REAL at post 400 -> only 27.6% of presents carry new geometry.
+  The game re-presents each world-state ~3-4x; new frames arrive at ~28% of the present
+  rate.
+- So CHOPPY = effective motion ~1/3-1/4 of the fps number; WOBBLE = the road leaps ~3
+  frames of motion per update (big steps, read as "wobbly floor"). Both are the GAME
+  producing new frames at ~28% of the present rate -- NOT our readback (duplicate
+  presents issue no draw calls and no glReadPixels). This matches the phone's 1-1-5
+  frame-delta cadence exactly. The present hook (a4_gl_frame, planted just before the
+  game's present call at +0x1E6) runs on every present; 72% have no draws.
+
+BLACK BAND -- location identified, H2 (software-kept), MEASURED:
+- The short bench race (~58 active frames, a different track spot) shows no black-on-sky
+  (16 zero px in the sky band) -- the phone band is the specific "TAKE HIM OUT" takedown
+  scene the bench doesn't reach.
+- Sentinel-vis build (A4_SENTINEL_VIS: paint GPU-didn't-draw pixels bright green): the
+  GPU NEVER draws the sky / upper background -- that whole region is software-kept. The
+  phone's black band sits at the horizon = exactly the software/GPU boundary. So it is
+  H2 (a software-kept region left black), NOT H1 (a misclassified opaque GPU texture).
+- Likely mechanism (inferred, needs the takedown scene to confirm): the colorkey fix
+  makes distant hill/tree sprites' sky-parts transparent (alpha 0 -> discarded ->
+  sentinel -> software-kept). Where software already holds sky there (most scenes, the
+  palms) it shows through -> fixed. In the takedown scene the backdrop behind the hills
+  is black (not pre-filled), so the now-transparent parts reveal black. Definitive H1/H2
+  split for that exact scene needs the sentinel-vis build on one phone round.
+
+Rule 4: over-present ratio + byte-identical duplicates are measured (counters,
+array-equality); the black-band mechanism's "why black in that scene" is inferred.
+Verified the #ifdef'd instruments are inert -- ship build sha stays 3f2e57f1 -- after
+catching and fixing an unconditional actframes++ that had shifted it (+8 bytes).
