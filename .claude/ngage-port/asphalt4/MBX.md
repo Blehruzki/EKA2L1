@@ -2480,3 +2480,46 @@ This fix is in the texcoord path, so it applies to BOTH the blit and the window-
 builds. The shippable build for confirming it is blit+persp(fixed)+colorkey+TEL
 (a4_perspfix.exe) -- correct compositing (sky/HUD), still choppy (readback), but the
 distortion gone. The window-surface choppy fix still needs upload-composite work.
+
+## Phone round 7 (a4_perspfix ae183781): NOT fixed -- my 1/z change was wrong; popping found
+
+Owner: distortion still there (zebra crossing still bows near the car); NEW "road pops out
+and in"; choppiness still comes, later than before (before the tunnel, not after drifts).
+Two telemetry sets (7a, 7b), 8 fresh captures, all errc=0. Not repeats of round 6 (round 6
+was the colorkey build with the original A4_PERSP; these are the perspfix build).
+
+1. MY ERROR (rules 2 and 4). The "vp[2] is 1/z" conclusion came from a vertex sample of
+   sky and building triangles only (screen y <= 111), where screen-y does not track depth,
+   and I did not check this file first: "Phase 2, step 1" had already MEASURED vp[2] on
+   ROAD triangles (near y=241 ZW~202, far y=122 ZW~1009) -- ZW grows with distance, ZW IS
+   w, and the original q = 2^22/ZW was correct. The perspfix build inverted a correct
+   formula. Reverted.
+
+2. Why the original still distorted on the phone. A4_PERSP feeds projective texcoords
+   (s,t,0,q) and relies on the GL dividing s/q PER FRAGMENT. The bench only does that with
+   the EKA2L1_TEXPROJ patch (without it: flat solids). On the phone the distortion looked
+   the same with q = 1/w (round 6) and q = w (round 7), and the road is textured (not flat
+   solids) -- so the MBX driver uses q but evidently divides it PER VERTEX, which collapses
+   to plain affine mapping: the U-bow on the big near-road triangles. (Inference from two
+   rounds; the fix below does not depend on it either way.)
+
+3. POPPING = MAXT overflow, MY BUG, measured. MAXT=640 was a frame cap: past it, each
+   triangle was drawn immediately (a4_gl_draw_prim overflow path) and then ERASED by the
+   gl_clear at the start of a4_gl_flush, and the game had already skipped its software
+   draw for it. last_prims pins at exactly 640 in 4 of 8 captures (7a#3, 7b#1-3), and every
+   one of those frames has the near road MISSING with the game's city backdrop (blitted
+   into bb before the 3D) showing through; frames under 640 have the road. Became frequent
+   after the colorkey fix sent sprites/trees to the GPU instead of software (more GPU
+   triangles per frame). The overflow tris were also the expensive path (4 GL calls each).
+
+4. Choppy: 7a fps 27 -> 25 -> 24 -> 24 with the 1-1-5 / 1-1-6 cadence lengthening as the
+   race moves into the city (ntex 27 -> 45, last_prims up to the cap); 7b reached fps 50-52
+   with near-flat deltas at two captures, then 30 with 1-2-4. Consistent with render cost
+   (scene complexity + wasted overflow draws + the per-frame readback).
+
+Fix in progress (round 8): A4_HPERSP -- perspective through the VERTEX w: positions
+(x*W, y*W, 0, W) GL_FIXED, W proportional to ZW (one shift per triangle so |x|*W < 2^26),
+plain (U,V) texcoords; every 3D GPU interpolates perspective-correctly against clip w, so it
+does not depend on q. And the overflow: clear at the frame's first primitive (after the
+readback), draw the batch whenever MAXT fills, draw the rest at flush -- nothing erased, no
+frame limit (MAXT is now a batch size: 512 under HPERSP for the 16-byte positions).

@@ -42,26 +42,43 @@
 #define NCACHE 256
 #define START_AFTER 50000u               /* skip the intro video; reachable on the bench */
 
-/* Batch buffers, immediately after the readback strip (0x408000). One frame of
- * triangles in arrival order: per vertex 2 int16 (x,y) + 2 int32 (u,v, GL_FIXED),
- * 3 verts a triangle; one uint32 GL texture name a triangle (for run detection).
- * MAXT caps the frame; an overflow triangle is drawn immediately. Sizes must fit
- * under GL_SCRATCH + GL_SCRATCH_SIZE in injector.py (top 0x410000). */
+/* Batch buffers, immediately after the readback strip (0x408000). Triangles in
+ * arrival order: per vertex a position + UVC int32 texcoords (GL_FIXED), 3 verts a
+ * triangle; one uint32 GL texture name a triangle (for run detection). MAXT is the
+ * BATCH size, not a frame limit: when the batch fills it is drawn and refilled, so a
+ * frame may have any number of triangles. (It used to be a frame cap whose overflow
+ * triangles were drawn and then erased by the frame-end clear -- the road "popping
+ * out" whenever a frame passed 640 triangles; MBX.md.) Sizes must fit under
+ * GL_SCRATCH + GL_SCRATCH_SIZE in injector.py (top 0x413000). */
+#ifdef A4_HPERSP
+/* A4_HPERSP: perspective-correct texturing through the VERTEX w. Positions are
+ * homogeneous GL_FIXED (x*W, y*W, 0, W) with W proportional to ZW (vptr[2], the
+ * vertex w: it grows with distance, MBX.md "Measured the perspective input"); the GPU
+ * divides the position back to the same screen (x,y) and interpolates the plain
+ * (U,V) texcoords with 1/W weighting -- what every 3D GPU does natively. It does not
+ * depend on the texcoord q being divided per fragment, which A4_PERSP needs (the bench
+ * only does that with EKA2L1_TEXPROJ, and the N95's MBX evidently does not). */
+#define MAXT 512
+#define POSC 4u                         /* int32 (GL_FIXED) x*W, y*W, 0, W */
+#define POSB 4u
+#define UVC 2u
+#else
 #define MAXT 640
-/* Texcoord components per vertex: 2 (s,t) affine, or 4 (s,t,0,q) projective for
- * perspective-correct texturing (A4_PERSP). GL ES 1.1 samples a 2D texture at
- * (s/q, t/q), so interpolating (u/w, v/w, 1/w) across the triangle and dividing
- * per fragment reproduces the game's own perspective-correct mapping (the road
- * stops wobbling). q = 1/ZW; ZW (vptr[2]) is the vertex w. */
+#define POSC 2u                         /* int16 (GL_SHORT) x, y */
+#define POSB 2u
+/* Texcoord components per vertex: 2 (s,t) affine, or 4 (s,t,0,q) projective
+ * (A4_PERSP). GL ES 1.1 samples at (s/q, t/q), so interpolating (u/w, v/w, 1/w) and
+ * dividing PER FRAGMENT is perspective-correct -- only where the GL does divide per
+ * fragment (the bench with EKA2L1_TEXPROJ). q = 1/ZW; ZW (vptr[2]) is the vertex w. */
 #ifdef A4_PERSP
 #define UVC 4u
 #else
 #define UVC 2u
 #endif
-#define A4_GL_POS   0x00408000u                      /* int16[2] * (3*MAXT) = 0x1E00 */
-#define A4_GL_UV    (A4_GL_POS + (3u*MAXT*2u*2u))     /* int32[UVC] * (3*MAXT) */
-#define A4_GL_TEXID (A4_GL_UV  + (3u*MAXT*UVC*4u))    /* uint32   * MAXT     = 0x0A00 */
-                                                      /* end 0x40E600 */
+#endif
+#define A4_GL_POS   0x00408000u
+#define A4_GL_UV    (A4_GL_POS + (3u*MAXT*POSC*POSB))
+#define A4_GL_TEXID (A4_GL_UV  + (3u*MAXT*UVC*4u))    /* uint32 * MAXT */
 
 /* EGL */
 #define EGL_WIDTH 0x3057
@@ -144,6 +161,7 @@ struct glr {
     uint32_t cache_ptr[NCACHE];
     uint32_t cache_id[NCACHE];
     uint32_t cache_tr[NCACHE];         /* 1 = texture is a colorkey (transparent) sprite */
+    uint32_t bfill;                    /* triangles in the batch buffers (drawn when MAXT) */
 };
 
 /* sentinel the pbuffer is cleared to each frame: pixels the GPU never drew read
@@ -413,6 +431,10 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr)
  * software rasteriser), 0 to fall through. The triangle is accumulated in arrival
  * order and drawn later, in a4_gl_flush; an overflow past MAXT is drawn now. */
 static void composite_prev(volatile struct glr *s);
+static void batch_draw(uint32_t nt);
+#ifdef A4_HPERSP
+static int bitlen(uint32_t v) { int n = 0; while (v) { n++; v >>= 1; } return n; }
+#endif
 
 #ifdef A4_PERSP
 /* Unsigned 32/32 divide by restoring shift-subtract -- the renderer is
@@ -452,8 +474,14 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
          * translucent fill, which a race frame does not have (draw-order trace,
          * MBX.md): the flush fell to the frame end and overwrote the car and
          * the bottom HUD -- the device glitch. The pbuffer still holds the
-         * frame drawn at the previous frame's end; it is cleared in a4_gl_flush. */
+         * frame drawn at the previous frame's end. */
         composite_prev(s);
+        /* Clear for THIS frame now, after the readback of the previous one, so a
+         * batch drawn mid-frame (when the batch buffers fill) is kept. The clear used
+         * to be at the frame end, which erased every triangle past the batch size. */
+        gl_clearcolorx(FX, 0, FX, FX);                   /* magenta sentinel (see SENTINEL_*) */
+        gl_clear(GL_COLOR_BUFFER_BIT);
+        s->bfill = 0;
     }
 
     uint32_t tsaddr = desc[0x30 / 4];
@@ -479,15 +507,16 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         p[i*2+1] = (int16_t)(int32_t)vp[1];
         int32_t un = ((int32_t)desc[voff[i]/4 + 1] * 4096) >> wsh;   /* U_norm * 65536 */
         int32_t vn = ((int32_t)desc[voff[i]/4 + 2] * 4096) >> hsh;   /* V_norm * 65536 */
-#ifdef A4_PERSP
-        /* vp[2] is RECIPROCAL depth (1/z ~= 1/w): measured larger at the bottom of
-         * the screen (nearer) than the top (farther) -- MBX.md "perspective distortion".
-         * So it is already the q=1/w the GL perspective divide wants; use it DIRECTLY.
-         * (The old code inverted it, iw=2^22/vp[2] ~ z, which gave q ~ w -- inverted
-         * perspective that smoothly bowed straight road markings into a "U".)
-         * s = U_norm*q, t = V_norm*q (GL_FIXED); GL samples (s/q, t/q) per fragment.
-         * un/vn are U_norm*65536, so s=(un*q)>>16 keeps s/q = U_norm. */
-        uint32_t iw = (uint32_t)vp[2]; if ((int32_t)iw <= 0) iw = 1;
+#if defined(A4_PERSP) && !defined(A4_HPERSP)
+        /* q = 1/w (ZW is w: it grows with distance, measured on road triangles --
+         * MBX.md "Measured the perspective input"). s = U_norm*q, t = V_norm*q
+         * (GL_FIXED); a GL that divides (s/q, t/q) PER FRAGMENT is then
+         * perspective-correct. The absolute scale of q cancels in the division, so any
+         * fixed multiple of 1/ZW works; 2^22 keeps q and s*q in range for ZW in
+         * ~[8, 2^16]. (Round 7 briefly used vp[2] directly as q on a sky/building
+         * sample that does not track depth -- wrong; reverted.) */
+        int32_t zw = (int32_t)vp[2];
+        uint32_t iw = a4_udiv(1u << 22, (uint32_t)(zw > 0 ? zw : 1));
         uv[i*UVC + 0] = (int32_t)(((int64_t)un * (int32_t)iw) >> 16);
         uv[i*UVC + 1] = (int32_t)(((int64_t)vn * (int32_t)iw) >> 16);
         uv[i*UVC + 2] = 0;
@@ -506,6 +535,34 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         if ((uint32_t)y > s->maxy) s->maxy = (uint32_t)y;
     }
 
+#ifdef A4_HPERSP
+    /* homogeneous positions (x*W, y*W, 0, W), W proportional to ZW. One shift for the
+     * whole triangle -- the perspective weighting depends only on the ratios of W
+     * across it -- chosen so |x|*W, |y|*W < 2^26 (GL_FIXED, headroom for a fixed-point
+     * vertex pipeline). Bit lengths, not a 64-bit multiply: the blob has no libgcc. */
+    int32_t P[12];
+    {
+        uint32_t zw[3], zmax = 1, m = 1;
+        for (int i = 0; i < 3; i++) {
+            int32_t z = (int32_t)((uint32_t *)desc[voff[i] / 4])[2];
+            zw[i] = (uint32_t)(z > 0 ? z : 1);
+            if (zw[i] > zmax) zmax = zw[i];
+            uint32_t ax = (uint32_t)(p[i*2]   < 0 ? -p[i*2]   : p[i*2]);
+            uint32_t ay = (uint32_t)(p[i*2+1] < 0 ? -p[i*2+1] : p[i*2+1]);
+            if (ax > m) m = ax;
+            if (ay > m) m = ay;
+        }
+        int shift = (26 - bitlen(m)) - bitlen(zmax);
+        for (int i = 0; i < 3; i++) {
+            int32_t W = (int32_t)(shift >= 0 ? (zw[i] << shift) : (zw[i] >> -shift));
+            if (W < 1) W = 1;
+            P[i*4+0] = (int32_t)p[i*2]   * W;
+            P[i*4+1] = (int32_t)p[i*2+1] * W;
+            P[i*4+2] = 0;
+            P[i*4+3] = W;
+        }
+    }
+#endif
 #ifdef A4_VTXDUMP
     /* perspective diagnosis: record each triangle's 3 (screen-y, vp[2]) pairs so we can
      * see offline whether vp[2] grows or shrinks toward the bottom of the screen (z vs
@@ -524,36 +581,42 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         }
     }
 #endif
-    uint32_t n = s->prims;
-    if (n >= MAXT) {                                /* batch full: draw this one now */
-        gl_bindtex(GL_TEXTURE_2D, id);
-        gl_vertexptr(2, GL_SHORT, 0, p);
-        gl_texcoordptr((int)UVC, GL_FIXED, 0, uv);
-        gl_drawarrays(GL_TRIANGLES, 0, 3);
-        return 1;
+    if (s->bfill >= MAXT) {                         /* batch full: draw it, then refill */
+        batch_draw(s->bfill);
+        s->bfill = 0;
     }
+    uint32_t n = s->bfill;
+    uint32_t vb = n * 3;                            /* first vertex of this triangle */
+#ifdef A4_HPERSP
+    int32_t  *POS = (int32_t  *)A4_GL_POS;
+    for (int k = 0; k < 12; k++) POS[vb*4 + k] = P[k];
+#else
     int16_t  *POS = (int16_t  *)A4_GL_POS;
+    for (int k = 0; k < 6; k++) POS[vb*2 + k] = p[k];
+#endif
     int32_t  *UV  = (int32_t  *)A4_GL_UV;
     uint32_t *TEXID = (uint32_t *)A4_GL_TEXID;
-    uint32_t vb = n * 3;                            /* first vertex of this triangle */
-    for (int k = 0; k < 6; k++) POS[vb*2 + k] = p[k];
     for (uint32_t k = 0; k < 3u*UVC; k++) UV[vb*UVC + k] = uv[k];
     TEXID[n] = id;
-    s->prims = n + 1;
+    s->bfill = n + 1;
+    s->prims++;                                     /* the frame's total (not capped) */
     return 1;
 }
 
 /* Draw the accumulated frame in arrival order, one glDrawArrays per run of
  * consecutive same-texture triangles. Identical pixels to the per-triangle path;
  * just fewer GL calls. No depth, no sort. */
-static void batch_draw(volatile struct glr *s)
+static void batch_draw(uint32_t nt)
 {
-    uint32_t nt = s->prims;
     if (nt == 0) return;
     if (nt > MAXT) nt = MAXT;
     uint32_t *TEXID = (uint32_t *)A4_GL_TEXID;
 
+#ifdef A4_HPERSP
+    gl_vertexptr(4, GL_FIXED, 0, (const void *)A4_GL_POS);
+#else
     gl_vertexptr(2, GL_SHORT, 0, (const void *)A4_GL_POS);
+#endif
     gl_texcoordptr((int)UVC, GL_FIXED, 0, (const void *)A4_GL_UV);
 
     uint32_t run_start = 0;
@@ -635,11 +698,11 @@ void a4_gl_flush(void)
      * readback never waits on the frame just drawn. One pbuffer, no glFinish,
      * one frame of latency for the GPU world against the software layers. */
 
-    /* clear, then draw THIS frame; it finishes on the GPU during the present
+    /* draw the rest of THIS frame (the clear was at its first primitive, and any
+     * full batch was drawn as it filled); it finishes on the GPU during the present
      * and the next frame's logic, and composite_prev reads it back then. */
-    gl_clearcolorx(FX, 0, FX, FX);                       /* magenta sentinel (see SENTINEL_*) */
-    gl_clear(GL_COLOR_BUFFER_BIT);
-    batch_draw(s);                                       /* issue the frame's draws */
+    batch_draw(s->bfill);
+    s->bfill = 0;
     { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a draw GL error */
 
     /* this frame's drawn extent is what composite_prev reads back next frame */
