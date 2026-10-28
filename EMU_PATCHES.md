@@ -310,3 +310,22 @@ at ~380 posts every time now climbs steadily (643 -> 2198 posts over 120 s) and
 reaches lap 2 through the tunnel. A client that never swaps and never reads back
 (no sync point at all) still grows the pushers; none is known. Files:
 `buffer_pusher.{h,cpp}`, `gles_shared/def.h`, `gles2/gles2.cpp`.
+
+## glReadPixels' second format pair (OES_read_format)
+
+GL ES 1.1 (and 2.0) guarantees `glReadPixels` with `GL_RGBA`/`GL_UNSIGNED_BYTE` plus
+one more format/type pair that the implementation names through
+`GL_IMPLEMENTATION_COLOR_READ_FORMAT_OES` / `GL_IMPLEMENTATION_COLOR_READ_TYPE_OES`.
+EKA2L1 answered neither query (`GL_INVALID_ENUM`) and refused every surface read but
+RGBA/UNSIGNED_BYTE (`GL_INVALID_OPERATION`), so a client that reads in the device's own
+16-bit format could not run on the bench at all. The queries now answer
+`GL_RGB`/`GL_UNSIGNED_SHORT_5_6_5` (`get_data_impl` in
+`src/emu/dispatch/src/libraries/gles_shared/gles_shared.cpp`), and a surface read
+(window or pbuffer, no FBO) accepts that pair, through the driver's existing 16 bpp
+`read_bitmap` (`gl_read_pixels_emu` in `src/emu/dispatch/src/libraries/gles2/gles2.cpp`).
+Any other pair is still `GL_INVALID_OPERATION`, as the spec has it. The pair a real
+device names depends on its driver and surface; the guest is expected to ask, as the
+Asphalt 4 MBX renderer does (round 10) before reading 565. FBO reads are unchanged.
+Verified on RM-320: the renderer's probe reads `GL_RGB`/`GL_UNSIGNED_SHORT_5_6_5`, and its
+capture windows that read 565 composite the same picture as the RGBA ones (no error, the
+scene correct and upright), for half the bytes.

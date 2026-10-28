@@ -1597,6 +1597,17 @@ namespace eka2l1::dispatch {
             *params = static_cast<T>(GLES_EMU_MAX_TEXTURE_SIZE);
             break;
 
+        // OES_read_format (core in GL ES 1.1 and 2.0): the format/type pair glReadPixels
+        // takes besides RGBA/UNSIGNED_BYTE. A 16-bit device surface's own pair; the
+        // surface read path (gl_read_pixels_emu) accepts it.
+        case GL_IMPLEMENTATION_COLOR_READ_FORMAT_EMU:
+            *params = static_cast<T>(GL_RGB_EMU);
+            break;
+
+        case GL_IMPLEMENTATION_COLOR_READ_TYPE_EMU:
+            *params = static_cast<T>(GL_UNSIGNED_SHORT_5_6_5_EMU);
+            break;
+
         case GL_SMOOTH_LINE_WIDTH_RANGE_EMU:
             params[0] = static_cast<T>(1);
             params[1] = static_cast<T>(1);

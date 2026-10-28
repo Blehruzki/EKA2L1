@@ -2808,7 +2808,11 @@ APPLY_PENDING_ROUTES:
             return;
         }
 
-        if (!fb_obj && ((format_for_read != drivers::texture_format::rgba) || (data_type_for_read != drivers::texture_data_type::ubyte))) {
+        // A surface takes RGBA/UNSIGNED_BYTE and the implementation's own pair,
+        // RGB/UNSIGNED_SHORT_5_6_5 (GL_IMPLEMENTATION_COLOR_READ_FORMAT/TYPE); anything
+        // else is GL_INVALID_OPERATION, as the spec has it.
+        const bool read_565 = (format_for_read == drivers::texture_format::rgb) && (data_type_for_read == drivers::texture_data_type::ushort_5_6_5);
+        if (!fb_obj && !read_565 && ((format_for_read != drivers::texture_format::rgba) || (data_type_for_read != drivers::texture_data_type::ubyte))) {
             controller.push_error(ctx, GL_INVALID_OPERATION);
             return;
         }
@@ -2818,7 +2822,7 @@ APPLY_PENDING_ROUTES:
 
         if (!fb_obj) {
             if (!drivers::read_bitmap(drv, ctx->read_surface_->handle_, eka2l1::point(x, y), eka2l1::vec2(width, height),
-                32, reinterpret_cast<std::uint8_t*>(data_ptr))) {
+                read_565 ? 16 : 32, reinterpret_cast<std::uint8_t*>(data_ptr))) {
                 controller.push_error(ctx, GL_INVALID_OPERATION);
                 return;
             }
