@@ -2633,3 +2633,49 @@ the first ~18 GPU frames of a race -- the present-diag 16 real/42 empty, the CYC
 sweep, the rate comparisons were all early-race samples (still valid as samples, not as
 whole races); (2) the phone was never affected (no EKA2L1 there) -- the owner's full
 races were real. Earlier ring captures on the bench that "froze" were this hang too.
+
+## Round 9 bench validation: the default rasterizer on the GPU (A4_TAKEDEF); phone build
+
+Answer to round 8's lamp posts / vanishing scenery: put the 0x4000 family on the GPU in
+draw order with the flags-1 path, so the software layer no longer lands on a one-frame-old
+GPU image for those objects.
+- A4_TAKEDEF: the hook also takes calls that would reach the DEFAULT rasterizer 0x2e1c8
+  (bit 0 clear and none of 0x2/0x8/0x10/0x20/0x40/0x100 -- `(flags & 0x17B) == 0`), drawn
+  with the existing 5551 colour key + alpha test (the 0x33964 span is a pure colour key).
+- Census (A4_FLAGHIST, one bench race, 187,282 calls, (flags, ctx[0x64])): persp 0x2f6fc
+  29% (0x4001 24.0%), DEFAULT 47% (0x4000 m0 25.1%, 0x104000 m1 14.6%, 0x20000 6.2%,
+  0x10000 1.0%), 0x20 shadows 0x2ecb4 22.4%, 0x2fbdc 1.6%, 0x2f358 0.2%. GPU share of
+  draw_primitive calls: 29% -> 76%. Mode 3 (constant add) never appears in a race.
+- Bench full race (possible now, after the pusher fix; same input): guest instructions per
+  post, stock 9.36M, GPU base (HPERSP) 6.10M, TAKEDEF 4.47M (-27% vs base). Draw calls per
+  render (A4_RUNDIAG): base 172 (448 tris, 2.6 tris/call, max 411), TAKEDEF 291 (987 tris,
+  3.4 tris/call, max 539 -- under MAXT 512, so the max is not the batch size).
+- tex_index tries the previous hit's slot first (b6fd2fa; TAKEDEF doubles its calls).
+- Blue strip: CLIP_TOP now defaults to 11 and the phone build passes -DCLIP_TOP=0 (the
+  composite covers the top rows). Measured on the tunnel captures (bytes, not the picture):
+  r9 bench capidx 42/43 rows 0-4 are 623d10..7d490b / 6a5c4b..61523d with 0-1 sky-blue
+  pixels of 320; round 8's phone tunnel (capidx 12) had 276-284 of 320 there.
+
+Known loss (a guess at its visibility): mode 1 (0x104000, 14.6%) adds 1/4 of a per-scanline
+table colour indexed through a second map -- a dependent lookup GL ES 1.1 cannot express --
+so it is drawn as a plain colour key: those objects lose that tint.
+Still software (one frame against the GPU image): shadows 0x20 (22%; dst*12/16 through a
+byte-map stencil -- needs blend + stencil), 0x2fbdc, 0x2f358.
+
+Battery on the exact phone binary (r9_phone.exe = -DA4_HPERSP -DA4_TAKEDEF -DCLIP_TOP=0
+-DA4_TEL -DTEL_EVERY=40 -DTEL_RING=8 -DTEL_CYCLE, --gl --capture; sha256
+27e232b96bf3c541c48d012b29661eb095fa912149a0de4ce7c4f65e841426ce): full race through lap 2
+and the tunnel, framestat=2540, faults=1 (the known ngilightserver boot fault only), 44
+captures, ring = capidx 36-43, errc 0 in all eight, GL census 293-303 calls/render,
+987-1002 triangles/render, max 512 calls, last-render calls 116-457. Lamp posts, signs,
+sprites and road correct in all eight (by eye -- the occlusion claim is a picture until the
+phone's captures say otherwise). Header words 27-31 now carry the census, so the phone
+round measures the MBX's cost per draw call against the fps block.
+
+Not a repeat of: round 7 (1/z build), round 8 (r8_phone, HPERSP only, flags 1 only, CLIP_TOP
+11). New: TAKEDEF, CLIP_TOP 0, census in the header.
+Rule 4 -- guesses, named: (1) the MBX driver's per-glDrawArrays cost (291 calls/render vs
+172; unmeasured -- the census is in this round's captures to measure it); (2) alpha test on
+for every draw costs something on PowerVR (unmeasured); (3) the crash-scene choppiness
+(round 8 capidx 11, 17-21 ticks a render) -- cause unknown; more GPU work may help or not.
+States the bench never entered: the MBX itself; a long session past one race.
