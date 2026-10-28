@@ -2393,3 +2393,36 @@ Next: (a) disassemble the ord 10/11/413 ROM functions to name the clock; (b) dec
 0x1916 threshold and whether [r4+0x7c]/r5[0x34] dt also drives physics (dt-scaled => safe
 to raise the render rate; frame-locked => raising it speeds the game up). Only then craft
 the patch.
+
+## RE conclusion: the engine is RENDER-BOUND, not rate-capped (the "fixed rate" isn't one)
+
+Followed the chain to the end. ROM-confirmed names: euser ord 9=CHeartbeat::New,
+10=CHeartbeat::NewL, 11=CHeartbeat::RunL, 12=CHeartbeat::Start, 413=TSglQueIterBase.
+Correction to the earlier read: 0x1916 is a ~1-second TIMEOUT ((now-last)>>8 > 4000 clears
+a flag), NOT the frame gate.
+
+Structure:
+- Frame driver 0x1afc creates the game object (alloc 0x9c, ctor 0x112) and calls the race
+  function 0x808 ONCE. So 0x808 contains the internal race loop.
+- The race loop renders the 3D scene EVERY iteration (present-diag: 0x9A6 is a real-render
+  present on all 15/15 iterations; draws always land between the 0x97E and 0x9A6 presents).
+- Each rendered frame is PRESENTED THREE TIMES per iteration (sites 0x950 full, 0x97E, and
+  0x9A6). That is the whole "3:1": the two earlier presents re-post the PREVIOUS frame
+  (bb not yet updated this iteration), the third posts the new one. The consecutive-frame
+  capture saw each frame ~3x because a4_tel_tick fires per present (3x/iter), not because
+  the game froze.
+- CRITICAL: the loop contains NO wait/after/timer import (only CHeartbeat::RunL, pumped,
+  and a list iterator). CHeartbeat::RunL does not block. So the loop runs FREE -- the
+  iteration rate is RENDER-BOUND, set by how long each frame takes, with no fixed cap.
+  This matches D3 (bench rate tracked render cost: stock 11.2 vs llvmpipe 7.1 presents/s).
+
+So there is NO fixed new-frame-rate constant in the engine to raise -- the motion rate IS
+the render rate; the fps number is just inflated 3x by redundant presents. The real and
+only lever for smoother motion is making each frame cheaper to render. In the current blit
+build that per-frame cost is dominated by glReadPixels (GPU->CPU), which is slow on MBX.
+=> The window-surface present build (eglSwapBuffers, no readback -- already built and
+bench-proven) is the confirmed fix: it removes the per-frame readback so iterations run
+faster => higher render/motion rate. It also lets us drop the 2 redundant game presents
+(our hook already skips the game's present under A4_WINDOW). No risky engine rate-patch is
+needed, and the physics-coupling worry is moot (we are not changing any rate, just the
+per-frame render cost).
