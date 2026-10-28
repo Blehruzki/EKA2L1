@@ -282,3 +282,31 @@ shared session corrupts the app at the first orientation -- see
 `.claude/ngage-port/asphalt4/MBX.md`). Verified on RM-320: the Asphalt 4 GPU 3D
 pass presents through a backed-up window across a full race including orientation
 changes, no CONE/WSERV panic. `src/emu/services/src/window/classes/winuser.cpp`.
+
+## The GL transfer-buffer pusher past 255 buffers (a hang)
+
+`graphics_buffer_pusher` (`src/emu/dispatch/src/libraries/buffer_pusher.cpp`)
+stages client-side vertex/index arrays for the GL ES emulation. Each `flush()`
+uploads the staged buffers, then moves on to a fresh one (`current_buffer_++`,
+adding a buffer of `size_per_buffer_` -- 4 MB for vertices) because the old ones
+may still be in use; only `done_frame()`, called on a **swap** flush, starts over
+at buffer 0. Both `current_buffer_` and `flush()`'s loop index were `uint8_t`. A
+client that renders into a pbuffer and reads it back with `glReadPixels` -- which
+flushes -- without ever calling `eglSwapBuffers` reaches 255: the index wraps,
+`i <= current_buffer_` stays true, `i` can never equal `buffers_.size()`, and
+`flush()` loops forever inside the HLE call holding the kernel lock. The guest
+froze with the emulator UI still running. Found with gdb on a hung Asphalt 4 MBX
+bench run (guest thread in `graphics_buffer_pusher::flush` <- `flush_to_driver`
+<- `gl_read_pixels_emu`; the graphics thread idle in `request_queue::pop`). That
+renderer reads back ~14 strips a frame, so it hung after ~18 GPU frames -- which
+had been mistaken for the bench race simply being short.
+
+Both are now `size_t`, and `gl_read_pixels_emu` recycles the pushers
+(`egl_context_es_shared::recycle_transfer_buffers`, i.e. `done_frame()`) after a
+successful read: the read is synchronous, so every draw that used the transfer
+buffers has executed -- without that such a client would still allocate another
+4 MB buffer on every flush, without bound. Verified on RM-320: the run that froze
+at ~380 posts every time now climbs steadily (643 -> 2198 posts over 120 s) and
+reaches lap 2 through the tunnel. A client that never swaps and never reads back
+(no sync point at all) still grows the pushers; none is known. Files:
+`buffer_pusher.{h,cpp}`, `gles_shared/def.h`, `gles2/gles2.cpp`.

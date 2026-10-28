@@ -2613,3 +2613,23 @@ flags: mode 3 -> add ctx[0x70]; modes 1/2 -> table-driven variants (ctx[0x60]/ct
 otherwise plain colour key. So 0x4000 is drawable on the GPU with the existing 5551 colour
 key + alpha test, and the add with GL_ADD texenv + the constant as the vertex colour (GL ES
 GL_ADD saturates). The earlier "flat fill" attempt drew it opaque, before the colour key.
+
+## Bench correction: "the bench race is short" was an EMULATOR HANG (fixed)
+
+Every GPU build on the bench plateaued around ~450-470 posts regardless of how long
+accelerate was held (45 s vs 60 s gave 468 vs 464), with only ~18 real renders in a
+race. I logged that as "the bench race is short". WRONG: it was a hang. A4_TAKEDEF hit
+it a little sooner and froze at the countdown, which exposed it: posts frozen at 370-395
+with the process alive; PCPROF never reached 3.2G instructions (so the guest was NOT
+spinning -- it was stuck in a host call); gdb showed the guest thread in
+graphics_buffer_pusher::flush <- flush_to_driver <- gl_read_pixels_emu (our per-strip
+readback) and the graphics thread idle. Cause: uint8_t current_buffer_ / loop index in
+EKA2L1's GL transfer-buffer pusher, reset only on eglSwapBuffers, which the blit path
+never calls -- ~14 readback flushes a frame wrap it after ~18 frames. Fixed in EKA2L1
+(EMU_PATCHES.md "The GL transfer-buffer pusher past 255 buffers"); the same run now
+climbs 643 -> 2198 posts in 120 s and reaches lap 2 through the tunnel.
+Consequences: (1) every bench measurement in this file taken on a GPU build saw at most
+the first ~18 GPU frames of a race -- the present-diag 16 real/42 empty, the CYCLETICK
+sweep, the rate comparisons were all early-race samples (still valid as samples, not as
+whole races); (2) the phone was never affected (no EKA2L1 there) -- the owner's full
+races were real. Earlier ring captures on the bench that "froze" were this hang too.
