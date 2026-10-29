@@ -319,13 +319,16 @@ one more format/type pair that the implementation names through
 EKA2L1 answered neither query (`GL_INVALID_ENUM`) and refused every surface read but
 RGBA/UNSIGNED_BYTE (`GL_INVALID_OPERATION`), so a client that reads in the device's own
 16-bit format could not run on the bench at all. The queries now answer
-`GL_RGB`/`GL_UNSIGNED_SHORT_5_6_5` (`get_data_impl` in
-`src/emu/dispatch/src/libraries/gles_shared/gles_shared.cpp`), and a surface read
-(window or pbuffer, no FBO) accepts that pair, through the driver's existing 16 bpp
-`read_bitmap` (`gl_read_pixels_emu` in `src/emu/dispatch/src/libraries/gles2/gles2.cpp`).
-Any other pair is still `GL_INVALID_OPERATION`, as the spec has it. The pair a real
-device names depends on its driver and surface; the guest is expected to ask, as the
-Asphalt 4 MBX renderer does (round 10) before reading 565. FBO reads are unchanged.
-Verified on RM-320: the renderer's probe reads `GL_RGB`/`GL_UNSIGNED_SHORT_5_6_5`, and its
-capture windows that read 565 composite the same picture as the RGBA ones (no error, the
-scene correct and upright), for half the bytes.
+`GL_BGRA`/`GL_UNSIGNED_BYTE` -- what a Nokia N95 (PowerVR MBX) answers, measured on the
+device (Asphalt 4 MBX round 10; an earlier version of this patch answered RGB/565, a
+guess) -- in `get_data_impl` (`src/emu/dispatch/src/libraries/gles_shared/gles_shared.cpp`).
+A surface read (window or pbuffer, no FBO) accepts RGBA/UNSIGNED_BYTE, BGRA/UNSIGNED_BYTE
+(read as RGBA, then R and B swapped on the host) and RGB/UNSIGNED_SHORT_5_6_5 (the
+driver's existing 16 bpp `read_bitmap`), in `gl_read_pixels_emu`
+(`src/emu/dispatch/src/libraries/gles2/gles2.cpp`). Any other pair is still
+`GL_INVALID_OPERATION`, as the spec has it. The guest is expected to ask, as the Asphalt 4
+MBX renderer does. FBO reads are unchanged.
+Verified on RM-320 (565 version): the renderer's probe read `GL_RGB`/`GL_UNSIGNED_SHORT_5_6_5`,
+and its capture windows that read 565 composited the same picture as the RGBA ones (no
+error, the scene correct and upright). The BGRA version is verified in the same way below
+when its bench run is in.

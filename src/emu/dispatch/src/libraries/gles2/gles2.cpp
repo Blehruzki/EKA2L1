@@ -2781,6 +2781,13 @@ APPLY_PENDING_ROUTES:
         drivers::texture_format format_for_read;
         drivers::texture_data_type data_type_for_read;
 
+        // GL_BGRA/UNSIGNED_BYTE (the read pair a PowerVR MBX names, and the one the
+        // implementation-read-format query answers): read as RGBA, then swap R and B.
+        const bool read_bgra = (format == GL_BGRA_EXT_EMU) && (type == GL_UNSIGNED_BYTE_EMU);
+        if (read_bgra) {
+            format = GL_RGBA_EMU;
+        }
+
         if (!gl_enum_to_driver_texture_format_storage_fb(format, format_for_read)) {
             controller.push_error(ctx, GL_INVALID_ENUM);
             return;
@@ -2825,6 +2832,12 @@ APPLY_PENDING_ROUTES:
                 read_565 ? 16 : 32, reinterpret_cast<std::uint8_t*>(data_ptr))) {
                 controller.push_error(ctx, GL_INVALID_OPERATION);
                 return;
+            }
+            if (read_bgra) {
+                std::uint8_t *px = reinterpret_cast<std::uint8_t *>(data_ptr);
+                for (std::int64_t i = 0; i < static_cast<std::int64_t>(width) * height; i++) {
+                    std::swap(px[i * 4], px[i * 4 + 2]);
+                }
             }
         } else {
             drivers::read_framebuffer(drv, fb_obj->handle_value(), eka2l1::vec2(x, y), eka2l1::vec2(width, height),
