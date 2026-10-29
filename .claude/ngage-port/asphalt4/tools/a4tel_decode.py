@@ -2,6 +2,7 @@
 # Decode C:\a4telN.dat telemetry. v3: [128B header][560B a4_fps_state][framebuffer];
 # v4 (round 10): the header is 256 bytes, words 32.. the GL phase timers of the window.
 # Word 49 was dual_frames up to round 12 (0 under A4_IMM); fill_gpu from round 13.
+# Word 38 was w_glflush, 46 rd_err, up to round 13; tex_remade and tex_evicted from round 14.
 import sys, struct, os
 from PIL import Image
 NAMES=['magic','ver','capidx','fcount','W','H','stride','fbbytes','bb','up','frames',
@@ -9,8 +10,8 @@ NAMES=['magic','ver','capidx','fcount','W','H','stride','fbbytes','bb','up','fra
        'pminy','pmaxy','fps','min_dt','max_dt','fps_bytes',
        'gl_renders','gl_calls','gl_tris','gl_maxcalls','gl_lastcalls',
        # v4
-       'ab_mode','w_renders','w_nticks','w_comp','w_read','w_draw','w_glflush','w_calls','w_tris',
-       'ntick_now','tick_now','home_us','rd_fmt','rd_type','rd_err','flat_tris','add_tris','fill_gpu','shad_tris','pb_config','depth_bits','m1_rebakes','ntex_now','w_m1texels','w_m1ticks','stencil_bits','affine_tris','alpha_bits','late_tris','bb_gpu','bb_sw','bb2_calls']
+       'ab_mode','w_renders','w_nticks','w_comp','w_read','w_draw','tex_remade','w_calls','w_tris',
+       'ntick_now','tick_now','home_us','rd_fmt','rd_type','tex_evicted','flat_tris','add_tris','fill_gpu','shad_tris','pb_config','depth_bits','m1_rebakes','ntex_now','w_m1texels','w_m1ticks','stencil_bits','affine_tris','alpha_bits','late_tris','bb_gpu','bb_sw','bb2_calls']
 for fn in sys.argv[1:]:
     d=open(fn,'rb').read()
     if len(d)<128: print(fn,'too short'); continue
@@ -22,7 +23,7 @@ for fn in sys.argv[1:]:
     if ver>=4 and h[33]:
         r=h[33]
         print('  window: mode %d (%s%s), %d renders in %d nticks = %.2f nticks/render; per render:'
-              ' composite %.2f (read %.2f), batch draw %.2f, glFlush %.2f; %.0f calls, %.0f tris'
+              ' composite %.2f (read %.2f), batch draw %.2f, [38]/r %.2f; %.0f calls, %.0f tris'
               % (h[32], 'flush' if h[32]&1 else 'noflush', '+native' if h[32]&2 else '', r, h[34], h[34]/r,
                  h[35]/r, h[36]/r, h[37]/r, h[38]/r, h[39]/r, h[40]/r))
     if h[27]:

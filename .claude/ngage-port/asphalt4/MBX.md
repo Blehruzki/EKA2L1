@@ -3161,3 +3161,72 @@ Mode 1 is T + table[M]/4 with M a per-texel index into a table rewritten every f
 a dependent lookup the fixed pipeline cannot do; nor can a palette (M spans ~26K values
 on the bench car, a paletted texture holds 256). So the CPU computes the combined
 texels and re-uploads them (round 10: 3.7-10 ms a render while it was re-baking).
+
+## Phone round 13 (r13_phone f9e8cfdf): bars right; after the garage, wrong car textures and a software/GPU mix
+
+Owner: the letterbox bars are right now. A second run went through CAREER (the garage)
+instead of instant play, and showed: (1-6) garage cars with the wrong textures, a
+different wrong one each time they scrolled away and back (Ferrari <-> Mercedes),
+stretched or shrunk; (7) the HOME menu's gradients gone; (8/9) the road smooth in one
+moment and grainy in the next; (10) horizontal lines through the road; (11-12) a traffic
+car behind a road stripe; (13) the far tunnel showing through the left wall. "It felt
+like the game was switching back and forth between software and GL."
+Telemetry (8 files, capidx 107-114; not repeats of round 12 -- a career run, the garage
+visited): errc 0; leak.py 0; late_tris 0; fills on the GPU 597-661.
+- ntex 256 in every capture = NCACHE: THE TEXTURE CACHE IS FULL. It has no eviction (ntex
+  only grows; round 12's instant race ended at 164). Every texture not cached by then is
+  refused (tex_index returns -1) and its triangles fall to software.
+- Billboards left to software 4,348-7,655 (round 12: 133-135): bb_tex refused too.
+- GPU-taken triangles 722-1,371 a render (round 12: 1,060-1,490), draw calls 96-457;
+  per render 99-145 ms (round 12: 84-100) -- software doing the refused share.
+- Mode-1 re-bakes 126-171 total, up to 852K texels a window (the garage's cars).
+Reading (measured: the full cache; inferred: the pictures): software triangles land in
+the game's buffer in draw order, and the composite then writes every pixel the GPU drew
+over them whatever their depth -- a software traffic car under a GPU road stripe (11-12),
+a GPU-drawn far object over a software wall (13), the grainy road where mode 4 went to
+software and the smooth one where the GPU drew it (8/9). The garage: the cache keys a
+texture by its descriptor address only; a car model loaded where the last one was freed
+gets the last one's GL texture, and its UVs, normalised by the new size, stretch or
+shrink it (1-6) -- inferred, the bench has not entered the garage yet.
+
+## Round 14 bench: the texture cache validated, keyed by its texels, and evicting
+
+Not repeats of: round 13 (cache keyed by descriptor only, no eviction).
+- Per entry (struct texc at 0x413000, scratch top raised to 0x415000): the texel pointer
+  (now part of the key), the size, a 64-sample hash of the texels and the last present
+  used. A hit checks the size every time and the hash once a present, and remakes the
+  texture if the descriptor holds another one (into a new slot if the entry was already
+  drawn with this present: its GL name is in the batch). A miss on a full cache evicts
+  the entry used longest ago, never one used this present (cache_slot). Billboards share
+  it (key sprite|3 plus texel pointer). The A4_TEXCHK instrument went with it (this is
+  what it diagnosed). Header word 38 (glFlush ticks, unused since round 12) now counts
+  textures remade, word 46 (the read-format probe's error, 0 on the N95) evictions.
+- The garage, reproduced (menudrive.sh: boot, CAREER, CHOOSE YOUR RIDE, then
+  Right/Left with a screenshot after each key; the bench shows the screen upside down):
+  round 13's binary shows the Mini in the Nissan's orange and the Nissan in the
+  Mercedes' silver from the second visit on (views 5-7, 11-13 of 13); round 14's keeps
+  every car's own texture in all 13.
+- The full cache, reproduced with -DNCACHE=64 (a race uses ~160): round 13's code fills
+  it and refuses the rest -- A4_SWHIST counts 198,667 non-blended calls left to software
+  (0x4001 roads, the mode-4 road rows, ...), 2,800 billboards refused; round 14's evicts
+  (350-400) and leaves 2,650 (frames that used more than 64 textures, impossible at 256).
+- Found on the way (A4_REMADEPROBE, a ring of remade entries): two textures in the race
+  animate by the game swapping their texel pointer among 2-3 frames (a 64x64 alpha-map
+  one, a 32x32 one) -- frozen on their first frame on the GPU through round 13.
+  Re-uploading each swap cost an upload a few times a window; with the texel pointer in
+  the key each frame has an entry: 0 remakes in a race, ntex 159-164.
+- The HOME menu's missing gradient (photo 7) is NOT reproduced: with GL up in the menus
+  (-DSTART_AFTER=2000u, 240 GPU renders, ntex 13) and with an 8-entry cache, both builds
+  draw the HOME panel like the stock game. The menu's 2D is not in the game's buffer at
+  the 3D present (the captures hold only the garage), so the composite cannot be what
+  removed it. Open; to look at again in round 14 on the phone.
+Battery on the exact phone binary (r14_phone = r13's flags; sha256
+d5cd29ab547b96eb672e157d3f06c6cea8b560589d3f4c3c64aaef05b5148253; telerun3 230 s):
+framestat 4862, faults 1 (the known boot fault), errc 0 in all eight, late_tris 0,
+remade 0, evicted 0, ntex 164, fills 60, billboards on the GPU ~25,700 / software 143,
+leak.py 0; per render 85-88 ms on the bench. Garage cycle (menudrive, 13 views): right in all.
+Rule 4 -- guesses, named: (1) the phone's road grain switching, cars behind stripes,
+tunnel through the wall and horizontal lines (photos 8-13) are all the refused share
+drawn by software under the composite -- the full cache is measured, the attribution of
+each photo is inferred; (2) photo 7's cause is unknown; (3) the 64-sample hash can miss a
+texture replaced by one identical at those 64 texels (it compares size and pointer too).

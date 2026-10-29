@@ -54,13 +54,17 @@
                                           * rows show the sky backdrop in a tunnel (the
                                           * "blue banner"). -DCLIP_TOP=0 composites them. */
 #endif
+#ifndef NCACHE
 #define NCACHE 256
+#endif
 /* The texel pointer in a texture descriptor: +0x10, where every span filler reads it
  * (0x333f4, 0x33964, 0x33d18, 0x33ea8). +0x0C, used until round 10, equals it on every
  * texture the earlier classes draw (A4_TEXPROBE: 144 of 144) but is 0 on the 0x33ea8
  * (alpha-map) textures, which then fell to software. */
 #define TS_PIX 4
+#ifndef START_AFTER
 #define START_AFTER 50000u               /* skip the intro video; reachable on the bench */
+#endif
 
 /* Batch buffers, immediately after the readback strip (0x408000). Triangles in
  * arrival order: per vertex a position + UVC int32 texcoords (GL_FIXED), 3 verts a
@@ -211,7 +215,7 @@
 #define A4_PERF ((volatile uint32_t *)0x00412C00u)
 enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE,
-       PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_N };
+       PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_TEXRE, PF_EVICT, PF_N };
 #define AB_FLUSH 1u      /* glFlush after the frame's last batch (start the tile render) */
 #define AB_NATIVE 2u     /* read back in the implementation's own pair (OES_read_format): BGRA
                           * on the N95 (round 10), RGB565 on a device that names that */
@@ -538,33 +542,27 @@ static int bringup(volatile struct glr *s)
  * software filler treats texel value 0 as transparent, so a texture with many 0
  * texels is a sprite we must leave to software (the GPU would draw its black
  * background opaque). -1 on failure (caller falls through to software). */
-#ifdef A4_TEXCHK
-/* Diagnosis: is a cached GL texture still the texture the game means? The cache is
- * keyed by the descriptor address only. Per entry keep the pixel pointer and a
- * 16-texel checksum taken at upload (free scratch above the batch buffers, 0x412000),
- * and on every hit count a changed pointer or changed content. Counters at 0x412800:
- * [0] hits [1] pointer changed [3] content changed [4] last stale descriptor [5] uploads. */
-#define TC_PX ((volatile uint32_t *)0x00412000u)
-#define TC_CK ((volatile uint32_t *)0x00412400u)
-#define TC_N  ((volatile uint32_t *)0x00412800u)
-static uint32_t tex_ck(const uint32_t *ts)
+/* Each cache entry's provenance (round 13): the texels it was made from, their size, a
+ * sampled hash of them, and the last present it was used in. The cache was keyed by the
+ * descriptor address alone, and a descriptor freed and reallocated for another texture
+ * -- the garage's next car -- kept the old one's GL texture (stretched, by its UVs
+ * normalised for the new size); and it never let an entry go, so after the garage it was
+ * full and every new texture went to software. Above the batch scratch, to 0x414000. */
+#define A4_GL_TEXC 0x00413000u
+struct texc { uint32_t src[NCACHE], wh[NCACHE], hs[NCACHE], lu[NCACHE]; };
+#define TX ((volatile struct texc *)A4_GL_TEXC)
+#define A4_GL_SCRATCH_TOP 0x00415000u              /* injector.py GL_SCRATCH + GL_SCRATCH_SIZE */
+_Static_assert(A4_GL_TEXC + sizeof(struct texc) <= A4_GL_SCRATCH_TOP, "texc past the scratch");
+
+/* 64 texels spread over the texture, and its size: a texture loaded where another was
+ * differs here (one changed in place since round 10's probe found none in a race) */
+static uint32_t tex_hash(const uint16_t *px, uint32_t n, uint32_t seed)
 {
-    uint32_t w = ts[1] + 1, h = ts[2] + 1;
-    const uint16_t *px = (const uint16_t *)ts[TS_PIX];
-    if (!px) return 0;
-    int lw = 0, lh = 0;
-    for (uint32_t v = w; v > 1; v >>= 1) lw++;
-    for (uint32_t v = h; v > 1; v >>= 1) lh++;
-    int sh = lw + lh - 4; if (sh < 0) sh = 0;
-    uint32_t c = (w << 16) ^ h;
-    for (uint32_t k = 0; k < 16u; k++) {
-        uint32_t idx = k << sh;
-        if (idx >= w * h) break;
-        c = c * 31u + px[idx];
-    }
-    return c;
+    uint32_t h = 0x811C9DC5u ^ seed ^ n, step = n >> 6;
+    if (!step) step = 1;
+    for (uint32_t k = 0; k < n; k += step) h = (h ^ px[k]) * 16777619u;
+    return h;
 }
-#endif
 
 
 /* Mode 1 of the default span (0x33964 with ctx[0x64] == 1: the 0x104000 class, ~15% of
@@ -705,10 +703,65 @@ static uint32_t tex_upload_alpha(uint32_t id, const uint32_t *ts)
     return 1;
 }
 
+/* A slot for a new entry: the next unused one, else the entry used longest ago -- never
+ * one used in this present (its GL name is in the batch, not yet drawn). *id is its GL
+ * name (made here for an unused slot). -1 when all are in use this present. */
+static int cache_slot(volatile struct glr *s, uint32_t *id)
+{
+    if (s->ntex < NCACHE) {
+        *id = 0;
+        gl_gentex(1, id);
+        return (int)s->ntex++;
+    }
+    int v = -1; uint32_t age = 0;
+    for (uint32_t k = 0; k < NCACHE; k++) {
+        uint32_t a = s->frames - TX->lu[k];
+        if (a > age) { age = a; v = (int)k; }
+    }
+    if (v < 0) return -1;                           /* every entry drawn this present */
+    *id = s->cache_id[v];
+    A4_PERF[PF_EVICT]++;
+    return v;
+}
+
+/* (Re)make slot i's GL texture from ts: the alpha-map texture (var 2), the mode-1 bake
+ * (var 1) or the plain/colour-key one, and record what it was made from. */
+static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t *ts, const uint32_t *gctx, int var)
+{
+    uint32_t w = ts[1] + 1, h = ts[2] + 1, total = w * h;
+    const uint16_t *px16 = (const uint16_t *)ts[TS_PIX];
+    /* The game's software filler treats texel value 0 (pure black) as transparent.
+     * A texture with ANY such texel, GPU-drawn opaque, shows black where software
+     * shows through (the "black background trees"). Handle it ON the GPU: a colorkey
+     * texture is uploaded as 5551 with alpha=0 on the zero texels, and the alpha
+     * test (enabled in bring-up) discards them -- matching software exactly, and
+     * keeping the sprite on the GPU (no slow software fallback). Opaque textures
+     * (no zero texels) stay 565; GL_REPLACE on an RGB texture yields alpha 1, so the
+     * alpha test passes and they are unaffected. */
+    uint32_t tr = 0;
+    for (uint32_t k = 0; k < total; k++) if (px16[k] == 0) { tr = 1; break; }
+    const uint16_t *map2 = 0, *tab = 0;
+    if (var == 1) { map2 = (const uint16_t *)gctx[0x5c / 4]; tab = m1_table(gctx); }
+    uint32_t r = var == 2 ? tex_upload_alpha(id, ts) : tex_upload(id, ts, tr, 1, map2, tab);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    s->cache_id[i] = id; s->cache_tr[i] = tr;
+    s->cache_m1r[i] = r; s->cache_fr[i] = s->frames;
+    s->cache_ck[i] = var == 1 ? m1_sig(map2, tab, r, total) : 0;
+    uint32_t am = var == 2 ? ts[11] : 0u;           /* the alpha map is part of what it was made from */
+    TX->src[i] = ts[TS_PIX]; TX->wh[i] = ts[1] | (ts[2] << 16);
+    TX->hs[i] = tex_hash(px16, total, am); TX->lu[i] = s->frames;
+}
+
 /* texture cache: the cache INDEX for desc+0x30 (and, for a mode-1 triangle, its map and
- * table), uploading on a miss. A mode-1 entry is keyed desc|1 (descriptors are word
- * aligned), so a texture drawn both ways has two GL textures. -1 on failure (the caller
- * falls through to software). */
+ * table), uploading on a miss. A mode-1 entry is keyed desc|1 and the alpha-map one desc|2
+ * (descriptors are word aligned), so a texture drawn several ways has a GL texture each.
+ * The texel pointer is part of the key; a hit is checked against what the entry was made
+ * from -- the size on every hit, a sampled hash of the texels once a present -- and
+ * remade if the descriptor now holds another texture. -1 on failure (the caller falls
+ * through to software). */
 static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint32_t *gctx, int var)
 {
     uint32_t *ts = (uint32_t *)tsaddr;
@@ -718,23 +771,50 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint32_t *gc
      * their own (ctx[0x60]) -- the tunnel-exit gantry's signs drew black with one image a
      * texture (round 11) */
     uint32_t tabk = m1 ? (uint32_t)(uintptr_t)m1_table(gctx) : 0u;
+    uint32_t w = ts[1] + 1, h = ts[2] + 1, n = w * h;
+    const void *pix = (const void *)ts[TS_PIX];
+    if (!pix || w > 1024 || h > 1024) return -1;
     int i = -1;
-#ifndef A4_TEXCHK
     /* consecutive triangles usually share a texture: try the previous slot first
      * (the linear search below runs per triangle over up to NCACHE entries) */
-    { uint32_t li = s->lasthit; if (li < s->ntex && s->cache_ptr[li] == key && s->cache_tab[li] == tabk) i = (int)li; }
-#endif
+    /* The texel pointer is part of the key too: some textures animate by the game swapping
+     * it among a few frames (a 64x64 alpha-map one and a 32x32 one in the bench race,
+     * round 14 -- frozen on their first frame until then), and each frame keeps its entry. */
+    uint32_t src = ts[TS_PIX];
+    { uint32_t li = s->lasthit; if (li < s->ntex && s->cache_ptr[li] == key && s->cache_tab[li] == tabk && TX->src[li] == src) i = (int)li; }
     for (uint32_t k = 0; i < 0 && k < s->ntex; k++)
-        if (s->cache_ptr[k] == key && s->cache_tab[k] == tabk) {
-            s->lasthit = k; i = (int)k;
-#ifdef A4_TEXCHK
-            TC_N[0]++;
-            if (TC_PX[k] != ts[TS_PIX]) { TC_N[1]++; TC_N[4] = tsaddr; }
-            else if (TC_CK[k] != tex_ck(ts)) { TC_N[3]++; TC_N[4] = tsaddr; }
-#endif
-        }
+        if (s->cache_ptr[k] == key && s->cache_tab[k] == tabk && TX->src[k] == src) { s->lasthit = k; i = (int)k; }
     if (i >= 0) {
-        uint32_t n = (ts[1] + 1) * (ts[2] + 1);
+        if (TX->wh[i] != (ts[1] | (ts[2] << 16))
+            || (TX->lu[i] != s->frames && TX->hs[i] != tex_hash((const uint16_t *)pix, n, var == 2 ? ts[11] : 0u))) {
+            A4_PERF[PF_TEXRE]++;                    /* another texture here now */
+#ifdef A4_REMADEPROBE
+            {   /* diagnosis, 0x412D00 (A4_FLAGHIST's tail): [0] count, then a ring of 20
+                 * (key, why: 2 size | 4 hash, or 8 either while used this present, w | h << 16,
+                 * old pointer, new pointer, present) */
+                volatile uint32_t *rp = (volatile uint32_t *)0x00412D00u;
+                uint32_t k = rp[0] % 20u, why = 0u
+                    | (TX->wh[i] != (ts[1] | (ts[2] << 16)) ? 2u : 0u) | (TX->lu[i] == s->frames ? 8u : 4u);
+                rp[1+k*6] = key; rp[2+k*6] = why; rp[3+k*6] = w | (h << 16);
+                rp[4+k*6] = TX->src[i]; rp[5+k*6] = ts[TS_PIX]; rp[6+k*6] = s->frames; rp[0]++;
+            }
+#endif
+            if (TX->lu[i] == s->frames) {
+                /* already drawn with in this present: its GL name is in the batch, so the
+                 * new texture takes another slot and this key is retired */
+                uint32_t id;
+                int j = cache_slot(s, &id);
+                if (j < 0) return -1;
+                s->cache_ptr[i] = 0xFFFFFFFFu;      /* no descriptor or sprite has this key */
+                s->cache_ptr[j] = key; s->cache_tab[j] = tabk;
+                tex_make(s, j, id, ts, gctx, var);
+                s->lasthit = (uint32_t)j;
+                return j;
+            }
+            tex_make(s, i, s->cache_id[i], ts, gctx, var);
+            return i;
+        }
+        TX->lu[i] = s->frames;
         /* once a present: has the table moved? A big texture at most every M1_BIG_EVERY
          * presents: the one that re-bakes all the time is the player's car body (256x256,
          * its paint reflection, a table the game rewrites every frame), and a re-bake is
@@ -763,38 +843,12 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint32_t *gc
         }
         return i;
     }
-    uint32_t w = ts[1] + 1, h = ts[2] + 1;
-    const void *pix = (const void *)ts[TS_PIX];
-    if (!pix || w > 1024 || h > 1024) return -1;
-    if (s->ntex >= NCACHE) return -1;
-    /* The game's software filler treats texel value 0 (pure black) as transparent.
-     * A texture with ANY such texel, GPU-drawn opaque, shows black where software
-     * shows through (the "black background trees"). Handle it ON the GPU: a colorkey
-     * texture is uploaded as 5551 with alpha=0 on the zero texels, and the alpha
-     * test (enabled in bring-up) discards them -- matching software exactly, and
-     * keeping the sprite on the GPU (no slow software fallback). Opaque textures
-     * (no zero texels) stay 565; GL_REPLACE on an RGB texture yields alpha 1, so the
-     * alpha test passes and they are unaffected. */
-    const uint16_t *px16 = (const uint16_t *)pix;
-    uint32_t total = w * h, zeros = 0;
-    for (uint32_t k = 0; k < total; k++) if (px16[k] == 0) zeros++;
-    uint32_t tr = (zeros > 0) ? 1u : 0u;              /* colorkey (has transparent texels) */
-    uint32_t id = 0;
-    gl_gentex(1, &id);
-    const uint16_t *map2 = 0, *tab = 0;
-    if (m1) { map2 = (const uint16_t *)gctx[0x5c / 4]; tab = m1_table(gctx); }
-    uint32_t r = var == 2 ? tex_upload_alpha(id, ts) : tex_upload(id, ts, tr, 1, map2, tab);
-    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    int idx = (int)s->ntex;
-    s->cache_ptr[idx] = key; s->cache_id[idx] = id; s->cache_tr[idx] = tr; s->ntex++;
-    s->cache_m1r[idx] = r; s->cache_fr[idx] = s->frames; s->cache_tab[idx] = tabk;
-    s->cache_ck[idx] = m1 ? m1_sig(map2, tab, r, total) : 0;
-#ifdef A4_TEXCHK
-    TC_PX[idx] = ts[TS_PIX]; TC_CK[idx] = tex_ck(ts); TC_N[5]++;
-#endif
+    uint32_t id;
+    int idx = cache_slot(s, &id);
+    if (idx < 0) return -1;
+    s->cache_ptr[idx] = key; s->cache_tab[idx] = tabk;
+    tex_make(s, idx, id, ts, gctx, var);
+    s->lasthit = (uint32_t)idx;
     return idx;
 }
 
@@ -1224,24 +1278,26 @@ static int bb_tex(volatile struct glr *s, const uint32_t *spr) __attribute__((un
 static int bb_tex(volatile struct glr *s, const uint32_t *spr)
 {
     uint32_t key = (uint32_t)(uintptr_t)spr | 3u;
-    for (uint32_t k = 0; k < s->ntex; k++)
-        if (s->cache_ptr[k] == key) return (int)k;
     uint32_t vsh = spr[0x1c / 4], rows = spr[8 / 4] + 1u;
     const uint16_t *px = (const uint16_t *)spr[0x10 / 4];
-    if (!px || vsh > 10u || rows > 1024u || (rows & (rows - 1u)) || s->ntex >= NCACHE) return -1;
-    uint32_t pitch = 1u << vsh, total = pitch * rows, tr = 0;
-    for (uint32_t k = 0; k < total; k++) if (px[k] == 0) { tr = 1; break; }
+    if (!px || vsh > 10u || rows > 1024u || (rows & (rows - 1u))) return -1;
+    uint32_t pitch = 1u << vsh, total = pitch * rows;
     uint32_t fd[5] = { 0, pitch - 1u, rows - 1u, 0, (uint32_t)(uintptr_t)px };
-    uint32_t id = 0;
-    gl_gentex(1, &id);
-    tex_upload(id, fd, tr, 1, 0, 0);
-    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    int idx = (int)s->ntex;
-    s->cache_ptr[idx] = key; s->cache_id[idx] = id; s->cache_tr[idx] = tr; s->ntex++;
-    s->cache_m1r[idx] = 1; s->cache_fr[idx] = s->frames; s->cache_tab[idx] = 0; s->cache_ck[idx] = 0;
+    for (uint32_t k = 0; k < s->ntex; k++)
+        if (s->cache_ptr[k] == key && TX->src[k] == fd[4]) {      /* the texels' address keys it too */
+            if (TX->wh[k] != (fd[1] | (fd[2] << 16))
+                || (TX->lu[k] != s->frames && TX->hs[k] != tex_hash(px, total, 0))) {
+                tex_make(s, (int)k, s->cache_id[k], fd, 0, 0);    /* another sprite here now */
+                A4_PERF[PF_TEXRE]++;
+            }
+            TX->lu[k] = s->frames;
+            return (int)k;
+        }
+    uint32_t id;
+    int idx = cache_slot(s, &id);
+    if (idx < 0) return -1;
+    s->cache_ptr[idx] = key; s->cache_tab[idx] = 0;
+    tex_make(s, idx, id, fd, 0, 0);
     return idx;
 }
 

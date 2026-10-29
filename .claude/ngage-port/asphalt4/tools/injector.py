@@ -91,7 +91,7 @@ CONE_IMPORT_ORDINALS = [182]        # CCoeEnv::Static() only (717 RootWin is 3.2
 EFS_IMPORT_DLL = 'efsrv.dll'
 EFS_IMPORT_ORDINALS = [68, 108, 101, 96]   # RFs::Connect, RFile::Replace, RFile::Write(pos), RFile::Flush
 GL_SCRATCH = 0x00401000         # must match A4_GL_SCRATCH in a4_gl.c
-GL_SCRATCH_SIZE = 0x12000       # GL state + strip readback + batch buffers (4-wide UV for A4_PERSP)
+GL_SCRATCH_SIZE = 0x14000       # GL state + strip readback + batch buffers + texture-cache provenance (0x413000)
                                 # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as
                                 # small as the batch allows -- a large image .bss corrupts
                                 # the game's load-time layout
