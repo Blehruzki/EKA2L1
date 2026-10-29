@@ -330,5 +330,6 @@ driver's existing 16 bpp `read_bitmap`), in `gl_read_pixels_emu`
 MBX renderer does. FBO reads are unchanged.
 Verified on RM-320 (565 version): the renderer's probe read `GL_RGB`/`GL_UNSIGNED_SHORT_5_6_5`,
 and its capture windows that read 565 composited the same picture as the RGBA ones (no
-error, the scene correct and upright). The BGRA version is verified in the same way below
-when its bench run is in.
+error, the scene correct and upright). BGRA version verified the same way: the probe reads
+`GL_BGRA`/`GL_UNSIGNED_BYTE` and the windows that read BGRA composite the same picture as
+the RGBA ones (Asphalt 4 MBX round 11 battery).
