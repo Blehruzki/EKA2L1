@@ -3143,3 +3143,21 @@ player's car change when GL starts -- wrong, or right?
   round 10), so the reflection steps where software's moves every frame; and GL samples
   texel centres, half a texel from the spans, so thin details shift by a pixel. By
   design, not missing textures.
+
+Correction to the car answer above. Round 12's phone telemetry: m1_rebakes flat at 85 and
+0 texels re-baked in all eight windows (capidx 50-57, ~320 renders) -- the Corvette's
+mode-1 texture was not re-baked at all late in the race, so "the reflection steps every
+8th present" is not what the owner's photos show (they compare a software frame with a
+GPU frame a second later anyway). Candidates, unmeasured: (1) the default rasterizer
+(0x2e1c8, the car's class) maps textures AFFINELY -- it is the perspective
+rasterizer's own affine fallback -- while A4_HPERSP gives every textured class the
+vertex W, i.e. perspective-correct mapping, so the car's texture sits slightly
+differently on its larger triangles; (2) GL samples texel centres, half a texel from
+the spans; (3) the reflection table frozen at its last bake, if the signature misses a
+change (64 sampled texels when the range of M passes 1024). A same-frame capture
+(A4_DUALCAP) of the car tells (1)-(2) from (3).
+Why a re-bake costs the CPU at all: the MBX is fixed-function (GL ES 1.1, no shaders).
+Mode 1 is T + table[M]/4 with M a per-texel index into a table rewritten every frame --
+a dependent lookup the fixed pipeline cannot do; nor can a palette (M spans ~26K values
+on the bench car, a paletted texture holds 256). So the CPU computes the combined
+texels and re-uploads them (round 10: 3.7-10 ms a render while it was re-baking).
