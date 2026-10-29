@@ -2867,3 +2867,93 @@ it); (6) shadows: the stencil once-a-pixel matches the span's stamp only where t
 toggles per frame (0x31c70), mode 4's coverage clear not reproduced.
 States the bench never entered: the MBX; a phone without a stencil config; the takedown
 camera cuts with depth (one frame of stale composite on a cut, inherent to the pipeline).
+
+## Phone round 10 (r10_phone 8bc3b0c2): the first phone timing; three visual reports
+
+Owner: (1) nitro and money pickups appear displaced at first and "pop" toward their right
+place as you approach (photos 1-3: a pickup left of the road whose place is the right
+lane); (2) tunnel lights still visible where the wall should hide them (photo 4, left
+wall); (3) one frame after the tunnel with the scenery gone -- backdrop, road, cones and
+car only, and no HUD (photo 5). Round 9's slabs, countdown flash and black signs not
+reported again.
+Telemetry (8 files, ring capidx 43-50, race end at 50; not repeats of round 9 -- new
+build, header v4): errc 0 in all; ntex 151; dual_frames 1; leak.py 0 in all.
+- pbuffer: config 1, 24 depth bits, 0 STENCIL bits (no stencil config on the N95: shadows
+  darken overlaps twice there).
+- OES_read_format on the N95: GL_BGRA (0x80E1) / GL_UNSIGNED_BYTE -- not 565, so AB_565
+  did nothing on the phone (r565 false); the pairs of windows differ only by glFlush.
+- NTickCount = 1 ms on the N95 (184,537,135 nticks against 11,810,372 TickCount ticks =
+  15.625 per tick, exactly the 64 Hz tick).
+- PER RENDER, phone (ms): total 88-116; composite 22.5-25.2, of which glReadPixels
+  17.3-19.3 (the rest, ~5-6, our sentinel blit); batch draw (all glDrawArrays and their
+  state, ~375 calls, ~1300 triangles) 9.1-14.5; glFlush ~0. Flush on vs off: read 18.2-
+  19.3 vs 17.3-18.3 -- NO gain: the read is not waiting on the tile render, it is the copy
+  itself, ~76,800 pixels in ~18 ms = ~78 cycles a pixel at 332 MHz (a per-pixel convert
+  from the surface's BGRA to the RGBA asked for, and/or uncached reads -- unknown which).
+  Mode-1 re-bakes 0-0.9M texels a window at 148-410 ms a window = 3.7-10 ms a render
+  while the car's reflection table changes (the M1_BIG limit holds it to every 8th
+  present).
+- So GL costs ~35-40 ms of a ~90-115 ms render on the phone: readback ~18, our blit ~6,
+  submission ~10-14, car re-bake 0-10. The rest (~55-75 ms) is the game, our hook's
+  per-triangle work (~1300 triangles) and the software left (HUD, backdrop, additive).
+- Real-render rhythm in the fps ring: 1-1-4 / 2-5-0 / 1-1-6 ticks -- 6-9 ticks a game
+  iteration, the same band as rounds 8-9.
+
+## Round 11 bench: no frame of lag (composite at the HUD), the affine fallback, per-table mode 1
+
+Not repeats of: round 10 (pipelined composite, all flags-1 depth-tested, one mode-1 image
+a texture, additive in software, RGBA read).
+
+Pickups (photos 1-3) could not be put on the bench: the bench save races the Mini in an
+event with none (dense dual captures through lap 1 and lap 2, The Hills included, show
+none). What the photos and the draw order (MBX.md: all 3D triangles, then ~17 HUD
+sprite-painter calls) do establish: everything the game draws in software -- the
+position tags, the additive sparks and glows, anything outside draw_primitive -- landed on
+a GPU image ONE FRAME OLD (the pipelined composite), ~9 m of travel at 330 km/h, so near
+objects drawn in software part from the road the GPU drew. The dual captures (same frame,
+no lag) show the GPU's own objects in their places (chevrons, cars, signs).
+- A4_IMM: the frame's own GPU image is composited at the end of its 3D pass -- the HUD
+  painter's first call (new capture hook at +2973A, a4_hud_tramp; displaced ldr r4,
+  [sp,#0x70] / movs r7,r0, checked by the injector before patching) -- else at the
+  present (a frame with no HUD). Triangles after it go to software (late_tris counts
+  them: should be ~0 if the painter never runs mid-3D).
+- Blended classes (additive, alpha) drawn by GPU AND software. Dst alpha as the drawn-mask:
+  the clear leaves alpha 0, opaque classes write 1, blended classes write no alpha
+  (glColorMask, ordinal 40); the composite takes only pixels with alpha set, so a blend
+  over the backdrop is software's. Without alpha bits: the sentinel, plus "sentinel with a
+  glow" (R, B 255, G short of full). Additive back ON (round 10's rotor leak cannot happen
+  with the mask). pbuffer config asks depth+alpha+stencil, then depth+alpha, then depth.
+- The perspective rasterizer's own affine fallback, read from 0x2f6fc: top vertex (0x2ff60
+  order) ZW > 500 and its reciprocal-table spread (RT[ZW] at ctx+0x8C, 0x522c8) squared
+  under 100 -> 0x2e1c8, NO depth test or write. Reproduced (persp_fallback): those
+  triangles draw untested (KIND_TEX, mode 1 if the object's). Bench: ~30% of flags-1
+  triangles (affine_tris 627k -> 746k over 8 windows).
+- Mode-1 entries keyed by texture AND table (ctx[0x60]): the tunnel-exit gantry's signs
+  were black boxes in a same-frame dual capture (stock: lit faces) -- sign objects share a
+  texture with their own tables, and the first drawn each present decided the image for
+  all. Re-bakes fell from ~800 to ~19 over a race (round 10's were that ping-pong); ntex
+  steady at 147.
+- Read A/B: AB_NATIVE reads the implementation's pair -- BGRA/UNSIGNED_BYTE on the N95.
+  The emulator now answers BGRA like the N95 and serves it (EMU_PATCHES.md).
+Bench (r11 build, 160 s): config 4 (depth 24, alpha 8, stencil 8), errc 0, leak.py 0,
+composite 15-17.7 ms/render (read 7-9.4), BGRA and RGBA windows alike on the bench (the
+swap is on the host). Pictures: tags on their cars, sparks over the road, chevrons, gantry
+signs lit, tunnel entrance clean.
+
+Battery on the exact phone binary (r11_phone = -DA4_HPERSP -DA4_TAKEDEF -DA4_TAKEFLAT
+-DA4_TAKEADD -DA4_TAKESHADOW -DA4_TAKEALPHA -DA4_ZBUF -DA4_IMM -DCLIP_TOP=0 -DA4_TEL
+-DTEL_EVERY=40 -DTEL_RING=8 -DTEL_CYCLE -DA4_ABCYCLE, --gl --capture; sha256
+f8f988152f660787724017f81e8bfd69f8757c46b6e8b6e402a23ae0cbfa23f2; telerun3 160 s, lap 2
+through the tunnel): framestat 3755, faults 1 (the known boot fault only), errc 0 in all
+eight, alpha 8 / depth 24 / stencil 8, late_tris 0 (the HUD painter never ran mid-3D),
+leak.py 0, ntex 149. Pictures by eye: tags on their cars, sparks over the road, the tunnel
+clean, The Hills correct.
+Rule 4 -- guesses, named: (1) that the pickups are drawn in software (outside the GPU
+classes) and so were displaced by the frame of lag -- inferred, not seen: the bench race
+has none; (2) the N95's config with depth AND alpha (abits in the header; without it the
+sentinel path runs, with its "pink is lost" weakness); (3) immediate composite cost on the
+MBX: the GPU's render now sits between the last triangle and the read -- round 10 showed
+glFlush did not shorten the read, so it is expected to cost little, unmeasured; (4) BGRA
+read speed on the N95 (the A/B measures it); (5) the tunnel lamps (photo 4) and the frame
+with no scenery and no HUD (photo 5) are not reproduced on the bench; the affine fallback
+and the lag are both candidates, neither shown to be the cause.

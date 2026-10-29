@@ -56,6 +56,7 @@ a4_gl_iat:
         .word   117     @ [38] glStencilFunc  (shadows darken a pixel once a frame, as the
         .word   119     @ [39] glStencilOp     game's per-frame stamp map does)
         .word   36      @ [40] glClearStencil
+        .word   40      @ [41] glColorMask    (round 11: blended classes leave dst alpha alone)
         .global a4_gl_iat_end
 a4_gl_iat_end:
 

@@ -46,7 +46,12 @@ SOURCES = [os.path.join(REND, 'a4_tramp.s'),
 # MBX stage 3a: capture textured-triangle data at draw_primitive +0x300B2 (just
 # after its prologue). BLX detour that re-executes the two displaced moves. Added
 # only with --capture; grows .bss for the capture scratch.
-CAPTURE_HOOKS = {0x300B2: 'a4_prim_capture_tramp'}
+CAPTURE_HOOKS = {0x300B2: 'a4_prim_capture_tramp',
+                 0x2973A: 'a4_hud_tramp'}     # round 11: the end of the 3D pass (HUD painter)
+# the displaced halfwords each capture hook's trampoline re-executes; checked before the
+# BLX goes in, so a different image cannot be patched blind
+CAPTURE_DISPLACED = {0x300B2: (0x0005, 0x0014),     # movs r5, r0 ; movs r4, r2
+                     0x2973A: (0x9C1C, 0x0007)}     # ldr r4, [sp, #0x70] ; movs r7, r0
 CAPTURE_SKIP_RET = 0x300E0      # draw_primitive epilogue; GPU-drawn prims return here
 PRIM_SCRATCH = 0x00402000       # A4_TRI_SCRATCH in a4_prim.c (shared with a4_gl.c)
 PRIM_SCRATCH_SIZE = 0x2200
@@ -62,7 +67,8 @@ GL_IMPORT_ORDINALS = [14, 17, 4, 3, 18, 132, 33, 31, 58, 108,
                       6, 22, 52,       # [30] eglCreateWindowSurface [31] eglSwapBuffers [32] glDisable (was 36 = glClearStencil)
                       28, 128,         # [33] glAlphaFuncx [34] glTexSubImage2D (A4_TEL colorkey)
                       30, 59, 69,      # [35] glBlendFunc [36] glFlush [37] glGetIntegerv (round 10)
-                      117, 119, 36]    # [38] glStencilFunc [39] glStencilOp [40] glClearStencil
+                      117, 119, 36,    # [38] glStencilFunc [39] glStencilOp [40] glClearStencil
+                      40]              # [41] glColorMask (round 11)
                                        # [28] glDepthFunc     [29] glClearDepthx
                                        # must match a4_gl.s a4_gl_iat
 # A4_WINDOW: the window the GPU presents into is our own (a4_gl.c, bringup);
@@ -300,6 +306,9 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         blx_insert(code, off, syms[tramp])
         print('cache  +%06X -> %s +%06X (4-byte BLX detour)' % (off, tramp, syms[tramp] - LINK_BASE))
     for off, tramp in capture_hooks.items():
+        want = CAPTURE_DISPLACED[off]
+        have = struct.unpack_from('<HH', code, off)
+        assert have == want, 'capture hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)
         blx_insert(code, off, syms[tramp])
         print('cap    +%06X -> %s +%06X (4-byte BLX detour)' % (off, tramp, syms[tramp] - LINK_BASE))
 

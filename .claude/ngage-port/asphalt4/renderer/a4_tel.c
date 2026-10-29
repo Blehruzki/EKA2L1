@@ -46,7 +46,7 @@ extern void a4_gl_dumpgpu(void (*wr)(int, const void *, int), int base);
 #define TEL_HDR_WORDS 64          /* version 4: 256-byte header (3 had 32 words) */
 #define A4_PERF ((volatile uint32_t *)0x00412C00u)   /* a4_gl.c PF_*: same order */
 enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
-       PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_N };
+       PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE, PF_N };
 #define EFILE_WRITE 0x200u
 #define DES(len) ((1u<<28) | ((uint32_t)(len)))  /* TPtrC iLength: EPtrC(1)<<28 | len */
 
@@ -186,6 +186,9 @@ void a4_tel_tick(uint32_t had)
         h[i++] = a4_gl_rdinfo(5);                              /* textures in the cache */
         h[i++] = pf[PF_M1TEX]; h[i++] = pf[PF_M1T];            /* this window: texels re-baked, ticks */
         h[i++] = a4_gl_rdinfo(6);                              /* stencil bits */
+        h[i++] = pf[PF_AFFINE];                                /* flags-1 triangles on the game's affine fallback (total) */
+        h[i++] = a4_gl_rdinfo(7);                              /* alpha bits (the drawn-mask) */
+        h[i++] = pf[PF_LATE];                                  /* triangles after the frame's composite (total) */
     }
     while (i < TEL_HDR_WORDS) h[i++] = 0;
 

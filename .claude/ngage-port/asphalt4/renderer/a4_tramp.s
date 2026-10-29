@@ -161,6 +161,20 @@ a4_prim_capture_tramp:
         .global a4_skip_ret
 a4_skip_ret:
         .word   0xDEADBEEF          @ patched: (code+0x300E0 | 1) - this word's addr
+
+@ ---- the HUD sprite painter (+29736), after its prologue (+2973A). A race frame draws
+@ every 3D triangle, then ~17 painter calls for the HUD (MBX.md, the draw order), so the
+@ first painter call of a frame is the end of the 3D pass: a4_gl_hud composites the
+@ frame's own GPU image there, before the HUD and the tags are painted over it. The two
+@ displaced instructions come first, with the painter's own sp (the BLX left it alone). ----
+        .global a4_hud_tramp
+a4_hud_tramp:
+        ldr     r4, [sp, #0x70]     @ displaced +2973A: ldr r4, [sp, #0x70]
+        mov     r7, r0              @ displaced +2973C: movs r7, r0 (flags dead: +2973E sets them)
+        push    {r0, r1, r2, r3, r12, lr}
+        bl      a4_gl_hud
+        pop     {r0, r1, r2, r3, r12, lr}
+        bx      lr                  @ -> +0x2973E (Thumb)
 #endif  /* A4_CLEAN */
 
 @ ---- transparent: inner loop +33B16; loop exit falls straight into the
