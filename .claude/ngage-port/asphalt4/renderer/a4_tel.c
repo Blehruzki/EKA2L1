@@ -46,7 +46,8 @@ extern void a4_gl_dumpgpu(void (*wr)(int, const void *, int), int base);
 #define TEL_HDR_WORDS 64          /* version 4: 256-byte header (3 had 32 words) */
 #define A4_PERF ((volatile uint32_t *)0x00412C00u)   /* a4_gl.c PF_*: same order */
 enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
-       PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE, PF_N };
+       PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE,
+       PF_BB, PF_BBSW, PF_BB2, PF_N };
 #define EFILE_WRITE 0x200u
 #define DES(len) ((1u<<28) | ((uint32_t)(len)))  /* TPtrC iLength: EPtrC(1)<<28 | len */
 
@@ -189,6 +190,9 @@ void a4_tel_tick(uint32_t had)
         h[i++] = pf[PF_AFFINE];                                /* flags-1 triangles on the game's affine fallback (total) */
         h[i++] = a4_gl_rdinfo(7);                              /* alpha bits (the drawn-mask) */
         h[i++] = pf[PF_LATE];                                  /* triangles after the frame's composite (total) */
+        h[i++] = pf[PF_BB];                                    /* billboards queued on the GPU (total) */
+        h[i++] = pf[PF_BBSW];                                  /* billboards left to software (total) */
+        h[i++] = pf[PF_BB2];                                   /* calls of the two-depth billboard blit (total) */
     }
     while (i < TEL_HDR_WORDS) h[i++] = 0;
 
@@ -214,7 +218,7 @@ void a4_tel_tick(uint32_t had)
     {   struct des md = { DES(33u * 4u), (const void *)0x00412E00u };
         efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES, &md); }
 #endif
-#ifdef A4_FLAGHIST
+#if defined(A4_FLAGHIST) || defined(A4_SWHIST) || defined(A4_BBPROBE)
     {   /* the (flags, mode) census, a4_gl.c 0x412D00, 122 words, after the framebuffer */
         struct des cd = { DES(122u * 4u), (const void *)0x00412D00u };
         efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES, &cd);

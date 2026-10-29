@@ -2957,3 +2957,118 @@ glFlush did not shorten the read, so it is expected to cost little, unmeasured; 
 read speed on the N95 (the A/B measures it); (5) the tunnel lamps (photo 4) and the frame
 with no scenery and no HUD (photo 5) are not reproduced on the bench; the affine fallback
 and the lag are both candidates, neither shown to be the cause.
+
+## Phone round 11 (r11_phone f8f98815): tunnel fixed; 0.5 s a frame; pickups gone; shadow faceted
+
+Owner: (1) the tunnel renders correctly and its lamps no longer show through the walls
+(round 9-10's report, fixed); (2) performance regressed hard -- about one frame every
+0.5 s, with slowdowns; (3) every pickup invisible once GPU rendering starts (photo 1, the
+software first frame: a white glow in the right lane; photo 2: gone) -- still collected;
+(4) the car's shadow "looks like a 3D model of the car" (photo 3: a grey shape crossed
+by darker lines and wedges, the car's own facets); (5) a4tel5-7 0 bytes.
+Telemetry (5 files, capidx 0-4; not repeats of round 10 -- composite at the HUD, colour
+mask, additive on the GPU): errc 0 in all; pbuffer config 1, depth 24, ALPHA 8, stencil
+0; late_tris 0; ntex 151; mode-1 re-bakes 2.
+- PER RENDER (ms), by window mode: RGBA read 13.1-14.3, BGRA read 1.7-2.8 (the
+  implementation's own pair is the copy without a convert: 76,800 pixels in ~2 ms);
+  composite 9.7-10.3 (BGRA) vs 20.9-22.6 (RGBA); BATCH DRAW 308-458 (round 10: 9-14.5);
+  total render 392-543 nticks (round 10: 88-116). 420-490 draw calls, 1450-1750
+  triangles; shadows ~290 a render, additive 7-34.
+- The tile render moved: round 10's read (17-19 ms, pipelined) held the render; round
+  11's BGRA read is the bare copy, so the render was already done inside batch_draw --
+  the driver rendered (or worse) during the draws, ~30x round 10's whole GPU time.
+- Files 5-7: TEL_RING creates all eight at start; at ~2 renders a second a 40-render
+  window is ~20 s, so the race ended after five captures. Not corruption.
+Diagnosis (guess, named; source rank 3-4): the colour mask. Round 11's only per-draw
+state new to the phone is glColorMask(1,1,1,0) around every blended run. An N95 8GB
+developer traced a "performance breakdown" to disabling alpha writes with glColorMask
+("a killer feature for the hardware"); Imagination's reply: a masked channel makes the
+hardware treat the object as transparent, its value read from the surface behind
+(https://forums.imgtec.com/t/gldrawrangeelements/229, April 2009). The pickups are white
+glows (photo 1) -- additive, the class round 10 left to software -- and they vanished
+exactly where the colour-masked additive draw was composited over the GPU road.
+Shadow (measured part): the N95 has no stencil, so the once-a-pixel stamp is off there
+and overlapping shadow triangles multiply 0.75 per layer (round 10 noted this in the
+same-frame captures; the bench has stencil 8 and never shows it). Photo 3's dark lines
+are where the car's projected faces stack.
+
+## Round 12 bench: no colour mask, billboards on the GPU, shadows once a pixel without a stencil
+
+Not repeats of: round 11 (glColorMask around every blended run, the composite painting
+over the billboards, shadows multiplying on a no-stencil config), round 10 (pipelined,
+RGBA/BGRA A/B).
+
+1. No glColorMask. Each blended class keeps dst alpha (the drawn-mask) by its own blend:
+   additive MODULATEs by a colour of alpha 0 (alpha test off for the run) so ONE/ONE adds
+   nothing to alpha; shadows GL_ZERO/GL_SRC_COLOR with grey 12/16 and alpha 1; the alpha
+   class premultiplied, GL_DST_ALPHA/GL_ONE_MINUS_SRC_ALPHA, so alpha out = da exactly
+   and its blend over the backdrop never reaches the composite. Read fixed to BGRA
+   (A4_ABMODE=2, no A/B cycle; the header's mode word names it).
+2. The invisible pickups, run down. Same-frame captures (A4_DUALCAP) showed the nitro
+   flame in software's picture and not the GPU's. In-race census of the calls
+   draw_primitive leaves to software (A4_SWHIST, counted only once GL is up): only the
+   two blended classes, by design -- so the flame is drawn outside draw_primitive. The
+   back buffer's race-time writers (EKA2L1_WATCH with WATCHONCE, armed by the new
+   EKA2L1_WATCHARM at the alpha span's store, which only the track runs): the minimap
+   (+26E28, +2B5A0 families), speedometer and text (+2BDxx-+2D1xx), the HUD painter, the
+   backdrop, the two blended spans, and +30472 writing bottom-centre -- a scaled 2D
+   sprite blit, +3015E (sibling +3059E), dst + texel saturating. Its callers +31360,
+   +31B50, +31BF2. Order trace (PCTRACE_REGS on draw_primitive, both blits and the HUD
+   painter, armed at the alpha span, 128 frames): ~800-1800 triangles, then billboards
+   interleaved with the last ~60-80 triangles, then 18 HUD calls. So round 11's composite
+   at the HUD painted the road over every billboard drawn before it: flames, glows and --
+   inferred -- the pickups (photo 1's pickup is a white glow; round 10's "displaced
+   pickups" are the same blits landing on a one-frame-old road).
+   First attempt, composite at the first billboard (hooks after both blits' prologues):
+   700-800 late (software) triangles a render -- the city draws billboards mid-pass,
+   which the trace's lap-1 frames did not show. Withdrawn.
+   The blit, read (+3015E): size = scale table[z] * arg / 64 * r3 >> 16, aspect by the
+   sprite's shifts (+0x14, +0x18); rectangle centred on the position, clipped to the
+   surface (ctx+0x4c, width at view+0x10); u = 0..w, v = h-1 down to 0 (bottom-up), 8.8
+   steps by divide; texel = tex[((v>>8) & vmask) << vshift | ((u>>8) & umask)] (sprite
+   +0x10, +8, +0x1C, +4); mode = stack arg 1: 0 key copy (texel 0 skipped), 1 stipple
+   (alternate pixels, texels with a zero top nibble), 2 saturating add, 3
+   dst + (sat(dst+T) - dst) * a/16 (a = stack arg 2).
+   Probe (A4_BBPROBE): 9,566 calls in a race, ALL mode 2; 9 sprites, all square, 64x64 or
+   32x32, pitch = width, every one into the back buffer; rectangles up to 264x240.
+   A4_TAKEBB: hooked at +30252 (after the clip, before the mode switch; lr dead), each
+   billboard is a quad in the frame's batch -- in draw order with the triangles around it
+   -- KIND_TEX for mode 0, KIND_ADD for 2, KIND_ADDF (a/16 colour, new) for 3; mode 1 and
+   anything odd stay software. Texture cached by sprite|3, uploaded 565/5551. Additive
+   modes are also drawn by software (as additive triangles are), so a glow over the sky
+   survives. The sibling +3059E (never called on the bench) composites at its first call,
+   counted (header word 63).
+   Same-frame captures (TAKEBB + DUALCAP): the GPU's flame matches software's in place,
+   size and shape.
+3. Shadows once a pixel without a stencil (A4_SHADZ, used when sbits = 0 and zbits > 0):
+   shadow runs depth-test GL_NOTEQUAL and write; their z is 0 = window depth 0.5, which
+   no flags-1 triangle has (0.5 + ZK/ZW/2) and the clear (0) is not, so the first shadow
+   at a pixel stamps it and the next fails. Bench in the phone's state (A4_NOSTENCIL):
+   without the stamp the GPU shadow shows the layered wedges of photo 3 against
+   software's flat one; with it, flat like software's (same-frame crops). A generic
+   brightness-difference count could not see it (sampling noise ~2-5k pixels a capture
+   swamps the shadow), so this rests on the crops.
+Battery on the exact phone binary (r12_phone = -DA4_HPERSP -DA4_TAKEDEF -DA4_TAKEFLAT
+-DA4_TAKEADD -DA4_TAKESHADOW -DA4_TAKEALPHA -DA4_ZBUF -DA4_IMM -DA4_SHADZ -DCLIP_TOP=0
+-DA4_TEL -DTEL_EVERY=40 -DTEL_RING=8 -DTEL_CYCLE -DA4_ABMODE=2u -DA4_TAKEBB, --gl
+--capture; sha256 db6a2b389fcecf372185524b2312bcf5dfcee8001aab091a525d9ecc5a2feb42;
+telerun3 160 s, into lap 2 and the city): framestat 3258, faults 1 (the known boot
+fault), errc 0 in all eight, late_tris 0, billboards on the GPU ~15,000 / software 65,
++3059E calls 0, leak.py 0, ntex 158. Pictures: the flame behind the car, glows, tags,
+chevrons. Same code with A4_NOSTENCIL (the phone's no-stencil state): framestat 3297,
+errc 0, late 0, leak 0, shadows flat, tunnel lamp glows drawn.
+Seen, not fixed (pre-existing): some spark streaks are red in software and white on the
+GPU in the same frame (additive triangles; cosmetic).
+Rule 4 -- guesses, named: (1) glColorMask was round 11's 300-460 ms batch draw (the N95
+8GB forum report and the timing's shape; removing it is the test: batch draw should be
+back near round 10's 9-14.5 ms, the render then showing in the read); (2) the pickups
+are drawn by +3015E -- the bench race has none; if they come through +3059E, header word
+63 counts it and the frame composites there (pickups visible, its tail in software); (3)
+modes 0 and 3 on the GPU are unexercised on the bench (only mode 2 occurs); (4) the
+depth stamp lets a farther flags-1 triangle drawn after a shadow show at the shadow's
+pixels (the game's buffer kept the road's 1/z there) -- not seen in the crops; (5) the
+MBX's GL_DST_ALPHA source factor, GL_SRC_COLOR destination factor and MODULATE with a
+zero-alpha colour -- all core GL ES 1.1, none measured on the N95; (6) billboard texels
+are not rewritten in place (cached once per sprite).
+States the bench never entered: pickups; billboard modes 0, 1, 3; the +3059E blit; the
+MBX.

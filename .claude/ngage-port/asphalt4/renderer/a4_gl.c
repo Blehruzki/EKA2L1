@@ -173,6 +173,7 @@
 #define KIND_SHAD 3u     /* untextured darken, dst*12/16 (flags 0x20: 0x2ecb4 -> 0x33f8c) */
 #define KIND_TEXZ 4u     /* KIND_TEX, depth-tested and depth-writing (flags 1 under A4_ZBUF) */
 #define KIND_ALPHA 5u    /* textured, per-texel 4-bit alpha blend (flags 0x100: 0x2e56c -> 0x33ea8) */
+#define KIND_ADDF 6u     /* KIND_ADD at a/16 (the billboard blit's mode 3); a in bits 20..27 */
 #define GL_ONE_MINUS_SRC_ALPHA 0x0303
 #define GL_DEPTH_TEST 0x0B71
 #define GL_DEPTH_BUFFER_BIT 0x0100
@@ -200,12 +201,17 @@
 #endif
 #define GL_ZERO 0
 #define GL_SRC_ALPHA 0x0302
+#define GL_SRC_COLOR 0x0300
+#define GL_DST_ALPHA 0x0304
+#define GL_MODULATE 0x2100
+#define GL_NOTEQUAL 0x0205
 
 /* GL phase timers and the per-window A/B mode (round 10). a4_tel.c writes them into
  * each capture's header and starts the next window; ticks are User::NTickCount. */
 #define A4_PERF ((volatile uint32_t *)0x00412C00u)
 enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
-       PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE, PF_N };
+       PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE,
+       PF_BB, PF_BBSW, PF_BB2, PF_N };
 #define AB_FLUSH 1u      /* glFlush after the frame's last batch (start the tile render) */
 #define AB_NATIVE 2u     /* read back in the implementation's own pair (OES_read_format): BGRA
                           * on the N95 (round 10), RGB565 on a device that names that */
@@ -303,6 +309,7 @@ static void  gl_getintegerv(uint32_t pn,int*v){ ((void(*)(uint32_t,int*))F(37))(
 static void  gl_stencilfunc(uint32_t f,int r,uint32_t m){ ((void(*)(uint32_t,int,uint32_t))F(38))(f,r,m); }
 static void  gl_stencilop(uint32_t a,uint32_t b,uint32_t c){ ((void(*)(uint32_t,uint32_t,uint32_t))F(39))(a,b,c); }
 static void  gl_clearstencil(int v){ ((void(*)(int))F(40))(v); }
+/* imported, deliberately unused: a masked channel is the round-11 slowdown on the N95 */
 static void  gl_colormask(uint32_t r,uint32_t g,uint32_t b,uint32_t a) __attribute__((unused));
 static void  gl_colormask(uint32_t r,uint32_t g,uint32_t b,uint32_t a){ ((void(*)(uint32_t,uint32_t,uint32_t,uint32_t))F(41))(r,g,b,a); }
 static void  gl_depthfunc(uint32_t f) __attribute__((unused));
@@ -511,6 +518,9 @@ static int bringup(volatile struct glr *s)
      * No depth bits -> zbits 0 -> the flags-1 triangles draw untested, as before. */
     { int zb = 0, sb = 0, ab = 0; gl_getintegerv(GL_DEPTH_BITS, &zb); gl_getintegerv(GL_STENCIL_BITS, &sb);
       gl_getintegerv(GL_ALPHA_BITS, &ab);
+#ifdef A4_NOSTENCIL
+      sb = 0;                                       /* bench: the N95's state (no stencil) */
+#endif
       s->zbits = (uint32_t)zb; s->sbits = (uint32_t)sb;
 #ifdef A4_IMM
       s->abits = (uint32_t)ab;
@@ -678,6 +688,12 @@ static uint32_t tex_upload_alpha(uint32_t id, const uint32_t *ts)
             /* diagnosis: the alpha nibbles of 0x33ea8 textures, at 0x412D00 [0..15] */
             if (am) ((volatile uint32_t *)0x00412D00u)[am[i] >> 4]++;
 #endif
+            /* premultiplied (KIND_ALPHA blends GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA):
+             * c*a/255 as (x + 1 + (x >> 8)) >> 8, exact for x = c*a < 65535, no divide */
+            { uint32_t x;
+              x = r * a; r = (x + 1u + (x >> 8)) >> 8;
+              x = g * a; g = (x + 1u + (x >> 8)) >> 8;
+              x = b * a; b = (x + 1u + (x >> 8)) >> 8; }
             conv[nrow * w + x] = r | (g << 8) | (b << 16) | (a << 24);
         }
         nrow++;
@@ -839,7 +855,7 @@ static int persp_fallback(const uint32_t *gctx, const uint32_t *desc)
 }
 #endif
 
-int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
+static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 {
     volatile uint32_t *iat = a4_gl_iat_ptr();
 #ifdef A4_FLAGHIST
@@ -940,8 +956,10 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #endif
     }
 #ifdef A4_IMM
-    /* the frame was composited already (a4_gl_hud: the HUD has begun): a triangle now is
-     * an overlay drawn after it, and the GPU's image of this frame is spent -- software */
+    /* the frame was composited already (a4_gl_hud: a billboard or the HUD has begun): a
+     * triangle now is drawn after it, and the GPU's image of this frame is spent --
+     * software, in the game's own order (~25 a frame: shadows and sparks among the
+     * billboards, round 12) */
     if (s->flushed) { A4_PERF[PF_LATE]++; return 0; }
 #endif
     if (s->prims == 0) {                                /* first prim of the frame */
@@ -950,6 +968,7 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         s->fmode = A4_PERF[PF_MODE];                   /* a4_tel.c steps it per capture window */
 #else
         s->fmode = A4_ABMODE;
+        A4_PERF[PF_MODE] = A4_ABMODE;                  /* so the capture header names it */
 #endif
         s->miny = VP_H; s->maxy = 0;                    /* empty drawn-row extent */
         /* Composite the previous frame's GPU image NOW, before this frame's
@@ -1126,22 +1145,207 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #elif defined(A4_IMM)
     /* Blended classes are drawn by software as well: the GPU's version is right where it
      * blends over GPU-drawn pixels, software's where it blends over the backdrop -- the
-     * composite takes the GPU's only where an opaque GPU triangle set dst alpha. */
+     * composite takes the GPU's only where an opaque GPU triangle set dst alpha (the
+     * blends keep it, draw_run). */
     return (kind == KIND_ADD || kind == KIND_ALPHA) ? 0 : 1;
 #else
     return s->dual ? 0 : 1;
 #endif
 }
 
+int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
+{
+    int r = draw_prim_take(gctx, desc, flags);
+#ifdef A4_SWHIST
+    /* diagnosis: the census of the calls left to SOFTWARE (returned 0), by (flags,
+     * ctx[0x64]), in A4_FLAGHIST's table format at 0x412D00 -- under A4_IMM what software
+     * draws before the composite is overwritten wherever the GPU drew. The blended
+     * classes (0x8, 0x100) are there too: software draws them by design. */
+    if (!r && ((volatile struct glr *)A4_GL_SCRATCH)->up == A4_GL_MAGIC) {   /* in the race */
+        volatile uint32_t *fh = (volatile uint32_t *)0x00412D00u;
+        uint32_t md = gctx[0x64 / 4], nn = fh[0], i;
+        for (i = 0; i < nn; i++) if (fh[1+i*3] == flags && fh[2+i*3] == md) break;
+        if (i == nn) { if (nn < 40u) { fh[1+i*3] = flags; fh[2+i*3] = md; fh[3+i*3] = 0; fh[0] = nn + 1; } else i = 99; }
+        if (i < 40u) fh[3+i*3]++; else fh[121]++;
+    }
+#endif
+    return r;
+}
+
+/* The billboard blit's texture (sprite +0x10: 565 texels, rows of 1 << sprite[0x1c]
+ * texels, the row index masked by sprite[8]): cached under sprite|3 (descriptors are
+ * word aligned and keyed |0 |1 |2), uploaded by tex_upload through a made-up
+ * descriptor -- 5551 with alpha 0 on texel 0 when it has any (mode 0 keys it out; the
+ * additive modes add nothing for it either way). -1: software draws it. */
+static int bb_tex(volatile struct glr *s, const uint32_t *spr) __attribute__((unused));
+static int bb_tex(volatile struct glr *s, const uint32_t *spr)
+{
+    uint32_t key = (uint32_t)(uintptr_t)spr | 3u;
+    for (uint32_t k = 0; k < s->ntex; k++)
+        if (s->cache_ptr[k] == key) return (int)k;
+    uint32_t vsh = spr[0x1c / 4], rows = spr[8 / 4] + 1u;
+    const uint16_t *px = (const uint16_t *)spr[0x10 / 4];
+    if (!px || vsh > 10u || rows > 1024u || (rows & (rows - 1u)) || s->ntex >= NCACHE) return -1;
+    uint32_t pitch = 1u << vsh, total = pitch * rows, tr = 0;
+    for (uint32_t k = 0; k < total; k++) if (px[k] == 0) { tr = 1; break; }
+    uint32_t fd[5] = { 0, pitch - 1u, rows - 1u, 0, (uint32_t)(uintptr_t)px };
+    uint32_t id = 0;
+    gl_gentex(1, &id);
+    tex_upload(id, fd, tr, 1, 0, 0);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    int idx = (int)s->ntex;
+    s->cache_ptr[idx] = key; s->cache_id[idx] = id; s->cache_tr[idx] = tr; s->ntex++;
+    s->cache_m1r[idx] = 1; s->cache_fr[idx] = s->frames; s->cache_tab[idx] = 0; s->cache_ck[idx] = 0;
+    return idx;
+}
+
+/* The scaled billboard blit (+3015E) at +30252 (a4_bbq_tramp): r = r0..r7 there, f = its
+ * sp. Its clip is done: the screen rectangle is [f+0x34, r4) x [r6, f+0x30); u starts at
+ * r0 and steps r5 a pixel, v starts at r1 and steps -[f+0x28] a row (8.8 texels); the
+ * mode is stack argument 1 (f+0x94: 0 key copy, 1 stipple, 2 saturating add, 3 add at
+ * a/16 with a stack argument 2, f+0x98); the surface is ctx[0x4c] (ctx = f+0x6c), its
+ * width f+0x64. Queued as a quad in the frame's batch -- so in draw order with the
+ * triangles around it -- and 1 returned (the blit returns at once), or 0 (it runs). */
+int a4_gl_bb(const uint32_t *r, const uint32_t *f)
+{
+    const uint32_t *spr = (const uint32_t *)r[7];
+    int32_t x0 = (int32_t)f[0x34 / 4], x1 = (int32_t)r[4], y0 = (int32_t)r[6], y1 = (int32_t)f[0x30 / 4];
+    uint32_t mode = f[0x94 / 4], fade = f[0x98 / 4];
+#ifdef A4_BBPROBE
+    {   /* diagnosis, 0x412D00 (A4_FLAGHIST's tail): [0] sprites seen, [1] calls, [2..5]
+         * calls by mode 0-3, [6] another surface or width, [7] empty rectangles, [8] [9]
+         * widest and tallest rectangle; then 12 sprites of 9 words: address, w | h << 16,
+         * u mask (+4), v mask (+8), row shift (+0x1c), texels (+0x10), mode | a << 8,
+         * calls, the size shifts +0x14 | +0x18 << 16 */
+        volatile uint32_t *bp = (volatile uint32_t *)0x00412D00u;
+        const uint32_t *ctx = (const uint32_t *)f[0x6c / 4];
+        bp[1]++; if (mode < 4u) bp[2 + mode]++;
+        if (ctx[0x4c / 4] != *(volatile uint32_t *)A4_GL_BB || f[0x64 / 4] != (uint32_t)VP_W) bp[6]++;
+        if (x0 >= x1 || y0 >= y1) bp[7]++;
+        if ((uint32_t)(x1 - x0) > bp[8] && x1 > x0) bp[8] = (uint32_t)(x1 - x0);
+        if ((uint32_t)(y1 - y0) > bp[9] && y1 > y0) bp[9] = (uint32_t)(y1 - y0);
+        uint32_t nn = bp[0], i;
+        for (i = 0; i < nn; i++) if (bp[10 + i*9] == (uint32_t)(uintptr_t)spr) break;
+        if (i == nn && nn < 12u) {
+            volatile uint32_t *e = bp + 10 + i*9;
+            e[0] = (uint32_t)(uintptr_t)spr; e[1] = spr[0]; e[2] = spr[1]; e[3] = spr[2];
+            e[4] = spr[7]; e[5] = spr[4]; e[6] = mode | (fade << 8); e[7] = 0; e[8] = spr[5] | (spr[6] << 16);
+            bp[0] = nn + 1;
+        }
+        if (i < 12u) bp[10 + i*9 + 7]++;
+    }
+#endif
+#ifdef A4_TAKEBB
+    volatile uint32_t *iat = a4_gl_iat_ptr();
+    if (iat[0] < 0x10000u) return 0;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    if (s->up != A4_GL_MAGIC || s->prims == 0) return 0;      /* no GPU frame begun */
+    if (s->flushed) { A4_PERF[PF_BBSW]++; return 0; }          /* composited already: software, in order */
+    const uint32_t *ctx = (const uint32_t *)f[0x6c / 4];
+    if (ctx[0x4c / 4] != *(volatile uint32_t *)A4_GL_BB || f[0x64 / 4] != (uint32_t)VP_W
+        || x0 >= x1 || y0 >= y1 || (mode != 0u && mode != 2u && mode != 3u)) { A4_PERF[PF_BBSW]++; return 0; }
+    int ti = bb_tex(s, spr);
+    if (ti < 0) { A4_PERF[PF_BBSW]++; return 0; }
+    uint32_t kind = mode == 0u ? KIND_TEX : mode == 2u ? KIND_ADD : KIND_ADDF;
+    uint32_t id = (kind << 28) | s->cache_id[ti];
+    if (kind == KIND_ADDF) id |= (fade > 16u ? 16u : fade) << 20;
+    /* u at pixel x0 + k is u0 + k*du; v at row y0 + j is v0 - j*dv (the sprite runs
+     * bottom-up). GL samples at pixel centres, so the quad's edges sit half a step out;
+     * plus 1/32 texel, so a texel boundary floors as the blit's >> 8 does. Normalised
+     * GL_FIXED: c(8.8) * 65536 / (256 * size) = c * 2^(8 - log2 size). */
+    int32_t u0 = (int32_t)r[0], v0 = (int32_t)r[1], du = (int32_t)r[5], dv = (int32_t)f[0x28 / 4];
+    int32_t sl = u0 - du / 2 + 8, sr = sl + (x1 - x0) * du;
+    int32_t tt = v0 + dv / 2 + 8, tb = tt - (y1 - y0) * dv;
+    int wl = (int)spr[0x1c / 4], hl = 0;
+    for (uint32_t k = spr[8 / 4] + 1u; k > 1u; k >>= 1) hl++;
+    int32_t S0 = wl <= 8 ? sl * (1 << (8 - wl)) : sl >> (wl - 8), S1 = wl <= 8 ? sr * (1 << (8 - wl)) : sr >> (wl - 8);
+    int32_t T0 = hl <= 8 ? tt * (1 << (8 - hl)) : tt >> (hl - 8), T1 = hl <= 8 ? tb * (1 << (8 - hl)) : tb >> (hl - 8);
+    int32_t vx[4] = { x0, x1, x1, x0 }, vy[4] = { y0, y0, y1, y1 };
+    int32_t vs[4] = { S0, S1, S1, S0 }, vt[4] = { T0, T0, T1, T1 };
+    int ord[6] = { 0, 1, 2, 0, 2, 3 };
+    for (int t = 0; t < 2; t++) {
+        if (s->bfill >= MAXT) {
+            uint32_t t0 = a4_ntick(); batch_draw(s->bfill); A4_PERF[PF_DRAW] += a4_ntick() - t0;
+            s->bfill = 0;
+        }
+        uint32_t n = s->bfill, vb = n * 3;
+        for (int k = 0; k < 3; k++) {
+            int q = ord[t * 3 + k];
+#ifdef A4_HPERSP
+            int32_t *POS = (int32_t *)A4_GL_POS;                /* (x*W, y*W, 0, W), W = 4096 */
+            POS[(vb + k) * 4 + 0] = vx[q] * 4096; POS[(vb + k) * 4 + 1] = vy[q] * 4096;
+            POS[(vb + k) * 4 + 2] = 0;            POS[(vb + k) * 4 + 3] = 4096;
+#else
+            int16_t *POS = (int16_t *)A4_GL_POS;
+            POS[(vb + k) * 2 + 0] = (int16_t)vx[q]; POS[(vb + k) * 2 + 1] = (int16_t)vy[q];
+#endif
+            int32_t *UV = (int32_t *)A4_GL_UV;
+            UV[(vb + k) * UVC + 0] = vs[q]; UV[(vb + k) * UVC + 1] = vt[q];
+#if UVC == 4
+            UV[(vb + k) * UVC + 2] = 0; UV[(vb + k) * UVC + 3] = FX;
+#endif
+        }
+        ((uint32_t *)A4_GL_TEXID)[n] = id;
+        s->bfill = n + 1;
+        s->prims++;
+    }
+    if ((uint32_t)y0 < s->miny) s->miny = (uint32_t)y0;
+    if ((uint32_t)(y1 - 1) > s->maxy) s->maxy = (uint32_t)(y1 - 1);
+    A4_PERF[PF_BB]++;
+#ifdef A4_DUALCAP
+    return 0;                                       /* bench instrument: software draws it all */
+#endif
+    /* the additive modes are drawn by software too, as KIND_ADD triangles are: its glow
+     * is the one that stays where the GPU drew nothing (the sky) */
+    return mode == 0u ? 1 : 0;
+#else
+    (void)spr; (void)x0; (void)x1; (void)y0; (void)y1; (void)mode; (void)fade;
+    return 0;
+#endif
+}
+
+void a4_gl_flush(void);
+
+/* The blit's two-depth sibling (+3059E, a4_bb2_tramp): not reproduced, and never called
+ * in the bench race. Its first call composites the frame (what follows is software, in
+ * order: right, if slow), and the calls are counted for the capture header. */
+void a4_gl_bb2(void)
+{
+    if (((volatile struct glr *)A4_GL_SCRATCH)->up == A4_GL_MAGIC) A4_PERF[PF_BB2]++;
+#ifdef A4_IMM
+    a4_gl_flush();
+#endif
+}
+
+/* Shadows once a pixel without a stencil (the N95 has none, round 10): depth-test them
+ * NOTEQUAL and let them write. Their z is 0, window depth 0.5, a value no flags-1
+ * triangle has (theirs are 0.5 + ZK/ZW/2 > 0.5) and the clear (0) is not: the first
+ * shadow at a pixel passes and stamps 0.5, the next fails. The cost: a later flags-1
+ * triangle there passes GEQUAL against 0.5 where the game's buffer still held the
+ * road's 1/z (the shadow span does not write it). */
+static int shad_zstamp(void)
+{
+#ifdef A4_SHADZ
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    return s->sbits == 0 && s->zbits != 0;
+#else
+    return 0;
+#endif
+}
+
 /* Undo what entering a kind changed, back to the bring-up state (KIND_TEX). */
 static void kind_leave(uint32_t st)
 {
-    if ((st == KIND_ADD || st == KIND_ALPHA || st == KIND_SHAD) && ((volatile struct glr *)A4_GL_SCRATCH)->abits)
-        gl_colormask(1, 1, 1, 1);
-    if (st == KIND_FLAT || st == KIND_SHAD) { gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX); }
-    if (st == KIND_ADD || st == KIND_SHAD || st == KIND_ALPHA) gl_disable(GL_BLEND);
+    if (st == KIND_FLAT || st == KIND_SHAD) gl_enable(GL_TEXTURE_2D);
+    if (st == KIND_FLAT || st == KIND_SHAD || st == KIND_ADD || st == KIND_ADDF) gl_color4x(FX, FX, FX, FX);
+    if (st == KIND_ADD || st == KIND_ADDF) { gl_texenvx(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE); gl_enable(GL_ALPHA_TEST); }
+    if (st == KIND_ADD || st == KIND_ADDF || st == KIND_SHAD || st == KIND_ALPHA) gl_disable(GL_BLEND);
     if (st == KIND_TEXZ) gl_disable(GL_DEPTH_TEST);
     if (st == KIND_SHAD && ((volatile struct glr *)A4_GL_SCRATCH)->sbits) gl_disable(GL_STENCIL_TEST);
+    if (st == KIND_SHAD && shad_zstamp()) { gl_depthfunc(GL_GEQUAL); gl_disable(GL_DEPTH_TEST); }
 }
 
 /* One run of equal TEXID words: switch GL state if its kind differs from the
@@ -1155,12 +1359,12 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st)
 #ifdef A4_KINDVIS
     /* diagnosis: flat triangles bright green, additive ones bright cyan, shadows bright
      * red, all opaque and untextured, so a capture shows which class an object is */
-    if (kind == KIND_FLAT || kind == KIND_ADD || kind == KIND_SHAD) {
+    if (kind == KIND_FLAT || kind == KIND_ADD || kind == KIND_ADDF || kind == KIND_SHAD) {
         kind_leave(*st);
         gl_disable(GL_TEXTURE_2D);
         *st = KIND_FLAT;
         if (kind == KIND_FLAT) gl_color4x(0, FX, 0, FX);
-        else if (kind == KIND_ADD) gl_color4x(0, FX, FX, FX);
+        else if (kind == KIND_ADD || kind == KIND_ADDF) gl_color4x(0, FX, FX, FX);
         else gl_color4x(FX, 0, 0, FX);                 /* shadows red */
         gl_drawarrays(GL_TRIANGLES, (int)(first*3), (int)(count*3));
         return;
@@ -1168,19 +1372,35 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st)
 #endif
     if (kind != *st) {
         kind_leave(*st);
-        /* blended classes leave dst alpha (the drawn-mask) as the opaque ones set it */
-        if ((kind == KIND_ADD || kind == KIND_ALPHA || kind == KIND_SHAD) && ((volatile struct glr *)A4_GL_SCRATCH)->abits)
-            gl_colormask(1, 1, 1, 0);
+        /* Each blended class leaves dst alpha (the drawn-mask: 1 where an opaque class
+         * drew, 0 elsewhere) as it found it by its own blend, without glColorMask -- a
+         * masked channel was the round-11 slowdown on the N95 (MBX.md). */
         if (kind == KIND_FLAT) gl_disable(GL_TEXTURE_2D);
         else if (kind == KIND_TEXZ) gl_enable(GL_DEPTH_TEST);
-        else if (kind == KIND_ADD) { gl_enable(GL_BLEND); gl_blendfunc(GL_ONE, GL_ONE); }
-        else if (kind == KIND_ALPHA) { gl_enable(GL_BLEND); gl_blendfunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); }
+        else if (kind == KIND_ADD || kind == KIND_ADDF) {
+            /* fragment alpha 0 (MODULATE by a colour of alpha 0), so ONE/ONE adds the
+             * texel to RGB and nothing to alpha; the alpha test is off for it, and the key
+             * texels, 0, add nothing. KIND_ADDF's colour is its run's a/16 (below). */
+            gl_disable(GL_ALPHA_TEST);
+            gl_texenvx(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+            gl_color4x(FX, FX, FX, 0);
+            gl_enable(GL_BLEND); gl_blendfunc(GL_ONE, GL_ONE);
+        }
+        else if (kind == KIND_ALPHA) {
+            /* premultiplied texels (tex_upload_alpha), weighted by dst alpha: T*a + dst*(1-a)
+             * where an opaque class drew (alpha 1), the backdrop untouched in alpha (0) for
+             * software's own drawing of it; alpha out = da*a + da*(1-a) = da */
+            gl_enable(GL_BLEND); gl_blendfunc(GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        }
         else if (kind == KIND_SHAD) {
-            gl_disable(GL_TEXTURE_2D); gl_enable(GL_BLEND); gl_blendfunc(GL_ZERO, GL_SRC_ALPHA);
-            gl_color4x(0, 0, 0, (FX * 12) / 16);     /* dst * 12/16 */
+            /* dst * 12/16 in RGB, alpha * 1 */
+            gl_disable(GL_TEXTURE_2D); gl_enable(GL_BLEND); gl_blendfunc(GL_ZERO, GL_SRC_COLOR);
+            gl_color4x((FX * 12) / 16, (FX * 12) / 16, (FX * 12) / 16, FX);
             /* once a pixel a frame (the span's stamp map): pass where the stencil is 0,
-             * then INCR it (func/op set at bring-up, cleared with the frame) */
+             * then INCR it (func/op set at bring-up, cleared with the frame); without a
+             * stencil, the depth stamp (shad_zstamp) */
             if (((volatile struct glr *)A4_GL_SCRATCH)->sbits) gl_enable(GL_STENCIL_TEST);
+            else if (shad_zstamp()) { gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_NOTEQUAL); }
         }
         *st = kind;
     }
@@ -1189,6 +1409,12 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st)
         uint32_t r = (mat >> 11) & 31u, g = (mat >> 5) & 63u, b = mat & 31u;
         gl_color4x(r == 31u ? FX : (int)(r * 2114u), g == 63u ? FX : (int)(g * 1040u + (g >> 2)),
                    b == 31u ? FX : (int)(b * 2114u), FX);
+    } else if (kind == KIND_ADDF) {
+        /* the billboard's mode 3: dst + (sat(dst + T) - dst) * a/16 -- dst + T*a/16 here,
+         * the same short of saturation */
+        int a = (int)((mat >> 20) & 0xFFu) * (FX / 16);
+        gl_color4x(a, a, a, 0);
+        gl_bindtex(GL_TEXTURE_2D, mat & 0xFFFFFu);
     } else if (kind != KIND_SHAD) {
         gl_bindtex(GL_TEXTURE_2D, mat & 0x0FFFFFFFu);
     }
@@ -1232,7 +1458,7 @@ static void batch_draw(uint32_t nt)
 
 /* Read back the GPU image of rows [miny, maxy] and write the pixels the GPU drew into the
  * game's surface. Which pixels: with dst alpha (A4_IMM and abits) those an opaque triangle
- * covered (alpha set; the clear leaves 0 and the blended classes do not write it), so a
+ * covered (alpha set; the clear leaves 0 and each blended class's blend keeps it), so a
  * blend over the backdrop is left to software's own drawing of it; without, every pixel
  * that is not the magenta sentinel -- nor the sentinel with a glow added to it (R and B
  * saturated, G short of full: additive over the backdrop), so pure pinks are lost there.
@@ -1324,7 +1550,8 @@ void a4_gl_flush(void)
     /* PIPELINED (no A4_IMM): this frame's primitives are drawn now, at the frame's end,
      * and read back at the NEXT frame's first primitive (composite_prev) -- one frame of
      * latency for the GPU world against the software layers. IMMEDIATE (A4_IMM): drawn
-     * and composited here, at the end of the 3D pass (a4_gl_hud) or the present.
+     * and composited here, at the frame's first billboard or HUD call (a4_gl_hud) or the
+     * present.
      * Draw the rest of THIS frame (the clear was at its first primitive, and any full
      * batch was drawn as it filled). */
     { uint32_t t0 = a4_ntick(); batch_draw(s->bfill); A4_PERF[PF_DRAW] += a4_ntick() - t0; }
@@ -1337,10 +1564,11 @@ void a4_gl_flush(void)
     }
     if (s->dual) { s->dual = 0; A4_PERF[PF_DUAL]++; }
 #ifdef A4_IMM
-    /* IMMEDIATE: composite this frame's own image now -- at the end of the 3D pass when
-     * the HUD painter called (a4_gl_hud), else at the present (a frame with no HUD). No
-     * frame of latency between the GPU's objects and what software draws over them (the
-     * tags, the HUD, the blended classes, anything not through draw_primitive). */
+    /* IMMEDIATE: composite this frame's own image now -- at its first billboard blit or
+     * HUD painter call (a4_gl_hud), else at the present. No frame of latency between the
+     * GPU's objects and what software draws over them (billboards, tags, HUD, the blended
+     * classes); and nothing software drew before this point may sit where the GPU drew,
+     * or the composite covers it. */
     { uint32_t t0 = a4_ntick(); composite_rows(s, s->miny, s->maxy); A4_PERF[PF_COMP] += a4_ntick() - t0; }
 #endif
 #if defined(A4_RUNDIAG) || defined(A4_TEL)
@@ -1358,10 +1586,12 @@ void a4_gl_flush(void)
     s->pminy = s->miny; s->pmaxy = s->maxy;
 }
 
-/* The HUD sprite painter's every call (a4_hud_tramp, +2973A). Its first call of a race
- * frame comes after the frame's last 3D triangle (MBX.md, the draw order), so under A4_IMM
- * the frame is drawn out and composited here, before the HUD goes over it. A no-op in a
- * frame with nothing drawn on the GPU (menus) or once done. */
+/* Every call of the HUD sprite painter (a4_hud_tramp, +2973A) and of the two scaled
+ * billboard blits (a4_bb_tramp +3015E, a4_bb2_tramp +3059E). A race frame draws ~1400
+ * triangles, then its billboards (glows, the nitro flame, pickups) among its last ~25
+ * triangles, then the HUD (round 12's order trace), so under A4_IMM the frame is drawn
+ * out and composited at the first of these, before software draws over it. A no-op in a
+ * frame with nothing drawn on the GPU or once done. */
 void a4_gl_hud(void)
 {
 #ifdef A4_IMM

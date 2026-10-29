@@ -111,6 +111,28 @@ std::uint32_t ARMul_State::watch_pc_hi = []() -> std::uint32_t {
 }();
 
 void ARMul_State::ReportWatch(std::uint32_t address, std::uint32_t data, std::uint32_t width) {
+    // EKA2L1_WATCHARM=lo:hi: the watch reports nothing until a store into the
+    // range comes from a PC in [lo,hi) (before the value and PC filters,
+    // so the arming store need not pass them) -- the writers after some known event,
+    // not those of a boot or a menu (ngage-port: Asphalt 4's race-time writers
+    // of its back buffer, armed by the GPU composite's store).
+    static const std::uint32_t arm_lo = [] {
+        const char *w = std::getenv("EKA2L1_WATCHARM");
+        return w ? static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) : 0u;
+    }();
+    static const std::uint32_t arm_hi = [] {
+        const char *w = std::getenv("EKA2L1_WATCHARM");
+        const char *colon = w ? std::strchr(w, ':') : nullptr;
+        return colon ? static_cast<std::uint32_t>(std::strtoul(colon + 1, nullptr, 16)) : 0u;
+    }();
+    static bool armed = false;
+    if (arm_hi && !armed) {
+        if (Reg[15] < arm_lo || Reg[15] >= arm_hi) {
+            return;
+        }
+        armed = true;
+    }
+
     if (watch_val_set && data != watch_val) {
         return;
     }
@@ -118,6 +140,7 @@ void ARMul_State::ReportWatch(std::uint32_t address, std::uint32_t data, std::ui
     if (watch_pc_hi && (Reg[15] < watch_pc_lo || Reg[15] >= watch_pc_hi)) {
         return;
     }
+
 
     // EKA2L1_WATCHONCE=1: each writing PC reported once (the first 64) -- what
     // code writes into a block at all, a framebuffer say, rather than the

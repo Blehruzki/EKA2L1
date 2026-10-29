@@ -47,12 +47,17 @@ SOURCES = [os.path.join(REND, 'a4_tramp.s'),
 # after its prologue). BLX detour that re-executes the two displaced moves. Added
 # only with --capture; grows .bss for the capture scratch.
 CAPTURE_HOOKS = {0x300B2: 'a4_prim_capture_tramp',
-                 0x2973A: 'a4_hud_tramp'}     # round 11: the end of the 3D pass (HUD painter)
+                 0x2973A: 'a4_hud_tramp',     # round 11: the end of the 3D pass (HUD painter)
+                 0x30252: 'a4_bbq_tramp',     # round 12: the billboard blit, a GPU quad
+                 0x305A2: 'a4_bb2_tramp'}     # its two-depth sibling: composite there
 # the displaced halfwords each capture hook's trampoline re-executes; checked before the
 # BLX goes in, so a different image cannot be patched blind
 CAPTURE_DISPLACED = {0x300B2: (0x0005, 0x0014),     # movs r5, r0 ; movs r4, r2
-                     0x2973A: (0x9C1C, 0x0007)}     # ldr r4, [sp, #0x70] ; movs r7, r0
+                     0x2973A: (0x9C1C, 0x0007),     # ldr r4, [sp, #0x70] ; movs r7, r0
+                     0x30252: (0x693B, 0x687A),     # ldr r3, [r7, #0x10] ; ldr r2, [r7, #4]
+                     0x305A2: (0x469C, 0x000D)}     # mov ip, r3 ; movs r5, r1
 CAPTURE_SKIP_RET = 0x300E0      # draw_primitive epilogue; GPU-drawn prims return here
+BB_SKIP_RET = 0x3031C           # the billboard blit's epilogue; GPU-queued sprites return here
 PRIM_SCRATCH = 0x00402000       # A4_TRI_SCRATCH in a4_prim.c (shared with a4_gl.c)
 PRIM_SCRATCH_SIZE = 0x2200
 
@@ -286,6 +291,9 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
     if capture:
         ph_link = syms['a4_skip_ret']
         word = ((LINK_BASE + CAPTURE_SKIP_RET) | 1) - ph_link
+        struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
+        ph_link = syms['a4_bbq_skip']
+        word = ((LINK_BASE + BB_SKIP_RET) | 1) - ph_link
         struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
 
     code = bytearray(d[code_off:code_off + code_size])

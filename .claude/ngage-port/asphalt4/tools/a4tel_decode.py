@@ -9,7 +9,7 @@ NAMES=['magic','ver','capidx','fcount','W','H','stride','fbbytes','bb','up','fra
        'gl_renders','gl_calls','gl_tris','gl_maxcalls','gl_lastcalls',
        # v4
        'ab_mode','w_renders','w_nticks','w_comp','w_read','w_draw','w_glflush','w_calls','w_tris',
-       'ntick_now','tick_now','home_us','rd_fmt','rd_type','rd_err','flat_tris','add_tris','dual_frames','shad_tris','pb_config','depth_bits','m1_rebakes','ntex_now','w_m1texels','w_m1ticks','stencil_bits','affine_tris','alpha_bits','late_tris']
+       'ntick_now','tick_now','home_us','rd_fmt','rd_type','rd_err','flat_tris','add_tris','dual_frames','shad_tris','pb_config','depth_bits','m1_rebakes','ntex_now','w_m1texels','w_m1ticks','stencil_bits','affine_tris','alpha_bits','late_tris','bb_gpu','bb_sw','bb2_calls']
 for fn in sys.argv[1:]:
     d=open(fn,'rb').read()
     if len(d)<128: print(fn,'too short'); continue
@@ -22,7 +22,7 @@ for fn in sys.argv[1:]:
         r=h[33]
         print('  window: mode %d (%s%s), %d renders in %d nticks = %.2f nticks/render; per render:'
               ' composite %.2f (read %.2f), batch draw %.2f, glFlush %.2f; %.0f calls, %.0f tris'
-              % (h[32], 'flush' if h[32]&1 else 'noflush', '+565' if h[32]&2 else '', r, h[34], h[34]/r,
+              % (h[32], 'flush' if h[32]&1 else 'noflush', '+native' if h[32]&2 else '', r, h[34], h[34]/r,
                  h[35]/r, h[36]/r, h[37]/r, h[38]/r, h[39]/r, h[40]/r))
     if h[27]:
         print('  GL census: %d renders, %.0f draw calls/render, %.0f triangles/render, max %d calls, last %d'

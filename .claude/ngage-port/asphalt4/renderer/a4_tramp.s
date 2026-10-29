@@ -175,6 +175,46 @@ a4_hud_tramp:
         bl      a4_gl_hud
         pop     {r0, r1, r2, r3, r12, lr}
         bx      lr                  @ -> +0x2973E (Thumb)
+
+@ ---- the scaled billboard blit (+3015E): the glows, the nitro flame, the pickups --
+@ 2D sprites the game draws straight into its surface, outside draw_primitive, among
+@ the last triangles of the 3D pass (and in the middle of it in the city; round 12's
+@ order trace). Hooked at +30252, after its clip and before its mode switch (lr is
+@ dead there: the divides at +30208 clobbered it); a4_gl_bb gets r0..r7 and the
+@ blit's sp, and either queues the sprite as a GPU quad in draw order and returns 1
+@ (straight to the blit's epilogue) or returns 0 (the software blit runs). ----
+        .global a4_bbq_tramp
+a4_bbq_tramp:
+        ldr     r3, [r7, #0x10]     @ displaced +30252: ldr r3, [r7, #0x10]
+        ldr     r2, [r7, #4]        @ displaced +30254: ldr r2, [r7, #4]
+        push    {r0, r1, r2, r3, r12, lr}
+        push    {r0, r1, r2, r3, r4, r5, r6, r7}
+        mov     r0, sp              @ r0..r7 at the hook
+        add     r1, sp, #56         @ the blit's own sp (14 words pushed here)
+        bl      a4_gl_bb
+        add     sp, sp, #32
+        cmp     r0, #0
+        pop     {r0, r1, r2, r3, r12, lr}
+        bxeq    lr                  @ software -> +0x30256 (Thumb)
+        ldr     r12, a4_bbq_skip
+        add     r12, pc, r12        @ pc(add)+8 == a4_bbq_skip addr
+        bx      r12                 @ GPU -> +0x3031C: add sp,#0x7c ; pop {r4-r7,pc}
+        .global a4_bbq_skip
+a4_bbq_skip:
+        .word   0xDEADBEEF          @ patched: (code+0x3031C | 1) - this word's addr
+
+@ ---- its sibling (+3059E, a two-depth variant; never called in the bench race): not
+@ reproduced, so the frame is composited at its first call and what follows is
+@ software, in order (a4_gl_bb2 counts the calls). Hooked after the prologue; the
+@ displaced pair runs after the pop, which would undo r12. ----
+        .global a4_bb2_tramp
+a4_bb2_tramp:
+        push    {r0, r1, r2, r3, r12, lr}
+        bl      a4_gl_bb2
+        pop     {r0, r1, r2, r3, r12, lr}
+        mov     r12, r3             @ displaced +305A2: mov ip, r3
+        mov     r5, r1              @ displaced +305A4: movs r5, r1 (flags dead: cmp at +305B6)
+        bx      lr                  @ -> +0x305A6 (Thumb)
 #endif  /* A4_CLEAN */
 
 @ ---- transparent: inner loop +33B16; loop exit falls straight into the
