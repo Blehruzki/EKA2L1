@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Decode C:\a4telN.dat telemetry. v3: [128B header][560B a4_fps_state][framebuffer];
 # v4 (round 10): the header is 256 bytes, words 32.. the GL phase timers of the window.
+# Word 49 was dual_frames up to round 12 (0 under A4_IMM); fill_gpu from round 13.
 import sys, struct, os
 from PIL import Image
 NAMES=['magic','ver','capidx','fcount','W','H','stride','fbbytes','bb','up','frames',
@@ -9,7 +10,7 @@ NAMES=['magic','ver','capidx','fcount','W','H','stride','fbbytes','bb','up','fra
        'gl_renders','gl_calls','gl_tris','gl_maxcalls','gl_lastcalls',
        # v4
        'ab_mode','w_renders','w_nticks','w_comp','w_read','w_draw','w_glflush','w_calls','w_tris',
-       'ntick_now','tick_now','home_us','rd_fmt','rd_type','rd_err','flat_tris','add_tris','dual_frames','shad_tris','pb_config','depth_bits','m1_rebakes','ntex_now','w_m1texels','w_m1ticks','stencil_bits','affine_tris','alpha_bits','late_tris','bb_gpu','bb_sw','bb2_calls']
+       'ntick_now','tick_now','home_us','rd_fmt','rd_type','rd_err','flat_tris','add_tris','fill_gpu','shad_tris','pb_config','depth_bits','m1_rebakes','ntex_now','w_m1texels','w_m1ticks','stencil_bits','affine_tris','alpha_bits','late_tris','bb_gpu','bb_sw','bb2_calls']
 for fn in sys.argv[1:]:
     d=open(fn,'rb').read()
     if len(d)<128: print(fn,'too short'); continue

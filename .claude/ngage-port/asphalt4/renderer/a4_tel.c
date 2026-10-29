@@ -47,7 +47,7 @@ extern void a4_gl_dumpgpu(void (*wr)(int, const void *, int), int base);
 #define A4_PERF ((volatile uint32_t *)0x00412C00u)   /* a4_gl.c PF_*: same order */
 enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE,
-       PF_BB, PF_BBSW, PF_BB2, PF_N };
+       PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_N };
 #define EFILE_WRITE 0x200u
 #define DES(len) ((1u<<28) | ((uint32_t)(len)))  /* TPtrC iLength: EPtrC(1)<<28 | len */
 
@@ -62,6 +62,7 @@ struct tel {
     int32_t  dbg_rrc;            /* diag: RFile::Replace result (last) */
     int32_t  dbg_wrc;            /* diag: RFile::Write result (last) */
     uint32_t actframes;          /* active-3D frames seen (TEL_SKIP gating) */
+    uint32_t fillcap;            /* A4_FILLCAP: GPU fills counted at the last capture */
     uint8_t  rfs[32];
     uint8_t  rfile[TEL_RING][32];
 };
@@ -137,7 +138,14 @@ void a4_tel_tick(uint32_t had)
 #ifdef TEL_SKIP
     if (t->actframes < TEL_SKIP) return;         /* skip early race: capture deeper, at speed */
 #endif
+#ifdef A4_FILLCAP
+    /* bench instrument: capture the renders that drew a solid fill on the GPU (the
+     * letterbox bars), at most one in 8 renders, instead of every TEL_EVERY */
+    if (A4_PERF[PF_FILL] == t->fillcap || (t->actframes & 7u) != 0) return;
+    t->fillcap = A4_PERF[PF_FILL];
+#else
     if ((t->actframes % TEL_EVERY) != 0) return;
+#endif
 
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
 
@@ -180,7 +188,9 @@ void a4_tel_tick(uint32_t had)
         h[i++] = now;           h[i++] = fp[1];  /* a4_fps last_tick (User::TickCount) */
         h[i++] = fp[9];                          /* a4_fps ttime[0] (HomeTime, low word, us) */
         h[i++] = a4_gl_rdinfo(0); h[i++] = a4_gl_rdinfo(1); h[i++] = a4_gl_rdinfo(2);
-        h[i++] = pf[PF_FLAT];   h[i++] = pf[PF_ADD];     h[i++] = pf[PF_DUAL];
+        /* [49] was the dual frames (PF_DUAL: none since the composite is immediate,
+         * A4_IMM); from round 13 the solid fills drawn on the GPU (PF_FILL) */
+        h[i++] = pf[PF_FLAT];   h[i++] = pf[PF_ADD];     h[i++] = pf[PF_FILL];
         h[i++] = pf[PF_SHAD];
         h[i++] = a4_gl_rdinfo(3); h[i++] = a4_gl_rdinfo(4);   /* pbuffer config, depth bits */
         h[i++] = pf[PF_M1BAKE];                                /* mode-1 re-bakes (total) */

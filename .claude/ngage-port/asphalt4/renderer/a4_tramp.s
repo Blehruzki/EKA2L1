@@ -203,6 +203,30 @@ a4_bbq_tramp:
 a4_bbq_skip:
         .word   0xDEADBEEF          @ patched: (code+0x3031C | 1) - this word's addr
 
+@ ---- the rectangle fill (+2AB08), after its prologue (+2AB0C): the letterbox bars and
+@ other solid fills; a4_gl_fill gets the fill's sp and queues a solid fill into the game's
+@ surface as a flat GPU quad (1: straight to the epilogue) or lets it run (0). The
+@ displaced pair, add r1,sp,#0x28 ; ldm r1,{r1,r5,r6}, as three loads (sp is the fill's
+@ again after the pop). ----
+        .global a4_fill_tramp
+a4_fill_tramp:
+        push    {r0, r1, r2, r3, r12, lr}
+        add     r0, sp, #24         @ the fill's own sp
+        bl      a4_gl_fill
+        cmp     r0, #0
+        pop     {r0, r1, r2, r3, r12, lr}
+        bne     1f
+        ldr     r5, [sp, #0x2c]     @ displaced +2AB0C/+2AB0E: r1, r5, r6 = h, colour, border
+        ldr     r6, [sp, #0x30]
+        ldr     r1, [sp, #0x28]
+        bx      lr                  @ software -> +0x2AB10 (Thumb)
+1:      ldr     r12, a4_fill_skip
+        add     r12, pc, r12        @ pc(add)+8 == a4_fill_skip addr
+        bx      r12                 @ GPU -> +0x2AB4C: add sp,#0x14 ; pop {r4-r7,pc}
+        .global a4_fill_skip
+a4_fill_skip:
+        .word   0xDEADBEEF          @ patched: (code+0x2AB4C | 1) - this word's addr
+
 @ ---- its sibling (+3059E, a two-depth variant; never called in the bench race): not
 @ reproduced, so the frame is composited at its first call and what follows is
 @ software, in order (a4_gl_bb2 counts the calls). Hooked after the prologue; the

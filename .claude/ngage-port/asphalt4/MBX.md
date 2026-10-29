@@ -3072,3 +3072,74 @@ zero-alpha colour -- all core GL ES 1.1, none measured on the N95; (6) billboard
 are not rewritten in place (cached once per sprite).
 States the bench never entered: pickups; billboard modes 0, 1, 3; the +3059E blit; the
 MBX.
+
+## Phone round 12 (r12_phone db6a2b38): pickups and nitro back, speed at round 10's or better; the takedown letterbox behind the scene
+
+Owner: nitro and pickups are right now; speed back to before round 11, "sometimes it feels
+smoother"; NEW: the two black bars of a takedown / crash (and, they think, the helicopter
+view) are drawn in the wrong order -- photos 1-2: the bars cover only the sky and sit
+behind everything else instead of in front.
+Telemetry (8 files, capidx 50-57; not repeats of round 11 -- no colour mask, billboards on
+the GPU, depth-stamped shadows): errc 0 in all; config 1, depth 24, alpha 8, stencil 0;
+late_tris 0; billboards on the GPU 42,572-47,300 (total), left to software 133-135,
++3059E calls 0; leak.py 0; ntex 164; mode-1 re-bakes 85 total, 0 texels in these windows.
+- PER RENDER (ms): total 84-100 (round 10: 88-116; round 11: 392-543); composite
+  15.0-16.7, of which glReadPixels BGRA 6.2-7.2 (the tile render and the copy: round 10's
+  RGBA read was 17-19); batch draw 9.6-14.4 (round 10: 9.1-14.5; round 11: 308-458).
+  So round 11's 300-460 ms went with glColorMask -- the guess, now measured by its
+  removal. Our blit is ~9-10 ms of the composite (composite minus read).
+- Real-render rhythm in the fps ring: 1-3-0 / 2-4-0 ticks -- a game iteration 4-6 ticks
+  (round 10: 6-9).
+- Captures by eye: flames behind the car (51, 54), the tunnel right; the end-of-race
+  cameras (56, 57). No takedown in a capture.
+
+## Round 13 bench: the letterbox bars on the GPU (the rectangle fill), and the road grain answered
+
+Not repeats of: round 12 (fills left to software, painted over by the composite).
+
+The bars. Race-time writers of the back buffer (EKA2L1_WATCH on the fill's store
++2AB3C, armed by WATCHARM at the alpha span): the solid-fill loop of +2AB08 -- the game's
+rectangle fill (surface, x, y, w, h, colour, border; 0x1000 = none: solid when the border
+is none, else an outline with the colour as interior unless that is none). Two callers
+draw letterboxes with it: +125EA (takedown / crash: top and bottom bars, 35 or 50 rows
+animated in) and +127EE (the helicopter news camera, "GNN LIVE": 40-row bars with text
+between). Both run after the 3D pass and before the HUD, i.e. before the composite --
+round 12's photos (bars only over the sky) are the composite covering them wherever the
+GPU drew. (A first try at tracing a takedown frame with PCTRACE_REGRING/DUMPAT at
++12636 dumped nothing: no takedown, or that address is not a block entry -- not
+settled; the watch did the job.)
+A4_TAKEFILL: hooked after the fill's prologue (+2AB0C; displaced add r1,sp,#0x28 /
+ldm r1,{r1,r5,r6} as three loads), a solid fill into the game's surface (pixels = bb,
+stride 320) is a flat quad in the batch, in draw order, and the fill returns at once;
+outlines, other surfaces and fills after the composite run as before. The quad
+emission is shared with the billboards (quad_push). Header word 49 (dual frames, 0
+under A4_IMM since round 11) now counts these fills.
+Bench instrument A4_FILLCAP (captures the renders that drew a fill on the GPU, one in 8 at
+most): eight helicopter-camera captures, the black bars over the road and the cars, the
+news overlay over them. The +125EA takedown bars are the same call shape (solid black)
+and were not captured on the bench.
+Battery on the exact phone binary (r13_phone = r12's flags + -DA4_TAKEFILL; sha256
+f9e8cfdf99442f081427c9b711ad519ab75c86671bde4076c2f92ba20fe6be3b; telerun3 230 s, to the
+race end): framestat 4818, faults 1 (the known boot fault), errc 0 in all eight,
+late_tris 0, fills on the GPU 130, billboards on the GPU ~24,600 / software 74, +3059E
+calls 0, leak.py 0, ntex 159. Pictures: normal race frames, flames, the helicopter.
+
+The owner's question (with photos of the countdown at "3", before the GPU starts after
+START_AFTER primitives, and at "1"): the road loses its grain and small details on the
+player's car change when GL starts -- wrong, or right?
+- The grain is the game's, and the GPU path does not draw it (known since round 10's
+  same-frame captures). The road's lower rows go through mode 4 of the perspective
+  span (flags 0x8020001 / 0x8021001), rewritten bit-exact as a4_span_textured: per
+  pixel, light = light*1664525 + 1013904223, a grey li = (light >> 16) & mask, reduced
+  below a threshold, added to the texel with saturation. The generator's state carries
+  from span to span and frame to frame (ctx+0x48), so the grain moves. The GPU draws
+  the plain texture. Reproducing it: a second, additive pass of the mode-4 triangles
+  with a screen-space noise texture, depth-tested GL_EQUAL so it lands only where the
+  road won, emitted right after each run of road triangles (deferring it to the frame
+  end would put grain on the player's car, which draws untested). Not built.
+- The car: its body is the default span's mode 1 (a paint-reflection table the game
+  rewrites every frame), baked into the texture and re-baked at most every 8th present
+  for textures of 16K texels or more (M1_BIG, M1_BIG_EVERY; 3.7-10 ms a bake on the N95,
+  round 10), so the reflection steps where software's moves every frame; and GL samples
+  texel centres, half a texel from the spans, so thin details shift by a pixel. By
+  design, not missing textures.

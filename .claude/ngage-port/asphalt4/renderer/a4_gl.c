@@ -211,7 +211,7 @@
 #define A4_PERF ((volatile uint32_t *)0x00412C00u)
 enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE,
-       PF_BB, PF_BBSW, PF_BB2, PF_N };
+       PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_N };
 #define AB_FLUSH 1u      /* glFlush after the frame's last batch (start the tile render) */
 #define AB_NATIVE 2u     /* read back in the implementation's own pair (OES_read_format): BGRA
                           * on the N95 (round 10), RGB565 on a device that names that */
@@ -1172,6 +1172,49 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     return r;
 }
 
+/* A screen rectangle [x0,x1) x [y0,y1) into the frame's batch as two triangles, after
+ * whatever came before it -- the 2D things the game draws into its surface (billboards,
+ * fills) keep their place among the triangles. (S0,T0) at (x0,y0) to (S1,T1) at (x1,y1),
+ * normalised GL_FIXED texcoords; a flat id ignores them. */
+static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+                      int32_t S0, int32_t T0, int32_t S1, int32_t T1, uint32_t id) __attribute__((unused));
+static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+                      int32_t S0, int32_t T0, int32_t S1, int32_t T1, uint32_t id)
+{
+    int32_t vx[4] = { x0, x1, x1, x0 }, vy[4] = { y0, y0, y1, y1 };
+    int32_t vs[4] = { S0, S1, S1, S0 }, vt[4] = { T0, T0, T1, T1 };
+    int ord[6] = { 0, 1, 2, 0, 2, 3 };
+    for (int t = 0; t < 2; t++) {
+        if (s->bfill >= MAXT) {
+            uint32_t t0 = a4_ntick(); batch_draw(s->bfill); A4_PERF[PF_DRAW] += a4_ntick() - t0;
+            s->bfill = 0;
+        }
+        uint32_t n = s->bfill, vb = n * 3;
+        for (int k = 0; k < 3; k++) {
+            int q = ord[t * 3 + k];
+#ifdef A4_HPERSP
+            int32_t *POS = (int32_t *)A4_GL_POS;                /* (x*W, y*W, 0, W), W = 4096 */
+            POS[(vb + k) * 4 + 0] = vx[q] * 4096; POS[(vb + k) * 4 + 1] = vy[q] * 4096;
+            POS[(vb + k) * 4 + 2] = 0;            POS[(vb + k) * 4 + 3] = 4096;
+#else
+            int16_t *POS = (int16_t *)A4_GL_POS;
+            POS[(vb + k) * 2 + 0] = (int16_t)vx[q]; POS[(vb + k) * 2 + 1] = (int16_t)vy[q];
+#endif
+            int32_t *UV = (int32_t *)A4_GL_UV;
+            UV[(vb + k) * UVC + 0] = vs[q]; UV[(vb + k) * UVC + 1] = vt[q];
+#if UVC == 4
+            UV[(vb + k) * UVC + 2] = 0; UV[(vb + k) * UVC + 3] = FX;
+#endif
+        }
+        ((uint32_t *)A4_GL_TEXID)[n] = id;
+        s->bfill = n + 1;
+        s->prims++;
+    }
+    int32_t ya = y0 < 0 ? 0 : y0, yb = y1 > VP_H ? VP_H - 1 : y1 - 1;
+    if ((uint32_t)ya < s->miny) s->miny = (uint32_t)ya;
+    if (yb >= 0 && (uint32_t)yb > s->maxy) s->maxy = (uint32_t)yb;
+}
+
 /* The billboard blit's texture (sprite +0x10: 565 texels, rows of 1 << sprite[0x1c]
  * texels, the row index masked by sprite[8]): cached under sprite|3 (descriptors are
  * word aligned and keyed |0 |1 |2), uploaded by tex_upload through a made-up
@@ -1263,37 +1306,7 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
     for (uint32_t k = spr[8 / 4] + 1u; k > 1u; k >>= 1) hl++;
     int32_t S0 = wl <= 8 ? sl * (1 << (8 - wl)) : sl >> (wl - 8), S1 = wl <= 8 ? sr * (1 << (8 - wl)) : sr >> (wl - 8);
     int32_t T0 = hl <= 8 ? tt * (1 << (8 - hl)) : tt >> (hl - 8), T1 = hl <= 8 ? tb * (1 << (8 - hl)) : tb >> (hl - 8);
-    int32_t vx[4] = { x0, x1, x1, x0 }, vy[4] = { y0, y0, y1, y1 };
-    int32_t vs[4] = { S0, S1, S1, S0 }, vt[4] = { T0, T0, T1, T1 };
-    int ord[6] = { 0, 1, 2, 0, 2, 3 };
-    for (int t = 0; t < 2; t++) {
-        if (s->bfill >= MAXT) {
-            uint32_t t0 = a4_ntick(); batch_draw(s->bfill); A4_PERF[PF_DRAW] += a4_ntick() - t0;
-            s->bfill = 0;
-        }
-        uint32_t n = s->bfill, vb = n * 3;
-        for (int k = 0; k < 3; k++) {
-            int q = ord[t * 3 + k];
-#ifdef A4_HPERSP
-            int32_t *POS = (int32_t *)A4_GL_POS;                /* (x*W, y*W, 0, W), W = 4096 */
-            POS[(vb + k) * 4 + 0] = vx[q] * 4096; POS[(vb + k) * 4 + 1] = vy[q] * 4096;
-            POS[(vb + k) * 4 + 2] = 0;            POS[(vb + k) * 4 + 3] = 4096;
-#else
-            int16_t *POS = (int16_t *)A4_GL_POS;
-            POS[(vb + k) * 2 + 0] = (int16_t)vx[q]; POS[(vb + k) * 2 + 1] = (int16_t)vy[q];
-#endif
-            int32_t *UV = (int32_t *)A4_GL_UV;
-            UV[(vb + k) * UVC + 0] = vs[q]; UV[(vb + k) * UVC + 1] = vt[q];
-#if UVC == 4
-            UV[(vb + k) * UVC + 2] = 0; UV[(vb + k) * UVC + 3] = FX;
-#endif
-        }
-        ((uint32_t *)A4_GL_TEXID)[n] = id;
-        s->bfill = n + 1;
-        s->prims++;
-    }
-    if ((uint32_t)y0 < s->miny) s->miny = (uint32_t)y0;
-    if ((uint32_t)(y1 - 1) > s->maxy) s->maxy = (uint32_t)(y1 - 1);
+    quad_push(s, x0, y0, x1, y1, S0, T0, S1, T1, id);
     A4_PERF[PF_BB]++;
 #ifdef A4_DUALCAP
     return 0;                                       /* bench instrument: software draws it all */
@@ -1303,6 +1316,38 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
     return mode == 0u ? 1 : 0;
 #else
     (void)spr; (void)x0; (void)x1; (void)y0; (void)y1; (void)mode; (void)fade;
+    return 0;
+#endif
+}
+
+/* The game's rectangle fill (+2AB08: surface, x, y, w, h, colour, border; 0x1000 is
+ * "none"), at +2AB0C (a4_fill_tramp), f = its sp: f[1..4] = r0..r3 as pushed, f[10..12]
+ * the three stack arguments. The takedown and race-end letterbox bars are its solid
+ * black fills (+125EA, +127EE), drawn after the 3D pass and before the HUD -- so before
+ * the composite, which covered them wherever the GPU drew (round 12: the bars only over
+ * the sky). A solid fill into the game's surface goes to the batch as a flat quad and
+ * returns 1 (the fill returns at once); an outlined one, another surface, or a fill after
+ * the composite, 0 (it runs). No clip: the fill has none either. */
+int a4_gl_fill(const uint32_t *f)
+{
+#ifdef A4_TAKEFILL
+    volatile uint32_t *iat = a4_gl_iat_ptr();
+    if (iat[0] < 0x10000u) return 0;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    if (s->up != A4_GL_MAGIC || s->prims == 0 || s->flushed) return 0;
+    const uint32_t *surf = (const uint32_t *)f[1];
+    int32_t x = (int32_t)f[2], y = (int32_t)f[3], w = (int32_t)f[4], h = (int32_t)f[10];
+    uint32_t col = f[11], border = f[12];
+    if (surf[1] != *(volatile uint32_t *)A4_GL_BB || ((const uint16_t *)surf)[4] != (uint16_t)VP_W
+        || border != 0x1000u || col == 0x1000u || w <= 0 || h <= 0) return 0;
+    quad_push(s, x, y, x + w, y + h, 0, 0, 0, 0, (KIND_FLAT << 28) | (col & 0xFFFFu));
+    A4_PERF[PF_FILL]++;
+#ifdef A4_DUALCAP
+    return 0;                                       /* bench instrument: software draws it all */
+#endif
+    return 1;
+#else
+    (void)f;
     return 0;
 #endif
 }
