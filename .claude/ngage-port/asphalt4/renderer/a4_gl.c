@@ -34,7 +34,8 @@
 
 #define A4_GL_SCRATCH 0x00401000u
 #define A4_GL_READBUF 0x00403000u        /* one strip: 320*STRIP*4, ends at 0x408000 */
-#define A4_GL_BB      0x00400700u        /* surface base, from a4_cachebb_tramp */
+#define A4_GL_BB      0x00400700u        /* the 3D target's pixels: ctx[0x4c] at each frame's first
+                                          * triangle (and a4_cachebb_tramp, in the software span) */
 #ifndef STRIP
 #define STRIP 16                         /* readback strip height (keeps image .bss small);
                                           * -DSTRIP=n overrides, for the per-call-overhead test */
@@ -215,7 +216,7 @@
 #define A4_PERF ((volatile uint32_t *)0x00412C00u)
 enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE,
-       PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_TEXRE, PF_EVICT, PF_N };
+       PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_TEXRE, PF_EVICT, PF_SURF, PF_N };
 #define AB_FLUSH 1u      /* glFlush after the frame's last batch (start the tile render) */
 #define AB_NATIVE 2u     /* read back in the implementation's own pair (OES_read_format): BGRA
                           * on the N95 (round 10), RGB565 on a device that names that */
@@ -1016,8 +1017,19 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
      * billboards, round 12) */
     if (s->flushed) { A4_PERF[PF_LATE]++; return 0; }
 #endif
+    if (s->prims != 0 && gctx[0x4c / 4] != *(volatile uint32_t *)A4_GL_BB) {
+        A4_PERF[PF_SURF]++;                             /* a second 3D target in one frame: software */
+        return 0;
+    }
     if (s->prims == 0) {                                /* first prim of the frame */
         s->flushed = 0;
+        /* The surface this frame's 3D renders into (ctx[0x4c], what the software span
+         * reads): the composite writes there. It was taken only from the span itself
+         * (a4_cachebb_tramp), which the GPU path stops running -- so after a race the
+         * menus' garage, rendered offscreen and copied onto the screen at the start of
+         * the next frame, was composited onto the SCREEN, over the 2D drawn before it
+         * (round 13-14: the HOME panel and the garage's stats box and bar). */
+        *(volatile uint32_t *)A4_GL_BB = gctx[0x4c / 4];
 #if defined(A4_TEL) && defined(A4_ABCYCLE)
         s->fmode = A4_PERF[PF_MODE];                   /* a4_tel.c steps it per capture window */
 #else

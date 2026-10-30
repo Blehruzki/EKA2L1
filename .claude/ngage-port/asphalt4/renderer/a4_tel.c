@@ -47,7 +47,7 @@ extern void a4_gl_dumpgpu(void (*wr)(int, const void *, int), int base);
 #define A4_PERF ((volatile uint32_t *)0x00412C00u)   /* a4_gl.c PF_*: same order */
 enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE,
-       PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_TEXRE, PF_EVICT, PF_N };
+       PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_TEXRE, PF_EVICT, PF_SURF, PF_N };
 #define EFILE_WRITE 0x200u
 #define DES(len) ((1u<<28) | ((uint32_t)(len)))  /* TPtrC iLength: EPtrC(1)<<28 | len */
 
@@ -188,7 +188,9 @@ void a4_tel_tick(uint32_t had)
          * round 14 the textures remade in place (total: the descriptor held another) */
         h[i++] = pf[PF_TEXRE];  h[i++] = pf[PF_CALLS];  h[i++] = pf[PF_TRIS];
         h[i++] = now;           h[i++] = fp[1];  /* a4_fps last_tick (User::TickCount) */
-        h[i++] = fp[9];                          /* a4_fps ttime[0] (HomeTime, low word, us) */
+        /* [43] was HomeTime's low word (calibrated NTickCount = 1 ms, round 10); from round
+         * 15 the triangles to a second 3D target in a frame (total) */
+        h[i++] = pf[PF_SURF];
         /* [46] was the read-format probe's GL error (0 on the N95, round 10); from round
          * 14 the cache entries evicted (total) */
         h[i++] = a4_gl_rdinfo(0); h[i++] = a4_gl_rdinfo(1); h[i++] = pf[PF_EVICT];

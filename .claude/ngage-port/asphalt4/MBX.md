@@ -3230,3 +3230,55 @@ tunnel through the wall and horizontal lines (photos 8-13) are all the refused s
 drawn by software under the composite -- the full cache is measured, the attribution of
 each photo is inferred; (2) photo 7's cause is unknown; (3) the 64-sample hash can miss a
 texture replaced by one identical at those 64 texels (it compares size and pointer too).
+
+## Phone round 14 (r14_phone d5cd29ab): the cache holds; only the garage menu's gradient left
+
+Owner, after instant race -> career -> garage cycling -> race: no regressions, the
+texture issues resolved, performance as before with "moments of sweet smoothness" in the
+tunnel with few cars; the only thing left is the HOME/garage menu's gradient (round 13's
+photo 7), still missing.
+Telemetry (8 files, capidx 220-227, a long session: 9,150 GPU renders; not repeats of
+round 13 -- the validated, evicting cache): errc 0; late_tris 0; ntex 256 (full, as the
+garage fills it) with 577-582 evictions and 24-25 textures remade -- the cache cycling
+as designed; billboards to software 934-950 over the whole session (164,000 on the GPU);
+per render 84-95 ms (one window 252 ms a render: 40 renders over 10 s, a pause or a load,
+not a race window).
+leak.py: capture 224 counts 11 "additive" pinks -- the player's red tail lights with a
+white glow saturating R and B (84 pixels by the looser test, all on the two lamps and the
+HUD's corner). A real pink in the scene, not magenta: the predicate's known blind spot
+(it assumes no pinks in a race).
+
+## Round 15 bench: the composite targets the frame's own 3D surface (the garage menu panels)
+
+Not repeats of: round 14 (composite into A4_GL_BB as the software span last left it).
+The cause, reproduced on the bench. A4_GL_BB was set only by a4_cachebb_tramp, in the
+software perspective span -- which the GPU path no longer runs once the cache holds the
+textures. The menus' garage renders its 3D OFFSCREEN (ctx[0x4c] = a heap buffer,
+0x27xxxxx on the bench; the race renders into the screen surface, 0xD0E9C0 bench /
+0x70C760 phone), and the game copies that buffer onto the screen at the START of the next
+frame (+2A86E: memcpy(surface pixels, surface[0x40], w*h*2)). Garage frame order (stock,
+PCTRACE_REGS): copy, H1, draw_primitive x465, F1 (the stats box), H x89, present. HOME:
+P422 H14 T1 H73 present (T = the translucent fill +2ABAA -> ARM veneer +2ABB0 -> +B9A10).
+After a race, A4_GL_BB still held the race's SCREEN surface, so the garage's GPU image
+was composited onto the screen at the first HUD call -- over every 2D thing drawn before
+it: the HOME panel, the stats box (F1), the COMPLETION bar. Phone capture 227 (round 14,
+the NEW VEHICLE screen, bb = the screen surface) shows exactly that: text on the ceiling,
+no box. Bench (racemenu.sh: race 30 s, F1 = left softkey = pause, MAIN MENU, YES, CAREER,
+HOME, garage): round 14's build loses the HOME panel and the bar; a garage-first run
+(round 14's bench tests) never did, because the software span had run in the garage
+before GL came up and left A4_GL_BB on the offscreen buffer.
+Fix: at each frame's first triangle A4_GL_BB = ctx[0x4c] (draw_primitive's ctx IS the
+span's: PCMEM at +300AE and +333F4, same ctx, same [0x4c]). A triangle to a different
+surface later in the same frame goes to software and is counted (header word 43, which
+held HomeTime's low word for the round-10 tick calibration): 0 on the bench.
+Bench, round 15: the same race-first route draws the HOME panel and the bar like the stock
+game; the garage capture headers show bb = the offscreen buffer.
+Battery on the exact phone binary (r15_phone = r14's flags; sha256
+b87169d2e75559605abda9a16535b240716498559828c2164c45dc10f0ce77e5; telerun3 230 s):
+framestat 4756, faults 1 (the known boot fault), errc 0, late_tris 0, surf2_tris 0,
+remade 0, evicted 0, ntex 166, fills 231, billboards GPU ~22,900 / software 96; leak.py 0
+except one pink pixel between white ones in capture 61 (a sign, not a sentinel region).
+Garage cycle (13 views): every car right, the bar drawn.
+Rule 4 -- guesses, named: (1) the phone's photo 7 (HOME) is this bug -- capture 227 and
+the bench route reproduce the mechanism, photo 7 itself was not captured; (2) the 3D
+target never changes mid-frame in the race or menus (counted; 0 on the bench).
