@@ -3282,3 +3282,58 @@ Garage cycle (13 views): every car right, the bar drawn.
 Rule 4 -- guesses, named: (1) the phone's photo 7 (HOME) is this bug -- capture 227 and
 the bench route reproduce the mechanism, photo 7 itself was not captured; (2) the 3D
 target never changes mid-frame in the race or menus (counted; 0 on the bench).
+
+## Phone round 15 (r15_phone b87169d2): the garage menus right; a lap-line band glitch
+
+Owner: "All seems to be fixed" (the garage menu panels included). New: at the start/finish
+line after a lap or two -- not every time -- a band or box over the upper screen: photos
+1-2, the big "lap 3/3" with a lighter rectangle over the scene whose edge runs the
+screen's height; photos 3-4, the lap-time ("00:39:80") band, purple-grey and striped,
+covering the sky only -- trees, hills and the house inside it untouched; photo 5, a box
+over the top-left trees during "FANTASTIC DRIFT!", before the line.
+Telemetry (8 files, capidx 135-142; not repeats of round 14 -- the frame's own 3D target):
+errc 0; late_tris 0; surf2_tris 0 (one 3D target a frame, as assumed); ntex 256 with 243-261
+evictions and 11 remakes; billboards to software ~565 of ~94,000; leak.py 0; per render
+84-105 ms in the race. Captures 140-142, the garage after a race, now carry
+bb = the offscreen buffer (3D only), as on the bench.
+Reading (inferred from the photos; the band was not in a capture): a translucent effect
+drawn by software BEFORE the composite, which then overwrites it wherever the GPU drew --
+so it shows over the software-drawn sky and not over the GPU's hills and trees. The
+round-15 menu traces name the translucent fill: +2ABAA (Thumb veneer) -> +2ABB0 (ARM b) ->
++B9A10, per pixel dst*k + c; it is not hooked, so it never triggers the composite.
+
+## Round 16 bench: nothing software draws into the 3D surface lands under the composite
+
+Not repeats of: round 15 (billboards the GPU did not take, and outlined fills, drawn by
+software before the composite).
+What the band is NOT, measured on the bench: the translucent fill +B9A10 is never called in
+a 200 s race (a ring armed at the race, dumped at its first call: nothing); the race-time
+fills (PCTRACE_REGS + PCMEM on +2AB08, 230 s) are the letterboxes (solid, on the GPU since
+round 13) and a 13x2 outlined minimap marker (+26DF6) drawn after the composite.
+The race-time writers of the band rows (EKA2L1_WATCH, rows 50-70, WATCHONCE armed at the
+race): the alpha span, the HUD routines (+2C524, +2CFD0, +2D09E, +2D136, +2996A, +29A9A),
+the composite, the backdrop copy, the billboard blit's software add (+30472), the
+additive span, and one outlined fill border (+2AB84).
+What the phone does that the bench does not: 565 billboards left to software in round 15
+against ~95 on the bench (round 15) and 7 here; every bench billboard is mode 2 (24,414
+calls). A billboard the GPU path does not take -- mode 1, the checkerboard stipple, or a
+texture the cache refuses -- was drawn by software into the 3D surface BEFORE the
+composite, so it survived only where the GPU drew nothing: the sky. A stipple over the sky,
+photographed, is a striped band covering the sky only (photos 3-4) -- inferred.
+- A billboard into this frame's 3D surface that the GPU does not take now composites the
+  frame first (a4_gl_flush), then software draws it, on top; what follows is software, in
+  order (late_tris counts it).
+- An outlined fill into the 3D surface is drawn as quads (four edges in the border colour,
+  the inside in the fill colour unless "none").
+- A4_BBPROBE ships (table appended to each capture): calls by mode, non-mode-2 sprites
+  (address, size, masks, mode, alpha, count), [120] composites forced by a software
+  billboard, [121] outlined fills drawn on the GPU.
+Battery on the exact phone binary (r16_phone = r15's flags + -DA4_BBPROBE; sha256
+12d2753d97a4c624c08df640f14f5a27a9dc5ba5f6d35afd80eca11c223ae1d0; telerun3 230 s):
+framestat 5102, faults 1 (the known boot fault), errc 0, late_tris 0, surf2_tris 0,
+ntex 161-163, fills 116, billboards GPU ~24,300 / software 7 (empty rectangles), forced
+composites 0, outlined fills on the GPU 0 (the marker comes after the composite), leak.py 0.
+Rule 4 -- guesses, named: (1) the band is a mode-1 (or refused) billboard -- unproven; the
+probe names the phone's non-mode-2 sprites, and [120] counts the forced composites; (2) a
+forced composite early in the 3D pass would put the rest of the frame in software (slow
+for that frame, still correct) -- late_tris measures it.

@@ -1313,6 +1313,8 @@ static int bb_tex(volatile struct glr *s, const uint32_t *spr)
     return idx;
 }
 
+void a4_gl_flush(void);
+
 /* The scaled billboard blit (+3015E) at +30252 (a4_bbq_tramp): r = r0..r7 there, f = its
  * sp. Its clip is done: the screen rectangle is [f+0x34, r4) x [r6, f+0x30); u starts at
  * r0 and steps r5 a pixel, v starts at r1 and steps -[f+0x28] a row (8.8 texels); the
@@ -1330,7 +1332,9 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
          * calls by mode 0-3, [6] another surface or width, [7] empty rectangles, [8] [9]
          * widest and tallest rectangle; then 12 sprites of 9 words: address, w | h << 16,
          * u mask (+4), v mask (+8), row shift (+0x1c), texels (+0x10), mode | a << 8,
-         * calls, the size shifts +0x14 | +0x18 << 16 */
+         * calls, the size shifts +0x14 | +0x18 << 16 -- only sprites drawn in a mode
+         * other than 2 (round 16: all 9,566 bench calls were mode 2); [120] composites
+         * forced by a billboard left to software, [121] outlined fills drawn on the GPU */
         volatile uint32_t *bp = (volatile uint32_t *)0x00412D00u;
         const uint32_t *ctx = (const uint32_t *)f[0x6c / 4];
         bp[1]++; if (mode < 4u) bp[2 + mode]++;
@@ -1340,13 +1344,13 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
         if ((uint32_t)(y1 - y0) > bp[9] && y1 > y0) bp[9] = (uint32_t)(y1 - y0);
         uint32_t nn = bp[0], i;
         for (i = 0; i < nn; i++) if (bp[10 + i*9] == (uint32_t)(uintptr_t)spr) break;
-        if (i == nn && nn < 12u) {
+        if (i == nn && nn < 12u && mode != 2u) {
             volatile uint32_t *e = bp + 10 + i*9;
             e[0] = (uint32_t)(uintptr_t)spr; e[1] = spr[0]; e[2] = spr[1]; e[3] = spr[2];
             e[4] = spr[7]; e[5] = spr[4]; e[6] = mode | (fade << 8); e[7] = 0; e[8] = spr[5] | (spr[6] << 16);
             bp[0] = nn + 1;
         }
-        if (i < 12u) bp[10 + i*9 + 7]++;
+        if (i < nn) bp[10 + i*9 + 7]++;
     }
 #endif
 #ifdef A4_TAKEBB
@@ -1357,9 +1361,22 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
     if (s->flushed) { A4_PERF[PF_BBSW]++; return 0; }          /* composited already: software, in order */
     const uint32_t *ctx = (const uint32_t *)f[0x6c / 4];
     if (ctx[0x4c / 4] != *(volatile uint32_t *)A4_GL_BB || f[0x64 / 4] != (uint32_t)VP_W
-        || x0 >= x1 || y0 >= y1 || (mode != 0u && mode != 2u && mode != 3u)) { A4_PERF[PF_BBSW]++; return 0; }
-    int ti = bb_tex(s, spr);
-    if (ti < 0) { A4_PERF[PF_BBSW]++; return 0; }
+        || x0 >= x1 || y0 >= y1) { A4_PERF[PF_BBSW]++; return 0; }  /* not into this frame's 3D */
+    int ti = (mode == 0u || mode == 2u || mode == 3u) ? bb_tex(s, spr) : -1;
+    if (ti < 0) {
+        /* Drawn by software into the 3D surface (mode 1, the stipple, or a texture the
+         * cache refused): composite first, so it lands on the frame's GPU image instead
+         * of under it -- before, it survived only where the GPU drew nothing (the sky:
+         * round 15's band at the lap line, inferred). What follows is software, in order. */
+        A4_PERF[PF_BBSW]++;
+#ifdef A4_BBPROBE
+        ((volatile uint32_t *)0x00412D00u)[120]++;
+#endif
+#ifdef A4_IMM
+        a4_gl_flush();
+#endif
+        return 0;
+    }
     uint32_t kind = mode == 0u ? KIND_TEX : mode == 2u ? KIND_ADD : KIND_ADDF;
     uint32_t id = (kind << 28) | s->cache_id[ti];
     if (kind == KIND_ADDF) id |= (fade > 16u ? 16u : fade) << 20;
@@ -1393,9 +1410,9 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
  * the three stack arguments. The takedown and race-end letterbox bars are its solid
  * black fills (+125EA, +127EE), drawn after the 3D pass and before the HUD -- so before
  * the composite, which covered them wherever the GPU drew (round 12: the bars only over
- * the sky). A solid fill into the game's surface goes to the batch as a flat quad and
- * returns 1 (the fill returns at once); an outlined one, another surface, or a fill after
- * the composite, 0 (it runs). No clip: the fill has none either. */
+ * the sky). A fill into this frame's 3D surface goes to the batch as flat quads and
+ * returns 1 (the fill returns at once); another surface, or a fill after the composite,
+ * 0 (it runs). No clip: the fill has none either. */
 int a4_gl_fill(const uint32_t *f)
 {
 #ifdef A4_TAKEFILL
@@ -1407,8 +1424,28 @@ int a4_gl_fill(const uint32_t *f)
     int32_t x = (int32_t)f[2], y = (int32_t)f[3], w = (int32_t)f[4], h = (int32_t)f[10];
     uint32_t col = f[11], border = f[12];
     if (surf[1] != *(volatile uint32_t *)A4_GL_BB || ((const uint16_t *)surf)[4] != (uint16_t)VP_W
-        || border != 0x1000u || col == 0x1000u || w <= 0 || h <= 0) return 0;
-    quad_push(s, x, y, x + w, y + h, 0, 0, 0, 0, (KIND_FLAT << 28) | (col & 0xFFFFu));
+        || w <= 0 || h <= 0 || (border == 0x1000u && col == 0x1000u)) return 0;
+    if (border == 0x1000u) {
+        quad_push(s, x, y, x + w, y + h, 0, 0, 0, 0, (KIND_FLAT << 28) | (col & 0xFFFFu));
+    } else {
+        /* the outlined fill (+2AB50): its edge pixels in the border colour, the inside in
+         * the fill colour unless that is "none" -- as four edge quads and one inner one,
+         * so it keeps its place among the triangles too (software drew it before the
+         * composite, which covered it wherever the GPU drew) */
+        uint32_t bid = (KIND_FLAT << 28) | (border & 0xFFFFu);
+        int32_t x1 = x + w, y1 = y + h;
+        quad_push(s, x, y, x1, y + 1, 0, 0, 0, 0, bid);
+        if (h > 1) quad_push(s, x, y1 - 1, x1, y1, 0, 0, 0, 0, bid);
+        if (h > 2) {
+            quad_push(s, x, y + 1, x + 1, y1 - 1, 0, 0, 0, 0, bid);
+            if (w > 1) quad_push(s, x1 - 1, y + 1, x1, y1 - 1, 0, 0, 0, 0, bid);
+            if (w > 2 && col != 0x1000u)
+                quad_push(s, x + 1, y + 1, x1 - 1, y1 - 1, 0, 0, 0, 0, (KIND_FLAT << 28) | (col & 0xFFFFu));
+        }
+#ifdef A4_BBPROBE
+        ((volatile uint32_t *)0x00412D00u)[121]++;
+#endif
+    }
     A4_PERF[PF_FILL]++;
 #ifdef A4_DUALCAP
     return 0;                                       /* bench instrument: software draws it all */
@@ -1419,8 +1456,6 @@ int a4_gl_fill(const uint32_t *f)
     return 0;
 #endif
 }
-
-void a4_gl_flush(void);
 
 /* The blit's two-depth sibling (+3059E, a4_bb2_tramp): not reproduced, and never called
  * in the bench race. Its first call composites the frame (what follows is software, in
