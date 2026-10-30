@@ -222,7 +222,7 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
         * (to the present), the game's present call (+1EC: the runtime's convert and post),
         * and our draw_primitive hook (every 4th call timed, x4); then their marks */
        PF_T3D, PF_TFLUSH, PF_T2D, PF_TPRES, PF_HOOK, PF_MFIRST, PF_MFLEND, PF_MPRES, PF_FLAGS, PF_HOOKN,
-       PF_N };
+       PF_SKIPPED, PF_N };
 #define PFF_2D 1u        /* a composite ended this frame and its 2D is being timed */
 #define PFF_PRES 2u      /* the game's present call is being timed */
 #define AB_FLUSH 1u      /* glFlush after the frame's last batch (start the tile render) */
@@ -1957,6 +1957,20 @@ int a4_gl_frame(uint32_t fps)
     }
 #else
     (void)had;
+#endif
+#ifdef A4_SKIPREPRES
+    /* The race loop (+808) presents three times an iteration: +950 and +97E re-post the
+     * previous frame, +9A6 the new one (MBX.md, the lr-capture). Each present call stretches
+     * to a fixed period (round 16's timers: the frame pinned at 85.0 ms, the slack inside the
+     * present calls), so the two re-posts cap the render rate. Skipped here -- the screen
+     * already shows that frame -- and only from those two sites: menus present from
+     * elsewhere. DoPresent's caller return is stashed at 0x400840 by a4_fps_tramp. */
+    {   extern const int32_t a4_rep1, a4_rep2;
+        uint32_t caller = *(volatile uint32_t *)0x00400840u;
+        uint32_t r1 = (uint32_t)(uintptr_t)&a4_rep1 + (uint32_t)a4_rep1;
+        uint32_t r2 = (uint32_t)(uintptr_t)&a4_rep2 + (uint32_t)a4_rep2;
+        if (caller == r1 || caller == r2) { presented = 1; A4_PERF[PF_SKIPPED]++; }
+    }
 #endif
     s->prims = 0;
     s->flushed = 0;

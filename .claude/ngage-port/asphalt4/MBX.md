@@ -3355,3 +3355,51 @@ Battery on the exact phone binary (r16_phone, sha256
 cf8940959e3d78f69186d34e7226e2205242cb0ae24f256e40d3e4a8937a1c6c; telerun3 230 s):
 framestat 4902, faults 1 (the known boot fault), errc 0, late_tris 0, leak.py 0; the
 race-first garage route (racemenu.sh): HOME panel, stats box and bar drawn.
+
+## Phone round 16 (r16_phone cf894095): the band persists; not a billboard; the game's own 85 ms render gate
+
+Owner: the lines still appear for a frame, anywhere between leaving the tunnel and crossing
+the line (photos: two thin dark full-width lines ~15-40 rows apart in the upper screen,
+once with the lap time between them, once during "ESCAPED!").
+Telemetry (8 files, capidx 54-61; not repeats of round 15 -- forced composite for software
+billboards, outlined fills as quads, the billboard probe, phase timers): errc 0;
+late_tris 0; surf2 0; leak.py 0; ntex 168-254.
+- Billboard probe: ~50,000 calls, ALL mode 2; no non-mode-2 sprite; forced composites 0;
+  outlined fills on the GPU 0; the 356 "software" billboards are empty rectangles (off
+  screen). REFUTED: the band is not a billboard (round 16's guess 1).
+- Phase timers, per render (ms), race windows with the HUD (54, 55, 56):
+  54 (106.5 total): 3D pass 47.7 (our hook 20.3 of it), composite 15.4, 2D 6.9, present
+  18.6, rest 17.9; 55 (85.0): 17.2 (13.4), 14.3, 7.2, 28.7, 17.6; 56 (85.0): 15.9 (9.2),
+  14.8, 6.6, 30.2, 17.5. Demo race without the HUD (58-61, the Nissan, ~2,000 triangles a
+  render): 93.8-107.8 total, 3D 38-50 (hook 26-36), composite 15.4-16.5, present 15.4-19.5,
+  rest 21-24. Window 57 (1,198 ms a render): a load or pause.
+- THE FINDING: light windows sit at exactly 85.0 ms a render, and the slack is inside the
+  game's present calls (28-30 ms for the three, against 18.6 when the frame is heavy).
+  Bench test (A4_SKIPREPRES: DoPresent's caller stashed by a4_fps_tramp, the presents from
+  +950 and +97E skipped): still 85.0 ms a render on the bench, the present phase down to
+  ~1 ms and the "rest" up to ~50 ms, presents per second 360-576 (the loop now spins,
+  rendering 3D on ~1 iteration in 16). So the race loop gates its 3D render at ~85 ms
+  (~11.8 a second) by itself; the three presents only absorbed the wait, which masked the
+  gate in the round-25-era RE ("the loop runs free", MBX.md "RE conclusion" -- corrected
+  here: free-running iterations, gated renders). Light scenes are already at that cap on
+  the phone; heavy ones are above it, work-bound. Not shipped (no gain at the cap; it
+  turns the loop into a spin).
+- Our hook costs 9-20 ms a render in the race and 26-36 in the demo race: the largest
+  item of ours after the composite.
+
+## Round 17: the A/B -- the same build with the GPU drawing off (A4_SWONLY)
+
+Not repeats of: rounds 13-16 (GPU builds), nor of any stock measurement (none was ever
+taken on the phone with timers).
+Two questions one phone round answers and the bench cannot: (1) are the lap-section lines
+ours? -- if they appear with the GPU drawing nothing, they are the game's or the runtime's
+(the present, the LCD); (2) the stock frame on the N95, split by the same phase timers --
+the baseline for any speed-up claim, which the plan has lacked since round 0.
+Build r17_sw = round 16's flags minus A4_TAKEBB/A4_TAKEFILL, plus A4_SWONLY: GL is up and
+the frames counted (telemetry, timers, the billboard probe), every triangle, billboard and
+fill drawn by the game's own software; no readback (nothing drawn, miny > maxy).
+A4_SKIPREPRES (round 16's bench test) is in the source, off.
+Bench, the exact binary (sha256 085ac5211dd220d805857b54e44178807a6466627843aa4d6d1ecbbd2ace8ac7;
+telerun3 230 s): framestat 3752, faults 1 (the known boot fault), errc 0; captures are the
+stock picture (the mode-4 road grain back); per render (bench host time) 3D pass in
+software 40-54 ms, 2D 6.6-10.4, present 13-24, rest 13-19; the 85 ms gate as before.

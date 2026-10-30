@@ -80,7 +80,7 @@ a4_fps_tramp:
         @ takes arguments in r1/r2 that the surrounding code computed before +0x1E6,
         @ and the tick/draw calls would clobber them. r4 is callee-saved by them.
         push    {r0, r1, r2, r3, r12, lr}
-#ifdef A4_LRCAP
+#if defined(A4_LRCAP) || defined(A4_SKIPREPRES)
         @ stash DoPresent's caller return address (its push {r4,lr} frame sits just
         @ above our 6-word push: [sp+28]) so a4_gl_frame can histogram which call site
         @ presents on a real-render vs an empty frame. r2/r3 are restored by the pop
@@ -110,6 +110,11 @@ a4_fps_tick_iat:
         .global a4_fps_home_iat
 a4_fps_home_iat:
         .word   0xDEADBEEF          @ patched: (code+0x50CF0) - (this word's addr)
+        .global a4_rep1, a4_rep2
+a4_rep1:
+        .word   0xDEADBEEF          @ patched: (code+0x955) - (this word's addr): DoPresent's return from +950
+a4_rep2:
+        .word   0xDEADBEEF          @ patched: (code+0x983) - (this word's addr): DoPresent's return from +97E
 3:      ldr     r1, [r1]            @ r1 = &TTime::HomeTime (arg1)
         bl      a4_fps_tick         @ a4_fps_tick(tickcount_fn, hometime_fn); preserves r4-r11
         cmp     r0, #0              @ 1 = the GPU presented this frame (A4_WINDOW)

@@ -303,6 +303,12 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         ph_link = syms['a4_fill_skip']
         word = ((LINK_BASE + FILL_SKIP_RET) | 1) - ph_link
         struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
+    # the race loop's two re-present return sites (A4_SKIPREPRES compares DoPresent's caller)
+    if not clean:
+        for sym, ret in (('a4_rep1', 0x955), ('a4_rep2', 0x983)):
+            ph_link = syms[sym]
+            word = (LINK_BASE + ret) - ph_link
+            struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
 
     code = bytearray(d[code_off:code_off + code_size])
     code += b'\0' * (new_off - code_size) + blob
