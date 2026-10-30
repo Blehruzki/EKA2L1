@@ -216,7 +216,15 @@
 #define A4_PERF ((volatile uint32_t *)0x00412C00u)
 enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE,
-       PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_TEXRE, PF_EVICT, PF_SURF, PF_N };
+       PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_TEXRE, PF_EVICT, PF_SURF,
+       /* round 16 phase timers (this window, nticks): the 3D pass (first triangle to the
+        * composite), the composite (the last batch, the read, the blit), the 2D after it
+        * (to the present), the game's present call (+1EC: the runtime's convert and post),
+        * and our draw_primitive hook (every 4th call timed, x4); then their marks */
+       PF_T3D, PF_TFLUSH, PF_T2D, PF_TPRES, PF_HOOK, PF_MFIRST, PF_MFLEND, PF_MPRES, PF_FLAGS, PF_HOOKN,
+       PF_N };
+#define PFF_2D 1u        /* a composite ended this frame and its 2D is being timed */
+#define PFF_PRES 2u      /* the game's present call is being timed */
 #define AB_FLUSH 1u      /* glFlush after the frame's last batch (start the tile render) */
 #define AB_NATIVE 2u     /* read back in the implementation's own pair (OES_read_format): BGRA
                           * on the N95 (round 10), RGB565 on a device that names that */
@@ -1030,6 +1038,7 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
          * the next frame, was composited onto the SCREEN, over the 2D drawn before it
          * (round 13-14: the HOME panel and the garage's stats box and bar). */
         *(volatile uint32_t *)A4_GL_BB = gctx[0x4c / 4];
+        A4_PERF[PF_MFIRST] = a4_ntick();                /* the 3D pass begins */
 #if defined(A4_TEL) && defined(A4_ABCYCLE)
         s->fmode = A4_PERF[PF_MODE];                   /* a4_tel.c steps it per capture window */
 #else
@@ -1221,7 +1230,19 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 
 int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 {
+#ifdef A4_TEL
+    /* every 4th call timed (NTickCount is 1 ms: summed over many calls the count of ticks
+     * crossed is an unbiased measure of the time inside), x4 */
+    int r;
+    if ((++A4_PERF[PF_HOOKN] & 3u) == 0 && ((volatile struct glr *)A4_GL_SCRATCH)->up == A4_GL_MAGIC) {
+        uint32_t t0 = a4_ntick();
+        r = draw_prim_take(gctx, desc, flags);
+        A4_PERF[PF_HOOK] += (a4_ntick() - t0) * 4u;
+    } else
+        r = draw_prim_take(gctx, desc, flags);
+#else
     int r = draw_prim_take(gctx, desc, flags);
+#endif
 #ifdef A4_SWHIST
     /* diagnosis: the census of the calls left to SOFTWARE (returned 0), by (flags,
      * ctx[0x64]), in A4_FLAGHIST's table format at 0x412D00 -- under A4_IMM what software
@@ -1694,6 +1715,8 @@ void a4_gl_flush(void)
     if (s->up != A4_GL_MAGIC || s->prims == 0 || s->flushed) return;
     s->flushed = 1;
     s->last_prims = s->prims;                            /* frame's prim count (device probe) */
+    uint32_t tf0 = a4_ntick();
+    A4_PERF[PF_T3D] += tf0 - A4_PERF[PF_MFIRST];
 
     /* PIPELINED (no A4_IMM): this frame's primitives are drawn now, at the frame's end,
      * and read back at the NEXT frame's first primitive (composite_prev) -- one frame of
@@ -1729,6 +1752,7 @@ void a4_gl_flush(void)
 #endif
     A4_PERF[PF_RENDERS]++;
     { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a draw GL error */
+    { uint32_t tf1 = a4_ntick(); A4_PERF[PF_TFLUSH] += tf1 - tf0; A4_PERF[PF_MFLEND] = tf1; A4_PERF[PF_FLAGS] |= PFF_2D; }
 
     /* this frame's drawn extent is what composite_prev reads back next frame */
     s->pminy = s->miny; s->pmaxy = s->maxy;
@@ -1909,7 +1933,9 @@ int a4_gl_frame(uint32_t fps)
         if (i < 40u) { if (had) tab[1 + i*3 + 1]++; else tab[1 + i*3 + 2]++; }
     }
 #endif
+    if (A4_PERF[PF_FLAGS] & PFF_2D) A4_PERF[PF_T2D] += a4_ntick() - A4_PERF[PF_MFLEND];
     a4_gl_flush();                                      /* draw this frame on the GPU */
+    A4_PERF[PF_FLAGS] &= ~PFF_2D;                       /* a composite inside it has no 2D after */
     int presented = 0;
 #ifdef A4_WINDOW
     if (s->surf) {
@@ -1938,5 +1964,13 @@ int a4_gl_frame(uint32_t fps)
 #ifdef A4_TEL
     a4_tel_tick(had);   /* on-device capture: C:\a4telN.dat; had = 3D prims this present */
 #endif
+    A4_PERF[PF_MPRES] = a4_ntick(); A4_PERF[PF_FLAGS] |= PFF_PRES;   /* the game's present call next */
     return presented;
+}
+
+/* After the game's present call (+1EE, a4_pres_tramp): its time, the runtime's 565 to
+ * 32-bit convert and the post, every present (re-presents included). */
+void a4_gl_presented(void)
+{
+    if (A4_PERF[PF_FLAGS] & PFF_PRES) { A4_PERF[PF_TPRES] += a4_ntick() - A4_PERF[PF_MPRES]; A4_PERF[PF_FLAGS] &= ~PFF_PRES; }
 }

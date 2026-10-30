@@ -47,7 +47,9 @@ extern void a4_gl_dumpgpu(void (*wr)(int, const void *, int), int base);
 #define A4_PERF ((volatile uint32_t *)0x00412C00u)   /* a4_gl.c PF_*: same order */
 enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE,
-       PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_TEXRE, PF_EVICT, PF_SURF, PF_N };
+       PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_TEXRE, PF_EVICT, PF_SURF,
+       PF_T3D, PF_TFLUSH, PF_T2D, PF_TPRES, PF_HOOK, PF_MFIRST, PF_MFLEND, PF_MPRES, PF_FLAGS, PF_HOOKN,
+       PF_N };
 #define EFILE_WRITE 0x200u
 #define DES(len) ((1u<<28) | ((uint32_t)(len)))  /* TPtrC iLength: EPtrC(1)<<28 | len */
 
@@ -163,9 +165,12 @@ void a4_tel_tick(uint32_t had)
     h[i++] = bb;
     h[i++] = g[0];  /* up */        h[i++] = g[1];  /* frames */
     h[i++] = g[2];  /* prims */     h[i++] = g[3];  /* errc */
-    h[i++] = g[4];  /* ntex */      h[i++] = g[7];  /* bstep */
-    h[i++] = g[8];  /* last_prims */h[i++] = g[17]; /* winstep */
-    h[i++] = g[18]; /* wvis */      h[i++] = g[19]; /* idle2d */
+    /* [13] [14] [16] [17] [18] held ntex (as [54]), bstep (6 once up) and the A4_WINDOW
+     * fields, none of them live in the blit build; from round 16 the window's phase timers:
+     * 3D pass, our hook (sampled), 2D after the composite, the game's present, composite */
+    h[i++] = A4_PERF[PF_T3D];       h[i++] = A4_PERF[PF_HOOK];
+    h[i++] = g[8];  /* last_prims */h[i++] = A4_PERF[PF_T2D];
+    h[i++] = A4_PERF[PF_TPRES];     h[i++] = A4_PERF[PF_TFLUSH];
     h[i++] = g[11]; /* miny */      h[i++] = g[12]; /* maxy */
     h[i++] = g[13]; /* pminy */     h[i++] = g[14]; /* pmaxy */
     h[i++] = fp[5];  /* fps (a4_fps disp: frames in the last 1s window) */
@@ -249,6 +254,7 @@ void a4_tel_tick(uint32_t had)
 #endif
         pf[PF_RENDERS] = 0; pf[PF_COMP] = 0; pf[PF_READ] = 0; pf[PF_DRAW] = 0;
         pf[PF_GLFLUSH] = 0; pf[PF_CALLS] = 0; pf[PF_TRIS] = 0; pf[PF_M1TEX] = 0; pf[PF_M1T] = 0;
+        pf[PF_T3D] = 0; pf[PF_TFLUSH] = 0; pf[PF_T2D] = 0; pf[PF_TPRES] = 0; pf[PF_HOOK] = 0;
         pf[PF_T0] = a4_ntick();
     }
 }

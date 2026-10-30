@@ -50,14 +50,16 @@ CAPTURE_HOOKS = {0x300B2: 'a4_prim_capture_tramp',
                  0x2973A: 'a4_hud_tramp',     # round 11: the end of the 3D pass (HUD painter)
                  0x30252: 'a4_bbq_tramp',     # round 12: the billboard blit, a GPU quad
                  0x305A2: 'a4_bb2_tramp',     # its two-depth sibling: composite there
-                 0x2AB0C: 'a4_fill_tramp'}    # round 13: the rectangle fill (letterbox), a GPU quad
+                 0x2AB0C: 'a4_fill_tramp',    # round 13: the rectangle fill (letterbox), a GPU quad
+                 0x1EE: 'a4_pres_tramp'}      # round 16: after the game's present call (its timer)
 # the displaced halfwords each capture hook's trampoline re-executes; checked before the
 # BLX goes in, so a different image cannot be patched blind
 CAPTURE_DISPLACED = {0x300B2: (0x0005, 0x0014),     # movs r5, r0 ; movs r4, r2
                      0x2973A: (0x9C1C, 0x0007),     # ldr r4, [sp, #0x70] ; movs r7, r0
                      0x30252: (0x693B, 0x687A),     # ldr r3, [r7, #0x10] ; ldr r2, [r7, #4]
                      0x305A2: (0x469C, 0x000D),     # mov ip, r3 ; movs r5, r1
-                     0x2AB0C: (0xA90A, 0xC962)}     # add r1, sp, #0x28 ; ldm r1, {r1, r5, r6}
+                     0x2AB0C: (0xA90A, 0xC962),     # add r1, sp, #0x28 ; ldm r1, {r1, r5, r6}
+                     0x1EE: (0x2000, 0x66E0)}       # movs r0, #0 ; str r0, [r4, #0x6c]
 CAPTURE_SKIP_RET = 0x300E0      # draw_primitive epilogue; GPU-drawn prims return here
 BB_SKIP_RET = 0x3031C           # the billboard blit's epilogue; GPU-queued sprites return here
 FILL_SKIP_RET = 0x2AB4C         # the rectangle fill's epilogue; GPU-queued fills return here

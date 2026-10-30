@@ -3337,3 +3337,21 @@ Rule 4 -- guesses, named: (1) the band is a mode-1 (or refused) billboard -- unp
 probe names the phone's non-mode-2 sprites, and [120] counts the forced composites; (2) a
 forced composite early in the 3D pass would put the rest of the frame in software (slow
 for that frame, still correct) -- late_tris measures it.
+Owner, before testing round 16: the band lasts a frame or two only (hence hard to
+photograph). Consistent with a transition effect the game draws for a frame or two at the
+line (the inferred mode-1 billboard); it does not settle it -- the probe does.
+Round 16 rebuilt with phase timers (the owner asked; not shipped yet, so the earlier
+r16 binary 12d2753d is superseded). Each window's time split, in NTickCount ms:
+the 3D pass (a frame's first triangle to the composite), our draw_primitive hook inside it
+(every 4th call timed, x4: NTickCount is 1 ms, and over many calls the ticks crossed are an
+unbiased measure), the composite (last batch, read, blit), the 2D after it (to the
+present), the game's present call (a new hook after +1EC's blx, at +1EE: the runtime's
+565-to-32 convert and the post, re-presents included), and the rest = the window minus
+those (game logic before the 3D and between re-presents). Header words 13, 14, 16, 17, 18
+(ntex duplicated at 54, bstep 6 once up, the A4_WINDOW fields: none live in this build).
+Bench (the exact binary; host-paced, not phone time): per render 3D 17-25 (hook 7-13 of it),
+composite 17-19, 2D 6.5-9, present 18-28, rest 16-19, summing to the 85 ms render.
+Battery on the exact phone binary (r16_phone, sha256
+cf8940959e3d78f69186d34e7226e2205242cb0ae24f256e40d3e4a8937a1c6c; telerun3 230 s):
+framestat 4902, faults 1 (the known boot fault), errc 0, late_tris 0, leak.py 0; the
+race-first garage route (racemenu.sh): HOME panel, stats box and bar drawn.

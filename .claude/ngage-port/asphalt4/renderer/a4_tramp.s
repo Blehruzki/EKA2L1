@@ -176,6 +176,17 @@ a4_hud_tramp:
         pop     {r0, r1, r2, r3, r12, lr}
         bx      lr                  @ -> +0x2973E (Thumb)
 
+@ ---- after the game's present call (+1EC blx r3), at +1EE: times it (a4_gl_presented).
+@ The displaced pair runs after the pop; flags are dead (+1F2 is pop {r4, pc}). ----
+        .global a4_pres_tramp
+a4_pres_tramp:
+        push    {r0, r1, r2, r3, r12, lr}
+        bl      a4_gl_presented
+        pop     {r0, r1, r2, r3, r12, lr}
+        mov     r0, #0              @ displaced +1EE: movs r0, #0
+        str     r0, [r4, #0x6c]     @ displaced +1F0: str r0, [r4, #0x6c]
+        bx      lr                  @ -> +0x1F2 (Thumb)
+
 @ ---- the scaled billboard blit (+3015E): the glows, the nitro flame, the pickups --
 @ 2D sprites the game draws straight into its surface, outside draw_primitive, among
 @ the last triangles of the 3D pass (and in the middle of it in the city; round 12's

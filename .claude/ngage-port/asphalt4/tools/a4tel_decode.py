@@ -4,10 +4,11 @@
 # Word 49 was dual_frames up to round 12 (0 under A4_IMM); fill_gpu from round 13.
 # Word 38 was w_glflush, 46 rd_err, up to round 13; tex_remade and tex_evicted from round 14.
 # Word 43 was home_us up to round 14; surf2_tris from round 15.
+# Words 13,14,16,17,18 were ntex,bstep,winstep,wvis,idle2d up to round 15; the window's phase timers from round 16.
 import sys, struct, os
 from PIL import Image
 NAMES=['magic','ver','capidx','fcount','W','H','stride','fbbytes','bb','up','frames',
-       'prims','errc','ntex','bstep','last_prims','winstep','wvis','idle2d','miny','maxy',
+       'prims','errc','t_3d','t_hook','last_prims','t_2d','t_pres','t_flush','miny','maxy',
        'pminy','pmaxy','fps','min_dt','max_dt','fps_bytes',
        'gl_renders','gl_calls','gl_tris','gl_maxcalls','gl_lastcalls',
        # v4
@@ -27,6 +28,12 @@ for fn in sys.argv[1:]:
               ' composite %.2f (read %.2f), batch draw %.2f, [38]/r %.2f; %.0f calls, %.0f tris'
               % (h[32], 'flush' if h[32]&1 else 'noflush', '+native' if h[32]&2 else '', r, h[34], h[34]/r,
                  h[35]/r, h[36]/r, h[37]/r, h[38]/r, h[39]/r, h[40]/r))
+        if h[13] or h[16] or h[17] or h[18]:
+            # round 16 phase timers: the window split into 3D pass, composite, 2D, the game's
+            # present, and the rest (game logic before the 3D, and between re-presents)
+            other = h[34] - h[13] - h[18] - h[16] - h[17]
+            print('  phases per render (ms): 3D pass %.1f (our hook %.1f of it), composite %.1f, 2D %.1f,'
+                  ' present %.1f, rest (logic) %.1f' % (h[13]/r, h[14]/r, h[18]/r, h[16]/r, h[17]/r, other/r))
     if h[27]:
         print('  GL census: %d renders, %.0f draw calls/render, %.0f triangles/render, max %d calls, last %d'
               % (h[27], h[28]/h[27], h[29]/h[27], h[30], h[31]))
