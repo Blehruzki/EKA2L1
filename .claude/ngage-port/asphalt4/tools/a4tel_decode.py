@@ -38,9 +38,9 @@ for fn in sys.argv[1:]:
                   ' present %.1f, rest (logic) %.1f' % (h[13]/r, h[14]/r, h[18]/r, h[16]/r, h[17]/r, other/r))
         if h[59]:
             m = h[32]
-            print('  round 18 mode %d: re-presents %s, reorder %s | %.0f calls a render before grouping, %.0f made;'
+            print('  mode %d: re-presents %s, reorder %s%s | %.0f calls a render before grouping, %.0f made;'
                   ' grouping %.2f ms | presents %.2f a render, %.2f skipped'
-                  % (m, 'SKIPPED' if m & 4 else 'kept', 'ON' if m & 8 else 'off', h[59]/r, h[39]/r, h[57]/r, h[45]/r, h[44]/r))
+                  % (m, 'SKIPPED' if m & 4 else 'kept', 'ON' if m & 8 else 'off', ' INDEXED' if m & 16 else '', h[59]/r, h[39]/r, h[57]/r, h[45]/r, h[44]/r))
     if h[27]:
         print('  GL census: %d renders, %.0f draw calls/render, %.0f triangles/render, max %d calls, last %d'
               % (h[27], h[28]/h[27], h[29]/h[27], h[30], h[31]))
@@ -53,15 +53,17 @@ for fn in sys.argv[1:]:
     ao = fboff + h[7] + 122*4
     if len(d) >= ao + 384*4:
         ag = struct.unpack('<384I', d[ao:ao+384*4])
+        ag20 = len(d) >= ao + 385*4 and struct.unpack('<I', d[ao+384*4:ao+385*4])[0] == 0x41473230
         for sg in range(3):
             for m in range(4):
                 a = ag[sg*128 + m*32: sg*128 + m*32 + 32]
                 if not a[0]: continue
                 r = a[0]; hist = a[16:32]; nh = sum(hist)
                 over = sum(hist[7:]) if nh else 0          # bins >= 90 ms
-                print('  AGG seg%d mode %d (%s): %d windows, %d renders, %.1f ms a render | 3D %.1f (hook %.1f) comp %.1f (read %.1f)'
+                lbl = ('%s, %s' % ('skip' if m & 1 else 'kept', 'indexed' if m & 2 else 'copy')) if ag20 else ('skip' if m & 1 else 'kept')
+                print('  AGG seg%d slot %d (%s): %d windows, %d renders, %.1f ms a render | 3D %.1f (hook %.1f) comp %.1f (read %.1f)'
                       ' draw %.1f 2D %.1f pres %.1f grouping %.2f | calls %.0f (before %.0f) tris %.0f | presents %.2f skipped %.2f a render'
-                      % (sg, m*4 | 2, 'skip' if m & 1 else 'kept', a[15], r, a[1]/r, a[2]/r, a[3]/r, a[4]/r, a[5]/r, a[6]/r, a[7]/r, a[8]/r,
+                      % (sg, m, lbl, a[15], r, a[1]/r, a[2]/r, a[3]/r, a[4]/r, a[5]/r, a[6]/r, a[7]/r, a[8]/r,
                          a[9]/r, a[10]/r, a[11]/r, a[12]/r, a[13]/r, a[14]/r))
                 if nh:
                     lab = ['<60'] + ['%d' % (60 + 5*i) for i in range(14)] + ['130+']

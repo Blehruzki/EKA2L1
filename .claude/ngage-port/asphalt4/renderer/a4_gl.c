@@ -142,6 +142,7 @@
 #define GL_FIXED 0x140C
 #define GL_SHORT 0x1402
 #define GL_UNSIGNED_BYTE 0x1401
+#define GL_UNSIGNED_SHORT 0x1403
 #define GL_UNSIGNED_SHORT_5_6_5 0x8363
 #define GL_UNSIGNED_SHORT_5_5_5_1 0x8034
 #define GL_COLOR_BUFFER_BIT 0x4000
@@ -232,6 +233,7 @@ _Static_assert(PF_N <= 64, "A4_PERF holds 64 words (0x412C00-0x412D00)");
                           * on the N95 (round 10), RGB565 on a device that names that */
 #define AB_SKIPREP 4u    /* skip the race loop's two re-presents (A4_SKIPREPRES, round 18) */
 #define AB_REORDER 8u    /* group the batch into fewer draw calls (A4_REORDER, round 18) */
+#define AB_INDEXED 16u   /* draw the groups through an index list instead of a copy (round 20) */
 #ifndef A4_ABMODE
 #define A4_ABMODE 0u     /* the mode when nothing cycles it (no A4_ABCYCLE) */
 #endif
@@ -314,6 +316,8 @@ static void  gl_vertexptr(int s,uint32_t t,int st,const void*p){ ((void(*)(int,u
 static void  gl_texcoordptr(int s,uint32_t t,int st,const void*p){ ((void(*)(int,uint32_t,int,const void*))F(20))(s,t,st,p); }
 static void  gl_color4x(int r,int g,int b,int a){ ((void(*)(int,int,int,int))F(21))(r,g,b,a); }
 static void  gl_drawarrays(uint32_t m,int f,int c){ ((void(*)(uint32_t,int,int))F(22))(m,f,c); }
+static void  gl_drawelements(uint32_t m,int c,uint32_t t,const void*ix) __attribute__((unused));
+static void  gl_drawelements(uint32_t m,int c,uint32_t t,const void*ix){ ((void(*)(uint32_t,int,uint32_t,const void*))F(27))(m,c,t,ix); }   /* ord 55 (stage 4, against the ROM) */
 static void  gl_shademodel(uint32_t m){ ((void(*)(uint32_t))F(23))(m); }
 static void  gl_texenvx(uint32_t tg,uint32_t p,int v){ ((void(*)(uint32_t,uint32_t,int))F(24))(tg,p,v); }
 static uint32_t gl_geterror(void){ return ((uint32_t(*)(void))F(25))(); }   /* device probe */
@@ -585,6 +589,9 @@ _Static_assert(A4_GL_THINT + 2u * THINT_N <= 0x00421000u, "texture hints past th
 #define A4_GL_AGG 0x00421000u
 struct agg { uint32_t seg[3][4][32]; };
 #define AGG ((volatile struct agg *)A4_GL_AGG)
+/* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
+ * (mode >> 2) & 3, its files carry no format word after the segments) */
+#define AGG_SLOT(m) ((((m) >> 2) & 1u) | (((m) >> 3) & 2u))
 _Static_assert(A4_GL_AGG + sizeof(struct agg) <= A4_GL_SCRATCH_TOP, "aggregates past the scratch");
 static void agg_render(uint32_t now)
 {
@@ -600,7 +607,7 @@ static void agg_render(uint32_t now)
         return;
     }
     uint32_t b = iv < 60u ? 0u : iv >= 130u ? 15u : ((iv - 55u) * 13108u) >> 16;   /* /5, exact here */
-    AGG->seg[0][(A4_PERF[PF_MODE] >> 2) & 3u][16u + b]++;
+    AGG->seg[0][AGG_SLOT(A4_PERF[PF_MODE])][16u + b]++;
 }
 #endif
 static inline uint32_t thint_of(uint32_t key, uint32_t tabk, uint32_t src)
@@ -1162,7 +1169,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE3)
+#if defined(A4_TEL) && defined(A4_ABCYCLE4)
+        /* round 20: a4_tel.c alternates AB_INDEXED per capture window; native, skip, reorder on */
+        A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE3)
         /* round 19: a4_tel.c alternates AB_SKIPREP per capture window; native, reorder on */
         A4_PERF[PF_MODE] |= AB_NATIVE | AB_REORDER;
         s->fmode = A4_PERF[PF_MODE];
@@ -1692,7 +1703,7 @@ static void kind_leave(uint32_t st)
 /* One run of equal TEXID words: switch GL state if its kind differs from the
  * previous run's (*st), then draw. The state left between runs is the kind's own;
  * batch_draw restores KIND_TEX (the bring-up state) when it is done. */
-static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st)
+static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st, const uint16_t *ix)
 {
     uint32_t kind = mat >> 28;
     if (kind == KIND_TEXZ && !((volatile struct glr *)A4_GL_SCRATCH)->zbits)
@@ -1707,7 +1718,8 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st)
         if (kind == KIND_FLAT) gl_color4x(0, FX, 0, FX);
         else if (kind == KIND_ADD || kind == KIND_ADDF) gl_color4x(0, FX, FX, FX);
         else gl_color4x(FX, 0, 0, FX);                 /* shadows red */
-        gl_drawarrays(GL_TRIANGLES, (int)(first*3), (int)(count*3));
+        if (ix) gl_drawelements(GL_TRIANGLES, (int)(count*3), GL_UNSIGNED_SHORT, ix + first*3);
+        else gl_drawarrays(GL_TRIANGLES, (int)(first*3), (int)(count*3));
         return;
     }
 #endif
@@ -1759,7 +1771,10 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st)
     } else if (kind != KIND_SHAD) {
         gl_bindtex(GL_TEXTURE_2D, mat & 0x0FFFFFFFu);
     }
-    gl_drawarrays(GL_TRIANGLES, (int)(first*3), (int)(count*3));
+    /* an index list (AB_INDEXED): the run's triangles where they sit in the batch, in run
+     * order -- the same triangles in the same order as the copy draws */
+    if (ix) gl_drawelements(GL_TRIANGLES, (int)(count*3), GL_UNSIGNED_SHORT, ix + first*3);
+    else gl_drawarrays(GL_TRIANGLES, (int)(first*3), (int)(count*3));
 }
 
 /* Draw the accumulated frame in arrival order, one glDrawArrays per run of
@@ -1803,6 +1818,20 @@ static void batch_draw(uint32_t nt)
         }
         ro->tail[found] = (uint16_t)t; ro->cnt[found]++;
     }
+    uint16_t *ix = 0;
+    if (((volatile struct glr *)A4_GL_SCRATCH)->fmode & AB_INDEXED) {
+        /* the index list in run order, in the copy's place (nothing is copied in this mode):
+         * 3 * 512 indices < 2^16 */
+        ix = (uint16_t *)ro->pos;
+        uint32_t o = 0;
+        for (uint32_t r = 0; r < nr; r++) {
+            uint32_t t = ro->head[r];
+            for (uint32_t c = ro->cnt[r]; c; c--) {
+                ix[o] = (uint16_t)(t * 3u); ix[o + 1] = (uint16_t)(t * 3u + 1u); ix[o + 2] = (uint16_t)(t * 3u + 2u);
+                o += 3u; t = ro->next[t];
+            }
+        }
+    } else
     {   /* the vertices in run order */
         const int32_t *P = (const int32_t *)A4_GL_POS, *U = (const int32_t *)A4_GL_UV;
         int32_t *po = ro->pos, *uo = ro->uv;
@@ -1847,11 +1876,11 @@ static void batch_draw(uint32_t nt)
         if (o != nt) ck[103]++;                     /* lost or doubled triangles */
     }
 #endif
-    gl_vertexptr(4, GL_FIXED, 0, (const void *)ro->pos);
-    gl_texcoordptr((int)UVC, GL_FIXED, 0, (const void *)ro->uv);
+    gl_vertexptr(4, GL_FIXED, 0, ix ? (const void *)A4_GL_POS : (const void *)ro->pos);
+    gl_texcoordptr((int)UVC, GL_FIXED, 0, ix ? (const void *)A4_GL_UV : (const void *)ro->uv);
     uint32_t st = KIND_TEX, first = 0;
     for (uint32_t r = 0; r < nr; r++) {
-        draw_run(ro->key[r], first, ro->cnt[r], &st);
+        draw_run(ro->key[r], first, ro->cnt[r], &st, ix);
         first += ro->cnt[r];
     }
     kind_leave(st);
@@ -1872,12 +1901,12 @@ static void batch_draw(uint32_t nt)
     uint32_t cur = TEXID[0];
     for (uint32_t t = 1; t < nt; t++) {
         if (TEXID[t] != cur) {
-            draw_run(cur, run_start, t - run_start, &st);
+            draw_run(cur, run_start, t - run_start, &st, 0);
             run_start = t;
             cur = TEXID[t];
         }
     }
-    draw_run(cur, run_start, nt - run_start, &st);  /* final run */
+    draw_run(cur, run_start, nt - run_start, &st, 0);  /* final run */
     kind_leave(st);
 #if defined(A4_RUNDIAG) || defined(A4_TEL)
     {   /* draw calls this frame (one per same-texture run); folded at flush */

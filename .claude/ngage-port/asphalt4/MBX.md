@@ -3634,3 +3634,23 @@ capture covers the race segment: 27 windows a mode, ~1,080 renders each.
 - Now (skipped, reorder): 87.6 ms a render over a race; the step is 85.33. Ours ~33 ms
   (hook CPU ~10, GL 10.6, grouping 2.0, composite 10.8), the game's ~31 (3D 19.3, 2D 6.1,
   logic), spin the rest.
+
+## Round 20 bench: re-presents skipped always; the A/B is copy against an index list
+
+Not a repeat: the index list has never been drawn with (stage 5's glDrawElements drew a
+depth-sorted frame, a different thing). The re-present skip is now fixed on (round 19:
+-6.9 ms a render over the race), the reorder too.
+- AB_INDEXED (16): batch_draw writes the grouped order as indices (t*3, t*3+1, t*3+2 a
+  triangle, in the copy's buffer) and draws each run with glDrawElements (IAT [27],
+  ordinal 55) over the batch's own arrays -- no 100 KB copy. A4_ABCYCLE4 alternates it a
+  window (modes 14 copy, 30 indexed). The aggregates' slot is now bit 0 skip, bit 1 indexed,
+  marked by a format word 'AG20' after the segments (round 19's files decode as before).
+  What the phone answers: the grouping's cost without the copy (us a triangle) and whether
+  the driver's per-call or per-triangle cost changes with indices (it may walk an index
+  range) -- the batch-draw fit against calls and triangles, by mode.
+- Checks on this code, both modes: A4_REOCHECK 0 overlapping (~15 M pairs), no triangle
+  lost; A4_BLITCHECK 0 of ~20,000 strips. Bench grouping 1.06 -> 0.82 ms a render (copy ->
+  indexed).
+- Bench, the exact binary r20_phone (sha256 c927c880b5ea02486414b29423c7b84cb2744c034b76f5ab5299a66245ffa48c):
+  telerun3 230 s, framestat 5621, faults 1 (the boot fault), errc 0; whole race: copy 85.5
+  ms a render, 6% at 90+; indexed 85.2, 5% (at the step); racemenu after a race right.
