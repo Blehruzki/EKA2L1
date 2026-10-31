@@ -3542,3 +3542,42 @@ What it measures (same session, alternating windows, ~500-830 triangles a render
 Instrument lesson (rule 4, what the run never entered): a ring of 8 windows holds only the
 last ~25 s of 3D; anything 3D after the race (the garage) displaces the race. Next time:
 quit from the race or the main menu, not through the garage.
+
+## Phone round 18, second run (same binary): race windows -- the reorder pays, the re-present skip does not show
+
+Not a repeat: round 18's first run held only garage windows. Same binary (84cd0a87), owner
+quit after the race without the garage. Eight race windows, capidx 46-53, lap 3 of 3 (the
+Enzo at 340-430 km/h, 1,061-1,604 triangles a render), errc 0, modes 10 14 2 6 10 14 2 6:
+  46 m10 (kept, reorder):  96.6 ms  3D 41.8 (hook 22.6)  comp 11.1  2D 7.4  pres 15.2  rest 21.1  calls 533->328
+  47 m14 (skip, reorder):  92.4     3D 47.9 (hook 20.4)  comp 12.2  2D 7.8  pres  0.6  rest 23.9  calls 535->289
+  48 m2  (kept):           86.6     3D 28.4 (hook 17.8)  comp 12.5  2D 7.2  pres 20.7  rest 17.8  calls 453
+  49 m6  (skip):           84.1     3D 29.3 (hook 19.5)  comp 12.6  2D 5.8  pres  2.4  rest 34.0  calls 429
+  50 m10:                  87.9     3D 32.5 (hook 14.8)  comp 11.8  2D 5.6  pres 22.3  rest 15.7  calls 263->196
+  51 m14:                  83.2     3D 39.8 (hook 17.1)  comp 11.9  2D 4.2  pres  1.0  rest 26.2  calls 252->192
+  52 m2:                   84.4     3D 28.0 (hook 21.5)  comp 11.8  2D 5.8  pres 21.8  rest 16.9  calls 336
+  53 m6:                   88.4     3D 50.1 (hook 15.1)  comp 12.2  2D 6.7  pres  2.0  rest 17.3  calls 427
+- The reorder, measured: GL time (batch draw minus grouping), the 8 race windows, least
+  squares: 30.6 us a call + 1.5 us a triangle (the garage's 32.6 + 2.0 agrees). Calls saved
+  against grouping: 533->328 saves 6.3 ms for 2.6 ms of grouping (net -3.7 ms a render),
+  535->289 net -5.4, the light windows (263->196, 252->192) net -0.5. Grouping 1.37-1.61 us a
+  triangle on the phone. Kept: a net gain where frames are over the step.
+- The re-present skip, in the race: the present phase falls 15-22 ms -> 0.6-2.4 ms, but the
+  frame does not fall with it. Over the step, 46 -> 47 is -4 ms with 7% fewer triangles;
+  53 (skip, 1,300 triangles, 1.1 loop iterations a render, so not spinning) costs 86 ms
+  outside the present against 66 for 48 (kept, 1,307 triangles). The windows at the step
+  (49, 51) spin (2.8-4.5 iterations a render) and say nothing. Read: in the race the
+  present phase is mostly the one screen update the frame needs, which a re-present waits
+  for; skipped, it lands in the next frame's 3D pass (the game's own part of it: 27.5 and
+  35 ms in 47 and 53 against 6.5-19 elsewhere). A guess -- one CPU-bound piece of ours, the
+  grouping, is not slower in skip windows (1.46 vs 1.61, 1.37 vs 1.37 us a triangle), so
+  if time is taken it is taken outside our code. Two windows a mode with scenes this
+  different cannot settle it.
+- CORRECTION to the garage run above: "the re-presents are the expensive presents; the
+  time is their own" held in the garage (no 3D-pass growth there) and does NOT carry to the
+  race. The garage's -17 ms is the garage's.
+- Composite 10.2-11.2 ms a render in the race (read 6.7-7.9; the loop ~3.5-4.5) against
+  round 16's race 12.7-15.7 (loop ~7-8): -4 ms, as in the garage.
+- Window 51's capture is a crash camera (letterbox, no HUD) with a large black shape at a
+  tunnel mouth; the owner saw no glitch. Not a measurement either way.
+- Where a heavy frame goes now (46, 96.6 ms): ours ~37 ms (hook CPU ~11.6, GL 14.4, composite
+  11.1), the game's ~48 (3D 19.2, 2D 7.4, logic 21.1), present 15.2. To the step: -12 ms.
