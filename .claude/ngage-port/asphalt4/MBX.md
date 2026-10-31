@@ -3654,3 +3654,24 @@ depth-sorted frame, a different thing). The re-present skip is now fixed on (rou
 - Bench, the exact binary r20_phone (sha256 c927c880b5ea02486414b29423c7b84cb2744c034b76f5ab5299a66245ffa48c):
   telerun3 230 s, framestat 5621, faults 1 (the boot fault), errc 0; whole race: copy 85.5
   ms a render, 6% at 90+; indexed 85.2, 5% (at the step); racemenu after a race right.
+
+## Phone round 20 (r20_phone c927c880): the index list ties with the copy; tearing reported
+
+Owner: "if by flicker you mean something akin to screen tearing, then yes, sometimes it
+happens" -- not said to follow the ~3.5 s A/B rhythm. 8 race files (capidx 46-53), errc 0.
+Whole race (aggregates, ~1,050 renders a mode; re-presents skipped and reorder in both):
+  copy    (slot 1): 86.6 ms a render, 1254 tris, 226 calls, grouping 1.75 ms (1.40 us/tri),
+                    batch draw 11.0, >=90 ms 18%
+  indexed (slot 3): 86.5 ms a render, 1339 tris, 250 calls, grouping 0.88 ms (0.66 us/tri),
+                    batch draw 12.2, >=90 ms 20%
+- The index list halves the grouping (the copy was ~0.74 us a triangle) but the driver's
+  indexed draw costs about that much more: a joint fit of the 8 windows' GL time (batch draw
+  minus grouping) puts indexed at +0.9 ms a render. Net: nothing (86.5 vs 86.6 with 7% more
+  triangles). The copy stays (the path with more phone hours); AB_INDEXED kept, off.
+- Over the race now: 86.5 ms a render against the 85.33 step; 18-20% of renders at 90 ms or
+  more. Heaviest window (46): 87.5 ms -- 3D 44.2 (hook 18.5), composite 12.8, 2D 8.8.
+- The tearing: open. Candidates -- the re-present skip changes when the real present lands
+  against the screen's refresh (fixed on since this round, alternating in round 19, absent
+  in 18's kept windows and before); or the same thing as the lap-section lines of rounds
+  15-17, which appeared with the GPU drawing nothing (round 17). Not settled by these files:
+  the telemetry sees our frame, not the panel.
