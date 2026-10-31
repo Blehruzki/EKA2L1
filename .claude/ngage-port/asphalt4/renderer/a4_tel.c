@@ -261,13 +261,17 @@ void a4_tel_tick(uint32_t had)
         uint32_t r = pf[PF_RENDERS], w = a4_ntick() - pf[PF_T0];
         if (r && w < r * 500u) {
             uint32_t m = pf[PF_MODE];                /* a4_gl.c AGG_SLOT */
-            volatile uint32_t *a = (volatile uint32_t *)0x00421000u + (((m >> 2) & 1u) | ((m >> 3) & 2u)) * 32u;
+            volatile uint32_t *a = (volatile uint32_t *)0x00421000u + (((m >> 2) & 1u) | (((m >> 3) | (m >> 4)) & 2u)) * 32u;
             a[0] += r; a[1] += w; a[2] += pf[PF_T3D]; a[3] += pf[PF_HOOK]; a[4] += pf[PF_COMP];
             a[5] += pf[PF_READ]; a[6] += pf[PF_DRAW]; a[7] += pf[PF_T2D]; a[8] += pf[PF_TPRES];
             a[9] += pf[PF_REO]; a[10] += pf[PF_CALLS]; a[11] += pf[PF_RUNS0]; a[12] += pf[PF_TRIS];
             a[13] += pf[PF_NPRES]; a[14] += pf[PF_SKIPPED]; a[15]++;
         }
-        *(volatile uint32_t *)0x00421600u = 0x41473230u;   /* 'AG20': the round-20 slot mapping */
+#ifdef A4_ABCYCLE5
+        *(volatile uint32_t *)0x00421600u = 0x41473231u;   /* 'AG21': slot bit 1 is AB_LEAN */
+#else
+        *(volatile uint32_t *)0x00421600u = 0x41473230u;   /* 'AG20': slot bit 1 is AB_INDEXED */
+#endif
         struct des ad = { DES(3u * 4u * 32u * 4u + 4u), (const void *)0x00421000u };
         efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4, &ad);
         pf[PF_FLAGS] |= 4u;                       /* PFF_WROTE: the next render interval holds this write */
@@ -277,7 +281,10 @@ void a4_tel_tick(uint32_t had)
     t->caps++;
     {   /* next window: reset the timers after the write, so its cost is in no window */
         volatile uint32_t *pf = A4_PERF;
-#if defined(A4_ABCYCLE4)
+#if defined(A4_ABCYCLE5)
+        /* round 21: AB_LEAN (32) alternates; native, skip and reorder kept */
+        pf[PF_MODE] = 2u | 4u | 8u | ((pf[PF_MODE] & 32u) ^ 32u);
+#elif defined(A4_ABCYCLE4)
         /* round 20: AB_INDEXED (16) alternates; native, skip and reorder kept */
         pf[PF_MODE] = 2u | 4u | 8u | ((pf[PF_MODE] & 16u) ^ 16u);
 #elif defined(A4_ABCYCLE3)

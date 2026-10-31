@@ -234,6 +234,7 @@ _Static_assert(PF_N <= 64, "A4_PERF holds 64 words (0x412C00-0x412D00)");
 #define AB_SKIPREP 4u    /* skip the race loop's two re-presents (A4_SKIPREPRES, round 18) */
 #define AB_REORDER 8u    /* group the batch into fewer draw calls (A4_REORDER, round 18) */
 #define AB_INDEXED 16u   /* draw the groups through an index list instead of a copy (round 20) */
+#define AB_LEAN 32u      /* the hook's lean path (lean_tail, round 21) */
 #ifndef A4_ABMODE
 #define A4_ABMODE 0u     /* the mode when nothing cycles it (no A4_ABCYCLE) */
 #endif
@@ -591,7 +592,7 @@ struct agg { uint32_t seg[3][4][32]; };
 #define AGG ((volatile struct agg *)A4_GL_AGG)
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
-#define AGG_SLOT(m) ((((m) >> 2) & 1u) | (((m) >> 3) & 2u))
+#define AGG_SLOT(m) ((((m) >> 2) & 1u) | ((((m) >> 3) | ((m) >> 4)) & 2u))   /* bit 1: AB_INDEXED or AB_LEAN */
 _Static_assert(A4_GL_AGG + sizeof(struct agg) <= A4_GL_SCRATCH_TOP, "aggregates past the scratch");
 static void agg_render(uint32_t now)
 {
@@ -640,9 +641,8 @@ _Static_assert((A4_GL_POS & 7u) == 0 && (A4_GL_UV & 7u) == 0 && (A4_GL_REO & 7u)
 #ifndef REO_SCAN
 #define REO_SCAN 32u             /* runs a triangle may look back over (bench: 32 ~ unlimited) */
 #endif
-static void tbox_set(uint32_t n, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+static inline void tbox_calc(int16_t *b, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 {
-    int16_t *b = (int16_t *)A4_GL_TBOX + n * 4u;
     x0 -= 1; y0 -= 1; x1 += 1; y1 += 1;
     if (x0 < 0) x0 = 0;
     if (y0 < 0) y0 = 0;
@@ -650,6 +650,10 @@ static void tbox_set(uint32_t n, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
     if (y1 > VP_H - 1) y1 = VP_H - 1;
     if (x0 > x1 || y0 > y1) { x0 = y0 = 0x7FFF; x1 = y1 = -0x8000; }   /* off screen: misses all */
     b[0] = (int16_t)x0; b[1] = (int16_t)y0; b[2] = (int16_t)x1; b[3] = (int16_t)y1;
+}
+static void tbox_set(uint32_t n, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+{
+    tbox_calc((int16_t *)A4_GL_TBOX + n * 4u, x0, y0, x1, y1);
 }
 #endif
 
@@ -1045,6 +1049,111 @@ static int persp_fallback(const uint32_t *gctx, const uint32_t *desc)
 }
 #endif
 
+#if defined(A4_LEAN) && defined(A4_HPERSP) && defined(A4_REORDER) && defined(A4_IMM)
+/* Round 21: the hook's work after the class is known, in one pass and written straight
+ * into the batch slot -- the same words as the path in draw_prim_take (A4_LEANCHECK
+ * compares them triangle by triangle). The phone's hook costs ~7 us a triangle outside
+ * its GL calls (round 18-20 windows, least squares), ~600 instructions on the bench. What
+ * changes: the three vertices read once (positions, texcoords, depths, extents together),
+ * no local copies of the outputs, the triangle's box from the same pass, the frame's row
+ * extent in locals, and tex_index's commonest outcome inline -- the texture of the last
+ * hit, already used in this present, nothing to re-check (tex_index's own conditions for
+ * returning that slot at once). Writes pos[12], uv[6], *idp, box[4], yr[2]; 0 if the
+ * texture fails (as the path it replaces returns 0 then). */
+static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1,
+                     uint32_t tsaddr, int32_t *pos, int32_t *uv, uint32_t *idp, int16_t *box, int32_t *yr)
+{
+    int wsh = 0, hsh = 0;
+    uint32_t id;
+    if (kind == KIND_SHAD) id = KIND_SHAD << 28;
+    else if (kind == KIND_FLAT) id = (KIND_FLAT << 28) | (tsaddr & 0xFFFFu);
+    else {
+        const uint32_t *ts = (const uint32_t *)tsaddr;
+        uint32_t tw = ts[1] + 1, th = ts[2] + 1;
+        wsh = tw ? 31 - __builtin_clz(tw) : 0;
+        hsh = th ? 31 - __builtin_clz(th) : 0;
+        int var = kind == KIND_ALPHA ? 2 : m1, ti = -1;
+        uint32_t li = s->lasthit;
+        if (li < s->ntex) {
+            uint32_t key = tsaddr | (uint32_t)var;
+            uint32_t tabk = var == 1 ? (uint32_t)(uintptr_t)m1_table(gctx) : 0u;
+            if (s->cache_ptr[li] == key && s->cache_tab[li] == tabk && TX->src[li] == ts[TS_PIX]
+                && TX->wh[li] == (ts[1] | (ts[2] << 16)) && TX->lu[li] == s->frames
+                && (var != 1 || s->cache_fr[li] == s->frames)) ti = (int)li;
+        }
+        if (ti < 0) ti = tex_index(s, tsaddr, gctx, var);
+        if (ti < 0) return 0;
+        id = (kind << 28) | s->cache_id[ti];
+    }
+    *idp = id;
+    const uint32_t *v0 = (const uint32_t *)desc[3], *v1 = (const uint32_t *)desc[6], *v2 = (const uint32_t *)desc[9];
+    int32_t x0 = (int16_t)(int32_t)v0[0], y0 = (int16_t)(int32_t)v0[1];
+    int32_t x1 = (int16_t)(int32_t)v1[0], y1 = (int16_t)(int32_t)v1[1];
+    int32_t x2 = (int16_t)(int32_t)v2[0], y2 = (int16_t)(int32_t)v2[1];
+    if (kind == KIND_TEX || kind == KIND_TEXZ || kind == KIND_ADD || kind == KIND_ALPHA) {
+        uv[0] = ((int32_t)desc[4]  * 4096) >> wsh; uv[1] = ((int32_t)desc[5]  * 4096) >> hsh;
+        uv[2] = ((int32_t)desc[7]  * 4096) >> wsh; uv[3] = ((int32_t)desc[8]  * 4096) >> hsh;
+        uv[4] = ((int32_t)desc[10] * 4096) >> wsh; uv[5] = ((int32_t)desc[11] * 4096) >> hsh;
+    } else { uv[0] = uv[1] = uv[2] = uv[3] = uv[4] = uv[5] = 0; }
+    int32_t xlo = x0, xhi = x0, ylo = y0, yhi = y0;
+    if (x1 < xlo) xlo = x1;
+    if (x1 > xhi) xhi = x1;
+    if (x2 < xlo) xlo = x2;
+    if (x2 > xhi) xhi = x2;
+    if (y1 < ylo) ylo = y1;
+    if (y1 > yhi) yhi = y1;
+    if (y2 < ylo) ylo = y2;
+    if (y2 > yhi) yhi = y2;
+    tbox_calc(box, xlo, ylo, xhi, yhi);
+    yr[0] = ylo < 0 ? 0 : ylo >= VP_H ? VP_H - 1 : ylo;
+    yr[1] = yhi < 0 ? 0 : yhi >= VP_H ? VP_H - 1 : yhi;
+    /* the extents bound |x|, |y|: max(-lo, hi) over both axes, at least 1 */
+    int32_t m = 1;
+    if (-xlo > m) m = -xlo;
+    if (xhi > m) m = xhi;
+    if (-ylo > m) m = -ylo;
+    if (yhi > m) m = yhi;
+    int32_t za = (int32_t)v0[2], zb = (int32_t)v1[2], zc = (int32_t)v2[2];
+    uint32_t w0 = (uint32_t)(za > 0 ? za : 1), w1 = (uint32_t)(zb > 0 ? zb : 1), w2 = (uint32_t)(zc > 0 ? zc : 1);
+    uint32_t zmax = w0 > w1 ? w0 : w1;
+    if (w2 > zmax) zmax = w2;
+    int shift = (26 - bitlen((uint32_t)m)) - bitlen(zmax);
+    int32_t zq = 0;
+    if (kind == KIND_TEXZ) zq = shift >= 0 ? (ZK << shift) : (ZK >> -shift);
+    int32_t W0 = (int32_t)(shift >= 0 ? (w0 << shift) : (w0 >> -shift));
+    int32_t W1 = (int32_t)(shift >= 0 ? (w1 << shift) : (w1 >> -shift));
+    int32_t W2 = (int32_t)(shift >= 0 ? (w2 << shift) : (w2 >> -shift));
+    if (W0 < 1) W0 = 1;
+    if (W1 < 1) W1 = 1;
+    if (W2 < 1) W2 = 1;
+    pos[0] = x0 * W0; pos[1]  = y0 * W0; pos[2]  = -(zq < W0 ? zq : W0); pos[3]  = W0;
+    pos[4] = x1 * W1; pos[5]  = y1 * W1; pos[6]  = -(zq < W1 ? zq : W1); pos[7]  = W1;
+    pos[8] = x2 * W2; pos[9]  = y2 * W2; pos[10] = -(zq < W2 ? zq : W2); pos[11] = W2;
+    return 1;
+}
+static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1, uint32_t tsaddr)
+{
+    uint32_t n = s->bfill;
+    if (n >= MAXT) {                                /* batch full: draw it, then refill */
+        uint32_t t0 = a4_ntick(); batch_draw(n); A4_PERF[PF_DRAW] += a4_ntick() - t0;
+        n = 0; s->bfill = 0;
+    }
+    int32_t yr[2];
+    if (!lean_conv(s, gctx, desc, kind, m1, tsaddr, (int32_t *)A4_GL_POS + n * 12u, (int32_t *)A4_GL_UV + n * 6u,
+                   (uint32_t *)A4_GL_TEXID + n, (int16_t *)A4_GL_TBOX + n * 4u, yr)) return 0;
+    if ((uint32_t)yr[0] < s->miny) s->miny = (uint32_t)yr[0];
+    if ((uint32_t)yr[1] > s->maxy) s->maxy = (uint32_t)yr[1];
+    s->bfill = n + 1;
+    s->prims++;
+    if (kind == KIND_FLAT) A4_PERF[PF_FLAT]++;
+    else if (kind == KIND_ADD) A4_PERF[PF_ADD]++;
+    else if (kind == KIND_SHAD) A4_PERF[PF_SHAD]++;
+    return (kind == KIND_ADD || kind == KIND_ALPHA) ? 0 : 1;
+}
+#elif defined(A4_LEAN)
+#error "A4_LEAN is written for A4_HPERSP + A4_REORDER + A4_IMM"
+#endif
+
 static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 {
     volatile uint32_t *iat = a4_gl_iat_ptr();
@@ -1169,7 +1278,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE4)
+#if defined(A4_TEL) && defined(A4_ABCYCLE5)
+        /* round 21: a4_tel.c alternates AB_LEAN per capture window; native, skip, reorder on */
+        A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE4)
         /* round 20: a4_tel.c alternates AB_INDEXED per capture window; native, skip, reorder on */
         A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER;
         s->fmode = A4_PERF[PF_MODE];
@@ -1217,6 +1330,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #endif
     uint32_t tsaddr = desc[0x30 / 4];               /* texture descriptor, or flat colour */
     if (!tsaddr && kind != KIND_SHAD) return 0;
+#if defined(A4_LEAN) && !defined(A4_M1VIS) && !defined(A4_SEQDUMP) && !defined(A4_VTXDUMP)
+    if (s->fmode & AB_LEAN) return lean_tail(s, gctx, desc, kind, m1, tsaddr);
+#endif
     int wsh = 0, hsh = 0;
     uint32_t id;                                    /* the triangle's TEXID word */
 #ifdef A4_M1VIS
@@ -1382,6 +1498,25 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     TEXID[n] = id;
     s->bfill = n + 1;
     s->prims++;                                     /* the frame's total (not capped) */
+#if defined(A4_LEANCHECK) && defined(A4_LEAN)
+    {   /* bench check: the lean path's words for this triangle against what this path just
+         * wrote into slot n. 0x412D00 [106] triangles differing, [107] checked, [108] the
+         * first differing word's index (0-11 pos, 12-17 uv, 18 id, 19-22 box, 23-24 rows) */
+        volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
+        int32_t lp[12], lu[6], yr[2]; uint32_t lid = 0; int16_t lb[4];
+        int ok = lean_conv(s, gctx, desc, kind, m1, tsaddr, lp, lu, &lid, lb, yr);
+        const int16_t *ob = (const int16_t *)A4_GL_TBOX + n * 4u;
+        int bad = -1;
+        for (int k = 0; k < 12 && bad < 0; k++) if (lp[k] != POS[vb*4 + k]) bad = k;
+        for (int k = 0; k < 6 && bad < 0; k++) if (lu[k] != UV[vb*UVC + k]) bad = 12 + k;
+        if (bad < 0 && lid != id) bad = 18;
+        for (int k = 0; k < 4 && bad < 0; k++) if (lb[k] != ob[k]) bad = 19 + k;
+        if (bad < 0 && ((uint32_t)yr[0] < s->miny || (uint32_t)yr[1] > s->maxy)) bad = 23;
+        if (!ok) bad = 99;
+        if (bad >= 0) { if (!ck[106]) ck[108] = (uint32_t)bad; ck[106]++; }
+        ck[107]++;
+    }
+#endif
     if (kind == KIND_FLAT) A4_PERF[PF_FLAT]++;
     else if (kind == KIND_ADD) A4_PERF[PF_ADD]++;
     else if (kind == KIND_SHAD) A4_PERF[PF_SHAD]++;

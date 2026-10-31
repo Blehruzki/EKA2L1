@@ -3680,3 +3680,29 @@ Whole race (aggregates, ~1,050 renders a mode; re-presents skipped and reorder i
   the original game too and worse there ("due to performance"); much rarer now; in heavy,
   intense moments, nowhere in particular. Not new, not ours to chase now (owner: do not
   focus on it). The lap-section "lines" of rounds 15-17 are likely the same thing.
+
+## Round 21 bench: the hook's lean path, checked word for word; the A/B is old against lean
+
+Not a repeat: the hook's conversion code was never rewritten. Re-presents skipped, reorder
+on and the copy kept (round 20) in both modes.
+- Where the hook stands: the phone's hook time across the 24 race windows of rounds 18-20
+  fits 6.96 us a triangle + 0.67 x batch draw (the batches drawn inside it): ~9 ms a render,
+  now the largest item of ours. The game's own 3D part is 6.5-35 ms (mean 18.2); its HUD
+  painter +29736 is 12.8% of all bench instructions and the sprite blit +3015E 6.0% (the 2D
+  phase, 6-9 ms on the phone) -- the HUD-on-GPU item of the plan.
+- A4_LEAN (AB_LEAN 32): lean_conv/lean_tail -- the three vertices read once, outputs written
+  into the batch slot (no local copies), the box and extents from the same pass, the row
+  extent once, tex_index's commonest outcome inline (the last hit, used this present: the
+  conditions on which tex_index returns that slot untouched). A4_ABCYCLE5 alternates it;
+  aggregate slot bit 1 = lean, format word 'AG21'.
+- A4_LEANCHECK (bench): the lean words for every triangle against the old path's slot:
+  0 of 1,395,020 differ (positions, texcoords, id, box, rows). Tested: a mutant with the wrong
+  v shift on one vertex gives 66,933 differing (first at word 17); a first mutant (one term
+  dropped from the extent maximum) changed no output in 497,848 triangles -- a mutant the
+  data cannot reach, not a blind check. Lean forced on: REOCHECK 0, BLITCHECK 0, errc 0.
+- Bench instructions a hook call: 538 -> 441 (-18%); what is left is near the minimum for
+  the arithmetic (one ~120-instruction block: shifts, clamps, the 12 position words).
+- Exact binary r21_phone (sha256 a3e59e23bd48ba07afc83ebb4914f034f23d81b94866aaf98cb8aabc1282a3b4):
+  telerun3 230 s, framestat 5622, faults 1 (the boot fault), errc 0; racemenu after a race
+  right. The phone answers what 18% fewer instructions buys there (the hook's us a
+  triangle by mode).

@@ -40,7 +40,7 @@ for fn in sys.argv[1:]:
             m = h[32]
             print('  mode %d: re-presents %s, reorder %s%s | %.0f calls a render before grouping, %.0f made;'
                   ' grouping %.2f ms | presents %.2f a render, %.2f skipped'
-                  % (m, 'SKIPPED' if m & 4 else 'kept', 'ON' if m & 8 else 'off', ' INDEXED' if m & 16 else '', h[59]/r, h[39]/r, h[57]/r, h[45]/r, h[44]/r))
+                  % (m, 'SKIPPED' if m & 4 else 'kept', 'ON' if m & 8 else 'off', (' INDEXED' if m & 16 else '') + (' LEAN' if m & 32 else ''), h[59]/r, h[39]/r, h[57]/r, h[45]/r, h[44]/r))
     if h[27]:
         print('  GL census: %d renders, %.0f draw calls/render, %.0f triangles/render, max %d calls, last %d'
               % (h[27], h[28]/h[27], h[29]/h[27], h[30], h[31]))
@@ -49,18 +49,20 @@ for fn in sys.argv[1:]:
         tl = struct.unpack('<122I', d[fboff+h[7]:fboff+h[7]+488])
         if tl[101]: print('  REOCHECK: %d batches, %d pairs out of order, %d overlapping (must be 0), %d batches lost a triangle'
                           % (tl[101], tl[102], tl[100], tl[103]))
+        if tl[107]: print('  LEANCHECK: %d triangles, %d differing from the old path (must be 0), first at word %d' % (tl[107], tl[106], tl[108]))
         if tl[105]: print('  BLITCHECK: %d strips, %d drawn pixels differing from the general loop (must be 0)' % (tl[105], tl[104]))
     ao = fboff + h[7] + 122*4
     if len(d) >= ao + 384*4:
         ag = struct.unpack('<384I', d[ao:ao+384*4])
-        ag20 = len(d) >= ao + 385*4 and struct.unpack('<I', d[ao+384*4:ao+385*4])[0] == 0x41473230
+        fw = struct.unpack('<I', d[ao+384*4:ao+385*4])[0] if len(d) >= ao + 385*4 else 0
+        ag20 = fw in (0x41473230, 0x41473231); b1 = 'lean' if fw == 0x41473231 else 'indexed'; b0 = 'old' if fw == 0x41473231 else 'copy'
         for sg in range(3):
             for m in range(4):
                 a = ag[sg*128 + m*32: sg*128 + m*32 + 32]
                 if not a[0]: continue
                 r = a[0]; hist = a[16:32]; nh = sum(hist)
                 over = sum(hist[7:]) if nh else 0          # bins >= 90 ms
-                lbl = ('%s, %s' % ('skip' if m & 1 else 'kept', 'indexed' if m & 2 else 'copy')) if ag20 else ('skip' if m & 1 else 'kept')
+                lbl = ('%s, %s' % ('skip' if m & 1 else 'kept', b1 if m & 2 else b0)) if ag20 else ('skip' if m & 1 else 'kept')
                 print('  AGG seg%d slot %d (%s): %d windows, %d renders, %.1f ms a render | 3D %.1f (hook %.1f) comp %.1f (read %.1f)'
                       ' draw %.1f 2D %.1f pres %.1f grouping %.2f | calls %.0f (before %.0f) tris %.0f | presents %.2f skipped %.2f a render'
                       % (sg, m, lbl, a[15], r, a[1]/r, a[2]/r, a[3]/r, a[4]/r, a[5]/r, a[6]/r, a[7]/r, a[8]/r,
