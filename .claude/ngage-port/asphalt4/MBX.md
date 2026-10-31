@@ -3427,3 +3427,40 @@ Against round 16 (GPU, same phone): 85-106.5 ms a render, light scenes held at t
 gate. Measured gain of the GPU path: ~10-20% a render -- the 3D pass falls from 53-75 ms to
 16-48, but the composite (14-15) is new cost and the gate takes the rest in light scenes.
 The game's own 85 ms gate is now the limit for any further gain from rendering.
+
+## Bench RE: the 85 ms gate is the game's fixed logic step, and the physics is tied to it
+
+Not a repeat of: round 16's A4_SKIPREPRES bench test (that showed the gate exists, not
+what it is) nor the round-25-era "RE conclusion" (corrected in round 16).
+Source: the binary (static, tools/tdis.py on the code section) and two bench runs.
+- The chain: race loop +808 -> render path +99A -> +1916 -> +1836 -> +1D28 -> state
+  dispatch +92C8 (state 12 = race) -> +9A10 -> +7036 -> the race object's update, a vfunc
+  at +1670E: a fixed-timestep loop. It calls the step counter +15B1C, runs the logic N
+  times, and renders (+12992) only if N > 0.
+- +15B1C: t = game time (the timer object reached through +52CA0, +0x1100, [+0x14],
+  [+0x2c]); N = t/21333 - last/21333 through the divide helper +52B80 (ARM, umull by
+  0x18938DE7 at +52B98, >>43; remainder factor -21333 at +52B9C; its only callers are
+  +15B38 and +15B40), clamped to 5. A second count M uses the period
+  ([this+0x84C] * 0x5355) >> 8 (literal at +15F28, divide +50EBC), also clamped to 5:
+  [this+0x84C] = 256 is normal speed, so it is the time scale (slow motion). last = t.
+- 21333 units = 85.33 ms (the light-scene cap measured on the phone, rounds 16-17, and on
+  the bench), so one unit is ~4 us (inferred from that match, not read from the timer;
+  a guess until the timer's source is traced). The game's logic runs at 11.72 Hz and it
+  draws at most once a step: the compile-time design rate. Two constants hold it, no
+  setting chooses it (the other two 0x5355 literals, +A6C1C and +B67F4, not looked at).
+- Bench test (r16_half: round 16's build with the step halved -- +52B98 -> 0x312684D0,
+  +52B9C -> -10667, +15F28 -> 10667; the division checked exact): renders 58.75-66.4 ms
+  (bench-bound; the gate moved off 85). Then speedtest.sh, both builds, instant race,
+  accelerate held from the last Return, a timestamped screenshot every ~0.77 s:
+  stock step: GO (first speed) between 3.9 and 4.7 s; 87 km/h at 7.7 s; the city
+  outskirts at 17.8 s. Halved step: GO between 1.6 and 2.3 s; 88 km/h at 4.6 s; the same
+  outskirts at 8.5 s and DOWNTOWN at 11.5 s. The countdown, the acceleration and the
+  distance all run ~2x the wall rate (13.5 s of stock racing = 6.5 s halved).
+- So the logic advances a fixed amount a step, not by measured time: shortening the step
+  speeds the whole game up. The gate cannot be lifted by a constant. Consequences for the
+  plan: (1) below 85 ms a render nothing more shows -- the target is every scene at or
+  under 85 ms (a steady 11.72 a second; a render over 85 ms costs a double step, the
+  judder heavy scenes show); (2) more than 11.72 frames a second needs frames drawn
+  between steps from interpolated state (camera and objects), each costing nearly a whole
+  3D pass of the game's own transform -- not affordable while that pass is 16-48 ms of a
+  85 ms budget.
