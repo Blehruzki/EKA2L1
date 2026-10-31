@@ -50,6 +50,23 @@ for fn in sys.argv[1:]:
         if tl[101]: print('  REOCHECK: %d batches, %d pairs out of order, %d overlapping (must be 0), %d batches lost a triangle'
                           % (tl[101], tl[102], tl[100], tl[103]))
         if tl[105]: print('  BLITCHECK: %d strips, %d drawn pixels differing from the general loop (must be 0)' % (tl[105], tl[104]))
+    ao = fboff + h[7] + 122*4
+    if len(d) >= ao + 384*4:
+        ag = struct.unpack('<384I', d[ao:ao+384*4])
+        for sg in range(3):
+            for m in range(4):
+                a = ag[sg*128 + m*32: sg*128 + m*32 + 32]
+                if not a[0]: continue
+                r = a[0]; hist = a[16:32]; nh = sum(hist)
+                over = sum(hist[7:]) if nh else 0          # bins >= 90 ms
+                print('  AGG seg%d mode %d (%s): %d windows, %d renders, %.1f ms a render | 3D %.1f (hook %.1f) comp %.1f (read %.1f)'
+                      ' draw %.1f 2D %.1f pres %.1f grouping %.2f | calls %.0f (before %.0f) tris %.0f | presents %.2f skipped %.2f a render'
+                      % (sg, m*4 | 2, 'skip' if m & 1 else 'kept', a[15], r, a[1]/r, a[2]/r, a[3]/r, a[4]/r, a[5]/r, a[6]/r, a[7]/r, a[8]/r,
+                         a[9]/r, a[10]/r, a[11]/r, a[12]/r, a[13]/r, a[14]/r))
+                if nh:
+                    lab = ['<60'] + ['%d' % (60 + 5*i) for i in range(14)] + ['130+']
+                    print('     render-to-render ms (%d): ' % nh + ' '.join('%s:%d' % (l, c) for l, c in zip(lab, hist) if c)
+                          + '  | >=90 ms: %.0f%%' % (100.0 * over / nh))
     if fpsb>=560:
         fs=struct.unpack('<140I', d[hb:hb+560])
         disp,min_dt,max_dt,sum_dt=fs[5],fs[6],fs[7],fs[8]; ring_pos=fs[11]; ring=fs[12:140]

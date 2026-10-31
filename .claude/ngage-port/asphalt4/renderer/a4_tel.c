@@ -49,7 +49,7 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE,
        PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_TEXRE, PF_EVICT, PF_SURF,
        PF_T3D, PF_TFLUSH, PF_T2D, PF_TPRES, PF_HOOK, PF_MFIRST, PF_MFLEND, PF_MPRES, PF_FLAGS, PF_HOOKN,
-       PF_SKIPPED, PF_REO, PF_RUNS0, PF_NPRES, PF_N };
+       PF_SKIPPED, PF_REO, PF_RUNS0, PF_NPRES, PF_LASTFIRST, PF_N };
 #define EFILE_WRITE 0x200u
 #define DES(len) ((1u<<28) | ((uint32_t)(len)))  /* TPtrC iLength: EPtrC(1)<<28 | len */
 
@@ -251,11 +251,34 @@ void a4_tel_tick(uint32_t had)
         efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES, &cd);
     }
 #endif
+#ifdef A4_AGG
+#if !(defined(A4_FLAGHIST) || defined(A4_SWHIST) || defined(A4_BBPROBE) || defined(A4_REMADEPROBE))
+#error "A4_AGG is written after the census tail: build it with A4_BBPROBE"
+#endif
+    {   /* round 19: this window into its mode's sums (a window of loads and pauses, 0.5 s a
+         * render or more, left out), then the three segments after the census tail */
+        volatile uint32_t *pf = A4_PERF;
+        uint32_t r = pf[PF_RENDERS], w = a4_ntick() - pf[PF_T0];
+        if (r && w < r * 500u) {
+            volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((pf[PF_MODE] >> 2) & 3u) * 32u;
+            a[0] += r; a[1] += w; a[2] += pf[PF_T3D]; a[3] += pf[PF_HOOK]; a[4] += pf[PF_COMP];
+            a[5] += pf[PF_READ]; a[6] += pf[PF_DRAW]; a[7] += pf[PF_T2D]; a[8] += pf[PF_TPRES];
+            a[9] += pf[PF_REO]; a[10] += pf[PF_CALLS]; a[11] += pf[PF_RUNS0]; a[12] += pf[PF_TRIS];
+            a[13] += pf[PF_NPRES]; a[14] += pf[PF_SKIPPED]; a[15]++;
+        }
+        struct des ad = { DES(3u * 4u * 32u * 4u), (const void *)0x00421000u };
+        efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4, &ad);
+        pf[PF_FLAGS] |= 4u;                       /* PFF_WROTE: the next render interval holds this write */
+    }
+#endif
     efs_flush(f);
     t->caps++;
     {   /* next window: reset the timers after the write, so its cost is in no window */
         volatile uint32_t *pf = A4_PERF;
-#if defined(A4_ABCYCLE2)
+#if defined(A4_ABCYCLE3)
+        /* round 19: AB_SKIPREP (4) alternates, AB_NATIVE and AB_REORDER (8) kept */
+        pf[PF_MODE] = 2u | 8u | ((pf[PF_MODE] & 4u) ^ 4u);
+#elif defined(A4_ABCYCLE2)
         /* round 18: AB_SKIPREP (4) x AB_REORDER (8), one pair a window, AB_NATIVE kept */
         pf[PF_MODE] = 2u | ((((pf[PF_MODE] >> 2) + 1u) & 3u) << 2);
 #elif defined(A4_ABCYCLE)

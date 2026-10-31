@@ -222,9 +222,11 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
         * (to the present), the game's present call (+1EC: the runtime's convert and post),
         * and our draw_primitive hook (every 4th call timed, x4); then their marks */
        PF_T3D, PF_TFLUSH, PF_T2D, PF_TPRES, PF_HOOK, PF_MFIRST, PF_MFLEND, PF_MPRES, PF_FLAGS, PF_HOOKN,
-       PF_SKIPPED, PF_REO, PF_RUNS0, PF_NPRES, PF_N };
+       PF_SKIPPED, PF_REO, PF_RUNS0, PF_NPRES, PF_LASTFIRST, PF_N };
 #define PFF_2D 1u        /* a composite ended this frame and its 2D is being timed */
 #define PFF_PRES 2u      /* the game's present call is being timed */
+#define PFF_WROTE 4u     /* a4_tel.c wrote a capture since the last render began */
+_Static_assert(PF_N <= 64, "A4_PERF holds 64 words (0x412C00-0x412D00)");
 #define AB_FLUSH 1u      /* glFlush after the frame's last batch (start the tile render) */
 #define AB_NATIVE 2u     /* read back in the implementation's own pair (OES_read_format): BGRA
                           * on the N95 (round 10), RGB565 on a device that names that */
@@ -562,7 +564,7 @@ static int bringup(volatile struct glr *s)
 #define A4_GL_TEXC 0x00413000u
 struct texc { uint32_t src[NCACHE], wh[NCACHE], hs[NCACHE], lu[NCACHE]; };
 #define TX ((volatile struct texc *)A4_GL_TEXC)
-#define A4_GL_SCRATCH_TOP 0x00421000u              /* injector.py GL_SCRATCH + GL_SCRATCH_SIZE */
+#define A4_GL_SCRATCH_TOP 0x00422000u              /* injector.py GL_SCRATCH + GL_SCRATCH_SIZE */
 _Static_assert(A4_GL_TEXC + sizeof(struct texc) <= A4_GL_SCRATCH_TOP, "texc past the scratch");
 /* tex_index's hint (round 18): a slot + 1 for each hash of (key, table, texels), checked
  * in full before use, so a stale or colliding hint only costs the linear search it
@@ -570,7 +572,37 @@ _Static_assert(A4_GL_TEXC + sizeof(struct texc) <= A4_GL_SCRATCH_TOP, "texc past
 #define A4_GL_THINT 0x00420800u
 #define THINT ((uint16_t *)A4_GL_THINT)
 #define THINT_N 1024u
-_Static_assert(A4_GL_THINT + 2u * THINT_N <= A4_GL_SCRATCH_TOP, "texture hints past the scratch");
+_Static_assert(A4_GL_THINT + 2u * THINT_N <= 0x00421000u, "texture hints past the aggregates");
+#ifdef A4_AGG
+/* Round 19: the race's numbers by A/B mode, over whole segments instead of the ring's last
+ * 8 windows. A segment ends at a gap of 1.5 s or more between two renders (a load, a
+ * pause); seg[0] is the current one, seg[1] and seg[2] the two before. Per segment and
+ * mode ((mode >> 2) & 3): [0..15] the window sums a4_tel.c adds at each capture (renders,
+ * ticks, 3D, hook, composite, read, batch draw, 2D, present, grouping, calls, calls before
+ * grouping, triangles, presents, skipped, windows), [16..31] the render-to-render times in
+ * 5 ms bins ([16] < 60 ms, [17] 60-64, ... [30] 125-129, [31] >= 130), the render after a
+ * capture's write left out. Written after the census tail in every capture. */
+#define A4_GL_AGG 0x00421000u
+struct agg { uint32_t seg[3][4][32]; };
+#define AGG ((volatile struct agg *)A4_GL_AGG)
+_Static_assert(A4_GL_AGG + sizeof(struct agg) <= A4_GL_SCRATCH_TOP, "aggregates past the scratch");
+static void agg_render(uint32_t now)
+{
+    uint32_t last = A4_PERF[PF_LASTFIRST];
+    A4_PERF[PF_LASTFIRST] = now;
+    uint32_t wrote = A4_PERF[PF_FLAGS] & PFF_WROTE;
+    A4_PERF[PF_FLAGS] &= ~PFF_WROTE;
+    if (!last || wrote) return;
+    uint32_t iv = now - last;
+    if (iv >= 1500u) {                                  /* a load or a pause: a new segment */
+        volatile uint32_t *a = &AGG->seg[0][0][0];
+        for (uint32_t k = 0; k < 128u; k++) { a[256u + k] = a[128u + k]; a[128u + k] = a[k]; a[k] = 0; }
+        return;
+    }
+    uint32_t b = iv < 60u ? 0u : iv >= 130u ? 15u : ((iv - 55u) * 13108u) >> 16;   /* /5, exact here */
+    AGG->seg[0][(A4_PERF[PF_MODE] >> 2) & 3u][16u + b]++;
+}
+#endif
 static inline uint32_t thint_of(uint32_t key, uint32_t tabk, uint32_t src)
 {
     return ((key >> 2) ^ (key >> 12) ^ (tabk >> 4) ^ (src >> 3) ^ (src >> 13)) & (THINT_N - 1u);
@@ -596,6 +628,8 @@ struct reo { int32_t pos[3u * MAXT * POSC]; int32_t uv[3u * MAXT * UVC]; uint32_
 #endif
 _Static_assert(A4_GL_TBOX + 8u * MAXT <= A4_GL_REO, "triangle boxes past the reorder");
 _Static_assert(A4_GL_REO + sizeof(struct reo) <= 0x00420800u, "reorder past the texture hints");
+_Static_assert((A4_GL_POS & 7u) == 0 && (A4_GL_UV & 7u) == 0 && (A4_GL_REO & 7u) == 0
+               && ((3u * MAXT * POSC * 4u) & 7u) == 0, "the grouping copies doublewords");
 #ifndef REO_SCAN
 #define REO_SCAN 32u             /* runs a triangle may look back over (bench: 32 ~ unlimited) */
 #endif
@@ -616,13 +650,13 @@ static void tbox_set(uint32_t n, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 /* Bench diagnostic: every triangle a frame puts into the batch, in order, as 4 words --
  * TEXID, x0 | y0 << 16, x1 | y1 << 16 (its screen bounding box, clamped), and
  * inrange | (w << 1) | (h << 12) (inrange: every texcoord inside [0, 1], so the texture
- * could sit in an atlas; w, h its size) -- into a frame buffer at 0x421010; at the frame's
- * flush it is copied to the completed buffer at 0x42D010 under a sequence number for
- * EKA2L1_MEMSNAP (0x421000: [0] seq, 0 while the copy runs; [1] triangles; [2] the
- * running count). Needs A4_SCRATCH_SIZE=0x39000 (the scratch then ends at 0x43A000). */
-#define SEQ_HDR  ((volatile uint32_t *)0x00421000u)
-#define SEQ_CUR  ((uint32_t *)0x00421010u)
-#define SEQ_DONE ((uint32_t *)0x0042D010u)
+ * could sit in an atlas; w, h its size) -- into a frame buffer at 0x422010; at the frame's
+ * flush it is copied to the completed buffer at 0x42E010 under a sequence number for
+ * EKA2L1_MEMSNAP (0x422000: [0] seq, 0 while the copy runs; [1] triangles; [2] the
+ * running count). Needs A4_SCRATCH_SIZE=0x3A000 (the scratch then ends at 0x43B000). */
+#define SEQ_HDR  ((volatile uint32_t *)0x00422000u)
+#define SEQ_CUR  ((uint32_t *)0x00422010u)
+#define SEQ_DONE ((uint32_t *)0x0042E010u)
 #define SEQ_MAX  3072u
 static void seq_add(uint32_t id, int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t info)
 {
@@ -643,11 +677,12 @@ static void seq_frame_done(void)
 }
 #endif
 
-/* 64 texels spread over the texture, and its size: a texture loaded where another was
- * differs here (one changed in place since round 10's probe found none in a race) */
+/* 16 texels spread over the texture, and its size: a texture loaded where another was
+ * differs here (one changed in place since round 10's probe found none in a race). 64
+ * until round 18: each is a likely cache miss, once a present for every texture used. */
 static uint32_t tex_hash(const uint16_t *px, uint32_t n, uint32_t seed)
 {
-    uint32_t h = 0x811C9DC5u ^ seed ^ n, step = n >> 6;
+    uint32_t h = 0x811C9DC5u ^ seed ^ n, step = n >> 4;
     if (!step) step = 1;
     for (uint32_t k = 0; k < n; k += step) h = (h ^ px[k]) * 16777619u;
     return h;
@@ -1124,7 +1159,14 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
          * (round 13-14: the HOME panel and the garage's stats box and bar). */
         *(volatile uint32_t *)A4_GL_BB = gctx[0x4c / 4];
         A4_PERF[PF_MFIRST] = a4_ntick();                /* the 3D pass begins */
-#if defined(A4_TEL) && defined(A4_ABCYCLE2)
+#ifdef A4_AGG
+        agg_render(A4_PERF[PF_MFIRST]);
+#endif
+#if defined(A4_TEL) && defined(A4_ABCYCLE3)
+        /* round 19: a4_tel.c alternates AB_SKIPREP per capture window; native, reorder on */
+        A4_PERF[PF_MODE] |= AB_NATIVE | AB_REORDER;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE2)
         /* a4_tel.c steps AB_SKIPREP x AB_REORDER per capture window; native readback always */
         A4_PERF[PF_MODE] |= AB_NATIVE;
         s->fmode = A4_PERF[PF_MODE];
@@ -1767,11 +1809,17 @@ static void batch_draw(uint32_t nt)
         for (uint32_t r = 0; r < nr; r++) {
             uint32_t t = ro->head[r];
             for (uint32_t c = ro->cnt[r]; c; c--) {
-                const int32_t *ps = P + t * (3u * POSC), *us = U + t * (3u * UVC);
-                for (uint32_t k = 0; k < 3u * POSC; k++) po[k] = ps[k];
-                for (uint32_t k = 0; k < 3u * UVC; k++) uo[k] = us[k];
+                /* doublewords (every block is 8-aligned: 48 and 24 bytes a triangle from
+                 * aligned bases), and the next triangle's source asked for ahead: the
+                 * batch was written well before, so its lines are mostly out of the cache */
+                const uint64_t *ps = (const uint64_t *)(P + t * (3u * POSC)), *us = (const uint64_t *)(U + t * (3u * UVC));
+                uint32_t nx = ro->next[t];             /* garbage on a run's last: PLD never faults */
+                __builtin_prefetch(P + nx * (3u * POSC)); __builtin_prefetch(U + nx * (3u * UVC));
+                uint64_t *pd = (uint64_t *)po, *ud = (uint64_t *)uo;
+                for (uint32_t k = 0; k < 3u * POSC / 2u; k++) pd[k] = ps[k];
+                for (uint32_t k = 0; k < 3u * UVC / 2u; k++) ud[k] = us[k];
                 po += 3u * POSC; uo += 3u * UVC;
-                t = ro->next[t];
+                t = nx;
             }
         }
     }

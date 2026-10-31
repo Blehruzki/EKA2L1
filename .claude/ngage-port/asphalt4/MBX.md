@@ -3581,3 +3581,28 @@ Enzo at 340-430 km/h, 1,061-1,604 triangles a render), errc 0, modes 10 14 2 6 1
   tunnel mouth; the owner saw no glitch. Not a measurement either way.
 - Where a heavy frame goes now (46, 96.6 ms): ours ~37 ms (hook CPU ~11.6, GL 14.4, composite
   11.1), the game's ~48 (3D 19.2, 2D 7.4, logic 21.1), present 15.2. To the step: -12 ms.
+
+## Round 19 bench: the A/B over the whole race, and two small cuts
+
+Not a repeat of round 18: the reorder is no longer cycled (measured net -4 to -5 ms over the
+step, kept on), and the re-present skip, which round 18's two windows a mode could not
+settle, is now measured over whole segments.
+- A4_AGG (0x421000, the scratch to 0x22000): per segment (a gap of 1.5 s between renders --
+  a load, a pause -- starts a new one; three kept) and per mode, the window sums (renders,
+  ticks, every phase, grouping, calls before and after, triangles, presents, skipped) and
+  a histogram of render-to-render times in 5 ms bins (the render after a capture's write
+  left out). Written after the census tail in every capture, so any one of the 8 files
+  carries the whole race. A4_ABCYCLE3: modes 10 (re-presents kept) and 14 (skipped)
+  alternate a window; native readback and the reorder always on.
+- The grouping's copy: unrolled, with the next triangle's source prefetched (PLD) -- the
+  batch was written long before and is mostly out of the cache (the phone's 1.4-1.6 us a
+  triangle against ~150 instructions). tex_hash samples 16 texels instead of 64 (each a
+  likely cache miss, once a present per texture used); the stored hash uses the same
+  function.
+- Checks on this code: A4_REOCHECK 0 overlapping of ~13.6 M pairs, no triangle lost;
+  A4_BLITCHECK 0 of ~19,000 strips.
+- Bench, the exact binary r19_phone (sha256 555c310ff433500d411e7ed5a7f68e18bc385536017d0a278112709ec928ac6b):
+  telerun3 230 s, framestat 5084, faults 1 (the boot fault), errc 0; racemenu after a race
+  right (pause, main menu, garage). Its whole-race A/B (bench, at the step): kept 85.9 ms a
+  render, 38% of renders 90 ms or more, spread 70-105; skipped 85.2 ms, 9% at 90+, packed at
+  80-89. Same mean at the step, steadier pacing skipped. Bench pacing is not the phone's.
