@@ -3514,3 +3514,31 @@ code below is new). Goal: every race scene at or under the 85.33 ms logic step.
 - Named risk: the bss grew by 48 KB; the one time a large bss broke the game (~372 KB,
   MBX.md "A large image .bss corrupts the game") the bench showed it at load, and this one
   boots clean on the bench.
+
+## Phone round 18 (r18_phone 84cd0a87, the A/B cycle): no glitch; the ring kept only the garage
+
+Owner: no graphical glitch noticed (a race with the four modes alternating every ~3.5 s,
+then the garage). The eight files (capidx 62-69, errc 0) are all the career garage's car
+browser -- the ring keeps the last 8 windows (~25 s) and the garage after the race filled
+it, so there is NO race window this round. The garage runs the same loop (its re-presents
+come from the same two sites: 2 skipped a render in modes 6/14) without the 85 ms gate.
+What it measures (same session, alternating windows, ~500-830 triangles a render):
+- Re-presents skipped vs kept: per render 54.4, 56.4, 52.6, 60.3 ms (modes 6/14) against
+  66.2, 80.7, 74.1, 72.3 (modes 2/10): mean 55.9 vs 73.3, -17 ms (-24%). The present phase
+  0.3-0.5 ms against 15.6-19.6; the other phases unchanged. So on the phone, as on the
+  bench, the re-presents are the expensive presents (the real one is cheap); the time is
+  their own, not a convert every present needs.
+- The reorder: calls a render 108 -> 67, 68 -> 44, 59 -> 41, 84 -> 50 (-35 to -40%).
+  Grouping and copying 0.75-1.12 ms a render = 1.3-1.6 us a triangle (phone). GL time
+  (batch draw minus grouping), all 8 windows, least squares: 32.6 us a call + 2.0 us a
+  triangle (residuals <= 0.23 ms) -- the call cost as round 16 found, and with calls no
+  longer tied to triangles a per-triangle cost shows that round 16's fit could not
+  separate. Net in the garage ~0 (few calls saved); in a race (345 calls, 1325 triangles a
+  frame on the bench census) ~-6 ms of calls against ~+2.8 ms of grouping: a guess until
+  race windows exist.
+- The composite's new pixel loop (all modes): composite 9.6-10.2 ms (read 5.8-6.6, the loop
+  3.2-4.0) against round 15's garage windows 141-142 (13.2-13.6, read 5.8, the loop
+  7.4-7.8): -4 ms a render on comparable scenes (different cars in view).
+Instrument lesson (rule 4, what the run never entered): a ring of 8 windows holds only the
+last ~25 s of 3D; anything 3D after the race (the garage) displaces the race. Next time:
+quit from the race or the main menu, not through the garage.
