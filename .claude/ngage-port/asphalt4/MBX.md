@@ -3706,3 +3706,20 @@ on and the copy kept (round 20) in both modes.
   telerun3 230 s, framestat 5622, faults 1 (the boot fault), errc 0; racemenu after a race
   right. The phone answers what 18% fewer instructions buys there (the hook's us a
   triangle by mode).
+
+## Phone round 21 (r21_phone a3e59e23): the lean hook path, a small win
+
+8 race files (capidx 46-53), errc 0. Whole race (aggregates; re-presents skipped, reorder,
+copy in both):
+  old  (slot 1): 88.3 ms a render, 1315 tris, hook 18.6, batch draw 11.6, >=90 ms 27%
+  lean (slot 3): 87.8 ms a render, 1351 tris, hook 18.0, batch draw 11.9, >=90 ms 25%
+- Hook outside its batch draws (hook - 0.67 x batch draw, the round 18-20 fit): 8.2 -> 7.4 us
+  a triangle (-10%), ~-1 ms a render; the frame -0.5 ms with 2.7% more triangles. Lean
+  kept on. 18% fewer bench instructions bought ~10% on the phone: the hook runs at ~2,400
+  cycles a triangle for ~440 instructions, so most of its phone time is not instruction
+  count (stalls -- what kind is not measurable here; trimming more code is the wrong lever).
+- This race ran heavier than round 20's (old 88.3 here, round 20's copy mode 86.6): races
+  differ; only same-race A/B comparisons are measurements.
+- Next, by size: the HUD (the game's painter +29736 and blit +3015E, 19% of bench
+  instructions, the 2D phase 6-9 ms on the phone) onto the GPU with the composite moved to
+  the present; then the texture atlas (~3-4 ms of calls in heavy scenes).
