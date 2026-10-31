@@ -3606,3 +3606,31 @@ settle, is now measured over whole segments.
   right (pause, main menu, garage). Its whole-race A/B (bench, at the step): kept 85.9 ms a
   render, 38% of renders 90 ms or more, spread 70-105; skipped 85.2 ms, 9% at 90+, packed at
   80-89. Same mean at the step, steadier pacing skipped. Bench pacing is not the phone's.
+
+## Phone round 19 (r19_phone 555c310f): over the whole race, skipping the re-presents wins
+
+Owner sent 8 files (capidx 47-54, race, errc 0). The aggregate tail (A4_AGG) of the latest
+capture covers the race segment: 27 windows a mode, ~1,080 renders each.
+  kept    (mode 10): 94.5 ms a render  3D 35.9 (hook 18.9) comp 10.6 (read 7.0) draw 11.9 2D 6.3
+                     pres 20.6 grouping 1.87  calls 244 (397 before) tris 1306  >=90 ms: 67%
+  skipped (mode 14): 87.6 ms a render  3D 38.8 (hook 19.5) comp 10.8 (read 7.1) draw 12.6 2D 6.1
+                     pres  1.7 grouping 2.00  calls 263 (426 before) tris 1402  >=90 ms: 23%
+  histogram kept:    75-79 206, 80-84 61, 85-89 40, 90-94 360, 95-99 91, 105-114 203, 120+ 62
+  histogram skipped: 75-79 61, 80-84 296, 85-89 411, 90-94 138, 95-99 35, 100+ 74
+- Skipping the re-presents: -6.9 ms a render over the race (-7%) while drawing 7% MORE
+  triangles; renders at or over 90 ms 67% -> 23%. At the step a render every 85.33 ms means
+  94.5/85.33 = ~11% of renders kept costing a double logic step (the judder), ~3% skipped.
+  The present phase saves 18.9 ms; the 3D pass grows 2.9 ms (some of the screen update
+  lands there, plus the triangles) and the rest of it is spin at the step (rest 21.1 -> 30.2).
+- CORRECTION to round 18's race run ("the skip does not show in the race"): two windows a
+  mode were too few for scenes this different; over the whole race it shows. Rule 2 note:
+  the aggregates exist because of that miss.
+- The kept histogram is bimodal (75-79 and 90-94): with three presents an iteration the
+  render lands on a present boundary, not on the step; skipped, it packs at 80-89.
+- Grouping 1.43 us a triangle in both modes (round 18: 1.37-1.61): the prefetch did not move
+  it measurably. ~100 KB read and ~100 KB written a render plus the search -- next: draw the
+  runs with an index list (glDrawElements, IAT slot of ordinal 55, verified against the ROM
+  in stage 4) instead of copying, as an A/B (a driver may walk a whole index range a call).
+- Now (skipped, reorder): 87.6 ms a render over a race; the step is 85.33. Ours ~33 ms
+  (hook CPU ~10, GL 10.6, grouping 2.0, composite 10.8), the game's ~31 (3D 19.3, 2D 6.1,
+  logic), spin the rest.
