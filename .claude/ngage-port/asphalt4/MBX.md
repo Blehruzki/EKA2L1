@@ -3464,3 +3464,53 @@ Source: the binary (static, tools/tdis.py on the code section) and two bench run
   between steps from interpolated state (camera and objects), each costing nearly a whole
   3D pass of the game's own transform -- not affordable while that pass is 16-48 ms of a
   85 ms budget.
+
+## Round 18 bench: fewer draw calls, a cheaper hook and composite, and the re-presents A/B
+
+Not repeats of: round 16's A4_SKIPREPRES bench test (at the cap, bench only; never on the
+phone, where heavy scenes are above the cap) nor any earlier hook or composite change (the
+code below is new). Goal: every race scene at or under the 85.33 ms logic step.
+- Where the time goes (round 16's phone windows, 8 of them): batch draw against draw
+  calls and triangles fits ~32 us a CALL and ~0 a triangle (least squares; the two
+  correlate, but 751 more triangles at 27 more calls cost only 1.2 ms). So the GPU-side
+  cost is the call count, 400-500 a heavy render = 13-16 ms. The hook outside its GL calls
+  is 5-9 us a triangle on the phone.
+- Exact bench profile (EKA2L1_PCPROF, 1.5 G instructions of race, round 16's code): the
+  blob is 36.7% of all guest instructions -- composite pixel loop 18.9%, draw_prim_take
+  11.4%, tex_index 4.8%; 723 instructions a hook call. Lines: tex_index's linear search
+  20% of the hook, the bit-length loops 13%, the vertex loop and batch append most of the
+  rest.
+- Census (A4_SEQDUMP, a bench diagnostic: every batch triangle's texture, screen box and
+  texcoord range per frame, 80 race frames, tools/seqan.py): 345 calls
+  a frame; 60 distinct textures. A triangle may be drawn earlier when its box misses every
+  run it moves past (no shared pixel: same image, depth and blending included): 345 -> 210
+  with that rule alone (TEXZ-TEXZ overlaps NOT treated as free -- coplanar ties would
+  change); with a texture atlas as well, ~110 (not built: 66% of triangles have texcoords
+  inside [0, 1]). Batch size (512 vs whole frame) and scan depth past 32 runs change
+  nothing.
+- Built: A4_REORDER (batch_draw groups by that rule, copies the vertices into run order,
+  a call a run; triangle boxes at 0x414000, the reorder at 0x415000, the scratch grown
+  0x14000 -> 0x20000, bss 0x20F08), the texture-cache hint table (0x420800, verified in
+  full before use), CLZ for the bit lengths, the row extent once a triangle, and the
+  N95's composite case (BGRA + alpha mask) two pixels a step with word stores.
+- Checked (bench, all on the final code): A4_REOCHECK -- every pair put out of input order
+  has disjoint boxes: 0 of ~6-10 M pairs a run, no triangle lost; A4_BLITCHECK -- the fast
+  composite against the general loop on every strip: 0 pixels differ in ~19,600 strips.
+  Both tests tested (rule 4): a mutant that skips the overlap test and one with a wrong
+  green shift give 1.1 M overlapping pairs and 11 M differing pixels.
+- Bench instructions a hook call 723 -> 578 (-20%); the reorder adds ~134 a call (grouping
+  and copying), which a call saved (~32 us on the phone, ~10,000 cycles) repays many times;
+  the composite's instructions -24%. Bench calls a render with the reorder: 230-505 ->
+  150-270 (-30 to -47%).
+- The phone round A/B: A4_ABCYCLE2 steps AB_SKIPREP (4: the race loop's two re-presents
+  skipped) x AB_REORDER (8) one pair a capture window (modes 2, 6, 10, 14). Header words
+  repurposed (constants known since round 10): [44] re-presents skipped, [45] presents,
+  [57] reorder ticks, [59] calls before grouping. Bench, mode 6/14: the present phase
+  ~28 -> ~1 ms a render, the time moving to the loop's spin (the bench is at the cap);
+  screen updating and race pace unchanged (speedtest.sh, all-on build).
+- Exact binary r18_phone (sha256 84cd0a87a37efcabedfd506b4adfabc652f6d920cba879e8bf5b6d888f9f3960):
+  telerun3 230 s: framestat 5144, faults 1 (the known boot fault), errc 0, all four modes;
+  racemenu after a race: pause, main menu, career garage -- panels and the car right.
+- Named risk: the bss grew by 48 KB; the one time a large bss broke the game (~372 KB,
+  MBX.md "A large image .bss corrupts the game") the bench showed it at load, and this one
+  boots clean on the bench.

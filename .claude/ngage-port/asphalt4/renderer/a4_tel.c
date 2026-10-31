@@ -49,7 +49,7 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_CALLS, PF_TRIS, PF_FLAT, PF_ADD, PF_DUAL, PF_SHAD, PF_M1BAKE, PF_M1TEX, PF_M1T, PF_AFFINE, PF_LATE,
        PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_TEXRE, PF_EVICT, PF_SURF,
        PF_T3D, PF_TFLUSH, PF_T2D, PF_TPRES, PF_HOOK, PF_MFIRST, PF_MFLEND, PF_MPRES, PF_FLAGS, PF_HOOKN,
-       PF_SKIPPED, PF_N };
+       PF_SKIPPED, PF_REO, PF_RUNS0, PF_NPRES, PF_N };
 #define EFILE_WRITE 0x200u
 #define DES(len) ((1u<<28) | ((uint32_t)(len)))  /* TPtrC iLength: EPtrC(1)<<28 | len */
 
@@ -198,7 +198,9 @@ void a4_tel_tick(uint32_t had)
         h[i++] = pf[PF_SURF];
         /* [46] was the read-format probe's GL error (0 on the N95, round 10); from round
          * 14 the cache entries evicted (total) */
-        h[i++] = a4_gl_rdinfo(0); h[i++] = a4_gl_rdinfo(1); h[i++] = pf[PF_EVICT];
+        /* [44] [45] were the read format and type (BGRA, UNSIGNED_BYTE on the N95, rounds
+         * 10-17); from round 18 this window's re-presents skipped and presents made */
+        h[i++] = pf[PF_SKIPPED]; h[i++] = pf[PF_NPRES]; h[i++] = pf[PF_EVICT];
         /* [49] was the dual frames (PF_DUAL: none since the composite is immediate,
          * A4_IMM); from round 13 the solid fills drawn on the GPU (PF_FILL) */
         h[i++] = pf[PF_FLAT];   h[i++] = pf[PF_ADD];     h[i++] = pf[PF_FILL];
@@ -207,9 +209,13 @@ void a4_tel_tick(uint32_t had)
         h[i++] = pf[PF_M1BAKE];                                /* mode-1 re-bakes (total) */
         h[i++] = a4_gl_rdinfo(5);                              /* textures in the cache */
         h[i++] = pf[PF_M1TEX]; h[i++] = pf[PF_M1T];            /* this window: texels re-baked, ticks */
-        h[i++] = a4_gl_rdinfo(6);                              /* stencil bits */
+        /* [57] was the stencil bits (0 on the N95, rounds 10-17); from round 18 this
+         * window's ticks grouping and copying the batch (A4_REORDER) */
+        h[i++] = pf[PF_REO];
         h[i++] = pf[PF_AFFINE];                                /* flags-1 triangles on the game's affine fallback (total) */
-        h[i++] = a4_gl_rdinfo(7);                              /* alpha bits (the drawn-mask) */
+        /* [59] was the alpha bits (8 on the N95, rounds 10-17); from round 18 this
+         * window's draw calls before the reorder (PF_RUNS0; [39] is after) */
+        h[i++] = pf[PF_RUNS0];
         h[i++] = pf[PF_LATE];                                  /* triangles after the frame's composite (total) */
         h[i++] = pf[PF_BB];                                    /* billboards queued on the GPU (total) */
         h[i++] = pf[PF_BBSW];                                  /* billboards left to software (total) */
@@ -249,12 +255,16 @@ void a4_tel_tick(uint32_t had)
     t->caps++;
     {   /* next window: reset the timers after the write, so its cost is in no window */
         volatile uint32_t *pf = A4_PERF;
-#ifdef A4_ABCYCLE
+#if defined(A4_ABCYCLE2)
+        /* round 18: AB_SKIPREP (4) x AB_REORDER (8), one pair a window, AB_NATIVE kept */
+        pf[PF_MODE] = 2u | ((((pf[PF_MODE] >> 2) + 1u) & 3u) << 2);
+#elif defined(A4_ABCYCLE)
         pf[PF_MODE] = (pf[PF_MODE] + 1u) & 3u;    /* AB_FLUSH x AB_565, one mode a window */
 #endif
         pf[PF_RENDERS] = 0; pf[PF_COMP] = 0; pf[PF_READ] = 0; pf[PF_DRAW] = 0;
         pf[PF_GLFLUSH] = 0; pf[PF_CALLS] = 0; pf[PF_TRIS] = 0; pf[PF_M1TEX] = 0; pf[PF_M1T] = 0;
         pf[PF_T3D] = 0; pf[PF_TFLUSH] = 0; pf[PF_T2D] = 0; pf[PF_TPRES] = 0; pf[PF_HOOK] = 0;
+        pf[PF_REO] = 0; pf[PF_RUNS0] = 0; pf[PF_SKIPPED] = 0; pf[PF_NPRES] = 0;
         pf[PF_T0] = a4_ntick();
     }
 }

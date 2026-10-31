@@ -222,12 +222,14 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
         * (to the present), the game's present call (+1EC: the runtime's convert and post),
         * and our draw_primitive hook (every 4th call timed, x4); then their marks */
        PF_T3D, PF_TFLUSH, PF_T2D, PF_TPRES, PF_HOOK, PF_MFIRST, PF_MFLEND, PF_MPRES, PF_FLAGS, PF_HOOKN,
-       PF_SKIPPED, PF_N };
+       PF_SKIPPED, PF_REO, PF_RUNS0, PF_NPRES, PF_N };
 #define PFF_2D 1u        /* a composite ended this frame and its 2D is being timed */
 #define PFF_PRES 2u      /* the game's present call is being timed */
 #define AB_FLUSH 1u      /* glFlush after the frame's last batch (start the tile render) */
 #define AB_NATIVE 2u     /* read back in the implementation's own pair (OES_read_format): BGRA
                           * on the N95 (round 10), RGB565 on a device that names that */
+#define AB_SKIPREP 4u    /* skip the race loop's two re-presents (A4_SKIPREPRES, round 18) */
+#define AB_REORDER 8u    /* group the batch into fewer draw calls (A4_REORDER, round 18) */
 #ifndef A4_ABMODE
 #define A4_ABMODE 0u     /* the mode when nothing cycles it (no A4_ABCYCLE) */
 #endif
@@ -560,8 +562,86 @@ static int bringup(volatile struct glr *s)
 #define A4_GL_TEXC 0x00413000u
 struct texc { uint32_t src[NCACHE], wh[NCACHE], hs[NCACHE], lu[NCACHE]; };
 #define TX ((volatile struct texc *)A4_GL_TEXC)
-#define A4_GL_SCRATCH_TOP 0x00415000u              /* injector.py GL_SCRATCH + GL_SCRATCH_SIZE */
+#define A4_GL_SCRATCH_TOP 0x00421000u              /* injector.py GL_SCRATCH + GL_SCRATCH_SIZE */
 _Static_assert(A4_GL_TEXC + sizeof(struct texc) <= A4_GL_SCRATCH_TOP, "texc past the scratch");
+/* tex_index's hint (round 18): a slot + 1 for each hash of (key, table, texels), checked
+ * in full before use, so a stale or colliding hint only costs the linear search it
+ * replaced (20% of the hook's instructions in round 16's bench profile) */
+#define A4_GL_THINT 0x00420800u
+#define THINT ((uint16_t *)A4_GL_THINT)
+#define THINT_N 1024u
+_Static_assert(A4_GL_THINT + 2u * THINT_N <= A4_GL_SCRATCH_TOP, "texture hints past the scratch");
+static inline uint32_t thint_of(uint32_t key, uint32_t tabk, uint32_t src)
+{
+    return ((key >> 2) ^ (key >> 12) ^ (tabk >> 4) ^ (src >> 3) ^ (src >> 13)) & (THINT_N - 1u);
+}
+
+#ifdef A4_REORDER
+/* The batch reorder (round 18). A GL draw call costs ~32 us on the N95 whatever it draws
+ * (round 16's windows: batch draw against calls and triangles), and the game changes
+ * texture every ~4 triangles. A triangle may be drawn earlier than its turn, joining an
+ * earlier run of its own texture and kind, when its screen box misses every run it moves
+ * past: triangles that share no pixel draw the same pixels in either order, depth and
+ * blending included, so the image is the same. Each triangle's box (int16 x0 y0 x1 y1,
+ * one pixel of slack for the fill rule, clamped to the viewport) is kept beside the batch;
+ * batch_draw groups, copies the vertices into run order and draws a call a run. Bench
+ * census (A4_SEQDUMP, 80 race frames): 345 calls a frame -> 210. */
+#define A4_GL_TBOX 0x00414000u
+struct reo { int32_t pos[3u * MAXT * POSC]; int32_t uv[3u * MAXT * UVC]; uint32_t key[MAXT];
+             int16_t box[MAXT * 4u]; uint16_t head[MAXT], tail[MAXT], cnt[MAXT], next[MAXT]; };
+#define A4_GL_REO 0x00415000u
+#define RO ((struct reo *)A4_GL_REO)
+#ifndef A4_HPERSP
+#error "A4_REORDER copies HPERSP vertices (int32 x4)"
+#endif
+_Static_assert(A4_GL_TBOX + 8u * MAXT <= A4_GL_REO, "triangle boxes past the reorder");
+_Static_assert(A4_GL_REO + sizeof(struct reo) <= 0x00420800u, "reorder past the texture hints");
+#ifndef REO_SCAN
+#define REO_SCAN 32u             /* runs a triangle may look back over (bench: 32 ~ unlimited) */
+#endif
+static void tbox_set(uint32_t n, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+{
+    int16_t *b = (int16_t *)A4_GL_TBOX + n * 4u;
+    x0 -= 1; y0 -= 1; x1 += 1; y1 += 1;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > VP_W - 1) x1 = VP_W - 1;
+    if (y1 > VP_H - 1) y1 = VP_H - 1;
+    if (x0 > x1 || y0 > y1) { x0 = y0 = 0x7FFF; x1 = y1 = -0x8000; }   /* off screen: misses all */
+    b[0] = (int16_t)x0; b[1] = (int16_t)y0; b[2] = (int16_t)x1; b[3] = (int16_t)y1;
+}
+#endif
+
+#ifdef A4_SEQDUMP
+/* Bench diagnostic: every triangle a frame puts into the batch, in order, as 4 words --
+ * TEXID, x0 | y0 << 16, x1 | y1 << 16 (its screen bounding box, clamped), and
+ * inrange | (w << 1) | (h << 12) (inrange: every texcoord inside [0, 1], so the texture
+ * could sit in an atlas; w, h its size) -- into a frame buffer at 0x421010; at the frame's
+ * flush it is copied to the completed buffer at 0x42D010 under a sequence number for
+ * EKA2L1_MEMSNAP (0x421000: [0] seq, 0 while the copy runs; [1] triangles; [2] the
+ * running count). Needs A4_SCRATCH_SIZE=0x39000 (the scratch then ends at 0x43A000). */
+#define SEQ_HDR  ((volatile uint32_t *)0x00421000u)
+#define SEQ_CUR  ((uint32_t *)0x00421010u)
+#define SEQ_DONE ((uint32_t *)0x0042D010u)
+#define SEQ_MAX  3072u
+static void seq_add(uint32_t id, int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t info)
+{
+    uint32_t n = SEQ_HDR[2];
+    if (n >= SEQ_MAX) return;
+    if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0; if (x1 > VP_W - 1) x1 = VP_W - 1; if (y1 > VP_H - 1) y1 = VP_H - 1;
+    uint32_t *e = SEQ_CUR + n * 4u;
+    e[0] = id; e[1] = (uint32_t)(x0 & 0xFFFF) | ((uint32_t)y0 << 16);
+    e[2] = (uint32_t)(x1 & 0xFFFF) | ((uint32_t)y1 << 16); e[3] = info;
+    SEQ_HDR[2] = n + 1u;
+}
+static void seq_frame_done(void)
+{
+    uint32_t n = SEQ_HDR[2], seq = SEQ_HDR[3] + 1u;
+    SEQ_HDR[0] = 0;
+    for (uint32_t k = 0; k < n * 4u; k++) SEQ_DONE[k] = SEQ_CUR[k];
+    SEQ_HDR[1] = n; SEQ_HDR[3] = seq; SEQ_HDR[0] = seq; SEQ_HDR[2] = 0;
+}
+#endif
 
 /* 64 texels spread over the texture, and its size: a texture loaded where another was
  * differs here (one changed in place since round 10's probe found none in a race) */
@@ -790,9 +870,14 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint32_t *gc
      * it among a few frames (a 64x64 alpha-map one and a 32x32 one in the bench race,
      * round 14 -- frozen on their first frame until then), and each frame keeps its entry. */
     uint32_t src = ts[TS_PIX];
+    uint32_t hh = thint_of(key, tabk, src);
     { uint32_t li = s->lasthit; if (li < s->ntex && s->cache_ptr[li] == key && s->cache_tab[li] == tabk && TX->src[li] == src) i = (int)li; }
+    if (i < 0) {
+        uint32_t li = THINT[hh];
+        if (li && --li < s->ntex && s->cache_ptr[li] == key && s->cache_tab[li] == tabk && TX->src[li] == src) { s->lasthit = li; i = (int)li; }
+    }
     for (uint32_t k = 0; i < 0 && k < s->ntex; k++)
-        if (s->cache_ptr[k] == key && s->cache_tab[k] == tabk && TX->src[k] == src) { s->lasthit = k; i = (int)k; }
+        if (s->cache_ptr[k] == key && s->cache_tab[k] == tabk && TX->src[k] == src) { s->lasthit = k; i = (int)k; THINT[hh] = (uint16_t)(k + 1u); }
     if (i >= 0) {
         if (TX->wh[i] != (ts[1] | (ts[2] << 16))
             || (TX->lu[i] != s->frames && TX->hs[i] != tex_hash((const uint16_t *)pix, n, var == 2 ? ts[11] : 0u))) {
@@ -817,7 +902,7 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint32_t *gc
                 s->cache_ptr[i] = 0xFFFFFFFFu;      /* no descriptor or sprite has this key */
                 s->cache_ptr[j] = key; s->cache_tab[j] = tabk;
                 tex_make(s, j, id, ts, gctx, var);
-                s->lasthit = (uint32_t)j;
+                s->lasthit = (uint32_t)j; THINT[hh] = (uint16_t)(j + 1);
                 return j;
             }
             tex_make(s, i, s->cache_id[i], ts, gctx, var);
@@ -857,7 +942,7 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint32_t *gc
     if (idx < 0) return -1;
     s->cache_ptr[idx] = key; s->cache_tab[idx] = tabk;
     tex_make(s, idx, id, ts, gctx, var);
-    s->lasthit = (uint32_t)idx;
+    s->lasthit = (uint32_t)idx; THINT[hh] = (uint16_t)(idx + 1);
     return idx;
 }
 
@@ -867,7 +952,7 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint32_t *gc
 static void composite_prev(volatile struct glr *s) __attribute__((unused));
 static void batch_draw(uint32_t nt);
 #ifdef A4_HPERSP
-static int bitlen(uint32_t v) { int n = 0; while (v) { n++; v >>= 1; } return n; }
+static inline int bitlen(uint32_t v) { return v ? 32 - __builtin_clz(v) : 0; }   /* CLZ (ARMv5) */
 #endif
 
 #ifdef A4_PERSP
@@ -1039,7 +1124,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
          * (round 13-14: the HOME panel and the garage's stats box and bar). */
         *(volatile uint32_t *)A4_GL_BB = gctx[0x4c / 4];
         A4_PERF[PF_MFIRST] = a4_ntick();                /* the 3D pass begins */
-#if defined(A4_TEL) && defined(A4_ABCYCLE)
+#if defined(A4_TEL) && defined(A4_ABCYCLE2)
+        /* a4_tel.c steps AB_SKIPREP x AB_REORDER per capture window; native readback always */
+        A4_PERF[PF_MODE] |= AB_NATIVE;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE)
         s->fmode = A4_PERF[PF_MODE];                   /* a4_tel.c steps it per capture window */
 #else
         s->fmode = A4_ABMODE;
@@ -1088,8 +1177,8 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     } else {
         uint32_t *ts = (uint32_t *)tsaddr;
         uint32_t tw = ts[1] + 1, th = ts[2] + 1;
-        for (uint32_t w = tw; w > 1; w >>= 1) wsh++;
-        for (uint32_t h = th; h > 1; h >>= 1) hsh++;
+        wsh = tw ? 31 - __builtin_clz(tw) : 0;      /* floor(log2), as the shift loops it replaces */
+        hsh = th ? 31 - __builtin_clz(th) : 0;
         int ti = tex_index(s, tsaddr, gctx, kind == KIND_ALPHA ? 2 : m1);
         if (ti < 0) return 0;
         /* colorkey sprites are GPU-drawn with alpha test (5551 upload), so no software
@@ -1130,11 +1219,16 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     }
     /* grow the frame's drawn-row extent, so the readback covers only the rows
      * the GPU touched (the readback, not the blit, is the composite's cost). */
-    for (int i = 0; i < 3; i++) {
-        int32_t y = p[i*2+1];
-        if (y < 0) y = 0; else if (y >= VP_H) y = VP_H - 1;
-        if ((uint32_t)y < s->miny) s->miny = (uint32_t)y;
-        if ((uint32_t)y > s->maxy) s->maxy = (uint32_t)y;
+    {
+        int32_t ylo = p[1], yhi = p[1];
+        for (int i = 1; i < 3; i++) {
+            if (p[i*2+1] < ylo) ylo = p[i*2+1];
+            if (p[i*2+1] > yhi) yhi = p[i*2+1];
+        }
+        if (ylo < 0) ylo = 0; else if (ylo >= VP_H) ylo = VP_H - 1;
+        if (yhi < 0) yhi = 0; else if (yhi >= VP_H) yhi = VP_H - 1;
+        if ((uint32_t)ylo < s->miny) s->miny = (uint32_t)ylo;
+        if ((uint32_t)yhi > s->maxy) s->maxy = (uint32_t)yhi;
     }
 
 #ifdef A4_HPERSP
@@ -1189,12 +1283,39 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         }
     }
 #endif
+#ifdef A4_SEQDUMP
+    {
+        int32_t x0 = p[0], x1 = p[0], y0 = p[1], y1 = p[1];
+        uint32_t inr = 1, tw = 0, th = 0;
+        for (int i = 1; i < 3; i++) {
+            if (p[i*2] < x0) x0 = p[i*2]; if (p[i*2] > x1) x1 = p[i*2];
+            if (p[i*2+1] < y0) y0 = p[i*2+1]; if (p[i*2+1] > y1) y1 = p[i*2+1];
+        }
+        for (int i = 0; i < 3; i++)
+            if (uv[i*UVC] < 0 || uv[i*UVC] > 65536 || uv[i*UVC+1] < 0 || uv[i*UVC+1] > 65536) inr = 0;
+        if (kind != KIND_SHAD && kind != KIND_FLAT) { tw = ((uint32_t *)tsaddr)[1] + 1; th = ((uint32_t *)tsaddr)[2] + 1; }
+        else inr = 0;
+        seq_add(id, x0, y0, x1, y1, inr | (tw << 1) | (th << 12));
+    }
+#endif
     if (s->bfill >= MAXT) {                         /* batch full: draw it, then refill */
         uint32_t t0 = a4_ntick(); batch_draw(s->bfill); A4_PERF[PF_DRAW] += a4_ntick() - t0;
         s->bfill = 0;
     }
     uint32_t n = s->bfill;
     uint32_t vb = n * 3;                            /* first vertex of this triangle */
+#ifdef A4_REORDER
+    {
+        int32_t x0 = p[0], x1 = p[0], y0 = p[1], y1 = p[1];
+        for (int i = 1; i < 3; i++) {
+            if (p[i*2] < x0) x0 = p[i*2];
+            if (p[i*2] > x1) x1 = p[i*2];
+            if (p[i*2+1] < y0) y0 = p[i*2+1];
+            if (p[i*2+1] > y1) y1 = p[i*2+1];
+        }
+        tbox_set(n, x0, y0, x1, y1);
+    }
+#endif
 #ifdef A4_HPERSP
     int32_t  *POS = (int32_t  *)A4_GL_POS;
     for (int k = 0; k < 12; k++) POS[vb*4 + k] = P[k];
@@ -1277,6 +1398,11 @@ static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1
             s->bfill = 0;
         }
         uint32_t n = s->bfill, vb = n * 3;
+#ifdef A4_REORDER
+        /* the quad covers [x0, x1) x [y0, y1); every caller has x0 < x1, y0 < y1, but a
+         * reversed quad still draws, and a box read as empty would let it pass anything */
+        tbox_set(n, x0 < x1 ? x0 : x1, y0 < y1 ? y0 : y1, (x0 < x1 ? x1 : x0) - 1, (y0 < y1 ? y1 : y0) - 1);
+#endif
         for (int k = 0; k < 3; k++) {
             int q = ord[t * 3 + k];
 #ifdef A4_HPERSP
@@ -1297,6 +1423,10 @@ static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1
         s->bfill = n + 1;
         s->prims++;
     }
+#ifdef A4_SEQDUMP
+    seq_add(id, x0, y0, x1 - 1, y1 - 1, 0u);        /* one entry, two triangles in the batch */
+    seq_add(id, x0, y0, x1 - 1, y1 - 1, 0u);
+#endif
     int32_t ya = y0 < 0 ? 0 : y0, yb = y1 > VP_H ? VP_H - 1 : y1 - 1;
     if ((uint32_t)ya < s->miny) s->miny = (uint32_t)ya;
     if (yb >= 0 && (uint32_t)yb > s->maxy) s->maxy = (uint32_t)yb;
@@ -1598,7 +1728,91 @@ static void batch_draw(uint32_t nt)
     if (nt == 0) return;
     if (nt > MAXT) nt = MAXT;
     uint32_t *TEXID = (uint32_t *)A4_GL_TEXID;
-
+#ifdef A4_REORDER
+    if (((volatile struct glr *)A4_GL_SCRATCH)->fmode & AB_REORDER) {
+    uint32_t t0 = a4_ntick();
+    struct reo *ro = RO;
+    const int16_t *tb = (const int16_t *)A4_GL_TBOX;
+    uint32_t nr = 0, runs0 = 1;
+    for (uint32_t t = 0; t < nt; t++) {
+        uint32_t key = TEXID[t];
+        if (t && key != TEXID[t - 1]) runs0++;
+        int32_t x0 = tb[t*4], y0 = tb[t*4+1], x1 = tb[t*4+2], y1 = tb[t*4+3];
+        int r = (int)nr - 1, found = -1;
+        for (uint32_t steps = 0; r >= 0 && steps <= REO_SCAN; r--, steps++) {
+            if (ro->key[r] == key) { found = r; break; }
+            const int16_t *rb = &ro->box[r * 4];
+            if (x1 < rb[0] || rb[2] < x0 || y1 < rb[1] || rb[3] < y0) continue;   /* apart: pass it */
+            break;                                  /* shares pixels: t stays after it */
+        }
+        int16_t *b;
+        if (found < 0) {
+            found = (int)nr++;
+            ro->key[found] = key; ro->head[found] = (uint16_t)t; ro->cnt[found] = 0;
+            b = &ro->box[found * 4];
+            b[0] = (int16_t)x0; b[1] = (int16_t)y0; b[2] = (int16_t)x1; b[3] = (int16_t)y1;
+        } else {
+            ro->next[ro->tail[found]] = (uint16_t)t;
+            b = &ro->box[found * 4];
+            if (x0 < b[0]) b[0] = (int16_t)x0;
+            if (y0 < b[1]) b[1] = (int16_t)y0;
+            if (x1 > b[2]) b[2] = (int16_t)x1;
+            if (y1 > b[3]) b[3] = (int16_t)y1;
+        }
+        ro->tail[found] = (uint16_t)t; ro->cnt[found]++;
+    }
+    {   /* the vertices in run order */
+        const int32_t *P = (const int32_t *)A4_GL_POS, *U = (const int32_t *)A4_GL_UV;
+        int32_t *po = ro->pos, *uo = ro->uv;
+        for (uint32_t r = 0; r < nr; r++) {
+            uint32_t t = ro->head[r];
+            for (uint32_t c = ro->cnt[r]; c; c--) {
+                const int32_t *ps = P + t * (3u * POSC), *us = U + t * (3u * UVC);
+                for (uint32_t k = 0; k < 3u * POSC; k++) po[k] = ps[k];
+                for (uint32_t k = 0; k < 3u * UVC; k++) uo[k] = us[k];
+                po += 3u * POSC; uo += 3u * UVC;
+                t = ro->next[t];
+            }
+        }
+    }
+    A4_PERF[PF_REO] += a4_ntick() - t0;
+    A4_PERF[PF_RUNS0] += runs0;
+#ifdef A4_REOCHECK
+    {   /* bench check of the invariant: every pair the reorder put out of input order has
+         * disjoint boxes. 0x412D00 [100] pairs violating it, [101] batches checked,
+         * [102] pairs out of order (that the reorder did anything) */
+        volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
+        uint32_t viol = 0, inv = 0, o = 0;
+        uint16_t *in = (uint16_t *)A4_GL_READBUF;   /* free between composites */
+        for (uint32_t r = 0; r < nr; r++) {
+            uint32_t t = ro->head[r];
+            for (uint32_t c = ro->cnt[r]; c; c--) { in[o++] = (uint16_t)t; t = ro->next[t]; }
+        }
+        for (uint32_t i = 0; i < o; i++)
+            for (uint32_t j = i + 1; j < o; j++)
+                if (in[i] > in[j]) {
+                    const int16_t *a = &tb[in[i] * 4], *b = &tb[in[j] * 4];
+                    inv++;
+                    if (!(a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1])) viol++;
+                }
+        ck[100] += viol; ck[101]++; ck[102] += inv;
+        if (o != nt) ck[103]++;                     /* lost or doubled triangles */
+    }
+#endif
+    gl_vertexptr(4, GL_FIXED, 0, (const void *)ro->pos);
+    gl_texcoordptr((int)UVC, GL_FIXED, 0, (const void *)ro->uv);
+    uint32_t st = KIND_TEX, first = 0;
+    for (uint32_t r = 0; r < nr; r++) {
+        draw_run(ro->key[r], first, ro->cnt[r], &st);
+        first += ro->cnt[r];
+    }
+    kind_leave(st);
+#if defined(A4_RUNDIAG) || defined(A4_TEL)
+    ((volatile uint32_t *)0x00412000u)[4] += nr;     /* draw calls this frame */
+#endif
+    return;
+    }
+#endif
 #ifdef A4_HPERSP
     gl_vertexptr(4, GL_FIXED, 0, (const void *)A4_GL_POS);
 #else
@@ -1621,6 +1835,7 @@ static void batch_draw(uint32_t nt)
     {   /* draw calls this frame (one per same-texture run); folded at flush */
         uint32_t runs = 1; for (uint32_t t = 1; t < nt; t++) if (TEXID[t] != TEXID[t-1]) runs++;
         ((volatile uint32_t *)0x00412000u)[4] += runs;
+        A4_PERF[PF_RUNS0] += runs;                   /* = the calls: nothing grouped */
     }
 #endif
 }
@@ -1675,6 +1890,52 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
             }
             continue;
         }
+#ifndef A4_SLOWBLIT
+        if (bgra && amask && !((uintptr_t)fb & 3u)) {
+            /* the N95's case (round 18): BGRA words, alpha bit 7 the drawn-mask; two pixels
+             * a step, one word store when both are drawn (VP_W is even and rows are word
+             * aligned). The same pixels as the general loop below: 565 from the top bits,
+             * drawn iff alpha >= 0x80. */
+            for (int sy = 0; sy < STRIP; sy++) {
+                int screen_y = VP_H - 1 - (y0 + sy);
+                if (screen_y < CLIP_TOP) continue;
+                const uint32_t *src = rb + sy * VP_W;
+                uint16_t *d16 = (uint16_t *)fb + screen_y * FB_STRIDE;
+                uint32_t *d32 = (uint32_t *)d16;
+                for (int x = 0; x < VP_W; x += 2) {
+                    uint32_t a = src[x], b = src[x + 1];
+                    uint32_t ca = ((a >> 8) & 0xF800u) | ((a >> 5) & 0x07E0u) | ((a >> 3) & 0x001Fu);
+                    uint32_t cb = ((b >> 8) & 0xF800u) | ((b >> 5) & 0x07E0u) | ((b >> 3) & 0x001Fu);
+                    if ((int32_t)(a & b) < 0) d32[x >> 1] = ca | (cb << 16);
+                    else {
+                        if ((int32_t)a < 0) d16[x] = (uint16_t)ca;
+                        if ((int32_t)b < 0) d16[x + 1] = (uint16_t)cb;
+                    }
+                }
+            }
+#ifdef A4_BLITCHECK
+            /* bench check: the general loop's answer for the same strip, against what the
+             * fast loop wrote (0x412D00 [104] pixels differing, [105] strips checked) */
+            {
+                volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
+                for (int sy = 0; sy < STRIP; sy++) {
+                    int screen_y = VP_H - 1 - (y0 + sy);
+                    if (screen_y < CLIP_TOP) continue;
+                    const uint32_t *src = rb + sy * VP_W;
+                    volatile uint16_t *dstrow = fb + screen_y * FB_STRIDE;
+                    for (int x = 0; x < VP_W; x++) {
+                        uint32_t px = src[x];
+                        uint32_t r = (px >> rsh) & 0xFF, g = (px >> 8) & 0xFF, b = (px >> bsh) & 0xFF;
+                        if ((px >> 24) < 0x80u) continue;
+                        if (dstrow[x] != (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3))) ck[104]++;
+                    }
+                }
+                ck[105]++;
+            }
+#endif
+            continue;
+        }
+#endif
         for (int sy = 0; sy < STRIP; sy++) {
             int screen_y = VP_H - 1 - (y0 + sy);
             if (screen_y < CLIP_TOP) continue;           /* leave the HUD banner to software */
@@ -1756,6 +2017,9 @@ void a4_gl_flush(void)
 
     /* this frame's drawn extent is what composite_prev reads back next frame */
     s->pminy = s->miny; s->pmaxy = s->maxy;
+#ifdef A4_SEQDUMP
+    seq_frame_done();
+#endif
 }
 
 /* Every call of the HUD sprite painter (a4_hud_tramp, +2973A) and of the two scaled
@@ -1969,7 +2233,7 @@ int a4_gl_frame(uint32_t fps)
         uint32_t caller = *(volatile uint32_t *)0x00400840u;
         uint32_t r1 = (uint32_t)(uintptr_t)&a4_rep1 + (uint32_t)a4_rep1;
         uint32_t r2 = (uint32_t)(uintptr_t)&a4_rep2 + (uint32_t)a4_rep2;
-        if (caller == r1 || caller == r2) { presented = 1; A4_PERF[PF_SKIPPED]++; }
+        if ((A4_PERF[PF_MODE] & AB_SKIPREP) && (caller == r1 || caller == r2)) { presented = 1; A4_PERF[PF_SKIPPED]++; }
     }
 #endif
     s->prims = 0;
@@ -1987,4 +2251,5 @@ int a4_gl_frame(uint32_t fps)
 void a4_gl_presented(void)
 {
     if (A4_PERF[PF_FLAGS] & PFF_PRES) { A4_PERF[PF_TPRES] += a4_ntick() - A4_PERF[PF_MPRES]; A4_PERF[PF_FLAGS] &= ~PFF_PRES; }
+    A4_PERF[PF_NPRES]++;
 }

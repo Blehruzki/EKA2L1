@@ -5,6 +5,8 @@
 # Word 38 was w_glflush, 46 rd_err, up to round 13; tex_remade and tex_evicted from round 14.
 # Word 43 was home_us up to round 14; surf2_tris from round 15.
 # Words 13,14,16,17,18 were ntex,bstep,winstep,wvis,idle2d up to round 15; the window's phase timers from round 16.
+# Words 57, 59 were stencil_bits (0), alpha_bits (8) up to round 17; the reorder's ticks and calls before it from round 18.
+# Words 44, 45 were rd_fmt, rd_type up to round 17; the window's skipped re-presents and presents made from round 18.
 import sys, struct, os
 from PIL import Image
 NAMES=['magic','ver','capidx','fcount','W','H','stride','fbbytes','bb','up','frames',
@@ -13,7 +15,7 @@ NAMES=['magic','ver','capidx','fcount','W','H','stride','fbbytes','bb','up','fra
        'gl_renders','gl_calls','gl_tris','gl_maxcalls','gl_lastcalls',
        # v4
        'ab_mode','w_renders','w_nticks','w_comp','w_read','w_draw','tex_remade','w_calls','w_tris',
-       'ntick_now','tick_now','surf2_tris','rd_fmt','rd_type','tex_evicted','flat_tris','add_tris','fill_gpu','shad_tris','pb_config','depth_bits','m1_rebakes','ntex_now','w_m1texels','w_m1ticks','stencil_bits','affine_tris','alpha_bits','late_tris','bb_gpu','bb_sw','bb2_calls']
+       'ntick_now','tick_now','surf2_tris','w_skipped','w_presents','tex_evicted','flat_tris','add_tris','fill_gpu','shad_tris','pb_config','depth_bits','m1_rebakes','ntex_now','w_m1texels','w_m1ticks','w_reo_ticks','affine_tris','w_runs0','late_tris','bb_gpu','bb_sw','bb2_calls']
 for fn in sys.argv[1:]:
     d=open(fn,'rb').read()
     if len(d)<128: print(fn,'too short'); continue
@@ -34,10 +36,20 @@ for fn in sys.argv[1:]:
             other = h[34] - h[13] - h[18] - h[16] - h[17]
             print('  phases per render (ms): 3D pass %.1f (our hook %.1f of it), composite %.1f, 2D %.1f,'
                   ' present %.1f, rest (logic) %.1f' % (h[13]/r, h[14]/r, h[18]/r, h[16]/r, h[17]/r, other/r))
+        if h[59]:
+            m = h[32]
+            print('  round 18 mode %d: re-presents %s, reorder %s | %.0f calls a render before grouping, %.0f made;'
+                  ' grouping %.2f ms | presents %.2f a render, %.2f skipped'
+                  % (m, 'SKIPPED' if m & 4 else 'kept', 'ON' if m & 8 else 'off', h[59]/r, h[39]/r, h[57]/r, h[45]/r, h[44]/r))
     if h[27]:
         print('  GL census: %d renders, %.0f draw calls/render, %.0f triangles/render, max %d calls, last %d'
               % (h[27], h[28]/h[27], h[29]/h[27], h[30], h[31]))
     fpsb=h[26] if ver>=3 else 0; fboff=hb+fpsb
+    if len(d) >= fboff + h[7] + 122*4:
+        tl = struct.unpack('<122I', d[fboff+h[7]:fboff+h[7]+488])
+        if tl[101]: print('  REOCHECK: %d batches, %d pairs out of order, %d overlapping (must be 0), %d batches lost a triangle'
+                          % (tl[101], tl[102], tl[100], tl[103]))
+        if tl[105]: print('  BLITCHECK: %d strips, %d drawn pixels differing from the general loop (must be 0)' % (tl[105], tl[104]))
     if fpsb>=560:
         fs=struct.unpack('<140I', d[hb:hb+560])
         disp,min_dt,max_dt,sum_dt=fs[5],fs[6],fs[7],fs[8]; ring_pos=fs[11]; ring=fs[12:140]
