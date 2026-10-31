@@ -3403,3 +3403,27 @@ Bench, the exact binary (sha256 085ac5211dd220d805857b54e44178807a6466627843aa4d
 telerun3 230 s): framestat 3752, faults 1 (the known boot fault), errc 0; captures are the
 stock picture (the mode-4 road grain back); per render (bench host time) 3D pass in
 software 40-54 ms, 2D 6.6-10.4, present 13-24, rest 13-19; the 85 ms gate as before.
+
+## Phone round 17 (r17_sw 085ac521, GPU drawing off): the lines still appear; the first stock frame split
+
+Owner: the lines still appear with this build.
+So they are not the GPU path's drawing, composite or billboards. What this build still
+carries of ours: the CPU rewrites every build has had since the early rounds (FILL_HOOKS:
+the translucent fill +2ABAA -> a4_fill_alpha, patch/fill.c; the Lib3D vector leaves
++51D96/+51DB8 -> a4_vec_add/mulsub; LOOP_HOOKS: the mode-4 textured span +3357A and the
+transparent span +33B16), the hooks (all inert here), and the telemetry's capture write
+(155 KB every 40 renders). Remaining candidates: one of those rewrites, or the stock game /
+the phone's screen update (a tear: two frames meeting on the panel at a line, in the
+fastest section of the track). The decisive test is the original game, untouched.
+Instrument gap found on the way (rule 4): round 16's "the translucent fill is never called
+in a race" traced the ORIGINAL routine +B9A10 -- which no injected build reaches, because
++2ABAA is replaced by a4_fill_alpha. Re-measured at +2ABAA itself (PCTRACE_REGS, 230 s
+bench race): 0 calls. The conclusion stands; the first measurement could not have shown it.
+Telemetry (8 files, capidx 38-45; errc 0): the stock frame on the N95, per render, race
+windows with the HUD (38-42): total 94-118 ms; 3D pass in software 53-75; 2D 6-8.4;
+present 15.6-19.4 (the three presents' converts, no waiting: never at the 85 ms gate);
+rest 15-18. Window 43: a takedown camera (letterbox); 44-45: the race end (45: 174 ms).
+Against round 16 (GPU, same phone): 85-106.5 ms a render, light scenes held at the 85 ms
+gate. Measured gain of the GPU path: ~10-20% a render -- the 3D pass falls from 53-75 ms to
+16-48, but the composite (14-15) is new cost and the gate takes the rest in light scenes.
+The game's own 85 ms gate is now the limit for any further gain from rendering.
