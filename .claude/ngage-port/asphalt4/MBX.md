@@ -3675,3 +3675,8 @@ Whole race (aggregates, ~1,050 renders a mode; re-presents skipped and reorder i
   in 18's kept windows and before); or the same thing as the lap-section lines of rounds
   15-17, which appeared with the GPU drawing nothing (round 17). Not settled by these files:
   the telemetry sees our frame, not the panel.
+- Owner on the tearing: a VERTICAL split (the frame meeting the panel's scan, which on the
+  N95's portrait panel runs across the landscape picture); there since the first builds, in
+  the original game too and worse there ("due to performance"); much rarer now; in heavy,
+  intense moments, nowhere in particular. Not new, not ours to chase now (owner: do not
+  focus on it). The lap-section "lines" of rounds 15-17 are likely the same thing.
