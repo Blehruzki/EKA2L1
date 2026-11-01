@@ -3754,3 +3754,21 @@ reorder, copy and lean on in both modes; A4_ABCYCLE6 alternates AB_DEFER (64), s
   telerun3 230 s, framestat 5513, faults 1 (the boot fault), errc 0; racemenu after a race
   right. On the phone the measure is hook + batch draw per triangle by mode (the deferred
   hook is small, its batch draw carries the conversion).
+
+## Phone round 22 (r22_phone 61cb029a): deferring the conversion buys nothing; the cost is reading the game's data
+
+8 race files (capidx 51-58), errc 0. Whole race (aggregates; skip, reorder, copy, lean in both):
+  lean     (slot 1): 87.6 ms a render, 1287 tris, hook 18.4, batch draw 10.9 (grouping 1.82), >=90 ms 24%
+  deferred (slot 3): 87.4 ms a render, 1416 tris, hook 18.7, batch draw 15.7 (grouping 5.52), >=90 ms 24%
+- Our CPU outside GL (hook + the third of batch draw outside it, minus GL time): lean 10.0
+  us a triangle, deferred 9.7 -- equal. The instruction-cache guess is REFUTED: a warm loop
+  over the batch converts for ~2.5 us a triangle (deferred grouping 3.9 minus lean's 1.4),
+  but the capture-only hook still costs ~5.8 us a triangle, and all it does is read the
+  game's per-triangle data (desc, three vertex records, the texture descriptor) and write
+  16 words. So the hook's phone time is mostly the first touch of the game's data -- loads
+  that miss (a guess about the mechanism: the ARM1136's data cache allocates on reads only,
+  so the vertices the game has just written are not in it). Deferred off; lean stays.
+- Next measurements, both cheap: prefetch (PLD) the three vertex records and the texture
+  descriptor at the hook's entry, so their misses overlap instead of following one another;
+  and the readback in 24-row strips (10 glReadPixels a frame instead of 15) for its per-call
+  overhead.
