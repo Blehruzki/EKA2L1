@@ -4051,3 +4051,46 @@ Design (decided from the above; nothing built yet):
   meshes -- TBillboard's key bb[0x18] is its depth (+31368), to be passed from +312E6;
   coplanar faces of different keys in one mesh (decals) would z-fight; TFakeZFace faces
   stay in the ordering table.
+
+## Mesh bench 1: the list built and checked against software (A4_MESH, bench only)
+
+Built (a4_gl.c A4_MESH; injector MESH_HOOKS): the `bl +349B0` at +34ADC becomes a BLX to
+a4_mesh_insert(cam, face), which keeps a face for the frame's list or calls +349B0 itself
+(placeholders a4_otins/a4_tfvt patched to the game's insert and TFace's vtable, checked in
+the built image: code+349B1, code+B08EC). The list (0x423000-0x43B000, 2048 triangles,
+GL_SHORT x'y'z' + texcoord words) is drawn at the frame's first triangle after the clear,
+one glDrawElements a texture, projection and texture matrices by glLoadMatrixx (ord 84),
+depth test on and writing, GL_CULL_FACE; in that frame the table's classes test their true
+depth (tri_conv computes zq for all of them; quads at window depth 1), only KIND_TEXZ writes
+(glDepthMask, ord 49), shadows stamp dst alpha instead of depth (DST_COLOR /
+ONE_MINUS_DST_ALPHA, src 3/4) at a depth 1/64 nearer. Back faces are dropped at the insert
+by det[v0 v1 v2] >= 0 (view space; the screen area is F^2 det / (w0 w1 w2), w > 0).
+A4_MESHCHECK (with A4_DUALCAP): the list's faces go to the table as well and the hook
+leaves them off the GPU, so the GPU picture of a frame is the mesh path's and software's is
+the stock one; A4_DUALCAP's lean path now leaves software drawing (it returned 1 there).
+
+Bench (RM-320, telerun3 40 s, play1 flags + A4_TEL; m0 = without A4_MESH):
+- Live: ~1,530-1,570 list triangles a render in ~29 draw calls; draw calls a render 132-136
+  against 236; 0 lost; errc 0; framestat 1269-1299, faults 1 (the boot fault) in every run.
+- Pictures: a normal race in all eight captures of each build (cars, buildings, trees,
+  road); a picture is not a measurement, so the same-frame check:
+  mesh check vs software: pixels differing 25-37% a capture, 8x8 object-sized blocks
+  0.5-12.9%; the current renderer (m0 + DUALCAP) vs software: 25-39%, 0.5-12.0% -- the same
+  level, with the same kinds of block (glows over the sky, skid marks, the 2D tags and
+  banner). One difference was the list's: the player car's rear window lost its
+  reflection (trees) and the sparks over it.
+- Class-painted capture (A4_KINDVIS, now also painting KIND_ALPHA yellow): the reflection
+  stays textured -- not a blended class. Faces sharing all three vertex records among the
+  mesh routine's inserts: none (823 in a frame). Leaving the 0x104000 class (span mode 1)
+  out of the list (MESH_EXCL=4): the window right again.
+- Why: ctx[0x5c] (the map) is constant through every walk (four frames, every
+  draw_primitive), but the mode-1 table ctx[0x60] is 0xD0E9C0 -- the render target, the
+  capture header's bb. Its contents are one fixed image for most of the walk and change,
+  frame by frame, about 200-250 draws before its end (where the player's car is drawn;
+  writers include +360A2, which writes the surface ctx[0x4c] in rows after two +522F0
+  transforms). Mode 1 adds a quarter of a framebuffer pixel picked by the second map: the
+  paint and window reflection samples the frame being drawn. The hook bakes it when the car
+  is drawn; the list baked it at the walk's start, against other contents.
+- So the list leaves 0x104000 to the table (A4_MESH_M1 takes it, for later: a bake deferred
+  to the frame's end, used one frame late, is the candidate). It was 22% of the mesh
+  routine's inserts in the round-2 census (9,379 of 42,832).

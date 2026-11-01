@@ -57,6 +57,8 @@ a4_gl_iat:
         .word   119     @ [39] glStencilOp     game's per-frame stamp map does)
         .word   36      @ [40] glClearStencil
         .word   40      @ [41] glColorMask    (round 11: blended classes leave dst alpha alone)
+        .word   84      @ [42] glLoadMatrixx  (A4_MESH: the frame's projection, a key's texcoord scale)
+        .word   49      @ [43] glDepthMask    (A4_MESH: the ordering table's classes test, not write)
         .global a4_gl_iat_end
 a4_gl_iat_end:
 
@@ -160,3 +162,13 @@ a4_gl_iat_ptr:
 a4_ntick:
         swi     0x800010
         bx      lr
+
+@ A4_MESH: where the game's code is, from here -- each word is patched by the injector
+@ to (target link address) - (the word's own link address), so &word + word is the
+@ target at run time wherever the image loads (a4_gl.c adds them).
+        .global a4_otins, a4_tfvt
+        .align  2
+a4_otins:
+        .word   0xDEADBEEF          @ patched: (code+0x349B0 | 1) - (this word): the ordering-table insert
+a4_tfvt:
+        .word   0xDEADBEEF          @ patched: (code+0xB08EC) - (this word): TFace's vtable

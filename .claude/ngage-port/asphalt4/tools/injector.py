@@ -60,6 +60,14 @@ CAPTURE_DISPLACED = {0x300B2: (0x0005, 0x0014),     # movs r5, r0 ; movs r4, r2
                      0x305A2: (0x469C, 0x000D),     # mov ip, r3 ; movs r5, r1
                      0x2AB0C: (0xA90A, 0xC962),     # add r1, sp, #0x28 ; ldm r1, {r1, r5, r6}
                      0x1EE: (0x2000, 0x66E0)}       # movs r0, #0 ; str r0, [r4, #0x6c]
+# The structural step (A4_MESH): the one ordering-table insert in the mesh routine +349F8
+# (`bl +349B0` at +34ADC) becomes a BLX to a4_mesh_insert(cam, face), which keeps an
+# eligible face for the frame's GPU mesh list and passes the rest to +349B0 itself.
+# Added only when A4_EXTRA_CFLAGS defines A4_MESH.
+MESH_HOOKS = {0x34ADC: 'a4_mesh_insert'}
+MESH_DISPLACED = {0x34ADC: (0xF7FF, 0xFF68)}      # bl +349B0
+MESH_PLACEHOLDERS = {'a4_otins': 0x349B0 | 1,     # the ordering-table insert (Thumb)
+                     'a4_tfvt': 0xB08EC}          # TFace's vtable (RTTI, MBX.md map 1)
 CAPTURE_SKIP_RET = 0x300E0      # draw_primitive epilogue; GPU-drawn prims return here
 BB_SKIP_RET = 0x3031C           # the billboard blit's epilogue; GPU-queued sprites return here
 FILL_SKIP_RET = 0x2AB4C         # the rectangle fill's epilogue; GPU-queued fills return here
@@ -78,7 +86,8 @@ GL_IMPORT_ORDINALS = [14, 17, 4, 3, 18, 132, 33, 31, 58, 108,
                       28, 128,         # [33] glAlphaFuncx [34] glTexSubImage2D (A4_TEL colorkey)
                       30, 59, 69,      # [35] glBlendFunc [36] glFlush [37] glGetIntegerv (round 10)
                       117, 119, 36,    # [38] glStencilFunc [39] glStencilOp [40] glClearStencil
-                      40]              # [41] glColorMask (round 11)
+                      40,              # [41] glColorMask (round 11)
+                      84, 49]          # [42] glLoadMatrixx [43] glDepthMask (A4_MESH)
                                        # [28] glDepthFunc     [29] glClearDepthx
                                        # must match a4_gl.s a4_gl_iat
 # A4_WINDOW: the window the GPU presents into is our own (a4_gl.c, bringup);
@@ -97,6 +106,7 @@ GL_SCRATCH_SIZE = 0x22000       # GL state + strip readback + batch buffers + te
                                 # + the batch reorder (0x414000-0x421000, A4_REORDER) + the A/B aggregates (A4_AGG)
                                 # + the atlas state (0x422000, A4_ATLAS)
 # a bench diagnostic may need more (A4_SEQDUMP: 0x3B000, A4_DEFERCHECK: 0x2E000); A4_SCRATCH_SIZE overrides
+# A4_MESH: the mesh list from 0x423000 (a4_gl.c MESH_TOP) -- 0x3A000 at MESH_MAXT 2048
 GL_SCRATCH_SIZE = int(os.environ.get('A4_SCRATCH_SIZE', hex(GL_SCRATCH_SIZE)), 0)
                                 # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as
                                 # small as the batch allows -- a large image .bss corrupts
@@ -307,6 +317,12 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         ph_link = syms['a4_fill_skip']
         word = ((LINK_BASE + FILL_SKIP_RET) | 1) - ph_link
         struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
+    mesh = '-DA4_MESH' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl
+    if mesh:
+        for sym, off in MESH_PLACEHOLDERS.items():
+            ph_link = syms[sym]
+            word = (LINK_BASE + off) - ph_link
+            struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
     # the race loop's two re-present return sites (A4_SKIPREPRES compares DoPresent's caller)
     if not clean:
         for sym, ret in (('a4_rep1', 0x955), ('a4_rep2', 0x983)):
@@ -338,6 +354,13 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         blx_insert(code, off, syms[tramp])
         print('cap    +%06X -> %s +%06X (4-byte BLX detour)' % (off, tramp, syms[tramp] - LINK_BASE))
 
+    if mesh:
+        for off, sym in MESH_HOOKS.items():
+            want = MESH_DISPLACED[off]
+            have = struct.unpack_from('<HH', code, off)
+            assert have == want, 'mesh hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)
+            blx_insert(code, off, syms[sym])
+            print('mesh   +%06X -> %s +%06X (4-byte BLX for the bl)' % (off, sym, syms[sym] - LINK_BASE))
     grow = len(code) - code_size
     out = bytearray(d[:code_off]) + code + d[code_off + code_size:]
     struct.pack_into('<I', out, 0x30, len(code))

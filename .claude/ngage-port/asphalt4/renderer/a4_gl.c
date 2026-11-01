@@ -223,7 +223,8 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
         * (to the present), the game's present call (+1EC: the runtime's convert and post),
         * and our draw_primitive hook (every 4th call timed, x4); then their marks */
        PF_T3D, PF_TFLUSH, PF_T2D, PF_TPRES, PF_HOOK, PF_MFIRST, PF_MFLEND, PF_MPRES, PF_FLAGS, PF_HOOKN,
-       PF_SKIPPED, PF_REO, PF_RUNS0, PF_NPRES, PF_LASTFIRST, PF_N };
+       PF_SKIPPED, PF_REO, PF_RUNS0, PF_NPRES, PF_LASTFIRST,
+       PF_MESH, PF_MKEYS, PF_MDRAW, PF_MLOST, PF_N };   /* A4_MESH: this window's list triangles drawn, its draw calls, its ticks, triangles lost */
 #define PFF_2D 1u        /* a composite ended this frame and its 2D is being timed */
 #define PFF_PRES 2u      /* the game's present call is being timed */
 #define PFF_WROTE 4u     /* a4_tel.c wrote a capture since the last render began */
@@ -287,6 +288,71 @@ struct glr {
 
 _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlaps the readback strip");
 
+#ifdef A4_MESH
+/* The structural step (MBX.md "Structural step, map 2"): the faces the mesh routine
+ * +349F8 would insert into the ordering table, taken at the insert (a4_mesh_insert, the
+ * BLX at +34ADC) into one list for the frame -- view-space x' y' z' and the face's own
+ * texcoord words, GL_SHORT, 6 halfwords a corner -- and drawn at the frame's first
+ * triangle with one projection matrix, one draw call a texture, depth-tested and
+ * writing. The game's transform and culls run as they did; its projection, ordering
+ * table, face draw and our draw_primitive hook do not run for these faces. */
+#define AB_MESH 1024u    /* the mesh list (A4_MESH) */
+#define GL_CULL_FACE 0x0B44
+#define GL_TEXTURE 0x1702
+#define GL_DST_COLOR 0x0306
+#define GL_ONE_MINUS_DST_ALPHA 0x0305
+#define A4_GL_MESH 0x00423000u
+#ifndef MESH_MAXT
+#define MESH_MAXT 2048u
+#endif
+#define MESH_NK 128u                    /* textures a frame's list may use (key slot 0xFF: dropped) */
+struct mesh {
+    uint32_t frame;                     /* s->frames the list was gathered in */
+    uint32_t n;                         /* triangles in it */
+    uint32_t drawn;                     /* drawn (or dropped) this frame: no more taken */
+    uint32_t active;                    /* this frame drew mesh triangles: the table's classes depth-test */
+    uint32_t cam, F;                    /* the mesh context it was taken under, its focal (cam[1]) */
+    uint32_t nk;                        /* keys at the last draw */
+    uint32_t culled;                    /* back faces consumed at the insert (total) */
+    uint32_t kid[MESH_NK];              /* a key's GL texture */
+    uint16_t kcnt[MESH_NK], koff[MESH_NK];
+    uint8_t kws[MESH_NK], khs[MESH_NK]; /* its texcoord shifts */
+};
+#define MESH ((volatile struct mesh *)A4_GL_MESH)
+#define MESH_V  ((int16_t *)(A4_GL_MESH + 0x800u))                          /* x y z u v - a corner */
+#define MESH_T  ((uint32_t *)(A4_GL_MESH + 0x800u + 36u * MESH_MAXT))       /* texture word | m1 */
+#define MESH_K  ((uint8_t *)(A4_GL_MESH + 0x800u + 40u * MESH_MAXT))        /* key slot (at the draw) */
+#define MESH_I  ((uint16_t *)(A4_GL_MESH + 0x800u + 41u * MESH_MAXT))       /* indices, by key */
+#define MESH_TOP (A4_GL_MESH + 0x800u + 47u * MESH_MAXT)
+#define A4_MESH_SCRATCH_TOP 0x0043B000u /* injector.py GL_SCRATCH + A4_SCRATCH_SIZE (0x3A000) */
+_Static_assert(sizeof(struct mesh) <= 0x800u, "mesh header past its block");
+_Static_assert(MESH_TOP <= A4_MESH_SCRATCH_TOP, "mesh list past the scratch");
+_Static_assert(3u * MESH_MAXT <= 0x10000u, "uint16 indices");
+#define MESH_ON() (MESH->active)
+#ifdef A4_MESHCHECK
+/* Bench (with A4_DUALCAP): the list's faces go to the ordering table as well, so software
+ * draws the stock picture; the hook leaves them off the GPU (mesh_has), so the GPU picture
+ * of the same frame is the mesh path's. MESH_D: each list triangle's face; MESH_H: an open
+ * hash of them (4096 slots, the list at most half fills it), cleared whole each frame. */
+#ifndef A4_DUALCAP
+#error "A4_MESHCHECK compares against the software picture: build it with A4_DUALCAP"
+#endif
+#define MESH_D ((uint32_t *)MESH_TOP)
+#define MESH_H ((uint32_t *)(MESH_TOP + 4u * MESH_MAXT))
+#define MESH_HN 4096u
+_Static_assert(MESH_TOP + 4u * MESH_MAXT + 4u * MESH_HN <= 0x00441000u, "check tables past the scratch (A4_SCRATCH_SIZE 0x40000)");
+static inline uint32_t mesh_hslot(uint32_t p) { return ((p >> 2) * 2654435761u) >> 20; }
+static int mesh_has(uint32_t p)
+{
+    const uint32_t *H = MESH_H;
+    for (uint32_t i = mesh_hslot(p);; i = (i + 1u) & (MESH_HN - 1u)) {
+        if (H[i] == p) return 1;
+        if (!H[i]) return 0;
+    }
+}
+#endif
+#endif
+
 /* sentinel the pbuffer is cleared to each frame: pixels the GPU never drew read
  * back as pure magenta, so the blit can leave them to the software layer. */
 #define SENTINEL_R 0xFFu
@@ -342,6 +408,10 @@ static void  gl_depthfunc(uint32_t f) __attribute__((unused));
 static void  gl_depthfunc(uint32_t f){ ((void(*)(uint32_t))F(28))(f); }
 static void  gl_cleardepthx(int d) __attribute__((unused));
 static void  gl_cleardepthx(int d){ ((void(*)(int))F(29))(d); }
+static void  gl_loadmatrixx(const int*m) __attribute__((unused));
+static void  gl_loadmatrixx(const int*m){ ((void(*)(const int*))F(42))(m); }       /* ord 84 (A4_MESH) */
+static void  gl_depthmask(uint32_t f) __attribute__((unused));
+static void  gl_depthmask(uint32_t f){ ((void(*)(uint32_t))F(43))(f); }              /* ord 49 (A4_MESH) */
 static void  gl_texsubimage(uint32_t tg,int l,int xo,int yo,int w,int h,uint32_t f,uint32_t t,const void*p){ ((void(*)(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*))F(34))(tg,l,xo,yo,w,h,f,t,p); }
 #ifdef A4_WINDOW
 extern volatile uint32_t *a4_ws_iat_ptr(void);
@@ -1269,6 +1339,14 @@ static inline void tri_conv(uint32_t kind, int wsh, int hsh, int32_t x0, int32_t
     int shift = (26 - bitlen((uint32_t)m)) - bitlen(zmax);
     int32_t zq = 0;
     if (kind == KIND_TEXZ) zq = shift >= 0 ? (ZK << shift) : (ZK >> -shift);
+#ifdef A4_MESH
+    else if (MESH_ON()) {
+        /* a mesh frame: every class tests its true depth against the list's (draw_run); a
+         * shadow 1/64 nearer, so the road it lies on does not hide it where both write */
+        int32_t zk = kind == KIND_SHAD ? ZK + (ZK >> 6) : ZK;
+        zq = shift >= 0 ? (zk << shift) : (zk >> -shift);
+    }
+#endif
     int32_t W0 = (int32_t)(shift >= 0 ? (w0 << shift) : (w0 >> -shift));
     int32_t W1 = (int32_t)(shift >= 0 ? (w1 << shift) : (w1 >> -shift));
     int32_t W2 = (int32_t)(shift >= 0 ? (w2 << shift) : (w2 >> -shift));
@@ -1409,6 +1487,200 @@ static int defer_take(volatile struct glr *s, uint32_t *gctx, const uint32_t *de
     s->bfill = n + 1;
     s->prims++;
     return (kind == KIND_ADD || kind == KIND_ALPHA) ? 0 : 1;
+}
+#endif
+
+#ifdef A4_MESH
+extern const int32_t a4_otins, a4_tfvt;      /* a4_gl.s: target - (the word), patched by the injector */
+#define MESH_FITS(a) ((uint32_t)((int32_t)(a) + 32768) < 65536u)
+/* A face the mesh routine passed its culls, into the frame's list: 1 = taken (the ordering
+ * table never sees it). Taken: a TFace (its vtable; not a TFakeZFace), in one of the three
+ * classes the mesh routine gives (map 2: 0x4001 perspective, 0x4000 default, 0x104000
+ * default in span mode 1 -- all three with the 2D back-face bit, which the list's draw
+ * does with GL_CULL_FACE; anything else, the near-clip variants among them, goes to the
+ * table), a texture tex_index would take, its three vertices at z' <= -ZK (so the GPU
+ * never clips at the near plane: z_ndc = ZK/-z' <= 1) and every coordinate in int16. The
+ * mode is the window's (A4_PERF), not s->fmode, which the frame's first triangle sets
+ * after these inserts. */
+static int mesh_take(uint32_t *cam, const uint32_t *face)
+{
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    volatile struct mesh *m = MESH;
+    if ((A4_PERF[PF_MODE] & (AB_MESH | AB_LEAN | AB_DEFER)) != (AB_MESH | AB_LEAN)
+        || s->up != A4_GL_MAGIC || !s->zbits || !s->abits) return 0;
+    if (m->frame != s->frames) {                    /* the frame's first insert */
+#ifdef A4_MESHCHECK
+        if (m->n) for (uint32_t j = 0; j < MESH_HN; j++) MESH_H[j] = 0;   /* the last list out of the hash
+                                                     * (all of it: a deletion would cut probe chains) */
+#endif
+        m->frame = s->frames; m->n = 0; m->drawn = 0;
+        m->cam = (uint32_t)(uintptr_t)cam; m->F = cam[1];
+    }
+    uint32_t n = m->n;
+    if (m->drawn || m->cam != (uint32_t)(uintptr_t)cam || n >= MESH_MAXT) return 0;
+    if (face[0] != (uint32_t)(uintptr_t)&a4_tfvt + (uint32_t)a4_tfvt) return 0;
+    uint32_t fl = face[1], m1;
+    if (fl == 0x4001u || fl == 0x4000u) m1 = 0;
+#ifdef A4_MESH_M1
+    else if (fl == 0x104000u) m1 = 1;
+#endif
+    else return 0;
+    /* The mode-1 class (0x104000) stays in the table unless A4_MESH_M1: its "table" is the
+     * render target itself (ctx[0x60] == ctx[0x4c]), so its bake samples the frame as it
+     * stands when the face is drawn -- late in the walk for the player's car, whose paint
+     * and window reflect the scenery drawn by then. Baked at the list's draw (the walk's
+     * start) the reflection was gone (MBX.md, mesh bench 1). */
+#ifdef MESH_EXCL
+    /* bench: classes left to the table (1: 0x4001, 2: 0x4000, 4: 0x104000) */
+    if ((MESH_EXCL & 1) && fl == 0x4001u) return 0;
+    if ((MESH_EXCL & 2) && fl == 0x4000u) return 0;
+    if ((MESH_EXCL & 4) && fl == 0x104000u) return 0;
+#endif
+    const uint32_t *ts = (const uint32_t *)face[12];
+    if (!ts || !ts[TS_PIX] || ts[1] + 1u > 1024u || ts[2] + 1u > 1024u) return 0;
+    const int32_t *v0 = (const int32_t *)face[3], *v1 = (const int32_t *)face[6], *v2 = (const int32_t *)face[9];
+    int32_t z0 = v0[5], z1 = v1[5], z2 = v2[5];     /* view z' at +0x14 */
+    if (z0 > -ZK || z1 > -ZK || z2 > -ZK || !MESH_FITS(z0) || !MESH_FITS(z1) || !MESH_FITS(z2)) return 0;
+    int32_t x0 = v0[3], y0 = v0[4], x1 = v1[3], y1 = v1[4], x2 = v2[3], y2 = v2[4];
+    if (!(MESH_FITS(x0) && MESH_FITS(y0) && MESH_FITS(x1) && MESH_FITS(y1) && MESH_FITS(x2) && MESH_FITS(y2))) return 0;
+    uint32_t a0 = face[4], b0 = face[5], a1 = face[7], b1 = face[8], a2 = face[10], b2 = face[11];
+    if (!(MESH_FITS(a0) && MESH_FITS(b0) && MESH_FITS(a1) && MESH_FITS(b1) && MESH_FITS(a2) && MESH_FITS(b2))) return 0;
+    {   /* The game's 2D back-face test, done before projecting: it draws where the screen
+         * area (x1-x0)(y2-y0) - (x2-x0)(y1-y0) < 0. With sx = cx + F x'/w, sy = cy - F y'/w,
+         * w = -z' > 0, that area is F^2 det[x' y' z'] / (w0 w1 w2), the same sign as the
+         * determinant of the three view-space vertices: drawn where det < 0. Taken here,
+         * a back face is consumed (the table would have dropped it at its draw). 64-bit
+         * products (SMULL): int16 coordinates give terms up to 2^47. */
+        int64_t d = (int64_t)x0 * ((int64_t)y1 * z2 - (int64_t)z1 * y2)
+                  - (int64_t)y0 * ((int64_t)x1 * z2 - (int64_t)z1 * x2)
+                  + (int64_t)z0 * ((int64_t)x1 * y2 - (int64_t)y1 * x2);
+        if (d >= 0) { MESH->culled++; return 1; }
+    }
+    int16_t *c = MESH_V + n * 18u;
+    c[0]  = (int16_t)x0; c[1]  = (int16_t)y0; c[2]  = (int16_t)z0; c[3]  = (int16_t)a0; c[4]  = (int16_t)b0; c[5]  = 0;
+    c[6]  = (int16_t)x1; c[7]  = (int16_t)y1; c[8]  = (int16_t)z1; c[9]  = (int16_t)a1; c[10] = (int16_t)b1; c[11] = 0;
+    c[12] = (int16_t)x2; c[13] = (int16_t)y2; c[14] = (int16_t)z2; c[15] = (int16_t)a2; c[16] = (int16_t)b2; c[17] = 0;
+    MESH_T[n] = (uint32_t)(uintptr_t)ts | m1;       /* descriptors are word aligned */
+#ifdef A4_MESHCHECK
+    MESH_D[n] = (uint32_t)(uintptr_t)face;
+    {   uint32_t j = mesh_hslot((uint32_t)(uintptr_t)face);
+        while (MESH_H[j] && MESH_H[j] != (uint32_t)(uintptr_t)face) j = (j + 1u) & (MESH_HN - 1u);
+        MESH_H[j] = (uint32_t)(uintptr_t)face; }
+#endif
+    m->n = n + 1;
+    return 1;
+}
+
+/* +34ADC's BLX (r0 = cam, r1 = face, as the bl to +349B0 had them); returns to +34AE0. */
+void a4_mesh_insert(uint32_t *cam, uint32_t *face)
+{
+#ifdef A4_MESHCHECK
+    mesh_take(cam, face);                           /* listed, and to the table as well (software draws it) */
+#else
+    if (mesh_take(cam, face)) return;
+#endif
+    ((void (*)(uint32_t *, uint32_t *))((uint32_t)(uintptr_t)&a4_otins + (uint32_t)a4_otins))(cam, face);
+}
+
+/* The frame's list, at its first triangle (draw_prim_take, after the clear): each
+ * triangle's texture resolved now, with the context the ordering table's faces would
+ * have been drawn under (ctx[0x5c] and the mode-1 table for the 0x104000 class), grouped
+ * by texture through an index list, and drawn with the frame's projection -- x_c =
+ * 2F/W x' + (1 - 2cx/W) z', y_c = 2F/H y' + (2cy/H - 1) z', z_c = ZK, w_c = -z' (MBX.md
+ * map 2: sx = cx + F x'/-z', sy = cy - F y'/-z'; window depth 0.5 + ZK/ZW/2, the
+ * hook's KIND_TEXZ) -- texcoords scaled by a texture matrix (words are texels * 16), the
+ * depth test on and writing, back faces culled (the game's 2D test: drawn where the
+ * screen-space area is negative, i.e. counter-clockwise once GL's y points up). */
+static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
+{
+    volatile struct mesh *m = MESH;
+    m->active = 0;
+    uint32_t n = m->n;
+    if (m->frame != s->frames) { m->frame = s->frames; m->n = 0; m->drawn = 1; return; }   /* no list this frame */
+    if (m->drawn) return;
+    m->drawn = 1;
+    if (!n) return;
+    uint32_t t0 = a4_ntick();
+    const uint16_t *m1map = (const uint16_t *)gctx[0x5c / 4];
+    const uint16_t *m1tab = m1_table(gctx);
+    uint32_t kid[MESH_NK];
+    uint16_t cnt[MESH_NK], off[MESH_NK];
+    uint8_t kws[MESH_NK], khs[MESH_NK];
+    uint32_t nk = 0, lastw = 0xFFFFFFFFu, lastk = 0xFFu, lost = 0;
+    uint8_t *K = MESH_K;
+    const uint32_t *T = MESH_T;
+    for (uint32_t i = 0; i < n; i++) {
+        uint32_t w = T[i];
+        if (w != lastw) {
+            uint32_t id; int wsh, hsh;
+            lastw = w; lastk = 0xFFu;
+            if (tri_tex(s, KIND_TEX, (int)(w & 1u), w & ~1u, m1map, m1tab, &id, &wsh, &hsh) >= 0) {
+                uint32_t k = 0;
+                while (k < nk && kid[k] != id) k++;
+                if (k == nk && nk < MESH_NK) { kid[k] = id; cnt[k] = 0; kws[k] = (uint8_t)wsh; khs[k] = (uint8_t)hsh; nk++; }
+                if (k < nk) lastk = k;
+            }
+        }
+        K[i] = (uint8_t)lastk;
+        if (lastk != 0xFFu) cnt[lastk]++; else lost++;
+    }
+    uint32_t o = 0;
+    for (uint32_t k = 0; k < nk; k++) { off[k] = (uint16_t)o; o += cnt[k] * 3u; }
+    uint16_t *I = MESH_I;
+    for (uint32_t i = 0; i < n; i++) {
+        uint32_t k = K[i];
+        if (k == 0xFFu) continue;
+        uint32_t p = off[k];
+        I[p] = (uint16_t)(i * 3u); I[p + 1] = (uint16_t)(i * 3u + 1u); I[p + 2] = (uint16_t)(i * 3u + 2u);
+        off[k] = (uint16_t)(p + 3u);                 /* ends up at the key's end */
+    }
+    int32_t F = (int32_t)m->F;
+    if (F < 1) F = 1;
+    if (F > 16383) F = 16383;                        /* F << 17 in int32 */
+    int32_t cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
+    int P[16];                                       /* column-major GL_FIXED (no memset: no libgcc) */
+    for (int i = 0; i < 16; i++) P[i] = 0;
+    P[0] = (F << 17) / VP_W;
+    P[5] = (F << 17) / VP_H;
+    P[8] = FX - (cx << 17) / VP_W;
+    P[9] = (cy << 17) / VP_H - FX;
+    P[11] = -FX;
+    P[14] = ZK * FX;
+    gl_matrixmode(GL_PROJECTION); gl_loadmatrixx(P);
+    gl_matrixmode(GL_TEXTURE);
+    gl_enable(GL_DEPTH_TEST); gl_enable(GL_CULL_FACE);
+    gl_vertexptr(3, GL_SHORT, 12, MESH_V);
+    gl_texcoordptr(2, GL_SHORT, 12, MESH_V + 3);
+    int TM[16];
+    for (int i = 0; i < 16; i++) TM[i] = 0;
+    TM[10] = FX; TM[15] = FX;
+    int lw = -1, lh = -1;
+    uint32_t calls = 0;
+    for (uint32_t k = 0; k < nk; k++) {
+        if (!cnt[k]) continue;
+        if (kws[k] != lw || khs[k] != lh) {
+            lw = kws[k]; lh = khs[k];
+            TM[0] = 4096 >> lw; TM[5] = 4096 >> lh;  /* (texels * 16) / (16 * size), GL_FIXED */
+            gl_loadmatrixx(TM);
+        }
+        gl_bindtex(GL_TEXTURE_2D, kid[k] & 0x0FFFFFFFu);
+        gl_drawelements(GL_TRIANGLES, (int)(cnt[k] * 3u), GL_UNSIGNED_SHORT, I + off[k] - cnt[k] * 3u);
+        calls++;
+    }
+    gl_loadidentity();                               /* the texture matrix */
+    gl_matrixmode(GL_PROJECTION); gl_loadidentity();
+    gl_orthox(0, VP_W*FX, VP_H*FX, 0, -FX, FX);      /* bring-up's */
+    gl_matrixmode(GL_MODELVIEW);
+    gl_disable(GL_CULL_FACE); gl_disable(GL_DEPTH_TEST);
+    m->active = n > lost;
+    m->nk = nk;
+    s->prims += n - lost;                            /* the frame has begun: no second clear */
+    s->miny = 0; s->maxy = VP_H - 1;                 /* rows unknown without projecting: all */
+    A4_PERF[PF_MESH] += n - lost; A4_PERF[PF_MKEYS] += calls; A4_PERF[PF_MLOST] += lost;
+#if defined(A4_RUNDIAG) || defined(A4_TEL)
+    ((volatile uint32_t *)0x00412000u)[4] += calls;  /* draw calls this frame */
+#endif
+    A4_PERF[PF_MDRAW] += a4_ntick() - t0;
 }
 #endif
 
@@ -1598,8 +1870,14 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         gl_clearcolorx(FX, 0, FX, 0);                    /* magenta sentinel (see SENTINEL_*) */
         gl_clear(clear_bits(s));
         s->bfill = 0;
+#ifdef A4_MESH
+        mesh_draw(s, gctx);                             /* before any of the table's triangles */
+#endif
     }
 
+#ifdef A4_MESHCHECK
+    if (MESH_ON() && mesh_has((uint32_t)(uintptr_t)desc)) return 0;   /* the list drew it on the GPU */
+#endif
 #ifdef A4_SWONLY
     /* reference build: GL up and the frame counted (so telemetry captures it), but
      * nothing drawn on the GPU -- every triangle is the game's own software, i.e. the
@@ -1613,7 +1891,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     if ((s->fmode & (AB_DEFER | AB_REORDER)) == (AB_DEFER | AB_REORDER)) return defer_take(s, gctx, desc, kind, m1, tsaddr);
 #endif
 #if defined(A4_LEAN) && !defined(A4_M1VIS) && !defined(A4_SEQDUMP) && !defined(A4_VTXDUMP)
+#ifdef A4_DUALCAP
+    if (s->fmode & AB_LEAN) { lean_tail(s, gctx, desc, kind, m1, tsaddr); return 0; }   /* software draws it all */
+#else
     if (s->fmode & AB_LEAN) return lean_tail(s, gctx, desc, kind, m1, tsaddr);
+#endif
 #endif
     int wsh = 0, hsh = 0;
     uint32_t id;                                    /* the triangle's TEXID word */
@@ -1906,6 +2188,9 @@ static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1
             int32_t *POS = (int32_t *)A4_GL_POS;                /* (x*W, y*W, 0, W), W = 4096 */
             POS[(vb + k) * 4 + 0] = vx[q] * 4096; POS[(vb + k) * 4 + 1] = vy[q] * 4096;
             POS[(vb + k) * 4 + 2] = 0;            POS[(vb + k) * 4 + 3] = 4096;
+#ifdef A4_MESH
+            if (MESH_ON()) POS[(vb + k) * 4 + 2] = -4096;   /* window depth 1: every GEQUAL passes, as untested */
+#endif
 #else
             int16_t *POS = (int16_t *)A4_GL_POS;
             POS[(vb + k) * 2 + 0] = (int16_t)vx[q]; POS[(vb + k) * 2 + 1] = (int16_t)vy[q];
@@ -2139,10 +2424,29 @@ static void kind_leave(uint32_t st)
     if (st == KIND_FLAT || st == KIND_SHAD || st == KIND_ADD || st == KIND_ADDF) gl_color4x(FX, FX, FX, FX);
     if (st == KIND_ADD || st == KIND_ADDF) { gl_texenvx(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE); gl_enable(GL_ALPHA_TEST); }
     if (st == KIND_ADD || st == KIND_ADDF || st == KIND_SHAD || st == KIND_ALPHA) gl_disable(GL_BLEND);
+#ifdef A4_MESH
+    if (MESH_ON()) {                                /* mesh_enter's: every class tested, only TEXZ writing */
+        if (st != KIND_TEXZ) gl_depthmask(1);
+        gl_disable(GL_DEPTH_TEST);
+        return;                                     /* no stencil or depth stamp in a mesh frame */
+    }
+#endif
     if (st == KIND_TEXZ) gl_disable(GL_DEPTH_TEST);
     if (st == KIND_SHAD && ((volatile struct glr *)A4_GL_SCRATCH)->sbits) gl_disable(GL_STENCIL_TEST);
     if (st == KIND_SHAD && shad_zstamp()) { gl_depthfunc(GL_GEQUAL); gl_disable(GL_DEPTH_TEST); }
 }
+
+#ifdef A4_MESH
+/* A mesh frame: the list's faces are in the depth buffer before the table draws, so every
+ * class of the table tests its true depth (tri_conv; a quad sits at window depth 1, as
+ * untested), and writes it only where the game's own span does (KIND_TEXZ): painter's
+ * among themselves as before, hidden behind a nearer list face, drawn over a farther one. */
+static void mesh_enter(uint32_t kind)
+{
+    gl_enable(GL_DEPTH_TEST);
+    if (kind != KIND_TEXZ) gl_depthmask(0);
+}
+#endif
 
 /* One run of equal TEXID words: switch GL state if its kind differs from the
  * previous run's (*st), then draw. The state left between runs is the kind's own;
@@ -2155,11 +2459,12 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st,
 #ifdef A4_KINDVIS
     /* diagnosis: flat triangles bright green, additive ones bright cyan, shadows bright
      * red, all opaque and untextured, so a capture shows which class an object is */
-    if (kind == KIND_FLAT || kind == KIND_ADD || kind == KIND_ADDF || kind == KIND_SHAD) {
+    if (kind == KIND_FLAT || kind == KIND_ADD || kind == KIND_ADDF || kind == KIND_SHAD || kind == KIND_ALPHA) {
         kind_leave(*st);
         gl_disable(GL_TEXTURE_2D);
         *st = KIND_FLAT;
         if (kind == KIND_FLAT) gl_color4x(0, FX, 0, FX);
+        else if (kind == KIND_ALPHA) gl_color4x(FX, FX, 0, FX);   /* alpha-map class yellow */
         else if (kind == KIND_ADD || kind == KIND_ADDF) gl_color4x(0, FX, FX, FX);
         else gl_color4x(FX, 0, 0, FX);                 /* shadows red */
         if (ix) gl_drawelements(GL_TRIANGLES, (int)(count*3), GL_UNSIGNED_SHORT, ix + first*3);
@@ -2189,6 +2494,17 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st,
              * software's own drawing of it; alpha out = da*a + da*(1-a) = da */
             gl_enable(GL_BLEND); gl_blendfunc(GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         }
+#ifdef A4_MESH
+        else if (kind == KIND_SHAD && MESH_ON()) {
+            /* The shadow's once-a-pixel stamp in dst alpha instead of depth (which now holds
+             * the list's faces, and a depth stamp would pass over them): DST_COLOR /
+             * ONE_MINUS_DST_ALPHA with src 3/4 gives rgb * (3/4 + 1 - a), alpha * (3/4 + 1 -
+             * a) * a... = dst * 3/4 where alpha is 1 (drawn, not yet darkened), dst where it
+             * is 3/4 (darkened once: alpha stays 3/4), and alpha 0 (the backdrop) stays 0. */
+            gl_disable(GL_TEXTURE_2D); gl_enable(GL_BLEND); gl_blendfunc(GL_DST_COLOR, GL_ONE_MINUS_DST_ALPHA);
+            gl_color4x((FX * 12) / 16, (FX * 12) / 16, (FX * 12) / 16, (FX * 12) / 16);
+        }
+#endif
         else if (kind == KIND_SHAD) {
             /* dst * 12/16 in RGB, alpha * 1 */
             gl_disable(GL_TEXTURE_2D); gl_enable(GL_BLEND); gl_blendfunc(GL_ZERO, GL_SRC_COLOR);
@@ -2199,6 +2515,9 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st,
             if (((volatile struct glr *)A4_GL_SCRATCH)->sbits) gl_enable(GL_STENCIL_TEST);
             else if (shad_zstamp()) { gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_NOTEQUAL); }
         }
+#ifdef A4_MESH
+        if (MESH_ON()) mesh_enter(kind);
+#endif
         *st = kind;
     }
     if (kind == KIND_FLAT) {
@@ -2410,6 +2729,9 @@ static void batch_draw(uint32_t nt)
     gl_vertexptr(4, GL_FIXED, 0, ix ? (const void *)A4_GL_POS : (const void *)ro->pos);
     gl_texcoordptr((int)UVC, GL_FIXED, 0, ix ? (const void *)A4_GL_UV : (const void *)ro->uv);
     uint32_t st = KIND_TEX, first = 0;
+#ifdef A4_MESH
+    if (MESH_ON()) mesh_enter(KIND_TEX);            /* the state the runs start from */
+#endif
     for (uint32_t r = 0; r < nr; r++) {
         if (!ro->cnt[r]) continue;                  /* a deferred run whose texture failed */
         draw_run(ro->key[r], first, ro->cnt[r], &st, ix);
@@ -2431,6 +2753,9 @@ static void batch_draw(uint32_t nt)
 
     uint32_t run_start = 0, st = KIND_TEX;
     uint32_t cur = TEXID[0];
+#ifdef A4_MESH
+    if (MESH_ON()) mesh_enter(KIND_TEX);            /* the state the runs start from */
+#endif
     for (uint32_t t = 1; t < nt; t++) {
         if (TEXID[t] != cur) {
             draw_run(cur, run_start, t - run_start, &st, 0);
@@ -2883,6 +3208,10 @@ int a4_gl_frame(uint32_t fps)
 #endif
     s->prims = 0;
     s->flushed = 0;
+#ifdef A4_MESH
+    if (MESH->frame == s->frames && !MESH->drawn && MESH->n) A4_PERF[PF_MLOST] += MESH->n;  /* taken, never drawn */
+    MESH->active = 0;
+#endif
     s->frames++;
 #ifdef A4_TEL
     a4_tel_tick(had);   /* on-device capture: C:\a4telN.dat; had = 3D prims this present */
