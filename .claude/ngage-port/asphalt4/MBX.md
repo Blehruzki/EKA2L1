@@ -3772,3 +3772,22 @@ reorder, copy and lean on in both modes; A4_ABCYCLE6 alternates AB_DEFER (64), s
   descriptor at the hook's entry, so their misses overlap instead of following one another;
   and the readback in 24-row strips (10 glReadPixels a frame instead of 15) for its per-call
   overhead.
+
+## Round 23 bench: prefetch at the hook's entry x 24-row readback strips (four modes)
+
+Not repeats: neither was ever built. Skip, reorder, copy, lean on in all modes; deferral off.
+A4_ABCYCLE7 steps AB_PLD (128) x AB_BIGSTRIP (256) one pair a window; aggregate slot bit 0 =
+PLD, bit 1 = 24-row strips, format word 'AG23'.
+- AB_PLD: at draw_prim_take's entry, PLD of the three vertex records and desc+0x30 (the
+  texture descriptor; a flat colour there is a harmless address -- PLD never faults), so the
+  first-touch misses round 22 found overlap instead of following one another.
+- AB_BIGSTRIP: the readback in 24-row strips (10 glReadPixels a frame instead of 15) into
+  the reorder's arrays, free once the frame's batches are drawn (30 KB of 36). The strip
+  start without a divide: (x * 2731) >> 16 = x / 24 for every x in 0..239 (checked); a
+  first version's loop was turned into __aeabi_uidiv by the compiler and failed to link.
+- Checks: A4_STRIPCHECK -- every composited frame re-read in 16-row strips and compared with
+  what the 24-row composite wrote: 0 of 14,298 strips' drawn pixels differ; tested (a mutant
+  reading one row off: 10.4 M differing). REOCHECK 0, BLITCHECK 0, errc 0.
+- Exact binary r23_phone (sha256 ba10fe0bdd3171a60d2713f01a483708be150c9f58f65b30b4c6a31e920b21a4):
+  telerun3 230 s, framestat 5652, faults 1 (the boot fault), errc 0, all four modes;
+  racemenu after a race right. (Bench reads are host-timed: only the phone measures them.)

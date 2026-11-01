@@ -236,6 +236,8 @@ _Static_assert(PF_N <= 64, "A4_PERF holds 64 words (0x412C00-0x412D00)");
 #define AB_INDEXED 16u   /* draw the groups through an index list instead of a copy (round 20) */
 #define AB_LEAN 32u      /* the hook's lean path (lean_tail, round 21) */
 #define AB_DEFER 64u     /* the hook only records the triangle; the batch converts it (round 22) */
+#define AB_PLD 128u      /* prefetch the triangle's game data at the hook's entry (round 23) */
+#define AB_BIGSTRIP 256u /* read back in 24-row strips through the reorder's buffer (round 23) */
 #ifndef A4_ABMODE
 #define A4_ABMODE 0u     /* the mode when nothing cycles it (no A4_ABCYCLE) */
 #endif
@@ -593,7 +595,9 @@ struct agg { uint32_t seg[3][4][32]; };
 #define AGG ((volatile struct agg *)A4_GL_AGG)
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
-#ifdef A4_ABCYCLE6
+#if defined(A4_ABCYCLE7)
+#define AGG_SLOT(m) ((((m) >> 7) & 1u) | (((m) >> 7) & 2u))                  /* bit 0: AB_PLD, bit 1: AB_BIGSTRIP */
+#elif defined(A4_ABCYCLE6)
 #define AGG_SLOT(m) ((((m) >> 2) & 1u) | (((m) >> 5) & 2u))                  /* bit 1: AB_DEFER */
 #else
 #define AGG_SLOT(m) ((((m) >> 2) & 1u) | ((((m) >> 3) | ((m) >> 4)) & 2u))   /* bit 1: AB_INDEXED or AB_LEAN */
@@ -641,6 +645,7 @@ struct reo { int32_t pos[3u * MAXT * POSC]; int32_t uv[3u * MAXT * UVC]; uint32_
 #endif
 _Static_assert(A4_GL_TBOX + 8u * MAXT <= A4_GL_REO, "triangle boxes past the reorder");
 _Static_assert(A4_GL_REO + sizeof(struct reo) <= 0x00420800u, "reorder past the texture hints");
+_Static_assert(VP_H % 24 == 0 && 24u * VP_W * 4u <= sizeof(((struct reo *)0)->pos) + sizeof(((struct reo *)0)->uv), "24-row strips fit the reorder's arrays");
 _Static_assert((A4_GL_POS & 7u) == 0 && (A4_GL_UV & 7u) == 0 && (A4_GL_REO & 7u) == 0
                && ((3u * MAXT * POSC * 4u) & 7u) == 0, "the grouping copies doublewords");
 #ifndef REO_SCAN
@@ -1252,6 +1257,15 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     }
 #endif
     if (iat[0] < 0x10000u) return 0;
+#ifdef A4_PLD
+    /* round 23: the hook's phone time is mostly its first touch of the game's per-triangle
+     * data (round 22). Ask for the three vertex records and the texture descriptor at once,
+     * so their misses overlap; desc+0x30 may be a flat colour (PLD never faults). */
+    if (((volatile struct glr *)A4_GL_SCRATCH)->fmode & AB_PLD) {
+        __builtin_prefetch((const void *)desc[3]); __builtin_prefetch((const void *)desc[6]);
+        __builtin_prefetch((const void *)desc[9]); __builtin_prefetch((const void *)desc[12]);
+    }
+#endif
     /* Which rasterizer the game would use: draw_primitive (0x300AE) tests flags in the
      * order 0x2, 0x1, 0x8, 0x10, 0x20, 0x40, 0x100, else the default (MBX.md). Anything
      * left to software is drawn ON TOP of the previous frame's GPU image (it lands after
@@ -1358,7 +1372,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE6)
+#if defined(A4_TEL) && defined(A4_ABCYCLE7)
+        /* round 23: a4_tel.c steps AB_PLD x AB_BIGSTRIP per window; native, skip, reorder, lean on */
+        A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER | AB_LEAN;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE6)
         /* round 22: a4_tel.c alternates AB_DEFER per capture window; native, skip, reorder, lean on */
         A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER | AB_LEAN;
         s->fmode = A4_PERF[PF_MODE];
@@ -2270,6 +2288,12 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
     if (!bb || miny > maxy) return;
     uint32_t *rb = (uint32_t *)A4_GL_READBUF;
+    int sh = STRIP;
+#if defined(A4_BIGSTRIP) && defined(A4_REORDER)
+    /* round 23: 24-row strips (10 reads a frame, not 15) through the reorder's arrays, free
+     * once the frame's batches are drawn (36 KB; a strip is 30 KB) */
+    if (s->fmode & AB_BIGSTRIP) { sh = 24; rb = (uint32_t *)RO->pos; }
+#endif
     volatile uint16_t *fb = (volatile uint16_t *)bb;
     /* strips covering only the rows drawn. Screen rows are top-down, GL rows bottom-up:
      * screen [miny,maxy] -> GL [H-1-maxy, H-1-miny]. y0 steps on STRIP multiples and VP_H
@@ -2280,18 +2304,21 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
     int r565 = nat && !amask && s->rdfmt == GL_RGB && s->rdtype == GL_UNSIGNED_SHORT_5_6_5;
     int bgra = nat && s->rdfmt == GL_BGRA && s->rdtype == GL_UNSIGNED_BYTE;
     int rsh = bgra ? 16 : 0, bsh = bgra ? 0 : 16;   /* where R and B sit in a read word */
-    for (int y0 = (gl_lo / STRIP) * STRIP; y0 <= gl_hi; y0 += STRIP) {
+    /* the strip holding gl_lo (VP_H is a multiple of sh): gl_lo / sh * sh without a divide
+     * (the blob has no __aeabi_uidiv; (x * 2731) >> 16 is x / 24 for every x in 0..239) */
+    int ystart = sh == 24 ? (int)((((uint32_t)gl_lo * 2731u) >> 16) * 24u) : (gl_lo / STRIP) * STRIP;
+    for (int y0 = ystart; y0 <= gl_hi; y0 += sh) {
         uint32_t t0 = a4_ntick();
-        if (r565)      gl_readpixels(0, y0, VP_W, STRIP, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, rb);
-        else if (bgra) gl_readpixels(0, y0, VP_W, STRIP, GL_BGRA, GL_UNSIGNED_BYTE, rb);
-        else           gl_readpixels(0, y0, VP_W, STRIP, GL_RGBA, GL_UNSIGNED_BYTE, rb);
+        if (r565)      gl_readpixels(0, y0, VP_W, sh, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, rb);
+        else if (bgra) gl_readpixels(0, y0, VP_W, sh, GL_BGRA, GL_UNSIGNED_BYTE, rb);
+        else           gl_readpixels(0, y0, VP_W, sh, GL_RGBA, GL_UNSIGNED_BYTE, rb);
         A4_PERF[PF_READ] += a4_ntick() - t0;
 #ifdef A4_READBACK_ONLY
         continue;                                        /* measurement: readback cost without the blit */
 #endif
         if (r565) {
             const uint16_t *rb16 = (const uint16_t *)rb;
-            for (int sy = 0; sy < STRIP; sy++) {
+            for (int sy = 0; sy < sh; sy++) {
                 int screen_y = VP_H - 1 - (y0 + sy);
                 if (screen_y < CLIP_TOP) continue;
                 const uint16_t *src = rb16 + sy * VP_W;
@@ -2310,7 +2337,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
              * a step, one word store when both are drawn (VP_W is even and rows are word
              * aligned). The same pixels as the general loop below: 565 from the top bits,
              * drawn iff alpha >= 0x80. */
-            for (int sy = 0; sy < STRIP; sy++) {
+            for (int sy = 0; sy < sh; sy++) {
                 int screen_y = VP_H - 1 - (y0 + sy);
                 if (screen_y < CLIP_TOP) continue;
                 const uint32_t *src = rb + sy * VP_W;
@@ -2332,7 +2359,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
              * fast loop wrote (0x412D00 [104] pixels differing, [105] strips checked) */
             {
                 volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
-                for (int sy = 0; sy < STRIP; sy++) {
+                for (int sy = 0; sy < sh; sy++) {
                     int screen_y = VP_H - 1 - (y0 + sy);
                     if (screen_y < CLIP_TOP) continue;
                     const uint32_t *src = rb + sy * VP_W;
@@ -2350,7 +2377,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
             continue;
         }
 #endif
-        for (int sy = 0; sy < STRIP; sy++) {
+        for (int sy = 0; sy < sh; sy++) {
             int screen_y = VP_H - 1 - (y0 + sy);
             if (screen_y < CLIP_TOP) continue;           /* leave the HUD banner to software */
             const uint32_t *src = rb + sy * VP_W;
@@ -2370,6 +2397,30 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
             }
         }
     }
+#if defined(A4_STRIPCHECK) && defined(A4_BIGSTRIP)
+    if (sh == 24 && bgra && amask) {
+        /* bench: the same rows read back again in 16-row strips, against what the 24-row
+         * composite wrote (0x412D00 [113] drawn pixels differing, [114] strips) */
+        volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
+        uint32_t *rb16 = (uint32_t *)A4_GL_READBUF;
+        int y16 = (gl_lo >> 4) << 4;
+        for (; y16 <= gl_hi; y16 += 16) {
+            gl_readpixels(0, y16, VP_W, 16, GL_BGRA, GL_UNSIGNED_BYTE, rb16);
+            for (int sy = 0; sy < 16; sy++) {
+                int screen_y = VP_H - 1 - (y16 + sy);
+                if (screen_y < CLIP_TOP) continue;
+                const uint32_t *src = rb16 + sy * VP_W;
+                volatile uint16_t *dstrow = fb + screen_y * FB_STRIDE;
+                for (int x = 0; x < VP_W; x++) {
+                    uint32_t px = src[x];
+                    if ((px >> 24) < 0x80u) continue;
+                    if (dstrow[x] != (uint16_t)(((px >> 8) & 0xF800u) | ((px >> 5) & 0x07E0u) | ((px >> 3) & 0x001Fu))) ck[113]++;
+                }
+            }
+            ck[114]++;
+        }
+    }
+#endif
 #else
     (void)s; (void)miny; (void)maxy;
 #endif /* !A4_NO_BLIT && !A4_WINDOW */
