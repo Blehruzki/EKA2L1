@@ -50,7 +50,7 @@ for fn in sys.argv[1:]:
         if tl[101]: print('  REOCHECK: %d batches, %d pairs out of order, %d overlapping (must be 0), %d batches lost a triangle'
                           % (tl[101], tl[102], tl[100], tl[103]))
         if tl[111]: print('  DEFERCHECK: %d triangles, %d differing from the lean path (must be 0), first at word %d; %d lost at the batch' % (tl[111], tl[110], tl[112], tl[109]))
-        if tl[118]: print('  ATLAS: made %s; %d triangles drawn from it, %d copies placed, %d textures refused (full)' % ({1: '1024x1024 each', 3: '1024x512 each'}.get(tl[118], 'FAILED, GL error 0x%x' % tl[118]), tl[115], tl[116], tl[117]))
+        if tl[118]: print('  ATLAS: made %s; %d triangles drawn from it, %d copies placed, %d uploaded after a composite, %d textures refused (full)' % ({1: '1024x1024 each', 3: '1024x512 each'}.get(tl[118], 'FAILED, GL error 0x%x' % tl[118]), tl[115], tl[116], tl[119], tl[117]))
         if tl[114]: print('  STRIPCHECK: %d 16-row strips re-read, %d drawn pixels differing from the 24-row composite (must be 0)' % (tl[114], tl[113]))
         if tl[107]: print('  LEANCHECK: %d triangles, %d differing from the old path (must be 0), first at word %d' % (tl[107], tl[106], tl[108]))
         if tl[105]: print('  BLITCHECK: %d strips, %d drawn pixels differing from the general loop (must be 0)' % (tl[105], tl[104]))

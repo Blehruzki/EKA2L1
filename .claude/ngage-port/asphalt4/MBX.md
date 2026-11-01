@@ -3863,3 +3863,22 @@ N95, 150 copies placed, none refused.
 - Fix to measure: atlas copies placed when first wanted, but uploaded after the frame's
   composite (its glReadPixels has finished the frame's GPU work), at most 4 a frame; until
   then the triangle draws from its own texture.
+
+## Round 25 bench: the atlas copies uploaded after the composite (the A/B again)
+
+Not a repeat: round 24's atlas uploaded mid-frame; only that changes. Same cycle (A4_ABCYCLE8,
+'AG24').
+- atl_get places a copy when first wanted and queues it (ATLST_PENDING; queue of 32); the
+  triangle draws from its own texture meanwhile. atl_flush_pending, at the end of a4_gl_flush
+  after composite_rows (its glReadPixels has finished the frame's GPU work), uploads up to 4
+  (ATL_PER_FRAME) oldest first; an entry whose slot was remade or reused since is dropped and
+  its place left. [119] counts the uploads.
+- Bench (atlas forced): every placed copy uploaded after a composite (151 of 151), ~900 K
+  triangles drawn from the atlas, none refused; REOCHECK 0, BLITCHECK 0, errc 0. Race-start
+  screenshots against a run without the atlas: no wrong texture anywhere; the differences
+  are the start's fade-in and speed at slightly different moments (0.15-0.5 s apart), 3-7 K
+  pixels where the moments match. States the bench did not enter: a full queue (32 waiting),
+  a slot remade while its copy waits -- both return the triangle to its own texture.
+- Exact binary r25_phone (sha256 6eda2eeb3700ac2ca6cf3eff3e24628e9b3fe5a47556d2537f3fa202becc439f):
+  telerun3 230 s, framestat 5618, faults 1 (the boot fault), errc 0; whole race calls a render
+  229 -> 164 with the atlas (1473 vs 1464 tris); racemenu after a race right.

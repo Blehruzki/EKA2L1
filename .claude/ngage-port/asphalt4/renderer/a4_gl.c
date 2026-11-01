@@ -595,9 +595,14 @@ _Static_assert(A4_GL_THINT + 2u * THINT_N <= 0x00421000u, "texture hints past th
  * is always there). Per cache slot: where its copy is and in which state. */
 #define ATL_W 1024u
 #define ATL_SH 48u
+#define ATL_PQ 32u               /* copies waiting for the end of a frame */
+#ifndef ATL_PER_FRAME
+#define ATL_PER_FRAME 4u         /* copies uploaded after one frame's composite, at most */
+#endif
 struct atl { uint32_t name[2], ok, nsh[2], top[2], h, vs;   /* h: 1024, or 512 if the larger was refused; vs: log2(h) */
              uint16_t shy[2][ATL_SH], shh[2][ATL_SH], shx[2][ATL_SH];
-             uint32_t xy[NCACHE]; uint16_t wh[NCACHE]; uint8_t st[NCACHE], ai[NCACHE]; };
+             uint32_t xy[NCACHE]; uint16_t wh[NCACHE]; uint8_t st[NCACHE], ai[NCACHE];
+             uint32_t npend, pts[ATL_PQ]; uint16_t pslot[ATL_PQ]; };
 #define A4_GL_ATL 0x00422000u
 #ifndef A4_REORDER
 #error "A4_ATLAS builds its padded copies in the reorder's arrays"
@@ -608,6 +613,7 @@ _Static_assert(A4_GL_ATL + sizeof(struct atl) <= A4_GL_SCRATCH_TOP, "atlas state
 #define ATLST_OK 1u
 #define ATLST_STALE 2u           /* placed, its texture remade: upload again before use */
 #define ATLST_FULL 3u            /* refused (no room): not asked again until the slot is remade */
+#define ATLST_PENDING 4u         /* placed, waiting for the end of the frame to be uploaded */
 #endif
 
 #ifdef A4_AGG
@@ -926,6 +932,7 @@ static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t 
     s->cache_id[i] = id; s->cache_tr[i] = tr;
 #ifdef A4_ATLAS
     ATL->st[i] = (ATL->st[i] == ATLST_OK || ATL->st[i] == ATLST_STALE) ? ATLST_STALE : ATLST_NONE;   /* the copy is of the old texels */
+    /* (a pending copy becomes NONE: its queue entry finds that and lets the place go) */
 #endif
     s->cache_m1r[i] = r; s->cache_fr[i] = s->frames;
     s->cache_ck[i] = var == 1 ? m1_sig(map2, tab, r, total) : 0;
@@ -1165,11 +1172,16 @@ static uint32_t atl_get(volatile struct glr *s, int i, const uint32_t *ts, uint3
     uint32_t a = s->cache_tr[i] ? 1u : 0u, wh = w | (h << 8);
     if (A->st[i] != ATLST_NONE && (A->ai[i] != a || A->wh[i] != wh)) A->st[i] = ATLST_NONE;   /* another size: leave the old place */
     if (A->st[i] == ATLST_OK) return A->xy[i];
-    if (A->st[i] == ATLST_FULL) return 0;
+    if (A->st[i] == ATLST_FULL || A->st[i] == ATLST_PENDING) return 0;
+    /* Round 25: no upload here. Uploaded mid-frame, into a texture that this frame's
+     * submitted draws use, each copy cost the N95 a stall (round 24: the race's start, 36
+     * renders over 130 ms); queued instead, it goes up after the frame's composite
+     * (atl_flush_pending), and the triangle draws from its own texture until then. */
+    if (A->npend >= ATL_PQ) return 0;               /* the queue is full: ask again later */
     if (A->st[i] == ATLST_STALE) {
-        atl_upload((int)a, A->xy[i] & 0xFFFFu, A->xy[i] >> 16, ts, w, h, a);
-        A->st[i] = ATLST_OK;
-        return A->xy[i];
+        A->pslot[A->npend] = (uint16_t)i; A->pts[A->npend] = (uint32_t)(uintptr_t)ts; A->npend++;
+        A->st[i] = ATLST_PENDING;
+        return 0;
     }
     uint32_t pw = w + 2u, ph = h + 2u, k, n = A->nsh[a];
     for (k = 0; k < n; k++) if (A->shh[a][k] == ph && A->shx[a][k] + pw <= ATL_W) break;
@@ -1180,10 +1192,35 @@ static uint32_t atl_get(volatile struct glr *s, int i, const uint32_t *ts, uint3
     }
     uint32_t x = A->shx[a][k] + 1u, y = A->shy[a][k] + 1u;
     A->shx[a][k] = (uint16_t)(A->shx[a][k] + pw);
-    atl_upload((int)a, x, y, ts, w, h, a);
-    A->xy[i] = x | (y << 16); A->wh[i] = (uint16_t)wh; A->ai[i] = (uint8_t)a; A->st[i] = ATLST_OK;
+    A->xy[i] = x | (y << 16); A->wh[i] = (uint16_t)wh; A->ai[i] = (uint8_t)a; A->st[i] = ATLST_PENDING;
+    A->pslot[A->npend] = (uint16_t)i; A->pts[A->npend] = (uint32_t)(uintptr_t)ts; A->npend++;
     ((volatile uint32_t *)0x00412D00u)[116]++;
-    return A->xy[i];
+    return 0;
+}
+/* After a frame's composite (its glReadPixels has finished the frame's GPU work, so no draw
+ * holds the atlas): up to ATL_PER_FRAME queued copies uploaded, oldest first. An entry whose
+ * slot was remade or reused since (no longer PENDING, or another texture's texels) is
+ * dropped; its place is left. */
+static void atl_flush_pending(volatile struct glr *s)
+{
+    volatile struct atl *A = ATL;
+    uint32_t n = A->npend, done = 0, k = 0;
+    if (!n || A->ok != 1u) return;
+    while (k < n && done < ATL_PER_FRAME) {
+        uint32_t i = A->pslot[k];
+        const uint32_t *ts = (const uint32_t *)A->pts[k];
+        k++;
+        if (A->st[i] != ATLST_PENDING) continue;
+        uint32_t w = A->wh[i] & 0xFFu, h = A->wh[i] >> 8;
+        if (TX->src[i] != ts[TS_PIX] || ts[1] + 1u != w || ts[2] + 1u != h
+            || (s->cache_tr[i] ? 1u : 0u) != A->ai[i]) { A->st[i] = ATLST_NONE; continue; }
+        atl_upload((int)A->ai[i], A->xy[i] & 0xFFFFu, A->xy[i] >> 16, ts, w, h, A->ai[i]);
+        A->st[i] = ATLST_OK;
+        done++;
+    }
+    for (uint32_t j = k; j < n; j++) { A->pslot[j - k] = A->pslot[j]; A->pts[j - k] = A->pts[j]; }
+    A->npend = n - k;
+    ((volatile uint32_t *)0x00412D00u)[119] += done;
 }
 #endif
 static inline int tri_tex(volatile struct glr *s, uint32_t kind, int m1, uint32_t tsaddr,
@@ -2620,6 +2657,9 @@ void a4_gl_flush(void)
     { uint32_t e = gl_geterror(); if (s->errc == 0) s->errc = e; }  /* catch a draw GL error */
     { uint32_t tf1 = a4_ntick(); A4_PERF[PF_TFLUSH] += tf1 - tf0; A4_PERF[PF_MFLEND] = tf1; A4_PERF[PF_FLAGS] |= PFF_2D; }
 
+#ifdef A4_ATLAS
+    atl_flush_pending(s);                           /* round 25: the atlas copies, after the readback */
+#endif
     /* this frame's drawn extent is what composite_prev reads back next frame */
     s->pminy = s->miny; s->pmaxy = s->maxy;
 #ifdef A4_SEQDUMP
