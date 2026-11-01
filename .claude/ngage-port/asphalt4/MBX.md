@@ -3939,3 +3939,12 @@ A4_REORDER A4_SKIPREPRES A4_LEAN A4_ABMODE=46u, --gl --capture.
 - Owner, after: "the garage menu is way smoother than stock game, that's for sure" -- the
   garage has no 85 ms gate, so every millisecond saved shows there (round 18's garage A/B:
   ~56 ms a render with the re-presents skipped against ~73 kept; stock garage was never timed).
+
+## Decision: the structural step (owner's choice)
+
+Asked: two targeted fixes (the HUD painter rewrite, the car-body re-bake spikes), the
+structural step, both, or stop and polish. Owner: the structural step -- stop reading the
+game's per-triangle data and take whole objects to the GPU at a higher level of its 3D
+pipeline. First, bench reverse engineering: who calls draw_primitive (+300AE), the per-object
+loop, the vertex arrays it holds (format, transformed to screen with w?), where culling and
+clipping happen, and how a face picks its texture and rasterizer class.
