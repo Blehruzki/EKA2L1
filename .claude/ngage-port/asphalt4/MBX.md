@@ -3948,3 +3948,34 @@ game's per-triangle data and take whole objects to the GPU at a higher level of 
 pipeline. First, bench reverse engineering: who calls draw_primitive (+300AE), the per-object
 loop, the vertex arrays it holds (format, transformed to screen with w?), where culling and
 clipping happen, and how a face picks its texture and rasterizer class.
+
+## Structural step, map 1: the game's 3D pipeline (static, from the binary and its RTTI)
+
+Source: the code section (tdis.py) and the RTTI names in it (typeinfo -> class-name strings).
+- Classes (Lib3D): CMesh, CBasicMesh (sub-meshes: array +0x38, count +0x3C), COTObject (an
+  ordering-table object: vtable {sort key, draw}), TFace : COTObject (vtable +B08EC: sort key
+  +3121E = minus the deepest view z of its vertices; draw +31246), TFakeZFace : TFace (vtable
+  +B08CC: its own key +522C2, same draw), TBillboard : COTObject (vtable +B08BC: key +31368,
+  draw +312E6). The two-entry vtables of CMesh/CBasicMesh are their destructors.
+- Per mesh per frame: CBasicMesh +32C8C -> +34AEA -> +349F8(ctx, verts, nverts, faces, nfaces,
+  mode, ...): +345E4 transforms every vertex (40-byte records) to view space and sets clip
+  flags (+0x24); then for each face (52-byte TFace records, the mesh's own array): rejected if
+  its three vertices' flags AND to non-zero (all outside one plane); skipped if (OR & 0x20);
+  optional 3D back-face test (+3118E); face flags (+4) set from a per-mode table, a near-clip
+  bit if (OR & 0x10), texture bits from the descriptor (+0x28 byte != 0xFF, +0x2C alpha map);
+  then +349B0 inserts it into the ordering table.
+- Drawing: the table walked back to front, face draw +31246 sets ctx[0x64] (the span mode)
+  from the face flags and takes one of three paths -- +35D3A (near-plane clipping: may emit
+  two triangles), +347EA (2D back-face cull), +34798 (plain); each projects any vertex not yet
+  projected (vertex +8 == 0) with +51E44(ctx, v+0xC, v, camera params) and calls
+  draw_primitive +300AE -- our hook.
+- Records: TFace = {vtable, flags, ?, v0, U0, V0, v1, U1, V1, v2, U2, V2, texture descriptor}
+  (the "desc" draw_primitive gets IS the mesh's persistent face record); vertex = {screen x,
+  y, zw (0 = not yet projected), view x, y, z (+0xC..+0x14), ..., clip flags (+0x24)}.
+- What the step means concretely: per mesh, keep the static part (faces' vertex indices,
+  texcoords, textures, classes) in our own arrays once, and each frame hand the GPU the mesh
+  with its transform -- no ordering-table insertion, sort, projection, clipping, per-face
+  hook, nor per-face reading of the game's records. Open: the projection's parameters
+  (+51E44 and the camera params), where a mesh's object-to-view matrix comes from (+345E4),
+  which faces depend on painter's order (TFakeZFace: decals, forced order; the blended
+  classes), and depth-buffer equivalence for the rest.
