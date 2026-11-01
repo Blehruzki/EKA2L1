@@ -3907,3 +3907,19 @@ Owner: the start-of-race frame drops are still there. 8 race files (capidx 40-47
   windows leave the write out by design, so no measurement here shows what it costs the
   player -- a hitch every ~3.5 s is the likely price. A build without telemetry is the
   thing to play.
+
+## Play build 1 (no telemetry): the best configuration, to be judged by playing
+
+The settled configuration with no instruments: native readback, re-presents skipped (round
+19), the reorder with the copy (rounds 18, 20), the lean hook (round 21); no atlas (round
+25), no deferral (22), no prefetch, 16-row strips (23); no A4_TEL (no captures written, no
+hook timer), no A4_AGG, no A4_BBPROBE. Flags: A4_HPERSP A4_TAKEDEF A4_TAKEFLAT A4_TAKEADD
+A4_TAKESHADOW A4_TAKEALPHA A4_ZBUF A4_IMM A4_SHADZ CLIP_TOP=0 A4_TAKEBB A4_TAKEFILL
+A4_REORDER A4_SKIPREPRES A4_LEAN A4_ABMODE=46u, --gl --capture.
+- Exact binary play1 (sha256 5c625ee59e950ff542e98832e836485849f8b1d1731482523fd6452f5c34ce0b):
+  telerun3 230 s, framestat 5394, faults 1 (the boot fault); racemenu after a race right; the
+  GPU path live mid-race (glr by EKA2L1_MEMSNAP: up = MAGIC, 131 textures, triangles counted,
+  errc 0).
+- What it answers: how the game feels without the capture writes (a 155 KB file every ~3.5 s,
+  never measured by the windows). The owner's eyes are the instrument; there is no
+  telemetry in it.
