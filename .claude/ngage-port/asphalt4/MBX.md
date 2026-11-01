@@ -3923,3 +3923,16 @@ A4_REORDER A4_SKIPREPRES A4_LEAN A4_ABMODE=46u, --gl --capture.
 - What it answers: how the game feels without the capture writes (a 155 KB file every ~3.5 s,
   never measured by the windows). The owner's eyes are the instrument; there is no
   telemetry in it.
+- Owner on play build 1: "feels kinda the same as the test builds prior to the start-of-race
+  frame drop bug: smooth in general, frame dropping on heavy scenes. It doesn't hold a
+  constant frame rate across heavy and light scenes. But it definitely feels better
+  compared to stock game." So the capture writes were not a felt cost of note; heavy scenes
+  remain over the 85.33 ms step.
+- Where the remaining time is, per render in a heavy race (rounds 21-25): ours in the 3D pass
+  ~24 ms at ~1,400 triangles (~17 us a triangle: the hook ~8.6, of which ~5.8 is the first
+  touch of the game's per-triangle data; grouping 1.4; GL 1.5 a triangle + ~31 us a call),
+  the composite ~10.7 (read 7); the game's own 3D ~18, 2D (HUD) ~6, logic ~20. Each
+  incremental item left is 1-3 ms; holding the step in heavy scenes needs ~5-15 ms, i.e.
+  ours cut per triangle at the source -- not reading the game's per-triangle descriptors at
+  all (taking its objects' vertex arrays at a higher level), which is a reverse-engineering
+  project of its own.
