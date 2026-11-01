@@ -3840,3 +3840,26 @@ A4_ABCYCLE8 alternates AB_ATLAS (512), slot bit 1, format word 'AG24'.
   telerun3 230 s, framestat 5613, faults 1 (the boot fault), errc 0; racemenu after a race
   right (garage textures included). Named risk: the 4 MB of atlas memory on the phone (the
   fallback halves it; telemetry [118] reports which).
+
+## Phone round 24 (r24_phone f9251ecd): the atlas cuts calls, but its uploads stall the start of the race
+
+Owner: no texture looked wrong; at the start of the race heavy frame drops, "especially
+whenever I used a turbo or drift (not exclusively)"; after a while as smooth as the rounds
+before. 8 race files (capidx 46-53), errc 0; [118] = 1: both atlases made at 1024x1024 on the
+N95, 150 copies placed, none refused.
+  whole race, no atlas: 86.7 ms a render, calls 242 (391 before grouping), 1346 tris, hook
+                        18.5, >=90 ms 17%, 1 render at 130+
+  whole race, atlas:   101.0 ms a render, calls 180 (317 before), 1405 tris, hook 28.6, 3D
+                        50.2, >=90 ms 24%, 36 renders at 130+
+  last 8 windows (steady): atlas 83.2, 89.5, 83.3, 84.4 ms with 128-188 calls; none 84.7,
+                        84.7, 85.9, 83.9 with 203-271 calls
+- Calls a triangle -26% as the bench said; the frame time is lost to stalls early in the race
+  (the 130+ bin, the hook +10 ms a render on average): the copies are uploaded inside the
+  hook, mid-frame, into a 2 MB texture that draws already submitted this frame use -- a tile
+  renderer's driver has to keep the old contents for those (a copy of the texture, or a
+  wait) at every upload (a guess at the mechanism; the timing is what is measured). 150 at
+  the start, more with each new effect (nitro, drift sparks), then none: the owner's report.
+- The no-atlas half is the best whole race on record: 86.7 ms, 17% at 90+.
+- Fix to measure: atlas copies placed when first wanted, but uploaded after the frame's
+  composite (its glReadPixels has finished the frame's GPU work), at most 4 a frame; until
+  then the triangle draws from its own texture.
