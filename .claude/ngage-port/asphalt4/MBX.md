@@ -3810,3 +3810,33 @@ PLD, bit 1 = 24-row strips, format word 'AG23'.
 - Where it stands (these races were heavy): 87-89 ms a render, ~25-31% of renders at 90 ms
   or more; round 16's heavy windows were 93-108. Each remaining item of ours is 1-3 ms; next
   the texture atlas (~2 ms of calls, the only GPU-side cut left that is understood).
+
+## Round 24 bench: the texture atlas (the A/B is with and without)
+
+Not a repeat: the atlas was never built. Skip, reorder, copy, lean on in both modes;
+A4_ABCYCLE8 alternates AB_ATLAS (512), slot bit 1, format word 'AG24'.
+- A4_ATLAS: two shared textures -- [0] RGB565 for opaque textures, [1] RGBA5551 for colour-
+  keyed ones (each texture's own format, tex_make's tr) -- 1024x1024 each (4 MB of texture
+  memory), falling back to 1024x512 each if the device refuses (GL error at creation; 0x412D00
+  [118] says which: 1 = 1024x1024, 3 = 1024x512, else the error). A triangle draws from the
+  atlas when its kind is TEX, TEXZ or ADD (ALPHA's texture is RGBA8888; mode 1 is re-baked),
+  its texture is a power of two up to 128x128, and all three texcoords lie in [0, 1]; its id is
+  then the atlas's, so runs of different textures merge. Copies are padded with a texel of
+  the opposite edge (what GL_REPEAT reads one texel out), built in the reorder's arrays (free
+  in the hook), shelves by padded height; a texture remade (hash, eviction) marks its copy
+  stale, re-uploaded in place if the size matches; a refusal (full) is remembered per slot.
+- Sizes: the census (seqan, reorder + atlas, formats lumped): 210 calls a frame -> 153 with
+  textures up to 64, 125 up to 128. A first build at 1024x512 each filled after 118 copies and
+  refused 16,440 triangles (and asked again each time); at 1024x1024: 148 copies placed, none
+  refused, in a 230 s bench race.
+- Exactness: not bit-exact, and cannot be. Two bench runs without the atlas differ only in
+  the random traffic; with it, ~50 isolated pixels a frame more (~0.1%) -- a sample on a texel
+  boundary rounded the other way (the same texcoords interpolated at the atlas's scale, 1/64
+  of a texel per GL_FIXED step against 1/1024). Same texture, neighbouring texel. REOCHECK 0,
+  BLITCHECK 0, errc 0.
+- Bench whole race (exact binary below): calls a render 212 -> 170 (-20%, with 8% more
+  triangles: 0.155 -> 0.115 calls a triangle, -26%).
+- Exact binary r24_phone (sha256 f9251ecdc10e32abd9fc6756c213cef9c2dd6bbcaa944e1181c6b02481453e9f):
+  telerun3 230 s, framestat 5613, faults 1 (the boot fault), errc 0; racemenu after a race
+  right (garage textures included). Named risk: the 4 MB of atlas memory on the phone (the
+  fallback halves it; telemetry [118] reports which).

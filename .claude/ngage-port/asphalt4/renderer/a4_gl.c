@@ -238,6 +238,7 @@ _Static_assert(PF_N <= 64, "A4_PERF holds 64 words (0x412C00-0x412D00)");
 #define AB_DEFER 64u     /* the hook only records the triangle; the batch converts it (round 22) */
 #define AB_PLD 128u      /* prefetch the triangle's game data at the hook's entry (round 23) */
 #define AB_BIGSTRIP 256u /* read back in 24-row strips through the reorder's buffer (round 23) */
+#define AB_ATLAS 512u    /* in-range triangles of small textures drawn from two shared atlases (round 24) */
 #ifndef A4_ABMODE
 #define A4_ABMODE 0u     /* the mode when nothing cycles it (no A4_ABCYCLE) */
 #endif
@@ -572,7 +573,7 @@ static int bringup(volatile struct glr *s)
 #define A4_GL_TEXC 0x00413000u
 struct texc { uint32_t src[NCACHE], wh[NCACHE], hs[NCACHE], lu[NCACHE]; };
 #define TX ((volatile struct texc *)A4_GL_TEXC)
-#define A4_GL_SCRATCH_TOP 0x00422000u              /* injector.py GL_SCRATCH + GL_SCRATCH_SIZE */
+#define A4_GL_SCRATCH_TOP 0x00423000u              /* injector.py GL_SCRATCH + GL_SCRATCH_SIZE */
 _Static_assert(A4_GL_TEXC + sizeof(struct texc) <= A4_GL_SCRATCH_TOP, "texc past the scratch");
 /* tex_index's hint (round 18): a slot + 1 for each hash of (key, table, texels), checked
  * in full before use, so a stale or colliding hint only costs the linear search it
@@ -581,6 +582,34 @@ _Static_assert(A4_GL_TEXC + sizeof(struct texc) <= A4_GL_SCRATCH_TOP, "texc past
 #define THINT ((uint16_t *)A4_GL_THINT)
 #define THINT_N 1024u
 _Static_assert(A4_GL_THINT + 2u * THINT_N <= 0x00421000u, "texture hints past the aggregates");
+#ifdef A4_ATLAS
+/* Round 24: two shared textures, 1024x512 -- [0] RGB565 for opaque textures, [1] RGBA5551 for
+ * colour-keyed ones, as their own textures are (tex_make's tr) -- that a triangle may draw
+ * from instead of its texture's own, so consecutive runs of different textures become one
+ * draw call (the census: reorder alone 210 calls a frame, with an atlas ~110; a call is
+ * ~31 us on the N95). Only where nothing changes: kinds TEX, TEXZ, ADD (ALPHA's texture is
+ * RGBA8888, mode 1 is re-baked), textures up to 128x128, and triangles whose texcoords all
+ * lie inside [0, 1] of the texture. Each copy is padded by one texel of the opposite edge,
+ * so a sample a texel outside (the edge of [0, 1]) reads what GL_REPEAT reads on the
+ * texture itself. Shelves by padded height; a full atlas places no more (the texture's own
+ * is always there). Per cache slot: where its copy is and in which state. */
+#define ATL_W 1024u
+#define ATL_SH 48u
+struct atl { uint32_t name[2], ok, nsh[2], top[2], h, vs;   /* h: 1024, or 512 if the larger was refused; vs: log2(h) */
+             uint16_t shy[2][ATL_SH], shh[2][ATL_SH], shx[2][ATL_SH];
+             uint32_t xy[NCACHE]; uint16_t wh[NCACHE]; uint8_t st[NCACHE], ai[NCACHE]; };
+#define A4_GL_ATL 0x00422000u
+#ifndef A4_REORDER
+#error "A4_ATLAS builds its padded copies in the reorder's arrays"
+#endif
+#define ATL ((volatile struct atl *)A4_GL_ATL)
+_Static_assert(A4_GL_ATL + sizeof(struct atl) <= A4_GL_SCRATCH_TOP, "atlas state past the scratch");
+#define ATLST_NONE 0u
+#define ATLST_OK 1u
+#define ATLST_STALE 2u           /* placed, its texture remade: upload again before use */
+#define ATLST_FULL 3u            /* refused (no room): not asked again until the slot is remade */
+#endif
+
 #ifdef A4_AGG
 /* Round 19: the race's numbers by A/B mode, over whole segments instead of the ring's last
  * 8 windows. A segment ends at a gap of 1.5 s or more between two renders (a load, a
@@ -595,7 +624,9 @@ struct agg { uint32_t seg[3][4][32]; };
 #define AGG ((volatile struct agg *)A4_GL_AGG)
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
-#if defined(A4_ABCYCLE7)
+#if defined(A4_ABCYCLE8)
+#define AGG_SLOT(m) (((m) >> 8) & 2u)                                        /* bit 1: AB_ATLAS */
+#elif defined(A4_ABCYCLE7)
 #define AGG_SLOT(m) ((((m) >> 7) & 1u) | (((m) >> 7) & 2u))                  /* bit 0: AB_PLD, bit 1: AB_BIGSTRIP */
 #elif defined(A4_ABCYCLE6)
 #define AGG_SLOT(m) ((((m) >> 2) & 1u) | (((m) >> 5) & 2u))                  /* bit 1: AB_DEFER */
@@ -671,13 +702,13 @@ static void tbox_set(uint32_t n, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 /* Bench diagnostic: every triangle a frame puts into the batch, in order, as 4 words --
  * TEXID, x0 | y0 << 16, x1 | y1 << 16 (its screen bounding box, clamped), and
  * inrange | (w << 1) | (h << 12) (inrange: every texcoord inside [0, 1], so the texture
- * could sit in an atlas; w, h its size) -- into a frame buffer at 0x422010; at the frame's
- * flush it is copied to the completed buffer at 0x42E010 under a sequence number for
- * EKA2L1_MEMSNAP (0x422000: [0] seq, 0 while the copy runs; [1] triangles; [2] the
- * running count). Needs A4_SCRATCH_SIZE=0x3A000 (the scratch then ends at 0x43B000). */
-#define SEQ_HDR  ((volatile uint32_t *)0x00422000u)
-#define SEQ_CUR  ((uint32_t *)0x00422010u)
-#define SEQ_DONE ((uint32_t *)0x0042E010u)
+ * could sit in an atlas; w, h its size) -- into a frame buffer at 0x423010; at the frame's
+ * flush it is copied to the completed buffer at 0x42F010 under a sequence number for
+ * EKA2L1_MEMSNAP (0x423000: [0] seq, 0 while the copy runs; [1] triangles; [2] the
+ * running count). Needs A4_SCRATCH_SIZE=0x3B000 (the scratch then ends at 0x43C000). */
+#define SEQ_HDR  ((volatile uint32_t *)0x00423000u)
+#define SEQ_CUR  ((uint32_t *)0x00423010u)
+#define SEQ_DONE ((uint32_t *)0x0042F010u)
 #define SEQ_MAX  3072u
 static void seq_add(uint32_t id, int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t info)
 {
@@ -893,6 +924,9 @@ static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t 
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     s->cache_id[i] = id; s->cache_tr[i] = tr;
+#ifdef A4_ATLAS
+    ATL->st[i] = (ATL->st[i] == ATLST_OK || ATL->st[i] == ATLST_STALE) ? ATLST_STALE : ATLST_NONE;   /* the copy is of the old texels */
+#endif
     s->cache_m1r[i] = r; s->cache_fr[i] = s->frames;
     s->cache_ck[i] = var == 1 ? m1_sig(map2, tab, r, total) : 0;
     uint32_t am = var == 2 ? ts[11] : 0u;           /* the alpha map is part of what it was made from */
@@ -1076,11 +1110,87 @@ static int persp_fallback(const uint32_t *gctx, const uint32_t *desc)
 /* the triangle's texture: its TEXID word, and the texcoord shifts; tex_index's commonest
  * outcome inline -- the last hit, already used in this present, nothing to re-check (the
  * conditions on which tex_index returns that slot untouched). -1: the texture fails. */
+#ifdef A4_ATLAS
+/* the padded copy of slot i's texture (w x h, tr) into atlas a at inner origin (x, y): rows
+ * and columns -1 and w (h) are the opposite edge's, built in the reorder's arrays (free in
+ * the hook; 130 x 130 x 2 = 33.8 KB of 36) */
+static void atl_upload(int a, uint32_t x, uint32_t y, const uint32_t *ts, uint32_t w, uint32_t h, uint32_t tr)
+{
+    const uint16_t *px16 = (const uint16_t *)ts[TS_PIX];
+    uint16_t *buf = (uint16_t *)RO->pos;
+    uint32_t pw = w + 2u;
+    for (uint32_t py = 0; py < h + 2u; py++) {
+        uint32_t sy = py == 0 ? h - 1u : py == h + 1u ? 0u : py - 1u;
+        const uint16_t *row = px16 + sy * w;
+        uint16_t *dst = buf + py * pw;
+        for (uint32_t pxx = 0; pxx < pw; pxx++) {
+            uint32_t sx = pxx == 0 ? w - 1u : pxx == w + 1u ? 0u : pxx - 1u;
+            uint32_t t16 = row[sx];
+            dst[pxx] = tr ? (uint16_t)((t16 & 0xF800) | (((t16 >> 6) & 0x1F) << 6) | ((t16 & 0x1F) << 1) | (t16 ? 1u : 0u))
+                          : (uint16_t)t16;
+        }
+    }
+    gl_bindtex(GL_TEXTURE_2D, ATL->name[a]);
+    gl_texsubimage(GL_TEXTURE_2D, 0, (int)x - 1, (int)y - 1, (int)pw, (int)(h + 2u),
+                   tr ? GL_RGBA : GL_RGB, tr ? GL_UNSIGNED_SHORT_5_5_5_1 : GL_UNSIGNED_SHORT_5_6_5, buf);
+}
+/* slot i's atlas copy, placed and uploaded if need be: its inner origin x | y << 16, or 0
+ * when it has none (the atlas could not be made, or is full for this size) */
+static uint32_t atl_get(volatile struct glr *s, int i, const uint32_t *ts, uint32_t w, uint32_t h)
+{
+    volatile struct atl *A = ATL;
+    if (A->ok != 1u) {
+        if (A->ok) return 0;                        /* making it failed once: never again */
+        uint32_t nm[2] = { 0, 0 }, e = 0, hh = 1024u;
+        gl_gentex(2, nm);
+        (void)gl_geterror();                        /* a draw's error is flush's to report; not ours */
+        for (int tries = 0; tries < 2; tries++, hh = 512u) {
+            for (int a = 0; a < 2; a++) {
+                gl_bindtex(GL_TEXTURE_2D, nm[a]);
+                gl_teximage(GL_TEXTURE_2D, 0, a ? GL_RGBA : GL_RGB, (int)ATL_W, (int)hh, 0,
+                            a ? GL_RGBA : GL_RGB, a ? GL_UNSIGNED_SHORT_5_5_5_1 : GL_UNSIGNED_SHORT_5_6_5, 0);
+                gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                A->name[a] = nm[a]; A->nsh[a] = 0; A->top[a] = 0;
+            }
+            e = gl_geterror();
+            if (!e) break;                          /* 2 MB each refused (out of memory): 1 MB each */
+        }
+        /* how the making went: 1 = 1024x1024 each, 3 = 1024x512 each, else the GL error */
+        ((volatile uint32_t *)0x00412D00u)[118] = e ? e : hh == 1024u ? 1u : 3u;
+        if (e) { A->ok = 2u; return 0; }
+        A->h = hh; A->vs = hh == 1024u ? 10u : 9u;
+        A->ok = 1u;
+    }
+    uint32_t a = s->cache_tr[i] ? 1u : 0u, wh = w | (h << 8);
+    if (A->st[i] != ATLST_NONE && (A->ai[i] != a || A->wh[i] != wh)) A->st[i] = ATLST_NONE;   /* another size: leave the old place */
+    if (A->st[i] == ATLST_OK) return A->xy[i];
+    if (A->st[i] == ATLST_FULL) return 0;
+    if (A->st[i] == ATLST_STALE) {
+        atl_upload((int)a, A->xy[i] & 0xFFFFu, A->xy[i] >> 16, ts, w, h, a);
+        A->st[i] = ATLST_OK;
+        return A->xy[i];
+    }
+    uint32_t pw = w + 2u, ph = h + 2u, k, n = A->nsh[a];
+    for (k = 0; k < n; k++) if (A->shh[a][k] == ph && A->shx[a][k] + pw <= ATL_W) break;
+    if (k == n) {
+        if (n == ATL_SH || A->top[a] + ph > A->h) { A->st[i] = ATLST_FULL; ((volatile uint32_t *)0x00412D00u)[117]++; return 0; }
+        A->shy[a][k] = (uint16_t)A->top[a]; A->shh[a][k] = (uint16_t)ph; A->shx[a][k] = 0;
+        A->top[a] += ph; A->nsh[a] = n + 1u;
+    }
+    uint32_t x = A->shx[a][k] + 1u, y = A->shy[a][k] + 1u;
+    A->shx[a][k] = (uint16_t)(A->shx[a][k] + pw);
+    atl_upload((int)a, x, y, ts, w, h, a);
+    A->xy[i] = x | (y << 16); A->wh[i] = (uint16_t)wh; A->ai[i] = (uint8_t)a; A->st[i] = ATLST_OK;
+    ((volatile uint32_t *)0x00412D00u)[116]++;
+    return A->xy[i];
+}
+#endif
 static inline int tri_tex(volatile struct glr *s, uint32_t kind, int m1, uint32_t tsaddr,
                           const uint16_t *m1map, const uint16_t *m1tab, uint32_t *idp, int *wshp, int *hshp)
-{
-    if (kind == KIND_SHAD) { *idp = KIND_SHAD << 28; *wshp = *hshp = 0; return 0; }
-    if (kind == KIND_FLAT) { *idp = (KIND_FLAT << 28) | (tsaddr & 0xFFFFu); *wshp = *hshp = 0; return 0; }
+{   /* returns the cache slot (>= 0), -2 for an untextured kind, -1 when the texture fails */
+    if (kind == KIND_SHAD) { *idp = KIND_SHAD << 28; *wshp = *hshp = 0; return -2; }
+    if (kind == KIND_FLAT) { *idp = (KIND_FLAT << 28) | (tsaddr & 0xFFFFu); *wshp = *hshp = 0; return -2; }
     const uint32_t *ts = (const uint32_t *)tsaddr;
     uint32_t tw = ts[1] + 1, th = ts[2] + 1;
     *wshp = tw ? 31 - __builtin_clz(tw) : 0;
@@ -1097,7 +1207,7 @@ static inline int tri_tex(volatile struct glr *s, uint32_t kind, int m1, uint32_
     if (ti < 0) ti = tex_index(s, tsaddr, var == 1 ? m1map : 0, var == 1 ? m1tab : 0, var);
     if (ti < 0) return -1;
     *idp = (kind << 28) | s->cache_id[ti];
-    return 0;
+    return ti;
 }
 /* positions (x*W, y*W, -min(zq, W), W) and texcoords of one triangle from its screen
  * points (int16, as the game's), depths and texcoord words; xlo..yhi its extents */
@@ -1146,8 +1256,9 @@ static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
 {
     int wsh, hsh;
     int mv = m1 && kind != KIND_ALPHA;
-    if (tri_tex(s, kind, m1, tsaddr, mv ? (const uint16_t *)gctx[0x5c / 4] : 0, mv ? m1_table(gctx) : 0,
-                idp, &wsh, &hsh) < 0) return 0;
+    int ti = tri_tex(s, kind, m1, tsaddr, mv ? (const uint16_t *)gctx[0x5c / 4] : 0, mv ? m1_table(gctx) : 0,
+                     idp, &wsh, &hsh);
+    if (ti == -1) return 0;
     const uint32_t *v0 = (const uint32_t *)desc[3], *v1 = (const uint32_t *)desc[6], *v2 = (const uint32_t *)desc[9];
     int32_t x0 = (int16_t)(int32_t)v0[0], y0 = (int16_t)(int32_t)v0[1];
     int32_t x1 = (int16_t)(int32_t)v1[0], y1 = (int16_t)(int32_t)v1[1];
@@ -1160,6 +1271,31 @@ static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
     const uint32_t uvw[6] = { desc[4], desc[5], desc[7], desc[8], desc[10], desc[11] };
     tri_conv(kind, wsh, hsh, x0, y0, x1, y1, x2, y2, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2], uvw,
              xlo, xhi, ylo, yhi, pos, uv);
+#ifdef A4_ATLAS
+    if ((s->fmode & AB_ATLAS) && ti >= 0 && !mv && (kind == KIND_TEX || kind == KIND_TEXZ || kind == KIND_ADD)
+        && wsh <= 7 && hsh <= 7 && ((const uint32_t *)tsaddr)[1] + 1u == (1u << wsh)
+        && ((const uint32_t *)tsaddr)[2] + 1u == (1u << hsh)) {          /* a power of two each way, as GL ES 1.x textures are */
+        /* texcoord words are texels * 16 (tri_conv: x 4096 >> log2 size = / 16 / size); in [0, 1]:
+         * every U in [0, 16 w], V in [0, 16 h] */
+        int32_t uw = 16 << wsh, vh = 16 << hsh;
+        const int32_t *q = (const int32_t *)uvw;
+        if (q[0] >= 0 && q[0] <= uw && q[2] >= 0 && q[2] <= uw && q[4] >= 0 && q[4] <= uw
+            && q[1] >= 0 && q[1] <= vh && q[3] >= 0 && q[3] <= vh && q[5] >= 0 && q[5] <= vh) {
+            uint32_t xy = atl_get(s, ti, (const uint32_t *)tsaddr, 1u << wsh, 1u << hsh);
+            if (xy) {
+                /* normalised GL_FIXED over the atlas: (16 * origin + U) * 65536 / (16 * 1024) = << 2,
+                 * (16 * origin + V) * 65536 / (16 * h) = << (16 - 4 - log2 h): 2 for 1024, 3 for 512 */
+                int32_t ox = (int32_t)(xy & 0xFFFFu) << 4, oy = (int32_t)(xy >> 16) << 4;
+                int vsh = 12 - (int)ATL->vs;
+                uv[0] = (ox + q[0]) << 2; uv[1] = (oy + q[1]) << vsh;
+                uv[2] = (ox + q[2]) << 2; uv[3] = (oy + q[3]) << vsh;
+                uv[4] = (ox + q[4]) << 2; uv[5] = (oy + q[5]) << vsh;
+                *idp = (kind << 28) | ATL->name[s->cache_tr[ti] ? 1 : 0];
+                ((volatile uint32_t *)0x00412D00u)[115]++;
+            }
+        }
+    }
+#endif
     return 1;
 }
 static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1, uint32_t tsaddr)
@@ -1227,7 +1363,7 @@ static int defer_take(volatile struct glr *s, uint32_t *gctx, const uint32_t *de
 #ifdef A4_DEFERCHECK
     {   /* bench: what the lean path makes of this triangle now, for batch_draw to compare */
         int32_t yr[2];
-        uint32_t *sh = (uint32_t *)0x00422000u + n * 24u;    /* pos 12, uv 6, id, box 2, ok, rows 2 */
+        uint32_t *sh = (uint32_t *)0x00423000u + n * 24u;    /* pos 12, uv 6, id, box 2, ok, rows 2 */
         sh[19] = lean_conv(s, gctx, desc, kind, m1, tsaddr, (int32_t *)sh, (int32_t *)sh + 12, sh + 18,
                            (int16_t *)(sh + 20), yr);
         sh[22] = (uint32_t)yr[0]; sh[23] = (uint32_t)yr[1];
@@ -1372,7 +1508,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE7)
+#if defined(A4_TEL) && defined(A4_ABCYCLE8)
+        /* round 24: a4_tel.c alternates AB_ATLAS per window; native, skip, reorder, lean on */
+        A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER | AB_LEAN;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE7)
         /* round 23: a4_tel.c steps AB_PLD x AB_BIGSTRIP per window; native, skip, reorder, lean on */
         A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER | AB_LEAN;
         s->fmode = A4_PERF[PF_MODE];
@@ -1705,7 +1845,7 @@ static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1
                 r[10 + k * 2] = (uint32_t)vs[q]; r[11 + k * 2] = (uint32_t)vt[q];
             }
 #ifdef A4_DEFERCHECK
-            {   uint32_t *sh = (uint32_t *)0x00422000u + n * 24u;
+            {   uint32_t *sh = (uint32_t *)0x00423000u + n * 24u;
                 for (int k = 0; k < 3; k++) {
                     int q = ord[t * 3 + k];
                     sh[k*4] = (uint32_t)(vx[q] * 4096); sh[k*4+1] = (uint32_t)(vy[q] * 4096); sh[k*4+2] = 0; sh[k*4+3] = 4096;
@@ -2072,7 +2212,7 @@ static void batch_draw(uint32_t nt)
                 continue;
             }
             uint32_t kind = r[0] & 15u, id; int wsh, hsh;
-            if (tri_tex(sg, kind, (int)((r[0] >> 4) & 1u), r[1], (const uint16_t *)r[2], (const uint16_t *)r[3], &id, &wsh, &hsh) < 0) {
+            if (tri_tex(sg, kind, (int)((r[0] >> 4) & 1u), r[1], (const uint16_t *)r[2], (const uint16_t *)r[3], &id, &wsh, &hsh) == -1) {
                 TEXID[t] = DEF_DROP; tbox_calc(tbw + t * 4u, 0x4000, 0x4000, -0x4000, -0x4000);   /* empty: passes everything */
                 ((volatile uint32_t *)0x00412D00u)[109]++;                 /* taken, then lost (expect 0) */
                 continue;
@@ -2155,7 +2295,7 @@ static void batch_draw(uint32_t nt)
                 {   /* bench: these words against the lean path's at the hook (0x412D00 [110]
                      * triangles differing, [111] checked, [112] the first's word) */
                     volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
-                    const uint32_t *sh = (const uint32_t *)0x00422000u + t * 24u;
+                    const uint32_t *sh = (const uint32_t *)0x00423000u + t * 24u;
                     int bad = -1;
                     if (!sh[19]) bad = 98;
                     for (int k = 0; k < 12 && bad < 0; k++) if ((uint32_t)po[k] != sh[k]) bad = k;
