@@ -192,16 +192,29 @@ void a4_tel_tick(uint32_t had)
         h[i++] = pf[PF_COMP];   h[i++] = pf[PF_READ];    h[i++] = pf[PF_DRAW];
         /* [38] was this window's glFlush ticks (AB_FLUSH, unused since round 12); from
          * round 14 the textures remade in place (total: the descriptor held another) */
-        h[i++] = pf[PF_TEXRE];  h[i++] = pf[PF_CALLS];  h[i++] = pf[PF_TRIS];
+#ifdef A4_MESH
+        h[i++] = pf[PF_MESH];   /* [38] in a mesh build: this window's list triangles drawn */
+#else
+        h[i++] = pf[PF_TEXRE];
+#endif
+        h[i++] = pf[PF_CALLS];  h[i++] = pf[PF_TRIS];
         h[i++] = now;           h[i++] = fp[1];  /* a4_fps last_tick (User::TickCount) */
         /* [43] was HomeTime's low word (calibrated NTickCount = 1 ms, round 10); from round
          * 15 the triangles to a second 3D target in a frame (total) */
+#ifdef A4_MESH
+        h[i++] = pf[PF_MDRAW];  /* [43] in a mesh build: this window's ticks drawing the list */
+#else
         h[i++] = pf[PF_SURF];
+#endif
         /* [46] was the read-format probe's GL error (0 on the N95, round 10); from round
          * 14 the cache entries evicted (total) */
         /* [44] [45] were the read format and type (BGRA, UNSIGNED_BYTE on the N95, rounds
          * 10-17); from round 18 this window's re-presents skipped and presents made */
+#ifdef A4_MESH
+        h[i++] = pf[PF_SKIPPED]; h[i++] = pf[PF_NPRES]; h[i++] = pf[PF_MKEYS];   /* [46]: the list's draw calls */
+#else
         h[i++] = pf[PF_SKIPPED]; h[i++] = pf[PF_NPRES]; h[i++] = pf[PF_EVICT];
+#endif
         /* [49] was the dual frames (PF_DUAL: none since the composite is immediate,
          * A4_IMM); from round 13 the solid fills drawn on the GPU (PF_FILL) */
         h[i++] = pf[PF_FLAT];   h[i++] = pf[PF_ADD];     h[i++] = pf[PF_FILL];
@@ -262,7 +275,9 @@ void a4_tel_tick(uint32_t had)
         uint32_t r = pf[PF_RENDERS], w = a4_ntick() - pf[PF_T0];
         if (r && w < r * 500u) {
             uint32_t m = pf[PF_MODE];                /* a4_gl.c AGG_SLOT */
-#if defined(A4_ABCYCLE8)
+#if defined(A4_ABCYCLE9)
+            volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 9) & 2u) * 32u;
+#elif defined(A4_ABCYCLE8)
             volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 8) & 2u) * 32u;
 #elif defined(A4_ABCYCLE7)
             volatile uint32_t *a = (volatile uint32_t *)0x00421000u + (((m >> 7) & 1u) | ((m >> 7) & 2u)) * 32u;
@@ -276,7 +291,9 @@ void a4_tel_tick(uint32_t had)
             a[9] += pf[PF_REO]; a[10] += pf[PF_CALLS]; a[11] += pf[PF_RUNS0]; a[12] += pf[PF_TRIS];
             a[13] += pf[PF_NPRES]; a[14] += pf[PF_SKIPPED]; a[15]++;
         }
-#if defined(A4_ABCYCLE8)
+#if defined(A4_ABCYCLE9)
+        *(volatile uint32_t *)0x00421600u = 0x41473235u;   /* 'AG25': slot bit 1 AB_MESH */
+#elif defined(A4_ABCYCLE8)
         *(volatile uint32_t *)0x00421600u = 0x41473234u;   /* 'AG24': slot bit 1 AB_ATLAS */
 #elif defined(A4_ABCYCLE7)
         *(volatile uint32_t *)0x00421600u = 0x41473233u;   /* 'AG23': slot bit 0 AB_PLD, bit 1 AB_BIGSTRIP */
@@ -296,7 +313,10 @@ void a4_tel_tick(uint32_t had)
     t->caps++;
     {   /* next window: reset the timers after the write, so its cost is in no window */
         volatile uint32_t *pf = A4_PERF;
-#if defined(A4_ABCYCLE8)
+#if defined(A4_ABCYCLE9)
+        /* round 26: AB_MESH (1024) alternates; native, skip, reorder, lean kept */
+        pf[PF_MODE] = 2u | 4u | 8u | 32u | ((pf[PF_MODE] & 1024u) ^ 1024u);
+#elif defined(A4_ABCYCLE8)
         /* round 24: AB_ATLAS (512) alternates; native, skip, reorder, lean kept */
         pf[PF_MODE] = 2u | 4u | 8u | 32u | ((pf[PF_MODE] & 512u) ^ 512u);
 #elif defined(A4_ABCYCLE7)
@@ -324,6 +344,7 @@ void a4_tel_tick(uint32_t had)
         pf[PF_GLFLUSH] = 0; pf[PF_CALLS] = 0; pf[PF_TRIS] = 0; pf[PF_M1TEX] = 0; pf[PF_M1T] = 0;
         pf[PF_T3D] = 0; pf[PF_TFLUSH] = 0; pf[PF_T2D] = 0; pf[PF_TPRES] = 0; pf[PF_HOOK] = 0;
         pf[PF_REO] = 0; pf[PF_RUNS0] = 0; pf[PF_SKIPPED] = 0; pf[PF_NPRES] = 0;
+        pf[PF_MESH] = 0; pf[PF_MKEYS] = 0; pf[PF_MDRAW] = 0;
         pf[PF_T0] = a4_ntick();
     }
 }

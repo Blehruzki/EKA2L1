@@ -700,7 +700,9 @@ struct agg { uint32_t seg[3][4][32]; };
 #define AGG ((volatile struct agg *)A4_GL_AGG)
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
-#if defined(A4_ABCYCLE8)
+#if defined(A4_ABCYCLE9)
+#define AGG_SLOT(m) (((m) >> 9) & 2u)                                        /* bit 1: AB_MESH */
+#elif defined(A4_ABCYCLE8)
 #define AGG_SLOT(m) (((m) >> 8) & 2u)                                        /* bit 1: AB_ATLAS */
 #elif defined(A4_ABCYCLE7)
 #define AGG_SLOT(m) ((((m) >> 7) & 1u) | (((m) >> 7) & 2u))                  /* bit 0: AB_PLD, bit 1: AB_BIGSTRIP */
@@ -1817,7 +1819,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE8)
+#if defined(A4_TEL) && defined(A4_ABCYCLE9)
+        /* round 26: a4_tel.c alternates AB_MESH per window; native, skip, reorder, lean on */
+        A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER | AB_LEAN;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE8)
         /* round 24: a4_tel.c alternates AB_ATLAS per window; native, skip, reorder, lean on */
         A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER | AB_LEAN;
         s->fmode = A4_PERF[PF_MODE];

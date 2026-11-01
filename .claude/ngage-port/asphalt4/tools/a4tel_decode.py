@@ -40,7 +40,11 @@ for fn in sys.argv[1:]:
             m = h[32]
             print('  mode %d: re-presents %s, reorder %s%s | %.0f calls a render before grouping, %.0f made;'
                   ' grouping %.2f ms | presents %.2f a render, %.2f skipped'
-                  % (m, 'SKIPPED' if m & 4 else 'kept', 'ON' if m & 8 else 'off', (' INDEXED' if m & 16 else '') + (' LEAN' if m & 32 else '') + (' DEFER' if m & 64 else '') + (' PLD' if m & 128 else '') + (' STRIP24' if m & 256 else '') + (' ATLAS' if m & 512 else ''), h[59]/r, h[39]/r, h[57]/r, h[45]/r, h[44]/r))
+                  % (m, 'SKIPPED' if m & 4 else 'kept', 'ON' if m & 8 else 'off', (' INDEXED' if m & 16 else '') + (' LEAN' if m & 32 else '') + (' DEFER' if m & 64 else '') + (' PLD' if m & 128 else '') + (' STRIP24' if m & 256 else '') + (' ATLAS' if m & 512 else '') + (' MESH' if m & 1024 else ''), h[59]/r, h[39]/r, h[57]/r, h[45]/r, h[44]/r))
+    if ver>=4 and h[33] and h[32] & 1024:
+        r=h[33]
+        print('  MESH (mode bit 1024; a mesh build\'s words 38/43/46): %.0f list triangles, %.1f list draw calls, %.2f ms drawing it a render'
+              % (h[38]/r, h[46]/r, h[43]/r))
     if h[27]:
         print('  GL census: %d renders, %.0f draw calls/render, %.0f triangles/render, max %d calls, last %d'
               % (h[27], h[28]/h[27], h[29]/h[27], h[30], h[31]))
@@ -58,7 +62,7 @@ for fn in sys.argv[1:]:
     if len(d) >= ao + 384*4:
         ag = struct.unpack('<384I', d[ao:ao+384*4])
         fw = struct.unpack('<I', d[ao+384*4:ao+385*4])[0] if len(d) >= ao + 385*4 else 0
-        ag20 = fw in (0x41473230, 0x41473231, 0x41473232, 0x41473233, 0x41473234)
+        ag20 = fw in (0x41473230, 0x41473231, 0x41473232, 0x41473233, 0x41473234, 0x41473235)
         b1, b0 = {0x41473231: ('lean', 'old'), 0x41473232: ('deferred', 'lean')}.get(fw, ('indexed', 'copy'))
         for sg in range(3):
             for m in range(4):
@@ -66,7 +70,8 @@ for fn in sys.argv[1:]:
                 if not a[0]: continue
                 r = a[0]; hist = a[16:32]; nh = sum(hist)
                 over = sum(hist[7:]) if nh else 0          # bins >= 90 ms
-                if fw == 0x41473234: lbl = 'atlas' if m & 2 else 'no atlas'
+                if fw == 0x41473235: lbl = 'mesh list' if m & 2 else 'no mesh list'
+                elif fw == 0x41473234: lbl = 'atlas' if m & 2 else 'no atlas'
                 elif fw == 0x41473233: lbl = '%s, %s' % ('PLD' if m & 1 else 'no PLD', '24-row strips' if m & 2 else '16-row strips')
                 else: lbl = ('%s, %s' % ('skip' if m & 1 else 'kept', b1 if m & 2 else b0)) if ag20 else ('skip' if m & 1 else 'kept')
                 print('  AGG seg%d slot %d (%s): %d windows, %d renders, %.1f ms a render | 3D %.1f (hook %.1f) comp %.1f (read %.1f)'

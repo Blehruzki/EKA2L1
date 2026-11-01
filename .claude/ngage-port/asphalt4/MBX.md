@@ -4094,3 +4094,34 @@ Bench (RM-320, telerun3 40 s, play1 flags + A4_TEL; m0 = without A4_MESH):
 - So the list leaves 0x104000 to the table (A4_MESH_M1 takes it, for later: a bake deferred
   to the frame's end, used one frame late, is the candidate). It was 22% of the mesh
   routine's inserts in the round-2 census (9,379 of 42,832).
+
+## Round 26 bench: the mesh list A/B (A4_ABCYCLE9), the phone candidate
+
+Build r26_phone: round 25's flags without A4_ATLAS, plus A4_MESH and A4_ABCYCLE9 (a4_tel.c
+alternates AB_MESH, 1024, per capture window; native, skip, reorder, lean always on;
+aggregates' slot bit 1 = AB_MESH, format word 'AG25'). A4_SCRATCH_SIZE 0x3A000 (bss 0x3AF08,
+236 KB). In a mesh build the header's words 38/43/46 are the window's list triangles, ticks
+drawing the list, and list draw calls (a4tel_decode.py prints them when the mode has 1024).
+The mode-1 class stays in the table (mesh bench 1). IAT: glLoadMatrixx 84, glDepthMask 49.
+- Exact binary r26_phone (sha256 3035eb25408aa6894e65079b7458c2a570c2baf6644e8e3467a6e72a58df2757):
+  telerun3 230 s: framestat 5462, faults 1 (the boot fault), errc 0 in every capture, both
+  modes; racemenu after a race: pause, main menu, career garage -- the same screens as play
+  build 1's battery, the garage car right (list on in its windows).
+- Bench aggregates (llvmpipe; the bench is held at the 85 ms step, so the total cannot move
+  here -- per render, ~32 windows each):
+  no list: 85.6 ms | 3D 14.6 (hook 7.0) comp 13.5 (read 8.4) draw 1.8 2D 7.3 grouping 1.12 |
+           calls 222, triangles 1,347
+  list:    85.1 ms | 3D 9.1 (hook 4.3) comp 12.1 (read 6.9) draw 1.0 2D 7.3 grouping 0.63 |
+           calls 125 (of them the list's 22-36), triangles 1,683 (the list's 709-1,205)
+  More triangles reach GL with the list: back faces are dropped at the insert, but faces the
+  game's draw drops at zero screen area (integer-rounded projection) are not -- ~+340 a
+  render, cost unmeasured on the phone (a guess: ~1.5 us each from rounds 21-25's fit).
+- What only the phone can answer: the per-render cost there (cache misses, not instructions,
+  are its cost model); whether the MBX draws the list right (GL_SHORT positions through a
+  loaded projection, the texture matrix, GL_CULL_FACE, depth with the table's classes, the
+  alpha-stamp shadows); whether ordinals 84 and 49 resolve on the N95's libgles_cm; whether a
+  236 KB bss loads (the one bss that broke the game was ~372 KB, on the bench, at load).
+- Not a repeat of: rounds 18-25 (every one a variant of the per-triangle hook path); stage 5
+  (depth linear in ZW, the whole frame sorted by texture -- the road lost on the phone): this
+  keeps the table's own order for everything not in the list, and its depth is 1/w as
+  A4_ZBUF's, which the phone has drawn right since round 10.
