@@ -67,7 +67,8 @@ CAPTURE_DISPLACED = {0x300B2: (0x0005, 0x0014),     # movs r5, r0 ; movs r4, r2
 MESH_HOOKS = {0x34ADC: 'a4_mesh_insert'}
 MESH_DISPLACED = {0x34ADC: (0xF7FF, 0xFF68)}      # bl +349B0
 MESH_PLACEHOLDERS = {'a4_otins': 0x349B0 | 1,     # the ordering-table insert (Thumb)
-                     'a4_tfvt': 0xB08EC}          # TFace's vtable (RTTI, MBX.md map 1)
+                     'a4_tfvt': 0xB08EC,          # TFace's vtable (RTTI, MBX.md map 1)
+                     'a4_bbret': 0x31364 | 1}     # TBillboard's draw: the blit call's return (Thumb lr)
 CAPTURE_SKIP_RET = 0x300E0      # draw_primitive epilogue; GPU-drawn prims return here
 BB_SKIP_RET = 0x3031C           # the billboard blit's epilogue; GPU-queued sprites return here
 FILL_SKIP_RET = 0x2AB4C         # the rectangle fill's epilogue; GPU-queued fills return here

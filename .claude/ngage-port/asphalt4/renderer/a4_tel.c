@@ -230,9 +230,13 @@ void a4_tel_tick(uint32_t had)
         /* [59] was the alpha bits (8 on the N95, rounds 10-17); from round 18 this
          * window's draw calls before the reorder (PF_RUNS0; [39] is after) */
         h[i++] = pf[PF_RUNS0];
+#ifdef A4_MESHCHECK
+        h[i++] = pf[60]; h[i++] = pf[61]; h[i++] = pf[62];     /* check: fallback verdicts compared, differing, fallbacks */
+#else
         h[i++] = pf[PF_LATE];                                  /* triangles after the frame's composite (total) */
         h[i++] = pf[PF_BB];                                    /* billboards queued on the GPU (total) */
         h[i++] = pf[PF_BBSW];                                  /* billboards left to software (total) */
+#endif
         h[i++] = pf[PF_BB2];                                   /* calls of the two-depth billboard blit (total) */
     }
     while (i < TEL_HDR_WORDS) h[i++] = 0;

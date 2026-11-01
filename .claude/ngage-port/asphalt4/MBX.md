@@ -4125,3 +4125,56 @@ The mode-1 class stays in the table (mesh bench 1). IAT: glLoadMatrixx 84, glDep
   (depth linear in ZW, the whole frame sorted by texture -- the road lost on the phone): this
   keeps the table's own order for everything not in the list, and its depth is 1/w as
   A4_ZBUF's, which the phone has drawn right since round 10.
+
+## Phone round 26 (r26_phone 3035eb25): the list holds the step; the tunnel signs and car lights
+
+Telemetry (capidx 78-85, errc 0, pbuffer config 1, depth 24; the new ordinals resolved and
+the 236 KB bss loaded -- the game starts and runs). Race aggregates (seg0, 25-26 windows a
+mode), render-to-render histogram (bin centres):
+  no list: mean ~86.4 ms, >=90 ms 19%, >=95 7.8%, >=100 5.2% | 3D 34.5 (hook 20.0), draw 11.5,
+           comp 10.5, calls 241, triangles 1,356
+  list:    mean ~85.2 ms, >=90 ms 11%, >=95 1.5%, >=100 0.9% | 3D 22.3 (hook 12.5), draw 5.7,
+           comp 10.2, calls 124, triangles 1,647
+(The window-time means, 86.8 vs 88.0 ms, disagree with the histograms; they include
+non-render loop time -- the list windows spin more, 14.65 presents a render against 10.60 --
+so the histogram is the measure.) The 3D pass is 12.2 ms shorter a render with the list; the
+slow frames nearly gone. Best test so far: this, the list half.
+Owner: runs fine; with each switch some effects vary; (1) in the LA tunnel, three groups of
+signs hanging from the ceiling show in one mode and are pitch-black in the other; (2) in an
+earlier run (Monaco, he thinks) car lights were seen through cars.
+
+Bench investigation (tunrun.sh in the scratchpad: telerun3 that snapshots the framebuffer
+every 0.5 s and stops a set time after the tunnel entrance; the throttle-only race does
+complete laps and passes the LA tunnel):
+- (1) reproduced: list snapshots show the exit gantry's round signs black, no-list ones show
+  them red and white. Same-frame captures (A4_MESHCHECK + A4_DUALCAP, plus A4_DUALALPHA,
+  new: pixels the composite would not take painted magenta): with the list the gantry's beam
+  is drawn over the lower half of the round signs and they come out dark; without it, and in
+  software, the signs are drawn over the beam. List faces painted flat green (MESH_VIS, new):
+  the far signs are list faces. Leaving 0x4001 out of the list (MESH_EXCL=1): the gantry
+  right. A 1/64 depth margin in the table's favour (now in: the list's z_c is ZK less 1/64)
+  did not fix it.
+- Cause: the perspective rasterizer's affine fallback (persp_fallback, rounds 10-11): a far,
+  nearly flat 0x4001 face neither tests nor writes the game's depth -- it is painted in table
+  order -- and the signs, hanging inside the beam's depth range, come after it in that order.
+  The list depth-tests them. mesh_fallback (new) runs the same rule at the insert on the
+  vertices +51E44 would make (mesh_sy: its integer projection, near pre-shifts included):
+  bench check, 470,152 faces compared at the draw against the hook's own persp_fallback: 0
+  differing; 452,032 of them (96%) fall back.
+- So the list's bulk is fallback faces: leaving them to the table (A4_MESH_FALLBACK, a switch,
+  off) is exact but shrinks the list from ~1,530 triangles a render to ~310 (1,132 a render
+  fall back) -- most of round 26's gain gone. Not taken as the fix.
+- (2): billboard sprites were queued at window depth 1 (always pass) in a list frame. Before
+  the list, a nearer car drawn after them in table order covered them; now the car's list
+  faces are drawn first and the sprites land on them. Fix (in): a TBillboard's sprite gets its
+  depth -- the blit's caller is read from its frame (lr at f+0x8C == +31365, TBillboard's
+  draw; r1 at f+0x70 = bb+0x10), bb[0x18] is its distance (bench: 470-1886 a race, sort key
+  +31368, ZW units), positions (x zw, y zw, -min(ZK, zw), zw). Other sprites and fills keep
+  depth 1. Not seen on the bench (no car lights in the bench race); a guess until the phone.
+- Next: the list must keep the game's table order for these faces. Plan: at the insert,
+  project the three vertices (the game's integer arithmetic, as mesh_sy) and take the face's
+  table key; at the draw, sort the list back to front by key and group same-texture runs only
+  where screen boxes do not overlap (the reorder's rule), drawn with depth writes but no test
+  (painter's, as the game draws them), the table's classes then testing against it as now.
+  The CPU saving (no table insert, walk, projection or hook for these faces) stays; the draw
+  calls rise toward the table's.

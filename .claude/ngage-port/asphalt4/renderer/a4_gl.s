@@ -166,9 +166,11 @@ a4_ntick:
 @ A4_MESH: where the game's code is, from here -- each word is patched by the injector
 @ to (target link address) - (the word's own link address), so &word + word is the
 @ target at run time wherever the image loads (a4_gl.c adds them).
-        .global a4_otins, a4_tfvt
+        .global a4_otins, a4_tfvt, a4_bbret
         .align  2
 a4_otins:
         .word   0xDEADBEEF          @ patched: (code+0x349B0 | 1) - (this word): the ordering-table insert
 a4_tfvt:
         .word   0xDEADBEEF          @ patched: (code+0xB08EC) - (this word): TFace's vtable
+a4_bbret:
+        .word   0xDEADBEEF          @ patched: (code+0x31364 | 1) - (this word): TBillboard's blit call returns here

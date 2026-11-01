@@ -228,7 +228,7 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
 #define PFF_2D 1u        /* a composite ended this frame and its 2D is being timed */
 #define PFF_PRES 2u      /* the game's present call is being timed */
 #define PFF_WROTE 4u     /* a4_tel.c wrote a capture since the last render began */
-_Static_assert(PF_N <= 64, "A4_PERF holds 64 words (0x412C00-0x412D00)");
+_Static_assert(PF_N <= 60, "A4_PERF holds 64 words (0x412C00-0x412D00); 60-63 are A4_MESHCHECK's");
 #define AB_FLUSH 1u      /* glFlush after the frame's last batch (start the tile render) */
 #define AB_NATIVE 2u     /* read back in the implementation's own pair (OES_read_format): BGRA
                           * on the N95 (round 10), RGB565 on a device that names that */
@@ -314,6 +314,8 @@ struct mesh {
     uint32_t cam, F;                    /* the mesh context it was taken under, its focal (cam[1]) */
     uint32_t nk;                        /* keys at the last draw */
     uint32_t culled;                    /* back faces consumed at the insert (total) */
+    uint32_t gctx;                      /* the rasterizer context of the last frame's first triangle */
+    uint32_t fellback;                  /* perspective faces left to the table by the fallback test (total) */
     uint32_t kid[MESH_NK];              /* a key's GL texture */
     uint16_t kcnt[MESH_NK], koff[MESH_NK];
     uint8_t kws[MESH_NK], khs[MESH_NK]; /* its texcoord shifts */
@@ -340,7 +342,9 @@ _Static_assert(3u * MESH_MAXT <= 0x10000u, "uint16 indices");
 #define MESH_D ((uint32_t *)MESH_TOP)
 #define MESH_H ((uint32_t *)(MESH_TOP + 4u * MESH_MAXT))
 #define MESH_HN 4096u
-_Static_assert(MESH_TOP + 4u * MESH_MAXT + 4u * MESH_HN <= 0x00441000u, "check tables past the scratch (A4_SCRATCH_SIZE 0x40000)");
+#define MESH_FH ((uint32_t *)(MESH_TOP + 4u * MESH_MAXT + 4u * MESH_HN))      /* every 0x4001 face seen */
+#define MESH_FV ((uint8_t *)(MESH_TOP + 4u * MESH_MAXT + 8u * MESH_HN))       /* 1 + its fallback verdict */
+_Static_assert(MESH_TOP + 4u * MESH_MAXT + 9u * MESH_HN <= 0x00446000u, "check tables past the scratch (A4_SCRATCH_SIZE 0x45000)");
 static inline uint32_t mesh_hslot(uint32_t p) { return ((p >> 2) * 2654435761u) >> 20; }
 static int mesh_has(uint32_t p)
 {
@@ -1504,6 +1508,7 @@ extern const int32_t a4_otins, a4_tfvt;      /* a4_gl.s: target - (the word), pa
  * never clips at the near plane: z_ndc = ZK/-z' <= 1) and every coordinate in int16. The
  * mode is the window's (A4_PERF), not s->fmode, which the frame's first triangle sets
  * after these inserts. */
+static int mesh_fallback(const uint32_t *gctx, int32_t F, const int32_t *v0, const int32_t *v1, const int32_t *v2);
 static int mesh_take(uint32_t *cam, const uint32_t *face)
 {
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
@@ -1512,8 +1517,8 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
         || s->up != A4_GL_MAGIC || !s->zbits || !s->abits) return 0;
     if (m->frame != s->frames) {                    /* the frame's first insert */
 #ifdef A4_MESHCHECK
-        if (m->n) for (uint32_t j = 0; j < MESH_HN; j++) MESH_H[j] = 0;   /* the last list out of the hash
-                                                     * (all of it: a deletion would cut probe chains) */
+        for (uint32_t j = 0; j < MESH_HN; j++) { MESH_H[j] = 0; MESH_FH[j] = 0; }   /* the last frame's out of
+                                                     * the hashes (all of it: a deletion would cut probe chains) */
 #endif
         m->frame = s->frames; m->n = 0; m->drawn = 0;
         m->cam = (uint32_t)(uintptr_t)cam; m->F = cam[1];
@@ -1543,6 +1548,21 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
     const int32_t *v0 = (const int32_t *)face[3], *v1 = (const int32_t *)face[6], *v2 = (const int32_t *)face[9];
     int32_t z0 = v0[5], z1 = v1[5], z2 = v2[5];     /* view z' at +0x14 */
     if (z0 > -ZK || z1 > -ZK || z2 > -ZK || !MESH_FITS(z0) || !MESH_FITS(z1) || !MESH_FITS(z2)) return 0;
+    if (fl == 0x4001u) {
+        const uint32_t *gctx = (const uint32_t *)m->gctx;
+        if (!gctx) return 0;
+        int fb = mesh_fallback(gctx, (int32_t)m->F, v0, v1, v2);
+#ifdef A4_MESHCHECK
+        {   uint32_t j = mesh_hslot((uint32_t)(uintptr_t)face);
+            while (MESH_FH[j] && MESH_FH[j] != (uint32_t)(uintptr_t)face) j = (j + 1u) & (MESH_HN - 1u);
+            MESH_FH[j] = (uint32_t)(uintptr_t)face; MESH_FV[j] = (uint8_t)(1 + fb); }
+#endif
+#ifdef A4_MESH_FALLBACK
+        if (fb) { m->fellback++; return 0; }        /* painted in table order by the game: the table's */
+#else
+        if (fb) m->fellback++;                      /* counted; kept (96% of them: the list's bulk, round 26) */
+#endif
+    }
     int32_t x0 = v0[3], y0 = v0[4], x1 = v1[3], y1 = v1[4], x2 = v2[3], y2 = v2[4];
     if (!(MESH_FITS(x0) && MESH_FITS(y0) && MESH_FITS(x1) && MESH_FITS(y1) && MESH_FITS(x2) && MESH_FITS(y2))) return 0;
     uint32_t a0 = face[4], b0 = face[5], a1 = face[7], b1 = face[8], a2 = face[10], b2 = face[11];
@@ -1573,6 +1593,40 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
     return 1;
 }
 
+/* The screen y +51E44 would give a vertex (map 2): its integer arithmetic, 32-bit wrap
+ * included; the near ranges pre-shift by 4-7 bits as +51F08 does. RT2 = gctx+0x2008C. */
+static int32_t mesh_sy(const uint32_t *gctx, int32_t F, int32_t cy, int32_t y, int32_t z)
+{
+    const uint32_t *base = (const uint32_t *)((uintptr_t)gctx + 0x40100u);
+    const int32_t *rt2 = (const int32_t *)((uintptr_t)gctx + 0x2008Cu);
+    int m = z > -64 ? 7 : z > -128 ? 6 : z > -256 ? 5 : z > -512 ? 4 : 0;
+    int32_t lz = m ? (int32_t)((uint32_t)(-z) << m) : (int32_t)((uint32_t)(-z) & 0x7FFFu), r;
+    if (lz <= 0) r = (int32_t)base[0x0c / 4];
+    else if (lz >= 0x8020) r = (int32_t)base[0x08 / 4];
+    else r = rt2[lz];
+    r = (int32_t)((uint32_t)r * (uint32_t)F) >> 6;
+    int32_t yy = m ? (int32_t)((uint32_t)y << m) : y;
+    return cy - ((int32_t)((uint32_t)yy * (uint32_t)r + 0x8000u) >> 16);
+}
+/* The perspective rasterizer's affine fallback (persp_fallback's rule, on the vertices the
+ * projection would make): such a face neither tests nor writes the game's depth -- it is
+ * painted in table order, over whatever is behind it -- so the list, which depth-tests,
+ * cannot stand in for it (round 26: the exit gantry's signs hang behind its beam). */
+static int mesh_fallback(const uint32_t *gctx, int32_t F, const int32_t *v0, const int32_t *v1, const int32_t *v2)
+{
+    int32_t cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
+    int32_t y0 = mesh_sy(gctx, F, cy, v0[4], v0[5]), y1 = mesh_sy(gctx, F, cy, v1[4], v1[5]);
+    int32_t y2 = mesh_sy(gctx, F, cy, v2[4], v2[5]);
+    int32_t w0 = -v0[5], w1 = -v1[5], w2 = -v2[5];
+    int32_t wt, wa, wb;                             /* 0x2ff60's first output, branch for branch */
+    if (y0 <= y1) { if (y1 <= y2 || y0 <= y2) { wt = w0; wa = w1; wb = w2; } else { wt = w2; wa = w0; wb = w1; } }
+    else { if (y2 >= y0 || y2 > y1) { wt = w1; wa = w0; wb = w2; } else { wt = w2; wa = w0; wb = w1; } }
+    if (wt <= 500) return 0;
+    int32_t q = persp_rt(gctx, wt);
+    uint32_t d1 = (uint32_t)(persp_rt(gctx, wa) - q), d2 = (uint32_t)(persp_rt(gctx, wb) - q);
+    return (int32_t)(d1 * d1 + d2 * d2) < 100;
+}
+
 /* +34ADC's BLX (r0 = cam, r1 = face, as the bl to +349B0 had them); returns to +34AE0. */
 void a4_mesh_insert(uint32_t *cam, uint32_t *face)
 {
@@ -1589,14 +1643,15 @@ void a4_mesh_insert(uint32_t *cam, uint32_t *face)
  * have been drawn under (ctx[0x5c] and the mode-1 table for the 0x104000 class), grouped
  * by texture through an index list, and drawn with the frame's projection -- x_c =
  * 2F/W x' + (1 - 2cx/W) z', y_c = 2F/H y' + (2cy/H - 1) z', z_c = ZK, w_c = -z' (MBX.md
- * map 2: sx = cx + F x'/-z', sy = cy - F y'/-z'; window depth 0.5 + ZK/ZW/2, the
- * hook's KIND_TEXZ) -- texcoords scaled by a texture matrix (words are texels * 16), the
+ * map 2: sx = cx + F x'/-z', sy = cy - F y'/-z'; window depth 0.5 + ZK/ZW/2 less 1/64,
+ * the hook's KIND_TEXZ set back a little) -- texcoords scaled by a texture matrix (words are texels * 16), the
  * depth test on and writing, back faces culled (the game's 2D test: drawn where the
  * screen-space area is negative, i.e. counter-clockwise once GL's y points up). */
 static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
 {
     volatile struct mesh *m = MESH;
     m->active = 0;
+    m->gctx = (uint32_t)(uintptr_t)gctx;            /* for the next frame's fallback tests */
     uint32_t n = m->n;
     if (m->frame != s->frames) { m->frame = s->frames; m->n = 0; m->drawn = 1; return; }   /* no list this frame */
     if (m->drawn) return;
@@ -1647,7 +1702,10 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
     P[8] = FX - (cx << 17) / VP_W;
     P[9] = (cy << 17) / VP_H - FX;
     P[11] = -FX;
-    P[14] = ZK * FX;
+    P[14] = ZK * FX - ((ZK * FX) >> 6);              /* 1/64 farther than the table's ZK/ZW: a
+                                                      * face the table draws in the same plane
+                                                      * (a lit sign, a decal) wins the tie, as it
+                                                      * did in painter's order (round 26) */
     gl_matrixmode(GL_PROJECTION); gl_loadmatrixx(P);
     gl_matrixmode(GL_TEXTURE);
     gl_enable(GL_DEPTH_TEST); gl_enable(GL_CULL_FACE);
@@ -1666,9 +1724,15 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
             gl_loadmatrixx(TM);
         }
         gl_bindtex(GL_TEXTURE_2D, kid[k] & 0x0FFFFFFFu);
+#ifdef MESH_VIS
+        gl_disable(GL_TEXTURE_2D); gl_color4x(0, FX, 0, FX);   /* bench: the list's faces flat green */
+#endif
         gl_drawelements(GL_TRIANGLES, (int)(cnt[k] * 3u), GL_UNSIGNED_SHORT, I + off[k] - cnt[k] * 3u);
         calls++;
     }
+#ifdef MESH_VIS
+    gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX);
+#endif
     gl_loadidentity();                               /* the texture matrix */
     gl_matrixmode(GL_PROJECTION); gl_loadidentity();
     gl_orthox(0, VP_W*FX, VP_H*FX, 0, -FX, FX);      /* bring-up's */
@@ -1738,6 +1802,19 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_ZBUF
         kind = KIND_TEXZ;
         if (persp_fallback(gctx, desc)) { kind = KIND_TEX; m1 = gctx[0x64 / 4] == 1u; A4_PERF[PF_AFFINE]++; }
+#ifdef A4_MESHCHECK
+        {   /* bench: mesh_fallback's verdict at the insert against this one at the draw --
+             * A4_PERF [60] compared, [61] differing (must be 0), [62] fallbacks among them
+             * (past PF_N; a4_tel.c puts them in header words 60-62 in a check build) */
+            uint32_t p = (uint32_t)(uintptr_t)desc, j = mesh_hslot(p);
+            while (MESH_FH[j] && MESH_FH[j] != p) j = (j + 1u) & (MESH_HN - 1u);
+            if (MESH_FH[j] == p) {
+                volatile uint32_t *ck = A4_PERF + 60 - 96;
+                int fb = kind == KIND_TEX;
+                ck[96]++; if ((MESH_FV[j] - 1) != fb) ck[97]++; if (fb) ck[98]++;
+            }
+        }
+#endif
 #else
         kind = KIND_TEX;
 #endif
@@ -2144,10 +2221,24 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
  * fills) keep their place among the triangles. (S0,T0) at (x0,y0) to (S1,T1) at (x1,y1),
  * normalised GL_FIXED texcoords; a flat id ignores them. */
 static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1, int32_t y1,
-                      int32_t S0, int32_t T0, int32_t S1, int32_t T1, uint32_t id) __attribute__((unused));
+                      int32_t S0, int32_t T0, int32_t S1, int32_t T1, uint32_t id, int32_t zw) __attribute__((unused));
 static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1, int32_t y1,
-                      int32_t S0, int32_t T0, int32_t S1, int32_t T1, uint32_t id)
+                      int32_t S0, int32_t T0, int32_t S1, int32_t T1, uint32_t id, int32_t zw)
 {
+    /* zw: the quad's distance (a TBillboard's, a4_gl_bb), 0 for none. In a mesh frame a quad
+     * with one tests it -- positions (x zw, y zw, -min(ZK, zw), zw): depth ZK/zw, no divide,
+     * the same w at all four corners so the texture stays affine -- and one without sits at
+     * window depth 1, passing every test as it was drawn untested before. */
+    int32_t qw = 4096, qz = 0;
+#ifdef A4_MESH
+    if (MESH_ON()) {
+        if (zw > 0 && zw < 32768) { qw = zw; qz = -(zw < ZK ? zw : ZK); }
+        else qz = -4096;
+    }
+#else
+    (void)zw;
+#endif
+    (void)qw; (void)qz;                             /* used by the A4_HPERSP positions only */
     int32_t vx[4] = { x0, x1, x1, x0 }, vy[4] = { y0, y0, y1, y1 };
     int32_t vs[4] = { S0, S1, S1, S0 }, vt[4] = { T0, T0, T1, T1 };
     int ord[6] = { 0, 1, 2, 0, 2, 3 };
@@ -2192,11 +2283,8 @@ static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1
             int q = ord[t * 3 + k];
 #ifdef A4_HPERSP
             int32_t *POS = (int32_t *)A4_GL_POS;                /* (x*W, y*W, 0, W), W = 4096 */
-            POS[(vb + k) * 4 + 0] = vx[q] * 4096; POS[(vb + k) * 4 + 1] = vy[q] * 4096;
-            POS[(vb + k) * 4 + 2] = 0;            POS[(vb + k) * 4 + 3] = 4096;
-#ifdef A4_MESH
-            if (MESH_ON()) POS[(vb + k) * 4 + 2] = -4096;   /* window depth 1: every GEQUAL passes, as untested */
-#endif
+            POS[(vb + k) * 4 + 0] = vx[q] * qw; POS[(vb + k) * 4 + 1] = vy[q] * qw;
+            POS[(vb + k) * 4 + 2] = qz;         POS[(vb + k) * 4 + 3] = qw;
 #else
             int16_t *POS = (int16_t *)A4_GL_POS;
             POS[(vb + k) * 2 + 0] = (int16_t)vx[q]; POS[(vb + k) * 2 + 1] = (int16_t)vy[q];
@@ -2316,6 +2404,17 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
 #endif
         return 0;
     }
+    /* The blit's caller: TBillboard's draw (+312E6) returns to +31364, and passed r1 =
+     * bb + 0x10, whose bb[0x18] is its distance (its sort key, +31368; ZW units, MBX.md
+     * round 26). The blit pushed {r0-r7, lr} under its frame: r1 at f+0x70, lr at f+0x8C.
+     * Other callers' quads keep no depth. */
+    int32_t bbz = 0;
+#ifdef A4_MESH
+    {   extern const int32_t a4_bbret;
+        if (f[0x8c / 4] == (uint32_t)(uintptr_t)&a4_bbret + (uint32_t)a4_bbret)
+            bbz = ((const int32_t *)f[0x70 / 4])[2];
+    }
+#endif
     uint32_t kind = mode == 0u ? KIND_TEX : mode == 2u ? KIND_ADD : KIND_ADDF;
     uint32_t id = (kind << 28) | s->cache_id[ti];
     if (kind == KIND_ADDF) id |= (fade > 16u ? 16u : fade) << 20;
@@ -2330,7 +2429,7 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
     for (uint32_t k = spr[8 / 4] + 1u; k > 1u; k >>= 1) hl++;
     int32_t S0 = wl <= 8 ? sl * (1 << (8 - wl)) : sl >> (wl - 8), S1 = wl <= 8 ? sr * (1 << (8 - wl)) : sr >> (wl - 8);
     int32_t T0 = hl <= 8 ? tt * (1 << (8 - hl)) : tt >> (hl - 8), T1 = hl <= 8 ? tb * (1 << (8 - hl)) : tb >> (hl - 8);
-    quad_push(s, x0, y0, x1, y1, S0, T0, S1, T1, id);
+    quad_push(s, x0, y0, x1, y1, S0, T0, S1, T1, id, bbz);
     A4_PERF[PF_BB]++;
 #ifdef A4_DUALCAP
     return 0;                                       /* bench instrument: software draws it all */
@@ -2365,7 +2464,7 @@ int a4_gl_fill(const uint32_t *f)
     if (surf[1] != *(volatile uint32_t *)A4_GL_BB || ((const uint16_t *)surf)[4] != (uint16_t)VP_W
         || w <= 0 || h <= 0 || (border == 0x1000u && col == 0x1000u)) return 0;
     if (border == 0x1000u) {
-        quad_push(s, x, y, x + w, y + h, 0, 0, 0, 0, (KIND_FLAT << 28) | (col & 0xFFFFu));
+        quad_push(s, x, y, x + w, y + h, 0, 0, 0, 0, (KIND_FLAT << 28) | (col & 0xFFFFu), 0);
     } else {
         /* the outlined fill (+2AB50): its edge pixels in the border colour, the inside in
          * the fill colour unless that is "none" -- as four edge quads and one inner one,
@@ -2373,13 +2472,13 @@ int a4_gl_fill(const uint32_t *f)
          * composite, which covered it wherever the GPU drew) */
         uint32_t bid = (KIND_FLAT << 28) | (border & 0xFFFFu);
         int32_t x1 = x + w, y1 = y + h;
-        quad_push(s, x, y, x1, y + 1, 0, 0, 0, 0, bid);
-        if (h > 1) quad_push(s, x, y1 - 1, x1, y1, 0, 0, 0, 0, bid);
+        quad_push(s, x, y, x1, y + 1, 0, 0, 0, 0, bid, 0);
+        if (h > 1) quad_push(s, x, y1 - 1, x1, y1, 0, 0, 0, 0, bid, 0);
         if (h > 2) {
-            quad_push(s, x, y + 1, x + 1, y1 - 1, 0, 0, 0, 0, bid);
-            if (w > 1) quad_push(s, x1 - 1, y + 1, x1, y1 - 1, 0, 0, 0, 0, bid);
+            quad_push(s, x, y + 1, x + 1, y1 - 1, 0, 0, 0, 0, bid, 0);
+            if (w > 1) quad_push(s, x1 - 1, y + 1, x1, y1 - 1, 0, 0, 0, 0, bid, 0);
             if (w > 2 && col != 0x1000u)
-                quad_push(s, x + 1, y + 1, x1 - 1, y1 - 1, 0, 0, 0, 0, (KIND_FLAT << 28) | (col & 0xFFFFu));
+                quad_push(s, x + 1, y + 1, x1 - 1, y1 - 1, 0, 0, 0, 0, (KIND_FLAT << 28) | (col & 0xFFFFu), 0);
         }
 #ifdef A4_BBPROBE
         ((volatile uint32_t *)0x00412D00u)[121]++;
@@ -3049,6 +3148,9 @@ void a4_gl_dumpgpu(void (*wr)(int pos, const void *p, int len), int base)
             for (int x = 0; x < VP_W; x++) {
                 uint32_t px = src[x], r = px & 0xFF, g = (px >> 8) & 0xFF, b = (px >> 16) & 0xFF;
                 out[x] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+#ifdef A4_DUALALPHA
+                if ((px >> 24) < 0x80u) out[x] = 0xF81Fu;   /* bench: what the composite would not take */
+#endif
             }
             int screen_y = VP_H - 1 - (y0 + sy);
             wr(base + screen_y * VP_W * 2, out, VP_W * 2);
