@@ -3791,3 +3791,22 @@ PLD, bit 1 = 24-row strips, format word 'AG23'.
 - Exact binary r23_phone (sha256 ba10fe0bdd3171a60d2713f01a483708be150c9f58f65b30b4c6a31e920b21a4):
   telerun3 230 s, framestat 5652, faults 1 (the boot fault), errc 0, all four modes;
   racemenu after a race right. (Bench reads are host-timed: only the phone measures them.)
+
+## Phone round 23 (r23_phone ba10fe0b): neither the prefetch nor the bigger strips measure
+
+8 race files (capidx 47-54), errc 0. Whole race, four modes (~520-573 renders each):
+  no PLD, 16 rows: 87.0 ms a render, 1328 tris, hook 20.3, batch draw 11.9, read 7.0
+  PLD,    16 rows: 87.9 ms,          1370 tris, hook 18.9, batch draw 11.9, read 7.1
+  no PLD, 24 rows: 88.9 ms,          1227 tris, hook 16.8, batch draw 10.5, read 7.0
+  PLD,    24 rows: 88.3 ms,          1314 tris, hook 19.1, batch draw 11.8, read 7.0
+- 24-row strips: the read is 7.0 ms either way -- glReadPixels has no per-call overhead
+  worth having; its cost is the pixels. Off.
+- Prefetch: the hook outside its batch draws 9.3 -> 8.0 us a triangle with 16-row strips but
+  8.0 -> 8.5 with 24-row: the sign changes between pairs, mean -0.4 us (-5%) -- inside a
+  race's noise (scenes per mode differ by +-1 ms a render at ~550 renders). Not shown; off.
+  What remains of the hook's first-touch cost is not cured by asking early (a guess why: the
+  misses already overlap as far as the core allows, or the cost is elsewhere -- persp_fallback's
+  three reads into its 128 KB table, m1_table's context reads).
+- Where it stands (these races were heavy): 87-89 ms a render, ~25-31% of renders at 90 ms
+  or more; round 16's heavy windows were 93-108. Each remaining item of ours is 1-3 ms; next
+  the texture atlas (~2 ms of calls, the only GPU-side cut left that is understood).
