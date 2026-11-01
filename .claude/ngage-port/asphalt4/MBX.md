@@ -3723,3 +3723,34 @@ copy in both):
 - Next, by size: the HUD (the game's painter +29736 and blit +3015E, 19% of bench
   instructions, the 2D phase 6-9 ms on the phone) onto the GPU with the composite moved to
   the present; then the texture atlas (~3-4 ms of calls in heavy scenes).
+
+## Round 22 bench: the hook only records; the batch converts (the A/B is lean against deferred)
+
+Not a repeat: the hook has never been split from its conversion. Re-presents skipped,
+reorder, copy and lean on in both modes; A4_ABCYCLE6 alternates AB_DEFER (64), slot bit 1
+= deferred, format word 'AG22'.
+- The census of who writes into the race frame after its first composite (EKA2L1_WATCH over
+  the surface, WATCHONCE, armed from a4_gl_flush): about eight routines -- the HUD painter
+  +29736 (a per-pixel blitter that re-reads its palette pointer and converts a 24-bit
+  palette entry for every pixel: 4/8-bit palette or 16-bit, a 4-bit alpha map, a global
+  alpha, five blend modes), +26E28, the +2B5xx-+2C5xx family, +2CE90, +10A96, the sprite
+  blit +3015E, the screen fill +3602B (through a ROM memset), our composite. The HUD on the
+  GPU means all of them; parked behind the hook question.
+- The hook question: ~2,400 phone cycles a triangle for ~440 instructions. A guess that
+  fits the size: the hook's ~1.8 KB of code leaves the 16 KB instruction cache between the
+  game's per-triangle calls. A4_DEFER: defer_take writes a 16-word raw record per triangle
+  (kind, texture word, the mode-1 map and table read now, the three (x, y) as int16, depths,
+  texcoord words) into the batch slot; batch_draw's pass 1 finds every record's texture and
+  box (and the frame's drawn rows), the grouping runs as before, pass 3 converts each run's
+  records straight into the arrays the GL reads (the copy gone). Quads (billboards, fills)
+  record their vertices, texcoords and box. tex_index/tex_make now take the mode-1 map and
+  table from the caller (they read the live context before: by batch time it describes
+  another object); tri_tex/tri_conv are shared by the lean and deferred paths.
+- Checks: A4_DEFERCHECK (lean_conv at the hook into a shadow, compared in pass 3): 0 of
+  1,452,113 differ, 0 lost at the batch; tested -- a mutant swapping two depths in the record
+  gives 448,942 differing. A4_LEANCHECK on the refactored code: 0 of 1,416,888. REOCHECK 0,
+  BLITCHECK 0, errc 0.
+- Exact binary r22_phone (sha256 61cb029ae7ebade6eb8f80b62e42036ab3eda4a704ba967c3d3fc837a725b5dd):
+  telerun3 230 s, framestat 5513, faults 1 (the boot fault), errc 0; racemenu after a race
+  right. On the phone the measure is hook + batch draw per triangle by mode (the deferred
+  hook is small, its batch draw carries the conversion).

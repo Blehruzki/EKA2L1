@@ -235,6 +235,7 @@ _Static_assert(PF_N <= 64, "A4_PERF holds 64 words (0x412C00-0x412D00)");
 #define AB_REORDER 8u    /* group the batch into fewer draw calls (A4_REORDER, round 18) */
 #define AB_INDEXED 16u   /* draw the groups through an index list instead of a copy (round 20) */
 #define AB_LEAN 32u      /* the hook's lean path (lean_tail, round 21) */
+#define AB_DEFER 64u     /* the hook only records the triangle; the batch converts it (round 22) */
 #ifndef A4_ABMODE
 #define A4_ABMODE 0u     /* the mode when nothing cycles it (no A4_ABCYCLE) */
 #endif
@@ -592,7 +593,11 @@ struct agg { uint32_t seg[3][4][32]; };
 #define AGG ((volatile struct agg *)A4_GL_AGG)
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
+#ifdef A4_ABCYCLE6
+#define AGG_SLOT(m) ((((m) >> 2) & 1u) | (((m) >> 5) & 2u))                  /* bit 1: AB_DEFER */
+#else
 #define AGG_SLOT(m) ((((m) >> 2) & 1u) | ((((m) >> 3) | ((m) >> 4)) & 2u))   /* bit 1: AB_INDEXED or AB_LEAN */
+#endif
 _Static_assert(A4_GL_AGG + sizeof(struct agg) <= A4_GL_SCRATCH_TOP, "aggregates past the scratch");
 static void agg_render(uint32_t now)
 {
@@ -861,7 +866,7 @@ static int cache_slot(volatile struct glr *s, uint32_t *id)
 
 /* (Re)make slot i's GL texture from ts: the alpha-map texture (var 2), the mode-1 bake
  * (var 1) or the plain/colour-key one, and record what it was made from. */
-static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t *ts, const uint32_t *gctx, int var)
+static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t *ts, const uint16_t *m1map, const uint16_t *m1tab, int var)
 {
     uint32_t w = ts[1] + 1, h = ts[2] + 1, total = w * h;
     const uint16_t *px16 = (const uint16_t *)ts[TS_PIX];
@@ -876,7 +881,7 @@ static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t 
     uint32_t tr = 0;
     for (uint32_t k = 0; k < total; k++) if (px16[k] == 0) { tr = 1; break; }
     const uint16_t *map2 = 0, *tab = 0;
-    if (var == 1) { map2 = (const uint16_t *)gctx[0x5c / 4]; tab = m1_table(gctx); }
+    if (var == 1) { map2 = m1map; tab = m1tab; }   /* ctx[0x5c] and m1_table(ctx), taken by the caller */
     uint32_t r = var == 2 ? tex_upload_alpha(id, ts) : tex_upload(id, ts, tr, 1, map2, tab);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -897,7 +902,10 @@ static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t 
  * from -- the size on every hit, a sampled hash of the texels once a present -- and
  * remade if the descriptor now holds another texture. -1 on failure (the caller falls
  * through to software). */
-static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint32_t *gctx, int var)
+/* m1map, m1tab: ctx[0x5c] and m1_table(ctx) for a mode-1 triangle (var 1), read by the
+ * caller when the triangle came in (round 22: the deferred path calls this later, when the
+ * game's context may describe another object) */
+static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint16_t *m1map, const uint16_t *m1tab, int var)
 {
     uint32_t *ts = (uint32_t *)tsaddr;
     int m1 = var == 1;                              /* 1: mode-1 bake; 2: the alpha-map texture */
@@ -905,7 +913,7 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint32_t *gc
     /* a mode-1 entry is also keyed by its table: objects sharing a texture can each bring
      * their own (ctx[0x60]) -- the tunnel-exit gantry's signs drew black with one image a
      * texture (round 11) */
-    uint32_t tabk = m1 ? (uint32_t)(uintptr_t)m1_table(gctx) : 0u;
+    uint32_t tabk = m1 ? (uint32_t)(uintptr_t)m1tab : 0u;
     uint32_t w = ts[1] + 1, h = ts[2] + 1, n = w * h;
     const void *pix = (const void *)ts[TS_PIX];
     if (!pix || w > 1024 || h > 1024) return -1;
@@ -947,11 +955,11 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint32_t *gc
                 if (j < 0) return -1;
                 s->cache_ptr[i] = 0xFFFFFFFFu;      /* no descriptor or sprite has this key */
                 s->cache_ptr[j] = key; s->cache_tab[j] = tabk;
-                tex_make(s, j, id, ts, gctx, var);
+                tex_make(s, j, id, ts, m1map, m1tab, var);
                 s->lasthit = (uint32_t)j; THINT[hh] = (uint16_t)(j + 1);
                 return j;
             }
-            tex_make(s, i, s->cache_id[i], ts, gctx, var);
+            tex_make(s, i, s->cache_id[i], ts, m1map, m1tab, var);
             return i;
         }
         TX->lu[i] = s->frames;
@@ -961,7 +969,7 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint32_t *gc
          * the whole texture through the CPU and glTexSubImage2D. */
         if (m1 && s->cache_fr[i] != s->frames && (n < M1_BIG || s->frames - s->cache_fr[i] >= M1_BIG_EVERY)) {
             s->cache_fr[i] = s->frames;
-            const uint16_t *map2 = (const uint16_t *)gctx[0x5c / 4], *tab = m1_table(gctx);
+            const uint16_t *map2 = m1map, *tab = m1tab;
             if (m1_sig(map2, tab, s->cache_m1r[i], n) != s->cache_ck[i]) {
                 uint32_t t0 = a4_ntick();
                 s->cache_m1r[i] = tex_upload(s->cache_id[i], ts, s->cache_tr[i], 0, map2, tab);
@@ -987,7 +995,7 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint32_t *gc
     int idx = cache_slot(s, &id);
     if (idx < 0) return -1;
     s->cache_ptr[idx] = key; s->cache_tab[idx] = tabk;
-    tex_make(s, idx, id, ts, gctx, var);
+    tex_make(s, idx, id, ts, m1map, m1tab, var);
     s->lasthit = (uint32_t)idx; THINT[hh] = (uint16_t)(idx + 1);
     return idx;
 }
@@ -1060,60 +1068,49 @@ static int persp_fallback(const uint32_t *gctx, const uint32_t *desc)
  * hit, already used in this present, nothing to re-check (tex_index's own conditions for
  * returning that slot at once). Writes pos[12], uv[6], *idp, box[4], yr[2]; 0 if the
  * texture fails (as the path it replaces returns 0 then). */
-static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1,
-                     uint32_t tsaddr, int32_t *pos, int32_t *uv, uint32_t *idp, int16_t *box, int32_t *yr)
+/* the triangle's texture: its TEXID word, and the texcoord shifts; tex_index's commonest
+ * outcome inline -- the last hit, already used in this present, nothing to re-check (the
+ * conditions on which tex_index returns that slot untouched). -1: the texture fails. */
+static inline int tri_tex(volatile struct glr *s, uint32_t kind, int m1, uint32_t tsaddr,
+                          const uint16_t *m1map, const uint16_t *m1tab, uint32_t *idp, int *wshp, int *hshp)
 {
-    int wsh = 0, hsh = 0;
-    uint32_t id;
-    if (kind == KIND_SHAD) id = KIND_SHAD << 28;
-    else if (kind == KIND_FLAT) id = (KIND_FLAT << 28) | (tsaddr & 0xFFFFu);
-    else {
-        const uint32_t *ts = (const uint32_t *)tsaddr;
-        uint32_t tw = ts[1] + 1, th = ts[2] + 1;
-        wsh = tw ? 31 - __builtin_clz(tw) : 0;
-        hsh = th ? 31 - __builtin_clz(th) : 0;
-        int var = kind == KIND_ALPHA ? 2 : m1, ti = -1;
-        uint32_t li = s->lasthit;
-        if (li < s->ntex) {
-            uint32_t key = tsaddr | (uint32_t)var;
-            uint32_t tabk = var == 1 ? (uint32_t)(uintptr_t)m1_table(gctx) : 0u;
-            if (s->cache_ptr[li] == key && s->cache_tab[li] == tabk && TX->src[li] == ts[TS_PIX]
-                && TX->wh[li] == (ts[1] | (ts[2] << 16)) && TX->lu[li] == s->frames
-                && (var != 1 || s->cache_fr[li] == s->frames)) ti = (int)li;
-        }
-        if (ti < 0) ti = tex_index(s, tsaddr, gctx, var);
-        if (ti < 0) return 0;
-        id = (kind << 28) | s->cache_id[ti];
+    if (kind == KIND_SHAD) { *idp = KIND_SHAD << 28; *wshp = *hshp = 0; return 0; }
+    if (kind == KIND_FLAT) { *idp = (KIND_FLAT << 28) | (tsaddr & 0xFFFFu); *wshp = *hshp = 0; return 0; }
+    const uint32_t *ts = (const uint32_t *)tsaddr;
+    uint32_t tw = ts[1] + 1, th = ts[2] + 1;
+    *wshp = tw ? 31 - __builtin_clz(tw) : 0;
+    *hshp = th ? 31 - __builtin_clz(th) : 0;
+    int var = kind == KIND_ALPHA ? 2 : m1, ti = -1;
+    uint32_t li = s->lasthit;
+    if (li < s->ntex) {
+        uint32_t key = tsaddr | (uint32_t)var;
+        uint32_t tabk = var == 1 ? (uint32_t)(uintptr_t)m1tab : 0u;
+        if (s->cache_ptr[li] == key && s->cache_tab[li] == tabk && TX->src[li] == ts[TS_PIX]
+            && TX->wh[li] == (ts[1] | (ts[2] << 16)) && TX->lu[li] == s->frames
+            && (var != 1 || s->cache_fr[li] == s->frames)) ti = (int)li;
     }
-    *idp = id;
-    const uint32_t *v0 = (const uint32_t *)desc[3], *v1 = (const uint32_t *)desc[6], *v2 = (const uint32_t *)desc[9];
-    int32_t x0 = (int16_t)(int32_t)v0[0], y0 = (int16_t)(int32_t)v0[1];
-    int32_t x1 = (int16_t)(int32_t)v1[0], y1 = (int16_t)(int32_t)v1[1];
-    int32_t x2 = (int16_t)(int32_t)v2[0], y2 = (int16_t)(int32_t)v2[1];
+    if (ti < 0) ti = tex_index(s, tsaddr, var == 1 ? m1map : 0, var == 1 ? m1tab : 0, var);
+    if (ti < 0) return -1;
+    *idp = (kind << 28) | s->cache_id[ti];
+    return 0;
+}
+/* positions (x*W, y*W, -min(zq, W), W) and texcoords of one triangle from its screen
+ * points (int16, as the game's), depths and texcoord words; xlo..yhi its extents */
+static inline void tri_conv(uint32_t kind, int wsh, int hsh, int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+                            int32_t x2, int32_t y2, int32_t za, int32_t zb, int32_t zc, const uint32_t *uvw,
+                            int32_t xlo, int32_t xhi, int32_t ylo, int32_t yhi, int32_t *pos, int32_t *uv)
+{
     if (kind == KIND_TEX || kind == KIND_TEXZ || kind == KIND_ADD || kind == KIND_ALPHA) {
-        uv[0] = ((int32_t)desc[4]  * 4096) >> wsh; uv[1] = ((int32_t)desc[5]  * 4096) >> hsh;
-        uv[2] = ((int32_t)desc[7]  * 4096) >> wsh; uv[3] = ((int32_t)desc[8]  * 4096) >> hsh;
-        uv[4] = ((int32_t)desc[10] * 4096) >> wsh; uv[5] = ((int32_t)desc[11] * 4096) >> hsh;
+        uv[0] = ((int32_t)uvw[0] * 4096) >> wsh; uv[1] = ((int32_t)uvw[1] * 4096) >> hsh;
+        uv[2] = ((int32_t)uvw[2] * 4096) >> wsh; uv[3] = ((int32_t)uvw[3] * 4096) >> hsh;
+        uv[4] = ((int32_t)uvw[4] * 4096) >> wsh; uv[5] = ((int32_t)uvw[5] * 4096) >> hsh;
     } else { uv[0] = uv[1] = uv[2] = uv[3] = uv[4] = uv[5] = 0; }
-    int32_t xlo = x0, xhi = x0, ylo = y0, yhi = y0;
-    if (x1 < xlo) xlo = x1;
-    if (x1 > xhi) xhi = x1;
-    if (x2 < xlo) xlo = x2;
-    if (x2 > xhi) xhi = x2;
-    if (y1 < ylo) ylo = y1;
-    if (y1 > yhi) yhi = y1;
-    if (y2 < ylo) ylo = y2;
-    if (y2 > yhi) yhi = y2;
-    tbox_calc(box, xlo, ylo, xhi, yhi);
-    yr[0] = ylo < 0 ? 0 : ylo >= VP_H ? VP_H - 1 : ylo;
-    yr[1] = yhi < 0 ? 0 : yhi >= VP_H ? VP_H - 1 : yhi;
     /* the extents bound |x|, |y|: max(-lo, hi) over both axes, at least 1 */
     int32_t m = 1;
     if (-xlo > m) m = -xlo;
     if (xhi > m) m = xhi;
     if (-ylo > m) m = -ylo;
     if (yhi > m) m = yhi;
-    int32_t za = (int32_t)v0[2], zb = (int32_t)v1[2], zc = (int32_t)v2[2];
     uint32_t w0 = (uint32_t)(za > 0 ? za : 1), w1 = (uint32_t)(zb > 0 ? zb : 1), w2 = (uint32_t)(zc > 0 ? zc : 1);
     uint32_t zmax = w0 > w1 ? w0 : w1;
     if (w2 > zmax) zmax = w2;
@@ -1129,6 +1126,35 @@ static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
     pos[0] = x0 * W0; pos[1]  = y0 * W0; pos[2]  = -(zq < W0 ? zq : W0); pos[3]  = W0;
     pos[4] = x1 * W1; pos[5]  = y1 * W1; pos[6]  = -(zq < W1 ? zq : W1); pos[7]  = W1;
     pos[8] = x2 * W2; pos[9]  = y2 * W2; pos[10] = -(zq < W2 ? zq : W2); pos[11] = W2;
+}
+static inline void ext3(int32_t a, int32_t b, int32_t c, int32_t *lo, int32_t *hi)
+{
+    int32_t l = a, h = a;
+    if (b < l) l = b;
+    if (b > h) h = b;
+    if (c < l) l = c;
+    if (c > h) h = c;
+    *lo = l; *hi = h;
+}
+static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1,
+                     uint32_t tsaddr, int32_t *pos, int32_t *uv, uint32_t *idp, int16_t *box, int32_t *yr)
+{
+    int wsh, hsh;
+    int mv = m1 && kind != KIND_ALPHA;
+    if (tri_tex(s, kind, m1, tsaddr, mv ? (const uint16_t *)gctx[0x5c / 4] : 0, mv ? m1_table(gctx) : 0,
+                idp, &wsh, &hsh) < 0) return 0;
+    const uint32_t *v0 = (const uint32_t *)desc[3], *v1 = (const uint32_t *)desc[6], *v2 = (const uint32_t *)desc[9];
+    int32_t x0 = (int16_t)(int32_t)v0[0], y0 = (int16_t)(int32_t)v0[1];
+    int32_t x1 = (int16_t)(int32_t)v1[0], y1 = (int16_t)(int32_t)v1[1];
+    int32_t x2 = (int16_t)(int32_t)v2[0], y2 = (int16_t)(int32_t)v2[1];
+    int32_t xlo, xhi, ylo, yhi;
+    ext3(x0, x1, x2, &xlo, &xhi); ext3(y0, y1, y2, &ylo, &yhi);
+    tbox_calc(box, xlo, ylo, xhi, yhi);
+    yr[0] = ylo < 0 ? 0 : ylo >= VP_H ? VP_H - 1 : ylo;
+    yr[1] = yhi < 0 ? 0 : yhi >= VP_H ? VP_H - 1 : yhi;
+    const uint32_t uvw[6] = { desc[4], desc[5], desc[7], desc[8], desc[10], desc[11] };
+    tri_conv(kind, wsh, hsh, x0, y0, x1, y1, x2, y2, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2], uvw,
+             xlo, xhi, ylo, yhi, pos, uv);
     return 1;
 }
 static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1, uint32_t tsaddr)
@@ -1152,6 +1178,60 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
 }
 #elif defined(A4_LEAN)
 #error "A4_LEAN is written for A4_HPERSP + A4_REORDER + A4_IMM"
+#endif
+
+#ifdef A4_DEFER
+/* Round 22: the hook only records. Its phone cost is ~2,400 cycles a triangle for ~440
+ * instructions (rounds 18-21) -- stalls, not work; one cause that fits the size is the
+ * hook's ~1.8 KB of code evicted from the 16 KB instruction cache between the game's
+ * per-triangle calls, which a tight loop over a whole batch would not suffer (a guess:
+ * the A/B against the lean path is the measurement). defer_take writes the triangle's raw
+ * record (16 words) into its batch slot -- the POS/UV region, unused in this mode -- and
+ * batch_draw converts every record of the batch in one pass, then writes each run's
+ * vertices straight into the reorder's arrays (no copy). Triangle record: [0] kind |
+ * m1 << 4, [1] the texture word, [2] [3] ctx[0x5c] and m1_table(ctx) for mode 1 (the
+ * context describes another object by the time the batch is drawn), [4..6] x | y << 16
+ * (int16, as the game's), [7..9] the depths, [10..15] the texcoord words. Quad record
+ * (quad_push): [0] DEF_QUAD, [1] its TEXID, [2] [3] its box (x | y << 16, inclusive),
+ * [4..9] the three vertices' (x, y), [10..15] their (s, t). */
+#define DEF_W 16u
+#define DEF_QUAD 0x20u
+#define DEF_DROP 0xFFFFFFFFu     /* a record whose texture failed at the batch: not drawn */
+#define DEFR(n) ((uint32_t *)A4_GL_POS + (n) * DEF_W)
+_Static_assert(DEF_W * 4u * MAXT <= 3u * MAXT * (POSC * POSB + UVC * 4u), "records past the POS/UV region");
+static int defer_take(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1, uint32_t tsaddr)
+{
+    if (kind != KIND_SHAD && kind != KIND_FLAT) {      /* what tex_index refuses at once: software */
+        const uint32_t *ts = (const uint32_t *)tsaddr;
+        if (!ts[TS_PIX] || ts[1] + 1 > 1024u || ts[2] + 1 > 1024u) return 0;
+    }
+    uint32_t n = s->bfill;
+    if (n >= MAXT) {
+        uint32_t t0 = a4_ntick(); batch_draw(n); A4_PERF[PF_DRAW] += a4_ntick() - t0;
+        n = 0; s->bfill = 0;
+    }
+    uint32_t *r = DEFR(n);
+    const uint32_t *v0 = (const uint32_t *)desc[3], *v1 = (const uint32_t *)desc[6], *v2 = (const uint32_t *)desc[9];
+    r[0] = kind | ((uint32_t)m1 << 4);
+    r[1] = tsaddr;
+    if (m1 && kind != KIND_ALPHA) { r[2] = gctx[0x5c / 4]; r[3] = (uint32_t)(uintptr_t)m1_table(gctx); }
+    else r[2] = r[3] = 0;
+    r[4] = (v0[0] & 0xFFFFu) | (v0[1] << 16); r[5] = (v1[0] & 0xFFFFu) | (v1[1] << 16); r[6] = (v2[0] & 0xFFFFu) | (v2[1] << 16);
+    r[7] = v0[2]; r[8] = v1[2]; r[9] = v2[2];
+    r[10] = desc[4]; r[11] = desc[5]; r[12] = desc[7]; r[13] = desc[8]; r[14] = desc[10]; r[15] = desc[11];
+#ifdef A4_DEFERCHECK
+    {   /* bench: what the lean path makes of this triangle now, for batch_draw to compare */
+        int32_t yr[2];
+        uint32_t *sh = (uint32_t *)0x00422000u + n * 24u;    /* pos 12, uv 6, id, box 2, ok, rows 2 */
+        sh[19] = lean_conv(s, gctx, desc, kind, m1, tsaddr, (int32_t *)sh, (int32_t *)sh + 12, sh + 18,
+                           (int16_t *)(sh + 20), yr);
+        sh[22] = (uint32_t)yr[0]; sh[23] = (uint32_t)yr[1];
+    }
+#endif
+    s->bfill = n + 1;
+    s->prims++;
+    return (kind == KIND_ADD || kind == KIND_ALPHA) ? 0 : 1;
+}
 #endif
 
 static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
@@ -1278,7 +1358,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE5)
+#if defined(A4_TEL) && defined(A4_ABCYCLE6)
+        /* round 22: a4_tel.c alternates AB_DEFER per capture window; native, skip, reorder, lean on */
+        A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER | AB_LEAN;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE5)
         /* round 21: a4_tel.c alternates AB_LEAN per capture window; native, skip, reorder on */
         A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER;
         s->fmode = A4_PERF[PF_MODE];
@@ -1330,6 +1414,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #endif
     uint32_t tsaddr = desc[0x30 / 4];               /* texture descriptor, or flat colour */
     if (!tsaddr && kind != KIND_SHAD) return 0;
+#if defined(A4_DEFER) && !defined(A4_M1VIS) && !defined(A4_SEQDUMP) && !defined(A4_VTXDUMP)
+    if ((s->fmode & (AB_DEFER | AB_REORDER)) == (AB_DEFER | AB_REORDER)) return defer_take(s, gctx, desc, kind, m1, tsaddr);
+#endif
 #if defined(A4_LEAN) && !defined(A4_M1VIS) && !defined(A4_SEQDUMP) && !defined(A4_VTXDUMP)
     if (s->fmode & AB_LEAN) return lean_tail(s, gctx, desc, kind, m1, tsaddr);
 #endif
@@ -1348,7 +1435,8 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         uint32_t tw = ts[1] + 1, th = ts[2] + 1;
         wsh = tw ? 31 - __builtin_clz(tw) : 0;      /* floor(log2), as the shift loops it replaces */
         hsh = th ? 31 - __builtin_clz(th) : 0;
-        int ti = tex_index(s, tsaddr, gctx, kind == KIND_ALPHA ? 2 : m1);
+        int ti = tex_index(s, tsaddr, m1 && kind != KIND_ALPHA ? (const uint16_t *)gctx[0x5c / 4] : 0,
+                           m1 && kind != KIND_ALPHA ? m1_table(gctx) : 0, kind == KIND_ALPHA ? 2 : m1);
         if (ti < 0) return 0;
         /* colorkey sprites are GPU-drawn with alpha test (5551 upload), so no software
          * fallback -- s->cache_tr is kept for diagnostics only. */
@@ -1586,6 +1674,32 @@ static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1
             s->bfill = 0;
         }
         uint32_t n = s->bfill, vb = n * 3;
+#ifdef A4_DEFER
+        if ((s->fmode & (AB_DEFER | AB_REORDER)) == (AB_DEFER | AB_REORDER)) {   /* batch_draw converts only under the reorder */
+            uint32_t *r = DEFR(n);
+            int32_t bx0 = x0 < x1 ? x0 : x1, by0 = y0 < y1 ? y0 : y1;
+            int32_t bx1 = (x0 < x1 ? x1 : x0) - 1, by1 = (y0 < y1 ? y1 : y0) - 1;
+            r[0] = DEF_QUAD; r[1] = id;
+            r[2] = ((uint32_t)bx0 & 0xFFFFu) | ((uint32_t)by0 << 16); r[3] = ((uint32_t)bx1 & 0xFFFFu) | ((uint32_t)by1 << 16);
+            for (int k = 0; k < 3; k++) {
+                int q = ord[t * 3 + k];
+                r[4 + k * 2] = (uint32_t)vx[q]; r[5 + k * 2] = (uint32_t)vy[q];
+                r[10 + k * 2] = (uint32_t)vs[q]; r[11 + k * 2] = (uint32_t)vt[q];
+            }
+#ifdef A4_DEFERCHECK
+            {   uint32_t *sh = (uint32_t *)0x00422000u + n * 24u;
+                for (int k = 0; k < 3; k++) {
+                    int q = ord[t * 3 + k];
+                    sh[k*4] = (uint32_t)(vx[q] * 4096); sh[k*4+1] = (uint32_t)(vy[q] * 4096); sh[k*4+2] = 0; sh[k*4+3] = 4096;
+                    sh[12 + k*2] = (uint32_t)vs[q]; sh[13 + k*2] = (uint32_t)vt[q];
+                }
+                sh[18] = id; sh[19] = 1; tbox_calc((int16_t *)(sh + 20), bx0, by0, bx1, by1); sh[22] = 0; sh[23] = 0; }
+#endif
+            s->bfill = n + 1;
+            s->prims++;
+            continue;
+        }
+#endif
 #ifdef A4_REORDER
         /* the quad covers [x0, x1) x [y0, y1); every caller has x0 < x1, y0 < y1, but a
          * reversed quad still draws, and a box read as empty would let it pass anything */
@@ -1638,7 +1752,7 @@ static int bb_tex(volatile struct glr *s, const uint32_t *spr)
         if (s->cache_ptr[k] == key && TX->src[k] == fd[4]) {      /* the texels' address keys it too */
             if (TX->wh[k] != (fd[1] | (fd[2] << 16))
                 || (TX->lu[k] != s->frames && TX->hs[k] != tex_hash(px, total, 0))) {
-                tex_make(s, (int)k, s->cache_id[k], fd, 0, 0);    /* another sprite here now */
+                tex_make(s, (int)k, s->cache_id[k], fd, 0, 0, 0);    /* another sprite here now */
                 A4_PERF[PF_TEXRE]++;
             }
             TX->lu[k] = s->frames;
@@ -1648,7 +1762,7 @@ static int bb_tex(volatile struct glr *s, const uint32_t *spr)
     int idx = cache_slot(s, &id);
     if (idx < 0) return -1;
     s->cache_ptr[idx] = key; s->cache_tab[idx] = 0;
-    tex_make(s, idx, id, fd, 0, 0);
+    tex_make(s, idx, id, fd, 0, 0, 0);
     return idx;
 }
 
@@ -1925,6 +2039,40 @@ static void batch_draw(uint32_t nt)
     uint32_t t0 = a4_ntick();
     struct reo *ro = RO;
     const int16_t *tb = (const int16_t *)A4_GL_TBOX;
+#ifdef A4_DEFER
+    volatile struct glr *sg = (volatile struct glr *)A4_GL_SCRATCH;
+    int defer = (sg->fmode & AB_DEFER) != 0;
+    if (defer) {
+        /* pass 1: each record's texture (TEXID) and box (TBOX), and the frame's drawn rows */
+        int16_t *tbw = (int16_t *)A4_GL_TBOX;
+        uint32_t miny = sg->miny, maxy = sg->maxy, nflat = 0, nadd = 0, nshad = 0;
+        for (uint32_t t = 0; t < nt; t++) {
+            const uint32_t *r = DEFR(t);
+            if (r[0] == DEF_QUAD) {
+                TEXID[t] = r[1];
+                tbox_calc(tbw + t * 4u, (int16_t)(r[2] & 0xFFFFu), (int16_t)(r[2] >> 16), (int16_t)(r[3] & 0xFFFFu), (int16_t)(r[3] >> 16));
+                continue;
+            }
+            uint32_t kind = r[0] & 15u, id; int wsh, hsh;
+            if (tri_tex(sg, kind, (int)((r[0] >> 4) & 1u), r[1], (const uint16_t *)r[2], (const uint16_t *)r[3], &id, &wsh, &hsh) < 0) {
+                TEXID[t] = DEF_DROP; tbox_calc(tbw + t * 4u, 0x4000, 0x4000, -0x4000, -0x4000);   /* empty: passes everything */
+                ((volatile uint32_t *)0x00412D00u)[109]++;                 /* taken, then lost (expect 0) */
+                continue;
+            }
+            TEXID[t] = id;
+            int32_t ylo, yhi, xlo, xhi;
+            ext3((int16_t)(r[4] & 0xFFFFu), (int16_t)(r[5] & 0xFFFFu), (int16_t)(r[6] & 0xFFFFu), &xlo, &xhi);
+            ext3((int16_t)(r[4] >> 16), (int16_t)(r[5] >> 16), (int16_t)(r[6] >> 16), &ylo, &yhi);
+            tbox_calc(tbw + t * 4u, xlo, ylo, xhi, yhi);
+            int32_t a = ylo < 0 ? 0 : ylo >= VP_H ? VP_H - 1 : ylo, b = yhi < 0 ? 0 : yhi >= VP_H ? VP_H - 1 : yhi;
+            if ((uint32_t)a < miny) miny = (uint32_t)a;
+            if ((uint32_t)b > maxy) maxy = (uint32_t)b;
+            if (kind == KIND_FLAT) nflat++; else if (kind == KIND_ADD) nadd++; else if (kind == KIND_SHAD) nshad++;
+        }
+        sg->miny = miny; sg->maxy = maxy;
+        A4_PERF[PF_FLAT] += nflat; A4_PERF[PF_ADD] += nadd; A4_PERF[PF_SHAD] += nshad;
+    }
+#endif
     uint32_t nr = 0, runs0 = 1;
     for (uint32_t t = 0; t < nt; t++) {
         uint32_t key = TEXID[t];
@@ -1954,6 +2102,59 @@ static void batch_draw(uint32_t nt)
         ro->tail[found] = (uint16_t)t; ro->cnt[found]++;
     }
     uint16_t *ix = 0;
+#ifdef A4_DEFER
+    if (defer) {
+        /* pass 3: each run's records converted straight into the arrays the GL reads */
+        int32_t *po = ro->pos, *uo = ro->uv;
+        for (uint32_t r = 0; r < nr; r++) {
+            uint32_t t = ro->head[r];
+            if (ro->key[r] == DEF_DROP) { ro->cnt[r] = 0; continue; }   /* drawn as nothing */
+            for (uint32_t c = ro->cnt[r]; c; c--) {
+                const uint32_t *d = DEFR(t);
+                if (d[0] == DEF_QUAD) {
+                    for (int k = 0; k < 3; k++) {
+                        po[k*4] = (int32_t)d[4 + k*2] * 4096; po[k*4+1] = (int32_t)d[5 + k*2] * 4096;
+                        po[k*4+2] = 0; po[k*4+3] = 4096;
+                        uo[k*2] = (int32_t)d[10 + k*2]; uo[k*2+1] = (int32_t)d[11 + k*2];
+                    }
+                } else {
+                    uint32_t kind = d[0] & 15u;
+                    int wsh = 0, hsh = 0;
+                    if (kind != KIND_SHAD && kind != KIND_FLAT) {
+                        const uint32_t *ts = (const uint32_t *)d[1];
+                        uint32_t tw = ts[1] + 1, th = ts[2] + 1;
+                        wsh = tw ? 31 - __builtin_clz(tw) : 0; hsh = th ? 31 - __builtin_clz(th) : 0;
+                    }
+                    int32_t x0 = (int16_t)(d[4] & 0xFFFFu), y0 = (int16_t)(d[4] >> 16);
+                    int32_t x1 = (int16_t)(d[5] & 0xFFFFu), y1 = (int16_t)(d[5] >> 16);
+                    int32_t x2 = (int16_t)(d[6] & 0xFFFFu), y2 = (int16_t)(d[6] >> 16);
+                    int32_t xlo, xhi, ylo, yhi;
+                    ext3(x0, x1, x2, &xlo, &xhi); ext3(y0, y1, y2, &ylo, &yhi);
+                    tri_conv(kind, wsh, hsh, x0, y0, x1, y1, x2, y2, (int32_t)d[7], (int32_t)d[8], (int32_t)d[9], d + 10,
+                             xlo, xhi, ylo, yhi, po, uo);
+                }
+#ifdef A4_DEFERCHECK
+                {   /* bench: these words against the lean path's at the hook (0x412D00 [110]
+                     * triangles differing, [111] checked, [112] the first's word) */
+                    volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
+                    const uint32_t *sh = (const uint32_t *)0x00422000u + t * 24u;
+                    int bad = -1;
+                    if (!sh[19]) bad = 98;
+                    for (int k = 0; k < 12 && bad < 0; k++) if ((uint32_t)po[k] != sh[k]) bad = k;
+                    for (int k = 0; k < 6 && bad < 0; k++) if ((uint32_t)uo[k] != sh[12 + k]) bad = 12 + k;
+                    if (bad < 0 && TEXID[t] != sh[18]) bad = 18;
+                    if (bad < 0 && (tb[t*4] != ((const int16_t *)(sh + 20))[0] || tb[t*4+1] != ((const int16_t *)(sh + 20))[1]
+                                    || tb[t*4+2] != ((const int16_t *)(sh + 20))[2] || tb[t*4+3] != ((const int16_t *)(sh + 20))[3])) bad = 20;
+                    if (bad >= 0) { if (!ck[110]) ck[112] = (uint32_t)bad; ck[110]++; }
+                    ck[111]++;
+                }
+#endif
+                po += 3u * POSC; uo += 3u * UVC;
+                t = ro->next[t];
+            }
+        }
+    } else
+#endif
     if (((volatile struct glr *)A4_GL_SCRATCH)->fmode & AB_INDEXED) {
         /* the index list in run order, in the copy's place (nothing is copied in this mode):
          * 3 * 512 indices < 2^16 */
@@ -2015,6 +2216,7 @@ static void batch_draw(uint32_t nt)
     gl_texcoordptr((int)UVC, GL_FIXED, 0, ix ? (const void *)A4_GL_UV : (const void *)ro->uv);
     uint32_t st = KIND_TEX, first = 0;
     for (uint32_t r = 0; r < nr; r++) {
+        if (!ro->cnt[r]) continue;                  /* a deferred run whose texture failed */
         draw_run(ro->key[r], first, ro->cnt[r], &st, ix);
         first += ro->cnt[r];
     }
