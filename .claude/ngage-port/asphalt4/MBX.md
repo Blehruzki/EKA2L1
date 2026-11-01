@@ -3979,3 +3979,75 @@ Source: the code section (tdis.py) and the RTTI names in it (typeinfo -> class-n
   (+51E44 and the camera params), where a mesh's object-to-view matrix comes from (+345E4),
   which faces depend on painter's order (TFakeZFace: decals, forced order; the blended
   classes), and depth-buffer equivalence for the rest.
+
+## Structural step, map 2: projection, camera, census (bench measurements + the binary)
+
+Sources: the code section (tdis.py) for the formulas; bench dumps (EKA2L1_PCMEM, now with
+`EKA2L1_PCMEM_ARM` = the race minimap +26E28 so only race frames are recorded, and the
+`:off` / `:+off` forms for a pointer member or a deep offset; EMU_PATCHES.md) for values.
+- **Transform** (+345E4, per vertex, 40-byte records): object xyz at v+0x18..0x20 through
+  the matrix cam[0x3c] (12 words: x' = (m0 x + m3 y + m6 z) >> 14 + m9, y' = rows m1 m4 m7
+  + m10, z' = m2 m5 m8 + m11; +523A2/+523C4/+523E6) into v+0xC..0x14; v+8 = 0 (not
+  projected); flags v+0x24: 0x20 if z' outside (-29900, 6024] (the face is then dropped,
+  not clipped), 0x10 if z' > -64 (near), 1/2/4/8 from four planes in cam[0xc..0x34]
+  (measured: |y'/z'| = 16576/63405 = 0.2614, |x'/z'| = 21572/61884 = 0.3486 -- 4:3,
+  half-angles 14.6 and 19.2 degrees); cam[0] = AND of all flags (non-zero: whole mesh out).
+- **The "camera" is the mesh context**: the object +349F8 gets as ctx (cam) is the one the
+  face draw passes to the projection; F = cam[4] (focal), constant within a frame, 0x1CC
+  (460) at the race start then 0x104 (260) in the bench window -- it changes across frames.
+  The renderer object R = {gctx (rasterizer context), cam}; draw_primitive gets gctx.
+- **Projection** (+51E44, lazily at face draw): zw = -z'; r = RT2[-z'] (gctx+0x2008C, a
+  second table after the perspective span's RT at gctx+0x8C) -- **RT2[z] = floor(2^22/z)**,
+  all 16,383 entries checked (RT at +0x8C is floor(2^18/z), all 16,347 checked); r = r*F >>
+  6; sx = cx + ((x' r + 0x8000) >> 16), sy = cy - ((y' r + 0x8000) >> 16), i.e. sx ~ cx +
+  F x'/(-z'): integer pixels. cx, cy = *gctx[0x40110] >> 1, *gctx[0x40114] >> 1. Near
+  vertices (z' > -512) go to +51F08 (same formula, x', y', z' pre-shifted 4-7 bits for
+  precision). F = 460 puts |x'/z'| = 0.3486 at 160 px: the planes are the screen edges.
+- **Face flags** (face+4, from the per-mode table at +AC860 when inserted, then
+  draw_primitive's class flags): bit 0 perspective class (KIND_TEXZ unless the affine
+  fallback), bit 12 clip (near), bit 14 2D back-face cull, bits 20/24/26/27 set the span
+  mode ctx[0x64] = 1/3/2/4 at draw. Mode 0 (normal) = 0x4001, mode 1 = 0x4000, 2 =
+  0x104000, 3 = 0x804000, 4 = 0x1004000, 6 = 0x5000; the near-clip variants add 0x1000 (and
+  0x400000 for mode 0). Modes 0/6 then take texture bits from the descriptor: +0x28 byte !=
+  0xFF -> |0x10040 & ~1, +0x2C alpha map -> |0x10100 & ~1. Face draw +31246: a bit-0 face
+  goes to +35D3A, which back-face culls in 2D when asked and CLIPS IN 3D against all
+  planes whenever any vertex flag is set; other faces clip only when bit 12 is set.
+- **Two kinds of mesh into +349F8**: (a) +CE8C, ~89 calls a frame: compact static objects
+  (int16 xyz verts at obj+0x20, 10-byte faces at obj+0x28: indices b1 b0 b2, texture index
+  b3, texcoords b4..b9 << 4), unpacked EVERY call into frame-scratch vertex and face arrays
+  (+31D28, +31D02), mode 0, no 3D back-face test; 92 distinct objects, 4-32 faces each;
+  (b) +34AEA (CBasicMesh: verts +4, n +8, faces +0xC, n +0x10), ~7 a frame: the cars (393
+  verts/702 faces -- the player's -- and 171-248 verts/272-376 faces), persistent arrays.
+- **Census** (18 race frames, play1.exe, insert sites' return blocks): ~2,013 face draws a
+  frame (+31246), ~1,232 draw_primitive calls; inserts by site: +349F8 1,582 a frame (79%;
+  of 2,845 faces submitted: 781 from +CE8C objects, 2,064 from the cars), +27402 328 (16%,
+  its own transform +346B0: the road, a guess), +34F26/+34F80 112 each, +35156 50, +350E2 16,
+  +35356 14. 
+- **Ordinals for the GPU projection** (rank 5 table cross-checked: register.cpp dispatch
+  order is the alphabetical DEF freeze, and 48 glDepthFunc / 52 glDisable / 55
+  glDrawElements / 90 glMatrixMode from the same mapping already run on the N95):
+  glLoadMatrixx 84, glDepthMask 49.
+
+Design (decided from the above; nothing built yet):
+- Replace +349F8 by an exact C reimplementation (transform by the game's own +345E4, the
+  same culls, flags and inserts) that diverts each opaque face whose three vertices are in
+  front of z' = -128 (ZK, so the GPU never near-clips) and fit int16 into a frame-wide
+  per-key list: view x'y'z' (GL_SHORT) + the face's own texcoord words (GL_SHORT, scaled
+  by a per-key texture matrix, 1/(16 size)) -- no projection, no ordering table, no
+  per-face hook. Drawn with one projection matrix for the frame (x_c = 2F/W x' + (2cx/W -
+  1)(-z'), y_c = 2F/H y' + (1 - 2cy/H)(-z'), z_c = ZK, w_c = -z': the same window depth
+  0.5 + ZK/ZW/2 as the hook's KIND_TEXZ) and the depth test on, writing; one draw call per
+  key for the whole frame, before the ordering table's first triangle.
+- Everything the ordering table still draws then depth-tests GEQUAL at its true depth
+  without writing (KIND_TEXZ still writes): painter's among themselves as now, hidden
+  behind a nearer mesh face, drawn over a farther one.
+- Shadows: the depth stamp (A4_SHADZ) cannot be kept -- a shadow passes NOTEQUAL over a car
+  drawn first. Instead the stamp moves to dst alpha (the phone's config: alpha 8, round
+  11): blend GL_DST_COLOR / GL_ONE_MINUS_DST_ALPHA with src (0.75, 0.75, 0.75, 0.75) gives
+  dst*0.75 where alpha is 1 and leaves it (alpha 0.75 stays 0.75) where a shadow already
+  darkened; alpha 0 (the backdrop) stays 0. Then shadows can depth-test at their true
+  depth, biased slightly toward the eye so the road under them does not fight them.
+- Open before building: the billboard blit has no depth (z 0), and must test against the
+  meshes -- TBillboard's key bb[0x18] is its depth (+31368), to be passed from +312E6;
+  coplanar faces of different keys in one mesh (decals) would z-fight; TFakeZFace faces
+  stay in the ordering table.

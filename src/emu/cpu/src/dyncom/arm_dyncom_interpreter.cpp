@@ -147,22 +147,33 @@ pc_trace g_pc_trace;
 // EKA2L1_PCMEM=path + EKA2L1_PCMEM_AT=pc:reg:len,...: at a block entry on one of
 // those PCs, the `len` bytes at the address in r<reg> are appended to `path` as
 // (pc, address, len) words then the bytes. For reading an argument/struct a
-// routine is entered with. At most 100k records.
+// routine is entered with. `pc:reg:len:off` (off hex) dumps at the pointer stored
+// at r<reg>+off instead (a struct's member array); `pc:reg:len:+off` at r<reg>+off. At most 100k records. With EKA2L1_PCMEM_ARM=pc (hex),
+// nothing is recorded until a block at that PC is first entered (a routine only
+// one part of the program runs: a race, not its menus).
 struct pc_mem {
-    struct at { std::uint32_t pc, reg, len; };
+    struct at { std::uint32_t pc, reg, len, off; bool ind, add; };
     std::vector<at> ats; std::FILE *f = nullptr; std::uint64_t n = 0;
+    std::uint32_t arm_pc = 0; bool armed = true;
     pc_mem() {
         const char *w = std::getenv("EKA2L1_PCMEM"); const char *a = std::getenv("EKA2L1_PCMEM_AT");
         if (!w || !a) return; f = std::fopen(w, "wb"); if (!f) return;
+        if (const char *r = std::getenv("EKA2L1_PCMEM_ARM")) { arm_pc = (std::uint32_t)std::strtoul(r, nullptr, 16); armed = false; }
         while (a && *a) { char *e=nullptr; at x{};
             x.pc=(std::uint32_t)std::strtoul(a,&e,16); if(!e||*e!=':')break;
             x.reg=(std::uint32_t)std::strtoul(e+1,&e,10); if(!e||*e!=':'||x.reg>15)break;
             x.len=(std::uint32_t)std::strtoul(e+1,&e,16); if(x.len>0x10000)x.len=0x10000;
+            if(e&&*e==':'){ if(e[1]=='+'){x.add=true;++e;} else x.ind=true;
+                x.off=(std::uint32_t)std::strtoul(e+1,&e,16); }
             ats.push_back(x); a=(e&&*e==',')?e+1:nullptr; } }
     inline void hit(ARMul_State *cpu) {
         if (!f || n>=100000) return; const std::uint32_t pc=cpu->Reg[15];
+        if (!armed) { if (pc != arm_pc) return; armed = true; }
         for (const at &e: ats) { if (e.pc!=pc) continue;
-            const std::uint32_t p=cpu->Reg[e.reg]; std::vector<std::uint8_t> b(e.len,0);
+            std::uint32_t p=cpu->Reg[e.reg];
+            if (e.ind) { std::uint32_t q=0; if(!cpu->PeekMemory32((p+e.off)&~3u,&q)) q=0; p=q; }
+            if (e.add) p += e.off;
+            std::vector<std::uint8_t> b(e.len,0);
             for (std::uint32_t i=0;i<e.len;i++){std::uint32_t w=0; if(cpu->PeekMemory32((p+i)&~3u,&w)) b[i]=(std::uint8_t)(w>>(8*((p+i)&3)));}
             const std::uint32_t hd[3]={pc,p,e.len}; std::fwrite(hd,4,3,f); std::fwrite(b.data(),1,b.size(),f); std::fflush(f); n++; } }
 };
