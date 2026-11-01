@@ -3882,3 +3882,28 @@ Not a repeat: round 24's atlas uploaded mid-frame; only that changes. Same cycle
 - Exact binary r25_phone (sha256 6eda2eeb3700ac2ca6cf3eff3e24628e9b3fe5a47556d2537f3fa202becc439f):
   telerun3 230 s, framestat 5618, faults 1 (the boot fault), errc 0; whole race calls a render
   229 -> 164 with the atlas (1473 vs 1464 tris); racemenu after a race right.
+
+## Phone round 25 (r25_phone 6eda2eeb): the atlas's uploads cost ~100 ms each wherever they go -- atlas off
+
+Owner: the start-of-race frame drops are still there. 8 race files (capidx 40-47), errc 0;
+151 copies placed, 151 uploaded after a composite (as designed).
+  whole race, no atlas:  90.7 ms a render, calls 259, 1425 tris, 2D 6.8, >=90 ms 33%, 6 at 130+
+  whole race, atlas:    108.8 ms a render, calls 176, 1384 tris, 2D 23.2, >=90 ms 28%, 68 at 130+
+  last 8 windows: atlas 83.2, 84.0, 85.2, 84.4 ms (2D 4.8-6.4: no uploads left); none 90.5,
+  86.4, 84.3, 83.4
+- The uploads now land in the 2D phase (atl_flush_pending runs after the composite's mark):
+  (23.2 - 6.5) ms x 962 renders / 151 uploads = ~106 ms an upload. Round 24's mid-frame
+  uploads: hook +10 ms x 1080 / 150 = ~72 ms each. So the cost is not a frame's
+  synchronisation (round 24's guess, REFUTED) but a glTexSubImage2D into a 1024x1024 texture
+  itself: the N95's driver spends ~0.1 s on one (a guess at why: it re-processes the whole
+  texture on any update). A texture that grows during a race cannot be had on this driver;
+  one built whole at a load could, but needs a 2 MB staging buffer the blob does not have.
+  AB_ATLAS off; the code stays.
+- Same kind of cost, found on the way: a mode-1 re-bake of the 256x256 car body (65,536
+  texels, tex_upload through glTexSubImage2D) costs ~31 ms (window 41: 5 re-bakes, 327,680
+  texels, 155 ticks); 50-100 a race, when the reflection table changes -- each a frame spike,
+  in every build since round 10.
+- Telemetry itself: every capture writes 155 KB to C: (every 40 renders, ~3.5 s). The
+  windows leave the write out by design, so no measurement here shows what it costs the
+  player -- a hitch every ~3.5 s is the likely price. A build without telemetry is the
+  thing to play.
