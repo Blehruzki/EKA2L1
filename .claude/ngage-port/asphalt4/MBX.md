@@ -3936,3 +3936,6 @@ A4_REORDER A4_SKIPREPRES A4_LEAN A4_ABMODE=46u, --gl --capture.
   ours cut per triangle at the source -- not reading the game's per-triangle descriptors at
   all (taking its objects' vertex arrays at a higher level), which is a reverse-engineering
   project of its own.
+- Owner, after: "the garage menu is way smoother than stock game, that's for sure" -- the
+  garage has no 85 ms gate, so every millisecond saved shows there (round 18's garage A/B:
+  ~56 ms a render with the re-presents skipped against ~73 kept; stock garage was never timed).
