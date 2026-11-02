@@ -4420,3 +4420,47 @@ after a change each holds the other's.
 - Test (no extra round): the next candidate's A/B window at a length unrelated to the
   sign's period (TEL_EVERY 23, prime and well under it). Aliasing: the states stop pairing
   with the marker. A mode difference: the pairing stays.
+- Telemetry (capidx 38-45, errc 0, depth 24). Race aggregates (seg0, latest capture, 22-23
+  windows a mode), render-to-render histogram:
+    no list: 87.5 ms, >=90 ms 22% | 3D 35.8 (hook 19.4) draw 11.7 grouping 1.95 | calls 249 (before 410), tris 1,375
+    list:    88.0 ms, >=90 ms 28% | 3D 33.7 (hook 19.1) draw 7.3  grouping 1.23 | calls 256 (before 191), tris 1,703
+  Against round 27 (no list 3D 35.2, hook 18.8 -- the scenes compare): the list's 3D 29.8
+  -> 33.7 (+3.9 ms), hook 18.0 -> 19.1, draw 6.1 -> 7.3, calls 231 -> 256 (before grouping
+  159 -> 191), the rest of the 3D pass (3D less hook, draw) 5.7 -> 7.3; slow frames 16% ->
+  28%, now worse than no list. A regression in list mode; my "~1 ms" guess was wrong.
+- Reading, by item (guesses until measured): MESH_NEAR (512) puts ~55 faces a frame back
+  in the table: the hook converts them (~15 us each on the phone, ~0.8 ms), they add runs
+  among the player's car and the sprites (calls +25, the bench's +27 for r28), and the
+  game walks, projects and sets up each one again (the rest of the 3D pass). The per-
+  triangle tile check, the grid build and the sprites' tail scans are the smaller part.
+- Next (round 29): MESH_NEAR 256 (the dump: 10 faces a frame within 256 against 55 within
+  512; the flame's quads sit at buckets ~12-25, so only faces nearer than ~256 can cover
+  them -- to be measured with A4_BBSINK); the sprites' tail scan only when the grid says a
+  nearer list face is there; the A/B window at 23 renders (the signs' aliasing test).
+
+## Round 29 bench: the near cut only while a near sprite is about; the 23-render window
+
+Not repeats of: r28b (near cut on every frame), r28 (sprite rule only).
+- MESH_NEAR 256 (A4_BBSINK, LA, against 512 in the next run): near sprites (zw < 512)
+  depth-tested again -- 80 K pixels, 40.6% of them hidden by what was drawn before; the
+  flame-like texture tested 65% of its pixels (0% at 512). So the faces over the flame
+  sit between 256 and 512 ZW (the sprite's bucket can be 16 farther, flag 0x20000), and
+  the cut must stay at 512. (Test the test: the first near/far split counters shared words
+  with the cover records, [57]-[60]; only the clean words, [61] [62], were read.)
+- The cut made dynamic (in): a TBillboard drawn within MESH_NEAR + 128 ZW sets
+  MESH->nearf; mesh_take keeps faces within MESH_NEAR out of the list only for MESH_NEARF
+  (8) frames after that. Bench LA: near sprites depth-tested 0 px; the cut on in 430 of
+  1,159 list frames (37%; the bench's driver boosts often). Off-nitro frames pay round
+  27's cost again; the first frame of a burst sinks (one frame).
+- mesh_bb_depth: the tile grid first -- no tile under the rectangle with a nearer list
+  bucket, no tail scan.
+- Candidate r29_phone: r28b's flags with TEL_EVERY 23 (the A/B window; a capture every
+  23 renders, ~1.7x as many file writes, outside the timed windows).
+- Exact binary r29_phone (sha256 553a920397a45ed3224eed283cca2cf452e2384f4f1e286ddf15f58b1df19d39; bss 0x46F08;
+  +3A15C bytes B510 0004; placeholders patched): telerun3 230 s, framestat 5553, faults 1
+  (the boot fault), errc 0, lap 3 reached, the flame whole in the captures; aggregates
+  (58-59 windows of 23 renders a mode):
+    no list: 85.3 ms | 3D 14.5 (hook 7.7) draw 1.8 grouping 1.07 | calls 234, tris 1,464
+    list:    85.7 ms | 3D 10.8 (hook 6.6) draw 0.9 grouping 0.54 | calls 214, tris 1,824
+  (r28b bench: list calls 233, 3D gain 3.8 ms; r29: calls 214, gain 3.7.) racemenu: race,
+  quit dialog, main menu, career home, car browser -- right.

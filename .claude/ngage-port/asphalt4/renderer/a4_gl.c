@@ -322,6 +322,7 @@ struct mesh {
     uint32_t kid[MESH_NK];              /* a key's GL texture */
     uint16_t kcnt[MESH_NK], koff[MESH_NK];
     uint8_t kws[MESH_NK], khs[MESH_NK]; /* its texcoord shifts */
+    uint32_t nearf;                     /* the last frame a TBillboard within MESH_NEAR was drawn (+1) */
     uint16_t grid[MESH_GW * MESH_GH];   /* per 16-pixel tile, the nearest bucket of a drawn list face
                                          * whose box meets it (0xFFFF: none) -- mesh_draw */
 };
@@ -341,8 +342,13 @@ struct mesh {
 #ifndef MESH_NR
 #define MESH_NR 1024u                   /* runs held before they are drawn */
 #endif
+#ifndef MESH_NEARF
+#define MESH_NEARF 8u                   /* frames the near cut stays on after a near sprite */
+#endif
 #ifndef MESH_NEAR
-#define MESH_NEAR 512                   /* deepest ZW under which a face stays in the table */
+#define MESH_NEAR 512                   /* deepest ZW under which a face stays in the table, while a
+                                         * near sprite is about (MESH_NEARF) -- r28b had it always on, ~55
+                                         * faces a frame, ~3 ms on the phone; 256 lets the flame sink */
 #endif
 struct mrun { uint32_t kslot; int16_t box[4]; uint16_t head, tail, cnt, pad; };
 #define MESH_RB  ((A4_GL_MESH + 0x800u + 61u * MESH_MAXT + 3u) & ~3u)        /* word aligned */
@@ -1638,7 +1644,8 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
      * the walk's order with the sprites around it -- the player's car's plain parts (~55
      * faces a frame, 6.6% of the list): the nitro flame (quads at 191-230) is painted over
      * the road and under those parts by order, which no depth test reproduces (MBX.md). */
-    if (-z0 < MESH_NEAR && -z1 < MESH_NEAR && -z2 < MESH_NEAR) return 0;
+    if (-z0 < MESH_NEAR && -z1 < MESH_NEAR && -z2 < MESH_NEAR
+        && m->nearf && s->frames - (m->nearf - 1u) < MESH_NEARF) return 0;
     const uint32_t *gctx = (const uint32_t *)m->gctx;
     if (!gctx) return 0;                            /* no frame drawn yet: no projection */
     uint32_t texz = 0;
@@ -1806,6 +1813,10 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
         K[i] = (uint8_t)lastk;
         if (lastk == 0xFFu) lost++;
     }
+#ifdef A4_BBSINK
+    {   volatile uint32_t *k = (volatile uint32_t *)0x00454100u;   /* bench: [47] frames with the near cut, [63] list frames */
+        k[63]++; if (m->nearf && s->frames - (m->nearf - 1u) < MESH_NEARF) k[47]++; }
+#endif
     {   /* the tile grid of nearest list buckets, for the table's untested classes (lean_conv) */
         uint16_t *g = (uint16_t *)m->grid;
         const int16_t *B = MESH_B;
@@ -2613,6 +2624,18 @@ static int32_t mesh_bb_depth(const int32_t *b1, int32_t x0, int32_t y0, int32_t 
     if (fl & 0x10000u) sb -= 16;
     if (fl & 0x20000u) sb += 16;
     if (sb <= 0) return 0;                          /* nothing nearer than bucket 0 */
+    {   /* the tile grid first (mesh_draw): no tile under the rectangle holds a nearer list
+         * bucket, no cover -- most sprites, without walking the list's tail */
+        if (x1 <= 0 || y1 <= 0 || x0 >= VP_W || y0 >= VP_H) return 0;
+        int32_t tx0 = x0 < 0 ? 0 : x0 >> 4, tx1 = x1 > VP_W ? MESH_GW - 1 : (x1 - 1) >> 4;
+        int32_t ty0 = y0 < 0 ? 0 : y0 >> 4, ty1 = y1 > VP_H ? MESH_GH - 1 : (y1 - 1) >> 4;
+        const uint16_t *g = (const uint16_t *)MESH->grid;
+        int near = 0;
+        for (int32_t ty = ty0; ty <= ty1 && !near; ty++)
+            for (int32_t tx = tx0; tx <= tx1; tx++)
+                if ((int32_t)g[ty * MESH_GW + tx] < sb) { near = 1; break; }
+        if (!near) return 0;
+    }
     const uint16_t *ord = MESH_ORD, *Q = MESH_Q;
     const uint8_t *K = MESH_K;
     const int16_t *B = MESH_B;
@@ -2708,6 +2731,8 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
         if (f[0x8c / 4] == (uint32_t)(uintptr_t)&a4_bbret + (uint32_t)a4_bbret) {
             const int32_t *b1 = (const int32_t *)f[0x70 / 4];   /* bb + 0x10 */
             bbzd = b1[2];
+            if (bbzd < MESH_NEAR + 16 * 8) MESH->nearf = s->frames + 1u;   /* a near sprite (its bucket may
+                                                     * be up to 16 farther, flag 0x20000): the near cut on */
 #ifndef MESH_NOBBZ                                  /* MESH_NOBBZ: bench, round 26's sprites (no depth) */
             /* Round 28: the game paints a sprite over everything drawn before it, and its
              * distance word is not where it shows -- the nitro flame is a trail of quads at
@@ -2781,6 +2806,7 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
                     }
                 }
                 k[44]++; k[45] += op; k[46] += hu;
+                if (bbzd < 512) { k[60]++; k[61] += op; k[62] += hu; }   /* the near ones (the flame) */
             }
             uint32_t i;
             for (i = 0; i < 8u; i++) if (k[12 + i * 4] == (uint32_t)(uintptr_t)tex || !k[12 + i * 4]) break;
