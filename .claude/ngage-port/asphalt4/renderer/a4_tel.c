@@ -258,6 +258,14 @@ void a4_tel_tick(uint32_t had)
     {   struct des rd = { DES(125u * 4u), (const void *)0x00412E00u };   /* after the GPU picture */
         efs_writep(f, (int)sizeof h + (int)FPS_BYTES + 2 * (int)FB_BYTES, &rd); }
 #endif
+#if defined(A4_MESHDUMP)
+    {   extern void a4_gl_meshdump(void (*wr)(int, const void *, int), int base);
+        a4_gl_meshdump(dual_wr, (int)sizeof h + (int)FPS_BYTES + 2 * (int)FB_BYTES + 125 * 4 + 128 * 4); }
+#endif
+#if defined(A4_MESHSTATE) || defined(A4_BBSINK)
+    {   struct des sd = { DES(128u * 4u), (const void *)0x00454000u };   /* a4_gl.c MESH_SC and the sink counters, after the rectangles */
+        efs_writep(f, (int)sizeof h + (int)FPS_BYTES + 2 * (int)FB_BYTES + 125 * 4, &sd); }
+#endif
 #endif
 #ifdef A4_ALPHAHIST
     {   struct des ad = { DES(33u * 4u), (const void *)0x00412D00u };

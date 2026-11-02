@@ -337,6 +337,9 @@ struct mesh {
 #ifndef MESH_NR
 #define MESH_NR 1024u                   /* runs held before they are drawn */
 #endif
+#ifndef MESH_NEAR
+#define MESH_NEAR 512                   /* deepest ZW under which a face stays in the table */
+#endif
 struct mrun { uint32_t kslot; int16_t box[4]; uint16_t head, tail, cnt, pad; };
 #define MESH_RB  ((A4_GL_MESH + 0x800u + 61u * MESH_MAXT + 3u) & ~3u)        /* word aligned */
 #define MESH_R   ((struct mrun *)MESH_RB)
@@ -362,6 +365,27 @@ _Static_assert(3u * MESH_MAXT <= 0x10000u, "uint16 indices");
 #define MESH_FH ((uint32_t *)(MESH_TOP + 4u * MESH_MAXT + 4u * MESH_HN))      /* every 0x4001 face seen */
 #define MESH_FV ((uint8_t *)(MESH_TOP + 4u * MESH_MAXT + 8u * MESH_HN))       /* 1 + its fallback verdict */
 _Static_assert(MESH_TOP + 4u * MESH_MAXT + 9u * MESH_HN <= 0x00452000u, "check tables past the scratch (A4_SCRATCH_SIZE 0x51000)");
+#ifdef A4_MESHSTATE
+/* bench: does a listed face change between its insert (what the list keeps) and the table's
+ * draw of it (what software draws)? The hash slot's list index, and counters written to the
+ * capture (a4_tel.c): [0] walk draws of listed faces, [1] texture word differs, [2] a
+ * texcoord differs, [3] a vertex's view x'y'z' differs, [4] flags not a listed class, [5]
+ * listed faces (all frames), [7] inserts of a face listed already this frame, [8] those at
+ * another view position (an instanced mesh), [9] walk draws of a face drawn already, [10]
+ * distinct faces listed, [11] distinct faces the walk drew, [12..15] walk draws in span mode
+ * 0, 1, 2, 3+ (gctx[0x64]); [16..47] the first 8 cases (face, what | corner << 8, then, now);
+ * [48] then 7 of (face | mode, texture) drawn in a mode other than 0 */
+#define MESH_HX ((uint16_t *)(MESH_TOP + 4u * MESH_MAXT + 9u * MESH_HN))
+#define MESH_SC ((volatile uint32_t *)(MESH_TOP + 4u * MESH_MAXT + 11u * MESH_HN))
+_Static_assert(MESH_TOP + 4u * MESH_MAXT + 11u * MESH_HN == 0x00454000u, "a4_tel.c reads MESH_SC at 0x454000");
+_Static_assert(MESH_TOP + 4u * MESH_MAXT + 11u * MESH_HN + 256u <= 0x00455000u, "A4_SCRATCH_SIZE 0x54000");
+static void mesh_sc_case(uint32_t face, uint32_t what, uint32_t then, uint32_t now)
+{
+    volatile uint32_t *c = MESH_SC;
+    uint32_t k = c[6];
+    if (k < 8u) { c[16 + k * 4] = face; c[17 + k * 4] = what; c[18 + k * 4] = then; c[19 + k * 4] = now; c[6] = k + 1u; }
+}
+#endif
 static inline uint32_t mesh_hslot(uint32_t p) { return ((p >> 2) * 2654435761u) >> 20; }
 static int mesh_has(uint32_t p)
 {
@@ -1567,6 +1591,11 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
     const int32_t *v0 = (const int32_t *)face[3], *v1 = (const int32_t *)face[6], *v2 = (const int32_t *)face[9];
     int32_t z0 = v0[5], z1 = v1[5], z2 = v2[5];     /* view z' at +0x14 */
     if (z0 > -ZK || z1 > -ZK || z2 > -ZK || !MESH_FITS(z0) || !MESH_FITS(z1) || !MESH_FITS(z2)) return 0;
+    /* Round 28: a face whose deepest vertex is within MESH_NEAR stays in the table, drawn in
+     * the walk's order with the sprites around it -- the player's car's plain parts (~55
+     * faces a frame, 6.6% of the list): the nitro flame (quads at 191-230) is painted over
+     * the road and under those parts by order, which no depth test reproduces (MBX.md). */
+    if (-z0 < MESH_NEAR && -z1 < MESH_NEAR && -z2 < MESH_NEAR) return 0;
     const uint32_t *gctx = (const uint32_t *)m->gctx;
     if (!gctx) return 0;                            /* no frame drawn yet: no projection */
     uint32_t texz = 0;
@@ -1623,7 +1652,17 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
     MESH_D[n] = (uint32_t)(uintptr_t)face;
     {   uint32_t j = mesh_hslot((uint32_t)(uintptr_t)face);
         while (MESH_H[j] && MESH_H[j] != (uint32_t)(uintptr_t)face) j = (j + 1u) & (MESH_HN - 1u);
-        MESH_H[j] = (uint32_t)(uintptr_t)face; }
+#ifdef A4_MESHSTATE
+        if (MESH_H[j]) {                            /* listed already this frame */
+            uint32_t o = MESH_HX[j] & 0x7FFFu;
+            const int16_t *ov = MESH_V + o * 18u, *nv = MESH_V + n * 18u;
+            MESH_SC[7]++;
+            if (ov[2] != nv[2] || ov[0] != nv[0] || ov[1] != nv[1]) { MESH_SC[8]++; mesh_sc_case((uint32_t)(uintptr_t)face, 5u, (uint16_t)ov[2], (uint16_t)nv[2]); }
+        } else MESH_SC[10]++;                       /* distinct faces listed */
+        MESH_HX[j] = (uint16_t)n; MESH_SC[5]++;
+#endif
+        MESH_H[j] = (uint32_t)(uintptr_t)face;
+    }
 #endif
     m->n = n + 1;
     return 1;
@@ -1820,7 +1859,8 @@ draw:
                 }
                 if (kid[k] != lastid) { lastid = kid[k]; gl_bindtex(GL_TEXTURE_2D, kid[k] & 0x0FFFFFFFu); }
 #ifdef MESH_VIS
-                gl_disable(GL_TEXTURE_2D); gl_color4x(0, FX, 0, FX);   /* bench: the list's faces flat green */
+                gl_disable(GL_TEXTURE_2D);              /* bench: the list's faces flat, by class */
+                if (z) gl_color4x(FX, 0, 0, FX); else gl_color4x(0, FX, 0, FX);   /* texz red, painted green */
 #endif
                 gl_drawelements(GL_TRIANGLES, (int)(o - first), GL_UNSIGNED_SHORT, I + first);
                 calls++;
@@ -1850,6 +1890,8 @@ draw:
 }
 #endif
 
+static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+                      int32_t S0, int32_t T0, int32_t S1, int32_t T1, uint32_t id, int32_t zw);
 static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 {
     volatile uint32_t *iat = a4_gl_iat_ptr();
@@ -2030,6 +2072,12 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         s->fmode = A4_PERF[PF_MODE];
 #elif defined(A4_TEL) && defined(A4_ABCYCLE)
         s->fmode = A4_PERF[PF_MODE];                   /* a4_tel.c steps it per capture window */
+#elif defined(A4_ABFRAME)
+        /* bench: AB_MESH flips every A4_ABFRAME frames (from the next frame's inserts; this
+         * frame draws whatever list its inserts made), for side-by-side frames of a video */
+        {   uint32_t m = A4_ABMODE & ~AB_MESH;
+            if ((s->frames / A4_ABFRAME) & 1u) m |= AB_MESH;
+            s->fmode = m; A4_PERF[PF_MODE] = m; }
 #else
         s->fmode = A4_ABMODE;
         A4_PERF[PF_MODE] = A4_ABMODE;                  /* so the capture header names it */
@@ -2058,10 +2106,48 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #endif
 #ifdef A4_MESH
         mesh_draw(s, gctx);                             /* before any of the table's triangles */
+#ifdef A4_ABFRAME
+        if (MESH_ON()) quad_push(s, 0, 0, 8, 8, 0, 0, 0, 0, (KIND_FLAT << 28) | 0x07E0u, 0);   /* bench: a list frame's mark */
+#elif defined(A4_ABMARK)
+        /* round 28, a test build: a 4x4 green square in the top-left corner of a list frame,
+         * so the owner can say which half of the A/B a report is about */
+        if (MESH_ON()) quad_push(s, 0, 0, 4, 4, 0, 0, 0, 0, (KIND_FLAT << 28) | 0x07E0u, 0);
+#endif
 #endif
     }
 
 #ifdef A4_MESHCHECK
+#ifdef A4_MESHSTATE
+    if (MESH_ON()) {
+        uint32_t p = (uint32_t)(uintptr_t)desc, j = mesh_hslot(p);
+        while (MESH_H[j] && MESH_H[j] != p) j = (j + 1u) & (MESH_HN - 1u);
+        if (MESH_H[j] == p) {
+            volatile uint32_t *c = MESH_SC;
+            uint32_t n = MESH_HX[j] & 0x7FFFu;
+            const int16_t *cv = MESH_V + n * 18u;
+            c[0]++;
+            {   uint32_t md = gctx[0x64 / 4];       /* the span mode the table draws it in */
+                c[12 + (md < 3u ? md : 3u)]++;
+                if (md && c[48] < 7u) { c[49 + c[48] * 2] = p | (md & 3u); c[50 + c[48] * 2] = desc[12]; c[48]++; } }
+            if (MESH_HX[j] & 0x8000u) c[9]++;       /* the walk drew it already this frame */
+            else { MESH_HX[j] |= 0x8000u; c[11]++; }  /* distinct faces the walk drew */
+            uint32_t tw = MESH_T[n] & ~3u;
+            if (desc[12] != tw) { c[1]++; mesh_sc_case(p, 1u, tw, desc[12]); }
+            if (desc[1] != 0x4001u && desc[1] != 0x4000u && desc[1] != 0x104000u) { c[4]++; mesh_sc_case(p, 4u, 0, desc[1]); }
+            for (uint32_t k = 0; k < 3u; k++) {
+                const int32_t *v = (const int32_t *)desc[3 + k * 3];
+                if ((int16_t)desc[4 + k * 3] != cv[k * 6 + 3] || (int16_t)desc[5 + k * 3] != cv[k * 6 + 4]) {
+                    c[2]++; mesh_sc_case(p, 2u | (k << 8), (uint16_t)cv[k * 6 + 3] | ((uint32_t)(uint16_t)cv[k * 6 + 4] << 16), (desc[4 + k * 3] & 0xFFFFu) | (desc[5 + k * 3] << 16));
+                    break;
+                }
+                if ((int16_t)v[3] != cv[k * 6] || (int16_t)v[4] != cv[k * 6 + 1] || (int16_t)v[5] != cv[k * 6 + 2]) {
+                    c[3]++; mesh_sc_case(p, 3u | (k << 8), (uint16_t)cv[k * 6 + 2], (uint32_t)v[5]);
+                    break;
+                }
+            }
+        }
+    }
+#endif
     if (MESH_ON() && mesh_has((uint32_t)(uintptr_t)desc)) return 0;   /* the list drew it on the GPU */
 #endif
 #ifdef A4_SWONLY
@@ -2452,6 +2538,53 @@ void a4_gl_flush(void);
  * a/16 with a stack argument 2, f+0x98); the surface is ctx[0x4c] (ctx = f+0x6c), its
  * width f+0x64. Queued as a quad in the frame's batch -- so in draw order with the
  * triangles around it -- and 1 returned (the blit returns at once), or 0 (it runs). */
+#if defined(A4_MESH) && defined(A4_TAKEBB)
+/* The depth a TBillboard drawn over [x0, x1) x [y0, y1) is tested at, or 0 (untested):
+ * the game paints it after every face of a farther bucket and under every face of a nearer
+ * one. Its bucket as +349B0 takes it (key +31368: bb+0x18, less 0x20 for flag bit 13; key
+ * >> 3, -16 for flag 0x10000, +16 for 0x20000); the list's faces of strictly nearer buckets
+ * (a tie's order is the insertion's, unknown here) are its tail in table order (MESH_ORD,
+ * back to front), found by binary search, and those whose box (MESH_B, padded) meets the
+ * rectangle cover it. None: 0. Some: the far edge of the deepest such bucket -- every
+ * covering face is nearer than that, while the road behind them, which a test at the
+ * sprite's own distance lost to, mostly is not (round 28). b1 = bb + 0x10. */
+static int32_t mesh_bb_depth(const int32_t *b1, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+{
+    uint32_t fl = (uint32_t)b1[-3];
+    int32_t sb = (b1[2] - ((fl >> 13) & 1u ? 0x20 : 0)) >> 3;
+    if (fl & 0x10000u) sb -= 16;
+    if (fl & 0x20000u) sb += 16;
+    if (sb <= 0) return 0;                          /* nothing nearer than bucket 0 */
+    const uint16_t *ord = MESH_ORD, *Q = MESH_Q;
+    const uint8_t *K = MESH_K;
+    const int16_t *B = MESH_B;
+    uint32_t n = MESH->n, lo = 0, hi = n;
+    while (lo < hi) {                               /* the first face of a bucket below sb */
+        uint32_t mid = (lo + hi) >> 1;
+        if ((int32_t)Q[ord[mid]] >= sb) lo = mid + 1; else hi = mid;
+    }
+    int32_t deep = -1;                              /* the deepest covering bucket */
+    for (uint32_t t = lo; t < n; t++) {
+        uint32_t i = ord[t];
+        if (K[i] == 0xFFu) continue;                /* not drawn (its texture failed) */
+        const int16_t *b = B + i * 4u;
+        if (b[2] < x0 || b[0] >= x1 || b[3] < y0 || b[1] >= y1) continue;
+#ifdef A4_BBSINK
+        {   /* bench: the covers found -- 0x454100 [48] count, then 3 of (bucket | sprite bucket
+             * << 16, flags, face box x0 y0, x1 y1) */
+            volatile uint32_t *k = (volatile uint32_t *)0x00454100u;
+            uint32_t c = k[48];
+            if (c < 3u) { k[49 + c * 4] = Q[i] | ((uint32_t)sb << 16); k[50 + c * 4] = fl;
+                          k[51 + c * 4] = (uint16_t)b[0] | ((uint32_t)(uint16_t)b[1] << 16); k[52 + c * 4] = (uint16_t)b[2] | ((uint32_t)(uint16_t)b[3] << 16); }
+            k[48] = c + 1u;
+        }
+#endif
+        deep = Q[i];                                /* the tail runs deep to near: the first */
+        break;                                      /* cover found is the deepest */
+    }
+    return deep < 0 ? 0 : (deep + 1) * 8;
+}
+#endif
 int a4_gl_bb(const uint32_t *r, const uint32_t *f)
 {
     const uint32_t *spr = (const uint32_t *)r[7];
@@ -2514,14 +2647,89 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
     int32_t bbz = 0, bbzd = 0;                     /* the depth used, the TBillboard's (detected) */
 #if defined(A4_MESH)
     {   extern const int32_t a4_bbret;
-        if (f[0x8c / 4] == (uint32_t)(uintptr_t)&a4_bbret + (uint32_t)a4_bbret)
-            bbzd = ((const int32_t *)f[0x70 / 4])[2];
-    }
+        if (f[0x8c / 4] == (uint32_t)(uintptr_t)&a4_bbret + (uint32_t)a4_bbret) {
+            const int32_t *b1 = (const int32_t *)f[0x70 / 4];   /* bb + 0x10 */
+            bbzd = b1[2];
 #ifndef MESH_NOBBZ                                  /* MESH_NOBBZ: bench, round 26's sprites (no depth) */
-    bbz = bbzd;
+            /* Round 28: the game paints a sprite over everything drawn before it, and its
+             * distance word is not where it shows -- the nitro flame is a trail of quads at
+             * 191-230 over road rows far nearer (MBX.md). Tested, it sank into the table's
+             * road, which writes depth in a list frame. So test it only where the game would
+             * cover it: a list face of a nearer bucket over its rectangle (round 26's car
+             * lights); otherwise window depth 1, untested, as in a frame without the list. */
+#ifdef MESH_BBALL
+            bbz = bbzd;                             /* bench: round 27's rule, every sprite tested */
+#else
+            if (MESH_ON()) {
+                int32_t dz = mesh_bb_depth(b1, x0, y0, x1, y1);
+                if (dz) bbz = dz < bbzd ? dz : bbzd;
+            }
 #endif
+#endif
+        }
+    }
 #endif
     (void)bbzd;
+#ifdef A4_BBSINK
+    if (bbzd > 0 && bbzd < 32768) {
+        /* bench (check build: software draws the frame, its 1/z buffer holds every
+         * perspective face drawn so far): the sprite's opaque pixels where something drawn
+         * BEFORE it is nearer than its depth -- the game paints a sprite over all of that, a
+         * depth-tested quad loses there. [0] sprites, [1] opaque pixels, [2..6] hidden at
+         * depth zw * (1 - f), f = 0, 1/16, 1/8, 1/4, 1/2; [7] rows counted, [8..11] hidden
+         * at f = 0 by quarter of the sprite's height, top to bottom; then 8 sprites of
+         * (texture, opaque, hidden at 0, opaque of the depth-tested ones); [44..46] the
+         * depth-tested sprites, their opaque pixels, those hidden at f = 0 */
+        volatile uint32_t *k = (volatile uint32_t *)0x00454100u;
+        const uint32_t *gc = (const uint32_t *)MESH->gctx;
+        const int32_t *zb = gc ? (const int32_t *)gc[0x40118 / 4] : 0;
+        if (zb) {
+            const int32_t *rt = (const int32_t *)((uintptr_t)gc + 0x8Cu);
+            int32_t zt[5];
+            for (int q = 0; q < 5; q++) {
+                int32_t w = q == 0 ? bbzd : q == 1 ? bbzd - (bbzd >> 4) : q == 2 ? bbzd - (bbzd >> 3)
+                          : q == 3 ? bbzd - (bbzd >> 2) : bbzd - (bbzd >> 1);
+                zt[q] = rt[w < 1 ? 1 : w];
+            }
+            const uint16_t *tex = (const uint16_t *)spr[0x10 / 4];
+            uint32_t um = spr[4 / 4], vm = spr[8 / 4], vs = spr[0x1c / 4];
+            int32_t uu0 = (int32_t)r[0], vv0 = (int32_t)r[1], ddu = (int32_t)r[5], ddv = (int32_t)f[0x28 / 4];
+            int32_t cx0 = x0 < 0 ? 0 : x0, cx1 = x1 > VP_W ? VP_W : x1, cy0 = y0 < 0 ? 0 : y0, cy1 = y1 > VP_H ? VP_H : y1;
+            uint32_t op = 0, hid0 = 0, hid2 = 0, h = (uint32_t)(y1 - y0);
+            k[0]++;
+            for (int32_t y = cy0; y < cy1; y++) {
+                int32_t v = vv0 - (y - y0) * ddv;
+                uint32_t dy4 = (uint32_t)(y - y0) * 4u;  /* the quarter, without a divide */
+                uint32_t qr = (dy4 >= h) + (dy4 >= 2u * h) + (dy4 >= 3u * h);
+                for (int32_t x = cx0; x < cx1; x++) {
+                    int32_t u = uu0 + (x - x0) * ddu;
+                    if (!tex[(((uint32_t)v >> 8) & vm) << vs | (((uint32_t)u >> 8) & um)]) continue;
+                    int32_t z = zb[y * VP_W + x];
+                    op++;
+                    for (int q = 0; q < 5; q++) if (z > zt[q]) k[2 + q]++;
+                    if (z > zt[0]) { hid0++; if (qr < 4u) k[8 + qr]++; }
+                    (void)hid2;
+                }
+            }
+            k[1] += op;
+            if (bbz) {                              /* depth-tested ones: hidden at the depth used */
+                int32_t zu = rt[bbz < 1 ? 1 : bbz > 32767 ? 32767 : bbz];
+                uint32_t hu = 0;
+                for (int32_t y = cy0; y < cy1; y++) {
+                    int32_t v = vv0 - (y - y0) * ddv;
+                    for (int32_t x = cx0; x < cx1; x++) {
+                        int32_t u = uu0 + (x - x0) * ddu;
+                        if (tex[(((uint32_t)v >> 8) & vm) << vs | (((uint32_t)u >> 8) & um)] && zb[y * VP_W + x] > zu) hu++;
+                    }
+                }
+                k[44]++; k[45] += op; k[46] += hu;
+            }
+            uint32_t i;
+            for (i = 0; i < 8u; i++) if (k[12 + i * 4] == (uint32_t)(uintptr_t)tex || !k[12 + i * 4]) break;
+            if (i < 8u) { k[12 + i * 4] = (uint32_t)(uintptr_t)tex; k[13 + i * 4] += op; k[14 + i * 4] += hid0; if (bbz) k[15 + i * 4] += op; }
+        }
+    }
+#endif
 #ifdef A4_BBRECTS
     {   /* bench: this frame's TBillboard sprites, for comparing the two pictures inside them --
          * 0x412E00: [0] count, then up to 31 of (x0 | y0 << 16, x1 | y1 << 16, zw, mode) */
@@ -3275,6 +3483,48 @@ void a4_gl_dumpgpu(void (*wr)(int pos, const void *p, int len), int base)
             int screen_y = VP_H - 1 - (y0 + sy);
             wr(base + screen_y * VP_W * 2, out, VP_W * 2);
         }
+    }
+}
+#endif
+
+#if defined(A4_MESHDUMP) && defined(A4_MESHCHECK)
+/* bench: the frame's list for offline study, after the capture's other blocks: 16 words
+ * (n, F, cx, cy, frame, 'MDMP'), then per triangle 64 bytes: x' y' z' u v (int16) x3,
+ * texture word, the face's flags now, texture w | h << 16, its texels' address, the
+ * texel at the texcoord centroid, bucket, box x0 y0 x1 y1, face address */
+void a4_gl_meshdump(void (*wr)(int pos, const void *p, int len), int base)
+{
+    volatile struct mesh *m = MESH;
+    const uint32_t *gctx = (const uint32_t *)m->gctx;
+    uint32_t n = m->n, hd[16];
+    for (int i = 0; i < 16; i++) hd[i] = 0;
+    if (!gctx) n = 0;
+    hd[0] = n; hd[1] = m->F; hd[4] = m->frame; hd[5] = 0x504D444Du;
+    if (gctx) { hd[2] = (uint32_t)(*(const int32_t *)gctx[0x40110 / 4] >> 1); hd[3] = (uint32_t)(*(const int32_t *)gctx[0x40114 / 4] >> 1); }
+    wr(base, hd, 64);
+    uint32_t rec[16 * 16];
+    for (uint32_t i0 = 0; i0 < n; i0 += 16) {
+        uint32_t k = 0;
+        for (uint32_t i = i0; i < n && i < i0 + 16u; i++, k++) {
+            uint32_t *r = rec + k * 16;
+            const int16_t *c = MESH_V + i * 18u;
+            int16_t *rc = (int16_t *)r;
+            for (int j = 0; j < 3; j++) for (int q = 0; q < 5; q++) rc[j * 5 + q] = c[j * 6 + q];
+            rc[15] = 0;
+            const uint32_t *ts = (const uint32_t *)(MESH_T[i] & ~3u);
+            const uint32_t *face = (const uint32_t *)MESH_D[i];
+            r[8] = MESH_T[i]; r[9] = face ? face[1] : 0; r[10] = ts[1] | (ts[2] << 16); r[11] = ts[TS_PIX];
+            {   /* the centroid: a third by multiply (no divide in the blob) */
+                int32_t u = (int32_t)(((int64_t)((int32_t)c[3] + c[9] + c[15]) * 21846) >> 16) >> 4;
+                int32_t v = (int32_t)(((int64_t)((int32_t)c[4] + c[10] + c[16]) * 21846) >> 16) >> 4;
+                uint32_t w = ts[1] + 1u, h = ts[2] + 1u;
+                u &= (int32_t)(w - 1u); v &= (int32_t)(h - 1u);
+                r[12] = ((const uint16_t *)ts[TS_PIX])[(uint32_t)v * w + (uint32_t)u] | ((uint32_t)MESH_Q[i] << 16); }
+            const int16_t *b = MESH_B + i * 4u;
+            r[13] = (uint16_t)b[0] | ((uint32_t)(uint16_t)b[1] << 16); r[14] = (uint16_t)b[2] | ((uint32_t)(uint16_t)b[3] << 16);
+            r[15] = (uint32_t)(uintptr_t)face;
+        }
+        wr(base + 64 + (int)i0 * 64, rec, (int)k * 64);
     }
 }
 #endif

@@ -4223,3 +4223,142 @@ York, Paris, Monaco).
   draw calls are back near the table's (~31 us each there); the CPU half of the saving stays.
 - Named risks: bss 284 KB (the one that broke at load was ~372 KB; this boots on the bench);
   the sprite depth unverified where it matters (light behind a car).
+
+## Phone round 27 (r27_phone 1321eca9): car lights right; tunnel signs' flashing and pickups wrong in one mode
+
+Telemetry (capidx 41-48, errc 0; LA and Paris races). Race aggregates (seg0, 23-24 windows a
+mode), render-to-render histogram:
+  no list: mean ~87.1 ms, >=90 ms 19%, >=95 6.9%, >=100 3.4% | 3D 35.7 (hook 18.9), draw 11.9,
+           comp 10.5, calls 250, triangles 1,407
+  list:    mean ~86.1 ms, >=90 ms 16%, >=95 5.5%, >=100 2.9% | 3D 29.8 (hook 18.0), draw 6.1,
+           comp 10.6, calls 231, triangles 1,745
+(list windows: 353-628 list triangles a render in 29-127 list calls, 2.4-6.9 ms in mesh_draw.)
+The ordered list keeps 5.9 ms of the 3D pass against round 26's 12.2 (the expected loss: its
+calls are back at 231 against round 26's 124), and the hook is back near no-list's (18.0 vs
+18.9; round 26 12.5). Best test still round 26's list half for speed; this one for picture.
+Owner: game feels smooth. (1) Car lights are now good (the TBillboard depth, round 26's fix
+(2), confirmed on the phone). (2) Tunnel signs: in one mode they flash intermittently as they
+should; in the other they either stay lit or stay pitch-black. (3) Paris: in one mode the
+pickups and the turbo render right, in the other they look like they clip into the road a
+bit (two photos: the pickup sprite and the turbo streak at night). The owner cannot tell
+which mode is which; both are assumed to be the list's, to be confirmed on the bench.
+
+## Round 28 bench: the tunnel signs and the sinking sprites (from phone round 27)
+
+Not repeats of: round 26's tunnel investigation (MESHCHECK same-frame captures of the exit
+gantry, MESH_VIS, MESH_EXCL) nor round 27's ordered list bench (LA, the exit gantry right).
+- Video of the presented frames (tunrun.sh REC=<fps>, new: ffmpeg x11grab of the emulator
+  window; the picture is upside down in the window and cropped/rotated afterwards -- the
+  framebuffer snapshots catch half-drawn frames in a GPU build and are no good for this).
+  LA, list fixed on (fx_on, A4_ABMODE=1070) and off (fx_off, 46), 8 fps: the three gantries
+  each carry two red-ringed "80" discs and two warning triangles over a "74 km/h" panel.
+  No flashing seen in either mode at 8 fps; none pitch-black on the bench either.
+- A4_MESHSTATE (new, bench, with A4_MESHCHECK: A4_SCRATCH_SIZE 0x54000): at the table's draw
+  of each listed face, its texture word, texcoords, vertices' view x'y'z' and flags against
+  what the list copied at the insert. LA through the tunnel, 864,776 compared draws: 0
+  differing in any field. Re-run with duplicates counted: 0 faces inserted twice in a frame,
+  0 drawn twice. So the list draws what the game would, from the same data -- a sign whose
+  state the game changed after the insert is ruled out.
+  The listed faces the table draw never matched (41%) are the clipped ones: +35D3A draws a
+  face with its own record only when front-facing and no vertex has a clip flag (OR of the
+  +0x24 flags 0); otherwise it clips and draws a stack copy. Not a difference.
+- Read for the sprites: the road comes from another insert site (+27402, map 2's census: its
+  own transform +346B0), not +349F8 -- so it is still the table's, and in a list frame a
+  table KIND_TEXZ face writes depth (mesh_enter). A TBillboard drawn after it in the walk
+  then tests against it at its centre's depth, and the road under its lower half is nearer:
+  the sinking. In a no-list frame quads sit at window depth 1 (untested). To confirm which
+  class the road under the pickups is (MESH_VIS now colours list runs by class: texz red,
+  painted green).
+- Class view (MESH_VIS by class, video): road, terrain, the tunnel's walls and ceiling and
+  the player's car are textured -- the table's; scenery, traffic and the gantries are list
+  faces. So the road is table KIND_TEXZ (confirmed).
+- A4_BBSINK (new, bench, check build): at each TBillboard blit, the sprite's opaque texels
+  (its own texture walked as the blit walks it) where the game's 1/z buffer -- every
+  perspective face drawn BEFORE the sprite -- is nearer than the sprite's depth: pixels a
+  depth-tested quad loses that the game paints. LA, 9,904 sprites: 12.2% of 2.39 M opaque
+  pixels hidden; the same 12.2% at depth zw * (1 - f) for f = 1/16, 1/8, 1/4 and 1/2 -- no
+  bias reaches them. By quarter of the sprite's height, top to bottom, 14% 37% 35% 14%:
+  the middle, not a sunk bottom edge. The worst sprites are the nitro flame's frames (37-45%)
+  and one at 88%. A4_BBRECTS shows why: the flame is a trail of ~20 additive quads at
+  zw 191-230 on the bottom rows (y 194-240), where the road is far nearer. A sprite's
+  distance word is a sort key, not where it shows.
+- Fix (in): a TBillboard is depth-tested only when a list face of a strictly nearer bucket
+  -- one the table would draw after it -- has its box over the sprite's rectangle
+  (mesh_bb_covered: the sprite's bucket as +349B0 takes it, key +31368 = bb+0x18 less 0x20
+  for flag bit 13, then >> 3 and +-16 for flag bits 16/17; the list's tail in MESH_ORD by
+  binary search, a box test each); otherwise window depth 1, untested, as the game paints
+  it. Round 26's car lights stay tested (the car in front is a nearer list face over them).
+  MESH_BBALL (bench) restores round 27's rule.
+  LA, A4_BBSINK on the fixed build (different frames): 1,494 of 9,251 sprites (16%)
+  depth-tested; the sprite pixels hidden by what was drawn before fall from 17.6% (every
+  sprite tested, as round 27) to ~2.4% (34.7% of the tested ones' 227 K pixels).
+- The tunnel signs, measured:
+  - MESHSTATE span modes: the table draws every listed face in span mode 0 (644,585 draws),
+    so the list's plain texture is the game's (a mode-1 bake is ruled out).
+  - The stock picture (A4_SWONLY, video at 25 fps): the exit gantry's signs lit from afar,
+    then black from one frame to the next (~80 ms apart); the middle gantry black on that
+    pass, lit on fx_off's and fx_on's. The frame-alternating A/B (A4_ABFRAME=1, new: AB_MESH
+    flips every frame, a green 8x8 mark in list frames) shows both modes black on the same
+    pass. On the bench the two modes agree frame for frame.
+  - A4_MESHDUMP (new, bench, check build: the frame's whole list after the capture, 64 bytes
+    a triangle with the face's flags and a sample texel): the signs are 4 quads of one 64x64
+    texture (descriptor 023d1798), 0x4001, bucket 57 against the beam's 92; far captures
+    have them on the affine fallback, near ones perspective. Same descriptor in every
+    capture; its texel pointer (+0x10) differs: 0246d098 (dark texels) in one, 0247ea60
+    (red rings, white) in the others.
+  - EKA2L1_WATCH on that word: the game's texture animator +D32E (called once a render from
+    the map's render, +D718) alternates the two pointers. For each animated texture (count
+    at map+0x6908, 24-byte entries at map+0x6788: target, frame, accumulator, frames, frame
+    textures, durations) it adds dt = (G[0x1114]->+0x2C - G[0xCDB0]) >> 8 to the
+    accumulator and steps a frame (accumulator back to 0) past the frame's duration, then
+    copies the frame's texel pointer and alpha map into the target descriptor.
+  - EKA2L1_PCMEM on its table (bench, 669 calls): 3 animations, durations ~490 and ~1,000;
+    dt per render 5-137, long runs at 5-6 -- the length of the loop's last iteration, not
+    the time since the last render (the loop spins between gated renders, round 16). On the
+    phone a state of the sign then lasts several seconds, longer than an A/B window (40
+    renders, ~3.5 s): a pass under a gantry can see it lit, or dark, the whole way. Nothing
+    in this path depends on the list; the list reads the same pointer the table does.
+  - Conclusion: not reproduced as a mode difference; on the bench both modes and stock show
+    the same flash. The owner cannot tell the modes apart, so the phone report cannot be
+    attributed. Proposed: a 3x3 marker in list frames for the next round (A4_ABMARK), so a
+    report says which mode it saw.
+- The sprite rule, revised twice the same day (superseding the "Fix (in)" above):
+  1. With the box rule alone the flame's frames were still depth-tested for 35-93% of their
+     pixels: the player's car has plain parts in the list (wheels, underside), in nearer
+     buckets than the flame. A4_MESHDUMP over 8 captures: 52-55 listed faces a frame (6.2-
+     6.6%) have their deepest vertex within 384-512 ZW. MESH_NEAR (in, 512): a face whose
+     three vertices are all nearer than that stays in the table -- drawn in the walk's
+     order with the sprites around it, as the game draws them. Then the flame's frames were
+     tested for 0-1.6% of their pixels.
+  2. The sprites still tested were far glows (buckets 712-812, flags 0xA000) under a small
+     face of a nearer bucket (703), losing to the road under them. A covered sprite is now
+     tested at the far edge of its deepest covering bucket ((bucket + 1) * 8, the first
+     cover found in the deep-to-near tail), not at its own distance (mesh_bb_depth):
+     hidden by the faces the game paints over it, not by the road behind those. Here the
+     cover sat at nearly the sprite's own depth, so it changed little: LA, 1,309 of 9,093
+     sprites tested, 33.8% of their 79 K pixels hidden at the depth used -- about 1.1% of
+     all 2.33 M sprite pixels, against 14.3% under round 27's rule (every sprite tested at
+     its distance) in the same run. 13x fewer.
+  Monaco video (a4_r28_P, the candidate's flags + A4_BENCH_UNLOCK): pickups and the flame
+  whole in list frames (marker visible: list windows 27 frames at 8 fps, alternating); the
+  tyre wall's tyres flying after a hit (physics), under the HUD. Paris opens with the bench
+  unlock but its events are locked on a fresh career ("LOCKED"): not reachable on the bench.
+- Car lights (round 26's fix) are kept by construction: a traffic car in front of a light is
+  a list face of a nearer bucket over it, so the light is tested at that car's far edge. Not
+  re-observed on the bench (no light-behind-a-car case in the captures, as in round 27).
+- The round 28 candidate, exact binary r28_phone (round 27's flags plus A4_ABMARK: a 4x4
+  green square in the top-left corner of a list frame, so a report says which half of the
+  A/B it saw; A4_SCRATCH_SIZE 0x46000, bss 0x46F08 as round 27; no A4_BENCH_UNLOCK -- the
+  bytes at +3A15C checked, B510 0004; sha256 2fc101a101f07a8812bf910b498a6b8207dc2a883fedbd347b82b9de0e297982):
+  telerun3 230 s, framestat 5281, faults 1 (the boot fault), errc 0; aggregates (31-34
+  windows a mode):
+    no list: 85.4 ms | 3D 15.7 (hook 7.4) draw 1.8 grouping 1.09 | calls 218, tris 1,361
+    list:    85.3 ms | 3D 12.1 (hook 5.7) draw 1.1 grouping 0.71 | calls 235, tris 1,653
+  (round 27's bench: list 3D 11.1, hook 5.4, calls 208 -- the near faces kept in the table
+  cost the list ~1 ms of 3D and ~27 calls on the bench, a named cost: on the phone, at ~31
+  us a call, ~1 ms more.) racemenu after a race: the race (marker in the corner), the quit
+  dialog, main menu, career home, the car browser -- right.
+- For the owner: the green corner square marks list frames. The tunnel signs flash on the
+  game's own slow timer (several seconds a state at the phone's pace), so one pass under a
+  gantry can see them lit or dark all the way; what would be a list bug is a mode in which
+  they never change over several passes.
