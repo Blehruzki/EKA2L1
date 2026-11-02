@@ -362,6 +362,14 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == want, 'mesh hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)
             blx_insert(code, off, syms[sym])
             print('mesh   +%06X -> %s +%06X (4-byte BLX for the bl)' % (off, sym, syms[sym] - LINK_BASE))
+    if os.environ.get('A4_BENCH_UNLOCK'):
+        # BENCH ONLY, never a phone build: +3A15C (is this city/item unlocked?) returns 1 at
+        # once (movs r0,#1 ; bx lr), so a fresh career reaches every city -- the night/lights
+        # tracks the bench race (LA) does not have (round 27).
+        have = struct.unpack_from('<HH', code, 0x3A15C)
+        assert have == (0xB510, 0x0004), 'bench unlock: +3A15C holds %04x %04x' % have
+        struct.pack_into('<HH', code, 0x3A15C, 0x2001, 0x4770)
+        print('BENCH  +03A15C -> return 1 (every city unlocked)')
     grow = len(code) - code_size
     out = bytearray(d[:code_off]) + code + d[code_off + code_size:]
     struct.pack_into('<I', out, 0x30, len(code))

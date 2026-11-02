@@ -4178,3 +4178,48 @@ complete laps and passes the LA tunnel):
   (painter's, as the game draws them), the table's classes then testing against it as now.
   The CPU saving (no table insert, walk, projection or hook for these faces) stays; the draw
   calls rise toward the table's.
+
+## Round 27 bench: Monaco on the bench, the list in table order
+
+Owner (after round 26): test the car lights on the bench on a track that triggers them (New
+York, Paris, Monaco).
+- A fresh bench career has only Los Angeles (New York "unlocked at $40,000", Paris $180,000;
+  the city screen shows the cash, $0; the throttle-only car never places, so no cash). The
+  city price is display only (+3A132, read by the city screen +3E74C); the lock is +3A15C,
+  which returns 1 at once when a global byte (game global + 0x44C5) is set and otherwise asks
+  the city's own state. A4_BENCH_UNLOCK=1 (injector, BENCH ONLY -- never in a phone build)
+  makes +3A15C return 1: every city opens (Los Angeles, New York, Paris, Monte Carlo, Dubai,
+  Shanghai). tunrun.sh's MENUKEYS drives Career > Start Race > a city; Monte Carlo is a sunset
+  race with a tunnel, police cars and light sprites.
+- Light sprites in Monaco, same-frame (A4_BBRECTS, new, bench: each TBillboard sprite's
+  rectangle written after the GPU picture; bbrects.py counts GPU pixels inside them that differ
+  from software). Test the test: the first old-handling run recorded no rectangles (the record
+  keyed on the depth MESH_NOBBZ switches off); fixed to record the detected sprite either way.
+  Old handling 39.6% of 29,448 pixels differing, new 32.4% of 53,280 -- different frames, so
+  not a measurement; the most-differing sprites in both are the player's nitro flame and white
+  light streaks (distance 1,242-1,656), differing in blending, placed as software places them.
+  No light-behind-a-car case in these 20 captures: the fix stays a guess until the phone.
+- The list in table order (the plan from round 26), built: at the insert each face's three
+  vertices go through the game's integer projection (mesh_scr) for a screen box, and its bucket
+  is +349B0's (deepest ZW >> 3); at the draw a counting sort puts the list back to front,
+  newest first within a bucket, and same-texture runs are grouped only where boxes miss every
+  run passed (the reorder's rule, REO_SCAN). Drawn in that order writing depth: the fallback
+  and default classes untested (GL_ALWAYS), the 0x4001 faces that keep their perspective span
+  tested (GEQUAL) -- the game's own rule for each; the table's classes then test against it as
+  before. Correction to round 26: at the insert the perspective-span 0x4001 faces are common
+  (~900 a render, with the fallback ones ~1,060); the "96% fall back" was counted at the hook,
+  where large near faces arrive clipped under another descriptor and were not compared.
+- LA bench, 40 s: ~765 list triangles a render in ~78 list calls (round 26's unordered list:
+  ~29); total calls 218 against 222 without the list. Pictures normal. Exit gantry, same-frame:
+  the round signs right on the GPU (red rings, white centres, warning triangles).
+- Exact binary r27_phone (round 26's flags, A4_SCRATCH_SIZE 0x46000, bss 0x46F08 = 284 KB;
+  sha256 1321eca91169b87b6fddc8be3f4747395b9e6be869e81aa3452f984d6b24d305): telerun3 230 s
+  framestat 5050, faults 1 (the boot fault), errc 0; aggregates (31-32 windows a mode):
+    no list: 85.4 ms | 3D 16.9 (hook 8.6) draw 2.0 grouping 1.23 | calls 228, tris 1,421
+    list:    85.3 ms | 3D 11.1 (hook 5.4) draw 1.0 grouping 0.59 | calls 208, tris 1,760
+  (list windows: 525-1,992 list triangles, 66-292 list calls, 1.2-4.1 ms in mesh_draw a
+  render); racemenu after a race: pause, main menu, career home, the car browser -- right.
+- Expected on the phone, a guess: less than round 26's 12 ms off the 3D pass, since the list's
+  draw calls are back near the table's (~31 us each there); the CPU half of the saving stays.
+- Named risks: bss 284 KB (the one that broke at load was ~372 KB; this boots on the bench);
+  the sprite depth unverified where it matters (light behind a car).

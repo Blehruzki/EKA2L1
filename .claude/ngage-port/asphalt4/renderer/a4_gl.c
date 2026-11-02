@@ -300,6 +300,7 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
 #define GL_CULL_FACE 0x0B44
 #define GL_TEXTURE 0x1702
 #define GL_DST_COLOR 0x0306
+#define GL_ALWAYS 0x0207
 #define GL_ONE_MINUS_DST_ALPHA 0x0305
 #define A4_GL_MESH 0x00423000u
 #ifndef MESH_MAXT
@@ -321,12 +322,28 @@ struct mesh {
     uint8_t kws[MESH_NK], khs[MESH_NK]; /* its texcoord shifts */
 };
 #define MESH ((volatile struct mesh *)A4_GL_MESH)
-#define MESH_V  ((int16_t *)(A4_GL_MESH + 0x800u))                          /* x y z u v - a corner */
-#define MESH_T  ((uint32_t *)(A4_GL_MESH + 0x800u + 36u * MESH_MAXT))       /* texture word | m1 */
-#define MESH_K  ((uint8_t *)(A4_GL_MESH + 0x800u + 40u * MESH_MAXT))        /* key slot (at the draw) */
-#define MESH_I  ((uint16_t *)(A4_GL_MESH + 0x800u + 41u * MESH_MAXT))       /* indices, by key */
-#define MESH_TOP (A4_GL_MESH + 0x800u + 47u * MESH_MAXT)
-#define A4_MESH_SCRATCH_TOP 0x0043B000u /* injector.py GL_SCRATCH + A4_SCRATCH_SIZE (0x3A000) */
+/* Per triangle, from the list's base: its corners (36 bytes), texture word, screen box (the
+ * game's integer projection, padded as tbox_calc pads), table bucket; at the draw its place
+ * in table order, the next of its run, its indices (the bucket counts while sorting), its
+ * key slot; then the runs. */
+#define MESH_V   ((int16_t *)(A4_GL_MESH + 0x800u))                          /* x y z u v - a corner */
+#define MESH_T   ((uint32_t *)(A4_GL_MESH + 0x800u + 36u * MESH_MAXT))       /* texture word | m1 */
+#define MESH_B   ((int16_t *)(A4_GL_MESH + 0x800u + 40u * MESH_MAXT))        /* screen box x0 y0 x1 y1 */
+#define MESH_Q   ((uint16_t *)(A4_GL_MESH + 0x800u + 48u * MESH_MAXT))       /* table bucket (deepest ZW >> 3) */
+#define MESH_ORD ((uint16_t *)(A4_GL_MESH + 0x800u + 50u * MESH_MAXT))       /* table order, back to front */
+#define MESH_NX  ((uint16_t *)(A4_GL_MESH + 0x800u + 52u * MESH_MAXT))       /* next in its run */
+#define MESH_I   ((uint16_t *)(A4_GL_MESH + 0x800u + 54u * MESH_MAXT))       /* indices, by run (counts first) */
+#define MESH_K   ((uint8_t *)(A4_GL_MESH + 0x800u + 60u * MESH_MAXT))        /* key slot (at the draw) */
+#ifndef MESH_NR
+#define MESH_NR 1024u                   /* runs held before they are drawn */
+#endif
+struct mrun { uint32_t kslot; int16_t box[4]; uint16_t head, tail, cnt, pad; };
+#define MESH_RB  ((A4_GL_MESH + 0x800u + 61u * MESH_MAXT + 3u) & ~3u)        /* word aligned */
+#define MESH_R   ((struct mrun *)MESH_RB)
+#define MESH_TOP ((MESH_RB + 20u * MESH_NR + 0xFFFu) & ~0xFFFu)
+#define A4_MESH_SCRATCH_TOP 0x00447000u /* injector.py GL_SCRATCH + A4_SCRATCH_SIZE (0x46000) */
+_Static_assert(sizeof(struct mrun) == 20u, "run record");
+_Static_assert(4096u * 2u <= 6u * MESH_MAXT, "bucket counts in the index area");
 _Static_assert(sizeof(struct mesh) <= 0x800u, "mesh header past its block");
 _Static_assert(MESH_TOP <= A4_MESH_SCRATCH_TOP, "mesh list past the scratch");
 _Static_assert(3u * MESH_MAXT <= 0x10000u, "uint16 indices");
@@ -344,7 +361,7 @@ _Static_assert(3u * MESH_MAXT <= 0x10000u, "uint16 indices");
 #define MESH_HN 4096u
 #define MESH_FH ((uint32_t *)(MESH_TOP + 4u * MESH_MAXT + 4u * MESH_HN))      /* every 0x4001 face seen */
 #define MESH_FV ((uint8_t *)(MESH_TOP + 4u * MESH_MAXT + 8u * MESH_HN))       /* 1 + its fallback verdict */
-_Static_assert(MESH_TOP + 4u * MESH_MAXT + 9u * MESH_HN <= 0x00446000u, "check tables past the scratch (A4_SCRATCH_SIZE 0x45000)");
+_Static_assert(MESH_TOP + 4u * MESH_MAXT + 9u * MESH_HN <= 0x00452000u, "check tables past the scratch (A4_SCRATCH_SIZE 0x51000)");
 static inline uint32_t mesh_hslot(uint32_t p) { return ((p >> 2) * 2654435761u) >> 20; }
 static int mesh_has(uint32_t p)
 {
@@ -1509,6 +1526,8 @@ extern const int32_t a4_otins, a4_tfvt;      /* a4_gl.s: target - (the word), pa
  * mode is the window's (A4_PERF), not s->fmode, which the frame's first triangle sets
  * after these inserts. */
 static int mesh_fallback(const uint32_t *gctx, int32_t F, const int32_t *v0, const int32_t *v1, const int32_t *v2);
+static void mesh_scr(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, int32_t x, int32_t y, int32_t z,
+                     int32_t *sx, int32_t *sy);
 static int mesh_take(uint32_t *cam, const uint32_t *face)
 {
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
@@ -1548,20 +1567,22 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
     const int32_t *v0 = (const int32_t *)face[3], *v1 = (const int32_t *)face[6], *v2 = (const int32_t *)face[9];
     int32_t z0 = v0[5], z1 = v1[5], z2 = v2[5];     /* view z' at +0x14 */
     if (z0 > -ZK || z1 > -ZK || z2 > -ZK || !MESH_FITS(z0) || !MESH_FITS(z1) || !MESH_FITS(z2)) return 0;
+    const uint32_t *gctx = (const uint32_t *)m->gctx;
+    if (!gctx) return 0;                            /* no frame drawn yet: no projection */
+    uint32_t texz = 0;
     if (fl == 0x4001u) {
-        const uint32_t *gctx = (const uint32_t *)m->gctx;
-        if (!gctx) return 0;
         int fb = mesh_fallback(gctx, (int32_t)m->F, v0, v1, v2);
 #ifdef A4_MESHCHECK
         {   uint32_t j = mesh_hslot((uint32_t)(uintptr_t)face);
             while (MESH_FH[j] && MESH_FH[j] != (uint32_t)(uintptr_t)face) j = (j + 1u) & (MESH_HN - 1u);
             MESH_FH[j] = (uint32_t)(uintptr_t)face; MESH_FV[j] = (uint8_t)(1 + fb); }
 #endif
-#ifdef A4_MESH_FALLBACK
-        if (fb) { m->fellback++; return 0; }        /* painted in table order by the game: the table's */
-#else
-        if (fb) m->fellback++;                      /* counted; kept (96% of them: the list's bulk, round 26) */
-#endif
+        /* The list is painted in table order (mesh_draw), as the game paints everything; the
+         * default class and the perspective class's affine fallback untested, a 0x4001 face
+         * that keeps its perspective span depth-tested and writing (the game's 1/z buffer):
+         * texz, bit 1 of its texture word. */
+        if (fb) m->fellback++;
+        else texz = 2u;
     }
     int32_t x0 = v0[3], y0 = v0[4], x1 = v1[3], y1 = v1[4], x2 = v2[3], y2 = v2[4];
     if (!(MESH_FITS(x0) && MESH_FITS(y0) && MESH_FITS(x1) && MESH_FITS(y1) && MESH_FITS(x2) && MESH_FITS(y2))) return 0;
@@ -1582,7 +1603,22 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
     c[0]  = (int16_t)x0; c[1]  = (int16_t)y0; c[2]  = (int16_t)z0; c[3]  = (int16_t)a0; c[4]  = (int16_t)b0; c[5]  = 0;
     c[6]  = (int16_t)x1; c[7]  = (int16_t)y1; c[8]  = (int16_t)z1; c[9]  = (int16_t)a1; c[10] = (int16_t)b1; c[11] = 0;
     c[12] = (int16_t)x2; c[13] = (int16_t)y2; c[14] = (int16_t)z2; c[15] = (int16_t)a2; c[16] = (int16_t)b2; c[17] = 0;
-    MESH_T[n] = (uint32_t)(uintptr_t)ts | m1;       /* descriptors are word aligned */
+    MESH_T[n] = (uint32_t)(uintptr_t)ts | m1 | texz; /* descriptors are word aligned */
+    {   /* where the table would put it: its screen box from the game's own projection (for
+         * the run grouping's overlap test) and its bucket, +349B0's (key >> 3, TFace's key
+         * +3121E = the deepest vertex's ZW; these classes carry neither of the +-16 bits) */
+        int32_t F = (int32_t)m->F, cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
+        int32_t sx0, sy0, sx1, sy1, sx2, sy2, xlo, xhi, ylo, yhi;
+        mesh_scr(gctx, F, cx, cy, x0, y0, z0, &sx0, &sy0);
+        mesh_scr(gctx, F, cx, cy, x1, y1, z1, &sx1, &sy1);
+        mesh_scr(gctx, F, cx, cy, x2, y2, z2, &sx2, &sy2);
+        ext3(sx0, sx1, sx2, &xlo, &xhi); ext3(sy0, sy1, sy2, &ylo, &yhi);
+        tbox_calc(MESH_B + n * 4u, xlo, ylo, xhi, yhi);
+        int32_t zw = -z0;
+        if (-z1 > zw) zw = -z1;
+        if (-z2 > zw) zw = -z2;
+        MESH_Q[n] = (uint16_t)((zw >> 3) > 4095 ? 4095 : (zw >> 3));
+    }
 #ifdef A4_MESHCHECK
     MESH_D[n] = (uint32_t)(uintptr_t)face;
     {   uint32_t j = mesh_hslot((uint32_t)(uintptr_t)face);
@@ -1593,9 +1629,10 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
     return 1;
 }
 
-/* The screen y +51E44 would give a vertex (map 2): its integer arithmetic, 32-bit wrap
+/* The screen point +51E44 would give a vertex (map 2): its integer arithmetic, 32-bit wrap
  * included; the near ranges pre-shift by 4-7 bits as +51F08 does. RT2 = gctx+0x2008C. */
-static int32_t mesh_sy(const uint32_t *gctx, int32_t F, int32_t cy, int32_t y, int32_t z)
+static void mesh_scr(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, int32_t x, int32_t y, int32_t z,
+                     int32_t *sx, int32_t *sy)
 {
     const uint32_t *base = (const uint32_t *)((uintptr_t)gctx + 0x40100u);
     const int32_t *rt2 = (const int32_t *)((uintptr_t)gctx + 0x2008Cu);
@@ -1605,8 +1642,15 @@ static int32_t mesh_sy(const uint32_t *gctx, int32_t F, int32_t cy, int32_t y, i
     else if (lz >= 0x8020) r = (int32_t)base[0x08 / 4];
     else r = rt2[lz];
     r = (int32_t)((uint32_t)r * (uint32_t)F) >> 6;
-    int32_t yy = m ? (int32_t)((uint32_t)y << m) : y;
-    return cy - ((int32_t)((uint32_t)yy * (uint32_t)r + 0x8000u) >> 16);
+    int32_t xx = m ? (int32_t)((uint32_t)x << m) : x, yy = m ? (int32_t)((uint32_t)y << m) : y;
+    *sx = cx + ((int32_t)((uint32_t)xx * (uint32_t)r + 0x8000u) >> 16);
+    *sy = cy - ((int32_t)((uint32_t)yy * (uint32_t)r + 0x8000u) >> 16);
+}
+static int32_t mesh_sy(const uint32_t *gctx, int32_t F, int32_t cy, int32_t y, int32_t z)
+{
+    int32_t sx, sy;
+    mesh_scr(gctx, F, 0, cy, 0, y, z, &sx, &sy);
+    return sy;
 }
 /* The perspective rasterizer's affine fallback (persp_fallback's rule, on the vertices the
  * projection would make): such a face neither tests nor writes the game's depth -- it is
@@ -1661,35 +1705,35 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
     const uint16_t *m1map = (const uint16_t *)gctx[0x5c / 4];
     const uint16_t *m1tab = m1_table(gctx);
     uint32_t kid[MESH_NK];
-    uint16_t cnt[MESH_NK], off[MESH_NK];
     uint8_t kws[MESH_NK], khs[MESH_NK];
     uint32_t nk = 0, lastw = 0xFFFFFFFFu, lastk = 0xFFu, lost = 0;
     uint8_t *K = MESH_K;
     const uint32_t *T = MESH_T;
-    for (uint32_t i = 0; i < n; i++) {
-        uint32_t w = T[i];
+    for (uint32_t i = 0; i < n; i++) {               /* each triangle's texture, now (ctx as the table's draw sees it) */
+        uint32_t w = T[i] & ~2u;                     /* (texz is the run's, not the texture's) */
         if (w != lastw) {
             uint32_t id; int wsh, hsh;
             lastw = w; lastk = 0xFFu;
-            if (tri_tex(s, KIND_TEX, (int)(w & 1u), w & ~1u, m1map, m1tab, &id, &wsh, &hsh) >= 0) {
+            if (tri_tex(s, KIND_TEX, (int)(w & 1u), w & ~3u, m1map, m1tab, &id, &wsh, &hsh) >= 0) {
                 uint32_t k = 0;
                 while (k < nk && kid[k] != id) k++;
-                if (k == nk && nk < MESH_NK) { kid[k] = id; cnt[k] = 0; kws[k] = (uint8_t)wsh; khs[k] = (uint8_t)hsh; nk++; }
+                if (k == nk && nk < MESH_NK) { kid[k] = id; kws[k] = (uint8_t)wsh; khs[k] = (uint8_t)hsh; nk++; }
                 if (k < nk) lastk = k;
             }
         }
         K[i] = (uint8_t)lastk;
-        if (lastk != 0xFFu) cnt[lastk]++; else lost++;
+        if (lastk == 0xFFu) lost++;
     }
-    uint32_t o = 0;
-    for (uint32_t k = 0; k < nk; k++) { off[k] = (uint16_t)o; o += cnt[k] * 3u; }
-    uint16_t *I = MESH_I;
-    for (uint32_t i = 0; i < n; i++) {
-        uint32_t k = K[i];
-        if (k == 0xFFu) continue;
-        uint32_t p = off[k];
-        I[p] = (uint16_t)(i * 3u); I[p + 1] = (uint16_t)(i * 3u + 1u); I[p + 2] = (uint16_t)(i * 3u + 2u);
-        off[k] = (uint16_t)(p + 3u);                 /* ends up at the key's end */
+    /* Table order: buckets far to near; in a bucket the last inserted first (+349B0 pushes
+     * on the bucket's head and the walk starts there). A counting sort, the counts in the
+     * index area (rewritten below). */
+    {   uint16_t *c = MESH_I, *ord = MESH_ORD;
+        const uint16_t *Q = MESH_Q;
+        for (uint32_t b = 0; b < 4096u; b++) c[b] = 0;
+        for (uint32_t i = 0; i < n; i++) c[Q[i]]++;
+        uint32_t o = 0;
+        for (int32_t b = 4095; b >= 0; b--) { uint32_t k = c[b]; c[b] = (uint16_t)o; o += k; }
+        for (int32_t i = (int32_t)n - 1; i >= 0; i--) ord[c[Q[i]]++] = (uint16_t)i;
     }
     int32_t F = (int32_t)m->F;
     if (F < 1) F = 1;
@@ -1708,27 +1752,82 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
                                                       * did in painter's order (round 26) */
     gl_matrixmode(GL_PROJECTION); gl_loadmatrixx(P);
     gl_matrixmode(GL_TEXTURE);
-    gl_enable(GL_DEPTH_TEST); gl_enable(GL_CULL_FACE);
+    /* Painted as the game paints them -- in table order, the perspective span's faces tested
+     * (GEQUAL) and the others not -- all writing depth, which the table's own triangles then
+     * test against (draw_run). */
+    gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_ALWAYS); gl_enable(GL_CULL_FACE);
     gl_vertexptr(3, GL_SHORT, 12, MESH_V);
     gl_texcoordptr(2, GL_SHORT, 12, MESH_V + 3);
     int TM[16];
     for (int i = 0; i < 16; i++) TM[i] = 0;
     TM[10] = FX; TM[15] = FX;
     int lw = -1, lh = -1;
-    uint32_t calls = 0;
-    for (uint32_t k = 0; k < nk; k++) {
-        if (!cnt[k]) continue;
-        if (kws[k] != lw || khs[k] != lh) {
-            lw = kws[k]; lh = khs[k];
-            TM[0] = 4096 >> lw; TM[5] = 4096 >> lh;  /* (texels * 16) / (16 * size), GL_FIXED */
-            gl_loadmatrixx(TM);
+    uint32_t calls = 0, lastid = 0xFFFFFFFFu, lastz = 0;   /* depth func ALWAYS set above */
+    /* Runs of one texture in table order; a triangle joins an earlier run of its texture when
+     * its box misses every run it passes (the reorder's rule, the same picture as drawing in
+     * order). Drawn whenever MESH_NR runs are held, and at the end. */
+    struct mrun *R = MESH_R;
+    uint16_t *NX = MESH_NX, *I = MESH_I;
+    const uint16_t *ord = MESH_ORD;
+    const int16_t *B = MESH_B;
+    uint32_t nr = 0, t = 0;
+    while (t <= n) {
+        int flush = t == n;
+        if (!flush) {
+            uint32_t i = ord[t], k = K[i];
+            if (k != 0xFFu) {
+                k |= (T[i] & 2u) << 7;               /* run key: texture slot | texz << 8 */
+                const int16_t *b = B + i * 4u;
+                int32_t r = (int32_t)nr - 1, found = -1;
+                for (uint32_t steps = 0; r >= 0 && steps <= REO_SCAN; r--, steps++) {
+                    if (R[r].kslot == k) { found = r; break; }
+                    const int16_t *rb = R[r].box;
+                    if (b[2] < rb[0] || rb[2] < b[0] || b[3] < rb[1] || rb[3] < b[1]) continue;   /* apart */
+                    break;                          /* shares pixels: stays after it */
+                }
+                if (found < 0) {
+                    if (nr == MESH_NR) { flush = 1; goto draw; }   /* draw what is held, then retake this one */
+                    found = (int32_t)nr++;
+                    R[found].kslot = k; R[found].head = R[found].tail = (uint16_t)i; R[found].cnt = 0;
+                    R[found].box[0] = b[0]; R[found].box[1] = b[1]; R[found].box[2] = b[2]; R[found].box[3] = b[3];
+                } else {
+                    NX[R[found].tail] = (uint16_t)i; R[found].tail = (uint16_t)i;
+                    int16_t *rb = R[found].box;
+                    if (b[0] < rb[0]) rb[0] = b[0];
+                    if (b[1] < rb[1]) rb[1] = b[1];
+                    if (b[2] > rb[2]) rb[2] = b[2];
+                    if (b[3] > rb[3]) rb[3] = b[3];
+                }
+                R[found].cnt++;
+            }
+            t++;
+            continue;
         }
-        gl_bindtex(GL_TEXTURE_2D, kid[k] & 0x0FFFFFFFu);
+draw:
+        {   uint32_t o = 0;
+            for (uint32_t r = 0; r < nr; r++) {
+                uint32_t i = R[r].head, first = o;
+                for (uint32_t c = R[r].cnt; c; c--) {
+                    I[o] = (uint16_t)(i * 3u); I[o + 1] = (uint16_t)(i * 3u + 1u); I[o + 2] = (uint16_t)(i * 3u + 2u);
+                    o += 3u; i = NX[i];
+                }
+                uint32_t k = R[r].kslot & 0xFFu, z = R[r].kslot >> 8;
+                if (z != lastz) { lastz = z; gl_depthfunc(z ? GL_GEQUAL : GL_ALWAYS); }
+                if (kws[k] != lw || khs[k] != lh) {
+                    lw = kws[k]; lh = khs[k];
+                    TM[0] = 4096 >> lw; TM[5] = 4096 >> lh;  /* (texels * 16) / (16 * size), GL_FIXED */
+                    gl_loadmatrixx(TM);
+                }
+                if (kid[k] != lastid) { lastid = kid[k]; gl_bindtex(GL_TEXTURE_2D, kid[k] & 0x0FFFFFFFu); }
 #ifdef MESH_VIS
-        gl_disable(GL_TEXTURE_2D); gl_color4x(0, FX, 0, FX);   /* bench: the list's faces flat green */
+                gl_disable(GL_TEXTURE_2D); gl_color4x(0, FX, 0, FX);   /* bench: the list's faces flat green */
 #endif
-        gl_drawelements(GL_TRIANGLES, (int)(cnt[k] * 3u), GL_UNSIGNED_SHORT, I + off[k] - cnt[k] * 3u);
-        calls++;
+                gl_drawelements(GL_TRIANGLES, (int)(o - first), GL_UNSIGNED_SHORT, I + first);
+                calls++;
+            }
+            nr = 0;
+            if (t == n) break;                       /* the end */
+        }
     }
 #ifdef MESH_VIS
     gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX);
@@ -1737,6 +1836,7 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
     gl_matrixmode(GL_PROJECTION); gl_loadidentity();
     gl_orthox(0, VP_W*FX, VP_H*FX, 0, -FX, FX);      /* bring-up's */
     gl_matrixmode(GL_MODELVIEW);
+    gl_depthfunc(GL_GEQUAL);                         /* bring-up's */
     gl_disable(GL_CULL_FACE); gl_disable(GL_DEPTH_TEST);
     m->active = n > lost;
     m->nk = nk;
@@ -1953,6 +2053,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         gl_clearcolorx(FX, 0, FX, 0);                    /* magenta sentinel (see SENTINEL_*) */
         gl_clear(clear_bits(s));
         s->bfill = 0;
+#ifdef A4_BBRECTS
+        *(volatile uint32_t *)0x00412E00u = 0;          /* a new frame's sprite rectangles */
+#endif
 #ifdef A4_MESH
         mesh_draw(s, gctx);                             /* before any of the table's triangles */
 #endif
@@ -2408,11 +2511,28 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
      * bb + 0x10, whose bb[0x18] is its distance (its sort key, +31368; ZW units, MBX.md
      * round 26). The blit pushed {r0-r7, lr} under its frame: r1 at f+0x70, lr at f+0x8C.
      * Other callers' quads keep no depth. */
-    int32_t bbz = 0;
-#ifdef A4_MESH
+    int32_t bbz = 0, bbzd = 0;                     /* the depth used, the TBillboard's (detected) */
+#if defined(A4_MESH)
     {   extern const int32_t a4_bbret;
         if (f[0x8c / 4] == (uint32_t)(uintptr_t)&a4_bbret + (uint32_t)a4_bbret)
-            bbz = ((const int32_t *)f[0x70 / 4])[2];
+            bbzd = ((const int32_t *)f[0x70 / 4])[2];
+    }
+#ifndef MESH_NOBBZ                                  /* MESH_NOBBZ: bench, round 26's sprites (no depth) */
+    bbz = bbzd;
+#endif
+#endif
+    (void)bbzd;
+#ifdef A4_BBRECTS
+    {   /* bench: this frame's TBillboard sprites, for comparing the two pictures inside them --
+         * 0x412E00: [0] count, then up to 31 of (x0 | y0 << 16, x1 | y1 << 16, zw, mode) */
+        volatile uint32_t *br = (volatile uint32_t *)0x00412E00u;
+        uint32_t nb = br[0];
+        if (bbzd > 0 && nb < 31u) {
+            br[1 + nb * 4] = ((uint32_t)x0 & 0xFFFFu) | ((uint32_t)y0 << 16);
+            br[2 + nb * 4] = ((uint32_t)x1 & 0xFFFFu) | ((uint32_t)y1 << 16);
+            br[3 + nb * 4] = (uint32_t)bbzd; br[4 + nb * 4] = mode;
+            br[0] = nb + 1;
+        }
     }
 #endif
     uint32_t kind = mode == 0u ? KIND_TEX : mode == 2u ? KIND_ADD : KIND_ADDF;

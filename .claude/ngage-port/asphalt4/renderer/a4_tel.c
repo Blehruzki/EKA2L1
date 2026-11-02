@@ -254,6 +254,10 @@ void a4_tel_tick(uint32_t had)
     }
 #ifdef A4_DUALCAP
     a4_gl_dumpgpu(dual_wr, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES);
+#ifdef A4_BBRECTS
+    {   struct des rd = { DES(125u * 4u), (const void *)0x00412E00u };   /* after the GPU picture */
+        efs_writep(f, (int)sizeof h + (int)FPS_BYTES + 2 * (int)FB_BYTES, &rd); }
+#endif
 #endif
 #ifdef A4_ALPHAHIST
     {   struct des ad = { DES(33u * 4u), (const void *)0x00412D00u };
