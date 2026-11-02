@@ -307,6 +307,8 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
 #define MESH_MAXT 2048u
 #endif
 #define MESH_NK 128u                    /* textures a frame's list may use (key slot 0xFF: dropped) */
+#define MESH_GW (VP_W / 16)
+#define MESH_GH (VP_H / 16)
 struct mesh {
     uint32_t frame;                     /* s->frames the list was gathered in */
     uint32_t n;                         /* triangles in it */
@@ -320,6 +322,8 @@ struct mesh {
     uint32_t kid[MESH_NK];              /* a key's GL texture */
     uint16_t kcnt[MESH_NK], koff[MESH_NK];
     uint8_t kws[MESH_NK], khs[MESH_NK]; /* its texcoord shifts */
+    uint16_t grid[MESH_GW * MESH_GH];   /* per 16-pixel tile, the nearest bucket of a drawn list face
+                                         * whose box meets it (0xFFFF: none) -- mesh_draw */
 };
 #define MESH ((volatile struct mesh *)A4_GL_MESH)
 /* Per triangle, from the list's base: its corners (36 bytes), texture word, screen box (the
@@ -1413,6 +1417,39 @@ static inline void ext3(int32_t a, int32_t b, int32_t c, int32_t *lo, int32_t *h
     if (c > h) h = c;
     *lo = l; *hi = h;
 }
+#if defined(A4_MESH) && !defined(MESH_TRIALL)
+/* Round 28: in a list frame the table's classes other than the perspective one -- glows,
+ * cut-outs, flat slabs, shadows, the default span -- were all depth-tested, against the
+ * table's road as well; the game tests none of them, painting each over whatever it draws
+ * before. Such a triangle needs the test only where a list face the table would draw after
+ * it -- a strictly nearer bucket -- covers it: by the tile grid (mesh_draw), conservative
+ * at 16 pixels. Its bucket as +349B0 takes it: TFace's key (+3121E, the deepest ZW), >> 3,
+ * -16 for flag 0x10000, +16 for 0x20000; a TFakeZFace's key is 1 (+522C2), drawn after
+ * everything; a clipped copy (+35D3A's pool, no record of its own) by the deepest ZW. */
+static int mesh_tri_covered(const uint32_t *desc, int32_t za, int32_t zb, int32_t zc,
+                            int32_t xlo, int32_t ylo, int32_t xhi, int32_t yhi)
+{
+    extern const int32_t a4_tfvt, a4_tfzvt;
+    uint32_t vt = desc[0];
+    if (vt == (uint32_t)(uintptr_t)&a4_tfzvt + (uint32_t)a4_tfzvt) return 0;
+    int32_t key = za > zb ? za : zb;
+    if (zc > key) key = zc;
+    int32_t b = key >> 3;
+    if (vt == (uint32_t)(uintptr_t)&a4_tfvt + (uint32_t)a4_tfvt) {
+        if (desc[1] & 0x10000u) b -= 16;
+        if (desc[1] & 0x20000u) b += 16;
+    }
+    if (b <= 0) return 0;
+    if (xhi < 0 || yhi < 0 || xlo >= VP_W || ylo >= VP_H) return 0;
+    int32_t tx0 = xlo < 0 ? 0 : xlo >> 4, tx1 = xhi >= VP_W ? MESH_GW - 1 : xhi >> 4;
+    int32_t ty0 = ylo < 0 ? 0 : ylo >> 4, ty1 = yhi >= VP_H ? MESH_GH - 1 : yhi >> 4;
+    const uint16_t *g = (const uint16_t *)MESH->grid;
+    for (int32_t ty = ty0; ty <= ty1; ty++)
+        for (int32_t tx = tx0; tx <= tx1; tx++)
+            if ((int32_t)g[ty * MESH_GW + tx] < b) return 1;
+    return 0;
+}
+#endif
 static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1,
                      uint32_t tsaddr, int32_t *pos, int32_t *uv, uint32_t *idp, int16_t *box, int32_t *yr)
 {
@@ -1433,6 +1470,12 @@ static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
     const uint32_t uvw[6] = { desc[4], desc[5], desc[7], desc[8], desc[10], desc[11] };
     tri_conv(kind, wsh, hsh, x0, y0, x1, y1, x2, y2, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2], uvw,
              xlo, xhi, ylo, yhi, pos, uv);
+#if defined(A4_MESH) && !defined(MESH_TRIALL)       /* MESH_TRIALL: bench, round 27's rule */
+    if (MESH_ON() && kind != KIND_TEXZ
+        && !mesh_tri_covered(desc, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2], xlo, ylo, xhi, yhi)) {
+        pos[2] = -pos[3]; pos[6] = -pos[7]; pos[10] = -pos[11];   /* window depth 1: untested */
+    }
+#endif
 #ifdef A4_ATLAS
     if ((s->fmode & AB_ATLAS) && ti >= 0 && !mv && (kind == KIND_TEX || kind == KIND_TEXZ || kind == KIND_ADD)
         && wsh <= 7 && hsh <= 7 && ((const uint32_t *)tsaddr)[1] + 1u == (1u << wsh)
@@ -1762,6 +1805,21 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
         }
         K[i] = (uint8_t)lastk;
         if (lastk == 0xFFu) lost++;
+    }
+    {   /* the tile grid of nearest list buckets, for the table's untested classes (lean_conv) */
+        uint16_t *g = (uint16_t *)m->grid;
+        const int16_t *B = MESH_B;
+        const uint16_t *Q = MESH_Q;
+        for (uint32_t j = 0; j < MESH_GW * MESH_GH; j++) g[j] = 0xFFFFu;
+        for (uint32_t i = 0; i < n; i++) {
+            if (K[i] == 0xFFu) continue;
+            const int16_t *b = B + i * 4u;
+            if (b[0] > b[2]) continue;               /* off screen */
+            uint32_t q = Q[i];
+            for (int32_t ty = b[1] >> 4; ty <= (b[3] >> 4); ty++)
+                for (int32_t tx = b[0] >> 4; tx <= (b[2] >> 4); tx++)
+                    if (q < g[ty * MESH_GW + tx]) g[ty * MESH_GW + tx] = (uint16_t)q;
+        }
     }
     /* Table order: buckets far to near; in a bucket the last inserted first (+349B0 pushes
      * on the bucket's head and the walk starts there). A counting sort, the counts in the

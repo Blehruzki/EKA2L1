@@ -4362,3 +4362,39 @@ gantry, MESH_VIS, MESH_EXCL) nor round 27's ordered list bench (LA, the exit gan
   game's own slow timer (several seconds a state at the phone's pace), so one pass under a
   gantry can see them lit or dark all the way; what would be a list bug is a mode in which
   they never change over several passes.
+
+## Round 28b: the rule for every table class (owner, more on round 27)
+
+Owner, after r28 was sent (on round 27): (1) "game feels smooth" but no difference noticed
+in heavy scenes against the previous build -- the telemetry agrees: round 27's list cut the
+3D pass by 5.9 ms but >=90 ms frames only 19% -> 16% (round 26's unordered list: 11%); the
+order cost most of round 26's draw-call saving (list calls 124 -> 231). (2) Other sprites
+or assets, like the helicopter's light, clip a bit through the road in one mode.
+- Not a repeat of round 28's sprite rule, which covers TBillboard blits only. In a list
+  frame every table class but the perspective one -- additive glows (0x10008), alpha
+  cut-outs, flat slabs, shadows, the default span -- was depth-tested (mesh_enter), against
+  the table's road too; the game tests none of them. The helicopter (CPoliceHelico, the
+  night texture objects\police_helico_night.rle) is daytime on the bench's Monaco race and
+  its light was not seen; which class draws it is not settled (a guess: an additive face,
+  or a TFakeZFace -- whose key +522C2 returns 1, so the game draws it after everything).
+- Rule (in, lean_conv): such a triangle is drawn at window depth 1 (untested) unless a list
+  face of a strictly nearer bucket covers it, by a 20x15 grid of 16-pixel tiles holding each
+  tile's nearest list bucket (built in mesh_draw from the drawn faces' boxes; the struct
+  mesh header has the room, 1,920 of 2,048 bytes). Its bucket as +349B0 takes it: TFace
+  key (deepest ZW) >> 3, +-16 for flags 0x10000/0x20000; a TFakeZFace (vtable +B08CC,
+  placeholder a4_tfzvt) bucket 0, never covered; a clipped copy (+35D3A's pool records)
+  by its deepest ZW without the flag adjustment. MESH_TRIALL (bench) keeps round 27's rule.
+- Same-frame check (A4_MESHCHECK + A4_DUALCAP, LA, 8 captures each, different frames per
+  run; dualcmp.py): GPU pixels differing from software 24.7% (round 27's rule) -> 15.8%;
+  8x8 blocks differing by object 4.4% -> 3.5%. The remaining object blocks are the floating
+  position labels (software HUD) -- nothing showing through.
+- Candidate r28b_phone (r28's flags, the same A4_ABMARK; sha256 898cea75821e9180b4929a1377425fb13618e0f2d030bcd661b1859c0f3e6084;
+  bss 0x46F08; +3A15C bytes B510 0004; placeholders patched). Supersedes r28 (not run).
+  telerun3 230 s: first run stuck on a barrier for its second half (0 km/h in all 8
+  captures; aggregates not comparable, set aside); second run framestat 5364, faults 1 (the
+  boot fault), errc 0, lap 3 reached:
+    no list: 85.3 ms | 3D 15.7 (hook 7.8) draw 1.9 grouping 1.15 | calls 232, tris 1,494
+    list:    85.4 ms | 3D 11.9 (hook 7.0) draw 1.0 grouping 0.65 | calls 233, tris 1,915
+  (r28: list 3D gain 3.6 ms, hook ratio list/no-list 0.77; r28b: 3.8 ms, 0.90 -- the tile
+  check costs some hook time; on the phone a guess, ~1 ms). racemenu: race, quit dialog,
+  main menu, career home, car browser -- right.
