@@ -4398,3 +4398,25 @@ or assets, like the helicopter's light, clip a bit through the road in one mode.
   (r28: list 3D gain 3.6 ms, hook ratio list/no-list 0.77; r28b: 3.8 ms, 0.90 -- the tile
   check costs some hook time; on the phone a guess, ~1 ms). racemenu: race, quit dialog,
   main menu, career home, car browser -- right.
+
+## Phone round 28b (r28b_phone 898cea75): owner's report, no telemetry yet
+
+Owner: car headlights fine. Helicopter light: not seen misplaced, okay in both modes so far.
+Tunnel signs: they change inconsistently -- sometimes during a marked (list) window,
+sometimes during an unmarked one; most of the time the two modes hold opposite states, and
+after a change each holds the other's.
+- Reading: the sign's frame lasts until the game's animator accumulates ~490 of its dt
+  units (+D32E; dt = the last loop iteration's length >> 8, MBX.md round 28 bench), which
+  at the phone's pace is several seconds -- of the order of one A/B window (TEL_EVERY 40
+  renders, ~3.5 s). A state that lasts about one window flips at about every window
+  boundary, so each mode seems to hold the opposite state, and the phase slips slowly
+  (changes landing inside windows, the association swapping) -- aliasing, not a mode
+  difference. It also fits a mode that draws the inverse image; the two differ in that
+  the inverse would flip the picture at EVERY boundary, aliasing only at most.
+- Evidence so far against a mode difference: the list reads the same descriptor and texel
+  pointer as the table (A4_MESHSTATE, 0 differences in 864,776 draws); on the bench both
+  modes and stock agree frame for frame (A4_ABFRAME video). Open: the clipped sign faces
+  (+35D3A pool copies, 41% of listed faces) were not compared by MESHSTATE.
+- Test (no extra round): the next candidate's A/B window at a length unrelated to the
+  sign's period (TEL_EVERY 23, prime and well under it). Aliasing: the states stop pairing
+  with the marker. A mode difference: the pairing stays.
