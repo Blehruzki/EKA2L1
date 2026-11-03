@@ -4995,3 +4995,7 @@ camera stays put while the car moves -- next).
   anything outside the speculated set looks or sounds wrong (other moving objects at 11.72 Hz,
   a crash or skid sound twice from the replayed physics) -- the bench's renders are too slow
   for the first and it has no ears for the last. The A/B: the green square = AB_HSPEC on.
+- r31c bench (peek, capidx 39-46): half-steps a second 22.8-24.2 in both modes (the off
+  windows counted right now) -- real time. Window 43 (AB_HSPEC on, a light moment: 3D 5.0 ms
+  a render): 24 renders in 1,411 ms, 58.8 ms a render, 17.0 a second -- more renders than the
+  11.72 steps where the render is short, the effect the phone's light scenes should show.
