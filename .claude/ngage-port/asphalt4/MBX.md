@@ -5184,3 +5184,29 @@ AB_HSPEC flips every 23 renders; green square = on).
   helicopters, props) still step at 11.72 Hz; traffic was parked on the bench route, so its
   share was never measured moving (same class and physics loop as the opponents); libc's
   word written in a collision replay (errno or rand); slow motion (latent, above).
+
+## Round 32, phone (r32, sha256 97b3ee20...)
+
+Owner: "For the first time, I see the game running at what it seems to be 30 fps during
+light scenes (namely, tunnel with almost no cars) on green mode. However some of the physic
+bugs are still there (steering jittering, heavy framedrop during takedowns and even more
+during crashes.) There was one instance where the game would do the same 1 frame bug I
+mentioned before. Another bug that I've notice several builds back is that sometimes it
+seems like the car's shadow would start clipping through the road. And sometimes the cars
+would also seem to pass just a bit through the pavement, especially after a big jump from
+the tunnel (it can happen anywhere, but I saw it more consistently there). Also please make
+the green box bigger (16x16 maybe?)"
+- Telemetry (8 files, capidx 86-93; r31sum.py --r32): aggregates seg0 off 1,058 renders at
+  88.7 ms (11.28 a second), on 1,082 at 79.3 ms (12.62); renders >= 90 ms 25% / 24%. Last 8
+  windows: off 12.05-12.21 a second, on 11.87-15.80; half-steps 23.7-24.4 a second (real
+  time). The speculation on the ARM11: 1.17-1.53 ms a run, longest 2-4 ms (these windows
+  only; the ring holds the last 8). Step block seg0: 2,194 spans, 3,754 half-steps (n = 1:
+  851 spans, n = 2: 1,143, n = 3-5: 200), logic 1.3 ms a half-step, longest span 31 ms;
+  m - n sum 1 (one slow-motion update in the race); the render call 66.4 ms.
+- Reading it: with renders at ~65 ms and half-steps every 42.7 ms, the speculative frames
+  show the game at half-step instants -- each frame advances one or two half-steps (42.7 or
+  85.3 ms of motion) for ~65 ms of real time, unevenly. The original game's frames each
+  advance one whole step and are presented a step apart. That unevenness is a candidate for
+  the steering jitter that the measured 0.50 split cannot show (the split is per frame, not
+  per real time). Measured next: show each frame the game at the time it is drawn
+  (fraction of a step from the game's own clock), not at the last half-step.
