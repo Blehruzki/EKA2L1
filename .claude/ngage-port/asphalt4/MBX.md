@@ -5210,3 +5210,36 @@ the green box bigger (16x16 maybe?)"
   the steering jitter that the measured 0.50 split cannot show (the split is per frame, not
   per real time). Measured next: show each frame the game at the time it is drawn
   (fraction of a step from the game's own clock), not at the last half-step.
+
+## Round 33 (bench): frames at the game's time; cuts; the render's own changes kept
+
+- Render-time speculation (a4_step_render, A4_HALFSPEC): the odd half-steps only mark a
+  render as worth drawing; at every render with AB_HSPEC on, the fraction of a step since the
+  last whole step comes from the game's clock (t = K+0x2C, the time +15B1C counted from:
+  t mod 10667 by the multiply +52B98 uses, plus a half-step when the last half-step was odd;
+  q16 = that * 65536 / 21334 by a reciprocal multiply), and spec_run draws the frame that far
+  between the whole step and its prediction (lerp_q16; angles lerp_ang on 2048 / 4096). Under
+  1/32 of a step (2.7 ms) the whole step is drawn as it is.
+- Cuts: a car or the camera whose position moves more than 1024 in x or z over the predicted
+  step (a respawn, a camera switch) is drawn where it was (the car restored from its snapshot,
+  the camera's +0x58..+0x70 put back), not half way across -- the other candidate for the
+  one-frame empty picture.
+- Pacing, measured against the game clock (tools/pacing.py: per render, the player car as
+  drawn over the game time between renders, against its neighbours' median; real time, the
+  recorder builds with the autopilot): r32's logic (rtold) median 1.00, quartiles 0.91..1.07,
+  10-90% 0.73..1.27, 21% of frames off by more than 25%; render-time (rtnew) 1.00..1.00,
+  0.99..1.01, 0%. Game time between renders ~91 ms on the bench (render-bound); on the phone,
+  frames ~65 ms against 42.7 ms half-steps, r32 advanced 1, 2 or 3 half-steps a frame (39 /
+  52 / 9%), so its unevenness there was larger than the bench's.
+- BUG found by the oracle (rule 4): spec11 (lockstep, every render now speculated, the whole
+  restore after each) -- the player car's per-render flip +66C differed in 167 of 167 steps:
+  the restore undid what the render itself changes (the flip, the countdown +164, the race's
+  +0x388), and r32 had kept those changes on its whole frames by accident. Fix: spec_run marks
+  the words it changed (bitmaps at 0x455000: 25 words a car, 20 the race, 1 K); the first
+  render after each whole step (HSTEP[5]) keeps its own changes and gets only the marked words
+  back; every other render is undone whole. spec12: 162 aligned steps, 1 of 51 (+15C) --
+  exact again, the flip advancing once a step as in the game.
+- Telemetry: STEPB[3] the speculation's ticks, [6] its runs, [7] the longest run and (<< 16)
+  runs of 8 ms or more, per segment (they rotate with the aggregates) -- for the takedown and
+  crash drops over the whole race, not only the ring's last 8 windows.
+- The A/B mark 16 x 16 (owner).
