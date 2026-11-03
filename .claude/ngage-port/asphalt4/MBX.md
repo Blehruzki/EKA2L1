@@ -4979,3 +4979,7 @@ camera stays put while the car moves -- next).
 - Final candidate r31c = r31 + the restore after the render + the skipped renders' steps
   counted + the stale drop. Chain: lockstep oracle again (spec3: the same flags as spec2 with
   the new restore point), then telerun3 230 s and racemenu on r31c.
+- r31 bench run 2, whole (telerun3 230 s): framestat 2843, faults 1 (the boot fault), the race
+  through; aggregates 53 windows a mode: off 1,219 renders at 96.5 ms (10.36 a second), on
+  1,219 at 91.7 ms (10.91 a second), >= 90 ms 49% / 46% -- the bench at its render-bound rate
+  in both (above).
