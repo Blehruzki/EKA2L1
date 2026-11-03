@@ -4882,3 +4882,12 @@ camera stays put while the car moves -- next).
   (MESH->cam, the context the frame's faces were taken under) and the player car, through
   the same emitter ('CRNC', 'CRNP' headers, the half-step count): which words move into the
   frames after a speculative half-step, which only after whole steps (tools/rendrec.py).
+- BUG (mine, found by a crash): the bench records (CREC 0x421800, HSTEP 0x421840, HCALL
+  0x421860) sat inside the step block's third segment (STEPB 0x421700 + 3 x 128 bytes =
+  0x421880). A segment rotation (a gap of 1.5 s between renders) copied segment 1 over
+  them: the recorded car calls became garbage, the replay called it, and the render-recording
+  run (specr) died with sp 0x310008 at a4_step_render's epilogue (1,034 faults after). Moved
+  to 0x421900 / 0x421940 / 0x421960 with static asserts (STEPB below 0x421900, HCALL below
+  the atlas at 0x422000). spec1, lsm1 and lsm2a ran with the overlap; their results stand
+  only because no rotation fell inside the race (a corrupted call list would have crashed,
+  as specr did) -- rule 4: the static assert that covered STEPB did not cover what came after.

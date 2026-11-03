@@ -860,7 +860,7 @@ int a4_step_count(void *self, int32_t *m, int32_t *n)           /* +16796: bl +1
  * EKA2L1_PCMEM can write them out (two ats at its address: 0x20 bytes at r0, the car at r1).
  * The record: 'CREC', the step number, the key bits before and now (K+0, K+4, K =
  * [[race+0x38]+0x1114]), the car, the player's index, the race's step period word. */
-#define A4_GL_CREC 0x00421800u
+#define A4_GL_CREC 0x00421900u      /* after STEPB (0x421700 + 3 x 128 = 0x421880) */
 __attribute__((noinline)) void a4_rec_emit(const void *hdr, const void *car)
 { __asm__ volatile("" :: "r"(hdr), "r"(car) : "memory"); }
 static void car_record(uint32_t race)
@@ -904,7 +904,10 @@ int a4_step_cam(void *self)                                     /* +16966: bl +1
  * render whose batch held no whole step is skipped (the render feeds the simulation: the
  * texture animator, per-car flips and countdowns in +12952), so renders fall after whole
  * steps as in the normal build. The plumbing for the half-steps that will move the cars. */
-#define A4_GL_HSTEP 0x00421840u      /* [0] half-steps, [1] whole steps since the last render,
+#ifdef A4_STEPTIME
+_Static_assert(A4_GL_STEP + 3u * 32u * 4u <= 0x00421900u, "the step block runs into the bench records (round 31: it did, at 0x421800)");
+#endif
+#define A4_GL_HSTEP 0x00421940u      /* [0] half-steps, [1] whole steps since the last render,
                                       * [2] calls recorded this whole step, [3] replaying */
 #ifdef A4_HALFMOTION
 /* Milestone 2: the whole step's car calls -- the physics loop's +1DE78/+1F1F8 and the
@@ -912,7 +915,8 @@ int a4_step_cam(void *self)                                     /* +16966: bl +1
  * and replayed on the odd half-step after it, so the cars move every half-step. Untouched
  * inside, each call still advances a whole step's worth: the comparison against the normal
  * build names what to halve. Up to 32 calls (16 cars, two loops). */
-#define A4_GL_HCALL 0x00421860u      /* 32 x 6 words: which, r0..r3, the stack argument */
+#define A4_GL_HCALL 0x00421960u      /* 32 x 6 words: which, r0..r3, the stack argument */
+_Static_assert(A4_GL_HCALL + 32u * 6u * 4u <= 0x00422000u, "the recorded car calls past the atlas");
 extern const int32_t a4_hc_1de78, a4_hc_1f1f8, a4_hc_1ea64, a4_hc_1fd5c;   /* a4_gl.s */
 static void hcall_rec(uint32_t which, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t s0)
 {
