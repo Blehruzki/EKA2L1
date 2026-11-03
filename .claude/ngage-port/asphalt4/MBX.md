@@ -4734,3 +4734,20 @@ Not a repeat: no earlier round looked at the game's simulation data.
   unit (speed +0.5 a step, a flip every other step, a countdown of 128). Not a constant to
   halve but the units themselves -- each field's scale and every reader of it (the HUD's
   +7E8, the position integration, the AI, the engine sound).
+- Who writes the player car in a race: EKA2L1_WATCH over the object (0x022F9A48, 0xA00
+  bytes; the same address as the dump run), WATCHPC the game's code, WATCHMAX 400000; 40 s
+  race; tools/watchsum.py from post 400 (the race running): 52,981 writes from 152 code sites
+  in ~30 functions. The largest: +31EA4 and +321A6 (the orientation, +6D4..+700, 12 sites
+  each), +22832 (+10..+18, +A8..+CC), +22D64 (+4C..+78), +1DE78 (+7D8, +7E4, +678.., 17
+  sites), +220A4, +23E72 (the position +4/+C, 19 sites), +522A4 (+704..+718); the speed +7D0
+  from +1C0B0 alone (2 sites; it reads the gear's entry at +700 + 20 x gear and a curve table
+  through [car+0x168] -- the tuning is data, the step is in the arithmetic); +7D8 from six
+  functions (+1DE78, +1BF26, +1BDEC, +1BB98, +1384C, ...); the step counters +820 (+1B560),
+  +0E0, the flip +66C (+1B084), the countdown +164 (+2097A), the cycle +15C (+28508).
+- Verdict (the test set before the probe: a few tables and one shared integration, go; per-
+  step amounts scattered across dozens of functions, not on this phone): scattered. The
+  player's car alone is written from 152 sites in ~30 functions in a race, its per-step
+  amounts are integer units (a unit of speed, 16 of +7D8, 12 of steering, counters, a flip,
+  a 64-step countdown) that a halved step cannot halve without new units and every reader
+  changed; the opponents, the camera, the race's timers and the effects are on top. A faster
+  step is set aside; the owner is told and the frame's cost is the next work.
