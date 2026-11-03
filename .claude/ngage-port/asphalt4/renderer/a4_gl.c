@@ -1971,6 +1971,55 @@ static int mesh_tri_covered(const uint32_t *desc, int32_t za, int32_t zb, int32_
     return 0;
 }
 #endif
+#if defined(A4_SHADSINK) && defined(A4_MESH) && defined(A4_MESHCHECK)
+/* Bench (round 33, owner: "the car's shadow would start clipping through the road"; check
+ * build: software draws the frame, its 1/z buffer holds every perspective face drawn so far --
+ * the road, the player's car): at each shadow triangle of a list frame, its pixels where the
+ * game's buffer is nearer than the shadow -- pixels a depth-tested GPU shadow loses that the
+ * game, which never tests a shadow, paints. Split by whether lean_conv tests it (covered by a
+ * nearer list face) or draws it untested at window depth 1. 0x454100: [0] shadow triangles,
+ * [1] covered ones, [2] their pixels, [3..8] of those hidden at the shadow's depth brought
+ * nearer by 0, 1/64 (the build's bias), 1/32, 1/16, 1/8, 1/4; [9] the uncovered ones' pixels,
+ * [10..15] hidden likewise (never tested: for scale). Per-pixel depth by barycentrics without
+ * a divide (no libgcc): hidden when zbuf * area * 64 > sum(w_i z_i) * (64 + 64 b). */
+static void shad_sink(const uint32_t *gctx, const uint32_t *desc)
+{
+    if (!MESH_ON()) return;
+    volatile uint32_t *k = (volatile uint32_t *)0x00454100u;
+    const int32_t *zbuf = (const int32_t *)gctx[0x40118 / 4];
+    const int32_t *rt = (const int32_t *)((uintptr_t)gctx + 0x8Cu);
+    if (!zbuf) return;
+    const uint32_t *v0 = (const uint32_t *)desc[3], *v1 = (const uint32_t *)desc[6], *v2 = (const uint32_t *)desc[9];
+    int32_t x0 = (int16_t)(int32_t)v0[0], y0 = (int16_t)(int32_t)v0[1], x1 = (int16_t)(int32_t)v1[0], y1 = (int16_t)(int32_t)v1[1];
+    int32_t x2 = (int16_t)(int32_t)v2[0], y2 = (int16_t)(int32_t)v2[1];
+    int32_t wa = (int32_t)v0[2], wb = (int32_t)v1[2], wc = (int32_t)v2[2];
+    if (wa < 1 || wb < 1 || wc < 1 || wa > 32767 || wb > 32767 || wc > 32767) return;
+    int64_t z0 = rt[wa], z1 = rt[wb], z2 = rt[wc];
+    int32_t xlo, xhi, ylo, yhi;
+    ext3(x0, x1, x2, &xlo, &xhi); ext3(y0, y1, y2, &ylo, &yhi);
+    int cov = mesh_tri_covered(desc, wa, wb, wc, xlo, ylo, xhi, yhi);
+    k[0]++; if (cov) k[1]++;
+    int64_t area = (int64_t)(x1 - x0) * (y2 - y0) - (int64_t)(y1 - y0) * (x2 - x0);
+    if (area == 0) return;
+    int64_t sg = area > 0 ? 1 : -1, aa = area * sg;
+    static const int32_t fac[6] = { 64, 65, 66, 68, 72, 80 };
+    if (xlo < 0) xlo = 0;
+    if (ylo < 0) ylo = 0;
+    if (xhi > VP_W - 1) xhi = VP_W - 1;
+    if (yhi > VP_H - 1) yhi = VP_H - 1;
+    for (int32_t y = ylo; y <= yhi; y++)
+        for (int32_t x = xlo; x <= xhi; x++) {
+            int64_t e0 = ((int64_t)(x2 - x1) * (y - y1) - (int64_t)(y2 - y1) * (x - x1)) * sg;
+            int64_t e1 = ((int64_t)(x0 - x2) * (y - y2) - (int64_t)(y0 - y2) * (x - x2)) * sg;
+            int64_t e2 = ((int64_t)(x1 - x0) * (y - y0) - (int64_t)(y1 - y0) * (x - x0)) * sg;
+            if (e0 < 0 || e1 < 0 || e2 < 0) continue;
+            int64_t S = e0 * z0 + e1 * z1 + e2 * z2;          /* the shadow's depth * area */
+            int64_t Z = (int64_t)zbuf[y * VP_W + x] * aa * 64;
+            k[cov ? 2 : 9]++;
+            for (int q = 0; q < 6; q++) if (Z > S * fac[q]) k[(cov ? 3 : 10) + q]++;
+        }
+}
+#endif
 static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1,
                      uint32_t tsaddr, int32_t *pos, int32_t *uv, uint32_t *idp, int16_t *box, int32_t *yr)
 {
@@ -2559,6 +2608,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
          * 12/16 darkens again where two shadow triangles overlap. */
 #ifdef A4_TAKESHADOW
         kind = KIND_SHAD;
+#ifdef A4_SHADSINK
+        shad_sink(gctx, desc);
+#endif
 #else
         return 0;
 #endif

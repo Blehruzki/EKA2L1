@@ -28,6 +28,9 @@ for s in range(3):
           % (s, nm, c, b[0], b[1], list(b[8:14]), b[14], b[15]))
     print('   per span %.1f ms, per step %.1f ms, longest %d ms; +12D5A %.2f ms a span; +15A52 %.2f ms a call (%d calls); m-n sum %d'
           % (b[2] / b[0], b[2] / b[1] if b[1] else 0, b[4], b[3] / b[0], b[6] / b[7] if b[7] else 0, b[7], b[5]))
+    if '--spec' in sys.argv:     # round 33 half-step builds: [3] speculation ticks, [6] runs, [7] longest | runs >= 8 ms << 16
+        print('   speculation (round 33): %d runs, %.2f ms a run, longest %d ms, runs of 8 ms or more %d'
+              % (b[6], b[3] / b[6] if b[6] else 0, b[7] & 0xFFFF, b[7] >> 16))
     print('   n=1 spans by length (4 ms bins, last >= 44): %s' % list(b[16:28]))
     if b[30]:
         print('   render call +12992: %.1f ms a call (%d calls, %d with no triangle); before the first triangle %.1f ms a call with one'

@@ -5243,3 +5243,18 @@ the green box bigger (16x16 maybe?)"
   runs of 8 ms or more, per segment (they rotate with the aggregates) -- for the takedown and
   crash drops over the whole race, not only the ring's last 8 windows.
 - The A/B mark 16 x 16 (owner).
+- Shadows clipping into the road (owner), measured: A4_SHADSINK (new, check build with
+  A4_MESHCHECK + A4_DUALCAP: software draws the frame and its 1/z buffer holds every
+  perspective face drawn so far): at each shadow triangle of a list frame, its pixels where
+  the game's buffer is nearer than the shadow -- what a depth-tested GPU shadow loses that the
+  game (which never tests a shadow) paints -- at biases 0..1/4. telerun3 120 s (shsink):
+  219,104 shadow triangles, 43,940 covered (tested on the GPU); of their 2,183,883 pixels
+  2.9% hidden at every bias from 0 to 1/4 alike; the untested ones' 1.5% likewise. No near
+  tie with the road anywhere: what hides them is far nearer (car parts drawn before the
+  shadow, which the game paints the shadow over). So on the bench route the road does not
+  cut a shadow at all; the owner's case is terrain the route lacks (ramps, the tunnel jump)
+  or the speculative frames (a straight line between two steps runs under a crest or a ramp's
+  lip by a few units: the car, and a shadow placed from it). Not changed; the owner asked to
+  say which mode it shows in.
+- Depth precision ruled out for the sinking cars: the N95's pbuffer has 24 depth bits (round
+  11), depth = ZK / w with ZK 128 -- at w 400 a step of 2^-24 is 0.00008 units.
