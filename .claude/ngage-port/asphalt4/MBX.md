@@ -5007,3 +5007,12 @@ camera stays put while the car moves -- next).
   racemenu (r31c, 30 s race then 17 keys): framestat 2881, faults 1 (the boot fault); the race
   (166 km/h, the car, the city, the HUD), the pause menu stepped to MAIN MENU, the quit dialog
   (NO, YES), the main menu, career home, the car browser and back -- all drawn.
+- spec4 (lockstep oracle, the recorder before the restore; LOCKSTEP 1 / LOCKSTEP_P 10667,
+  framestat 922, faults 1 -- the boot fault): whole steps against normal (lsn1), 138 aligned
+  race steps, 1 of 51 live fields differs (+15C, the time-driven render counter, as in spec1-3)
+  -- the physics exact. Motion (tools/smooth.py, 190 renders after whole steps, 191 after
+  speculative): the speculative frame's share of each whole step's motion, median 0.50,
+  quartiles 0.50..0.50, camera (143 steps) and player car (138) alike; mean move 37.1 / 37.2.
+  The camera's +0x68 in a bend over the last 12 renders: 405 405 405 382 358 346 334 328 321
+  318 314 312, alternating whole and speculative -- both kinds turn. The spec3 0.00 was the
+  instrument (now confirmed). Milestone 2b closed on the bench; r31c goes to the phone.
