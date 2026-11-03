@@ -815,8 +815,16 @@ static void agg_render(uint32_t now)
  * passed back although +1670E reads none of them. */
 extern const int32_t a4_stepcnt, a4_stepcam, a4_steprend, a4_stepmain;   /* a4_gl.s */
 #define GAMEFN(ph) ((uint32_t)(uintptr_t)&(ph) + (uint32_t)(ph))
+#ifdef A4_TRACEARM
+/* bench: an empty function entered once, at the A4_TRACEARM-th timed span, so a PC trace
+ * (EKA2L1_PCTRACE_START = this function's address) starts mid-race instead of at the boot */
+__attribute__((noinline)) void a4_trace_arm(void) { __asm__ volatile("" ::: "memory"); }
+#endif
 int a4_step_count(void *self, int32_t *m, int32_t *n)           /* +16796: bl +15B1C */
 {
+#ifdef A4_TRACEARM
+    if (STEPB[0] == (uint32_t)(A4_TRACEARM)) a4_trace_arm();
+#endif
     int r = ((int (*)(void *, int32_t *, int32_t *))GAMEFN(a4_stepcnt))(self, m, n);
     volatile uint32_t *pf = A4_PERF;
     pf[PF_LSTEP] = ((uint32_t)*n & 0xFFu) | (((uint32_t)*m & 0xFFu) << 8);

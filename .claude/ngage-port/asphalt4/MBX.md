@@ -4673,3 +4673,22 @@ the windows.
   and its copy at +B63F0 reading the literal at +B67F4; the third 0x5355 at +A6C1C has no
   Thumb literal load), no time delta reaches the logic, so every per-step quantity (the
   cars' physics, the AI, the camera, timers, animations, particles) assumes 85.33 ms.
+
+## Bench: how much code one logic step runs (sizing a faster step)
+
+Owner: "Continue" -- the bench probe proposed after phone round 30. The question: the step's
+period lives only in the step counters, so a faster step means rescaling every per-step
+quantity; how much code is that?
+Not a repeat of: round 16's halved-step test (it showed everything runs 2x, not how much
+code does the running), round 30 (time, not code).
+- A4_TRACEARM (bench only, a4_gl.c): an empty a4_trace_arm() entered once at the N-th
+  timed span; EKA2L1_PCTRACE_START at its address (+BA520, code at 0x70000000 on the bench's
+  RM-320 as in the boot-crash trace) starts the trace mid-race. Range the whole image.
+  tools/steptree.py: slices from the step loop's head +167A6 to its exit +1692E, blocks
+  mapped to functions by the nearest Thumb push {..., lr} at or before them (leaf functions
+  merge into the one above: the count is low, the bytes are not).
+- Trace 1 (A4_TRACEARM=1500, MAX 6M entries = 48 MB): the 6M entries hold one race update
+  (one step) -- a render is millions of block entries, a step ~21,000. That step: 20,899
+  block entries, 1,617 distinct blocks, ~117 functions, 57.7 KB of code (7.6% of the game's
+  0xB9E48 bytes). Static context: 8,736 Thumb BL sites in the image calling 1,698 distinct
+  targets; 1,519 push-with-lr sites.
