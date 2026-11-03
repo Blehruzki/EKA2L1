@@ -4999,3 +4999,8 @@ camera stays put while the car moves -- next).
   windows counted right now) -- real time. Window 43 (AB_HSPEC on, a light moment: 3D 5.0 ms
   a render): 24 renders in 1,411 ms, 58.8 ms a render, 17.0 a second -- more renders than the
   11.72 steps where the render is short, the effect the phone's light scenes should show.
+- Exact binary r31c (sha256 f669e1b4b660baefa3d18a72a1f883a1c18fe66ac3686958da2c0b0397947b55;
+  bss 0x5FF08, scratch top 0x460000; +3A15C bytes B510 0004; placeholders patched): telerun3
+  230 s, framestat 2645, faults 1 (the boot fault), errc 0; aggregates: AB_HSPEC off 1,143
+  renders in 49 windows at 100.0 ms, on 1,151 in 50 windows at 100.2 ms (the bench at its
+  render-bound rate); half-steps a second 22.8-24.2 in every window of the ring.
