@@ -53,7 +53,7 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_MESH, PF_MKEYS, PF_MDRAW, PF_MLOST,   /* A4_MESH: this window's list triangles drawn, its draw calls, its ticks, triangles lost */
        /* A4_STEPTIME (round 30): this window's logic ticks, steps, timed spans, +12D5A ticks;
         * then the open span's mark, its counts (n | m << 8), its +12D5A and +15A52 ticks and calls */
-       PF_TLOGIC, PF_NSTEP, PF_NSPAN, PF_TCAM, PF_MLOGIC, PF_LSTEP, PF_SCAM, PF_SMAIN, PF_NMAIN, PF_N };
+       PF_TLOGIC, PF_NSTEP, PF_NSPAN, PF_TCAM, PF_MLOGIC, PF_LSTEP, PF_SCAM, PF_SMAIN, PF_NMAIN, PF_TSPEC, PF_MSPEC, PF_N };
 #define EFILE_WRITE 0x200u
 #define DES(len) ((1u<<28) | ((uint32_t)(len)))  /* TPtrC iLength: EPtrC(1)<<28 | len */
 
@@ -244,7 +244,15 @@ void a4_tel_tick(uint32_t had)
         /* [60..63] in a step-timed build (round 30, not with A4_MESHCHECK): this window's logic
          * ticks (the race update, step count to render call), steps, spans, +12D5A ticks */
         i = 60;
-        h[i++] = pf[PF_TLOGIC]; h[i++] = pf[PF_NSTEP]; h[i++] = pf[PF_NSPAN]; h[i++] = pf[PF_TCAM];
+        h[i++] = pf[PF_TLOGIC]; h[i++] = pf[PF_NSTEP]; h[i++] = pf[PF_NSPAN];
+#ifdef A4_HALFSPEC
+        /* [63] in a half-step build (round 32): the speculation's ticks this window (low half)
+         * and its longest single run (high half), in place of +12D5A's ticks (0 in every
+         * round since 30) */
+        h[i++] = (pf[PF_TSPEC] & 0xFFFFu) | ((pf[PF_MSPEC] > 0xFFFFu ? 0xFFFFu : pf[PF_MSPEC]) << 16);
+#else
+        h[i++] = pf[PF_TCAM];
+#endif
 #else
         h[i++] = pf[PF_BB2];                                   /* calls of the two-depth billboard blit (total) */
 #endif
@@ -383,7 +391,7 @@ void a4_tel_tick(uint32_t had)
         pf[PF_T3D] = 0; pf[PF_TFLUSH] = 0; pf[PF_T2D] = 0; pf[PF_TPRES] = 0; pf[PF_HOOK] = 0;
         pf[PF_REO] = 0; pf[PF_RUNS0] = 0; pf[PF_SKIPPED] = 0; pf[PF_NPRES] = 0;
         pf[PF_MESH] = 0; pf[PF_MKEYS] = 0; pf[PF_MDRAW] = 0;
-        pf[PF_TLOGIC] = 0; pf[PF_NSTEP] = 0; pf[PF_NSPAN] = 0; pf[PF_TCAM] = 0;
+        pf[PF_TLOGIC] = 0; pf[PF_NSTEP] = 0; pf[PF_NSPAN] = 0; pf[PF_TCAM] = 0; pf[PF_TSPEC] = 0; pf[PF_MSPEC] = 0;
         pf[PF_T0] = a4_ntick();
     }
 }

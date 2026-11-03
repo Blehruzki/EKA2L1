@@ -227,7 +227,7 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_MESH, PF_MKEYS, PF_MDRAW, PF_MLOST,   /* A4_MESH: this window's list triangles drawn, its draw calls, its ticks, triangles lost */
        /* A4_STEPTIME (round 30): this window's logic ticks, steps, timed spans, +12D5A ticks;
         * then the open span's mark, its counts (n | m << 8), its +12D5A and +15A52 ticks and calls */
-       PF_TLOGIC, PF_NSTEP, PF_NSPAN, PF_TCAM, PF_MLOGIC, PF_LSTEP, PF_SCAM, PF_SMAIN, PF_NMAIN, PF_N };
+       PF_TLOGIC, PF_NSTEP, PF_NSPAN, PF_TCAM, PF_MLOGIC, PF_LSTEP, PF_SCAM, PF_SMAIN, PF_NMAIN, PF_TSPEC, PF_MSPEC, PF_N };
 #define PFF_2D 1u        /* a composite ended this frame and its 2D is being timed */
 #define PFF_PRES 2u      /* the game's present call is being timed */
 #define PFF_WROTE 4u     /* a4_tel.c wrote a capture since the last render began */
@@ -997,9 +997,36 @@ _Static_assert(A4_GL_SPEC + 0x100u + SPEC_RACESZ <= 0x00448000u, "the race snaps
 _Static_assert(A4_GL_SNAP + SPEC_MAXCARS * SPEC_CARSZ <= 0x00460000u, "car snapshots past 0x460000 (A4_SCRATCH_SIZE 0x5F000)");
 extern const int32_t a4_hc_25e8, a4_hc_12dec;   /* a4_gl.s: the key handler, the camera's update */
 static void words_copy(volatile uint32_t *d, const volatile uint32_t *s, uint32_t n) { while (n--) *d++ = *s++; }
-static const uint16_t spec_mid[] = {  /* the words drawn from: positions and orientation */
-    0x004, 0x008, 0x00C, 0x04C, 0x050, 0x054, 0x0A8, 0x0AC, 0x0B0, 0x0D0,
-    0x058, 0x05C, 0x060, 0x064, 0x068, 0x06C };
+static int32_t mid_lin(int32_t a, int32_t b) { return (int32_t)(((int64_t)a + b) >> 1); }
+/* half way from a to b the short way round a 2048 circle; the game's angles run past 2048
+ * (the camera's +0x68 reads 2131), so the difference is taken modulo 2048 and the result
+ * stays beside a, unnormalised as a is */
+static int32_t mid_ang2048(int32_t a, int32_t b)
+{
+    int32_t d = (int32_t)((uint32_t)(b - a) & 2047u);
+    if (d >= 1024) d -= 2048;
+    return a + d / 2;
+}
+static int32_t mid_ang4096(int32_t a, int32_t b)
+{
+    int32_t d = (int32_t)((uint32_t)(b - a) & 4095u);
+    if (d >= 2048) d -= 4096;
+    return a + d / 2;
+}
+/* The car words the render draws from that the replayed step moves (round 31 phone follow-up:
+ * EKA2L1_RWATCH gated to the render, rcar9, against each word's share on the speculative
+ * frames, spec7): the position (+004..+00C and its copies +0A8..+0B0, +0D0), the speed +7D0
+ * and +7F8 plainly; the heading +678 (the render's matrix +6D4..+718 is exactly it on a 2048
+ * circle) and the wheels' spin +020 (0..4095, at most 666 a step at 135 km/h) the short way
+ * round. Until this round the list held +04C..+06C as "orientation" -- the collision box,
+ * which the replayed calls never move -- and not the heading: every car turned a whole step
+ * on the speculative frames and not at all on the next. Also read by the render and moved
+ * by the step: +A20/+A24 (-21..40, a steering or lean amount) and +A7C (-8..8, decaying),
+ * plainly. Left at the step's value: the track segment +01C, the gear +7BC, the per-render
+ * flip +66C, +A78 (0 or 32), +AC0 (4..7), the bits +B28 (indices and flags). The physics-side
+ * matrix +6D4..+718 is not read by the render (rone8: it reads +678 at +A44C). */
+static const uint16_t spec_mid[] = { 0x004, 0x008, 0x00C, 0x0A8, 0x0AC, 0x0B0, 0x0D0, 0x7D0, 0x7F8,
+                                     0xA20, 0xA24, 0xA7C };   /* read by the render (rone8): signed, small */
 static void spec_restore(void)
 {
     volatile uint32_t *sp = (volatile uint32_t *)A4_GL_SPEC;
@@ -1047,24 +1074,29 @@ static void spec_run(uint32_t race)
 #ifdef A4_SPECGATE
     sp[31] = 0;                      /* ... to here: the keys, the replayed car calls, the camera */
 #endif
-    {   /* the camera half way too: position +0x58/+0x5C/+0x60 plainly, the angle-like words
-         * +0x64/+0x68 the short way round a 4096 circle (a guess at their unit) */
+    {   /* the camera half way too, in the words the render draws it from (rcam8: the render
+         * reads +0x58..+0x6C, +0x70 and +0x388 of these; EKA2L1_RWATCH gated to the render):
+         * the position +0x58/+0x5C/+0x60 plainly, the angles +0x64/+0x68/+0x6C the short way
+         * round a 2048 circle (round 31 phone follow-up: +0x68 fitted against the camera's
+         * direction vector, 2048 not 4096 -- the 4096 guess turned the camera half round on a
+         * wrap), +0x70 (37..48, with the speed) plainly. +0x388 (0..100, also read) is the
+         * render's own counter, advanced in the render and undone by the restore (spec10: 1.00
+         * with a midpoint written before the render) -- left alone */
         volatile int32_t *cm = (volatile int32_t *)race;
         const volatile int32_t *co = (const volatile int32_t *)(sp + 64);
-        for (uint32_t w = 0x58u / 4u; w <= 0x60u / 4u; w++) cm[w] = (int32_t)(((int64_t)co[w] + cm[w]) >> 1);
-        for (uint32_t w = 0x64u / 4u; w <= 0x68u / 4u; w++) {
-            int32_t a = co[w], b = cm[w], d = b - a;
-            if (d > 2048) d -= 4096; else if (d < -2048) d += 4096;
-            cm[w] = a + d / 2;
-        }
+        for (uint32_t w = 0x58u / 4u; w <= 0x60u / 4u; w++) cm[w] = mid_lin(co[w], cm[w]);
+        for (uint32_t w = 0x64u / 4u; w <= 0x6Cu / 4u; w++) cm[w] = mid_ang2048(co[w], cm[w]);
+        cm[0x70u / 4u] = mid_lin(co[0x70u / 4u], cm[0x70u / 4u]);
     }
     for (uint32_t i = 0; i < n; i++) {
         volatile int32_t *c = (volatile int32_t *)sp[4 + i];
         const volatile int32_t *o = (const volatile int32_t *)(A4_GL_SNAP + i * SPEC_CARSZ);
         for (uint32_t f = 0; f < sizeof spec_mid / sizeof spec_mid[0]; f++) {
             uint32_t w = spec_mid[f] / 4u;
-            c[w] = (int32_t)(((int64_t)o[w] + c[w]) >> 1);
+            c[w] = mid_lin(o[w], c[w]);
         }
+        c[0x678u / 4u] = mid_ang2048(o[0x678u / 4u], c[0x678u / 4u]);
+        c[0x020u / 4u] = mid_ang4096(o[0x020u / 4u], c[0x020u / 4u]);
     }
 }
 #endif
@@ -1078,7 +1110,15 @@ int a4_halfstep(uint32_t race)
 #ifdef A4_ABCYCLE10
         if (A4_PERF[PF_MODE] & AB_HSPEC)  /* the A/B: off, the odd half-step is empty and draws nothing */
 #endif
-        { spec_run(race); h[1]++; }
+        {   /* timed for the telemetry (header [63] in a half-step build): the speculation's
+             * ticks this window and its longest single run -- what it costs on the phone, and
+             * in a crash (round 31: "when I crash during green mode, it drops framerate") */
+            uint32_t t0 = a4_ntick();
+            spec_run(race);
+            uint32_t dt = a4_ntick() - t0;
+            A4_PERF[PF_TSPEC] += dt; if (dt > A4_PERF[PF_MSPEC]) A4_PERF[PF_MSPEC] = dt;
+            h[1]++;
+        }
 #elif defined(A4_HALFMOTION)
         hcall_replay();
         h[1]++;                      /* the cars moved: worth a render */

@@ -74,9 +74,26 @@ void ARMul_State::ReportRead(std::uint32_t address, std::uint32_t value) const {
         // camera words the render draws from)
         if (!watch_gate_open)
             return;
+        // EKA2L1_RWATCH_SKIP=lo:hi leaves out reads by code in that range (one's own
+        // instrumented code); EKA2L1_RWATCHMAX raises the cap on pairs
+        static const std::uint32_t skip_lo = [] {
+            const char *w = std::getenv("EKA2L1_RWATCH_SKIP");
+            return w ? static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) : 0u;
+        }();
+        static const std::uint32_t skip_hi = [] {
+            const char *w = std::getenv("EKA2L1_RWATCH_SKIP");
+            const char *colon = w ? std::strchr(w, ':') : nullptr;
+            return colon ? static_cast<std::uint32_t>(std::strtoul(colon + 1, nullptr, 16)) : 0u;
+        }();
+        static const std::size_t rcap = [] {
+            const char *w = std::getenv("EKA2L1_RWATCHMAX");
+            return w ? static_cast<std::size_t>(std::strtoul(w, nullptr, 10)) : 512u;
+        }();
+        if (Reg[15] >= skip_lo && Reg[15] < skip_hi)
+            return;
         static std::unordered_set<std::uint64_t> pairs;
         const std::uint64_t key = (static_cast<std::uint64_t>(Reg[15]) << 32) | (address & ~3u);
-        if (pairs.size() >= 512 || !pairs.insert(key).second)
+        if (pairs.size() >= rcap || !pairs.insert(key).second)
             return;
         LOG_ERROR(eka2l1::CPU_DYNCOM, "RWATCHGATE: read 0x{:X} at 0x{:X} from pc 0x{:X} lr 0x{:X}", value, address, Reg[15], Reg[14]);
         return;

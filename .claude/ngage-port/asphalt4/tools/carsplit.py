@@ -15,7 +15,7 @@ while o + 12 <= len(d):
     if tag == 0x434E5243:                                   # 'CRNC' opens a render
         cur = {'hs': hdr[1], 'cars': {}, 'calls': None, 'saved': None}; R.append(cur)
     elif cur is None: continue
-    elif tag == 0x414E5243 and ln == 0xA00:                 # 'CRNA'
+    elif tag == 0x414E5243 and ln in (0xA00, 0xC7C):                 # 'CRNA'
         w = struct.unpack_from('<%di' % 64, b)
         cur['cars'][hdr[2]] = (hdr[3], w[1], w[2], w[3], w[0x0B8 // 4], w[0x0C0 // 4])
     elif tag == 0x534E5243 and ln == 0x4000:                # 'CRNS'

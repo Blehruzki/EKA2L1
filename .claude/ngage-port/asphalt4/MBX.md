@@ -5110,3 +5110,45 @@ the speedometer looked normal." (The mark they watched was r31c's 1 x 4 strip, a
   during the speculative update. The same addresses every time and no heap pointer in the
   race object changes on speculative frames, so it looks freed within the call; collisions
   were not in this run (the autopilot drives straight).
+- Which camera words the render draws from (rcam8, spec8 = spec7 + A4_RENDGATE: SPEC[31] = 1
+  around the render call; EKA2L1_WATCH on the gate word, EKA2L1_WATCHGATE, EKA2L1_RWATCH over
+  race+0x48..+0x390): +0x58..+0x6C (position, then three angles; read at +D3D6..+D3EC from
+  the render +12992), +0x70 (+C9BC), +0x74, +0x8C/+0x94 (constant), +0xB4..+0xE0 (constant),
+  +0x368..+0x38C. Not the direction vector +F4/+FC. So the drawn camera on the speculative
+  frames was already half way in position and yaw; its yaw's unit was the bug.
+- Which car words the render draws from (rone8: one opponent's 0xC7C bytes, gated to the
+  render, reads by our own code skipped -- EKA2L1_RWATCH_SKIP; the first try, rcar8, watched
+  an address that in that build held a texture, and the second, rcar9, over all cars, filled
+  its 60,000 pairs with texture reads): +004..+00C, +01C, +020, +034, +108, +168, +1A8, +678
+  (at +A44C), +818, +824, +A04, +A20 (+A6F4), +A24, +A68, +A78, +A7C, +AAC, +AB0, +AC0, +AE0,
+  +B14, +B28, +C3C. Not the matrix +6D4 (computed in the step; it stays at the whole step's
+  value on speculative frames and is not drawn).
+- The fix (a4_gl.c spec_run): cars -- position (+004..+00C, +0A8..+0B0, +0D0), +7D0, +7F8,
+  +A20, +A24, +A7C half way plainly; the heading +678 the short way round 2048; the wheels
+  +020 (0..4095, at most 666 a step at 135 km/h) round 4096; the collision box +04C..+06C
+  dropped. Camera -- position plainly, +0x64/+0x68/+0x6C round 2048 (mid_ang2048: the
+  difference modulo 2048, so values past 2048 work; host-tested on wraps, angtest.c, which
+  also shows the old 4096 rule putting 2040 -> 10 at 1025, half round), +0x70 plainly.
+  +0x388 left alone: a midpoint written before the render read 1.00 after it -- the
+  render's own counter.
+- spec10 (the fix, lockstep, full 0xC7C car dumps; tools/drawshare.py): every car's position,
+  heading, wheels and +A20/+A24 at 0.50 on the speculative frames (player and the seven
+  opponents); the camera's +0x58/+0x60/+0x68 at 0.50; small integer counters (+7D0, +0x70,
+  +A7C) read 0.00 -- half of a one-unit step rounds down; whole steps against lsn1: 144
+  aligned, 1 of 51 (+15C) -- exact.
+- Leak check with collisions (leak10: the phone build's flags + A4_SPECGATE, real time, the
+  race driven by keys -- '5' held, '4' and '6' two seconds each, into walls; 333 openings):
+  the game thread wrote, outside the saved cars, race object and K, one word: 0x00500148
+  from 0x7020AAFA, inside libc.dll (its own data -- errno from a maths call or rand()'s
+  state; if rand(), a crash's randomness after a speculative frame differs from the
+  original game's: a guess, not a glitch). Writes from other threads (the second stack at
+  0x3401xxx: audio) land while the gate is open and are not the replay's. The camera's
+  allocation seen in leak6 did not appear here.
+- Rule 4 on the earlier record: the spec2-spec4 "0.50 for the camera and the player car"
+  measured the words spec_run itself wrote, so it could not fail; the opponents, the drawn
+  heading and the camera's unit went to the phone unmeasured. carsplit.py and drawshare.py
+  measure every car slot and the words the render reads (by the read-watch), not the words
+  spec_run writes.
+- Telemetry for round 32: header [63] in a half-step build = the speculation's ticks this
+  window (low 16 bits) and its longest single run (high 16), replacing +12D5A's ticks (0
+  since round 30) -- what the replay costs on the phone, and in a crash.
