@@ -4629,5 +4629,14 @@ never timed, only inferred as the remainder), the step RE (static), round 17's s
   there too, at the insert -- then the 3D pass, the composite and the 2D, all inside the
   call), the present ~1, and ~15 left (the loop's spin at the cap and the rest of the loop).
 - Correction to round 29's budget line ("rest (logic, no waiting) 19-26"): "rest" was never
-  the logic. It holds the render's part before its first triangle (on the bench 18.8 of the
-  logic's 2.6 + 18.8), and the wait. The phone round says how it divides there.
+  the logic. It holds the render's part before its first triangle (on the bench 18.8 ms
+  against the logic's 2.6), and the wait. The phone round says how it divides there.
+- Candidate r30_phone = r30b (edd6e040). What the phone round can say that the bench cannot:
+  the ARM11's own split of a render -- the logic per step, the game's transforms before the
+  first triangle, the render call -- in light and in heavy scenes; bench host time does not
+  carry over. One full race asked (three laps), then the 8 capture files. The owner sees
+  the list in every render (no A/B, no green square).
+  racemenu (r30b, 30 s race then 17 keys): framestat 3015, faults 1 (the boot fault); the
+  race, the pause menu stepped down to MAIN MENU, the quit dialog (NO, YES), the main menu,
+  career home, the car browser and back -- all drawn.
+- Sent to the owner unbaked (a4_r30b_SHIP.exe, sha256 edd6e040...); the owner bakes.
