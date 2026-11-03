@@ -4692,3 +4692,19 @@ code does the running), round 30 (time, not code).
   block entries, 1,617 distinct blocks, ~117 functions, 57.7 KB of code (7.6% of the game's
   0xB9E48 bytes). Static context: 8,736 Thumb BL sites in the image calling 1,698 distinct
   targets; 1,519 push-with-lr sites.
+- Trace 2 (same build, MAX 40M = 320 MB): 29 race updates (30 steps; one update with n = 2)
+  -- a render is ~1.4M block entries here, so trace 1 held one by chance of the arm point.
+  Each step: 20,639-20,980 block entries, 1,451-1,486 distinct blocks, 106-108 functions;
+  the work is nearly the same every step (as the phone's 1.2-1.7 ms says). Union over the 29:
+  1,877 blocks, ~127 functions, 57.2 KB of code (7.5% of the game); 106 functions in every
+  step. A third of the entries (213,024 of ~605,000) fall in the run of small leaf helpers
+  from +52E44 (fixed-point and RGB565 arithmetic: +52E5C blends two 565 colours).
+- Side find: the step's first call, +25E8 (on [race+0x1114]+0x14), walks a queue of key
+  bytes (top two bits the event, low six the key; repeat counters at +0xB/+0xC): the game
+  takes its input once a step -- a key waits for the next step, up to 85 ms.
+- What it means for a faster step: the code to audit for per-step quantities is ~127
+  functions / 57 KB of Thumb (~28,000 instructions), most of it probably not time-dependent
+  (arithmetic, collision, track queries), the rest (the cars' integration, camera smoothing,
+  timers, animation and AI counters) unknown in count. And it is all-or-nothing: a step
+  halved with only part rescaled runs the rest of the game at double speed, so no part
+  ships alone.
