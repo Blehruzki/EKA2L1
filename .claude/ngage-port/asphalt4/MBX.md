@@ -4971,3 +4971,11 @@ camera stays put while the car moves -- next).
   70-120 ms of host time, longer than a half-step, so every update runs two half-steps and
   draws the speculative one -- no room for more frames here; the gain can only show where a
   render is shorter than 85 ms, i.e. the phone's light scenes.
+- Rule 4 on the candidate: a speculative state left pending past its race update (the
+  update ending after an odd half-step with no render) could be restored into the next
+  race's objects. The step loop's early returns are all in whole steps (after the restore),
+  so it should not happen; a4_step_count now drops (never restores) a pending state at the
+  start of an update and counts it at 0x447000 word 30.
+- Final candidate r31c = r31 + the restore after the render + the skipped renders' steps
+  counted + the stale drop. Chain: lockstep oracle again (spec3: the same flags as spec2 with
+  the new restore point), then telerun3 230 s and racemenu on r31c.

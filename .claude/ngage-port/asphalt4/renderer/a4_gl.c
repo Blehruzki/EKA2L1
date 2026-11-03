@@ -826,6 +826,15 @@ __attribute__((noinline)) void a4_trace_arm(void) { __asm__ volatile("" ::: "mem
 #endif
 int a4_step_count(void *self, int32_t *m, int32_t *n)           /* +16796: bl +15B1C */
 {
+#ifdef A4_HALFSPEC
+    {   /* a speculative state is put back after the render that draws it, or at the even
+         * half-step after it, both inside the update that made it; one still pending here
+         * outlived its update (none should: the early returns are in whole steps, after the
+         * restore) and may belong to a race that is gone -- dropped, never restored, counted */
+        volatile uint32_t *sp = (volatile uint32_t *)0x00447000u;   /* A4_GL_SPEC */
+        if (sp[1]) { sp[1] = 0; sp[30]++; }
+    }
+#endif
 #ifdef A4_LOCKSTEP
     {   /* the time the step count reads (+15B1C: t = [[G+0x1114]+0x2C], G from +52CA0, taken
          * here to be [race+0x38] -- the key object K's word 11; last t at [race+0x44]) set to
@@ -970,7 +979,7 @@ static void hcall_replay(void)
  * that is what the render after it draws. At the next even half-step everything saved is put
  * back and the game's own step runs as if nothing had happened: whole steps stay exactly the
  * original game's, a key shows half a step sooner, and the screen gets a frame between. */
-#define A4_GL_SPEC 0x00447000u       /* [0] cars, [1] pending, [2] K, [3] the race, [4..19] the cars,
+#define A4_GL_SPEC 0x00447000u       /* [0] cars, [1] pending, [2] K, [3] the race, [4..19] the cars, [30] stale drops,
                                       * [32..47] K's words, [64..] the race object (0x9EC bytes) */
 #define SPEC_RACESZ 0x9ECu           /* the race object (+778A allocates it, constructor +16BDC) */
 _Static_assert(A4_GL_SPEC + 0x100u + SPEC_RACESZ <= 0x00448000u, "the race snapshot runs into the cars'");
