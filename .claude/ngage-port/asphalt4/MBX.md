@@ -4708,3 +4708,29 @@ code does the running), round 30 (time, not code).
   timers, animation and AI counters) unknown in count. And it is all-or-nothing: a step
   halved with only part rescaled runs the rest of the game at double speed, so no part
   ships alone.
+
+## Bench: where the cars' speed lives (the physics probe, step 1)
+
+Owner: "continue" -- the physics probe: find the cars' speed and position update and see
+whether its per-step amounts sit in a few tables or are scattered.
+Not a repeat: no earlier round looked at the game's simulation data.
+- The HUD's speed number: PCTRACE_REGS at the two HUD painters (+29ADA, +29FB4) through a
+  40 s race (hudregs.regs, 1,845 records): the race HUD's calls by return address and their
+  (x, y) in r2, r3; the speed digits are +29FB4 called from +11C56 at (263, 213), right-aligned
+  (the digits' 236..257 in the sprite trace of the earliest rounds). Its value: +11BFE
+  bl +206A0 on the player car ([sp+0x124]), then (an option's flag at [ctx+..+3]) x62 / 100 for
+  mph, abs. The gauge needle before it: [car+0xA00] x 900 through +52A84.
+- +206A0 (the speed in km/h): car[0x7EC] x car[0x7D0] / car[0x7E8] (signed divide import).
+- The player car object dumped at every HUD speed read (PCMEM at +206A0, r0, 0xA00 bytes;
+  60 s race, 593 dumps, one object 0x022F9A48; tools/carfields.py): 54 of 640 words change.
+  Per render (1 step, sometimes 2):
+  +004/+008/+00C the position (x, y, z; copies at +04C, +0A8, +0D0); +7D0 the speed (0..277,
+  the HUD's km/h = +7D0 x +7EC / +7E8, both constant: 213 km/h at 277), deltas 1 (223) and 2
+  (112) -- one unit a step; +7E4 and +0B4 alike; +7D8 deltas 16 (219) and 32 (55) -- 16 a
+  step; +0B8/+0C0 +-12 a step (steering-like); +0E0 and +820 +1 a step (step counters); +15C
+  +1 a step wrapping at 10 (an animation cycle); +164 -1 a step from 64 (a countdown); +66C
+  flips between two values every step; +678 +-20 steps; +01C +1 now and then (37 -> 105).
+- So the per-step amounts are integers of one or a few units: a halved step needs half a
+  unit (speed +0.5 a step, a flip every other step, a countdown of 128). Not a constant to
+  halve but the units themselves -- each field's scale and every reader of it (the HUD's
+  +7E8, the position integration, the AI, the engine sound).
