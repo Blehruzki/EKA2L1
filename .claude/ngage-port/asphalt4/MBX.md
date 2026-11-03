@@ -4989,3 +4989,9 @@ camera stays put while the car moves -- next).
   per-render recorder (A4_RENDREC) sat after the new restore and recorded the restored state.
   Moved before the restore (the phone build, without RENDREC, compiles byte-identical:
   checked); spec4 re-measures after the battery.
+- What the phone round can say that the bench cannot: whether the speculative frames show
+  where the phone has room for them (light scenes: a render under 85 ms), how the frames and
+  the keys feel (the owner's eyes and hands: smoothness, steering response), and whether
+  anything outside the speculated set looks or sounds wrong (other moving objects at 11.72 Hz,
+  a crash or skid sound twice from the replayed physics) -- the bench's renders are too slow
+  for the first and it has no ears for the last. The A/B: the green square = AB_HSPEC on.
