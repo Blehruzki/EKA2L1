@@ -4891,3 +4891,12 @@ camera stays put while the car moves -- next).
   the atlas at 0x422000). spec1, lsm1 and lsm2a ran with the overlap; their results stand
   only because no rotation fell inside the race (a corrupted call list would have crashed,
   as specr did) -- rule 4: the static assert that covered STEPB did not cover what came after.
+- BUG 2 (mine; the real cause of specr's crash, specr2 died the same way after the move):
+  the span trampolines (a4_tramp.s: the textured one moves the light into r11, the
+  transparent one uses r8-r11) clobber high registers without saving them. Safe for the
+  game's Thumb code, which never holds r8-r11 across a span; not for our ARM code that calls
+  the render: a4_step_render came back with fp = 0xAAACC and sb = 0xD2282A and its epilogue
+  took the stack (sp 0xAAAD4). The RENDREC code changed register allocation and exposed it;
+  round 30's r30b (phone) has the same call and survived by its allocation (its pf reads
+  after the render came back right: the data were sane) -- latent there. Fix: a4_gcall1 (a4_gl.s)
+  pushes r3-r11/lr, calls the game function, pops; the render (+12992) and +12D5A go through it.

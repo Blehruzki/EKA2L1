@@ -814,6 +814,7 @@ static void agg_render(uint32_t now)
  * BLX). Each calls the game's own function at the placeholder's target; the return value is
  * passed back although +1670E reads none of them. */
 extern const int32_t a4_stepcnt, a4_stepcam, a4_steprend, a4_stepmain;   /* a4_gl.s */
+extern int a4_gcall1(uint32_t fn, uint32_t a0);    /* a4_gl.s: a game call that keeps r4-r11 */
 #define GAMEFN(ph) ((uint32_t)(uintptr_t)&(ph) + (uint32_t)(ph))
 #ifdef A4_TRACEARM
 /* bench: an empty function entered once, at the A4_TRACEARM-th timed span, so a PC trace
@@ -894,7 +895,7 @@ int a4_step_main(void *self)                                    /* +167B4: bl +1
 int a4_step_cam(void *self)                                     /* +16966: bl +12D5A */
 {
     uint32_t t0 = a4_ntick();
-    int r = ((int (*)(void *))GAMEFN(a4_stepcam))(self);
+    int r = a4_gcall1(GAMEFN(a4_stepcam), (uint32_t)(uintptr_t)self);
     A4_PERF[PF_SCAM] += a4_ntick() - t0;
     return r;
 }
@@ -1065,7 +1066,7 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
     /* the render call itself, and its part before the first triangle (the game's own
      * transforms and sort, which the 3D pass timer -- first triangle to composite -- misses) */
     uint32_t t0 = a4_ntick();
-    int r = ((int (*)(void *))GAMEFN(a4_steprend))(self);
+    int r = a4_gcall1(GAMEFN(a4_steprend), (uint32_t)(uintptr_t)self);   /* the render: span trampolines inside */
 #if defined(A4_CARREC) && defined(A4_RENDREC)
     {   /* bench: after each render, the mesh context ('CRNC') and the player car ('CRNP'), with
          * the half-step count, through the recorder's emitter */

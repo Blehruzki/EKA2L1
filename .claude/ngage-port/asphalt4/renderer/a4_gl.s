@@ -177,6 +177,20 @@ a4_bbret:
 a4_tfzvt:
         .word   0xDEADBEEF          @ patched: (code+0xB08CC) - (this word): TFakeZFace's vtable (its key is 1)
 
+@ a4_gcall1(fn, a0): call a game function with one argument and keep r4-r11 across it. The
+@ span trampolines (a4_tramp.s) run inside the game's render and use r8-r11 without saving
+@ them -- the game's Thumb code never holds those across a span, but our ARM code that calls
+@ the render does (round 31: a4_step_render's fp came back as 0xAAACC and its epilogue took
+@ the stack with it). 10 words pushed: the stack stays 8-aligned.
+        .global a4_gcall1
+        .align  2
+a4_gcall1:
+        push    {r3, r4, r5, r6, r7, r8, r9, r10, r11, lr}
+        mov     r12, r0
+        mov     r0, r1
+        blx     r12
+        pop     {r3, r4, r5, r6, r7, r8, r9, r10, r11, pc}
+
 @ A4_STEPTIME (round 30): the race update's callees, patched the same way in every GL build
         .global a4_stepcnt, a4_stepmain, a4_stepcam, a4_steprend
         .align  2
