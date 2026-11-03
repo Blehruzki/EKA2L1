@@ -4464,3 +4464,60 @@ Not repeats of: r28b (near cut on every frame), r28 (sprite rule only).
     list:    85.7 ms | 3D 10.8 (hook 6.6) draw 0.9 grouping 0.54 | calls 214, tris 1,824
   (r28b bench: list calls 233, 3D gain 3.8 ms; r29: calls 214, gain 3.7.) racemenu: race,
   quit dialog, main menu, career home, car browser -- right.
+
+## Phone round 29 (r29_phone 553a9203): the list holds; the owner turns to presentation
+
+Telemetry (capidx 326-333, errc 0). Race aggregates (seg0, latest capture, 43 windows of 23
+renders a mode), render-to-render histogram:
+  no list: 86.9 ms, >=90 ms 17% | 3D 35.3 (hook 17.9) draw 11.5 grouping 1.89 | calls 239, tris 1,348
+  list:    87.2 ms, >=90 ms 19% | 3D 28.6 (hook 19.0) draw 6.4  grouping 1.09 | calls 233, tris 1,654
+The list's 3D pass the shortest yet (6.7 ms under no list; r27 5.4, r28b 2.1): the dynamic
+near cut recovered r28b's regression. Slow frames do not follow (19% vs 17%): both
+histograms pile at 80-85 ms, the game's own render gate (round 16: ~85 ms, ~11.8 renders a
+second, by itself); the frames over it are bound by the rest of the loop.
+Owner: no difference felt in heavy scenes. Tunnel signs now work in either mode -- the
+pairing with the marker is gone at a 23-render window: round 28b's report was aliasing
+(MBX.md round 29 bench), not a mode difference. Noticed: the faster they drive, the more
+often the signs flash; the Moulin Rouge's blades (Paris) spin faster the faster they pass
+-- consistent with the animator's dt being the last loop iteration's length (+D32E), which
+grows with load. Pickups, turbo, helicopter light fine. Not pursued for now (owner).
+New direction (owner): a more fluid frame rate on screen -- uncap the presentation or
+whatever it takes -- and less tearing.
+
+## Presentation study (owner: a more fluid frame rate on screen, less tearing)
+
+Sources: the record (rounds 16-20, the step RE), the runtime's binary (ngibackbuffer.dll,
+the uncompressed copy in the scratchpad's mbxrecon/), the RM-320 ROM (romimg.py, capstone),
+the platform's source (graphics/.../screendriver/sbit/Cdsb.cpp, SCDVU.DEF, WS322U.DEF).
+- The cap is not a presentation cap: the 85.33 ms is the game's fixed logic step (the step
+  RE, rounds 16-17: halving it ran the whole game at twice speed); +1670E calls the step
+  counter +15B1C, runs the logic that many times and draws once if any ran. Presenting more
+  often shows the same frame again (the re-presents did exactly that; skipped since round
+  19). More than 11.72 new pictures a second need frames made between steps.
+- How the runtime presents: ngibackbuffer imports WS32 233/234 (CDirectScreenAccess::NewL,
+  StartL), 387 (RWindowBase::Size), 469 (CWsScreenDevice::GetScreenNumber), 82
+  (RWindowBase::DisplayMode), SCDV 43 (CDirectScreenBitmap::NewL(TInt)) and 10
+  (RHardwareBitmap::GetInfo) -- ordinals from the platform DEFs, the ROM's export counts
+  agreeing for SCDV (45 = 45). The DSB is made at +4A04 (kept at [obj+0x68]); +5100 calls
+  Create(rect, 1): EDoubleBuffer; then BeginUpdate (vtable+0x10) into [obj+0x6C],
+  EndUpdate (+0x14) with a request status at [obj+0x88] (checked against KRequestPending),
+  Close (+0x1C). Before each BeginUpdate (+51B4) and Close (+5258, +599C, +5A00) it waits on
+  [obj+0x88] if it reads KRequestPending, through the stub +5E60 = euser ordinal 604,
+  resolved against the RM-320 ROM: 803A82D4, a loop on WaitForAnyRequest until the one status
+  leaves 0x80000001, then re-signalling the count (605 next to it is the two-status form):
+  User::WaitForRequest(TRequestStatus&). So the runtime never writes a frame while the last
+  one is still going out; it is not a race on our side.
+- The phone's DSB (ROM scdv.dll; NewL(TInt) 8087953C, vtable 8087ECD0): Create accepts flag
+  1 or 2 only (0 -> KErrArgument); BeginUpdate and EndUpdate hand off to a driver object
+  ([this+4], its vtable +0xF0/+0xF4) unless [this+0xC] is set. Not the generic platform
+  version (Cdsb.cpp: one buffer, a Mem::Move into video memory, no sync). So the runtime
+  already asks for double buffering and the transfer is the display driver's: a tear is the
+  driver's transfer meeting the panel's scan, below the game and below us. What we control
+  is how many updates there are (one a render since round 19; the stock game made three,
+  the owner's "worse there") -- and whether the frame goes out another way (an EGL window
+  swap, whose sync on the N95's MBX driver is unknown).
+- Budget on the phone (round 29, per window): heavy windows 3D 37-45 ms, rest (logic, no
+  waiting) 19-26; light ones 3D 12 ms, rest 50-52 (~30 ms of that waiting for the next
+  step). Putting one frame on screen costs ~20 ms now (readback and composite 10-13, the
+  game's 2D 6, present 2.5). A made frame between steps fits only light scenes until that
+  cost falls.
