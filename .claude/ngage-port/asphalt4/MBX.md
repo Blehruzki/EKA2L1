@@ -5152,3 +5152,9 @@ the speedometer looked normal." (The mark they watched was r31c's 1 x 4 strip, a
 - Telemetry for round 32: header [63] in a half-step build = the speculation's ticks this
   window (low 16 bits) and its longest single run (high 16), replacing +12D5A's ticks (0
   since round 30) -- what the replay costs on the phone, and in a crash.
+- Rule 4, a state the bench never entered: the game's slow motion (m > n: the race update
+  runs m - n +1300C updates and renders with no logic step). A4_HALFLOGIC skips a render
+  with no half-step since the last one, so those frames would be dropped, and with the
+  period halved m counts half-periods, so +1300C would run twice as often. Latent: the
+  round 31 phone race had m - n = 0 over 2,506 updates (both segments, crashes included),
+  as had every bench race. Not fixed; written down.
