@@ -4947,3 +4947,20 @@ camera stays put while the car moves -- next).
   objects +1300C advances, props), sound from the replayed physics (a crash sound twice?),
   real-time operation (renders back to back, n of 1, 2 or more half-steps per update: a
   speculative step followed by an even one in the same update is wasted, not wrong).
+- Candidate r31 (real time, no lockstep, no recorder): C30's flags with A4_ABMODE=3118u
+  (1070 + AB_HSPEC 2048: the half-step frames on in the first window), A4_ABCYCLE10 (a4_tel.c
+  flips AB_HSPEC per window of TEL_EVERY = 23 renders; aggregates 'AG26', slot bit 1 =
+  AB_HSPEC), A4_ABMARK (the 4x4 green square now marks AB_HSPEC on), A4_HALFLOGIC
+  A4_HALFMOTION A4_HALFSPEC; env A4_HALFSTEP=1, A4_SCRATCH_SIZE 0x5F000. With AB_HSPEC off the
+  odd half-steps are empty and draw nothing: the original game's frames and feel, on the same
+  build. tools/r31sum.py.
+- r31 bench run 1 (real time; 8 windows peeked): BUG 3, found by the half-steps a second --
+  37.2, 44.7, 36.2, 33.2 in the AB_HSPEC-on windows against 23.44 at real time: the game ran
+  ~1.7x fast with the speculative frames on. The race snapshot holds the step count's last
+  time (race+0x44, written by +15B1C at the start of every race update, before the loop);
+  restored at the next even half-step it went back, and the next update counted the same time
+  again. The lockstep oracle could not see it (m and n forced). Fix: spec_restore right after
+  the render that drew the speculative state (a4_step_render), before the next update's
+  bookkeeping; the restore at the even half-step stays for an update that runs odd then even
+  with no render between. Also: a skipped render's half-steps now go into the window's step
+  count (the AB_HSPEC-off windows read 15.8-23.3 because they did not).
