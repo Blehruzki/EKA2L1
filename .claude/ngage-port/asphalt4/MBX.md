@@ -5327,3 +5327,12 @@ what I was talking about. The crashes and takedowns are still sluggish."
   1): the slowest frames 150-211 ms (host time), nearly all of it inside the game's render
   call; several with the list full at 2,048 triangles (the rest to the table); no frame with
   list triangles lost, no stale list.
+- Candidate r34 = r33 + A4_SLOWREC + the stale list drawn (C31's flags + -DA4_SLOWREC; sha256
+  24f98e6b66646e070ad50ca0bd3ba9f21bac04e844f4c569e084fd9a2d8d4858, 803,584 bytes; no
+  0xDEADBEEF; +3A15C B510 0004). Battery on it: telerun3 230 s framestat 3009, faults 1 (the
+  boot fault); steering race 90 s framestat 1572, faults 1; racemenu framestat 3087, faults 1,
+  the 18 screens as r33's; mark 43 x 43 window pixels at the top right in 12 of 24 shots;
+  slowsum reads the block from the captures.
+- Asked of the phone round: whether the empty frame or the crash camera's pieces come back
+  (the lossy-frame record says whether a list was dropped or lost then), and a race with
+  crashes and takedowns (the slowest-frame record says where those frames spend their time).
