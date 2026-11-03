@@ -1111,12 +1111,6 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
      * transforms and sort, which the 3D pass timer -- first triangle to composite -- misses) */
     uint32_t t0 = a4_ntick();
     int r = a4_gcall1(GAMEFN(a4_steprend), (uint32_t)(uintptr_t)self);   /* the render: span trampolines inside */
-#ifdef A4_HALFSPEC
-    /* the speculative state has been drawn: put everything back now, before the next race
-     * update's own bookkeeping runs (+15B1C writes the last time to race+0x44; restored at the
-     * next even half-step instead, that time went back and the steps were counted twice) */
-    spec_restore();
-#endif
 #if defined(A4_CARREC) && defined(A4_RENDREC)
     {   /* bench: after each render, the mesh context ('CRNC') and the player car ('CRNP'), with
          * the half-step count, through the recorder's emitter */
@@ -1137,6 +1131,12 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         q[0] = 0x524E5243u;          /* 'CRNR': the race object and its context */
         a4_rec_emit3((const void *)q, (const void *)race, (const void *)*(volatile uint32_t *)(race + 0x38));
     }
+#endif
+#ifdef A4_HALFSPEC
+    /* the speculative state has been drawn: put everything back now, before the next race
+     * update's own bookkeeping runs (+15B1C writes the last time to race+0x44; restored at the
+     * next even half-step instead, that time went back and the steps were counted twice) */
+    spec_restore();
 #endif
     uint32_t t1 = a4_ntick(), pre = pf[PF_MFIRST] - t0;
     if (t1 - t0 < 500u) {

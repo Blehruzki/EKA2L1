@@ -4983,3 +4983,9 @@ camera stays put while the car moves -- next).
   through; aggregates 53 windows a mode: off 1,219 renders at 96.5 ms (10.36 a second), on
   1,219 at 91.7 ms (10.91 a second), >= 90 ms 49% / 46% -- the bench at its render-bound rate
   in both (above).
+- spec3 (lockstep oracle with the restore after the render): whole steps against normal,
+  129 aligned race steps, 1 of 51 live fields differs (+15C, as before) -- exact. Its motion
+  split read 0.00 for the speculative frames: the instrument, not the drawing -- the
+  per-render recorder (A4_RENDREC) sat after the new restore and recorded the restored state.
+  Moved before the restore (the phone build, without RENDREC, compiles byte-identical:
+  checked); spec4 re-measures after the battery.
