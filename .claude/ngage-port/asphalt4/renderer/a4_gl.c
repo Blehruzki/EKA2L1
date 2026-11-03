@@ -1239,10 +1239,33 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
     /* the render call itself, and its part before the first triangle (the game's own
      * transforms and sort, which the 3D pass timer -- first triangle to composite -- misses) */
     uint32_t t0 = a4_ntick();
+#ifdef A4_CLOSECAM
+    /* bench (round 33, the owner's crash photos: the car in pieces in the close crash camera,
+     * green off): the camera pulled to 1/A4_CLOSECAM of its distance from the player car for
+     * the render and put back after, so a check build's same-frame captures (software against
+     * GPU) show what a camera that close does to the GPU picture */
+    int32_t cc_save[3]; uint32_t cc_on = 0;
+    {   uint32_t race = (uint32_t)(uintptr_t)self, pl = *(volatile uint32_t *)(race + 0x390);
+        uint32_t idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 0;
+        uint32_t car = idx < 16u ? *(volatile uint32_t *)(race + 0x394 + 4u * idx) : 0;
+        if (car) {
+            volatile int32_t *cm = (volatile int32_t *)race;
+            const volatile int32_t *c = (const volatile int32_t *)car;
+            for (int i = 0; i < 3; i++) {
+                cc_save[i] = cm[0x58 / 4 + i];
+                cm[0x58 / 4 + i] = c[1 + i] + (cm[0x58 / 4 + i] - c[1 + i]) / (A4_CLOSECAM);
+            }
+            cc_on = 1;
+        }
+    }
+#endif
 #ifdef A4_RENDGATE
     ((volatile uint32_t *)0x00447000u)[31] = 1;     /* bench: EKA2L1_WATCHGATE=44707C -- what the render reads */
 #endif
     int r = a4_gcall1(GAMEFN(a4_steprend), (uint32_t)(uintptr_t)self);   /* the render: span trampolines inside */
+#ifdef A4_CLOSECAM
+    if (cc_on) { volatile int32_t *cm = (volatile int32_t *)self; for (int i = 0; i < 3; i++) cm[0x58 / 4 + i] = cc_save[i]; }
+#endif
 #ifdef A4_RENDGATE
     ((volatile uint32_t *)0x00447000u)[31] = 0;
 #endif

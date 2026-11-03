@@ -5271,3 +5271,24 @@ the green box bigger (16x16 maybe?)"
   candidate), whether the empty frame and the drops in takedowns and crashes remain (STEPB
   [3]/[6]/[7] say what the speculation costs over the whole race), and in which mode (square
   on or off) the shadow cutting into the road and the cars sinking show.
+
+## Round 33, phone (r33, sha256 0c5138e2...)
+
+Owner, with 10 photos: "the car clipping during a crash. It started to clip before the green
+came in. The shadows seem to clip or draw wrongfully with the green off. The steering felt
+much better this time. The empty frame looks a lot like the last picture. In fact, this is
+what I was talking about. The crashes and takedowns are still sluggish."
+- Photos (r33photos/): 1-4 the crash camera ("TOO CLOSE..."), the player's car upside down --
+  1 and 2 (no mark) with black slabs reaching off the car, 3 (no mark) and 4 (mark) the car in
+  fragments over the road; 5, 6, 8, 9 the LA tunnel, no mark, the car's shadow as a grey band
+  beside and behind the car; 7 = 10 (no mark): the "empty frame" -- the skyline backdrop, the
+  car, one striped grey block and a strip of road, the scenery missing. So the empty frame and
+  the crash pieces both happen with the speculation off: renderer faults, not round 31-33's.
+- Steering: "much better" -- the render-time speculation (round 33's pacing fix).
+- Telemetry (capidx 84-91): aggregates off 1,035 renders at 89.6 ms (11.16 a second), on
+  1,058 at 79.9 (12.52); >= 90 ms 29% / 27%; light windows on 17.2-19.1 a second. Step block
+  seg0 (2,148 spans): the speculation 1,007 runs, 2.20 ms a run, longest 6 ms, none of 8 ms
+  or more; logic 0.9 ms a half-step, longest span 6 ms; m - n 0 (no slow motion). So the
+  crash and takedown slowness is not the speculation (its longest run in the whole segment is
+  6 ms) and not the logic: it is in the frame (3D, composite or the game's own render).
+  errc 0, depth bits 24, textures cached 167.
