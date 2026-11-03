@@ -1062,6 +1062,25 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
      * transforms and sort, which the 3D pass timer -- first triangle to composite -- misses) */
     uint32_t t0 = a4_ntick();
     int r = ((int (*)(void *))GAMEFN(a4_steprend))(self);
+#if defined(A4_CARREC) && defined(A4_RENDREC)
+    {   /* bench: after each render, the mesh context ('CRNC') and the player car ('CRNP'), with
+         * the half-step count, through the recorder's emitter */
+        volatile uint32_t *q = (volatile uint32_t *)(A4_GL_CREC + 0x20u);
+        uint32_t race = (uint32_t)(uintptr_t)self, pl = *(volatile uint32_t *)(race + 0x390);
+        uint32_t idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 0;
+        uint32_t car = idx < 16u ? *(volatile uint32_t *)(race + 0x394 + 4u * idx) : 0;
+        uint32_t cam = MESH->cam;
+#ifdef A4_HALFLOGIC
+        uint32_t hs = ((volatile uint32_t *)A4_GL_HSTEP)[0];
+#else
+        uint32_t hs = 0;
+#endif
+        q[0] = 0x434E5243u; q[1] = hs; q[2] = cam; q[3] = car; q[4] = q[5] = q[6] = q[7] = 0;
+        if (cam) a4_rec_emit((const void *)q, (const void *)cam);
+        q[0] = 0x504E5243u;
+        if (car) a4_rec_emit((const void *)q, (const void *)car);
+    }
+#endif
     uint32_t t1 = a4_ntick(), pre = pf[PF_MFIRST] - t0;
     if (t1 - t0 < 500u) {
         STEPB[28] += t1 - t0; STEPB[30]++;

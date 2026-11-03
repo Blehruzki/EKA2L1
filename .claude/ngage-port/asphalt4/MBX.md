@@ -4873,3 +4873,12 @@ Guesses to check: that nothing outside the cars and K is changed by the replayed
 (the oracle sees any leak); which words the renderer draws the car from (only those need
 the midpoint); the camera (if the step moves it outside these calls, the odd frame's
 camera stays put while the car moves -- next).
+- spec1 (a4_spec.exe; LOCKSTEP 1, LOCKSTEP_P 10667; 60 s): whole steps against the normal
+  build (lsn1): 213 aligned race steps, 1 of 51 live fields differs -- +15C (the 0..9 cycle,
+  written on the render side from time: the normal run's clock was the instruction count,
+  this one's the synthetic half-period; it reads back into nothing measured). Every physics
+  field identical: the speculation leaves no trace in the game's own steps.
+- Next: what the speculative frames show. A4_RENDREC: after every render the mesh context
+  (MESH->cam, the context the frame's faces were taken under) and the player car, through
+  the same emitter ('CRNC', 'CRNP' headers, the half-step count): which words move into the
+  frames after a speculative half-step, which only after whole steps (tools/rendrec.py).

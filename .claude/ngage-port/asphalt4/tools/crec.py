@@ -3,10 +3,13 @@
 # first against step k*ratio of the second (ratio 1: two runs of one build; 2: normal vs half).
 import sys, struct, collections
 def load(path):
-    d = open(path, 'rb').read(); o = 0; out = []; hdr = None
+    d = open(path, 'rb').read(); o = 0; out = []; hdr = None; skip = False
     while o + 12 <= len(d):
         pc, addr, ln = struct.unpack_from('<3I', d, o); o += 12; b = d[o:o + ln]; o += ln
-        if ln == 0x20: hdr = struct.unpack_from('<8I', b)
+        if ln == 0x20:
+            hdr = struct.unpack_from('<8I', b)
+            if hdr[0] != 0x43455243: hdr = None; skip = True     # not a step record ('CREC')
+            else: skip = False
         elif hdr is not None:
             # a block entered twice records twice (the emulator re-entering it): one per step
             if not out or out[-1][0][1] != hdr[1]:
