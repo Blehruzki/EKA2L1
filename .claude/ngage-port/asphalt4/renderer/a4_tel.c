@@ -53,7 +53,11 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_MESH, PF_MKEYS, PF_MDRAW, PF_MLOST,   /* A4_MESH: this window's list triangles drawn, its draw calls, its ticks, triangles lost */
        /* A4_STEPTIME (round 30): this window's logic ticks, steps, timed spans, +12D5A ticks;
         * then the open span's mark, its counts (n | m << 8), its +12D5A and +15A52 ticks and calls */
-       PF_TLOGIC, PF_NSTEP, PF_NSPAN, PF_TCAM, PF_MLOGIC, PF_LSTEP, PF_SCAM, PF_SMAIN, PF_NMAIN, PF_TSPEC, PF_MSPEC, PF_N };
+       PF_TLOGIC, PF_NSTEP, PF_NSPAN, PF_TCAM, PF_MLOGIC, PF_LSTEP, PF_SCAM, PF_SMAIN, PF_NMAIN, PF_TSPEC, PF_MSPEC,
+       PF_PREVHAD, PF_HELD,   /* A4_DROPHOLD (round 37): the last 3D frame's triangles; frames held back | no-render presents held << 16 (totals) */
+       PF_HOLDCALL, PF_HOLDN, /* A4_DROPHOLD: the held present's call site; presents and framework posts held after it */
+       PF_FWHELD,             /* A4_DROPHOLD: framework posts (+6B4) held (total) */
+       PF_N };
 #define EFILE_WRITE 0x200u
 #define DES(len) ((1u<<28) | ((uint32_t)(len)))  /* TPtrC iLength: EPtrC(1)<<28 | len */
 
@@ -69,6 +73,7 @@ struct tel {
     int32_t  dbg_wrc;            /* diag: RFile::Write result (last) */
     uint32_t actframes;          /* active-3D frames seen (TEL_SKIP gating) */
     uint32_t fillcap;            /* A4_FILLCAP: GPU fills counted at the last capture */
+    uint32_t dropcap;            /* A4_DROPCAP: drop frames counted at the last capture */
     uint8_t  rfs[32];
     uint8_t  rfile[TEL_RING][32];
 };
@@ -139,12 +144,27 @@ void a4_tel_tick(uint32_t had)
      * draws no 3D, so a cycling ring (TEL_CYCLE) keeps the last race captures before
      * the player pauses to quit instead of filling with menu frames. (The old gate,
      * g[8] = last_prims, stays high through a pause.) TEL_EVERY counts these. */
+#ifdef A4_DROPCAP
+#ifndef A4_SLOWREC
+#error "A4_DROPCAP reads the A4_SLOWREC drop count"
+#endif
+    /* bench/phone instrument: capture only the frames A4_SLOWREC counted as drop
+     * frames (triangles halved or worse against the render before), which sit under
+     * the 100-triangle gate below. slow_rec runs before this tick in a4_gl_frame. */
+    {   uint32_t dc = ((volatile uint32_t *)0x00455800u)[18];
+        if (!had || dc == t->dropcap) return;
+        t->dropcap = dc;
+        t->actframes++;
+    }
+#else
     if (had < 100u) return;
     t->actframes++;
+#endif
 #ifdef TEL_SKIP
     if (t->actframes < TEL_SKIP) return;         /* skip early race: capture deeper, at speed */
 #endif
-#ifdef A4_FILLCAP
+#if defined(A4_DROPCAP)
+#elif defined(A4_FILLCAP)
     /* bench instrument: capture the renders that drew a solid fill on the GPU (the
      * letterbox bars), at most one in 8 renders, instead of every TEL_EVERY */
     if (A4_PERF[PF_FILL] == t->fillcap || (t->actframes & 7u) != 0) return;

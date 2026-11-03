@@ -34,6 +34,10 @@
 #include <system/epoc.h>
 
 #include <fstream>
+#include <string>
+#include <cstdio>
+#include <cpu/arm_interface.h>
+#include <kernel/process.h>
 
 namespace eka2l1::dispatch {    
     void screen_post_transferer::construct(ntimer *timing) {
@@ -268,6 +272,68 @@ namespace eka2l1::dispatch {
                 const std::size_t pixels_per_line = (screen_pitch != tight_screen_pitch)
                     ? screen_pitch / sizeof(std::uint32_t)
                     : 0;
+
+                // EKA2L1_POSTDUMP=path[:first[:count]]: append every direct-screen post
+                // from post `first` (default 0) on, at most `count` of them (default
+                // 4000), to `path` -- a 32-byte header {'DTSP', post, host ms, width,
+                // height, pitch, bpp, caller} and the framebuffer as posted. It records what
+                // reaches the panel, one entry per post, where a timed snapshot of guest
+                // memory catches frames half drawn.
+                {
+                    static std::ofstream dump_file;
+                    static std::uint64_t dump_post = 0, dump_first = 0, dump_count = 0;
+                    static const bool dump_on = [&]() {
+                        const char *v = std::getenv("EKA2L1_POSTDUMP");
+                        if (!v || !*v)
+                            return false;
+                        std::string spec(v), path = spec;
+                        dump_count = 4000;
+                        const std::size_t c1 = spec.find(':');
+                        if (c1 != std::string::npos) {
+                            path = spec.substr(0, c1);
+                            dump_first = std::strtoull(spec.c_str() + c1 + 1, nullptr, 10);
+                            const std::size_t c2 = spec.find(':', c1 + 1);
+                            if (c2 != std::string::npos)
+                                dump_count = std::strtoull(spec.c_str() + c2 + 1, nullptr, 10);
+                        }
+                        dump_file.open(path, std::ios::binary | std::ios::trunc);
+                        return dump_file.is_open();
+                    }();
+                    const std::uint64_t post = dump_post++;
+                    if (dump_on && post >= dump_first && post - dump_first < dump_count) {
+                        // word 7: the first word on the guest stack (of the first 1024) that is
+                        // an odd address in the guest image range EKA2L1_POSTDUMP_CODE=lo:hi
+                        // (hex) -- a Thumb return address naming the image's call that posted
+                        // -- or the guest LR when the range is unset or nothing matches
+                        static std::uint32_t code_lo = 0, code_hi = 0;
+                        static const bool code_set = [&]() {
+                            const char *r = std::getenv("EKA2L1_POSTDUMP_CODE");
+                            return r && std::sscanf(r, "%x:%x", &code_lo, &code_hi) == 2;
+                        }();
+                        arm::core *cpu = kern->get_cpu();
+                        std::uint32_t caller = cpu ? cpu->get_lr() : 0;
+                        if (code_set && cpu && kern->crr_process()) {
+                            const std::uint32_t sp = cpu->get_sp();
+                            for (std::uint32_t i = 0; i < 1024; i++) {
+                                const std::uint32_t *w = reinterpret_cast<const std::uint32_t *>(
+                                    kern->crr_process()->get_ptr_on_addr_space(sp + i * 4));
+                                if (!w)
+                                    break;
+                                if ((*w & 1) && *w >= code_lo && *w < code_hi) {
+                                    caller = *w;
+                                    break;
+                                }
+                            }
+                        }
+                        const std::uint32_t hdr[8] = { 0x50535444u, static_cast<std::uint32_t>(post),
+                            static_cast<std::uint32_t>(common::get_current_utc_time_in_microseconds_since_epoch() / 1000),
+                            static_cast<std::uint32_t>(mode_info.size.x), static_cast<std::uint32_t>(mode_info.size.y),
+                            static_cast<std::uint32_t>(framebuffer_pitch), bits_per_pixel, caller };
+                        dump_file.write(reinterpret_cast<const char *>(hdr), sizeof(hdr));
+                        dump_file.write(data_ptr, framebuffer_pitch * mode_info.size.y);
+                        dump_file.flush();
+                    }
+                }
 
                 std::uint64_t next_vsync_us = 0;
                 scr->vsync(sys->get_ntimer(), next_vsync_us);

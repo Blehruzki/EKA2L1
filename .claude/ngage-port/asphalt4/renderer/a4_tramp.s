@@ -320,3 +320,25 @@ a4_hstep_tramp:
 1:      add     lr, lr, #0x17C
         bx      lr
 #endif
+
+#ifdef A4_DROPHOLD
+@ Round 37: the framework's own post. The race loop calls the framework frame routine
+@ +606 after its present (+9BE), and +606 ends with [r4+0x3C]->vtbl[0x34](this, 0) at
+@ +6B2/+6B4 (movs r1,#0 ; blx r2), which puts the back buffer on the screen whenever
+@ DoPresent's present did not (the bench's trace at a held frame: no +1EA, then +6AC).
+@ Those 4 bytes become a BLX here. a4_fw_hold() says whether a frame is being held
+@ (A4_DROPHOLD in a4_gl.c): if so the call is skipped -- +606 returns at +6B6 and its
+@ caller does not read r0 (+9C2: ldrb r0,[r7,#8]) -- else it is made as the game made
+@ it, a tail call with lr = +6B6|1. r0 (this) and r2 (the method) survive our call.
+        .arm
+        .align  2
+        .global a4_fwpost_tramp
+a4_fwpost_tramp:
+        push    {r0, r2, r3, lr}
+        bl      a4_fw_hold
+        cmp     r0, #0
+        pop     {r0, r2, r3, lr}
+        bxne    lr                  @ held: back to +6B6, the post not made
+        movs    r1, #0              @ displaced +6B2: movs r1,#0
+        bx      r2                  @ displaced +6B4: blx r2, as a tail call (returns to +6B6)
+#endif

@@ -5407,3 +5407,69 @@ when green came in, looked smoother. The car shadow clipping happened regardless
   record adds, to the lossy ring, any frame with half the triangles of the 3D frame before or
   fewer (from over 600), with its breakdown and the triangles before it (A4_SLOWREC word 18
   counts them), and keeps the present/render counters (words 19-31).
+- Candidate r36 (C35, r35's flags; the record grows the drop-frame entries above; sha256
+  aa391f02057e5d62a7842c526306956256a961ec72965c9d2e2a61c2f86768fe, 803,552 bytes; no
+  0xDEADBEEF; +3A15C B510 0004). Battery: telerun3 230 s framestat 3266, faults 1 (the boot
+  fault); steering race 90 s framestat 1743, faults 1; racemenu framestat 3074, faults 1, 18
+  shots; mark framestat 942, faults 1. Its record: drop frames 3 -- (23 ms, 70 triangles,
+  list 0, before 1,378), (75 ms, 1,048, before 2,208), (25 ms, 113, list 0, before 1,879);
+  real presents 2,932 (8 with no render since the last, 10 with no 3D), skipped 5,862,
+  renders 2,924, none skipped by the half-step. Not sent: superseded by round 37 below.
+
+## Round 37 (bench): the empty frame, reproduced and traced
+
+- A4_DROPCAP (a4_tel.c, new): captures only the frames A4_SLOWREC counts as drop frames
+  (the capture gate otherwise skips any frame under 100 triangles, where these sit).
+  r36d (C35 + DROPCAP, 230 s): 3 captures -- the race intro's cut (991 of 2,269) and two
+  EMPTY FRAMES, laps 2 and 3, the same place on the hill: the HUD, the car, the near road
+  and grass, the city skyline where the hill's terrain should be, no terrain, trees or
+  houses (48 and 27 triangles against 1,550 and 1,660 the frame before; the game's render
+  call 19 and 15 ms, its part before the first triangle 4 and 3 ms, against ~120 and ~50).
+  The owner's photo 7, on the bench.
+- Not the speculation: r36doff (C35off, mode 1070, + DROPCAP): the same empty frame, laps 1
+  and 2 (62 of 1,384 and 78 of 1,320).
+- EKA2L1_POSTDUMP (emulator, new; EMU_PATCHES.md): every direct-screen post, as posted,
+  to a file -- what reaches the panel, where MEMSNAP caught half-drawn frames. The stock
+  game (baseline exe, 230 s, 2,460 posts, 3 laps): the hill located in each lap by the HUD
+  minimap's track line (mapmatch.py: posts 953, 1646, 2340, ~76 s apart); the frames there
+  all whole. A first one-frame-glitch finder (frame unlike both neighbours) missed the
+  green build's own empty frame (glpd: posts 1205-1206, posted twice, the neighbours
+  themselves far apart at speed) -- rule 4, test the test: thrown out; tools/postfind.py
+  instead finds each drop capture's picture among the posts (0.00 = that very frame).
+  The stock result does not exclude the stock game: the empty frame is narrower than one
+  frame's travel (never two empty renders in a row; our builds hit it in about half the
+  laps: r36d 2 of 3, glpd 1 of 3, r36doff 2 of 3), so 0 of 3 laps at stock's rate is
+  weak.
+- A4_DROPHOLD (a4_gl.c, new): a real present whose 3D is under an eighth of the 3D frame
+  before (from over 600) is not made. The empty frames measured 0.002-0.06 of the frame
+  before; every legitimate cut seen 0.33-0.47 (the intro, the takedown and crash cameras:
+  r37d captures 1-5). r37d: held once (43 of 1,608) -- and the frame still reached the
+  panel, posted twice (posts 1146-1147). Two causes, found one at a time:
+  1. The game also presents from the same site (+9A6) with no render since the last
+     present (r37d: 159 times); that posts the back buffer again, still holding the frame.
+     r37e holds those too (same call site, bounded): held once (77 of 1,341), 0 such
+     presents after it -- and post 2275 is the held frame again.
+  2. EKA2L1_POSTDUMP_CODE (new: the first game-image Thumb return address on the guest
+     stack at each post) named two posting sites, +1EF (DoPresent's present call +1EC) and
+     +6B7; the held frames' posts came from +6B7. (The attribution reads stale stack words
+     too: r37f's lap 1 is all +6B7, so it is a hint, not a count.) The trace settled it:
+     EKA2L1_PCTRACE_REGS at 13 PCs in a ring dumped at a4_drop_mark (a marker the hold
+     calls; A4_PRINTSYMS prints its address), r37g: each race iteration is update +1670E,
+     render +12992, DoPresent's present +1EA, the race loop's +9A6 returning, then the
+     framework frame routine +606 called from +9BE (state 0x0C), its post +6AC/+6B4
+     ([r4+0x3C]->vtbl[0x34](this, 0)), then the two re-presents +950/+97E. At the hold:
+     no +1EA (our skip) -- then +6AC: the framework posted the back buffer itself; the next
+     iteration (no render) the same. +606 is the framework's frame: clear the back buffer
+     unless a flag says not, the game's draw (vtbl 0x1C) unless the state is 0x1E, then the
+     post unless the state is 0x1E and [g+0xCDC0+0x30] byte 10 is set (+4B848).
+- r37h: +6B2/+6B4 (movs r1,#0 ; blx r2) become a BLX to a4_fwpost_tramp (a4_tramp.s),
+  which skips the post while a frame is held (a4_fw_hold, bounded with the held presents
+  at 8) and otherwise makes it as a tail call; +606's caller does not read its result
+  (+9C2 ldrb r0,[r7,#8]). Bench r37h (with the trace, 230 s): no empty frame that run (0
+  held, 1 drop frame: a cut, 446 of 1,349, posted as it should be). Rerun r37i without the
+  trace: in flight.
+- Rule 4, the guesses: the cause of the empty render itself is NOT found -- the theory is
+  the game's own visibility failing for a camera inside a narrow stretch of the hill; the
+  hold hides it, it does not fix it. The 1/8 threshold rests on 6 empty frames and 7 cuts
+  seen. What +6B4's method does besides posting is not read; it is skipped only for a held
+  frame (1-2 times a lap at most).

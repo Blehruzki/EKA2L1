@@ -227,12 +227,19 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_MESH, PF_MKEYS, PF_MDRAW, PF_MLOST,   /* A4_MESH: this window's list triangles drawn, its draw calls, its ticks, triangles lost */
        /* A4_STEPTIME (round 30): this window's logic ticks, steps, timed spans, +12D5A ticks;
         * then the open span's mark, its counts (n | m << 8), its +12D5A and +15A52 ticks and calls */
-       PF_TLOGIC, PF_NSTEP, PF_NSPAN, PF_TCAM, PF_MLOGIC, PF_LSTEP, PF_SCAM, PF_SMAIN, PF_NMAIN, PF_TSPEC, PF_MSPEC, PF_N };
+       PF_TLOGIC, PF_NSTEP, PF_NSPAN, PF_TCAM, PF_MLOGIC, PF_LSTEP, PF_SCAM, PF_SMAIN, PF_NMAIN, PF_TSPEC, PF_MSPEC,
+       PF_PREVHAD, PF_HELD,   /* A4_DROPHOLD (round 37): the last 3D frame's triangles; frames held back | no-render presents held << 16 (totals) */
+       PF_HOLDCALL, PF_HOLDN, /* A4_DROPHOLD: the held present's call site; presents and framework posts held after it */
+       PF_FWHELD,             /* A4_DROPHOLD: framework posts (+6B4) held (total) */
+       PF_N };
 #define PFF_2D 1u        /* a composite ended this frame and its 2D is being timed */
 #define PFF_PRES 2u      /* the game's present call is being timed */
 #define PFF_WROTE 4u     /* a4_tel.c wrote a capture since the last render began */
 #define PFF_LOGIC 8u     /* A4_STEPTIME: a logic span is open (+15B1C returned, +12992 not yet called) */
 _Static_assert(PF_N <= 60, "A4_PERF holds 64 words (0x412C00-0x412D00); 60-63 are A4_MESHCHECK's");
+#if defined(A4_DROPHOLD) && !defined(A4_SKIPREPRES)
+#error "A4_DROPHOLD holds a frame back in the A4_SKIPREPRES present path"
+#endif
 #define AB_FLUSH 1u      /* glFlush after the frame's last batch (start the tile render) */
 #define AB_NATIVE 2u     /* read back in the implementation's own pair (OES_read_format): BGRA
                           * on the N95 (round 10), RGB565 on a device that names that */
@@ -4409,6 +4416,29 @@ static void slow_rec(uint32_t had)
  * GPU, then start the next frame. Returns 1 when the GPU presented the frame
  * itself (A4_WINDOW), so the detour skips the game's own present -- the 565 ->
  * 32-bit convert into the hardware bitmap that would paint over the window. */
+#ifdef A4_DROPHOLD
+/* round 37: called when a frame is held back -- a fixed block entry for the bench's
+ * EKA2L1_PCTRACE_DUMPAT (its address: A4_PRINTSYMS=a4_drop_mark at build time) */
+__attribute__((noinline)) void a4_drop_mark(uint32_t had, uint32_t prev)
+{
+    __asm__ volatile("" : : "r"(had), "r"(prev) : "memory");
+}
+
+/* round 37: a4_fwpost_tramp (a4_tramp.s, at the framework's post +6B2) asks whether a
+ * frame is held: 1 skips the framework's post. The bench's trace at a held frame:
+ * DoPresent's present skipped, then the framework routine +606 posted the back buffer
+ * itself (+6AC/+6B4), and again after the next present that brought no render -- so the
+ * held frame reached the screen twice anyway. Bounded by the same count as the presents
+ * held after a hold (PF_HOLDN), so a hold can never stop the screen for long. */
+int a4_fw_hold(void)
+{
+    if (!A4_PERF[PF_HOLDCALL] || A4_PERF[PF_HOLDN] >= 8u) return 0;
+    A4_PERF[PF_HOLDN]++;
+    A4_PERF[PF_FWHELD]++;
+    return 1;
+}
+#endif
+
 int a4_gl_frame(uint32_t fps)
 {
     (void)fps;
@@ -4479,14 +4509,57 @@ int a4_gl_frame(uint32_t fps)
         uint32_t r1 = (uint32_t)(uintptr_t)&a4_rep1 + (uint32_t)a4_rep1;
         uint32_t r2 = (uint32_t)(uintptr_t)&a4_rep2 + (uint32_t)a4_rep2;
         if ((A4_PERF[PF_MODE] & AB_SKIPREP) && (caller == r1 || caller == r2)) { presented = 1; A4_PERF[PF_SKIPPED]++; }
+#ifdef A4_DROPHOLD
+        /* round 37: the empty frame (the owner's photo 7; the bench's posts 1205-1206 of
+         * glpd): on the LA hill one render in about two laps draws the car, the road and the
+         * backdrop and none of the terrain -- 2 to 78 triangles against 1,300 to 1,700 in
+         * the frames either side, the game's own render call short (15-19 ms, its part
+         * before the first triangle 2-4 ms), with the speculation on and off alike. Its
+         * cause is NOT found: the theory is the game's own visibility failing for a camera
+         * inside a narrow stretch (under one frame's travel: never two empty renders in a
+         * row), which a faster frame rate samples more often; the stock game passed the
+         * hill 3 times on the bench without one, which does not exclude it at its rate.
+         * Whatever the cause, a real present whose 3D collapsed below an eighth of the 3D
+         * frame before it (from over 600) is not made: the screen keeps the last frame one
+         * period longer. A legitimate cut is at most one frame late -- the next frame
+         * compares with this one and goes out.
+         * The game also presents from the same site with no render since the last present
+         * (159 times in r37d's race, a render the half-step skipped), posting the back
+         * buffer again -- which still holds the held frame: r37d held it and posted it
+         * twice that way (posts 1146-1147). So the presents after a hold that bring no
+         * render are held too, from that call site only (a menu presents from elsewhere
+         * and is never held), until a render brings a frame of its own -- and with them
+         * the framework's own post after each (a4_fw_hold); at most 8 of the two together
+         * (a held frame then a render-less iteration is 4). */
+        if (!presented) {
+            if (had) {
+                uint32_t prev = A4_PERF[PF_PREVHAD];
+                A4_PERF[PF_PREVHAD] = had;
+                A4_PERF[PF_HOLDCALL] = 0;
+                if (prev > 600u && had * 8u < prev) {
+                    presented = 1; A4_PERF[PF_HELD]++;
+                    A4_PERF[PF_HOLDCALL] = caller; A4_PERF[PF_HOLDN] = 0;
+                    a4_drop_mark(had, prev);
+                }
+            } else if (A4_PERF[PF_HOLDCALL]) {
+                if (caller == A4_PERF[PF_HOLDCALL] && A4_PERF[PF_HOLDN] < 8u) { presented = 1; A4_PERF[PF_HOLDN]++; A4_PERF[PF_HELD] += 0x10000u; }
+                else A4_PERF[PF_HOLDCALL] = 0;
+            }
+        }
+#endif
 #ifdef A4_SLOWREC
         {   /* round 35 (the owner's empty frame on the hill; the bench's presented frames show a
              * fresh backdrop over the last frame, the top HUD gone): the game's presents that
              * reach the screen with no render since the last one, and their callers. 0x455800
              * [20] real presents, [21] of them with no render since the last real one, [22]
              * with no 3D, [23] presents skipped, [24] renders, [25] renders skipped (half-step),
-             * [26..31] three (caller, count) of the no-render real presents */
+             * [26..29] two (caller, count) of the no-render real presents, [30] A4_DROPHOLD's
+             * frames held back, [31] its framework posts held (round 37; a third caller before) */
             volatile uint32_t *S = (volatile uint32_t *)0x00455800u;
+#ifdef A4_DROPHOLD
+            S[30] = A4_PERF[PF_HELD];   /* round 37: frames held back (words 30-31 were a third caller) */
+            S[31] = A4_PERF[PF_FWHELD]; /* round 37: framework posts held */
+#endif
             if (presented) S[23]++;
             else {
                 S[20]++;
@@ -4494,8 +4567,8 @@ int a4_gl_frame(uint32_t fps)
                 if (!S[19]) {
                     S[21]++;
                     uint32_t k;
-                    for (k = 0; k < 3u; k++) if (S[26 + 2 * k] == caller || !S[26 + 2 * k]) break;
-                    if (k < 3u) { S[26 + 2 * k] = caller; S[27 + 2 * k]++; }
+                    for (k = 0; k < 2u; k++) if (S[26 + 2 * k] == caller || !S[26 + 2 * k]) break;
+                    if (k < 2u) { S[26 + 2 * k] = caller; S[27 + 2 * k]++; }
                 }
                 S[19] = 0;
             }

@@ -202,6 +202,9 @@ def build_blob(link_addr, tmp, clean=False, gl=False):
     for line in subprocess.check_output(['llvm-nm', elf], text=True).splitlines():
         p = line.split()
         if len(p) == 3: syms[p[2]] = int(p[0], 16)
+    for name in filter(None, os.environ.get('A4_PRINTSYMS', '').split(',')):
+        # bench aid: a symbol's run address (code at 0x70000000 on the bench's RM-320)
+        print('sym    %s +%06X (0x%08X)' % (name, syms[name] - LINK_BASE, 0x70000000 + syms[name] - LINK_BASE))
     return bytearray(open(binf, 'rb').read()), syms
 
 def veneer(code, off, target_link):
@@ -408,6 +411,13 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == want, 'half motion +%06X: holds %04x %04x, expected %04x %04x' % ((off,) + have + want)
             blx_insert(code, off, syms[sym])
             print('HMOT   +%06X -> %s' % (off, sym))
+    if '-DA4_DROPHOLD' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+        # round 37: the framework's own post (+606's [r4+0x3C]->vtbl[0x34](this, 0)), held
+        # with a held frame (a4_fwpost_tramp, a4_fw_hold)
+        have = struct.unpack_from('<HH', code, 0x6B2)
+        assert have == (0x2100, 0x4790), 'drop hold: +6B2 holds %04x %04x' % have
+        blx_insert(code, 0x6B2, syms['a4_fwpost_tramp'])
+        print('HOLD   +0006B2 -> a4_fwpost_tramp +%06X (the framework\'s post)' % (syms['a4_fwpost_tramp'] - LINK_BASE))
     if os.environ.get('A4_HALFSTEP'):
         # round 31, the faster-step work: the logic step halved, 21333 -> 10667 units
         # (85.33 -> 42.67 ms). +52B80's divide (t / 21333 for the real-time count m): its

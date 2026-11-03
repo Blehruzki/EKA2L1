@@ -13,7 +13,9 @@ cap, d, f = best
 S = struct.unpack_from('<416I', d, OFF)
 print('%s capidx %d: magic %08x, 3D frames seen %d' % (f.split('/')[-1], cap, S[0], S[1]))
 print('presents: real %d (no render since the last real one %d, no 3D %d), skipped %d; renders %d, skipped (half-step) %d' % tuple(S[20:26]))
-if S[26]: print('  callers of the no-render real presents:', ['0x%08X x%d' % (S[26 + 2*k], S[27 + 2*k]) for k in range(3) if S[26 + 2*k]])
+# words 30-31 were a third caller up to round 36; from round 37 A4_DROPHOLD's frames held back and framework posts held
+if S[26]: print('  callers of the no-render real presents:', ['0x%08X x%d' % (S[26 + 2*k], S[27 + 2*k]) for k in range(2) if S[26 + 2*k]])
+print('frames held back (A4_DROPHOLD: 3D under an eighth of the frame before; 0 in a build without it): %d, and %d no-render presents and %d framework posts after them' % (S[30] & 0xFFFF, S[30] >> 16, S[31]))
 cols = 'ms 3D hook comp 2D pres logic spec rcall pre tris list lost mode nodraw stale frame prevtri'.split()
 def show(rows, title):
     print(title); print('  ' + ' '.join('%6s' % c for c in cols))
