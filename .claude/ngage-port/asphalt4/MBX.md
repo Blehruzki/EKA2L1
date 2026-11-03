@@ -4521,3 +4521,53 @@ the platform's source (graphics/.../screendriver/sbit/Cdsb.cpp, SCDVU.DEF, WS322
   step). Putting one frame on screen costs ~20 ms now (readback and composite 10-13, the
   game's 2D 6, present 2.5). A made frame between steps fits only light scenes until that
   cost falls.
+- Slots between steps (round 29 phone headers [44] skipped, [45] presents, 23 renders a
+  window): 70-398 re-presents skipped a window = 3-17 a render, the loop going round 1.5
+  (heaviest, capidx 330) to 8.7 times (lightest, 333) a step. A frame made between steps
+  has somewhere to go in every window; whether it has the time is the budget above.
+- Tearing: below us (the driver), so the only lever is what consecutive frames differ by.
+  A tear shows the seam between two frames; at 11.72 new frames a second each jumps ~85 ms
+  of motion, so the seam is as wide as that. Frames made between steps halve the jump and
+  the seam with it. An EGL window swap is the other door (sync unknown on the MBX driver;
+  the window path's DSA fight, rounds 1-2, still unsolved) -- kept for later.
+
+## Bench: does a list face keep its pointer from one render to the next? (phase A, first look)
+
+Not a repeat: the list dumps of rounds 28-29 (A4_MESHDUMP) were single frames; nothing has
+compared two. Build: C29's flags with TEL_EVERY=1, A4_ABMODE=1070u (the list on in every
+render, no A/B), A4_MESHSTATE A4_MESHDUMP A4_MESHCHECK A4_DUALCAP (the dump rides the dual
+capture and the check build -- the first try without them wrote no dump: logged so it is
+not mistaken for a result). telerun3 50 s, 16 consecutive renders in two rings (s->frames
+steps by 3 a render: the loop's three present hooks). tools/faceid.py.
+- No pointer twice in one frame. Of a render's list faces, 55-90% of the pointers come back
+  in the next render, most with the same texture and texcoords (the same polygon, by those
+  two); 10-25% come back holding another texture (the slot reused), the rest are new.
+- Is the motion of a returning polygon real? A render here carries 1-5 logic steps (the
+  capture's own load), so per triple of renders one ratio r = steps(b->c)/steps(a->b) is
+  fitted and each polygon tested for d2 ~ r*d1 on all nine coordinates. 5 of the 8 triples
+  that had motion: every matched polygon fits (r 2.02, 1.72, 0.36, 0.60, 2.00; 97-573
+  polygons each). The other 3 (r -0.96, 0.29, ~0): 11-19% fit -- frames where the camera
+  turned or cut (the last one is the race-end camera, |z| median jumping 340 -> 7767); one
+  ratio cannot describe a turn, so these say nothing either way.
+So the pointer names the polygon for the faces that keep it, at least on straight motion
+-- plausible, not settled. Missing to settle it: renders without the capture's load and
+the step count of each render (N at +15B1C) in the dump, and a track with turns.
+
+## Plan: frames between steps (owner: more fluid, less tearing)
+
+The only way past 11.72 new pictures a second without touching the game's physics.
+Each made frame: the last frame's triangles drawn again, every polygon moved on by its
+own motion between the last two frames (extrapolated half a step), then the HUD of the
+last frame laid over, presented in one of the skipped re-present slots at mid-step.
+- Phase A (bench): identity. A polygon must be recognisable from one frame to the next
+  for its motion to be known. Face pointers across consecutive renders (faceid.py).
+- Phase B (bench): keep the frame's geometry (list faces in camera space already; the
+  table's faces as screen x, y and depth), and the HUD (the backbuffer before and after
+  the game's 2D, their difference the HUD mask).
+- Phase C (bench, then phone): draw the made frame at mid-step from a skipped slot,
+  only when the last render left the time (light scenes first); a telemetry split for
+  made frames (count, cost) and an A/B (made frames on/off) per window.
+Guesses: the made frame's cost on the phone (~20 ms: a draw, the readback, the HUD and the
+present -- from round 29's items, not measured as a whole); extrapolation errors where
+motion changes inside a step (a crash, a sharp turn) -- a polygon overshoots for one made
+frame; polygons new in a frame (no motion known) drawn where they are.
