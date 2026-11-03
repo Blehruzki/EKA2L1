@@ -5158,3 +5158,29 @@ the speedometer looked normal." (The mark they watched was r31c's 1 x 4 strip, a
   period halved m counts half-periods, so +1300C would run twice as often. Latent: the
   round 31 phone race had m - n = 0 over 2,506 updates (both segments, crashes included),
   as had every bench race. Not fixed; written down.
+
+## Round 32 candidate (r32): the speculative frames, corrected
+
+r31c + the opponents' physics hooked (+146FC, +146D6), the midpoints moved to what the render
+draws (cars: position, heading +678 on 2048, wheels +020 on 4096, +7D0 +7F8 +A20 +A24 +A7C;
+camera: position, angles on 2048, +0x70), the A/B mark a 4x4 square at the top right drawn
+after the HUD, the speculation timed into header [63]. C31's flags unchanged (A4_ABCYCLE10:
+AB_HSPEC flips every 23 renders; green square = on).
+- Exact binary r32 (sha256 97b3ee20e90086275f283e61100c66dcb2fbfdee1f424735511d0e7f7322b00b,
+  800,648 bytes; no 0xDEADBEEF; +3A15C bytes B510 0004; no bench flag in C31).
+- Battery on that binary: telerun3 230 s: framestat 2916, faults 1 (the boot fault); half-steps
+  a second 23.0-24.2 in every window (real time); the speculation 2.1-3.0 ms a run on the
+  bench (host time), longest 6 ms; aggregates off 1,200 renders at 94.5 ms, on 1,219 at 91.1
+  (the bench render-bound). Steering race (steerrun.sh, 90 s, '4'/'6' into walls): framestat
+  1540, faults 1; the speculation 1.4-2.1 ms a run, longest 3. racemenu (30 s race, 17 keys):
+  framestat 3009, faults 1; the 18 screens drawn, non-black counts matching r31c's run screen
+  for screen (pause menu, quit dialog, main menu, career, car browser). Mark (markrun): an
+  11 x 11 window-pixel green square (4 x 4 game pixels) at the top right in 13 of 24 shots,
+  absent in the rest.
+- What the phone round can say that the bench cannot: how the corrected frames look and feel
+  (opponents, traffic, steering, crashes), the speculation's cost on the ARM11 (header [63]:
+  per run and the longest, in crashes too), and whether the frame drop on crashes remains.
+- Guesses still in it (rule 4): moving things outside the car slots (if any: police
+  helicopters, props) still step at 11.72 Hz; traffic was parked on the bench route, so its
+  share was never measured moving (same class and physics loop as the opponents); libc's
+  word written in a collision replay (errno or rand); slow motion (latent, above).
