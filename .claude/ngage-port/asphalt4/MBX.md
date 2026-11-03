@@ -5375,3 +5375,9 @@ when green came in, looked smoother. The car shadow clipping happened regardless
   constantly"; green "looked smoother"). C35 = C31's flags without A4_ABCYCLE10 and
   A4_ABMARK, plus A4_SLOWREC: the mode fixed at 3118 (the speculation, the list, lean,
   reorder, the re-presents skipped, native read), no mark (it would mark every list frame).
+- Candidate r35 (C35; sha256 1cd950fd7f8f957d41d4ceed960c8912badccd19ebc0e66a5754a55ab9413388,
+  803,288 bytes; no 0xDEADBEEF; +3A15C B510 0004). Battery on it: telerun3 230 s framestat
+  3006, faults 1 (the boot fault), mode 3118 in every window, the speculation 2.8-4.0 ms a
+  run in every window (2,592 runs in seg0, longest 19 ms on the bench host, 6 of 8 ms or
+  more), half-steps 23.2-23.8 a second; steering race 90 s framestat 1589, faults 1; racemenu
+  framestat 3244, faults 1, the screens as r34's; no green square in 24 of 24 shots.
