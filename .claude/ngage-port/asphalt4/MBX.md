@@ -5389,3 +5389,21 @@ when green came in, looked smoother. The car shadow clipping happened regardless
   frames themselves on the hill (EKA2L1_MEMSNAP of the surface, its PC range narrowed to
   a4_gl_frame -- 0x700BEFAC..0x700BF5B8 in r35 -- so each snapshot is a finished frame;
   snaprun.sh, every 100 ms).
+- The hill (bench, r35): the race passes it each lap (laps ~70 s on the bench: "lap 3/3" by
+  ~200 s). Window screenshots every 0.25 s through a whole lap (winshots.sh, 240 shots): the
+  tunnel, the climb past "WHAT A JUMP!", a takedown camera, lap 2, the green climb and the
+  coned start area -- every frame whole. The empty frame is not reproduced on the bench.
+- A measurement thrown out (rule 4, test the test): EKA2L1_MEMSNAP_AT (new, emulator: a
+  snapshot at the entry of the block at exactly one PC) at a4_gl_frame, then at a4_pres_tramp
+  (which a skipped present also reaches: the detour returns past the present call into +1EE),
+  then at +1EA (reached only by a real present) gave 85% "skyline frames" -- the backdrop over
+  the last frame, no top HUD -- with the speculation on and off alike, while the telemetry's
+  own capture of the surface at the same place (inside a4_gl_frame) and the window's
+  screenshots show whole frames. The snapshots do not show what is presented; why is not
+  found. Counting instead (A4_SLOWREC words 19-31): 851 real presents in 60 s, one without a
+  render since the last (the race's first), no render skipped.
+- The owner's photo 7, read again: the HUD, the car and the road are drawn, the terrain, the
+  trees and the houses are not -- both list and table classes missing, so not one path. r36's
+  record adds, to the lossy ring, any frame with half the triangles of the 3D frame before or
+  fewer (from over 600), with its breakdown and the triangles before it (A4_SLOWREC word 18
+  counts them), and keeps the present/render counters (words 19-31).

@@ -1183,7 +1183,11 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
     {   volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
         if (!h[1]) {                 /* no whole step since the last render: skipped, its half-steps counted */
             if (pf[PF_FLAGS] & PFF_LOGIC) pf[PF_NSTEP] += pf[PF_LSTEP] & 0xFFu;
-            pf[PF_FLAGS] &= ~PFF_LOGIC; return 0; }
+            pf[PF_FLAGS] &= ~PFF_LOGIC;
+#ifdef A4_SLOWREC
+            ((volatile uint32_t *)0x00455800u)[25]++;  /* a render skipped (no half-step since the last) */
+#endif
+            return 0; }
         h[1] = 0; }
 #endif
     if (pf[PF_FLAGS] & PFF_LOGIC) {
@@ -1265,6 +1269,9 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
     ((volatile uint32_t *)0x00447000u)[31] = 1;     /* bench: EKA2L1_WATCHGATE=44707C -- what the render reads */
 #endif
     int r = a4_gcall1(GAMEFN(a4_steprend), (uint32_t)(uintptr_t)self);   /* the render: span trampolines inside */
+#ifdef A4_SLOWREC
+    ((volatile uint32_t *)0x00455800u)[24]++; ((volatile uint32_t *)0x00455800u)[19] = 1;   /* renders; one since the last present */
+#endif
 #ifdef A4_CLOSECAM
     if (cc_on) { volatile int32_t *cm = (volatile int32_t *)self; for (int i = 0; i < 3; i++) cm[0x58 / 4 + i] = cc_save[i]; }
 #endif
@@ -4340,7 +4347,11 @@ static void mark_draw(void)
  * 3D, hook, composite, 2D, present, logic, speculation, the render call, its part before the
  * first triangle, the frame's triangles, list triangles drawn, list triangles lost (texture
  * failures, and a list never drawn by the present), mode (low 16) | never drawn (10 bits) <<
- * 16 | stale lists drawn (6 bits) << 26, frame number, presents since the last 3D present. */
+ * 16 | stale lists drawn (6 bits) << 26, frame number, the previous 3D frame's triangles.
+ * Round 36 (the owner's empty frame, "almost always going up the hill before the pavement
+ * surrounded by cones", not reproduced on the bench, screenshots every 0.25 s through it):
+ * the second ring also takes a frame with half the triangles of the 3D frame before it or
+ * fewer (from more than 600), [18] counts them. */
 #define A4_GL_SLOW 0x00455800u
 _Static_assert(A4_GL_SLOW >= 0x00455000u + (16u * 25u + 20u + 1u) * 4u, "the slow frames over the bitmaps");
 _Static_assert(A4_GL_SLOW + 0x680u <= 0x00460000u, "the slow frames past 0x460000");
@@ -4376,14 +4387,17 @@ static void slow_rec(uint32_t had)
     }
 #endif
     e[14] = ((volatile struct glr *)A4_GL_SCRATCH)->frames;
-    e[15] = slow_d(S + 14, pf[PF_NPRES]);
+    e[15] = S[17];                                  /* round 36: the previous 3D frame's triangles */
     S[1]++;
     if (!had) return;
+    uint32_t drop = S[17] > 600u && had * 2u < S[17];   /* round 36: half the triangles of the frame before or fewer */
+    S[17] = had;
     volatile uint32_t *R = S + 32;                  /* the 16 slowest: replace the quickest */
     uint32_t lo = 0;
     for (uint32_t i = 1; i < 16u; i++) if (R[i * 16] < R[lo * 16]) lo = i;
     if (e[0] > R[lo * 16]) for (uint32_t k = 0; k < 16u; k++) R[lo * 16 + k] = e[k];
-    if (e[12]) {                                    /* list triangles lost this frame */
+    if (drop) S[18]++;                              /* drop frames (total) */
+    if (e[12] || drop) {                            /* list triangles lost, or a sudden drop in triangles */
         volatile uint32_t *L = S + 32 + 256;
         uint32_t j = S[15] & 7u; S[15]++;
         for (uint32_t k = 0; k < 16u; k++) L[j * 16 + k] = e[k];
@@ -4465,6 +4479,28 @@ int a4_gl_frame(uint32_t fps)
         uint32_t r1 = (uint32_t)(uintptr_t)&a4_rep1 + (uint32_t)a4_rep1;
         uint32_t r2 = (uint32_t)(uintptr_t)&a4_rep2 + (uint32_t)a4_rep2;
         if ((A4_PERF[PF_MODE] & AB_SKIPREP) && (caller == r1 || caller == r2)) { presented = 1; A4_PERF[PF_SKIPPED]++; }
+#ifdef A4_SLOWREC
+        {   /* round 35 (the owner's empty frame on the hill; the bench's presented frames show a
+             * fresh backdrop over the last frame, the top HUD gone): the game's presents that
+             * reach the screen with no render since the last one, and their callers. 0x455800
+             * [20] real presents, [21] of them with no render since the last real one, [22]
+             * with no 3D, [23] presents skipped, [24] renders, [25] renders skipped (half-step),
+             * [26..31] three (caller, count) of the no-render real presents */
+            volatile uint32_t *S = (volatile uint32_t *)0x00455800u;
+            if (presented) S[23]++;
+            else {
+                S[20]++;
+                if (!had) S[22]++;
+                if (!S[19]) {
+                    S[21]++;
+                    uint32_t k;
+                    for (k = 0; k < 3u; k++) if (S[26 + 2 * k] == caller || !S[26 + 2 * k]) break;
+                    if (k < 3u) { S[26 + 2 * k] = caller; S[27 + 2 * k]++; }
+                }
+                S[19] = 0;
+            }
+        }
+#endif
     }
 #endif
     s->prims = 0;

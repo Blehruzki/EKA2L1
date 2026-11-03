@@ -12,7 +12,9 @@ if not best: sys.exit('no slow-frame block')
 cap, d, f = best
 S = struct.unpack_from('<416I', d, OFF)
 print('%s capidx %d: magic %08x, 3D frames seen %d' % (f.split('/')[-1], cap, S[0], S[1]))
-cols = 'ms 3D hook comp 2D pres logic spec rcall pre tris list lost mode nodraw stale frame npres'.split()
+print('presents: real %d (no render since the last real one %d, no 3D %d), skipped %d; renders %d, skipped (half-step) %d' % tuple(S[20:26]))
+if S[26]: print('  callers of the no-render real presents:', ['0x%08X x%d' % (S[26 + 2*k], S[27 + 2*k]) for k in range(3) if S[26 + 2*k]])
+cols = 'ms 3D hook comp 2D pres logic spec rcall pre tris list lost mode nodraw stale frame prevtri'.split()
 def show(rows, title):
     print(title); print('  ' + ' '.join('%6s' % c for c in cols))
     for e in rows:
@@ -22,4 +24,5 @@ def show(rows, title):
 R = sorted([S[32 + i * 16: 48 + i * 16] for i in range(16)], key=lambda e: -e[0])
 show(R, 'the 16 slowest 3D frames (ms; 3D = first triangle to composite, comp = the flush/composite, rcall = the game\'s render call, pre = its part before the first triangle)')
 L = [S[288 + i * 16: 304 + i * 16] for i in range(8)]
-show(sorted(L, key=lambda e: e[14]), 'frames with list triangles lost (the last 8)')
+print('drop frames (triangles halved or worse) in the race: %d' % S[18])
+show(sorted(L, key=lambda e: e[14]), 'the last 8 frames with list triangles lost or the triangles halved (prevtri: the frame before)')

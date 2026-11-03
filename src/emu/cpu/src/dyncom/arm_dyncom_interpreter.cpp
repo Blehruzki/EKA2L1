@@ -241,10 +241,13 @@ pc_prof g_pc_prof;
 // process's -- a local chunk's address means another thing in another process.
 // Looked at once every 65,536 block entries. For finding a game's state in its
 // memory by comparing snapshots against what its screen shows (ngage-port:
-// Colin's car, E1263).
+// Colin's car, E1263). EKA2L1_MEMSNAP_AT=pc (hex) instead takes them at the
+// entry of the block at exactly that PC (still at most one every `ms`): a
+// snapshot at a known moment -- a frame's present, so each one is a finished
+// frame (ngage-port, Asphalt 4 round 35: the empty frame on a hill).
 struct mem_snap {
     bool on = false;
-    std::uint32_t addr = 0, len = 0, pclo = 0, pchi = 0xFFFFFFFFu, count = 0, seq = 0, max = 1000;
+    std::uint32_t addr = 0, len = 0, pclo = 0, pchi = 0xFFFFFFFFu, count = 0, seq = 0, max = 1000, atpc = 0;
     std::uint64_t ms = 1000, last = 0;
     std::string path;
     std::vector<std::uint32_t> buf;
@@ -265,15 +268,22 @@ struct mem_snap {
             pclo = static_cast<std::uint32_t>(std::strtoul(r, &end, 16));
             if (end && *end == ':') pchi = static_cast<std::uint32_t>(std::strtoul(end + 1, nullptr, 16));
         }
+        if (const char *at = std::getenv("EKA2L1_MEMSNAP_AT"))
+            atpc = static_cast<std::uint32_t>(std::strtoul(at, nullptr, 16));
         const char *mx = std::getenv("EKA2L1_MEMSNAP_MAX");
         if (mx) max = static_cast<std::uint32_t>(std::strtoul(mx, nullptr, 10));
         buf.resize(len / 4);
         on = true;
     }
     inline void hit(ARMul_State *cpu) {
-        if (!on || (++count & 0xFFFF)) return;
+        if (!on) return;
         const std::uint32_t pc = cpu->Reg[15];
-        if (pc < pclo || pc >= pchi) return;
+        if (atpc) {
+            if (pc != atpc) return;
+        } else {
+            if (++count & 0xFFFF) return;
+            if (pc < pclo || pc >= pchi) return;
+        }
         const std::uint64_t now = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
         if (last && now - last < ms) return;
