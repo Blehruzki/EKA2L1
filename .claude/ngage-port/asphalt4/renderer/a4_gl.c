@@ -826,6 +826,13 @@ int a4_step_count(void *self, int32_t *m, int32_t *n)           /* +16796: bl +1
     if (STEPB[0] == (uint32_t)(A4_TRACEARM)) a4_trace_arm();
 #endif
     int r = ((int (*)(void *, int32_t *, int32_t *))GAMEFN(a4_stepcnt))(self, m, n);
+#ifdef A4_LOCKSTEP
+    /* bench (round 31): game time cut loose from the clock -- every race update that would
+     * render runs exactly A4_LOCKSTEP steps (1 normal, 2 with the step halved) and then
+     * renders, so steps and renders interleave the same way in every run and in both builds
+     * (the render feeds the simulation). The game runs slower than real time when behind. */
+    if (*m > 0) { *m = (int32_t)(A4_LOCKSTEP); *n = (int32_t)(A4_LOCKSTEP); }
+#endif
     volatile uint32_t *pf = A4_PERF;
     pf[PF_LSTEP] = ((uint32_t)*n & 0xFFu) | (((uint32_t)*m & 0xFFu) << 8);
     pf[PF_SCAM] = 0; pf[PF_SMAIN] = 0; pf[PF_NMAIN] = 0;

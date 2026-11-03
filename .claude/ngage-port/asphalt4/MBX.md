@@ -4801,3 +4801,16 @@ not judged by eye: scripted keys and the car's state each step, normal against h
   the drawing calls -- per render. With more renders a second these would run faster unless
   held to game time; and since they feed the simulation (above), the order of renders and
   steps has to be the same in every run for the comparison to mean anything.
+- Milestone 1 plumbing (A4_HALFLOGIC; a4_tramp.s a4_hstep_tramp, a4_gl.c a4_halfstep):
+  +167A6 (ldr r0,[r4,#0x38]; adds r0,r0,r7 -- the step loop's head) becomes a BLX; on even
+  half-steps the pair runs and the game's step follows, on odd ones the trampoline returns
+  to the loop's tail +16926 (lr + 0x17C). a4_step_render skips the render when no whole
+  step ran since the last one. Expected: the game in game time exactly as the normal build
+  (half-steps alternate whole and empty), so normal step k = milestone-1 whole step k.
+- Determinism on the instruction clock (ctn1, ctn2; EKA2L1_CYCLETICK=80): better, not
+  enough -- 51 live fields; the flip +66C differs from step 12, the cycle +15C from 138,
+  the position from step 347 (by ~230 units at once). The clock is the emulated
+  instruction count of every thread, so the other threads still move the moment the game
+  reads it. Next: A4_LOCKSTEP (bench, a4_step_count): every race update that would render
+  runs exactly A4_LOCKSTEP steps (1 normal, 2 halved) and then renders -- game time cut
+  loose from any clock, renders and steps in the same order in every run and both builds.
