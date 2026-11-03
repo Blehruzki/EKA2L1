@@ -4964,3 +4964,10 @@ camera stays put while the car moves -- next).
   bookkeeping; the restore at the even half-step stays for an update that runs odd then even
   with no render between. Also: a skipped render's half-steps now go into the window's step
   count (the AB_HSPEC-off windows read 15.8-23.3 because they did not).
+- r31 bench run 2 (the restore after the render; binary before the skipped-render count fix):
+  half-steps a second in the AB_HSPEC-on windows 23.67, 22.93, 23.58, 23.42 -- real time
+  (23.44); the off windows still undercount (that binary). Renders a second on the bench:
+  on 8.1-13.9 (10.56 over 161 renders), off ~11 (138 renders): the bench's render costs
+  70-120 ms of host time, longer than a half-step, so every update runs two half-steps and
+  draws the speculative one -- no room for more frames here; the gain can only show where a
+  render is shorter than 85 ms, i.e. the phone's light scenes.
