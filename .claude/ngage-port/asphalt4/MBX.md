@@ -4934,3 +4934,16 @@ camera stays put while the car moves -- next).
   and after the replayed car calls +12DEC(race, &0), then the camera half way (position
   +0x58..+0x60 plainly; +0x64/+0x68 -- ranges -33..0 and 533..2131 over a race -- the short way
   round a 4096 circle, a guess at the unit).
+- SPEC v2 PASSED (spec2, LOCKSTEP 1 / LOCKSTEP_P 10667, 50 s): whole steps against normal
+  (lsn1): 170 aligned race steps, 1 of 51 live fields differs (+15C, the time-driven render
+  counter, as in spec1) -- the physics exact. Motion between renders (tools/smooth.py, 212
+  renders after whole steps and 212 after speculative ones): the speculative frame's share
+  of each whole step's motion, median 0.50 with quartiles 0.50..0.50 over 171 steps, for the
+  camera and for the player car alike; mean move 42.0 into renders after whole steps, 42.2
+  after speculative ones. The camera's +0x68 turns on both kinds of frame in a bend
+  (196, 187, 177, 173, 168, 166, 163, ...). Before the camera was speculated (specr3/4) the
+  camera's share was 0 and the car's 0.5.
+- Not yet looked at: other moving things outside the car list and the camera (the effect
+  objects +1300C advances, props), sound from the replayed physics (a crash sound twice?),
+  real-time operation (renders back to back, n of 1, 2 or more half-steps per update: a
+  speculative step followed by an even one in the same update is wasted, not wrong).
