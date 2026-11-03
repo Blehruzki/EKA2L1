@@ -4830,3 +4830,15 @@ not judged by eye: scripted keys and the car's state each step, normal against h
   [[race+0x38]+0x1114], assumed the same object as +15B1C's [[+52CA0()]+0x1114]) set to the
   last t ([race+0x44]) + A4_LOCKSTEP periods (21333 or 10667), recorded per step in the
   CREC header (words 6, 7) to check the assumption.
+- CORRECTION (rule 1): the recorder writes a record twice now and then (a4_rec_emit's block
+  entered twice -- same step number in both), and crec.py compared by position, so one
+  extra record shifted everything after it. De-duplicated by step number: lockstep normal
+  against normal (lsn1, lsn2) identical over all 536 race steps -- the "divergence at step
+  238" above was that artefact; on the instruction clock (ctn1, ctn2) only the render-side
+  +66C and +15C differ, the physics never; on the host clock (apn1, apn2) the physics does
+  part (step 345). Lockstep is the oracle; the synthetic clock is not needed (built, not
+  run).
+- MILESTONE 1 PASSED: the halved step with the whole step on even half-steps and nothing on
+  odd ones (lsm1, a4_ls_m1.exe, LOCKSTEP 2) against the normal build (lsn1, LOCKSTEP 1):
+  0 of 51 live fields differ over 536 race steps. The plumbing (+167A6's trampoline, the
+  halved period, the skipped renders) changes nothing in game time.

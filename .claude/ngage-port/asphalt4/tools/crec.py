@@ -8,7 +8,10 @@ def load(path):
         pc, addr, ln = struct.unpack_from('<3I', d, o); o += 12; b = d[o:o + ln]; o += ln
         if ln == 0x20: hdr = struct.unpack_from('<8I', b)
         elif hdr is not None:
-            out.append((hdr, struct.unpack_from('<%di' % (ln // 4), b))); hdr = None
+            # a block entered twice records twice (the emulator re-entering it): one per step
+            if not out or out[-1][0][1] != hdr[1]:
+                out.append((hdr, struct.unpack_from('<%di' % (ln // 4), b)))
+            hdr = None
     return out
 A = load(sys.argv[1])
 print('%s: %d steps (step %d..%d), car %08x idx %d' % (sys.argv[1].split('/')[-1], len(A), A[0][0][1], A[-1][0][1], A[-1][0][4], A[-1][0][5]))
