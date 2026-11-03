@@ -188,3 +188,14 @@ a4_stepcam:
         .word   0xDEADBEEF          @ patched: (code+0x12D5A | 1) - (this word): called before the render
 a4_steprend:
         .word   0xDEADBEEF          @ patched: (code+0x12992 | 1) - (this word): the render
+
+@ A4_HALFMOTION (round 31): the step's car calls, patched the same way in every GL build
+        .global a4_hc_1de78, a4_hc_1f1f8, a4_hc_1ea64, a4_hc_1fd5c
+a4_hc_1de78:
+        .word   0xDEADBEEF          @ patched: (code+0x1DE78 | 1) - (this word): a car's physics
+a4_hc_1f1f8:
+        .word   0xDEADBEEF          @ patched: (code+0x1F1F8 | 1) - (this word): its other physics
+a4_hc_1ea64:
+        .word   0xDEADBEEF          @ patched: (code+0x1EA64 | 1) - (this word): a car's movement
+a4_hc_1fd5c:
+        .word   0xDEADBEEF          @ patched: (code+0x1FD5C | 1) - (this word): its other movement

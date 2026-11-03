@@ -890,13 +890,65 @@ int a4_step_cam(void *self)                                     /* +16966: bl +1
  * render whose batch held no whole step is skipped (the render feeds the simulation: the
  * texture animator, per-car flips and countdowns in +12952), so renders fall after whole
  * steps as in the normal build. The plumbing for the half-steps that will move the cars. */
-#define A4_GL_HSTEP 0x00421840u      /* [0] half-steps, [1] whole steps since the last render */
+#define A4_GL_HSTEP 0x00421840u      /* [0] half-steps, [1] whole steps since the last render,
+                                      * [2] calls recorded this whole step, [3] replaying */
+#ifdef A4_HALFMOTION
+/* Milestone 2: the whole step's car calls -- the physics loop's +1DE78/+1F1F8 and the
+ * movement loop's +1EA64/+1FD5C -- are recorded with their arguments as the step makes them
+ * and replayed on the odd half-step after it, so the cars move every half-step. Untouched
+ * inside, each call still advances a whole step's worth: the comparison against the normal
+ * build names what to halve. Up to 32 calls (16 cars, two loops). */
+#define A4_GL_HCALL 0x00421860u      /* 32 x 6 words: which, r0..r3, the stack argument */
+extern const int32_t a4_hc_1de78, a4_hc_1f1f8, a4_hc_1ea64, a4_hc_1fd5c;   /* a4_gl.s */
+static void hcall_rec(uint32_t which, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t s0)
+{
+    volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
+    if (h[3] || h[2] >= 32u) return;
+    volatile uint32_t *c = (volatile uint32_t *)A4_GL_HCALL + 6u * h[2]++;
+    c[0] = which; c[1] = a0; c[2] = a1; c[3] = a2; c[4] = a3; c[5] = s0;
+}
+typedef int (*fn5)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
+typedef int (*fn3)(uint32_t, uint32_t, uint32_t);
+typedef int (*fn2)(uint32_t, uint32_t);
+int a4_h_1de78(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t s0)
+{ hcall_rec(1, a0, a1, a2, a3, s0); return ((fn5)GAMEFN(a4_hc_1de78))(a0, a1, a2, a3, s0); }
+int a4_h_1f1f8(uint32_t a0, uint32_t a1, uint32_t a2)
+{ hcall_rec(2, a0, a1, a2, 0, 0); return ((fn3)GAMEFN(a4_hc_1f1f8))(a0, a1, a2); }
+int a4_h_1ea64(uint32_t a0, uint32_t a1, uint32_t a2)
+{ hcall_rec(3, a0, a1, a2, 0, 0); return ((fn3)GAMEFN(a4_hc_1ea64))(a0, a1, a2); }
+int a4_h_1fd5c(uint32_t a0, uint32_t a1)
+{ hcall_rec(4, a0, a1, 0, 0, 0); return ((fn2)GAMEFN(a4_hc_1fd5c))(a0, a1); }
+static void hcall_replay(void)
+{
+    volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
+    h[3] = 1;
+    for (uint32_t i = 0; i < h[2]; i++) {
+        volatile uint32_t *c = (volatile uint32_t *)A4_GL_HCALL + 6u * i;
+        switch (c[0]) {
+        case 1: ((fn5)GAMEFN(a4_hc_1de78))(c[1], c[2], c[3], c[4], c[5]); break;
+        case 2: ((fn3)GAMEFN(a4_hc_1f1f8))(c[1], c[2], c[3]); break;
+        case 3: ((fn3)GAMEFN(a4_hc_1ea64))(c[1], c[2], c[3]); break;
+        case 4: ((fn2)GAMEFN(a4_hc_1fd5c))(c[1], c[2]); break;
+        }
+    }
+    h[3] = 0;
+}
+#endif
 int a4_halfstep(uint32_t race)
 {
     volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
     (void)race;
     uint32_t k = h[0]++;
-    if (k & 1u) return 1;            /* odd: nothing yet */
+    if (k & 1u) {                    /* odd */
+#ifdef A4_HALFMOTION
+        hcall_replay();
+        h[1]++;                      /* the cars moved: worth a render */
+#endif
+        return 1;
+    }
+#ifdef A4_HALFMOTION
+    h[2] = 0;                        /* the whole step about to run records its car calls */
+#endif
     h[1]++;
     return 0;                        /* even: the game's own step */
 }

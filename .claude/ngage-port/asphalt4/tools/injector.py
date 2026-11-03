@@ -131,7 +131,15 @@ STEP_HOOKS = {0x16796: ('a4_step_count', (0xF7FF, 0xF9C1)),    # bl +15B1C, the 
               0x16966: ('a4_step_cam', (0xF7FC, 0xF9F8)),      # bl +12D5A, before the render
               0x1696C: ('a4_step_render', (0xF7FC, 0xF811))}   # bl +12992, the render
 STEP_PLACEHOLDERS = {'a4_stepcnt': 0x15B1C | 1, 'a4_stepmain': 0x15A52 | 1,
-                     'a4_stepcam': 0x12D5A | 1, 'a4_steprend': 0x12992 | 1}
+                     'a4_stepcam': 0x12D5A | 1, 'a4_steprend': 0x12992 | 1,
+                     'a4_hc_1de78': 0x1DE78 | 1, 'a4_hc_1f1f8': 0x1F1F8 | 1,
+                     'a4_hc_1ea64': 0x1EA64 | 1, 'a4_hc_1fd5c': 0x1FD5C | 1}
+# A4_HALFMOTION (round 31): +141B0's car calls, recorded and replayed on the odd half-steps
+HALFMOTION_HOOKS = {0x14974: ('a4_h_1de78', (0xF009, 0xFA80)),   # bl +1DE78 (physics loop)
+                    0x1495E: ('a4_h_1f1f8', (0xF00A, 0xFC4B)),   # bl +1F1F8 (physics loop)
+                    0x14C94: ('a4_h_1ea64', (0xF009, 0xFEE6)),   # bl +1EA64 (movement loop)
+                    0x14CA2: ('a4_h_1ea64', (0xF009, 0xFEDF)),   # bl +1EA64 (movement loop)
+                    0x14C68: ('a4_h_1fd5c', (0xF00B, 0xF878))}   # bl +1FD5C (movement loop)
 # plain BLX-insertion detours that just re-execute their displaced instructions
 # (no IAT to patch): back-buffer-base cache at the textured filler's +0x33412.
 CACHE_HOOKS = {0x33412: 'a4_cachebb_tramp'}
@@ -387,6 +395,12 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         assert have == (0x6BA0, 0x19C0), 'half logic: +167A6 holds %04x %04x' % have
         blx_insert(code, 0x167A6, syms['a4_hstep_tramp'])
         print('HALF   +0167A6 -> a4_hstep_tramp +%06X (the step loop head)' % (syms['a4_hstep_tramp'] - LINK_BASE))
+    if '-DA4_HALFMOTION' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+        for off, (sym, want) in HALFMOTION_HOOKS.items():
+            have = struct.unpack_from('<HH', code, off)
+            assert have == want, 'half motion +%06X: holds %04x %04x, expected %04x %04x' % ((off,) + have + want)
+            blx_insert(code, off, syms[sym])
+            print('HMOT   +%06X -> %s' % (off, sym))
     if os.environ.get('A4_HALFSTEP'):
         # round 31, the faster-step work: the logic step halved, 21333 -> 10667 units
         # (85.33 -> 42.67 ms). +52B80's divide (t / 21333 for the real-time count m): its
