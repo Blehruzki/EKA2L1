@@ -4914,3 +4914,11 @@ camera stays put while the car moves -- next).
   A4_RENDREC now also dumps the race object and its context (0x4000 bytes each) per render
   (a4_rec_emit3; tools/camfind.py: words that change after whole steps, not after
   speculative ones, near the car's position).
+- The camera (specr4, camfind.py over 317 renders): the race object's +0x58/+0x5C/+0x60
+  change into renders after whole steps (111/101/111) and never into speculative ones, and
+  sit by the car's x and z. It is an object at race+0x48 (vtable +B05FC; the pointer +12952
+  hands to the render's per-car pass +D3BA as r3): +0x10/+0x14/+0x18 the position (e.g.
+  18528, 77, 46952 against the car's ~18700, ~47000), +0x1C 2040 and +0x20 1660 angle-like.
+  So on the speculative frames the car moves and the camera does not -- the world would
+  still step at 11.72 Hz. Next: its writer (EKA2L1_WATCH on race+0x58..+0x6B, normal build),
+  to speculate it with the cars.
