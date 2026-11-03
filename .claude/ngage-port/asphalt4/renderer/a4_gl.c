@@ -2545,15 +2545,8 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         mesh_draw(s, gctx);                             /* before any of the table's triangles */
 #ifdef A4_ABFRAME
         if (MESH_ON()) quad_push(s, 0, 0, 8, 8, 0, 0, 0, 0, (KIND_FLAT << 28) | 0x07E0u, 0);   /* bench: a list frame's mark */
-#elif defined(A4_ABMARK)
-        /* round 28, a test build: a 4x4 green square in the top-left corner of a list frame,
-         * so the owner can say which half of the A/B a report is about */
-#ifdef A4_ABCYCLE10
-        if (A4_PERF[PF_MODE] & AB_HSPEC) quad_push(s, 0, 0, 4, 4, 0, 0, 0, 0, (KIND_FLAT << 28) | 0x07E0u, 0);   /* round 31: the half-step frames on */
-#else
-        if (MESH_ON()) quad_push(s, 0, 0, 4, 4, 0, 0, 0, 0, (KIND_FLAT << 28) | 0x07E0u, 0);
 #endif
-#endif
+        /* A4_ABMARK's square is no longer pushed here: see mark_draw (a4_gl_frame) */
 #endif
     }
 
@@ -4070,6 +4063,35 @@ static void bar_draw(uint32_t fps)
 }
 #endif
 
+#if defined(A4_ABMARK) && !defined(A4_ABFRAME)
+/* The A/B mark: a green square in the top-right corner, written into the game's surface at
+ * the present, after the frame's HUD, so the owner can say which half of the A/B a report is
+ * about. Rounds 28 and 31 pushed a 4x4 quad at (0,0) with the 3D instead; the HUD, drawn
+ * after the composite, covered three of its four columns and the phone showed a strip one
+ * pixel wide (the owner, round 31: "around 1x3 pixels on the top left"; the bench's r31cm
+ * screenshot, measured: 3 x 11 window pixels = 1 x 4 game pixels left green). Owner: a
+ * proper square, 4x4, top right. */
+#ifndef A4_MARK_W
+#define A4_MARK_W 4
+#endif
+static void mark_draw(void)
+{
+#ifdef A4_ABCYCLE10
+    if (!(A4_PERF[PF_MODE] & AB_HSPEC)) return;     /* round 31: the half-step frames on */
+#elif defined(A4_MESH)
+    if (!MESH_ON()) return;                         /* round 28: a list frame */
+#endif
+#if !defined(A4_DUALCAP) && !defined(A4_WINDOW)
+    uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
+    if (!bb) return;
+    for (int y = 0; y < A4_MARK_W; y++) {
+        volatile uint16_t *row = (volatile uint16_t *)bb + y * FB_STRIDE;
+        for (int x = VP_W - A4_MARK_W; x < VP_W; x++) row[x] = (uint16_t)0x07E0;
+    }
+#endif
+}
+#endif
+
 /* Present detour (once per frame): draw the frame's captured primitives on the
  * GPU, then start the next frame. Returns 1 when the GPU presented the frame
  * itself (A4_WINDOW), so the detour skips the game's own present -- the 565 ->
@@ -4104,6 +4126,9 @@ int a4_gl_frame(uint32_t fps)
     if (A4_PERF[PF_FLAGS] & PFF_2D) A4_PERF[PF_T2D] += a4_ntick() - A4_PERF[PF_MFLEND];
     a4_gl_flush();                                      /* draw this frame on the GPU */
     A4_PERF[PF_FLAGS] &= ~PFF_2D;                       /* a composite inside it has no 2D after */
+#if defined(A4_ABMARK) && !defined(A4_ABFRAME)
+    if (had) mark_draw();                               /* after the flush's composite and the HUD */
+#endif
     int presented = 0;
 #ifdef A4_WINDOW
     if (s->surf) {

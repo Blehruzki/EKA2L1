@@ -5016,3 +5016,21 @@ camera stays put while the car moves -- next).
   The camera's +0x68 in a bend over the last 12 renders: 405 405 405 382 358 346 334 328 321
   318 314 312, alternating whole and speculative -- both kinds turn. The spec3 0.00 was the
   instrument (now confirmed). Milestone 2b closed on the bench; r31c goes to the phone.
+- Owner, during round 31: the green square shows as "around 1x3 pixels on the top left";
+  for future builds a proper square, 4x4, top right ("I know you can see pixel-perfect, but
+  I can't"). Cause, measured on the bench's r31cm screenshot (the emulator window shows the
+  game at x2.75, turned half round): 3 x 11 window pixels green = a 1 x 4 game-pixel strip.
+  The quad was pushed with the 3D, and the HUD, drawn after the composite, covered three of
+  its four columns. Rounds 28 and 31 both shipped it so: their A/B reports rest on a mark the
+  owner could only just see.
+- Fix (A4_ABMARK, a4_gl.c mark_draw): the square is written into the game's 565 surface at
+  the present (a4_gl_frame, after the flush's composite -- A4_IMM -- and after the HUD; only
+  in a frame with 3D, had != 0), x 316-319, y 0-3, size A4_MARK_W (default 4). The condition
+  is unchanged (AB_HSPEC under A4_ABCYCLE10, MESH_ON otherwise) and is read before
+  a4_tel_tick flips the mode, so a frame is marked with the mode it was rendered in.
+  Recipe check: C31's flags from the committed source rebuild r31c byte-identical; with the
+  fix (r31d, sha256 19063cf9..., +144 bytes) markrun (30 s race, then 24 screenshots 0.5 s
+  apart): framestat 842, faults 1 (the boot fault); the mark 11 x 11 window pixels, all 121
+  green (= 4 x 4 game pixels), the game's top-right corner, in 13 of 24 shots in runs of
+  2-4 -- off in the off windows, so the game redraws that corner every frame and the mark
+  does not linger. r31d is not a phone build; the next candidate carries the fix.
