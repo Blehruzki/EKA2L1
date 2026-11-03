@@ -4900,3 +4900,17 @@ camera stays put while the car moves -- next).
   round 30's r30b (phone) has the same call and survived by its allocation (its pf reads
   after the render came back right: the data were sane) -- latent there. Fix: a4_gcall1 (a4_gl.s)
   pushes r3-r11/lr, calls the game function, pops; the render (+12992) and +12D5A go through it.
+- specr3 (the shim build; rendrec.py over 272 renders of the player car): the position
+  (+004/+00C and +0A8/+0B0, +008/+0AC/+0D0) changes into renders after whole steps and after
+  speculative ones alike (56/56) -- the frames between carry the car's motion; speed,
+  steering and the rest change into speculative renders (the speculative step's values) and
+  hardly at all into the whole ones after them (the real step lands where the speculation
+  did). +04C..+078 change only after whole steps: not drawing data but the collision box,
+  built lazily once a step (+22C60: flag byte +7C, a virtual call for the extents, then
+  +22D64 copies three vectors and the extents) by +1FF56/+ED9E/+1FDEC in +141B0, outside
+  the replayed calls. The orientation matrix +6D4..+718 is the render's own (+31EA4,
+  +321A6). The mesh context (MESH->cam) holds no camera pose (only +04C changes, 28 times).
+  Open: the camera -- if only whole steps move it, the world still steps at 11.72 Hz on screen.
+  A4_RENDREC now also dumps the race object and its context (0x4000 bytes each) per render
+  (a4_rec_emit3; tools/camfind.py: words that change after whole steps, not after
+  speculative ones, near the car's position).

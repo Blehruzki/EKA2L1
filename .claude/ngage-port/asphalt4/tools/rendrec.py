@@ -15,11 +15,11 @@ for magic, name in ((0x434E5243, 'mesh context'), (0x504E5243, 'player car')):
     S = S[len(S) // 3:]                      # the race, not the countdown
     odd = collections.Counter(); even = collections.Counter(); n_o = n_e = 0
     for (h0, w0), (h1, w1) in zip(S, S[1:]):
-        par = h1 & 1    # count after the render's last half-step: odd = a speculative frame follows a whole step's? see below
+        par = h1 & 1    # half-step count after the render: odd = it followed a whole (even) step, even = a speculative one
         ch = [j for j in range(len(w0)) if w0[j] != w1[j] and abs(w1[j]) < 10**7]
         if par: odd.update(ch); n_o += 1
         else: even.update(ch); n_e += 1
-    print('%s: %d renders; words changing into odd-count renders (%d) / even-count renders (%d):' % (name, len(S), n_o, n_e))
+    print('%s: %d renders; words changing into renders after a whole step (%d) / after a speculative half-step (%d):' % (name, len(S), n_o, n_e))
     allw = sorted(set(odd) | set(even))
     for j in allw[:60]:
-        print('   +%03X  odd %4d  even %4d' % (j * 4, odd[j], even[j]))
+        print('   +%03X  after whole %4d  after spec %4d' % (j * 4, odd[j], even[j]))

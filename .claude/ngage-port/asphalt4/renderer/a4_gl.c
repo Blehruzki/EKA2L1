@@ -864,6 +864,12 @@ int a4_step_count(void *self, int32_t *m, int32_t *n)           /* +16796: bl +1
 #define A4_GL_CREC 0x00421900u      /* after STEPB (0x421700 + 3 x 128 = 0x421880) */
 __attribute__((noinline)) void a4_rec_emit(const void *hdr, const void *car)
 { __asm__ volatile("" :: "r"(hdr), "r"(car) : "memory"); }
+#ifdef A4_RENDREC
+/* a second emitter for the per-render dumps of the race and its context (EKA2L1_PCMEM ats
+ * at its own address: r0 0x20, r1 and r2 0x4000 each); its body differs so it is not merged */
+__attribute__((noinline)) void a4_rec_emit3(const void *hdr, const void *race, const void *ctx)
+{ __asm__ volatile("nop\n\tnop" :: "r"(hdr), "r"(race), "r"(ctx) : "memory"); }
+#endif
 static void car_record(uint32_t race)
 {
     volatile uint32_t *r = (volatile uint32_t *)A4_GL_CREC;
@@ -1084,6 +1090,8 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         if (cam) a4_rec_emit((const void *)q, (const void *)cam);
         q[0] = 0x504E5243u;
         if (car) a4_rec_emit((const void *)q, (const void *)car);
+        q[0] = 0x524E5243u;          /* 'CRNR': the race object and its context */
+        a4_rec_emit3((const void *)q, (const void *)race, (const void *)*(volatile uint32_t *)(race + 0x38));
     }
 #endif
     uint32_t t1 = a4_ntick(), pre = pf[PF_MFIRST] - t0;
