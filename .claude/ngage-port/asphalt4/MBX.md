@@ -5258,3 +5258,16 @@ the green box bigger (16x16 maybe?)"
   say which mode it shows in.
 - Depth precision ruled out for the sinking cars: the N95's pbuffer has 24 depth bits (round
   11), depth = ZK / w with ZK 128 -- at w 400 a step of 2^-24 is 0.00008 units.
+- Candidate r33 (C31's flags; render-time speculation, cuts, the selective restore, the 16 x 16
+  mark, the per-segment speculation counters; sha256
+  0c5138e2fefef66cd682bb797f51cef1c0bba1dff7d22fe9657f7caff9ad229c, 802,276 bytes; no
+  0xDEADBEEF; +3A15C B510 0004). Battery on it: telerun3 230 s framestat 2948, faults 1 (the
+  boot fault), half-steps 22.7-24.0 a second; the speculation 3.0 ms a run on the bench (host
+  time; the phone ran r32's at 1.2-1.5), 1,257 runs, longest 7 ms, none of 8 ms or more;
+  steering race (90 s, into walls) framestat 1520, faults 1, longest run 11 ms, 2 of 8 ms or
+  more; racemenu framestat 2922, faults 1, the 18 screens as r32's run; mark 43 x 43 window
+  pixels (16 x 16 game pixels) at the top right in 9 of 24 shots, absent in the rest.
+- Asked of the phone round: whether the steering still jitters (the pacing fix is the
+  candidate), whether the empty frame and the drops in takedowns and crashes remain (STEPB
+  [3]/[6]/[7] say what the speculation costs over the whole race), and in which mode (square
+  on or off) the shadow cutting into the road and the cars sinking show.
