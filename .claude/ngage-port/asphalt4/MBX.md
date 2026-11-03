@@ -5361,3 +5361,17 @@ when green came in, looked smoother. The car shadow clipping happened regardless
 - The shadow: the owner's tunnel photos (r33photos, cropped) show the car's shadow in
   pieces -- a wedge beside the car, the rest missing, or cut across -- in both modes. The
   round 33 measurement (A4_SHADSINK, 120 s) never reached the tunnel (172 s on the bench).
+- The shadow, again (bench): shsink8 (A4_SHADSINK with captures every 8 renders, tunrun.sh
+  EXITMODE) stopped at a dark stretch at 83 s with a frozen scene (five captures with equal
+  counts) -- not the tunnel; no result. The real tunnel's same-frame pairs (shtun, round 34's
+  run: captures 26-33): a darkening count by brightness ratio (game picture over GPU picture
+  in 0.62-0.85, a shadow's 12/16) is swamped by the road texture's grain (the game's road
+  dithered, the GPU's smooth: speckle over the whole road, tools in the scratchpad); the
+  pictures themselves show the shadow the same way in both -- a dark patch beside the car's
+  rear, in pieces. So on the bench route the patchy shadow is the game's own drawing; the
+  owner's "clipping in both modes" fits that. Not settled for every place (the owner's photos
+  are lap 3 of a WANTED race); the stock game in the same tunnel would settle it.
+- Next build r35: the A/B ended (owner: "hard to measure and time it with the mode switching
+  constantly"; green "looked smoother"). C35 = C31's flags without A4_ABCYCLE10 and
+  A4_ABMARK, plus A4_SLOWREC: the mode fixed at 3118 (the speculation, the list, lean,
+  reorder, the re-presents skipped, native read), no mark (it would mark every list frame).
