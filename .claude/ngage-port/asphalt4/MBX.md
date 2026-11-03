@@ -4814,3 +4814,11 @@ not judged by eye: scripted keys and the car's state each step, normal against h
   reads it. Next: A4_LOCKSTEP (bench, a4_step_count): every race update that would render
   runs exactly A4_LOCKSTEP steps (1 normal, 2 halved) and then renders -- game time cut
   loose from any clock, renders and steps in the same order in every run and both builds.
+- +141B0's second car loop (+14C3C..+14CB0, r7 to [r6+4] + [r6+0xC]): per car ([sp+0xA4])
+  the movement -- +1FD5C(car, [r5+0x10]+0x10) when +691E and the byte at
+  [[race+0x38]+0xE40+0x1C]+0x119 (a mode), else, by bits of [car+0xB28], a flag set or
+  +1EA64(car, [r5+0x10]+0x10, r6) (twice in the code, +14C94 and +14CA2). The position
+  writer +23E72 is under +1EA64. So a step is: the keys (+25E8), +15A52, the race checks,
+  then in +141B0 the physics loop (+1DE78/+1F1F8 per car) and the movement loop (+1EA64 per
+  car), and the rest of +141B0. The half-steps' motion: those two loops' calls, replayed
+  with the arguments the whole step used.
