@@ -5004,3 +5004,6 @@ camera stays put while the car moves -- next).
   230 s, framestat 2645, faults 1 (the boot fault), errc 0; aggregates: AB_HSPEC off 1,143
   renders in 49 windows at 100.0 ms, on 1,151 in 50 windows at 100.2 ms (the bench at its
   render-bound rate); half-steps a second 22.8-24.2 in every window of the ring.
+  racemenu (r31c, 30 s race then 17 keys): framestat 2881, faults 1 (the boot fault); the race
+  (166 km/h, the car, the city, the HUD), the pause menu stepped to MAIN MENU, the quit dialog
+  (NO, YES), the main menu, career home, the car browser and back -- all drawn.
