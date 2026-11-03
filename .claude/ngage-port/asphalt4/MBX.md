@@ -4777,3 +4777,27 @@ not judged by eye: scripted keys and the car's state each step, normal against h
   functions that write the player car in a race, 20 sit under +141B0, 10 under +1F1F8, 9
   under +1DE78; 7 under the render +12992 (+31EA4 and +321A6, the orientation words
   +6D4..+700, are written while drawing).
+- Where the player car's writers sit (callers up the image's BL graph): the speed +1C0B0 and
+  the step counter +1B560 under +1DE78 (the car loop's physics); the position writer
+  +23E72 under +226E8 under +1EA64 (called by +141B0 at +14C94/+14CA2, after the car loop),
+  +FB12 and +1FD5C; the flip +66C (+1B084) and the countdown +164 (+2097A) under the render:
+  +12992 -> +12952 -> +D3BA -- per render, not per step, so at more renders a second they
+  would run faster too unless held to game time.
+- Normal run 1 with the autopilot (apn1, a4_ap_n.exe): 772 steps, keys 0x40 at every one,
+  the car (0x022F9A20 this build) away at step ~130 and at 253 by step 575.
+- Determinism, normal against normal (apn1, apn2; same build, same scripted keys, host
+  clock): of 60 live fields (changing in the race, |value| < 10^6), 56 differ; the per-render
+  flip +66C from step 11 (renders fall on different steps in two runs), everything else
+  from step 71 on (the position by ~100 units at once). So what the render does feeds the
+  simulation, and the host clock decides how renders and steps interleave: the comparison
+  needs a clock that does not depend on the host. Next: EKA2L1_CYCLETICK=80 (guest time from
+  emulated instructions) for both runs.
+- Halved step, untouched otherwise (aph1, a4_ap_h.exe, host clock): 1,360 steps in the time
+  the normal build made ~770; the car's state per step as in the normal run (speed 115 at
+  step 227 against 99 at 193), so per second of real time it gains speed twice as fast --
+  round 16 again, now in the car's own fields.
+- The render's per-car work (+12952 -> +D3BA, 6.6 KB): the texture animator +D32E (the
+  flashing signs, round 29), +1B084 (the flip), +2097A (the countdown), +20EB4, +2133C and
+  the drawing calls -- per render. With more renders a second these would run faster unless
+  held to game time; and since they feed the simulation (above), the order of renders and
+  steps has to be the same in every run for the comparison to mean anything.

@@ -28,14 +28,21 @@ def first(R, v):
 a0, b0 = first(A, 1), first(B, 1)
 print('aligned at A[%d], B[%d] (car+0xE0 reaching 1)' % (a0, b0))
 nw = len(A[0][1]); diff = collections.Counter(); firstdiff = {}
+# the fields worth comparing: they change during run A's race and stay small (no pointers,
+# no uninitialised words)
+live = []
+for j in range(nw):
+    v = [A[i][1][j] for i in range(a0, len(A))]
+    if len(set(v)) > 1 and max(abs(x) for x in v) < 1000000: live.append(j)
+print('live fields in A: %d' % len(live))
 n = 0
 for k in range(0, min(len(A) - a0, (len(B) - b0) // r)):
     wa, wb = A[a0 + k][1], B[b0 + k * r][1]; n += 1
-    for j in range(nw):
+    for j in live:
         if wa[j] != wb[j]:
             diff[j] += 1
             firstdiff.setdefault(j, (k, wa[j], wb[j]))
-print('%d aligned steps; words differing: %d of %d' % (n, len(diff), nw))
+print('%d aligned steps; live fields differing: %d of %d' % (n, len(diff), len(live)))
 for j, c in sorted(diff.items(), key=lambda x: firstdiff[x[0]][0])[:40]:
     k, va, vb = firstdiff[j]
     print('  +%03X  differs in %5d steps, first at step %d (%d vs %d)' % (j * 4, c, k, va, vb))
