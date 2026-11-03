@@ -297,3 +297,26 @@ a4_transp_tramp:
         bx      r12                 @ -> Thumb epilogue at +33B42
 a4_transp_ret:
         .word   0xDEADBEEF
+
+#ifdef A4_HALFLOGIC
+@ Round 31, the faster step: the race update's step loop head +167A6 (ldr r0,[r4,#0x38];
+@ adds r0,r0,r7 -- r4 the race, r7 0x1100) becomes a BLX here. a4_halfstep(race) says
+@ whether this half-step runs the game's whole step (0: the displaced pair, back to
+@ +167AA) or not (1: what it runs instead it has run itself; on to the loop's tail +16926,
+@ subs r5,#1 ...). lr is +167AA|1, so +16926|1 is lr + 0x17C.
+        .arm
+        .align  2
+        .global a4_hstep_tramp
+a4_hstep_tramp:
+        push    {r0, r1, r2, r3, r12, lr}
+        mov     r0, r4
+        bl      a4_halfstep
+        cmp     r0, #0
+        pop     {r0, r1, r2, r3, r12, lr}
+        bne     1f
+        ldr     r0, [r4, #0x38]
+        adds    r0, r0, r7
+        bx      lr
+1:      add     lr, lr, #0x17C
+        bx      lr
+#endif

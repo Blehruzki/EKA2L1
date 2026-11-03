@@ -877,9 +877,31 @@ int a4_step_cam(void *self)                                     /* +16966: bl +1
     A4_PERF[PF_SCAM] += a4_ntick() - t0;
     return r;
 }
+#ifdef A4_HALFLOGIC
+/* Round 31, milestone 1: with the step halved (A4_HALFSTEP), the game's whole step runs on
+ * every other half-step only and the others do nothing, so the game keeps its speed; a
+ * render whose batch held no whole step is skipped (the render feeds the simulation: the
+ * texture animator, per-car flips and countdowns in +12952), so renders fall after whole
+ * steps as in the normal build. The plumbing for the half-steps that will move the cars. */
+#define A4_GL_HSTEP 0x00421840u      /* [0] half-steps, [1] whole steps since the last render */
+int a4_halfstep(uint32_t race)
+{
+    volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
+    (void)race;
+    uint32_t k = h[0]++;
+    if (k & 1u) return 1;            /* odd: nothing yet */
+    h[1]++;
+    return 0;                        /* even: the game's own step */
+}
+#endif
 int a4_step_render(void *self)                                  /* +1696C: bl +12992 */
 {
     volatile uint32_t *pf = A4_PERF;
+#ifdef A4_HALFLOGIC
+    {   volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
+        if (!h[1]) { pf[PF_FLAGS] &= ~PFF_LOGIC; return 0; }   /* no whole step since the last render */
+        h[1] = 0; }
+#endif
     if (pf[PF_FLAGS] & PFF_LOGIC) {
         uint32_t t = a4_ntick() - pf[PF_MLOGIC], ns = pf[PF_LSTEP];
         uint32_t n = ns & 0xFFu, m = ns >> 8;

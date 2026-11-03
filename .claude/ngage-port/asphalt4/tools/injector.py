@@ -382,6 +382,11 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == want, 'step hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)
             blx_insert(code, off, syms[sym])
             print('step   +%06X -> %s +%06X (4-byte BLX for the bl)' % (off, sym, syms[sym] - LINK_BASE))
+    if '-DA4_HALFLOGIC' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+        have = struct.unpack_from('<HH', code, 0x167A6)
+        assert have == (0x6BA0, 0x19C0), 'half logic: +167A6 holds %04x %04x' % have
+        blx_insert(code, 0x167A6, syms['a4_hstep_tramp'])
+        print('HALF   +0167A6 -> a4_hstep_tramp +%06X (the step loop head)' % (syms['a4_hstep_tramp'] - LINK_BASE))
     if os.environ.get('A4_HALFSTEP'):
         # round 31, the faster-step work: the logic step halved, 21333 -> 10667 units
         # (85.33 -> 42.67 ms). +52B80's divide (t / 21333 for the real-time count m): its
