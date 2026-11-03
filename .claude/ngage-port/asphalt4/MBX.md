@@ -4922,3 +4922,15 @@ camera stays put while the car moves -- next).
   So on the speculative frames the car moves and the camera does not -- the world would
   still step at 11.72 Hz. Next: its writer (EKA2L1_WATCH on race+0x58..+0x6B, normal build),
   to speculate it with the cars.
+- The camera's writers (wcam: EKA2L1_WATCH on race+0x58..+0x6B, normal lockstep build, 3,670
+  writes after the race began, 18 sites in 5 functions): +4B40 (2,622), +3D2A, +57AC, +5968,
+  +49C4 -- all under +5968, the camera's update, which three callers reach: +141B0 (the step,
+  at +14F58), +13E10, and +12DEC (+12E44) -- and +12DEC is what the game's own between-steps
+  routine calls: +1300C, run m - n times by the race update in slow motion, advances the
+  effect objects of the list at race+0x3D0 (+22C0E: counters +0x34, +0x48) and then calls
+  +12DEC(race, &0). The game already moves its camera between logic steps when it needs to.
+- Spec v2 (a4_spec2.exe): the race object saved and restored with the cars (0x9EC bytes: +778A
+  allocates it before its constructor +16BDC; vtable +B01E0; the camera at +0x48 inside it),
+  and after the replayed car calls +12DEC(race, &0), then the camera half way (position
+  +0x58..+0x60 plainly; +0x64/+0x68 -- ranges -33..0 and 533..2131 over a race -- the short way
+  round a 4096 circle, a guess at the unit).

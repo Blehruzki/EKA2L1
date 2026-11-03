@@ -216,3 +216,6 @@ a4_hc_1fd5c:
         .global a4_hc_25e8
 a4_hc_25e8:
         .word   0xDEADBEEF          @ patched: (code+0x25E8 | 1) - (this word): the key handler
+        .global a4_hc_12dec
+a4_hc_12dec:
+        .word   0xDEADBEEF          @ patched: (code+0x12DEC | 1) - (this word): the camera's update

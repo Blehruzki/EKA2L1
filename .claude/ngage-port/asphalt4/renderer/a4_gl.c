@@ -967,12 +967,15 @@ static void hcall_replay(void)
  * that is what the render after it draws. At the next even half-step everything saved is put
  * back and the game's own step runs as if nothing had happened: whole steps stay exactly the
  * original game's, a key shows half a step sooner, and the screen gets a frame between. */
-#define A4_GL_SPEC 0x00447000u       /* [0] cars, [1] pending, [2] K, [4..19] the cars, [32..47] K's words */
+#define A4_GL_SPEC 0x00447000u       /* [0] cars, [1] pending, [2] K, [3] the race, [4..19] the cars,
+                                      * [32..47] K's words, [64..] the race object (0x9EC bytes) */
+#define SPEC_RACESZ 0x9ECu           /* the race object (+778A allocates it, constructor +16BDC) */
+_Static_assert(A4_GL_SPEC + 0x100u + SPEC_RACESZ <= 0x00448000u, "the race snapshot runs into the cars'");
 #define A4_GL_SNAP 0x00448000u       /* the cars, 0xC7C bytes each (every 0xC7C allocation: +17A54 ...) */
 #define SPEC_CARSZ 0xC7Cu
 #define SPEC_MAXCARS 16u
 _Static_assert(A4_GL_SNAP + SPEC_MAXCARS * SPEC_CARSZ <= 0x00460000u, "car snapshots past 0x460000 (A4_SCRATCH_SIZE 0x5F000)");
-extern const int32_t a4_hc_25e8;     /* a4_gl.s: the key handler */
+extern const int32_t a4_hc_25e8, a4_hc_12dec;   /* a4_gl.s: the key handler, the camera's update */
 static void words_copy(volatile uint32_t *d, const volatile uint32_t *s, uint32_t n) { while (n--) *d++ = *s++; }
 static const uint16_t spec_mid[] = {  /* the words drawn from: positions and orientation */
     0x004, 0x008, 0x00C, 0x04C, 0x050, 0x054, 0x0A8, 0x0AC, 0x0B0, 0x0D0,
@@ -984,6 +987,7 @@ static void spec_restore(void)
     for (uint32_t i = 0; i < sp[0]; i++)
         words_copy((volatile uint32_t *)sp[4 + i], (volatile uint32_t *)(A4_GL_SNAP + i * SPEC_CARSZ), SPEC_CARSZ / 4u);
     if (sp[2]) words_copy((volatile uint32_t *)sp[2], sp + 32, 16);
+    if (sp[3]) words_copy((volatile uint32_t *)sp[3], sp + 64, SPEC_RACESZ / 4u);
     sp[1] = 0;
 }
 static void spec_run(uint32_t race)
@@ -1002,6 +1006,8 @@ static void spec_run(uint32_t race)
     uint32_t K = ctx ? *(volatile uint32_t *)(ctx + 0x1114) : 0;
     sp[2] = K;
     if (K) words_copy(sp + 32, (volatile uint32_t *)K, 16);
+    sp[3] = race;                    /* the race object, its camera (+0x48) with it */
+    words_copy(sp + 64, (volatile uint32_t *)race, SPEC_RACESZ / 4u);
     sp[1] = 1;
     if (K) {
         ((void (*)(uint32_t, uint32_t))GAMEFN(a4_hc_25e8))(K, 0);
@@ -1010,6 +1016,22 @@ static void spec_run(uint32_t race)
 #endif
     }
     hcall_replay();
+    {   /* the camera after the cars, as the game's own between-steps update does it in slow
+         * motion (+1300C -> +12DEC(race, &0) -> +5968) */
+        volatile uint32_t z = 0;
+        ((void (*)(uint32_t, volatile uint32_t *))GAMEFN(a4_hc_12dec))(race, &z);
+    }
+    {   /* the camera half way too: position +0x58/+0x5C/+0x60 plainly, the angle-like words
+         * +0x64/+0x68 the short way round a 4096 circle (a guess at their unit) */
+        volatile int32_t *cm = (volatile int32_t *)race;
+        const volatile int32_t *co = (const volatile int32_t *)(sp + 64);
+        for (uint32_t w = 0x58u / 4u; w <= 0x60u / 4u; w++) cm[w] = (int32_t)(((int64_t)co[w] + cm[w]) >> 1);
+        for (uint32_t w = 0x64u / 4u; w <= 0x68u / 4u; w++) {
+            int32_t a = co[w], b = cm[w], d = b - a;
+            if (d > 2048) d -= 4096; else if (d < -2048) d += 4096;
+            cm[w] = a + d / 2;
+        }
+    }
     for (uint32_t i = 0; i < n; i++) {
         volatile int32_t *c = (volatile int32_t *)sp[4 + i];
         const volatile int32_t *o = (const volatile int32_t *)(A4_GL_SNAP + i * SPEC_CARSZ);
