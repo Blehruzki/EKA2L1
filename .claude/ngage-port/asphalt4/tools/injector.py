@@ -133,7 +133,8 @@ STEP_HOOKS = {0x16796: ('a4_step_count', (0xF7FF, 0xF9C1)),    # bl +15B1C, the 
 STEP_PLACEHOLDERS = {'a4_stepcnt': 0x15B1C | 1, 'a4_stepmain': 0x15A52 | 1,
                      'a4_stepcam': 0x12D5A | 1, 'a4_steprend': 0x12992 | 1,
                      'a4_hc_1de78': 0x1DE78 | 1, 'a4_hc_1f1f8': 0x1F1F8 | 1,
-                     'a4_hc_1ea64': 0x1EA64 | 1, 'a4_hc_1fd5c': 0x1FD5C | 1}
+                     'a4_hc_1ea64': 0x1EA64 | 1, 'a4_hc_1fd5c': 0x1FD5C | 1,
+                     'a4_hc_25e8': 0x25E8 | 1}
 # A4_HALFMOTION (round 31): +141B0's car calls, recorded and replayed on the odd half-steps
 HALFMOTION_HOOKS = {0x14974: ('a4_h_1de78', (0xF009, 0xFA80)),   # bl +1DE78 (physics loop)
                     0x1495E: ('a4_h_1f1f8', (0xF00A, 0xFC4B)),   # bl +1F1F8 (physics loop)

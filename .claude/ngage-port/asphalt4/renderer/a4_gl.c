@@ -828,7 +828,11 @@ int a4_step_count(void *self, int32_t *m, int32_t *n)           /* +16796: bl +1
          * exactly A4_LOCKSTEP periods on, so no reader of that clock sees the host's */
         uint32_t race = (uint32_t)(uintptr_t)self, ctx = *(volatile uint32_t *)(race + 0x38);
         uint32_t K = ctx ? *(volatile uint32_t *)(ctx + 0x1114) : 0;
+#ifdef A4_LOCKSTEP_P
+        uint32_t P = A4_LOCKSTEP_P;  /* the period each lockstep update advances by */
+#else
         uint32_t P = (A4_LOCKSTEP) == 2 ? 10667u : 21333u;
+#endif
         if (K) ((volatile uint32_t *)K)[11] = *(volatile uint32_t *)(race + 0x44) + (uint32_t)(A4_LOCKSTEP) * P;
     }
 #endif
@@ -944,18 +948,85 @@ static void hcall_replay(void)
     h[3] = 0;
 }
 #endif
+#ifdef A4_HALFSPEC
+/* Milestone 2b, the speculative half-step: on an odd half-step every car the whole step
+ * touched (the recorded calls' r0) and the key object are saved, the keys taken (+25E8),
+ * the step's car calls replayed -- a whole step ahead, with the keys of now -- and each car
+ * set half way between the saved state and that one in its position and orientation words;
+ * that is what the render after it draws. At the next even half-step everything saved is put
+ * back and the game's own step runs as if nothing had happened: whole steps stay exactly the
+ * original game's, a key shows half a step sooner, and the screen gets a frame between. */
+#define A4_GL_SPEC 0x00447000u       /* [0] cars, [1] pending, [2] K, [4..19] the cars, [32..47] K's words */
+#define A4_GL_SNAP 0x00448000u       /* the cars, 0xC7C bytes each (every 0xC7C allocation: +17A54 ...) */
+#define SPEC_CARSZ 0xC7Cu
+#define SPEC_MAXCARS 16u
+_Static_assert(A4_GL_SNAP + SPEC_MAXCARS * SPEC_CARSZ <= 0x00460000u, "car snapshots past 0x460000 (A4_SCRATCH_SIZE 0x5F000)");
+extern const int32_t a4_hc_25e8;     /* a4_gl.s: the key handler */
+static void words_copy(volatile uint32_t *d, const volatile uint32_t *s, uint32_t n) { while (n--) *d++ = *s++; }
+static const uint16_t spec_mid[] = {  /* the words drawn from: positions and orientation */
+    0x004, 0x008, 0x00C, 0x04C, 0x050, 0x054, 0x0A8, 0x0AC, 0x0B0, 0x0D0,
+    0x058, 0x05C, 0x060, 0x064, 0x068, 0x06C };
+static void spec_restore(void)
+{
+    volatile uint32_t *sp = (volatile uint32_t *)A4_GL_SPEC;
+    if (!sp[1]) return;
+    for (uint32_t i = 0; i < sp[0]; i++)
+        words_copy((volatile uint32_t *)sp[4 + i], (volatile uint32_t *)(A4_GL_SNAP + i * SPEC_CARSZ), SPEC_CARSZ / 4u);
+    if (sp[2]) words_copy((volatile uint32_t *)sp[2], sp + 32, 16);
+    sp[1] = 0;
+}
+static void spec_run(uint32_t race)
+{
+    volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP, *sp = (volatile uint32_t *)A4_GL_SPEC;
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < h[2]; i++) {          /* the cars of the recorded calls, once each */
+        uint32_t car = ((volatile uint32_t *)A4_GL_HCALL)[6u * i + 1u], j;
+        for (j = 0; j < n && sp[4 + j] != car; j++) ;
+        if (j == n && n < SPEC_MAXCARS) sp[4 + n++] = car;
+    }
+    sp[0] = n;
+    for (uint32_t i = 0; i < n; i++)
+        words_copy((volatile uint32_t *)(A4_GL_SNAP + i * SPEC_CARSZ), (volatile uint32_t *)sp[4 + i], SPEC_CARSZ / 4u);
+    uint32_t ctx = *(volatile uint32_t *)(race + 0x38);
+    uint32_t K = ctx ? *(volatile uint32_t *)(ctx + 0x1114) : 0;
+    sp[2] = K;
+    if (K) words_copy(sp + 32, (volatile uint32_t *)K, 16);
+    sp[1] = 1;
+    if (K) {
+        ((void (*)(uint32_t, uint32_t))GAMEFN(a4_hc_25e8))(K, 0);
+#ifdef A4_AUTOPILOT
+        ((volatile uint32_t *)K)[0] = 0x40u; ((volatile uint32_t *)K)[1] = 0x40u;
+#endif
+    }
+    hcall_replay();
+    for (uint32_t i = 0; i < n; i++) {
+        volatile int32_t *c = (volatile int32_t *)sp[4 + i];
+        const volatile int32_t *o = (const volatile int32_t *)(A4_GL_SNAP + i * SPEC_CARSZ);
+        for (uint32_t f = 0; f < sizeof spec_mid / sizeof spec_mid[0]; f++) {
+            uint32_t w = spec_mid[f] / 4u;
+            c[w] = (int32_t)(((int64_t)o[w] + c[w]) >> 1);
+        }
+    }
+}
+#endif
 int a4_halfstep(uint32_t race)
 {
     volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
     (void)race;
     uint32_t k = h[0]++;
     if (k & 1u) {                    /* odd */
-#ifdef A4_HALFMOTION
+#if defined(A4_HALFSPEC)
+        spec_run(race);
+        h[1]++;
+#elif defined(A4_HALFMOTION)
         hcall_replay();
         h[1]++;                      /* the cars moved: worth a render */
 #endif
         return 1;
     }
+#ifdef A4_HALFSPEC
+    spec_restore();                  /* the game's own step from the saved state */
+#endif
 #ifdef A4_HALFMOTION
     h[2] = 0;                        /* the whole step about to run records its car calls */
 #endif

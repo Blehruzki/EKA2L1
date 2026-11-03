@@ -4852,3 +4852,24 @@ not judged by eye: scripted keys and the car's state each step, normal against h
   That is the halving work's list: each of those fields' writers inside +1DE78/+1F1F8 and
   +1EA64/+1FD5C to be made to advance half as far per call (or, for the discrete ones, only
   on even half-steps), until 2a's records match the normal build's at every whole step.
+
+### Milestone 2b, changed course: the speculative half-step (A4_HALFSPEC)
+
+Halving ~30 integer fields' writers by hand gives up the original handling and exactness
+(half units of 1, 12, 16 do not exist). Instead, on an odd half-step: save every car the
+step touched (the recorded calls' r0; every car is a 0xC7C-byte allocation: the six
++4B89C(0xC7C) sites +17A54 +17B12 +180F6 +1823C +18416 +25262, constructor +1999C, vtable
++B0434) and the key object's 16 words; take the keys (+25E8); replay the step's car calls
+(a whole step ahead, with the keys of now); set each car half way between the saved and
+the new state in its position and orientation words (+004..+00C, +04C..+054, +0A8..+0B0,
++0D0, +058..+06C) and render that. At the next even half-step put everything back, and the
+game's own step runs from exactly where it was. Whole steps stay the original game's (the
+oracle should read 0 differences); the screen gets a frame between steps, and a key held
+from the first half shows in it -- half a step sooner, at half strength. Snapshots at
+0x448000 (16 x 0xC7C; A4_SCRATCH_SIZE 0x5F000). Lockstep for the oracle: A4_LOCKSTEP=1 with
+A4_LOCKSTEP_P=10667 (one half-step per update, a render after each, the even ones'
+render-side car updates kept, the odd ones' undone with the cars).
+Guesses to check: that nothing outside the cars and K is changed by the replayed calls
+(the oracle sees any leak); which words the renderer draws the car from (only those need
+the midpoint); the camera (if the step moves it outside these calls, the odd frame's
+camera stays put while the car moves -- next).

@@ -199,3 +199,6 @@ a4_hc_1ea64:
         .word   0xDEADBEEF          @ patched: (code+0x1EA64 | 1) - (this word): a car's movement
 a4_hc_1fd5c:
         .word   0xDEADBEEF          @ patched: (code+0x1FD5C | 1) - (this word): its other movement
+        .global a4_hc_25e8
+a4_hc_25e8:
+        .word   0xDEADBEEF          @ patched: (code+0x25E8 | 1) - (this word): the key handler
