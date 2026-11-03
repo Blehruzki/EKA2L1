@@ -328,6 +328,8 @@ struct mesh {
     uint16_t kcnt[MESH_NK], koff[MESH_NK];
     uint8_t kws[MESH_NK], khs[MESH_NK]; /* its texcoord shifts */
     uint32_t nearf;                     /* the last frame a TBillboard within MESH_NEAR was drawn (+1) */
+    uint32_t stale;                     /* round 34: lists drawn after a present came between their
+                                         * inserts and the walk (dropped before; total) */
     uint16_t grid[MESH_GW * MESH_GH];   /* per 16-pixel tile, the nearest bucket of a drawn list face
                                          * whose box meets it (0xFFFF: none) -- mesh_draw */
 };
@@ -2373,7 +2375,16 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
     m->active = 0;
     m->gctx = (uint32_t)(uintptr_t)gctx;            /* for the next frame's fallback tests */
     uint32_t n = m->n;
-    if (m->frame != s->frames) { m->frame = s->frames; m->n = 0; m->drawn = 1; return; }   /* no list this frame */
+    if (m->frame != s->frames) {
+        /* Round 34: a list gathered before a present and not drawn since is this walk's (its
+         * faces were taken from the game: the table no longer holds them). Until now it was
+         * dropped -- the scenery and the list's car parts missing for that frame, a candidate
+         * for the owner's empty frame and the crash camera's car in pieces (a guess; the lossy
+         * frame recorder, A4_SLOWREC, says whether it happens). A list with no inserts since
+         * the last walk (drawn already, or empty) is no list. */
+        if (m->drawn || !n) { m->frame = s->frames; m->n = 0; m->drawn = 1; return; }
+        m->frame = s->frames; m->stale++;
+    }
     if (m->drawn) return;
     m->drawn = 1;
     if (!n) return;
@@ -4319,6 +4330,67 @@ static void mark_draw(void)
 }
 #endif
 
+#ifdef A4_SLOWREC
+/* Round 34 (owner: "the crashes and takedowns are still sluggish"; round 33's speculation is
+ * 6 ms at most and the logic small, so the time is in the frame): the race's 16 slowest frames,
+ * each split by phase, and the last 8 frames in which list triangles went undrawn (a candidate
+ * for the owner's empty frame). At each 3D present, the phase counters' growth since the last
+ * one. 0x455800: [0] 'SLW1', [1] frames seen, [2] the last present's tick, [3..15] the counters
+ * then; 0x455880: 16 slowest; 0x455C80: 8 lossy (a ring, [3] its next slot). An entry: frame ms,
+ * 3D, hook, composite, 2D, present, logic, speculation, the render call, its part before the
+ * first triangle, the frame's triangles, list triangles drawn, list triangles lost (texture
+ * failures, and a list never drawn by the present), mode (low 16) | never drawn (10 bits) <<
+ * 16 | stale lists drawn (6 bits) << 26, frame number, presents since the last 3D present. */
+#define A4_GL_SLOW 0x00455800u
+_Static_assert(A4_GL_SLOW >= 0x00455000u + (16u * 25u + 20u + 1u) * 4u, "the slow frames over the bitmaps");
+_Static_assert(A4_GL_SLOW + 0x680u <= 0x00460000u, "the slow frames past 0x460000");
+static uint32_t slow_d(volatile uint32_t *was, uint32_t now) { uint32_t d = now >= *was ? now - *was : now; *was = now; return d; }
+static void slow_rec(uint32_t had)
+{
+    volatile uint32_t *S = (volatile uint32_t *)A4_GL_SLOW, *pf = A4_PERF;
+    uint32_t now = a4_ntick();
+    if (S[0] != 0x31574C53u) { for (uint32_t i = 0; i < 0x680u / 4u; i++) S[i] = 0; S[0] = 0x31574C53u; S[2] = now; return; }
+    uint32_t e[16];
+    e[0] = now - S[2]; S[2] = now;
+    e[1] = slow_d(S + 3, pf[PF_T3D]);   e[2] = slow_d(S + 4, pf[PF_HOOK]);  e[3] = slow_d(S + 5, pf[PF_TFLUSH]);
+    e[4] = slow_d(S + 6, pf[PF_T2D]);   e[5] = slow_d(S + 7, pf[PF_TPRES]);
+#ifdef A4_STEPTIME
+    e[6] = slow_d(S + 8, pf[PF_TLOGIC]); e[7] = slow_d(S + 9, pf[PF_TSPEC]);
+    e[8] = slow_d(S + 10, STEPB[28]);   e[9] = slow_d(S + 11, STEPB[29]);
+#else
+    e[6] = e[7] = e[8] = e[9] = 0;
+#endif
+    e[10] = had;
+#ifdef A4_MESH
+    e[11] = slow_d(S + 12, pf[PF_MESH]); e[12] = slow_d(S + 13, pf[PF_MLOST]);
+#else
+    e[11] = e[12] = 0;
+#endif
+    e[13] = pf[PF_MODE] & 0xFFFFu;
+#ifdef A4_MESH
+    {   volatile struct mesh *m = MESH;
+        uint32_t nd = (m->frame == ((volatile struct glr *)A4_GL_SCRATCH)->frames && !m->drawn) ? m->n : 0u;
+        uint32_t st = slow_d(S + 16, m->stale);
+        e[13] |= (nd > 0x3FFu ? 0x3FFu : nd) << 16 | (st > 63u ? 63u : st) << 26;   /* never drawn | stale lists */
+        e[12] += nd; S[13] += nd;   /* a4_gl_frame adds nd to PF_MLOST after this: not the next frame's */
+    }
+#endif
+    e[14] = ((volatile struct glr *)A4_GL_SCRATCH)->frames;
+    e[15] = slow_d(S + 14, pf[PF_NPRES]);
+    S[1]++;
+    if (!had) return;
+    volatile uint32_t *R = S + 32;                  /* the 16 slowest: replace the quickest */
+    uint32_t lo = 0;
+    for (uint32_t i = 1; i < 16u; i++) if (R[i * 16] < R[lo * 16]) lo = i;
+    if (e[0] > R[lo * 16]) for (uint32_t k = 0; k < 16u; k++) R[lo * 16 + k] = e[k];
+    if (e[12]) {                                    /* list triangles lost this frame */
+        volatile uint32_t *L = S + 32 + 256;
+        uint32_t j = S[15] & 7u; S[15]++;
+        for (uint32_t k = 0; k < 16u; k++) L[j * 16 + k] = e[k];
+    }
+}
+#endif
+
 /* Present detour (once per frame): draw the frame's captured primitives on the
  * GPU, then start the next frame. Returns 1 when the GPU presented the frame
  * itself (A4_WINDOW), so the detour skips the game's own present -- the 565 ->
@@ -4355,6 +4427,9 @@ int a4_gl_frame(uint32_t fps)
     A4_PERF[PF_FLAGS] &= ~PFF_2D;                       /* a composite inside it has no 2D after */
 #if defined(A4_ABMARK) && !defined(A4_ABFRAME)
     if (had) mark_draw();                               /* after the flush's composite and the HUD */
+#endif
+#ifdef A4_SLOWREC
+    slow_rec(had);
 #endif
     int presented = 0;
 #ifdef A4_WINDOW

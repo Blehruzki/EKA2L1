@@ -5292,3 +5292,38 @@ what I was talking about. The crashes and takedowns are still sluggish."
   crash and takedown slowness is not the speculation (its longest run in the whole segment is
   6 ms) and not the logic: it is in the frame (3D, composite or the game's own render).
   errc 0, depth bits 24, textures cached 167.
+
+## Round 34 (bench): the round 33 photos
+
+- Same-frame comparisons (check build, A4_MESHCHECK + A4_DUALCAP: the game's own picture and
+  the GPU's 3D in each capture; tools/dualpic.py). The GPU picture holds the 3D only (the HUD,
+  the sparks and the tags are the game's 2D after it), so a whole-frame pixel count is mostly
+  the HUD; the pictures were compared in the car's region.
+  - The LA tunnel (tunrun.sh, the tunnel reached at 172 s; 8 captures): the player car's
+    shadow the same in both -- a darker grey patch beside the car in the game's own picture
+    too. With A4_SHADSINK's measurement (no road tie at any bias), the tunnel shadow is not
+    reproduced as a fault on the bench; the photos' grey band beside the car may be the
+    game's own shadow there.
+  - A camera at a quarter of its distance from the car (A4_CLOSECAM=4, new bench knob: the
+    camera pulled toward the player car for the render and put back): both pictures alike.
+    Faces nearer than ZK (128) never enter the list (mesh_take), so GL's near plane cuts
+    nothing; the crash camera's pieces are not a near-plane fault.
+  - A crash on the bench (crashrun.sh, new: steering into things, stopped when the crash
+    camera's black bars show): none in 240 s; the crash camera stays unreproduced.
+- The empty frame, read from the bench's own snapshots: the game's surface caught between the
+  backdrop and the scene looks exactly like the owner's photo 7 (skyline, one grey block, no
+  scenery). In the GPU path the scene reaches the surface only at the composite, and the list
+  (scenery, most car parts) is drawn at the frame's first taken triangle. One path drops it
+  silently: mesh_draw discarded a gathered list when a present had come between its inserts
+  and the walk (m->frame != s->frames) -- its faces taken from the game and drawn nowhere.
+  Fills and billboards cannot start a frame (both need prims != 0), and the list overflowing
+  goes back to the table, not lost. Changed: such a list is drawn (counted, MESH->stale). A
+  guess at the mechanism, not a measured one: the bench never hits it.
+- A4_SLOWREC (new, for the phone): the race's 16 slowest 3D frames split by phase (3D, hook,
+  composite, 2D, present, logic, speculation, the render call and its part before the first
+  triangle, triangles, list drawn / lost, mode, list never drawn by the present, stale lists),
+  and the last 8 frames in which list triangles were lost -- appended to every capture after
+  the step block (tools/slowsum.py). Bench run (r34a, telerun3 230 s, framestat 3009, faults
+  1): the slowest frames 150-211 ms (host time), nearly all of it inside the game's render
+  call; several with the list full at 2,048 triangles (the rest to the table); no frame with
+  list triangles lost, no stale list.
