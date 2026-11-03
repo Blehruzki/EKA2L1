@@ -5336,3 +5336,28 @@ what I was talking about. The crashes and takedowns are still sluggish."
 - Asked of the phone round: whether the empty frame or the crash camera's pieces come back
   (the lossy-frame record says whether a list was dropped or lost then), and a race with
   crashes and takedowns (the slowest-frame record says where those frames spend their time).
+
+## Round 34, phone (r34, sha256 24f98e6b...)
+
+Owner: "So with the takedowns and the crashes it no longer drops framerate. It's hard to
+measure and time it with the mode switching constantly. But the moments I crashed and it
+wasn't green, it looked like previous builds prior to the framedrops. And that same sequence,
+when green came in, looked smoother. The car shadow clipping happened regardless of the mode."
+(No empty frame or crash pieces reported this time.)
+- Telemetry (capidx 175-182): aggregates seg0 off 2,093 renders at 87.6 ms (11.42 a second),
+  on 2,094 at 80.5 (12.42); >= 90 ms 24% / 22%; the light windows on 22.1 a second. Step
+  block seg0 (4,241 spans): the speculation 2,022 runs, 2.10 ms a run, longest 8 ms, one of 8
+  ms or more; logic longest 7 ms; m - n 20 (slow-motion updates: round 33's race had none);
+  2 loads of 500 ms or more left out.
+- A4_SLOWREC: 31,953 3D frames seen; the slowest 108-136 ms, all but one with the render
+  call 99-142 ms of it (3D 41-81, composite 11-33, 2D 0-38) -- the game's render, not the
+  logic (0-6 ms) or the speculation (0-2 ms); one frame of 932 ms with 142 ms of render call
+  and nothing else timed: a load or a stall outside every phase (green mode, frame 15987).
+  No frame lost list triangles; no list was left undrawn by its present.
+- The stale-list counter (MESH->stale) is in neither the header nor the record: a stale list
+  that was drawn shows in no entry unless it is also among the slowest. Not knowable from
+  this round whether round 34's change fired. The crash drops the owner no longer sees are
+  therefore not attributed to it; nothing else in r34 touched the frame's work.
+- The shadow: the owner's tunnel photos (r33photos, cropped) show the car's shadow in
+  pieces -- a wedge beside the car, the rest missing, or cut across -- in both modes. The
+  round 33 measurement (A4_SHADSINK, 120 s) never reached the tunnel (172 s on the bench).
