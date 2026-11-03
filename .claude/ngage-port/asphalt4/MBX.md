@@ -4544,10 +4544,10 @@ steps by 3 a render: the loop's three present hooks). tools/faceid.py.
   two); 10-25% come back holding another texture (the slot reused), the rest are new.
 - Is the motion of a returning polygon real? A render here carries 1-5 logic steps (the
   capture's own load), so per triple of renders one ratio r = steps(b->c)/steps(a->b) is
-  fitted and each polygon tested for d2 ~ r*d1 on all nine coordinates. 5 of the 8 triples
-  that had motion: every matched polygon fits (r 2.02, 1.72, 0.36, 0.60, 2.00; 97-573
-  polygons each). The other 3 (r -0.96, 0.29, ~0): 11-19% fit -- frames where the camera
-  turned or cut (the last one is the race-end camera, |z| median jumping 340 -> 7767); one
+  fitted and each polygon tested for d2 ~ r*d1 on all nine coordinates. 9 triples had
+  motion: in 5 every matched polygon fits (r 2.02, 1.72, 0.36, 0.60, 2.00; 97-573 polygons
+  each), in 1 93% (217 of 233, r 0.66); in 3, 7-19% (r -0.96, 0.29, ~0) -- frames where the
+  camera turned or cut (the last one is the race-end camera, |z| median jumping 340 -> 7767); one
   ratio cannot describe a turn, so these say nothing either way.
 So the pointer names the polygon for the faces that keep it, at least on straight motion
 -- plausible, not settled. Missing to settle it: renders without the capture's load and
