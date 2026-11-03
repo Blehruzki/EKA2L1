@@ -4617,3 +4617,17 @@ never timed, only inferred as the remainder), the step RE (static), round 17's s
   which the logic is 2.3-3.0. On the bench the step's logic is ~7% of "rest"; the rest of
   "rest" is not the logic. Bench time is not phone time (the interpreter's costs are not
   the ARM11's), so this says what to look at, not the answer.
+- Bench run 2, build r30b (sha256 edd6e040a51af9df324c326771f8d7c55914e38d1996e536159bd45bcfba716d;
+  +3A15C bytes B510 0004; placeholders patched; code C187C, +92 bytes on r30 for the
+  render-call words): telerun3 230 s, framestat 3233, faults 1 (the boot fault). The whole
+  race (seg0): 2,662 spans, 2,765 steps (n = 1: 2,567, n = 2: 91), 2.5 ms a step, the longest
+  span 333 ms; the render call +12992: 68.0 ms a call (2,662 calls), of it 18.8 ms before the
+  frame's first triangle (37 calls set no first-triangle mark inside: cause not traced; the
+  mean is over the rest). The last 8 windows: 82.7-107.5 ms a render.
+  So on the bench a render (~86 ms) is: the logic 2.6, the render call 68 (the game's own
+  transforms and sort before the first triangle 18.8 -- our list's taking of faces runs in
+  there too, at the insert -- then the 3D pass, the composite and the 2D, all inside the
+  call), the present ~1, and ~15 left (the loop's spin at the cap and the rest of the loop).
+- Correction to round 29's budget line ("rest (logic, no waiting) 19-26"): "rest" was never
+  the logic. It holds the render's part before its first triangle (on the bench 18.8 of the
+  logic's 2.6 + 18.8), and the wait. The phone round says how it divides there.
