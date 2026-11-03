@@ -301,7 +301,9 @@ void a4_tel_tick(uint32_t had)
         uint32_t r = pf[PF_RENDERS], w = a4_ntick() - pf[PF_T0];
         if (r && w < r * 500u) {
             uint32_t m = pf[PF_MODE];                /* a4_gl.c AGG_SLOT */
-#if defined(A4_ABCYCLE9)
+#if defined(A4_ABCYCLE10)
+            volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 10) & 2u) * 32u;
+#elif defined(A4_ABCYCLE9)
             volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 9) & 2u) * 32u;
 #elif defined(A4_ABCYCLE8)
             volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 8) & 2u) * 32u;
@@ -317,7 +319,9 @@ void a4_tel_tick(uint32_t had)
             a[9] += pf[PF_REO]; a[10] += pf[PF_CALLS]; a[11] += pf[PF_RUNS0]; a[12] += pf[PF_TRIS];
             a[13] += pf[PF_NPRES]; a[14] += pf[PF_SKIPPED]; a[15]++;
         }
-#if defined(A4_ABCYCLE9)
+#if defined(A4_ABCYCLE10)
+        *(volatile uint32_t *)0x00421600u = 0x41473236u;   /* 'AG26': slot bit 1 AB_HSPEC */
+#elif defined(A4_ABCYCLE9)
         *(volatile uint32_t *)0x00421600u = 0x41473235u;   /* 'AG25': slot bit 1 AB_MESH */
 #elif defined(A4_ABCYCLE8)
         *(volatile uint32_t *)0x00421600u = 0x41473234u;   /* 'AG24': slot bit 1 AB_ATLAS */
@@ -344,7 +348,10 @@ void a4_tel_tick(uint32_t had)
     t->caps++;
     {   /* next window: reset the timers after the write, so its cost is in no window */
         volatile uint32_t *pf = A4_PERF;
-#if defined(A4_ABCYCLE9)
+#if defined(A4_ABCYCLE10)
+        /* round 31: AB_HSPEC (2048) alternates; native, skip, reorder, lean, list kept */
+        pf[PF_MODE] = 2u | 4u | 8u | 32u | 1024u | ((pf[PF_MODE] & 2048u) ^ 2048u);
+#elif defined(A4_ABCYCLE9)
         /* round 26: AB_MESH (1024) alternates; native, skip, reorder, lean kept */
         pf[PF_MODE] = 2u | 4u | 8u | 32u | ((pf[PF_MODE] & 1024u) ^ 1024u);
 #elif defined(A4_ABCYCLE8)

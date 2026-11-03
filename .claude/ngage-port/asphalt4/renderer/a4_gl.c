@@ -301,6 +301,7 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
  * writing. The game's transform and culls run as they did; its projection, ordering
  * table, face draw and our draw_primitive hook do not run for these faces. */
 #define AB_MESH 1024u    /* the mesh list (A4_MESH) */
+#define AB_HSPEC 2048u   /* round 31: the speculative half-step's frames (A4_HALFSPEC) */
 #define GL_CULL_FACE 0x0B44
 #define GL_TEXTURE 0x1702
 #define GL_DST_COLOR 0x0306
@@ -777,7 +778,9 @@ _Static_assert(A4_GL_STEP >= A4_GL_AGG + sizeof(struct agg) + 4u && A4_GL_STEP +
 #endif
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
-#if defined(A4_ABCYCLE9)
+#if defined(A4_ABCYCLE10)
+#define AGG_SLOT(m) (((m) >> 10) & 2u)                                       /* bit 1: AB_HSPEC */
+#elif defined(A4_ABCYCLE9)
 #define AGG_SLOT(m) (((m) >> 9) & 2u)                                        /* bit 1: AB_MESH */
 #elif defined(A4_ABCYCLE8)
 #define AGG_SLOT(m) (((m) >> 8) & 2u)                                        /* bit 1: AB_ATLAS */
@@ -1049,8 +1052,10 @@ int a4_halfstep(uint32_t race)
     uint32_t k = h[0]++;
     if (k & 1u) {                    /* odd */
 #if defined(A4_HALFSPEC)
-        spec_run(race);
-        h[1]++;
+#ifdef A4_ABCYCLE10
+        if (A4_PERF[PF_MODE] & AB_HSPEC)  /* the A/B: off, the odd half-step is empty and draws nothing */
+#endif
+        { spec_run(race); h[1]++; }
 #elif defined(A4_HALFMOTION)
         hcall_replay();
         h[1]++;                      /* the cars moved: worth a render */
@@ -2449,7 +2454,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE9)
+#if defined(A4_TEL) && defined(A4_ABCYCLE10)
+        /* round 31: a4_tel.c alternates AB_HSPEC per window; native, skip, reorder, lean, list on */
+        A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER | AB_LEAN | AB_MESH;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE9)
         /* round 26: a4_tel.c alternates AB_MESH per window; native, skip, reorder, lean on */
         A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER | AB_LEAN;
         s->fmode = A4_PERF[PF_MODE];
@@ -2522,7 +2531,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #elif defined(A4_ABMARK)
         /* round 28, a test build: a 4x4 green square in the top-left corner of a list frame,
          * so the owner can say which half of the A/B a report is about */
+#ifdef A4_ABCYCLE10
+        if (A4_PERF[PF_MODE] & AB_HSPEC) quad_push(s, 0, 0, 4, 4, 0, 0, 0, 0, (KIND_FLAT << 28) | 0x07E0u, 0);   /* round 31: the half-step frames on */
+#else
         if (MESH_ON()) quad_push(s, 0, 0, 4, 4, 0, 0, 0, 0, (KIND_FLAT << 28) | 0x07E0u, 0);
+#endif
 #endif
 #endif
     }
