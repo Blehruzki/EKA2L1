@@ -4640,3 +4640,36 @@ never timed, only inferred as the remainder), the step RE (static), round 17's s
   race, the pause menu stepped down to MAIN MENU, the quit dialog (NO, YES), the main menu,
   career home, the car browser and back -- all drawn.
 - Sent to the owner unbaked (a4_r30b_SHIP.exe, sha256 edd6e040...); the owner bakes.
+
+## Phone round 30 (r30_phone edd6e040): the game's logic is 1.5 ms a step
+
+Telemetry (capidx 73-80, errc 0; one race, the owner's). Whole race (seg0, the latest
+capture): 1,846 renders in 80 windows, 88.4 ms a render, >= 90 ms 28% | 3D 30.8 (hook 17.5),
+composite rows 10.6 (read 6.8), batch draw 6.4, 2D 6.6, present 2.3. Not comparable with
+round 29's 19% at 90 ms or more: another race (the owner's track), the list there in half
+the windows.
+- The step block (seg0): 1,900 spans, 1,981 steps (n = 1: 1,822, n = 2: 77, n = 5: 1), one
+  load left out; the logic 1.52 ms a step, the longest span 6 ms, n = 1 spans 1,780 under
+  4 ms and 42 at 4-7 (NTickCount, 1 ms; a sum of many spans is unbiased). +15A52 under a
+  tick a call; +12D5A never more than 0 ticks (header [63] 0 in every window: a wasted word,
+  for the render's prep next time). No slow motion (m - n 0).
+- The render call +12992: 66.5 ms a call (1,901), of it 16.9 ms before the frame's first
+  triangle (32 calls without the mark, as on the bench).
+- A render on the phone, the race's means: the logic 1.6, the render call 66.5 (the game's
+  transforms and sort, with our list's taking of faces, 16.9; then the 3D pass, composite and
+  2D), the present 2.3, ~18 outside them (the wait at the cap and the rest of the loop).
+  Per window (the last 8): the logic 1.2-1.7 ms a render in every scene; light windows
+  (78, 79) 3D 10.7-11.7, composite 10.8-11.0, 2D 6.3-7.0, present 2.7, rest 51.7-52.3.
+- Against the rule written before the round (logic + the render's prep at ~10 ms or less in
+  light scenes): logic 1.2-1.3 + prep 16.9 (the race's mean; the light scenes' own prep was
+  not recorded per window) = ~18, over. As the rule was framed (every step drawn), a step
+  twice as fast does not hold 23.4 frames a second in light scenes: ~49.5 ms a frame there.
+  But the rule's frame was the wrong frame: when a render takes longer than the step, the
+  loop renders again at once with n = 2 (as it does now in heavy windows), so a halved step
+  would render back to back -- ~20 a second in light scenes at today's costs, heavy scenes
+  as now (~11.5) -- and the logic itself (1.5 ms against a 42.7 ms step) is no obstacle.
+- So the CPU does not forbid a faster step; the frame's cost limits how much it shows, and
+  the cost of the change is the RE: the period lives only in the two step counters (+15B1C,
+  and its copy at +B63F0 reading the literal at +B67F4; the third 0x5355 at +A6C1C has no
+  Thumb literal load), no time delta reaches the logic, so every per-step quantity (the
+  cars' physics, the AI, the camera, timers, animations, particles) assumes 85.33 ms.
