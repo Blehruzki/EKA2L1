@@ -5034,3 +5034,35 @@ camera stays put while the car moves -- next).
   green (= 4 x 4 game pixels), the game's top-right corner, in 13 of 24 shots in runs of
   2-4 -- off in the off windows, so the game redraws that corner every frame and the mark
   does not linger. r31d is not a phone build; the next candidate carries the fix.
+
+## Round 31, phone (r31c, sha256 f669e1b4...): the speculative half-step on the N95
+
+Owner's report (green = AB_HSPEC on): "the game feels a bit glitchy during the green mode.
+Opponent and traffic cars would jitter or go back and forth as if they were lagging in an
+online match. Steering also feels jittery. When I crash during green mode, it drops
+framerate. Sometimes when I hit other vehicles during green mode, almost all assets would
+disappear from the screen during one frame. I didn't hear any issues with the sound. [...]
+the speedometer looked normal." (The mark they watched was r31c's 1 x 4 strip, above.)
+- Telemetry (8 files, capidx 100-107; tools/r31sum.py): aggregates seg0 off 391 renders at
+  85.3 ms (11.73 a second), on 391 at 70.9 ms (14.11 a second); seg1 off 828 at 87.7 ms
+  (11.41), on 828 at 72.0 ms (13.90). Renders >= 90 ms: seg0 off 10% / on 17%, seg1 off 20%
+  / on 10%. Last 8 windows: off 12.06-12.25 renders a second, on 12.44 (3D 40.7 ms), 17.20
+  (20.0), 21.70 (14.1), 23.09 (12.4) -- in light scenes nearly every half-step drawn.
+  Half-steps a second 23.80-24.53 in every window: real time. So the frame-rate half works on
+  the phone (+20% renders on the whole, up to 2x in light scenes); the picture does not.
+- What the bench never measured (rule 4, the guesses named before r31c, now answered):
+  1. Only the player car and the camera were measured on the speculative frames -- and on
+     the words spec_run itself writes (+004..+00C etc.), so the 0.50 split could not fail
+     for anything spec_run touches. The opponents and the traffic were never looked at.
+  2. Which words the renderer draws a car from was a guess (spec_mid); the steering pair
+     +0B8/+0C0 and the rest of the replayed state show the speculative step's full value.
+  3. Nothing checked what the replayed calls write outside the saved cars, the race object
+     and K (a collision touches the other car, effects, sector or contact lists, sounds).
+     The crash drop and the empty frame point there.
+- Candidate causes to measure, not guess: (a) cars outside the recorded calls (the call log
+  holds 32 calls; 14 car slots at race+0x394 in spec4's dumps, two loops of calls each, and
+  the movement loop sets only a flag for some cars) or outside the 16-car snapshot stay put
+  while the camera moves half a step -- on screen they slide back and jump forward;
+  (b) the drawn pose read from words not midpointed; (c) the replay's writes outside the
+  saved objects, never restored (effects spawned twice: the crash cost; a list left
+  inconsistent: the empty frame -- and a crash risk).
