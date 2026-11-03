@@ -224,10 +224,14 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
         * and our draw_primitive hook (every 4th call timed, x4); then their marks */
        PF_T3D, PF_TFLUSH, PF_T2D, PF_TPRES, PF_HOOK, PF_MFIRST, PF_MFLEND, PF_MPRES, PF_FLAGS, PF_HOOKN,
        PF_SKIPPED, PF_REO, PF_RUNS0, PF_NPRES, PF_LASTFIRST,
-       PF_MESH, PF_MKEYS, PF_MDRAW, PF_MLOST, PF_N };   /* A4_MESH: this window's list triangles drawn, its draw calls, its ticks, triangles lost */
+       PF_MESH, PF_MKEYS, PF_MDRAW, PF_MLOST,   /* A4_MESH: this window's list triangles drawn, its draw calls, its ticks, triangles lost */
+       /* A4_STEPTIME (round 30): this window's logic ticks, steps, timed spans, +12D5A ticks;
+        * then the open span's mark, its counts (n | m << 8), its +12D5A and +15A52 ticks and calls */
+       PF_TLOGIC, PF_NSTEP, PF_NSPAN, PF_TCAM, PF_MLOGIC, PF_LSTEP, PF_SCAM, PF_SMAIN, PF_NMAIN, PF_N };
 #define PFF_2D 1u        /* a composite ended this frame and its 2D is being timed */
 #define PFF_PRES 2u      /* the game's present call is being timed */
 #define PFF_WROTE 4u     /* a4_tel.c wrote a capture since the last render began */
+#define PFF_LOGIC 8u     /* A4_STEPTIME: a logic span is open (+15B1C returned, +12992 not yet called) */
 _Static_assert(PF_N <= 60, "A4_PERF holds 64 words (0x412C00-0x412D00); 60-63 are A4_MESHCHECK's");
 #define AB_FLUSH 1u      /* glFlush after the frame's last batch (start the tile render) */
 #define AB_NATIVE 2u     /* read back in the implementation's own pair (OES_read_format): BGRA
@@ -741,6 +745,9 @@ _Static_assert(A4_GL_ATL + sizeof(struct atl) <= A4_GL_SCRATCH_TOP, "atlas state
 #define ATLST_PENDING 4u         /* placed, waiting for the end of the frame to be uploaded */
 #endif
 
+#if defined(A4_STEPTIME) && !defined(A4_AGG)
+#error "A4_STEPTIME keeps its sums beside the aggregates: build it with A4_AGG"
+#endif
 #ifdef A4_AGG
 /* Round 19: the race's numbers by A/B mode, over whole segments instead of the ring's last
  * 8 windows. A segment ends at a gap of 1.5 s or more between two renders (a load, a
@@ -753,6 +760,21 @@ _Static_assert(A4_GL_ATL + sizeof(struct atl) <= A4_GL_SCRATCH_TOP, "atlas state
 #define A4_GL_AGG 0x00421000u
 struct agg { uint32_t seg[3][4][32]; };
 #define AGG ((volatile struct agg *)A4_GL_AGG)
+#ifdef A4_STEPTIME
+/* Round 30: the game's logic per step, by segment like the aggregates (rotated with them).
+ * A span is one call of the race update +1670E: from +15B1C's return (the step count) to
+ * the render call +12992 -- the n logic steps, the m - n slow-motion updates and +12D5A.
+ * Per segment, 32 words: [0] spans, [1] steps (sum of n), [2] span ticks, [3] +12D5A ticks,
+ * [4] the longest span, [5] sum of m - n, [6] +15A52 ticks, [7] its calls, [8..13] spans by
+ * n = 0..5, [14] spans of 500 ms or more (a load: left out of everything else), [15] 'STP1',
+ * [16..27] spans with n = 1 by length, 4 ms bins ([27] >= 44 ms); then the render call
+ * +12992 itself (under 500 ms): [28] its ticks, [29] its ticks before the frame's first
+ * triangle, [30] calls, [31] calls with no triangle. Ticks are NTickCount. */
+#define A4_GL_STEP 0x00421700u
+#define STEPB ((volatile uint32_t *)A4_GL_STEP)
+_Static_assert(A4_GL_STEP >= A4_GL_AGG + sizeof(struct agg) + 4u && A4_GL_STEP + 3u * 32u * 4u <= 0x00422000u,
+               "the step block between the aggregates' format word and the atlas");
+#endif
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
 #if defined(A4_ABCYCLE9)
@@ -778,12 +800,78 @@ static void agg_render(uint32_t now)
     if (iv >= 1500u) {                                  /* a load or a pause: a new segment */
         volatile uint32_t *a = &AGG->seg[0][0][0];
         for (uint32_t k = 0; k < 128u; k++) { a[256u + k] = a[128u + k]; a[128u + k] = a[k]; a[k] = 0; }
+#ifdef A4_STEPTIME
+        for (uint32_t k = 0; k < 32u; k++) { STEPB[64u + k] = STEPB[32u + k]; STEPB[32u + k] = STEPB[k]; STEPB[k] = 0; }
+#endif
         return;
     }
     uint32_t b = iv < 60u ? 0u : iv >= 130u ? 15u : ((iv - 55u) * 13108u) >> 16;   /* /5, exact here */
     AGG->seg[0][AGG_SLOT(A4_PERF[PF_MODE])][16u + b]++;
 }
 #endif
+#ifdef A4_STEPTIME
+/* The race update's calls, rerouted through here (injector STEP_HOOKS: the four bl's become
+ * BLX). Each calls the game's own function at the placeholder's target; the return value is
+ * passed back although +1670E reads none of them. */
+extern const int32_t a4_stepcnt, a4_stepcam, a4_steprend, a4_stepmain;   /* a4_gl.s */
+#define GAMEFN(ph) ((uint32_t)(uintptr_t)&(ph) + (uint32_t)(ph))
+int a4_step_count(void *self, int32_t *m, int32_t *n)           /* +16796: bl +15B1C */
+{
+    int r = ((int (*)(void *, int32_t *, int32_t *))GAMEFN(a4_stepcnt))(self, m, n);
+    volatile uint32_t *pf = A4_PERF;
+    pf[PF_LSTEP] = ((uint32_t)*n & 0xFFu) | (((uint32_t)*m & 0xFFu) << 8);
+    pf[PF_SCAM] = 0; pf[PF_SMAIN] = 0; pf[PF_NMAIN] = 0;
+    pf[PF_FLAGS] |= PFF_LOGIC;
+    pf[PF_MLOGIC] = a4_ntick();                                 /* last: the call above is not in it */
+    return r;
+}
+int a4_step_main(void *self)                                    /* +167B4: bl +15A52, once a step */
+{
+    uint32_t t0 = a4_ntick();
+    int r = ((int (*)(void *))GAMEFN(a4_stepmain))(self);
+    A4_PERF[PF_SMAIN] += a4_ntick() - t0; A4_PERF[PF_NMAIN]++;
+    return r;
+}
+int a4_step_cam(void *self)                                     /* +16966: bl +12D5A */
+{
+    uint32_t t0 = a4_ntick();
+    int r = ((int (*)(void *))GAMEFN(a4_stepcam))(self);
+    A4_PERF[PF_SCAM] += a4_ntick() - t0;
+    return r;
+}
+int a4_step_render(void *self)                                  /* +1696C: bl +12992 */
+{
+    volatile uint32_t *pf = A4_PERF;
+    if (pf[PF_FLAGS] & PFF_LOGIC) {
+        uint32_t t = a4_ntick() - pf[PF_MLOGIC], ns = pf[PF_LSTEP];
+        uint32_t n = ns & 0xFFu, m = ns >> 8;
+        pf[PF_FLAGS] &= ~PFF_LOGIC;
+        if (t >= 500u) STEPB[14]++;                             /* a load inside the update */
+        else {
+            pf[PF_TLOGIC] += t; pf[PF_NSTEP] += n; pf[PF_NSPAN]++; pf[PF_TCAM] += pf[PF_SCAM];
+            STEPB[0]++; STEPB[1] += n; STEPB[2] += t; STEPB[3] += pf[PF_SCAM];
+            if (t > STEPB[4]) STEPB[4] = t;
+            STEPB[5] += m > n ? m - n : 0u;
+            STEPB[6] += pf[PF_SMAIN]; STEPB[7] += pf[PF_NMAIN];
+            STEPB[8u + (n > 5u ? 5u : n)]++;
+            if (n == 1u) STEPB[16u + (t >= 44u ? 11u : t >> 2)]++;
+        }
+        STEPB[15] = 0x31505453u;                                /* 'STP1' */
+    }
+    /* the render call itself, and its part before the first triangle (the game's own
+     * transforms and sort, which the 3D pass timer -- first triangle to composite -- misses) */
+    uint32_t t0 = a4_ntick();
+    int r = ((int (*)(void *))GAMEFN(a4_steprend))(self);
+    uint32_t t1 = a4_ntick(), pre = pf[PF_MFIRST] - t0;
+    if (t1 - t0 < 500u) {
+        STEPB[28] += t1 - t0; STEPB[30]++;
+        if (pre <= t1 - t0) STEPB[29] += pre;                   /* MFIRST set inside this call */
+        else STEPB[31]++;                                       /* a render with no triangle */
+    }
+    return r;
+}
+#endif
+
 static inline uint32_t thint_of(uint32_t key, uint32_t tabk, uint32_t src)
 {
     return ((key >> 2) ^ (key >> 12) ^ (tabk >> 4) ^ (src >> 3) ^ (src >> 13)) & (THINT_N - 1u);

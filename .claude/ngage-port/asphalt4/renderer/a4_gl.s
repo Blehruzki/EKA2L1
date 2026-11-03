@@ -176,3 +176,15 @@ a4_bbret:
         .word   0xDEADBEEF          @ patched: (code+0x31364 | 1) - (this word): TBillboard's blit call returns here
 a4_tfzvt:
         .word   0xDEADBEEF          @ patched: (code+0xB08CC) - (this word): TFakeZFace's vtable (its key is 1)
+
+@ A4_STEPTIME (round 30): the race update's callees, patched the same way in every GL build
+        .global a4_stepcnt, a4_stepmain, a4_stepcam, a4_steprend
+        .align  2
+a4_stepcnt:
+        .word   0xDEADBEEF          @ patched: (code+0x15B1C | 1) - (this word): the step count
+a4_stepmain:
+        .word   0xDEADBEEF          @ patched: (code+0x15A52 | 1) - (this word): called once a step
+a4_stepcam:
+        .word   0xDEADBEEF          @ patched: (code+0x12D5A | 1) - (this word): called before the render
+a4_steprend:
+        .word   0xDEADBEEF          @ patched: (code+0x12992 | 1) - (this word): the render

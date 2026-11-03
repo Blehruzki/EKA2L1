@@ -50,7 +50,10 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_BB, PF_BBSW, PF_BB2, PF_FILL, PF_TEXRE, PF_EVICT, PF_SURF,
        PF_T3D, PF_TFLUSH, PF_T2D, PF_TPRES, PF_HOOK, PF_MFIRST, PF_MFLEND, PF_MPRES, PF_FLAGS, PF_HOOKN,
        PF_SKIPPED, PF_REO, PF_RUNS0, PF_NPRES, PF_LASTFIRST,
-       PF_MESH, PF_MKEYS, PF_MDRAW, PF_MLOST, PF_N };   /* A4_MESH: this window's list triangles drawn, its draw calls, its ticks, triangles lost */
+       PF_MESH, PF_MKEYS, PF_MDRAW, PF_MLOST,   /* A4_MESH: this window's list triangles drawn, its draw calls, its ticks, triangles lost */
+       /* A4_STEPTIME (round 30): this window's logic ticks, steps, timed spans, +12D5A ticks;
+        * then the open span's mark, its counts (n | m << 8), its +12D5A and +15A52 ticks and calls */
+       PF_TLOGIC, PF_NSTEP, PF_NSPAN, PF_TCAM, PF_MLOGIC, PF_LSTEP, PF_SCAM, PF_SMAIN, PF_NMAIN, PF_N };
 #define EFILE_WRITE 0x200u
 #define DES(len) ((1u<<28) | ((uint32_t)(len)))  /* TPtrC iLength: EPtrC(1)<<28 | len */
 
@@ -237,7 +240,14 @@ void a4_tel_tick(uint32_t had)
         h[i++] = pf[PF_BB];                                    /* billboards queued on the GPU (total) */
         h[i++] = pf[PF_BBSW];                                  /* billboards left to software (total) */
 #endif
+#ifdef A4_STEPTIME
+        /* [60..63] in a step-timed build (round 30, not with A4_MESHCHECK): this window's logic
+         * ticks (the race update, step count to render call), steps, spans, +12D5A ticks */
+        i = 60;
+        h[i++] = pf[PF_TLOGIC]; h[i++] = pf[PF_NSTEP]; h[i++] = pf[PF_NSPAN]; h[i++] = pf[PF_TCAM];
+#else
         h[i++] = pf[PF_BB2];                                   /* calls of the two-depth billboard blit (total) */
+#endif
     }
     while (i < TEL_HDR_WORDS) h[i++] = 0;
 
@@ -320,7 +330,12 @@ void a4_tel_tick(uint32_t had)
 #else
         *(volatile uint32_t *)0x00421600u = 0x41473230u;   /* 'AG20': slot bit 1 is AB_INDEXED */
 #endif
+#ifdef A4_STEPTIME
+        /* the aggregates, their format word, then the step block (a4_gl.c A4_GL_STEP, 0x421700) */
+        struct des ad = { DES(0x700u + 3u * 32u * 4u), (const void *)0x00421000u };
+#else
         struct des ad = { DES(3u * 4u * 32u * 4u + 4u), (const void *)0x00421000u };
+#endif
         efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4, &ad);
         pf[PF_FLAGS] |= 4u;                       /* PFF_WROTE: the next render interval holds this write */
     }
@@ -361,6 +376,7 @@ void a4_tel_tick(uint32_t had)
         pf[PF_T3D] = 0; pf[PF_TFLUSH] = 0; pf[PF_T2D] = 0; pf[PF_TPRES] = 0; pf[PF_HOOK] = 0;
         pf[PF_REO] = 0; pf[PF_RUNS0] = 0; pf[PF_SKIPPED] = 0; pf[PF_NPRES] = 0;
         pf[PF_MESH] = 0; pf[PF_MKEYS] = 0; pf[PF_MDRAW] = 0;
+        pf[PF_TLOGIC] = 0; pf[PF_NSTEP] = 0; pf[PF_NSPAN] = 0; pf[PF_TCAM] = 0;
         pf[PF_T0] = a4_ntick();
     }
 }

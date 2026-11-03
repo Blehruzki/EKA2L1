@@ -4571,3 +4571,49 @@ Guesses: the made frame's cost on the phone (~20 ms: a draw, the readback, the H
 present -- from round 29's items, not measured as a whole); extrapolation errors where
 motion changes inside a step (a crash, a sharp turn) -- a polygon overshoots for one made
 frame; polygons new in a frame (no motion known) drawn where they are.
+
+## Round 30: the game's logic per step, timed (owner: measure it before choosing)
+
+Owner, on the plan above: frames between steps would add input lag (the game already
+suffers from it); then, after the trade-offs (made frames vs a cheaper present vs a faster
+step): "Measure the logic cost per step first." The question it settles: whether the
+game's own logic leaves room to run the step faster (the only change that cuts input lag
+at its source). Round 29's "rest" (19-26 ms a render in heavy windows) is everything not
+timed, not the logic alone.
+Not a repeat of: round 16's phase timers (3D, composite, 2D, present -- the logic was
+never timed, only inferred as the remainder), the step RE (static), round 17's stock split
+(same phases).
+- The race update +1670E (disassembled this round): +16796 bl +15B1C (the step count: m into
+  [sp+4] = t/21333 - last/21333, the real-time count; n into [sp+8] with the period
+  [this+0x84C] * 21333 >> 8, the logic steps at the race's time scale -- equal at 256;
+  both clamped to 5); the main loop runs n times (+167A6..+1692C: bl +25E8, bl
+  +15A52, the race checks, bl +141B0 ...); a second loop runs m - n times (bl +1300C, the
+  slow-motion updates); then if m: bl +12D5A (when +691E and n), bl +12992 (the render).
+- A4_STEPTIME (a4_gl.c a4_step_*, injector STEP_HOOKS): the four bl's at +16796, +167B4,
+  +16966, +1696C become BLX to hooks that call the game's own function (placeholders
+  a4_stepcnt/stepmain/stepcam/steprend, patched in every GL build so no 0xDEADBEEF is
+  left). A span = from +15B1C's return to the render call; per window: header [60..63]
+  logic ticks, steps, spans, +12D5A ticks; per segment (rotated with the aggregates): the
+  step block at 0x421700, written after the aggregates (spans, steps, ticks, the longest,
+  +15A52's ticks and calls, spans by n, loads of 500 ms or more left out, n = 1 spans by
+  length). Ticks are NTickCount (1 ms on the N95, round 10).
+- Build r30: C29's flags with A4_ABMODE=1070u (the list on in every render) and
+  A4_STEPTIME, no A4_ABCYCLE9 (no A/B), no A4_ABMARK (no green square). tools/steptime.py.
+- Also timed (r30b, after the first bench run showed the logic small against "rest"): the
+  render call +12992 whole, and its part before the frame's first triangle (the game's own
+  transforms and sort, which the 3D pass timer -- first triangle to composite -- never saw).
+- What decides it, written before the phone answers: a step twice as fast needs a frame
+  (logic + render + present) in 42.7 ms. Light scenes today: 3D 12 + composite 10-13 + 2D 6 +
+  present 2.5 = 31-34 ms, plus the render's part before its first triangle and the logic --
+  both unmeasured until this round. If those two together come to ~10 ms or less in light
+  scenes, a faster step is worth an RE look; well over, not on this phone.
+- Bench run 1, build r30 (sha256 a817d184..., without the render-call words): telerun3 230 s,
+  framestat 3063, faults 1 (the known boot fault). The whole race (seg0, latest capture):
+  2,618 spans, 2,765 steps (n = 1: 2,485 spans, n = 2: 127, n = 3-5: 6), no load left out;
+  2.7 ms a span, 2.5 ms a step (bench host time), the longest 340 ms; n = 1 spans: 2,304
+  under 4 ms, 179 at 4-7, 2 at 8-11. +15A52 under 1 ms a call (2,765 calls: once a step, as
+  read); +12D5A 0 ms (not called, or under a tick each); m - n = 0 throughout (no slow
+  motion in this race). The last 8 windows: 84.5-89.1 ms a render, "rest" 27.8-46.3 ms of
+  which the logic is 2.3-3.0. On the bench the step's logic is ~7% of "rest"; the rest of
+  "rest" is not the logic. Bench time is not phone time (the interpreter's costs are not
+  the ARM11's), so this says what to look at, not the answer.

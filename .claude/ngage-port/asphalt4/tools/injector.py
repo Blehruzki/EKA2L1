@@ -125,6 +125,13 @@ HOMETIME_IAT  = 0x50CF0         # euser ord 859 (TTime::HomeTime) import slot
 # resolves each listed (placeholder symbol -> IAT code offset) pc-relatively.
 INSERT_HOOKS = {0x1E6: ('a4_fps_tramp', [('a4_fps_tick_iat', TICKCOUNT_IAT),
                                          ('a4_fps_home_iat', HOMETIME_IAT)])}
+# A4_STEPTIME (round 30): the race update +1670E's calls, timed (a4_gl.c a4_step_*)
+STEP_HOOKS = {0x16796: ('a4_step_count', (0xF7FF, 0xF9C1)),    # bl +15B1C, the step count
+              0x167B4: ('a4_step_main', (0xF7FF, 0xF94D)),     # bl +15A52, once a step
+              0x16966: ('a4_step_cam', (0xF7FC, 0xF9F8)),      # bl +12D5A, before the render
+              0x1696C: ('a4_step_render', (0xF7FC, 0xF811))}   # bl +12992, the render
+STEP_PLACEHOLDERS = {'a4_stepcnt': 0x15B1C | 1, 'a4_stepmain': 0x15A52 | 1,
+                     'a4_stepcam': 0x12D5A | 1, 'a4_steprend': 0x12992 | 1}
 # plain BLX-insertion detours that just re-execute their displaced instructions
 # (no IAT to patch): back-buffer-base cache at the textured filler's +0x33412.
 CACHE_HOOKS = {0x33412: 'a4_cachebb_tramp'}
@@ -325,6 +332,12 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             ph_link = syms[sym]
             word = (LINK_BASE + off) - ph_link
             struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
+    steptime = '-DA4_STEPTIME' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl
+    if gl:      # patched in every GL build, so no 0xDEADBEEF is left whether or not they are hooked
+        for sym, off in STEP_PLACEHOLDERS.items():
+            ph_link = syms[sym]
+            word = (LINK_BASE + off) - ph_link
+            struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
     # the race loop's two re-present return sites (A4_SKIPREPRES compares DoPresent's caller)
     if not clean:
         for sym, ret in (('a4_rep1', 0x955), ('a4_rep2', 0x983)):
@@ -363,6 +376,12 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == want, 'mesh hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)
             blx_insert(code, off, syms[sym])
             print('mesh   +%06X -> %s +%06X (4-byte BLX for the bl)' % (off, sym, syms[sym] - LINK_BASE))
+    if steptime:
+        for off, (sym, want) in STEP_HOOKS.items():
+            have = struct.unpack_from('<HH', code, off)
+            assert have == want, 'step hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)
+            blx_insert(code, off, syms[sym])
+            print('step   +%06X -> %s +%06X (4-byte BLX for the bl)' % (off, sym, syms[sym] - LINK_BASE))
     if os.environ.get('A4_BENCH_UNLOCK'):
         # BENCH ONLY, never a phone build: +3A15C (is this city/item unlocked?) returns 1 at
         # once (movs r0,#1 ; bx lr), so a fresh career reaches every city -- the night/lights
