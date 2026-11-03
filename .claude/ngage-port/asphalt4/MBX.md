@@ -4842,3 +4842,13 @@ not judged by eye: scripted keys and the car's state each step, normal against h
   odd ones (lsm1, a4_ls_m1.exe, LOCKSTEP 2) against the normal build (lsn1, LOCKSTEP 1):
   0 of 51 live fields differ over 536 race steps. The plumbing (+167A6's trampoline, the
   halved period, the skipped renders) changes nothing in game time.
+- Milestone 2a (lsm2a, a4_ls_m2a.exe: milestone 1 plus the step's car calls replayed on the
+  odd half-steps, unhalved) against normal: 50 of 51 live fields differ, from step 0 -- the
+  car now gets two steps of physics and movement per step. The fields the replayed calls
+  move: the position +004/+008/+00C (and copies +04C.., +0A8.., +0D0), +010 and +018 (velocity-
+  like), +020, +02C, +01C, +024/+028/+030, +0B4, the steering pair +0B8/+0C0, +0C4/+0CC,
+  +0D4, the speed +7D0, +7D8 (16 a step), +7E4, +7F8, the gear +7BC, +7C4, +680/+688, the
+  orientation +058.. -- and NOT the step counters +0E0/+820 (written outside these calls).
+  That is the halving work's list: each of those fields' writers inside +1DE78/+1F1F8 and
+  +1EA64/+1FD5C to be made to advance half as far per call (or, for the discrete ones, only
+  on even half-steps), until 2a's records match the normal build's at every whole step.
