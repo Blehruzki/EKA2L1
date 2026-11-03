@@ -4822,3 +4822,11 @@ not judged by eye: scripted keys and the car's state each step, normal against h
   then in +141B0 the physics loop (+1DE78/+1F1F8 per car) and the movement loop (+1EA64 per
   car), and the rest of +141B0. The half-steps' motion: those two loops' calls, replayed
   with the arguments the whole step used.
+- Lockstep alone (lsn1, lsn2; host clock with CYCLETICK=80): identical to step 238, then
+  every field at once (the position by ~90 units) -- an outside cause, the race's traffic
+  or anything else reading the clock (the texture animator reads it: round 29). The game's
+  PRNG: the Numerical Recipes LCG (x * 1664525 + 1013904223; 17 literal pools, 33 loads).
+  Next: the clock itself synthetic in lockstep mode -- before +15B1C, t ([K+0x2C], K =
+  [[race+0x38]+0x1114], assumed the same object as +15B1C's [[+52CA0()]+0x1114]) set to the
+  last t ([race+0x44]) + A4_LOCKSTEP periods (21333 or 10667), recorded per step in the
+  CREC header (words 6, 7) to check the assumption.

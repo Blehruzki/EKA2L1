@@ -822,6 +822,16 @@ __attribute__((noinline)) void a4_trace_arm(void) { __asm__ volatile("" ::: "mem
 #endif
 int a4_step_count(void *self, int32_t *m, int32_t *n)           /* +16796: bl +15B1C */
 {
+#ifdef A4_LOCKSTEP
+    {   /* the time the step count reads (+15B1C: t = [[G+0x1114]+0x2C], G from +52CA0, taken
+         * here to be [race+0x38] -- the key object K's word 11; last t at [race+0x44]) set to
+         * exactly A4_LOCKSTEP periods on, so no reader of that clock sees the host's */
+        uint32_t race = (uint32_t)(uintptr_t)self, ctx = *(volatile uint32_t *)(race + 0x38);
+        uint32_t K = ctx ? *(volatile uint32_t *)(ctx + 0x1114) : 0;
+        uint32_t P = (A4_LOCKSTEP) == 2 ? 10667u : 21333u;
+        if (K) ((volatile uint32_t *)K)[11] = *(volatile uint32_t *)(race + 0x44) + (uint32_t)(A4_LOCKSTEP) * P;
+    }
+#endif
 #ifdef A4_TRACEARM
     if (STEPB[0] == (uint32_t)(A4_TRACEARM)) a4_trace_arm();
 #endif
@@ -863,7 +873,7 @@ static void car_record(uint32_t race)
     if (K) { ((volatile uint32_t *)K)[0] = 0x40u; ((volatile uint32_t *)K)[1] = 0x40u; }
 #endif
     r[0] = 0x43455243u; r[1]++; r[2] = K ? ((volatile uint32_t *)K)[0] : 0; r[3] = K ? ((volatile uint32_t *)K)[1] : 0;
-    r[4] = car; r[5] = idx; r[6] = 0; r[7] = 0;
+    r[4] = car; r[5] = idx; r[6] = K ? ((volatile uint32_t *)K)[11] : 0; r[7] = *(volatile uint32_t *)(race + 0x44);
     a4_rec_emit((const void *)r, car ? (const void *)car : (const void *)r);
 }
 #endif
