@@ -4751,3 +4751,29 @@ Not a repeat: no earlier round looked at the game's simulation data.
   a 64-step countdown) that a halved step cannot halve without new units and every reader
   changed; the opponents, the camera, the race's timers and the effects are on top. A faster
   step is set aside; the owner is told and the frame's cost is the next work.
+
+## Round 31 (bench): the faster step, set up (owner: "let's gamble")
+
+Owner, told the cost (the car alone written from 152 sites, integer per-step units, nothing
+ships until all of it is right): "let's gamble". The plan: a halved step (42.67 ms); what
+must be smooth and answer the keys (the cars' speed, steering, position; the camera) runs
+every half-step with its per-step amounts halved; everything else (the AI's decisions,
+timers, countdowns, effects) runs every other half-step and so behaves as now. Measured,
+not judged by eye: scripted keys and the car's state each step, normal against halved.
+- A4_HALFSTEP (injector, bench): +52B98 0x18938DE7 -> 0x312684D0, +52B9C -21333 -> -10667,
+  +15F28 21333 -> 10667 (round 16's halving; the divide checked exact for 0 <= t < 2^31).
+- A4_CARREC (a4_gl.c, bench): at each step's +15A52 call (after the keys are taken), a
+  record ('CREC', step, the key bits K+0 and K+4, the car, the player's index) and the
+  player car handed to an empty a4_rec_emit(hdr, car) at +BA5AC; EKA2L1_PCMEM with two ats
+  at its address (r0 0x20 bytes, r1 0xA00). The player car = [race + 0x394 + 4 x idx], idx
+  = [[race+0x390]+0xC] (+52206, the render's and the HUD's own getter). The keys: K =
+  [[race+0x38]+0x1114], K+4 the held bits after +25E8, K+0 the step before; the bench's '5'
+  (accelerate) is bit 6 (0x40). tools/crec.py.
+- A4_AUTOPILOT (bench): K+0 = K+4 = 0x40 at every step -- accelerate held from the first,
+  the same in game time in both builds, the host's key presses overridden.
+- The cars' update: +141B0 loops over the cars (+14686..+1498A, counter [sp+0xC8] to
+  [r6+4] + [r6+0xC]): per car, +1F1F8 if the byte [car+0xAC4] is set, else +1DE78 (r0 car,
+  r1 [sp+0xD0] -- 8 when [..+0x28] > 12 -- r2 [r5+0x10]+0x10, r3 r6, [sp] 0). Of the 28
+  functions that write the player car in a race, 20 sit under +141B0, 10 under +1F1F8, 9
+  under +1DE78; 7 under the render +12992 (+31EA4 and +321A6, the orientation words
+  +6D4..+700, are written while drawing).

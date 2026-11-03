@@ -833,8 +833,38 @@ int a4_step_count(void *self, int32_t *m, int32_t *n)           /* +16796: bl +1
     pf[PF_MLOGIC] = a4_ntick();                                 /* last: the call above is not in it */
     return r;
 }
+#ifdef A4_CARREC
+/* bench (round 31, the faster-step work): each logic step, after the game has taken its
+ * keys (+25E8), a record of the step and the player car, handed to an empty function so
+ * EKA2L1_PCMEM can write them out (two ats at its address: 0x20 bytes at r0, the car at r1).
+ * The record: 'CREC', the step number, the key bits before and now (K+0, K+4, K =
+ * [[race+0x38]+0x1114]), the car, the player's index, the race's step period word. */
+#define A4_GL_CREC 0x00421800u
+__attribute__((noinline)) void a4_rec_emit(const void *hdr, const void *car)
+{ __asm__ volatile("" :: "r"(hdr), "r"(car) : "memory"); }
+static void car_record(uint32_t race)
+{
+    volatile uint32_t *r = (volatile uint32_t *)A4_GL_CREC;
+    uint32_t ctx = *(volatile uint32_t *)(race + 0x38);
+    uint32_t K = ctx ? *(volatile uint32_t *)(ctx + 0x1114) : 0;
+    uint32_t pl = *(volatile uint32_t *)(race + 0x390);
+    uint32_t idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 0;
+    uint32_t car = idx < 16u ? *(volatile uint32_t *)(race + 0x394 + 4u * idx) : 0;
+#ifdef A4_AUTOPILOT
+    /* bench: the keys replaced by a script in game time (the same in a normal and a
+     * halved-step build): accelerate (K+4 bit 6, the '5' key) held from the first step */
+    if (K) { ((volatile uint32_t *)K)[0] = 0x40u; ((volatile uint32_t *)K)[1] = 0x40u; }
+#endif
+    r[0] = 0x43455243u; r[1]++; r[2] = K ? ((volatile uint32_t *)K)[0] : 0; r[3] = K ? ((volatile uint32_t *)K)[1] : 0;
+    r[4] = car; r[5] = idx; r[6] = 0; r[7] = 0;
+    a4_rec_emit((const void *)r, car ? (const void *)car : (const void *)r);
+}
+#endif
 int a4_step_main(void *self)                                    /* +167B4: bl +15A52, once a step */
 {
+#ifdef A4_CARREC
+    car_record((uint32_t)(uintptr_t)self);
+#endif
     uint32_t t0 = a4_ntick();
     int r = ((int (*)(void *))GAMEFN(a4_stepmain))(self);
     A4_PERF[PF_SMAIN] += a4_ntick() - t0; A4_PERF[PF_NMAIN]++;

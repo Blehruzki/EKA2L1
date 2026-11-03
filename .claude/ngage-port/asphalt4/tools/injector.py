@@ -382,6 +382,17 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == want, 'step hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)
             blx_insert(code, off, syms[sym])
             print('step   +%06X -> %s +%06X (4-byte BLX for the bl)' % (off, sym, syms[sym] - LINK_BASE))
+    if os.environ.get('A4_HALFSTEP'):
+        # round 31, the faster-step work: the logic step halved, 21333 -> 10667 units
+        # (85.33 -> 42.67 ms). +52B80's divide (t / 21333 for the real-time count m): its
+        # magic +52B98 and factor +52B9C; the logic count n's period literal +15F28
+        # (scale x period >> 8). /10667 by 0x312684D0 >> 43 checked exact for 0 <= t < 2^31.
+        for off, old_w, new_w in ((0x52B98, 0x18938DE7, 0x312684D0), (0x52B9C, (-21333) & 0xFFFFFFFF, (-10667) & 0xFFFFFFFF),
+                                  (0x15F28, 21333, 10667)):
+            have = struct.unpack_from('<I', code, off)[0]
+            assert have == old_w, 'half step: +%06X holds %08x, expected %08x' % (off, have, old_w)
+            struct.pack_into('<I', code, off, new_w)
+        print('STEP   halved: +52B98 +52B9C +15F28 (10667 units, 42.67 ms)')
     if os.environ.get('A4_BENCH_UNLOCK'):
         # BENCH ONLY, never a phone build: +3A15C (is this city/item unlocked?) returns 1 at
         # once (movs r0,#1 ; bx lr), so a fresh career reaches every city -- the night/lights
