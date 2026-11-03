@@ -5381,3 +5381,11 @@ when green came in, looked smoother. The car shadow clipping happened regardless
   run in every window (2,592 runs in seg0, longest 19 ms on the bench host, 6 of 8 ms or
   more), half-steps 23.2-23.8 a second; steering race 90 s framestat 1589, faults 1; racemenu
   framestat 3244, faults 1, the screens as r34's; no green square in 24 of 24 shots.
+- Owner, after r35 was sent: "the frame lost scenery almost always happened constantly when
+  going up the hill before the pavement surrounded by cones". So the empty frame is a place,
+  not a rare event -- reproducible on the bench if the route passes it. Round 34's record (no
+  frame with list triangles lost or a list undrawn, 31,953 frames) then says it is not the
+  list being dropped, if the owner passed the hill in that race. Measured next: the presented
+  frames themselves on the hill (EKA2L1_MEMSNAP of the surface, its PC range narrowed to
+  a4_gl_frame -- 0x700BEFAC..0x700BF5B8 in r35 -- so each snapshot is a finished frame;
+  snaprun.sh, every 100 ms).
