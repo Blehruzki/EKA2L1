@@ -5066,3 +5066,47 @@ the speedometer looked normal." (The mark they watched was r31c's 1 x 4 strip, a
   (b) the drawn pose read from words not midpointed; (c) the replay's writes outside the
   saved objects, never restored (effects spawned twice: the crash cost; a list left
   inconsistent: the empty frame -- and a crash risk).
+- Bench, spec5 (spec4 + A4_RENDREC 'CRNA' every car slot race+0x394..+0x3CC and 'CRNS' the
+  call log and the speculation header; tools/carsplit.py, 395 renders): calls per step 9
+  (log 32); the player car share 0.50 (167 steps); the seven opponents (slots 1-7) share
+  0.00 in all 167 -- saved, but their only recorded call was the movement +1EA64; slots 9-14
+  parked at one spot (an idle pool: traffic or police not spawned on this route). So the
+  opponents never moved on the speculative frames while the camera moved half a step: the
+  owner's "back and forth as if they were lagging".
+- Why: EKA2L1_WATCHONCE on an opponent's position (wopp): the race-time writer +23E4E,
+  under +1EA64 -- which applies a step amount computed by the physics. The physics car loop
+  (+14686..): every car whose index is not the player's takes +1F1F8 at +146FC (or +1FD0E at
+  +146D6 in the +691E mode); the player's branch reaches +1495E/+14974, the only sites
+  hooked. Fix: A4_HALFMOTION hooks +146FC (a4_h_1f1f8) and +146D6 (a4_h_1fd0e, kind 5;
+  placeholder a4_hc_1fd0e), the call log widened to HCALL_MAX 48 with an overflow count at
+  HSTEP[4].
+- spec7 (the fix): calls per step 22; every opponent share 0.50, quartiles 0.50..0.50 (166
+  steps each); whole steps against lsn1: 165 aligned, 1 of 51 fields (+15C, as always) --
+  still exact.
+- The drawn pose (spec7, the render's own words in the 'CRNA' dumps): the matrix the render
+  writes, +6D4..+718 (a rotation about y in 1.14 fixed point), jumps a whole step on every
+  speculative frame (share 1.00, player and opponents); it is exactly word +678 on a 2048
+  circle (error 0.000 rad on every frame, three slots). +058..+06C, midpointed as
+  "orientation" since 2b, never move on speculative frames (share 0.00): they are the
+  collision box (+04C..+078), built outside the replayed calls -- the spec_mid guess was
+  wrong. The steering pair +0B8/+0C0 and +680/+688 also show the full step (1.00). So when
+  a car turns, its body turns only on the speculative frames, a whole step at a time: the
+  owner's jittery steering.
+- The camera's yaw +0x68 is on a 2048 circle too (fitted against the camera's direction
+  vector +F4/+FC, a 1.12 unit pair: error 0.034 rad against 0.20 for 4096, three runs), and
+  runs past 2048 (2131 at the start). spec_run's 4096 wrap (a guess written down in 2b) is
+  wrong: a wrap on a speculative frame turns the camera half round for that frame -- one
+  candidate for the owner's frame with nearly everything gone. The camera words that move
+  into speculative frames: +58/+60/+68 at 0.50, and +70, +F4/+FC (the direction vector),
+  +100, +388 at 1.00 -- which of them the render draws from is being measured (rcam8:
+  EKA2L1_RWATCH over race+0x48..+0x390, gated to the render by A4_RENDGATE).
+- The replay's writes outside the saved objects (leak6: A4_SPECGATE opens EKA2L1_WATCHGATE
+  at 0x44707C from the keys to the camera update; EKA2L1_WATCH 0x400000..0x4000000; spec5's
+  hooks, 309 openings, 638 words): the stack (149), the cars and the race object (saved),
+  K at 0x01F0029C (saved), and three outside: the heap's own words (0x01F00014/18/34,
+  RHeap's cell count, total size and lock, written from the ROM), a 3 KB block at 0x02020FFC
+  zeroed from the ROM and filled by the game, and a list at 0x01F39780 linked into it -- the
+  camera update (+5912 bl +5205A: unlink a node and delete it, +4B8E4) allocates and frees
+  during the speculative update. The same addresses every time and no heap pointer in the
+  race object changes on speculative frames, so it looks freed within the call; collisions
+  were not in this run (the autopilot drives straight).

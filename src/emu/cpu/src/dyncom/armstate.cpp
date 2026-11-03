@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <unordered_set>
 #include <common/bytes.h>
 #include <common/log.h>
 #include <cpu/dyncom/arm_dyncom.h>
@@ -42,6 +43,10 @@ std::uint32_t ARMul_State::rwatch_end = []() -> std::uint32_t {
                  : static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) + 4;
 }();
 
+// EKA2L1_WATCHGATE's state (see ReportWatch), shared with a range read watch: while a gate is
+// configured, an EKA2L1_RWATCH range reports reads only while it is open.
+static bool watch_gate_open = std::getenv("EKA2L1_WATCHGATE") == nullptr;
+
 void ARMul_State::ReportRead(std::uint32_t address, std::uint32_t value) const {
     // EKA2L1_RWATCH_PC=lo:hi: only reads made by code in that range, each
     // reported when it enters a 4 KB page other than the last one reported --
@@ -61,6 +66,19 @@ void ARMul_State::ReportRead(std::uint32_t address, std::uint32_t value) const {
             return;
         last_page = address >> 12;
         LOG_ERROR(eka2l1::CPU_DYNCOM, "RWATCH: page 0x{:X} entered at 0x{:X} from pc 0x{:X}", address & ~0xFFFu, address, Reg[15]);
+        return;
+    }
+    if (rwatch_end - rwatch_addr > 4 && std::getenv("EKA2L1_WATCHGATE")) {
+        // gated: each (reading PC, word) pair once, the first 512, while the gate is open --
+        // which words a bracketed stretch of code reads (ngage-port, Asphalt 4 round 31: the
+        // camera words the render draws from)
+        if (!watch_gate_open)
+            return;
+        static std::unordered_set<std::uint64_t> pairs;
+        const std::uint64_t key = (static_cast<std::uint64_t>(Reg[15]) << 32) | (address & ~3u);
+        if (pairs.size() >= 512 || !pairs.insert(key).second)
+            return;
+        LOG_ERROR(eka2l1::CPU_DYNCOM, "RWATCHGATE: read 0x{:X} at 0x{:X} from pc 0x{:X} lr 0x{:X}", value, address, Reg[15], Reg[14]);
         return;
     }
     if (rwatch_end - rwatch_addr > 4) {
@@ -111,6 +129,39 @@ std::uint32_t ARMul_State::watch_pc_hi = []() -> std::uint32_t {
 }();
 
 void ARMul_State::ReportWatch(std::uint32_t address, std::uint32_t data, std::uint32_t width) {
+    // EKA2L1_WATCHGATE=addr: a gate word inside the watched range. A store of non-zero
+    // to it opens the gate, of zero closes it; while open, each word of the range
+    // written is reported once, with the PC, LR and SP of its first writer -- every
+    // place a stretch of guest code writes, for a leak check of code bracketed by the
+    // gate (ngage-port, Asphalt 4 round 31: what the speculative half-step writes outside
+    // the objects it saves and restores). EKA2L1_WATCHMAX caps the words reported.
+    static const std::uint32_t gate = [] {
+        const char *w = std::getenv("EKA2L1_WATCHGATE");
+        return w ? static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) : 0u;
+    }();
+    if (gate) {
+        bool &open = watch_gate_open;
+        static std::unordered_set<std::uint32_t> seen;
+        static const std::size_t gcap = [] {
+            const char *w = std::getenv("EKA2L1_WATCHMAX");
+            return w ? static_cast<std::size_t>(std::strtoul(w, nullptr, 10)) : 200000u;
+        }();
+        if (address == gate) {
+            if (open != (data != 0))
+                LOG_ERROR(eka2l1::CPU_DYNCOM, "WATCHGATE: {} at pc 0x{:X}", data ? "open" : "closed", Reg[15]);
+            open = data != 0;
+            return;
+        }
+        if (!open || seen.size() >= gcap)
+            return;
+        for (std::uint32_t a = address & ~3u; a < address + width; a += 4) {
+            if (seen.insert(a).second)
+                LOG_ERROR(eka2l1::CPU_DYNCOM, "WATCHGATE: write 0x{:X} ({} bytes of 0x{:X}) from pc 0x{:X} lr 0x{:X} sp 0x{:X}",
+                    a, width, data, Reg[15], Reg[14], Reg[13]);
+        }
+        return;
+    }
+
     // EKA2L1_WATCHARM=lo:hi: the watch reports nothing until a store into the
     // range comes from a PC in [lo,hi) (before the value and PC filters,
     // so the arming store need not pass them) -- the writers after some known event,

@@ -927,26 +927,31 @@ int a4_step_cam(void *self)                                     /* +16966: bl +1
 _Static_assert(A4_GL_STEP + 3u * 32u * 4u <= 0x00421900u, "the step block runs into the bench records (round 31: it did, at 0x421800)");
 #endif
 #define A4_GL_HSTEP 0x00421940u      /* [0] half-steps, [1] whole steps since the last render,
-                                      * [2] calls recorded this whole step, [3] replaying */
+                                      * [2] calls recorded this whole step, [3] replaying,
+                                      * [4] calls past HCALL_MAX (not recorded) */
 #ifdef A4_HALFMOTION
-/* Milestone 2: the whole step's car calls -- the physics loop's +1DE78/+1F1F8 and the
- * movement loop's +1EA64/+1FD5C -- are recorded with their arguments as the step makes them
+/* Milestone 2: the whole step's car calls -- the physics loop's +1DE78/+1F1F8 (the player)
+ * and +1F1F8/+1FD0E (every other car) and the movement loop's +1EA64/+1FD5C -- are recorded with their arguments as the step makes them
  * and replayed on the odd half-step after it, so the cars move every half-step. Untouched
  * inside, each call still advances a whole step's worth: the comparison against the normal
- * build names what to halve. Up to 32 calls (16 cars, two loops). */
-#define A4_GL_HCALL 0x00421960u      /* 32 x 6 words: which, r0..r3, the stack argument */
-_Static_assert(A4_GL_HCALL + 32u * 6u * 4u <= 0x00422000u, "the recorded car calls past the atlas");
-extern const int32_t a4_hc_1de78, a4_hc_1f1f8, a4_hc_1ea64, a4_hc_1fd5c;   /* a4_gl.s */
+ * build names what to halve. Up to HCALL_MAX calls (15 car slots, two loops, and room);
+ * calls past it are counted at HSTEP[4]. */
+#define A4_GL_HCALL 0x00421960u      /* HCALL_MAX x 6 words: which, r0..r3, the stack argument */
+#define HCALL_MAX 48u
+_Static_assert(A4_GL_HCALL + HCALL_MAX * 6u * 4u <= 0x00422000u, "the recorded car calls past the atlas");
+extern const int32_t a4_hc_1de78, a4_hc_1f1f8, a4_hc_1ea64, a4_hc_1fd5c, a4_hc_1fd0e;   /* a4_gl.s */
 static void hcall_rec(uint32_t which, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t s0)
 {
     volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
-    if (h[3] || h[2] >= 32u) return;
+    if (h[3]) return;
+    if (h[2] >= HCALL_MAX) { h[4]++; return; }
     volatile uint32_t *c = (volatile uint32_t *)A4_GL_HCALL + 6u * h[2]++;
     c[0] = which; c[1] = a0; c[2] = a1; c[3] = a2; c[4] = a3; c[5] = s0;
 }
 typedef int (*fn5)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 typedef int (*fn3)(uint32_t, uint32_t, uint32_t);
 typedef int (*fn2)(uint32_t, uint32_t);
+typedef int (*fn1)(uint32_t);
 int a4_h_1de78(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t s0)
 { hcall_rec(1, a0, a1, a2, a3, s0); return ((fn5)GAMEFN(a4_hc_1de78))(a0, a1, a2, a3, s0); }
 int a4_h_1f1f8(uint32_t a0, uint32_t a1, uint32_t a2)
@@ -955,6 +960,8 @@ int a4_h_1ea64(uint32_t a0, uint32_t a1, uint32_t a2)
 { hcall_rec(3, a0, a1, a2, 0, 0); return ((fn3)GAMEFN(a4_hc_1ea64))(a0, a1, a2); }
 int a4_h_1fd5c(uint32_t a0, uint32_t a1)
 { hcall_rec(4, a0, a1, 0, 0, 0); return ((fn2)GAMEFN(a4_hc_1fd5c))(a0, a1); }
+int a4_h_1fd0e(uint32_t a0)
+{ hcall_rec(5, a0, 0, 0, 0, 0); return ((fn1)GAMEFN(a4_hc_1fd0e))(a0); }
 static void hcall_replay(void)
 {
     volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
@@ -966,6 +973,7 @@ static void hcall_replay(void)
         case 2: ((fn3)GAMEFN(a4_hc_1f1f8))(c[1], c[2], c[3]); break;
         case 3: ((fn3)GAMEFN(a4_hc_1ea64))(c[1], c[2], c[3]); break;
         case 4: ((fn2)GAMEFN(a4_hc_1fd5c))(c[1], c[2]); break;
+        case 5: ((fn1)GAMEFN(a4_hc_1fd0e))(c[1]); break;
         }
     }
     h[3] = 0;
@@ -1021,6 +1029,9 @@ static void spec_run(uint32_t race)
     sp[3] = race;                    /* the race object, its camera (+0x48) with it */
     words_copy(sp + 64, (volatile uint32_t *)race, SPEC_RACESZ / 4u);
     sp[1] = 1;
+#ifdef A4_SPECGATE
+    sp[31] = 1;                      /* bench: EKA2L1_WATCHGATE=44707C -- the game's writes from here */
+#endif
     if (K) {
         ((void (*)(uint32_t, uint32_t))GAMEFN(a4_hc_25e8))(K, 0);
 #ifdef A4_AUTOPILOT
@@ -1033,6 +1044,9 @@ static void spec_run(uint32_t race)
         volatile uint32_t z = 0;
         ((void (*)(uint32_t, volatile uint32_t *))GAMEFN(a4_hc_12dec))(race, &z);
     }
+#ifdef A4_SPECGATE
+    sp[31] = 0;                      /* ... to here: the keys, the replayed car calls, the camera */
+#endif
     {   /* the camera half way too: position +0x58/+0x5C/+0x60 plainly, the angle-like words
          * +0x64/+0x68 the short way round a 4096 circle (a guess at their unit) */
         volatile int32_t *cm = (volatile int32_t *)race;
@@ -1110,7 +1124,13 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
     /* the render call itself, and its part before the first triangle (the game's own
      * transforms and sort, which the 3D pass timer -- first triangle to composite -- misses) */
     uint32_t t0 = a4_ntick();
+#ifdef A4_RENDGATE
+    ((volatile uint32_t *)0x00447000u)[31] = 1;     /* bench: EKA2L1_WATCHGATE=44707C -- what the render reads */
+#endif
     int r = a4_gcall1(GAMEFN(a4_steprend), (uint32_t)(uintptr_t)self);   /* the render: span trampolines inside */
+#ifdef A4_RENDGATE
+    ((volatile uint32_t *)0x00447000u)[31] = 0;
+#endif
 #if defined(A4_CARREC) && defined(A4_RENDREC)
     {   /* bench: after each render, the mesh context ('CRNC') and the player car ('CRNP'), with
          * the half-step count, through the recorder's emitter */
@@ -1130,6 +1150,19 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         if (car) a4_rec_emit((const void *)q, (const void *)car);
         q[0] = 0x524E5243u;          /* 'CRNR': the race object and its context */
         a4_rec_emit3((const void *)q, (const void *)race, (const void *)*(volatile uint32_t *)(race + 0x38));
+#ifdef A4_HALFSPEC
+        /* round 31 phone follow-up: 'CRNS' the step's call log (HSTEP + HCALL) and the
+         * speculation's header (which cars it saved), 'CRNA' every car slot (race+0x394, 15):
+         * each car's own split on the speculative frames, not only the player's */
+        q[0] = 0x534E5243u;
+        a4_rec_emit3((const void *)q, (const void *)A4_GL_HSTEP, (const void *)A4_GL_SPEC);
+        for (uint32_t i = 0; i < 15u; i++) {
+            uint32_t c = *(volatile uint32_t *)(race + 0x394 + 4u * i);
+            if (!c) continue;
+            q[0] = 0x414E5243u; q[2] = i; q[3] = c;
+            a4_rec_emit((const void *)q, (const void *)c);
+        }
+#endif
     }
 #endif
 #ifdef A4_HALFSPEC

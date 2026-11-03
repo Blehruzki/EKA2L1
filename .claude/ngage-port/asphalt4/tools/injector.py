@@ -134,13 +134,19 @@ STEP_PLACEHOLDERS = {'a4_stepcnt': 0x15B1C | 1, 'a4_stepmain': 0x15A52 | 1,
                      'a4_stepcam': 0x12D5A | 1, 'a4_steprend': 0x12992 | 1,
                      'a4_hc_1de78': 0x1DE78 | 1, 'a4_hc_1f1f8': 0x1F1F8 | 1,
                      'a4_hc_1ea64': 0x1EA64 | 1, 'a4_hc_1fd5c': 0x1FD5C | 1,
-                     'a4_hc_25e8': 0x25E8 | 1, 'a4_hc_12dec': 0x12DEC | 1}
+                     'a4_hc_25e8': 0x25E8 | 1, 'a4_hc_12dec': 0x12DEC | 1,
+                     'a4_hc_1fd0e': 0x1FD0E | 1}
 # A4_HALFMOTION (round 31): +141B0's car calls, recorded and replayed on the odd half-steps
 HALFMOTION_HOOKS = {0x14974: ('a4_h_1de78', (0xF009, 0xFA80)),   # bl +1DE78 (physics loop)
                     0x1495E: ('a4_h_1f1f8', (0xF00A, 0xFC4B)),   # bl +1F1F8 (physics loop)
                     0x14C94: ('a4_h_1ea64', (0xF009, 0xFEE6)),   # bl +1EA64 (movement loop)
                     0x14CA2: ('a4_h_1ea64', (0xF009, 0xFEDF)),   # bl +1EA64 (movement loop)
-                    0x14C68: ('a4_h_1fd5c', (0xF00B, 0xF878))}   # bl +1FD5C (movement loop)
+                    0x14C68: ('a4_h_1fd5c', (0xF00B, 0xF878)),   # bl +1FD5C (movement loop)
+                    # round 31 phone follow-up: the loop's other cars (every car but the player's)
+                    # take +1F1F8 at +146FC, or +1FD0E at +146D6 in the +691E mode; unhooked, the
+                    # opponents never moved on the speculative frames (carsplit.py, spec5)
+                    0x146FC: ('a4_h_1f1f8', (0xF00A, 0xFD7C)),   # bl +1F1F8 (physics loop, other cars)
+                    0x146D6: ('a4_h_1fd0e', (0xF00B, 0xFB1A))}   # bl +1FD0E (physics loop, other cars)
 # plain BLX-insertion detours that just re-execute their displaced instructions
 # (no IAT to patch): back-buffer-base cache at the textured filler's +0x33412.
 CACHE_HOOKS = {0x33412: 'a4_cachebb_tramp'}
