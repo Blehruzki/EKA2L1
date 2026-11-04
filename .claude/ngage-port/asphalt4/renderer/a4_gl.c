@@ -882,6 +882,12 @@ int a4_step_count(void *self, int32_t *m, int32_t *n)           /* +16796: bl +1
 #ifdef A4_TRACEARM
     if (STEPB[0] == (uint32_t)(A4_TRACEARM)) a4_trace_arm();
 #endif
+#ifdef A4_BENCH_SLOWMO
+    /* bench (round 41): the game's slow motion forced -- the race's time scale (+15B1C reads
+     * [race+0x84C], 256 normal) set to A4_BENCH_SLOWMO for 3 s of every 10 (host ms), 256 the
+     * rest -- to reproduce on the bench what a takedown's slow motion does to the frames */
+    *(volatile uint32_t *)((uint32_t)(uintptr_t)self + 0x84Cu) = ((a4_ntick() / 1000u) % 10u) >= 7u ? (uint32_t)(A4_BENCH_SLOWMO) : 256u;
+#endif
     int r = ((int (*)(void *, int32_t *, int32_t *))GAMEFN(a4_stepcnt))(self, m, n);
 #ifdef A4_LOCKSTEP
     /* bench (round 31): game time cut loose from the clock -- every race update that would
@@ -1098,6 +1104,34 @@ static void spec_restore(void)
     }
     sp[1] = 0; sp[20] = 0;
 }
+#ifdef A4_FRAMEMARK
+/* round 41, bench only: in each speculation, the player car as the last whole step left it
+ * (x, z, heading +0x678, q16) and as the replayed step predicts it a whole step on (x, z,
+ * heading, ms), and the camera likewise (saved x, z, predicted x, z; saved yaw, predicted yaw,
+ * the cut flag), for EKA2L1_PCTRACE_REGS: the prediction against the next step's own state */
+__attribute__((noinline)) void a4_spec_mark(uint32_t x, uint32_t z, uint32_t hd, uint32_t q16)
+{
+    __asm__ volatile("" : : "r"(x), "r"(z), "r"(hd), "r"(q16) : "memory");
+}
+__attribute__((noinline)) void a4_spec_mark2(uint32_t x, uint32_t z, uint32_t hd, uint32_t t)
+{
+    __asm__ volatile("" : : "r"(x), "r"(z), "r"(hd), "r"(t) : "memory");
+}
+__attribute__((noinline)) void a4_spec_mark3(uint32_t ox, uint32_t oz, uint32_t px, uint32_t pz)
+{
+    __asm__ volatile("" : : "r"(ox), "r"(oz), "r"(px), "r"(pz) : "memory");
+}
+__attribute__((noinline)) void a4_spec_mark4(uint32_t oyaw, uint32_t pyaw, uint32_t a, uint32_t b)
+{
+    __asm__ volatile("" : : "r"(oyaw), "r"(pyaw), "r"(a), "r"(b) : "memory");
+}
+/* bench (round 41, with A4_SPECGATE): what the speculation saves -- the race object, K, the
+ * number of cars, then the cars four at a time -- for a leak check's classifier */
+__attribute__((noinline)) void a4_spec_ptrs(uint32_t a, uint32_t b, uint32_t c, uint32_t d)
+{
+    __asm__ volatile("" : : "r"(a), "r"(b), "r"(c), "r"(d) : "memory");
+}
+#endif
 static void spec_run(uint32_t race, uint32_t q16)
 {
     volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP, *sp = (volatile uint32_t *)A4_GL_SPEC;
@@ -1117,6 +1151,10 @@ static void spec_run(uint32_t race, uint32_t q16)
     sp[3] = race;                    /* the race object, its camera (+0x48) with it */
     words_copy(sp + 64, (volatile uint32_t *)race, SPEC_RACESZ / 4u);
     sp[1] = 1;
+#if defined(A4_SPECGATE) && defined(A4_FRAMEMARK)
+    a4_spec_ptrs(race, K, n, 0);
+    for (uint32_t i = 0; i < n; i += 4u) a4_spec_ptrs(sp[4 + i], sp[5 + i], sp[6 + i], sp[7 + i]);
+#endif
 #ifdef A4_SPECGATE
     sp[31] = 1;                      /* bench: EKA2L1_WATCHGATE=44707C -- the game's writes from here */
 #endif
@@ -1138,6 +1176,7 @@ static void spec_run(uint32_t race, uint32_t q16)
 #endif
 #ifdef A4_SPECCAMSAFE
         sp[24] = 1;   /* a4_cs_*_tramp: the camera scripts not played or set up from here */
+        sp[25] = 0;   /* ... and each call they skip counted */
 #endif
         ((void (*)(uint32_t, volatile uint32_t *))GAMEFN(a4_hc_12dec))(race, &z);
 #ifdef A4_SPECCAMSAFE
@@ -1159,6 +1198,23 @@ static void spec_run(uint32_t race, uint32_t q16)
 #ifdef A4_SPECGATE
     sp[31] = 0;                      /* ... to here: the keys, the replayed car calls, the camera */
 #endif
+#ifdef A4_FRAMEMARK
+    {   uint32_t pl = *(volatile uint32_t *)(race + 0x390);
+        uint32_t idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 0;
+        uint32_t pcar = idx < 16u ? *(volatile uint32_t *)(race + 0x394 + 4u * idx) : 0;
+        for (uint32_t i = 0; i < n && pcar; i++) {
+            if (sp[4 + i] != pcar) continue;
+            const volatile uint32_t *c = (const volatile uint32_t *)pcar;
+            const volatile uint32_t *o = (const volatile uint32_t *)(A4_GL_SNAP + i * SPEC_CARSZ);
+            const volatile uint32_t *cm = (const volatile uint32_t *)race;
+            a4_spec_mark(o[1], o[3], o[0x678u / 4u], q16);
+            a4_spec_mark2(c[1], c[3], c[0x678u / 4u], a4_ntick());
+            a4_spec_mark3(sp[64 + 0x58u / 4u], sp[64 + 0x60u / 4u], cm[0x58u / 4u], cm[0x60u / 4u]);
+            a4_spec_mark4(sp[64 + 0x68u / 4u], cm[0x68u / 4u], sp[25], cm[0x94u / 4u]);   /* skipped script calls, the camera mode */
+            break;
+        }
+    }
+#endif
     {   /* the camera half way too, in the words the render draws it from (rcam8: the render
          * reads +0x58..+0x6C, +0x70 and +0x388 of these; EKA2L1_RWATCH gated to the render):
          * the position +0x58/+0x5C/+0x60 plainly, the angles +0x64/+0x68/+0x6C the short way
@@ -1179,6 +1235,19 @@ static void spec_run(uint32_t race, uint32_t q16)
             uint32_t d = (uint32_t)(cm[w] - co[w]) & 2047u;
             if ((d > 1024u ? 2048u - d : d) > 256u) cut = 1;
         }
+#if defined(A4_SPECSCRIPTHOLD) && defined(A4_SPECCAMSAFE)
+        /* round 41 (r40 on the phone: "the cars online lag during takedown cameras"): a camera
+         * driven by a script (a takedown, a crash, an event) has its script player skipped in
+         * the speculation (A4_SPECCAMSAFE), so the speculated camera stays at the whole step
+         * while the cars are drawn up to a step ahead -- they slide forward and snap back each
+         * step. Such a frame is drawn at the whole step: camera and cars as the game left them */
+        if (sp[25]) {
+            cut = 1;
+#ifdef A4_SLOWREC
+            if ((((volatile uint32_t *)0x00455800u)[14] & 0xFFFFu) != 0xFFFFu) ((volatile uint32_t *)0x00455800u)[14]++;   /* low half: frames drawn at the whole step for it */
+#endif
+        }
+#endif
         if (cut) {
             for (uint32_t w = 0x58u / 4u; w <= 0x70u / 4u; w++) cm[w] = co[w];   /* a cut: the camera as it was */
         } else {
@@ -1206,7 +1275,11 @@ static void spec_run(uint32_t race, uint32_t q16)
     for (uint32_t i = 0; i < n; i++) {
         volatile int32_t *c = (volatile int32_t *)sp[4 + i];
         const volatile int32_t *o = (const volatile int32_t *)(A4_GL_SNAP + i * SPEC_CARSZ);
-        if (iabs32(c[0x004u / 4u] - o[0x004u / 4u]) > SPEC_CUT || iabs32(c[0x00Cu / 4u] - o[0x00Cu / 4u]) > SPEC_CUT) {
+        if (iabs32(c[0x004u / 4u] - o[0x004u / 4u]) > SPEC_CUT || iabs32(c[0x00Cu / 4u] - o[0x00Cu / 4u]) > SPEC_CUT
+#if defined(A4_SPECSCRIPTHOLD) && defined(A4_SPECCAMSAFE)
+            || sp[25]
+#endif
+            ) {
             words_copy((volatile uint32_t *)c, (const volatile uint32_t *)o, SPEC_CARSZ / 4u);   /* a respawn: as it was */
             continue;
         }
@@ -1372,6 +1445,26 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
             uint32_t q = (uint32_t)(((uint64_t)t * 0x312684D0u) >> 43);   /* t / 10667, exact below 2^31 */
             uint32_t ph = t - q * 10667u + (((h[0] - 1u) & 1u) ? 10667u : 0u);   /* 0 .. 21333 */
             uint32_t q16 = (uint32_t)(((uint64_t)ph * 201320u) >> 16);         /* ph * 65536 / 21334 */
+#ifdef A4_SLOWMOQ
+            {   /* round 41 (r40 on the phone: "the cars online lag during takedown cameras"):
+                 * the logic half-step's period is the race's time scale times 10667 >> 8
+                 * (+15B1C: [race+0x84C], 256 at normal speed, more in slow motion), not 10667.
+                 * At 10667 in slow motion the fraction swept a whole step more than once per
+                 * step: the cars drawn up to a step ahead, then back, then ahead again */
+                uint32_t sc = *(volatile uint32_t *)(race + 0x84Cu);
+                if (sc != 256u && sc > 0u && sc <= 0x4000u) {
+                    uint32_t P = (sc * 10667u) >> 8, r = 0, D, f = 0;
+                    for (int b = 31; b >= 0; b--) { r = (r << 1) | ((t >> b) & 1u); if (r >= P) r -= P; }   /* t mod P */
+                    ph = r + (((h[0] - 1u) & 1u) ? P : 0u);   /* 0 .. 2P */
+                    D = 2u * P;
+                    for (int b = 0; b < 16; b++) { ph <<= 1; f <<= 1; if (ph >= D) { ph -= D; f |= 1u; } }   /* ph / 2P, 16 bits */
+                    q16 = f;
+#ifdef A4_SLOWREC
+                    ((volatile uint32_t *)0x00455800u)[14] += 0x10000u;   /* high half: speculations in slow motion */
+#endif
+                }
+            }
+#endif
 #ifdef A4_FRAMEMARK
             mark_q16 = q16 | 0x80000000u;
 #endif

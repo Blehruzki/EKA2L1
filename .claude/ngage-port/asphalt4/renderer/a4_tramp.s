@@ -361,8 +361,13 @@ a4_cs_5205a_tramp:
         ldr     r12, a4_cs_flag1
         ldr     r12, [r12]
         cmp     r12, #0
-        bxne    lr                  @ speculating: the script not played
-        ldr     r12, a4_hc_5205a
+        beq     1f
+        ldr     r12, a4_cs_flag1           @ speculating: the script not played, and counted in SPEC
+        ldr     r1, [r12, #4]       @ word 25 (round 41: the frame is then drawn at the whole
+        add     r1, r1, #1          @ step, A4_SPECSCRIPTHOLD); r1 is the callee's to clobber,
+        str     r1, [r12, #4]       @ and the call is not made
+        bx      lr
+1:      ldr     r12, a4_hc_5205a
         add     r12, pc, r12        @ pc reads as a4_hc_5205a
         bx      r12
         .global a4_hc_5205a
@@ -375,8 +380,13 @@ a4_cs_3d2a_tramp:
         ldr     r12, a4_cs_flag2
         ldr     r12, [r12]
         cmp     r12, #0
-        bxne    lr                  @ speculating: no script set up
-        ldr     r12, a4_hc_3d2a
+        beq     1f
+        ldr     r12, a4_cs_flag2           @ speculating: no script set up, and counted in SPEC
+        ldr     r1, [r12, #4]       @ word 25 (round 41: the frame is then drawn at the whole
+        add     r1, r1, #1          @ step, A4_SPECSCRIPTHOLD); r1 is the callee's to clobber,
+        str     r1, [r12, #4]       @ and the call is not made
+        bx      lr
+1:      ldr     r12, a4_hc_3d2a
         add     r12, pc, r12        @ pc reads as a4_hc_3d2a
         bx      r12
         .global a4_hc_3d2a

@@ -5940,3 +5940,62 @@ bugs on the bench. It doesn't matter if it takes several bench rounds."
   km/h facing backwards ("REVERSE", "ARE YOU LOST?!"): on the bench, holding 5 is what moves
   the car (telerun's 190 km/h). Steering race v2: 5 held, 2 held 2 s / free 1.5 s / 8 held 2
   s / free 1.5 s, cap 85, green on (r41on) and green not compiled (r40ns).
+- Steering race v3, the weave (2 held 0.8 s, free 0.7 s, 8 likewise, 5 held; cap 85, 150 s;
+  tools/pacing2.py on the render marks), green on (r41on) against green not compiled (r40ns):
+  renders 2048 (69 ms median) / 1627 (87 ms); moving 1323 / 1346; turn rate off its
+  neighbours by >25%: 15% / 20%; heading reversals 30 / 60; heading blips 8 / 19; car against
+  camera change median/90%/99% 2/10/38 against 4/15/29; its blips 17 / 46, reversals 68 / 119.
+  By render-start time green is not worse; its 99th percentile is.
+- Timed by the present (a4_present_mark: the ms the made present went out; tools/pacing3.py
+  joins it to the render marks): render start to present median 62 ms (green, r41p) / 67
+  (r41pns); drawn speed off >25%: 0% by render start, 2% by present (green) against 3% / 5%;
+  turn rate 11% / 12% (green) against 22% / 23%. The lag between drawing and showing is
+  steady enough not to unsettle what was drawn evenly.
+- The picture (EKA2L1_POSTDUMP posts 700-1599 of a green weave; tools/carscreen.py, the blue
+  Mini's pixels): too noisy to rank (the colour mask moves with the shading: ~48 reversals per
+  100 frames in place and turn alike, the noise floor, not a finding). Rule 4: a picture is not
+  a measurement; this one was not even a usable picture measurement.
+- The prediction itself (round 41 bench marks a4_spec_mark..4 in spec_run: the player car and
+  camera as the whole step left them and as the replayed step predicts them a step on;
+  tools/predres.py against the next step's own state; r41son, the weave, 1,325 steps): car
+  heading error median 0, 90% 5, 99% 17 /2048 a step (the true turn median 26 on turning
+  steps; error/true 10-90% 0.00..+0.14, beyond +-0.5 in 5%); the car's place exact (across
+  99% 0.002 of a step); camera place error 90% 4.2, 99% 36 units (a step 85); camera yaw 90%
+  5, 99% 31; car against camera heading-less-yaw 99% 39. Every green frame is the last step
+  plus a fraction q of the prediction (q16 from the game clock; median largest q in a step
+  0.56), so a wrong prediction would show as q times its error, gone at the next step: on
+  the bench the prediction is right to within a few units in 90% of steps. The held-steer
+  jitter is not reproduced on the bench by any measure so far.
+
+## Round 40, phone (r40, sha256 66df115f...): the empty frame gone; takedown cameras lag
+
+Owner: "I didn't notice the frame lost bug, but now the cars "online lag" during takedown
+cameras. I also noticed that at high speed is hard to connect or crash against traffic cars.
+Also I still noticed jittering during steering."
+- Telemetry (8 files, capidx 82 the latest; slowsum.py): 2,001 real presents, 4,000 skipped,
+  1,915 renders; frames held back 0 (the hold never needed); 4 drop frames, each with the
+  camera moved (camdev 109-365: cuts, not the empty frame); slowest frames 111-141 ms, the
+  render call 107-138 of it. Consistent with the empty frame fixed (A4_KEEP70).
+- The takedown cameras, two candidates found in the code, both measured on the bench:
+  1. A4_SPECCAMSAFE (new in r40) skips the camera script player in the speculation, so a
+     scripted camera stays at the whole step while the cars are drawn up to a step ahead.
+     The trampolines now count the calls they skip (SPEC word 25); r41c, a crash-prone race
+     (holds 1.5 s / free 0.5 s), tools/skipana.py: 62 of 2,722 speculations skipped a script
+     call, all in camera mode 0x18 (race+0x94; set at +12EBE/+12EDE: the crash camera), one
+     run of 61; the speculated camera's step against the car's 0.00 there against 1.04
+     elsewhere. Fix A4_SPECSCRIPTHOLD: such a frame is drawn at the whole step (camera and
+     cars as the game left them; SLOWREC word 14 counts them).
+  2. Slow motion. +15B1C counts the logic steps with the period [race+0x84C] x 10667 >> 8
+     (256 normal, more in slow motion: a takedown's), but the speculation's fraction used
+     10667 always: in slow motion it swept a whole step more than once per step, the cars
+     drawn ahead, back, ahead. Fix A4_SLOWMOQ: the fraction from the game's own period
+     (shift-subtract divide; the blob has no libgcc), only when the scale is not 256, so the
+     normal path is unchanged. Bench knob A4_BENCH_SLOWMO=<scale>: the scale forced 3 s of
+     every 10 (never in a phone build).
+- The helicopter (for the round-38 "helicopter position for a frame or two"): race car
+  slots 8-14 (race+0x3B4..) are the police, created at +18338 with a type at car+0xC70 by
+  slot: 1 Pomoto, 2 helicopter (cars\helicopter.cfg), 3 cop, others police; 4 = the
+  helicopter. Spawned (+20520 from +18B12/+18B9A) with state +0xC6C = 0 for the helicopter
+  (1 for the others). The camera update +12DEC sets camera mode 0x2A (+3FE6, cam+0x4C =
+  race+0x94) while the helicopter's state is 0; the GNN LIVE letterbox (+12738, called from
+  +12A78) draws while its timer +0xC44 is under 0x1E0. Not yet reproduced on the bench.

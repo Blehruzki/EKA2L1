@@ -30,4 +30,5 @@ R = sorted([S[32 + i * 16: 48 + i * 16] for i in range(16)], key=lambda e: -e[0]
 show(R, 'the 16 slowest 3D frames (ms; 3D = first triangle to composite, comp = the flush/composite, rcall = the game\'s render call, pre = its part before the first triangle)')
 L = [S[288 + i * 16: 304 + i * 16] for i in range(8)]
 print('drop frames (triangles halved or worse) in the race: %d' % S[18])
+print('speculative frames drawn at the whole step for a camera script (A4_SPECSCRIPTHOLD, round 41): %d; speculations in slow motion (A4_SLOWMOQ; mod 65536): %d' % (S[14] & 0xFFFF, S[14] >> 16))
 show(sorted(L, key=lambda e: e[14]), 'the last 8 frames with list triangles lost or the triangles halved (prevtri: the frame before)')
