@@ -6046,3 +6046,33 @@ Also I still noticed jittering during steering."
   render, selectively like the cars. Used only if the whole step just past made the call
   (the half-step count stamped at the call), so a stale array from an earlier race is never
   touched.
+- Traffic on the bench (tools/trafpace.py on a4_traf_mark: the first moved traffic slot as
+  drawn, per render; the weave 120 s, cap 85): carried on (tr_x) drawn speed against its
+  neighbours quartiles 0.98..1.02, 10-90% 0.96..1.04, off by >25% 0%, never drawn backwards
+  (1,201 windows); the extrapolation compiled out (tr_nox, A4_TRAFNOX) 0.96..1.04, 10-90%
+  0.00..1.12 (standing still between steps), off by >25% 20%. Leak check of the traffic build
+  (lk44): 31 words outside, none in the traffic array or the spawn records.
+- Where we are (rule 3): takedown-camera lag -- two causes found in the code and fixed, both
+  measured on the bench (the keyframe leak and the script skip: crash camera 0x18; slow
+  motion: forced); traffic -- cause found (never in the speculation) and fixed, measured; the
+  steering jitter -- not reproduced by any bench measure (prediction error, render-start and
+  present timing, the picture), so the phone build records its own frames (A4_FRAMEREC); the
+  helicopter view -- not reproduced; its likely mechanism (a camera script started by the
+  speculation leaving keyframes behind) is now closed. Best test this round: the gated leak
+  check (691 -> 34 -> 31 words), which named both the keyframe leak and the traffic gap.
+- Candidate r41 (C41 = C40 + A4_SPECSCRIPTHOLD + A4_SLOWMOQ + A4_FRAMEREC + A4_SPECTRAFFIC, with
+  A4_SPECCAMSAFE's extension; sha256
+  5055b5433deece0ae2d14feb29357915ac2ed5fc143ab59ad7aadd3517989075, 807,532 bytes; no
+  0xDEADBEEF; +3A15C B510 0004). Battery on that binary: telerun3 230 s at cap 85 framestat
+  3256, faults 1 (the boot fault), EKA2L1_POSTDUMP: no posted frame near an empty one
+  (emptyfind 46.3), held 0, drop frames 2, frames held for a camera script 56, the frame record
+  read back from all 8 captures (417 frames, every one presented; render to present median 63
+  ms); crash-steer race 150 s framestat 3168, faults 1, the record read back; racemenu framestat
+  3942, faults 1, 18 shots; mark framestat 1344, faults 1. (The first r41 candidate's telerun,
+  before the keyframe and traffic changes, held 6 frames; this one 0.)
+- Guesses in it (rule 4): that the takedown camera is the scripted mode 0x18 with slow motion
+  (+12EBE/+12EDE set 0x18 for a crash and for the race's +0x834 event; no takedown on the bench
+  yet; the forced scale 512 is not a measured takedown scale); the traffic words drawn (taken
+  from which words move, not from a read-watch of +FFAC; the heading +11C carried on only when
+  it moved under 512); +579A's callers ignoring r0; the remaining outside writers (event ring,
+  +2482C, sound) left as they are, frequency unknown.
