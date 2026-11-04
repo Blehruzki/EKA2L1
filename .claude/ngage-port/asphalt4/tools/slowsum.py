@@ -15,13 +15,16 @@ print('%s capidx %d: magic %08x, 3D frames seen %d' % (f.split('/')[-1], cap, S[
 print('presents: real %d (no render since the last real one %d, no 3D %d), skipped %d; renders %d, skipped (half-step) %d' % tuple(S[20:26]))
 # words 30-31 were a third caller up to round 36; from round 37 A4_DROPHOLD's frames held back and framework posts held
 if S[26]: print('  callers of the no-render real presents:', ['0x%08X x%d' % (S[26 + 2*k], S[27 + 2*k]) for k in range(2) if S[26 + 2*k]])
-print('frames held back (A4_DROPHOLD: 3D under a quarter (r37: a sixth) of the last frame that went out, the camera where it was; 0 in a build without it): %d, and %d no-render presents and %d framework posts after them' % (S[30] & 0xFFFF, S[30] >> 16, S[31]))
-cols = 'ms 3D hook comp 2D pres logic spec rcall pre tris list lost mode nodraw stale frame prevtri'.split()
+print('frames held back (A4_DROPHOLD: 3D under a half (r38 a quarter, r37 a sixth) of the last frame that went out, the camera where it was; 0 in a build without it): %d, and %d no-render presents and %d framework posts after them' % (S[30] & 0xFFFF, S[30] >> 16, S[31]))
+# word 12 of an entry: list triangles lost (low 16 bits); from round 39 (A4_DROPHOLD) the
+# camera's offset from the player car against the last frame shown, most on one axis
+# (bits 16-30, 32767 = no race render), and bit 31 = the frame was held
+cols = 'ms 3D hook comp 2D pres logic spec rcall pre tris list lost camdev held mode nodraw stale frame prevtri'.split()
 def show(rows, title):
     print(title); print('  ' + ' '.join('%6s' % c for c in cols))
     for e in rows:
         if e[0]:
-            v = list(e[:13]) + [e[13] & 0xFFFF, (e[13] >> 16) & 0x3FF, e[13] >> 26] + list(e[14:16])
+            v = list(e[:12]) + [e[12] & 0xFFFF, (e[12] >> 16) & 0x7FFF, e[12] >> 31] + [e[13] & 0xFFFF, (e[13] >> 16) & 0x3FF, e[13] >> 26] + list(e[14:16])
             print('  ' + ' '.join('%6d' % x for x in v))
 R = sorted([S[32 + i * 16: 48 + i * 16] for i in range(16)], key=lambda e: -e[0])
 show(R, 'the 16 slowest 3D frames (ms; 3D = first triangle to composite, comp = the flush/composite, rcall = the game\'s render call, pre = its part before the first triangle)')

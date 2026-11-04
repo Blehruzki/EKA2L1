@@ -299,6 +299,7 @@ struct glr {
     uint32_t camok;                    /* A4_DROPHOLD: camoff holds the last render's camera offset */
     int32_t camoff[3];                 /* A4_DROPHOLD: the camera less the player car at the last render */
     int32_t goodoff[3];                /* A4_DROPHOLD: the same at the last frame that went out */
+    uint32_t droprec;                  /* A4_SLOWREC: 1 + the drop ring entry this frame wrote (0: none) */
 };
 
 _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlaps the readback strip");
@@ -1127,7 +1128,17 @@ static void spec_run(uint32_t race, uint32_t q16)
          * with a midpoint written before the render) -- left alone */
         volatile int32_t *cm = (volatile int32_t *)race;
         const volatile int32_t *co = (const volatile int32_t *)(sp + 64);
-        if (iabs32(cm[0x58u / 4u] - co[0x58u / 4u]) > SPEC_CUT || iabs32(cm[0x60u / 4u] - co[0x60u / 4u]) > SPEC_CUT) {
+        /* a cut: more than SPEC_CUT on any axis -- height too (round 39: the owner's
+         * "helicopter position for a frame or two" before the news helicopter event; x and
+         * z alone let a camera that rose to an event view be drawn half way up) -- or an
+         * angle turned more than an eighth of the circle in one step */
+        uint32_t cut = 0;
+        for (uint32_t w = 0x58u / 4u; w <= 0x60u / 4u; w++) if (iabs32(cm[w] - co[w]) > SPEC_CUT) cut = 1;
+        for (uint32_t w = 0x64u / 4u; w <= 0x6Cu / 4u; w++) {
+            uint32_t d = (uint32_t)(cm[w] - co[w]) & 2047u;
+            if ((d > 1024u ? 2048u - d : d) > 256u) cut = 1;
+        }
+        if (cut) {
             for (uint32_t w = 0x58u / 4u; w <= 0x70u / 4u; w++) cm[w] = co[w];   /* a cut: the camera as it was */
         } else {
             for (uint32_t w = 0x58u / 4u; w <= 0x60u / 4u; w++) cm[w] = lerp_q16(co[w], cm[w], q16);
@@ -4459,6 +4470,7 @@ static void slow_rec(uint32_t had)
         volatile uint32_t *L = S + 32 + 256;
         uint32_t j = S[15] & 7u; S[15]++;
         for (uint32_t k = 0; k < 16u; k++) L[j * 16 + k] = e[k];
+        ((volatile struct glr *)A4_GL_SCRATCH)->droprec = j + 1u;   /* A4_DROPHOLD adds its verdict */
     }
 }
 #endif
@@ -4596,8 +4608,8 @@ int a4_gl_frame(uint32_t fps)
          * inside a narrow stretch (under one frame's travel: never two empty renders in a
          * row), which a faster frame rate samples more often; the stock game passed the
          * hill 3 times on the bench without one, which does not exclude it at its rate.
-         * Whatever the cause, a real present whose 3D collapsed below a quarter of the last
-         * 3D frame that went out (from over 600), with the camera where it was, is not
+         * Whatever the cause, a real present whose 3D collapsed below a half of the last
+         * 3D frame that went out (from over 400), with the camera where it was, is not
          * made: the screen keeps the last frame until a render brings one of its own, at
          * most DROPHOLD_TICKS.
          * The game also presents from the same site with no render since the last present
@@ -4625,9 +4637,32 @@ int a4_gl_frame(uint32_t fps)
                  * the car; the empty render leaves it there. So: under a quarter, from a race
                  * render whose camera-to-car offset is within 96 units on each axis of the
                  * last frame that went out. */
-                uint32_t steady = rendered && camok;
-                for (int i = 0; i < 3 && steady; i++) { int32_t d = s->camoff[i] - s->goodoff[i]; if (d > 96 || d < -96) steady = 0; }
-                if (prev > 600u && had * 4u < prev && steady && !(holding && now - A4_PERF[PF_HOLDT] >= DROPHOLD_TICKS)) {
+                uint32_t dev = 0x7FFFu;
+                if (rendered && camok) {
+                    dev = 0;
+                    for (int i = 0; i < 3; i++) { int32_t d = s->camoff[i] - s->goodoff[i]; uint32_t a = (uint32_t)(d < 0 ? -d : d); if (a > dev) dev = a; }
+                    if (dev > 0x7FFFu) dev = 0x7FFFu;
+                }
+                /* round 39: the phone's empty renders drew 146-280 triangles, 0.19-0.30 of the
+                 * frame before, over r38's quarter, and Paris's frames before them ~650; the
+                 * camera test parts the cuts, so: under a half, from over 400 */
+                /* and the last frame shown was the chase camera's: r39m's crash close-up (the
+                 * camera ~830 units ahead, looking back) kept its offset within 96 too while its
+                 * triangles halved, and was held ~300 ms. Over a whole LA race the chase camera
+                 * sat 200-300 units from the car on the ground (4,481 of 4,595 renders) and
+                 * 75-175 above it. Another camera view the player picks is not held. */
+                int32_t gx = s->goodoff[0], gy = s->goodoff[1], gz = s->goodoff[2];
+                int64_t g2 = (int64_t)gx * gx + (int64_t)gz * gz;
+                uint32_t chase = g2 >= 150 * 150 && g2 <= 350 * 350 && gy >= 50 && gy <= 200;
+                uint32_t steady = dev <= 96u && chase;
+                uint32_t hold = prev > 400u && had * 2u < prev && steady && !(holding && now - A4_PERF[PF_HOLDT] >= DROPHOLD_TICKS);
+#ifdef A4_SLOWREC
+                if (s->droprec) {   /* the record's drop entry for this frame: lost | camera deviation << 16 | held << 31 */
+                    volatile uint32_t *le = (volatile uint32_t *)0x00455800u + 32 + 256 + (s->droprec - 1u) * 16u + 12u;
+                    *le = (*le & 0xFFFFu) | dev << 16 | hold << 31;
+                }
+#endif
+                if (hold) {
                     presented = 1; A4_PERF[PF_HELD]++;
                     if (!holding) { A4_PERF[PF_HOLDCALL] = caller; A4_PERF[PF_HOLDT] = now; a4_drop_mark(had, prev); }
                 } else {
@@ -4679,6 +4714,7 @@ int a4_gl_frame(uint32_t fps)
 #endif
     }
 #endif
+    s->droprec = 0;
     s->prims = 0;
     s->flushed = 0;
 #ifdef A4_MESH

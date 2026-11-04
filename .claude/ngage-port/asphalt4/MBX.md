@@ -5683,3 +5683,48 @@ physic-related bugs that most likely have to do with the time-step."
 - Sent while Paris is studied: r38 is r37 without the re-hold freeze and with the camera
   test (it catches LA's 0.1668). It does NOT address Paris (its sparse drops ~0.35-0.43 from
   ~650) or the steering jitter there.
+
+## Round 38, phone (r38, sha256 b2d64972...)
+
+Owner: "The frame lost still happens at the same place. Additionally, there was another
+camera bug a few meters before entering the fame avenue where the camera would get in a
+helicopter position for a frame or two, a second or two before the news helicopter event
+triggered. And yes, there was a bit of a slowdown during a crash cam, but I'm not sure if
+it was because I was entering a heavy scene at that moment or because there is an actual
+related bug."
+- Telemetry (capidx 106-113; record at capidx 113, 9,732 3D frames): real presents 2,929
+  (309 with no render since the last), renders 2,625 (34 skipped by the half-step); held 5
+  renders with 311 render-less presents and 316 framework posts. Drop frames 7: 247 of 651
+  (list 207), 198 of 653 (0.30), 244 of 616 (list 150), 146 of 786 (0.186, list 0, render
+  call 17 ms: empty-render-like), 460 of 1,143, 228 of 973 (0.23), 660 of 2,037. The
+  slowest list holds two frames whose frame before had 174 and 187 triangles (frames 1491,
+  7257): low renders the drop rule never saw as drops (the frame before them not over 600,
+  or held). So on the phone the empty renders draw ~150-280 triangles, near the cuts'
+  ratios; which were held is not in the record (no camera there).
+- The crash-cam slowdown: no frame in the record over 165 ms (the slowest, render-bound);
+  the holds' render-less spinning is the suspect to rule out, not shown.
+- The helicopter view, bench: r38n's camera log (every render's camera and car, a whole LA
+  race) has one camera far from its place mid-run -- 646 units above the car, then 442,
+  171, 105 -- but at present ~10,500, after the race ended (the end camera coming down).
+  The fame-avenue event is not on the bench route's log: not reproduced.
+- Theory (rule 4), from the code: spec_run's camera cut tested x and z only (+0x58, +0x60);
+  a camera that rose to an event view in one step was drawn half way up. Round 39: a cut on
+  any axis over SPEC_CUT, or an angle turned over 256 of 2048 in one step.
+- The empty render, round 39: held under a half of the last frame shown, from over 400,
+  with the camera within 96 (the camera test parts the cuts, not the ratio); and the
+  record's drop entries carry the verdict: word 12 = lost | camera deviation << 16 | held
+  << 31 (slowsum: camdev, held), so the next phone round says which drops were cuts and
+  which empty renders, and which were held.
+- r39m (the round 39 hold, with the marks, 230 s): 4 holds -- 0 of 1,743 and 0 of 1,908
+  (the hill), 23 of 907 (after the race), and 99 of 512: a crash close-up camera (no top
+  HUD, the car filling the screen), its offset from the car ~830 units (the camera ahead,
+  looking back) and steady within 96 while its triangles halved, held ~300 ms (post gap 296
+  ms, 3,291 presents spun through) -- the kind of crash-cam slowdown the owner felt in r38.
+  The camera test alone is not enough. Over the race the chase camera sat 200-300 units
+  from the car on the ground in 4,481 of 4,595 renders, 75-175 above it. r39n: a hold also
+  needs the last frame shown to be the chase camera's (150-350 on the ground, 50-200 up).
+- r39n (with the chase test, 230 s): holds at the hill only -- 6 of 1,516 (camera
+  deviation 10), 72 then 118 of 1,494 (3), 0 of 1,363 -- each followed by a whole frame;
+  the collapses NOT held: 191 of 514 and 152 of 480 (crash camera: not the chase), 1,106 of
+  2,286 (deviation 541) and 474 of 1,606 (724: cuts); no posted frame near an empty one
+  (emptyfind 46.1); the longest race post gap 143 ms.
