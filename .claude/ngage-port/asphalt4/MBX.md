@@ -5466,10 +5466,89 @@ when green came in, looked smoother. The car shadow clipping happened regardless
   which skips the post while a frame is held (a4_fw_hold, bounded with the held presents
   at 8) and otherwise makes it as a tail call; +606's caller does not read its result
   (+9C2 ldrb r0,[r7,#8]). Bench r37h (with the trace, 230 s): no empty frame that run (0
-  held, 1 drop frame: a cut, 446 of 1,349, posted as it should be). Rerun r37i without the
-  trace: in flight.
+  held, 1 drop frame: a cut, 446 of 1,349, posted as it should be). r37i, the same exe
+  without the trace: held once (47 of 1,612), with 4 render-less presents and 4 framework
+  posts held after it -- the bound of 8 -- and the frame then posted twice (posts 2334 by
+  +6B7, 2335 by +1EF, 56 and 73 ms after the posts before: no stall). Not slow motion: the
+  empty render is quick (19 ms against ~70), so the race loop comes round before the next
+  half-step is due and iterates with no render (m = 0), and a held present skips the
+  present call's pacing, so 8 holds go by within milliseconds. r37j: the hold lasts until a
+  render brings a frame, at most 250 ms (a4_ntick, 1 ms on the bench and the N95), with no
+  count.
 - Rule 4, the guesses: the cause of the empty render itself is NOT found -- the theory is
   the game's own visibility failing for a camera inside a narrow stretch of the hill; the
   hold hides it, it does not fix it. The 1/8 threshold rests on 6 empty frames and 7 cuts
   seen. What +6B4's method does besides posting is not read; it is skipped only for a held
   frame (1-2 times a lap at most).
+- r37j (the 250 ms hold): no drop frame in that race (chance). r37k, the same exe: held
+  twice (18 of 690, a crash camera at speed 0 -- held one frame, harmless; 67 of 1,086,
+  lap 2's empty frame) and neither reached the panel (nearest posts 46.9 and 20.6) -- but
+  lap 1's empty frame did (post 1480, by +1EF), and the record never counted it as a drop.
+  That post dump was deleted before it was read further (lost; rule 1).
+- r37m (A4_FRAMEMARK, bench only: every present that brings 3D or goes out calls
+  a4_frame_mark(had, prev, frames, skipped) for EKA2L1_PCTRACE_REGS, and stamps its present
+  count in the bottom row, so each post names its present; tools/poststamp.py ties them):
+  held twice (87 of 1,546, 107 of 1,771), all 2,767 race posts tied to a present, no post
+  of a frame under 300 triangles -- yet tools/emptyfind.py (posts against the captured
+  empty frames, y 40-200 x 50-320) finds post 2977 at 8.7 (neighbours 52-56): stamp 8007,
+  a present MADE with 0 triangles since the last, the 3D frame before 1,771 -- three
+  presents before the held 8010. So two empty renders in a row (rule 4: "never two in a
+  row" was wrong), the first with no 3D at all. And what the empty frame is: the game draws
+  its skyline backdrop in software every render; our composite rewrites only the rows the
+  GPU drew (miny..maxy); a render with no or almost no 3D leaves the backdrop over the
+  previous frame's bottom (the car, the near road) under a fresh HUD -- round 35's MEMSNAP
+  "skyline frames" (the backdrop over the last frame) were this, not a bad snapshot. After
+  the hold at 8010: 220 presents and no post in 83 ms (render-less spinning, all held).
+- So the question is why some renders on the hill submit no 3D. Next: the GL build with
+  the half-step scheme off (no A4_HALFSTEP, no HALFLOGIC/HALFMOTION/HALFSPEC, mode 1070),
+  r37nh, through emptyfind.
+- r37nh (GL, the half-step scheme off: no A4_HALFSTEP, HALFLOGIC, HALFMOTION or HALFSPEC,
+  mode 1070, 230 s): emptyfind finds no post nearer an empty frame than 45.7 (the hill
+  passed twice, mapmatch posts 1165, 2179). With the stock game's 0 of 3 laps: 0 of ~5
+  laps without the scheme against ~15 of 33 laps with it (r36d-r37n) -- the half-step
+  scheme makes the empty renders (p ~ 0.04 by chance), the speculation not needed for it.
+- r37n (A4_FRAMEMARK + a4_render_mark: at every render's entry the words of the object at
+  [race+0x38] whose bytes 4 and 9 make +12992 skip its 3D, +12A18-+12A26): 0 at all 2,837
+  renders -- not that flag, at least not at entry. Held twice, and another empty frame
+  posted (2079, by the framework's post): the collapse took two renders, 1,398 -> 178
+  (0.127 of the frame before: just over the 1/8 threshold) -> 68 (the frame before 178:
+  under the 600 floor) -> a render-less present that posted it -> 1,350. Its posts: 2078
+  (178) the hill drawn flat with no car, no trees, no helicopter; 2079 (68) the skyline,
+  no hill, no car. Not the drawing: the CAMERA -- ahead of the car, then inside the hill,
+  where the terrain's faces turn away and are culled, leaving the far buildings. The step
+  record: m - n sum 0 (no slow motion: the +1300C theory is out); 37 render calls with no
+  triangle at all in the race.
+- r37o: the camera (race +0x58..+0x68) and the player car (+0x04..+0x0C, heading +0x678)
+  logged just before each render call, after the speculation's camera change.
+  r37o result: held twice (6 of 1,044 and 8 of 1,676), each followed by a render with no
+  triangle at all (held too), and no empty frame posted (emptyfind's nearest 28.3). The
+  camera is NOT the cause: its offset from the car stays (-225, +111..+145, -190) and its
+  angles move smoothly through both. The empty renders share a place -- the camera at
+  about x 21,680..21,920, z -24,520..-24,400 (lap 1: 21,872 and 21,917 empty, 21,755 and
+  21,959 whole; lap 2: 21,683 and 21,770 empty, 21,605 and 21,957 whole) -- always two
+  renders in a row, about one whole step's worth. A ~250-unit stretch sampled every ~300
+  units at the stock rate would be hit most laps, and stock and r37nh were not: so not the
+  place alone; something the half-step scheme does at that place.
+- EKA2L1_PCTRACE_RING (emulator, new; EMU_PATCHES.md): the block trace in a ring, written
+  at DUMPAT -- r37p, the code path of the empty render against the whole render before it.
+- r37p (the ring, 230 s): no empty frame that race (the trace slows the bench). r37q: the
+  ring written at the first hold (8,000,000 entries, 13 renders). tools/renderdiff.py: the
+  empty render ran as much game code as the whole one before it (221,085 blocks against
+  191,255 -- the game did not skip its scene). Their first parting (+D354) is incidental:
+  +D32E advances animated textures by elapsed time. By block counts, the empty render
+  alone: +CEA0..+CF10 builds a mesh -- 325 vertices copied from packed shorts into 0x28-byte
+  records, 372 faces from byte indices into 0x34-byte records (+CEC2 x325, +CEEC x372) --
+  and +345E4 (from +34A0C) classifies its 325 points against the view (depth limits, then
+  four plane outcodes, the same test as +34440, which ran 146 times out of range in the
+  whole render and 7 in the empty one); a helper +523A2 507 times against 9; and our
+  a4_gl_flush's composite loop 10,240 times inside the render call (a mid-render
+  composite). So at that place the game builds a terrain piece during a render and draws
+  next to nothing until it is ready, about one whole step later.
+- Theory, NOT verified (rule 4): stock always has a logic step between two renders; the
+  half-step scheme renders again after a half-step with no logic, which can land in the
+  middle of the game's switch. Not chased further this round: the hold covers it.
+- The hold reworked (r37r): a render's present is compared with the last frame that went
+  out (a held frame does not move PF_PREVHAD), so a two-render collapse and a render with no
+  3D at all (struct glr's new `rendered`, set after each render call) hold as one; a sixth
+  (178 of 1,398 was 0.127; the legitimate cuts 0.33 or more); and never longer than 250 ms
+  from the hold's start, renders included.

@@ -202,6 +202,11 @@ def build_blob(link_addr, tmp, clean=False, gl=False):
     for line in subprocess.check_output(['llvm-nm', elf], text=True).splitlines():
         p = line.split()
         if len(p) == 3: syms[p[2]] = int(p[0], 16)
+    if os.environ.get('A4_SYMFILE'):
+        # bench aid: every symbol's code offset, sorted, to name a traced PC
+        with open(os.environ['A4_SYMFILE'], 'w') as sf:
+            for name, a in sorted(syms.items(), key=lambda kv: kv[1]):
+                sf.write('+%06X %s\n' % (a - LINK_BASE, name))
     for name in filter(None, os.environ.get('A4_PRINTSYMS', '').split(',')):
         # bench aid: a symbol's run address (code at 0x70000000 on the bench's RM-320)
         print('sym    %s +%06X (0x%08X)' % (name, syms[name] - LINK_BASE, 0x70000000 + syms[name] - LINK_BASE))

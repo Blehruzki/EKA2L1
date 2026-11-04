@@ -56,6 +56,13 @@ struct pc_trace {
     // advance (ngage-port: Colin's link drop, E1240).
     std::vector<std::uint32_t> ring; std::size_t ringn = 0, ringpos = 0; std::uint64_t ringfill = 0;
     std::uint32_t dumpat = 0;
+    // EKA2L1_PCTRACE_RING=n with EKA2L1_PCTRACE_DUMPAT=pc: the (pc, sp) trace itself goes
+    // round a ring of the last n entries in [lo, hi) instead of to the file, and the ring
+    // is written to the file, oldest first, then the trigger's (pc, sp), when a block at
+    // DUMPAT is entered; once, after which nothing more is traced. For the code path of an
+    // event whose time is not known in advance (ngage-port: Asphalt 4's empty render).
+    std::vector<std::uint32_t> pring; std::size_t pringn = 0, pringpos = 0; std::uint64_t pringfill = 0;
+    bool pring_done = false;
 
     pc_trace() {
         const char *w = std::getenv("EKA2L1_PCTRACE");
@@ -85,6 +92,13 @@ struct pc_trace {
             dumpat = static_cast<std::uint32_t>(std::strtoul(da, nullptr, 16));
             if (ringn)
                 ring.assign(ringn * 17, 0);
+        }
+        const char *pr = std::getenv("EKA2L1_PCTRACE_RING");
+        if (pr && da) {
+            pringn = static_cast<std::size_t>(std::strtoull(pr, nullptr, 10));
+            dumpat = static_cast<std::uint32_t>(std::strtoul(da, nullptr, 16));
+            if (pringn)
+                pring.assign(pringn * 2, 0);
         }
         const char *rp = std::getenv("EKA2L1_PCTRACE_REGS");
         if (rp) {
@@ -136,6 +150,23 @@ struct pc_trace {
         if (!armed) return;
         if (!on) { if (pc != start) return; on = true; }
         if (rf) regs(pc, r);                // anywhere: a narrow range can watch a whole run
+        if (pringn) {
+            if (pring_done) return;
+            if (pc == dumpat) {
+                const std::size_t count = pringfill < pringn ? static_cast<std::size_t>(pringfill) : pringn;
+                const std::size_t first = (pringpos + pringn - count) % pringn;
+                for (std::size_t k = 0; k < count; k++)
+                    std::fwrite(&pring[((first + k) % pringn) * 2], 4, 2, f);
+                const std::uint32_t me[2] = { pc, sp };
+                std::fwrite(me, 4, 2, f); std::fflush(f);
+                pring_done = true;
+                return;
+            }
+            if (pc < lo || pc >= hi) return;
+            pring[pringpos * 2] = pc; pring[pringpos * 2 + 1] = sp;
+            pringpos = (pringpos + 1) % pringn; pringfill++;
+            return;
+        }
         if (pc < lo || pc >= hi) return;
         if (n >= max) { if (f) { flush(); std::fclose(f); f = nullptr; if (!rf) armed = false; } return; }
         buf[fill++] = pc; buf[fill++] = sp; n++;

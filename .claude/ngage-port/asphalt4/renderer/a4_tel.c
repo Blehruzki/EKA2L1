@@ -55,7 +55,7 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
         * then the open span's mark, its counts (n | m << 8), its +12D5A and +15A52 ticks and calls */
        PF_TLOGIC, PF_NSTEP, PF_NSPAN, PF_TCAM, PF_MLOGIC, PF_LSTEP, PF_SCAM, PF_SMAIN, PF_NMAIN, PF_TSPEC, PF_MSPEC,
        PF_PREVHAD, PF_HELD,   /* A4_DROPHOLD (round 37): the last 3D frame's triangles; frames held back | no-render presents held << 16 (totals) */
-       PF_HOLDCALL, PF_HOLDN, /* A4_DROPHOLD: the held present's call site; presents and framework posts held after it */
+       PF_HOLDCALL, PF_HOLDT, /* A4_DROPHOLD: the held present's call site; when it was held (ntick) */
        PF_FWHELD,             /* A4_DROPHOLD: framework posts (+6B4) held (total) */
        PF_N };
 #define EFILE_WRITE 0x200u

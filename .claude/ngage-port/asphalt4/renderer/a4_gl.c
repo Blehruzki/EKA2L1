@@ -229,7 +229,7 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
         * then the open span's mark, its counts (n | m << 8), its +12D5A and +15A52 ticks and calls */
        PF_TLOGIC, PF_NSTEP, PF_NSPAN, PF_TCAM, PF_MLOGIC, PF_LSTEP, PF_SCAM, PF_SMAIN, PF_NMAIN, PF_TSPEC, PF_MSPEC,
        PF_PREVHAD, PF_HELD,   /* A4_DROPHOLD (round 37): the last 3D frame's triangles; frames held back | no-render presents held << 16 (totals) */
-       PF_HOLDCALL, PF_HOLDN, /* A4_DROPHOLD: the held present's call site; presents and framework posts held after it */
+       PF_HOLDCALL, PF_HOLDT, /* A4_DROPHOLD: the held present's call site; when it was held (ntick) */
        PF_FWHELD,             /* A4_DROPHOLD: framework posts (+6B4) held (total) */
        PF_N };
 #define PFF_2D 1u        /* a composite ended this frame and its 2D is being timed */
@@ -295,6 +295,7 @@ struct glr {
     uint32_t cache_ck[NCACHE];         /* mode-1 entry: m1_sig of the table at its last bake */
     uint32_t cache_fr[NCACHE];         /* mode-1 entry: the present it was last checked in */
     uint32_t cache_tab[NCACHE];        /* mode-1 entry: the table it was baked from (part of the key) */
+    uint32_t rendered;                 /* A4_DROPHOLD: the race made a render since the last real present */
 };
 
 _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlaps the readback strip");
@@ -1183,9 +1184,26 @@ int a4_halfstep(uint32_t race)
     return 0;                        /* even: the game's own step */
 }
 #endif
+#ifdef A4_FRAMEMARK
+/* round 37, bench only: called just before each render call (after the speculation moved
+ * the camera), for EKA2L1_PCTRACE_REGS:
+ * r0, r1, r2 = the camera's position (race +0x58, +0x5C, +0x60), r3 = its angles +0x64 and
+ * +0x68 (12 bits each) and HSTEP[1] << 24. (r37n: the object at [race+0x38], whose bytes 4
+ * and 9 make +12992 skip its 3D, read 0 at every render's entry.) */
+__attribute__((noinline)) void a4_render_mark(uint32_t x, uint32_t y, uint32_t z, uint32_t ang)
+{
+    __asm__ volatile("" : : "r"(x), "r"(y), "r"(z), "r"(ang) : "memory");
+}
+/* and the player car's position (+0x04/+0x08/+0x0C) and heading (+0x678) */
+__attribute__((noinline)) void a4_render_mark2(uint32_t x, uint32_t y, uint32_t z, uint32_t hd)
+{
+    __asm__ volatile("" : : "r"(x), "r"(y), "r"(z), "r"(hd) : "memory");
+}
+#endif
 int a4_step_render(void *self)                                  /* +1696C: bl +12992 */
 {
     volatile uint32_t *pf = A4_PERF;
+
 #ifdef A4_HALFLOGIC
     {   volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
         if (!h[1]) {                 /* no whole step since the last render: skipped, its half-steps counted */
@@ -1275,7 +1293,21 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
 #ifdef A4_RENDGATE
     ((volatile uint32_t *)0x00447000u)[31] = 1;     /* bench: EKA2L1_WATCHGATE=44707C -- what the render reads */
 #endif
+#ifdef A4_FRAMEMARK
+    {   volatile uint32_t *c = (volatile uint32_t *)self;
+        volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
+        uint32_t race = (uint32_t)(uintptr_t)self, pl = *(volatile uint32_t *)(race + 0x390);
+        uint32_t idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 0;
+        volatile uint32_t *car = idx < 16u ? *(volatile uint32_t *volatile *)(race + 0x394 + 4u * idx) : 0;
+        a4_render_mark(c[0x58u / 4u], c[0x5Cu / 4u], c[0x60u / 4u],
+                       (c[0x64u / 4u] & 0xFFFu) | (c[0x68u / 4u] & 0xFFFu) << 12 | (h[1] & 0xFFu) << 24);
+        a4_render_mark2(car ? car[1] : 0, car ? car[2] : 0, car ? car[3] : 0, car ? car[0x678u / 4u] : 0);
+    }
+#endif
     int r = a4_gcall1(GAMEFN(a4_steprend), (uint32_t)(uintptr_t)self);   /* the render: span trampolines inside */
+#ifdef A4_DROPHOLD
+    ((volatile struct glr *)A4_GL_SCRATCH)->rendered = 1;   /* a render that draws nothing is a frame too */
+#endif
 #ifdef A4_SLOWREC
     ((volatile uint32_t *)0x00455800u)[24]++; ((volatile uint32_t *)0x00455800u)[19] = 1;   /* renders; one since the last present */
 #endif
@@ -4424,18 +4456,39 @@ __attribute__((noinline)) void a4_drop_mark(uint32_t had, uint32_t prev)
     __asm__ volatile("" : : "r"(had), "r"(prev) : "memory");
 }
 
+/* round 37: how long a hold may last, in a4_ntick() ticks (1 ms on the N95): until a
+ * render brings a frame of its own, at most this long. The empty render is quick (15-19
+ * ms against ~70), so the race loop comes round before the next half-step is due and
+ * iterates with no render, and a held present skips the present's pacing: r37i's
+ * count-bounded hold (8) ran out within one 56 ms post interval and the frame went out. */
+#define DROPHOLD_TICKS 250u
+static int hold_live(void)
+{
+    if (!A4_PERF[PF_HOLDCALL]) return 0;
+    if (a4_ntick() - A4_PERF[PF_HOLDT] < DROPHOLD_TICKS) return 1;
+    A4_PERF[PF_HOLDCALL] = 0;
+    return 0;
+}
+
 /* round 37: a4_fwpost_tramp (a4_tramp.s, at the framework's post +6B2) asks whether a
  * frame is held: 1 skips the framework's post. The bench's trace at a held frame:
  * DoPresent's present skipped, then the framework routine +606 posted the back buffer
  * itself (+6AC/+6B4), and again after the next present that brought no render -- so the
- * held frame reached the screen twice anyway. Bounded by the same count as the presents
- * held after a hold (PF_HOLDN), so a hold can never stop the screen for long. */
+ * held frame reached the screen twice anyway. */
 int a4_fw_hold(void)
 {
-    if (!A4_PERF[PF_HOLDCALL] || A4_PERF[PF_HOLDN] >= 8u) return 0;
-    A4_PERF[PF_HOLDN]++;
+    if (!hold_live()) return 0;
     A4_PERF[PF_FWHELD]++;
     return 1;
+}
+#endif
+#ifdef A4_FRAMEMARK
+/* round 37, bench only (needs A4_DROPHOLD): called for every present that brought 3D or
+ * goes out, for EKA2L1_PCTRACE_REGS -- r0 = the 3D triangles since the last present, r1 =
+ * the 3D frame's before, r2 = the present count, r3 = 1 when the present is not made */
+__attribute__((noinline)) void a4_frame_mark(uint32_t had, uint32_t prev, uint32_t frames, uint32_t skipped)
+{
+    __asm__ volatile("" : : "r"(had), "r"(prev), "r"(frames), "r"(skipped) : "memory");
 }
 #endif
 
@@ -4509,6 +4562,9 @@ int a4_gl_frame(uint32_t fps)
         uint32_t r1 = (uint32_t)(uintptr_t)&a4_rep1 + (uint32_t)a4_rep1;
         uint32_t r2 = (uint32_t)(uintptr_t)&a4_rep2 + (uint32_t)a4_rep2;
         if ((A4_PERF[PF_MODE] & AB_SKIPREP) && (caller == r1 || caller == r2)) { presented = 1; A4_PERF[PF_SKIPPED]++; }
+#ifdef A4_FRAMEMARK
+        uint32_t frame_prev0 = A4_PERF[PF_PREVHAD];
+#endif
 #ifdef A4_DROPHOLD
         /* round 37: the empty frame (the owner's photo 7; the bench's posts 1205-1206 of
          * glpd): on the LA hill one render in about two laps draws the car, the road and the
@@ -4519,32 +4575,48 @@ int a4_gl_frame(uint32_t fps)
          * inside a narrow stretch (under one frame's travel: never two empty renders in a
          * row), which a faster frame rate samples more often; the stock game passed the
          * hill 3 times on the bench without one, which does not exclude it at its rate.
-         * Whatever the cause, a real present whose 3D collapsed below an eighth of the 3D
-         * frame before it (from over 600) is not made: the screen keeps the last frame one
-         * period longer. A legitimate cut is at most one frame late -- the next frame
-         * compares with this one and goes out.
+         * Whatever the cause, a real present whose 3D collapsed below a sixth of the last
+         * 3D frame that went out (from over 600) is not made: the screen keeps the last
+         * frame until a render brings one of its own, at most DROPHOLD_TICKS.
          * The game also presents from the same site with no render since the last present
          * (159 times in r37d's race, a render the half-step skipped), posting the back
          * buffer again -- which still holds the held frame: r37d held it and posted it
          * twice that way (posts 1146-1147). So the presents after a hold that bring no
          * render are held too, from that call site only (a menu presents from elsewhere
          * and is never held), until a render brings a frame of its own -- and with them
-         * the framework's own post after each (a4_fw_hold); at most 8 of the two together
-         * (a held frame then a render-less iteration is 4). */
+         * the framework's own post after each (a4_fw_hold); for at most DROPHOLD_TICKS. */
         if (!presented) {
-            if (had) {
-                uint32_t prev = A4_PERF[PF_PREVHAD];
-                A4_PERF[PF_PREVHAD] = had;
-                A4_PERF[PF_HOLDCALL] = 0;
-                if (prev > 600u && had * 8u < prev) {
+            uint32_t rendered = s->rendered;
+            s->rendered = 0;
+            if (had || rendered) {
+                /* a render's present: compared with the last frame that went out (PF_PREVHAD
+                 * is not moved by a held one), so a collapse over two renders (r37n: 1,398 ->
+                 * 178 -> 68) and a render with no 3D at all (r37m: 0) are held as one; under a
+                 * sixth (178 of 1,398 was 0.127; every legitimate cut seen 0.33 or more); and
+                 * never longer than DROPHOLD_TICKS from the hold's start, renders included,
+                 * so a real cut to a sparse view goes out at most that late */
+                uint32_t prev = A4_PERF[PF_PREVHAD], now = a4_ntick();
+                uint32_t holding = A4_PERF[PF_HOLDCALL] != 0;
+                if (prev > 600u && had * 6u < prev && !(holding && now - A4_PERF[PF_HOLDT] >= DROPHOLD_TICKS)) {
                     presented = 1; A4_PERF[PF_HELD]++;
-                    A4_PERF[PF_HOLDCALL] = caller; A4_PERF[PF_HOLDN] = 0;
-                    a4_drop_mark(had, prev);
+                    if (!holding) { A4_PERF[PF_HOLDCALL] = caller; A4_PERF[PF_HOLDT] = now; a4_drop_mark(had, prev); }
+                } else {
+                    A4_PERF[PF_PREVHAD] = had;
+                    A4_PERF[PF_HOLDCALL] = 0;
                 }
-            } else if (A4_PERF[PF_HOLDCALL]) {
-                if (caller == A4_PERF[PF_HOLDCALL] && A4_PERF[PF_HOLDN] < 8u) { presented = 1; A4_PERF[PF_HOLDN]++; A4_PERF[PF_HELD] += 0x10000u; }
+            } else if (hold_live()) {
+                if (caller == A4_PERF[PF_HOLDCALL]) { presented = 1; A4_PERF[PF_HELD] += 0x10000u; }
                 else A4_PERF[PF_HOLDCALL] = 0;
             }
+        }
+#endif
+#ifdef A4_FRAMEMARK
+        if (had || !presented) {
+            a4_frame_mark(had, frame_prev0, s->frames, (uint32_t)presented);
+            /* and the present count stamped in the bottom row's first 32 pixels (white = 1),
+             * so each post in an EKA2L1_POSTDUMP names its present */
+            volatile uint16_t *fb = (volatile uint16_t *)*(volatile uint32_t *)A4_GL_BB;
+            if (fb) for (uint32_t k = 0; k < 32u; k++) fb[(VP_H - 1u) * FB_STRIDE + k] = ((s->frames >> k) & 1u) ? 0xFFFFu : 0u;
         }
 #endif
 #ifdef A4_SLOWREC
