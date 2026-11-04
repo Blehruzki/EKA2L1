@@ -16,6 +16,7 @@ with open(dump, 'rb') as f:
         h = f.read(32)
         if len(h) < 32: break
         mg, post, ms, w, hh, pitch, bpp, caller = struct.unpack('<8I', h); px = f.read(pitch * hh)
+        if len(px) < pitch * hh: break
         a = np.frombuffer(px, '<u4').reshape(hh, pitch // 4)[:, :w]
         im = (np.dstack([(a >> 16) & 255, (a >> 8) & 255, a & 255]).astype(np.int32) & 0xF8)[40:200, 50:320]
         dmin = min(float(np.abs(im - r).mean()) for r in R)

@@ -5552,3 +5552,22 @@ when green came in, looked smoother. The car shadow clipping happened regardless
   3D at all (struct glr's new `rendered`, set after each render call) hold as one; a sixth
   (178 of 1,398 was 0.127; the legitimate cuts 0.33 or more); and never longer than 250 ms
   from the hold's start, renders included.
+- r37r (the reworked hold, with the marks and stamps, 230 s): 3 holds -- 169 of 1,218
+  (lap 1's first collapse), then renders with no 3D at all after 1,472 and 1,485 -- each
+  followed at once by a whole frame (1,239; 1,572; 1,623); emptyfind's nearest post 45.6,
+  no post of a frame under 300 triangles (2,668 posts tied).
+- Candidate r37 (C37 = C35 + A4_DROPHOLD: r36's flags, the hold, the framework-post
+  detour at +6B2; no bench switch; sha256
+  b8f2d72adf0d696c6aa50ae8fc978682c555a014e08423c122c67179e0236e0a, 803,892 bytes; no
+  0xDEADBEEF; +3A15C B510 0004). Battery on it: telerun3 230 s framestat 3099, faults 1
+  (the boot fault), with EKA2L1_POSTDUMP: no posted frame near an empty one (emptyfind
+  nearest 45.3; the hill passed at posts 1136, 2035, 2937), 6 renders held (the record's
+  drop ring: 18 of 1,494, 39 of 1,512, 18 of 1,382 -- one per lap, ~2,900 presents apart --
+  each with a render of no 3D after it), 370 render-less presents and 376 framework posts
+  held with them; the longest gap between posts 178 ms (median 80; 40 race posts of 140 ms
+  or more, ordinary on the bench); steering race 90 s framestat 1548, faults 1; racemenu
+  framestat 3063, faults 1, 18 shots; mark framestat 882, faults 1.
+- Where we are (rule 3): the empty frame is reproduced, located (a render during the
+  game's build of a terrain piece on the hill, which the half-step scheme exposes; stock
+  and the scheme off showed none), and on the bench kept off the panel. Its root cause in
+  the scheme is a theory. Best build: r37 (r35's speculation, held empty frames).

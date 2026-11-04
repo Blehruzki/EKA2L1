@@ -14,6 +14,7 @@ with open(dump, 'rb') as f:
         h = f.read(32)
         if len(h) < 32: break
         mg, post, ms, w, hh, pitch, bpp, _ = struct.unpack('<8I', h); d = f.read(pitch * hh)
+        if len(d) < pitch * hh: break
         if bpp == 32:
             a = np.frombuffer(d, '<u4').reshape(hh, pitch // 4)[:, :w]
             im = np.dstack([(a >> 16) & 255, (a >> 8) & 255, a & 255]).astype(np.int32)
