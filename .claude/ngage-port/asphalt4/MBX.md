@@ -5999,3 +5999,50 @@ Also I still noticed jittering during steering."
   (1 for the others). The camera update +12DEC sets camera mode 0x2A (+3FE6, cam+0x4C =
   race+0x94) while the helicopter's state is 0; the GNN LIVE letterbox (+12738, called from
   +12A78) draws while its timer +0xC44 is under 0x1E0. Not yet reproduced on the bench.
+- Slow motion on the bench (A4_BENCH_SLOWMO=512u: the scale forced 3 s in 10; telerun3 120 s,
+  cap 85; tools/slowpace.py on render mark 2): the forced slow motion is real (drawn speed 1.03
+  against 2.15 units/ms). Old fraction (sm_old): slow stretches 8% of frames off their
+  neighbours by >25% (quartiles 0.96..1.04, 10-90% 0.90..1.08), normal ones 1%; A4_SLOWMOQ
+  (sm_new): slow 0% (0.98..1.02, 0.96..1.04), normal 0%; 404 speculations used the scaled
+  period. Modest on the bench because its renders fall just after each step boundary; the
+  phone's ~65 ms frames fall anywhere in the step.
+- The leak check with traffic (lk41: C40 + A4_SPECGATE + a4_spec_ptrs marking what is saved;
+  EKA2L1_WATCHGATE over 0x400000-0x4000000; the weave 150 s, through traffic; tools/leakcls.py):
+  691 words written by the speculation outside what it saves. Most of them: the camera
+  scripts' heap. The script object is inside the race object (cam+0x248 = race+0x290) but its
+  eleven keyframe lists hang off heap sentinel nodes; +554C (a scripted camera's start, called
+  from the camera update +5DF0) runs +5202C (script init, at +5618/+5620) and seven +51FEC
+  (keyframe add: a 16-byte node and an 8-byte value, linked before the sentinel) -- round 40's
+  A4_SPECCAMSAFE skipped only the player +5205A and the setup +3D2A. The restore rewound the
+  race words; the lists kept the speculation's keyframes: the real camera script then played
+  keyframes built from a predicted state (the takedown and crash cameras, the event cameras).
+  Fix (A4_SPECCAMSAFE extended): +51FEC at all 15 call sites and +5202C at all 5 skipped and
+  counted while speculating (a4_cs_51fec_tramp, a4_cs_5202c_tramp; the injector checks each
+  site is a BL to its target). Rule 4: no caller reads r0 after them except +579A, which falls
+  into its own function's return (a camera-script start; a guess that its callers ignore it).
+  lk42 (the extension, holds 1.2/0.6 s): 34 words outside, every camera-script heap write gone;
+  58 frames held at the whole step for a script (A4_SPECSCRIPTHOLD).
+- What remains outside (each word reported once): libc 0x00500148 (rand or errno, round 31),
+  an event ring at 01F8FBA4.. (+18BFE: 16 entries, last id and time; fed from +1D9E3), a small
+  state machine at 0263B66C.. (+2482C), 01F91A94.. and 01F32EDC.. (+49xxx, +52D40, partly
+  called back from the ROM: the sound system, a guess), and ROM / other-thread words (audio
+  thread, round 31). Frequency unknown (the watch reports a word once).
+- The traffic: every speculation saved and replayed the same 14 cars (player, 7 opponents, 6
+  police); no traffic car. Traffic cars are CTrafficCar (vtable +B0044, typeinfo +AF5C0, base
+  CCarBase), 0x148 bytes, 16 slots at G+0x6F4C (literal 0x6F4C at +14EC8 and 9 more sites),
+  moved once a step by +FB12(G, ...) from +14574 (bench trace: 461 calls in ~40 s, one per
+  step), drawn by +FFAC (from the render, +D834), collided with cars by +1FF56 (from +14AEC,
+  +14BF6). The same layout as a car where it matters (tfm, PCMEM of a traffic car): position
+  +004..+00C and copies +04C..+054, +0A8..+0B0; rotation +058..+06C in 4096ths; heading +11C;
+  direction +120/+124; wheels +020. So on every green frame the traffic stood at the last
+  whole step while the player and the scene were drawn up to a step ahead: same-direction
+  traffic drawn closer than it is, oncoming farther -- "hard to connect or crash".
+- Replaying +FB12 in the speculation (first try) leaks: it writes the track's spawn records
+  inline (+FCC6, 9 records over 150 s, lk43). Instead A4_SPECTRAFFIC (no game code replayed):
+  a4_h_fb12 (BLX at +14574) copies the traffic array just before each real +FB12 (0x45A000);
+  a green frame saves the array (0x458400, bitmap after it), draws each moved traffic car
+  carried on by q of its last whole step (position, rotation, heading, direction, wheels; a
+  respawn past SPEC_CUT or a hard turn left as the step left it) and puts it back after the
+  render, selectively like the cars. Used only if the whole step just past made the call
+  (the half-step count stamped at the call), so a stale array from an earlier race is never
+  touched.

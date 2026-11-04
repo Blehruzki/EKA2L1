@@ -375,6 +375,12 @@ void a4_tel_tick(uint32_t had)
             efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4 + 0x700 + 3 * 32 * 4, &sd);
         }
 #endif
+#if defined(A4_FRAMEREC) && defined(A4_SLOWREC) && defined(A4_STEPTIME)
+        {   /* round 41: the frame record (a4_gl.c A4_GL_FREC, 0x456000), after the slow block */
+            struct des rd = { DES(16u + 256u * 32u), (const void *)0x00456000u };
+            efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4 + 0x700 + 3 * 32 * 4 + 0x680, &rd);
+        }
+#endif
         pf[PF_FLAGS] |= 4u;                       /* PFF_WROTE: the next render interval holds this write */
     }
 #endif

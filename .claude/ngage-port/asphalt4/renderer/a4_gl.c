@@ -801,6 +801,18 @@ struct agg { uint32_t seg[3][4][32]; };
  * [16..27] spans with n = 1 by length, 4 ms bins ([27] >= 44 ms); then the render call
  * +12992 itself (under 500 ms): [28] its ticks, [29] its ticks before the frame's first
  * triangle, [30] calls, [31] calls with no triangle. Ticks are NTickCount. */
+#ifdef A4_FRAMEREC
+/* Round 41 (the owner's held-steering jitter, not reproduced on the bench by any measure): the
+ * phone's own frames. For each of the last FREC_N renders: the ms it started (a4_ntick), the ms
+ * its frame went out (the next made present; 0 if none), the speculation's fraction q16 | the
+ * camera mode (race+0x94) << 20 | bit 31 a fraction computed, the player car's x and z, its
+ * heading (+0x678) | the camera's yaw (+0x68) << 16, the camera's x and z -- as drawn. [0]
+ * 'FRC1', [1] renders recorded; entries of 8 words from [4]. a4_tel.c writes it after the slow
+ * block in every capture; tools/frec.py reads it. */
+#define A4_GL_FREC 0x00456000u
+#define FREC_N 256u
+_Static_assert(A4_GL_FREC >= 0x00455800u + 0x680u && A4_GL_FREC + 16u + FREC_N * 32u <= 0x00460000u, "the frame record");
+#endif
 #define A4_GL_STEP 0x00421700u
 #define STEPB ((volatile uint32_t *)A4_GL_STEP)
 _Static_assert(A4_GL_STEP >= A4_GL_AGG + sizeof(struct agg) + 4u && A4_GL_STEP + 3u * 32u * 4u <= 0x00422000u,
@@ -1011,6 +1023,7 @@ static void hcall_replay(void)
         case 3: ((fn3)GAMEFN(a4_hc_1ea64))(c[1], c[2], c[3]); break;
         case 4: ((fn2)GAMEFN(a4_hc_1fd5c))(c[1], c[2]); break;
         case 5: ((fn1)GAMEFN(a4_hc_1fd0e))(c[1]); break;
+
         }
     }
     h[3] = 0;
@@ -1067,6 +1080,17 @@ static const uint16_t spec_mid[] = { 0x004, 0x008, 0x00C, 0x0A8, 0x0AC, 0x0B0, 0
  * +164, the race's +0x388 advance once a step as in the game. Every other render is undone
  * whole. (spec11: with a render-time speculation in every frame and the whole restore, the
  * flip never advanced -- 167 of 167 steps differing from the normal build.) */
+#ifdef A4_SPECTRAFFIC
+#define TRAF_OFF   0x6F4Cu           /* the traffic array in G (+14ADE/+14BEA, +FB16: literal 0x6F4C) */
+#define TRAF_N     16u               /* its slots (+FAD8, +FB1C, +149CE loops) */
+#define TRAF_CARSZ 0x148u            /* a CTrafficCar (stride in every loop over the array) */
+#define TRAF_SZ    (TRAF_N * TRAF_CARSZ)
+#define A4_GL_TSNAP 0x00458400u      /* the traffic array's snapshot */
+#define A4_GL_TBM   (A4_GL_TSNAP + TRAF_SZ)   /* its bitmap, one bit a word */
+#define A4_GL_TPREV 0x0045A000u      /* the array just before the last real +FB12 (a4_h_fb12) */
+_Static_assert(A4_GL_TSNAP >= 0x00456000u + 16u + 256u * 32u && A4_GL_TBM + (TRAF_SZ / 4u + 31u) / 32u * 4u <= A4_GL_TPREV
+               && A4_GL_TPREV + TRAF_SZ <= 0x00460000u, "the traffic snapshot");
+#endif
 #define A4_GL_SPECBM 0x00455000u     /* bitmaps: per car 25 words (0xC7C / 4 = 799 bits), the race 20 (635), K 1 */
 #define BM_CAR 25u
 #define BM_RACE 20u
@@ -1096,14 +1120,39 @@ static void spec_restore(void)
             bm_restore((volatile uint32_t *)sp[4 + i], (volatile uint32_t *)(A4_GL_SNAP + i * SPEC_CARSZ), bm + i * BM_CAR, SPEC_CARSZ / 4u);
         if (sp[2]) bm_restore((volatile uint32_t *)sp[2], sp + 32, bm + SPEC_MAXCARS * BM_CAR + BM_RACE, 16);
         if (sp[3]) bm_restore((volatile uint32_t *)sp[3], sp + 64, bm + SPEC_MAXCARS * BM_CAR, SPEC_RACESZ / 4u);
+#ifdef A4_SPECTRAFFIC
+        if (sp[26]) bm_restore((volatile uint32_t *)sp[26], (volatile uint32_t *)A4_GL_TSNAP, (volatile uint32_t *)A4_GL_TBM, TRAF_SZ / 4u);
+#endif
     } else {
         for (uint32_t i = 0; i < sp[0]; i++)
             words_copy((volatile uint32_t *)sp[4 + i], (volatile uint32_t *)(A4_GL_SNAP + i * SPEC_CARSZ), SPEC_CARSZ / 4u);
         if (sp[2]) words_copy((volatile uint32_t *)sp[2], sp + 32, 16);
         if (sp[3]) words_copy((volatile uint32_t *)sp[3], sp + 64, SPEC_RACESZ / 4u);
+#ifdef A4_SPECTRAFFIC
+        if (sp[26]) words_copy((volatile uint32_t *)sp[26], (volatile uint32_t *)A4_GL_TSNAP, TRAF_SZ / 4u);
+#endif
     }
     sp[1] = 0; sp[20] = 0;
 }
+#ifdef A4_SPECTRAFFIC
+/* Round 41 (r40 on the phone: "at high speed is hard to connect or crash against traffic cars"):
+ * the traffic. Its 16 cars (CTrafficCar, 0x148 bytes each, an array at G+0x6F4C) are moved once
+ * a step by +FB12(G, ...) from +14574, before the car loops -- a call the speculation never
+ * made, so on every green frame the traffic stood at the last whole step while the player and
+ * the scene were drawn up to a step ahead. +FB12 is not replayed: it also writes the track's
+ * spawn records (+FCC6, bench lk43), outside anything saved. Instead the array is copied just
+ * before each real +FB12 (A4_GL_TPREV), and a green frame draws each traffic car extrapolated
+ * by q of its last whole step (spec_run), put back after the render like the cars. */
+extern const int32_t a4_hc_fb12;
+int a4_h_fb12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t s0)
+{
+    volatile uint32_t *sp = (volatile uint32_t *)A4_GL_SPEC;
+    words_copy((volatile uint32_t *)A4_GL_TPREV, (volatile uint32_t *)(a0 + TRAF_OFF), TRAF_SZ / 4u);
+    sp[27] = a0 + TRAF_OFF;          /* the array, and that A4_GL_TPREV holds it a step back ... */
+    sp[28] = ((volatile uint32_t *)A4_GL_HSTEP)[0];   /* ... as of this half-step (spec_run: only the step just past) */
+    return ((fn5)GAMEFN(a4_hc_fb12))(a0, a1, a2, a3, s0);
+}
+#endif
 #ifdef A4_FRAMEMARK
 /* round 41, bench only: in each speculation, the player car as the last whole step left it
  * (x, z, heading +0x678, q16) and as the replayed step predicts it a whole step on (x, z,
@@ -1131,6 +1180,11 @@ __attribute__((noinline)) void a4_spec_ptrs(uint32_t a, uint32_t b, uint32_t c, 
 {
     __asm__ volatile("" : : "r"(a), "r"(b), "r"(c), "r"(d) : "memory");
 }
+/* bench (round 41, A4_SPECTRAFFIC): a traffic car as drawn -- its slot, x, z, the ms */
+__attribute__((noinline)) void a4_traf_mark(uint32_t slot, uint32_t x, uint32_t z, uint32_t t)
+{
+    __asm__ volatile("" : : "r"(slot), "r"(x), "r"(z), "r"(t) : "memory");
+}
 #endif
 static void spec_run(uint32_t race, uint32_t q16)
 {
@@ -1138,6 +1192,7 @@ static void spec_run(uint32_t race, uint32_t q16)
     uint32_t n = 0;
     for (uint32_t i = 0; i < h[2]; i++) {          /* the cars of the recorded calls, once each */
         uint32_t car = ((volatile uint32_t *)A4_GL_HCALL)[6u * i + 1u], j;
+
         for (j = 0; j < n && sp[4 + j] != car; j++) ;
         if (j == n && n < SPEC_MAXCARS) sp[4 + n++] = car;
     }
@@ -1150,9 +1205,20 @@ static void spec_run(uint32_t race, uint32_t q16)
     if (K) words_copy(sp + 32, (volatile uint32_t *)K, 16);
     sp[3] = race;                    /* the race object, its camera (+0x48) with it */
     words_copy(sp + 64, (volatile uint32_t *)race, SPEC_RACESZ / 4u);
+#ifdef A4_SPECTRAFFIC
+    /* the traffic array, if the whole step just past moved it (a4_h_fb12 runs inside that
+     * step's even half-step, after a4_halfstep counted it: h[0] equal, or one more after the
+     * odd half-step since), saved */
+    sp[26] = (sp[27] && h[0] - sp[28] <= 1u) ? sp[27] : 0u;
+    if (sp[26]) words_copy((volatile uint32_t *)A4_GL_TSNAP, (volatile uint32_t *)sp[26], TRAF_SZ / 4u);
+#endif
     sp[1] = 1;
 #if defined(A4_SPECGATE) && defined(A4_FRAMEMARK)
+#ifdef A4_SPECTRAFFIC
+    a4_spec_ptrs(race, K, n, sp[26]);
+#else
     a4_spec_ptrs(race, K, n, 0);
+#endif
     for (uint32_t i = 0; i < n; i += 4u) a4_spec_ptrs(sp[4 + i], sp[5 + i], sp[6 + i], sp[7 + i]);
 #endif
 #ifdef A4_SPECGATE
@@ -1290,6 +1356,32 @@ static void spec_run(uint32_t race, uint32_t q16)
         c[0x678u / 4u] = lerp_ang(o[0x678u / 4u], c[0x678u / 4u], q16, 2048u);
         c[0x020u / 4u] = lerp_ang(o[0x020u / 4u], c[0x020u / 4u], q16, 4096u);
     }
+#ifdef A4_SPECTRAFFIC
+#ifndef A4_TRAFNOX
+    if (sp[26]) for (uint32_t i = 0; i < TRAF_N; i++) {
+        /* each traffic car carried on by q of its last whole step (now less a step back), in
+         * the words the bench saw move (tfm: a car's +004..+00C and their copies +04C..+054
+         * and +0A8..+0B0, the rotation +058..+06C in 4096ths, the heading +11C, the direction
+         * +120/+124, the wheels +020); one that jumped (a respawn, past SPEC_CUT) or turned
+         * hard in that step is drawn as the step left it */
+        volatile int32_t *c = (volatile int32_t *)(sp[26] + i * TRAF_CARSZ);
+        const volatile int32_t *p = (const volatile int32_t *)(A4_GL_TPREV + i * TRAF_CARSZ);
+        if (c[1] == p[1] && c[3] == p[3]) continue;   /* not moved (or not in use) */
+        uint32_t keep = iabs32(c[1] - p[1]) > SPEC_CUT || iabs32(c[3] - p[3]) > SPEC_CUT;
+        for (uint32_t w = 0x058u / 4u; w <= 0x06Cu / 4u && !keep; w++) if (iabs32(c[w] - p[w]) > 1024) keep = 1;
+        if (iabs32(c[0x11Cu / 4u] - p[0x11Cu / 4u]) > 512) keep = 1;
+        if (keep) continue;
+        static const uint16_t tmid[] = { 0x004, 0x008, 0x00C, 0x04C, 0x050, 0x054, 0x058, 0x05C, 0x060, 0x064, 0x068, 0x06C,
+                                         0x0A8, 0x0AC, 0x0B0, 0x11C, 0x120, 0x124 };
+        for (uint32_t f = 0; f < sizeof tmid / sizeof tmid[0]; f++) {
+            uint32_t w = tmid[f] / 4u;
+            c[w] += (int32_t)(((int64_t)(c[w] - p[w]) * (int64_t)q16) >> 16);
+        }
+        {   int32_t d = (int32_t)(((uint32_t)(c[0x020u / 4u] - p[0x020u / 4u]) + 2048u) & 4095u) - 2048;   /* the wheels round 4096 */
+            c[0x020u / 4u] = (c[0x020u / 4u] + (int32_t)(((int64_t)d * (int64_t)q16) >> 16)) & 4095; }
+    }
+#endif
+#endif
 #ifdef A4_SPECCAMFOLLOW
     {   /* the chase camera moved with the player car by the car's interpolated motion (the
          * camera words are the whole step's here, the game's update not run); any other camera
@@ -1336,6 +1428,9 @@ static void spec_run(uint32_t race, uint32_t q16)
             bm_mark(bm + i * BM_CAR, (volatile uint32_t *)sp[4 + i], (volatile uint32_t *)(A4_GL_SNAP + i * SPEC_CARSZ), SPEC_CARSZ / 4u);
         bm_mark(bm + SPEC_MAXCARS * BM_CAR, (volatile uint32_t *)race, sp + 64, SPEC_RACESZ / 4u);
         if (K) bm_mark(bm + SPEC_MAXCARS * BM_CAR + BM_RACE, (volatile uint32_t *)K, sp + 32, 16);
+#ifdef A4_SPECTRAFFIC
+        if (sp[26]) bm_mark((volatile uint32_t *)A4_GL_TBM, (volatile uint32_t *)sp[26], (volatile uint32_t *)A4_GL_TSNAP, TRAF_SZ / 4u);
+#endif
     }
 }
 #endif
@@ -1392,7 +1487,7 @@ __attribute__((noinline)) void a4_render_mark3(uint32_t pitch, uint32_t roll, ui
 int a4_step_render(void *self)                                  /* +1696C: bl +12992 */
 {
     volatile uint32_t *pf = A4_PERF;
-#ifdef A4_FRAMEMARK
+#if defined(A4_FRAMEMARK) || defined(A4_FRAMEREC)
     uint32_t mark_q16 = 0;   /* the speculation's fraction this render, bit 31 = computed */
 #endif
 
@@ -1465,7 +1560,7 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
                 }
             }
 #endif
-#ifdef A4_FRAMEMARK
+#if defined(A4_FRAMEMARK) || defined(A4_FRAMEREC)
             mark_q16 = q16 | 0x80000000u;
 #endif
             if (q16 > 65535u) q16 = 65535u;
@@ -1521,6 +1616,31 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
                        (c[0x68u / 4u] & 0xFFFu) | ((mark_q16 >> 4) & 0xFFFu) << 12 | (mark_q16 >> 31) << 31 | (h[5] & 0x7Fu) << 24);
         a4_render_mark2(car ? car[1] : 0, car ? car[3] : 0, car ? car[0x678u / 4u] : 0, a4_ntick());
         a4_render_mark3(c[0x64u / 4u], c[0x6Cu / 4u], c[0x70u / 4u], c[0x68u / 4u]);
+#ifdef A4_SPECTRAFFIC
+        {   volatile uint32_t *sp = (volatile uint32_t *)A4_GL_SPEC;
+            if (sp[27]) for (uint32_t i = 0; i < TRAF_N; i++) {
+                const volatile int32_t *tc = (const volatile int32_t *)(sp[27] + i * TRAF_CARSZ);
+                const volatile int32_t *tp = (const volatile int32_t *)(A4_GL_TPREV + i * TRAF_CARSZ);
+                if (tc[1] != tp[1] || tc[3] != tp[3]) { a4_traf_mark(i, (uint32_t)tc[1], (uint32_t)tc[3], a4_ntick()); break; }
+            }
+        }
+#endif
+    }
+#endif
+#ifdef A4_FRAMEREC
+    {   /* round 41: the frame record (see A4_GL_FREC) -- this render's entry */
+        volatile uint32_t *F = (volatile uint32_t *)A4_GL_FREC, *c = (volatile uint32_t *)self;
+        uint32_t race = (uint32_t)(uintptr_t)self, pl = *(volatile uint32_t *)(race + 0x390);
+        uint32_t idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 0;
+        volatile uint32_t *car = idx < 16u ? *(volatile uint32_t *volatile *)(race + 0x394 + 4u * idx) : 0;
+        if (F[0] != 0x31435246u) { F[0] = 0x31435246u; F[1] = 0; }   /* 'FRC1' */
+        volatile uint32_t *e = F + 4u + (F[1] % FREC_N) * 8u;
+        e[0] = a4_ntick(); e[1] = 0;
+        e[2] = mark_q16 | (c[0x94u / 4u] & 0xFFu) << 20;   /* q16, the camera mode, bit 31 = a fraction computed */
+        e[3] = car ? car[1] : 0; e[4] = car ? car[3] : 0;
+        e[5] = (car ? car[0x678u / 4u] & 0xFFFFu : 0u) | (c[0x68u / 4u] & 0xFFFFu) << 16;
+        e[6] = c[0x58u / 4u]; e[7] = c[0x60u / 4u];
+        F[1]++;
     }
 #endif
     int r = a4_gcall1(GAMEFN(a4_steprend), (uint32_t)(uintptr_t)self);   /* the render: span trampolines inside */
@@ -4899,6 +5019,15 @@ int a4_gl_frame(uint32_t fps)
             } else if (hold_live()) {
                 if (caller == A4_PERF[PF_HOLDCALL]) { presented = 1; A4_PERF[PF_HELD] += 0x10000u; }
                 else A4_PERF[PF_HOLDCALL] = 0;
+            }
+        }
+#endif
+#ifdef A4_FRAMEREC
+        if (!presented) {   /* round 41: the frame record -- when the last render's frame went out */
+            volatile uint32_t *F = (volatile uint32_t *)A4_GL_FREC;
+            if (F[0] == 0x31435246u && F[1]) {
+                volatile uint32_t *e = F + 4u + ((F[1] - 1u) % FREC_N) * 8u;
+                if (!e[1]) e[1] = a4_ntick();
             }
         }
 #endif

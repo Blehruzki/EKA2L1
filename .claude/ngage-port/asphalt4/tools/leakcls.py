@@ -15,6 +15,7 @@ for i in range(len(d) // 68):
     if nxt == 0:
         R.append((e[1], 0x9EC));
         if e[2]: R.append((e[2], 0x40))
+        if e[4]: R.append((e[4], 16 * 0x148))   # round 41: the traffic array (A4_SPECTRAFFIC)
         nxt = (e[3] + 3) // 4
     else:
         for c in e[1:5]:
@@ -31,7 +32,7 @@ by = collections.defaultdict(list); n = stk = sv = our = 0
 for line in open(log, errors='replace'):
     m = rw.search(line)
     if not m: continue
-    a, pc, lr, spv = int(m.group(3), 16), int(m.group(4), 16), int(m.group(5), 16), int(m.group(6), 16)
+    a, pc, lr, spv = int(m.group(1), 16), int(m.group(4), 16), int(m.group(5), 16), int(m.group(6), 16)
     n += 1
     if olo <= pc < ohi: our += 1; continue
     if abs(a - spv) < 0x4000: stk += 1; continue

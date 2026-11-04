@@ -394,4 +394,48 @@ a4_hc_3d2a:
         .word   0xDEADBEEF          @ patched: (code+0x3D2A | 1) - (this word)
 a4_cs_flag2:
         .word   0x00447060
+@ Round 41: the rest of the camera scripts' heap -- the keyframe add +51FEC (a node linked into
+@ a channel's list, whose sentinel is a heap node outside the saved race object) and the script
+@ init +5202C (every channel's list reset, +537BE). Run by the speculation (+554C starts a
+@ scripted camera: +5202C at +5618/+5620, then seven +51FEC), they survived the restore: the
+@ race's words rewound, the lists not -- the real camera script then held the speculation's
+@ keyframes. Skipped and counted like the two above (every call site).
+        .global a4_cs_51fec_tramp
+a4_cs_51fec_tramp:
+        ldr     r12, a4_cs_flag3
+        ldr     r12, [r12]
+        cmp     r12, #0
+        beq     1f
+        ldr     r12, a4_cs_flag3    @ speculating: no keyframe added, and counted
+        ldr     r1, [r12, #4]
+        add     r1, r1, #1
+        str     r1, [r12, #4]
+        bx      lr
+1:      ldr     r12, a4_hc_51fec
+        add     r12, pc, r12        @ pc reads as a4_hc_51fec
+        bx      r12
+        .global a4_hc_51fec
+a4_hc_51fec:
+        .word   0xDEADBEEF          @ patched: (code+0x51FEC | 1) - (this word)
+a4_cs_flag3:
+        .word   0x00447060
+        .global a4_cs_5202c_tramp
+a4_cs_5202c_tramp:
+        ldr     r12, a4_cs_flag4
+        ldr     r12, [r12]
+        cmp     r12, #0
+        beq     1f
+        ldr     r12, a4_cs_flag4    @ speculating: no script reset, and counted
+        ldr     r1, [r12, #4]
+        add     r1, r1, #1
+        str     r1, [r12, #4]
+        bx      lr
+1:      ldr     r12, a4_hc_5202c
+        add     r12, pc, r12        @ pc reads as a4_hc_5202c
+        bx      r12
+        .global a4_hc_5202c
+a4_hc_5202c:
+        .word   0xDEADBEEF          @ patched: (code+0x5202C | 1) - (this word)
+a4_cs_flag4:
+        .word   0x00447060
 #endif

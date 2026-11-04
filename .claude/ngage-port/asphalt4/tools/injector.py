@@ -135,7 +135,7 @@ STEP_PLACEHOLDERS = {'a4_stepcnt': 0x15B1C | 1, 'a4_stepmain': 0x15A52 | 1,
                      'a4_hc_1de78': 0x1DE78 | 1, 'a4_hc_1f1f8': 0x1F1F8 | 1,
                      'a4_hc_1ea64': 0x1EA64 | 1, 'a4_hc_1fd5c': 0x1FD5C | 1,
                      'a4_hc_25e8': 0x25E8 | 1, 'a4_hc_12dec': 0x12DEC | 1,
-                     'a4_hc_1fd0e': 0x1FD0E | 1}
+                     'a4_hc_1fd0e': 0x1FD0E | 1, 'a4_hc_fb12': 0xFB12 | 1}
 # A4_HALFMOTION (round 31): +141B0's car calls, recorded and replayed on the odd half-steps
 HALFMOTION_HOOKS = {0x14974: ('a4_h_1de78', (0xF009, 0xFA80)),   # bl +1DE78 (physics loop)
                     0x1495E: ('a4_h_1f1f8', (0xF00A, 0xFC4B)),   # bl +1F1F8 (physics loop)
@@ -416,6 +416,12 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == want, 'half motion +%06X: holds %04x %04x, expected %04x %04x' % ((off,) + have + want)
             blx_insert(code, off, syms[sym])
             print('HMOT   +%06X -> %s' % (off, sym))
+    if '-DA4_SPECTRAFFIC' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+        # round 41: the traffic's step +FB12 (from +14574, once a step) recorded for the speculation
+        have = struct.unpack_from('<HH', code, 0x14574)
+        assert have == (0xF7FB, 0xFACD), 'spec traffic: +14574 holds %04x %04x' % have
+        blx_insert(code, 0x14574, syms['a4_h_fb12'])
+        print('TRAF   +014574 -> a4_h_fb12 +%06X (the traffic\'s step)' % (syms['a4_h_fb12'] - LINK_BASE))
     if '-DA4_DROPHOLD' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
         # round 37: the framework's own post (+606's [r4+0x3C]->vtbl[0x34](this, 0)), held
         # with a held frame (a4_fwpost_tramp, a4_fw_hold)
@@ -433,6 +439,23 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == want, 'spec cam safe: +%06X holds %04x %04x, expected %04x %04x' % ((off,) + have + want)
             blx_insert(code, off, syms[tramp])
             print('CAMS   +%06X -> %s +%06X' % (off, tramp, syms[tramp] - LINK_BASE))
+        # round 41: the keyframe add +51FEC and the script init +5202C, at every call site (each
+        # checked to be a BL to its target before it is replaced)
+        for ph, target in (('a4_hc_51fec', 0x51FEC), ('a4_hc_5202c', 0x5202C)):
+            struct.pack_into('<I', code, syms[ph] - LINK_BASE, ((LINK_BASE + (target | 1)) - syms[ph]) & 0xFFFFFFFF)
+        def bl_target(off):
+            h1, h2 = struct.unpack_from('<HH', code, off)
+            if (h1 & 0xF800) != 0xF000 or (h2 & 0xF800) != 0xF800: return None
+            o = ((h1 & 0x7FF) << 12) | ((h2 & 0x7FF) << 1)
+            if o & 0x400000: o -= 0x800000
+            return off + 4 + o
+        for target, tramp, sites in ((0x51FEC, 'a4_cs_51fec_tramp', (0x3CE8, 0x3CF8, 0x3D08, 0x5662, 0x566E, 0x5682, 0x5696, 0x56A2,
+                                                                     0x56B6, 0x56C2, 0x56CE, 0x5762, 0x576E, 0x5786, 0x579A)),
+                                     (0x5202C, 'a4_cs_5202c_tramp', (0x3CCC, 0x3F14, 0x5618, 0x5620, 0x5211C))):
+            for off in sites:
+                assert bl_target(off) == target, 'spec cam safe: +%06X is not a BL to +%06X' % (off, target)
+                blx_insert(code, off, syms[tramp])
+            print('CAMS   %d sites -> %s +%06X (+%06X)' % (len(sites), tramp, syms[tramp] - LINK_BASE, target))
     if os.environ.get('A4_HALFSTEP'):
         # round 31, the faster-step work: the logic step halved, 21333 -> 10667 units
         # (85.33 -> 42.67 ms). +52B80's divide (t / 21333 for the real-time count m): its
