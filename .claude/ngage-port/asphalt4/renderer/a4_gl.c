@@ -1183,8 +1183,24 @@ static void spec_run(uint32_t race, uint32_t q16)
             for (uint32_t w = 0x58u / 4u; w <= 0x70u / 4u; w++) cm[w] = co[w];   /* a cut: the camera as it was */
         } else {
             for (uint32_t w = 0x58u / 4u; w <= 0x60u / 4u; w++) cm[w] = lerp_q16(co[w], cm[w], q16);
-            for (uint32_t w = 0x64u / 4u; w <= 0x6Cu / 4u; w++) cm[w] = lerp_ang(co[w], cm[w], q16, 2048u);
+            for (uint32_t w = 0x64u / 4u; w <= 0x6Cu / 4u; w++) {
+                cm[w] = lerp_ang(co[w], cm[w], q16, 2048u);
+#ifdef A4_ANGWRAP
+                /* bench (round 40): the game keeps these words in 0..4095; an interpolation across
+                 * the wrap can hand it 4096 and over or below 0 */
+                cm[w] &= 4095;
+#endif
+            }
+#ifdef A4_KEEP70
+            /* round 40: +0x70 kept at the whole step's (a camera-transition counter, 125 on the
+             * chase camera, reset where a transition starts: not a quantity to interpolate). The bench at the phone's rhythm: at each
+             * empty render +0x70 (normally 125) had dropped to 43-65 while pitch, roll, yaw and
+             * the position were steady -- the speculated camera update computes a low +0x70 at the
+             * hill and the interpolation drew half way to it; the render culls by it */
+            cm[0x70u / 4u] = co[0x70u / 4u];
+#else
             cm[0x70u / 4u] = lerp_q16(co[0x70u / 4u], cm[0x70u / 4u], q16);
+#endif
         }
     }
     for (uint32_t i = 0; i < n; i++) {
@@ -1293,6 +1309,11 @@ __attribute__((noinline)) void a4_render_mark(uint32_t x, uint32_t y, uint32_t z
 __attribute__((noinline)) void a4_render_mark2(uint32_t x, uint32_t y, uint32_t z, uint32_t hd)
 {
     __asm__ volatile("" : : "r"(x), "r"(y), "r"(z), "r"(hd) : "memory");
+}
+/* and the camera's pitch +0x64, roll +0x6C and +0x70 as the render reads them (round 40) */
+__attribute__((noinline)) void a4_render_mark3(uint32_t pitch, uint32_t roll, uint32_t w70, uint32_t yaw)
+{
+    __asm__ volatile("" : : "r"(pitch), "r"(roll), "r"(w70), "r"(yaw) : "memory");
 }
 #endif
 int a4_step_render(void *self)                                  /* +1696C: bl +12992 */
@@ -1406,6 +1427,7 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         a4_render_mark(c[0x58u / 4u], c[0x5Cu / 4u], c[0x60u / 4u],
                        (c[0x68u / 4u] & 0xFFFu) | ((mark_q16 >> 4) & 0xFFFu) << 12 | (mark_q16 >> 31) << 31 | (h[5] & 0x7Fu) << 24);
         a4_render_mark2(car ? car[1] : 0, car ? car[3] : 0, car ? car[0x678u / 4u] : 0, a4_ntick());
+        a4_render_mark3(c[0x64u / 4u], c[0x6Cu / 4u], c[0x70u / 4u], c[0x68u / 4u]);
     }
 #endif
     int r = a4_gcall1(GAMEFN(a4_steprend), (uint32_t)(uintptr_t)self);   /* the render: span trampolines inside */

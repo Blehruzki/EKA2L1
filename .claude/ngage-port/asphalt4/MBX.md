@@ -5873,3 +5873,42 @@ bugs on the bench. It doesn't matter if it takes several bench rounds."
   only), else enter the game's functions untouched (no caller reads the result). Image
   checked: the placeholders resolve to +5205B/+3D2B, the four BLX's in place. r40s: a gated
   watch race and two counted races at cap 85, in flight.
+- r40s (A4_SPECCAMSAFE, cap 85): race 1 with the gated watch -- the speculative camera
+  update now writes NOTHING new outside the race object after the race's start (the heap
+  churn gone); in all, outside the stack, only our flag and race words +0x54..+0x350. The
+  camera as steady as with the game's update (offset change 0/17/37; sideways reversals
+  5-8). But the empty render remains: collapses 71 of 1,815, 34 of 724, 12 of 1,568 (race
+  1), 7 of 1,650 (race 2), 50 of 1,682 (race 3), and race 3 posted one (posts 1242-1244,
+  emptyfind 8.0 -- the hold missed it). So the use-after-free was real (and is fixed) but
+  is not the empty frame.
+- What is left: the empty render needs the speculative camera update (A4_SPECNOCAM: none),
+  survives putting back every race word but the camera's +0x58..+0x70 (A4_SPECLEAN), and
+  the update writes nothing else outside the race. So the camera words we interpolate.
+  lerp_ang does not wrap its result, and the game's angle words run 0..4095 (pitch seen
+  3,875-4,071, yaw passing 4,092 -> 13): an interpolation across the wrap hands the game
+  4,096 and over or below 0 -- out of a trig table, a broken view matrix, the scenery culled
+  while the camera's position is right. Theory; test: pitch/roll/+0x70 logged per render
+  (a4_render_mark3), and A4_ANGWRAP (& 4095) against no wrap, two races each at cap 85.
+- The angle test (cap 85, a4_render_mark3 per render): the empty renders' camera, the
+  renders before each (pitch, roll, +0x70, yaw): r40a (no wrap) -- (-37,0,125,1305),
+  (-34,0,125,1304), (-31,0,96,1304), (-31,0,62,1304); likewise 125 -> 43, 125 -> 43, 125 ->
+  65 at the other three. Pitch is SIGNED (-222..2,045 over a race): no wrap problem -- the
+  wrap theory is wrong. What moves at every empty render is +0x70: normally 125, at the empty
+  render 43-65, four of four. r40w (& 4095) the same at the hill (125 -> 37, 125 -> 64) and
+  worse elsewhere (it rewrote the negative pitches; collapses in crash cameras, whose +0x70
+  is 19-30 and which draw fine -- so +0x70 is not a plain draw distance). Next: A4_KEEP70,
+  +0x70 kept at the whole step's on the in-between frames.
+- A4_KEEP70 (+0x70 kept at the whole step's on the in-between frames), two races at cap 85:
+  NO empty render -- not even a frame under HALF of the one before from over 600 (2,999 and
+  2,888 3D presents marked: the instrument recorded, rule 4). With +0x70 interpolated, every
+  race at this rhythm had 1-3. +0x70 is not constant: over a race it takes every value from
+  0 up, 125 on the chase camera -- a camera-transition counter. The speculated camera update
+  resets it where the game starts a camera transition (the hill), and the interpolation
+  handed the render a transition half done. FOUND: the empty frame is +0x70's
+  interpolation (since round 32's speculation interpolated it).
+- Where we are (rule 3): the empty frame's cause found and fixed on the bench (A4_KEEP70);
+  a use-after-free of camera keyframes in the speculation found and fixed (A4_SPECCAMSAFE);
+  the bench runs at the phone's rhythm (EKA2L1_CPUCAP=85). Not reproduced: the steering
+  jitter (the player car's drawn path and the camera are even at the phone's rhythm, steering
+  in taps), the helicopter view (not on the bench route; +0x70 and the freed keyframes are
+  both candidates), Paris (never on the bench with the speculation).
