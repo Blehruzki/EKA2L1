@@ -5617,3 +5617,34 @@ this smooth on light scenes is amazing!"
   ratio alone cannot part it from the cuts (the phone's 0.23 and up) with any margin.
   Next: detect the cause instead -- the terrain build +CE8C (one caller, +D2F6, inside a
   per-object loop) during the render.
+
+## Round 38 (bench): the hold, corrected
+
+- r38m (the build counter: +D2F6's bl to +CE8C counted per present, with the marks): the
+  "terrain build" is no event -- +CE8C runs every frame, 55-120 times in a race render, 76
+  in the menu, and only 1-11 times in the empty renders. It counts the objects drawn: the
+  round 37 reading ("the game builds a terrain piece during the empty render") was wrong
+  (rule 4: a difference between two renders is not a cause). The counter and its +D2F6
+  detour are taken out again.
+- And a bug in r37's hold (the phone build carries it): when a hold times out through the
+  render-less presents (hold_live), it cleared itself but kept PF_PREVHAD at the last good
+  frame, so the next sparse render began a fresh hold -- again and again. r38m's crash
+  close-up camera (~150 triangles after 2,250, list 0) was held that way across thousands
+  of presents (stamps 20814 -> 24726 between two posts): a frozen screen. The phone's r37
+  race held 4 renders and 86 render-less presents and the owner saw no freeze -- the bug
+  needs a sparse view after a hold, and no such view came. Fixed: a timeout ends the hold
+  for good (PF_PREVHAD = 0).
+- The criterion, round 38: the camera's offset from the player car (race +0x58..+0x60
+  less the car's +0x04..+0x0C), recorded at each render after the speculation, must be
+  within 96 units on each axis of the offset at the last frame that went out -- a camera
+  cut (crash, takedown, intro) moves it, the empty render does not (r37o: steady to ~15
+  units a render) -- and the 3D under a quarter (the phone's empty render 0.1668; its cuts
+  0.23-0.39 now parted by the camera, not the ratio). r38n: in flight.
+- r38n (the round 38 hold, with the marks, 230 s): 3 holds, all the hill -- 0 of 1,326, 0
+  of 1,337, 10 of 1,722 then 63 -- the camera offset (-207..-225, +111, -189..-210)
+  through each; no posted frame near an empty one (emptyfind 45.8); the longest gap
+  between race posts 121 ms; 526 render-less presents held (the spinning while held).
+- r38s (the steering race into walls, 90 s, with the marks): not one frame at half the
+  one before or less -- the crashes on this route do not collapse the triangles, so the
+  camera test's cut side is untested on the bench (rule 4: a guess that a cut moves the
+  offset by more than 96 on some axis; and a timeout now ends a hold for good either way).

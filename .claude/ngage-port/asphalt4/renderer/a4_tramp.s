@@ -342,29 +342,3 @@ a4_fwpost_tramp:
         movs    r1, #0              @ displaced +6B2: movs r1,#0
         bx      r2                  @ displaced +6B4: blx r2, as a tail call (returns to +6B6)
 #endif
-
-#ifdef A4_DROPHOLD
-@ Round 37, the phone: the last lap's empty render drew 281 triangles of 1,685 (0.1668),
-@ over the ratio the hold uses; the cause the bench found is the game building a terrain
-@ piece during the render (+CE8C, called only from +D2F6). The bl at +D2F6 becomes a BLX
-@ here: count the build in A4_PERF word 60 (0x412CF0) and enter +CE8C as the bl would
-@ have -- registers, stack and lr (+D2FA|1) untouched.
-        .arm
-        .align  2
-        .global a4_meshbuild_tramp
-a4_meshbuild_tramp:
-        push    {r0, r1}
-        ldr     r0, a4_built_addr
-        ldr     r1, [r0]
-        add     r1, r1, #1
-        str     r1, [r0]
-        pop     {r0, r1}
-        ldr     r12, a4_hc_ce8c
-        add     r12, pc, r12        @ pc reads as a4_hc_ce8c
-        bx      r12                 @ -> +CE8C (Thumb); it returns to +D2FA itself
-        .global a4_hc_ce8c
-a4_hc_ce8c:
-        .word   0xDEADBEEF          @ patched: (code+0xCE8C | 1) - (this word)
-a4_built_addr:
-        .word   0x00412CF0
-#endif
