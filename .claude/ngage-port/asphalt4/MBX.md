@@ -5581,3 +5581,39 @@ when green came in, looked smoother. The car shadow clipping happened regardless
   ours in the tunnel on the bench (EKA2L1_POSTDUMP, the same frames by the minimap) --
   not a repeat of round 34 (a check build against itself; the stock game never dumped
   in the tunnel).
+- Bench, the shadow against stock: the stock game (stock2, 230 s, EKA2L1_POSTDUMP) and
+  r37's battery race (r37t), the tunnel found in each by its orange walls (tunnelfind.py:
+  stock posts 938-1061 and 1782-1916; r37 1199-1400, 2095-2278, 2999-3097), and the same
+  places paired by the minimap (pairmatch.py). The pictures (tunnel_pairs1.png, ours over
+  stock): a darker region beside the car in both, ours sharper-edged in places; the stock
+  road's dithering hides a shadow's edge. Not a measurement; not conclusive.
+- What our build does that the stock game does not: in a list frame (mode bit 1024, on in
+  r37) the list's faces -- the road among them -- are in the depth buffer before the game's
+  own submissions draw, and mesh_enter depth-tests every class, the shadows (KIND_SHAD)
+  included; the stock game paints a shadow over whatever is there. A shadow a little under
+  the road surface loses that test in patches. Round 33's A4_SHADSINK found 2.9% of covered
+  shadow pixels hidden on the bench route, mostly behind car parts, and never reached the
+  tunnel. r37sh (bench: A4_SHADNODEPTH, shadows untested in a list frame) against r37t at
+  the same places: in flight.
+
+## Round 37, phone (r37, sha256 b8f2d72a...)
+
+Owner: "The empty frame appeared in the last lap, at the same spot. I was going really
+fast. I didn't notice any particular freezing. However, I must mention that I'm so pleased
+to see the game actually going super smooth during the light scenes. It still struggles
+during heavy scenes as usual, though. but unlike previous build, seeing the game running
+this smooth on light scenes is amazing!"
+- Telemetry (capidx 102-109, the race's end): mode 3118 throughout; the windows 43.5-66.6
+  ms a render (15-23 a second). The record (capidx 109, 8,805 3D frames): real presents
+  2,846 (318 with no render since the last), skipped 5,960; renders 2,532, 39 skipped by
+  the half-step; held 4 renders, with 86 render-less presents and 90 framework posts after
+  them -- no freezing seen. Drop frames 9; the ring's last 8: 184 of 1,324 (frame 2487,
+  0.139: held), 781 of 2,149, 436 of 1,913 (0.23, list 5), 306 of 925, 954 of 2,630 (cuts,
+  0.33-0.39), 281 of 1,685 (frame 7827, list 0, render call 38 ms: the last lap's empty
+  frame -- 0.1668 against the hold's "under a sixth", 0.1667: missed by one triangle), 619
+  of 1,579 then 202 of 619 (frames 8355/8358, lists 96/46: a step down through a cut-like
+  ratio, not held). The slowest frames 116-135 ms, all render-bound.
+- So the phone's empty render draws more than the bench's (281 against 0-178), and the
+  ratio alone cannot part it from the cuts (the phone's 0.23 and up) with any margin.
+  Next: detect the cause instead -- the terrain build +CE8C (one caller, +D2F6, inside a
+  per-object loop) during the render.
