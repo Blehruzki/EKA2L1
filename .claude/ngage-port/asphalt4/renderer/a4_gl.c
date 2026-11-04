@@ -1011,6 +1011,7 @@ int a4_h_1fd5c(uint32_t a0, uint32_t a1)
 { hcall_rec(4, a0, a1, 0, 0, 0); return ((fn2)GAMEFN(a4_hc_1fd5c))(a0, a1); }
 int a4_h_1fd0e(uint32_t a0)
 { hcall_rec(5, a0, 0, 0, 0, 0); return ((fn1)GAMEFN(a4_hc_1fd0e))(a0); }
+static void hcall_replay(void) __attribute__((unused));
 static void hcall_replay(void)
 {
     volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
@@ -1072,7 +1073,7 @@ static int32_t iabs32(int32_t x) { return x < 0 ? -x : x; }
  * plainly. Left at the step's value: the track segment +01C, the gear +7BC, the per-render
  * flip +66C, +A78 (0 or 32), +AC0 (4..7), the bits +B28 (indices and flags). The physics-side
  * matrix +6D4..+718 is not read by the render (rone8: it reads +678 at +A44C). */
-static const uint16_t spec_mid[] = { 0x004, 0x008, 0x00C, 0x0A8, 0x0AC, 0x0B0, 0x0D0, 0x7D0, 0x7F8,
+static const uint16_t spec_mid[] __attribute__((unused)) = { 0x004, 0x008, 0x00C, 0x0A8, 0x0AC, 0x0B0, 0x0D0, 0x7D0, 0x7F8,
                                      0xA20, 0xA24, 0xA7C };   /* read by the render (rone8): signed, small */
 /* Round 33: which words the speculation changed (spec_run marks them before the render), so a
  * render whose own side effects are kept -- the first after each whole step, as the game draws
@@ -1186,6 +1187,36 @@ __attribute__((noinline)) void a4_traf_mark(uint32_t slot, uint32_t x, uint32_t 
     __asm__ volatile("" : : "r"(slot), "r"(x), "r"(z), "r"(t) : "memory");
 }
 #endif
+#ifdef A4_INTERP
+/* Round 41, after r41 on the phone ("they look like they snap back into position as I get
+ * closer ... the same effect as the steering jitter"; the bench at the Veyron's speed with an
+ * autopilot steering continuously: every one-frame reversal a frame drawn late in its step
+ * toward a prediction the next step did not follow -- a key changed after it was drawn): the
+ * frame drawn BETWEEN the last two whole steps instead of between the last one and a
+ * prediction. Nothing is replayed (no keys taken, no car calls, no camera update); what a frame
+ * shows the game has already done. One step (85 ms) later on screen than the speculation. The
+ * state before each whole step is captured here at its even half-step (ip_capture), the state
+ * after it is the speculation's snapshot (spec_run), and the save and restore around the render
+ * are the speculation's, so the render's own once-a-step changes are kept or undone as before. */
+#define A4_GL_IP 0x0045C000u         /* [0] the race, [1..15] the car slots' cars, [16..] 15 x 16 words, then the camera's 6 */
+#define IP_NCAR 15u
+#define IP_W 16u
+_Static_assert(A4_GL_IP + (16u + IP_NCAR * IP_W + 8u) * 4u <= 0x00460000u, "the interpolation buffer");
+static const uint16_t ip_words[] = { 0x004, 0x008, 0x00C, 0x0A8, 0x0AC, 0x0B0, 0x0D0, 0x7D0, 0x7F8, 0xA20, 0xA24, 0xA7C,
+                                     0x678, 0x020 };   /* spec_mid, then the heading (2048) and the wheels (4096) */
+static void ip_capture(uint32_t race)
+{
+    volatile uint32_t *B = (volatile uint32_t *)A4_GL_IP;
+    if (!race) return;
+    B[0] = race;
+    for (uint32_t i = 0; i < IP_NCAR; i++) {
+        const volatile uint32_t *c = *(volatile uint32_t *volatile *)(race + 0x394 + 4u * i);
+        B[1 + i] = (uint32_t)(uintptr_t)c;
+        if (c) for (uint32_t f = 0; f < sizeof ip_words / sizeof ip_words[0]; f++) B[16 + i * IP_W + f] = c[ip_words[f] / 4u];
+    }
+    for (uint32_t w = 0; w < 6u; w++) B[16 + IP_NCAR * IP_W + w] = ((volatile uint32_t *)race)[0x58u / 4u + w];
+}
+#endif
 static void spec_run(uint32_t race, uint32_t q16)
 {
     volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP, *sp = (volatile uint32_t *)A4_GL_SPEC;
@@ -1224,6 +1255,7 @@ static void spec_run(uint32_t race, uint32_t q16)
 #ifdef A4_SPECGATE
     sp[31] = 1;                      /* bench: EKA2L1_WATCHGATE=44707C -- the game's writes from here */
 #endif
+#ifndef A4_INTERP
     if (K) {
         ((void (*)(uint32_t, uint32_t))GAMEFN(a4_hc_25e8))(K, 0);
 #ifdef A4_AUTOPILOT
@@ -1231,6 +1263,49 @@ static void spec_run(uint32_t race, uint32_t q16)
 #endif
     }
     hcall_replay();
+#endif
+#ifdef A4_INTERP
+    {   /* each car, the camera and the traffic between the state before the last whole step
+         * (A4_GL_IP, A4_GL_TPREV) and the state it left (now, saved above) */
+        volatile uint32_t *B = (volatile uint32_t *)A4_GL_IP;
+        if (B[0] == race) {
+            for (uint32_t i = 0; i < IP_NCAR; i++) {
+                volatile int32_t *c = (volatile int32_t *)B[1 + i];
+                if (!c || *(volatile uint32_t *)(race + 0x394 + 4u * i) != B[1 + i]) continue;
+                uint32_t j;          /* only a car saved above (put back after the render) */
+                for (j = 0; j < n && sp[4 + j] != B[1 + i]; j++) ;
+                if (j == n) continue;
+                const volatile int32_t *p = (const volatile int32_t *)(B + 16 + i * IP_W);
+                if (iabs32(c[1] - p[0]) > SPEC_CUT || iabs32(c[3] - p[2]) > SPEC_CUT) continue;   /* a respawn: as it is */
+                for (uint32_t f = 0; f < 12u; f++) { uint32_t w = ip_words[f] / 4u; c[w] = lerp_q16(p[f], c[w], q16); }
+                c[0x678u / 4u] = lerp_ang(p[12], c[0x678u / 4u], q16, 2048u);
+                c[0x020u / 4u] = lerp_ang(p[13], c[0x020u / 4u], q16, 4096u);
+            }
+            volatile int32_t *cm = (volatile int32_t *)race;
+            const volatile int32_t *pc = (const volatile int32_t *)(B + 16 + IP_NCAR * IP_W);
+            uint32_t cut = 0;
+            for (uint32_t w = 0; w < 3u; w++) if (iabs32(cm[0x58u / 4u + w] - pc[w]) > SPEC_CUT) cut = 1;
+            for (uint32_t w = 3; w < 6u; w++) { uint32_t d = (uint32_t)(cm[0x58u / 4u + w] - pc[w]) & 2047u; if ((d > 1024u ? 2048u - d : d) > 256u) cut = 1; }
+            if (!cut) {
+                for (uint32_t w = 0; w < 3u; w++) cm[0x58u / 4u + w] = lerp_q16(pc[w], cm[0x58u / 4u + w], q16);
+                for (uint32_t w = 3; w < 6u; w++) cm[0x58u / 4u + w] = lerp_ang(pc[w], cm[0x58u / 4u + w], q16, 2048u);
+            }
+        }
+#ifdef A4_SPECTRAFFIC
+        if (sp[26]) for (uint32_t i = 0; i < TRAF_N; i++) {
+            volatile int32_t *c = (volatile int32_t *)(sp[26] + i * TRAF_CARSZ);
+            const volatile int32_t *p = (const volatile int32_t *)(A4_GL_TPREV + i * TRAF_CARSZ);
+            if (c[1] == p[1] && c[3] == p[3]) continue;
+            if (iabs32(c[1] - p[1]) > SPEC_CUT || iabs32(c[3] - p[3]) > SPEC_CUT || iabs32(c[0x11Cu / 4u] - p[0x11Cu / 4u]) > 512) continue;
+            static const uint16_t tw[] = { 0x004, 0x008, 0x00C, 0x04C, 0x050, 0x054, 0x058, 0x05C, 0x060, 0x064, 0x068, 0x06C,
+                                           0x0A8, 0x0AC, 0x0B0, 0x11C, 0x120, 0x124 };
+            for (uint32_t f = 0; f < sizeof tw / sizeof tw[0]; f++) { uint32_t w = tw[f] / 4u; c[w] = lerp_q16(p[w], c[w], q16); }
+            c[0x020u / 4u] = lerp_ang(p[0x020u / 4u], c[0x020u / 4u], q16, 4096u);
+        }
+#endif
+    }
+    if (0)
+#endif
     {   /* the camera after the cars, as the game's own between-steps update does it in slow
          * motion (+1300C -> +12DEC(race, &0) -> +5968) */
         volatile uint32_t z = 0;
@@ -1281,6 +1356,7 @@ static void spec_run(uint32_t race, uint32_t q16)
         }
     }
 #endif
+#ifndef A4_INTERP
     {   /* the camera half way too, in the words the render draws it from (rcam8: the render
          * reads +0x58..+0x6C, +0x70 and +0x388 of these; EKA2L1_RWATCH gated to the render):
          * the position +0x58/+0x5C/+0x60 plainly, the angles +0x64/+0x68/+0x6C the short way
@@ -1382,6 +1458,7 @@ static void spec_run(uint32_t race, uint32_t q16)
     }
 #endif
 #endif
+#endif /* !A4_INTERP */
 #ifdef A4_SPECCAMFOLLOW
     {   /* the chase camera moved with the player car by the car's interpolated motion (the
          * camera words are the whole step's here, the game's update not run); any other camera
@@ -1455,6 +1532,9 @@ int a4_halfstep(uint32_t race)
 #ifdef A4_HALFSPEC
     spec_restore();                  /* the game's own step from the saved state */
     h[5]++;                          /* a whole step: the next render keeps its own changes */
+#endif
+#ifdef A4_INTERP
+    ip_capture(race);                /* the state before this whole step, to draw the next frames from */
 #endif
 #ifdef A4_HALFMOTION
     h[2] = 0;                        /* the whole step about to run records its car calls */
@@ -1564,7 +1644,11 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
             mark_q16 = q16 | 0x80000000u;
 #endif
             if (q16 > 65535u) q16 = 65535u;
+#ifdef A4_INTERP
+            if (1) {                 /* every frame: at q 0 it shows the step before, not this one */
+#else
             if (q16 >= 2048u) {      /* under 1/32 of a step (2.7 ms): the whole step as it is */
+#endif
                 uint32_t s0 = a4_ntick();
                 spec_run(race, q16);
                 ((volatile uint32_t *)A4_GL_SPEC)[20] = h[5] ? 1u : 0u;   /* the first render since a whole step keeps its own changes */

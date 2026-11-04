@@ -6076,3 +6076,48 @@ Also I still noticed jittering during steering."
   from which words move, not from a read-watch of +FFAC; the heading +11C carried on only when
   it moved under 512); +579A's callers ignoring r0; the remaining outside writers (event ring,
   +2482C, sound) left as they are, frequency unknown.
+
+## Round 41, phone (r41, sha256 5055b543...): the empty frame and the heli view gone; snap-backs remain
+
+Owner: takedown cameras "kinda lag a bit. not as before"; traffic easier to hit, "but sometimes
+they look like they snap back into position as i get closer to them, in a similar effect of
+that of online lagging. this effect is kind of what I experience with the steering
+jittering"; "The frames are good now, and so is the heli view." They test with the Bugatti
+Veyron tuned past 550 km/h; the bench drove the Mini Cooper, the slowest car. Two telemetry
+batches: a Veyron run (capidx 333) and a Mini run (capidx 125; the crash-cam lag and the
+steering jitter seen in it).
+- Telemetry (slowsum): Veyron -- 2 frames held, 19 drop frames, 712 frames held at the whole step
+  for a camera script, 64 speculations in slow motion (the first takedown slow motion ever
+  recorded: A4_SLOWMOQ in use); Mini -- 0 held, 7 drops, 178 script holds.
+- The frame records (frec.py, the phone's own last ~417 frames): drawn speed even (0-4% of
+  frames off by >25%). One-frame reversals (|change| >= 4 /2048): camera yaw 13 (Veyron) and 6
+  (Mini), car heading 3 and 1 -- nearly every one a frame drawn late in its step (q 0.83-0.99)
+  followed by one in the next step (q 0.4-0.8): a frame swung toward a prediction the next step
+  did not follow.
+- The Veyron on the bench (bench data only, never the phone: the bench's own copy of carsb.bar
+  rewritten with the 16 mini_cooper_s.* and bugatti_veyron.* entry names swapped -- .cfg, .obj,
+  the .p meshes, the low-detail set; tools/barswap.py; the original kept in the scratchpad):
+  the career's starting car drives on the Veyron's handling (304-308 km/h early in the lap
+  against the Mini's 203 with nitro), drawn dark (the Veyron mesh with the Mini's textures).
+  The carsa.bar .rc records alone did not change the car.
+- Blind key patterns crash at that speed; tools/autodrive2.py (autodrive.py for the current
+  window: the game shown turned 180 degrees, the road band y 330-388, keys 8/2 held while the
+  road's centroid is off centre) steers continuously, as a player does. r42m (r41 + marks),
+  120 s: the bench frame record shows the phone's signature -- 5 camera-yaw and 5 car-heading
+  one-frame reversals in 417 frames, each a frame at q 0.93-0.99 then one at 0.55-0.67. The
+  speculation marks at one (t 45794): drawn at q 0.93 toward a predicted heading +51; the real
+  next step turned +19 (a key released after the frame was drawn); the next frame came back 28.
+  At another (t 40930): predicted -23, real -6. FOUND: the snap-backs are the prediction meeting
+  an input it could not know -- the keys at render time stand in for the next step's. Anything
+  else the replay cannot foresee (traffic braking, a collision, a takedown) does the same.
+- A4_INTERP: each frame drawn between the state before the last whole step (ip_capture at its
+  even half-step) and the state after it, at the same fraction q; nothing replayed; the
+  speculation's save and restore kept, so the render's own once-a-step changes are kept or
+  undone as before; the traffic between A4_GL_TPREV and now; the camera likewise (a cut left as
+  it is); every frame (at q 0 it shows the step before). One step (85 ms) later on screen.
+  Review (rule 4) caught two bugs before the first run: a slot car not saved by the speculation
+  would have kept its blended words (only saved cars are blended now), and frames under 1/32 of
+  a step skipped the speculation (a whole-step jump in this mode; every frame runs it now).
+  r42im (+ marks), the same autopilot drive: camera-yaw and car-heading one-frame reversals 0
+  and 0 in 417 frames; car-less-camera reversals 8 of 162 (r42m: 19 of 88); traffic even (1% of
+  frames off, drawn backwards 1 of 1,310).

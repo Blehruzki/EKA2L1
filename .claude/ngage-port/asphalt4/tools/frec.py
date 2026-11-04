@@ -66,3 +66,12 @@ for key in ('t', 'p'):
         ab = sorted(abs(x) for x in rel)
         print('  car heading less camera yaw, change a frame: median %d, 90%% %d, 99%% %d /2048; reversals %d of %d frames where it moves (>= 3 both)'
               % (ab[len(ab) // 2], ab[9 * len(ab) // 10], ab[99 * len(ab) // 100], rv, mv))
+# one-frame reversals of the camera's yaw and the car's heading (|change| >= 4), with the q of
+# the frame before and of the reversing frame: an over-predicted camera shows as a late-in-step
+# frame (high q) swinging past and the next step's frame coming back
+for key in ('yaw', 'hd'):
+    dd = [wrap(b[key] - a[key]) for a, b in zip(P, P[1:])]
+    bl = [(P[i + 1]['t'] % 100000, dd[i - 1], dd[i], dd[i + 1], round(P[i]['q'], 2), round(P[i + 1]['q'], 2))
+          for i in range(1, len(dd) - 1) if dd[i] * dd[i - 1] < 0 and dd[i] * dd[i + 1] < 0 and abs(dd[i]) >= 4]
+    print('%s one-frame reversals (|change| >= 4): %d in %d frames; first: %s' % ('camera yaw' if key == 'yaw' else 'car heading', len(bl), len(P), bl[:6]))
+
