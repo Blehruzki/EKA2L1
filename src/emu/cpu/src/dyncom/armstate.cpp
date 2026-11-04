@@ -165,7 +165,7 @@ void ARMul_State::ReportWatch(std::uint32_t address, std::uint32_t data, std::ui
         }();
         if (address == gate) {
             if (open != (data != 0))
-                LOG_ERROR(eka2l1::CPU_DYNCOM, "WATCHGATE: {} at pc 0x{:X}", data ? "open" : "closed", Reg[15]);
+                LOG_ERROR(eka2l1::CPU_DYNCOM, "WATCHGATE: {} at pc 0x{:X} value 0x{:X}", data ? "open" : "closed", Reg[15], data);
             open = data != 0;
             return;
         }

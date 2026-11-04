@@ -5827,3 +5827,30 @@ bugs on the bench. It doesn't matter if it takes several bench rounds."
   average of the camera's offset from the player car, quick while near it, 1/256 a render
   while off it -- the hold's chase test uses it too (r39's fixed range is gone). r40cf: two
   races and a tapping race at cap 85, in flight.
+- r40cf (A4_SPECCAMFOLLOW, cap 85; races 1-2 230 s, a tapping race 90 s): empty renders 1
+  (143 of 1,970, not identified: the post dumps were deleted before being read -- rule 1)
+  and 0. The camera WORSE: its offset from the car changed 18-31 a render (median), 120-163
+  (90%), 237 (99%) against 0/18/35 before; its sideways offset reversed 441-583 times
+  against 1. My bug: the chase test compared the offset in world coordinates, which turns
+  with the car -- in every bend the camera was judged "not the chase camera" and left
+  behind for the frame. Fixed: the distance on the ground and the height, which do not
+  turn (an integer square root, isqrt64, host-tested); the hold's test likewise.
+- r40cf2 (the rotation-invariant test): the camera still worse -- offset change 17-40 a
+  render (median), 98-180 (90%), reversals 454-740. The game's chase camera does not move
+  rigidly with the car (it lags and smooths), so a camera moved with the car on the
+  in-between frames and put back where the game's camera is jumps every step. The follow
+  is dropped. Collapses: race 1 186 of 937, 115 of 1,454, 99 of 609 (no posted frame near an
+  empty one: 44.0); race 2 a run of 65-96 of 607-739 (a sparse scene). Next: keep the
+  game's camera update in the speculation and stop only what it leaves behind (the list
+  change round 31's leak6 saw: +5912 -> +5205A).
+- +57AC (called from +5DE4, under +12DEC -> +5968): a camera state machine. r4 is the
+  camera object (race +0x48 on: its words +0x58.. are the render's camera), r7 = r4 + 0xC0;
+  at +5902, while the counter [r7+4] (race +0x10C) is under 2, it frees a slot's node
+  (+5912 bl +5205A, "unlink a node and delete it"), sets the slot up again from a camera
+  script (+5926 bl +3D2A: allocates -- leak6's 3 KB block), and advances the counter. The
+  slots are race words (r4 + 0xC8 + 0xC0 * k). THEORY (rule 4, to be tested): run
+  speculatively, a transition frees the old node; the restore after the render copies the
+  race's old slot pointers back -- to the freed node -- and the renders until the next whole
+  step read freed memory: the empty render, two in a row; SPECLEAN (the race words put back
+  BEFORE the render) puts back the same dangling pointers, so it could not help. Test: the
+  transition path's block (+5902) logged with the per-present marks.

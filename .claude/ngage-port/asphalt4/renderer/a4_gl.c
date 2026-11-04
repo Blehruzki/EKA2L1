@@ -237,6 +237,15 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
 #define PFF_WROTE 4u     /* a4_tel.c wrote a capture since the last render began */
 #define PFF_LOGIC 8u     /* A4_STEPTIME: a logic span is open (+15B1C returned, +12992 not yet called) */
 _Static_assert(PF_N <= 60, "A4_PERF holds 64 words (0x412C00-0x412D00); 60-63 are A4_MESHCHECK's");
+/* integer square root, floor (round 40: the camera's distance from the car) */
+static uint32_t isqrt64(int64_t v)
+{
+    if (v <= 0) return 0;
+    uint64_t x = (uint64_t)v, r = 0, b = (uint64_t)1 << 62;
+    while (b > x) b >>= 2;
+    while (b) { if (x >= r + b) { x -= r + b; r = (r >> 1) + b; } else r >>= 1; b >>= 2; }
+    return (uint32_t)r;
+}
 #if defined(A4_SPECCAMFOLLOW) && !defined(A4_DROPHOLD)
 #error "A4_SPECCAMFOLLOW reads the chase camera's running average A4_DROPHOLD keeps"
 #endif
@@ -303,8 +312,9 @@ struct glr {
     int32_t camoff[3];                 /* A4_DROPHOLD: the camera less the player car at the last render */
     int32_t goodoff[3];                /* A4_DROPHOLD: the same at the last frame that went out */
     uint32_t droprec;                  /* A4_SLOWREC: 1 + the drop ring entry this frame wrote (0: none) */
-    int32_t chaseavg[3];               /* round 40: the camera's offset from the player car, a running
-                                        * average x16 (the chase camera: ~97% of race renders) */
+    int32_t chaseavg[3];               /* round 40: the camera's distance from the player car on the
+                                        * ground [0] and its height [1], running averages x16 (the
+                                        * chase camera: ~97% of race renders); [2] unused */
     uint32_t chaseinit;
 };
 
@@ -1120,7 +1130,15 @@ static void spec_run(uint32_t race, uint32_t q16)
          * motion (+1300C -> +12DEC(race, &0) -> +5968) */
         volatile uint32_t z = 0;
 #if !defined(A4_SPECNOCAM) && !defined(A4_SPECCAMFOLLOW)
+#ifdef A4_SPECGATECAM
+        /* bench (round 40): EKA2L1_WATCHGATE=44707C opened around the speculative camera update
+         * alone, with the present count + 1 (the emulator logs the opening value) */
+        sp[31] = ((volatile struct glr *)A4_GL_SCRATCH)->frames + 1u;
+#endif
         ((void (*)(uint32_t, volatile uint32_t *))GAMEFN(a4_hc_12dec))(race, &z);
+#ifdef A4_SPECGATECAM
+        sp[31] = 0;
+#endif
 #else
         /* round 40: not run speculatively. The bench at the phone's rhythm: with it, the
          * empty render at the hill in every race (r40c, c7); without it (A4_SPECNOCAM), none in
@@ -1190,8 +1208,9 @@ static void spec_run(uint32_t race, uint32_t q16)
             volatile int32_t *c = (volatile int32_t *)sp[4 + i];
             const volatile int32_t *o = (const volatile int32_t *)(A4_GL_SNAP + i * SPEC_CARSZ);
             volatile int32_t *cm = (volatile int32_t *)race;
-            uint32_t chase = 1;
-            for (int a = 0; a < 3; a++) { int32_t d = (cm[0x58 / 4 + a] - o[1 + a]) - g->chaseavg[a] / 16; if (d > 128 || d < -128) chase = 0; }
+            int32_t ox = cm[0x58 / 4] - o[1], oy = cm[0x5C / 4] - o[2], oz = cm[0x60 / 4] - o[3];
+            int32_t dd = (int32_t)isqrt64((int64_t)ox * ox + (int64_t)oz * oz) - g->chaseavg[0] / 16, dy = oy - g->chaseavg[1] / 16;
+            uint32_t chase = dd <= 64 && dd >= -64 && dy <= 64 && dy >= -64;
             if (chase) for (int a = 0; a < 3; a++) cm[0x58 / 4 + a] += c[1 + a] - o[1 + a];
         }
     }
@@ -1395,14 +1414,17 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         g->rendered = 1;
         g->camok = car != 0;
         if (car) for (int i = 0; i < 3; i++) g->camoff[i] = cm[0x58 / 4 + i] - car[1 + i];
-        if (car) {   /* the running average of the offset: the player's chase camera, whatever the car or view */
-            if (!g->chaseinit) { for (int i = 0; i < 3; i++) g->chaseavg[i] = g->camoff[i] * 16; g->chaseinit = 1; }
-            else {   /* quickly while near it (within 128 an axis), slowly (1/256) while off it: a long
-                      * crash camera does not drag it away, a view the player switches to for good does */
+        if (car) {   /* the running average of the offset's distance on the ground and height -- what does
+                      * not turn with the car (r40cf: the world-frame offset turns in every bend, and the
+                      * chase test failed there) -- the player's chase camera, whatever the car or view */
+            int32_t v[2] = { (int32_t)isqrt64((int64_t)g->camoff[0] * g->camoff[0] + (int64_t)g->camoff[2] * g->camoff[2]), g->camoff[1] };
+            if (!g->chaseinit) { g->chaseavg[0] = v[0] * 16; g->chaseavg[1] = v[1] * 16; g->chaseinit = 1; }
+            else {   /* quickly while near it (within 64), slowly (1/256) while off it: a long crash
+                      * camera does not drag it away, a view the player switches to for good does */
                 uint32_t near = 1;
-                for (int i = 0; i < 3; i++) { int32_t d = g->camoff[i] - g->chaseavg[i] / 16; if (d > 128 || d < -128) near = 0; }
-                for (int i = 0; i < 3; i++)
-                    g->chaseavg[i] += near ? g->camoff[i] - g->chaseavg[i] / 16 : (g->camoff[i] * 16 - g->chaseavg[i]) / 256;
+                for (int i = 0; i < 2; i++) { int32_t d = v[i] - g->chaseavg[i] / 16; if (d > 64 || d < -64) near = 0; }
+                for (int i = 0; i < 2; i++)
+                    g->chaseavg[i] += near ? v[i] - g->chaseavg[i] / 16 : (v[i] * 16 - g->chaseavg[i]) / 256;
             }
         }
     }
@@ -4727,8 +4749,9 @@ int a4_gl_frame(uint32_t fps)
                  * 75-175 above it. Another camera view the player picks is not held. */
                 /* round 40: the chase camera is the running average of the offset (r39's fixed
                  * 150-350/50-200 came from the bench car and missed the owner's camera) */
-                uint32_t chase = s->chaseinit;
-                for (int i = 0; i < 3 && chase; i++) { int32_t d = s->goodoff[i] - s->chaseavg[i] / 16; if (d > 128 || d < -128) chase = 0; }
+                int32_t gd = (int32_t)isqrt64((int64_t)s->goodoff[0] * s->goodoff[0] + (int64_t)s->goodoff[2] * s->goodoff[2]) - s->chaseavg[0] / 16;
+                int32_t gy = s->goodoff[1] - s->chaseavg[1] / 16;
+                uint32_t chase = s->chaseinit && gd <= 64 && gd >= -64 && gy <= 64 && gy >= -64;
                 uint32_t steady = dev <= 96u && chase;
                 uint32_t hold = prev > 400u && had * 2u < prev && steady && !(holding && now - A4_PERF[PF_HOLDT] >= DROPHOLD_TICKS);
 #ifdef A4_SLOWREC
