@@ -5728,3 +5728,13 @@ related bug."
   the collapses NOT held: 191 of 514 and 152 of 480 (crash camera: not the chase), 1,106 of
   2,286 (deviation 541) and 474 of 1,606 (724: cuts); no posted frame near an empty one
   (emptyfind 46.1); the longest race post gap 143 ms.
+- Candidate r39 (C37's flags; the round 39 hold -- under a half from over 400, the camera
+  within 96 of the last frame shown and that frame the chase camera's -- its verdict in the
+  record, the camera cut on every axis and angle; sha256
+  759ed914c84619c1127d7d62a579a2ea96da1cd42a4df5135c79e7d068a84f06, 804,624 bytes; no
+  0xDEADBEEF; +3A15C B510 0004). Battery: telerun3 230 s framestat 5419, faults 1 (the
+  boot fault), with EKA2L1_POSTDUMP: no posted frame near an empty one (emptyfind 45.8);
+  the record's drop ring with its verdicts: 6 of 1,134 (deviation 11, held), 19 of 1,607
+  (12, held), 1,100 of 2,233 (334, not held), 1,016 of 2,191 (540, not held); 5 renders
+  held; the longest race post gap 111 ms. Steering race 90 s framestat 2488, faults 1;
+  racemenu framestat 3964, faults 1, 18 shots; mark framestat 1391, faults 1.
