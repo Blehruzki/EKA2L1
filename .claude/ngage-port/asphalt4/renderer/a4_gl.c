@@ -1160,6 +1160,25 @@ static void spec_run(uint32_t race, uint32_t q16)
         c[0x678u / 4u] = lerp_ang(o[0x678u / 4u], c[0x678u / 4u], q16, 2048u);
         c[0x020u / 4u] = lerp_ang(o[0x020u / 4u], c[0x020u / 4u], q16, 4096u);
     }
+#ifdef A4_SPECLEAN
+    /* bench (round 40: the empty render is the speculation's -- r40ns, the half-step logic
+     * alone, at the phone's rhythm, had none): every word the replayed half-step changed that
+     * is NOT drawn half way put back to the whole step's for the render. A4_SPECLEAN bits:
+     * 1 the cars (spec_mid, the heading +0x678 and the wheels +0x020 kept), 2 the race (the
+     * camera +0x58..+0x70 kept), 4 K (the keys) */
+    if (A4_SPECLEAN & 1) for (uint32_t i = 0; i < n; i++) {
+        volatile uint32_t *c = (volatile uint32_t *)sp[4 + i];
+        const volatile uint32_t *o = (const volatile uint32_t *)(A4_GL_SNAP + i * SPEC_CARSZ);
+        for (uint32_t w = 0; w < SPEC_CARSZ / 4u; w++) {
+            uint32_t keep = (w == 0x678u / 4u || w == 0x020u / 4u);
+            for (uint32_t f = 0; f < sizeof spec_mid / sizeof spec_mid[0] && !keep; f++) if (spec_mid[f] / 4u == w) keep = 1;
+            if (!keep) c[w] = o[w];
+        }
+    }
+    if (A4_SPECLEAN & 2) for (uint32_t w = 0; w < SPEC_RACESZ / 4u; w++)
+        if (w < 0x58u / 4u || w > 0x70u / 4u) ((volatile uint32_t *)race)[w] = sp[64 + w];
+    if ((A4_SPECLEAN & 4) && K) words_copy((volatile uint32_t *)K, sp + 32, 16);
+#endif
     {   /* what the speculation changed, for a restore that keeps the render's own changes */
         volatile uint32_t *bm = (volatile uint32_t *)A4_GL_SPECBM;
         for (uint32_t i = 0; i < n; i++)
@@ -1217,6 +1236,9 @@ __attribute__((noinline)) void a4_render_mark2(uint32_t x, uint32_t y, uint32_t 
 int a4_step_render(void *self)                                  /* +1696C: bl +12992 */
 {
     volatile uint32_t *pf = A4_PERF;
+#ifdef A4_FRAMEMARK
+    uint32_t mark_q16 = 0;   /* the speculation's fraction this render, bit 31 = computed */
+#endif
 
 #ifdef A4_HALFLOGIC
     {   volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
@@ -1267,6 +1289,9 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
             uint32_t q = (uint32_t)(((uint64_t)t * 0x312684D0u) >> 43);   /* t / 10667, exact below 2^31 */
             uint32_t ph = t - q * 10667u + (((h[0] - 1u) & 1u) ? 10667u : 0u);   /* 0 .. 21333 */
             uint32_t q16 = (uint32_t)(((uint64_t)ph * 201320u) >> 16);         /* ph * 65536 / 21334 */
+#ifdef A4_FRAMEMARK
+            mark_q16 = q16 | 0x80000000u;
+#endif
             if (q16 > 65535u) q16 = 65535u;
             if (q16 >= 2048u) {      /* under 1/32 of a step (2.7 ms): the whole step as it is */
                 uint32_t s0 = a4_ntick();
@@ -1313,9 +1338,12 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         uint32_t race = (uint32_t)(uintptr_t)self, pl = *(volatile uint32_t *)(race + 0x390);
         uint32_t idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 0;
         volatile uint32_t *car = idx < 16u ? *(volatile uint32_t *volatile *)(race + 0x394 + 4u * idx) : 0;
+        /* round 40: r3 = the camera's yaw (12 bits) | the speculation's fraction q16 >> 4
+         * (12 bits) << 12 | HSTEP[5] (renders since the last whole step... as counted) << 24;
+         * the car mark: x, z, its heading (+0x678), and the real time (a4_ntick, 1 ms) */
         a4_render_mark(c[0x58u / 4u], c[0x5Cu / 4u], c[0x60u / 4u],
-                       (c[0x64u / 4u] & 0xFFFu) | (c[0x68u / 4u] & 0xFFFu) << 12 | (h[1] & 0xFFu) << 24);
-        a4_render_mark2(car ? car[1] : 0, car ? car[2] : 0, car ? car[3] : 0, car ? car[0x678u / 4u] : 0);
+                       (c[0x68u / 4u] & 0xFFFu) | ((mark_q16 >> 4) & 0xFFFu) << 12 | (mark_q16 >> 31) << 31 | (h[5] & 0x7Fu) << 24);
+        a4_render_mark2(car ? car[1] : 0, car ? car[3] : 0, car ? car[0x678u / 4u] : 0, a4_ntick());
     }
 #endif
     int r = a4_gcall1(GAMEFN(a4_steprend), (uint32_t)(uintptr_t)self);   /* the render: span trampolines inside */

@@ -5738,3 +5738,68 @@ related bug."
   (12, held), 1,100 of 2,233 (334, not held), 1,016 of 2,191 (540, not held); 5 renders
   held; the longest race post gap 111 ms. Steering race 90 s framestat 2488, faults 1;
   racemenu framestat 3964, faults 1, 18 shots; mark framestat 1391, faults 1.
+
+## Round 39, phone (r39, sha256 759ed914...)
+
+Owner: "Still the same issues.. In fact, I could notice some steering jitter this time on
+LA. Let's stop guessing. Adjust the emulator or patch it as you need it to reproduce the
+bugs on the bench. It doesn't matter if it takes several bench rounds."
+- The record's verdicts (capidx 102, 7,650 3D frames): held 1 render. Drops: 1,001 of 2,204
+  (camera deviation 473: a cut, not held), 984 of 2,012 (53, held), 324 of 877 (92, not
+  held: 0.37, over the half), 226 of 1,832 (deviation 2, NOT held: under the half, the
+  camera steady -- so the chase-camera range failed: the owner's chase camera sits outside
+  150-350/50-200, which came from the bench car's camera alone; rule 4's named guess, now
+  shown wrong), 841 of 1,706 (1,068: a cut). 35 render calls with no triangle.
+- The bench does not run the scheme at the phone's rhythm: steps per render on the phone
+  [n=1 809, n=2 1,386, n=3 206, 4 17, 5 3] -- a render usually after two half-steps --
+  against the bench's (r39t) [4,586, 471, 4, 1, 2]; the render call 62 ms on the phone, 37
+  on the bench. The speculation's fractions and the steps' and renders' interleaving differ
+  -- where steering jitter and stale-state frames would live. Next: EKA2L1_CPUCAP
+  calibrated by these numbers (not by eye) so the bench runs at the phone's rhythm, then
+  reproduce on it.
+
+## Round 40 (bench): the bench at the phone's rhythm
+
+- EKA2L1_CPUCAP calibrated by numbers against r39's phone telemetry (render call 61.9 ms;
+  steps per render n=1/2/3: 33/57/9%): uncapped (r39t) 37.1 ms, 89/9/0%; cap 100: 53.1 ms,
+  44/53/3%; cap 85: 61.8 ms, 24/66/10% (seg0 1,949 renders). Cap 85 is the bench's phone
+  from here (the record's "115 by eye" ran on a slower host). Not matched: the 2D after
+  the composite (bench 13 ms, phone 6-7) and the composite (15 against 11).
+- r40c (the measuring build at cap 85, 230 s accelerating; per render the car as drawn
+  against real time -- tools/pacing2.py): 2,562 renders, 77 ms apart (65..100); drawn speed
+  against its neighbours 1.00 (quartiles 0.99..1.01, 10-90% 0.98..1.03, none off by 25%);
+  never drawn going backwards; the camera's offset from the car changes 0 a render
+  (median), 18 (90%), 35 (99%). Holds at the hill, 8 of 1,230 and 16 of 1,579 (deviation
+  11 and 1); a cut not held (1,013 of 2,399, 539); no posted frame near an empty one.
+  Straight-line driving at the phone's rhythm is even: the jitter, if the bench shows it,
+  is in steering -- next, a tapping steering race (steertap.sh: 150-300 ms taps, a player's
+  corrections) at cap 85, green on and off, with heading blips and sideways wobbles.
+- The chase-camera range (r39) is replaced, not re-guessed: the chase camera is ~97% of
+  race renders, so a running average of the offset is the player's chase camera whatever
+  the car or view; a hold needs the last frame shown within reach of it.
+- CORRECTION (rule 4, the instrument was not what it said): the speculation runs whatever
+  the A/B mode unless the build is A4_ABCYCLE10 (the mode test at a4_step_render is inside
+  #ifdef A4_ABCYCLE10). So C35off/r36doff ("mode 1070, the speculation off") speculated
+  every frame -- its record's "spec" column (2 ms) said so and was waved off -- and round
+  37's "the empty frame happens with the speculation off" is WRONG: no build without the
+  speculation has shown the empty frame (stock 0 of 3 laps, r37nh 0 of ~3, both without the
+  half-step logic either). Likewise r40toff below was not off.
+- The tapping steering race at cap 85 (r40ton, 90 s; r40toff speculated too): 1,034
+  renders 79 ms apart; drawn speed 1.00 (10-90% 0.96..1.04), none off by 25%, never
+  backwards; heading blips 2 of 1,033, sideways wobbles 0 of 1,032; the camera's offset
+  change 0 a render (median), 23 (99%). So the player car's drawn path at the phone's
+  rhythm, steering in taps, is even on this route: the owner's steering jitter is not
+  there -- the camera's angle, the other cars or the keys' response are what remain.
+- r40ns: the half-step logic WITHOUT the speculation compiled (no HALFSPEC, no HALFMOTION)
+  at cap 85, the hill: in flight.
+- r40ns (the half-step logic, NO speculation compiled, cap 85, 230 s): the hill passed
+  twice (mapmatch posts 1554, 2534) and no empty render -- the collapses 664 of 1,443, 938
+  of 1,935 and 157 of 537 (cuts and a crash, rcall normal), no hold, no posted frame near an
+  empty one (45.6). With the speculation, same cap, same route (r40c): two. With stock and
+  r37nh: the empty render is the SPECULATION's (not the half-step's, as round 37 had it).
+  Its pacing for reference: drawn speed quartiles 0.97..1.03, 4% off by 25% (the same state
+  drawn twice when a render follows a half-step with no step), camera yaw blips 28.
+- What the speculation leaves the render: the drawn words interpolated (spec_mid, the
+  camera), but every other word the replayed half-step changed in the cars and the race is
+  at its speculated value during the render. Experiment next: those put back to the whole
+  step's for the render (the drawn ones kept), then halve the set to find the word.
