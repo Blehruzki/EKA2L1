@@ -237,6 +237,10 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
 #define PFF_WROTE 4u     /* a4_tel.c wrote a capture since the last render began */
 #define PFF_LOGIC 8u     /* A4_STEPTIME: a logic span is open (+15B1C returned, +12992 not yet called) */
 _Static_assert(PF_N <= 60, "A4_PERF holds 64 words (0x412C00-0x412D00); 60-63 are A4_MESHCHECK's");
+#if defined(A4_DROPHOLD) && defined(A4_MESHCHECK)
+#error "A4_DROPHOLD counts the terrain build in A4_PERF word 60, A4_MESHCHECK's"
+#endif
+#define A4_BUILT (A4_PERF[60])   /* A4_DROPHOLD: terrain builds (+CE8C) since the last real present */
 #if defined(A4_DROPHOLD) && !defined(A4_SKIPREPRES)
 #error "A4_DROPHOLD holds a frame back in the A4_SKIPREPRES present path"
 #endif
@@ -3608,6 +3612,11 @@ static void kind_leave(uint32_t st)
  * among themselves as before, hidden behind a nearer list face, drawn over a farther one. */
 static void mesh_enter(uint32_t kind)
 {
+#ifdef A4_SHADNODEPTH
+    /* bench (round 37, the owner: the stock game draws the car's shadow whole): shadows
+     * untested in a list frame, painted over whatever is there as the game paints them */
+    if (kind == KIND_SHAD) { gl_disable(GL_DEPTH_TEST); gl_depthmask(0); return; }
+#endif
     gl_enable(GL_DEPTH_TEST);
     if (kind != KIND_TEXZ) gl_depthmask(0);
 }
@@ -4485,7 +4494,8 @@ int a4_fw_hold(void)
 #ifdef A4_FRAMEMARK
 /* round 37, bench only (needs A4_DROPHOLD): called for every present that brought 3D or
  * goes out, for EKA2L1_PCTRACE_REGS -- r0 = the 3D triangles since the last present, r1 =
- * the 3D frame's before, r2 = the present count, r3 = 1 when the present is not made */
+ * the 3D frame's before, r2 = the present count, r3 = 1 when the present is not made |
+ * the terrain builds since the last real present << 1 */
 __attribute__((noinline)) void a4_frame_mark(uint32_t had, uint32_t prev, uint32_t frames, uint32_t skipped)
 {
     __asm__ volatile("" : : "r"(had), "r"(prev), "r"(frames), "r"(skipped) : "memory");
@@ -4563,7 +4573,7 @@ int a4_gl_frame(uint32_t fps)
         uint32_t r2 = (uint32_t)(uintptr_t)&a4_rep2 + (uint32_t)a4_rep2;
         if ((A4_PERF[PF_MODE] & AB_SKIPREP) && (caller == r1 || caller == r2)) { presented = 1; A4_PERF[PF_SKIPPED]++; }
 #ifdef A4_FRAMEMARK
-        uint32_t frame_prev0 = A4_PERF[PF_PREVHAD];
+        uint32_t frame_prev0 = A4_PERF[PF_PREVHAD], frame_built = A4_BUILT;
 #endif
 #ifdef A4_DROPHOLD
         /* round 37: the empty frame (the owner's photo 7; the bench's posts 1205-1206 of
@@ -4586,8 +4596,8 @@ int a4_gl_frame(uint32_t fps)
          * and is never held), until a render brings a frame of its own -- and with them
          * the framework's own post after each (a4_fw_hold); for at most DROPHOLD_TICKS. */
         if (!presented) {
-            uint32_t rendered = s->rendered;
-            s->rendered = 0;
+            uint32_t rendered = s->rendered, built = A4_BUILT;
+            s->rendered = 0; A4_BUILT = 0;
             if (had || rendered) {
                 /* a render's present: compared with the last frame that went out (PF_PREVHAD
                  * is not moved by a held one), so a collapse over two renders (r37n: 1,398 ->
@@ -4597,7 +4607,10 @@ int a4_gl_frame(uint32_t fps)
                  * so a real cut to a sparse view goes out at most that late */
                 uint32_t prev = A4_PERF[PF_PREVHAD], now = a4_ntick();
                 uint32_t holding = A4_PERF[PF_HOLDCALL] != 0;
-                if (prev > 600u && had * 6u < prev && !(holding && now - A4_PERF[PF_HOLDT] >= DROPHOLD_TICKS)) {
+                /* or under a half when the game built a terrain piece since the last present
+                 * (+CE8C, a4_meshbuild_tramp): the phone's last-lap empty render was 0.1668 */
+                uint32_t low = had * 6u < prev || (built && had * 2u < prev);
+                if (prev > 600u && low && !(holding && now - A4_PERF[PF_HOLDT] >= DROPHOLD_TICKS)) {
                     presented = 1; A4_PERF[PF_HELD]++;
                     if (!holding) { A4_PERF[PF_HOLDCALL] = caller; A4_PERF[PF_HOLDT] = now; a4_drop_mark(had, prev); }
                 } else {
@@ -4612,7 +4625,7 @@ int a4_gl_frame(uint32_t fps)
 #endif
 #ifdef A4_FRAMEMARK
         if (had || !presented) {
-            a4_frame_mark(had, frame_prev0, s->frames, (uint32_t)presented);
+            a4_frame_mark(had, frame_prev0, s->frames, (uint32_t)presented | frame_built << 1);
             /* and the present count stamped in the bottom row's first 32 pixels (white = 1),
              * so each post in an EKA2L1_POSTDUMP names its present */
             volatile uint16_t *fb = (volatile uint16_t *)*(volatile uint32_t *)A4_GL_BB;

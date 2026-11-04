@@ -423,6 +423,13 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         assert have == (0x2100, 0x4790), 'drop hold: +6B2 holds %04x %04x' % have
         blx_insert(code, 0x6B2, syms['a4_fwpost_tramp'])
         print('HOLD   +0006B2 -> a4_fwpost_tramp +%06X (the framework\'s post)' % (syms['a4_fwpost_tramp'] - LINK_BASE))
+        # and the terrain build +CE8C counted (its only caller, the bl at +D2F6)
+        have = struct.unpack_from('<HH', code, 0xD2F6)
+        assert have == (0xF7FF, 0xFDC9), 'drop hold: +D2F6 holds %04x %04x' % have
+        ph = syms['a4_hc_ce8c']
+        struct.pack_into('<I', code, ph - LINK_BASE, ((LINK_BASE + (0xCE8C | 1)) - ph) & 0xFFFFFFFF)   # the blob is in code by now
+        blx_insert(code, 0xD2F6, syms['a4_meshbuild_tramp'])
+        print('HOLD   +00D2F6 -> a4_meshbuild_tramp +%06X (the terrain build counted)' % (syms['a4_meshbuild_tramp'] - LINK_BASE))
     if os.environ.get('A4_HALFSTEP'):
         # round 31, the faster-step work: the logic step halved, 21333 -> 10667 units
         # (85.33 -> 42.67 ms). +52B80's divide (t / 21333 for the real-time count m): its
