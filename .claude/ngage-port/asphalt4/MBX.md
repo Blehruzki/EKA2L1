@@ -5912,3 +5912,10 @@ bugs on the bench. It doesn't matter if it takes several bench rounds."
   jitter (the player car's drawn path and the camera are even at the phone's rhythm, steering
   in taps), the helicopter view (not on the bench route; +0x70 and the freed keyframes are
   both candidates), Paris (never on the bench with the speculation).
+- Candidate r40 (C40 = C37 + A4_SPECCAMSAFE + A4_KEEP70; sha256
+  66df115f403fc5dd72689571c6f87b80cc6b4d07e03d25ca15371219842f007f, 805,332 bytes; no
+  0xDEADBEEF; +3A15C B510 0004). Battery: telerun3 230 s at cap 85 (the phone's rhythm),
+  framestat 3281, faults 1 (the boot fault), with EKA2L1_POSTDUMP: no posted frame near an
+  empty one (emptyfind 46.0); the hold never needed (0 held); 1 drop frame. Steering race
+  90 s framestat 2485, faults 1; racemenu framestat 3984, faults 1, 18 shots; mark framestat
+  1335, faults 1.
