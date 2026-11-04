@@ -73,3 +73,30 @@ dl = sorted(abs(b - a) for a, b in zip(lat, lat[1:]))
 lb = sum(1 for a, b, c in zip(lat, lat[1:], lat[2:]) if (b - a) * (c - b) < 0 and min(abs(b - a), abs(c - b)) > 8)
 print('camera yaw blips: %d of %d; sideways offset (car frame) change a render: median %.0f, 90%% %.0f, 99%% %.0f; its reversals over 8: %d'
       % (yb, len(dy), dl[len(dl) // 2], dl[9 * len(dl) // 10], dl[99 * len(dl) // 100], lb))
+# round 41 (the owner: hold the key, the car goes "back n forth"): the turn rate (heading
+# change per real ms) of each render against the median of its 9 neighbours', where the car
+# is turning steadily (the neighbours' median over 0.02 units of 4096 a ms, all one sign)
+rate = [h / t if t else 0.0 for h, t in zip(hd, dt)]
+tr = []
+for i in range(4, len(rate) - 4):
+    nb = rate[i - 4:i + 5]
+    if not (all(x > 0 for x in nb) or all(x < 0 for x in nb)): continue
+    m = st.median(nb)
+    if abs(m) > 0.02: tr.append(rate[i] / m)
+tr.sort(); k = len(tr)
+if k:
+    print('turn rate / neighbours while turning: median %.2f, quartiles %.2f..%.2f, 10-90%% %.2f..%.2f, off by >25%%: %.0f%% (%d renders)'
+          % (tr[k // 2], tr[k // 4], tr[3 * k // 4], tr[k // 10], tr[9 * k // 10], 100.0 * sum(1 for r in tr if abs(r - 1) > 0.25) / k, k))
+else:
+    print('turn rate: no steady turning found')
+# the car's angle against the camera's yaw (both on the 2048 circle, +678 and +0x68): what
+# the player sees of the car's turn on screen; its change a render, its single-render blips
+# and how often it reverses while the car is turning (round 41: "the car is kind of going
+# back n forth")
+rel = [((r['hd'] - (r['cam'][3] & 0xFFF)) + 1024) % 2048 - 1024 for r in R]
+dr = [((b - a + 1024) % 2048) - 1024 for a, b in zip(rel, rel[1:])]
+ad = sorted(abs(x) for x in dr)
+rb = sum(1 for a, b, c in zip(dr, dr[1:], dr[2:]) if a * c > 0 and b * a < 0 and min(abs(a), abs(b), abs(c)) > 2)
+rv = sum(1 for a, b in zip(dr, dr[1:]) if a * b < 0 and abs(a) > 3 and abs(b) > 3)
+print('car against camera: change a render median %d, 90%% %d, 99%% %d; blips %d; reversals over 3: %d of %d'
+      % (ad[len(ad) // 2], ad[9 * len(ad) // 10], ad[99 * len(ad) // 100], rb, rv, len(dr)))

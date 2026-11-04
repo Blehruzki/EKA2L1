@@ -5919,3 +5919,24 @@ bugs on the bench. It doesn't matter if it takes several bench rounds."
   empty one (emptyfind 46.0); the hold never needed (0 held); 1 drop frame. Steering race
   90 s framestat 2485, faults 1; racemenu framestat 3984, faults 1, 18 shots; mark framestat
   1335, faults 1.
+
+## Round 41 (bench): steering, as the owner steers
+
+- Owner (before testing r40): "you won't see the error if you only tap. You would need to
+  leave the direction key pressed down so the car is continuously steering. you will see
+  that the car is kind of going back n forth. Remember to try this in both light and heavy
+  scenarios, and also try it by going fast and slow." And the helicopter event: three
+  turbo taps a second apart at the start, take down racers, build speed, avoid rails and
+  traffic -- "eventually, the helicopter event will trigger."
+- The game's controls (pause -> CONTROLS, landscape 270, read on the bench): turn left 8,
+  turn right 2, brakes 6, nitro boost 5 or A, next/previous camera; accelerating is
+  automatic. So EVERY bench race so far held 5 (nitro, not "accelerate") and the steering
+  races pressed 4 (nothing) and 6 (brakes): no bench race has ever steered. Round 40's
+  "the steering is even at the phone's rhythm" measured a car that was not being steered
+  (rule 4: the instrument's input was never checked). Withdrawn.
+- The controls list in full (it wraps): brakes 6, nitro boost 5 or A, turn left 8, turn
+  right 2, drift left 7/9, drift right 1/3, drift #, next camera *, previous camera 0 -- no
+  accelerate entry. Yet a race with 5 not held (steerhold, first version) left the car at 0
+  km/h facing backwards ("REVERSE", "ARE YOU LOST?!"): on the bench, holding 5 is what moves
+  the car (telerun's 190 km/h). Steering race v2: 5 held, 2 held 2 s / free 1.5 s / 8 held 2
+  s / free 1.5 s, cap 85, green on (r41on) and green not compiled (r40ns).

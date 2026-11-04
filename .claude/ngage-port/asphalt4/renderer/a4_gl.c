@@ -4648,6 +4648,12 @@ __attribute__((noinline)) void a4_frame_mark(uint32_t had, uint32_t prev, uint32
 {
     __asm__ volatile("" : : "r"(had), "r"(prev), "r"(frames), "r"(skipped) : "memory");
 }
+/* round 41, bench only: called just before a present that is made, r0 = the real time
+ * (a4_ntick, 1 ms) -- when the player sees the frame, not when its render began */
+__attribute__((noinline)) void a4_present_mark(uint32_t t)
+{
+    __asm__ volatile("" : : "r"(t) : "memory");
+}
 #endif
 
 int a4_gl_frame(uint32_t fps)
@@ -4804,6 +4810,7 @@ int a4_gl_frame(uint32_t fps)
         }
 #endif
 #ifdef A4_FRAMEMARK
+        if (!presented) a4_present_mark(a4_ntick());
         if (had || !presented) {
             a4_frame_mark(had, frame_prev0, s->frames, (uint32_t)presented);
             /* and the present count stamped in the bottom row's first 32 pixels (white = 1),
