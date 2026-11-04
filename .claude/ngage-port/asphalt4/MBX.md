@@ -6121,3 +6121,22 @@ steering jitter seen in it).
   r42im (+ marks), the same autopilot drive: camera-yaw and car-heading one-frame reversals 0
   and 0 in 417 frames; car-less-camera reversals 8 of 162 (r42m: 19 of 88); traffic even (1% of
   frames off, drawn backwards 1 of 1,310).
+- Candidate r42 (C42 = C41 + A4_INTERP; sha256
+  04f4fd09ec90ddb2dc74c70630ed7bdc8e35f1219de6978af998e08999b27255, 807,012 bytes; no
+  0xDEADBEEF; +3A15C B510 0004). Battery on that binary, the bench's original archives put back
+  first: telerun3 230 s at cap 85 framestat 3275, faults 1 (the boot fault), EKA2L1_POSTDUMP:
+  no posted frame near an empty one (emptyfind 46.3), held 0, drop frames 1, the frame record
+  read back (417 frames, one camera-yaw reversal of 5 units, none of the heading); crash-steer
+  150 s framestat 3229, faults 1; racemenu framestat 4118, faults 1, 18 shots; mark framestat
+  1436, faults 1; then the Veyron swap and the autopilot 120 s: framestat 2321, faults 1,
+  reversals 0 and 0. The bench's archives restored to the originals afterwards.
+- Where we are (rule 3): the snap-backs (traffic, steering, takedown and crash cameras) traced
+  on the bench, at the owner's speed, to the prediction meeting input it could not know; the
+  interpolation mode removes the signature on the same drive. Best test this round: the Veyron
+  on the bench with a continuously steering autopilot -- the first bench run to show the phone's
+  frame signature. Asked of r42 against r41 (same everything else): the feel -- smooth but half
+  a step later on average than the stock game (a full step later than r41).
+- Guesses (rule 4): that the key change is the only common unforeseeable input (traffic
+  braking and collisions are argued, not measured); that half a step of extra delay is
+  acceptable -- the phone decides; the autopilot's quick key changes exaggerate what a held key
+  does on the phone, so the bench's 5 reversals are not the phone's rate.
