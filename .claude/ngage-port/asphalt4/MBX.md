@@ -5803,3 +5803,27 @@ bugs on the bench. It doesn't matter if it takes several bench rounds."
   camera), but every other word the replayed half-step changed in the cars and the race is
   at its speculated value during the render. Experiment next: those put back to the whole
   step's for the render (the drawn ones kept), then halve the set to find the word.
+- The same count on the controls (per-present marks: under a quarter from over 600): r40c
+  (the speculation) 2 -- 8 of 1,230, 16 of 1,579; r40ns (none) 0.
+- A4_SPECLEAN=7 (bench: every word the speculation changed in the cars, the race and K put
+  back for the render, the drawn ones kept), two races at cap 85: 105 of 1,088 and 18 of
+  1,275 -- still there. So not the cars', the race's or the keys' words: state outside those
+  snapshots. The speculation calls the game's camera update +12DEC, which writes outside the
+  race object (round 31's trace: 18 sites in 5 functions under +5968). Next: A4_SPECNOCAM
+  (the speculation without +12DEC; the camera then stays at the whole step's -- a test, not
+  a fix).
+- A4_SPECNOCAM, two races at cap 85: NO empty render (2,975 and 2,979 3D presents, none under
+  a quarter from over 600). With the camera update in the speculation: in every race. So
+  the speculative +12DEC is the cause. Round 31's leak6 had seen it: +12DEC allocates and
+  frees list nodes in a block outside the saved objects (+5912 -> +5205A), filed then as
+  "freed within the call". Reading now: run on the speculated state, the camera update
+  moves the camera's bookkeeping (zones, events) to where the car will be half a step on;
+  the render culls by it and nothing restores it -- the hill's empty render; and an event
+  camera could start a frame early (the owner's helicopter view before its event: a
+  theory, not on the bench route).
+- The fix, A4_SPECCAMFOLLOW: +12DEC is not run speculatively; the chase camera moves with the
+  player car by the car's interpolated motion; any other camera (offset off the chase
+  camera's by over 128 on an axis) stays at the whole step's. The chase camera is a running
+  average of the camera's offset from the player car, quick while near it, 1/256 a render
+  while off it -- the hold's chase test uses it too (r39's fixed range is gone). r40cf: two
+  races and a tapping race at cap 85, in flight.
