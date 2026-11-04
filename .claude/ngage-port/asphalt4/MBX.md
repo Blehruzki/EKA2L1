@@ -5648,3 +5648,38 @@ this smooth on light scenes is amazing!"
   one before or less -- the crashes on this route do not collapse the triangles, so the
   camera test's cut side is untested on the bench (rule 4: a guess that a cut moves the
   offset by more than 96 on some axis; and a timeout now ends a hold for good either way).
+
+## Round 37, phone, Paris (r37 again)
+
+Owner: "I ran another round with the same build but in the paris map and noticed the frame
+lost bug more often. i also noticed the steering jitter of past builds and some other
+physic-related bugs that most likely have to do with the time-step."
+- Telemetry (capidx 229-236): mode 3118; 60.9-100.5 ms a render (heavier than LA's end
+  windows); logic 0.7 ms a step, longest span 6 ms; m - n sum 1; 2,778 render calls, 1 with
+  no triangle. The record (20,036 3D frames): real presents 6,647, 1,615 with no render
+  since the last -- 1,187 from +9AB as before and 428 from a second site (0x78B6988D, code
+  +6988D on the phone's base 0x78B00000: not seen in LA, not yet read); held 6 renders,
+  312 render-less presents and 318 framework posts with them. Drop frames 18; the ring's
+  last 8 mostly 234-292 triangles after 605-721 with ~100 list triangles still drawn
+  (0.35-0.43), one 236 of 1,318 (0.18, list 83: missed by r37's sixth, inside r38's
+  quarter if the camera held), 559 of 1,169 (list 0), 813 of 1,782, 956 of 2,222.
+- Paris draws fewer triangles (frames before the drops 605-1,318); if its empty frames are
+  the ~250-of-~650 ones, the hold's floor (the frame before over 600) and ratio miss them.
+  No pictures of them (the captures are every 23rd render, not at drops). The steering
+  jitter and the physics: not in the record; Paris has never run on the bench with the
+  speculation (round 27's night-track route, A4_BENCH_UNLOCK, reaches it).
+- Candidate r38 (C37's flags; the round 38 hold: camera-steady, a quarter, a timeout ends
+  it for good; the +D2F6 counter removed; sha256
+  b2d64972ad748c875825c9bd413d4ed87a36cb9884a05716ce9831b78b2fe4c1, 804,260 bytes; no
+  0xDEADBEEF; +3A15C B510 0004). Battery (after the worker restart the bench host runs
+  faster: more posts in every run): telerun3 230 s framestat 4919, faults 1 (the boot
+  fault), with EKA2L1_POSTDUMP: no posted frame near an empty one (emptyfind 45.6); held 5
+  renders (the drop ring: 12 of 1,342 and 12 of 1,740 among them), 734 render-less presents
+  and 739 framework posts with them; race post gaps 588 and 345 ms -- the 345 the loading
+  screen, the 588 a takedown in the tunnel whose slowest frame is 334 ms with 307 ms in
+  the composite (the host's llvmpipe read-back; 1,204 triangles, not held; the phone's
+  composite is 10-14 ms); the rest 143 ms or less. Steering race 90 s framestat 2521,
+  faults 1; racemenu framestat 4063, faults 1, 18 shots; mark framestat 1363, faults 1.
+- Sent while Paris is studied: r38 is r37 without the re-hold freeze and with the camera
+  test (it catches LA's 0.1668). It does NOT address Paris (its sparse drops ~0.35-0.43 from
+  ~650) or the steering jitter there.
