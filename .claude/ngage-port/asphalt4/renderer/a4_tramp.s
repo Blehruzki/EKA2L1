@@ -342,3 +342,46 @@ a4_fwpost_tramp:
         movs    r1, #0              @ displaced +6B2: movs r1,#0
         bx      r2                  @ displaced +6B4: blx r2, as a tail call (returns to +6B6)
 #endif
+
+#ifdef A4_SPECCAMSAFE
+@ Round 40: the camera scripts are not advanced by the speculation. +5205A plays a camera
+@ script one tick (its clock [obj+0x8C]++, eleven channels interpolated) and unlinks and
+@ deletes each keyframe node passed; +3D2A sets a script up (allocates). Both under the
+@ camera update +12DEC, which the speculation runs; their state is race words, which the
+@ restore puts back, but the deleted nodes stay freed -- the race then points at freed
+@ keyframes (the bench's gated watch: nodes freed and allocated by the speculative update,
+@ its addresses climbing, round 40). The four bl's (+556E, +5912 to +5205A; +5578, +5926 to
+@ +3D2A) become BLX's here: skipped while the speculation runs the camera update (SPEC word
+@ 24, 0x447060, set around it), else entered as the bl would have -- registers, stack and
+@ lr untouched. No caller reads the result (each reloads r0-r2 after).
+        .arm
+        .align  2
+        .global a4_cs_5205a_tramp
+a4_cs_5205a_tramp:
+        ldr     r12, a4_cs_flag1
+        ldr     r12, [r12]
+        cmp     r12, #0
+        bxne    lr                  @ speculating: the script not played
+        ldr     r12, a4_hc_5205a
+        add     r12, pc, r12        @ pc reads as a4_hc_5205a
+        bx      r12
+        .global a4_hc_5205a
+a4_hc_5205a:
+        .word   0xDEADBEEF          @ patched: (code+0x5205A | 1) - (this word)
+a4_cs_flag1:
+        .word   0x00447060
+        .global a4_cs_3d2a_tramp
+a4_cs_3d2a_tramp:
+        ldr     r12, a4_cs_flag2
+        ldr     r12, [r12]
+        cmp     r12, #0
+        bxne    lr                  @ speculating: no script set up
+        ldr     r12, a4_hc_3d2a
+        add     r12, pc, r12        @ pc reads as a4_hc_3d2a
+        bx      r12
+        .global a4_hc_3d2a
+a4_hc_3d2a:
+        .word   0xDEADBEEF          @ patched: (code+0x3D2A | 1) - (this word)
+a4_cs_flag2:
+        .word   0x00447060
+#endif

@@ -1018,7 +1018,8 @@ static void hcall_replay(void)
  * that is what the render after it draws. At the next even half-step everything saved is put
  * back and the game's own step runs as if nothing had happened: whole steps stay exactly the
  * original game's, a key shows half a step sooner, and the screen gets a frame between. */
-#define A4_GL_SPEC 0x00447000u       /* [0] cars, [1] pending, [2] K, [3] the race, [4..19] the cars, [30] stale drops,
+#define A4_GL_SPEC 0x00447000u       /* [0] cars, [1] pending, [2] K, [3] the race, [4..19] the cars, [24] in the
+                                      * speculative camera update (A4_SPECCAMSAFE), [30] stale drops,
                                       * [32..47] K's words, [64..] the race object (0x9EC bytes) */
 #define SPEC_RACESZ 0x9ECu           /* the race object (+778A allocates it, constructor +16BDC) */
 _Static_assert(A4_GL_SPEC + 0x100u + SPEC_RACESZ <= 0x00448000u, "the race snapshot runs into the cars'");
@@ -1135,7 +1136,13 @@ static void spec_run(uint32_t race, uint32_t q16)
          * alone, with the present count + 1 (the emulator logs the opening value) */
         sp[31] = ((volatile struct glr *)A4_GL_SCRATCH)->frames + 1u;
 #endif
+#ifdef A4_SPECCAMSAFE
+        sp[24] = 1;   /* a4_cs_*_tramp: the camera scripts not played or set up from here */
+#endif
         ((void (*)(uint32_t, volatile uint32_t *))GAMEFN(a4_hc_12dec))(race, &z);
+#ifdef A4_SPECCAMSAFE
+        sp[24] = 0;
+#endif
 #ifdef A4_SPECGATECAM
         sp[31] = 0;
 #endif

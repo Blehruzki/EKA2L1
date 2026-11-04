@@ -5854,3 +5854,22 @@ bugs on the bench. It doesn't matter if it takes several bench rounds."
   step read freed memory: the empty render, two in a row; SPECLEAN (the race words put back
   BEFORE the render) puts back the same dangling pointers, so it could not help. Test: the
   transition path's block (+5902) logged with the per-present marks.
+- The gated watch (A4_SPECGATECAM: EKA2L1_WATCHGATE opened around the speculative +12DEC
+  alone, tagged with the present count; the emulator now logs the opening value), two
+  races at cap 85 (gatelog.py): from a point in each race (present 2430 / 3651) almost every
+  speculative camera update writes words new to the watch -- the ROM heap (0x103A2320) and
+  the game's list code (+520D2/+520D4) -- at addresses climbing 0x48 at a time from
+  0x02021C88: heap nodes freed and allocated by the speculation. Race 2's collapse (present
+  2259) came before any of it (the watch reports each word once, so reused addresses are
+  silent). +520D4 is +5205A: a CAMERA SCRIPT PLAYER -- per call its clock [obj+0x8C] + 1,
+  eleven channels interpolated from keyframe nodes, each keyframe passed unlinked and
+  deleted (+4B8E4); callers +556E (in +554C, which then sets a script up with +3D2A) and
+  +5912 (in +57AC, likewise +5926). Under the speculation the script's clock, values and
+  list heads (race words) are put back by the restore while the deleted keyframes stay
+  freed: the race points at freed memory, reused by the next allocations -- camera data
+  read from freed memory (the helicopter view at an event; renders culled from garbage).
+- A4_SPECCAMSAFE: the four bl's (+556E, +5912 -> +5205A; +5578, +5926 -> +3D2A) become BLX's
+  to trampolines that skip them while SPEC word 24 is set (around the speculative +12DEC
+  only), else enter the game's functions untouched (no caller reads the result). Image
+  checked: the placeholders resolve to +5205B/+3D2B, the four BLX's in place. r40s: a gated
+  watch race and two counted races at cap 85, in flight.

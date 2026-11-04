@@ -423,6 +423,16 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         assert have == (0x2100, 0x4790), 'drop hold: +6B2 holds %04x %04x' % have
         blx_insert(code, 0x6B2, syms['a4_fwpost_tramp'])
         print('HOLD   +0006B2 -> a4_fwpost_tramp +%06X (the framework\'s post)' % (syms['a4_fwpost_tramp'] - LINK_BASE))
+    if '-DA4_SPECCAMSAFE' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+        # round 40: the camera scripts not advanced by the speculation (a4_tramp.s)
+        for ph, target in (('a4_hc_5205a', 0x5205A), ('a4_hc_3d2a', 0x3D2A)):
+            struct.pack_into('<I', code, syms[ph] - LINK_BASE, ((LINK_BASE + (target | 1)) - syms[ph]) & 0xFFFFFFFF)
+        for off, want, tramp in ((0x556E, (0xF04C, 0xFD74), 'a4_cs_5205a_tramp'), (0x5912, (0xF04C, 0xFBA2), 'a4_cs_5205a_tramp'),
+                                 (0x5578, (0xF7FE, 0xFBD7), 'a4_cs_3d2a_tramp'), (0x5926, (0xF7FE, 0xFA00), 'a4_cs_3d2a_tramp')):
+            have = struct.unpack_from('<HH', code, off)
+            assert have == want, 'spec cam safe: +%06X holds %04x %04x, expected %04x %04x' % ((off,) + have + want)
+            blx_insert(code, off, syms[tramp])
+            print('CAMS   +%06X -> %s +%06X' % (off, tramp, syms[tramp] - LINK_BASE))
     if os.environ.get('A4_HALFSTEP'):
         # round 31, the faster-step work: the logic step halved, 21333 -> 10667 units
         # (85.33 -> 42.67 ms). +52B80's divide (t / 21333 for the real-time count m): its
