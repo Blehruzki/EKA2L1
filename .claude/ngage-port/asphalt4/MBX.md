@@ -5571,3 +5571,13 @@ when green came in, looked smoother. The car shadow clipping happened regardless
   game's build of a terrain piece on the hill, which the half-step scheme exposes; stock
   and the scheme off showed none), and on the bench kept off the panel. Its root cause in
   the scheme is a theory. Best build: r37 (r35's speculation, held empty frames).
+- Owner, on the stock game: "stock game draws the shadow correctly." This overturns round
+  34's reading ("on the bench route the patchy shadow is the game's own drawing"): that
+  rested on a check build's same-frame pair, whose "game picture" is the game's software
+  render INSIDE our build (our hooks, our flags), not the stock game. So something in our
+  build breaks the car's shadow, in both modes (round 34: "regardless of the mode").
+  Not yet known whether the software picture in our build is wrong too, or only how the
+  check build drew it. Next, while the owner races r37: the stock game's posts against
+  ours in the tunnel on the bench (EKA2L1_POSTDUMP, the same frames by the minimap) --
+  not a repeat of round 34 (a check build against itself; the stock game never dumped
+  in the tunnel).
