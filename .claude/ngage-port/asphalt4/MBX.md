@@ -6428,3 +6428,97 @@ own move).
   turn); the police (slots 8-14) may move through +1FD0E, not moved at renders (stock rate);
   a car drawn into a wall between steps until the step resolves it; the traffic still drawn
   ahead by extrapolation; the one halved frame above.
+
+## Round 45 (bench, continued): a modelled N95 -- CPU, GPU and time dilation in the emulator
+
+Owner, after r44: "Did you test this build thoroughly, adjusting the emulator to always mimic
+the n95's CPU and GPU behavior?" -- no: every bench run so far capped instructions (`CPUCAP`,
+85-115) by eye, with the GL free. Asked for: (1) the cap recalibrated against the phone's
+telemetry, (2) why the phone presents repeated frames and the bench does not, (3) a jump and
+turbo test against the unmodified game, and N95 GPU documentation behind an emulator model.
+- Emulator (EMU_PATCHES.md, 2ec86e5 + the ARM/Thumb split): `EKA2L1_CPUMODEL` (ARM1136 cycles:
+  a CPI for Thumb-state code -- the game -- and one for ARM-state code -- the port, compiled
+  `-marm -mtune=arm1136j-s`, and the ROM; multiply and LDM/STM timings; a 32 KB 4-way data
+  cache), `EKA2L1_GPUMODEL` (each GLES call stretched in place to the MBX driver/GPU cost: per
+  call, draw, vertex, bind, upload byte, and the tile render plus copy a frame read waits for),
+  `EKA2L1_TIMESCALE` (every guest clock D times slower; the cap and GPU charges paid x D -- the
+  container is too slow for the model in real time), `EKA2L1_CPUCAP_STATS` (host keeping up).
+- Sources for the GPU figures: Futuremark's certified 3DMark Mobile06 on an OMAP2420 (Symbian:
+  CPU 300 MHz, MBX 50 MHz, 2.36 Mtris/s unlit, 0.79 lit; Linux 66 MHz, 33.7 Mtexels/s single
+  texture) [design-reuse 12479, beyond3d 26169]; TI's OMAP2420 brief (MBX + VGP, "up to 2M
+  polygons/s"); PowerVR is a tile-based deferred renderer, so a read of the frame waits for the
+  whole tile render. The phone's own figures anchor the read: round 12's BGRA glReadPixels of a
+  frame 6.2-7.2 ms (tile render and copy) -- the model charges 3.1-3.4 + 3.7.
+- Calibration against the phone (r42 and r44 telemetry agree: render call 64.2/64.3 ms, before
+  the first triangle 16.3, 0.8 ms a logic step, steps a render 30/60/9 %, presents every 68 /
+  67 ms median): r42 build, 60 s accelerating race each (calib.sh; seg0 = the race
+  segment's aggregates; windows = the last 8 telemetry windows of 23 renders):
+
+  | run | Thumb/ARM CPI | GPU (call/draw/vtx/bind) | render call | pre-tri | ms/step | steps a render 1/2/3 | presents median (10-90%) | windows ms/render |
+  |---|---|---|---|---|---|---|---|---|
+  | phone r42 | - | - | 64.2 | 16.3 | 0.8 | 30/60/9 % | 68 (54-90) | 54-75 |
+  | cal7 | 2.5 | 5/25/250/20 | 67.2 | 13.9 | 0.7 | 16/73/11 | 81 (68-107) | 72-114 |
+  | cal8 (= cal7, stats) | 2.5 | 5/25/250/20 | 68.2 | 14.2 | 0.7 | 15/72/13 | 85 (69-109) | 64-93 |
+  | cal9 | 2.8 | 3/20/150/8 | 68.1 | 16.1 | 0.8 | 13/73/14 | 89 (71-111) | 69-115 |
+  | cal10 | 2.8/1.6 | 3/20/150/8 | 56.4 | 14.4 | 0.6 | 37/61/2 | 71 (57-88) | 53-88 |
+  | **cal11** | **3.0/1.6** | 3/20/150/8 | 57.5 | 13.8 | 0.6 | 35/61/3 | **73 (60-92)** | **60-76** |
+
+  cal11's windows against the phone's (r42 capidx 98-105): 3D 19.6-27.0 (16.7-28.0), composite
+  12.5-15.8 (11.1-13.1), 2D 8.0-13.4 (5.7-6.9), rest 17.8-25.5 (16.6-24.7), logic a span 0.7-1.0
+  (0.7-1.3), steps in 23 renders 32-41 (30-42). Host: asleep ~60%, behind the model 0.0-0.4%
+  (EKA2L1_CPUCAP_STATS), so the bench is the model's, not the host's. GPU charges a frame
+  (cal10/11): ~1,000 GL calls, ~310 draws, ~6,000 vertices, ~285 binds, 15 strip reads of 320x240
+  BGRA. Before this (cal1-cal6): a single CPI of 1.0 ran the game at 85 ms a render call with a
+  28 ms pre-triangle part; virtual time (EKA2L1_CYCLETICK) hid waits the phone pays (pre 6.9 ms
+  against the phone's 16.3) and so was dropped for wall time dilated 4x. Calibrated settings:
+  `EKA2L1_TIMESCALE=4 EKA2L1_CPUCAP=330 EKA2L1_CPUMODEL=300:30:2:4:5:160
+  EKA2L1_GPUMODEL=3,20,150,8,2500,400,12,30,2300` (EMU_PATCHES.md).
+- Remaining differences, named: the bench has no audio device (the phone mixes the game's
+  sound on the same CPU); the display post lands in 'rest' on the bench and in 'pres' on the
+  phone (same total); the model has no I-cache, TLB or per-instruction interlocks (one CPI per
+  instruction set stands in for them).
+- (2) The phone's "presents with no render since the last" (r44 28%, r42 8.5%) are menu
+  presents: the r45 bench menu run had 3,870 of 4,415 presents with no render, r44's 5,153 of
+  5,722 -- the counter covers the whole session. In races the half-step skip counter is the one
+  to read: 45 (r44 phone) and 39 (r42 phone) in thousands of renders. Not a race defect.
+- (3) Jump and turbo on the calibrated bench, real time, against the unmodified game (bench
+  only: Veyron archive swap, restored and compared after each run; `A4_CARREC` +
+  `A4_AUTOPILOT` -- '5' scripted in game steps, the bench script pressing nothing, NOKEY5=1;
+  records per game step, crec2.py / jt.py / rates.py in the scratchpad). Builds: stock =
+  C37nohalf (no half-step), r45 = C45, r44 = C44 (the build the owner reported broken -- the
+  control the test must fail).
+  - The jump: one ramp on the route (x 32,100-32,300, z ~28,600, y ~2,050). Stock (jt_n, 267
+    km/h): airborne 14 steps, ~4,000 units, peak 260 above the ground; per step dy -23, -10,
+    -10, -19, -28 ... -127: gravity exactly -9 a step. r44 (jt_f2, 341 km/h): airborne ONE
+    step, then glued to the downslope (dy -101, -75, -87, ...) -- "cars no longer jump"
+    reproduced. r45 in lockstep (orka, 2 renders a step): 13 steps, the same dy sequence and
+    -9 a step. r45 in real time never reached the ramp (below).
+  - Per-step clocks: +9FC (time since the last contact, 4096 at a contact, +3,413 = 85.33 ms x
+    40 each step; 1,048,576 idle) advances 3,413 a step in stock (real time and lockstep) and
+    in r45 (real time and lockstep), and 6,826 or 10,239 in r44 -- once per RENDER, 2-3x a
+    step. rates.py (every car word's per-step change, r44 against stock) flags +9FC, +0B8,
+    +0C0, +018 and +028 at x2. r44 also ran faster: mean 266 km/h, top 410 (stock 225, 320).
+    The turbo's own word is not identified: '5' is the throttle at the countdown (+7D8 falls
+    when it is let go, round 45 tap oracle ort/orr) and a tap mid-race changed no car word;
+    +ABC (0..4096, +240 a step at pickups) is not it -- it drains the same with '5' let go
+    (orr). So the turbo test stands on the per-step clocks, not a named turbo word (coverage:
+    a turbo state outside the car object is not covered).
+  - r45 in real time: three races (jt_k, jt_k2, jt_k3), three wrecks -- at k 391, 259 and 113
+    (k = steps from the start), each the game's scripted wreck (speed 166, 135, 92, 52, 0,
+    +A00 8500, 7751, 8500, 5199, 900 -- the same values every time) and then a dead car for the
+    rest of the race (+A00 900; the bench never sees a respawn in any build: stock's lockstep
+    wreck orna k 1020 stayed down 1,822 steps; an unstick rule, A4_AUTOPILOT_UNSTICK, '6' then
+    '5'+'2' alternately, did not revive it either, orv vs orw). Stock in real time (jt_n): no
+    wreck in 1,333 steps. Why: stock is pacing-independent (real time = lockstep for 112
+    steps); r45 parts from stock at the FIRST step (x off by 5 at k 1, growing; ~200 units
+    sideways by k 89) -- the blend round 45 named: render moves are committed into the game's
+    state, so a step's move is part old velocity, part new. At the left-hand curve at x
+    ~12,000 stock turns from k 88; every r45 run holds its heading ~10 steps longer and meets
+    the outside there (speed down 20-30 km/h in all three), wrecking there (jt_k3) or later
+    (jt_k2 k 259, jt_k k 391; orka, lockstep, got through with a contact at k 116). Per-step rates right, positions wrong: positions feed the road, the walls and the
+    other cars. **r45 is not to go out.**
+- Next (not built): kinematic frames drawn only -- the render moves and turns each car along
+  its last step for the drawing and puts it back before the step, as round 45 already does for
+  the height and wheels, with no scaling at the step; the test is the car records equal to
+  stock's word for word in lockstep (the pointer words aside), then this bench's curve and ramp.
+  The cost to expect: a snap at the step when the velocity changed (collisions), the r41 trade.

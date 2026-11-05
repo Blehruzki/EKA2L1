@@ -965,6 +965,34 @@ __attribute__((noinline)) void a4_rec_emit2(const void *hdr, const void *car, co
 #define A4_AP_KEY(st) 0x40u
 #endif
 #endif
+#ifdef A4_AUTOPILOT
+#ifndef A4_KEY_BRAKE
+#define A4_KEY_BRAKE 0x80u           /* '6' (brakes; reverse at rest): a guess by the pattern above */
+#endif
+/* the autopilot's keys this step */
+static uint32_t ap_key(uint32_t race, uint32_t st)
+{
+#ifdef A4_AUTOPILOT_UNSTICK
+    /* bench (round 45): the bench driver cannot get a stopped car going again -- a car at rest
+     * mid-race with '5' held stays dead (+A00 900, speed 0) in every build, stock included (the
+     * lockstep records orna, orn, ors). At rest 12 or more steps after its last contact (+0E0):
+     * '6' (brakes: reverse) for 20 steps, then '5' with '2' (turn right) for 20, and round again
+     * -- one rule for every build, in game steps */
+    uint32_t pl = *(volatile uint32_t *)(race + 0x390);
+    uint32_t idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 16u;
+    uint32_t car = idx < 16u ? *(volatile uint32_t *)(race + 0x394 + 4u * idx) : 0;
+    if (car) {
+        volatile int32_t *cw = (volatile int32_t *)car;
+        int32_t e0 = cw[0xE0u / 4u];
+        if (cw[0x7D0u / 4u] == 0 && e0 >= 12)
+            return (e0 % 40) < 20 ? A4_KEY_BRAKE : (0x40u | A4_KEY_R);
+    }
+#else
+    (void)race;
+#endif
+    return A4_AP_KEY(st);
+}
+#endif
 /* what: 1 the keys and the step count (at the whole step), 2 the record (round 43: a half-step
  * build emits it at the odd half-step, the state the whole step left, as a normal build's next
  * step sees it), 3 both */
@@ -991,7 +1019,7 @@ static void car_record(uint32_t race, uint32_t what)
         ((volatile uint32_t *)K)[0] = k; ((volatile uint32_t *)K)[1] = k;
     }
 #else
-    if (K && (what & 1u)) { ((volatile uint32_t *)K)[0] = A4_AP_KEY(r[1]); ((volatile uint32_t *)K)[1] = A4_AP_KEY(r[1]); }
+    if (K && (what & 1u)) { uint32_t k = ap_key(race, r[1]); ((volatile uint32_t *)K)[0] = k; ((volatile uint32_t *)K)[1] = k; }
 #endif
 #endif
     if (what & 1u) r[1]++;
@@ -1744,9 +1772,8 @@ static void __attribute__((unused)) spec_run(uint32_t race, uint32_t q16)
         ((void (*)(uint32_t, uint32_t))GAMEFN(a4_hc_25e8))(K, 0);
 #ifdef A4_AUTOPILOT
         {
-            uint32_t st = ((volatile uint32_t *)A4_GL_CREC)[1];
-            (void)st;
-            ((volatile uint32_t *)K)[0] = A4_AP_KEY(st); ((volatile uint32_t *)K)[1] = A4_AP_KEY(st);
+            uint32_t k = ap_key(race, ((volatile uint32_t *)A4_GL_CREC)[1]);
+            ((volatile uint32_t *)K)[0] = k; ((volatile uint32_t *)K)[1] = k;
         }
 #endif
     }
