@@ -6570,3 +6570,39 @@ at the moment or afterwards. You may want to analyze this better before committi
   0%; camera-yaw and car-heading one-frame reversals 0 and 0 in 417 frames. The corrector at each
   step's first frame (kdan.py, 'CRKD' records): player position offset median 3.1 units (90% 49,
   99% 83), heading 0.6 /2048 (90% 36, 99% 79), camera yaw 1.0 (90% 43, 99% 62); cuts 4.
+- The corrector A/B on one weaving drive (A4_AUTOSTEER, calibrated bench, 120 s; st_d against
+  st_dn = A4_KD_NOCORR; their physics identical for the first 567 race steps): corrector off,
+  camera-yaw one-frame reversals 8 in 417 frames, each a frame late in its step (q 0.64-0.92)
+  then the next step's frame back -- round 41's snap-back signature; corrector on, 0 (car heading
+  0 and 0; drawn speed off >25% 1% and 1%). On the corrector-on drive the heading misses it took
+  up at a step's first frame: median 1.7 /2048, 99% 63, max 107 (key changes), each spread over
+  a step instead of a jump.
+- The traffic A/B (tm_d against tm_dn, FRAMEMARK, trafpace.py on a4_traf_mark, straight drive):
+  drawn speed off its neighbours by >25% 6% / 5%, drawn backwards 17 of 1,164 / 26 of 1,259
+  windows; over every frame, backward moves 17 / 38, the largest 371 / 609 units in a frame
+  against a normal 70-100 -- traffic knocked about by the player, which a frame cannot foresee:
+  the corrector halves how often it shows and shortens it, and cannot remove it.
+- Candidate r46 (C46 = C45 + A4_KINEDRAW; sha256
+  06eeb2637d91d540baa12c2622c86a5741343d068a25ed1f9f32c983facb07a5, 811,068 bytes; no 0xDEADBEEF;
+  +3A15C B510 0004). Battery on that binary (r46bat.sh): tele on the calibrated N95 bench 120 s
+  framestat 2263, faults 1 (the boot fault), held 0, drop frames 1, camera-yaw one-frame
+  reversals 2 (7 and 9 /2048), car heading 0, drawn speed off >25% 0% by render start (6% by
+  present); crash-steer at cap 85 framestat 1882, faults 1, reversals 0 / 0; racemenu framestat
+  2877, faults 1, 18 shots; mark framestat 890, faults 1; the Veyron with the continuously
+  steering autopilot at cap 85 (the drive that showed r41's 5 / 5) framestat 1783, faults 1,
+  camera yaw 2 (16 and 13 /2048), car heading 0. The archive restored and compared. Round 46
+  phone candidate: a4_r46_SHIP.exe (unbaked).
+- What the residual camera swings are: not a snap at a step (the corrector keeps those
+  continuous) but a frame late in a step still turning with a turn the game had just ended (a
+  road-follow pulse or a key let go), then the next step's frames correcting smoothly.
+- Guesses going out (rule 4): A4_KD_TURN 3/4 (from the bench's stock records, not the phone's);
+  the fade over one step (a choice); the traffic's copies found by moving exactly as the position
+  did and lying within 64 units of it; the height kept above the ground drawn on by its own last
+  change; the first frame after a step keeps its render's own changes at drawn positions, so
+  render-set words (+AC0, +ACC/+AD0, +AD8/+ADC) differ and the race parts from stock's after
+  ~800-950 steps -- as stock's own lockstep and real-time runs part at 829; the race object put
+  back whole after a frame other than the first (as r33-r42), so anything written into it
+  between such a frame and the next half-step would be undone.
+- States the bench never entered (rule 4): a respawn after a wreck (the bench's car never
+  respawns, in any build -- the corrector's cut at >1024 units is read in the code, not seen run),
+  a race restart, a pause mid-race, the phone's human steering and its audio load.
