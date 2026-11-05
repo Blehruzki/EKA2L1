@@ -6374,3 +6374,22 @@ the car past +A00 with `pc:1:27C:+A00`).
   the chase camera's 3/4 yaw at render time; the traffic still drawn by extrapolation (not the
   game's own between steps); key bits at render time are the last whole step's (as stock:
   input acts at the game's step); the camera height at render time on its own move.
+
+## Round 44, phone (r44, sha256 421a278f...): fractional physics breaks the physics
+
+Owner: "this one felt even worse. physics are broken (cars no longer jump longer distances,
+turbos won't last what they used to, a lot of jittering and 'online lag', a lot of
+back-and-forth). Didn't see any empty frame, tho."
+- Telemetry (8 files, capidx 333; only a4tel5 carries the frame record -- the other seven are
+  152-159 KB, short of it): 10,718 real presents, 7,689 renders, 3,031 presents with no render
+  since the last; held 2; two 1-second frames (loads, a guess). Frame record (256 frames): the
+  player car drawn evenly (drawn speed 0% off by >25%), car-heading one-frame reversals 3,
+  camera-yaw 9; presents every 67 ms. The record follows only the player and the camera.
+- What it means: running the game's car calls at every render keeps everything the census
+  and the probes classified right -- and runs everything they never saw at the frame rate:
+  jumps (in the air the height and vertical velocity are integrated, on the ground they were
+  "recomputed" -- the probe saw only the ground: rule 4 named it, and it shipped anyway) and
+  the turbo (never used in the bench's runs) both run ~1.5-2x per step. The other cars and the
+  traffic are where "online lag" and back-and-forth live, and nothing records them on the phone.
+  The method needs every situation's words classified; one census of normal driving is not
+  that. r44 is withdrawn.
