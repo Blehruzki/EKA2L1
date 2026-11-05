@@ -10,11 +10,14 @@ def load(path):
             hdr = struct.unpack_from('<8I', b)
             if hdr[0] != 0x43455243: hdr = None; skip = True     # not a step record ('CREC')
             else: skip = False
-        elif hdr is not None:
+        elif hdr is not None and ln == 0x100 and out and out[-1][0] is hdr:
+            # round 41: the race object's first 0x100 bytes after the car (a4_rec_emit2): appended,
+            # so field index 640 + k is race + 4k (the camera: +0x58..+0x70 = 662..668)
+            out[-1] = (hdr, out[-1][1] + struct.unpack_from('<64i', b))
+        elif hdr is not None and ln != 0x100:
             # a block entered twice records twice (the emulator re-entering it): one per step
             if not out or out[-1][0][1] != hdr[1]:
                 out.append((hdr, struct.unpack_from('<%di' % (ln // 4), b)))
-            hdr = None
     return out
 A = load(sys.argv[1])
 print('%s: %d steps (step %d..%d), car %08x idx %d' % (sys.argv[1].split('/')[-1], len(A), A[0][0][1], A[-1][0][1], A[-1][0][4], A[-1][0][5]))
@@ -51,4 +54,4 @@ for k in range(0, min(len(A) - a0, (len(B) - b0) // r)):
 print('%d aligned steps; live fields differing: %d of %d' % (n, len(diff), len(live)))
 for j, c in sorted(diff.items(), key=lambda x: firstdiff[x[0]][0])[:40]:
     k, va, vb = firstdiff[j]
-    print('  +%03X  differs in %5d steps, first at step %d (%d vs %d)' % (j * 4, c, k, va, vb))
+    print('  %s  differs in %5d steps, first at step %d (%d vs %d)' % (('car +%03X' % (j * 4)) if j < 640 else ('race +%03X' % ((j - 640) * 4)), c, k, va, vb))

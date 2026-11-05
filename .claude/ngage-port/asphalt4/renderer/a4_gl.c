@@ -238,7 +238,7 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
 #define PFF_LOGIC 8u     /* A4_STEPTIME: a logic span is open (+15B1C returned, +12992 not yet called) */
 _Static_assert(PF_N <= 60, "A4_PERF holds 64 words (0x412C00-0x412D00); 60-63 are A4_MESHCHECK's");
 /* integer square root, floor (round 40: the camera's distance from the car) */
-static uint32_t isqrt64(int64_t v)
+static uint32_t __attribute__((unused)) isqrt64(int64_t v)
 {
     if (v <= 0) return 0;
     uint64_t x = (uint64_t)v, r = 0, b = (uint64_t)1 << 62;
@@ -930,6 +930,28 @@ __attribute__((noinline)) void a4_rec_emit(const void *hdr, const void *car)
 __attribute__((noinline)) void a4_rec_emit3(const void *hdr, const void *race, const void *ctx)
 { __asm__ volatile("nop\n\tnop" :: "r"(hdr), "r"(race), "r"(ctx) : "memory"); }
 #endif
+/* round 41 (the oracle with the camera): the header, the player car and the race object's first
+ * 0x100 bytes (its camera +0x58..+0x70) -- EKA2L1_PCMEM ats at its address: r0 0x20, r1 0xA00,
+ * r2 0x100 */
+__attribute__((noinline)) void a4_rec_emit2(const void *hdr, const void *car, const void *race)
+{
+    __asm__ volatile("" : : "r"(hdr), "r"(car), "r"(race) : "memory");
+}
+#ifndef A4_AS_START
+#define A4_AS_START 260u             /* A4_AUTOSTEER: the step the weave starts (the race starts at ~145) */
+#endif
+#ifndef A4_AS_ON
+#define A4_AS_ON 3u                  /* steps a turn key is held */
+#endif
+#ifndef A4_AS_OFF
+#define A4_AS_OFF 14u                /* steps free after it */
+#endif
+#ifndef A4_KEY_R
+#define A4_KEY_R 0x8u                /* '2' (turn right, landscape 270): a guess -- '5' is bit 6 */
+#endif
+#ifndef A4_KEY_L
+#define A4_KEY_L 0x200u              /* '8' (turn left) */
+#endif
 static void car_record(uint32_t race)
 {
     volatile uint32_t *r = (volatile uint32_t *)A4_GL_CREC;
@@ -941,11 +963,24 @@ static void car_record(uint32_t race)
 #ifdef A4_AUTOPILOT
     /* bench: the keys replaced by a script in game time (the same in a normal and a
      * halved-step build): accelerate (K+4 bit 6, the '5' key) held from the first step */
+#ifdef A4_AUTOSTEER
+    /* round 41: and steering in game time -- throttle to A4_AS_START, then right held A4_AS_ON
+     * steps, free A4_AS_OFF, left A4_AS_ON, free A4_AS_OFF, round again (r[1]: the steps so far) */
+    if (K) {
+        uint32_t k = 0x40u, st = r[1];
+        if (st >= (A4_AS_START)) {
+            uint32_t ph = (st - (A4_AS_START)) % (2u * ((A4_AS_ON) + (A4_AS_OFF)));
+            k |= ph < (A4_AS_ON) ? A4_KEY_R : (ph >= (A4_AS_ON) + (A4_AS_OFF) && ph < 2u * (A4_AS_ON) + (A4_AS_OFF)) ? A4_KEY_L : 0u;
+        }
+        ((volatile uint32_t *)K)[0] = k; ((volatile uint32_t *)K)[1] = k;
+    }
+#else
     if (K) { ((volatile uint32_t *)K)[0] = 0x40u; ((volatile uint32_t *)K)[1] = 0x40u; }
+#endif
 #endif
     r[0] = 0x43455243u; r[1]++; r[2] = K ? ((volatile uint32_t *)K)[0] : 0; r[3] = K ? ((volatile uint32_t *)K)[1] : 0;
     r[4] = car; r[5] = idx; r[6] = K ? ((volatile uint32_t *)K)[11] : 0; r[7] = *(volatile uint32_t *)(race + 0x44);
-    a4_rec_emit((const void *)r, car ? (const void *)car : (const void *)r);
+    a4_rec_emit2((const void *)r, car ? (const void *)car : (const void *)r, (const void *)race);
 }
 #endif
 int a4_step_main(void *self)                                    /* +167B4: bl +15A52, once a step */

@@ -6140,3 +6140,35 @@ steering jitter seen in it).
   braking and collisions are argued, not measured); that half a step of extra delay is
   acceptable -- the phone decides; the autopilot's quick key changes exaggerate what a held key
   does on the phone, so the bench's 5 reversals are not the phone's rate.
+
+## Round 42, phone (r42, sha256 04f4fd09...): interpolation rejected
+
+Owner: "It feels sluggish. and it didn't fix the takedown and camera lags. I feel like this frame
+interpolation or insertion is not helping us. I think we need to find a way for the game to
+actually produce these frames with the physics working accordingly."
+- Telemetry (capidx 105): 2,663 real presents, 2,437 renders, held 0, drop frames 8, 44 frames
+  in slow motion. Frame record: drawn speed even (0-2% off); car-heading one-frame reversals 0,
+  camera-yaw 11 -- with every frame drawn strictly between real steps, so the game's own camera
+  yaw goes back and forth from step to step.
+- Do our builds change the game's real steps? (The oracle with steering, the Veyron, the
+  camera: A4_LOCKSTEP=1 (P 10667 in the half-step builds), A4_CARREC + a4_rec_emit2 (the header,
+  the player car 0xA00, the race object's first 0x100 -- its camera), A4_AUTOPILOT +
+  A4_AUTOSTEER (throttle; from step 260 right held 3 steps, free 14, left 3, free 14; key bits
+  '2' 0x8 and '8' 0x200, the latter seen to turn the car), the Veyron archive swap; crec.py
+  extended to the race words.) Stock logic (orn, C37nohalf, no half-steps) drives almost two
+  laps (steps ~145-2290) before the scripted keys wedge it. Against it, prediction (orp, C41)
+  and interpolation (ori, C42): every live field -- car and camera -- identical until whole step
+  734 (prediction) and 599 (interpolation), except the render-side cycle +15C; then everything
+  at once, from a collision force (+0FC/+104) present in one run and not the other. So the
+  builds do not change the game's physics or camera; the runs part at one contact, after
+  which the trajectories are chaotic. Likely (a guess, not traced): the extra renders and the
+  speculation draw random numbers (round 31 and this round's leak checks saw libc's word
+  0x00500148 written), so traffic and AI decisions shift. And the camera-yaw swings in r42's
+  record are the game's own camera between real steps, which the stock game shows at 11.7
+  frames a second.
+- Interpolation is withdrawn. Next (the owner's ask): the game computing every half-step for
+  real -- the cars' physics and movement and the camera run each half-step with the keys of
+  that moment, their continuous fields moved half of what the game computed (the remainder
+  carried so integer units sum exactly over two half-steps), discrete fields taken only at the
+  whole step, the result kept (nothing put back). Rounds 30-31 set a hand rewrite of the 152
+  writers aside; this halves the game's own results instead of its code.
