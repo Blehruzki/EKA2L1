@@ -6213,3 +6213,69 @@ stock car on the oracle (A4_LOCKSTEP, A4_AUTOSTEER, the Veyron swap; tools/crec.
 - Guesses (rule 4): +0B8/+0C0 as table offsets; the speed derived from the velocity; that the
   other cars' +1F1F8/+1FD0E change both call's words (not measured: the census saw the player).
   Shipped builds unaffected: r41 and r42 rebuild byte-identical; the bench archives restored.
+
+### Round 43, continued (bench): the half-step car drives like the stock car
+
+All on the oracle (A4_LOCKSTEP, A4_AUTOPILOT + A4_AUTOSTEER, the Veyron swap); stock is
+crec_orn (a4_or_n), each half-step build crec_orh (a4_or_h, C43 + the oracle flags);
+tools in the scratchpad: spdcmp.py (speed / distance at steps after the start), trk.py (step
+by step: speed, place apart, heading), early2.py (any words, +A00..+C7C too: orchain now dumps
+the car past +A00 with `pc:1:27C:+A00`).
+- The probe rebuilt so its car drives (A4_HPPROBE: no halving, the odd half-step changes
+  nothing -- the player's calls run twice, plain and nudged, then car and race put back):
+  the race starts at step 149 as stock; the car follows stock exactly until a contact (386).
+  Set 1 (36 words), set 2 (12, what the velocity is measured against), set 3 (27, the rest of
+  the census; +034/+048 are pointers -- nudged, the game faulted, dropped). Findings:
+  1. +1EA64 MEASURES the velocity: +010/+014/+018 = place less +0A8/+0AC/+0B0 (a nudge of
+     +0A8 moves +010 by -1.00, +0B8 by -12), then +0A8.. = place. +0B4 (its length), +0B8..
+     +0C0 (slip, 12 x), +0C4..+0CC (filters fed from it) follow. +1DE78 moves the car by
+     +680/+688 (recomputed from speed and heading) and copies +0B4 to +7E4. So in a half
+     step the measured speed was half the real one and the speed model fed on it.
+  2. Recomputed (overwritten) words: +008 height, +010..+018, +020, +028, +02C, +0B4..+0C0,
+     +01C, +07C, +680/+688, +7E4, +7F8, +7FC, +A00, +A18..+A20, +A78, +AF8, +B28; +7D0 (the
+     speed) carries -0.45 (recomputed from +7D8 and the measured speed).
+  3. Integrated, with per-call changes from the census: position (+004/+00C), heading +678
+     (+1EA64, and +1DE78 while a steering key is held: -26 a call, A4_HPTRACE), the engine
+     +7D8 (+-8/16 a step; a gear change -256 is an event), counters +1 a step (+820, +A2C,
+     +A34, +ADC), countdowns (+7C4 the gear-change clutch 3..0, +AEC, +A6C 9..5 reloaded),
+     slews (+A7C: a -8 kick at a steering edge, back +1 a step; +B18 -4 kick), filters
+     (+808 7/8, +80C 3/4, +0C4/+0C8/+0CC 7/8, +7C4/+AEC 0.98), +A24, +ABC (rates), +B20 (+1 a
+     step to 48 -- the steering hold -- and x3/4 at a steering key's edge: an event).
+     +B98 is the top speed reached (a max). +0E0 is not changed by either call.
+- Fixes, each measured (spdcmp at steps 10/20/40/80/120 after the start; stock 58/75/107/161/182):
+  - hp5 (only integrators halved): 17-23, start 134. The fly-in camera (mode 0x17) ran 1.5x
+    fast at odd half-steps -> only the chase camera (mode 2) runs at an odd half-step, the
+    others hold (and their whole step is not halved). The keys call (+25E8, the key queue:
+    K[0] = K[1], the presses since) dropped at odd half-steps: it ate press edges.
+  - the measured velocity: at a half-step call +0A8.. is set to the place two half-step calls
+    back (exactly a whole step, the halves' rounding cancelling): 25/52/89/68/84, start 149.
+  - per-word event thresholds (a change bigger than `jump` stands whole) and +B20 halved only
+    when it rises: the car never left the line (+7D8 210 -> 0 at the start).
+    A4_HPTRACE (the player's calls around the start, before/after): the odd half-steps
+    replay the whole step's arguments, whose key bits the step forces to 8 (the brake) until
+    the start -> no car call at an odd half-step until the player's +0E0 counts. Still dead:
+    the first whole step after the start was halved with no odd half-step before it, the car
+    moved half a step in a whole step's time, +1EA64 measured half the speed and the next
+    call took it for a crash -> a whole step is halved only for a car whose calls ran at the
+    odd half-step before it (HP->ran / halve); after a whole step not halved, the next half
+    call doubles its own half. Then: 56/75/111/163/172 -- the stock profile.
+  - +1DE78's heading change (key steering) halved too: the turn over a held-right pulse
+    -106 against stock -117 (it was 1.56x).
+  - The half build's record moved to the state the whole step left (as stock records it):
+    speed 56/74/109/163/171, place apart 0-62 units to step 80, heading within 10 /2048
+    through the steering pulse (-117 stock, -110 half).
+- Divergences left: the game's own steering assist (no key: a -8 kick on +A7C) fires a few
+  steps apart from stock after step ~85 (positions differ by tens of units, the assist reacts
+  to them); after a contact runs part (stock itself is not repeatable past a contact).
+  Two of four half runs stalled after a hit (speed 0 for good). A4_BENCH_STALL (stock, the
+  car zeroed at one step): stock stays stalled too -- with the bench's keys the game only
+  accelerates while moving (the step adds +1DE78's bit 4 only at speed > 0), so a stall is
+  the bench's input, not the half step. Whether the half build stalls more often: unknown
+  (0 of 4 stock runs, 2 of 4 half; not repeatable past contacts).
+- Guesses (rule 4): the thresholds (from one census and two stock runs); +0F0/+0F8 left as
+  computed (unclear rate or impulse); +1F1F8/+1FD5C/+1FD0E (the other cars) use the player's
+  word lists -- not measured yet; the chase camera is mode 2 only.
+- Where we are (rule 3): the player's car on the half step tracks the stock car (speed,
+  place, heading, key steering) until the game's assist or a contact parts them. Next: the
+  other cars (their own calls, not yet measured), the chase camera, and the frames themselves
+  (frec.py at the phone's rhythm) before any phone build.
