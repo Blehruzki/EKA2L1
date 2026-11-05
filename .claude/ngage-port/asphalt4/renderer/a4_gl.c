@@ -1385,6 +1385,17 @@ static int32_t kd_fade(int32_t e, uint32_t dt)
     return (int32_t)(((int64_t)e * (int64_t)((1u << A4_KD_TAUSH) - dt)) >> A4_KD_TAUSH);
 }
 static int32_t kd_wrap(int32_t d) { d &= KD_CIRC - 1; return d >= KD_CIRC / 2 ? d - KD_CIRC : d; }
+/* round 47: (ox, oz) turned by dh (/2048, the heading's convention: h = -atan2(z, x) - 512, so a
+ * turn of dh is -dh in x-z), |dh| < 512; sin and cos by their series in Q30, no divide */
+static void kd_rot(int32_t ox, int32_t oz, int32_t dh, int32_t *rx, int32_t *rz)
+{
+    int64_t t = -(int64_t)dh * 3294199;                          /* radians, Q30 (2 pi / 2048 = 0.0030679616) */
+    int64_t t2 = (t * t) >> 30, t3 = (t2 * t) >> 30, t4 = (t2 * t2) >> 30, t5 = (t4 * t) >> 30, t6 = (t4 * t2) >> 30;
+    int64_t sn = t - ((t3 * 178956971) >> 30) + ((t5 * 8947849) >> 30);                       /* t - t^3/6 + t^5/120 */
+    int64_t cs = ((int64_t)1 << 30) - (t2 >> 1) + ((t4 * 44739243) >> 30) - ((t6 * 1491308) >> 30);   /* 1 - t^2/2 + t^4/24 - t^6/720 */
+    *rx = (int32_t)(((int64_t)ox * cs - (int64_t)oz * sn) >> 30);
+    *rz = (int32_t)(((int64_t)ox * sn + (int64_t)oz * cs) >> 30);
+}
 /* one frame of the corrector for n words: m the model now, v its velocity a step (both 1/256), w the
  * words on the circle; first: the first frame since a new step; returns 0 at a cut */
 static uint32_t kd_correct(volatile int32_t *E, volatile int32_t *D, volatile uint32_t *T, volatile uint8_t *V,
@@ -1406,7 +1417,7 @@ static uint32_t kd_correct(volatile int32_t *E, volatile int32_t *D, volatile ui
             if (iabs32(e) > cut[w]) ok = 0;
         }
         if (!ok) for (uint32_t w = 0; w < n; w++) E[w] = 0;
-        else { HP->kn++; if (iabs32(E[0]) > (16 << 8) || iabs32(E[1]) > (16 << 8) || (n > 2u && iabs32(E[2]) > (16 << 8))) HP->kbig++; }
+        else { HP->kn++; if (iabs32(E[0]) > (16 << 8) || (n > 1u && iabs32(E[1]) > (16 << 8)) || (n > 2u && iabs32(E[2]) > (16 << 8))) HP->kbig++; }
     } else {
         for (uint32_t w = 0; w < n; w++) E[w] = kd_fade(E[w], dt);
     }
@@ -2349,19 +2360,37 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
                 cm[0x5Cu / 4u] = HP->cw[1] + (int32_t)(((int64_t)vy * (int32_t)qt) >> 16);
                 cm[0x68u / 4u] = (HP->cw[4] + (3 * dh) / 4) & 2047;
 #ifdef A4_KINEDRAW
-                {   /* round 46: the chase camera through the corrector too -- its own step (a lag,
-                     * the 3/4 of a turn) parts from the car's drawn one. It moves as the car is
-                     * drawn: the car's velocity, its own height rate, 3/4 of the car's drawn turn */
-                    uint32_t pi = hp_idx(pcar);
-                    int32_t tv = pi < HP_CARS ? (int32_t)(((int64_t)HP->turn[pi] * (int32_t)A4_KD_TURN) >> 16) : 0;
-                    int32_t v[4] = { pc[0x10u / 4u] << 8, vy << 8, pc[0x18u / 4u] << 8, ((3 * tv) / 4) << 8 };
-                    int32_t m[4] = { cm[0x58u / 4u] << 8, cm[0x5Cu / 4u] << 8, cm[0x60u / 4u] << 8, cm[0x68u / 4u] << 8 };
-                    static const int32_t cut[4] = { 1024 << 8, 1024 << 8, 1024 << 8, 256 << 8 };
-                    volatile uint8_t cv = (uint8_t)HP->cV;
-                    kd_correct(HP->cE, HP->cD, &HP->cT, &cv, m, v, 4u, 8u, first, (HP->wstep << 16) + qt, cut);
-                    HP->cV = cv;
-                    cm[0x58u / 4u] = (m[0] + 128) >> 8; cm[0x5Cu / 4u] = (m[1] + 128) >> 8; cm[0x60u / 4u] = (m[2] + 128) >> 8;
-                    cm[0x68u / 4u] = ((m[3] + 128) >> 8) & 2047;
+                {   /* round 47 (r46 on the phone: "the camera doesn't follow the car appropriately" --
+                     * the car's bearing in the view spread 35/76/91 /2048 against r42's 2/6/23; the
+                     * bench's own frames showed it, unread: jt_d 10/84/122, the Veyron 75/144/214, the
+                     * corrector off 0/6/17): the camera's position had its own corrector, so in a curve,
+                     * where the game's camera orbits the car step by step, it was held off its orbit and
+                     * the car slid across the view. Now the camera is RIGID on the drawn car: the game's
+                     * own offset from the car at the step (always straight behind along its yaw: offset
+                     * direction yaw - 1024, spread 0-2 /2048 on r42ph, r44ph, r45t) turned by the yaw the
+                     * frame draws -- the game's camera yaw and 3/4 of the car's drawn turn, as round 45
+                     * (the camera's turn is the game's: no corrector of its own) -- and set on the drawn
+                     * car. The framing is the game's by construction; the height keeps its own rate */
+                    int32_t yaw = cm[0x68u / 4u];
+#ifdef A4_KD_CAMYAWCORR              /* bench (round 47, r47a): the yaw through the corrector -- off: a large
+                                      * offset faded out across one sparse frame (a 100 /2048 jump), and the car's
+                                      * heading against the camera's spread 22/93/128 (r42ph 7/25/59) */
+                    {
+                        uint32_t pi = hp_idx(pcar);
+                        int32_t tv = pi < HP_CARS ? (int32_t)(((int64_t)HP->turn[pi] * (int32_t)A4_KD_TURN) >> 16) : 0;
+                        int32_t v[1] = { ((3 * tv) / 4) << 8 };
+                        int32_t m[1] = { yaw << 8 };
+                        static const int32_t cut[1] = { 256 << 8 };
+                        volatile uint8_t cv = (uint8_t)HP->cV;
+                        kd_correct(HP->cE + 3, HP->cD + 3, &HP->cT, &cv, m, v, 1u, 1u, first, (HP->wstep << 16) + qt, cut);
+                        HP->cV = cv;
+                        yaw = ((m[0] + 128) >> 8) & 2047;
+                    }
+#endif
+                    int32_t rx, rz;
+                    kd_rot(HP->cw[0] - HP->pw[0], HP->cw[2] - HP->pw[2], hp_wrap(yaw - HP->cw[4], 2048), &rx, &rz);
+                    cm[0x58u / 4u] = pc[1] + rx; cm[0x60u / 4u] = pc[3] + rz;
+                    cm[0x68u / 4u] = yaw;
                 }
 #endif
             } else {
