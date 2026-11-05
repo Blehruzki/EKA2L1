@@ -1015,6 +1015,7 @@ int a4_step_main(void *self)                                    /* +167B4: bl +1
 #endif
     uint32_t t0 = a4_ntick();
     int r = ((int (*)(void *))GAMEFN(a4_stepmain))(self);
+
     A4_PERF[PF_SMAIN] += a4_ntick() - t0; A4_PERF[PF_NMAIN]++;
     return r;
 }
@@ -1129,12 +1130,14 @@ static const struct hprate hp_k3[] = {      /* +1EA64 / +1FD5C, and the other ha
 struct hp {
     uint32_t race;                   /* the race the carries belong to */
     uint32_t car[HP_CARS];           /* the cars seen, for their carries */
-    int8_t rc[HP_CARS][32];          /* hp_k1's then hp_k3's remainders */
+    int32_t rc[HP_CARS][32];         /* hp_k1's then hp_k3's remainders (16.16) */
     int32_t pp[HP_CARS][3];          /* the place +1EA64 measured against at its last call (+0A8/+0AC/+0B0) */
     uint8_t ppv[HP_CARS];
     int32_t cw[6], cwp[6];           /* the camera as the last whole step and the one before left it */
     int32_t pw[4];                   /* the player car (+004, +008, +00C, +678) as the whole step left it */
     uint32_t cwv, camx, cmode;       /* steps of it seen; the odd half-step's camera to put back; its mode */
+    uint32_t committed, fwhole;      /* A4_FRACPHYS: the step's fraction the renders have moved the cars;
+                                      * what the whole step then moves them (16.16) */
     uint8_t ran[HP_CARS];            /* the car's calls ran at the last odd half-step */
     uint8_t halve[HP_CARS];          /* ... so this whole step is halved for it: else it is a whole step's */
     int8_t cc[12];                   /* the camera's */
@@ -1156,10 +1159,17 @@ _Static_assert(A4_GL_HP >= 0x0045C000u + (16u + 15u * 16u + 8u) * 4u && A4_GL_HP
  * took that for a crash (the speed and engine zeroed at the start) */
 #define HP_HALVE (!HP->replaying && hp_halve(a0))
 #endif
-static int32_t hp_half(int32_t d, volatile int8_t *c)
+#ifdef A4_FRACPHYS
+#define HP_FWHOLE (HP->fwhole)           /* the rest of the step the renders left */
+#else
+#define HP_FWHOLE 32768u
+#endif
+/* d x f16/65536, floored, the remainder carried (16.16) so integer units add up over a step's
+ * parts (round 43: a half-step is f16 32768; A4_FRACPHYS any fraction) */
+static int32_t hp_frac(int32_t d, uint32_t f16, volatile int32_t *c)
 {
-    int32_t t = d + *c, a = t >> 1;  /* floor; the remainder (0 or 1) waits for the next half */
-    *c = (int8_t)(t - 2 * a);
+    int32_t t = d * (int32_t)f16 + *c, a = t >> 16;
+    *c = t - a * 65536;
     return a;
 }
 static uint32_t hp_idx(uint32_t car)
@@ -1180,6 +1190,35 @@ static uint32_t hp_idx(uint32_t car)
  * calls back: exactly a whole step, the two halves' rounding cancelling; after a whole step's call
  * (one not halved: the start, a car just spawned) its own half doubled. Not across a jump */
 static int32_t iabs32(int32_t x);
+#ifdef A4_FRACPHYS
+/* A4_FRACPHYS: at a render's part-step the velocity stays as the last whole step measured it
+ * (+0A8.. = place less it); at the whole step it is measured over the whole step (+0A8.. = the
+ * place the last whole step's call left, hp_meas_post). Stock measures once a step too */
+static void hp_meas(uint32_t car, uint32_t half)
+{
+    uint32_t i = hp_idx(car);
+    if (i >= HP_CARS) return;
+    volatile int32_t *c = (volatile int32_t *)car;
+    if (HP->replaying) {
+        int32_t vx = c[0x10u / 4u], vy = c[0x14u / 4u], vz = c[0x18u / 4u];
+        if (iabs32(vx) < 2048 && iabs32(vy) < 2048 && iabs32(vz) < 2048) {
+            c[0xA8u / 4u] = c[1] - vx; c[0xACu / 4u] = c[2] - vy; c[0xB0u / 4u] = c[3] - vz;
+        }
+    } else if (half && HP->ppv[i]) {
+        if (iabs32(c[1] - HP->pp[i][0]) < 4096 && iabs32(c[3] - HP->pp[i][2]) < 4096 && iabs32(c[2] - HP->pp[i][1]) < 4096) {
+            c[0xA8u / 4u] = HP->pp[i][0]; c[0xACu / 4u] = HP->pp[i][1]; c[0xB0u / 4u] = HP->pp[i][2];
+        }
+    }
+}
+static void hp_meas_post(uint32_t car)
+{
+    uint32_t i = hp_idx(car);
+    if (i >= HP_CARS) return;
+    volatile int32_t *c = (volatile int32_t *)car;
+    HP->pp[i][0] = c[0xA8u / 4u]; HP->pp[i][1] = c[0xACu / 4u]; HP->pp[i][2] = c[0xB0u / 4u]; HP->ppv[i] = 1;
+}
+#else
+static void hp_meas_post(uint32_t car) { (void)car; }
 static void hp_meas(uint32_t car, uint32_t half)
 {
     uint32_t i = hp_idx(car);
@@ -1197,6 +1236,7 @@ static void hp_meas(uint32_t car, uint32_t half)
     }
     HP->pp[i][0] = p0; HP->pp[i][1] = p1; HP->pp[i][2] = p2; HP->ppv[i] = half ? 2u : 1u;
 }
+#endif
 /* the camera mode (race+0x94; MBX round 41): 2 the chase camera behind the car while racing,
  * 0x17 the start's fly-in, 0x18 the crash camera, 0x2A the helicopter's. Only the chase camera
  * runs at an odd half-step: the others keep timers of their own, which an extra call advances
@@ -1215,7 +1255,7 @@ static void hp_phys_pre(uint32_t car, int32_t *sv)
     for (uint32_t f = 0; f < HP_NR; f++) sv[f] = c[hp_ent(f)->off / 4u];
 }
 /* which: 1 the +1DE78 words, 2 the +1EA64 words, 3 both (+1F1F8 / +1FD0E: not measured, a guess) */
-static void hp_phys_post(uint32_t car, const int32_t *sv, uint32_t which)
+static void hp_phys_post(uint32_t car, const int32_t *sv, uint32_t which, uint32_t f16)
 {
     uint32_t i = hp_idx(car);
     if (i >= HP_CARS) return;
@@ -1234,7 +1274,7 @@ static void hp_phys_post(uint32_t car, const int32_t *sv, uint32_t which)
             if (k * 12 != t) continue;                     /* not in its quantum: as computed */
             u = d < 0 ? -k : k;
         }
-        int32_t v = sv[f] + q * hp_half(u, &HP->rc[i][f]);
+        int32_t v = sv[f] + q * hp_frac(u, f16, &HP->rc[i][f]);
         c[w] = circ ? (v & ((int32_t)circ - 1)) : v;
     }
 }
@@ -1301,7 +1341,8 @@ static void hp_tr_post(uint32_t kind, uint32_t car, uint32_t a1)
         if ((kind) == 3u) hp_meas(a0, hv); \
         if (hv) hp_phys_pre(a0, sv); \
         int r = call; \
-        if (hv) hp_phys_post(a0, sv, which); \
+        if (hv) hp_phys_post(a0, sv, which, HP_FWHOLE); \
+        if ((kind) == 3u) hp_meas_post(a0); \
         HP_TR_POST((kind) | hv << 4, a0, a1); \
         return r; \
     }
@@ -1852,7 +1893,7 @@ int a4_h_12dec(uint32_t race, uint32_t p)
 /* the odd half-step: the whole step's car calls again (each halved as in the hooks), the camera
  * (the chase camera only, halved; on a script or another camera it waits for the whole step).
  * The census (A4_HPCENSUS) and the probe (A4_HPPROBE) emit through a4_hp_census, above */
-static void hp_odd(uint32_t race)
+static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
 {
     volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP, *sp = (volatile uint32_t *)A4_GL_SPEC;
     if (HP->race != race) {
@@ -1876,7 +1917,7 @@ static void hp_odd(uint32_t race)
      * the start's step they braked the launch to a stall. Before the start nothing moves, so no
      * car call runs at an odd half-step until the player's +0E0 (its steps since the start) counts */
     uint32_t started = pcar && *(volatile int32_t *)(pcar + 0xE0u) > 0;
-    if (pcar) {
+    if (pcar && first) {
         HP->pw[0] = ((volatile int32_t *)pcar)[1]; HP->pw[1] = ((volatile int32_t *)pcar)[2];
         HP->pw[2] = ((volatile int32_t *)pcar)[3]; HP->pw[3] = ((volatile int32_t *)pcar)[0x678u / 4u];
     }
@@ -1964,7 +2005,7 @@ static void hp_odd(uint32_t race)
             case 4: ((fn2)GAMEFN(a4_hc_1fd5c))(c[1], c[2]); break;
             case 5: ((fn1)GAMEFN(a4_hc_1fd0e))(c[1]); break;
             }
-            hp_phys_post(car, sv, c[0] == 1u ? 1u : (c[0] == 3u || c[0] == 4u) ? 2u : 3u);
+            hp_phys_post(car, sv, c[0] == 1u ? 1u : (c[0] == 3u || c[0] == 4u) ? 2u : 3u, f16);
             HP_TR_POST(c[0], car, c[2]);
         }
     }
@@ -1982,7 +2023,16 @@ static void hp_odd(uint32_t race)
          * build. Extrapolating the camera's own last step instead overshot where a turn eased
          * (camera yaw reversals 8 in 417 frames). Not on another camera (held) */
         volatile int32_t *cm = (volatile int32_t *)race;
-        for (uint32_t f = 0; f < 6u; f++) { HP->cwp[f] = HP->cw[f]; HP->cw[f] = cm[0x58u / 4u + f]; }
+        uint32_t qt = HP->committed + f16;   /* the step's fraction drawn (A4_FRACPHYS; a half-step 32768) */
+#ifndef A4_FRACPHYS
+        qt = 32768u;
+#endif
+        if (first) {
+            for (uint32_t f = 0; f < 6u; f++) { HP->cwp[f] = HP->cw[f]; HP->cw[f] = cm[0x58u / 4u + f]; }
+            if (HP->cwv < 2u) HP->cwv++;
+            if (HP_CAMMODE(race) != HP->cmode) HP->cwv = 1;   /* a new camera: its steps start again */
+            HP->cmode = HP_CAMMODE(race);
+        }
         HP->camx = 1;
         if (HP_CAMMODE(race) == 2u && pcar && started) {
             const volatile int32_t *pc = (const volatile int32_t *)pcar;
@@ -2003,19 +2053,17 @@ static void hp_odd(uint32_t race)
                 dv[f] = d;
             }
             if (!cut) for (uint32_t f = 0; f < 6u; f++) {
-                int32_t v = HP->cw[f] + dv[f] / 2;
+                int32_t v = HP->cw[f] + (int32_t)(((int64_t)dv[f] * (int32_t)qt) >> 16);
                 cm[0x58u / 4u + f] = f >= 3u ? (v & 2047) : v;
             }
         }
-        if (HP->cwv < 2u) HP->cwv++;
-        if (HP_CAMMODE(race) != HP->cmode) HP->cwv = 1;   /* a new camera: its steps start again */
-        HP->cmode = HP_CAMMODE(race);
         (void)sp;
     }
     h[3] = 0; HP->replaying = 0; HP->nodd++;
 }
 /* before the render after an odd half-step: what the render changes is put back after it (the
  * speculation's save and whole restore), and the traffic drawn half a step on */
+static void hp_snap(uint32_t race) __attribute__((unused));
 static void hp_snap(uint32_t race)
 {
     volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP, *sp = (volatile uint32_t *)A4_GL_SPEC;
@@ -2051,6 +2099,36 @@ static void hp_snap(uint32_t race)
 #endif
     sp[1] = 1; sp[20] = 0;
 }
+#ifdef A4_FRACPHYS
+/* A4_FRACPHYS, before a render: the traffic drawn q16 of a step past the whole step that moved
+ * it (each car by that much of its last step), put back after the render -- only the words
+ * moved, the render's own changes kept (spec_restore with SPEC word 20 set) */
+static void hp_tsnap(uint32_t race, uint32_t q16)
+{
+    volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP, *sp = (volatile uint32_t *)A4_GL_SPEC;
+    (void)race;
+    sp[0] = 0; sp[2] = 0; sp[3] = 0;
+#ifdef A4_SPECTRAFFIC
+    sp[26] = (sp[27] && h[0] - sp[28] <= 2u && q16) ? sp[27] : 0u;
+    if (sp[26]) {
+        words_copy((volatile uint32_t *)A4_GL_TSNAP, (volatile uint32_t *)sp[26], TRAF_SZ / 4u);
+        for (uint32_t i = 0; i < TRAF_N; i++) {
+            volatile int32_t *c = (volatile int32_t *)(sp[26] + i * TRAF_CARSZ);
+            const volatile int32_t *p = (const volatile int32_t *)(A4_GL_TPREV + i * TRAF_CARSZ);
+            if (c[1] == p[1] && c[3] == p[3]) continue;
+            if (iabs32(c[1] - p[1]) > SPEC_CUT || iabs32(c[3] - p[3]) > SPEC_CUT || iabs32(c[0x11Cu / 4u] - p[0x11Cu / 4u]) > 512) continue;
+            static const uint16_t tw[] = { 0x004, 0x008, 0x00C, 0x04C, 0x050, 0x054, 0x058, 0x05C, 0x060, 0x064, 0x068, 0x06C,
+                                           0x0A8, 0x0AC, 0x0B0, 0x11C, 0x120, 0x124 };
+            for (uint32_t f = 0; f < sizeof tw / sizeof tw[0]; f++) { uint32_t w = tw[f] / 4u; c[w] += (int32_t)(((int64_t)(c[w] - p[w]) * (int32_t)q16) >> 16); }
+        }
+        bm_mark((volatile uint32_t *)A4_GL_TBM, (volatile uint32_t *)sp[26], (volatile uint32_t *)A4_GL_TSNAP, TRAF_SZ / 4u);
+    }
+    sp[1] = sp[26] ? 1u : 0u; sp[20] = 1;
+#else
+    (void)q16; (void)h;
+#endif
+}
+#endif
 #endif
 int a4_halfstep(uint32_t race)
 {
@@ -2058,12 +2136,15 @@ int a4_halfstep(uint32_t race)
     (void)race;
     uint32_t k = h[0]++;
     if (k & 1u) {                    /* odd */
-#if defined(A4_HALFPHYS)
+#if defined(A4_FRACPHYS)
+        spec_restore();              /* the traffic drawn on at the last render put back */
+        h[1]++;                      /* round 43: the cars move at the renders, by the time each is at */
+#elif defined(A4_HALFPHYS)
         spec_restore();
 #ifdef A4_CARREC
         if (race) car_record(race, 2u);   /* bench: the state the whole step left, as a normal build records it */
 #endif
-        hp_odd(race);                /* round 42: the game's cars and camera, half a step, for real */
+        hp_sub(race, 32768u, 1u);    /* round 42: the game's cars and camera, half a step, for real */
         HP->odd = 1;
         h[1]++;
 #elif defined(A4_HALFSPEC)
@@ -2089,6 +2170,8 @@ int a4_halfstep(uint32_t race)
     HP->odd = 0;
     if (HP->race != race) { HP->race = race; for (uint32_t i = 0; i < HP_CARS; i++) HP->car[i] = 0; HP->camscript = 0; HP->cwv = 0; HP->camx = 0; }
     for (uint32_t i = 0; i < HP_CARS; i++) { HP->halve[i] = HP->ran[i]; HP->ran[i] = 0; }
+    HP->fwhole = HP->committed < 65536u ? 65536u - HP->committed : 0u;   /* A4_FRACPHYS */
+    HP->committed = 0;
     if (HP->camx && race) {          /* the camera the last whole step left, for the game's own step */
         for (uint32_t f = 0; f < 6u; f++) ((volatile int32_t *)race)[0x58u / 4u + f] = HP->cw[f];
         HP->camx = 0;
@@ -2202,7 +2285,19 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
             mark_q16 = q16 | 0x80000000u;
 #endif
             if (q16 > 65535u) q16 = 65535u;
-#ifdef A4_HALFPHYS
+#if defined(A4_FRACPHYS)
+            /* round 43: the cars moved by the game's own calls to the time this render is at
+             * (q16 of the step past the whole step) and kept -- every frame the game's state at its
+             * own moment, no prediction to take back. The traffic (moved once a step, +FB12 not
+             * replayed) drawn q16 on and put back after. The render's own changes kept, as r41 */
+            if (1) {
+                uint32_t s0 = a4_ntick();
+#ifdef A4_CARREC
+                if (HP->committed == 0u) car_record(race, 2u);   /* bench: the state the whole step and its camera left */
+#endif
+                if (q16 > HP->committed + 256u) { hp_sub(race, q16 - HP->committed, HP->committed == 0u); HP->committed = q16; }
+                hp_tsnap(race, HP->committed);
+#elif defined(A4_HALFPHYS)
             /* every half-step is the game's own state: drawn as it is. After an odd half-step the
              * render's own once-a-step changes are undone (and the traffic, moved once a step,
              * drawn half a step on) */
@@ -2217,7 +2312,8 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
 #else
             if (q16 >= 2048u) {      /* under 1/32 of a step (2.7 ms): the whole step as it is */
 #endif
-#ifndef A4_HALFPHYS
+#if defined(A4_FRACPHYS)
+#elif !defined(A4_HALFPHYS)
                 uint32_t s0 = a4_ntick();
                 spec_run(race, q16);
                 ((volatile uint32_t *)A4_GL_SPEC)[20] = h[5] ? 1u : 0u;   /* the first render since a whole step keeps its own changes */

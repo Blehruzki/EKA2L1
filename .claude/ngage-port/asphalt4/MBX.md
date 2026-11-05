@@ -6279,3 +6279,51 @@ the car past +A00 with `pc:1:27C:+A00`).
   place, heading, key steering) until the game's assist or a contact parts them. Next: the
   other cars (their own calls, not yet measured), the chase camera, and the frames themselves
   (frec.py at the phone's rhythm) before any phone build.
+- The opponents (A4_CARREC_AI: race slot 1 recorded too, 'CREA'; tools aicmp.py): speed at
+  steps 10/20/40/80/120 after the start 39/63/91/132/171 (half) against 37/62/88/129/171
+  (stock), the same distance at 120 -- the other cars' calls (+1F1F8 and the rest, on the
+  player's word lists) give the stock pace. Two stock runs differ by as much (34/60/92/163/186).
+  (A first try wrote the 'CREA' header at CREC + 0x40 = A4_GL_HSTEP and the race never
+  started; the header is on the stack now. Rule 4: the memory map before a new block.)
+- The chase camera (camcmp.py: chase-mode steps, camera to car): halving the camera's update
+  at both half-steps left it 398 units behind the car against stock's 319 -- a filter toward a
+  point behind the car, halved, settles half a step's travel further back. Now the whole
+  step's camera is the game's own (a4_h_12dec passes through) and the odd half-step's is drawn
+  and put back before the next whole step (HP->cw / camx), so the game's camera runs exactly
+  as in a normal build: 311-323 against 319.
+  The odd half-step's camera, as drawn (frec.py over the run's frame records):
+  - extrapolated by half its own last step: camera yaw one-frame reversals 8 in 417 frames
+    (it overshoots where a turn eases), car heading less camera yaw reverses in 50 of 68
+    moving frames;
+  - moved with the player car's own half-step (place by the car's, yaw by 3/4 of the car's
+    turn -- stock's chase camera takes about 3/4 of a turn in the step it happens, then closes
+    the rest at 1-2 a step): reversals 0 in 417, heading-less-yaw 90% 3 /2048 (was 6),
+    reversing in 19 of 37 moving frames. The car moves 91, 92, 92, 93 ... units a frame, the
+    camera the same, 320-326 apart: even. Other cameras (fly-in, crash, helicopter):
+    extrapolated by half their own last step (scripted paths), not across a cut.
+- Battery of the half-step candidate (a4_r43_cand: C43, real time, no oracle; r43bat.sh as
+  r42's): tele cap 85 framestat 3365, crash-steer cap 85 2740, menu 3438 (18 shots), mark
+  1090, Veyron autopilot 1866 -- faults 1 in each (the boot-time one every run has); drop
+  frames 4/4; held 0. Frames (frec.py): presents every 79 / 68 ms (median) at cap 85, and
+  drawn speed off its neighbours by >25% in 25% / 16-18% of frames (r42 on the phone: 0%).
+  The phone's r42 record: presents every 68 ms (54..90). At that rate half-steps of 42.7 ms
+  fall one or two to a frame, unevenly -- judder from the frame rate, not the physics. The
+  Veyron run's car-heading reversals are the game's own (-7, +26, -1: a key-steering turn of
+  26 a call against the steering assist).
+- So the cars now move at the renders, not at fixed half-steps (A4_FRACPHYS, C44 = C43 +
+  it): each render runs the whole step's car calls again from the state the cars are in, each
+  integrator's change taken by the fraction of the step between the last render and this one
+  (q16, from the game clock and the scaled period, as r41's speculation measured it; hp_frac:
+  16.16, the remainder carried), and KEEPS it; the whole step then moves the cars by the rest
+  of the step (65536 less the fraction the renders took) for every car that moved at a render.
+  Every frame is the game's state at its own moment; nothing is predicted, nothing taken back.
+  The velocity measurement: at a render's part-step the last whole step's (+0A8.. = place less
+  it), at the whole step over the whole step (+0A8.. = the place the last whole step left).
+  The camera: the game's own at the whole step; at a render moved with the car since the
+  whole step (or along its own path, other cameras), put back before the whole step. The
+  traffic: drawn q16 on and only those words put back (the render's own changes kept, as r41).
+  The odd half-step does nothing. HALFPHYS is the case q = 1/2.
+  Oracle (lockstep; the record now at the first render after a whole step, before its part-step
+  -- recording right after the step's logic caught the camera a step behind, 484 units, since
+  the camera step comes after the logic): speed 54/73/109/163/174, the camera 318 behind
+  (stock 319), heading within 14 /2048 through the assist turns (the half-step build: 54).
