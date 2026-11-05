@@ -29,9 +29,11 @@
 // cache: 32 KB, 4-way, 32-byte lines, round-robin replacement, read-allocate. A read
 // that misses pays a line fill, a write that misses goes to the write buffer.
 // The figures are the model's inputs:
-// "base_cpi_x100:read_miss_cycles:write_miss_cycles[:mul_cycles:long_mul_cycles]",
-// e.g. EKA2L1_CPUMODEL=250:40:2:3:4 with EKA2L1_CYCLETICK=330 (cycles a microsecond: the
+// "base_cpi_x100:read_miss_cycles:write_miss_cycles[:mul_cycles:long_mul_cycles[:arm_cpi_x100]]",
+// e.g. EKA2L1_CPUMODEL=280:30:2:4:5:160 with EKA2L1_CYCLETICK=330 (cycles a microsecond: the
 // guest's clock then runs on modelled cycles) or EKA2L1_CPUCAP=330 (a wall-clock cap).
+// base_cpi applies to Thumb-state code; arm_cpi (default: the same) to ARM-state code --
+// on a phone image the two are different compilers' output with different stall rates.
 namespace eka2l1::arm::cpumodel {
     struct state {
         bool on = false;
@@ -40,6 +42,8 @@ namespace eka2l1::arm::cpumodel {
         std::uint32_t write_miss_cycles = 0;
         std::uint32_t mul_cycles = 1;         // beyond issue: MUL/MLA (ARM1136: 2 issue cycles, result 4 later)
         std::uint32_t long_mul_cycles = 2;    // SMULL/UMULL/SMLAL/UMLAL (3 issue cycles, result 5 later)
+        std::uint32_t arm_cpi_x100 = 100;     // ARM-state instructions' CPI (Thumb-state: base_cpi_x100)
+        std::uint64_t arm_instrs = 0;         // ARM-state instructions executed (counted always)
         std::uint64_t extra = 0;      // cycles beyond one an instruction (before the base CPI)
         std::uint64_t reads = 0;
         std::uint64_t read_misses = 0;

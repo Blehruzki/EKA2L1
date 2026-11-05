@@ -34,19 +34,21 @@ namespace eka2l1::arm::cpumodel {
         const char *w = std::getenv("EKA2L1_CPUMODEL");
         if (!w || !*w)
             return;
-        unsigned cpi = 100, rm = 0, wm = 0, mu = 1, lmu = 2;
-        if (std::sscanf(w, "%u:%u:%u:%u:%u", &cpi, &rm, &wm, &mu, &lmu) < 1)
+        unsigned cpi = 100, rm = 0, wm = 0, mu = 1, lmu = 2, acpi = 0;
+        if (std::sscanf(w, "%u:%u:%u:%u:%u:%u", &cpi, &rm, &wm, &mu, &lmu, &acpi) < 1)
             return;
         g.mul_cycles = mu;
         g.long_mul_cycles = lmu;
         std::memset(g.tag, 0xFF, sizeof(g.tag));
         std::memset(g.next, 0, sizeof(g.next));
         g.base_cpi_x100 = cpi ? cpi : 100;
+        g.arm_cpi_x100 = acpi ? acpi : g.base_cpi_x100;
         g.read_miss_cycles = rm;
         g.write_miss_cycles = wm;
         g.on = true;
-        std::fprintf(stderr, "EKA2L1_CPUMODEL: base CPI %u.%02u, read miss %u cycles, write miss %u cycles, multiply +%u, "
-                             "long multiply +%u (32 KB 4-way 32-byte-line data cache)\n", cpi / 100, cpi % 100, rm, wm, mu, lmu);
+        std::fprintf(stderr, "EKA2L1_CPUMODEL: base CPI %u.%02u (Thumb), %u.%02u (ARM), read miss %u cycles, write miss %u cycles, multiply +%u, "
+                             "long multiply +%u (32 KB 4-way 32-byte-line data cache)\n", g.base_cpi_x100 / 100, g.base_cpi_x100 % 100,
+            g.arm_cpi_x100 / 100, g.arm_cpi_x100 % 100, rm, wm, mu, lmu);
     }
 
     static inline bool lookup(const std::uint32_t line, std::uint32_t &set) {

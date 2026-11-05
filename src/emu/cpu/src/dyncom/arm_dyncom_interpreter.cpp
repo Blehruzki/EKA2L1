@@ -2330,6 +2330,7 @@ unsigned InterpreterMainLoop(ARMul_State *cpu, std::uint32_t &num_instrs) {
     if (num_instrs >= cpu->NumInstrsToExecute) \
         goto END;                              \
     num_instrs++;                              \
+    eka2l1::arm::cpumodel::g.arm_instrs += !cpu->TFlag; \
     goto *InstLabel[inst_base->idx]
 #else
 #define GOTO_NEXT_INST                         \
@@ -2337,6 +2338,7 @@ unsigned InterpreterMainLoop(ARMul_State *cpu, std::uint32_t &num_instrs) {
     if (num_instrs >= cpu->NumInstrsToExecute) \
         goto END;                              \
     num_instrs++;                              \
+    eka2l1::arm::cpumodel::g.arm_instrs += !cpu->TFlag; \
     switch (inst_base->idx) {                  \
     case 0:                                    \
         goto VMLA_INST;                        \
@@ -3073,6 +3075,8 @@ LOOP_ACCEL_INST : {
                 for (int i = 0; i < inst_cream->ind_count; i++)
                     cpu->Reg[inst_cream->ind[i].reg] += static_cast<std::uint32_t>(inst_cream->ind[i].delta) * done;
                 num_instrs += static_cast<std::uint64_t>(done) * inst_cream->body_len;
+                if (!cpu->TFlag)
+                    eka2l1::arm::cpumodel::g.arm_instrs += static_cast<std::uint64_t>(done) * inst_cream->body_len;
             }
         }
     }
