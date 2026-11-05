@@ -6393,3 +6393,24 @@ back-and-forth). Didn't see any empty frame, tho."
   traffic are where "online lag" and back-and-forth live, and nothing records them on the phone.
   The method needs every situation's words classified; one census of normal driving is not
   that. r44 is withdrawn.
+
+## Round 45 (bench): kinematic frames (A4_KINEPHYS)
+
+The lesson of r44: any game code run at a render runs at the frame rate whatever it does that
+the census never saw. So none runs there now. The game's step computes everything as in a
+normal build (engine, turbo, gravity in the air, AI, collisions, timers); a render moves each
+car the step moved (+1DE78 / +1F1F8 cars: an opponent's calls are +1F1F8 and +1EA64 only,
+A4_HPTRACE with A4_HPTR_SLOT=1) along the velocity that step measured (+010/+018) and turns
+it at that step's turn rate, by the time since the last render (16.16, carried), and keeps
+it; the height (+008, +0D0) and the wheels (+020) are moved for the drawing only and put back
+before the step. At the step, for a car that moved at the renders, the movers' position change
+and the heading change (+1DE78/+1F1F8 and +1EA64) are scaled to the rest of the step, and
+before +1EA64 its +0A8/+0B0 are shifted by the step's move less the game's own, so it measures
+exactly the move the game made (the speed model never sees part of a step -- round 43's start
+stall). Words touched: position x/z, heading, +0A8/+0B0 (measured), drawn-only height and
+wheels. C45 = C44 + A4_KINEPHYS. The camera and traffic as in r44 (the camera's height on its
+own move).
+- Oracle (lockstep): speed at 10/20/40/50 steps after the start 58/75/107/129 -- the same as
+  stock to the unit (every earlier build was a few off); the camera 317 behind (stock 319);
+  the opponent 34/60/92/163. Paths part from ~step 60 (the blend: a render moves along the last
+  step's velocity, so a step's move is part old velocity, part new -- ~50 units by step 50).

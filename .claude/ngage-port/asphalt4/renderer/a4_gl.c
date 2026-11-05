@@ -1141,6 +1141,16 @@ struct hp {
                                       * what the whole step then moves them (16.16) */
     uint8_t ran[HP_CARS];            /* the car's calls ran at the last odd half-step */
     uint8_t halve[HP_CARS];          /* ... so this whole step is halved for it: else it is a whole step's */
+#ifdef A4_KINEPHYS
+    int32_t kc[HP_CARS][3];          /* carries (16.16): x, z, heading */
+    int32_t ks[HP_CARS][2];          /* this step's move at the renders (x, z) */
+    int32_t kerr[HP_CARS][2];        /* the step's move less the game's own (x, z), for +1EA64's measurement */
+    int32_t hdl[HP_CARS], turn[HP_CARS], wl[HP_CARS], wr[HP_CARS];
+    uint32_t hds[HP_CARS];           /* the whole step hdl/wl were taken at */
+    int32_t yW[HP_CARS], dW[HP_CARS], wW[HP_CARS];   /* drawn-only words as the whole step left them */
+    uint8_t disp[HP_CARS];
+    uint32_t wstep;
+#endif
     int8_t cc[12];                   /* the camera's */
     uint32_t odd;                    /* the last half-step was odd: the render after it is undone */
     uint32_t camscript;              /* the camera was on a script at the last odd half-step */
@@ -1195,6 +1205,7 @@ static int32_t iabs32(int32_t x);
 /* A4_FRACPHYS: at a render's part-step the velocity stays as the last whole step measured it
  * (+0A8.. = place less it); at the whole step it is measured over the whole step (+0A8.. = the
  * place the last whole step's call left, hp_meas_post). Stock measures once a step too */
+static void hp_meas(uint32_t car, uint32_t half) __attribute__((unused));
 static void hp_meas(uint32_t car, uint32_t half)
 {
     uint32_t i = hp_idx(car);
@@ -1211,6 +1222,7 @@ static void hp_meas(uint32_t car, uint32_t half)
         }
     }
 }
+static void hp_meas_post(uint32_t car) __attribute__((unused));
 static void hp_meas_post(uint32_t car)
 {
     uint32_t i = hp_idx(car);
@@ -1220,6 +1232,7 @@ static void hp_meas_post(uint32_t car)
 }
 #else
 static void hp_meas_post(uint32_t car) { (void)car; }
+static void hp_meas(uint32_t car, uint32_t half) __attribute__((unused));
 static void hp_meas(uint32_t car, uint32_t half)
 {
     uint32_t i = hp_idx(car);
@@ -1250,12 +1263,84 @@ static uint32_t hp_halve(uint32_t car)
     return i < HP_CARS && HP->halve[i];
 }
 static const struct hprate *hp_ent(uint32_t f) { return f < HP_N1 ? &hp_k1[f] : &hp_k3[f - HP_N1]; }
+#ifdef A4_KINEPHYS
+/* round 44 (r44 on the phone: jumps short, turbos short, the other cars lagging and weaving --
+ * the game's car calls run at every render ran everything the census never saw at the frame
+ * rate): no game code at a render. The game's step computes everything as in a normal build;
+ * a render moves each car along the velocity that step measured (+010/+018) and turns it at
+ * that step's rate, by the time since the last render, and keeps it (nothing taken back); the
+ * height and the wheels are moved for the drawing only. The step's own move (+1DE78 / +1F1F8,
+ * position and heading, and +1EA64's heading) is then scaled to the rest of the step, and
+ * +1EA64 measures the move the game itself made, so its speed model never sees part of a step */
+static int32_t hp_wrap(int32_t d, int32_t circ) { d &= circ - 1; return d >= circ / 2 ? d - circ : d; }
+static int32_t iabs32(int32_t x);
+static void hp_kmove(uint32_t car, uint32_t f16, uint32_t first, uint32_t qt)
+{
+    uint32_t i = hp_idx(car);
+    if (i >= HP_CARS) return;
+    volatile int32_t *c = (volatile int32_t *)car;
+    if (first) {
+        int32_t hd = c[0x678u / 4u], w = c[0x020u / 4u], t = 0, u = 0;
+        if (HP->hds[i] + 1u == HP->wstep) {
+            t = hp_wrap(hd - HP->hdl[i], 2048); if (t >= 256 || t <= -256) t = 0;
+            u = hp_wrap(w - HP->wl[i], 4096); if (u >= 1024 || u <= -1024) u = 0;
+        }
+        HP->turn[i] = t; HP->wr[i] = u; HP->hdl[i] = hd; HP->wl[i] = w; HP->hds[i] = HP->wstep;
+        HP->yW[i] = c[2]; HP->dW[i] = c[0xD0u / 4u]; HP->wW[i] = w; HP->disp[i] = 1;
+    }
+    int32_t vx = c[0x10u / 4u], vz = c[0x18u / 4u], vy = c[0x14u / 4u], moved = 0;
+    if (iabs32(vx) < 2048 && iabs32(vz) < 2048) {
+        int32_t dx = hp_frac(vx, f16, &HP->kc[i][0]), dz = hp_frac(vz, f16, &HP->kc[i][1]);
+        c[1] += dx; c[3] += dz; HP->ks[i][0] += dx; HP->ks[i][1] += dz;
+        moved = vx || vz;
+    }
+    if (HP->turn[i]) { c[0x678u / 4u] = (c[0x678u / 4u] + hp_frac(HP->turn[i], f16, &HP->kc[i][2])) & 2047; moved = 1; }
+    if (moved) HP->ran[i] = 1;
+    if (HP->disp[i]) {               /* drawn only: put back before the whole step */
+        int32_t dy = iabs32(vy) < 1024 ? (int32_t)(((int64_t)vy * (int32_t)qt) >> 16) : 0;
+        c[2] = HP->yW[i] + dy; c[0xD0u / 4u] = HP->dW[i] + dy;
+        c[0x020u / 4u] = (HP->wW[i] + (int32_t)(((int64_t)HP->wr[i] * (int32_t)qt) >> 16)) & 4095;
+    }
+}
+/* the whole step, a car that moved at the renders: before its call */
+static void hp_kpre(uint32_t car, int32_t *k0, uint32_t kind)
+{
+    uint32_t i = hp_idx(car);
+    volatile int32_t *c = (volatile int32_t *)car;
+    k0[0] = c[1]; k0[1] = c[3]; k0[2] = c[0x678u / 4u];
+    if (kind == 3u && i < HP_CARS) {   /* +1EA64 measures place less +0A8/+0B0: the game's own move */
+        c[0xA8u / 4u] += HP->kerr[i][0]; c[0xB0u / 4u] += HP->kerr[i][1];
+        HP->kerr[i][0] = HP->kerr[i][1] = 0;
+    }
+}
+static void hp_kpost(uint32_t car, const int32_t *k0, uint32_t kind, uint32_t f16)
+{
+    uint32_t i = hp_idx(car);
+    if (i >= HP_CARS) return;
+    volatile int32_t *c = (volatile int32_t *)car;
+    if (kind == 1u || kind == 2u) {  /* the move: the rest of the step's share of it */
+        int32_t dx = c[1] - k0[0], dz = c[3] - k0[1];
+        if (iabs32(dx) < 2048 && iabs32(dz) < 2048) {
+            int32_t sx = hp_frac(dx, f16, &HP->kc[i][0]), sz = hp_frac(dz, f16, &HP->kc[i][1]);
+            c[1] = k0[0] + sx; c[3] = k0[1] + sz;
+            HP->kerr[i][0] = HP->ks[i][0] + sx - dx; HP->kerr[i][1] = HP->ks[i][1] + sz - dz;
+        }
+        HP->ks[i][0] = HP->ks[i][1] = 0;
+    }
+    if (kind <= 3u) {                /* the turn */
+        int32_t dh = hp_wrap(c[0x678u / 4u] - k0[2], 2048);
+        if (dh < 256 && dh > -256) c[0x678u / 4u] = (k0[2] + hp_frac(dh, f16, &HP->kc[i][2])) & 2047;
+    }
+}
+#endif
+static void hp_phys_pre(uint32_t car, int32_t *sv) __attribute__((unused));
 static void hp_phys_pre(uint32_t car, int32_t *sv)
 {
     const volatile int32_t *c = (const volatile int32_t *)car;
     for (uint32_t f = 0; f < HP_NR; f++) sv[f] = c[hp_ent(f)->off / 4u];
 }
 /* which: 1 the +1DE78 words, 2 the +1EA64 words, 3 both (+1F1F8 / +1FD0E: not measured, a guess) */
+static void hp_phys_post(uint32_t car, const int32_t *sv, uint32_t which, uint32_t f16) __attribute__((unused));
 static void hp_phys_post(uint32_t car, const int32_t *sv, uint32_t which, uint32_t f16)
 {
     uint32_t i = hp_idx(car);
@@ -1299,6 +1384,9 @@ static uint32_t hp_tr_on(uint32_t car)
     uint32_t race = HP->race;
     if (!race || HP->ntr >= 400u) return 0;
     uint32_t pl = *(volatile uint32_t *)(race + 0x390), pidx = pl ? *(volatile uint32_t *)(pl + 0xC) : 99u;
+#ifdef A4_HPTR_SLOT                  /* another race slot's car instead of the player's */
+    pidx = (A4_HPTR_SLOT);
+#endif
     if (pidx >= 16u || *(volatile uint32_t *)(race + 0x394 + 4u * pidx) != car) return 0;
     int32_t e0 = *(volatile int32_t *)(car + 0xE0u), r8 = *(volatile int32_t *)(car + 0x7D8u);
 #ifdef A4_HPTR_LO                    /* a window of the player's steps since the start instead */
@@ -1334,6 +1422,17 @@ static void hp_tr_post(uint32_t kind, uint32_t car, uint32_t a1)
 /* the car calls at a whole step: each halved for a car whose calls ran at the odd half-step before
  * (HP_HALVE); `which` the words (1 +1DE78's, 2 +1EA64's, 3 both: +1F1F8 / +1FD0E not measured, a
  * guess). +1EA64's measuring history is kept at every call */
+#ifdef A4_KINEPHYS
+#define HP_HOOK(kind, which, call) \
+    if (!HP->replaying) { \
+        uint32_t hv = HP_HALVE; \
+        int32_t k0[3]; \
+        if (hv) hp_kpre(a0, k0, kind); \
+        int r = call; \
+        if (hv) hp_kpost(a0, k0, kind, HP_FWHOLE); \
+        return r; \
+    }
+#else
 #define HP_HOOK(kind, which, call) \
     if (!HP->replaying) { \
         HP_TR_PRE(a0); \
@@ -1347,6 +1446,7 @@ static void hp_tr_post(uint32_t kind, uint32_t car, uint32_t a1)
         HP_TR_POST((kind) | hv << 4, a0, a1); \
         return r; \
     }
+#endif
 #else
 #define HP_HOOK(kind, which, call)
 #endif
@@ -1947,7 +2047,23 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
     uint32_t saved = 0;
     words_copy(sp + 64, (volatile uint32_t *)race, SPEC_RACESZ / 4u);
 #endif
+#ifdef A4_KINEPHYS
+    {   /* the cars the whole step moved (+1DE78, +1F1F8), each once: along its own velocity */
+        uint32_t seen = 0;
+        uint32_t qt = HP->committed + f16;
+        for (uint32_t i = 0; i < h[2]; i++) {
+            volatile uint32_t *c = (volatile uint32_t *)A4_GL_HCALL + 6u * i;
+            if (c[0] != 1u && c[0] != 2u) continue;
+            uint32_t ci = hp_idx(c[1]);
+            if (ci >= HP_CARS || (seen >> ci) & 1u) continue;
+            seen |= 1u << ci;
+            hp_kmove(c[1], f16, first, qt);
+        }
+    }
+    for (uint32_t i = 0; i < 0u; i++) {
+#else
     for (uint32_t i = 0; i < h[2] && started; i++) {
+#endif
         volatile uint32_t *c = (volatile uint32_t *)A4_GL_HCALL + 6u * i;
         uint32_t car = c[1];
 #ifdef A4_HPPROBE
@@ -2199,6 +2315,15 @@ int a4_halfstep(uint32_t race)
     HP->odd = 0;
     if (HP->race != race) { HP->race = race; for (uint32_t i = 0; i < HP_CARS; i++) HP->car[i] = 0; HP->camscript = 0; HP->cwv = 0; HP->camx = 0; HP->started = 0; }
     for (uint32_t i = 0; i < HP_CARS; i++) { HP->halve[i] = HP->ran[i]; HP->ran[i] = 0; }
+#ifdef A4_KINEPHYS
+    for (uint32_t i = 0; i < HP_CARS; i++) {
+        volatile int32_t *c = (volatile int32_t *)HP->car[i];
+        if (HP->disp[i] && c) { c[2] = HP->yW[i]; c[0xD0u / 4u] = HP->dW[i]; c[0x020u / 4u] = HP->wW[i]; }
+        HP->disp[i] = 0;
+        if (!HP->halve[i]) { HP->ks[i][0] = HP->ks[i][1] = 0; HP->kerr[i][0] = HP->kerr[i][1] = 0; }
+    }
+    HP->wstep++;
+#endif
     HP->fwhole = HP->committed < 65536u ? 65536u - HP->committed : 0u;   /* A4_FRACPHYS */
     HP->committed = 0;
     if (HP->camx && race) {          /* the camera the last whole step left, for the game's own step */
