@@ -6414,3 +6414,17 @@ own move).
   stock to the unit (every earlier build was a few off); the camera 317 behind (stock 319);
   the opponent 34/60/92/163. Paths part from ~step 60 (the blend: a render moves along the last
   step's velocity, so a step's move is part old velocity, part new -- ~50 units by step 50).
+- Real time, cap 85 (r45q.sh: a4_r45_cand, C45, sha256 30550903...): drawn speed off its
+  neighbours by >25% 0% / 0% / 0% (tele / crash-steer / Veyron, by render start); car-heading
+  one-frame reversals 0 / 1 / 1; camera-yaw 6 / 1 / 5 (mostly 5-9 /2048). Turn rate a frame
+  uneven at steering changes (31% / 10% / 22% of frames off by >25%): a render turns at the
+  last step's rate until the step applies the new one -- a step's delay, as stock, never back.
+  Held 0 / 0 / 0; drops 3 / 0 / 4, all with a camera cut but one (Veyron: 1309 -> 651 triangles,
+  camdev 19, not held) -- named, not traced.
+- Battery on this build: tele 2103, crash-steer 2240, Veyron 2001, menu 3206 (18 shots), mark
+  989 -- faults 1 each (the boot one); shipchk +3A15C B510 0004, no 0xDEADBEEF; the archive
+  restored. Round 45 phone candidate: a4_r45_SHIP.exe (unbaked).
+- Guesses going out (rule 4): the blend (a render moves along the last step's velocity and
+  turn); the police (slots 8-14) may move through +1FD0E, not moved at renders (stock rate);
+  a car drawn into a wall between steps until the step resolves it; the traffic still drawn
+  ahead by extrapolation; the one halved frame above.
