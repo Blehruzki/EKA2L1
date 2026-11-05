@@ -6606,3 +6606,75 @@ at the moment or afterwards. You may want to analyze this better before committi
 - States the bench never entered (rule 4): a respawn after a wreck (the bench's car never
   respawns, in any build -- the corrector's cut at >1024 units is read in the code, not seen run),
   a race restart, a pause mid-race, the phone's human steering and its audio load.
+
+## Round 46, phone (r46, sha256 06eeb263...): the camera loses the car
+
+- The owner: "this version was terrible. The camera doesn't follow the car appropriately. I didn't
+  even finish a lap." Four photos: the car off the centre of the view, one partly off the screen.
+- Telemetry (8 files, r46ph): presents 14,801 (14,067 without a render: menus), renders 734, held
+  0, drop frames 2; the game's render call 67 ms; camera-yaw one-frame reversals 2, car heading 0,
+  drawn speed even. Every number round 46 measured was fine -- and none of them measured what the
+  owner saw.
+- What they saw, measured (tools/camrel.py, new: per chase-camera frame, the player car's bearing
+  from the camera less the camera's yaw, the car's heading less the yaw, its distance): bearing
+  off its median 50% 35, 90% 76, 99% 91 /2048 (r42ph 2/6/23). The bench showed it too and nobody
+  looked: jt_d 10/84/122, the Veyron run (r46v) 75/144/214, with the corrector off 0/6/17; the
+  round 46 mark screenshots show the car off centre. Rule 4 failure: the battery measured each
+  object's smoothness, never the car and camera together, and its screenshots went unread.
+- Cause: round 46 put the camera's position through a corrector of its own. In a curve the game's
+  camera orbits the car step by step; the corrector held the camera off that orbit while the car
+  drew on its own, so the car slid across the view.
+
+## Round 47 (bench): a rigid chase camera
+
+- The game's chase camera (mode 2) sits straight behind the car along its own yaw: offset
+  direction yaw - 1024, spread 0-2 /2048 on r42ph, r44ph, r45t. So a frame sets the camera
+  rigidly on the drawn car: the game's offset from the car at the step, turned (kd_rot, sin/cos
+  by series in Q30) by the yaw the frame draws less the game's camera yaw at the step, added to
+  the drawn car's position. The yaw is round 45's: the game's camera yaw and 3/4 of the car's drawn
+  turn. The camera has no corrector; the height keeps its own rate. The framing is the game's by
+  construction.
+- A/B on the Veyron at speed (continuously steering autopilot, cap 85, Veyron archive swapped and
+  restored), camrel bearing / heading-less-yaw spread (50/90/99%):
+  r46v 75/144/214, 33/71/98; r47a (the yaw through the corrector, A4_KD_CAMYAWCORR) 0/1/3,
+  22/93/128 -- and one 100 /2048 yaw jump, a large offset faded out across one sparse frame;
+  r47b (no camera corrector) 0/1/2, 4/39/68 (r42ph 7/25/59 for heading). r47b camera-yaw one-frame
+  reversals 3 in 417 (7, 12, 5 /2048 ...), car heading 0. The large frame-to-frame jumps of heading
+  less yaw (99% ~1000) are camera-mode changes (chase <-> mode 6), not frames. The mark screenshots
+  of r47b (shots_r47bk) all have the car centred. A4_KD_CAMYAWCORR stays a bench switch, off.
+- How evenly the camera turns (tools/yawjerk.py, new: the chase camera's turn rate per presented
+  frame, /2048 a game step, and its change from the frame before, at a step's first frame and
+  within a step; the same for the car's drawn heading). r47t: camera at first frames 90% 18, 99%
+  48, within 6 / 16; the car's own heading 15 / 43 and 17 / 40. The camera's turn steps at a
+  step no more than the car it follows; r46 on the phone 23 / 55 at first frames. The yaw keeps
+  round 45's 3/4 model, so the step-boundary change is the game's camera lag against that model.
+- Candidate r47 (C47 = C45 + A4_KINEDRAW, the r47b code; sha256
+  3e28589fd9f662482d808a803351add4c93ec52cdf44bb7fce84e75686577af0, 811,268 bytes; no 0xDEADBEEF;
+  +3A15C B510 0004). Battery on that binary (r47bat.sh):
+  - tele on the calibrated N95 bench, 120 s: framestat 2229, faults 1 (the boot fault); presents
+    1,886, renders 1,885, held 0, drop frames 0; drawn speed off its neighbours >25% 0% by render
+    start, 1% by present; camera-yaw and car-heading one-frame reversals 0 and 0 in 417; camrel
+    bearing 0/1/4, heading less yaw 0/3/6, distance 295 (294..295).
+  - crash-steer at cap 85: framestat 2783, faults 1; camrel 0/1/4, 0/1/7; reversals 1 (4 /2048)
+    and 0.
+  - racemenu: framestat 4117, faults 1, 18 shots, looked at: menus, garage, the pause over the race
+    with the car centred.
+  - mark (Mini): framestat 1466, faults 1; 12 of 24 shots looked at: the car centred behind in
+    every one, in a curve, under nitro, among traffic.
+  - the Veyron with the continuously steering autopilot at cap 85: framestat 2097, faults 1;
+    camrel 0/3/5, 0/6/17 (274 chase frames; the rest a mode-6 camera); camera-yaw one-frame
+    reversals 6 (6, 4, 22, 5, 4, 31 /2048), car heading 1 (20, the same frame as the 22): the
+    camera turns with the drawn car; r47b on the same drive 3 and 0, r46 2 and 0.
+  - mark on the Veyron: framestat 1378, faults 1; 12 of 24 shots looked at, 177-286 km/h: the car
+    centred in every one. The archive restored and compared (carsa, carsb).
+  Round 47 phone candidate: a4_r47_SHIP.exe (unbaked).
+- Guesses going out (rule 4): the chase camera's offset from the car taken as the game's at the
+  step and turned rigidly (the game's own offset direction spread 0-2 /2048 says it is straight
+  behind; its length is not modelled to change within a step); the yaw's 3/4 of the car's drawn
+  turn (round 45, from the bench's stock records); the camera's height on its own rate (round 37);
+  everything round 46 listed for the car and traffic corrector. Not entered on the bench: a
+  respawn after a wreck, a race restart, a pause mid-race, other camera views than chase while
+  steering (they keep round 45's handling), the phone's human steering and audio load.
+- Lesson kept (rule 4): a battery that measures each object alone can pass a build whose
+  objects do not agree. camrel.py (car in the view) now runs in every battery, and the mark
+  screenshots are looked at before a build goes out.
