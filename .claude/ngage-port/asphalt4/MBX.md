@@ -6359,3 +6359,18 @@ the car past +A00 with `pc:1:27C:+A00`).
   moved with the car's whole displacement, height too -- down over a crest with the car while
   the game's own camera is smoothed. Now its height continues its own last whole-step move
   (capped 256) instead; place across and yaw still follow the car.
+- The camera-height change (a4_r44_cand rebuilt, sha256 421a278f...): two tele runs at cap
+  85, 230 s each (r44h1, r44h2): held 0 and 0, every halved frame with a camera cut (camdev
+  180-543), drawn speed off by >25% 0% / 0%. Before it one 230 s run held two with the camera
+  still. (Two runs is not proof; the rate before was ~1 a 115 s, so 0 in 460 s is p ~ 0.02.)
+- Battery on this exact build (r44h1/2, r44bat2, r44v2; the container restarted after the
+  mark, the Veyron run repeated; the archive found swapped and restored): crash-steer
+  framestat 2739, held 0, drops 0, drawn speed 1%; menu 3589 (18 shots); mark 1234; Veyron
+  1903, held 0, drops 0, drawn speed 0%, car-heading reversals 0, camera-yaw 2. Faults 1 in
+  each (the boot one). shipchk: +3A15C B510 0004, no 0xDEADBEEF. Round 44 phone candidate:
+  a4_r44_SHIP.exe (unbaked; the owner bakes).
+- Guesses going out (rule 4): the word lists and event thresholds (one census, the player car;
+  the other cars on the player's lists, their pace measured equal); +0F0/+0F8 left as computed;
+  the chase camera's 3/4 yaw at render time; the traffic still drawn by extrapolation (not the
+  game's own between steps); key bits at render time are the last whole step's (as stock:
+  input acts at the game's step); the camera height at render time on its own move.
