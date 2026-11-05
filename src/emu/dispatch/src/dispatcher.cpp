@@ -17,6 +17,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <chrono>
+#include <common/gpumodel.h>
 #include <config/config.h>
 #include <dispatch/dispatcher.h>
 #include <dispatch/libraries/register.h>
@@ -284,7 +286,32 @@ namespace eka2l1::dispatch {
             LOG_TRACE(HLE_DISPATCHER, "Calling 0x{:X}", function_ord);
         }*/
 
+        // EKA2L1_GPUMODEL: what the phone's GL driver and GPU would have cost this call
+        // (a GLES/EGL ordinal, or the guest's direct-screen post), paid where it was made
+        double model_us = 0;
+        if (common::gpumodel::enabled()) {
+            if (function_ord >= 0x1100 && function_ord < 0x1200) {
+                arm::core *cpu = sys->get_cpu();
+                std::uint32_t args[8];
+                for (int i = 0; i < 4; i++)
+                    args[i] = cpu->get_reg(i);
+                kernel::process *pr = sys->get_kernel_system()->crr_process();
+                const std::uint32_t sp = cpu->get_sp();
+                for (int i = 0; i < 4; i++) {
+                    const std::uint32_t *w = pr ? reinterpret_cast<const std::uint32_t *>(pr->get_ptr_on_addr_space(sp + i * 4)) : nullptr;
+                    args[4 + i] = w ? *w : 0;
+                }
+                model_us = common::gpumodel::gl_call_us(function_ord, args);
+            } else if (function_ord == 1) {
+                model_us = common::gpumodel::screen_post_us();
+            }
+        }
+        const auto model_t0 = std::chrono::steady_clock::now();
+
         dispatch_find_result->second.first(sys, sys->get_kernel_system()->crr_process(), sys->get_cpu());
+
+        if (model_us > 0)
+            common::gpumodel::pay_us(model_us, std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - model_t0).count());
     }
 
     void dispatcher::shutdown(drivers::graphics_driver *driver) {

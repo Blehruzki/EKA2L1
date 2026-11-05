@@ -95,6 +95,16 @@ instructions over the given rate instead of host wall time, so guest-visible
 time advances with emulated work. The counter is fed from the dyncom core
 (`src/emu/cpu/src/dyncom/arm_dyncom.cpp`), so it is dyncom-only. Every
 emulator switch is indexed in `EMU_PATCHES.md`.
+A modelled N95 for benches: `EKA2L1_CPUMODEL` makes `EKA2L1_CPUCAP` count
+ARM1136 cycles (a base CPI, multiply and load/store-multiple timings, a
+32 KB data cache) instead of instructions; `EKA2L1_GPUMODEL` stretches each
+HLE GLES/EGL call and direct-screen post to what the PowerVR MBX driver and
+GPU would cost (per call, draw, vertex, bind, upload byte, and the tile render
+and copy a frame read waits for); `EKA2L1_TIMESCALE=<D>` runs every guest
+clock D times slower than the host so a host too slow for the model in real
+time still keeps its proportions (`EKA2L1_CPUCAP_STATS=1` says whether the
+host keeps up). The game's own audio stream gets no host device in a headless
+container, so a bench lacks the phone's mixing work.
 
 A dead thread's own heap is freed, as EKA2's `DThread::CloseCreatedHeap`
 does (`thread::close_created_heap` in `src/emu/kernel/src/thread.cpp`): the

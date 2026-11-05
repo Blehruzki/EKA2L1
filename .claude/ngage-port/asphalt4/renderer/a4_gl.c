@@ -952,6 +952,19 @@ __attribute__((noinline)) void a4_rec_emit2(const void *hdr, const void *car, co
 #ifndef A4_KEY_L
 #define A4_KEY_L 0x200u              /* '8' (turn left) */
 #endif
+#ifdef A4_AUTOPILOT
+/* bench (round 45): the autopilot's '5' (K+4 bit 6) released from step A4_AUTOPILOT_REL on, to
+ * tell the turbo's words from the rest (the car keeps its speed on its own once moving) */
+#ifdef A4_AUTOPILOT_REL
+#define A4_AP_KEY(st) ((st) >= (A4_AUTOPILOT_REL) ? 0u : 0x40u)
+#elif defined(A4_AUTOPILOT_TAP)
+/* or let go for three steps in every A4_AUTOPILOT_TAP: a fresh press of '5' each time (the
+ * bench script must not hold the key itself: NOKEY5=1) */
+#define A4_AP_KEY(st) ((st) % (A4_AUTOPILOT_TAP) < 3u ? 0u : 0x40u)
+#else
+#define A4_AP_KEY(st) 0x40u
+#endif
+#endif
 /* what: 1 the keys and the step count (at the whole step), 2 the record (round 43: a half-step
  * build emits it at the odd half-step, the state the whole step left, as a normal build's next
  * step sees it), 3 both */
@@ -978,7 +991,7 @@ static void car_record(uint32_t race, uint32_t what)
         ((volatile uint32_t *)K)[0] = k; ((volatile uint32_t *)K)[1] = k;
     }
 #else
-    if (K && (what & 1u)) { ((volatile uint32_t *)K)[0] = 0x40u; ((volatile uint32_t *)K)[1] = 0x40u; }
+    if (K && (what & 1u)) { ((volatile uint32_t *)K)[0] = A4_AP_KEY(r[1]); ((volatile uint32_t *)K)[1] = A4_AP_KEY(r[1]); }
 #endif
 #endif
     if (what & 1u) r[1]++;
@@ -1730,7 +1743,11 @@ static void __attribute__((unused)) spec_run(uint32_t race, uint32_t q16)
     if (K) {
         ((void (*)(uint32_t, uint32_t))GAMEFN(a4_hc_25e8))(K, 0);
 #ifdef A4_AUTOPILOT
-        ((volatile uint32_t *)K)[0] = 0x40u; ((volatile uint32_t *)K)[1] = 0x40u;
+        {
+            uint32_t st = ((volatile uint32_t *)A4_GL_CREC)[1];
+            (void)st;
+            ((volatile uint32_t *)K)[0] = A4_AP_KEY(st); ((volatile uint32_t *)K)[1] = A4_AP_KEY(st);
+        }
 #endif
     }
     hcall_replay();

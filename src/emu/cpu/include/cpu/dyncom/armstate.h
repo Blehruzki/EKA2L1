@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cpu/dyncom/cpumodel.h>
 #include <array>
 #include <common/bytes.h>
 #include <common/types.h>
@@ -167,6 +168,7 @@ public:
     // little-endian value (matching the previous TLB-hit behaviour); writes swap
     // first so the stored bytes match.
     std::uint8_t ReadMemory8(std::uint32_t address) const {
+        eka2l1::arm::cpumodel::read(address);
         std::uint8_t value;
         if (std::uint8_t *ptr = mem_cache_->lookup(address))
             value = *ptr;
@@ -177,6 +179,7 @@ public:
         return value;
     }
     std::uint16_t ReadMemory16(std::uint32_t address) const {
+        eka2l1::arm::cpumodel::read(address);
         std::uint16_t value;
         if (std::uint16_t *ptr = reinterpret_cast<std::uint16_t *>(mem_cache_->lookup(address)))
             value = *ptr;
@@ -201,6 +204,7 @@ public:
     bool PeekMemory32(std::uint32_t address, std::uint32_t *value) const;
 
     std::uint32_t ReadMemory32(std::uint32_t address) const {
+        eka2l1::arm::cpumodel::read(address);
         std::uint32_t value;
         if (std::uint32_t *ptr = reinterpret_cast<std::uint32_t *>(mem_cache_->lookup(address)))
             value = *ptr;
@@ -211,6 +215,7 @@ public:
         return value;
     }
     std::uint64_t ReadMemory64(std::uint32_t address) const {
+        eka2l1::arm::cpumodel::read(address);
         if (std::uint64_t *ptr = reinterpret_cast<std::uint64_t *>(mem_cache_->lookup(address)))
             return *ptr;
         return ReadMemory64Slow(address);
@@ -246,6 +251,7 @@ public:
 
     void WriteMemory8(std::uint32_t address, std::uint8_t data) {
         WatchWrite(address, static_cast<std::uint32_t>(data), 1);
+        eka2l1::arm::cpumodel::write(address);
         if (std::uint8_t *ptr = mem_cache_->lookup(address)) {
             *ptr = data;
             return;
@@ -254,6 +260,7 @@ public:
     }
     void WriteMemory16(std::uint32_t address, std::uint16_t data) {
         WatchWrite(address, static_cast<std::uint32_t>(data), 2);
+        eka2l1::arm::cpumodel::write(address);
         if (InBigEndianMode())
             data = eka2l1::common::byte_swap(data);
         if (std::uint16_t *ptr = reinterpret_cast<std::uint16_t *>(mem_cache_->lookup(address))) {
@@ -264,6 +271,7 @@ public:
     }
     void WriteMemory32(std::uint32_t address, std::uint32_t data) {
         WatchWrite(address, static_cast<std::uint32_t>(data), 4);
+        eka2l1::arm::cpumodel::write(address);
         if (InBigEndianMode())
             data = eka2l1::common::byte_swap(data);
         if (std::uint32_t *ptr = reinterpret_cast<std::uint32_t *>(mem_cache_->lookup(address))) {
@@ -274,6 +282,7 @@ public:
     }
     void WriteMemory64(std::uint32_t address, std::uint64_t data) {
         WatchWrite(address, static_cast<std::uint32_t>(data), 8);
+        eka2l1::arm::cpumodel::write(address);
         if (InBigEndianMode())
             data = eka2l1::common::byte_swap(data);
         if (std::uint64_t *ptr = reinterpret_cast<std::uint64_t *>(mem_cache_->lookup(address))) {
@@ -297,6 +306,7 @@ public:
     };
 
     std::uint32_t ReadMemory32Block(std::uint32_t address, block_cursor &c) const {
+        eka2l1::arm::cpumodel::read(address);
         if (rwatch_addr && address < rwatch_end && address + 4 > rwatch_addr) {
             const std::uint32_t value = ReadMemory32(address);
             c.page_host = nullptr;
@@ -316,6 +326,7 @@ public:
 
     void WriteMemory32Block(std::uint32_t address, std::uint32_t data, block_cursor &c) {
         WatchWrite(address, static_cast<std::uint32_t>(data), 4);
+        eka2l1::arm::cpumodel::write(address);
         if (InBigEndianMode())
             data = eka2l1::common::byte_swap(data);
         const std::uint32_t page_off = address & static_cast<std::uint32_t>(mem_cache_->page_mask);

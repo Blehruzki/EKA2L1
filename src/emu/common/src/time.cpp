@@ -27,6 +27,7 @@
 #include <common/platform.h>
 #include <common/time.h>
 #include <ctime>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 
@@ -46,6 +47,89 @@ namespace eka2l1::common {
     std::atomic<std::uint64_t> g_cpu_cycle_counter{0};
     std::atomic<std::uint64_t> g_cpu_exec_ns{0};
 
+    // EKA2L1_TIMESCALE=<D>: every guest clock (the kernel timer's base: UniversalTime,
+    // HomeTime, the tick calls, every timer) runs D times slower than the host, and the
+    // CPU cap and EKA2L1_GPUMODEL's charges are paid in host time scaled by D -- a bench
+    // in slow motion whose proportions are the modelled phone's, for a host too slow to
+    // emulate it in real time. 1 (off) by default.
+    double timescale() {
+        static const double ts = []() -> double {
+            const char *w = std::getenv("EKA2L1_TIMESCALE");
+            const double v = w ? std::strtod(w, nullptr) : 1.0;
+            return v >= 1.0 ? v : 1.0;
+        }();
+        return ts;
+    }
+
+    static std::uint64_t cpu_cap_ips() {
+        static const std::uint64_t ips = []() -> std::uint64_t {
+            const char *w = std::getenv("EKA2L1_CPUCAP");
+            return w ? std::strtoull(w, nullptr, 10) : 0;
+        }();
+        return ips;
+    }
+
+    // Owed host sleep, carried between the cap's calls (both run on the CPU thread).
+    static std::int64_t g_cap_debt_ns = 0;
+    // Host time inside the current slice already accounted for by cpu_cap_pay_service.
+    static std::int64_t g_cap_excluded_ns = 0;
+    static constexpr std::int64_t kSleepNs = 1000000;
+
+    // in_slice: called from inside the core's slice, whose host time the core adds to
+    // g_cpu_exec_ns itself
+    // Whether the host keeps up with the model, for calibrating a bench: a line every ~5 s
+    // when EKA2L1_CPUCAP_STATS=1 -- the share of host time slept, and the guest time lost
+    // where the host was slower than the model (a bench that loses much is host-bound:
+    // raise EKA2L1_TIMESCALE).
+    static std::int64_t g_cap_slept_ns = 0, g_cap_lost_ns = 0;
+
+    static void cpu_cap_stats() {
+        static const bool on = []() { const char *w = std::getenv("EKA2L1_CPUCAP_STATS"); return w && *w == '1'; }();
+        if (!on)
+            return;
+        static auto last = std::chrono::steady_clock::now();
+        const auto now = std::chrono::steady_clock::now();
+        const std::int64_t span = std::chrono::duration_cast<std::chrono::nanoseconds>(now - last).count();
+        if (span < 5000000000LL)
+            return;
+        std::fprintf(stderr, "EKA2L1_CPUCAP: slept %.0f%% of host time; host behind the model by %.1f ms of host time (%.1f%%)\n",
+            100.0 * g_cap_slept_ns / span, g_cap_lost_ns / 1e6, 100.0 * g_cap_lost_ns / span);
+        g_cap_slept_ns = 0;
+        g_cap_lost_ns = 0;
+        last = now;
+    }
+
+    static void cpu_cap_pay_debt(const bool in_slice) {
+        cpu_cap_stats();
+        if (g_cap_debt_ns > kSleepNs) {
+            const auto before = std::chrono::steady_clock::now();
+            std::this_thread::sleep_for(std::chrono::nanoseconds(g_cap_debt_ns));
+            const std::int64_t slept = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - before).count();
+            if (!in_slice)
+                g_cpu_exec_ns.fetch_add(slept, std::memory_order_relaxed);
+            g_cap_debt_ns -= slept;
+            g_cap_excluded_ns += slept;
+            g_cap_slept_ns += slept;
+        } else if (g_cap_debt_ns < -kSleepNs) {
+            // The host was slower than the cap: no credit carried forward.
+            g_cap_lost_ns -= g_cap_debt_ns;
+            g_cap_debt_ns = 0;
+        }
+    }
+
+    void cpu_cap_pay_service(const std::uint64_t guest_ns, const std::uint64_t host_ns) {
+        if (!cpu_cap_ips())
+            return;
+        const std::int64_t owed = static_cast<std::int64_t>(static_cast<double>(guest_ns) * timescale()) - static_cast<std::int64_t>(host_ns);
+        // a host slower than the model at this call banks no credit for the guest's code
+        if (owed > 0)
+            g_cap_debt_ns += owed;
+        else
+            g_cap_lost_ns -= owed;
+        g_cap_excluded_ns += static_cast<std::int64_t>(host_ns);
+        cpu_cap_pay_debt(true);
+    }
+
     std::uint64_t cycle_tick_ips() {
         static const std::uint64_t ips = []() -> std::uint64_t {
             const char *w = std::getenv("EKA2L1_CYCLETICK");
@@ -55,10 +139,7 @@ namespace eka2l1::common {
     }
 
     void cpu_cap_throttle(const std::uint64_t instructions, const std::uint64_t host_ns) {
-        static const std::uint64_t ips = []() -> std::uint64_t {
-            const char *w = std::getenv("EKA2L1_CPUCAP");
-            return w ? std::strtoull(w, nullptr, 10) : 0;
-        }();
+        const std::uint64_t ips = cpu_cap_ips();
         g_cpu_exec_ns.fetch_add(host_ns, std::memory_order_relaxed);
         if (!ips) {
             return;
@@ -70,22 +151,14 @@ namespace eka2l1::common {
         // eat into it. Paid off in sleeps of at least kSleepNs: a sleep costs tens
         // of microseconds of overshoot, so a sleep per short time slice would hold
         // the guest below the cap. The measured length of each sleep is what is
-        // subtracted, which absorbs that overshoot too.
-        static constexpr std::int64_t kSleepNs = 1000000;
-        static std::int64_t debt_ns = 0;
-
-        debt_ns += static_cast<std::int64_t>((instructions * 1000) / ips) - static_cast<std::int64_t>(host_ns);
-
-        if (debt_ns > kSleepNs) {
-            const auto before = std::chrono::steady_clock::now();
-            std::this_thread::sleep_for(std::chrono::nanoseconds(debt_ns));
-            const std::int64_t slept = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - before).count();
-            g_cpu_exec_ns.fetch_add(slept, std::memory_order_relaxed);
-            debt_ns -= slept;
-        } else if (debt_ns < -kSleepNs) {
-            // The host was slower than the cap: no credit carried forward.
-            debt_ns = 0;
-        }
+        // subtracted, which absorbs that overshoot too. The modelled guest time is
+        // paid in host time scaled by EKA2L1_TIMESCALE; host time a modelled service
+        // call already settled (cpu_cap_pay_service) is not the instructions'.
+        const std::int64_t own_ns = static_cast<std::int64_t>(host_ns) - g_cap_excluded_ns;
+        g_cap_excluded_ns = 0;
+        g_cap_debt_ns += static_cast<std::int64_t>(static_cast<double>((instructions * 1000) / ips) * timescale()) - (own_ns > 0 ? own_ns : 0);
+        cpu_cap_pay_debt(false);
+        g_cap_excluded_ns = 0;
     }
 
     std::uint64_t get_current_utc_time_in_microseconds_since_epoch() {
@@ -243,19 +316,13 @@ namespace eka2l1::common {
         }
 
         std::uint64_t microseconds() override {
-            if (end_ == 0) {
-                return get_current_utc_time_in_microseconds_since_epoch() - start_;
-            }
-
-            return end_ - start_;
+            const std::uint64_t host = (end_ == 0) ? get_current_utc_time_in_microseconds_since_epoch() - start_ : end_ - start_;
+            const double ts = timescale();
+            return ts > 1.0 ? static_cast<std::uint64_t>(static_cast<double>(host) / ts) : host;
         }
 
         std::uint64_t nanoseconds() override {
-            if (end_ == 0) {
-                return get_current_utc_time_in_nanoseconds_since_epoch() - start_;
-            }
-
-            return end_ - start_;
+            return microseconds() * 1000;
         }
     };
 

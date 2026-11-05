@@ -56,6 +56,7 @@ add_library(common
         include/common/sync.h
         include/common/thread.h
         include/common/time.h
+        include/common/gpumodel.h
         include/common/types.h
         include/common/unicode.h
         include/common/url.h
@@ -94,6 +95,7 @@ add_library(common
         src/sync.cpp
         src/thread.cpp
         src/time.cpp
+        src/gpumodel.cpp
         src/types.cpp
         src/unicode.cpp
         src/url.cpp

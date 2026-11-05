@@ -3061,7 +3061,14 @@ LOOP_ACCEL_INST : {
         const std::uint32_t want = static_cast<std::uint32_t>(
             std::min<std::uint64_t>(cap, iter_left - 1));
         if (want) {
+            const std::uint32_t src0 = inst_cream->has_load ? (cpu->Reg[inst_cream->src_reg] + inst_cream->src_off) : 0;
+            const std::uint32_t dst0 = cpu->Reg[inst_cream->dst_reg] + inst_cream->dst_min_off;
             const std::uint32_t done = run_accel_bulk(cpu, inst_cream, want);
+            if (done && eka2l1::arm::cpumodel::g.on) {   /* EKA2L1_CPUMODEL: the lines the bulk copy touched */
+                if (inst_cream->has_load)
+                    eka2l1::arm::cpumodel::range(src0, done * static_cast<std::uint32_t>(inst_cream->src_step), false);
+                eka2l1::arm::cpumodel::range(dst0, done * static_cast<std::uint32_t>(inst_cream->dst_step), true);
+            }
             if (done) {
                 for (int i = 0; i < inst_cream->ind_count; i++)
                     cpu->Reg[inst_cream->ind[i].reg] += static_cast<std::uint32_t>(inst_cream->ind[i].delta) * done;
@@ -3481,6 +3488,7 @@ LDC_INST : {
 LDM_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
         ldst_inst *inst_cream = (ldst_inst *)inst_base->component;
+        eka2l1::arm::cpumodel::multiple(static_cast<std::uint32_t>(__builtin_popcount(inst_cream->inst & 0xFFFFu)));   /* EKA2L1_CPUMODEL */
         inst_cream->get_addr(cpu, inst_cream->inst, addr);
 
         // The register list maps to contiguous, ascending addresses -- resolve the
@@ -3836,6 +3844,7 @@ MCRR_INST : {
 
 MLA_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
+        eka2l1::arm::cpumodel::multiply(1);   /* EKA2L1_CPUMODEL: ARM1136 multiply cycles */
         mla_inst *inst_cream = (mla_inst *)inst_base->component;
 
         std::uint64_t rm = RM;
@@ -3977,6 +3986,7 @@ MSR_INST : {
 }
 MUL_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
+        eka2l1::arm::cpumodel::multiply(1);   /* EKA2L1_CPUMODEL: ARM1136 multiply cycles */
         mul_inst *inst_cream = (mul_inst *)inst_base->component;
 
         std::uint64_t rm = RM;
@@ -4701,6 +4711,7 @@ SMUSD_INST : {
 
 SMLAL_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
+        eka2l1::arm::cpumodel::multiply(2);   /* EKA2L1_CPUMODEL: ARM1136 multiply cycles */
         umlal_inst *inst_cream = (umlal_inst *)inst_base->component;
         long long int rm = RM;
         long long int rs = RS;
@@ -4821,6 +4832,7 @@ SMMLA_INST:
 SMMLS_INST:
 SMMUL_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
+        eka2l1::arm::cpumodel::multiply(1);   /* EKA2L1_CPUMODEL: ARM1136 multiply cycles */
         smlad_inst *const inst_cream = (smlad_inst *)inst_base->component;
 
         const std::uint32_t rm_val = RM;
@@ -4874,6 +4886,7 @@ SMUL_INST : {
 }
 SMULL_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
+        eka2l1::arm::cpumodel::multiply(2);   /* EKA2L1_CPUMODEL: ARM1136 multiply cycles */
         umull_inst *inst_cream = (umull_inst *)inst_base->component;
         std::int64_t rm = RM;
         std::int64_t rs = RS;
@@ -4992,6 +5005,7 @@ STC_INST : {
 STM_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
         ldst_inst *inst_cream = (ldst_inst *)inst_base->component;
+        eka2l1::arm::cpumodel::multiple(static_cast<std::uint32_t>(__builtin_popcount(inst_cream->inst & 0xFFFFu)));   /* EKA2L1_CPUMODEL */
         unsigned int inst = inst_cream->inst;
 
         unsigned int Rn = BITS(inst, 16, 19);
@@ -5710,6 +5724,7 @@ UHSUB16_INST : {
 
 UMAAL_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
+        eka2l1::arm::cpumodel::multiply(2);   /* EKA2L1_CPUMODEL: ARM1136 multiply cycles */
         umaal_inst *const inst_cream = (umaal_inst *)inst_base->component;
         const std::uint64_t rm = RM;
         const std::uint64_t rn = RN;
@@ -5727,6 +5742,7 @@ UMAAL_INST : {
 }
 UMLAL_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
+        eka2l1::arm::cpumodel::multiply(2);   /* EKA2L1_CPUMODEL: ARM1136 multiply cycles */
         umlal_inst *inst_cream = (umlal_inst *)inst_base->component;
         unsigned long long int rm = RM;
         unsigned long long int rs = RS;
@@ -5749,6 +5765,7 @@ UMLAL_INST : {
 }
 UMULL_INST : {
     if (inst_base->cond == ConditionCode::AL || CondPassed(cpu, inst_base->cond)) {
+        eka2l1::arm::cpumodel::multiply(2);   /* EKA2L1_CPUMODEL: ARM1136 multiply cycles */
         umull_inst *inst_cream = (umull_inst *)inst_base->component;
         unsigned long long int rm = RM;
         unsigned long long int rs = RS;

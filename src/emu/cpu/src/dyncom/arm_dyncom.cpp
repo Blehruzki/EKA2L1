@@ -18,7 +18,9 @@
  */
 
 #include <chrono>
+#include <cstdio>
 #include <cpu/dyncom/arm_dyncom.h>
+#include <cpu/dyncom/cpumodel.h>
 #include <common/time.h>
 #include <cpu/dyncom/arm_dyncom_interpreter.h>
 #include <cpu/dyncom/arm_dyncom_trans.h>
@@ -32,6 +34,7 @@ namespace eka2l1::arm {
         , ticks_executed_(0)
         , mem_cache_(page_bits) {
         state_ = std::make_unique<ARMul_State>(this, USER32MODE);
+        cpumodel::init_from_env();
         // Cache the data TLB on the state so the inline memory accessors can hit
         // it without needing the full dyncom_core definition in armstate.h.
         state_->mem_cache_ = &mem_cache_;
@@ -45,10 +48,30 @@ namespace eka2l1::arm {
         state_->NumInstrsToExecute = instruction_count;
 
         const auto start = std::chrono::steady_clock::now();
+        const std::uint64_t extra0 = cpumodel::g.extra;
         InterpreterMainLoop(state_.get(), ticks_executed_);
-        common::add_cpu_cycles(ticks_executed_);
-        common::cpu_cap_throttle(ticks_executed_,
+        // EKA2L1_CPUMODEL: the cap and the cycle tick (EKA2L1_CYCLETICK, then cycles a
+        // microsecond) count modelled ARM1136 cycles instead of instructions
+        const std::uint64_t units = cpumodel::g.on
+            ? (static_cast<std::uint64_t>(ticks_executed_) * cpumodel::g.base_cpi_x100) / 100 + (cpumodel::g.extra - extra0)
+            : ticks_executed_;
+        common::add_cpu_cycles(units);
+        common::cpu_cap_throttle(units,
             std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count());
+        if (cpumodel::g.on) {
+            // every ~5 s: the model's counters since the last line, for calibrating it
+            static std::uint64_t instr = 0, last_instr = 0, last_extra = 0, last_reads = 0, last_rm = 0, last_wm = 0;
+            static auto last_t = std::chrono::steady_clock::now();
+            instr += ticks_executed_;
+            const auto now = std::chrono::steady_clock::now();
+            if (now - last_t > std::chrono::seconds(5)) {
+                const auto &m = cpumodel::g;
+                std::fprintf(stderr, "EKA2L1_CPUMODEL: %llu instr, %llu reads (%llu miss), %llu write misses, %llu extra cycles\n",
+                    (unsigned long long)(instr - last_instr), (unsigned long long)(m.reads - last_reads), (unsigned long long)(m.read_misses - last_rm),
+                    (unsigned long long)(m.write_misses - last_wm), (unsigned long long)(m.extra - last_extra));
+                last_instr = instr; last_extra = m.extra; last_reads = m.reads; last_rm = m.read_misses; last_wm = m.write_misses; last_t = now;
+            }
+        }
     }
 
     void dyncom_core::stop() {

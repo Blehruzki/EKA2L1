@@ -54,6 +54,15 @@ namespace eka2l1::common {
     // instructions-per-microsecond the tick SVCs should assume.
     std::uint64_t cycle_tick_ips();
 
+    // EKA2L1_TIMESCALE: guest clocks D times slower than the host (see time.cpp)
+    double timescale();
+    // A host service call made inside the CPU core's time slice (an HLE GL call) that
+    // the bench models as costing the guest guest_ns (EKA2L1_GPUMODEL): the call is
+    // stretched now to that cost (scaled by EKA2L1_TIMESCALE) less the host_ns the host
+    // already spent in it, and the call's whole host time is left out of the slice the
+    // cap then charges for instructions. A no-op without EKA2L1_CPUCAP.
+    void cpu_cap_pay_service(const std::uint64_t guest_ns, const std::uint64_t host_ns);
+
     // CPU speed cap (EKA2L1_CPUCAP=<instructions-per-microsecond>). Called by the
     // CPU core after each run with the instructions it executed and the host time
     // that took; sleeps the emulator thread whenever guest code ran faster than the

@@ -66,6 +66,7 @@ set(SOURCE_DYNCOM
         include/cpu/dyncom/arm_regformat.h
         include/cpu/dyncom/armstate.h
         include/cpu/dyncom/armsupp.h
+        include/cpu/dyncom/cpumodel.h
         src/dyncom/vfp/vfp.cpp
         src/dyncom/vfp/vfpdouble.cpp
         src/dyncom/vfp/vfpsingle.cpp
@@ -75,7 +76,8 @@ set(SOURCE_DYNCOM
         src/dyncom/arm_dyncom_thumb.cpp
         src/dyncom/arm_dyncom_trans.cpp
         src/dyncom/armstate.cpp
-        src/dyncom/armsupp.cpp)
+        src/dyncom/armsupp.cpp
+        src/dyncom/cpumodel.cpp)
 
 add_library(cpu
         include/cpu/arm_analyser.h
