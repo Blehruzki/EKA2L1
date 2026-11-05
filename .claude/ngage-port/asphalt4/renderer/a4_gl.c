@@ -1280,7 +1280,7 @@ static void hp_phys_post(uint32_t car, const int32_t *sv, uint32_t which, uint32
     }
 }
 #endif
-#if defined(A4_HALFPHYS) && (defined(A4_HPCENSUS) || defined(A4_HPPROBE) || defined(A4_HPTRACE))
+#if defined(A4_HALFPHYS) && (defined(A4_HPCENSUS) || defined(A4_HPPROBE) || defined(A4_HPTRACE) || defined(A4_CAMCENSUS))
 /* bench (round 42): the census (A4_HPCENSUS), the nudge probe (A4_HPPROBE) and the trace
  * (A4_HPTRACE) emit here: EKA2L1_PCMEM ats at its address, r0 0x10 (a header), r1 0xC7C (the
  * car before), r2 0xC7C (after) */
@@ -1889,6 +1889,17 @@ int a4_h_12dec(uint32_t race, uint32_t p)
     /* round 43: the whole step's camera as the game computes it. Halving the chase camera's
      * update (a filter toward a point behind the car) left it half a step's travel further back
      * (crec: 398 units from the car against 319); the odd half-step draws it extrapolated */
+#ifdef A4_CAMCENSUS
+    {   /* bench (round 43): every race word the camera update writes -- the race object before
+         * and after, through a4_hp_census (r0 0x10, r1 0x9EC, r2 0x9EC) */
+        volatile uint32_t *b = (volatile uint32_t *)(A4_GL_HP + 0x1000u), *hd = b + 0x9ECu / 4u + 4u;
+        for (uint32_t i = 0; i < 0x9ECu / 4u; i++) b[i] = ((volatile uint32_t *)race)[i];
+        int r = ((fn2)GAMEFN(a4_hc_12dec))(race, p);
+        hd[0] = 0x4D414348u; hd[1] = HP_CAMMODE(race); hd[2] = ((volatile uint32_t *)A4_GL_HSTEP)[0]; hd[3] = race;
+        a4_hp_census((const void *)hd, (const void *)b, (const void *)race);
+        return r;
+    }
+#endif
     return ((fn2)GAMEFN(a4_hc_12dec))(race, p);
 }
 /* the odd half-step: the whole step's car calls again (each halved as in the hooks), the camera
@@ -2047,7 +2058,14 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
             int32_t dx = pc[1] - HP->pw[0], dy = pc[2] - HP->pw[1], dz = pc[3] - HP->pw[2];
             int32_t dh = (pc[0x678u / 4u] - HP->pw[3]) & 2047; if (dh >= 1024) dh -= 2048;
             if (dx < 2048 && dx > -2048 && dz < 2048 && dz > -2048 && dy < 2048 && dy > -2048 && dh < 256 && dh > -256) {
-                cm[0x58u / 4u] = HP->cw[0] + dx; cm[0x5Cu / 4u] = HP->cw[1] + dy; cm[0x60u / 4u] = HP->cw[2] + dz;
+                /* the height on its own vertical move, not the car's: following the car down
+                 * over a crest put the camera inside the hill (round 37's empty renders: the
+                 * terrain's faces turned away and culled; r44t held two such frames) */
+                int32_t vy = HP->cwv >= 2u ? HP->cw[1] - HP->cwp[1] : 0;
+                if (vy > 256) vy = 256; else if (vy < -256) vy = -256;
+                (void)dy;
+                cm[0x58u / 4u] = HP->cw[0] + dx; cm[0x60u / 4u] = HP->cw[2] + dz;
+                cm[0x5Cu / 4u] = HP->cw[1] + (int32_t)(((int64_t)vy * (int32_t)qt) >> 16);
                 cm[0x68u / 4u] = (HP->cw[4] + (3 * dh) / 4) & 2047;
             }
         } else if (HP_CAMMODE(race) != 2u && HP->cwv >= 3u) {

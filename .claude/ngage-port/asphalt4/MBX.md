@@ -6342,3 +6342,20 @@ the car past +A00 with `pc:1:27C:+A00`).
   and hit; now a once-a-race latch (HP->started), cleared when the race's step count (+0x30)
   goes back (a restart). (2) Other cameras are drawn on by their last whole step's move only
   when it repeats the one before (within half of it, +8): the crash camera's jumps are held.
+- Oracle + battery of a4_r44_cand (C44, the latch and steady-camera rule; r44all.sh):
+  oracle speed 55/74/111/164/173 (stock 58/75/107/161/182), camera 320 behind (319), the
+  opponent 39/63/91/133 (37/62/88/129). Battery: tele cap 85 framestat 3375, crash-steer
+  2648, menu 3409 (18 shots), mark 1152, Veyron 1813 -- faults 1 each (the boot one);
+  emptyfind's nearest post 45.3 (no empty frame posted). Frames: drawn speed off by >25%
+  0% (tele), 0% (crash-steer); car-heading one-frame reversals 0 / 0 / 0; camera-yaw 2 / 3 / 4.
+  But: tele held 5 frames (A4_DROPHOLD), two with the camera still (camdev 13 and 1) and the
+  triangles collapsed (1696 -> 419, 713 -> 27), and crash-steer one (camdev 24, 1561 -> 775).
+  Every earlier battery's halved frames (r40t-r43v) come with a camera cut (camdev 154-778):
+  these are new with A4_FRACPHYS. Held, never posted -- but the empty-frame symptom.
+  A camera census (A4_CAMCENSUS: the race object before and after each +12DEC) finds no culling
+  key there: the chase camera writes +058..+06C, +070, +08C (a countdown), +0F4/+0FC (a vector
+  moving ~240 a step), +100 (+1 a call). Round 37's finding is the likely one: the empty
+  renders were the camera inside the LA hill (terrain faces culled). The render-time camera
+  moved with the car's whole displacement, height too -- down over a crest with the car while
+  the game's own camera is smoothed. Now its height continues its own last whole-step move
+  (capped 256) instead; place across and yaw still follow the car.
