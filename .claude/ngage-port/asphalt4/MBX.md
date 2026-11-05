@@ -6327,3 +6327,18 @@ the car past +A00 with `pc:1:27C:+A00`).
   -- recording right after the step's logic caught the camera a step behind, 484 units, since
   the camera step comes after the logic): speed 54/73/109/163/174, the camera 318 behind
   (stock 319), heading within 14 /2048 through the assist turns (the half-step build: 54).
+- Real time, cap 85 (r44q.sh: a4_r44_cand = C44; tele 150 s, crash-steer 120 s, Veyron
+  autopilot 120 s; frec.py), drawn speed off its neighbours by >25%, by render start:
+  tele 1% (half-step build 25%), crash-steer 0% (16%), Veyron 2%; Veyron camera-yaw and
+  car-heading one-frame reversals 0 and 0 (half-step build 24 and 10). Presents every 77 /
+  55 / 70 ms (the part-steps cost no visible frame time). Fraction q drawn: median 0.44-0.48,
+  10-90% 0.07..0.91 -- frames anywhere in the step.
+  Left in tele: during a wreck (camera mode 24) the crash camera jumps on its own step to step
+  (yaw 1166, 1019, 1180) and extrapolating it put a frame past the next step (1288, then
+  1182); the car's heading at the whole steps of the wreck jumps too (1342, 1414, 1305).
+- Two changes from it: (1) the start gate was "the player's +0E0 > 0" -- but +0E0 counts the
+  player's steps since its last CONTACT (crec_orn step 1076: speed 221 -> 135 and +0E0 0 for 4
+  steps; not a lap), so the cars stopped moving at the renders for ~340 ms at every wall scrape
+  and hit; now a once-a-race latch (HP->started), cleared when the race's step count (+0x30)
+  goes back (a restart). (2) Other cameras are drawn on by their last whole step's move only
+  when it repeats the one before (within half of it, +8): the crash camera's jumps are held.

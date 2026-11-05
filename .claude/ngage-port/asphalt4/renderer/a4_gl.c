@@ -1133,7 +1133,8 @@ struct hp {
     int32_t rc[HP_CARS][32];         /* hp_k1's then hp_k3's remainders (16.16) */
     int32_t pp[HP_CARS][3];          /* the place +1EA64 measured against at its last call (+0A8/+0AC/+0B0) */
     uint8_t ppv[HP_CARS];
-    int32_t cw[6], cwp[6];           /* the camera as the last whole step and the one before left it */
+    int32_t cw[6], cwp[6], cwpp[6];  /* the camera as the last three whole steps left it */
+    uint32_t started, rstep;         /* the race has started (the player's +0E0 seen above 0); its step count */
     int32_t pw[4];                   /* the player car (+004, +008, +00C, +678) as the whole step left it */
     uint32_t cwv, camx, cmode;       /* steps of it seen; the odd half-step's camera to put back; its mode */
     uint32_t committed, fwhole;      /* A4_FRACPHYS: the step's fraction the renders have moved the cars;
@@ -1900,7 +1901,7 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
         HP->race = race;
         for (uint32_t i = 0; i < HP_CARS; i++) HP->car[i] = 0;
         for (uint32_t f = 0; f < 12u; f++) HP->cc[f] = 0;
-        HP->camscript = 0; HP->cwv = 0; HP->camx = 0;
+        HP->camscript = 0; HP->cwv = 0; HP->camx = 0; HP->started = 0;
     }
     uint32_t ctx = race ? *(volatile uint32_t *)(race + 0x38) : 0;
     uint32_t K = ctx ? *(volatile uint32_t *)(ctx + 0x1114) : 0;
@@ -1916,7 +1917,14 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
      * built at +14748..+14930) the step forces to 8, the brake, until the start: replayed after
      * the start's step they braked the launch to a stall. Before the start nothing moves, so no
      * car call runs at an odd half-step until the player's +0E0 (its steps since the start) counts */
-    uint32_t started = pcar && *(volatile int32_t *)(pcar + 0xE0u) > 0;
+    /* once a race: +0E0 counts the player's steps since its last contact (0 for a few steps
+     * after a hit, crec_orn step 1076), so gating on it froze the cars at every contact */
+    {   uint32_t rs = *(volatile uint32_t *)(race + 0x30u);   /* steps since the race loaded: back to 0 on a restart */
+        if (rs < HP->rstep) HP->started = 0;
+        HP->rstep = rs;
+    }
+    if (pcar && *(volatile int32_t *)(pcar + 0xE0u) > 0) HP->started = 1;
+    uint32_t started = pcar && HP->started;
     if (pcar && first) {
         HP->pw[0] = ((volatile int32_t *)pcar)[1]; HP->pw[1] = ((volatile int32_t *)pcar)[2];
         HP->pw[2] = ((volatile int32_t *)pcar)[3]; HP->pw[3] = ((volatile int32_t *)pcar)[0x678u / 4u];
@@ -2028,8 +2036,8 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
         qt = 32768u;
 #endif
         if (first) {
-            for (uint32_t f = 0; f < 6u; f++) { HP->cwp[f] = HP->cw[f]; HP->cw[f] = cm[0x58u / 4u + f]; }
-            if (HP->cwv < 2u) HP->cwv++;
+            for (uint32_t f = 0; f < 6u; f++) { HP->cwpp[f] = HP->cwp[f]; HP->cwp[f] = HP->cw[f]; HP->cw[f] = cm[0x58u / 4u + f]; }
+            if (HP->cwv < 3u) HP->cwv++;
             if (HP_CAMMODE(race) != HP->cmode) HP->cwv = 1;   /* a new camera: its steps start again */
             HP->cmode = HP_CAMMODE(race);
         }
@@ -2042,14 +2050,17 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
                 cm[0x58u / 4u] = HP->cw[0] + dx; cm[0x5Cu / 4u] = HP->cw[1] + dy; cm[0x60u / 4u] = HP->cw[2] + dz;
                 cm[0x68u / 4u] = (HP->cw[4] + (3 * dh) / 4) & 2047;
             }
-        } else if (HP_CAMMODE(race) != 2u && HP->cwv >= 2u) {
-            /* another camera (the fly-in, the crash camera, the helicopter's): its own scripted
-             * path, drawn half its last whole step on (place and angles), not across a cut */
+        } else if (HP_CAMMODE(race) != 2u && HP->cwv >= 3u) {
+            /* another camera (the fly-in, the crash camera, the helicopter's): its own path,
+             * drawn on by its last whole step's move -- only where that move is the one before
+             * it again (a steady path); the crash camera jumps step to step (yaw 1166, 1019,
+             * 1180, r44t) and is held. Not across a cut */
             int32_t dv[6]; uint32_t cut = 0;
             for (uint32_t f = 0; f < 6u; f++) {
-                int32_t d = HP->cw[f] - HP->cwp[f];
-                if (f >= 3u) { d &= 2047; if (d >= 1024) d -= 2048; }
+                int32_t d = HP->cw[f] - HP->cwp[f], e = HP->cwp[f] - HP->cwpp[f];
+                if (f >= 3u) { d &= 2047; if (d >= 1024) d -= 2048; e &= 2047; if (e >= 1024) e -= 2048; }
                 if (d > 1024 || d < -1024) cut = 1;
+                if (iabs32(d - e) > iabs32(d) / 2 + 8) cut = 1;
                 dv[f] = d;
             }
             if (!cut) for (uint32_t f = 0; f < 6u; f++) {
@@ -2168,7 +2179,7 @@ int a4_halfstep(uint32_t race)
 #endif
 #ifdef A4_HALFPHYS
     HP->odd = 0;
-    if (HP->race != race) { HP->race = race; for (uint32_t i = 0; i < HP_CARS; i++) HP->car[i] = 0; HP->camscript = 0; HP->cwv = 0; HP->camx = 0; }
+    if (HP->race != race) { HP->race = race; for (uint32_t i = 0; i < HP_CARS; i++) HP->car[i] = 0; HP->camscript = 0; HP->cwv = 0; HP->camx = 0; HP->started = 0; }
     for (uint32_t i = 0; i < HP_CARS; i++) { HP->halve[i] = HP->ran[i]; HP->ran[i] = 0; }
     HP->fwhole = HP->committed < 65536u ? 65536u - HP->committed : 0u;   /* A4_FRACPHYS */
     HP->committed = 0;
