@@ -416,6 +416,14 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == want, 'half motion +%06X: holds %04x %04x, expected %04x %04x' % ((off,) + have + want)
             blx_insert(code, off, syms[sym])
             print('HMOT   +%06X -> %s' % (off, sym))
+    if '-DA4_HALFPHYS' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+        # round 42: the game's camera updates halved -- the whole step's (+14EEC) and slow motion's
+        # (+1306C) bl +12DEC
+        for off, want in ((0x14EEC, (0xF7FD, 0xFF7E)), (0x1306C, (0xF7FF, 0xFEBE))):
+            have = struct.unpack_from('<HH', code, off)
+            assert have == want, 'half phys: +%06X holds %04x %04x, expected %04x %04x' % ((off,) + have + want)
+            blx_insert(code, off, syms['a4_h_12dec'])
+            print('HPHY   +%06X -> a4_h_12dec +%06X' % (off, syms['a4_h_12dec'] - LINK_BASE))
     if '-DA4_SPECTRAFFIC' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
         # round 41: the traffic's step +FB12 (from +14574, once a step) recorded for the speculation
         have = struct.unpack_from('<HH', code, 0x14574)

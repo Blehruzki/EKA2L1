@@ -6172,3 +6172,44 @@ actually produce these frames with the physics working accordingly."
   carried so integer units sum exactly over two half-steps), discrete fields taken only at the
   whole step, the result kept (nothing put back). Rounds 30-31 set a hand rewrite of the 152
   writers aside; this halves the game's own results instead of its code.
+
+## Round 43 (bench): the game computing every half-step -- first attempts (A4_HALFPHYS)
+
+The owner's ask after r42. Bench only; nothing ships until the half-step car drives like the
+stock car on the oracle (A4_LOCKSTEP, A4_AUTOSTEER, the Veyron swap; tools/crec.py).
+- Design: every half-step the game's own code runs -- at odd half-steps the keys (+25E8), the
+  whole step's recorded car calls again, the camera (+12DEC; on a script it waits for the whole
+  step) -- and of each call's change to the car's continuous words a half-step keeps half
+  (hp_half: floor, the remainder carried, so integer units add up over two half-steps); the
+  game's own whole step at even half-steps, its calls halved the same way through the hooks
+  (+1DE78, +1F1F8, +1FD0E, +1EA64, +1FD5C; the camera at +14EEC and slow motion's +1306C,
+  a4_h_12dec). Nothing put back; only the render after an odd half-step has its own
+  once-a-step changes undone (hp_snap and the speculation's whole restore). The step's other
+  work (race logic, AI choices, traffic, timers, effects, sound) once a step as now.
+- hp1-hp3 (my first field lists, from the oracle's per-step deltas): the car gained speed
+  twice as fast and topped out higher (speed 201 at step 200 against 129; 339-355 against
+  ~267); a fault at +1DF7C (inside +1DE78) reading garbage through [car+0x168] after a crash --
+  +0B8/+0C0 move only in 12s (table offsets, a guess) and halving them in 1s broke them; halved
+  in 12s now. The race also started 15 steps early (a countdown somewhere runs per call).
+- The census (A4_HPCENSUS: the player car copied before each of its calls at an odd half-step,
+  unhalved, both emitted; 1,451 calls): my labels were inverted. +1DE78 moves the position on
+  every call (+004/+00C by the whole velocity) and runs the engine (+7D0, +7D8, +7E4) and
+  counters (+820, +A2C/+A34, +A00, +ADC); +1EA64 changes the velocity (+010/+018), the height,
+  the revolutions +02C, the wheels' phase +020, the steering and slip (+0B8/+0C0/+0C4/+0CC),
+  the heading +678, the contact forces +0F0/+0F8 and flags +B28. So handing +1EA64 half the
+  velocity (hp1-hp3's movement wrapper) never halved the distance: +1DE78 moved the car a
+  whole step every half-step.
+- hp4 (field lists per call from the census): no fault, but now the car barely accelerates
+  (speed 10-20): some halved words are recomputed from others each call (the speed from the
+  velocity, a guess), so halving them on top of their inputs compounds. And the race still
+  starts 15 steps early.
+- A nudge probe (A4_HPPROBE: the player's call run twice from one start, as is and with one
+  word nudged first; a nudge that survives is the car's own state, one the call overwrites is
+  derived) ran on a car that never moved (speed 0 in 2,008 of 2,010 records): no answer yet.
+- Where we are (rule 3): the method runs the game's own code every half-step without a fault;
+  the dynamics do not match the stock car yet. Next: the nudge probe on a moving car (the
+  probe's own car must drive -- the halving off for the probe run), then halve exactly the
+  words that carry state, find the per-call countdown, and only then the oracle again.
+- Guesses (rule 4): +0B8/+0C0 as table offsets; the speed derived from the velocity; that the
+  other cars' +1F1F8/+1FD0E change both call's words (not measured: the census saw the player).
+  Shipped builds unaffected: r41 and r42 rebuild byte-identical; the bench archives restored.

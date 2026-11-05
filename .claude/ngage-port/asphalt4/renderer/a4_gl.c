@@ -1036,16 +1036,172 @@ typedef int (*fn5)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 typedef int (*fn3)(uint32_t, uint32_t, uint32_t);
 typedef int (*fn2)(uint32_t, uint32_t);
 typedef int (*fn1)(uint32_t);
+#ifdef A4_HALFPHYS
+/* Round 42 (owner, after the interpolation: "I think we need to find a way for the game to
+ * actually produce these frames with the physics working accordingly"): the game's logic every
+ * half-step for real. The step has no time delta (round 30): its amounts are per step. So the
+ * game's own code runs every half-step -- the cars' physics and movement and the camera, with the
+ * keys of that half-step -- and of what it changes, the continuous quantities are kept half:
+ *  - the movement (+1EA64, +1FD5C) is handed half the car's velocity (+010/+014/+018: exactly
+ *    the position's change a step, the oracle's stock run) and integrates half a step itself --
+ *    walls, the track segment, all its own; the velocity put back after (a collision's change
+ *    to it scaled back up);
+ *  - the physics (+1DE78, +1F1F8, +1FD0E): its change to each rate field (hp_rate: the speed
+ *    words, +7D8, the heading +678, +680/+688, the steering +0B8/+0C0, the slip +0C4/+0CC,
+ *    +028, the wheels' phase +020, the step counters +0E0/+820) kept half;
+ *  - the camera (+12DEC): its change to the position, angles, transition counter and lag pair
+ *    kept half -- unless it is playing a script (a takedown, a crash, an event camera), which
+ *    then runs at the whole step only, as the game made it.
+ * Halves of integer units carry their remainder (hp_half), so two half-steps add up exactly.
+ * Everything else (the race's decisions, timers, the AI's choices, traffic, effects, sounds)
+ * runs once a step in the game's own whole step, as now. Nothing is put back: every half-step
+ * is the game's state. Only the render after an odd half-step has its own once-a-step changes
+ * undone (the per-car flip, the countdown, +0x388), as the game renders once a step. */
+#define A4_GL_HP 0x0045D000u
+#define HP_CARS 16u
+/* Which words each call changes, measured (hpc: the player car copied before each of its calls at
+ * an odd half-step, 1,451 calls, the Veyron): +1DE78 moves the position (+004/+00C by the whole
+ * velocity on every call) and runs the engine (+7D0, +7D8, +7E4) and counters (+820, +A2C, +A34,
+ * +A00, +ADC); +1EA64 changes the velocity (+010/+018), the height (+008, copies +0AC/+0D0), the
+ * wheels' phase +020, the revolutions +02C, +028, the speed copy +0B4, the steering and slip
+ * (+0B8/+0C0/+0C4/+0CC), the heading +678. Of each such change a half-step keeps half. Left as
+ * the call computes them: copies and derived words (the position copies +0A8/+0B0, the
+ * orientation matrices, the track segment +01C), flags (+B28), contact forces (+0F0/+0F8), and a
+ * call's change to the position in +1EA64 (a wall pushing the car out). Each entry: the offset,
+ * its circle (0: none), its quantum (+0B8/+0C0 move only in 12s -- offsets into a table of
+ * 12-byte entries, a guess -- and are halved in 12s), the change beyond which it is a jump. */
+struct hprate { uint16_t off, circ, q, jump; };
+static const struct hprate hp_k1[] = {      /* +1DE78 (the player), and the half of +1F1F8 / +1FD0E that it covers */
+    { 0x004, 0, 1, 2048 }, { 0x00C, 0, 1, 2048 }, { 0x7D0, 0, 1, 4096 }, { 0x7D8, 0, 1, 4096 }, { 0x7E4, 0, 1, 4096 },
+    { 0x680, 0, 1, 4096 }, { 0x688, 0, 1, 4096 }, { 0x820, 0, 1, 4096 }, { 0xA00, 0, 1, 4096 }, { 0xA24, 0, 1, 4096 },
+    { 0xA2C, 0, 1, 4096 }, { 0xA34, 0, 1, 4096 }, { 0xA7C, 0, 1, 4096 }, { 0xABC, 0, 1, 4096 }, { 0xADC, 0, 1, 4096 },
+    { 0x0E0, 0, 1, 4096 } };
+static const struct hprate hp_k3[] = {      /* +1EA64 / +1FD5C, and the other half of +1F1F8 / +1FD0E */
+    { 0x008, 0, 1, 2048 }, { 0x0AC, 0, 1, 2048 }, { 0x0D0, 0, 1, 2048 }, { 0x010, 0, 1, 4096 }, { 0x018, 0, 1, 4096 },
+    { 0x02C, 0, 1, 1024 }, { 0x028, 0, 1, 4096 }, { 0x0B4, 0, 1, 4096 }, { 0x0B8, 0, 12, 4096 }, { 0x0C0, 0, 12, 4096 },
+    { 0x0C4, 0, 1, 4096 }, { 0x0CC, 0, 1, 4096 }, { 0xB98, 0, 1, 4096 },
+    { 0x678, 2048, 1, 4096 }, { 0x020, 4096, 1, 4096 } };
+#define HP_N1 (sizeof hp_k1 / sizeof hp_k1[0])
+#define HP_N3 (sizeof hp_k3 / sizeof hp_k3[0])
+#define HP_NR (HP_N1 + HP_N3)
+static const uint8_t hp_cam[] = { 0x58, 0x5C, 0x60, 0x64, 0x68, 0x6C, 0x70, 0xE4, 0xE8 };   /* +0x64..+0x6C on 2048 */
+#define HP_NC (sizeof hp_cam / sizeof hp_cam[0])
+struct hp {
+    uint32_t race;                   /* the race the carries belong to */
+    uint32_t car[HP_CARS];           /* the cars seen, for their carries */
+    int8_t rc[HP_CARS][32];          /* hp_k1's then hp_k3's remainders */
+    int8_t vc[HP_CARS][4];           /* the velocity halves' remainders */
+    int8_t cc[12];                   /* the camera's */
+    uint32_t odd;                    /* the last half-step was odd: the render after it is undone */
+    uint32_t camscript;              /* the camera was on a script at the last odd half-step */
+    uint32_t replaying;              /* the odd half-step's own calls: the hooks leave them alone */
+    uint32_t nodd, nscript;          /* counts: odd half-steps run, of them with the camera on a script */
+};
+_Static_assert(HP_NR <= 32u && HP_NC <= 12u, "carry arrays");
+_Static_assert(A4_GL_HP >= 0x0045C000u + (16u + 15u * 16u + 8u) * 4u && A4_GL_HP + sizeof(struct hp) <= 0x00460000u, "the half-step physics block");
+#define HP ((volatile struct hp *)A4_GL_HP)
+static int32_t hp_half(int32_t d, volatile int8_t *c)
+{
+    int32_t t = d + *c, a = t >> 1;  /* floor; the remainder (0 or 1) waits for the next half */
+    *c = (int8_t)(t - 2 * a);
+    return a;
+}
+static uint32_t hp_idx(uint32_t car)
+{
+    uint32_t i;
+    for (i = 0; i < HP_CARS; i++) if (HP->car[i] == car) return i;
+    for (i = 0; i < HP_CARS; i++) if (!HP->car[i]) break;
+    if (i == HP_CARS) return HP_CARS;
+    HP->car[i] = car;
+    for (uint32_t f = 0; f < 32u; f++) HP->rc[i][f] = 0;
+    for (uint32_t f = 0; f < 4u; f++) HP->vc[i][f] = 0;
+    return i;
+}
+static const struct hprate *hp_ent(uint32_t f) { return f < HP_N1 ? &hp_k1[f] : &hp_k3[f - HP_N1]; }
+static void hp_phys_pre(uint32_t car, int32_t *sv)
+{
+    const volatile int32_t *c = (const volatile int32_t *)car;
+    for (uint32_t f = 0; f < HP_NR; f++) sv[f] = c[hp_ent(f)->off / 4u];
+}
+/* which: 1 the +1DE78 words, 2 the +1EA64 words, 3 both (+1F1F8 / +1FD0E: not measured, a guess) */
+static void hp_phys_post(uint32_t car, const int32_t *sv, uint32_t which)
+{
+    uint32_t i = hp_idx(car);
+    if (i >= HP_CARS) return;
+    volatile int32_t *c = (volatile int32_t *)car;
+    for (uint32_t f = 0; f < HP_NR; f++) {
+        if (!(which & (f < HP_N1 ? 1u : 2u))) continue;
+        const struct hprate *e = hp_ent(f);
+        uint32_t w = e->off / 4u, circ = e->circ;
+        int32_t q = (int32_t)e->q, d = c[w] - sv[f];
+        if (circ) { d &= (int32_t)circ - 1; if (d >= (int32_t)circ / 2) d -= (int32_t)circ; }
+        else if (d > (int32_t)e->jump || d < -(int32_t)e->jump) continue;   /* a jump (a reset, a respawn): as computed */
+        int32_t u = d;               /* d in units of q (1 or 12; no divide in the blob: t/12 = t*43691 >> 19, exact below 2^17) */
+        if (q == 12) {
+            int32_t t = d < 0 ? -d : d, k = (int32_t)(((uint32_t)t * 43691u) >> 19);
+            if (k * 12 != t) continue;                     /* not in its quantum: as computed */
+            u = d < 0 ? -k : k;
+        }
+        int32_t v = sv[f] + q * hp_half(u, &HP->rc[i][f]);
+        c[w] = circ ? (v & ((int32_t)circ - 1)) : v;
+    }
+}
+static void hp_cam_pre(uint32_t race, int32_t *sv)
+{
+    for (uint32_t f = 0; f < HP_NC; f++) sv[f] = ((volatile int32_t *)race)[hp_cam[f] / 4u];
+}
+static void hp_cam_post(uint32_t race, const int32_t *sv)
+{
+    volatile int32_t *cm = (volatile int32_t *)race;
+    for (uint32_t f = 0; f < HP_NC; f++) {
+        uint32_t w = hp_cam[f] / 4u, circ = (hp_cam[f] >= 0x64u && hp_cam[f] <= 0x6Cu) ? 2048u : 0u;
+        int32_t d = cm[w] - sv[f];
+        if (circ) { d &= 2047; if (d >= 1024) d -= 2048; }
+        if (d > 1024 || d < -1024) continue;               /* a cut: as computed */
+        cm[w] = sv[f] + hp_half(d, &HP->cc[f]);
+    }
+}
+#endif
 int a4_h_1de78(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t s0)
-{ hcall_rec(1, a0, a1, a2, a3, s0); return ((fn5)GAMEFN(a4_hc_1de78))(a0, a1, a2, a3, s0); }
+{
+    hcall_rec(1, a0, a1, a2, a3, s0);
+#ifdef A4_HALFPHYS
+    if (!HP->replaying) { int32_t sv[HP_NR]; hp_phys_pre(a0, sv); int r = ((fn5)GAMEFN(a4_hc_1de78))(a0, a1, a2, a3, s0); hp_phys_post(a0, sv, 1u); return r; }
+#endif
+    return ((fn5)GAMEFN(a4_hc_1de78))(a0, a1, a2, a3, s0);
+}
 int a4_h_1f1f8(uint32_t a0, uint32_t a1, uint32_t a2)
-{ hcall_rec(2, a0, a1, a2, 0, 0); return ((fn3)GAMEFN(a4_hc_1f1f8))(a0, a1, a2); }
+{
+    hcall_rec(2, a0, a1, a2, 0, 0);
+#ifdef A4_HALFPHYS
+    if (!HP->replaying) { int32_t sv[HP_NR]; hp_phys_pre(a0, sv); int r = ((fn3)GAMEFN(a4_hc_1f1f8))(a0, a1, a2); hp_phys_post(a0, sv, 3u); return r; }
+#endif
+    return ((fn3)GAMEFN(a4_hc_1f1f8))(a0, a1, a2);
+}
 int a4_h_1ea64(uint32_t a0, uint32_t a1, uint32_t a2)
-{ hcall_rec(3, a0, a1, a2, 0, 0); return ((fn3)GAMEFN(a4_hc_1ea64))(a0, a1, a2); }
+{
+    hcall_rec(3, a0, a1, a2, 0, 0);
+#ifdef A4_HALFPHYS
+    if (!HP->replaying) { int32_t sv[HP_NR]; hp_phys_pre(a0, sv); int r = ((fn3)GAMEFN(a4_hc_1ea64))(a0, a1, a2); hp_phys_post(a0, sv, 2u); return r; }
+#endif
+    return ((fn3)GAMEFN(a4_hc_1ea64))(a0, a1, a2);
+}
 int a4_h_1fd5c(uint32_t a0, uint32_t a1)
-{ hcall_rec(4, a0, a1, 0, 0, 0); return ((fn2)GAMEFN(a4_hc_1fd5c))(a0, a1); }
+{
+    hcall_rec(4, a0, a1, 0, 0, 0);
+#ifdef A4_HALFPHYS
+    if (!HP->replaying) { int32_t sv[HP_NR]; hp_phys_pre(a0, sv); int r = ((fn2)GAMEFN(a4_hc_1fd5c))(a0, a1); hp_phys_post(a0, sv, 2u); return r; }
+#endif
+    return ((fn2)GAMEFN(a4_hc_1fd5c))(a0, a1);
+}
 int a4_h_1fd0e(uint32_t a0)
-{ hcall_rec(5, a0, 0, 0, 0, 0); return ((fn1)GAMEFN(a4_hc_1fd0e))(a0); }
+{
+    hcall_rec(5, a0, 0, 0, 0, 0);
+#ifdef A4_HALFPHYS
+    if (!HP->replaying) { int32_t sv[HP_NR]; hp_phys_pre(a0, sv); int r = ((fn1)GAMEFN(a4_hc_1fd0e))(a0); hp_phys_post(a0, sv, 3u); return r; }
+#endif
+    return ((fn1)GAMEFN(a4_hc_1fd0e))(a0);
+}
 static void hcall_replay(void) __attribute__((unused));
 static void hcall_replay(void)
 {
@@ -1252,7 +1408,7 @@ static void ip_capture(uint32_t race)
     for (uint32_t w = 0; w < 6u; w++) B[16 + IP_NCAR * IP_W + w] = ((volatile uint32_t *)race)[0x58u / 4u + w];
 }
 #endif
-static void spec_run(uint32_t race, uint32_t q16)
+static void __attribute__((unused)) spec_run(uint32_t race, uint32_t q16)
 {
     volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP, *sp = (volatile uint32_t *)A4_GL_SPEC;
     uint32_t n = 0;
@@ -1546,13 +1702,175 @@ static void spec_run(uint32_t race, uint32_t q16)
     }
 }
 #endif
+#ifdef A4_HALFPHYS
+/* the game's own camera updates (the whole step's +14EEC, slow motion's +1306C), halved too */
+int a4_h_12dec(uint32_t race, uint32_t p)
+{
+    int32_t cv[HP_NC];
+    hp_cam_pre(race, cv);
+    int r = ((fn2)GAMEFN(a4_hc_12dec))(race, p);
+    if (!HP->camscript) hp_cam_post(race, cv);
+    return r;
+}
+#if defined(A4_HPCENSUS) || defined(A4_HPPROBE)
+/* bench (round 42): for each of the player car's calls at an odd half-step, the car before (a copy
+ * in the snapshot area, free at an odd half-step) and after the call, unhalved -- every word a
+ * physics or movement call changes -- for EKA2L1_PCMEM ats at its address (r0 0x10, r1 0xC7C,
+ * r2 0xC7C): [0] 'HPCN', [1] the call's kind, [2] the odd half-steps so far, [3] the car */
+__attribute__((noinline)) void a4_hp_census(const void *hdr, const void *before, const void *after)
+{
+    __asm__ volatile("" : : "r"(hdr), "r"(before), "r"(after) : "memory");
+}
+#endif
+/* the odd half-step: the keys of this half-step, the whole step's car calls again (each halved as
+ * in the hooks), the camera (halved; on a script it waits for the whole step) */
+static void hp_odd(uint32_t race)
+{
+    volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP, *sp = (volatile uint32_t *)A4_GL_SPEC;
+    if (HP->race != race) {
+        HP->race = race;
+        for (uint32_t i = 0; i < HP_CARS; i++) HP->car[i] = 0;
+        for (uint32_t f = 0; f < 12u; f++) HP->cc[f] = 0;
+        HP->camscript = 0;
+    }
+    uint32_t ctx = race ? *(volatile uint32_t *)(race + 0x38) : 0;
+    uint32_t K = ctx ? *(volatile uint32_t *)(ctx + 0x1114) : 0;
+    if (!race) return;
+    HP->replaying = 1; h[3] = 1;
+    if (K) ((void (*)(uint32_t, uint32_t))GAMEFN(a4_hc_25e8))(K, 0);
+#if defined(A4_HPCENSUS) || defined(A4_HPPROBE)
+    uint32_t pl = *(volatile uint32_t *)(race + 0x390), pidx = pl ? *(volatile uint32_t *)(pl + 0xC) : 99u;
+    uint32_t pcar = pidx < 16u ? *(volatile uint32_t *)(race + 0x394 + 4u * pidx) : 0;
+#endif
+    for (uint32_t i = 0; i < h[2]; i++) {
+        volatile uint32_t *c = (volatile uint32_t *)A4_GL_HCALL + 6u * i;
+        uint32_t car = c[1];
+#ifdef A4_HPPROBE
+        if (car == pcar) {
+            /* bench (round 42): which words are the car's own state and which are recomputed. The
+             * call run from the same start twice -- as it is, and with one word nudged first (the
+             * words in turn, one an odd half-step) -- both results emitted: a nudge that carries
+             * through to the result is state (an integrator); one the call overwrites is derived.
+             * The car then left with the plain result. EKA2L1_PCMEM ats at a4_hp_census: r0 0x10
+             * ([0] 'HPPR', [1] kind | word << 8, [2] the nudge, [3] the car), r1 0xC7C (plain),
+             * r2 0xC7C (nudged) */
+            static const uint16_t pw[] = { 0x004, 0x008, 0x00C, 0x010, 0x014, 0x018, 0x020, 0x028, 0x02C, 0x0B4, 0x0B8, 0x0C0,
+                                           0x0C4, 0x0CC, 0x0D4, 0x0E0, 0x678, 0x680, 0x688, 0x7D0, 0x7D8, 0x7E4, 0x7F8, 0x820,
+                                           0xA00, 0xA24, 0xA2C, 0xA34, 0xA7C, 0xABC, 0xADC, 0xB98, 0x0F0, 0x0F8, 0x164, 0x15C };
+            volatile uint32_t *hd = (volatile uint32_t *)(A4_GL_SNAP + SPEC_MAXCARS * SPEC_CARSZ - 0x10u);
+            volatile uint32_t *s0 = (volatile uint32_t *)A4_GL_SNAP, *s1 = (volatile uint32_t *)(A4_GL_SNAP + SPEC_CARSZ);
+            uint32_t wi = pw[(HP->nodd / 2u) % (sizeof pw / sizeof pw[0])] / 4u;
+            int32_t nudge = (wi == 0x0B8u / 4u || wi == 0x0C0u / 4u) ? 48 : (wi == 0x0E0u / 4u || wi == 0x820u / 4u || wi == 0xA2Cu / 4u || wi == 0xA34u / 4u || wi == 0x164u / 4u || wi == 0x15Cu / 4u) ? 3 : 64;
+            for (uint32_t run = 0; run < 2u; run++) {
+                if (run == 0) words_copy(s0, (volatile uint32_t *)car, SPEC_CARSZ / 4u);
+                else { words_copy((volatile uint32_t *)car, s0, SPEC_CARSZ / 4u); ((volatile int32_t *)car)[wi] += nudge; }
+                switch (c[0]) {
+                case 1: ((fn5)GAMEFN(a4_hc_1de78))(c[1], c[2], c[3], c[4], c[5]); break;
+                case 2: ((fn3)GAMEFN(a4_hc_1f1f8))(c[1], c[2], c[3]); break;
+                case 3: ((fn3)GAMEFN(a4_hc_1ea64))(c[1], c[2], c[3]); break;
+                case 4: ((fn2)GAMEFN(a4_hc_1fd5c))(c[1], c[2]); break;
+                case 5: ((fn1)GAMEFN(a4_hc_1fd0e))(c[1]); break;
+                }
+                if (run == 0) words_copy(s1, (volatile uint32_t *)car, SPEC_CARSZ / 4u);
+            }
+            hd[0] = 0x52505048u; hd[1] = c[0] | (wi * 4u) << 8; hd[2] = (uint32_t)nudge; hd[3] = car;
+            a4_hp_census((const void *)hd, (const void *)s1, (const void *)car);
+            words_copy((volatile uint32_t *)car, s1, SPEC_CARSZ / 4u);   /* the plain result stands */
+            continue;
+        }
+#endif
+#ifdef A4_HPCENSUS
+        if (car == pcar) {           /* the call unhalved, the car before and after it */
+            volatile uint32_t *hd = (volatile uint32_t *)(A4_GL_SNAP + SPEC_MAXCARS * SPEC_CARSZ - 0x10u);
+            words_copy((volatile uint32_t *)A4_GL_SNAP, (volatile uint32_t *)car, SPEC_CARSZ / 4u);
+            switch (c[0]) {
+            case 1: ((fn5)GAMEFN(a4_hc_1de78))(c[1], c[2], c[3], c[4], c[5]); break;
+            case 2: ((fn3)GAMEFN(a4_hc_1f1f8))(c[1], c[2], c[3]); break;
+            case 3: ((fn3)GAMEFN(a4_hc_1ea64))(c[1], c[2], c[3]); break;
+            case 4: ((fn2)GAMEFN(a4_hc_1fd5c))(c[1], c[2]); break;
+            case 5: ((fn1)GAMEFN(a4_hc_1fd0e))(c[1]); break;
+            }
+            hd[0] = 0x4E435048u; hd[1] = c[0]; hd[2] = HP->nodd; hd[3] = car;
+            a4_hp_census((const void *)hd, (const void *)A4_GL_SNAP, (const void *)car);
+            continue;
+        }
+#endif
+        if (c[0] >= 1u && c[0] <= 5u) {
+            int32_t sv[HP_NR];
+            hp_phys_pre(car, sv);
+            switch (c[0]) {
+            case 1: ((fn5)GAMEFN(a4_hc_1de78))(c[1], c[2], c[3], c[4], c[5]); break;
+            case 2: ((fn3)GAMEFN(a4_hc_1f1f8))(c[1], c[2], c[3]); break;
+            case 3: ((fn3)GAMEFN(a4_hc_1ea64))(c[1], c[2], c[3]); break;
+            case 4: ((fn2)GAMEFN(a4_hc_1fd5c))(c[1], c[2]); break;
+            case 5: ((fn1)GAMEFN(a4_hc_1fd0e))(c[1]); break;
+            }
+            hp_phys_post(car, sv, c[0] == 1u ? 1u : (c[0] == 3u || c[0] == 4u) ? 2u : 3u);
+        }
+    }
+    {   volatile uint32_t z = 0;
+        int32_t cv[HP_NC];
+        hp_cam_pre(race, cv);
+        sp[24] = 1; sp[25] = 0;      /* a4_cs_*_tramp: no script played, set up or keyed here; counted */
+        ((void (*)(uint32_t, volatile uint32_t *))GAMEFN(a4_hc_12dec))(race, &z);
+        sp[24] = 0;
+        if (sp[25]) {                /* on a script: the camera as the whole step left it */
+            for (uint32_t f = 0; f < HP_NC; f++) ((volatile int32_t *)race)[hp_cam[f] / 4u] = cv[f];
+            HP->camscript = 1; HP->nscript++;
+        } else { hp_cam_post(race, cv); HP->camscript = 0; }
+    }
+    h[3] = 0; HP->replaying = 0; HP->nodd++;
+}
+/* before the render after an odd half-step: what the render changes is put back after it (the
+ * speculation's save and whole restore), and the traffic drawn half a step on */
+static void hp_snap(uint32_t race)
+{
+    volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP, *sp = (volatile uint32_t *)A4_GL_SPEC;
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < h[2]; i++) {
+        uint32_t car = ((volatile uint32_t *)A4_GL_HCALL)[6u * i + 1u], j;
+        for (j = 0; j < n && sp[4 + j] != car; j++) ;
+        if (j == n && n < SPEC_MAXCARS) sp[4 + n++] = car;
+    }
+    sp[0] = n;
+    for (uint32_t i = 0; i < n; i++)
+        words_copy((volatile uint32_t *)(A4_GL_SNAP + i * SPEC_CARSZ), (volatile uint32_t *)sp[4 + i], SPEC_CARSZ / 4u);
+    uint32_t ctx = *(volatile uint32_t *)(race + 0x38);
+    uint32_t K = ctx ? *(volatile uint32_t *)(ctx + 0x1114) : 0;
+    sp[2] = K;
+    if (K) words_copy(sp + 32, (volatile uint32_t *)K, 16);
+    sp[3] = race;
+    words_copy(sp + 64, (volatile uint32_t *)race, SPEC_RACESZ / 4u);
+#ifdef A4_SPECTRAFFIC
+    sp[26] = (sp[27] && h[0] - sp[28] <= 2u) ? sp[27] : 0u;
+    if (sp[26]) {
+        words_copy((volatile uint32_t *)A4_GL_TSNAP, (volatile uint32_t *)sp[26], TRAF_SZ / 4u);
+        for (uint32_t i = 0; i < TRAF_N; i++) {
+            volatile int32_t *c = (volatile int32_t *)(sp[26] + i * TRAF_CARSZ);
+            const volatile int32_t *p = (const volatile int32_t *)(A4_GL_TPREV + i * TRAF_CARSZ);
+            if (c[1] == p[1] && c[3] == p[3]) continue;
+            if (iabs32(c[1] - p[1]) > SPEC_CUT || iabs32(c[3] - p[3]) > SPEC_CUT || iabs32(c[0x11Cu / 4u] - p[0x11Cu / 4u]) > 512) continue;
+            static const uint16_t tw[] = { 0x004, 0x008, 0x00C, 0x04C, 0x050, 0x054, 0x058, 0x05C, 0x060, 0x064, 0x068, 0x06C,
+                                           0x0A8, 0x0AC, 0x0B0, 0x11C, 0x120, 0x124 };
+            for (uint32_t f = 0; f < sizeof tw / sizeof tw[0]; f++) { uint32_t w = tw[f] / 4u; c[w] += (c[w] - p[w]) / 2; }
+        }
+    }
+#endif
+    sp[1] = 1; sp[20] = 0;
+}
+#endif
 int a4_halfstep(uint32_t race)
 {
     volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP;
     (void)race;
     uint32_t k = h[0]++;
     if (k & 1u) {                    /* odd */
-#if defined(A4_HALFSPEC)
+#if defined(A4_HALFPHYS)
+        spec_restore();
+        hp_odd(race);                /* round 42: the game's cars and camera, half a step, for real */
+        HP->odd = 1;
+        h[1]++;
+#elif defined(A4_HALFSPEC)
 #ifdef A4_ABCYCLE10
         if (A4_PERF[PF_MODE] & AB_HSPEC)  /* the A/B: off, the odd half-step is empty and draws nothing */
 #endif
@@ -1570,6 +1888,10 @@ int a4_halfstep(uint32_t race)
 #endif
 #ifdef A4_INTERP
     ip_capture(race);                /* the state before this whole step, to draw the next frames from */
+#endif
+#ifdef A4_HALFPHYS
+    HP->odd = 0;
+    if (HP->race != race) { HP->race = race; for (uint32_t i = 0; i < HP_CARS; i++) HP->car[i] = 0; HP->camscript = 0; }
 #endif
 #ifdef A4_HALFMOTION
     h[2] = 0;                        /* the whole step about to run records its car calls */
@@ -1679,14 +2001,28 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
             mark_q16 = q16 | 0x80000000u;
 #endif
             if (q16 > 65535u) q16 = 65535u;
-#ifdef A4_INTERP
+#ifdef A4_HALFPHYS
+            /* every half-step is the game's own state: drawn as it is. After an odd half-step the
+             * render's own once-a-step changes are undone (and the traffic, moved once a step,
+             * drawn half a step on) */
+            (void)q16;
+#if defined(A4_FRAMEMARK) || defined(A4_FRAMEREC)
+            mark_q16 = (HP->odd ? 32768u : 0u) | 0x80000000u;
+#endif
+            if (HP->odd) {
+                hp_snap(race);
+#elif defined(A4_INTERP)
             if (1) {                 /* every frame: at q 0 it shows the step before, not this one */
 #else
             if (q16 >= 2048u) {      /* under 1/32 of a step (2.7 ms): the whole step as it is */
 #endif
+#ifndef A4_HALFPHYS
                 uint32_t s0 = a4_ntick();
                 spec_run(race, q16);
                 ((volatile uint32_t *)A4_GL_SPEC)[20] = h[5] ? 1u : 0u;   /* the first render since a whole step keeps its own changes */
+#else
+                uint32_t s0 = a4_ntick();
+#endif
                 uint32_t dt = a4_ntick() - s0;
                 A4_PERF[PF_TSPEC] += dt; if (dt > A4_PERF[PF_MSPEC]) A4_PERF[PF_MSPEC] = dt;
                 STEPB[3] += dt; STEPB[6]++;
