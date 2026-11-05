@@ -6522,3 +6522,51 @@ turbo test against the unmodified game, and N95 GPU documentation behind an emul
   the height and wheels, with no scaling at the step; the test is the car records equal to
   stock's word for word in lockstep (the pointer words aside), then this bench's curve and ramp.
   The cost to expect: a snap at the step when the velocity changed (collisions), the r41 trade.
+
+## Round 46 (bench): drawn-only frames with a corrector (A4_KINEDRAW)
+
+Owner, after round 45's bench: "Do it [frames drawn only], but make sure that snap is fixed either
+at the moment or afterwards. You may want to analyze this better before committing to it."
+- Analysis first (the record and the stock car records). r41's snap-backs were the prediction
+  meeting a key change it could not know (round 41 bench: drawn at q 0.93 toward a heading +51,
+  the step turned +19); r42's interpolation had none but sat a step late ("sluggish"). Any
+  predictor is sometimes wrong, so the fix is in how a wrong prediction is undone. On jt_n (stock,
+  real time, calibrated bench) "the last step again" misses the position by a median 1.4 units,
+  99% 43, at most 107 over a whole step; the heading is the velocity's direction (median 1 /2048)
+  and the game turns in pulses of 20 /2048 a step, 2-4 steps long: a full last-turn prediction
+  misses by >= 16 /2048 in 144 of 1,331 steps, 3/4 of it in 71, half in 70 -- the heading is
+  where a snap would show (the camera turns with it).
+- Design: no game code at a frame (the physics bit-identical by construction: r44/r45's lesson).
+  Each car the step moved is drawn from the state the step left -- along its velocity, turned by
+  3/4 of its last turn (A4_KD_TURN), its height on its vertical velocity but never under the
+  ground drawn on by the ground's own last change -- and every drawn word (+004, +008, +00C,
+  +0A8, +0B0, +0D0, +020, +678) is put back at the even half-step before the step, whose car
+  calls run untouched (HP_HOOK empty). The snap fix, a corrector (kd_correct): at the first frame
+  after a step, the frame continues from where the last frame drew the object, at the new
+  velocity, and the difference fades out over a step (A4_KD_TAUSH 16): no frame jumps, and the
+  picture is the game's own within a step; not across a cut (a respawn). The same for the chase
+  camera (+0x58, +0x5C, +0x60, +0x68), and for the traffic (+004/+00C and the words that moved
+  exactly as the position did that step and sit near it -- its copies, found per car per step).
+  A4_KD_NOCORR (bench) turns the corrector off.
+- Rule 4 caught before the first run: the frame at q 0 skipped the old 256-unit gate (now every
+  frame draws), K must not be restored (the keys that arrive before the next half-step are the
+  player's), a reused car slot resets its corrector.
+- Lockstep against stock (crec_ors0 = C37nohalf, 1 frame a step; crec_ord / ord2 = C46, 2 frames
+  a step; eqcheck.py / aligncheck.py): every physics word identical; the render's own counters
+  differed (+15C ran 2 a step, two +B28 bits): since round 43 every frame kept the render's own
+  changes. kd_snapall now saves the moved cars and the race object after a frame other than the
+  step's first and puts them back whole at the next half-step (rounds 33-42 did the same). After
+  it, aligned by the race's own step (race+0x30): positions, height, heading, speed identical for
+  946 race steps (k 797); render-side words differ before that (+15C one render apart -- stock
+  records at the step's start, after the last render, r46 before its first; +AC0 4..8, +ACC/+AD0,
+  +AD8/+ADC from race step 350-532: words the render sets, +AC0 like a detail level by camera
+  distance). For scale: stock lockstep against stock real time parts at k 829.
+- Real time, calibrated bench (jt_d, the round 45 settings, 120 s, Veyron swap restored): no
+  wreck; positions/height/heading/speed identical to stock's real-time run (jt_n) for 1,100 race
+  steps (k 951), through the left-hand curve where r45 wrecked and over the ramp: airborne at
+  k 923, 14 steps, 3,994 units, peak 260, 267 -> 278 km/h -- stock's numbers to the unit (its
+  recorder skips a step where two whole steps fall between frames; aligned by the race step).
+  Presents every 66 ms (10-90% 53-85; the phone 67-68); drawn speed off its neighbours by >25%
+  0%; camera-yaw and car-heading one-frame reversals 0 and 0 in 417 frames. The corrector at each
+  step's first frame (kdan.py, 'CRKD' records): player position offset median 3.1 units (90% 49,
+  99% 83), heading 0.6 /2048 (90% 36, 99% 79), camera yaw 1.0 (90% 43, 99% 62); cuts 4.

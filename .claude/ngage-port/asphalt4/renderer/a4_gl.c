@@ -1191,6 +1191,19 @@ struct hp {
     int32_t yW[HP_CARS], dW[HP_CARS], wW[HP_CARS];   /* drawn-only words as the whole step left them */
     uint8_t disp[HP_CARS];
     uint32_t wstep;
+#ifdef A4_KINEDRAW
+    int32_t xW[HP_CARS], zW[HP_CARS], hW[HP_CARS], aW[HP_CARS], bW[HP_CARS];   /* drawn-only, as the step left them */
+    int32_t gW[HP_CARS], dWp[HP_CARS];   /* the ground's change last step, and its height a step back */
+    int32_t kE[HP_CARS][4], kD[HP_CARS][4];   /* the corrector (x, z, heading, height; 1/256): offset, last drawn */
+    uint32_t kT[HP_CARS];            /* when it was last drawn (whole steps << 16 | q16) */
+    uint8_t kV[HP_CARS];
+    int32_t cE[4], cD[4];            /* the chase camera's (+0x58, +0x5C, +0x60, +0x68) */
+    uint32_t cT, cV;
+    uint32_t kn, kbig, kcut;         /* corrections made, of them over 16 units / 16 /2048, reset at a cut */
+    int32_t tE[16][2], tD[16][2];    /* the traffic's (x, z) */
+    uint32_t tT[16], tstep;
+    uint8_t tV[16];
+#endif
 #endif
     int8_t cc[12];                   /* the camera's */
     uint32_t odd;                    /* the last half-step was odd: the render after it is undone */
@@ -1233,6 +1246,9 @@ static uint32_t hp_idx(uint32_t car)
     HP->car[i] = car;
     for (uint32_t f = 0; f < 32u; f++) HP->rc[i][f] = 0;
     HP->ppv[i] = 0; HP->ran[i] = 0; HP->halve[i] = 0;
+#ifdef A4_KINEDRAW
+    HP->kV[i] = 0; HP->disp[i] = 0;
+#endif
     return i;
 }
 /* round 43: +1EA64 measures the car's velocity (+010/+014/+018, and from it +0B4, +0B8..+0C0,
@@ -1298,7 +1314,7 @@ static void hp_meas(uint32_t car, uint32_t half)
  * (the fly-in ran 1.5x fast and the race started 15 steps early). A guess that 2 is the only
  * camera that follows the car: the game's other views, if it has any, are not yet seen */
 #define HP_CAMMODE(race) (*(volatile uint32_t *)((race) + 0x94u) & 0xFFu)
-static uint32_t hp_halve(uint32_t car)
+static uint32_t __attribute__((unused)) hp_halve(uint32_t car)
 {
     uint32_t i = hp_idx(car);
     return i < HP_CARS && HP->halve[i];
@@ -1315,7 +1331,7 @@ static const struct hprate *hp_ent(uint32_t f) { return f < HP_N1 ? &hp_k1[f] : 
  * +1EA64 measures the move the game itself made, so its speed model never sees part of a step */
 static int32_t hp_wrap(int32_t d, int32_t circ) { d &= circ - 1; return d >= circ / 2 ? d - circ : d; }
 static int32_t iabs32(int32_t x);
-static void hp_kmove(uint32_t car, uint32_t f16, uint32_t first, uint32_t qt)
+static void __attribute__((unused)) hp_kmove(uint32_t car, uint32_t f16, uint32_t first, uint32_t qt)
 {
     uint32_t i = hp_idx(car);
     if (i >= HP_CARS) return;
@@ -1343,8 +1359,107 @@ static void hp_kmove(uint32_t car, uint32_t f16, uint32_t first, uint32_t qt)
         c[0x020u / 4u] = (HP->wW[i] + (int32_t)(((int64_t)HP->wr[i] * (int32_t)qt) >> 16)) & 4095;
     }
 }
+#ifdef A4_KINEDRAW
+/* round 46 (r45 on the calibrated bench: its committed moves parted its path from the game's at the
+ * first step -- 200 units sideways by the first curve, which it then took ten steps late, wrecking in
+ * all three real-time races): the frames are DRAWN only. Each car is drawn from the state its step
+ * left -- along that step's velocity (+010/+018: exactly its move, the heading being the velocity's
+ * direction, median 1 /2048), turned by A4_KD_TURN of that step's turn (the game turns in pulses of
+ * ~20 /2048 a step, 2-4 steps long: 3/4 halves the misses at a pulse's ends, jt_n), the height on
+ * its vertical velocity but never under the ground drawn on by its own last change -- and every
+ * drawn word is put back before the next step, which runs as in a normal build.
+ * The snap fix: where a new step's state disagrees with what the frames drew (a turn pulse's end, a
+ * contact, a key let go), the first frame after it continues from where the last frame drew the
+ * car, at the new velocity, and the difference fades out over A4_KD_TAU (a step): no frame jumps,
+ * and the picture is the game's own again within a step. Not across a cut (a respawn, a reset) */
+#ifndef A4_KD_TURN
+#define A4_KD_TURN 49152u            /* 16.16 */
+#endif
+#ifndef A4_KD_TAUSH
+#define A4_KD_TAUSH 16u              /* the fade: 1 << A4_KD_TAUSH of 1/65536 step (16: one step) */
+#endif
+#define KD_CIRC (2048 << 8)
+static int32_t kd_fade(int32_t e, uint32_t dt)
+{
+    if (dt >= (1u << A4_KD_TAUSH)) return 0;
+    return (int32_t)(((int64_t)e * (int64_t)((1u << A4_KD_TAUSH) - dt)) >> A4_KD_TAUSH);
+}
+static int32_t kd_wrap(int32_t d) { d &= KD_CIRC - 1; return d >= KD_CIRC / 2 ? d - KD_CIRC : d; }
+/* one frame of the corrector for n words: m the model now, v its velocity a step (both 1/256), w the
+ * words on the circle; first: the first frame since a new step; returns 0 at a cut */
+static uint32_t kd_correct(volatile int32_t *E, volatile int32_t *D, volatile uint32_t *T, volatile uint8_t *V,
+                           int32_t *m, const int32_t *v, uint32_t n, uint32_t circ, uint32_t first, uint32_t tnow,
+                           const int32_t *cut)
+{
+    uint32_t dt = tnow - *T, ok = 1;
+#ifdef A4_KD_NOCORR
+    first = 0; *V = 0;               /* bench: the corrector off, each frame the model alone */
+#endif
+    if (!*V || dt > (2u << 16)) {
+        for (uint32_t w = 0; w < n; w++) E[w] = 0;
+    } else if (first) {
+        for (uint32_t w = 0; w < n; w++) {
+            int32_t p = D[w] + (int32_t)(((int64_t)v[w] * (int64_t)dt) >> 16);
+            int32_t e = p - m[w];
+            if ((circ >> w) & 1u) e = kd_wrap(e);
+            E[w] = e;
+            if (iabs32(e) > cut[w]) ok = 0;
+        }
+        if (!ok) for (uint32_t w = 0; w < n; w++) E[w] = 0;
+        else { HP->kn++; if (iabs32(E[0]) > (16 << 8) || iabs32(E[1]) > (16 << 8) || (n > 2u && iabs32(E[2]) > (16 << 8))) HP->kbig++; }
+    } else {
+        for (uint32_t w = 0; w < n; w++) E[w] = kd_fade(E[w], dt);
+    }
+    if (!ok) HP->kcut++;
+    for (uint32_t w = 0; w < n; w++) { m[w] += E[w]; D[w] = m[w]; }
+    *T = tnow; *V = 1;
+    return ok;
+}
+static void hp_kdraw(uint32_t car, uint32_t qt, uint32_t first, uint32_t tnow)
+{
+    uint32_t i = hp_idx(car);
+    if (i >= HP_CARS) return;
+    volatile int32_t *c = (volatile int32_t *)car;
+    if (first) {                     /* the state the step left: drawn from, and put back before the next step */
+        int32_t hd = c[0x678u / 4u], w = c[0x020u / 4u], d = c[0xD0u / 4u], t = 0, u = 0, g = 0;
+        if (HP->hds[i] + 1u == HP->wstep) {
+            t = hp_wrap(hd - HP->hdl[i], 2048); if (t >= 256 || t <= -256) t = 0;
+            u = hp_wrap(w - HP->wl[i], 4096); if (u >= 1024 || u <= -1024) u = 0;
+            g = d - HP->dWp[i]; if (g >= 512 || g <= -512) g = 0;
+        }
+        HP->turn[i] = t; HP->wr[i] = u; HP->hdl[i] = hd; HP->wl[i] = w; HP->hds[i] = HP->wstep;
+        HP->gW[i] = g; HP->dWp[i] = d;
+        HP->xW[i] = c[1]; HP->yW[i] = c[2]; HP->zW[i] = c[3]; HP->hW[i] = hd; HP->dW[i] = d; HP->wW[i] = w;
+        HP->aW[i] = c[0xA8u / 4u]; HP->bW[i] = c[0xB0u / 4u];
+        HP->disp[i] = 1;
+    }
+    if (!HP->disp[i]) return;
+    int32_t vx = c[0x10u / 4u], vy = c[0x14u / 4u], vz = c[0x18u / 4u];
+    if (iabs32(vx) >= 2048 || iabs32(vz) >= 2048) vx = vz = 0;
+    if (iabs32(vy) >= 1024) vy = 0;
+    int32_t tv = (int32_t)(((int64_t)HP->turn[i] * (int32_t)A4_KD_TURN) >> 16);
+    int32_t v[4] = { vx << 8, vz << 8, tv << 8, vy << 8 };
+    int32_t m[4];
+    m[0] = (HP->xW[i] << 8) + (int32_t)(((int64_t)v[0] * (int32_t)qt) >> 16);
+    m[1] = (HP->zW[i] << 8) + (int32_t)(((int64_t)v[1] * (int32_t)qt) >> 16);
+    m[2] = (HP->hW[i] << 8) + (int32_t)(((int64_t)v[2] * (int32_t)qt) >> 16);
+    m[3] = (HP->yW[i] << 8) + (int32_t)(((int64_t)v[3] * (int32_t)qt) >> 16);
+    static const int32_t cut[4] = { 1024 << 8, 1024 << 8, 128 << 8, 512 << 8 };
+    kd_correct(HP->kE[i], HP->kD[i], &HP->kT[i], &HP->kV[i], m, v, 4u, 4u, first, tnow, cut);
+    /* the ground under the drawn car: on it, the car; in the air, drawn on by its own last change */
+    int32_t air = HP->yW[i] > HP->dW[i];
+    int32_t gnd = (HP->dW[i] << 8) + (air ? (int32_t)(((int64_t)(HP->gW[i] << 8) * (int32_t)qt) >> 16) : (m[3] - (HP->yW[i] << 8)));
+    if (m[3] < gnd) { m[3] = gnd; HP->kD[i][3] = gnd; }
+    int32_t x = (m[0] + 128) >> 8, z = (m[1] + 128) >> 8;
+    c[1] = x; c[3] = z;
+    c[0xA8u / 4u] = HP->aW[i] + (x - HP->xW[i]); c[0xB0u / 4u] = HP->bW[i] + (z - HP->zW[i]);
+    c[0x678u / 4u] = ((m[2] + 128) >> 8) & 2047;
+    c[2] = (m[3] + 128) >> 8; c[0xD0u / 4u] = (gnd + 128) >> 8;
+    c[0x020u / 4u] = (HP->wW[i] + (int32_t)(((int64_t)HP->wr[i] * (int32_t)qt) >> 16)) & 4095;
+}
+#endif
 /* the whole step, a car that moved at the renders: before its call */
-static void hp_kpre(uint32_t car, int32_t *k0, uint32_t kind)
+static void __attribute__((unused)) hp_kpre(uint32_t car, int32_t *k0, uint32_t kind)
 {
     uint32_t i = hp_idx(car);
     volatile int32_t *c = (volatile int32_t *)car;
@@ -1354,7 +1469,7 @@ static void hp_kpre(uint32_t car, int32_t *k0, uint32_t kind)
         HP->kerr[i][0] = HP->kerr[i][1] = 0;
     }
 }
-static void hp_kpost(uint32_t car, const int32_t *k0, uint32_t kind, uint32_t f16)
+static void __attribute__((unused)) hp_kpost(uint32_t car, const int32_t *k0, uint32_t kind, uint32_t f16)
 {
     uint32_t i = hp_idx(car);
     if (i >= HP_CARS) return;
@@ -1463,7 +1578,9 @@ static void hp_tr_post(uint32_t kind, uint32_t car, uint32_t a1)
 /* the car calls at a whole step: each halved for a car whose calls ran at the odd half-step before
  * (HP_HALVE); `which` the words (1 +1DE78's, 2 +1EA64's, 3 both: +1F1F8 / +1FD0E not measured, a
  * guess). +1EA64's measuring history is kept at every call */
-#ifdef A4_KINEPHYS
+#ifdef A4_KINEDRAW
+#define HP_HOOK(kind, which, call)   /* round 46: the step as in a normal build */
+#elif defined(A4_KINEPHYS)
 #define HP_HOOK(kind, which, call) \
     if (!HP->replaying) { \
         uint32_t hv = HP_HALVE; \
@@ -2101,7 +2218,11 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
             uint32_t ci = hp_idx(c[1]);
             if (ci >= HP_CARS || (seen >> ci) & 1u) continue;
             seen |= 1u << ci;
+#ifdef A4_KINEDRAW
+            hp_kdraw(c[1], qt, first, (HP->wstep << 16) + qt);
+#else
             hp_kmove(c[1], f16, first, qt);
+#endif
         }
     }
     for (uint32_t i = 0; i < 0u; i++) {
@@ -2227,8 +2348,31 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
                 cm[0x58u / 4u] = HP->cw[0] + dx; cm[0x60u / 4u] = HP->cw[2] + dz;
                 cm[0x5Cu / 4u] = HP->cw[1] + (int32_t)(((int64_t)vy * (int32_t)qt) >> 16);
                 cm[0x68u / 4u] = (HP->cw[4] + (3 * dh) / 4) & 2047;
+#ifdef A4_KINEDRAW
+                {   /* round 46: the chase camera through the corrector too -- its own step (a lag,
+                     * the 3/4 of a turn) parts from the car's drawn one. It moves as the car is
+                     * drawn: the car's velocity, its own height rate, 3/4 of the car's drawn turn */
+                    uint32_t pi = hp_idx(pcar);
+                    int32_t tv = pi < HP_CARS ? (int32_t)(((int64_t)HP->turn[pi] * (int32_t)A4_KD_TURN) >> 16) : 0;
+                    int32_t v[4] = { pc[0x10u / 4u] << 8, vy << 8, pc[0x18u / 4u] << 8, ((3 * tv) / 4) << 8 };
+                    int32_t m[4] = { cm[0x58u / 4u] << 8, cm[0x5Cu / 4u] << 8, cm[0x60u / 4u] << 8, cm[0x68u / 4u] << 8 };
+                    static const int32_t cut[4] = { 1024 << 8, 1024 << 8, 1024 << 8, 256 << 8 };
+                    volatile uint8_t cv = (uint8_t)HP->cV;
+                    kd_correct(HP->cE, HP->cD, &HP->cT, &cv, m, v, 4u, 8u, first, (HP->wstep << 16) + qt, cut);
+                    HP->cV = cv;
+                    cm[0x58u / 4u] = (m[0] + 128) >> 8; cm[0x5Cu / 4u] = (m[1] + 128) >> 8; cm[0x60u / 4u] = (m[2] + 128) >> 8;
+                    cm[0x68u / 4u] = ((m[3] + 128) >> 8) & 2047;
+                }
+#endif
+            } else {
+#ifdef A4_KINEDRAW
+                HP->cV = 0;          /* the car jumped (a respawn): the camera's corrector starts again */
+#endif
             }
         } else if (HP_CAMMODE(race) != 2u && HP->cwv >= 3u) {
+#ifdef A4_KINEDRAW
+            HP->cV = 0;
+#endif
             /* another camera (the fly-in, the crash camera, the helicopter's): its own path,
              * drawn on by its last whole step's move -- only where that move is the one before
              * it again (a steady path); the crash camera jumps step to step (yaw 1166, 1019,
@@ -2288,6 +2432,32 @@ static void hp_snap(uint32_t race)
 #endif
     sp[1] = 1; sp[20] = 0;
 }
+#ifdef A4_KINEDRAW
+/* round 46 (lockstep against stock, crec_ord / crec_ors0: every physics word identical for 499
+ * steps, but the render's own counters -- +15C, two +B28 flag bits, then +AD8/+ADC one off -- ran
+ * once a frame, not once a step: since round 43 every frame kept the render's own changes): a
+ * frame after the step's first leaves nothing behind. The cars the step moved and the race
+ * object are saved after the frame is drawn on and put back whole at the next half-step
+ * (spec_restore, with the traffic hp_tsnap saved), as rounds 33-42 undid every frame but the
+ * first. The first frame keeps its own changes, as the game renders once a step */
+static void kd_snapall(uint32_t race)
+{
+    volatile uint32_t *h = (volatile uint32_t *)A4_GL_HSTEP, *sp = (volatile uint32_t *)A4_GL_SPEC;
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < h[2]; i++) {
+        uint32_t car = ((volatile uint32_t *)A4_GL_HCALL)[6u * i + 1u], j;
+        for (j = 0; j < n && sp[4 + j] != car; j++) ;
+        if (j == n && n < SPEC_MAXCARS) sp[4 + n++] = car;
+    }
+    sp[0] = n;
+    for (uint32_t i = 0; i < n; i++)
+        words_copy((volatile uint32_t *)(A4_GL_SNAP + i * SPEC_CARSZ), (volatile uint32_t *)sp[4 + i], SPEC_CARSZ / 4u);
+    sp[2] = 0;                       /* not K: the keys that arrive before the next half-step are the player's */
+    sp[3] = race;
+    words_copy(sp + 64, (volatile uint32_t *)race, SPEC_RACESZ / 4u);
+    sp[1] = 1; sp[20] = 0;           /* put back whole, the traffic's snapshot (hp_tsnap) with it */
+}
+#endif
 #ifdef A4_FRACPHYS
 /* A4_FRACPHYS, before a render: the traffic drawn q16 of a step past the whole step that moved
  * it (each car by that much of its last step), put back after the render -- only the words
@@ -2298,17 +2468,52 @@ static void hp_tsnap(uint32_t race, uint32_t q16)
     (void)race;
     sp[0] = 0; sp[2] = 0; sp[3] = 0;
 #ifdef A4_SPECTRAFFIC
+#ifdef A4_KINEDRAW
+    sp[26] = (sp[27] && h[0] - sp[28] <= 2u) ? sp[27] : 0u;   /* round 46: every frame (the corrector at q 0 too) */
+    uint32_t tfirst = sp[28] != HP->tstep;
+    HP->tstep = sp[28];
+#else
     sp[26] = (sp[27] && h[0] - sp[28] <= 2u && q16) ? sp[27] : 0u;
+#endif
     if (sp[26]) {
         words_copy((volatile uint32_t *)A4_GL_TSNAP, (volatile uint32_t *)sp[26], TRAF_SZ / 4u);
         for (uint32_t i = 0; i < TRAF_N; i++) {
             volatile int32_t *c = (volatile int32_t *)(sp[26] + i * TRAF_CARSZ);
             const volatile int32_t *p = (const volatile int32_t *)(A4_GL_TPREV + i * TRAF_CARSZ);
+#ifdef A4_KINEDRAW
+            if (iabs32(c[1] - p[1]) > SPEC_CUT || iabs32(c[3] - p[3]) > SPEC_CUT || iabs32(c[0x11Cu / 4u] - p[0x11Cu / 4u]) > 512) { HP->tV[i] = 0; continue; }
+#else
             if (c[1] == p[1] && c[3] == p[3]) continue;
             if (iabs32(c[1] - p[1]) > SPEC_CUT || iabs32(c[3] - p[3]) > SPEC_CUT || iabs32(c[0x11Cu / 4u] - p[0x11Cu / 4u]) > 512) continue;
+#endif
             static const uint16_t tw[] = { 0x004, 0x008, 0x00C, 0x04C, 0x050, 0x054, 0x058, 0x05C, 0x060, 0x064, 0x068, 0x06C,
                                            0x0A8, 0x0AC, 0x0B0, 0x11C, 0x120, 0x124 };
+#ifdef A4_KINEDRAW
+            /* round 46: the traffic through the corrector (r41 on the phone: traffic "snap back into
+             * position as I get closer" -- a car that braked or swerved meeting its extrapolation).
+             * Its offset goes on the position (+004, +00C) and on each word that moved exactly as the
+             * position did this step and sits near it (its copies), found here rather than assumed */
+            int32_t dx = c[1] - p[1], dz = c[3] - p[3];
+            uint32_t xc = 0, zc = 0;
+            for (uint32_t f = 0; f < sizeof tw / sizeof tw[0]; f++) {
+                uint32_t w = tw[f] / 4u;
+                if (c[w] - p[w] == dx && iabs32(c[w] - c[1]) <= 64) xc |= 1u << f;
+                else if (c[w] - p[w] == dz && iabs32(c[w] - c[3]) <= 64) zc |= 1u << f;
+            }
+#endif
             for (uint32_t f = 0; f < sizeof tw / sizeof tw[0]; f++) { uint32_t w = tw[f] / 4u; c[w] += (int32_t)(((int64_t)(c[w] - p[w]) * (int32_t)q16) >> 16); }
+#ifdef A4_KINEDRAW
+            {
+                int32_t m[2] = { c[1] << 8, c[3] << 8 }, v[2] = { dx << 8, dz << 8 };
+                static const int32_t cut[2] = { 1024 << 8, 1024 << 8 };
+                kd_correct(HP->tE[i], HP->tD[i], &HP->tT[i], &HP->tV[i], m, v, 2u, 0u, tfirst, (HP->wstep << 16) + q16, cut);
+                int32_t ex = ((m[0] + 128) >> 8) - c[1], ez = ((m[1] + 128) >> 8) - c[3];
+                for (uint32_t f = 0; f < sizeof tw / sizeof tw[0]; f++) {
+                    uint32_t w = tw[f] / 4u;
+                    if ((xc >> f) & 1u) c[w] += ex; else if ((zc >> f) & 1u) c[w] += ez;
+                }
+            }
+#endif
         }
         bm_mark((volatile uint32_t *)A4_GL_TBM, (volatile uint32_t *)sp[26], (volatile uint32_t *)A4_GL_TSNAP, TRAF_SZ / 4u);
     }
@@ -2363,6 +2568,12 @@ int a4_halfstep(uint32_t race)
     for (uint32_t i = 0; i < HP_CARS; i++) {
         volatile int32_t *c = (volatile int32_t *)HP->car[i];
         if (HP->disp[i] && c) { c[2] = HP->yW[i]; c[0xD0u / 4u] = HP->dW[i]; c[0x020u / 4u] = HP->wW[i]; }
+#ifdef A4_KINEDRAW
+        if (HP->disp[i] && c) {      /* round 46: every drawn word back as the step left it */
+            c[1] = HP->xW[i]; c[3] = HP->zW[i]; c[0x678u / 4u] = HP->hW[i];
+            c[0xA8u / 4u] = HP->aW[i]; c[0xB0u / 4u] = HP->bW[i];
+        }
+#endif
         HP->disp[i] = 0;
         if (!HP->halve[i]) { HP->ks[i][0] = HP->ks[i][1] = 0; HP->kerr[i][0] = HP->kerr[i][1] = 0; }
     }
@@ -2493,8 +2704,30 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
 #ifdef A4_CARREC
                 if (HP->committed == 0u) car_record(race, 2u);   /* bench: the state the whole step and its camera left */
 #endif
+#ifdef A4_KINEDRAW
+                {   /* round 46: every frame drawn (the corrector needs each one), at its own q16 */
+                    uint32_t f = q16 > HP->committed ? q16 - HP->committed : 0u, first = HP->committed == 0u;
+                    hp_sub(race, f, first);
+#ifdef A4_CARREC
+                    if (first) {   /* bench: the corrections the step's first frame made, 'CRKD' */
+                        uint32_t pl = *(volatile uint32_t *)(race + 0x390), pidx = pl ? *(volatile uint32_t *)(pl + 0xC) : 99u;
+                        uint32_t pcar = pidx < 16u ? *(volatile uint32_t *)(race + 0x394 + 4u * pidx) : 0;
+                        uint32_t pi = pcar ? hp_idx(pcar) : HP_CARS;
+                        volatile uint32_t q[8];
+                        q[0] = 0x444B5243u; q[1] = ((volatile uint32_t *)A4_GL_CREC)[1]; q[2] = HP->kn; q[3] = HP->kbig; q[4] = HP->kcut;
+                        q[5] = pi < HP_CARS ? (uint32_t)HP->kE[pi][0] : 0; q[6] = pi < HP_CARS ? (uint32_t)HP->kE[pi][2] : 0;
+                        q[7] = (uint32_t)HP->cE[3];
+                        a4_rec_emit2((const void *)q, (const void *)A4_GL_HP, (const void *)race);
+                    }
+#endif
+                    HP->committed += f; if (!HP->committed) HP->committed = 1u;   /* the step's first frame done */
+                    hp_tsnap(race, q16);
+                    if (!first) kd_snapall(race);
+                }
+#else
                 if (q16 > HP->committed + 256u) { hp_sub(race, q16 - HP->committed, HP->committed == 0u); HP->committed = q16; }
                 hp_tsnap(race, HP->committed);
+#endif
 #elif defined(A4_HALFPHYS)
             /* every half-step is the game's own state: drawn as it is. After an odd half-step the
              * render's own once-a-step changes are undone (and the traffic, moved once a step,
