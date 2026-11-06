@@ -72,3 +72,29 @@ for key in ('air', 'boost', 'drift'):
 for t in (10, 20, 30, 40, 50):
     k = int(t / 0.08533)
     if k < n: print('distance at %2d s: stock %.0f, 3x %.0f (%.1f%%)' % (t, A[k]['dist'], B[k]['dist'], 100.0 * (B[k]['dist'] - A[k]['dist']) / max(1.0, A[k]['dist'])))
+# the race's events, each run over its whole length: laps (the segment index wrapping to 0), the
+# wreck sequences (+034 != -1), contacts with a car (+0E0, steps since one, back to 0), traffic near
+# misses (+B28 bit 16 rising), the air (B28 bit 3) and the boosts (AE0 from 0)
+def events(S, R0):
+    out = dict(laps=[], wreck=[], carhit=0, near=0, air=[], boost=0)
+    prev = None
+    for i, s in enumerate(S):
+        h, w = R0[i]
+        if prev is not None:
+            pw = prev
+            if W(w, 0x01C) < W(pw, 0x01C) - 20: out['laps'].append(i)
+            if W(w, 0x034) != -1 and W(pw, 0x034) == -1: out['wreck'].append(i)
+            if W(w, 0x0E0) == 0 and W(pw, 0x0E0) != 0: out['carhit'] += 1
+            if (W(w, 0xB28) >> 16) & 1 and not (W(pw, 0xB28) >> 16) & 1: out['near'] += 1
+            if W(w, 0xAE0) and not W(pw, 0xAE0): out['boost'] += 1
+        prev = w
+    return out
+def raw(R):
+    r0 = next((i for i, (h, w) in enumerate(R) if W(w, 0x7D8) != 0), 0)
+    a0 = next((i for i, (h, w) in enumerate(R) if i > r0 and W(w, 0xB4) > 0), r0)
+    return R[a0:]
+for name, path in (('stock', sys.argv[1]), ('3x', sys.argv[2])):
+    RR = raw(load(path)); SS = list(range(len(RR)))
+    e = events(SS, RR)
+    print('%-5s %5d steps: laps at %s (lap steps %s); wrecks %d at %s; car contacts %d; near misses %d; boosts %d' % (
+        name, len(RR), e['laps'], [b - a for a, b in zip([0] + e['laps'], e['laps'])], len(e['wreck']), e['wreck'][:10], e['carhit'], e['near'], e['boost']))

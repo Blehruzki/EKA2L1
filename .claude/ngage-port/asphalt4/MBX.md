@@ -7118,3 +7118,16 @@ Owner: "Sounds like a plan. Go ahead."
   placed from the car (0-7, 0x2A); the scripted views (fly-in, crash, takedowns) wait for the step.
 - Measured on the way: +B28 bit 13 is +1ED4C's "moving backwards" (velocity . the segment's
   direction <= 0), set at rest; the whole step's tail clears it, so a record after a substep sees it.
+- r5 (substeps only when the whole step ran the cars): the start is now exact -- both hold the car
+  48 steps of countdown (rpm revving from record 101, moving at 149). Then (tools/oracle.py, 41 s):
+  rpm climbs 8 a step in first gear and 16 in second in both, the speed's climb 80 -> 140 takes 33
+  steps stock and 32 at 3x, the grip comes back +0xD55 a step. The launch is softer at 3x (the GO
+  step takes rpm 631 -> 242 stock, -> 119 at 3x: B4 21 against 35, ~10 steps behind until second
+  gear). From 15 s the runs part: the autopilot holds only the throttle, the cars meet different
+  walls, opponents and traffic. Stock's wall hits cost 26 B4 on average (some 60+, with a downshift:
+  one step's slip penalty, rpm -= 7DC x 8, drives rpm below 0), the 3x car's 7 -- but its biggest
+  hits were opponents (contact bits 0x49/0x4A, grip reset to 0x1000), not walls. Not yet a like
+  for like comparison of hits; to do with a longer race and the opponents' records.
+- Logic cost (host, uncalibrated): 1.4 ms a substep against 2.1 ms a stock step, ~2x a game step;
+  the render call is the frame's cost either way (31-60 ms a call on this host).
+- Also third: +1FD0E's kinematic move (pos += +6B0) and its A34 counter gated.

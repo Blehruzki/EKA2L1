@@ -6974,7 +6974,8 @@ uint64_t eng_1FD0E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t 
     { uint32_t ta = sp, tb = 0x4u; t = ta + tb; r1 = t; }        /* 01fd22 add r1, sp, #4 */
     t = r1; r1 = MEM32(t + 0); r2 = MEM32(t + 4); r3 = MEM32(t + 8); /* 01fd24 ldm r1, {r1, r2, r3} */
     { uint32_t ta = r4, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01fd26 adds r0, r4, #4 */
-    t = r0; MEM32(t + 0) = r1; MEM32(t + 4) = r2; MEM32(t + 8) = r3; r0 = t + 12; /* 01fd28 stm r0!, {r1, r2, r3} */
+    /* engine: position += 6B0 (the kinematic move) */
+    t = r0; r1 = eng_third(t + 0, MEM32(t + 0), r1); MEM32(t + 0) = r1; r2 = eng_third(t + 4, MEM32(t + 4), r2); MEM32(t + 4) = r2; r3 = eng_third(t + 8, MEM32(t + 8), r3); MEM32(t + 8) = r3; r0 = t + 12; /* 01fd28 stm r0!, {r1, r2, r3} */
     r0 = 0x1Bu; fN = r0 >> 31; fZ = r0 == 0;                     /* 01fd2a movs r0, #0x1b */
     t = SHL_C(r0, 0x6u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01fd2c lsls r0, r0, #6 */
     { uint32_t ta = r4, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01fd2e adds r0, r4, r0 */
@@ -6997,7 +6998,8 @@ uint64_t eng_1FD0E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t 
     { uint32_t ta = r4, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01fd50 adds r0, r4, r0 */
     r1 = MEM32(r0 + 0x34u);                                      /* 01fd52 ldr r1, [r0, #0x34] */
     { uint32_t ta = r1, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01fd54 adds r1, r1, #1 */
-    MEM32(r0 + 0x34u) = r1;                                      /* 01fd56 str r1, [r0, #0x34] */
+    /* engine: A34, a step counter (the kinematic move) */
+    if (!ENG_SUB) MEM32(r0 + 0x34u) = r1; else r1 = MEM32(r0 + 0x34u); /* 01fd56 str r1, [r0, #0x34] */
 L_1FD58:
     { uint32_t ta = sp, tb = 0x10u; t = ta + tb; sp = t; }       /* 01fd58 add sp, #0x10 */
     r4 = MEM32(sp + 0); t = MEM32(sp + 4); sp += 8; RET(t);      /* 01fd5a pop {r4, pc} */

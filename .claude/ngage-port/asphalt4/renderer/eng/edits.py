@@ -146,3 +146,6 @@ if '-DA4_ENGDBG' in _os.environ.get('A4_EXTRA_CFLAGS', ''):
     D(0x14754, 0); D(0x146B2, 1); D(0x146D6, 2); D(0x146FC, 3)
     D(0x14974, 4, 'ENG->dbg[1] = r1; ')
     D(0x144FC, 5); D(0x1F2D0, 6); D(0x1FCBC, 7, 'ENG->dbg[2] = r1; '); D(0x1F226, 8); D(0x1433C, 9); D(0x14574, 10)
+# +1FD0E, a car moved without its physics (+691E's modes): position += +6B0, a third on a substep
+T(0x1FD28, 'position += 6B0 (the kinematic move)')
+G(0x1FD56, 'A34, a step counter (the kinematic move)')
