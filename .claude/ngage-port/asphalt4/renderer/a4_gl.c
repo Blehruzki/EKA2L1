@@ -1029,7 +1029,35 @@ static void car_record(uint32_t race, uint32_t what)
         ((volatile uint32_t *)K)[0] = k; ((volatile uint32_t *)K)[1] = k;
     }
 #else
-    if (K && (what & 1u)) { uint32_t k = ap_key(race, r[1]); ((volatile uint32_t *)K)[0] = k; ((volatile uint32_t *)K)[1] = k; }
+    if (K && (what & 1u)) {
+        uint32_t k = ap_key(race, r[1]);
+#if defined(A4_BENCH_SEEK) && defined(A4_SPECTRAFFIC)
+        /* bench (r49 on the phone: traffic "passed through"): steer at the nearest live traffic car
+         * ahead (its +0x128 bit 0 clear: the collision's own skip), by the game's positions -- to
+         * meet traffic far more often than the racing line does. A4_BENCH_SEEK is the sign: 1 or -1
+         * (which key turns which way is a guess, settled by whether the bearing closes) */
+        uint32_t ta = ((volatile uint32_t *)0x00447000u)[27];   /* A4_GL_SPEC word 27: the traffic array (a4_h_fb12) */
+        if (car && ta && r[1] > 200u) {
+            const volatile int32_t *pc = (const volatile int32_t *)car;
+            int32_t vx = pc[0x10u / 4u], vz = pc[0x18u / 4u], best = 0x7FFFFFFF; int64_t bcr = 0;
+            for (uint32_t i = 0; i < 16u; i++) {
+                const volatile int32_t *t = (const volatile int32_t *)(ta + i * 0x148u);
+                if (t[0x128u / 4u] & 1) continue;
+                int32_t dx = t[1] - pc[1], dz = t[3] - pc[3];
+                if (dx > 2500 || dx < -2500 || dz > 2500 || dz < -2500) continue;
+                int64_t dot = (int64_t)vx * dx + (int64_t)vz * dz;
+                int32_t d = (dx < 0 ? -dx : dx) + (dz < 0 ? -dz : dz);
+                if (dot <= 0 || d < 150 || d >= best) continue;
+                best = d; bcr = (int64_t)vx * dz - (int64_t)vz * dx;
+                /* bearing's sine x |v||d|: steer when it is over ~2 degrees of the way */
+                int64_t lim = ((int64_t)((vx < 0 ? -vx : vx) + (vz < 0 ? -vz : vz)) * d) / 40;
+                if (bcr < lim && bcr > -lim) bcr = 0;
+            }
+            if (best != 0x7FFFFFFF && bcr) k |= ((bcr > 0) == ((A4_BENCH_SEEK) > 0)) ? A4_KEY_R : A4_KEY_L;
+        }
+#endif
+        ((volatile uint32_t *)K)[0] = k; ((volatile uint32_t *)K)[1] = k;
+    }
 #endif
 #endif
     if (what & 1u) r[1]++;
@@ -2962,6 +2990,29 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
 #endif
                     HP->committed += f; if (!HP->committed) HP->committed = 1u;   /* the step's first frame done */
                     hp_tsnap(race, q16);
+#if defined(A4_YREC) && defined(A4_SPECTRAFFIC)
+                    {   /* bench (r49 on the phone: traffic "passed through", no hit): every traffic car near
+                         * the player as this frame draws it, with the game's own position beside it --
+                         * 'FRKT', the step, q16 | slot << 24 | first << 31, drawn x, z, the step's x, z,
+                         * the drawn heading +11C (the game's: the snapshot when the frame moved it) */
+                        volatile uint32_t *sp = (volatile uint32_t *)A4_GL_SPEC;
+                        uint32_t arr = sp[26] ? sp[26] : sp[27];
+                        uint32_t pl = *(volatile uint32_t *)(race + 0x390), pidx = pl ? *(volatile uint32_t *)(pl + 0xC) : 99u;
+                        uint32_t pcar = pidx < 16u ? *(volatile uint32_t *)(race + 0x394 + 4u * pidx) : 0;
+                        for (uint32_t i = 0; arr && pcar && i < TRAF_N; i++) {
+                            const volatile int32_t *c = (const volatile int32_t *)(arr + i * TRAF_CARSZ);
+                            const volatile int32_t *s = sp[26] ? (const volatile int32_t *)(A4_GL_TSNAP + i * TRAF_CARSZ) : c;
+                            const volatile int32_t *pc = (const volatile int32_t *)pcar;
+                            if (iabs32(c[1] - pc[1]) > 4000 || iabs32(c[3] - pc[3]) > 4000) continue;
+                            volatile uint32_t q[8];
+                            q[0] = 0x544B5246u; q[1] = ((volatile uint32_t *)A4_GL_CREC)[1];
+                            q[2] = (q16 & 0xFFFFFFu) | (i << 24) | (first << 31);
+                            q[3] = (uint32_t)c[1]; q[4] = (uint32_t)c[3]; q[5] = (uint32_t)s[1]; q[6] = (uint32_t)s[3];
+                            q[7] = (uint32_t)c[0x11Cu / 4u];
+                            a4_rec_emit2((const void *)q, (const void *)c, (const void *)race);
+                        }
+                    }
+#endif
                     if (!first) kd_snapall(race);
                 }
 #else

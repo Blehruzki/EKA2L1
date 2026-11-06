@@ -6931,3 +6931,45 @@ against the car per step.
   orbit, a crash, the helicopter, a takedown -- each for back-and-forth; and whether a crash or
   takedown camera now looks choppy (drawn at the game's 11.7 Hz steps by design: if it does, the
   next step is to draw those views one step behind, between two known steps).
+
+## Round 49, phone (r49, sha256 81193beb...): the views fixed; traffic "passed through"
+
+Owner: "They look much better now. However it's almost impossible to hit traffic cars. I could pass
+through them and not trigger any crash or hit." Eight telemetry files (r49ph).
+- Telemetry: presents median 57 ms (10-90% 46-81; r48 64), render start to present 47 ms; frames by
+  mode (tools/telback.py): the finish (mode 1) 67 frames, bearing change 99% 5, reversals 0 (r48ph:
+  16); the chase 319 frames, 99% 6, 4 reversals; 0x18 31 frames with the player still at ~400 units a
+  step -- a takedown, not a crash (the player keeps its speed), drawn at the step by A4_SCRIPTHOLD as
+  designed: the takedown camera is 0x18, the round-49 guess confirmed. The player drawn off the
+  game's path (frec2, chase): along 99% 36, across 50% 6, 90% 28, 99% 53 -- the steering the frame
+  cannot know. The player's step: 430-490 units (the tuned Veyron; 487 on nitro).
+- The game's traffic collision, read: +1FF56 (car against the 16 traffic cars, called 8 times a step
+  -- once a car -- measured: EKA2L1_PCTRACE_REGS on +FB12/+1FF56, 1,642 of 1,643 steps exactly 8, no
+  sub-steps) skips a car with +0x128 bit 0 (a wreck), then the gate +23728: the two spheres (centres
+  +04C, radii +078: player 77, traffic 70-98) overlap at the step's positions, |d| <= rA + rB. A plain
+  overlap at each step: two cars that close faster than ~2(rA + rB) = 300-350 units a step can pass
+  between steps without the game ever seeing them touch.
+- Bench (tools/trafoff.py, tunnel.py; a4_y9 = C49 + recorders + 'FRKT', every traffic car within
+  4000 of the player as drawn and as the game has it; a4_s1/s2 + A4_BENCH_SEEK, the autopilot
+  steering at the nearest live traffic car, AUTOPILOT_UNSTICK; slim records, jtrun2.sh):
+  - the drawn gap between the player and a traffic car near it (< 800) against the game's at the
+    frame's moment: y9 50% 2, 90% 11, 99% 83 (max 128, at the hit); s2 50% 1, 90% 6, 99% 34 -- what
+    is drawn is where the game has it, within a fraction of the 147-175 the spheres need.
+  - meetings with live traffic: overlap at a step 3 -> 3 hits (y9 slot 3, s1/s2 slot 1); overlap
+    only between steps 1 -> no hit (y9 slot 8: nearest 161 against 175, closing 325 a step); the
+    two stationary cars the autopilot drove through (33 and 67 units) were wrecks (+0x128 bit 0).
+  - the bench car is slower than the owner's (140-313 units a step against 430-490) and the seeking
+    driver wedges itself after its first hit, so the high-speed case is not reproduced in numbers.
+- What it means: at the owner's speed a car closes on traffic at ~340 (same way) to ~580 (oncoming)
+  units a step, over the 300-350 window: a pass lands between two steps and the game -- the
+  unmodified game's own test -- sees no contact. For a pass aimed anywhere across the car the share
+  that falls between steps is ~1 - pi R / 2c: ~35% same way, ~55% oncoming (a model, not measured).
+  At one picture a step you saw the car before and after; the frames between steps now show the
+  overlap. The frames did not cause it (the phone build's physics: the r49 flags rebuilt give the
+  shipped sha 81193beb; the recorders and the seeker are bench-only defines).
+- Guesses (rule 4): the hit rule from 4 bench meetings, not dozens; the share at the owner's speed
+  from the model; "almost impossible" may hold more than this (the aim: the player's steering is
+  drawn up to ~50 sideways off, 1% of frames).
+- Not a repeat (rule 2): round 40/41's traffic ("hard to connect") was the traffic drawn a step
+  behind the player (fixed by A4_SPECTRAFFIC); here the drawing is measured right and the miss is
+  in the game's own step test.
