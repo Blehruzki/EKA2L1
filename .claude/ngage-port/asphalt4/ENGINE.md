@@ -182,3 +182,29 @@ arguments 7, 0, ...) (code).
   corrector's y offset and the camera's y at the step ('FRKD' through a4_rec_emit2; jtrun.sh).
 - tools/yan.py: the drawn height against the line between steps, and +014 against the true
   change, per car slot. tools/yseq.py: one slot's frames over a range of steps.
+
+## The step at 3x: what depends on the step's length (round 50, read from the C)
+
+The car dynamics, from tools/lift2.py on +1DE78 (the control) and its vector helpers (+521A0 a += b,
++52540 a = b - c, +52562 a = b + c, +52512 a = b * c / d, +52182 dot):
+- +1CEC2 sets the target velocity +680/+684/+688 (a step's move) from the engine's speed +7D0 (the
+  gear table, +1C0B0: rpm +7D8 through car +708.. records of 20 bytes per gear) and the heading +678.
+- +1DE78: d = +680 - +010 (target less the measured move), scaled by the grip +9FC (0x1000 full;
+  after a contact it climbs back by +0xD55 a step) -> v' = +010 + d; then pos (+004..+00C) += v'
+  (+521A0 at +1E8C0). The movement phase's measure (+22832) then takes v = pos - prev into +010.
+- So a car is a first-order relaxation of its velocity toward the target, integrated once a step.
+  At three steps a step: pos += v'/3 (the remainder carried per car), the relaxation factor g taken
+  to 1 - (1 - g)^(1/3), the measure scaled back to a whole step's move (x3) so every reader of +010
+  keeps its units.
+- Vertical (+1ED4C, the continuation of +1EA64): y += +A58, +A58 -= 9 (20 in the +A64 state) a step
+  -> y += +A58/3, -= 3 (-20/3 carried); the take-off speed from the road's change /4 clamped
+  [-10, 30] is a velocity (whole-step units, kept).
+- Counters a step (+A2C, +A34 -- every 64 steps a stuck check, a respawn after 150 --, +A7C, +AEC,
+  +C48, +AB8, +0E4, +7C4, +AE0, +AE8, +ABC, +A60 air steps): left counting whole steps, updated on
+  every third substep only, as are the decisions that read them.
+- Turning: heading +678 += +A20 or +9F8 a step -> /3. Steering +7FC with +A1C, smoothed +808 =
+  (7 x +808 + +7FC) / 8 a step -> the smoothing to the 1/3 power.
+- Engine: rpm +7D8 -= +7DC x 8, +7E0, +A74 / 64 ... a step -> /3.
+- Collision responses (+239B6 and its callers) are impulses in whole-step velocity units: kept;
+  their overlap tests run every substep (the point of the exercise: closing ~190 units a substep
+  against the 300-350 the spheres need).

@@ -1,14 +1,15 @@
 # crec.py <crec.bin> [<crec2.bin> ratio]: the per-step car records (A4_CARREC). One file: the
 # step range, the key bits seen, and a few fields. Two files: field by field, step k of the
 # first against step k*ratio of the second (ratio 1: two runs of one build; 2: normal vs half).
-import sys, struct, collections
+import sys, struct, collections, os
+KIND = 0x41455243 if os.environ.get('CREA') else 0x43455243   # CREA=1: the opponent's records
 def load(path):
     d = open(path, 'rb').read(); o = 0; out = []; hdr = None; skip = False
     while o + 12 <= len(d):
         pc, addr, ln = struct.unpack_from('<3I', d, o); o += 12; b = d[o:o + ln]; o += ln
         if ln == 0x20:
             hdr = struct.unpack_from('<8I', b)
-            if hdr[0] != 0x43455243: hdr = None; skip = True     # not a step record ('CREC')
+            if hdr[0] != KIND: hdr = None; skip = True     # not a step record ('CREC', or 'CREA' with CREA=1)
             else: skip = False
         elif hdr is not None and ln == 0x100 and out and out[-1][0] is hdr:
             # round 41: the race object's first 0x100 bytes after the car (a4_rec_emit2): appended,

@@ -1065,14 +1065,17 @@ static void car_record(uint32_t race, uint32_t what)
     /* bench (round 50, the engine's lockstep oracle): the C library's random() state set to the same
      * value at the race's first step in every run -- two runs of one build parted at step ~136 because
      * the menus before the race (real-time key presses) draw a different count of random numbers. On
-     * the bench's libc (EKA2L1, measured with EKA2L1_WATCH): a 31-word table at 0x50016C, the front
-     * pointer at 0x50014C three words ahead of the rear one at 0x500150. Never in a phone build. */
+     * the bench's libc (EKA2L1, measured with EKA2L1_WATCH): random()'s 31-word table at 0x50016C, the
+     * front pointer at 0x50014C three words ahead of the rear one at 0x500150. Never in a phone build. */
     if ((what & 1u) && r[1] == 1u) {
         volatile uint32_t *tb = (volatile uint32_t *)0x0050016Cu;
         uint32_t x = (uint32_t)(A4_BENCH_SEED);
         for (uint32_t k = 0; k < 31u; k++) { x = x * 1103515245u + 12345u; tb[k] = x; }
         *(volatile uint32_t *)0x00500150u = 0x0050016Cu;
         *(volatile uint32_t *)0x0050014Cu = 0x0050016Cu + 12u;
+        /* and rand() -- a Park-Miller generator (16807: its first write after a seed of 1, EKA2L1_WATCH)
+         * with its own state at 0x500148: called by the traffic (+F1B0) and the cars' helpers in the step */
+        *(volatile uint32_t *)0x00500148u = (uint32_t)(A4_BENCH_SEED) | 1u;
     }
 #endif
 #ifdef A4_BENCH_STALL

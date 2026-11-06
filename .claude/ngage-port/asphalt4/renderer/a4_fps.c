@@ -92,6 +92,20 @@ int a4_fps_tick(tick_fn tc, home_fn ht)
     uint32_t tick = tc();
     ht((void *)s->ttime);
     uint32_t us = s->ttime[0];
+#ifdef A4_BENCH_SEED
+    /* bench (round 50, the engine's lockstep oracle): every frame before the first race step (the
+     * step count, A4_GL_CREC word 1, still 0), both of the C library's generators set to the same
+     * state (a4_gl.c car_record names them) -- so the race's set-up, the grid and the opponents
+     * included, draws the same numbers in every run however long the menus took. Never on a phone. */
+    if (((volatile uint32_t *)0x00421900u)[1] == 0u) {
+        volatile uint32_t *tb = (volatile uint32_t *)0x0050016Cu;
+        uint32_t x = (uint32_t)(A4_BENCH_SEED);
+        for (uint32_t k = 0; k < 31u; k++) { x = x * 1103515245u + 12345u; tb[k] = x; }
+        *(volatile uint32_t *)0x00500150u = 0x0050016Cu;
+        *(volatile uint32_t *)0x0050014Cu = 0x0050016Cu + 12u;
+        *(volatile uint32_t *)0x00500148u = (uint32_t)(A4_BENCH_SEED) | 1u;
+    }
+#endif
 
     if (s->magic != A4_FPS_MAGIC) {
         for (int i = 0; i < RING; i++) s->ring[i] = 0;
