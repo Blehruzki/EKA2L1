@@ -6760,3 +6760,36 @@ against the car per step.
   ae513927452140fbdf67deb434c394779a80e4f51a730a65b23f2e1f0390acfd, 812,152 bytes; no 0xDEADBEEF;
   +3A15C B510 0004. Battery running (r48bat.sh: the recorder run y3, then r47's battery with
   frec2 on each).
+- Battery on the candidate (r48bat.sh), each run's heights by tools/frec2.py (FRC2 against FRC1;
+  the record has no step number, so a step pair moving twice its neighbours is taken as two steps
+  -- the first reading's 244-unit "miss" was the tool's line drawn two steps ahead):
+  - recorder run y3 (a4_y3.exe = C48 + A4_CARREC + A4_YREC + A4_AUTOPILOT, all racing cars): off
+    the game's path 99% x-z 14 (max 150), height 3 (max 32), heading 9 (max 112); the camera
+    105-112 above the drawn car, its yaw the drawn heading (0..0). The two maxima are one contact
+    (steps 560-561: the player hits a stopped opponent, its heading jumps 128 in a step) -- a frame
+    drawn before the step that registers a contact cannot foresee it; the corrector fades it.
+  - tele on the calibrated N95 bench 120 s: framestat 2187, faults 1; presents 1,887, renders
+    1,843, held 0, drop frames 1; drawn speed off >25% 0%; camrel bearing 1/1/4, heading less yaw
+    0/1/4; FRC2: height off the path 99% 7 (max 8), x-z 99% 42 (max 64), camera y above the car
+    105-112; camera-yaw one-frame reversals 9 (4-14 /2048; r47t 0 -- the camera now turns with the
+    drawn heading's own misses at a turn's start and end), car heading 1.
+  - crash-steer at cap 85: framestat 2783, faults 1; camrel 0/1/3; height 99% 1, x-z 8;
+    reversals 0 and 0.
+  - racemenu: framestat 3491, faults 1, 18 shots (looked at: pause over the race, menus, garage).
+  - mark (Mini): framestat 1248, faults 1; 12 of 24 shots looked at: the car on the road and
+    centred; the last four after the autopilot drove into a wall (stopped, on the ground).
+  - the Veyron, steering continuously, cap 85: framestat 2242, faults 1; camrel bearing 0/1/24,
+    heading less yaw 7/42/84; height 99% 24 (max 29), x-z 99% 60 (max 75); camera-yaw reversals 7
+    (up to 35, 29, 30 in one run of frames), car heading 0. Read in the code: in the drift state
+    (+B28 bit 12) +4B40 adds +808 >> 6 to the yaw (and a roll, and moves the vector's angle by
+    +808 >> 7): the game's own camera is off the car's heading then and steps with +808; the frames
+    hold that offset through a step. r47 on the same drive: reversals of 22 and 31.
+  - mark on the Veyron: framestat 1241, faults 1; 12 of 24 shots looked at, 113-277 km/h: the car
+    on the road in every one (a traffic car thrown upside down in a takedown is the game's).
+  The archive restored and compared. Round 48 phone candidate: a4_r48_SHIP.exe (unbaked).
+- Guesses going out (rule 4): +020 clamped at the segment's end (where the render reads it is not
+  found); the road's height rate taken from its last change (exact within a segment in mode 0;
+  modes 1-4 not read); the heading's next turn = its last (87% exact; misses at a turn's start and
+  end); the drift's camera offset held through a step; a contact unforeseen for a step. States the
+  bench did not enter: Monaco's tunnel at 420 km/h (the owner's photos; the LA hill and jumps
+  stand in), a race restart, a pause mid-race, human steering.

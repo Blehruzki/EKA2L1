@@ -39,11 +39,21 @@ for d in sys.argv[1:]:
         key = (r['xW'], r['zW'], r['yW'])
         if key != last: st.append(key); last = key
         r['k'] = len(st) - 1
+    # the record has no step number: where the game ran two (or more) steps between renders, the next
+    # recorded step is that many moves on -- n = the move against its neighbours' (speed changes by a
+    # unit a step), and the line to the next step is 1/n of the way
+    mv = [math.hypot(st[k + 1][0] - st[k][0], st[k + 1][1] - st[k][1]) for k in range(len(st) - 1)]
+    nst = []
+    for k in range(len(mv)):
+        nb = sorted(mv[max(0, k - 4):k] + mv[k + 1:k + 5]); m = nb[len(nb) // 2] if nb else 0
+        nst.append(max(1, int(round(mv[k] / m))) if m > 8 else 1)
     oy, oxz, rel = [], [], []
     for r in rows:
         if r['k'] + 1 >= len(st): continue
         a, b2 = st[r['k']], st[r['k'] + 1]
         if math.hypot(b2[0] - a[0], b2[1] - a[1]) > 2000: continue
+        n = nst[r['k']]
+        if n > 1: b2 = tuple(a[i] + (b2[i] - a[i]) / n for i in range(3))
         q = min(r['q'], 1.0)
         oy.append(abs(r['y'] - (a[2] + (b2[2] - a[2]) * q)))
         oxz.append(math.hypot(r['x'] - (a[0] + (b2[0] - a[0]) * q), r['z'] - (a[1] + (b2[1] - a[1]) * q)))

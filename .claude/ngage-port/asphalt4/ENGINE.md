@@ -130,6 +130,31 @@ arguments 7, 0, ...) (code).
   stands still on the screen and then jumps. The phone draws 1.2-1.5 frames a step (r46ph,
   r47ph). This is the corrector's design, not the engine.
 
+## Frames on the engine's rules (A4_ENGDRAW, engine map 2)
+
+- Per racing car, from the step's state: x, z along +010/+018 (exact in 99% of steps); heading by
+  the whole last turn; height by +A58 in the air (y + +A58 is the next step's y) and by +0D0's own
+  rate on the road (exact within a segment), landing on the drawn road; +020 clamped at the
+  segment's end. A respawn (over 2,048 units in a step) carries no rate.
+- The chase camera: the game's offset from the car at the step, turned by the drawn turn, on the
+  drawn car (x, z), its height above the drawn car kept, its yaw the step's plus the drawn turn --
+  rigid, as +4B40 places it.
+- The corrector (continuity at a step's first frame, faded over a step) continues the last frame's
+  model part at the new velocity with its offset still fading.
+- Bench (run y2b against y2a, ENGINE-rule frames against r47's): all racing cars' height off the
+  game's path 99% 161 -> 10, x-z 97 -> 30, heading 47 -> 12; physics identical to stock as long
+  as any build's real-time run stays so (race step 1,100).
+
+## Open (not yet read)
+
+- +1DE78 in full: who sets the turn (keys, speed, the road-follow) -- a frame could then predict
+  a turn's start and end instead of repeating the last step's.
+- +1F1F8 (kind 2).
+- The render's per-car pass: it reads +01C with the drawn position (+E04C: the segment, then
+  +2421A on the position, probably the shadow on the road); where it reads +020 is not found, so
+  the clamp of +020 is a guess.
+- The road's modes 1-4 (+2435A, lane-dependent): which tracks use them.
+
 ## Instruments
 
 - A4_YREC (bench, a4_gl.c): every frame, every car as drawn plus the step's y, +0D0, the
