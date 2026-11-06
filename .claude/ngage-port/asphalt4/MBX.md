@@ -6923,3 +6923,11 @@ against the car per step.
   is what the owner reported as better ("not as before", r41), and the race's crash state next to the
   scale (+0x834/+0x83C) sets 0x18 at +12ECC. Held by A4_SCRIPTHOLD if so; if it is a player view
   (0-7) A4_CAMALL draws it. A guess until a phone run says.
+- Race to the finish on the exact binary, key 5 held (cap 85, 300 s; r49bf2): framestat 4472, faults
+  1; the finish (mode 1) 124 frames, bearing change 99% 5 (max 5), reversals 0 -- r48 on the phone
+  (r48ph) 93 frames, 99% 62, reversals 16; r48's frames on the bench (fin_o) 99% 25, reversals 10.
+  Chase before it: 293 frames, 99% 7, 4 reversals (the step-boundary steering pulses).
+- Sent as a4_r49_SHIP.exe (unbaked; the owner bakes). What to look at on the phone: the finish
+  orbit, a crash, the helicopter, a takedown -- each for back-and-forth; and whether a crash or
+  takedown camera now looks choppy (drawn at the game's 11.7 Hz steps by design: if it does, the
+  next step is to draw those views one step behind, between two known steps).
