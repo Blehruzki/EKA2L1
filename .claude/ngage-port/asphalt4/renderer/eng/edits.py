@@ -14,10 +14,13 @@ EDITS = {
     # (+14308..+1452C: the start, slow motion's scale race+0x84C, race+0x30, the boost, the jingles) and
     # take the frame slots that part sets (the camera race+0x48, the keys, the start's state ...) as the
     # whole step left them: without them the first 3x run's car rolled during the countdown
-    0x1433C: {'before': 'if (ENG_SUB) { uint32_t k_; for (k_ = 0; k_ < ENG_NFRAME; k_++) MEM32(sp + eng_frame_off[k_]) = ENG->frame[k_]; goto L_1452C; }',
+    0x1433C: {'before': 'if (ENG_SUB && !ENG->loop) return 0; if (ENG_SUB) { uint32_t k_; for (k_ = 0; k_ < ENG_NFRAME; k_++) MEM32(sp + eng_frame_off[k_]) = ENG->frame[k_]; goto L_1452C; }',
               'why': 'substeps 1-2: straight to the traffic, with the whole step\'s frame'},
     0x1452C: {'before': 'if (!ENG_SUB) { uint32_t k_; for (k_ = 0; k_ < ENG_NFRAME; k_++) ENG->frame[k_] = MEM32(sp + eng_frame_off[k_]); }',
               'why': 'the frame slots the race\'s rules set, for the substeps'},
+    # the car loop's start: the whole step reached it (in the race's intro it does not: the fly-in's
+    # check, camera mode 0x17, ends the step before the cars) -- r4d: substeps ran it anyway
+    0x14672: {'before': 'if (!ENG_SUB) ENG->loop = 1;', 'why': 'the whole step runs the cars'},
     # after the car list's base (r6 = race + 0x3D0): the pursuit mode's position checks (mode 0x17) are rules
     0x14586: {'before': 'if (ENG_SUB) goto L_14672;',
               'why': 'substeps 1-2: the pursuit check waits for the whole step'},
@@ -27,12 +30,11 @@ EDITS = {
               'why': 'substeps 1-2: the whole step\'s keys'},
     0x14974: {'before': 'if (!ENG_SUB) ENG_KEYS = r1;',
               'why': 'the keys the whole step gave the player\'s control'},
-    # after the movement loop: the substeps place the camera (+5968 with the step's own arguments: the
-    # camera race+0x48, the track G+0x10, the player car, the key object; stack 0, 0, 0) and end
-    0x14CB2: {'before': 'if (ENG_SUB) { MEM32(sp) = 0u; MEM32(sp + 4u) = 0u; MEM32(sp + 8u) = 0u; '
-                        '{ uint64_t rr_ = a4_eng_call(GAMEFN(0x5968), MEM32(sp + 0x124u), MEM32(r5 + 0x10u) + 0x10u, MEM32(sp + 0xD8u), '
-                        'MEM32(MEM32(r4 + 0x38u) + 0x1114u), sp, r23); (void)rr_; } return 0; }',
-              'why': 'substeps 1-2: the camera on the moved car, then done'},
+    # after the movement loop: the substeps place the camera as the whole step's +12DEC last did (its
+    # arguments saved at each of its +5968 calls: the camera race+0x48, the track, the car it follows,
+    # the key object, the mode's stack words) on the moved cars, and end
+    0x14CB2: {'before': 'if (ENG_SUB) { eng_cam_substep(sp, r23); return 0; }',
+              'why': 'substeps 1-2: the camera on the moved car (its logic the whole step\'s), then done'},
     # the traffic's two clocks (race+0x378, +0x37C, passed to +FB12 in r2 and r3): their change over the
     # whole step, measured there, so the substeps can place the traffic a third and two thirds along it
     0x14574: {'before': 'if (!ENG_SUB) { ENG->tdel[0] = (int32_t)(r2 - ENG->tlast[0]); ENG->tdel[1] = (int32_t)(r3 - ENG->tlast[1]); '
@@ -126,4 +128,21 @@ B(0x1FCB4, 'if (!ENG_SUB) { uint32_t s_ = eng_ai_slot(r5); ENG->aik[s_] = r6; EN
 for a in (0xFB58, 0xFB6A): R(a, 'r0 = eng_tmul(r0, r1, 0u); fN = r0 >> 31; fZ = r0 == 0;', 'clock 0 x speed, at the substep')
 for a in (0xFB5E, 0xFB70): R(a, 'r1 = eng_tmul(r2, r1, 1u); fN = r1 >> 31; fZ = r1 == 0;', 'clock 1 x speed, at the substep')
 G(0xFC4A, 'a traffic slot\'s step counter (to 45)'); G(0xFC90, 'a traffic slot\'s step counter (its path)')
-
+# +12DEC, the camera: its placement's arguments, for the substeps
+for a in (0x12E44, 0x12EA6, 0x12F8C, 0x12FDE, 0x13004): B(a, 'eng_cam_save(r0, r1, r2, r3, sp);', 'the camera placement the whole step made')
+# the pursuers' own driving (cars with +C3C set: +1D20A their target velocity, +1C48E their reaction
+# after the move) -- the AI's choices, on the whole step; the target it sets stays in +680 for the substeps
+G(0x1E5B2, 'a pursuer\'s target velocity (+1D20A): its AI, on the whole step')
+G(0x1E8F2, 'a pursuer\'s reaction (+1C48E): its AI, on the whole step')
+# +2292A, the wreck's scripted path: its frame (+034) and step (+048) counters, once a game step
+for a in (0x22BBA, 0x22BEA): G(a, '+048, the wreck path\'s step counter')
+for a in (0x22BC0, 0x22BE4): G(a, '+034, the wreck path\'s frame')
+# bench (A4_ENGDBG): the path the race step takes, per substep (eng.h's 'ENGS' record)
+import os as _os
+if '-DA4_ENGDBG' in _os.environ.get('A4_EXTRA_CFLAGS', ''):
+    def D(a, bit, extra=''):
+        e = EDITS.setdefault(a, {'why': 'bench: path bit %d' % bit})
+        e['before'] = ('ENG->dbg[0] |= %du; %s' % (1 << bit, extra)) + e.get('before', '')
+    D(0x14754, 0); D(0x146B2, 1); D(0x146D6, 2); D(0x146FC, 3)
+    D(0x14974, 4, 'ENG->dbg[1] = r1; ')
+    D(0x144FC, 5); D(0x1F2D0, 6); D(0x1FCBC, 7, 'ENG->dbg[2] = r1; '); D(0x1F226, 8); D(0x1433C, 9); D(0x14574, 10)

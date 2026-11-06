@@ -46,6 +46,9 @@ struct eng {
     int32_t tdel[2];                 /* and their change over that step */
     uint32_t aic[32], aik[32], aia[32]; /* the AI's keys and argument per car, from the whole step */
     uint32_t frame[16];              /* +141B0's frame slots its race rules set (eng_frame_off), at the whole step */
+    uint32_t camv, cam[8];           /* the whole step's last camera placement (+5968 from +12DEC): r0-r3, 4 stack words */
+    uint32_t loop;                   /* the whole step entered the car loop (+14672): the substeps run only then */
+    uint32_t dbg[8];                 /* A4_ENGDBG: the substep's path bits and the player's keys, emitted per substep */
     uint32_t rk[ENG_NREM];           /* the word's address (0: free) */
     int32_t rv[ENG_NREM];            /* its remainder, 0..2 */
 };
@@ -65,8 +68,45 @@ static inline void ENG_BEGIN(uint32_t race)
         for (uint32_t i = 0; i < 32u; i++) ENG->aic[i] = 0;
         ENG->tlast[0] = ENG->tlast[1] = 0; ENG->tdel[0] = ENG->tdel[1] = 0;
     }
+#ifdef A4_ENGDBG
+    {   /* bench: the last substep's record ('ENGS': count, substep, path bits, keys) with the player car */
+        extern void a4_rec_emit2(const void *hdr, const void *car, const void *race);
+        volatile uint32_t h[8];
+        uint32_t pl = *(volatile uint32_t *)(race + 0x390), idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 0u;
+        uint32_t car = idx < 16u ? *(volatile uint32_t *)(race + 0x394 + 4u * idx) : 0u;
+        h[0] = 0x53474E45u; h[1] = ENG->cnt; h[2] = ENG->sub; h[3] = ENG->dbg[0]; h[4] = ENG->dbg[1]; h[5] = ENG->dbg[2]; h[6] = ENG->dbg[3]; h[7] = car;
+        if (car && ENG->magic == ENG_MAGIC) a4_rec_emit2((const void *)h, (const void *)car, (const void *)race);
+        ENG->dbg[0] = 0; ENG->dbg[1] = 0; ENG->dbg[2] = 0; ENG->dbg[3] = 0;
+    }
+#endif
     ENG->sub = ENG->cnt % 3u; ENG->cnt++;
-    if (ENG->sub == 0u) ENG->nsnd = 0;
+    if (ENG->sub == 0u) { ENG->nsnd = 0; ENG->camv = 0; ENG->loop = 0; }
+}
+/* the camera's placement as the whole step's +12DEC made it, for the substeps to make again on the moved cars */
+static inline void eng_cam_save(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t sp)
+{
+    ENG->cam[0] = r0; ENG->cam[1] = r1; ENG->cam[2] = r2; ENG->cam[3] = r3;
+    for (uint32_t k = 0; k < 4u; k++) ENG->cam[4 + k] = ((volatile uint32_t *)(uintptr_t)sp)[k];
+    ENG->camv = 1;
+}
+/* A substep's camera: the whole step's last placement made again on the moved car, for the views that
+ * are placed from the car (the chase family 1, 2, 3, 0x2A; 0 and 4-7, car-relative). The camera's own
+ * state -- its mode, timers, focal length, script -- is put back after, so its logic stays the whole
+ * step's; only the pose it computed (cam+0x10..+0x2C: x, y, z, pitch, yaw, roll, segment, flag) is the
+ * substep's. The scripted views (0x14, 0x16-0x1D: the fly-in, the crash, the takedowns) walk keyframe
+ * lists and free their nodes as they go: not made again, their pose waits for the whole step. */
+#define ENG_CAMW 56u
+static inline void eng_cam_substep(uint32_t sp, uint32_t *r23)
+{
+    volatile uint32_t *cam = (volatile uint32_t *)(uintptr_t)ENG->cam[0];
+    uint32_t mode, k, save[ENG_CAMW];
+    if (!ENG->camv || !cam) return;
+    mode = cam[0x4C / 4];
+    if (!(mode <= 7u || mode == 0x2Au)) return;
+    for (k = 0; k < ENG_CAMW; k++) save[k] = cam[k];
+    for (k = 0; k < 4u; k++) ((volatile uint32_t *)(uintptr_t)sp)[k] = ENG->cam[4 + k];
+    (void)a4_eng_call(GAMEFN(0x5968), ENG->cam[0], ENG->cam[1], ENG->cam[2], ENG->cam[3], sp, r23);
+    for (k = 0; k < ENG_CAMW; k++) if (k < 4u || k > 11u) cam[k] = save[k];
 }
 /* +1B2D6(car, effect, a2, a3): a car's sound or effect event. The game calls it from conditions it
  * checks once a step (a drift held, wrong way, a landing); on three substeps the same condition would

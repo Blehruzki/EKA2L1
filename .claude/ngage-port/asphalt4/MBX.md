@@ -7095,3 +7095,26 @@ Owner: "Sounds like a plan. Go ahead."
   substeps skipped the race rules' part but set only five of the frame slots it writes; the rest
   (+0xC8, +0xCC, +0xD4, +0x118, +0x120) were stale stack. Now every slot it writes is saved at
   substep 0 (+1452C) and restored on the substeps (+1433C).
+- r2 (the frame restore): a fault at step 46, in the race's intro (race+0x30 still 0): +4B8E4 (free)
+  read its allocator through 0xFFFFFFE7, called from +5205A (a list's node removal) under the camera.
+  No guest store wrote that value (EKA2L1_WATCH on the global and on the code literal: nothing at the
+  time). The substeps placed the camera with fixed arguments (+5968: the camera, the track, the player,
+  K, stack 0, 0, 0), but the intro's flyover is placed by +12DEC with others (the stack words carry the
+  mode: race+0x928 x race+0x92C x 15, slow motion race+0x834, another car for a takedown view). Now the
+  substeps make again the whole step's last placement, its arguments saved at each of +12DEC's five
+  +5968 calls (eng_cam_save), and place nothing when the whole step placed nothing.
+- Also gated: the pursuers' own AI (+1D20A target, +1C48E reaction: cars with +C3C), the wreck path's
+  counters (+2292A: +034 frame, +048 step).
+- r3 (camera replay): no fault in 60 s, but the car still left the grid ~90 steps early (B4 20 at
+  step 61; stock 149). A per-substep record (A4_ENGDBG, 'ENGS': path bits set at chosen addresses)
+  showed why: in the intro and the countdown the whole step never enters the car loop -- the race
+  rules call +14E60, which is not a small local routine but the step's own tail (keys, race logic
+  +13968, the camera +12DEC ...), and it returns from +141B0; the car loop runs only once the race
+  is on. The substeps jumped from the rules straight to the traffic and the cars, so the player car
+  was driven (by the AI, the intro's way) on two thirds of the steps. Now the whole step marks
+  reaching the car loop (+14672) and the substeps run only then. Also: the substep camera now makes
+  the placement again with the camera's own state put back afterwards (its mode, timers, focal
+  length, script) -- only the pose (cam+0x10..+0x2C) is the substep's -- and only for the views
+  placed from the car (0-7, 0x2A); the scripted views (fly-in, crash, takedowns) wait for the step.
+- Measured on the way: +B28 bit 13 is +1ED4C's "moving backwards" (velocity . the segment's
+  direction <= 0), set at rest; the whole step's tail clears it, so a record after a substep sees it.

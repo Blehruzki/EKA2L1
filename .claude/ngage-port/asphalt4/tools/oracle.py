@@ -21,12 +21,17 @@ def load(path):
             out[-1] = (hdr, out[-1][1] + struct.unpack_from('<%di' % (ln // 4), b))   # the car's +A00..+C7C
         elif hdr is not None and ln == 0x100 and out and out[-1][0] is hdr:
             RACE[id(out[-1][1])] = struct.unpack_from('<64i', b)                     # the race's first 0x100 bytes
+    out = Rec(out); out.path = path
     return out
+class Rec(list): pass
 RACE = {}
 def W(w, off): return w[off // 4]
 def series(R):
-    # the race's start: its own step counter race+0x30 (counted in the race rules, once a game step)
-    a0 = next((i for i, (h, w) in enumerate(R) if RACE.get(id(w), [0] * 64)[0x30 // 4] >= 1), 0)
+    # the race's start: the countdown revs the engine (rpm from 0) with the car held; the start is the
+    # first step it moves (+B4 > 0). Both are printed, so a false start shows as a short countdown.
+    r0 = next((i for i, (h, w) in enumerate(R) if W(w, 0x7D8) != 0), 0)
+    a0 = next((i for i, (h, w) in enumerate(R) if i > r0 and W(w, 0xB4) > 0), r0)
+    print('  %s: countdown revs from record %d, moves at %d (%d steps held)' % (os.path.basename(R.path), r0, a0, a0 - r0))
     S = []; dist = 0.0; px = pz = None
     for h, w in R[a0:]:
         x, z = W(w, 0x004), W(w, 0x00C)
