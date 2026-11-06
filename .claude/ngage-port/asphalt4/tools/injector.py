@@ -41,6 +41,8 @@ SOURCES = [os.path.join(REND, 'a4_tramp.s'),
            os.path.join(REND, 'a4_gl.c'),
            os.path.join(REND, 'a4_prim.c'),
            os.path.join(REND, 'a4_tel.c'),
+           os.path.join(REND, 'a4_eng.s'),
+           os.path.join(REND, 'a4_eng.c'),
            os.path.join(HERE, '..', 'patch', 'fill.c')]
 
 # MBX stage 3a: capture textured-triangle data at draw_primitive +0x300B2 (just
@@ -368,10 +370,19 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             word = (LINK_BASE + ret) - ph_link
             struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
 
+    # round 50 (A4_ENGINE): the game's code base for the engine rewrite, and its replaced functions
+    if 'a4_g_base' in syms:
+        ph_link = syms['a4_g_base']
+        struct.pack_into('<I', blob, ph_link - blob_base, (LINK_BASE - ph_link) & 0xFFFFFFFF)
     code = bytearray(d[code_off:code_off + code_size])
     code += b'\0' * (new_off - code_size) + blob
     code += b'\0' * (-len(code) % 4)
 
+    for sym in sorted(syms):
+        if sym.startswith('a4_engv_'):
+            off = int(sym[len('a4_engv_'):], 16)
+            n = veneer(code, off, syms[sym])
+            print('engine +%06X -> %s +%06X (%d-byte veneer)' % (off, sym, syms[sym] - LINK_BASE, n))
     for off, sym in fill_hooks.items():
         n = veneer(code, off, syms[sym])
         print('fill   +%06X -> +%06X (%d-byte veneer)' % (off, syms[sym] - LINK_BASE, n))

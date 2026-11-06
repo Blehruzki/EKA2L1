@@ -1,0 +1,165 @@
+# lift.py <code.bin> <func hex> [<func hex> ...] [-o out.c]: game Thumb functions translated to C, one
+# statement per instruction, exact: registers are variables, the flags N Z C V are computed by every
+# instruction that sets them and read by every one that uses them, the function's own stack frame is an
+# array (incoming stack arguments copied to its top), pc-relative literals are read from the game's own
+# code at run time (so the loader's relocations hold), and calls go through a4_eng_call (renderer/
+# a4_eng.s), which passes eight stack words and returns r0:r1. Round 50: the first draft of each engine
+# function rewritten in C -- checked against the game's own function in lockstep (the whole race,
+# every word of every car) before a line of it is changed. Compiled by renderer/a4_eng.c.
+import sys, struct, capstone
+from capstone import arm_const as A
+args = [a for a in sys.argv[1:]]
+outp = None
+if '-o' in args: k = args.index('-o'); outp = args[k + 1]; del args[k:k + 2]
+code = open(args[0], 'rb').read()
+CC = {A.ARM_CC_EQ: 'fZ', A.ARM_CC_NE: '!fZ', A.ARM_CC_HS: 'fC', A.ARM_CC_LO: '!fC', A.ARM_CC_MI: 'fN', A.ARM_CC_PL: '!fN',
+      A.ARM_CC_VS: 'fV', A.ARM_CC_VC: '!fV', A.ARM_CC_HI: '(fC && !fZ)', A.ARM_CC_LS: '(!fC || fZ)', A.ARM_CC_GE: '(fN == fV)',
+      A.ARM_CC_LT: '(fN != fV)', A.ARM_CC_GT: '(!fZ && fN == fV)', A.ARM_CC_LE: '(fZ || fN != fV)'}
+md = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB); md.detail = True
+callees = set()
+
+def lift(start):
+    end = start + 2
+    while end < len(code) and (struct.unpack_from('<H', code, end)[0] & 0xFF00) != 0xB500: end += 2
+    allins = {i.address: i for i in md.disasm(code[start:end], start)}
+    def isbr(i): return i.mnemonic == 'b' or (i.mnemonic.startswith('b') and len(i.mnemonic) == 3 and i.mnemonic not in ('bic', 'blx'))
+    reach, work, labels = set(), [start], set()
+    while work:
+        a = work.pop()
+        while a in allins and a not in reach:
+            i = allins[a]; reach.add(a); m = i.mnemonic
+            if isbr(i):
+                t = i.operands[0].imm
+                if start <= t < end and t in allins: labels.add(t); work.append(t)
+                if m == 'b': break
+            if m == 'bx' or (m == 'pop' and 'pc' in i.op_str) or (m == 'mov' and i.op_str.startswith('pc')): break
+            a += i.size
+    ins = [allins[a] for a in sorted(reach)]
+    L = []
+    def E(s, i): L.append('    %-60s /* %06x %s %s */' % (s, i.address, i.mnemonic, i.op_str))
+    def rn(op, i): return i.reg_name(op.reg)
+    def opv(op, i):
+        if op.type == A.ARM_OP_REG: return rn(op, i)
+        return '0x%Xu' % (op.imm & 0xFFFFFFFF)
+    def nz(d): return 'fN = %s >> 31; fZ = %s == 0;' % (d, d)
+    W = {'ldr': 'MEM32', 'str': 'MEM32', 'ldrb': 'MEM8', 'strb': 'MEM8', 'ldrh': 'MEM16', 'strh': 'MEM16', 'ldrsb': 'MEMS8', 'ldrsh': 'MEMS16'}
+    for i in ins:
+        if i.address in labels: L.append('L_%05X:' % i.address)
+        m = i.mnemonic; ops = i.operands
+        flg = m.endswith('s') and m not in ('bics_',) and m[:-1] in ('mov', 'mvn', 'add', 'sub', 'lsl', 'lsr', 'asr', 'ror', 'and', 'orr', 'eor', 'bic', 'mul', 'neg', 'rsb', 'adc', 'sbc')
+        base = m[:-1] if flg else m
+        if m == 'push':
+            regs = [rn(o, i) for o in ops]
+            E('sp -= %d; ' % (4 * len(regs)) + ' '.join('MEM32(sp + %d) = %s;' % (4 * k, r) for k, r in enumerate(regs)), i)
+        elif m == 'pop':
+            regs = [rn(o, i) for o in ops]
+            s = ' '.join('%s = MEM32(sp + %d);' % (r if r != 'pc' else 't', 4 * k) for k, r in enumerate(regs)) + ' sp += %d;' % (4 * len(regs))
+            E(s + (' return ((uint64_t)r1 << 32) | r0;' if 'pc' in regs else ''), i)
+        elif m in ('ldm', 'stm'):
+            b = rn(ops[0], i); regs = [rn(o, i) for o in ops[1:]]
+            if m == 'ldm':
+                E('t = %s; ' % b + ' '.join('%s = MEM32(t + %d);' % (r, 4 * k) for k, r in enumerate(regs)) + ('' if b in regs else ' %s = t + %d;' % (b, 4 * len(regs))), i)
+            else:
+                E('t = %s; ' % b + ' '.join('MEM32(t + %d) = %s;' % (4 * k, r) for k, r in enumerate(regs)) + ' %s = t + %d;' % (b, 4 * len(regs)), i)
+        elif m in W and ops[1].type == A.ARM_OP_MEM:
+            mo = ops[1].mem; b = i.reg_name(mo.base); rt = rn(ops[0], i)
+            if b == 'pc':
+                la = ((i.address + 4) & ~3) + mo.disp
+                E('%s = GAME32(0x%X);' % (rt, la), i); continue
+            ea = b + (' + ' + i.reg_name(mo.index) if mo.index else '') + (' + 0x%Xu' % (mo.disp & 0xFFFFFFFF) if mo.disp else '')
+            if m.startswith('ld'):
+                E('%s = %s%s(%s);' % (rt, '(uint32_t)(int32_t)' if 'MEMS' in W[m] else '', W[m], ea), i)
+            else: E('%s(%s) = %s;' % (W[m], ea, rt), i)
+        elif base in ('mov', 'mvn'):
+            d = rn(ops[0], i); s = opv(ops[1], i)
+            if d == 'pc': E('return CALLR(%s); /* jump through a register */' % s, i); continue
+            E('%s = %s%s;%s' % (d, '~' if base == 'mvn' else '', s, (' ' + nz(d)) if flg else ''), i)
+        elif base in ('add', 'sub', 'adc', 'sbc', 'rsb', 'neg', 'cmp', 'cmn') or m in ('cmp', 'cmn'):
+            if m in ('cmp', 'cmn'): d, a, b = None, opv(ops[0], i), opv(ops[1], i)
+            elif len(ops) == 3: d, a, b = rn(ops[0], i), opv(ops[1], i), opv(ops[2], i)
+            elif base in ('neg', 'rsb'): d, a, b = rn(ops[0], i), opv(ops[1], i), '0'
+            else: d, a, b = rn(ops[0], i), rn(ops[0], i), opv(ops[1], i)
+            if a == 'pc': a = 'GAMEADDR(0x%X)' % ((i.address + 4) & ~3)
+            if a == 'sp' or d == 'sp':
+                pass
+            op = {'add': '+', 'cmn': '+', 'adc': '+', 'sub': '-', 'cmp': '-', 'sbc': '-', 'rsb': '-', 'neg': '-'}[base if m not in ('cmp', 'cmn') else m]
+            if base in ('rsb', 'neg'): a, b = '0u' if b == '0' else b, a     # rsb d, a, #0 = 0 - a
+            if base == 'adc': expr = 'ta + tb + fC_old'
+            elif base == 'sbc': expr = 'ta - tb - !fC_old'
+            else: expr = 'ta %s tb' % op
+            setf = flg or m in ('cmp', 'cmn')
+            s = '{ uint32_t ta = %s, tb = %s; t = %s;' % (a, b, expr)
+            if setf:
+                if op == '+':
+                    s += ' fC = (t < ta) || (fC_old && t == ta);' if base == 'adc' else ' fC = t < ta;'
+                    s += ' fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31;'
+                else:
+                    s += ' fC = %s;' % ('ta > tb || (ta == tb && fC_old)' if base == 'sbc' else 'ta >= tb')
+                    s += ' fV = ((ta ^ tb) & (ta ^ t)) >> 31;'
+                s += ' fN = t >> 31; fZ = t == 0;'
+            if base in ('adc', 'sbc'): s = s.replace('{ uint32_t ta', '{ uint32_t fC_old = fC, ta')
+            if d: s += ' %s = t;' % d
+            E(s + ' }', i)
+        elif base in ('and', 'orr', 'eor', 'bic', 'mul', 'tst') or m == 'tst':
+            if m == 'tst': d, a, b = None, opv(ops[0], i), opv(ops[1], i)
+            elif len(ops) == 3: d, a, b = rn(ops[0], i), opv(ops[1], i), opv(ops[2], i)
+            else: d, a, b = rn(ops[0], i), rn(ops[0], i), opv(ops[1], i)
+            op = {'and': '&', 'tst': '&', 'orr': '|', 'eor': '^', 'bic': '& ~', 'mul': '*'}[base if m != 'tst' else 'tst']
+            s = 't = %s %s %s;' % (a, op, b)
+            if flg or m == 'tst': s += ' fN = t >> 31; fZ = t == 0;'
+            if d: s += ' %s = t;' % d
+            E(s, i)
+        elif base in ('lsl', 'lsr', 'asr', 'ror'):
+            d = rn(ops[0], i)
+            if len(ops) == 3: a, b = opv(ops[1], i), opv(ops[2], i)
+            else: a, b = d, opv(ops[1], i)
+            imm = ops[-1].type == A.ARM_OP_IMM
+            fn = {'lsl': 'SHL', 'lsr': 'SHR', 'asr': 'SAR', 'ror': 'ROR'}[base]
+            if imm and base in ('lsr', 'asr') and (ops[-1].imm == 0): b = '32u'
+            E('t = %s_C(%s, %s, &fC); %s = t; fN = t >> 31; fZ = t == 0;' % (fn, a, b, d), i)
+        elif m in ('bl', 'blx'):
+            if ops[0].type == A.ARM_OP_IMM:
+                t = ops[0].imm; callees.add((t, m == 'bl'))
+                E('{ uint64_t rr = a4_eng_call(%s(0x%X), r0, r1, r2, r3, sp); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); }' % ('GAMEFN' if m == 'bl' else 'GAMEARM', t), i)
+            else:
+                E('{ uint64_t rr = a4_eng_call(%s, r0, r1, r2, r3, sp); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); }' % rn(ops[0], i), i)
+            E('r2 = r3 = r12 = 0xDEAD0000u; /* clobbered by the call */', i)
+        elif m == 'bx':
+            E('return ((uint64_t)r1 << 32) | r0;' if rn(ops[0], i) == 'lr' else 'return CALLR(%s);' % rn(ops[0], i), i)
+        elif isbr(i):
+            t = ops[0].imm
+            if start <= t < end and t in allins: tgt = 'goto L_%05X;' % t
+            else:
+                callees.add((t, True))
+                tgt = '{ return a4_eng_call(GAMEFN(0x%X), r0, r1, r2, r3, sp); } /* tail */' % t
+            if m == 'b': E(tgt, i)
+            else: E('if (%s) %s' % (CC[i.cc], tgt), i)
+        elif m == 'adr':
+            E('%s = GAMEADDR(0x%X);' % (rn(ops[0], i), ((i.address + 4) & ~3) + ops[1].imm), i)
+        elif m in ('add', 'sub') and rn(ops[0], i) == 'sp':
+            E('sp %s= %s;' % ('+' if m == 'add' else '-', opv(ops[-1], i)), i)
+        else:
+            E('#error "lift.py: %s %s"' % (m, i.op_str), i)
+    frame = 0
+    for i in ins[:8]:
+        if i.mnemonic == 'push': frame += 4 * len(i.operands)
+        elif i.mnemonic == 'sub' and i.op_str.startswith('sp'): frame += i.operands[-1].imm
+    stkw = (frame + 64 + 32 + 7) // 8 * 2      # words: the frame, a margin, the eight argument words
+    hdr = ('/* +%05X, %d instructions (tools/lift.py) */\n' % (start, len(ins)) +
+           'uint64_t eng_%05X(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,\n'
+           '                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)\n{\n' % start +
+           '    uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = 0, t = 0;\n'
+           '    uint32_t fN = 0, fZ = 0, fC = 0, fV = 0;\n'
+           '    uint32_t stk[%d]; uint32_t sp = (uint32_t)(uintptr_t)&stk[%d - 8];\n' % (stkw, stkw) +
+           '    stk[%d] = s0; stk[%d] = s1; stk[%d] = s2; stk[%d] = s3;\n' % (stkw - 8, stkw - 7, stkw - 6, stkw - 5) +
+           '    stk[%d] = s4; stk[%d] = s5; stk[%d] = s6; stk[%d] = s7;\n' % (stkw - 4, stkw - 3, stkw - 2, stkw - 1) +
+           '    (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;\n')
+    return hdr + '\n'.join(L) + '\n}\n'
+
+out = ['/* generated by tools/lift.py -- the game\'s own functions as C; edit only through the engine notes */']
+for a in args[1:]:
+    out.append(lift(int(a, 16)))
+txt = '\n'.join(out)
+if outp: open(outp, 'w').write(txt)
+else: print(txt)
+sys.stderr.write('callees: %s\n' % ' '.join('%s%05X' % ('T' if th else 'A', t) for t, th in sorted(callees)))
