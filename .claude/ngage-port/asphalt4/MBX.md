@@ -6973,3 +6973,35 @@ through them and not trigger any crash or hit." Eight telemetry files (r49ph).
 - Not a repeat (rule 2): round 40/41's traffic ("hard to connect") was the traffic drawn a step
   behind the player (fixed by A4_SPECTRAFFIC); here the drawing is measured right and the miss is
   in the game's own step test.
+- The owner, on the question (keep the game's collision or check between steps): "remember that it's
+  not only crash from upcoming traffic, but also takedowns or hits from traffic going my same
+  direction. ... yes, the idea of all this is to modify the game engine so that it runs at higher
+  framerate (at least 30 real fps, not capped by the 11.7 cap) without cheap tricks, under the
+  premise that the n95 has enough power to run it, and that the game's original code might not be
+  of high quality or pretty much unoptimized for devices like this ... Keep this in mind".
+
+## Direction from round 50: the engine itself at 30+ Hz
+
+The goal restated: the game's own simulation runs faster than its 11.72 Hz step and every frame
+is drawn from a real simulated state -- no frames predicted from an 85 ms step (A4_KINEDRAW,
+A4_ENGDRAW, the corrector and the camera rules are the "cheap tricks" this replaces). All the
+collisions -- oncoming and same-way traffic, takedowns (car against car, +1FDEC) -- are the same
+discrete overlap at a step, so they come right with the finer step itself.
+- The budget, from the record: the logic 1.5 ms a step on the phone (round 30), so three steps a
+  frame are ~4.5 ms; the render call 62 ms (r48; 15 ms of it the game's own transforms and sort
+  before the first triangle), presents 57 ms (r49). 30 fps is 33 ms a frame: the render must come
+  to about half. The engine rate is cheap; the frame cost is the larger job.
+- Plan:
+  1. The step at 3x (35.16 Hz, 28.44 ms, a period of 7111 of the game's 21333): every per-step
+     quantity in the step's ~127 functions (57 KB, bench trace) rescaled in the game's own code --
+     velocities and accelerations, gravity (-9 a step: -3), decays, timers and counters (x3), the
+     traffic's lane motion, the camera (the chase's rigid rule and the scripts' keyframe times),
+     effects. What is not motion (AI choices, race rules) may stay at the 11.72 Hz cadence by
+     running every third step -- named per function in ENGINE.md. Round 44's lesson: a census of
+     normal driving missed jumps and turbo; this time every function of the step is read and every
+     situation is on the oracle.
+  2. The oracle: stock (11.72 Hz) against the 3x build on the bench, the same scripted inputs in
+     game time: speed curve, top speed, jump distance and airtime, turbo length, lap time, the AI's
+     lap times, traffic speeds, hits. Nothing goes to the phone until they match.
+  3. The frame cost to ~30 ms on the modelled N95: profiled per function on the calibrated bench.
+  4. A frame per step; the prediction code retired.
