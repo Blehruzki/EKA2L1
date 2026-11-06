@@ -486,6 +486,17 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == old_w, 'half step: +%06X holds %08x, expected %08x' % (off, have, old_w)
             struct.pack_into('<I', code, off, new_w)
         print('STEP   halved: +52B98 +52B9C +15F28 (10667 units, 42.67 ms)')
+    if os.environ.get('A4_THIRDSTEP'):
+        # round 50, the engine at 3x: the game's logic step a third, 21333 -> 7111 units (85.33 ->
+        # 28.44 ms), each a real step of the engine in C (renderer/a4_eng.c), not a half-step frame.
+        # /7111 by 0x49BAA9B5 >> 43, checked exact for 0 <= t < 2^31 as +52B98's umull >> 43 reads it.
+        assert not os.environ.get('A4_HALFSTEP'), 'A4_THIRDSTEP and A4_HALFSTEP both set'
+        for off, old_w, new_w in ((0x52B98, 0x18938DE7, 0x49BAA9B5), (0x52B9C, (-21333) & 0xFFFFFFFF, (-7111) & 0xFFFFFFFF),
+                                  (0x15F28, 21333, 7111)):
+            have = struct.unpack_from('<I', code, off)[0]
+            assert have == old_w, 'third step: +%06X holds %08x, expected %08x' % (off, have, old_w)
+            struct.pack_into('<I', code, off, new_w)
+        print('STEP   a third: +52B98 +52B9C +15F28 (7111 units, 28.44 ms)')
     if os.environ.get('A4_BENCH_UNLOCK'):
         # BENCH ONLY, never a phone build: +3A15C (is this city/item unlocked?) returns 1 at
         # once (movs r0,#1 ; bx lr), so a fresh career reaches every city -- the night/lights

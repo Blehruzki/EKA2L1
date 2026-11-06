@@ -7040,3 +7040,24 @@ Owner: "Sounds like a plan. Go ahead."
 - Not covered yet: the opponents' records (CREA, not compared by crec.py), jumps, the turbo, crashes
   -- the autopilot's 35 s of race. Next: the race step +141B0, the traffic +FB12 and the camera in C,
   the comparison over a longer race and the opponents, then the rate map in the C.
+- e4/e5 (the race step +141B0, the traffic +FB12/+F1B0/+F60A/+2202C and the camera +12DEC/+5968/
+  +4B40/+49C4 added to the C): two crashes, both the lifter's. (1) +141B0 calls +14E60 with BL, but
+  +14E60 is a local subroutine inside +141B0's own body (no prologue, it reads the caller's frame at
+  [sp, #0x12C]); called as a function it read a foreign stack. Now a BL to a target inside the
+  function before its next push is a goto with an internal return marker in lr, and bx lr / pop {pc}
+  dispatch on it. (2) The injector's hooks were declared extern char[]: with -fropi a data address
+  stays absolute (the call went to 0xC308C). Declared as functions. Also: +5968's mode switch is a
+  Thumb byte jump table (cmp; adr; ldrb; adds; add pc) -- lifted to a C switch.
+- The oracle moved to the stock-step flag set (E0 = C37nohalf's flags + the recorders, A4_LOCKSTEP=1,
+  A4_BENCH_SEED): on the half-step set two runs of one build parted at step ~136-626 in the render's
+  own once-a-frame counters (+15C, +158: round 46's), whose frame count depends on host time there.
+  Both libc generators are now also pinned on every frame before the race (a4_fps.c): rand() is a
+  Park-Miller generator (its first write after a seed of 1 is 16807) with its state at 0x500148,
+  apart from random()'s table.
+- e6 (E0, 150 s, the whole race, 1,898 aligned steps): the build with all 34 functions in C ran the
+  race without a fault. The two runs of the game's own code part at step 405 (A vs C); the C build
+  agrees with the second of them for 825 steps (B vs C) -- its differences sit inside the bench's own
+  run-to-run spread. The opponents start 1-3 units apart between runs (a set-up source not yet pinned;
+  not the C library's generators).
+- A4_THIRDSTEP (injector): the step a third, 21333 -> 7111 units (28.44 ms): +52B98's divide magic
+  0x49BAA9B5 >> 43 checked exact at every multiple of 7111 below 2^31, +52B9C, +15F28.
