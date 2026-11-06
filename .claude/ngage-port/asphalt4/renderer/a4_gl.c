@@ -811,6 +811,16 @@ struct agg { uint32_t seg[3][4][32]; };
  * block in every capture; tools/frec.py reads it. */
 #define A4_GL_FREC 0x00456000u
 #define FREC_N 256u
+#if defined(A4_KINEDRAW) && !defined(A4_INTERP)
+/* engine map 1 (round 47 on the phone: cars flew, and the frame record had no height): a second
+ * ring, 'FRC2', in A4_INTERP's block (unused without it): per render [0] the same ms as FRC1's
+ * entry, [1] the player's drawn y | the camera's y << 16, [2] the step's y | its +0D0 << 16,
+ * [3] the step's x less the drawn x | the step's z less the drawn z << 16 (16 bits each, signed).
+ * a4_tel.c appends it after FRC1; tools/frec2.py reads both. */
+#define A4_GL_FREC2 0x0045C000u
+#define FREC2_N 255u
+_Static_assert(A4_GL_FREC2 + 16u + FREC2_N * 16u <= 0x0045D000u, "FRC2 past the block before HP");
+#endif
 _Static_assert(A4_GL_FREC >= 0x00455800u + 0x680u && A4_GL_FREC + 16u + FREC_N * 32u <= 0x00460000u, "the frame record");
 #endif
 #define A4_GL_STEP 0x00421700u
@@ -1373,7 +1383,12 @@ static void __attribute__((unused)) hp_kmove(uint32_t car, uint32_t f16, uint32_
  * car, at the new velocity, and the difference fades out over A4_KD_TAU (a step): no frame jumps,
  * and the picture is the game's own again within a step. Not across a cut (a respawn, a reset) */
 #ifndef A4_KD_TURN
+#ifdef A4_ENGDRAW
+#define A4_KD_TURN 65536u            /* engine map 1: the heading turns in whole pulses (0, +-20 a step, run y1:
+                                      * the next step repeats the last turn in 87% of steps) -- not 3/4 */
+#else
 #define A4_KD_TURN 49152u            /* 16.16 */
+#endif
 #endif
 #ifndef A4_KD_TAUSH
 #define A4_KD_TAUSH 16u              /* the fade: 1 << A4_KD_TAUSH of 1/65536 step (16: one step) */
@@ -1410,7 +1425,15 @@ static uint32_t kd_correct(volatile int32_t *E, volatile int32_t *D, volatile ui
         for (uint32_t w = 0; w < n; w++) E[w] = 0;
     } else if (first) {
         for (uint32_t w = 0; w < n; w++) {
+#ifdef A4_ENGDRAW
+            /* engine map 1: the last frame's point continued -- its model part at the new velocity,
+             * its offset still fading. Continuing the drawn point whole (as r46-r47) carried the
+             * offset across every step whose first frame was its only one, and froze what the
+             * velocity missed (a falling car whose +014 is 0) */
+            int32_t p = D[w] - E[w] + (int32_t)(((int64_t)v[w] * (int64_t)dt) >> 16) + kd_fade(E[w], dt);
+#else
             int32_t p = D[w] + (int32_t)(((int64_t)v[w] * (int64_t)dt) >> 16);
+#endif
             int32_t e = p - m[w];
             if ((circ >> w) & 1u) e = kd_wrap(e);
             E[w] = e;
@@ -1437,6 +1460,11 @@ static void hp_kdraw(uint32_t car, uint32_t qt, uint32_t first, uint32_t tnow)
             t = hp_wrap(hd - HP->hdl[i], 2048); if (t >= 256 || t <= -256) t = 0;
             u = hp_wrap(w - HP->wl[i], 4096); if (u >= 1024 || u <= -1024) u = 0;
             g = d - HP->dWp[i]; if (g >= 512 || g <= -512) g = 0;
+#ifdef A4_ENGDRAW
+            /* a respawn moves the car thousands of units in one step (run y2b, slot 5, step 978:
+             * 4,600 in x-z and +452 in y, the road's "slope" then 471 a step): nothing of it is a rate */
+            if (iabs32(c[1] - HP->xW[i]) > 2048 || iabs32(c[3] - HP->zW[i]) > 2048) t = u = g = 0;
+#endif
         }
         HP->turn[i] = t; HP->wr[i] = u; HP->hdl[i] = hd; HP->wl[i] = w; HP->hds[i] = HP->wstep;
         HP->gW[i] = g; HP->dWp[i] = d;
@@ -1447,6 +1475,12 @@ static void hp_kdraw(uint32_t car, uint32_t qt, uint32_t first, uint32_t tnow)
     if (!HP->disp[i]) return;
     int32_t vx = c[0x10u / 4u], vy = c[0x14u / 4u], vz = c[0x18u / 4u];
     if (iabs32(vx) >= 2048 || iabs32(vz) >= 2048) vx = vz = 0;
+#ifdef A4_ENGDRAW
+    /* engine map 1 (ENGINE.md): +014 is measured before the vertical logic moves y, so the height
+     * moves by the engine's own rule -- in the air y += +A58 next step (+1EE28), on the road it
+     * follows +0D0 (its last change, the road's slope under the car) */
+    vy = HP->yW[i] > HP->dW[i] ? c[0xA58u / 4u] : HP->gW[i];
+#endif
     if (iabs32(vy) >= 1024) vy = 0;
     int32_t tv = (int32_t)(((int64_t)HP->turn[i] * (int32_t)A4_KD_TURN) >> 16);
     int32_t v[4] = { vx << 8, vz << 8, tv << 8, vy << 8 };
@@ -1459,14 +1493,31 @@ static void hp_kdraw(uint32_t car, uint32_t qt, uint32_t first, uint32_t tnow)
     kd_correct(HP->kE[i], HP->kD[i], &HP->kT[i], &HP->kV[i], m, v, 4u, 4u, first, tnow, cut);
     /* the ground under the drawn car: on it, the car; in the air, drawn on by its own last change */
     int32_t air = HP->yW[i] > HP->dW[i];
+#ifdef A4_ENGDRAW
+    /* the road drawn on by its own last change; a car in the air lands on it (+1EF0A), a car on the
+     * road keeps the step's height above it (the floor is +0D0 - 64, +1EF26) */
+    int32_t gnd = (HP->dW[i] << 8) + (int32_t)(((int64_t)(HP->gW[i] << 8) * (int32_t)qt) >> 16);
+    if (!air) gnd += (HP->yW[i] - HP->dW[i]) << 8;
+    if (air && m[3] < gnd) { m[3] = gnd; HP->kD[i][3] = gnd; }
+#else
     int32_t gnd = (HP->dW[i] << 8) + (air ? (int32_t)(((int64_t)(HP->gW[i] << 8) * (int32_t)qt) >> 16) : (m[3] - (HP->yW[i] << 8)));
     if (m[3] < gnd) { m[3] = gnd; HP->kD[i][3] = gnd; }
+#endif
     int32_t x = (m[0] + 128) >> 8, z = (m[1] + 128) >> 8;
     c[1] = x; c[3] = z;
     c[0xA8u / 4u] = HP->aW[i] + (x - HP->xW[i]); c[0xB0u / 4u] = HP->bW[i] + (z - HP->zW[i]);
     c[0x678u / 4u] = ((m[2] + 128) >> 8) & 2047;
     c[2] = (m[3] + 128) >> 8; c[0xD0u / 4u] = (gnd + 128) >> 8;
+#ifdef A4_ENGDRAW
+    {   /* +020 is the car's fraction along its segment (+24524 writes it, clamped; ENGINE.md), read by
+         * the render with the segment +01C: past the segment's end it stays at the end -- wrapped,
+         * it put the car back at the start of the segment it is leaving */
+        int32_t fw = HP->wW[i] + (int32_t)(((int64_t)HP->wr[i] * (int32_t)qt) >> 16);
+        c[0x020u / 4u] = fw < 0 ? 0 : fw > 4095 ? 4095 : fw;
+    }
+#else
     c[0x020u / 4u] = (HP->wW[i] + (int32_t)(((int64_t)HP->wr[i] * (int32_t)qt) >> 16)) & 4095;
+#endif
 }
 #endif
 /* the whole step, a car that moved at the renders: before its call */
@@ -2372,6 +2423,14 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
                      * (the camera's turn is the game's: no corrector of its own) -- and set on the drawn
                      * car. The framing is the game's by construction; the height keeps its own rate */
                     int32_t yaw = cm[0x68u / 4u];
+#ifdef A4_ENGDRAW
+                    /* engine map 1 (+4B40, run y1): the game's chase camera is rigid on the car at
+                     * every step -- yaw = the car's heading (1,238 steps, within -1..0: the shake of
+                     * +49C4), height = the car's y + 52 (+A8C) + 53 + a slope term -- so the frame's
+                     * camera turns with the whole drawn turn and keeps its height above the drawn car */
+                    yaw = (HP->cw[4] + dh) & 2047;
+                    cm[0x5Cu / 4u] = pc[2] + (HP->cw[1] - HP->pw[1]);
+#endif
 #ifdef A4_KD_CAMYAWCORR              /* bench (round 47, r47a): the yaw through the corrector -- off: a large
                                       * offset faded out across one sparse frame (a 100 /2048 jump), and the car's
                                       * heading against the camera's spread 22/93/128 (r42ph 7/25/59) */
@@ -2751,15 +2810,14 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
 #ifdef A4_YREC
                     /* bench (engine map, after round 47 on the phone: cars fly off and snap back): every
                      * car as this frame draws it, with the step's own values beside it -- 'FRKD', the
-                     * step, q16 | car slot << 24 | first << 31, the step's y, +0D0, the corrector's y
-                     * offset, the camera's y at the step, the ground's last change */
+                     * step, q16 | car slot << 24 | first << 31, the step's y, +0D0, x, z, heading */
                     for (uint32_t ci = 0; ci < HP_CARS; ci++) {
                         if (!HP->car[ci] || !HP->disp[ci]) continue;
                         volatile uint32_t q[8];
                         q[0] = 0x444B5246u; q[1] = ((volatile uint32_t *)A4_GL_CREC)[1];
                         q[2] = (q16 & 0xFFFFFFu) | (ci << 24) | (first << 31);
-                        q[3] = (uint32_t)HP->yW[ci]; q[4] = (uint32_t)HP->dW[ci]; q[5] = (uint32_t)HP->kE[ci][3];
-                        q[6] = (uint32_t)HP->cw[1]; q[7] = (uint32_t)HP->gW[ci];
+                        q[3] = (uint32_t)HP->yW[ci]; q[4] = (uint32_t)HP->dW[ci]; q[5] = (uint32_t)HP->xW[ci];
+                        q[6] = (uint32_t)HP->zW[ci]; q[7] = (uint32_t)HP->hW[ci];
                         a4_rec_emit2((const void *)q, (const void *)HP->car[ci], (const void *)race);
                     }
 #endif
@@ -2867,6 +2925,25 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         e[3] = car ? car[1] : 0; e[4] = car ? car[3] : 0;
         e[5] = (car ? car[0x678u / 4u] & 0xFFFFu : 0u) | (c[0x68u / 4u] & 0xFFFFu) << 16;
         e[6] = c[0x58u / 4u]; e[7] = c[0x60u / 4u];
+#ifdef A4_GL_FREC2
+        {
+            volatile uint32_t *F2 = (volatile uint32_t *)A4_GL_FREC2;
+            if (F2[0] != 0x32435246u) { F2[0] = 0x32435246u; F2[1] = 0; }   /* 'FRC2' */
+            volatile uint32_t *e2 = F2 + 4u + (F2[1] % FREC2_N) * 4u;
+            uint32_t pi = HP_CARS;   /* a lookup only: hp_idx would register a car it does not know */
+            for (uint32_t k = 0; car && k < HP_CARS; k++) if (HP->car[k] == (uint32_t)(uintptr_t)car) { pi = k; break; }
+            int32_t dy = car ? (int32_t)car[2] : 0, sy = dy, sd = car ? (int32_t)car[0xD0u / 4u] : 0, ex = 0, ez = 0;
+            if (pi < HP_CARS && HP->disp[pi]) {
+                sy = HP->yW[pi]; sd = HP->dW[pi];
+                ex = HP->xW[pi] - (int32_t)car[1]; ez = HP->zW[pi] - (int32_t)car[3];
+            }
+            e2[0] = e[0];
+            e2[1] = ((uint32_t)dy & 0xFFFFu) | (c[0x5Cu / 4u] & 0xFFFFu) << 16;
+            e2[2] = ((uint32_t)sy & 0xFFFFu) | ((uint32_t)sd & 0xFFFFu) << 16;
+            e2[3] = ((uint32_t)ex & 0xFFFFu) | ((uint32_t)ez & 0xFFFFu) << 16;
+            F2[1]++;
+        }
+#endif
         F[1]++;
     }
 #endif

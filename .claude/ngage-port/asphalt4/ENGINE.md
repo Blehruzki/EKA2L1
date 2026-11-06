@@ -33,6 +33,19 @@ code-section offsets (`+1EA64`).
   records, the index at +01C) and the position on it (+23E72), then reads the segment's corner
   points (+0x0C/+0x14, +0x30/+0x38, +0x54/+0x5C): the road under the car. +0D0 is the road's
   height there (run y1: +0D0 tracks the step's y whenever the car is on the road).
+- **The road** (code): the track is an array of 0xE4-byte segments (base at track + 4, count at
+  track + 0); a segment's point is at +0x30/+0x34/+0x38 (x, height, z). +24604(track, pos,
+  &index) finds the segment holding a position, starting from the index given. +24524(pos, seg,
+  prev, mode, lane, ..., &frac, ...) projects the point on the line prev -> seg in x-z, giving
+  the fraction t (0..4096, clamped) along it, writes t out, and returns the road height: with
+  mode bits 10-12 clear, `prev.h + (seg.h - prev.h) t >> 12` (+245F4); otherwise one of four
+  variants through +2435A (lane-dependent). +226E8 ends with it on the car: mode = car +0D4,
+  lane = car +024, t into **+020** (the car's fraction along its segment -- not the wheels, as
+  rounds 31-47 called it), the height into **+0D0** (+22828). So the road under a car is a
+  straight line within a segment (in mode 0): +0D0's change per step is constant until the car
+  crosses into the next segment (a segment is ~6 steps long at 135 km/h, +020's rate 666 a step).
+- The render keeps its camera above the road: +246F8 on the camera position (+D55A) finds the
+  segment, takes the road height and raises y to at least it plus an offset.
 - So **+014 is not the height change a step ends with**: it is measured before the vertical
   logic moves y. Kind 4 sets `y = +0D0` after the measure (+1FD70), so its +014 is the change
   before the snap; kind 3 changes y afterwards and rewrites +0AC = y at its end (+1EF38).
@@ -54,17 +67,51 @@ Registers in the function: r4 the car, r6 = car + 0xA40, r7 = car + 0xAC0, r5 = 
   +0D0. Opponents fly too (run y1: slot 3 airborne for six steps down the LA hill, 90-110
   units a step, its +014 0 throughout).
 
-## The chase camera (+4B40, under +5968, the camera's update) -- being read
+## The chase camera (+5968 -> +4B40, then the shake +49C4)
 
-r4 the camera object (race + 0x48: r4 + 0x10.. is race + 0x58..), r5 the followed car.
-- The camera's mode at r4 + 0x4C (race + 0x94; 2 = chase, record) picks a distance base and
-  two height/pitch constants: mode 1 (0, 43, -20), 2 (40, 53, -25), 3 (80, 58, -30), 0x2A
-  (200, [pc], -220) (+4B8A..+4BD0).
-- The distance: base + (r4 + 0xB8) / 4 + car +A90, plus car +A24 when that is negative
-  (+4BD2..+4BFA).
-- The offset: the direction vector at r4 + 0xAC (race + 0xF4, record: the camera's direction
-  vector +F4/+FC) times the distance, >> 12, from the car's position (+4C38..).
-- Not yet read: the height, the pitch and yaw smoothing, and +5968's other branches.
+The camera object is race + 0x48 (r4 below; r4 + 0x10.. is race + 0x58..). +5968 is called from
+the step (+14F58, its stack arguments 0, 0, 0) and from the between-steps routine +12DEC (+12E44,
+arguments 7, 0, ...) (code).
+- **+5968** picks the followed car's track segments (previous, current, next: 0xE4-byte records
+  around car +01C) and, for the chase modes 1, 2, 3, 0x2A (+5D60 switch), builds the direction
+  vector: a rotation about y by `A = heading (+678) + race+0xE4 + arg6` (minus car +808 >> 7 when
+  +B28 bit 12 is set) applied to (0, 0, L) (+5B50..+5B9C, +3227E/+32342/+32302 build the matrix,
+  +522F0 applies it). The vector has no y part.
+- **+4B40** places the camera (code):
+  - the mode (r4 + 0x4C = race + 0x94) gives a distance base and two constants: mode 1 (0, 43,
+    -20), 2 (40, 53, -25), 3 (80, 58, -30), 0x2A (200, a literal, -220);
+  - distance = base + (r4 + 0xB8) / 4 + car +A90 (+ car +A24 when negative);
+  - x, z = car x, z - vector x distance >> 12; y = car y + car +A8C + 53 (chase);
+  - pitch (race + 0x64) = car +674 - 25; yaw (race + 0x68) = heading + arg6 + race+0xE4, the
+    difference wrapped once (> 1024 -> -2048); plus a sway angle (r4 + 0xBC) or a term from car
+    +9F8;
+  - a slope term s = (|h_cur - h_prev| (4096 - car +020) + |h_next - h_cur| car +020) >> 15 from
+    the segments' heights (+0x34): y += s, pitch -= s;
+  - car +B28 bit 12 (a drift-like state): roll = car +808 >> 7, y -= |+808 >> 8|, yaw += +808 >> 6;
+  - the focal length (r4 + 0x44 = race + 0x8C) eases by 5 a step toward 260, or toward a nitro
+    value (B28 bit 2 with car +AE0 > 28).
+- **+49C4**, the shake (code): a generator seeded from car +A2C; above speed 166 (+7D0) it adds
+  random pitch/yaw (and x, y offsets) scaled by the speed's excess, under nitro more, and a crash
+  term from car +A68.
+- **Measured** (run y1, the step records, 1,238 chase steps): camera yaw less the car's heading
+  is -1..0 (the shake), race+0xE4 is 0; camera y = car y + 52 (+A8C) + 53 + s, with s 0..20 and
+  pitch = car +674 - 25 - s, every step; x-z distance 312-347 (+A90 240, focal 260).
+- So **the game's chase camera is rigid on the car at each step** -- in position, height and
+  yaw -- with no lag. The "camera takes 3/4 of a turn" that our frames used since round 43
+  (A4_KD_TURN, hp_sub's `3 * dh / 4`) has no basis in the engine.
+
+## The heading
+
+- Measured (run y1, the player's 1,313 step pairs, the autopilot holding the throttle): the
+  heading turns 0 (1,096 steps), -20 (130), +20 (34), now and then 24-64; the next step repeats
+  the last turn in 87% of steps, and misses at a turn's start or end (by ~20 /2048). Who sets the
+  turn (+1DE78, the control): not yet read.
+
+## The traffic (+FB12)
+
+- Sixteen slots; per traffic car: locate (+226E8), then y = +0D0 + 3/4 of a per-model height
+  BEFORE the measure (+FF4A..+FF84) -- so the traffic's +014 is its true height change, unlike
+  the racing cars'.
 
 ## What our frames do with this (round 47, read and measured)
 

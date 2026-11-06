@@ -6723,3 +6723,40 @@ entry is the round. Not a repeat: no earlier round recorded heights per frame, n
 - Not yet read (next): the chase camera (+4B40: modes, distance, the direction vector begun),
   +1F1F8 and +1DE78 in full, the traffic's move (+FB12), the render's car tilt (+A434: +678,
   +A04, +A20, +A24), the road query behind +0D0 (+226E8 -> +24604, +23E72).
+
+## Engine map 2 (bench): the camera and the road read; frames built on the engine's rules (A4_ENGDRAW)
+
+Owner: "go ahead" (the engine map). Not a repeat: no earlier round read +4B40/+5968/+49C4, the
+road functions (+24524, +24604, +246F8) or the traffic's +FB12 order, nor measured the camera
+against the car per step.
+- Read (ENGINE.md): the chase camera is placed at each step from the car alone -- x, z = car less
+  a vector along `heading + race+0xE4` times a distance, y = car y + 52 (+A8C) + 53 + a slope term,
+  pitch = car +674 - 25 - the slope term, yaw = heading + race+0xE4 -- then +49C4 shakes it at
+  speed. Measured over run y1's 1,238 chase steps: yaw less heading -1..0, race+0xE4 0, camera y
+  less car y = 105 + 0..20. **No lag**: the 3/4-of-a-turn rule our frames used since round 43
+  has no basis. The heading turns in pulses (0 in 1,096 steps, -20 in 130, +20 in 34; the next
+  repeats the last in 87%). The road is a straight line within a segment (+24524: t along the
+  segment, height prev + (seg - prev) t, in mode 0); +020 is that t (not the wheels), +0D0 the
+  height. The traffic sets its y before the measure, so its +014 is true.
+- A4_ENGDRAW (bench switch, a4_gl.c): heading by the whole last turn (A4_KD_TURN 65536); height
+  by the engine's rule (in the air +A58, on the road +0D0's own rate, a landing on the drawn road);
+  the camera rigid on the drawn car in x, z, y and yaw; the corrector's first frame continues the
+  last frame's model part at the new velocity with its offset still fading (r46-r47 carried the
+  offset whole: the freeze); +020 clamped, not wrapped; a respawn (a jump over 2,048 units) zeroes
+  the rates.
+- A/B on one drive each (calibrated N95 bench, Veyron autopilot, 120 s; y2a = C47 frames, y2b =
+  A4_ENGDRAW; tools/offline.py: each frame against the line between the game's values at the steps
+  around it), all eight racing cars, 99th percentiles:
+    height off the path   161 (max 542)  ->  10 (max 408: an opponent's respawn, now handled)
+    x-z off the path       97 (max 222)  ->  30 (max 125)
+    heading off the path   47 (max 125)  ->  12 (max 59)
+    camera yaw less the drawn heading  -11..10  ->  -1..0;  camera y above the drawn car
+    -11..286  ->  105..159
+- Physics against stock (aligncheck vs jt_n, positions/heading/speed): y2b identical until race
+  step 1,100 (as r46's jt_d), y2a until 940 -- the frames change nothing the game computes.
+- Phone telemetry gains heights: 'FRC2' (A4_INTERP's unused block 0x45C000, appended after FRC1;
+  per render the drawn y, camera y, the step's y, +0D0, x and z), read by tools/frec2.py.
+- Candidate r48 = C47 + A4_ENGDRAW: sha256
+  ae513927452140fbdf67deb434c394779a80e4f51a730a65b23f2e1f0390acfd, 812,152 bytes; no 0xDEADBEEF;
+  +3A15C B510 0004. Battery running (r48bat.sh: the recorder run y3, then r47's battery with
+  frec2 on each).

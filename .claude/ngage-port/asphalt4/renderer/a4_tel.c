@@ -380,6 +380,13 @@ void a4_tel_tick(uint32_t had)
             struct des rd = { DES(16u + 256u * 32u), (const void *)0x00456000u };
             efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4 + 0x700 + 3 * 32 * 4 + 0x680, &rd);
         }
+#if defined(A4_KINEDRAW) && !defined(A4_INTERP)
+        {   /* engine map 1: FRC2, the heights (a4_gl.c A4_GL_FREC2, 0x45C000), after the frame record */
+            struct des r2 = { DES(16u + 255u * 16u), (const void *)0x0045C000u };
+            efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4 + 0x700 + 3 * 32 * 4 + 0x680
+                          + 16 + 256 * 32, &r2);
+        }
+#endif
 #endif
         pf[PF_FLAGS] |= 4u;                       /* PFF_WROTE: the next render interval holds this write */
     }
