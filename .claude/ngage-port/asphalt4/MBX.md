@@ -6793,3 +6793,47 @@ against the car per step.
   end); the drift's camera offset held through a step; a contact unforeseen for a step. States the
   bench did not enter: Monaco's tunnel at 420 km/h (the owner's photos; the LA hill and jumps
   stand in), a race restart, a pause mid-race, human steering.
+
+## Round 48, phone (r48, sha256 ae513927...): the camera fixed; back and forth in four events
+
+- The owner: "Camera has been fixed. However there's still the back and forth in all four events:
+  takedown, crash, helicopter view, and finished race." Make the next build fix them, and make the
+  emulator mimic the N95's CPU and GPU so these bugs replicate: "we shouldn't be testing blindly".
+- Telemetry (8 files, r48ph; the framebuffers: LA, the Veyron at 412-575 km/h, lap 3/3, the finish):
+  presents 2,759 (346 without a render), renders 2,413, held 0, drop frames 15, 22 slow-motion
+  frames; camrel (chase) bearing 2/8/23, heading less yaw 4/18/31; FRC2 height off the path 99% 86
+  (max 166), x-z 62 -- the windows hold the last 256 renders before each capture, mostly the finish.
+  The finish camera is mode 1; its frames: the camera moves with the car except some (t 51404:
+  the camera still, the car on 204 units, its bearing -56 then +62 the next frame).
+- Read in the code (ENGINE.md): +12DEC picks the camera each step for the player car (+52206):
+  0x18 when the player crashes (+B28 flag or the race's crash state), 0x2A while a police slot
+  holds the helicopter in its first state, a jump camera on the air counters, 0x17 the start's
+  fly-in (and other scripts 0x19/0x1A), else the player's view (0-7, 0x16 remembered at cam+0x50
+  by +3FE6; 0-3 cycled by the camera key, +421AA). +5968's switch: 0 +50EC, 1/2/3/0x2A +4B40 (the
+  chase family, rigid on the car with a turn race+0xE4: the finish orbits ~8 /2048 a step), 4
+  +4F3C, 5-7 +490A (car-relative), 0x14 +4764, 0x16 +42C8, 0x17 +57AC and 0x18 +554C (keyframe
+  scripts, +5205A), 0x19 +4382, 0x1A-0x1D others. Every one follows the player car.
+- Ours (r46-r48): outside mode 2 the frame moved the camera on its own last step's move only while
+  that move repeated the one before, else held it at the step -- while every car moved on. The
+  measure (tools/camback.py: the player car's bearing and elevation in the camera's view, frame by
+  frame, by mode), on y2a (r47's frames, a crash at race step 958 -- r48 the same outside mode 2):
+  crash camera 0x18, 48 frames: bearing change 50% 11, 90% 69, 99% 109 /2048, reversals 13;
+  elevation reversals 13 -- the game's own steps there: 1 and 1. Chase mode on r48 (y3): 0 and 0.
+- Slow motion read: +15B1C counts steps by floor(clock / P), P = 10667 x race+0x84C / 256, so the
+  fraction A4_SLOWMOQ computes (clock mod P) is the game's own, scale changes included.
+- The bench against the phone (same track, the Veyron; r48ph against c0 = the calibrated model
+  on the r48 binary): presents 64 (48-87) against 67 (56-83); the render call 62.2 ms against
+  50.9; its CPU part before the first triangle 15.1 against 9.3; the 2D phase 6-8 against 8.5-14.
+  A try (c1: Thumb CPI 4.5, ARM 1.4, GPU costs lower) went the wrong way (presents 75, composite
+  18-19): the CPU part scales with memory, not the Thumb CPI. c0 kept for the event runs (its frame
+  interval, hence frames a step, within 5%); the split is open.
+- A4_CAMALL (a4_gl.c): outside the chase, the camera's offset from the player car in the car's own
+  frame carried on by its own last change (o_k + (o_k - R(dh_k) o_k-1) q, turned by the drawn
+  turn, on the drawn car), its height above the car and yaw less heading likewise, pitch and roll
+  by their own change; a cut (over 512 units, 128 /2048) carries none. Exact for a camera fixed to
+  the car, exact for one standing still as the car passes, near for the finish's orbit.
+- Bench recorder: 'FRKC' per frame (the mode, the slow-motion scale, the race step, the player
+  car, the race object). Event battery running (r49ev.sh): crash-steer (old y4os / new y4s), the
+  Veyron with a watch on race+0x84C (takedowns; old y4o / new y4), a whole race to the finish
+  (old / new), forced slow motion (A4_BENCH_SLOWMO=512, new). The helicopter view (0x2A, the chase
+  family through +4B40, as mode 1) is not on the bench route.

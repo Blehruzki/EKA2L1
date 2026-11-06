@@ -1187,6 +1187,8 @@ struct hp {
     int32_t cw[6], cwp[6], cwpp[6];  /* the camera as the last three whole steps left it */
     uint32_t started, rstep;         /* the race has started (the player's +0E0 seen above 0); its step count */
     int32_t pw[4];                   /* the player car (+004, +008, +00C, +678) as the whole step left it */
+    int32_t pwp[4];                  /* the same at the step before (A4_CAMALL) */
+    uint32_t pws, pwps;              /* the steps pw and pwp were taken at */
     uint32_t cwv, camx, cmode;       /* steps of it seen; the odd half-step's camera to put back; its mode */
     uint32_t committed, fwhole;      /* A4_FRACPHYS: the step's fraction the renders have moved the cars;
                                       * what the whole step then moves them (16.16) */
@@ -2260,6 +2262,8 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
     if (pcar && *(volatile int32_t *)(pcar + 0xE0u) > 0) HP->started = 1;
     uint32_t started = pcar && HP->started;
     if (pcar && first) {
+        for (uint32_t f = 0; f < 4u; f++) HP->pwp[f] = HP->pw[f];
+        HP->pwps = HP->pws; HP->pws = HP->wstep;
         HP->pw[0] = ((volatile int32_t *)pcar)[1]; HP->pw[1] = ((volatile int32_t *)pcar)[2];
         HP->pw[2] = ((volatile int32_t *)pcar)[3]; HP->pw[3] = ((volatile int32_t *)pcar)[0x678u / 4u];
     }
@@ -2457,7 +2461,57 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
                 HP->cV = 0;          /* the car jumped (a respawn): the camera's corrector starts again */
 #endif
             }
-        } else if (HP_CAMMODE(race) != 2u && HP->cwv >= 3u) {
+        }
+#ifdef A4_CAMALL
+        else if (pcar && started) {
+            /* round 49 (r48 on the phone: "back and forth" in the takedown, the crash, the helicopter
+             * view and the race's end -- the camera modes other than the chase): every camera the step
+             * places follows the player car (+12DEC takes it from +52206); the chase family 1/2/3/0x2A
+             * rigidly (+4B40), the others by their own rules (+490A, +50EC, the scripts +57AC/+554C).
+             * The frame keeps the camera's offset from the player car in the car's own frame and
+             * moves it on by its own last change: the drawn car + R(drawn turn) (o_k + (o_k - R(dh_k)
+             * o_k-1) q) -- exact for a camera fixed to the car (the change 0), exact for one standing
+             * still while the car drives by (the change minus the car's move), near for an orbit
+             * (the race's end turns ~8 /2048 a step). Its height above the car and its yaw less the
+             * car's heading likewise; pitch and roll by their own change. Up to r48 these modes moved
+             * the camera on its own path only while that path repeated, else held it at the step
+             * while the cars moved on: the back and forth. A new mode, a jump or a respawn: held to
+             * the car at the step's offset, no change carried */
+            const volatile int32_t *pc = (const volatile int32_t *)pcar;
+            int32_t dx = pc[1] - HP->pw[0], dy = pc[2] - HP->pw[1], dz = pc[3] - HP->pw[2];
+            int32_t dh = hp_wrap(pc[0x678u / 4u] - HP->pw[3], 2048);
+#ifdef A4_KINEDRAW
+            HP->cV = 0;
+#endif
+            if (iabs32(dx) < 2048 && iabs32(dz) < 2048 && iabs32(dy) < 2048 && iabs32(dh) < 256) {
+                int32_t ox = HP->cw[0] - HP->pw[0], oz = HP->cw[2] - HP->pw[2], oy = HP->cw[1] - HP->pw[1];
+                int32_t yo = hp_wrap(HP->cw[4] - HP->pw[3], 2048);
+                int32_t gx = 0, gz = 0, gy = 0, gyo = 0, gp = 0, gr = 0;
+                int32_t dhk = hp_wrap(HP->pw[3] - HP->pwp[3], 2048);
+                if (HP->cwv >= 2u && HP->pwps + 1u == HP->pws && iabs32(dhk) < 256
+                    && iabs32(HP->pw[0] - HP->pwp[0]) < 2048 && iabs32(HP->pw[2] - HP->pwp[2]) < 2048) {
+                    int32_t px, pz;
+                    kd_rot(HP->cwp[0] - HP->pwp[0], HP->cwp[2] - HP->pwp[2], dhk, &px, &pz);
+                    gx = ox - px; gz = oz - pz;
+                    gy = oy - (HP->cwp[1] - HP->pwp[1]);
+                    gyo = hp_wrap(yo - hp_wrap(HP->cwp[4] - HP->pwp[3], 2048), 2048);
+                    gp = HP->cw[3] - HP->cwp[3]; gr = hp_wrap(HP->cw[5] - HP->cwp[5], 2048);
+                    if (iabs32(gx) > 512 || iabs32(gz) > 512 || iabs32(gy) > 512 || iabs32(gyo) > 128
+                        || iabs32(gp) > 128 || iabs32(gr) > 128) gx = gz = gy = gyo = gp = gr = 0;   /* a cut */
+                }
+                int32_t qi = (int32_t)qt;
+                ox += (int32_t)(((int64_t)gx * qi) >> 16); oz += (int32_t)(((int64_t)gz * qi) >> 16);
+                int32_t rx, rz;
+                kd_rot(ox, oz, dh, &rx, &rz);
+                cm[0x58u / 4u] = pc[1] + rx; cm[0x60u / 4u] = pc[3] + rz;
+                cm[0x5Cu / 4u] = pc[2] + oy + (int32_t)(((int64_t)gy * qi) >> 16);
+                cm[0x64u / 4u] = HP->cw[3] + (int32_t)(((int64_t)gp * qi) >> 16);
+                cm[0x68u / 4u] = (pc[0x678u / 4u] + yo + (int32_t)(((int64_t)gyo * qi) >> 16)) & 2047;
+                cm[0x6Cu / 4u] = (HP->cw[5] + (int32_t)(((int64_t)gr * qi) >> 16)) & 2047;
+            }
+        }
+#else
+        else if (HP_CAMMODE(race) != 2u && HP->cwv >= 3u) {
 #ifdef A4_KINEDRAW
             HP->cV = 0;
 #endif
@@ -2478,6 +2532,7 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
                 cm[0x58u / 4u + f] = f >= 3u ? (v & 2047) : v;
             }
         }
+#endif
         (void)sp;
     }
     h[3] = 0; HP->replaying = 0; HP->nodd++;
@@ -2811,6 +2866,18 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
                     /* bench (engine map, after round 47 on the phone: cars fly off and snap back): every
                      * car as this frame draws it, with the step's own values beside it -- 'FRKD', the
                      * step, q16 | car slot << 24 | first << 31, the step's y, +0D0, x, z, heading */
+                    {   /* and the camera as this frame draws it: 'FRKC', the step, q16 | first << 31, the camera
+                         * mode, the slow-motion scale race+0x84C (256 normal), the race's own step race+0x30;
+                         * the player car and the race object (camera +0x48..) beside it */
+                        uint32_t pl = *(volatile uint32_t *)(race + 0x390), pidx = pl ? *(volatile uint32_t *)(pl + 0xC) : 99u;
+                        uint32_t pcar = pidx < 16u ? *(volatile uint32_t *)(race + 0x394 + 4u * pidx) : 0;
+                        volatile uint32_t q[8];
+                        q[0] = 0x434B5246u; q[1] = ((volatile uint32_t *)A4_GL_CREC)[1];
+                        q[2] = (q16 & 0xFFFFFFu) | (first << 31); q[3] = HP_CAMMODE(race);
+                        q[4] = *(volatile uint32_t *)(race + 0x84Cu); q[5] = *(volatile uint32_t *)(race + 0x30u);
+                        q[6] = HP->wstep; q[7] = pcar;
+                        if (pcar) a4_rec_emit2((const void *)q, (const void *)pcar, (const void *)race);
+                    }
                     for (uint32_t ci = 0; ci < HP_CARS; ci++) {
                         if (!HP->car[ci] || !HP->disp[ci]) continue;
                         volatile uint32_t q[8];
