@@ -1719,12 +1719,13 @@ L_1DFAA:
     MEM32(sp + 0x14Cu) = r1;                                     /* 01dfe0 str r1, [sp, #0x14c] */
     MEM32(sp + 0x150u) = r2;                                     /* 01dfe2 str r2, [sp, #0x150] */
     if (fZ) goto L_1E0DA;                                        /* 01dfe4 beq #0x1e0da */
+    /* engine: substeps: a wreck waits for the whole step */
+    if (ENG_SUB) return 0;
     r6 = 0x8u; fN = r6 >> 31; fZ = r6 == 0;                      /* 01dfe6 movs r6, #8 */
     r0 = MEM32(r7 + 0x18u);                                      /* 01dfe8 ldr r0, [r7, #0x18] */
     { uint32_t ta = r0, tb = 0xFFu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01dfea subs r0, #0xff */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01dfec subs r0, r0, #1 */
-    /* engine: rpm -0x100 a step in the crash sequence */
-    { uint32_t ea_ = r7 + 0x18u; r0 = eng_third(ea_, MEM32(ea_), r0); MEM32(ea_) = r0; } /* 01dfee str r0, [r7, #0x18] */
+    MEM32(r7 + 0x18u) = r0;                                      /* 01dfee str r0, [r7, #0x18] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01dff0 cmp r0, #0 */
     if ((fN == fV)) goto L_1E01E;                                /* 01dff2 bge #0x1e01e */
     r1 = MEM32(sp + 0x14Cu);                                     /* 01dff4 ldr r1, [sp, #0x14c] */
@@ -5524,6 +5525,8 @@ uint64_t eng_1EA64(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t 
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
     sp -= 32; MEM32(sp + 0) = r0; MEM32(sp + 4) = r1; MEM32(sp + 8) = r2; MEM32(sp + 12) = r4; MEM32(sp + 16) = r5; MEM32(sp + 20) = r6; MEM32(sp + 24) = r7; MEM32(sp + 28) = lr; /* 01ea64 push {r0, r1, r2, r4, r5, r6, r7, lr} */
     { uint32_t ta = sp, tb = 0x70u; t = ta - tb; sp = t; }       /* 01ea66 sub sp, #0x70 */
+    /* engine: substeps: a wreck does not move */
+    if (ENG_SUB && MEM32(r0 + 0x34u) != 0xFFFFFFFFu) return 0;
     r4 = r0; fN = r4 >> 31; fZ = r4 == 0;                        /* 01ea68 movs r4, r0 */
     r1 = 0x61u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01ea6a movs r1, #0x61 */
     t = SHL_C(r1, 0x5u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ea6c lsls r1, r1, #5 */
@@ -5568,8 +5571,12 @@ L_1EAAE:
     { uint64_t rr = a4_eng_call(GAMEFN(0x226E8), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01eab6 bl #0x226e8 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01eab6 bl #0x226e8 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01eaba movs r0, r4 */
+    /* engine: a wreck's measure is a whole step's */
+    ENG->meas1 = MEM32(r4 + 0x34u) != 0xFFFFFFFFu;
     { uint64_t rr = a4_eng_call(GAMEFN(0x22832), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01eabc bl #0x22832 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01eabc bl #0x22832 */
+    /* engine: back to substep measures */
+    ENG->meas1 = 0;
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01eac0 movs r0, r4 */
     { uint32_t ta = r0, tb = 0x80u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01eac2 adds r0, #0x80 */
     r1 = 0x17u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01eac4 movs r1, #0x17 */
@@ -6810,7 +6817,7 @@ uint64_t eng_22832(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t 
     MEM32(sp + 0x8u) = r1;                                       /* 022850 str r1, [sp, #8] */
     MEM32(sp + 0xCu) = r2;                                       /* 022852 str r2, [sp, #0xc] */
     /* engine: velocity per step = 3 x the substep's displacement */
-    MEM32(sp + 4u) *= 3u; MEM32(sp + 8u) *= 3u; MEM32(sp + 0xCu) *= 3u;
+    if (!ENG->meas1) { MEM32(sp + 4u) *= 3u; MEM32(sp + 8u) *= 3u; MEM32(sp + 0xCu) *= 3u; }
     r0 = MEM32(sp + 0x4u);                                       /* 022854 ldr r0, [sp, #4] */
     r1 = MEM32(r4 + 0x10u);                                      /* 022856 ldr r1, [r4, #0x10] */
     r2 = MEM32(r4 + 0x14u);                                      /* 022858 ldr r2, [r4, #0x14] */
@@ -6824,7 +6831,7 @@ uint64_t eng_22832(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t 
     MEM32(sp + 0x20u) = r1;                                      /* 022868 str r1, [sp, #0x20] */
     MEM32(sp + 0x24u) = r2;                                      /* 02286a str r2, [sp, #0x24] */
     /* engine: acceleration per step = 3 x the substep's change */
-    MEM32(sp + 0x1Cu) *= 3u; MEM32(sp + 0x20u) *= 3u; MEM32(sp + 0x24u) *= 3u;
+    if (!ENG->meas1) { MEM32(sp + 0x1Cu) *= 3u; MEM32(sp + 0x20u) *= 3u; MEM32(sp + 0x24u) *= 3u; }
     r0 = MEM32(sp + 0x1Cu);                                      /* 02286c ldr r0, [sp, #0x1c] */
     r1 = MEM32(sp + 0x20u);                                      /* 02286e ldr r1, [sp, #0x20] */
     t = SHL_C(r0, 0x1u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 022870 lsls r3, r0, #1 */
@@ -7902,6 +7909,8 @@ L_200E8:
     { uint32_t ta = sp, tb = 0x30u; t = ta + tb; r0 = t; }       /* 02014e add r0, sp, #0x30 */
     { uint64_t rr = a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020150 bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 020150 bl #0x52562 */
+    /* engine: the traffic car's substep, not its step */
+    { uint32_t k_, a_ = MEM32(sp + 0x90u); for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x30u + k_) = MEM32(a_ + k_) + (uint32_t)eng_thirdv(a_ + 0x40u + k_, (int32_t)MEM32(r4 + k_)); }
     { uint32_t ta = sp, tb = 0x24u; t = ta + tb; r2 = t; }       /* 020154 add r2, sp, #0x24 */
     { uint32_t ta = sp, tb = 0x30u; t = ta + tb; r1 = t; }       /* 020156 add r1, sp, #0x30 */
     { uint32_t ta = sp, tb = 0x3Cu; t = ta + tb; r0 = t; }       /* 020158 add r0, sp, #0x3c */
@@ -8376,11 +8385,15 @@ L_23A40:
     { uint32_t ta = sp, tb = 0x98u; t = ta + tb; r0 = t; }       /* 023a4e add r0, sp, #0x98 */
     { uint64_t rr = a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023a50 bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023a50 bl #0x52540 */
+    /* engine: the car's displacement as a step's */
+    MEM32(sp + 0x98u) *= 3u; MEM32(sp + 0x9Cu) *= 3u; MEM32(sp + 0xA0u) *= 3u;
     r1 = MEM32(sp + 0xC8u);                                      /* 023a54 ldr r1, [sp, #0xc8] */
     r2 = MEM32(sp + 0xC4u);                                      /* 023a56 ldr r2, [sp, #0xc4] */
     { uint32_t ta = sp, tb = 0x8Cu; t = ta + tb; r0 = t; }       /* 023a58 add r0, sp, #0x8c */
     { uint64_t rr = a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023a5a bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023a5a bl #0x52540 */
+    /* engine: the other's displacement as a step's */
+    MEM32(sp + 0x8Cu) *= 3u; MEM32(sp + 0x90u) *= 3u; MEM32(sp + 0x94u) *= 3u;
     { uint32_t ta = sp, tb = 0x98u; t = ta + tb; r0 = t; }       /* 023a5e add r0, sp, #0x98 */
     { uint64_t rr = a4_eng_call(GAMEFN(0x37144), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023a60 bl #0x37144 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023a60 bl #0x37144 */
@@ -8748,7 +8761,9 @@ L_23CB4:
     { uint32_t ta = sp, tb = 0x3Cu; t = ta + tb; r1 = t; }       /* 023d10 add r1, sp, #0x3c */
     t = r1; r2 = MEM32(t + 0); r3 = MEM32(t + 4); r7 = MEM32(t + 8); r1 = t + 12; /* 023d12 ldm r1!, {r2, r3, r7} */
     r0 = MEM32(sp + 0xBCu);                                      /* 023d14 ldr r0, [sp, #0xbc] */
+    /* engine: the hit's new velocity, as a substep's displacement */
     t = r0; MEM32(t + 0) = r2; MEM32(t + 4) = r3; MEM32(t + 8) = r7; r0 = t + 12; /* 023d16 stm r0!, {r2, r3, r7} */
+    { uint32_t a_ = MEM32(sp + 0xBCu), p_ = MEM32(sp + 0xC0u), k_; for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(a_ + k_) = MEM32(p_ + k_) - (uint32_t)eng_thirdv(a_ + k_, (int32_t)(MEM32(p_ + k_) - MEM32(a_ + k_))); }
     r3 = MEM32(sp + 0xA4u);                                      /* 023d18 ldr r3, [sp, #0xa4] */
     r0 = MEM32(sp);                                              /* 023d1a ldr r0, [sp] */
     r1 = MEM32(sp + 0x4u);                                       /* 023d1c ldr r1, [sp, #4] */
@@ -8782,7 +8797,9 @@ L_23D4C:
     t = r6; r1 = MEM32(t + 0); r2 = MEM32(t + 4); r3 = MEM32(t + 8); r6 = t + 12; /* 023d50 ldm r6!, {r1, r2, r3} */
     { uint32_t ta = r6, tb = 0xCu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r6 = t; } /* 023d52 subs r6, #0xc */
     r0 = MEM32(sp + 0xC4u);                                      /* 023d54 ldr r0, [sp, #0xc4] */
+    /* engine: the hit's new velocity, as a substep's displacement */
     t = r0; MEM32(t + 0) = r1; MEM32(t + 4) = r2; MEM32(t + 8) = r3; r0 = t + 12; /* 023d56 stm r0!, {r1, r2, r3} */
+    { uint32_t a_ = MEM32(sp + 0xC4u), p_ = MEM32(sp + 0xC8u), k_; for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(a_ + k_) = MEM32(p_ + k_) - (uint32_t)eng_thirdv(a_ + k_, (int32_t)(MEM32(p_ + k_) - MEM32(a_ + k_))); }
     r1 = MEM32(sp + 0xC0u);                                      /* 023d58 ldr r1, [sp, #0xc0] */
     { uint32_t ta = sp, tb = 0x68u; t = ta + tb; r2 = t; }       /* 023d5a add r2, sp, #0x68 */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 023d5c add r0, sp, #0xc */

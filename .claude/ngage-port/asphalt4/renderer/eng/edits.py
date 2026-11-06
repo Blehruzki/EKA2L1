@@ -59,7 +59,10 @@ G(0x1DF58, 'A7C, a countdown'); G(0x1DF64, 'A7C, a count up')
 T(0x1DF88, 'ABC, drained by a table value a step')
 G(0x1DF9E, 'AEC, a countdown')
 T(0x1DFA8, 'rpm -8 a step while AEC runs')
-T(0x1DFEE, 'rpm -0x100 a step in the crash sequence')
+# the wreck sequence (+034 != -1: rpm -0x100 a step, gears down, the scripted path +2292A) runs on the
+# whole step only: its path integrates the car's own velocity, which the substep measure would scale
+# (r7: an opponent's wreck flung it across the map). The wreck moves at the game's 11.72 Hz.
+B(0x1DFE6, 'if (ENG_SUB) return 0;', 'substeps: a wreck waits for the whole step')
 G(0x1E39A, 'C48, the respawn countdown')
 T(0x1E602, 'grip 9FC, +0xD55 a step on the road')
 B(0x1E684, '{ uint32_t k_; for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x10Cu + k_) = (uint32_t)eng_thirdv(r4 + 0x10u + k_, (int32_t)MEM32(sp + 0x10Cu + k_)); }',
@@ -113,8 +116,12 @@ T(0x1F030, 'steering -0x400 off the wall'); T(0x1F062, 'steering +0x400 off the 
 T(0x1F132, 'heading -= the wall\'s turn'); T(0x1F13A, 'heading += the wall\'s turn')
 G(0x1F144, 'B18, the wall\'s countdown'); G(0x1F14E, 'B18, the wall\'s countdown')
 # +22832, the measure: a substep's displacement is a third of a step's
-B(0x22854, 'MEM32(sp + 4u) *= 3u; MEM32(sp + 8u) *= 3u; MEM32(sp + 0xCu) *= 3u;', 'velocity per step = 3 x the substep\'s displacement')
-B(0x2286C, 'MEM32(sp + 0x1Cu) *= 3u; MEM32(sp + 0x20u) *= 3u; MEM32(sp + 0x24u) *= 3u;', 'acceleration per step = 3 x the substep\'s change')
+B(0x22854, 'if (!ENG->meas1) { MEM32(sp + 4u) *= 3u; MEM32(sp + 8u) *= 3u; MEM32(sp + 0xCu) *= 3u; }', 'velocity per step = 3 x the substep\'s displacement')
+B(0x2286C, 'if (!ENG->meas1) { MEM32(sp + 0x1Cu) *= 3u; MEM32(sp + 0x20u) *= 3u; MEM32(sp + 0x24u) *= 3u; }', 'acceleration per step = 3 x the substep\'s change')
+# +1EA64 for a wreck: nothing on the substeps; on the whole step its measure is the game's (x 1)
+B(0x1EA68, 'if (ENG_SUB && MEM32(r0 + 0x34u) != 0xFFFFFFFFu) return 0;', 'substeps: a wreck does not move')
+B(0x1EABC, 'ENG->meas1 = MEM32(r4 + 0x34u) != 0xFFFFFFFFu;', 'a wreck\'s measure is a whole step\'s')
+B(0x1EAC0, 'ENG->meas1 = 0;', 'back to substep measures')
 T(0x228F2, '0C4, the acceleration eased 1/8 a step')
 # +2217C, the contact book
 G(0x22198, 'E0, steps since a contact')
@@ -149,3 +156,21 @@ if '-DA4_ENGDBG' in _os.environ.get('A4_EXTRA_CFLAGS', ''):
 # +1FD0E, a car moved without its physics (+691E's modes): position += +6B0, a third on a substep
 T(0x1FD28, 'position += 6B0 (the kinematic move)')
 G(0x1FD56, 'A34, a step counter (the kinematic move)')
+# +239B6, the car-car response, conjugated by the step: it reads each car's displacement so far (its
+# position - +0A8, the previous position) as the step's velocity -- at 3x a substep's, a third: x 3 on
+# reading (+23A50 the car, +23A5A the other), so its thresholds, constants and momentum see the game's.
+B(0x23A54, 'MEM32(sp + 0x98u) *= 3u; MEM32(sp + 0x9Cu) *= 3u; MEM32(sp + 0xA0u) *= 3u;', 'the car\'s displacement as a step\'s')
+B(0x23A5E, 'MEM32(sp + 0x8Cu) *= 3u; MEM32(sp + 0x90u) *= 3u; MEM32(sp + 0x94u) *= 3u;', 'the other\'s displacement as a step\'s')
+# It gives each car its velocity after the hit by setting its previous
+# position (+0A8 = position - the step's new displacement), which +22832 then measures. A substep's
+# measure is 3 x the displacement, so the response's displacement is a third of the step's: +0A8 =
+# position - third(position - +0A8). r6: the first 3x full race tripled the velocity a step after a
+# contact (B4 154 -> 516 -> 1468) and the wreck it caused flung the car across the map.
+for a, pa, pp in ((0x23D16, 0xBC, 0xC0), (0x23D56, 0xC4, 0xC8)):
+    EDITS[a] = {'after': '{ uint32_t a_ = MEM32(sp + 0x%Xu), p_ = MEM32(sp + 0x%Xu), k_; for (k_ = 0; k_ < 12u; k_ += 4u) '
+                         'MEM32(a_ + k_) = MEM32(p_ + k_) - (uint32_t)eng_thirdv(a_ + k_, (int32_t)(MEM32(p_ + k_) - MEM32(a_ + k_))); }' % (pa, pp),
+                'why': 'the hit\'s new velocity, as a substep\'s displacement'}
+# +1FF56, the car thrown over a traffic car: placed at its previous position + the traffic car's
+# velocity (+010, a step's) + a lift; on a substep the traffic moved a third of that
+B(0x20154, '{ uint32_t k_, a_ = MEM32(sp + 0x90u); for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x30u + k_) = MEM32(a_ + k_) + (uint32_t)eng_thirdv(a_ + 0x40u + k_, (int32_t)MEM32(r4 + k_)); }',
+  'the traffic car\'s substep, not its step')

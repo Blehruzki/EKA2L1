@@ -7131,3 +7131,22 @@ Owner: "Sounds like a plan. Go ahead."
 - Logic cost (host, uncalibrated): 1.4 ms a substep against 2.1 ms a stock step, ~2x a game step;
   the render call is the frame's cost either way (31-60 ms a call on this host).
 - Also third: +1FD0E's kinematic move (pos += +6B0) and its A34 counter gated.
+- r6 (150 s, the full race): at step 132 a contact with an opponent tripled the player's velocity
+  each step (B4 154 -> 516 -> 1468), then a wreck sequence flung it across the map (segments
+  jumping, B4 in the millions) and it stood ~20 s. Cause: +239B6, the car-car response, works on
+  each car's displacement so far (position - +0A8, the previous position) as the step's velocity,
+  and gives the new velocity by setting +0A8 = position - the new displacement. At 3x it read a
+  substep's displacement (a third: its thresholds, its fixed 20-unit nudges and the momentum split
+  off scale) and wrote a step's, which the substep measure then tripled. Now conjugated by the step:
+  the two displacements x 3 on reading (+23A54, +23A5E), the written +0A8 back to a third of its
+  displacement (+23D16, +23D56). The road-edge constraint (+23E72) only projects the position, so
+  the measure sees it right.
+- r7 (150 s, the response conjugated): the player's race ran clean (the jump: 16 steps of air
+  stock, 15 at 3x); lap 1 in 710 steps against stock's 830, mean B4 251 against 208. But an
+  opponent (CREA) blew up at its first wreck (step 326 of its record: B4 640, then positions
+  jumping 20,000-50,000 units a step): the wreck path +2292A integrates the car's own velocity
+  (+018 +- the path's pull), which the substep measure scales. Now the whole wreck sequence
+  (+1DE78's branch for +034 != -1) runs on the whole step only, the wreck's movement (+1EA64)
+  is skipped on the substeps and measured at the game's scale on the whole step (ENG->meas1); a
+  wreck moves at 11.72 Hz (a later job: frames for it). Also: the car thrown over a traffic car
+  (+1FF56, +20154) takes the traffic's substep, not its step.

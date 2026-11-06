@@ -48,6 +48,7 @@ struct eng {
     uint32_t frame[16];              /* +141B0's frame slots its race rules set (eng_frame_off), at the whole step */
     uint32_t camv, cam[8];           /* the whole step's last camera placement (+5968 from +12DEC): r0-r3, 4 stack words */
     uint32_t loop;                   /* the whole step entered the car loop (+14672): the substeps run only then */
+    uint32_t meas1;                  /* +22832 measures a wreck: its displacement is a whole step's (x 1) */
     uint32_t dbg[8];                 /* A4_ENGDBG: the substep's path bits and the player's keys, emitted per substep */
     uint32_t rk[ENG_NREM];           /* the word's address (0: free) */
     int32_t rv[ENG_NREM];            /* its remainder, 0..2 */
