@@ -1188,6 +1188,8 @@ struct hp {
     uint32_t started, rstep;         /* the race has started (the player's +0E0 seen above 0); its step count */
     int32_t pw[4];                   /* the player car (+004, +008, +00C, +678) as the whole step left it */
     int32_t pwp[4];                  /* the same at the step before (A4_CAMALL) */
+    int32_t pwpp[4];                 /* and two steps before */
+    uint32_t pwpps;
     uint32_t hold;                   /* A4_SCRIPTHOLD: this frame drawn at the step (a scripted camera) */
     uint32_t pws, pwps;              /* the steps pw and pwp were taken at */
     uint32_t cwv, camx, cmode;       /* steps of it seen; the odd half-step's camera to put back; its mode */
@@ -2291,8 +2293,8 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
     if (pcar && *(volatile int32_t *)(pcar + 0xE0u) > 0) HP->started = 1;
     uint32_t started = pcar && HP->started;
     if (pcar && first) {
-        for (uint32_t f = 0; f < 4u; f++) HP->pwp[f] = HP->pw[f];
-        HP->pwps = HP->pws; HP->pws = HP->wstep;
+        for (uint32_t f = 0; f < 4u; f++) { HP->pwpp[f] = HP->pwp[f]; HP->pwp[f] = HP->pw[f]; }
+        HP->pwpps = HP->pwps; HP->pwps = HP->pws; HP->pws = HP->wstep;
         HP->pw[0] = ((volatile int32_t *)pcar)[1]; HP->pw[1] = ((volatile int32_t *)pcar)[2];
         HP->pw[2] = ((volatile int32_t *)pcar)[3]; HP->pw[3] = ((volatile int32_t *)pcar)[0x678u / 4u];
     }
@@ -2530,6 +2532,27 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
                     gp = HP->cw[3] - HP->cwp[3]; gr = hp_wrap(HP->cw[5] - HP->cwp[5], 2048);
                     if (iabs32(gx) > 512 || iabs32(gz) > 512 || iabs32(gy) > 512 || iabs32(gyo) > 128
                         || iabs32(gp) > 128 || iabs32(gr) > 128) gx = gz = gy = gyo = gp = gr = 0;   /* a cut */
+                    /* only a steady change is carried (the finish's orbit, +8 a step): the step before's
+                     * change is found the same way, and a component that differs from it by over half
+                     * itself (plus a little) is noise -- the game's own shake at speed (+49C4: the yaw +-6,
+                     * x and y a few units, at random each step: r49t's helicopter view) -- and not carried */
+                    if (HP->cwv >= 3u && HP->pwpps + 1u == HP->pwps) {
+                        int32_t dhp = hp_wrap(HP->pwp[3] - HP->pwpp[3], 2048);
+                        if (iabs32(dhp) < 256) {
+                            int32_t ppx, ppz;
+                            kd_rot(HP->cwpp[0] - HP->pwpp[0], HP->cwpp[2] - HP->pwpp[2], dhp, &ppx, &ppz);
+                            int32_t hx = (HP->cwp[0] - HP->pwp[0]) - ppx, hz = (HP->cwp[2] - HP->pwp[2]) - ppz;
+                            int32_t hy = (HP->cwp[1] - HP->pwp[1]) - (HP->cwpp[1] - HP->pwpp[1]);
+                            int32_t hyo = hp_wrap(hp_wrap(HP->cwp[4] - HP->pwp[3], 2048) - hp_wrap(HP->cwpp[4] - HP->pwpp[3], 2048), 2048);
+                            int32_t hp_ = HP->cwp[3] - HP->cwpp[3], hr = hp_wrap(HP->cwp[5] - HP->cwpp[5], 2048);
+                            if (iabs32(gx - hx) > iabs32(gx) / 2 + 4) gx = 0;
+                            if (iabs32(gz - hz) > iabs32(gz) / 2 + 4) gz = 0;
+                            if (iabs32(gy - hy) > iabs32(gy) / 2 + 4) gy = 0;
+                            if (iabs32(gyo - hyo) > iabs32(gyo) / 2 + 2) gyo = 0;
+                            if (iabs32(gp - hp_) > iabs32(gp) / 2 + 2) gp = 0;
+                            if (iabs32(gr - hr) > iabs32(gr) / 2 + 2) gr = 0;
+                        } else gx = gz = gy = gyo = gp = gr = 0;
+                    } else gx = gz = gy = gyo = gp = gr = 0;
                 }
                 int32_t qi = (int32_t)qt;
                 ox += (int32_t)(((int64_t)gx * qi) >> 16); oz += (int32_t)(((int64_t)gz * qi) >> 16);
