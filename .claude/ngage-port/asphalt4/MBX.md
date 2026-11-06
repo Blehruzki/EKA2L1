@@ -7150,3 +7150,26 @@ Owner: "Sounds like a plan. Go ahead."
   is skipped on the substeps and measured at the game's scale on the whole step (ENG->meas1); a
   wreck moves at 11.72 Hz (a later job: frames for it). Also: the car thrown over a traffic car
   (+1FF56, +20154) takes the traffic's substep, not its step.
+- r8 (150 s, wrecks on the whole step): no blow-up in the player's or the opponent's record; the
+  opponent's wreck now tumbles to rest in ~30 steps (stock-like) and respawns. Player: lap 1 in 748
+  steps (stock 830), top speed 357 (stock 333), the jump 15 steps of air (stock 16), 22 contacts
+  with cars (stock 4: at 3x fewer pass through). Opponent: its first 24 steps match stock (rpm
+  +16 a step, B4 3, 6, 10 ... against 3, 10, 13 one step early), but after its wreck it drives
+  85 s at B4 ~112 cycling gears 1 -> 2 -> 1 every 4 steps (rpm 452 in first, shift, 7C4 3 2 1, back
+  to first) with no throttle, where stock's opponent is at 160-260 in gears 2-5. The 3x player is
+  ~10% quicker over the lap; to find: whether its wall hits cost less than stock's (stock 26 B4 a
+  hit on average, 3x 11), and why the AI stops throttling. A debug run with the opponent's
+  per-substep record ('ENGA': its cached AI keys) is running.
+- r8d (the opponent's per-substep record): after its respawn the opponent's AI keys are steering
+  only (0x1/0x2) three steps in four and throttle+steer (0x5/0x6) the fourth -- a speed governor:
+  its target (1F1F8, +1FA0E: (B44 + max(the player's B4, a random draw) + B48) x the curve's factor
+  >> 12, B48 counting up a step) sits near its speed, so it pulses the throttle; each pulse shifts
+  it to second (rpm 457 > first's top), the shift delay 7C4 (3 steps) passes without throttle,
+  coasting takes rpm below 0 and it drops back to first. Not yet known whether stock's AI does the
+  same after a respawn (stock's recorded opponent never wrecked). Open.
+- State at the end of this round: the 3x engine runs whole races on the bench (150 s) with no
+  fault and no blow-up; per-step rates match stock (rpm, grip, in-gear acceleration, the jump's
+  airtime, the countdown exactly). Open before any phone build: the player's lap ~10% quicker
+  (wall hits cheaper), the opponent after a respawn, a wreck moving at 11.72 Hz, the scripted
+  camera views at 11.72 Hz, the frame cost on the calibrated N95 model (plan step 3).
+- renderer/eng/funcs.txt: the 38 functions the engine lifts (tools/lift.py's argument list).
