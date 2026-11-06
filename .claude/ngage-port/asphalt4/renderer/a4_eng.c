@@ -4,13 +4,14 @@
  * changed (the step at 3x). Nothing here is compiled without A4_ENGINE. */
 #ifdef A4_ENGINE
 #include "a4_eng.h"
-#include "eng/lifted.c"
 #define ENGV(x) uint64_t a4_engv_##x(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, \
     uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7) { return eng_##x(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7); }
-#ifdef A4_ENG_22832
-ENGV(22832)
-#endif
-#ifdef A4_ENG_1C0B0
-ENGV(1C0B0)
-#endif
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wparentheses-equality"
+#pragma clang diagnostic ignored "-Wself-assign"
+#pragma clang diagnostic ignored "-Wunused-variable"
+#pragma clang diagnostic ignored "-Wunused-but-set-variable"
+#pragma clang diagnostic ignored "-Wunused-label"
+#include "eng/lifted.c"
+#pragma clang diagnostic pop
 #endif

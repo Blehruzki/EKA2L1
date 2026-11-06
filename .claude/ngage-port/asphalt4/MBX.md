@@ -7005,3 +7005,38 @@ discrete overlap at a step, so they come right with the finer step itself.
      lap times, traffic speeds, hits. Nothing goes to the phone until they match.
   3. The frame cost to ~30 ms on the modelled N95: profiled per function on the calibrated bench.
   4. A frame per step; the prediction code retired.
+
+## Round 50 (bench): the engine in C, checked against the game in lockstep
+
+Owner: "Sounds like a plan. Go ahead."
+- The step's call tree (tools/calltree.py on a PC trace of 31 race steps, a4_tr.exe): the race step
+  +141B0 runs, in order: sound and HUD set-up; the traffic +FB12; every car's control (+1F1F8 for the
+  others, x13; the player's keys, then +1F1F8 and +1DE78); +2217C on the traffic and cars; the
+  collisions (+1FDEC car-car x27.5, +1FF56 car-traffic x7.9, +ED9E); the movement (+1FD5C / +1EA64,
+  x7.7); race logic (+13968), the camera (+12DEC -> +5968 -> +4B40), positions and messages. The car
+  chain is ~11 KB of Thumb (+1F1F8, +1DE78 and its 12 helpers, +1EA64 with its continuation +1ED4C,
+  +226E8, +22832, +2292A, the collision functions).
+- Method: angr's decompiler fails on this code (a region-builder KeyError), so tools/lift.py
+  translates a function to C instruction by instruction -- registers as variables, N Z C V computed
+  where set, the frame an array with the incoming stack arguments at its top, literals read from the
+  game's code at run time (relocated), calls through a4_eng_call (renderer/a4_eng.s: eight stack words
+  passed, r0:r1 returned, and r2, r3 -- the game's code reads them after some calls: the first B run
+  read 0xDEAD0A18, the marker for a clobbered r2/r3). Function ends: the image's BL targets, not the
+  next push (+1EA64 continues at +1ED4C, which the push scan took for a function). tools/lift2.py is
+  the readable form (base + offset folded: car[0x7D8]) for the rate map. Every a4_engv_XXXXX symbol
+  puts a veneer at +XXXXX (injector), only with A4_ENGINE.
+- The oracle: A4_LOCKSTEP (one half-step an update), the autopilot in game steps, the Veyron swap,
+  CREC records each step (tools/crec.py, every live field of the player car and the race object's
+  first 0x100 bytes). Two runs of one build parted at step ~136 (e1/e2: A against A) -- the menus
+  before the race draw a varying count of random numbers. A4_BENCH_SEED (bench only, a4_gl.c
+  car_record): the C library's random() state -- a 31-word table at 0x50016C, the front pointer at
+  0x50014C three words ahead of the rear at 0x500150 (EKA2L1_WATCH) -- set the same at the race's
+  first step. Then A against A: 0 of 60 live fields differ over 403 steps (e3).
+- e1: +22832 (measure) in C, against the second A run: 0 of 60 over 399 steps.
+- e3: the whole car chain in C (25 functions: +1F1F8 +1DE78 +1971E +1B560 +1B9E0 +1BB98 +1BD1C
+  +1BDEC +1BE70 +1BF26 +1C0B0 +1C276 +1C350 +1CEC2 +1CDDA +1EA64 +226E8 +22832 +1FD5C +1FD0E +2292A
+  +1FDEC +1FF56 +239B6 +22C60) against both A runs: 0 of 60 live fields over 403-409 steps. The
+  game's car physics now runs from C, word for word the game's.
+- Not covered yet: the opponents' records (CREA, not compared by crec.py), jumps, the turbo, crashes
+  -- the autopilot's 35 s of race. Next: the race step +141B0, the traffic +FB12 and the camera in C,
+  the comparison over a longer race and the opponents, then the rate map in the C.

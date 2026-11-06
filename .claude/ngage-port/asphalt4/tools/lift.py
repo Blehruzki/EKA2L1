@@ -18,10 +18,30 @@ CC = {A.ARM_CC_EQ: 'fZ', A.ARM_CC_NE: '!fZ', A.ARM_CC_HS: 'fC', A.ARM_CC_LO: '!f
 md = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB); md.detail = True
 callees = set()
 
+# every function the game calls (Thumb BL targets): the only places a branch leaves a function by
+BLT = set()
+for o in range(0, len(code) - 3, 2):
+    h1, h2 = struct.unpack_from('<HH', code, o)
+    if (h1 & 0xF800) == 0xF000 and (h2 & 0xF800) == 0xF800:
+        off = ((h1 & 0x7FF) << 12) | ((h2 & 0x7FF) << 1)
+        if off & (1 << 22): off -= 1 << 23
+        BLT.add(o + 4 + off)
+
 def lift(start):
-    end = start + 2
-    while end < len(code) and (struct.unpack_from('<H', code, end)[0] & 0xFF00) != 0xB500: end += 2
-    allins = {i.address: i for i in md.disasm(code[start:end], start)}
+    end = start + 0x2000
+    for t in sorted(BLT):
+        if t > start: end = min(end, t + 0x1000); break
+    end = min(end, len(code))
+    class Lazy(dict):       # decode where the flow goes (a linear sweep would misread literal pools)
+        def __missing__(self, a):
+            for i in md.disasm(code[a:a + 4], a, count=1): self[a] = i; return i
+            raise KeyError(a)
+        def __contains__(self, a):
+            if dict.__contains__(self, a): return True
+            if not (0 <= a < len(code) - 1): return False
+            try: self.__missing__(a); return True
+            except KeyError: return False
+    allins = Lazy()
     def isbr(i): return i.mnemonic == 'b' or (i.mnemonic.startswith('b') and len(i.mnemonic) == 3 and i.mnemonic not in ('bic', 'blx'))
     reach, work, labels = set(), [start], set()
     while work:
@@ -30,14 +50,15 @@ def lift(start):
             i = allins[a]; reach.add(a); m = i.mnemonic
             if isbr(i):
                 t = i.operands[0].imm
-                if start <= t < end and t in allins: labels.add(t); work.append(t)
+                if t in allins and t not in BLT or t == start: labels.add(t); work.append(t)
                 if m == 'b': break
             if m == 'bx' or (m == 'pop' and 'pc' in i.op_str) or (m == 'mov' and i.op_str.startswith('pc')): break
             a += i.size
     ins = [allins[a] for a in sorted(reach)]
     L = []
     def E(s, i): L.append('    %-60s /* %06x %s %s */' % (s, i.address, i.mnemonic, i.op_str))
-    def rn(op, i): return i.reg_name(op.reg)
+    HI = {'sb': 'r9', 'sl': 'r10', 'fp': 'r11', 'ip': 'r12'}
+    def rn(op, i): n = i.reg_name(op.reg); return HI.get(n, n)
     def opv(op, i):
         if op.type == A.ARM_OP_REG: return rn(op, i)
         return '0x%Xu' % (op.imm & 0xFFFFFFFF)
@@ -62,11 +83,11 @@ def lift(start):
             else:
                 E('t = %s; ' % b + ' '.join('MEM32(t + %d) = %s;' % (4 * k, r) for k, r in enumerate(regs)) + ' %s = t + %d;' % (b, 4 * len(regs)), i)
         elif m in W and ops[1].type == A.ARM_OP_MEM:
-            mo = ops[1].mem; b = i.reg_name(mo.base); rt = rn(ops[0], i)
+            mo = ops[1].mem; b = HI.get(i.reg_name(mo.base), i.reg_name(mo.base)); rt = rn(ops[0], i)
             if b == 'pc':
                 la = ((i.address + 4) & ~3) + mo.disp
                 E('%s = GAME32(0x%X);' % (rt, la), i); continue
-            ea = b + (' + ' + i.reg_name(mo.index) if mo.index else '') + (' + 0x%Xu' % (mo.disp & 0xFFFFFFFF) if mo.disp else '')
+            ea = b + (' + ' + HI.get(i.reg_name(mo.index), i.reg_name(mo.index)) if mo.index else '') + (' + 0x%Xu' % (mo.disp & 0xFFFFFFFF) if mo.disp else '')
             if m.startswith('ld'):
                 E('%s = %s%s(%s);' % (rt, '(uint32_t)(int32_t)' if 'MEMS' in W[m] else '', W[m], ea), i)
             else: E('%s(%s) = %s;' % (W[m], ea, rt), i)
@@ -120,18 +141,18 @@ def lift(start):
         elif m in ('bl', 'blx'):
             if ops[0].type == A.ARM_OP_IMM:
                 t = ops[0].imm; callees.add((t, m == 'bl'))
-                E('{ uint64_t rr = a4_eng_call(%s(0x%X), r0, r1, r2, r3, sp); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); }' % ('GAMEFN' if m == 'bl' else 'GAMEARM', t), i)
+                E('{ uint64_t rr = a4_eng_call(%s(0x%X), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; }' % ('GAMEFN' if m == 'bl' else 'GAMEARM', t), i)
             else:
-                E('{ uint64_t rr = a4_eng_call(%s, r0, r1, r2, r3, sp); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); }' % rn(ops[0], i), i)
-            E('r2 = r3 = r12 = 0xDEAD0000u; /* clobbered by the call */', i)
+                E('{ uint64_t rr = a4_eng_call(%s, r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; }' % rn(ops[0], i), i)
+            E('r12 = 0xDEAD0000u; /* clobbered by the call */', i)
         elif m == 'bx':
             E('return ((uint64_t)r1 << 32) | r0;' if rn(ops[0], i) == 'lr' else 'return CALLR(%s);' % rn(ops[0], i), i)
         elif isbr(i):
             t = ops[0].imm
-            if start <= t < end and t in allins: tgt = 'goto L_%05X;' % t
+            if t in allins and (t not in BLT or t == start): tgt = 'goto L_%05X;' % t
             else:
                 callees.add((t, True))
-                tgt = '{ return a4_eng_call(GAMEFN(0x%X), r0, r1, r2, r3, sp); } /* tail */' % t
+                tgt = '{ return a4_eng_call(GAMEFN(0x%X), r0, r1, r2, r3, sp, r23); } /* tail */' % t
             if m == 'b': E(tgt, i)
             else: E('if (%s) %s' % (CC[i.cc], tgt), i)
         elif m == 'adr':
@@ -149,7 +170,7 @@ def lift(start):
            'uint64_t eng_%05X(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,\n'
            '                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)\n{\n' % start +
            '    uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = 0, t = 0;\n'
-           '    uint32_t fN = 0, fZ = 0, fC = 0, fV = 0;\n'
+           '    uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];\n'
            '    uint32_t stk[%d]; uint32_t sp = (uint32_t)(uintptr_t)&stk[%d - 8];\n' % (stkw, stkw) +
            '    stk[%d] = s0; stk[%d] = s1; stk[%d] = s2; stk[%d] = s3;\n' % (stkw - 8, stkw - 7, stkw - 6, stkw - 5) +
            '    stk[%d] = s4; stk[%d] = s5; stk[%d] = s6; stk[%d] = s7;\n' % (stkw - 4, stkw - 3, stkw - 2, stkw - 1) +
@@ -159,6 +180,10 @@ def lift(start):
 out = ['/* generated by tools/lift.py -- the game\'s own functions as C; edit only through the engine notes */']
 for a in args[1:]:
     out.append(lift(int(a, 16)))
+# the entry each replaces (a4_engv_XXXXX: tools/injector.py puts a veneer at +XXXXX), per function or all
+for a in args[1:]:
+    x = '%05X' % int(a, 16)
+    out.append('#if defined(A4_ENG_%s) || defined(A4_ENG_ALL)\nENGV(%s)\n#endif' % (x, x))
 txt = '\n'.join(out)
 if outp: open(outp, 'w').write(txt)
 else: print(txt)

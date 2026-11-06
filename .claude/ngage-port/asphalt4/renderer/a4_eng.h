@@ -16,8 +16,8 @@ extern const int32_t a4_g_base;                 /* a4_eng.s: patched to (code + 
 #define GAMEADDR(off) (GBASE + (off))
 #define GAMEFN(off)  (GBASE + (off) + 1u)       /* a Thumb function of the game */
 #define GAMEARM(off) (GBASE + (off))            /* an ARM one (the runtime helpers, blx) */
-uint64_t a4_eng_call(uint32_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t sp);
-#define CALLR(x) a4_eng_call((x), r0, r1, r2, r3, sp)
+uint64_t a4_eng_call(uint32_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t sp, uint32_t *r23);
+#define CALLR(x) a4_eng_call((x), r0, r1, r2, r3, sp, r23)
 /* ARM shifts with the carry out; a shift by 0 leaves the carry, by 32 or more as the ARM does */
 static inline uint32_t SHL_C(uint32_t x, uint32_t n, uint32_t *c)
 { n &= 0xFFu; if (!n) return x; if (n < 32u) { *c = (x >> (32u - n)) & 1u; return x << n; } *c = n == 32u ? (x & 1u) : 0u; return 0u; }
