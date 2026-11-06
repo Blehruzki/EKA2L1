@@ -33,6 +33,8 @@ if '-DA4_SPECCAMSAFE' in FL:
     for t in (0x3CCC, 0x3F14, 0x5618, 0x5620, 0x5211C): HOOKS[t] = 'a4_cs_5202c_tramp'
 used_hooks = set()
 EDITS, used_edits = {}, set()
+CALLMAP = {}            # calls the 3x engine routes through its own C (renderer/a4_eng.h), every site in the lifted code
+if '-DA4_ENG3' in FL: CALLMAP = {0x1B2D6: 'eng_c_1b2d6'}
 _ed = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'renderer', 'eng', 'edits.py')
 if os.path.exists(_ed) and '-DA4_ENG3' in FL:          # the edits are the 3x engine's; without A4_ENG3 the game's code exactly
     _g = {}; exec(open(_ed).read(), _g); EDITS = _g['EDITS']
@@ -96,6 +98,13 @@ def lift(start):
                 if m == 'b': break
             if m == 'bx' or (m == 'pop' and 'pc' in i.op_str) or (m == 'mov' and i.op_str.startswith('pc')): break
             a += i.size
+    for a_, e_ in EDITS.items():                # a goto in an edit makes its target a label
+        if a_ in reach:
+            for v_ in e_.values():
+                if isinstance(v_, str):
+                    for t_ in re.findall(r'goto L_([0-9A-F]{5});', v_):
+                        if int(t_, 16) not in reach: raise SystemExit('lift.py: edit at %05X goes to %s, outside +%05X' % (a_, t_, start))
+                        labels.add(int(t_, 16))
     ins = [allins[a] for a in sorted(reach)]
     L = []
     def E(s, i): L.append('    %-60s /* %06x %s %s */' % (s, i.address, i.mnemonic, i.op_str))
@@ -122,6 +131,8 @@ def lift(start):
             b = rn(ops[0], i); regs = [rn(o, i) for o in ops[1:]]
             if m == 'ldm':
                 E('t = %s; ' % b + ' '.join('%s = MEM32(t + %d);' % (r, 4 * k) for k, r in enumerate(regs)) + ('' if b in regs else ' %s = t + %d;' % (b, 4 * len(regs))), i)
+            elif EDITS.get(i.address, {}).get('third'):     # a vector rate: each word keeps a third of its change
+                E('t = %s; ' % b + ' '.join('%s = eng_third(t + %d, MEM32(t + %d), %s); MEM32(t + %d) = %s;' % (r, 4 * k, 4 * k, r, 4 * k, r) for k, r in enumerate(regs)) + ' %s = t + %d;' % (b, 4 * len(regs)), i)
             else:
                 E('t = %s; ' % b + ' '.join('MEM32(t + %d) = %s;' % (4 * k, r) for k, r in enumerate(regs)) + ' %s = t + %d;' % (b, 4 * len(regs)), i)
         elif m in W and ops[1].type == A.ARM_OP_MEM:
@@ -132,6 +143,11 @@ def lift(start):
             ea = b + (' + ' + HI.get(i.reg_name(mo.index), i.reg_name(mo.index)) if mo.index else '') + (' + 0x%Xu' % (mo.disp & 0xFFFFFFFF) if mo.disp else '')
             if m.startswith('ld'):
                 E('%s = %s%s(%s);' % (rt, '(uint32_t)(int32_t)' if 'MEMS' in W[m] else '', W[m], ea), i)
+            elif EDITS.get(i.address, {}).get('gate'):      # a counter: stored on the whole step; a substep keeps memory's
+                E('if (!ENG_SUB) %s(%s) = %s; else %s = %s(%s);' % (W[m], ea, rt, rt, W[m], ea), i)
+            elif EDITS.get(i.address, {}).get('third'):     # a rate: the store keeps a third of its change
+                if m != 'str': raise SystemExit('lift.py: a third at %06x on %s' % (i.address, m))
+                E('{ uint32_t ea_ = %s; %s = eng_third(ea_, MEM32(ea_), %s); MEM32(ea_) = %s; }' % (ea, rt, rt, rt), i)
             else: E('%s(%s) = %s;' % (W[m], ea, rt), i)
         elif base in ('mov', 'mvn'):
             d = rn(ops[0], i); s = opv(ops[1], i)
@@ -191,6 +207,9 @@ def lift(start):
             if i.address in HOOKS:
                 h = HOOKS[i.address]; used_hooks.add(h)
                 E('{ uint64_t rr = a4_eng_call((uint32_t)(uintptr_t)&%s, r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the injector\'s hook */' % h, i)
+            elif ops[0].type == A.ARM_OP_IMM and ops[0].imm in CALLMAP:
+                t = ops[0].imm; callees.add((t, m == 'bl'))
+                E('{ uint64_t rr = %s(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine\'s own +%X */' % (CALLMAP[t], t), i)
             elif ops[0].type == A.ARM_OP_IMM:
                 t = ops[0].imm; callees.add((t, m == 'bl'))
                 E('{ uint64_t rr = a4_eng_call(%s(0x%X), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; }' % ('GAMEFN' if m == 'bl' else 'GAMEARM', t), i)
@@ -242,6 +261,9 @@ def lift(start):
         used_edits.add(int(mm.group(1), 16))
         why = '    /* engine: %s */' % e.get('why', '')
         body = ('    ' + e['replace'] + '  /* was: ' + line.strip().replace('/*', '(').replace('*/', ')') + ' */') if 'replace' in e else line
+        if e.get('gate') and 'ENG_SUB' not in body: # another instruction gated: the whole step only
+            mm2 = re.match(r'(\s*)(.*?)(\s*/\*.*\*/)$', body)
+            body = '%sif (!ENG_SUB) { %s }%s' % mm2.groups()
         L[k] = '\n'.join(x for x in (why, ('    ' + e['before']) if 'before' in e else None, body, ('    ' + e['after']) if 'after' in e else None) if x)
     disp = ' '.join('case 0x%Xu: goto L_%05X;' % (k, v) for k, v in sorted(rets.items()))
     ret = '#undef RET\n#define RET(v) do { switch (v) { %s default: return ((uint64_t)r1 << 32) | r0; } } while (0)\n' % disp

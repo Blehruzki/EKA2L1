@@ -7076,3 +7076,22 @@ Owner: "Sounds like a plan. Go ahead."
 - The rate rule, one for the whole map, applied at each store to car state: a counter stores on
   substep 0 only; a rate keeps a third of its change, the remainder carried per car; everything else
   stays as the game has it. 199 stores to car state in the car chain (tools/annot.py) to classify.
+- The rate map, first batch (renderer/eng/edits.py, ~100 edits; tools/reach.py lists every function
+  the substeps reach statically, 182, with its stores and indirect calls): the car's control and
+  dynamics (+1DE78 and its helpers, three more lifted: +1BB1E the brake, +1BC5E the handbrake's rpm,
+  +1B954 the drift's decay), the height (+1ED4C), the measure (+22832: velocity per step = 3 x the
+  substep's displacement, acceleration likewise), the AI (+1F1F8: choices and the stuck check on the
+  whole step, its keys and +1DE78's stack argument replayed, per car), the traffic (+FB12: its place
+  on the road comes from two clocks, race+0x378/+0x37C, times the traffic speed G+0x83D8; a substep
+  adds its share of the clocks' last step), and +2217C's contact counter. Kinds: T (a rate: the store
+  keeps a third of its change, floor-divided, the remainder carried per word in a table keyed by the
+  address), G (a counter: it changes on the whole step; a substep reads memory's value back into the
+  register), decisions skipped on substeps (the boost's start/chain, the drift's start/end), and a
+  car effect call (+1B2D6) at most once per car and effect a game step (eng_c_1b2d6).
+- tools/oracle.py: stock against 3x in game time from the race's own step counter race+0x30 -- speed
+  (+B4), the engine's target (+7D0), gear, rpm, distance, air, boost, drift.
+- r1 (60 s): ran without a fault (faults=1 is the end-of-run kill, as every run). The car rolled
+  during the countdown: B4 11..90 from step 54 while stock stands still to step 149. Cause: the
+  substeps skipped the race rules' part but set only five of the frame slots it writes; the rest
+  (+0xC8, +0xCC, +0xD4, +0x118, +0x120) were stale stack. Now every slot it writes is saved at
+  substep 0 (+1452C) and restored on the substeps (+1433C).

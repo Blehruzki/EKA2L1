@@ -12,10 +12,12 @@ EDITS = {
               'why': 'each race step is a substep: 0 the whole step, 1 and 2 motion only'},
     # after the player car is fetched (str r0, [sp, #0xd8]) -- the substeps skip the race's rules
     # (+14308..+1452C: the start, slow motion's scale race+0x84C, race+0x30, the boost, the jingles) and
-    # set the frame slots that part sets: race+0x48 (the camera), +0x800, +0x340, +0x9C0, the keys 0
-    0x1433C: {'before': 'if (ENG_SUB) { MEM32(sp + 0x124u) = r4 + 0x48u; MEM32(sp + 0x11Cu) = r4 + 0x800u; '
-                        'MEM32(sp + 0x114u) = r4 + 0x340u; MEM32(sp + 0x110u) = r4 + 0x9C0u; MEM32(sp + 0xD0u) = 0u; goto L_1452C; }',
-              'why': 'substeps 1-2: straight to the traffic'},
+    # take the frame slots that part sets (the camera race+0x48, the keys, the start's state ...) as the
+    # whole step left them: without them the first 3x run's car rolled during the countdown
+    0x1433C: {'before': 'if (ENG_SUB) { uint32_t k_; for (k_ = 0; k_ < ENG_NFRAME; k_++) MEM32(sp + eng_frame_off[k_]) = ENG->frame[k_]; goto L_1452C; }',
+              'why': 'substeps 1-2: straight to the traffic, with the whole step\'s frame'},
+    0x1452C: {'before': 'if (!ENG_SUB) { uint32_t k_; for (k_ = 0; k_ < ENG_NFRAME; k_++) ENG->frame[k_] = MEM32(sp + eng_frame_off[k_]); }',
+              'why': 'the frame slots the race\'s rules set, for the substeps'},
     # after the car list's base (r6 = race + 0x3D0): the pursuit mode's position checks (mode 0x17) are rules
     0x14586: {'before': 'if (ENG_SUB) goto L_14672;',
               'why': 'substeps 1-2: the pursuit check waits for the whole step'},
@@ -31,4 +33,97 @@ EDITS = {
                         '{ uint64_t rr_ = a4_eng_call(GAMEFN(0x5968), MEM32(sp + 0x124u), MEM32(r5 + 0x10u) + 0x10u, MEM32(sp + 0xD8u), '
                         'MEM32(MEM32(r4 + 0x38u) + 0x1114u), sp, r23); (void)rr_; } return 0; }',
               'why': 'substeps 1-2: the camera on the moved car, then done'},
+    # the traffic's two clocks (race+0x378, +0x37C, passed to +FB12 in r2 and r3): their change over the
+    # whole step, measured there, so the substeps can place the traffic a third and two thirds along it
+    0x14574: {'before': 'if (!ENG_SUB) { ENG->tdel[0] = (int32_t)(r2 - ENG->tlast[0]); ENG->tdel[1] = (int32_t)(r3 - ENG->tlast[1]); '
+                        'ENG->tlast[0] = r2; ENG->tlast[1] = r3; '
+                        'if (ENG->tdel[0] < -0x100000 || ENG->tdel[0] > 0x100000) ENG->tdel[0] = 0; '
+                        'if (ENG->tdel[1] < -0x100000 || ENG->tdel[1] > 0x100000) ENG->tdel[1] = 0; }',
+              'why': 'the traffic clocks\' step, for the substeps'},
 }
+
+# ---- the rate map: the game's per-step changes, a third on each substep -----------------------------
+# T: a rate -- the store keeps a third of its change (eng_third, the remainder carried per word).
+# G: a counter or a decision's state -- it changes on the whole step only (substeps keep the old value).
+def T(a, why): EDITS[a] = {'third': True, 'why': why}
+def G(a, why): EDITS[a] = {'gate': True, 'why': why}
+def B(a, code, why): EDITS[a] = {'before': code, 'why': why}
+def R(a, code, why): EDITS[a] = {'replace': code, 'why': why}
+
+# +1DE78, the car's control and dynamics
+T(0x1DEDE, 'B20, steps a key is held (to 0x30): one a step')
+G(0x1DF20, 'A2C, a step counter'); G(0x1DF28, 'A34, a step counter (the stuck check every 64)')
+G(0x1DF58, 'A7C, a countdown'); G(0x1DF64, 'A7C, a count up')
+T(0x1DF88, 'ABC, drained by a table value a step')
+G(0x1DF9E, 'AEC, a countdown')
+T(0x1DFA8, 'rpm -8 a step while AEC runs')
+T(0x1DFEE, 'rpm -0x100 a step in the crash sequence')
+G(0x1E39A, 'C48, the respawn countdown')
+T(0x1E602, 'grip 9FC, +0xD55 a step on the road')
+B(0x1E684, '{ uint32_t k_; for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x10Cu + k_) = (uint32_t)eng_thirdv(r4 + 0x10u + k_, (int32_t)MEM32(sp + 0x10Cu + k_)); }',
+  'the velocity change (target - velocity, traction-limited): a third of a step\'s')
+T(0x1E7F8, 'drift 9F8 += f(turn)'); T(0x1E804, 'drift 9F8 += f(turn)')
+T(0x1E87E, '81C, the turn held, += A20')
+T(0x1E896, 'heading -= A20 (reversing)'); T(0x1E8A2, 'heading += A20')
+R(0x1E8C0, '{ uint32_t k_; for (k_ = 0; k_ < 12u; k_ += 4u) { uint32_t ea_ = r0 + k_; MEM32(ea_) = eng_third(ea_, MEM32(ea_), MEM32(ea_) + MEM32(r1 + k_)); } }',
+  'position += velocity (+521A0): a third of the step\'s')
+# +1B9E0, steering
+for a in (0x1BA28, 0x1BA52, 0x1BA7E, 0x1BA9A): T(a, 'A1C, the steering rate, eased a step')
+for a in (0x1BA2C, 0x1BA56, 0x1BAA0): T(a, 'steering 7FC += A1C')
+T(0x1BAF0, '808, steering eased 1/8 a step'); T(0x1BB1A, '80C, steering eased a step')
+# +1BB1E, the brake
+G(0x1BB3C, 'A08, steps the brake is held')
+for a in (0x1BB4C, 0x1BB6C, 0x1BB76): T(a, 'A04, the brake\'s ramp')
+T(0x1BB60, 'rpm -= brake'); T(0x1BB90, 'rpm -= 7DC/2 (key 4)')
+# +1BB98, engine drag
+T(0x1BC06, 'rpm -= slip'); T(0x1BC2E, 'rpm -= coast'); T(0x1BC54, 'rpm -= A74/64')
+G(0x1BC5A, '7C4, the gear change\'s countdown')
+# +1BC5E, the handbrake's rpm drop
+T(0x1BCBC, 'A0C ramp'); T(0x1BCC8, 'A0C ramp'); T(0x1BCEE, 'rpm -= A0C*28/16')
+# +1B954, the drift's decay without steering
+T(0x1B9A8, 'drift 9F8 decays a step'); G(0x1B9C0, '820, steps since the drift')
+# +1BD1C, off the road
+G(0x1BD6E, 'AB8, steps off the road (respawn past 5)')
+# +1BDEC, surface drag
+for a in (0x1BE30, 0x1BE4E, 0x1BE6C): T(a, 'rpm -= the surface\'s drag')
+# +1BE70, the boost: its start and chain are decisions of the whole step
+B(0x1BE86, 'if (ENG_SUB) goto L_1BED6;', 'substeps: no boost start or chain (the whole step decides)')
+G(0x1BEE0, 'AE0, the boost\'s countdown'); T(0x1BF22, 'ADC, the boost bar eased 1/8 a step')
+# +1BF26, the engine
+for a in (0x1BF84, 0x1BF92, 0x1BF9C, 0x1BFA2): T(a, 'rpm += throttle')
+# +1C276, the body's pitch
+for a in (0x1C2CE, 0x1C2E0, 0x1C2FA, 0x1C322, 0x1C32E): T(a, 'A24, the pitch, a step\'s change')
+# +1CEC2, the AI's speed wave
+G(0x1CFD8, 'C38, the speed wave\'s phase'); G(0x1D1AC, 'C38, the speed wave\'s phase')
+# +1B560, the drift: start and end are decisions of the whole step
+B(0x1B5DA, 'if (ENG_SUB) { MEM32(sp + 0x2Cu) = r3; goto L_1B794; }', 'substeps: no drift start or end')
+T(0x1B808, 'drift 9F8 += 83C (state 3)'); T(0x1B892, 'drift 9F8 += 83C (state 1)')
+G(0x1B83A, '838, steps in the drift state')
+T(0x1B8CA, '830, the drift\'s ramp'); T(0x1B916, 'drift 9F8 += steering'); T(0x1B93A, 'drift 9F8 decays 15/16')
+# +1EA64, contact
+G(0x1EBAC, 'E4, steps pushing into a contact (a crash past 12)')
+# +1ED4C, height
+T(0x1EDE4, 'y += the ramp\'s rise (hang)'); T(0x1EE2E, 'y += A58 (in the air)'); T(0x1EEB2, 'y += A58 (the launch)')
+T(0x1EE46, 'A58 -= gravity (0x14)'); T(0x1EE4C, 'A58 -= gravity (9)')
+G(0x1EE26, 'A60, steps in the air'); G(0x1EE38, 'AF0, the hang\'s countdown')
+G(0x1EF42, 'A68, a countdown'); G(0x1EF4C, 'A6C, a countdown')
+T(0x1F030, 'steering -0x400 off the wall'); T(0x1F062, 'steering +0x400 off the wall')
+T(0x1F132, 'heading -= the wall\'s turn'); T(0x1F13A, 'heading += the wall\'s turn')
+G(0x1F144, 'B18, the wall\'s countdown'); G(0x1F14E, 'B18, the wall\'s countdown')
+# +22832, the measure: a substep's displacement is a third of a step's
+B(0x22854, 'MEM32(sp + 4u) *= 3u; MEM32(sp + 8u) *= 3u; MEM32(sp + 0xCu) *= 3u;', 'velocity per step = 3 x the substep\'s displacement')
+B(0x2286C, 'MEM32(sp + 0x1Cu) *= 3u; MEM32(sp + 0x20u) *= 3u; MEM32(sp + 0x24u) *= 3u;', 'acceleration per step = 3 x the substep\'s change')
+T(0x228F2, '0C4, the acceleration eased 1/8 a step')
+# +2217C, the contact book
+G(0x22198, 'E0, steps since a contact')
+# +1F1F8, the AI: its choices (and the stuck check) on the whole step, its keys replayed
+B(0x1F310, 'if (ENG_SUB) goto L_1F3CC;', 'substeps: no stuck check')
+B(0x1F3CC, 'if (ENG_SUB) { uint32_t s_ = eng_ai_slot(r5); r6 = ENG->aik[s_]; MEM32(sp + 0x70u) = ENG->aia[s_]; goto L_1FCB0; }',
+  'substeps: the whole step\'s AI keys')
+B(0x1FCB4, 'if (!ENG_SUB) { uint32_t s_ = eng_ai_slot(r5); ENG->aik[s_] = r6; ENG->aia[s_] = MEM32(sp + 0x70u); }',
+  'the AI keys the whole step chose')
+# +FB12, the traffic: its place on the road from the clocks, a third and two thirds along on the substeps
+for a in (0xFB58, 0xFB6A): R(a, 'r0 = eng_tmul(r0, r1, 0u); fN = r0 >> 31; fZ = r0 == 0;', 'clock 0 x speed, at the substep')
+for a in (0xFB5E, 0xFB70): R(a, 'r1 = eng_tmul(r2, r1, 1u); fN = r1 >> 31; fZ = r1 == 0;', 'clock 1 x speed, at the substep')
+G(0xFC4A, 'a traffic slot\'s step counter (to 45)'); G(0xFC90, 'a traffic slot\'s step counter (its path)')
+
