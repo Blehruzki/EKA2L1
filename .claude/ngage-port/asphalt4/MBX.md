@@ -6963,7 +6963,7 @@ through them and not trigger any crash or hit." Eight telemetry files (r49ph).
 - What it means: at the owner's speed a car closes on traffic at ~340 (same way) to ~580 (oncoming)
   units a step, over the 300-350 window: a pass lands between two steps and the game -- the
   unmodified game's own test -- sees no contact. For a pass aimed anywhere across the car the share
-  that falls between steps is ~1 - pi R / 2c: ~35% same way, ~55% oncoming (a model, not measured).
+  that falls between steps is ~1 - pi R / 2c: ~25-30% same way, ~55-60% oncoming (a model, not measured).
   At one picture a step you saw the car before and after; the frames between steps now show the
   overlap. The frames did not cause it (the phone build's physics: the r49 flags rebuilt give the
   shipped sha 81193beb; the recorders and the seeker are bench-only defines).
