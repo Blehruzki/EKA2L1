@@ -6678,3 +6678,22 @@ at the moment or afterwards. You may want to analyze this better before committi
 - Lesson kept (rule 4): a battery that measures each object alone can pass a build whose
   objects do not agree. camrel.py (car in the view) now runs in every battery, and the mark
   screenshots are looked at before a build goes out.
+
+## Round 47, phone (r47, sha256 3e28589f...): cars fly off and snap back
+
+- The owner: "it's still the same ... look at how the car seems to start 'flying' upwards, then
+  snap back to the road. This can happen in any direction, and all cars suffer from the same."
+  Seven video frames in a tunnel at 412-430 km/h with nitro (Veyron, 3rd/8, lap 1/3): the car
+  rises up the view and grows over about six steps (the speed read-out changes each frame), is
+  drawn above the camera's eye at the top of the screen, then is back on the road.
+- And the directive: disassemble the game and run bench rounds only until the engine is
+  understood -- no more rounds sent blind.
+- Telemetry (8 files, r47ph): presents 2,504 (163 without a render), renders 2,342, held 1, drop
+  frames 5; camrel bearing 1/2/8 /2048 and heading less yaw 5/17/29 -- the framing in x-z holds,
+  as on the bench. The frame record has no heights (car x, z, heading; camera yaw, x, z), so
+  what the owner saw is outside everything it measures: again a battery blind to the fault.
+- Read in the code, not yet measured: the drawn height is the step's y plus the measured +014
+  times the fraction, through the corrector (cut 512 units), and kept above a drawn ground; the
+  camera's height runs on its own last change (capped 256 a step). Both are models of an engine
+  never read: what +014 holds, how the game sets a car's height and the camera's, and what
+  the render builds a car's transform from.
