@@ -6837,3 +6837,46 @@ against the car per step.
   Veyron with a watch on race+0x84C (takedowns; old y4o / new y4), a whole race to the finish
   (old / new), forced slow motion (A4_BENCH_SLOWMO=512, new). The helicopter view (0x2A, the chase
   family through +4B40, as mode 1) is not on the bench route.
+
+## Round 49 (bench): the event views reproduced and fixed; the model's split probed
+
+- The finish (mode 1), reproduced and measured (tools/telback.py on the phone-format records: the
+  player car's bearing in the view frame to frame, by mode): r48's frames (fin_o, the Mini on the
+  autopilot to the line, cap 85) 146 frames, bearing change 99% 25 /2048, reversals 10 -- the phone
+  (r48ph) 93 frames, 99% 62, reversals 16; A4_CAMALL (fin_n) 135 frames, 99% 5, reversals 1.
+- The crash (0x18): r48's frames (y2a) 13 reversals in 48 frames, 99% 109. A4_CAMALL (lw_n, fin_n,
+  slo): 1-5 reversals in 43-48 frames, 99% 34-67; against the game's own step path (lw_n's records)
+  most frames within 1-20 units, but where the script's turn speeds up the yaw misses by 30-77
+  /2048 (steps 760-761): a script's turn cannot be foreseen. A4_SCRIPTHOLD: in the scripted modes
+  (0x14, 0x17-0x1D) the frame is the game's step -- camera and every car as it left them --
+  round 40's A4_SPECSCRIPTHOLD again; checked by A4_BENCH_HOLDTEST (the hold forced 3 s in 10,
+  tools/heldchk.py: every car exactly at the step in those frames) -- running.
+- The helicopter (0x2A) goes through +4B40 as the chase and the finish do: A4_CAMALL's rule there;
+  the bench route never reaches the news event. The takedown: its camera mode and the writer of
+  the slow-motion scale not found (the watch on race+0x84C reported a menu bitmap blit at +295F8
+  before the race occupied that memory; no immediate-offset store to +0x84C in the code); a race
+  crash state at race+0x834/+0x83C next to the scale sets 0x18 (+12ECC) -- held by A4_SCRIPTHOLD if
+  that is it. Forced slow motion (A4_BENCH_SLOWMO=512, slo): chase frames 0 reversals, drawn speed
+  even (A4_SLOWMOQ's fraction is the game's own, +15B1C).
+- A determinism note: lockstep runs of builds that draw differently part (the race start's fly-in
+  is drawn differently, the render draws random numbers) -- lw_o/lw_n parted, ls_o/ls_n stayed
+  together with no event; A/Bs of events are by statistics.
+- The phone's climb (r48ph, LA): two steps between frames, the road's rate zeroed, the car held 160
+  under the road. A4_GAPRATE: a rate over n steps; the gap A/B at a slow cap (presents 78-90 ms):
+  height off the path 99% 14 (max 90) -> 12 (max 64), camera height 21 (max 90) -> 8 (max 45).
+  Its run showed the player put back after a crash 708 units away with its velocity 0, bridged by
+  the corrector for a frame: a step that moved otherwise than +010/+018 by over 256 is a placement,
+  the corrector restarts (in A4_GAPRATE).
+- The model's split (one parameter at a time, the r48 binary, the Veyron 120 s; phone r48ph: presents
+  64 (48-87), the render call 62.2 ms, its CPU part before the first triangle 15.1):
+    c0 (300:30:2:4:5:160, GPU 3,20,...)  presents 67 (56-83), call 50.9, before 9.3
+    c1 (Thumb 450, ARM 140, GPU lower)    75 (70-88), 57.5, 11.1 -- worse
+    c2 (read miss 60)                     69 (49-82), 53.5, 10.1 -- the spread the phone's
+    c3 (ARM CPI 240)                      70 (59-86), 55.1, 8.8 (the composite 16-18: ARM-bound)
+  The CPU part before the first triangle moves with none of them (Thumb CPI, read misses, ARM CPI);
+  next probe: write misses (the game's sky and background drawn before the first triangle). c2 is
+  the bench's model from here (the battery runs on it).
+- Candidate r49 = C48 + A4_CAMALL + A4_SCRIPTHOLD + A4_GAPRATE: sha256
+  a63da3a09929b09a244edb9fbbe8dd9aacb07f75bac2701c9ad6695ae7a61a38, 813,232 bytes; no 0xDEADBEEF;
+  +3A15C B510 0004. Battery queued (r49bat.sh, c2 model): the recorder run, tele, crash-steer, a race
+  to the finish, menus, mark, the Veyron, the Veyron's mark; telback on each.

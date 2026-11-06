@@ -1482,6 +1482,13 @@ static void hp_kdraw(uint32_t car, uint32_t qt, uint32_t first, uint32_t tnow)
              * 4,600 in x-z and +452 in y, the road's "slope" then 471 a step): nothing of it is a rate */
 #ifdef A4_GAPRATE
             if (iabs32(c[1] - HP->xW[i]) > 2048 * (int32_t)gap || iabs32(c[3] - HP->zW[i]) > 2048 * (int32_t)gap) t = u = g = 0;
+            /* round 49 (gap_y5: the player put back on the road after its crash, 708 units in a step with
+             * its velocity 0 -- under the 1,024 cut, the corrector drew it at the old place a frame, the
+             * camera with it): +010/+018 is the step's own move (exact in 99% of steps), so a step that
+             * moved otherwise by over 256 units is a placement, and the frame does not bridge it */
+            if (iabs32(c[1] - (HP->xW[i] + c[0x10u / 4u] * (int32_t)gap)) > 256 || iabs32(c[3] - (HP->zW[i] + c[0x18u / 4u] * (int32_t)gap)) > 256) {
+                t = u = g = 0; HP->kV[i] = 0;
+            }
 #else
             if (iabs32(c[1] - HP->xW[i]) > 2048 || iabs32(c[3] - HP->zW[i]) > 2048) t = u = g = 0;
 #endif
