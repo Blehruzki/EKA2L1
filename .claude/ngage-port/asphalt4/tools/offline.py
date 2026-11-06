@@ -44,6 +44,7 @@ for fn in sys.argv[1:]:
         for f in fr:
             a = steps.get(f['step']); b = steps.get(f['step'] + 1)
             if not a or not b: continue
+            if f['mode'] == 0x14 or 0x17 <= f['mode'] <= 0x1D: continue   # A4_SCRIPTHOLD: drawn at the step by design
             q = min(f['q'], 1.0)
             dxz = math.hypot(b['xW'] - a['xW'], b['zW'] - a['zW'])
             if dxz > 2000 or abs(b['yW'] - a['yW']) > 600: continue   # a respawn / a reset between the steps

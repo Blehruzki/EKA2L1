@@ -6880,3 +6880,46 @@ against the car per step.
   a63da3a09929b09a244edb9fbbe8dd9aacb07f75bac2701c9ad6695ae7a61a38, 813,232 bytes; no 0xDEADBEEF;
   +3A15C B510 0004. Battery queued (r49bat.sh, c2 model): the recorder run, tele, crash-steer, a race
   to the finish, menus, mark, the Veyron, the Veyron's mark; telback on each.
+- The steady-change gate (ca4d0ae, in A4_CAMALL): a component of the camera's change over the car
+  is carried only when it repeats the step before's (|g - h| <= |g|/2 + 4 units, + 2 /2048), so the
+  game's random shake (the helicopter's +-6 yaw a step) is drawn at the step, not thrown ahead.
+- Probe c4 (c2 + write miss 8 cycles): presents 68 (56-87), the render call 56.8 ms, before the first
+  triangle 11.1 -- the first parameter that moves that part at all (c2 10.1; phone 15.1), and the
+  call nearer the phone's 62.2. Not adopted yet (the battery was already on c2); the rest of the
+  gap (~4 ms) is still unexplained by any CPU parameter -- a guess: the driver's frame start (the
+  MBX's tile setup and the first bind), not modelled in EKA2L1_GPUMODEL.
+
+## Round 49 battery: the final candidate (r49b)
+
+- Candidate r49b = r49 + the steady gate: sha256
+  81193beb03a2e563bf0d0ab58bde21dc0239bce1ca80a7ea129b47c165b63d1b, 814,060 bytes; no 0xDEADBEEF;
+  +3A15C B510 0004. Battery r49bbat.sh on the exact binary, c2 model where marked.
+- Recorder (a4_y8 = the same flags + A4_CARREC/A4_YREC/A4_AUTOPILOT, the Mini 120 s, c2 model, TS 4):
+  a crash on the route (0x18, 48 frames): drawn held, bearing reversals 0 (the game's own steps 2);
+  chase 1436 frames, reversals 0. All cars off the game's path (tools/offline.py, now leaving out
+  respawn height jumps > 600 and the held script frames): x-z 99% 98 (max 235, the crash), height
+  99% 15 (max 95), heading 99% 12. The height's tail is a landing: a car at its floor (+0D0 - 64)
+  is drawn up to ~100 under the road for one frame before the landing step -- proposed: when the
+  step's y is under the road, aim at the road plus its own rate; not in this build.
+- Tele (calibrated N95 bench, the phone-format records): framestat 2083, faults 1; chase framing
+  bearing 99% 3, heading less yaw 99% 3; height off the path 99% 5 (max 8); presents 1748, held 0,
+  drop frames 0. The helicopter view (0x2A) reached on the bench for the first time (after a crash):
+  90 frames, bearing change 99% 8, 2 reversals -- both at step boundaries, the game's own shake;
+  inside a step the change is 0.
+- Crash-steer (cap 85): framestat 2300, faults 1; 417 chase frames, camera yaw and car heading
+  one-frame reversals 0; height off the path max 1.
+- Race to the finish on the autopilot build (NOKEY5, 330 s): the Mini reached the line early and the
+  run ended on the still results scene (417 frames of no motion) -- re-run on the exact binary with
+  the key held (below).
+- Menus (r49bmn): the pause menu, every row, restart, confirm, main menu, the garage -- all drawn.
+  Mark (r49bk, the Mini 170-196 km/h; r49bkv, the Veyron 225-290 km/h, Fame Avenue banner): drawn,
+  centred. Archive restored (cmp).
+- Veyron on the autopilot (cap 85): framestat 2257, faults 1; it hit the wall at the start and was
+  put back every ~3 s (mode 6, the view from in front looking back, 142 frames: 0 reversals; chase
+  275 frames: 0 reversals) -- the route, not the build; the mark run is the Veyron at speed.
+- Takedowns: no slow motion in any bench capture (tools/frkc.py over every 'FRKC' capture: race+0x84C
+  is 256 throughout), so no takedown has been reproduced here. The evidence it is the scripted 0x18:
+  round 41's speculation skipped script calls only in 0x18 (skipana, r41c), its hold of those frames
+  is what the owner reported as better ("not as before", r41), and the race's crash state next to the
+  scale (+0x834/+0x83C) sets 0x18 at +12ECC. Held by A4_SCRIPTHOLD if so; if it is a player view
+  (0-7) A4_CAMALL draws it. A guess until a phone run says.
