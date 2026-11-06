@@ -6,7 +6,7 @@
 # a4_eng.s), which passes eight stack words and returns r0:r1. Round 50: the first draft of each engine
 # function rewritten in C -- checked against the game's own function in lockstep (the whole race,
 # every word of every car) before a line of it is changed. Compiled by renderer/a4_eng.c.
-import sys, os, struct, capstone
+import sys, os, re, struct, capstone
 from capstone import arm_const as A
 args = [a for a in sys.argv[1:]]
 outp = None
@@ -32,6 +32,10 @@ if '-DA4_SPECCAMSAFE' in FL:
         HOOKS[t] = 'a4_cs_51fec_tramp'
     for t in (0x3CCC, 0x3F14, 0x5618, 0x5620, 0x5211C): HOOKS[t] = 'a4_cs_5202c_tramp'
 used_hooks = set()
+EDITS, used_edits = {}, set()
+_ed = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'renderer', 'eng', 'edits.py')
+if os.path.exists(_ed) and '-DA4_ENG3' in FL:          # the edits are the 3x engine's; without A4_ENG3 the game's code exactly
+    _g = {}; exec(open(_ed).read(), _g); EDITS = _g['EDITS']
 
 # every function the game calls (Thumb BL targets): the only places a branch leaves a function by
 BLT = set()
@@ -223,6 +227,22 @@ def lift(start):
            '    stk[%d] = s0; stk[%d] = s1; stk[%d] = s2; stk[%d] = s3;\n' % (stkw - 8, stkw - 7, stkw - 6, stkw - 5) +
            '    stk[%d] = s4; stk[%d] = s5; stk[%d] = s6; stk[%d] = s7;\n' % (stkw - 4, stkw - 3, stkw - 2, stkw - 1) +
            '    (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;\n')
+    # the engine's own changes (renderer/eng/edits.py): per instruction, C before it, after it, or in
+    # its place -- the rate map in code, each with its reason; the rest stays the game's, exactly
+    done = set()
+    for k, line in enumerate(L):
+        mm = re.search(r'/\* ([0-9a-f]{6}) ', line)
+        if not mm: continue
+        e = EDITS.get(int(mm.group(1), 16))
+        if not e: continue
+        if int(mm.group(1), 16) in done:            # an instruction lifted to two lines: the edit once
+            if 'replace' in e: L[k] = '    /* (replaced above) */'
+            continue
+        done.add(int(mm.group(1), 16))
+        used_edits.add(int(mm.group(1), 16))
+        why = '    /* engine: %s */' % e.get('why', '')
+        body = ('    ' + e['replace'] + '  /* was: ' + line.strip().replace('/*', '(').replace('*/', ')') + ' */') if 'replace' in e else line
+        L[k] = '\n'.join(x for x in (why, ('    ' + e['before']) if 'before' in e else None, body, ('    ' + e['after']) if 'after' in e else None) if x)
     disp = ' '.join('case 0x%Xu: goto L_%05X;' % (k, v) for k, v in sorted(rets.items()))
     ret = '#undef RET\n#define RET(v) do { switch (v) { %s default: return ((uint64_t)r1 << 32) | r0; } } while (0)\n' % disp
     return ret + hdr + '\n'.join(L) + '\n}\n'
@@ -238,4 +258,6 @@ for a in args[1:]:
 txt = '\n'.join(out)
 if outp: open(outp, 'w').write(txt)
 else: print(txt)
+missing = set(EDITS) - used_edits
+if missing: raise SystemExit('lift.py: edits at %s matched no lifted instruction' % ' '.join('%05X' % a for a in sorted(missing)))
 sys.stderr.write('callees: %s\n' % ' '.join('%s%05X' % ('T' if th else 'A', t) for t, th in sorted(callees)))

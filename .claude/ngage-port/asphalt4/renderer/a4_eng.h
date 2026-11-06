@@ -27,4 +27,30 @@ static inline uint32_t SAR_C(uint32_t x, uint32_t n, uint32_t *c)
 { n &= 0xFFu; if (!n) return x; if (n < 32u) { *c = (x >> (n - 1u)) & 1u; return (uint32_t)((int32_t)x >> n); } *c = x >> 31; return (uint32_t)((int32_t)x >> 31); }
 static inline uint32_t ROR_C(uint32_t x, uint32_t n, uint32_t *c)
 { n &= 0xFFu; if (!n) return x; n &= 31u; { uint32_t r = n ? ((x >> n) | (x << (32u - n))) : x; *c = r >> 31; return r; } }
+
+/* the 3x engine's own state (A4_ENG3): the scratch block the half-step physics used (0x45D000; the two
+ * are never built together, a4_eng.c checks) */
+#ifdef A4_ENG3
+#define A4_ENG_STATE 0x0045D000u
+struct eng {
+    uint32_t magic, race;            /* reset when a new race object appears */
+    uint32_t cnt;                    /* race steps run (substeps): the next one's substep is cnt % 3 */
+    uint32_t sub;                    /* the substep running: 0 the game's whole step, 1 and 2 motion only */
+    uint32_t keys;                   /* the player's keys as substep 0 built them, replayed on 1 and 2 */
+    uint32_t carp[16];               /* per car (by object), remainders of a third */
+    int32_t rem[16][8];
+};
+#define ENG ((volatile struct eng *)A4_ENG_STATE)
+#define ENG_MAGIC 0x33454E47u        /* 'GNE3' */
+#define ENG_SUB (ENG->sub)
+#define ENG_KEYS (ENG->keys)
+static inline void ENG_BEGIN(uint32_t race)
+{
+    if (ENG->magic != ENG_MAGIC || ENG->race != race) {
+        ENG->magic = ENG_MAGIC; ENG->race = race; ENG->cnt = 0; ENG->keys = 0;
+        for (uint32_t i = 0; i < 16u; i++) { ENG->carp[i] = 0; for (uint32_t k = 0; k < 8u; k++) ENG->rem[i][k] = 0; }
+    }
+    ENG->sub = ENG->cnt % 3u; ENG->cnt++;
+}
+#endif
 #endif

@@ -8940,6 +8940,8 @@ uint64_t eng_141B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t 
     stk[98] = s0; stk[99] = s1; stk[100] = s2; stk[101] = s3;
     stk[102] = s4; stk[103] = s5; stk[104] = s6; stk[105] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
+    /* engine: each race step is a substep: 0 the whole step, 1 and 2 motion only */
+    ENG_BEGIN(r0);
     sp -= 20; MEM32(sp + 0) = r4; MEM32(sp + 4) = r5; MEM32(sp + 8) = r6; MEM32(sp + 12) = r7; MEM32(sp + 16) = lr; /* 0141b0 push {r4, r5, r6, r7, lr} */
     { uint32_t ta = sp, tb = 0x134u; t = ta - tb; sp = t; }      /* 0141b2 sub sp, #0x134 */
     r4 = r0; fN = r4 >> 31; fZ = r4 == 0;                        /* 0141b4 movs r4, r0 */
@@ -9147,6 +9149,8 @@ L_14328:
     { uint64_t rr = a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014336 bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014336 bl #0x52206 */
     MEM32(sp + 0xD8u) = r0;                                      /* 01433a str r0, [sp, #0xd8] */
+    /* engine: substeps 1-2: straight to the traffic */
+    if (ENG_SUB) { MEM32(sp + 0x124u) = r4 + 0x48u; MEM32(sp + 0x11Cu) = r4 + 0x800u; MEM32(sp + 0x114u) = r4 + 0x340u; MEM32(sp + 0x110u) = r4 + 0x9C0u; MEM32(sp + 0xD0u) = 0u; goto L_1452C; }
     r1 = MEM32(r4 + 0x38u);                                      /* 01433c ldr r1, [r4, #0x38] */
     r2 = MEM32(r1 + 0x34u);                                      /* 01433e ldr r2, [r1, #0x34] */
     { uint32_t ta = r2, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014340 cmp r2, #0 */
@@ -9465,6 +9469,8 @@ L_14578:
     r0 = MEM32(r0 + 0x38u);                                      /* 014580 ldr r0, [r0, #0x38] */
     t = SHL_C(r1, 0x4u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 014582 lsls r1, r1, #4 */
     { uint32_t ta = r4, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r6 = t; } /* 014584 adds r6, r4, r1 */
+    /* engine: substeps 1-2: the pursuit check waits for the whole step */
+    if (ENG_SUB) goto L_14672;
     { uint32_t ta = r0, tb = 0x14u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014586 cmp r0, #0x14 */
     if (fZ) goto L_14672;                                        /* 014588 beq #0x14672 */
     { uint32_t ta = r0, tb = 0x16u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01458a cmp r0, #0x16 */
@@ -9697,6 +9703,8 @@ L_14736:
     MEM8(r0 + 0x14u) = r1;                                       /* 014750 strb r1, [r0, #0x14] */
     goto L_14978;                                                /* 014752 b #0x14978 */
 L_14754:
+    /* engine: substeps 1-2: the whole step's keys */
+    if (ENG_SUB) { MEM32(sp + 0xD0u) = ENG_KEYS; goto L_14948; }
     r2 = 0x0u; fN = r2 >> 31; fZ = r2 == 0;                      /* 014754 movs r2, #0 */
     r0 = MEM32(sp + 0xDCu);                                      /* 014756 ldr r0, [sp, #0xdc] */
     r1 = 0x7u; fN = r1 >> 31; fZ = r1 == 0;                      /* 014758 movs r1, #7 */
@@ -9991,6 +9999,8 @@ L_14964:
     r0 = r7; fN = r0 >> 31; fZ = r0 == 0;                        /* 01496e movs r0, r7 */
     r1 = MEM32(sp + 0xD0u);                                      /* 014970 ldr r1, [sp, #0xd0] */
     r3 = r6; fN = r3 >> 31; fZ = r3 == 0;                        /* 014972 movs r3, r6 */
+    /* engine: the keys the whole step gave the player's control */
+    if (!ENG_SUB) ENG_KEYS = r1;
     { uint64_t rr = a4_eng_call(GAMEFN(0x1DE78), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014974 bl #0x1de78 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014974 bl #0x1de78 */
 L_14978:
@@ -10423,6 +10433,8 @@ L_14CA6:
     { uint32_t ta = r0, tb = r7; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014cae cmp r0, r7 */
     if ((!fZ && fN == fV)) goto L_14C24;                         /* 014cb0 bgt #0x14c24 */
 L_14CB2:
+    /* engine: substeps 1-2: the camera on the moved car, then done */
+    if (ENG_SUB) { MEM32(sp) = 0u; MEM32(sp + 4u) = 0u; MEM32(sp + 8u) = 0u; { uint64_t rr_ = a4_eng_call(GAMEFN(0x5968), MEM32(sp + 0x124u), MEM32(r5 + 0x10u) + 0x10u, MEM32(sp + 0xD8u), MEM32(MEM32(r4 + 0x38u) + 0x1114u), sp, r23); (void)rr_; } return 0; }
     r0 = MEM32(sp + 0xD8u);                                      /* 014cb2 ldr r0, [sp, #0xd8] */
     r2 = 0xBu; fN = r2 >> 31; fZ = r2 == 0;                      /* 014cb4 movs r2, #0xb */
     t = SHL_C(r2, 0x8u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 014cb6 lsls r2, r2, #8 */

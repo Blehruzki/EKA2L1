@@ -7061,3 +7061,18 @@ Owner: "Sounds like a plan. Go ahead."
   not the C library's generators).
 - A4_THIRDSTEP (injector): the step a third, 21333 -> 7111 units (28.44 ms): +52B98's divide magic
   0x49BAA9B5 >> 43 checked exact at every multiple of 7111 below 2^31, +52B9C, +15F28.
+- The substep frame (A4_ENG3, bench): the race step +141B0 runs three times a game step at
+  A4_THIRDSTEP; ENG state at 0x45D000 (renderer/a4_eng.h: count, substep, keys, per-car remainders).
+  renderer/eng/edits.py holds the edits the lifter applies to the C, each with its reason. Substep 0
+  is the game's whole step; on substeps 1-2 the race rules (+1433C..+1452C), the traffic's pursuit
+  check (+14586) and the player's key queries (+14754: the keys of substep 0 reused) are skipped, and
+  after the movement the step ends at +14CB2 with only the camera's placement (+5968) -- race logic,
+  HUD and positions stay at 11.72 Hz. The keys routine +25E8 (+167AE) runs on substep 0 only
+  (a4_eng_keys); the car recorder records on substep 0. Found on the way: the slow-motion scale
+  race+0x84C is written in the race rules from the countdowns race+0x850/+0x854, and race+0x30 is
+  the race's step counter.
+- t3 (substep frame, no rate edits yet): ran the race without a fault; the cars move three whole
+  steps' worth per game step, as expected while no rate is scaled.
+- The rate rule, one for the whole map, applied at each store to car state: a counter stores on
+  substep 0 only; a rate keeps a third of its change, the remainder carried per car; everything else
+  stays as the game has it. 199 stores to car state in the car chain (tools/annot.py) to classify.

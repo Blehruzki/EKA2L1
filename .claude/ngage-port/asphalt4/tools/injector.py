@@ -435,6 +435,12 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == want, 'half phys: +%06X holds %04x %04x, expected %04x %04x' % ((off,) + have + want)
             blx_insert(code, off, syms['a4_h_12dec'])
             print('HPHY   +%06X -> a4_h_12dec +%06X' % (off, syms['a4_h_12dec'] - LINK_BASE))
+    if '-DA4_ENG3' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+        # round 50: the key handler +25E8 (bl at +167AE in the step loop) read only before a whole step
+        have = struct.unpack_from('<HH', code, 0x167AE)
+        assert have == (0xF7EB, 0xFF1B), 'engine keys: +167AE holds %04x %04x' % have
+        blx_insert(code, 0x167AE, syms['a4_eng_keys'])
+        print('ENG3   +0167AE -> a4_eng_keys +%06X (keys before a whole step)' % (syms['a4_eng_keys'] - LINK_BASE))
     if '-DA4_SPECTRAFFIC' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
         # round 41: the traffic's step +FB12 (from +14574, once a step) recorded for the speculation
         have = struct.unpack_from('<HH', code, 0x14574)

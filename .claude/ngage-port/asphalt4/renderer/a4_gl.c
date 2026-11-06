@@ -1008,6 +1008,14 @@ static uint32_t ap_key(uint32_t race, uint32_t st)
  * step sees it), 3 both */
 static void car_record(uint32_t race, uint32_t what)
 {
+#ifdef A4_ENG3
+    {   /* round 50, the 3x engine: the keys and the record before a whole step only (a4_eng.h's state:
+         * magic, race, cnt -- the next race step's substep is cnt % 3), so the autopilot's scripts and the
+         * records keep the game's 85.33 ms steps */
+        volatile uint32_t *eg = (volatile uint32_t *)0x0045D000u;
+        if (eg[0] == 0x33454E47u && (eg[2] % 3u) != 0u) return;
+    }
+#endif
     volatile uint32_t *r = (volatile uint32_t *)A4_GL_CREC;
     uint32_t ctx = *(volatile uint32_t *)(race + 0x38);
     uint32_t K = ctx ? *(volatile uint32_t *)(ctx + 0x1114) : 0;
