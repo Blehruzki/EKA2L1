@@ -100,6 +100,27 @@ arguments 7, 0, ...) (code).
   yaw -- with no lag. The "camera takes 3/4 of a turn" that our frames used since round 43
   (A4_KD_TURN, hp_sub's `3 * dh / 4`) has no basis in the engine.
 
+## The camera modes (+12DEC, +5968, +3FE6)
+
+- +12DEC (the step's camera update; the between-steps routine +1300C calls it too in slow motion)
+  takes its car from +52206: race[0x394 + 4 x player index] -- always the player car. It sets the
+  mode (+3FE6: cam+0x4C = race+0x94; modes 0-7 and 0x16 also kept at cam+0x50, the player's view):
+  - 0x18 (crash) when the player car's +B28 has the crash bits, or race+0x834 is set with
+    race+0x83C == 1 (a race-level crash state, next to the slow-motion scale race+0x84C);
+  - 0x2A while one of the seven police slots (race+0x3B4..) holds the helicopter type (+C70 == 4)
+    in its first state (+C6C == 0) -- the news helicopter view;
+  - a jump camera (+5968 with argument 5, cam+0x70 = -1) while the car's air counters +AF0/+AF4 run;
+  - modes 0x17, 0x19, 0x1A (scripts: the start's fly-in is 0x17, steps 3-99) are left running;
+  - else the player's view (0-3 cycled by the camera key, +421AA; mode 1 is also the race's end).
+- +5968's switch (+5D60): 0 +50EC; 1, 2, 3, 0x2A +4B40 (the chase family: rigid on the car, turned
+  by race+0xE4 -- the finish orbits ~8 /2048 a step); 4 +4F3C; 5, 6, 7 +490A (car-relative; 6 seen
+  in front of a wrecked car, looking back); 0x14 +4764; 0x16 +42C8; 0x17 +57AC and 0x18 +554C (keyframe
+  scripts through +5205A, set up from the car by +3D2A); 0x19 +4382; 0x1A-0x1D others.
+- Measured (A4_YREC/FRKC records): the crash camera follows a script around the car, 100+ units a
+  half-step, its yaw turning faster and slower step to step (1382, 1410, 1463, 1508 ...).
+- Slow motion: +15B1C counts steps by floor(clock / P), P = 10667 x race+0x84C / 256 (256 normal).
+  Who sets the scale in a takedown: not found (no immediate-offset store to race+0x84C in the code).
+
 ## The heading
 
 - Measured (run y1, the player's 1,313 step pairs, the autopilot holding the throttle): the

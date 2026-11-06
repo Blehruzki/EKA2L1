@@ -1188,6 +1188,7 @@ struct hp {
     uint32_t started, rstep;         /* the race has started (the player's +0E0 seen above 0); its step count */
     int32_t pw[4];                   /* the player car (+004, +008, +00C, +678) as the whole step left it */
     int32_t pwp[4];                  /* the same at the step before (A4_CAMALL) */
+    uint32_t hold;                   /* A4_SCRIPTHOLD: this frame drawn at the step (a scripted camera) */
     uint32_t pws, pwps;              /* the steps pw and pwp were taken at */
     uint32_t cwv, camx, cmode;       /* steps of it seen; the odd half-step's camera to put back; its mode */
     uint32_t committed, fwhole;      /* A4_FRACPHYS: the step's fraction the renders have moved the cars;
@@ -1458,14 +1459,32 @@ static void hp_kdraw(uint32_t car, uint32_t qt, uint32_t first, uint32_t tnow)
     volatile int32_t *c = (volatile int32_t *)car;
     if (first) {                     /* the state the step left: drawn from, and put back before the next step */
         int32_t hd = c[0x678u / 4u], w = c[0x020u / 4u], d = c[0xD0u / 4u], t = 0, u = 0, g = 0;
+#ifdef A4_GAPRATE
+        /* round 49 (r48 on the phone, the LA climb: two steps between frames, the road up 225, the
+         * rates zeroed for not being a step apart, the car held 160 under it): over a gap of n
+         * steps a rate is the change over n */
+        uint32_t gap = HP->wstep - HP->hds[i];
+        if (gap >= 1u && gap <= 3u) {
+            int32_t gt = hp_wrap(hd - HP->hdl[i], 2048), gu = hp_wrap(w - HP->wl[i], 4096), gg = d - HP->dWp[i];
+            if (gap == 2u) { gt /= 2; gu /= 2; gg /= 2; }
+            else if (gap == 3u) { gt = (int32_t)(((int64_t)gt * 21845) >> 16); gu = (int32_t)(((int64_t)gu * 21845) >> 16); gg = (int32_t)(((int64_t)gg * 21845) >> 16); }
+            t = gt; if (t >= 256 || t <= -256) t = 0;
+            u = gu; if (u >= 1024 || u <= -1024) u = 0;
+            g = gg; if (g >= 512 || g <= -512) g = 0;
+#else
         if (HP->hds[i] + 1u == HP->wstep) {
             t = hp_wrap(hd - HP->hdl[i], 2048); if (t >= 256 || t <= -256) t = 0;
             u = hp_wrap(w - HP->wl[i], 4096); if (u >= 1024 || u <= -1024) u = 0;
             g = d - HP->dWp[i]; if (g >= 512 || g <= -512) g = 0;
+#endif
 #ifdef A4_ENGDRAW
             /* a respawn moves the car thousands of units in one step (run y2b, slot 5, step 978:
              * 4,600 in x-z and +452 in y, the road's "slope" then 471 a step): nothing of it is a rate */
+#ifdef A4_GAPRATE
+            if (iabs32(c[1] - HP->xW[i]) > 2048 * (int32_t)gap || iabs32(c[3] - HP->zW[i]) > 2048 * (int32_t)gap) t = u = g = 0;
+#else
             if (iabs32(c[1] - HP->xW[i]) > 2048 || iabs32(c[3] - HP->zW[i]) > 2048) t = u = g = 0;
+#endif
 #endif
         }
         HP->turn[i] = t; HP->wr[i] = u; HP->hdl[i] = hd; HP->wl[i] = w; HP->hds[i] = HP->wstep;
@@ -1475,6 +1494,9 @@ static void hp_kdraw(uint32_t car, uint32_t qt, uint32_t first, uint32_t tnow)
         HP->disp[i] = 1;
     }
     if (!HP->disp[i]) return;
+#ifdef A4_SCRIPTHOLD
+    if (HP->hold) { qt = 0; HP->kV[i] = 0; }   /* drawn at the step, the corrector started again */
+#endif
     int32_t vx = c[0x10u / 4u], vy = c[0x14u / 4u], vz = c[0x18u / 4u];
     if (iabs32(vx) >= 2048 || iabs32(vz) >= 2048) vx = vz = 0;
 #ifdef A4_ENGDRAW
@@ -2463,6 +2485,9 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
             }
         }
 #ifdef A4_CAMALL
+#ifdef A4_SCRIPTHOLD
+        else if (HP->hold) { }       /* the game's own camera, as the step (or its slow motion) left it */
+#endif
         else if (pcar && started) {
             /* round 49 (r48 on the phone: "back and forth" in the takedown, the crash, the helicopter
              * view and the race's end -- the camera modes other than the chase): every camera the step
@@ -2613,6 +2638,9 @@ static void hp_tsnap(uint32_t race, uint32_t q16)
 #ifdef A4_SPECTRAFFIC
 #ifdef A4_KINEDRAW
     sp[26] = (sp[27] && h[0] - sp[28] <= 2u) ? sp[27] : 0u;   /* round 46: every frame (the corrector at q 0 too) */
+#ifdef A4_SCRIPTHOLD
+    if (HP->hold) { q16 = 0; for (uint32_t i = 0; i < TRAF_N; i++) HP->tV[i] = 0; }
+#endif
     uint32_t tfirst = sp[28] != HP->tstep;
     HP->tstep = sp[28];
 #else
@@ -2850,6 +2878,19 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
 #ifdef A4_KINEDRAW
                 {   /* round 46: every frame drawn (the corrector needs each one), at its own q16 */
                     uint32_t f = q16 > HP->committed ? q16 - HP->committed : 0u, first = HP->committed == 0u;
+#ifdef A4_SCRIPTHOLD
+                    {   /* round 49: a scripted camera (the crash 0x18 and the race's other event cameras,
+                         * +554C/+57AC's keyframe paths and their kin) turns where no step's change can say,
+                         * and the frames drew it back and forth (the crash: 3-5 reversals in ~45 frames on
+                         * the bench after A4_CAMALL, 13 before). In those, the frame is the game's step --
+                         * the camera and every car as it left them -- as round 40's A4_SPECSCRIPTHOLD did */
+                        uint32_t cmode = HP_CAMMODE(race);
+                        HP->hold = cmode == 0x14u || (cmode >= 0x17u && cmode <= 0x1Du);
+#ifdef A4_BENCH_HOLDTEST
+                        HP->hold |= ((a4_ntick() / 1000u) % 10u) >= 7u;   /* bench: the hold forced 3 s in 10, to test it */
+#endif
+                    }
+#endif
                     hp_sub(race, f, first);
 #ifdef A4_CARREC
                     if (first) {   /* bench: the corrections the step's first frame made, 'CRKD' */

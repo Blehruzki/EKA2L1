@@ -46,7 +46,7 @@ for fn in sys.argv[1:]:
             if not a or not b: continue
             q = min(f['q'], 1.0)
             dxz = math.hypot(b['xW'] - a['xW'], b['zW'] - a['zW'])
-            if dxz > 2000: continue                       # a respawn / a reset between the steps
+            if dxz > 2000 or abs(b['yW'] - a['yW']) > 600: continue   # a respawn / a reset between the steps
             lx = a['xW'] + (b['xW'] - a['xW']) * q; lz = a['zW'] + (b['zW'] - a['zW']) * q
             ly = a['yW'] + (b['yW'] - a['yW']) * q; lh = a['hW'] + wrap(b['hW'] - a['hW']) * q
             off['xz'].append(math.hypot(f['x'] - lx, f['z'] - lz)); off['y'].append(abs(f['y'] - ly))
