@@ -2748,6 +2748,21 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
                         q[7] = (uint32_t)HP->cE[3];
                         a4_rec_emit2((const void *)q, (const void *)A4_GL_HP, (const void *)race);
                     }
+#ifdef A4_YREC
+                    /* bench (engine map, after round 47 on the phone: cars fly off and snap back): every
+                     * car as this frame draws it, with the step's own values beside it -- 'FRKD', the
+                     * step, q16 | car slot << 24 | first << 31, the step's y, +0D0, the corrector's y
+                     * offset, the camera's y at the step, the ground's last change */
+                    for (uint32_t ci = 0; ci < HP_CARS; ci++) {
+                        if (!HP->car[ci] || !HP->disp[ci]) continue;
+                        volatile uint32_t q[8];
+                        q[0] = 0x444B5246u; q[1] = ((volatile uint32_t *)A4_GL_CREC)[1];
+                        q[2] = (q16 & 0xFFFFFFu) | (ci << 24) | (first << 31);
+                        q[3] = (uint32_t)HP->yW[ci]; q[4] = (uint32_t)HP->dW[ci]; q[5] = (uint32_t)HP->kE[ci][3];
+                        q[6] = (uint32_t)HP->cw[1]; q[7] = (uint32_t)HP->gW[ci];
+                        a4_rec_emit2((const void *)q, (const void *)HP->car[ci], (const void *)race);
+                    }
+#endif
 #endif
                     HP->committed += f; if (!HP->committed) HP->committed = 1u;   /* the step's first frame done */
                     hp_tsnap(race, q16);

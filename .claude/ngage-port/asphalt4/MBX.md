@@ -6697,3 +6697,29 @@ at the moment or afterwards. You may want to analyze this better before committi
   camera's height runs on its own last change (capped 256 a step). Both are models of an engine
   never read: what +014 holds, how the game sets a car's height and the camera's, and what
   the render builds a car's transform from.
+
+## Engine map 1 (bench): why the cars fly -- read in the code, reproduced on the bench
+
+Owner (round 47): bench rounds only until the engine is understood. The map is ENGINE.md; this
+entry is the round. Not a repeat: no earlier round recorded heights per frame, nor read +22832,
++1FD5C or the vertical logic of +1EA64.
+- Instrument: A4_YREC (bench), every car as each frame draws it with the step's y, +0D0, the
+  corrector's y offset beside it (a4_y1.exe = C47 + A4_CARREC + A4_YREC + A4_AUTOPILOT; jtrun.sh,
+  calibrated N95 bench, Veyron swap, 120 s: framestat 2236, faults 1, archive restored).
+- Reproduced: every racing car's drawn height leaves the line between the game's heights at
+  the steps around the frame -- 99% 160-214, max 276-550 units, slots 0-7 alike (the camera is
+  ~300 behind). Not seen before because the frame record and every battery metric had no height.
+- Cause, in two parts. (1) The engine: +014 is measured (+22832) before the vertical logic
+  moves y (kind 4 snaps y to +0D0 after it, +1FD70; kind 3 runs gravity and landing after it and
+  rewrites +0AC). Measured: +010/+018 equal the true x/z change in 1,301 of 1,314 player steps,
+  +014 misses the true y change in 967 (99% 69, max 127). (2) Ours: with about one frame per
+  step, the corrector renews its offset from the last drawn value at each step's first frame and
+  fades it only between a step's frames, so a missed motion accumulates and the car holds still
+  -- slot 3 airborne down the LA hill, +014 0, offset +121, +203, +294 ... +497, cut at 512,
+  snap (steps 1026-1033).
+- The engine's own vertical rule, read: airborne y += +A58 then +A58 -= 9 (20 with +A64), a
+  hang counter +AF0, landing at +0D0, a floor at +0D0 - 64. An airborne car's next height is
+  y + +A58 exactly; a car on the road follows +0D0.
+- Not yet read (next): the chase camera (+4B40: modes, distance, the direction vector begun),
+  +1F1F8 and +1DE78 in full, the traffic's move (+FB12), the render's car tilt (+A434: +678,
+  +A04, +A20, +A24), the road query behind +0D0 (+226E8 -> +24604, +23E72).
