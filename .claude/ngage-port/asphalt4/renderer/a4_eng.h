@@ -63,10 +63,12 @@ static const uint16_t eng_frame_off[] = { 0xC8, 0xCC, 0xD0, 0xD4, 0x110, 0x114, 
 #define ENG_MAGIC 0x33454E47u        /* 'GNE3' */
 #define ENG_SUB (ENG->sub)
 #define ENG_KEYS (ENG->keys)
-/* a car's last substep of the step: 2, or 0 for a wreck (its control and movement run on the whole step
- * only: +1DFE6, +1EA68) -- where a countdown that substeps read is counted, after the step's reads of it,
- * as the game counts it after its step's */
-#define ENG_SUB_END(car) (ENG_SUB == 2u || (ENG_SUB == 0u && *(volatile uint32_t *)(uintptr_t)((car) + 0x34u) != 0xFFFFFFFFu))
+/* a car's last substep of the step: 2; or 0 when the step's substeps will not run it -- a wreck (its
+ * control and movement run on the whole step only: +1DFE6, +1EA68), or a car run outside the race step's
+ * car loop (the countdown: ENG->loop clear, the substeps return at once; r14 left +7C4 at 10 from the
+ * countdown) -- where a countdown that substeps read is counted, after the step's reads of it, as the
+ * game counts it after its step's */
+#define ENG_SUB_END(car) (ENG_SUB == 2u || (ENG_SUB == 0u && (!ENG->loop || *(volatile uint32_t *)(uintptr_t)((car) + 0x34u) != 0xFFFFFFFFu)))
 static inline void ENG_BEGIN(uint32_t race)
 {
     if (ENG->magic != ENG_MAGIC || ENG->race != race) {

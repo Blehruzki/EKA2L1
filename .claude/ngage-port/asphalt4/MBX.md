@@ -7350,3 +7350,10 @@ Owner: "Sounds like a plan. Go ahead."
   second, a frame every 2-3 substeps. 30 fps needs the render call near 30 ms: the renderer is the
   work of plan step 3, not the engine. (s13's first attempt faulted: built without
   A4_SCRATCH_SIZE=0x5F000, the telemetry's blocks past its scratch.)
+- r14 (whole race): the opponent's gear cycling is gone (lap 1 in 700 steps; r13 1078, stock 827).
+  But the player's launch is off again (distance -6.5% at 10 s; r13 -0.6%): +7C4 sits at 10 from
+  the countdown and counts down only after the start (stock and r13: 0). In the countdown the game
+  runs the car's control outside the race step's car loop (ENG->loop clear), the substeps return
+  at once, and a store on substep 2 never comes. ENG_SUB_END now takes substep 0 as the step's end
+  when the loop flag is clear, as for a wreck.
+- r15: that. Run: r15, a whole race.
