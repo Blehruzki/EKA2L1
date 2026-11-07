@@ -65,8 +65,15 @@ T(0x1DFA8, 'rpm -8 a step while AEC runs')
 B(0x1DFE6, 'if (ENG_SUB) return 0;', 'substeps: a wreck waits for the whole step')
 G(0x1E39A, 'C48, the respawn countdown')
 T(0x1E602, 'grip 9FC, +0xD55 a step on the road')
-B(0x1E684, '{ uint32_t k_; for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x10Cu + k_) = (uint32_t)eng_thirdv(r4 + 0x10u + k_, (int32_t)MEM32(sp + 0x10Cu + k_)); }',
-  'the velocity change (target - velocity, traction-limited): a third of a step\'s')
+# the velocity's change toward its target (+1E5CA: d = +680 - +010, its length clamped to the traction
+# T / 16 a step, T from the grip +9FC): the game reaches the target in one step when it is within the
+# traction and moves T / 16 toward it when not. A substep reaches it within T / 48 (r1-r9 thirded d,
+# which reaches 70% of the way in a step: the car lagged its target at a launch and after a wall)
+B(0x1E684, '{ int32_t m_ = (int32_t)MEM32(sp + 0x104u), t_ = (int32_t)MEM32(sp + 0x108u), g_, l_; uint32_t k_; '
+  'g_ = (m_ > t_) ? t_ : m_; l_ = t_ / 3; '
+  'if (t_ > 0 && g_ > l_ && g_ > 0) { int32_t f_ = (int32_t)(l_ < 0x80000 ? eng_udiv((uint32_t)l_ << 12, (uint32_t)g_) : eng_udiv((uint32_t)l_, ((uint32_t)g_ >> 12) | 1u)); '
+  'for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x10Cu + k_) = (uint32_t)(int32_t)(((int64_t)(int32_t)MEM32(sp + 0x10Cu + k_) * f_) >> 12); } }',
+  'the velocity\'s change: the target within a third of the traction')
 T(0x1E7F8, 'drift 9F8 += f(turn)'); T(0x1E804, 'drift 9F8 += f(turn)')
 T(0x1E87E, '81C, the turn held, += A20')
 T(0x1E896, 'heading -= A20 (reversing)'); T(0x1E8A2, 'heading += A20')
@@ -81,7 +88,9 @@ G(0x1BB3C, 'A08, steps the brake is held')
 for a in (0x1BB4C, 0x1BB6C, 0x1BB76): T(a, 'A04, the brake\'s ramp')
 T(0x1BB60, 'rpm -= brake'); T(0x1BB90, 'rpm -= 7DC/2 (key 4)')
 # +1BB98, engine drag
-T(0x1BC06, 'rpm -= slip'); T(0x1BC2E, 'rpm -= coast'); T(0x1BC54, 'rpm -= A74/64')
+# the slip check once a step (the game's decision on its step's state), with the whole penalty
+B(0x1BBD8, 'if (ENG_SUB) goto L_1BC08;', 'the slip check is the whole step\'s')
+T(0x1BC2E, 'rpm -= coast'); T(0x1BC54, 'rpm -= A74/64')
 G(0x1BC5A, '7C4, the gear change\'s countdown')
 # +1BC5E, the handbrake's rpm drop
 T(0x1BCBC, 'A0C ramp'); T(0x1BCC8, 'A0C ramp'); T(0x1BCEE, 'rpm -= A0C*28/16')
@@ -123,7 +132,14 @@ EDITS[0x1F03A] = {'after': 'eng_kick_mark(r7 + 0x38u);', 'why': 'a contact start
 EDITS[0x1F06C] = {'after': 'eng_kick_mark(r7 + 0x38u);', 'why': 'a contact starts (+B18 from 0): the first push is the whole step\'s'}
 R(0x1F132, 'MEM32(r7 + 0x38u) = r0 = eng_kick(r7 + 0x38u, r0);', 'heading -= the wall\'s turn (eng_kick)')
 R(0x1F13A, 'MEM32(r7 + 0x38u) = r0 = eng_kick(r7 + 0x38u, r0);', 'heading += the wall\'s turn (eng_kick)')
-G(0x1F144, 'B18, the wall\'s countdown'); G(0x1F14E, 'B18, the wall\'s countdown')
+# B18, the wall contact's countdown (5 steps): the game counts it after the step's contact check (a
+# contact re-arms it only from 0, at the step after it ran out); counted on substep 0 the substeps
+# after it saw 0 while the car was still against the wall and re-armed it (r11: a second push, the
+# heading 14 off stock's after one scrape). Counted on the step's last substep -- on 0 for a wreck,
+# whose movement runs on the whole step only (+1EA68)
+for a_ in (0x1F144, 0x1F14E):
+    R(a_, 'if (ENG_SUB == 2u || (ENG_SUB == 0u && MEM32(r5 - 0xB00u + 0x34u) != 0xFFFFFFFFu)) MEM32(r5 + 0x18u) = r0; else r0 = MEM32(r5 + 0x18u);',
+      'B18, the wall\'s countdown, at the step\'s end')
 # +22832, the measure: a substep's displacement is a third of a step's
 B(0x22854, 'if (!ENG->meas1) { MEM32(sp + 4u) *= 3u; MEM32(sp + 8u) *= 3u; MEM32(sp + 0xCu) *= 3u; }', 'velocity per step = 3 x the substep\'s displacement')
 B(0x2286C, 'if (!ENG->meas1) { MEM32(sp + 0x1Cu) *= 3u; MEM32(sp + 0x20u) *= 3u; MEM32(sp + 0x24u) *= 3u; }', 'acceleration per step = 3 x the substep\'s change')

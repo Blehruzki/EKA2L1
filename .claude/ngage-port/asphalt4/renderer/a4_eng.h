@@ -132,6 +132,14 @@ static inline uint64_t eng_c_1b2d6(uint32_t r0, uint32_t r1, uint32_t r2, uint32
     if (ENG->nsnd < 64u) { ENG->sndc[ENG->nsnd] = r0; ENG->sndk[ENG->nsnd] = k; ENG->nsnd++; }
     return a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23);
 }
+/* an unsigned divide (the build has no divide routine; ARMv5 has no divide instruction) */
+static inline uint32_t eng_udiv(uint32_t n, uint32_t d)
+{
+    uint32_t q = 0, r = 0;
+    if (!d) return 0;
+    for (int b = 31; b >= 0; b--) { r = (r << 1) | ((n >> b) & 1u); if (r >= d) { r -= d; q |= 1u << b; } }
+    return q;
+}
 /* A rate's store on a substep: the word keeps a third of the change the game's whole step would make,
  * floor-divided, the remainder (0..2) carried in the word's own slot, so three substeps of the same
  * change add up to the whole step's exactly. */

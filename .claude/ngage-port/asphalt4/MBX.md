@@ -7253,3 +7253,42 @@ Owner: "Sounds like a plan. Go ahead."
   and the slip is under the threshold after one substep. A sampling effect of the 85 ms step; not
   chased further until a whole race says whether it matters.
 - r9 (= r9a without the injection): a whole race against e6A, 300 s. Run.
+- r9 (whole race, 300 s, against e6A): worse. Lap 1 in 633 steps (stock 830, r8 748), top speed
+  504 (stock 333; 9 steps over 360: spikes), gear 5 at 364 (stock 1008), distance at 50 s +43%.
+  Wall contacts in 1300 steps: stock 47 (198 steps in contact), r8 65 (184), r9 64 (213); the
+  player driven by the AI after takedowns: stock 0 steps, r8 71, r9 41. Read: the bench's car
+  only holds '5' and the walls steer it round the track, so the lap is set by the wall's cost;
+  stock pays it on most hits and never leaves gear 4 for 700 steps. Also found (there since r8,
+  not new): the launch. Countdown identical to record 148 (rpm 631 -> 210 at the go); at 149
+  stock's rpm 242, B4 35, 3x's 119, B4 21 (B4 >= 40 at step 1 against 13). The slip check runs
+  every substep and at the launch reads the velocity a third of the way to its target (slip -20):
+  a penalty stock never has. The same cause as the wall's second penalty: the check is a decision
+  the game takes on its step's state, and substeps show it states between steps.
+- r10: the slip check (+1BB98) on the whole step only, with the whole penalty, on the move since
+  the last whole step (eng_slip_step: the car's position at each whole step, per car; edits at
+  +1BB9A, +1BBD8, +1BBE0; +1BC06 no longer thirded). Run: r10, a whole race.
+- r10 (whole race): the launch step now matches (rpm 242 at 149) but the next whole step's check
+  fires (step move 22 against 7D0 46: slip -24, rpm 242 -> 11) and the car crawls; it wrecks at
+  245 and sits at rest to the end (not looked into: the next build changes the cause). Two
+  findings from the launch's substeps (inj3kd): (1) +7D0 = f(rpm, gear) (+1C0B0) made before the
+  step's rpm rises: stock's lags its rpm by a step, 3x's by a substep -- at the launch 46 against
+  stock's 35; the step's move (an average over a speed rising from 0) is not stock's move (the
+  speed at the step's end). (2) The real fault: the velocity's change (+1E5CA..+1E684: d = target
+  - velocity, |d| clamped to T/16 a step, T from the grip) was thirded linearly since r1: a
+  substep moves a third of the way, so a step covers 1 - (2/3)^3 = 70% of what stock covers in one
+  step (the launch: v 13 of a target 37 after the first substep; stock reaches its target in one
+  step whenever it is within the traction). The car lagged its target everywhere it changes fast:
+  the launch, a wall, a car contact.
+- r11: the velocity's change reaches the target, clamped to T/48 a substep (edit at +1E684;
+  eng_udiv, the build has no divide); the slip check once a step on +010 with the whole penalty
+  (the step-move version dropped). Run: r11, a whole race.
+- r11 (whole race): the launch matches stock -- B4, rpm and the shifts identical to step 54 (rpm
+  32, 128, 224, 320 at the same steps), distance +0.4% at 10 s, -1.4% at 20 s. Lap 1 in 719 steps
+  (stock 830), top speed 405 (stock 333), gear 4 at 175 (stock 291). The runs are within 10 units
+  to the first wall scrape (204-210) and turn identically through it (heading 659 -> 626 -> 606 ->
+  586 -> 566 -> 546, both); at 210 stock's +B18 reaches 0 at the step's end and the contact is
+  over the next step; 3x counts +B18 on substep 0 (the gate), so its substeps 1-2 see 0 with the
+  car still against the wall and re-arm it: a second push, -7 -7, heading 532 against 546 -- and
+  from there the paths part (other walls, a car contact at 270 stock does not have). After that
+  no step-for-step comparison holds; the lap and speed figures are the chaos of two paths.
+- r12: +B18's countdown on the step's last substep (on 0 for a wreck). Run: r12, a whole race.
