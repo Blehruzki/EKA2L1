@@ -1006,6 +1006,9 @@ static uint32_t ap_key(uint32_t race, uint32_t st)
 /* what: 1 the keys and the step count (at the whole step), 2 the record (round 43: a half-step
  * build emits it at the odd half-step, the state the whole step left, as a normal build's next
  * step sees it), 3 both */
+#ifdef A4_BENCH_INJECT
+#include "eng/inject.h"
+#endif
 static void car_record(uint32_t race, uint32_t what)
 {
 #ifdef A4_ENG3
@@ -1094,6 +1097,20 @@ static void car_record(uint32_t race, uint32_t what)
         cw[0x7D0u / 4u] = 0; cw[0x7D8u / 4u] = 0; cw[0x680u / 4u] = 0; cw[0x688u / 4u] = 0;
         cw[0x010u / 4u] = 0; cw[0x014u / 4u] = 0; cw[0x018u / 4u] = 0; cw[0x0B4u / 4u] = 0;
         cw[0x0A8u / 4u] = cw[0x004u / 4u]; cw[0x0ACu / 4u] = cw[0x008u / 4u]; cw[0x0B0u / 4u] = cw[0x00Cu / 4u];
+    }
+#endif
+#ifdef A4_BENCH_INJECT
+    /* bench (round 50): at the steps tools/mkinject.py chose, the player car becomes stock's at that step
+     * (renderer/eng/inject.h, from a stock run's record; the vtable, owner block and address words stay
+     * the live car's), so stock and the 3x engine go on from one state and compare like for like.
+     * Before a whole step (the 3x engine's records are taken there too). Never in a phone build. */
+    if ((what & 1u) && car) {
+        for (uint32_t q = 0; q < A4_INJ_N; q++) {
+            if (r[1] != a4_inj_step[q]) continue;
+            volatile uint32_t *cw = (volatile uint32_t *)car;
+            for (uint32_t k = 0; k < A4_INJ_W; k++)
+                if (!((a4_inj_keep[k >> 5] >> (k & 31u)) & 1u)) cw[k] = a4_inj_car[q][k];
+        }
     }
 #endif
     if (!(what & 2u)) return;

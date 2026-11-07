@@ -7173,3 +7173,33 @@ Owner: "Sounds like a plan. Go ahead."
   (wall hits cheaper), the opponent after a respawn, a wreck moving at 11.72 Hz, the scripted
   camera views at 11.72 Hz, the frame cost on the calibrated N95 model (plan step 3).
 - renderer/eng/funcs.txt: the 38 functions the engine lifts (tools/lift.py's argument list).
+- Wall hits, read closer (r8d's per-substep records against stock's): stock's big losses come at
+  hits where the car meets the wall at a wide angle -- the first step turns the heading 49 (the
+  wall's push, half the angle, clamped 20..64), the next 24, 20, 20, 20, and the velocity left off
+  the heading gives a slip of -13/-14 two steps running, each a rpm -= 7DC x 8 (-384) penalty, the
+  second taking rpm below 0: a downshift (230 -> 164). The 3x car's hits in r8d all came at narrow
+  angles (first substep -7, i.e. ~21 a step; slip never below -3), scraping along the wall. A like
+  for like test needs both engines at one state before a hit: tools/mkinject.py + A4_BENCH_INJECT
+  (bench, car_record) write stock's player car at chosen steps into a build (the vtable, the owner
+  block and the 86 words that hold addresses stay the live car's). The stock reference rebuilt with
+  the same flags is byte-identical to e6A's (a4_eqA.exe).
+- Next run (inj): stock and 3x, each with stock's car injected 4 steps before six of stock's hits
+  (record indices 317, 353, 438, 543, 582, 613; hits at 321, 357, 442, 547, 586, 617).
+- inj (stock + inject, crec_injA): reproduces e6A exactly through all six injections (the harness
+  is sound: injecting a run's own state changes nothing).
+- inj3 (3x + stock's car injected, crec_inj3, tools/injcmp.py): both engines from one state. At
+  317 the paths agree within 1-2 units to the hit at 321; there stock turns the heading +49 (3x
+  +30), 7FC 1024 (3x 341), slip -14, -13 (3x -14, -8, -3): stock pays two -384 rpm penalties,
+  rpm 688 -> 304 and a downshift, B4 221 -> 192 -> 164; 3x 554 -> 416 -> 400, no downshift, B4
+  216 -> 208 -> 210. The later contact steps match (+24/+28, then +20 a step: the clamp's floor).
+  353 the same pattern (stock B4 197 -> 129 in 3 steps, 3x 197 -> 175). At 438 the 3x car steers
+  (7FC -536 .. -4096) from the step after the injection where stock's does not (the autopilot
+  sends '5' only, so this is the game's; state outside the car -- the race, the traffic -- is
+  not injected: a limit of the harness) and misses stock's upshift at 440 by 2 rpm.
+  Read: the first contact step's turn is the difference. The push is half the angle met; three
+  thirds, each on the angle the last left, add to less than the one whole push. 7FC's push
+  (+-0x400) is thirded too and the steering's return snaps it to 0 every substep, so it holds
+  341 where stock holds 1024 (a guess that this matters less: the later steps' turns agree).
+- r9k (the kick): the substep where +B18 leaves 0 marks the car (eng_kick_mark at 1F03A/1F06C);
+  its heading push (1F132/1F13A) is the whole push, the step's later substeps add none, later
+  steps thirded as before (eng_kick, a4_eng.h). Run: inj3k, the same six injections.

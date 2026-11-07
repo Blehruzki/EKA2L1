@@ -49,6 +49,7 @@ struct eng {
     uint32_t camv, cam[8];           /* the whole step's last camera placement (+5968 from +12DEC): r0-r3, 4 stack words */
     uint32_t loop;                   /* the whole step entered the car loop (+14672): the substeps run only then */
     uint32_t meas1;                  /* +22832 measures a wreck: its displacement is a whole step's (x 1) */
+    uint32_t kc[16], ks[16];         /* the wall's first push: the car (+678's address) and the step it hit, bit 31 still to come */
     uint32_t dbg[8];                 /* A4_ENGDBG: the substep's path bits and the player's keys, emitted per substep */
     uint32_t rk[ENG_NREM];           /* the word's address (0: free) */
     int32_t rv[ENG_NREM];            /* its remainder, 0..2 */
@@ -67,6 +68,7 @@ static inline void ENG_BEGIN(uint32_t race)
         ENG->magic = ENG_MAGIC; ENG->race = race; ENG->cnt = 0; ENG->keys = 0; ENG->nfull = 0;
         for (uint32_t i = 0; i < ENG_NREM; i++) { ENG->rk[i] = 0; ENG->rv[i] = 0; }
         for (uint32_t i = 0; i < 32u; i++) ENG->aic[i] = 0;
+        for (uint32_t i = 0; i < 16u; i++) { ENG->kc[i] = 0; ENG->ks[i] = 0; }
         ENG->tlast[0] = ENG->tlast[1] = 0; ENG->tdel[0] = ENG->tdel[1] = 0;
     }
 #ifdef A4_ENGDBG
@@ -147,6 +149,31 @@ static inline uint32_t eng_third(uint32_t ea, uint32_t old, uint32_t nw)
 /* A third of a value with its remainder carried under a key of its own (an odd address, never a word's):
  * a per-step change the game applies through code that is not a store (a vector add, a call). */
 static inline int32_t eng_thirdv(uint32_t key, int32_t v) { return (int32_t)eng_third(key | 1u, 0u, (uint32_t)v); }
+/* The wall's first push (+1ED4C: the heading turned off the wall by half the angle met, clamped 20..64,
+ * while +B18 counts the contact's 5 steps). The game turns the car the whole push at the step the contact
+ * starts; three thirds, each on the angle the last one left, add up to less (30 against stock's 49 at a
+ * wide hit, so a hit cost less speed). The substep where +B18 leaves 0 marks the car; its push is then
+ * the game's whole one and the step's later substeps add none; later steps are thirded as before. */
+static inline void eng_kick_mark(uint32_t ea)
+{
+    uint32_t st = (ENG->cnt - 1u) / 3u, i, f = 16u;
+    for (i = 0; i < 16u; i++) {
+        if (ENG->kc[i] == ea) { f = i; break; }
+        if (f == 16u && (ENG->kc[i] == 0u || (ENG->ks[i] & 0x7FFFFFFFu) != st)) f = i;
+    }
+    if (f == 16u) f = (ea >> 4) & 15u;
+    ENG->kc[f] = ea; ENG->ks[f] = st | 0x80000000u;
+}
+static inline uint32_t eng_kick(uint32_t ea, uint32_t nw)
+{
+    uint32_t st = (ENG->cnt - 1u) / 3u, i;
+    for (i = 0; i < 16u; i++)
+        if (ENG->kc[i] == ea && (ENG->ks[i] & 0x7FFFFFFFu) == st) {
+            if (ENG->ks[i] & 0x80000000u) { ENG->ks[i] = st; return nw; }   /* the contact's substep: all of it */
+            return MEM32(ea);                                              /* the step's later ones: none */
+        }
+    return eng_third(ea, MEM32(ea), nw);
+}
 /* the AI's per-car slot: its keys and +1DE78's stack argument, as the whole step's AI chose them */
 static inline uint32_t eng_ai_slot(uint32_t car)
 {

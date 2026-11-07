@@ -6345,7 +6345,9 @@ L_1F032:
     { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f034 cmp r1, #0 */
     if (!fZ) goto L_1F03C;                                       /* 01f036 bne #0x1f03c */
     { uint32_t ta = r1, tb = 0x5u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01f038 subs r1, r1, #5 */
+    /* engine: a contact starts (+B18 from 0): the first push is the whole step's */
     MEM32(r5 + 0x18u) = r1;                                      /* 01f03a str r1, [r5, #0x18] */
+    eng_kick_mark(r7 + 0x38u);
 L_1F03C:
     r1 = r3; fN = r1 >> 31; fZ = r1 == 0;                        /* 01f03c movs r1, r3 */
     r3 = MEM32(sp + 0x20u);                                      /* 01f03e ldr r3, [sp, #0x20] */
@@ -6375,7 +6377,9 @@ L_1F064:
     { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f066 cmp r1, #0 */
     if (!fZ) goto L_1F06E;                                       /* 01f068 bne #0x1f06e */
     r1 = 0x5u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01f06a movs r1, #5 */
+    /* engine: a contact starts (+B18 from 0): the first push is the whole step's */
     MEM32(r5 + 0x18u) = r1;                                      /* 01f06c str r1, [r5, #0x18] */
+    eng_kick_mark(r7 + 0x38u);
 L_1F06E:
     r1 = r3; fN = r1 >> 31; fZ = r1 == 0;                        /* 01f06e movs r1, r3 */
     r3 = MEM32(sp + 0x20u);                                      /* 01f070 ldr r3, [sp, #0x20] */
@@ -6487,14 +6491,14 @@ L_1F128:
     if ((fN == fV)) goto L_1F136;                                /* 01f12c bge #0x1f136 */
     r0 = MEM32(r7 + 0x38u);                                      /* 01f12e ldr r0, [r7, #0x38] */
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f130 subs r0, r0, r1 */
-    /* engine: heading -= the wall's turn */
-    { uint32_t ea_ = r7 + 0x38u; r0 = eng_third(ea_, MEM32(ea_), r0); MEM32(ea_) = r0; } /* 01f132 str r0, [r7, #0x38] */
+    /* engine: heading -= the wall's turn (eng_kick) */
+    MEM32(r7 + 0x38u) = r0 = eng_kick(r7 + 0x38u, r0);  /* was: MEM32(r7 + 0x38u) = r0;                                      ( 01f132 str r0, [r7, #0x38] ) */
     goto L_1F13C;                                                /* 01f134 b #0x1f13c */
 L_1F136:
     r0 = MEM32(r7 + 0x38u);                                      /* 01f136 ldr r0, [r7, #0x38] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f138 adds r0, r0, r1 */
-    /* engine: heading += the wall's turn */
-    { uint32_t ea_ = r7 + 0x38u; r0 = eng_third(ea_, MEM32(ea_), r0); MEM32(ea_) = r0; } /* 01f13a str r0, [r7, #0x38] */
+    /* engine: heading += the wall's turn (eng_kick) */
+    MEM32(r7 + 0x38u) = r0 = eng_kick(r7 + 0x38u, r0);  /* was: MEM32(r7 + 0x38u) = r0;                                      ( 01f13a str r0, [r7, #0x38] ) */
 L_1F13C:
     r0 = MEM32(r5 + 0x18u);                                      /* 01f13c ldr r0, [r5, #0x18] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f13e cmp r0, #0 */

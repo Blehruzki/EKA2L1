@@ -113,7 +113,11 @@ T(0x1EE46, 'A58 -= gravity (0x14)'); T(0x1EE4C, 'A58 -= gravity (9)')
 G(0x1EE26, 'A60, steps in the air'); G(0x1EE38, 'AF0, the hang\'s countdown')
 G(0x1EF42, 'A68, a countdown'); G(0x1EF4C, 'A6C, a countdown')
 T(0x1F030, 'steering -0x400 off the wall'); T(0x1F062, 'steering +0x400 off the wall')
-T(0x1F132, 'heading -= the wall\'s turn'); T(0x1F13A, 'heading += the wall\'s turn')
+# the wall's heading push: the first one whole at the contact's substep (eng_kick), later ones thirded
+EDITS[0x1F03A] = {'after': 'eng_kick_mark(r7 + 0x38u);', 'why': 'a contact starts (+B18 from 0): the first push is the whole step\'s'}
+EDITS[0x1F06C] = {'after': 'eng_kick_mark(r7 + 0x38u);', 'why': 'a contact starts (+B18 from 0): the first push is the whole step\'s'}
+R(0x1F132, 'MEM32(r7 + 0x38u) = r0 = eng_kick(r7 + 0x38u, r0);', 'heading -= the wall\'s turn (eng_kick)')
+R(0x1F13A, 'MEM32(r7 + 0x38u) = r0 = eng_kick(r7 + 0x38u, r0);', 'heading += the wall\'s turn (eng_kick)')
 G(0x1F144, 'B18, the wall\'s countdown'); G(0x1F14E, 'B18, the wall\'s countdown')
 # +22832, the measure: a substep's displacement is a third of a step's
 B(0x22854, 'if (!ENG->meas1) { MEM32(sp + 4u) *= 3u; MEM32(sp + 8u) *= 3u; MEM32(sp + 0xCu) *= 3u; }', 'velocity per step = 3 x the substep\'s displacement')
