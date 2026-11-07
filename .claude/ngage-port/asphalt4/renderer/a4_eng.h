@@ -39,7 +39,62 @@ extern const int32_t a4_g_base;                 /* a4_eng.s: patched to (code + 
 uint64_t a4_eng_call(uint32_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t sp, uint32_t *r23);
 uint64_t a4_eng_call0(uint32_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t *r23);   /* no stack words */
 void a4_mesh_insert(uint32_t *cam, uint32_t *face);  /* a4_gl.c (A4_MESH): the mesh routine's insert, kept for the list */
-void a4_gl_hud(void);                 /* a4_gl.c: the end of the 3D pass (the lifted HUD painter calls it) */
+void a4_gl_hud(void);
+int a4_gl_bb(const uint32_t *r, const uint32_t *f);   /* a4_gl.c: the billboard capture hook (1: a GPU quad) */
+/* +3015E's mode 2 row (+30412..+30484, a billboard added to the frame, each 565 channel saturating) by hand.
+ * In: r0 the row's first pixel, r1 the v accumulator, r3 the texels, r4 the end x, r5 the u step, r12 the x,
+ * lr the u mask, the frame's [0x1C] the v shift, [0x20] the v mask, [0x24] the u accumulator. Out, as the
+ * game's walk leaves them: r0 past the row, r12 = the end x, [0x24] the u accumulator, [0x48] the row's v
+ * part (r2, r6, r7, [8] and [0xC] it leaves too are written before any read after +30486). The texel
+ * index: ((u >> 8) & umask | ((v >> 8) & vmask) << vshift) -- a shift by 32 or more is 0, as Thumb's LSL by a
+ * register. The add: s = t + d, the carries out of blue (bit 5), green (11), red (16) taken off and each
+ * channel they left filled, as the game computes it. */
+#ifdef A4_BBCHECK
+#define BB_ROW2_CHECK(r0, r12, spp) bb_row2_check(r0, r12, spp)
+static void bb_row2_check(uint32_t r0, uint32_t r12, uint8_t *spp);
+#else
+#define BB_ROW2_CHECK(r0, r12, spp) ((void)0)
+#endif
+static inline int bb_row2(uint32_t *pr0, uint32_t r1, uint32_t r3, uint32_t r4, uint32_t r5, uint32_t *pr12, uint32_t lr, uint8_t *spp)
+{
+    const uint32_t vsh = L32(spp + 0x1Cu) & 0xFFu;
+    uint32_t vp = (uint32_t)((int32_t)r1 >> 8) & L32(spp + 0x20u);
+    vp = vsh >= 32u ? 0u : vp << vsh;
+    uint32_t u = L32(spp + 0x24u), d = *pr0, x = *pr12;
+#ifdef A4_BBCHECK
+    /* bench: the row's pixels kept, this walk run, its result kept, the pixels put back; the lifted walk
+     * then runs on the same row and +30486 compares (0x460000: [0] pending, [1] first pixel, [2] count,
+     * [3] u, [4] x, [5] end pixel; the row before at +0x40, after at +0x840) */
+    volatile uint32_t *bk = (volatile uint32_t *)0x00460000u;
+    uint32_t n = (uint32_t)((int32_t)r4 - (int32_t)x);
+    uint16_t *bA = (uint16_t *)0x00460040u, *bB = (uint16_t *)0x00460840u;
+    if (n > 1024u) { ((volatile uint32_t *)0x00412D00u)[101]++; return 0; }
+    for (uint32_t k = 0; k < n; k++) bA[k] = L16(d + 2u * k);
+    const uint32_t d0 = d;
+#endif
+    do {
+        const uint32_t t = L16(r3 + (((((uint32_t)((int32_t)u >> 8)) & lr) | vp) << 1));
+        if (t) {
+            const uint32_t dv = L16(d), xx = dv ^ t;
+            uint32_t s = t + dv;
+            const uint32_t c = (s ^ xx) & 0x20u; s -= c;
+            const uint32_t c2 = (s ^ xx) & 0x800u; s -= c2;
+            const uint32_t C = c | c2 | (s & 0x10000u);
+            L16(d) = (uint16_t)(s | (C - (uint32_t)((int32_t)C >> 4)));
+        }
+        u += r5; d += 2u; x++;
+    } while ((int32_t)x < (int32_t)r4);
+#ifdef A4_BBCHECK
+    for (uint32_t k = 0; k < n; k++) { bB[k] = L16(d0 + 2u * k); L16(d0 + 2u * k) = bA[k]; }
+#ifdef A4_BBCHECK_MUTANT
+    bB[0] ^= 1u;                                    /* the check's own test: one pixel wrong a row */
+#endif
+    bk[0] = 1u; bk[1] = d0; bk[2] = n; bk[3] = u; bk[4] = x; bk[5] = d;
+    return 0;
+#endif
+    L32(spp + 0x24u) = u; L32(spp + 0x48u) = vp; *pr0 = d; *pr12 = x;
+    return 1;
+}                 /* a4_gl.c: the end of the 3D pass (the lifted HUD painter calls it) */
 #define CALLR(x) a4_eng_call((x), r0, r1, r2, r3, sp, r23)
 /* ARM shifts with the carry out; a shift by 0 leaves the carry, by 32 or more as the ARM does */
 static inline uint32_t SHL_C(uint32_t x, uint32_t n, uint32_t *c)

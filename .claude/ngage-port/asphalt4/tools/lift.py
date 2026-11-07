@@ -174,20 +174,20 @@ def lift(start):
     def nz(d): return 'fN = %s >> 31; fZ = %s == 0;' % (d, d)
     W = {'ldr': 'L32', 'str': 'L32', 'ldrb': 'L8', 'strb': 'L8', 'ldrh': 'L16', 'strh': 'L16', 'ldrsb': 'LS8', 'ldrsh': 'LS16'}
     def stkargs(): return ', '.join('S32(%d)' % (4 * k) for k in range(8))
-    def callfn(t, thumb, tail=False):  # a call to the game's +t: direct when lifted (and enabled), else through a4_eng_call
+    def callfn(t, thumb, tail=False, ra=None):  # a call to the game's +t: direct when lifted (and enabled), else through a4_eng_call
         slow = 'a4_eng_call(%s(0x%X), r0, r1, r2, r3, sp, r23)' % ('GAMEFN' if thumb else 'GAMEARM', t)
         if thumb and not tail and noargs(t):    # it reads no stack word of its caller's: none copied
             slow = 'a4_eng_call0(GAMEFN(0x%X), r0, r1, r2, r3, r23)' % t
         if thumb and t in LIFTED:
-            fast = 'engi_%05X(r0, r1, r2, r3, %s, r23)' % (t, stkargs())
+            fast = 'engi_%05X(r0, r1, r2, r3, %s, r23, %s)' % (t, stkargs(), 'lr' if tail else 'GAMEFN(0x%X)' % ra)
             ex = '(ENGD_%05X ? %s : %s)' % (t, fast, slow)
         else: ex = slow
         if tail: return '{ uint64_t rr = %s; o23[0] = r23[0]; o23[1] = r23[1]; return rr; }' % ex
         return '{ uint64_t rr = %s; r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; }' % ex
-    def callreg(x, tail=False, site=None):   # a call through a register
+    def callreg(x, tail=False, site=None, ra=None):   # a call through a register
         ex = 'a4_eng_call(%s, r0, r1, r2, r3, sp, r23)' % x
         for t in DEVIRT.get(site, []):
-            if t in LIFTED: ex = '((ENGD_%05X && %s == GAMEFN(0x%X)) ? engi_%05X(r0, r1, r2, r3, %s, r23) : %s)' % (t, x, t, t, stkargs(), ex)
+            if t in LIFTED: ex = '((ENGD_%05X && %s == GAMEFN(0x%X)) ? engi_%05X(r0, r1, r2, r3, %s, r23, %s) : %s)' % (t, x, t, t, stkargs(), 'lr' if tail else 'GAMEFN(0x%X)' % ra, ex)
         if tail: return '{ uint64_t rr = %s; o23[0] = r23[0]; o23[1] = r23[1]; return rr; }' % ex
         return '{ uint64_t rr = %s; r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; }' % ex
     CMPC = {A.ARM_CC_EQ: '%s == %s', A.ARM_CC_NE: '%s != %s', A.ARM_CC_HS: '%s >= %s', A.ARM_CC_LO: '%s < %s',
@@ -304,9 +304,9 @@ def lift(start):
                 E(CHOOKS[i.address], i)
             elif ops[0].type == A.ARM_OP_IMM:
                 t = ops[0].imm; callees.add((t, m == 'bl'))
-                E(callfn(t, m == 'bl'), i)
+                E(callfn(t, m == 'bl', ra=i.address + i.size), i)
             else:
-                E(callreg(rn(ops[0], i), False, i.address), i)
+                E(callreg(rn(ops[0], i), False, i.address, ra=i.address + i.size), i)
             E('r12 = 0xDEAD0000u; /* clobbered by the call */', i)
         elif m == 'bx':
             E('RET(lr);' if rn(ops[0], i) == 'lr' else callreg(rn(ops[0], i), True, i.address), i)
@@ -333,8 +333,8 @@ def lift(start):
     stkw = (frame + 64 + 32 + 7) // 8 * 2      # words: the frame, a margin, the eight argument words
     hdr = ('/* +%05X, %d instructions (tools/lift.py) */\n' % (start, len(ins)) +
            'static uint64_t engi_%05X(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,\n'
-           '                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t *o23)\n{\n' % start +
-           '    uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = 0xFFFFFFFFu, t = 0;\n'
+           '                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t *o23, uint32_t lr0)\n{\n' % start +
+           '    uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;\n'
            '    uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];\n'
            '    uint32_t stk[%d]; uint8_t *spp = (uint8_t *)&stk[%d - 8];\n' % (stkw, stkw) +
            '    stk[%d] = s0; stk[%d] = s1; stk[%d] = s2; stk[%d] = s3;\n' % (stkw - 8, stkw - 7, stkw - 6, stkw - 5) +
@@ -363,7 +363,11 @@ def lift(start):
     ret = '#undef RET\n#define RET(v) do { switch (v) { %s default: o23[0] = r2; o23[1] = r3; return ((uint64_t)r1 << 32) | r0; } } while (0)\n' % disp
     wrap = ('uint64_t eng_%05X(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,\n'
             '                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)\n'
-            '{ uint32_t d_[2]; return engi_%05X(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_); }\n' % (start, start))
+            '{ uint32_t d_[2]; return engi_%05X(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }\n'
+            '/* from the veneer: lr the game\'s caller left (the function pushes it, and the port reads it: a4_gl_bb) */\n'
+            'static inline __attribute__((always_inline)) uint64_t engr_%05X(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,\n'
+            '    uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)\n'
+            '{ uint32_t d_[2]; return engi_%05X(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, ra); }\n' % (start, start, start, start))
     return ret + hdr + '\n'.join(L) + '\n}\n' + wrap
 
 # Small leaves inline (round 50): a game function a lifted one calls, with no calls of its own, no jump
@@ -415,7 +419,7 @@ out = ['/* generated by tools/lift.py -- the game\'s own functions as C; edit on
 for f, _ in FUNCS:
     out.append('#if defined(A4_ENG_%05X) || defined(A4_ENG_ALL)\n#define ENGD_%05X 1\n#else\n#define ENGD_%05X 0\n#endif\n'
                'static uint64_t engi_%05X(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,\n'
-               '    uint32_t, uint32_t, uint32_t, uint32_t, uint32_t *);' % (f, f, f, f))
+               '    uint32_t, uint32_t, uint32_t, uint32_t, uint32_t *, uint32_t);' % (f, f, f, f))
 for f, _ in FUNCS:
     out.append(lift(f))
 out.insert(1, ''.join('extern void %s(void);\n' % h for h in sorted(used_hooks)))

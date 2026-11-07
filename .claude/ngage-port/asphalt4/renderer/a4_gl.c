@@ -4138,6 +4138,54 @@ extern const int32_t a4_otins, a4_tfvt;      /* a4_gl.s: target - (the word), pa
 static int mesh_fallback(const uint32_t *gctx, int32_t F, const int32_t *v0, const int32_t *v1, const int32_t *v2);
 static void mesh_scr(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, int32_t x, int32_t y, int32_t z,
                      int32_t *sx, int32_t *sy);
+#ifdef A4_MESHMEMO
+/* Round 50: each face's three corners were projected (mesh_scr, and for the perspective class mesh_sy
+ * and persp_rt again) at every face that shares them -- each a read of a 128 KB table of the game's,
+ * a data-cache miss more often than not (the cycle profile's hottest loads). Both are pure functions of
+ * the corner's view x' y' z' and the frame's projection (gctx, F, the screen centre: fixed while a
+ * frame's list is gathered, mesh_take refuses another camera), so a corner's are kept, keyed by its
+ * exact coordinates and the frame: the same numbers, worked out once. 128 entries of 32 bytes at
+ * 0x452000 (free in a 3x-engine build: the half-step machinery that uses it cannot be built with it). */
+#if defined(A4_HALFSPEC) || defined(A4_MESHSTATE)
+#error "A4_MESHMEMO keeps its table at 0x452000, which that uses"
+#endif
+struct mvtx { int32_t x, y, z, sx, sy, prt; uint32_t stamp, hasprt; };
+#define MVT ((struct mvtx *)0x00452000u)
+#define MVN 128u
+static int32_t persp_rt(const uint32_t *gctx, int32_t z);
+static void mesh_scr(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, int32_t x, int32_t y, int32_t z,
+                     int32_t *sx, int32_t *sy);
+static inline struct mvtx *mesh_vtx(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, const int32_t *v, uint32_t stamp)
+{
+    const int32_t x = v[3], y = v[4], z = v[5];
+    struct mvtx *e = MVT + ((((uint32_t)x * 0x9E3779B1u) ^ ((uint32_t)y * 0x85EBCA77u) ^ ((uint32_t)z * 0xC2B2AE3Du)) >> 25);
+    if (e->stamp != stamp || e->x != x || e->y != y || e->z != z) {
+        e->x = x; e->y = y; e->z = z; e->stamp = stamp; e->hasprt = 0;
+        mesh_scr(gctx, F, cx, cy, x, y, z, &e->sx, &e->sy);
+    }
+#ifdef A4_MEMOCHECK
+    else ((volatile uint32_t *)0x00412D00u)[103]++;
+#endif
+    return e;
+}
+static inline int32_t mesh_vprt(const uint32_t *gctx, struct mvtx *e)
+{
+    if (!e->hasprt) { e->prt = persp_rt(gctx, -e->z); e->hasprt = 1; }
+    return e->prt;
+}
+/* mesh_fallback on the kept corners: the same rule, the same numbers */
+static int mesh_fallback_m(const uint32_t *gctx, struct mvtx *e0, struct mvtx *e1, struct mvtx *e2)
+{
+    int32_t y0 = e0->sy, y1 = e1->sy, y2 = e2->sy;
+    struct mvtx *et, *ea, *eb;                      /* 0x2ff60's first output, branch for branch */
+    if (y0 <= y1) { if (y1 <= y2 || y0 <= y2) { et = e0; ea = e1; eb = e2; } else { et = e2; ea = e0; eb = e1; } }
+    else { if (y2 >= y0 || y2 > y1) { et = e1; ea = e0; eb = e2; } else { et = e2; ea = e0; eb = e1; } }
+    if (-et->z <= 500) return 0;
+    int32_t q = mesh_vprt(gctx, et);
+    uint32_t d1 = (uint32_t)(mesh_vprt(gctx, ea) - q), d2 = (uint32_t)(mesh_vprt(gctx, eb) - q);
+    return (int32_t)(d1 * d1 + d2 * d2) < 100;
+}
+#endif
 static int mesh_take(uint32_t *cam, const uint32_t *face)
 {
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
@@ -4186,8 +4234,26 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
     const uint32_t *gctx = (const uint32_t *)m->gctx;
     if (!gctx) return 0;                            /* no frame drawn yet: no projection */
     uint32_t texz = 0;
+#ifdef A4_MESHMEMO
+    const int32_t mF = (int32_t)m->F, mcx = *(const int32_t *)gctx[0x40110 / 4] >> 1, mcy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
+    const uint32_t mst = s->frames | 0x80000000u;  /* never the zeroed table's 0 */
+    struct mvtx *e0 = mesh_vtx(gctx, mF, mcx, mcy, v0, mst), *e1 = mesh_vtx(gctx, mF, mcx, mcy, v1, mst),
+                *e2 = mesh_vtx(gctx, mF, mcx, mcy, v2, mst);
+#endif
     if (fl == 0x4001u) {
+#ifdef A4_MESHMEMO
+        int fb = mesh_fallback_m(gctx, e0, e1, e2);
+#ifdef A4_MEMOCHECK
+        {   /* bench: the kept corners against the projection worked out again ([100] faces, [101] differing
+             * fallback verdicts, [102] differing screen points; [103] corners found kept) */
+            volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
+            ck[100]++;
+            if (fb != mesh_fallback(gctx, (int32_t)m->F, v0, v1, v2)) ck[101]++;
+        }
+#endif
+#else
         int fb = mesh_fallback(gctx, (int32_t)m->F, v0, v1, v2);
+#endif
 #ifdef A4_MESHCHECK
         {   uint32_t j = mesh_hslot((uint32_t)(uintptr_t)face);
             while (MESH_FH[j] && MESH_FH[j] != (uint32_t)(uintptr_t)face) j = (j + 1u) & (MESH_HN - 1u);
@@ -4225,9 +4291,26 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
          * +3121E = the deepest vertex's ZW; these classes carry neither of the +-16 bits) */
         int32_t F = (int32_t)m->F, cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
         int32_t sx0, sy0, sx1, sy1, sx2, sy2, xlo, xhi, ylo, yhi;
+#ifdef A4_MESHMEMO
+        sx0 = e0->sx; sy0 = e0->sy; sx1 = e1->sx; sy1 = e1->sy; sx2 = e2->sx; sy2 = e2->sy;
+        (void)F; (void)cx; (void)cy;
+#ifdef A4_MEMOCHECK
+        {   volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
+            int32_t a0, b0, a1, b1, a2, b2;
+            mesh_scr(gctx, F, cx, cy, x0, y0, z0, &a0, &b0);
+            mesh_scr(gctx, F, cx, cy, x1, y1, z1, &a1, &b1);
+            mesh_scr(gctx, F, cx, cy, x2, y2, z2, &a2, &b2);
+#ifdef A4_MEMOCHECK_MUTANT
+            a0 ^= 1;
+#endif
+            if (a0 != sx0 || b0 != sy0 || a1 != sx1 || b1 != sy1 || a2 != sx2 || b2 != sy2) ck[102]++;
+        }
+#endif
+#else
         mesh_scr(gctx, F, cx, cy, x0, y0, z0, &sx0, &sy0);
         mesh_scr(gctx, F, cx, cy, x1, y1, z1, &sx1, &sy1);
         mesh_scr(gctx, F, cx, cy, x2, y2, z2, &sx2, &sy2);
+#endif
         ext3(sx0, sx1, sx2, &xlo, &xhi); ext3(sy0, sy1, sy2, &ylo, &yhi);
         tbox_calc(MESH_B + n * 4u, xlo, ylo, xhi, yhi);
         int32_t zw = -z0;

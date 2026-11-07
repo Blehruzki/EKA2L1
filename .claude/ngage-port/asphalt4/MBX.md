@@ -7536,3 +7536,33 @@ Owner: "Sounds like a plan. Go ahead."
   Different stretches of race (the content differs run to run), but every phase moved the same way.
   On the model this is ~21 fps against ~13. A guess named again: the model's Thumb CPI; the measured
   instruction ratios above are the part that holds on the phone whatever the split.
+- t17 in pictures (two captures decoded): the tunnel, the car, sparks off the wall, the whole HUD
+  (position, lap, minimap, WANTED, speed, nitro) drawn right.
+- Cycle profile pct17 (t17, the calibrated model, 1.5 G instructions after 8 G; the stretch is the
+  tunnel): our own renderer C is now the largest -- the mesh list (a4_mesh_insert 9.6%, mesh_draw 6.0,
+  mesh_fallback 4.7, lean_tail 3.8, mesh_scr 2.5, batch_draw 2.1) ~30%, the composite 10.3; the lifted
+  3D front end 12.6 (the transform 7.3); ngibackbuffer's 565 -> 32-bit convert 10.0; the game's Thumb:
+  +3041E 6.7 (see below), +CE8C 3.7, +ED9E 1.0, and a long tail; irobex 2.6 (a bench thread).
+  The hottest loads in mesh_take and mesh_fallback are reads of the game's 128 KB reciprocal tables
+  (a miss each, 60 cycles on the model), done again for every face that shares a corner.
+- "+3015E 6.8%" was a pixel loop at +3041E inside it: the billboard blit's mode 2 (added to the frame,
+  each 565 channel saturating -- the 0x20 / 0x800 / 0x10000 carries), in software for the billboards
+  drawn after the frame's composite (in the tunnel: the lights), ~30 Thumb instructions a pixel and
+  most of them stack traffic.
+- +3015E lifted (funcs.txt), with two ALWAYS edits: the capture hook +30252 (a4_bbq_tramp) as a C call
+  after the two loads it displaces -- a4_gl_bb(r0..r7, the blit's own sp), 1 = a GPU quad, to the
+  epilogue -- and the mode 2 row (+30412..+30484) by hand (a4_eng.h bb_row2: every register and frame
+  word the game's walk leaves that is read again set as it sets them).
+- A fault caught by review on the way: a4_gl_bb reads the blit's pushed return address to know a
+  TBillboard's draw (lr at f+0x8C == +31364), and a lifted function pushed a dummy lr. Now the veneer
+  entry passes the real one (__builtin_return_address) and a direct call passes the game's own return
+  address (lift.py: engi_XXXXX's lr0, engr_XXXXX). Fuzz: +3015E 346 cases agree, the others again 0 differ.
+- A4_BBCHECK (bench): bb_row2 runs on a row, its result kept, the row put back, the lifted game walk
+  runs on it, and +30486 compares (census 100-104). BC1 (lockstep 100 s): 69,647 rows compared, 0
+  pixels and 0 states differing; painter 32,371 calls, 0. BCM (a pixel a row wrong): 58,024 of 58,024
+  rows flagged.
+- A4_MESHMEMO (a4_gl.c): a corner's screen point and perspective term (mesh_scr, persp_rt) kept per
+  frame, keyed by its exact view x' y' z' -- pure functions of those and of the frame's projection,
+  which is fixed while the list is gathered -- 128 entries of 32 bytes at 0x452000 (free in a 3x
+  build); mesh_fallback on the kept corners. A4_MEMOCHECK works each out again and counts differences
+  (census 100-103). Run: MC1, and MCM (a mutant: one coordinate wrong a face).

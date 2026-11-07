@@ -218,4 +218,14 @@ ALWAYS = {
     # a4_hud_tramp's call at +2973A, the end of the 3D pass -- a4_gl_hud composites the frame's GPU
     # image before the HUD is painted over it (the injector leaves the detour out when it is lifted)
     0x2973A: {'before': 'a4_gl_hud();', 'why': 'the end of the 3D pass: the frame composited before the HUD'},
+    # the billboard blit +3015E: the injector's capture hook (+30252, a4_bbq_tramp) after the two loads it
+    # displaces -- a4_gl_bb(r0..r7 as the trampoline pushes them, the blit's own sp): 1 = queued as a GPU
+    # quad, straight to the epilogue
+    0x30256: {'before': '{ uint32_t rg_[8] = { r0, r1, r2, r3, r4, r5, r6, r7 }; if (a4_gl_bb(rg_, (const uint32_t *)(uintptr_t)sp)) goto L_3031C; }',
+              'why': 'the billboard capture hook +30252 (a4_bbq_tramp)'},
+    # its mode 2 (additive, each channel saturating) row walk +30412..+30484, the game's Thumb in ARM C by
+    # hand (a4_eng.h bb_row2: every register and stack word the walk leaves that is read again, set as the
+    # game sets them); A4_BBCHECK runs it beside the lifted walk on the same row and compares at +30486
+    0x30412: {'before': 'if (bb_row2(&r0, r1, r3, r4, r5, &r12, lr, spp)) goto L_30486;', 'why': 'the mode 2 row by hand'},
+    0x30486: {'before': 'BB_ROW2_CHECK(r0, r12, spp);', 'why': 'A4_BBCHECK: the row by hand against the lifted walk'},
 }

@@ -20,7 +20,8 @@ uint64_t a4_eng_keys(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3)
 }
 #endif
 #define ENGV(x) uint64_t a4_engv_##x(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, \
-    uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7) { return eng_##x(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7); }
+    uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7) \
+    { return engr_##x(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, (uint32_t)(uintptr_t)__builtin_return_address(0)); }
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wparentheses-equality"
 #pragma clang diagnostic ignored "-Wself-assign"
@@ -47,6 +48,26 @@ uint64_t a4_eng_keys(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3)
 #include "eng/lifted.c"
 #undef sp
 #pragma clang diagnostic pop
+#ifdef A4_BBCHECK
+/* bench (round 50): bb_row2 (a4_eng.h) against the lifted game walk, row for row -- census words [100] rows
+ * compared, [101] not (over 1,024 pixels), [102] rows that differed, [103] pixels, [104] rows whose u
+ * accumulator, x or end pixel differed */
+#ifdef A4_LIFTCHECK
+#error "A4_BBCHECK and A4_LIFTCHECK share the census words 100-104 and 0x460000"
+#endif
+static void bb_row2_check(uint32_t r0, uint32_t r12, uint8_t *spp)
+{
+    volatile uint32_t *bk = (volatile uint32_t *)0x00460000u, *ck = (volatile uint32_t *)0x00412D00u;
+    if (!bk[0]) return;
+    bk[0] = 0;
+    const uint16_t *bB = (const uint16_t *)0x00460840u;
+    uint32_t d0 = bk[1], n = bk[2], dd = 0;
+    for (uint32_t k = 0; k < n; k++) dd += L16(d0 + 2u * k) != bB[k];
+    ck[100]++;
+    if (dd) { ck[102]++; ck[103] += dd; }
+    if (L32(spp + 0x24u) != bk[3] || r12 != bk[4] || r0 != bk[5]) ck[104]++;
+}
+#endif
 #ifdef A4_LIFTCHECK
 #undef a4_engv_349F8
 #undef a4_engv_349B0
