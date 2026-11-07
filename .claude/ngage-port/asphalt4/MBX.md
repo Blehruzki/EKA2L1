@@ -7414,3 +7414,20 @@ Owner: "Sounds like a plan. Go ahead."
   opponent's grid slot from the countdown -- the menus run on the wall clock and the run's
   timing changes what the seed meets -- so only an in-run comparison is a test.)
 - t16 (the r15 engine + the lifted painter + A4_MESHZ, real time) on the calibrated model. Run.
+- t16 (r15 engine + lifted painter + A4_MESHZ, real time, calibrated model, 120 s): renders and
+  draws right (two captures looked at: city, cars, the helicopter, the whole HUD; no depth fault).
+  Whole-race aggregates against t13 (seg0, 1,817 renders each; the two races differ in content --
+  t16 drew 1,784 triangles a render to t13's 1,427, so totals do not compare):
+      t13  64.2 ms a render | 3D 23.5 comp 11.5 (read 8.8) 2D 8.3 pres 2.5 | calls 194, tris 1427
+      t16  65.8 ms a render | 3D 25.4 comp 11.7 (read 8.7) 2D 5.4 pres 0.3 | calls 199, tris 1784
+  What compares: the HUD's 2D phase 8.3 -> 5.4 ms and the present phase 2.5 -> 0.3 (painter calls
+  inside it, a guess): ~5 ms a render from the painter in ARM C; the list 5.8 -> 13.8 triangles a
+  draw call (A4_MESHZ); the GPU model's busy frames 155-167 draws (t13 273-417): draw + other
+  charges ~7-7.5 ms a frame (t13 11-16.5).
+- Where a render goes now (t16, ~66 ms, ~2.6 substeps): 3D 25 (the game's 3D CPU, our hook and
+  list code, ~7 ms of GL charges), composite 12 (tile render 3.2 + readback 3.7 fixed, the blit),
+  2D 5, rest 23 (logic ~3, before the first triangle ~10, the runtime's 565 -> 32 convert, the
+  post 2.3). 30 fps (33 ms) needs about half of every part: the remaining Thumb game code lifted
+  (+345E4, +349F8 with the mesh insert, +3115C, +522A4, +3015E with the billboard hook, ~20% of the
+  cycles), our hook and list code tightened, the painter's per-pixel invariants hoisted, and a
+  present without the 565 round trip (the runtime's convert, 11% of the cycles, and the readback).
