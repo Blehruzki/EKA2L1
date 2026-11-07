@@ -40,7 +40,7 @@ struct eng {
     uint32_t keys;                   /* the player's keys as substep 0 built them, replayed on 1 and 2 */
     uint32_t nfull;                  /* words the remainder table had no room for (kept as plain thirds) */
     uint32_t nsnd;                   /* the step's effect calls (+1B2D6) so far: one per car and effect a step */
-    uint32_t pad;
+    uint32_t flush;                  /* bench (A4_BENCH_INJECT): a car was overwritten -- the lag rings start again */
     uint32_t sndc[64], sndk[64];     /* their car and effect */
     uint32_t tlast[2];               /* the traffic's two clocks (race+0x378, +0x37C) at the last whole step */
     int32_t tdel[2];                 /* and their change over that step */
@@ -49,6 +49,7 @@ struct eng {
     uint32_t camv, cam[8];           /* the whole step's last camera placement (+5968 from +12DEC): r0-r3, 4 stack words */
     uint32_t loop;                   /* the whole step entered the car loop (+14672): the substeps run only then */
     uint32_t meas1;                  /* +22832 measures a wreck: its displacement is a whole step's (x 1) */
+    uint32_t lc[64], ls[64][3], lv[64][3]; /* the orientation's angles a step late: the word, the last three substeps' count and value */
     uint32_t kc[16], ks[16];         /* the wall's first push: the car (+678's address) and the step it hit, bit 31 still to come */
     uint32_t dbg[8];                 /* A4_ENGDBG: the substep's path bits and the player's keys, emitted per substep */
     uint32_t rk[ENG_NREM];           /* the word's address (0: free) */
@@ -69,6 +70,8 @@ static inline void ENG_BEGIN(uint32_t race)
         for (uint32_t i = 0; i < ENG_NREM; i++) { ENG->rk[i] = 0; ENG->rv[i] = 0; }
         for (uint32_t i = 0; i < 32u; i++) ENG->aic[i] = 0;
         for (uint32_t i = 0; i < 16u; i++) { ENG->kc[i] = 0; ENG->ks[i] = 0; }
+        for (uint32_t i = 0; i < 64u; i++) ENG->lc[i] = 0;
+        ENG->flush = 0;
         ENG->tlast[0] = ENG->tlast[1] = 0; ENG->tdel[0] = ENG->tdel[1] = 0;
     }
 #ifdef A4_ENGDBG
@@ -88,6 +91,7 @@ static inline void ENG_BEGIN(uint32_t race)
         ENG->dbg[0] = 0; ENG->dbg[1] = 0; ENG->dbg[2] = 0; ENG->dbg[3] = 0;
     }
 #endif
+    if (ENG->flush) { for (uint32_t i = 0; i < 64u; i++) ENG->lc[i] = 0; ENG->flush = 0; }
     ENG->sub = ENG->cnt % 3u; ENG->cnt++;
     if (ENG->sub == 0u) { ENG->nsnd = 0; ENG->camv = 0; ENG->loop = 0; }
 }
@@ -173,6 +177,31 @@ static inline uint32_t eng_kick(uint32_t ea, uint32_t nw)
             return MEM32(ea);                                              /* the step's later ones: none */
         }
     return eng_third(ea, MEM32(ea), nw);
+}
+/* The car's orientation, a game step late (+1971E, from +1DE78 after the move: the matrix +6D4 from the
+ * heading +678, +674 and +67C, then +704 its forward axis, +710 its side). The control reads +704 before
+ * it makes it again -- the engine's slip check (+1BB98: dot(+010, +704) >> 12 - +7D0) and the target
+ * velocity (+1E56E: +680 = +704 x +7D0 / 4096) -- so a heading change reaches the car's motion one step
+ * later: 85 ms in the game, one substep (28 ms) at three a step. The lag is part of the game's handling:
+ * a wall's turn (+1ED4C) leaves the target pointing into the wall and the slip check comparing the move
+ * along the wall with the old heading for the step after it, which costs the engine two rpm penalties
+ * (-384 each) and a downshift; at one substep the wall cost a third of that. So +1971E reads its three
+ * angles as they were two substeps ago (with its own substep's lag, three: the game's step); when this
+ * car's control did not run then (a wreck, the race's start), the current ones. */
+static inline uint32_t eng_alag(uint32_t ea, uint32_t v)
+{
+    uint32_t now = ENG->cnt - 1u, i, f = 64u, k = now % 3u, o = (now + 1u) % 3u, r = v;
+    for (i = 0; i < 64u; i++) {
+        if (ENG->lc[i] == ea) break;
+        if (f == 64u && ENG->lc[i] == 0u) f = i;
+    }
+    if (i == 64u) {
+        if (f == 64u) f = (ea >> 2) & 63u;
+        i = f; ENG->lc[i] = ea; ENG->ls[i][0] = ENG->ls[i][1] = ENG->ls[i][2] = 0xFFFFFFFFu;
+    }
+    if (ENG->ls[i][o] == now - 2u) r = ENG->lv[i][o];
+    ENG->ls[i][k] = now; ENG->lv[i][k] = v;
+    return r;
 }
 /* the AI's per-car slot: its keys and +1DE78's stack argument, as the whole step's AI chose them */
 static inline uint32_t eng_ai_slot(uint32_t car)

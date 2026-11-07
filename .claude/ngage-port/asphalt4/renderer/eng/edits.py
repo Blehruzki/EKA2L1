@@ -113,6 +113,11 @@ T(0x1EE46, 'A58 -= gravity (0x14)'); T(0x1EE4C, 'A58 -= gravity (9)')
 G(0x1EE26, 'A60, steps in the air'); G(0x1EE38, 'AF0, the hang\'s countdown')
 G(0x1EF42, 'A68, a countdown'); G(0x1EF4C, 'A6C, a countdown')
 T(0x1F030, 'steering -0x400 off the wall'); T(0x1F062, 'steering +0x400 off the wall')
+# the car's orientation from its angles two substeps late: the game's step of lag from a heading change
+# to the motion it steers (eng_alag; +704 feeds the slip check and the target velocity)
+EDITS[0x1972E] = {'after': 'r1 = eng_alag(r6 + 0x38u, r1);', 'why': 'the heading +678 as two substeps ago'}
+EDITS[0x19736] = {'after': 'r1 = eng_alag(r6 + 0x34u, r1);', 'why': 'the angle +674 as two substeps ago'}
+EDITS[0x1973E] = {'after': 'r1 = eng_alag(r6 + 0x3Cu, r1);', 'why': 'the angle +67C as two substeps ago'}
 # the wall's heading push: the first one whole at the contact's substep (eng_kick), later ones thirded
 EDITS[0x1F03A] = {'after': 'eng_kick_mark(r7 + 0x38u);', 'why': 'a contact starts (+B18 from 0): the first push is the whole step\'s'}
 EDITS[0x1F06C] = {'after': 'eng_kick_mark(r7 + 0x38u);', 'why': 'a contact starts (+B18 from 0): the first push is the whole step\'s'}

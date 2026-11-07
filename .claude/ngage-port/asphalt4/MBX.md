@@ -7203,3 +7203,53 @@ Owner: "Sounds like a plan. Go ahead."
 - r9k (the kick): the substep where +B18 leaves 0 marks the car (eng_kick_mark at 1F03A/1F06C);
   its heading push (1F132/1F13A) is the whole push, the step's later substeps add none, later
   steps thirded as before (eng_kick, a4_eng.h). Run: inj3k, the same six injections.
+- inj3k (r9k, the kick): the first contact step's turn now matches (heading 163 both at 321; 396
+  both at 357), but the speed loss does not: at 321 stock B4 221 -> 192 -> 164 with a downshift,
+  3x 216 -> 219 -> 219 (rpm 555 -> 539, one penalty's worth); 357 stock 190 -> 129, 3x 182 -> 175;
+  547 stock 256 -> 228 (downshift), 3x 256 -> 256. (At 438 and 582 the 3x run had drifted from
+  stock before the hit -- the 3x car stays in gear 3 at 586 where stock stays in 2 -- not a like
+  for like there.)
+- inj3kd (r9k with the per-substep record): why. Stock's control sets the target velocity
+  (+1DE78 at +1E56E: +680 = +704 x +7D0 / 4096) from +704, the heading's direction, which the
+  control updates only after the target, from the heading +678 the last movement left: the target
+  follows +678 two steps late. At 321 the wall turns +678 114 -> 163 (8.6 degrees); at 322 stock's
+  +704 is dir(163) but +680 still dir(114) (-159.9 degrees, 17.5 into the wall, which runs at
+  -142.4): the wall clips the move to 201 x cos 17.5 = 191 (B4 192), below the engine's 202, so
+  the slip check (+1BB98: dot(+010, +704) >> 12 - +7D0 < -10) fires twice (-14 at 321, -13 at 322),
+  rpm 688 -> 304 -> below 0, a downshift. At 3x the same chain is late by substeps: the target
+  points into the wall for one substep, |v| 214 -> 211 against 7D0 213, slip -18, -12, then -4:
+  two thirds of one penalty. The game's handling has a lag of 1.5 steps (85-170 ms) from heading
+  to motion; at 3x it shrank to 28-57 ms, and a wall's cost with it.
+- r9h: the target reads +704 as it was three substeps (one game step) ago, per car
+  (eng_hlag, a4_eng.h; edit at +1E57A) -- the game's own lag in game time, the rest of the chain
+  as before. A guess to check: that this is the only lag that matters (the slip check and the
+  movement read +704 and +678 current, as stock's do within its step). Run: inj3h.
+- inj3h (r9h, the target's +704 three substeps late): partly. At 317 rpm 688 -> 544 -> 406
+  (one stock penalty's worth, r9k's 555 -> 539), B4 215 -> 210 -> 208, no downshift (stock 221 ->
+  192 -> 164). 353: B4 199 -> 175 (stock 197 -> 129). Two things wrong in it: (1) the slip check
+  reads the same +704 as the target and was left at one substep's lag, so the first penalty --
+  stock's slip -14 is the move along the wall against the old heading -- lasts one substep; (2)
+  the lag was one substep too long: the order (watched: EKA2L1_WATCH, value-filtered, on the
+  player's +704 -- +522F0, matrix x vector, called from +1971E) is: control = slip check (+1BB98)
+  and target (+1E56E) with +704 as left, relax, move (+1E8C0), then +1971E makes the matrix +6D4,
+  +704 and +710 from +678/+674/+67C; the movement (+1EA64) turns +678 after it. A heading change
+  in a step's movement moves the car from the step after next: a lag of one step, at 3x of one
+  substep. To match: two more substeps, on every reader.
+- r9a: +1971E reads its three angles two substeps late (eng_alag, edits at +1972E/+19736/
+  +1973E; the target-only lag removed). The matrix it makes is the drawn car's and the collision's
+  too: both now see the heading with the game's lag, as stock's do. Injection resets the rings
+  (ENG->flush). Run: inj3a.
+- inj3a (r9a): 438 is now like for like to the hit (the 3x car no longer steers on its own after
+  the injection -- that came from the heading lag's mismatch -- and upshifts at 440 with stock).
+  At the hit stock rpm 0 -> 689 (down to 3) -> 305 -> down to 2, B4 211 -> 205 -> 193 -> 164;
+  3x down to 3 a step early, 689 -> 305 -> 166 -> 150, B4 206 -> 201 -> 190 -> 190: about 1.4 of
+  stock's 2 penalties (r9k: 0.3). 543 the same (3x rpm 560 -> 277: ~1.3 penalties; stock 2 and a
+  downshift). 317 and 353 are not like for like: the 3x run had a takedown just before (the player
+  car's keys get bit 0x100 and +B20/+B24 count: the race drives the player car with the AI,
+  +1F1F8, for ~20 steps), a race state outside the car the injection does not carry; stock's run
+  never has one on this path (r8: three, at 367, 638, 727 -- after car contacts stock's 85 ms step
+  passes through). The rest of the wall's cost: stock's second penalty is the slip of the step
+  after the into-the-wall step, held for a whole step; at 3x the target catches up a substep later
+  and the slip is under the threshold after one substep. A sampling effect of the 85 ms step; not
+  chased further until a whole race says whether it matters.
+- r9 (= r9a without the injection): a whole race against e6A, 300 s. Run.

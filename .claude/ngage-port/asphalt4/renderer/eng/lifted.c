@@ -3012,15 +3012,21 @@ uint64_t eng_1971E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t 
     { uint32_t ta = r5, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r6 = t; } /* 019728 adds r6, r5, r0 */
     { uint32_t ta = r0, tb = 0x94u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01972a adds r0, #0x94 */
     { uint32_t ta = r5, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r4 = t; } /* 01972c adds r4, r5, r0 */
+    /* engine: the heading +678 as two substeps ago */
     r1 = MEM32(r6 + 0x38u);                                      /* 01972e ldr r1, [r6, #0x38] */
+    r1 = eng_alag(r6 + 0x38u, r1);
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 019730 movs r0, r4 */
     { uint64_t rr = a4_eng_call(GAMEFN(0x3227E), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 019732 bl #0x3227e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 019732 bl #0x3227e */
+    /* engine: the angle +674 as two substeps ago */
     r1 = MEM32(r6 + 0x34u);                                      /* 019736 ldr r1, [r6, #0x34] */
+    r1 = eng_alag(r6 + 0x34u, r1);
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 019738 movs r0, r4 */
     { uint64_t rr = a4_eng_call(GAMEFN(0x32302), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01973a bl #0x32302 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01973a bl #0x32302 */
+    /* engine: the angle +67C as two substeps ago */
     r1 = MEM32(r6 + 0x3Cu);                                      /* 01973e ldr r1, [r6, #0x3c] */
+    r1 = eng_alag(r6 + 0x3Cu, r1);
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 019740 movs r0, r4 */
     { uint64_t rr = a4_eng_call(GAMEFN(0x32342), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 019742 bl #0x32342 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 019742 bl #0x32342 */

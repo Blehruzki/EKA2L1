@@ -1110,6 +1110,9 @@ static void car_record(uint32_t race, uint32_t what)
             volatile uint32_t *cw = (volatile uint32_t *)car;
             for (uint32_t k = 0; k < A4_INJ_W; k++)
                 if (!((a4_inj_keep[k >> 5] >> (k & 31u)) & 1u)) cw[k] = a4_inj_car[q][k];
+#ifdef A4_ENG3
+            ((volatile uint32_t *)0x0045D000u)[7] = 1u;   /* a4_eng.h ENG->flush: the lag rings held the old car */
+#endif
         }
     }
 #endif
