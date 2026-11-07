@@ -7292,3 +7292,33 @@ Owner: "Sounds like a plan. Go ahead."
   from there the paths part (other walls, a car contact at 270 stock does not have). After that
   no step-for-step comparison holds; the lap and speed figures are the chaos of two paths.
 - r12: +B18's countdown on the step's last substep (on 0 for a wreck). Run: r12, a whole race.
+- r12 (whole race): the scrape at 206-210 now ends as stock's (heading 546 and +B18 0 at 210,
+  both). At 211 stock's car is off the wall by the step's end (D4 0800, no push); the 3x car is
+  still against it at substep 0 (a third of the way along), +B18 is 0, it re-arms, and the push's
+  floor (clamp 20..64) turns it 20: 526 against 546, and the paths part from there. tools/part.py
+  (new): prints two runs side by side up to where they part.
+- r13: the contact's start (+B18 from 0, 1F038/1F06A) only on the step's last substep (0 for a
+  wreck): the game decides it on its step's end position; the contact's physics -- the car held
+  out of the wall, the speed it loses -- every substep as before. Run: r13, a whole race.
+- r13 (whole race): the scrape at 206-211 now matches stock step for step to 228 (heading 546
+  both); the paths still drift (40 units at 224) from an rpm offset of 21 taken at the contact's
+  first step (the 3x car finds the contact a substep or two into the step and the contact's rpm
+  rule applies from there; stock applies it from the next step: within one step of resolution).
+  Lap 1 in 621 steps (stock 830). Not a measure of the engine: the bench car only holds '5', the
+  walls steer it, and two paths a few tens of units apart meet different walls and different
+  traffic. tools/hits.py (new) prices each wall contact instead (turn over its first two steps,
+  B4 lost after six, downshift), by turn:
+      run     hits | turn 40-80: n cost down | turn 80-200: n cost down
+      e6A      82  |          67    8   22%  |            12   54   92%
+      r8       78  |          15   18   33%  |             2   62  100%   (61 at a turn < 40: cost -1)
+      r11      69  |          51    6   22%  |             3   28   67%
+      r13      74  |          65    9   23%  |             3   46   67%
+  The common hit now costs what stock's does; hits match one for one to 292 (206/206, 236/237,
+  248, 257/255, 260/261, 270, 290/292). Different still: wide hits (turn >= 80, ~50 B4 and nearly
+  always a downshift) -- stock 12, every 3x run 2-6. Not known whether that is the engine or the
+  paths. And the 3x car meets traffic 10-17 times a race to stock's 4 (stock's step passes through
+  it -- the point of the job), each contact throwing its speed over the engine's (B4 327 at 7D0
+  234 at 334): the car-car response's size is not yet checked against stock's (stock has too few
+  contacts on this path to compare).
+- Frame cost (plan step 3): s13 (stock) and t13 (the 3x engine, real time) on the calibrated N95
+  model (TIMESCALE 4, CPUCAP 330, CPUMODEL, GPUMODEL), 120 s each. Run.

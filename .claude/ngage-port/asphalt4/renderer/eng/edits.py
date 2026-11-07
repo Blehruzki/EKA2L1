@@ -127,6 +127,14 @@ T(0x1F030, 'steering -0x400 off the wall'); T(0x1F062, 'steering +0x400 off the 
 EDITS[0x1972E] = {'after': 'r1 = eng_alag(r6 + 0x38u, r1);', 'why': 'the heading +678 as two substeps ago'}
 EDITS[0x19736] = {'after': 'r1 = eng_alag(r6 + 0x34u, r1);', 'why': 'the angle +674 as two substeps ago'}
 EDITS[0x1973E] = {'after': 'r1 = eng_alag(r6 + 0x3Cu, r1);', 'why': 'the angle +67C as two substeps ago'}
+# the wall contact's start (+B18 from 0 to -5/5: five steps of the heading pushed off the wall): the
+# game decides it on the step's end position; a substep's position a third of the way along found
+# contacts the game's step did not have (r12: the car still against the wall at substep 0 of the step
+# after a scrape, a re-arm, and the push's floor of 20 turned it). The contact itself -- the position
+# held out of the wall, the speed it takes -- stays every substep; its start waits for the step's last
+# substep (substep 0 for a wreck, which moves on the whole step only)
+B(0x1F038, 'if (!(ENG_SUB == 2u || (ENG_SUB == 0u && MEM32(r5 - 0xB00u + 0x34u) != 0xFFFFFFFFu))) goto L_1F03C;', 'the contact starts at the step\'s end')
+B(0x1F06A, 'if (!(ENG_SUB == 2u || (ENG_SUB == 0u && MEM32(r5 - 0xB00u + 0x34u) != 0xFFFFFFFFu))) goto L_1F06E;', 'the contact starts at the step\'s end')
 # the wall's heading push: the first one whole at the contact's substep (eng_kick), later ones thirded
 EDITS[0x1F03A] = {'after': 'eng_kick_mark(r7 + 0x38u);', 'why': 'a contact starts (+B18 from 0): the first push is the whole step\'s'}
 EDITS[0x1F06C] = {'after': 'eng_kick_mark(r7 + 0x38u);', 'why': 'a contact starts (+B18 from 0): the first push is the whole step\'s'}
