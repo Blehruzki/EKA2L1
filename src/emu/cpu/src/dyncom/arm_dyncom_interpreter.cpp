@@ -218,10 +218,17 @@ pc_mem g_pc_mem;
 // (default 2,000,000,000) have been credited. The instructions a run executes
 // after its last block entry are not credited; the header says how many were.
 // For naming the code a guest spends its time in (ngage-port: Asphalt 4).
+// EKA2L1_PCPROF_CYCLES=1 (with EKA2L1_CPUMODEL): the credit is the model's cycles instead --
+// each instruction at its state's CPI (Thumb base_cpi, ARM arm_cpi), plus the cycles the
+// model adds (multiplies, load/store multiples, cache misses) -- so the profile ranks code
+// by modelled time, not by instruction count (ngage-port, Asphalt 4 round 50: a memory-
+// bound ARM loop and a Thumb loop of the same length cost the phone very different times).
+// SKIP and LEN still count instructions; the file's counts are cycles x 100.
 struct pc_prof {
-    bool on = false;
+    bool on = false, cyc = false;
     std::uint64_t skip = 0, len = 2000000000ull, seen = 0, credited = 0;
     std::uint32_t prev_pc = 0, prev_count = 0;
+    std::uint64_t prev_arm = 0, prev_extra = 0;
     std::unordered_map<std::uint32_t, std::uint64_t> counts;
     std::string path;
 
@@ -231,23 +238,33 @@ struct pc_prof {
         path = w;
         if (const char *s = std::getenv("EKA2L1_PCPROF_SKIP")) skip = std::strtoull(s, nullptr, 10);
         if (const char *l = std::getenv("EKA2L1_PCPROF_LEN")) len = std::strtoull(l, nullptr, 10);
+        if (const char *c = std::getenv("EKA2L1_PCPROF_CYCLES")) cyc = *c == '1';
         counts.reserve(1 << 16);
         on = true;
     }
     inline void hit(std::uint32_t pc, std::uint32_t count) {
         if (!on) return;
+        const std::uint64_t arm = eka2l1::arm::cpumodel::g.arm_instrs, extra = eka2l1::arm::cpumodel::g.extra;
         // A new run starts its count from zero: nothing to credit across the boundary.
         if (count >= prev_count) {
             const std::uint32_t d = count - prev_count;
             seen += d;
             if (seen > skip) {
-                counts[prev_pc] += d;
+                std::uint64_t c = d;
+                if (cyc) {
+                    const std::uint64_t da = std::min<std::uint64_t>(arm - prev_arm, d);
+                    c = (d - da) * eka2l1::arm::cpumodel::g.base_cpi_x100 + da * eka2l1::arm::cpumodel::g.arm_cpi_x100
+                        + (extra - prev_extra) * 100u;
+                }
+                counts[prev_pc] += c;
                 credited += d;
                 if (credited >= len) dump();
             }
         }
         prev_pc = pc;
         prev_count = count;
+        prev_arm = arm;
+        prev_extra = extra;
     }
     void dump() {
         on = false;
@@ -255,7 +272,8 @@ struct pc_prof {
         std::sort(v.begin(), v.end(), [](const auto &a, const auto &b) { return a.second > b.second; });
         std::FILE *f = std::fopen(path.c_str(), "w");
         if (!f) return;
-        std::fprintf(f, "# credited %" PRIu64 " instructions, after skipping %" PRIu64 ", %zu blocks\n", credited, skip, v.size());
+        std::fprintf(f, "# credited %" PRIu64 " instructions, after skipping %" PRIu64 ", %zu blocks%s\n", credited, skip, v.size(),
+            cyc ? " (counts: modelled cycles x 100, EKA2L1_PCPROF_CYCLES)" : "");
         for (const auto &e : v) std::fprintf(f, "%08X %" PRIu64 "\n", e.first, e.second);
         std::fclose(f);
     }

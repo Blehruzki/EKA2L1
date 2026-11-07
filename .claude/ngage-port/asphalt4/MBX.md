@@ -7368,3 +7368,18 @@ Owner: "Sounds like a plan. Go ahead."
   of wall hit match stock; whole-race figures part after ~20 s because the bench car is steered by
   the walls. Open: the opponent's launch and wreck, the car-car response's size, wreck and scripted
   camera motion at 11.72 Hz. Plan step 3 is the renderer (~50 ms a render call on the N95 model).
+- Plan step 3, the renderer: where the time goes.
+  - Exact instruction profile (EKA2L1_PCPROF, the r15 engine real time = t15, CPUCAP 85, 2 G
+    instructions of race; tools/profreport.py, the blob named from A4_SYMFILE): our blob 43.3%
+    (a4_gl_flush -- the composite -- 18.4, the mesh list's lean_tail 5.9, a4_mesh_insert 5.5,
+    mesh_draw 3.2, batch_draw 1.8, mesh_scr 1.7, mesh_fallback 1.5, draw_prim_take 1.3, the
+    engine's a4_eng_call 1.7), the game 33.2% (the sprite painter's page +29000 15.3 -- the HUD,
+    +34000 4.9, +52000 blends 3.3, +31000 2.2, +30000 2.1), ngibackbuffer +CCB8 14.1% (the
+    runtime's 565 -> 32-bit conversion of every present).
+  - Instructions misrank it: in t13's window (capidx 80, 80 ms a render) the composite's 11.8 ms
+    is 9.6 ms of read (the model's tile render 3.2-3.6 and readback 3.7 ms, GPUMODEL stats) and
+    ~2.2 ms of blit loop, for its 18% of instructions. GPU charges a busy frame: draws 6.3-9.5
+    ms (270-420 draws), other calls and binds 4.7-6.9, tile render 3.2-3.6, readback 3.7, post
+    2.3: ~20-26 ms of a 50-80 ms render.
+  - A cycle-weighted profile is the instrument (emulator: EKA2L1_PCPROF_CYCLES=1, the model's
+    cycles credited per block, EMU_PATCHES.md). Run: pct15, t15 on the calibrated model.
