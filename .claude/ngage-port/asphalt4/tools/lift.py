@@ -143,6 +143,8 @@ def lift(start):
             ea = b + (' + ' + HI.get(i.reg_name(mo.index), i.reg_name(mo.index)) if mo.index else '') + (' + 0x%Xu' % (mo.disp & 0xFFFFFFFF) if mo.disp else '')
             if m.startswith('ld'):
                 E('%s = %s%s(%s);' % (rt, '(uint32_t)(int32_t)' if 'MEMS' in W[m] else '', W[m], ea), i)
+            elif EDITS.get(i.address, {}).get('gate') == 'end':   # a countdown substeps read: stored on the step's last substep
+                E('if (ENG_SUB_END(%s)) %s(%s) = %s; else %s = %s(%s);' % (EDITS[i.address]['car'], W[m], ea, rt, rt, W[m], ea), i)
             elif EDITS.get(i.address, {}).get('gate'):      # a counter: stored on the whole step; a substep keeps memory's
                 E('if (!ENG_SUB) %s(%s) = %s; else %s = %s(%s);' % (W[m], ea, rt, rt, W[m], ea), i)
             elif EDITS.get(i.address, {}).get('third'):     # a rate: the store keeps a third of its change

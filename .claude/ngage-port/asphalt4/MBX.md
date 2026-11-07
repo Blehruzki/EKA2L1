@@ -7322,3 +7322,19 @@ Owner: "Sounds like a plan. Go ahead."
   contacts on this path to compare).
 - Frame cost (plan step 3): s13 (stock) and t13 (the 3x engine, real time) on the calibrated N95
   model (TIMESCALE 4, CPUCAP 330, CPUMODEL, GPUMODEL), 120 s each. Run.
+- The opponent (CREA=1, r13): it parts from stock's at ~186 (the AI's steering pulses, 7FC ~400
+  against stock's ~360), and from 191 cycles gears 1 -> 2 -> 1 every 4 steps -- the "governor"
+  logged at r8d, here before any respawn. Read in the records (raw 185-199): both upshift at 188
+  (+7C4, the shift delay, = +7C8 = 3) and the AI lets off the throttle for three steps (keys 1, 1,
+  1: steering only). +1BB98 skips all engine drag while +7C4 != 0 and counts it down. Stock's
+  delay holds through 191 (the check at 191's start reads 1, so no drag that step) and the throttle
+  is back at 192: rpm 0, 16, 32. At 3x the count is gated to substep 0: at 191 substep 0 takes the
+  last count and substeps 1-2 coast, rpm goes below 0 and the car drops to first (rpm 623); with
+  the throttle back it shifts up again, delay, coast, down: every 4 steps, the rest of the race.
+  The same ordering fault as +B18's: a countdown that the substeps read is counted at the game's
+  step's start instead of its end.
+- r14: a gate kind for that (lift.py 'gate': 'end', edits.py GE(): stored on the car's last
+  substep of the step -- 2, or 0 for a wreck -- ENG_SUB_END in a4_eng.h): +7C4 (1BC5A), +AE0 the
+  boost's countdown (1BEE0), +AEC (1DF9E, rpm -8 a step while it runs), +B18 (1F144/1F14E, as r12)
+  and the contact's start (1F038/1F06A, as r13). Other countdowns left on substep 0 until a record
+  says otherwise (A7C, A68, A6C, AF0).

@@ -49,6 +49,7 @@ EDITS = {
 # G: a counter or a decision's state -- it changes on the whole step only (substeps keep the old value).
 def T(a, why): EDITS[a] = {'third': True, 'why': why}
 def G(a, why): EDITS[a] = {'gate': True, 'why': why}
+def GE(a, car, why): EDITS[a] = {'gate': 'end', 'car': car, 'why': why}
 def B(a, code, why): EDITS[a] = {'before': code, 'why': why}
 def R(a, code, why): EDITS[a] = {'replace': code, 'why': why}
 
@@ -57,7 +58,7 @@ T(0x1DEDE, 'B20, steps a key is held (to 0x30): one a step')
 G(0x1DF20, 'A2C, a step counter'); G(0x1DF28, 'A34, a step counter (the stuck check every 64)')
 G(0x1DF58, 'A7C, a countdown'); G(0x1DF64, 'A7C, a count up')
 T(0x1DF88, 'ABC, drained by a table value a step')
-G(0x1DF9E, 'AEC, a countdown')
+GE(0x1DF9E, 'r4', 'AEC, a countdown (rpm -8 a step while it runs)')
 T(0x1DFA8, 'rpm -8 a step while AEC runs')
 # the wreck sequence (+034 != -1: rpm -0x100 a step, gears down, the scripted path +2292A) runs on the
 # whole step only: its path integrates the car's own velocity, which the substep measure would scale
@@ -91,7 +92,10 @@ T(0x1BB60, 'rpm -= brake'); T(0x1BB90, 'rpm -= 7DC/2 (key 4)')
 # the slip check once a step (the game's decision on its step's state), with the whole penalty
 B(0x1BBD8, 'if (ENG_SUB) goto L_1BC08;', 'the slip check is the whole step\'s')
 T(0x1BC2E, 'rpm -= coast'); T(0x1BC54, 'rpm -= A74/64')
-G(0x1BC5A, '7C4, the gear change\'s countdown')
+# 7C4, the gear change's delay (no engine drag while it runs): counted at the step's end, as the game
+# counts it after its step's check -- counted on substep 0 its last step lost substeps 1-2 to the drag,
+# and an AI that lets off the throttle for the delay's three steps fell back a gear every 4 steps (r13)
+GE(0x1BC5A, 'r5', '7C4, the gear change\'s delay')
 # +1BC5E, the handbrake's rpm drop
 T(0x1BCBC, 'A0C ramp'); T(0x1BCC8, 'A0C ramp'); T(0x1BCEE, 'rpm -= A0C*28/16')
 # +1B954, the drift's decay without steering
@@ -102,7 +106,7 @@ G(0x1BD6E, 'AB8, steps off the road (respawn past 5)')
 for a in (0x1BE30, 0x1BE4E, 0x1BE6C): T(a, 'rpm -= the surface\'s drag')
 # +1BE70, the boost: its start and chain are decisions of the whole step
 B(0x1BE86, 'if (ENG_SUB) goto L_1BED6;', 'substeps: no boost start or chain (the whole step decides)')
-G(0x1BEE0, 'AE0, the boost\'s countdown'); T(0x1BF22, 'ADC, the boost bar eased 1/8 a step')
+GE(0x1BEE0, 'r4 - 0xAC0u', 'AE0, the boost\'s countdown'); T(0x1BF22, 'ADC, the boost bar eased 1/8 a step')
 # +1BF26, the engine
 for a in (0x1BF84, 0x1BF92, 0x1BF9C, 0x1BFA2): T(a, 'rpm += throttle')
 # +1C276, the body's pitch
@@ -133,8 +137,8 @@ EDITS[0x1973E] = {'after': 'r1 = eng_alag(r6 + 0x3Cu, r1);', 'why': 'the angle +
 # after a scrape, a re-arm, and the push's floor of 20 turned it). The contact itself -- the position
 # held out of the wall, the speed it takes -- stays every substep; its start waits for the step's last
 # substep (substep 0 for a wreck, which moves on the whole step only)
-B(0x1F038, 'if (!(ENG_SUB == 2u || (ENG_SUB == 0u && MEM32(r5 - 0xB00u + 0x34u) != 0xFFFFFFFFu))) goto L_1F03C;', 'the contact starts at the step\'s end')
-B(0x1F06A, 'if (!(ENG_SUB == 2u || (ENG_SUB == 0u && MEM32(r5 - 0xB00u + 0x34u) != 0xFFFFFFFFu))) goto L_1F06E;', 'the contact starts at the step\'s end')
+B(0x1F038, 'if (!ENG_SUB_END(r5 - 0xB00u)) goto L_1F03C;', 'the contact starts at the step\'s end')
+B(0x1F06A, 'if (!ENG_SUB_END(r5 - 0xB00u)) goto L_1F06E;', 'the contact starts at the step\'s end')
 # the wall's heading push: the first one whole at the contact's substep (eng_kick), later ones thirded
 EDITS[0x1F03A] = {'after': 'eng_kick_mark(r7 + 0x38u);', 'why': 'a contact starts (+B18 from 0): the first push is the whole step\'s'}
 EDITS[0x1F06C] = {'after': 'eng_kick_mark(r7 + 0x38u);', 'why': 'a contact starts (+B18 from 0): the first push is the whole step\'s'}
@@ -146,8 +150,7 @@ R(0x1F13A, 'MEM32(r7 + 0x38u) = r0 = eng_kick(r7 + 0x38u, r0);', 'heading += the
 # heading 14 off stock's after one scrape). Counted on the step's last substep -- on 0 for a wreck,
 # whose movement runs on the whole step only (+1EA68)
 for a_ in (0x1F144, 0x1F14E):
-    R(a_, 'if (ENG_SUB == 2u || (ENG_SUB == 0u && MEM32(r5 - 0xB00u + 0x34u) != 0xFFFFFFFFu)) MEM32(r5 + 0x18u) = r0; else r0 = MEM32(r5 + 0x18u);',
-      'B18, the wall\'s countdown, at the step\'s end')
+    GE(a_, 'r5 - 0xB00u', 'B18, the wall\'s countdown, at the step\'s end')
 # +22832, the measure: a substep's displacement is a third of a step's
 B(0x22854, 'if (!ENG->meas1) { MEM32(sp + 4u) *= 3u; MEM32(sp + 8u) *= 3u; MEM32(sp + 0xCu) *= 3u; }', 'velocity per step = 3 x the substep\'s displacement')
 B(0x2286C, 'if (!ENG->meas1) { MEM32(sp + 0x1Cu) *= 3u; MEM32(sp + 0x20u) *= 3u; MEM32(sp + 0x24u) *= 3u; }', 'acceleration per step = 3 x the substep\'s change')
