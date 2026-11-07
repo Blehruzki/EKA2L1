@@ -7479,3 +7479,42 @@ Owner: "Sounds like a plan. Go ahead."
   table, a fault the game never risks) and signed walk counters (overflow is undefined in C where the
   game's walk wraps). Run: LC3 (A4_PAINTCHECK on it) and LCM (both checks' mutants: one vertex bit, one
   insert flag bit, one pixel a call -- each must be flagged on every call).
+- LC3 (stock + every lifted function + the hand painter, lockstep 100 s): mesh routine 44,078 calls,
+  insert 29,728 (1 in 16), painter 19,138 compared: 0 differences each. LCM (both checks' mutants): every
+  compared call flagged -- 33,772 of 33,772 mesh calls (one byte each), 30,460 of 30,460 inserts, 18,099
+  of 18,099 painter calls (one pixel each): the checks can fail.
+- A fault caught by review: the hand painter's colour table (1 KB, a 1.2 KB frame) on a thread whose
+  stack is 20 KB (the exe's header: 0x5000). Now 16-bit entries and a bit an index (frame 736 bytes).
+  The lifter's frames are as before (+24 bytes typical, -fstack-usage).
+- tools/liftfuzz.py: each lifted function against the game's own offline, on unicorn's ARM1136 -- both
+  images at their link address (code 0x8000, data 0x400000), the same random memory (a 256 KB arena of
+  pointers into itself, small numbers, 16-bit values, noise; registers and stack words likewise), the
+  game's function from the untouched image, the lifted one (eng_XXXXX) from the injected one. Compared:
+  r0, r1 and every byte of the arena, the data and bss (the scratch with it) and the stack words. A case
+  where the game faults is not a case; one where only the lifted one faults is a failure. Also counts
+  the instructions each ran (Thumb by halfword pairs): the gain that holds on any CPI split.
+- What it found, first pass: every valid case of every function agreed -- but the hand painter faulted
+  alone on 214 of 555 cases: it read the object's effect mode (and the sprite's source pointers) before
+  the clip, where the game, clipped away, reads nothing. A fully clipped call with a bad object pointer
+  is harmless in the game and was a fault in mine. Fixed: it reads exactly what the game's loop reads,
+  when it reads it (1,078 then 1,439 cases agree, 0 differ).
+- And the instruction counts: on short calls many lifted engine functions ran 2-6x the game's
+  instructions (+22C60 0.17x, +1BDEC 0.24x). The calls: +22C60 calls three getters of three instructions
+  five times, each through a4_eng_call (~35 instructions: eight stack words copied each way). So:
+- tools/lift.py: small leaves inline. A game function a lifted one calls, with no calls of its own, no
+  jump through a register but its return, at most 64 instructions, no edit and no injector patch inside,
+  is lifted too, inline only (A4_NOLEAF turns it off): 40 leaves (getters, small math). Fuzz again:
+  0 differences over all 85 functions (38 engine, 7 3D front end, the painter, 40 leaves), and the
+  short-call ratios up (+1BB98 0.40 -> 1.03x, +1C276 0.27 -> 0.96x, +1BDEC 0.24 -> 0.76x); functions that
+  call bigger game functions still pay a4_eng_call (+1F1F8 0.37x, +22C60 0.17x): a call without the
+  eight-word copy, for callees that read no stack argument, is next.
+- On the race's own data (LC5, the in-run checks run both versions on the same inputs: EKA2L1_PCPROF,
+  instructions, 5.5 G after 3 G, tools/profsym.py): the 3D front end 255.0 M (game) against 222.5 M
+  (lifted): 1.15x fewer instructions; the hand painter 343.7 M against 253.0 M: only 1.36x. So the
+  measured gain of a mechanical lift is ~1.2x in instructions; the rest of what the model shows is its
+  Thumb/ARM CPI split -- the guess named above. Real gains need fewer instructions, i.e. rewritten loops.
+- The hand painter's loop was not specialised (clang kept every format test and a dozen stack reloads
+  in the pixel loop: its hot blocks were the loop tail and the flag tests). Rewritten: one walk per
+  format (paletted 8 or 4-bit, 16-bit; alpha plane or not; an effect or none), each a constant where it
+  is instantiated, the invariants in registers. Fuzz: 1,439 cases agree, 0 differ. Run: LC6 (the
+  checks and the instruction profile).

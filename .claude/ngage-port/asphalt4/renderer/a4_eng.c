@@ -183,13 +183,65 @@ static inline uint32_t pf_mode(uint32_t c, uint32_t mode, uint32_t lit4)
     if (mode == 4u) return lit4;                        /* +29960: one colour */
     return c;
 }
+struct pfw {
+    uint32_t sx0, sx1, sy0, sy1, xdir, ydir, rowoff, dst, dstepb, rowskipb, sw;
+    uint32_t isrc, csrc, asrc, key, ct, mode, lit4, m1, m3;
+    const int32_t *AT;
+};
+/* the walk for one sprite format: PAL paletted, NIB 4-bit indices, APL an alpha plane, MODE the effect
+ * applied (a paletted colour gets it when its index is first met) -- each a constant where it is called,
+ * so each format is one loop with nothing in it the format does not need. The colours of a paletted
+ * sprite in a table filled as the walk meets each index (the colour table read only where the game's
+ * loop reads it); 16-bit entries and a bit an index, ~560 bytes of the thread's 20 KB stack (0x5000). */
+static inline __attribute__((always_inline)) void pf_walk(const struct pfw *p, const int PAL, const int NIB, const int APL, const int MODE)
+{
+    uint16_t lut[256];
+    uint32_t lutv[8];
+    if (PAL) for (uint32_t k = 0; k < (NIB ? 1u : 8u); k++) lutv[k] = 0;
+    const uint32_t sx1 = p->sx1, xdir = p->xdir, dstepb = p->dstepb, key = p->key, ct = p->ct;
+    const uint32_t isrc = p->isrc, csrc = p->csrc, asrc = p->asrc, mode = p->mode, lit4 = p->lit4, m1 = p->m1, m3 = p->m3;
+    const int32_t *AT = p->AT;
+    const int32_t a15 = AT[15];
+    uint32_t sy = p->sy0, rowoff = p->rowoff, dst = p->dst;
+    do {
+        uint32_t sx = p->sx0;
+        while (sx != sx1) {
+            const uint32_t i = rowoff + sx;
+            uint32_t c;
+            int32_t al;
+            if (PAL) {
+                const uint32_t idx = NIB ? (L8(isrc + (uint32_t)((int32_t)i >> 1)) >> ((1u & ~i) << 2)) & 15u : L8(isrc + i);
+                if ((lutv[idx >> 5] >> (idx & 31u)) & 1u) c = mode == 4u ? lit4 : (uint32_t)(int32_t)(int16_t)lut[idx];
+                else {
+                    c = pf_mode((uint32_t)(int32_t)(int16_t)(((L8(ct + 3u * idx + 2u) >> 3) << 11) | ((L8(ct + 3u * idx + 1u) >> 2) << 5) | (L8(ct + 3u * idx) >> 3)), mode, lit4);
+                    lut[idx] = (uint16_t)c; lutv[idx >> 5] |= 1u << (idx & 31u);
+                }
+                al = idx == key ? 0 : a15;
+            } else {
+                c = (uint32_t)(int32_t)LS16(csrc + 2u * i);
+                if (MODE) c = pf_mode(c, mode, lit4);
+                al = a15;
+            }
+            if (APL) al = AT[(L8(asrc + (uint32_t)((int32_t)i >> 1)) >> ((1u & ~i) << 2)) & 15u];
+            if (al == 15) L16(dst) = (uint16_t)c;
+            else if (al != 0) {
+                const uint32_t dv = L16(dst);
+                const uint32_t c1 = (c & m1) | ((c & 0x7E0u) << 16), d1 = (dv & m1) | ((dv & 0x7E0u) << 16);
+                const uint32_t t = (c1 - d1) * (uint32_t)al + (d1 << 4);
+                L16(dst) = (uint16_t)(((t & m3) >> 4) | ((t & 0x7E000000u) >> 20));
+            }
+            dst += dstepb; sx += xdir;
+        }
+        dst += p->rowskipb;
+        rowoff += p->sw * p->ydir;
+        sy += p->ydir;
+    } while (sy != p->sy1);
+}
 static uint64_t a4_paint_fast(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2,
     uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 {
     const uint32_t o = r0, surf = r1, d = s0, fl = s1;
     a4_gl_hud();                                        /* edits.py ALWAYS at +2973A */
-    const uint32_t mode = L32(o + 0x34u);
-    if (mode == 2u) return eng_29736(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
     int32_t sx0 = 0, sy0 = 0, w = LS16(d + 4u), h = LS16(d + 6u), sx1 = w, sy1 = h;
     const uint32_t px = L32(surf + 4u), W = L16(surf + 8u), H = L16(surf + 0xAu);
     if (LS16(surf + 0x38u) == -1) { L16(surf + 0x38u) = 0; L16(surf + 0x3Au) = 0; L16(surf + 0x3Cu) = (uint16_t)W; L16(surf + 0x3Eu) = (uint16_t)H; }
@@ -215,9 +267,13 @@ static uint64_t a4_paint_fast(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3
     uint32_t rowoff = (uint32_t)(int32_t)LS16(d + 4u) * (uint32_t)sy0;
     uint32_t dst = px + 2u * (W * (uint32_t)y + (uint32_t)x);
     if (sy0 == sy1) return ((uint64_t)1u << 32) | (uint32_t)sy0;
-    /* what the game's loop reads again for every pixel, read once */
-    const uint32_t pal8 = L8(d + 9u), nib = L8(d + 0xAu), apl = L8(d + 8u);
-    const uint32_t isrc = L32(d + 0x10u), csrc = L32(d + 0xCu), asrc = L32(d + 0x14u);
+    /* from here the game's loop paints at least a pixel (w > 0: a row's walk is never empty); what it
+     * reads again for every pixel is read once -- and only what it reads (liftfuzz.py: a draft that read
+     * the object's mode before the clip faulted where the game, clipped away, reads nothing) */
+    const uint32_t mode = L32(o + 0x34u);
+    if (mode == 2u) return eng_29736(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
+    const uint32_t pal8 = L8(d + 9u), nib = pal8 ? L8(d + 0xAu) : 0u, apl = L8(d + 8u);
+    const uint32_t isrc = pal8 ? L32(d + 0x10u) : 0u, csrc = pal8 ? 0u : L32(d + 0xCu), asrc = apl ? L32(d + 0x14u) : 0u;
     const uint32_t m1 = GAMEW(0x29E14u), m3 = GAMEW(0x29E18u), lit4 = GAMEW(0x29A34u);
     const int32_t g = LS16(o + 0x38u);
     int32_t AT[16];
@@ -227,41 +283,17 @@ static uint64_t a4_paint_fast(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3
         uint32_t pal = L32(L32(o + 0x14u) + 4u * ((uint32_t)L8(o + 0xCu) * (uint32_t)L8(d + 0xBu) + (uint32_t)(int32_t)LS16(o + 0x24u)));
         key = (uint32_t)(int32_t)LS16(pal + 0xCu); ct = L32(pal + 8u);
     }
-    /* each index's colour, filled as the walk first meets it (the colour table is read only where the
-     * game's loop reads it: an entry past a short table is never touched); 0x80000000 is no colour */
-    uint32_t lut[256];
-    const uint32_t nlut = nib ? 16u : 256u;
-    const int use_lut = pal8 && (uint32_t)w * (uint32_t)h >= 2u * nlut;
-    if (use_lut) for (uint32_t k = 0; k < nlut; k++) lut[k] = 0x80000000u;
-    uint32_t sy = (uint32_t)sy0;
-    do {
-        uint32_t sx = (uint32_t)sx0;
-        while (sx != (uint32_t)sx1) {
-            uint32_t i = rowoff + sx, c, a = 15u;
-            if (pal8) {
-                uint32_t idx = nib ? (L8(isrc + (uint32_t)((int32_t)i >> 1)) >> (((1u & ~i)) << 2)) & 15u : L8(isrc + i);
-                if (idx == key) a = 0;
-                c = use_lut ? lut[idx] : 0x80000000u;
-                if (c == 0x80000000u) {
-                    c = pf_mode((uint32_t)(int32_t)(int16_t)(((L8(ct + 3u * idx + 2u) >> 3) << 11) | ((L8(ct + 3u * idx + 1u) >> 2) << 5) | (L8(ct + 3u * idx) >> 3)), mode, lit4);
-                    if (use_lut) lut[idx] = c;
-                }
-            } else c = pf_mode((uint32_t)(int32_t)LS16(csrc + 2u * i), mode, lit4);
-            if (apl) a = (L8(asrc + (uint32_t)((int32_t)i >> 1)) >> (((1u & ~i)) << 2)) & 15u;
-            int32_t al = AT[a];
-            if (al == 15) L16(dst) = (uint16_t)c;
-            else if (al != 0) {
-                uint32_t dv = L16(dst);
-                uint32_t c1 = (c & m1) | ((c & 0x7E0u) << 16), d1 = (dv & m1) | ((dv & 0x7E0u) << 16);
-                uint32_t t = (c1 - d1) * (uint32_t)al + (d1 << 4);
-                L16(dst) = (uint16_t)(((t & m3) >> 4) | ((t & 0x7E000000u) >> 20));
-            }
-            dst += 2u * dstep; sx += (uint32_t)xdir;
-        }
-        dst += 2u * rowskip;
-        rowoff += (uint32_t)(int32_t)LS16(d + 4u) * (uint32_t)ydir;
-        sy += (uint32_t)ydir;
-    } while (sy != (uint32_t)sy1);
+    struct pfw P;
+    P.sx0 = (uint32_t)sx0; P.sx1 = (uint32_t)sx1; P.sy0 = (uint32_t)sy0; P.sy1 = (uint32_t)sy1;
+    P.xdir = (uint32_t)xdir; P.ydir = (uint32_t)ydir; P.rowoff = rowoff; P.dst = dst;
+    P.dstepb = 2u * dstep; P.rowskipb = 2u * rowskip; P.sw = (uint32_t)(int32_t)LS16(d + 4u);
+    P.isrc = isrc; P.csrc = csrc; P.asrc = asrc; P.key = key; P.ct = ct; P.mode = mode; P.lit4 = lit4;
+    P.m1 = m1; P.m3 = m3; P.AT = AT;
+    if (pal8) { if (nib) { if (apl) pf_walk(&P, 1, 1, 1, 1); else pf_walk(&P, 1, 1, 0, 1); }
+                else { if (apl) pf_walk(&P, 1, 0, 1, 1); else pf_walk(&P, 1, 0, 0, 1); } }
+    else { int m0 = mode != 1u && mode != 3u && mode != 4u;     /* the colour as the source has it */
+           if (apl) { if (m0) pf_walk(&P, 0, 0, 1, 0); else pf_walk(&P, 0, 0, 1, 1); }
+           else { if (m0) pf_walk(&P, 0, 0, 0, 0); else pf_walk(&P, 0, 0, 0, 1); } }
     return ((uint64_t)(uint32_t)sy1 << 32) | (uint32_t)sy1;
 }
 #define PAINT_UT a4_paint_fast
