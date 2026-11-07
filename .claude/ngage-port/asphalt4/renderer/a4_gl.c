@@ -4135,7 +4135,7 @@ extern const int32_t a4_otins, a4_tfvt;      /* a4_gl.s: target - (the word), pa
  * never clips at the near plane: z_ndc = ZK/-z' <= 1) and every coordinate in int16. The
  * mode is the window's (A4_PERF), not s->fmode, which the frame's first triangle sets
  * after these inserts. */
-static int mesh_fallback(const uint32_t *gctx, int32_t F, const int32_t *v0, const int32_t *v1, const int32_t *v2);
+static int mesh_fallback(const uint32_t *gctx, int32_t F, const int32_t *v0, const int32_t *v1, const int32_t *v2) __attribute__((unused));
 static void mesh_scr(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, int32_t x, int32_t y, int32_t z,
                      int32_t *sx, int32_t *sy);
 #ifdef A4_MESHMEMO

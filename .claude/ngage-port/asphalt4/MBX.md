@@ -7596,3 +7596,17 @@ Owner: "Sounds like a plan. Go ahead."
   rejected vertex: the far limit, m8, m2 x + m5 y; an accepted one: 8 or the fourth plane's sum, x,
   2^18). Fuzz: +349F8 with it 271 cases agree, 0 differ (1.46x fewer instructions than the game's).
   Run: LX1 (A4_LIFTCHECK over the mesh routine with the hand transform in it).
+- MC3 (the memo, aliasing fixed, kept per call): 2,114,152 fallback verdicts and every box's corners
+  compared, 0 differing (5.18 M corners found kept). The memo is exact.
+- LX1 (A4_LIFTCHECK with the hand transform): 3,937 mesh-routine calls compared, 0 differing; 40,457
+  inserts, 0. Few calls: the lifted +CE8C calls the mesh routine directly, past the checker on its
+  veneer. lift.py: A4_NODIRECT_XXXXX makes lifted callers go through the game's entry (the veneer);
+  A4_LIFTCHECK now requires it for +349F8 and +349B0. Run: LX2.
+- t18 (t17 + the billboard and +CE8C lifts with their hand loops + A4_MESHMEMO + A4_FASTXF, real time,
+  calibrated model, 120 s): render call 45.0 ms a call over the race (t17 43.9), windows 45.6-50.3 ms a
+  frame (t17 44-54). No gain visible -- but the two runs drove different stretches (2,109 renders
+  against 2,155; content moves the cost +-5%), too coarse for a few percent. A fair A/B: the same
+  configurations in lockstep (the same seed: the same scene at the same render), L16 (t17's lifted
+  set), L17 (+ the billboard and +CE8C), L18 (+ the memo and the hand transform). Running.
+- rules.py: titles.py --check FAILS (GAMES.md's generated tables stale); nothing in this round touched
+  a game.h or a shim, so it predates it -- not looked at here.

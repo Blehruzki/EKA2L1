@@ -41,6 +41,9 @@ uint64_t a4_eng_keys(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3)
 #ifndef A4_MESH
 #error "A4_LIFTCHECK lists the mesh routine's inserts at a4_mesh_insert (A4_MESH)"
 #endif
+#if !defined(A4_NODIRECT_349F8) || !defined(A4_NODIRECT_349B0)
+#error "A4_LIFTCHECK checks at the veneers: build it with A4_NODIRECT_349F8 and A4_NODIRECT_349B0 (lifted callers, +CE8C's among them, then call through them)"
+#endif
 #define a4_engv_349F8 a4_lck_l349F8
 #define a4_engv_349B0 a4_lck_l349B0
 #endif
