@@ -317,7 +317,7 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
     loop_hooks = {} if measure_only else LOOP_HOOKS
     insert_hooks = {} if clean else INSERT_HOOKS      # fps detour
     cache_hooks = {} if clean else CACHE_HOOKS        # back-buffer cache
-    capture_hooks = CAPTURE_HOOKS if capture else {}  # stage-3a primitive capture
+    capture_hooks = dict(CAPTURE_HOOKS) if capture else {}  # stage-3a primitive capture
     if clean: gl = False; capture = False
 
     d = bytearray(open(src_exe, 'rb').read())
@@ -397,6 +397,12 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         blx_insert(code, off, syms[tramp])
         print('cache  +%06X -> %s +%06X (4-byte BLX detour)' % (off, tramp, syms[tramp] - LINK_BASE))
     for off, tramp in capture_hooks.items():
+        # a capture hook inside a function the engine replaces whole (its veneer at the entry): the
+        # lifted function calls the hook's handler itself (edits.py ALWAYS) -- round 50, the painter
+        if any(sym.startswith('a4_engv_') and int(sym[len('a4_engv_'):], 16) <= off < int(sym[len('a4_engv_'):], 16) + 16
+               for sym in syms):
+            print('cap    +%06X left out: its function is lifted' % off)
+            continue
         want = CAPTURE_DISPLACED[off]
         have = struct.unpack_from('<HH', code, off)
         assert have == want, 'capture hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)

@@ -38,6 +38,23 @@ a4_eng_call:
         str     r3, [r12, #4]
         add     sp, sp, #32
         pop     {r4-r8, pc}
+@ the game's HUD sprite painter (+29736) as it was, its prologue (overwritten by the engine's veneer)
+@ replayed and then on at +29740 (Thumb): A4_PAINTCHECK runs it beside the lifted one. Its epilogue
+@ (add sp, #0x5c; pop {r4-r7, pc}) returns to our caller through the lr pushed here.
+        .global a4_paint_orig
+a4_paint_orig:
+        push    {r0-r7, lr}         @ +29736: push {r0-r7, lr}
+        sub     sp, sp, #0x4c       @ +29738
+        ldr     r4, [sp, #0x70]     @ +2973A
+        mov     r7, r0              @ +2973C (flags dead: +29760 sets them)
+        mov     r3, #0              @ +2973E
+        adr     r12, a4_g_base
+        ldr     lr, [r12]
+        add     r12, r12, lr        @ the game's code
+        add     r12, r12, #0x29000
+        add     r12, r12, #0x740
+        add     r12, r12, #1        @ +29740, Thumb
+        bx      r12
         .global a4_g_base
 a4_g_base:
         .word   0xDEADBEEF          @ patched: (code + 0) - (this word): the game's code, where it runs

@@ -210,3 +210,12 @@ for a, pa, pp in ((0x23D16, 0xBC, 0xC0), (0x23D56, 0xC4, 0xC8)):
 # velocity (+010, a step's) + a lift; on a substep the traffic moved a third of that
 B(0x20154, '{ uint32_t k_, a_ = MEM32(sp + 0x90u); for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x30u + k_) = MEM32(a_ + k_) + (uint32_t)eng_thirdv(a_ + 0x40u + k_, (int32_t)MEM32(r4 + k_)); }',
   'the traffic car\'s substep, not its step')
+
+# ---- applied in every build that lifts the function (not only the 3x engine's): the port's own hooks
+# that a detour put into the game's code, which a lifted function replaces whole and so must call itself
+ALWAYS = {
+    # the HUD sprite painter (+29736, lifted for speed: round 50, 19% of the race's modelled CPU cycles):
+    # a4_hud_tramp's call at +2973A, the end of the 3D pass -- a4_gl_hud composites the frame's GPU
+    # image before the HUD is painted over it (the injector leaves the detour out when it is lifted)
+    0x2973A: {'before': 'a4_gl_hud();', 'why': 'the end of the 3D pass: the frame composited before the HUD'},
+}

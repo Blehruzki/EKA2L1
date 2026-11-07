@@ -38,6 +38,10 @@ if '-DA4_ENG3' in FL: CALLMAP = {0x1B2D6: 'eng_c_1b2d6'}
 _ed = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'renderer', 'eng', 'edits.py')
 if os.path.exists(_ed) and '-DA4_ENG3' in FL:          # the edits are the 3x engine's; without A4_ENG3 the game's code exactly
     _g = {}; exec(open(_ed).read(), _g); EDITS = _g['EDITS']
+if os.path.exists(_ed):                                  # ALWAYS: the port's own hooks a lifted function must keep
+    _g = {}; exec(open(_ed).read(), _g)                  # (they replace detours at its code), in every build
+    for _a, _e in _g.get('ALWAYS', {}).items():
+        EDITS.setdefault(_a, {}).update(_e)
 
 # every function the game calls (Thumb BL targets): the only places a branch leaves a function by
 BLT = set()

@@ -385,7 +385,8 @@ struct mesh {
                                          * near sprite is about (MESH_NEARF) -- r28b had it always on, ~55
                                          * faces a frame, ~3 ms on the phone; 256 lets the flame sink */
 #endif
-struct mrun { uint32_t kslot; int16_t box[4]; uint16_t head, tail, cnt, pad; };
+/* a run of the list: its key (texture slot | texz << 8), its faces' ZW range (A4_MESHZ), box, faces */
+struct mrun { uint16_t kslot; int16_t zlo; int16_t box[4]; uint16_t head, tail, cnt; int16_t zhi; };
 #define MESH_RB  ((A4_GL_MESH + 0x800u + 61u * MESH_MAXT + 3u) & ~3u)        /* word aligned */
 #define MESH_R   ((struct mrun *)MESH_RB)
 #define MESH_TOP ((MESH_RB + 20u * MESH_NR + 0xFFFu) & ~0xFFFu)
@@ -4432,18 +4433,53 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
                 k |= (T[i] & 2u) << 7;               /* run key: texture slot | texz << 8 */
                 const int16_t *b = B + i * 4u;
                 int32_t r = (int32_t)nr - 1, found = -1;
+#ifdef A4_MESHZ
+                /* The face's ZW range (its corners' -z'; window depth falls as ZW grows). Every
+                 * face of the list writes depth; the perspective class (texz) tests GEQUAL,
+                 * the rest are painted (ALWAYS). Where boxes meet, drawing a face before a run
+                 * leaves the same colour and depth when: both are tested and their ranges are
+                 * apart (the nearer wins either way); the face is tested and wholly farther
+                 * than a painted run (the run covers it either way); the face is painted and a
+                 * tested run is wholly farther (the face covers it either way). Two painted
+                 * ones keep their order. "Apart" with a margin of 1/256 of ZW, many times the
+                 * 24-bit buffer's step, so the depths cannot tie once quantised (r50: the list
+                 * made 209 draws a render, ~6 faces each, 10.9 ms on the N95 model). */
+                const int16_t *fv = MESH_V + i * 18u;
+                int32_t fl = -fv[2], fh = -fv[2];
+                if (-fv[8] < fl) fl = -fv[8];
+                if (-fv[8] > fh) fh = -fv[8];
+                if (-fv[14] < fl) fl = -fv[14];
+                if (-fv[14] > fh) fh = -fv[14];
+                const uint32_t tz = (k >> 8) & 1u, zok = s->zbits >= 24u;
+#define MESHZ_FARTHER(a, b) ((int32_t)(a) - (int32_t)(b) > ((int32_t)(b) >> 8) + 1)
+#endif
                 for (uint32_t steps = 0; r >= 0 && steps <= REO_SCAN; r--, steps++) {
                     if (R[r].kslot == k) { found = r; break; }
                     const int16_t *rb = R[r].box;
                     if (b[2] < rb[0] || rb[2] < b[0] || b[3] < rb[1] || rb[3] < b[1]) continue;   /* apart */
+#ifdef A4_MESHZ
+                    if (zok) {
+                        const uint32_t rz = R[r].kslot >> 8;
+                        if (tz && rz && (MESHZ_FARTHER(fl, R[r].zhi) || MESHZ_FARTHER(R[r].zlo, fh))) continue;
+                        if (tz && !rz && MESHZ_FARTHER(fl, R[r].zhi)) continue;
+                        if (!tz && rz && MESHZ_FARTHER(R[r].zlo, fh)) continue;
+                    }
+#endif
                     break;                          /* shares pixels: stays after it */
                 }
                 if (found < 0) {
                     if (nr == MESH_NR) { flush = 1; goto draw; }   /* draw what is held, then retake this one */
                     found = (int32_t)nr++;
-                    R[found].kslot = k; R[found].head = R[found].tail = (uint16_t)i; R[found].cnt = 0;
+                    R[found].kslot = (uint16_t)k; R[found].head = R[found].tail = (uint16_t)i; R[found].cnt = 0;
                     R[found].box[0] = b[0]; R[found].box[1] = b[1]; R[found].box[2] = b[2]; R[found].box[3] = b[3];
+#ifdef A4_MESHZ
+                    R[found].zlo = (int16_t)fl; R[found].zhi = (int16_t)fh;
+#endif
                 } else {
+#ifdef A4_MESHZ
+                    if (fl < R[found].zlo) R[found].zlo = (int16_t)fl;
+                    if (fh > R[found].zhi) R[found].zhi = (int16_t)fh;
+#endif
                     NX[R[found].tail] = (uint16_t)i; R[found].tail = (uint16_t)i;
                     int16_t *rb = R[found].box;
                     if (b[0] < rb[0]) rb[0] = b[0];

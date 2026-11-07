@@ -7383,3 +7383,34 @@ Owner: "Sounds like a plan. Go ahead."
     2.3: ~20-26 ms of a 50-80 ms render.
   - A cycle-weighted profile is the instrument (emulator: EKA2L1_PCPROF_CYCLES=1, the model's
     cycles credited per block, EMU_PATCHES.md). Run: pct15, t15 on the calibrated model.
+- Cycle-weighted profile (pct15: t15 on the calibrated model, 1.5 G instructions of race after 8 G,
+  EKA2L1_PCPROF_CYCLES; GPU charges not in it): the game 49.0% -- the HUD sprite painter +29736
+  19.3% (one function, 109 blocks), +34000 8.8% (+345E4 3.0, the mesh routine +349F8 2.8),
+  +52000 5.5% (+522A4 4.0: 565 blends), +3115C 2.8, +3015E 2.7 (the billboard blit) --; our blob
+  30.6% (the composite 11.5, lean_tail 4.4, a4_mesh_insert 3.9, batch_draw 2.3, mesh_draw 2.2,
+  mesh_scr 1.2, draw_prim_take 1.1, the engine 1.3); ngibackbuffer +CCB8 11.2%; irobex.dll 2.9%
+  (a thread polling: not looked at). The painter is a generic per-pixel blitter (per pixel: the
+  sprite's format flags re-read, 4/8/16-bit source, the palette entry's RGB888 -> 565 each time,
+  a 4-bit alpha plane, five effect modes) in Thumb at the model's CPI 3.0.
+- The capture header's MESH words (t13 capidx 80): the list made 209 of a render's 299 draw
+  calls (1,244 triangles, ~6 a call), 10.9 ms of a render drawing it on the model; the table ~90.
+- A4_MESHZ (a4_gl.c mesh_draw): the list's run grouping also passes a run whose box meets the
+  face's when the order cannot change colour or depth -- both depth-tested (texz) with ZW ranges
+  apart, a tested face wholly farther than a painted run, a painted face over a tested run wholly
+  farther; two painted ones keep their order. Apart = by 1/256 of ZW, many 24-bit steps (on only
+  with zbits >= 24; the phone's depth bits are a capture word, depth_bits). struct mrun's key cut
+  to 16 bits for the range (same 20 bytes). Not yet checked against the picture.
+- The painter lifted (tools/lift.py, +29736 in renderer/eng/funcs.txt): exact C compiled to ARM.
+  Its entry carried the HUD capture detour (+2973A, a4_hud_tramp -> a4_gl_hud, the end of the 3D
+  pass); edits.py ALWAYS (applied in every build that lifts) puts that call in the lifted code and
+  the injector leaves a capture hook out when its function is lifted.
+- Exactness, A4_PAINTCHECK (a4_eng.c; a4_paint_orig in a4_eng.s replays the game's prologue and
+  goes on at +29740): every painter call run twice on the same input -- the game's then the
+  lifted -- and the sprite's rectangle and clip words compared (census words 115-121). PC1 (stock
+  + the lifted painter, lockstep, 100 s, menus and race): 29,842 calls compared, 0 differing
+  pixels, 0 clip words; 356 calls too large for the buffers (full-screen menu sprites, all in the
+  menus) not compared. The check tested: PCM (a mutant flipping one pixel a call) -- 19,811 of
+  19,811 calls flagged. (A whole-run comparison does not do: S0 vs P1 lockstep parted at the
+  opponent's grid slot from the countdown -- the menus run on the wall clock and the run's
+  timing changes what the seed meets -- so only an in-run comparison is a test.)
+- t16 (the r15 engine + the lifted painter + A4_MESHZ, real time) on the calibrated model. Run.

@@ -15664,6 +15664,506 @@ L_2219A:
     RET(lr);                                                     /* 0221be bx lr */
 }
 
+#undef RET
+#define RET(v) do { switch (v) {  default: return ((uint64_t)r1 << 32) | r0; } } while (0)
+/* +29736, 450 instructions (tools/lift.py) */
+uint64_t eng_29736(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
+                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
+{
+    uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = 0xFFFFFFFFu, t = 0;
+    uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
+    uint32_t stk[52]; uint32_t sp = (uint32_t)(uintptr_t)&stk[52 - 8];
+    stk[44] = s0; stk[45] = s1; stk[46] = s2; stk[47] = s3;
+    stk[48] = s4; stk[49] = s5; stk[50] = s6; stk[51] = s7;
+    (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
+    sp -= 36; MEM32(sp + 0) = r0; MEM32(sp + 4) = r1; MEM32(sp + 8) = r2; MEM32(sp + 12) = r3; MEM32(sp + 16) = r4; MEM32(sp + 20) = r5; MEM32(sp + 24) = r6; MEM32(sp + 28) = r7; MEM32(sp + 32) = lr; /* 029736 push {r0, r1, r2, r3, r4, r5, r6, r7, lr} */
+    { uint32_t ta = sp, tb = 0x4Cu; t = ta - tb; sp = t; }       /* 029738 sub sp, #0x4c */
+    /* engine: the end of the 3D pass: the frame composited before the HUD */
+    a4_gl_hud();
+    r4 = MEM32(sp + 0x70u);                                      /* 02973a ldr r4, [sp, #0x70] */
+    r7 = r0; fN = r7 >> 31; fZ = r7 == 0;                        /* 02973c movs r7, r0 */
+    r3 = 0x0u; fN = r3 >> 31; fZ = r3 == 0;                      /* 02973e movs r3, #0 */
+    MEM32(sp + 0x40u) = r3;                                      /* 029740 str r3, [sp, #0x40] */
+    r3 = 0x4u; fN = r3 >> 31; fZ = r3 == 0;                      /* 029742 movs r3, #4 */
+    r2 = (uint32_t)(int32_t)MEMS16(r4 + r3);                     /* 029744 ldrsh r2, [r4, r3] */
+    MEM32(sp + 0x3Cu) = r2;                                      /* 029746 str r2, [sp, #0x3c] */
+    r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 029748 movs r0, #0 */
+    r3 = 0x6u; fN = r3 >> 31; fZ = r3 == 0;                      /* 02974a movs r3, #6 */
+    r5 = (uint32_t)(int32_t)MEMS16(r4 + r3);                     /* 02974c ldrsh r5, [r4, r3] */
+    MEM32(sp + 0x38u) = r5;                                      /* 02974e str r5, [sp, #0x38] */
+    r3 = MEM32(r1 + 0x4u);                                       /* 029750 ldr r3, [r1, #4] */
+    MEM32(sp + 0x34u) = r3;                                      /* 029752 str r3, [sp, #0x34] */
+    r6 = MEM16(r1 + 0x8u);                                       /* 029754 ldrh r6, [r1, #8] */
+    MEM32(sp + 0x30u) = r6;                                      /* 029756 str r6, [sp, #0x30] */
+    r3 = MEM16(r1 + 0xAu);                                       /* 029758 ldrh r3, [r1, #0xa] */
+    lr = r3;                                                     /* 02975a mov lr, r3 */
+    r3 = 0x38u; fN = r3 >> 31; fZ = r3 == 0;                     /* 02975c movs r3, #0x38 */
+    r6 = (uint32_t)(int32_t)MEMS16(r1 + r3);                     /* 02975e ldrsh r6, [r1, r3] */
+    { uint32_t ta = r6, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 029760 adds r3, r6, #1 */
+    if (!fZ) goto L_29776;                                       /* 029762 bne #0x29776 */
+    r6 = MEM32(sp + 0x30u);                                      /* 029764 ldr r6, [sp, #0x30] */
+    r3 = lr;                                                     /* 029766 mov r3, lr */
+    r12 = r6;                                                    /* 029768 mov ip, r6 */
+    r6 = 0x0u; fN = r6 >> 31; fZ = r6 == 0;                      /* 02976a movs r6, #0 */
+    MEM16(r1 + 0x38u) = r6;                                      /* 02976c strh r6, [r1, #0x38] */
+    MEM16(r1 + 0x3Au) = r6;                                      /* 02976e strh r6, [r1, #0x3a] */
+    r6 = r12;                                                    /* 029770 mov r6, ip */
+    MEM16(r1 + 0x3Cu) = r6;                                      /* 029772 strh r6, [r1, #0x3c] */
+    MEM16(r1 + 0x3Eu) = r3;                                      /* 029774 strh r3, [r1, #0x3e] */
+L_29776:
+    r3 = 0x38u; fN = r3 >> 31; fZ = r3 == 0;                     /* 029776 movs r3, #0x38 */
+    r6 = (uint32_t)(int32_t)MEMS16(r1 + r3);                     /* 029778 ldrsh r6, [r1, r3] */
+    r3 = r6; fN = r3 >> 31; fZ = r3 == 0;                        /* 02977a movs r3, r6 */
+    r12 = r3;                                                    /* 02977c mov ip, r3 */
+    r12 = r6;                                                    /* 02977e mov ip, r6 */
+    r3 = 0x3Cu; fN = r3 >> 31; fZ = r3 == 0;                     /* 029780 movs r3, #0x3c */
+    r6 = (uint32_t)(int32_t)MEMS16(r1 + r3);                     /* 029782 ldrsh r6, [r1, r3] */
+    { uint32_t ta = r6, tb = r12; t = ta + tb; r6 = t; }         /* 029784 add r6, ip */
+    MEM32(sp + 0x2Cu) = r6;                                      /* 029786 str r6, [sp, #0x2c] */
+    r3 = 0x3Au; fN = r3 >> 31; fZ = r3 == 0;                     /* 029788 movs r3, #0x3a */
+    r6 = (uint32_t)(int32_t)MEMS16(r1 + r3);                     /* 02978a ldrsh r6, [r1, r3] */
+    lr = r6;                                                     /* 02978c mov lr, r6 */
+    r3 = 0x3Eu; fN = r3 >> 31; fZ = r3 == 0;                     /* 02978e movs r3, #0x3e */
+    r1 = (uint32_t)(int32_t)MEMS16(r1 + r3);                     /* 029790 ldrsh r1, [r1, r3] */
+    { uint32_t ta = r6, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 029792 adds r1, r6, r1 */
+    r6 = MEM32(sp + 0x54u);                                      /* 029794 ldr r6, [sp, #0x54] */
+    { uint32_t ta = r6, tb = r12; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 029796 cmp r6, ip */
+    if ((fN == fV)) goto L_297A8;                                /* 029798 bge #0x297a8 */
+    r6 = MEM32(sp + 0x54u);                                      /* 02979a ldr r6, [sp, #0x54] */
+    r3 = r12;                                                    /* 02979c mov r3, ip */
+    { uint32_t ta = r3, tb = r6; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 02979e subs r3, r3, r6 */
+    { uint32_t ta = r2, tb = r3; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 0297a0 subs r2, r2, r3 */
+    MEM32(sp + 0x40u) = r3;                                      /* 0297a2 str r3, [sp, #0x40] */
+    r3 = r12;                                                    /* 0297a4 mov r3, ip */
+    MEM32(sp + 0x54u) = r3;                                      /* 0297a6 str r3, [sp, #0x54] */
+L_297A8:
+    r3 = MEM32(sp + 0x58u);                                      /* 0297a8 ldr r3, [sp, #0x58] */
+    { uint32_t ta = r3, tb = lr; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0297aa cmp r3, lr */
+    if ((fN == fV)) goto L_297BA;                                /* 0297ac bge #0x297ba */
+    r3 = MEM32(sp + 0x58u);                                      /* 0297ae ldr r3, [sp, #0x58] */
+    r6 = lr;                                                     /* 0297b0 mov r6, lr */
+    { uint32_t ta = r6, tb = r3; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 0297b2 subs r0, r6, r3 */
+    { uint32_t ta = r5, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r5 = t; } /* 0297b4 subs r5, r5, r0 */
+    r3 = lr;                                                     /* 0297b6 mov r3, lr */
+    MEM32(sp + 0x58u) = r3;                                      /* 0297b8 str r3, [sp, #0x58] */
+L_297BA:
+    r3 = MEM32(sp + 0x54u);                                      /* 0297ba ldr r3, [sp, #0x54] */
+    r6 = MEM32(sp + 0x2Cu);                                      /* 0297bc ldr r6, [sp, #0x2c] */
+    { uint32_t ta = r3, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 0297be adds r3, r3, r2 */
+    { uint32_t ta = r3, tb = r6; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0297c0 cmp r3, r6 */
+    if ((fZ || fN != fV)) goto L_297D0;                          /* 0297c2 ble #0x297d0 */
+    r6 = MEM32(sp + 0x2Cu);                                      /* 0297c4 ldr r6, [sp, #0x2c] */
+    { uint32_t ta = r3, tb = r6; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 0297c6 subs r3, r3, r6 */
+    { uint32_t ta = r2, tb = r3; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 0297c8 subs r2, r2, r3 */
+    r6 = MEM32(sp + 0x3Cu);                                      /* 0297ca ldr r6, [sp, #0x3c] */
+    { uint32_t ta = r6, tb = r3; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r6 = t; } /* 0297cc subs r6, r6, r3 */
+    MEM32(sp + 0x3Cu) = r6;                                      /* 0297ce str r6, [sp, #0x3c] */
+L_297D0:
+    r3 = MEM32(sp + 0x58u);                                      /* 0297d0 ldr r3, [sp, #0x58] */
+    { uint32_t ta = r3, tb = r5; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 0297d2 adds r3, r3, r5 */
+    { uint32_t ta = r3, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0297d4 cmp r3, r1 */
+    if ((fZ || fN != fV)) goto L_297E2;                          /* 0297d6 ble #0x297e2 */
+    { uint32_t ta = r3, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 0297d8 subs r1, r3, r1 */
+    { uint32_t ta = r5, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r5 = t; } /* 0297da subs r5, r5, r1 */
+    r3 = MEM32(sp + 0x38u);                                      /* 0297dc ldr r3, [sp, #0x38] */
+    { uint32_t ta = r3, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 0297de subs r1, r3, r1 */
+    MEM32(sp + 0x38u) = r1;                                      /* 0297e0 str r1, [sp, #0x38] */
+L_297E2:
+    { uint32_t ta = r2, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0297e2 cmp r2, #0 */
+    if ((fZ || fN != fV)) goto L_298D0;                          /* 0297e4 ble #0x298d0 */
+    { uint32_t ta = r5, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0297e6 cmp r5, #0 */
+    if ((fZ || fN != fV)) goto L_298D0;                          /* 0297e8 ble #0x298d0 */
+    r1 = 0x1u; fN = r1 >> 31; fZ = r1 == 0;                      /* 0297ea movs r1, #1 */
+    lr = r1;                                                     /* 0297ec mov lr, r1 */
+    r6 = MEM32(sp + 0x30u);                                      /* 0297ee ldr r6, [sp, #0x30] */
+    { uint32_t ta = r6, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 0297f0 subs r1, r6, r2 */
+    r12 = r1;                                                    /* 0297f2 mov ip, r1 */
+    r1 = MEM32(sp + 0x74u);                                      /* 0297f4 ldr r1, [sp, #0x74] */
+    t = SHL_C(r1, 0x1Fu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 0297f6 lsls r1, r1, #0x1f */
+    if (fZ) goto L_29810;                                        /* 0297f8 beq #0x29810 */
+    r3 = 0x4u; fN = r3 >> 31; fZ = r3 == 0;                      /* 0297fa movs r3, #4 */
+    r1 = (uint32_t)(int32_t)MEMS16(r4 + r3);                     /* 0297fc ldrsh r1, [r4, r3] */
+    r3 = MEM32(sp + 0x40u);                                      /* 0297fe ldr r3, [sp, #0x40] */
+    { uint32_t ta = r1, tb = r3; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 029800 subs r3, r1, r3 */
+    { uint32_t ta = r3, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 029802 subs r1, r3, r2 */
+    t = SHL_C(r1, 0x10u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029804 lsls r1, r1, #0x10 */
+    t = SAR_C(r1, 0x10u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029806 asrs r1, r1, #0x10 */
+    { uint32_t ta = r3, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 029808 subs r3, r3, #1 */
+    MEM32(sp + 0x40u) = r3;                                      /* 02980a str r3, [sp, #0x40] */
+    { uint32_t ta = r1, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 02980c subs r1, r1, #1 */
+    MEM32(sp + 0x3Cu) = r1;                                      /* 02980e str r1, [sp, #0x3c] */
+L_29810:
+    r1 = MEM32(sp + 0x74u);                                      /* 029810 ldr r1, [sp, #0x74] */
+    t = SHL_C(r1, 0x1Eu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029812 lsls r1, r1, #0x1e */
+    if (!fN) goto L_29828;                                       /* 029814 bpl #0x29828 */
+    r3 = 0x6u; fN = r3 >> 31; fZ = r3 == 0;                      /* 029816 movs r3, #6 */
+    r1 = (uint32_t)(int32_t)MEMS16(r4 + r3);                     /* 029818 ldrsh r1, [r4, r3] */
+    { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 02981a subs r0, r1, r0 */
+    { uint32_t ta = r0, tb = r5; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 02981c subs r1, r0, r5 */
+    t = SHL_C(r1, 0x10u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 02981e lsls r1, r1, #0x10 */
+    t = SAR_C(r1, 0x10u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029820 asrs r1, r1, #0x10 */
+    { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 029822 subs r0, r0, #1 */
+    { uint32_t ta = r1, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 029824 subs r1, r1, #1 */
+    MEM32(sp + 0x38u) = r1;                                      /* 029826 str r1, [sp, #0x38] */
+L_29828:
+    r1 = MEM32(sp + 0x74u);                                      /* 029828 ldr r1, [sp, #0x74] */
+    t = SHL_C(r1, 0x1Du, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 02982a lsls r3, r1, #0x1d */
+    r1 = 0x1u; fN = r1 >> 31; fZ = r1 == 0;                      /* 02982c movs r1, #1 */
+    { uint32_t ta = r3, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 02982e cmp r3, #0 */
+    if ((fN == fV)) goto L_29850;                                /* 029830 bge #0x29850 */
+    r3 = 0x6u; fN = r3 >> 31; fZ = r3 == 0;                      /* 029832 movs r3, #6 */
+    r6 = (uint32_t)(int32_t)MEMS16(r4 + r3);                     /* 029834 ldrsh r6, [r4, r3] */
+    { uint32_t ta = r6, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 029836 subs r0, r6, r0 */
+    { uint32_t ta = r0, tb = r5; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 029838 subs r3, r0, r5 */
+    t = SHL_C(r3, 0x10u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 02983a lsls r3, r3, #0x10 */
+    t = SAR_C(r3, 0x10u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 02983c asrs r3, r3, #0x10 */
+    { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 02983e subs r0, r0, #1 */
+    { uint32_t ta = r3, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 029840 subs r3, r3, #1 */
+    MEM32(sp + 0x38u) = r3;                                      /* 029842 str r3, [sp, #0x38] */
+    r6 = MEM32(sp + 0x30u);                                      /* 029844 ldr r6, [sp, #0x30] */
+    lr = r6;                                                     /* 029846 mov lr, r6 */
+    r6 = MEM32(sp + 0x30u);                                      /* 029848 ldr r6, [sp, #0x30] */
+    t = r6 * r2; fN = t >> 31; fZ = t == 0; r2 = t;              /* 02984a muls r2, r6, r2 */
+    { uint32_t ta = r1, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 02984c subs r2, r1, r2 */
+    r12 = r2;                                                    /* 02984e mov ip, r2 */
+L_29850:
+    r5 = MEM32(sp + 0x40u);                                      /* 029850 ldr r5, [sp, #0x40] */
+    r6 = MEM32(sp + 0x3Cu);                                      /* 029852 ldr r6, [sp, #0x3c] */
+    r3 = 0x0u; fN = r3 >> 31; fZ = r3 == 0;                      /* 029854 movs r3, #0 */
+    r3 = ~r3; fN = r3 >> 31; fZ = r3 == 0;                       /* 029856 mvns r3, r3 */
+    r2 = r1; fN = r2 >> 31; fZ = r2 == 0;                        /* 029858 movs r2, r1 */
+    { uint32_t ta = r5, tb = r6; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 02985a cmp r5, r6 */
+    if ((fN != fV)) goto L_29860;                                /* 02985c blt #0x29860 */
+    r2 = r3; fN = r2 >> 31; fZ = r2 == 0;                        /* 02985e movs r2, r3 */
+L_29860:
+    MEM32(sp + 0x28u) = r2;                                      /* 029860 str r2, [sp, #0x28] */
+    r5 = MEM32(sp + 0x38u);                                      /* 029862 ldr r5, [sp, #0x38] */
+    r2 = r1; fN = r2 >> 31; fZ = r2 == 0;                        /* 029864 movs r2, r1 */
+    { uint32_t ta = r0, tb = r5; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 029866 cmp r0, r5 */
+    if ((fN != fV)) goto L_2986C;                                /* 029868 blt #0x2986c */
+    r2 = r3; fN = r2 >> 31; fZ = r2 == 0;                        /* 02986a movs r2, r3 */
+L_2986C:
+    MEM32(sp + 0x24u) = r2;                                      /* 02986c str r2, [sp, #0x24] */
+    r3 = 0x4u; fN = r3 >> 31; fZ = r3 == 0;                      /* 02986e movs r3, #4 */
+    r2 = (uint32_t)(int32_t)MEMS16(r4 + r3);                     /* 029870 ldrsh r2, [r4, r3] */
+    t = r0 * r2; fN = t >> 31; fZ = t == 0; r2 = t;              /* 029872 muls r2, r0, r2 */
+    MEM32(sp + 0x20u) = r2;                                      /* 029874 str r2, [sp, #0x20] */
+    r2 = MEM32(sp + 0x30u);                                      /* 029876 ldr r2, [sp, #0x30] */
+    r3 = MEM32(sp + 0x58u);                                      /* 029878 ldr r3, [sp, #0x58] */
+    t = r3 * r2; fN = t >> 31; fZ = t == 0; r2 = t;              /* 02987a muls r2, r3, r2 */
+    r3 = MEM32(sp + 0x54u);                                      /* 02987c ldr r3, [sp, #0x54] */
+    { uint32_t ta = r2, tb = r3; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 02987e adds r2, r2, r3 */
+    r3 = MEM32(sp + 0x34u);                                      /* 029880 ldr r3, [sp, #0x34] */
+    t = SHL_C(r2, 0x1u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029882 lsls r2, r2, #1 */
+    { uint32_t ta = r2, tb = r3; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r6 = t; } /* 029884 adds r6, r2, r3 */
+    MEM32(sp + 0x1Cu) = r0;                                      /* 029886 str r0, [sp, #0x1c] */
+    r0 = MEM32(sp + 0x1Cu);                                      /* 029888 ldr r0, [sp, #0x1c] */
+    r3 = MEM32(sp + 0x38u);                                      /* 02988a ldr r3, [sp, #0x38] */
+    { uint32_t ta = r0, tb = r3; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 02988c cmp r0, r3 */
+    if (fZ) goto L_298D0;                                        /* 02988e beq #0x298d0 */
+    r0 = lr;                                                     /* 029890 mov r0, lr */
+    t = SHL_C(r0, 0x1u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 029892 lsls r0, r0, #1 */
+    MEM32(sp + 0x48u) = r0;                                      /* 029894 str r0, [sp, #0x48] */
+    r0 = r12;                                                    /* 029896 mov r0, ip */
+    t = SHL_C(r0, 0x1u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 029898 lsls r0, r0, #1 */
+    MEM32(sp + 0x44u) = r0;                                      /* 02989a str r0, [sp, #0x44] */
+L_2989C:
+    r1 = MEM32(sp + 0x40u);                                      /* 02989c ldr r1, [sp, #0x40] */
+    MEM32(sp + 0x18u) = r1;                                      /* 02989e str r1, [sp, #0x18] */
+    r0 = MEM32(sp + 0x3Cu);                                      /* 0298a0 ldr r0, [sp, #0x3c] */
+    r1 = MEM32(sp + 0x18u);                                      /* 0298a2 ldr r1, [sp, #0x18] */
+    { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0298a4 cmp r1, r0 */
+    if (fZ) goto L_2999C;                                        /* 0298a6 beq #0x2999c */
+L_298A8:
+    r0 = MEM32(sp + 0x20u);                                      /* 0298a8 ldr r0, [sp, #0x20] */
+    r1 = MEM32(sp + 0x18u);                                      /* 0298aa ldr r1, [sp, #0x18] */
+    { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 0298ac adds r0, r0, r1 */
+    r5 = 0xFu; fN = r5 >> 31; fZ = r5 == 0;                      /* 0298ae movs r5, #0xf */
+    r1 = MEM8(r4 + 0x9u);                                        /* 0298b0 ldrb r1, [r4, #9] */
+    { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0298b2 cmp r1, #0 */
+    if (fZ) goto L_29922;                                        /* 0298b4 beq #0x29922 */
+    r1 = MEM8(r4 + 0xAu);                                        /* 0298b6 ldrb r1, [r4, #0xa] */
+    { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0298b8 cmp r1, #0 */
+    if (fZ) goto L_298D2;                                        /* 0298ba beq #0x298d2 */
+    r1 = MEM32(r4 + 0x10u);                                      /* 0298bc ldr r1, [r4, #0x10] */
+    t = SAR_C(r0, 0x1u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 0298be asrs r2, r0, #1 */
+    r1 = MEM8(r1 + r2);                                          /* 0298c0 ldrb r1, [r1, r2] */
+    r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 0298c2 movs r2, #1 */
+    t = r2 & ~ r0; fN = t >> 31; fZ = t == 0; r2 = t;            /* 0298c4 bics r2, r0 */
+    t = SHL_C(r2, 0x2u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 0298c6 lsls r2, r2, #2 */
+    t = SHR_C(r1, r2, &fC); r1 = t; fN = t >> 31; fZ = t == 0;   /* 0298c8 lsrs r1, r2 */
+    t = r1 & r5; fN = t >> 31; fZ = t == 0; r1 = t;              /* 0298ca ands r1, r5 */
+    r12 = r1;                                                    /* 0298cc mov ip, r1 */
+    goto L_298D8;                                                /* 0298ce b #0x298d8 */
+L_298D0:
+    goto L_29AD6;                                                /* 0298d0 b #0x29ad6 */
+L_298D2:
+    r1 = MEM32(r4 + 0x10u);                                      /* 0298d2 ldr r1, [r4, #0x10] */
+    r1 = MEM8(r1 + r0);                                          /* 0298d4 ldrb r1, [r1, r0] */
+    r12 = r1;                                                    /* 0298d6 mov ip, r1 */
+L_298D8:
+    r1 = MEM8(r7 + 0xCu);                                        /* 0298d8 ldrb r1, [r7, #0xc] */
+    r2 = MEM8(r4 + 0xBu);                                        /* 0298da ldrb r2, [r4, #0xb] */
+    r3 = 0x24u; fN = r3 >> 31; fZ = r3 == 0;                     /* 0298dc movs r3, #0x24 */
+    t = r2 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              /* 0298de muls r1, r2, r1 */
+    r2 = (uint32_t)(int32_t)MEMS16(r7 + r3);                     /* 0298e0 ldrsh r2, [r7, r3] */
+    { uint32_t ta = r1, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 0298e2 adds r1, r1, r2 */
+    r2 = MEM32(r7 + 0x14u);                                      /* 0298e4 ldr r2, [r7, #0x14] */
+    t = SHL_C(r1, 0x2u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 0298e6 lsls r1, r1, #2 */
+    r2 = MEM32(r2 + r1);                                         /* 0298e8 ldr r2, [r2, r1] */
+    r3 = 0xCu; fN = r3 >> 31; fZ = r3 == 0;                      /* 0298ea movs r3, #0xc */
+    r1 = (uint32_t)(int32_t)MEMS16(r2 + r3);                     /* 0298ec ldrsh r1, [r2, r3] */
+    { uint32_t ta = r1, tb = r12; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0298ee cmp r1, ip */
+    if (!fZ) goto L_298F4;                                       /* 0298f0 bne #0x298f4 */
+    r5 = 0x0u; fN = r5 >> 31; fZ = r5 == 0;                      /* 0298f2 movs r5, #0 */
+L_298F4:
+    r1 = r12;                                                    /* 0298f4 mov r1, ip */
+    t = SHL_C(r1, 0x1u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 0298f6 lsls r3, r1, #1 */
+    { uint32_t ta = r3, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 0298f8 adds r1, r3, r1 */
+    r3 = MEM32(r2 + 0x8u);                                       /* 0298fa ldr r3, [r2, #8] */
+    { uint32_t ta = r1, tb = 0x2u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 0298fc adds r2, r1, #2 */
+    r2 = MEM8(r3 + r2);                                          /* 0298fe ldrb r2, [r3, r2] */
+    r12 = r3;                                                    /* 029900 mov ip, r3 */
+    t = SHR_C(r2, 0x3u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029902 lsrs r2, r2, #3 */
+    t = SHL_C(r2, 0x1Bu, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 029904 lsls r3, r2, #0x1b */
+    t = SAR_C(r3, 0x10u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 029906 asrs r3, r3, #0x10 */
+    lr = r3;                                                     /* 029908 mov lr, r3 */
+    { uint32_t ta = r1, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 02990a adds r2, r1, #1 */
+    r3 = r12;                                                    /* 02990c mov r3, ip */
+    r2 = MEM8(r3 + r2);                                          /* 02990e ldrb r2, [r3, r2] */
+    r3 = lr;                                                     /* 029910 mov r3, lr */
+    t = SHR_C(r2, 0x2u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029912 lsrs r2, r2, #2 */
+    t = SHL_C(r2, 0x5u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029914 lsls r2, r2, #5 */
+    t = r2 | r3; fN = t >> 31; fZ = t == 0; r2 = t;              /* 029916 orrs r2, r3 */
+    r3 = r12;                                                    /* 029918 mov r3, ip */
+    r1 = MEM8(r3 + r1);                                          /* 02991a ldrb r1, [r3, r1] */
+    t = SHR_C(r1, 0x3u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 02991c lsrs r1, r1, #3 */
+    t = r2 | r1; fN = t >> 31; fZ = t == 0; r2 = t;              /* 02991e orrs r2, r1 */
+    goto L_29928;                                                /* 029920 b #0x29928 */
+L_29922:
+    r1 = MEM32(r4 + 0xCu);                                       /* 029922 ldr r1, [r4, #0xc] */
+    t = SHL_C(r0, 0x1u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029924 lsls r2, r0, #1 */
+    r2 = (uint32_t)(int32_t)MEMS16(r1 + r2);                     /* 029926 ldrsh r2, [r1, r2] */
+L_29928:
+    r1 = MEM8(r4 + 0x8u);                                        /* 029928 ldrb r1, [r4, #8] */
+    { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 02992a cmp r1, #0 */
+    if (fZ) goto L_29940;                                        /* 02992c beq #0x29940 */
+    r1 = MEM32(r4 + 0x14u);                                      /* 02992e ldr r1, [r4, #0x14] */
+    t = SAR_C(r0, 0x1u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 029930 asrs r3, r0, #1 */
+    r1 = MEM8(r1 + r3);                                          /* 029932 ldrb r1, [r1, r3] */
+    r3 = 0x1u; fN = r3 >> 31; fZ = r3 == 0;                      /* 029934 movs r3, #1 */
+    t = r3 & ~ r0; fN = t >> 31; fZ = t == 0; r3 = t;            /* 029936 bics r3, r0 */
+    t = SHL_C(r3, 0x2u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 029938 lsls r0, r3, #2 */
+    t = SHR_C(r1, r0, &fC); r1 = t; fN = t >> 31; fZ = t == 0;   /* 02993a lsrs r1, r0 */
+    t = SHL_C(r1, 0x1Cu, &fC); r5 = t; fN = t >> 31; fZ = t == 0; /* 02993c lsls r5, r1, #0x1c */
+    t = SHR_C(r5, 0x1Cu, &fC); r5 = t; fN = t >> 31; fZ = t == 0; /* 02993e lsrs r5, r5, #0x1c */
+L_29940:
+    r3 = 0x38u; fN = r3 >> 31; fZ = r3 == 0;                     /* 029940 movs r3, #0x38 */
+    r0 = (uint32_t)(int32_t)MEMS16(r7 + r3);                     /* 029942 ldrsh r0, [r7, r3] */
+    { uint32_t ta = r0, tb = 0xFu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 029944 cmp r0, #0xf */
+    if (fZ) goto L_2994E;                                        /* 029946 beq #0x2994e */
+    t = r5 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              /* 029948 muls r0, r5, r0 */
+    t = SHL_C(r0, 0xCu, &fC); r5 = t; fN = t >> 31; fZ = t == 0; /* 02994a lsls r5, r0, #0xc */
+    t = SAR_C(r5, 0x10u, &fC); r5 = t; fN = t >> 31; fZ = t == 0; /* 02994c asrs r5, r5, #0x10 */
+L_2994E:
+    r0 = MEM32(r7 + 0x34u);                                      /* 02994e ldr r0, [r7, #0x34] */
+    { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 029950 cmp r0, #1 */
+    if (fZ) goto L_2996E;                                        /* 029952 beq #0x2996e */
+    { uint32_t ta = r0, tb = 0x2u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 029954 cmp r0, #2 */
+    if (fZ) goto L_299AA;                                        /* 029956 beq #0x299aa */
+    { uint32_t ta = r0, tb = 0x3u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 029958 cmp r0, #3 */
+    if (fZ) goto L_29A4A;                                        /* 02995a beq #0x29a4a */
+    { uint32_t ta = r0, tb = 0x4u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 02995c cmp r0, #4 */
+    if (!fZ) goto L_29962;                                       /* 02995e bne #0x29962 */
+    r2 = GAME32(0x29A34);                                        /* 029960 ldr r2, [pc, #0xd0] */
+L_29962:
+    { uint32_t ta = r5, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 029962 cmp r5, #0 */
+    if (fZ) goto L_29A46;                                        /* 029964 beq #0x29a46 */
+    { uint32_t ta = r5, tb = 0xFu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 029966 cmp r5, #0xf */
+    if (!fZ) goto L_29A68;                                       /* 029968 bne #0x29a68 */
+    MEM16(r6) = r2;                                              /* 02996a strh r2, [r6] */
+    goto L_29A9C;                                                /* 02996c b #0x29a9c */
+L_2996E:
+    t = SHL_C(r2, 0x10u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 02996e lsls r0, r2, #0x10 */
+    t = SHR_C(r0, 0x1Bu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 029970 lsrs r0, r0, #0x1b */
+    r3 = 0x26u; fN = r3 >> 31; fZ = r3 == 0;                     /* 029972 movs r3, #0x26 */
+    t = r3 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              /* 029974 muls r0, r3, r0 */
+    t = SHR_C(r0, 0x7u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 029976 lsrs r0, r0, #7 */
+    t = SHL_C(r2, 0x15u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029978 lsls r1, r2, #0x15 */
+    t = SHR_C(r1, 0x1Bu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 02997a lsrs r1, r1, #0x1b */
+    r3 = 0x4Cu; fN = r3 >> 31; fZ = r3 == 0;                     /* 02997c movs r3, #0x4c */
+    t = r3 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              /* 02997e muls r1, r3, r1 */
+    t = SHR_C(r1, 0x7u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029980 lsrs r1, r1, #7 */
+    t = SHL_C(r2, 0x1Bu, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029982 lsls r2, r2, #0x1b */
+    t = SHR_C(r2, 0x1Bu, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029984 lsrs r2, r2, #0x1b */
+    t = SHL_C(r2, 0x3u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 029986 lsls r3, r2, #3 */
+    { uint32_t ta = r3, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 029988 subs r2, r3, r2 */
+    t = SHL_C(r2, 0x1u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 02998a lsls r2, r2, #1 */
+    t = SHR_C(r2, 0x7u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 02998c lsrs r2, r2, #7 */
+    { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 02998e adds r0, r0, r1 */
+    { uint32_t ta = r0, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 029990 adds r0, r0, r2 */
+    t = SHL_C(r0, 0xBu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029992 lsls r1, r0, #0xb */
+    t = SHL_C(r0, 0x1Bu, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029994 lsls r2, r0, #0x1b */
+    t = SHR_C(r2, 0x15u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029996 lsrs r2, r2, #0x15 */
+    t = r1 | r2; fN = t >> 31; fZ = t == 0; r1 = t;              /* 029998 orrs r1, r2 */
+    goto L_2999E;                                                /* 02999a b #0x2999e */
+L_2999C:
+    goto L_29AB2;                                                /* 02999c b #0x29ab2 */
+L_2999E:
+    t = SHL_C(r0, 0x1Bu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 02999e lsls r0, r0, #0x1b */
+    t = SHR_C(r0, 0x1Bu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 0299a0 lsrs r0, r0, #0x1b */
+    t = r0 | r1; fN = t >> 31; fZ = t == 0; r0 = t;              /* 0299a2 orrs r0, r1 */
+    t = SHL_C(r0, 0x10u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 0299a4 lsls r2, r0, #0x10 */
+    t = SAR_C(r2, 0x10u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 0299a6 asrs r2, r2, #0x10 */
+    goto L_29962;                                                /* 0299a8 b #0x29962 */
+L_299AA:
+    t = SHL_C(r2, 0x10u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 0299aa lsls r0, r2, #0x10 */
+    t = SHR_C(r0, 0x1Bu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 0299ac lsrs r0, r0, #0x1b */
+    MEM32(sp + 0x14u) = r0;                                      /* 0299ae str r0, [sp, #0x14] */
+    t = SHL_C(r2, 0x15u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 0299b0 lsls r0, r2, #0x15 */
+    t = SHR_C(r0, 0x1Bu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 0299b2 lsrs r1, r0, #0x1b */
+    MEM32(sp + 0x10u) = r1;                                      /* 0299b4 str r1, [sp, #0x10] */
+    t = SHL_C(r2, 0x1Bu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 0299b6 lsls r1, r2, #0x1b */
+    t = SHR_C(r1, 0x1Bu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 0299b8 lsrs r1, r1, #0x1b */
+    MEM32(sp + 0xCu) = r1;                                       /* 0299ba str r1, [sp, #0xc] */
+    r0 = MEM32(sp + 0x14u);                                      /* 0299bc ldr r0, [sp, #0x14] */
+    r3 = 0xFFu; fN = r3 >> 31; fZ = r3 == 0;                     /* 0299be movs r3, #0xff */
+    { uint32_t ta = r3, tb = 0x8Au; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 0299c0 adds r3, #0x8a */
+    t = r3 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              /* 0299c2 muls r0, r3, r0 */
+    r3 = GAME32(0x29A38);                                        /* 0299c4 ldr r3, [pc, #0x70] */
+    r1 = MEM32(sp + 0x10u);                                      /* 0299c6 ldr r1, [sp, #0x10] */
+    t = r3 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              /* 0299c8 muls r1, r3, r1 */
+    r3 = 0xBDu; fN = r3 >> 31; fZ = r3 == 0;                     /* 0299ca movs r3, #0xbd */
+    { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 0299cc adds r0, r0, r1 */
+    r1 = MEM32(sp + 0xCu);                                       /* 0299ce ldr r1, [sp, #0xc] */
+    t = r3 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              /* 0299d0 muls r1, r3, r1 */
+    { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 0299d2 adds r0, r0, r1 */
+    { uint64_t rr = a4_eng_call(GAMEARM(0x526B8), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0299d4 blx #0x526b8 */
+    r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0299d4 blx #0x526b8 */
+    MEM32(sp + 0x8u) = r1;                                       /* 0299d8 str r1, [sp, #8] */
+    r0 = MEM32(sp + 0x14u);                                      /* 0299da ldr r0, [sp, #0x14] */
+    r3 = 0xFFu; fN = r3 >> 31; fZ = r3 == 0;                     /* 0299dc movs r3, #0xff */
+    { uint32_t ta = r3, tb = 0x5Eu; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 0299de adds r3, #0x5e */
+    t = r3 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              /* 0299e0 muls r0, r3, r0 */
+    r3 = GAME32(0x29A3C);                                        /* 0299e2 ldr r3, [pc, #0x58] */
+    r1 = MEM32(sp + 0x10u);                                      /* 0299e4 ldr r1, [sp, #0x10] */
+    t = r3 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              /* 0299e6 muls r1, r3, r1 */
+    r3 = 0xA8u; fN = r3 >> 31; fZ = r3 == 0;                     /* 0299e8 movs r3, #0xa8 */
+    { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 0299ea adds r0, r0, r1 */
+    r1 = MEM32(sp + 0xCu);                                       /* 0299ec ldr r1, [sp, #0xc] */
+    t = r3 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              /* 0299ee muls r1, r3, r1 */
+    { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 0299f0 adds r0, r0, r1 */
+    { uint64_t rr = a4_eng_call(GAMEARM(0x52694), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0299f2 blx #0x52694 */
+    r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0299f2 blx #0x52694 */
+    MEM32(sp + 0x4u) = r1;                                       /* 0299f6 str r1, [sp, #4] */
+    r0 = MEM32(sp + 0x14u);                                      /* 0299f8 ldr r0, [sp, #0x14] */
+    r1 = MEM32(sp + 0x10u);                                      /* 0299fa ldr r1, [sp, #0x10] */
+    t = SHL_C(r0, 0x4u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 0299fc lsls r3, r0, #4 */
+    { uint32_t ta = r3, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 0299fe adds r0, r3, r0 */
+    r3 = GAME32(0x29A40);                                        /* 029a00 ldr r3, [pc, #0x3c] */
+    t = SHL_C(r0, 0x4u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 029a02 lsls r0, r0, #4 */
+    t = r3 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              /* 029a04 muls r1, r3, r1 */
+    r3 = 0x83u; fN = r3 >> 31; fZ = r3 == 0;                     /* 029a06 movs r3, #0x83 */
+    { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 029a08 adds r0, r0, r1 */
+    r1 = MEM32(sp + 0xCu);                                       /* 029a0a ldr r1, [sp, #0xc] */
+    t = r3 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              /* 029a0c muls r1, r3, r1 */
+    { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 029a0e adds r0, r0, r1 */
+    { uint64_t rr = a4_eng_call(GAMEARM(0x52784), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 029a10 blx #0x52784 */
+    r12 = 0xDEAD0000u; /* clobbered by the call */               /* 029a10 blx #0x52784 */
+    r0 = r1; fN = r0 >> 31; fZ = r0 == 0;                        /* 029a14 movs r0, r1 */
+    r1 = MEM32(sp + 0x8u);                                       /* 029a16 ldr r1, [sp, #8] */
+    t = SHL_C(r0, 0x1Bu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 029a18 lsls r0, r0, #0x1b */
+    t = SHL_C(r1, 0xBu, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029a1a lsls r2, r1, #0xb */
+    r1 = MEM32(sp + 0x4u);                                       /* 029a1c ldr r1, [sp, #4] */
+    t = SHR_C(r0, 0x1Bu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 029a1e lsrs r0, r0, #0x1b */
+    t = SHL_C(r1, 0x1Bu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029a20 lsls r1, r1, #0x1b */
+    t = SHR_C(r1, 0x15u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029a22 lsrs r1, r1, #0x15 */
+    t = r2 | r1; fN = t >> 31; fZ = t == 0; r2 = t;              /* 029a24 orrs r2, r1 */
+    t = r0 | r2; fN = t >> 31; fZ = t == 0; r0 = t;              /* 029a26 orrs r0, r2 */
+    t = SHL_C(r0, 0x10u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029a28 lsls r2, r0, #0x10 */
+    t = SAR_C(r2, 0x10u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029a2a asrs r2, r2, #0x10 */
+    goto L_29962;                                                /* 029a2c b #0x29962 */
+L_29A46:
+    goto L_29A9C;                                                /* 029a46 b #0x29a9c */
+L_29A4A:
+    t = SHR_C(r2, 0xBu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 029a4a lsrs r0, r2, #0xb */
+    r0 = ~r0; fN = r0 >> 31; fZ = r0 == 0;                       /* 029a4c mvns r0, r0 */
+    t = SHR_C(r2, 0x6u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029a4e lsrs r1, r2, #6 */
+    r1 = ~r1; fN = r1 >> 31; fZ = r1 == 0;                       /* 029a50 mvns r1, r1 */
+    r2 = ~r2; fN = r2 >> 31; fZ = r2 == 0;                       /* 029a52 mvns r2, r2 */
+    t = SHL_C(r1, 0x1Bu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029a54 lsls r1, r1, #0x1b */
+    t = SHR_C(r1, 0x15u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029a56 lsrs r1, r1, #0x15 */
+    t = SHL_C(r0, 0xBu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 029a58 lsls r0, r0, #0xb */
+    t = r0 | r1; fN = t >> 31; fZ = t == 0; r0 = t;              /* 029a5a orrs r0, r1 */
+    t = SHL_C(r2, 0x1Bu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029a5c lsls r1, r2, #0x1b */
+    t = SHR_C(r1, 0x1Bu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029a5e lsrs r1, r1, #0x1b */
+    t = r0 | r1; fN = t >> 31; fZ = t == 0; r0 = t;              /* 029a60 orrs r0, r1 */
+    t = SHL_C(r0, 0x10u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029a62 lsls r2, r0, #0x10 */
+    t = SAR_C(r2, 0x10u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029a64 asrs r2, r2, #0x10 */
+    goto L_29962;                                                /* 029a66 b #0x29962 */
+L_29A68:
+    r0 = MEM16(r6);                                              /* 029a68 ldrh r0, [r6] */
+    r3 = GAME32(0x29E14);                                        /* 029a6a ldr r3, [pc, #0x3a8] */
+    r1 = r2; fN = r1 >> 31; fZ = r1 == 0;                        /* 029a6c movs r1, r2 */
+    t = r1 & r3; fN = t >> 31; fZ = t == 0; r1 = t;              /* 029a6e ands r1, r3 */
+    r3 = 0x3Fu; fN = r3 >> 31; fZ = r3 == 0;                     /* 029a70 movs r3, #0x3f */
+    t = SHL_C(r3, 0x5u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 029a72 lsls r3, r3, #5 */
+    t = r2 & r3; fN = t >> 31; fZ = t == 0; r2 = t;              /* 029a74 ands r2, r3 */
+    t = SHL_C(r2, 0x10u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029a76 lsls r2, r2, #0x10 */
+    t = r1 | r2; fN = t >> 31; fZ = t == 0; r1 = t;              /* 029a78 orrs r1, r2 */
+    r2 = GAME32(0x29E14);                                        /* 029a7a ldr r2, [pc, #0x398] */
+    t = r2 & r0; fN = t >> 31; fZ = t == 0; r2 = t;              /* 029a7c ands r2, r0 */
+    t = r0 & r3; fN = t >> 31; fZ = t == 0; r0 = t;              /* 029a7e ands r0, r3 */
+    t = SHL_C(r0, 0x10u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 029a80 lsls r0, r0, #0x10 */
+    t = r0 | r2; fN = t >> 31; fZ = t == 0; r0 = t;              /* 029a82 orrs r0, r2 */
+    { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 029a84 subs r1, r1, r0 */
+    t = r5 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              /* 029a86 muls r1, r5, r1 */
+    t = SHL_C(r0, 0x4u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 029a88 lsls r0, r0, #4 */
+    { uint32_t ta = r1, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 029a8a adds r0, r1, r0 */
+    r1 = GAME32(0x29E18);                                        /* 029a8c ldr r1, [pc, #0x388] */
+    t = SHL_C(r3, 0x14u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 029a8e lsls r2, r3, #0x14 */
+    t = r1 & r0; fN = t >> 31; fZ = t == 0; r1 = t;              /* 029a90 ands r1, r0 */
+    t = SHR_C(r1, 0x4u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 029a92 lsrs r1, r1, #4 */
+    t = r0 & r2; fN = t >> 31; fZ = t == 0; r0 = t;              /* 029a94 ands r0, r2 */
+    t = SHR_C(r0, 0x14u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 029a96 lsrs r0, r0, #0x14 */
+    t = r0 | r1; fN = t >> 31; fZ = t == 0; r0 = t;              /* 029a98 orrs r0, r1 */
+    MEM16(r6) = r0;                                              /* 029a9a strh r0, [r6] */
+L_29A9C:
+    r0 = MEM32(sp + 0x48u);                                      /* 029a9c ldr r0, [sp, #0x48] */
+    { uint32_t ta = r0, tb = r6; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r6 = t; } /* 029a9e adds r6, r0, r6 */
+    r0 = MEM32(sp + 0x28u);                                      /* 029aa0 ldr r0, [sp, #0x28] */
+    r1 = MEM32(sp + 0x18u);                                      /* 029aa2 ldr r1, [sp, #0x18] */
+    { uint32_t ta = r1, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 029aa4 adds r1, r1, r0 */
+    MEM32(sp + 0x18u) = r1;                                      /* 029aa6 str r1, [sp, #0x18] */
+    r0 = MEM32(sp + 0x3Cu);                                      /* 029aa8 ldr r0, [sp, #0x3c] */
+    r1 = MEM32(sp + 0x18u);                                      /* 029aaa ldr r1, [sp, #0x18] */
+    { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 029aac cmp r1, r0 */
+    if (fZ) goto L_29AB2;                                        /* 029aae beq #0x29ab2 */
+    goto L_298A8;                                                /* 029ab0 b #0x298a8 */
+L_29AB2:
+    r0 = MEM32(sp + 0x44u);                                      /* 029ab2 ldr r0, [sp, #0x44] */
+    { uint32_t ta = r0, tb = r6; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r6 = t; } /* 029ab4 adds r6, r0, r6 */
+    r3 = 0x4u; fN = r3 >> 31; fZ = r3 == 0;                      /* 029ab6 movs r3, #4 */
+    r0 = (uint32_t)(int32_t)MEMS16(r4 + r3);                     /* 029ab8 ldrsh r0, [r4, r3] */
+    r1 = MEM32(sp + 0x24u);                                      /* 029aba ldr r1, [sp, #0x24] */
+    t = r1 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              /* 029abc muls r0, r1, r0 */
+    r1 = MEM32(sp + 0x20u);                                      /* 029abe ldr r1, [sp, #0x20] */
+    { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 029ac0 adds r0, r0, r1 */
+    MEM32(sp + 0x20u) = r0;                                      /* 029ac2 str r0, [sp, #0x20] */
+    r0 = MEM32(sp + 0x1Cu);                                      /* 029ac4 ldr r0, [sp, #0x1c] */
+    r1 = MEM32(sp + 0x24u);                                      /* 029ac6 ldr r1, [sp, #0x24] */
+    { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 029ac8 adds r0, r0, r1 */
+    MEM32(sp + 0x1Cu) = r0;                                      /* 029aca str r0, [sp, #0x1c] */
+    r0 = MEM32(sp + 0x1Cu);                                      /* 029acc ldr r0, [sp, #0x1c] */
+    r1 = MEM32(sp + 0x38u);                                      /* 029ace ldr r1, [sp, #0x38] */
+    { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 029ad0 cmp r0, r1 */
+    if (fZ) goto L_29AD6;                                        /* 029ad2 beq #0x29ad6 */
+    goto L_2989C;                                                /* 029ad4 b #0x2989c */
+L_29AD6:
+    { uint32_t ta = sp, tb = 0x5Cu; t = ta + tb; sp = t; }       /* 029ad6 add sp, #0x5c */
+    r4 = MEM32(sp + 0); r5 = MEM32(sp + 4); r6 = MEM32(sp + 8); r7 = MEM32(sp + 12); t = MEM32(sp + 16); sp += 20; RET(t); /* 029ad8 pop {r4, r5, r6, r7, pc} */
+}
+
 #if defined(A4_ENG_1F1F8) || defined(A4_ENG_ALL)
 ENGV(1F1F8)
 #endif
@@ -15777,4 +16277,7 @@ ENGV(1B954)
 #endif
 #if defined(A4_ENG_2217C) || defined(A4_ENG_ALL)
 ENGV(2217C)
+#endif
+#if defined(A4_ENG_29736) || defined(A4_ENG_ALL)
+ENGV(29736)
 #endif
