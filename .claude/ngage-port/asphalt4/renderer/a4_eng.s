@@ -55,6 +55,33 @@ a4_paint_orig:
         add     r12, r12, #0x740
         add     r12, r12, #1        @ +29740, Thumb
         bx      r12
+@ A4_LIFTCHECK: the mesh routine (+349F8) and the ordering-table insert (+349B0) as they were, for the
+@ in-run comparison with the lifted ones (a4_eng.c): the eight bytes each veneer took replayed, then on
+@ in the game's Thumb (r12 = the offset | 1), returning to our caller through the lr pushed here
+        .global a4_orig_349F8
+a4_orig_349F8:
+        push    {r0-r7, lr}         @ +349F8
+        sub     sp, sp, #0x14       @ +349FA
+        mov     r4, r3              @ +349FC (flags dead: +34A02 sets them)
+        ldr     r6, [sp, #0x38]     @ +349FE
+        ldr     r12, 1f
+        b       a4_orig_go
+1:      .word   0x34A00 + 1
+        .global a4_orig_349B0
+a4_orig_349B0:
+        push    {r4, r5, r6, lr}    @ +349B0
+        mov     r5, r0              @ +349B2
+        mov     r4, r1              @ +349B4 (flags dead: +349BE sets them)
+        ldr     r0, [r4]            @ +349B6
+        ldr     r12, 2f
+        b       a4_orig_go
+2:      .word   0x349B8 + 1
+a4_orig_go:
+        adr     lr, a4_g_base
+        add     r12, r12, lr
+        ldr     lr, [lr]
+        add     r12, r12, lr        @ the game's code + the offset
+        bx      r12
         .global a4_g_base
 a4_g_base:
         .word   0xDEADBEEF          @ patched: (code + 0) - (this word): the game's code, where it runs

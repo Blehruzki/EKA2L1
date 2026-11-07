@@ -30,7 +30,8 @@ import e32crc
 
 LINK_BASE = 0x8000
 CFLAGS = ['--target=armv5te-none-eabi', '-marm', '-mtune=arm1136j-s', '-O2', '-ffreestanding',
-          '-fno-builtin', '-fno-jump-tables', '-fropi', '-mno-unaligned-access', '-Wall', '-Werror']
+          '-fno-builtin', '-fno-jump-tables', '-fropi', '-mno-unaligned-access', '-fno-delete-null-pointer-checks',
+          '-Wall', '-Werror']
 
 SOURCES = [os.path.join(REND, 'a4_tramp.s'),
            os.path.join(REND, 'a4_span_textured.c'),

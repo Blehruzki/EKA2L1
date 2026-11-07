@@ -27,13 +27,253 @@ uint64_t a4_eng_keys(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3)
 #pragma clang diagnostic ignored "-Wunused-variable"
 #pragma clang diagnostic ignored "-Wunused-but-set-variable"
 #pragma clang diagnostic ignored "-Wunused-label"
-#ifdef A4_PAINTCHECK
-#define a4_engv_29736 a4_paintchk_lifted   /* the lifter's entry renamed: the check below is the painter's entry */
+#if defined(A4_PAINTCHECK) || defined(A4_PAINTFAST)
+#define a4_engv_29736 a4_paint_lifted_entry   /* the lifter's entry renamed: the painter's entry is below */
 #endif
+#if defined(A4_PAINTFAST) && !(defined(A4_ENG_29736) || defined(A4_ENG_ALL))
+#error "A4_PAINTFAST replaces the lifted painter: build it with A4_ENG_29736 (or A4_ENG_ALL)"
+#endif
+#ifdef A4_LIFTCHECK
+#if defined(A4_ALPHAHIST) || defined(A4_LEANCHECK) || defined(A4_DEFERCHECK) || defined(A4_REOCHECK) || defined(A4_BLITCHECK) || defined(A4_STRIPCHECK)
+#error "A4_LIFTCHECK counts in census words 100-114, which that check uses too"
+#endif
+#ifndef A4_MESH
+#error "A4_LIFTCHECK lists the mesh routine's inserts at a4_mesh_insert (A4_MESH)"
+#endif
+#define a4_engv_349F8 a4_lck_l349F8
+#define a4_engv_349B0 a4_lck_l349B0
+#endif
+#define sp ((uint32_t)(uintptr_t)spp)     /* the lifted code's stack pointer as a value (lift.py: spp the pointer) */
 #include "eng/lifted.c"
+#undef sp
 #pragma clang diagnostic pop
-#ifdef A4_PAINTCHECK
+#ifdef A4_LIFTCHECK
+#undef a4_engv_349F8
+#undef a4_engv_349B0
+/* Bench (round 50): the lifted 3D front end against the game's own, call for call, on the same input, as
+ * A4_PAINTCHECK does the painter. Build with A4_SCRATCH_SIZE=0x7F000: the check's buffers are 0x460000-
+ * 0x480000 -- [0] the insert list's mode (1 the game's run, 2 the lifted run: a4_mesh_insert lists
+ * instead of inserting), [1] [2] each run's inserts, the two lists at 0x460010 and 0x464010 (2,048
+ * each), the snapshots at 0x468100 and 0x473F00.
+ * The mesh routine +349F8 (r0 the camera, r1 the vertices, r2 their count, r3 the faces, s0 their
+ * count; with it +345E4, +523A2/C4/E6 and +3118E, inline in the lifted one) writes the camera's first
+ * word, the vertices' projected words and outcodes (+345E4), the faces' flags (+4) and inserts each face
+ * it keeps (+34ADC). All three saved, the game's run, its result kept, everything put back, the lifted
+ * run, compared; then the lifted run's inserts made. Census words: [100] calls compared, [101] not
+ * (too large, or inside another check), [102] calls whose memory differed, [103] bytes that differed,
+ * [104] calls whose inserts differed, [105] calls whose r0 differed (no caller reads it: only noted).
+ * The insert +349B0 (r0 the camera, r1 the face; the face's depth key, its vtable's first entry, inline
+ * when it is +3121E) links the face into one of 4,096 slots (camera+0x5C) and marks one of 64 bytes
+ * (camera+0x405C): run once, the slot found by the face it now holds, put back, the lifted run, compared.
+ * One call in 16 (the slot search reads the whole table, three times): [106] calls compared, [107] not
+ * (the face already in the table, or inside the mesh check), [108] calls that differed, [110] calls
+ * neither run inserted (the key past the table), [111] calls left to the lifted one alone (the 15 in
+ * 16). [3] counts the calls. */
+#define LCK_SNAP 0xBE00u
+static uint32_t lck_copy(uint8_t *dst, uint32_t a, uint32_t n, int out)   /* n a multiple of 4, a word-aligned */
+{
+    uint32_t *p = (uint32_t *)(uintptr_t)a, *q = (uint32_t *)dst;
+    if (out) { for (uint32_t i = 0; i < n / 4u; i++) q[i] = p[i]; }
+    else { for (uint32_t i = 0; i < n / 4u; i++) p[i] = q[i]; }
+    return n;
+}
+static uint32_t lck_diff(const uint8_t *ref, uint32_t a, uint32_t n)       /* bytes that differ */
+{
+    const uint32_t *p = (const uint32_t *)(uintptr_t)a, *q = (const uint32_t *)ref; uint32_t d = 0;
+    for (uint32_t i = 0; i < n / 4u; i++) {
+        uint32_t x = p[i] ^ q[i];
+        if (x) d += ((x & 0xFFu) != 0) + ((x & 0xFF00u) != 0) + ((x & 0xFF0000u) != 0) + ((x >> 24) != 0);
+    }
+    return d;
+}
+extern void a4_orig_349F8(void), a4_orig_349B0(void);
+uint64_t a4_engv_349F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2,
+    uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
+{
+    volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u, *lk = (volatile uint32_t *)0x00460000u;
+    uint32_t vb = r2 * 0x28u, fb = s0 * 0x34u;
+    if (lk[0] || r2 > 0x1000u || s0 > 0x1000u || 4u + vb + fb > LCK_SNAP || ((r0 | r1 | r3) & 3u)) {
+        ck[101]++;
+        return eng_349F8(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
+    }
+    uint8_t *A = (uint8_t *)0x00468100u, *B = (uint8_t *)0x00473F00u;
+    uint32_t stk[8] = { s0, s1, s2, s3, s4, s5, s6, s7 }, r23[2];
+    lck_copy(A, r0, 4u, 1); lck_copy(A + 4u, r1, vb, 1); lck_copy(A + 4u + vb, r3, fb, 1);
+    lk[1] = 0; lk[0] = 1u;
+    uint64_t ro = a4_eng_call((uint32_t)(uintptr_t)&a4_orig_349F8, r0, r1, r2, r3, (uint32_t)(uintptr_t)stk, r23);
+    lk[0] = 0;
+    lck_copy(B, r0, 4u, 1); lck_copy(B + 4u, r1, vb, 1); lck_copy(B + 4u + vb, r3, fb, 1);
+    lck_copy(A, r0, 4u, 0); lck_copy(A + 4u, r1, vb, 0); lck_copy(A + 4u + vb, r3, fb, 0);
+    lk[2] = 0; lk[0] = 2u;
+    uint64_t rl = eng_349F8(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
+    lk[0] = 0;
+#ifdef A4_LIFTCHECK_MUTANT
+    if (vb) MEM8(r1 + 0x10u) ^= 1u;                 /* the check's own test: one bit wrong a call */
+#endif
+    uint32_t d = lck_diff(B, r0, 4u) + lck_diff(B + 4u, r1, vb) + lck_diff(B + 4u + vb, r3, fb);
+    uint32_t na = lk[1], nb = lk[2], bad = na != nb;
+    volatile uint32_t *LA = (volatile uint32_t *)0x00460010u, *LB = (volatile uint32_t *)0x00464010u;
+    for (uint32_t i = 0; !bad && i < nb && i < 2048u; i++) bad = LA[2u * i] != LB[2u * i] || LA[2u * i + 1u] != LB[2u * i + 1u];
+    ck[100]++;
+    if (d) { ck[102]++; ck[103] += d; }
+    if (bad) ck[104]++;
+    if ((uint32_t)ro != (uint32_t)rl) ck[105]++;
+    for (uint32_t i = 0; i < nb && i < 2048u; i++)
+        a4_mesh_insert((uint32_t *)(uintptr_t)LB[2u * i], (uint32_t *)(uintptr_t)LB[2u * i + 1u]);
+    return rl;
+}
+static int32_t lck_slot(uint32_t cam, uint32_t face)
+{
+    int32_t k = -1;
+    for (uint32_t i = 0; i < 4096u; i++)
+        if (MEM32(cam + 0x5Cu + 4u * i) == face) { if (k >= 0) return -2; k = (int32_t)i; }
+    return k;
+}
+uint64_t a4_engv_349B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2,
+    uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
+{
+    volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u, *lk = (volatile uint32_t *)0x00460000u;
+    if ((++lk[3] & 15u) != 0) { ck[111]++; return eng_349B0(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7); }
+    if (lk[0] || ((r0 | r1) & 3u) || lck_slot(r0, r1) != -1) { ck[107]++; return eng_349B0(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7); }
+    uint8_t f0[64], fa[64];
+    uint32_t stk[8] = { s0, s1, s2, s3, s4, s5, s6, s7 }, r23[2];
+    uint32_t l0 = MEM32(r1 + 8u);
+    lck_copy(f0, r0 + 0x405Cu, 64u, 1);
+    (void)a4_eng_call((uint32_t)(uintptr_t)&a4_orig_349B0, r0, r1, r2, r3, (uint32_t)(uintptr_t)stk, r23);
+    int32_t ka = lck_slot(r0, r1);
+    uint32_t la = MEM32(r1 + 8u);
+    lck_copy(fa, r0 + 0x405Cu, 64u, 1);
+    if (ka >= 0) MEM32(r0 + 0x5Cu + 4u * (uint32_t)ka) = la;
+    MEM32(r1 + 8u) = l0; lck_copy(f0, r0 + 0x405Cu, 64u, 0);
+    uint64_t rl = eng_349B0(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
+#ifdef A4_LIFTCHECK_MUTANT
+    MEM8(r0 + 0x405Cu) ^= 0x80u;
+#endif
+    int32_t kb = lck_slot(r0, r1);
+    ck[106]++;
+    if (ka != kb || MEM32(r1 + 8u) != la || lck_diff(fa, r0 + 0x405Cu, 64u)) ck[108]++;
+    if (ka == -1 && kb == -1) ck[110]++;
+    return rl;
+}
+#endif
+#if defined(A4_PAINTCHECK) || defined(A4_PAINTFAST)
 #undef a4_engv_29736
+#endif
+#ifdef A4_PAINTFAST
+/* The HUD sprite painter +29736 by hand (round 50), the lifted one's behaviour exactly -- clip, the flips,
+ * the walk, every pixel's colour, alpha and store -- with what the game's code works out again for every
+ * pixel worked out once a call: the sprite's format flags, its palette (the palette bank's entry, its
+ * colour key, its colour table), the global alpha's scale of each of the 16 alpha levels, the effect mode,
+ * the blend's masks; and for a paletted sprite of enough pixels each index's colour (565, the mode's effect
+ * on it) in a table. Mode 2 (each channel through three divisions) is left to the lifted painter whole.
+ * Checked against the game's own painter call for call by A4_PAINTCHECK. */
+static inline uint32_t pf_mode(uint32_t c, uint32_t mode, uint32_t lit4)
+{
+    if (mode == 1u) {                                   /* +2996E: a grey from the three channels */
+        uint32_t r = ((c << 16) >> 27) * 0x26u >> 7, g = ((c << 21) >> 27) * 0x4Cu >> 7, b = ((c << 27) >> 27) * 14u >> 7;
+        uint32_t v = r + g + b;
+        c = (v << 11) | ((v << 27) >> 21) | ((v << 27) >> 27);
+        return (uint32_t)(int32_t)(int16_t)c;
+    }
+    if (mode == 3u) {                                   /* +29A4A: the channels inverted */
+        uint32_t a = ~(c >> 11), b = ~(c >> 6), d = ~c;
+        c = (a << 11) | ((b << 27) >> 21) | ((d << 27) >> 27);
+        return (uint32_t)(int32_t)(int16_t)c;
+    }
+    if (mode == 4u) return lit4;                        /* +29960: one colour */
+    return c;
+}
+static uint64_t a4_paint_fast(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2,
+    uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
+{
+    const uint32_t o = r0, surf = r1, d = s0, fl = s1;
+    a4_gl_hud();                                        /* edits.py ALWAYS at +2973A */
+    const uint32_t mode = L32(o + 0x34u);
+    if (mode == 2u) return eng_29736(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
+    int32_t sx0 = 0, sy0 = 0, w = LS16(d + 4u), h = LS16(d + 6u), sx1 = w, sy1 = h;
+    const uint32_t px = L32(surf + 4u), W = L16(surf + 8u), H = L16(surf + 0xAu);
+    if (LS16(surf + 0x38u) == -1) { L16(surf + 0x38u) = 0; L16(surf + 0x3Au) = 0; L16(surf + 0x3Cu) = (uint16_t)W; L16(surf + 0x3Eu) = (uint16_t)H; }
+    const int32_t cx0 = LS16(surf + 0x38u), cx1 = (int32_t)((uint32_t)cx0 + (uint32_t)(int32_t)LS16(surf + 0x3Cu));
+    const int32_t cy0 = LS16(surf + 0x3Au), cy1 = (int32_t)((uint32_t)cy0 + (uint32_t)(int32_t)LS16(surf + 0x3Eu));
+    int32_t x = (int32_t)r2, y = (int32_t)r3;
+    uint32_t rr1 = (uint32_t)cy1;
+    if (x < cx0) { sx0 = (int32_t)((uint32_t)cx0 - (uint32_t)x); w = (int32_t)((uint32_t)w - (uint32_t)sx0); x = cx0; }
+    if (y < cy0) { sy0 = (int32_t)((uint32_t)cy0 - (uint32_t)y); h = (int32_t)((uint32_t)h - (uint32_t)sy0); y = cy0; }
+    {   int32_t e = (int32_t)((uint32_t)x + (uint32_t)w);
+        if (e > cx1) { e = (int32_t)((uint32_t)e - (uint32_t)cx1); w = (int32_t)((uint32_t)w - (uint32_t)e); sx1 = (int32_t)((uint32_t)sx1 - (uint32_t)e); } }
+    {   int32_t e = (int32_t)((uint32_t)y + (uint32_t)h);
+        if (e > cy1) { e = (int32_t)((uint32_t)e - (uint32_t)cy1); h = (int32_t)((uint32_t)h - (uint32_t)e); sy1 = (int32_t)((uint32_t)sy1 - (uint32_t)e); rr1 = (uint32_t)sy1; } }
+    if (w <= 0 || h <= 0) return ((uint64_t)rr1 << 32) | (uint32_t)sy0;
+    uint32_t dstep = 1u, rowskip = W - (uint32_t)w;
+    if (fl & 1u) { uint32_t t = (uint32_t)(int32_t)LS16(d + 4u) - (uint32_t)sx0; sx1 = (int32_t)(int16_t)(t - (uint32_t)w) - 1; sx0 = (int32_t)(t - 1u); }
+    if (fl & 2u) { uint32_t t = (uint32_t)(int32_t)LS16(d + 6u) - (uint32_t)sy0; sy1 = (int32_t)(int16_t)(t - (uint32_t)h) - 1; sy0 = (int32_t)(t - 1u); }
+    if (fl & 4u) {
+        uint32_t t = (uint32_t)(int32_t)LS16(d + 6u) - (uint32_t)sy0; sy1 = (int32_t)(int16_t)(t - (uint32_t)h) - 1; sy0 = (int32_t)(t - 1u);
+        dstep = W; rowskip = 1u - W * (uint32_t)w;
+    }
+    const int32_t xdir = sx0 < sx1 ? 1 : -1, ydir = sy0 < sy1 ? 1 : -1;
+    uint32_t rowoff = (uint32_t)(int32_t)LS16(d + 4u) * (uint32_t)sy0;
+    uint32_t dst = px + 2u * (W * (uint32_t)y + (uint32_t)x);
+    if (sy0 == sy1) return ((uint64_t)1u << 32) | (uint32_t)sy0;
+    /* what the game's loop reads again for every pixel, read once */
+    const uint32_t pal8 = L8(d + 9u), nib = L8(d + 0xAu), apl = L8(d + 8u);
+    const uint32_t isrc = L32(d + 0x10u), csrc = L32(d + 0xCu), asrc = L32(d + 0x14u);
+    const uint32_t m1 = GAMEW(0x29E14u), m3 = GAMEW(0x29E18u), lit4 = GAMEW(0x29A34u);
+    const int32_t g = LS16(o + 0x38u);
+    int32_t AT[16];
+    for (uint32_t k = 0; k < 16u; k++) AT[k] = g == 15 ? (int32_t)k : (int32_t)((uint32_t)k * (uint32_t)g << 12) >> 16;
+    uint32_t key = 0x10000u, ct = 0;                    /* key: past any index when not paletted */
+    if (pal8) {
+        uint32_t pal = L32(L32(o + 0x14u) + 4u * ((uint32_t)L8(o + 0xCu) * (uint32_t)L8(d + 0xBu) + (uint32_t)(int32_t)LS16(o + 0x24u)));
+        key = (uint32_t)(int32_t)LS16(pal + 0xCu); ct = L32(pal + 8u);
+    }
+    /* each index's colour, filled as the walk first meets it (the colour table is read only where the
+     * game's loop reads it: an entry past a short table is never touched); 0x80000000 is no colour */
+    uint32_t lut[256];
+    const uint32_t nlut = nib ? 16u : 256u;
+    const int use_lut = pal8 && (uint32_t)w * (uint32_t)h >= 2u * nlut;
+    if (use_lut) for (uint32_t k = 0; k < nlut; k++) lut[k] = 0x80000000u;
+    uint32_t sy = (uint32_t)sy0;
+    do {
+        uint32_t sx = (uint32_t)sx0;
+        while (sx != (uint32_t)sx1) {
+            uint32_t i = rowoff + sx, c, a = 15u;
+            if (pal8) {
+                uint32_t idx = nib ? (L8(isrc + (uint32_t)((int32_t)i >> 1)) >> (((1u & ~i)) << 2)) & 15u : L8(isrc + i);
+                if (idx == key) a = 0;
+                c = use_lut ? lut[idx] : 0x80000000u;
+                if (c == 0x80000000u) {
+                    c = pf_mode((uint32_t)(int32_t)(int16_t)(((L8(ct + 3u * idx + 2u) >> 3) << 11) | ((L8(ct + 3u * idx + 1u) >> 2) << 5) | (L8(ct + 3u * idx) >> 3)), mode, lit4);
+                    if (use_lut) lut[idx] = c;
+                }
+            } else c = pf_mode((uint32_t)(int32_t)LS16(csrc + 2u * i), mode, lit4);
+            if (apl) a = (L8(asrc + (uint32_t)((int32_t)i >> 1)) >> (((1u & ~i)) << 2)) & 15u;
+            int32_t al = AT[a];
+            if (al == 15) L16(dst) = (uint16_t)c;
+            else if (al != 0) {
+                uint32_t dv = L16(dst);
+                uint32_t c1 = (c & m1) | ((c & 0x7E0u) << 16), d1 = (dv & m1) | ((dv & 0x7E0u) << 16);
+                uint32_t t = (c1 - d1) * (uint32_t)al + (d1 << 4);
+                L16(dst) = (uint16_t)(((t & m3) >> 4) | ((t & 0x7E000000u) >> 20));
+            }
+            dst += 2u * dstep; sx += (uint32_t)xdir;
+        }
+        dst += 2u * rowskip;
+        rowoff += (uint32_t)(int32_t)LS16(d + 4u) * (uint32_t)ydir;
+        sy += (uint32_t)ydir;
+    } while (sy != (uint32_t)sy1);
+    return ((uint64_t)(uint32_t)sy1 << 32) | (uint32_t)sy1;
+}
+#define PAINT_UT a4_paint_fast
+#ifndef A4_PAINTCHECK
+uint64_t a4_engv_29736(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2,
+    uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
+{ return a4_paint_fast(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7); }
+#endif
+#else
+#define PAINT_UT eng_29736
+#endif
+#ifdef A4_PAINTCHECK
 /* Bench (round 50): the lifted HUD painter against the game's own, call for call, on the same input. The
  * frame is composited first (a4_gl_hud; the lifted painter's own call is then a no-op), the rows and
  * columns the sprite can reach (its rectangle on the surface) and the clip words it may set saved, the
@@ -54,7 +294,7 @@ uint64_t a4_engv_29736(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint3
     a4_gl_hud();
     if (x1 <= x0 || y1 <= y0 || !px || (uint32_t)((x1 - x0) * (y1 - y0) * 2) > 20480u) {
         ck[116]++;
-        return eng_29736(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
+        return PAINT_UT(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
     }
     volatile uint16_t *fb = (volatile uint16_t *)(uintptr_t)px;
     uint16_t *S = (uint16_t *)0x00403000u, *G = (uint16_t *)0x00415000u;
@@ -69,7 +309,7 @@ uint64_t a4_engv_29736(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint3
     n = 0;
     for (int32_t yy = y0; yy < y1; yy++) for (uint32_t k = 0; k < rw; k++) fb[(uint32_t)yy * W + (uint32_t)x0 + k] = S[n++];
     MEM32(r1 + 0x38u) = c0; MEM32(r1 + 0x3Cu) = c1;
-    uint64_t rr = eng_29736(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
+    uint64_t rr = PAINT_UT(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
 #ifdef A4_PAINTCHECK_MUTANT
     fb[(uint32_t)y0 * W + (uint32_t)x0] ^= 1u;      /* the check's own test: one pixel wrong a call */
 #endif

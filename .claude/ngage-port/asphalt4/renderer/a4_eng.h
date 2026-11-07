@@ -10,13 +10,34 @@
 #define MEM8(a)   (*(volatile uint8_t *)(uintptr_t)(a))
 #define MEMS16(a) (*(volatile int16_t *)(uintptr_t)(a))
 #define MEMS8(a)  (*(volatile int8_t *)(uintptr_t)(a))
+/* the lifted code's own accessors (tools/lift.py): plain loads and stores that may alias anything, so
+ * clang keeps the instruction's width and order against every store but may combine, schedule and drop
+ * the redundant ones; S* is the function's own frame through the pointer-typed stack (spp), which clang
+ * keeps in registers where the frame's address never leaves the function */
+typedef uint32_t __attribute__((may_alias)) a4_u32a;
+typedef uint16_t __attribute__((may_alias)) a4_u16a;
+typedef uint8_t __attribute__((may_alias)) a4_u8a;
+typedef int16_t __attribute__((may_alias)) a4_s16a;
+typedef int8_t __attribute__((may_alias)) a4_s8a;
+#define L32(a)  (*(a4_u32a *)(uintptr_t)(a))
+#define L16(a)  (*(a4_u16a *)(uintptr_t)(a))
+#define L8(a)   (*(a4_u8a *)(uintptr_t)(a))
+#define LS16(a) (*(a4_s16a *)(uintptr_t)(a))
+#define LS8(a)  (*(a4_s8a *)(uintptr_t)(a))
+#define S32(o)  (*(a4_u32a *)(spp + (o)))
+#define S16(o)  (*(a4_u16a *)(spp + (o)))
+#define S8(o)   (*(a4_u8a *)(spp + (o)))
+#define SS16(o) (*(a4_s16a *)(spp + (o)))
+#define SS8(o)  (*(a4_s8a *)(spp + (o)))
 extern const int32_t a4_g_base;                 /* a4_eng.s: patched to (code + 0) - (this word) */
 #define GBASE        ((uint32_t)(uintptr_t)&a4_g_base + (uint32_t)a4_g_base)
 #define GAME32(off)  MEM32(GBASE + (off))       /* a literal of the game's code, as the loader left it */
+#define GAMEW(off)   L32(GBASE + (off))         /* the same, as the lifted code reads it */
 #define GAMEADDR(off) (GBASE + (off))
 #define GAMEFN(off)  (GBASE + (off) + 1u)       /* a Thumb function of the game */
 #define GAMEARM(off) (GBASE + (off))            /* an ARM one (the runtime helpers, blx) */
 uint64_t a4_eng_call(uint32_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t sp, uint32_t *r23);
+void a4_mesh_insert(uint32_t *cam, uint32_t *face);  /* a4_gl.c (A4_MESH): the mesh routine's insert, kept for the list */
 void a4_gl_hud(void);                 /* a4_gl.c: the end of the 3D pass (the lifted HUD painter calls it) */
 #define CALLR(x) a4_eng_call((x), r0, r1, r2, r3, sp, r23)
 /* ARM shifts with the carry out; a shift by 0 leaves the carry, by 32 or more as the ARM does */

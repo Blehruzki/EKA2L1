@@ -4300,6 +4300,19 @@ static int mesh_fallback(const uint32_t *gctx, int32_t F, const int32_t *v0, con
 /* +34ADC's BLX (r0 = cam, r1 = face, as the bl to +349B0 had them); returns to +34AE0. */
 void a4_mesh_insert(uint32_t *cam, uint32_t *face)
 {
+#ifdef A4_LIFTCHECK
+    {   /* bench: the mesh routine run twice (a4_eng.c a4_engv_349F8) -- its inserts listed, not made */
+        volatile uint32_t *lk = (volatile uint32_t *)0x00460000u;
+        uint32_t md = lk[0];
+        if (md == 1u || md == 2u) {
+            uint32_t n = lk[md];
+            volatile uint32_t *L = (volatile uint32_t *)(md == 1u ? 0x00460010u : 0x00464010u);
+            if (n < 2048u) { L[2u * n] = (uint32_t)(uintptr_t)cam; L[2u * n + 1u] = (uint32_t)(uintptr_t)face; }
+            lk[md] = n + 1u;
+            return;
+        }
+    }
+#endif
 #ifdef A4_MESHCHECK
     mesh_take(cam, face);                           /* listed, and to the table as well (software draws it) */
 #else

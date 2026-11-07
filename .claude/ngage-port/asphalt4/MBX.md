@@ -7431,3 +7431,51 @@ Owner: "Sounds like a plan. Go ahead."
   (+345E4, +349F8 with the mesh insert, +3115C, +522A4, +3015E with the billboard hook, ~20% of the
   cycles), our hook and list code tightened, the painter's per-pixel invariants hoisted, and a
   present without the 565 round trip (the runtime's convert, 11% of the cycles, and the readback).
+- The owner's direction after t16: the code-level cuts, the game's Thumb taken to ARM C as far as it
+  pays. Both sets are native to the ARM1136; ARM's gain is fewer, cheaper instructions (16 registers
+  instead of 8, conditional execution, the barrel shifter, a modern compiler tuned for the core). A
+  guess named: the model's Thumb CPI 3.0 against ARM's 1.6 is a fit of the total to the phone's
+  telemetry (round 49: "the split is open"), so a lifted function's gain on the model may overstate the
+  phone's; the instruction counts are the part that holds on any split.
+- tools/lift.py, second form (the same instruction-for-instruction C, compiled better):
+  - a call between two lifted functions is a direct C call (clang inlines the small ones) instead of
+    a4_eng_call into the game's entry and back through its veneer; ENGD_XXXXX keeps a build that lifts
+    a function without its veneer calling the game's entry as before;
+  - the callee's r2, r3 come back through a pointer (engi_XXXXX's o23), exact for a caller that reads
+    them after the call;
+  - a function marked XXXXX:i in funcs.txt is lifted for direct calls only, no veneer: the game's own
+    callers keep the Thumb (a 17-instruction leaf behind a veneer would cost more than it saves);
+  - memory through plain may-alias accessors (L32 ... in a4_eng.h) instead of volatile: each access
+    keeps its width and its order against every store, but clang may schedule, combine and drop the
+    redundant ones; the function's own frame through a pointer-typed stack (spp, S32 ...) so that a
+    frame whose address never leaves the function lives in registers;
+  - a compare and the branch right after it as one C comparison (the flag words still computed for
+    any later reader, dead otherwise);
+  - an indirect call with a known lifted target compared first (+349BC: the face's depth key +3121E);
+  - the injector's mesh hook (+34ADC, A4_MESH) a plain C call in the lifted mesh routine.
+  injector.py adds -fno-delete-null-pointer-checks (the lifted code dereferences what the game's does).
+- The 3D front end lifted (funcs.txt): the mesh routine +349F8 and the ordering-table insert +349B0
+  with veneers; inline only the vertex transform and outcodes +345E4, its three dot products
+  +523A2/C4/E6, the back-face test +3118E and the face's depth key +3121E. pct15 put them at ~13.5% of
+  the race's cycles.
+- Exactness, A4_LIFTCHECK (a4_eng.c, a4_orig_349F8/349B0 in a4_eng.s; census words 100-111; needs
+  A4_SCRATCH_SIZE=0x7F000, buffers 0x460000-0x480000): the mesh routine run twice per call on the same
+  input -- the camera's first word, the vertices, the faces saved; the game's run (its inserts listed at
+  a4_mesh_insert, not made), its result kept, all put back, the lifted run (listed too), memory and the
+  two insert lists compared, then the inserts made. The insert: run once, the slot found by the face it
+  then holds, put back, the lifted run, compared (one call in 16: the slot search reads the table).
+  LC1 (all at every call) was too slow to reach the race (76 records, all countdown). LC2 (stock +
+  every lifted function, lockstep, 100 s; also A4_PAINTCHECK on the new lifter's painter): mesh routine
+  35,690 calls compared, 0 memory differences, 0 insert-list differences (r0 differed on 29,177: no
+  caller reads it -- the lifted one keeps r0 across the mesh hook, the game's has the hook's); insert
+  28,750 compared (431,260 left to the lifted alone), 0 differences; painter 19,003 compared, 352 too
+  large, 0 differences. Menus and race (615 race records).
+- The painter by hand, A4_PAINTFAST (a4_eng.c a4_paint_fast): the lifted painter's behaviour exactly,
+  with what the game re-reads for every pixel read once a call (format flags, the palette bank's entry,
+  its colour key and colour table, the alpha levels' global scale, the mode, the blend's masks) and a
+  paletted sprite's colours in a table filled as the walk meets each index (never past what the game
+  reads). Mode 2 (three divisions a channel) goes to the lifted painter whole. Review before the run
+  caught two faults of the first draft: a table built over all 256 entries (reads past a short colour
+  table, a fault the game never risks) and signed walk counters (overflow is undefined in C where the
+  game's walk wraps). Run: LC3 (A4_PAINTCHECK on it) and LCM (both checks' mutants: one vertex bit, one
+  insert flag bit, one pixel a call -- each must be flagged on every call).

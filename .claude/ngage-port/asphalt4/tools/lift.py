@@ -12,6 +12,10 @@ args = [a for a in sys.argv[1:]]
 outp = None
 if '-o' in args: k = args.index('-o'); outp = args[k + 1]; del args[k:k + 2]
 code = open(args[0], 'rb').read()
+FUNCS = [(int(a.split(':')[0], 16), a.endswith(':i')) for a in args[1:]]
+LIFTED = set(f for f, _ in FUNCS)   # a call to one of these from lifted code is a direct C call (no veneer)
+# indirect calls whose likely targets are lifted: compared, then called directly (the face's depth key)
+DEVIRT = {0x349BC: [0x3121E]}
 CC = {A.ARM_CC_EQ: 'fZ', A.ARM_CC_NE: '!fZ', A.ARM_CC_HS: 'fC', A.ARM_CC_LO: '!fC', A.ARM_CC_MI: 'fN', A.ARM_CC_PL: '!fN',
       A.ARM_CC_VS: 'fV', A.ARM_CC_VC: '!fV', A.ARM_CC_HI: '(fC && !fZ)', A.ARM_CC_LS: '(!fC || fZ)', A.ARM_CC_GE: '(fN == fV)',
       A.ARM_CC_LT: '(fN != fV)', A.ARM_CC_GT: '(!fZ && fN == fV)', A.ARM_CC_LE: '(fZ || fN != fV)'}
@@ -32,6 +36,10 @@ if '-DA4_SPECCAMSAFE' in FL:
         HOOKS[t] = 'a4_cs_51fec_tramp'
     for t in (0x3CCC, 0x3F14, 0x5618, 0x5620, 0x5211C): HOOKS[t] = 'a4_cs_5202c_tramp'
 used_hooks = set()
+# call-site hooks a lifted function makes as plain C calls (r0-r3 and r12 clobbered as by the BLX they replace)
+CHOOKS = {}
+if '-DA4_MESH' in FL:       # injector.py MESH_HOOKS: the mesh routine's ordering-table insert
+    CHOOKS[0x34ADC] = 'a4_mesh_insert((uint32_t *)(uintptr_t)r0, (uint32_t *)(uintptr_t)r1); /* the injector\'s mesh hook */'
 EDITS, used_edits = {}, set()
 CALLMAP = {}            # calls the 3x engine routes through its own C (renderer/a4_eng.h), every site in the lifted code
 if '-DA4_ENG3' in FL: CALLMAP = {0x1B2D6: 'eng_c_1b2d6'}
@@ -118,7 +126,27 @@ def lift(start):
         if op.type == A.ARM_OP_REG: return rn(op, i)
         return '0x%Xu' % (op.imm & 0xFFFFFFFF)
     def nz(d): return 'fN = %s >> 31; fZ = %s == 0;' % (d, d)
-    W = {'ldr': 'MEM32', 'str': 'MEM32', 'ldrb': 'MEM8', 'strb': 'MEM8', 'ldrh': 'MEM16', 'strh': 'MEM16', 'ldrsb': 'MEMS8', 'ldrsh': 'MEMS16'}
+    W = {'ldr': 'L32', 'str': 'L32', 'ldrb': 'L8', 'strb': 'L8', 'ldrh': 'L16', 'strh': 'L16', 'ldrsb': 'LS8', 'ldrsh': 'LS16'}
+    def stkargs(): return ', '.join('S32(%d)' % (4 * k) for k in range(8))
+    def callfn(t, thumb, tail=False):  # a call to the game's +t: direct when lifted (and enabled), else through a4_eng_call
+        slow = 'a4_eng_call(%s(0x%X), r0, r1, r2, r3, sp, r23)' % ('GAMEFN' if thumb else 'GAMEARM', t)
+        if thumb and t in LIFTED:
+            fast = 'engi_%05X(r0, r1, r2, r3, %s, r23)' % (t, stkargs())
+            ex = '(ENGD_%05X ? %s : %s)' % (t, fast, slow)
+        else: ex = slow
+        if tail: return '{ uint64_t rr = %s; o23[0] = r23[0]; o23[1] = r23[1]; return rr; }' % ex
+        return '{ uint64_t rr = %s; r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; }' % ex
+    def callreg(x, tail=False, site=None):   # a call through a register
+        ex = 'a4_eng_call(%s, r0, r1, r2, r3, sp, r23)' % x
+        for t in DEVIRT.get(site, []):
+            if t in LIFTED: ex = '((ENGD_%05X && %s == GAMEFN(0x%X)) ? engi_%05X(r0, r1, r2, r3, %s, r23) : %s)' % (t, x, t, t, stkargs(), ex)
+        if tail: return '{ uint64_t rr = %s; o23[0] = r23[0]; o23[1] = r23[1]; return rr; }' % ex
+        return '{ uint64_t rr = %s; r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; }' % ex
+    CMPC = {A.ARM_CC_EQ: '%s == %s', A.ARM_CC_NE: '%s != %s', A.ARM_CC_HS: '%s >= %s', A.ARM_CC_LO: '%s < %s',
+            A.ARM_CC_HI: '%s > %s', A.ARM_CC_LS: '%s <= %s', A.ARM_CC_GE: '(int32_t)%s >= (int32_t)%s',
+            A.ARM_CC_LT: '(int32_t)%s < (int32_t)%s', A.ARM_CC_GT: '(int32_t)%s > (int32_t)%s',
+            A.ARM_CC_LE: '(int32_t)%s <= (int32_t)%s'}
+    lastcmp = None          # (address after, a, b): a cmp the next instruction may branch on
     for i in ins:
         if i.address in labels: L.append('L_%05X:' % i.address)
         m = i.mnemonic; ops = i.operands
@@ -126,51 +154,59 @@ def lift(start):
         base = m[:-1] if flg else m
         if m == 'push':
             regs = [rn(o, i) for o in ops]
-            E('sp -= %d; ' % (4 * len(regs)) + ' '.join('MEM32(sp + %d) = %s;' % (4 * k, r) for k, r in enumerate(regs)), i)
+            E('spp -= %d; ' % (4 * len(regs)) + ' '.join('S32(%d) = %s;' % (4 * k, r) for k, r in enumerate(regs)), i)
         elif m == 'pop':
             regs = [rn(o, i) for o in ops]
-            s = ' '.join('%s = MEM32(sp + %d);' % (r if r != 'pc' else 't', 4 * k) for k, r in enumerate(regs)) + ' sp += %d;' % (4 * len(regs))
+            s = ' '.join('%s = S32(%d);' % (r if r != 'pc' else 't', 4 * k) for k, r in enumerate(regs)) + ' spp += %d;' % (4 * len(regs))
             E(s + (' RET(t);' if 'pc' in regs else ''), i)
         elif m in ('ldm', 'stm'):
             b = rn(ops[0], i); regs = [rn(o, i) for o in ops[1:]]
             if m == 'ldm':
-                E('t = %s; ' % b + ' '.join('%s = MEM32(t + %d);' % (r, 4 * k) for k, r in enumerate(regs)) + ('' if b in regs else ' %s = t + %d;' % (b, 4 * len(regs))), i)
+                E('t = %s; ' % b + ' '.join('%s = L32(t + %d);' % (r, 4 * k) for k, r in enumerate(regs)) + ('' if b in regs else ' %s = t + %d;' % (b, 4 * len(regs))), i)
             elif EDITS.get(i.address, {}).get('third'):     # a vector rate: each word keeps a third of its change
-                E('t = %s; ' % b + ' '.join('%s = eng_third(t + %d, MEM32(t + %d), %s); MEM32(t + %d) = %s;' % (r, 4 * k, 4 * k, r, 4 * k, r) for k, r in enumerate(regs)) + ' %s = t + %d;' % (b, 4 * len(regs)), i)
+                E('t = %s; ' % b + ' '.join('%s = eng_third(t + %d, L32(t + %d), %s); L32(t + %d) = %s;' % (r, 4 * k, 4 * k, r, 4 * k, r) for k, r in enumerate(regs)) + ' %s = t + %d;' % (b, 4 * len(regs)), i)
             else:
-                E('t = %s; ' % b + ' '.join('MEM32(t + %d) = %s;' % (4 * k, r) for k, r in enumerate(regs)) + ' %s = t + %d;' % (b, 4 * len(regs)), i)
+                E('t = %s; ' % b + ' '.join('L32(t + %d) = %s;' % (4 * k, r) for k, r in enumerate(regs)) + ' %s = t + %d;' % (b, 4 * len(regs)), i)
         elif m in W and ops[1].type == A.ARM_OP_MEM:
             mo = ops[1].mem; b = HI.get(i.reg_name(mo.base), i.reg_name(mo.base)); rt = rn(ops[0], i)
             if b == 'pc':
                 la = ((i.address + 4) & ~3) + mo.disp
-                E('%s = GAME32(0x%X);' % (rt, la), i); continue
+                E('%s = GAMEW(0x%X);' % (rt, la), i); continue
             ea = b + (' + ' + HI.get(i.reg_name(mo.index), i.reg_name(mo.index)) if mo.index else '') + (' + 0x%Xu' % (mo.disp & 0xFFFFFFFF) if mo.disp else '')
+            Wm = W[m]
+            if b == 'sp' and not mo.index:      # the frame: through the pointer-typed stack (clang keeps it in registers)
+                Wm = W[m].replace('L', 'S', 1); ea = '0x%Xu' % (mo.disp & 0xFFFFFFFF)
             if m.startswith('ld'):
-                E('%s = %s%s(%s);' % (rt, '(uint32_t)(int32_t)' if 'MEMS' in W[m] else '', W[m], ea), i)
+                E('%s = %s%s(%s);' % (rt, '(uint32_t)(int32_t)' if m in ('ldrsb', 'ldrsh') else '', Wm, ea), i)
             elif EDITS.get(i.address, {}).get('gate') == 'end':   # a countdown substeps read: stored on the step's last substep
-                E('if (ENG_SUB_END(%s)) %s(%s) = %s; else %s = %s(%s);' % (EDITS[i.address]['car'], W[m], ea, rt, rt, W[m], ea), i)
+                E('if (ENG_SUB_END(%s)) %s(%s) = %s; else %s = %s(%s);' % (EDITS[i.address]['car'], Wm, ea, rt, rt, Wm, ea), i)
             elif EDITS.get(i.address, {}).get('gate'):      # a counter: stored on the whole step; a substep keeps memory's
-                E('if (!ENG_SUB) %s(%s) = %s; else %s = %s(%s);' % (W[m], ea, rt, rt, W[m], ea), i)
+                E('if (!ENG_SUB) %s(%s) = %s; else %s = %s(%s);' % (Wm, ea, rt, rt, Wm, ea), i)
             elif EDITS.get(i.address, {}).get('third'):     # a rate: the store keeps a third of its change
                 if m != 'str': raise SystemExit('lift.py: a third at %06x on %s' % (i.address, m))
-                E('{ uint32_t ea_ = %s; %s = eng_third(ea_, MEM32(ea_), %s); MEM32(ea_) = %s; }' % (ea, rt, rt, rt), i)
-            else: E('%s(%s) = %s;' % (W[m], ea, rt), i)
+                if b == 'sp': raise SystemExit('lift.py: a third at %06x on the frame' % i.address)
+                E('{ uint32_t ea_ = %s; %s = eng_third(ea_, L32(ea_), %s); L32(ea_) = %s; }' % (ea, rt, rt, rt), i)
+            else: E('%s(%s) = %s;' % (Wm, ea, rt), i)
         elif base in ('mov', 'mvn'):
             d = rn(ops[0], i); s = opv(ops[1], i)
-            if d == 'pc': E('RET(%s); /* jump through a register */' % s if s == 'lr' else 'return CALLR(%s); /* jump through a register */' % s, i); continue
+            if d == 'pc': E('RET(%s); /* jump through a register */' % s if s == 'lr' else callreg(s, True, i.address) + ' /* jump through a register */', i); continue
+            if d == 'sp': E('spp = (uint8_t *)(uintptr_t)(%s);' % s, i); continue
             E('%s = %s%s;%s' % (d, '~' if base == 'mvn' else '', s, (' ' + nz(d)) if flg else ''), i)
         elif i.address in jt:
             r = rn(ops[1], i)
             cases = ' '.join('case 0x%Xu: goto L_%05X;' % (2 * k_, t_) for k_, t_ in sorted(set(((t_ - i.address - 4) // 2, t_) for t_ in jt[i.address])))
-            E('switch (%s) { %s default: return CALLR(GAMEADDR(0x%X) + %s); }' % (r, cases, i.address + 4, r), i)
+            E('switch (%s) { %s default: %s }' % (r, cases, callreg('GAMEADDR(0x%X) + %s' % (i.address + 4, r), True)), i)
         elif base in ('add', 'sub', 'adc', 'sbc', 'rsb', 'neg', 'cmp', 'cmn') or m in ('cmp', 'cmn'):
             if m in ('cmp', 'cmn'): d, a, b = None, opv(ops[0], i), opv(ops[1], i)
             elif len(ops) == 3: d, a, b = rn(ops[0], i), opv(ops[1], i), opv(ops[2], i)
             elif base in ('neg', 'rsb'): d, a, b = rn(ops[0], i), opv(ops[1], i), '0'
             else: d, a, b = rn(ops[0], i), rn(ops[0], i), opv(ops[1], i)
             if a == 'pc': a = 'GAMEADDR(0x%X)' % ((i.address + 4) & ~3)
-            if a == 'sp' or d == 'sp':
-                pass
+            if d == 'sp' and m in ('add', 'sub'):    # the frame moved: the stack pointer is a pointer
+                if a == 'sp' and ops[-1].type == A.ARM_OP_IMM: E('spp %s= 0x%Xu;' % ('+' if m == 'add' else '-', ops[-1].imm), i)
+                else: E('spp = (uint8_t *)(uintptr_t)(%s %s %s);' % (a, '+' if m == 'add' else '-', b), i)
+                continue
+            if m == 'cmp': lastcmp = (i.address + i.size, a, b)
             op = {'add': '+', 'cmn': '+', 'adc': '+', 'sub': '-', 'cmp': '-', 'sbc': '-', 'rsb': '-', 'neg': '-'}[base if m not in ('cmp', 'cmn') else m]
             if base in ('rsb', 'neg'): a, b = '0u' if b == '0' else b, a     # rsb d, a, #0 = 0 - a
             if base == 'adc': expr = 'ta + tb + fC_old'
@@ -216,26 +252,30 @@ def lift(start):
             elif ops[0].type == A.ARM_OP_IMM and ops[0].imm in CALLMAP:
                 t = ops[0].imm; callees.add((t, m == 'bl'))
                 E('{ uint64_t rr = %s(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine\'s own +%X */' % (CALLMAP[t], t), i)
+            elif i.address in CHOOKS:            # the injector's call-site hook, called from C directly
+                E(CHOOKS[i.address], i)
             elif ops[0].type == A.ARM_OP_IMM:
                 t = ops[0].imm; callees.add((t, m == 'bl'))
-                E('{ uint64_t rr = a4_eng_call(%s(0x%X), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; }' % ('GAMEFN' if m == 'bl' else 'GAMEARM', t), i)
+                E(callfn(t, m == 'bl'), i)
             else:
-                E('{ uint64_t rr = a4_eng_call(%s, r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; }' % rn(ops[0], i), i)
+                E(callreg(rn(ops[0], i), False, i.address), i)
             E('r12 = 0xDEAD0000u; /* clobbered by the call */', i)
         elif m == 'bx':
-            E('RET(lr);' if rn(ops[0], i) == 'lr' else 'return CALLR(%s);' % rn(ops[0], i), i)
+            E('RET(lr);' if rn(ops[0], i) == 'lr' else callreg(rn(ops[0], i), True, i.address), i)
         elif isbr(i):
             t = ops[0].imm
             if t in allins and (t not in BLT or t == start or local(t)): tgt = 'goto L_%05X;' % t
             else:
                 callees.add((t, True))
-                tgt = '{ return a4_eng_call(GAMEFN(0x%X), r0, r1, r2, r3, sp, r23); } /* tail */' % t
+                tgt = callfn(t, True, True) + ' /* tail */'
             if m == 'b': E(tgt, i)
+            elif lastcmp and lastcmp[0] == i.address and i.address not in labels and i.cc in CMPC:
+                E('if (%s) %s' % (CMPC[i.cc] % lastcmp[1:], tgt), i)   # the cmp before it, as a C comparison
             else: E('if (%s) %s' % (CC[i.cc], tgt), i)
         elif m == 'adr':
             E('%s = GAMEADDR(0x%X);' % (rn(ops[0], i), ((i.address + 4) & ~3) + ops[1].imm), i)
         elif m in ('add', 'sub') and rn(ops[0], i) == 'sp':
-            E('sp %s= %s;' % ('+' if m == 'add' else '-', opv(ops[-1], i)), i)
+            E('spp %s= %s;' % ('+' if m == 'add' else '-', opv(ops[-1], i)), i)
         else:
             E('#error "lift.py: %s %s"' % (m, i.op_str), i)
     frame = 0
@@ -244,11 +284,11 @@ def lift(start):
         elif i.mnemonic == 'sub' and i.op_str.startswith('sp'): frame += i.operands[-1].imm
     stkw = (frame + 64 + 32 + 7) // 8 * 2      # words: the frame, a margin, the eight argument words
     hdr = ('/* +%05X, %d instructions (tools/lift.py) */\n' % (start, len(ins)) +
-           'uint64_t eng_%05X(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,\n'
-           '                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)\n{\n' % start +
+           'static uint64_t engi_%05X(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,\n'
+           '                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t *o23)\n{\n' % start +
            '    uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = 0xFFFFFFFFu, t = 0;\n'
            '    uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];\n'
-           '    uint32_t stk[%d]; uint32_t sp = (uint32_t)(uintptr_t)&stk[%d - 8];\n' % (stkw, stkw) +
+           '    uint32_t stk[%d]; uint8_t *spp = (uint8_t *)&stk[%d - 8];\n' % (stkw, stkw) +
            '    stk[%d] = s0; stk[%d] = s1; stk[%d] = s2; stk[%d] = s3;\n' % (stkw - 8, stkw - 7, stkw - 6, stkw - 5) +
            '    stk[%d] = s4; stk[%d] = s5; stk[%d] = s6; stk[%d] = s7;\n' % (stkw - 4, stkw - 3, stkw - 2, stkw - 1) +
            '    (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;\n')
@@ -272,16 +312,27 @@ def lift(start):
             body = '%sif (!ENG_SUB) { %s }%s' % mm2.groups()
         L[k] = '\n'.join(x for x in (why, ('    ' + e['before']) if 'before' in e else None, body, ('    ' + e['after']) if 'after' in e else None) if x)
     disp = ' '.join('case 0x%Xu: goto L_%05X;' % (k, v) for k, v in sorted(rets.items()))
-    ret = '#undef RET\n#define RET(v) do { switch (v) { %s default: return ((uint64_t)r1 << 32) | r0; } } while (0)\n' % disp
-    return ret + hdr + '\n'.join(L) + '\n}\n'
+    ret = '#undef RET\n#define RET(v) do { switch (v) { %s default: o23[0] = r2; o23[1] = r3; return ((uint64_t)r1 << 32) | r0; } } while (0)\n' % disp
+    wrap = ('uint64_t eng_%05X(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,\n'
+            '                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)\n'
+            '{ uint32_t d_[2]; return engi_%05X(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_); }\n' % (start, start))
+    return ret + hdr + '\n'.join(L) + '\n}\n' + wrap
 
 out = ['/* generated by tools/lift.py -- the game\'s own functions as C; edit only through the engine notes */']
-for a in args[1:]:
-    out.append(lift(int(a, 16)))
+# a lifted function calls another one directly when that one is in the build (A4_ENG_ALL or its own
+# A4_ENG_XXXXX), else through the game's entry as before
+for f, _ in FUNCS:
+    out.append('#if defined(A4_ENG_%05X) || defined(A4_ENG_ALL)\n#define ENGD_%05X 1\n#else\n#define ENGD_%05X 0\n#endif\n'
+               'static uint64_t engi_%05X(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,\n'
+               '    uint32_t, uint32_t, uint32_t, uint32_t, uint32_t *);' % (f, f, f, f))
+for f, _ in FUNCS:
+    out.append(lift(f))
 out.insert(1, ''.join('extern void %s(void);\n' % h for h in sorted(used_hooks)))
-# the entry each replaces (a4_engv_XXXXX: tools/injector.py puts a veneer at +XXXXX), per function or all
-for a in args[1:]:
-    x = '%05X' % int(a, 16)
+# the entry each replaces (a4_engv_XXXXX: tools/injector.py puts a veneer at +XXXXX), per function or all;
+# an inline-only one (XXXXX:i) has none: only lifted callers reach it, the game's own callers keep the Thumb
+for f, inl in FUNCS:
+    if inl: continue
+    x = '%05X' % f
     out.append('#if defined(A4_ENG_%s) || defined(A4_ENG_ALL)\nENGV(%s)\n#endif' % (x, x))
 txt = '\n'.join(out)
 if outp: open(outp, 'w').write(txt)
