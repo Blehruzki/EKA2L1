@@ -7357,3 +7357,14 @@ Owner: "Sounds like a plan. Go ahead."
   at once, and a store on substep 2 never comes. ENG_SUB_END now takes substep 0 as the step's end
   when the loop flag is clear, as for a wreck.
 - r15: that. Run: r15, a whole race.
+- r15 (whole race, the best so far): the player's distance against stock -0.1% at 10 s, -1.0% at
+  20 s, -1.0% at 30 s, +4.3% at 40, +20.8% at 50; the runs part at ~250 (r13: ~210). Lap 1 in 732
+  (stock 830). Wall hits (tools/hits.py): 40-80 turn 51 hits, cost 10, 24% downshift (stock 67, 8,
+  22%); wide hits 6, cost 55, 100% (stock 12, 54, 92%) -- each kind of hit now costs what stock's
+  does; there are fewer wide ones (paths, or not: open). Opponent: lap 1 in 770 (stock 827, r13
+  1078), -7.9% at 10 s (its launch: not looked at), one wreck at 382 (stock none), 15 car
+  contacts (stock 8).
+- State of plan step 2 (the oracle): per-step rates, the launch, a scrape and the cost of each kind
+  of wall hit match stock; whole-race figures part after ~20 s because the bench car is steered by
+  the walls. Open: the opponent's launch and wreck, the car-car response's size, wreck and scripted
+  camera motion at 11.72 Hz. Plan step 3 is the renderer (~50 ms a render call on the N95 model).
