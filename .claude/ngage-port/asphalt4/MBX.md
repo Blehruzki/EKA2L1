@@ -7610,3 +7610,11 @@ Owner: "Sounds like a plan. Go ahead."
   set), L17 (+ the billboard and +CE8C), L18 (+ the memo and the hand transform). Running.
 - rules.py: titles.py --check FAILS (GAMES.md's generated tables stale); nothing in this round touched
   a game.h or a shim, so it predates it -- not looked at here.
+- LX2 (A4_LIFTCHECK at the veneers, A4_NODIRECT_349F8/349B0, the hand transform inside the mesh
+  routine; with A4_PAINTCHECK): 49,251 mesh-routine calls compared, 0 bytes and 0 insert lists
+  differing; 31,053 inserts, 0; 20,490 painter calls, 0. The hand transform is exact in-run.
+- The composite's BGRA loop (a4_gl.c composite_rows, A4_SLOWBLIT off): the compiler rebuilt its three
+  masks every pixel pair (short of registers) and walked by index -- 24 instructions a pair on the
+  common path. Masks pinned in registers, the walk by pointer, the both-drawn case hinted: 21. An
+  unrolled draft (two pairs a turn) spilled the masks to the stack: worse, dropped. A4_BLITCHECK (the
+  general loop's answer for the same strip) is the check.

@@ -6066,22 +6066,27 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
              * a step, one word store when both are drawn (VP_W is even and rows are word
              * aligned). The same pixels as the general loop below: 565 from the top bits,
              * drawn iff alpha >= 0x80. */
+            /* round 50: the masks held in registers (the compiler rebuilt all three every pair, short of
+             * registers) and the walk by pointer -- 24 instructions a pair to ~17; the same pixels */
+            uint32_t mR = 0xF800u, mG = 0x07E0u, mB = 0x001Fu;
+            __asm__("" : "+r"(mR), "+r"(mG), "+r"(mB));
             for (int sy = 0; sy < sh; sy++) {
                 int screen_y = VP_H - 1 - (y0 + sy);
                 if (screen_y < CLIP_TOP) continue;
-                const uint32_t *src = rb + sy * VP_W;
-                uint16_t *d16 = (uint16_t *)fb + screen_y * FB_STRIDE;
-                uint32_t *d32 = (uint32_t *)d16;
-                for (int x = 0; x < VP_W; x += 2) {
-                    uint32_t a = src[x], b = src[x + 1];
-                    uint32_t ca = ((a >> 8) & 0xF800u) | ((a >> 5) & 0x07E0u) | ((a >> 3) & 0x001Fu);
-                    uint32_t cb = ((b >> 8) & 0xF800u) | ((b >> 5) & 0x07E0u) | ((b >> 3) & 0x001Fu);
-                    if ((int32_t)(a & b) < 0) d32[x >> 1] = ca | (cb << 16);
+                const uint32_t *src = rb + sy * VP_W, *const end = src + VP_W;
+                uint32_t *d32 = (uint32_t *)((uint16_t *)fb + screen_y * FB_STRIDE);
+                do {
+                    const uint32_t a = src[0], b = src[1];
+                    src += 2;
+                    const uint32_t ca = ((a >> 8) & mR) | ((a >> 5) & mG) | ((a >> 3) & mB);
+                    const uint32_t cb = ((b >> 8) & mR) | ((b >> 5) & mG) | ((b >> 3) & mB);
+                    if (__builtin_expect((int32_t)(a & b) < 0, 1)) *d32 = ca | (cb << 16);
                     else {
-                        if ((int32_t)a < 0) d16[x] = (uint16_t)ca;
-                        if ((int32_t)b < 0) d16[x + 1] = (uint16_t)cb;
+                        if ((int32_t)a < 0) ((uint16_t *)d32)[0] = (uint16_t)ca;
+                        if ((int32_t)b < 0) ((uint16_t *)d32)[1] = (uint16_t)cb;
                     }
-                }
+                    d32++;
+                } while (src != end);
             }
 #ifdef A4_BLITCHECK
             /* bench check: the general loop's answer for the same strip, against what the
