@@ -7338,3 +7338,15 @@ Owner: "Sounds like a plan. Go ahead."
   boost's countdown (1BEE0), +AEC (1DF9E, rpm -8 a step while it runs), +B18 (1F144/1F14E, as r12)
   and the contact's start (1F038/1F06A, as r13). Other countdowns left on substep 0 until a record
   says otherwise (A7C, A68, A6C, AF0).
+- Frame cost (plan step 3), s13 (stock, real time) and t13 (the r13 engine at 3x, real time) on
+  the calibrated N95 model (TIMESCALE 4, CPUCAP 330, CPUMODEL 300:60:2:4:5:160, GPUMODEL ...;
+  the host kept up: behind by 0.0%), 120 s holding '5', tools/steptime.py:
+      build  ms a render  3D     comp   2D    present  logic                  render call +12992
+      s13    84-91        24-38  13-22  8-11  3        1.1 ms a step, 1/frame  54.7 ms
+      t13    55-84        17-34  12-17  8-11  3        1.0 ms a substep, 2.2   49.0 ms
+                                                       a frame (2.7 substeps)
+  The engine at 3x costs ~1 ms a substep of modelled N95 time: nothing. The frame is the render's:
+  ~50 ms a render call (3D + composite + the 2D HUD + present), so the 3x build runs 12-18 frames a
+  second, a frame every 2-3 substeps. 30 fps needs the render call near 30 ms: the renderer is the
+  work of plan step 3, not the engine. (s13's first attempt faulted: built without
+  A4_SCRATCH_SIZE=0x5F000, the telemetry's blocks past its scratch.)
