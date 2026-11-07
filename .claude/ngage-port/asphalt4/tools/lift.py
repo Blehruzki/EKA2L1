@@ -60,6 +60,52 @@ for o in range(0, len(code) - 3, 2):
         if off & (1 << 22): off -= 1 << 23
         BLT.add(o + 4 + off)
 
+# Does the game's Thumb function +t read a stack word of its caller's? Its flow walked with the stack
+# pointer's depth: a load or store at [sp, #imm] at or past its entry depth, a tail call (the callee gets the
+# caller's words), the stack's address taken (add rX, sp / mov rX, sp: where it goes is not followed) or an
+# sp the walk cannot follow -- each says yes; so does a call to a function that reads its caller's words
+# (from a thin frame it could reach this one's caller's: conservative, a cycle counts as yes). No means a
+# call may pass none (a4_eng_call0).
+_NOARGS = {}
+def noargs(t):
+    if t in _NOARGS: return _NOARGS[t]
+    _NOARGS[t] = False                                    # while it is walked (a cycle: yes, it reads)
+    res = True; seen = {}; work = [(t, 0)]; calls = set()
+    while work and res:
+        a, dl = work.pop()
+        while res:
+            if a in seen:
+                if seen[a] != dl: res = False
+                break
+            if not (0 <= a < len(code) - 2) or len(seen) > 4000: res = False; break
+            seen[a] = dl
+            try: i = next(md.disasm(code[a:a + 4], a, count=1))
+            except StopIteration: res = False; break
+            m, op = i.mnemonic, i.op_str
+            if m == 'push': dl += 4 * len(i.operands)
+            elif m == 'pop':
+                dl -= 4 * len(i.operands)
+                if 'pc' in op: break
+            elif m in ('add', 'sub') and op.startswith('sp, ') and op.count(',') == 1 and '#' in op:
+                dl += (-1 if m == 'add' else 1) * i.operands[-1].imm
+            elif m in ('ldr', 'str') and '[sp' in op:
+                mo = i.operands[1].mem
+                if mo.disp - dl >= 0: res = False
+            elif 'sp' in op.replace('[sp', ''): res = False      # sp as a value or written otherwise
+            elif m in ('add',) and op.startswith('pc'): res = False
+            elif m == 'blx': res = False                          # an ARM or indirect callee: not followed
+            elif m == 'bl': calls.add(i.operands[0].imm)
+            if m == 'bx' or (m == 'mov' and op.startswith('pc')): break
+            if m == 'b' or (m.startswith('b') and len(m) == 3 and m not in ('bic', 'blx')):
+                tt = i.operands[0].imm
+                if tt in BLT and tt != t: res = False; break     # a tail call
+                work.append((tt, dl))
+                if m == 'b': break
+            a += i.size
+    if res: res = all(noargs(u) for u in calls if u != t)
+    _NOARGS[t] = res
+    return res
+
 def lift(start):
     end = start + 0x2000
     for t in sorted(BLT):
@@ -130,6 +176,8 @@ def lift(start):
     def stkargs(): return ', '.join('S32(%d)' % (4 * k) for k in range(8))
     def callfn(t, thumb, tail=False):  # a call to the game's +t: direct when lifted (and enabled), else through a4_eng_call
         slow = 'a4_eng_call(%s(0x%X), r0, r1, r2, r3, sp, r23)' % ('GAMEFN' if thumb else 'GAMEARM', t)
+        if thumb and not tail and noargs(t):    # it reads no stack word of its caller's: none copied
+            slow = 'a4_eng_call0(GAMEFN(0x%X), r0, r1, r2, r3, r23)' % t
         if thumb and t in LIFTED:
             fast = 'engi_%05X(r0, r1, r2, r3, %s, r23)' % (t, stkargs())
             ex = '(ENGD_%05X ? %s : %s)' % (t, fast, slow)

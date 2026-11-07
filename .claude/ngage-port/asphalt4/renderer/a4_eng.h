@@ -37,6 +37,7 @@ extern const int32_t a4_g_base;                 /* a4_eng.s: patched to (code + 
 #define GAMEFN(off)  (GBASE + (off) + 1u)       /* a Thumb function of the game */
 #define GAMEARM(off) (GBASE + (off))            /* an ARM one (the runtime helpers, blx) */
 uint64_t a4_eng_call(uint32_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t sp, uint32_t *r23);
+uint64_t a4_eng_call0(uint32_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t *r23);   /* no stack words */
 void a4_mesh_insert(uint32_t *cam, uint32_t *face);  /* a4_gl.c (A4_MESH): the mesh routine's insert, kept for the list */
 void a4_gl_hud(void);                 /* a4_gl.c: the end of the 3D pass (the lifted HUD painter calls it) */
 #define CALLR(x) a4_eng_call((x), r0, r1, r2, r3, sp, r23)

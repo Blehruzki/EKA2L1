@@ -645,7 +645,7 @@ static uint64_t engi_1F1F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     S32(0x8Cu) = r1;                                             /* 01f222 str r1, [sp, #0x8c] */
     if ((fN == fV)) goto L_1F2C6;                                /* 01f224 bge #0x1f2c6 */
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 01f226 movs r0, r5 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x522A4), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f228 bl #0x522a4 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x522A4), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f228 bl #0x522a4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f228 bl #0x522a4 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f22c cmp r0, #0 */
     if (r0 != 0x0u) goto L_1F2C2;                                /* 01f22e bne #0x1f2c2 */
@@ -658,7 +658,7 @@ static uint64_t engi_1F1F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     t = SHL_C(r1, 0x7u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01f23c lsls r1, r1, #7 */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f23e adds r0, r0, r1 */
     r0 = L32(r0 + 0x2Cu);                                        /* 01f240 ldr r0, [r0, #0x2c] */
-    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f242 bl #0x52206 */
+    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52206), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f242 bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f242 bl #0x52206 */
 L_1F246:
     r1 = L32(r0 + 0x1Cu);                                        /* 01f246 ldr r1, [r0, #0x1c] */
@@ -730,7 +730,7 @@ L_1F2C2:
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01f2c4 pop {r4, r5, r6, r7, pc} */
 L_1F2C6:
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 01f2c6 movs r0, r5 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x522A4), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f2c8 bl #0x522a4 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x522A4), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f2c8 bl #0x522a4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f2c8 bl #0x522a4 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f2cc cmp r0, #0 */
     if (r0 == 0x0u) goto L_1F2E4;                                /* 01f2ce beq #0x1f2e4 */
@@ -754,7 +754,7 @@ L_1F2E4:
     t = SHL_C(r1, 0x7u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01f2f0 lsls r1, r1, #7 */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f2f2 adds r0, r0, r1 */
     r0 = L32(r0 + 0x2Cu);                                        /* 01f2f4 ldr r0, [r0, #0x2c] */
-    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f2f6 bl #0x52206 */
+    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52206), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f2f6 bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f2f6 bl #0x52206 */
     S32(0x6Cu) = r0;                                             /* 01f2fa str r0, [sp, #0x6c] */
     r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01f2fc movs r0, #0 */
@@ -767,10 +767,12 @@ L_1F2E4:
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f30a cmp r0, #0 */
     S32(0x88u) = r1;                                             /* 01f30c str r1, [sp, #0x88] */
     if (!fZ) goto L_1F3CC;                                       /* 01f30e bne #0x1f3cc */
+    /* engine: substeps: no stuck check */
+    if (ENG_SUB) goto L_1F3CC;
     r1 = S32(0x88u);                                             /* 01f310 ldr r1, [sp, #0x88] */
     r2 = S32(0x90u);                                             /* 01f312 ldr r2, [sp, #0x90] */
     { uint32_t ta = sp, tb = 0x38u; t = ta + tb; r0 = t; }       /* 01f314 add r0, sp, #0x38 */
-    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f316 bl #0x52540 */
+    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52540), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f316 bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f316 bl #0x52540 */
     r1 = S32(0x8Cu);                                             /* 01f31a ldr r1, [sp, #0x8c] */
     r0 = L32(r1 + 0x34u);                                        /* 01f31c ldr r0, [r1, #0x34] */
@@ -802,7 +804,7 @@ L_1F346:
     { uint32_t ta = r1, tb = 0x64u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f346 cmp r1, #0x64 */
     if ((int32_t)r1 >= (int32_t)0x64u) goto L_1F3C4;             /* 01f348 bge #0x1f3c4 */
     { uint32_t ta = sp, tb = 0x38u; t = ta + tb; r0 = t; }       /* 01f34a add r0, sp, #0x38 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x37144), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f34c bl #0x37144 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x37144), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f34c bl #0x37144 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f34c bl #0x37144 */
     { uint32_t ta = r0, tb = 0x64u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f350 cmp r0, #0x64 */
     if ((int32_t)r0 >= (int32_t)0x64u) goto L_1F3C4;             /* 01f352 bge #0x1f3c4 */
@@ -836,7 +838,7 @@ L_1F366:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f386 bl #0x2202c */
     r1 = r5; fN = r1 >> 31; fZ = r1 == 0;                        /* 01f38a movs r1, r5 */
     { uint32_t ta = sp, tb = 0x14u; t = ta + tb; r0 = t; }       /* 01f38c add r0, sp, #0x14 */
-    { uint64_t rr = (ENGD_1CD88 ? engi_1CD88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1CD88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f38e bl #0x1cd88 */
+    { uint64_t rr = (ENGD_1CD88 ? engi_1CD88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1CD88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f38e bl #0x1cd88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f38e bl #0x1cd88 */
     r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01f392 movs r0, #0 */
     S32(0x20u) = r0;                                             /* 01f394 str r0, [sp, #0x20] */
@@ -869,6 +871,8 @@ L_1F3C4:
     r0 = S32(0x88u);                                             /* 01f3c8 ldr r0, [sp, #0x88] */
     t = r0; L32(t + 0) = r1; L32(t + 4) = r2; L32(t + 8) = r3; r0 = t + 12; /* 01f3ca stm r0!, {r1, r2, r3} */
 L_1F3CC:
+    /* engine: substeps: the whole step's AI keys */
+    if (ENG_SUB) { uint32_t s_ = eng_ai_slot(r5); r6 = ENG->aik[s_]; MEM32(sp + 0x70u) = ENG->aia[s_]; goto L_1FCB0; }
     r0 = S32(0x6Cu);                                             /* 01f3cc ldr r0, [sp, #0x6c] */
     r1 = 0x5u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01f3ce movs r1, #5 */
     t = SHL_C(r1, 0x9u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01f3d0 lsls r1, r1, #9 */
@@ -1017,7 +1021,7 @@ L_1F4EA:
     if (!fZ) goto L_1F52C;                                       /* 01f4ee bne #0x1f52c */
     r0 = S32(0xA0u);                                             /* 01f4f0 ldr r0, [sp, #0xa0] */
     r1 = 0x0u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01f4f2 movs r1, #0 */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f4f4 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f4f4 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f4f4 bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f4f8 ldr r0, [r0] */
     { uint32_t ta = r5, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f4fa subs r0, r5, r0 */
@@ -1188,7 +1192,7 @@ L_1F61C:
 L_1F624:
     r0 = S32(0xA0u);                                             /* 01f624 ldr r0, [sp, #0xa0] */
     r1 = 0x0u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01f626 movs r1, #0 */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f628 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f628 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f628 bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f62c ldr r0, [r0] */
     { uint32_t ta = r5, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f62e subs r0, r5, r0 */
@@ -1259,21 +1263,21 @@ L_1F68C:
 L_1F6AA:
     r0 = S32(0xA0u);                                             /* 01f6aa ldr r0, [sp, #0xa0] */
     r1 = S32(0x40u);                                             /* 01f6ac ldr r1, [sp, #0x40] */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f6ae bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f6ae bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f6ae bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f6b2 ldr r0, [r0] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f6b4 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1F798;                                /* 01f6b6 beq #0x1f798 */
     r0 = S32(0xA0u);                                             /* 01f6b8 ldr r0, [sp, #0xa0] */
     r1 = S32(0x40u);                                             /* 01f6ba ldr r1, [sp, #0x40] */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f6bc bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f6bc bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f6bc bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f6c0 ldr r0, [r0] */
     { uint32_t ta = r0, tb = r5; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f6c2 cmp r0, r5 */
     if (r0 == r5) goto L_1F798;                                  /* 01f6c4 beq #0x1f798 */
     r0 = S32(0xA0u);                                             /* 01f6c6 ldr r0, [sp, #0xa0] */
     r1 = S32(0x40u);                                             /* 01f6c8 ldr r1, [sp, #0x40] */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f6ca bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f6ca bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f6ca bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f6ce ldr r0, [r0] */
     r1 = L32(r5 + 0x1Cu);                                        /* 01f6d0 ldr r1, [r5, #0x1c] */
@@ -1289,7 +1293,7 @@ L_1F6DC:
     S32(0x50u) = r0;                                             /* 01f6e2 str r0, [sp, #0x50] */
     r0 = S32(0xA0u);                                             /* 01f6e4 ldr r0, [sp, #0xa0] */
     r1 = S32(0x40u);                                             /* 01f6e6 ldr r1, [sp, #0x40] */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f6e8 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f6e8 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f6e8 bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f6ec ldr r0, [r0] */
     r1 = 0x2Du; fN = r1 >> 31; fZ = r1 == 0;                     /* 01f6ee movs r1, #0x2d */
@@ -1314,7 +1318,7 @@ L_1F70A:
 L_1F710:
     r0 = S32(0xA0u);                                             /* 01f710 ldr r0, [sp, #0xa0] */
     r1 = S32(0x40u);                                             /* 01f712 ldr r1, [sp, #0x40] */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f714 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f714 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f714 bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f718 ldr r0, [r0] */
     r1 = L32(r5 + 0x1Cu);                                        /* 01f71a ldr r1, [r5, #0x1c] */
@@ -1328,7 +1332,7 @@ L_1F726:
     if ((int32_t)r0 >= (int32_t)0x2u) goto L_1F798;              /* 01f728 bge #0x1f798 */
     r0 = S32(0xA0u);                                             /* 01f72a ldr r0, [sp, #0xa0] */
     r1 = S32(0x40u);                                             /* 01f72c ldr r1, [sp, #0x40] */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f72e bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f72e bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f72e bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f732 ldr r0, [r0] */
     r1 = 0x2Du; fN = r1 >> 31; fZ = r1 == 0;                     /* 01f734 movs r1, #0x2d */
@@ -1340,7 +1344,7 @@ L_1F726:
     if (r0 != r1) goto L_1F798;                                  /* 01f740 bne #0x1f798 */
     r0 = S32(0xA0u);                                             /* 01f742 ldr r0, [sp, #0xa0] */
     r1 = S32(0x40u);                                             /* 01f744 ldr r1, [sp, #0x40] */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f746 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f746 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f746 bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f74a ldr r0, [r0] */
     r1 = 0x2Du; fN = r1 >> 31; fZ = r1 == 0;                     /* 01f74c movs r1, #0x2d */
@@ -1355,7 +1359,7 @@ L_1F726:
 L_1F75E:
     r0 = S32(0xA0u);                                             /* 01f75e ldr r0, [sp, #0xa0] */
     r1 = S32(0x40u);                                             /* 01f760 ldr r1, [sp, #0x40] */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f762 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f762 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f762 bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f766 ldr r0, [r0] */
     r1 = 0x2Du; fN = r1 >> 31; fZ = r1 == 0;                     /* 01f768 movs r1, #0x2d */
@@ -1370,7 +1374,7 @@ L_1F75E:
 L_1F77A:
     r0 = S32(0xA0u);                                             /* 01f77a ldr r0, [sp, #0xa0] */
     r1 = S32(0x40u);                                             /* 01f77c ldr r1, [sp, #0x40] */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f77e bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f77e bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f77e bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f782 ldr r0, [r0] */
     r1 = 0x2Du; fN = r1 >> 31; fZ = r1 == 0;                     /* 01f784 movs r1, #0x2d */
@@ -1418,7 +1422,7 @@ L_1F7C2:
     L32(r4 + 0x4u) = r0;                                         /* 01f7cc str r0, [r4, #4] */
 L_1F7CE:
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 01f7ce movs r0, r5 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1D9CC), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f7d0 bl #0x1d9cc */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x1D9CC), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f7d0 bl #0x1d9cc */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f7d0 bl #0x1d9cc */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f7d4 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1F7E4;                                /* 01f7d6 beq #0x1f7e4 */
@@ -1430,7 +1434,7 @@ L_1F7CE:
     L32(r4 + 0xCu) = r0;                                         /* 01f7e2 str r0, [r4, #0xc] */
 L_1F7E4:
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 01f7e4 movs r0, r5 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1D9CC), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f7e6 bl #0x1d9cc */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x1D9CC), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f7e6 bl #0x1d9cc */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f7e6 bl #0x1d9cc */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f7ea cmp r0, #0 */
     if (r0 == 0x0u) goto L_1F7F6;                                /* 01f7ec beq #0x1f7f6 */
@@ -1490,21 +1494,21 @@ L_1F836:
 L_1F850:
     r0 = S32(0xA0u);                                             /* 01f850 ldr r0, [sp, #0xa0] */
     r1 = S32(0x3Cu);                                             /* 01f852 ldr r1, [sp, #0x3c] */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f854 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f854 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f854 bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f858 ldr r0, [r0] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f85a cmp r0, #0 */
     if (r0 == 0x0u) goto L_1F888;                                /* 01f85c beq #0x1f888 */
     r0 = S32(0xA0u);                                             /* 01f85e ldr r0, [sp, #0xa0] */
     r1 = S32(0x3Cu);                                             /* 01f860 ldr r1, [sp, #0x3c] */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f862 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f862 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f862 bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f866 ldr r0, [r0] */
     { uint32_t ta = r0, tb = r5; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f868 cmp r0, r5 */
     if (r0 == r5) goto L_1F888;                                  /* 01f86a beq #0x1f888 */
     r0 = S32(0xA0u);                                             /* 01f86c ldr r0, [sp, #0xa0] */
     r1 = S32(0x3Cu);                                             /* 01f86e ldr r1, [sp, #0x3c] */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f870 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f870 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f870 bl #0x52c88 */
     r0 = L32(r0);                                                /* 01f874 ldr r0, [r0] */
     r1 = L32(r5 + 0x1Cu);                                        /* 01f876 ldr r1, [r5, #0x1c] */
@@ -1694,7 +1698,7 @@ L_1F9CA:
     t = SHL_C(r1, 0x7u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01f9d0 lsls r1, r1, #7 */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f9d2 adds r0, r0, r1 */
     r0 = L32(r0 + 0x2Cu);                                        /* 01f9d4 ldr r0, [r0, #0x2c] */
-    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f9d6 bl #0x52206 */
+    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52206), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01f9d6 bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01f9d6 bl #0x52206 */
     { uint32_t ta = r0, tb = 0x80u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f9da adds r0, #0x80 */
     r0 = L32(r0 + 0x34u);                                        /* 01f9dc ldr r0, [r0, #0x34] */
@@ -1784,7 +1788,7 @@ L_1FA74:
     L32(r7 + 0x28u) = r0;                                        /* 01fa7a str r0, [r7, #0x28] */
 L_1FA7C:
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 01fa7c movs r0, r5 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1D9CC), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fa7e bl #0x1d9cc */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x1D9CC), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fa7e bl #0x1d9cc */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01fa7e bl #0x1d9cc */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01fa82 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1FA9E;                                /* 01fa84 beq #0x1fa9e */
@@ -2014,7 +2018,7 @@ L_1FC1A:
     t = r6 | r0; fN = t >> 31; fZ = t == 0; r6 = t;              /* 01fc1c orrs r6, r0 */
 L_1FC1E:
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 01fc1e movs r0, r5 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fc20 bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fc20 bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01fc20 bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01fc24 cmp r0, #0 */
     if (r0 != 0x0u) goto L_1FCB0;                                /* 01fc26 bne #0x1fcb0 */
@@ -2094,6 +2098,8 @@ L_1FCA0:
 L_1FCB0:
     r2 = S32(0x70u);                                             /* 01fcb0 ldr r2, [sp, #0x70] */
     S32(0x0u) = r2;                                              /* 01fcb2 str r2, [sp] */
+    /* engine: the AI keys the whole step chose */
+    if (!ENG_SUB) { uint32_t s_ = eng_ai_slot(r5); ENG->aik[s_] = r6; ENG->aia[s_] = MEM32(sp + 0x70u); }
     r1 = r6; fN = r1 >> 31; fZ = r1 == 0;                        /* 01fcb4 movs r1, r6 */
     r3 = S32(0xA0u);                                             /* 01fcb6 ldr r3, [sp, #0xa0] */
     r2 = S32(0x9Cu);                                             /* 01fcb8 ldr r2, [sp, #0x9c] */
@@ -2144,7 +2150,7 @@ L_1DEA2:
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01dea2 cmp r0, #0 */
     if (r0 != 0x0u) goto L_1DF8C;                                /* 01dea4 bne #0x1df8c */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01dea6 movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01dea8 bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01dea8 bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01dea8 bl #0x193ce */
     r1 = 0xBu; fN = r1 >> 31; fZ = r1 == 0;                      /* 01deac movs r1, #0xb */
     t = SHL_C(r1, 0x8u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01deae lsls r1, r1, #8 */
@@ -2173,7 +2179,8 @@ L_1DED2:
     if ((int32_t)r0 > (int32_t)0x30u) goto L_1DEDE;              /* 01deda bgt #0x1dede */
     r2 = r0; fN = r2 >> 31; fZ = r2 == 0;                        /* 01dedc movs r2, r0 */
 L_1DEDE:
-    L32(r5 + 0x20u) = r2;                                        /* 01dede str r2, [r5, #0x20] */
+    /* engine: B20, steps a key is held (to 0x30): one a step */
+    { uint32_t ea_ = r5 + 0x20u; r2 = eng_third(ea_, L32(ea_), r2); L32(ea_) = r2; } /* 01dede str r2, [r5, #0x20] */
 L_1DEE0:
     t = SHL_C(r6, 0x1Du, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01dee0 lsls r0, r6, #0x1d */
     if (fN) goto L_1DEE8;                                        /* 01dee2 bmi #0x1dee8 */
@@ -2210,11 +2217,13 @@ L_1DF04:
     r2 = S32(0x174u);                                            /* 01df1a ldr r2, [sp, #0x174] */
     r0 = L32(r2 + 0x2Cu);                                        /* 01df1c ldr r0, [r2, #0x2c] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01df1e adds r0, r0, #1 */
-    L32(r2 + 0x2Cu) = r0;                                        /* 01df20 str r0, [r2, #0x2c] */
+    /* engine: A2C, a step counter */
+    if (!ENG_SUB) L32(r2 + 0x2Cu) = r0; else r0 = L32(r2 + 0x2Cu); /* 01df20 str r0, [r2, #0x2c] */
     r2 = S32(0x174u);                                            /* 01df22 ldr r2, [sp, #0x174] */
     r0 = L32(r2 + 0x34u);                                        /* 01df24 ldr r0, [r2, #0x34] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01df26 adds r0, r0, #1 */
-    L32(r2 + 0x34u) = r0;                                        /* 01df28 str r0, [r2, #0x34] */
+    /* engine: A34, a step counter (the stuck check every 64) */
+    if (!ENG_SUB) L32(r2 + 0x34u) = r0; else r0 = L32(r2 + 0x34u); /* 01df28 str r0, [r2, #0x34] */
 L_1DF2A:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01df2a movs r0, r4 */
     { uint32_t ta = r0, tb = 0x80u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01df2c adds r0, #0x80 */
@@ -2240,14 +2249,16 @@ L_1DF46:
     if ((int32_t)r0 <= (int32_t)0x0u) goto L_1DF5C;              /* 01df52 ble #0x1df5c */
     r1 = S32(0x16Cu);                                            /* 01df54 ldr r1, [sp, #0x16c] */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01df56 subs r0, r0, #1 */
-    L32(r1 + 0x3Cu) = r0;                                        /* 01df58 str r0, [r1, #0x3c] */
+    /* engine: A7C, a countdown */
+    if (!ENG_SUB) L32(r1 + 0x3Cu) = r0; else r0 = L32(r1 + 0x3Cu); /* 01df58 str r0, [r1, #0x3c] */
     goto L_1DF66;                                                /* 01df5a b #0x1df66 */
 L_1DF5C:
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01df5c cmp r0, #0 */
     if ((int32_t)r0 >= (int32_t)0x0u) goto L_1DF66;              /* 01df5e bge #0x1df66 */
     r1 = S32(0x16Cu);                                            /* 01df60 ldr r1, [sp, #0x16c] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01df62 adds r0, r0, #1 */
-    L32(r1 + 0x3Cu) = r0;                                        /* 01df64 str r0, [r1, #0x3c] */
+    /* engine: A7C, a count up */
+    if (!ENG_SUB) L32(r1 + 0x3Cu) = r0; else r0 = L32(r1 + 0x3Cu); /* 01df64 str r0, [r1, #0x3c] */
 L_1DF66:
     r0 = 0x15u; fN = r0 >> 31; fZ = r0 == 0;                     /* 01df66 movs r0, #0x15 */
     t = SHL_C(r0, 0x7u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01df68 lsls r0, r0, #7 */
@@ -2266,7 +2277,8 @@ L_1DF66:
     { uint32_t ta = r1, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01df82 cmp r1, r2 */
     if ((int32_t)r1 < (int32_t)r2) goto L_1DF8E;                 /* 01df84 blt #0x1df8e */
     { uint32_t ta = r1, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01df86 subs r1, r1, r2 */
-    L32(r0 + 0x3Cu) = r1;                                        /* 01df88 str r1, [r0, #0x3c] */
+    /* engine: ABC, drained by a table value a step */
+    { uint32_t ea_ = r0 + 0x3Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01df88 str r1, [r0, #0x3c] */
     goto L_1DF92;                                                /* 01df8a b #0x1df92 */
 L_1DF8C:
     goto L_1E07E;                                                /* 01df8c b #0x1e07e */
@@ -2280,12 +2292,14 @@ L_1DF92:
     if (r0 == 0x0u) goto L_1DFAA;                                /* 01df98 beq #0x1dfaa */
     r2 = S32(0x178u);                                            /* 01df9a ldr r2, [sp, #0x178] */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01df9c subs r0, r0, #1 */
-    L32(r2 + 0x2Cu) = r0;                                        /* 01df9e str r0, [r2, #0x2c] */
+    /* engine: AEC, a countdown (rpm -8 a step while it runs) */
+    if (ENG_SUB_END(r4)) L32(r2 + 0x2Cu) = r0; else r0 = L32(r2 + 0x2Cu); /* 01df9e str r0, [r2, #0x2c] */
     r0 = L32(r7 + 0x18u);                                        /* 01dfa0 ldr r0, [r7, #0x18] */
     { uint32_t ta = r0, tb = 0x8u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01dfa2 cmp r0, #8 */
     if ((int32_t)r0 <= (int32_t)0x8u) goto L_1DFAA;              /* 01dfa4 ble #0x1dfaa */
     { uint32_t ta = r0, tb = 0x8u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01dfa6 subs r0, #8 */
-    L32(r7 + 0x18u) = r0;                                        /* 01dfa8 str r0, [r7, #0x18] */
+    /* engine: rpm -8 a step while AEC runs */
+    { uint32_t ea_ = r7 + 0x18u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01dfa8 str r0, [r7, #0x18] */
 L_1DFAA:
     r1 = r4; fN = r1 >> 31; fZ = r1 == 0;                        /* 01dfaa movs r1, r4 */
     r0 = L32(r4 + 0x34u);                                        /* 01dfac ldr r0, [r4, #0x34] */
@@ -2317,6 +2331,8 @@ L_1DFAA:
     S32(0x14Cu) = r1;                                            /* 01dfe0 str r1, [sp, #0x14c] */
     S32(0x150u) = r2;                                            /* 01dfe2 str r2, [sp, #0x150] */
     if (fZ) goto L_1E0DA;                                        /* 01dfe4 beq #0x1e0da */
+    /* engine: substeps: a wreck waits for the whole step */
+    if (ENG_SUB) return 0;
     r6 = 0x8u; fN = r6 >> 31; fZ = r6 == 0;                      /* 01dfe6 movs r6, #8 */
     r0 = L32(r7 + 0x18u);                                        /* 01dfe8 ldr r0, [r7, #0x18] */
     { uint32_t ta = r0, tb = 0xFFu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01dfea subs r0, #0xff */
@@ -2400,7 +2416,7 @@ L_1E07E:
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01e080 pop {r4, r5, r6, r7, pc} */
 L_1E082:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e082 movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e084 bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e084 bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e084 bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e088 cmp r0, #0 */
     if (r0 != 0x0u) goto L_1E186;                                /* 01e08a bne #0x1e186 */
@@ -2410,7 +2426,7 @@ L_1E082:
     t = SHL_C(r1, 0x7u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01e092 lsls r1, r1, #7 */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e094 adds r0, r0, r1 */
     r0 = L32(r0 + 0x2Cu);                                        /* 01e096 ldr r0, [r0, #0x2c] */
-    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e098 bl #0x52206 */
+    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52206), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e098 bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e098 bl #0x52206 */
     S32(0xD0u) = r0;                                             /* 01e09c str r0, [sp, #0xd0] */
     r0 = S32(0xD0u);                                             /* 01e09e ldr r0, [sp, #0xd0] */
@@ -2423,7 +2439,7 @@ L_1E082:
     if (!fN) goto L_1E0C2;                                       /* 01e0ac bpl #0x1e0c2 */
     r0 = S32(0xD0u);                                             /* 01e0ae ldr r0, [sp, #0xd0] */
     r0 = L32(r0 + 0x3Cu);                                        /* 01e0b0 ldr r0, [r0, #0x3c] */
-    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x39FE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e0b2 bl #0x39fe */
+    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e0b2 bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e0b2 bl #0x39fe */
     r0 = L32(r0);                                                /* 01e0b6 ldr r0, [r0] */
     r1 = S32(0xD0u);                                             /* 01e0b8 ldr r1, [sp, #0xd0] */
@@ -2459,14 +2475,14 @@ L_1E0E6:
     t = SHL_C(r1, 0x7u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01e0ec lsls r1, r1, #7 */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e0ee adds r0, r0, r1 */
     r0 = L32(r0 + 0x2Cu);                                        /* 01e0f0 ldr r0, [r0, #0x2c] */
-    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e0f2 bl #0x52206 */
+    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52206), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e0f2 bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e0f2 bl #0x52206 */
     { uint32_t ta = r0, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01e0f6 adds r1, r0, #4 */
     r2 = 0x7Du; fN = r2 >> 31; fZ = r2 == 0;                     /* 01e0f8 movs r2, #0x7d */
     r0 = S32(0x144u);                                            /* 01e0fa ldr r0, [sp, #0x144] */
     t = SHL_C(r2, 0x5u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 01e0fc lsls r2, r2, #5 */
     { uint32_t ta = sp, tb = 0xCCu; t = ta + tb; r3 = t; }       /* 01e0fe add r3, sp, #0xcc */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x24792), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e100 bl #0x24792 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x24792), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e100 bl #0x24792 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e100 bl #0x24792 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e104 cmp r0, #0 */
     if (r0 != 0x0u) goto L_1E1FC;                                /* 01e106 bne #0x1e1fc */
@@ -2556,7 +2572,7 @@ L_1E188:
     { uint32_t ta = sp, tb = 0x3Cu; t = ta + tb; r2 = t; }       /* 01e1a8 add r2, sp, #0x3c */
     { uint32_t ta = sp, tb = 0x48u; t = ta + tb; r1 = t; }       /* 01e1aa add r1, sp, #0x48 */
     { uint32_t ta = sp, tb = 0x54u; t = ta + tb; r0 = t; }       /* 01e1ac add r0, sp, #0x54 */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e1ae bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e1ae bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e1ae bl #0x52562 */
     r0 = S32(0x54u);                                             /* 01e1b2 ldr r0, [sp, #0x54] */
     r1 = S32(0x58u);                                             /* 01e1b4 ldr r1, [sp, #0x58] */
@@ -2608,7 +2624,7 @@ L_1E1FE:
     { uint32_t ta = sp, tb = 0x78u; t = ta + tb; r2 = t; }       /* 01e20c add r2, sp, #0x78 */
     { uint32_t ta = sp, tb = 0x84u; t = ta + tb; r1 = t; }       /* 01e20e add r1, sp, #0x84 */
     { uint32_t ta = sp, tb = 0x90u; t = ta + tb; r0 = t; }       /* 01e210 add r0, sp, #0x90 */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e212 bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e212 bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e212 bl #0x52562 */
     r0 = S32(0x90u);                                             /* 01e216 ldr r0, [sp, #0x90] */
     r1 = S32(0x94u);                                             /* 01e218 ldr r1, [sp, #0x94] */
@@ -2635,7 +2651,7 @@ L_1E1FE:
     { uint32_t ta = sp, tb = 0x6Cu; t = ta + tb; r2 = t; }       /* 01e242 add r2, sp, #0x6c */
     { uint32_t ta = sp, tb = 0xA8u; t = ta + tb; r1 = t; }       /* 01e244 add r1, sp, #0xa8 */
     { uint32_t ta = sp, tb = 0xB4u; t = ta + tb; r0 = t; }       /* 01e246 add r0, sp, #0xb4 */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e248 bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e248 bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e248 bl #0x52562 */
     r0 = S32(0xB4u);                                             /* 01e24c ldr r0, [sp, #0xb4] */
     r1 = S32(0xB8u);                                             /* 01e24e ldr r1, [sp, #0xb8] */
@@ -2658,14 +2674,14 @@ L_1E1FE:
     t = SHL_C(r1, 0x7u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01e270 lsls r1, r1, #7 */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e272 adds r0, r0, r1 */
     r0 = L32(r0 + 0x2Cu);                                        /* 01e274 ldr r0, [r0, #0x2c] */
-    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e276 bl #0x52206 */
+    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52206), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e276 bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e276 bl #0x52206 */
     { uint32_t ta = r0, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01e27a adds r1, r0, #4 */
     r2 = 0x7Du; fN = r2 >> 31; fZ = r2 == 0;                     /* 01e27c movs r2, #0x7d */
     t = SHL_C(r2, 0x5u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 01e27e lsls r2, r2, #5 */
     r0 = sp;                                                     /* 01e280 mov r0, sp */
     { uint32_t ta = sp, tb = 0xCCu; t = ta + tb; r3 = t; }       /* 01e282 add r3, sp, #0xcc */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x24792), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e284 bl #0x24792 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x24792), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e284 bl #0x24792 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e284 bl #0x24792 */
 L_1E288:
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e288 cmp r0, #0 */
@@ -2676,13 +2692,13 @@ L_1E288:
     t = SHL_C(r1, 0x7u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01e292 lsls r1, r1, #7 */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e294 adds r0, r0, r1 */
     r0 = L32(r0 + 0x2Cu);                                        /* 01e296 ldr r0, [r0, #0x2c] */
-    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e298 bl #0x52206 */
+    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52206), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e298 bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e298 bl #0x52206 */
     { uint32_t ta = r0, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e29c adds r0, r0, #4 */
     r2 = r0; fN = r2 >> 31; fZ = r2 == 0;                        /* 01e29e movs r2, r0 */
     r1 = S32(0x144u);                                            /* 01e2a0 ldr r1, [sp, #0x144] */
     { uint32_t ta = sp, tb = 0xB4u; t = ta + tb; r0 = t; }       /* 01e2a2 add r0, sp, #0xb4 */
-    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e2a4 bl #0x52540 */
+    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52540), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e2a4 bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e2a4 bl #0x52540 */
     r0 = GAMEW(0x1E374);                                         /* 01e2a8 ldr r0, [pc, #0xc8] */
     r1 = S32(0xCCu);                                             /* 01e2aa ldr r1, [sp, #0xcc] */
@@ -2697,13 +2713,13 @@ L_1E288:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e2ba blx r2 */
     { uint32_t ta = sp, tb = 0xC0u; t = ta + tb; r1 = t; }       /* 01e2bc add r1, sp, #0xc0 */
     { uint32_t ta = sp, tb = 0xB4u; t = ta + tb; r0 = t; }       /* 01e2be add r0, sp, #0xb4 */
-    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52182), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e2c0 bl #0x52182 */
+    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52182), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e2c0 bl #0x52182 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e2c0 bl #0x52182 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e2c4 cmp r0, #0 */
     if ((int32_t)r0 <= (int32_t)0x0u) goto L_1E2D8;              /* 01e2c6 ble #0x1e2d8 */
 L_1E2C8:
     r0 = L32(r4 + 0x3Cu);                                        /* 01e2c8 ldr r0, [r4, #0x3c] */
-    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x39FE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e2ca bl #0x39fe */
+    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e2ca bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e2ca bl #0x39fe */
     r0 = L32(r0);                                                /* 01e2ce ldr r0, [r0] */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e2d0 subs r0, r0, #1 */
@@ -2726,12 +2742,12 @@ L_1E2D8:
     L32(r2 + 0x18u) = r0;                                        /* 01e2f0 str r0, [r2, #0x18] */
 L_1E2F2:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e2f2 movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e2f4 bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e2f4 bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e2f4 bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e2f8 cmp r0, #0 */
     if (r0 != 0x0u) goto L_1E314;                                /* 01e2fa bne #0x1e314 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e2fc movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x522A4), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e2fe bl #0x522a4 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x522A4), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e2fe bl #0x522a4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e2fe bl #0x522a4 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e302 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1E314;                                /* 01e304 beq #0x1e314 */
@@ -2744,7 +2760,7 @@ L_1E2F2:
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01e312 pop {r4, r5, r6, r7, pc} */
 L_1E314:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e314 movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e316 bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e316 bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e316 bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e31a cmp r0, #0 */
     if (r0 != 0x0u) goto L_1E322;                                /* 01e31c bne #0x1e322 */
@@ -2760,7 +2776,7 @@ L_1E322:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e32c bl #0x1db10 */
     r1 = r4; fN = r1 >> 31; fZ = r1 == 0;                        /* 01e330 movs r1, r4 */
     { uint32_t ta = sp, tb = 0xD4u; t = ta + tb; r0 = t; }       /* 01e332 add r0, sp, #0xd4 */
-    { uint64_t rr = (ENGD_1CD88 ? engi_1CD88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1CD88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e334 bl #0x1cd88 */
+    { uint64_t rr = (ENGD_1CD88 ? engi_1CD88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1CD88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e334 bl #0x1cd88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e334 bl #0x1cd88 */
     r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01e338 movs r0, #0 */
     S32(0xE0u) = r0;                                             /* 01e33a str r0, [sp, #0xe0] */
@@ -2807,7 +2823,8 @@ L_1E386:
     r1 = S32(0x17Cu);                                            /* 01e394 ldr r1, [sp, #0x17c] */
     r0 = L32(r1 + 0x8u);                                         /* 01e396 ldr r0, [r1, #8] */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e398 subs r0, r0, #1 */
-    L32(r1 + 0x8u) = r0;                                         /* 01e39a str r0, [r1, #8] */
+    /* engine: C48, the respawn countdown */
+    if (!ENG_SUB) L32(r1 + 0x8u) = r0; else r0 = L32(r1 + 0x8u); /* 01e39a str r0, [r1, #8] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e39c cmp r0, #0 */
     if ((int32_t)r0 <= (int32_t)0x0u) goto L_1E3F6;              /* 01e39e ble #0x1e3f6 */
     r6 = 0x0u; fN = r6 >> 31; fZ = r6 == 0;                      /* 01e3a0 movs r6, #0 */
@@ -2861,7 +2878,7 @@ L_1E3F6:
     L32(r5 + 0x28u) = r0;                                        /* 01e3fe str r0, [r5, #0x28] */
     r1 = r4; fN = r1 >> 31; fZ = r1 == 0;                        /* 01e400 movs r1, r4 */
     { uint32_t ta = sp, tb = 0xD4u; t = ta + tb; r0 = t; }       /* 01e402 add r0, sp, #0xd4 */
-    { uint64_t rr = (ENGD_1CD88 ? engi_1CD88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1CD88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e404 bl #0x1cd88 */
+    { uint64_t rr = (ENGD_1CD88 ? engi_1CD88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1CD88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e404 bl #0x1cd88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e404 bl #0x1cd88 */
     r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01e408 movs r0, #0 */
     S32(0xE0u) = r0;                                             /* 01e40a str r0, [sp, #0xe0] */
@@ -2978,21 +2995,21 @@ L_1E4CA:
 L_1E4D6:
     r1 = r6; fN = r1 >> 31; fZ = r1 == 0;                        /* 01e4d6 movs r1, r6 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e4d8 movs r0, r4 */
-    { uint64_t rr = (ENGD_1B9E0 ? engi_1B9E0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1B9E0), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e4da bl #0x1b9e0 */
+    { uint64_t rr = (ENGD_1B9E0 ? engi_1B9E0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1B9E0), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e4da bl #0x1b9e0 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e4da bl #0x1b9e0 */
 L_1E4DE:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e4de movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e4e0 bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e4e0 bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e4e0 bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e4e4 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1E4F0;                                /* 01e4e6 beq #0x1e4f0 */
     r1 = r6; fN = r1 >> 31; fZ = r1 == 0;                        /* 01e4e8 movs r1, r6 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e4ea movs r0, r4 */
-    { uint64_t rr = (ENGD_1B954 ? engi_1B954(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1B954), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e4ec bl #0x1b954 */
+    { uint64_t rr = (ENGD_1B954 ? engi_1B954(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1B954), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e4ec bl #0x1b954 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e4ec bl #0x1b954 */
 L_1E4F0:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e4f0 movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e4f2 bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e4f2 bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e4f2 bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e4f6 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1E508;                                /* 01e4f8 beq #0x1e508 */
@@ -3006,20 +3023,20 @@ L_1E4F0:
 L_1E508:
     r1 = r6; fN = r1 >> 31; fZ = r1 == 0;                        /* 01e508 movs r1, r6 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e50a movs r0, r4 */
-    { uint64_t rr = (ENGD_1BB1E ? engi_1BB1E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1BB1E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e50c bl #0x1bb1e */
+    { uint64_t rr = (ENGD_1BB1E ? engi_1BB1E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1BB1E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e50c bl #0x1bb1e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e50c bl #0x1bb1e */
     r1 = r6; fN = r1 >> 31; fZ = r1 == 0;                        /* 01e510 movs r1, r6 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e512 movs r0, r4 */
-    { uint64_t rr = (ENGD_1BB98 ? engi_1BB98(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1BB98), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e514 bl #0x1bb98 */
+    { uint64_t rr = (ENGD_1BB98 ? engi_1BB98(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1BB98), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e514 bl #0x1bb98 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e514 bl #0x1bb98 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e518 movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e51a bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e51a bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e51a bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e51e cmp r0, #0 */
     if (r0 == 0x0u) goto L_1E52A;                                /* 01e520 beq #0x1e52a */
     r1 = r6; fN = r1 >> 31; fZ = r1 == 0;                        /* 01e522 movs r1, r6 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e524 movs r0, r4 */
-    { uint64_t rr = (ENGD_1BC5E ? engi_1BC5E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1BC5E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e526 bl #0x1bc5e */
+    { uint64_t rr = (ENGD_1BC5E ? engi_1BC5E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1BC5E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e526 bl #0x1bc5e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e526 bl #0x1bc5e */
 L_1E52A:
     r1 = S32(0x18Cu);                                            /* 01e52a ldr r1, [sp, #0x18c] */
@@ -3027,13 +3044,13 @@ L_1E52A:
     { uint64_t rr = (ENGD_1BD1C ? engi_1BD1C(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1BD1C), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e52e bl #0x1bd1c */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e52e bl #0x1bd1c */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e532 movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e534 bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e534 bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e534 bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e538 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1E544;                                /* 01e53a beq #0x1e544 */
     r1 = S32(0x18Cu);                                            /* 01e53c ldr r1, [sp, #0x18c] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e53e movs r0, r4 */
-    { uint64_t rr = (ENGD_1BDEC ? engi_1BDEC(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1BDEC), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e540 bl #0x1bdec */
+    { uint64_t rr = (ENGD_1BDEC ? engi_1BDEC(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1BDEC), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e540 bl #0x1bdec */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e540 bl #0x1bdec */
 L_1E544:
     r1 = r6; fN = r1 >> 31; fZ = r1 == 0;                        /* 01e544 movs r1, r6 */
@@ -3053,7 +3070,7 @@ L_1E544:
 L_1E560:
     r1 = r6; fN = r1 >> 31; fZ = r1 == 0;                        /* 01e560 movs r1, r6 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e562 movs r0, r4 */
-    { uint64_t rr = (ENGD_1BF26 ? engi_1BF26(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1BF26), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e564 bl #0x1bf26 */
+    { uint64_t rr = (ENGD_1BF26 ? engi_1BF26(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1BF26), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e564 bl #0x1bf26 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e564 bl #0x1bf26 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e568 movs r0, r4 */
     { uint64_t rr = (ENGD_1C0B0 ? engi_1C0B0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1C0B0), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e56a bl #0x1c0b0 */
@@ -3081,7 +3098,7 @@ L_1E560:
     r0 = S32(0x140u);                                            /* 01e596 ldr r0, [sp, #0x140] */
     t = r0; L32(t + 0) = r1; L32(t + 4) = r2; L32(t + 8) = r3; r0 = t + 12; /* 01e598 stm r0!, {r1, r2, r3} */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e59a movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x522A4), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e59c bl #0x522a4 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x522A4), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e59c bl #0x522a4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e59c bl #0x522a4 */
     r1 = r4; fN = r1 >> 31; fZ = r1 == 0;                        /* 01e5a0 movs r1, r4 */
     { uint32_t ta = r1, tb = 0x10u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01e5a2 adds r1, #0x10 */
@@ -3092,12 +3109,13 @@ L_1E560:
     r2 = S32(0x190u);                                            /* 01e5ac ldr r2, [sp, #0x190] */
     r3 = S32(0x1A8u);                                            /* 01e5ae ldr r3, [sp, #0x1a8] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e5b0 movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1D20A), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e5b2 bl #0x1d20a */
+    /* engine: a pursuer's target velocity (+1D20A): its AI, on the whole step */
+    if (!ENG_SUB) { { uint64_t rr = a4_eng_call(GAMEFN(0x1D20A), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } } /* 01e5b2 bl #0x1d20a */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e5b2 bl #0x1d20a */
     goto L_1E5CA;                                                /* 01e5b6 b #0x1e5ca */
 L_1E5B8:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e5b8 movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e5ba bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e5ba bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e5ba bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e5be cmp r0, #0 */
     if (r0 != 0x0u) goto L_1E5CA;                                /* 01e5c0 bne #0x1e5ca */
@@ -3109,7 +3127,7 @@ L_1E5CA:
     r1 = S32(0x140u);                                            /* 01e5ca ldr r1, [sp, #0x140] */
     r2 = S32(0x13Cu);                                            /* 01e5cc ldr r2, [sp, #0x13c] */
     { uint32_t ta = sp, tb = 0x10Cu; t = ta + tb; r0 = t; }      /* 01e5ce add r0, sp, #0x10c */
-    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e5d0 bl #0x52540 */
+    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52540), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e5d0 bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e5d0 bl #0x52540 */
     r0 = 0xD0u; fN = r0 >> 31; fZ = r0 == 0;                     /* 01e5d4 movs r0, #0xd0 */
     r0 = L32(r0 + r4);                                           /* 01e5d6 ldr r0, [r0, r4] */
@@ -3136,7 +3154,8 @@ L_1E5F8:
     r0 = L32(r0 + 0x3Cu);                                        /* 01e5fc ldr r0, [r0, #0x3c] */
     r2 = S32(0x150u);                                            /* 01e5fe ldr r2, [sp, #0x150] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e600 adds r0, r0, r1 */
-    L32(r2 + 0x3Cu) = r0;                                        /* 01e602 str r0, [r2, #0x3c] */
+    /* engine: grip 9FC, +0xD55 a step on the road */
+    { uint32_t ea_ = r2 + 0x3Cu; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01e602 str r0, [r2, #0x3c] */
     r1 = 0x1u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01e604 movs r1, #1 */
     t = SHL_C(r1, 0x14u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01e606 lsls r1, r1, #0x14 */
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e608 cmp r0, r1 */
@@ -3165,7 +3184,7 @@ L_1E612:
     r2 = r0; fN = r2 >> 31; fZ = r2 == 0;                        /* 01e632 movs r2, r0 */
     t = r0 * r2; fN = t >> 31; fZ = t == 0; r2 = t;              /* 01e634 muls r2, r0, r2 */
     { uint32_t ta = r1, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e636 adds r0, r1, r2 */
-    { uint64_t rr = (ENGD_3145C ? engi_3145C(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3145C), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e638 bl #0x3145c */
+    { uint64_t rr = (ENGD_3145C ? engi_3145C(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3145C), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e638 bl #0x3145c */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e638 bl #0x3145c */
     t = SHL_C(r0, 0x4u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01e63c lsls r0, r0, #4 */
     S32(0x104u) = r0;                                            /* 01e63e str r0, [sp, #0x104] */
@@ -3204,10 +3223,12 @@ L_1E612:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e67e blx #0x50e8c */
     S32(0x114u) = r0;                                            /* 01e682 str r0, [sp, #0x114] */
 L_1E684:
+    /* engine: the velocity's change: the target within a third of the traction */
+    { int32_t m_ = (int32_t)MEM32(sp + 0x104u), t_ = (int32_t)MEM32(sp + 0x108u), g_, l_; uint32_t k_; g_ = (m_ > t_) ? t_ : m_; l_ = t_ / 3; if (t_ > 0 && g_ > l_ && g_ > 0) { int32_t f_ = (int32_t)(l_ < 0x80000 ? eng_udiv((uint32_t)l_ << 12, (uint32_t)g_) : eng_udiv((uint32_t)l_, ((uint32_t)g_ >> 12) | 1u)); for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x10Cu + k_) = (uint32_t)(int32_t)(((int64_t)(int32_t)MEM32(sp + 0x10Cu + k_) * f_) >> 12); } }
     r1 = S32(0x13Cu);                                            /* 01e684 ldr r1, [sp, #0x13c] */
     { uint32_t ta = sp, tb = 0x10Cu; t = ta + tb; r2 = t; }      /* 01e686 add r2, sp, #0x10c */
     { uint32_t ta = sp, tb = 0xF8u; t = ta + tb; r0 = t; }       /* 01e688 add r0, sp, #0xf8 */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e68a bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e68a bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e68a bl #0x52562 */
     r0 = L32(r5 + 0x28u);                                        /* 01e68e ldr r0, [r5, #0x28] */
     S32(0x138u) = r0;                                            /* 01e690 str r0, [sp, #0x138] */
@@ -3313,7 +3334,7 @@ L_1E744:
     L32(r7 + 0x38u) = r0;                                        /* 01e74e str r0, [r7, #0x38] */
 L_1E750:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e750 movs r0, r4 */
-    { uint64_t rr = (ENGD_1C276 ? engi_1C276(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1C276), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e752 bl #0x1c276 */
+    { uint64_t rr = (ENGD_1C276 ? engi_1C276(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1C276), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e752 bl #0x1c276 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e752 bl #0x1c276 */
     r1 = S32(0x14Cu);                                            /* 01e756 ldr r1, [sp, #0x14c] */
     r0 = L32(r1 + 0x3Cu);                                        /* 01e758 ldr r0, [r1, #0x3c] */
@@ -3327,7 +3348,7 @@ L_1E750:
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e768 adds r0, r0, r1 */
     r2 = L32(r0 + 0x2Cu);                                        /* 01e76a ldr r2, [r0, #0x2c] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e76c movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e76e bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e76e bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e76e bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e772 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1E794;                                /* 01e774 beq #0x1e794 */
@@ -3348,7 +3369,7 @@ L_1E750:
     goto L_1E852;                                                /* 01e792 b #0x1e852 */
 L_1E794:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e794 movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e796 bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e796 bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e796 bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e79a cmp r0, #0 */
     if (r0 == 0x0u) goto L_1E83C;                                /* 01e79c beq #0x1e83c */
@@ -3394,14 +3415,16 @@ L_1E7E2:
     t = SAR_C(r2, 0x8u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 01e7f2 asrs r2, r2, #8 */
     { uint32_t ta = r1, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01e7f4 adds r1, r1, r2 */
     r2 = S32(0x150u);                                            /* 01e7f6 ldr r2, [sp, #0x150] */
-    L32(r2 + 0x38u) = r1;                                        /* 01e7f8 str r1, [r2, #0x38] */
+    /* engine: drift 9F8 += f(turn) */
+    { uint32_t ea_ = r2 + 0x38u; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01e7f8 str r1, [r2, #0x38] */
     goto L_1E806;                                                /* 01e7fa b #0x1e806 */
 L_1E7FC:
     t = SHL_C(r0, 0x5u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 01e7fc lsls r2, r0, #5 */
     t = SAR_C(r2, 0x8u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 01e7fe asrs r2, r2, #8 */
     { uint32_t ta = r1, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01e800 adds r1, r1, r2 */
     r2 = S32(0x150u);                                            /* 01e802 ldr r2, [sp, #0x150] */
-    L32(r2 + 0x38u) = r1;                                        /* 01e804 str r1, [r2, #0x38] */
+    /* engine: drift 9F8 += f(turn) */
+    { uint32_t ea_ = r2 + 0x38u; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01e804 str r1, [r2, #0x38] */
 L_1E806:
     r2 = S32(0x150u);                                            /* 01e806 ldr r2, [sp, #0x150] */
     r1 = L32(r2 + 0x38u);                                        /* 01e808 ldr r1, [r2, #0x38] */
@@ -3473,7 +3496,8 @@ L_1E872:
     r1 = L32(r2 + 0x20u);                                        /* 01e878 ldr r1, [r2, #0x20] */
     r2 = S32(0x154u);                                            /* 01e87a ldr r2, [sp, #0x154] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e87c adds r0, r0, r1 */
-    L32(r2 + 0x1Cu) = r0;                                        /* 01e87e str r0, [r2, #0x1c] */
+    /* engine: 81C, the turn held, += A20 */
+    { uint32_t ea_ = r2 + 0x1Cu; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01e87e str r0, [r2, #0x1c] */
 L_1E880:
     r0 = L32(r5 + 0x28u);                                        /* 01e880 ldr r0, [r5, #0x28] */
     r1 = 0x19u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01e882 movs r1, #0x19 */
@@ -3486,14 +3510,16 @@ L_1E880:
     r0 = L32(r7 + 0x38u);                                        /* 01e890 ldr r0, [r7, #0x38] */
     r1 = L32(r2 + 0x20u);                                        /* 01e892 ldr r1, [r2, #0x20] */
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e894 subs r0, r0, r1 */
-    L32(r7 + 0x38u) = r0;                                        /* 01e896 str r0, [r7, #0x38] */
+    /* engine: heading -= A20 (reversing) */
+    { uint32_t ea_ = r7 + 0x38u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01e896 str r0, [r7, #0x38] */
     goto L_1E8A4;                                                /* 01e898 b #0x1e8a4 */
 L_1E89A:
     r2 = S32(0x174u);                                            /* 01e89a ldr r2, [sp, #0x174] */
     r0 = L32(r7 + 0x38u);                                        /* 01e89c ldr r0, [r7, #0x38] */
     r1 = L32(r2 + 0x20u);                                        /* 01e89e ldr r1, [r2, #0x20] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e8a0 adds r0, r0, r1 */
-    L32(r7 + 0x38u) = r0;                                        /* 01e8a2 str r0, [r7, #0x38] */
+    /* engine: heading += A20 */
+    { uint32_t ea_ = r7 + 0x38u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01e8a2 str r0, [r7, #0x38] */
 L_1E8A4:
     r0 = S32(0x170u);                                            /* 01e8a4 ldr r0, [sp, #0x170] */
     r0 = L32(r0 + 0x34u);                                        /* 01e8a6 ldr r0, [r0, #0x34] */
@@ -3510,25 +3536,26 @@ L_1E8A4:
 L_1E8BC:
     { uint32_t ta = r4, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e8bc adds r0, r4, #4 */
     { uint32_t ta = sp, tb = 0xF8u; t = ta + tb; r1 = t; }       /* 01e8be add r1, sp, #0xf8 */
-    { uint64_t rr = (ENGD_521A0 ? engi_521A0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x521A0), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e8c0 bl #0x521a0 */
-    r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e8c0 bl #0x521a0 */
+    /* engine: position += velocity (+521A0): a third of the step's */
+    { uint32_t k_; for (k_ = 0; k_ < 12u; k_ += 4u) { uint32_t ea_ = r0 + k_; MEM32(ea_) = eng_third(ea_, MEM32(ea_), MEM32(ea_) + MEM32(r1 + k_)); } }  /* was: { uint64_t rr = (ENGD_521A0 ? engi_521A0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x521A0), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } ( 01e8c0 bl #0x521a0 ) */
+    /* (replaced above) */
     r0 = S32(0x158u);                                            /* 01e8c4 ldr r0, [sp, #0x158] */
     r0 = L8(r0 + 0x4u);                                          /* 01e8c6 ldrb r0, [r0, #4] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e8c8 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1E8E0;                                /* 01e8ca beq #0x1e8e0 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e8cc movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e8ce bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e8ce bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e8ce bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e8d2 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1E8E0;                                /* 01e8d4 beq #0x1e8e0 */
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01e8d6 movs r2, #1 */
     r1 = 0x5u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01e8d8 movs r1, #5 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e8da movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e8dc bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01e8dc bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e8dc bl #0x1b2d6 */
 L_1E8E0:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e8e0 movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x522A4), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e8e2 bl #0x522a4 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x522A4), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e8e2 bl #0x522a4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e8e2 bl #0x522a4 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e8e6 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1E8F6;                                /* 01e8e8 beq #0x1e8f6 */
@@ -3536,7 +3563,8 @@ L_1E8E0:
     r2 = S32(0x190u);                                            /* 01e8ec ldr r2, [sp, #0x190] */
     r3 = S32(0x1A8u);                                            /* 01e8ee ldr r3, [sp, #0x1a8] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e8f0 movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1C48E), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e8f2 bl #0x1c48e */
+    /* engine: a pursuer's reaction (+1C48E): its AI, on the whole step */
+    if (!ENG_SUB) { { uint64_t rr = a4_eng_call(GAMEFN(0x1C48E), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } } /* 01e8f2 bl #0x1c48e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e8f2 bl #0x1c48e */
 L_1E8F6:
     r1 = L32(r7 + 0x38u);                                        /* 01e8f6 ldr r1, [r7, #0x38] */
@@ -3566,7 +3594,7 @@ L_1E91A:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e91c bl #0x1971e */
     r1 = r6; fN = r1 >> 31; fZ = r1 == 0;                        /* 01e920 movs r1, r6 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e922 movs r0, r4 */
-    { uint64_t rr = (ENGD_1C350 ? engi_1C350(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1C350), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e924 bl #0x1c350 */
+    { uint64_t rr = (ENGD_1C350 ? engi_1C350(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1C350), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e924 bl #0x1c350 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e924 bl #0x1c350 */
     r1 = S32(0x164u);                                            /* 01e928 ldr r1, [sp, #0x164] */
     r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01e92a movs r0, #0 */
@@ -3599,15 +3627,21 @@ static uint64_t engi_1971E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint32_t ta = r5, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r6 = t; } /* 019728 adds r6, r5, r0 */
     { uint32_t ta = r0, tb = 0x94u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01972a adds r0, #0x94 */
     { uint32_t ta = r5, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r4 = t; } /* 01972c adds r4, r5, r0 */
+    /* engine: the heading +678 as two substeps ago */
     r1 = L32(r6 + 0x38u);                                        /* 01972e ldr r1, [r6, #0x38] */
+    r1 = eng_alag(r6 + 0x38u, r1);
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 019730 movs r0, r4 */
-    { uint64_t rr = (ENGD_3227E ? engi_3227E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3227E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 019732 bl #0x3227e */
+    { uint64_t rr = (ENGD_3227E ? engi_3227E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3227E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 019732 bl #0x3227e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 019732 bl #0x3227e */
+    /* engine: the angle +674 as two substeps ago */
     r1 = L32(r6 + 0x34u);                                        /* 019736 ldr r1, [r6, #0x34] */
+    r1 = eng_alag(r6 + 0x34u, r1);
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 019738 movs r0, r4 */
     { uint64_t rr = a4_eng_call(GAMEFN(0x32302), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01973a bl #0x32302 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01973a bl #0x32302 */
+    /* engine: the angle +67C as two substeps ago */
     r1 = L32(r6 + 0x3Cu);                                        /* 01973e ldr r1, [r6, #0x3c] */
+    r1 = eng_alag(r6 + 0x3Cu, r1);
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 019740 movs r0, r4 */
     { uint64_t rr = a4_eng_call(GAMEFN(0x32342), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 019742 bl #0x32342 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 019742 bl #0x32342 */
@@ -3616,7 +3650,7 @@ static uint64_t engi_1971E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01974a adds r3, r0, #1 */
     if (fZ) goto L_1977A;                                        /* 01974c beq #0x1977a */
     r0 = L32(r5 + 0x3Cu);                                        /* 01974e ldr r0, [r5, #0x3c] */
-    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x39FE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 019750 bl #0x39fe */
+    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 019750 bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 019750 bl #0x39fe */
     r0 = 0x38u; fN = r0 >> 31; fZ = r0 == 0;                     /* 019754 movs r0, #0x38 */
     r0 = L8(r0 + r5);                                            /* 019756 ldrb r0, [r0, r5] */
@@ -3627,7 +3661,7 @@ static uint64_t engi_1971E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01975e bl #0x5248a */
     r1 = r0; fN = r1 >> 31; fZ = r1 == 0;                        /* 019762 movs r1, r0 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 019764 movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x32042), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 019766 bl #0x32042 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x32042), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 019766 bl #0x32042 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 019766 bl #0x32042 */
     goto L_1977A;                                                /* 01976a b #0x1977a */
 L_1976C:
@@ -3636,7 +3670,7 @@ L_1976C:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01976e bl #0x5248a */
     r1 = r0; fN = r1 >> 31; fZ = r1 == 0;                        /* 019772 movs r1, r0 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 019774 movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x31F2E), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 019776 bl #0x31f2e */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x31F2E), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 019776 bl #0x31f2e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 019776 bl #0x31f2e */
 L_1977A:
     S32(0xCu) = r6;                                              /* 01977a str r6, [sp, #0xc] */
@@ -3647,7 +3681,7 @@ L_1977A:
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r1 = t; }        /* 019784 add r1, sp, #0xc */
     { uint32_t ta = r5, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 019786 adds r2, r5, r0 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 019788 movs r0, r4 */
-    { uint64_t rr = (ENGD_522F0 ? engi_522F0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x522F0), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01978a bl #0x522f0 */
+    { uint64_t rr = (ENGD_522F0 ? engi_522F0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x522F0), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01978a bl #0x522f0 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01978a bl #0x522f0 */
     r0 = 0x1u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01978e movs r0, #1 */
     t = SHL_C(r0, 0xCu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 019790 lsls r0, r0, #0xc */
@@ -3659,7 +3693,7 @@ L_1977A:
     { uint32_t ta = r5, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 01979c adds r2, r5, r0 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01979e movs r0, r4 */
     r1 = sp;                                                     /* 0197a0 mov r1, sp */
-    { uint64_t rr = (ENGD_522F0 ? engi_522F0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x522F0), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0197a2 bl #0x522f0 */
+    { uint64_t rr = (ENGD_522F0 ? engi_522F0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x522F0), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0197a2 bl #0x522f0 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0197a2 bl #0x522f0 */
     spp += 0x18u;                                                /* 0197a6 add sp, #0x18 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); t = S32(12); spp += 16; RET(t); /* 0197a8 pop {r4, r5, r6, pc} */
@@ -3684,7 +3718,7 @@ static uint64_t engi_1B560(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     spp -= 0x3Cu;                                                /* 01b562 sub sp, #0x3c */
     r6 = r0; fN = r6 >> 31; fZ = r6 == 0;                        /* 01b564 movs r6, r0 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 01b566 movs r0, r6 */
-    { uint64_t rr = (ENGD_1B500 ? engi_1B500(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1B500), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b568 bl #0x1b500 */
+    { uint64_t rr = (ENGD_1B500 ? engi_1B500(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1B500), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b568 bl #0x1b500 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01b568 bl #0x1b500 */
     S32(0x28u) = r0;                                             /* 01b56c str r0, [sp, #0x28] */
     r1 = r6; fN = r1 >> 31; fZ = r1 == 0;                        /* 01b56e movs r1, r6 */
@@ -3699,7 +3733,7 @@ static uint64_t engi_1B560(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
 L_1B580:
     S32(0x24u) = r0;                                             /* 01b580 str r0, [sp, #0x24] */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 01b582 movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B470), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b584 bl #0x1b470 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x1B470), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b584 bl #0x1b470 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01b584 bl #0x1b470 */
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01b588 movs r2, #1 */
     { uint32_t ta = r2, tb = 0x2u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01b58a subs r1, r2, #2 */
@@ -3747,6 +3781,8 @@ L_1B5AE:
     t = SHL_C(r4, 0xBu, &fC); r4 = t; fN = t >> 31; fZ = t == 0; /* 01b5d4 lsls r4, r4, #0xb */
     { uint32_t ta = r6, tb = r3; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01b5d6 adds r3, r6, r3 */
     { uint32_t ta = r6, tb = r4; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r4 = t; } /* 01b5d8 adds r4, r6, r4 */
+    /* engine: substeps: no drift start or end */
+    if (ENG_SUB) { MEM32(sp + 0x2Cu) = r3; goto L_1B794; }
     { uint32_t ta = r2, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01b5da cmp r2, #0 */
     S32(0x2Cu) = r3;                                             /* 01b5dc str r3, [sp, #0x2c] */
     if (fZ) goto L_1B5E6;                                        /* 01b5de beq #0x1b5e6 */
@@ -3861,7 +3897,7 @@ L_1B690:
     t = SHL_C(r1, 0x7u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01b6aa lsls r1, r1, #7 */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01b6ac adds r0, r0, r1 */
     r0 = L32(r0 + 0x2Cu);                                        /* 01b6ae ldr r0, [r0, #0x2c] */
-    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b6b0 bl #0x52206 */
+    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52206), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b6b0 bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01b6b0 bl #0x52206 */
     r3 = 0x27u; fN = r3 >> 31; fZ = r3 == 0;                     /* 01b6b4 movs r3, #0x27 */
     t = SHL_C(r3, 0x6u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 01b6b6 lsls r3, r3, #6 */
@@ -3885,7 +3921,7 @@ L_1B6D2:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01b6d6 movs r2, #1 */
     r1 = 0x9u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01b6d8 movs r1, #9 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 01b6da movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b6dc bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01b6dc bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01b6dc bl #0x1b2d6 */
     goto L_1B73C;                                                /* 01b6e0 b #0x1b73c */
 L_1B6F0:
@@ -3915,7 +3951,7 @@ L_1B6F0:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01b71e movs r2, #1 */
     r1 = 0xAu; fN = r1 >> 31; fZ = r1 == 0;                      /* 01b720 movs r1, #0xa */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 01b722 movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b724 bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01b724 bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01b724 bl #0x1b2d6 */
     { uint64_t rr = a4_eng_call(GAMEFN(0x52CA0), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b728 bl #0x52ca0 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01b728 bl #0x52ca0 */
@@ -3944,7 +3980,7 @@ L_1B73C:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01b756 movs r2, #1 */
     r1 = 0x6u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01b758 movs r1, #6 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 01b75a movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b75c bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01b75c bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01b75c bl #0x1b2d6 */
     goto L_1B786;                                                /* 01b760 b #0x1b786 */
 L_1B762:
@@ -3954,7 +3990,7 @@ L_1B762:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01b768 movs r2, #1 */
     r1 = 0x7u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01b76a movs r1, #7 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 01b76c movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b76e bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01b76e bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01b76e bl #0x1b2d6 */
     goto L_1B786;                                                /* 01b772 b #0x1b786 */
 L_1B774:
@@ -3966,7 +4002,7 @@ L_1B776:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01b77c movs r2, #1 */
     r1 = 0x8u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01b77e movs r1, #8 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 01b780 movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b782 bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01b782 bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01b782 bl #0x1b2d6 */
 L_1B786:
     r3 = S32(0x2Cu);                                             /* 01b786 ldr r3, [sp, #0x2c] */
@@ -4039,7 +4075,8 @@ L_1B7F6:
     r0 = L32(r5 + 0x38u);                                        /* 01b802 ldr r0, [r5, #0x38] */
     r1 = L32(r4 + 0x3Cu);                                        /* 01b804 ldr r1, [r4, #0x3c] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01b806 adds r0, r0, r1 */
-    L32(r5 + 0x38u) = r0;                                        /* 01b808 str r0, [r5, #0x38] */
+    /* engine: drift 9F8 += 83C (state 3) */
+    { uint32_t ea_ = r5 + 0x38u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01b808 str r0, [r5, #0x38] */
     r0 = L32(r4 + 0x38u);                                        /* 01b80a ldr r0, [r4, #0x38] */
     { uint32_t ta = r0, tb = 0xAu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01b80c cmp r0, #0xa */
     if ((int32_t)r0 < (int32_t)0xAu) goto L_1B820;               /* 01b80e blt #0x1b820 */
@@ -4049,7 +4086,7 @@ L_1B7F6:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01b816 movs r2, #1 */
     r1 = 0xBu; fN = r1 >> 31; fZ = r1 == 0;                      /* 01b818 movs r1, #0xb */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 01b81a movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b81c bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01b81c bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01b81c bl #0x1b2d6 */
 L_1B820:
     r1 = L32(r4 + 0x2Cu);                                        /* 01b820 ldr r1, [r4, #0x2c] */
@@ -4067,7 +4104,8 @@ L_1B82C:
 L_1B836:
     r0 = L32(r4 + 0x38u);                                        /* 01b836 ldr r0, [r4, #0x38] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01b838 adds r0, r0, #1 */
-    L32(r4 + 0x38u) = r0;                                        /* 01b83a str r0, [r4, #0x38] */
+    /* engine: 838, steps in the drift state */
+    if (!ENG_SUB) L32(r4 + 0x38u) = r0; else r0 = L32(r4 + 0x38u); /* 01b83a str r0, [r4, #0x38] */
     r0 = L32(r5 + 0x18u);                                        /* 01b83c ldr r0, [r5, #0x18] */
     r1 = L32(r6 + 0x1Cu);                                        /* 01b83e ldr r1, [r6, #0x1c] */
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01b840 cmp r0, r1 */
@@ -4116,7 +4154,8 @@ L_1B88C:
     r0 = L32(r5 + 0x38u);                                        /* 01b88c ldr r0, [r5, #0x38] */
     r1 = L32(r4 + 0x3Cu);                                        /* 01b88e ldr r1, [r4, #0x3c] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01b890 adds r0, r0, r1 */
-    L32(r5 + 0x38u) = r0;                                        /* 01b892 str r0, [r5, #0x38] */
+    /* engine: drift 9F8 += 83C (state 1) */
+    { uint32_t ea_ = r5 + 0x38u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01b892 str r0, [r5, #0x38] */
     r0 = L32(r4 + 0x38u);                                        /* 01b894 ldr r0, [r4, #0x38] */
     { uint32_t ta = r0, tb = 0xAu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01b896 cmp r0, #0xa */
     if ((int32_t)r0 < (int32_t)0xAu) goto L_1B820;               /* 01b898 blt #0x1b820 */
@@ -4151,7 +4190,8 @@ L_1B8BE:
     if ((int32_t)r2 < (int32_t)r1) goto L_1B8CA;                 /* 01b8c6 blt #0x1b8ca */
     r2 = r1; fN = r2 >> 31; fZ = r2 == 0;                        /* 01b8c8 movs r2, r1 */
 L_1B8CA:
-    L32(r4 + 0x30u) = r2;                                        /* 01b8ca str r2, [r4, #0x30] */
+    /* engine: 830, the drift's ramp */
+    { uint32_t ea_ = r4 + 0x30u; r2 = eng_third(ea_, L32(ea_), r2); L32(ea_) = r2; } /* 01b8ca str r2, [r4, #0x30] */
     r1 = L32(r4 + 0x28u);                                        /* 01b8cc ldr r1, [r4, #0x28] */
     t = r2 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              /* 01b8ce muls r1, r2, r1 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01b8d0 cmp r0, #0 */
@@ -4174,7 +4214,7 @@ L_1B8EC:
     { uint32_t ta = r0, tb = r7; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01b8ee adds r0, r0, r7 */
     L32(r4 + 0x2Cu) = r0;                                        /* 01b8f0 str r0, [r4, #0x2c] */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 01b8f2 movs r0, r6 */
-    { uint64_t rr = (ENGD_1B304 ? engi_1B304(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1B304), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b8f4 bl #0x1b304 */
+    { uint64_t rr = (ENGD_1B304 ? engi_1B304(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1B304), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01b8f4 bl #0x1b304 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01b8f4 bl #0x1b304 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01b8f8 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1B92C;                                /* 01b8fa beq #0x1b92c */
@@ -4191,7 +4231,8 @@ L_1B8EC:
     r1 = L32(r5 + 0x38u);                                        /* 01b910 ldr r1, [r5, #0x38] */
     t = SAR_C(r0, 0xCu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01b912 asrs r0, r0, #0xc */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01b914 adds r0, r0, r1 */
-    L32(r5 + 0x38u) = r0;                                        /* 01b916 str r0, [r5, #0x38] */
+    /* engine: drift 9F8 += steering */
+    { uint32_t ea_ = r5 + 0x38u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01b916 str r0, [r5, #0x38] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01b918 cmp r0, #0 */
     if ((int32_t)r0 > (int32_t)0x0u) goto L_1B91E;               /* 01b91a bgt #0x1b91e */
     { uint32_t ta = 0x0u, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01b91c rsbs r0, r0, #0 */
@@ -4211,7 +4252,8 @@ L_1B92C:
     t = SHR_C(r1, 0x1Cu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01b934 lsrs r1, r1, #0x1c */
     { uint32_t ta = r1, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01b936 adds r0, r1, r0 */
     t = SAR_C(r0, 0x4u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01b938 asrs r0, r0, #4 */
-    L32(r5 + 0x38u) = r0;                                        /* 01b93a str r0, [r5, #0x38] */
+    /* engine: drift 9F8 decays 15/16 */
+    { uint32_t ea_ = r5 + 0x38u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01b93a str r0, [r5, #0x38] */
 L_1B93C:
     r0 = L32(r5 + 0x38u);                                        /* 01b93c ldr r0, [r5, #0x38] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01b93e cmp r0, #0 */
@@ -4281,9 +4323,11 @@ L_1B9F2:
     t = SHR_C(r1, 0x1Fu, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 01ba22 lsrs r3, r1, #0x1f */
     { uint32_t ta = r3, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba24 adds r1, r3, r1 */
     t = SAR_C(r1, 0x1u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ba26 asrs r1, r1, #1 */
-    L32(r2 + 0x1Cu) = r1;                                        /* 01ba28 str r1, [r2, #0x1c] */
+    /* engine: A1C, the steering rate, eased a step */
+    { uint32_t ea_ = r2 + 0x1Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01ba28 str r1, [r2, #0x1c] */
     { uint32_t ta = r5, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba2a adds r1, r5, r1 */
-    L32(r0 + 0x3Cu) = r1;                                        /* 01ba2c str r1, [r0, #0x3c] */
+    /* engine: steering 7FC += A1C */
+    { uint32_t ea_ = r0 + 0x3Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01ba2c str r1, [r0, #0x3c] */
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01ba2e movs r2, #1 */
     t = SHL_C(r2, 0xCu, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 01ba30 lsls r2, r2, #0xc */
     { uint32_t ta = r1, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01ba32 cmp r1, r2 */
@@ -4303,9 +4347,11 @@ L_1BA3A:
     t = SHR_C(r1, 0x1Fu, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 01ba4c lsrs r3, r1, #0x1f */
     { uint32_t ta = r3, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba4e adds r1, r3, r1 */
     t = SAR_C(r1, 0x1u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ba50 asrs r1, r1, #1 */
-    L32(r2 + 0x1Cu) = r1;                                        /* 01ba52 str r1, [r2, #0x1c] */
+    /* engine: A1C, the steering rate, eased a step */
+    { uint32_t ea_ = r2 + 0x1Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01ba52 str r1, [r2, #0x1c] */
     { uint32_t ta = r5, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba54 adds r1, r5, r1 */
-    L32(r0 + 0x3Cu) = r1;                                        /* 01ba56 str r1, [r0, #0x3c] */
+    /* engine: steering 7FC += A1C */
+    { uint32_t ea_ = r0 + 0x3Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01ba56 str r1, [r0, #0x3c] */
     r2 = GAMEW(0x1BD14);                                         /* 01ba58 ldr r2, [pc, #0x2b8] */
     { uint32_t ta = r1, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01ba5a cmp r1, r2 */
     if ((int32_t)r1 >= (int32_t)r2) goto L_1BAB8;                /* 01ba5c bge #0x1bab8 */
@@ -4326,7 +4372,8 @@ L_1BA62:
     t = SHR_C(r3, 0x1Eu, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 01ba78 lsrs r3, r3, #0x1e */
     { uint32_t ta = r3, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba7a adds r1, r3, r1 */
     t = SAR_C(r1, 0x2u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ba7c asrs r1, r1, #2 */
-    L32(r2 + 0x1Cu) = r1;                                        /* 01ba7e str r1, [r2, #0x1c] */
+    /* engine: A1C, the steering rate, eased a step */
+    { uint32_t ea_ = r2 + 0x1Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01ba7e str r1, [r2, #0x1c] */
     goto L_1BA9C;                                                /* 01ba80 b #0x1ba9c */
 L_1BA82:
     t = r7 * r3; fN = t >> 31; fZ = t == 0; r3 = t;              /* 01ba82 muls r3, r7, r3 */
@@ -4341,11 +4388,13 @@ L_1BA82:
     t = SHR_C(r3, 0x1Eu, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 01ba94 lsrs r3, r3, #0x1e */
     { uint32_t ta = r3, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba96 adds r1, r3, r1 */
     t = SAR_C(r1, 0x2u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ba98 asrs r1, r1, #2 */
-    L32(r2 + 0x1Cu) = r1;                                        /* 01ba9a str r1, [r2, #0x1c] */
+    /* engine: A1C, the steering rate, eased a step */
+    { uint32_t ea_ = r2 + 0x1Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01ba9a str r1, [r2, #0x1c] */
 L_1BA9C:
     r3 = L32(r2 + 0x1Cu);                                        /* 01ba9c ldr r3, [r2, #0x1c] */
     { uint32_t ta = r5, tb = r3; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba9e adds r1, r5, r3 */
-    L32(r0 + 0x3Cu) = r1;                                        /* 01baa0 str r1, [r0, #0x3c] */
+    /* engine: steering 7FC += A1C */
+    { uint32_t ea_ = r0 + 0x3Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01baa0 str r1, [r0, #0x3c] */
     { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01baa2 cmp r1, #0 */
     if ((int32_t)r1 > (int32_t)0x0u) goto L_1BAA8;               /* 01baa4 bgt #0x1baa8 */
     { uint32_t ta = 0x0u, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01baa6 rsbs r1, r1, #0 */
@@ -4392,7 +4441,8 @@ L_1BADE:
     t = SHR_C(r2, 0x1Du, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 01baea lsrs r2, r2, #0x1d */
     { uint32_t ta = r2, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01baec adds r1, r2, r1 */
     t = SAR_C(r1, 0x3u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01baee asrs r1, r1, #3 */
-    L32(r6 + 0x8u) = r1;                                         /* 01baf0 str r1, [r6, #8] */
+    /* engine: 808, steering eased 1/8 a step */
+    { uint32_t ea_ = r6 + 0x8u; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01baf0 str r1, [r6, #8] */
     r1 = L32(r6 + 0xCu);                                         /* 01baf2 ldr r1, [r6, #0xc] */
     r2 = r1; fN = r2 >> 31; fZ = r2 == 0;                        /* 01baf4 movs r2, r1 */
     t = r0 * r2; fN = t >> 31; fZ = t == 0; r2 = t;              /* 01baf6 muls r2, r0, r2 */
@@ -4415,7 +4465,8 @@ L_1BB0C:
     { uint32_t ta = r1, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01bb16 adds r0, r1, r0 */
     t = SAR_C(r0, 0x2u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01bb18 asrs r0, r0, #2 */
 L_1BB1A:
-    L32(r6 + 0xCu) = r0;                                         /* 01bb1a str r0, [r6, #0xc] */
+    /* engine: 80C, steering eased a step */
+    { uint32_t ea_ = r6 + 0xCu; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01bb1a str r0, [r6, #0xc] */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01bb1c pop {r4, r5, r6, r7, pc} */
 }
 uint64_t eng_1B9E0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
@@ -4468,11 +4519,13 @@ L_1BBCC:
     { uint32_t ta = r0, tb = 0x64u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01bbd4 cmp r0, #0x64 */
     if ((int32_t)r0 <= (int32_t)0x64u) goto L_1BC08;             /* 01bbd6 ble #0x1bc08 */
 L_1BBD8:
+    /* engine: the slip check is the whole step's */
+    if (ENG_SUB) goto L_1BC08;
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 01bbd8 movs r0, r5 */
     { uint32_t ta = r0, tb = 0x10u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01bbda adds r0, #0x10 */
     r1 = GAMEW(0x1BD18);                                         /* 01bbdc ldr r1, [pc, #0x138] */
     { uint32_t ta = r5, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01bbde adds r1, r5, r1 */
-    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52182), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01bbe0 bl #0x52182 */
+    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52182), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01bbe0 bl #0x52182 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01bbe0 bl #0x52182 */
     t = SAR_C(r0, 0xCu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01bbe4 asrs r0, r0, #0xc */
     r1 = L32(r4 + 0x10u);                                        /* 01bbe6 ldr r1, [r4, #0x10] */
@@ -4513,7 +4566,8 @@ L_1BC08:
     if ((int32_t)r1 < (int32_t)0x1u) goto L_1BC30;               /* 01bc28 blt #0x1bc30 */
     r1 = L32(r4 + 0x20u);                                        /* 01bc2a ldr r1, [r4, #0x20] */
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01bc2c subs r0, r0, r1 */
-    L32(r4 + 0x18u) = r0;                                        /* 01bc2e str r0, [r4, #0x18] */
+    /* engine: rpm -= coast */
+    { uint32_t ea_ = r4 + 0x18u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01bc2e str r0, [r4, #0x18] */
 L_1BC30:
     r1 = 0x5u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01bc30 movs r1, #5 */
     t = SHL_C(r1, 0x9u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01bc32 lsls r1, r1, #9 */
@@ -4535,11 +4589,13 @@ L_1BC3C:
     r1 = L32(r4 + 0x18u);                                        /* 01bc4e ldr r1, [r4, #0x18] */
     t = SAR_C(r0, 0x6u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01bc50 asrs r0, r0, #6 */
     { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01bc52 subs r0, r1, r0 */
-    L32(r4 + 0x18u) = r0;                                        /* 01bc54 str r0, [r4, #0x18] */
+    /* engine: rpm -= A74/64 */
+    { uint32_t ea_ = r4 + 0x18u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01bc54 str r0, [r4, #0x18] */
     r3 = S32(0); r4 = S32(4); r5 = S32(8); r6 = S32(12); r7 = S32(16); t = S32(20); spp += 24; RET(t); /* 01bc56 pop {r3, r4, r5, r6, r7, pc} */
 L_1BC58:
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01bc58 subs r0, r0, #1 */
-    L32(r4 + 0x4u) = r0;                                         /* 01bc5a str r0, [r4, #4] */
+    /* engine: 7C4, the gear change's delay */
+    if (ENG_SUB_END(r5)) L32(r4 + 0x4u) = r0; else r0 = L32(r4 + 0x4u); /* 01bc5a str r0, [r4, #4] */
     r3 = S32(0); r4 = S32(4); r5 = S32(8); r6 = S32(12); r7 = S32(16); t = S32(20); spp += 24; RET(t); /* 01bc5c pop {r3, r4, r5, r6, r7, pc} */
 }
 uint64_t eng_1BB98(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
@@ -4600,7 +4656,8 @@ L_1BD2E:
     if (fN) goto L_1BDBE;                                        /* 01bd68 bmi #0x1bdbe */
     r2 = L32(r0 + 0x38u);                                        /* 01bd6a ldr r2, [r0, #0x38] */
     { uint32_t ta = r2, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 01bd6c adds r2, r2, #1 */
-    L32(r0 + 0x38u) = r2;                                        /* 01bd6e str r2, [r0, #0x38] */
+    /* engine: AB8, steps off the road (respawn past 5) */
+    if (!ENG_SUB) L32(r0 + 0x38u) = r2; else r2 = L32(r0 + 0x38u); /* 01bd6e str r2, [r0, #0x38] */
     { uint32_t ta = r2, tb = 0x5u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01bd70 cmp r2, #5 */
     if ((int32_t)r2 <= (int32_t)0x5u) goto L_1BDAC;              /* 01bd72 ble #0x1bdac */
     L32(r0 + 0x38u) = r7;                                        /* 01bd74 str r7, [r0, #0x38] */
@@ -4686,7 +4743,7 @@ static uint64_t engi_1BDEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint32_t ta = r3, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01be16 cmp r3, #0 */
     if ((int32_t)r3 >= (int32_t)0x0u) goto L_1BE34;              /* 01be18 bge #0x1be34 */
     r1 = 0x1u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01be1a movs r1, #1 */
-    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1BDC2), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01be1c bl #0x1bdc2 */
+    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1BDC2), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01be1c bl #0x1bdc2 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01be1c bl #0x1bdc2 */
     r0 = L32(r7 + 0x34u);                                        /* 01be20 ldr r0, [r7, #0x34] */
     r1 = L32(r4 + 0x30u);                                        /* 01be22 ldr r1, [r4, #0x30] */
@@ -4696,14 +4753,15 @@ static uint64_t engi_1BDEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     L32(r5 + 0x38u) = r0;                                        /* 01be2a str r0, [r5, #0x38] */
     r1 = L32(r4 + 0x18u);                                        /* 01be2c ldr r1, [r4, #0x18] */
     { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01be2e subs r0, r1, r0 */
-    L32(r4 + 0x18u) = r0;                                        /* 01be30 str r0, [r4, #0x18] */
+    /* engine: rpm -= the surface's drag */
+    { uint32_t ea_ = r4 + 0x18u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01be30 str r0, [r4, #0x18] */
 L_1BE32:
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01be32 pop {r4, r5, r6, r7, pc} */
 L_1BE34:
     t = SHL_C(r2, 0x13u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01be34 lsls r1, r2, #0x13 */
     if (!fN) goto L_1BE52;                                       /* 01be36 bpl #0x1be52 */
     r1 = 0x0u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01be38 movs r1, #0 */
-    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1BDC2), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01be3a bl #0x1bdc2 */
+    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1BDC2), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01be3a bl #0x1bdc2 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01be3a bl #0x1bdc2 */
     r0 = L32(r7 + 0x34u);                                        /* 01be3e ldr r0, [r7, #0x34] */
     r1 = L32(r4 + 0x30u);                                        /* 01be40 ldr r1, [r4, #0x30] */
@@ -4713,14 +4771,15 @@ L_1BE34:
     L32(r5 + 0x38u) = r0;                                        /* 01be48 str r0, [r5, #0x38] */
     r1 = L32(r4 + 0x18u);                                        /* 01be4a ldr r1, [r4, #0x18] */
     { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01be4c subs r0, r1, r0 */
-    L32(r4 + 0x18u) = r0;                                        /* 01be4e str r0, [r4, #0x18] */
+    /* engine: rpm -= the surface's drag */
+    { uint32_t ea_ = r4 + 0x18u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01be4e str r0, [r4, #0x18] */
 L_1BE50:
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01be50 pop {r4, r5, r6, r7, pc} */
 L_1BE52:
     t = SHL_C(r2, 0x15u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01be52 lsls r1, r2, #0x15 */
     if (!fN) goto L_1BE50;                                       /* 01be54 bpl #0x1be50 */
     r1 = 0x2u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01be56 movs r1, #2 */
-    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1BDC2), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01be58 bl #0x1bdc2 */
+    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1BDC2), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01be58 bl #0x1bdc2 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01be58 bl #0x1bdc2 */
     r0 = L32(r7 + 0x34u);                                        /* 01be5c ldr r0, [r7, #0x34] */
     r1 = L32(r4 + 0x30u);                                        /* 01be5e ldr r1, [r4, #0x30] */
@@ -4730,7 +4789,8 @@ L_1BE52:
     L32(r5 + 0x38u) = r0;                                        /* 01be66 str r0, [r5, #0x38] */
     r1 = L32(r4 + 0x18u);                                        /* 01be68 ldr r1, [r4, #0x18] */
     { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01be6a subs r0, r1, r0 */
-    L32(r4 + 0x18u) = r0;                                        /* 01be6c str r0, [r4, #0x18] */
+    /* engine: rpm -= the surface's drag */
+    { uint32_t ea_ = r4 + 0x18u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01be6c str r0, [r4, #0x18] */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01be6e pop {r4, r5, r6, r7, pc} */
 }
 uint64_t eng_1BDEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
@@ -4760,6 +4820,8 @@ static uint64_t engi_1BE70(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     t = SHL_C(r6, 0x1Au, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01be80 lsls r1, r6, #0x1a */
     r7 = 0x0u; fN = r7 >> 31; fZ = r7 == 0;                      /* 01be82 movs r7, #0 */
     { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01be84 cmp r1, #0 */
+    /* engine: substeps: no boost start or chain (the whole step decides) */
+    if (ENG_SUB) goto L_1BED6;
     if ((int32_t)r1 >= (int32_t)0x0u) goto L_1BED6;              /* 01be86 bge #0x1bed6 */
     r1 = L32(r5 + 0x28u);                                        /* 01be88 ldr r1, [r5, #0x28] */
     t = SHL_C(r1, 0x1Bu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01be8a lsls r1, r1, #0x1b */
@@ -4780,7 +4842,7 @@ static uint64_t engi_1BE70(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     L32(r4 + 0x20u) = r3;                                        /* 01bea8 str r3, [r4, #0x20] */
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01beaa movs r2, #1 */
     r1 = 0x4u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01beac movs r1, #4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01beae bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01beae bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01beae bl #0x1b2d6 */
     goto L_1BED6;                                                /* 01beb2 b #0x1bed6 */
 L_1BEB4:
@@ -4799,7 +4861,7 @@ L_1BEB4:
     L32(r4 + 0x28u) = r2;                                        /* 01becc str r2, [r4, #0x28] */
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01bece movs r2, #1 */
     r1 = 0x4u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01bed0 movs r1, #4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01bed2 bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01bed2 bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01bed2 bl #0x1b2d6 */
 L_1BED6:
     r0 = L32(r4 + 0x20u);                                        /* 01bed6 ldr r0, [r4, #0x20] */
@@ -4807,7 +4869,8 @@ L_1BED6:
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01beda cmp r0, #0 */
     if (r0 == 0x0u) goto L_1BF06;                                /* 01bedc beq #0x1bf06 */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01bede subs r0, r0, #1 */
-    L32(r4 + 0x20u) = r0;                                        /* 01bee0 str r0, [r4, #0x20] */
+    /* engine: AE0, the boost's countdown */
+    if (ENG_SUB_END(r4 - 0xAC0u)) L32(r4 + 0x20u) = r0; else r0 = L32(r4 + 0x20u); /* 01bee0 str r0, [r4, #0x20] */
     t = SHL_C(r6, 0x1Cu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01bee2 lsls r0, r6, #0x1c */
     if (!fN) goto L_1BEE8;                                       /* 01bee4 bpl #0x1bee8 */
     L32(r4 + 0x20u) = r7;                                        /* 01bee6 str r7, [r4, #0x20] */
@@ -4844,7 +4907,8 @@ L_1BF0C:
     t = SHR_C(r1, 0x1Du, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01bf1c lsrs r1, r1, #0x1d */
     { uint32_t ta = r1, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01bf1e adds r0, r1, r0 */
     t = SAR_C(r0, 0x3u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01bf20 asrs r0, r0, #3 */
-    L32(r4 + 0x1Cu) = r0;                                        /* 01bf22 str r0, [r4, #0x1c] */
+    /* engine: ADC, the boost bar eased 1/8 a step */
+    { uint32_t ea_ = r4 + 0x1Cu; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01bf22 str r0, [r4, #0x1c] */
 L_1BF24:
     r3 = S32(0); r4 = S32(4); r5 = S32(8); r6 = S32(12); r7 = S32(16); t = S32(20); spp += 24; RET(t); /* 01bf24 pop {r3, r4, r5, r6, r7, pc} */
 }
@@ -4912,7 +4976,8 @@ L_1BF5E:
     t = SHL_C(r6, 0x1u, &fC); r6 = t; fN = t >> 31; fZ = t == 0; /* 01bf7e lsls r6, r6, #1 */
     { uint32_t ta = r6, tb = 0x8u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r6 = t; } /* 01bf80 adds r6, #8 */
     { uint32_t ta = r3, tb = r6; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01bf82 adds r3, r3, r6 */
-    L32(r2 + 0x18u) = r3;                                        /* 01bf84 str r3, [r2, #0x18] */
+    /* engine: rpm += throttle */
+    { uint32_t ea_ = r2 + 0x18u; r3 = eng_third(ea_, L32(ea_), r3); L32(ea_) = r3; } /* 01bf84 str r3, [r2, #0x18] */
     goto L_1BFA4;                                                /* 01bf86 b #0x1bfa4 */
 L_1BF88:
     r6 = L32(r7 + 0x28u);                                        /* 01bf88 ldr r6, [r7, #0x28] */
@@ -4920,17 +4985,20 @@ L_1BF88:
     t = SHL_C(r6, 0x2u, &fC); r6 = t; fN = t >> 31; fZ = t == 0; /* 01bf8c lsls r6, r6, #2 */
     { uint32_t ta = r6, tb = 0x10u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r6 = t; } /* 01bf8e adds r6, #0x10 */
     { uint32_t ta = r3, tb = r6; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01bf90 adds r3, r3, r6 */
-    L32(r2 + 0x18u) = r3;                                        /* 01bf92 str r3, [r2, #0x18] */
+    /* engine: rpm += throttle */
+    { uint32_t ea_ = r2 + 0x18u; r3 = eng_third(ea_, L32(ea_), r3); L32(ea_) = r3; } /* 01bf92 str r3, [r2, #0x18] */
     goto L_1BFA4;                                                /* 01bf94 b #0x1bfa4 */
 L_1BF96:
     { uint32_t ta = r7, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01bf96 cmp r7, #0 */
     if (r7 == 0x0u) goto L_1BFA0;                                /* 01bf98 beq #0x1bfa0 */
     { uint32_t ta = r3, tb = 0x8u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01bf9a adds r3, #8 */
-    L32(r2 + 0x18u) = r3;                                        /* 01bf9c str r3, [r2, #0x18] */
+    /* engine: rpm += throttle */
+    { uint32_t ea_ = r2 + 0x18u; r3 = eng_third(ea_, L32(ea_), r3); L32(ea_) = r3; } /* 01bf9c str r3, [r2, #0x18] */
     goto L_1BFA4;                                                /* 01bf9e b #0x1bfa4 */
 L_1BFA0:
     { uint32_t ta = r3, tb = 0x10u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01bfa0 adds r3, #0x10 */
-    L32(r2 + 0x18u) = r3;                                        /* 01bfa2 str r3, [r2, #0x18] */
+    /* engine: rpm += throttle */
+    { uint32_t ea_ = r2 + 0x18u; r3 = eng_third(ea_, L32(ea_), r3); L32(ea_) = r3; } /* 01bfa2 str r3, [r2, #0x18] */
 L_1BFA4:
     r3 = 0x1u; fN = r3 >> 31; fZ = r3 == 0;                      /* 01bfa4 movs r3, #1 */
     r6 = r12;                                                    /* 01bfa6 mov r6, ip */
@@ -5264,7 +5332,7 @@ static uint64_t engi_1C276(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     spp -= 20; S32(0) = r4; S32(4) = r5; S32(8) = r6; S32(12) = r7; S32(16) = lr; /* 01c276 push {r4, r5, r6, r7, lr} */
     r2 = r0; fN = r2 >> 31; fZ = r2 == 0;                        /* 01c278 movs r2, r0 */
     r0 = r2; fN = r0 >> 31; fZ = r0 == 0;                        /* 01c27a movs r0, r2 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01c27c bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01c27c bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01c27c bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01c280 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1C2D0;                                /* 01c282 beq #0x1c2d0 */
@@ -5307,7 +5375,8 @@ L_1C2C0:
     { uint32_t ta = r1, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01c2c8 adds r3, r1, #4 */
     if ((!fZ && fN == fV)) goto L_1C2D2;                         /* 01c2ca bgt #0x1c2d2 */
     { uint32_t ta = r1, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01c2cc adds r1, r1, #4 */
-    L32(r0 + 0x24u) = r1;                                        /* 01c2ce str r1, [r0, #0x24] */
+    /* engine: A24, the pitch, a step's change */
+    { uint32_t ea_ = r0 + 0x24u; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01c2ce str r1, [r0, #0x24] */
 L_1C2D0:
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01c2d0 pop {r4, r5, r6, r7, pc} */
 L_1C2D2:
@@ -5320,7 +5389,8 @@ L_1C2D6:
     { uint32_t ta = r1, tb = 0x2u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01c2da cmp r1, #2 */
     if ((int32_t)r1 < (int32_t)0x2u) goto L_1C2E4;               /* 01c2dc blt #0x1c2e4 */
     { uint32_t ta = r1, tb = 0x2u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01c2de subs r1, r1, #2 */
-    L32(r0 + 0x24u) = r1;                                        /* 01c2e0 str r1, [r0, #0x24] */
+    /* engine: A24, the pitch, a step's change */
+    { uint32_t ea_ = r0 + 0x24u; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01c2e0 str r1, [r0, #0x24] */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01c2e2 pop {r4, r5, r6, r7, pc} */
 L_1C2E4:
     L32(r0 + 0x24u) = r2;                                        /* 01c2e4 str r2, [r0, #0x24] */
@@ -5336,7 +5406,8 @@ L_1C2E8:
     r7 = 0x6u; fN = r7 >> 31; fZ = r7 == 0;                      /* 01c2f6 movs r7, #6 */
 L_1C2F8:
     { uint32_t ta = r1, tb = r7; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 01c2f8 subs r2, r1, r7 */
-    L32(r0 + 0x24u) = r2;                                        /* 01c2fa str r2, [r0, #0x24] */
+    /* engine: A24, the pitch, a step's change */
+    { uint32_t ea_ = r0 + 0x24u; r2 = eng_third(ea_, L32(ea_), r2); L32(ea_) = r2; } /* 01c2fa str r2, [r0, #0x24] */
     { uint32_t ta = 0x0u, tb = r3; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01c2fc rsbs r1, r3, #0 */
     { uint32_t ta = r2, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01c2fe cmp r2, r1 */
     if ((int32_t)r2 >= (int32_t)r1) goto L_1C306;                /* 01c300 bge #0x1c306 */
@@ -5361,7 +5432,8 @@ L_1C30E:
     r4 = 0x6u; fN = r4 >> 31; fZ = r4 == 0;                      /* 01c31e movs r4, #6 */
 L_1C320:
     { uint32_t ta = r6, tb = r4; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r4 = t; } /* 01c320 adds r4, r6, r4 */
-    L32(r0 + 0x24u) = r4;                                        /* 01c322 str r4, [r0, #0x24] */
+    /* engine: A24, the pitch, a step's change */
+    { uint32_t ea_ = r0 + 0x24u; r4 = eng_third(ea_, L32(ea_), r4); L32(ea_) = r4; } /* 01c322 str r4, [r0, #0x24] */
     goto L_1C330;                                                /* 01c324 b #0x1c330 */
 L_1C326:
     t = SHL_C(r2, 0x1Bu, &fC); r4 = t; fN = t >> 31; fZ = t == 0; /* 01c326 lsls r4, r2, #0x1b */
@@ -5369,7 +5441,8 @@ L_1C326:
     r7 = 0x6u; fN = r7 >> 31; fZ = r7 == 0;                      /* 01c32a movs r7, #6 */
 L_1C32C:
     { uint32_t ta = r6, tb = r7; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r4 = t; } /* 01c32c adds r4, r6, r7 */
-    L32(r0 + 0x24u) = r4;                                        /* 01c32e str r4, [r0, #0x24] */
+    /* engine: A24, the pitch, a step's change */
+    { uint32_t ea_ = r0 + 0x24u; r4 = eng_third(ea_, L32(ea_), r4); L32(ea_) = r4; } /* 01c32e str r4, [r0, #0x24] */
 L_1C330:
     r4 = L32(r0 + 0x24u);                                        /* 01c330 ldr r4, [r0, #0x24] */
     { uint32_t ta = r4, tb = r3; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01c332 cmp r4, r3 */
@@ -5567,7 +5640,7 @@ static uint64_t engi_1CEC2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     t = SHL_C(r1, 0x7u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ced0 lsls r1, r1, #7 */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01ced2 adds r0, r0, r1 */
     r0 = L32(r0 + 0x2Cu);                                        /* 01ced4 ldr r0, [r0, #0x2c] */
-    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ced6 bl #0x52206 */
+    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52206), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ced6 bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ced6 bl #0x52206 */
     S32(0x70u) = r0;                                             /* 01ceda str r0, [sp, #0x70] */
     r0 = S32(0x70u);                                             /* 01cedc ldr r0, [sp, #0x70] */
@@ -5707,7 +5780,8 @@ L_1CFCC:
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01cfd2 cmp r0, r1 */
     if ((int32_t)r0 >= (int32_t)r1) goto L_1D0C0;                /* 01cfd4 bge #0x1d0c0 */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01cfd6 adds r0, r0, #1 */
-    L32(r4 + 0x38u) = r0;                                        /* 01cfd8 str r0, [r4, #0x38] */
+    /* engine: C38, the speed wave's phase */
+    if (!ENG_SUB) L32(r4 + 0x38u) = r0; else r0 = L32(r4 + 0x38u); /* 01cfd8 str r0, [r4, #0x38] */
     t = SHL_C(r0, 0x5u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01cfda lsls r1, r0, #5 */
     { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01cfdc subs r1, r1, r0 */
     r2 = GAMEW(0x1D0D4);                                         /* 01cfde ldr r2, [pc, #0xf4] */
@@ -5768,7 +5842,7 @@ L_1D044:
     t = r7 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              /* 01d04a muls r0, r7, r0 */
     t = SAR_C(r0, 0xCu, &fC); r7 = t; fN = t >> 31; fZ = t == 0; /* 01d04c asrs r7, r0, #0xc */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01d04e movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x37144), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01d050 bl #0x37144 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x37144), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01d050 bl #0x37144 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01d050 bl #0x37144 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01d054 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1CFC8;                                /* 01d056 beq #0x1cfc8 */
@@ -5865,7 +5939,7 @@ L_1D0FE:
     S32(0x28u) = r3;                                             /* 01d116 str r3, [sp, #0x28] */
     { uint32_t ta = sp, tb = 0x20u; t = ta + tb; r1 = t; }       /* 01d118 add r1, sp, #0x20 */
     { uint32_t ta = sp, tb = 0x2Cu; t = ta + tb; r0 = t; }       /* 01d11a add r0, sp, #0x2c */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01d11c bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01d11c bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01d11c bl #0x52562 */
     r0 = S32(0x2Cu);                                             /* 01d120 ldr r0, [sp, #0x2c] */
     r1 = S32(0x30u);                                             /* 01d122 ldr r1, [sp, #0x30] */
@@ -5889,7 +5963,7 @@ L_1D0FE:
     { uint32_t ta = sp, tb = 0x38u; t = ta + tb; r2 = t; }       /* 01d146 add r2, sp, #0x38 */
     { uint32_t ta = sp, tb = 0x44u; t = ta + tb; r1 = t; }       /* 01d148 add r1, sp, #0x44 */
     { uint32_t ta = sp, tb = 0x50u; t = ta + tb; r0 = t; }       /* 01d14a add r0, sp, #0x50 */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01d14c bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01d14c bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01d14c bl #0x52562 */
     r0 = S32(0x50u);                                             /* 01d150 ldr r0, [sp, #0x50] */
     r1 = S32(0x54u);                                             /* 01d152 ldr r1, [sp, #0x54] */
@@ -5905,11 +5979,11 @@ L_1D0FE:
     t = r4; L32(t + 0) = r1; L32(t + 4) = r2; L32(t + 8) = r3; r4 = t + 12; /* 01d166 stm r4!, {r1, r2, r3} */
     { uint32_t ta = r4, tb = 0xCu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r4 = t; } /* 01d168 subs r4, #0xc */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01d16a movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x37144), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01d16c bl #0x37144 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x37144), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01d16c bl #0x37144 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01d16c bl #0x37144 */
     r6 = r0; fN = r6 >> 31; fZ = r6 == 0;                        /* 01d170 movs r6, r0 */
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 01d172 movs r0, r5 */
-    { uint64_t rr = (ENGD_1C44C ? engi_1C44C(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1C44C), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01d174 bl #0x1c44c */
+    { uint64_t rr = (ENGD_1C44C ? engi_1C44C(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1C44C), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01d174 bl #0x1c44c */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01d174 bl #0x1c44c */
     { uint32_t ta = r6, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01d178 cmp r6, r0 */
     if ((int32_t)r6 <= (int32_t)r0) goto L_1D084;                /* 01d17a ble #0x1d084 */
@@ -5938,7 +6012,8 @@ L_1D1A2:
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01d1a6 cmp r0, r1 */
     if ((int32_t)r0 >= (int32_t)r1) goto L_1D1B2;                /* 01d1a8 bge #0x1d1b2 */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01d1aa adds r0, r0, #1 */
-    L32(r4 + 0x38u) = r0;                                        /* 01d1ac str r0, [r4, #0x38] */
+    /* engine: C38, the speed wave's phase */
+    if (!ENG_SUB) L32(r4 + 0x38u) = r0; else r0 = L32(r4 + 0x38u); /* 01d1ac str r0, [r4, #0x38] */
     spp += 0x7Cu;                                                /* 01d1ae add sp, #0x7c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01d1b0 pop {r4, r5, r6, r7, pc} */
 L_1D1B2:
@@ -5969,7 +6044,7 @@ static uint64_t engi_1CDDA(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint32_t ta = r5, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 01cde2 adds r2, r5, #4 */
     { uint32_t ta = r4, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01cde4 adds r1, r4, #4 */
     { uint32_t ta = sp, tb = 0x10u; t = ta + tb; r0 = t; }       /* 01cde6 add r0, sp, #0x10 */
-    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01cde8 bl #0x52540 */
+    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52540), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01cde8 bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01cde8 bl #0x52540 */
     r2 = GAMEW(0x1D0C4);                                         /* 01cdec ldr r2, [pc, #0x2d4] */
     r1 = S32(0x10u);                                             /* 01cdee ldr r1, [sp, #0x10] */
@@ -6078,7 +6153,7 @@ L_1CE9C:
 L_1CEA2:
     r1 = r5; fN = r1 >> 31; fZ = r1 == 0;                        /* 01cea2 movs r1, r5 */
     { uint32_t ta = sp, tb = 0x4u; t = ta + tb; r0 = t; }        /* 01cea4 add r0, sp, #4 */
-    { uint64_t rr = (ENGD_1CD88 ? engi_1CD88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1CD88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01cea6 bl #0x1cd88 */
+    { uint64_t rr = (ENGD_1CD88 ? engi_1CD88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1CD88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01cea6 bl #0x1cd88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01cea6 bl #0x1cd88 */
     r1 = 0x1u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01ceaa movs r1, #1 */
     t = SHL_C(r1, 0xCu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ceac lsls r1, r1, #0xc */
@@ -6087,7 +6162,7 @@ L_1CEA2:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ceb0 bl #0x373c2 */
     { uint32_t ta = sp, tb = 0x4u; t = ta + tb; r1 = t; }        /* 01ceb4 add r1, sp, #4 */
     { uint32_t ta = sp, tb = 0x10u; t = ta + tb; r0 = t; }       /* 01ceb6 add r0, sp, #0x10 */
-    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52182), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ceb8 bl #0x52182 */
+    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52182), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ceb8 bl #0x52182 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ceb8 bl #0x52182 */
     t = SAR_C(r0, 0xCu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01cebc asrs r0, r0, #0xc */
     spp += 0x1Cu;                                                /* 01cebe add sp, #0x1c */
@@ -6111,6 +6186,8 @@ static uint64_t engi_1EA64(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
     spp -= 32; S32(0) = r0; S32(4) = r1; S32(8) = r2; S32(12) = r4; S32(16) = r5; S32(20) = r6; S32(24) = r7; S32(28) = lr; /* 01ea64 push {r0, r1, r2, r4, r5, r6, r7, lr} */
     spp -= 0x70u;                                                /* 01ea66 sub sp, #0x70 */
+    /* engine: substeps: a wreck does not move */
+    if (ENG_SUB && MEM32(r0 + 0x34u) != 0xFFFFFFFFu) return 0;
     r4 = r0; fN = r4 >> 31; fZ = r4 == 0;                        /* 01ea68 movs r4, r0 */
     r1 = 0x61u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01ea6a movs r1, #0x61 */
     t = SHL_C(r1, 0x5u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ea6c lsls r1, r1, #5 */
@@ -6155,8 +6232,12 @@ L_1EAAE:
     { uint64_t rr = (ENGD_226E8 ? engi_226E8(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x226E8), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01eab6 bl #0x226e8 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01eab6 bl #0x226e8 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01eaba movs r0, r4 */
+    /* engine: a wreck's measure is a whole step's */
+    ENG->meas1 = MEM32(r4 + 0x34u) != 0xFFFFFFFFu;
     { uint64_t rr = (ENGD_22832 ? engi_22832(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x22832), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01eabc bl #0x22832 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01eabc bl #0x22832 */
+    /* engine: back to substep measures */
+    ENG->meas1 = 0;
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01eac0 movs r0, r4 */
     { uint32_t ta = r0, tb = 0x80u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01eac2 adds r0, #0x80 */
     r1 = 0x17u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01eac4 movs r1, #0x17 */
@@ -6230,7 +6311,7 @@ L_1EB18:
     r2 = L32(r0 + 0x20u);                                        /* 01eb3c ldr r2, [r0, #0x20] */
 L_1EB3E:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01eb3e movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01eb40 bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01eb40 bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01eb40 bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01eb44 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1EB4C;                                /* 01eb46 beq #0x1eb4c */
@@ -6290,7 +6371,8 @@ L_1EB9C:
     r0 = L32(r0 + 0x24u);                                        /* 01eba6 ldr r0, [r0, #0x24] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01eba8 adds r0, r0, #1 */
     r2 = S32(0x5Cu);                                             /* 01ebaa ldr r2, [sp, #0x5c] */
-    L32(r2 + 0x24u) = r0;                                        /* 01ebac str r0, [r2, #0x24] */
+    /* engine: E4, steps pushing into a contact (a crash past 12) */
+    if (!ENG_SUB) L32(r2 + 0x24u) = r0; else r0 = L32(r2 + 0x24u); /* 01ebac str r0, [r2, #0x24] */
     goto L_1EBB6;                                                /* 01ebae b #0x1ebb6 */
 L_1EBB0:
     r2 = S32(0x5Cu);                                             /* 01ebb0 ldr r2, [sp, #0x5c] */
@@ -6299,7 +6381,7 @@ L_1EBB0:
 L_1EBB6:
     r6 = 0x0u; fN = r6 >> 31; fZ = r6 == 0;                      /* 01ebb6 movs r6, #0 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01ebb8 movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ebba bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ebba bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ebba bl #0x193ce */
     r2 = S32(0x5Cu);                                             /* 01ebbe ldr r2, [sp, #0x5c] */
     r0 = L32(r2 + 0x24u);                                        /* 01ebc0 ldr r0, [r2, #0x24] */
@@ -6322,7 +6404,7 @@ L_1EBCC:
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01ebdc cmp r0, r1 */
     if (r0 == r1) goto L_1EC72;                                  /* 01ebde beq #0x1ec72 */
     r0 = S32(0x54u);                                             /* 01ebe0 ldr r0, [sp, #0x54] */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x37144), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ebe2 bl #0x37144 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x37144), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ebe2 bl #0x37144 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ebe2 bl #0x37144 */
     S32(0x10u) = r0;                                             /* 01ebe6 str r0, [sp, #0x10] */
     r0 = S32(0x10u);                                             /* 01ebe8 ldr r0, [sp, #0x10] */
@@ -6355,7 +6437,7 @@ L_1EC10:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ec18 blx r2 */
     r0 = S32(0x54u);                                             /* 01ec1a ldr r0, [sp, #0x54] */
     { uint32_t ta = sp, tb = 0x4u; t = ta + tb; r1 = t; }        /* 01ec1c add r1, sp, #4 */
-    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52182), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ec1e bl #0x52182 */
+    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52182), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ec1e bl #0x52182 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ec1e bl #0x52182 */
     r3 = 0x6Cu; fN = r3 >> 31; fZ = r3 == 0;                     /* 01ec22 movs r3, #0x6c */
     t = r3 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              /* 01ec24 muls r0, r3, r0 */
@@ -6377,7 +6459,7 @@ L_1EC3A:
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01ec40 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1EC4E;                                /* 01ec42 beq #0x1ec4e */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01ec44 movs r0, r4 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ec46 bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ec46 bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ec46 bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01ec4a cmp r0, #0 */
     if (r0 == 0x0u) goto L_1EC72;                                /* 01ec4c beq #0x1ec72 */
@@ -6390,7 +6472,7 @@ L_1EC4E:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ec56 blx r2 */
     r0 = S32(0x54u);                                             /* 01ec58 ldr r0, [sp, #0x54] */
     { uint32_t ta = sp, tb = 0x4u; t = ta + tb; r1 = t; }        /* 01ec5a add r1, sp, #4 */
-    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52182), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ec5c bl #0x52182 */
+    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52182), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ec5c bl #0x52182 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ec5c bl #0x52182 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01ec60 cmp r0, #0 */
     if ((int32_t)r0 > (int32_t)0x0u) goto L_1EC66;               /* 01ec62 bgt #0x1ec66 */
@@ -6426,12 +6508,12 @@ L_1EC72:
     { uint64_t rr = a4_eng_call(GAMEFN(0x1E934), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ec9a bl #0x1e934 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ec9a bl #0x1e934 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01ec9e movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x522A4), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01eca0 bl #0x522a4 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x522A4), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01eca0 bl #0x522a4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01eca0 bl #0x522a4 */
 L_1ECA4:
     r1 = 0x4u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01eca4 movs r1, #4 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01eca6 movs r0, r4 */
-    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1BDC2), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01eca8 bl #0x1bdc2 */
+    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1BDC2), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01eca8 bl #0x1bdc2 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01eca8 bl #0x1bdc2 */
 L_1ECAC:
     r0 = S32(0x5Cu);                                             /* 01ecac ldr r0, [sp, #0x5c] */
@@ -6466,7 +6548,7 @@ L_1ECDE:
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r7 = t; } /* 01ece2 adds r7, r0, r1 */
     r1 = r4; fN = r1 >> 31; fZ = r1 == 0;                        /* 01ece4 movs r1, r4 */
     { uint32_t ta = sp, tb = 0x34u; t = ta + tb; r0 = t; }       /* 01ece6 add r0, sp, #0x34 */
-    { uint64_t rr = (ENGD_1CD88 ? engi_1CD88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1CD88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ece8 bl #0x1cd88 */
+    { uint64_t rr = (ENGD_1CD88 ? engi_1CD88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1CD88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ece8 bl #0x1cd88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ece8 bl #0x1cd88 */
     r0 = 0x7u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01ecec movs r0, #7 */
     t = SHL_C(r0, 0x8u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01ecee lsls r0, r0, #8 */
@@ -6492,7 +6574,7 @@ L_1ED0E:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01ed14 movs r2, #1 */
     r1 = 0x20u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01ed16 movs r1, #0x20 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01ed18 movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ed1a bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01ed1a bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ed1a bl #0x1b2d6 */
 L_1ED1E:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01ed1e movs r0, r4 */
@@ -6589,7 +6671,8 @@ L_1EDB8:
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01edde adds r0, r0, r1 */
     t = SAR_C(r0, 0x2u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01ede0 asrs r0, r0, #2 */
     { uint32_t ta = r0, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01ede2 adds r0, r0, r2 */
-    L32(r4 + 0x8u) = r0;                                         /* 01ede4 str r0, [r4, #8] */
+    /* engine: y += the ramp's rise (hang) */
+    { uint32_t ea_ = r4 + 0x8u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01ede4 str r0, [r4, #8] */
 L_1EDE6:
     r2 = 0x53u; fN = r2 >> 31; fZ = r2 == 0;                     /* 01ede6 movs r2, #0x53 */
     t = SHL_C(r2, 0x5u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 01ede8 lsls r2, r2, #5 */
@@ -6620,21 +6703,24 @@ L_1EE06:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01ee18 movs r2, #1 */
     r1 = 0x10u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01ee1a movs r1, #0x10 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01ee1c movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ee1e bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01ee1e bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ee1e bl #0x1b2d6 */
 L_1EE22:
     r0 = L32(r6 + 0x20u);                                        /* 01ee22 ldr r0, [r6, #0x20] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01ee24 adds r0, r0, #1 */
-    L32(r6 + 0x20u) = r0;                                        /* 01ee26 str r0, [r6, #0x20] */
+    /* engine: A60, steps in the air */
+    if (!ENG_SUB) L32(r6 + 0x20u) = r0; else r0 = L32(r6 + 0x20u); /* 01ee26 str r0, [r6, #0x20] */
     r1 = L32(r4 + 0x8u);                                         /* 01ee28 ldr r1, [r4, #8] */
     r0 = L32(r6 + 0x18u);                                        /* 01ee2a ldr r0, [r6, #0x18] */
     { uint32_t ta = r1, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ee2c adds r1, r1, r0 */
-    L32(r4 + 0x8u) = r1;                                         /* 01ee2e str r1, [r4, #8] */
+    /* engine: y += A58 (in the air) */
+    { uint32_t ea_ = r4 + 0x8u; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01ee2e str r1, [r4, #8] */
     r1 = L32(r7 + 0x30u);                                        /* 01ee30 ldr r1, [r7, #0x30] */
     { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01ee32 cmp r1, #0 */
     if (r1 == 0x0u) goto L_1EE3C;                                /* 01ee34 beq #0x1ee3c */
     { uint32_t ta = r1, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ee36 subs r1, r1, #1 */
-    L32(r7 + 0x30u) = r1;                                        /* 01ee38 str r1, [r7, #0x30] */
+    /* engine: AF0, the hang's countdown */
+    if (!ENG_SUB) L32(r7 + 0x30u) = r1; else r1 = L32(r7 + 0x30u); /* 01ee38 str r1, [r7, #0x30] */
     goto L_1EF26;                                                /* 01ee3a b #0x1ef26 */
 L_1EE3C:
     r2 = S32(0x4Cu);                                             /* 01ee3c ldr r2, [sp, #0x4c] */
@@ -6642,11 +6728,13 @@ L_1EE3C:
     { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01ee40 cmp r1, #0 */
     if (r1 == 0x0u) goto L_1EE4A;                                /* 01ee42 beq #0x1ee4a */
     { uint32_t ta = r0, tb = 0x14u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01ee44 subs r0, #0x14 */
-    L32(r6 + 0x18u) = r0;                                        /* 01ee46 str r0, [r6, #0x18] */
+    /* engine: A58 -= gravity (0x14) */
+    { uint32_t ea_ = r6 + 0x18u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01ee46 str r0, [r6, #0x18] */
     goto L_1EF26;                                                /* 01ee48 b #0x1ef26 */
 L_1EE4A:
     { uint32_t ta = r0, tb = 0x9u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01ee4a subs r0, #9 */
-    L32(r6 + 0x18u) = r0;                                        /* 01ee4c str r0, [r6, #0x18] */
+    /* engine: A58 -= gravity (9) */
+    { uint32_t ea_ = r6 + 0x18u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01ee4c str r0, [r6, #0x18] */
     goto L_1EF26;                                                /* 01ee4e b #0x1ef26 */
 L_1EE50:
     r0 = L32(r4 + 0x1Cu);                                        /* 01ee50 ldr r0, [r4, #0x1c] */
@@ -6702,7 +6790,8 @@ L_1EEAC:
     r0 = L32(r4 + 0x8u);                                         /* 01eeac ldr r0, [r4, #8] */
     r1 = L32(r6 + 0x18u);                                        /* 01eeae ldr r1, [r6, #0x18] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01eeb0 adds r0, r0, r1 */
-    L32(r4 + 0x8u) = r0;                                         /* 01eeb2 str r0, [r4, #8] */
+    /* engine: y += A58 (the launch) */
+    { uint32_t ea_ = r4 + 0x8u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01eeb2 str r0, [r4, #8] */
     r0 = r12;                                                    /* 01eeb4 mov r0, ip */
     t = SHL_C(r0, 0x12u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01eeb6 lsls r0, r0, #0x12 */
     if (!fN) goto L_1EECE;                                       /* 01eeb8 bpl #0x1eece */
@@ -6781,21 +6870,23 @@ L_1EF3A:
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01ef3c cmp r0, #0 */
     if (r0 == 0x0u) goto L_1EF44;                                /* 01ef3e beq #0x1ef44 */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01ef40 subs r0, r0, #1 */
-    L32(r6 + 0x28u) = r0;                                        /* 01ef42 str r0, [r6, #0x28] */
+    /* engine: A68, a countdown */
+    if (!ENG_SUB) L32(r6 + 0x28u) = r0; else r0 = L32(r6 + 0x28u); /* 01ef42 str r0, [r6, #0x28] */
 L_1EF44:
     r0 = L32(r6 + 0x2Cu);                                        /* 01ef44 ldr r0, [r6, #0x2c] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01ef46 cmp r0, #0 */
     if (r0 == 0x0u) goto L_1EF4E;                                /* 01ef48 beq #0x1ef4e */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01ef4a subs r0, r0, #1 */
-    L32(r6 + 0x2Cu) = r0;                                        /* 01ef4c str r0, [r6, #0x2c] */
+    /* engine: A6C, a countdown */
+    if (!ENG_SUB) L32(r6 + 0x2Cu) = r0; else r0 = L32(r6 + 0x2Cu); /* 01ef4c str r0, [r6, #0x2c] */
 L_1EF4E:
     r0 = S32(0x54u);                                             /* 01ef4e ldr r0, [sp, #0x54] */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x37144), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ef50 bl #0x37144 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x37144), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ef50 bl #0x37144 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ef50 bl #0x37144 */
     r7 = r0; fN = r7 >> 31; fZ = r7 == 0;                        /* 01ef54 movs r7, r0 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01ef56 movs r0, r4 */
     { uint32_t ta = r0, tb = 0xFCu; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01ef58 adds r0, #0xfc */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x37144), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ef5a bl #0x37144 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x37144), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ef5a bl #0x37144 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ef5a bl #0x37144 */
     { uint32_t ta = r7, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01ef5e adds r0, r7, r0 */
     r3 = 0x32u; fN = r3 >> 31; fZ = r3 == 0;                     /* 01ef60 movs r3, #0x32 */
@@ -6908,13 +6999,18 @@ L_1F00C:
     t = SAR_C(r6, 0xDu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01f02a asrs r1, r6, #0xd */
     { uint32_t ta = r2, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01f02c subs r1, r2, r1 */
     r2 = S32(0x50u);                                             /* 01f02e ldr r2, [sp, #0x50] */
-    L32(r2 + 0x3Cu) = r1;                                        /* 01f030 str r1, [r2, #0x3c] */
+    /* engine: steering -0x400 off the wall */
+    { uint32_t ea_ = r2 + 0x3Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01f030 str r1, [r2, #0x3c] */
 L_1F032:
     r1 = L32(r5 + 0x18u);                                        /* 01f032 ldr r1, [r5, #0x18] */
     { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f034 cmp r1, #0 */
     if (r1 != 0x0u) goto L_1F03C;                                /* 01f036 bne #0x1f03c */
+    /* engine: the contact starts at the step's end */
+    if (!ENG_SUB_END(r5 - 0xB00u)) goto L_1F03C;
     { uint32_t ta = r1, tb = 0x5u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01f038 subs r1, r1, #5 */
+    /* engine: a contact starts (+B18 from 0): the first push is the whole step's */
     L32(r5 + 0x18u) = r1;                                        /* 01f03a str r1, [r5, #0x18] */
+    eng_kick_mark(r7 + 0x38u);
 L_1F03C:
     r1 = r3; fN = r1 >> 31; fZ = r1 == 0;                        /* 01f03c movs r1, r3 */
     r3 = S32(0x20u);                                             /* 01f03e ldr r3, [sp, #0x20] */
@@ -6937,13 +7033,18 @@ L_1F050:
     t = SAR_C(r2, 0x1u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 01f05c asrs r2, r2, #1 */
     { uint32_t ta = r1, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01f05e adds r1, r1, r2 */
     r2 = S32(0x50u);                                             /* 01f060 ldr r2, [sp, #0x50] */
-    L32(r2 + 0x3Cu) = r1;                                        /* 01f062 str r1, [r2, #0x3c] */
+    /* engine: steering +0x400 off the wall */
+    { uint32_t ea_ = r2 + 0x3Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01f062 str r1, [r2, #0x3c] */
 L_1F064:
     r1 = L32(r5 + 0x18u);                                        /* 01f064 ldr r1, [r5, #0x18] */
     { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f066 cmp r1, #0 */
     if (r1 != 0x0u) goto L_1F06E;                                /* 01f068 bne #0x1f06e */
+    /* engine: the contact starts at the step's end */
+    if (!ENG_SUB_END(r5 - 0xB00u)) goto L_1F06E;
     r1 = 0x5u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01f06a movs r1, #5 */
+    /* engine: a contact starts (+B18 from 0): the first push is the whole step's */
     L32(r5 + 0x18u) = r1;                                        /* 01f06c str r1, [r5, #0x18] */
+    eng_kick_mark(r7 + 0x38u);
 L_1F06E:
     r1 = r3; fN = r1 >> 31; fZ = r1 == 0;                        /* 01f06e movs r1, r3 */
     r3 = S32(0x20u);                                             /* 01f070 ldr r3, [sp, #0x20] */
@@ -7055,24 +7156,28 @@ L_1F128:
     if ((int32_t)r0 >= (int32_t)0x0u) goto L_1F136;              /* 01f12c bge #0x1f136 */
     r0 = L32(r7 + 0x38u);                                        /* 01f12e ldr r0, [r7, #0x38] */
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f130 subs r0, r0, r1 */
-    L32(r7 + 0x38u) = r0;                                        /* 01f132 str r0, [r7, #0x38] */
+    /* engine: heading -= the wall's turn (eng_kick) */
+    MEM32(r7 + 0x38u) = r0 = eng_kick(r7 + 0x38u, r0);  /* was: L32(r7 + 0x38u) = r0;                                        ( 01f132 str r0, [r7, #0x38] ) */
     goto L_1F13C;                                                /* 01f134 b #0x1f13c */
 L_1F136:
     r0 = L32(r7 + 0x38u);                                        /* 01f136 ldr r0, [r7, #0x38] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f138 adds r0, r0, r1 */
-    L32(r7 + 0x38u) = r0;                                        /* 01f13a str r0, [r7, #0x38] */
+    /* engine: heading += the wall's turn (eng_kick) */
+    MEM32(r7 + 0x38u) = r0 = eng_kick(r7 + 0x38u, r0);  /* was: L32(r7 + 0x38u) = r0;                                        ( 01f13a str r0, [r7, #0x38] ) */
 L_1F13C:
     r0 = L32(r5 + 0x18u);                                        /* 01f13c ldr r0, [r5, #0x18] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f13e cmp r0, #0 */
     if ((int32_t)r0 >= (int32_t)0x0u) goto L_1F148;              /* 01f140 bge #0x1f148 */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f142 adds r0, r0, #1 */
-    L32(r5 + 0x18u) = r0;                                        /* 01f144 str r0, [r5, #0x18] */
+    /* engine: B18, the wall's countdown, at the step's end */
+    if (ENG_SUB_END(r5 - 0xB00u)) L32(r5 + 0x18u) = r0; else r0 = L32(r5 + 0x18u); /* 01f144 str r0, [r5, #0x18] */
     goto L_1F150;                                                /* 01f146 b #0x1f150 */
 L_1F148:
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f148 cmp r0, #0 */
     if ((int32_t)r0 <= (int32_t)0x0u) goto L_1F150;              /* 01f14a ble #0x1f150 */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f14c subs r0, r0, #1 */
-    L32(r5 + 0x18u) = r0;                                        /* 01f14e str r0, [r5, #0x18] */
+    /* engine: B18, the wall's countdown, at the step's end */
+    if (ENG_SUB_END(r5 - 0xB00u)) L32(r5 + 0x18u) = r0; else r0 = L32(r5 + 0x18u); /* 01f14e str r0, [r5, #0x18] */
 L_1F150:
     r0 = L32(r4 + 0x1Cu);                                        /* 01f150 ldr r0, [r4, #0x1c] */
     r2 = S32(0x44u);                                             /* 01f152 ldr r2, [sp, #0x44] */
@@ -7190,7 +7295,7 @@ static uint64_t engi_226E8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint32_t ta = r2, tb = 0x1Cu; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 0226f2 adds r2, #0x1c */
     { uint32_t ta = r4, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 0226f4 adds r1, r4, #4 */
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 0226f6 movs r0, r5 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x24604), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0226f8 bl #0x24604 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x24604), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0226f8 bl #0x24604 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0226f8 bl #0x24604 */
     r1 = L32(r4 + 0x1Cu);                                        /* 0226fc ldr r1, [r4, #0x1c] */
     r2 = 0xE4u; fN = r2 >> 31; fZ = r2 == 0;                     /* 0226fe movs r2, #0xe4 */
@@ -7386,6 +7491,8 @@ static uint64_t engi_22832(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     S32(0x4u) = r0;                                              /* 02284e str r0, [sp, #4] */
     S32(0x8u) = r1;                                              /* 022850 str r1, [sp, #8] */
     S32(0xCu) = r2;                                              /* 022852 str r2, [sp, #0xc] */
+    /* engine: velocity per step = 3 x the substep's displacement */
+    if (!ENG->meas1) { MEM32(sp + 4u) *= 3u; MEM32(sp + 8u) *= 3u; MEM32(sp + 0xCu) *= 3u; }
     r0 = S32(0x4u);                                              /* 022854 ldr r0, [sp, #4] */
     r1 = L32(r4 + 0x10u);                                        /* 022856 ldr r1, [r4, #0x10] */
     r2 = L32(r4 + 0x14u);                                        /* 022858 ldr r2, [r4, #0x14] */
@@ -7398,6 +7505,8 @@ static uint64_t engi_22832(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     S32(0x1Cu) = r0;                                             /* 022866 str r0, [sp, #0x1c] */
     S32(0x20u) = r1;                                             /* 022868 str r1, [sp, #0x20] */
     S32(0x24u) = r2;                                             /* 02286a str r2, [sp, #0x24] */
+    /* engine: acceleration per step = 3 x the substep's change */
+    if (!ENG->meas1) { MEM32(sp + 0x1Cu) *= 3u; MEM32(sp + 0x20u) *= 3u; MEM32(sp + 0x24u) *= 3u; }
     r0 = S32(0x1Cu);                                             /* 02286c ldr r0, [sp, #0x1c] */
     r1 = S32(0x20u);                                             /* 02286e ldr r1, [sp, #0x20] */
     t = SHL_C(r0, 0x1u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 022870 lsls r3, r0, #1 */
@@ -7465,7 +7574,8 @@ static uint64_t engi_22832(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     S32(0x24u) = r0;                                             /* 0228ec str r0, [sp, #0x24] */
     { uint32_t ta = sp, tb = 0x1Cu; t = ta + tb; r0 = t; }       /* 0228ee add r0, sp, #0x1c */
     t = r0; r1 = L32(t + 0); r2 = L32(t + 4); r3 = L32(t + 8); r0 = t + 12; /* 0228f0 ldm r0!, {r1, r2, r3} */
-    t = r6; L32(t + 0) = r1; L32(t + 4) = r2; L32(t + 8) = r3; r6 = t + 12; /* 0228f2 stm r6!, {r1, r2, r3} */
+    /* engine: 0C4, the acceleration eased 1/8 a step */
+    t = r6; r1 = eng_third(t + 0, L32(t + 0), r1); L32(t + 0) = r1; r2 = eng_third(t + 4, L32(t + 4), r2); L32(t + 4) = r2; r3 = eng_third(t + 8, L32(t + 8), r3); L32(t + 8) = r3; r6 = t + 12; /* 0228f2 stm r6!, {r1, r2, r3} */
     { uint32_t ta = sp, tb = 0x4u; t = ta + tb; r1 = t; }        /* 0228f4 add r1, sp, #4 */
     t = r1; r2 = L32(t + 0); r3 = L32(t + 4); r6 = L32(t + 8); r1 = t + 12; /* 0228f6 ldm r1!, {r2, r3, r6} */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 0228f8 movs r0, r4 */
@@ -7482,7 +7592,7 @@ static uint64_t engi_22832(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r2 = r0; fN = r2 >> 31; fZ = r2 == 0;                        /* 02290e movs r2, r0 */
     t = r0 * r2; fN = t >> 31; fZ = t == 0; r2 = t;              /* 022910 muls r2, r0, r2 */
     { uint32_t ta = r1, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022912 adds r0, r1, r2 */
-    { uint64_t rr = (ENGD_3145C ? engi_3145C(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3145C), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022914 bl #0x3145c */
+    { uint64_t rr = (ENGD_3145C ? engi_3145C(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3145C), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022914 bl #0x3145c */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022914 bl #0x3145c */
     { uint32_t ta = r0, tb = 0xFFu; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022918 adds r0, #0xff */
     t = SAR_C(r0, 0x8u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 02291a asrs r1, r0, #8 */
@@ -7547,12 +7657,13 @@ static uint64_t engi_1FD0E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint32_t ta = r4, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 01fd18 adds r2, r4, r0 */
     { uint32_t ta = r4, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01fd1a adds r1, r4, #4 */
     { uint32_t ta = sp, tb = 0x4u; t = ta + tb; r0 = t; }        /* 01fd1c add r0, sp, #4 */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fd1e bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fd1e bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01fd1e bl #0x52562 */
     { uint32_t ta = sp, tb = 0x4u; t = ta + tb; r1 = t; }        /* 01fd22 add r1, sp, #4 */
     t = r1; r1 = L32(t + 0); r2 = L32(t + 4); r3 = L32(t + 8);   /* 01fd24 ldm r1, {r1, r2, r3} */
     { uint32_t ta = r4, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01fd26 adds r0, r4, #4 */
-    t = r0; L32(t + 0) = r1; L32(t + 4) = r2; L32(t + 8) = r3; r0 = t + 12; /* 01fd28 stm r0!, {r1, r2, r3} */
+    /* engine: position += 6B0 (the kinematic move) */
+    t = r0; r1 = eng_third(t + 0, L32(t + 0), r1); L32(t + 0) = r1; r2 = eng_third(t + 4, L32(t + 4), r2); L32(t + 4) = r2; r3 = eng_third(t + 8, L32(t + 8), r3); L32(t + 8) = r3; r0 = t + 12; /* 01fd28 stm r0!, {r1, r2, r3} */
     r0 = 0x1Bu; fN = r0 >> 31; fZ = r0 == 0;                     /* 01fd2a movs r0, #0x1b */
     t = SHL_C(r0, 0x6u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01fd2c lsls r0, r0, #6 */
     { uint32_t ta = r4, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01fd2e adds r0, r4, r0 */
@@ -7575,7 +7686,8 @@ static uint64_t engi_1FD0E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint32_t ta = r4, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01fd50 adds r0, r4, r0 */
     r1 = L32(r0 + 0x34u);                                        /* 01fd52 ldr r1, [r0, #0x34] */
     { uint32_t ta = r1, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01fd54 adds r1, r1, #1 */
-    L32(r0 + 0x34u) = r1;                                        /* 01fd56 str r1, [r0, #0x34] */
+    /* engine: A34, a step counter (the kinematic move) */
+    if (!ENG_SUB) L32(r0 + 0x34u) = r1; else r1 = L32(r0 + 0x34u); /* 01fd56 str r1, [r0, #0x34] */
 L_1FD58:
     spp += 0x10u;                                                /* 01fd58 add sp, #0x10 */
     r4 = S32(0); t = S32(4); spp += 8; RET(t);                   /* 01fd5a pop {r4, pc} */
@@ -7600,7 +7712,7 @@ static uint64_t engi_2292A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     spp -= 0x64u;                                                /* 02292c sub sp, #0x64 */
     r4 = r0; fN = r4 >> 31; fZ = r4 == 0;                        /* 02292e movs r4, r0 */
     r0 = L32(r4 + 0x3Cu);                                        /* 022930 ldr r0, [r4, #0x3c] */
-    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x39FE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022932 bl #0x39fe */
+    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022932 bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022932 bl #0x39fe */
     r0 = L32(r0);                                                /* 022936 ldr r0, [r0] */
     r1 = L32(r4 + 0x34u);                                        /* 022938 ldr r1, [r4, #0x34] */
@@ -7646,12 +7758,12 @@ L_2297A:
     r0 = L32(r4 + 0x18u);                                        /* 022982 ldr r0, [r4, #0x18] */
     S32(0x3Cu) = r0;                                             /* 022984 str r0, [sp, #0x3c] */
     r0 = L32(r4 + 0x3Cu);                                        /* 022986 ldr r0, [r4, #0x3c] */
-    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x39FE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022988 bl #0x39fe */
+    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022988 bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022988 bl #0x39fe */
     r1 = r0; fN = r1 >> 31; fZ = r1 == 0;                        /* 02298c movs r1, r0 */
     r2 = L32(r4 + 0x34u);                                        /* 02298e ldr r2, [r4, #0x34] */
     { uint32_t ta = sp, tb = 0x28u; t = ta + tb; r0 = t; }       /* 022990 add r0, sp, #0x28 */
-    { uint64_t rr = (ENGD_0397E ? engi_0397E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x397E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022992 bl #0x397e */
+    { uint64_t rr = (ENGD_0397E ? engi_0397E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x397E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022992 bl #0x397e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022992 bl #0x397e */
     r0 = L32(r4);                                                /* 022996 ldr r0, [r4] */
     r1 = L32(r0 + 0x34u);                                        /* 022998 ldr r1, [r0, #0x34] */
@@ -7665,7 +7777,7 @@ L_2297A:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 0229a6 movs r0, r4 */
     { uint64_t rr = a4_eng_call(r1, r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0229a8 blx r1 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0229a8 blx r1 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1D9CC), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0229aa bl #0x1d9cc */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x1D9CC), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0229aa bl #0x1d9cc */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0229aa bl #0x1d9cc */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0229ae cmp r0, #0 */
     if (r0 != 0x0u) goto L_229D0;                                /* 0229b0 bne #0x229d0 */
@@ -7808,7 +7920,7 @@ L_22A60:
     { uint32_t ta = r0, tb = 0x2u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 022ab4 cmp r0, #2 */
     if ((int32_t)r0 <= (int32_t)0x2u) goto L_22B0C;              /* 022ab6 ble #0x22b0c */
     r0 = L32(r4 + 0x3Cu);                                        /* 022ab8 ldr r0, [r4, #0x3c] */
-    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x39FE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022aba bl #0x39fe */
+    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022aba bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022aba bl #0x39fe */
     r0 = L32(r0);                                                /* 022abe ldr r0, [r0] */
     r1 = L32(r4 + 0x34u);                                        /* 022ac0 ldr r1, [r4, #0x34] */
@@ -7869,7 +7981,7 @@ L_22B0C:
     { uint32_t ta = r4, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022b2c adds r0, r4, #4 */
     t = r0; L32(t + 0) = r2; L32(t + 4) = r3; L32(t + 8) = r5; r0 = t + 12; /* 022b2e stm r0!, {r2, r3, r5} */
     r0 = L32(r4 + 0x3Cu);                                        /* 022b30 ldr r0, [r4, #0x3c] */
-    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x39FE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022b32 bl #0x39fe */
+    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022b32 bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022b32 bl #0x39fe */
     r1 = L32(r4 + 0x34u);                                        /* 022b36 ldr r1, [r4, #0x34] */
     t = SHL_C(r1, 0x4u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 022b38 lsls r3, r1, #4 */
@@ -7927,7 +8039,7 @@ L_22B86:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 022b96 movs r0, r4 */
     { uint64_t rr = a4_eng_call(r1, r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022b98 blx r1 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022b98 blx r1 */
-    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x193CE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022b9a bl #0x193ce */
+    { uint64_t rr = (ENGD_193CE ? engi_193CE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x193CE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022b9a bl #0x193ce */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022b9a bl #0x193ce */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 022b9e cmp r0, #0 */
     if (r0 == 0x0u) goto L_22BA6;                                /* 022ba0 beq #0x22ba6 */
@@ -7946,10 +8058,12 @@ L_22BA8:
 L_22BB6:
     r1 = L32(r4 + 0x48u);                                        /* 022bb6 ldr r1, [r4, #0x48] */
     { uint32_t ta = r1, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 022bb8 adds r1, r1, #1 */
-    L32(r4 + 0x48u) = r1;                                        /* 022bba str r1, [r4, #0x48] */
+    /* engine: +048, the wreck path's step counter */
+    if (!ENG_SUB) L32(r4 + 0x48u) = r1; else r1 = L32(r4 + 0x48u); /* 022bba str r1, [r4, #0x48] */
     r1 = L32(r4 + 0x34u);                                        /* 022bbc ldr r1, [r4, #0x34] */
     { uint32_t ta = r1, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 022bbe adds r1, r1, #1 */
-    L32(r4 + 0x34u) = r1;                                        /* 022bc0 str r1, [r4, #0x34] */
+    /* engine: +034, the wreck path's frame */
+    if (!ENG_SUB) L32(r4 + 0x34u) = r1; else r1 = L32(r4 + 0x34u); /* 022bc0 str r1, [r4, #0x34] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 022bc2 cmp r0, #0 */
     if (r0 == 0x0u) goto L_22BEC;                                /* 022bc4 beq #0x22bec */
     { uint64_t rr = a4_eng_call(GAMEFN(0x52CA0), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022bc6 bl #0x52ca0 */
@@ -7967,13 +8081,15 @@ L_22BB6:
     if (!fZ) goto L_22BEC;                                       /* 022bde bne #0x22bec */
     r0 = L32(r4 + 0x34u);                                        /* 022be0 ldr r0, [r4, #0x34] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022be2 adds r0, r0, #1 */
-    L32(r4 + 0x34u) = r0;                                        /* 022be4 str r0, [r4, #0x34] */
+    /* engine: +034, the wreck path's frame */
+    if (!ENG_SUB) L32(r4 + 0x34u) = r0; else r0 = L32(r4 + 0x34u); /* 022be4 str r0, [r4, #0x34] */
     r0 = L32(r4 + 0x48u);                                        /* 022be6 ldr r0, [r4, #0x48] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022be8 adds r0, r0, #1 */
-    L32(r4 + 0x48u) = r0;                                        /* 022bea str r0, [r4, #0x48] */
+    /* engine: +048, the wreck path's step counter */
+    if (!ENG_SUB) L32(r4 + 0x48u) = r0; else r0 = L32(r4 + 0x48u); /* 022bea str r0, [r4, #0x48] */
 L_22BEC:
     r0 = L32(r4 + 0x3Cu);                                        /* 022bec ldr r0, [r4, #0x3c] */
-    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x39FE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022bee bl #0x39fe */
+    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022bee bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022bee bl #0x39fe */
     r0 = L32(r0);                                                /* 022bf2 ldr r0, [r0] */
     r1 = L32(r4 + 0x34u);                                        /* 022bf4 ldr r1, [r4, #0x34] */
@@ -8058,7 +8174,7 @@ L_1FE36:
     if (fN) goto L_1FE84;                                        /* 01fe48 bmi #0x1fe84 */
     r1 = 0x4u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01fe4a movs r1, #4 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01fe4c movs r0, r4 */
-    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1BDC2), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fe4e bl #0x1bdc2 */
+    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1BDC2), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fe4e bl #0x1bdc2 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01fe4e bl #0x1bdc2 */
     r0 = L32(r6 + 0x28u);                                        /* 01fe52 ldr r0, [r6, #0x28] */
     r1 = 0x40u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01fe54 movs r1, #0x40 */
@@ -8076,7 +8192,7 @@ L_1FE36:
     { uint64_t rr = a4_eng_call(GAMEFN(0x1E934), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fe6c bl #0x1e934 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01fe6c bl #0x1e934 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01fe70 movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x522A4), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fe72 bl #0x522a4 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x522A4), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fe72 bl #0x522a4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01fe72 bl #0x522a4 */
 L_1FE76:
     r0 = 0x1u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01fe76 movs r0, #1 */
@@ -8088,7 +8204,7 @@ L_1FE76:
     goto L_1FEC4;                                                /* 01fe82 b #0x1fec4 */
 L_1FE84:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01fe84 movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1FD74), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fe86 bl #0x1fd74 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x1FD74), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fe86 bl #0x1fd74 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01fe86 bl #0x1fd74 */
     r0 = L32(r5 + 0x34u);                                        /* 01fe8a ldr r0, [r5, #0x34] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01fe8c adds r3, r0, #1 */
@@ -8112,14 +8228,14 @@ L_1FEA0:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01feae movs r2, #1 */
     r1 = 0x22u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01feb0 movs r1, #0x22 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01feb2 movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01feb4 bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01feb4 bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01feb4 bl #0x1b2d6 */
     goto L_1FEC4;                                                /* 01feb8 b #0x1fec4 */
 L_1FEBA:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01feba movs r2, #1 */
     r1 = 0x1Cu; fN = r1 >> 31; fZ = r1 == 0;                     /* 01febc movs r1, #0x1c */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01febe movs r0, r4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fec0 bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01fec0 bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01fec0 bl #0x1b2d6 */
 L_1FEC4:
     r0 = L32(r5 + 0x34u);                                        /* 01fec4 ldr r0, [r5, #0x34] */
@@ -8130,7 +8246,7 @@ L_1FEC4:
     if (fN) goto L_1FF10;                                        /* 01fece bmi #0x1ff10 */
     r1 = 0x4u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01fed0 movs r1, #4 */
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 01fed2 movs r0, r5 */
-    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1BDC2), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fed4 bl #0x1bdc2 */
+    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1BDC2), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fed4 bl #0x1bdc2 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01fed4 bl #0x1bdc2 */
     r0 = L32(r7 + 0x28u);                                        /* 01fed8 ldr r0, [r7, #0x28] */
     r1 = 0x40u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01feda movs r1, #0x40 */
@@ -8152,7 +8268,7 @@ L_1FEF8:
     goto L_1FF0C;                                                /* 01fef8 b #0x1ff0c */
 L_1FEFA:
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 01fefa movs r0, r5 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x522A4), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fefc bl #0x522a4 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x522A4), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fefc bl #0x522a4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01fefc bl #0x522a4 */
 L_1FF00:
     r0 = 0x1u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01ff00 movs r0, #1 */
@@ -8166,7 +8282,7 @@ L_1FF0C:
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01ff0e pop {r4, r5, r6, r7, pc} */
 L_1FF10:
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 01ff10 movs r0, r5 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1FD74), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ff12 bl #0x1fd74 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x1FD74), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ff12 bl #0x1fd74 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ff12 bl #0x1fd74 */
     r0 = L32(r4 + 0x34u);                                        /* 01ff16 ldr r0, [r4, #0x34] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01ff18 adds r3, r0, #1 */
@@ -8190,7 +8306,7 @@ L_1FF2C:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01ff3a movs r2, #1 */
     r1 = 0x22u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01ff3c movs r1, #0x22 */
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 01ff3e movs r0, r5 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ff40 bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01ff40 bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ff40 bl #0x1b2d6 */
     spp += 0x1Cu;                                                /* 01ff44 add sp, #0x1c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01ff46 pop {r4, r5, r6, r7, pc} */
@@ -8198,7 +8314,7 @@ L_1FF48:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01ff48 movs r2, #1 */
     r1 = 0x1Cu; fN = r1 >> 31; fZ = r1 == 0;                     /* 01ff4a movs r1, #0x1c */
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 01ff4c movs r0, r5 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ff4e bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 01ff4e bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ff4e bl #0x1b2d6 */
     spp += 0x1Cu;                                                /* 01ff52 add sp, #0x1c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01ff54 pop {r4, r5, r6, r7, pc} */
@@ -8294,14 +8410,14 @@ L_1FFC2:
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01ffe4 cmp r0, r1 */
     if (r0 == r1) goto L_20042;                                  /* 01ffe6 beq #0x20042 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 01ffe8 movs r0, r6 */
-    { uint64_t rr = (ENGD_21F98 ? engi_21F98(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x21F98), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ffea bl #0x21f98 */
+    { uint64_t rr = (ENGD_21F98 ? engi_21F98(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x21F98), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01ffea bl #0x21f98 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01ffea bl #0x21f98 */
     t = SHL_C(r0, 0x1u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 01ffee lsls r2, r0, #1 */
     { uint32_t ta = r2, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 01fff0 adds r2, r2, r0 */
     { uint32_t ta = r5, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01fff2 adds r1, r5, #4 */
     r0 = S32(0x84u);                                             /* 01fff4 ldr r0, [sp, #0x84] */
     { uint32_t ta = sp, tb = 0x5Cu; t = ta + tb; r3 = t; }       /* 01fff6 add r3, sp, #0x5c */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x24792), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fff8 bl #0x24792 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x24792), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01fff8 bl #0x24792 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01fff8 bl #0x24792 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01fffc cmp r0, #0 */
     if (r0 == 0x0u) goto L_20042;                                /* 01fffe beq #0x20042 */
@@ -8316,7 +8432,7 @@ L_1FFC2:
     r1 = S32(0x7Cu);                                             /* 020010 ldr r1, [sp, #0x7c] */
     L32(r0 + 0xCu) = r1;                                         /* 020012 str r1, [r0, #0xc] */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 020014 movs r0, r6 */
-    { uint64_t rr = (ENGD_21F98 ? engi_21F98(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x21F98), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020016 bl #0x21f98 */
+    { uint64_t rr = (ENGD_21F98 ? engi_21F98(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x21F98), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020016 bl #0x21f98 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 020016 bl #0x21f98 */
     t = SHL_C(r0, 0x1u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 02001a lsls r3, r0, #1 */
     { uint32_t ta = r3, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 02001c adds r0, r3, r0 */
@@ -8357,7 +8473,7 @@ L_20058:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 020058 movs r2, #1 */
     r1 = 0x0u; fN = r1 >> 31; fZ = r1 == 0;                      /* 02005a movs r1, #0 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 02005c movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 02005e bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 02005e bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 02005e bl #0x1b2d6 */
 L_20062:
     goto L_203F4;                                                /* 020062 b #0x203f4 */
@@ -8384,7 +8500,7 @@ L_20064:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 02008a movs r2, #1 */
     r1 = 0x0u; fN = r1 >> 31; fZ = r1 == 0;                      /* 02008c movs r1, #0 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 02008e movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020090 bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 020090 bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 020090 bl #0x1b2d6 */
     goto L_203F4;                                                /* 020094 b #0x203f4 */
 L_20096:
@@ -8428,7 +8544,7 @@ L_20096:
     { uint32_t ta = sp, tb = 0x54u; t = ta + tb; r0 = t; }       /* 0200dc add r0, sp, #0x54 */
     goto L_200E8;                                                /* 0200de b #0x200e8 */
 L_200E8:
-    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52182), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0200e8 bl #0x52182 */
+    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52182), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0200e8 bl #0x52182 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0200e8 bl #0x52182 */
     r1 = GAMEW(0x20408);                                         /* 0200ec ldr r1, [pc, #0x318] */
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0200ee cmp r0, r1 */
@@ -8481,12 +8597,14 @@ L_200E8:
     r1 = S32(0x90u);                                             /* 02014a ldr r1, [sp, #0x90] */
     r2 = r4; fN = r2 >> 31; fZ = r2 == 0;                        /* 02014c movs r2, r4 */
     { uint32_t ta = sp, tb = 0x30u; t = ta + tb; r0 = t; }       /* 02014e add r0, sp, #0x30 */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020150 bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020150 bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 020150 bl #0x52562 */
+    /* engine: the traffic car's substep, not its step */
+    { uint32_t k_, a_ = MEM32(sp + 0x90u); for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x30u + k_) = MEM32(a_ + k_) + (uint32_t)eng_thirdv(a_ + 0x40u + k_, (int32_t)MEM32(r4 + k_)); }
     { uint32_t ta = sp, tb = 0x24u; t = ta + tb; r2 = t; }       /* 020154 add r2, sp, #0x24 */
     { uint32_t ta = sp, tb = 0x30u; t = ta + tb; r1 = t; }       /* 020156 add r1, sp, #0x30 */
     { uint32_t ta = sp, tb = 0x3Cu; t = ta + tb; r0 = t; }       /* 020158 add r0, sp, #0x3c */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 02015a bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 02015a bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 02015a bl #0x52562 */
     { uint32_t ta = sp, tb = 0x3Cu; t = ta + tb; r1 = t; }       /* 02015e add r1, sp, #0x3c */
     t = r1; r2 = L32(t + 0); r3 = L32(t + 4); r4 = L32(t + 8); r1 = t + 12; /* 020160 ldm r1!, {r2, r3, r4} */
@@ -8530,7 +8648,7 @@ L_20196:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 0201a2 movs r2, #1 */
     r1 = 0x10u; fN = r1 >> 31; fZ = r1 == 0;                     /* 0201a4 movs r1, #0x10 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 0201a6 movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0201a8 bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 0201a8 bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0201a8 bl #0x1b2d6 */
     goto L_203F4;                                                /* 0201ac b #0x203f4 */
 L_201AE:
@@ -8570,7 +8688,7 @@ L_201DA:
     if (fN) goto L_2020C;                                        /* 0201ee bmi #0x2020c */
     r1 = 0x4u; fN = r1 >> 31; fZ = r1 == 0;                      /* 0201f0 movs r1, #4 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 0201f2 movs r0, r6 */
-    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1BDC2), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0201f4 bl #0x1bdc2 */
+    { uint64_t rr = (ENGD_1BDC2 ? engi_1BDC2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1BDC2), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0201f4 bl #0x1bdc2 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0201f4 bl #0x1bdc2 */
     r0 = L32(r7 + 0x28u);                                        /* 0201f8 ldr r0, [r7, #0x28] */
     r1 = 0x40u; fN = r1 >> 31; fZ = r1 == 0;                     /* 0201fa movs r1, #0x40 */
@@ -8584,7 +8702,7 @@ L_201DA:
     goto L_20212;                                                /* 02020a b #0x20212 */
 L_2020C:
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 02020c movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1FD74), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 02020e bl #0x1fd74 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x1FD74), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 02020e bl #0x1fd74 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 02020e bl #0x1fd74 */
 L_20212:
     r1 = L32(r5 + 0x34u);                                        /* 020212 ldr r1, [r5, #0x34] */
@@ -8603,7 +8721,7 @@ L_20212:
     r1 = S32(0x80u);                                             /* 02022c ldr r1, [sp, #0x80] */
     r2 = S32(0x9Cu);                                             /* 02022e ldr r2, [sp, #0x9c] */
     { uint32_t ta = sp, tb = 0x48u; t = ta + tb; r0 = t; }       /* 020230 add r0, sp, #0x48 */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020232 bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020232 bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 020232 bl #0x52562 */
     r0 = L32(r5);                                                /* 020236 ldr r0, [r5] */
     r1 = r5; fN = r1 >> 31; fZ = r1 == 0;                        /* 020238 movs r1, r5 */
@@ -8613,7 +8731,7 @@ L_20212:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 02023e blx r2 */
     { uint32_t ta = sp, tb = 0x54u; t = ta + tb; r1 = t; }       /* 020240 add r1, sp, #0x54 */
     { uint32_t ta = sp, tb = 0x48u; t = ta + tb; r0 = t; }       /* 020242 add r0, sp, #0x48 */
-    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52182), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020244 bl #0x52182 */
+    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52182), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020244 bl #0x52182 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 020244 bl #0x52182 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 020248 cmp r0, #0 */
     if ((int32_t)r0 <= (int32_t)0x0u) goto L_2025C;              /* 02024a ble #0x2025c */
@@ -8642,7 +8760,7 @@ L_2026A:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 020272 blx r2 */
     { uint32_t ta = sp, tb = 0x54u; t = ta + tb; r1 = t; }       /* 020274 add r1, sp, #0x54 */
     { uint32_t ta = sp, tb = 0x48u; t = ta + tb; r0 = t; }       /* 020276 add r0, sp, #0x48 */
-    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52182), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020278 bl #0x52182 */
+    { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52182), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020278 bl #0x52182 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 020278 bl #0x52182 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 02027c cmp r0, #0 */
     if ((int32_t)r0 <= (int32_t)0x0u) goto L_20290;              /* 02027e ble #0x20290 */
@@ -8686,7 +8804,7 @@ L_2029E:
     t = r0 | r2; fN = t >> 31; fZ = t == 0; r0 = t;              /* 0202c6 orrs r0, r2 */
     L32(r1) = r0;                                                /* 0202c8 str r0, [r1] */
     { uint32_t ta = sp, tb = 0x48u; t = ta + tb; r0 = t; }       /* 0202ca add r0, sp, #0x48 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x37144), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0202cc bl #0x37144 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x37144), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0202cc bl #0x37144 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0202cc bl #0x37144 */
     { uint32_t ta = r0, tb = 0x20u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 0202d0 adds r0, #0x20 */
     r3 = 0x6Cu; fN = r3 >> 31; fZ = r3 == 0;                     /* 0202d2 movs r3, #0x6c */
@@ -8750,14 +8868,14 @@ L_20330:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 02033e movs r2, #1 */
     r1 = 0x23u; fN = r1 >> 31; fZ = r1 == 0;                     /* 020340 movs r1, #0x23 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 020342 movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020344 bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 020344 bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 020344 bl #0x1b2d6 */
     goto L_20354;                                                /* 020348 b #0x20354 */
 L_2034A:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 02034a movs r2, #1 */
     r1 = 0xEu; fN = r1 >> 31; fZ = r1 == 0;                      /* 02034c movs r1, #0xe */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 02034e movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 020350 bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 020350 bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 020350 bl #0x1b2d6 */
 L_20354:
     r0 = 0x1u; fN = r0 >> 31; fZ = r0 == 0;                      /* 020354 movs r0, #1 */
@@ -8844,7 +8962,7 @@ L_203E2:
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 0203ea movs r2, #1 */
     r1 = 0x0u; fN = r1 >> 31; fZ = r1 == 0;                      /* 0203ec movs r1, #0 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 0203ee movs r0, r6 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0203f0 bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 0203f0 bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0203f0 bl #0x1b2d6 */
 L_203F4:
     r1 = S32(0x7Cu);                                             /* 0203f4 ldr r1, [sp, #0x7c] */
@@ -8905,7 +9023,7 @@ L_239CE:
     r2 = S32(0xA8u);                                             /* 0239ea ldr r2, [sp, #0xa8] */
     r3 = L32(r3 + 0x2Cu);                                        /* 0239ec ldr r3, [r3, #0x2c] */
     r1 = L32(r0 + 0x2Cu);                                        /* 0239ee ldr r1, [r0, #0x2c] */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x23728), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0239f0 bl #0x23728 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x23728), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0239f0 bl #0x23728 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0239f0 bl #0x23728 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0239f4 cmp r0, #0 */
     if (r0 != 0x0u) goto L_239FC;                                /* 0239f6 bne #0x239fc */
@@ -8958,15 +9076,19 @@ L_23A40:
     r1 = S32(0xC0u);                                             /* 023a4a ldr r1, [sp, #0xc0] */
     r2 = S32(0xBCu);                                             /* 023a4c ldr r2, [sp, #0xbc] */
     { uint32_t ta = sp, tb = 0x98u; t = ta + tb; r0 = t; }       /* 023a4e add r0, sp, #0x98 */
-    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023a50 bl #0x52540 */
+    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52540), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023a50 bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023a50 bl #0x52540 */
+    /* engine: the car's displacement as a step's */
+    MEM32(sp + 0x98u) *= 3u; MEM32(sp + 0x9Cu) *= 3u; MEM32(sp + 0xA0u) *= 3u;
     r1 = S32(0xC8u);                                             /* 023a54 ldr r1, [sp, #0xc8] */
     r2 = S32(0xC4u);                                             /* 023a56 ldr r2, [sp, #0xc4] */
     { uint32_t ta = sp, tb = 0x8Cu; t = ta + tb; r0 = t; }       /* 023a58 add r0, sp, #0x8c */
-    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023a5a bl #0x52540 */
+    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52540), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023a5a bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023a5a bl #0x52540 */
+    /* engine: the other's displacement as a step's */
+    MEM32(sp + 0x8Cu) *= 3u; MEM32(sp + 0x90u) *= 3u; MEM32(sp + 0x94u) *= 3u;
     { uint32_t ta = sp, tb = 0x98u; t = ta + tb; r0 = t; }       /* 023a5e add r0, sp, #0x98 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x37144), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023a60 bl #0x37144 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x37144), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023a60 bl #0x37144 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023a60 bl #0x37144 */
     { uint32_t ta = r0, tb = 0x14u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 023a64 cmp r0, #0x14 */
     if ((int32_t)r0 >= (int32_t)0x14u) goto L_23AC8;             /* 023a66 bge #0x23ac8 */
@@ -9023,7 +9145,7 @@ L_23A40:
     S32(0xA0u) = r0;                                             /* 023ac6 str r0, [sp, #0xa0] */
 L_23AC8:
     { uint32_t ta = sp, tb = 0x8Cu; t = ta + tb; r0 = t; }       /* 023ac8 add r0, sp, #0x8c */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x37144), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023aca bl #0x37144 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x37144), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023aca bl #0x37144 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023aca bl #0x37144 */
     { uint32_t ta = r0, tb = 0x14u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 023ace cmp r0, #0x14 */
     if ((int32_t)r0 >= (int32_t)0x14u) goto L_23B32;             /* 023ad0 bge #0x23b32 */
@@ -9082,7 +9204,7 @@ L_23B32:
     { uint32_t ta = sp, tb = 0x98u; t = ta + tb; r2 = t; }       /* 023b32 add r2, sp, #0x98 */
     { uint32_t ta = sp, tb = 0x8Cu; t = ta + tb; r1 = t; }       /* 023b34 add r1, sp, #0x8c */
     { uint32_t ta = sp, tb = 0x80u; t = ta + tb; r0 = t; }       /* 023b36 add r0, sp, #0x80 */
-    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023b38 bl #0x52540 */
+    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52540), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023b38 bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023b38 bl #0x52540 */
     { uint32_t ta = sp, tb = 0x50u; t = ta + tb; r2 = t; }       /* 023b3c add r2, sp, #0x50 */
     { uint32_t ta = sp, tb = 0x48u; t = ta + tb; r1 = t; }       /* 023b3e add r1, sp, #0x48 */
@@ -9133,7 +9255,7 @@ L_23B6C:
     r1 = S32(0xC0u);                                             /* 023b96 ldr r1, [sp, #0xc0] */
     { uint32_t ta = sp, tb = 0x74u; t = ta + tb; r2 = t; }       /* 023b98 add r2, sp, #0x74 */
     { uint32_t ta = sp, tb = 0x3Cu; t = ta + tb; r0 = t; }       /* 023b9a add r0, sp, #0x3c */
-    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023b9c bl #0x52540 */
+    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52540), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023b9c bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023b9c bl #0x52540 */
     r0 = S32(0x70u);                                             /* 023ba0 ldr r0, [sp, #0x70] */
     r1 = S32(0x3Cu);                                             /* 023ba2 ldr r1, [sp, #0x3c] */
@@ -9168,7 +9290,7 @@ L_23BD2:
     r1 = S32(0xC8u);                                             /* 023bd6 ldr r1, [sp, #0xc8] */
     { uint32_t ta = sp, tb = 0x74u; t = ta + tb; r2 = t; }       /* 023bd8 add r2, sp, #0x74 */
     { uint32_t ta = sp, tb = 0x3Cu; t = ta + tb; r0 = t; }       /* 023bda add r0, sp, #0x3c */
-    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023bdc bl #0x52540 */
+    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52540), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023bdc bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023bdc bl #0x52540 */
     r0 = S32(0x64u);                                             /* 023be0 ldr r0, [sp, #0x64] */
     r1 = S32(0x3Cu);                                             /* 023be2 ldr r1, [sp, #0x3c] */
@@ -9201,7 +9323,7 @@ L_23C12:
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 023c12 movs r0, r5 */
     { uint32_t ta = sp, tb = 0x50u; t = ta + tb; r2 = t; }       /* 023c14 add r2, sp, #0x50 */
     { uint32_t ta = sp, tb = 0x80u; t = ta + tb; r1 = t; }       /* 023c16 add r1, sp, #0x80 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x2224A), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023c18 bl #0x2224a */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x2224A), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023c18 bl #0x2224a */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023c18 bl #0x2224a */
     r0 = S32(0x80u);                                             /* 023c1c ldr r0, [sp, #0x80] */
     r1 = S32(0x84u);                                             /* 023c1e ldr r1, [sp, #0x84] */
@@ -9215,7 +9337,7 @@ L_23C12:
     { uint32_t ta = sp, tb = 0x50u; t = ta + tb; r2 = t; }       /* 023c2e add r2, sp, #0x50 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 023c30 movs r0, r4 */
     { uint32_t ta = sp, tb = 0xB0u; t = ta + tb; r1 = t; }       /* 023c32 add r1, sp, #0xb0 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x2224A), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023c34 bl #0x2224a */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x2224A), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023c34 bl #0x2224a */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023c34 bl #0x2224a */
     r0 = S32(0x80u);                                             /* 023c38 ldr r0, [sp, #0x80] */
     r1 = r0; fN = r1 >> 31; fZ = r1 == 0;                        /* 023c3a movs r1, r0 */
@@ -9250,7 +9372,7 @@ L_23C6E:
     { uint32_t ta = sp, tb = 0x8Cu; t = ta + tb; r2 = t; }       /* 023c6e add r2, sp, #0x8c */
     { uint32_t ta = sp, tb = 0x98u; t = ta + tb; r1 = t; }       /* 023c70 add r1, sp, #0x98 */
     { uint32_t ta = sp, tb = 0x30u; t = ta + tb; r0 = t; }       /* 023c72 add r0, sp, #0x30 */
-    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023c74 bl #0x52540 */
+    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52540), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023c74 bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023c74 bl #0x52540 */
     r0 = S32(0x30u);                                             /* 023c78 ldr r0, [sp, #0x30] */
     r1 = S32(0x34u);                                             /* 023c7a ldr r1, [sp, #0x34] */
@@ -9322,17 +9444,19 @@ L_23CB4:
     r1 = S32(0xC0u);                                             /* 023cfc ldr r1, [sp, #0xc0] */
     { uint32_t ta = sp, tb = 0x98u; t = ta + tb; r2 = t; }       /* 023cfe add r2, sp, #0x98 */
     { uint32_t ta = sp, tb = 0x24u; t = ta + tb; r0 = t; }       /* 023d00 add r0, sp, #0x24 */
-    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023d02 bl #0x52540 */
+    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52540), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023d02 bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023d02 bl #0x52540 */
     { uint32_t ta = sp, tb = 0x18u; t = ta + tb; r2 = t; }       /* 023d06 add r2, sp, #0x18 */
     { uint32_t ta = sp, tb = 0x24u; t = ta + tb; r1 = t; }       /* 023d08 add r1, sp, #0x24 */
     { uint32_t ta = sp, tb = 0x3Cu; t = ta + tb; r0 = t; }       /* 023d0a add r0, sp, #0x3c */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023d0c bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023d0c bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023d0c bl #0x52562 */
     { uint32_t ta = sp, tb = 0x3Cu; t = ta + tb; r1 = t; }       /* 023d10 add r1, sp, #0x3c */
     t = r1; r2 = L32(t + 0); r3 = L32(t + 4); r7 = L32(t + 8); r1 = t + 12; /* 023d12 ldm r1!, {r2, r3, r7} */
     r0 = S32(0xBCu);                                             /* 023d14 ldr r0, [sp, #0xbc] */
+    /* engine: the hit's new velocity, as a substep's displacement */
     t = r0; L32(t + 0) = r2; L32(t + 4) = r3; L32(t + 8) = r7; r0 = t + 12; /* 023d16 stm r0!, {r2, r3, r7} */
+    { uint32_t a_ = MEM32(sp + 0xBCu), p_ = MEM32(sp + 0xC0u), k_; for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(a_ + k_) = MEM32(p_ + k_) - (uint32_t)eng_thirdv(a_ + k_, (int32_t)(MEM32(p_ + k_) - MEM32(a_ + k_))); }
     r3 = S32(0xA4u);                                             /* 023d18 ldr r3, [sp, #0xa4] */
     r0 = S32(0x0u);                                              /* 023d1a ldr r0, [sp] */
     r1 = S32(0x4u);                                              /* 023d1c ldr r1, [sp, #4] */
@@ -9352,7 +9476,7 @@ L_23CB4:
     r1 = S32(0xC8u);                                             /* 023d38 ldr r1, [sp, #0xc8] */
     { uint32_t ta = sp, tb = 0x8Cu; t = ta + tb; r2 = t; }       /* 023d3a add r2, sp, #0x8c */
     { uint32_t ta = sp, tb = 0x18u; t = ta + tb; r0 = t; }       /* 023d3c add r0, sp, #0x18 */
-    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023d3e bl #0x52540 */
+    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52540), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023d3e bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023d3e bl #0x52540 */
     { uint32_t ta = sp, tb = 0x24u; t = ta + tb; r2 = t; }       /* 023d42 add r2, sp, #0x24 */
     { uint32_t ta = sp, tb = 0x18u; t = ta + tb; r1 = t; }       /* 023d44 add r1, sp, #0x18 */
@@ -9361,16 +9485,18 @@ L_23CB4:
 L_23D4A:
     goto L_23D7C;                                                /* 023d4a b #0x23d7c */
 L_23D4C:
-    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52540), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023d4c bl #0x52540 */
+    { uint64_t rr = (ENGD_52540 ? engi_52540(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52540), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023d4c bl #0x52540 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023d4c bl #0x52540 */
     t = r6; r1 = L32(t + 0); r2 = L32(t + 4); r3 = L32(t + 8); r6 = t + 12; /* 023d50 ldm r6!, {r1, r2, r3} */
     { uint32_t ta = r6, tb = 0xCu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r6 = t; } /* 023d52 subs r6, #0xc */
     r0 = S32(0xC4u);                                             /* 023d54 ldr r0, [sp, #0xc4] */
+    /* engine: the hit's new velocity, as a substep's displacement */
     t = r0; L32(t + 0) = r1; L32(t + 4) = r2; L32(t + 8) = r3; r0 = t + 12; /* 023d56 stm r0!, {r1, r2, r3} */
+    { uint32_t a_ = MEM32(sp + 0xC4u), p_ = MEM32(sp + 0xC8u), k_; for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(a_ + k_) = MEM32(p_ + k_) - (uint32_t)eng_thirdv(a_ + k_, (int32_t)(MEM32(p_ + k_) - MEM32(a_ + k_))); }
     r1 = S32(0xC0u);                                             /* 023d58 ldr r1, [sp, #0xc0] */
     { uint32_t ta = sp, tb = 0x68u; t = ta + tb; r2 = t; }       /* 023d5a add r2, sp, #0x68 */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 023d5c add r0, sp, #0xc */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023d5e bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023d5e bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023d5e bl #0x52562 */
     t = r6; r1 = L32(t + 0); r2 = L32(t + 4); r3 = L32(t + 8); r6 = t + 12; /* 023d62 ldm r6!, {r1, r2, r3} */
     { uint32_t ta = r6, tb = 0xCu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r6 = t; } /* 023d64 subs r6, #0xc */
@@ -9379,7 +9505,7 @@ L_23D4C:
     r1 = S32(0xC8u);                                             /* 023d6a ldr r1, [sp, #0xc8] */
     { uint32_t ta = sp, tb = 0x5Cu; t = ta + tb; r2 = t; }       /* 023d6c add r2, sp, #0x5c */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 023d6e add r0, sp, #0xc */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023d70 bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023d70 bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023d70 bl #0x52562 */
     t = r6; r1 = L32(t + 0); r2 = L32(t + 4); r3 = L32(t + 8); r6 = t + 12; /* 023d74 ldm r6!, {r1, r2, r3} */
     r0 = S32(0xC8u);                                             /* 023d76 ldr r0, [sp, #0xc8] */
@@ -9427,7 +9553,7 @@ L_23D7C:
     r1 = S32(0xC0u);                                             /* 023dc6 ldr r1, [sp, #0xc0] */
     { uint32_t ta = sp, tb = 0x68u; t = ta + tb; r2 = t; }       /* 023dc8 add r2, sp, #0x68 */
     { uint32_t ta = sp, tb = 0x18u; t = ta + tb; r0 = t; }       /* 023dca add r0, sp, #0x18 */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023dcc bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023dcc bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023dcc bl #0x52562 */
     t = r7; r1 = L32(t + 0); r2 = L32(t + 4); r3 = L32(t + 8); r7 = t + 12; /* 023dd0 ldm r7!, {r1, r2, r3} */
     { uint32_t ta = r7, tb = 0xCu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r7 = t; } /* 023dd2 subs r7, #0xc */
@@ -9436,12 +9562,12 @@ L_23D7C:
     r1 = S32(0xC8u);                                             /* 023dd8 ldr r1, [sp, #0xc8] */
     { uint32_t ta = sp, tb = 0x5Cu; t = ta + tb; r2 = t; }       /* 023dda add r2, sp, #0x5c */
     { uint32_t ta = sp, tb = 0x24u; t = ta + tb; r0 = t; }       /* 023ddc add r0, sp, #0x24 */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023dde bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023dde bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023dde bl #0x52562 */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r2 = t; }        /* 023de2 add r2, sp, #0xc */
     { uint32_t ta = sp, tb = 0x24u; t = ta + tb; r1 = t; }       /* 023de4 add r1, sp, #0x24 */
     { uint32_t ta = sp, tb = 0x18u; t = ta + tb; r0 = t; }       /* 023de6 add r0, sp, #0x18 */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023de8 bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023de8 bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023de8 bl #0x52562 */
     t = r7; r1 = L32(t + 0); r2 = L32(t + 4); r3 = L32(t + 8); r7 = t + 12; /* 023dec ldm r7!, {r1, r2, r3} */
     r0 = S32(0xC8u);                                             /* 023dee ldr r0, [sp, #0xc8] */
@@ -9484,12 +9610,12 @@ L_23DF4:
     r1 = S32(0xC0u);                                             /* 023e34 ldr r1, [sp, #0xc0] */
     { uint32_t ta = sp, tb = 0x68u; t = ta + tb; r2 = t; }       /* 023e36 add r2, sp, #0x68 */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 023e38 add r0, sp, #0xc */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023e3a bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023e3a bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023e3a bl #0x52562 */
     r2 = sp;                                                     /* 023e3e mov r2, sp */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r1 = t; }        /* 023e40 add r1, sp, #0xc */
     { uint32_t ta = sp, tb = 0x18u; t = ta + tb; r0 = t; }       /* 023e42 add r0, sp, #0x18 */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023e44 bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023e44 bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023e44 bl #0x52562 */
     { uint32_t ta = sp, tb = 0x18u; t = ta + tb; r1 = t; }       /* 023e48 add r1, sp, #0x18 */
     t = r1; r2 = L32(t + 0); r3 = L32(t + 4); r6 = L32(t + 8); r1 = t + 12; /* 023e4a ldm r1!, {r2, r3, r6} */
@@ -9498,7 +9624,7 @@ L_23DF4:
     r1 = S32(0xC8u);                                             /* 023e50 ldr r1, [sp, #0xc8] */
     { uint32_t ta = sp, tb = 0x5Cu; t = ta + tb; r2 = t; }       /* 023e52 add r2, sp, #0x5c */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 023e54 add r0, sp, #0xc */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023e56 bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 023e56 bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 023e56 bl #0x52562 */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r1 = t; }        /* 023e5a add r1, sp, #0xc */
     t = r1; r2 = L32(t + 0); r3 = L32(t + 4); r6 = L32(t + 8); r1 = t + 12; /* 023e5c ldm r1!, {r2, r3, r6} */
@@ -9548,23 +9674,23 @@ static uint64_t engi_22C60(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint64_t rr = a4_eng_call(r3, r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022c7e blx r3 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022c7e blx r3 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 022c80 movs r0, r4 */
-    { uint64_t rr = (ENGD_21F98 ? engi_21F98(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x21F98), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022c82 bl #0x21f98 */
+    { uint64_t rr = (ENGD_21F98 ? engi_21F98(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x21F98), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022c82 bl #0x21f98 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022c82 bl #0x21f98 */
     r1 = r0; fN = r1 >> 31; fZ = r1 == 0;                        /* 022c86 movs r1, r0 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 022c88 movs r0, r4 */
-    { uint64_t rr = (ENGD_21FA2 ? engi_21FA2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x21FA2), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022c8a bl #0x21fa2 */
+    { uint64_t rr = (ENGD_21FA2 ? engi_21FA2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x21FA2), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022c8a bl #0x21fa2 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022c8a bl #0x21fa2 */
     { uint32_t ta = r1, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 022c8e adds r1, r1, r0 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 022c90 movs r0, r4 */
-    { uint64_t rr = (ENGD_21FAC ? engi_21FAC(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x21FAC), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022c92 bl #0x21fac */
+    { uint64_t rr = (ENGD_21FAC ? engi_21FAC(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x21FAC), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022c92 bl #0x21fac */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022c92 bl #0x21fac */
     r2 = r0; fN = r2 >> 31; fZ = r2 == 0;                        /* 022c96 movs r2, r0 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 022c98 movs r0, r4 */
-    { uint64_t rr = (ENGD_21F98 ? engi_21F98(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x21F98), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022c9a bl #0x21f98 */
+    { uint64_t rr = (ENGD_21F98 ? engi_21F98(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x21F98), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022c9a bl #0x21f98 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022c9a bl #0x21f98 */
     r3 = r0; fN = r3 >> 31; fZ = r3 == 0;                        /* 022c9e movs r3, r0 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 022ca0 movs r0, r4 */
-    { uint64_t rr = (ENGD_21FA2 ? engi_21FA2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x21FA2), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022ca2 bl #0x21fa2 */
+    { uint64_t rr = (ENGD_21FA2 ? engi_21FA2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x21FA2), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022ca2 bl #0x21fa2 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022ca2 bl #0x21fa2 */
     { uint32_t ta = r3, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022ca6 subs r0, r3, r0 */
     r3 = S32(0x18u);                                             /* 022ca8 ldr r3, [sp, #0x18] */
@@ -9624,6 +9750,8 @@ static uint64_t engi_141B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     stk[98] = s0; stk[99] = s1; stk[100] = s2; stk[101] = s3;
     stk[102] = s4; stk[103] = s5; stk[104] = s6; stk[105] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
+    /* engine: each race step is a substep: 0 the whole step, 1 and 2 motion only */
+    ENG_BEGIN(r0);
     spp -= 20; S32(0) = r4; S32(4) = r5; S32(8) = r6; S32(12) = r7; S32(16) = lr; /* 0141b0 push {r4, r5, r6, r7, lr} */
     spp -= 0x134u;                                               /* 0141b2 sub sp, #0x134 */
     r4 = r0; fN = r4 >> 31; fZ = r4 == 0;                        /* 0141b4 movs r4, r0 */
@@ -9688,7 +9816,7 @@ L_1420C:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014222 bl #0x4b8c0 */
     S32(0xC8u) = r0;                                             /* 014226 str r0, [sp, #0xc8] */
     r0 = L32(r4 + 0x38u);                                        /* 014228 ldr r0, [r4, #0x38] */
-    { uint64_t rr = (ENGD_06E1E ? engi_06E1E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x6E1E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01422a bl #0x6e1e */
+    { uint64_t rr = (ENGD_06E1E ? engi_06E1E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x6E1E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01422a bl #0x6e1e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01422a bl #0x6e1e */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01422e cmp r0, #0 */
     if (r0 == 0x0u) goto L_14288;                                /* 014230 beq #0x14288 */
@@ -9828,9 +9956,11 @@ L_14328:
     r0 = L32(r0 + 0x14u);                                        /* 014330 ldr r0, [r0, #0x14] */
     S32(0xDCu) = r0;                                             /* 014332 str r0, [sp, #0xdc] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 014334 movs r0, r4 */
-    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014336 bl #0x52206 */
+    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52206), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014336 bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014336 bl #0x52206 */
     S32(0xD8u) = r0;                                             /* 01433a str r0, [sp, #0xd8] */
+    /* engine: substeps 1-2: straight to the traffic, with the whole step's frame */
+    if (ENG_SUB && !ENG->loop) return 0; if (ENG_SUB) { uint32_t k_; for (k_ = 0; k_ < ENG_NFRAME; k_++) MEM32(sp + eng_frame_off[k_]) = ENG->frame[k_]; goto L_1452C; }
     r1 = L32(r4 + 0x38u);                                        /* 01433c ldr r1, [r4, #0x38] */
     r2 = L32(r1 + 0x34u);                                        /* 01433e ldr r2, [r1, #0x34] */
     { uint32_t ta = r2, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014340 cmp r2, #0 */
@@ -9945,7 +10075,7 @@ L_143FA:
     r7 = r0; fN = r7 >> 31; fZ = r7 == 0;                        /* 01440a movs r7, r0 */
     { uint32_t ta = r7, tb = 0x34u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r7 = t; } /* 01440c adds r7, #0x34 */
     r0 = L32(r0 + 0x3Cu);                                        /* 01440e ldr r0, [r0, #0x3c] */
-    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x39FE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014410 bl #0x39fe */
+    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014410 bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014410 bl #0x39fe */
     r0 = L32(r0);                                                /* 014414 ldr r0, [r0] */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 014416 subs r0, r0, #1 */
@@ -10099,6 +10229,8 @@ L_14520:
     if (r0 == 0x0u) goto L_1452C;                                /* 014526 beq #0x1452c */
     lr = 0x1452Du; goto L_14E60; /* a local subroutine of this function */ /* 014528 bl #0x14e60 */
 L_1452C:
+    /* engine: the frame slots the race's rules set, for the substeps */
+    if (!ENG_SUB) { uint32_t k_; for (k_ = 0; k_ < ENG_NFRAME; k_++) ENG->frame[k_] = MEM32(sp + eng_frame_off[k_]); }
     r0 = L32(r4 + 0x70u);                                        /* 01452c ldr r0, [r4, #0x70] */
     r1 = S32(0x124u);                                            /* 01452e ldr r1, [sp, #0x124] */
     r1 = L32(r1 + 0x2Cu);                                        /* 014530 ldr r1, [r1, #0x2c] */
@@ -10139,6 +10271,8 @@ L_1455C:
     r2 = S32(0x114u);                                            /* 01456e ldr r2, [sp, #0x114] */
     r3 = L32(r2 + 0x3Cu);                                        /* 014570 ldr r3, [r2, #0x3c] */
     r2 = L32(r2 + 0x38u);                                        /* 014572 ldr r2, [r2, #0x38] */
+    /* engine: the traffic clocks' step, for the substeps */
+    if (!ENG_SUB) { ENG->tdel[0] = (int32_t)(r2 - ENG->tlast[0]); ENG->tdel[1] = (int32_t)(r3 - ENG->tlast[1]); ENG->tlast[0] = r2; ENG->tlast[1] = r3; if (ENG->tdel[0] < -0x100000 || ENG->tdel[0] > 0x100000) ENG->tdel[0] = 0; if (ENG->tdel[1] < -0x100000 || ENG->tdel[1] > 0x100000) ENG->tdel[1] = 0; }
     { uint64_t rr = (ENGD_0FB12 ? engi_0FB12(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0xFB12), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014574 bl #0xfb12 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014574 bl #0xfb12 */
 L_14578:
@@ -10149,6 +10283,8 @@ L_14578:
     r0 = L32(r0 + 0x38u);                                        /* 014580 ldr r0, [r0, #0x38] */
     t = SHL_C(r1, 0x4u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 014582 lsls r1, r1, #4 */
     { uint32_t ta = r4, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r6 = t; } /* 014584 adds r6, r4, r1 */
+    /* engine: substeps 1-2: the pursuit check waits for the whole step */
+    if (ENG_SUB) goto L_14672;
     { uint32_t ta = r0, tb = 0x14u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014586 cmp r0, #0x14 */
     if (r0 == 0x14u) goto L_14672;                               /* 014588 beq #0x14672 */
     { uint32_t ta = r0, tb = 0x16u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01458a cmp r0, #0x16 */
@@ -10168,7 +10304,7 @@ L_14578:
 L_145A6:
     r1 = r7; fN = r1 >> 31; fZ = r1 == 0;                        /* 0145a6 movs r1, r7 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 0145a8 movs r0, r6 */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0145aa bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0145aa bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0145aa bl #0x52c88 */
     r0 = L32(r0);                                                /* 0145ae ldr r0, [r0] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0145b0 cmp r0, #0 */
@@ -10250,7 +10386,7 @@ L_14648:
     L32(r2 + 0x8u) = r1;                                         /* 01465a str r1, [r2, #8] */
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01465c movs r2, #1 */
     r1 = 0x1Du; fN = r1 >> 31; fZ = r1 == 0;                     /* 01465e movs r1, #0x1d */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x1B2D6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014660 bl #0x1b2d6 */
+    { uint64_t rr = eng_c_1b2d6(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +1B2D6 */ /* 014660 bl #0x1b2d6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014660 bl #0x1b2d6 */
     r2 = S32(0x110u);                                            /* 014664 ldr r2, [sp, #0x110] */
     r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 014666 movs r0, #0 */
@@ -10261,6 +10397,8 @@ L_1466C:
     r0 = 0x1u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01466e movs r0, #1 */
     L32(r2 + 0xCu) = r0;                                         /* 014670 str r0, [r2, #0xc] */
 L_14672:
+    /* engine: the whole step runs the cars */
+    if (!ENG_SUB) ENG->loop = 1;
     r2 = S32(0x110u);                                            /* 014672 ldr r2, [sp, #0x110] */
     r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 014674 movs r0, #0 */
     L32(r2 + 0x28u) = r0;                                        /* 014676 str r0, [r2, #0x28] */
@@ -10274,7 +10412,7 @@ L_14672:
 L_14686:
     r1 = S32(0xC8u);                                             /* 014686 ldr r1, [sp, #0xc8] */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 014688 movs r0, r6 */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01468a bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01468a bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01468a bl #0x52c88 */
     r7 = L32(r0);                                                /* 01468e ldr r7, [r0] */
     { uint32_t ta = r7, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014690 cmp r7, #0 */
@@ -10296,7 +10434,7 @@ L_14686:
     if (r0 == 0x0u) goto L_14754;                                /* 0146b0 beq #0x14754 */
 L_146B2:
     r0 = L32(r4 + 0x38u);                                        /* 0146b2 ldr r0, [r4, #0x38] */
-    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x691E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0146b4 bl #0x691e */
+    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x691E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0146b4 bl #0x691e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0146b4 bl #0x691e */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0146b8 cmp r0, #0 */
     if (r0 == 0x0u) goto L_146DC;                                /* 0146ba beq #0x146dc */
@@ -10381,6 +10519,8 @@ L_14736:
     L8(r0 + 0x14u) = r1;                                         /* 014750 strb r1, [r0, #0x14] */
     goto L_14978;                                                /* 014752 b #0x14978 */
 L_14754:
+    /* engine: substeps 1-2: the whole step's keys */
+    if (ENG_SUB) { MEM32(sp + 0xD0u) = ENG_KEYS; goto L_14948; }
     r2 = 0x0u; fN = r2 >> 31; fZ = r2 == 0;                      /* 014754 movs r2, #0 */
     r0 = S32(0xDCu);                                             /* 014756 ldr r0, [sp, #0xdc] */
     r1 = 0x7u; fN = r1 >> 31; fZ = r1 == 0;                      /* 014758 movs r1, #7 */
@@ -10448,7 +10588,7 @@ L_147BA:
 L_147CA:
     r0 = S32(0xDCu);                                             /* 0147ca ldr r0, [sp, #0xdc] */
     r1 = 0xFu; fN = r1 >> 31; fZ = r1 == 0;                      /* 0147cc movs r1, #0xf */
-    { uint64_t rr = (ENGD_0203A ? engi_0203A(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x203A), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0147ce bl #0x203a */
+    { uint64_t rr = (ENGD_0203A ? engi_0203A(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x203A), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0147ce bl #0x203a */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0147ce bl #0x203a */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0147d2 cmp r0, #0 */
     if (r0 != 0x0u) goto L_147E4;                                /* 0147d4 bne #0x147e4 */
@@ -10675,6 +10815,8 @@ L_14964:
     r0 = r7; fN = r0 >> 31; fZ = r0 == 0;                        /* 01496e movs r0, r7 */
     r1 = S32(0xD0u);                                             /* 014970 ldr r1, [sp, #0xd0] */
     r3 = r6; fN = r3 >> 31; fZ = r3 == 0;                        /* 014972 movs r3, r6 */
+    /* engine: the keys the whole step gave the player's control */
+    if (!ENG_SUB) ENG_KEYS = r1;
     { uint64_t rr = (ENGD_1DE78 ? engi_1DE78(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1DE78), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014974 bl #0x1de78 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014974 bl #0x1de78 */
 L_14978:
@@ -10735,7 +10877,7 @@ L_149D2:
 L_149DE:
     r1 = r7; fN = r1 >> 31; fZ = r1 == 0;                        /* 0149de movs r1, r7 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 0149e0 movs r0, r6 */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0149e2 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0149e2 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0149e2 bl #0x52c88 */
     r0 = L32(r0);                                                /* 0149e6 ldr r0, [r0] */
     S32(0xA4u) = r0;                                             /* 0149e8 str r0, [sp, #0xa4] */
@@ -10762,7 +10904,7 @@ L_14A04:
     if ((int32_t)r0 > (int32_t)r7) goto L_149DE;                 /* 014a0e bgt #0x149de */
 L_14A10:
     r0 = L32(r4 + 0x38u);                                        /* 014a10 ldr r0, [r4, #0x38] */
-    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x691E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014a12 bl #0x691e */
+    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x691E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014a12 bl #0x691e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014a12 bl #0x691e */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014a16 cmp r0, #0 */
     if (r0 == 0x0u) goto L_14B0E;                                /* 014a18 beq #0x14b0e */
@@ -10790,7 +10932,7 @@ L_14A10:
 L_14A44:
     r1 = S32(0x90u);                                             /* 014a44 ldr r1, [sp, #0x90] */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 014a46 movs r0, r6 */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014a48 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014a48 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014a48 bl #0x52c88 */
     r7 = L32(r0);                                                /* 014a4c ldr r7, [r0] */
     { uint32_t ta = r7, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014a4e cmp r7, #0 */
@@ -10890,7 +11032,7 @@ L_14B0E:
 L_14B1C:
     r1 = S32(0xC8u);                                             /* 014b1c ldr r1, [sp, #0xc8] */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 014b1e movs r0, r6 */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014b20 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014b20 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014b20 bl #0x52c88 */
     r2 = L32(r0);                                                /* 014b24 ldr r2, [r0] */
     S32(0x8Cu) = r2;                                             /* 014b26 str r2, [sp, #0x8c] */
@@ -10961,7 +11103,7 @@ L_14B92:
 L_14BA2:
     r1 = r7; fN = r1 >> 31; fZ = r1 == 0;                        /* 014ba2 movs r1, r7 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 014ba4 movs r0, r6 */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014ba6 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014ba6 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014ba6 bl #0x52c88 */
     r0 = L32(r0);                                                /* 014baa ldr r0, [r0] */
     S32(0x84u) = r0;                                             /* 014bac str r0, [sp, #0x84] */
@@ -11033,7 +11175,7 @@ L_14C18:
 L_14C24:
     r1 = r7; fN = r1 >> 31; fZ = r1 == 0;                        /* 014c24 movs r1, r7 */
     r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 014c26 movs r0, r6 */
-    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52C88), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014c28 bl #0x52c88 */
+    { uint64_t rr = (ENGD_52C88 ? engi_52C88(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52C88), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014c28 bl #0x52c88 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014c28 bl #0x52c88 */
     r0 = L32(r0);                                                /* 014c2c ldr r0, [r0] */
     S32(0xA4u) = r0;                                             /* 014c2e str r0, [sp, #0xa4] */
@@ -11045,7 +11187,7 @@ L_14C24:
     { uint32_t ta = r1, tb = r7; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014c3a cmp r1, r7 */
     if (r1 == r7) goto L_14C9A;                                  /* 014c3c beq #0x14c9a */
     r0 = L32(r4 + 0x38u);                                        /* 014c3e ldr r0, [r4, #0x38] */
-    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x691E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014c40 bl #0x691e */
+    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x691E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014c40 bl #0x691e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014c40 bl #0x691e */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014c44 cmp r0, #0 */
     if (r0 == 0x0u) goto L_14C6E;                                /* 014c46 beq #0x14c6e */
@@ -11107,6 +11249,8 @@ L_14CA6:
     { uint32_t ta = r0, tb = r7; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014cae cmp r0, r7 */
     if ((int32_t)r0 > (int32_t)r7) goto L_14C24;                 /* 014cb0 bgt #0x14c24 */
 L_14CB2:
+    /* engine: substeps 1-2: the camera on the moved car (its logic the whole step's), then done */
+    if (ENG_SUB) { eng_cam_substep(sp, r23); return 0; }
     r0 = S32(0xD8u);                                             /* 014cb2 ldr r0, [sp, #0xd8] */
     r2 = 0xBu; fN = r2 >> 31; fZ = r2 == 0;                      /* 014cb4 movs r2, #0xb */
     t = SHL_C(r2, 0x8u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 014cb6 lsls r2, r2, #8 */
@@ -11119,7 +11263,7 @@ L_14CB2:
     t = r1 & ~ r2; fN = t >> 31; fZ = t == 0; r1 = t;            /* 014cc4 bics r1, r2 */
     L32(r0 + 0x28u) = r1;                                        /* 014cc6 str r1, [r0, #0x28] */
     r0 = L32(r4 + 0x38u);                                        /* 014cc8 ldr r0, [r4, #0x38] */
-    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x691E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014cca bl #0x691e */
+    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x691E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014cca bl #0x691e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014cca bl #0x691e */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014cce cmp r0, #0 */
     if (r0 != 0x0u) goto L_14DB4;                                /* 014cd0 bne #0x14db4 */
@@ -11327,7 +11471,7 @@ L_14E44:
     r0 = L32(r4 + 0x38u);                                        /* 014e46 ldr r0, [r4, #0x38] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 014e48 adds r0, r0, r1 */
     r0 = L32(r0 + 0x1Cu);                                        /* 014e4a ldr r0, [r0, #0x1c] */
-    { uint64_t rr = (ENGD_18C9A ? engi_18C9A(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x18C9A), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014e4c bl #0x18c9a */
+    { uint64_t rr = (ENGD_18C9A ? engi_18C9A(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x18C9A), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014e4c bl #0x18c9a */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014e4c bl #0x18c9a */
     r0 = S32(0xD8u);                                             /* 014e50 ldr r0, [sp, #0xd8] */
     r2 = 0x2Bu; fN = r2 >> 31; fZ = r2 == 0;                     /* 014e52 movs r2, #0x2b */
@@ -11382,7 +11526,7 @@ L_14E8E:
     t = SHL_C(r1, 0x8u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 014eae lsls r1, r1, #8 */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 014eb0 adds r0, r0, r1 */
     r0 = L32(r0 + 0x14u);                                        /* 014eb2 ldr r0, [r0, #0x14] */
-    { uint64_t rr = (ENGD_01D76 ? engi_01D76(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1D76), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014eb4 bl #0x1d76 */
+    { uint64_t rr = (ENGD_01D76 ? engi_01D76(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1D76), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014eb4 bl #0x1d76 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014eb4 bl #0x1d76 */
 L_14EB8:
     r1 = S32(0xD0u);                                             /* 014eb8 ldr r1, [sp, #0xd0] */
@@ -11421,7 +11565,7 @@ L_14EE8:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014f1c bl #0x660a */
     r0 = L32(r4 + 0x38u);                                        /* 014f20 ldr r0, [r4, #0x38] */
     r1 = 0x1u; fN = r1 >> 31; fZ = r1 == 0;                      /* 014f22 movs r1, #1 */
-    { uint64_t rr = (ENGD_0663E ? engi_0663E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x663E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014f24 bl #0x663e */
+    { uint64_t rr = (ENGD_0663E ? engi_0663E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x663E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014f24 bl #0x663e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014f24 bl #0x663e */
     r2 = S32(0x110u);                                            /* 014f28 ldr r2, [sp, #0x110] */
     r0 = 0x1u; fN = r0 >> 31; fZ = r0 == 0;                      /* 014f2a movs r0, #1 */
@@ -11429,7 +11573,7 @@ L_14EE8:
 L_14F2E:
     r0 = S32(0x124u);                                            /* 014f2e ldr r0, [sp, #0x124] */
     r1 = 0x17u; fN = r1 >> 31; fZ = r1 == 0;                     /* 014f30 movs r1, #0x17 */
-    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3FE6), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014f32 bl #0x3fe6 */
+    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3FE6), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014f32 bl #0x3fe6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014f32 bl #0x3fe6 */
     r0 = L32(r4 + 0x38u);                                        /* 014f36 ldr r0, [r4, #0x38] */
     r1 = 0x11u; fN = r1 >> 31; fZ = r1 == 0;                     /* 014f38 movs r1, #0x11 */
@@ -11451,19 +11595,19 @@ L_14F2E:
     { uint64_t rr = (ENGD_05968 ? engi_05968(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x5968), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014f58 bl #0x5968 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014f58 bl #0x5968 */
     r0 = S32(0x124u);                                            /* 014f5c ldr r0, [sp, #0x124] */
-    { uint64_t rr = (ENGD_064D4 ? engi_064D4(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x64D4), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014f5e bl #0x64d4 */
+    { uint64_t rr = (ENGD_064D4 ? engi_064D4(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x64D4), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014f5e bl #0x64d4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014f5e bl #0x64d4 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014f62 cmp r0, #0 */
     if (r0 != 0x0u) goto L_14F70;                                /* 014f64 bne #0x14f70 */
     r0 = S32(0xDCu);                                             /* 014f66 ldr r0, [sp, #0xdc] */
-    { uint64_t rr = (ENGD_0206E ? engi_0206E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x206E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014f68 bl #0x206e */
+    { uint64_t rr = (ENGD_0206E ? engi_0206E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x206E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014f68 bl #0x206e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014f68 bl #0x206e */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014f6c cmp r0, #0 */
     if (r0 == 0x0u) goto L_15004;                                /* 014f6e beq #0x15004 */
 L_14F70:
     r0 = S32(0xDCu);                                             /* 014f70 ldr r0, [sp, #0xdc] */
     r1 = 0x14u; fN = r1 >> 31; fZ = r1 == 0;                     /* 014f72 movs r1, #0x14 */
-    { uint64_t rr = (ENGD_0203A ? engi_0203A(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x203A), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014f74 bl #0x203a */
+    { uint64_t rr = (ENGD_0203A ? engi_0203A(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x203A), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014f74 bl #0x203a */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014f74 bl #0x203a */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014f78 cmp r0, #0 */
     if (r0 != 0x0u) goto L_15004;                                /* 014f7a bne #0x15004 */
@@ -11485,7 +11629,7 @@ L_14F70:
     r0 = 0x1u; fN = r0 >> 31; fZ = r0 == 0;                      /* 014f9a movs r0, #1 */
     L8(r1 + 0x1u) = r0;                                          /* 014f9c strb r0, [r1, #1] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 014f9e movs r0, r4 */
-    { uint64_t rr = (ENGD_133E4 ? engi_133E4(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x133E4), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014fa0 bl #0x133e4 */
+    { uint64_t rr = (ENGD_133E4 ? engi_133E4(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x133E4), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014fa0 bl #0x133e4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014fa0 bl #0x133e4 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014fa4 cmp r0, #0 */
     if (r0 == 0x0u) goto L_14FB8;                                /* 014fa6 beq #0x14fb8 */
@@ -11506,7 +11650,7 @@ L_14FB8:
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 014fc2 adds r0, r0, r1 */
     r1 = L8(r0 + 0x14u);                                         /* 014fc4 ldrb r1, [r0, #0x14] */
     r0 = S32(0x124u);                                            /* 014fc6 ldr r0, [sp, #0x124] */
-    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3FE6), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014fc8 bl #0x3fe6 */
+    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3FE6), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014fc8 bl #0x3fe6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014fc8 bl #0x3fe6 */
     goto L_15004;                                                /* 014fcc b #0x15004 */
 L_14FCE:
@@ -11542,7 +11686,7 @@ L_15004:
     r1 = 0x0u; fN = r1 >> 31; fZ = r1 == 0;                      /* 015004 movs r1, #0 */
     L8(r6) = r1;                                                 /* 015006 strb r1, [r6] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 015008 movs r0, r4 */
-    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01500a bl #0x52206 */
+    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52206), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01500a bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01500a bl #0x52206 */
     r6 = 0x5u; fN = r6 >> 31; fZ = r6 == 0;                      /* 01500e movs r6, #5 */
     t = SHL_C(r6, 0x9u, &fC); r6 = t; fN = t >> 31; fZ = t == 0; /* 015010 lsls r6, r6, #9 */
@@ -11862,7 +12006,7 @@ L_15252:
     r0 = L32(r0 + 0x8u);                                         /* 01525a ldr r0, [r0, #8] */
     S32(0xC8u) = r0;                                             /* 01525c str r0, [sp, #0xc8] */
     r0 = L32(r4 + 0x38u);                                        /* 01525e ldr r0, [r4, #0x38] */
-    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x691E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 015260 bl #0x691e */
+    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x691E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 015260 bl #0x691e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 015260 bl #0x691e */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 015264 cmp r0, #0 */
     if (r0 != 0x0u) goto L_152D8;                                /* 015266 bne #0x152d8 */
@@ -11873,12 +12017,12 @@ L_15252:
 L_15270:
     r1 = r6; fN = r1 >> 31; fZ = r1 == 0;                        /* 015270 movs r1, r6 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 015272 movs r0, r4 */
-    { uint64_t rr = (ENGD_13242 ? engi_13242(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x13242), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 015274 bl #0x13242 */
+    { uint64_t rr = (ENGD_13242 ? engi_13242(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x13242), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 015274 bl #0x13242 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 015274 bl #0x13242 */
     S32(0xC4u) = r0;                                             /* 015278 str r0, [sp, #0xc4] */
     { uint32_t ta = r6, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01527a adds r1, r6, #1 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01527c movs r0, r4 */
-    { uint64_t rr = (ENGD_13242 ? engi_13242(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x13242), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01527e bl #0x13242 */
+    { uint64_t rr = (ENGD_13242 ? engi_13242(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x13242), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01527e bl #0x13242 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01527e bl #0x13242 */
     r7 = r0; fN = r7 >> 31; fZ = r7 == 0;                        /* 015282 movs r7, r0 */
     r0 = S32(0xC4u);                                             /* 015284 ldr r0, [sp, #0xc4] */
@@ -11894,11 +12038,11 @@ L_15270:
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 015298 cmp r0, #0 */
     if (r0 != 0x0u) goto L_152D0;                                /* 01529a bne #0x152d0 */
     r0 = S32(0xC4u);                                             /* 01529c ldr r0, [sp, #0xc4] */
-    { uint64_t rr = (ENGD_212C6 ? engi_212C6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x212C6), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01529e bl #0x212c6 */
+    { uint64_t rr = (ENGD_212C6 ? engi_212C6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x212C6), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01529e bl #0x212c6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01529e bl #0x212c6 */
     S32(0xC0u) = r0;                                             /* 0152a2 str r0, [sp, #0xc0] */
     r0 = r7; fN = r0 >> 31; fZ = r0 == 0;                        /* 0152a4 movs r0, r7 */
-    { uint64_t rr = (ENGD_212C6 ? engi_212C6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x212C6), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0152a6 bl #0x212c6 */
+    { uint64_t rr = (ENGD_212C6 ? engi_212C6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x212C6), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0152a6 bl #0x212c6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0152a6 bl #0x212c6 */
     r1 = S32(0xC0u);                                             /* 0152aa ldr r1, [sp, #0xc0] */
     { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 0152ac subs r0, r1, r0 */
@@ -12029,7 +12173,7 @@ L_15398:
     r1 = L32(r1);                                                /* 0153a6 ldr r1, [r1] */
     t = SHL_C(r1, 0x17u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 0153a8 lsls r1, r1, #0x17 */
     if (fN) goto L_153F2;                                        /* 0153aa bmi #0x153f2 */
-    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x691E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0153ac bl #0x691e */
+    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x691E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0153ac bl #0x691e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0153ac bl #0x691e */
     goto L_153CC;                                                /* 0153b0 b #0x153cc */
 L_153CC:
@@ -12542,7 +12686,7 @@ L_15744:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 015760 bl #0x4b68c */
 L_15764:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 015764 movs r0, r4 */
-    { uint64_t rr = (ENGD_13148 ? engi_13148(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x13148), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 015766 bl #0x13148 */
+    { uint64_t rr = (ENGD_13148 ? engi_13148(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x13148), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 015766 bl #0x13148 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 015766 bl #0x13148 */
     r7 = S32(0xE4u);                                             /* 01576a ldr r7, [sp, #0xe4] */
     r0 = L8(r7 + 0x4u);                                          /* 01576c ldrb r0, [r7, #4] */
@@ -12576,7 +12720,7 @@ L_15782:
     t = r1 & ~ r2; fN = t >> 31; fZ = t == 0; r1 = t;            /* 0157a0 bics r1, r2 */
     L32(r0 + 0x28u) = r1;                                        /* 0157a2 str r1, [r0, #0x28] */
     r0 = L32(r4 + 0x38u);                                        /* 0157a4 ldr r0, [r4, #0x38] */
-    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x691E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0157a6 bl #0x691e */
+    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x691E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0157a6 bl #0x691e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0157a6 bl #0x691e */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 0157aa cmp r0, #0 */
     if (r0 == 0x0u) goto L_157BA;                                /* 0157ac beq #0x157ba */
@@ -12608,7 +12752,7 @@ L_15804:
     spp += 0x134u;                                               /* 01581c add sp, #0x134 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01581e pop {r4, r5, r6, r7, pc} */
 L_15820:
-    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x691E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 015820 bl #0x691e */
+    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x691E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 015820 bl #0x691e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 015820 bl #0x691e */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 015824 cmp r0, #0 */
     if (r0 == 0x0u) goto L_15918;                                /* 015826 beq #0x15918 */
@@ -12738,7 +12882,7 @@ L_158CE:
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 015914 pop {r4, r5, r6, r7, pc} */
 L_15918:
     r0 = L32(r4 + 0x38u);                                        /* 015918 ldr r0, [r4, #0x38] */
-    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x691E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01591a bl #0x691e */
+    { uint64_t rr = (ENGD_0691E ? engi_0691E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x691E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01591a bl #0x691e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01591a bl #0x691e */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01591e cmp r0, #0 */
     if (r0 == 0x0u) goto L_1593E;                                /* 015920 beq #0x1593e */
@@ -12831,7 +12975,7 @@ L_159BE:
     t = SHL_C(r1, 0x7u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 0159c6 lsls r1, r1, #7 */
     { uint32_t ta = r4, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 0159c8 adds r0, r4, r1 */
     r0 = L32(r0 + 0x2Cu);                                        /* 0159ca ldr r0, [r0, #0x2c] */
-    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0159cc bl #0x52206 */
+    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52206), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0159cc bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0159cc bl #0x52206 */
     r1 = GAMEW(0x15B0C);                                         /* 0159d0 ldr r1, [pc, #0x138] */
     { uint32_t ta = r4, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 0159d2 adds r2, r4, r1 */
@@ -12955,20 +13099,24 @@ L_0FB52:
     r0 = S32(0x68u);                                             /* 00fb52 ldr r0, [sp, #0x68] */
     r1 = L32(r0 + 0x18u);                                        /* 00fb54 ldr r1, [r0, #0x18] */
     r0 = S32(0x74u);                                             /* 00fb56 ldr r0, [sp, #0x74] */
-    t = r1 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              /* 00fb58 muls r0, r1, r0 */
+    /* engine: clock 0 x speed, at the substep */
+    r0 = eng_tmul(r0, r1, 0u); fN = r0 >> 31; fZ = r0 == 0;  /* was: t = r1 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              ( 00fb58 muls r0, r1, r0 ) */
     t = SAR_C(r0, 0xAu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 00fb5a asrs r0, r0, #0xa */
     r2 = S32(0x78u);                                             /* 00fb5c ldr r2, [sp, #0x78] */
-    t = r2 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              /* 00fb5e muls r1, r2, r1 */
+    /* engine: clock 1 x speed, at the substep */
+    r1 = eng_tmul(r2, r1, 1u); fN = r1 >> 31; fZ = r1 == 0;  /* was: t = r2 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              ( 00fb5e muls r1, r2, r1 ) */
     t = SAR_C(r1, 0xAu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 00fb60 asrs r1, r1, #0xa */
     goto L_0FB74;                                                /* 00fb62 b #0xfb74 */
 L_0FB64:
     r0 = S32(0x68u);                                             /* 00fb64 ldr r0, [sp, #0x68] */
     r1 = L32(r0 + 0x18u);                                        /* 00fb66 ldr r1, [r0, #0x18] */
     r0 = S32(0x74u);                                             /* 00fb68 ldr r0, [sp, #0x74] */
-    t = r1 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              /* 00fb6a muls r0, r1, r0 */
+    /* engine: clock 0 x speed, at the substep */
+    r0 = eng_tmul(r0, r1, 0u); fN = r0 >> 31; fZ = r0 == 0;  /* was: t = r1 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              ( 00fb6a muls r0, r1, r0 ) */
     t = SAR_C(r0, 0x8u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 00fb6c asrs r0, r0, #8 */
     r2 = S32(0x78u);                                             /* 00fb6e ldr r2, [sp, #0x78] */
-    t = r2 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              /* 00fb70 muls r1, r2, r1 */
+    /* engine: clock 1 x speed, at the substep */
+    r1 = eng_tmul(r2, r1, 1u); fN = r1 >> 31; fZ = r1 == 0;  /* was: t = r2 * r1; fN = t >> 31; fZ = t == 0; r1 = t;              ( 00fb70 muls r1, r2, r1 ) */
     t = SAR_C(r1, 0x8u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 00fb72 asrs r1, r1, #8 */
 L_0FB74:
     t = SHL_C(r0, 0x14u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 00fb74 lsls r2, r0, #0x14 */
@@ -13090,7 +13238,8 @@ L_0FBFC:
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 00fc44 adds r0, r0, r1 */
     r1 = 0x8u; fN = r1 >> 31; fZ = r1 == 0;                      /* 00fc46 movs r1, #8 */
     t = ROR_C(r0, r1, &fC); r0 = t; fN = t >> 31; fZ = t == 0;   /* 00fc48 rors r0, r1 */
-    L32(r4) = r0;                                                /* 00fc4a str r0, [r4] */
+    /* engine: a traffic slot's step counter (to 45) */
+    if (!ENG_SUB) L32(r4) = r0; else r0 = L32(r4);               /* 00fc4a str r0, [r4] */
     t = SHL_C(r0, 0x8u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 00fc4c lsls r0, r0, #8 */
     t = SHR_C(r0, 0x18u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 00fc4e lsrs r0, r0, #0x18 */
     { uint32_t ta = r0, tb = 0x2Du; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 00fc50 cmp r0, #0x2d */
@@ -13126,9 +13275,10 @@ L_0FC64:
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 00fc8a adds r0, r0, r1 */
     r1 = 0x8u; fN = r1 >> 31; fZ = r1 == 0;                      /* 00fc8c movs r1, #8 */
     t = ROR_C(r0, r1, &fC); r0 = t; fN = t >> 31; fZ = t == 0;   /* 00fc8e rors r0, r1 */
-    L32(r4) = r0;                                                /* 00fc90 str r0, [r4] */
+    /* engine: a traffic slot's step counter (its path) */
+    if (!ENG_SUB) L32(r4) = r0; else r0 = L32(r4);               /* 00fc90 str r0, [r4] */
     r0 = L32(r5 + 0x3Cu);                                        /* 00fc92 ldr r0, [r5, #0x3c] */
-    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x39FE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00fc94 bl #0x39fe */
+    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00fc94 bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00fc94 bl #0x39fe */
     r0 = L32(r0);                                                /* 00fc98 ldr r0, [r0] */
     r1 = L32(r4);                                                /* 00fc9a ldr r1, [r4] */
@@ -13265,7 +13415,7 @@ L_0FD78:
     { uint32_t ta = r0, tb = 0xFFu; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 00fd88 adds r0, #0xff */
     r1 = L32(r3 + 0x1Cu);                                        /* 00fd8a ldr r1, [r3, #0x1c] */
     { uint32_t ta = r0, tb = 0x21u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 00fd8c adds r0, #0x21 */
-    { uint64_t rr = (ENGD_370AE ? engi_370AE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x370AE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00fd8e bl #0x370ae */
+    { uint64_t rr = (ENGD_370AE ? engi_370AE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x370AE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00fd8e bl #0x370ae */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00fd8e bl #0x370ae */
     r0 = S32(0x68u);                                             /* 00fd92 ldr r0, [sp, #0x68] */
     r0 = L32(r0 + 0x20u);                                        /* 00fd94 ldr r0, [r0, #0x20] */
@@ -13489,7 +13639,7 @@ L_0FED0:
     r0 = L32(r0 + r5);                                           /* 00ff4c ldr r0, [r0, r5] */
     S32(0x10u) = r0;                                             /* 00ff4e str r0, [sp, #0x10] */
     r0 = L32(r5 + 0x3Cu);                                        /* 00ff50 ldr r0, [r5, #0x3c] */
-    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x39FE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00ff52 bl #0x39fe */
+    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00ff52 bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00ff52 bl #0x39fe */
     r1 = L32(r4);                                                /* 00ff56 ldr r1, [r4] */
     t = SHL_C(r1, 0x8u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 00ff58 lsls r1, r1, #8 */
@@ -13891,7 +14041,7 @@ L_0F42A:
     { uint64_t rr = a4_eng_call(GAMEFN(0x3740A), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00f432 bl #0x3740a */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00f432 bl #0x3740a */
     r0 = L32(r6 + 0x3Cu);                                        /* 00f436 ldr r0, [r6, #0x3c] */
-    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x39FE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00f438 bl #0x39fe */
+    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00f438 bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00f438 bl #0x39fe */
     r1 = L32(r0);                                                /* 00f43c ldr r1, [r0] */
     r3 = S32(0x58u);                                             /* 00f43e ldr r3, [sp, #0x58] */
@@ -13900,7 +14050,7 @@ L_0F42A:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00f442 blx #0x50e8c */
     r7 = r0; fN = r7 >> 31; fZ = r7 == 0;                        /* 00f446 movs r7, r0 */
     r0 = L32(r6 + 0x3Cu);                                        /* 00f448 ldr r0, [r6, #0x3c] */
-    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x39FE), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00f44a bl #0x39fe */
+    { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00f44a bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00f44a bl #0x39fe */
     r0 = L32(r0);                                                /* 00f44e ldr r0, [r0] */
     { uint32_t ta = r5, tb = r7; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 00f450 subs r1, r5, r7 */
@@ -14065,7 +14215,7 @@ L_2205A:
     r6 = r7; fN = r6 >> 31; fZ = r6 == 0;                        /* 022074 movs r6, r7 */
     { uint32_t ta = r5, tb = 0xCu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r5 = t; } /* 022076 subs r5, #0xc */
     t = r6; L32(t + 0) = r1; L32(t + 4) = r2; L32(t + 8) = r3; r6 = t + 12; /* 022078 stm r6!, {r1, r2, r3} */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x37144), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 02207a bl #0x37144 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x37144), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 02207a bl #0x37144 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 02207a bl #0x37144 */
     r1 = 0xB4u; fN = r1 >> 31; fZ = r1 == 0;                     /* 02207e movs r1, #0xb4 */
     L32(r1 + r4) = r0;                                           /* 022080 str r0, [r1, r4] */
@@ -14109,7 +14259,7 @@ static uint64_t engi_12DEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r1 = 0x11u; fN = r1 >> 31; fZ = r1 == 0;                     /* 012df2 movs r1, #0x11 */
     t = SHL_C(r1, 0x8u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 012df4 lsls r1, r1, #8 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 012df6 movs r0, r4 */
-    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52206), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012df8 bl #0x52206 */
+    { uint64_t rr = (ENGD_52206 ? engi_52206(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52206), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012df8 bl #0x52206 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 012df8 bl #0x52206 */
     S32(0x10u) = r0;                                             /* 012dfc str r0, [sp, #0x10] */
     r0 = 0x49u; fN = r0 >> 31; fZ = r0 == 0;                     /* 012dfe movs r0, #0x49 */
@@ -14147,6 +14297,8 @@ static uint64_t engi_12DEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r0 = S32(0x18u);                                             /* 012e3e ldr r0, [sp, #0x18] */
     r2 = S32(0x10u);                                             /* 012e40 ldr r2, [sp, #0x10] */
     r1 = r4; fN = r1 >> 31; fZ = r1 == 0;                        /* 012e42 movs r1, r4 */
+    /* engine: the camera placement the whole step made */
+    eng_cam_save(r0, r1, r2, r3, sp);
     { uint64_t rr = (ENGD_05968 ? engi_05968(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x5968), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012e44 bl #0x5968 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 012e44 bl #0x5968 */
 L_12E48:
@@ -14202,6 +14354,8 @@ L_12E7A:
     r2 = S32(0x10u);                                             /* 012ea0 ldr r2, [sp, #0x10] */
     r0 = S32(0x18u);                                             /* 012ea2 ldr r0, [sp, #0x18] */
     r1 = r7; fN = r1 >> 31; fZ = r1 == 0;                        /* 012ea4 movs r1, r7 */
+    /* engine: the camera placement the whole step made */
+    eng_cam_save(r0, r1, r2, r3, sp);
     { uint64_t rr = (ENGD_05968 ? engi_05968(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x5968), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012ea6 bl #0x5968 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 012ea6 bl #0x5968 */
 L_12EAA:
@@ -14215,7 +14369,7 @@ L_12EAA:
     if (fZ) goto L_12EC4;                                        /* 012eb8 beq #0x12ec4 */
     r0 = S32(0x18u);                                             /* 012eba ldr r0, [sp, #0x18] */
     r1 = 0x18u; fN = r1 >> 31; fZ = r1 == 0;                     /* 012ebc movs r1, #0x18 */
-    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3FE6), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012ebe bl #0x3fe6 */
+    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3FE6), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012ebe bl #0x3fe6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 012ebe bl #0x3fe6 */
     r5 = 0x1u; fN = r5 >> 31; fZ = r5 == 0;                      /* 012ec2 movs r5, #1 */
 L_12EC4:
@@ -14232,7 +14386,7 @@ L_12EC4:
     if (r0 != 0x1u) goto L_12EE4;                                /* 012ed8 bne #0x12ee4 */
     r0 = S32(0x18u);                                             /* 012eda ldr r0, [sp, #0x18] */
     r1 = 0x18u; fN = r1 >> 31; fZ = r1 == 0;                     /* 012edc movs r1, #0x18 */
-    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3FE6), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012ede bl #0x3fe6 */
+    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3FE6), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012ede bl #0x3fe6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 012ede bl #0x3fe6 */
     r5 = 0x1u; fN = r5 >> 31; fZ = r5 == 0;                      /* 012ee2 movs r5, #1 */
 L_12EE4:
@@ -14284,14 +14438,14 @@ L_12F2A:
     if (r0 == 0x8u) goto L_12F44;                                /* 012f38 beq #0x12f44 */
     r0 = S32(0x18u);                                             /* 012f3a ldr r0, [sp, #0x18] */
     r1 = 0x2Au; fN = r1 >> 31; fZ = r1 == 0;                     /* 012f3c movs r1, #0x2a */
-    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3FE6), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012f3e bl #0x3fe6 */
+    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3FE6), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012f3e bl #0x3fe6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 012f3e bl #0x3fe6 */
     r5 = 0x1u; fN = r5 >> 31; fZ = r5 == 0;                      /* 012f42 movs r5, #1 */
 L_12F44:
     { uint32_t ta = r5, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 012f44 cmp r5, #0 */
     if (r5 != 0x0u) goto L_12F4E;                                /* 012f46 bne #0x12f4e */
     r0 = S32(0x18u);                                             /* 012f48 ldr r0, [sp, #0x18] */
-    { uint64_t rr = (ENGD_064C2 ? engi_064C2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x64C2), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012f4a bl #0x64c2 */
+    { uint64_t rr = (ENGD_064C2 ? engi_064C2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x64C2), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012f4a bl #0x64c2 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 012f4a bl #0x64c2 */
 L_12F4E:
     r1 = GAMEW(0x1307C);                                         /* 012f4e ldr r1, [pc, #0x12c] */
@@ -14326,6 +14480,8 @@ L_12F6A:
     r0 = S32(0x18u);                                             /* 012f86 ldr r0, [sp, #0x18] */
     r2 = S32(0x10u);                                             /* 012f88 ldr r2, [sp, #0x10] */
     r1 = r4; fN = r1 >> 31; fZ = r1 == 0;                        /* 012f8a movs r1, r4 */
+    /* engine: the camera placement the whole step made */
+    eng_cam_save(r0, r1, r2, r3, sp);
     { uint64_t rr = (ENGD_05968 ? engi_05968(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x5968), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012f8c bl #0x5968 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 012f8c bl #0x5968 */
     { uint32_t ta = r5, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 012f90 cmp r5, #0 */
@@ -14370,6 +14526,8 @@ L_12FA2:
     r2 = r5; fN = r2 >> 31; fZ = r2 == 0;                        /* 012fd8 movs r2, r5 */
     r0 = S32(0x18u);                                             /* 012fda ldr r0, [sp, #0x18] */
     r1 = r6; fN = r1 >> 31; fZ = r1 == 0;                        /* 012fdc movs r1, r6 */
+    /* engine: the camera placement the whole step made */
+    eng_cam_save(r0, r1, r2, r3, sp);
     { uint64_t rr = (ENGD_05968 ? engi_05968(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x5968), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 012fde bl #0x5968 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 012fde bl #0x5968 */
     spp += 0x24u;                                                /* 012fe2 add sp, #0x24 */
@@ -14390,6 +14548,8 @@ L_12FE6:
     r0 = S32(0x18u);                                             /* 012ffe ldr r0, [sp, #0x18] */
     r2 = S32(0x10u);                                             /* 013000 ldr r2, [sp, #0x10] */
     r1 = r4; fN = r1 >> 31; fZ = r1 == 0;                        /* 013002 movs r1, r4 */
+    /* engine: the camera placement the whole step made */
+    eng_cam_save(r0, r1, r2, r3, sp);
     { uint64_t rr = (ENGD_05968 ? engi_05968(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x5968), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 013004 bl #0x5968 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 013004 bl #0x5968 */
     spp += 0x24u;                                                /* 013008 add sp, #0x24 */
@@ -14431,7 +14591,7 @@ L_05986:
 L_05988:
     r1 = L32(r4 + 0x4Cu);                                        /* 005988 ldr r1, [r4, #0x4c] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 00598a movs r0, r4 */
-    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3FE6), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00598c bl #0x3fe6 */
+    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3FE6), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00598c bl #0x3fe6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00598c bl #0x3fe6 */
     { uint32_t ta = r2, tb = 0xEu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 005990 cmp r2, #0xe */
     r3 = GAMEADDR(0x599C);                                       /* 005992 adr r3, #8 */
@@ -14703,7 +14863,7 @@ L_05B6E:
     S32(0x44u) = r5;                                             /* 005b74 str r5, [sp, #0x44] */
     r1 = S32(0x40u);                                             /* 005b76 ldr r1, [sp, #0x40] */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 005b78 add r0, sp, #0xc */
-    { uint64_t rr = (ENGD_3227E ? engi_3227E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3227E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005b7a bl #0x3227e */
+    { uint64_t rr = (ENGD_3227E ? engi_3227E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3227E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005b7a bl #0x3227e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 005b7a bl #0x3227e */
     r1 = S32(0x44u);                                             /* 005b7e ldr r1, [sp, #0x44] */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 005b80 add r0, sp, #0xc */
@@ -14720,7 +14880,7 @@ L_05B6E:
     r2 = S32(0x84u);                                             /* 005b96 ldr r2, [sp, #0x84] */
     r1 = sp;                                                     /* 005b98 mov r1, sp */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 005b9a add r0, sp, #0xc */
-    { uint64_t rr = (ENGD_522F0 ? engi_522F0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x522F0), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005b9c bl #0x522f0 */
+    { uint64_t rr = (ENGD_522F0 ? engi_522F0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x522F0), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005b9c bl #0x522f0 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 005b9c bl #0x522f0 */
     goto L_05C32;                                                /* 005ba0 b #0x5c32 */
 L_05BA2:
@@ -14733,7 +14893,7 @@ L_05BA2:
     S32(0x44u) = r5;                                             /* 005bae str r5, [sp, #0x44] */
     r1 = S32(0x40u);                                             /* 005bb0 ldr r1, [sp, #0x40] */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 005bb2 add r0, sp, #0xc */
-    { uint64_t rr = (ENGD_3227E ? engi_3227E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3227E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005bb4 bl #0x3227e */
+    { uint64_t rr = (ENGD_3227E ? engi_3227E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3227E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005bb4 bl #0x3227e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 005bb4 bl #0x3227e */
     r1 = S32(0x44u);                                             /* 005bb8 ldr r1, [sp, #0x44] */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 005bba add r0, sp, #0xc */
@@ -14750,7 +14910,7 @@ L_05BA2:
     r2 = S32(0x84u);                                             /* 005bd0 ldr r2, [sp, #0x84] */
     r1 = sp;                                                     /* 005bd2 mov r1, sp */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 005bd4 add r0, sp, #0xc */
-    { uint64_t rr = (ENGD_522F0 ? engi_522F0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x522F0), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005bd6 bl #0x522f0 */
+    { uint64_t rr = (ENGD_522F0 ? engi_522F0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x522F0), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005bd6 bl #0x522f0 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 005bd6 bl #0x522f0 */
     goto L_05C32;                                                /* 005bda b #0x5c32 */
 L_05BDC:
@@ -14779,7 +14939,7 @@ L_05C00:
     S32(0x44u) = r5;                                             /* 005c06 str r5, [sp, #0x44] */
     r1 = S32(0x40u);                                             /* 005c08 ldr r1, [sp, #0x40] */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 005c0a add r0, sp, #0xc */
-    { uint64_t rr = (ENGD_3227E ? engi_3227E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3227E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005c0c bl #0x3227e */
+    { uint64_t rr = (ENGD_3227E ? engi_3227E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3227E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005c0c bl #0x3227e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 005c0c bl #0x3227e */
     r1 = S32(0x44u);                                             /* 005c10 ldr r1, [sp, #0x44] */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 005c12 add r0, sp, #0xc */
@@ -14796,7 +14956,7 @@ L_05C00:
     r2 = S32(0x84u);                                             /* 005c28 ldr r2, [sp, #0x84] */
     r1 = sp;                                                     /* 005c2a mov r1, sp */
     { uint32_t ta = sp, tb = 0xCu; t = ta + tb; r0 = t; }        /* 005c2c add r0, sp, #0xc */
-    { uint64_t rr = (ENGD_522F0 ? engi_522F0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x522F0), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005c2e bl #0x522f0 */
+    { uint64_t rr = (ENGD_522F0 ? engi_522F0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x522F0), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005c2e bl #0x522f0 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 005c2e bl #0x522f0 */
 L_05C32:
     r0 = L32(r6 + 0x1Cu);                                        /* 005c32 ldr r0, [r6, #0x1c] */
@@ -14911,7 +15071,7 @@ L_05CDA:
     { uint32_t ta = r1, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 005cfe adds r0, r1, r0 */
     t = SAR_C(r0, 0xBu, &fC); r5 = t; fN = t >> 31; fZ = t == 0; /* 005d00 asrs r5, r0, #0xb */
     { uint32_t ta = sp, tb = 0x54u; t = ta + tb; r0 = t; }       /* 005d02 add r0, sp, #0x54 */
-    { uint64_t rr = (ENGD_32156 ? engi_32156(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x32156), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005d04 bl #0x32156 */
+    { uint64_t rr = (ENGD_32156 ? engi_32156(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x32156), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005d04 bl #0x32156 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 005d04 bl #0x32156 */
     r1 = r5; fN = r1 >> 31; fZ = r1 == 0;                        /* 005d08 movs r1, r5 */
     { uint32_t ta = sp, tb = 0x54u; t = ta + tb; r0 = t; }       /* 005d0a add r0, sp, #0x54 */
@@ -14926,7 +15086,7 @@ L_05CDA:
     { uint64_t rr = a4_eng_call(GAMEFN(0x32322), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005d1c bl #0x32322 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 005d1c bl #0x32322 */
     { uint32_t ta = sp, tb = 0x54u; t = ta + tb; r0 = t; }       /* 005d20 add r0, sp, #0x54 */
-    { uint64_t rr = (ENGD_3220C ? engi_3220C(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3220C), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005d22 bl #0x3220c */
+    { uint64_t rr = (ENGD_3220C ? engi_3220C(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3220C), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005d22 bl #0x3220c */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 005d22 bl #0x3220c */
     goto L_05D58;                                                /* 005d26 b #0x5d58 */
 L_05D28:
@@ -15122,7 +15282,7 @@ L_05E70:
 L_05E7E:
     r1 = L32(r4 + 0x4Cu);                                        /* 005e7e ldr r1, [r4, #0x4c] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 005e80 movs r0, r4 */
-    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3FE6), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005e82 bl #0x3fe6 */
+    { uint64_t rr = (ENGD_03FE6 ? engi_03FE6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3FE6), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 005e82 bl #0x3fe6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 005e82 bl #0x3fe6 */
     r0 = L32(r4 + 0x4Cu);                                        /* 005e86 ldr r0, [r4, #0x4c] */
     { uint32_t ta = r4, tb = 0xC0u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r4 = t; } /* 005e88 adds r4, #0xc0 */
@@ -15183,7 +15343,7 @@ L_04B6C:
 L_04B82:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 004b82 movs r0, r4 */
     { uint32_t ta = r0, tb = 0x6Cu; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 004b84 adds r0, #0x6c */
-    { uint64_t rr = (ENGD_32156 ? engi_32156(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x32156), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004b86 bl #0x32156 */
+    { uint64_t rr = (ENGD_32156 ? engi_32156(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x32156), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004b86 bl #0x32156 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 004b86 bl #0x32156 */
     r0 = L32(r4 + 0x4Cu);                                        /* 004b8a ldr r0, [r4, #0x4c] */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 004b8c cmp r0, #1 */
@@ -15275,7 +15435,7 @@ L_04BFC:
     L32(r6 + 0x3Cu) = r0;                                        /* 004c2e str r0, [r6, #0x3c] */
     r1 = r0; fN = r1 >> 31; fZ = r1 == 0;                        /* 004c30 movs r1, r0 */
     { uint32_t ta = sp, tb = 0xA0u; t = ta + tb; r0 = t; }       /* 004c32 add r0, sp, #0xa0 */
-    { uint64_t rr = (ENGD_37450 ? engi_37450(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x37450), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004c34 bl #0x37450 */
+    { uint64_t rr = (ENGD_37450 ? engi_37450(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x37450), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004c34 bl #0x37450 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 004c34 bl #0x37450 */
 L_04C38:
     { uint32_t ta = r5, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 004c38 adds r3, r5, #4 */
@@ -15492,7 +15652,7 @@ L_04DB6:
     S32(0x90u) = r0;                                             /* 004dc4 str r0, [sp, #0x90] */
     r1 = L32(r4 + 0x20u);                                        /* 004dc6 ldr r1, [r4, #0x20] */
     { uint32_t ta = sp, tb = 0x58u; t = ta + tb; r0 = t; }       /* 004dc8 add r0, sp, #0x58 */
-    { uint64_t rr = (ENGD_3227E ? engi_3227E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3227E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004dca bl #0x3227e */
+    { uint64_t rr = (ENGD_3227E ? engi_3227E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3227E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004dca bl #0x3227e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 004dca bl #0x3227e */
     r1 = L32(r4 + 0x24u);                                        /* 004dce ldr r1, [r4, #0x24] */
     { uint32_t ta = sp, tb = 0x58u; t = ta + tb; r0 = t; }       /* 004dd0 add r0, sp, #0x58 */
@@ -15505,7 +15665,7 @@ L_04DB6:
     { uint32_t ta = sp, tb = 0x94u; t = ta + tb; r2 = t; }       /* 004dde add r2, sp, #0x94 */
     { uint32_t ta = sp, tb = 0x88u; t = ta + tb; r1 = t; }       /* 004de0 add r1, sp, #0x88 */
     { uint32_t ta = sp, tb = 0x58u; t = ta + tb; r0 = t; }       /* 004de2 add r0, sp, #0x58 */
-    { uint64_t rr = (ENGD_522F0 ? engi_522F0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x522F0), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004de4 bl #0x522f0 */
+    { uint64_t rr = (ENGD_522F0 ? engi_522F0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x522F0), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004de4 bl #0x522f0 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 004de4 bl #0x522f0 */
     r0 = S32(0x11Cu);                                            /* 004de8 ldr r0, [sp, #0x11c] */
     r1 = r0; fN = r1 >> 31; fZ = r1 == 0;                        /* 004dea movs r1, r0 */
@@ -15560,12 +15720,12 @@ L_04DF6:
     S32(0x8u) = r1;                                              /* 004e4a str r1, [sp, #8] */
     S32(0xCu) = r2;                                              /* 004e4c str r2, [sp, #0xc] */
     { uint32_t ta = sp, tb = 0x4u; t = ta + tb; r0 = t; }        /* 004e4e add r0, sp, #4 */
-    { uint64_t rr = a4_eng_call(GAMEFN(0x37144), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004e50 bl #0x37144 */
+    { uint64_t rr = a4_eng_call0(GAMEFN(0x37144), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004e50 bl #0x37144 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 004e50 bl #0x37144 */
     r1 = S32(0xE8u);                                             /* 004e54 ldr r1, [sp, #0xe8] */
     { uint32_t ta = sp, tb = 0x94u; t = ta + tb; r2 = t; }       /* 004e56 add r2, sp, #0x94 */
     { uint32_t ta = sp, tb = 0x1Cu; t = ta + tb; r0 = t; }       /* 004e58 add r0, sp, #0x1c */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004e5a bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004e5a bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 004e5a bl #0x52562 */
     r0 = 0x1u; fN = r0 >> 31; fZ = r0 == 0;                      /* 004e5e movs r0, #1 */
     t = SHL_C(r0, 0xCu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 004e60 lsls r0, r0, #0xc */
@@ -15591,7 +15751,7 @@ L_04DF6:
     { uint32_t ta = sp, tb = 0x28u; t = ta + tb; r2 = t; }       /* 004e88 add r2, sp, #0x28 */
     { uint32_t ta = sp, tb = 0x34u; t = ta + tb; r1 = t; }       /* 004e8a add r1, sp, #0x34 */
     { uint32_t ta = sp, tb = 0x40u; t = ta + tb; r0 = t; }       /* 004e8c add r0, sp, #0x40 */
-    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x52562), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004e8e bl #0x52562 */
+    { uint64_t rr = (ENGD_52562 ? engi_52562(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x52562), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004e8e bl #0x52562 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 004e8e bl #0x52562 */
     r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 004e92 movs r2, #1 */
     t = SHL_C(r2, 0xCu, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 004e94 lsls r2, r2, #0xc */
@@ -15705,7 +15865,7 @@ static uint64_t engi_049C4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r1 = GAMEW(0x4B3C);                                          /* 0049d4 ldr r1, [pc, #0x164] */
     t = r1 ^ r0; fN = t >> 31; fZ = t == 0; r1 = t;              /* 0049d6 eors r1, r0 */
     { uint32_t ta = sp, tb = 0x4u; t = ta + tb; r0 = t; }        /* 0049d8 add r0, sp, #4 */
-    { uint64_t rr = (ENGD_19184 ? engi_19184(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x19184), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0049da bl #0x19184 */
+    { uint64_t rr = (ENGD_19184 ? engi_19184(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x19184), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 0049da bl #0x19184 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 0049da bl #0x19184 */
     r0 = 0xBu; fN = r0 >> 31; fZ = r0 == 0;                      /* 0049de movs r0, #0xb */
     t = SHL_C(r0, 0x8u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 0049e0 lsls r0, r0, #8 */
@@ -15877,7 +16037,7 @@ L_04AE8:
     L32(r4 + 0x20u) = r0;                                        /* 004b22 str r0, [r4, #0x20] */
 L_04B24:
     { uint32_t ta = sp, tb = 0x4u; t = ta + tb; r0 = t; }        /* 004b24 add r0, sp, #4 */
-    { uint64_t rr = (ENGD_1918E ? engi_1918E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x1918E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004b26 bl #0x1918e */
+    { uint64_t rr = (ENGD_1918E ? engi_1918E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x1918E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 004b26 bl #0x1918e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 004b26 bl #0x1918e */
     spp += 0xCu;                                                 /* 004b2a add sp, #0xc */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 004b2c pop {r4, r5, r6, r7, pc} */
@@ -15913,7 +16073,8 @@ static uint64_t engi_1BB1E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     if ((int32_t)r4 >= (int32_t)0x0u) goto L_1BB66;              /* 01bb36 bge #0x1bb66 */
     r4 = L32(r2 + 0x8u);                                         /* 01bb38 ldr r4, [r2, #8] */
     { uint32_t ta = r4, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r4 = t; } /* 01bb3a adds r4, r4, #1 */
-    L32(r2 + 0x8u) = r4;                                         /* 01bb3c str r4, [r2, #8] */
+    /* engine: A08, steps the brake is held */
+    if (!ENG_SUB) L32(r2 + 0x8u) = r4; else r4 = L32(r2 + 0x8u); /* 01bb3c str r4, [r2, #8] */
     { uint32_t ta = r3, tb = 0x10u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01bb3e cmp r3, #0x10 */
     if ((int32_t)r3 < (int32_t)0x10u) goto L_1BB4A;              /* 01bb40 blt #0x1bb4a */
     { uint32_t ta = r4, tb = 0x9u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01bb42 cmp r4, #9 */
@@ -15922,7 +16083,8 @@ static uint64_t engi_1BB1E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     if ((int32_t)r3 >= (int32_t)0x30u) goto L_1BB4E;             /* 01bb48 bge #0x1bb4e */
 L_1BB4A:
     { uint32_t ta = r3, tb = 0x2u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01bb4a adds r3, r3, #2 */
-    L32(r2 + 0x4u) = r3;                                         /* 01bb4c str r3, [r2, #4] */
+    /* engine: A04, the brake's ramp */
+    { uint32_t ea_ = r2 + 0x4u; r3 = eng_third(ea_, L32(ea_), r3); L32(ea_) = r3; } /* 01bb4c str r3, [r2, #4] */
 L_1BB4E:
     r3 = L32(r0 + 0x1Cu);                                        /* 01bb4e ldr r3, [r0, #0x1c] */
     r4 = L32(r2 + 0x4u);                                         /* 01bb50 ldr r4, [r2, #4] */
@@ -15933,20 +16095,23 @@ L_1BB4E:
     r4 = L32(r0 + 0x18u);                                        /* 01bb5a ldr r4, [r0, #0x18] */
     t = SAR_C(r3, 0x4u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 01bb5c asrs r3, r3, #4 */
     { uint32_t ta = r4, tb = r3; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01bb5e subs r3, r4, r3 */
-    L32(r0 + 0x18u) = r3;                                        /* 01bb60 str r3, [r0, #0x18] */
+    /* engine: rpm -= brake */
+    { uint32_t ea_ = r0 + 0x18u; r3 = eng_third(ea_, L32(ea_), r3); L32(ea_) = r3; } /* 01bb60 str r3, [r0, #0x18] */
     L32(r2 + 0x18u) = r5;                                        /* 01bb62 str r5, [r2, #0x18] */
     goto L_1BB80;                                                /* 01bb64 b #0x1bb80 */
 L_1BB66:
     { uint32_t ta = r3, tb = 0x10u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01bb66 cmp r3, #0x10 */
     if ((int32_t)r3 <= (int32_t)0x10u) goto L_1BB6E;             /* 01bb68 ble #0x1bb6e */
     { uint32_t ta = r3, tb = 0x8u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01bb6a subs r3, #8 */
-    L32(r2 + 0x4u) = r3;                                         /* 01bb6c str r3, [r2, #4] */
+    /* engine: A04, the brake's ramp */
+    { uint32_t ea_ = r2 + 0x4u; r3 = eng_third(ea_, L32(ea_), r3); L32(ea_) = r3; } /* 01bb6c str r3, [r2, #4] */
 L_1BB6E:
     r3 = L32(r2 + 0x4u);                                         /* 01bb6e ldr r3, [r2, #4] */
     { uint32_t ta = r3, tb = 0x4u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01bb70 cmp r3, #4 */
     if ((int32_t)r3 <= (int32_t)0x4u) goto L_1BB7A;              /* 01bb72 ble #0x1bb7a */
     { uint32_t ta = r3, tb = 0x4u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01bb74 subs r3, r3, #4 */
-    L32(r2 + 0x4u) = r3;                                         /* 01bb76 str r3, [r2, #4] */
+    /* engine: A04, the brake's ramp */
+    { uint32_t ea_ = r2 + 0x4u; r3 = eng_third(ea_, L32(ea_), r3); L32(ea_) = r3; } /* 01bb76 str r3, [r2, #4] */
     goto L_1BB80;                                                /* 01bb78 b #0x1bb80 */
 L_1BB7A:
     r3 = 0x0u; fN = r3 >> 31; fZ = r3 == 0;                      /* 01bb7a movs r3, #0 */
@@ -15961,7 +16126,8 @@ L_1BB80:
     r3 = L32(r0 + 0x18u);                                        /* 01bb8a ldr r3, [r0, #0x18] */
     t = SAR_C(r1, 0x1u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01bb8c asrs r1, r1, #1 */
     { uint32_t ta = r3, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01bb8e subs r1, r3, r1 */
-    L32(r0 + 0x18u) = r1;                                        /* 01bb90 str r1, [r0, #0x18] */
+    /* engine: rpm -= 7DC/2 (key 4) */
+    { uint32_t ea_ = r0 + 0x18u; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01bb90 str r1, [r0, #0x18] */
     L32(r2 + 0x18u) = r5;                                        /* 01bb92 str r5, [r2, #0x18] */
 L_1BB94:
     r4 = S32(0); r5 = S32(4); r6 = S32(8); spp += 12;            /* 01bb94 pop {r4, r5, r6} */
@@ -16031,14 +16197,16 @@ L_1BC84:
     { uint32_t ta = r3, tb = 0x10u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01bcb6 cmp r3, #0x10 */
     if ((int32_t)r3 >= (int32_t)0x10u) goto L_1BCD0;             /* 01bcb8 bge #0x1bcd0 */
     { uint32_t ta = r3, tb = 0x2u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01bcba adds r3, r3, #2 */
-    L32(r1 + 0xCu) = r3;                                         /* 01bcbc str r3, [r1, #0xc] */
+    /* engine: A0C ramp */
+    { uint32_t ea_ = r1 + 0xCu; r3 = eng_third(ea_, L32(ea_), r3); L32(ea_) = r3; } /* 01bcbc str r3, [r1, #0xc] */
     goto L_1BCD0;                                                /* 01bcbe b #0x1bcd0 */
 L_1BCC0:
     r3 = L32(r1 + 0xCu);                                         /* 01bcc0 ldr r3, [r1, #0xc] */
     { uint32_t ta = r3, tb = 0x4u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01bcc2 cmp r3, #4 */
     if ((int32_t)r3 <= (int32_t)0x4u) goto L_1BCCC;              /* 01bcc4 ble #0x1bccc */
     { uint32_t ta = r3, tb = 0x4u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01bcc6 subs r3, r3, #4 */
-    L32(r1 + 0xCu) = r3;                                         /* 01bcc8 str r3, [r1, #0xc] */
+    /* engine: A0C ramp */
+    { uint32_t ea_ = r1 + 0xCu; r3 = eng_third(ea_, L32(ea_), r3); L32(ea_) = r3; } /* 01bcc8 str r3, [r1, #0xc] */
     goto L_1BCD0;                                                /* 01bcca b #0x1bcd0 */
 L_1BCCC:
     r3 = 0x0u; fN = r3 >> 31; fZ = r3 == 0;                      /* 01bccc movs r3, #0 */
@@ -16059,7 +16227,8 @@ L_1BCD0:
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01bce8 adds r1, r0, r1 */
     r5 = L32(r1 + 0x18u);                                        /* 01bcea ldr r5, [r1, #0x18] */
     { uint32_t ta = r5, tb = r3; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 01bcec subs r3, r5, r3 */
-    L32(r1 + 0x18u) = r3;                                        /* 01bcee str r3, [r1, #0x18] */
+    /* engine: rpm -= A0C*28/16 */
+    { uint32_t ea_ = r1 + 0x18u; r3 = eng_third(ea_, L32(ea_), r3); L32(ea_) = r3; } /* 01bcee str r3, [r1, #0x18] */
     { uint32_t ta = r3, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01bcf0 cmp r3, #0 */
     if ((int32_t)r3 >= (int32_t)0x0u) goto L_1BD0E;              /* 01bcf2 bge #0x1bd0e */
     { uint32_t ta = r4, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r4 = t; } /* 01bcf4 subs r4, r4, #1 */
@@ -16139,7 +16308,8 @@ L_1B994:
     t = SHR_C(r3, 0x19u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 01b9a2 lsrs r3, r3, #0x19 */
     { uint32_t ta = r3, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01b9a4 adds r1, r3, r1 */
     t = SAR_C(r1, 0x7u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01b9a6 asrs r1, r1, #7 */
-    L32(r0 + 0x38u) = r1;                                        /* 01b9a8 str r1, [r0, #0x38] */
+    /* engine: drift 9F8 decays a step */
+    { uint32_t ea_ = r0 + 0x38u; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01b9a8 str r1, [r0, #0x38] */
     { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01b9aa cmp r1, #0 */
     if ((int32_t)r1 > (int32_t)0x0u) goto L_1B9B0;               /* 01b9ac bgt #0x1b9b0 */
     { uint32_t ta = 0x0u, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01b9ae rsbs r1, r1, #0 */
@@ -16153,7 +16323,8 @@ L_1B9B0:
 L_1B9BC:
     r0 = L32(r2 + 0x20u);                                        /* 01b9bc ldr r0, [r2, #0x20] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01b9be adds r0, r0, #1 */
-    L32(r2 + 0x20u) = r0;                                        /* 01b9c0 str r0, [r2, #0x20] */
+    /* engine: 820, steps since the drift */
+    if (!ENG_SUB) L32(r2 + 0x20u) = r0; else r0 = L32(r2 + 0x20u); /* 01b9c0 str r0, [r2, #0x20] */
 L_1B9C2:
     r4 = S32(0); spp += 4;                                       /* 01b9c2 pop {r4} */
     RET(lr);                                                     /* 01b9c4 bx lr */
@@ -16189,7 +16360,8 @@ static uint64_t engi_2217C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
 L_22194:
     r2 = L32(r1 + 0x20u);                                        /* 022194 ldr r2, [r1, #0x20] */
     { uint32_t ta = r2, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 022196 adds r2, r2, #1 */
-    L32(r1 + 0x20u) = r2;                                        /* 022198 str r2, [r1, #0x20] */
+    /* engine: E0, steps since a contact */
+    if (!ENG_SUB) L32(r1 + 0x20u) = r2; else r2 = L32(r1 + 0x20u); /* 022198 str r2, [r1, #0x20] */
 L_2219A:
     L32(r1 + 0x18u) = r4;                                        /* 02219a str r4, [r1, #0x18] */
     S32(0x0u) = r4;                                              /* 02219c str r4, [sp] */
@@ -16740,7 +16912,7 @@ static uint64_t engi_349F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     t = SHL_C(r0, 0x3u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 034a06 lsls r0, r0, #3 */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 034a08 adds r2, r0, r1 */
     r0 = S32(0x14u);                                             /* 034a0a ldr r0, [sp, #0x14] */
-    { uint64_t rr = (ENGD_345E4 ? engi_345E4(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x345E4), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 034a0c bl #0x345e4 */
+    { uint64_t rr = (ENGD_345E4 ? engi_345E4(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x345E4), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 034a0c bl #0x345e4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 034a0c bl #0x345e4 */
     r0 = S32(0x14u);                                             /* 034a10 ldr r0, [sp, #0x14] */
     r0 = L32(r0);                                                /* 034a12 ldr r0, [r0] */
@@ -16792,7 +16964,7 @@ L_34A62:
     { uint32_t ta = r5, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 034a68 cmp r5, #0 */
     if (r5 == 0x0u) goto L_34A7A;                                /* 034a6a beq #0x34a7a */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 034a6c movs r0, r4 */
-    { uint64_t rr = (ENGD_3118E ? engi_3118E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x3118E), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 034a6e bl #0x3118e */
+    { uint64_t rr = (ENGD_3118E ? engi_3118E(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x3118E), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 034a6e bl #0x3118e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 034a6e bl #0x3118e */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 034a72 cmp r0, #0 */
     if (r0 == 0x0u) goto L_34A7A;                                /* 034a74 beq #0x34a7a */
@@ -16959,7 +17131,7 @@ L_345FE:
     { uint32_t ta = r1, tb = 0x18u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 034602 adds r1, #0x18 */
     r0 = S32(0x8u);                                              /* 034604 ldr r0, [sp, #8] */
     S32(0xCu) = r1;                                              /* 034606 str r1, [sp, #0xc] */
-    { uint64_t rr = (ENGD_523E6 ? engi_523E6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x523E6), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 034608 bl #0x523e6 */
+    { uint64_t rr = (ENGD_523E6 ? engi_523E6(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x523E6), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 034608 bl #0x523e6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 034608 bl #0x523e6 */
     r7 = r0; fN = r7 >> 31; fZ = r7 == 0;                        /* 03460c movs r7, r0 */
     r1 = GAMEW(0x349A4);                                         /* 03460e ldr r1, [pc, #0x394] */
@@ -16974,12 +17146,12 @@ L_3461A:
 L_3461E:
     r0 = S32(0x8u);                                              /* 03461e ldr r0, [sp, #8] */
     r1 = S32(0xCu);                                              /* 034620 ldr r1, [sp, #0xc] */
-    { uint64_t rr = (ENGD_523A2 ? engi_523A2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x523A2), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 034622 bl #0x523a2 */
+    { uint64_t rr = (ENGD_523A2 ? engi_523A2(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x523A2), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 034622 bl #0x523a2 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 034622 bl #0x523a2 */
     S32(0x0u) = r0;                                              /* 034626 str r0, [sp] */
     r0 = S32(0x8u);                                              /* 034628 ldr r0, [sp, #8] */
     r1 = S32(0xCu);                                              /* 03462a ldr r1, [sp, #0xc] */
-    { uint64_t rr = (ENGD_523C4 ? engi_523C4(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call(GAMEFN(0x523C4), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 03462c bl #0x523c4 */
+    { uint64_t rr = (ENGD_523C4 ? engi_523C4(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23) : a4_eng_call0(GAMEFN(0x523C4), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 03462c bl #0x523c4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 03462c bl #0x523c4 */
     r1 = 0x40u; fN = r1 >> 31; fZ = r1 == 0;                     /* 034630 movs r1, #0x40 */
     { uint32_t ta = r7, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 034632 cmn r7, r1 */

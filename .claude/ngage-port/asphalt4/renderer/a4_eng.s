@@ -38,6 +38,21 @@ a4_eng_call:
         str     r3, [r12, #4]
         add     sp, sp, #32
         pop     {r4-r8, pc}
+@ uint64_t a4_eng_call0(fn, a0, a1, a2, [sp] a3, [sp+4] &r2r3): the same for a callee that reads no stack word
+@ of its caller's (lift.py noargs: its flow walked with the stack's depth) -- nothing copied
+        .global a4_eng_call0
+a4_eng_call0:
+        push    {r4, lr}
+        mov     r12, r0
+        mov     r0, r1
+        mov     r1, r2
+        mov     r2, r3
+        ldr     r3, [sp, #8]
+        blx     r12
+        ldr     r12, [sp, #12]      @ where r2, r3 go
+        str     r2, [r12, #0]
+        str     r3, [r12, #4]
+        pop     {r4, pc}
 @ the game's HUD sprite painter (+29736) as it was, its prologue (overwritten by the engine's veneer)
 @ replayed and then on at +29740 (Thumb): A4_PAINTCHECK runs it beside the lifted one. Its epilogue
 @ (add sp, #0x5c; pop {r4-r7, pc}) returns to our caller through the lr pushed here.

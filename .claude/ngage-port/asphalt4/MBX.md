@@ -7518,3 +7518,21 @@ Owner: "Sounds like a plan. Go ahead."
   format (paletted 8 or 4-bit, 16-bit; alpha plane or not; an effect or none), each a constant where it
   is instantiated, the invariants in registers. Fuzz: 1,439 cases agree, 0 differ. Run: LC6 (the
   checks and the instruction profile).
+- LC6 (the specialised painter under the checks, with the instruction profile): 21,326 painter calls,
+  35,707 mesh calls, 32,964 inserts compared, 0 differences. On the race's own data the hand painter now
+  runs 2.37x fewer instructions than the game's (353.7 M -> 149.3 M; LC5's unspecialised draft 1.36x);
+  the 3D front end 1.15x (270.8 M -> 235.0 M).
+- tools/lift.py: a call without the eight-word copy (a4_eng_call0, a4_eng.s) for a game callee that
+  reads none of its caller's stack words -- its flow walked with the stack's depth; a load or store at or
+  past the entry depth, a tail call, the stack's address taken, an indirect or ARM call, or a call to a
+  function that reads its caller's words (a thin frame could reach this one's caller's: conservative)
+  each say it reads. 232 of 475 call sites. Fuzz again: all 87 functions, every valid case agrees.
+- t17 (the r15 engine at 3x + everything above: the new lifter, the 3D front end, the leaves, call0, the
+  specialised hand painter; A4_MESHZ; real time on the calibrated model, 120 s). Whole race against t16:
+      t16  render call 52.9 ms, before the first triangle 10.3, logic 2.5 ms a span, 1.1 ms a step
+      t17  render call 43.9 ms, before the first triangle  7.4, logic 1.5 ms a span, 0.8 ms a step
+  The last eight capture windows: t17 44-54 ms a frame (19-23 fps; 3D 17-22, composite 12.5-15.4, 2D
+  2.1-2.6, present 2.3-3.0, rest 9.6-11.7); t16 63-94 ms (11-16 fps; 3D 22-38, 2D 5.3-6.3, rest 20-30).
+  Different stretches of race (the content differs run to run), but every phase moved the same way.
+  On the model this is ~21 fps against ~13. A guess named again: the model's Thumb CPI; the measured
+  instruction ratios above are the part that holds on the phone whatever the split.
