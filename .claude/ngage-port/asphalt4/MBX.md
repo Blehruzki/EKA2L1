@@ -7618,3 +7618,21 @@ Owner: "Sounds like a plan. Go ahead."
   common path. Masks pinned in registers, the walk by pointer, the both-drawn case hinted: 21. An
   unrolled draft (two pairs a turn) spilled the masks to the stack: worse, dropped. A4_BLITCHECK (the
   general loop's answer for the same strip) is the check.
+- The lockstep A/B (calibrated model, 120 s each, A4_LOCKSTEP=1 paces one game step a render, so these
+  are not comparable with the real-time t-runs):
+      L16 (t17's lifted set)                          render call 50.8 ms (1,922 calls), 2,393 posts
+      L17 (+ the billboard, +CE8C, their hand loops)  50.3 ms (1,944), 2,414 posts
+      L18 (+ A4_MESHMEMO + A4_FASTXF)                 48.0 ms (2,037), 2,529 posts
+  L18 ~5.5% faster than L16 over the race; L16 against L17 within noise (the billboard's software path
+  is rare outside the tunnels). The per-capture rows differ between the runs at the same index (the
+  runs drift apart: the opponent's slot, and what follows from it), so a few-percent change is at the
+  edge of what this A/B resolves; the in-run instruction counts are the firmer measure.
+- Where it stands (the calibrated model): t16 11-16 fps in its windows, t17 19-23, t18/L18 ~5% more.
+  30 fps is a 33 ms frame; the frame is ~45 ms. What is left, by pct17: our mesh-list C (~25%), the
+  composite (~10%, most of it the modelled readback), ngibackbuffer's convert (10%, not ours), the 3D
+  front end (now ~9%), the engine and a long tail of game code.
+- Guesses named (rule 4): (1) the model's Thumb CPI 3.0 against ARM 1.6 is fitted, not measured --
+  measured instruction ratios: a mechanical lift 1.15-1.2x, hand-written loops 1.46-2.4x; (2) the
+  phone's instruction cache is 16 KB (round 22's note) and lifted ARM is about twice the Thumb it
+  replaces -- the bench models no I-cache; (3) the composite's loop change is not yet checked in-run
+  (A4_BLITCHECK). Only a phone round settles (1) and (2).
