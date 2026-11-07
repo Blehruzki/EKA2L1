@@ -336,6 +336,13 @@ static uint64_t engi_3121E(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uin
 #endif
 static uint64_t engi_3015E(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
     uint32_t, uint32_t, uint32_t, uint32_t, uint32_t *, uint32_t);
+#if defined(A4_ENG_0CE8C) || defined(A4_ENG_ALL)
+#define ENGD_0CE8C 1
+#else
+#define ENGD_0CE8C 0
+#endif
+static uint64_t engi_0CE8C(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
+    uint32_t, uint32_t, uint32_t, uint32_t, uint32_t *, uint32_t);
 #if defined(A4_ENG_01D76) || defined(A4_ENG_ALL)
 #define ENGD_01D76 1
 #else
@@ -531,6 +538,20 @@ static uint64_t engi_21FAC(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uin
 #define ENGD_3145C 0
 #endif
 static uint64_t engi_3145C(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
+    uint32_t, uint32_t, uint32_t, uint32_t, uint32_t *, uint32_t);
+#if defined(A4_ENG_31D02) || defined(A4_ENG_ALL)
+#define ENGD_31D02 1
+#else
+#define ENGD_31D02 0
+#endif
+static uint64_t engi_31D02(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
+    uint32_t, uint32_t, uint32_t, uint32_t, uint32_t *, uint32_t);
+#if defined(A4_ENG_31D28) || defined(A4_ENG_ALL)
+#define ENGD_31D28 1
+#else
+#define ENGD_31D28 0
+#endif
+static uint64_t engi_31D28(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
     uint32_t, uint32_t, uint32_t, uint32_t, uint32_t *, uint32_t);
 #if defined(A4_ENG_32156) || defined(A4_ENG_ALL)
 #define ENGD_32156 1
@@ -16893,6 +16914,8 @@ static uint64_t engi_349F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     stk[30] = s0; stk[31] = s1; stk[32] = s2; stk[33] = s3;
     stk[34] = s4; stk[35] = s5; stk[36] = s6; stk[37] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
+    /* engine: A4_MESHMEMO: a new call of the mesh routine */
+    MESHMEMO_BUMP();
     spp -= 36; S32(0) = r0; S32(4) = r1; S32(8) = r2; S32(12) = r3; S32(16) = r4; S32(20) = r5; S32(24) = r6; S32(28) = r7; S32(32) = lr; /* 0349f8 push {r0, r1, r2, r3, r4, r5, r6, r7, lr} */
     spp -= 0x14u;                                                /* 0349fa sub sp, #0x14 */
     r4 = r3; fN = r4 >> 31; fZ = r4 == 0;                        /* 0349fc movs r4, r3 */
@@ -16903,7 +16926,7 @@ static uint64_t engi_349F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     t = SHL_C(r0, 0x3u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 034a06 lsls r0, r0, #3 */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 034a08 adds r2, r0, r1 */
     r0 = S32(0x14u);                                             /* 034a0a ldr r0, [sp, #0x14] */
-    { uint64_t rr = (ENGD_345E4 ? engi_345E4(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x34A10)) : a4_eng_call0(GAMEFN(0x345E4), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 034a0c bl #0x345e4 */
+    { uint64_t rr = eng_h_345e4(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +345E4 */ /* 034a0c bl #0x345e4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 034a0c bl #0x345e4 */
     r0 = S32(0x14u);                                             /* 034a10 ldr r0, [sp, #0x14] */
     r0 = L32(r0);                                                /* 034a12 ldr r0, [r0] */
@@ -18081,6 +18104,153 @@ static inline __attribute__((always_inline)) uint64_t engr_3015E(uint32_t r0, ui
 
 #undef RET
 #define RET(v) do { switch (v) {  default: o23[0] = r2; o23[1] = r3; return ((uint64_t)r1 << 32) | r0; } } while (0)
+/* +0CE8C, 110 instructions (tools/lift.py) */
+static uint64_t engi_0CE8C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
+                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t *o23, uint32_t lr0)
+{
+    uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
+    uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
+    uint32_t stk[38]; uint8_t *spp = (uint8_t *)&stk[38 - 8];
+    stk[30] = s0; stk[31] = s1; stk[32] = s2; stk[33] = s3;
+    stk[34] = s4; stk[35] = s5; stk[36] = s6; stk[37] = s7;
+    (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
+    spp -= 36; S32(0) = r0; S32(4) = r1; S32(8) = r2; S32(12) = r3; S32(16) = r4; S32(20) = r5; S32(24) = r6; S32(28) = r7; S32(32) = lr; /* 00ce8c push {r0, r1, r2, r3, r4, r5, r6, r7, lr} */
+    spp -= 0x14u;                                                /* 00ce8e sub sp, #0x14 */
+    r5 = r0; fN = r5 >> 31; fZ = r5 == 0;                        /* 00ce90 movs r5, r0 */
+    r1 = L32(r5 + 0x1Cu);                                        /* 00ce92 ldr r1, [r5, #0x1c] */
+    r0 = S32(0x18u);                                             /* 00ce94 ldr r0, [sp, #0x18] */
+    { uint64_t rr = (ENGD_31D28 ? engi_31D28(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0xCE9A)) : a4_eng_call0(GAMEFN(0x31D28), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00ce96 bl #0x31d28 */
+    r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00ce96 bl #0x31d28 */
+    r4 = r0; fN = r4 >> 31; fZ = r4 == 0;                        /* 00ce9a movs r4, r0 */
+    r1 = L32(r5 + 0x24u);                                        /* 00ce9c ldr r1, [r5, #0x24] */
+    r0 = S32(0x18u);                                             /* 00ce9e ldr r0, [sp, #0x18] */
+    { uint64_t rr = (ENGD_31D02 ? engi_31D02(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0xCEA4)) : a4_eng_call0(GAMEFN(0x31D02), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00cea0 bl #0x31d02 */
+    r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00cea0 bl #0x31d02 */
+    r6 = r0; fN = r6 >> 31; fZ = r6 == 0;                        /* 00cea4 movs r6, r0 */
+    { uint32_t ta = r4, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 00cea6 cmp r4, #0 */
+    if (r4 == 0x0u) goto L_0CF6A;                                /* 00cea8 beq #0xcf6a */
+    { uint32_t ta = r6, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 00ceaa cmp r6, #0 */
+    if (r6 == 0x0u) goto L_0CF6A;                                /* 00ceac beq #0xcf6a */
+    r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 00ceae movs r0, r4 */
+    r1 = L32(r5 + 0x1Cu);                                        /* 00ceb0 ldr r1, [r5, #0x1c] */
+    r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 00ceb2 movs r0, r4 */
+    t = SHL_C(r1, 0x2u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 00ceb4 lsls r3, r1, #2 */
+    { uint32_t ta = r3, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 00ceb6 adds r1, r3, r1 */
+    t = SHL_C(r1, 0x3u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 00ceb8 lsls r1, r1, #3 */
+    { uint32_t ta = r1, tb = r4; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 00ceba adds r2, r1, r4 */
+    r1 = L32(r5 + 0x20u);                                        /* 00cebc ldr r1, [r5, #0x20] */
+    { uint32_t ta = r0, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 00cebe cmp r0, r2 */
+    /* engine: the vertex unpack +CEC2..+CEDA by hand */
+    if (ce_verts(r0, r1, r2)) goto L_0CEDC;
+    if (r0 == r2) goto L_0CEDC;                                  /* 00cec0 beq #0xcedc */
+L_0CEC2:
+    r3 = 0x0u; fN = r3 >> 31; fZ = r3 == 0;                      /* 00cec2 movs r3, #0 */
+    r7 = (uint32_t)(int32_t)LS16(r1 + r3);                       /* 00cec4 ldrsh r7, [r1, r3] */
+    L32(r0 + 0x18u) = r7;                                        /* 00cec6 str r7, [r0, #0x18] */
+    { uint32_t ta = r1, tb = 0x2u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 00cec8 adds r1, r1, #2 */
+    r7 = (uint32_t)(int32_t)LS16(r1 + r3);                       /* 00ceca ldrsh r7, [r1, r3] */
+    L32(r0 + 0x1Cu) = r7;                                        /* 00cecc str r7, [r0, #0x1c] */
+    { uint32_t ta = r1, tb = 0x2u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 00cece adds r1, r1, #2 */
+    r7 = (uint32_t)(int32_t)LS16(r1 + r3);                       /* 00ced0 ldrsh r7, [r1, r3] */
+    L32(r0 + 0x20u) = r7;                                        /* 00ced2 str r7, [r0, #0x20] */
+    { uint32_t ta = r1, tb = 0x2u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 00ced4 adds r1, r1, #2 */
+    { uint32_t ta = r0, tb = 0x28u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 00ced6 adds r0, #0x28 */
+    { uint32_t ta = r0, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 00ced8 cmp r0, r2 */
+    if (r0 != r2) goto L_0CEC2;                                  /* 00ceda bne #0xcec2 */
+L_0CEDC:
+    /* engine: A4_CECHECK: the vertex unpack by hand against the lifted loop */
+    CE_CHECK(0);
+    r0 = L32(r5 + 0x24u);                                        /* 00cedc ldr r0, [r5, #0x24] */
+    r3 = 0x34u; fN = r3 >> 31; fZ = r3 == 0;                     /* 00cede movs r3, #0x34 */
+    t = r3 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              /* 00cee0 muls r0, r3, r0 */
+    { uint32_t ta = r0, tb = r6; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 00cee2 adds r2, r0, r6 */
+    r0 = r6; fN = r0 >> 31; fZ = r0 == 0;                        /* 00cee4 movs r0, r6 */
+    r1 = L32(r5 + 0x28u);                                        /* 00cee6 ldr r1, [r5, #0x28] */
+    { uint32_t ta = r0, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 00cee8 cmp r0, r2 */
+    /* engine: the face unpack +CEEC..+CF48 by hand */
+    if (ce_faces(r0, r1, r2, r4, L32(spp + 0x1Cu))) goto L_0CF4A;
+    if (r0 == r2) goto L_0CF4A;                                  /* 00ceea beq #0xcf4a */
+L_0CEEC:
+    r7 = L8(r1 + 0x1u);                                          /* 00ceec ldrb r7, [r1, #1] */
+    t = SHL_C(r7, 0x2u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 00ceee lsls r3, r7, #2 */
+    { uint32_t ta = r3, tb = r7; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 00cef0 adds r3, r3, r7 */
+    t = SHL_C(r3, 0x3u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 00cef2 lsls r3, r3, #3 */
+    { uint32_t ta = r3, tb = r4; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 00cef4 adds r3, r3, r4 */
+    L32(r0 + 0xCu) = r3;                                         /* 00cef6 str r3, [r0, #0xc] */
+    r7 = L8(r1);                                                 /* 00cef8 ldrb r7, [r1] */
+    t = SHL_C(r7, 0x2u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 00cefa lsls r3, r7, #2 */
+    { uint32_t ta = r3, tb = r7; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 00cefc adds r3, r3, r7 */
+    t = SHL_C(r3, 0x3u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 00cefe lsls r3, r3, #3 */
+    { uint32_t ta = r3, tb = r4; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 00cf00 adds r3, r3, r4 */
+    L32(r0 + 0x18u) = r3;                                        /* 00cf02 str r3, [r0, #0x18] */
+    r7 = L8(r1 + 0x2u);                                          /* 00cf04 ldrb r7, [r1, #2] */
+    t = SHL_C(r7, 0x2u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 00cf06 lsls r3, r7, #2 */
+    { uint32_t ta = r3, tb = r7; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 00cf08 adds r3, r3, r7 */
+    t = SHL_C(r3, 0x3u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 00cf0a lsls r3, r3, #3 */
+    { uint32_t ta = r3, tb = r4; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 00cf0c adds r3, r3, r4 */
+    L32(r0 + 0x24u) = r3;                                        /* 00cf0e str r3, [r0, #0x24] */
+    r3 = L8(r1 + 0x3u);                                          /* 00cf10 ldrb r3, [r1, #3] */
+    r7 = S32(0x1Cu);                                             /* 00cf12 ldr r7, [sp, #0x1c] */
+    t = SHL_C(r3, 0x2u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 00cf14 lsls r3, r3, #2 */
+    r3 = L32(r7 + r3);                                           /* 00cf16 ldr r3, [r7, r3] */
+    r7 = L8(r1 + 0x4u);                                          /* 00cf18 ldrb r7, [r1, #4] */
+    t = SHL_C(r7, 0x4u, &fC); r7 = t; fN = t >> 31; fZ = t == 0; /* 00cf1a lsls r7, r7, #4 */
+    L32(r0 + 0x1Cu) = r7;                                        /* 00cf1c str r7, [r0, #0x1c] */
+    r7 = L8(r1 + 0x5u);                                          /* 00cf1e ldrb r7, [r1, #5] */
+    t = SHL_C(r7, 0x4u, &fC); r7 = t; fN = t >> 31; fZ = t == 0; /* 00cf20 lsls r7, r7, #4 */
+    L32(r0 + 0x20u) = r7;                                        /* 00cf22 str r7, [r0, #0x20] */
+    r7 = L8(r1 + 0x6u);                                          /* 00cf24 ldrb r7, [r1, #6] */
+    t = SHL_C(r7, 0x4u, &fC); r7 = t; fN = t >> 31; fZ = t == 0; /* 00cf26 lsls r7, r7, #4 */
+    L32(r0 + 0x10u) = r7;                                        /* 00cf28 str r7, [r0, #0x10] */
+    r7 = L8(r1 + 0x7u);                                          /* 00cf2a ldrb r7, [r1, #7] */
+    t = SHL_C(r7, 0x4u, &fC); r7 = t; fN = t >> 31; fZ = t == 0; /* 00cf2c lsls r7, r7, #4 */
+    L32(r0 + 0x14u) = r7;                                        /* 00cf2e str r7, [r0, #0x14] */
+    r7 = L8(r1 + 0x8u);                                          /* 00cf30 ldrb r7, [r1, #8] */
+    t = SHL_C(r7, 0x4u, &fC); r7 = t; fN = t >> 31; fZ = t == 0; /* 00cf32 lsls r7, r7, #4 */
+    L32(r0 + 0x28u) = r7;                                        /* 00cf34 str r7, [r0, #0x28] */
+    r7 = L8(r1 + 0x9u);                                          /* 00cf36 ldrb r7, [r1, #9] */
+    t = SHL_C(r7, 0x4u, &fC); r7 = t; fN = t >> 31; fZ = t == 0; /* 00cf38 lsls r7, r7, #4 */
+    L32(r0 + 0x2Cu) = r7;                                        /* 00cf3a str r7, [r0, #0x2c] */
+    r7 = 0x0u; fN = r7 >> 31; fZ = r7 == 0;                      /* 00cf3c movs r7, #0 */
+    L32(r0 + 0x4u) = r7;                                         /* 00cf3e str r7, [r0, #4] */
+    L32(r0 + 0x30u) = r3;                                        /* 00cf40 str r3, [r0, #0x30] */
+    { uint32_t ta = r1, tb = 0xAu; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 00cf42 adds r1, #0xa */
+    { uint32_t ta = r0, tb = 0x34u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 00cf44 adds r0, #0x34 */
+    { uint32_t ta = r0, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 00cf46 cmp r0, r2 */
+    if (r0 != r2) goto L_0CEEC;                                  /* 00cf48 bne #0xceec */
+L_0CF4A:
+    /* engine: A4_CECHECK: the face unpack by hand against the lifted loop */
+    CE_CHECK(1);
+    r3 = L32(r5 + 0x24u);                                        /* 00cf4a ldr r3, [r5, #0x24] */
+    r7 = L32(r5 + 0x1Cu);                                        /* 00cf4c ldr r7, [r5, #0x1c] */
+    r0 = S32(0x18u);                                             /* 00cf4e ldr r0, [sp, #0x18] */
+    r2 = 0x1u; fN = r2 >> 31; fZ = r2 == 0;                      /* 00cf50 movs r2, #1 */
+    r0 = L32(r0);                                                /* 00cf52 ldr r0, [r0] */
+    r1 = 0x0u; fN = r1 >> 31; fZ = r1 == 0;                      /* 00cf54 movs r1, #0 */
+    { uint32_t ta = sp, tb = 0x4u; t = ta + tb; r5 = t; }        /* 00cf56 add r5, sp, #4 */
+    t = r5; L32(t + 0) = r0; L32(t + 4) = r1; L32(t + 8) = r2; r5 = t + 12; /* 00cf58 stm r5!, {r0, r1, r2} */
+    S32(0x0u) = r3;                                              /* 00cf5a str r3, [sp] */
+    r0 = S32(0x18u);                                             /* 00cf5c ldr r0, [sp, #0x18] */
+    r3 = r6; fN = r3 >> 31; fZ = r3 == 0;                        /* 00cf5e movs r3, r6 */
+    r2 = r7; fN = r2 >> 31; fZ = r2 == 0;                        /* 00cf60 movs r2, r7 */
+    r0 = L32(r0 + 0x4u);                                         /* 00cf62 ldr r0, [r0, #4] */
+    r1 = r4; fN = r1 >> 31; fZ = r1 == 0;                        /* 00cf64 movs r1, r4 */
+    { uint64_t rr = (ENGD_349F8 ? engi_349F8(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0xCF6A)) : a4_eng_call(GAMEFN(0x349F8), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00cf66 bl #0x349f8 */
+    r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00cf66 bl #0x349f8 */
+L_0CF6A:
+    spp += 0x24u;                                                /* 00cf6a add sp, #0x24 */
+    r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 00cf6c pop {r4, r5, r6, r7, pc} */
+}
+uint64_t eng_0CE8C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
+                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
+{ uint32_t d_[2]; return engi_0CE8C(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+/* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
+static inline __attribute__((always_inline)) uint64_t engr_0CE8C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
+    uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
+{ uint32_t d_[2]; return engi_0CE8C(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, ra); }
+
+#undef RET
+#define RET(v) do { switch (v) {  default: o23[0] = r2; o23[1] = r3; return ((uint64_t)r1 << 32) | r0; } } while (0)
 /* +01D76, 5 instructions (tools/lift.py) */
 static uint64_t engi_01D76(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t *o23, uint32_t lr0)
@@ -19251,6 +19421,93 @@ static inline __attribute__((always_inline)) uint64_t engr_3145C(uint32_t r0, ui
 
 #undef RET
 #define RET(v) do { switch (v) {  default: o23[0] = r2; o23[1] = r3; return ((uint64_t)r1 << 32) | r0; } } while (0)
+/* +31D02, 19 instructions (tools/lift.py) */
+static uint64_t engi_31D02(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
+                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t *o23, uint32_t lr0)
+{
+    uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
+    uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
+    uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+    stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
+    stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
+    (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
+    spp -= 4; S32(0) = r4;                                       /* 031d02 push {r4} */
+    r2 = 0x5u; fN = r2 >> 31; fZ = r2 == 0;                      /* 031d04 movs r2, #5 */
+    t = SHL_C(r2, 0x7u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 031d06 lsls r2, r2, #7 */
+    { uint32_t ta = r0, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 031d08 adds r2, r0, r2 */
+    r0 = L32(r2 + 0x38u);                                        /* 031d0a ldr r0, [r2, #0x38] */
+    r3 = GAMEW(0x31D60);                                         /* 031d0c ldr r3, [pc, #0x50] */
+    { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 031d0e adds r1, r0, r1 */
+    { uint32_t ta = r1, tb = r3; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 031d10 cmp r1, r3 */
+    if ((int32_t)r1 <= (int32_t)r3) goto L_31D1A;                /* 031d12 ble #0x31d1a */
+    r4 = S32(0); spp += 4;                                       /* 031d14 pop {r4} */
+    r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 031d16 movs r0, #0 */
+    RET(lr);                                                     /* 031d18 bx lr */
+L_31D1A:
+    r3 = 0x34u; fN = r3 >> 31; fZ = r3 == 0;                     /* 031d1a movs r3, #0x34 */
+    t = r3 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              /* 031d1c muls r0, r3, r0 */
+    r4 = L32(r2 + 0x34u);                                        /* 031d1e ldr r4, [r2, #0x34] */
+    { uint32_t ta = r4, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 031d20 adds r0, r4, r0 */
+    L32(r2 + 0x38u) = r1;                                        /* 031d22 str r1, [r2, #0x38] */
+    r4 = S32(0); spp += 4;                                       /* 031d24 pop {r4} */
+    RET(lr);                                                     /* 031d26 bx lr */
+}
+uint64_t eng_31D02(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
+                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
+{ uint32_t d_[2]; return engi_31D02(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+/* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
+static inline __attribute__((always_inline)) uint64_t engr_31D02(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
+    uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
+{ uint32_t d_[2]; return engi_31D02(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, ra); }
+
+#undef RET
+#define RET(v) do { switch (v) {  default: o23[0] = r2; o23[1] = r3; return ((uint64_t)r1 << 32) | r0; } } while (0)
+/* +31D28, 24 instructions (tools/lift.py) */
+static uint64_t engi_31D28(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
+                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t *o23, uint32_t lr0)
+{
+    uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
+    uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
+    uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+    stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
+    stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
+    (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
+    spp -= 4; S32(0) = r4;                                       /* 031d28 push {r4} */
+    r2 = 0xBu; fN = r2 >> 31; fZ = r2 == 0;                      /* 031d2a movs r2, #0xb */
+    t = SHL_C(r2, 0x6u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 031d2c lsls r2, r2, #6 */
+    { uint32_t ta = r0, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 031d2e adds r2, r0, r2 */
+    r3 = L32(r2);                                                /* 031d30 ldr r3, [r2] */
+    r4 = GAMEW(0x31D64);                                         /* 031d32 ldr r4, [pc, #0x30] */
+    { uint32_t ta = r3, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 031d34 adds r1, r3, r1 */
+    { uint32_t ta = r1, tb = r4; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 031d36 cmp r1, r4 */
+    if ((int32_t)r1 <= (int32_t)r4) goto L_31D40;                /* 031d38 ble #0x31d40 */
+    r4 = S32(0); spp += 4;                                       /* 031d3a pop {r4} */
+    r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 031d3c movs r0, #0 */
+    RET(lr);                                                     /* 031d3e bx lr */
+L_31D40:
+    r4 = 0x5u; fN = r4 >> 31; fZ = r4 == 0;                      /* 031d40 movs r4, #5 */
+    t = SHL_C(r4, 0x7u, &fC); r4 = t; fN = t >> 31; fZ = t == 0; /* 031d42 lsls r4, r4, #7 */
+    { uint32_t ta = r0, tb = r4; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 031d44 adds r0, r0, r4 */
+    r4 = r3; fN = r4 >> 31; fZ = r4 == 0;                        /* 031d46 movs r4, r3 */
+    t = SHL_C(r4, 0x2u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 031d48 lsls r3, r4, #2 */
+    r0 = L32(r0 + 0x3Cu);                                        /* 031d4a ldr r0, [r0, #0x3c] */
+    { uint32_t ta = r3, tb = r4; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r3 = t; } /* 031d4c adds r3, r3, r4 */
+    t = SHL_C(r3, 0x3u, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 031d4e lsls r3, r3, #3 */
+    { uint32_t ta = r0, tb = r3; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 031d50 adds r0, r0, r3 */
+    L32(r2) = r1;                                                /* 031d52 str r1, [r2] */
+    r4 = S32(0); spp += 4;                                       /* 031d54 pop {r4} */
+    RET(lr);                                                     /* 031d56 bx lr */
+}
+uint64_t eng_31D28(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
+                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
+{ uint32_t d_[2]; return engi_31D28(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+/* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
+static inline __attribute__((always_inline)) uint64_t engr_31D28(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
+    uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
+{ uint32_t d_[2]; return engi_31D28(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, ra); }
+
+#undef RET
+#define RET(v) do { switch (v) {  default: o23[0] = r2; o23[1] = r3; return ((uint64_t)r1 << 32) | r0; } } while (0)
 /* +32156, 16 instructions (tools/lift.py) */
 static uint64_t engi_32156(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t *o23, uint32_t lr0)
@@ -19874,4 +20131,7 @@ ENGV(349B0)
 #endif
 #if defined(A4_ENG_3015E) || defined(A4_ENG_ALL)
 ENGV(3015E)
+#endif
+#if defined(A4_ENG_0CE8C) || defined(A4_ENG_ALL)
+ENGV(0CE8C)
 #endif

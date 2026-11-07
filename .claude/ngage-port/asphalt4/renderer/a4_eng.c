@@ -44,10 +44,82 @@ uint64_t a4_eng_keys(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3)
 #define a4_engv_349F8 a4_lck_l349F8
 #define a4_engv_349B0 a4_lck_l349B0
 #endif
+#ifdef A4_FASTXF
+/* +345E4 by hand (round 50): the mesh routine's vertex transform and outcodes. For each 40-byte vertex from
+ * r1 to r2: z = (m2 x + m5 y + m8 z) >> 14 + m11 (the matrix at cam+0x3C; model x y z at +0x18), outcode
+ * 0x20 when z > lit (+349A4) or z <= lit (+349A8) -- then only z is stored -- else x and y (rows 0 and 1),
+ * 0x10 when z > -64, and the four planes (cam+0xC/+0x10 and +0x18/+0x1C on y, +0x20/+0x28 and +0x2C/+0x34
+ * on x, each with z) over 2^18 give 1, 2, 4, 8; stored: x +0xC, y +0x10, z +0x14, the outcode +0x24, +8
+ * cleared; cam[0] = 0xFF and every outcode; r0 the OR of them. The game's code reads the matrix and planes
+ * again for every vertex (its stores might reach them); here they are read once, when the vertices reach
+ * neither (else the lifted one runs). Products wrap as MULS does. Checked by A4_LIFTCHECK (the mesh routine
+ * whole against the game's). */
+static uint64_t engi_345E4(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
+    uint32_t, uint32_t, uint32_t, uint32_t, uint32_t *, uint32_t);
+static uint64_t eng_h_345e4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t sp, uint32_t *r23)
+{
+    const uint32_t cam = r0, vb = r1, ve = r2, m = L32(cam + 0x3Cu);
+    if (vb > ve || !((ve <= cam || vb >= cam + 0x38u) && (ve <= m || vb >= m + 0x30u)) || ((vb | m | cam) & 3u))
+        return engi_345E4(r0, r1, r2, r3, L32(sp), L32(sp + 4u), L32(sp + 8u), L32(sp + 12u), L32(sp + 16u), L32(sp + 20u),
+                          L32(sp + 24u), L32(sp + 28u), r23, GAMEFN(0x34A10u));
+    const int32_t m0 = (int32_t)L32(m), m1 = (int32_t)L32(m + 4u), m2 = (int32_t)L32(m + 8u), m3 = (int32_t)L32(m + 0xCu),
+                  m4 = (int32_t)L32(m + 0x10u), m5 = (int32_t)L32(m + 0x14u), m6 = (int32_t)L32(m + 0x18u), m7 = (int32_t)L32(m + 0x1Cu),
+                  m8 = (int32_t)L32(m + 0x20u), m9 = (int32_t)L32(m + 0x24u), m10 = (int32_t)L32(m + 0x28u), m11 = (int32_t)L32(m + 0x2Cu);
+    const uint32_t a1 = L32(cam + 0xCu), b1 = L32(cam + 0x10u), a2 = L32(cam + 0x18u), b2 = L32(cam + 0x1Cu),
+                   a3 = L32(cam + 0x20u), b3 = L32(cam + 0x28u), a4 = L32(cam + 0x2Cu), b4 = L32(cam + 0x34u);
+    const int32_t zfar = (int32_t)GAMEW(0x349A4u), znear = (int32_t)GAMEW(0x349A8u);
+    uint32_t any = 0, all = 0xFFu;
+    uint32_t o1 = vb, o2 = ve, o3 = r3;             /* r1-r3 as the game's leaves them (the routine returns them when
+                                                     * every vertex shares an outcode bit: liftfuzz.py caught a 0) */
+    for (uint32_t v = vb; v != ve; v += 0x28u) {
+        const uint32_t vx = L32(v + 0x18u), vy = L32(v + 0x1Cu), vz = L32(v + 0x20u);
+        const uint32_t zp = (uint32_t)m2 * vx + (uint32_t)m5 * vy;
+        const int32_t z = ((int32_t)(zp + (uint32_t)m8 * vz) >> 14) + m11;
+        uint32_t oc;
+        if (z > zfar || z <= znear) { oc = 0x20u; o1 = (uint32_t)zfar; o2 = (uint32_t)m8; o3 = zp; }
+        else {
+            const int32_t x = ((int32_t)((uint32_t)m0 * vx + (uint32_t)m3 * vy + (uint32_t)m6 * vz) >> 14) + m9;
+            const int32_t y = ((int32_t)((uint32_t)m1 * vx + (uint32_t)m4 * vy + (uint32_t)m7 * vz) >> 14) + m10;
+            oc = z > -64 ? 0x10u : 0u;
+            if ((int32_t)(a1 * (uint32_t)y + b1 * (uint32_t)z) > 0x40000) oc |= 1u;
+            if ((int32_t)(a2 * (uint32_t)y + b2 * (uint32_t)z) > 0x40000) oc |= 2u;
+            if ((int32_t)(a3 * (uint32_t)x + b3 * (uint32_t)z) > 0x40000) oc |= 4u;
+            const uint32_t p4 = a4 * (uint32_t)x + b4 * (uint32_t)z;
+            if ((int32_t)p4 > 0x40000) oc |= 8u;
+            o1 = (int32_t)p4 > 0x40000 ? 8u : p4; o2 = (uint32_t)x; o3 = 0x40000u;
+            L32(v + 0xCu) = (uint32_t)x; L32(v + 0x10u) = (uint32_t)y;
+        }
+        any |= oc; all &= oc;
+        L32(v + 0x24u) = oc; L32(v + 0x14u) = (uint32_t)z; L32(v + 8u) = 0;
+    }
+    L32(cam) = all;
+    r23[0] = o2; r23[1] = o3;
+    return ((uint64_t)o1 << 32) | any;
+}
+#endif
 #define sp ((uint32_t)(uintptr_t)spp)     /* the lifted code's stack pointer as a value (lift.py: spp the pointer) */
 #include "eng/lifted.c"
 #undef sp
 #pragma clang diagnostic pop
+#ifdef A4_CECHECK
+#if defined(A4_LIFTCHECK) || defined(A4_BBCHECK) || defined(A4_MEMOCHECK)
+#error "A4_CECHECK shares the census words 100-104 and 0x460000 with that check"
+#endif
+/* bench (round 50): +CE8C's loops by hand against the lifted ones (a4_eng.h ce_verts, ce_faces) */
+static void ce_check(int which)
+{
+    volatile uint32_t *k = (volatile uint32_t *)0x00460000u, *ck = (volatile uint32_t *)0x00412D00u;
+    if (k[0] != 1u + (uint32_t)which) return;
+    k[0] = 0;
+    uint32_t lo = k[1], n = k[2], d = 0;
+    for (uint32_t i = 0; i < n / 4u; i++) d += L32(lo + 4u * i) != ((uint32_t *)0x00473F00u)[i];
+#ifdef A4_CECHECK_MUTANT
+    d++;
+#endif
+    ck[100 + 2 * which]++;
+    if (d) ck[101 + 2 * which]++;
+}
+#endif
 #ifdef A4_BBCHECK
 /* bench (round 50): bb_row2 (a4_eng.h) against the lifted game walk, row for row -- census words [100] rows
  * compared, [101] not (over 1,024 pixels), [102] rows that differed, [103] pixels, [104] rows whose u

@@ -43,6 +43,7 @@ if '-DA4_MESH' in FL:       # injector.py MESH_HOOKS: the mesh routine's orderin
 EDITS, used_edits = {}, set()
 CALLMAP = {}            # calls the 3x engine routes through its own C (renderer/a4_eng.h), every site in the lifted code
 if '-DA4_ENG3' in FL: CALLMAP = {0x1B2D6: 'eng_c_1b2d6'}
+if '-DA4_FASTXF' in FL: CALLMAP[0x345E4] = 'eng_h_345e4'   # the transform by hand (a4_eng.h), from the lifted mesh routine
 _ed = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'renderer', 'eng', 'edits.py')
 if os.path.exists(_ed) and '-DA4_ENG3' in FL:          # the edits are the 3x engine's; without A4_ENG3 the game's code exactly
     _g = {}; exec(open(_ed).read(), _g); EDITS = _g['EDITS']

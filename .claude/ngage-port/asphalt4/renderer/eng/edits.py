@@ -221,6 +221,8 @@ ALWAYS = {
     # the billboard blit +3015E: the injector's capture hook (+30252, a4_bbq_tramp) after the two loads it
     # displaces -- a4_gl_bb(r0..r7 as the trampoline pushes them, the blit's own sp): 1 = queued as a GPU
     # quad, straight to the epilogue
+    # the mesh routine +349F8: a call of it is a generation of A4_MESHMEMO's corners (a4_gl.c), bumped at entry
+    0x349F8: {'before': 'MESHMEMO_BUMP();', 'why': 'A4_MESHMEMO: a new call of the mesh routine'},
     0x30256: {'before': '{ uint32_t rg_[8] = { r0, r1, r2, r3, r4, r5, r6, r7 }; if (a4_gl_bb(rg_, (const uint32_t *)(uintptr_t)sp)) goto L_3031C; }',
               'why': 'the billboard capture hook +30252 (a4_bbq_tramp)'},
     # its mode 2 (additive, each channel saturating) row walk +30412..+30484, the game's Thumb in ARM C by
@@ -228,4 +230,11 @@ ALWAYS = {
     # game sets them); A4_BBCHECK runs it beside the lifted walk on the same row and compares at +30486
     0x30412: {'before': 'if (bb_row2(&r0, r1, r3, r4, r5, &r12, lr, spp)) goto L_30486;', 'why': 'the mode 2 row by hand'},
     0x30486: {'before': 'BB_ROW2_CHECK(r0, r12, spp);', 'why': 'A4_BBCHECK: the row by hand against the lifted walk'},
+    # +CE8C, a mesh instance's set-up (lifted for speed): its two unpack loops by hand (a4_eng.h ce_verts,
+    # ce_faces) at their guards; the registers they leave are all written again before any read, so only
+    # memory is theirs. A4_CECHECK runs each beside the lifted loop on the same arrays and compares at its exit.
+    0x0CEC0: {'before': 'if (ce_verts(r0, r1, r2)) goto L_0CEDC;', 'why': 'the vertex unpack +CEC2..+CEDA by hand'},
+    0x0CEDC: {'before': 'CE_CHECK(0);', 'why': 'A4_CECHECK: the vertex unpack by hand against the lifted loop'},
+    0x0CEEA: {'before': 'if (ce_faces(r0, r1, r2, r4, L32(spp + 0x1Cu))) goto L_0CF4A;', 'why': 'the face unpack +CEEC..+CF48 by hand'},
+    0x0CF4A: {'before': 'CE_CHECK(1);', 'why': 'A4_CECHECK: the face unpack by hand against the lifted loop'},
 }

@@ -4144,10 +4144,16 @@ static void mesh_scr(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, in
  * a data-cache miss more often than not (the cycle profile's hottest loads). Both are pure functions of
  * the corner's view x' y' z' and the frame's projection (gctx, F, the screen centre: fixed while a
  * frame's list is gathered, mesh_take refuses another camera), so a corner's are kept, keyed by its
- * exact coordinates and the frame: the same numbers, worked out once. 128 entries of 32 bytes at
- * 0x452000 (free in a 3x-engine build: the half-step machinery that uses it cannot be built with it). */
-#if defined(A4_HALFSPEC) || defined(A4_MESHSTATE)
-#error "A4_MESHMEMO keeps its table at 0x452000, which that uses"
+ * exact coordinates and the call of the mesh routine it was met in (MC1: kept for the frame it was not
+ * exact -- the game's tables behind the projection change between meshes; within a call of +349F8 nothing
+ * changes them): the same numbers, worked out once. 128 entries of 32 bytes at 0x452000 (free in a 3x-engine
+ * build: the half-step machinery that uses it cannot be built with it); the call count at 0x451FFC, bumped
+ * by the lifted +349F8 at its entry (edits.py ALWAYS), so the memo needs the lifted mesh routine. */
+#if defined(A4_HALFSPEC) || defined(A4_MESHSTATE) || defined(A4_MESHCHECK)
+#error "A4_MESHMEMO keeps its table at 0x451FFC-0x453000, which that uses"
+#endif
+#if !defined(A4_ENGINE) || !(defined(A4_ENG_ALL) || defined(A4_ENG_349F8))
+#error "A4_MESHMEMO is kept per call of the lifted mesh routine: build it with A4_ENGINE and A4_ENG_349F8 (or ALL)"
 #endif
 struct mvtx { int32_t x, y, z, sx, sy, prt; uint32_t stamp, hasprt; };
 #define MVT ((struct mvtx *)0x00452000u)
@@ -4155,7 +4161,11 @@ struct mvtx { int32_t x, y, z, sx, sy, prt; uint32_t stamp, hasprt; };
 static int32_t persp_rt(const uint32_t *gctx, int32_t z);
 static void mesh_scr(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, int32_t x, int32_t y, int32_t z,
                      int32_t *sx, int32_t *sy);
-static inline struct mvtx *mesh_vtx(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, const int32_t *v, uint32_t stamp)
+/* A corner's kept numbers are copied out (struct mpt): MC1 and MC2 found the kept ones wrong on 1-3% of
+ * faces, and the cause was here -- a pointer into the table, overwritten by the next corner of the same
+ * face when the two hash to one slot. */
+struct mpt { int32_t z, sx, sy; struct mvtx *e; };
+static inline struct mvtx *mesh_vtx_e(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, const int32_t *v, uint32_t stamp)
 {
     const int32_t x = v[3], y = v[4], z = v[5];
     struct mvtx *e = MVT + ((((uint32_t)x * 0x9E3779B1u) ^ ((uint32_t)y * 0x85EBCA77u) ^ ((uint32_t)z * 0xC2B2AE3Du)) >> 25);
@@ -4168,21 +4178,35 @@ static inline struct mvtx *mesh_vtx(const uint32_t *gctx, int32_t F, int32_t cx,
 #endif
     return e;
 }
-static inline int32_t mesh_vprt(const uint32_t *gctx, struct mvtx *e)
+static inline struct mpt mesh_vtx(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, const int32_t *v, uint32_t stamp)
 {
-    if (!e->hasprt) { e->prt = persp_rt(gctx, -e->z); e->hasprt = 1; }
-    return e->prt;
+    struct mvtx *e = mesh_vtx_e(gctx, F, cx, cy, v, stamp);
+    struct mpt p = { v[5], e->sx, e->sy, e };
+    return p;
+}
+/* a corner's perspective term: kept with it while its entry still holds it (same coordinates), else
+ * worked out (the entry may have gone to another corner since) */
+static inline int32_t mesh_vprt(const uint32_t *gctx, const struct mpt *p, const int32_t *v)
+{
+    struct mvtx *e = p->e;
+    if (e->x == v[3] && e->y == v[4] && e->z == v[5]) {
+        if (!e->hasprt) { e->prt = persp_rt(gctx, -e->z); e->hasprt = 1; }
+        return e->prt;
+    }
+    return persp_rt(gctx, -p->z);
 }
 /* mesh_fallback on the kept corners: the same rule, the same numbers */
-static int mesh_fallback_m(const uint32_t *gctx, struct mvtx *e0, struct mvtx *e1, struct mvtx *e2)
+static int mesh_fallback_m(const uint32_t *gctx, const struct mpt *e0, const struct mpt *e1, const struct mpt *e2,
+                           const int32_t *v0, const int32_t *v1, const int32_t *v2)
 {
     int32_t y0 = e0->sy, y1 = e1->sy, y2 = e2->sy;
-    struct mvtx *et, *ea, *eb;                      /* 0x2ff60's first output, branch for branch */
-    if (y0 <= y1) { if (y1 <= y2 || y0 <= y2) { et = e0; ea = e1; eb = e2; } else { et = e2; ea = e0; eb = e1; } }
-    else { if (y2 >= y0 || y2 > y1) { et = e1; ea = e0; eb = e2; } else { et = e2; ea = e0; eb = e1; } }
+    const struct mpt *et, *ea, *eb;                 /* 0x2ff60's first output, branch for branch */
+    const int32_t *vt, *va, *vb;
+    if (y0 <= y1) { if (y1 <= y2 || y0 <= y2) { et = e0; ea = e1; eb = e2; vt = v0; va = v1; vb = v2; } else { et = e2; ea = e0; eb = e1; vt = v2; va = v0; vb = v1; } }
+    else { if (y2 >= y0 || y2 > y1) { et = e1; ea = e0; eb = e2; vt = v1; va = v0; vb = v2; } else { et = e2; ea = e0; eb = e1; vt = v2; va = v0; vb = v1; } }
     if (-et->z <= 500) return 0;
-    int32_t q = mesh_vprt(gctx, et);
-    uint32_t d1 = (uint32_t)(mesh_vprt(gctx, ea) - q), d2 = (uint32_t)(mesh_vprt(gctx, eb) - q);
+    int32_t q = mesh_vprt(gctx, et, vt);
+    uint32_t d1 = (uint32_t)(mesh_vprt(gctx, ea, va) - q), d2 = (uint32_t)(mesh_vprt(gctx, eb, vb) - q);
     return (int32_t)(d1 * d1 + d2 * d2) < 100;
 }
 #endif
@@ -4236,13 +4260,13 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
     uint32_t texz = 0;
 #ifdef A4_MESHMEMO
     const int32_t mF = (int32_t)m->F, mcx = *(const int32_t *)gctx[0x40110 / 4] >> 1, mcy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
-    const uint32_t mst = s->frames | 0x80000000u;  /* never the zeroed table's 0 */
-    struct mvtx *e0 = mesh_vtx(gctx, mF, mcx, mcy, v0, mst), *e1 = mesh_vtx(gctx, mF, mcx, mcy, v1, mst),
-                *e2 = mesh_vtx(gctx, mF, mcx, mcy, v2, mst);
+    const uint32_t mst = *(volatile uint32_t *)0x00451FFCu | 0x80000000u;   /* the mesh routine's call: never the zeroed table's 0 */
+    const struct mpt e0 = mesh_vtx(gctx, mF, mcx, mcy, v0, mst), e1 = mesh_vtx(gctx, mF, mcx, mcy, v1, mst),
+                     e2 = mesh_vtx(gctx, mF, mcx, mcy, v2, mst);
 #endif
     if (fl == 0x4001u) {
 #ifdef A4_MESHMEMO
-        int fb = mesh_fallback_m(gctx, e0, e1, e2);
+        int fb = mesh_fallback_m(gctx, &e0, &e1, &e2, v0, v1, v2);
 #ifdef A4_MEMOCHECK
         {   /* bench: the kept corners against the projection worked out again ([100] faces, [101] differing
              * fallback verdicts, [102] differing screen points; [103] corners found kept) */
@@ -4292,7 +4316,7 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
         int32_t F = (int32_t)m->F, cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
         int32_t sx0, sy0, sx1, sy1, sx2, sy2, xlo, xhi, ylo, yhi;
 #ifdef A4_MESHMEMO
-        sx0 = e0->sx; sy0 = e0->sy; sx1 = e1->sx; sy1 = e1->sy; sx2 = e2->sx; sy2 = e2->sy;
+        sx0 = e0.sx; sy0 = e0.sy; sx1 = e1.sx; sy1 = e1.sy; sx2 = e2.sx; sy2 = e2.sy;
         (void)F; (void)cx; (void)cy;
 #ifdef A4_MEMOCHECK
         {   volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;

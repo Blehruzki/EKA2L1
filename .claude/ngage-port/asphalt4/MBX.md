@@ -7566,3 +7566,33 @@ Owner: "Sounds like a plan. Go ahead."
   which is fixed while the list is gathered -- 128 entries of 32 bytes at 0x452000 (free in a 3x
   build); mesh_fallback on the kept corners. A4_MEMOCHECK works each out again and counts differences
   (census 100-103). Run: MC1, and MCM (a mutant: one coordinate wrong a face).
+- MC1 (A4_MESHMEMO + A4_MEMOCHECK, lockstep 100 s): the memo is NOT exact as keyed. Of ~1.4 M faces'
+  boxes 25,712 had a corner whose kept screen point differed from the one worked out again, and 531 of
+  the perspective class's fallback verdicts differed (4.0 M corners found kept). The guess that failed:
+  "the frame's projection is fixed while the list is gathered" -- gctx, F and the centre are, but the
+  game's tables behind them change between meshes within a frame (a guess in turn: the speed-dependent
+  field of view rebuilt between them). Next: kept per call of the mesh routine (a generation the lifted
+  +349F8 bumps at its entry), where nothing changes them; then MC2.
+- MC2 (the memo kept per call of the mesh routine): still 16,562 boxes and 220 verdicts differing. The
+  cause was mine, not the game's: mesh_vtx returned a pointer into the table, and when two corners of
+  one face hash to one slot the second lookup overwrote the first's entry while its pointer was in use.
+  So MC1's "the tables change between meshes" was a wrong explanation of a right measurement (logged
+  above as a guess; struck here). Fixed: a corner's numbers copied out (struct mpt), the perspective
+  term taken from the entry only while it still holds that corner. Kept per call (exact by argument:
+  nothing in a call of the mesh routine writes the projection's tables). Run: MC3.
+- MCM (the old memo with a mutant, one coordinate wrong a face): 1,454,627 boxes flagged of as many:
+  the memo check can fail.
+- +CE8C (a mesh instance's set-up, 3.7% of pct17) lifted (funcs.txt), its two unpack loops by hand
+  (a4_eng.h ce_verts: three int16 to words a vertex; ce_faces: ten bytes to a 52-byte face) as ALWAYS
+  edits at their guards -- every register they leave is written again before a read, so only memory
+  is theirs. A4_CECHECK runs each beside the lifted loop on the same arrays. CC1 (lockstep 100 s):
+  81,534 vertex loops and 81,534 face loops compared, 0 differing; CCM (a mutant): 83,172 of 83,172 of
+  each flagged. Fuzz: +CE8C 2,009 cases agree.
+- A4_FASTXF: the transform +345E4 by hand (a4_eng.c eng_h_345e4, routed from the lifted mesh routine
+  as the engine's CALLMAP routes): the matrix and the camera's four planes read once a call, under a
+  guard that the vertices reach neither (else the lifted one). The fuzz caught a fault in the first
+  draft: when every vertex shares an outcode bit the mesh routine returns at once, and its r1 is what
+  the transform left -- the draft returned 0. Now r1-r3 as the game's last vertex leaves them (a
+  rejected vertex: the far limit, m8, m2 x + m5 y; an accepted one: 8 or the fourth plane's sum, x,
+  2^18). Fuzz: +349F8 with it 271 cases agree, 0 differ (1.46x fewer instructions than the game's).
+  Run: LX1 (A4_LIFTCHECK over the mesh routine with the hand transform in it).

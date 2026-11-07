@@ -40,7 +40,12 @@ uint64_t a4_eng_call(uint32_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_
 uint64_t a4_eng_call0(uint32_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t *r23);   /* no stack words */
 void a4_mesh_insert(uint32_t *cam, uint32_t *face);  /* a4_gl.c (A4_MESH): the mesh routine's insert, kept for the list */
 void a4_gl_hud(void);
-int a4_gl_bb(const uint32_t *r, const uint32_t *f);   /* a4_gl.c: the billboard capture hook (1: a GPU quad) */
+int a4_gl_bb(const uint32_t *r, const uint32_t *f);
+#ifdef A4_MESHMEMO
+#define MESHMEMO_BUMP() ((*(volatile uint32_t *)0x00451FFCu)++)   /* a4_gl.c: A4_MESHMEMO's generation */
+#else
+#define MESHMEMO_BUMP() ((void)0)
+#endif   /* a4_gl.c: the billboard capture hook (1: a GPU quad) */
 /* +3015E's mode 2 row (+30412..+30484, a billboard added to the frame, each 565 channel saturating) by hand.
  * In: r0 the row's first pixel, r1 the v accumulator, r3 the texels, r4 the end x, r5 the u step, r12 the x,
  * lr the u mask, the frame's [0x1C] the v shift, [0x20] the v mask, [0x24] the u accumulator. Out, as the
@@ -55,6 +60,71 @@ static void bb_row2_check(uint32_t r0, uint32_t r12, uint8_t *spp);
 #else
 #define BB_ROW2_CHECK(r0, r12, spp) ((void)0)
 #endif
+/* +CE8C's unpack loops by hand. Vertices (+CEC2..+CEDA): for each 40-byte vertex from r0 to r2, its model
+ * x y z (+0x18..+0x20) from three int16 at r1, sign-extended, each loaded and stored in the game's order.
+ * Faces (+CEEC..+CF48): for each 52-byte face from r0 to r2, ten bytes at r1 -- the three corners (bytes 1,
+ * 0, 2: the vertex at r4 + 40 x index, to +0xC, +0x18, +0x24), the texture (byte 3: the table's entry, to
+ * +0x30, stored last), six texture coordinates x16 (bytes 4..9 to +0x1C, +0x20, +0x10, +0x14, +0x28, +0x2C),
+ * +4 cleared. Both walk until r0 == r2, as the game's (a count that never meets it wraps there too).
+ * A4_CECHECK (bench): the arrays kept, this loop run, its result kept, the arrays put back, the lifted loop
+ * then runs and CE_CHECK compares (census [100] vertex loops, [101] differing, [102] face loops, [103]
+ * differing, [104] not compared: past the buffers). */
+#ifdef A4_CECHECK
+static void ce_check(int which);
+#define CE_CHECK(w) ce_check(w)
+#define CE_KEEP(lo, hi, which) do { uint32_t n_ = (hi) - (lo); volatile uint32_t *ck_ = (volatile uint32_t *)0x00460000u; \
+    if (n_ > 0xBE00u || ((lo) & 3u)) { ((volatile uint32_t *)0x00412D00u)[104]++; ck_[0] = 0; break; } \
+    ck_[0] = 1u + (which); ck_[1] = (lo); ck_[2] = n_; for (uint32_t k_ = 0; k_ < n_ / 4u; k_++) ((uint32_t *)0x00468100u)[k_] = L32((lo) + 4u * k_); } while (0)
+#define CE_DONE(lo) do { volatile uint32_t *ck_ = (volatile uint32_t *)0x00460000u; if (ck_[0]) { uint32_t n_ = ck_[2]; \
+    for (uint32_t k_ = 0; k_ < n_ / 4u; k_++) { ((uint32_t *)0x00473F00u)[k_] = L32((lo) + 4u * k_); L32((lo) + 4u * k_) = ((uint32_t *)0x00468100u)[k_]; } } } while (0)
+#else
+#define CE_CHECK(w) ((void)0)
+#endif
+static inline int ce_verts(uint32_t r0, uint32_t r1, uint32_t r2)
+{
+    if (r0 == r2) return 1;
+#ifdef A4_CECHECK
+    const uint32_t lo = r0; CE_KEEP(r0, r2, 0);
+#endif
+    do {
+        L32(r0 + 0x18u) = (uint32_t)(int32_t)LS16(r1); r1 += 2u;
+        L32(r0 + 0x1Cu) = (uint32_t)(int32_t)LS16(r1); r1 += 2u;
+        L32(r0 + 0x20u) = (uint32_t)(int32_t)LS16(r1); r1 += 2u;
+        r0 += 0x28u;
+    } while (r0 != r2);
+#ifdef A4_CECHECK
+    CE_DONE(lo);
+    return 0;                                       /* the lifted loop next, on the arrays as they were */
+#endif
+    return 1;
+}
+static inline int ce_faces(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r4, uint32_t tex)
+{
+    if (r0 == r2) return 1;
+#ifdef A4_CECHECK
+    const uint32_t lo = r0; CE_KEEP(r0, r2, 1);
+#endif
+    do {
+        L32(r0 + 0x0Cu) = (uint32_t)L8(r1 + 1u) * 40u + r4;
+        L32(r0 + 0x18u) = (uint32_t)L8(r1) * 40u + r4;
+        L32(r0 + 0x24u) = (uint32_t)L8(r1 + 2u) * 40u + r4;
+        const uint32_t t_ = L32(tex + 4u * (uint32_t)L8(r1 + 3u));
+        L32(r0 + 0x1Cu) = (uint32_t)L8(r1 + 4u) << 4;
+        L32(r0 + 0x20u) = (uint32_t)L8(r1 + 5u) << 4;
+        L32(r0 + 0x10u) = (uint32_t)L8(r1 + 6u) << 4;
+        L32(r0 + 0x14u) = (uint32_t)L8(r1 + 7u) << 4;
+        L32(r0 + 0x28u) = (uint32_t)L8(r1 + 8u) << 4;
+        L32(r0 + 0x2Cu) = (uint32_t)L8(r1 + 9u) << 4;
+        L32(r0 + 4u) = 0;
+        L32(r0 + 0x30u) = t_;
+        r1 += 10u; r0 += 0x34u;
+    } while (r0 != r2);
+#ifdef A4_CECHECK
+    CE_DONE(lo);
+    return 0;
+#endif
+    return 1;
+}
 static inline int bb_row2(uint32_t *pr0, uint32_t r1, uint32_t r3, uint32_t r4, uint32_t r5, uint32_t *pr12, uint32_t lr, uint8_t *spp)
 {
     const uint32_t vsh = L32(spp + 0x1Cu) & 0xFFu;
