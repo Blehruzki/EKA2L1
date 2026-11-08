@@ -39,6 +39,114 @@ namespace eka2l1::common::gpumodel {
     };
     static counters g_n;
 
+    // EKA2L1_GPUMODEL_CALLS=1: every call counted by ordinal, and the state sets that set what was
+    // already set (a bind of the bound texture, an enable of an enabled cap, the same colour, blend,
+    // depth or texture-environment value): calls a client-side state cache would not make. State
+    // starts unknown, so a first set is never redundant; a texture delete forgets the bindings.
+    static int g_census = -1;
+    static std::uint64_t g_ord[256], g_red[256];
+    struct shadow {
+        std::uint32_t cap[16][2];         // (cap, enabled) pairs seen
+        std::uint32_t ncap = 0;
+        std::uint32_t ccap[8][2];         // client states
+        std::uint32_t nccap = 0;
+        std::uint32_t bind = 0xFFFFFFFFu;
+        std::uint32_t color[4] = { 0xFFFFFFFFu, 0, 0, 0 };
+        std::uint32_t blend[2] = { 0xFFFFFFFFu, 0 };
+        std::uint32_t alpha[2] = { 0xFFFFFFFFu, 0 };
+        std::uint32_t depthf = 0xFFFFFFFFu, depthm = 0xFFFFFFFFu, mmode = 0xFFFFFFFFu;
+        std::uint32_t env[8][2];          // (pname, value)
+        std::uint32_t nenv = 0;
+        std::uint32_t vptr[4] = { 0xFFFFFFFFu, 0, 0, 0 }, tptr[4] = { 0xFFFFFFFFu, 0, 0, 0 };
+    };
+    static shadow g_sh;
+
+    static bool census() {
+        if (g_census < 0) {
+            const char *c = std::getenv("EKA2L1_GPUMODEL_CALLS");
+            g_census = (c && *c && *c != '0') ? 1 : 0;
+        }
+        return g_census == 1;
+    }
+
+    static bool set_cap(std::uint32_t (*t)[2], std::uint32_t &n, const std::uint32_t max, const std::uint32_t cap, const std::uint32_t on) {
+        for (std::uint32_t i = 0; i < n; i++)
+            if (t[i][0] == cap) {
+                const bool same = t[i][1] == on;
+                t[i][1] = on;
+                return same;
+            }
+        if (n < max) {
+            t[n][0] = cap;
+            t[n][1] = on;
+            n++;
+        }
+        return false;
+    }
+
+    static bool set_words(std::uint32_t *st, const std::uint32_t *a, const int n) {
+        bool same = true;
+        for (int i = 0; i < n; i++)
+            if (st[i] != a[i])
+                same = false;
+        for (int i = 0; i < n; i++)
+            st[i] = a[i];
+        return same;
+    }
+
+    static void census_call(const std::uint32_t ordinal, const std::uint32_t *a) {
+        const std::uint32_t k = ordinal & 0xFFu;
+        g_ord[k]++;
+        bool red = false;
+        switch (ordinal) {
+        case 0x1137: red = set_cap(g_sh.cap, g_sh.ncap, 16, a[0], 1); break;          // glEnable
+        case 0x1133: red = set_cap(g_sh.cap, g_sh.ncap, 16, a[0], 0); break;          // glDisable
+        case 0x1138: red = set_cap(g_sh.ccap, g_sh.nccap, 8, a[0], 1); break;         // glEnableClientState
+        case 0x1134: red = set_cap(g_sh.ccap, g_sh.nccap, 8, a[0], 0); break;         // glDisableClientState
+        case 0x111C: red = g_sh.bind == a[1]; g_sh.bind = a[1]; break;                // glBindTexture
+        case 0x112E: g_sh.bind = 0xFFFFFFFFu; break;                                  // glDeleteTextures
+        case 0x1126: red = set_words(g_sh.color, a, 4); break;                        // glColor4x
+        case 0x111D: red = set_words(g_sh.blend, a, 2); break;                        // glBlendFunc
+        case 0x111B: red = set_words(g_sh.alpha, a, 2); break;                        // glAlphaFuncx
+        case 0x112F: red = g_sh.depthf == a[0]; g_sh.depthf = a[0]; break;            // glDepthFunc
+        case 0x1130: red = g_sh.depthm == a[0]; g_sh.depthm = a[0]; break;            // glDepthMask
+        case 0x1159: red = g_sh.mmode == a[0]; g_sh.mmode = a[0]; break;              // glMatrixMode
+        case 0x117A: red = set_cap(g_sh.env, g_sh.nenv, 8, a[1], a[2]); break;        // glTexEnvx(target, pname, param)
+        case 0x1182: red = set_words(g_sh.vptr, a, 4); break;                         // glVertexPointer
+        case 0x1177: red = set_words(g_sh.tptr, a, 4); break;                         // glTexCoordPointer
+        default: break;
+        }
+        if (red)
+            g_red[k]++;
+    }
+
+    static void census_report(const double f) {
+        std::uint64_t tot = 0, totr = 0;
+        char line[1024];
+        int o = 0;
+        for (int round = 0; round < 14; round++) {
+            int best = -1;
+            for (int k = 0; k < 256; k++)
+                if (g_ord[k] && (best < 0 || g_ord[k] > g_ord[best]))
+                    best = k;
+            if (best < 0)
+                break;
+            if (o < 900)
+                o += std::snprintf(line + o, sizeof(line) - o, " %04X %.1f/%.1f", 0x1100 + best, g_ord[best] / f, g_red[best] / f);
+            tot += g_ord[best];
+            totr += g_red[best];
+            g_ord[best] = 0;
+            g_red[best] = 0;
+        }
+        for (int k = 0; k < 256; k++) {
+            tot += g_ord[k];
+            totr += g_red[k];
+            g_ord[k] = g_red[k] = 0;
+        }
+        std::fprintf(stderr, "EKA2L1_GPUMODEL_CALLS: a frame %.0f calls, %.1f redundant; by ordinal (calls/redundant):%s\n",
+            tot / f, totr / f, line);
+    }
+
     static void report() {
         static auto last = std::chrono::steady_clock::now();
         const auto now = std::chrono::steady_clock::now();
@@ -51,6 +159,8 @@ namespace eka2l1::common::gpumodel {
             (unsigned long long)g_n.frames, (unsigned long long)g_n.posts, g_n.calls / f, g_n.draws / f, g_n.verts / f, g_n.binds / f,
             g_n.tex_bytes / f, g_n.reads / f, g_n.read_bytes / f, g_n.us_draw / f, g_n.us_frame / f, g_n.us_read / f, g_n.us_tex / f,
             g_n.us_post / f, g_n.us_other / f);
+        if (census())
+            census_report(f);
         g_n = counters{};
     }
 
@@ -124,6 +234,8 @@ namespace eka2l1::common::gpumodel {
         const params &p = g_params;
         double us = p.call_us;
         g_n.calls++;
+        if (census())
+            census_call(ordinal, a);
         g_n.us_other += p.call_us;
         const auto frame = [&]() {           // the tile render a read of the frame waits for
             if (!g_dirty)

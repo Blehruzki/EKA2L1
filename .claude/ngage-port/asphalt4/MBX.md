@@ -7641,3 +7641,71 @@ Owner: "Sounds like a plan. Go ahead."
   in 10,350 strips. The change is exact.
 - Run: pct19, the cycle profile of the current build (t18's flags with the composite change), for the
   next cuts.
+- pct19 (cycle profile, calibrated model, t18's flags + the composite change; 1.5e9 instructions after
+  8e9 skipped), share of modelled cycles: ngibackbuffer +CCB8 (the runtime's 565 -> 32 convert) 13.9%,
+  a4_gl_flush (the composite) 12.4%, engi_349F8 (with the hand transform) 8.56%, a4_mesh_insert 6.19%,
+  the painter 5.56%, lean_tail 5.34%, mesh_draw 4.22%, mesh_vtx 3.75%, batch_draw 2.91%, bb_row2 1.72%,
+  mesh_fallback_m 1.70%, engi_349B0 1.65%, engi_0CE8C 1.62%; irobex 3.6% (a bench artifact). The
+  largest single item is not ours: next, how the runtime's convert is reached and whether our side can
+  spare it.
+- The convert, read (ngibackbuffer +CB70, the converter class whose vtable is at image +24158; the
+  present at +34A4 calls `[bb+0xC]->vtable[2](conv, dst [bb+0xB8], src [bb+0x30])` when the DSA
+  region is the whole window): 20 instructions a pixel pair -- it loads each source word twice and
+  stores a pixel at a time. pct19's blocks: 72,271 rows converted in the window, ~301 converts,
+  43.5 cycles a pair (32 of instructions, 7.5 of read misses, 4 of write misses): ~1.67M cycles a
+  convert, ~5 ms on the model, plus the post's 2.3 ms.
+- GL call census (emulator: EKA2L1_GPUMODEL_CALLS=1, new -- per ordinal, and the sets that set what
+  was already set; gc19, t19 real time on the calibrated model, 120 s): 659-1,000 calls a frame, of
+  them 20-32 redundant (3%): binds 148-226 (4-10 redundant), draws 160-268 (DrawArrays 84-152 the
+  table, DrawElements 76-118 the list), enable/disable/depth-mask ~90 each, LoadMatrixx 59-96,
+  Color4x 21-60, BlendFunc 16-21 (11-16 redundant). A state cache would save ~0.2 ms a frame: not
+  the lever. The GL side is draws (one texture each) and the kind switches between them.
+- The two whole-screen pixel loops in ARMv6 (renderer/a4_px.s, -DA4_PX6; the N95's ARM1136 is an
+  ARMv6 core, the blob is built for ARMv5TE): PKHBT/PKHTB pack a halfword of each of two registers
+  into one, so two pixels go through each mask, shift and OR together.
+  - a4_comp_row, the composite's N95 case (BGRA, alpha bit 31 the drawn-mask): 22 instructions for
+    four drawn pixels against the C loop's 42 (21 a pair); halfword stores when any of the four is
+    not drawn. pxfuzz (unicorn ARM1136, 400 random rows against the C loop's rule): 0 differing;
+    a mutant (the G mask one bit short) 398 of 400 flagged.
+  - a4_cvt565_run, the runtime's 565 -> 32 row: 16 instructions for four pixels against +CB70's 40.
+    pxfuzz against the runtime's own loop (+CCB8..+CD04 run from its code): 400 rows, 0 differing;
+    a mutant (G placed a bit low) 400 of 400.
+- The runtime's converter, ours (cvt_fast / cvt_install, a4_gl.c, with A4_PX6; A4_PX6_NOCVT leaves
+  it out). The probe (cvp: registers and memory at the game's present call +1EA, the runtime's
+  present +34A4 and +CB70; 20 s of race): the game's display object (r4[0x20]) is the game's own
+  class, not the runtime's; the runtime's back-buffer object bb sits 0xC0 before the game's 565
+  buffer (bb[0] its vtable at image +23B8C, bb[8] the pixels, bb[9]/bb[10] 320x240), bb[3] the
+  converter, whose [1] is bb (it is the converter's X: source stride bb[0x10] = 160 words, size
+  bb[9]/bb[10], the screen object bb[4] with its TRect at +0x28 and target stride at +0xB4); offsets
+  conv[2]/conv[3] 0; target 0xC9200020 (the DSB's buffer). 796 runtime presents to 2,405 game
+  presents in the probe, menus included (the counter covers the session).
+  - Install, at every present: bb = buffer - 0xC0 only when that is on the buffer's own page
+    (nothing read off it otherwise), then bb[8], bb[9], bb[10], conv[1] == bb, and +CB70's 112
+    words hashed (0x31323FE4) -- each link checked before it is followed; a failure leaves the
+    runtime alone for the session and says which (0x412100 [0]: 1 installed, 2-6 the failed step).
+    Our vtable is a copy of the converter's (its offset and typeinfo words too) with [2] = cvt_fast.
+  - cvt_fast does +CB70's set-up exactly (the offsets, the size clipped to the screen rect's, the
+    row strides) and converts with a4_cvt565_run -- one run when the rows are contiguous (they are:
+    160 words / 320 words) -- and hands anything else (odd or zero-modulo-4 widths, unaligned,
+    oversized, overlapping source/target or objects in the target) back to +CB70 itself.
+  - cvtfuzz (unicorn: our image's cvt_fast against the DLL's +CB70 from its code, TRect::Size
+    emulated, random objects, offsets, strides, sizes, alignments, overlaps; whole memory compared):
+    285 agree, 0 differ, 169 handed back, 146 not cases (+CB70 itself faults or runs away -- odd
+    widths, negative heights). A mutant (x offset scaled by 8, not 4): 8 differ.
+  - In-run check A4_CVTCHECK: +CB70's own answer goes to the screen and each row of ours, made into
+    a spare row, is compared with it (census [93] words differing, [94] converts); [91] fast, [92]
+    handed back; A4_CVTCHECK_MUTANT flips a word a convert. Runs: CV1 (the check and A4_BLITCHECK),
+    CVM (both mutants).
+- CV1, first build: installed ([90] 1), the composite's ARMv6 row exact in-run (A4_BLITCHECK: 12,420
+  strips, 0 pixels differing) -- but every convert handed back to the runtime ([91] 0, [92] 827). The
+  probe of the converter's screen object (cvq: [bb+0x10] dumped at +CB70) says why: +CB70's size call
+  (its import stub +5EC8, ordinal 387) is WS32's RWindowBase::Size() on the window at +0x28 (its
+  handle and its session's buffer there, SYMBIAN.md's test), not TRect::Size as I had guessed and the
+  fuzz had modelled for both sides alike. Corrected: cvt_fast calls the runtime's own stub (found
+  from +CB70's address, inside the hashed words; the stub's ldr pc checked at install), the same
+  calls in the same order as +CB70 (width, then height, each again when the window's is smaller).
+  cvtfuzz with the stub returning a size from the window object and the calls compared too: 386
+  agree, 0 differ, 226 handed back, 188 not cases.
+- A slip: CVM was still running (a backgrounded second command) when the cvq probe started; the
+  probe's telerun killed it. Not two emulators for long, but CVM is rerun clean; the runs since go
+  through one strictly sequential loop.

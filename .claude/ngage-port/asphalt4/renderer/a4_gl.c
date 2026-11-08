@@ -6008,6 +6008,7 @@ static void batch_draw(uint32_t nt)
  * that is not the magenta sentinel -- nor the sentinel with a glow added to it (R and B
  * saturated, G short of full: additive over the backdrop), so pure pinks are lost there.
  * Read in the implementation's own pair when AB_NATIVE says so (BGRA on the N95). */
+void a4_comp_row(uint32_t *d32, const uint32_t *src, const uint32_t *end);   /* a4_px.s */
 static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 {
 #ifdef A4_DUALCAP
@@ -6042,6 +6043,26 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
         else if (bgra) gl_readpixels(0, y0, VP_W, sh, GL_BGRA, GL_UNSIGNED_BYTE, rb);
         else           gl_readpixels(0, y0, VP_W, sh, GL_RGBA, GL_UNSIGNED_BYTE, rb);
         A4_PERF[PF_READ] += a4_ntick() - t0;
+#ifdef A4_ROWSTAT
+        {   /* bench (round 50): which rows read back hold a drawn pixel -- census [80] rows read with
+             * none, [81] rows read, [82] the sum of each frame's first drawn screen row, [83] of its
+             * last, [84] frames (a composite reading from row 0) */
+            volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
+            volatile int32_t *fr = (volatile int32_t *)(ck + 85);   /* [85]/[86] this frame's first and last */
+            if (y0 == ystart) { fr[0] = 9999; fr[1] = -1; }
+            for (int sy = 0; sy < sh; sy++) {
+                int screen_y = VP_H - 1 - (y0 + sy);
+                const uint32_t *src = rb + sy * VP_W;
+                uint32_t any = 0;
+                for (int x = 0; x < VP_W; x++) any |= amask ? src[x] : 0x80000000u;
+                ck[81]++;
+                if (!(any & 0x80000000u)) { ck[80]++; continue; }
+                if (screen_y < fr[0]) fr[0] = screen_y;
+                if (screen_y > fr[1]) fr[1] = screen_y;
+            }
+            if (y0 + sh > gl_hi && fr[1] >= 0) { ck[82] += (uint32_t)fr[0]; ck[83] += (uint32_t)fr[1]; ck[84]++; }
+        }
+#endif
 #ifdef A4_READBACK_ONLY
         continue;                                        /* measurement: readback cost without the blit */
 #endif
@@ -6068,6 +6089,22 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
              * drawn iff alpha >= 0x80. */
             /* round 50: the masks held in registers (the compiler rebuilt all three every pair, short of
              * registers) and the walk by pointer -- 24 instructions a pair to ~17; the same pixels */
+#ifdef A4_PX6
+            /* round 50: the same pixels in ARMv6 (a4_px.s: PKHBT/PKHTB put two pixels through each
+             * mask and shift) -- 22 instructions for four pixels against the loop below's 42 */
+            _Static_assert(VP_W % 4 == 0 && FB_STRIDE % 2 == 0, "a4_comp_row takes rows of 4n pixels, word aligned");
+            for (int sy = 0; sy < sh; sy++) {
+                int screen_y = VP_H - 1 - (y0 + sy);
+                if (screen_y < CLIP_TOP) continue;
+                const uint32_t *src = rb + sy * VP_W;
+                a4_comp_row((uint32_t *)((uint16_t *)fb + screen_y * FB_STRIDE), src, src + VP_W);
+#ifdef A4_BLITCHECK_MUTANT
+                if ((int32_t)src[0] < 0) ((uint16_t *)fb)[screen_y * FB_STRIDE] ^= 1u;   /* the check's own test */
+#endif
+            }
+            if (0)
+#endif
+            {
             uint32_t mR = 0xF800u, mG = 0x07E0u, mB = 0x001Fu;
             __asm__("" : "+r"(mR), "+r"(mG), "+r"(mB));
             for (int sy = 0; sy < sh; sy++) {
@@ -6090,6 +6127,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 #ifdef A4_BLITCHECK_MUTANT
                 if ((int32_t)src[-VP_W] < 0) ((uint16_t *)fb)[screen_y * FB_STRIDE] ^= 1u;   /* the check's own test */
 #endif
+            }
             }
 #ifdef A4_BLITCHECK
             /* bench check: the general loop's answer for the same strip, against what the
@@ -6162,6 +6200,123 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
     (void)s; (void)miny; (void)maxy;
 #endif /* !A4_NO_BLIT && !A4_WINDOW */
 }
+
+#if defined(A4_PX6) && !defined(A4_PX6_NOCVT)
+/* Round 50: the runtime's 565 -> 32-bit convert, done by our ARMv6 rows. ngibackbuffer's present
+ * (+34A4) calls [bb+0xC]->vtable[2](conv, dst, src) -- +CB70, ~13.9% of the race's modelled cycles
+ * (pct19), 20 instructions a pixel pair. The converter's vtable is the runtime's (read-only code);
+ * the object is ours to point at a copy of it whose [2] is cvt_fast, which does what +CB70 does
+ * (the same offsets, the same clipped size, the same rows) and hands anything but the plain case
+ * back to +CB70 itself. Found from the game's own buffer: the back-buffer object sits right before
+ * its pixels (bb = buffer - 0xC0: bb[8] the pixels, bb[9]/bb[10] 320x240, bb[3] the converter,
+ * whose [1] is bb again), and +CB70's 112 words hash to CVT_HASH -- every link checked before it
+ * is followed, so another runtime build is left alone (CVT[0] says why). */
+void a4_cvt565_run(uint32_t *d, const uint32_t *s, const uint32_t *e);   /* a4_px.s */
+#define CVT ((volatile uint32_t *)0x00412100u)  /* [0] 0 untried, 1 installed, 2+ refused (the step that failed)
+                                                 * [1] the converter, [2] its own vtable, [3] +CB70, [4..10] our
+                                                 * vtable: its two words before (offset, typeinfo) and five entries,
+                                                 * [11] +CB70's import stub +5EC8: WS32 387, RWindowBase::Size() */
+#define CVT_WORDS 112u
+#define CVT_HASH 0x31323FE4u
+typedef void (*cvt_fn)(uint32_t *self, uint32_t dst, uint32_t src);
+typedef void (*cvt_size_fn)(int32_t *size, const void *window);   /* TSize returned through r0, this in r1 */
+#define CVT_STUB_OFF (0xCB70u - 0x5EC8u)       /* +CB70's bl to the stub: inside the hashed words */
+
+static void cvt_fast(uint32_t *self, uint32_t dst, uint32_t src)
+{
+    volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;   /* [91] fast, [92] handed back, [93]/[94] the check */
+    const uint32_t *X = (const uint32_t *)(uintptr_t)self[1];
+    const uint32_t *X10 = (const uint32_t *)(uintptr_t)X[0x10 / 4];
+    const int32_t y = (int32_t)self[3], x = (int32_t)self[2];
+    const uint32_t sstr = X[0x40 / 4], dstr = X10[0xB4 / 4];
+    uint32_t sp = src, dp = dst;
+    if (y <= 0) sp -= (sstr * (uint32_t)y) << 2; else dp += (dstr * (uint32_t)y) << 2;
+    if (x > 0) dp += (uint32_t)x << 2; else sp -= (uint32_t)((x + (int32_t)((uint32_t)x >> 31)) >> 1) << 2;
+    int32_t w = (int32_t)X[0x24 / 4], h = (int32_t)X[0x28 / 4];
+    /* the window's size, asked of the window server as +CB70 asks it: once for the width and once
+     * for the height, and again for whichever is smaller than the buffer's (RWindowBase::Size()) */
+    const void *win = (const void *)((uintptr_t)X10 + 0x28u);
+    const cvt_size_fn size = (cvt_size_fn)(uintptr_t)CVT[11];
+    int32_t sz[2];
+    size(sz, win);
+    if (sz[0] < w) { size(sz, win); w = sz[0]; }
+    size(sz, win);
+    if (sz[1] < h) { size(sz, win); h = sz[1]; }
+    if (h == 0 || (w == 0 && h > 0)) return;         /* +CB70 writes nothing either */
+    int fast = h > 0 && h <= 4096 && w > 0 && w <= 4096 && !(w & 3) && !((sp | dp) & 3u)
+        && sstr * 2u >= (uint32_t)w && sstr <= 4096u && dstr >= (uint32_t)w && dstr <= 4096u;
+    uint32_t se = 0, de = 0;
+    if (fast) {
+        se = sp + ((uint32_t)(h - 1) * sstr) * 4u + (uint32_t)w * 2u;
+        de = dp + ((uint32_t)(h - 1) * dstr) * 4u + (uint32_t)w * 4u;
+        const uint32_t xa = (uint32_t)(uintptr_t)X, xb = (uint32_t)(uintptr_t)X10;
+        fast = se > sp && de > dp && (se <= dp || de <= sp)                         /* source and target apart */
+            && (xa + 0x44u <= dp || xa >= de) && (xb + 0xB8u <= dp || xb >= de);  /* and what +CB70 re-reads a row */
+    }
+    if (!fast) { ck[92]++; ((cvt_fn)(uintptr_t)CVT[3])(self, dst, src); return; }
+    ck[91]++;
+#ifdef A4_CVTCHECK
+    /* bench check: +CB70's own answer goes to the screen; each row of ours, made into a spare row,
+     * against it ([93] words differing, [94] converts compared) */
+    ((cvt_fn)(uintptr_t)CVT[3])(self, dst, src);
+    {
+        uint32_t *tmp = (uint32_t *)0x00460000u;
+        for (int32_t r = 0; r < h; r++) {
+            const uint32_t *so = (const uint32_t *)(uintptr_t)(sp + (uint32_t)r * sstr * 4u);
+            const uint32_t *dr = (const uint32_t *)(uintptr_t)(dp + (uint32_t)r * dstr * 4u);
+            a4_cvt565_run(tmp, so, so + w / 2);
+#ifdef A4_CVTCHECK_MUTANT
+            if (r == h / 2) tmp[w / 2] ^= 0x80u;           /* the check's own test: one word a convert */
+#endif
+            for (int32_t k = 0; k < w; k++) if (tmp[k] != dr[k]) ck[93]++;
+        }
+        ck[94]++;
+    }
+    return;
+#endif
+    if (sstr * 2u == (uint32_t)w && dstr == (uint32_t)w) {
+        a4_cvt565_run((uint32_t *)(uintptr_t)dp, (const uint32_t *)(uintptr_t)sp, (const uint32_t *)(uintptr_t)se);
+        return;                                       /* the rows contiguous: one run */
+    }
+    for (int32_t r = 0; r < h; r++, sp += sstr * 4u, dp += dstr * 4u)
+        a4_cvt565_run((uint32_t *)(uintptr_t)dp, (const uint32_t *)(uintptr_t)sp,
+                      (const uint32_t *)(uintptr_t)(sp + (uint32_t)w * 2u));
+}
+
+/* At every present: the converter pointed at our vtable, once its object is found and checked. */
+static void cvt_install(void)
+{
+    if (CVT[0] >= 2u) return;                        /* refused: not this runtime */
+    const uint32_t buf = *(volatile uint32_t *)A4_GL_BB;
+    if (!buf || (buf & 3u) || (buf & 0xFFFu) < 0xC0u) return;   /* bb on buf's own page, or nothing read */
+    const uint32_t *bb = (const uint32_t *)(uintptr_t)(buf - 0xC0u);
+    if (bb[8] != buf || bb[9] != 320u || bb[10] != 240u) { CVT[0] = 2u; return; }
+    uint32_t *conv = (uint32_t *)(uintptr_t)bb[3];
+    if (!conv || ((uintptr_t)conv & 3u) || conv[1] != (uint32_t)(uintptr_t)bb) { CVT[0] = 3u; return; }
+    volatile uint32_t *our = CVT + 4;
+    const uint32_t vt = conv[0];
+    if (vt == (uint32_t)(uintptr_t)(our + 2)) return;              /* ours already */
+    if (vt != CVT[2]) {                                            /* a vtable not yet checked */
+        if (!vt || (vt & 3u)) { CVT[0] = 4u; return; }
+        const uint32_t *v = (const uint32_t *)(uintptr_t)vt;
+        const uint32_t f = v[2];
+        if (!f || (f & 3u)) { CVT[0] = 5u; return; }
+        const uint32_t *fw = (const uint32_t *)(uintptr_t)f;
+        uint32_t hsh = 0;
+        for (uint32_t i = 0; i < CVT_WORDS; i++) hsh = ((hsh << 5) | (hsh >> 27)) ^ fw[i];
+        if (hsh != CVT_HASH) { CVT[0] = 6u; return; }
+        if (*(const uint32_t *)(uintptr_t)(f - CVT_STUB_OFF) != 0xE51FF004u) { CVT[0] = 7u; return; }   /* ldr pc, [pc, #-4] */
+        CVT[11] = f - CVT_STUB_OFF;
+        for (int i = 0; i < 7; i++) our[i] = v[i - 2];
+        our[4] = (uint32_t)(uintptr_t)cvt_fast;
+        CVT[2] = vt; CVT[3] = f;
+    }
+    CVT[1] = (uint32_t)(uintptr_t)conv;
+    conv[0] = (uint32_t)(uintptr_t)(our + 2);
+    CVT[0] = 1u;
+    ((volatile uint32_t *)0x00412D00u)[90]++;      /* census: installs (a refusal leaves CVT[0] >= 2) */
+}
+#endif
 
 /* the pipelined composite: the previous frame's image, at this frame's first triangle */
 static void composite_prev(volatile struct glr *s) __attribute__((unused));
@@ -6599,6 +6754,9 @@ int a4_gl_frame(uint32_t fps)
     }
 #endif
     if (A4_PERF[PF_FLAGS] & PFF_2D) A4_PERF[PF_T2D] += a4_ntick() - A4_PERF[PF_MFLEND];
+#if defined(A4_PX6) && !defined(A4_PX6_NOCVT)
+    cvt_install();                                      /* the runtime's convert, ours from now on */
+#endif
     a4_gl_flush();                                      /* draw this frame on the GPU */
     A4_PERF[PF_FLAGS] &= ~PFF_2D;                       /* a composite inside it has no 2D after */
 #if defined(A4_ABMARK) && !defined(A4_ABFRAME)

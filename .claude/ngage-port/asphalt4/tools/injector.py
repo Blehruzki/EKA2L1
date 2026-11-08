@@ -43,6 +43,7 @@ SOURCES = [os.path.join(REND, 'a4_tramp.s'),
            os.path.join(REND, 'a4_prim.c'),
            os.path.join(REND, 'a4_tel.c'),
            os.path.join(REND, 'a4_eng.s'),
+           os.path.join(REND, 'a4_px.s'),
            os.path.join(REND, 'a4_eng.c'),
            os.path.join(HERE, '..', 'patch', 'fill.c')]
 
