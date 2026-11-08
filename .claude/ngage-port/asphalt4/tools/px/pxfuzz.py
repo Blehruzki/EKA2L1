@@ -4,6 +4,9 @@ import sys, struct, random
 from unicorn import *
 from unicorn.arm_const import *
 px = open(sys.argv[1], 'rb').read(); bb = open(sys.argv[2], 'rb').read()
+# optional: the two routines' offsets in px (default a4_comp_row at 0, a4_cvt565_run at 0xA8)
+OFF_COMP = int(sys.argv[3], 16) if len(sys.argv) > 3 else 0
+OFF_CVT = int(sys.argv[4], 16) if len(sys.argv) > 4 else 0xA8
 CODE, BB, D, S, STK, MAGIC = 0x10000, 0x100000, 0x200000, 0x300000, 0x400000, 0x500000
 def mk():
     uc = Uc(UC_ARCH_ARM, UC_MODE_ARM)
@@ -11,7 +14,7 @@ def mk():
         from unicorn import UC_CPU_ARM_1136
         uc.ctl_set_cpu_model(UC_CPU_ARM_1136)
     except Exception: pass
-    for a, n in ((CODE, 0x1000), (BB, 0x30000), (D, 0x10000), (S, 0x10000), (STK, 0x10000), (MAGIC, 0x1000)):
+    for a, n in ((CODE, 0x2000), (BB, 0x30000), (D, 0x10000), (S, 0x10000), (STK, 0x10000), (MAGIC, 0x1000)):
         uc.mem_map(a, n)
     uc.mem_write(CODE, px); uc.mem_write(BB, bb)
     return uc
@@ -38,7 +41,7 @@ for case in range(400):
     uc = mk()
     uc.mem_write(S, struct.pack('<%dI' % n, *src)); uc.mem_write(D, struct.pack('<%dH' % n, *dst0))
     uc.mem_write(D + 2 * n, b'\xAA' * 16)
-    run(uc, CODE + 0, (D, S, S + 4 * n))
+    run(uc, CODE + OFF_COMP, (D, S, S + 4 * n))
     got = list(struct.unpack('<%dH' % n, uc.mem_read(D, 2 * n)))
     if got != exp or uc.mem_read(D + 2 * n, 16) != b'\xAA' * 16:
         bad += 1
@@ -59,7 +62,7 @@ for case in range(400):
     ref = bytes(uc.mem_read(D, 4 * n + 16))
     uc2 = mk()
     uc2.mem_write(S, struct.pack('<%dI' % (n // 2), *src)); uc2.mem_write(D, b'\x55' * (4 * n + 16))
-    run(uc2, CODE + 0xA8, (D, S, S + 2 * n))
+    run(uc2, CODE + OFF_CVT, (D, S, S + 2 * n))
     got = bytes(uc2.mem_read(D, 4 * n + 16))
     if got != ref:
         bad += 1

@@ -7763,3 +7763,15 @@ Owner: "Sounds like a plan. Go ahead."
   list's: the splits are real overlaps in painter's order. The simulations removed again (the key
   census kept under A4_ROWSTAT). Draw calls stay where they are unless a class's order can be
   proven free, which a depth test cannot do for painted faces.
+- For a phone round (rule 4: the bench cannot settle these): A4_ABCYCLE11 steps AB_PX6 (4096: the ARMv6
+  loops and the runtime's convert ours) x AB_PXPLD (8192: the same loops with a PLD of the source a few
+  lines ahead) one pair a window -- slot 0 the C loops and the runtime's convert, 1 ARMv6, 2 the C loops
+  again (the prefetch has no loop to go in: a second baseline, the noise floor), 3 ARMv6 + PLD. The
+  aggregates' format word 'AG27'; tools/r50sum.py reads them. In a baseline slot the converter hands
+  back before any work of its own (its window-size calls would otherwise be doubled: census [95]).
+  The PLD variants: pxfuzz 400 + 400 cases, 0 bad (PLD is a hint; it never faults past a buffer's end).
+  Guesses this round would settle: (1) the model's Thumb/ARM CPI split (the lifted code's gain);
+  (2) the 16 KB instruction cache (the bench has none); (3) whether a PLD hides the streaming loops'
+  read misses on the ARM1136 (the model credits none); (4) whether the phone's runtime is the build the
+  converter is checked against (the hash; census [90] says whether it was taken).
+  Bench run of the A/B build: AB1.

@@ -330,6 +330,22 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
  * table, face draw and our draw_primitive hook do not run for these faces. */
 #define AB_MESH 1024u    /* the mesh list (A4_MESH) */
 #define AB_HSPEC 2048u   /* round 31: the speculative half-step's frames (A4_HALFSPEC) */
+#define AB_PX6 4096u     /* round 50: the ARMv6 pixel loops and the runtime's convert ours (A4_PX6) */
+#define AB_PXPLD 8192u   /* round 50: those loops with a prefetch of their source (A4_PX6) */
+#if defined(A4_ABCYCLE11) && !defined(A4_PX6)
+#error "A4_ABCYCLE11 steps A4_PX6's loops: build with A4_PX6"
+#endif
+#if defined(A4_PX6) && defined(A4_ABCYCLE11)
+#define PX6_ON(mode) (((mode) & AB_PX6) != 0u)       /* stepped per window (a4_tel.c) */
+#define PX6_PLD(mode) (((mode) & AB_PXPLD) != 0u)
+#elif defined(A4_PX6)
+#define PX6_ON(mode) 1
+#ifdef A4_PXPLD
+#define PX6_PLD(mode) 1
+#else
+#define PX6_PLD(mode) 0
+#endif
+#endif
 #define GL_CULL_FACE 0x0B44
 #define GL_TEXTURE 0x1702
 #define GL_DST_COLOR 0x0306
@@ -837,7 +853,9 @@ _Static_assert(A4_GL_STEP >= A4_GL_AGG + sizeof(struct agg) + 4u && A4_GL_STEP +
 #endif
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
-#if defined(A4_ABCYCLE10)
+#if defined(A4_ABCYCLE11)
+#define AGG_SLOT(m) (((m) >> 12) & 3u)                                       /* bit 0 AB_PX6, bit 1 AB_PXPLD */
+#elif defined(A4_ABCYCLE10)
 #define AGG_SLOT(m) (((m) >> 10) & 2u)                                       /* bit 1: AB_HSPEC */
 #elif defined(A4_ABCYCLE9)
 #define AGG_SLOT(m) (((m) >> 9) & 2u)                                        /* bit 1: AB_MESH */
@@ -4867,7 +4885,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE10)
+#if defined(A4_TEL) && defined(A4_ABCYCLE11)
+        /* round 50: a4_tel.c steps AB_PX6 x AB_PXPLD per window; native, skip, reorder, lean, list on */
+        A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER | AB_LEAN | AB_MESH;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE10)
         /* round 31: a4_tel.c alternates AB_HSPEC per window; native, skip, reorder, lean, list on */
         A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER | AB_LEAN | AB_MESH;
         s->fmode = A4_PERF[PF_MODE];
@@ -6065,6 +6087,7 @@ static void batch_draw(uint32_t nt)
  * saturated, G short of full: additive over the backdrop), so pure pinks are lost there.
  * Read in the implementation's own pair when AB_NATIVE says so (BGRA on the N95). */
 void a4_comp_row(uint32_t *d32, const uint32_t *src, const uint32_t *end);   /* a4_px.s */
+void a4_comp_row_pld(uint32_t *d32, const uint32_t *src, const uint32_t *end);
 static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 {
 #ifdef A4_DUALCAP
@@ -6149,16 +6172,18 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
             /* round 50: the same pixels in ARMv6 (a4_px.s: PKHBT/PKHTB put two pixels through each
              * mask and shift) -- 22 instructions for four pixels against the loop below's 42 */
             _Static_assert(VP_W % 4 == 0 && FB_STRIDE % 2 == 0, "a4_comp_row takes rows of 4n pixels, word aligned");
+            if (PX6_ON(s->fmode)) {
+            void (*const row)(uint32_t *, const uint32_t *, const uint32_t *) = PX6_PLD(s->fmode) ? a4_comp_row_pld : a4_comp_row;
             for (int sy = 0; sy < sh; sy++) {
                 int screen_y = VP_H - 1 - (y0 + sy);
                 if (screen_y < CLIP_TOP) continue;
                 const uint32_t *src = rb + sy * VP_W;
-                a4_comp_row((uint32_t *)((uint16_t *)fb + screen_y * FB_STRIDE), src, src + VP_W);
+                row((uint32_t *)((uint16_t *)fb + screen_y * FB_STRIDE), src, src + VP_W);
 #ifdef A4_BLITCHECK_MUTANT
                 if ((int32_t)src[0] < 0) ((uint16_t *)fb)[screen_y * FB_STRIDE] ^= 1u;   /* the check's own test */
 #endif
             }
-            if (0)
+            } else
 #endif
             {
             uint32_t mR = 0xF800u, mG = 0x07E0u, mB = 0x001Fu;
@@ -6268,6 +6293,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
  * whose [1] is bb again), and +CB70's 112 words hash to CVT_HASH -- every link checked before it
  * is followed, so another runtime build is left alone (CVT[0] says why). */
 void a4_cvt565_run(uint32_t *d, const uint32_t *s, const uint32_t *e);   /* a4_px.s */
+void a4_cvt565_run_pld(uint32_t *d, const uint32_t *s, const uint32_t *e);
 #define CVT ((volatile uint32_t *)0x00412100u)  /* [0] 0 untried, 1 installed, 2+ refused (the step that failed)
                                                  * [1] the converter, [2] its own vtable, [3] +CB70, [4..10] our
                                                  * vtable: its two words before (offset, typeinfo) and five entries,
@@ -6281,6 +6307,11 @@ typedef void (*cvt_size_fn)(int32_t *size, const void *window);   /* TSize retur
 static void cvt_fast(uint32_t *self, uint32_t dst, uint32_t src)
 {
     volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;   /* [91] fast, [92] handed back, [93]/[94] the check */
+    if (!PX6_ON(A4_PERF[PF_MODE])) {                /* the window's A/B mode (A4_ABCYCLE11): the runtime's own, */
+        ck[95]++;                                   /* before any work of ours (its window-size calls are not doubled) */
+        ((cvt_fn)(uintptr_t)CVT[3])(self, dst, src);
+        return;
+    }
     const uint32_t *X = (const uint32_t *)(uintptr_t)self[1];
     const uint32_t *X10 = (const uint32_t *)(uintptr_t)X[0x10 / 4];
     const int32_t y = (int32_t)self[3], x = (int32_t)self[2];
@@ -6311,6 +6342,7 @@ static void cvt_fast(uint32_t *self, uint32_t dst, uint32_t src)
     }
     if (!fast) { ck[92]++; ((cvt_fn)(uintptr_t)CVT[3])(self, dst, src); return; }
     ck[91]++;
+    void (*const run)(uint32_t *, const uint32_t *, const uint32_t *) = PX6_PLD(A4_PERF[PF_MODE]) ? a4_cvt565_run_pld : a4_cvt565_run;
 #ifdef A4_CVTCHECK
     /* bench check: +CB70's own answer goes to the screen; each row of ours, made into a spare row,
      * against it ([93] words differing, [94] converts compared) */
@@ -6331,12 +6363,11 @@ static void cvt_fast(uint32_t *self, uint32_t dst, uint32_t src)
     return;
 #endif
     if (sstr * 2u == (uint32_t)w && dstr == (uint32_t)w) {
-        a4_cvt565_run((uint32_t *)(uintptr_t)dp, (const uint32_t *)(uintptr_t)sp, (const uint32_t *)(uintptr_t)se);
+        run((uint32_t *)(uintptr_t)dp, (const uint32_t *)(uintptr_t)sp, (const uint32_t *)(uintptr_t)se);
         return;                                       /* the rows contiguous: one run */
     }
     for (int32_t r = 0; r < h; r++, sp += sstr * 4u, dp += dstr * 4u)
-        a4_cvt565_run((uint32_t *)(uintptr_t)dp, (const uint32_t *)(uintptr_t)sp,
-                      (const uint32_t *)(uintptr_t)(sp + (uint32_t)w * 2u));
+        run((uint32_t *)(uintptr_t)dp, (const uint32_t *)(uintptr_t)sp, (const uint32_t *)(uintptr_t)(sp + (uint32_t)w * 2u));
 }
 
 /* At every present: the converter pointed at our vtable, once its object is found and checked. */
