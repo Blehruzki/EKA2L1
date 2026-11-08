@@ -7949,3 +7949,12 @@ Owner: "Sounds like a plan. Go ahead."
     read, not the pictures.)
   - Veyron autopilot r50cv: framestat 2109; drawn off the path x-z 99% 55 max 86 (r50 17/18, r49 27/54,
     r48 60/75: the autopilot's course differs run to run); car heading reversals 0.
+- The present-time A/B (the same model run, fixed emulator): r50b (no had gate) 0.0-0.5 ms a render, 1
+  render-less present; r49b's own binary (81193beb: no ARMv6 code, no converter swap, no had gate)
+  2.4-3.0 ms, 62 render-less presents before the race; r50c again (r50cT) 2.5-3.0 ms, 89. Not the build:
+  a state a run is in or not, from the menus on (the render-less presents before the race come with
+  it), seen in 3 of 4 model runs on the fixed emulator and in none before it. 2.3 ms of it is the
+  model's post charge (GPUMODEL's last field) falling inside the present's bracket. Why the runs split
+  is a bench question, open; until it is settled, present times compare only between runs in the same
+  state, and the slots' A/B inside one run is unaffected (every slot carries it).
+- Round 50c goes out: 7ed1371c, unbaked (the owner bakes).
