@@ -7784,3 +7784,40 @@ Owner: "Sounds like a plan. Go ahead."
   (the model has no PLD), so their 2 ms apart is the noise -- a phone difference under ~2 ms would not
   show. Converter: installed once, 1,169 fast, 1,149 handed back in the baseline slots (as designed), 0
   otherwise. The A/B build is ready for a phone round on r49's flags (the 3x engine is not phone-ready).
+- pct20 (cycle profile of P2: t18's flags + A4_PX6 + the list changes; 1.5e9 instructions after 8e9):
+  our blob 71.2%, the game's Thumb 23.8%, ROM 4.9% (the runtime's convert gone from the list). Ours:
+  engi_349F8 9.67% (its vertex transform 5.5, the per-face outcode test 4.2), a4_cvt565_run 8.75%,
+  a4_comp_row 8.11%, the painter 6.61%, a4_mesh_insert 6.42%, lean_tail 5.99%, mesh_vtx 4.42%,
+  mesh_draw 3.59% (4.22 in pct19), batch_draw 3.24%, mesh_fallback_m 2.04%, +CE8C 1.91%, +349B0
+  1.78%, bb_row2 1.77%, draw_prim_take 1.44%, tex_index 1.11%. The two pixel rows are now about half
+  instructions and half the model's read misses (150 KB and 300 KB streamed a frame) -- what a PLD
+  would hide on the ARM1136, if it does (the phone A/B's slot 3).
+- The same slip again: gc20 (the census with reverted sets) was still running when RS5 started; each
+  telerun's pkill cut the other short. What each gathered before the cut stands (gc20's census lines,
+  RS5's 276 race frames). Every bench run now goes through scratchpad benchgo.sh, which waits until no
+  emulator and no bench script is alive.
+- gc20 (census with reverted sets: a state changed and changed back with no draw between, both calls
+  counted): 741-820 calls a frame, 7 redundant, ~100 reverted -- glDepthMask 45-50 of its 49-54 calls,
+  glEnable/glDisable 53-58: a kind's leave and the next kind's enter turning the depth test and mask
+  off and on again. A lazy state (renderer: gl_enable/gl_disable/gl_depthmask record, lz_flush tells GL
+  at the next draw or clear -- the only calls these states act on; every draw and clear goes through
+  those wrappers, checked by grep; A4_EAGERGL keeps the old behaviour for the A/B) removes them: ~0.3 ms
+  a frame on the GPU model. Check: a seeded lockstep pair, eager against lazy, frames compared.
+- RS5 (cut short, 276 race frames): 19,500 pixels a frame (25%) with no opaque GPU class under them
+  -- the backdrop software keeps. The blended classes (KIND_ADD, KIND_ALPHA: lean_tail returns 0 for
+  them) are drawn twice, by the GPU and by the game's span (+33EA8 is the alpha-mapped boards' span,
+  3.2% of pct20), because over that backdrop only software's copy shows; over the other 75% the
+  composite overwrites software's copy. Which pixels are backdrop is known only after the GPU frame.
+- benchgo.sh's first version waited on itself (its pgrep -f matched its own arguments); it now matches
+  only scripts being run ("bash .../telerun4.sh"). The first eager/lazy pair (LZE/LZL, 25 s): the two
+  races identical step for step (aligncheck: 62 of 62 records), but the captures are keyed to presents
+  since boot (the menus run on the wall clock), so equal capture indices were not the same moment
+  (31-39 K of 77 K pixels apart). A4_TELSTEP (bench, a lockstep build with the car recorder): a capture
+  at every TEL_EVERY-th race step instead -- the same moments of the same race in both builds. Rerun.
+- LZE/LZL again with step-keyed captures (40 s): the two races identical to step 249, where they part
+  (a car word, +AC0: the run-to-run spread); the frames at steps 200-240 1,199-3,670 pixels apart, all
+  in the 3D view -- the opponents ahead and their position markers, and the exhaust sparks; road,
+  scenery, HUD and the player's car identical (lz_cmp22.png). Control, the eager build against itself
+  (LZE2): 686-3,273 pixels apart at the same steps, parting at the same step 249. The lazy state's
+  differences are inside the bench's own spread; with every draw and clear flushing, it is taken as
+  exact. Default on (A4_EAGERGL restores the old calls). gc21: the census on it.

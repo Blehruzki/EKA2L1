@@ -316,6 +316,8 @@ struct glr {
                                         * ground [0] and its height [1], running averages x16 (the
                                         * chase camera: ~97% of race renders); [2] unused */
     uint32_t chaseinit;
+    uint32_t lz_want, lz_have;         /* round 50: the lazy GL state (gl_enable/gl_disable/gl_depthmask): what the
+                                        * code has asked for and what GL has; zero is GL's own initial state */
 };
 
 _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlaps the readback strip");
@@ -482,7 +484,8 @@ static int   egl_context(int d,uint32_t c,int s,int*a){ return ((int(*)(int,uint
 static int   egl_make_current(int d,int r,int w,int c){ return ((int(*)(int,int,int,int))F(4))(d,r,w,c); }
 static void  gl_viewport(int x,int y,int w,int h){ ((void(*)(int,int,int,int))F(5))(x,y,w,h); }
 static void  gl_clearcolorx(int r,int g,int b,int a){ ((void(*)(int,int,int,int))F(6))(r,g,b,a); }
-static void  gl_clear(uint32_t m){ ((void(*)(uint32_t))F(7))(m); }
+static void  lz_flush(void);
+static void  gl_clear(uint32_t m){ lz_flush(); ((void(*)(uint32_t))F(7))(m); }
 static void  gl_finish(void) __attribute__((unused));
 static void  gl_finish(void){ ((void(*)(void))F(8))(); }   /* unused since the pipelined readback; kept for A/B builds */
 static void  gl_readpixels(int,int,int,int,uint32_t,uint32_t,void*) __attribute__((unused));   /* unused in -DA4_NO_BLIT */
@@ -491,7 +494,7 @@ static void  gl_gentex(int n,uint32_t*t){ ((void(*)(int,uint32_t*))F(10))(n,t); 
 static void  gl_bindtex(uint32_t tg,uint32_t t){ ((void(*)(uint32_t,uint32_t))F(11))(tg,t); }
 static void  gl_teximage(uint32_t tg,int l,int ifmt,int w,int h,int b,uint32_t f,uint32_t t,const void*p){ ((void(*)(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*))F(12))(tg,l,ifmt,w,h,b,f,t,p); }
 static void  gl_texparamx(uint32_t tg,uint32_t p,int v){ ((void(*)(uint32_t,uint32_t,int))F(13))(tg,p,v); }
-static void  gl_enable(uint32_t c){ ((void(*)(uint32_t))F(14))(c); }
+static void  gl_enable_now(uint32_t c){ ((void(*)(uint32_t))F(14))(c); }
 static void  gl_matrixmode(uint32_t m){ ((void(*)(uint32_t))F(15))(m); }
 static void  gl_loadidentity(void){ ((void(*)(void))F(16))(); }
 static void  gl_orthox(int l,int r,int b,int t,int n,int f){ ((void(*)(int,int,int,int,int,int))F(17))(l,r,b,t,n,f); }
@@ -499,15 +502,15 @@ static void  gl_enableclient(uint32_t a){ ((void(*)(uint32_t))F(18))(a); }
 static void  gl_vertexptr(int s,uint32_t t,int st,const void*p){ ((void(*)(int,uint32_t,int,const void*))F(19))(s,t,st,p); }
 static void  gl_texcoordptr(int s,uint32_t t,int st,const void*p){ ((void(*)(int,uint32_t,int,const void*))F(20))(s,t,st,p); }
 static void  gl_color4x(int r,int g,int b,int a){ ((void(*)(int,int,int,int))F(21))(r,g,b,a); }
-static void  gl_drawarrays(uint32_t m,int f,int c){ ((void(*)(uint32_t,int,int))F(22))(m,f,c); }
+static void  gl_drawarrays(uint32_t m,int f,int c){ lz_flush(); ((void(*)(uint32_t,int,int))F(22))(m,f,c); }
 static void  gl_drawelements(uint32_t m,int c,uint32_t t,const void*ix) __attribute__((unused));
-static void  gl_drawelements(uint32_t m,int c,uint32_t t,const void*ix){ ((void(*)(uint32_t,int,uint32_t,const void*))F(27))(m,c,t,ix); }   /* ord 55 (stage 4, against the ROM) */
+static void  gl_drawelements(uint32_t m,int c,uint32_t t,const void*ix){ lz_flush(); ((void(*)(uint32_t,int,uint32_t,const void*))F(27))(m,c,t,ix); }   /* ord 55 (stage 4, against the ROM) */
 static void  gl_shademodel(uint32_t m){ ((void(*)(uint32_t))F(23))(m); }
 static void  gl_texenvx(uint32_t tg,uint32_t p,int v){ ((void(*)(uint32_t,uint32_t,int))F(24))(tg,p,v); }
 static uint32_t gl_geterror(void){ return ((uint32_t(*)(void))F(25))(); }   /* device probe */
 static int   egl_choose_config(int d,const int*a,uint32_t*c,int n,int*num){ return ((int(*)(int,const int*,uint32_t*,int,int*))F(26))(d,a,c,n,num); }
 static void  gl_alphafuncx(uint32_t func,int ref){ ((void(*)(uint32_t,int))F(33))(func,ref); }   /* A4_TEL colorkey: alpha test */
-static void  gl_disable(uint32_t c){ ((void(*)(uint32_t))F(32))(c); }
+static void  gl_disable_now(uint32_t c){ ((void(*)(uint32_t))F(32))(c); }
 static void  gl_blendfunc(uint32_t sf,uint32_t df){ ((void(*)(uint32_t,uint32_t))F(35))(sf,df); }
 static void  gl_flush(void){ ((void(*)(void))F(36))(); }
 static void  gl_getintegerv(uint32_t pn,int*v){ ((void(*)(uint32_t,int*))F(37))(pn,v); }
@@ -523,8 +526,60 @@ static void  gl_cleardepthx(int d) __attribute__((unused));
 static void  gl_cleardepthx(int d){ ((void(*)(int))F(29))(d); }
 static void  gl_loadmatrixx(const int*m) __attribute__((unused));
 static void  gl_loadmatrixx(const int*m){ ((void(*)(const int*))F(42))(m); }       /* ord 84 (A4_MESH) */
-static void  gl_depthmask(uint32_t f) __attribute__((unused));
-static void  gl_depthmask(uint32_t f){ ((void(*)(uint32_t))F(43))(f); }              /* ord 49 (A4_MESH) */
+static void  gl_depthmask_now(uint32_t f){ ((void(*)(uint32_t))F(43))(f); }          /* ord 49 (A4_MESH) */
+/* Round 50: the capabilities the kinds switch, and the depth mask, are set lazily -- the code asks
+ * (gl_enable, gl_disable, gl_depthmask: unchanged at every call site) and GL is told at the next draw
+ * or clear (lz_flush), the only calls these states act on. A kind's leave/enter pair turned the depth
+ * test and mask off and on again with nothing drawn between (~100 calls a frame, the GPU-model census:
+ * EKA2L1_GPUMODEL_CALLS). Bit 6 is the mask OFF, so the zeroed struct is GL's initial state (every
+ * one of these disabled, depth writes on), as at the context's creation (bring-up, glr bss-zeroed). */
+#ifndef A4_EAGERGL
+#define LZ_NOMASK 64u
+static inline uint32_t lz_cap(uint32_t c)
+{
+    return c == GL_DEPTH_TEST ? 1u : c == GL_BLEND ? 2u : c == GL_ALPHA_TEST ? 4u : c == GL_TEXTURE_2D ? 8u
+         : c == GL_STENCIL_TEST ? 16u : c == GL_CULL_FACE ? 32u : 0u;
+}
+static void gl_enable(uint32_t c)
+{
+    const uint32_t b = lz_cap(c);
+    if (b) ((volatile struct glr *)A4_GL_SCRATCH)->lz_want |= b;
+    else gl_enable_now(c);
+}
+static void gl_disable(uint32_t c)
+{
+    const uint32_t b = lz_cap(c);
+    if (b) ((volatile struct glr *)A4_GL_SCRATCH)->lz_want &= ~b;
+    else gl_disable_now(c);
+}
+static void gl_depthmask(uint32_t f) __attribute__((unused));
+static void gl_depthmask(uint32_t f)
+{
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    if (f) s->lz_want &= ~LZ_NOMASK; else s->lz_want |= LZ_NOMASK;
+}
+static void lz_flush(void)
+{
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    const uint32_t w = s->lz_want, d = w ^ s->lz_have;
+    if (!d) return;
+    if (d & 1u)  { if (w & 1u)  gl_enable_now(GL_DEPTH_TEST);   else gl_disable_now(GL_DEPTH_TEST); }
+    if (d & 2u)  { if (w & 2u)  gl_enable_now(GL_BLEND);        else gl_disable_now(GL_BLEND); }
+    if (d & 4u)  { if (w & 4u)  gl_enable_now(GL_ALPHA_TEST);   else gl_disable_now(GL_ALPHA_TEST); }
+    if (d & 8u)  { if (w & 8u)  gl_enable_now(GL_TEXTURE_2D);   else gl_disable_now(GL_TEXTURE_2D); }
+    if (d & 16u) { if (w & 16u) gl_enable_now(GL_STENCIL_TEST); else gl_disable_now(GL_STENCIL_TEST); }
+    if (d & 32u) { if (w & 32u) gl_enable_now(GL_CULL_FACE);    else gl_disable_now(GL_CULL_FACE); }
+    if (d & LZ_NOMASK) gl_depthmask_now((w & LZ_NOMASK) ? 0u : 1u);
+    s->lz_have = w;
+}
+#else
+/* bench (A4_EAGERGL): every call made where it is asked, as before round 50 -- the A/B's other side */
+static void gl_enable(uint32_t c){ gl_enable_now(c); }
+static void gl_disable(uint32_t c){ gl_disable_now(c); }
+static void gl_depthmask(uint32_t f) __attribute__((unused));
+static void gl_depthmask(uint32_t f){ gl_depthmask_now(f); }
+static void lz_flush(void) { }
+#endif
 static void  gl_texsubimage(uint32_t tg,int l,int xo,int yo,int w,int h,uint32_t f,uint32_t t,const void*p){ ((void(*)(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*))F(34))(tg,l,xo,yo,w,h,f,t,p); }
 #ifdef A4_WINDOW
 extern volatile uint32_t *a4_ws_iat_ptr(void);
@@ -6132,14 +6187,16 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
             for (int sy = 0; sy < sh; sy++) {
                 int screen_y = VP_H - 1 - (y0 + sy);
                 const uint32_t *src = rb + sy * VP_W;
-                uint32_t any = 0;
-                for (int x = 0; x < VP_W; x++) any |= amask ? src[x] : 0x80000000u;
+                uint32_t any = 0, none = 0;
+                for (int x = 0; x < VP_W; x++) { any |= amask ? src[x] : 0x80000000u; none += amask && (int32_t)src[x] >= 0; }
+                ck[77] += none;                      /* [77] pixels no opaque GPU class drew, [78] frames */
                 ck[81]++;
                 if (!(any & 0x80000000u)) { ck[80]++; continue; }
                 if (screen_y < fr[0]) fr[0] = screen_y;
                 if (screen_y > fr[1]) fr[1] = screen_y;
             }
             if (y0 + sh > gl_hi && fr[1] >= 0) { ck[82] += (uint32_t)fr[0]; ck[83] += (uint32_t)fr[1]; ck[84]++; }
+            if (y0 + sh > gl_hi) ck[78]++;
         }
 #endif
 #ifdef A4_READBACK_ONLY

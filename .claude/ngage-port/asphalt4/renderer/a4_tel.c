@@ -144,6 +144,9 @@ void a4_tel_tick(uint32_t had)
      * draws no 3D, so a cycling ring (TEL_CYCLE) keeps the last race captures before
      * the player pauses to quit instead of filling with menu frames. (The old gate,
      * g[8] = last_prims, stays high through a pause.) TEL_EVERY counts these. */
+#if defined(A4_TELSTEP) && !(defined(A4_CARREC) && defined(A4_LOCKSTEP))
+#error "A4_TELSTEP keys captures to the race step: a lockstep build with the car recorder"
+#endif
 #ifdef A4_DROPCAP
 #ifndef A4_SLOWREC
 #error "A4_DROPCAP reads the A4_SLOWREC drop count"
@@ -163,7 +166,15 @@ void a4_tel_tick(uint32_t had)
 #ifdef TEL_SKIP
     if (t->actframes < TEL_SKIP) return;         /* skip early race: capture deeper, at speed */
 #endif
-#if defined(A4_DROPCAP)
+#if defined(A4_TELSTEP)
+    /* bench (round 50): in a lockstep, seeded build the race's own step (the car recorder's count,
+     * A4_GL_CREC word 1) picks the frames -- the render of every TEL_EVERY-th step, once -- so two
+     * builds' captures are the same moments of the same race and their pixels compare (fbcmp.py) */
+    {   const uint32_t st = ((volatile uint32_t *)0x00421900u)[1];
+        if (!st || (st % TEL_EVERY) != 0 || st == t->dropcap) return;
+        t->dropcap = st;
+    }
+#elif defined(A4_DROPCAP)
 #elif defined(A4_FILLCAP)
     /* bench instrument: capture the renders that drew a solid fill on the GPU (the
      * letterbox bars), at most one in 8 renders, instead of every TEL_EVERY */

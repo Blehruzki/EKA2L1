@@ -61,6 +61,29 @@ namespace eka2l1::common::gpumodel {
     };
     static shadow g_sh;
 
+    // reverted sets: a state changed and changed back with no draw between -- both calls wasted. Each
+    // tracked state (a key) keeps its value at the last draw; a set that returns it to that value after
+    // it had moved counts 2.
+    struct rkey { std::uint32_t key, cur, at_draw; bool moved; };
+    static rkey g_rk[64];
+    static std::uint32_t g_nrk = 0;
+    static std::uint64_t g_rev[256];
+    static void rk_set(const std::uint32_t ord, const std::uint32_t key, const std::uint32_t v) {
+        for (std::uint32_t i = 0; i < g_nrk; i++) {
+            rkey &k = g_rk[i];
+            if (k.key != key) continue;
+            if (k.cur == v) return;
+            if (k.moved && v == k.at_draw) { g_rev[ord & 0xFFu] += 2; k.moved = false; }
+            else k.moved = v != k.at_draw;
+            k.cur = v;
+            return;
+        }
+        if (g_nrk < 64) g_rk[g_nrk++] = rkey{ key, v, v, false };
+    }
+    static void rk_draw() {
+        for (std::uint32_t i = 0; i < g_nrk; i++) { g_rk[i].at_draw = g_rk[i].cur; g_rk[i].moved = false; }
+    }
+
     static bool census() {
         if (g_census < 0) {
             const char *c = std::getenv("EKA2L1_GPUMODEL_CALLS");
@@ -98,6 +121,17 @@ namespace eka2l1::common::gpumodel {
         const std::uint32_t k = ordinal & 0xFFu;
         g_ord[k]++;
         bool red = false;
+        switch (ordinal) {     // reverted-set keys: the cap, or the ordinal's own state (and texenv's pname)
+        case 0x1137: case 0x1133: rk_set(ordinal, 0x10000u | a[0], ordinal == 0x1137 ? 1u : 0u); break;
+        case 0x111C: rk_set(ordinal, 0x20000u, a[1]); break;
+        case 0x1126: rk_set(ordinal, 0x30000u, a[0] ^ (a[1] << 8) ^ (a[2] << 16) ^ (a[3] << 24) ^ a[3]); break;
+        case 0x111D: rk_set(ordinal, 0x40000u, a[0] ^ (a[1] << 16)); break;
+        case 0x112F: rk_set(ordinal, 0x50000u, a[0]); break;
+        case 0x1130: rk_set(ordinal, 0x60000u, a[0]); break;
+        case 0x117A: rk_set(ordinal, 0x70000u | (a[1] & 0xFFFFu), a[2]); break;
+        case 0x1135: case 0x1136: rk_draw(); break;
+        default: break;
+        }
         switch (ordinal) {
         case 0x1137: red = set_cap(g_sh.cap, g_sh.ncap, 16, a[0], 1); break;          // glEnable
         case 0x1133: red = set_cap(g_sh.cap, g_sh.ncap, 16, a[0], 0); break;          // glDisable
@@ -121,7 +155,7 @@ namespace eka2l1::common::gpumodel {
     }
 
     static void census_report(const double f) {
-        std::uint64_t tot = 0, totr = 0;
+        std::uint64_t tot = 0, totr = 0, totv = 0;
         char line[1024];
         int o = 0;
         for (int round = 0; round < 14; round++) {
@@ -132,7 +166,10 @@ namespace eka2l1::common::gpumodel {
             if (best < 0)
                 break;
             if (o < 900)
-                o += std::snprintf(line + o, sizeof(line) - o, " %04X %.1f/%.1f", 0x1100 + best, g_ord[best] / f, g_red[best] / f);
+                o += std::snprintf(line + o, sizeof(line) - o, " %04X %.1f/%.1f/%.1f", 0x1100 + best, g_ord[best] / f, g_red[best] / f,
+                    g_rev[best] / f);
+            totv += g_rev[best];
+            g_rev[best] = 0;
             tot += g_ord[best];
             totr += g_red[best];
             g_ord[best] = 0;
@@ -141,10 +178,11 @@ namespace eka2l1::common::gpumodel {
         for (int k = 0; k < 256; k++) {
             tot += g_ord[k];
             totr += g_red[k];
-            g_ord[k] = g_red[k] = 0;
+            totv += g_rev[k];
+            g_ord[k] = g_red[k] = g_rev[k] = 0;
         }
-        std::fprintf(stderr, "EKA2L1_GPUMODEL_CALLS: a frame %.0f calls, %.1f redundant; by ordinal (calls/redundant):%s\n",
-            tot / f, totr / f, line);
+        std::fprintf(stderr, "EKA2L1_GPUMODEL_CALLS: a frame %.0f calls, %.1f redundant, %.1f reverted; by ordinal (calls/redundant/reverted):%s\n",
+            tot / f, totr / f, totv / f, line);
     }
 
     static void report() {
