@@ -7821,3 +7821,16 @@ Owner: "Sounds like a plan. Go ahead."
   (LZE2): 686-3,273 pixels apart at the same steps, parting at the same step 249. The lazy state's
   differences are inside the bench's own spread; with every draw and clear flushing, it is taken as
   exact. Default on (A4_EAGERGL restores the old calls). gc21: the census on it.
+- gc21 (the census on the lazy build, 60 s): reverted sets 2.5 a frame (from ~100); redundant 25-34
+  (binds 8-10, blend functions 22 -- left: the bind and blend calls are not cached). glDepthMask no
+  longer among the busiest calls.
+- Where the round stands (calibrated model): the ARMv6 pixel loops ~5 ms of a ~54 ms real-time render
+  in interleaved windows (AB1), 7% more frames in the lockstep window (L19); the list's determinant,
+  depth ranges and sort, and the lazy state, each ~0.3-1% (not separately timed: under the bench's
+  run-to-run spread). Tried and dropped, with numbers: a tighter readback extent (the GPU draws every
+  row), finer draw grouping (under 1% of draws), a GL state cache for repeated values (3% of calls),
+  20 more lifted functions (the random fuzz cannot reach them; random fuzz is no verification for them).
+  Open, each ~1-2%: the blended classes' software copy where opaque list faces cover them, the
+  painter's loop spills, the Thumb long tail (needs real-input verification). Open guesses for a phone
+  round (A4_ABCYCLE11 build ready on the bench; r49's flags, the 3x engine not phone-ready): the
+  Thumb/ARM CPI split, the instruction cache, PLD on the streaming loops, the runtime build's hash.
