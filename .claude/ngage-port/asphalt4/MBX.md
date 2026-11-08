@@ -8089,3 +8089,10 @@ a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.p
   object: 7 KB (a4_engv_29736, the lifted fallback eng_29736, the hand painter); the t18 flag set still
   builds. z2 = C50 + A4_ZSKIP + the hand painter, 823,752 bytes; its check builds z2pc/z2pm carry
   A4_PAINTCHECK (+ _MUTANT) with A4_PAINTFAST, as LC6 did. Runs queued (pbat.sh).
+- z1c over the menus with the garage (the battery's route): 2,047 clears skipped and scanned, 0 with a word
+  set, 40 run; the screens as r49bmn (the race, the pause menu and every row, confirm, the main menu,
+  the garage and the car's page: sheet_zcmn.png).
+- z1 on the new model against kV1 (r50c), 120 s each: 72.5 -> 67.5 ms a render (-5.0, -6.9%); rest
+  28.2 -> 24.9, 3D 27.5 -> 25.9, the rest of the phases unchanged; 1,793 clears skipped, 39 run. The
+  model's figure for 76,800 missed stores (~5 ms) -- which a phone round would test: the store-only
+  A/B the recalibration named.
