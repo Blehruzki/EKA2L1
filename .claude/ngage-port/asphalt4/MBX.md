@@ -7709,3 +7709,41 @@ Owner: "Sounds like a plan. Go ahead."
 - A slip: CVM was still running (a backgrounded second command) when the cvq probe started; the
   probe's telerun killed it. Not two emulators for long, but CVM is rerun clean; the runs since go
   through one strictly sequential loop.
+- CV1 (the corrected build: A4_PX6 + A4_CVTCHECK + A4_BLITCHECK, calibrated model, 60 s of race):
+  installed once ([90] 1); 735 converts, all on the fast path ([91] 735, [92] 0 handed back), each
+  compared row for row with +CB70's own answer: 0 words differing ([93] 0, [94] 735). The composite's
+  ARMv6 row: 11,027 strips against the general loop, 0 pixels differing. Run: CVM (both mutants).
+- The mesh list's back-face determinant (a4_mesh_insert, 2.2% of the race's modelled cycles in pct19,
+  its two hottest blocks): every product was 64-bit (6 SMULLs and three 64x64 multiplies). With the
+  nine coordinates int16 (MESH_FITS, all checked before) each 2x2 minor is within 2^31 - 32768 and
+  exact in 32 bits; only the three terms need 64 bits: 6 MULs, an SMULL and two SMLALs. Checked on
+  the host against the all-64-bit form: 2e8 random cases and 4.0e7 corners of the int16 cube, 0
+  differing. Unconditional (exact by construction and by that check).
+- CVM (both mutants: a word flipped in each convert's spare row, a pixel flipped a composite row):
+  781 of 781 converts flagged (one word each: [93] 781), the composite check 166,436 pixels in 11,730
+  strips. Both checks bite; A4_PX6 is exact on the race. Runs: RS1 (which rows the composite reads
+  back carry a GPU pixel), then the lockstep A/B L18b (t18's flags, today's tree) against L19 (+ A4_PX6).
+- RS1 (bench census A4_ROWSTAT: which rows the composite reads back hold a GPU-drawn pixel; t18 +
+  A4_PX6, 60 s): 248,192 rows read, 5,344 (2.2%) with none -- all before the race (the count stops
+  growing); a frame's first drawn row 5 on average, its last 239. The GPU draws the sky now, so a list
+  frame's "all rows" is the truth: a tighter readback extent saves nothing. Dropped.
+- mesh_draw (4.2% in pct19), two of its hot blocks: the run grouping's A4_MESHZ test read each face's
+  three corner depths out of MESH_V (36 bytes a face, 45 KB for a full list: past the 32 KB data
+  cache), and the counting sort cleared and summed all 4,096 buckets every list. Now mesh_take keeps
+  each face's ZW range (uint16 min/max: ZK..32768, exact) in MESH_Z, 4 bytes a face, and the list's
+  lowest/highest bucket; the sort runs over that range only (the same order). Room: MESH_NR, the runs
+  held before a draw, 1024 -> 512 (a frame's list makes at most ~210 draw calls benched). In-run check
+  A4_LISTCHECK (census [74] faces whose place differs from the full sort's, [75] ranges differing from
+  the corners', [76] lists) and its mutant: runs LS1, LSM; RS2 the list's texture keys a frame against
+  its draw calls (how far merging could go).
+- Lockstep A/B (calibrated model, 120 s of race, A4_LOCKSTEP=1 + A4_BENCH_SEED: one game step a
+  render, so renders in the fixed window are the throughput):
+      L18b (t18's flags, today's tree)     1,991 renders, render call 48.9 ms, composite 14.3-15.9 ms a render
+      L19  (+ A4_PX6: both ARMv6 loops)    2,130 renders, render call 47.3 ms, composite 10.8-11.5 ms a render
+  7.0% more frames in the same time (the frame ~6.5% shorter); the convert is outside the render call
+  (the present), so the render call shows only the composite's share. The windows' rows are not
+  comparable run to run (L19's last windows sat in a heavier stretch: 383-390 draws a frame against
+  206-212); the totals are.
+- LS1 (A4_LISTCHECK, t18 + A4_PX6 + the determinant and list changes, 60 s): 1,011 lists, 0 faces out of
+  place against the full 4,096-bucket sort, 0 kept ZW ranges differing from the corners'. LSM (the
+  mutant: two places swapped and a range bit flipped a list): 2,070 places and 1,035 ranges flagged.

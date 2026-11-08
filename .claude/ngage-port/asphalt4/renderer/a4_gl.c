@@ -356,6 +356,7 @@ struct mesh {
     uint16_t kcnt[MESH_NK], koff[MESH_NK];
     uint8_t kws[MESH_NK], khs[MESH_NK]; /* its texcoord shifts */
     uint32_t nearf;                     /* the last frame a TBillboard within MESH_NEAR was drawn (+1) */
+    uint16_t qlo, qhi;                  /* round 50: the frame's lowest and highest table bucket (MESH_Q) */
     uint32_t stale;                     /* round 34: lists drawn after a present came between their
                                          * inserts and the walk (dropped before; total) */
     uint16_t grid[MESH_GW * MESH_GH];   /* per 16-pixel tile, the nearest bucket of a drawn list face
@@ -375,7 +376,8 @@ struct mesh {
 #define MESH_I   ((uint16_t *)(A4_GL_MESH + 0x800u + 54u * MESH_MAXT))       /* indices, by run (counts first) */
 #define MESH_K   ((uint8_t *)(A4_GL_MESH + 0x800u + 60u * MESH_MAXT))        /* key slot (at the draw) */
 #ifndef MESH_NR
-#define MESH_NR 1024u                   /* runs held before they are drawn */
+#define MESH_NR 512u                    /* runs held before they are drawn (a frame's list makes at most ~210
+                                         * draw calls in the races benched; 1024 until round 50) */
 #endif
 #ifndef MESH_NEARF
 #define MESH_NEARF 8u                   /* frames the near cut stays on after a near sprite */
@@ -389,7 +391,11 @@ struct mesh {
 struct mrun { uint16_t kslot; int16_t zlo; int16_t box[4]; uint16_t head, tail, cnt; int16_t zhi; };
 #define MESH_RB  ((A4_GL_MESH + 0x800u + 61u * MESH_MAXT + 3u) & ~3u)        /* word aligned */
 #define MESH_R   ((struct mrun *)MESH_RB)
-#define MESH_TOP ((MESH_RB + 20u * MESH_NR + 0xFFFu) & ~0xFFFu)
+/* round 50: each face's ZW range (its corners' -z', min then max: ZK..32768, so uint16), written at the
+ * insert for the run grouping's A4_MESHZ test -- which read the three corners out of MESH_V (45 KB for a
+ * full list, past the 32 KB data cache) at the draw */
+#define MESH_Z   ((uint16_t *)(MESH_RB + 20u * MESH_NR))
+#define MESH_TOP ((MESH_RB + 20u * MESH_NR + 4u * MESH_MAXT + 0xFFFu) & ~0xFFFu)
 #define A4_MESH_SCRATCH_TOP 0x00447000u /* injector.py GL_SCRATCH + A4_SCRATCH_SIZE (0x46000) */
 _Static_assert(sizeof(struct mrun) == 20u, "run record");
 _Static_assert(4096u * 2u <= 6u * MESH_MAXT, "bucket counts in the index area");
@@ -4223,6 +4229,7 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
 #endif
         m->frame = s->frames; m->n = 0; m->drawn = 0;
         m->cam = (uint32_t)(uintptr_t)cam; m->F = cam[1];
+        m->qlo = 0xFFFFu; m->qhi = 0;
     }
     uint32_t n = m->n;
     if (m->drawn || m->cam != (uint32_t)(uintptr_t)cam || n >= MESH_MAXT) return 0;
@@ -4298,11 +4305,16 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
          * area (x1-x0)(y2-y0) - (x2-x0)(y1-y0) < 0. With sx = cx + F x'/w, sy = cy - F y'/w,
          * w = -z' > 0, that area is F^2 det[x' y' z'] / (w0 w1 w2), the same sign as the
          * determinant of the three view-space vertices: drawn where det < 0. Taken here,
-         * a back face is consumed (the table would have dropped it at its draw). 64-bit
-         * products (SMULL): int16 coordinates give terms up to 2^47. */
-        int64_t d = (int64_t)x0 * ((int64_t)y1 * z2 - (int64_t)z1 * y2)
-                  - (int64_t)y0 * ((int64_t)x1 * z2 - (int64_t)z1 * x2)
-                  + (int64_t)z0 * ((int64_t)x1 * y2 - (int64_t)y1 * x2);
+         * a back face is consumed (the table would have dropped it at its draw). int16
+         * coordinates (MESH_FITS, all nine): each 2x2 minor is within 2^31 - 32768, so it
+         * is exact in 32 bits (round 50: wrapping products, 6 MULs); only the three terms
+         * of up to 2^47 need 64 bits (SMULL). Before, every product was 64-bit: 6 SMULLs
+         * and three 64x64 multiplies, 2.2% of the race's modelled cycles (pct19). Checked
+         * against the all-64-bit form on the host: 2e8 random and 4e7 corner cases. */
+        const int32_t ma = (int32_t)((uint32_t)y1 * (uint32_t)z2 - (uint32_t)z1 * (uint32_t)y2);
+        const int32_t mb = (int32_t)((uint32_t)z1 * (uint32_t)x2 - (uint32_t)x1 * (uint32_t)z2);
+        const int32_t mc = (int32_t)((uint32_t)x1 * (uint32_t)y2 - (uint32_t)y1 * (uint32_t)x2);
+        int64_t d = (int64_t)x0 * ma + (int64_t)y0 * mb + (int64_t)z0 * mc;
         if (d >= 0) { MESH->culled++; return 1; }
     }
     int16_t *c = MESH_V + n * 18u;
@@ -4337,10 +4349,16 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
 #endif
         ext3(sx0, sx1, sx2, &xlo, &xhi); ext3(sy0, sy1, sy2, &ylo, &yhi);
         tbox_calc(MESH_B + n * 4u, xlo, ylo, xhi, yhi);
-        int32_t zw = -z0;
+        int32_t zw = -z0, zl = -z0;
         if (-z1 > zw) zw = -z1;
         if (-z2 > zw) zw = -z2;
-        MESH_Q[n] = (uint16_t)((zw >> 3) > 4095 ? 4095 : (zw >> 3));
+        if (-z1 < zl) zl = -z1;
+        if (-z2 < zl) zl = -z2;
+        const uint32_t q = (uint32_t)((zw >> 3) > 4095 ? 4095 : (zw >> 3));
+        MESH_Q[n] = (uint16_t)q;
+        if (q < m->qlo) m->qlo = (uint16_t)q;
+        if (q > m->qhi) m->qhi = (uint16_t)q;
+        MESH_Z[2u * n] = (uint16_t)zl; MESH_Z[2u * n + 1u] = (uint16_t)zw;
     }
 #ifdef A4_MESHCHECK
     MESH_D[n] = (uint32_t)(uintptr_t)face;
@@ -4503,11 +4521,40 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
      * index area (rewritten below). */
     {   uint16_t *c = MESH_I, *ord = MESH_ORD;
         const uint16_t *Q = MESH_Q;
-        for (uint32_t b = 0; b < 4096u; b++) c[b] = 0;
+        /* over the buckets the frame's faces use (mesh_take keeps the range): the same order */
+        const int32_t qlo = m->qlo, qhi = m->qhi;
+        for (int32_t b = qlo; b <= qhi; b++) c[b] = 0;
         for (uint32_t i = 0; i < n; i++) c[Q[i]]++;
         uint32_t o = 0;
-        for (int32_t b = 4095; b >= 0; b--) { uint32_t k = c[b]; c[b] = (uint16_t)o; o += k; }
+        for (int32_t b = qhi; b >= qlo; b--) { uint32_t k = c[b]; c[b] = (uint16_t)o; o += k; }
         for (int32_t i = (int32_t)n - 1; i >= 0; i--) ord[c[Q[i]]++] = (uint16_t)i;
+#ifdef A4_LISTCHECK
+        {   /* bench (round 50): the order against the full 4,096-bucket sort, made in the grid's spare
+             * 0x460000 area, and each kept ZW range against the corners -- census [74] faces whose place
+             * differs, [75] ranges that differ, [76] lists checked */
+            volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
+            uint16_t *c2 = (uint16_t *)0x00460000u, *o2 = (uint16_t *)0x00462000u;
+            for (uint32_t b = 0; b < 4096u; b++) c2[b] = 0;
+            for (uint32_t i = 0; i < n; i++) c2[Q[i]]++;
+            uint32_t oo = 0;
+            for (int32_t b = 4095; b >= 0; b--) { uint32_t k = c2[b]; c2[b] = (uint16_t)oo; oo += k; }
+            for (int32_t i = (int32_t)n - 1; i >= 0; i--) o2[c2[Q[i]]++] = (uint16_t)i;
+#ifdef A4_LISTCHECK_MUTANT
+            if (n > 1) { uint16_t t = o2[0]; o2[0] = o2[1]; o2[1] = t; MESH_Z[0] ^= 1u; }
+#endif
+            for (uint32_t i = 0; i < n; i++) {
+                if (o2[i] != ord[i]) ck[74]++;
+                const int16_t *fv = MESH_V + i * 18u;
+                int32_t fl = -fv[2], fh = -fv[2];
+                if (-fv[8] < fl) fl = -fv[8];
+                if (-fv[8] > fh) fh = -fv[8];
+                if (-fv[14] < fl) fl = -fv[14];
+                if (-fv[14] > fh) fh = -fv[14];
+                if (fl != (int32_t)MESH_Z[2u * i] || fh != (int32_t)MESH_Z[2u * i + 1u]) ck[75]++;
+            }
+            ck[76]++;
+        }
+#endif
     }
     int32_t F = (int32_t)m->F;
     if (F < 1) F = 1;
@@ -4564,12 +4611,7 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
                  * ones keep their order. "Apart" with a margin of 1/256 of ZW, many times the
                  * 24-bit buffer's step, so the depths cannot tie once quantised (r50: the list
                  * made 209 draws a render, ~6 faces each, 10.9 ms on the N95 model). */
-                const int16_t *fv = MESH_V + i * 18u;
-                int32_t fl = -fv[2], fh = -fv[2];
-                if (-fv[8] < fl) fl = -fv[8];
-                if (-fv[8] > fh) fh = -fv[8];
-                if (-fv[14] < fl) fl = -fv[14];
-                if (-fv[14] > fh) fh = -fv[14];
+                const int32_t fl = MESH_Z[2u * i], fh = MESH_Z[2u * i + 1u];   /* mesh_take's */
                 const uint32_t tz = (k >> 8) & 1u, zok = s->zbits >= 24u;
 #define MESHZ_FARTHER(a, b) ((int32_t)(a) - (int32_t)(b) > ((int32_t)(b) >> 8) + 1)
 #endif
@@ -4650,6 +4692,20 @@ draw:
     gl_disable(GL_CULL_FACE); gl_disable(GL_DEPTH_TEST);
     m->active = n > lost;
     m->nk = nk;
+#ifdef A4_ROWSTAT
+    {   /* bench (round 50): census [70] the list's texture keys (texture x texz) a frame, [71] its draw
+         * calls, [72] frames, [73] faces drawn */
+        volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
+        uint32_t keys = 0, seen[2 * MESH_NK / 32];
+        for (uint32_t j = 0; j < 2 * MESH_NK / 32; j++) seen[j] = 0;
+        for (uint32_t i = 0; i < n; i++) {
+            if (K[i] == 0xFFu) continue;
+            uint32_t k = K[i] | ((T[i] & 2u) << 6);
+            if (!(seen[k >> 5] & (1u << (k & 31u)))) { seen[k >> 5] |= 1u << (k & 31u); keys++; }
+        }
+        ck[70] += keys; ck[71] += calls; ck[72]++; ck[73] += n - lost;
+    }
+#endif
     s->prims += n - lost;                            /* the frame has begun: no second clear */
     s->miny = 0; s->maxy = VP_H - 1;                 /* rows unknown without projecting: all */
     A4_PERF[PF_MESH] += n - lost; A4_PERF[PF_MKEYS] += calls; A4_PERF[PF_MLOST] += lost;
