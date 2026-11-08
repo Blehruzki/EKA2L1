@@ -7775,3 +7775,12 @@ Owner: "Sounds like a plan. Go ahead."
   read misses on the ARM1136 (the model credits none); (4) whether the phone's runtime is the build the
   converter is checked against (the hash; census [90] says whether it was taken).
   Bench run of the A/B build: AB1.
+- AB1 (the A/B build on the bench: real time, calibrated model, 120 s, slots interleaved a window each):
+      slot 0  C loops, the runtime's convert   555 renders  54.1 ms a render  comp 11.5 (read 8.5)
+      slot 2  the same again (the noise floor)  552           55.0             11.6 (8.6)
+      slot 1  ARMv6 loops, the convert ours     552           50.3              9.2 (7.6)
+      slot 3  ARMv6 + PLD                       552           48.3              9.3 (7.7)
+  The ARMv6 loops ~5 ms a render (~9.5%) on the model in real time; slots 1 and 3 run the same code here
+  (the model has no PLD), so their 2 ms apart is the noise -- a phone difference under ~2 ms would not
+  show. Converter: installed once, 1,169 fast, 1,149 handed back in the baseline slots (as designed), 0
+  otherwise. The A/B build is ready for a phone round on r49's flags (the 3x engine is not phone-ready).
