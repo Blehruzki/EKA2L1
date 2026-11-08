@@ -7834,3 +7834,38 @@ Owner: "Sounds like a plan. Go ahead."
   painter's loop spills, the Thumb long tail (needs real-input verification). Open guesses for a phone
   round (A4_ABCYCLE11 build ready on the bench; r49's flags, the 3x engine not phone-ready): the
   Thumb/ARM CPI split, the instruction cache, PLD on the streaming loops, the runtime build's hash.
+
+## Round 50 candidate (r50): r49's build with the ARMv6 loops stepped per window
+
+- Not a repeat: no phone round has run the ARMv6 loops, the converter swap, the list changes or the lazy
+  GL state, nor any A/B of a renderer loop inside one race (rounds 23 and 24 stepped other bits: the
+  hook's prefetch and the readback strips, the atlas). Gameplay is r49's flags unchanged (C49.flags:
+  the half-step frames, A4_ABMODE 3118 with AB_HSPEC) -- r49's "traffic passes through" stays; this
+  round measures, it does not fix.
+- Build: C49.flags + A4_PX6 + A4_ABCYCLE11 (C50.flags), A4_HALFSTEP=1, A4_SCRATCH_SIZE 0x5F000 -- r49b's
+  recipe. The A/B keeps every bit of A4_ABMODE and steps only AB_PX6 x AB_PXPLD (a first draft
+  hard-coded the t-series base 1070 and would have turned the half-step frames off: caught reading
+  the compiled diff, fixed). Bench-only flags: none (checked by name).
+- Rule 4 (b), read back: the sources preprocessed with C49.flags at r49's commit 2762693 and with
+  C50.flags now, diffed: a4_tel.c the slot, the format word 'AG27' and the mode stepping; a4_eng.c
+  nothing; a4_gl.c the lazy state (wrappers), the struct mrun (kslot 16-bit, zlo/zhi; 20 bytes as
+  before), MESH_NR 512 and MESH_Z, the list's bucket range, the determinant, the window's mode taken
+  from A4_ABMODE, the composite's two loops behind the mode bit, cvt_fast and cvt_install. Each line of
+  that diff read. The read-back found an absence that could not have been read: a refused swap left
+  no reason in a captured word -- now census [89] (the step that failed) and [88] (the hash a
+  different runtime's convert gave); r50sum.py prints them.
+- Rule 4 (a), the guesses this round settles, each named: the model's Thumb/ARM CPI split and its lack
+  of an instruction cache (the slots' difference against AB1's 5 ms); whether PLD hides the streaming
+  loops' misses (slot 3 against 1; the bench cannot); whether the phone's ngibackbuffer is the build
+  the swap checks for (census [90]/[89]).
+- Rule 4 (c), states the bench has not entered: the telemetry failing to open its files (then
+  a4_tel never steps the mode: every window stays slot 0, the old code -- safe, the A/B lost, and the
+  missing files say so); the N95's slide closed (a portrait window: the buffer's 320x240 check
+  refuses, census [89] 2); a DSA abort and restart (a call, the screen saver): the swap is checked
+  again at every present and a converter object made anew is taken again after the hash; the
+  runtime's convert called from a menu after a race (taken by the swap, either slot exact).
+- Candidate: sha256 7154085238e1672244f1811d40e18ea5223b27a79837125cccf6537b2b7d54f7, 816,564 bytes;
+  +3A15C B510 0004; no 0xDEADBEEF. (A first build, 2c200e9b, 20 bytes smaller, before the refusal
+  words; its battery was stopped at its first step and rerun.) Recorder twin a4_y9 (the same flags +
+  A4_CARREC/A4_YREC/A4_AUTOPILOT). Battery r50bat.sh (r49b's, the names changed, r50sum and the finish
+  on the exact binary added): running.

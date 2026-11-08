@@ -411,9 +411,9 @@ void a4_tel_tick(uint32_t had)
     {   /* next window: reset the timers after the write, so its cost is in no window */
         volatile uint32_t *pf = A4_PERF;
 #if defined(A4_ABCYCLE11)
-        /* round 50: AB_PX6 (4096) x AB_PXPLD (8192), one pair a window; native, skip, reorder, lean, list kept
+        /* round 50: AB_PX6 (4096) x AB_PXPLD (8192), one pair a window; the build's A4_ABMODE kept
          * (slot 2, the prefetch without the ARMv6 loops, is the C loops again: a second baseline) */
-        pf[PF_MODE] = 2u | 4u | 8u | 32u | 1024u | ((((pf[PF_MODE] >> 12) + 1u) & 3u) << 12);
+        pf[PF_MODE] = ((uint32_t)(A4_ABMODE) & ~(4096u | 8192u)) | ((((pf[PF_MODE] >> 12) + 1u) & 3u) << 12);
 #elif defined(A4_ABCYCLE10)
         /* round 31: AB_HSPEC (2048) alternates; native, skip, reorder, lean, list kept */
         pf[PF_MODE] = 2u | 4u | 8u | 32u | 1024u | ((pf[PF_MODE] & 2048u) ^ 2048u);

@@ -337,6 +337,9 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
 #if defined(A4_ABCYCLE11) && !defined(A4_PX6)
 #error "A4_ABCYCLE11 steps A4_PX6's loops: build with A4_PX6"
 #endif
+#if defined(A4_ABCYCLE11) && !(A4_ABMODE + 0)
+#error "A4_ABCYCLE11 keeps the build's A4_ABMODE for every other bit: give it one"
+#endif
 #if defined(A4_PX6) && defined(A4_ABCYCLE11)
 #define PX6_ON(mode) (((mode) & AB_PX6) != 0u)       /* stepped per window (a4_tel.c) */
 #define PX6_PLD(mode) (((mode) & AB_PXPLD) != 0u)
@@ -4941,8 +4944,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
 #if defined(A4_TEL) && defined(A4_ABCYCLE11)
-        /* round 50: a4_tel.c steps AB_PX6 x AB_PXPLD per window; native, skip, reorder, lean, list on */
-        A4_PERF[PF_MODE] |= AB_NATIVE | AB_SKIPREP | AB_REORDER | AB_LEAN | AB_MESH;
+        /* round 50: a4_tel.c steps AB_PX6 x AB_PXPLD per window; the rest is the build's own A4_ABMODE
+         * (r49's 3118 keeps AB_HSPEC, the half-step frames, on) */
+        A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~(AB_PX6 | AB_PXPLD);
         s->fmode = A4_PERF[PF_MODE];
 #elif defined(A4_TEL) && defined(A4_ABCYCLE10)
         /* round 31: a4_tel.c alternates AB_HSPEC per window; native, skip, reorder, lean, list on */
@@ -6351,7 +6355,8 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
  * is followed, so another runtime build is left alone (CVT[0] says why). */
 void a4_cvt565_run(uint32_t *d, const uint32_t *s, const uint32_t *e);   /* a4_px.s */
 void a4_cvt565_run_pld(uint32_t *d, const uint32_t *s, const uint32_t *e);
-#define CVT ((volatile uint32_t *)0x00412100u)  /* [0] 0 untried, 1 installed, 2+ refused (the step that failed)
+#define CVT ((volatile uint32_t *)0x00412100u)  /* [0] 0 untried, 1 installed, 2+ refused (the step that failed; also
+                                                 * census [89], captured; [88] the hash a refused +CB70 gave)
                                                  * [1] the converter, [2] its own vtable, [3] +CB70, [4..10] our
                                                  * vtable: its two words before (offset, typeinfo) and five entries,
                                                  * [11] +CB70's import stub +5EC8: WS32 387, RWindowBase::Size() */
@@ -6434,22 +6439,22 @@ static void cvt_install(void)
     const uint32_t buf = *(volatile uint32_t *)A4_GL_BB;
     if (!buf || (buf & 3u) || (buf & 0xFFFu) < 0xC0u) return;   /* bb on buf's own page, or nothing read */
     const uint32_t *bb = (const uint32_t *)(uintptr_t)(buf - 0xC0u);
-    if (bb[8] != buf || bb[9] != 320u || bb[10] != 240u) { CVT[0] = 2u; return; }
+    if (bb[8] != buf || bb[9] != 320u || bb[10] != 240u) { CVT[0] = 2u; ((volatile uint32_t *)0x00412D00u)[89] = 2u; return; }
     uint32_t *conv = (uint32_t *)(uintptr_t)bb[3];
-    if (!conv || ((uintptr_t)conv & 3u) || conv[1] != (uint32_t)(uintptr_t)bb) { CVT[0] = 3u; return; }
+    if (!conv || ((uintptr_t)conv & 3u) || conv[1] != (uint32_t)(uintptr_t)bb) { CVT[0] = 3u; ((volatile uint32_t *)0x00412D00u)[89] = 3u; return; }
     volatile uint32_t *our = CVT + 4;
     const uint32_t vt = conv[0];
     if (vt == (uint32_t)(uintptr_t)(our + 2)) return;              /* ours already */
     if (vt != CVT[2]) {                                            /* a vtable not yet checked */
-        if (!vt || (vt & 3u)) { CVT[0] = 4u; return; }
+        if (!vt || (vt & 3u)) { CVT[0] = 4u; ((volatile uint32_t *)0x00412D00u)[89] = 4u; return; }
         const uint32_t *v = (const uint32_t *)(uintptr_t)vt;
         const uint32_t f = v[2];
-        if (!f || (f & 3u)) { CVT[0] = 5u; return; }
+        if (!f || (f & 3u)) { CVT[0] = 5u; ((volatile uint32_t *)0x00412D00u)[89] = 5u; return; }
         const uint32_t *fw = (const uint32_t *)(uintptr_t)f;
         uint32_t hsh = 0;
         for (uint32_t i = 0; i < CVT_WORDS; i++) hsh = ((hsh << 5) | (hsh >> 27)) ^ fw[i];
-        if (hsh != CVT_HASH) { CVT[0] = 6u; return; }
-        if (*(const uint32_t *)(uintptr_t)(f - CVT_STUB_OFF) != 0xE51FF004u) { CVT[0] = 7u; return; }   /* ldr pc, [pc, #-4] */
+        if (hsh != CVT_HASH) { CVT[0] = 6u; ((volatile uint32_t *)0x00412D00u)[89] = 6u; ((volatile uint32_t *)0x00412D00u)[88] = hsh; return; }
+        if (*(const uint32_t *)(uintptr_t)(f - CVT_STUB_OFF) != 0xE51FF004u) { CVT[0] = 7u; ((volatile uint32_t *)0x00412D00u)[89] = 7u; return; }   /* ldr pc, [pc, #-4] */
         CVT[11] = f - CVT_STUB_OFF;
         for (int i = 0; i < 7; i++) our[i] = v[i - 2];
         our[4] = (uint32_t)(uintptr_t)cvt_fast;
