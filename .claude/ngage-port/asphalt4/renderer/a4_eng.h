@@ -178,8 +178,6 @@ static inline uint32_t ROR_C(uint32_t x, uint32_t n, uint32_t *c)
 
 /* the 3x engine's own state (A4_ENG3): the scratch block the half-step physics used (0x45D000; the two
  * are never built together, a4_eng.c checks) */
-#ifdef A4_ENG3
-#define A4_ENG_STATE 0x0045D000u
 #define ENG_NREM 1024u                /* remainders of a third, one per word that keeps thirds (a hash on its address) */
 struct eng {
     uint32_t magic, race;            /* reset when a new race object appears */
@@ -203,6 +201,36 @@ struct eng {
     uint32_t rk[ENG_NREM];           /* the word's address (0: free) */
     int32_t rv[ENG_NREM];            /* its remainder, 0..2 */
 };
+#ifndef A4_ENG3
+/* Round 51: the lifted render functions (the painter, the 3D front end) built without the 3x engine.
+ * lifted.c's engine functions are compiled all the same -- static, so the unreferenced ones are dropped --
+ * and their edits name the engine's state. Here it is declared and never defined: should a selected
+ * function reach one of them, the link fails instead of a step running with no engine behind it. */
+extern volatile struct eng a4_eng_absent;
+#define ENG (&a4_eng_absent)
+#define ENG_SUB (ENG->sub)
+#define ENG_KEYS (ENG->keys)
+#define ENG_SUB_END(car) (ENG_SUB == 2u || (ENG_SUB == 0u && (!ENG->loop || *(volatile uint32_t *)(uintptr_t)((car) + 0x34u) != 0xFFFFFFFFu)))
+uint32_t eng_third(uint32_t ea, uint32_t old, uint32_t nw);
+uint32_t eng_ai_slot(uint32_t car);
+uint32_t eng_udiv(uint32_t n, uint32_t d);
+uint64_t eng_c_1b2d6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t sp, uint32_t *r23);
+uint32_t eng_alag(uint32_t ea, uint32_t v);
+uint32_t eng_kick(uint32_t ea, uint32_t nw);
+void eng_kick_mark(uint32_t ea);
+uint32_t eng_tmul(uint32_t t, uint32_t speed, uint32_t which);
+void eng_cam_save(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t sp);
+void eng_cam_substep(uint32_t sp, uint32_t *r23);
+int32_t eng_thirdv(uint32_t key, int32_t v);
+void ENG_BEGIN(uint32_t race);
+extern const uint16_t eng_frame_off[10];
+#define ENG_NFRAME 10u
+#endif
+#if !defined(A4_ENG3) && !defined(A4_FASTXF)
+uint64_t eng_h_345e4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t sp, uint32_t *r23);   /* a4_eng.c, A4_FASTXF */
+#endif
+#ifdef A4_ENG3
+#define A4_ENG_STATE 0x0045D000u
 _Static_assert(A4_ENG_STATE + sizeof(struct eng) <= 0x00460000u, "the engine state past the scratch block");
 #define ENG ((volatile struct eng *)A4_ENG_STATE)
 /* the slots +141B0's race rules (+1433C..+1452C) write, read by the traffic and car loop after them */

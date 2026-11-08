@@ -8077,3 +8077,15 @@ a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.p
   the decision's fields (glr.up 0x401000, zclean 0x402D18, census 0x412E3C/[99]). z1 816,740 bytes.
   Runs queued (zbat.sh): the check over a race and the menus with the garage, the mutant, and z1 on
   the new model against kV1.
+- Z checks: z1c over a 60 s race (uncapped): 1,079 clears skipped, each buffer scanned: 0 with a word
+  set; 41 clears run (frames after a perspective triangle went to software). z1m (the mutant, one word
+  set in every 64th checked buffer): 17 of 1,102 flagged -- the check can fail.
+- The hand painter (A4_PAINTFAST, round 50's t-series) into the phone flags without the 3x engine:
+  A4_ENGINE + A4_ENG_29736 + A4_PAINTFAST. lifted.c compiled every engine function's global entry
+  (eng_XXXXX), which kept all 91 lifted functions and their 3x edits (undeclared without A4_ENG3).
+  Now each global entry exists only with A4_ENG3, A4_ENG_ALL or its own A4_ENG_XXXXX (lift.py's
+  template and lifted.c alike), and without A4_ENG3 the engine's state and helpers are declared and
+  never defined (a4_eng.h): a reached engine function would fail the link, not run. The painter-only
+  object: 7 KB (a4_engv_29736, the lifted fallback eng_29736, the hand painter); the t18 flag set still
+  builds. z2 = C50 + A4_ZSKIP + the hand painter, 823,752 bytes; its check builds z2pc/z2pm carry
+  A4_PAINTCHECK (+ _MUTANT) with A4_PAINTFAST, as LC6 did. Runs queued (pbat.sh).

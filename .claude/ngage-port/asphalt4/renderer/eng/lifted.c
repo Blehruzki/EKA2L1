@@ -2137,9 +2137,11 @@ L_1FCB0:
     spp += 0xA4u;                                                /* 01fcc0 add sp, #0xa4 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01fcc2 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1F1F8)
 uint64_t eng_1F1F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1F1F8(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1F1F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -3635,9 +3637,11 @@ L_1E91A:
     spp += 0x194u;                                               /* 01e930 add sp, #0x194 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01e932 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1DE78)
 uint64_t eng_1DE78(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1DE78(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1DE78(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -3734,9 +3738,11 @@ L_1977A:
     spp += 0x18u;                                                /* 0197a6 add sp, #0x18 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); t = S32(12); spp += 16; RET(t); /* 0197a8 pop {r4, r5, r6, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1971E)
 uint64_t eng_1971E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1971E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1971E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -4309,9 +4315,11 @@ L_1B944:
     L32(r5 + 0x38u) = r0;                                        /* 01b950 str r0, [r5, #0x38] */
     goto L_1B820;                                                /* 01b952 b #0x1b820 */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1B560)
 uint64_t eng_1B560(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1B560(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1B560(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -4513,9 +4521,11 @@ L_1BB1A:
     { uint32_t ea_ = r6 + 0xCu; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01bb1a str r0, [r6, #0xc] */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01bb1c pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1B9E0)
 uint64_t eng_1B9E0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1B9E0(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1B9E0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -4646,9 +4656,11 @@ L_1BC58:
     if (ENG_SUB_END(r5)) L32(r4 + 0x4u) = r0; else r0 = L32(r4 + 0x4u); /* 01bc5a str r0, [r4, #4] */
     r3 = S32(0); r4 = S32(4); r5 = S32(8); r6 = S32(12); r7 = S32(16); t = S32(20); spp += 24; RET(t); /* 01bc5c pop {r3, r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1BB98)
 uint64_t eng_1BB98(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1BB98(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1BB98(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -4755,9 +4767,11 @@ L_1BDBE:
     L32(r0 + 0x38u) = r7;                                        /* 01bdbe str r7, [r0, #0x38] */
     r3 = S32(0); r4 = S32(4); r5 = S32(8); r6 = S32(12); r7 = S32(16); t = S32(20); spp += 24; RET(t); /* 01bdc0 pop {r3, r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1BD1C)
 uint64_t eng_1BD1C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1BD1C(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1BD1C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -4849,9 +4863,11 @@ L_1BE52:
     { uint32_t ea_ = r4 + 0x18u; r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01be6c str r0, [r4, #0x18] */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01be6e pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1BDEC)
 uint64_t eng_1BDEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1BDEC(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1BDEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -4972,9 +4988,11 @@ L_1BF0C:
 L_1BF24:
     r3 = S32(0); r4 = S32(4); r5 = S32(8); r6 = S32(12); r7 = S32(16); t = S32(20); spp += 24; RET(t); /* 01bf24 pop {r3, r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1BE70)
 uint64_t eng_1BE70(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1BE70(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1BE70(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -5203,9 +5221,11 @@ L_1C094:
     L32(r2 + 0x18u) = r0;                                        /* 01c0a0 str r0, [r2, #0x18] */
     r3 = S32(0); r4 = S32(4); r5 = S32(8); r6 = S32(12); r7 = S32(16); t = S32(20); spp += 24; RET(t); /* 01c0a2 pop {r3, r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1BF26)
 uint64_t eng_1BF26(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1BF26(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1BF26(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -5381,9 +5401,11 @@ L_1C1BE:
     spp += 0xCu;                                                 /* 01c1d8 add sp, #0xc */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01c1da pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1C0B0)
 uint64_t eng_1C0B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1C0B0(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1C0B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -5535,9 +5557,11 @@ L_1C340:
     L32(r1 + 0x28u) = r0;                                        /* 01c34c str r0, [r1, #0x28] */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01c34e pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1C276)
 uint64_t eng_1C276(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1C276(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1C276(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -5690,9 +5714,11 @@ L_1C438:
     L32(r2 + 0x2Cu) = r1;                                        /* 01c438 str r1, [r2, #0x2c] */
     r3 = S32(0); r4 = S32(4); r5 = S32(8); r6 = S32(12); r7 = S32(16); t = S32(20); spp += 24; RET(t); /* 01c43a pop {r3, r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1C350)
 uint64_t eng_1C350(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1C350(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1C350(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -6101,9 +6127,11 @@ L_1D1B2:
     spp += 0x7Cu;                                                /* 01d1b4 add sp, #0x7c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01d1b6 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1CEC2)
 uint64_t eng_1CEC2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1CEC2(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1CEC2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -6252,9 +6280,11 @@ L_1CEA2:
     spp += 0x1Cu;                                                /* 01cebe add sp, #0x1c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01cec0 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1CDDA)
 uint64_t eng_1CDDA(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1CDDA(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1CDDA(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -7359,9 +7389,11 @@ L_1F1F4:
     spp += 0x7Cu;                                                /* 01f1f4 add sp, #0x7c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01f1f6 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1EA64)
 uint64_t eng_1EA64(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1EA64(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1EA64(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -7550,9 +7582,11 @@ L_2280E:
     spp += 0x7Cu;                                                /* 02282e add sp, #0x7c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 022830 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_226E8)
 uint64_t eng_226E8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_226E8(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_226E8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -7700,9 +7734,11 @@ static uint64_t engi_22832(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     spp += 0x34u;                                                /* 022926 add sp, #0x34 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 022928 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_22832)
 uint64_t eng_22832(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_22832(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_22832(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -7733,9 +7769,11 @@ static uint64_t engi_1FD5C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     L32(r4 + 0x8u) = r0;                                         /* 01fd70 str r0, [r4, #8] */
     r4 = S32(0); t = S32(4); spp += 8; RET(t);                   /* 01fd72 pop {r4, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1FD5C)
 uint64_t eng_1FD5C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1FD5C(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1FD5C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -7796,9 +7834,11 @@ L_1FD58:
     spp += 0x10u;                                                /* 01fd58 add sp, #0x10 */
     r4 = S32(0); t = S32(4); spp += 8; RET(t);                   /* 01fd5a pop {r4, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1FD0E)
 uint64_t eng_1FD0E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1FD0E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1FD0E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -8216,9 +8256,11 @@ L_22C0A:
     spp += 0x64u;                                                /* 022c0a add sp, #0x64 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 022c0c pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_2292A)
 uint64_t eng_2292A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_2292A(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_2292A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -8431,9 +8473,11 @@ L_1FF48:
     spp += 0x1Cu;                                                /* 01ff52 add sp, #0x1c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01ff54 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1FDEC)
 uint64_t eng_1FDEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1FDEC(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1FDEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -9093,9 +9137,11 @@ L_20404:
     spp += 0xC4u;                                                /* 020404 add sp, #0xc4 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 020406 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1FF56)
 uint64_t eng_1FF56(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1FF56(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1FF56(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -9760,9 +9806,11 @@ L_23E62:
     spp += 0xCCu;                                                /* 023e6e add sp, #0xcc */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 023e70 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_239B6)
 uint64_t eng_239B6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_239B6(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_239B6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -9858,9 +9906,11 @@ L_22CF2:
     spp += 0x48u;                                                /* 022cf2 add sp, #0x48 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); t = S32(12); spp += 16; RET(t); /* 022cf4 pop {r4, r5, r6, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_22C60)
 uint64_t eng_22C60(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_22C60(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_22C60(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -13172,9 +13222,11 @@ L_15A4C:
     spp += 0x134u;                                               /* 015a4e add sp, #0x134 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 015a50 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_141B0)
 uint64_t eng_141B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_141B0(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_141B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -13818,9 +13870,11 @@ L_0FFA4:
     spp += 0x7Cu;                                                /* 00ffa4 add sp, #0x7c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 00ffa6 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_0FB12)
 uint64_t eng_0FB12(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_0FB12(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_0FB12(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -14237,9 +14291,11 @@ L_0F42A:
     spp += 0x44u;                                                /* 00f4aa add sp, #0x44 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 00f4ac pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_0F1B0)
 uint64_t eng_0F1B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_0F1B0(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_0F1B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -14299,9 +14355,11 @@ static uint64_t engi_0F60A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     spp += 0x10u;                                                /* 00f658 add sp, #0x10 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); t = S32(12); spp += 16; RET(t); /* 00f65a pop {r4, r5, r6, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_0F60A)
 uint64_t eng_0F60A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_0F60A(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_0F60A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -14381,9 +14439,11 @@ L_2205A:
     spp += 0xCu;                                                 /* 0220a0 add sp, #0xc */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 0220a2 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_2202C)
 uint64_t eng_2202C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_2202C(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_2202C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -14703,9 +14763,11 @@ L_12FE6:
     spp += 0x24u;                                                /* 013008 add sp, #0x24 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01300a pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_12DEC)
 uint64_t eng_12DEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_12DEC(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_12DEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -15442,9 +15504,11 @@ L_05E7E:
     spp += 0x9Cu;                                                /* 005e8c add sp, #0x9c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 005e8e pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_05968)
 uint64_t eng_05968(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_05968(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_05968(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -15994,9 +16058,11 @@ L_04F22:
     spp += 0x104u;                                               /* 004f22 add sp, #0x104 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 004f24 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_04B40)
 uint64_t eng_04B40(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_04B40(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_04B40(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -16202,9 +16268,11 @@ L_04B24:
     spp += 0xCu;                                                 /* 004b2a add sp, #0xc */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 004b2c pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_049C4)
 uint64_t eng_049C4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_049C4(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_049C4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -16297,9 +16365,11 @@ L_1BB94:
     r4 = S32(0); r5 = S32(4); r6 = S32(8); spp += 12;            /* 01bb94 pop {r4, r5, r6} */
     RET(lr);                                                     /* 01bb96 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1BB1E)
 uint64_t eng_1BB1E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1BB1E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1BB1E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -16416,9 +16486,11 @@ L_1BD0E:
     r4 = S32(0); r5 = S32(4); spp += 8;                          /* 01bd0e pop {r4, r5} */
     RET(lr);                                                     /* 01bd10 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1BC5E)
 uint64_t eng_1BC5E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1BC5E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1BC5E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -16501,9 +16573,11 @@ L_1B9C2:
     r4 = S32(0); spp += 4;                                       /* 01b9c2 pop {r4} */
     RET(lr);                                                     /* 01b9c4 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1B954)
 uint64_t eng_1B954(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1B954(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1B954(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -16559,9 +16633,11 @@ L_2219A:
     r4 = S32(0); r5 = S32(4); r6 = S32(8); spp += 12;            /* 0221bc pop {r4, r5, r6} */
     RET(lr);                                                     /* 0221be bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_2217C)
 uint64_t eng_2217C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_2217C(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_2217C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -17066,9 +17142,11 @@ L_29AD6:
     spp += 0x5Cu;                                                /* 029ad6 add sp, #0x5c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 029ad8 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_29736)
 uint64_t eng_29736(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_29736(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_29736(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -17223,9 +17301,11 @@ L_34AE6:
     spp += 0x24u;                                                /* 034ae6 add sp, #0x24 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 034ae8 pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_349F8)
 uint64_t eng_349F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_349F8(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_349F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -17286,9 +17366,11 @@ L_349E0:
 L_349F6:
     r4 = S32(0); r5 = S32(4); r6 = S32(8); t = S32(12); spp += 16; RET(t); /* 0349f6 pop {r4, r5, r6, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_349B0)
 uint64_t eng_349B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_349B0(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_349B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -17419,9 +17501,11 @@ L_346AA:
     spp += 0x1Cu;                                                /* 0346ac add sp, #0x1c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 0346ae pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_345E4)
 uint64_t eng_345E4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_345E4(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_345E4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -17457,9 +17541,11 @@ static uint64_t engi_523A2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint32_t ta = r1, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 0523c0 adds r0, r1, r0 */
     RET(lr);                                                     /* 0523c2 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_523A2)
 uint64_t eng_523A2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_523A2(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_523A2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -17495,9 +17581,11 @@ static uint64_t engi_523C4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint32_t ta = r1, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 0523e2 adds r0, r1, r0 */
     RET(lr);                                                     /* 0523e4 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_523C4)
 uint64_t eng_523C4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_523C4(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_523C4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -17533,9 +17621,11 @@ static uint64_t engi_523E6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint32_t ta = r1, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 052404 adds r0, r1, r0 */
     RET(lr);                                                     /* 052406 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_523E6)
 uint64_t eng_523E6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_523E6(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_523E6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -17626,9 +17716,11 @@ static uint64_t engi_3118E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 03121a adds r0, r0, #1 */
     RET(lr);                                                     /* 03121c bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_3118E)
 uint64_t eng_3118E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_3118E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_3118E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -17670,9 +17762,11 @@ L_31242:
     { uint32_t ta = 0x0u, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 031242 rsbs r0, r1, #0 */
     RET(lr);                                                     /* 031244 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_3121E)
 uint64_t eng_3121E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_3121E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_3121E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18266,9 +18360,11 @@ L_3057A:
     spp += 0x7Cu;                                                /* 03059a add sp, #0x7c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 03059c pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_3015E)
 uint64_t eng_3015E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_3015E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_3015E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18413,9 +18509,11 @@ L_0CF6A:
     spp += 0x24u;                                                /* 00cf6a add sp, #0x24 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 00cf6c pop {r4, r5, r6, r7, pc} */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_0CE8C)
 uint64_t eng_0CE8C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_0CE8C(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_0CE8C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18439,9 +18537,11 @@ static uint64_t engi_01D76(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     L8(r0 + 0xAu) = r1;                                          /* 001d7c strb r1, [r0, #0xa] */
     RET(lr);                                                     /* 001d7e bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_01D76)
 uint64_t eng_01D76(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_01D76(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_01D76(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18473,9 +18573,11 @@ L_0204E:
     r0 = r2; fN = r0 >> 31; fZ = r0 == 0;                        /* 00204e movs r0, r2 */
     RET(lr);                                                     /* 002050 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_0203A)
 uint64_t eng_0203A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_0203A(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_0203A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18502,9 +18604,11 @@ static uint64_t engi_0206E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
 L_0207A:
     RET(lr);                                                     /* 00207a bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_0206E)
 uint64_t eng_0206E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_0206E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_0206E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18588,9 +18692,11 @@ L_03994:
     r4 = S32(0); r5 = S32(4); r6 = S32(8); spp += 12;            /* 0039fa pop {r4, r5, r6} */
     RET(lr);                                                     /* 0039fc bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_0397E)
 uint64_t eng_0397E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_0397E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_0397E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18614,9 +18720,11 @@ static uint64_t engi_039FE(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 003a04 adds r0, r0, r1 */
     RET(lr);                                                     /* 003a06 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_039FE)
 uint64_t eng_039FE(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_039FE(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_039FE(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18658,9 +18766,11 @@ L_0400C:
 L_0400E:
     RET(lr);                                                     /* 00400e bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_03FE6)
 uint64_t eng_03FE6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_03FE6(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_03FE6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18689,9 +18799,11 @@ static uint64_t engi_064C2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
 L_064D2:
     RET(lr);                                                     /* 0064d2 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_064C2)
 uint64_t eng_064C2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_064C2(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_064C2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18728,9 +18840,11 @@ L_064F0:
 L_064F2:
     RET(lr);                                                     /* 0064f2 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_064D4)
 uint64_t eng_064D4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_064D4(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_064D4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18755,9 +18869,11 @@ static uint64_t engi_0663E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     L8(r0 + 0x1Du) = r1;                                         /* 006646 strb r1, [r0, #0x1d] */
     RET(lr);                                                     /* 006648 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_0663E)
 uint64_t eng_0663E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_0663E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_0663E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18786,9 +18902,11 @@ static uint64_t engi_0691E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
 L_0692E:
     RET(lr);                                                     /* 00692e bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_0691E)
 uint64_t eng_0691E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_0691E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_0691E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18817,9 +18935,11 @@ static uint64_t engi_06E1E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
 L_06E2E:
     RET(lr);                                                     /* 006e2e bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_06E1E)
 uint64_t eng_06E1E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_06E1E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_06E1E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18852,9 +18972,11 @@ static uint64_t engi_13148(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
 L_13160:
     RET(lr);                                                     /* 013160 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_13148)
 uint64_t eng_13148(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_13148(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_13148(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18907,9 +19029,11 @@ L_1327A:
     r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01327c movs r0, #0 */
     RET(lr);                                                     /* 01327e bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_13242)
 uint64_t eng_13242(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_13242(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_13242(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18933,9 +19057,11 @@ static uint64_t engi_133E4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r0 = L8(r0 + 0x5u);                                          /* 0133ea ldrb r0, [r0, #5] */
     RET(lr);                                                     /* 0133ec bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_133E4)
 uint64_t eng_133E4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_133E4(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_133E4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -18982,9 +19108,11 @@ L_18CBE:
 L_18CCC:
     RET(lr);                                                     /* 018ccc bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_18C9A)
 uint64_t eng_18C9A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_18C9A(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_18C9A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19005,9 +19133,11 @@ static uint64_t engi_19184(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     L32(r0) = r1;                                                /* 019184 str r1, [r0] */
     RET(lr);                                                     /* 019186 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_19184)
 uint64_t eng_19184(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_19184(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_19184(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19027,9 +19157,11 @@ static uint64_t engi_1918E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
     RET(lr);                                                     /* 01918e bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1918E)
 uint64_t eng_1918E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1918E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1918E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19055,9 +19187,11 @@ static uint64_t engi_193CE(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     t = SHR_C(r0, 0x1Fu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 0193d8 lsrs r0, r0, #0x1f */
     RET(lr);                                                     /* 0193da bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_193CE)
 uint64_t eng_193CE(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_193CE(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_193CE(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19135,9 +19269,11 @@ L_1B368:
     r0 = 0x1u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01b36a movs r0, #1 */
     RET(lr);                                                     /* 01b36c bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1B304)
 uint64_t eng_1B304(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1B304(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1B304(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19209,9 +19345,11 @@ L_1B55A:
     r0 = 0x1u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01b55c movs r0, #1 */
     RET(lr);                                                     /* 01b55e bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1B500)
 uint64_t eng_1B500(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1B500(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1B500(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19252,9 +19390,11 @@ static uint64_t engi_1BDC2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
 L_1BDEA:
     RET(lr);                                                     /* 01bdea bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1BDC2)
 uint64_t eng_1BDC2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1BDC2(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1BDC2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19309,9 +19449,11 @@ L_1C486:
     t = SAR_C(r0, 0xCu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01c48a asrs r0, r0, #0xc */
     RET(lr);                                                     /* 01c48c bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1C44C)
 uint64_t eng_1C44C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1C44C(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1C44C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19372,9 +19514,11 @@ L_1CDB6:
     r4 = S32(0); r5 = S32(4); spp += 8;                          /* 01cdd6 pop {r4, r5} */
     RET(lr);                                                     /* 01cdd8 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_1CD88)
 uint64_t eng_1CD88(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_1CD88(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_1CD88(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19455,9 +19599,11 @@ L_2131C:
     r4 = S32(0); spp += 4;                                       /* 021338 pop {r4} */
     RET(lr);                                                     /* 02133a bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_212C6)
 uint64_t eng_212C6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_212C6(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_212C6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19481,9 +19627,11 @@ static uint64_t engi_21F98(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r0 = L32(r0 + 0x28u);                                        /* 021f9e ldr r0, [r0, #0x28] */
     RET(lr);                                                     /* 021fa0 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_21F98)
 uint64_t eng_21F98(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_21F98(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_21F98(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19507,9 +19655,11 @@ static uint64_t engi_21FA2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r0 = L32(r0 + 0x2Cu);                                        /* 021fa8 ldr r0, [r0, #0x2c] */
     RET(lr);                                                     /* 021faa bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_21FA2)
 uint64_t eng_21FA2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_21FA2(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_21FA2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19533,9 +19683,11 @@ static uint64_t engi_21FAC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r0 = L32(r0 + 0x30u);                                        /* 021fb2 ldr r0, [r0, #0x30] */
     RET(lr);                                                     /* 021fb4 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_21FAC)
 uint64_t eng_21FAC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_21FAC(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_21FAC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19583,9 +19735,11 @@ L_31488:
     t = SAR_C(r0, 0x2u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 03148c asrs r0, r0, #2 */
     RET(lr);                                                     /* 03148e bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_3145C)
 uint64_t eng_3145C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_3145C(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_3145C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19624,9 +19778,11 @@ L_31D1A:
     r4 = S32(0); spp += 4;                                       /* 031d24 pop {r4} */
     RET(lr);                                                     /* 031d26 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_31D02)
 uint64_t eng_31D02(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_31D02(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_31D02(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19670,9 +19826,11 @@ L_31D40:
     r4 = S32(0); spp += 4;                                       /* 031d54 pop {r4} */
     RET(lr);                                                     /* 031d56 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_31D28)
 uint64_t eng_31D28(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_31D28(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_31D28(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19707,9 +19865,11 @@ static uint64_t engi_32156(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     L32(r0 + 0x2Cu) = r1;                                        /* 032172 str r1, [r0, #0x2c] */
     RET(lr);                                                     /* 032174 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_32156)
 uint64_t eng_32156(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_32156(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_32156(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19741,9 +19901,11 @@ static uint64_t engi_3220C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     L32(r0 + 0x14u) = r1;                                        /* 032222 str r1, [r0, #0x14] */
     RET(lr);                                                     /* 032224 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_3220C)
 uint64_t eng_3220C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_3220C(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_3220C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19795,9 +19957,11 @@ static uint64_t engi_3227E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r4 = S32(0); spp += 4;                                       /* 0322bc pop {r4} */
     RET(lr);                                                     /* 0322be bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_3227E)
 uint64_t eng_3227E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_3227E(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_3227E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19851,9 +20015,11 @@ static uint64_t engi_370AE(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r4 = S32(0); r5 = S32(4); r6 = S32(8); spp += 12;            /* 0370f0 pop {r4, r5, r6} */
     RET(lr);                                                     /* 0370f2 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_370AE)
 uint64_t eng_370AE(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_370AE(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_370AE(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19907,9 +20073,11 @@ static uint64_t engi_37450(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r4 = S32(0); r5 = S32(4); r6 = S32(8); spp += 12;            /* 037492 pop {r4, r5, r6} */
     RET(lr);                                                     /* 037494 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_37450)
 uint64_t eng_37450(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_37450(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_37450(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19942,9 +20110,11 @@ static uint64_t engi_52182(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     { uint32_t ta = r2, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 05219a adds r0, r2, r0 */
     RET(lr);                                                     /* 05219c bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_52182)
 uint64_t eng_52182(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_52182(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_52182(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -19976,9 +20146,11 @@ static uint64_t engi_521A0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     L32(r0 + 0x8u) = r1;                                         /* 0521b6 str r1, [r0, #8] */
     RET(lr);                                                     /* 0521b8 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_521A0)
 uint64_t eng_521A0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_521A0(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_521A0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -20007,9 +20179,11 @@ static uint64_t engi_52206(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r0 = L32(r0 + 0x14u);                                        /* 052216 ldr r0, [r0, #0x14] */
     RET(lr);                                                     /* 052218 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_52206)
 uint64_t eng_52206(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_52206(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_52206(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -20064,9 +20238,11 @@ static uint64_t engi_522F0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r4 = S32(0); r5 = S32(4); r6 = S32(8); spp += 12;            /* 052334 pop {r4, r5, r6} */
     RET(lr);                                                     /* 052336 bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_522F0)
 uint64_t eng_522F0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_522F0(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_522F0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -20100,9 +20276,11 @@ static uint64_t engi_52540(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r4 = S32(0); r5 = S32(4); spp += 8;                          /* 05255a pop {r4, r5} */
     RET(lr);                                                     /* 05255c bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_52540)
 uint64_t eng_52540(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_52540(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_52540(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -20136,9 +20314,11 @@ static uint64_t engi_52562(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r4 = S32(0); r5 = S32(4); spp += 8;                          /* 05257c pop {r4, r5} */
     RET(lr);                                                     /* 05257e bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_52562)
 uint64_t eng_52562(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_52562(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_52562(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)
@@ -20170,9 +20350,11 @@ L_52C98:
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 052c9c adds r0, r0, r1 */
     RET(lr);                                                     /* 052c9e bx lr */
 }
+#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_52C88)
 uint64_t eng_52C88(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,
                   uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 { uint32_t d_[2]; return engi_52C88(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }
+#endif
 /* from the veneer: lr the game's caller left (the function pushes it, and the port reads it: a4_gl_bb) */
 static inline __attribute__((always_inline)) uint64_t engr_52C88(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,
     uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)

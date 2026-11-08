@@ -362,13 +362,17 @@ def lift(start):
         L[k] = '\n'.join(x for x in (why, ('    ' + e['before']) if 'before' in e else None, body, ('    ' + e['after']) if 'after' in e else None) if x)
     disp = ' '.join('case 0x%Xu: goto L_%05X;' % (k, v) for k, v in sorted(rets.items()))
     ret = '#undef RET\n#define RET(v) do { switch (v) { %s default: o23[0] = r2; o23[1] = r3; return ((uint64_t)r1 << 32) | r0; } } while (0)\n' % disp
-    wrap = ('uint64_t eng_%05X(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,\n'
+    # round 51: the global entry only where something may call it -- the 3x engine, or this function
+    # selected; else nothing keeps the (static) function, and a build of the render lifts alone drops the rest
+    wrap = ('#if defined(A4_ENG3) || defined(A4_ENG_ALL) || defined(A4_ENG_%05X)\n'
+            'uint64_t eng_%05X(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, uint32_t s3,\n'
             '                  uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)\n'
             '{ uint32_t d_[2]; return engi_%05X(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, 0xFFFFFFFFu); }\n'
+            '#endif\n'
             '/* from the veneer: lr the game\'s caller left (the function pushes it, and the port reads it: a4_gl_bb) */\n'
             'static inline __attribute__((always_inline)) uint64_t engr_%05X(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0,\n'
             '    uint32_t s1, uint32_t s2, uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7, uint32_t ra)\n'
-            '{ uint32_t d_[2]; return engi_%05X(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, ra); }\n' % (start, start, start, start))
+            '{ uint32_t d_[2]; return engi_%05X(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, d_, ra); }\n' % (start, start, start, start, start))
     return ret + hdr + '\n'.join(L) + '\n}\n' + wrap
 
 # Small leaves inline (round 50): a game function a lifted one calls, with no calls of its own, no jump
