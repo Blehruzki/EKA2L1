@@ -8096,3 +8096,9 @@ a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.p
   28.2 -> 24.9, 3D 27.5 -> 25.9, the rest of the phases unchanged; 1,793 clears skipped, 39 run. The
   model's figure for 76,800 missed stores (~5 ms) -- which a phone round would test: the store-only
   A/B the recalibration named.
+- The hand painter in the phone flags (z2 = C50 + A4_ZSKIP + A4_ENGINE + A4_ENG_29736 + A4_PAINTFAST):
+  z2pc (A4_PAINTCHECK with the hand painter, as LC6) over a 60 s race: 28,556 calls compared, 0 differing
+  (pixels 0, clip words 0), 451 too large for the check's buffers; over the menus and the garage:
+  359,996 compared, 0 differing, 829 not compared. z2pm (one pixel flipped a call): 21,336 of 21,336
+  flagged. z2 on the new model, 120 s: 64.0 ms a render (z1 67.5, r50c 72.5): 2D 6.5 -> 3.4.
+  The two cuts together: -8.5 ms, -12%.
