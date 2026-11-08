@@ -7636,3 +7636,8 @@ Owner: "Sounds like a plan. Go ahead."
   phone's instruction cache is 16 KB (round 22's note) and lifted ARM is about twice the Thumb it
   replaces -- the bench models no I-cache; (3) the composite's loop change is not yet checked in-run
   (A4_BLITCHECK). Only a phone round settles (1) and (2).
+- BL1 (A4_BLITCHECK, the composite's loop as changed, lockstep 60 s): 9,660 strips compared against the
+  general loop, 0 pixels differing. BLM (a mutant flipping a drawn pixel a row): 143,583 pixels flagged
+  in 10,350 strips. The change is exact.
+- Run: pct19, the cycle profile of the current build (t18's flags with the composite change), for the
+  next cuts.

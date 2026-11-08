@@ -6087,6 +6087,9 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                     }
                     d32++;
                 } while (src != end);
+#ifdef A4_BLITCHECK_MUTANT
+                if ((int32_t)src[-VP_W] < 0) ((uint16_t *)fb)[screen_y * FB_STRIDE] ^= 1u;   /* the check's own test */
+#endif
             }
 #ifdef A4_BLITCHECK
             /* bench check: the general loop's answer for the same strip, against what the
