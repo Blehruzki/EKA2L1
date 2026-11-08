@@ -7913,3 +7913,12 @@ Owner: "Sounds like a plan. Go ahead."
   game's buffer, not the window); only racemenu's screenshots read the window.
 - r50b: the battery reruns on 91183e41 with the fixed emulator, the recorder twin rebuilt from the
   same source.
+- Read again before the battery: cvt_install read the page at A4_GL_BB at every present, 2D ones too,
+  where after the garage A4_GL_BB is the garage's offscreen buffer, which the game may have freed. r50
+  read it the same way until a refusal latched; without the latch it would read it for good. Now
+  called only in a frame that drew 3D (had), whose first triangle set A4_GL_BB that frame. The r50b
+  battery (91183e41) was stopped in its first run and the archives restored (cmp ok). Candidate r50c:
+  7ed1371c93356251b14b0dfcad24577e2306ddda3859a56b11eafdec1fc348a5, 816,560 bytes; against r50 only
+  a4_gl_frame differs (cvt_install inlined: the step-2 count, the had gate); no 0xDEADBEEF; bench-only
+  flags none. Twin a4_y9c (+ A4_CARREC/A4_YREC/A4_AUTOPILOT; the recipe rebuilds r50's a4_y9 byte for
+  byte from r50's source). Battery r50cbat.sh, on the fixed emulator: running.

@@ -6907,7 +6907,10 @@ int a4_gl_frame(uint32_t fps)
 #endif
     if (A4_PERF[PF_FLAGS] & PFF_2D) A4_PERF[PF_T2D] += a4_ntick() - A4_PERF[PF_MFLEND];
 #if defined(A4_PX6) && !defined(A4_PX6_NOCVT)
-    cvt_install();                                      /* the runtime's convert, ours from now on */
+    if (had) cvt_install();                             /* the runtime's convert, ours from now on: only in a
+                                                         * frame that drew 3D, whose first triangle set
+                                                         * A4_GL_BB -- a 2D present after the garage would read
+                                                         * the page of a buffer the game may have freed */
 #endif
     a4_gl_flush();                                      /* draw this frame on the GPU */
     A4_PERF[PF_FLAGS] &= ~PFF_2D;                       /* a composite inside it has no 2D after */
