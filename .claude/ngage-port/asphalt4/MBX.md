@@ -8102,3 +8102,8 @@ a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.p
   359,996 compared, 0 differing, 829 not compared. z2pm (one pixel flipped a call): 21,336 of 21,336
   flagged. z2 on the new model, 120 s: 64.0 ms a render (z1 67.5, r50c 72.5): 2D 6.5 -> 3.4.
   The two cuts together: -8.5 ms, -12%.
+- z3 = z2 + the lifted 3D front end (A4_ENG_349F8/349B0/0CE8C/3015E, A4_FASTXF, A4_MESHZ; A4_MESHMEMO left
+  out: its table is the half-step machinery's scratch): links without any engine function (the guards
+  hold); on the new model 63.6 ms a render against z2's 64.0 -- inside the run-to-run spread. Not worth
+  its risk on this model (round 50's LC5: a mechanical lift is ~1.15x in instructions, and the new
+  model's Thumb/ARM CPIs are 1.75/1.35). Dropped.
