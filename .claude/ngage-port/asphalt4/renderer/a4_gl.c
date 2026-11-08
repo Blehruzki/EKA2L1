@@ -318,6 +318,8 @@ struct glr {
     uint32_t chaseinit;
     uint32_t lz_want, lz_have;         /* round 50: the lazy GL state (gl_enable/gl_disable/gl_depthmask): what the
                                         * code has asked for and what GL has; zero is GL's own initial state */
+    uint32_t zclean;                   /* round 51 (A4_ZSKIP): the rasterizer context whose 1/w buffer is all zero
+                                        * since its last clear (0: none known -- the bss-zeroed start) */
 };
 
 _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlaps the readback strip");
@@ -334,6 +336,7 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
 #define AB_HSPEC 2048u   /* round 31: the speculative half-step's frames (A4_HALFSPEC) */
 #define AB_PX6 4096u     /* round 50: the ARMv6 pixel loops and the runtime's convert ours (A4_PX6) */
 #define AB_PXPLD 8192u   /* round 50: those loops with a prefetch of their source (A4_PX6) */
+#define AB_ZSKIP 16384u  /* round 51: the begin-frame clear of the 1/w buffer skipped while it is known clean (A4_ZSKIP) */
 #if defined(A4_ABCYCLE11) && !defined(A4_PX6)
 #error "A4_ABCYCLE11 steps A4_PX6's loops: build with A4_PX6"
 #endif
@@ -5300,6 +5303,11 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #else
     int r = draw_prim_take(gctx, desc, flags);
 #endif
+#ifdef A4_ZSKIP
+    /* a perspective triangle (flags bit 0, not the flat class's bit 1) left to software: its span
+     * (+333F4) may write the 1/w buffer, so the next begin-frame clears it (a4_zclr_skip) */
+    if (!r && (flags & 3u) == 1u) ((volatile struct glr *)A4_GL_SCRATCH)->zclean = 0;
+#endif
 #ifdef A4_SWHIST
     /* diagnosis: the census of the calls left to SOFTWARE (returned 0), by (flags,
      * ctx[0x64]), in A4_FLAGHIST's table format at 0x412D00 -- under A4_IMM what software
@@ -6467,6 +6475,52 @@ static void cvt_install(void)
     conv[0] = (uint32_t)(uintptr_t)(our + 2);
     CVT[0] = 1u;
     ((volatile uint32_t *)0x00412D00u)[90]++;      /* census: installs (a refusal leaves CVT[0] >= 2) */
+}
+#endif
+
+#ifdef A4_ZSKIP
+/* Round 51: the begin-frame's clear of the game's per-pixel 1/w buffer (a4_zclr_tramp at +31CC0, the call
+ * of +2DEF4: euser memset of w*h words). The buffer is read and written only by the perspective span
+ * (+333F4: bench watch zw2, every PC that touched it in a race), which runs only for the triangles
+ * a4_gl_draw_prim leaves to software -- those mark it (zclean = 0). So while this context's buffer is
+ * still all zero since its last clear, the clear is skipped. Census [79] skipped, [99] cleared. */
+#if defined(A4_ZCHECK) && defined(A4_CVTCHECK)
+#error "A4_ZCHECK counts in census words 93/94, which A4_CVTCHECK uses"
+#endif
+#ifdef A4_ABCYCLE12
+#define ZSKIP_ON(mode) (((mode) & AB_ZSKIP) != 0u)
+#else
+#define ZSKIP_ON(mode) 1
+#endif
+int a4_zclr_skip(uint32_t ctx);
+int a4_zclr_skip(uint32_t ctx)
+{
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
+    if (ctx && s->zclean == ctx && s->up == A4_GL_MAGIC && ZSKIP_ON(A4_PERF[PF_MODE])) {
+        ck[79]++;
+#ifdef A4_ZCHECK
+        {   /* bench check: the skipped buffer is all zero ([93] skips that found a word set, [94] checked) */
+            const uint32_t *z = (const uint32_t *)(uintptr_t)ctx + 0x40100u / 4u;
+            uint32_t *buf = (uint32_t *)(uintptr_t)z[0x18 / 4];
+            const uint32_t n = *(const uint32_t *)(uintptr_t)z[0x10 / 4] * *(const uint32_t *)(uintptr_t)z[0x14 / 4];
+#ifdef A4_ZCHECK_MUTANT
+            if ((ck[94] & 63u) == 32u) buf[n / 2] = 1u;      /* the check's own test: it must see this */
+#endif
+            uint32_t bad = 0;
+            for (uint32_t i = 0; i < n; i++) bad |= buf[i];
+            if (bad) ck[93]++;
+            ck[94]++;
+#ifdef A4_ZCHECK_MUTANT
+            buf[n / 2] = 0u;
+#endif
+        }
+#endif
+        return 1;
+    }
+    ck[99]++;
+    s->zclean = ctx;                                /* the game's clear, about to run, leaves it all zero */
+    return 0;
 }
 #endif
 

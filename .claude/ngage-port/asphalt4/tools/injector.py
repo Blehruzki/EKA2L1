@@ -489,6 +489,17 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
                 assert bl_target(off) == target, 'spec cam safe: +%06X is not a BL to +%06X' % (off, target)
                 blx_insert(code, off, syms[tramp])
             print('CAMS   %d sites -> %s +%06X (+%06X)' % (len(sites), tramp, syms[tramp] - LINK_BASE, target))
+    if '-DA4_ZSKIP' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+        # round 51: the begin-frame's clear of the 1/w buffer (+31C70's bl +2DEF4 at +31CC0) through
+        # a4_zclr_tramp, which skips it while the buffer is known clean (a4_gl.c a4_zclr_skip)
+        h1, h2 = struct.unpack_from('<HH', code, 0x31CC0)
+        o = ((h1 & 0x7FF) << 12) | ((h2 & 0x7FF) << 1)
+        if o & 0x400000: o -= 0x800000
+        assert (h1 & 0xF800) == 0xF000 and (h2 & 0xF800) == 0xF800 and 0x31CC0 + 4 + o == 0x2DEF4, \
+            'zskip: +031CC0 is not a BL to +2DEF4 (%04x %04x)' % (h1, h2)
+        struct.pack_into('<I', code, syms['a4_hc_2def4'] - LINK_BASE, ((LINK_BASE + (0x2DEF4 | 1)) - syms['a4_hc_2def4']) & 0xFFFFFFFF)
+        blx_insert(code, 0x31CC0, syms['a4_zclr_tramp'])
+        print('ZSKIP  +031CC0 -> a4_zclr_tramp +%06X (the 1/w buffer clear, skipped while clean)' % (syms['a4_zclr_tramp'] - LINK_BASE))
     if os.environ.get('A4_HALFSTEP'):
         # round 31, the faster-step work: the logic step halved, 21333 -> 10667 units
         # (85.33 -> 42.67 ms). +52B80's divide (t / 21333 for the real-time count m): its

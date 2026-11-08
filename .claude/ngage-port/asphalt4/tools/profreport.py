@@ -23,7 +23,7 @@ for l in open(log, errors='replace'):
     m = re.search(r'codeseg\.cpp:\d+ \[Kernel\]: (\S+) \(UID3=0x[0-9A-Fa-f]+\) runtime code: 0x([0-9a-fA-F]+)', l)
     if m:
         images[int(m.group(2), 16)] = (m.group(1), None)
-for f in glob.glob('/root/.local/share/EKA2L1/data/drives/z/rm-409/sys/bin/*'):
+for f in glob.glob('/root/.local/share/EKA2L1/data/drives/z/%s/sys/bin/*' % os.environ.get('A4_ROMDEV', 'rm-409')):
     try:
         d, h = romimg.load(f)
         images[h['code_address']] = (os.path.basename(f).lower(), h['code_size'])

@@ -8046,3 +8046,34 @@ a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.p
 - The bench's model from here: CPUMODEL 175:85:21:4:5:135, GPUMODEL 3,20,150,8,2500,400,5,30,2300
   (EMU_PATCHES.md "A modelled N95 for the bench" updated; scratchpad model_r50cal.env). Results on the
   old settings (t-runs, AB1, L-runs, pct profiles) are not comparable with runs on these.
+
+## Round 51 (bench): cuts on the recalibrated model
+
+- Cycle profile pcr50c (r50c on the new model, 1.5e9 instructions after 8e9, EKA2L1_PCPROF_CYCLES):
+  the game's HUD painter +29736 10.1%; euser memset 9.7%; the 565 -> 32 convert 16% (ngibackbuffer
+  +CCB8 8.9% in the C slots, a4_cvt565_run 4.0 + _pld 3.3 in the ARMv6 ones); the composite ~10%
+  (a4_gl_flush 6.2, a4_comp_row 2.3 + _pld 1.9); our 3D path ~17% (lean_tail 5.6, a4_mesh_insert 5.1,
+  batch_draw 4.2, mesh_draw 2.3); euser memmove 3.8%; the billboard blit +3015E 2.6, the mesh routine
+  +349F8 2.5, +3118E 2.1, +523E6 2.0. (profreport.py read ROM images from RM-409's z: drive; the
+  bench runs RM-320, and euser showed as "irobex" -- the "irobex polling" of pct15/pct19 was euser's
+  memset all along. A4_ROMDEV=rm-320 now picks the drive; euser ordinals 1954/1955 memmove/memset,
+  read in the code: +55EC an 8-register STM fill.)
+- The fill (EKA2L1_PCTRACE_REGS inside memset, +5600, with a4_gl_frame as the frame marker): one call a
+  render, 307,200 bytes at 0x20C3BB0, from +2DF0C -- +2DEF4 zero-fills the rasterizer's per-pixel 1/w
+  buffer (ctx+0x40100: +0x18 the buffer, +0x10/+0x14 width and height), called by the begin-frame
+  +31C70 (at +31CC0) and once by the allocator +2DF66 (+2DFCE). Round 8's reading: only the
+  perspective span +333F4 tests and writes it. Checked now (zw2: EKA2L1_WATCH over the 300 KB armed by
+  the race's first clear, EKA2L1_RWATCH limited to the game's code): writers the clear and +3384C,
+  +33948, +338AE; readers +33826, +33926, +3388C -- all inside +333F4. On the model the clear is 76,800
+  missed stores, ~5 ms a render.
+- A4_ZSKIP: +31CC0's bl becomes a BLX to a4_zclr_tramp (a4_tramp.s; the call site checked a BL to
+  +2DEF4 before it is replaced), which asks a4_zclr_skip (a4_gl.c): skip while glr.zclean is this
+  context (the buffer all zero since its last clear) and GL is up; otherwise the game's clear runs and
+  zclean = the context. a4_gl_draw_prim sets zclean = 0 whenever it leaves a perspective triangle
+  ((flags & 3) == 1) to software -- the only way +333F4 runs. glr is bss-zeroed: no context is known
+  clean at the start, so the first begin-frame clears. Census [79] skipped, [99] cleared. Bench check
+  A4_ZCHECK (each skipped buffer scanned: [93] found a word set, [94] checked) and its mutant (one
+  word set in every 64th checked buffer). Read back: the BLX, the trampoline's word (+2DEF5, Thumb),
+  the decision's fields (glr.up 0x401000, zclean 0x402D18, census 0x412E3C/[99]). z1 816,740 bytes.
+  Runs queued (zbat.sh): the check over a race and the menus with the garage, the mutant, and z1 on
+  the new model against kV1.

@@ -439,3 +439,24 @@ a4_hc_5202c:
 a4_cs_flag4:
         .word   0x00447060
 #endif
+
+#ifdef A4_ZSKIP
+@ Round 51: the game's begin-frame (+31C70) zero-fills its per-pixel 1/w buffer every frame (+2DEF4: 300 KB,
+@ euser's memset -- ~5 ms a render on the round-50 model, its missed stores). Only the perspective span
+@ (+333F4) reads or writes that buffer (bench watch zw2), and the span runs only for the perspective
+@ triangles our draw hook leaves to software. a4_zclr_skip (a4_gl.c) answers whether the buffer is still
+@ all zero since this context's last clear; if it may not be, the game's clear runs as it always did.
+        .global a4_zclr_tramp
+a4_zclr_tramp:
+        push    {r0, lr}
+        bl      a4_zclr_skip
+        cmp     r0, #0
+        pop     {r0, lr}
+        bxne    lr                  @ known clean: nothing to clear
+        ldr     r12, a4_hc_2def4
+        add     r12, pc, r12        @ pc reads as a4_hc_2def4
+        bx      r12                 @ the game's clear, returning to the game
+        .global a4_hc_2def4
+a4_hc_2def4:
+        .word   0xDEADBEEF          @ patched: (code+0x2DEF4 | 1) - (this word)
+#endif
