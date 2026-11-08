@@ -8027,3 +8027,22 @@ a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.p
   21 cycles a missed store is a stand-in for the memory's write bandwidth (the model has no write-
   buffer drain), and absorbs what the bench lacks (the phone's audio mixing) -- named, not measured.
 - Validation run kV1 (CPUMODEL 175:85:21:4:5:135, GPUMODEL 3,20,150,8,2500,400,5,30,2300): running.
+- Validation kV1 (r50c, CPUMODEL 175:85:21:4:5:135, GPUMODEL 3,20,150,8,2500,400,5,30,2300, 120 s): whole
+  race 72.5 ms a render (phone 72.7); 3D 27.5 (28.1), composite 9.7 (9.7), readback 6.8 (6.8), loop C
+  3.5 (3.8) / ARMv6 2.2 (2.0), 2D 6.6 (6.0), present + rest 28.7 (28.9); the ARMv6 slots' rest saving
+  0.9 ms (phone 0-1; the old model ~3). Host behind the model 0.1-0.2%. The frame-record medians
+  differ (render start to present 61 against 46, presents 73 against 55) because they cover different
+  stretches: the phone's 417 records are its second race's last ~25 s with the finish, whose last 8
+  windows average 55 ms a render against its whole race's 72.7; the bench's are mid-race.
+- At the fitted settings, where a race render's ~72 ms goes (sensitivity x setting, linearised at the
+  old point, so approximate): ARM-state instructions ~22 ms (3D 9, rest 10 -- the runtime's convert,
+  the ROM -- 2D 1.5, loops 2); missed stores ~17 (rest 10: the fills before the first triangle and the
+  convert's 300 KB; 3D 6); Thumb ~13 (3D 4.7, rest 4, 2D 4.6); read misses ~7.5 (3D 4.4); the GPU
+  model the rest (the readback's tile render and copy ~6, draws and binds). The weakest number is the
+  store cost: 21 cycles a missed store also absorbs whatever "rest" the bench lacks (audio mixing), so
+  store-heavy code may read heavier than it is. Settled on the phone by a store-only A/B (the same
+  instructions, fewer stores: e.g. the back buffer's fill before the first triangle skipped in
+  alternate windows where the composite covers it).
+- The bench's model from here: CPUMODEL 175:85:21:4:5:135, GPUMODEL 3,20,150,8,2500,400,5,30,2300
+  (EMU_PATCHES.md "A modelled N95 for the bench" updated; scratchpad model_r50cal.env). Results on the
+  old settings (t-runs, AB1, L-runs, pct profiles) are not comparable with runs on these.

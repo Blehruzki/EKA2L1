@@ -93,25 +93,33 @@ source copy.
 ## A modelled N95 for the bench
 
 `EKA2L1_CPUMODEL`, `EKA2L1_GPUMODEL` and `EKA2L1_TIMESCALE` (ngage-port, Asphalt 4 round 45)
-together make the bench run at a modelled N95's proportions. The settings calibrated against the
-phone's own telemetry of two Asphalt 4 builds (r42 and r44: the game's render call 64.2 ms, the
-part before its first triangle 16.3 ms, presents every 67-68 ms median, 0.8 ms a logic step):
+together make the bench run at a modelled N95's proportions. The settings, recalibrated in round 50
+against the phone's per-phase telemetry of one build (Asphalt 4 r50c: 5,346 race renders, every
+phase of the render timed, and an in-race A/B of two pixel loops):
 
-    EKA2L1_TIMESCALE=4 EKA2L1_CPUCAP=330 EKA2L1_CPUMODEL=300:30:2:4:5:160 \
-    EKA2L1_GPUMODEL=3,20,150,8,2500,400,12,30,2300
+    EKA2L1_TIMESCALE=4 EKA2L1_CPUCAP=330 EKA2L1_CPUMODEL=175:85:21:4:5:135 \
+    EKA2L1_GPUMODEL=3,20,150,8,2500,400,5,30,2300
 
-That is a 330 MHz ARM1136 with Thumb code at 3.0 cycles an instruction and ARM code at 1.6
+That is a 330 MHz ARM1136 with Thumb code at 1.75 cycles an instruction and ARM code at 1.35
 (the game is Thumb; the port, built `-marm -mtune=arm1136j-s -O2`, and most of the ROM are ARM),
-a 30-cycle line fill; an MBX driver at 3 us a call, 20 us a draw plus 150 ns a vertex, 8 us a
-texture bind; a frame's tile render 2.5 ms plus 400 ns a triangle (3DMark Mobile06 on an
-OMAP2420: 2.36 Mtris/s), the copy back 12 ns a byte (the phone's own frame read: 6.2-7.2 ms for
-tile render and copy), and 2.3 ms for the display post. With them the bench presents every 73 ms
-median (10-90%: 60-92; the phone 68, 54-90) and its per-window phases sit in the phone's ranges
-except the 2D overlay (+3-5 ms) and the composite (+1.5 ms). Time is dilated 4x because this
-container's interpreter cannot run the model in real time; `EKA2L1_CPUCAP_STATS=1` showed the
-host asleep ~60% of the time and behind the model by under 0.5%. Not modelled: an I-cache, the
-TLB, per-instruction interlocks (the CPIs stand in for them) and the phone's audio mixing (no
-audio device in a headless container).
+an 85-cycle line fill and 21 cycles for a store that misses the cache; an MBX driver at 3 us a
+call, 20 us a draw plus 150 ns a vertex, 8 us a texture bind; a frame's tile render 2.5 ms plus
+400 ns a triangle (3DMark Mobile06 on an OMAP2420: 2.36 Mtris/s), the copy back 5 ns a byte, and
+2.3 ms for the display post. How they were found: one parameter moved a run, the per-phase change
+read off as the phase's count of Thumb instructions, ARM instructions, read misses and missed
+stores, and the four fitted to the phone's phases by least squares. With them the bench's race
+averages 72.5 ms a render against the phone's 72.7, and each phase is within 2-10% of the
+phone's (3D, the readback, the composite's loop, the 2D overlay, and the rest). The 21-cycle
+missed store stands in for the memory's write bandwidth (the model has no write-buffer drain) and
+absorbs what the bench lacks; with the old 2 cycles, store-heavy streams (screen fills, the
+display convert) cost almost nothing and instruction counts ruled them, which the phone did not
+bear out (an ARMv6 convert with 2.5x fewer instructions saved ~0-1 ms on the phone, the old
+model said 3). The round-45 settings, 300:30:2:4:5:160 and a 12 ns copy, matched the phone's
+render call and frame interval but not its phases. Time is dilated 4x because this container's
+interpreter cannot run the model in real time; `EKA2L1_CPUCAP_STATS=1` shows the host asleep
+~70% of the time and behind the model by under 0.5%. Not modelled: an I-cache, the TLB,
+per-instruction interlocks (the CPIs stand in for them), a write buffer, and the phone's audio
+mixing (no audio device in a headless container).
 
 ## S60 3.0 direct screen access
 
