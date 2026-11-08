@@ -7860,8 +7860,10 @@ Owner: "Sounds like a plan. Go ahead."
   the swap checks for (census [90]/[89]).
 - Rule 4 (c), states the bench has not entered: the telemetry failing to open its files (then
   a4_tel never steps the mode: every window stays slot 0, the old code -- safe, the A/B lost, and the
-  missing files say so); the N95's slide closed (a portrait window: the buffer's 320x240 check
-  refuses, census [89] 2); a DSA abort and restart (a call, the screen saver): the swap is checked
+  missing files say so); a window smaller than the buffer (the N95's slide closed, if the
+  game draws then: the buffer stays 320x240, so the swap is taken and clips to the window's size as
+  +CB70 does, rows then not contiguous -- the fuzz covered clipped sizes and strides; on the bench the
+  window always matched); a DSA abort and restart (a call, the screen saver): the swap is checked
   again at every present and a converter object made anew is taken again after the hash; the
   runtime's convert called from a menu after a race (taken by the swap, either slot exact).
 - Candidate: sha256 7154085238e1672244f1811d40e18ea5223b27a79837125cccf6537b2b7d54f7, 816,564 bytes;
