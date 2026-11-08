@@ -7871,3 +7871,18 @@ Owner: "Sounds like a plan. Go ahead."
   words; its battery was stopped at its first step and rerun.) Recorder twin a4_y9 (the same flags +
   A4_CARREC/A4_YREC/A4_AUTOPILOT). Battery r50bat.sh (r49b's, the names changed, r50sum and the finish
   on the exact binary added): running.
+- Battery on 71540852 (r50bat.out): tele (r50t) installs 1, fast 920, baseline-slot 919, no refusal; the
+  recorder twin normal; crash-steer, the finish (r50f, r50f2), marks and Veyron as r49b's; faults 1
+  each. The menu run (r50mn) did not pass: all 19 screens one frame, a race on a grass track held at
+  "READY?" at 0 km/h (only the emulator's fps text differs), framestat 3575, the 3D renders running
+  (23 a window, the slots stepping) -- and the converter census says refusal 2 after its install.
+  Rerun (r50mn2): the same stall on the same track. r49bmn (Nov 6, 14:33) raced a city track: the
+  game's save (C:\Private\20007b39\2001092b\Asphalt4) was written at Nov 6 23:08, after it, so the
+  menu route now lands on another race. Control: r49b's exact binary through the same route (r49bmn2),
+  running. The save as it is now kept in the scratchpad (save_asphalt4_1106.bin).
+- Refusal 2 is a bug of ours, whatever the stall turns out to be: A4_GL_BB is the frame's 3D target,
+  and the garage's car renders offscreen, so "bb[8..10] not the buffer" means "not the screen this
+  frame", not "another runtime" -- and it latched. Had the garage come before the first race frame
+  the swap would never have been taken, and rule 4 (c)'s "a converter made anew is taken again" was
+  false after it. Now: no latch, counted in census [87] (r50sum prints it), tried again at the next
+  present (the read is on buf's own page, as before). Candidate r50b: c445ce58..., 816,576 bytes.

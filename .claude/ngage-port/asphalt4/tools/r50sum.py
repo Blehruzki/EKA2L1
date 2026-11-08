@@ -3,7 +3,8 @@
 # 2, the prefetch without the loops, is the C loops again: a second baseline). ms a render is the whole
 # window over its renders (the present's convert included); comp is the composite (readback and loop).
 # Then the converter's census words: [90] installs, [91] fast converts, [92] handed back, [95] baseline slots,
-# [89] why it refused (0 none), [88] the hash a different runtime's convert gave.
+# [89] why it refused (0 none), [88] the hash a different runtime's convert gave, [87] presents whose 3D target was
+# not the screen's buffer (the garage's offscreen car; tried again, not a refusal -- 2 in [89] is the old latch).
 import sys, struct, glob
 AGG = 256 + 560 + 153600 + 122 * 4
 rows = []
@@ -31,5 +32,5 @@ if len(d) >= o + 122 * 4:
     ck = struct.unpack_from('<122I', d, o)
     why = {0: 'none recorded', 2: 'the buffer\'s object not where expected (bb[8..10])', 3: 'the converter not linked back (conv[1])',
            4: 'no vtable', 5: 'no convert entry', 6: 'the runtime\'s convert differs (hash %08x)' % ck[88], 7: 'its size stub differs'}
-    print('converter: installs %d, fast %d, handed back %d, baseline-slot converts %d; refusal: %s'
-          % (ck[90], ck[91], ck[92], ck[95], why.get(ck[89], str(ck[89]))))
+    print('converter: installs %d, fast %d, handed back %d, baseline-slot converts %d, other 3D targets %d; refusal: %s'
+          % (ck[90], ck[91], ck[92], ck[95], ck[87], why.get(ck[89], str(ck[89]))))

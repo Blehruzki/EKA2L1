@@ -6355,7 +6355,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
  * is followed, so another runtime build is left alone (CVT[0] says why). */
 void a4_cvt565_run(uint32_t *d, const uint32_t *s, const uint32_t *e);   /* a4_px.s */
 void a4_cvt565_run_pld(uint32_t *d, const uint32_t *s, const uint32_t *e);
-#define CVT ((volatile uint32_t *)0x00412100u)  /* [0] 0 untried, 1 installed, 2+ refused (the step that failed; also
+#define CVT ((volatile uint32_t *)0x00412100u)  /* [0] 0 untried, 1 installed, 3+ refused (the step that failed; also
                                                  * census [89], captured; [88] the hash a refused +CB70 gave)
                                                  * [1] the converter, [2] its own vtable, [3] +CB70, [4..10] our
                                                  * vtable: its two words before (offset, typeinfo) and five entries,
@@ -6439,7 +6439,10 @@ static void cvt_install(void)
     const uint32_t buf = *(volatile uint32_t *)A4_GL_BB;
     if (!buf || (buf & 3u) || (buf & 0xFFFu) < 0xC0u) return;   /* bb on buf's own page, or nothing read */
     const uint32_t *bb = (const uint32_t *)(uintptr_t)(buf - 0xC0u);
-    if (bb[8] != buf || bb[9] != 320u || bb[10] != 240u) { CVT[0] = 2u; ((volatile uint32_t *)0x00412D00u)[89] = 2u; return; }
+    /* Not the screen's buffer: this frame's 3D went to another target (the garage's car renders
+     * offscreen). Not a refusal -- tried again at the next present ([87] counts these); a refusal
+     * here kept the converter off for good when the garage came before the first race frame. */
+    if (bb[8] != buf || bb[9] != 320u || bb[10] != 240u) { ((volatile uint32_t *)0x00412D00u)[87]++; return; }
     uint32_t *conv = (uint32_t *)(uintptr_t)bb[3];
     if (!conv || ((uintptr_t)conv & 3u) || conv[1] != (uint32_t)(uintptr_t)bb) { CVT[0] = 3u; ((volatile uint32_t *)0x00412D00u)[89] = 3u; return; }
     volatile uint32_t *our = CVT + 4;
