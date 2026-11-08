@@ -366,3 +366,21 @@ and its capture windows that read 565 composited the same picture as the RGBA on
 error, the scene correct and upright). BGRA version verified the same way: the probe reads
 `GL_BGRA`/`GL_UNSIGNED_BYTE` and the windows that read BGRA composite the same picture as
 the RGBA ones (Asphalt 4 MBX round 11 battery).
+
+## The screen draws inherit a GLES context's state
+
+Not a switch: a fix, always on. The emulated GLES contexts and the screen's own draws (the
+direct-screen post over the screen texture, and `update_screen`'s posted framebuffer) share one
+host GL context, and a guest context's flush leaves its state on it. The screen draws turned
+clipping off and nothing else, so they drew with the guest's depth test, culling, stencil,
+blend and colour mask. Once a game's last draw of a frame left the depth test on, every later
+post failed it: the window stopped changing while the game, its menus and its posts ran on.
+A device never lets a GLES context touch the screen's composition. Now both draws set each of
+those states themselves (`screen_draw_state`, `src/emu/dispatch/src/screen.cpp`); the GLES
+layer already sets its whole state again at the start of each of its command lists
+(`init_context_state`), so the guest loses nothing. Found by the Asphalt 4 port's round 50: a
+build that sets its GL capabilities lazily (only at a draw or clear) left the depth test on at
+a frame's end and froze the bench window at the countdown; the game's own framebuffer, captured
+in-run, showed the race going on. Verified: that build's menu run on the fixed emulator draws
+the countdown, the race, the pause menu and every row, the confirm dialog, the main menu and
+the garage.

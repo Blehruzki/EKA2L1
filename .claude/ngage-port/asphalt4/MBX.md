@@ -7900,3 +7900,16 @@ Owner: "Sounds like a plan. Go ahead."
   0921983 count down and race; 162b0e5 (= HEAD's binary for r49's flags) stalls. r50b with A4_EAGERGL
   counts down and races. The lazy GL state (162b0e5) is the cause; how a GL call order holds the
   race's countdown is not known yet.
+- Not the game: the stalled run's own captures show it running -- r50p's framebuffers a race downtown
+  at 170-199 km/h, r50mn's the garage (where its converter census met the garage's offscreen target).
+  Only the bench window froze. The emulator's screen draws (the DSA post over the screen texture)
+  set clipping and nothing else, so they drew with the GLES context's leftover state; the lazy
+  state leaves GL as the frame's last draw had it -- depth test on -- where the eager calls ended
+  with it off, and every post after failed the depth test. A device never lets a GLES context touch
+  the screen's composition. Fixed in the emulator (EMU_PATCHES.md "The screen draws inherit a GLES
+  context's state"); the lazy state stays. r50b on the fixed emulator, the battery's menu route
+  (r50bfix): the countdown, the race, the pause menu and every row, confirm, the main menu, the
+  garage -- as r49bmn. Every earlier bench run's game-side captures were unaffected (they are the
+  game's buffer, not the window); only racemenu's screenshots read the window.
+- r50b: the battery reruns on 91183e41 with the fixed emulator, the recorder twin rebuilt from the
+  same source.

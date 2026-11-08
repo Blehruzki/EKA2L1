@@ -40,6 +40,22 @@
 #include <kernel/process.h>
 
 namespace eka2l1::dispatch {    
+    // The emulated GLES contexts and these screen draws share one host GL context, and a guest
+    // context's flush leaves its own state there (the GLES layer sets its whole state again at the
+    // start of each of its command lists, so nothing on its side relies on what is left). A screen
+    // draw that only turned clipping off drew with the guest's depth test, culling, stencil, blend
+    // and colour mask: once a game's last draw of a frame left the depth test on, every later post
+    // failed it and the screen stopped changing while the game ran on. On a device a GLES context
+    // never touches the screen's composition, so the screen draws set every state they draw with.
+    static void screen_draw_state(drivers::graphics_command_builder &builder) {
+        builder.set_feature(drivers::graphics_feature::clipping, false);
+        builder.set_feature(drivers::graphics_feature::depth_test, false);
+        builder.set_feature(drivers::graphics_feature::cull, false);
+        builder.set_feature(drivers::graphics_feature::stencil_test, false);
+        builder.set_feature(drivers::graphics_feature::blend, false);
+        builder.set_color_mask(0b1111);
+    }
+
     void screen_post_transferer::construct(ntimer *timing) {
         vsync_notify_event_ = timing->register_event("VSyncNotifyEvent", [this](const std::uint64_t data, const int cycles_late) {
             epoc::notify_info *info = reinterpret_cast<epoc::notify_info*>(data);
@@ -461,7 +477,7 @@ namespace eka2l1::dispatch {
                 dest_rect.scale(scr->display_scale_factor);
 
                 builder.bind_bitmap(scr->screen_texture);
-                builder.set_feature(drivers::graphics_feature::clipping, false);
+                screen_draw_state(builder);
 
                 builder.set_texture_filter(scr->dsa_texture, true, filter);
                 builder.set_texture_filter(scr->dsa_texture, false, filter);
@@ -573,7 +589,7 @@ namespace eka2l1::dispatch {
                 scaled_twice_rect.scale(scr->display_scale_factor);
 
                 builder.bind_bitmap(scr->screen_texture);
-                builder.set_feature(drivers::graphics_feature::clipping, false);
+                screen_draw_state(builder);
                 builder.draw_bitmap(temp, 0, scaled_twice_rect, info->input_crop, eka2l1::vec2(0, 0), 0, 0);
                 builder.bind_bitmap(0);
 
