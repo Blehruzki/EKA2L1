@@ -7958,3 +7958,35 @@ Owner: "Sounds like a plan. Go ahead."
   is a bench question, open; until it is settled, present times compare only between runs in the same
   state, and the slots' A/B inside one run is unaffected (every slot carries it).
 - Round 50c goes out: 7ed1371c, unbaked (the owner bakes).
+
+## Round 50c, phone (sha256 7ed1371c...): the ARMv6 loops stepped per window
+
+Owner: "I didn't notice anything out of the ordinary." Eight telemetry files (phone50c; captures 225-232,
+5,346 race renders in the aggregates over 116 windows, the four slots 598-746 renders each).
+- The converter swap on the phone: installs 1, fast 3,677, handed back 0, baseline-slot converts 4,168,
+  other 3D targets 0, no refusal -- the phone's ngibackbuffer is the build the hash checks for (rule
+  4 (a), settled); one convert a real present (3,677 + 4,168 = 7,845 of 7,846).
+- Per slot, whole race (ms a render | 3D, composite (readback), 2D, present):
+  seg0 C 72.9 | 26.0 10.5 (6.6) 6.3 2.1; ARMv6 82.0 | 30.8 8.8 (6.8) 6.2 2.3; C(2) 73.0 | 29.2 10.6 (6.7)
+  6.1 1.9; ARMv6+PLD 67.1 | 26.1 8.7 (6.7) 6.6 2.0. seg1 C 71.8 | 26.8 10.7 (6.8) 5.8 1.9; ARMv6 69.3 |
+  27.2 8.8 (6.8) 5.4 1.9; C(2) 74.3 | 29.2 10.6 (6.8) 6.0 2.0; ARMv6+PLD 72.2 | 29.7 8.9 (6.8) 6.2 2.0.
+  - The composite: 10.5-10.7 ms with the C loop, 8.7-8.9 with the ARMv6 one, the readback 6.6-6.8 in
+    both: the loop itself ~3.9 -> ~2.0 ms, 1.8 ms a render -- the one gain the phone shows, 2.5% of
+    the render. The model (AB1) put the loops at ~5 ms of ~54 (9.5%): it overweights them.
+  - The present (the runtime's convert and the post): 1.9-2.3 ms in every slot, the swap's or not
+    (r49 phone 2.3). The model's ~5 ms convert (pct19, 13.9%) is not on the phone: the whole present,
+    post included, is ~2 ms. The convert swap saves nothing measurable there.
+  - PLD: slot 3 against 1, the composite 8.7 vs 8.8 and 8.9 vs 8.8 -- nothing (rule 4 (a), settled).
+  - Whole render, all slots: 72.7 ms (5,346 renders) against r49 phone's 72.7 (2,139): the list's
+    determinant, depth ranges, sort range and the lazy GL state (all slots) show nothing either at
+    this resolution; the 3D phase's slot-to-slot spread (26-31 ms, scene content) is larger than any
+    of them. Presents median 55 ms (10-90% 43-85), render start to present 46 ms (r49: 57, 47).
+  - The render's parts on the phone: 3D 28.1, composite 9.7 (readback 6.8), 2D 6.0, present 2.0 --
+    45.8 of 72.7 ms; the other ~27 ms is outside these phases (the game's step and its own work).
+- Frames: drawn speed against its neighbours quartiles 0.99-1.01 (render-timed), 0.98-1.02 (present-
+  timed); car heading one-frame reversals 1 in 417 frames; camera yaw 11 (r49ph: chase 4 in 319).
+  Drop frames in the race 10, half-step skips 20; held frames 0.
+- What it settles: the pixel loops were worth ~2 ms, not ~10; the convert is not a cost on the phone.
+  The model's split (Thumb/ARM CPI, no instruction cache) puts too much on the pixel work: recalibrate
+  on these slots before trusting it for the next cut. The time is in the 3D phase (~28 ms) and the
+  ~27 ms outside the measured phases.
