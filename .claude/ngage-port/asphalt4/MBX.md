@@ -7922,3 +7922,30 @@ Owner: "Sounds like a plan. Go ahead."
   a4_gl_frame differs (cvt_install inlined: the step-2 count, the had gate); no 0xDEADBEEF; bench-only
   flags none. Twin a4_y9c (+ A4_CARREC/A4_YREC/A4_AUTOPILOT; the recipe rebuilds r50's a4_y9 byte for
   byte from r50's source). Battery r50cbat.sh, on the fixed emulator: running.
+- Battery r50cbat.sh on 7ed1371c (fixed emulator; r50bat's runs, the names changed): ship check
+  816,560 bytes, +3A15C b510 0004, no 0xDEADBEEF; faults 1 in every run; archives restored (cmp ok).
+  - Twin y9c (recorder, 120 s, model): all cars x-z 99% 24 max 106, camera 99% 45 max 90, player
+    bearing reversals 0 -- as r50's y9 (27/116, 43/99, 0).
+  - Tele r50ct (model, 120 s): framestat 2176; slots C 66.5 / ARMv6 63.6 / C(2) 69.6 / ARMv6+PLD 63.6 ms a
+    render (r50: 70.5 / 62.8 / 65.5 / 65.1); converter installs 1, fast 1,050, handed back 0, other 3D
+    targets 0, no refusal; car heading reversals 0; camera yaw reversals 6 (r50 4, r49b 3); drawn car
+    off the game's path x-z 99% 39 max 51 (r50 37/66). Two differences under study: the present
+    (convert + post) 2.5-3.0 ms a render against r50's 0.2-1.2 and r49b's 0.1-0.7, in every race
+    window (the race's 69 presents a window unchanged); and 168 presents with no 3D, all before the
+    race (menus, loading: the counter covers the session). At cap 85 without the GPU model the
+    present is 0.8-0.9 ms (r50cf2), so it is the model run only. A/B queued: r50b (no had gate) and
+    r49b, the same model run on the fixed emulator.
+  - Crash-steer r50cc2: framestat 2517; drawn off the path x-z 99% 6 max 8; camera yaw and car heading
+    reversals 0; bearing reversals 5 (max change 11/2048), r50 0, r49b 1.
+  - Finish, twin (r50cf): reached the finish camera (mode 1: 162 frames, bearing reversals 0; the camera
+    yaw's two reversals at the cut into it, as r49bf2's). Finish, exact binary, key held (r50cf2):
+    framestat 5023; finish camera 166 frames, reversals 0; crash camera (0x17) 147 frames; converter
+    fast 4,182, handed back 0; seg1 slots C 72.0 / ARMv6 62.4 / C(2) 71.0 / ARMv6+PLD 61.4 ms (cap 85).
+  - Menu r50cmn: the pause menu and every row, restart, confirm, the main menu, career, the garage and
+    the car's page (sheet_r50cmn.png) -- as r49bmn. Converter: installs 1, fast 4,365, other 3D targets
+    805 (the garage's offscreen car), no refusal: taken once and kept through the garage.
+  - Marks r50ck (framestat 1249) and on the Veyron r50ckv (1184): the race drawn downtown, 160-320
+    km/h. (r50's mark shots were frozen at READY? too -- the emulator's freeze; their framestat was
+    read, not the pictures.)
+  - Veyron autopilot r50cv: framestat 2109; drawn off the path x-z 99% 55 max 86 (r50 17/18, r49 27/54,
+    r48 60/75: the autopilot's course differs run to run); car heading reversals 0.
