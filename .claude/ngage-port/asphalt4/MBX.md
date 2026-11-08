@@ -7747,3 +7747,19 @@ Owner: "Sounds like a plan. Go ahead."
 - LS1 (A4_LISTCHECK, t18 + A4_PX6 + the determinant and list changes, 60 s): 1,011 lists, 0 faces out of
   place against the full 4,096-bucket sort, 0 kept ZW ranges differing from the corners'. LSM (the
   mutant: two places swapped and a range bit flipped a list): 2,070 places and 1,035 ranges flagged.
+- RS2 (census of the list, 60 s): 1,011 list frames, 26.9 texture keys (texture x texz) a frame, 90.8
+  draw calls, 997 faces -- 3.4 calls a key. A run's one box (the union of its faces') soon meets
+  everything later in table order, so a face of the run's texture behind another run cannot join it.
+  Upper bound: one call a key, ~64 fewer draws a frame (~1.3 ms of the GPU model's draw charge, and
+  the binds). RS3 simulates, in-run, the same grouping with a per-run mask of the 16-pixel tiles its
+  faces' boxes touch as well as its box (both conservative, so a pass either allows keeps the picture):
+  census [77] its runs, [78] the same with no limit on the runs scanned back.
+- RS3 (the tile-mask grouping simulated in-run, 60 s, 988 list frames): 90,684 runs against the real
+  91,340 (-0.7%); with no limit on the runs scanned back 90,639. The list's splits are real overlaps
+  in table order (a face of one texture behind a run of another, at depths the MESHZ rule cannot pass),
+  not the box's coarseness. Finer overlap tests do not pay; dropped.
+- RS4 (the same simulation for the table path's batches, 60 s): 75,031 runs against 74,320 with tile
+  masks (-0.9%), 27,480 distinct keys summed over the batches (2.7 runs a key). The same answer as the
+  list's: the splits are real overlaps in painter's order. The simulations removed again (the key
+  census kept under A4_ROWSTAT). Draw calls stay where they are unless a class's order can be
+  proven free, which a depth test cannot do for painted faces.
