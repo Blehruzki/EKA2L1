@@ -7990,3 +7990,40 @@ Owner: "I didn't notice anything out of the ordinary." Eight telemetry files (ph
   The model's split (Thumb/ARM CPI, no instruction cache) puts too much on the pixel work: recalibrate
   on these slots before trusting it for the next cut. The time is in the 3D phase (~28 ms) and the
   ~27 ms outside the measured phases.
+- Correction to the above: the present column brackets DoPresent's present call (+1EA); the convert and
+  the post run in the framework's post (+6AC, [r4+0x3C]->vtbl[0x34]), outside it, on the phone and the
+  bench alike (the bench's runs that show ~2 ms there carry the model's post charge, the bimodal
+  state above). So the convert's saving is in "rest", where the phone's slots read C 26.6 / ARMv6 27.1
+  ms (seg1 alone 26.6 against 25.7): 0-1 ms, the scene noise +-1.5 -- not the model's ~3.
+
+## The model recalibrated against round 50c's phone slots
+
+Per-phase means over the whole race (AG27 aggregates, seg0+seg1; phone: 5,346 renders), the C slots
+and the ARMv6 slots apart where they differ; "rest" = present + everything outside the phases. Model
+runs repeat within 2-3% a phase (r50ct and r50cT, the same binary and settings). One parameter moved
+a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.py, aggph.py):
+
+  phase     phone  model | d/dThumbCPI d/dArmCPI d/dRmiss d/dWmiss (ms a render per unit)
+  3D        28.14  24.69 |    2.66       6.76     0.0512   0.2876
+  read       6.76   8.13 |    0.02       1.06     0.0030   0.0571
+  loop C     3.83   3.12 |   -0.04       0.92    -0.0015   0.0330
+  loop V6    2.03   1.66 |   -0.01       0.73    -0.0004   0.0262
+  2D         6.04   9.20 |    2.63       1.08     0.0041   0.0214
+  rest C    28.57  22.48 |    2.28       7.38     0.0313   0.4801
+  rest V6   29.16  19.98 |    1.61       5.22     0.0326   0.5444
+
+(kT: Thumb CPI 2.0, kA: ARM CPI 1.1, kR: read miss 120, kW: write miss 20; base 300:60:2:4:5:160.)
+- What they say: 2D is the game's Thumb code (2.6 ms a CPI unit, nothing else moves it); 3D moves
+  with read misses (the game's front end and our list over the scene's data) as much as with either
+  CPI; "rest" is write-bound -- 0.48-0.54 ms a cycle of write miss, the background fills before the
+  first triangle and the convert's 300 KB (round 49's c4 saw the first of it); the readback moves
+  with the CPU only through its strip handling. At write miss 20 the ARMv6 slots' rest gains more
+  than the C slots' (0.54 against 0.48 a cycle): the convert becomes store-bound and its ARMv6
+  version's saving shrinks toward the phone's.
+- Least-squares fit (relative errors, a grid over sane ranges): Thumb CPI 1.75, ARM CPI 1.35, read
+  miss 85 cycles, write miss 21 cycles a store -- the fitted phases against the phone: 3D -6%, loop C
+  -8%, loop V6 -2%, 2D +2%, rest C -3%, rest V6 -5%, read +33%. The read is the GPU model's copy:
+  its per-byte charge 12 -> 5 ns closes it (-2.2 ms over the frame's ~307 KB of strips). Write miss
+  21 cycles a missed store is a stand-in for the memory's write bandwidth (the model has no write-
+  buffer drain), and absorbs what the bench lacks (the phone's audio mixing) -- named, not measured.
+- Validation run kV1 (CPUMODEL 175:85:21:4:5:135, GPUMODEL 3,20,150,8,2500,400,5,30,2300): running.
