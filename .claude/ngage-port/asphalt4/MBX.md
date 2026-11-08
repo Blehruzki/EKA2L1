@@ -7886,3 +7886,17 @@ Owner: "Sounds like a plan. Go ahead."
   the swap would never have been taken, and rule 4 (c)'s "a converter made anew is taken again" was
   false after it. Now: no latch, counted in census [87] (r50sum prints it), tried again at the next
   present (the read is on buf's own page, as before). Candidate r50b: c445ce58..., 816,576 bytes.
+- Correction: r50mn's race is the same as r49bmn's (Los Angeles: the grass start, the city later), held
+  at the countdown's "READY?". Not the save: r49b's binary through the same route on today's save
+  (r49bmn2, r49bp) counts down and races. The menu run is the battery's only uncapped race (the rest
+  run under EKA2L1_CPUCAP); r50 stalls there in every run (r50mn, r50mn2, r50p: the menus, the
+  intro's flyover, then READY? for good, the pause key unanswered), while the logic steps go on
+  (h[61] 25-37 a window, as r49b's).
+- A rebuild of r50b without A4_HALFSTEP/A4_SCRATCH_SIZE (my slip, not the recipe) faulted at boot on
+  the camera-script flag 0x447060 (scratch too small) -- discarded. The recipe checked: the previous
+  commit's source with it rebuilds 71540852 byte for byte; r50b with it: 91183e41.
+- Bisect (racemenu2.sh: a screenshot at each menu step and three after; r49's flags on each commit;
+  r49b's commit rebuilds 81193beb exactly and its hooks match HEAD's line for line): 75df72c, ab870c4,
+  0921983 count down and race; 162b0e5 (= HEAD's binary for r49's flags) stalls. r50b with A4_EAGERGL
+  counts down and races. The lazy GL state (162b0e5) is the cause; how a GL call order holds the
+  race's countdown is not known yet.
