@@ -8383,3 +8383,26 @@ unresolved part. So it goes to the phone as an A/B inside one race, as round 51'
   runs see different moments; but a standing car is a question. r53fs (the same run with a screenshot at
   each key and every 10 s) and r51fs (y51, the same script: the build against the script's NOKEY5 tap,
   new this round): running.
+- The finish runs, settled: r53fs (the same y53 run again, screenshots every 10 s) reached the finish (its
+  last frames in the finish view at (17807, 46936)). r51fs (r51's twin y51, the same script) stood still
+  from ~h240 to the end at (-4821, -7893): on lap 3, 0 km/h, the car facing the camera -- the autopilot
+  holds accelerate and never steers, so a crash that leaves it facing a wall leaves it there
+  (sheet_r51fs.png). A route state of the autopilot run, in both builds; not the build. (r53f2's second
+  segment: its race finished early -- this build plays faster under an instruction cap.)
+- Read back (rule 4 b), the reworked candidate: the compiled diff against r51 -- the aggregates' slot
+  (bits 15-16, mask 3), the memo gated on both bits (0x412C00 & 0x18000 == 0x18000), its table at 0x460000
+  and generation at 0x461000, the first prim's mode with ~(32768|65536), a4_tel.c's stepping through 0..3
+  and 'AG29', a4_zclr_skip's per-window bit gone; the engine object the painter, eng_349F8 and the switch
+  a4_engv_349F8 (a4_ab_l349F8, the lifter's renamed entry, unused); no +349B0 code.
+- Round 53 to the owner: r53 = eaedb846 (unbaked). Not a repeat: no phone round has run lifted game code
+  in place of the game's own (the painter that shipped in r51 is a hand-written one) nor the corner memo,
+  nor an A/B of two changes crossed in one race (50c stepped the pixel loops and their prefetch, which
+  are one loop each). Rule 4 (a): the phone's price of the game's Thumb and the projection table's reads
+  against our ARM (the round's question; the model, with no instruction cache and one read price, cannot
+  give it); the trampoline into the game's routine and the lifted routine itself, settled by lc53
+  (56,767 calls through the same trampoline, 0 differing); the bss 12 KB larger (0x62000), entered on
+  the bench by every run. (b): above. (c): focus loss mid-race (the routine's choice is per call, from
+  the mode word; nothing persists across windows but the memo's table, keyed by its generation, which
+  the game's routine never bumps -- and the memo is used only when the lifted routine ran this call);
+  other tracks and night races (more faces in view: the memo's 128 entries collide more, a cost, not a
+  fault -- each hit compares the exact coordinates).
