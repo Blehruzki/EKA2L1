@@ -8406,3 +8406,10 @@ unresolved part. So it goes to the phone as an A/B inside one race, as round 51'
   the game's routine never bumps -- and the memo is used only when the lifted routine ran this call);
   other tracks and night races (more faces in view: the memo's 128 entries collide more, a cost, not a
   fault -- each hit compares the exact coordinates).
+- Owner: "send it". Sent unbaked (asphalt4_ngi_r53.exe, eaedb846..., 826,896 bytes). Expected, written
+  before the result: nothing visibly different from r51; the whole render about as r51's (~68 ms; the
+  1/w skip always on, ~-0.5 against r51's mix). Per slot, the model's call: lifted ~-1.2 ms against the
+  game's, the memo ~+0.9 over lifted. If the phone's pre-triangle shortfall (15.4 ms against the model's
+  ~9) is the game's Thumb or the projection table's misses, lifted gains more than 1.2 and/or the memo
+  turns to a gain; if neither moves beyond the slots' spread (~1.5 ms), the shortfall is elsewhere
+  (the instruction cache on code we did not touch, or the GL driver).
