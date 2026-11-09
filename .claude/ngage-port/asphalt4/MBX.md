@@ -8145,3 +8145,25 @@ a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.p
   A4_PAINTCHECK_BIG: the two copies a whole 320x240 surface each, past the phone scratch (0x460000,
   0x486000; A4_SCRATCH_SIZE 0xAB000). pbc (C51 + PAINTCHECK + _BIG) over the race and the menus, pbm
   (+ _MUTANT): queued after the battery (pball.sh).
+- Battery r51 (r51bat.sh on 5fdb6663, new model where marked): tele (TS 4, the model) framestat 2405,
+  faults 1. AG28 per slot: the clear run 64.3 ms a render (966 renders, 42 windows; 3D 26.8, comp 8.5,
+  read 6.6, 2D 3.3, pres 2.3), skipped 58.9 ms (989, 43; 3D 24.3, comp 8.6, 2D 3.4) -- the skip -5.4 ms
+  on the model, as z1 (-5.0). Against r50c on the same model (kV1 72.5): -8.2 ms with the clear run,
+  -13.6 (-19%) with it skipped. Converter installed once, 2,025 fast converts, none handed back; 1/w
+  clear skipped 989, run 1,027; presents 2,026 real (49 with no render since the last), held back 0;
+  drop frames 1. Chase framing as r50c (distance median 295, bearing 99% 6 max 10, reversals 6 -- r50c
+  max 9, 6; car heading reversals 0). The drawn car off the game's path in height: 99% 19, max 66 (r50c's
+  run 99% 5 max 8) -- seven frames, four of them one jump (the steps' y 971 -> 1005 -> 976 -> 949: the
+  frames along the velocity run past the apex), the landing tail on file since r49's recorder run (99%
+  15, max 95); x-z 99% 36 max 42 (r50c 39, 51). Gameplay code is r50c's (the compiled diff above).
+- crash-steer (cap 85) 3,046 framestat, faults 1: reversals 0 both, height max 1, x-z max 8. Race to the
+  finish (twin, cap 85) and with the exact binary and key 5 held: both reach the finish camera (0x17),
+  reversals 0-1 as r50c. Menus with the garage (18 shots): the race, the pause menu and every row,
+  confirm, the main menu and the garage as r50c's (sheet_r51mn.png). Mark and mark on the Veyron: run.
+  Veyron autopilot (cap 85): chase 317 frames, bearing 99% 6, camera yaw reversals 3 (r50cv 7), height
+  max 3, x-z max 32 (r50cv 86). Archive restored; shipchk: +3A15C B510 0004, no 0xDEADBEEF.
+- The recorder twin a4_y51 (TS 4, the model) recorded nothing and wrote no telemetry: its race never
+  ran, though the same binary raced to the finish at cap 85 (r51f) -- a bench-run state, not yet
+  known. Rerun with a screenshot at each menu key and every 10 s (jtruns.sh / telerun4s.sh): queued.
+- The painter with the big buffers (pbc), 60 s race: 37,072 calls compared, 71 not (past 153,600 bytes
+  or no surface), 0 differing (0 pixels, 0 clip words).
