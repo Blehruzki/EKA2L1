@@ -8233,3 +8233,12 @@ Owner: "yes, go ahead" (refit the model with the measured store cost, re-rank th
 - Emulator: EKA2L1_AUDIO_NULL=1 (a paced sink, nothing written) and the wavcap pump paced on the guest
   clock (x EKA2L1_TIMESCALE) -- EMU_PATCHES.md. au1: r51 on the round-51 model with the sink, against
   r51t without: running.
+- au1 (r51, the round-51 model, EKA2L1_AUDIO_NULL), 120 s: clear 66.5 ms a render, skip 61.4 (r51t without
+  audio 64.3, 58.9): the guest's audio +2.2/+2.5 ms a render, all outside the timed phases (3D 26.2/25.0,
+  comp 8.6/8.7, 2D 3.5). au2 (the capture variant, 40 s race): the game's streams are sound, not silence
+  -- 16 kHz mono 51.8 s and 67.9 s (rms ~3,400 and ~1,250 in the race), 24 kHz stereo 2.5 s (a jingle) --
+  and each as long as the run's guest time (~70 s of a ~280 s host run at TS 4): paced on the guest clock.
+  On this model the audio is ~2.4 ms of the ~5 ms the phone's time outside the phases exceeds the model's.
+- The fit moved to r51's phone slots, with the audio on (calfit51.py; the skip's difference outside the
+  phases, 1.2 ms on the phone, its own equation). Sensitivities from au1: aT (Thumb 1.15), aA (ARM 1.00),
+  aR (read miss 140), aW (write miss 4) -- calrun51.sh: running.
