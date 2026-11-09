@@ -8129,3 +8129,19 @@ a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.p
   (C51.flags), A4_HALFSTEP=1, A4_SCRATCH_SIZE 0x5F000: sha256 5fdb6663d8c08d072a64941e992b8edf5a79c496
   6191e8b77853d0ea8bb660ee, 823,372 bytes; no 0xDEADBEEF; bench-only flags none. Twin a4_y51 (+ the
   recorders). Battery r51bat.sh on the new model, after the pack checks (v5c, v5m): running.
+- Pack checks (C51 + A4_VPACKCHECK + A4_ZCHECK, 60 s race): 1,657,402 records read back, 0 differing;
+  the 1/w clear (ABCYCLE12 halves): 644 skipped and scanned, 0 with a word set, 705 run (the skip-off
+  windows count as run). Mutant v5m (every 256th record flipped): 4,065 of 1,040,637 flagged. Both runs'
+  faults=1 is the known ngilightserver boot fault (reading 0x34 in its Main; on file in every log).
+- The skip's one assumption, read statically (a4code.bin, every Thumb BL): +333F4 is called from
+  +2FB24, +2FB74, +2FBAE -- all inside the textured rasterizer +2F6FC; +2F6FC from +300EE only, the
+  dispatcher +300AE's branch for flags bit 1 clear and bit 0 set (bit 1 is tested first: flags 3 goes
+  to the flat +2FBDC). So (flags & 3) == 1, the mark in a4_gl_draw_prim, is exactly when the span can
+  run; the hook is the dispatcher's entry, every caller (+347E4, +34858, +35DC2, +35F9A) passes it, and
+  the mark sits after the take on every path. +2DEF4's other caller is the allocator (+2DFCE): a new
+  buffer is cleared there, so a context made again at the same address is still clean. No function
+  pointer to +333F4 seen; zw2's watch agrees.
+- The painter check turned away 1,280 calls (451 race, 829 menus) larger than its 20 KB buffers.
+  A4_PAINTCHECK_BIG: the two copies a whole 320x240 surface each, past the phone scratch (0x460000,
+  0x486000; A4_SCRATCH_SIZE 0xAB000). pbc (C51 + PAINTCHECK + _BIG) over the race and the menus, pbm
+  (+ _MUTANT): queued after the battery (pball.sh).
