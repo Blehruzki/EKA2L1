@@ -8176,3 +8176,17 @@ a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.p
   r51t held key 5, which cleared it, and r51f's cap-85 timing lined up. A bench-script state, not the
   build. telerun4.sh (and telerun4s.sh): a NOKEY5 run taps 5 once after the Returns (the autopilot
   overwrites the keys at every step). The twin rerun (y51b): running.
+- Twin y51b (the fixed script, TS 4, the model): recorded (88.3 MB), framestat 2,420. All cars off the
+  game's path x-z 99% 26 max 107, height 99% 17 max 81, heading 99% 12 max 105 (r50c's y9c: 24/106,
+  12/76, 13/104); camera (chase 1,388 frames) x-z 99% 58 max 101, yaw 99% 36 max 57 (y9c 45/90, 27/53);
+  frames bearing reversals 0 (y9c 0); the game's own steps 2 (y9c 0); finish camera 92 steps, as y9c.
+  Race-to-race spread of a real-time run: gameplay code unchanged. The battery is complete.
+- Round 51 to the owner: r51 = 5fdb6663 (unbaked). Not a repeat: no phone round has run the 1/w clear
+  skip, the hand painter, the packed list records, or an A/B that changes only stores (rounds 23/24
+  stepped the hook's prefetch, the strips and the atlas; 50c the pixel loops, which change loads and
+  instructions too). Rule 4 (a): the store cost (the skip's phone figure, the round's question); the
+  painter's large calls and the span's callers, settled on the bench above. (b): the compiled diff
+  against r50c read line by line; the painter's source by its call-for-call checks, not reread. (c):
+  focus loss mid-race (GL down: the mark still runs at every hooked call, the skip needs GL up); a
+  track or night race with more perspective triangles left to software (each one marks, the next
+  frame clears); the telemetry ring wrapping (r51f, 330 s, wrapped).
