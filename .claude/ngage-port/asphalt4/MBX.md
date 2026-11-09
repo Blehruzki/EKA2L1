@@ -8190,3 +8190,7 @@ a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.p
   focus loss mid-race (GL down: the mark still runs at every hooked call, the skip needs GL up); a
   track or night race with more perspective triangles left to software (each one marks, the next
   frame clears); the telemetry ring wrapping (r51f, 330 s, wrapped).
+- Owner: "send it". Sent unbaked (asphalt4_ngi_r51.exe, 5fdb6663..., 823,372 bytes). Expected, written
+  before the result: nothing visibly different from r50c; on the phone ~67-69 ms a render against r50c's
+  72.7 (the painter's 2D phase ~6 -> ~3 ms; the skip ~1.5-2 ms if a store costs a third of the model's,
+  ~5 ms if the model is right); the skip's slots apart by that amount.
