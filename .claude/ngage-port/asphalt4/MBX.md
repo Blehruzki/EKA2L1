@@ -8194,3 +8194,26 @@ a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.p
   before the result: nothing visibly different from r50c; on the phone ~67-69 ms a render against r50c's
   72.7 (the painter's 2D phase ~6 -> ~3 ms; the skip ~1.5-2 ms if a store costs a third of the model's,
   ~5 ms if the model is right); the skip's slots apart by that amount.
+
+## Round 51, phone (sha256 5fdb6663...): the 1/w clear skip per window, the hand painter, packed records
+
+Owner: "I barely noticed an improvement in framerate in certain places. Nothing else." Eight telemetry
+files (phone51; captures 104-111; 2,557 race renders in the aggregates over 111 windows).
+- Per slot (ms a render | 3D, composite (readback), 2D, present): the clear run 68.7 | 29.4 8.8 (6.7) 3.1
+  2.4 (1,265 renders, 55 windows); skipped 67.6 | 29.4 8.8 (6.7) 3.2 2.3 (1,292, 56). The skip: -1.1 ms
+  a render on the phone against -5.4 on the model, all of it outside the timed phases (3D, composite, 2D
+  and present the same to 0.1). 1/w clear skipped 1,292, run 1,320; the converter installed once, 3,195
+  fast, none handed back.
+- The store cost, measured: 76,800 words (the 8-register STM fill of 307,200 bytes) in ~1.1 ms -- ~4.8
+  cycles a word at 332 MHz, ~280 MB/s, against the model's 21 a missed store word (~4.4x dear). With
+  round 20's copy (~3x) the second phone figure the same way. Rule 4 (a), settled: streaming stores are
+  cheap on the phone; the model's W is to be refit, and every cut ranked by stores re-ranked.
+- Whole render, both slots: 68.1 ms (r50c 72.7, r49 72.7): -4.6 (-6%). The hand painter: 2D 6.0 -> 3.1
+  (the model said 6.5 -> 3.4: right for instruction-bound work). Composite 9.7 (r50c, half its windows
+  in C) -> 8.8 (ARMv6 always, as 50c's ARMv6 slots). 3D 28.1 -> 29.4 and present 2.0 -> 2.4: scene and
+  route (r50c's race had a crash sequence, 0x18; this one none). Outside the phases 26.9 -> 24.4.
+- Frame records (the last 417 renders): render to render median 52 ms (10-90% 42-75), mean 56.3 -> 17.8
+  renders a second; r50c's 54 (43-84), 60.4 -> 16.6. +7%, the owner's "barely noticed".
+- Presents 3,196 real (617 with no render since the last), held back 0; drop frames 3 (r50c 10). Camera:
+  chase yaw reversals 6 in 417 (r50c 11), car heading reversals 1 (1). Nothing seen by the owner; no
+  pattern every 1-2 s.
