@@ -8315,3 +8315,27 @@ unresolved part. So it goes to the phone as an A/B inside one race, as round 51'
   projection helpers (+523E6/A2/C4). A bias of the A/B named: the game's windows pay the veneer, the
   switch and a4_orig_349F8 on each mesh-routine call (~40 instructions; ~0.05 ms a frame by the call
   count), which r51's game front end did not.
+- Checks (c53all.sh): lc53 (A4_LIFTCHECK at the veneers, 60 s race): 30,857 mesh-routine calls compared, 652
+  not, 0 with memory differing, 0 insert lists differing; 35,104 inserts compared, 0 differing. lm53 (the
+  mutant): 22,887 of 22,887 calls and 21,895 of 21,895 inserts flagged. mc53 (A4_MEMOCHECK in the lifted
+  windows): race 578,014 faces, 0 fallback verdicts and 0 screen boxes differing (1,775,867 corners found
+  kept); menus 211,044 faces, 0 and 0. mm53 (one coordinate wrong a face): 437,135 boxes flagged.
+- lc53's r0 ([105]: 24,176 of 30,857 calls returned a different r0) -- round 50's "no caller reads it",
+  now read: the mesh routine returns what its last callee left in r0 (the insert's, or the transform's
+  on an early exit): a void function. Its two callers (+0CF66 in +CE8C, +34B12 in +34AEA) tail-return
+  it; +CE8C's caller (+0D2F6) loads r0 at once; +34AEA's thirteen callers load or move r0 before any
+  read, or (+32C8C, +514D0: virtual methods, +514D0 in a table at +B06D0) tail-return it in turn -- each
+  a void function's chain, whose callers the compiler never reads r0 after. Settled.
+- r53m (the candidate, the W-4 model with audio, 120 s): the game's front end 50.5 ms a render, the
+  lifted one with the memo 50.1 (-0.4); 3D 20.9/20.3. Battery r53t (same model): 51.5/51.2 (-0.3). On
+  the model the cut is small -- a gated profile of the candidate's pre-triangle stretch, both window
+  types in one run (gprof53.sh), to see where the lifted side's time goes: running.
+- Battery r53 (r53bat.sh on 8b0759f6, the W-4 model with audio where marked): twin y53 recorded (88.3 MB):
+  all cars off the path x-z 99% 32 max 112, height 99% 6 max 37, heading 99% 12 max 89; camera x-z 99%
+  34 max 83, yaw 99% 33 max 442 (one frame: the yaw of 442/2048 with "camera yaw less the drawn heading
+  99% 925" -- a camera mode change on the route, steps mode 0x17's finish camera is 96 steps as y51b's
+  92); frames bearing reversals 0. Tele framestat 2,846: chase distance 295, bearing 99% 5 max 7,
+  reversals 2; height off the path 99% 5 max 9; presents 2,765, held back 0; drop frames 1. Crash-steer
+  reversals 0, height max 1. Both finish runs reach the finish camera, reversals 0-2. Menus 18 shots;
+  marks run; Veyron autopilot bearing 99% 4, height max 6, x-z max 110 (r51v 32, r50cv 86: a crash,
+  mode 0x18 66 frames). Archive restored; +3A15C B510 0004, no 0xDEADBEEF.
