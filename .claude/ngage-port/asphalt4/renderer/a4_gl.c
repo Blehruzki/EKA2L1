@@ -337,6 +337,7 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
 #define AB_PX6 4096u     /* round 50: the ARMv6 pixel loops and the runtime's convert ours (A4_PX6) */
 #define AB_PXPLD 8192u   /* round 50: those loops with a prefetch of their source (A4_PX6) */
 #define AB_ZSKIP 16384u  /* round 51: the begin-frame clear of the 1/w buffer skipped while it is known clean (A4_ZSKIP) */
+#define AB_FRONT 32768u  /* round 53: the lifted 3D front end (+349F8 with the hand transform, +349B0) and the corner memo */
 #if defined(A4_ABCYCLE11) && !defined(A4_PX6)
 #error "A4_ABCYCLE11 steps A4_PX6's loops: build with A4_PX6"
 #endif
@@ -345,6 +346,11 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
 #endif
 #if defined(A4_ABCYCLE12) && (!defined(A4_ZSKIP) || !(A4_ABMODE + 0) || defined(A4_ABCYCLE11))
 #error "A4_ABCYCLE12 steps A4_ZSKIP's skip per window over the build's A4_ABMODE (not with A4_ABCYCLE11)"
+#endif
+#if defined(A4_ABCYCLE13) && (!defined(A4_MESHMEMO) || !defined(A4_FASTXF) || !defined(A4_ENG_349F8) || !defined(A4_ENG_349B0) \
+    || !defined(A4_NODIRECT_349F8) || !defined(A4_NODIRECT_349B0) || !(A4_ABMODE + 0) || defined(A4_ABCYCLE11) || defined(A4_ABCYCLE12) \
+    || defined(A4_LIFTCHECK))
+#error "A4_ABCYCLE13 steps the lifted front end (A4_ENG_349F8/349B0 through their veneers, A4_NODIRECT_*, A4_FASTXF) and A4_MESHMEMO per window over the build's A4_ABMODE (alone)"
 #endif
 #if defined(A4_PX6) && defined(A4_ABCYCLE11)
 #define PX6_ON(mode) (((mode) & AB_PX6) != 0u)       /* stepped per window (a4_tel.c) */
@@ -917,7 +923,9 @@ _Static_assert(A4_GL_STEP >= A4_GL_AGG + sizeof(struct agg) + 4u && A4_GL_STEP +
 #endif
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
-#if defined(A4_ABCYCLE12)
+#if defined(A4_ABCYCLE13)
+#define AGG_SLOT(m) (((m) >> 15) & 1u)                                       /* bit 0 AB_FRONT */
+#elif defined(A4_ABCYCLE12)
 #define AGG_SLOT(m) (((m) >> 14) & 1u)                                       /* bit 0 AB_ZSKIP */
 #elif defined(A4_ABCYCLE11)
 #define AGG_SLOT(m) (((m) >> 12) & 3u)                                       /* bit 0 AB_PX6, bit 1 AB_PXPLD */
@@ -4239,14 +4247,25 @@ static void mesh_scr(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, in
  * changes them): the same numbers, worked out once. 128 entries of 32 bytes at 0x452000 (free in a 3x-engine
  * build: the half-step machinery that uses it cannot be built with it); the call count at 0x451FFC, bumped
  * by the lifted +349F8 at its entry (edits.py ALWAYS), so the memo needs the lifted mesh routine. */
-#if defined(A4_HALFSPEC) || defined(A4_MESHSTATE) || defined(A4_MESHCHECK)
+#include "a4_memo.h"
+#if !defined(A4_HALFSPEC) && (defined(A4_MESHSTATE) || defined(A4_MESHCHECK))
 #error "A4_MESHMEMO keeps its table at 0x451FFC-0x453000, which that uses"
+#endif
+#if defined(A4_HALFSPEC) && (defined(A4_LIFTCHECK) || defined(A4_CECHECK) || defined(A4_BBCHECK) || defined(A4_PAINTCHECK_BIG))
+#error "A4_MESHMEMO in a half-step build keeps its table at 0x460000-0x461004 (a4_memo.h), where that check keeps its buffers"
+#endif
+/* round 53: the memo is used only while the lifted mesh routine runs -- the game's own one bumps no generation, and
+ * a corner kept under the last lifted call would be taken for one of its */
+#ifdef A4_ABCYCLE13
+#define MEMO_ON() ((A4_PERF[PF_MODE] & AB_FRONT) != 0u)
+#else
+#define MEMO_ON() 1
 #endif
 #if !defined(A4_ENGINE) || !(defined(A4_ENG_ALL) || defined(A4_ENG_349F8))
 #error "A4_MESHMEMO is kept per call of the lifted mesh routine: build it with A4_ENGINE and A4_ENG_349F8 (or ALL)"
 #endif
 struct mvtx { int32_t x, y, z, sx, sy, prt; uint32_t stamp, hasprt; };
-#define MVT ((struct mvtx *)0x00452000u)
+#define MVT ((struct mvtx *)A4_MEMO_TABLE)
 #define MVN 128u
 static int32_t persp_rt(const uint32_t *gctx, int32_t z);
 static void mesh_scr(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, int32_t x, int32_t y, int32_t z,
@@ -4350,16 +4369,20 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
     if (!gctx) return 0;                            /* no frame drawn yet: no projection */
     uint32_t texz = 0;
 #ifdef A4_MESHMEMO
-    const int32_t mF = (int32_t)m->F, mcx = *(const int32_t *)gctx[0x40110 / 4] >> 1, mcy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
-    const uint32_t mst = *(volatile uint32_t *)0x00451FFCu | 0x80000000u;   /* the mesh routine's call: never the zeroed table's 0 */
-    const struct mpt e0 = mesh_vtx(gctx, mF, mcx, mcy, v0, mst), e1 = mesh_vtx(gctx, mF, mcx, mcy, v1, mst),
-                     e2 = mesh_vtx(gctx, mF, mcx, mcy, v2, mst);
+    const int memo = MEMO_ON();
+    struct mpt e0 = { 0, 0, 0, 0 }, e1 = e0, e2 = e0;
+    if (memo) {
+        const int32_t mF = (int32_t)m->F, mcx = *(const int32_t *)gctx[0x40110 / 4] >> 1, mcy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
+        const uint32_t mst = *(volatile uint32_t *)A4_MEMO_STAMP | 0x80000000u;   /* the mesh routine's call: never the zeroed table's 0 */
+        e0 = mesh_vtx(gctx, mF, mcx, mcy, v0, mst); e1 = mesh_vtx(gctx, mF, mcx, mcy, v1, mst);
+        e2 = mesh_vtx(gctx, mF, mcx, mcy, v2, mst);
+    }
 #endif
     if (fl == 0x4001u) {
 #ifdef A4_MESHMEMO
-        int fb = mesh_fallback_m(gctx, &e0, &e1, &e2, v0, v1, v2);
+        int fb = memo ? mesh_fallback_m(gctx, &e0, &e1, &e2, v0, v1, v2) : mesh_fallback(gctx, (int32_t)m->F, v0, v1, v2);
 #ifdef A4_MEMOCHECK
-        {   /* bench: the kept corners against the projection worked out again ([100] faces, [101] differing
+        if (memo) {   /* bench: the kept corners against the projection worked out again ([100] faces, [101] differing
              * fallback verdicts, [102] differing screen points; [103] corners found kept) */
             volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
             ck[100]++;
@@ -4437,8 +4460,12 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
         int32_t F = (int32_t)m->F, cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
         int32_t sx0, sy0, sx1, sy1, sx2, sy2, xlo, xhi, ylo, yhi;
 #ifdef A4_MESHMEMO
+        if (!memo) {
+            mesh_scr(gctx, F, cx, cy, x0, y0, z0, &sx0, &sy0);
+            mesh_scr(gctx, F, cx, cy, x1, y1, z1, &sx1, &sy1);
+            mesh_scr(gctx, F, cx, cy, x2, y2, z2, &sx2, &sy2);
+        } else {
         sx0 = e0.sx; sy0 = e0.sy; sx1 = e1.sx; sy1 = e1.sy; sx2 = e2.sx; sy2 = e2.sy;
-        (void)F; (void)cx; (void)cy;
 #ifdef A4_MEMOCHECK
         {   volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
             int32_t a0, b0, a1, b1, a2, b2;
@@ -4451,6 +4478,7 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
             if (a0 != sx0 || b0 != sy0 || a1 != sx1 || b1 != sy1 || a2 != sx2 || b2 != sy2) ck[102]++;
         }
 #endif
+        }
 #else
         mesh_scr(gctx, F, cx, cy, x0, y0, z0, &sx0, &sy0);
         mesh_scr(gctx, F, cx, cy, x1, y1, z1, &sx1, &sy1);
@@ -4976,7 +5004,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE12)
+#if defined(A4_TEL) && defined(A4_ABCYCLE13)
+        /* round 53: a4_tel.c alternates AB_FRONT per window; the rest is the build's own A4_ABMODE */
+        A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~AB_FRONT;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE12)
         /* round 51: a4_tel.c alternates AB_ZSKIP per window; the rest is the build's own A4_ABMODE */
         A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~AB_ZSKIP;
         s->fmode = A4_PERF[PF_MODE];

@@ -114,6 +114,10 @@ GL_SCRATCH_SIZE = 0x22000       # GL state + strip readback + batch buffers + te
 # a bench diagnostic may need more (A4_SEQDUMP: 0x3B000, A4_DEFERCHECK: 0x2E000); A4_SCRATCH_SIZE overrides
 # A4_MESH: the mesh list from 0x423000 (a4_gl.c MESH_TOP) -- 0x3A000 at MESH_MAXT 2048
 GL_SCRATCH_SIZE = int(os.environ.get('A4_SCRATCH_SIZE', hex(GL_SCRATCH_SIZE)), 0)
+_xf = os.environ.get('A4_EXTRA_CFLAGS', '').split()
+# round 53: a half-step build keeps A4_MESHMEMO's table past its scratch (renderer/a4_memo.h, 0x460000-0x461004)
+assert not ('-DA4_MESHMEMO' in _xf and '-DA4_HALFSPEC' in _xf) or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x462000, \
+    'A4_MESHMEMO with A4_HALFSPEC: A4_SCRATCH_SIZE must reach 0x462000 (0x61000 or more)'
                                 # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as
                                 # small as the batch allows -- a large image .bss corrupts
                                 # the game's load-time layout

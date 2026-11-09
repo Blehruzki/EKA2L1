@@ -8268,3 +8268,39 @@ Owner: "yes, go ahead" (refit the model with the measured store cost, re-rank th
   against 21.2), are the model's two big shortfalls.
 - Emulator: EKA2L1_PCPROF_ON/OFF, a gate for the exact profiler (EMU_PATCHES.md). gprof.sh: r51 on the
   W-4 model with audio, gated from +12992 to a4_gl_draw_prim, in instructions and in cycles: running.
+- gprof (r51, the W-4 model with audio, gated +12992 -> a4_gl_draw_prim; 606 openings, 1.32 M instructions
+  each): the stretch before the first triangle is the mesh list being gathered, not the game's logic --
+  a4_mesh_insert 2.08 ms (CPI 1.76), the mesh routine +349F8 1.43 (CPI 5.2), +3118E 0.98, +523E6 0.98
+  (CPI 8.7: the projection's table reads), +345E4 (the transform) 0.96, mesh_scr 0.74, memmove (the sky)
+  0.70, mesh_fallback 0.54, +CE8C 0.44, memset (the 1/w clear, half the windows) 0.39, +523A2/C4 0.55;
+  modelled 3.76 M cycles a stretch, more than the run's own telemetry (8.4-9.8 ms: a gap not run down --
+  the gate stays open through a render with no triangle, 1.6% of them, which is not enough). Its
+  memory-bound game code (the mesh routine and the projection helpers) is where the phone's 15.4 ms
+  against the model's ~9 lies -- random reads of a 128 KB table, which a single read-miss price cannot
+  hold together with the composite's streaming reads (2.05 ms on the phone for 9,600 lines: ~43 cycles
+  a line if all miss, against R 140-200 that the fits wanted).
+
+## Round 53 (bench): the lifted 3D front end and the corner memo, a window each
+
+Owner: "yes, go ahead" (round 52's refit and the cuts after it). The model cannot rank this cut: it turns on
+what a phone charges for the game's Thumb and its random table reads against our ARM -- the fit's
+unresolved part. So it goes to the phone as an A/B inside one race, as round 51's skip did.
+- A4_ABCYCLE13 (AB_FRONT 32768, 'AG29', slot 0 the game's front end, 1 the lifted one with the memo): the
+  veneers at +349F8 and +349B0 call a4_engv_349F8/349B0 (a4_eng.c), which run the lifted functions
+  (eng_349F8 with A4_FASTXF's hand transform, the projection helpers inline; eng_349B0) when the window's
+  bit is set, else the game's own past their veneers (a4_orig_349F8/349B0, as A4_LIFTCHECK runs them).
+  A4_NODIRECT_349F8/349B0: lifted callers come through the veneers. The corner memo (A4_MESHMEMO) is used
+  only in the lifted windows (MEMO_ON: the game's routine bumps no generation; a corner kept under the
+  last lifted call would pass for one of its). A4_ZSKIP always on (round 51 settled it), A4_ABCYCLE12 out.
+- The memo's home: 0x451FFC-0x453000 belongs to the half-step machinery; a half-step build keeps it at
+  0x460000-0x461004 (renderer/a4_memo.h, shared by a4_gl.c and a4_eng.h's MESHMEMO_BUMP), past the phone
+  scratch, with A4_SCRATCH_SIZE 0x62000 (the injector refuses less: tested, 0x5F000 asserts) and a4_gl.c
+  refusing the bench checks that keep buffers there (LIFTCHECK, CECHECK, BBCHECK, PAINTCHECK_BIG).
+- r51sum.py reads AG29. Candidate r53 = C51 - A4_ABCYCLE12 + A4_ENG_349F8 A4_ENG_349B0 A4_NODIRECT_349F8
+  A4_NODIRECT_349B0 A4_FASTXF A4_MESHMEMO A4_ABCYCLE13 (C53.flags), A4_HALFSTEP=1, A4_SCRATCH_SIZE 0x62000:
+  sha256 8b0759f6ce3080aed30b572ee98e1ba48efb016d11a491a9cfb3ffa5216b1097, 827,844 bytes, no 0xDEADBEEF;
+  veneers at +29736, +349B0, +349F8. Twin a4_y53 (+ the recorders, rec pc 700BA754).
+- Checks queued (c53all.sh): lc53 (A4_LIFTCHECK on the r53 flags without the memo and the A/B, scratch
+  0x7F000) and its mutant lm53; mc53 (the candidate + A4_MEMOCHECK, race and menus) and its mutant mm53;
+  r53m, the candidate on the W-4 model with audio (model_r53.env, the reference from here). Then the
+  battery r53bat.sh (r51's, the exact binary, the W-4 model with audio).

@@ -1,4 +1,5 @@
-# r51sum.py <dir>: round 51 telemetry (aggregates 'AG28': slot 0 the 1/w clear run, 1 skipped while clean;
+# r51sum.py <dir>: round 51 telemetry (aggregates 'AG28': slot 0 the 1/w clear run, 1 skipped while clean; round 53's
+# 'AG29': slot 0 the game's 3D front end, 1 the lifted one with the corner memo;
 # round 50's 'AG27' files read as before): per A/B slot over the race -- slot bit 0 AB_PX6
 # (the ARMv6 pixel loops and the runtime's convert ours), bit 1 AB_PXPLD (those loops with a prefetch; slot
 # 2, the prefetch without the loops, is the C loops again: a second baseline). ms a render is the whole
@@ -14,10 +15,9 @@ for f in glob.glob(sys.argv[1] + '/a4tel*.dat'):
 rows.sort()
 NAME27 = {0: 'C loops', 1: 'ARMv6', 2: 'C loops (2)', 3: 'ARMv6 + PLD'}
 NAME28 = {0: 'clear', 1: 'skip', 2: '-', 3: '-'}
+NAME29 = {0: 'game front', 1: 'lifted+memo', 2: '-', 3: '-'}      # round 53: AB_FRONT
 fmt0 = struct.unpack_from('<I', rows[-1][2], AGG + 0x600)[0] if rows else 0
-NAME = NAME28 if fmt0 == 0x41473238 else NAME27
-SHIFT = 14 if fmt0 == 0x41473238 else 12
-MASK = 1 if fmt0 == 0x41473238 else 3
+NAME, SHIFT, MASK = {0x41473238: (NAME28, 14, 1), 0x41473239: (NAME29, 15, 1)}.get(fmt0, (NAME27, 12, 3))
 print('capidx mode   slot          rend  ms/rend | 3D   comp  read  2D   pres')
 for c, h, d in rows:
     r, w = h[33], h[34]
@@ -26,7 +26,7 @@ for c, h, d in rows:
           h[13] / r, h[18] / r, h[36] / r, h[16] / r, h[17] / r))
 c, h, d = rows[-1]
 fmt = struct.unpack_from('<I', d, AGG + 0x600)[0]
-print('aggregates format %08x%s' % (fmt, '' if fmt in (0x41473237, 0x41473238) else '  (not AG27/AG28)'))
+print('aggregates format %08x%s' % (fmt, '' if fmt in (0x41473237, 0x41473238, 0x41473239) else '  (not AG27-AG29)'))
 for s in range(3):
     for m in range(4):
         a = struct.unpack_from('<32I', d, AGG + (s * 4 + m) * 128)

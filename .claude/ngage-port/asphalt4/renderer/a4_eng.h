@@ -42,7 +42,8 @@ void a4_mesh_insert(uint32_t *cam, uint32_t *face);  /* a4_gl.c (A4_MESH): the m
 void a4_gl_hud(void);
 int a4_gl_bb(const uint32_t *r, const uint32_t *f);
 #ifdef A4_MESHMEMO
-#define MESHMEMO_BUMP() ((*(volatile uint32_t *)0x00451FFCu)++)   /* a4_gl.c: A4_MESHMEMO's generation */
+#include "a4_memo.h"
+#define MESHMEMO_BUMP() ((*(volatile uint32_t *)A4_MEMO_STAMP)++)   /* a4_gl.c: A4_MESHMEMO's generation */
 #else
 #define MESHMEMO_BUMP() ((void)0)
 #endif   /* a4_gl.c: the billboard capture hook (1: a GPU quad) */

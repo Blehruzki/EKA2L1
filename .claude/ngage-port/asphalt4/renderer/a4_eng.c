@@ -47,6 +47,10 @@ uint64_t a4_eng_keys(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3)
 #define a4_engv_349F8 a4_lck_l349F8
 #define a4_engv_349B0 a4_lck_l349B0
 #endif
+#ifdef A4_ABCYCLE13
+#define a4_engv_349F8 a4_ab_l349F8      /* the lifter's entries renamed: the per-window switch is below */
+#define a4_engv_349B0 a4_ab_l349B0
+#endif
 #ifdef A4_FASTXF
 /* +345E4 by hand (round 50): the mesh routine's vertex transform and outcodes. For each 40-byte vertex from
  * r1 to r2: z = (m2 x + m5 y + m8 z) >> 14 + m11 (the matrix at cam+0x3C; model x y z at +0x18), outcode
@@ -104,6 +108,33 @@ static uint64_t eng_h_345e4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, 
 #include "eng/lifted.c"
 #undef sp
 #pragma clang diagnostic pop
+#ifdef A4_ABCYCLE13
+#undef a4_engv_349F8
+#undef a4_engv_349B0
+/* Round 53: the lifted 3D front end against the game's own, a telemetry window each (a4_tel.c steps AB_FRONT,
+ * 32768, in the mode word, A4_PERF[PF_MODE] at 0x412C00): the mesh routine (+349F8, the hand transform A4_FASTXF
+ * routed from it, the projection helpers inline) and the ordering-table insert (+349B0) lifted to ARM, or the
+ * game's Thumb ones replayed past their veneers (a4_eng.s a4_orig_*, as A4_LIFTCHECK runs them) -- the same
+ * calls, the same results (LX2: 49,251 mesh-routine calls and 31,053 inserts compared, 0 differing). With them
+ * the corner memo (a4_gl.c MEMO_ON, the same bit): a phone's cost of the game's Thumb and its random reads of the
+ * projection's tables, measured against our ARM and the memo's, inside one race. */
+extern void a4_orig_349F8(void), a4_orig_349B0(void);
+#define FRONT_ON() ((*(volatile uint32_t *)0x00412C00u & 32768u) != 0u)
+uint64_t a4_engv_349F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2,
+    uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
+{
+    if (FRONT_ON()) return eng_349F8(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
+    uint32_t stk[8] = { s0, s1, s2, s3, s4, s5, s6, s7 }, r23[2];
+    return a4_eng_call((uint32_t)(uintptr_t)&a4_orig_349F8, r0, r1, r2, r3, (uint32_t)(uintptr_t)stk, r23);
+}
+uint64_t a4_engv_349B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2,
+    uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
+{
+    if (FRONT_ON()) return eng_349B0(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
+    uint32_t stk[8] = { s0, s1, s2, s3, s4, s5, s6, s7 }, r23[2];
+    return a4_eng_call((uint32_t)(uintptr_t)&a4_orig_349B0, r0, r1, r2, r3, (uint32_t)(uintptr_t)stk, r23);
+}
+#endif
 #ifdef A4_CECHECK
 #if defined(A4_LIFTCHECK) || defined(A4_BBCHECK) || defined(A4_MEMOCHECK)
 #error "A4_CECHECK shares the census words 100-104 and 0x460000 with that check"
