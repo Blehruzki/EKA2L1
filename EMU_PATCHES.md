@@ -68,6 +68,7 @@ the emulator.
 | `EKA2L1_INACTIVITY=1` | Counts guest `User::ResetInactivityTime` calls at the bridged SVC. | `kernel/src/svc.cpp` (`clear_inactivity_time`) | emulator |
 | `EKA2L1_SCREEN` | Window-server screen instrument. | `services/src/window/window.cpp` | emulator |
 | `EKA2L1_AUDIO_CAPTURE_DIR=dir` | Dumps played audio to `dir`. | `drivers/src/audio/audio.cpp` | emulator |
+| `EKA2L1_AUDIO_NULL=1` | A headless run's audio pulled at a device's pace (on the guest clock, `EKA2L1_TIMESCALE` included) and discarded, so a guest that mixes or decodes its own sound does that work, as on a phone, instead of losing its stream to a missing device. | `drivers/src/audio/audio.cpp`, `drivers/src/audio/backend/wavcap/audio_wavcap.cpp` | ngage-port |
 
 ## Notes
 
@@ -392,3 +393,16 @@ a frame's end and froze the bench window at the countdown; the game's own frameb
 in-run, showed the race going on. Verified: that build's menu run on the fixed emulator draws
 the countdown, the race, the pause menu and every row, the confirm dialog, the main menu and
 the garage.
+
+## A headless bench's audio, and its pace under a timescale
+
+A container with no sound device fails every cubeb stream ("Error trying to initialize cubeb
+stream!"), and a guest whose audio library mixes in software -- the N-Gage runtime's ngiaudio --
+then never mixes: a bench of such a title lacks the phone's audio work entirely (the Asphalt 4
+port's N95 model, round 51: the phone's time outside the render's phases ran ~5 ms a render over
+the model's, and a fit had to fold the gap into the store cost). `EKA2L1_AUDIO_NULL=1` gives each
+stream the capture driver's pump with no file behind it. The pump (`wavcap`) also now waits one
+interval (20 ms of the guest's audio) times `EKA2L1_TIMESCALE`, so the guest is asked for sound at
+its own sample rate in its own time; before, a timescaled capture pulled D times too fast. The
+stream's played position counts frames whether or not a file is written.
+

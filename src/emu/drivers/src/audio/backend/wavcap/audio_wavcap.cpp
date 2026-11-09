@@ -22,6 +22,7 @@
 #include <common/fileutils.h>
 #include <common/log.h>
 #include <common/path.h>
+#include <common/time.h>
 
 #include <chrono>
 #include <cstring>
@@ -41,10 +42,18 @@ namespace eka2l1::drivers {
             eka2l1::common::create_directories(directory_);
         }
 
-        LOG_INFO(DRIVER_AUD, "Audio is being captured to .wav files in {}", directory_);
+        if (directory_.empty()) {
+            LOG_INFO(DRIVER_AUD, "Audio is pulled at the device's pace and discarded (EKA2L1_AUDIO_NULL)");
+        } else {
+            LOG_INFO(DRIVER_AUD, "Audio is being captured to .wav files in {}", directory_);
+        }
     }
 
     std::string wavcap_audio_driver::next_path(const std::uint32_t sample_rate, const std::uint8_t channels) {
+        if (directory_.empty()) {
+            return std::string();       // EKA2L1_AUDIO_NULL: no file
+        }
+
         const int index = next_stream_index_++;
         return eka2l1::add_path(directory_, fmt::format("stream{:02d}_{}hz_{}ch.wav", index,
             sample_rate, static_cast<int>(channels)));
@@ -78,6 +87,10 @@ namespace eka2l1::drivers {
         , pausing_(false)
         , frames_written_(0)
         , volume_(1.0f) {
+        if (path_.empty()) {
+            return;                     // EKA2L1_AUDIO_NULL: pulled, not written
+        }
+
         file_ = eka2l1::common::open_c_file(path_, "wb");
 
         if (!file_) {
@@ -141,6 +154,11 @@ namespace eka2l1::drivers {
         const std::size_t chunk = sample_rate * PUMP_INTERVAL_MS / 1000;
         std::vector<std::int16_t> buffer(chunk * channels);
         auto deadline = std::chrono::steady_clock::now();
+        // A chunk is PUMP_INTERVAL_MS of the guest's time: under EKA2L1_TIMESCALE every guest
+        // clock runs D times slower than the host, so the pull waits D times as long and the
+        // guest is asked for sound at its own sample rate, not D times faster.
+        const auto interval = std::chrono::microseconds(static_cast<std::int64_t>(
+            PUMP_INTERVAL_MS * 1000.0 * eka2l1::common::timescale()));
 
         while (running_) {
             std::size_t got = 0;
@@ -167,9 +185,11 @@ namespace eka2l1::drivers {
             {
                 const std::lock_guard<std::mutex> guard(lock_);
 
+                // the stream's played position (current_frame_position), file or not
+                frames_written_ += chunk;
+
                 if (file_) {
                     fwrite(buffer.data(), sizeof(std::int16_t), buffer.size(), file_);
-                    frames_written_ += chunk;
 
                     // Keep the sizes current: a captured run usually ends by killing the
                     // emulator, which never reaches the destructor that would patch them.
@@ -178,7 +198,7 @@ namespace eka2l1::drivers {
                 }
             }
 
-            deadline += std::chrono::milliseconds(PUMP_INTERVAL_MS);
+            deadline += interval;
             std::this_thread::sleep_until(deadline);
         }
     }

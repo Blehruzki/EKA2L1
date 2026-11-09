@@ -8217,3 +8217,19 @@ files (phone51; captures 104-111; 2,557 race renders in the aggregates over 111 
 - Presents 3,196 real (617 with no render since the last), held back 0; drop frames 3 (r50c 10). Camera:
   chase yaw reversals 6 in 417 (r50c 11), car heading reversals 1 (1). Nothing seen by the owner; no
   pattern every 1-2 s.
+
+## Round 52 (bench): the model refit on the phone's store cost
+
+Owner: "yes, go ahead" (refit the model with the measured store cost, re-rank the cuts).
+- The model's charge for the 1/w fill: an 8-register STM is 3 cycles past issue plus W a missed word
+  (cpumodel.h: stores do not allocate), ~0.55 + W a word; the phone's ~4.75 a word puts W at ~4.
+- calfit.py with W pinned (calfit2.py, r50c's sensitivities and phone phases): W 4 leaves the time
+  outside the phases ~5 ms short (rest V6 -17%) and drives the read miss to the grid's edge (160) --
+  W 21 had been standing in for something else. With a stretch of the CPU phases (a share of the CPU
+  the bench lacks) as a fifth parameter: W 4, Thumb 1.15, ARM 1.30, R 140, the CPU phases x1.38 (a cap
+  of ~239), rms 6.2% (W 21's fit 13.3%); 3D +10%, rest -6/-10%. A 28% share is large; the likeliest
+  missing work is the game's audio: ngiaudio mixes in software on the phone, and on the bench every
+  cubeb stream fails ("Error trying to initialize cubeb stream!": no device), so the guest never mixes.
+- Emulator: EKA2L1_AUDIO_NULL=1 (a paced sink, nothing written) and the wavcap pump paced on the guest
+  clock (x EKA2L1_TIMESCALE) -- EMU_PATCHES.md. au1: r51 on the round-51 model with the sink, against
+  r51t without: running.

@@ -154,6 +154,16 @@ namespace eka2l1::drivers {
                 preferred_midi_backend);
         }
 
+        // EKA2L1_AUDIO_NULL=1: the same paced pull with nothing written -- a bench whose
+        // guest must do its own audio work (mixing, decoding) as it would on a phone,
+        // where a missing device would otherwise fail the stream and skip that work.
+        const char *null_audio = std::getenv("EKA2L1_AUDIO_NULL");
+
+        if (null_audio && *null_audio == '1') {
+            return std::make_unique<wavcap_audio_driver>(std::string(), initial_master_vol,
+                preferred_midi_backend);
+        }
+
         switch (backend) {
         case audio_driver_backend::cubeb: {
 #if EKA2L1_PLATFORM(IOS)
