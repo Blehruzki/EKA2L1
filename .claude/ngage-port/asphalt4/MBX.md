@@ -8167,3 +8167,12 @@ a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.p
   known. Rerun with a screenshot at each menu key and every 10 s (jtruns.sh / telerun4s.sh): queued.
 - The painter with the big buffers (pbc), 60 s race: 37,072 calls compared, 71 not (past 153,600 bytes
   or no surface), 0 differing (0 pixels, 0 clip words).
+- pbc over the menus with the garage: 498,657 calls compared, 0 not, 0 differing. pbm (one pixel flipped
+  a call), 40 s race: 28,180 of 28,180 flagged. The painter is now compared on every call it takes but
+  71 (no surface, or past a 320x240 surface's bytes).
+- The twin's empty run, found (yd51: a screenshot at each menu key and every 10 s): under the new model
+  the 185-post threshold trips at the Gameloft logo, not the menu, so the six Returns end one screen
+  early -- at the race's "PRESS ANY KEY" -- and a NOKEY5 run (the autopilot drives) presses nothing more;
+  r51t held key 5, which cleared it, and r51f's cap-85 timing lined up. A bench-script state, not the
+  build. telerun4.sh (and telerun4s.sh): a NOKEY5 run taps 5 once after the Returns (the autopilot
+  overwrites the keys at every step). The twin rerun (y51b): running.
