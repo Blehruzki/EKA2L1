@@ -8355,3 +8355,16 @@ unresolved part. So it goes to the phone as an A/B inside one race, as round 51'
   the lift. Candidate r53 = eaedb84641f65e5a5141cdf9fe8ec5fb104f85f721c66c9ffedbb4d13ab56fc5, 826,896 bytes,
   no 0xDEADBEEF; veneers at +29736 and +349F8 only. Checks, r53m and the gated profile again (c53all.sh,
   gprof53.sh): running; then the battery.
+- Reworked candidate eaedb846, checks: lc53 (the lifted mesh routine at its veneer, 60 s race) 56,767 calls
+  compared, 1,122 not, 0 with memory or insert lists differing (r0 43,942: void, above); lm53 40,952 of
+  40,952 flagged. mc53 (the memo, slot 3 windows) race 284,802 faces, menus 94,754: 0 verdicts and 0 boxes
+  differing; mm53 212,843 boxes flagged.
+- r53m (the W-4 model with audio, 120 s, 25 windows a slot): game 51.4, lifted 50.3, game (2) 49.7,
+  lifted+memo 49.3 ms a render -- the two game slots 1.7 ms apart: a 120 s bench run does not resolve
+  the cut. gprof53 v2 (gated, all four slots): the stretch 10.96 ms (r51 11.38, v1 11.43); the switch's
+  own cost 0.02 ms (a4_engv_349F8 + a4_eng_call + a4_orig_349F8). Per window, from the profile: lifted
+  -1.15 ms (engi_349F8 3.0 against the game's mesh routine, transform and projection helpers 4.15); the
+  memo +0.9 ms over the lifted window (mesh_vtx + mesh_fallback_m 2.1 against mesh_scr + mesh_fallback
+  1.2). The model's call: the lift a small gain, the memo a loss -- unless the phone's projection-table
+  reads miss far more than the model's (mesh_scr CPI 1.8 here), which is what slot 3 against 1 measures.
+- Battery r53bat.sh on eaedb846: running.
