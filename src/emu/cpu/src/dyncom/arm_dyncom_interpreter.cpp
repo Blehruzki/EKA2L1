@@ -224,13 +224,31 @@ pc_mem g_pc_mem;
 // by modelled time, not by instruction count (ngage-port, Asphalt 4 round 50: a memory-
 // bound ARM loop and a Thumb loop of the same length cost the phone very different times).
 // SKIP and LEN still count instructions; the file's counts are cycles x 100.
+// EKA2L1_PCPROF_ON=pc[,pc...] and EKA2L1_PCPROF_OFF=pc[,pc...] (hex): a gate -- only the
+// blocks run while it is open are credited (SKIP and LEN count those alone). It starts
+// closed, opens at a block entry on an ON pc and closes at one on an OFF pc: a profile of
+// one stretch of a frame, between two known points (ngage-port, Asphalt 4 round 52: the
+// game's render call before its first triangle). Every thread's blocks inside the
+// stretch are credited, as they took the CPU from it.
 struct pc_prof {
     bool on = false, cyc = false;
-    std::uint64_t skip = 0, len = 2000000000ull, seen = 0, credited = 0;
+    bool gated = false, open = true, open_prev = true;
+    std::uint64_t skip = 0, len = 2000000000ull, seen = 0, credited = 0, opened = 0;
     std::uint32_t prev_pc = 0, prev_count = 0;
     std::uint64_t prev_arm = 0, prev_extra = 0;
     std::unordered_map<std::uint32_t, std::uint64_t> counts;
+    std::vector<std::uint32_t> on_pcs, off_pcs;
     std::string path;
+
+    static void parse_pcs(const char *w, std::vector<std::uint32_t> &out) {
+        while (w && *w) {
+            char *end = nullptr;
+            const unsigned long v = std::strtoul(w, &end, 16);
+            if (end == w) break;
+            out.push_back(static_cast<std::uint32_t>(v));
+            w = (*end == ',') ? end + 1 : end;
+        }
+    }
 
     pc_prof() {
         const char *w = std::getenv("EKA2L1_PCPROF");
@@ -239,6 +257,12 @@ struct pc_prof {
         if (const char *s = std::getenv("EKA2L1_PCPROF_SKIP")) skip = std::strtoull(s, nullptr, 10);
         if (const char *l = std::getenv("EKA2L1_PCPROF_LEN")) len = std::strtoull(l, nullptr, 10);
         if (const char *c = std::getenv("EKA2L1_PCPROF_CYCLES")) cyc = *c == '1';
+        parse_pcs(std::getenv("EKA2L1_PCPROF_ON"), on_pcs);
+        parse_pcs(std::getenv("EKA2L1_PCPROF_OFF"), off_pcs);
+        if (!on_pcs.empty()) {
+            gated = true;
+            open = open_prev = false;
+        }
         counts.reserve(1 << 16);
         on = true;
     }
@@ -248,8 +272,8 @@ struct pc_prof {
         // A new run starts its count from zero: nothing to credit across the boundary.
         if (count >= prev_count) {
             const std::uint32_t d = count - prev_count;
-            seen += d;
-            if (seen > skip) {
+            if (open_prev) seen += d;
+            if (open_prev && seen > skip) {
                 std::uint64_t c = d;
                 if (cyc) {
                     const std::uint64_t da = std::min<std::uint64_t>(arm - prev_arm, d);
@@ -261,6 +285,11 @@ struct pc_prof {
                 if (credited >= len) dump();
             }
         }
+        if (gated) {
+            if (!open && std::find(on_pcs.begin(), on_pcs.end(), pc) != on_pcs.end()) { open = true; opened++; }
+            else if (open && std::find(off_pcs.begin(), off_pcs.end(), pc) != off_pcs.end()) open = false;
+        }
+        open_prev = open;
         prev_pc = pc;
         prev_count = count;
         prev_arm = arm;
@@ -272,8 +301,10 @@ struct pc_prof {
         std::sort(v.begin(), v.end(), [](const auto &a, const auto &b) { return a.second > b.second; });
         std::FILE *f = std::fopen(path.c_str(), "w");
         if (!f) return;
-        std::fprintf(f, "# credited %" PRIu64 " instructions, after skipping %" PRIu64 ", %zu blocks%s\n", credited, skip, v.size(),
+        std::fprintf(f, "# credited %" PRIu64 " instructions, after skipping %" PRIu64 ", %zu blocks%s", credited, skip, v.size(),
             cyc ? " (counts: modelled cycles x 100, EKA2L1_PCPROF_CYCLES)" : "");
+        if (gated) std::fprintf(f, "; gated, opened %" PRIu64 " times", opened);
+        std::fprintf(f, "\n");
         for (const auto &e : v) std::fprintf(f, "%08X %" PRIu64 "\n", e.first, e.second);
         std::fclose(f);
     }

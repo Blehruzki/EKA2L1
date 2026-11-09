@@ -8256,3 +8256,15 @@ Owner: "yes, go ahead" (refit the model with the measured store cost, re-rank th
   (~7 ms of the 3D phase at 3/20/150/8/400), which were never fitted.
 - calrun52: at W 4, the base again (bB) and larger moves -- Thumb 3.0, ARM 2.5, R 170, and the GL
   driver's per-call/draw/vertex/bind/triangle charges doubled (bG): running.
+- calrun52 (W 4, audio on; the base repeated within 0.2 ms a phase this time): d/dGL (the GL driver's
+  per-call charges x2) 8.05 ms in 3D, 0.7 in the readback, ~0.5 outside -- the GL model is ~8 ms of the
+  3D phase. Fit (Thumb, ARM, R, GL): 1.40, 1.85, R 200 (the edge), GL x1.2, rms 6.9%, and badly
+  determined (fits within 1.5x the best error: Thumb 1.0-3.7, ARM 1.35-2.2, R 135-200): the CPIs and R
+  stretch nearly every phase alike, and six phase totals cannot tell them apart.
+- Where the phone's time is, from the step timer (steptime.py; header and STEPB): the game's logic step
+  ~0.8 ms (r50c the same), 1.2 ms a span -- not the time outside the phases. The render call +12992:
+  58.4 ms a call on the phone, of it 15.4 ms BEFORE the first triangle (r50c 15.4/15.6) -- against 8.5-8.8
+  on the W-4 model (aW, bB), 10.4 on the round-51 model (r51t). That stretch, and the 3D phase (29.4
+  against 21.2), are the model's two big shortfalls.
+- Emulator: EKA2L1_PCPROF_ON/OFF, a gate for the exact profiler (EMU_PATCHES.md). gprof.sh: r51 on the
+  W-4 model with audio, gated from +12992 to a4_gl_draw_prim, in instructions and in cycles: running.
