@@ -41,15 +41,16 @@ uint64_t a4_eng_keys(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3)
 #ifndef A4_MESH
 #error "A4_LIFTCHECK lists the mesh routine's inserts at a4_mesh_insert (A4_MESH)"
 #endif
-#if !defined(A4_NODIRECT_349F8) || !defined(A4_NODIRECT_349B0)
-#error "A4_LIFTCHECK checks at the veneers: build it with A4_NODIRECT_349F8 and A4_NODIRECT_349B0 (lifted callers, +CE8C's among them, then call through them)"
+#if !defined(A4_NODIRECT_349F8) || ((defined(A4_ENG_349B0) || defined(A4_ENG_ALL)) && !defined(A4_NODIRECT_349B0))
+#error "A4_LIFTCHECK checks at the veneers: build it with A4_NODIRECT_349F8 and, if the insert is lifted, A4_NODIRECT_349B0 (lifted callers, +CE8C's among them, then call through them)"
 #endif
 #define a4_engv_349F8 a4_lck_l349F8
+#if defined(A4_ENG_349B0) || defined(A4_ENG_ALL)
 #define a4_engv_349B0 a4_lck_l349B0
 #endif
+#endif
 #ifdef A4_ABCYCLE13
-#define a4_engv_349F8 a4_ab_l349F8      /* the lifter's entries renamed: the per-window switch is below */
-#define a4_engv_349B0 a4_ab_l349B0
+#define a4_engv_349F8 a4_ab_l349F8      /* the lifter's entry renamed: the per-window switch is below */
 #endif
 #ifdef A4_FASTXF
 /* +345E4 by hand (round 50): the mesh routine's vertex transform and outcodes. For each 40-byte vertex from
@@ -110,15 +111,15 @@ static uint64_t eng_h_345e4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, 
 #pragma clang diagnostic pop
 #ifdef A4_ABCYCLE13
 #undef a4_engv_349F8
-#undef a4_engv_349B0
-/* Round 53: the lifted 3D front end against the game's own, a telemetry window each (a4_tel.c steps AB_FRONT,
- * 32768, in the mode word, A4_PERF[PF_MODE] at 0x412C00): the mesh routine (+349F8, the hand transform A4_FASTXF
- * routed from it, the projection helpers inline) and the ordering-table insert (+349B0) lifted to ARM, or the
- * game's Thumb ones replayed past their veneers (a4_eng.s a4_orig_*, as A4_LIFTCHECK runs them) -- the same
- * calls, the same results (LX2: 49,251 mesh-routine calls and 31,053 inserts compared, 0 differing). With them
- * the corner memo (a4_gl.c MEMO_ON, the same bit): a phone's cost of the game's Thumb and its random reads of the
- * projection's tables, measured against our ARM and the memo's, inside one race. */
-extern void a4_orig_349F8(void), a4_orig_349B0(void);
+/* Round 53: the lifted mesh routine against the game's own, a telemetry window each (a4_tel.c steps AB_FRONT,
+ * 32768, and AB_MEMO, 65536, in the mode word, A4_PERF[PF_MODE] at 0x412C00): +349F8 lifted to ARM with the hand
+ * transform (A4_FASTXF, which leaves out the game's projection helpers +523E6/A2/C4), or the game's Thumb replayed
+ * past its veneer (a4_eng.s a4_orig_349F8, as A4_LIFTCHECK runs it) -- the same calls, the same results (lc53:
+ * 30,857 calls compared, 0 differing). The insert +349B0 is the game's in both (round 53's first draft lifted
+ * it too: its veneer and switch cost both window types ~0.35 ms on the model). AB_MEMO adds the corner memo
+ * (a4_gl.c MEMO_ON) in the lifted windows: a phone's cost of the game's Thumb and its table reads against our
+ * ARM, and the memo's own, inside one race. */
+extern void a4_orig_349F8(void);
 #define FRONT_ON() ((*(volatile uint32_t *)0x00412C00u & 32768u) != 0u)
 uint64_t a4_engv_349F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2,
     uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
@@ -126,13 +127,6 @@ uint64_t a4_engv_349F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint3
     if (FRONT_ON()) return eng_349F8(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
     uint32_t stk[8] = { s0, s1, s2, s3, s4, s5, s6, s7 }, r23[2];
     return a4_eng_call((uint32_t)(uintptr_t)&a4_orig_349F8, r0, r1, r2, r3, (uint32_t)(uintptr_t)stk, r23);
-}
-uint64_t a4_engv_349B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2,
-    uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
-{
-    if (FRONT_ON()) return eng_349B0(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
-    uint32_t stk[8] = { s0, s1, s2, s3, s4, s5, s6, s7 }, r23[2];
-    return a4_eng_call((uint32_t)(uintptr_t)&a4_orig_349B0, r0, r1, r2, r3, (uint32_t)(uintptr_t)stk, r23);
 }
 #endif
 #ifdef A4_CECHECK
@@ -249,6 +243,7 @@ uint64_t a4_engv_349F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint3
         a4_mesh_insert((uint32_t *)(uintptr_t)LB[2u * i], (uint32_t *)(uintptr_t)LB[2u * i + 1u]);
     return rl;
 }
+#if defined(A4_ENG_349B0) || defined(A4_ENG_ALL)    /* round 53: the insert checked only where it is lifted */
 static int32_t lck_slot(uint32_t cam, uint32_t face)
 {
     int32_t k = -1;
@@ -282,6 +277,7 @@ uint64_t a4_engv_349B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint3
     if (ka == -1 && kb == -1) ck[110]++;
     return rl;
 }
+#endif   /* the insert's check */
 #endif
 #if defined(A4_PAINTCHECK) || defined(A4_PAINTFAST)
 #undef a4_engv_29736

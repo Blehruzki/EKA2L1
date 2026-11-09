@@ -8339,3 +8339,19 @@ unresolved part. So it goes to the phone as an A/B inside one race, as round 51'
   reversals 0, height max 1. Both finish runs reach the finish camera, reversals 0-2. Menus 18 shots;
   marks run; Veyron autopilot bearing 99% 4, height max 6, x-z max 110 (r51v 32, r50cv 86: a crash,
   mode 0x18 66 frames). Archive restored; +3A15C B510 0004, no 0xDEADBEEF.
+- gprof53 v1 (the first draft, 8b0759f6; gated pre-triangle profile, both window types in one run): the
+  stretch 11.43 ms against r51's 11.38 -- with the 1/w clear skipped always (memset -0.38), so the front
+  end lost ~0.4. Per window: the lifted mesh routine (engi_349F8, the hand transform inside) 247 k
+  instructions, 3.0 ms (CPI 4.0), against the game's +349F8 + +345E4 + +523E6/A2/C4 ~325 k, 3.6 ms: ~-0.6..
+  -1.2. The memo: mesh_vtx 233 k instructions, 1.5 ms a lifted window, against the game windows' mesh_scr +
+  mesh_fallback 1.35 ms -- MORE instructions than the projection it keeps (hashing, compares, the copy),
+  so it can win only where the projection's table reads miss (the model's mesh_scr CPI 1.8: they mostly
+  hit). The insert's switch: a4_engv_349B0 + a4_eng_call + a4_orig_349B0 ~0.34 ms a stretch in BOTH
+  window types (every insert reaches +349B0 through a4_mesh_insert, so through the new veneer).
+- Reworked: the insert not lifted (A4_ENG_349B0 and its NODIRECT out: both window types call the game's
+  +349B0 from a4_mesh_insert as r51 does; A4_LIFTCHECK checks the insert only where it is lifted); and
+  four slots (AB_FRONT 32768 x AB_MEMO 65536, as round 50c's: 0 the game's, 1 lifted, 2 the game's again,
+  3 lifted with the memo -- MEMO_ON needs both bits): the memo gets its own answer on the phone, apart from
+  the lift. Candidate r53 = eaedb84641f65e5a5141cdf9fe8ec5fb104f85f721c66c9ffedbb4d13ab56fc5, 826,896 bytes,
+  no 0xDEADBEEF; veneers at +29736 and +349F8 only. Checks, r53m and the gated profile again (c53all.sh,
+  gprof53.sh): running; then the battery.

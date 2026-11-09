@@ -337,7 +337,8 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
 #define AB_PX6 4096u     /* round 50: the ARMv6 pixel loops and the runtime's convert ours (A4_PX6) */
 #define AB_PXPLD 8192u   /* round 50: those loops with a prefetch of their source (A4_PX6) */
 #define AB_ZSKIP 16384u  /* round 51: the begin-frame clear of the 1/w buffer skipped while it is known clean (A4_ZSKIP) */
-#define AB_FRONT 32768u  /* round 53: the lifted 3D front end (+349F8 with the hand transform, +349B0) and the corner memo */
+#define AB_FRONT 32768u  /* round 53: the lifted mesh routine (+349F8, the hand transform inside) */
+#define AB_MEMO 65536u   /* round 53: with it, the corner memo (A4_MESHMEMO); alone (slot 2) the game's front end again */
 #if defined(A4_ABCYCLE11) && !defined(A4_PX6)
 #error "A4_ABCYCLE11 steps A4_PX6's loops: build with A4_PX6"
 #endif
@@ -347,10 +348,9 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
 #if defined(A4_ABCYCLE12) && (!defined(A4_ZSKIP) || !(A4_ABMODE + 0) || defined(A4_ABCYCLE11))
 #error "A4_ABCYCLE12 steps A4_ZSKIP's skip per window over the build's A4_ABMODE (not with A4_ABCYCLE11)"
 #endif
-#if defined(A4_ABCYCLE13) && (!defined(A4_MESHMEMO) || !defined(A4_FASTXF) || !defined(A4_ENG_349F8) || !defined(A4_ENG_349B0) \
-    || !defined(A4_NODIRECT_349F8) || !defined(A4_NODIRECT_349B0) || !(A4_ABMODE + 0) || defined(A4_ABCYCLE11) || defined(A4_ABCYCLE12) \
-    || defined(A4_LIFTCHECK))
-#error "A4_ABCYCLE13 steps the lifted front end (A4_ENG_349F8/349B0 through their veneers, A4_NODIRECT_*, A4_FASTXF) and A4_MESHMEMO per window over the build's A4_ABMODE (alone)"
+#if defined(A4_ABCYCLE13) && (!defined(A4_MESHMEMO) || !defined(A4_FASTXF) || !defined(A4_ENG_349F8) || defined(A4_ENG_349B0) \
+    || !defined(A4_NODIRECT_349F8) || !(A4_ABMODE + 0) || defined(A4_ABCYCLE11) || defined(A4_ABCYCLE12) || defined(A4_LIFTCHECK))
+#error "A4_ABCYCLE13 steps the lifted mesh routine (A4_ENG_349F8 through its veneer, A4_NODIRECT_349F8, A4_FASTXF; the insert +349B0 the game's) x A4_MESHMEMO per window over the build's A4_ABMODE (alone)"
 #endif
 #if defined(A4_PX6) && defined(A4_ABCYCLE11)
 #define PX6_ON(mode) (((mode) & AB_PX6) != 0u)       /* stepped per window (a4_tel.c) */
@@ -924,7 +924,7 @@ _Static_assert(A4_GL_STEP >= A4_GL_AGG + sizeof(struct agg) + 4u && A4_GL_STEP +
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
 #if defined(A4_ABCYCLE13)
-#define AGG_SLOT(m) (((m) >> 15) & 1u)                                       /* bit 0 AB_FRONT */
+#define AGG_SLOT(m) (((m) >> 15) & 3u)                                       /* bit 0 AB_FRONT, bit 1 AB_MEMO */
 #elif defined(A4_ABCYCLE12)
 #define AGG_SLOT(m) (((m) >> 14) & 1u)                                       /* bit 0 AB_ZSKIP */
 #elif defined(A4_ABCYCLE11)
@@ -4257,7 +4257,7 @@ static void mesh_scr(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy, in
 /* round 53: the memo is used only while the lifted mesh routine runs -- the game's own one bumps no generation, and
  * a corner kept under the last lifted call would be taken for one of its */
 #ifdef A4_ABCYCLE13
-#define MEMO_ON() ((A4_PERF[PF_MODE] & AB_FRONT) != 0u)
+#define MEMO_ON() ((A4_PERF[PF_MODE] & (AB_FRONT | AB_MEMO)) == (AB_FRONT | AB_MEMO))
 #else
 #define MEMO_ON() 1
 #endif
@@ -5005,8 +5005,8 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
 #if defined(A4_TEL) && defined(A4_ABCYCLE13)
-        /* round 53: a4_tel.c alternates AB_FRONT per window; the rest is the build's own A4_ABMODE */
-        A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~AB_FRONT;
+        /* round 53: a4_tel.c steps AB_FRONT x AB_MEMO per window; the rest is the build's own A4_ABMODE */
+        A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~(AB_FRONT | AB_MEMO);
         s->fmode = A4_PERF[PF_MODE];
 #elif defined(A4_TEL) && defined(A4_ABCYCLE12)
         /* round 51: a4_tel.c alternates AB_ZSKIP per window; the rest is the build's own A4_ABMODE */

@@ -341,7 +341,7 @@ void a4_tel_tick(uint32_t had)
         if (r && w < r * 500u) {
             uint32_t m = pf[PF_MODE];                /* a4_gl.c AGG_SLOT */
 #if defined(A4_ABCYCLE13)
-            volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 15) & 1u) * 32u;
+            volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 15) & 3u) * 32u;
 #elif defined(A4_ABCYCLE12)
             volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 14) & 1u) * 32u;
 #elif defined(A4_ABCYCLE11)
@@ -365,7 +365,7 @@ void a4_tel_tick(uint32_t had)
             a[13] += pf[PF_NPRES]; a[14] += pf[PF_SKIPPED]; a[15]++;
         }
 #if defined(A4_ABCYCLE13)
-        *(volatile uint32_t *)0x00421600u = 0x41473239u;   /* 'AG29': slot bit 0 AB_FRONT */
+        *(volatile uint32_t *)0x00421600u = 0x41473239u;   /* 'AG29': slot bit 0 AB_FRONT, bit 1 AB_MEMO */
 #elif defined(A4_ABCYCLE12)
         *(volatile uint32_t *)0x00421600u = 0x41473238u;   /* 'AG28': slot bit 0 AB_ZSKIP */
 #elif defined(A4_ABCYCLE11)
@@ -419,8 +419,9 @@ void a4_tel_tick(uint32_t had)
     {   /* next window: reset the timers after the write, so its cost is in no window */
         volatile uint32_t *pf = A4_PERF;
 #if defined(A4_ABCYCLE13)
-        /* round 53: AB_FRONT (32768) alternates; the build's A4_ABMODE kept */
-        pf[PF_MODE] = ((uint32_t)(A4_ABMODE) & ~32768u) | ((((pf[PF_MODE] >> 15) & 1u) ^ 1u) << 15);
+        /* round 53: AB_FRONT (32768) x AB_MEMO (65536), one pair a window; the build's A4_ABMODE kept (slot 2,
+         * the memo bit without the lifted routine, is the game's front end again: a second baseline) */
+        pf[PF_MODE] = ((uint32_t)(A4_ABMODE) & ~(32768u | 65536u)) | ((((pf[PF_MODE] >> 15) + 1u) & 3u) << 15);
 #elif defined(A4_ABCYCLE12)
         /* round 51: AB_ZSKIP (16384) alternates; the build's A4_ABMODE kept */
         pf[PF_MODE] = ((uint32_t)(A4_ABMODE) & ~16384u) | ((((pf[PF_MODE] >> 14) & 1u) ^ 1u) << 14);
