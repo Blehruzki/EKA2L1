@@ -8242,3 +8242,17 @@ Owner: "yes, go ahead" (refit the model with the measured store cost, re-rank th
 - The fit moved to r51's phone slots, with the audio on (calfit51.py; the skip's difference outside the
   phases, 1.2 ms on the phone, its own equation). Sensitivities from au1: aT (Thumb 1.15), aA (ARM 1.00),
   aR (read miss 140), aW (write miss 4) -- calrun51.sh: running.
+- calrun51 (r51, audio on, from au1 at Thumb 1.75, ARM 1.35, R 85, W 21; 120 s each): the one-at-a-time
+  sensitivities are too noisy to fit four parameters (each run a different real-time race, ~0.5-1 ms a
+  phase): ARM CPI moved the clear slot's outside time 3.6 ms per unit, though the fill is ~29k ARM
+  instructions (0.1 ms). The four-parameter fits went to the grid's edges (R 175-200, Thumb 4).
+- W from the fill itself instead: the model charges it 9,600 STMs x (3 + 3 x ARM CPI) + 76,800 x W cycles
+  -- 5.1 ms at W 21, as the model runs measured (r51t 5.4, au1 5.1). The phone's 1.22 ms (405k cycles)
+  gives W 4.4: W = 4, settled.
+- aW (W 4, the rest as the round-51 model): 50.1/49.4 ms a render against the phone's 68.8/67.5. Short by
+  phase: 3D -28%, outside -30%/-30% (the game's Thumb code and the GL driver), 2D -12%, the composite
+  loop -21% (our ARM code). W 21 had been carrying the rest of the phone's time. On the phone the GL
+  driver is ARM code inside the game's process; on the bench it is the GPU model's per-call charges
+  (~7 ms of the 3D phase at 3/20/150/8/400), which were never fitted.
+- calrun52: at W 4, the base again (bB) and larger moves -- Thumb 3.0, ARM 2.5, R 170, and the GL
+  driver's per-call/draw/vertex/bind/triangle charges doubled (bG): running.
