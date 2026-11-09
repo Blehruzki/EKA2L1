@@ -8304,3 +8304,14 @@ unresolved part. So it goes to the phone as an A/B inside one race, as round 51'
   0x7F000) and its mutant lm53; mc53 (the candidate + A4_MEMOCHECK, race and menus) and its mutant mm53;
   r53m, the candidate on the W-4 model with audio (model_r53.env, the reference from here). Then the
   battery r53bat.sh (r51's, the exact binary, the W-4 model with audio).
+- Read back (rule 4 b): the sources preprocessed with C51 at 5fb6624 and C53 now, diffed: a4_gl.c the memo
+  (its table at 0x460000, the generation at 0x461000, the three uses behind `memo`, the mode word's bit
+  15), AGG_SLOT bit 15, the first prim's mode with ~32768, and a4_zclr_skip's condition without the
+  per-window bit (the skip always on); a4_tel.c the slot, 'AG29' and the stepping; a4_tramp.s, a4_eng.s,
+  a4_px.s unchanged. The engine object: the painter, eng_349F8/engi_349F8 (1.7 KB, the hand transform
+  inline), eng_349B0, the two switches; a4_engv_349F8 compiled reads 0x412C00 and tests 32768. What the
+  lifted mesh routine calls: +3118E as the game's Thumb (a4_eng_call0: +3118E is not lifted), the insert
+  through its veneer, a4_mesh_insert; the hand transform replaces +345E4 and with it the game's three
+  projection helpers (+523E6/A2/C4). A bias of the A/B named: the game's windows pay the veneer, the
+  switch and a4_orig_349F8 on each mesh-routine call (~40 instructions; ~0.05 ms a frame by the call
+  count), which r51's game front end did not.
