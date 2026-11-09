@@ -8107,3 +8107,25 @@ a run (r50c 7ed1371c, tele 120 s at TIMESCALE 4, CPUCAP 330; calrun.sh, calfit.p
   hold); on the new model 63.6 ms a render against z2's 64.0 -- inside the run-to-run spread. Not worth
   its risk on this model (round 50's LC5: a mechanical lift is ~1.15x in instructions, and the new
   model's Thumb/ARM CPIs are 1.75/1.35). Dropped.
+- Dual profile of z2 (instructions pz2i and modelled cycles pz2c, 1.5e9 each after 8e9; dualprof.py),
+  cycles / instructions / cycles an instruction: ngibackbuffer 10.2% / 9.3% / 3.6; a4_gl_flush (the C
+  composite, half the windows) 7.1 / 11.8 / 1.9; a4_mesh_insert 6.8 / 4.5 / 4.9; lean_tail 6.5 / 8.7 /
+  2.4; the hand painter 5.2 / 9.3 / 1.8; batch_draw 4.8 / 2.7 / 5.8; a4_cvt565_run(+pld) 8.2 / 3.9;
+  memmove 4.3 / 0.4 / 37 (mean 3.26). The store-bound blocks: a4_mesh_insert +394 (the face's 18
+  halfword stores into the list's record, 2.7% of cycles) and batch_draw +360 (the table path's
+  vertex copy into the draw buffer, 3.2%).
+- The model's store cost against a phone figure already on file: round 20 measured that copy on the
+  phone at ~0.74 us a triangle (~0.9 ms a render for ~120 KB); the new model charges ~3 ms for it. So
+  21 cycles a missed store is ~3x too dear for streaming copies on the phone, and the fit's extra
+  phone time in "rest" is likelier work the bench lacks (audio mixing) than store cost. The 1/w clear
+  skip (-5.0 ms on the model) is then nearer ~1.5-2 ms on the phone -- which a phone A/B of the skip
+  alone settles, and with it the store cost every store cut is ranked by.
+- A4_ZSKIP/painter/z3 aside, two more in this round: the list's record as 9 words (two STMs) instead
+  of 18 halfword stores (a4_mesh_insert; A4_VPACKCHECK reads the halfwords back, census [74] records
+  that differ, [75] checked; its mutant flips one in 256). A4_ABCYCLE12: AB_ZSKIP (16384) alternated
+  per window over the build's A4_ABMODE ('AG28', slot 0 the clear run, 1 skipped); r51sum.py. The
+  ARMv6 loops always on (A4_PX6 without A4_ABCYCLE11: the phone settled them, PLD dropped).
+- Candidate r51 = C50 - A4_ABCYCLE11 + A4_ZSKIP + A4_ABCYCLE12 + A4_ENGINE + A4_ENG_29736 + A4_PAINTFAST
+  (C51.flags), A4_HALFSTEP=1, A4_SCRATCH_SIZE 0x5F000: sha256 5fdb6663d8c08d072a64941e992b8edf5a79c496
+  6191e8b77853d0ea8bb660ee, 823,372 bytes; no 0xDEADBEEF; bench-only flags none. Twin a4_y51 (+ the
+  recorders). Battery r51bat.sh on the new model, after the pack checks (v5c, v5m): running.

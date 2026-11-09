@@ -343,6 +343,9 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
 #if defined(A4_ABCYCLE11) && !(A4_ABMODE + 0)
 #error "A4_ABCYCLE11 keeps the build's A4_ABMODE for every other bit: give it one"
 #endif
+#if defined(A4_ABCYCLE12) && (!defined(A4_ZSKIP) || !(A4_ABMODE + 0) || defined(A4_ABCYCLE11))
+#error "A4_ABCYCLE12 steps A4_ZSKIP's skip per window over the build's A4_ABMODE (not with A4_ABCYCLE11)"
+#endif
 #if defined(A4_PX6) && defined(A4_ABCYCLE11)
 #define PX6_ON(mode) (((mode) & AB_PX6) != 0u)       /* stepped per window (a4_tel.c) */
 #define PX6_PLD(mode) (((mode) & AB_PXPLD) != 0u)
@@ -914,7 +917,9 @@ _Static_assert(A4_GL_STEP >= A4_GL_AGG + sizeof(struct agg) + 4u && A4_GL_STEP +
 #endif
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
-#if defined(A4_ABCYCLE11)
+#if defined(A4_ABCYCLE12)
+#define AGG_SLOT(m) (((m) >> 14) & 1u)                                       /* bit 0 AB_ZSKIP */
+#elif defined(A4_ABCYCLE11)
 #define AGG_SLOT(m) (((m) >> 12) & 3u)                                       /* bit 0 AB_PX6, bit 1 AB_PXPLD */
 #elif defined(A4_ABCYCLE10)
 #define AGG_SLOT(m) (((m) >> 10) & 2u)                                       /* bit 1: AB_HSPEC */
@@ -4397,9 +4402,34 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
         if (d >= 0) { MESH->culled++; return 1; }
     }
     int16_t *c = MESH_V + n * 18u;
-    c[0]  = (int16_t)x0; c[1]  = (int16_t)y0; c[2]  = (int16_t)z0; c[3]  = (int16_t)a0; c[4]  = (int16_t)b0; c[5]  = 0;
-    c[6]  = (int16_t)x1; c[7]  = (int16_t)y1; c[8]  = (int16_t)z1; c[9]  = (int16_t)a1; c[10] = (int16_t)b1; c[11] = 0;
-    c[12] = (int16_t)x2; c[13] = (int16_t)y2; c[14] = (int16_t)z2; c[15] = (int16_t)a2; c[16] = (int16_t)b2; c[17] = 0;
+    {   /* round 51: the face's 18 halfwords (x y z u v 0 a corner) as 9 words, low half first -- the same
+         * bytes in half the stores (36-byte records, word aligned): the record stream is the list's main
+         * store traffic, and a store is what the ARM1136's write buffer and the round-50 model both
+         * count. A4_VPACKCHECK reads them back as the halfwords they replace. */
+        typedef uint32_t __attribute__((may_alias)) u32a;
+        u32a *w = (u32a *)c;
+#define VP2(lo, hi) ((uint32_t)(uint16_t)(lo) | ((uint32_t)(uint16_t)(hi) << 16))
+        w[0] = VP2(x0, y0); w[1] = VP2(z0, a0); w[2] = (uint16_t)b0;
+        w[3] = VP2(x1, y1); w[4] = VP2(z1, a1); w[5] = (uint16_t)b1;
+        w[6] = VP2(x2, y2); w[7] = VP2(z2, a2); w[8] = (uint16_t)b2;
+#undef VP2
+#ifdef A4_VPACKCHECK
+#ifdef A4_LISTCHECK
+#error "A4_VPACKCHECK counts in census words 74/75, which A4_LISTCHECK uses"
+#endif
+        {   volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
+            const int16_t want[18] = { (int16_t)x0, (int16_t)y0, (int16_t)z0, (int16_t)a0, (int16_t)b0, 0,
+                                       (int16_t)x1, (int16_t)y1, (int16_t)z1, (int16_t)a1, (int16_t)b1, 0,
+                                       (int16_t)x2, (int16_t)y2, (int16_t)z2, (int16_t)a2, (int16_t)b2, 0 };
+            const volatile int16_t *rc = c;
+#ifdef A4_VPACKCHECK_MUTANT
+            if ((ck[75] & 255u) == 128u) ((volatile int16_t *)c)[7] ^= 1;   /* the check's own test */
+#endif
+            for (int k = 0; k < 18; k++) if (rc[k] != want[k]) { ck[74]++; break; }
+            ck[75]++;
+        }
+#endif
+    }
     MESH_T[n] = (uint32_t)(uintptr_t)ts | m1 | texz; /* descriptors are word aligned */
     {   /* where the table would put it: its screen box from the game's own projection (for
          * the run grouping's overlap test) and its bucket, +349B0's (key >> 3, TFace's key
@@ -4946,7 +4976,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE11)
+#if defined(A4_TEL) && defined(A4_ABCYCLE12)
+        /* round 51: a4_tel.c alternates AB_ZSKIP per window; the rest is the build's own A4_ABMODE */
+        A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~AB_ZSKIP;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE11)
         /* round 50: a4_tel.c steps AB_PX6 x AB_PXPLD per window; the rest is the build's own A4_ABMODE
          * (r49's 3118 keeps AB_HSPEC, the half-step frames, on) */
         A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~(AB_PX6 | AB_PXPLD);
