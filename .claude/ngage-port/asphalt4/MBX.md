@@ -8368,3 +8368,18 @@ unresolved part. So it goes to the phone as an A/B inside one race, as round 51'
   1.2). The model's call: the lift a small gain, the memo a loss -- unless the phone's projection-table
   reads miss far more than the model's (mesh_scr CPI 1.8 here), which is what slot 3 against 1 measures.
 - Battery r53bat.sh on eaedb846: running.
+- Battery r53 on eaedb846 (r53bat.sh, the W-4 model with audio where marked): twin y53 recorded (88.3 MB):
+  all cars x-z 99% 24 max 99, height 99% 9 max 61, heading 99% 13 max 87; camera x-z 99% 37 max 64, yaw
+  99% 25 max 45; frames reversals 0; finish camera 97 steps. Tele framestat 2,854: AG29 game 51.6, lifted
+  49.3, game (2) 50.0, lifted+memo 50.2 ms a render; chase bearing 99% 6 max 9, reversals 1; height off
+  the path max 19; presents 2,958, held 0; drop frames 0. Crash-steer reversals 0. Menus 18 shots, marks
+  run, the Veyron (bearing 99% 2, height max 4, x-z max 44). +3A15C B510 0004, no 0xDEADBEEF.
+- Two finish runs differ from r51's. r53f2 (the exact binary, key 5 held, cap 85): its last captures are
+  a second race segment (664 spans) -- the race finished and another began; r51f2's finish fell in its
+  last captures. r53f (the twin, no key, the autopilot, cap 85): every frame of all eight captures at one
+  position, (22729, -23087), mode 2, with game steps running -- not the finish (r51f and r50cf cross it
+  near (19-24k, 44-46k)): the car stands still mid-route. Under CPUCAP=85 (instructions, no cycle model)
+  r53's fewer instructions make the race run faster (7,937 steps in the run against r51f's 6,285), so the
+  runs see different moments; but a standing car is a question. r53fs (the same run with a screenshot at
+  each key and every 10 s) and r51fs (y51, the same script: the build against the script's NOKEY5 tap,
+  new this round): running.
