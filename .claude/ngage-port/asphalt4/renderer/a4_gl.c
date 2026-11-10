@@ -340,6 +340,12 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
 #define AB_FRONT 32768u  /* round 53: the lifted mesh routine (+349F8, the hand transform inside) */
 #define AB_MEMO 65536u   /* round 53: with it, the corner memo (A4_MESHMEMO); alone (slot 2) the game's front end again */
 #define AB_GPUSKY 131072u /* round 54: the backdrop drawn on the GPU (A4_GPUSKY; stepped per window by A4_ABCYCLE14) */
+#define AB_RBVAR 262144u  /* round 55: bits 18-19, route B's probe variant (A4_RBPROBE; stepped by A4_ABCYCLE15): 0 the
+                           * runtime presents, 1 the frame through an EGL window surface on the runtime's window, 2 as 1
+                           * with the runtime's DSA stopped */
+#if defined(A4_ABCYCLE15) && (!defined(A4_RBPROBE) || defined(A4_ABCYCLE14) || defined(A4_ABCYCLE13) || defined(A4_ABCYCLE12) || defined(A4_ABCYCLE11))
+#error "A4_ABCYCLE15 steps route B's probe variant (A4_RBPROBE) over the build's A4_ABMODE (alone)"
+#endif
 #if defined(A4_ABCYCLE14) && (!defined(A4_GPUSKY) || defined(A4_ABCYCLE13) || defined(A4_ABCYCLE12) || defined(A4_ABCYCLE11))
 #error "A4_ABCYCLE14 steps AB_GPUSKY (A4_GPUSKY) per window over the build's A4_ABMODE (alone)"
 #endif
@@ -771,6 +777,9 @@ static int bringup(volatile struct glr *s)
     int ctx  = egl_context(disp, pcfg, 0, 0);if (!ctx)  return 0; s->bstep = 5;
 #endif
     if (!egl_make_current(disp, surf, surf, ctx))   return 0;       s->bstep = 6;
+#ifdef A4_RBPROBE
+    { extern void a4_rb_note(int, int, int); a4_rb_note(disp, surf, ctx); }
+#endif
     gl_viewport(0,0,VP_W,VP_H);
     gl_enable(GL_TEXTURE_2D);
     gl_shademodel(GL_FLAT);
@@ -927,7 +936,9 @@ _Static_assert(A4_GL_STEP >= A4_GL_AGG + sizeof(struct agg) + 4u && A4_GL_STEP +
 #endif
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
-#if defined(A4_ABCYCLE14)
+#if defined(A4_ABCYCLE15)
+#define AGG_SLOT(m) (((m) >> 18) & 3u)                                       /* route B's probe variant 0..2 */
+#elif defined(A4_ABCYCLE14)
 #define AGG_SLOT(m) (((m) >> 17) & 1u)                                       /* bit 0 AB_GPUSKY */
 #elif defined(A4_ABCYCLE13)
 #define AGG_SLOT(m) (((m) >> 15) & 3u)                                       /* bit 0 AB_FRONT, bit 1 AB_MEMO */
@@ -7698,6 +7709,248 @@ static void slow_rec(uint32_t had)
  * GPU, then start the next frame. Returns 1 when the GPU presented the frame
  * itself (A4_WINDOW), so the detour skips the game's own present -- the 565 ->
  * 32-bit convert into the hardware bitmap that would paint over the window. */
+
+#ifdef A4_RBPROBE
+/* Round 55, route B's probe (MBX.md, "the runtime never uses its DSB"). The runtime presents by DSA: its
+ * convert writes the frame into the screen's own memory and its unlock Updates the DSA's region. The probe
+ * asks the phone the one thing the bench cannot answer: does a frame swapped through an EGL window surface on
+ * the runtime's own window (X10 + 0x28, in the app's session) reach the panel, and at what cost? Per variant
+ * (AB_RBVAR, stepped every RB_WINS telemetry windows by A4_ABCYCLE15): 0 the runtime presents (a white bar
+ * top left, drawn into the frame); 1 the game's presents and the framework's posts skipped, the finished 565
+ * frame uploaded into a texture of a context of our own and drawn into the window surface, a red bar over it,
+ * swapped; 2 as 1 with the runtime's DSA stopped while we own the screen, by its own +597C (X10 vtable [7]),
+ * and restarted when we give it back, by its own +567C (vtable [6]), a blue bar. The screen is given back
+ * after 30 presents with no 3D (a menu), at a variant change and when a swap fails. Every runtime object is
+ * checked before it is used (bb as cvt_install checks it; X10's vtable at the runtime's +23C3C, the observer
+ * vtable 0x28 after it, both entries where they should be and their code hashed), and a failed check
+ * refuses the probe for the session (state = the step). Telemetry: RBP below, per variant, written into
+ * every capture (a4_tel.c). Bench builds and the probe round only: it is not a candidate. */
+#if !defined(A4_TEL) || !defined(A4_DROPHOLD) || !defined(A4_ABCYCLE15) || defined(A4_WINDOW)
+#error "A4_RBPROBE needs A4_TEL (its record), A4_DROPHOLD (the framework's post) and A4_ABCYCLE15 (its variants), not A4_WINDOW"
+#endif
+#ifndef GL_TRIANGLE_STRIP
+#define GL_TRIANGLE_STRIP 0x0005
+#endif
+#ifndef EGL_WINDOW_BIT                  /* (A4_WINDOW's, defined only there) */
+#define EGL_WINDOW_BIT 0x0004
+#define EGL_BUFFER_SIZE 0x3020
+#define EGL_ALPHA_SIZE 0x3021
+#endif
+#ifndef GL_CLAMP_TO_EDGE
+#define GL_CLAMP_TO_EDGE 0x812F
+#endif
+#define RB_VAR(m) (((m) >> 18) & 3u)
+#define RB_VT_OFF 0x23C3Cu         /* X10's vtable in ngibackbuffer's text */
+#define RB_STOP_OFF 0x597Cu        /* [7]: DSB Close if created, DSA Cancel if started */
+#define RB_RESTART_OFF 0x567Cu     /* [6]: Restart -- DSA StartL (trapped), its region and the window's size */
+#define RB_STOP_HASH 0x98EED16Du   /* 25 words from +597C */
+#define RB_RESTART_HASH 0xCF0BA489u /* 64 words from +567C */
+struct rbv {                       /* one variant's totals */
+    uint32_t egl, swfail, swt, swmax;  /* frames swapped through EGL, swaps failed, ticks in draw + swap, the longest */
+    uint32_t upt, mct, rt, skip;       /* ticks uploading, ticks in the two make-currents, frames the runtime presented, empty presents held */
+    uint32_t fwskip, take, give, cc0;  /* framework posts skipped, screen taken, given back, owned frames with the runtime's DSA not started */
+    uint32_t ccflip, n3d, upmax, pad;  /* changes of that flag seen, presents with 3D, the longest upload */
+};
+struct rbp {
+    uint32_t magic, state, why, var;   /* 'RBP1'; 0 untried, 1 up, 2+ refused at that step; the step's detail; the variant applied */
+    uint32_t disp, pbuf, ctx, wcfg;    /* the frame's own EGL objects (bring-up); the window config */
+    uint32_t wctx, wsurf, wtex, x10;   /* our context, window surface, texture; the runtime's X10 */
+    uint32_t base, owns, idle, stopped;/* ngibackbuffer's text; we own the screen; presents with no 3D in a row; we stopped its DSA */
+    uint32_t lastcc, stops, restarts, mcerr;  /* [X10+0xCC] last seen; stop and restart calls; make-currents failed */
+    uint32_t win, ncfg, wsz, pad[9];   /* telemetry windows seen; configs matched; the window's size as EGL got it (unused) */
+    struct rbv v[3];
+};
+#define RBP ((volatile struct rbp *)0x00412A00u)
+_Static_assert(sizeof(struct rbp) <= 0x200u, "the probe's record past A4_PERF (0x412C00)");
+
+static int  rb_window_surface(int d, uint32_t c, void *win, const int *a){ return ((int(*)(int,uint32_t,void*,const int*))F(30))(d, c, win, a); }
+static int  rb_swap(int d, int sf){ return ((int(*)(int,int))F(31))(d, sf); }
+
+void a4_rb_note(int disp, int pbuf, int ctx)
+{
+    volatile struct rbp *r = RBP;
+    if (r->magic != 0x31504252u) { for (uint32_t i = 0; i < sizeof(struct rbp) / 4u; i++) ((volatile uint32_t *)r)[i] = 0; r->magic = 0x31504252u; }
+    r->disp = (uint32_t)disp; r->pbuf = (uint32_t)pbuf; r->ctx = (uint32_t)ctx;
+}
+
+static uint32_t rb_hash(uint32_t a, uint32_t n)
+{
+    const uint32_t *w = (const uint32_t *)(uintptr_t)a; uint32_t h = 0;
+    for (uint32_t i = 0; i < n; i++) h = ((h << 5) | (h >> 27)) ^ w[i];
+    return h;
+}
+
+static int rb_refuse(uint32_t step, uint32_t why) { RBP->state = step; RBP->why = why; return 0; }
+
+/* This frame's buffer is the screen's (the garage renders elsewhere: then not now, not a refusal), and the
+ * runtime is the one this probe knows. */
+static int rb_x10(void)
+{
+    volatile struct rbp *r = RBP;
+    const uint32_t buf = *(volatile uint32_t *)A4_GL_BB;
+    if (!buf || (buf & 3u) || (buf & 0xFFFu) < 0xC0u) return 0;
+    const uint32_t *bb = (const uint32_t *)(uintptr_t)(buf - 0xC0u);
+    if (bb[8] != buf || bb[9] != 320u || bb[10] != 240u) return 0;
+    if (r->x10) return bb[4] == r->x10 ? 1 : rb_refuse(9, bb[4]);
+    const uint32_t x = bb[4];
+    if (!x || (x & 3u)) return rb_refuse(3, x);
+    const uint32_t *X = (const uint32_t *)(uintptr_t)x;
+    const uint32_t vt = X[0], base = vt - RB_VT_OFF;
+    if (!vt || (vt & 3u)) return rb_refuse(4, vt);
+    if (X[0x1C / 4] != vt + 0x28u) return rb_refuse(5, X[0x1C / 4]);
+    const uint32_t *v = (const uint32_t *)(uintptr_t)vt;
+    if (v[6] != base + RB_RESTART_OFF || v[7] != base + RB_STOP_OFF) return rb_refuse(6, v[7]);
+    uint32_t h;
+    if ((h = rb_hash(base + RB_STOP_OFF, 25u)) != RB_STOP_HASH) return rb_refuse(7, h);
+    if ((h = rb_hash(base + RB_RESTART_OFF, 64u)) != RB_RESTART_HASH) return rb_refuse(8, h);
+    r->x10 = x; r->base = base;
+    return 1;
+}
+
+/* Once: an opaque 565 window config (A4_WINDOW's: the N95 dithers a window with alpha), a context of our
+ * own on it, the window surface on the runtime's RWindow, one 512x256 565 texture for the frame. */
+static int rb_up(void)
+{
+    volatile struct rbp *r = RBP;
+    const int d = (int)r->disp;
+    int ca[] = { EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_RED_SIZE, 5, EGL_GREEN_SIZE, 6, EGL_BLUE_SIZE, 5,
+                 EGL_ALPHA_SIZE, 0, EGL_BUFFER_SIZE, 16, EGL_NONE };
+    uint32_t cfg = 0; int n = 0;
+    if (!d || !r->pbuf || !r->ctx) return rb_refuse(10, 0);
+    if (!egl_choose_config(d, ca, &cfg, 1, &n) || n < 1) return rb_refuse(11, (uint32_t)n);
+    r->wcfg = cfg; r->ncfg = (uint32_t)n;
+    const int wctx = egl_context(d, cfg, 0, 0);
+    if (!wctx) return rb_refuse(12, 0);
+    const int ws = rb_window_surface(d, cfg, (void *)(uintptr_t)(r->x10 + 0x28u), 0);
+    if (!ws) return rb_refuse(13, 0);
+    r->wctx = (uint32_t)wctx; r->wsurf = (uint32_t)ws;
+    lz_flush();                                   /* the frame context's pending state, applied there */
+    if (!egl_make_current(d, ws, ws, wctx)) { egl_make_current(d, (int)r->pbuf, (int)r->pbuf, (int)r->ctx); return rb_refuse(14, 0); }
+    gl_viewport(0, 0, VP_W, VP_H);
+    gl_matrixmode(GL_PROJECTION); gl_loadidentity();
+    gl_orthox(0, VP_W * FX, VP_H * FX, 0, -FX, FX);
+    gl_matrixmode(GL_MODELVIEW); gl_loadidentity();
+    gl_enable_now(GL_TEXTURE_2D);
+    gl_texenvx(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    gl_enableclient(GL_VERTEX_ARRAY);
+    gl_enableclient(GL_TEXTURE_COORD_ARRAY);
+    uint32_t t = 0;
+    gl_gentex(1, &t);
+    gl_bindtex(GL_TEXTURE_2D, t);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    gl_teximage(GL_TEXTURE_2D, 0, GL_RGB, 512, 256, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, 0);
+    r->wtex = t;
+    const uint32_t e = gl_geterror();
+    egl_make_current(d, (int)r->pbuf, (int)r->pbuf, (int)r->ctx);
+    if (e) return rb_refuse(15, e);
+    r->state = 1;
+    return 1;
+}
+
+static void rb_take(volatile struct rbp *r, volatile struct rbv *v)
+{
+    r->owns = 1; r->idle = 0; v->take++;
+    if (r->var == 2u && ((const uint32_t *)(uintptr_t)r->x10)[0xCC / 4]) {
+        ((void (*)(uint32_t))(uintptr_t)(r->base + RB_STOP_OFF))(r->x10);
+        r->stopped = 1; r->stops++;
+    }
+}
+
+static void rb_give(volatile struct rbp *r)
+{
+    if (!r->owns) return;
+    r->owns = 0; r->v[r->var].give++;
+    if (r->stopped) {
+        ((void (*)(uint32_t, int))(uintptr_t)(r->base + RB_RESTART_OFF))(r->x10, 0);
+        r->stopped = 0; r->restarts++;
+    }
+}
+
+/* The finished frame (3D and HUD, as the runtime would convert it) through the window surface. */
+static int rb_present(volatile struct rbp *r, volatile struct rbv *v)
+{
+    const int d = (int)r->disp, ws = (int)r->wsurf;
+    const uint32_t buf = *(volatile uint32_t *)A4_GL_BB;
+    static const int16_t q[8] = { 0, 0, VP_W, 0, 0, VP_H, VP_W, VP_H };
+    static const int32_t tc[8] = { 0, 0, (VP_W << 16) / 512, 0, 0, (VP_H << 16) / 256, (VP_W << 16) / 512, (VP_H << 16) / 256 };
+    static const int16_t bar[8] = { 0, 0, 48, 0, 0, 6, 48, 6 };
+    const uint32_t t0 = a4_ntick();
+    lz_flush();
+    if (!egl_make_current(d, ws, ws, (int)r->wctx)) { r->mcerr++; return 0; }
+    const uint32_t t1 = a4_ntick();
+    gl_texsubimage(GL_TEXTURE_2D, 0, 0, 0, VP_W, VP_H, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, (const void *)(uintptr_t)buf);
+    const uint32_t t2 = a4_ntick();
+    gl_vertexptr(2, GL_SHORT, 0, q);
+    gl_texcoordptr(2, GL_FIXED, 0, tc);
+    gl_drawarrays(GL_TRIANGLE_STRIP, 0, 4);
+    gl_disable_now(GL_TEXTURE_2D);
+    if (r->var == 2u) gl_color4x(0, 0, FX, FX); else gl_color4x(FX, 0, 0, FX);
+    gl_vertexptr(2, GL_SHORT, 0, bar);
+    gl_drawarrays(GL_TRIANGLE_STRIP, 0, 4);
+    gl_color4x(FX, FX, FX, FX);
+    gl_enable_now(GL_TEXTURE_2D);
+    const int ok = rb_swap(d, ws);
+    const uint32_t t3 = a4_ntick();
+    egl_make_current(d, (int)r->pbuf, (int)r->pbuf, (int)r->ctx);
+    const uint32_t t4 = a4_ntick();
+    v->upt += t2 - t1; if (t2 - t1 > v->upmax) v->upmax = t2 - t1;
+    v->swt += t3 - t2; if (t3 - t2 > v->swmax) v->swmax = t3 - t2;
+    v->mct += (t1 - t0) + (t4 - t3);
+    if (!ok) { v->swfail++; return 0; }
+    v->egl++;
+    return 1;
+}
+
+/* a4_fw_hold: the framework's own post is skipped while the probe owns the screen */
+static int rb_owns(void) { return RBP->magic == 0x31504252u && RBP->owns; }
+
+/* At every present, after the existing decisions: presented as it should now be. */
+static int rb_frame(uint32_t had, int presented)
+{
+    volatile struct rbp *r = RBP;
+    if (r->magic != 0x31504252u) return presented;
+    const uint32_t want = RB_VAR(A4_PERF[PF_MODE]) % 3u;
+    if (want != r->var) { rb_give(r); r->var = want; }
+    volatile struct rbv *v = &r->v[r->var];
+    if (had) v->n3d++;
+    if (r->x10) {                                  /* the runtime's DSA as this present finds it */
+        const uint32_t cc = ((const uint32_t *)(uintptr_t)r->x10)[0xCC / 4] != 0;
+        if (cc != r->lastcc) { v->ccflip++; r->lastcc = cc; }
+        if (r->owns && !cc) v->cc0++;
+    }
+    if (presented) return presented;               /* held or skipped already: the screen keeps its frame */
+    if (r->var != 0u && r->state < 2u) {
+        if (had) {
+            if (!r->owns) {
+                if (!rb_x10()) goto runtime;
+                if (r->state == 0u && !rb_up()) goto runtime;
+                rb_take(r, v);
+            }
+            r->idle = 0;
+            if (rb_present(r, v)) return 1;
+            rb_give(r);                            /* a failed swap: the runtime's again */
+            goto runtime;
+        }
+        if (r->owns) {
+            if (++r->idle <= 30u) { v->skip++; return 1; }
+            rb_give(r);                            /* a menu */
+        }
+    }
+runtime:
+    v->rt++;
+    if (had) {                                     /* the runtime presents: a white bar, top left */
+        const uint32_t buf = *(volatile uint32_t *)A4_GL_BB;
+        if (buf) for (int y = 0; y < 6; y++) {
+            volatile uint16_t *row = (volatile uint16_t *)(uintptr_t)buf + y * FB_STRIDE;
+            for (int x = 0; x < 48; x++) row[x] = 0xFFFFu;
+        }
+    }
+    return 0;
+}
+#endif
 #ifdef A4_DROPHOLD
 /* round 37: called when a frame is held back -- a fixed block entry for the bench's
  * EKA2L1_PCTRACE_DUMPAT (its address: A4_PRINTSYMS=a4_drop_mark at build time) */
@@ -7729,6 +7982,9 @@ static int hold_live(void)
  * held frame reached the screen twice anyway. */
 int a4_fw_hold(void)
 {
+#ifdef A4_RBPROBE
+    if (rb_owns()) { RBP->v[RBP->var].fwskip++; return 1; }
+#endif
     if (!hold_live()) return 0;
     A4_PERF[PF_FWHELD]++;
     return 1;
@@ -7956,6 +8212,9 @@ int a4_gl_frame(uint32_t fps)
         }
 #endif
     }
+#endif
+#ifdef A4_RBPROBE
+    presented = rb_frame(had, presented);
 #endif
     s->droprec = 0;
     s->prims = 0;

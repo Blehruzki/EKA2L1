@@ -340,7 +340,9 @@ void a4_tel_tick(uint32_t had)
         uint32_t r = pf[PF_RENDERS], w = a4_ntick() - pf[PF_T0];
         if (r && w < r * 500u) {
             uint32_t m = pf[PF_MODE];                /* a4_gl.c AGG_SLOT */
-#if defined(A4_ABCYCLE14)
+#if defined(A4_ABCYCLE15)
+            volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 18) & 3u) * 32u;
+#elif defined(A4_ABCYCLE14)
             volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 17) & 1u) * 32u;
 #elif defined(A4_ABCYCLE13)
             volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 15) & 3u) * 32u;
@@ -366,7 +368,9 @@ void a4_tel_tick(uint32_t had)
             a[9] += pf[PF_REO]; a[10] += pf[PF_CALLS]; a[11] += pf[PF_RUNS0]; a[12] += pf[PF_TRIS];
             a[13] += pf[PF_NPRES]; a[14] += pf[PF_SKIPPED]; a[15]++;
         }
-#if defined(A4_ABCYCLE14)
+#if defined(A4_ABCYCLE15)
+        *(volatile uint32_t *)0x00421600u = 0x41473331u;   /* 'AG31': slot = route B's probe variant 0..2 */
+#elif defined(A4_ABCYCLE14)
         *(volatile uint32_t *)0x00421600u = 0x41473330u;   /* 'AG30': slot bit 0 AB_GPUSKY */
 #elif defined(A4_ABCYCLE13)
         *(volatile uint32_t *)0x00421600u = 0x41473239u;   /* 'AG29': slot bit 0 AB_FRONT, bit 1 AB_MEMO */
@@ -415,6 +419,16 @@ void a4_tel_tick(uint32_t had)
         }
 #endif
 #endif
+#ifdef A4_RBPROBE
+#if !(defined(A4_FRAMEREC) && defined(A4_SLOWREC) && defined(A4_STEPTIME) && defined(A4_KINEDRAW) && !defined(A4_INTERP))
+#error "A4_RBPROBE's record goes after FRC2: build it with A4_FRAMEREC, A4_SLOWREC, A4_STEPTIME and A4_KINEDRAW"
+#endif
+        {   /* round 55: route B's probe (a4_gl.c RBP, 0x412A00, 'RBP1'), after FRC2 */
+            struct des bd = { DES(0x200u), (const void *)0x00412A00u };
+            efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4 + 0x700 + 3 * 32 * 4 + 0x680
+                          + 16 + 256 * 32 + 16 + 255 * 16, &bd);
+        }
+#endif
         pf[PF_FLAGS] |= 4u;                       /* PFF_WROTE: the next render interval holds this write */
     }
 #endif
@@ -422,7 +436,14 @@ void a4_tel_tick(uint32_t had)
     t->caps++;
     {   /* next window: reset the timers after the write, so its cost is in no window */
         volatile uint32_t *pf = A4_PERF;
-#if defined(A4_ABCYCLE14)
+#if defined(A4_ABCYCLE15)
+        /* round 55: route B's probe variant (bits 18-19) 0, 1, 2 in turn, each for RB_WINS windows; the build's
+         * A4_ABMODE kept */
+#ifndef RB_WINS
+#define RB_WINS 4u
+#endif
+        pf[PF_MODE] = ((uint32_t)(A4_ABMODE) & ~(3u << 18)) | (((t->caps / RB_WINS) % 3u) << 18);
+#elif defined(A4_ABCYCLE14)
         /* round 54: AB_GPUSKY (131072) alternates; the build's A4_ABMODE kept */
         pf[PF_MODE] = ((uint32_t)(A4_ABMODE) & ~131072u) | ((((pf[PF_MODE] >> 17) & 1u) ^ 1u) << 17);
 #elif defined(A4_ABCYCLE13)
