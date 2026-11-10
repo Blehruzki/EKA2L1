@@ -8862,3 +8862,31 @@ how I said the race and not the game overall."
   pvr2d blit, the update), or the two eglMakeCurrent a frame between the pbuffer's context and ours. A frame
   over ~427 ms (5 steps, the clamp at +15B1C) makes the race itself slow down -- the owner's "the race,
   not the game". The files' per-variant upload, draw + swap and make-current ticks say which.
+- **The files (second send): rb55's** -- 171,560 bytes, 'RBP1' in each, captures 64-71 (v1 64-67, v2 68-71;
+  the race ran caps 0-71, six cycles of the three variants). tools/r51sum.py and the frame record:
+  - Probe: state up, every check passed on the phone (X10 0x0070ABB8, ngibackbuffer text 0x78CBC000, one
+    opaque 565 window config); v1 552 and v2 552 frames through EGL, no swap failed, no make-current failed;
+    taken 6 / given 6 (v1), 6 / 5 (v2; the race ended in v2), the DSA stopped 6 and restarted 5 times.
+  - **Phone costs a frame: the upload 37.9 ms (max 84), draw + swap 11.9 ms (max 36 in v1, 16 in v2),
+    the two make-currents 0.15 ms.** The runtime's present in v0: 2.5 ms; readback + composite 8.8.
+  - Renders: v0 84.8 ms (529 renders: at the game's 85.33 ms step), v1 109.6, v2 103.4 -- the upload's
+    38 ms less the convert it replaced. Logic: 11.5-12.4 steps a second in every v1/v2 window (the 11.72
+    the step is): the race did not slow by its own clock. Frame record (417 renders, 2.3 s blocks): the
+    car's speed 1,537-2,145 units/s and its heading changing in v0 and in the EGL blocks alike -- the game
+    took the owner's keys in red and blue. What the owner saw as dead controls and the slowest race is the
+    picture: ~9.5 frames a second against 11.8, and possibly the EGL frames reaching the panel late (WSEGL
+    queues its posts; nothing in the telemetry sees after the swap returns).
+  - v2 made no empty presents at all (v1 2,392 held, v0 3,577 runtime presents): with the runtime's DSA
+    stopped the race loop's presents stop short of our hook. Not followed: see below.
+- **Verdict on route B: it does not pay on the N95.** The probe uploaded the finished frame (its 38 ms is
+  the probe's, not route B's), but the swap is route B's: 11.9 ms a frame for one textured quad -- WSEGL's
+  post (its DSA, the pvr2d blit, the update) and the tile render. What route B would remove is the readback
+  and composite (8.8) and the runtime's convert and Update (2.5): 11.3 ms. A swap of a real 3D frame costs
+  that 11.9 plus whatever of the 3D's tile render the readback now absorbs. So at best even, before the cost
+  of moving the HUD to the GPU (the painter's sprites, text, speedometer, minimap -- the game's 2D blends
+  with the 3D, so the HUD has to move with it). Route B shelved; A4_RBPROBE stays as a bench and probe
+  build only.
+- Where the frame time is (v0, this race, at the 85 ms gate): 3D 32.9, composite 8.8 (read 6.8), 2D 3.3,
+  present 2.5. The visible rate is the logic step's (11.72) because one render plus the step does not fit
+  twice in 85 ms; frames between steps (the half-step machinery, on in 3118) need the render under ~40 ms.
+  The 3D phase is the work.
