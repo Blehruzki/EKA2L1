@@ -8479,3 +8479,20 @@ Owner: "continue".
   slots differing, [103] slots compared); its mutant flips a record bit every 256th face. Builds: t54
   (C54 + A4_TAKE2, 824,628 bytes), t54c, t54m. Runs (t54all.sh): the check over a race and the menus,
   the mutant, an instruction profile of t54: running.
+- t54 v1 (each corner projected once, plain pointers): t54c over a race 2,050,179 faces, 0 returns or
+  counters differing, 0 of 1,200,893 slots; menus 1,400,527 faces, 0 of 682,607; t54m 3,033 slots flagged
+  (one in 256). Instructions a call (pt54i, the entry block's count / 9): 446 -> 413 (-7%) -- the new
+  one projected every corner before the back-face test, so the 0x4000 class's back faces, which the old
+  one never projected, were projected and thrown away.
+- t54 v2: the coordinate checks and the back-face test before any projection (their results do not depend
+  on the fallback's, which only picks the depth class); mesh_scr's body inlined (mesh_scr_i). The only
+  difference left is fellback, a count nothing reads (grep: written, never read), now of the faces kept;
+  the check no longer compares it. t54c race: 1,758,056 faces, 0 differing, 0 of 1,045,395 slots; t54m
+  3,054 flagged. 446 -> 314 instructions a call (-30%): ~0.32 M instructions a frame at ~2,400 faces, ~1.6
+  ms on the model. What is left is mostly spill traffic (two dozen live values; the hot blocks load and
+  store sp-relative) -- hand assembly could halve it again.
+- Our code by instructions (pt54i): the insert 17.4%, a4_comp_row 14.9%, lean_tail 12.2%, the painter
+  11.8%, a4_cvt565_run 11.6%, engi_349F8 9.7%, mesh_draw 7.6%, batch_draw 3.8%, draw_prim_take 2.8%.
+  lean_tail (the table path, round 21's): ~255 k calls in the window, ~1,200 triangles a frame, ~420
+  instructions a triangle -- the insert's pattern again (volatile GL state, the texture lookup and the
+  list-cover test per triangle).
