@@ -118,6 +118,9 @@ _xf = os.environ.get('A4_EXTRA_CFLAGS', '').split()
 # round 53: a half-step build keeps A4_MESHMEMO's table past its scratch (renderer/a4_memo.h, 0x460000-0x461004)
 assert not ('-DA4_MESHMEMO' in _xf and '-DA4_HALFSPEC' in _xf) or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x462000, \
     'A4_MESHMEMO with A4_HALFSPEC: A4_SCRATCH_SIZE must reach 0x462000 (0x61000 or more)'
+# round 54, bench: A4_SKYCEN's bitmap of the frame's skippable blended boxes, 0x460000-0x462580 (a4_gl.c SKYBM)
+assert '-DA4_SKYCEN' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x463000, \
+    'A4_SKYCEN: A4_SCRATCH_SIZE must reach 0x463000 (0x62000 or more)'
                                 # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as
                                 # small as the batch allows -- a large image .bss corrupts
                                 # the game's load-time layout
@@ -493,6 +496,13 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
                 assert bl_target(off) == target, 'spec cam safe: +%06X is not a BL to +%06X' % (off, target)
                 blx_insert(code, off, syms[tramp])
             print('CAMS   %d sites -> %s +%06X (+%06X)' % (len(sites), tramp, syms[tramp] - LINK_BASE, target))
+    if '-DA4_SKYCEN' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+        # round 54, bench: the sky routine +35FDA's band loops join at +3616A (ldr r0, [sp, #0x70];
+        # cmp r0, #0 -- both done by the tramp); a4_sky_tramp notes where the band ended
+        have = struct.unpack_from('<HH', code, 0x3616A)
+        assert have == (0x981C, 0x2800), 'skycen: +3616A holds %04x %04x' % have
+        blx_insert(code, 0x3616A, syms['a4_sky_tramp'])
+        print('SKYCEN +03616A -> a4_sky_tramp +%06X (the sky band\'s end)' % (syms['a4_sky_tramp'] - LINK_BASE))
     if '-DA4_ZSKIP' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
         # round 51: the begin-frame's clear of the 1/w buffer (+31C70's bl +2DEF4 at +31CC0) through
         # a4_zclr_tramp, which skips it while the buffer is known clean (a4_gl.c a4_zclr_skip)

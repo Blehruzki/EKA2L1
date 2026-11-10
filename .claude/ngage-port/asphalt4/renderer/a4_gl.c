@@ -4144,6 +4144,58 @@ static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
 #endif
     return 1;
 }
+#ifdef A4_SKYCEN
+/* Bench (round 54): can software's copy of a blended triangle be skipped below the sky band? The
+ * blended classes (KIND_ADD, KIND_ALPHA) are drawn twice -- by the GPU, and by the game's span
+ * (lean_tail returns 0) -- since over a pixel no opaque GPU class drew (dst alpha 0: the backdrop)
+ * only software's copy shows; elsewhere the composite overwrites it. The sky routine +35FDA draws the
+ * backdrop before the first triangle: a top fill, the band, the bottom fill. a4_sky_tramp (a4_tramp.s)
+ * notes where the band ended. Census at 0x412D00: [40] frames composited with a band noted, [41]
+ * without, [42] sky calls (the tramp), [43] the sum of the band's first row below it, [44] [45] the
+ * tramp's end pointer and framebuffer, [46] the largest such row, [47] pixels with no opaque GPU class
+ * under them at or below that row, [48] frames with any, [49] such pixels above it, [50] blended
+ * triangles taken, [51] of them starting at or below the band (the candidates), [52] candidate-box
+ * pixels with no opaque GPU class under them (what a skip could lose: a box over-covers its
+ * triangle), [53] frames with any, [54] the candidates' box area, [55] all blended triangles' box
+ * area, [56] composites whose framebuffer is not the sky's, [57] the bitmap holds a box. Rows above
+ * CLIP_TOP (not composited) count as not covered. SKYBM: the candidates' boxes, a bit a pixel. */
+#if !defined(A4_ROWSTAT) || defined(A4_FLAGHIST) || defined(A4_REMADEPROBE) || defined(A4_ALPHAHIST) || defined(A4_MESHMEMO)
+#error "A4_SKYCEN counts in A4_ROWSTAT's pass, at 0x412D00 [40..57] (the diagnostic tables) and 0x460000 (the memo's home)"
+#endif
+#define SKYCK ((volatile uint32_t *)0x00412D00u)
+#define SKYBM ((volatile uint32_t *)0x00460000u)   /* 240 rows of 10 words, to 0x462580 */
+static uint32_t sky_row(void)
+{
+    uint32_t e = SKYCK[44], b = SKYCK[45];
+    if (!e || e < b || e - b > 2u * VP_W * VP_H) return VP_H;   /* no band this frame: nothing qualifies */
+    uint32_t r = (((e - b) >> 7) * 52429u) >> 18;               /* bytes / 640, exact for whole rows */
+    return r;
+}
+static void sky_note(uint32_t kind, const uint32_t *desc)
+{
+    if (kind != KIND_ADD && kind != KIND_ALPHA) return;
+    const uint32_t *v0 = (const uint32_t *)desc[3], *v1 = (const uint32_t *)desc[6], *v2 = (const uint32_t *)desc[9];
+    int32_t xlo, xhi, ylo, yhi;
+    ext3((int16_t)(int32_t)v0[0], (int16_t)(int32_t)v1[0], (int16_t)(int32_t)v2[0], &xlo, &xhi);
+    ext3((int16_t)(int32_t)v0[1], (int16_t)(int32_t)v1[1], (int16_t)(int32_t)v2[1], &ylo, &yhi);
+    SKYCK[50]++;
+    int32_t x0 = xlo < 0 ? 0 : xlo, x1 = xhi > VP_W - 1 ? VP_W - 1 : xhi;
+    int32_t y0 = ylo < 0 ? 0 : ylo, y1 = yhi > VP_H - 1 ? VP_H - 1 : yhi;
+    if (x0 > x1 || y0 > y1) return;
+    uint32_t area = (uint32_t)(x1 - x0 + 1) * (uint32_t)(y1 - y0 + 1);
+    SKYCK[55] += area;
+    if (ylo < (int32_t)sky_row()) return;
+    SKYCK[51]++; SKYCK[54] += area; SKYCK[57] = 1;
+    for (int32_t y = y0; y <= y1; y++)
+        for (int32_t x = x0; x <= x1; x++) SKYBM[y * 10 + (x >> 5)] |= 1u << (x & 31);
+}
+/* the frame's end (its composite, or a composite with nothing to read): the band forgotten, the bitmap cleared */
+static void sky_frame_end(void)
+{
+    SKYCK[44] = 0;
+    if (SKYCK[57]) { for (uint32_t i = 0; i < 10u * VP_H; i++) SKYBM[i] = 0; SKYCK[57] = 0; }
+}
+#endif
 static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1, uint32_t tsaddr)
 {
     uint32_t n = s->bfill;
@@ -4154,6 +4206,9 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
     int32_t yr[2];
     if (!lean_conv(s, gctx, desc, kind, m1, tsaddr, (int32_t *)A4_GL_POS + n * 12u, (int32_t *)A4_GL_UV + n * 6u,
                    (uint32_t *)A4_GL_TEXID + n, (int16_t *)A4_GL_TBOX + n * 4u, yr)) return 0;
+#ifdef A4_SKYCEN
+    sky_note(kind, desc);
+#endif
     if ((uint32_t)yr[0] < s->miny) s->miny = (uint32_t)yr[0];
     if ((uint32_t)yr[1] > s->maxy) s->maxy = (uint32_t)yr[1];
     s->bfill = n + 1;
@@ -6404,6 +6459,12 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 #endif
 #if !defined(A4_NO_BLIT) && !defined(A4_WINDOW)
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
+#ifdef A4_SKYCEN
+    if (!bb || miny > maxy) { sky_frame_end(); return; }
+    const uint32_t sky_b = sky_row();
+    uint32_t sky_lost = 0, sky_below = 0;
+    if (SKYCK[44] && SKYCK[45] != bb) SKYCK[56]++;
+#endif
     if (!bb || miny > maxy) return;
     uint32_t *rb = (uint32_t *)A4_GL_READBUF;
     int sh = STRIP;
@@ -6443,6 +6504,17 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                 const uint32_t *src = rb + sy * VP_W;
                 uint32_t any = 0, none = 0;
                 for (int x = 0; x < VP_W; x++) { any |= amask ? src[x] : 0x80000000u; none += amask && (int32_t)src[x] >= 0; }
+#ifdef A4_SKYCEN
+                {
+                    const volatile uint32_t *bm = SKYBM + screen_y * 10;
+                    for (int x = 0; x < VP_W; x++) {
+                        if (screen_y >= CLIP_TOP && !(amask && (int32_t)src[x] >= 0)) continue;   /* covered */
+                        if ((uint32_t)screen_y < sky_b) { ck[49]++; continue; }
+                        ck[47]++; sky_below++;
+                        if (bm[x >> 5] & (1u << (x & 31))) { ck[52]++; sky_lost++; }
+                    }
+                }
+#endif
                 ck[77] += none;                      /* [77] pixels no opaque GPU class drew, [78] frames */
                 ck[81]++;
                 if (!(any & 0x80000000u)) { ck[80]++; continue; }
@@ -6451,6 +6523,14 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
             }
             if (y0 + sh > gl_hi && fr[1] >= 0) { ck[82] += (uint32_t)fr[0]; ck[83] += (uint32_t)fr[1]; ck[84]++; }
             if (y0 + sh > gl_hi) ck[78]++;
+#ifdef A4_SKYCEN
+            if (y0 + sh > gl_hi) {
+                if (sky_b < VP_H) { ck[40]++; ck[43] += sky_b; if (sky_b > ck[46]) ck[46] = sky_b; } else ck[41]++;
+                if (sky_below) ck[48]++;
+                if (sky_lost) ck[53]++;
+                sky_frame_end();
+            }
+#endif
         }
 #endif
 #ifdef A4_READBACK_ONLY

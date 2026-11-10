@@ -8496,3 +8496,17 @@ Owner: "continue".
   lean_tail (the table path, round 21's): ~255 k calls in the window, ~1,200 triangles a frame, ~420
   instructions a triangle -- the insert's pattern again (volatile GL state, the texture lookup and the
   list-cover test per triangle).
+- Next safe cut, the blended classes' second drawing: KIND_ADD/KIND_ALPHA triangles go to the GPU and to
+  the game's span (lean_tail returns 0), because over the backdrop (dst alpha 0) only software's copy
+  shows. The sky routine +35FDA (disassembled): r4 the framebuffer; a top fill (stm, row 0's middle
+  pixel) to the band's first row, the band a memmove a row (+36120, or +3614E/+3615A where it wraps),
+  then, when its stacked flag [sp, #0x70] is set, a bottom fill to the end of the screen. All its band
+  paths join at +3616A. The question for a cut: below the band, is every pixel a blended triangle
+  covers drawn by an opaque GPU class? Then software's copy there is always overwritten.
+- A4_SKYCEN (bench, with A4_ROWSTAT): a4_sky_tramp (a4_tramp.s) at +3616A does the two instructions it
+  replaces and notes r4 and the framebuffer; lean_tail notes each blended triangle, and the boxes of
+  those starting at or below the band in a bitmap (0x460000, A4_SCRATCH_SIZE 0x63000, the injector
+  checks); the composite's row pass counts uncovered pixels above and below the band and uncovered
+  pixels inside the candidates' boxes (what a skip could lose; a box over-covers its triangle).
+  Census 0x412D00 [40..57] (a4_gl.c). Build s54 = C54 + A4_TAKE2 + A4_ROWSTAT + A4_SKYCEN; runs: a race
+  (60 s) and the menus (s54.sh): running.
