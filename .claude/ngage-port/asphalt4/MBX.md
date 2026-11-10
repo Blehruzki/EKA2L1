@@ -8706,3 +8706,46 @@ The plan, in order (each step benched before the next; the phone sees one probe,
 3. With the probe's answer: the HUD on the GPU (the painter's 18 sprites as quads, text, speedometer,
    minimap, fills -- each a GL blend the routine's own maths defines), all benchable pixel by pixel against
    the software HUD, then the candidate.
+
+### Round 55, route B: the runtime never uses its DSB (bench trace + its own constructor)
+
+- **The bench first** (EKA2L1_PCTRACE over ngibackbuffer 0x71004000-0x71006000, PCMEM at the lock
+  +4EA0; t54, 10 s of race): the back buffer's DSB object ([X10+0x68], the emulator's stub, vtable
+  0x84305F18) is never Created -- [X10+0xAC] stays 0 over 2,817 locks. Every lock runs +4EA0 -> +4F70
+  -> +4F8C ... +4FEC -> +5244 -> +4F50: its 4th argument (r8) is set, which skips the Create (+4FF4
+  `bne +5244`) and returns the fallback target [X10+0x90].
+- **Why** (ngibackbuffer, ARM code): the lock is called from +3000/+351C/+3844/+551C with r3 =
+  [bb+0xA4]; bb's constructor (+1464) sets [bb+0xA4] = (flags & 2) >> 1; its only caller, the factory
+  +5A0, passes flags = `mov sb, #3`, a constant. So bit 1 is always set: **the runtime never takes
+  its DSB path, on the bench or the phone** (the same DLL, installed by the game's SIS). Round 8's
+  "the runtime already asks for double buffering" read the Create call, not whether it is reached.
+- **What it does instead**: [X10+0x90] is the screen's own memory -- +4A44: BITGDI 53 on the DSA's
+  screen device [X10+0x48] (CFbsScreenDevice::HardwareBitmap), SCDV 10 GetInfo into [X10+0x6C], its
+  address [X10+0x70]; with none, the HAL screen address + 0x20 (the bench's 0xC9200020). The convert
+  (+CB70, ours as cvt_fast) writes the frame straight into it; the unlock (+5280 -> +52F8) then calls
+  BITGDI 58 (CFbsScreenDevice::Update(const TRegion&)) with the DSA's region [X10+0x58], and, with a
+  pacing interval [X10+0x60], arms an RTimer (euser 930 on X10+0x64) and SetActive (1090) -- the
+  fixed period each present stretches to (round 16). A plain DSA: the frame buffer is shared with the
+  window server, whoever writes last is what the panel shows.
+- So the step-2 premise ("a DSB open holds the panel") does not apply to this runtime, and the bench's
+  present path is the phone's (the same lock, convert and Update; EKA2L1 draws an Update's buffer over
+  its composed screen, the phone's panel shows the shared frame buffer). The emulator switch built for it
+  (EKA2L1_DSBHOLD, below) stays as a general one, off by default; it changes nothing here.
+- Round 1's GL window (our own window over the runtime's, A4_WINDOW) not showing on the phone is then
+  most likely the runtime's own writes: A4_WINDOW skipped the game's present but not the framework's
+  post (+606/+6AC/+6B4, round 37), whose convert writes the whole frame buffer -- over the pixels the
+  EGL layer had just blitted -- and Updates it.
+- Route B's probe, simplified (no DSB to close): (v0) normal; (v1) the runtime's presents skipped (the
+  game's and the framework's), the frame through an EGL window surface on the runtime's own window
+  (X10+0x28), the runtime's DSA left running; (v2) as v1, with the runtime's DSA stopped at the
+  window's start by its own +597C (X10 vtable [7]: waits out a DSB post if one is open, Closes a
+  DSB if created, Cancels the DSA) and restarted at its end by its own +567C (vtable [6]: Restart).
+  Both entries checked by address (X10[0] = base + 0x23C3C, base from it) and by a hash of their code.
+
+**EKA2L1_DSBHOLD** (emulator, this round; general, not used by this runtime): while a guest
+CDirectScreenBitmap is open -- from the emulator's DSB stub's Create to its Close or destruction, watched
+at those guest addresses by a host hook at dyncom block entry (common::g_pc_hook, new; the stub's
+offsets checked against its code and vtable at load, and a stub loaded twice watched at both) --
+every window-server redraw ends with the last direct-screen post drawn over it. A model for a
+phone whose display driver shows only the DSB's buffers while its session is open; unconfirmed on
+any device.
