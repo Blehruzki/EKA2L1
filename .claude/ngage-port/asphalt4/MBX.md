@@ -8443,3 +8443,17 @@ closer to what I envisioned." Two races, eight files each (phone53a: captures 10
   our own list insert a4_mesh_insert (~430 k instructions a frame, ~2.2 ms), the game's +3118E (131 k), and
   the 3D phase, whose phone/model gap (28 against ~21 ms) sits where the GL model's charges are (~8 ms of
   the model's 3D): the number of draw calls a frame (~170-230).
+
+## Round 54 (bench): the r53 baseline and the next cut
+
+Owner: "continue".
+- The GPU-presents design reconsidered (the largest block left on the phone: readback + composite +
+  present ~11 ms a render): settled against in the early rounds on the phone -- the game's runtime posts
+  its frame by direct screen access, and an EGL window surface of ours never showed over it (round 1's
+  video: no magenta sentinel anywhere, the DSA's frame and our window fighting at ~1.2 s); the pixmap
+  surface probe was refused on the N95. The readback composite into the game's own buffer came out of
+  that. Reopening it means taking the screen from the runtime's DSA session (cancelling it, owning the
+  window, the focus and redraw paths) -- a project, not a cut; put to the owner separately.
+- r54b = C53 - A4_MESHMEMO - A4_ABCYCLE13 (C54.flags: the lifted mesh routine always, A4_NODIRECT_349F8,
+  A4_FASTXF; the 1/w skip always), A4_SCRATCH_SIZE 0x5F000: f9254eec..., 825,196 bytes. Whole-frame dual
+  profile on the W-4 model with audio (dprof54.sh, 1.5e9 instructions after 6e9): running.
