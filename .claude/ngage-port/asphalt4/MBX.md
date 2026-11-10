@@ -8890,3 +8890,24 @@ how I said the race and not the game overall."
   present 2.5. The visible rate is the logic step's (11.72) because one render plus the step does not fit
   twice in 85 ms; frames between steps (the half-step machinery, on in 3118) need the render under ~40 ms.
   The 3D phase is the work.
+- **Correction (owner): the controls did NOT work in red/blue.** "I was clicking them and the car didn't
+  respond until it went to white. Not even the pause menu would pop in until it was on white. It was as if
+  the controls were being queued." The frame record's turning was the road and the traffic, not the keys:
+  my "the game took the owner's keys" above is wrong.
+- **Why, from the binaries.** The race loop +808 never returns: it runs `b +838` until r4[0x1C] (quit) is
+  set. Its "presents" (+1CE, the call our a4_gl_frame hook sits in) go to [r4+0x20]->vtable[5]: the object
+  is runtime.dll's (bench: object 0x00D34488, vtable 0x70103448 = runtime text +3448), and vtable[5] is
+  runtime +16BC: with arg1 = N it arms a timer of N x 1000 us on its own active object, then loops
+  CActiveScheduler::Current() / RunIfReady (the stubs +248C, +246C, +237C) until that timer's object has
+  run. It is the game's **yield**: the only place the race lets its active objects run -- the window
+  server's events (keys, the pause menu), its timers. DoPresent was never a present; the screen write is
+  the framework's post (+606 -> +6B4 -> bb vtable [0x34] = ngibackbuffer +3178). rb55 returned "presented"
+  from a4_gl_frame for every DoPresent while it owned the screen, so no yield ran: keys queued until white.
+  The bench missed it: its accelerator was held down before every stretch began (rule 4c's "a key held
+  down", exactly). Every earlier build that skips a DoPresent (A4_SKIPREPRES's +950/+97E, A4_DROPHOLD's
+  holds) skips yields too; they leave enough of them that nobody noticed.
+- So the accounting above is wrong in one line: "pres" (2.5 ms in v0) is the yield's wait, not the runtime's
+  convert and Update -- those run inside the framework's post, which no timer of ours separates. What route
+  B would remove is readback + composite (8.8) plus that unmeasured post; what it adds is the swap (11.9,
+  measured with the default swap interval -- if it waits for the panel's refresh, eglSwapInterval(0) would
+  change it) plus the HUD on the GPU. **Route B is not settled; un-shelved pending a second probe.**
