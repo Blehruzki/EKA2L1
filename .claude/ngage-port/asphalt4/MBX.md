@@ -9006,6 +9006,12 @@ Bench, rb56b (3d626bf1, 827,600 bytes; rb56 rebuilt without the flag is byte-ide
 - Key test (kt56d): white 0.38 s, red 0.81-0.82, blue 0.79-0.80, yellow 0.79-0.82 to the pause menu; no launch.
 - Race run (rb56bR, 150 s): checks 0 different in every variant; v0 post 2.10 ms; v1 draw+swap 10.26 ms, v2 9.68.
 - Menus (rb56bmn): the pause menu walked, its confirm, main menu, garage: clean, no launch.
+- N95 model (W-4, m_rb56b, 150 s): every variant at 85 ms a render (the step's gate); checks 0 different. v0 4,466
+  posts for 460 renders (1.00 ms each); owned v1 167,496 posts skipped for 460, v2 133,241 for 414, v3 152,744 for
+  368 (~360-415 iterations a render). Upload 4.61 ms, draw+swap 9.00 (v1) / 8.86 (v2). **The model is far from the
+  phone here**: round 55 measured upload 38 ms and a post ~9 ms on the N95, the model 4.6 and 1.0 -- glTexSubImage
+  and the runtime's convert are not in it. Its route B numbers are not to be read as the phone's; this round's
+  record is what calibrates them.
 
 Rule 2 -- the phone round this asks for (rb56b) is not a repeat of phone round 55 (rb55: EGL frames with DoPresent's
 yield skipped, keys queued, no swap interval 0, no v3) nor of any bench row above: it is the first with the yield kept,
