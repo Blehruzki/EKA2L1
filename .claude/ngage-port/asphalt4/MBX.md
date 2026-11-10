@@ -8749,3 +8749,27 @@ offsets checked against its code and vtable at load, and a stub loaded twice wat
 every window-server redraw ends with the last direct-screen post drawn over it. A model for a
 phone whose display driver shows only the DSB's buffers while its session is open; unconfirmed on
 any device.
+
+### Round 55, route B: the probe build (rb55 = C54 + A4_TAKE2 + A4_RBPROBE + A4_ABCYCLE15)
+
+- Built from the stock exe (a4/x_02_Game) with the current tree: rb55 827,172 bytes; its baseline rb55base
+  (C54 + A4_TAKE2) 823,732. (a4_t54.exe was 824,820: a larger A4_SCRATCH_SIZE and round 54's earlier TAKE2.)
+- What it does (a4_gl.c, A4_RBPROBE; MBX above for the why): the variant (PF_MODE bits 18-19) steps 0, 1, 2
+  every RB_WINS = 4 telemetry windows (TEL_EVERY 23 renders a window: ~6-8 s a variant on the phone).
+  v0: the runtime presents, a white 48x6 bar top left drawn into the frame. v1: at a present with 3D that
+  the game would make, the finished 565 frame (3D and HUD) is uploaded (glTexSubImage2D, 320x240 into a
+  512x256 565 texture of a context of our own on an opaque 565 window config), drawn into an EGL window
+  surface on the runtime's own RWindow (X10 + 0x28), a red bar over it, and swapped; the game's present
+  and the framework's post (a4_fw_hold) are skipped; presents with no 3D are skipped too (the screen keeps
+  our frame), up to 30 in a row -- then the screen is given back (a menu). v2: as v1, a blue bar, and the
+  runtime's DSA stopped by its own +597C when we take the screen (if [X10+0xCC] says it is started),
+  restarted by its own +567C when we give it back (variant change, menu, failed swap). Each use of a
+  runtime object checked first (bb as cvt_install; X10's vtable = text + 0x23C3C; the observer vtable
+  0x28 after it; vtable [6]/[7] = +567C/+597C; 25 words from +597C hash 98EED16D, 64 from +567C
+  CF0BA489, both from the game's own ngibackbuffer.dll); a failed check refuses the probe (state = step).
+- Record (RBP, 0x412A00, 'RBP1', in every capture after FRC2; tools/r51sum.py prints it): state and
+  why, per variant: 3D presents, frames through EGL, swaps failed, frames the runtime presented, empty
+  presents held, framework posts skipped, upload / draw+swap / make-current ticks and maxima, screen
+  taken / given, owned frames with the runtime's DSA flag off, changes of that flag.
+- What the owner's eye answers (the bench cannot): in red and blue stretches, is the game on the panel and
+  moving, or frozen / black / flickering? White stretches are the runtime as before.
