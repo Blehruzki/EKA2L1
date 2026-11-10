@@ -8607,3 +8607,13 @@ Owner: "continue".
 - Next (our code, by instructions in pt54i): lean_tail ~420 instructions a triangle (~1,200 a frame),
   the insert's pattern (volatile GL state, the texture lookup and the list-cover test per triangle) --
   the same treatment as TAKE2, with a per-triangle check against the old path.
+- The lean path without volatile (A4_LEAN2, its GL state through a plain pointer): lean_tail 2,256 ->
+  2,240 bytes, the rest unchanged -- the volatile is not where its ~420 instructions a triangle go (three
+  vertex records, the descriptor, the texture check, the conversion, the list-cover test, the 20-odd
+  words it writes). Reverted. A full rewrite of it is worth ~0.4 ms on the model at most.
+- Where the round stands: one safe cut ready, A4_TAKE2 (exact; the insert -30% instructions, ~1.6 ms of
+  the model's ~48). Tried and dropped this round, with numbers: the skip below the band (not exact), the
+  GPU backdrop (exact, no gain), the lean path's volatile (no change). Round 24/25's atlas already showed
+  fewer draw calls are no gain on the phone. What is left of our own code is small cuts of <1 ms each;
+  the large blocks are the readback, composite and present (~11 ms a render on the phone) and the game's
+  own front end -- the first is the screen take-over the owner deferred. Put to the owner.
