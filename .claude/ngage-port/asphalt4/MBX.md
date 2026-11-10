@@ -8617,3 +8617,39 @@ Owner: "continue".
   fewer draw calls are no gain on the phone. What is left of our own code is small cuts of <1 ms each;
   the large blocks are the readback, composite and present (~11 ms a render on the phone) and the game's
   own front end -- the first is the screen take-over the owner deferred. Put to the owner.
+
+## Round 55 (bench): taking the screen -- the design from what the runtime does
+
+Owner: "go with 2" (the screen take-over, the only lever left worth ~10 ms).
+- What the record already says (rounds 1-2, phase 1): a GL window of our own in front of the game never
+  showed on the phone (no magenta in any frame, a fight at ~1.2 s); the redraw-window/cone handle dilemma
+  (WSERV 4/6, CONE 46) was solved on the bench only by a backed-up window, which the phone did not present.
+  The runtime posts through a DOUBLE-BUFFERED CDirectScreenBitmap (scdv: Create(rect, EDoubleBuffer),
+  BeginUpdate/EndUpdate with the driver's own transfer; round 29 notes), so an EGL swap competes with the
+  DSB's flips -- the likeliest reading of round 1.
+- The runtime's own GL path (ngiOpenGLControl.dll, read here; source rank 1): it dlopens libGLES_CM and
+  resolves ~45 EGL/GL entries BY ORDINAL (eglCreateWindowSurface = 6 first); it takes the window from a
+  control through a virtual call (slot 0x24), SetExtent()s it (ws32 277) and makes the EGL window surface
+  on it; around that it calls runtime export 40 -- which stores its caller as the display's one owner and
+  refuses with an NGi error if another holds it -- and export 41 to give it back. So the runtime arbitrates
+  one display client at a time; a GL title holds the display instead of the back buffer. The NGi API
+  reference (archived CHM) is not reachable from here (web.archive.org blocked by the egress policy).
+- Two routes:
+  A (direct present): at the present, glReadPixels the GPU frame straight into the DSB's hardware buffer
+  (cvt_fast already receives it: 320 x 240 XRGB words, its stride, the window's offset), the GPU frame
+  rendered flipped so its rows come out top-down, BGRA read = XRGB words on the N95. The 565 buffer holds
+  only the 2D layer (cleared to a key at the frame's start) and goes on top: the painter's translucent
+  pixels over the GPU's area replayed against the read pixels in order, then the opaque 2D pixels copied.
+  Gone: the composite pass, the full 565->32 convert, the software sky (A4_GPUSKY, exact), every software
+  copy of the blended classes and billboards; the readback overlaps the 2D phase. Estimate ~5-6 ms a
+  render on the phone. Mostly benchable (the bench runs the same convert path).
+  B (EGL swap): A's 2D layer drawn on the GPU (the 18 painter sprites as quads, the text, the minimap) and
+  the DSB stopped, the runtime's display owned (export 40) and an EGL window surface swapped: removes the
+  readback too (~10 ms) -- several phone rounds, and the device's EGL present is unproven.
+  A is B's first half (the GPU sky, the isolated 2D layer, the per-frame fallback) and is done first.
+- A's open questions, for the bench: (1) every writer of the 565 buffer between the frame's 3D and its
+  present and whether each blends with what is under it (the painter does, 16 alpha levels; text, the
+  minimap +26E28/+2B5A0, the unexplained writer found in round 54's trace); (2) the bench's read format
+  (the N95's is BGRA/UNSIGNED_BYTE, round 10); (3) the frames A cannot take (a triangle or billboard left
+  to software, holes below a band without its bottom fill: filled with the fill colour the routine would
+  have used -- stock shows the last frame's pixel there) fall back to the current path for that frame.
