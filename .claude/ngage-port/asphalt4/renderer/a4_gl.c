@@ -339,6 +339,10 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
 #define AB_ZSKIP 16384u  /* round 51: the begin-frame clear of the 1/w buffer skipped while it is known clean (A4_ZSKIP) */
 #define AB_FRONT 32768u  /* round 53: the lifted mesh routine (+349F8, the hand transform inside) */
 #define AB_MEMO 65536u   /* round 53: with it, the corner memo (A4_MESHMEMO); alone (slot 2) the game's front end again */
+#define AB_GPUSKY 131072u /* round 54: the backdrop drawn on the GPU (A4_GPUSKY; stepped per window by A4_ABCYCLE14) */
+#if defined(A4_ABCYCLE14) && (!defined(A4_GPUSKY) || defined(A4_ABCYCLE13) || defined(A4_ABCYCLE12) || defined(A4_ABCYCLE11))
+#error "A4_ABCYCLE14 steps AB_GPUSKY (A4_GPUSKY) per window over the build's A4_ABMODE (alone)"
+#endif
 #if defined(A4_ABCYCLE11) && !defined(A4_PX6)
 #error "A4_ABCYCLE11 steps A4_PX6's loops: build with A4_PX6"
 #endif
@@ -923,7 +927,9 @@ _Static_assert(A4_GL_STEP >= A4_GL_AGG + sizeof(struct agg) + 4u && A4_GL_STEP +
 #endif
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
-#if defined(A4_ABCYCLE13)
+#if defined(A4_ABCYCLE14)
+#define AGG_SLOT(m) (((m) >> 17) & 1u)                                       /* bit 0 AB_GPUSKY */
+#elif defined(A4_ABCYCLE13)
 #define AGG_SLOT(m) (((m) >> 15) & 3u)                                       /* bit 0 AB_FRONT, bit 1 AB_MEMO */
 #elif defined(A4_ABCYCLE12)
 #define AGG_SLOT(m) (((m) >> 14) & 1u)                                       /* bit 0 AB_ZSKIP */
@@ -4245,6 +4251,17 @@ _Static_assert(0x00412840u + sizeof(struct skys) <= 0x00412A00u, "the sky record
  * the band keep the last frame's pixels where nothing is drawn, so software keeps its copy of a blended
  * triangle or billboard that reaches them. */
 static inline uint32_t sky_rows(volatile struct glr *s) { return SKYS->state == SK_GPU && !s->flushed ? SKYS->yb : 0u; }
+#ifdef A4_SKYCHECK
+/* rows [y0, y1] software draws a copy into by design (a blended triangle or billboard reaching below the
+ * backdrop): A4_SKYCHECK's row test leaves them out (0x460000: 240 hashes, the armed word, 8 mask words) */
+static void sky_check_expect(int32_t y0, int32_t y1)
+{
+    volatile uint32_t *m = (volatile uint32_t *)0x00460000u + VP_H + 1;
+    if (y0 < 0) y0 = 0;
+    if (y1 > VP_H - 1) y1 = VP_H - 1;
+    for (int32_t y = y0; y <= y1; y++) m[y >> 5] |= 1u << (y & 31);
+}
+#endif
 #endif
 static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1, uint32_t tsaddr)
 {
@@ -4274,6 +4291,9 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
 #ifdef A4_GPUSKY
     /* rows the GPU's backdrop covers hold an opaque GPU colour at every pixel: software's copy of a blended
      * triangle within them would be overwritten everywhere */
+#ifdef A4_SKYCHECK
+    if ((kind == KIND_ADD || kind == KIND_ALPHA) && sky_rows(s) && (uint32_t)yr[1] >= sky_rows(s)) sky_check_expect(yr[0], yr[1]);
+#endif
     if (kind == KIND_ADD || kind == KIND_ALPHA) return (uint32_t)yr[1] < sky_rows(s);
 #endif
     return (kind == KIND_ADD || kind == KIND_ALPHA) ? 0 : 1;
@@ -5199,6 +5219,9 @@ static void sky_decide(const uint32_t *rsp)
     else if (*(const uint32_t *)scr[0x10 / 4] != VP_W || *(const uint32_t *)scr[0x14 / 4] != VP_H) why = 5;
     else if (!hd || ((uint32_t)(uintptr_t)hd & 3u) || hd[0] < 2u || hd[0] > 1024u || (hd[0] & 1u) || !hd[1]
              || hd[1] > 1024u || !((const uint32_t *)hd)[4] || (((const uint32_t *)hd)[4] & 3u)) why = 6;
+#ifdef A4_ABCYCLE14
+    else if (!(s->fmode & AB_GPUSKY)) why = 7;                                 /* this window's baseline */
+#endif
     k->why = why;
     k->state = why ? SK_SW : SK_REC;
     if (why) SKYCK2[68]++;
@@ -5273,7 +5296,7 @@ static int sky_tex(volatile struct skys *k)
     while ((1u << lw) < w) lw++;
     while ((1u << lh) < h) lh++;
     if (!id) { gl_gentex(1, &id); if (!id) return 0; k->tex = id; }
-    while (gl_geterror()) {}
+    for (int e = 0; e < 8 && gl_geterror(); e++) {}
     gl_bindtex(GL_TEXTURE_2D, id);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -5363,9 +5386,11 @@ static void sky_check_begin(volatile struct skys *k)
     }
     ck[50]++; ck[51] += bad; if (bad) ck[52]++; ck[54] += unc;
     for (int y = 0; y < VP_H; y++) SKYRH[y] = sky_rowhash(fb + y * VP_W);
+    for (int i = 0; i < 8; i++) SKYRH[VP_H + 1 + i] = 0;
     SKYRH[VP_H] = 1;
 }
-/* at the composite, before it writes: [55] rows software changed since the first triangle, [56] frames */
+/* at the composite, before it writes: [55] rows software changed since the first triangle (other than
+ * the rows of its copies kept by design), [56] frames */
 static void sky_check_end(uint32_t bb)
 {
     volatile uint32_t *ck = SKYCK2;
@@ -5376,7 +5401,8 @@ static void sky_check_end(uint32_t bb)
     if ((ck[50] & 63u) == 9u) { fb[60 * VP_W + 7] ^= 0x0001u; ck[57]++; }
 #endif
     uint32_t ch = 0;
-    for (int y = 0; y < VP_H; y++) ch += SKYRH[y] != sky_rowhash(fb + y * VP_W);
+    for (int y = 0; y < VP_H; y++)
+        if (!(SKYRH[VP_H + 1 + (y >> 5)] & (1u << (y & 31)))) ch += SKYRH[y] != sky_rowhash(fb + y * VP_W);
     ck[55] += ch; if (ch) ck[56]++;
 }
 #endif
@@ -5559,7 +5585,13 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE13)
+#if defined(A4_TEL) && defined(A4_ABCYCLE14)
+        /* round 54: a4_tel.c alternates AB_GPUSKY per window; the rest is the build's own A4_ABMODE (the
+         * frame's sky was decided at its first store, by the mode then: a window's first frame may be the
+         * last one's) */
+        A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~AB_GPUSKY;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE13)
         /* round 53: a4_tel.c steps AB_FRONT x AB_MEMO per window; the rest is the build's own A4_ABMODE */
         A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~(AB_FRONT | AB_MEMO);
         s->fmode = A4_PERF[PF_MODE];
@@ -6345,6 +6377,9 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
     /* the additive modes are drawn by software too, as KIND_ADD triangles are: its glow
      * is the one that stays where the GPU drew nothing (the sky) */
 #ifdef A4_GPUSKY
+#ifdef A4_SKYCHECK
+    if (mode != 0u && sky_rows(s) && y1 > (int32_t)sky_rows(s)) sky_check_expect(y0, y1 - 1);
+#endif
     return (mode == 0u || y1 <= (int32_t)sky_rows(s)) ? 1 : 0;   /* within the GPU's backdrop: the GPU's alone */
 #else
     return mode == 0u ? 1 : 0;

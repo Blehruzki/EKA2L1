@@ -16,8 +16,9 @@ rows.sort()
 NAME27 = {0: 'C loops', 1: 'ARMv6', 2: 'C loops (2)', 3: 'ARMv6 + PLD'}
 NAME28 = {0: 'clear', 1: 'skip', 2: '-', 3: '-'}
 NAME29 = {0: 'game front', 1: 'lifted', 2: 'game (2)', 3: 'lifted+memo'}   # round 53: AB_FRONT x AB_MEMO
+NAME30 = {0: 'sky software', 1: 'sky GPU', 2: '-', 3: '-'}               # round 54: AB_GPUSKY
 fmt0 = struct.unpack_from('<I', rows[-1][2], AGG + 0x600)[0] if rows else 0
-NAME, SHIFT, MASK = {0x41473238: (NAME28, 14, 1), 0x41473239: (NAME29, 15, 3)}.get(fmt0, (NAME27, 12, 3))
+NAME, SHIFT, MASK = {0x41473238: (NAME28, 14, 1), 0x41473239: (NAME29, 15, 3), 0x41473330: (NAME30, 17, 1)}.get(fmt0, (NAME27, 12, 3))
 print('capidx mode   slot          rend  ms/rend | 3D   comp  read  2D   pres')
 for c, h, d in rows:
     r, w = h[33], h[34]
@@ -26,7 +27,7 @@ for c, h, d in rows:
           h[13] / r, h[18] / r, h[36] / r, h[16] / r, h[17] / r))
 c, h, d = rows[-1]
 fmt = struct.unpack_from('<I', d, AGG + 0x600)[0]
-print('aggregates format %08x%s' % (fmt, '' if fmt in (0x41473237, 0x41473238, 0x41473239) else '  (not AG27-AG29)'))
+print('aggregates format %08x%s' % (fmt, '' if fmt in (0x41473237, 0x41473238, 0x41473239, 0x41473330) else '  (not AG27-AG30)'))
 for s in range(3):
     for m in range(4):
         a = struct.unpack_from('<32I', d, AGG + (s * 4 + m) * 128)
@@ -41,3 +42,5 @@ if len(d) >= o + 122 * 4:
     print('converter: installs %d, fast %d, handed back %d, baseline-slot converts %d, other 3D targets %d; refusal: %s'
           % (ck[90], ck[91], ck[92], ck[95], ck[87], why.get(ck[89], str(ck[89]))))
     print('1/w clear: skipped %d, run %d' % (ck[79], ck[99]))
+    if ck[67] or ck[68]:
+        print('GPU sky: frames with the GPU backdrop %d, sky left to software %d, composites forced %d' % (ck[67], ck[68], ck[69]))
