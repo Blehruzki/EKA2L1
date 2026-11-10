@@ -8831,3 +8831,8 @@ any device.
   EGL present, blue = EGL with the runtime's DSA stopped. Each colour lasts ~6-8 s in turn. In the red and
   the blue stretches: is the game moving normally, or frozen / black / flickering / torn? Any difference
   in smoothness between the colours?
+- Sent to the owner unbaked (rb55, sha256 9e654f38...edb93) for baking. The owner usually finishes a race
+  and quits the game straight to the N-Gage hub: that is fine. The probe's per-variant totals and the
+  aggregates are cumulative in every capture, and the game's own menus before quitting already exercise the
+  give-back. What matters is a race long enough for each colour to come round more than once (a lap or
+  more).
