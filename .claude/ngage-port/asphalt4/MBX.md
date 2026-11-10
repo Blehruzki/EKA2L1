@@ -8551,3 +8551,12 @@ Owner: "continue".
   back and compared pixel for pixel with them ([50..54]); the surface's rows are hashed then and again
   at the composite ([55] rows software changed in between: they would be lost); mutant flips one pixel
   before each test every 64th frame. Builds g54 (C54 + TAKE2 + GPUSKY), g54c, g54m: running.
+- g54c (the check, race 60 s): 1,057 frames with the GPU's backdrop, 40 left to software (the decision's
+  reasons: the first frames, the race's start), 0 composites forced; the backdrop read back against the
+  routine's own stores: 0 pixels differing in 1,057 frames, 0 backdrop pixels without the drawn mask.
+  Menus 30 s: 526 frames, 0 differing. g54m (mutant): 10 of 10 flipped pixels found. The row test as first
+  written counted the rows of the copies kept by design (blended triangles reaching below the backdrop)
+  -- 102,192 rows in 861 frames, not separable; v2 masks those rows (g54c2/g54m2), then the W-4 model A/B
+  t54 against g54b (gperf54.sh): running.
+- A4_ABCYCLE14 (AB_GPUSKY 131072, 'AG30', r51sum.py NAME30): the sky alternates per window, for a phone
+  A/B if the round wants one (A4_ABMODE 134190u = 3118 + AB_GPUSKY). Builds: ab54.
