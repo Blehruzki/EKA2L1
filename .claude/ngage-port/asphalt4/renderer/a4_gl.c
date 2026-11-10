@@ -4568,6 +4568,24 @@ static int mesh_fallback(const uint32_t *gctx, int32_t F, const int32_t *v0, con
 }
 
 #ifdef A4_TAKE2
+/* mesh_scr's body, inlined into the new insert (three a face) */
+static inline __attribute__((always_inline)) void mesh_scr_i(const uint32_t *gctx, int32_t F, int32_t cx, int32_t cy,
+    int32_t x, int32_t y, int32_t z, int32_t *sx, int32_t *sy)
+{
+    const uint32_t *base = (const uint32_t *)((uintptr_t)gctx + 0x40100u);
+    const int32_t *rt2 = (const int32_t *)((uintptr_t)gctx + 0x2008Cu);
+    int m = z > -64 ? 7 : z > -128 ? 6 : z > -256 ? 5 : z > -512 ? 4 : 0;
+    int32_t lz = m ? (int32_t)((uint32_t)(-z) << m) : (int32_t)((uint32_t)(-z) & 0x7FFFu), r;
+    if (lz <= 0) r = (int32_t)base[0x0c / 4];
+    else if (lz >= 0x8020) r = (int32_t)base[0x08 / 4];
+    else r = rt2[lz];
+    r = (int32_t)((uint32_t)r * (uint32_t)F) >> 6;
+    int32_t xx = m ? (int32_t)((uint32_t)x << m) : x, yy = m ? (int32_t)((uint32_t)y << m) : y;
+    *sx = cx + ((int32_t)((uint32_t)xx * (uint32_t)r + 0x8000u) >> 16);
+    *sy = cy - ((int32_t)((uint32_t)yy * (uint32_t)r + 0x8000u) >> 16);
+}
+#endif
+#ifdef A4_TAKE2
 #if defined(A4_MESHCHECK) || defined(A4_MESHSTATE) || defined(A4_MESHMEMO) || defined(A4_VPACKCHECK) || defined(A4_MESH_M1) || defined(MESH_EXCL)
 #error "A4_TAKE2 is the phone's insert: the bench variants (MESHCHECK, MESHSTATE, MESHMEMO, VPACKCHECK, MESH_M1, MESH_EXCL) keep the old one"
 #endif
@@ -4578,7 +4596,9 @@ static int mesh_fallback(const uint32_t *gctx, int32_t F, const int32_t *v0, con
  * projected the three corners for their screen y and the box projected them again; a corner's y does not depend
  * on its x, so the fallback takes the box's -- the screen centre and focal read once a face, and the list and the
  * GL state through plain pointers (the old one went through volatile ones: every field to memory and back; one
- * thread writes them). The side effects in the same order: the fallback's count before the coordinate checks. */
+ * thread writes them) -- and the coordinate checks and the back-face test before any projection, so a face not
+ * kept is never projected (the old one projected a perspective face's corners for its fallback before them). The
+ * only difference left is fellback, a count nothing reads: now of the faces kept. */
 static int mesh_take(uint32_t *cam, const uint32_t *face)
 {
     const struct glr *s = (const struct glr *)A4_GL_SCRATCH;
@@ -4605,12 +4625,24 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
         && m->nearf && frames - (m->nearf - 1u) < MESH_NEARF) return 0;
     const uint32_t *gctx = (const uint32_t *)m->gctx;
     if (!gctx) return 0;
-    const int32_t F = (int32_t)m->F, cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
     const int32_t x0 = v0[3], y0 = v0[4], x1 = v1[3], y1 = v1[4], x2 = v2[3], y2 = v2[4];
+    if (!(MESH_FITS(x0) && MESH_FITS(y0) && MESH_FITS(x1) && MESH_FITS(y1) && MESH_FITS(x2) && MESH_FITS(y2))) return 0;
+    const uint32_t a0 = face[4], b0 = face[5], a1 = face[7], b1 = face[8], a2 = face[10], b2 = face[11];
+    if (!(MESH_FITS(a0) && MESH_FITS(b0) && MESH_FITS(a1) && MESH_FITS(b1) && MESH_FITS(a2) && MESH_FITS(b2))) return 0;
+    {   /* the game's 2D back-face test, as the old insert's (exact: int16 coordinates) */
+        const int32_t ma = (int32_t)((uint32_t)y1 * (uint32_t)z2 - (uint32_t)z1 * (uint32_t)y2);
+        const int32_t mb = (int32_t)((uint32_t)z1 * (uint32_t)x2 - (uint32_t)x1 * (uint32_t)z2);
+        const int32_t mc = (int32_t)((uint32_t)x1 * (uint32_t)y2 - (uint32_t)y1 * (uint32_t)x2);
+        const int64_t d = (int64_t)x0 * ma + (int64_t)y0 * mb + (int64_t)z0 * mc;
+        if (d >= 0) { m->culled++; return 1; }
+    }
+    /* only a face the list keeps is projected: the coordinate checks and the back-face test need no screen
+     * point, and their results do not depend on the fallback's (which only picks the depth class) */
+    const int32_t F = (int32_t)m->F, cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
     int32_t sx0, sy0, sx1, sy1, sx2, sy2;
-    mesh_scr(gctx, F, cx, cy, x0, y0, z0, &sx0, &sy0);
-    mesh_scr(gctx, F, cx, cy, x1, y1, z1, &sx1, &sy1);
-    mesh_scr(gctx, F, cx, cy, x2, y2, z2, &sx2, &sy2);
+    mesh_scr_i(gctx, F, cx, cy, x0, y0, z0, &sx0, &sy0);
+    mesh_scr_i(gctx, F, cx, cy, x1, y1, z1, &sx1, &sy1);
+    mesh_scr_i(gctx, F, cx, cy, x2, y2, z2, &sx2, &sy2);
     uint32_t texz = 0;
     if (fl == 0x4001u) {                            /* mesh_fallback, on the screen y's above */
         int32_t wt, wa, wb;                         /* 0x2ff60's first output, branch for branch */
@@ -4622,18 +4654,8 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
             const uint32_t d1 = (uint32_t)(persp_rt(gctx, wa) - q), d2 = (uint32_t)(persp_rt(gctx, wb) - q);
             fb = (int32_t)(d1 * d1 + d2 * d2) < 100;
         }
-        if (fb) m->fellback++;
+        if (fb) m->fellback++;                      /* counted among the faces kept (the old one counted before the checks) */
         else texz = 2u;
-    }
-    if (!(MESH_FITS(x0) && MESH_FITS(y0) && MESH_FITS(x1) && MESH_FITS(y1) && MESH_FITS(x2) && MESH_FITS(y2))) return 0;
-    const uint32_t a0 = face[4], b0 = face[5], a1 = face[7], b1 = face[8], a2 = face[10], b2 = face[11];
-    if (!(MESH_FITS(a0) && MESH_FITS(b0) && MESH_FITS(a1) && MESH_FITS(b1) && MESH_FITS(a2) && MESH_FITS(b2))) return 0;
-    {   /* the game's 2D back-face test, as the old insert's (exact: int16 coordinates) */
-        const int32_t ma = (int32_t)((uint32_t)y1 * (uint32_t)z2 - (uint32_t)z1 * (uint32_t)y2);
-        const int32_t mb = (int32_t)((uint32_t)z1 * (uint32_t)x2 - (uint32_t)x1 * (uint32_t)z2);
-        const int32_t mc = (int32_t)((uint32_t)x1 * (uint32_t)y2 - (uint32_t)y1 * (uint32_t)x2);
-        const int64_t d = (int64_t)x0 * ma + (int64_t)y0 * mb + (int64_t)z0 * mc;
-        if (d >= 0) { m->culled++; return 1; }
     }
     {   typedef uint32_t __attribute__((may_alias)) u32a;
         u32a *w = (u32a *)(MESH_V + n * 18u);
@@ -4668,8 +4690,8 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
 #error "A4_TAKECHECK compares A4_TAKE2's insert with the old one, in census words 100-103 (which that check uses)"
 #endif
 /* Bench (round 54): every face through the new insert, then -- the list's state put back -- through the old one
- * (mesh_take_ref), and all either wrote compared: the return, the list's counters (n, culled, fellback, the
- * bucket range) and the face's slot (record, texture word, box, bucket, depth range). Census [100] faces,
+ * (mesh_take_ref), and all either wrote compared: the return, the list's counters (n, culled, the bucket
+ * range; fellback is now counted among the faces kept) and the face's slot (record, texture word, box, bucket, depth range). Census [100] faces,
  * [101] whose return or counters differed, [102] whose slot differed, [103] slots compared. The old one's
  * results stand. A4_TAKECHECK_MUTANT flips a bit of the new record every 256th face. */
 static int mesh_take_check(uint32_t *cam, const uint32_t *face)
@@ -4697,7 +4719,8 @@ static int mesh_take_check(uint32_t *cam, const uint32_t *face)
     m->qlo = init ? 0xFFFFu : ql0; m->qhi = init ? 0u : qh0;
     const int rr = mesh_take_ref(cam, face);
     ck[100]++;
-    if (rr != rn || m->n != nn || m->culled != cun || m->fellback != fbn || m->qlo != qln || m->qhi != qhn) ck[101]++;
+    (void)fbn;                                      /* fellback: counted differently (of the faces kept), read by nothing */
+    if (rr != rn || m->n != nn || m->culled != cun || m->qlo != qln || m->qhi != qhn) ck[101]++;
     else if (slot) {
         const uint32_t *w = (const uint32_t *)(const void *)(MESH_V + base * 18u);
         int d = MESH_T[base] != st || ((const uint32_t *)(const void *)MESH_B)[2u * base] != sb[0]
