@@ -4144,33 +4144,37 @@ static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
 #endif
     return 1;
 }
+#if defined(A4_SKYCEN) || defined(A4_SKYSKIP)
+/* Round 54: software's copy of a blended triangle below the sky band. The blended classes (KIND_ADD,
+ * KIND_ALPHA) are drawn twice -- by the GPU, and by the game's span (lean_tail returns 0) -- since over
+ * a pixel no opaque GPU class drew (dst alpha 0: the backdrop) only software's copy shows; elsewhere the
+ * composite overwrites it. The sky routine +35FDA draws the backdrop before the first triangle: a top
+ * fill, the band, the bottom fill. a4_sky_tramp (a4_tramp.s) notes where the band ended in A4_GL_SKY:
+ * [0] the framebuffer pointer past the band's last row (0: no band since the last composite), [1] the
+ * framebuffer, [2] calls. sky_row: the band's first row below it, VP_H when no band is noted. */
+#define A4_GL_SKY ((volatile uint32_t *)0x00412800u)   /* clear of CVT (0x412100-0x4122C0) and A4_PERF (0x412C00) */
+static uint32_t sky_row(void)
+{
+    uint32_t e = A4_GL_SKY[0], b = A4_GL_SKY[1];
+    if (!e || e < b || e - b > 2u * VP_W * VP_H) return VP_H;
+    return (((e - b) >> 7) * 52429u) >> 18;                     /* bytes / 640, exact for whole rows */
+}
+#endif
 #ifdef A4_SKYCEN
-/* Bench (round 54): can software's copy of a blended triangle be skipped below the sky band? The
- * blended classes (KIND_ADD, KIND_ALPHA) are drawn twice -- by the GPU, and by the game's span
- * (lean_tail returns 0) -- since over a pixel no opaque GPU class drew (dst alpha 0: the backdrop)
- * only software's copy shows; elsewhere the composite overwrites it. The sky routine +35FDA draws the
- * backdrop before the first triangle: a top fill, the band, the bottom fill. a4_sky_tramp (a4_tramp.s)
- * notes where the band ended. Census at 0x412D00: [40] frames composited with a band noted, [41]
- * without, [42] sky calls (the tramp), [43] the sum of the band's first row below it, [44] [45] the
- * tramp's end pointer and framebuffer, [46] the largest such row, [47] pixels with no opaque GPU class
- * under them at or below that row, [48] frames with any, [49] such pixels above it, [50] blended
- * triangles taken, [51] of them starting at or below the band (the candidates), [52] candidate-box
- * pixels with no opaque GPU class under them (what a skip could lose: a box over-covers its
- * triangle), [53] frames with any, [54] the candidates' box area, [55] all blended triangles' box
- * area, [56] composites whose framebuffer is not the sky's, [57] the bitmap holds a box. Rows above
- * CLIP_TOP (not composited) count as not covered. SKYBM: the candidates' boxes, a bit a pixel. */
+/* Bench: census at 0x412D00 -- [40] frames composited with a band noted, [41] without, [42] sky calls,
+ * [43] the sum of the band's first row below it, [46] the largest such row, [47] pixels with no opaque
+ * GPU class under them at or below that row, [48] frames with any, [49] such pixels above it, [50]
+ * blended triangles taken, [51] of them starting at or below the band (the candidates; with A4_SKYSKIP
+ * the skipped), [52] candidate-box pixels with no opaque GPU class under them (what a skip could lose:
+ * a box over-covers its triangle), [53] frames with any, [54] the candidates' box area, [55] all
+ * blended triangles' box area, [56] composites whose framebuffer is not the sky's, [57] the bitmap
+ * holds a box. Rows above CLIP_TOP (not composited) count as not covered. SKYBM: the candidates'
+ * boxes, a bit a pixel. */
 #if !defined(A4_ROWSTAT) || defined(A4_FLAGHIST) || defined(A4_REMADEPROBE) || defined(A4_ALPHAHIST) || defined(A4_MESHMEMO)
-#error "A4_SKYCEN counts in A4_ROWSTAT's pass, at 0x412D00 [40..57] (the diagnostic tables) and 0x460000 (the memo's home)"
+#error "A4_SKYCEN counts in A4_ROWSTAT's pass, at 0x412D00 [40..66] (the diagnostic tables) and 0x460000 (the memo's home)"
 #endif
 #define SKYCK ((volatile uint32_t *)0x00412D00u)
 #define SKYBM ((volatile uint32_t *)0x00460000u)   /* 240 rows of 10 words, to 0x462580 */
-static uint32_t sky_row(void)
-{
-    uint32_t e = SKYCK[44], b = SKYCK[45];
-    if (!e || e < b || e - b > 2u * VP_W * VP_H) return VP_H;   /* no band this frame: nothing qualifies */
-    uint32_t r = (((e - b) >> 7) * 52429u) >> 18;               /* bytes / 640, exact for whole rows */
-    return r;
-}
 static void sky_note(uint32_t kind, const uint32_t *desc)
 {
     if (kind != KIND_ADD && kind != KIND_ALPHA) return;
@@ -4184,16 +4188,32 @@ static void sky_note(uint32_t kind, const uint32_t *desc)
     if (x0 > x1 || y0 > y1) return;
     uint32_t area = (uint32_t)(x1 - x0 + 1) * (uint32_t)(y1 - y0 + 1);
     SKYCK[55] += area;
-    if (ylo < (int32_t)sky_row()) return;
+    if ((uint32_t)y0 < sky_row()) return;                       /* the skip's own test (lean_tail's yr[0]) */
     SKYCK[51]++; SKYCK[54] += area; SKYCK[57] = 1;
     for (int32_t y = y0; y <= y1; y++)
         for (int32_t x = x0; x <= x1; x++) SKYBM[y * 10 + (x >> 5)] |= 1u << (x & 31);
 }
-/* the frame's end (its composite, or a composite with nothing to read): the band forgotten, the bitmap cleared */
+#endif
+#if defined(A4_SKYCEN) || defined(A4_SKYSKIP)
+/* the frame's end (its composite, or one with nothing to read): the band forgotten (a frame without a
+ * sky call skips nothing), the census bitmap cleared */
 static void sky_frame_end(void)
 {
-    SKYCK[44] = 0;
+    A4_GL_SKY[0] = 0;
+#ifdef A4_SKYCEN
+    SKYCK[42] = A4_GL_SKY[2];
+    if (A4_GL_SKY[0]) {     /* [58] the last image's w | h << 16, [59] image changes, [60] frames with the
+                             * bottom fill, [61] without, [62] [63] the widest and tallest, [64] its pixels */
+        const uint16_t *hd = (const uint16_t *)A4_GL_SKY[3];
+        uint32_t wh = hd ? (uint32_t)hd[0] | ((uint32_t)hd[1] << 16) : 0u, px = hd ? ((const uint32_t *)hd)[4] : 0u;
+        if (wh != SKYCK[58] || px != SKYCK[64]) SKYCK[59]++;
+        SKYCK[58] = wh; SKYCK[64] = px;
+        if (A4_GL_SKY[4]) SKYCK[60]++; else SKYCK[61]++;
+        if ((wh & 0xFFFFu) > SKYCK[62]) SKYCK[62] = wh & 0xFFFFu;
+        if ((wh >> 16) > SKYCK[63]) SKYCK[63] = wh >> 16;
+    }
     if (SKYCK[57]) { for (uint32_t i = 0; i < 10u * VP_H; i++) SKYBM[i] = 0; SKYCK[57] = 0; }
+#endif
 }
 #endif
 static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1, uint32_t tsaddr)
@@ -4216,6 +4236,11 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
     if (kind == KIND_FLAT) A4_PERF[PF_FLAT]++;
     else if (kind == KIND_ADD) A4_PERF[PF_ADD]++;
     else if (kind == KIND_SHAD) A4_PERF[PF_SHAD]++;
+#ifdef A4_SKYSKIP
+    /* round 54: a blended triangle starting at or below the sky band -- software's copy left out
+     * (the composite overwrites it wherever an opaque GPU class drew: A4_SKYCEN's census) */
+    if (kind == KIND_ADD || kind == KIND_ALPHA) return (uint32_t)yr[0] >= sky_row();
+#endif
     return (kind == KIND_ADD || kind == KIND_ALPHA) ? 0 : 1;
 }
 #elif defined(A4_LEAN)
@@ -5600,6 +5625,13 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #else
     int r = draw_prim_take(gctx, desc, flags);
 #endif
+#ifdef A4_SKYCEN
+    {   /* [65] non-blended triangles left to software in a GPU frame begun, [66] before one began (GL up) */
+        volatile struct glr *sc = (volatile struct glr *)A4_GL_SCRATCH;
+        int blended = !(flags & 3u) && ((flags & 8u) || (flags & 0x150u) == 0x100u);
+        if (!r && !blended && sc->up == A4_GL_MAGIC) { if (sc->prims) SKYCK[65]++; else SKYCK[66]++; }
+    }
+#endif
 #ifdef A4_ZSKIP
     /* a perspective triangle (flags bit 0, not the flat class's bit 1) left to software: its span
      * (+333F4) may write the 1/w buffer, so the next begin-frame clears it (a4_zclr_skip) */
@@ -6459,11 +6491,13 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 #endif
 #if !defined(A4_NO_BLIT) && !defined(A4_WINDOW)
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
-#ifdef A4_SKYCEN
+#if defined(A4_SKYCEN) || defined(A4_SKYSKIP)
     if (!bb || miny > maxy) { sky_frame_end(); return; }
+#endif
+#ifdef A4_SKYCEN
     const uint32_t sky_b = sky_row();
     uint32_t sky_lost = 0, sky_below = 0;
-    if (SKYCK[44] && SKYCK[45] != bb) SKYCK[56]++;
+    if (A4_GL_SKY[0] && A4_GL_SKY[1] != bb) SKYCK[56]++;
 #endif
     if (!bb || miny > maxy) return;
     uint32_t *rb = (uint32_t *)A4_GL_READBUF;
@@ -6528,7 +6562,6 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                 if (sky_b < VP_H) { ck[40]++; ck[43] += sky_b; if (sky_b > ck[46]) ck[46] = sky_b; } else ck[41]++;
                 if (sky_below) ck[48]++;
                 if (sky_lost) ck[53]++;
-                sky_frame_end();
             }
 #endif
         }
@@ -6667,6 +6700,9 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
             ck[114]++;
         }
     }
+#endif
+#if defined(A4_SKYCEN) || defined(A4_SKYSKIP)
+    sky_frame_end();
 #endif
 #else
     (void)s; (void)miny; (void)maxy;

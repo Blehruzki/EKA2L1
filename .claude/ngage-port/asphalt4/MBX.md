@@ -8510,3 +8510,23 @@ Owner: "continue".
   pixels inside the candidates' boxes (what a skip could lose; a box over-covers its triangle).
   Census 0x412D00 [40..57] (a4_gl.c). Build s54 = C54 + A4_TAKE2 + A4_ROWSTAT + A4_SKYCEN; runs: a race
   (60 s) and the menus (s54.sh): running.
+- s54 (the census, race 60 s / menus 30 s): the band's first row below it is row 171 on average (max 190)
+  -- the backdrop is most of the screen, the ground below; 1,012 race frames all with a band. Pixels no
+  opaque GPU class covered: 13,602 a frame above the band row, 13.3 at or below it (in 301 frames).
+  Blended triangles 29,081 (28.7 a frame); 6,404 (22%, 49% of their box area) start at or below the
+  band. Candidate-box pixels left uncovered (what the skip could lose; a box over-covers its triangle):
+  373 in 21 frames. Menus: band row 171.2, 39% of blended triangles below it, 152 pixels in 8 frames.
+  A4_SKYSKIP (the skip, kept in the tree, built as k54/k54c) is not exact and takes a fifth of the
+  triangles: not a candidate.
+- The exact form of the same cut: the backdrop drawn by the GPU. If the sky routine's top fill, band and
+  bottom fill go to the GPU at the frame's start (the band 1:1 from the sky image as a texture, the fills
+  flat), every pixel carries an opaque GPU colour, and software's copies of the blended classes and of
+  the additive billboards (+3015E, the scaled sprite blit, 4.4% of r54b's cycles) are overwritten
+  everywhere -- they and the software sky (memmove 2.7%, +35FDA 0.6%) can all be left out: ~12% of the
+  model's frame (+33EA8 3.4, +3015E 4.4, +2E56C/+33D18/+2F358 ~0.8, memmove + +35FDA 3.3). The game's
+  math stays its own: tramps at the band's memmoves and the two fill loops record what they would write.
+  What it changes: a KIND_ALPHA board over the sky is the GPU's blend (premultiplied, 8 bits) instead of
+  the span's -- the deviation it already has over the other 75% of the screen. To settle first (s54b):
+  the image's size (a texture is at most 1024 wide), how often the bottom fill is set (without it the
+  rows below the band are the last frame's), and whether anything opaque is still left to software in a
+  GPU frame (it would need the backdrop in software).

@@ -461,26 +461,31 @@ a4_hc_2def4:
         .word   0xDEADBEEF          @ patched: (code+0x2DEF4 | 1) - (this word)
 #endif
 
-#ifdef A4_SKYCEN
-@ Bench (round 54): the sky routine +35FDA draws the backdrop before the frame's first triangle -- a
-@ top fill, the band (a memmove a row), then the bottom fill when its flag (the stacked argument at
-@ [sp, #0x70]) is set. Its band loops all join at +3616A, where r4 points past the band's last row.
-@ The BLX there replaces `ldr r0, [sp, #0x70]; cmp r0, #0`, done here with the flags it leaves; r1-r3
-@ are dead at that point (reloaded on the fill's path, unused on the other). Noted at 0x412D00: [44]
-@ r4, [45] the framebuffer (ctx [0x4c], ctx the routine's stacked r2 at [sp, #0x54]), [42] calls.
+#if defined(A4_SKYCEN) || defined(A4_SKYSKIP)
+@ Round 54: the sky routine +35FDA draws the backdrop before the frame's first triangle -- a top fill,
+@ the band (a memmove a row), then the bottom fill when its flag (the stacked argument at [sp, #0x70])
+@ is set. Its band loops all join at +3616A, where r4 points past the band's last row. The BLX there
+@ replaces `ldr r0, [sp, #0x70]; cmp r0, #0`, done here with the flags it leaves; r1-r3 are dead at
+@ that point (reloaded on the fill's path, unused on the other). Noted at A4_GL_SKY (0x412800, a4_gl.c):
+@ [0] r4, [1] the framebuffer (ctx [0x4c], ctx the routine's stacked r2 at [sp, #0x54]), [2] calls,
+@ [3] the sky image's header (the stacked r0's +8: w, h halfwords, pixels at +0x10), [4] the fill flag.
         .global a4_sky_tramp
 a4_sky_tramp:
         ldr     r1, [sp, #0x54]
         ldr     r1, [r1, #0x4c]
-        ldr     r2, a4_sky_cen
-        str     r4, [r2, #0xB0]
-        str     r1, [r2, #0xB4]
-        ldr     r3, [r2, #0xA8]
+        ldr     r2, a4_sky_w
+        str     r4, [r2]
+        str     r1, [r2, #4]
+        ldr     r3, [r2, #8]
         add     r3, r3, #1
-        str     r3, [r2, #0xA8]
+        str     r3, [r2, #8]
+        ldr     r3, [sp, #0x4c]
+        ldr     r3, [r3, #8]
+        str     r3, [r2, #12]
         ldr     r0, [sp, #0x70]
+        str     r0, [r2, #16]
         cmp     r0, #0
         bx      lr
-a4_sky_cen:
-        .word   0x00412D00
+a4_sky_w:
+        .word   0x00412800
 #endif
