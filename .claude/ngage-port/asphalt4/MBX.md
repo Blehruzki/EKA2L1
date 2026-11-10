@@ -8530,3 +8530,24 @@ Owner: "continue".
   the image's size (a texture is at most 1024 wide), how often the bottom fill is set (without it the
   rows below the band are the last frame's), and whether anything opaque is still left to software in a
   GPU frame (it would need the backdrop in software).
+- s54c (census v2 fixed; race 40 s, menus 30 s): one sky image, 512 x 128 (565), the same pointer all
+  run; the bottom fill set in 125 race frames of 690 (18%; menus 124 of 492). Non-blended triangles left
+  to software: none in either run (s54b and s54c). So the rows below the band keep the last frame's
+  pixels in most frames, and the GPU's backdrop covers rows [0, top fill + band) only.
+- A4_GPUSKY (a4_gl.c, before draw_prim_take; a4_tramp.s; the injector checks the five sites): the band's
+  three BLXs to the memmove veneer (+36120, +3614E, +3615A), the top fill's end (+3609C) and the bottom
+  fill's colour (+3619C) through tramps; a frame's first store decides (GL up, no GPU frame begun, the
+  surface the last frame composited into, a drawn-mask, a 320 x 240 screen, an image <= 1024 a side,
+  even width), then each store is recorded and skipped. At the frame's first triangle, after the clear and
+  before the mesh list: the image as a 565 texture (uploaded when its pointer, size or a 64-texel sample
+  changes), the band's runs as 1:1 quads (texel edges on pixel edges, NEAREST), the fills as flat quads,
+  drawn as their own batch. A layout it does not expect replays the recorded stores in software and the
+  frame is software's; so does anything that would draw into the surface before a GPU frame began (the
+  hook leaving a triangle, a billboard, a fill, the flush). Blended triangles and additive billboards
+  (modes 2/3) whose rows lie within the backdrop's rows are the GPU's alone; ones reaching below keep
+  software's copy (the old rule). In a GPU-sky frame a triangle software would draw alone forces the
+  composite first. Census [67] GPU-backdrop frames, [68] software ones, [69] forced composites.
+  A4_SKYCHECK (bench): the routine's stores also run; after the backdrop is drawn the GPU frame is read
+  back and compared pixel for pixel with them ([50..54]); the surface's rows are hashed then and again
+  at the composite ([55] rows software changed in between: they would be lost); mutant flips one pixel
+  before each test every 64th frame. Builds g54 (C54 + TAKE2 + GPUSKY), g54c, g54m: running.

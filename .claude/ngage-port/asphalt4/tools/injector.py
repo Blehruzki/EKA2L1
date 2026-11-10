@@ -121,6 +121,8 @@ assert not ('-DA4_MESHMEMO' in _xf and '-DA4_HALFSPEC' in _xf) or GL_SCRATCH + G
 # round 54, bench: A4_SKYCEN's bitmap of the frame's skippable blended boxes, 0x460000-0x462580 (a4_gl.c SKYBM)
 assert '-DA4_SKYCEN' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x463000, \
     'A4_SKYCEN: A4_SCRATCH_SIZE must reach 0x463000 (0x62000 or more)'
+assert '-DA4_SKYCHECK' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x461000, \
+    'A4_SKYCHECK: its row hashes at 0x460000 -- A4_SCRATCH_SIZE must reach 0x461000 (0x60000 or more)'
                                 # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as
                                 # small as the batch allows -- a large image .bss corrupts
                                 # the game's load-time layout
@@ -503,6 +505,24 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         assert have == (0x981C, 0x2800), 'skycen: +3616A holds %04x %04x' % have
         blx_insert(code, 0x3616A, syms['a4_sky_tramp'])
         print('SKY    +03616A -> a4_sky_tramp +%06X (the sky band\'s end)' % (syms['a4_sky_tramp'] - LINK_BASE))
+    if '-DA4_GPUSKY' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+        # round 54: the sky routine +35FDA's stores recorded for the GPU (a4_tramp.s, a4_gl.c a4_sky_*):
+        # the band's three BLXs to the memmove veneer +50EAC, the top fill's end and the bottom fill's colour
+        def blx_arm_target(off):
+            h1, h2 = struct.unpack_from('<HH', code, off)
+            if (h1 & 0xF800) != 0xF000 or (h2 & 0xF800) != 0xE800: return None
+            o = ((h1 & 0x7FF) << 12) | ((h2 & 0x7FF) << 1)
+            if o & 0x400000: o -= 0x800000
+            return (off + 4 + o) & ~3
+        for off in (0x36120, 0x3614E, 0x3615A):
+            assert blx_arm_target(off) == 0x50EAC, 'gpusky: +%06X is not a BLX to +50EAC' % off
+            blx_insert(code, off, syms['a4_skymv_tramp'])
+        struct.pack_into('<I', code, syms['a4_hc_50eac'] - LINK_BASE, ((LINK_BASE + 0x50EAC) - syms['a4_hc_50eac']) & 0xFFFFFFFF)
+        for off, want, tramp in ((0x3609C, (0x1900, 0x4284), 'a4_skytop_tramp'), (0x3619C, (0x040A, 0x4311), 'a4_skybot_tramp')):
+            have = struct.unpack_from('<HH', code, off)
+            assert have == want, 'gpusky: +%06X holds %04x %04x' % ((off,) + have)
+            blx_insert(code, off, syms[tramp])
+        print('GPUSKY +036120 +03614E +03615A -> a4_skymv_tramp, +03609C -> a4_skytop_tramp, +03619C -> a4_skybot_tramp')
     if '-DA4_ZSKIP' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
         # round 51: the begin-frame's clear of the 1/w buffer (+31C70's bl +2DEF4 at +31CC0) through
         # a4_zclr_tramp, which skips it while the buffer is known clean (a4_gl.c a4_zclr_skip)

@@ -489,3 +489,49 @@ a4_sky_tramp:
 a4_sky_w:
         .word   0x00412800
 #endif
+
+#ifdef A4_GPUSKY
+@ Round 54: the backdrop on the GPU. The sky routine +35FDA's stores -- the top fill (stm loop +360A2),
+@ the band (a memmove a row: +36120, or +3614E/+3615A where it wraps) and the bottom fill (stm loop
+@ +361A4) -- are recorded by a4_gl.c (a4_sky_mv/top/bot), which draws them on the GPU at the frame's
+@ first triangle; each returns 1 when it recorded the store (the routine skips it) or 0 (it runs).
+@ Each tramp pushes r0-r5, r12, lr (8 words) and passes that block; the routine's sp is block + 32.
+        .global a4_skymv_tramp
+a4_skymv_tramp:                     @ at the band's BLX to the memmove veneer (+50EAC, ARM)
+        push    {r0, r1, r2, r3, r4, r5, r12, lr}
+        mov     r0, sp
+        bl      a4_sky_mv
+        cmp     r0, #0
+        pop     {r0, r1, r2, r3, r4, r5, r12, lr}
+        bxne    lr                  @ recorded: the row is the GPU's
+        ldr     r12, a4_hc_50eac
+        add     r12, pc, r12        @ pc reads as a4_hc_50eac
+        bx      r12                 @ the game's memmove, returning to the game
+        .global a4_hc_50eac
+a4_hc_50eac:
+        .word   0xDEADBEEF          @ patched: (code+0x50EAC) - (this word); ARM, no Thumb bit
+
+        .global a4_skytop_tramp
+a4_skytop_tramp:                    @ at +3609C: adds r0, r0, r4 ; cmp r4, r0 (the bhs after reads it)
+        add     r0, r0, r4          @ the fill's end
+        push    {r0, r1, r2, r3, r4, r5, r12, lr}
+        mov     r0, sp
+        bl      a4_sky_top
+        cmp     r0, #0
+        pop     {r0, r1, r2, r3, r4, r5, r12, lr}
+        movne   r4, r0              @ recorded: the loop starts at its end
+        cmp     r4, r0
+        bx      lr
+
+        .global a4_skybot_tramp
+a4_skybot_tramp:                    @ at +3619C: lsls r2, r1, #16 ; orrs r1, r2 (a cmp follows)
+        lsl     r2, r1, #16
+        orr     r1, r1, r2          @ the colour pair
+        push    {r0, r1, r2, r3, r4, r5, r12, lr}
+        mov     r0, sp
+        bl      a4_sky_bot
+        cmp     r0, #0
+        pop     {r0, r1, r2, r3, r4, r5, r12, lr}
+        movne   r4, r0              @ recorded: the loop starts at its end
+        bx      lr
+#endif

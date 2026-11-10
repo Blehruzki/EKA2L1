@@ -4144,7 +4144,7 @@ static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
 #endif
     return 1;
 }
-#if defined(A4_SKYCEN) || defined(A4_SKYSKIP)
+#if defined(A4_SKYCEN) || defined(A4_SKYSKIP) || defined(A4_GPUSKY)
 /* Round 54: software's copy of a blended triangle below the sky band. The blended classes (KIND_ADD,
  * KIND_ALPHA) are drawn twice -- by the GPU, and by the game's span (lean_tail returns 0) -- since over
  * a pixel no opaque GPU class drew (dst alpha 0: the backdrop) only software's copy shows; elsewhere the
@@ -4153,6 +4153,7 @@ static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
  * [0] the framebuffer pointer past the band's last row (0: no band since the last composite), [1] the
  * framebuffer, [2] calls. sky_row: the band's first row below it, VP_H when no band is noted. */
 #define A4_GL_SKY ((volatile uint32_t *)0x00412800u)   /* clear of CVT (0x412100-0x4122C0) and A4_PERF (0x412C00) */
+static uint32_t sky_row(void) __attribute__((unused));
 static uint32_t sky_row(void)
 {
     uint32_t e = A4_GL_SKY[0], b = A4_GL_SKY[1];
@@ -4194,12 +4195,14 @@ static void sky_note(uint32_t kind, const uint32_t *desc)
         for (int32_t x = x0; x <= x1; x++) SKYBM[y * 10 + (x >> 5)] |= 1u << (x & 31);
 }
 #endif
-#if defined(A4_SKYCEN) || defined(A4_SKYSKIP)
+#if defined(A4_SKYCEN) || defined(A4_SKYSKIP) || defined(A4_GPUSKY)
 /* the frame's end (its composite, or one with nothing to read): the band forgotten (a frame without a
  * sky call skips nothing), the census bitmap cleared */
 static void sky_frame_end(void)
 {
-    A4_GL_SKY[0] = 0;
+#ifdef A4_GPUSKY
+    ((volatile uint32_t *)0x00412840u)[0] = 0;      /* SKYS->state = SK_NONE (struct skys, below) */
+#endif
 #ifdef A4_SKYCEN
     SKYCK[42] = A4_GL_SKY[2];
     if (A4_GL_SKY[0]) {     /* [58] the last image's w | h << 16, [59] image changes, [60] frames with the
@@ -4214,7 +4217,34 @@ static void sky_frame_end(void)
     }
     if (SKYCK[57]) { for (uint32_t i = 0; i < 10u * VP_H; i++) SKYBM[i] = 0; SKYCK[57] = 0; }
 #endif
+    A4_GL_SKY[0] = 0;
 }
+#endif
+#ifdef A4_GPUSKY
+/* Round 54: the backdrop on the GPU (the code before draw_prim_take). SKYS: [state] SK_NONE until the
+ * frame's first sky store, SK_REC (recording for the GPU), SK_SW (the routine's own stores ran, or
+ * the recorded ones were replayed in software), SK_GPU (drawn on the GPU at the frame's first triangle);
+ * back to SK_NONE at the frame's composite. */
+#if defined(A4_SKYSKIP) || !defined(A4_IMM) || !defined(A4_TAKEBB) || CLIP_TOP != 0 || defined(A4_DUALCAP) || defined(A4_DEFER)
+#error "A4_GPUSKY: the immediate composite of every row (CLIP_TOP 0), billboards on the GPU; not with A4_SKYSKIP, A4_DUALCAP, A4_DEFER"
+#endif
+enum { SK_NONE, SK_REC, SK_SW, SK_GPU };
+struct skys {
+    uint32_t state, why, fb, hdr, flag, yb;    /* why: the reason a frame stayed software (sky_decide); flag:
+                                                * the bottom fill's; yb: the first row the GPU's backdrop
+                                                * does not cover (VP_H with the bottom fill) */
+    uint32_t top_a, top_b, top_c;              /* the top fill [a, b), its colour pair; b 0: not reached */
+    uint32_t bot_a, bot_b, bot_c;              /* the bottom fill */
+    uint32_t nrun, lr[3], dst[3], src[3], n[3], rows[3], sst[3];   /* a run of band rows per memmove site */
+    uint32_t tex, tw2, th2, tpix, twh, thash;  /* the sky texture: its GL name, size (log2), what it holds */
+    uint32_t p0;                               /* the frame's prims once its start (backdrop, list) is drawn */
+};
+#define SKYS ((volatile struct skys *)0x00412840u)
+_Static_assert(0x00412840u + sizeof(struct skys) <= 0x00412A00u, "the sky record past its block (A4_PERF at 0x412C00)");
+/* rows [0, sky_rows) hold the GPU's backdrop this frame (0: none). Without the bottom fill the rows below
+ * the band keep the last frame's pixels where nothing is drawn, so software keeps its copy of a blended
+ * triangle or billboard that reaches them. */
+static inline uint32_t sky_rows(volatile struct glr *s) { return SKYS->state == SK_GPU && !s->flushed ? SKYS->yb : 0u; }
 #endif
 static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1, uint32_t tsaddr)
 {
@@ -4240,6 +4270,11 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
     /* round 54: a blended triangle starting at or below the sky band -- software's copy left out
      * (the composite overwrites it wherever an opaque GPU class drew: A4_SKYCEN's census) */
     if (kind == KIND_ADD || kind == KIND_ALPHA) return (uint32_t)yr[0] >= sky_row();
+#endif
+#ifdef A4_GPUSKY
+    /* rows the GPU's backdrop covers hold an opaque GPU colour at every pixel: software's copy of a blended
+     * triangle within them would be overwritten everywhere */
+    if (kind == KIND_ADD || kind == KIND_ALPHA) return (uint32_t)yr[1] < sky_rows(s);
 #endif
     return (kind == KIND_ADD || kind == KIND_ALPHA) ? 0 : 1;
 }
@@ -5111,6 +5146,270 @@ draw:
 
 static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1, int32_t y1,
                       int32_t S0, int32_t T0, int32_t S1, int32_t T1, uint32_t id, int32_t zw);
+#ifdef A4_GPUSKY
+/* Round 54: the backdrop on the GPU. The sky routine +35FDA (the game's own math, unchanged) draws a top
+ * fill, the band (a memmove a row from a 512 x 128 image, two where it wraps) and, when its flag is set,
+ * a bottom fill. a4_tramp.s sends its stores here: the first store of a frame decides (sky_decide);
+ * recording, each store is kept and skipped (a4_sky_*: 1), and at the frame's first triangle, after the
+ * clear, sky_frame_begin draws them on the GPU -- the image as a 565 texture 1:1 (NEAREST, texel edges on
+ * pixel edges), the fills flat -- before the mesh list. Any store or layout it cannot draw replays what
+ * was recorded in software (sky_replay) and the frame is software's, as before; so does anything that
+ * would draw into the surface in software before a GPU frame began (the hook, a billboard, a fill, the
+ * flush). In a GPU frame a triangle left to software forces the composite first (as a billboard left to
+ * software does), so it lands on the GPU's picture. A4_SKYCHECK (bench): the routine's stores run too,
+ * the GPU's backdrop is read back and compared with them, and the surface's rows are hashed at the
+ * frame's first triangle and again at its composite (what software drew in between would be lost).
+ * Census 0x412D00: [67] frames with the GPU's backdrop, [68] frames whose sky stayed software (decided or
+ * replayed), [69] composites forced by a triangle left to software. */
+#ifdef A4_SKYCHECK
+#define SKY_SKIP 0
+#if defined(A4_SKYCEN) || defined(A4_MESHMEMO)
+#error "A4_SKYCHECK keeps its row hashes at 0x460000 (A4_SKYCEN's bitmap, the memo's home) and counts at 0x412D00 [50..57]"
+#endif
+#define SKYRH ((volatile uint32_t *)0x00460000u)    /* 240 row hashes and the armed word */
+#else
+#define SKY_SKIP 1
+#endif
+#define SKYCK2 ((volatile uint32_t *)0x00412D00u)
+void a4_gl_flush(void);
+static uint32_t sky_udiv(uint32_t a, uint32_t b, uint32_t *rem)
+{
+    uint32_t q = 0, r = 0;
+    for (int i = 31; i >= 0; i--) {
+        r = (r << 1) | ((a >> i) & 1u);
+        if (r >= b) { r -= b; q |= 1u << i; }
+    }
+    if (rem) *rem = r;
+    return q;
+}
+static void sky_decide(const uint32_t *rsp)
+{
+    volatile struct skys *k = SKYS;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    const uint32_t *ctx = (const uint32_t *)rsp[0x54 / 4], *arg0 = (const uint32_t *)rsp[0x4c / 4];
+    const uint32_t *scr = (const uint32_t *)rsp[0x48 / 4];          /* the screen's width and height words */
+    k->fb = ctx[0x4c / 4]; k->hdr = arg0[8 / 4]; k->flag = rsp[0x70 / 4];
+    k->top_b = 0; k->bot_b = 0; k->nrun = 0; k->yb = 0;
+    const uint16_t *hd = (const uint16_t *)k->hdr;
+    uint32_t why = 0;
+    if (a4_gl_iat_ptr()[0] < 0x10000u || s->up != A4_GL_MAGIC) why = 1;      /* no GL */
+    else if (s->prims != 0) why = 2;                                          /* inside a GPU frame */
+    else if (k->fb != *(volatile uint32_t *)A4_GL_BB) why = 3;                /* not the surface composited into */
+    else if (!s->abits) why = 4;                                              /* no drawn-mask to composite by */
+    else if (*(const uint32_t *)scr[0x10 / 4] != VP_W || *(const uint32_t *)scr[0x14 / 4] != VP_H) why = 5;
+    else if (!hd || ((uint32_t)(uintptr_t)hd & 3u) || hd[0] < 2u || hd[0] > 1024u || (hd[0] & 1u) || !hd[1]
+             || hd[1] > 1024u || !((const uint32_t *)hd)[4] || (((const uint32_t *)hd)[4] & 3u)) why = 6;
+    k->why = why;
+    k->state = why ? SK_SW : SK_REC;
+    if (why) SKYCK2[68]++;
+}
+/* the stores recorded so far, in software (in the routine's order: top fill, band, bottom fill) */
+static void sky_replay(volatile struct skys *k)
+{
+#if SKY_SKIP
+    if (k->top_b) for (volatile uint32_t *p = (volatile uint32_t *)k->top_a; p < (volatile uint32_t *)k->top_b; p++) *p = k->top_c;
+    for (uint32_t i = 0; i < k->nrun; i++)
+        for (uint32_t r = 0; r < k->rows[i]; r++) {
+            volatile uint16_t *d = (volatile uint16_t *)(k->dst[i] + r * 2u * VP_W);
+            const uint16_t *q = (const uint16_t *)(k->src[i] + r * k->sst[i]);
+            for (uint32_t j = 0; j < k->n[i] / 2u; j++) d[j] = q[j];
+        }
+    if (k->bot_b) for (volatile uint32_t *p = (volatile uint32_t *)k->bot_a; p < (volatile uint32_t *)k->bot_b; p++) *p = k->bot_c;
+#endif
+    k->state = SK_SW;
+    SKYCK2[68]++;
+}
+int a4_sky_top(const uint32_t *blk)                 /* r0 the fill's end, r1 its colour pair, r4 its start */
+{
+    volatile struct skys *k = SKYS;
+    if (k->state == SK_NONE) sky_decide(blk + 8);
+    if (k->state != SK_REC) return 0;
+    if (k->top_b || k->nrun || k->bot_b) { sky_replay(k); return 0; }   /* a second top fill: not this layout */
+    k->top_a = blk[4]; k->top_b = blk[0]; k->top_c = blk[1];
+    return SKY_SKIP;
+}
+int a4_sky_bot(const uint32_t *blk)                 /* r0 the fill's end, r1 its colour pair, r4 its start */
+{
+    volatile struct skys *k = SKYS;
+    if (k->state == SK_NONE) sky_decide(blk + 8);
+    if (k->state != SK_REC) return 0;
+    if (k->bot_b) { sky_replay(k); return 0; }
+    k->bot_a = blk[4]; k->bot_b = blk[0]; k->bot_c = blk[1];
+    return SKY_SKIP;
+}
+int a4_sky_mv(const uint32_t *blk)                  /* memmove(r0, r1, r2), from the call at lr */
+{
+    volatile struct skys *k = SKYS;
+    if (k->state == SK_NONE) sky_decide(blk + 8);
+    if (k->state != SK_REC) return 0;
+    uint32_t dst = blk[0], src = blk[1], n = blk[2], lr = blk[7], i;
+    if (k->bot_b) { sky_replay(k); return 0; }      /* a band row after the bottom fill: not this layout */
+    for (i = 0; i < k->nrun; i++) if (k->lr[i] == lr) break;
+    if (i == k->nrun) {
+        if (i == 3u || !n || (n & 3u)) { sky_replay(k); return 0; }
+        k->lr[i] = lr; k->dst[i] = dst; k->src[i] = src; k->n[i] = n; k->rows[i] = 1; k->sst[i] = 0;
+        k->nrun = i + 1u;
+        return SKY_SKIP;
+    }
+    uint32_t r = k->rows[i];
+    if (r == 1u) k->sst[i] = src - k->src[i];
+    if (n != k->n[i] || dst != k->dst[i] + r * 2u * VP_W || src != k->src[i] + r * k->sst[i] || r >= VP_H) {
+        sky_replay(k); return 0;
+    }
+    k->rows[i] = r + 1u;
+    return SKY_SKIP;
+}
+/* the image as a texture (a power of two each way, the image in its corner), uploaded when its pixels,
+ * size or a sample of 64 of its texels changed */
+static int sky_tex(volatile struct skys *k)
+{
+    const uint16_t *hd = (const uint16_t *)k->hdr;
+    uint32_t w = hd[0], h = hd[1], pix = ((const uint32_t *)hd)[4], wh = w | (h << 16);
+    const uint16_t *px = (const uint16_t *)(uintptr_t)pix;
+    uint32_t hs = 0x811C9DC5u, tot = w * h, step = (tot >> 6) | 1u;
+    for (uint32_t i = 0; i < tot; i += step) hs = (hs ^ px[i]) * 16777619u;
+    if (k->tex && k->tpix == pix && k->twh == wh && k->thash == hs) return 1;
+    uint32_t lw = 0, lh = 0, id = k->tex;
+    while ((1u << lw) < w) lw++;
+    while ((1u << lh) < h) lh++;
+    if (!id) { gl_gentex(1, &id); if (!id) return 0; k->tex = id; }
+    while (gl_geterror()) {}
+    gl_bindtex(GL_TEXTURE_2D, id);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    gl_teximage(GL_TEXTURE_2D, 0, GL_RGB, (int)(1u << lw), (int)(1u << lh), 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, 0);
+    gl_texsubimage(GL_TEXTURE_2D, 0, 0, 0, (int)w, (int)h, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, px);
+    if (gl_geterror()) { k->twh = 0; return 0; }
+    k->tw2 = lw; k->th2 = lh; k->tpix = pix; k->twh = wh; k->thash = hs;
+    return 1;
+}
+struct skq { int32_t x0, y0, x1, y1, S0, T0, S1, T1; uint32_t id; };
+/* the recorded stores as quads (at most 4), or -1 when they are not the routine's layout: the top fill
+ * from the surface's start to the band, the band's runs side by side across whole rows, the bottom fill
+ * (when its flag is set) from there to the surface's end */
+static int sky_layout(volatile struct skys *k, struct skq *q)
+{
+    const uint32_t fb = k->fb, RB = 2u * VP_W;
+    const uint16_t *hd = (const uint16_t *)k->hdr;
+    const uint32_t w = hd[0], h = hd[1], pix = ((const uint32_t *)hd)[4];
+    uint32_t t = 0, rem, R = 0, x = 0;
+    int nq = 0;
+    if (k->top_b) {
+        if (k->top_a != fb || k->top_b < fb || (k->top_c >> 16) != (k->top_c & 0xFFFFu)) return -1;
+        t = sky_udiv(k->top_b - fb, RB, &rem);
+        if (rem || t > VP_H) return -1;
+        if (t) q[nq++] = (struct skq){ 0, 0, VP_W, (int32_t)t, 0, 0, 0, 0, (KIND_FLAT << 28) | (k->top_c & 0xFFFFu) };
+    }
+    for (uint32_t i = 0; i < k->nrun; i++) {
+        uint32_t np = k->n[i] / 2u;
+        if (k->dst[i] != fb + t * RB + x * 2u) return -1;
+        if (i == 0) R = k->rows[0]; else if (k->rows[i] != R) return -1;
+        if ((R > 1u && k->sst[i] != 2u * w) || k->src[i] < pix) return -1;
+        uint32_t ir = sky_udiv(k->src[i] - pix, 2u * w, &rem), ic = rem / 2u;
+        if ((rem & 1u) || ic + np > w || ir + R > h || x + np > VP_W) return -1;
+        q[nq++] = (struct skq){ (int32_t)x, (int32_t)t, (int32_t)(x + np), (int32_t)(t + R),
+                                (int32_t)(ic << (16u - k->tw2)), (int32_t)(ir << (16u - k->th2)),
+                                (int32_t)((ic + np) << (16u - k->tw2)), (int32_t)((ir + R) << (16u - k->th2)),
+                                (KIND_TEX << 28) | k->tex };
+        x += np;
+    }
+    if (k->nrun && x != VP_W) return -1;
+    uint32_t yb = t + R;
+    if (yb > VP_H) return -1;
+    if (k->flag) {
+        if (k->bot_b != fb + VP_H * RB || k->bot_a != fb + yb * RB || (k->bot_c >> 16) != (k->bot_c & 0xFFFFu)) return -1;
+        if (yb < VP_H) q[nq++] = (struct skq){ 0, (int32_t)yb, VP_W, VP_H, 0, 0, 0, 0, (KIND_FLAT << 28) | (k->bot_c & 0xFFFFu) };
+        yb = VP_H;
+    } else if (k->bot_b) return -1;
+    k->yb = yb;
+    return nq;
+}
+#ifdef A4_SKYCHECK
+static uint32_t sky_rowhash(const volatile uint16_t *r)
+{
+    uint32_t hs = 0x811C9DC5u;
+    for (int x = 0; x < VP_W; x++) hs = (hs ^ r[x]) * 16777619u;
+    return hs;
+}
+/* the GPU's backdrop read back against the routine's own stores ([50] frames, [51] pixels differing,
+ * [52] frames with any, [53] the first one's x | y << 16 | 1 << 31, [54] backdrop pixels left without
+ * the drawn mask, [57] mutant flips), then the surface's rows hashed */
+static void sky_check_begin(volatile struct skys *k)
+{
+    volatile uint32_t *ck = SKYCK2;
+    volatile uint16_t *fb = (volatile uint16_t *)k->fb;
+    uint32_t *rb = (uint32_t *)A4_GL_READBUF, bad = 0, unc = 0;
+#ifdef A4_SKYCHECK_MUTANT
+    if ((ck[50] & 63u) == 7u) { fb[100 * VP_W + 5] ^= 0x0020u; ck[57]++; }   /* the check's own test */
+#endif
+    for (int y0 = 0; y0 < VP_H; y0 += STRIP) {
+        gl_readpixels(0, y0, VP_W, STRIP, GL_RGBA, GL_UNSIGNED_BYTE, rb);
+        for (int sy = 0; sy < STRIP; sy++) {
+            int y = VP_H - 1 - (y0 + sy);
+            if ((uint32_t)y >= k->yb) continue;
+            const uint32_t *src = rb + sy * VP_W;
+            for (int x = 0; x < VP_W; x++) {
+                uint32_t p = src[x];
+                if ((p >> 24) < 0x80u) { unc++; continue; }
+                uint32_t c = ((p & 0xF8u) << 8) | ((p >> 5) & 0x07E0u) | ((p >> 19) & 0x1Fu);
+                if (c != fb[y * VP_W + x]) {
+                    if (!ck[51] && !bad) ck[53] = (uint32_t)x | ((uint32_t)y << 16) | 0x80000000u;
+                    bad++;
+                }
+            }
+        }
+    }
+    ck[50]++; ck[51] += bad; if (bad) ck[52]++; ck[54] += unc;
+    for (int y = 0; y < VP_H; y++) SKYRH[y] = sky_rowhash(fb + y * VP_W);
+    SKYRH[VP_H] = 1;
+}
+/* at the composite, before it writes: [55] rows software changed since the first triangle, [56] frames */
+static void sky_check_end(uint32_t bb)
+{
+    volatile uint32_t *ck = SKYCK2;
+    if (!SKYRH[VP_H]) return;
+    SKYRH[VP_H] = 0;
+    volatile uint16_t *fb = (volatile uint16_t *)bb;
+#ifdef A4_SKYCHECK_MUTANT
+    if ((ck[50] & 63u) == 9u) { fb[60 * VP_W + 7] ^= 0x0001u; ck[57]++; }
+#endif
+    uint32_t ch = 0;
+    for (int y = 0; y < VP_H; y++) ch += SKYRH[y] != sky_rowhash(fb + y * VP_W);
+    ck[55] += ch; if (ch) ck[56]++;
+}
+#endif
+/* at the frame's first triangle, after the clear: the recorded backdrop drawn, before the mesh list */
+static void sky_frame_begin(volatile struct glr *s)
+{
+    volatile struct skys *k = SKYS;
+    if (k->state != SK_REC) return;
+    struct skq q[4];
+    int nq;
+    if (k->fb != *(volatile uint32_t *)A4_GL_BB || !sky_tex(k) || (nq = sky_layout(k, q)) < 0) { sky_replay(k); return; }
+    for (int i = 0; i < nq; i++) quad_push(s, q[i].x0, q[i].y0, q[i].x1, q[i].y1, q[i].S0, q[i].T0, q[i].S1, q[i].T1, q[i].id, 0);
+    { uint32_t t0 = a4_ntick(); batch_draw(s->bfill); A4_PERF[PF_DRAW] += a4_ntick() - t0; }
+    s->bfill = 0;
+    k->state = SK_GPU;
+    SKYCK2[67]++;
+#ifdef A4_SKYCHECK
+    sky_check_begin(k);
+#endif
+}
+/* the hook left a triangle to software (r 0); took: the GPU drew it too (a blended copy kept below the
+ * backdrop's rows) */
+static void sky_sw_draw(const uint32_t *gctx, int took)
+{
+    volatile struct skys *k = SKYS;
+    if (k->state == SK_REC) { sky_replay(k); return; }      /* no GPU frame began: the backdrop first */
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    if (k->state == SK_GPU && !took && !s->flushed && gctx[0x4c / 4] == *(volatile uint32_t *)A4_GL_BB) {
+        SKYCK2[69]++;
+        a4_gl_flush();                              /* onto the GPU's picture, and software from here */
+    }
+}
+#endif
 static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 {
     volatile uint32_t *iat = a4_gl_iat_ptr();
@@ -5340,6 +5639,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         gl_clearcolorx(FX, 0, FX, 0);                    /* magenta sentinel (see SENTINEL_*) */
         gl_clear(clear_bits(s));
         s->bfill = 0;
+#ifdef A4_GPUSKY
+        sky_frame_begin(s);                             /* the backdrop, before the list and the table */
+#endif
 #ifdef A4_BBRECTS
         *(volatile uint32_t *)0x00412E00u = 0;          /* a new frame's sprite rectangles */
 #endif
@@ -5349,6 +5651,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         if (MESH_ON()) quad_push(s, 0, 0, 8, 8, 0, 0, 0, 0, (KIND_FLAT << 28) | 0x07E0u, 0);   /* bench: a list frame's mark */
 #endif
         /* A4_ABMARK's square is no longer pushed here: see mark_draw (a4_gl_frame) */
+#endif
+#ifdef A4_GPUSKY
+        SKYS->p0 = s->prims;
 #endif
     }
 
@@ -5612,6 +5917,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 
 int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 {
+#ifdef A4_GPUSKY
+    const uint32_t p0 = ((volatile struct glr *)A4_GL_SCRATCH)->prims;
+#endif
 #ifdef A4_TEL
     /* every 4th call timed (NTickCount is 1 ms: summed over many calls the count of ticks
      * crossed is an unbiased measure of the time inside), x4 */
@@ -5624,6 +5932,12 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         r = draw_prim_take(gctx, desc, flags);
 #else
     int r = draw_prim_take(gctx, desc, flags);
+#endif
+#ifdef A4_GPUSKY
+    if (!r) {
+        volatile struct glr *sc = (volatile struct glr *)A4_GL_SCRATCH;
+        sky_sw_draw(gctx, sc->prims > (p0 ? p0 : SKYS->p0) && sc->prims != 0);
+    }
 #endif
 #ifdef A4_SKYCEN
     {   /* [65] non-blended triangles left to software in a GPU frame begun, [66] before one began (GL up) */
@@ -5847,6 +6161,9 @@ static int32_t mesh_bb_depth(const int32_t *b1, int32_t x0, int32_t y0, int32_t 
 #endif
 int a4_gl_bb(const uint32_t *r, const uint32_t *f)
 {
+#ifdef A4_GPUSKY
+    if (SKYS->state == SK_REC) sky_replay(SKYS);     /* blitted before a GPU frame began: the backdrop first */
+#endif
     const uint32_t *spr = (const uint32_t *)r[7];
     int32_t x0 = (int32_t)f[0x34 / 4], x1 = (int32_t)r[4], y0 = (int32_t)r[6], y1 = (int32_t)f[0x30 / 4];
     uint32_t mode = f[0x94 / 4], fade = f[0x98 / 4];
@@ -6027,7 +6344,11 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
 #endif
     /* the additive modes are drawn by software too, as KIND_ADD triangles are: its glow
      * is the one that stays where the GPU drew nothing (the sky) */
+#ifdef A4_GPUSKY
+    return (mode == 0u || y1 <= (int32_t)sky_rows(s)) ? 1 : 0;   /* within the GPU's backdrop: the GPU's alone */
+#else
     return mode == 0u ? 1 : 0;
+#endif
 #else
     (void)spr; (void)x0; (void)x1; (void)y0; (void)y1; (void)mode; (void)fade;
     return 0;
@@ -6044,6 +6365,9 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
  * 0 (it runs). No clip: the fill has none either. */
 int a4_gl_fill(const uint32_t *f)
 {
+#ifdef A4_GPUSKY
+    if (SKYS->state == SK_REC) sky_replay(SKYS);     /* filled before a GPU frame began: the backdrop first */
+#endif
 #ifdef A4_TAKEFILL
     volatile uint32_t *iat = a4_gl_iat_ptr();
     if (iat[0] < 0x10000u) return 0;
@@ -6491,8 +6815,11 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 #endif
 #if !defined(A4_NO_BLIT) && !defined(A4_WINDOW)
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
-#if defined(A4_SKYCEN) || defined(A4_SKYSKIP)
+#if defined(A4_SKYCEN) || defined(A4_SKYSKIP) || defined(A4_GPUSKY)
     if (!bb || miny > maxy) { sky_frame_end(); return; }
+#endif
+#ifdef A4_SKYCHECK
+    sky_check_end(bb);
 #endif
 #ifdef A4_SKYCEN
     const uint32_t sky_b = sky_row();
@@ -6701,7 +7028,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
         }
     }
 #endif
-#if defined(A4_SKYCEN) || defined(A4_SKYSKIP)
+#if defined(A4_SKYCEN) || defined(A4_SKYSKIP) || defined(A4_GPUSKY)
     sky_frame_end();
 #endif
 #else
@@ -6891,10 +7218,18 @@ static void composite_prev(volatile struct glr *s)
 
 void a4_gl_flush(void)
 {
+#ifdef A4_GPUSKY
+    /* the frame's 2D or its present with the backdrop recorded and no GPU frame begun: in software, now */
+    if (SKYS->state == SK_REC) sky_replay(SKYS);
+#endif
     volatile uint32_t *iat = a4_gl_iat_ptr();
-    if (iat[0] < 0x10000u) return;
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
-    if (s->up != A4_GL_MAGIC || s->prims == 0 || s->flushed) return;
+    if (iat[0] < 0x10000u || s->up != A4_GL_MAGIC || s->prims == 0 || s->flushed) {
+#ifdef A4_GPUSKY
+        if (!s->flushed || iat[0] < 0x10000u) SKYS->state = SK_NONE;   /* no composite to end the frame's sky */
+#endif
+        return;
+    }
     s->flushed = 1;
     s->last_prims = s->prims;                            /* frame's prim count (device probe) */
     uint32_t tf0 = a4_ntick();
