@@ -7930,8 +7930,8 @@ static int rb_frame(uint32_t had, int presented)
     if (presented) return presented;               /* held or skipped already: the screen keeps its frame */
     if (r->var != 0u && r->state < 2u) {
         if (had) {
+            if (!rb_x10()) { rb_give(r); goto runtime; }   /* 3D to another target (the garage), or refused */
             if (!r->owns) {
-                if (!rb_x10()) goto runtime;
                 if (r->state == 0u && !rb_up()) goto runtime;
                 rb_take(r, v);
             }

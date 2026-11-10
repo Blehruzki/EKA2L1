@@ -8793,3 +8793,41 @@ any device.
   composite not. Not the phone's (the owner plays upright), so the bench's two paths disagree with each
   other where the phone's agree; the probe's GL is the standard top-left ortho over a texture whose first
   row is the frame's top.
+- One more path closed after reading the code back: a 3D frame drawn to another target (the garage's car)
+  while the probe owned the screen went to the runtime but left the framework's posts skipped; now any 3D
+  frame that is not the screen's gives the screen back first.
+- **The phone build: rb55, sha256 9e654f3840ed06866d2b9ed51ac8a58cdb6bc4eba6cc665c2b798ea5069edb93**
+  (827,180 bytes; C54 + A4_TAKE2 + A4_RBPROBE + A4_ABCYCLE15, A4_SCRATCH_SIZE 0x63000, from 1cfe68a + the
+  garage give-back). Battery on this exact image: rb55c (race 60 s, no model): v0 276 3D presents, v1 230
+  through EGL, v2 184, no swap failed, taken 3/2, stops 2 = restarts 2, faults 1 (the known ngilightserver
+  one); rb55mn (race 30 s, then pause menu, quit to the main menu, garage): every 3D frame of the race's v1
+  and v2 stretches through EGL (92 + 92), the pause and the menus back to the runtime (given 1 + 1, restart
+  1), the garage's 3D frames to the runtime, the probe not owning at the end; screenshots right (direct-
+  screen ones rotated 180 as this bench always shows them). The model run rb55m (W-4, 90 s) was on the
+  image before the garage give-back: EGL frames 368 (v1) and 276 (v2), upload 4.6 ms, draw + swap 8.6-9.2
+  ms, make-currents 0.15 ms a frame against the runtime's present 7.7 ms -- the model's charges, not the
+  phone's; the probe measures the phone's.
+- Rule 2 -- not a repeat of: phone round 1 (a4_backup565 / bf605bc4: a backed-up window of our own over
+  the runtime's, the runtime's DSA live and its framework post not skipped -- the content never won, the
+  ~1.2 s fight) nor its untested opaque-565 rebuild; nor rounds 2-54 (every one presented through the
+  runtime's DSA). No round put an EGL surface on the runtime's own window, stopped all of the runtime's
+  writes, or stopped its DSA.
+- Rule 4 (a) guesses: (1) that the N95's EGL accepts the runtime's RWindow (in the app's session) for a
+  window surface -- the probe's question; refused cleanly if not (state 13), runtime presents on. (2) that
+  WSEGL's post shows with the runtime's DSA live (v1) or stopped (v2) -- the question. (3) that the runtime's
+  stop/restart behave as when the window server calls them -- they are its own code, entered as its own
+  observer thunks do (this in r0), hashed; the bench ran both 2-3 times a race. (4) the swap's real cost --
+  measured, not assumed. (5) ordinals 6/22 (eglCreateWindowSurface/eglSwapBuffers): round 1 used them on
+  the phone. None can be settled on the bench: its EGL composites through the window server, not WSEGL.
+  (b) Read back after writing: the whole a4_gl.c probe block, its three call sites (bring-up note, frame
+  hook, a4_fw_hold), the a4_tel.c stepping, slot and record write, r51sum.py's reader against the struct
+  layout; the X10 RunL (+55EC: a deferred Update only, at most one stale flush after taking the screen).
+  (c) States the bench did not enter: WSEGL's own DSA (the bench's EGL has none) and a window-server
+  abort/restart of the runtime's DSA caused by it -- counted (owned frames with its DSA off, flag changes);
+  a failed swap (give back, the runtime presents that frame); an incoming call or the screen saver while we
+  own the screen; a refusal at any check step (each leaves the runtime presenting, with the step recorded).
+- What the owner does: one race (any track, a few laps), then quit to the menu; telemetry C:\a4tel0..7.dat
+  back. What to look at: the top-left corner bar -- white = the runtime presenting (as before), red = our
+  EGL present, blue = EGL with the runtime's DSA stopped. Each colour lasts ~6-8 s in turn. In the red and
+  the blue stretches: is the game moving normally, or frozen / black / flickering / torn? Any difference
+  in smoothness between the colours?
