@@ -5671,7 +5671,12 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE14)
+#if defined(A4_TEL) && defined(A4_ABCYCLE15)
+        /* round 55: a4_tel.c steps route B's probe variant (AB_RBVAR, bits 18-19) per window; the rest is the
+         * build's own A4_ABMODE (the first rb55a set PF_MODE to A4_ABMODE here, every frame: variant 0 only) */
+        A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~(3u * AB_RBVAR);
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE14)
         /* round 54: a4_tel.c alternates AB_GPUSKY per window; the rest is the build's own A4_ABMODE (the
          * frame's sky was decided at its first store, by the mode then: a window's first frame may be the
          * last one's) */
@@ -7720,7 +7725,7 @@ static void slow_rec(uint32_t had)
  * frame uploaded into a texture of a context of our own and drawn into the window surface, a red bar over it,
  * swapped; 2 as 1 with the runtime's DSA stopped while we own the screen, by its own +597C (X10 vtable [7]),
  * and restarted when we give it back, by its own +567C (vtable [6]), a blue bar. The screen is given back
- * after 30 presents with no 3D (a menu), at a variant change and when a swap fails. Every runtime object is
+ * after RB_IDLE_MS with no 3D (a menu), at a variant change and when a swap fails. Every runtime object is
  * checked before it is used (bb as cvt_install checks it; X10's vtable at the runtime's +23C3C, the observer
  * vtable 0x28 after it, both entries where they should be and their code hashed), and a failed check
  * refuses the probe for the session (state = the step). Telemetry: RBP below, per variant, written into
@@ -7740,6 +7745,7 @@ static void slow_rec(uint32_t had)
 #define GL_CLAMP_TO_EDGE 0x812F
 #endif
 #define RB_VAR(m) (((m) >> 18) & 3u)
+#define RB_IDLE_MS 400u            /* no 3D frame for this long while we own the screen: a menu, given back */
 #define RB_VT_OFF 0x23C3Cu         /* X10's vtable in ngibackbuffer's text */
 #define RB_STOP_OFF 0x597Cu        /* [7]: DSB Close if created, DSA Cancel if started */
 #define RB_RESTART_OFF 0x567Cu     /* [6]: Restart -- DSA StartL (trapped), its region and the window's size */
@@ -7757,7 +7763,7 @@ struct rbp {
     uint32_t wctx, wsurf, wtex, x10;   /* our context, window surface, texture; the runtime's X10 */
     uint32_t base, owns, idle, stopped;/* ngibackbuffer's text; we own the screen; presents with no 3D in a row; we stopped its DSA */
     uint32_t lastcc, stops, restarts, mcerr;  /* [X10+0xCC] last seen; stop and restart calls; make-currents failed */
-    uint32_t win, ncfg, wsz, pad[9];   /* telemetry windows seen; configs matched; the window's size as EGL got it (unused) */
+    uint32_t win, ncfg, last3d, pad[9];/* telemetry windows seen (unused); configs matched; when the last 3D frame came */
     struct rbv v[3];
 };
 #define RBP ((volatile struct rbp *)0x00412A00u)
@@ -7929,13 +7935,16 @@ static int rb_frame(uint32_t had, int presented)
                 if (r->state == 0u && !rb_up()) goto runtime;
                 rb_take(r, v);
             }
-            r->idle = 0;
+            r->idle = 0; r->last3d = a4_ntick();
             if (rb_present(r, v)) return 1;
             rb_give(r);                            /* a failed swap: the runtime's again */
             goto runtime;
         }
         if (r->owns) {
-            if (++r->idle <= 30u) { v->skip++; return 1; }
+            /* by time, not by count: the game presents ~30 times between two renders when nothing paces it
+             * (the first rb55a gave the screen back between almost every two frames) */
+            r->idle++;
+            if (a4_ntick() - r->last3d <= RB_IDLE_MS) { v->skip++; return 1; }
             rb_give(r);                            /* a menu */
         }
     }

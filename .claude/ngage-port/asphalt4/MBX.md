@@ -8777,3 +8777,19 @@ any device.
   taken / given, owned frames with the runtime's DSA flag off, changes of that flag.
 - What the owner's eye answers (the bench cannot): in red and blue stretches, is the game on the panel and
   moving, or frozen / black / flickering? White stretches are the runtime as before.
+- Bench, function (no model; rbrun.sh = telerun4 with a window screenshot every SNAP s): the second rb55a
+  never left variant 0 in the race -- the frame start set PF_MODE = A4_ABMODE every frame (the chain of
+  A4_ABCYCLEn branches had no 15); fixed (the variant bits kept). Then rb55a: v1 230 frames through EGL,
+  v2 184, no swap failed, every check passed (an opaque 565 window config, X10 0x00D0D708, ngibackbuffer
+  text 0x71000000), the DSA stopped and restarted by the runtime's own code. But the screen was taken and
+  given back 229 times in v1: with its presents skipped, nothing paces the game's loop, which presents ~30
+  times between two renders, and 30 empty presents was the menu test. Now by time (RB_IDLE_MS 400 with no
+  3D). rb55b: taken 3 / given 2 in v1, 2 / 2 in v2; empty presents held 87,090 (v1) where the runtime
+  re-presented 8,248 (v0): the loop spins faster when a present costs nothing, at the same 23 renders a
+  window.
+- The window snapshots: the EGL frames (a red or blue bar) whole, HUD included, upright. The runtime's
+  frames are upside down in the bench's window -- as in every window screenshot of this ROM since October
+  (blit_ck2_45.png): EKA2L1 draws a direct-screen post rotated 180 for this screen mode, the window server's
+  composite not. Not the phone's (the owner plays upright), so the bench's two paths disagree with each
+  other where the phone's agree; the probe's GL is the standard top-left ortho over a texture whose first
+  row is the frame's top.
