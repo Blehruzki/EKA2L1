@@ -8591,3 +8591,19 @@ Owner: "continue".
   the hook ([69] 0) -- so either they run on a path that does not pass draw_primitive's hook, or the
   changes are not at rows 30-31. g54t2 records the changes' shape (32-pixel segments: the first event's
   box, the union) to tell; then the in-run model A/B ab54: running.
+- g54t2 (the changes' shape): the first event x 32-319, rows 19-136, 166 of its 32-pixel segments; over
+  the run rows 0-174 across the whole width (19 intervals with changes in 16 traced frames, 13 between
+  the last triangle -- a shadow, the GPU's alone -- and the flush, 6 after a billboard). Something the
+  game draws over most of the screen between its last triangle and the HUD, through none of our hooks,
+  and the row-30 watch did not name a new writer for it. Not run down.
+- ab54 (the in-run A/B, W-4 model with audio, 150 s, 64 windows a slot): sky in software 49.4 ms a render
+  (3D 22.2, comp 7.2), the GPU's backdrop 49.8 (3D 22.8, comp 7.2) -- no gain. Why the estimate was
+  wrong: the composite now writes every backdrop row the memmove wrote (the same stores, moved), and
+  without the bottom fill (82% of race frames) the blended copies that reach below the band stay. With
+  the unexplained writer on top, the GPU backdrop is shelved: A4_GPUSKY, A4_SKYCHECK, A4_SKYTRACE,
+  A4_ABCYCLE14 stay in the tree, in no candidate. What the work established: the game's sky can be
+  drawn on the GPU pixel-exact (0 of 1,583 frames differing), and the software sky costs about what
+  the composite would spend on the same pixels.
+- Next (our code, by instructions in pt54i): lean_tail ~420 instructions a triangle (~1,200 a frame),
+  the insert's pattern (volatile GL state, the texture lookup and the list-cover test per triangle) --
+  the same treatment as TAKE2, with a per-triangle check against the old path.
