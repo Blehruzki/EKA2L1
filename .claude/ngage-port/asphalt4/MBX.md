@@ -8457,3 +8457,25 @@ Owner: "continue".
 - r54b = C53 - A4_MESHMEMO - A4_ABCYCLE13 (C54.flags: the lifted mesh routine always, A4_NODIRECT_349F8,
   A4_FASTXF; the 1/w skip always), A4_SCRATCH_SIZE 0x5F000: f9254eec..., 825,196 bytes. Whole-frame dual
   profile on the W-4 model with audio (dprof54.sh, 1.5e9 instructions after 6e9): running.
+- Profile of r54b (dprof54: the whole frame, 1.5e9 instructions after 6e9, the W-4 model with audio; the
+  model's render 48.5 ms): cycles % / instructions % / CPI -- engi_349F8 (the lifted mesh routine) 10.5 /
+  6.4 / 4.0; a4_cvt565_run 9.4 / 6.0 / 3.8; a4_mesh_insert 7.3 / 10.5 / 1.7; a4_comp_row 6.6 / 8.5 / 1.9;
+  lean_tail 5.2 / 7.2; the painter 4.7 / 6.8; +3015E 4.4; mesh_draw 3.9; batch_draw 3.5 (CPI 3.8);
+  +33EA8 3.4; mesh_fallback 3.4 / 3.8; +CE8C 2.8; memmove 2.7 (CPI 18); +3118E 2.4; mesh_scr 2.3 / 3.1.
+  Our code ~28% of the frame; the list insert with its two helpers ~13% (~6 ms on the model).
+- The insert's cost: ~584 k calls in the window (its entry block, 9 instructions, credited 5.26 M), ~285
+  instructions a call in a4_mesh_insert, ~80 in mesh_scr, ~97 in mesh_fallback -- ~460 a face, ~2,400
+  faces a frame. Its hot blocks: the determinant (+33C, values reloaded from the stack), the record's
+  stores (+39C: spilled values), the box and depth range (+60C). Two causes read in the code: the
+  perspective class's corners projected twice (mesh_fallback's three mesh_sy, the box's three mesh_scr;
+  a corner's screen y does not depend on its x) and every field of the list's state through a volatile
+  pointer (struct mesh, struct glr: each to memory and back).
+- A4_TAKE2 (a4_gl.c): the insert again -- each corner projected once, the fallback on the box's screen
+  y's, the centre and focal read once a face, the list and GL state through plain pointers; the same
+  side effects in the same order (the fallback's count before the coordinate checks, the back-face
+  count before the record). The old one is mesh_take_ref. A4_TAKECHECK (a4_mesh_insert ->
+  mesh_take_check): every face through both, the list's state put back between, the return, the
+  counters and the slot's every word compared (census [100] faces, [101] return/counters differing, [102]
+  slots differing, [103] slots compared); its mutant flips a record bit every 256th face. Builds: t54
+  (C54 + A4_TAKE2, 824,628 bytes), t54c, t54m. Runs (t54all.sh): the check over a race and the menus,
+  the mutant, an instruction profile of t54: running.

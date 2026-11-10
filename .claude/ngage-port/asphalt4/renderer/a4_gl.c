@@ -4319,6 +4319,10 @@ static int mesh_fallback_m(const uint32_t *gctx, const struct mpt *e0, const str
     return (int32_t)(d1 * d1 + d2 * d2) < 100;
 }
 #endif
+#ifdef A4_TAKE2
+#define mesh_take mesh_take_ref    /* round 54: the insert as it was -- A4_TAKECHECK's reference */
+static int mesh_take(uint32_t *cam, const uint32_t *face) __attribute__((unused));
+#endif
 static int mesh_take(uint32_t *cam, const uint32_t *face)
 {
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
@@ -4516,6 +4520,10 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
     m->n = n + 1;
     return 1;
 }
+#ifdef A4_TAKE2
+#undef mesh_take
+static int mesh_take(uint32_t *cam, const uint32_t *face);
+#endif
 
 /* The screen point +51E44 would give a vertex (map 2): its integer arithmetic, 32-bit wrap
  * included; the near ranges pre-shift by 4-7 bits as +51F08 does. RT2 = gctx+0x2008C. */
@@ -4559,6 +4567,149 @@ static int mesh_fallback(const uint32_t *gctx, int32_t F, const int32_t *v0, con
     return (int32_t)(d1 * d1 + d2 * d2) < 100;
 }
 
+#ifdef A4_TAKE2
+#if defined(A4_MESHCHECK) || defined(A4_MESHSTATE) || defined(A4_MESHMEMO) || defined(A4_VPACKCHECK) || defined(A4_MESH_M1) || defined(MESH_EXCL)
+#error "A4_TAKE2 is the phone's insert: the bench variants (MESHCHECK, MESHSTATE, MESHMEMO, VPACKCHECK, MESH_M1, MESH_EXCL) keep the old one"
+#endif
+/* Round 54: the insert again, its work and its results as before (A4_TAKECHECK runs the old one beside it on
+ * every face and compares all it writes). The whole-frame profile (dprof54, the W-4 model) put the old one, with
+ * its projection and fallback helpers, at ~13% of the frame -- ~460 instructions a face, ~2,400 faces a frame.
+ * What changes: each corner projected once (mesh_scr) -- the perspective class's fallback test (mesh_fallback)
+ * projected the three corners for their screen y and the box projected them again; a corner's y does not depend
+ * on its x, so the fallback takes the box's -- the screen centre and focal read once a face, and the list and the
+ * GL state through plain pointers (the old one went through volatile ones: every field to memory and back; one
+ * thread writes them). The side effects in the same order: the fallback's count before the coordinate checks. */
+static int mesh_take(uint32_t *cam, const uint32_t *face)
+{
+    const struct glr *s = (const struct glr *)A4_GL_SCRATCH;
+    struct mesh *m = (struct mesh *)A4_GL_MESH;
+    if ((A4_PERF[PF_MODE] & (AB_MESH | AB_LEAN | AB_DEFER)) != (AB_MESH | AB_LEAN)
+        || s->up != A4_GL_MAGIC || !s->zbits || !s->abits) return 0;
+    const uint32_t frames = s->frames;
+    if (m->frame != frames) {                       /* the frame's first insert */
+        m->frame = frames; m->n = 0; m->drawn = 0;
+        m->cam = (uint32_t)(uintptr_t)cam; m->F = cam[1];
+        m->qlo = 0xFFFFu; m->qhi = 0;
+    }
+    const uint32_t n = m->n;
+    if (m->drawn || m->cam != (uint32_t)(uintptr_t)cam || n >= MESH_MAXT) return 0;
+    if (face[0] != (uint32_t)(uintptr_t)&a4_tfvt + (uint32_t)a4_tfvt) return 0;
+    const uint32_t fl = face[1];
+    if (fl != 0x4001u && fl != 0x4000u) return 0;
+    const uint32_t *ts = (const uint32_t *)face[12];
+    if (!ts || !ts[TS_PIX] || ts[1] + 1u > 1024u || ts[2] + 1u > 1024u) return 0;
+    const int32_t *v0 = (const int32_t *)face[3], *v1 = (const int32_t *)face[6], *v2 = (const int32_t *)face[9];
+    const int32_t z0 = v0[5], z1 = v1[5], z2 = v2[5];
+    if (z0 > -ZK || z1 > -ZK || z2 > -ZK || !MESH_FITS(z0) || !MESH_FITS(z1) || !MESH_FITS(z2)) return 0;
+    if (-z0 < MESH_NEAR && -z1 < MESH_NEAR && -z2 < MESH_NEAR
+        && m->nearf && frames - (m->nearf - 1u) < MESH_NEARF) return 0;
+    const uint32_t *gctx = (const uint32_t *)m->gctx;
+    if (!gctx) return 0;
+    const int32_t F = (int32_t)m->F, cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
+    const int32_t x0 = v0[3], y0 = v0[4], x1 = v1[3], y1 = v1[4], x2 = v2[3], y2 = v2[4];
+    int32_t sx0, sy0, sx1, sy1, sx2, sy2;
+    mesh_scr(gctx, F, cx, cy, x0, y0, z0, &sx0, &sy0);
+    mesh_scr(gctx, F, cx, cy, x1, y1, z1, &sx1, &sy1);
+    mesh_scr(gctx, F, cx, cy, x2, y2, z2, &sx2, &sy2);
+    uint32_t texz = 0;
+    if (fl == 0x4001u) {                            /* mesh_fallback, on the screen y's above */
+        int32_t wt, wa, wb;                         /* 0x2ff60's first output, branch for branch */
+        if (sy0 <= sy1) { if (sy1 <= sy2 || sy0 <= sy2) { wt = -z0; wa = -z1; wb = -z2; } else { wt = -z2; wa = -z0; wb = -z1; } }
+        else { if (sy2 >= sy0 || sy2 > sy1) { wt = -z1; wa = -z0; wb = -z2; } else { wt = -z2; wa = -z0; wb = -z1; } }
+        int fb = 0;
+        if (wt > 500) {
+            const int32_t q = persp_rt(gctx, wt);
+            const uint32_t d1 = (uint32_t)(persp_rt(gctx, wa) - q), d2 = (uint32_t)(persp_rt(gctx, wb) - q);
+            fb = (int32_t)(d1 * d1 + d2 * d2) < 100;
+        }
+        if (fb) m->fellback++;
+        else texz = 2u;
+    }
+    if (!(MESH_FITS(x0) && MESH_FITS(y0) && MESH_FITS(x1) && MESH_FITS(y1) && MESH_FITS(x2) && MESH_FITS(y2))) return 0;
+    const uint32_t a0 = face[4], b0 = face[5], a1 = face[7], b1 = face[8], a2 = face[10], b2 = face[11];
+    if (!(MESH_FITS(a0) && MESH_FITS(b0) && MESH_FITS(a1) && MESH_FITS(b1) && MESH_FITS(a2) && MESH_FITS(b2))) return 0;
+    {   /* the game's 2D back-face test, as the old insert's (exact: int16 coordinates) */
+        const int32_t ma = (int32_t)((uint32_t)y1 * (uint32_t)z2 - (uint32_t)z1 * (uint32_t)y2);
+        const int32_t mb = (int32_t)((uint32_t)z1 * (uint32_t)x2 - (uint32_t)x1 * (uint32_t)z2);
+        const int32_t mc = (int32_t)((uint32_t)x1 * (uint32_t)y2 - (uint32_t)y1 * (uint32_t)x2);
+        const int64_t d = (int64_t)x0 * ma + (int64_t)y0 * mb + (int64_t)z0 * mc;
+        if (d >= 0) { m->culled++; return 1; }
+    }
+    {   typedef uint32_t __attribute__((may_alias)) u32a;
+        u32a *w = (u32a *)(MESH_V + n * 18u);
+#define VP2(lo, hi) ((uint32_t)(uint16_t)(lo) | ((uint32_t)(uint16_t)(hi) << 16))
+        w[0] = VP2(x0, y0); w[1] = VP2(z0, a0); w[2] = (uint16_t)b0;
+        w[3] = VP2(x1, y1); w[4] = VP2(z1, a1); w[5] = (uint16_t)b1;
+        w[6] = VP2(x2, y2); w[7] = VP2(z2, a2); w[8] = (uint16_t)b2;
+#undef VP2
+    }
+    MESH_T[n] = (uint32_t)(uintptr_t)ts | texz;     /* m1 0: the two classes taken */
+    {   int32_t xlo, xhi, ylo, yhi;
+        ext3(sx0, sx1, sx2, &xlo, &xhi); ext3(sy0, sy1, sy2, &ylo, &yhi);
+        tbox_calc(MESH_B + n * 4u, xlo, ylo, xhi, yhi);
+        int32_t zw = -z0, zl = -z0;
+        if (-z1 > zw) zw = -z1;
+        if (-z2 > zw) zw = -z2;
+        if (-z1 < zl) zl = -z1;
+        if (-z2 < zl) zl = -z2;
+        const uint32_t q = (uint32_t)((zw >> 3) > 4095 ? 4095 : (zw >> 3));
+        MESH_Q[n] = (uint16_t)q;
+        if (q < m->qlo) m->qlo = (uint16_t)q;
+        if (q > m->qhi) m->qhi = (uint16_t)q;
+        MESH_Z[2u * n] = (uint16_t)zl; MESH_Z[2u * n + 1u] = (uint16_t)zw;
+    }
+    m->n = n + 1;
+    return 1;
+}
+#endif
+
+#ifdef A4_TAKECHECK
+#if !defined(A4_TAKE2) || defined(A4_LIFTCHECK) || defined(A4_CECHECK) || defined(A4_BBCHECK) || defined(A4_MEMOCHECK)
+#error "A4_TAKECHECK compares A4_TAKE2's insert with the old one, in census words 100-103 (which that check uses)"
+#endif
+/* Bench (round 54): every face through the new insert, then -- the list's state put back -- through the old one
+ * (mesh_take_ref), and all either wrote compared: the return, the list's counters (n, culled, fellback, the
+ * bucket range) and the face's slot (record, texture word, box, bucket, depth range). Census [100] faces,
+ * [101] whose return or counters differed, [102] whose slot differed, [103] slots compared. The old one's
+ * results stand. A4_TAKECHECK_MUTANT flips a bit of the new record every 256th face. */
+static int mesh_take_check(uint32_t *cam, const uint32_t *face)
+{
+    struct mesh *m = (struct mesh *)A4_GL_MESH;
+    volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
+    const uint32_t fr0 = m->frame, n0 = m->n, cu0 = m->culled, fb0 = m->fellback;
+    const uint16_t ql0 = m->qlo, qh0 = m->qhi;
+    const int rn = mesh_take(cam, face);
+    const int init = m->frame != fr0;               /* the new one began the frame's list */
+    const uint32_t base = init ? 0u : n0, nn = m->n, cun = m->culled, fbn = m->fellback;
+    const uint16_t qln = m->qlo, qhn = m->qhi;
+    const int slot = rn && nn == base + 1u;
+    uint32_t sv[9], st = 0, sb[2] = { 0, 0 }, sq = 0, sz = 0;
+    if (slot) {
+        const uint32_t *w = (const uint32_t *)(const void *)(MESH_V + base * 18u);
+#ifdef A4_TAKECHECK_MUTANT
+        if ((ck[100] & 255u) == 128u) ((uint32_t *)(void *)(MESH_V + base * 18u))[4] ^= 0x10000u;
+#endif
+        for (int k = 0; k < 9; k++) sv[k] = w[k];
+        st = MESH_T[base]; sb[0] = ((const uint32_t *)(const void *)MESH_B)[2u * base]; sb[1] = ((const uint32_t *)(const void *)MESH_B)[2u * base + 1u];
+        sq = MESH_Q[base]; sz = ((const uint32_t *)(const void *)MESH_Z)[base];
+    }
+    m->n = base; m->culled = cu0; m->fellback = fb0;
+    m->qlo = init ? 0xFFFFu : ql0; m->qhi = init ? 0u : qh0;
+    const int rr = mesh_take_ref(cam, face);
+    ck[100]++;
+    if (rr != rn || m->n != nn || m->culled != cun || m->fellback != fbn || m->qlo != qln || m->qhi != qhn) ck[101]++;
+    else if (slot) {
+        const uint32_t *w = (const uint32_t *)(const void *)(MESH_V + base * 18u);
+        int d = MESH_T[base] != st || ((const uint32_t *)(const void *)MESH_B)[2u * base] != sb[0]
+                || ((const uint32_t *)(const void *)MESH_B)[2u * base + 1u] != sb[1] || MESH_Q[base] != sq
+                || ((const uint32_t *)(const void *)MESH_Z)[base] != sz;
+        for (int k = 0; k < 9; k++) d |= w[k] != sv[k];
+        if (d) ck[102]++;
+        ck[103]++;
+    }
+    return rr;
+}
+#endif
 /* +34ADC's BLX (r0 = cam, r1 = face, as the bl to +349B0 had them); returns to +34AE0. */
 void a4_mesh_insert(uint32_t *cam, uint32_t *face)
 {
@@ -4577,6 +4728,8 @@ void a4_mesh_insert(uint32_t *cam, uint32_t *face)
 #endif
 #ifdef A4_MESHCHECK
     mesh_take(cam, face);                           /* listed, and to the table as well (software draws it) */
+#elif defined(A4_TAKECHECK)
+    if (mesh_take_check(cam, face)) return;
 #else
     if (mesh_take(cam, face)) return;
 #endif
