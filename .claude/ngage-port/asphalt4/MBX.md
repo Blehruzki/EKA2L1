@@ -8584,3 +8584,10 @@ Owner: "continue".
   the old design it showed only where the backdrop showed (the composite overwrote it everywhere
   else); with the GPU's backdrop it would show nowhere. A write watch on screen rows 30-31 (g54w)
   names it: running.
+- g54w (a write watch on screen rows 30-31, each writer once): in the race, the sky's top fill (+360A2,
+  the software-sky frames), a4_span_transparent, the perspective span +333F4 (two PCs), the alpha span
+  +33EA8, text (+2C524, the HUD), and the composite. No new unhooked writer by name; the perspective and
+  transparent spans run only for triangles left to software, of which the GPU-sky frames have none at
+  the hook ([69] 0) -- so either they run on a path that does not pass draw_primitive's hook, or the
+  changes are not at rows 30-31. g54t2 records the changes' shape (32-pixel segments: the first event's
+  box, the union) to tell; then the in-run model A/B ab54: running.

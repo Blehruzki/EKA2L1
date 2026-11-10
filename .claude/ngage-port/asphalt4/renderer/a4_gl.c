@@ -5396,6 +5396,11 @@ static void sky_check_begin(volatile struct skys *k)
     for (int i = 0; i < 8; i++) SKYRH[VP_H + 1 + i] = 0;
     SKYRH[VP_H] = 1;
 #ifdef A4_SKYTRACE
+    for (int i = 0; i < VP_H * 10; i++) {
+        uint32_t hs = 0x811C9DC5u;
+        for (int x = 0; x < 32; x++) hs = (hs ^ fb[(i / 10) * VP_W + (i % 10) * 32 + x]) * 16777619u;
+        ((volatile uint32_t *)0x00461000u)[i] = hs;
+    }
     ((volatile uint32_t *)0x00460400u)[0] = (ck[50] & 15u) == 0u;
     ((volatile uint32_t *)0x00460400u)[2] = 0;
 #endif
@@ -5442,6 +5447,31 @@ static void sky_trace(uint32_t kind, uint32_t info)
         if (h != SKYRH[y]) { if (first == 0xFFFFu) first = y; n++; SKYRH[y] = h; }
     }
     if (n) {
+        /* the change's shape: 32-pixel segments of the changed rows. [36] the first event's box (x0 | x1 << 8
+         * in segments, y0 << 16 | y1 << 24), [37] its segments changed, [38] [39] every event's box, union */
+        volatile uint32_t *sg = (volatile uint32_t *)0x00461000u;
+        uint32_t bx0 = 99, bx1 = 0, by0 = 999, by1 = 0, nseg = 0;
+        for (uint32_t y = 0; y < yb; y++) {
+            if (SKYRH[VP_H + 1 + (y >> 5)] & (1u << (y & 31))) continue;
+            for (uint32_t g = 0; g < 10u; g++) {
+                uint32_t hs = 0x811C9DC5u;
+                for (int x = 0; x < 32; x++) hs = (hs ^ fb[y * VP_W + g * 32u + (uint32_t)x]) * 16777619u;
+                if (hs != sg[y * 10u + g]) {
+                    sg[y * 10u + g] = hs; nseg++;
+                    if (g < bx0) bx0 = g; if (g > bx1) bx1 = g; if (y < by0) by0 = y; if (y > by1) by1 = y;
+                }
+            }
+        }
+        if (!ck[40]) { ck[36] = bx0 | (bx1 << 8) | (by0 << 16) | (by1 << 24); ck[37] = nseg; ck[38] = ck[36]; ck[39] = 0; }
+        else {
+            uint32_t u = ck[38];
+            if (bx0 < (u & 0xFFu)) u = (u & ~0xFFu) | bx0;
+            if (bx1 > ((u >> 8) & 0xFFu)) u = (u & ~0xFF00u) | (bx1 << 8);
+            if (by0 < ((u >> 16) & 0xFFu)) u = (u & ~0xFF0000u) | (by0 << 16);
+            if (by1 > (u >> 24)) u = (u & 0x00FFFFFFu) | (by1 << 24);
+            ck[38] = u;
+        }
+        ck[39] += nseg;
         if (!ck[40]) { ck[41] = t[2]; ck[42] = (kind << 24) | (info & 0xFFFFFFu); ck[43] = first | (n << 16); }
         ck[40]++; ck[44] += n;
         uint32_t pk = t[2] >> 24;                   /* [45] after the hook's entry, [46] its exit, [47] a billboard, [48] a fill, [49] the flush */

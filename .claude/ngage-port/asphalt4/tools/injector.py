@@ -123,6 +123,8 @@ assert '-DA4_SKYCEN' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x463000, \
     'A4_SKYCEN: A4_SCRATCH_SIZE must reach 0x463000 (0x62000 or more)'
 assert '-DA4_SKYCHECK' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x461000, \
     'A4_SKYCHECK: its row hashes at 0x460000 -- A4_SCRATCH_SIZE must reach 0x461000 (0x60000 or more)'
+assert '-DA4_SKYTRACE' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x463600, \
+    'A4_SKYTRACE: its segment hashes at 0x461000-0x463580 -- A4_SCRATCH_SIZE must reach 0x463600 (0x63000)'
                                 # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as
                                 # small as the batch allows -- a large image .bss corrupts
                                 # the game's load-time layout
