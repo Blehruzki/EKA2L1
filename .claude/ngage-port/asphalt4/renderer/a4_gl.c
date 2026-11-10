@@ -340,9 +340,9 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
 #define AB_FRONT 32768u  /* round 53: the lifted mesh routine (+349F8, the hand transform inside) */
 #define AB_MEMO 65536u   /* round 53: with it, the corner memo (A4_MESHMEMO); alone (slot 2) the game's front end again */
 #define AB_GPUSKY 131072u /* round 54: the backdrop drawn on the GPU (A4_GPUSKY; stepped per window by A4_ABCYCLE14) */
-#define AB_RBVAR 262144u  /* round 55: bits 18-19, route B's probe variant (A4_RBPROBE; stepped by A4_ABCYCLE15): 0 the
+#define AB_RBVAR 262144u  /* rounds 55-56: bits 18-19, route B's probe variant (A4_RBPROBE; stepped by A4_ABCYCLE15): 0 the
                            * runtime presents, 1 the frame through an EGL window surface on the runtime's window, 2 as 1
-                           * with the runtime's DSA stopped */
+                           * at swap interval 0, 3 the runtime with its posts of an unchanged frame skipped */
 #if defined(A4_ABCYCLE15) && (!defined(A4_RBPROBE) || defined(A4_ABCYCLE14) || defined(A4_ABCYCLE13) || defined(A4_ABCYCLE12) || defined(A4_ABCYCLE11))
 #error "A4_ABCYCLE15 steps route B's probe variant (A4_RBPROBE) over the build's A4_ABMODE (alone)"
 #endif
@@ -937,7 +937,7 @@ _Static_assert(A4_GL_STEP >= A4_GL_AGG + sizeof(struct agg) + 4u && A4_GL_STEP +
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
 #if defined(A4_ABCYCLE15)
-#define AGG_SLOT(m) (((m) >> 18) & 3u)                                       /* route B's probe variant 0..2 */
+#define AGG_SLOT(m) (((m) >> 18) & 3u)                                       /* route B's probe variant 0..3 */
 #elif defined(A4_ABCYCLE14)
 #define AGG_SLOT(m) (((m) >> 17) & 1u)                                       /* bit 0 AB_GPUSKY */
 #elif defined(A4_ABCYCLE13)
@@ -7716,20 +7716,28 @@ static void slow_rec(uint32_t had)
  * 32-bit convert into the hardware bitmap that would paint over the window. */
 
 #ifdef A4_RBPROBE
-/* Round 55, route B's probe (MBX.md, "the runtime never uses its DSB"). The runtime presents by DSA: its
- * convert writes the frame into the screen's own memory and its unlock Updates the DSA's region. The probe
- * asks the phone the one thing the bench cannot answer: does a frame swapped through an EGL window surface on
- * the runtime's own window (X10 + 0x28, in the app's session) reach the panel, and at what cost? Per variant
- * (AB_RBVAR, stepped every RB_WINS telemetry windows by A4_ABCYCLE15): 0 the runtime presents (a white bar
- * top left, drawn into the frame); 1 the game's presents and the framework's posts skipped, the finished 565
- * frame uploaded into a texture of a context of our own and drawn into the window surface, a red bar over it,
- * swapped; 2 as 1 with the runtime's DSA stopped while we own the screen, by its own +597C (X10 vtable [7]),
- * and restarted when we give it back, by its own +567C (vtable [6]), a blue bar. The screen is given back
- * after RB_IDLE_MS with no 3D (a menu), at a variant change and when a swap fails. Every runtime object is
- * checked before it is used (bb as cvt_install checks it; X10's vtable at the runtime's +23C3C, the observer
- * vtable 0x28 after it, both entries where they should be and their code hashed), and a failed check
- * refuses the probe for the session (state = the step). Telemetry: RBP below, per variant, written into
- * every capture (a4_tel.c). Bench builds and the probe round only: it is not a candidate. */
+/* Route B's probe, second form (round 56; MBX.md, phone round 55). The runtime presents by DSA: the framework's
+ * post (+606 -> +6B4, ngibackbuffer +3178) converts the 565 frame into the screen's own memory and Updates the
+ * DSA's region. DoPresent (+1CE, where a4_gl_frame runs) is NOT a present: it is the runtime's yield (runtime
+ * +16BC: RTimer::After(ms) and the active scheduler run until it fires) -- the only place the race loop lets
+ * the window server's events (the keys, the pause menu) through. Round 55's probe skipped it while it owned the
+ * screen and the keys queued until the runtime had it back. This one never changes whether DoPresent's call is
+ * made. Per variant (AB_RBVAR, stepped every RB_WINS telemetry windows by A4_ABCYCLE15):
+ *   0  the runtime presents, every post timed (white bar, top left, drawn into the frame);
+ *   1  each new 3D frame (3D and HUD, as the runtime would convert it) uploaded into a texture of a context of
+ *      our own and drawn into an EGL window surface on the runtime's own window (X10 + 0x28), swap interval 1,
+ *      a red bar over it, swapped; the framework's posts skipped while we own the screen;
+ *   2  as 1 at swap interval 0 (libGLES_CM 133 = libimgegl 32, clamped by the config's EGL_MIN/MAX_SWAP_
+ *      INTERVAL, which are recorded), a blue bar;
+ *   3  the runtime presents, but a post with no new frame since the last post made is skipped while a race is
+ *      running (3D within RB_IDLE_MS) -- the game posts every loop iteration, several times a render (yellow).
+ * The screen is given back after RB_IDLE_MS with no 3D (a menu), at a variant change, at a 3D frame drawn to
+ * another target (the garage) and when a swap fails. X10 is checked before its window is used (bb as
+ * cvt_install checks it; X10's vtable at ngibackbuffer +23C3C, the observer vtable 0x28 after it, two of its
+ * entries and their code hashed) and a failed check refuses the probe for the session (state = the step).
+ * A4_RBCHECK (bench): the frame's hash at each skipped post against the one on the screen (the last upload, or
+ * the last post made). Telemetry: RBP below ('RBP2'), per variant, in every capture (a4_tel.c). Probe builds
+ * only: not a candidate. */
 #if !defined(A4_TEL) || !defined(A4_DROPHOLD) || !defined(A4_ABCYCLE15) || defined(A4_WINDOW)
 #error "A4_RBPROBE needs A4_TEL (its record), A4_DROPHOLD (the framework's post) and A4_ABCYCLE15 (its variants), not A4_WINDOW"
 #endif
@@ -7744,38 +7752,49 @@ static void slow_rec(uint32_t had)
 #ifndef GL_CLAMP_TO_EDGE
 #define GL_CLAMP_TO_EDGE 0x812F
 #endif
+#define EGL_MIN_SWAP_INTERVAL 0x303B
+#define EGL_MAX_SWAP_INTERVAL 0x303C
+#define RB_MAGIC 0x32504252u       /* 'RBP2' */
 #define RB_VAR(m) (((m) >> 18) & 3u)
-#define RB_IDLE_MS 400u            /* no 3D frame for this long while we own the screen: a menu, given back */
+#define RB_IDLE_MS 400u            /* no 3D frame for this long: a menu (the screen given back; v3 posts everything) */
 #define RB_VT_OFF 0x23C3Cu         /* X10's vtable in ngibackbuffer's text */
-#define RB_STOP_OFF 0x597Cu        /* [7]: DSB Close if created, DSA Cancel if started */
-#define RB_RESTART_OFF 0x567Cu     /* [6]: Restart -- DSA StartL (trapped), its region and the window's size */
+#define RB_STOP_OFF 0x597Cu        /* [7] and [6]: checked as the runtime's (hashed), not called */
+#define RB_RESTART_OFF 0x567Cu
 #define RB_STOP_HASH 0x98EED16Du   /* 25 words from +597C */
 #define RB_RESTART_HASH 0xCF0BA489u /* 64 words from +567C */
 struct rbv {                       /* one variant's totals */
-    uint32_t egl, swfail, swt, swmax;  /* frames swapped through EGL, swaps failed, ticks in draw + swap, the longest */
-    uint32_t upt, mct, rt, skip;       /* ticks uploading, ticks in the two make-currents, frames the runtime presented, empty presents held */
-    uint32_t fwskip, take, give, cc0;  /* framework posts skipped, screen taken, given back, owned frames with the runtime's DSA not started */
-    uint32_t ccflip, n3d, upmax, pad;  /* changes of that flag seen, presents with 3D, the longest upload */
+    uint32_t egl, swfail, swt, swmax;      /* frames swapped through EGL, swaps failed, ticks in draw + swap, the longest */
+    uint32_t upt, upmax, mct, rt;          /* ticks uploading, the longest; ticks in the two make-currents; new frames the runtime posted */
+    uint32_t fwskip, take, give, n3d;      /* framework posts skipped; screen taken, given back; presents with 3D */
+    uint32_t posts, postt, postmax, siok;  /* framework posts made, their ticks, the longest; swap intervals set */
+    uint32_t sifail, chkeq, chkne, ccflip; /* swap intervals refused; skipped posts whose frame was / was not the one shown (A4_RBCHECK); [X10+0xCC] changes */
+    uint32_t cc0, idlegive, pad0, pad1;    /* owned frames with the runtime's DSA off; screen given back for no 3D */
 };
 struct rbp {
-    uint32_t magic, state, why, var;   /* 'RBP1'; 0 untried, 1 up, 2+ refused at that step; the step's detail; the variant applied */
-    uint32_t disp, pbuf, ctx, wcfg;    /* the frame's own EGL objects (bring-up); the window config */
-    uint32_t wctx, wsurf, wtex, x10;   /* our context, window surface, texture; the runtime's X10 */
-    uint32_t base, owns, idle, stopped;/* ngibackbuffer's text; we own the screen; presents with no 3D in a row; we stopped its DSA */
-    uint32_t lastcc, stops, restarts, mcerr;  /* [X10+0xCC] last seen; stop and restart calls; make-currents failed */
-    uint32_t win, ncfg, last3d, pad[9];/* telemetry windows seen (unused); configs matched; when the last 3D frame came */
-    struct rbv v[3];
+    uint32_t magic, state, why, var;       /* 'RBP2'; 0 untried, 1 up, 2+ refused at that step; the detail; the variant applied */
+    uint32_t disp, pbuf, ctx, wcfg;        /* the frame's own EGL objects (bring-up); our window config */
+    uint32_t wctx, wsurf, wtex, x10;       /* our context, window surface, texture; the runtime's X10 */
+    uint32_t base, owns, newframe, sicur;  /* ngibackbuffer's text; we own the screen; a new frame not yet posted; interval set (~0 none) */
+    uint32_t lastcc, minsi, maxsi, mcerr;  /* [X10+0xCC] last seen; the config's swap interval range; make-currents failed */
+    uint32_t attrerr, ncfg, last3d, postt0;/* config attributes refused; configs matched; when the last 3D frame came; a post's start */
+    uint32_t posthash, uphash, pad[6];     /* A4_RBCHECK: the frame at the last post made, at the last upload */
+    struct rbv v[4];
 };
 #define RBP ((volatile struct rbp *)0x00412A00u)
 _Static_assert(sizeof(struct rbp) <= 0x200u, "the probe's record past A4_PERF (0x412C00)");
 
 static int  rb_window_surface(int d, uint32_t c, void *win, const int *a){ return ((int(*)(int,uint32_t,void*,const int*))F(30))(d, c, win, a); }
 static int  rb_swap(int d, int sf){ return ((int(*)(int,int))F(31))(d, sf); }
+static int  rb_swap_interval(int d, int i){ return ((int(*)(int,int))F(44))(d, i); }               /* ord 133 */
+static int  rb_config_attrib(int d, uint32_t c, int a, int *v){ return ((int(*)(int,uint32_t,int,int*))F(45))(d, c, a, v); }   /* ord 9 */
 
 void a4_rb_note(int disp, int pbuf, int ctx)
 {
     volatile struct rbp *r = RBP;
-    if (r->magic != 0x31504252u) { for (uint32_t i = 0; i < sizeof(struct rbp) / 4u; i++) ((volatile uint32_t *)r)[i] = 0; r->magic = 0x31504252u; }
+    if (r->magic != RB_MAGIC) {
+        for (uint32_t i = 0; i < sizeof(struct rbp) / 4u; i++) ((volatile uint32_t *)r)[i] = 0;
+        r->magic = RB_MAGIC; r->sicur = ~0u; r->minsi = ~0u; r->maxsi = ~0u;
+    }
     r->disp = (uint32_t)disp; r->pbuf = (uint32_t)pbuf; r->ctx = (uint32_t)ctx;
 }
 
@@ -7813,8 +7832,8 @@ static int rb_x10(void)
     return 1;
 }
 
-/* Once: an opaque 565 window config (A4_WINDOW's: the N95 dithers a window with alpha), a context of our
- * own on it, the window surface on the runtime's RWindow, one 512x256 565 texture for the frame. */
+/* Once: an opaque 565 window config (the N95 dithers a window with alpha, round 1), its swap interval range,
+ * a context of our own on it, the window surface on the runtime's RWindow, one 512x256 565 texture. */
 static int rb_up(void)
 {
     volatile struct rbp *r = RBP;
@@ -7825,6 +7844,9 @@ static int rb_up(void)
     if (!d || !r->pbuf || !r->ctx) return rb_refuse(10, 0);
     if (!egl_choose_config(d, ca, &cfg, 1, &n) || n < 1) return rb_refuse(11, (uint32_t)n);
     r->wcfg = cfg; r->ncfg = (uint32_t)n;
+    {   int lo = -1, hi = -1;
+        if (rb_config_attrib(d, cfg, EGL_MIN_SWAP_INTERVAL, &lo)) r->minsi = (uint32_t)lo; else r->attrerr++;
+        if (rb_config_attrib(d, cfg, EGL_MAX_SWAP_INTERVAL, &hi)) r->maxsi = (uint32_t)hi; else r->attrerr++; }
     const int wctx = egl_context(d, cfg, 0, 0);
     if (!wctx) return rb_refuse(12, 0);
     const int ws = rb_window_surface(d, cfg, (void *)(uintptr_t)(r->x10 + 0x28u), 0);
@@ -7856,23 +7878,10 @@ static int rb_up(void)
     return 1;
 }
 
-static void rb_take(volatile struct rbp *r, volatile struct rbv *v)
-{
-    r->owns = 1; r->idle = 0; v->take++;
-    if (r->var == 2u && ((const uint32_t *)(uintptr_t)r->x10)[0xCC / 4]) {
-        ((void (*)(uint32_t))(uintptr_t)(r->base + RB_STOP_OFF))(r->x10);
-        r->stopped = 1; r->stops++;
-    }
-}
-
 static void rb_give(volatile struct rbp *r)
 {
     if (!r->owns) return;
     r->owns = 0; r->v[r->var].give++;
-    if (r->stopped) {
-        ((void (*)(uint32_t, int))(uintptr_t)(r->base + RB_RESTART_OFF))(r->x10, 0);
-        r->stopped = 0; r->restarts++;
-    }
 }
 
 /* The finished frame (3D and HUD, as the runtime would convert it) through the window surface. */
@@ -7886,9 +7895,14 @@ static int rb_present(volatile struct rbp *r, volatile struct rbv *v)
     const uint32_t t0 = a4_ntick();
     lz_flush();
     if (!egl_make_current(d, ws, ws, (int)r->wctx)) { r->mcerr++; return 0; }
+    {   const uint32_t want = r->var == 2u ? 0u : 1u;   /* the interval belongs to the surface: set while it is current */
+        if (r->sicur != want) { if (rb_swap_interval(d, (int)want)) v->siok++; else v->sifail++; r->sicur = want; } }
     const uint32_t t1 = a4_ntick();
     gl_texsubimage(GL_TEXTURE_2D, 0, 0, 0, VP_W, VP_H, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, (const void *)(uintptr_t)buf);
     const uint32_t t2 = a4_ntick();
+#ifdef A4_RBCHECK
+    r->uphash = rb_hash(buf, VP_W * VP_H / 2u);
+#endif
     gl_vertexptr(2, GL_SHORT, 0, q);
     gl_texcoordptr(2, GL_FIXED, 0, tc);
     gl_drawarrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -7898,10 +7912,12 @@ static int rb_present(volatile struct rbp *r, volatile struct rbv *v)
     gl_drawarrays(GL_TRIANGLE_STRIP, 0, 4);
     gl_color4x(FX, FX, FX, FX);
     gl_enable_now(GL_TEXTURE_2D);
+    const uint32_t t2b = a4_ntick();
     const int ok = rb_swap(d, ws);
     const uint32_t t3 = a4_ntick();
     egl_make_current(d, (int)r->pbuf, (int)r->pbuf, (int)r->ctx);
     const uint32_t t4 = a4_ntick();
+    (void)t2b;
     v->upt += t2 - t1; if (t2 - t1 > v->upmax) v->upmax = t2 - t1;
     v->swt += t3 - t2; if (t3 - t2 > v->swmax) v->swmax = t3 - t2;
     v->mct += (t1 - t0) + (t4 - t3);
@@ -7910,54 +7926,87 @@ static int rb_present(volatile struct rbp *r, volatile struct rbv *v)
     return 1;
 }
 
-/* a4_fw_hold: the framework's own post is skipped while the probe owns the screen */
-static int rb_owns(void) { return RBP->magic == 0x31504252u && RBP->owns; }
-
-/* At every present, after the existing decisions: presented as it should now be. */
+/* At every DoPresent, after the existing decisions. Never changes them: DoPresent's call (the yield) is made or
+ * not exactly as without the probe. */
 static int rb_frame(uint32_t had, int presented)
 {
     volatile struct rbp *r = RBP;
-    if (r->magic != 0x31504252u) return presented;
-    const uint32_t want = RB_VAR(A4_PERF[PF_MODE]) % 3u;
+    if (r->magic != RB_MAGIC) return presented;
+    const uint32_t want = RB_VAR(A4_PERF[PF_MODE]);
     if (want != r->var) { rb_give(r); r->var = want; }
     volatile struct rbv *v = &r->v[r->var];
-    if (had) v->n3d++;
+    const uint32_t now = a4_ntick();
+    if (had) { v->n3d++; r->last3d = now; }
     if (r->x10) {                                  /* the runtime's DSA as this present finds it */
         const uint32_t cc = ((const uint32_t *)(uintptr_t)r->x10)[0xCC / 4] != 0;
         if (cc != r->lastcc) { v->ccflip++; r->lastcc = cc; }
         if (r->owns && !cc) v->cc0++;
     }
-    if (presented) return presented;               /* held or skipped already: the screen keeps its frame */
-    if (r->var != 0u && r->state < 2u) {
+    if (presented) return presented;               /* held, or a re-present skipped: this frame does not go out */
+    if ((r->var == 1u || r->var == 2u) && r->state < 2u) {
         if (had) {
             if (!rb_x10()) { rb_give(r); goto runtime; }   /* 3D to another target (the garage), or refused */
             if (!r->owns) {
                 if (r->state == 0u && !rb_up()) goto runtime;
-                rb_take(r, v);
+                r->owns = 1; v->take++;
             }
-            r->idle = 0; r->last3d = a4_ntick();
-            if (rb_present(r, v)) return 1;
+            if (rb_present(r, v)) return presented;
             rb_give(r);                            /* a failed swap: the runtime's again */
             goto runtime;
         }
-        if (r->owns) {
-            /* by time, not by count: the game presents ~30 times between two renders when nothing paces it
-             * (the first rb55a gave the screen back between almost every two frames) */
-            r->idle++;
-            if (a4_ntick() - r->last3d <= RB_IDLE_MS) { v->skip++; return 1; }
-            rb_give(r);                            /* a menu */
-        }
+        if (r->owns && now - r->last3d > RB_IDLE_MS) { rb_give(r); v->idlegive++; }   /* a menu */
+        return presented;
     }
 runtime:
-    v->rt++;
-    if (had) {                                     /* the runtime presents: a white bar, top left */
+    if (had) {                                     /* the runtime will post a new frame: a white (yellow in v3) bar */
+        v->rt++; r->newframe = 1;
         const uint32_t buf = *(volatile uint32_t *)A4_GL_BB;
+        const uint16_t c = r->var == 3u ? 0xFFE0u : 0xFFFFu;
         if (buf) for (int y = 0; y < 6; y++) {
             volatile uint16_t *row = (volatile uint16_t *)(uintptr_t)buf + y * FB_STRIDE;
-            for (int x = 0; x < 48; x++) row[x] = 0xFFFFu;
+            for (int x = 0; x < 48; x++) row[x] = c;
         }
     }
+    return presented;
+}
+
+/* a4_fw_hold, for every framework post: 1 skips it. While we own the screen (v1, v2) every post is skipped (the
+ * EGL frame is what shows); in v3 one with no new frame since the last post made, while a race runs. */
+static int rb_post(void)
+{
+    volatile struct rbp *r = RBP;
+    if (r->magic != RB_MAGIC) return 0;
+    volatile struct rbv *v = &r->v[r->var];
+    int skip = 0;
+    if (r->owns) skip = 1;
+    else if (r->var == 3u) {
+        if (r->newframe) r->newframe = 0;
+        else if (a4_ntick() - r->last3d <= RB_IDLE_MS) skip = 2;
+    }
+#ifdef A4_RBCHECK
+    {   const uint32_t buf = *(volatile uint32_t *)A4_GL_BB;
+        if (buf && !(buf & 3u)) {
+            const uint32_t h = rb_hash(buf, VP_W * VP_H / 2u);
+            if (skip == 1) { if (h == r->uphash) v->chkeq++; else v->chkne++; }
+            else if (skip == 2) { if (h == r->posthash) v->chkeq++; else v->chkne++; }
+            else r->posthash = h;
+        } }
+#endif
+    if (skip) { v->fwskip++; return 1; }
+    r->postt0 = a4_ntick();
     return 0;
+}
+
+/* a4_fwpost_tramp, after a post it made: its time. Returns its argument (the post's result, unread). */
+uint32_t a4_fw_done(uint32_t ret)
+{
+    volatile struct rbp *r = RBP;
+    if (r->magic == RB_MAGIC) {
+        volatile struct rbv *v = &r->v[r->var];
+        const uint32_t dt = a4_ntick() - r->postt0;
+        v->posts++; v->postt += dt; if (dt > v->postmax) v->postmax = dt;
+    }
+    return ret;
 }
 #endif
 #ifdef A4_DROPHOLD
@@ -7991,12 +8040,18 @@ static int hold_live(void)
  * held frame reached the screen twice anyway. */
 int a4_fw_hold(void)
 {
+    if (hold_live()) {
+        A4_PERF[PF_FWHELD]++;
 #ifdef A4_RBPROBE
-    if (rb_owns()) { RBP->v[RBP->var].fwskip++; return 1; }
+        if (RBP->magic == RB_MAGIC) RBP->v[RBP->var].fwskip++;
 #endif
-    if (!hold_live()) return 0;
-    A4_PERF[PF_FWHELD]++;
-    return 1;
+        return 1;
+    }
+#ifdef A4_RBPROBE
+    return rb_post();
+#else
+    return 0;
+#endif
 }
 #endif
 #ifdef A4_FRAMEMARK

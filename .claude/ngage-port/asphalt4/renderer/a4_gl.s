@@ -59,6 +59,9 @@ a4_gl_iat:
         .word   40      @ [41] glColorMask    (round 11: blended classes leave dst alpha alone)
         .word   84      @ [42] glLoadMatrixx  (A4_MESH: the frame's projection, a key's texcoord scale)
         .word   49      @ [43] glDepthMask    (A4_MESH: the ordering table's classes test, not write)
+        .word   133     @ [44] eglSwapInterval    (round 56; on the RM-320 ROM a forwarder to libimgegl 32,
+                        @      the last of EGL 1.1's four -- 173-175 go to 29-31 -- taking two arguments)
+        .word   9       @ [45] eglGetConfigAttrib (ROM: libimgegl 9; 1-25 map one to one)
         .global a4_gl_iat_end
 a4_gl_iat_end:
 

@@ -482,6 +482,26 @@ namespace eka2l1::dispatch {
         return EGL_TRUE;
     }
     
+    // eglSwapInterval (EGL 1.1; libGLES_CM ordinal 133 on S60 3.x -- on the N95's ROM a forwarder to
+    // libimgegl's 32nd export, which clamps the interval to the config's EGL_MIN/MAX_SWAP_INTERVAL and
+    // hands it to the window-system layer). There is no refresh to wait for here: the call is accepted and
+    // changes nothing, as for an interval the hardware cannot honour. It needs a current context, as on a
+    // device (the interval belongs to the draw surface bound to it).
+    BRIDGE_FUNC_LIBRARY(egl_boolean, egl_swap_interval_emu, egl_display display, std::int32_t interval) {
+        dispatcher *dp = sys->get_dispatcher();
+        dispatch::egl_controller &controller = dp->get_egl_controller();
+
+        egl_context *crr = controller.current_context(sys->get_kernel_system()->crr_thread()->unique_id());
+        if (!crr || !crr->draw_surface_) {
+            egl_push_error(sys, EGL_BAD_SURFACE_EMU);
+            return 0;
+        }
+
+        (void)display;
+        (void)interval;
+        return 1;
+    }
+
     BRIDGE_FUNC_LIBRARY(egl_boolean, egl_swap_buffers_emu, egl_display display, egl_surface_handle handle) {
         dispatcher *dp = sys->get_dispatcher();
         dispatch::egl_controller &controller = dp->get_egl_controller();
@@ -640,6 +660,16 @@ namespace eka2l1::dispatch {
         case EGL_BIND_TO_TEXTURE_RGB_EMU:
         case EGL_BIND_TO_TEXTURE_RGBA_EMU:
             *value = EGL_TRUE;
+            break;
+
+        // The swap interval's range (EGL 1.1). The host presents a window surface when the
+        // window server composes it, never waiting for a refresh, so any interval is accepted.
+        case EGL_MIN_SWAP_INTERVAL_EMU:
+            *value = 0;
+            break;
+
+        case EGL_MAX_SWAP_INTERVAL_EMU:
+            *value = 1;
             break;
 
         default:

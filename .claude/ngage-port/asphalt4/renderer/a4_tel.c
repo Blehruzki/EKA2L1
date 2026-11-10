@@ -369,7 +369,7 @@ void a4_tel_tick(uint32_t had)
             a[13] += pf[PF_NPRES]; a[14] += pf[PF_SKIPPED]; a[15]++;
         }
 #if defined(A4_ABCYCLE15)
-        *(volatile uint32_t *)0x00421600u = 0x41473331u;   /* 'AG31': slot = route B's probe variant 0..2 */
+        *(volatile uint32_t *)0x00421600u = 0x41473331u;   /* 'AG31': slot = route B's probe variant 0..3 */
 #elif defined(A4_ABCYCLE14)
         *(volatile uint32_t *)0x00421600u = 0x41473330u;   /* 'AG30': slot bit 0 AB_GPUSKY */
 #elif defined(A4_ABCYCLE13)
@@ -437,12 +437,12 @@ void a4_tel_tick(uint32_t had)
     {   /* next window: reset the timers after the write, so its cost is in no window */
         volatile uint32_t *pf = A4_PERF;
 #if defined(A4_ABCYCLE15)
-        /* round 55: route B's probe variant (bits 18-19) 0, 1, 2 in turn, each for RB_WINS windows; the build's
+        /* rounds 55-56: route B's probe variant (bits 18-19) 0, 1, 2, 3 in turn, each for RB_WINS windows; the build's
          * A4_ABMODE kept */
 #ifndef RB_WINS
 #define RB_WINS 4u
 #endif
-        pf[PF_MODE] = ((uint32_t)(A4_ABMODE) & ~(3u << 18)) | (((t->caps / RB_WINS) % 3u) << 18);
+        pf[PF_MODE] = ((uint32_t)(A4_ABMODE) & ~(3u << 18)) | (((t->caps / RB_WINS) % 4u) << 18);
 #elif defined(A4_ABCYCLE14)
         /* round 54: AB_GPUSKY (131072) alternates; the build's A4_ABMODE kept */
         pf[PF_MODE] = ((uint32_t)(A4_ABMODE) & ~131072u) | ((((pf[PF_MODE] >> 17) & 1u) ^ 1u) << 17);

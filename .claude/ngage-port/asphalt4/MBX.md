@@ -8911,3 +8911,40 @@ how I said the race and not the game overall."
   B would remove is readback + composite (8.8) plus that unmeasured post; what it adds is the swap (11.9,
   measured with the default swap interval -- if it waits for the panel's refresh, eglSwapInterval(0) would
   change it) plus the HUD on the GPU. **Route B is not settled; un-shelved pending a second probe.**
+
+## Round 56 (owner: "think through this closely ... reduce uncertainty to a minimum, then plan accordingly and execute")
+
+Facts settled before building, each with its source:
+- **DoPresent is the runtime's yield** (binaries + kernelhwsrv's euseru.def): runtime +16BC = RTimer::After(arg1 x
+  1000 us) (euser 928) and CActive::SetActive (1090) on its own object, then a loop of RThread::RequestCount
+  (1788) and CActiveScheduler::Current (427) / RunIfReady (422) until that object has run; Cancel (1088) if
+  not. The race loop (+808, `b +838` until r4[0x1C]) never returns to the scheduler otherwise. Its sites in a
+  race: +950 (-1 -> [this+0x80] ms) and +97E (10 ms) -- skipped since round 19 (A4_SKIPREPRES) -- and +9A6
+  (10 ms, after the render): the one yield a race iteration keeps.
+- **The framework's post is the one screen write**: +606 -> +6AC/+6B4: bb vtable [0x34] = ngibackbuffer +3178:
+  bb vtable [22] (+4204, a getter), runtime export 40 (the display owner), [0x38] = +34A4 (lock +4EA0, the
+  convert, unlock +5280: CFbsScreenDevice::Update and RTimer::HighRes + SetActive for pacing, no wait), the
+  buffer index. Skipping it skips nothing else. +6B6 only pops; its caller reads no register. +606 runs every
+  loop iteration, so the runtime converts and Updates an unchanged frame several times a render (phone v0:
+  3,577 converts in a session whose race had 529 v0 renders) -- a cost of its own, not yet measured.
+- **eglSwapInterval is libGLES_CM 133** (RM-320 ROM): libGLES_CM's EGL exports are forwarders in one block
+  (0x804BFC4C-0x804BFCD4) holding exactly 1-25 and 133, 173, 174, 175; each `b` to a veneer into libimgegl,
+  whose 32 exports are EGL 1.0's 25 one to one (2-25 checked) then 29-32; 173 -> 29, 174 -> 30, 175 -> 31,
+  133 -> 32 -- EGL 1.1's four in alphabetical order (BindTexImage, ReleaseTexImage, SurfaceAttrib,
+  SwapInterval), as the emulator's table names them. imgegl 31 takes four arguments (SurfaceAttrib), imgegl 32
+  two: it reads the current context's draw surface, clamps the interval to the config's
+  EGL_MAX_SWAP_INTERVAL (0x303C) and EGL_MIN_SWAP_INTERVAL (0x303B), and calls the window-system layer's
+  vtable [0x20](surface, interval). eglGetConfigAttrib = 9 (-> imgegl 9).
+- The bench had no eglSwapInterval (dispatch 0x1184 registered as a comment) and refused the two swap-interval
+  config attributes: added (EKA2L1: accepted, a no-op; range 0..1).
+
+The probe, second form (rb56; A4_RBPROBE rewritten, record 'RBP2'): DoPresent's call is never changed. Four
+variants, each RB_WINS = 4 telemetry windows: v0 the runtime (white bar; every post timed, in a4_fwpost_tramp
+-> a4_fw_done); v1 EGL at swap interval 1 (red); v2 EGL at swap interval 0 (blue; the config's range recorded);
+v3 the runtime with a post skipped when no new frame came since the last post made, while a race runs (yellow).
+Owned (v1, v2): every framework post skipped, the screen given back after 400 ms with no 3D, at a 3D frame to
+another target, at a failed swap, at a variant change. The DSA stop/restart of rb55 is gone (it answered: the
+EGL frame shows with the runtime's DSA live). A4_RBCHECK (bench): each skipped post's frame hashed against the
+one on the screen (the last upload, or the last post made). New bench test (keyrun.sh / keytest.py): in a race,
+in each variant, the pause key pressed and the time to the pause menu measured -- run on rb55 first, where it
+must fail in red and blue (the test of the test).

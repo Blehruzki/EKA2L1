@@ -93,7 +93,8 @@ GL_IMPORT_ORDINALS = [14, 17, 4, 3, 18, 132, 33, 31, 58, 108,
                       30, 59, 69,      # [35] glBlendFunc [36] glFlush [37] glGetIntegerv (round 10)
                       117, 119, 36,    # [38] glStencilFunc [39] glStencilOp [40] glClearStencil
                       40,              # [41] glColorMask (round 11)
-                      84, 49]          # [42] glLoadMatrixx [43] glDepthMask (A4_MESH)
+                      84, 49,          # [42] glLoadMatrixx [43] glDepthMask (A4_MESH)
+                      133, 9]          # [44] eglSwapInterval [45] eglGetConfigAttrib (round 56)
                                        # [28] glDepthFunc     [29] glClearDepthx
                                        # must match a4_gl.s a4_gl_iat
 # A4_WINDOW: the window the GPU presents into is our own (a4_gl.c, bringup);
