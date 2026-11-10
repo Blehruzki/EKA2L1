@@ -8413,3 +8413,33 @@ unresolved part. So it goes to the phone as an A/B inside one race, as round 51'
   ~9) is the game's Thumb or the projection table's misses, lifted gains more than 1.2 and/or the memo
   turns to a gain; if neither moves beyond the slots' spread (~1.5 ms), the shortfall is elsewhere
   (the instruction cache on code we did not touch, or the GL driver).
+
+## Round 53, phone (sha256 eaedb846...): the lifted mesh routine x the corner memo, a window each
+
+Owner: "this is the very first time where I see the game running truly smooth, even during traditionally heavy
+scenes ... 2nd batch felt the same. There was a particularly slow crashing scene but other than that, it felt
+closer to what I envisioned." Two races, eight files each (phone53a: captures 109-116, 2,668 race renders over
+116 windows; phone53b: 116-123, 2,829 over 122).
+- Whole race (all slots): 65.4 and 65.7 ms a render -- r51 68.1, r50c 72.7 (-3.7%, -10%). 3D 28.0/28.1 (r51
+  29.4), outside the phases 25.4/25.6 (r51 26.8), composite 8.8/8.9, 2D 3.2/3.1; before the first triangle
+  13.7/14.5 ms (r51 15.4). Frames (the last 417 of each race): intervals median 52/55 ms, 10-90% 41-77 and
+  44-70, 99% 119/115 (r51 42-75, 124; r50c 43-84, 126) -- the slow tail shorter, the owner's "smooth".
+- Per slot, both races (59-60 windows each): the game's 64.9 and 67.7 ms (outside 25.1, 26.3 -- the two
+  identical slots 2.8 ms apart whole, 1.2 outside: the resolution); lifted 64.2 (outside 24.6); lifted+memo
+  65.5 (outside 26.0). The lift ~-1 ms outside against the game's slots (the model: -1.15); the memo
+  +1.4 over the lift (the model: +0.9). Within the spread, each; both with the model's sign and size.
+  Rule 4 (a), the round's question: the phone's pre-triangle shortfall against the model is NOT the
+  game's Thumb or the projection table's reads -- had it been, the lift would have gained more than the
+  model's figure and the memo would have won. The model ranks these two as the phone does. The shortfall
+  is elsewhere (code we did not touch, the instruction cache, the GL driver).
+- The crash: batch A's crash camera (0x18, 62 frames) ran at interval median 43 ms, 90% 63, max 119 --
+  quicker than r50c's crash (48, 81, 150). Its slowness is the game's own slow motion in the crash view,
+  not the frame rate.
+- Batch B's last windows (116-121): the present phase 0.0-1.0 ms against the usual 2.1-3.4, with the
+  presents a window as ever (69) -- around the finish view (mode 1 in its last captures). Not run down.
+- Converter installed once a race, none handed back; 1/w clear skipped 2,689/2,850, run 34; drop frames
+  5/4 (r51 3); held back 0.
+- Next: the lift always on, the memo out. Where the time is now (per the gated profile, the model):
+  our own list insert a4_mesh_insert (~430 k instructions a frame, ~2.2 ms), the game's +3118E (131 k), and
+  the 3D phase, whose phone/model gap (28 against ~21 ms) sits where the GL model's charges are (~8 ms of
+  the model's 3D): the number of draw calls a frame (~170-230).
