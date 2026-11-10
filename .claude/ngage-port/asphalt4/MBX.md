@@ -8671,3 +8671,38 @@ Owner: "go with 2" (the screen take-over, the only lever left worth ~10 ms).
 - Found on the way, for later: glCullFace = libGLES_CM 46, glFrontFace = 64 (epoc9.def's list, which
   agrees with every ordinal the phone already resolves: 1, 6, 22, 28, 30); the bench answers the read
   format query as the N95 (BGRA/UNSIGNED_BYTE, emulated).
+
+## Round 55, route B (owner: "go with 1. Let's take the gamble. Adjust the bench and emulator to reduce the quantity of rounds on hardware")
+
+What the N95's own binaries say (source rank 1, the RM-320 ROM; tools: romimg.py, scratchpad romdis.py --
+every BL/stub target named lib:ordinal across the ROM's export tables):
+- **How the N95 puts an EGL window on the panel.** The PowerVR stack is libgles_cm, libimgegl (EGL),
+  libpvrtechviewwsegl (the window-system layer), pvr2d, pvrsrv, pvromaplcd. The WSEGL layer's import stubs:
+  ws32 233/234 (CDirectScreenAccess::NewL/StartL), 387 (RWindowBase::Size), 68/70/76, 184/185, 446; cone 182
+  (CCoeEnv::Static: the app's own session); fbscli and bitgdi; pvr2d 1-19 (the 2D blitter). So a window surface
+  is posted by a DSA session of the EGL layer's own on the window, a pvr2d blit into the screen and the screen
+  device's update -- a direct-screen client like the runtime itself.
+- **The runtime's DSB on the N95** (ROM scdv, vtable 8087ECD0): [3] Create (+0x0C; flags & 3 must be 1 or 2,
+  queries HAL 0x54/0x4F/0x50/0x4E and a display-driver object at [this+4]), [4] BeginUpdate (+0x10), [5]/[6]
+  EndUpdate (+0x14/+0x18), [7] Close (+0x1C: the driver's +0xFC, its session ended). The kernel driver's flips
+  cannot be read from user code; the DSB being open is the likeliest reason round 1's GL window never showed.
+- **The back buffer object** (ngibackbuffer, ARM code; the X10 cvt_fast already reaches): +0x1C its
+  MDirectScreenAccess (the DSA observer), +0x24 the display (vt+0x28/+0x2C: session, screen device), +0x28 its
+  RWindow (embedded: the DSA window), +0x54 the CDirectScreenAccess, +0x68 the CDirectScreenBitmap, +0x31 the
+  display-owned flag; it takes the display with runtime export 40 and gives it back with 41 (+28C/+2B8).
+- **EKA2L1's DSB** (src/patch/scdv/src/cdsb.cpp, swapped in on 3.1+): one buffer, the screen; EndUpdate posts
+  through dispatch update_screen at once; Close does nothing. update_screen draws the posted buffer over the
+  composed screen; an EGL window is composited by the window server on its redraws.
+
+The plan, in order (each step benched before the next; the phone sees one probe, then the candidate):
+1. Probe build (bench first): in races, windows cycling three variants -- (v1) the runtime's presents skipped,
+   its DSB closed, our frame swapped through an EGL window surface on the runtime's own window (X10+0x28, the
+   app's session); (v2) as v1 with the runtime's DSA cancelled as well (the configuration a GL title has: one
+   window, the EGL layer's DSA only); (v0) normal. Each variant marks its frames (a coloured bar and digit) so a
+   video or the owner's eye names it; telemetry carries every call's return, EGL errors and the swap's time.
+   Giving the screen back (DSB Create with the rect it had, DSA StartL) is checked at every variant change.
+2. The bench made to show what the phone would: a DSB open holds the panel (wserv's composites and EGL
+   posts not shown while it is open); Close releases it (EMU switch, EMU_PATCHES.md).
+3. With the probe's answer: the HUD on the GPU (the painter's 18 sprites as quads, text, speedometer,
+   minimap, fills -- each a GL blend the routine's own maths defines), all benchable pixel by pixel against
+   the software HUD, then the candidate.
