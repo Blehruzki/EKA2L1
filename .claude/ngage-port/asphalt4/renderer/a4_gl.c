@@ -5180,7 +5180,11 @@ static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1
  * the GPU's backdrop is read back and compared with them, and the surface's rows are hashed at the
  * frame's first triangle and again at its composite (what software drew in between would be lost).
  * Census 0x412D00: [67] frames with the GPU's backdrop, [68] frames whose sky stayed software (decided or
- * replayed), [69] composites forced by a triangle left to software. */
+ * replayed), [69] composites forced by a triangle left to software, [58] texture uploads, [59] of them the
+ * same image's pixels changed, [62] the image's pixels, [63] the surface. */
+#ifdef A4_SKYCEN
+#error "A4_GPUSKY counts at 0x412D00 [58..63], A4_SKYCEN's words"
+#endif
 #ifdef A4_SKYCHECK
 #define SKY_SKIP 0
 #if defined(A4_SKYCEN) || defined(A4_MESHMEMO)
@@ -5292,6 +5296,9 @@ static int sky_tex(volatile struct skys *k)
     uint32_t hs = 0x811C9DC5u, tot = w * h, step = (tot >> 6) | 1u;
     for (uint32_t i = 0; i < tot; i += step) hs = (hs ^ px[i]) * 16777619u;
     if (k->tex && k->tpix == pix && k->twh == wh && k->thash == hs) return 1;
+    SKYCK2[58]++;                                   /* uploads; [59] of them the same image changed */
+    if (k->tex && k->tpix == pix && k->twh == wh) SKYCK2[59]++;
+    SKYCK2[62] = pix;
     uint32_t lw = 0, lh = 0, id = k->tex;
     while ((1u << lw) < w) lw++;
     while ((1u << lh) < h) lh++;
@@ -5388,6 +5395,10 @@ static void sky_check_begin(volatile struct skys *k)
     for (int y = 0; y < VP_H; y++) SKYRH[y] = sky_rowhash(fb + y * VP_W);
     for (int i = 0; i < 8; i++) SKYRH[VP_H + 1 + i] = 0;
     SKYRH[VP_H] = 1;
+#ifdef A4_SKYTRACE
+    ((volatile uint32_t *)0x00460400u)[0] = (ck[50] & 15u) == 0u;
+    ((volatile uint32_t *)0x00460400u)[2] = 0;
+#endif
 }
 /* at the composite, before it writes: [55] rows software changed since the first triangle (other than
  * the rows of its copies kept by design), [56] frames */
@@ -5404,7 +5415,41 @@ static void sky_check_end(uint32_t bb)
     for (int y = 0; y < VP_H; y++)
         if (!(SKYRH[VP_H + 1 + (y >> 5)] & (1u << (y & 31)))) ch += SKYRH[y] != sky_rowhash(fb + y * VP_W);
     ck[55] += ch; if (ch) ck[56]++;
+#ifdef A4_SKYTRACE
+    ((volatile uint32_t *)0x00460400u)[0] = 0;
+#endif
 }
+#ifdef A4_SKYTRACE
+/* Bench: in every 16th checked frame, the backdrop's rows hashed again at every hook (1 the draw hook's
+ * entry, info its flags; 2 its exit, flags | r << 31; 3 a billboard, its mode; 5 a fill; 6 the flush):
+ * a change since the last one is software drawing between the two. 0x412D00 [40] intervals with a
+ * change, [41] the first one's previous hook (kind << 24 | info; 0x800000: the hook returned 0), [42]
+ * its next, [43] its first row | rows << 16, [44] rows changed in all, [45..49] intervals by the
+ * previous hook (entry, exit, billboard, fill, flush). The rows of copies kept by design are left out,
+ * as at the composite. */
+#ifndef A4_SKYCHECK
+#error "A4_SKYTRACE is part of A4_SKYCHECK"
+#endif
+static void sky_trace(uint32_t kind, uint32_t info)
+{
+    volatile uint32_t *t = (volatile uint32_t *)0x00460400u, *ck = SKYCK2;
+    if (!t[0] || !SKYRH[VP_H] || SKYS->state != SK_GPU) return;
+    volatile uint16_t *fb = (volatile uint16_t *)SKYS->fb;
+    uint32_t yb = SKYS->yb, first = 0xFFFFu, n = 0;
+    for (uint32_t y = 0; y < yb; y++) {
+        if (SKYRH[VP_H + 1 + (y >> 5)] & (1u << (y & 31))) continue;
+        uint32_t h = sky_rowhash(fb + y * VP_W);
+        if (h != SKYRH[y]) { if (first == 0xFFFFu) first = y; n++; SKYRH[y] = h; }
+    }
+    if (n) {
+        if (!ck[40]) { ck[41] = t[2]; ck[42] = (kind << 24) | (info & 0xFFFFFFu); ck[43] = first | (n << 16); }
+        ck[40]++; ck[44] += n;
+        uint32_t pk = t[2] >> 24;                   /* [45] after the hook's entry, [46] its exit, [47] a billboard, [48] a fill, [49] the flush */
+        if (pk >= 1u && pk <= 3u) ck[44 + pk]++; else if (pk == 5u || pk == 6u) ck[43 + pk]++;
+    }
+    t[2] = (kind << 24) | (info & 0xFFFFFFu) | (kind == 2u && (info >> 31) ? 0x800000u : 0u);
+}
+#endif
 #endif
 /* at the frame's first triangle, after the clear: the recorded backdrop drawn, before the mesh list */
 static void sky_frame_begin(volatile struct glr *s)
@@ -5418,7 +5463,7 @@ static void sky_frame_begin(volatile struct glr *s)
     { uint32_t t0 = a4_ntick(); batch_draw(s->bfill); A4_PERF[PF_DRAW] += a4_ntick() - t0; }
     s->bfill = 0;
     k->state = SK_GPU;
-    SKYCK2[67]++;
+    SKYCK2[67]++; SKYCK2[63] = k->fb;
 #ifdef A4_SKYCHECK
     sky_check_begin(k);
 #endif
@@ -5952,6 +5997,9 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_GPUSKY
     const uint32_t p0 = ((volatile struct glr *)A4_GL_SCRATCH)->prims;
 #endif
+#ifdef A4_SKYTRACE
+    sky_trace(1u, flags);
+#endif
 #ifdef A4_TEL
     /* every 4th call timed (NTickCount is 1 ms: summed over many calls the count of ticks
      * crossed is an unbiased measure of the time inside), x4 */
@@ -5970,6 +6018,9 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         volatile struct glr *sc = (volatile struct glr *)A4_GL_SCRATCH;
         sky_sw_draw(gctx, sc->prims > (p0 ? p0 : SKYS->p0) && sc->prims != 0);
     }
+#endif
+#ifdef A4_SKYTRACE
+    sky_trace(2u, flags | (r ? 0u : 0x80000000u));
 #endif
 #ifdef A4_SKYCEN
     {   /* [65] non-blended triangles left to software in a GPU frame begun, [66] before one began (GL up) */
@@ -6196,6 +6247,9 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
 #ifdef A4_GPUSKY
     if (SKYS->state == SK_REC) sky_replay(SKYS);     /* blitted before a GPU frame began: the backdrop first */
 #endif
+#ifdef A4_SKYTRACE
+    sky_trace(3u, f[0x94 / 4]);
+#endif
     const uint32_t *spr = (const uint32_t *)r[7];
     int32_t x0 = (int32_t)f[0x34 / 4], x1 = (int32_t)r[4], y0 = (int32_t)r[6], y1 = (int32_t)f[0x30 / 4];
     uint32_t mode = f[0x94 / 4], fade = f[0x98 / 4];
@@ -6402,6 +6456,9 @@ int a4_gl_fill(const uint32_t *f)
 {
 #ifdef A4_GPUSKY
     if (SKYS->state == SK_REC) sky_replay(SKYS);     /* filled before a GPU frame began: the backdrop first */
+#endif
+#ifdef A4_SKYTRACE
+    sky_trace(5u, 0u);
 #endif
 #ifdef A4_TAKEFILL
     volatile uint32_t *iat = a4_gl_iat_ptr();
@@ -7256,6 +7313,9 @@ void a4_gl_flush(void)
 #ifdef A4_GPUSKY
     /* the frame's 2D or its present with the backdrop recorded and no GPU frame begun: in software, now */
     if (SKYS->state == SK_REC) sky_replay(SKYS);
+#endif
+#ifdef A4_SKYTRACE
+    sky_trace(6u, 0u);
 #endif
     volatile uint32_t *iat = a4_gl_iat_ptr();
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;

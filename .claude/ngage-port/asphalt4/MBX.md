@@ -8560,3 +8560,15 @@ Owner: "continue".
   t54 against g54b (gperf54.sh): running.
 - A4_ABCYCLE14 (AB_GPUSKY 131072, 'AG30', r51sum.py NAME30): the sky alternates per window, for a phone
   A/B if the round wants one (A4_ABMODE 134190u = 3118 + AB_GPUSKY). Builds: ab54.
+- g54c2 (v2 row test, race 60 s): the backdrop 0 pixels differing in 1,058 frames (menus 550: 0); g54m2
+  12 of 12 flips found. But rows software changed between the first triangle and the composite, with
+  the copies kept by design left out: 76,204 in 803 frames (~95 a frame; menus 28,888 in 311). An
+  unaccounted writer during the 3D pass; whatever it writes into the backdrop's rows would be lost.
+  Not run down yet.
+- gperf54 (W-4 model with audio, 150 s each, separate runs): t54 47.0 ms a render (3D 19.1, comp 7.1),
+  g54b 49.8 (3D 23.0, comp 7.2). The GL model's own line shows the sky texture uploaded every few frames
+  (10-34 KB a frame on average, 0.3-1.0 ms of upload charges; t54 0): the image changes, or the 64-texel
+  sample misfires. The rest of the 3D gap may be the two runs' scenes; an in-run A/B (ab54) is the
+  measurement. Diagnosis builds: g54d (+ census [58] uploads, [59] of them the same image changed, [62]
+  the image, [63] the surface) with a write watch on the image; g54t (A4_SKYTRACE: in every 16th checked
+  frame the backdrop's rows re-hashed at every hook, so a change is pinned between two hooks): running.
