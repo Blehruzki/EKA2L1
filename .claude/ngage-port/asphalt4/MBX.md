@@ -8836,3 +8836,29 @@ any device.
   aggregates are cumulative in every capture, and the game's own menus before quitting already exercise the
   give-back. What matters is a race long enough for each colour to come round more than once (a lap or
   more).
+
+## Phone round 55 (rb55 9e654f38, route B probe): EGL frames shown; controls dead and the race slow in red/blue
+
+Owner (N95, one race, quit to the hub): "During the red/blue stretches, the controls stopped responding. I
+didn't notice any difference graphically speaking. However the race ran the slowest I've ever seen. Notice
+how I said the race and not the game overall."
+- **Answered: an EGL window surface on the runtime's own window reaches the N95's panel**, in v1 (runtime's
+  DSA live) and v2 (stopped): the red and blue bars are drawn only by the probe's GL, and the picture under
+  them looked as the runtime's. Round 1's "never shown" was the runtime's own writes, as read above.
+- **Not answered: the cost.** The eight files sent are not rb55's: every header is an older build's (modes
+  3118/1070/558/46/35886 -- rounds 19-53 -- formats AG20/AG29, one file version 3, sizes 154,288-171,048);
+  none has the 'RBP1' record or rb55's size (171,560). rb55 did write: the variant only steps after a
+  capture, and a capture needs every ring file Replaced first (a failed Replace stops the telemetry for
+  good, and the owner would never have seen red). So C:\a4tel0..7.dat on the phone should be rb55's now,
+  unless another build has run since. Asked for them again (date and size to check).
+- Read of the slowness, pending those files. Not the skipped posts: the framework's post (+6B2's blx r2) is
+  ngibackbuffer +3178 on bb itself (bench regs: r2 = 0x71003178, r0 = bb 0x00D0E900, 2,754 calls in ~10 s):
+  its own vtable [0x58] call, runtime export 40 (the display owner), the core post [0x38] (lock, convert,
+  unlock), the buffer index; its unlock arms RTimer::HighRes (euser 930, the def names checked in
+  kernelhwsrv's euseru.def) and SetActive, and blocks nowhere. On the bench, input kept working through the
+  red and blue stretches (the held accelerator: 166 km/h in a blue one) and the W-4 model held 85.3 ms a
+  render in all three variants. So the likelier cause is the phone's EGL path itself: the upload (153,600
+  bytes of 565 into a 512x256 texture, which MBX's driver twiddles on the CPU), the swap (WSEGL's DSA, the
+  pvr2d blit, the update), or the two eglMakeCurrent a frame between the pbuffer's context and ours. A frame
+  over ~427 ms (5 steps, the clamp at +15B1C) makes the race itself slow down -- the owner's "the race,
+  not the game". The files' per-variant upload, draw + swap and make-current ticks say which.
