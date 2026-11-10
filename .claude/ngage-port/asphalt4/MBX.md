@@ -8653,3 +8653,21 @@ Owner: "go with 2" (the screen take-over, the only lever left worth ~10 ms).
   (the N95's is BGRA/UNSIGNED_BYTE, round 10); (3) the frames A cannot take (a triangle or billboard left
   to software, holes below a band without its bottom fill: filled with the fill colour the routine would
   have used -- stock shows the last frame's pixel there) fall back to the current path for that frame.
+- wr55 (t54, race 60 s, a write watch on the whole 565 buffer armed by the first composite, each writer
+  once): after the race's first composite the buffer is written by the composite and the painter (ours),
+  the sky (+360A2/+361A4, euser memmove), the billboard blit +30472, the blended spans (+33DC0, +33F66), and
+  the game's 2D families: +10A96/+10AD4/+10B1A, the minimap +26E5A..+2713E, a shape family +2B896..+2BC1E,
+  fills +2AB84, text and the speedometer +2BE72..+2D136. Read at each store (capstone, a4code.bin): the
+  minimap +26E5A loads the pixel and stores its average with a colour (a 50% blend); +270C2 and +2BC1E
+  (via +52E5C) alpha-blend with it; +2C524 adds to it saturating per channel; +2D09E stores (3x + y) / 4;
+  +10A96 and +2B896 store opaquely. The painter itself blends 16 alpha levels.
+- So the game's HUD reads the 3D under it: the 3D must be in the 565 buffer before the HUD draws -- what
+  the readback and composite at the HUD's first call are for. Route A's isolated 2D layer (the buffer
+  cleared to a key, the HUD laid over a frame read straight into the DSB) would blend those pixels with
+  the key: not viable. Route B needs the same pixels on the GPU, so every one of those game routines
+  redrawn there (the painter's 18 sprites, text, the speedometer, the minimap, fills) -- or a readback
+  anyway. Either way the readback the take-over was meant to remove is required by the game's own 2D,
+  unless its whole HUD moves to the GPU.
+- Found on the way, for later: glCullFace = libGLES_CM 46, glFrontFace = 64 (epoc9.def's list, which
+  agrees with every ordinal the phone already resolves: 1, 6, 22, 28, 30); the bench answers the read
+  format query as the N95 (BGRA/UNSIGNED_BYTE, emulated).
