@@ -70,6 +70,9 @@ elif mg == 0x32504252:
     print('route B probe (RBP2): state %s (detail %08x), variant %d, owns %d; window config %08x (%d matched), swap interval '
           'range %s..%s (attributes refused %d), interval set %s, make-currents failed %d; X10 %08x, runtime text %08x'
           % (STEP.get(r[1], str(r[1])), r[2], r[3], r[13], r[7], r[21], si(r[17]), si(r[18]), r[20], si(r[15]), r[19], r[11], r[12]))
+    if r[26] or r[27]:   # A4_LONGPRESS (round 56): the pause key's long-press count (a4_lp_count)
+        print('pause key long press: drops counted %d, held back %d (within %s ms of the last), run out %d (the N-Gage application)'
+              % (r[26], r[27], 'A4_LP_MS', r[28]))
     for k in range(4):
         v = r[32 + 24 * k: 56 + 24 * k]
         if not (v[11] or v[12] or v[8]): continue

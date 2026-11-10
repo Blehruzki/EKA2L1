@@ -352,6 +352,29 @@ a4_fwpost_tramp:
 #endif
 #endif
 
+#ifdef A4_LONGPRESS
+@ Round 56: the pause key's long-press count (a4_gl.c, a4_lp_count). +9A4C and +9A84 hold
+@ `subs r0, r0, #1 ; str r0, [r7, #0x14]` with a `bhs` after (taken while the count was not
+@ yet 0; r0 is not -1 here, the disarmed case branched off before). Those 4 bytes become a
+@ BLX here: when this iteration's drop counts, made as the game makes it (its flags for the
+@ bhs); else nothing is stored and C is set, so the bhs is taken as for any count not run
+@ out. r1-r3 and r12 kept (the code after reads r1 only after setting it, but kept anyway).
+        .arm
+        .align  2
+        .global a4_lp_tramp
+a4_lp_tramp:
+        push    {r0-r3, r12, lr}
+        bl      a4_lp_count         @ r0 = the count: 1 if this drop counts
+        cmp     r0, #0
+        pop     {r0-r3, r12, lr}
+        beq     1f
+        subs    r0, r0, #1          @ displaced +9A4C: subs r0, r0, #1
+        str     r0, [r7, #0x14]     @ displaced +9A4E: str r0, [r7, #0x14]
+        bx      lr
+1:      cmp     r0, #0              @ held: r0 >= 0 unchanged, C = 1 (the bhs taken)
+        bx      lr
+#endif
+
 #ifdef A4_SPECCAMSAFE
 @ Round 40: the camera scripts are not advanced by the speculation. +5205A plays a camera
 @ script one tick (its clock [obj+0x8C]++, eleven channels interpolated) and unlinks and

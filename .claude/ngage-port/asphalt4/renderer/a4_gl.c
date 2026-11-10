@@ -320,6 +320,7 @@ struct glr {
                                         * code has asked for and what GL has; zero is GL's own initial state */
     uint32_t zclean;                   /* round 51 (A4_ZSKIP): the rasterizer context whose 1/w buffer is all zero
                                         * since its last clear (0: none known -- the bss-zeroed start) */
+    uint32_t lpt;                      /* round 56 (A4_LONGPRESS): when the pause key's long-press count last dropped */
 };
 
 _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlaps the readback strip");
@@ -7777,7 +7778,8 @@ struct rbp {
     uint32_t base, owns, newframe, sicur;  /* ngibackbuffer's text; we own the screen; a new frame not yet posted; interval set (~0 none) */
     uint32_t lastcc, minsi, maxsi, mcerr;  /* [X10+0xCC] last seen; the config's swap interval range; make-currents failed */
     uint32_t attrerr, ncfg, last3d, postt0;/* config attributes refused; configs matched; when the last 3D frame came; a post's start */
-    uint32_t posthash, uphash, pad[6];     /* A4_RBCHECK: the frame at the last post made, at the last upload */
+    uint32_t posthash, uphash;             /* A4_RBCHECK: the frame at the last post made, at the last upload */
+    uint32_t lpn, lpheld, lpfire, pad[3];  /* A4_LONGPRESS: long-press drops counted, held back, run out (the N-Gage application) */
     struct rbv v[4];
 };
 #define RBP ((volatile struct rbp *)0x00412A00u)
@@ -8007,6 +8009,37 @@ uint32_t a4_fw_done(uint32_t ret)
         v->posts++; v->postt += dt; if (dt > v->postmax) v->postmax = dt;
     }
     return ret;
+}
+#endif
+#ifdef A4_LONGPRESS
+/* round 56: the pause key's long press. The key-down handler (+1326) arms a count of 24 at [r6+0xE94] for the
+ * left softkey (the game's key bit 0x1000) and the key-up handler (+13A8) disarms it (-1); the race state's
+ * update (+9A46 for state 12, racing; +9A7E for state 25) drops it by one each race-loop iteration and, when it
+ * runs out, sets the request (+9A60) that the loop turns into the N-Gage application (+AA2: the game services'
+ * event 0, PlayServer 0x400003). So a long press is 25 iterations, not a time: about 0.3 s on the N95 when every
+ * iteration posts a frame (round 55's runtime windows: 3,577 posts in ~45 s), but an iteration whose post is
+ * skipped (route B: we own the screen, or a re-post dropped) costs a few ms, and a tap became a long press -- the
+ * bench, round 56: a pause key tapped in an EGL stretch opened the N-Gage application in about half the runs.
+ * a4_lp_tramp (a4_tramp.s, at the two drops +9A4C and +9A84) asks here whether this iteration's drop counts:
+ * at most one per A4_LP_MS, which is the runtime's own iteration, so the press keeps its stock length. */
+#ifndef A4_LP_MS
+#define A4_LP_MS 12u
+#endif
+uint32_t a4_lp_count(uint32_t cnt)
+{
+    volatile struct glr *g = (volatile struct glr *)A4_GL_SCRATCH;
+    const uint32_t now = a4_ntick();
+    const uint32_t counts = now - g->lpt >= A4_LP_MS;
+    if (counts) g->lpt = now;
+#ifdef A4_RBPROBE
+    if (RBP->magic == RB_MAGIC) {
+        if (!counts) RBP->lpheld++;
+        else { RBP->lpn++; if (cnt == 0u) RBP->lpfire++; }
+    }
+#else
+    (void)cnt;
+#endif
+    return counts;
 }
 #endif
 #ifdef A4_DROPHOLD

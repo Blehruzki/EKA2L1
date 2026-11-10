@@ -8948,3 +8948,81 @@ EGL frame shows with the runtime's DSA live). A4_RBCHECK (bench): each skipped p
 one on the screen (the last upload, or the last post made). New bench test (keyrun.sh / keytest.py): in a race,
 in each variant, the pause key pressed and the time to the pause menu measured -- run on rb55 first, where it
 must fail in red and blue (the test of the test).
+
+### Round 56 bench battery on rb56 (b2101970), before the finding below
+- Test of the test (keyrun.sh/keytest.py, pause key in a race, time to the pause menu): rb55 fails as it must (red: no
+  menu within 6 s; blue ~6 s); rb56 white 0.36-0.78 s, red 0.78-1.20 s, blue 1.20 s.
+- A4_RBCHECK (rb56chk): every post skipped in v1 (12,349) and v2 (12,587) held the frame last uploaded, every one in v3
+  (13,342) the frame last posted (0 different). v3 made 372 posts for 368 renders against v0's 6,429 for 460. The
+  config's swap interval range read 0..1; set without refusal. Bench costs, no model: v0 post 2.08 ms; v1 draw+swap
+  11.3 ms, v2 11.0 (the bench's interval is a no-op).
+- Menus (racemenu.sh, the pause menu walked, main menu, garage): clean.
+
+### Pausing in an EGL stretch opened the N-Gage application (bench) -- the pause key's long press
+Seen first in the key test (kt56b, kt56c): F1 in a red stretch started ngiplay0x20003b78.exe instead of the pause menu.
+New test (keyseqrun.sh / keyseq.py): wait for a colour (two polls), release 5, tap F1 once, 20 screenshots, resume,
+three times. rb56, red: 9 of 12 runs opened the N-Gage application (ks56, ks56r/s/t, ksqc, ksg1, ksia, kswa, ksca),
+always at the first tap; white: 0 of 5 runs (ks56w, ks56u, ksf1-3). The chain, each link from a run:
+- The application is started by playserverccd.dll in the PlayServer process (ks56r: RProcess::Create, lr 0x71F00687).
+- log-ipc (ksia): the last request before it is a blind Send 0x400003 from the game to PlayServer, just after key
+  events. 0x400003 is playclientgss export 8 (+2A2: Send(0x400008 - 5, n)). ngigamesystemservices.dll (one export; the
+  N-Gage notification banner: tick vtable[6] +5C0 -- elapsed time, 200 ms clamp, 0.7 s slide -- and draw vtable[7] +648,
+  both called by the game every loop iteration at +66A/+676 before the framework's post) reports events with it:
+  vtable[12] +8CC(n) -> playclientgss 8(n).
+- The game calls vtable[12](0) at +AB2, in the race loop, when the byte [0x1F0029C + 0x180] (bench 0x1F0041C) is set
+  (+A96). WATCH (kswa): it is set by +9A60.
+- +9A60 is in the update of game state 12 -- racing (+9A10; ksf3: 5,743 of 6,974 state updates): a count at
+  [r6 + 0xE94] (0x1F0131C) dropped by one per call (+9A4C), the flag set when it runs out. State 25 (+9A7E) has the
+  same count. WATCH on the count (ksca): armed to 24 by +1326, disarmed (-1) by +13A8; in the launch it ran out.
+- +1326 is the key-down handler: game key bit 0x1000 (the left softkey -- the pause key) arms 24; +13A8 in the key-up
+  handler disarms it. **Holding the pause key for 25 race-loop iterations is the game's long press, and it opens the
+  N-Gage application** -- a stock feature. In ksca the first tap's count reached 5 before its release; the third ran out.
+- Why only in owned stretches: the count is iterations, not time. A race iteration with no render makes the framework's
+  post and nothing else (A4_SKIPREPRES took the +950/+97E yields in round 19); skip the post and the iteration costs
+  almost nothing. rb56b's race run: v0 9,386 posts for 460 renders (20 iterations a render), v1 117,066 posts skipped
+  for 460 (254 a render), v2 114,015, v3 123,175 for 368. Inside a bench tap (xdotool: down and up a few ms apart)
+  the count fell 19 times in ksca's first tap and ran out (25) in its third; rb56b's record holds 39-112 drops
+  (counted + held back) over the taps of a run -- the bench's taps sit on the edge of 25.
+- The phone: round 55's v0 windows made 3,577 posts in ~45 s, ~80 iterations a second, so the long press there is
+  ~0.3 s. A post costs ~9 ms of the ~12.5 ms iteration (comp 8.8), so without it 25 iterations are ~0.1 s: a tap.
+  **rb56 as built would likely have opened the N-Gage application at the owner's pause in red, blue and yellow.**
+  rb55 could not show it: it queued every key until white.
+- A false lead on the way: launches stopped for three runs (ks56v, ksqa, ksqb) and a stored state (a pending N-Gage
+  message) looked likely; ksqc launched again. Chance.
+- A limit of the probe, not fixed: a notification banner in an owned stretch is drawn (+676) into the back buffer that
+  is not posted, so it is not seen.
+
+Fix (A4_LONGPRESS, rb56b): +9A4C and +9A84 (each `subs r0,r0,#1 ; str r0,[r7,#0x14]`, a `bhs` after) become a BLX to
+a4_lp_tramp (a4_tramp.s): a4_lp_count (a4_gl.c) lets the drop count at most once per A4_LP_MS = 12 ms (the v0
+iteration on the N95); a drop that does not count stores nothing and leaves C set, so the bhs goes on as for a count
+not run out. The last drop's time is in struct glr (A4_PERF is full); the probe record counts drops counted, held back
+and run out (lpn, lpheld, lpfire; r51sum prints them). The long press keeps its stock length whatever an iteration
+costs. Not bench-only: any route B build needs it.
+
+Bench, rb56b (3d626bf1, 827,600 bytes; rb56 rebuilt without the flag is byte-identical to b2101970):
+- Red taps (ksb1-6): 18 taps, 18 pause menus, 0 launches (record: counted 1-3, held back 38-109, run out 0).
+- A 1 s hold (keyseq.py HOLDF1=1.0): red (ksbh1) and white (ksbh2) both opened the N-Gage application -- the long
+  press is kept. White taps (ksbw): pause menus, no launch.
+- Key test (kt56d): white 0.38 s, red 0.81-0.82, blue 0.79-0.80, yellow 0.79-0.82 to the pause menu; no launch.
+- Race run (rb56bR, 150 s): checks 0 different in every variant; v0 post 2.10 ms; v1 draw+swap 10.26 ms, v2 9.68.
+- Menus (rb56bmn): the pause menu walked, its confirm, main menu, garage: clean, no launch.
+
+Rule 2 -- the phone round this asks for (rb56b) is not a repeat of phone round 55 (rb55: EGL frames with DoPresent's
+yield skipped, keys queued, no swap interval 0, no v3) nor of any bench row above: it is the first with the yield kept,
+swap interval 0 (v2), the runtime's re-posts skipped (v3), the posts timed, and the long press held to its stock length.
+The bench rows it rests on and does not repeat: kt56/kt56b/kt56c (time to the pause menu per variant -- never what a tap
+opened), ks56* and ksq/ksg/ksi/ksw/ksc (rb56: the launch found and traced), ksb1-6/ksbh1-2/ksbw/kt56d/rb56bR/rb56bmn
+(rb56b).
+
+Rule 4, before it goes out:
+- (a) Guesses. (1) A4_LP_MS = 12 is the N95's v0 iteration, from round 55's post count over its v0 windows' length, not
+  from a stock build; the round's record (lpn/lpheld/lpfire) will show how many drops the owner's taps make -- the bench
+  cannot model an N95 iteration. (2) State 25's count (+9A7E) is the same as racing's: same code, same object; never
+  entered on the bench. (3) Nothing else the owner would see counts race iterations: a race iteration in an owned
+  stretch runs ~12x as often on the bench; the screenshots of red, blue and yellow stretches showed nothing wrong, which
+  is not proof. (4) A human tap is under ~0.25 s.
+- (b) Read back: the built image disassembled at +9A46, +9A7E and a4_lp_tramp; a4_lp_count; the injector's two byte
+  checks; r51sum's record words 26-28 against struct rbp's field order; rb56 rebuilt without the flag, byte-identical.
+  Remembered only: nothing in the diff.
+- (c) Not entered on the bench: a human-length press (80-300 ms) at the N95's iteration rate; a press across a variant
+  change; state 25; a long press during yellow (v3); the drop clock at its bss zero (the first drop counts).

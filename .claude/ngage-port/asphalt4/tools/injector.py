@@ -480,6 +480,14 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         assert have == (0x2100, 0x4790), 'drop hold: +6B2 holds %04x %04x' % have
         blx_insert(code, 0x6B2, syms['a4_fwpost_tramp'])
         print('HOLD   +0006B2 -> a4_fwpost_tramp +%06X (the framework\'s post)' % (syms['a4_fwpost_tramp'] - LINK_BASE))
+    if '-DA4_LONGPRESS' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+        # round 56: the pause key's long-press count dropped at most once per A4_LP_MS (a4_lp_tramp,
+        # a4_lp_count): +9A4C (state 12, racing) and +9A84 (state 25), each subs r0,r0,#1 ; str r0,[r7,#0x14]
+        for off in (0x9A4C, 0x9A84):
+            have = struct.unpack_from('<HH', code, off)
+            assert have == (0x1E40, 0x6178), 'long press: +%06X holds %04x %04x' % ((off,) + have)
+            blx_insert(code, off, syms['a4_lp_tramp'])
+            print('LONGP  +%06X -> a4_lp_tramp +%06X (the pause key\'s long-press count)' % (off, syms['a4_lp_tramp'] - LINK_BASE))
     if '-DA4_SPECCAMSAFE' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
         # round 40: the camera scripts not advanced by the speculation (a4_tramp.s)
         for ph, target in (('a4_hc_5205a', 0x5205A), ('a4_hc_3d2a', 0x3D2A)):
