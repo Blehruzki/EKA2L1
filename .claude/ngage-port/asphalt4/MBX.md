@@ -8752,8 +8752,12 @@ any device.
 
 ### Round 55, route B: the probe build (rb55 = C54 + A4_TAKE2 + A4_RBPROBE + A4_ABCYCLE15)
 
-- Built from the stock exe (a4/x_02_Game) with the current tree: rb55 827,172 bytes; its baseline rb55base
-  (C54 + A4_TAKE2) 823,732. (a4_t54.exe was 824,820: a larger A4_SCRATCH_SIZE and round 54's earlier TAKE2.)
+- Built from the stock exe (a4/x_02_Game) with the current tree and A4_SCRATCH_SIZE=0x63000: rb55 827,172
+  bytes; its baseline rb55base (C54 + A4_TAKE2) 823,732. The first build at the default size (0x22000)
+  died in the menus (rb55a: KERN-EXEC 3 reading 0x447060 -- the half-step snapshot's block, past a
+  scratch that ended at 0x423000); C54's blocks run to 0x460000, and t54 had been built at 0x63000.
+  injector.py now refuses those flags (A4_MESH, HALFSPEC, SLOWREC, FRAMEREC, KINEDRAW, ENGINE) below
+  0x5F000.
 - What it does (a4_gl.c, A4_RBPROBE; MBX above for the why): the variant (PF_MODE bits 18-19) steps 0, 1, 2
   every RB_WINS = 4 telemetry windows (TEL_EVERY 23 renders a window: ~6-8 s a variant on the phone).
   v0: the runtime presents, a white 48x6 bar top left drawn into the frame. v1: at a present with 3D that

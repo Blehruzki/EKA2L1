@@ -125,6 +125,12 @@ assert '-DA4_SKYCHECK' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x461000, \
     'A4_SKYCHECK: its row hashes at 0x460000 -- A4_SCRATCH_SIZE must reach 0x461000 (0x60000 or more)'
 assert '-DA4_SKYTRACE' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x463600, \
     'A4_SKYTRACE: its segment hashes at 0x461000-0x463580 -- A4_SCRATCH_SIZE must reach 0x463600 (0x63000)'
+# round 55: the candidates' fixed blocks above the default scratch -- the half-step's snapshot (0x447000, A4_HALFSPEC),
+# the slow and frame records (0x455800-0x458010), FRC2 (0x45C000), the engine's HP block (0x45D000), the mesh list's
+# tables -- run to 0x460000. A build of C54's flags at the default size crashed in the menus reading 0x447060 (rb55a).
+_hi = [f for f in ('-DA4_MESH', '-DA4_HALFSPEC', '-DA4_SLOWREC', '-DA4_FRAMEREC', '-DA4_KINEDRAW', '-DA4_ENGINE') if f in _xf]
+assert not _hi or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x460000, \
+    '%s: blocks up to 0x460000 -- A4_SCRATCH_SIZE must be 0x5F000 or more (the candidates use 0x63000)' % ' '.join(_hi)
                                 # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as
                                 # small as the batch allows -- a large image .bss corrupts
                                 # the game's load-time layout
