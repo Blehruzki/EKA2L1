@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include <common/container.h>
 #include <common/vecx.h>
 
@@ -88,6 +90,14 @@ namespace eka2l1::epoc {
         drivers::handle dsa_texture;    ///< Texture use for temporary DSA transfer
         std::vector<std::uint8_t> dsa_shown;   ///< What the panel shows: the framebuffer as the posted rectangles last left it (dispatch update_screen)
         std::size_t dsa_shown_pitch = 0;       ///< ... at this pitch
+
+        // EKA2L1_DSBHOLD=1: the guest CDirectScreenBitmap (its object's address) that holds
+        // this panel, 0 when none -- set at the emulator's DSB stub's Create, cleared at its
+        // Close or destruction (dispatch/src/dispatcher.cpp). While held, every redraw ends
+        // with the last direct-screen post drawn over the window tree, so neither windows nor
+        // EGL window surfaces show (a model of a panel driver that shows only the DSB's buffers
+        // while its session is open; unconfirmed on any device).
+        std::atomic<std::uint32_t> dsb_hold_{ 0 };
 
         epoc::display_mode disp_mode;
 

@@ -35,6 +35,9 @@
 
 #include <common/armemitter.h>
 #include <common/log.h>
+#include <common/pchook.h>
+#include <kernel/codeseg.h>
+#include <services/window/screen.h>
 #include <system/epoc.h>
 
 #include <mem/mem.h>
@@ -43,6 +46,91 @@
 
 namespace eka2l1::dispatch {
     static std::uint32_t MAX_TRAMPOLINE_CHUNK_SIZE = 0x4000;
+
+    // EKA2L1_DSBHOLD=1: a model in which a CDirectScreenBitmap holds the panel from its Create
+    // to its Close (or destruction), so that while one is open the window server's composites
+    // and EGL window surfaces are not shown. The N95's scdv opens a session of its display
+    // driver at Create and ends it at Close (ROM scdv, vtable 8087ECD0); whether its panel then
+    // hides everything else is NOT confirmed on any device -- this is for testing code that
+    // must cope with a phone that does. Without it this emulator draws a post over the screen
+    // once and lets the next redraw cover it. The emulator's own DSB stub (src/patch/scdv, the prebuilt scdv_general.dll)
+    // calls nothing at Create's start or at Close, so the host watches those guest
+    // addresses (common::g_pc_hook). The offsets are this DLL's, checked against its code and
+    // its vtable at load: a rebuilt stub that moves them is refused with a log line.
+    namespace {
+        struct dsb_hold_state {
+            eka2l1::window_server *winserv = nullptr;
+        } g_dsb_hold;
+
+        constexpr std::uint32_t DSB_STUB_CREATE = 0x2A60;
+        constexpr std::uint32_t DSB_STUB_CLOSE = 0x2B98;
+        constexpr std::uint32_t DSB_STUB_DTOR1 = 0x2BC0;
+        constexpr std::uint32_t DSB_STUB_DTOR2 = 0x2BD4;
+        constexpr std::uint32_t DSB_STUB_VTABLE = 0x5F18;
+
+        void dsb_hold_hook(int which, const std::uint32_t *regs) {
+            if (!g_dsb_hold.winserv) {
+                return;
+            }
+            const std::uint32_t obj = regs[0];
+            for (epoc::screen *scr = g_dsb_hold.winserv->get_screens(); scr; scr = scr->next) {
+                if (which == 0) {
+                    // Create(this, const TRect &, TSettingsFlags): the screen number in bits 28-30.
+                    if (static_cast<std::uint32_t>(scr->number) == ((regs[2] >> 28) & 7)) {
+                        const std::uint32_t prev = scr->dsb_hold_.exchange(obj);
+                        LOG_INFO(HLE_DISPATCHER, "DSBHOLD: screen {} held by DSB 0x{:X} (Create, lr 0x{:X}, was 0x{:X})",
+                            scr->number, obj, regs[14], prev);
+                    }
+                } else if (scr->dsb_hold_.load() == obj) {
+                    scr->dsb_hold_.store(0);
+                    LOG_INFO(HLE_DISPATCHER, "DSBHOLD: screen {} released by DSB 0x{:X} ({}, lr 0x{:X})", scr->number,
+                        obj, (which == 1) ? "Close" : "destructor", regs[14]);
+                }
+            }
+        }
+
+        void dsb_hold_install(const std::string &name, kernel::process *attacher, codeseg_ptr seg) {
+            std::string lower = name;
+            std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+            if (!seg || (lower.find("scdv") == std::string::npos)) {
+                return;
+            }
+            std::uint8_t *base = nullptr;
+            const address run = seg->get_code_run_addr(attacher, &base);
+            if (!base || (seg->get_text_size() < DSB_STUB_VTABLE + 0x20)) {
+                return;
+            }
+            auto half = [&](std::uint32_t off) { return *reinterpret_cast<const std::uint16_t *>(base + off); };
+            auto word = [&](std::uint32_t off) { return *reinterpret_cast<const std::uint32_t *>(base + off); };
+            const bool layout_ok = (half(DSB_STUB_CLOSE) == 0x4770) && (half(DSB_STUB_CREATE) == 0xB5F0)
+                && (word(DSB_STUB_VTABLE + 0x0C) == run + DSB_STUB_CREATE + 1)
+                && (word(DSB_STUB_VTABLE + 0x1C) == run + DSB_STUB_CLOSE + 1)
+                && (word(DSB_STUB_VTABLE + 0x00) == run + DSB_STUB_DTOR1 + 1)
+                && (word(DSB_STUB_VTABLE + 0x04) == run + DSB_STUB_DTOR2 + 1);
+            if (!layout_ok) {
+                LOG_ERROR(HLE_DISPATCHER, "DSBHOLD: {} at 0x{:X} is not the DSB stub this switch knows; not watched", name, run);
+                return;
+            }
+            // Each load of the stub (one a process that maps it) its own set of four; a
+            // third load replaces the older set.
+            std::uint32_t *set = common::g_pc_hook.addr;
+            for (int k = 0; k < 8; k += 4) {
+                if (set[k] == run + DSB_STUB_CREATE) {
+                    return;
+                }
+            }
+            static int next_set = 0;
+            set += 4 * next_set;
+            next_set ^= 1;
+            set[0] = run + DSB_STUB_CREATE;
+            set[1] = run + DSB_STUB_CLOSE;
+            set[2] = run + DSB_STUB_DTOR1;
+            set[3] = run + DSB_STUB_DTOR2;
+            common::g_pc_hook.fn = dsb_hold_hook;
+            LOG_INFO(HLE_DISPATCHER, "DSBHOLD: watching the DSB stub in {} at 0x{:X} (process {})", name, run,
+                attacher ? attacher->name() : std::string("-"));
+        }
+    }
 
     dispatcher::dispatcher(kernel_system *kern, ntimer *timing)
         : trampoline_chunk_(nullptr)
@@ -81,6 +169,11 @@ namespace eka2l1::dispatch {
         process_exit_callback_handle_ = kern->register_process_exit_callback([this](kernel::process *pr) {
             on_process_exit(pr);
         });
+
+        if (std::getenv("EKA2L1_DSBHOLD") && winserv_) {
+            g_dsb_hold.winserv = winserv_;
+            kern->register_codeseg_loaded_callback(dsb_hold_install);
+        }
     }
 
     dispatcher::~dispatcher() {

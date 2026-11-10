@@ -25,6 +25,7 @@
 #include <thread>
 #include <common/algorithm.h>
 #include <common/platform.h>
+#include <common/pchook.h>
 #include <common/time.h>
 #include <ctime>
 #include <cstdio>
@@ -44,6 +45,7 @@
 #endif
 
 namespace eka2l1::common {
+    pc_hook g_pc_hook = { { 0, 0, 0, 0, 0, 0, 0, 0 }, nullptr };
     std::atomic<std::uint64_t> g_cpu_cycle_counter{0};
     std::atomic<std::uint64_t> g_cpu_exec_ns{0};
 

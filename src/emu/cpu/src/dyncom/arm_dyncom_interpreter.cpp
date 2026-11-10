@@ -8,6 +8,7 @@
 #include <bit>
 #include <cinttypes>
 #include <common/log.h>
+#include <common/pchook.h>
 #include <common/types.h>
 #include <cpu/dyncom/arm_dyncom_dec.h>
 #include <cpu/dyncom/arm_dyncom_interpreter.h>
@@ -3043,6 +3044,12 @@ DISPATCH : {
     g_pc_trace.hit(cpu->Reg[15], cpu->Reg[13], cpu->Reg.data());
     g_mem_snap.hit(cpu);
     g_pc_mem.hit(cpu);
+    if (eka2l1::common::g_pc_hook.fn) {
+        const std::uint32_t hook_pc = cpu->Reg[15] & ~1u;
+        for (int k = 0; k < 8; k++)
+            if (hook_pc == eka2l1::common::g_pc_hook.addr[k])
+                eka2l1::common::g_pc_hook.fn(k & 3, cpu->Reg.data());
+    }
     if (!cpu->NirqSig) {
         if (!(cpu->Cpsr & 0x80)) {
             goto END;

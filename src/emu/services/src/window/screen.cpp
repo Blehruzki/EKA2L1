@@ -280,6 +280,21 @@ namespace eka2l1::epoc {
         window_drawer_walker adrawwalker(builder);
         root->walk_tree_back_to_front(&adrawwalker);
 
+        // EKA2L1_DSBHOLD: an open direct screen bitmap owns the panel; what it last posted
+        // stays on top of whatever the window server composed (see dsb_hold_).
+        if (dsb_hold_.load(std::memory_order_relaxed) && dsa_texture) {
+            const epoc::config::screen_mode &hold_mode = current_mode();
+            const float hold_rotation = ((hold_mode.rotation == 90) || (hold_mode.rotation == 180)) ? 180.0f : 0.0f;
+            eka2l1::rect hold_source { eka2l1::vec2(0, 0), hold_mode.size };
+            eka2l1::rect hold_dest = hold_source;
+            if (hold_rotation != 0.0f) {
+                hold_dest.top = hold_dest.size;
+            }
+            hold_dest.scale(display_scale_factor);
+            builder.set_feature(eka2l1::drivers::graphics_feature::blend, false);
+            builder.draw_bitmap(dsa_texture, 0, hold_dest, hold_source, eka2l1::vec2(0, 0), hold_rotation, 0);
+        }
+
         // Done! Unbind and submit this to the driver
         builder.bind_bitmap(0);
 
