@@ -8572,3 +8572,15 @@ Owner: "continue".
   measurement. Diagnosis builds: g54d (+ census [58] uploads, [59] of them the same image changed, [62]
   the image, [63] the surface) with a write watch on the image; g54t (A4_SKYTRACE: in every 16th checked
   frame the backdrop's rows re-hashed at every hook, so a change is pinned between two hooks): running.
+- g54d (race 40 s, census): one sky upload in the whole run (the image's pixels never change after its
+  load: the write watch on it shows only the loader +362EC/+36574 and +35FAC, which ORs 0x20 into every
+  texel once at load). The model runs' extra GL cost is not the sky: over the whole run g54b made 220
+  draws a frame against t54's 172 and uploaded 22.9 KB a frame against 1.8 -- not explained yet; the
+  in-run A/B (ab54) is queued.
+- g54t (A4_SKYTRACE, race 90 s): 21 intervals with backdrop rows changed by software, 14 between the draw
+  hook's exit (the first: a shadow, flags 0x20, r 1 -- the GPU's alone) and the flush (the HUD's first
+  call), 7 after a billboard; the first one 96 rows from row 19. So something the game draws after its
+  last triangle and before the HUD, through none of our hooks, covers most of the backdrop's rows. In
+  the old design it showed only where the backdrop showed (the composite overwrote it everywhere
+  else); with the GPU's backdrop it would show nowhere. A write watch on screen rows 30-31 (g54w)
+  names it: running.
