@@ -341,6 +341,15 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
     # clean: ship ONLY the performance rewrites (FILL_HOOKS + LOOP_HOOKS), with
     # no fps gauge, no back-buffer cache, no GL, no grown .bss -- a pure v5 with
     # none of the measurement instrumentation installed.
+    # round 56: every candidate through round 53 was built on the handoff's baseline image (general-v1: the fill and
+    # textured patches); rb55 and rb56 were built on the pristine game image instead. A GL build of the pristine image
+    # is refused unless A4_PRISTINE_OK=1 says it is meant.
+    import hashlib
+    _src_sha = hashlib.sha256(open(src_exe, 'rb').read()).hexdigest()
+    print('input  %s sha256 %s' % (src_exe.split('/')[-1], _src_sha[:16]))
+    assert not (gl and _src_sha == '9b9e6d107a810b3ef5452e04fadec8121b0bdde693d688b1b3a3567dfed3729b'
+                and not os.environ.get('A4_PRISTINE_OK')), \
+        'the pristine game image: candidates are built on handoff/baseline/asphalt4_ngi.exe (4baef63a); A4_PRISTINE_OK=1 if meant'
     fill_hooks = {} if measure_only else FILL_HOOKS
     loop_hooks = {} if measure_only else LOOP_HOOKS
     insert_hooks = {} if clean else INSERT_HOOKS      # fps detour

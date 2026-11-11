@@ -9088,3 +9088,73 @@ from one countdown to another)."
   builds made 46-51. At the right speed v0 posts ~2 a render (1,467 for 736) and v3 saves only those.
 - Next: route B is closed. The main line's candidate is round 53's baseline (lift on, memo out) with round 54's
   exact cut A4_TAKE2, built with A4_HALFSTEP=1 -- put to the owner.
+
+## Round 57 (owner: "build it, test it and send it ... explain why it's closed ... consider other alternatives")
+
+Build recipe slips found on the way (both now refused by the injector): rb55/rb56/rb56b lacked env A4_HALFSTEP=1
+(above), and were built on the pristine game image (9b9e6d10, 764,856 bytes) instead of the handoff's baseline
+(4baef63a, 765,940: general-v1, the fill and textured patches) that every candidate through round 53 used. The
+injector prints its input's hash and refuses the pristine image in a GL build unless A4_PRISTINE_OK=1.
+
+Candidate r57: baseline + C54.flags (round 53's without the memo and its A/B) + A4_TAKE2 (round 54's exact insert,
+-30% instructions), A4_HALFSTEP=1, A4_SCRATCH_SIZE 0x62000 (round 53's). sha256
+2f07552e22eefcbdef827ea68ea87b05b8c042c28e6d8c39da2576ab4b3bce2e, 824,836 bytes, no 0xDEADBEEF. Its recorder twin
+y57 (+ A4_CARREC A4_YREC A4_AUTOPILOT), 825,852 bytes. Battery r57bat.sh (round 53's, renamed) on 2f07552e:
+- Twin y57 recorded (88.3 MB): all cars x-z 99% 25 max 96, height 99% 8 max 42, heading 99% 10 max 43; camera
+  x-z 99% 36 max 55, yaw 99% 26 max 35; frames 1,405 chase, reversals 0 (r53: 24/99, 9/61, 13/87; 37/64, 25/45).
+- Tele, W-4 model, 120 s: framestat 2,937; 48.6 ms a render over 2,369 renders (r53's slots 49.3-51.6), 3D 21.4,
+  comp 7.2 (read 5.7), 2D 2.7; render call 39.0 ms, 7.2 before the first triangle; window 100: 23 steps in 998
+  ms (half-steps in real time). Drawn speed against its neighbours 10-90% 0.96-1.04, 0 off by 25%; chase
+  bearing 99% 5, camera yaw and car heading one-frame reversals 0; presents 3,030, held 0, drop frames 0.
+- Crash-steer (cap 85): one camera-yaw flick of 6/2048 in 417 frames (r53: one heading-less-yaw reversal) --
+  the run-to-run level. Finish (twin, cap 85): reached, 195 finish-view frames, reversals 0. Exact binary, key 5
+  held, 300 s: racing to the end, 0 reversals of note.
+- Menus (racemenu: the pause menu walked, its confirm, main menu, garage): 18 shots, faults 1 (the boot fault).
+  Marks and marks on the Veyron run. Veyron autopilot: three 1,023/2,048 yaw jumps, each exactly at the game's
+  own cut between mode 2 (chase) and mode 6 (the wrecked-car view looking back; the car stuck at x ~26,400) --
+  the game's cuts, not frames of ours. +3A15C b510 0004 (no bench unlock), no 0xDEADBEEF.
+- Rule 2: not a repeat -- no phone round has run TAKE2, nor round 53's code without the memo and its A/B; and it
+  is the first correct-speed build since round 53 (rounds 55-56 ran at half speed).
+- Rule 4: (a) nothing new is a guess in code: TAKE2 was checked exact in round 54 (1,758,056 faces, 0 differing;
+  its mutant flagged 3,054); its phone gain (~1.6 ms on the model) is the estimate the round measures. The
+  recipe is checked by the guards and by the model's rate. (b) Read back: the build log (input 4baef63a, the
+  step halved), the C53 -> C54 flag diff (only the memo and its A/B gone), shipchk. (c) Not entered: the phone
+  itself; a telemetry ring with no A/B (r51sum labels its one slot with round 50's names -- cosmetic).
+- Sent to the owner (approved in advance: "build it, test it and send it"): r57 = 2f07552e, unbaked.
+
+### Why route B is closed (per-call costs, phone rounds 55 and 56)
+- What it removes from a frame: the readback (6.7-6.9 ms), the composite's loop (~2), the runtime's post (2.84 a
+  call, ~1.3 a render at the right speed): ~12-13 ms.
+- What it costs: eglSwapBuffers 12.0 ms a frame at interval 1 and at 0 alike (not the panel's refresh: WSEGL's post
+  and the tile render), plus getting the game's 2D onto the GPU -- an upload runs at ~4 KB/ms (37.5 ms for a frame),
+  and drawing the HUD on the GPU means taking every 2D blitter of the game (text, minimap, speedometer, sprites).
+- So at best even before the HUD. The one unmeasured part: whether the swap's 12 ms is the ARM working or waiting.
+  If waiting, a second thread could hide it -- which matters only inside a pipeline where the GPU draws everything.
+
+### What is left that has not been tried, ranked by what it could change
+Where the phone's frame is (round 53, the right speed, 65 ms a render): before the first triangle 13.7 (the game's
+front end), the 3D pass ~28 (the game's per-object work, our hook and insert, GL at ~31 us a call + 1.5 us a
+triangle ~8), the composite 8.8 (read 6.7), the 2D 3.2, the rest (logic, posts, yield) ~10. 30 fps is 33 ms: half.
+No trim of our own code gets there; only removing whole blocks of the ARM's work does.
+1. **Let the GPU transform the meshes (the VGP).** The N95's OMAP2420 has the full MBX with the VGP vertex
+   processor (TI's brief; 3DMark06 2.36 Mtris/s) and nothing uses it: the game transforms every vertex on the ARM
+   (+345E4), the static objects are unpacked every call (+CE8C), and every face is culled, inserted and drawn per
+   face. The mesh list already gives the GPU view-space vertices and a projection; the next step gives it object
+   space and the object's matrix (cam[0x3c]). The cars first: 2,064 of ~3,400 mesh faces a frame (map 2's census),
+   rigid, in persistent arrays (CBasicMesh) -- baked once, drawn with the car's matrix. Blocker known: the paint
+   and windows are span mode 1, which samples the frame being drawn (the reflection) -- it needs its own answer.
+2. **Bake the static world into GPU buffers at load** (track, buildings, props in world space, a camera matrix a
+   frame, the GPU clipping): the game's world front end and the per-face path both go. The largest possible cut
+   and the largest reverse engineering: where the track's geometry lives, the game's visibility and LOD rules, the
+   road's generator (+27402, its own transform +346B0).
+3. **A CPU-idle census on the phone**: a lowest-priority thread counting while the game runs says how much of each
+   frame the ARM waits (on the GPU in the readback or the swap, on timers in the yields). Waits can be overlapped by
+   a second thread; work cannot. It would also settle route B's caveat. A ride-along probe, cheap.
+4. **Frames between renders by reprojection**: the list's triangles are in view space under a GPU projection, so
+   redrawing them with the next camera is cheap -- but the frame is synthesized (cars moved rigidly, gaps at the
+   edges, the painter's-ordered rest not reprojectable): the owner's "no cheap tricks" decides.
+5. **eglCopyBuffers instead of glReadPixels**: one timed call; low odds (the N95 offers no pixmap configs).
+6. Small cuts, ~1 ms each: the re-posts skipped (v3, ~0.8 ms at the right speed), lean_tail, the blended classes'
+   second drawing.
+Before building 1 or 2: their ceilings on the N95 model -- the race with the cars' meshes not transformed or drawn,
+with the static world not drawn, and with the present path skipped -- an upper bound for each, bench only.
