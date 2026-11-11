@@ -9263,4 +9263,29 @@ for its snapshots only):
 - Built: the handoff baseline (4baef63a), A4_HALFSTEP=1, A4_SCRATCH_SIZE=0x62000, C54 + A4_TAKE2 + A4_KD_MINTURN.
   a4_r58_cand.exe 3e82ac5ad7c5491579f46780fa6274f8494597367724d3b2bfc8aeb215d83d87, 825,016 bytes, +3A15C b510 0004
   (no bench unlock), no 0xDEADBEEF. Recorder twin y58 (+ A4_CARREC A4_YREC), a4_rec_emit2 at +0BA75C.
-- Battery (r58bat.sh, r57's on the exact binary): running.
+- Battery (r58bat.sh, r57's on the exact binary 3e82ac5a):
+  - Tele, W-4 model, 120 s: framestat 2,905, faults 1; 49.3 ms a render over 2,346 renders (r57 48.6; r53's slots
+    49.3-51.6), 3D 21.1, comp 7.3 (read 5.6), 2D 2.9, present 3.0; drawn speed 10-90% 0.96-1.04, 0 off by 25%;
+    camera yaw and car heading one-frame reversals 0 in 417; presents 2,937, held 0, drop frames 0.
+  - Crash-steer (cap 85): reversals 0 (yaw and heading), bearing 99% 3.
+  - Finish (twin, cap 85): reached (178 mode-1 frames after 11 of 0x18), reversals 0. Exact binary, key 5 held,
+    300 s: 344 chase frames, reversals 0; the 0x17 views as before.
+  - Menus: 18 shots, faults 1 (the boot fault). Marks, and marks on the Veyron.
+  - Veyron autopilot: chase 314 frames, car heading reversals 1 (11/2048), camera yaw one-frame reversals 5 (r57: 3,
+    all the game's 1,023 cuts; its Veyron stuck early, a different route). Read from the frames: between steps the
+    camera turns with the car exactly (-9/-9, -15/-15, -13/-13: the rigid chase camera, r47); at each step it takes
+    the game's offset again, and in this long turn the game's own camera fell behind the car more every step
+    (heading less yaw -5, -14, -22, -32), so the step frame turns the camera back 7. Drawn position does not read
+    the turn; the rule changes only how far both turn between steps. Not the rule's: the rigid camera's, in any
+    build since r47, seen now because this route has the turn. Follow-up: carry the offset's own change between
+    steps.
+  - The first twin (y58) was built without A4_AUTOPILOT (r57's twin had it): its player stood still, the other
+    cars' heading 99% 9 max 37 (r57 10, 43). Rebuilt with it (826,096 bytes); re-recording queued.
+  - +3A15C b510 0004, no 0xDEADBEEF.
+- Rule 2: not a repeat -- no phone round has run A4_KD_MINTURN; r58 differs from round 57's r57 (2f07552e) by the
+  rule alone (and a4_gl.s now preprocessed, which leaves the census placeholders out; r57 never had them).
+- Rule 4: (a) guesses: that +7FC is every car's steering (the AI's overshoots fell 43, 87 -> 23, 25 on the bench, so
+  it behaves as one); the 1,024 threshold (36 steps); that the phone's snap is this kick (the phone's frame record
+  has no game step headings -- the round says). (b) Read back: the whole code diff (the two struct words, the
+  three clauses, the injector's preprocessing line). (c) Not entered: missed steps (the rule then compares with an
+  older step's turn and steering), the first step of a race (traw/sraw as the block was left), a scripted camera.
