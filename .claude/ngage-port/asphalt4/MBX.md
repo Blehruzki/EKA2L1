@@ -9032,3 +9032,7 @@ Rule 4, before it goes out:
   Remembered only: nothing in the diff.
 - (c) Not entered on the bench: a human-length press (80-300 ms) at the N95's iteration rate; a press across a variant
   change; state 25; a long press during yellow (v3); the drop clock at its bss zero (the first drop counts).
+
+Phone round 56: rb56b (3d626bf1, 827,600 bytes, unbaked) sent to the owner on approval. Asked: steering and a tap of
+pause in every colour (a long hold opening the N-Gage application is the game's own), any visible difference between
+white / red / blue / yellow; C:\a4tel0-7.dat (171,560 bytes each) back.
