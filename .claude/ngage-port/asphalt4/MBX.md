@@ -9289,5 +9289,45 @@ for its snapshots only):
   has no game step headings -- the round says). (b) Read back: the whole code diff (the two struct words, the
   three clauses, the injector's preprocessing line). (c) Not entered: missed steps (the rule then compares with an
   older step's turn and steering), the first step of a race (traw/sraw as the block was left), a scripted camera.
+- Twin re-recorded with the autopilot (y58b, W-4 model, 120 s): all cars x-z 99% 34 max 144, heading 99% 28 max 171;
+  camera yaw 99% 34 max 90; snapscan 33 zig-zags (r57's y57: heading 99% 10 max 43, yaw 26/35). Read: this route
+  ends in crashes -- the game's own player headings 1234, 1154, 962, 942, 849 (-192 in one step), an AI car's 1377,
+  1433, 1561, 1433, 1305 (+-128 a step) -- where any frame between steps is off the line between them. The rule is
+  not it: scored on this recording (predrules2.py), the player's prediction is the same with and without it (mean
+  error 3.60, 99% 64, overshoots 34 either way: the rule never fired on its steps), the other cars' better with it
+  (overshoots 103 -> 57, mean 3.48 -> 3.13). (y57's route had no such crash, so the two twins do not compare.)
 - Sent to the owner (the agreed order: "fix the snap-back on the bench, then send a build to confirm" -- "yes"):
   r58 = 3e82ac5a, unbaked. What the round answers: whether the snap-back in hard turns is gone, at round 57's speed.
+
+### Round 58 bench: what the roadside scenery costs, and what the GPU can and cannot take
+- Mapped (a4stock2.dis): the scenery routine +CF6E (one caller, +D7D0) walks the track's static object records (48
+  bytes: x, y, z, radius, +0x10 a timer, +0x14 type, +0x1C vertex count, +0x20 int16 vertices, +0x24 face count,
+  +0x28 10-byte faces, +0x2C an animation counter) between two track sections ([track+0x6A80+0x30/0x34][section]).
+  Each object: sphere cull +358FC (dropped wholly past ZW 29,900 or behind -64, then four planes), push the camera
+  matrix (+32542: a 12-word stack at cam+0x3C), translate by the object's place (+321BC, 14-bit rotation, then
+  + translation); types 0x44 (a knocked prop: moved, rotated by +32302/+32322 a step, gone after 40) and three
+  table types (+ADFE0; their glow sprites by +CABE) aside, then +CE8C draws it (unpack, +349F8) and +32558 pops.
+  So a static object is the camera matrix times a translation: 92 distinct meshes, placed only by position.
+- What it costs (s58a / s58o: r58 with and without +CE8C, W-4 model, GPUMODEL_CALLS, 120 s each): 49.2 -> 43.0 ms
+  a render; GL calls a frame 690 -> 316: draw elements (the list) 112.5 -> 4.7, texture-matrix loads 92.7 -> 2.3,
+  binds 198 -> 83, depth funcs 19.6 -> 0.6, draw arrays (the table) 112 -> 98. The list is almost all scenery.
+  Front end, a cycle profile gated on +CF6E..+D7D4 (sp58c): ~1.17M modelled cycles a frame (~3.5 ms), of it
+  engi_349F8 (transform, culls) 38.7%, a4_mesh_insert 37.1%, +CE8C's unpack 14.7%, the walk 4.4%, the sphere cull 0.7%.
+- So "the scenery on the GPU" as first thought -- object-space meshes, a matrix an object -- needs a draw call (and
+  a matrix) for each of ~89 objects a frame: about what it would save. Not that.
+- The list's draws, from dumps (A4_LISTDUMP: every 64th list as mesh_draw gets it; tools/listcmp.py replays the run
+  grouping under other rules and rasterises each as the list draws -- texz GEQUAL, the rest ALWAYS, 24-bit depth --
+  comparing the face shown at every pixel; ld58, 27 frames, 462,746 list pixels):
+  | rule | draws a frame | pixels changed |
+  | the build's (box overlap only) | 93.3 | -- |
+  | A4_MESHZ (round 46, dropped with z3 in round 51) | 93.2 | 0 |
+  | depth-tested faces pass every depth-tested run | 90.7 | 0 |
+  | every face depth-tested | 20.4 | 11,185 (2.4%) |
+  Only ~3% of the list's faces are depth-tested (the game draws most of them affine: mesh_fallback). Of the
+  all-tested rule's changed pixels, 34 are ties and 8,728 a clearly nearer face -- and seen (false colour by texture,
+  lcview): the roadside's blue props stand into the walls behind them, and the game's order paints them whole; a
+  depth test cuts them. The table order is part of the picture.
+- What can merge draws without touching the order: one draw call draws its triangles in order. Consecutive faces in
+  table order change texture 175 times a frame but depth function only ~21: with the textures on shared pages (an
+  atlas) the list's runs could carry the table's order across textures. The obstacle is repeat: face texture spans
+  50% 16x29 texels, 90% 64x95, 99% 160x218 -- some faces tile their texture. Texture sizes added to the dump (ld58b).

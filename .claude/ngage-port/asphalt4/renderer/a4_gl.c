@@ -5043,6 +5043,17 @@ void a4_mesh_insert(uint32_t *cam, uint32_t *face)
  * the hook's KIND_TEXZ set back a little) -- texcoords scaled by a texture matrix (words are texels * 16), the
  * depth test on and writing, back faces culled (the game's 2D test: drawn where the
  * screen-space area is negative, i.e. counter-clockwise once GL's y points up). */
+#ifdef A4_LISTDUMP
+/* bench (round 58): every 64th frame's list as mesh_draw gets it -- EKA2L1_PCMEM ats at this function's address:
+ * r0 the header (32 bytes: 'LIST', faces, F, cx, cy, depth bits, frame, texture keys; then 128 log2 widths and 128
+ * log2 heights, a byte a key: 0x120 in all), r1 MESH_V (36 bytes a
+ * face), r2 MESH_T and what follows it (T, B, Q, ORD; K at +0xC000), r3 MESH_Z -- for tools/listcmp.py, which
+ * replays the run grouping under other rules and compares the pictures pixel by pixel */
+__attribute__((noinline)) void a4_list_emit(const void *hdr, const void *v, const void *t, const void *z)
+{
+    __asm__ volatile("" : : "r"(hdr), "r"(v), "r"(t), "r"(z) : "memory");
+}
+#endif
 static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
 {
     volatile struct mesh *m = MESH;
@@ -5144,6 +5155,16 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
         }
 #endif
     }
+#ifdef A4_LISTDUMP
+    if ((s->frames & 63u) == 0u) {
+        int32_t hdr[8 + 2 * MESH_NK / 4];           /* (filled word by word: an initialiser would call memclr) */
+        hdr[0] = 0x5453494C; hdr[1] = (int32_t)n; hdr[2] = (int32_t)m->F; hdr[3] = *(const int32_t *)gctx[0x40110 / 4] >> 1;
+        hdr[4] = *(const int32_t *)gctx[0x40114 / 4] >> 1; hdr[5] = (int32_t)s->zbits; hdr[6] = (int32_t)s->frames; hdr[7] = (int32_t)nk;
+        {   uint8_t *hb = (uint8_t *)(hdr + 8);     /* then each key's texture size, log2 width and height */
+            for (uint32_t j = 0; j < MESH_NK; j++) { hb[j] = j < nk ? kws[j] : 0; hb[MESH_NK + j] = j < nk ? khs[j] : 0; } }
+        a4_list_emit(hdr, MESH_V, MESH_T, MESH_Z);
+    }
+#endif
     int32_t F = (int32_t)m->F;
     if (F < 1) F = 1;
     if (F > 16383) F = 16383;                        /* F << 17 in int32 */
