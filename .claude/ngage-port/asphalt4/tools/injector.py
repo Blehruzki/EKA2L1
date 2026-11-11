@@ -132,6 +132,14 @@ assert '-DA4_SKYTRACE' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x463600, \
 _hi = [f for f in ('-DA4_MESH', '-DA4_HALFSPEC', '-DA4_SLOWREC', '-DA4_FRAMEREC', '-DA4_KINEDRAW', '-DA4_ENGINE') if f in _xf]
 assert not _hi or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x460000, \
     '%s: blocks up to 0x460000 -- A4_SCRATCH_SIZE must be 0x5F000 or more (the candidates use 0x63000)' % ' '.join(_hi)
+# round 56: the half-step code (A4_HALFLOGIC: the game's whole step on every other step) keeps the game's speed only
+# with the step halved in the image (env A4_HALFSTEP=1, 85.33 -> 42.67 ms). rb55, rb56 and rb56b were built without
+# it: every step 85 ms, a whole step every other one -- the race at half speed on the phone (the owner: the countdown
+# ~2 s a number) and on the bench (85 ms a render, one step each), read as "the step's gate" for two rounds.
+assert '-DA4_HALFLOGIC' not in _xf or os.environ.get('A4_HALFSTEP'), \
+    'A4_HALFLOGIC without env A4_HALFSTEP=1: the game would run at half speed (the step not halved)'
+assert not os.environ.get('A4_HALFSTEP') or '-DA4_HALFLOGIC' in _xf, \
+    'env A4_HALFSTEP=1 without A4_HALFLOGIC: the game would run at double speed (the step halved, run every step)'
                                 # (pos/uv/idx/tex from 0x408000, end 0x40FD00); kept as
                                 # small as the batch allows -- a large image .bss corrupts
                                 # the game's load-time layout

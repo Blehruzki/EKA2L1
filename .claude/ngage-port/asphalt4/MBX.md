@@ -8871,7 +8871,8 @@ how I said the race and not the game overall."
     the two make-currents 0.15 ms.** The runtime's present in v0: 2.5 ms; readback + composite 8.8.
   - Renders: v0 84.8 ms (529 renders: at the game's 85.33 ms step), v1 109.6, v2 103.4 -- the upload's
     38 ms less the convert it replaced. Logic: 11.5-12.4 steps a second in every v1/v2 window (the 11.72
-    the step is): the race did not slow by its own clock. Frame record (417 renders, 2.3 s blocks): the
+    the step is): the race did not slow by its own clock. **[Wrong -- phone round 56: rb55 was built without
+    env A4_HALFSTEP=1, so each 85 ms step was a half-step and the race ran at half speed in every variant.]** Frame record (417 renders, 2.3 s blocks): the
     car's speed 1,537-2,145 units/s and its heading changing in v0 and in the EGL blocks alike -- the game
     took the owner's keys in red and blue. What the owner saw as dead controls and the slowest race is the
     picture: ~9.5 frames a second against 11.8, and possibly the EGL frames reaching the panel late (WSEGL
@@ -9006,7 +9007,9 @@ Bench, rb56b (3d626bf1, 827,600 bytes; rb56 rebuilt without the flag is byte-ide
 - Key test (kt56d): white 0.38 s, red 0.81-0.82, blue 0.79-0.80, yellow 0.79-0.82 to the pause menu; no launch.
 - Race run (rb56bR, 150 s): checks 0 different in every variant; v0 post 2.10 ms; v1 draw+swap 10.26 ms, v2 9.68.
 - Menus (rb56bmn): the pause menu walked, its confirm, main menu, garage: clean, no launch.
-- N95 model (W-4, m_rb56b, 150 s): every variant at 85 ms a render (the step's gate); checks 0 different. v0 4,466
+- N95 model (W-4, m_rb56b, 150 s): every variant at 85 ms a render (the step's gate); checks 0 different.
+  **[Misread -- phone round 56: 85 ms a render with one step each is the half-speed symptom of a build without
+  A4_HALFSTEP=1; round 54's model runs of C54 made 46-51 ms a render and ~23 steps a second.]** v0 4,466
   posts for 460 renders (1.00 ms each); owned v1 167,496 posts skipped for 460, v2 133,241 for 414, v3 152,744 for
   368 (~360-415 iterations a render). Upload 4.61 ms, draw+swap 9.00 (v1) / 8.86 (v2). **The model is far from the
   phone here**: round 55 measured upload 38 ms and a post ~9 ms on the N95, the model 4.6 and 1.0 -- glTexSubImage
@@ -9036,3 +9039,52 @@ Rule 4, before it goes out:
 Phone round 56: rb56b (3d626bf1, 827,600 bytes, unbaked) sent to the owner on approval. Asked: steering and a tap of
 pause in every colour (a long hold opening the N-Gage application is the game's own), any visible difference between
 white / red / blue / yellow; C:\a4tel0-7.dat (171,560 bytes each) back.
+
+## Phone round 56 (rb56b 3d626bf1): the whole game at half speed -- rb55, rb56 and rb56b built without A4_HALFSTEP
+
+Owner (N95, eight files): "There was no difference between colors. They all played awfully: sluggish, heavy, as if the
+game was dragging along a heavy weight. Even the race countdown was taking longer to complete (about 2 seconds to pass
+from one countdown to another)."
+- The files: captures 69-76, all rb56b (171,560 bytes, format AG31, 'RBP2'). (My first read took older uploads of the
+  same names -- the copy globbed every a4telN upload; redone with the eight named.)
+- **The cause is my build, not the probe.** The countdown at 2 s a number is the game's clock at half speed. Since
+  round 31 the step is halved in the image by env A4_HALFSTEP=1 (+52B98, +52B9C, +15F28: 85.33 -> 42.67 ms), and
+  A4_HALFLOGIC runs the game's whole step on every other step "so the game keeps its speed" (a4_gl.c, +1271). The
+  record's build lines carry it through round 53 (C53.flags, A4_HALFSTEP=1, scratch 0x62000); rb55's, rb56's and
+  rb56b's commands did not: each 85 ms step a half-step, a whole step every 171 ms. The numbers said so and I read
+  them as a gate: phone round 53 (correct) 4,240 steps over 2,722 renders, ~24 a second (half-steps in real time),
+  63-69 ms a render; rounds 55 and 56 1,979 and 2,102 steps over 1,687 and 1,798 renders, ~11.7 a second, 85-116
+  ms. On the bench the same: round 54's model runs (m_t54, m_g54b, m_ab54) 46-51 ms a render, 23-28 steps a window
+  of ~1.1 s; rb55m and m_rb56b exactly 85 ms, one step a render. So round 55's "the race did not slow by its own
+  clock" and "the visible rate is the step's" are wrong (marked there), and neither round's "how it plays" says
+  anything about route B: every variant ran the same half-speed game.
+- Guard (tools/injector.py): A4_HALFLOGIC without env A4_HALFSTEP refuses to build (and A4_HALFSTEP without
+  A4_HALFLOGIC: double speed). Checked: rb56b's own command now fails; with A4_HALFSTEP=1 it builds rb56c
+  (3d84ab81, 827,600 bytes; 8 bytes from rb56b, the three step words).
+- **What the round still measured** (costs a call, not of the game's speed):
+  - eglSwapInterval works on the N95 (the config's range 0..3; set 5 times, refused 0) and **changes nothing**:
+    draw + swap 12.07 ms at interval 1, 12.04 at 0. The swap does not wait for the panel. Round 55's open question
+    ("if it waits for the panel's refresh, eglSwapInterval(0) would change it") is answered: it does not.
+  - The upload: 37.45 / 37.61 ms a frame (round 55: 37.9). The make-currents 0.12-0.14.
+  - **The runtime's own post: 2.84 ms a call** (v0, 3,654 posts, max 33). In a correct-speed race the loop makes
+    ~1.3 posts a render (round 53: 3,455 converts for 2,722 renders), so skipping the re-posts (v3) saves under
+    1 ms a render; v3's 42,392 skipped (108 a render) are the half-speed build's spinning loop.
+  - Pause key: drops counted 21, held back 89, run out 0 -- no tap became a long press. But the iteration rate
+    A4_LP_MS was sized on (round 55's v0, ~80 a second) was a half-speed build's; at round 53's ~20 posts a second
+    the stock long press is over a second and the 12 ms floor does not bite. It matters only where posts are
+    skipped (route B).
+- **Route B, settled on two rounds' per-call costs**: presenting through EGL costs the upload (37.5 ms) and a swap
+  (12.0, whatever the interval) against the runtime's post (2.84) plus the readback and composite route B would
+  remove (8.8). Without the upload (the 3D drawn into the window surface, the HUD moved to the GPU) the swap alone
+  is about what it removes -- the round-55 estimate stands. Route B shelved; A4_RBPROBE and A4_LONGPRESS stay as
+  bench and probe options.
+- Rule 4 lesson: a build's recipe is more than its flags file. An environment switch (A4_HALFSTEP) outside
+  C54.flags was dropped between rounds 54 and 55 and two phone rounds ran a different game. The injector now
+  refuses the mismatch; and a number exactly equal to a constant (85.3 ms = the step) is a symptom to explain,
+  not a gate to accept.
+- Confirmed by measurement (W-4 model, m_rb56c, 150 s): rb56c -- rb56b's flags with A4_HALFSTEP=1 -- renders at
+  47.3 ms (v0), 53.0 (v1), 53.7 (v2), 46.3 (v3), 2,960 renders and 3,500 steps (window 123: 31 steps in 1,333
+  ms, 23.3 a second: half-steps in real time), against rb56b's 85 ms and one step a render. Round 54's correct
+  builds made 46-51. At the right speed v0 posts ~2 a render (1,467 for 736) and v3 saves only those.
+- Next: route B is closed. The main line's candidate is round 53's baseline (lift on, memo out) with round 54's
+  exact cut A4_TAKE2, built with A4_HALFSTEP=1 -- put to the owner.
