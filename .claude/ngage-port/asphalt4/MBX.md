@@ -9346,3 +9346,27 @@ for its snapshots only):
   binds and ~90 texture-matrix loads the scenery adds; the table path's ~100 draws a frame not yet simulated.
   Costs: the textures uploaded into pages (2x2: four times the texels, at the ~4 KB/ms the phone uploads), page
   management, and the faces that do not fit kept on their own textures. Not started: a decision for the owner.
+
+## Phone round 58 (r58 3e82ac5a): the snap-back gone; tearing worse the faster the car goes
+
+Owner (N95, eight files): "It improved decently. I think we can work with it." Asked how else to raise the frame
+rate and cut the tearing in fast races ("the faster I go, the more noticeable the screen tearing is"); the aim stays
+a stable 30 fps.
+- Files: captures 253-260, r58 (171,048 bytes, mode 3118, no A/B), copied by their exact upload names (ph58/).
+- Speed as round 57: render call 55.7 ms (r57 56.3), before the first triangle 11.2 (12.3); steps 4,822 over 3,149
+  spans (n=1 1,629, n=2 1,379: half-steps in real time). Whole race 69.2 ms a render over 3,199 renders -- window 259
+  is a 7.5 s load (326 ms a render); light windows 40.7-43.6, heavy 59.7-71.3.
+- The rule's effect (frame record, last 373 frames): car heading one-frame reversals 1 (r57 bearing reversals 19);
+  camera-yaw one-frame reversals 15 of 4-13 /2048 (r57 10). The camera's yaw steps unevenly in a turn (8.1-8.8 s:
+  +8, +9, +19, +10, +5, +12, +2, +9) while the game's camera falls behind the car (heading less yaw 0 -> 31): the rigid
+  camera taking the game's offset again at each step (the Veyron's, round 58 bench) -- the follow-up stands.
+- Pacing, from the frame record (208 chase frames): render start to present 67.1 ms mean, sd 13.0; presents 42-90
+  ms apart (10-90%). Each frame is drawn for its render start and shown at its present, so the picture is off its
+  display moment by speed x (delay - mean delay): at the car's ~4 units/ms, 47 units at the median, 77 at 90%. A
+  frame's delay less the previous frame's: sd 9.7, median ~2 ms -- predicted from the last frame's, the same error
+  would be 8 (median) and 48 (90%). The faster the car, the larger this uneven step, in proportion.
+- Tearing (round 29's study, the runtime's binary and the ROM's scdv.dll): the runtime asks for a double-buffered
+  direct screen bitmap and waits for each transfer before the next; a tear is the display driver's transfer meeting
+  the panel's scan, below the game and us. Its seam is the difference between two consecutive frames: the motion
+  between them, which grows with speed. Levers: more frames a second (a smaller jump each) and even pacing (no
+  frame jumping twice as far as its neighbours).
