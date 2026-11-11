@@ -340,7 +340,7 @@ a4_fwpost_tramp:
         pop     {r0, r2, r3, lr}
         bxne    lr                  @ held: back to +6B6, the post not made
         movs    r1, #0              @ displaced +6B2: movs r1,#0
-#ifdef A4_RBPROBE
+#if defined(A4_RBPROBE) || defined(A4_IDLECEN)
         @ round 56: the post timed -- made as a call, then a4_fw_done (which returns r0 as given); +6B6
         @ only pops {r4-r6,pc} and its caller reads no register, so r1-r3 may be clobbered
         push    {r4, lr}

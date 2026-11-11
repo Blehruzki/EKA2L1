@@ -9158,3 +9158,63 @@ No trim of our own code gets there; only removing whole blocks of the ARM's work
    second drawing.
 Before building 1 or 2: their ceilings on the N95 model -- the race with the cars' meshes not transformed or drawn,
 with the static world not drawn, and with the present path skipped -- an upper bound for each, bench only.
+
+## Phone round 57 (r57 2f07552e): back to round 53's level; a heading snap-back in a hard turn
+
+Owner (N95, eight files): "Yep, back to how it used to be on r53. There is some small snap-back that we need to iron
+out. Other than that, it went back to r53 levels."
+- Files: captures 115-122, all r57 (171,048 bytes, mode 3118, no A/B). Copied by their exact upload names this time
+  (round 56's first read globbed older uploads).
+- Whole race: 2,808 renders in 122 windows, 65.8 ms a render (round 53: 65.4 / 65.7); 3D 30.0, composite 8.9 (read
+  6.9), 2D 3.3, present 2.3; render call 56.3 ms (55.6 / 56.4), before the first triangle 12.3 (13.7 / 14.5); steps
+  4,448 over 2,865 spans (half-steps in real time, as round 53's 4,240 / 2,722). TAKE2 shows before the first triangle
+  (-1.4 to -2.2 ms) and is within the noise over the whole frame. Converter 3,308 fast converts (~1.2 a render).
+- Frame record (the last 417 frames, 382 chase): bearing reversals 19 (round 53: 15, 12), camera-yaw one-frame
+  reversals 10 (11, 5), drawn speed against its neighbours off by >25%: 2% (0%, 1%) -- the latter uneven present
+  intervals (81, 44, 47, 80, 48 ms) with the car advancing in proportion, not motion backwards.
+- **The snap-back, found**: at 68.37-68.61 s, in a hard left turn (heading -45 to -50 /2048 a frame), the drawn heading
+  goes 760, 710, 663, **704**, 668, **580**, 566, 588: back 41 (~7 degrees) for one frame, then on by 36 and 88 (~15
+  degrees); the chase camera with it (yaw 668, 711, 671, 582). The frames turn the car by the last step's turn
+  (A4_KD_TURN, whole pulses: "the next step repeats the last turn in 87% of steps") and the snap fix fades a step's
+  disagreement over A4_KD_TAU -- here the frames jumped instead: either the game's heading changed by more than a turn
+  pulse (a contact, a bounce) and the fix took it as a cut, or the fade does not cover this case. Next: reproduce on
+  the bench (a hard turn into a wall, steerhold / autopilot), name the rule, fix; no phone round for it until then.
+
+### Round 57 bench: the ceilings (what the cars and the roadside scenery cost, by not running them)
+Bench-only injector switches (never a phone build): A4_CEIL_CARS makes the CBasicMesh wrapper +34AEA return at once
+(the cars: transform, cull, insert, and their faces' draws); A4_CEIL_OBJS makes the static objects' routine +CE8C
+(one caller, +D2F6) return at once. Neither caller reads the result. Each build differs from r57 by 4 bytes a switch.
+Screenshots: cars off -- no car, the player's shadow on the road at 190 km/h; objects off -- the roadside buildings,
+trees and props gone, the road, tunnel walls, skyline backdrop and cars left (so +CE8C is the roadside scenery).
+W-4 model, 120 s each (rbrun.sh; its bare `wait` hung on an Xvfb it had started in this fresh container -- now waits
+for its snapshots only):
+| build | render call | before 1st triangle | 3D | composite | ms a render |
+| r57 (r57t) | 39.0 | 7.2 | 21.4 | 7.2 | 48.6 |
+| cars off | 30.3 (-8.7) | 4.2 | 16.1 | 6.9 | 44.5 |
+| scenery off | 28.8 (-10.2) | 4.0 | 14.4 | 7.1 | 42.9 |
+| both off | 20.6 (-18.4, 47%) | 1.5 | 9.8 | 5.9 | 42.7 |
+- The present path needs no run: on the phone it is measured -- composite 8.9 + ~1.2 posts a render x 2.84 = ~12.4 ms.
+- Read: the cars and the roadside scenery are half the render call (on the phone, x1.44 the model: ~26 of 56 ms). A
+  GPU path for them would keep their draw calls (~31 us a call + 1.5 us a triangle on the phone) and a cull, so it
+  takes most but not all of that. With both gone the frame sits on the half-step's cap (42.67 ms a frame, 23.4 fps):
+  past it needs the step itself shorter (the engine at 3x, A4_THIRDSTEP, task 38) as well.
+
+### Round 57 bench: the CPU-idle census (A4_IDLECEN, A4_ABCYCLE16), built and run
+- What it is (a4_gl.c, a4_tel.c, r51sum.py 'AG32' / 'IDL1'): a thread at EPriorityNull (absolute 3 in a foreground
+  process, kernelhwsrv sthread.cpp ThreadPriorityTable) that counts while nothing else is ready; its counts over a span
+  against its idle rate are that span's idle CPU, per window and inside the yield, the readback and the post. No import
+  block added: the game's own RLibrary::Load / Lookup slots (euser 1308 at code+0x50FA8, 1838 at +0x50FB8, raw ordinals
+  0x51C / 0x72E in the image) load euser and look up RThread::Create (1158, the RAllocator variant: NULL = the
+  creating thread's heap, kernelhwsrv us_ksvr.cpp), SetPriority (1786), Resume (1795), User::After (645). The thread
+  counts in windows with AB_IDLE (bit 20, alternated by A4_ABCYCLE16) and sleeps 50 ms at a time otherwise. Build
+  i57 = r57 + both: 826,064 bytes, no 0xDEADBEEF.
+- Bench (W-4 model, 120 s): the four ordinals resolve on the RM-320 ROM and the thread runs -- calibration 5,137,879
+  counts in 106 ticks (100 ms of User::After), 48,471 a tick. Its cost: slots off / on 48.5 / 48.9 ms a render (the
+  windows' own spread is 41-54). In the race it counted **0** -- in every window, in 5,178 yields (0.72 ticks each), in
+  the readback and in the post, even yields of 5 ticks and more.
+- Why, from the binary: the runtime's yield (+16BC) arms its timer and then **spins** -- RThread::RequestCount,
+  CActiveScheduler::Current, RunIfReady, round and round until the timer's object has run (round 56's reading) -- so
+  the game's thread never blocks there and nothing below it runs, on the phone as here. On the bench the readback and
+  the post are host work, so no guest thread waits in them either. What the phone can still show: blocking inside the
+  MBX driver's readback (a wait for the tile render) and in the post's window-server round trip -- the census rides
+  along in the next phone build to say how much of the frame those are. A bench and probe option only.

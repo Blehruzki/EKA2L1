@@ -18,8 +18,9 @@ NAME28 = {0: 'clear', 1: 'skip', 2: '-', 3: '-'}
 NAME29 = {0: 'game front', 1: 'lifted', 2: 'game (2)', 3: 'lifted+memo'}   # round 53: AB_FRONT x AB_MEMO
 NAME30 = {0: 'sky software', 1: 'sky GPU', 2: '-', 3: '-'}               # round 54: AB_GPUSKY
 NAME31 = {0: 'v0 runtime', 1: 'v1 EGL', 2: 'v2 EGL', 3: 'v3 runtime'}   # rounds 55-56: route B's probe (AB_RBVAR)
+NAME32 = {0: 'census off', 1: 'census on', 2: '-', 3: '-'}               # round 57: the CPU-idle census (AB_IDLE)
 fmt0 = struct.unpack_from('<I', rows[-1][2], AGG + 0x600)[0] if rows else 0
-NAME, SHIFT, MASK = {0x41473238: (NAME28, 14, 1), 0x41473239: (NAME29, 15, 3), 0x41473330: (NAME30, 17, 1), 0x41473331: (NAME31, 18, 3)}.get(fmt0, (NAME27, 12, 3))
+NAME, SHIFT, MASK = {0x41473238: (NAME28, 14, 1), 0x41473239: (NAME29, 15, 3), 0x41473330: (NAME30, 17, 1), 0x41473331: (NAME31, 18, 3), 0x41473332: (NAME32, 20, 1)}.get(fmt0, (NAME27, 12, 3))
 print('capidx mode   slot          rend  ms/rend | 3D   comp  read  2D   pres')
 for c, h, d in rows:
     r, w = h[33], h[34]
@@ -28,7 +29,7 @@ for c, h, d in rows:
           h[13] / r, h[18] / r, h[36] / r, h[16] / r, h[17] / r))
 c, h, d = rows[-1]
 fmt = struct.unpack_from('<I', d, AGG + 0x600)[0]
-print('aggregates format %08x%s' % (fmt, '' if fmt in (0x41473237, 0x41473238, 0x41473239, 0x41473330, 0x41473331) else '  (not AG27-AG31)'))
+print('aggregates format %08x%s' % (fmt, '' if fmt in (0x41473237, 0x41473238, 0x41473239, 0x41473330, 0x41473331, 0x41473332) else '  (not AG27-AG32)'))
 for s in range(3):
     for m in range(4):
         a = struct.unpack_from('<32I', d, AGG + (s * 4 + m) * 128)
@@ -84,3 +85,29 @@ elif mg == 0x32504252:
             print('  %13s  upload %.2f ms (max %d), draw+swap %.2f ms (max %d), make-currents %.2f; interval set %d / refused %d; '
                   'taken %d, given %d (%d for no 3D); owned frames with its DSA off %d' % ('', v[4] / e, v[5], v[2] / e, v[3],
                   v[6] / e, v[15], v[16], v[9], v[10], v[21], v[20]))
+
+# round 57: the CPU-idle census record (a4_gl.c struct idl, 'IDL1', where route B's probe put its own): its calibration,
+# then each window from consecutive captures (counts over ticks against the idle rate), and the spans' totals
+IDLE = {2: 'euser not loaded', 3: 'a lookup failed', 4: 'RThread::Create failed', 5: 'not resumed'}
+recs = []
+for c, h, d in rows:
+    if len(d) >= RBO + 0x200 and struct.unpack_from('<I', d, RBO)[0] == 0x314C4449:
+        recs.append((c, h, struct.unpack_from('<32I', d, RBO)))
+if recs:
+    c, h, r = recs[-1]
+    rate = r[4] / r[5] if r[5] else 0
+    print('CPU-idle census (IDL1): state %s (detail %d); calibration %d counts in %d ticks = %.0f a tick; best yield %d in %d = %s'
+          % ('counting' if r[1] == 1 else IDLE.get(r[1], str(r[1])), r[2], r[4], r[5], rate, r[6], r[3],
+             '%.0f a tick' % (r[6] / r[3]) if r[3] else '-'))
+    rate = max(rate, r[6] / r[3] if r[3] else 0)
+    if rate:
+        for (c0, h0, a), (c1, h1, b) in zip(recs, recs[1:]):
+            if c1 != c0 + 1: continue
+            dt = (b[9] - a[9]) & 0xFFFFFFFF
+            if not dt: continue
+            on = (h1[32] >> 20) & 1
+            print('  window %3d (%s): idle %5.1f%% of %5d ticks' % (c1, 'on ' if on else 'off', 100.0 * ((b[8] - a[8]) & 0xFFFFFFFF) / (rate * dt), dt))
+        sp = lambda cnt, ms, n: '%.1f%% idle over %d ticks (%d calls, %.2f ticks a call)' % (100.0 * cnt / (rate * ms) if ms else 0, ms, n, ms / n if n else 0)
+        print('  in the yield: %s' % sp(r[16], r[17], r[18]))
+        print('  in the readback: %.1f%% idle over %d ticks' % (100.0 * r[19] / (rate * r[20]) if r[20] else 0, r[20]))
+        print('  in the post: %s' % sp(r[21], r[22], r[23]))

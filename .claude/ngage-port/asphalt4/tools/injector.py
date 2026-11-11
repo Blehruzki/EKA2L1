@@ -70,6 +70,8 @@ CAPTURE_DISPLACED = {0x300B2: (0x0005, 0x0014),     # movs r5, r0 ; movs r4, r2
 # Added only when A4_EXTRA_CFLAGS defines A4_MESH.
 MESH_HOOKS = {0x34ADC: 'a4_mesh_insert'}
 MESH_DISPLACED = {0x34ADC: (0xF7FF, 0xFF68)}      # bl +349B0
+IDLE_PLACEHOLDERS = {'a4_rlib_load': 0x50FA8,    # round 57, A4_IDLECEN: the game's import slot for RLibrary::Load (euser 1308)
+                     'a4_rlib_lookup': 0x50FB8}  # ... and for RLibrary::Lookup (euser 1838)
 MESH_PLACEHOLDERS = {'a4_otins': 0x349B0 | 1,     # the ordering-table insert (Thumb)
                      'a4_tfvt': 0xB08EC,          # TFace's vtable (RTTI, MBX.md map 1)
                      'a4_bbret': 0x31364 | 1,     # TBillboard's draw: the blit call's return (Thumb lr)
@@ -394,6 +396,12 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             ph_link = syms[sym]
             word = (LINK_BASE + off) - ph_link
             struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
+    if '-DA4_IDLECEN' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+        for sym, off in IDLE_PLACEHOLDERS.items():
+            ph_link = syms[sym]
+            word = (LINK_BASE + off) - ph_link
+            struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
+        print('IDLE   a4_rlib_load -> +050FA8, a4_rlib_lookup -> +050FB8 (the game\'s RLibrary slots: the census)')
     steptime = '-DA4_STEPTIME' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl
     if gl:      # patched in every GL build, so no 0xDEADBEEF is left whether or not they are hooked
         for sym, off in STEP_PLACEHOLDERS.items():
@@ -590,6 +598,16 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == old_w, 'third step: +%06X holds %08x, expected %08x' % (off, have, old_w)
             struct.pack_into('<I', code, off, new_w)
         print('STEP   a third: +52B98 +52B9C +15F28 (7111 units, 28.44 ms)')
+    # round 57, BENCH ONLY (never a phone build): ceilings -- what a block of the game's 3D costs, measured by not
+    # running it. A4_CEIL_CARS: the CBasicMesh wrapper +34AEA (the cars: transform, cull, insert, then their faces'
+    # draws) returns at once; A4_CEIL_OBJS: the static objects' routine +CE8C (unpack, transform, cull, insert; one
+    # caller, +D2F6) returns at once. Neither caller reads the result (+D2FA, +DE7E/+DED6/+E1E0 reload r0).
+    for env, off, want in (('A4_CEIL_CARS', 0x34AEA, (0xB5F0, 0x0004)), ('A4_CEIL_OBJS', 0xCE8C, (0xB5FF, 0xB085))):
+        if os.environ.get(env):
+            have = struct.unpack_from('<HH', code, off)
+            assert have == want, '%s: +%06X holds %04x %04x' % ((env, off) + have)
+            struct.pack_into('<HH', code, off, 0x2000, 0x4770)          # movs r0, #0 ; bx lr
+            print('BENCH  +%06X -> return 0 (%s: a ceiling, never a phone build)' % (off, env))
     if os.environ.get('A4_BENCH_UNLOCK'):
         # BENCH ONLY, never a phone build: +3A15C (is this city/item unlocked?) returns 1 at
         # once (movs r0,#1 ; bx lr), so a fresh career reaches every city -- the night/lights

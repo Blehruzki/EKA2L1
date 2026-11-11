@@ -325,6 +325,101 @@ struct glr {
 
 _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlaps the readback strip");
 
+#ifdef A4_IDLECEN
+/* Round 57: the CPU-idle census (bench and probe builds). A thread of ours at EPriorityNull -- absolute priority 3 in
+ * a foreground process (kernelhwsrv sthread.cpp, ThreadPriorityTable), below every system thread that matters --
+ * counts as fast as it can, so it runs only while nothing else in the phone is ready: its counts over a span, against
+ * its rate when the phone is otherwise idle, are the span's idle CPU. Kept per window and inside three spans: the
+ * game's yield (DoPresent's call, the runtime's timer wait), the readback (glReadPixels), and the runtime's post.
+ * Waits can be overlapped by a second thread; work cannot -- this is what says which the frame holds.
+ * No import block is added: the game's own RLibrary::Load / Lookup slots (euser 1308, 1838) load euser and look up
+ * RThread::Create (the RAllocator variant, 1158: NULL = the creating thread's heap), RThread::SetPriority (1786),
+ * RThread::Resume (1795) and User::After (645) -- kernelhwsrv's euseru.def, early frozen ordinals; the bench's RM-320
+ * ROM confirms them by running. The thread counts only in windows whose mode has AB_IDLE (A4_ABCYCLE16 alternates it),
+ * and sleeps 50 ms at a time otherwise, so its own cost is the difference between the two slots' aggregates. */
+#if defined(A4_RBPROBE)
+#error "A4_IDLECEN keeps its record where A4_RBPROBE's is (0x412A00): one or the other"
+#endif
+#if !defined(A4_TEL) || !defined(A4_DROPHOLD) || !defined(A4_ABCYCLE16)
+#error "A4_IDLECEN needs A4_TEL (its record), A4_DROPHOLD (the framework's post) and A4_ABCYCLE16 (on and off by window)"
+#endif
+#define IDL_MAGIC 0x314C4449u          /* 'IDL1' */
+struct idl {
+    uint32_t magic, state, why, maxt;      /* 'IDL1'; 1 counting, 2+ the step it stopped at (why: its error); see maxc */
+    uint32_t calc, calms, maxc, force;     /* the calibration's counts and ticks (rate = calc / calms, read off-line: the
+                                            * blob has no divide); the yield of 5 ticks or more with the most counts a
+                                            * tick (maxc over maxt); count whatever the window */
+    uint32_t cnt, tsnap, lib, thr;         /* the census thread's counter; the tick at the record's write; the handles */
+    uint32_t fafter, pad0, pad1, pad2;     /* User::After */
+    uint32_t yic, yims, yin, rdc;          /* in the game's yield: counts, ticks, calls (counting windows only); readback counts */
+    uint32_t rdms, poc, poms, pon;         /* readback ticks; in the runtime's post: counts, ticks, calls */
+    uint32_t yc0, yt0, pc0, pt0;           /* the open marks: the yield's, the post's */
+};
+#define IDL ((volatile struct idl *)0x00412A00u)
+_Static_assert(sizeof(struct idl) <= 0x200u, "the census record past its block (A4_PERF at 0x412C00)");
+#define AB_IDLE 1048576u                   /* bit 20: the census counts in this window */
+#define IDL_ON() ((A4_PERF[PF_MODE] & AB_IDLE) != 0u)
+typedef void (*idl_after_fn)(int);
+typedef int (*idl_load_fn)(void *, const void *, const void *);
+typedef void *(*idl_lookup_fn)(const void *, int);
+typedef int (*idl_create_fn)(void *, const void *, int (*)(void *), int, void *, void *, int);
+typedef void (*idl_thr_fn)(const void *);
+typedef void (*idl_prio_fn)(const void *, int);
+extern const int32_t a4_rlib_load, a4_rlib_lookup;   /* a4_gl.s: (the game's import slot) - (the word) */
+struct idl_des { uint32_t len; const void *p; };       /* a TPtrC16: EPtrC (1) << 28 | length, the text */
+
+static int idl_main(void *p)
+{
+    volatile struct idl *I = (volatile struct idl *)p;
+    for (;;) {
+        if (I->force || IDL_ON()) { uint32_t c = I->cnt; for (int k = 0; k < 256; k++) I->cnt = ++c; }
+        else ((idl_after_fn)(uintptr_t)I->fafter)(50000);
+    }
+    return 0;
+}
+
+/* once, from a4_tel_tick's first call (the main thread); 100 ms asleep while the census counts calibrates its rate */
+void a4_idle_start(void)
+{
+    volatile struct idl *I = IDL;
+    if (I->magic == IDL_MAGIC) return;
+    I->magic = IDL_MAGIC; I->state = 2u;
+    idl_load_fn load = *(idl_load_fn const *)((uint32_t)(uintptr_t)&a4_rlib_load + (uint32_t)a4_rlib_load);
+    idl_lookup_fn lookup = *(idl_lookup_fn const *)((uint32_t)(uintptr_t)&a4_rlib_lookup + (uint32_t)a4_rlib_lookup);
+    uint16_t nm[12]; const char *c = "euser.dll"; int n = 0;
+    while (c[n]) { nm[n] = (uint16_t)(uint8_t)c[n]; n++; }
+    struct idl_des dn = { (1u << 28) | (uint32_t)n, nm }, dp = { 1u << 28, nm };
+    uint32_t lib = 0;
+    int r = load(&lib, &dn, &dp);
+    if (r) { I->why = (uint32_t)r; return; }
+    I->lib = lib; I->state = 3u;
+    idl_create_fn create = (idl_create_fn)lookup(&lib, 1158);
+    idl_prio_fn prio = (idl_prio_fn)lookup(&lib, 1786);
+    idl_thr_fn resume = (idl_thr_fn)lookup(&lib, 1795);
+    idl_after_fn after = (idl_after_fn)lookup(&lib, 645);
+    if (!create || !prio || !resume || !after) {
+        I->why = (create ? 0u : 1u) | (prio ? 0u : 2u) | (resume ? 0u : 4u) | (after ? 0u : 8u); return;
+    }
+    I->fafter = (uint32_t)(uintptr_t)after; I->state = 4u;
+    uint16_t tn[8]; c = "a4idle"; n = 0;
+    while (c[n]) { tn[n] = (uint16_t)(uint8_t)c[n]; n++; }
+    struct idl_des dt = { (1u << 28) | (uint32_t)n, tn };
+    uint32_t thr = 0;
+    r = create(&thr, &dt, idl_main, 0x1000, 0, (void *)I, 0 /* EOwnerProcess */);
+    if (r) { I->why = (uint32_t)r; return; }
+    I->thr = thr; I->state = 5u;
+    prio(&thr, -30);                                   /* EPriorityNull */
+    I->force = 1u;
+    resume(&thr);
+    {   const uint32_t c0 = I->cnt, t0 = a4_ntick();
+        after(100000);
+        I->calc = I->cnt - c0; I->calms = a4_ntick() - t0; }
+    I->force = 0u;
+    I->state = 1u;
+}
+#define IDL_LIVE() (IDL->state == 1u && IDL_ON())
+#endif
+
 #ifdef A4_MESH
 /* The structural step (MBX.md "Structural step, map 2"): the faces the mesh routine
  * +349F8 would insert into the ordering table, taken at the insert (a4_mesh_insert, the
@@ -344,6 +439,9 @@ _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlap
 #define AB_RBVAR 262144u  /* rounds 55-56: bits 18-19, route B's probe variant (A4_RBPROBE; stepped by A4_ABCYCLE15): 0 the
                            * runtime presents, 1 the frame through an EGL window surface on the runtime's window, 2 as 1
                            * at swap interval 0, 3 the runtime with its posts of an unchanged frame skipped */
+#if defined(A4_ABCYCLE16) && (!defined(A4_IDLECEN) || defined(A4_ABCYCLE15) || defined(A4_ABCYCLE14) || defined(A4_ABCYCLE13) || defined(A4_ABCYCLE12) || defined(A4_ABCYCLE11))
+#error "A4_ABCYCLE16 alternates the census (A4_IDLECEN) over the build's A4_ABMODE (alone)"
+#endif
 #if defined(A4_ABCYCLE15) && (!defined(A4_RBPROBE) || defined(A4_ABCYCLE14) || defined(A4_ABCYCLE13) || defined(A4_ABCYCLE12) || defined(A4_ABCYCLE11))
 #error "A4_ABCYCLE15 steps route B's probe variant (A4_RBPROBE) over the build's A4_ABMODE (alone)"
 #endif
@@ -937,7 +1035,9 @@ _Static_assert(A4_GL_STEP >= A4_GL_AGG + sizeof(struct agg) + 4u && A4_GL_STEP +
 #endif
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
-#if defined(A4_ABCYCLE15)
+#if defined(A4_ABCYCLE16)
+#define AGG_SLOT(m) (((m) >> 20) & 1u)                                       /* round 57: the census counting (AB_IDLE) */
+#elif defined(A4_ABCYCLE15)
 #define AGG_SLOT(m) (((m) >> 18) & 3u)                                       /* route B's probe variant 0..3 */
 #elif defined(A4_ABCYCLE14)
 #define AGG_SLOT(m) (((m) >> 17) & 1u)                                       /* bit 0 AB_GPUSKY */
@@ -5672,7 +5772,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE15)
+#if defined(A4_TEL) && defined(A4_ABCYCLE16)
+        /* round 57: a4_tel.c alternates AB_IDLE (bit 20, the census counting) per window; the rest is A4_ABMODE */
+        A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~1048576u;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE15)
         /* round 55: a4_tel.c steps route B's probe variant (AB_RBVAR, bits 18-19) per window; the rest is the
          * build's own A4_ABMODE (the first rb55a set PF_MODE to A4_ABMODE here, every frame: variant 0 only) */
         A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~(3u * AB_RBVAR);
@@ -6988,10 +7092,16 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
     int ystart = sh == 24 ? (int)((((uint32_t)gl_lo * 2731u) >> 16) * 24u) : (gl_lo / STRIP) * STRIP;
     for (int y0 = ystart; y0 <= gl_hi; y0 += sh) {
         uint32_t t0 = a4_ntick();
+#ifdef A4_IDLECEN
+        const uint32_t ic0 = IDL->cnt;
+#endif
         if (r565)      gl_readpixels(0, y0, VP_W, sh, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, rb);
         else if (bgra) gl_readpixels(0, y0, VP_W, sh, GL_BGRA, GL_UNSIGNED_BYTE, rb);
         else           gl_readpixels(0, y0, VP_W, sh, GL_RGBA, GL_UNSIGNED_BYTE, rb);
         A4_PERF[PF_READ] += a4_ntick() - t0;
+#ifdef A4_IDLECEN
+        if (IDL_LIVE()) { IDL->rdc += IDL->cnt - ic0; IDL->rdms += a4_ntick() - t0; }
+#endif
 #ifdef A4_ROWSTAT
         {   /* bench (round 50): which rows read back hold a drawn pixel -- census [80] rows read with
              * none, [81] rows read, [82] the sum of each frame's first drawn screen row, [83] of its
@@ -8082,10 +8192,21 @@ int a4_fw_hold(void)
     }
 #ifdef A4_RBPROBE
     return rb_post();
+#elif defined(A4_IDLECEN)
+    IDL->pc0 = IDL->cnt; IDL->pt0 = a4_ntick();
+    return 0;
 #else
     return 0;
 #endif
 }
+#ifdef A4_IDLECEN
+/* a4_fwpost_tramp, after a post it made (round 57: the census's span; round 56's probe has its own) */
+uint32_t a4_fw_done(uint32_t ret)
+{
+    if (IDL_LIVE()) { volatile struct idl *I = IDL; I->poc += I->cnt - I->pc0; I->poms += a4_ntick() - I->pt0; I->pon++; }
+    return ret;
+}
+#endif
 #endif
 #ifdef A4_FRAMEMARK
 /* round 37, bench only (needs A4_DROPHOLD): called for every present that brought 3D or
@@ -8325,6 +8446,9 @@ int a4_gl_frame(uint32_t fps)
     a4_tel_tick(had);   /* on-device capture: C:\a4telN.dat; had = 3D prims this present */
 #endif
     A4_PERF[PF_MPRES] = a4_ntick(); A4_PERF[PF_FLAGS] |= PFF_PRES;   /* the game's present call next */
+#ifdef A4_IDLECEN
+    IDL->yc0 = IDL->cnt; IDL->yt0 = A4_PERF[PF_MPRES];
+#endif
     return presented;
 }
 
@@ -8332,6 +8456,16 @@ int a4_gl_frame(uint32_t fps)
  * 32-bit convert and the post, every present (re-presents included). */
 void a4_gl_presented(void)
 {
-    if (A4_PERF[PF_FLAGS] & PFF_PRES) { A4_PERF[PF_TPRES] += a4_ntick() - A4_PERF[PF_MPRES]; A4_PERF[PF_FLAGS] &= ~PFF_PRES; }
+    if (A4_PERF[PF_FLAGS] & PFF_PRES) {
+        A4_PERF[PF_TPRES] += a4_ntick() - A4_PERF[PF_MPRES]; A4_PERF[PF_FLAGS] &= ~PFF_PRES;
+#ifdef A4_IDLECEN
+        if (IDL_LIVE()) {
+            volatile struct idl *I = IDL;
+            const uint32_t dc = I->cnt - I->yc0, dt = a4_ntick() - I->yt0;
+            I->yic += dc; I->yims += dt; I->yin++;
+            if (dt >= 5u && (uint64_t)dc * I->maxt >= (uint64_t)I->maxc * dt) { I->maxc = dc; I->maxt = dt; }
+        }
+#endif
+    }
     A4_PERF[PF_NPRES]++;
 }

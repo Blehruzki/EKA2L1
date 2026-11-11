@@ -180,6 +180,18 @@ a4_bbret:
 a4_tfzvt:
         .word   0xDEADBEEF          @ patched: (code+0xB08CC) - (this word): TFakeZFace's vtable (its key is 1)
 
+#ifdef A4_IDLECEN
+@ Round 57 (a4_gl.c A4_IDLECEN): the game's own import slots for RLibrary::Load (euser 1308, code+0x50FA8) and
+@ RLibrary::Lookup (euser 1838, code+0x50FB8), patched by the injector to (the slot) - (this word): the census
+@ looks up the thread calls by ordinal at run time instead of adding an euser import block.
+        .global a4_rlib_load, a4_rlib_lookup
+        .align  2
+a4_rlib_load:
+        .word   0xDEADBEEF          @ patched: (code+0x50FA8) - (this word)
+a4_rlib_lookup:
+        .word   0xDEADBEEF          @ patched: (code+0x50FB8) - (this word)
+#endif
+
 @ a4_gcall1(fn, a0): call a game function with one argument and keep r4-r11 across it. The
 @ span trampolines (a4_tramp.s) run inside the game's render and use r8-r11 without saving
 @ them -- the game's Thumb code never holds those across a span, but our ARM code that calls

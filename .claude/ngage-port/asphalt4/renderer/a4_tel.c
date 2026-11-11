@@ -21,6 +21,9 @@
 
 extern volatile uint32_t *a4_efs_iat_ptr(void);
 extern uint32_t a4_ntick(void);              /* a4_gl.s: User::NTickCount */
+#ifdef A4_IDLECEN
+extern void a4_idle_start(void);             /* a4_gl.c: the CPU-idle census (round 57) */
+#endif
 extern uint32_t a4_gl_rdinfo(int k);         /* a4_gl.c: the read-format probe */
 #ifdef A4_DUALCAP
 extern void a4_gl_dumpgpu(void (*wr)(int, const void *, int), int base);
@@ -127,6 +130,9 @@ void a4_tel_tick(uint32_t had)
             if (t->dbg_rrc != 0) { t->inited = 2; return; }
         }
         t->inited = 1;
+#ifdef A4_IDLECEN
+        a4_idle_start();                          /* round 57: the CPU-idle census (a4_gl.c) */
+#endif
     }
 
     t->fcount++;
@@ -340,7 +346,9 @@ void a4_tel_tick(uint32_t had)
         uint32_t r = pf[PF_RENDERS], w = a4_ntick() - pf[PF_T0];
         if (r && w < r * 500u) {
             uint32_t m = pf[PF_MODE];                /* a4_gl.c AGG_SLOT */
-#if defined(A4_ABCYCLE15)
+#if defined(A4_ABCYCLE16)
+            volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 20) & 1u) * 32u;
+#elif defined(A4_ABCYCLE15)
             volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 18) & 3u) * 32u;
 #elif defined(A4_ABCYCLE14)
             volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 17) & 1u) * 32u;
@@ -368,7 +376,9 @@ void a4_tel_tick(uint32_t had)
             a[9] += pf[PF_REO]; a[10] += pf[PF_CALLS]; a[11] += pf[PF_RUNS0]; a[12] += pf[PF_TRIS];
             a[13] += pf[PF_NPRES]; a[14] += pf[PF_SKIPPED]; a[15]++;
         }
-#if defined(A4_ABCYCLE15)
+#if defined(A4_ABCYCLE16)
+        *(volatile uint32_t *)0x00421600u = 0x41473332u;   /* 'AG32': slot = the census counting (AB_IDLE) */
+#elif defined(A4_ABCYCLE15)
         *(volatile uint32_t *)0x00421600u = 0x41473331u;   /* 'AG31': slot = route B's probe variant 0..3 */
 #elif defined(A4_ABCYCLE14)
         *(volatile uint32_t *)0x00421600u = 0x41473330u;   /* 'AG30': slot bit 0 AB_GPUSKY */
@@ -419,6 +429,17 @@ void a4_tel_tick(uint32_t had)
         }
 #endif
 #endif
+#ifdef A4_IDLECEN
+#if !(defined(A4_FRAMEREC) && defined(A4_SLOWREC) && defined(A4_STEPTIME) && defined(A4_KINEDRAW) && !defined(A4_INTERP))
+#error "A4_IDLECEN's record goes after FRC2: build it with A4_FRAMEREC, A4_SLOWREC, A4_STEPTIME and A4_KINEDRAW"
+#endif
+        {   /* round 57: the CPU-idle census (a4_gl.c IDL, 0x412A00, 'IDL1'), after FRC2 where route B's probe put its own */
+            *(volatile uint32_t *)0x00412A24u = a4_ntick();   /* struct idl's tsnap (word 9): the tick of this write */
+            struct des bd = { DES(0x200u), (const void *)0x00412A00u };
+            efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4 + 0x700 + 3 * 32 * 4 + 0x680
+                          + 16 + 256 * 32 + 16 + 255 * 16, &bd);
+        }
+#endif
 #ifdef A4_RBPROBE
 #if !(defined(A4_FRAMEREC) && defined(A4_SLOWREC) && defined(A4_STEPTIME) && defined(A4_KINEDRAW) && !defined(A4_INTERP))
 #error "A4_RBPROBE's record goes after FRC2: build it with A4_FRAMEREC, A4_SLOWREC, A4_STEPTIME and A4_KINEDRAW"
@@ -436,7 +457,10 @@ void a4_tel_tick(uint32_t had)
     t->caps++;
     {   /* next window: reset the timers after the write, so its cost is in no window */
         volatile uint32_t *pf = A4_PERF;
-#if defined(A4_ABCYCLE15)
+#if defined(A4_ABCYCLE16)
+        /* round 57: the census (AB_IDLE, bit 20) on and off by window; the build's A4_ABMODE kept */
+        pf[PF_MODE] = ((uint32_t)(A4_ABMODE) & ~1048576u) | ((((pf[PF_MODE] >> 20) & 1u) ^ 1u) << 20);
+#elif defined(A4_ABCYCLE15)
         /* rounds 55-56: route B's probe variant (bits 18-19) 0, 1, 2, 3 in turn, each for RB_WINS windows; the build's
          * A4_ABMODE kept */
 #ifndef RB_WINS
