@@ -1512,6 +1512,11 @@ struct hp {
     int32_t traw[HP_CARS];           /* round 57: the last step's own heading change, before A4_KD_MINTURN's rule */
     int32_t sraw[HP_CARS];           /* ... and the car's steering (+7FC) at that step */
 #endif
+#ifdef A4_PACE
+    uint32_t pc_on, pc_t, pc_p;      /* round 59: PACE_MAGIC once set up; the last render's start, its frame's present
+                                      * (ms ticks, 0 = not yet) */
+    int32_t pc_last, pc_avg;         /* that frame's delay (ms), the running mean of the delays (ms x 16, < 0 = none) */
+#endif
 #endif
 #endif
     int8_t cc[12];                   /* the camera's */
@@ -1748,6 +1753,43 @@ static uint32_t kd_correct(volatile int32_t *E, volatile int32_t *D, volatile ui
     *T = tnow; *V = 1;
     return ok;
 }
+#ifdef A4_PACE
+/* Round 59 (phone round 58: "the faster I go, the more noticeable the screen tearing"): a frame is drawn for the
+ * moment its render starts and shown when its present goes out, 33-80 ms later (mean 67, sd 13; the frame record,
+ * 208 chase frames), so the picture is off its display moment by the speed times that delay less its mean -- 47
+ * game units at the median at ~4 units/ms, and unevenly, frame to frame. A frame's delay is mostly its
+ * neighbour's (the difference's median ~2 ms): each frame is drawn that much further on (or back) from its render
+ * start -- the last frame's delay less the running mean, within +-A4_PACE_MAX ms -- so frames are shown a steady
+ * time after the moment they show (replayed on round 58's record: 47 -> 8 units at the median, 77 -> 48 at 90%).
+ * In the logic clock's units (K+0x2C: 10,667 a 42.67 ms half-step, 250 a ms). Not in slow motion (A4_SLOWMOQ's
+ * fraction is its own). */
+#if !defined(A4_HALFSPEC) || !defined(A4_KINEDRAW)
+#error "A4_PACE moves the half-step speculation's fraction (A4_HALFSPEC) of the drawn frames (A4_KINEDRAW)"
+#endif
+#define PACE_MAGIC 0x45434150u           /* 'PACE' */
+#ifndef A4_PACE_MAX
+#define A4_PACE_MAX 40
+#endif
+static uint32_t pace_ph(uint32_t ph)
+{
+    const uint32_t now = a4_ntick();
+    if (HP->pc_on != PACE_MAGIC) { HP->pc_on = PACE_MAGIC; HP->pc_t = 0; HP->pc_p = 0; HP->pc_last = 0; HP->pc_avg = -1; }
+    int32_t have = 0;
+    if (HP->pc_t && HP->pc_p) {
+        const int32_t L = (int32_t)(HP->pc_p - HP->pc_t);
+        if (L >= 0 && L < 500) {             /* not across a load */
+            HP->pc_last = L; have = 1;
+            HP->pc_avg = HP->pc_avg < 0 ? L << 4 : HP->pc_avg + (((L << 4) - HP->pc_avg) >> 3);
+        }
+    }
+    HP->pc_t = now; HP->pc_p = 0;
+    if (!have || HP->pc_avg < 0) return ph;  /* no frame of the last render went out: drawn at its start */
+    int32_t off = HP->pc_last - (HP->pc_avg >> 4);
+    if (off > A4_PACE_MAX) off = A4_PACE_MAX; else if (off < -A4_PACE_MAX) off = -A4_PACE_MAX;
+    const int32_t p = (int32_t)ph + off * 250;
+    return p < 0 ? 0u : (uint32_t)p;
+}
+#endif
 static void hp_kdraw(uint32_t car, uint32_t qt, uint32_t first, uint32_t tnow)
 {
     uint32_t i = hp_idx(car);
@@ -2783,6 +2825,26 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
                      * camera turns with the whole drawn turn and keeps its height above the drawn car */
                     yaw = (HP->cw[4] + dh) & 2047;
                     cm[0x5Cu / 4u] = pc[2] + (HP->cw[1] - HP->pw[1]);
+#ifdef A4_CAMYAWRATE
+                    {   /* round 59 (phone round 58, 8.1-8.8 s: the camera's yaw stepping +8, +9, +19, +10, +5, +12, +2,
+                         * +9 a frame in a turn; the bench's Veyron, a 7 /2048 turn-back at each step): the game's chase
+                         * camera is rigid on the car on the bench's route, but in a fast turn it falls behind -- its
+                         * yaw less the car's heading 0, -5, -14, -22, -32 over steps -- and the frames held each step's
+                         * offset, then jumped to the next. Now the offset moves on by its own last change, as the
+                         * other cameras' (A4_CAMALL) do: only a steady change (within half itself, plus 2, of the
+                         * step before's, and the same way -- an offset turning back is not carried past where it
+                         * turns, round 57's lesson), at most 64 /2048 a step, over three steps of this camera with
+                         * none missed */
+                        int32_t g = 0;
+                        if (HP->cwv >= 3u && HP->pwps + 1u == HP->pws && HP->pwpps + 1u == HP->pwps) {
+                            const int32_t o0 = hp_wrap(HP->cw[4] - HP->pw[3], 2048), o1 = hp_wrap(HP->cwp[4] - HP->pwp[3], 2048);
+                            const int32_t o2 = hp_wrap(HP->cwpp[4] - HP->pwpp[3], 2048);
+                            const int32_t g1 = hp_wrap(o0 - o1, 2048), g2 = hp_wrap(o1 - o2, 2048);
+                            if (iabs32(g1) <= 64 && iabs32(g1 - g2) <= iabs32(g1) / 2 + 2 && !(g1 > 0 && g2 < 0) && !(g1 < 0 && g2 > 0)) g = g1;
+                        }
+                        yaw = (yaw + (int32_t)(((int64_t)g * (int32_t)qt) >> 16)) & 2047;
+                    }
+#endif
 #endif
 #ifdef A4_KD_CAMYAWCORR              /* bench (round 47, r47a): the yaw through the corrector -- off: a large
                                       * offset faded out across one sparse frame (a 100 /2048 jump), and the car's
@@ -3188,6 +3250,9 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
             uint32_t t = ((volatile uint32_t *)K)[11];
             uint32_t q = (uint32_t)(((uint64_t)t * 0x312684D0u) >> 43);   /* t / 10667, exact below 2^31 */
             uint32_t ph = t - q * 10667u + (((h[0] - 1u) & 1u) ? 10667u : 0u);   /* 0 .. 21333 */
+#ifdef A4_PACE
+            ph = pace_ph(ph);                                                   /* round 59: for its display moment */
+#endif
             uint32_t q16 = (uint32_t)(((uint64_t)ph * 201320u) >> 16);         /* ph * 65536 / 21334 */
 #ifdef A4_SLOWMOQ
             {   /* round 41 (r40 on the phone: "the cars online lag during takedown cameras"):
@@ -8431,6 +8496,9 @@ int a4_gl_frame(uint32_t fps)
                 else A4_PERF[PF_HOLDCALL] = 0;
             }
         }
+#endif
+#ifdef A4_PACE
+        if (!presented && HP->pc_on == PACE_MAGIC && HP->pc_t && !HP->pc_p) HP->pc_p = a4_ntick();   /* round 59 */
 #endif
 #ifdef A4_FRAMEREC
         if (!presented) {   /* round 41: the frame record -- when the last render's frame went out */

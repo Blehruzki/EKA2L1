@@ -9370,3 +9370,20 @@ a stable 30 fps.
   the panel's scan, below the game and us. Its seam is the difference between two consecutive frames: the motion
   between them, which grows with speed. Levers: more frames a second (a smaller jump each) and even pacing (no
   frame jumping twice as far as its neighbours).
+
+## Round 59: frame pacing (A4_PACE) and the chase camera's offset carried (A4_CAMYAWRATE)
+
+Owner: "yes, go ahead with r59 pacing and camera fix".
+- A4_PACE (a4_gl.c pace_ph): each render's speculation fraction is moved by the last frame's render-start-to-present
+  delay less the running mean of those delays (an 1/8 average, ms x 16), within +-40 ms (A4_PACE_MAX), in the logic
+  clock's units (250 a ms): the frame drawn for the moment it will be on screen, a steady time behind it. The
+  present is stamped where the frame record stamps it (the first real present after the render; held and skipped
+  re-posts are not). Not in slow motion (A4_SLOWMOQ computes its own fraction from the clock) nor across a load
+  (a delay of 500 ms or more is not a sample). Frames within a step stay monotonic (committed only grows).
+- A4_CAMYAWRATE (the chase camera, ENGDRAW branch): the game camera's yaw less the car's heading at a step moves on
+  by its own last change between steps, when that change is steady (within half itself plus 2 of the step
+  before's, the same way, at most 64 /2048, three steps of this camera with none missed) -- the other cameras' rule
+  (A4_CAMALL), and round 57's lesson: a change turning back is not carried.
+- Candidate r59 = r58 + both (C59.flags): a4_r59_cand.exe a835a129efbb1f9a47f2552b2db664bf3345e8a70ac52a9bb2348cabb8a851fa,
+  825,576 bytes (r58 825,016), +3A15C b510 0004, no 0xDEADBEEF. Twins y59 (+ CARREC YREC AUTOPILOT), ys59 (+ CARREC
+  YREC: jsteer). Running: the steering twin, then the battery (r59run.sh).
