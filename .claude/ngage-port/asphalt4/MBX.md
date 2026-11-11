@@ -9289,3 +9289,5 @@ for its snapshots only):
   has no game step headings -- the round says). (b) Read back: the whole code diff (the two struct words, the
   three clauses, the injector's preprocessing line). (c) Not entered: missed steps (the rule then compares with an
   older step's turn and steering), the first step of a race (traw/sraw as the block was left), a scripted camera.
+- Sent to the owner (the agreed order: "fix the snap-back on the bench, then send a build to confirm" -- "yes"):
+  r58 = 3e82ac5a, unbaked. What the round answers: whether the snap-back in hard turns is gone, at round 57's speed.
