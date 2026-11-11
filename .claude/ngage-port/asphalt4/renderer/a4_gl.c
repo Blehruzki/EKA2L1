@@ -1508,6 +1508,10 @@ struct hp {
     int32_t tE[16][2], tD[16][2];    /* the traffic's (x, z) */
     uint32_t tT[16], tstep;
     uint8_t tV[16];
+#ifdef A4_KD_MINTURN
+    int32_t traw[HP_CARS];           /* round 57: the last step's own heading change, before A4_KD_MINTURN's rule */
+    int32_t sraw[HP_CARS];           /* ... and the car's steering (+7FC) at that step */
+#endif
 #endif
 #endif
     int8_t cc[12];                   /* the camera's */
@@ -1786,6 +1790,30 @@ static void hp_kdraw(uint32_t car, uint32_t qt, uint32_t first, uint32_t tnow)
 #endif
 #endif
         }
+#ifdef A4_KD_MINTURN
+        /* round 57 (the owner's snap-back, phone round 57: the drawn heading 663, 704, 668, 580 in a hard turn):
+         * the frames turned the car by the last step's whole heading change, and a change that does not repeat
+         * carried the frames past where the next step put the car; the corrector then brought them back against
+         * the motion. The game turns the car by its steering +7FC (-4096..4096, ~28 a step at full lock at
+         * speed), which says more about the next turn than the last turn does (bench recordings s_ys57, s_ys57b,
+         * s_ysr57, s_yse57; tools predrules2.py, turnfit.py). The frames do not turn the car after a step
+         *  - where the steering eased (|+7FC| fell): the last turn before it lets go (-24, -18, then 0);
+         *  - that turned against both the step before and the steering: a kick (a contact; the game 268, 304,
+         *    290 with the steering still left, drawn 254, 279, 327, 323, 285);
+         *  - that turned against a steering grown past 1,024 the other way: the turn reverses next (18 of 18).
+         * The player's overshoots of 15 and more 17, 14, 18, 15 -> 2, 2, 2, 2 (of ~1,000 steps a run), its mean
+         * error 1.61-1.90 -> 1.40-1.79, 99% 27-28 -> 24-26; the other cars' overshoots 43, 87, 5, 14 -> 23, 25,
+         * 2, 3. (Tried first: the smaller of the two steps' changes -- more lag, 99% 33 against 21; then a
+         * reversal stopped and a start capped at 20 -- zig-zags 4 -> 0 but the player lagging more.) The chase
+         * camera's prediction reads the same turn. */
+        {   const int32_t tp = HP->traw[i], s = c[0x7FCu / 4u], sp = HP->sraw[i];
+            HP->traw[i] = t; HP->sraw[i] = s;
+            if (iabs32(s) < iabs32(sp)) t = 0;
+            else if (((t > 0 && tp < 0) || (t < 0 && tp > 0)) && ((t > 0 && s <= 0) || (t < 0 && s >= 0))) t = 0;
+            else if (((t > 0 && s < 0) || (t < 0 && s > 0)) && iabs32(s) >= 1024 && iabs32(s) > iabs32(sp)
+                     && ((s > 0) == (sp > 0)) && sp != 0) t = 0;
+        }
+#endif
         HP->turn[i] = t; HP->wr[i] = u; HP->hdl[i] = hd; HP->wl[i] = w; HP->hds[i] = HP->wstep;
         HP->gW[i] = g; HP->dWp[i] = d;
         HP->xW[i] = c[1]; HP->yW[i] = c[2]; HP->zW[i] = c[3]; HP->hW[i] = hd; HP->dW[i] = d; HP->wW[i] = w;

@@ -9218,3 +9218,49 @@ for its snapshots only):
   the post are host work, so no guest thread waits in them either. What the phone can still show: blocking inside the
   MBX driver's readback (a wait for the tile render) and in the post's window-server round trip -- the census rides
   along in the next phone build to say how much of the frame those are. A bench and probe option only.
+
+### Round 57 bench: the snap-back, reproduced and named (A4_KD_MINTURN)
+- Reproduced with jsteer.sh (the autopilot off, steering held 1.5 s and let go 0.5 s, W-4 model at cap 85, 120 s,
+  build ys57 = r57 + A4_CARREC + A4_YREC): tools/snapscan.py (a drawn frame-to-frame heading change of 15 or more
+  against the frames' own direction, then back) finds 4 zig-zags in each of two runs (s_ys57, s_ys57b). The
+  player's, step 181: the game 268, 304, 290, 290 (a +36 kick against a -28 a step turn -- contact forces +0F0/+0F8
+  16/46 at that step -- then -14, 0); drawn 254, 279, **327**, 323, 285: past the game's 304 by 23, back 38. The
+  phone's 663, 704, 668, 580 is this shape (hard turn, a jump the other way, then on). The other three are the AI's
+  own heading wiggle (+-20 a step) made larger.
+- Cause: the frames turn the car by the last step's whole change (A4_KD_TURN); a change that does not repeat takes
+  them past where the next step puts the car, and the corrector brings them back against the motion.
+- The game turns the car by its steering +7FC (-4096..4096; ~28 a step at full lock at speed: -2750 -> -18,
+  -2171 -> -14), and the steering predicts the next turn better than the last turn does (correlation with the
+  next step's change: +7FC 0.69, the last turn 0.36). tools/predrules2.py scores rules on a recording (draw-only:
+  the game's steps are the same whatever the rule), per step |predicted - next turn|, overshoots (|predicted| >= 15
+  and the next turn 0 or the other way) and lags (the next turn >= 15 and the prediction short by 15):
+  | rule | player overshoots (3 runs) | player lags | others' overshoots | others' mean error |
+  | the last turn (r57) | 17, 14, 18 | 2, 9, 1 | 43, 87, 5 | 2.46, 2.68, 2.23 |
+  | reversal stopped, start capped 20 (ysr57) | 16, 14, 17 | 13, 23, 15 | 27, 41, 19 | 2.30, 2.50, 2.20 |
+  | steering eased -> 0, kick against turn and steering -> 0 | 3, 2, 3 | 4, 11, 4 | 23, 26, 2 | 1.98, 2.16, 1.83 |
+  Most of the player's overshoots are the last turn before the steering lets go (-24, -18, then 0; +7FC -3654,
+  -2750, 0). The kick at step 181 is covered by the second clause (steering left, the turn +36).
+- The narrow rule on the bench run (s_ysr57): zig-zags 0, but the player's heading off its path 99% 32 (r57 21, 21)
+  and lags as above -- so not that one.
+- The steering rule's own run (yse57, steering eased + kick): zig-zags still 4, all the player's own turn reversals:
+  the game +14, +14, +14, then -19 a step while its steering read 1024, 1147, 820, 268, -397, **-1118**, -2891 --
+  the heading follows the steering late, and once the steering has grown past 1,024 the other way the next turn
+  reverses (18 of 18 such steps in the four recordings; under 1,024 just after the flip it goes on, 18 of 18). Third
+  clause: no turn after a step that turned against a steering grown past 1,024 the other way.
+- The rule as built (a4_gl.c A4_KD_MINTURN, three clauses: steering eased; a kick against the step before and the
+  steering; a turn against a steering grown past 1,024), scored per step on the four recordings: the player's
+  overshoots 17, 14, 18, 15 -> 2, 2, 2, 2, mean error 1.61, 1.90, 1.62, 1.69 -> 1.40, 1.79, 1.43, 1.60, 99% 27-28
+  -> 24-26; the other cars' overshoots 43, 87, 5, 14 -> 23, 25, 2, 3. (predrules2.py's "lag" counts a 0 where the
+  next turn went the other way, an improvement on the old prediction, so it is not read.)
+- Bench run of it (ysf57, jsteer 120 s): zig-zags 2 (r57: 4, 4) -- a crash spin (the game +90, +62, +28, +21, +10)
+  and an AI car's contact (-32 then 0); the player's heading off its path 99% 22 (r57 21, 21), the camera's yaw 99%
+  23 (23); the player's per-step overshoots 14 -> 1.
+- Found on the way: a4_gl.s was never run through the preprocessor (only a4_tramp.s was), so A4_IDLECEN's two
+  0xDEADBEEF placeholders were in every build since the census was added, unpatched and unreferenced (the first r58
+  build showed them at +BA664). The injector now preprocesses both; r58 rebuilt, no 0xDEADBEEF.
+
+### Round 58 candidate (r58 = r57 + A4_KD_MINTURN)
+- Built: the handoff baseline (4baef63a), A4_HALFSTEP=1, A4_SCRATCH_SIZE=0x62000, C54 + A4_TAKE2 + A4_KD_MINTURN.
+  a4_r58_cand.exe 3e82ac5ad7c5491579f46780fa6274f8494597367724d3b2bfc8aeb215d83d87, 825,016 bytes, +3A15C b510 0004
+  (no bench unlock), no 0xDEADBEEF. Recorder twin y58 (+ A4_CARREC A4_YREC), a4_rec_emit2 at +0BA75C.
+- Battery (r58bat.sh, r57's on the exact binary): running.

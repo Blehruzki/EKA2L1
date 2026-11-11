@@ -206,11 +206,12 @@ def build_blob(link_addr, tmp, clean=False, gl=False):
     for src in sources:
         o = os.path.join(tmp, os.path.basename(src) + '.o')
         # assembly doesn't take the C-only codegen flags (-Werror would reject them);
-        # a4_tramp.s has #ifdef, so it is always run through the asm preprocessor.
+        # a4_tramp.s and a4_gl.s have #ifdef, so they are always run through the asm preprocessor (round 58: a4_gl.s
+        # was not, and A4_IDLECEN's two 0xDEADBEEF placeholders went into every build after round 57, unpatched).
         extra = os.environ.get('A4_EXTRA_CFLAGS', '').split()
         if src.endswith('.s'):
             flags = ['--target=armv5te-none-eabi', '-marm', '-fropi']
-            if os.path.basename(src) == 'a4_tramp.s':
+            if os.path.basename(src) in ('a4_tramp.s', 'a4_gl.s'):
                 # forward only -D defines from A4_EXTRA_CFLAGS (asm rejects C codegen flags)
                 defs = [f for f in extra if f.startswith('-D')]
                 flags += ['-x', 'assembler-with-cpp'] + defs + (['-DA4_CLEAN'] if clean else [])
