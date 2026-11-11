@@ -9331,3 +9331,18 @@ for its snapshots only):
   table order change texture 175 times a frame but depth function only ~21: with the textures on shared pages (an
   atlas) the list's runs could carry the table's order across textures. The obstacle is repeat: face texture spans
   50% 16x29 texels, 90% 64x95, 99% 160x218 -- some faces tile their texture. Texture sizes added to the dump (ld58b).
+- ld58b (the dump with each key's texture size; tools/atlasim.py, 35 frames): the list's textures are 16-128 texels
+  a side (64x64 and 128x128 the most), a frame's set 110K texels (median, max 255K -- a quarter of a 1024x1024
+  page). A face fits its texture's tile (after a shift by whole tiles) in 91.9% of faces, 2x2 tiles in 96.1%, 3x3 in
+  97.1%. The list's draws a frame, grouped by the build's rule with the fitting faces on one atlas page:
+  | textures | draws a frame |
+  | as now | 82.8 |
+  | atlas, a texture once | 48.4 |
+  | atlas, each texture stored 2x2 | 33.5 |
+  | atlas, 3x3 | 28.1 |
+  | every face on the page (the floor: the depth-function changes) | 12.3 |
+  Same picture by construction (one draw call keeps its triangles in order; nearest sampling, so no bleeding at an
+  entry's edge). Worth on the phone at ~31 us a draw: ~49 fewer list draws ~1.5 ms a frame, plus most of the ~115
+  binds and ~90 texture-matrix loads the scenery adds; the table path's ~100 draws a frame not yet simulated.
+  Costs: the textures uploaded into pages (2x2: four times the texels, at the ~4 KB/ms the phone uploads), page
+  management, and the faces that do not fit kept on their own textures. Not started: a decision for the owner.
