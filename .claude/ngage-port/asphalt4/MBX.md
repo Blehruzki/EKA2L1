@@ -9462,3 +9462,9 @@ Owner (N95, eight files): "The camera looks fine. I'm not even sure there was an
 - Where the frame is now (ph59): light windows 42.0-42.3 ms a render -- the half-step's cap (42.67 ms, 23.4 fps):
   3D 11.5-15.7, composite 9.3-10.3, 2D 3.2, present 2.3, rest 10-16 (the part before the first triangle, the logic
   ~0.6 a span, and the wait for the step); heavy 62-89 (3D 32-55). Average 62.9 (~16 fps).
+
+## Round 60 bench: the world's ceilings (owner: "if it is not reachable with this approach, then let's find a different approach")
+- A4_CEIL_ROAD (+2732E, the one-face drawer under +20938, insert +27402) off, W-4 model, 120 s (c59road): 46.4 ms a
+  render, render call 35.6 ms (r57t 39.0), before the first triangle 6.8 (7.2), 3D 17.1 (r59t2 21.6). The road's
+  surface itself is still drawn in its snapshots: +2732E is a class of single faces (328 a frame), not the road --
+  what it is, to be read. The whole world off (cars + scenery + +2732E, c59all): running.
