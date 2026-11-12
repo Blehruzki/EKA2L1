@@ -9512,3 +9512,11 @@ Owner (N95, eight files): "The camera looks fine. I'm not even sure there was an
   on the W-4 model: running. (r59t2's render call for comparison: 39.8 ms, 7.6 before the first triangle.)
 - A frame-exact pixel check needs two builds in step; half-step builds part after ~136-626 steps even in lockstep
   (round 45's oracle note), so the check here is visual plus the replay's 2.5%.
+- Timing run 1 (W-4 model, 120 s, 0xC0000 scratch): render call 38.2 ms (r59t2 39.8), before the first triangle 7.1
+  (7.6); 48.2 ms a render. But the mesh table (256) filled: 31,315 objects taken, 85,982 refused for a full store,
+  193 for a texture outside the class, none far; 653 frames drew objects, 73 GPU draws a frame for 48 objects. So 27%
+  of the objects saved 1.6 ms. The one access violation is the boot one r59t2 has too. Snapshots right (bench grabs
+  are upside down, as every take-over grab).
+- Store changed: 1024 meshes, a hashed lookup (2048 slots) in place of the linear scan, and a full store refuses for
+  the rest of the frame and is emptied at the next one (a frame's items point into it). Next run: a 1.5 MB arena
+  (bench) to read the race's working set (meshes and corners) before choosing the phone's size.

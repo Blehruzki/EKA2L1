@@ -5187,22 +5187,38 @@ typedef int16_t __attribute__((may_alias)) go_s16;
 #define GOS16(a) (*(const volatile go_s16 *)(uintptr_t)(a))
 #define GOBJ_BASE  0x00464000u
 #define GOBJ_NI    192u                     /* objects a frame */
-#define GOBJ_NM    256u                     /* distinct meshes (the first run: 172 filled 88 KB of corners) */
+#define GOBJ_NM    1024u                    /* distinct meshes held (a 120 s race: 256 filled, 86k refused) */
 #define GOBJ_NG    12u                      /* texture groups a mesh */
-#define GOBJ_ARENA 0x0046E000u              /* per-corner records, 12 bytes each, to 0x4C0000 (A4_SCRATCH_SIZE 0xC0000) */
-#define GOBJ_AEND  0x004C0000u
+#define GOBJ_NH    2048u                    /* the meshes' hash (uint16 index + 1, linear probing) */
+#define GOBJ_HASH  0x0047C000u
+#define GOBJ_ARENA 0x0047D000u              /* per-corner records, 12 bytes each, to GOBJ_AEND */
+#ifndef A4_GOBJ_AEND
+#define A4_GOBJ_AEND 0x004C0000u            /* A4_SCRATCH_SIZE 0xC0000 */
+#endif
+#define GOBJ_AEND  A4_GOBJ_AEND
 struct gitem { uint32_t mesh, textab; int32_t m[12]; };
 struct gmesh { uint32_t verts, faces, nf, ofs, ng; uint16_t gs[GOBJ_NG], gc[GOBJ_NG]; uint8_t gt[GOBJ_NG]; uint8_t pad[4]; };
 struct gstate {
     uint32_t magic, frame, n, drawn, F, nmesh, aused;
     uint32_t taken, refused_mode, refused_tex, refused_far, refused_full, built, frames_drawn, draws;  /* totals */
     uint32_t calls, refused_off, refused_drawn, refused_mesh;   /* bench: every call, and the early refusals */
+    uint32_t full, resets, peak;            /* store full this frame (reset at the next); resets; most corners held */
     struct gitem it[GOBJ_NI];
 };
 #define GOBJ ((volatile struct gstate *)GOBJ_BASE)
 #define GMESH ((struct gmesh *)0x00467000u)
 _Static_assert(GOBJ_BASE + sizeof(struct gstate) <= 0x00467000u, "the objects' items");
-_Static_assert(0x00467000u + GOBJ_NM * sizeof(struct gmesh) <= GOBJ_ARENA, "the mesh table");
+_Static_assert(0x00467000u + GOBJ_NM * sizeof(struct gmesh) <= GOBJ_HASH, "the mesh table");
+_Static_assert(GOBJ_HASH + GOBJ_NH * 2u <= GOBJ_ARENA, "the hash");
+#define GHASH ((uint16_t *)GOBJ_HASH)
+static uint32_t gobj_slot(uint32_t verts, uint32_t faces) { return ((verts >> 2) ^ (faces >> 3) ^ (verts >> 13)) & (GOBJ_NH - 1u); }
+/* the store emptied: every mesh is rebuilt when next drawn (only between frames: a frame's items point into it) */
+static void gobj_clear(volatile struct gstate *g)
+{
+    uint32_t *h = (uint32_t *)GOBJ_HASH;
+    for (uint32_t k = 0; k < GOBJ_NH / 2u; k++) h[k] = 0;
+    g->nmesh = 0; g->aused = 0; g->full = 0;
+}
 #define GOBJ_MAGIC 0x4A424F47u                   /* 'GOBJ' */
 static void gobj_reset(volatile struct gstate *g)
 {
@@ -5210,7 +5226,9 @@ static void gobj_reset(volatile struct gstate *g)
         g->magic = GOBJ_MAGIC; g->nmesh = 0; g->aused = 0;
         g->taken = g->refused_mode = g->refused_tex = g->refused_far = g->refused_full = g->built = g->frames_drawn = g->draws = 0;
         g->calls = g->refused_off = g->refused_drawn = g->refused_mesh = 0;
+        g->resets = g->peak = 0;
         g->frame = 0xFFFFFFFFu; g->n = 0; g->drawn = 0;
+        gobj_clear(g);
     }
 }
 /* the object's mesh in the arena (built once; 0 if it cannot be) */
@@ -5218,9 +5236,14 @@ static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
 {
     const uint32_t verts = GO32(obj + 0x20u), faces = GO32(obj + 0x28u), nv = GO32(obj + 0x1Cu), nf = GO32(obj + 0x24u);
     if (!verts || !faces || nf == 0u || nf > 1024u || nv == 0u || nv > 256u) return 0;
-    for (uint32_t k = 0; k < g->nmesh; k++)
-        if (GMESH[k].verts == verts && GMESH[k].faces == faces && GMESH[k].nf == nf) return &GMESH[k];
-    if (g->nmesh >= GOBJ_NM || GOBJ_ARENA + (g->aused + 3u * nf) * 12u > GOBJ_AEND) { g->refused_full++; return 0; }
+    uint32_t h = gobj_slot(verts, faces);
+    for (uint32_t q; (q = GHASH[h]) != 0u; h = (h + 1u) & (GOBJ_NH - 1u)) {
+        const struct gmesh *e = &GMESH[q - 1u];
+        if (e->verts == verts && e->faces == faces && e->nf == nf) return &GMESH[q - 1u];
+    }
+    if (g->full || g->nmesh >= GOBJ_NM || GOBJ_ARENA + (g->aused + 3u * nf) * 12u > GOBJ_AEND) {
+        g->full = 1; g->refused_full++; return 0;           /* emptied at the next frame */
+    }
     struct gmesh *me = &GMESH[g->nmesh];
     uint32_t ng = 0, o = 0;
     int16_t *rec = (int16_t *)(GOBJ_ARENA + g->aused * 12u);
@@ -5249,7 +5272,9 @@ static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
         }
     }
     me->verts = verts; me->faces = faces; me->nf = nf; me->ofs = g->aused; me->ng = ng;
+    GHASH[h] = (uint16_t)(g->nmesh + 1u);
     g->aused += 3u * nf; g->nmesh++; g->built++;
+    if (g->aused > g->peak) g->peak = g->aused;
     return me;
 }
 /* the lifted +CE8C's entry (eng/edits.py): 1 = taken, the game's path skipped */
@@ -5262,7 +5287,10 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
     g->calls++;
     if ((A4_PERF[PF_MODE] & (AB_MESH | AB_LEAN | AB_DEFER)) != (AB_MESH | AB_LEAN)
         || s->up != A4_GL_MAGIC || !s->zbits || !s->abits || !MESH->gctx) { g->refused_off++; return 0; }
-    if (g->frame != s->frames) { g->frame = s->frames; g->n = 0; g->drawn = 0; }
+    if (g->frame != s->frames) {
+        g->frame = s->frames; g->n = 0; g->drawn = 0;
+        if (g->full) { gobj_clear(g); g->resets++; }
+    }
     if (g->drawn || g->n >= GOBJ_NI) { g->refused_drawn++; return 0; }
     const uint32_t cam = GO32(ctx + 4u), mp = cam ? GO32(cam + 0x3Cu) : 0;
     if (!mp) { g->refused_mode++; return 0; }
