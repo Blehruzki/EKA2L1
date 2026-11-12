@@ -2825,6 +2825,29 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
                      * camera turns with the whole drawn turn and keeps its height above the drawn car */
                     yaw = (HP->cw[4] + dh) & 2047;
                     cm[0x5Cu / 4u] = pc[2] + (HP->cw[1] - HP->pw[1]);
+#if defined(A4_CAMBLEND) && defined(A4_CAMYAWRATE)
+#error "A4_CAMBLEND replaces A4_CAMYAWRATE's carry: one or the other"
+#endif
+#ifdef A4_CAMBLEND
+                    {   /* round 59 (phone round 58: the camera's yaw stepping +8, +9, +19, +10, +5, +12, +2, +9 a frame in
+                         * a turn; the bench's Veyron 22-28 one-frame yaw reversals where the game's camera hunts behind
+                         * the car, its offset -50, -40, -46, -44): the frames took the game's offset (camera yaw less
+                         * the car's heading) afresh at each step, so every change of it was a jump at the step's
+                         * first frame, and an irregular one a turn back. Now the offset moves from the step before's
+                         * to this step's over the step -- continuous, a step late (42 ms, in a quantity that changes
+                         * a few /2048 a step): yaw = the drawn heading + o(k-1) + (o(k) - o(k-1)) q. Replayed on seven
+                         * bench recordings (tools/camoff.py): one-frame yaw reversals 28 -> 11, 20 -> 16, 13 -> 12 on
+                         * the steering runs, the same on the autopilot's (a rigid camera there), the yaw off the game
+                         * camera's path within 1-2 at 90-99%. A jump over 128 /2048, a missed step or a new camera:
+                         * this step's offset at once, as before */
+                        if (HP->cwv >= 2u && HP->pwps + 1u == HP->pws) {
+                            const int32_t o0 = hp_wrap(HP->cw[4] - HP->pw[3], 2048), o1 = hp_wrap(HP->cwp[4] - HP->pwp[3], 2048);
+                            const int32_t g = hp_wrap(o0 - o1, 2048);
+                            const uint32_t qb = qt > 65536u ? 65536u : qt;
+                            if (iabs32(g) <= 128) yaw = (yaw - (int32_t)(((int64_t)g * (int32_t)(65536u - qb)) >> 16)) & 2047;
+                        }
+                    }
+#endif
 #ifdef A4_CAMYAWRATE
                     {   /* round 59 (phone round 58, 8.1-8.8 s: the camera's yaw stepping +8, +9, +19, +10, +5, +12, +2,
                          * +9 a frame in a turn; the bench's Veyron, a 7 /2048 turn-back at each step): the game's chase
