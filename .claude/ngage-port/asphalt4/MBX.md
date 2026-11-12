@@ -9676,3 +9676,15 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   (the game's own engine at its step) and o3 = C63 + THIRDSTEP, both + CARREC YREC AUTOPILOT(_UNSTICK)
   BENCH_SEED LOCKSTEP=1 (o3 LOCKSTEP_P 7111): running. (ENG_ALL without ENG3 does not link: lifted.c is generated
   with ENG3 -- so the reference is the game's own Thumb, the true one.)
+- Oracle o1 / o3 (jtrun, 90 s each, the same seeds and autopilot): the countdown the same (revs from record 101,
+  moving at 149); the speed curve within 1-2 of +B4 and the gears at the same steps to 7.7 s (B4 >= 60/80/100/120/140
+  at steps 12/23/38/46/56 stock, 11/23/37/45/55 at 3x; gear 2 at 32, 3 at 85 both); distance +1.3% at 10 s; the paths
+  part after (the bench driver holds '5' and the walls steer it; both runs end stuck on something -- stock at ~38 s,
+  3x at ~51 s). Car contacts 1 and 8. As round 50's r15: the per-step rates hold; whole-race figures are the paths'.
+- Input: on substeps 1-2 the player's key word is the whole step's (+14754 replay), and +25E8 (the key queue) runs
+  on substep 0 only -- so the keys are read every 85 ms, as stock and as every half-step build. Reading them every
+  substep needs the race rules' press edges (r2 = 0 queries of +2092, the boost among them) kept over the whole step:
+  not in r63; next if the owner still feels lag.
+- Candidate r63 = a4_r63_cand.exe (C63, THIRDSTEP, A4_SCRATCH_SIZE 0x1A0000):
+  0807b0b25bc4665e8279bb48fa83b7bf29dd707e76ed8f6ecf2ef263255be922, 916,336 bytes (go63's exe, cmp'd), no 0xDEADBEEF,
+  +3A15C b510 0004; twin y63 (+ CARREC YREC AUTOPILOT; rec pc 700BA62C). Battery r63bat (counters at 700BCA54): running.
