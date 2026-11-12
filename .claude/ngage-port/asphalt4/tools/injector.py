@@ -603,7 +603,10 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
     # running it. A4_CEIL_CARS: the CBasicMesh wrapper +34AEA (the cars: transform, cull, insert, then their faces'
     # draws) returns at once; A4_CEIL_OBJS: the static objects' routine +CE8C (unpack, transform, cull, insert; one
     # caller, +D2F6) returns at once. Neither caller reads the result (+D2FA, +DE7E/+DED6/+E1E0 reload r0).
-    for env, off, want in (('A4_CEIL_CARS', 0x34AEA, (0xB5F0, 0x0004)), ('A4_CEIL_OBJS', 0xCE8C, (0xB5FF, 0xB085))):
+    # A4_CEIL_ROAD (round 59): +2732E, the one-face drawer whose insert is +27402 (map 2's census: 328 faces a frame,
+    # 16% of the inserts; its one caller +20938 does not read the result).
+    for env, off, want in (('A4_CEIL_CARS', 0x34AEA, (0xB5F0, 0x0004)), ('A4_CEIL_OBJS', 0xCE8C, (0xB5FF, 0xB085)),
+                           ('A4_CEIL_ROAD', 0x2732E, (0xB5F0, 0xB08D))):
         if os.environ.get(env):
             have = struct.unpack_from('<HH', code, off)
             assert have == want, '%s: +%06X holds %04x %04x' % ((env, off) + have)
