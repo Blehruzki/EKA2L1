@@ -9520,3 +9520,23 @@ Owner (N95, eight files): "The camera looks fine. I'm not even sure there was an
 - Store changed: 1024 meshes, a hashed lookup (2048 slots) in place of the linear scan, and a full store refuses for
   the rest of the frame and is emptied at the next one (a frame's items point into it). Next run: a 1.5 MB arena
   (bench) to read the race's working set (meshes and corners) before choosing the phone's size.
+- Timing run 2 (1.5 MB arena, bench): 98,661 of 104,009 objects taken (95%); the race's working set 818 meshes,
+  41,802 corners (490 KB). Render call 35.3 ms (r59t2 39.8), first triangle 4.5 (7.6), 45.4 ms a render (49.4). The
+  GPU model's charges hardly moved (r59t2 / this, a frame: 625 / 749 calls, 203 / 198 draws, draw time 4.9 / 5.0 ms):
+  the list's draws went, ~100 object draws came (1.6 groups an object, 65 objects a frame). Against round 58's ceiling
+  for +CE8C (-6.2 ms a render) this kept 4.0; the rest is the per-object draws and matrices (~2 ms of driver calls).
+- So batched: the walk's matrix for a static object is the camera's (the stack base [cam+0x38]; +32542 copies the top
+  up a slot) with t + (R p) >> 14, p = [obj+0..8] (+D104 ldm r4 -> +321BC, 32-bit muls). An object is taken only if
+  its rotation is the camera's and its translation exactly that (the game's own arithmetic), and keeps d = p - o, o
+  the camera's place (p - c = R^T t / 2^14); the flush loads one modelview (R, t moved to o), sorts the frame's
+  (texture, object, group)s by texture and copies each texture's corners, offset by d (word arithmetic, no carry
+  between halves), into a 4,095-corner staging buffer, one draw a texture. Anything else is left to the game.
+- Timing run 3 (batched, bench): render call 32.7 ms (r59t2 39.8, -7.1), first triangle 4.5, 44.2 ms a render
+  (49.4, -5.2); 3D 17.3 ms. GPU model a frame: 403 calls (625), 127 draws (203), draw time 3.5 ms (4.9), other 2.1
+  (3.3). Objects: 154,420 of 159,772 taken (96.6%), 19.5 object draws a frame; refused 28 for another rotation (knocked
+  props), 4 for range, 0 for a translation the game did not compute so, 919 for textures outside the class. 910
+  meshes, 45.5k corners. Snapshots right (palms, poles, buildings, signs).
+- For a phone: the store keyed by data pointers could outlive a track; each mesh keeps its data's first three words
+  and a mismatch empties the store at the next frame, as do 64 frames without objects (a menu, a load). 2,048 meshes,
+  ~1 MB of corners (A4_SCRATCH_SIZE 0x1A0000: 1.6 MB of .bss; the owner's N95 8GB has 128 MB). Candidate r60 = C59 +
+  A4_ENG_0CE8C + A4_GPUOBJ, c6f7ad6c..., 832,612 bytes; twin y60 (+ CARREC YREC AUTOPILOT). Battery running.
