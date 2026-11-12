@@ -9496,3 +9496,19 @@ Owner (N95, eight files): "The camera looks fine. I'm not even sure there was an
   the object's matrix (the camera stack's top) kept, its mesh expanded once into per-corner arrays grouped by texture,
   drawn before the list with the list's projection and every face depth-tested -- the list's painted faces too (a car
   behind a building must not paint over it). Pixel check against r59 in lockstep runs; timing on the W-4 model.
+
+### Round 60 bench: the scenery prototype, 2 -- built and running (A4_GPUOBJ)
+- Code (a4_gl.c, a4_eng.h, eng/edits.py; lifted.c regenerated with the committed flags -DA4_ENG3 -DA4_FASTXF -DA4_MESH,
+  the only change the new entry line): the lifted +CE8C (A4_ENG_0CE8C) asks a4_obj_take at +CE90; an object taken has
+  its matrix ([cam+0x3C], 12 words) kept and its game path skipped; its mesh (keyed by vertex and face pointers) is
+  expanded once into 12-byte per-corner records grouped by texture index; gobj_flush, before the list at the walk's
+  first triangle, loads the list's projection, each object's matrix as the modelview (GL_FIXED: rotation << 2,
+  translation << 16, |t| < 32000 checked), binds per group, draws arrays, depth GEQUAL writing; the list's runs then
+  all depth-tested. With A4_GPUOBJ off, r59 is byte-identical (checked: cmp).
+- First runs: every object refused -- the take read ctx[0] as the mesh routine's mode; the mode is the constant 0 the
+  caller pushes (+CF50), ctx[0] another argument. Fixed. Then (cap 85, 60 s): 25,515 objects taken, 45,160 refused
+  because the arena filled (172 meshes, 7,509 corners = 88 KB); no texture refusals, no far ones. A snapshot looks
+  right (buildings, trees, palms, road, car). Arena now 0x46E000-0x4C0000 (A4_SCRATCH_SIZE 0xC0000, bench). Timing run
+  on the W-4 model: running. (r59t2's render call for comparison: 39.8 ms, 7.6 before the first triangle.)
+- A frame-exact pixel check needs two builds in step; half-step builds part after ~136-626 steps even in lockstep
+  (round 45's oracle note), so the check here is visual plus the replay's 2.5%.
