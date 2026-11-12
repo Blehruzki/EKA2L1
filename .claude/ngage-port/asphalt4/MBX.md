@@ -9629,3 +9629,14 @@ regard. The game starts normally." Then a save with everything unlocked (Paris w
   e378860a627a1a6e2d9a90ea76309051c2a91a35c3202077ba31ca2a7e3e26b5, 834,472 bytes, no 0xDEADBEEF, +3A15C b510 0004;
   twin y62 (+ CARREC YREC AUTOPILOT, rec pc 700BA75C unchanged). Battery r62bat (r60's, the counters at 700BF5E8,
   plus Paris on the exact binary with the owner's save): running.
+- Battery on e378860a (r62bat): twin y62b camera reversals 4 each way (r60 3, r59 4). Tele (W-4, 120 s, LA): 44.9 ms
+  a render (r60 44.3, r59 49.4), windows 40.9-50.9; camera yaw reversals 1, car heading 2, all at one frame (29142,
+  a 12/2048 jolt: a contact's signature); drawn speed by present 10-90% 0.96-1.04; drop frames 0. Crash-steer
+  reversals 0. Finish (twin, cap 85): the game stopped stepping -- 1 step in the last 416 frames, frames still
+  presented, mode 2 throughout (r60's stuck run still stepped: a car against a wall); being looked at with
+  screenshots. Exact binary key 5, 300 s: the finish reached (165 finish-mode frames), bearing reversals 1. Menus 18
+  shots; marks; Veyron autopilot camera reversals 1, heading 1; marks on the Veyron; archive restored. Counters (at
+  700BF5E8 this time): LA 159,157 of 169,103 taken (94.1%), 6,423 near; finish run 93.0%, 15,410 near; no resets.
+  Paris, exact binary, owner's save (pa_r62c): 77,019 of 98,348 (78.3%; 15,644 textures outside the class, 1,668
+  meshes refused at the build), 3,810 near, 4 resets by the 64-frame gap; its recording: tunnel walls, near
+  buildings, lamp posts all drawn. +3A15C b510 0004, no 0xDEADBEEF.
