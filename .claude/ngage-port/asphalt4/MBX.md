@@ -9387,3 +9387,21 @@ Owner: "yes, go ahead with r59 pacing and camera fix".
 - Candidate r59 = r58 + both (C59.flags): a4_r59_cand.exe a835a129efbb1f9a47f2552b2db664bf3345e8a70ac52a9bb2348cabb8a851fa,
   825,576 bytes (r58 825,016), +3A15C b510 0004, no 0xDEADBEEF. Twins y59 (+ CARREC YREC AUTOPILOT), ys59 (+ CARREC
   YREC: jsteer). Running: the steering twin, then the battery (r59run.sh).
+- Battery on a835a129 (r59run.sh): tele (W-4, 120 s) 48.8 ms a render (r58 49.3), camera yaw and heading reversals
+  0; crash-steer reversals 0; menus 18 shots, faults 1; marks; Veyron camera-yaw reversals 4 (r58 5). Both finish
+  runs stopped short: the twin's car stood at (-4607, -8216) and the key-5 car pushed at a wall (x -5147..-5387, z
+  32344) for their last 417 frames. Not the build: with A4_KINEDRAW the car calls run as stock (HP_HOOK is empty;
+  the frames' fraction reaches only the drawing), and unsteered runs have stuck before (rounds 45, 57).
+- **A4_PACE does the opposite of its aim** (tools/pace.py, the frame record, displayed picture speed against its 9
+  neighbours): tele r58 10-90% 0.96-1.04 (1-99% 0.92-1.11), r59 0.94-1.08 (0.86-1.16, 3% off by >15%); the Veyron
+  r58 17% off by >15%, r59 33%. The error was in round 58's reading, not the code: what makes the picture's motion
+  uneven is the CHANGE in the delay from frame to frame, not the delay's distance from its mean. Unpaced, the
+  displayed motion's error per frame is the delay's first difference; paced by the last delay, it is the second
+  difference -- larger whenever the delay does not trend (white steps: x1.4; a spike: twice; a level shift: once
+  each way instead of once). For any predictor from the past delays alone it is no better (an AR(1) delay with
+  rho 0.72, the phone's: paced sd ~12.7 ms against unpaced 9.7). Dropped; the code stays under its switch, off.
+- A4_CAMYAWRATE replayed off and on over the same frames (tools/camrate.py): y59 (autopilot) 6 frames of 1,365
+  carry anything, s_ys59 (jsteer) 111 of 1,430, and the yaw off the game camera's path and its reversals are the
+  same either way (99% 25 / 23, reversals 4 / 14): on these routes the game's camera offset moves 1-2 /2048 a step,
+  which rounds to nothing. The case it is for (the offset falling 8-9 a step behind in a fast turn) is the Veyron's:
+  a Veyron recording next.
