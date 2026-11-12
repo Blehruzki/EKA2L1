@@ -9563,3 +9563,9 @@ Owner (N95, eight files): "The camera looks fine. I'm not even sure there was an
   the store's limits and the stale checks; C60 = C59 + A4_ENG_0CE8C + A4_GPUOBJ. (c) Not entered: a second race in
   one session, the cities the battery does not drive, the store or the staging filling (resets 0 on every run), a
   knocked prop (refused: the game draws it).
+- Sent (owner: "yes, send r60"): r60 unbaked, c6f7ad6c0d96825787fee5be4dc91fd3a34bb8b9a2ea90f6ad7d400949f50b7a,
+  832,612 bytes (the battery's binary, cmp'd by hash). Asked of the phone round: the frame rate against r59 on the
+  same track, props next to walls (the depth test), a second race without restarting, the start (1.6 MB more .bss).
+  Owner's question before sending: a third frame per update drawn from prediction is the same technique as the
+  in-between frame since round 46 (A4_KINEDRAW); the way past the 23.4 fps cap without it is the engine at 3x (task
+  38, bench, not phone-ready). Next after this round: back to the 3x engine, not more predicted frames.
