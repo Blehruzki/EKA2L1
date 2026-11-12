@@ -9616,3 +9616,9 @@ regard. The game starts normally." Then a save with everything unlocked (Paris w
   well (f0647, f0649, f0651 off; f0646, f0648, f0650 on), and in r59's own Paris run (rec_pa_r59, the "GOT
   INSURANCE?" frames): not round 60's. In the GNN camera's view from above they read as bike-shaped shapes on the
   ground with no bike. An older fault the owner noticed now; which class draws them: A4_KINDVIS on r59, running.
+- A4_KINDVIS on r59 (Paris): the bikes stay black -- not the flat, additive, shadow or alpha-map class (green, cyan,
+  red, yellow); a textured class with black texels. Round 28's precedent: the tunnel signs' texel pointer swapped by
+  the game's own animator (+D32E), dark in one frame and lit in the next. The stock game on the same route: running.
+- r62 timing (LA, W-4 model, the bench's own save back for the comparison): render call 33.9 ms (r60 32.7, r59
+  39.8), first triangle 4.9, 44.7 ms a render (44.3, 49.4); 110,914 of 117,817 objects taken (94.1%), 4,714 left to
+  the game for the near plane, 18.6 object draws a frame; one store reset (a 64-frame gap without objects).
