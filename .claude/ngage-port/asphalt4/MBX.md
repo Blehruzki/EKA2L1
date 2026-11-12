@@ -9440,3 +9440,17 @@ Owner: "yes, go ahead with r59 pacing and camera fix".
   own branch, untouched).
 - Sent to the owner as r59 (the owner's "go ahead with r59 pacing and camera fix"; the pacing is not in it): 92a6a5fe,
   unbaked. What the round answers: whether the camera turns smoothly in fast turns, at r58's speed.
+
+## Phone round 59 (r59 92a6a5fe): the camera fine
+
+Owner (N95, eight files): "The camera looks fine. I'm not even sure there was an issue with that."
+- Files: captures 133-140, r59, copied by their exact upload names (ph59/).
+- Speed: 3,220 renders, 62.9 ms a render (r58 69.2 with a 7.5 s load window in it, r57 65.8); render call 53.5 ms
+  (55.7, 56.3), before the first triangle 10.8 (11.2, 12.3); steps 4,876 over 3,271 spans. Heaviest window 88.9 ms a
+  render (3D 55.3); the slowest frames ~120 ms at 2,200+ triangles.
+- Frame record (417 frames, 300 chase): camera-yaw one-frame reversals 13 (r58 15, r57 10), the first ones around
+  contacts (car heading turns of 28-38 in a frame); car heading reversals 2, both at contacts. Drop frames 3 (two
+  around the start, one a camera cut: deviation 660). Delay render start -> present 62 ms mean, its change frame to
+  frame sd 12.4 ms (r58 9.7, r57 5.2): this race's render times varied more; picture speed per displayed frame off
+  its neighbours by >15% in 17% of frames (r58 11%, r57 4%) -- the race's content, no pacing change in r59.
+- Next (proposed in round 59's message, not objected to): the atlas simulated on the table path.
