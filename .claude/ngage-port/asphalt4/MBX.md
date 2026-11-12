@@ -9467,4 +9467,10 @@ Owner (N95, eight files): "The camera looks fine. I'm not even sure there was an
 - A4_CEIL_ROAD (+2732E, the one-face drawer under +20938, insert +27402) off, W-4 model, 120 s (c59road): 46.4 ms a
   render, render call 35.6 ms (r57t 39.0), before the first triangle 6.8 (7.2), 3D 17.1 (r59t2 21.6). The road's
   surface itself is still drawn in its snapshots: +2732E is a class of single faces (328 a frame), not the road --
-  what it is, to be read. The whole world off (cars + scenery + +2732E, c59all): running.
+  what it is, to be read.
+- The whole world off (cars + scenery + +2732E, c59all, W-4 model, 120 s): render call 18.2 ms (39.0), before the first
+  triangle 1.1 (7.2), 3D 5.0 (21.6); 42.7 ms a render -- the half-step's cap (42.67), so the frame's own work is under
+  it and hidden. Snapshot: the road surface, the sky backdrop, speed lines, the nitro glow and the HUD remain (the road
+  is drawn by yet another path). The world's three blocks are 20.8 ms of the 39.0 ms render call (53%; ~30 ms on the
+  phone at x1.44). A GPU-native world must cost well under that, and past ~23.4 fps the frames between steps are
+  needed as well.
