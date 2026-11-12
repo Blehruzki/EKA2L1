@@ -9454,3 +9454,11 @@ Owner (N95, eight files): "The camera looks fine. I'm not even sure there was an
   frame sd 12.4 ms (r58 9.7, r57 5.2): this race's render times varied more; picture speed per displayed frame off
   its neighbours by >15% in 17% of frames (r58 11%, r57 4%) -- the race's content, no pacing change in r59.
 - Next (proposed in round 59's message, not objected to): the atlas simulated on the table path.
+- Rule 2, missed: the atlas proposed in round 58 (and simulated on the list, atlasim.py) is rounds 24-25's A4_ATLAS --
+  built for the table path, run on the phone twice: calls a render -26%, but every glTexSubImage2D into the 1024x1024
+  page cost ~100 ms on the N95's driver (mid-frame or after the composite alike), and the steady windows gained 1-3
+  ms. Its own verdict: "a texture that grows during a race cannot be had on this driver; one built whole at a load
+  could, but needs a 2 MB staging buffer". Not proposed again without an answer to the upload cost.
+- Where the frame is now (ph59): light windows 42.0-42.3 ms a render -- the half-step's cap (42.67 ms, 23.4 fps):
+  3D 11.5-15.7, composite 9.3-10.3, 2D 3.2, present 2.3, rest 10-16 (the part before the first triangle, the logic
+  ~0.6 a span, and the wait for the step); heavy 62-89 (3D 32-55). Average 62.9 (~16 fps).
