@@ -9569,3 +9569,29 @@ Owner (N95, eight files): "The camera looks fine. I'm not even sure there was an
   Owner's question before sending: a third frame per update drawn from prediction is the same technique as the
   in-between frame since round 46 (A4_KINEDRAW); the way past the 23.4 fps cap without it is the engine at 3x (task
   38, bench, not phone-ready). Next after this round: back to the 3x engine, not more predicted frames.
+
+## Phone round 60 (r60 c6f7ad6c): faster; scenery showing through walls, bikes and tyres black
+
+Owner (N95, sixteen files, four photos, Paris night races and a tunnel): "Framerate feels a bit better. ... Some parts
+of the map now show through some places or walls that they shouldnt (similar to the issue of the tunnel showing
+through the wall). ... cones, pneumatics or bycicles, they're still there. But the bycicles and the pneumatics seem to
+have lost their textures. They now look pitch-black. I played a second race consecutively. No issues so far in that
+regard. The game starts normally." Then a save with everything unlocked (Paris was never reachable on the bench).
+- Files: two sets of eight, copied by their exact upload names (ph60/a, ph60/b).
+- Speed (r51sum, steptime): race a 58.7 ms a render (r59's phone round 62.9), render call 49.0 (53.5), before the
+  first triangle 8.0 (10.8); race b 61.0 / 60.6 (two segments), render call 51.8, first triangle 7.8. The front end's
+  ~3 ms went as the bench said; the rest less than the bench's -7.1 (the tracks differ: r59's round is not Paris).
+- The cause, read in the code (not yet seen on the bench): the table's classes the game never depth-tests (shadows,
+  cut-outs, flat slabs, the colour-key span) are tested in a list frame only where the list's tile grid holds a
+  nearer face (mesh_tri_covered, round 28), and sprites likewise (mesh_bb_depth). The GPU's objects were in no grid, so
+  a prop's own shadow -- painted by the game before the prop -- now lands on it after (bikes, tyres black), and
+  cut-outs and slabs behind an object paint over it. Worse: mesh_draw set MESH->active from the list's faces alone,
+  and the list is now almost empty (it was mostly scenery), so whole frames left the list regime (every class tested)
+  for the old one; and mesh_has would read a stale face hash in such a frame.
+- Fix (r61 source): each taken object keeps a screen box (its bounding sphere, extent x 1.75, the 8 corners projected
+  with the game's reciprocal table, mesh_scr_i) and its nearest and farthest buckets (ZW >> 3, as mesh_take's); the
+  grid takes the objects at their nearest bucket (gobj_grid, also in a frame whose list is empty), MESH->active is
+  set when objects were drawn, mesh_bb_depth counts an object nearer than the sprite as a cover (its far bucket, at
+  most the sprite's - 1), mesh_has only with list faces this frame, and the flush asks for depth writes itself.
+- Bench now: the owner's save installed (the bench's own kept in save_bench/); Instant Play goes to Paris. Recording
+  r60, r61, r59 there.

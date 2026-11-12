@@ -5208,7 +5208,7 @@ typedef int16_t __attribute__((may_alias)) go_s16;
 #define GOBJ_KEY   ((uint32_t *)(GOBJ_AEND - 0x2000u))
 #define GOBJ_REF   ((uint32_t *)(GOBJ_AEND - 0x1000u))
 _Static_assert(GOBJ_NE * 4u <= 0x1000u && GOBJ_SN * 12u <= 0xC000u, "the staging and the flush's keys");
-struct gitem { uint32_t mesh, textab; int32_t d[3]; };
+struct gitem { uint32_t mesh, textab; int32_t d[3]; int16_t box[4]; uint16_t qn, qf; };   /* screen box, nearest/farthest bucket */
 struct gmesh { uint32_t verts, faces, nf, ofs, ng; uint16_t gs[GOBJ_NG], gc[GOBJ_NG]; uint8_t gt[GOBJ_NG]; uint16_t ext; uint8_t pad[2];
                uint32_t fp[3]; };                  /* the data's first words: a mesh moved under the same address */
 struct gstate {
@@ -5359,6 +5359,43 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
     volatile struct gitem *it = &g->it[g->n++];
     it->mesh = (uint32_t)(uintptr_t)me; it->textab = textab;
     it->d[0] = (int32_t)dx; it->d[1] = (int32_t)dy; it->d[2] = (int32_t)dz;
+    {   /* Phone round 60: the table's untested classes -- a prop's own shadow (bikes, tyres black), cut-outs -- were
+         * painted over these objects: they are tested only where the list's tile grid holds a nearer face, and the
+         * objects were in no grid. So each object's screen box and depth buckets (as mesh_take's: ZW >> 3): its
+         * bounding sphere, the mesh's extent x 1.75 (>= sqrt 3), around its view-space origin M[9..11]. */
+        const uint32_t *gx = (const uint32_t *)(uintptr_t)MESH->gctx;
+        const int32_t e = (int32_t)me->ext, r = e + (e >> 1) + (e >> 2) + 2;
+        const int32_t vx = M[9], vy = M[10], vz = M[11];
+        int32_t zn = vz + r, zf = vz - r;                  /* nearest, farthest (z < 0 ahead) */
+        const uint32_t qn = zn < 0 ? (uint32_t)(-zn) >> 3 : 0u, qf = zf < 0 ? (uint32_t)(-zf) >> 3 : 0u;
+        it->qn = (uint16_t)(qn > 4095u ? 4095u : qn); it->qf = (uint16_t)(qf > 4095u ? 4095u : qf);
+        if (zn > -512) { it->box[0] = -1; it->box[1] = -1; it->box[2] = VP_W; it->box[3] = VP_H; }   /* near: everywhere */
+        else {
+            if (zf < -0x7FFF) zf = -0x7FFF;
+            int32_t F = (int32_t)GO32(cam + 4u);
+            if (F < 1) F = 1;
+            if (F > 16383) F = 16383;
+            const int32_t cx = *(const int32_t *)gx[0x40110 / 4] >> 1, cy = *(const int32_t *)gx[0x40114 / 4] >> 1;
+            int32_t xlo = 0x7FFFFFFF, ylo = 0x7FFFFFFF, xhi = -0x7FFFFFFF, yhi = -0x7FFFFFFF;
+            for (uint32_t k = 0; k < 8u; k++) {            /* the corners of the sphere's view-space box */
+                int32_t x = (k & 1u) ? vx + r : vx - r, y = (k & 2u) ? vy + r : vy - r, sx, sy;
+                if (x > 32767) x = 32767;
+                if (x < -32767) x = -32767;
+                if (y > 32767) y = 32767;
+                if (y < -32767) y = -32767;
+                mesh_scr_i(gx, F, cx, cy, x, y, (k & 4u) ? zf : zn, &sx, &sy);
+                if (sx < xlo) xlo = sx;
+                if (sx > xhi) xhi = sx;
+                if (sy < ylo) ylo = sy;
+                if (sy > yhi) yhi = sy;
+            }
+            xlo -= 2; ylo -= 2; xhi += 2; yhi += 2;
+            it->box[0] = (int16_t)(xlo < -1 ? -1 : xlo > VP_W ? VP_W : xlo);
+            it->box[1] = (int16_t)(ylo < -1 ? -1 : ylo > VP_H ? VP_H : ylo);
+            it->box[2] = (int16_t)(xhi < -1 ? -1 : xhi > VP_W ? VP_W : xhi);
+            it->box[3] = (int16_t)(yhi < -1 ? -1 : yhi > VP_H ? VP_H : yhi);
+        }
+    }
     g->F = GO32(cam + 4u);
     g->taken++;
     return 1;
@@ -5381,7 +5418,7 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
     P[8] = FX - (cx << 17) / VP_W; P[9] = (cy << 17) / VP_H - FX; P[11] = -FX;
     P[14] = ZK * FX - ((ZK * FX) >> 6);
     gl_matrixmode(GL_PROJECTION); gl_loadmatrixx(P);
-    gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_GEQUAL); gl_enable(GL_CULL_FACE);
+    gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_GEQUAL); gl_enable(GL_CULL_FACE); gl_depthmask(1);
     gl_vertexptr(3, GL_SHORT, 12, (const void *)GOBJ_STAGE);
     gl_texcoordptr(2, GL_SHORT, 12, (const void *)(GOBJ_STAGE + 6u));
     const uint16_t *m1map = (const uint16_t *)gctx[0x5c / 4];
@@ -5447,8 +5484,54 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
     gl_depthfunc(GL_GEQUAL);                                 /* bring-up's */
     gl_disable(GL_CULL_FACE); gl_disable(GL_DEPTH_TEST);
 }
+/* the frame's drawn objects into the list's tile grid (mesh_draw): each its box at its nearest bucket; the count */
+static uint32_t gobj_grid(volatile struct glr *s, uint16_t *grid)
+{
+    volatile struct gstate *g = GOBJ;
+    if (g->magic != GOBJ_MAGIC || g->frame != s->frames || !g->drawn) return 0;
+    const uint32_t n = g->n;
+    for (uint32_t i = 0; i < n; i++) {
+        const volatile struct gitem *it = &g->it[i];
+        const int32_t x0 = it->box[0], y0 = it->box[1], x1 = it->box[2], y1 = it->box[3];
+        if (x1 < 0 || y1 < 0 || x0 >= VP_W || y0 >= VP_H || x0 > x1 || y0 > y1) continue;
+        const int32_t tx0 = x0 < 0 ? 0 : x0 >> 4, tx1 = x1 >= VP_W ? MESH_GW - 1 : x1 >> 4;
+        const int32_t ty0 = y0 < 0 ? 0 : y0 >> 4, ty1 = y1 >= VP_H ? MESH_GH - 1 : y1 >> 4;
+        const uint16_t q = it->qn;
+        for (int32_t ty = ty0; ty <= ty1; ty++)
+            for (int32_t tx = tx0; tx <= tx1; tx++)
+                if (q < grid[ty * MESH_GW + tx]) grid[ty * MESH_GW + tx] = q;
+    }
+    return n;
+}
+/* mesh_bb_depth's objects: the deepest bucket of an object nearer than the sprite (sb) whose box meets its rectangle,
+ * at most sb - 1 (-1: none) */
+static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+{
+    volatile struct gstate *g = GOBJ;
+    const volatile struct glr *s = (const volatile struct glr *)A4_GL_SCRATCH;
+    if (g->magic != GOBJ_MAGIC || g->frame != s->frames || !g->drawn) return -1;
+    int32_t deep = -1;
+    for (uint32_t i = 0; i < g->n; i++) {
+        const volatile struct gitem *it = &g->it[i];
+        if ((int32_t)it->qn >= sb) continue;
+        if (it->box[2] < x0 || it->box[0] >= x1 || it->box[3] < y0 || it->box[1] >= y1) continue;
+        int32_t d = it->qf < sb ? (int32_t)it->qf : sb - 1;
+        if (d > deep) deep = d;
+    }
+    return deep;
+}
 /* bench: the counters, every 256th flush, EKA2L1_PCMEM at a4_gobj_emit (r0: the state's first 0x40 bytes) */
 __attribute__((noinline)) void a4_gobj_emit(const void *st) { __asm__ volatile("" : : "r"(st) : "memory"); }
+#endif
+#ifdef A4_GPUOBJ
+/* a frame whose list is empty but whose objects the GPU drew: the grid holds the objects alone, and it is a mesh
+ * frame (MESH_ON: the table's classes tested as in a list frame) -- before round 60's phone round it was not, and
+ * the table painted untested over the objects */
+#define GOBJ_ONLY() do { uint16_t *g_ = (uint16_t *)m->grid;                                    \
+                         for (uint32_t j_ = 0; j_ < MESH_GW * MESH_GH; j_++) g_[j_] = 0xFFFFu;   \
+                         m->active = gobj_grid(s, g_) != 0u; } while (0)
+#else
+#define GOBJ_ONLY() do { } while (0)
 #endif
 static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
 {
@@ -5463,13 +5546,13 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
          * for the owner's empty frame and the crash camera's car in pieces (a guess; the lossy
          * frame recorder, A4_SLOWREC, says whether it happens). A list with no inserts since
          * the last walk (drawn already, or empty) is no list. */
-        if (m->drawn || !n) { m->frame = s->frames; m->n = 0; m->drawn = 1; return; }
+        if (m->drawn || !n) { m->frame = s->frames; m->n = 0; m->drawn = 1; GOBJ_ONLY(); return; }
         m->frame = s->frames; m->stale++;
     }
     if (m->drawn) return;
     m->drawn = 1;
-    if (!n) return;
-    uint32_t t0 = a4_ntick();
+    if (!n) { GOBJ_ONLY(); return; }
+    uint32_t t0 = a4_ntick(), nobj = 0;
     const uint16_t *m1map = (const uint16_t *)gctx[0x5c / 4];
     const uint16_t *m1tab = m1_table(gctx);
     uint32_t kid[MESH_NK];
@@ -5510,6 +5593,9 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
                 for (int32_t tx = b[0] >> 4; tx <= (b[2] >> 4); tx++)
                     if (q < g[ty * MESH_GW + tx]) g[ty * MESH_GW + tx] = (uint16_t)q;
         }
+#ifdef A4_GPUOBJ
+        nobj = gobj_grid(s, g);                      /* and the GPU's objects (round 60's phone round) */
+#endif
     }
     /* Table order: buckets far to near; in a bucket the last inserted first (+349B0 pushes
      * on the bucket's head and the walk starts there). A counting sort, the counts in the
@@ -5699,7 +5785,7 @@ draw:
     gl_matrixmode(GL_MODELVIEW);
     gl_depthfunc(GL_GEQUAL);                         /* bring-up's */
     gl_disable(GL_CULL_FACE); gl_disable(GL_DEPTH_TEST);
-    m->active = n > lost;
+    m->active = n > lost || nobj;
     m->nk = nk;
 #ifdef A4_ROWSTAT
     {   /* bench (round 50): census [70] the list's texture keys (texture x texz) a frame, [71] its draw
@@ -6370,7 +6456,8 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         }
     }
 #endif
-    if (MESH_ON() && mesh_has((uint32_t)(uintptr_t)desc)) return 0;   /* the list drew it on the GPU */
+    if (MESH_ON() && MESH->n && mesh_has((uint32_t)(uintptr_t)desc)) return 0;   /* the list drew it on the GPU
+                                                                         * (an object-only frame: its hash is stale) */
 #endif
 #ifdef A4_SWONLY
     /* reference build: GL up and the frame counted (so telemetry captures it), but
@@ -6843,6 +6930,10 @@ static int32_t mesh_bb_depth(const int32_t *b1, int32_t x0, int32_t y0, int32_t 
         deep = Q[i];                                /* the tail runs deep to near: the first */
         break;                                      /* cover found is the deepest */
     }
+#ifdef A4_GPUOBJ
+    {   const int32_t od = gobj_bb_deep(sb, x0, y0, x1, y1);   /* the GPU's objects cover a sprite too */
+        if (od > deep) deep = od; }
+#endif
     return deep < 0 ? 0 : (deep + 1) * 8;
 }
 #endif
