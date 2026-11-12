@@ -9419,3 +9419,24 @@ Owner: "yes, go ahead with r59 pacing and camera fix".
   on the autopilot runs (9, 7, 10, 3: a rigid camera there); the yaw off the game camera's path the same within 1-2
   at 90-99%. Candidate r59 = r58 + A4_CAMBLEND (A4_PACE off): 92a6a5fe27d2688754621eeb64bc163a807daa35d7d5ea6e0a936aeb6a006239,
   825,152 bytes, no 0xDEADBEEF. Running: the steering twin (s_ys59d), then the battery.
+- Steering twin s_ys59d (the blend built): the frames drawn equal the replay's blend exactly (camoff: drawn = blended,
+  reversals 14 both); the rigid rule on the same frames would have made 19, its worst yaw off the game camera's path 79
+  against 58. Twin y59b (autopilot): reversals 4 each way (a rigid camera there).
+- Battery on 92a6a5fe (r59run3): tele (W-4, 120 s) 49.4 ms a render (r58 49.3), camera yaw and car heading
+  reversals 0, drawn speed by present 10-90% 0.96-1.04; one frame with its triangles halved -- a camera change to
+  mode 0x2A (camera deviation 540, 964 triangles against 2,177), the view's own count, not held, not a fault.
+  Crash-steer reversals 0. Finish (twin) reached, 181 mode-1 frames; exact binary key 5, 300 s: 417 chase frames,
+  bearing reversals 2 (small), the race not ended in the window. Menus 18 shots, faults 1 (the boot fault); marks;
+  Veyron autopilot camera-yaw reversals **0** in 417 frames (r58 5; the carry build 22) with the game's camera
+  behind the car (heading less yaw 90% 40), heading reversals 0; marks on the Veyron. +3A15C b510 0004, no 0xDEADBEEF.
+- Rule 2: not a repeat -- no phone round has blended the camera's offset; round 47's rigid camera took it afresh at
+  each step (every round since). A4_PACE never went out.
+- Rule 4: (a) guesses -- that a camera offset a step late (42 ms) is not seen (it changes a few /2048 a step); that the
+  phone's stepping yaw (round 58, 8.1-8.8 s) is this offset's jump (the frame record's heading less yaw jumps at the
+  step frames, as the bench's); the 128 cut. (b) Read back: the blend block as committed (the three lines and their
+  guards), the flags file (C59 = C54 + TAKE2 + KD_MINTURN + CAMBLEND; PACE, CAMYAWRATE off). (c) Not entered: a
+  camera mode change in the middle of a blend (cwv resets to 1: no blend until two steps of the new camera), slow
+  motion (qt is the slow step's fraction: the blend follows it), a missed step (no blend), the scripted cameras (their
+  own branch, untouched).
+- Sent to the owner as r59 (the owner's "go ahead with r59 pacing and camera fix"; the pacing is not in it): 92a6a5fe,
+  unbaked. What the round answers: whether the camera turns smoothly in fast turns, at r58's speed.
