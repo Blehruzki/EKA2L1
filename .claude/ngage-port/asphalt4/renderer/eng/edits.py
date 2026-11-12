@@ -233,6 +233,9 @@ ALWAYS = {
     # +CE8C, a mesh instance's set-up (lifted for speed): its two unpack loops by hand (a4_eng.h ce_verts,
     # ce_faces) at their guards; the registers they leave are all written again before any read, so only
     # memory is theirs. A4_CECHECK runs each beside the lifted loop on the same arrays and compares at its exit.
+    # round 60, A4_GPUOBJ: an object the GPU draws itself (a4_gl.c a4_obj_take) skips the game's path; r0-r3 are
+    # still the call's at +CE90 (the push and the sub have run), and +CF6A unwinds them
+    0x0CE90: {'before': 'if (A4_OBJ_TAKE(r0, r1, r2, r3)) goto L_0CF6A;', 'why': 'A4_GPUOBJ: the object drawn by the GPU'},
     0x0CEC0: {'before': 'if (ce_verts(r0, r1, r2)) goto L_0CEDC;', 'why': 'the vertex unpack +CEC2..+CEDA by hand'},
     0x0CEDC: {'before': 'CE_CHECK(0);', 'why': 'A4_CECHECK: the vertex unpack by hand against the lifted loop'},
     0x0CEEA: {'before': 'if (ce_faces(r0, r1, r2, r4, L32(spp + 0x1Cu))) goto L_0CF4A;', 'why': 'the face unpack +CEEC..+CF48 by hand'},

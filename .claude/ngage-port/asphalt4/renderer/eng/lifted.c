@@ -18384,6 +18384,8 @@ static uint64_t engi_0CE8C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
     spp -= 36; S32(0) = r0; S32(4) = r1; S32(8) = r2; S32(12) = r3; S32(16) = r4; S32(20) = r5; S32(24) = r6; S32(28) = r7; S32(32) = lr; /* 00ce8c push {r0, r1, r2, r3, r4, r5, r6, r7, lr} */
     spp -= 0x14u;                                                /* 00ce8e sub sp, #0x14 */
+    /* engine: A4_GPUOBJ: the object drawn by the GPU */
+    if (A4_OBJ_TAKE(r0, r1, r2, r3)) goto L_0CF6A;
     r5 = r0; fN = r5 >> 31; fZ = r5 == 0;                        /* 00ce90 movs r5, r0 */
     r1 = L32(r5 + 0x1Cu);                                        /* 00ce92 ldr r1, [r5, #0x1c] */
     r0 = S32(0x18u);                                             /* 00ce94 ldr r0, [sp, #0x18] */

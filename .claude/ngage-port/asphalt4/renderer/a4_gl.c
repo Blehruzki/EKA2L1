@@ -5163,6 +5163,181 @@ __attribute__((noinline)) void a4_list_emit2(const void *obj)   /* r0: 4 KB, a u
     __asm__ volatile("" : : "r"(obj) : "memory");
 }
 #endif
+#ifdef A4_GPUOBJ
+/* Round 60, the scenery prototype (owner: "start the scenery prototype"; MBX.md round 60): the static roadside
+ * objects drawn by the GPU from the game's own data instead of the game's per-object path. The scenery walk +CF6E
+ * culls an object by its sphere, pushes the camera matrix, translates it by the object's place and calls +CE8C(obj,
+ * ctx, textures, r3), which unpacks the object (int16 xyz at [obj+0x20], [obj+0x1C] of them; 10-byte faces at
+ * [obj+0x28], [obj+0x24] of them: corners b1 b0 b2, texture b3 into the table, texcoords b6 b7 / b4 b5 / b8 b9 x16)
+ * and hands it to the mesh routine +349F8 with the camera ctx[4] (its matrix: [cam+0x3C], x' = (m0 x + m3 y + m6 z)
+ * >> 14 + m9 and so on, +523A2..+523E6) and the mode ctx[0]. Here (an edit at +CE90 in the lifted +CE8C,
+ * A4_ENG_0CE8C) an object whose faces are all the list's class -- mode 0, every texture plain (no colour key at
+ * descriptor +0x28, no alpha map at +0x2C) -- is taken: its matrix kept, the game's unpack, transform, culls and
+ * inserts skipped. Its mesh is expanded once into per-corner records (x y z u v -, the list's layout) grouped by
+ * texture, in an arena; the frame's objects are drawn before the list with the list's projection and the object's
+ * matrix as the GPU's modelview, every face depth-tested (GEQUAL, writing) -- and in a GPUOBJ build the list's
+ * painted faces are depth-tested too (round 60's replay: plain depth testing changes 2.5% of the list's pixels
+ * against the game's order, the fewest of the orders tried). Bench first (A4_SCRATCH_SIZE >= 0x84000: the arena). */
+typedef uint32_t __attribute__((may_alias)) go_u32;
+typedef uint8_t __attribute__((may_alias)) go_u8;
+typedef int16_t __attribute__((may_alias)) go_s16;
+#define GO32(a)  (*(const volatile go_u32 *)(uintptr_t)(a))
+#define GO8(a)   (*(const volatile go_u8 *)(uintptr_t)(a))
+#define GOS16(a) (*(const volatile go_s16 *)(uintptr_t)(a))
+#define GOBJ_BASE  0x00464000u
+#define GOBJ_NI    192u                     /* objects a frame */
+#define GOBJ_NM    256u                     /* distinct meshes */
+#define GOBJ_NG    12u                      /* texture groups a mesh */
+#define GOBJ_ARENA 0x0046E000u              /* per-corner records, 12 bytes each, to 0x484000 */
+#define GOBJ_AEND  0x00484000u
+struct gitem { uint32_t mesh, textab; int32_t m[12]; };
+struct gmesh { uint32_t verts, faces, nf, ofs, ng; uint16_t gs[GOBJ_NG], gc[GOBJ_NG]; uint8_t gt[GOBJ_NG]; uint8_t pad[4]; };
+struct gstate {
+    uint32_t magic, frame, n, drawn, F, nmesh, aused;
+    uint32_t taken, refused_mode, refused_tex, refused_far, refused_full, built, frames_drawn, draws;  /* totals */
+    struct gitem it[GOBJ_NI];
+};
+#define GOBJ ((volatile struct gstate *)GOBJ_BASE)
+#define GMESH ((struct gmesh *)0x00467000u)
+_Static_assert(GOBJ_BASE + sizeof(struct gstate) <= 0x00467000u, "the objects' items");
+_Static_assert(0x00467000u + GOBJ_NM * sizeof(struct gmesh) <= GOBJ_ARENA, "the mesh table");
+#define GOBJ_MAGIC 0x4A424F47u                   /* 'GOBJ' */
+static void gobj_reset(volatile struct gstate *g)
+{
+    if (g->magic != GOBJ_MAGIC) {
+        g->magic = GOBJ_MAGIC; g->nmesh = 0; g->aused = 0;
+        g->taken = g->refused_mode = g->refused_tex = g->refused_far = g->refused_full = g->built = g->frames_drawn = g->draws = 0;
+        g->frame = 0xFFFFFFFFu; g->n = 0; g->drawn = 0;
+    }
+}
+/* the object's mesh in the arena (built once; 0 if it cannot be) */
+static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
+{
+    const uint32_t verts = GO32(obj + 0x20u), faces = GO32(obj + 0x28u), nv = GO32(obj + 0x1Cu), nf = GO32(obj + 0x24u);
+    if (!verts || !faces || nf == 0u || nf > 1024u || nv == 0u || nv > 256u) return 0;
+    for (uint32_t k = 0; k < g->nmesh; k++)
+        if (GMESH[k].verts == verts && GMESH[k].faces == faces && GMESH[k].nf == nf) return &GMESH[k];
+    if (g->nmesh >= GOBJ_NM || GOBJ_ARENA + (g->aused + 3u * nf) * 12u > GOBJ_AEND) { g->refused_full++; return 0; }
+    struct gmesh *me = &GMESH[g->nmesh];
+    uint32_t ng = 0, o = 0;
+    int16_t *rec = (int16_t *)(GOBJ_ARENA + g->aused * 12u);
+    /* faces grouped by texture index, each group's faces in the mesh's own order */
+    for (uint32_t f = 0; f < nf; f++) {
+        const uint32_t t = GO8(faces + 10u * f + 3u);
+        uint32_t k = 0;
+        while (k < ng && me->gt[k] != t) k++;
+        if (k == ng) { if (ng == GOBJ_NG) { g->refused_full++; return 0; } me->gt[ng] = (uint8_t)t; ng++; }
+    }
+    for (uint32_t k = 0; k < ng; k++) {
+        me->gs[k] = (uint16_t)o; me->gc[k] = 0;
+        for (uint32_t f = 0; f < nf; f++) {
+            const uint32_t fp = faces + 10u * f;
+            if (GO8(fp + 3u) != me->gt[k]) continue;
+            static const uint8_t vi[3] = { 1, 0, 2 }, ui[3] = { 6, 4, 8 };   /* corner: vertex byte, its u byte (v next) */
+            for (uint32_t c = 0; c < 3u; c++) {
+                const uint32_t v = GO8(fp + vi[c]);
+                if (v >= nv) return 0;
+                const uint32_t vp = verts + 6u * v;
+                int16_t *r = rec + (o * 3u + c) * 6u;
+                r[0] = GOS16(vp); r[1] = GOS16(vp + 2u); r[2] = GOS16(vp + 4u);
+                r[3] = (int16_t)(GO8(fp + ui[c]) << 4); r[4] = (int16_t)(GO8(fp + ui[c] + 1u) << 4); r[5] = 0;
+            }
+            o++; me->gc[k]++;
+        }
+    }
+    me->verts = verts; me->faces = faces; me->nf = nf; me->ofs = g->aused; me->ng = ng;
+    g->aused += 3u * nf; g->nmesh++; g->built++;
+    return me;
+}
+/* the lifted +CE8C's entry (eng/edits.py): 1 = taken, the game's path skipped */
+int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
+{
+    (void)r3;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    volatile struct gstate *g = GOBJ;
+    if ((A4_PERF[PF_MODE] & (AB_MESH | AB_LEAN | AB_DEFER)) != (AB_MESH | AB_LEAN)
+        || s->up != A4_GL_MAGIC || !s->zbits || !s->abits || !MESH->gctx) return 0;
+    gobj_reset(g);
+    if (g->frame != s->frames) { g->frame = s->frames; g->n = 0; g->drawn = 0; }
+    if (g->drawn || g->n >= GOBJ_NI) return 0;
+    if (GO32(ctx) != 0u) { g->refused_mode++; return 0; }
+    const uint32_t cam = GO32(ctx + 4u), mp = cam ? GO32(cam + 0x3Cu) : 0;
+    if (!mp) { g->refused_mode++; return 0; }
+    const int32_t *M = (const int32_t *)mp;
+    if (iabs32(M[9]) > 32000 || iabs32(M[10]) > 32000 || iabs32(M[11]) > 32000) { g->refused_far++; return 0; }
+    struct gmesh *me = gobj_mesh(g, obj);
+    if (!me) return 0;
+    for (uint32_t k = 0; k < me->ng; k++) {                /* every texture plain: the list's class */
+        const uint32_t ts = GO32(textab + 4u * me->gt[k]);
+        if (!ts || !GO32(ts + 4u * TS_PIX) || GO8(ts + 0x28u) != 0xFFu || GO32(ts + 0x2Cu) != 0u
+            || GO32(ts + 4u) + 1u > 1024u || GO32(ts + 8u) + 1u > 1024u) { g->refused_tex++; return 0; }
+    }
+    volatile struct gitem *it = &g->it[g->n++];
+    it->mesh = (uint32_t)(uintptr_t)me; it->textab = textab;
+    for (uint32_t k = 0; k < 12u; k++) it->m[k] = M[k];
+    g->F = GO32(cam + 4u);
+    g->taken++;
+    return 1;
+}
+/* the frame's objects, before the list (a4_gl_draw_prim, the walk's first triangle) */
+static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
+{
+    volatile struct gstate *g = GOBJ;
+    if (g->magic != GOBJ_MAGIC || g->frame != s->frames || g->drawn) return;
+    g->drawn = 1;
+    const uint32_t n = g->n;
+    if (!n) return;
+    int32_t F = (int32_t)g->F;
+    if (F < 1) F = 1;
+    if (F > 16383) F = 16383;
+    const int32_t cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
+    int P[16], MV[16], TM[16];
+    for (int i = 0; i < 16; i++) { P[i] = 0; MV[i] = 0; TM[i] = 0; }
+    P[0] = (F << 17) / VP_W; P[5] = (F << 17) / VP_H;            /* the list's projection (mesh_draw) */
+    P[8] = FX - (cx << 17) / VP_W; P[9] = (cy << 17) / VP_H - FX; P[11] = -FX;
+    P[14] = ZK * FX - ((ZK * FX) >> 6);
+    gl_matrixmode(GL_PROJECTION); gl_loadmatrixx(P);
+    gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_GEQUAL); gl_enable(GL_CULL_FACE);
+    gl_vertexptr(3, GL_SHORT, 12, (const void *)GOBJ_ARENA);
+    gl_texcoordptr(2, GL_SHORT, 12, (const void *)(GOBJ_ARENA + 6u));
+    const uint16_t *m1map = (const uint16_t *)gctx[0x5c / 4];
+    const uint16_t *m1tab = m1_table(gctx);
+    TM[10] = FX; TM[15] = FX;
+    int lw = -1, lh = -1; uint32_t lastid = 0xFFFFFFFFu, draws = 0;
+    MV[15] = FX;
+    for (uint32_t i = 0; i < n; i++) {
+        volatile struct gitem *it = &g->it[i];
+        const struct gmesh *me = (const struct gmesh *)(uintptr_t)it->mesh;
+        /* column-major GL_FIXED: rotation /16384 = << 2, translation << 16 (|t| < 32768: the take checked) */
+        MV[0] = it->m[0] << 2; MV[1] = it->m[1] << 2; MV[2] = it->m[2] << 2;
+        MV[4] = it->m[3] << 2; MV[5] = it->m[4] << 2; MV[6] = it->m[5] << 2;
+        MV[8] = it->m[6] << 2; MV[9] = it->m[7] << 2; MV[10] = it->m[8] << 2;
+        MV[12] = it->m[9] << 16; MV[13] = it->m[10] << 16; MV[14] = it->m[11] << 16;
+        gl_matrixmode(GL_MODELVIEW); gl_loadmatrixx(MV);
+        gl_matrixmode(GL_TEXTURE);
+        for (uint32_t k = 0; k < me->ng; k++) {
+            const uint32_t ts = GO32(it->textab + 4u * me->gt[k]);
+            uint32_t id; int wsh, hsh;
+            if (tri_tex(s, KIND_TEX, 0, ts, m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
+            if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
+            if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
+            gl_drawarrays(GL_TRIANGLES, (int)((me->ofs / 3u + me->gs[k]) * 3u), (int)(me->gc[k] * 3u));
+            draws++;
+        }
+    }
+    g->draws += draws; g->frames_drawn++;
+    MESH->active = 1;                                       /* the table's classes depth-test against them */
+    gl_loadidentity();                                       /* the texture matrix */
+    gl_matrixmode(GL_MODELVIEW); gl_loadidentity();
+    gl_matrixmode(GL_PROJECTION); gl_loadidentity();
+    gl_orthox(0, VP_W*FX, VP_H*FX, 0, -FX, FX);              /* bring-up's */
+    gl_matrixmode(GL_MODELVIEW);
+    gl_depthfunc(GL_GEQUAL);                                 /* bring-up's */
+    gl_disable(GL_CULL_FACE); gl_disable(GL_DEPTH_TEST);
+}
+/* bench: the counters, every 256th flush, EKA2L1_PCMEM at a4_gobj_emit (r0: the state's first 0x40 bytes) */
+__attribute__((noinline)) void a4_gobj_emit(const void *st) { __asm__ volatile("" : : "r"(st) : "memory"); }
+#endif
 static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
 {
     volatile struct mesh *m = MESH;
@@ -5382,6 +5557,9 @@ draw:
                     o += 3u; i = NX[i];
                 }
                 uint32_t k = R[r].kslot & 0xFFu, z = R[r].kslot >> 8;
+#ifdef A4_GPUOBJ
+                z = 1u;                                  /* round 60: every list face depth-tested (the GPU's objects) */
+#endif
                 if (z != lastz) { lastz = z; gl_depthfunc(z ? GL_GEQUAL : GL_ALWAYS); }
                 if (kws[k] != lw || khs[k] != lh) {
                     lw = kws[k]; lh = khs[k];
@@ -6031,6 +6209,10 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #endif
 #ifdef A4_BBRECTS
         *(volatile uint32_t *)0x00412E00u = 0;          /* a new frame's sprite rectangles */
+#endif
+#ifdef A4_GPUOBJ
+        gobj_flush(s, gctx);                            /* round 60: the GPU's objects, before the list */
+        if ((GOBJ->frames_drawn & 255u) == 1u) a4_gobj_emit((const void *)GOBJ);
 #endif
 #ifdef A4_MESH
         mesh_draw(s, gctx);                             /* before any of the table's triangles */
