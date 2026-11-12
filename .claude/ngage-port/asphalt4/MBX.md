@@ -9640,3 +9640,20 @@ regard. The game starts normally." Then a save with everything unlocked (Paris w
   Paris, exact binary, owner's save (pa_r62c): 77,019 of 98,348 (78.3%; 15,644 textures outside the class, 1,668
   meshes refused at the build), 3,810 near, 4 resets by the 64-frame gap; its recording: tunnel walls, near
   buildings, lamp posts all drawn. +3A15C b510 0004, no 0xDEADBEEF.
+- Twin finish rerun with screenshots (r62fc, cap 85, 330 s): stepping (170 steps in the last 416 frames), modes 2 and
+  24; lap 3/3 at 0 km/h on top of a traffic car -- the autopilot's recorded route meeting other traffic, as r60f.
+  The first twin run's state (frames presented, 1 step in 416, mode 2) is not identified: seen once in five twin
+  finish runs (r59f, r60f, r60fb, r62f, r62fc), never in the exact binary's (r60f2, r62f2 reached the finish), and
+  the step gating is r59's; a pause by the autopilot's keys is a guess.
+- Rule 2: not a repeat -- phone round 60 drew the objects with the near plane cutting them and outside the list's grid
+  and regime; r62 is those two fixed, nothing else.
+- Rule 4: (a) guesses -- that the owner's "showing through" was the near plane and the grid (the bench A/B shows both
+  and their absence after; the photos are of Paris and a tunnel, the bench's of the same); that the tyres are the
+  game's own look as the bikes are (the bikes are, by the stock game; tyres not looked at); that the 64-frame gap
+  reset (4 in a Paris race) costs a frame's rebuild only. (b) Read back: the take's near test (M[11] + rad + 2 >
+  -(ZK + 4), the near plane at ZK - ZK/64), the radius (an isqrt of the largest x^2+y^2+z^2, rounded up), the box
+  (8 corners of the sphere's box through mesh_scr_i, clamped), gobj_grid (nearest bucket per tile), GOBJ_ONLY in
+  mesh_draw's two empty-list returns, active = n > lost || nobj, mesh_has only with list faces, gobj_bb_deep (at most
+  sb - 1), the flush's depth mask; the bench switches (A4_GOBJ_AB, A4_GOBJ_NOGRID) absent from the candidate's flags.
+  (c) Not entered: the unexplained twin state above; a knocked prop near the camera (refused for its rotation before
+  the near test); cities other than LA and Paris.
