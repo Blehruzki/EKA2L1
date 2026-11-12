@@ -9622,3 +9622,10 @@ regard. The game starts normally." Then a save with everything unlocked (Paris w
 - r62 timing (LA, W-4 model, the bench's own save back for the comparison): render call 33.9 ms (r60 32.7, r59
   39.8), first triangle 4.9, 44.7 ms a render (44.3, 49.4); 110,914 of 117,817 objects taken (94.1%), 4,714 left to
   the game for the near plane, 18.6 object draws a frame; one store reset (a 64-frame gap without objects).
+- The stock game (the handoff baseline, unmodified, the game's own software renderer; owner's save, Paris, rec_pa_stock):
+  the parked bikes are the same black silhouettes (stfr f0037-f0038). So the black bikes (and, presumably, the tyres)
+  are the game's own night look, not this port's; the owner noticed them now.
+- Candidate r62 = C60 flags (r60's), source with the grid/regime fix and the near-plane refusal:
+  e378860a627a1a6e2d9a90ea76309051c2a91a35c3202077ba31ca2a7e3e26b5, 834,472 bytes, no 0xDEADBEEF, +3A15C b510 0004;
+  twin y62 (+ CARREC YREC AUTOPILOT, rec pc 700BA75C unchanged). Battery r62bat (r60's, the counters at 700BF5E8,
+  plus Paris on the exact binary with the owner's save): running.
