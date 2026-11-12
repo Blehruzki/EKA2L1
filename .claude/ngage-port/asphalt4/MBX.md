@@ -9657,3 +9657,22 @@ regard. The game starts normally." Then a save with everything unlocked (Paris w
   sb - 1), the flush's depth mask; the bench switches (A4_GOBJ_AB, A4_GOBJ_NOGRID) absent from the candidate's flags.
   (c) Not entered: the unexplained twin state above; a knocked prop near the camera (refused for its rotation before
   the near test); cities other than LA and Paris.
+
+## Round 63 (owner: "I don't want to fake frames if that means we're gonna keep having that snap-back and online
+## lagginess. Whatever you have to do to fix this, do so"): the engine at 3x on today's renderer, prediction retired
+
+The direction of round 50, taken up again: every frame drawn from a real simulated state (plan steps 1-4 there).
+- C63 = C60 less the half-step's prediction (A4_HALFLOGIC, HALFMOTION, HALFSPEC, HALFPHYS, FRACPHYS, KINEPHYS,
+  KINEDRAW, ENGDRAW, CAMALL, SCRIPTHOLD, GAPRATE, SPECCAMSAFE, SPECTRAFFIC, SLOWMOQ, KD_MINTURN, CAMBLEND), A4_ABMODE
+  1070 (3118 less AB_HSPEC), plus A4_ENG3 and A4_ENG_ALL; built with A4_THIRDSTEP=1 (the step 7111 units, 28.44 ms).
+  Kept: the renderer (TAKE2, PX6, ZSKIP, FASTXF, the lifted front end, GPUOBJ), the telemetry, A4_DROPHOLD (a real
+  game glitch: empty frames) and A4_SKIPREPRES. The scenery code used iabs32, defined under A4_HALFSPEC: its own
+  go_iabs now (r62 rebuilt byte-identical, e378860a).
+- go63 (W-4 model, 120 s, LA): the race runs whole; **39.9 ms a render (25 fps), every frame a real state**;
+  render call 31.5 ms, first triangle 4.0; spans: 1,760 renders after 1 substep, 1,210 after 2, 22 after 3 (a
+  frame ~37 ms against a 28.44 ms step: the advance a frame alternates); camera yaw and car heading reversals 0;
+  objects 93.7% taken. Snapshots: the race, a takedown, the crash camera, GNN's -- all drawn right.
+- Oracle again (round 50's, re-run because the lifted code was regenerated since): o1 = C63 less ENG3 and ENG_ALL
+  (the game's own engine at its step) and o3 = C63 + THIRDSTEP, both + CARREC YREC AUTOPILOT(_UNSTICK)
+  BENCH_SEED LOCKSTEP=1 (o3 LOCKSTEP_P 7111): running. (ENG_ALL without ENG3 does not link: lifted.c is generated
+  with ENG3 -- so the reference is the game's own Thumb, the true one.)

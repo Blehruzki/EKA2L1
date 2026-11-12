@@ -5185,6 +5185,7 @@ __attribute__((noinline)) void a4_list_emit2(const void *obj)   /* r0: 4 KB, a u
  * from an origin o at the camera, and the frame's objects are drawn with one modelview (R, the camera's translation
  * moved to o), a draw a texture: their corners copied, offset by d, into a staging buffer. Anything else (a knocked
  * prop's rotation, an offset past int16) is left to the game. */
+static inline int32_t go_iabs(int32_t x) { return x < 0 ? -x : x; }   /* iabs32 is A4_HALFSPEC's */
 typedef uint32_t __attribute__((may_alias)) go_u32;
 typedef uint8_t __attribute__((may_alias)) go_u8;
 typedef int16_t __attribute__((may_alias)) go_s16;
@@ -5289,7 +5290,7 @@ static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
                 const uint32_t vp = verts + 6u * v;
                 int16_t *r = rec + (o * 3u + c) * 6u;
                 r[0] = GOS16(vp); r[1] = GOS16(vp + 2u); r[2] = GOS16(vp + 4u);
-                for (uint32_t a = 0; a < 3u; a++) { const uint32_t e = (uint32_t)iabs32(r[a]); if (e > ext) ext = e; }
+                for (uint32_t a = 0; a < 3u; a++) { const uint32_t e = (uint32_t)go_iabs(r[a]); if (e > ext) ext = e; }
                 {   const uint32_t q2 = (uint32_t)(r[0] * r[0]) + (uint32_t)(r[1] * r[1]) + (uint32_t)(r[2] * r[2]);
                     if (q2 > e2) e2 = q2; }
                 r[3] = (int16_t)(GO8(fp + ui[c]) << 4); r[4] = (int16_t)(GO8(fp + ui[c] + 1u) << 4); r[5] = 0;
@@ -5360,7 +5361,7 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
             g->o[r] = (int32_t)o[r];
             g->T[r] = C[9u + r] + (int32_t)(((int64_t)C[r] * o[0] + (int64_t)C[3u + r] * o[1] + (int64_t)C[6u + r] * o[2]) >> 14);
         }
-        if (iabs32(g->T[0]) > 32000 || iabs32(g->T[1]) > 32000 || iabs32(g->T[2]) > 32000) { g->refused_range++; return 0; }
+        if (go_iabs(g->T[0]) > 32000 || go_iabs(g->T[1]) > 32000 || go_iabs(g->T[2]) > 32000) { g->refused_range++; return 0; }
         for (uint32_t k = 0; k < 9u; k++) g->R[k] = C[k];
     } else {
         for (uint32_t k = 0; k < 9u; k++) if (g->R[k] != C[k]) { g->refused_rot++; return 0; }
