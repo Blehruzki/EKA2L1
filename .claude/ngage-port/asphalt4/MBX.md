@@ -9405,3 +9405,17 @@ Owner: "yes, go ahead with r59 pacing and camera fix".
   same either way (99% 25 / 23, reversals 4 / 14): on these routes the game's camera offset moves 1-2 /2048 a step,
   which rounds to nothing. The case it is for (the offset falling 8-9 a step behind in a fast turn) is the Veyron's:
   a Veyron recording next.
+- The carry, replayed (camrate.py) over seven recordings: carrying any steady change was a wash (s_ys59: 53 frames
+  moved, mean off the game camera's path 6.0 vs 5.9; 15 better, 33 worse); only while the camera falls behind
+  (|offset| growing two steps running, 4..64 a step), 14-20 frames a run, 3.5-5.8 -> 2.4-3.4, 63 better, 24 worse.
+  Built so (f079ff84) and battery-run: tele 48.0 ms a render; crash-steer 0 reversals; finish reached (179 mode-1
+  frames); menus, marks. But the Veyron: camera-yaw one-frame reversals 22 (the frame record's count; 28 by camoff's),
+  heading less yaw 50% 14, 90% 43, 99% 79 -- the game's camera hunting behind the car (offset -50, -40, -46, -44).
+  Not the carry's: it moved 25 of the 417 frames, and redrawn without it the reversals are 28 still. The cause is the
+  rigid camera's rule itself: the offset taken afresh at each step, every change a jump at the step's first frame.
+- So, A4_CAMBLEND instead (replaces the carry): the offset moves from the step before's to this step's over the step
+  (yaw = the drawn heading + o(k-1) + (o(k) - o(k-1)) q; a jump over 128, a missed step or a new camera: o(k) at
+  once). Replayed (tools/camoff.py): reversals 28 -> 11 (s_ysf57), 20 -> 16 (s_ys57b), 13 -> 12 (s_ys59c), the same
+  on the autopilot runs (9, 7, 10, 3: a rigid camera there); the yaw off the game camera's path the same within 1-2
+  at 90-99%. Candidate r59 = r58 + A4_CAMBLEND (A4_PACE off): 92a6a5fe27d2688754621eeb64bc163a807daa35d7d5ea6e0a936aeb6a006239,
+  825,152 bytes, no 0xDEADBEEF. Running: the steering twin (s_ys59d), then the battery.
