@@ -31,6 +31,9 @@
  * depth/eglChooseConfig slots [26..29] are left imported but unused here.
  */
 #include <stdint.h>
+#ifdef A4_LISTDUMP
+#include "a4_memo.h"                /* round 60: the list dump's mesh call per face */
+#endif
 
 #define A4_GL_SCRATCH 0x00401000u
 #define A4_GL_READBUF 0x00403000u        /* one strip: 320*STRIP*4, ends at 0x408000 */
@@ -4825,6 +4828,9 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
 #endif
     }
     MESH_T[n] = (uint32_t)(uintptr_t)ts | m1 | texz; /* descriptors are word aligned */
+#ifdef A4_LISTDUMP
+    ((uint16_t *)A4_MEMO_TABLE)[n] = (uint16_t)*(volatile uint32_t *)A4_MEMO_STAMP;   /* bench: the face's mesh call */
+#endif
     {   /* where the table would put it: its screen box from the game's own projection (for
          * the run grouping's overlap test) and its bucket, +349B0's (key >> 3, TFace's key
          * +3121E = the deepest vertex's ZW; these classes carry neither of the +-16 bits) */
@@ -5033,6 +5039,9 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
 #undef VP2
     }
     MESH_T[n] = (uint32_t)(uintptr_t)ts | texz;     /* m1 0: the two classes taken */
+#ifdef A4_LISTDUMP
+    ((uint16_t *)A4_MEMO_TABLE)[n] = (uint16_t)*(volatile uint32_t *)A4_MEMO_STAMP;   /* bench: the face's mesh call */
+#endif
     {   int32_t xlo, xhi, ylo, yhi;
         ext3(sx0, sx1, sx2, &xlo, &xhi); ext3(sy0, sy1, sy2, &ylo, &yhi);
         tbox_calc(MESH_B + n * 4u, xlo, ylo, xhi, yhi);
@@ -5136,6 +5145,10 @@ void a4_mesh_insert(uint32_t *cam, uint32_t *face)
  * depth test on and writing, back faces culled (the game's 2D test: drawn where the
  * screen-space area is negative, i.e. counter-clockwise once GL's y points up). */
 #ifdef A4_LISTDUMP
+#include "a4_memo.h"
+#if defined(A4_MESHMEMO) || defined(A4_LISTCHECK) || defined(A4_LIFTCHECK) || defined(A4_CECHECK) || defined(A4_BBCHECK) || defined(A4_PAINTCHECK_BIG)
+#error "A4_LISTDUMP keeps each list face's mesh call (round 60) in A4_MESHMEMO's table area, which these use"
+#endif
 /* bench (round 58): every 64th frame's list as mesh_draw gets it -- EKA2L1_PCMEM ats at this function's address:
  * r0 the header (32 bytes: 'LIST', faces, F, cx, cy, depth bits, frame, texture keys; then 128 log2 widths and 128
  * log2 heights, a byte a key: 0x120 in all), r1 MESH_V (36 bytes a
@@ -5144,6 +5157,10 @@ void a4_mesh_insert(uint32_t *cam, uint32_t *face)
 __attribute__((noinline)) void a4_list_emit(const void *hdr, const void *v, const void *t, const void *z)
 {
     __asm__ volatile("" : : "r"(hdr), "r"(v), "r"(t), "r"(z) : "memory");
+}
+__attribute__((noinline)) void a4_list_emit2(const void *obj)   /* r0: 4 KB, a uint16 a face (round 60) */
+{
+    __asm__ volatile("" : : "r"(obj) : "memory");
 }
 #endif
 static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
@@ -5255,6 +5272,7 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
         {   uint8_t *hb = (uint8_t *)(hdr + 8);     /* then each key's texture size, log2 width and height */
             for (uint32_t j = 0; j < MESH_NK; j++) { hb[j] = j < nk ? kws[j] : 0; hb[MESH_NK + j] = j < nk ? khs[j] : 0; } }
         a4_list_emit(hdr, MESH_V, MESH_T, MESH_Z);
+        a4_list_emit2((const void *)A4_MEMO_TABLE);   /* round 60: each face's mesh call (uint16) */
     }
 #endif
     int32_t F = (int32_t)m->F;

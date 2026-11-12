@@ -16,11 +16,14 @@ def load(fn):
     d = open(fn, 'rb').read(); o = 0; recs = []
     while o + 12 <= len(d):
         pc, addr, ln = struct.unpack_from('<3I', d, o); o += 12; recs.append(d[o:o + ln]); o += ln
-    out = []
-    for j in range(0, len(recs) - 4, 5):
-        h, V, T, K, Z = recs[j:j + 5]
-        if len(h) < 0x20 or struct.unpack_from('<I', h, 0)[0] != 0x5453494C: continue
-        out.append((struct.unpack_from('<8i', h), V, T, K, Z, h[0x20:]))   # h[0x20:]: log2 widths, heights (0x120 headers)
+    out = []; j = 0
+    while j + 4 < len(recs):
+        h = recs[j]
+        if len(h) < 0x20 or struct.unpack_from('<I', h, 0)[0] != 0x5453494C: j += 1; continue
+        V, T, K, Z = recs[j + 1:j + 5]
+        O = recs[j + 5] if j + 5 < len(recs) and len(recs[j + 5]) == 0x1000 else None   # round 60: each face's mesh call
+        out.append((struct.unpack_from('<8i', h), V, T, K, Z, h[0x20:], O))   # h[0x20:]: log2 widths, heights (0x120 headers)
+        j += 6 if O is not None else 5
     return out
 
 def far(a, b): return a - b > (b >> 8) + 1          # MESHZ_FARTHER: a's ZW past b's by 1/256
@@ -87,7 +90,7 @@ def main():
     fs = load(sys.argv[1]); lim = int(sys.argv[2]) if len(sys.argv) > 2 else 12
     gaps = {'tie': 0, 'close': 0, 'nearer': 0}
     tot = {r: [0, 0] for r in 'ABCD'}; px = {r: 0 for r in 'BCD'}; shown = 0; nf = 0
-    for h, V, T, Kb, Zb, _ in fs[:lim]:
+    for h, V, T, Kb, Zb, _, _o in fs[:lim]:
         _, n, F, cx, cy, zbits, frame, nk = h
         if n <= 0 or n * 36 > len(V): continue
         Pv = np.frombuffer(V[:n * 36], dtype='<i2').reshape(n, 18)

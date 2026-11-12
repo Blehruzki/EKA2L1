@@ -44,6 +44,9 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f);
 #ifdef A4_MESHMEMO
 #include "a4_memo.h"
 #define MESHMEMO_BUMP() ((*(volatile uint32_t *)A4_MEMO_STAMP)++)   /* a4_gl.c: A4_MESHMEMO's generation */
+#elif defined(A4_LISTDUMP)
+#include "a4_memo.h"
+#define MESHMEMO_BUMP() ((*(volatile uint32_t *)A4_MEMO_STAMP)++)   /* bench (round 60): the list dump's mesh call */
 #else
 #define MESHMEMO_BUMP() ((void)0)
 #endif   /* a4_gl.c: the billboard capture hook (1: a GPU quad) */

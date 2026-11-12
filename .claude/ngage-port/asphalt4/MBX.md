@@ -9474,3 +9474,25 @@ Owner (N95, eight files): "The camera looks fine. I'm not even sure there was an
   is drawn by yet another path). The world's three blocks are 20.8 ms of the 39.0 ms render call (53%; ~30 ms on the
   phone at x1.44). A GPU-native world must cost well under that, and past ~23.4 fps the frames between steps are
   needed as well.
+
+## Round 60 bench: the scenery prototype (owner: "yes, start the scenery prototype") -- 1, the drawing order
+- What a GPU-native draw can keep of the game's picture, replayed on dumps before writing it: A4_LISTDUMP now also
+  records each list face's mesh call (the lifted +349F8's entry bump, MESHMEMO_BUMP, kept under A4_LISTDUMP too; the
+  ids in A4_MEMO_TABLE's area, 0x460000, free without the memo), a4_list_emit2. ld60 (30 frames, 501,958 list pixels,
+  ~48 meshes a frame -- scenery objects and car parts). tools/objorder.py, against the list as drawn now:
+  | how the GPU would draw the meshes | pixels changed |
+  | every face depth-tested (no order) | 2.49% |
+  | meshes far to near (by deepest point), each in its own depth slice, depth-tested inside | 3.31% |
+  | the same by nearest point / by the mean | 6.09% / 3.76% |
+  | meshes far to near, faces painted in their own order | 6.19-8.84% |
+  | depth-tested, small meshes (<=8..32 faces) nudged nearer by 1/64..1/16 | 2.48-2.54% |
+  So: plain depth testing, the fewest changes and the freest order (texture-sorted, any batching).
+- Of its 12,483 changed pixels (tools/objdiff.py): 7,854 inside one mesh, 4,629 between two (4,333 of those a mesh of
+  16 faces or fewer against a larger one). The same-mesh pairs (objpair.py): 778 of 858 at ~90 degrees to each other
+  (crossed or interlocking parts the game paints one over the other; the depth test cuts them where they meet), 80
+  parallel (overlays 13 units apart at the median -- the recessed-door case). To be judged in real screenshots.
+- The build, next: A4_GPUOBJ -- the lifted +CE8C (A4_ENG_0CE8C) with an entry edit that hands an object to
+  a4_obj_take when all its faces are the list's class (no alpha map, no colour key) and its view translation fits;
+  the object's matrix (the camera stack's top) kept, its mesh expanded once into per-corner arrays grouped by texture,
+  drawn before the list with the list's projection and every face depth-tested -- the list's painted faces too (a car
+  behind a building must not paint over it). Pixel check against r59 in lockstep runs; timing on the W-4 model.
