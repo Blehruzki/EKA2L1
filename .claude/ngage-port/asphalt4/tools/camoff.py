@@ -20,7 +20,7 @@ for fn in sys.argv[1:]:
         elif h[0] == 0x444B5246 and ((h[2] >> 24) & 0x7F) == 0:
             FR.append(dict(step=h[1], q=min(1.0, (h[2] & 0xFFFFFF) / 65536.0), yaw=w(r[2], 0x68) & 2047, hd=w(r[1], 0x678) & 2047, mode=w(r[2], 0x94)))
     off = {k: wrap(CAM[k][0] - PL[k]) for k in CAM}
-    seqs = {'drawn': [], 'blended': []}; errs = {'drawn': [], 'blended': []}
+    seqs = {'drawn': [], 'rigid': [], 'blended': []}; errs = {'drawn': [], 'rigid': [], 'blended': []}
     for f in FR:
         k = f['step']
         if f['mode'] != 2 or k not in off or k - 1 not in off or CAM[k][1] != 2 or CAM[k - 1][1] != 2: 
@@ -28,12 +28,14 @@ for fn in sys.argv[1:]:
             continue
         ob = off[k - 1] + wrap(off[k] - off[k - 1]) * f['q']
         yb = (f['hd'] + int(round(ob))) & 2047
-        seqs['drawn'].append(f['yaw']); seqs['blended'].append(yb)
+        yr = (f['hd'] + off[k]) & 2047                   # round 47's rigid camera: the step's offset all through it
+        seqs['drawn'].append(f['yaw']); seqs['blended'].append(yb); seqs['rigid'].append(yr)
         if k + 1 in CAM and CAM[k + 1][1] == 2:
             line = CAM[k][0] + wrap(CAM[k + 1][0] - CAM[k][0]) * f['q']
             errs['drawn'].append(abs(wrap(int(round(f['yaw'] - line))))); errs['blended'].append(abs(wrap(int(round(yb - line)))))
+            errs['rigid'].append(abs(wrap(int(round(yr - line)))))
     out = []
-    for k in ('drawn', 'blended'):
+    for k in ('drawn', 'rigid', 'blended'):
         s = seqs[k]
         rev = sum(1 for i in range(1, len(s) - 1) if None not in (s[i - 1], s[i], s[i + 1]) and abs(wrap(s[i] - s[i - 1])) >= 4
                   and abs(wrap(s[i + 1] - s[i])) >= 4 and wrap(s[i] - s[i - 1]) * wrap(s[i + 1] - s[i]) < 0)
