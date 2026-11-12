@@ -203,6 +203,11 @@ struct eng {
     uint32_t aic[32], aik[32], aia[32]; /* the AI's keys and argument per car, from the whole step */
     uint32_t frame[16];              /* +141B0's frame slots its race rules set (eng_frame_off), at the whole step */
     uint32_t camv, cam[8];           /* the whole step's last camera placement (+5968 from +12DEC): r0-r3, 4 stack words */
+    uint32_t cbok, cbmode;           /* round 63: the chase camera's offset from its car, the whole step before's and this */
+    int32_t cbprev[5], cbcur[5];     /* one's: x, z (world, at that step's heading), height, yaw less heading, pitch */
+    int32_t cbhd;                    /* the car's heading at this whole step */
+    uint32_t cbw;                    /* the pose words hold the blend's last write (cbwp): the game's own (cbgp) go back first */
+    int32_t cbgp[5], cbwp[5];        /* cam+0x10..+0x20 (x, y, z, pitch, yaw) as the game placed them, and as written */
     uint32_t loop;                   /* the whole step entered the car loop (+14672): the substeps run only then */
     uint32_t meas1;                  /* +22832 measures a wreck: its displacement is a whole step's (x 1) */
     uint32_t lc[64], ls[64][3], lv[64][3]; /* the orientation's angles a step late: the word, the last three substeps' count and value */
@@ -231,6 +236,8 @@ void eng_kick_mark(uint32_t ea);
 uint32_t eng_tmul(uint32_t t, uint32_t speed, uint32_t which);
 void eng_cam_save(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t sp);
 void eng_cam_substep(uint32_t sp, uint32_t *r23);
+void eng_cam_whole(uint32_t sp, uint32_t *r23);
+void eng_cam_unblend(void);
 int32_t eng_thirdv(uint32_t key, int32_t v);
 void ENG_BEGIN(uint32_t race);
 extern const uint16_t eng_frame_off[10];
@@ -258,7 +265,7 @@ static const uint16_t eng_frame_off[] = { 0xC8, 0xCC, 0xD0, 0xD4, 0x110, 0x114, 
 static inline void ENG_BEGIN(uint32_t race)
 {
     if (ENG->magic != ENG_MAGIC || ENG->race != race) {
-        ENG->magic = ENG_MAGIC; ENG->race = race; ENG->cnt = 0; ENG->keys = 0; ENG->nfull = 0;
+        ENG->magic = ENG_MAGIC; ENG->race = race; ENG->cnt = 0; ENG->keys = 0; ENG->nfull = 0; ENG->cbok = 0;
         for (uint32_t i = 0; i < ENG_NREM; i++) { ENG->rk[i] = 0; ENG->rv[i] = 0; }
         for (uint32_t i = 0; i < 32u; i++) ENG->aic[i] = 0;
         for (uint32_t i = 0; i < 16u; i++) { ENG->kc[i] = 0; ENG->ks[i] = 0; }
@@ -299,19 +306,110 @@ static inline void eng_cam_save(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t 
  * state -- its mode, timers, focal length, script -- is put back after, so its logic stays the whole
  * step's; only the pose it computed (cam+0x10..+0x2C: x, y, z, pitch, yaw, roll, segment, flag) is the
  * substep's. The scripted views (0x14, 0x16-0x1D: the fly-in, the crash, the takedowns) walk keyframe
- * lists and free their nodes as they go: not made again, their pose waits for the whole step. */
+ * lists and free their nodes as they go: not made again, their pose waits for the whole step.
+ * Round 63 (A4_CAMPROBE, the crash-steer route): the chase camera's offset from its car -- race+0xE4, the
+ * sway +4B40 recomputes from cam+0xA4 on every call, the stack argument +12DEC passes -- changes only on the
+ * whole step, by up to 63/2048 of yaw at once: the yaw held for two substeps and jumped on the third, the
+ * camera stepping at 11.72 Hz in a hard turn (14 one-frame yaw reversals in the crash-steer run). So the
+ * chase family (1, 2, 3, 0x2A) is placed from the car on every substep, the whole step's included: the game's
+ * pose at each whole step taken as an offset from the car (x, z turned with the car, height, yaw less the
+ * heading, pitch), and every substep's pose the car's place and heading now plus the offset moved from the
+ * step before's to this one's over the step -- a step late, as round 59's blend (the owner: "the camera looks
+ * fine"). The game's own placement still runs on the substeps (the track segment it finds). A new mode, a
+ * respawn or a jump in the offset: the step's own offset at once. */
 #define ENG_CAMW 56u
-static inline void eng_cam_substep(uint32_t sp, uint32_t *r23)
+static inline int32_t eng_wrap(int32_t d) { d &= 2047; return d >= 1024 ? d - 2048 : d; }
+/* a small turn of (ox, oz) by dh /2048 (|dh| < 256), as a4_gl.c's kd_rot (Taylor, Q30) */
+static inline void eng_rot(int32_t ox, int32_t oz, int32_t dh, int32_t *rx, int32_t *rz)
+{
+    int64_t t = -(int64_t)dh * 3294199;
+    int64_t t2 = (t * t) >> 30, t3 = (t2 * t) >> 30, t4 = (t2 * t2) >> 30, t5 = (t4 * t) >> 30, t6 = (t4 * t2) >> 30;
+    int64_t sn = t - ((t3 * 178956971) >> 30) + ((t5 * 8947849) >> 30);
+    int64_t cs = ((int64_t)1 << 30) - (t2 >> 1) + ((t4 * 44739243) >> 30) - ((t6 * 1491308) >> 30);
+    *rx = (int32_t)(((int64_t)ox * cs - (int64_t)oz * sn) >> 30);
+    *rz = (int32_t)(((int64_t)ox * sn + (int64_t)oz * cs) >> 30);
+}
+static inline int go_cb_far(const int32_t *c, volatile const int32_t *p)   /* the offset jumped: a cut or a respawn */
+{
+    int32_t dx = c[0] - p[0], dz = c[1] - p[1], dy = c[2] - p[2], dyaw = eng_wrap(c[3] - p[3]);
+    return dx > 1024 || dx < -1024 || dz > 1024 || dz < -1024 || dy > 512 || dy < -512 || dyaw > 128 || dyaw < -128;
+}
+static inline void eng_cam_pose(uint32_t sp, uint32_t *r23, uint32_t j)
 {
     volatile uint32_t *cam = (volatile uint32_t *)(uintptr_t)ENG->cam[0];
-    uint32_t mode, k, save[ENG_CAMW];
+    volatile int32_t *car = (volatile int32_t *)(uintptr_t)ENG->cam[2];
+    uint32_t mode, k, save[ENG_CAMW], chase;
     if (!ENG->camv || !cam) return;
     mode = cam[0x4C / 4];
-    if (!(mode <= 7u || mode == 0x2Au)) return;
+    if (j == 0u) ENG->cbw = 0;
+    if (!(mode <= 7u || mode == 0x2Au)) { ENG->cbok = 0; return; }
+    chase = car && (mode == 1u || mode == 2u || mode == 3u || mode == 0x2Au);
     for (k = 0; k < ENG_CAMW; k++) save[k] = cam[k];
-    for (k = 0; k < 4u; k++) ((volatile uint32_t *)(uintptr_t)sp)[k] = ENG->cam[4 + k];
-    (void)a4_eng_call(GAMEFN(0x5968), ENG->cam[0], ENG->cam[1], ENG->cam[2], ENG->cam[3], sp, r23);
-    for (k = 0; k < ENG_CAMW; k++) if (k < 4u || k > 11u) cam[k] = save[k];
+    if (j == 0u) {                                   /* the whole step: the game's pose is the target */
+        int32_t c[5], hd;
+        if (!chase) { ENG->cbok = 0; return; }
+        hd = car[0x678 / 4] & 2047;
+        c[0] = (int32_t)save[4] - car[1]; c[1] = (int32_t)save[6] - car[3]; c[2] = (int32_t)save[5] - car[2];
+        c[3] = eng_wrap((int32_t)save[8] - hd); c[4] = (int32_t)save[7];
+        if (!ENG->cbok || ENG->cbmode != mode || go_cb_far(c, ENG->cbcur) || eng_wrap(hd - ENG->cbhd) > 255 || eng_wrap(hd - ENG->cbhd) < -255) {
+            for (k = 0; k < 5u; k++) ENG->cbprev[k] = c[k];
+        } else {                                     /* the step before's offset, turned to this step's heading */
+            int32_t rx, rz;
+            eng_rot(ENG->cbcur[0], ENG->cbcur[1], eng_wrap(hd - ENG->cbhd), &rx, &rz);
+            ENG->cbprev[0] = rx; ENG->cbprev[1] = rz;
+            for (k = 2; k < 5u; k++) ENG->cbprev[k] = ENG->cbcur[k];
+        }
+        for (k = 0; k < 5u; k++) { ENG->cbcur[k] = c[k]; ENG->cbgp[k] = (int32_t)save[4 + k]; }
+        ENG->cbhd = hd; ENG->cbok = 1; ENG->cbmode = mode;
+    } else {
+        for (k = 0; k < 4u; k++) ((volatile uint32_t *)(uintptr_t)sp)[k] = ENG->cam[4 + k];
+        (void)a4_eng_call(GAMEFN(0x5968), ENG->cam[0], ENG->cam[1], ENG->cam[2], ENG->cam[3], sp, r23);
+    }
+    if (chase && ENG->cbok && ENG->cbmode == mode) {   /* the pose: the car now, the offset a third further a substep */
+        int32_t o[5], hd = car[0x678 / 4] & 2047, dh = eng_wrap(hd - ENG->cbhd), rx, rz;
+        for (k = 0; k < 5u; k++) {
+            const int32_t a = ENG->cbprev[k], d = k == 3u ? eng_wrap(ENG->cbcur[k] - a) : ENG->cbcur[k] - a;
+            o[k] = a + (j == 0u ? 0 : j == 1u ? d / 3 : (2 * d) / 3);
+        }
+        if (dh < 256 && dh > -256) {
+            eng_rot(o[0], o[1], dh, &rx, &rz);
+            cam[4] = (uint32_t)(car[1] + rx); cam[6] = (uint32_t)(car[3] + rz);
+            cam[5] = (uint32_t)(car[2] + o[2]);
+            cam[8] = (uint32_t)((hd + o[3]) & 2047); cam[7] = (uint32_t)o[4];
+            for (k = 0; k < 5u; k++) ENG->cbwp[k] = (int32_t)cam[4 + k];
+            ENG->cbw = 1;
+        }
+    }
+#ifdef A4_CAMPROBE
+    {   /* bench (round 63): the pose this placement inherits (the whole step's, or the substep before's) and the
+         * one it makes, with the car's turn terms and the camera's own state -- 12 words a record, a ring of 256 at
+         * 0x5A2000 (A4_SCRATCH_SIZE >= 0x1A6000), handed to a4_camp_emit (EKA2L1_PCMEM) when it wraps */
+        extern void a4_camp_emit(const void *);
+        volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+        uint32_t i = rg[0] & 255u;
+        volatile uint32_t *e = rg + 4u + 12u * i;
+        e[0] = ENG->cnt; e[1] = j | (mode << 8); e[2] = car ? (uint32_t)car[0x678 / 4] : 0; e[3] = car ? (uint32_t)car[0x808 / 4] : 0;
+        e[4] = car ? (uint32_t)car[0x9F8 / 4] : 0; e[5] = car ? (uint32_t)car[0xB28 / 4] : 0; e[6] = save[8]; e[7] = cam[8];
+        e[8] = save[47]; e[9] = save[39]; e[10] = save[7]; e[11] = cam[7];
+        rg[0] = i + 1u;
+        if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
+    }
+#endif
+    if (j != 0u) for (k = 0; k < ENG_CAMW; k++) if (k < 4u || k > 11u) cam[k] = save[k];
+}
+static inline void eng_cam_substep(uint32_t sp, uint32_t *r23) { eng_cam_pose(sp, r23, ENG->sub); }
+static inline void eng_cam_whole(uint32_t sp, uint32_t *r23) { eng_cam_pose(sp, r23, 0u); }
+/* Before the whole step's camera code (+141B0 at +14CB2): the pose words the blend wrote go back to the
+ * game's own last placement, so the game's camera reads its own pose, not the blend's -- unless something
+ * else has written them since (a respawn, a mode change), which is then left as it is. */
+static inline void eng_cam_unblend(void)
+{
+    volatile uint32_t *cam = (volatile uint32_t *)(uintptr_t)ENG->cam[0];
+    uint32_t k, same = 1;
+    if (!ENG->cbw || !ENG->camv || !cam) { ENG->cbw = 0; return; }
+    for (k = 0; k < 5u; k++) if ((int32_t)cam[4 + k] != ENG->cbwp[k]) same = 0;
+    if (same) for (k = 0; k < 5u; k++) cam[4 + k] = (uint32_t)ENG->cbgp[k];
+    ENG->cbw = 0;
 }
 /* +1B2D6(car, effect, a2, a3): a car's sound or effect event. The game calls it from conditions it
  * checks once a step (a drift held, wrong way, a landing); on three substeps the same condition would

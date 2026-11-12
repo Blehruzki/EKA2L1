@@ -11427,8 +11427,8 @@ L_14CA6:
     { uint32_t ta = r0, tb = r7; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 014cae cmp r0, r7 */
     if ((int32_t)r0 > (int32_t)r7) goto L_14C24;                 /* 014cb0 bgt #0x14c24 */
 L_14CB2:
-    /* engine: substeps 1-2: the camera on the moved car (its logic the whole step's), then done */
-    if (ENG_SUB) { eng_cam_substep(sp, r23); return 0; }
+    /* engine: substeps 1-2: the camera on the moved car (its logic the whole step's), then done; the whole step: its own pose back */
+    if (ENG_SUB) { eng_cam_substep(sp, r23); return 0; } eng_cam_unblend();
     r0 = S32(0xD8u);                                             /* 014cb2 ldr r0, [sp, #0xd8] */
     r2 = 0xBu; fN = r2 >> 31; fZ = r2 == 0;                      /* 014cb4 movs r2, #0xb */
     t = SHL_C(r2, 0x8u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 014cb6 lsls r2, r2, #8 */
@@ -11717,6 +11717,8 @@ L_14EE8:
     { uint32_t ta = sp, tb = 0xCCu; t = ta + tb; r1 = t; }       /* 014eea add r1, sp, #0xcc */
     { uint64_t rr = (ENGD_12DEC ? engi_12DEC(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x14EF0)) : a4_eng_call(GAMEFN(0x12DEC), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014eec bl #0x12dec */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014eec bl #0x12dec */
+    /* engine: the chase camera: its offset from the car, a step late */
+    if (!ENG_SUB) eng_cam_whole(sp, r23);
     r0 = 0x1Bu; fN = r0 >> 31; fZ = r0 == 0;                     /* 014ef0 movs r0, #0x1b */
     t = SHL_C(r0, 0x5u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 014ef2 lsls r0, r0, #5 */
     { uint32_t ta = r4, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 014ef4 adds r0, r4, r0 */

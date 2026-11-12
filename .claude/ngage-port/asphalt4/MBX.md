@@ -9688,3 +9688,32 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
 - Candidate r63 = a4_r63_cand.exe (C63, THIRDSTEP, A4_SCRATCH_SIZE 0x1A0000):
   0807b0b25bc4665e8279bb48fa83b7bf29dd707e76ed8f6ecf2ef263255be922, 916,336 bytes (go63's exe, cmp'd), no 0xDEADBEEF,
   +3A15C b510 0004; twin y63 (+ CARREC YREC AUTOPILOT; rec pc 700BA62C). Battery r63bat (counters at 700BCA54): running.
+- Battery r63 (exact binary 0807b0b2): every run whole (faults=1 each, the bench's known shutdown fault). Twin y63
+  (jtrun, W-4 model): the race runs. Tele (calibrated N95 bench, 120 s): **39.3 ms a render**, 3D 16.6, presents a
+  median 36 ms apart; camera yaw and car heading reversals 0; held back 0, drop frames 3. Race to the finish (cap 85,
+  autopilot and key 5 held): whole, chase modes 1 and 2. Menu, mark, Veyron autopilot (reversals 0), Paris on the
+  owner's save: whole. Scenery taken 93.0% / 93.8% (LA), 71.6% (Paris). **Crash-steer (cap 85): camera yaw one-frame
+  reversals 14, car heading 0** -- the camera stepping, not the car: below.
+- The 3x camera's stepping (A4_CAMPROBE, a4_cp2: 12 words a placement, a ring at 0x5A2000 emitted through
+  a4_camp_emit, EKA2L1_PCMEM 700C4D04; tools campro2.py). The chase camera's yaw is the car's heading plus terms the
+  game changes on its whole step only: race+0xE4 (cam word 39), the sway (cam+0xBC, word 47) that +4B40 recomputes
+  from cam+0xA4 on every call, and +12DEC's stack argument. At the whole step the yaw less heading jumps (-143 to
+  -96 at cnt 1483: race+0xE4 -79 plus sway -17); on substeps 1-2, +5968 made again on the moved car keeps the terms,
+  so the yaw follows the car for two substeps and jumps on the third -- a step at 11.72 Hz, reversing for a frame in
+  a hard turn. Blending the four words a step late does not help: +4B40 recomputes the sway from cam+0xA4, and the
+  yaw is formed from the recomputed and argument terms (a recompute with the words set gave 898, not the blend).
+- The fix (eng_cam_pose, a4_eng.h; hooks +14EF0 after +12DEC, +14CB2 before the whole step's camera): the chase
+  family (1, 2, 3, 0x2A) is placed from the car on every substep, the whole step's included -- the game's pose at
+  each whole step taken as an offset from the car (x, z less the car's, height, yaw less heading, pitch), the step
+  before's turned to this step's heading; each substep's pose is the car's place and heading now plus the offset
+  moved a third of the way from the step before's to this one's (a step late, as round 59's offset blend, which the
+  owner called fine). The game's own placement still runs on substeps 1-2 (its track segment), and its own pose is
+  put back before its next whole step (eng_cam_unblend) unless something else wrote the words since. A new mode, a
+  respawn, or a jump in the offset (> 1024 in x or z, 512 in y, 128 in yaw) takes the step's offset at once.
+- a4_cp3 (the same probe on the fix), crash-steer at cap 85, against a4_cp2 (the same route; the run is chaotic,
+  so the counts are per run): placements' yaw one-substep reversals 25 -> 3, the camera's yaw less heading change
+  99% 516 -> 32; frames (frec): camera yaw one-frame reversals 12 -> 1, and that one the car's own (heading -12, +40,
+  -11 at the same frame: a wall); heading less yaw reversals 26 of 112 -> 6 of 100 moving frames.
+- Candidate r64 = a4_r64_cand.exe (C63 + the camera fix, THIRDSTEP, scratch 0x1A0000):
+  2fd6c8ebfc09fcc43a885f8609450c176c2d05371c8a1a71f1479164c80b6515, 919,032 bytes; twin y64; hooks as r63 (counters
+  700BCA54, rec 700BA62C). Battery r64bat (r63bat on r64): running.

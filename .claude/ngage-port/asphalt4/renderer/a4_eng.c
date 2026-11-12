@@ -7,6 +7,9 @@
 #if defined(A4_ENG3) && (defined(A4_HALFPHYS) || defined(A4_HALFSPEC))
 #error "the 3x engine and the half-step machinery share scratch and cannot be built together"
 #endif
+#ifdef A4_CAMPROBE
+__attribute__((noinline)) void a4_camp_emit(const void *r) { __asm__ volatile("" : : "r"(r) : "memory"); }
+#endif
 #ifdef A4_ENG3
 /* the step loop's key handler (+25E8, bl at +167AE in +1670E): read before a whole step only -- a press
  * the handler latched on a substep would be gone by the step that acts on it */

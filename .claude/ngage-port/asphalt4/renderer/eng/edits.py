@@ -33,8 +33,8 @@ EDITS = {
     # after the movement loop: the substeps place the camera as the whole step's +12DEC last did (its
     # arguments saved at each of its +5968 calls: the camera race+0x48, the track, the car it follows,
     # the key object, the mode's stack words) on the moved cars, and end
-    0x14CB2: {'before': 'if (ENG_SUB) { eng_cam_substep(sp, r23); return 0; }',
-              'why': 'substeps 1-2: the camera on the moved car (its logic the whole step\'s), then done'},
+    0x14CB2: {'before': 'if (ENG_SUB) { eng_cam_substep(sp, r23); return 0; } eng_cam_unblend();',
+              'why': 'substeps 1-2: the camera on the moved car (its logic the whole step\'s), then done; the whole step: its own pose back'},
     # the traffic's two clocks (race+0x378, +0x37C, passed to +FB12 in r2 and r3): their change over the
     # whole step, measured there, so the substeps can place the traffic a third and two thirds along it
     0x14574: {'before': 'if (!ENG_SUB) { ENG->tdel[0] = (int32_t)(r2 - ENG->tlast[0]); ENG->tdel[1] = (int32_t)(r3 - ENG->tlast[1]); '
@@ -173,6 +173,9 @@ for a in (0xFB5E, 0xFB70): R(a, 'r1 = eng_tmul(r2, r1, 1u); fN = r1 >> 31; fZ = 
 G(0xFC4A, 'a traffic slot\'s step counter (to 45)'); G(0xFC90, 'a traffic slot\'s step counter (its path)')
 # +12DEC, the camera: its placement's arguments, for the substeps
 for a in (0x12E44, 0x12EA6, 0x12F8C, 0x12FDE, 0x13004): B(a, 'eng_cam_save(r0, r1, r2, r3, sp);', 'the camera placement the whole step made')
+# round 63: after the whole step's camera update (+12DEC at +14EEC, its last placement), the chase camera's pose
+# taken as an offset from the car and drawn a step late, the substeps moving it a third of the step's change each
+B(0x14EF0, 'if (!ENG_SUB) eng_cam_whole(sp, r23);', 'the chase camera: its offset from the car, a step late')
 # the pursuers' own driving (cars with +C3C set: +1D20A their target velocity, +1C48E their reaction
 # after the move) -- the AI's choices, on the whole step; the target it sets stays in +680 for the substeps
 G(0x1E5B2, 'a pursuer\'s target velocity (+1D20A): its AI, on the whole step')
