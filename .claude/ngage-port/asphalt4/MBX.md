@@ -9595,3 +9595,17 @@ regard. The game starts normally." Then a save with everything unlocked (Paris w
   most the sprite's - 1), mesh_has only with list faces this frame, and the flush asks for depth writes itself.
 - Bench now: the owner's save installed (the bench's own kept in save_bench/); Instant Play goes to Paris. Recording
   r60, r61, r59 there.
+- Instrument (bench, A4_GOBJ_AB=n): the objects taken by turns of 2^n frames in one run, the frames that drew them
+  marked by a yellow 16 x 8 bar (top middle, the frame's last 3D quad, a4_gl_flush); A4_GOBJ_NOGRID turns the grid
+  fix off (r60's behaviour). tools: abpairs.py (scratchpad) pairs a marked frame with its unmarked neighbour from a
+  tunrun recording (REC=8). First tries drew no mark: at the frame's start (the road covered it), then top left
+  (under the HUD's bracket); magenta is the composite's sentinel, so yellow.
+- Paris (Instant Play with the owner's save), r60 behaviour (NOGRID), 498 on/off pairs, 30 looked at: with the
+  objects on, near things are cut or gone -- a building at the right edge, a traffic light, parasols in the GNN
+  camera, a lamp post -- and with the grid fix (r61, 485 pairs) the tunnel's right wall is missing and the night
+  outside shows (the owner's first photo). The cause: the GPU's projection is the list's, its near plane at
+  w = ZK - ZK/64 = 126; an object partly nearer loses that part. The list never takes a face nearer than ZK.
+  No bikes in the pairs looked at (the shadow cause for them stands on the code alone).
+- Fix (r62 source): the whole object to the game when its sphere reaches w < ZK + 4 (refused_near); the sphere's
+  radius now the farthest corner's distance (an integer square root at the mesh's build) in place of extent x 1.75,
+  which also tightens the boxes.

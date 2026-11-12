@@ -5209,7 +5209,7 @@ typedef int16_t __attribute__((may_alias)) go_s16;
 #define GOBJ_REF   ((uint32_t *)(GOBJ_AEND - 0x1000u))
 _Static_assert(GOBJ_NE * 4u <= 0x1000u && GOBJ_SN * 12u <= 0xC000u, "the staging and the flush's keys");
 struct gitem { uint32_t mesh, textab; int32_t d[3]; int16_t box[4]; uint16_t qn, qf; };   /* screen box, nearest/farthest bucket */
-struct gmesh { uint32_t verts, faces, nf, ofs, ng; uint16_t gs[GOBJ_NG], gc[GOBJ_NG]; uint8_t gt[GOBJ_NG]; uint16_t ext; uint8_t pad[2];
+struct gmesh { uint32_t verts, faces, nf, ofs, ng; uint16_t gs[GOBJ_NG], gc[GOBJ_NG]; uint8_t gt[GOBJ_NG]; uint16_t ext, rad;
                uint32_t fp[3]; };                  /* the data's first words: a mesh moved under the same address */
 struct gstate {
     uint32_t magic, frame, n, drawn, F, nmesh, aused;
@@ -5218,6 +5218,7 @@ struct gstate {
     uint32_t full, resets, peak;            /* store full this frame (reset at the next); resets; most corners held */
     uint32_t batches, refused_rot, refused_range, refused_moved;   /* draws; not the camera's rotation, offset, translation */
     uint32_t stale, gaps;                   /* a held mesh's data changed; the store emptied after frames without objects */
+    uint32_t refused_near;                  /* nearer than the GPU's near plane in part: the game draws it */
     int32_t R[9], T[3], o[3];               /* the frame's: the camera's rotation, the translation at o, the origin */
     struct gitem it[GOBJ_NI];
 };
@@ -5243,7 +5244,7 @@ static void gobj_reset(volatile struct gstate *g)
         g->taken = g->refused_mode = g->refused_tex = g->refused_far = g->refused_full = g->built = g->frames_drawn = g->draws = 0;
         g->calls = g->refused_off = g->refused_drawn = g->refused_mesh = 0;
         g->resets = g->peak = 0; g->batches = g->refused_rot = g->refused_range = g->refused_moved = 0;
-        g->stale = g->gaps = 0;
+        g->stale = g->gaps = 0; g->refused_near = 0;
         g->frame = 0xFFFFFFFFu; g->n = 0; g->drawn = 0;
         gobj_clear(g);
     }
@@ -5267,7 +5268,7 @@ static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
         g->full = 1; g->refused_full++; return 0;           /* emptied at the next frame */
     }
     struct gmesh *me = &GMESH[g->nmesh];
-    uint32_t ng = 0, o = 0, ext = 0;
+    uint32_t ng = 0, o = 0, ext = 0, e2 = 0;
     int16_t *rec = (int16_t *)(GOBJ_ARENA + g->aused * 12u);
     /* faces grouped by texture index, each group's faces in the mesh's own order */
     for (uint32_t f = 0; f < nf; f++) {
@@ -5289,12 +5290,18 @@ static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
                 int16_t *r = rec + (o * 3u + c) * 6u;
                 r[0] = GOS16(vp); r[1] = GOS16(vp + 2u); r[2] = GOS16(vp + 4u);
                 for (uint32_t a = 0; a < 3u; a++) { const uint32_t e = (uint32_t)iabs32(r[a]); if (e > ext) ext = e; }
+                {   const uint32_t q2 = (uint32_t)(r[0] * r[0]) + (uint32_t)(r[1] * r[1]) + (uint32_t)(r[2] * r[2]);
+                    if (q2 > e2) e2 = q2; }
                 r[3] = (int16_t)(GO8(fp + ui[c]) << 4); r[4] = (int16_t)(GO8(fp + ui[c] + 1u) << 4); r[5] = 0;
             }
             o++; me->gc[k]++;
         }
     }
     me->verts = verts; me->faces = faces; me->nf = nf; me->ofs = g->aused; me->ng = ng; me->ext = (uint16_t)ext;
+    {   uint32_t x = e2, r = 0, b = 1u << 30;               /* the radius: isqrt of the farthest corner's square, up */
+        while (b > x) b >>= 2;
+        while (b) { if (x >= r + b) { x -= r + b; r = (r >> 1) + b; } else r >>= 1; b >>= 2; }
+        me->rad = (uint16_t)(r + 1u > 0xFFFFu ? 0xFFFFu : r + 1u); }
     me->fp[0] = GO32(verts); me->fp[1] = GO32(verts + 4u); me->fp[2] = GO32(faces);
     GHASH[h] = (uint16_t)(g->nmesh + 1u);
     g->aused += 3u * nf; g->nmesh++; g->built++;
@@ -5318,6 +5325,11 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
         if (g->full) { gobj_clear(g); g->resets++; }
     }
     if (g->drawn || g->n >= GOBJ_NI) { g->refused_drawn++; return 0; }
+#ifdef A4_GOBJ_AB
+    /* bench (phone round 60): the objects on and off by turns of 2^A4_GOBJ_AB frames in one run, the frames they
+     * draw marked (a yellow 16 x 8 bar, top middle: a4_gl_flush; magenta is the composite's sentinel), so neighbouring frames show one place both ways */
+    if ((s->frames >> (A4_GOBJ_AB)) & 1u) { g->refused_off++; return 0; }
+#endif
     const uint32_t cam = GO32(ctx + 4u), mp = cam ? GO32(cam + 0x3Cu) : 0, cp = cam ? GO32(cam + 0x38u) : 0;
     if (!mp || !cp || mp == cp) { g->refused_mode++; return 0; }
     const int32_t *M = (const int32_t *)mp, *C = (const int32_t *)cp;   /* the object's, the camera's */
@@ -5353,6 +5365,10 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
     } else {
         for (uint32_t k = 0; k < 9u; k++) if (g->R[k] != C[k]) { g->refused_rot++; return 0; }
     }
+    /* Phone round 60 (bench A/B, A4_GOBJ_AB): the GPU's near plane is the list's (w = ZK - ZK/64), and an object
+     * nearer than that in part lost that part -- a tunnel wall, a parasol, a lamp post beside the car gone and what
+     * is behind them showing. The list never takes such a face; the whole object goes to the game. */
+    if (M[11] + (int32_t)me->rad + 2 > -(ZK + 4)) { g->refused_near++; return 0; }
     const int64_t dx = (int64_t)px - g->o[0], dy = (int64_t)py - g->o[1], dz = (int64_t)pz - g->o[2];
     const int64_t lim = 32767 - (int64_t)me->ext;
     if (dx > lim || dx < -lim || dy > lim || dy < -lim || dz > lim || dz < -lim) { g->refused_range++; return 0; }
@@ -5362,9 +5378,9 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
     {   /* Phone round 60: the table's untested classes -- a prop's own shadow (bikes, tyres black), cut-outs -- were
          * painted over these objects: they are tested only where the list's tile grid holds a nearer face, and the
          * objects were in no grid. So each object's screen box and depth buckets (as mesh_take's: ZW >> 3): its
-         * bounding sphere, the mesh's extent x 1.75 (>= sqrt 3), around its view-space origin M[9..11]. */
+         * bounding sphere (the farthest corner's distance, gobj_mesh) around its view-space origin M[9..11]. */
         const uint32_t *gx = (const uint32_t *)(uintptr_t)MESH->gctx;
-        const int32_t e = (int32_t)me->ext, r = e + (e >> 1) + (e >> 2) + 2;
+        const int32_t r = (int32_t)me->rad + 2;
         const int32_t vx = M[9], vy = M[10], vz = M[11];
         int32_t zn = vz + r, zf = vz - r;                  /* nearest, farthest (z < 0 ahead) */
         const uint32_t qn = zn < 0 ? (uint32_t)(-zn) >> 3 : 0u, qf = zf < 0 ? (uint32_t)(-zf) >> 3 : 0u;
@@ -5489,6 +5505,9 @@ static uint32_t gobj_grid(volatile struct glr *s, uint16_t *grid)
 {
     volatile struct gstate *g = GOBJ;
     if (g->magic != GOBJ_MAGIC || g->frame != s->frames || !g->drawn) return 0;
+#ifdef A4_GOBJ_NOGRID
+    return 0;                                       /* bench: r60's behaviour, the objects in no grid */
+#endif
     const uint32_t n = g->n;
     for (uint32_t i = 0; i < n; i++) {
         const volatile struct gitem *it = &g->it[i];
@@ -5510,6 +5529,9 @@ static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int3
     volatile struct gstate *g = GOBJ;
     const volatile struct glr *s = (const volatile struct glr *)A4_GL_SCRATCH;
     if (g->magic != GOBJ_MAGIC || g->frame != s->frames || !g->drawn) return -1;
+#ifdef A4_GOBJ_NOGRID
+    return -1;
+#endif
     int32_t deep = -1;
     for (uint32_t i = 0; i < g->n; i++) {
         const volatile struct gitem *it = &g->it[i];
@@ -8026,6 +8048,11 @@ void a4_gl_flush(void)
 #endif
         return;
     }
+#if defined(A4_GOBJ_AB) && defined(A4_GPUOBJ)
+    /* bench: the objects' frames marked by the last 3D quad (over all 3D, at window depth 1), top middle under "lap" */
+    if (GOBJ->drawn && GOBJ->n && GOBJ->frame == s->frames)
+        quad_push(s, 152, 60, 168, 68, 0, 0, 0, 0, (KIND_FLAT << 28) | 0xFFE0u, 0);
+#endif
     s->flushed = 1;
     s->last_prims = s->prims;                            /* frame's prim count (device probe) */
     uint32_t tf0 = a4_ntick();
