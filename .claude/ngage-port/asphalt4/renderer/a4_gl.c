@@ -2830,17 +2830,21 @@ static void hp_sub(uint32_t race, uint32_t f16, uint32_t first)
                          * +9 a frame in a turn; the bench's Veyron, a 7 /2048 turn-back at each step): the game's chase
                          * camera is rigid on the car on the bench's route, but in a fast turn it falls behind -- its
                          * yaw less the car's heading 0, -5, -14, -22, -32 over steps -- and the frames held each step's
-                         * offset, then jumped to the next. Now the offset moves on by its own last change, as the
-                         * other cameras' (A4_CAMALL) do: only a steady change (within half itself, plus 2, of the
-                         * step before's, and the same way -- an offset turning back is not carried past where it
-                         * turns, round 57's lesson), at most 64 /2048 a step, over three steps of this camera with
-                         * none missed */
+                         * offset, then jumped to the next. Now the offset moves on by its own last change while the
+                         * camera is FALLING BEHIND: the offset growing two steps running (|o0| > |o1| > |o2|, each
+                         * change away from the car), by 4 to 64 /2048 a step, steadily (within half itself, plus 2,
+                         * of the step before's), over three steps of this camera with none missed. Replayed off and
+                         * on over seven bench recordings (tools/camrate.py): carrying any steady change (the first
+                         * version) moved 34-58 frames a run and was a wash (mean off the game camera's path 6.0 vs
+                         * 5.9, 15 frames better, 33 worse); while falling behind, 14-20 frames a run, 3.5-5.8 ->
+                         * 2.4-3.4, 63 better, 24 worse. A camera catching up slows as it closes: not carried */
                         int32_t g = 0;
                         if (HP->cwv >= 3u && HP->pwps + 1u == HP->pws && HP->pwpps + 1u == HP->pwps) {
                             const int32_t o0 = hp_wrap(HP->cw[4] - HP->pw[3], 2048), o1 = hp_wrap(HP->cwp[4] - HP->pwp[3], 2048);
                             const int32_t o2 = hp_wrap(HP->cwpp[4] - HP->pwpp[3], 2048);
                             const int32_t g1 = hp_wrap(o0 - o1, 2048), g2 = hp_wrap(o1 - o2, 2048);
-                            if (iabs32(g1) <= 64 && iabs32(g1 - g2) <= iabs32(g1) / 2 + 2 && !(g1 > 0 && g2 < 0) && !(g1 < 0 && g2 > 0)) g = g1;
+                            if (iabs32(o0) > iabs32(o1) && iabs32(o1) > iabs32(o2) && (g1 > 0) == (o0 > 0) && (g2 > 0) == (o1 > 0)
+                                && g1 != 0 && g2 != 0 && iabs32(g1) >= 4 && iabs32(g1) <= 64 && iabs32(g1 - g2) <= iabs32(g1) / 2 + 2) g = g1;
                         }
                         yaw = (yaw + (int32_t)(((int64_t)g * (int32_t)qt) >> 16)) & 2047;
                     }
