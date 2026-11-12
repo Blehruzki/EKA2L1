@@ -9540,3 +9540,26 @@ Owner (N95, eight files): "The camera looks fine. I'm not even sure there was an
   and a mismatch empties the store at the next frame, as do 64 frames without objects (a menu, a load). 2,048 meshes,
   ~1 MB of corners (A4_SCRATCH_SIZE 0x1A0000: 1.6 MB of .bss; the owner's N95 8GB has 128 MB). Candidate r60 = C59 +
   A4_ENG_0CE8C + A4_GPUOBJ, c6f7ad6c..., 832,612 bytes; twin y60 (+ CARREC YREC AUTOPILOT). Battery running.
+- Battery on c6f7ad6c (r60bat): twin y60b (autopilot, W-4) all cars x-z 99% 24 max 98, heading 99% 13 max 71; camera
+  reversals 3 each way (r59: 4). Tele (W-4, 120 s) **44.3 ms a render** (r59 49.4); its windows 42.1-43.9 ms: at the
+  half-step cap (42.67); camera yaw and car heading reversals 0; drawn speed by present 10-90% 0.97-1.04; one drop
+  frame. Crash-steer reversals 0. Finish run (twin, cap 85): the car stuck (no speed, heading wobbling +-5 for the
+  last 417 frames) -- rerun r60fb reached the finish (163-186 finish-mode frames a file, as r59), so the autopilot's
+  own crash (+CE8C only allocates per-frame buffers, unpacks into them and calls the mesh routine: nothing the logic
+  reads); its counters: 310,130 of 316,438 objects taken (98.0%), 906 meshes, 45.4k corners, 19.6 object draws a
+  frame, refused 2,599 texture, 53 rotation, 12 range, 0 moved; resets, stale, gaps 0. Exact binary key 5, 300 s:
+  397 chase frames, bearing reversals 1. Menus 18 shots; marks; Veyron autopilot camera-yaw reversals 3 (r59 0, r58
+  5), heading reversals 0; marks on the Veyron. +3A15C b510 0004, no 0xDEADBEEF. (The battery's counter files were
+  empty: I wrote the hook as 70BF164, a digit short of 700BF164.)
+- Rule 2: not a repeat -- no phone round has drawn the game's objects through the GPU's transform: rounds 24-25 were
+  texture uploads (the atlas), every round since 27 the game's own projected triangles (the list), round 58's
+  ceilings bench only.
+- Rule 4: (a) guesses -- the MBX driver's cost for these draws (the model: 3 us a call, 20 a draw, 150 ns a vertex;
+  only the phone's render call can say); that a depth test in place of the game's order for the scenery reads as the
+  game (the replay: 2.5% of the list's pixels, props that stand into walls cut); that 1.6 MB more .bss loads (N95 8GB);
+  that a second race never finds another mesh under a held address with the same first words and no 64-frame gap.
+  (b) Read back: the take (the camera's rotation, the translation by +321BC's 32-bit arithmetic, the origin and T),
+  the flush (one modelview, the insertion sort, the offset copy: low half x + dx, high half y + dy, no carry across),
+  the store's limits and the stale checks; C60 = C59 + A4_ENG_0CE8C + A4_GPUOBJ. (c) Not entered: a second race in
+  one session, the cities the battery does not drive, the store or the staging filling (resets 0 on every run), a
+  knocked prop (refused: the game draws it).
