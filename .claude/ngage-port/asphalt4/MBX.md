@@ -9609,3 +9609,10 @@ regard. The game starts normally." Then a save with everything unlocked (Paris w
 - Fix (r62 source): the whole object to the game when its sphere reaches w < ZK + 4 (refused_near); the sphere's
   radius now the farthest corner's distance (an integer square root at the mesh's build) in place of extent x 1.75,
   which also tightens the boxes.
+- r62 A/B in Paris (A4_GOBJ_AB=3, two runs; the first stuck behind a car at the start, the second a whole lap,
+  580 pairs, 30 looked at): the building at the right edge, the traffic light, the lamp posts, the tunnel stretch and
+  Montmartre the same with the objects on and off.
+- The bikes: black silhouettes by the Moulin Rouge wall in r60's A/B run in the frames WITHOUT the GPU's objects as
+  well (f0647, f0649, f0651 off; f0646, f0648, f0650 on), and in r59's own Paris run (rec_pa_r59, the "GOT
+  INSURANCE?" frames): not round 60's. In the GNN camera's view from above they read as bike-shaped shapes on the
+  ground with no bike. An older fault the owner noticed now; which class draws them: A4_KINDVIS on r59, running.
