@@ -10045,6 +10045,11 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   race's end camera (0x17) and stays -- r68f2 never left the chase view in 300 s. The twin's race to the finish
   (r69f) never reached a race: from post 1,501 every post the same 1,660,408 instructions (a static screen; the
   menu walk after the battery's earlier races changed the save) -- rerun with the bench save put back: running.
+  The reruns: static again (the same 1,660,408 instructions a post); a screenshot shows the race's loading tip
+  "PRESS ANY KEY" -- the NOKEY5 script's one tap of 5 landed before the tip came up (the bench driver's timing;
+  one 60 s rerun raced, 0 -> 49 -> 111 km/h). With taps of 5 through the loading (r69f_re2.sh): the race ran the
+  whole 330 s, chase camera throughout, and the autopilot ended stopped against the chevrons on lap 2/3 at 0 km/h
+  (the twin is built without AUTOPILOT_UNSTICK: the known dead end of a stopped car; r68f did not finish either).
   Menu, mark, Veyron autopilot (camera reversals 0), mark on the Veyron, Paris on the owner's save: whole; Paris
   moves 2-3 u/ms along its heading. Scenery 94.2% / 93.9% (LA), 78.5% (Paris); cars on the GPU 15,998 / 35,516 /
   15,884 taken, stale 0. diagscan.py over t2, c2, f2, v, Paris: the longest run of equal x/z steps 3 frames (r67t2
