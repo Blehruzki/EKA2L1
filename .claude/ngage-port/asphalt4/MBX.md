@@ -10229,3 +10229,48 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   police reaction and spawn velocities: a4_r70_cand.exe
   2d38c6e8e75d4ca7d8861fab742d65577ba28510d0a56b46dd781a883af1aded, 931,028 bytes; twin a4_y70 (rec 700BA62C).
   Battery r70bat (r69bat on r70): running.
+- Rule 2: traf69/traf70, cs69p, hw69, cs70p-v are not repeats of rail69 (rails: no car on them), y69b / o1a-o3a /
+  o1n-o3n (the player and one opponent only), r69bat (no traffic or pursuer motion measured per substep).
+- Rule 4 on r70, before it goes out:
+  (a) Guesses. That the cops' "comical overshoot" is the tripled +2202C velocity: one police car seen following at
+      3x speed (cs70r slot 14) and police cars even after the fix (cs70s/cs70v slots 9, 14) -- but not the same
+      event, and no chase of the player by several cops was entered. That +20610 (the police spawn) passes a whole
+      step's velocity: read as a spawn, its unit not measured. That the opponents' "rubber band" (fast to catch
+      a crashed player, braking hard when the player stops) was the cops: no fault found in the racing AI, which
+      decides on the whole step only. The Veyron's speed and the jumps: no fault found (acceleration by gear and
+      band, top speed, the boost, the shift, the jump's flight, the jump camera and the phone's clock all read as
+      stock's) -- nothing in r70 for them, and they are reported as open, not fixed.
+  (b) Read back: every edit's emitted C in lifted.c (the +14574 else, +1E8C0's own-move sum, +1EA68's pfix/pstep,
+      +2209E's third) and eng_psnap / eng_pown / eng_pfix / eng_pstep line by line; lifted.c regenerates byte for
+      byte and r70 rebuilds identical; no bench switch in C70's flags; the size moved with each edit (928,660 ->
+      928,976 -> 929,772 -> 930,992 -> 931,028).
+  (c) Not entered on the bench: a pursuit with several cops at once; a police spawn after a crash of the player; the
+      GNN helicopter camera (0x2A) with the helicopter now spread (the camera follows the player, not the
+      helicopter -- not checked); a spread left unfinished (substeps skipped: the countdown) -- its flush is code
+      read, not run; traffic hits after the traffic fix (the traffic is now where its clock says on every substep,
+      a step earlier than r69 drew it on two of them -- hits should land as stock's, not measured); a pursuer that
+      hits a wall on the whole step (its push would count once, as a jump).
+- Battery r70 (exact binary 2d38c6e8): every run whole, faults=1 each (the known boot-time one). Tele (calibrated
+  bench, 120 s): 35.3 ms a render (r69 36.6), 3D 13.7; camera yaw and heading reversals 0; held back 2, drop frames
+  0. Crash-steer (cap 85): modes 2, 0x18 and **0x2A (the helicopter view, 98 frames, bearing reversals 0)**; camera
+  yaw one-frame reversals 3 (two at one moment, yaw -6, +594, -155: a cut between views; one the wall push r69 had
+  too, heading -12, +52, -13). Race to the finish, exact binary, '5' held (r70f2): reaches the end camera (0x17), as
+  r69f2. The twin's race to the finish (r70f): the static loading screen again (r69f's known bench timing). Menu,
+  mark, Veyron autopilot (reversals 0), mark on the Veyron, Paris on the owner's save: whole. Scenery 92.7% / 94.2%
+  (LA), 80.6% (Paris); cars on the GPU stale 0. diagscan: longest run of equal x/z steps 0-5 frames. +3A15C b510
+  0004, no 0xDEADBEEF. Lifted.c regenerates identical; r70 rebuilds identical.
+- **The twin y70b drove 21% less than y69b on the same route**: 241,639 against 306,529 units in 1,293 steps
+  (speed median 186 against 242), car hits (+B28 bit 7 rising) 12 against 3 -- two clusters, 5 in steps 709-754
+  and 5 in 850-871: something keeps bumping the player. Suspects: a cop now following at its offset (in r69 they
+  ran ahead), or the traffic now where its clock says on every substep. yv70 (a4_yv70 = r70 + the twin's recorders
+  + A4_VELPROBE: the hits' partners, tags 5/6, and the traffic's places, tag 9; the battery's route, 120 s):
+  running.
+- yv70 (a4_yv70, the battery's route, 120 s): 197,489 units in 1,292 steps, car hits 1 (step 880) -- no car-car hit
+  record (tags 5/6: none), and traffic car 023a2fcc was 143-169 units from the player then, crawling (~7 a
+  substep): the player at 272 ran into slow traffic and wrecked (+034 counting from 880), was put back at 916, and
+  sat there to the end (376 steps, B4 0, rpm 0, +B28 0x6000) with '5' held: the respawn waits for a fresh press and
+  the autopilot never re-presses -- the bench's known dead end (this twin has no AUTOPILOT_UNSTICK). The twins' runs
+  differ widely (y69b 306,529 / y70b 241,639 / yv70 197,489) on the hits they meet: with the traffic now where its
+  clock puts it on every substep, a hit lands where the traffic is (r69 drew and tested it a step ahead on two
+  substeps of three). More hits than stock's 11.72 Hz test (which lets a fast car pass through) are the 3x
+  engine's, known since r8 ("at 3x fewer pass through").
