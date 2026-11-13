@@ -9749,3 +9749,25 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
 - Candidate r65 = a4_r65_cand.exe (C65 = C63 + A4_LIVEKEYS, THIRDSTEP, scratch 0x1A0000):
   d364f1dba886a90df8cfa884a664e437417143956d69ec780d259f33e952c8cb, 919,448 bytes; twin y65 (rec 700BA62C),
   counters 700BCA54. Battery r65bat (r64bat on r65): running.
+- Battery r65 (exact binary d364f1db): every run whole, faults=1 each (the known one). Tele (calibrated bench,
+  120 s): 40.6 ms a render, 3D 17.5; presents a median 38 ms apart; camera and heading reversals 0; drop frames 4.
+  Crash-steer: camera yaw reversals 0, heading less yaw 6 of 203 moving frames. Race to the finish (twin, the
+  autopilot): whole, 2.07 u/ms in its last 14 s (r64f 2.29). Menu, mark, Veyron autopilot (camera reversals 0),
+  mark on the Veyron, Paris on the owner's save: whole. Scenery 93.7% / 93.9% (LA), 71.0% (Paris).
+  Two runs with '5' held by the script were slow at their end: r65t2's car crawled 0.12 u/ms on one heading for
+  its last 16 s (r63t2 2.27, r64t2 1.82), r65f2's 0.06 u/ms with mode 0x18 (a scripted view) for 306 of 417
+  frames. Checked, not settled by proof: LIVEKEYS takes only the steering bits (the probe: the other bits that
+  differ are the kept press bits 4 and 0x20); the twin and the crash-steer runs drive (r65c2 0.46 u/ms against
+  r64c2's 0.23); and s65 (the exact binary, '5' held, cap 85, 150 s, a shot every 10 s) accelerates to 188 km/h,
+  is turned round by a wall ("REVERSE / ARE YOU LOST?"), gets GNN's report, a takedown, and ends on the grass at
+  50 -- the bench driver, which steers by walls and has stuck before (round 63's oracle: both ended stuck).
+- Rule 4 for r65. (a) Guesses: that the chase pose words (cam+0x10..+0x20) are outputs the game makes afresh
+  each whole step -- made moot by eng_cam_unblend putting the game's own back unless something else wrote them;
+  the cut thresholds (offset 1024 / 512 / 128, heading 256), not counted on the bench; that bits 1, 2, 0x200,
+  0x400 are the held steering (the disassembly: +2092 with r2 = 1, +1DE78's turn-held 81C; the probe's changes
+  follow the script's presses); the key object's 0x1D bytes (every read in +25E8, +257A, +2092, +20F6 is within
+  +0..+0x1C); that the two slow runs are the bench driver (s65 above; more A/B runs would settle it). (b) Read
+  back: eng_cam_pose, eng_cam_unblend, eng_keys_peek / eng_keys_merge, a4_eng_keys's record, and the edits as
+  lifted.c carries them (+14754, +14948, +14CB2, +14EF0). (c) Not entered: chase modes 3 and 0x2A (1 and 2 only);
+  a turn over 256 /2048 in a step; the phone's keypad and its key repeat; two steering keys at once (the
+  release +25B6 posts, on the copy); a race's end with LIVEKEYS (excluded, not entered).
