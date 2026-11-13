@@ -5250,6 +5250,7 @@ void a4_car_census(uint32_t ctx, uint32_t verts, uint32_t nv, uint32_t faces, ui
  * moved to o), a draw a texture: their corners copied, offset by d, into a staging buffer. Anything else (a knocked
  * prop's rotation, an offset past int16) is left to the game. */
 static inline int32_t go_iabs(int32_t x) { return x < 0 ? -x : x; }   /* iabs32 is A4_HALFSPEC's */
+void a4_gobj_copy(uint32_t *dst, const uint32_t *src, uint32_t n, uint32_t dxy, uint32_t dz);   /* a4_px.s */
 typedef uint32_t __attribute__((may_alias)) go_u32;
 typedef uint8_t __attribute__((may_alias)) go_u8;
 typedef int16_t __attribute__((may_alias)) go_s16;
@@ -5284,6 +5285,7 @@ struct gstate {
     uint32_t batches, refused_rot, refused_range, refused_moved;   /* draws; not the camera's rotation, offset, translation */
     uint32_t stale, gaps;                   /* a held mesh's data changed; the store emptied after frames without objects */
     uint32_t refused_near;                  /* nearer than the GPU's near plane in part: the game draws it */
+    uint32_t cpchk, cpdiff;                 /* bench (A4_GOBJCOPYCHECK): chunks of the ARMv6 copy checked, words differing */
     int32_t R[9], T[3], o[3];               /* the frame's: the camera's rotation, the translation at o, the origin */
     struct gitem it[GOBJ_NI];
 };
@@ -5573,6 +5575,31 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
             const struct gmesh *me = (const struct gmesh *)(uintptr_t)it->mesh;
             const uint32_t k = ref[e] & 255u, dxx = (uint32_t)it->d[0], dyy = (uint32_t)it->d[1] << 16, dzz = (uint32_t)it->d[2];
             const uint32_t *src = (const uint32_t *)(GOBJ_ARENA + 12u * (me->ofs + 3u * me->gs[k]));
+#ifdef A4_PX6
+            /* round 67: the copy in ARMv6 (a4_px.s a4_gobj_copy, two halves a SADD16), in runs the staging holds --
+             * a group's corners and the staging's room both multiples of 3 */
+            for (uint32_t left = 3u * me->gc[k]; left; ) {
+                if (nv == GOBJ_SN) {                        /* staging full: draw what it holds */
+                    gl_drawarrays(GL_TRIANGLES, 0, (int)nv); draws++;
+                    dst = (uint32_t *)GOBJ_STAGE; nv = 0;
+                }
+                uint32_t c = GOBJ_SN - nv;
+                if (c > left) c = left;
+                a4_gobj_copy(dst, src, c, (dxx & 0xFFFFu) | dyy, dzz & 0xFFFFu);
+#ifdef A4_GOBJCOPYCHECK
+                if ((s->frames & 15u) == 0u) {              /* bench: the C loop's words against the copy's */
+                    g->cpchk++;
+                    for (uint32_t q = 0; q < c; q++) {
+                        const uint32_t w0 = src[3u * q], w1 = src[3u * q + 1u];
+                        if (dst[3u * q] != (((w0 + dxx) & 0xFFFFu) | ((w0 + dyy) & 0xFFFF0000u))) g->cpdiff++;
+                        if (dst[3u * q + 1u] != (((w1 + dzz) & 0xFFFFu) | (w1 & 0xFFFF0000u))) g->cpdiff++;
+                        if (dst[3u * q + 2u] != src[3u * q + 2u]) g->cpdiff++;
+                    }
+                }
+#endif
+                dst += 3u * c; src += 3u * c; nv += c; left -= c;
+            }
+#else
             for (uint32_t c = 3u * me->gc[k]; c; c--, src += 3) {
                 if (nv == GOBJ_SN) {                        /* staging full: draw what it holds */
                     gl_drawarrays(GL_TRIANGLES, 0, (int)nv); draws++;
@@ -5584,6 +5611,7 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
                 dst[2] = src[2];
                 dst += 3; nv++;
             }
+#endif
         }
         if (nv) { gl_drawarrays(GL_TRIANGLES, 0, (int)nv); draws++; }
     }
@@ -8064,6 +8092,9 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
              * mask and shift) -- 22 instructions for four pixels against the loop below's 42 */
             _Static_assert(VP_W % 4 == 0 && FB_STRIDE % 2 == 0, "a4_comp_row takes rows of 4n pixels, word aligned");
             if (PX6_ON(s->fmode)) {
+#ifdef A4_CEIL_COMP
+            continue;                                   /* bench ceiling (round 67): no composite rows -- never a phone build */
+#endif
             void (*const row)(uint32_t *, const uint32_t *, const uint32_t *) = PX6_PLD(s->fmode) ? a4_comp_row_pld : a4_comp_row;
             for (int sy = 0; sy < sh; sy++) {
                 int screen_y = VP_H - 1 - (y0 + sy);
@@ -8237,6 +8268,9 @@ static void cvt_fast(uint32_t *self, uint32_t dst, uint32_t src)
     }
     if (!fast) { ck[92]++; ((cvt_fn)(uintptr_t)CVT[3])(self, dst, src); return; }
     ck[91]++;
+#ifdef A4_CEIL_CVT
+    return;                                           /* bench ceiling (round 67): no present convert -- never a phone build */
+#endif
     void (*const run)(uint32_t *, const uint32_t *, const uint32_t *) = PX6_PLD(A4_PERF[PF_MODE]) ? a4_cvt565_run_pld : a4_cvt565_run;
 #ifdef A4_CVTCHECK
     /* bench check: +CB70's own answer goes to the screen; each row of ours, made into a spare row,

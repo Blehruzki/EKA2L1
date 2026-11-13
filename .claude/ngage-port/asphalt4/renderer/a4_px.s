@@ -162,3 +162,24 @@ a4_cvt565_run_pld:
         cmp     r1, r2
         bne     1b
         pop     {r4-r8, pc}
+
+@ void a4_gobj_copy(uint32_t *dst, const uint32_t *src, uint32_t n, uint32_t dxy, uint32_t dz)
+@ Round 67: the GPU scenery's staging copy (gobj_flush). n corners (a multiple of 3, not 0) of 12-byte records
+@ [x y] [z u] [v -] (int16 halves): x += dx and y += dy (dxy = dx | dy << 16), z += dz (dz in the low half, 0
+@ above), each half wrapping on its own as the C loop's masks do (SADD16), v and the pad copied. Three corners
+@ (nine words) a turn: one LDM, six SADD16, one STM -- against ~15 instructions a corner in C.
+        .global a4_gobj_copy
+a4_gobj_copy:
+        push    {r4-r11, lr}
+        ldr     r12, [sp, #36]                  @ dz
+1:      ldm     r1!, {r4-r11, lr}               @ corners a b c: [xy zu v-] x 3
+        sadd16  r4, r4, r3
+        sadd16  r5, r5, r12
+        sadd16  r7, r7, r3
+        sadd16  r8, r8, r12
+        sadd16  r10, r10, r3
+        sadd16  r11, r11, r12
+        stm     r0!, {r4-r11, lr}
+        subs    r2, r2, #3
+        bgt     1b
+        pop     {r4-r11, pc}

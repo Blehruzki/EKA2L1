@@ -9881,3 +9881,20 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   render call 26.3 (32.8), before the first triangle 2.2, 3D 13.5, comp 7.5 (read 6.0); in the last windows 32.5-
   32.9 ms (3D 12.0-12.8, comp 7.9-8.2, 2D 2.1-2.5, the yield 2.7-3.0, the rest 6.8-7.3); spans of one substep
   2,622, of two 758. Cars taken 13,900, 7.3 draws a frame; refused near 170, outside a mesh frame 734.
+- Where the rest goes (gc1). A cycle profile (p68c: W-4 model, EKA2L1_PCPROF_CYCLES, 1.5G instructions after
+  6G): our code's functions -- a4_cvt565_run 13.3% (the runtime's present convert, 565 to the screen's 32-bit, a
+  pass over the frame a post), a4_comp_row 9.4% (the composite, BGRA to 565), a4_engv_29736 6.4% (the painter),
+  gobj_flush 6.4% (the scenery's staging copy), engi_349F8 5.8%, lean_tail 4.1%, batch_draw 3.1%, bb_row2 1.9%,
+  a4_obj_take 1.9%, tex_upload 1.8%, tex_index 1.5%; the game's own 28.8% (+33EA8 5.3%: the alpha span; +49480
+  2.3%). The mode-1 re-bakes are rare (m1_rebakes 28 in the race, 0 texels in the windows): not a cost now. A
+  gated profile (ON a4_gl_hud, OFF cvt_fast) opened once and never closed -- not used.
+- Ceilings (bench only, W-4 + CALLS, 120 s): no present convert (A4_CEIL_CVT, cv68) 32.1 ms a render; no composite
+  rows (A4_CEIL_COMP, cp68) 32.5 -- against gc1's 34.7: each ~2.5 ms, neither removable as it stands.
+- The scenery's staging copy in ARMv6 (a4_px.s a4_gobj_copy: three corners a turn, SADD16 on the halves; A4_PX6):
+  checked against the C loop (A4_GOBJCOPYCHECK, cap 85, 60 s): 5,978 runs, 0 words differing. Timed (gc2, g68b):
+  34.8 ms a render against gc1's 34.7 -- no change past the runs' noise (~1 ms).
+- The model's GPU charges a frame (g68b's heavy window): 542 GL calls, 158 draws, 9,965 vertices, 134 binds, 15
+  reads -- draw 4,649 us (draws 3.1 ms, vertices 1.5), tile render 3,829, readback 1,536, post 2,300, other 2,696
+  (calls 1.6, binds 1.1): ~15 ms of a ~33 ms frame, every charge serial in the model. The next levers are the draw
+  calls, binds and calls (~5.8 ms) and the present path (convert 2.6 + composite 2.2 on the CPU, post 2.3, read
+  and tile 5.3) -- not CPU loops before the read.
