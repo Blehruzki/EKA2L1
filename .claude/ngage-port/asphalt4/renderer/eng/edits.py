@@ -55,6 +55,8 @@ def B(a, code, why): EDITS[a] = {'before': code, 'why': why}
 def R(a, code, why): EDITS[a] = {'replace': code, 'why': why}
 
 # +1DE78, the car's control and dynamics
+B(0x1DE7C, 'ENG_VP(1u, r0, r1, MEM32(r0 + 0x10u), MEM32(r0 + 0x14u), MEM32(r0 + 0x18u), MEM32(r0 + 8u));',
+  'bench (A4_VELPROBE, phone round 68): the player car\'s control entered, its keys and velocity')
 T(0x1DEDE, 'B20, steps a key is held (to 0x30): one a step')
 G(0x1DF20, 'A2C, a step counter'); G(0x1DF28, 'A34, a step counter (the stuck check every 64)')
 G(0x1DF58, 'A7C, a countdown'); G(0x1DF64, 'A7C, a count up')
@@ -77,14 +79,16 @@ T(0x1E602, 'grip 9FC, +0xD55 a step on the road')
 # traction and moves T / 16 toward it when not. A substep reaches it within T / 48 (r1-r9 thirded d,
 # which reaches 70% of the way in a step: the car lagged its target at a launch and after a wall)
 B(0x1E684, '{ int32_t m_ = (int32_t)MEM32(sp + 0x104u), t_ = (int32_t)MEM32(sp + 0x108u), g_, l_; uint32_t k_; '
+  'ENG_VP(2u, r4, (uint32_t)m_, (uint32_t)t_, MEM32(sp + 0x10Cu), MEM32(sp + 0x110u), MEM32(sp + 0x114u)); '
   'g_ = (m_ > t_) ? t_ : m_; l_ = t_ / 3; '
   'if (t_ > 0 && g_ > l_ && g_ > 0) { int32_t f_ = (int32_t)(l_ < 0x80000 ? eng_udiv((uint32_t)l_ << 12, (uint32_t)g_) : eng_udiv((uint32_t)l_, ((uint32_t)g_ >> 12) | 1u)); '
-  'for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x10Cu + k_) = (uint32_t)(int32_t)(((int64_t)(int32_t)MEM32(sp + 0x10Cu + k_) * f_) >> 12); } }',
+  'for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x10Cu + k_) = (uint32_t)(int32_t)(((int64_t)(int32_t)MEM32(sp + 0x10Cu + k_) * f_) >> 12); } '
+  'ENG_VP(3u, r4, MEM32(sp + 0x10Cu), MEM32(sp + 0x110u), MEM32(sp + 0x114u), MEM32(MEM32(sp + 0x150u) + 0x3Cu), MEM32(sp + 0x140u)); }',
   'the velocity\'s change: the target within a third of the traction')
 T(0x1E7F8, 'drift 9F8 += f(turn)'); T(0x1E804, 'drift 9F8 += f(turn)')
 T(0x1E87E, '81C, the turn held, += A20')
 T(0x1E896, 'heading -= A20 (reversing)'); T(0x1E8A2, 'heading += A20')
-R(0x1E8C0, '{ uint32_t k_; for (k_ = 0; k_ < 12u; k_ += 4u) { uint32_t ea_ = r0 + k_; MEM32(ea_) = eng_third(ea_, MEM32(ea_), MEM32(ea_) + MEM32(r1 + k_)); } }',
+R(0x1E8C0, '{ uint32_t k_; ENG_VP(4u, r4, MEM32(r1), MEM32(r1 + 4u), MEM32(r1 + 8u), r1, r0); for (k_ = 0; k_ < 12u; k_ += 4u) { uint32_t ea_ = r0 + k_; MEM32(ea_) = eng_third(ea_, MEM32(ea_), MEM32(ea_) + MEM32(r1 + k_)); } }',
   'position += velocity (+521A0): a third of the step\'s')
 # +1B9E0, steering
 for a in (0x1BA28, 0x1BA52, 0x1BA7E, 0x1BA9A): T(a, 'A1C, the steering rate, eased a step')
@@ -165,6 +169,10 @@ B(0x1EA68, 'if (ENG_SUB && !ENG_WRECK3 && MEM32(r0 + 0x34u) != 0xFFFFFFFFu) retu
 B(0x1EABC, 'ENG->meas1 = !ENG_WRECK3 && MEM32(r4 + 0x34u) != 0xFFFFFFFFu;', 'a wreck\'s measure is a whole step\'s (A4_WRECK3: a substep\'s, x 3)')
 B(0x1EAC0, 'ENG->meas1 = 0;', 'back to substep measures')
 T(0x228F2, '0C4, the acceleration eased 1/8 a step')
+# bench (A4_VELPROBE, phone round 68): +1FDEC's box test (+239B6) hit -- the two cars and their positions
+B(0x1FE02, 'ENG_VP(5u, r4, r5, MEM32(r4 + 4u), MEM32(r4 + 0xCu), MEM32(r5 + 4u), MEM32(r5 + 0xCu)); '
+  'ENG_VP(6u, r5, r4, MEM32(r5 + 4u), MEM32(r5 + 0xCu), MEM32(r4 + 4u), MEM32(r4 + 0xCu));',
+  'bench (A4_VELPROBE): a car-to-car hit, the player in it')
 # +2217C, the contact book
 G(0x22198, 'E0, steps since a contact')
 # +1F1F8, the AI: its choices (and the stuck check) on the whole step, its keys replayed

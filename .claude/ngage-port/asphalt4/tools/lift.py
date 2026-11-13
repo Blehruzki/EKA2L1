@@ -340,6 +340,7 @@ def lift(start):
            '    uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;\n'
            '    uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];\n'
            '    uint32_t stk[%d]; uint8_t *spp = (uint8_t *)&stk[%d - 8];\n' % (stkw, stkw) +
+           '#ifdef A4_STKPOISON\n    a4_stkpoison(stk, %du);\n#endif\n' % (stkw - 8) +
            '    stk[%d] = s0; stk[%d] = s1; stk[%d] = s2; stk[%d] = s3;\n' % (stkw - 8, stkw - 7, stkw - 6, stkw - 5) +
            '    stk[%d] = s4; stk[%d] = s5; stk[%d] = s6; stk[%d] = s7;\n' % (stkw - 4, stkw - 3, stkw - 2, stkw - 1) +
            '    (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;\n')

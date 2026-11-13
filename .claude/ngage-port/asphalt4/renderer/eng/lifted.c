@@ -646,6 +646,9 @@ static uint64_t engi_1F1F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[70]; uint8_t *spp = (uint8_t *)&stk[70 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 62u);
+#endif
     stk[62] = s0; stk[63] = s1; stk[64] = s2; stk[65] = s3;
     stk[66] = s4; stk[67] = s5; stk[68] = s6; stk[69] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -2156,11 +2159,16 @@ static uint64_t engi_1DE78(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[130]; uint8_t *spp = (uint8_t *)&stk[130 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 122u);
+#endif
     stk[122] = s0; stk[123] = s1; stk[124] = s2; stk[125] = s3;
     stk[126] = s4; stk[127] = s5; stk[128] = s6; stk[129] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
     spp -= 36; S32(0) = r0; S32(4) = r1; S32(8) = r2; S32(12) = r3; S32(16) = r4; S32(20) = r5; S32(24) = r6; S32(28) = r7; S32(32) = lr; /* 01de78 push {r0, r1, r2, r3, r4, r5, r6, r7, lr} */
     spp -= 0x184u;                                               /* 01de7a sub sp, #0x184 */
+    /* engine: bench (A4_VELPROBE, phone round 68): the player car's control entered, its keys and velocity */
+    ENG_VP(1u, r0, r1, MEM32(r0 + 0x10u), MEM32(r0 + 0x14u), MEM32(r0 + 0x18u), MEM32(r0 + 8u));
     r4 = r0; fN = r4 >> 31; fZ = r4 == 0;                        /* 01de7c movs r4, r0 */
     r6 = r1; fN = r6 >> 31; fZ = r6 == 0;                        /* 01de7e movs r6, r1 */
     r1 = 0x61u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01de80 movs r1, #0x61 */
@@ -3259,7 +3267,7 @@ L_1E612:
     S32(0x114u) = r0;                                            /* 01e682 str r0, [sp, #0x114] */
 L_1E684:
     /* engine: the velocity's change: the target within a third of the traction */
-    { int32_t m_ = (int32_t)MEM32(sp + 0x104u), t_ = (int32_t)MEM32(sp + 0x108u), g_, l_; uint32_t k_; g_ = (m_ > t_) ? t_ : m_; l_ = t_ / 3; if (t_ > 0 && g_ > l_ && g_ > 0) { int32_t f_ = (int32_t)(l_ < 0x80000 ? eng_udiv((uint32_t)l_ << 12, (uint32_t)g_) : eng_udiv((uint32_t)l_, ((uint32_t)g_ >> 12) | 1u)); for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x10Cu + k_) = (uint32_t)(int32_t)(((int64_t)(int32_t)MEM32(sp + 0x10Cu + k_) * f_) >> 12); } }
+    { int32_t m_ = (int32_t)MEM32(sp + 0x104u), t_ = (int32_t)MEM32(sp + 0x108u), g_, l_; uint32_t k_; ENG_VP(2u, r4, (uint32_t)m_, (uint32_t)t_, MEM32(sp + 0x10Cu), MEM32(sp + 0x110u), MEM32(sp + 0x114u)); g_ = (m_ > t_) ? t_ : m_; l_ = t_ / 3; if (t_ > 0 && g_ > l_ && g_ > 0) { int32_t f_ = (int32_t)(l_ < 0x80000 ? eng_udiv((uint32_t)l_ << 12, (uint32_t)g_) : eng_udiv((uint32_t)l_, ((uint32_t)g_ >> 12) | 1u)); for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x10Cu + k_) = (uint32_t)(int32_t)(((int64_t)(int32_t)MEM32(sp + 0x10Cu + k_) * f_) >> 12); } ENG_VP(3u, r4, MEM32(sp + 0x10Cu), MEM32(sp + 0x110u), MEM32(sp + 0x114u), MEM32(MEM32(sp + 0x150u) + 0x3Cu), MEM32(sp + 0x140u)); }
     r1 = S32(0x13Cu);                                            /* 01e684 ldr r1, [sp, #0x13c] */
     { uint32_t ta = sp, tb = 0x10Cu; t = ta + tb; r2 = t; }      /* 01e686 add r2, sp, #0x10c */
     { uint32_t ta = sp, tb = 0xF8u; t = ta + tb; r0 = t; }       /* 01e688 add r0, sp, #0xf8 */
@@ -3572,7 +3580,7 @@ L_1E8BC:
     { uint32_t ta = r4, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e8bc adds r0, r4, #4 */
     { uint32_t ta = sp, tb = 0xF8u; t = ta + tb; r1 = t; }       /* 01e8be add r1, sp, #0xf8 */
     /* engine: position += velocity (+521A0): a third of the step's */
-    { uint32_t k_; for (k_ = 0; k_ < 12u; k_ += 4u) { uint32_t ea_ = r0 + k_; MEM32(ea_) = eng_third(ea_, MEM32(ea_), MEM32(ea_) + MEM32(r1 + k_)); } }  /* was: { uint64_t rr = (ENGD_521A0 ? engi_521A0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x1E8C4)) : a4_eng_call0(GAMEFN(0x521A0), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } ( 01e8c0 bl #0x521a0 ) */
+    { uint32_t k_; ENG_VP(4u, r4, MEM32(r1), MEM32(r1 + 4u), MEM32(r1 + 8u), r1, r0); for (k_ = 0; k_ < 12u; k_ += 4u) { uint32_t ea_ = r0 + k_; MEM32(ea_) = eng_third(ea_, MEM32(ea_), MEM32(ea_) + MEM32(r1 + k_)); } }  /* was: { uint64_t rr = (ENGD_521A0 ? engi_521A0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x1E8C4)) : a4_eng_call0(GAMEFN(0x521A0), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } ( 01e8c0 bl #0x521a0 ) */
     /* (replaced above) */
     r0 = S32(0x158u);                                            /* 01e8c4 ldr r0, [sp, #0x158] */
     r0 = L8(r0 + 0x4u);                                          /* 01e8c6 ldrb r0, [r0, #4] */
@@ -3657,6 +3665,9 @@ static uint64_t engi_1971E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[34]; uint8_t *spp = (uint8_t *)&stk[34 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 26u);
+#endif
     stk[26] = s0; stk[27] = s1; stk[28] = s2; stk[29] = s3;
     stk[30] = s4; stk[31] = s5; stk[32] = s6; stk[33] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -3758,6 +3769,9 @@ static uint64_t engi_1B560(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[46]; uint8_t *spp = (uint8_t *)&stk[46 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 38u);
+#endif
     stk[38] = s0; stk[39] = s1; stk[40] = s2; stk[41] = s3;
     stk[42] = s4; stk[43] = s5; stk[44] = s6; stk[45] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -4335,6 +4349,9 @@ static uint64_t engi_1B9E0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[30]; uint8_t *spp = (uint8_t *)&stk[30 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 22u);
+#endif
     stk[22] = s0; stk[23] = s1; stk[24] = s2; stk[25] = s3;
     stk[26] = s4; stk[27] = s5; stk[28] = s6; stk[29] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -4541,6 +4558,9 @@ static uint64_t engi_1BB98(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[30]; uint8_t *spp = (uint8_t *)&stk[30 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 22u);
+#endif
     stk[22] = s0; stk[23] = s1; stk[24] = s2; stk[25] = s3;
     stk[26] = s4; stk[27] = s5; stk[28] = s6; stk[29] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -4676,6 +4696,9 @@ static uint64_t engi_1BD1C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[30]; uint8_t *spp = (uint8_t *)&stk[30 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 22u);
+#endif
     stk[22] = s0; stk[23] = s1; stk[24] = s2; stk[25] = s3;
     stk[26] = s4; stk[27] = s5; stk[28] = s6; stk[29] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -4787,6 +4810,9 @@ static uint64_t engi_1BDEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[30]; uint8_t *spp = (uint8_t *)&stk[30 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 22u);
+#endif
     stk[22] = s0; stk[23] = s1; stk[24] = s2; stk[25] = s3;
     stk[26] = s4; stk[27] = s5; stk[28] = s6; stk[29] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -4883,6 +4909,9 @@ static uint64_t engi_1BE70(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[30]; uint8_t *spp = (uint8_t *)&stk[30 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 22u);
+#endif
     stk[22] = s0; stk[23] = s1; stk[24] = s2; stk[25] = s3;
     stk[26] = s4; stk[27] = s5; stk[28] = s6; stk[29] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -5008,6 +5037,9 @@ static uint64_t engi_1BF26(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[30]; uint8_t *spp = (uint8_t *)&stk[30 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 22u);
+#endif
     stk[22] = s0; stk[23] = s1; stk[24] = s2; stk[25] = s3;
     stk[26] = s4; stk[27] = s5; stk[28] = s6; stk[29] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -5241,6 +5273,9 @@ static uint64_t engi_1C0B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[32]; uint8_t *spp = (uint8_t *)&stk[32 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 24u);
+#endif
     stk[24] = s0; stk[25] = s1; stk[26] = s2; stk[27] = s3;
     stk[28] = s4; stk[29] = s5; stk[30] = s6; stk[31] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -5421,6 +5456,9 @@ static uint64_t engi_1C276(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[30]; uint8_t *spp = (uint8_t *)&stk[30 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 22u);
+#endif
     stk[22] = s0; stk[23] = s1; stk[24] = s2; stk[25] = s3;
     stk[26] = s4; stk[27] = s5; stk[28] = s6; stk[29] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -5577,6 +5615,9 @@ static uint64_t engi_1C350(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[30]; uint8_t *spp = (uint8_t *)&stk[30 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 22u);
+#endif
     stk[22] = s0; stk[23] = s1; stk[24] = s2; stk[25] = s3;
     stk[26] = s4; stk[27] = s5; stk[28] = s6; stk[29] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -5734,6 +5775,9 @@ static uint64_t engi_1CEC2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[60]; uint8_t *spp = (uint8_t *)&stk[60 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 52u);
+#endif
     stk[52] = s0; stk[53] = s1; stk[54] = s2; stk[55] = s3;
     stk[56] = s4; stk[57] = s5; stk[58] = s6; stk[59] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -6147,6 +6191,9 @@ static uint64_t engi_1CDDA(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[36]; uint8_t *spp = (uint8_t *)&stk[36 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 28u);
+#endif
     stk[28] = s0; stk[29] = s1; stk[30] = s2; stk[31] = s3;
     stk[32] = s4; stk[33] = s5; stk[34] = s6; stk[35] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -6300,6 +6347,9 @@ static uint64_t engi_1EA64(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[60]; uint8_t *spp = (uint8_t *)&stk[60 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 52u);
+#endif
     stk[52] = s0; stk[53] = s1; stk[54] = s2; stk[55] = s3;
     stk[56] = s4; stk[57] = s5; stk[58] = s6; stk[59] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -7409,6 +7459,9 @@ static uint64_t engi_226E8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[60]; uint8_t *spp = (uint8_t *)&stk[60 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 52u);
+#endif
     stk[52] = s0; stk[53] = s1; stk[54] = s2; stk[55] = s3;
     stk[56] = s4; stk[57] = s5; stk[58] = s6; stk[59] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -7602,6 +7655,9 @@ static uint64_t engi_22832(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[42]; uint8_t *spp = (uint8_t *)&stk[42 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 34u);
+#endif
     stk[34] = s0; stk[35] = s1; stk[36] = s2; stk[37] = s3;
     stk[38] = s4; stk[39] = s5; stk[40] = s6; stk[41] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -7754,6 +7810,9 @@ static uint64_t engi_1FD5C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -7789,6 +7848,9 @@ static uint64_t engi_1FD0E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[30]; uint8_t *spp = (uint8_t *)&stk[30 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 22u);
+#endif
     stk[22] = s0; stk[23] = s1; stk[24] = s2; stk[25] = s3;
     stk[26] = s4; stk[27] = s5; stk[28] = s6; stk[29] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -7854,6 +7916,9 @@ static uint64_t engi_2292A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[54]; uint8_t *spp = (uint8_t *)&stk[54 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 46u);
+#endif
     stk[46] = s0; stk[47] = s1; stk[48] = s2; stk[49] = s3;
     stk[50] = s4; stk[51] = s5; stk[52] = s6; stk[53] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -8296,6 +8361,9 @@ static uint64_t engi_1FDEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[36]; uint8_t *spp = (uint8_t *)&stk[36 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 28u);
+#endif
     stk[28] = s0; stk[29] = s1; stk[30] = s2; stk[31] = s3;
     stk[32] = s4; stk[33] = s5; stk[34] = s6; stk[35] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -8310,6 +8378,8 @@ static uint64_t engi_1FDEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01fdfa bl #0x239b6 */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01fdfe cmp r0, #0 */
     if (r0 == 0x0u) goto L_1FEF8;                                /* 01fe00 beq #0x1fef8 */
+    /* engine: bench (A4_VELPROBE): a car-to-car hit, the player in it */
+    ENG_VP(5u, r4, r5, MEM32(r4 + 4u), MEM32(r4 + 0xCu), MEM32(r5 + 4u), MEM32(r5 + 0xCu)); ENG_VP(6u, r5, r4, MEM32(r5 + 4u), MEM32(r5 + 0xCu), MEM32(r4 + 4u), MEM32(r4 + 0xCu));
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01fe02 movs r0, r4 */
     { uint32_t ta = r0, tb = 0xC0u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01fe04 adds r0, #0xc0 */
     S32(0xCu) = r0;                                              /* 01fe06 str r0, [sp, #0xc] */
@@ -8513,6 +8583,9 @@ static uint64_t engi_1FF56(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[78]; uint8_t *spp = (uint8_t *)&stk[78 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 70u);
+#endif
     stk[70] = s0; stk[71] = s1; stk[72] = s2; stk[73] = s3;
     stk[74] = s4; stk[75] = s5; stk[76] = s6; stk[77] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -9177,6 +9250,9 @@ static uint64_t engi_239B6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[80]; uint8_t *spp = (uint8_t *)&stk[80 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 72u);
+#endif
     stk[72] = s0; stk[73] = s1; stk[74] = s2; stk[75] = s3;
     stk[76] = s4; stk[77] = s5; stk[78] = s6; stk[79] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -9846,6 +9922,9 @@ static uint64_t engi_22C60(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[46]; uint8_t *spp = (uint8_t *)&stk[46 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 38u);
+#endif
     stk[38] = s0; stk[39] = s1; stk[40] = s2; stk[41] = s3;
     stk[42] = s4; stk[43] = s5; stk[44] = s6; stk[45] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -9946,6 +10025,9 @@ static uint64_t engi_141B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[106]; uint8_t *spp = (uint8_t *)&stk[106 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 98u);
+#endif
     stk[98] = s0; stk[99] = s1; stk[100] = s2; stk[101] = s3;
     stk[102] = s4; stk[103] = s5; stk[104] = s6; stk[105] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -13266,6 +13348,9 @@ static uint64_t engi_0FB12(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[60]; uint8_t *spp = (uint8_t *)&stk[60 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 52u);
+#endif
     stk[52] = s0; stk[53] = s1; stk[54] = s2; stk[55] = s3;
     stk[56] = s4; stk[57] = s5; stk[58] = s6; stk[59] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -13914,6 +13999,9 @@ static uint64_t engi_0F1B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[46]; uint8_t *spp = (uint8_t *)&stk[46 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 38u);
+#endif
     stk[38] = s0; stk[39] = s1; stk[40] = s2; stk[41] = s3;
     stk[42] = s4; stk[43] = s5; stk[44] = s6; stk[45] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -14335,6 +14423,9 @@ static uint64_t engi_0F60A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[32]; uint8_t *spp = (uint8_t *)&stk[32 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 24u);
+#endif
     stk[24] = s0; stk[25] = s1; stk[26] = s2; stk[27] = s3;
     stk[28] = s4; stk[29] = s5; stk[30] = s6; stk[31] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -14399,6 +14490,9 @@ static uint64_t engi_2202C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[32]; uint8_t *spp = (uint8_t *)&stk[32 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 24u);
+#endif
     stk[24] = s0; stk[25] = s1; stk[26] = s2; stk[27] = s3;
     stk[28] = s4; stk[29] = s5; stk[30] = s6; stk[31] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -14483,6 +14577,9 @@ static uint64_t engi_12DEC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[38]; uint8_t *spp = (uint8_t *)&stk[38 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 30u);
+#endif
     stk[30] = s0; stk[31] = s1; stk[32] = s2; stk[33] = s3;
     stk[34] = s4; stk[35] = s5; stk[36] = s6; stk[37] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -14807,6 +14904,9 @@ static uint64_t engi_05968(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[68]; uint8_t *spp = (uint8_t *)&stk[68 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 60u);
+#endif
     stk[60] = s0; stk[61] = s1; stk[62] = s2; stk[63] = s3;
     stk[64] = s4; stk[65] = s5; stk[66] = s6; stk[67] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -15548,6 +15648,9 @@ static uint64_t engi_04B40(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[94]; uint8_t *spp = (uint8_t *)&stk[94 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 86u);
+#endif
     stk[86] = s0; stk[87] = s1; stk[88] = s2; stk[89] = s3;
     stk[90] = s4; stk[91] = s5; stk[92] = s6; stk[93] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -16102,6 +16205,9 @@ static uint64_t engi_049C4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[32]; uint8_t *spp = (uint8_t *)&stk[32 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 24u);
+#endif
     stk[24] = s0; stk[25] = s1; stk[26] = s2; stk[27] = s3;
     stk[28] = s4; stk[29] = s5; stk[30] = s6; stk[31] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -16312,6 +16418,9 @@ static uint64_t engi_1BB1E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[28]; uint8_t *spp = (uint8_t *)&stk[28 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 20u);
+#endif
     stk[20] = s0; stk[21] = s1; stk[22] = s2; stk[23] = s3;
     stk[24] = s4; stk[25] = s5; stk[26] = s6; stk[27] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -16409,6 +16518,9 @@ static uint64_t engi_1BC5E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -16530,6 +16642,9 @@ static uint64_t engi_1B954(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -16617,6 +16732,9 @@ static uint64_t engi_2217C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[30]; uint8_t *spp = (uint8_t *)&stk[30 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 22u);
+#endif
     stk[22] = s0; stk[23] = s1; stk[24] = s2; stk[25] = s3;
     stk[26] = s4; stk[27] = s5; stk[28] = s6; stk[29] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -16677,6 +16795,9 @@ static uint64_t engi_29736(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[52]; uint8_t *spp = (uint8_t *)&stk[52 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 44u);
+#endif
     stk[44] = s0; stk[45] = s1; stk[46] = s2; stk[47] = s3;
     stk[48] = s4; stk[49] = s5; stk[50] = s6; stk[51] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -17186,6 +17307,9 @@ static uint64_t engi_349F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[38]; uint8_t *spp = (uint8_t *)&stk[38 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 30u);
+#endif
     stk[30] = s0; stk[31] = s1; stk[32] = s2; stk[33] = s3;
     stk[34] = s4; stk[35] = s5; stk[36] = s6; stk[37] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -17349,6 +17473,9 @@ static uint64_t engi_349B0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[28]; uint8_t *spp = (uint8_t *)&stk[28 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 20u);
+#endif
     stk[20] = s0; stk[21] = s1; stk[22] = s2; stk[23] = s3;
     stk[24] = s4; stk[25] = s5; stk[26] = s6; stk[27] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -17414,6 +17541,9 @@ static uint64_t engi_345E4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[36]; uint8_t *spp = (uint8_t *)&stk[36 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 28u);
+#endif
     stk[28] = s0; stk[29] = s1; stk[30] = s2; stk[31] = s3;
     stk[32] = s4; stk[33] = s5; stk[34] = s6; stk[35] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -17549,6 +17679,9 @@ static uint64_t engi_523A2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -17589,6 +17722,9 @@ static uint64_t engi_523C4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -17629,6 +17765,9 @@ static uint64_t engi_523E6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -17669,6 +17808,9 @@ static uint64_t engi_3118E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[36]; uint8_t *spp = (uint8_t *)&stk[36 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 28u);
+#endif
     stk[28] = s0; stk[29] = s1; stk[30] = s2; stk[31] = s3;
     stk[32] = s4; stk[33] = s5; stk[34] = s6; stk[35] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -17764,6 +17906,9 @@ static uint64_t engi_3121E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -17810,6 +17955,9 @@ static uint64_t engi_3015E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[60]; uint8_t *spp = (uint8_t *)&stk[60 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 52u);
+#endif
     stk[52] = s0; stk[53] = s1; stk[54] = s2; stk[55] = s3;
     stk[56] = s4; stk[57] = s5; stk[58] = s6; stk[59] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -18408,6 +18556,9 @@ static uint64_t engi_0CE8C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[38]; uint8_t *spp = (uint8_t *)&stk[38 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 30u);
+#endif
     stk[30] = s0; stk[31] = s1; stk[32] = s2; stk[33] = s3;
     stk[34] = s4; stk[35] = s5; stk[36] = s6; stk[37] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -18559,6 +18710,9 @@ static uint64_t engi_01D76(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -18587,6 +18741,9 @@ static uint64_t engi_0203A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -18623,6 +18780,9 @@ static uint64_t engi_0206E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -18654,6 +18814,9 @@ static uint64_t engi_0397E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[34]; uint8_t *spp = (uint8_t *)&stk[34 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 26u);
+#endif
     stk[26] = s0; stk[27] = s1; stk[28] = s2; stk[29] = s3;
     stk[30] = s4; stk[31] = s5; stk[32] = s6; stk[33] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -18742,6 +18905,9 @@ static uint64_t engi_039FE(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -18770,6 +18936,9 @@ static uint64_t engi_03FE6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -18816,6 +18985,9 @@ static uint64_t engi_064C2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -18849,6 +19021,9 @@ static uint64_t engi_064D4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -18890,6 +19065,9 @@ static uint64_t engi_0663E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -18919,6 +19097,9 @@ static uint64_t engi_0691E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -18952,6 +19133,9 @@ static uint64_t engi_06E1E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -18985,6 +19169,9 @@ static uint64_t engi_13148(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19022,6 +19209,9 @@ static uint64_t engi_13242(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[28]; uint8_t *spp = (uint8_t *)&stk[28 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 20u);
+#endif
     stk[20] = s0; stk[21] = s1; stk[22] = s2; stk[23] = s3;
     stk[24] = s4; stk[25] = s5; stk[26] = s6; stk[27] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19079,6 +19269,9 @@ static uint64_t engi_133E4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19107,6 +19300,9 @@ static uint64_t engi_18C9A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19158,6 +19354,9 @@ static uint64_t engi_19184(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19183,6 +19382,9 @@ static uint64_t engi_1918E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19207,6 +19409,9 @@ static uint64_t engi_193CE(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19237,6 +19442,9 @@ static uint64_t engi_1B304(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19319,6 +19527,9 @@ static uint64_t engi_1B500(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19395,6 +19606,9 @@ static uint64_t engi_1BDC2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19440,6 +19654,9 @@ static uint64_t engi_1C44C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19499,6 +19716,9 @@ static uint64_t engi_1CD88(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19564,6 +19784,9 @@ static uint64_t engi_212C6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19649,6 +19872,9 @@ static uint64_t engi_21F98(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19677,6 +19903,9 @@ static uint64_t engi_21FA2(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19705,6 +19934,9 @@ static uint64_t engi_21FAC(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19733,6 +19965,9 @@ static uint64_t engi_3145C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19785,6 +20020,9 @@ static uint64_t engi_31D02(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19828,6 +20066,9 @@ static uint64_t engi_31D28(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19876,6 +20117,9 @@ static uint64_t engi_32156(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19915,6 +20159,9 @@ static uint64_t engi_3220C(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -19951,6 +20198,9 @@ static uint64_t engi_3227E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -20007,6 +20257,9 @@ static uint64_t engi_370AE(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[28]; uint8_t *spp = (uint8_t *)&stk[28 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 20u);
+#endif
     stk[20] = s0; stk[21] = s1; stk[22] = s2; stk[23] = s3;
     stk[24] = s4; stk[25] = s5; stk[26] = s6; stk[27] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -20065,6 +20318,9 @@ static uint64_t engi_37450(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[28]; uint8_t *spp = (uint8_t *)&stk[28 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 20u);
+#endif
     stk[20] = s0; stk[21] = s1; stk[22] = s2; stk[23] = s3;
     stk[24] = s4; stk[25] = s5; stk[26] = s6; stk[27] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -20123,6 +20379,9 @@ static uint64_t engi_52182(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -20160,6 +20419,9 @@ static uint64_t engi_521A0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -20196,6 +20458,9 @@ static uint64_t engi_52206(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -20229,6 +20494,9 @@ static uint64_t engi_522F0(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[28]; uint8_t *spp = (uint8_t *)&stk[28 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 20u);
+#endif
     stk[20] = s0; stk[21] = s1; stk[22] = s2; stk[23] = s3;
     stk[24] = s4; stk[25] = s5; stk[26] = s6; stk[27] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -20288,6 +20556,9 @@ static uint64_t engi_52540(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -20326,6 +20597,9 @@ static uint64_t engi_52562(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[26]; uint8_t *spp = (uint8_t *)&stk[26 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 18u);
+#endif
     stk[18] = s0; stk[19] = s1; stk[20] = s2; stk[21] = s3;
     stk[22] = s4; stk[23] = s5; stk[24] = s6; stk[25] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
@@ -20364,6 +20638,9 @@ static uint64_t engi_52C88(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     uint32_t r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, lr = lr0, t = 0;
     uint32_t fN = 0, fZ = 0, fC = 0, fV = 0, r23[2];
     uint32_t stk[24]; uint8_t *spp = (uint8_t *)&stk[24 - 8];
+#ifdef A4_STKPOISON
+    a4_stkpoison(stk, 16u);
+#endif
     stk[16] = s0; stk[17] = s1; stk[18] = s2; stk[19] = s3;
     stk[20] = s4; stk[21] = s5; stk[22] = s6; stk[23] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;

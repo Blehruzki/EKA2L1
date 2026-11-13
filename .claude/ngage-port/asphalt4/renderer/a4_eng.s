@@ -100,3 +100,27 @@ a4_orig_go:
         .global a4_g_base
 a4_g_base:
         .word   0xDEADBEEF          @ patched: (code + 0) - (this word): the game's code, where it runs
+@ __aeabi_memclr4/8/memclr(p, n): zero n bytes at p (round 69: -ftrivial-auto-var-init=zero on a4_eng.c clears the
+@ lifted functions' frames through these; the image links no C library). Eight bytes a store while they last, then bytes.
+        .global __aeabi_memclr4
+        .global __aeabi_memclr8
+        .global __aeabi_memclr
+__aeabi_memclr:
+        tst     r0, #3
+        bne     3f
+__aeabi_memclr4:
+__aeabi_memclr8:
+        mov     r2, #0
+        mov     r3, #0
+        subs    r1, r1, #8
+        blt     2f
+1:      stmia   r0!, {r2, r3}
+        subs    r1, r1, #8
+        bge     1b
+2:      adds    r1, r1, #8
+        bxeq    lr
+3:      mov     r2, #0
+4:      subs    r1, r1, #1
+        bxlt    lr
+        strb    r2, [r0], #1
+        b       4b

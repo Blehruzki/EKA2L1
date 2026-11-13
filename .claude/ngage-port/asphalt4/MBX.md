@@ -9929,3 +9929,83 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   lifted.c, a4_gobj_copy and its call. (c) Not entered: a mesh of more than 6 texture groups or a held store of 24
   meshes (refused / reset), a car mesh whose texture changes under the same address (the fingerprint), the garage
   and menus (refused outside a mesh frame), the phone's own GPU on per-car modelviews.
+
+## Phone round 68 (r68 f5231dc6): "impossible to play" -- the speed keeps resetting, the car slides as on ice and
+## will not turn, a traffic car goes back and forth; "I think physics are broken"
+
+- Telemetry (8 captures, capidx 46-53, the last ~22 s of the run; copied to the scratchpad's phone68/): 52.2 ms a
+  render (bench r68t2 34.6); 3D 24.7-28.7 (bench 13.6), comp 9.0-10.0 (read 6.9), 2D 2.8; render call +12992 43.6
+  ms; steps 2,415 in 1,272 spans (n = 1: 298, 2: 869, 3: 52, 4: 42, 5: 11; the bench's n = 4-5 is 2 in 3,410),
+  1.2 ms a step; textures remade 1,518 (bench 0-115), 78 held, 92 evicted (bench 0): the phone's texture store
+  thrashes, a draw cost of its own.
+- The frame record (417 frames, the player's car as drawn): the car crawls, ~0.1 u/ms for the whole 22 s (r68t2
+  ~2 u/ms in a race): first reversing (moving along ~+17 deg while its heading is 1136/2048, ~200 deg), then
+  forward along ~225 deg while its heading swings 1136 -> 1281 -> 1160 -> 1226 -- the motion does not follow the
+  heading (the "ice"). Camera yaw and heading one-frame reversals 0: the camera follows the car; the car itself
+  is what is wrong.
+- The 3x engine (r63+) ran on a phone for the first time in r68; r60 (the last phone build) ran none of the
+  lifted engine functions (A4_ENG_ALL was new in r63). So every engine change since r60 is untested on hardware.
+- Bench s68h (r68 + CARREC, '5' held, a heavier GPU model 6,45,300,16,5000,800,5,30,2300 for the phone's frame
+  lengths): 37.0 ms a render call (not the phone's 52), spans n = 1: 1,073, 2: 1,492, 3: 47, 5: 2; the car drives
+  (~1.5 u/ms, heading and motion together). Frame length and two-step spans alone do not reproduce it.
+- Next (bench): what the phone has that the bench does not. The lifted functions' frames are C arrays
+  (stk[], uninitialised); on the phone the GL driver's own code and euser's run on that stack between the
+  game's steps, on the bench the GL is the emulator's (off the guest stack) -- a slot a substep reads that this
+  call never wrote is the previous call's value here and junk there. A4_STKPOISON (bench only: lift.py emits a
+  call at each lifted function's entry, a4_stkpoison in a4_eng.c fills its frame with xorshift junk; r68 rebuilt
+  without it byte-identical, f5231dc6). Run p68: running.
+  Not a repeat of: round 63's oracle o1/o3 (no junk on the stack), the r68 battery (the same).
+- p68 (r68 + CARREC + A4_STKPOISON, '5' held, 120 s): the car drives (~2.5 u/ms). Junk in the lifted frames is
+  not it.
+- The phone's frames, read closely: from the car's first forward frame its step is exactly (-2, -2) units a
+  substep (-4/-4 a two-substep frame, -6/-6 three) for 17 s -- no acceleration, no deceleration, the direction
+  fixed at 225 deg while the heading went 1281 -> 1160 -> 1226: a frozen velocity. The screenshot: Paris at
+  night, the Veyron, lap 1/3, WANTED, 9 km/h with the nitro's flame.
+- The bench has had it since r65 and it was read as the bench driver: diagscan.py over every bench capture in
+  the scratchpad -- r67t2 143 frames of a fixed whole-unit step (6/4, 5/5, 4/6 along a guard rail, 64 km/h on
+  the speedometer, WANTED), r65t2 the same at its end ("crawled 0.12 u/ms on one heading for its last 16 s",
+  round 65). r63t2 and r64t2 clean.
+- Caught on the bench with the car recorder: st1 (q68 = r68 + CARREC, '5' held, 120 s): steps ~732-1160 (36 s)
+  the velocity frozen at (6, 15, 12), then (6, 15, -3), against a target (+680) of (70-77, 0, 45-50); not a
+  wreck (+34 = -1), no contact after step 734 (+E0 counts up), height on the ground (+8 = +D0). It froze as a
+  contact with another car ended (+DC set, speed 102 -> 15 over steps 700-730). The velocity is the measure's
+  (+22832: 3 x the substep's displacement, every component a multiple of 3), the displacement a third of the
+  velocity: once the control's change is nil, (6, 15, 12) is a fixed point.
+- And the grip. +9FC (the traction's source: T = grip x 500 / 144, +526E0) in every recording: stock (o1)
+  1,048,576 (its ceiling) in 2,026 of 2,031 race steps, y60b (the stock engine) 1,048,576 in all 736; every 3x
+  recording (o3, y63b, y68b, st1) 4,096 in every race step. The 3x engine has driven every car on 0.4% of its
+  grip since r63. The grip rises 0xD55 a step on the road (+1E602) and is set to 4,096 by the contact routine
+  (+1EAAC) when car+B28 bit 7 is set (the car-to-car collision +1FDEC sets it, +1DE78 clears it at entry) -- but
+  bit 7 is never set at a record, so the writer of 4,096 is not yet known. Next: EKA2L1_WATCH on the player's
+  +9FC (0x023FA41C on q68), each writing PC once. Run gw1: running.
+- gw1 (EKA2L1_WATCH=023FA41C, WATCHONCE): writers +1AB8E (the game: 0x100000 at the car's set-up), the lifted
+  +1DE78 (+C9240 / +C9250: the rise and its ceiling) and the lifted +1EA64 at +0CD020: 0x1000. bw1 (the same on
+  car+B28): bit 7 is set by +1FDEC (the car-to-car hit) and cleared by +1DE78 -- and vp68 (A4_VELPROBE: per
+  substep, the player's control) shows car-to-car hits on 42 of ~1,600 substeps, real ones (partners 70-180
+  units away), while the grip at the velocity change is 5,233/5,234 on every substep (4,096 + a third of 0xD55).
+- The cause, in the compiled code: +0CD010.. in a4_q68.exe is `add r0, sl, #0x9c0; ...; mov r0, #0x1000;
+  str r0, [sl, #0x9fc]` -- no load of car+B28, no test. In the IR (clang -O2 -emit-llvm of a4_eng.c with C68's
+  flags) the test is `tail call void @llvm.assume((B28 & 0x80) != 0)`: clang proved the bit-clear path undefined
+  and removed it. The lifted functions keep the game's stack in a C array (stk[]) never initialised, and read
+  slots this call never wrote (stale stack to the game's Thumb; an undefined value to C); the grip store's pointer
+  could alias the array, so only the other path read a provably undefined slot. The IR also passes undefined stack
+  words as `noundef` arguments at three calls (+1CDDA, +239B6 -- the box test --, +22C60 from their callers):
+  immediate undefined behaviour too. A4_STKPOISON (p68) wrote the arrays through an opaque call, which is why its
+  grip was stock's: 1,048,576 in 738 of 755 race steps, 0 / 4,096 / rising after real events.
+- So every car in every build since r63 (the first to run the lifted engine) drove on 0.4% of its grip: the car
+  reaches its velocity target at most T/48 a substep with T = 18,170 instead of 3.6 M -- it slides ("icy"), does
+  not follow its heading ("impossible to turn"), and every knock costs speed it regains slowly ("the speed keeps
+  resetting"); a car pinned against another or a rail can sit at a fixed velocity indefinitely (st1, the phone).
+  The bench's straight '5'-held drives barely need grip, which is why they looked right.
+- The fix (tools/injector.py): a4_eng.c (which includes eng/lifted.c) compiled with -ftrivial-auto-var-init=zero:
+  every local zeroed, nothing undefined left for the optimiser (A4_NOZEROINIT=1 builds the old way). The zeroing
+  goes through __aeabi_memclr4 (a4_eng.s, new: the image links no C library). IR with it: no llvm.assume, no
+  undefined argument. Compiled +1EA64: `ldr r0, [r8, #0xb28]; tst r0, #0x80` before the grip store. z69 (C68 +
+  the fix): 928,660 bytes (r68 + 1,544). Run zq1 (z69 + CARREC, '5' held, 120 s): running.
+- zq1: whole (faults=1, the known one). Grip in the race's steps: 1,048,576 in 991 of 1,258; 4,096 (17), 0 (8) and
+  the rise after each (5,234, 6,372, 8,647 ...) -- stock's pattern. +E4 never above 0 (stock's; r68's runs 1-6).
+  |velocity - target| (x + z, the race's moving steps): median 2, 90% 37, over 6 in 20.0% (stock o1 0 / 12 /
+  11.9%, a lockstep autopilot drive; r68 s68h 4 / 72 / 42.0%, st1 26 / 116 / 64.2%; p68 2 / 16 / 15.0%). Speed
+  (+B4) median 206 (r68 113-145, p68 217). Not a repeat of: p68 (the arrays written through an opaque call, not
+  zeroed; its build is not a phone build). Next: o3z (the round 63 oracle on C68 + the fix, jtrun 90 s, against
+  o1) and tc1 (EKA2L1_WATCH on the traffic's two clocks, race+0x378/+0x37C = 0x02039F48:0x02039F50): queued.

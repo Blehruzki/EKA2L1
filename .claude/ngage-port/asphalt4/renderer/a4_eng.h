@@ -6,6 +6,9 @@
 #define A4_ENG_H
 #include <stdint.h>
 #define MEM32(a)  (*(volatile uint32_t *)(uintptr_t)(a))
+#ifdef A4_STKPOISON
+void a4_stkpoison(uint32_t *p, uint32_t n);   /* bench: a4_eng.c */
+#endif
 #define MEM16(a)  (*(volatile uint16_t *)(uintptr_t)(a))
 #define MEM8(a)   (*(volatile uint8_t *)(uintptr_t)(a))
 #define MEMS16(a) (*(volatile int16_t *)(uintptr_t)(a))
@@ -258,6 +261,7 @@ void eng_cam_whole(uint32_t sp, uint32_t *r23);
 void eng_cam_unblend(void);
 #define ENG_KPEEK(sp) 0
 #define ENG_KMERGE(sp) ((void)0)
+#define ENG_VP(t, car, a, b, c, d, e) ((void)0)
 int32_t eng_thirdv(uint32_t key, int32_t v);
 void ENG_BEGIN(uint32_t race);
 extern const uint16_t eng_frame_off[10];
@@ -318,9 +322,36 @@ static inline void ENG_BEGIN(uint32_t race)
     }
 #endif
     if (ENG->flush) { for (uint32_t i = 0; i < 64u; i++) ENG->lc[i] = 0; ENG->flush = 0; }
+#ifdef A4_VELPROBE
+    {   /* the player car, for the probe */
+        uint32_t pl = *(volatile uint32_t *)(race + 0x390), idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 0u;
+        ENG->dbg[6] = idx < 16u ? *(volatile uint32_t *)(race + 0x394 + 4u * idx) : 0u;
+    }
+#endif
     ENG->sub = ENG->cnt % 3u; ENG->cnt++;
     if (ENG->sub == 0u) { ENG->nsnd = 0; ENG->camv = 0; ENG->loop = 0; }
 }
+/* bench (A4_VELPROBE, phone round 68): per substep, the player car's control -- its entry, the velocity's change
+ * toward its target before and after the substep's scaling, the vector the move adds -- 8 words a record, a ring of
+ * 384 at 0x5A2000 (A4_SCRATCH_SIZE >= 0x1A6000) handed to a4_camp_emit (EKA2L1_PCMEM) when it wraps. Never a phone
+ * build. */
+#ifdef A4_VELPROBE
+static inline void eng_vp(uint32_t tag, uint32_t car, uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
+{
+    extern void a4_camp_emit(const void *);
+    volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+    uint32_t i;
+    volatile uint32_t *q;
+    if (car != ENG->dbg[6]) return;
+    i = rg[0] % 384u; q = rg + 4u + 8u * i;
+    q[0] = tag | (ENG->sub << 8); q[1] = ENG->cnt; q[2] = a; q[3] = b; q[4] = c; q[5] = d; q[6] = e; q[7] = car;
+    rg[0] = i + 1u;
+    if (i + 1u == 384u) { rg[0] = 0; a4_camp_emit((const void *)(rg + 4u)); }
+}
+#define ENG_VP(t, car, a, b, c, d, e) eng_vp((t), (car), (a), (b), (c), (d), (e))
+#else
+#define ENG_VP(t, car, a, b, c, d, e) ((void)0)
+#endif
 /* the camera's placement as the whole step's +12DEC made it, for the substeps to make again on the moved cars */
 static inline void eng_cam_save(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t sp)
 {

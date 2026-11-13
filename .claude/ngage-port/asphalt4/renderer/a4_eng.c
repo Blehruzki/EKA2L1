@@ -7,7 +7,18 @@
 #if defined(A4_ENG3) && (defined(A4_HALFPHYS) || defined(A4_HALFSPEC))
 #error "the 3x engine and the half-step machinery share scratch and cannot be built together"
 #endif
-#if defined(A4_CAMPROBE) || defined(A4_KEYPROBE)
+#ifdef A4_STKPOISON
+/* bench (phone round 68): every lifted function's frame filled with junk at its entry, as the phone's stack
+ * holds what its GL driver and kernel calls left there (the bench's GL is the emulator's, off the guest stack):
+ * a read of a slot this call never wrote then reads junk here too. Never a phone build. */
+__attribute__((noinline)) void a4_stkpoison(uint32_t *p, uint32_t n)
+{
+    uint32_t x = ENG->dbg[7] | 1u;                   /* its state in the engine's block (the image has no data) */
+    for (uint32_t i = 0; i < n; i++) { x ^= x << 13; x ^= x >> 17; x ^= x << 5; ((volatile uint32_t *)p)[i] = x; }
+    ENG->dbg[7] = x;
+}
+#endif
+#if defined(A4_CAMPROBE) || defined(A4_KEYPROBE) || defined(A4_VELPROBE)
 __attribute__((noinline)) void a4_camp_emit(const void *r) { __asm__ volatile("" : : "r"(r) : "memory"); }
 #endif
 #ifdef A4_ENG3

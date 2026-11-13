@@ -217,6 +217,13 @@ def build_blob(link_addr, tmp, clean=False, gl=False):
                 flags += ['-x', 'assembler-with-cpp'] + defs + (['-DA4_CLEAN'] if clean else [])
         else:
             flags = CFLAGS + extra + (['-DA4_CLEAN'] if clean else []) + (['-DA4_GL'] if gl else [])
+            if os.path.basename(src) == 'a4_eng.c' and not os.environ.get('A4_NOZEROINIT'):
+                # phone round 68: the lifted functions (eng/lifted.c, included here) read stack slots and pass stack
+                # argument words that the call never wrote -- stale stack to the game's Thumb, undefined behaviour to
+                # C, and clang -O2 used it: +1EA64's test of car+B28 bit 7 became llvm.assume(bit 7 set), so the grip
+                # +9FC was set to 4096 on every substep (0.4% of stock's) -- the "icy" cars of r63-r68. Every local
+                # zeroed: no undefined value left for the optimiser to reason from (A4_NOZEROINIT=1: the old code)
+                flags = flags + ['-ftrivial-auto-var-init=zero']
         subprocess.check_call(['clang', *flags, '-c', src, '-o', o])
         objs.append(o)
     ld = os.path.join(tmp, 'a4.ld')
