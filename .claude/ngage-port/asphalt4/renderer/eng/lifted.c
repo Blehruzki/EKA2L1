@@ -3582,7 +3582,7 @@ L_1E8BC:
     { uint32_t ta = r4, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e8bc adds r0, r4, #4 */
     { uint32_t ta = sp, tb = 0xF8u; t = ta + tb; r1 = t; }       /* 01e8be add r1, sp, #0xf8 */
     /* engine: position += velocity (+521A0): a third of the step's */
-    { uint32_t k_; ENG_VP(4u, r4, MEM32(r1), MEM32(r1 + 4u), MEM32(r1 + 8u), r1, r0); for (k_ = 0; k_ < 12u; k_ += 4u) { uint32_t ea_ = r0 + k_; MEM32(ea_) = eng_third(ea_, MEM32(ea_), MEM32(ea_) + MEM32(r1 + k_)); } }  /* was: { uint64_t rr = (ENGD_521A0 ? engi_521A0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x1E8C4)) : a4_eng_call0(GAMEFN(0x521A0), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } ( 01e8c0 bl #0x521a0 ) */
+    { uint32_t k_; ENG_VP(4u, r4, MEM32(r1), MEM32(r1 + 4u), MEM32(r1 + 8u), r1, r0); for (k_ = 0; k_ < 12u; k_ += 4u) { uint32_t ea_ = r0 + k_; const uint32_t o_ = MEM32(ea_); MEM32(ea_) = eng_third(ea_, o_, o_ + MEM32(r1 + k_)); if (!ENG_SUB) eng_pown(r0 - 4u, k_ / 4u, (int32_t)(MEM32(ea_) - o_)); } }  /* was: { uint64_t rr = (ENGD_521A0 ? engi_521A0(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x1E8C4)) : a4_eng_call0(GAMEFN(0x521A0), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } ( 01e8c0 bl #0x521a0 ) */
     /* (replaced above) */
     r0 = S32(0x158u);                                            /* 01e8c4 ldr r0, [sp, #0x158] */
     r0 = L8(r0 + 0x4u);                                          /* 01e8c6 ldrb r0, [r0, #4] */
@@ -3609,9 +3609,7 @@ L_1E8E0:
     r3 = S32(0x1A8u);                                            /* 01e8ee ldr r3, [sp, #0x1a8] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e8f0 movs r0, r4 */
     /* engine: a pursuer's reaction (+1C48E): its AI, on the whole step */
-    if (!ENG_SUB) { ENG->pw[0] = MEM32(r4 + 4u); ENG->pw[1] = MEM32(r4 + 8u); ENG->pw[2] = MEM32(r4 + 0xCu); }
     if (!ENG_SUB) { { uint64_t rr = a4_eng_call(GAMEFN(0x1C48E), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } } /* 01e8f2 bl #0x1c48e */
-    if (!ENG_SUB && MEM32(r4 + 0x34u) == 0xFFFFFFFFu) { uint32_t k_; for (k_ = 0; k_ < 3u; k_++) { const int32_t w_ = (int32_t)(MEM32(r4 + 4u + 4u * k_) - ENG->pw[k_]); if (w_ > -0x10000 && w_ < 0x10000) MEM32(r4 + 0xA8u + 4u * k_) += (uint32_t)eng_sdiv(2 * w_, 3); } }
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e8f2 bl #0x1c48e */
 L_1E8F6:
     r1 = L32(r7 + 0x38u);                                        /* 01e8f6 ldr r1, [r7, #0x38] */
@@ -6360,7 +6358,7 @@ static uint64_t engi_1EA64(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     spp -= 32; S32(0) = r0; S32(4) = r1; S32(8) = r2; S32(12) = r4; S32(16) = r5; S32(20) = r6; S32(24) = r7; S32(28) = lr; /* 01ea64 push {r0, r1, r2, r4, r5, r6, r7, lr} */
     spp -= 0x70u;                                                /* 01ea66 sub sp, #0x70 */
     /* engine: substeps: a wreck does not move (A4_WRECK3: it does) */
-    if (ENG_SUB && !ENG_WRECK3 && MEM32(r0 + 0x34u) != 0xFFFFFFFFu) return 0;
+    if (!ENG_SUB) eng_pfix(r0); else eng_pstep(r0); if (ENG_SUB && !ENG_WRECK3 && MEM32(r0 + 0x34u) != 0xFFFFFFFFu) return 0;
     r4 = r0; fN = r4 >> 31; fZ = r4 == 0;                        /* 01ea68 movs r4, r0 */
     r1 = 0x61u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01ea6a movs r1, #0x61 */
     t = SHL_C(r1, 0x5u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ea6c lsls r1, r1, #5 */
@@ -14560,6 +14558,8 @@ L_2205A:
     S32(0x8u) = r2;                                              /* 022098 str r2, [sp, #8] */
     t = r5; r0 = L32(t + 0); r1 = L32(t + 4); r2 = L32(t + 8); r5 = t + 12; /* 02209a ldm r5!, {r0, r1, r2} */
     { uint32_t ta = r4, tb = 0xA8u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r4 = t; } /* 02209c adds r4, #0xa8 */
+    /* engine: a pursuer given a velocity (the police reaction, the police spawn): +0A8 a third of it back, for the 3x measure */
+    if (ENG_IS3 && (lr0 == GAMEFN(0x1CD22) || lr0 == GAMEFN(0x20614))) { const uint32_t c_ = r4 - 0xA8u; r0 = MEM32(c_ + 4u) - (uint32_t)eng_sdiv((int32_t)MEM32(c_ + 0x10u), 3); r1 = MEM32(c_ + 8u) - (uint32_t)eng_sdiv((int32_t)MEM32(c_ + 0x14u), 3); r2 = MEM32(c_ + 0xCu) - (uint32_t)eng_sdiv((int32_t)MEM32(c_ + 0x18u), 3); }
     t = r4; L32(t + 0) = r0; L32(t + 4) = r1; L32(t + 8) = r2; r4 = t + 12; /* 02209e stm r4!, {r0, r1, r2} */
     spp += 0xCu;                                                 /* 0220a0 add sp, #0xc */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 0220a2 pop {r4, r5, r6, r7, pc} */

@@ -228,7 +228,10 @@ struct eng {
     uint32_t kcopy[8];               /* the key object as the next whole step's handler will find it (0x1D bytes) */
     uint32_t loop;                   /* the whole step entered the car loop (+14672): the substeps run only then */
     uint32_t meas1;                  /* +22832 measures a wreck: its displacement is a whole step's (x 1) */
-    uint32_t pw[3];                  /* a pursuer's position before +1C48E (which may move it): its jump counted once */
+    uint32_t pc[16], pw[16][3], pa[16][3]; /* the pursuers at the whole step's start: car, position, +0A8 */
+    int32_t pown[16][3];             /* their own move since (+1E8C0): the rest is the game placing them, counted once */
+    uint32_t ps[16];                 /* a pursuer whose whole-step jump the substeps are giving back */
+    int32_t plft[16][3];             /* what is left of it (2/3 at the whole step's move, 0 after substep 2) */
     uint32_t wy0, wyset;             /* A4_WRECK3: the wreck's height before this substep's +2292A, and its path set it */
     uint32_t lc[64], ls[64][3], lv[64][3]; /* the orientation's angles a step late: the word, the last three substeps' count and value */
     uint32_t kc[16], ks[16];         /* the wall's first push: the car (+678's address) and the step it hit, bit 31 still to come */
@@ -243,6 +246,7 @@ struct eng {
  * function reach one of them, the link fails instead of a step running with no engine behind it. */
 extern volatile struct eng a4_eng_absent;
 #define ENG (&a4_eng_absent)
+#define ENG_IS3 0
 #define ENG_SUB (ENG->sub)
 #define ENG_KEYS (ENG->keys)
 #define ENG_WRECK3 0
@@ -250,6 +254,9 @@ extern volatile struct eng a4_eng_absent;
 int32_t eng_sdiv(int32_t n, int32_t d);
 uint32_t eng_third(uint32_t ea, uint32_t old, uint32_t nw);
 uint32_t eng_ai_slot(uint32_t car);
+void eng_pown(uint32_t car, uint32_t j, int32_t d);
+void eng_pfix(uint32_t car);
+void eng_pstep(uint32_t car);
 uint32_t eng_udiv(uint32_t n, uint32_t d);
 uint64_t eng_c_1b2d6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t sp, uint32_t *r23);
 uint32_t eng_alag(uint32_t ea, uint32_t v);
@@ -276,6 +283,7 @@ uint64_t eng_h_345e4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_
 #define A4_ENG_STATE 0x0045D000u
 _Static_assert(A4_ENG_STATE + sizeof(struct eng) <= 0x00460000u, "the engine state past the scratch block");
 #define ENG ((volatile struct eng *)A4_ENG_STATE)
+#define ENG_IS3 1
 /* the slots +141B0's race rules (+1433C..+1452C) write, read by the traffic and car loop after them */
 static const uint16_t eng_frame_off[] = { 0xC8, 0xCC, 0xD0, 0xD4, 0x110, 0x114, 0x118, 0x11C, 0x120, 0x124 };
 #define ENG_NFRAME (sizeof(eng_frame_off) / sizeof(eng_frame_off[0]))
@@ -295,6 +303,82 @@ static const uint16_t eng_frame_off[] = { 0xC8, 0xCC, 0xD0, 0xD4, 0x110, 0x114, 
 #define ENG_WRECK3 0
 #define ENG_SUB_END(car) (ENG_SUB == 2u || (ENG_SUB == 0u && (!ENG->loop || *(volatile uint32_t *)(uintptr_t)((car) + 0x34u) != 0xFFFFFFFFu)))
 #endif
+/* Phone round 69 (edits.py at +1E8C0 and +1EA68): a pursuer (+C3C: the helicopter, the cops) moved by the game's own
+ * logic on the whole step (+1C48E's placement and wobble, the police's) -- a jump w a whole step's long. At 3x it was
+ * measured as a substep's move (x3: the error flipped and doubled each step), and drawn at 11.72 Hz. Now spread over
+ * the step: the whole step leaves the car 2w/3 short and each substep gives back w/3, so the measure reads w a step
+ * (stock's) and the car moves evenly; the whole step's logic finds it where the game put it. */
+static inline void eng_psnap(uint32_t race)
+{
+    uint32_t k, j;
+    for (k = 0; k < 16u; k++) {
+        const uint32_t car = *(volatile uint32_t *)(uintptr_t)(race + 0x394u + 4u * k);
+        volatile int32_t *c = (volatile int32_t *)(uintptr_t)car;
+        if (ENG->ps[k] && ENG->ps[k] == car)              /* a spread its substeps did not finish: finished now, */
+            for (j = 0; j < 3u; j++) {                    /* out of the measure's sight (+0A8 with it) */
+                c[1 + j] = (int32_t)((uint32_t)c[1 + j] + (uint32_t)ENG->plft[k][j]);
+                c[0xA8 / 4 + j] = (int32_t)((uint32_t)c[0xA8 / 4 + j] + (uint32_t)ENG->plft[k][j]);
+            }
+        ENG->ps[k] = 0; ENG->pc[k] = 0;
+        for (j = 0; j < 3u; j++) ENG->plft[k][j] = 0;
+        if (!car || !*(volatile uint8_t *)(uintptr_t)(car + 0xC3Cu)) continue;
+        ENG->pc[k] = car;
+        for (j = 0; j < 3u; j++) {
+            ENG->pw[k][j] = (uint32_t)c[1 + j];
+            ENG->pa[k][j] = (uint32_t)c[0xA8 / 4 + j];
+            ENG->pown[k][j] = 0;
+        }
+    }
+}
+static inline void eng_pown(uint32_t car, uint32_t j, int32_t d)
+{
+    uint32_t k;
+    for (k = 0; k < 16u; k++) if (ENG->pc[k] == car) { ENG->pown[k][j] += d; return; }
+}
+static inline int32_t eng_sdiv(int32_t n, int32_t d);
+/* the whole step, at the pursuer's move (+1EA64's entry, before its measure) */
+static inline void eng_pfix(uint32_t car)
+{
+    uint32_t k, j;
+    for (k = 0; k < 16u; k++) {
+        volatile int32_t *c;
+        int32_t w[3];
+        if (ENG->pc[k] != car) continue;
+        ENG->pc[k] = 0;
+        c = (volatile int32_t *)(uintptr_t)car;
+        if ((uint32_t)c[0x34 / 4] != 0xFFFFFFFFu) return;                       /* a wreck: its measure is a step's */
+        if (c[0xC70 / 4] == 5) return;                                          /* type 5: +1EA64 does not move it */
+        for (j = 0; j < 3u; j++) if ((uint32_t)c[0xA8 / 4 + j] != ENG->pa[k][j]) return;   /* +0A8 set this step */
+        for (j = 0; j < 3u; j++) {
+            w[j] = (int32_t)((uint32_t)c[1 + j] - ENG->pw[k][j]) - ENG->pown[k][j];
+            if (w[j] <= -0x40000 || w[j] >= 0x40000) return;                    /* not a step's jump: a respawn */
+        }
+        for (j = 0; j < 3u; j++) {
+            const int32_t q = eng_sdiv(2 * w[j], 3);
+            c[1 + j] = (int32_t)((uint32_t)c[1 + j] - (uint32_t)q);
+            ENG->plft[k][j] = q;
+        }
+        ENG->ps[k] = car;
+        return;
+    }
+}
+/* substeps 1 and 2, at the pursuer's move: a third of the jump each */
+static inline void eng_pstep(uint32_t car)
+{
+    uint32_t k, j;
+    for (k = 0; k < 16u; k++) {
+        volatile int32_t *c;
+        if (ENG->ps[k] != car) continue;
+        c = (volatile int32_t *)(uintptr_t)car;
+        for (j = 0; j < 3u; j++) {
+            const int32_t a = ENG_SUB == 1u ? eng_sdiv(ENG->plft[k][j], 2) : ENG->plft[k][j];
+            c[1 + j] = (int32_t)((uint32_t)c[1 + j] + (uint32_t)a);
+            ENG->plft[k][j] -= a;
+        }
+        if (ENG_SUB == 2u) ENG->ps[k] = 0;
+        return;
+    }
+}
 static inline void ENG_BEGIN(uint32_t race)
 {
     if (ENG->magic != ENG_MAGIC || ENG->race != race) {
@@ -305,6 +389,7 @@ static inline void ENG_BEGIN(uint32_t race)
         for (uint32_t i = 0; i < 64u; i++) ENG->lc[i] = 0;
         ENG->flush = 0;
         ENG->tlast[0] = ENG->tlast[1] = 0; ENG->tdel[0] = ENG->tdel[1] = 0;
+        for (uint32_t i = 0; i < 16u; i++) { ENG->pc[i] = 0; ENG->ps[i] = 0; }
     }
 #ifdef A4_ENGDBG
     {   /* bench: the last substep's record ('ENGS': count, substep, path bits, keys) with the player car */
@@ -350,7 +435,7 @@ static inline void ENG_BEGIN(uint32_t race)
     }
 #endif
     ENG->sub = ENG->cnt % 3u; ENG->cnt++;
-    if (ENG->sub == 0u) { ENG->nsnd = 0; ENG->camv = 0; ENG->loop = 0; }
+    if (ENG->sub == 0u) { ENG->nsnd = 0; ENG->camv = 0; ENG->loop = 0; eng_psnap(race); }
 }
 /* bench (A4_VELPROBE, phone round 68): per substep, the player car's control -- its entry, the velocity's change
  * toward its target before and after the substep's scaling, the vector the move adds -- 8 words a record, a ring of

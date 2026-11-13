@@ -91,7 +91,7 @@ B(0x1E684, '{ int32_t m_ = (int32_t)MEM32(sp + 0x104u), t_ = (int32_t)MEM32(sp +
 T(0x1E7F8, 'drift 9F8 += f(turn)'); T(0x1E804, 'drift 9F8 += f(turn)')
 T(0x1E87E, '81C, the turn held, += A20')
 T(0x1E896, 'heading -= A20 (reversing)'); T(0x1E8A2, 'heading += A20')
-R(0x1E8C0, '{ uint32_t k_; ENG_VP(4u, r4, MEM32(r1), MEM32(r1 + 4u), MEM32(r1 + 8u), r1, r0); for (k_ = 0; k_ < 12u; k_ += 4u) { uint32_t ea_ = r0 + k_; MEM32(ea_) = eng_third(ea_, MEM32(ea_), MEM32(ea_) + MEM32(r1 + k_)); } }',
+R(0x1E8C0, '{ uint32_t k_; ENG_VP(4u, r4, MEM32(r1), MEM32(r1 + 4u), MEM32(r1 + 8u), r1, r0); for (k_ = 0; k_ < 12u; k_ += 4u) { uint32_t ea_ = r0 + k_; const uint32_t o_ = MEM32(ea_); MEM32(ea_) = eng_third(ea_, o_, o_ + MEM32(r1 + k_)); if (!ENG_SUB) eng_pown(r0 - 4u, k_ / 4u, (int32_t)(MEM32(ea_) - o_)); } }',
   'position += velocity (+521A0): a third of the step\'s')
 # +1B9E0, steering
 for a in (0x1BA28, 0x1BA52, 0x1BA7E, 0x1BA9A): T(a, 'A1C, the steering rate, eased a step')
@@ -205,18 +205,30 @@ B(0x14EF0, 'if (!ENG_SUB) eng_cam_whole(sp, r23);', 'the chase camera: its offse
 # after the move) -- the AI's choices, on the whole step; the target it sets stays in +680 for the substeps
 G(0x1E5B2, 'a pursuer\'s target velocity (+1D20A): its AI, on the whole step')
 G(0x1E8F2, 'a pursuer\'s reaction (+1C48E): its AI, on the whole step')
-# Phone round 69: +1C48E also moves the pursuer itself, once a step -- it places it at an eased point off the car it
-# follows (+1C696, the helicopter and the cops) or adds a hover wobble (+1C4FC, state 6). The measure that follows
-# (+22832, in +1EA64) takes 3 x (position - +0A8) as the step's velocity, so that jump -- a whole step's -- came
-# out x3: the next substeps carried the car three times the jump the other way, the next placement pulled it
-# back, and the error flipped and doubled each step (cs69p: the helicopter flung 14,000 units, and reset). Counted
-# once, as the game counts it: +0A8 moved on by two thirds of the jump, so the measure reads 3 x the substep's own
-# move plus the jump (stock: the step's move plus the jump). Not for a wreck (its measure is a step's already).
-EDITS[0x1E8F2]['before'] = ('if (!ENG_SUB) { ENG->pw[0] = MEM32(r4 + 4u); ENG->pw[1] = MEM32(r4 + 8u); '
-                            'ENG->pw[2] = MEM32(r4 + 0xCu); }')
-EDITS[0x1E8F2]['after'] = ('if (!ENG_SUB && MEM32(r4 + 0x34u) == 0xFFFFFFFFu) { uint32_t k_; for (k_ = 0; k_ < 3u; k_++) { '
-                           'const int32_t w_ = (int32_t)(MEM32(r4 + 4u + 4u * k_) - ENG->pw[k_]); '
-                           'if (w_ > -0x10000 && w_ < 0x10000) MEM32(r4 + 0xA8u + 4u * k_) += (uint32_t)eng_sdiv(2 * w_, 3); } }')
+# Phone round 69: a pursuer (+C3C: the helicopter, the cops) is also moved by the game's logic once a step, not by
+# its physics: +1C48E places it at an eased point off the car it follows (+1C696) or adds a hover wobble (+1C4FC,
+# state 6), and a police car of type 2 is placed beside the player by the whole step's logic too. The measure in
+# +1EA64 (+22832) takes 3 x (position - +0A8) as the step's velocity, so such a jump -- a whole step's -- came out
+# x3: the next substeps carried the car twice the jump past, the next placement pulled it back, and the error
+# flipped and doubled each step (cs69p: the helicopter flung 14,000 units; cs70p: police slot 9, 45,000). Counted
+# once and spread over the step (eng_psnap / eng_pown / eng_pfix / eng_pstep, a4_eng.h): each pursuer's place and
+# +0A8 at the whole step's start; its own move (+1E8C0) added up; at its move (+1EA64's entry) the rest of its
+# change is the jump w -- the car is left 2w/3 short and the substeps give back w/3 each, so the measure reads its
+# own move x3 plus w (stock: the step's move plus w) and the jump is drawn over the step, not at 11.72 Hz. Left
+# alone when +0A8 itself was set in the step (a respawn, a hit) and for a wreck or type 5.
+EDITS[0x1EA68]['before'] = 'if (!ENG_SUB) eng_pfix(r0); else eng_pstep(r0); ' + EDITS[0x1EA68]['before']
+# Phone round 69: +2202C sets a car's velocity v (a whole step's move) by +010 = v and +0A8 = position - v, so the
+# next measure (position - +0A8) reads v. At 3x the measure is 3 x that: v came out x3. The police reaction (+1CC18,
+# from +1C48E: the cop placed at the car it follows plus an offset, +1CD14, then given that car's velocity, +1CD1E)
+# made every following cop run three times the player's speed on the substeps and be pulled back each step -- the
+# "comical overshoot" (cs70r: police slot 14, -127 on the whole step, +118 and +116 on the substeps); the police spawn
+# (+20520, its call at +20610) the same once. For those two callers (by the return address the veneer passes),
+# +0A8 = position - v/3. The other callers (traffic, rails, the stuck check, collisions) are left as they were.
+B(0x2209E, 'if (ENG_IS3 && (lr0 == GAMEFN(0x1CD22) || lr0 == GAMEFN(0x20614))) { const uint32_t c_ = r4 - 0xA8u; '
+           'r0 = MEM32(c_ + 4u) - (uint32_t)eng_sdiv((int32_t)MEM32(c_ + 0x10u), 3); '
+           'r1 = MEM32(c_ + 8u) - (uint32_t)eng_sdiv((int32_t)MEM32(c_ + 0x14u), 3); '
+           'r2 = MEM32(c_ + 0xCu) - (uint32_t)eng_sdiv((int32_t)MEM32(c_ + 0x18u), 3); }',
+  'a pursuer given a velocity (the police reaction, the police spawn): +0A8 a third of it back, for the 3x measure')
 # +2292A, the wreck's scripted path: its frame (+034) and step (+048) counters and its end, once a game step --
 # on the wreck's last substep of the step (the whole step without A4_WRECK3, where the wreck runs on it only)
 for a in (0x22BBA, 0x22BEA): GE(a, 'r4', '+048, the wreck path\'s step counter')

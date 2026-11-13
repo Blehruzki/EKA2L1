@@ -10178,3 +10178,37 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
 - The jump camera (+12DEC: +5968's argument 5 while the air counters +AF0/+AF4 run) is +490A: rigid on the car
   (cam+0x10 = car + cam+0xAC x a factor + cam+0x54; no easing state), so the substeps' re-placement of it on the
   moved car is exact. Not the jump's "sensation" either; open.
+- cs70p (a4_cs70 with the first pursuer fix -- +0A8 moved around the +1C48E call only; Paris on the owner's save,
+  150 s): the helicopter did not fly; every racing car even (reversals 0-1). **Police slot 9 (type 2) came in at
+  cnt 4699 and flew apart as the helicopter did**: placed beside the player once a step ((40074, -759, -32811),
+  (40139, -762, -32719) ... the player at x 40,532), and per substep 1,800, 3,575, 6,929, 11,501, 22,642 -- doubling
+  each step to 45,000. So its placement is not inside +1C48E: the first fix covered the helicopter's path only.
+- The fix made general (a4_eng.h eng_psnap / eng_pown / eng_pfix; edits.py +1E8C0, +1EA68): at the whole step's
+  start every pursuer (+C3C) has its position and +0A8 kept; its own move (+1E8C0, the thirded position += v) is
+  added up through the step; at its move (+1EA64's entry, before the measure) the rest of its change since the
+  start is the game's jump w, and +0A8 moves on by 2w/3 -- left alone if +0A8 itself was set in the step (a
+  respawn or a hit sets it) and for a wreck or type 5 (+1EA64 skips type 5). Whatever places a pursuer once a step
+  -- +1C48E, the police logic, a spawn -- is then counted once, as in stock.
+- r70 rebuilt with it: a4_r70_cand.exe 665111aed153c76aa2d0c7da4cea39eff330323d05370749f3cc5045ec56f544, 929,772
+  bytes; twin a4_y70 (rec 700BA62C), probe a4_cs70 (camp_emit +0C64B4). cs70q (a4_cs70, Paris on the owner's save,
+  200 s): running.
+- The fix spread over the step (a4_eng.h eng_pstep): at the whole step's move the pursuer is left 2w/3 short and
+  substeps 1 and 2 give back w/3 each (before their measure), so the jump is drawn over the step and the whole
+  step's measure reads 3 x the own move + w; an unfinished spread (substeps not run: the countdown) is completed at
+  the next whole step's start with +0A8 moved alike (out of the measure's sight).
+- cs70q (before the spread; Paris, owner's save, 200 s): the helicopter flew at cnt 5782 -- no blow-up (jumps over
+  2,000: 3, against cs69p's 281), but it moved on the whole step only (jump, still, still: 11.72 Hz) -- stock's
+  motion, drawn choppy among 35 Hz frames.
+- cs70r (with the spread, 200 s): police slots 9 (type 2) and 14 (type 1) drove. Slot 14 pursuing: per substep
+  -127 (whole step), +118, +116 -- net +107 a step, the substeps three times too fast. The guard had left it alone
+  (+0A8 set in the step). Read: +1CC18 (from +1C48E for type != 4) places the cop at the car it follows plus an
+  offset (`stm r7!` at +1CD14) and gives it that car's velocity through +2202C (+1CD1E): +010 = v, +0A8 = position -
+  v. At 3x the measure is 3 x (position - +0A8) = 3v: every following cop ran at three times the player's speed on
+  the substeps and was pulled back each step -- **the cops' "comical overshoot"**.
+- Fix (edits.py at +2209E, in the lifted +2202C, which every game caller reaches through its entry veneer with its
+  own return address as lr0): for the police reaction (return +1CD22) and the police spawn (+20520's call, return
+  +20614), +0A8 = position - v/3, so the 3x measure reads v. The other callers (traffic +F62E/+FA34/+FF2A, rails
+  +1F2BE, the stuck check +1F386, +1E378/+1E3AC, +23980) are unchanged -- not read, so not touched (the traffic's
+  passes a difference of two path positions, its unit not settled). ENG_IS3 (a4_eng.h) keeps it out of the
+  render-only builds.
+- r70 rebuilt: a4_r70_cand.exe 930,992 bytes; cs70s / cs70t (a4_cs70, Paris, 200 s each, for a chase): running.
