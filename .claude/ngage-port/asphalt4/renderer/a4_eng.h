@@ -208,6 +208,9 @@ struct eng {
     int32_t cbhd;                    /* the car's heading at this whole step */
     uint32_t cbw;                    /* the pose words hold the blend's last write (cbwp): the game's own (cbgp) go back first */
     int32_t cbgp[5], cbwp[5];        /* cam+0x10..+0x20 (x, y, z, pitch, yaw) as the game placed them, and as written */
+    uint32_t kok, kobj, kmask;       /* A4_LIVEKEYS: the key object and mask the whole step's key handler (+25E8) had */
+    uint32_t kpeek, ksave[3];        /* a substep built its keys from a copy (kcopy): sp+0xDC, +0xA4, +0x10C to put back */
+    uint32_t kcopy[8];               /* the key object as the next whole step's handler will find it (0x1D bytes) */
     uint32_t loop;                   /* the whole step entered the car loop (+14672): the substeps run only then */
     uint32_t meas1;                  /* +22832 measures a wreck: its displacement is a whole step's (x 1) */
     uint32_t lc[64], ls[64][3], lv[64][3]; /* the orientation's angles a step late: the word, the last three substeps' count and value */
@@ -238,6 +241,8 @@ void eng_cam_save(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s
 void eng_cam_substep(uint32_t sp, uint32_t *r23);
 void eng_cam_whole(uint32_t sp, uint32_t *r23);
 void eng_cam_unblend(void);
+#define ENG_KPEEK(sp) 0
+#define ENG_KMERGE(sp) ((void)0)
 int32_t eng_thirdv(uint32_t key, int32_t v);
 void ENG_BEGIN(uint32_t race);
 extern const uint16_t eng_frame_off[10];
@@ -411,6 +416,58 @@ static inline void eng_cam_unblend(void)
     if (same) for (k = 0; k < 5u; k++) cam[4 + k] = (uint32_t)ENG->cbgp[k];
     ENG->cbw = 0;
 }
+/* Round 64 (A4_LIVEKEYS): the steering read on every substep. The game's key handler (+25E8, the step loop's
+ * +167AE) runs before a whole step only, as the game's (a press it latched on a substep would be gone by the
+ * step that acts on it), so a key reached the car up to 85 ms after it went down. A substep now builds the
+ * player's key word as the whole step does (+1477C..+14946, the 7/8 view keys skipped) from a copy of the key
+ * object with the handler run on the copy -- the state the next whole step's handler will find, the game's
+ * own object untouched (its edges, its double-tap count, the releases +25B6 posts) -- and takes from it the
+ * steering bits only (1, 2, 0x200, 0x400: actions 2-5, held keys); the presses (4 the start, 0x20, 0x40) and
+ * the brake (8, which the auto-throttle's 4 excludes) stay the whole step's, as the race rules and the
+ * whole-step decisions (+1BE86, +1B5DA) need them. A key down before substep 1 steers two substeps sooner,
+ * before substep 2 one. Not in a race's end (+128's +28 > 12: the key word forced to 8) or when the object
+ * is not the one the handler had. */
+#ifdef A4_LIVEKEYS
+#define ENG_LIVEMASK 0x603u
+static inline int eng_keys_peek(uint32_t sp)
+{
+    const uint32_t ko = MEM32(sp + 0xDCu), rs = MEM32(sp + 0x128u);
+    uint32_t k, stk[8] = { 0 }, o23[2];
+    if (!ENG->kok || ko != ENG->kobj || (ko & 3u) || !rs || MEM32(rs + 0x28u) > 0xCu) return 0;
+    for (k = 0; k < 8u; k++) ENG->kcopy[k] = MEM32(ko + 4u * k);
+    (void)a4_eng_call(GAMEFN(0x25E8), (uint32_t)(uintptr_t)ENG->kcopy, ENG->kmask, 0, 0, (uint32_t)(uintptr_t)stk, o23);
+    ENG->ksave[0] = ko; ENG->ksave[1] = MEM32(sp + 0xA4u); ENG->ksave[2] = MEM32(sp + 0x10Cu);
+    MEM32(sp + 0xDCu) = (uint32_t)(uintptr_t)ENG->kcopy;
+    ENG->kpeek = 1;
+    return 1;
+}
+static inline void eng_keys_merge(uint32_t sp)
+{
+    uint32_t live;
+    if (!ENG->kpeek) return;
+    ENG->kpeek = 0;
+    MEM32(sp + 0xDCu) = ENG->ksave[0]; MEM32(sp + 0xA4u) = ENG->ksave[1]; MEM32(sp + 0x10Cu) = ENG->ksave[2];
+    live = MEM32(sp + 0xD0u);
+    MEM32(sp + 0xD0u) = (ENG_KEYS & ~ENG_LIVEMASK) | (live & ENG_LIVEMASK);
+#ifdef A4_KEYPROBE
+    {   /* bench (round 64): per substep, the whole step's key word and the live one -- 4 words a record, a ring
+         * of 768 at 0x5A2000 (A4_SCRATCH_SIZE >= 0x1A6000), handed to a4_camp_emit (EKA2L1_PCMEM) when it wraps */
+        extern void a4_camp_emit(const void *);
+        volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+        uint32_t i = rg[0] % 768u;
+        volatile uint32_t *e = rg + 4u + 4u * i;
+        e[0] = ENG->cnt; e[1] = ENG->sub; e[2] = ENG_KEYS; e[3] = live;
+        rg[0] = i + 1u;
+        if (i + 1u == 768u) { rg[0] = 0; a4_camp_emit((const void *)(rg + 4u)); }
+    }
+#endif
+}
+#define ENG_KPEEK(sp) eng_keys_peek(sp)
+#define ENG_KMERGE(sp) eng_keys_merge(sp)
+#else
+#define ENG_KPEEK(sp) 0
+#define ENG_KMERGE(sp) ((void)0)
+#endif
 /* +1B2D6(car, effect, a2, a3): a car's sound or effect event. The game calls it from conditions it
  * checks once a step (a drift held, wrong way, a landing); on three substeps the same condition would
  * fire it three times. Once per car and effect a game step, at the first substep it happens on. */

@@ -9717,3 +9717,18 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
 - Candidate r64 = a4_r64_cand.exe (C63 + the camera fix, THIRDSTEP, scratch 0x1A0000):
   2fd6c8ebfc09fcc43a885f8609450c176c2d05371c8a1a71f1479164c80b6515, 919,032 bytes; twin y64; hooks as r63 (counters
   700BCA54, rec 700BA62C). Battery r64bat (r63bat on r64): running.
+- Input (owner: "online lagginess"): the keys reached the car at the game's 85 ms whole step only. A4_LIVEKEYS
+  (eng_keys_peek / eng_keys_merge, a4_eng.h; edits +14754, +14948; a4_eng_keys records the handler's object and
+  mask): a substep builds the player's key word as the whole step does (+1477C..+14946, the 7/8 view keys skipped)
+  from a copy of the key object (+25E8 is the handler: a 16-event ring at +0xD, one transition per key a call,
+  [0] the last call's keys, [1] this call's; +2092 held / pressed; +20F6 the double tap from +0xA..+0xC; +25B6
+  posts releases of the opposite steering through +257A) with the handler run on the copy -- the state the next
+  whole step's handler will find, the game's object untouched -- and takes the steering bits only (1, 2, 0x200,
+  0x400: actions 2-5, held). Kept the whole step's: 4 (the start: a press of action 1 or raw key 15; then the
+  auto-throttle's 4 while the car moves and neither 8 nor 0x40 is set), 8 (action 0 held while moving: the
+  brake), 0x40 (action 0 at rest or reversing), 0x20 -- the presses and the brake, which the race rules and the
+  whole-step decisions (+1BE86 the boost, +1B5DA the drift) need at the step (the bench autopilot's
+  "a stopped car with '5' held stays dead" is the start being a press). Not used in a race's end (+128's +28
+  > 12, the word forced to 8). A key down before substep 1 steers 57 ms sooner, before substep 2 28 ms.
+  Bench probe A4_KEYPROBE (4 words a substep, ring 0x5A2000 through a4_camp_emit; tools/keypro.py). The
+  source without the flag compiles 12 bytes smaller than r64's (the new label edit), so r64 is a242513's.

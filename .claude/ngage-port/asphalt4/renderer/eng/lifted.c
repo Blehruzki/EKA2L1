@@ -10697,8 +10697,8 @@ L_14736:
     L8(r0 + 0x14u) = r1;                                         /* 014750 strb r1, [r0, #0x14] */
     goto L_14978;                                                /* 014752 b #0x14978 */
 L_14754:
-    /* engine: substeps 1-2: the whole step's keys */
-    if (ENG_SUB) { MEM32(sp + 0xD0u) = ENG_KEYS; goto L_14948; }
+    /* engine: substeps 1-2: the whole step's keys (A4_LIVEKEYS: built again from a copy, the steering taken) */
+    if (ENG_SUB) { if (ENG_KPEEK(sp)) goto L_1477C; MEM32(sp + 0xD0u) = ENG_KEYS; goto L_14948; }
     r2 = 0x0u; fN = r2 >> 31; fZ = r2 == 0;                      /* 014754 movs r2, #0 */
     r0 = S32(0xDCu);                                             /* 014756 ldr r0, [sp, #0xdc] */
     r1 = 0x7u; fN = r1 >> 31; fZ = r1 == 0;                      /* 014758 movs r1, #7 */
@@ -10970,6 +10970,8 @@ L_14922:
     t = r1 & ~ r2; fN = t >> 31; fZ = t == 0; r1 = t;            /* 014944 bics r1, r2 */
     L32(r0 + 0x28u) = r1;                                        /* 014946 str r1, [r0, #0x28] */
 L_14948:
+    /* engine: A4_LIVEKEYS: a substep's steering on the whole step's key word */
+    ENG_KMERGE(sp);
     r2 = 0x2Bu; fN = r2 >> 31; fZ = r2 == 0;                     /* 014948 movs r2, #0x2b */
     t = SHL_C(r2, 0x6u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 01494a lsls r2, r2, #6 */
     { uint32_t ta = r7, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01494c adds r0, r7, r2 */

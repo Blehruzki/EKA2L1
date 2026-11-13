@@ -26,8 +26,9 @@ EDITS = {
               'why': 'substeps 1-2: the pursuit check waits for the whole step'},
     # the player's keys: built from the key handler on the whole step, replayed on the substeps (+1DE78
     # keeps the last keys in +B1C and finds presses itself, so a replay is a key held, not pressed again)
-    0x14754: {'before': 'if (ENG_SUB) { MEM32(sp + 0xD0u) = ENG_KEYS; goto L_14948; }',
-              'why': 'substeps 1-2: the whole step\'s keys'},
+    0x14754: {'before': 'if (ENG_SUB) { if (ENG_KPEEK(sp)) goto L_1477C; MEM32(sp + 0xD0u) = ENG_KEYS; goto L_14948; }',
+              'why': 'substeps 1-2: the whole step\'s keys (A4_LIVEKEYS: built again from a copy, the steering taken)'},
+    0x14948: {'before': 'ENG_KMERGE(sp);', 'why': 'A4_LIVEKEYS: a substep\'s steering on the whole step\'s key word'},
     0x14974: {'before': 'if (!ENG_SUB) ENG_KEYS = r1;',
               'why': 'the keys the whole step gave the player\'s control'},
     # after the movement loop: the substeps place the camera as the whole step's +12DEC last did (its

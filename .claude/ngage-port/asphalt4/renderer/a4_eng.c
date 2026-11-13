@@ -7,7 +7,7 @@
 #if defined(A4_ENG3) && (defined(A4_HALFPHYS) || defined(A4_HALFSPEC))
 #error "the 3x engine and the half-step machinery share scratch and cannot be built together"
 #endif
-#ifdef A4_CAMPROBE
+#if defined(A4_CAMPROBE) || defined(A4_KEYPROBE)
 __attribute__((noinline)) void a4_camp_emit(const void *r) { __asm__ volatile("" : : "r"(r) : "memory"); }
 #endif
 #ifdef A4_ENG3
@@ -19,6 +19,9 @@ uint64_t a4_eng_keys(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3)
 {
     uint32_t r23[2], stk[8] = { 0 };
     if (ENG->magic == ENG_MAGIC && (ENG->cnt % 3u) != 0u) return 0;
+#ifdef A4_LIVEKEYS
+    ENG->kobj = r0; ENG->kmask = r1; ENG->kok = 1;   /* for the substeps' copy (eng_keys_peek) */
+#endif
     return a4_eng_call(GAMEFN_PH(a4_hc_25e8), r0, r1, r2, r3, (uint32_t)(uintptr_t)stk, r23);
 }
 #endif
