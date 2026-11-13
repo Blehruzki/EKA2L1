@@ -9828,3 +9828,20 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   respawn's 619; q64_2 / q65_3 (earlier, the game's step) the same shape. w1_2 and w0_1 no wreck. The 3x wreck's
   path has the game's shape and scale; no wreck flung (round 50's r7). Its flat stretch drifts up ~1 a step (the
   push's thirds); not settled whether stock's would at that crash.
+- Candidate r67 = a4_r67_cand.exe (C67 = C63 + LIVEKEYS + CAMSCRIPT3 + WRECK3, THIRDSTEP, scratch 0x1A0000):
+  f35c3426bede7809ad94425acbbdfae576fb68cb93a14c39e9b245ed5b87727a, 921,044 bytes (= a4_r67t, cmp'd); twin y67.
+  Battery r67bat: every run whole, faults=1 each (the known one). Tele (calibrated bench, 120 s): 38.6 ms a render,
+  3D 16.4, comp 7.3 (read 5.9); camera and heading reversals 0; held back 0, drop frames 2 (the car stuck in its
+  last 16 s, the bench driver). Crash-steer: camera yaw reversals 0, heading less yaw 3 of 117 moving frames. Race
+  to the finish (twin; exact binary, '5' held): whole. Menu, mark, Veyron autopilot (reversals 0), mark on the
+  Veyron, Paris on the owner's save: whole. Scenery 93.1% / 96.1% (LA), 71.3% (Paris). No crash camera in this
+  battery's recorded windows; a4_cw's race (above) is the crash's run. +3A15C b510 0004, no 0xDEADBEEF.
+- Rule 4 for r67 (over r65's). (a) Guesses: that the crash script's next value is fixed by its lists (true while
+  nothing adds a keyframe before the head between steps -- +51FEC links new nodes before the sentinel, at the
+  tail); that the slow motion's between-step camera calls (+1300C) leave the fractions harmless (not entered:
+  no takedown in slow motion on the bench); the wreck's thirds (a 1/step drift up in w1_1's flat stretch, not
+  settled against stock's at the same crash); the falling wreck's ninth of the 2 (not entered: no falling wreck
+  seen). (b) Read back: eng_cam_script, eng_sdiv, the edits in lifted.c (+1DFE6, +1DFEE, +1EA68, +1EABC,
+  +2292A's eleven, the GE gates), lift.py's conditional thirds as generated, ENG_SUB_END under A4_WRECK3.
+  (c) Not entered: a takedown in slow motion; a falling wreck (+B28 0x800); an opponent's wreck seen through the
+  takedown camera; a wreck that starts on substep 1 or 2 (counted on the step's end, not seen in the probe).
