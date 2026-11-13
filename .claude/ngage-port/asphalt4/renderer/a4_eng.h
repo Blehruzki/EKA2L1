@@ -228,6 +228,7 @@ struct eng {
     uint32_t kcopy[8];               /* the key object as the next whole step's handler will find it (0x1D bytes) */
     uint32_t loop;                   /* the whole step entered the car loop (+14672): the substeps run only then */
     uint32_t meas1;                  /* +22832 measures a wreck: its displacement is a whole step's (x 1) */
+    uint32_t pw[3];                  /* a pursuer's position before +1C48E (which may move it): its jump counted once */
     uint32_t wy0, wyset;             /* A4_WRECK3: the wreck's height before this substep's +2292A, and its path set it */
     uint32_t lc[64], ls[64][3], lv[64][3]; /* the orientation's angles a step late: the word, the last three substeps' count and value */
     uint32_t kc[16], ks[16];         /* the wall's first push: the car (+678's address) and the step it hit, bit 31 still to come */
@@ -327,6 +328,25 @@ static inline void ENG_BEGIN(uint32_t race)
     {   /* the player car, for the probe */
         uint32_t pl = *(volatile uint32_t *)(race + 0x390), idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 0u;
         ENG->dbg[6] = idx < 16u ? *(volatile uint32_t *)(race + 0x394 + 4u * idx) : 0u;
+    }
+#endif
+#ifdef A4_CARSUB
+    {   /* bench (phone round 69): every race slot's car at each substep's start -- the counter, then per slot its
+         * address, x, y, z, type (+C70) -- 81 words a record, a ring of 48 at 0x5A2000 (A4_SCRATCH_SIZE >= 0x1A6000)
+         * handed to a4_camp_emit when it wraps. Never a phone build. */
+        extern void a4_camp_emit(const void *);
+        volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+        uint32_t i = rg[0] % 48u, k;
+        volatile uint32_t *q = rg + 4u + 81u * i;
+        q[0] = ENG->cnt;
+        for (k = 0; k < 16u; k++) {
+            uint32_t car = *(volatile uint32_t *)(race + 0x394u + 4u * k);
+            volatile uint32_t *e = q + 1u + 5u * k;
+            e[0] = car;
+            if (car) { e[1] = MEM32(car + 4u); e[2] = MEM32(car + 8u); e[3] = MEM32(car + 0xCu); e[4] = MEM32(car + 0xC70u); }
+        }
+        rg[0] = i + 1u;
+        if (i + 1u == 48u) { rg[0] = 0; a4_camp_emit((const void *)(rg + 4u)); }
     }
 #endif
     ENG->sub = ENG->cnt % 3u; ENG->cnt++;

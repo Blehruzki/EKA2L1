@@ -3609,7 +3609,9 @@ L_1E8E0:
     r3 = S32(0x1A8u);                                            /* 01e8ee ldr r3, [sp, #0x1a8] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e8f0 movs r0, r4 */
     /* engine: a pursuer's reaction (+1C48E): its AI, on the whole step */
+    if (!ENG_SUB) { ENG->pw[0] = MEM32(r4 + 4u); ENG->pw[1] = MEM32(r4 + 8u); ENG->pw[2] = MEM32(r4 + 0xCu); }
     if (!ENG_SUB) { { uint64_t rr = a4_eng_call(GAMEFN(0x1C48E), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } } /* 01e8f2 bl #0x1c48e */
+    if (!ENG_SUB && MEM32(r4 + 0x34u) == 0xFFFFFFFFu) { uint32_t k_; for (k_ = 0; k_ < 3u; k_++) { const int32_t w_ = (int32_t)(MEM32(r4 + 4u + 4u * k_) - ENG->pw[k_]); if (w_ > -0x10000 && w_ < 0x10000) MEM32(r4 + 0xA8u + 4u * k_) += (uint32_t)eng_sdiv(2 * w_, 3); } }
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e8f2 bl #0x1c48e */
 L_1E8F6:
     r1 = L32(r7 + 0x38u);                                        /* 01e8f6 ldr r1, [r7, #0x38] */
@@ -10554,8 +10556,8 @@ L_1455C:
     r2 = S32(0x114u);                                            /* 01456e ldr r2, [sp, #0x114] */
     r3 = L32(r2 + 0x3Cu);                                        /* 014570 ldr r3, [r2, #0x3c] */
     r2 = L32(r2 + 0x38u);                                        /* 014572 ldr r2, [r2, #0x38] */
-    /* engine: the traffic clocks' step, for the substeps */
-    if (!ENG_SUB) { ENG->tdel[0] = (int32_t)(r2 - ENG->tlast[0]); ENG->tdel[1] = (int32_t)(r3 - ENG->tlast[1]); ENG->tlast[0] = r2; ENG->tlast[1] = r3; if (ENG->tdel[0] < -0x100000 || ENG->tdel[0] > 0x100000) ENG->tdel[0] = 0; if (ENG->tdel[1] < -0x100000 || ENG->tdel[1] > 0x100000) ENG->tdel[1] = 0; }
+    /* engine: the traffic clocks' step, for the substeps; the substeps start from the whole step's own clocks (the game has advanced race+0x378/+0x37C by then: placed from those, substeps 1-2 were a step ahead and every traffic car went forward 1 1/3 steps and back 2/3 each step -- phone round 69) */
+    if (!ENG_SUB) { ENG->tdel[0] = (int32_t)(r2 - ENG->tlast[0]); ENG->tdel[1] = (int32_t)(r3 - ENG->tlast[1]); ENG->tlast[0] = r2; ENG->tlast[1] = r3; if (ENG->tdel[0] < -0x100000 || ENG->tdel[0] > 0x100000) ENG->tdel[0] = 0; if (ENG->tdel[1] < -0x100000 || ENG->tdel[1] > 0x100000) ENG->tdel[1] = 0; } else { r2 = ENG->tlast[0]; r3 = ENG->tlast[1]; }
     { uint64_t rr = (ENGD_0FB12 ? engi_0FB12(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x14578)) : a4_eng_call(GAMEFN(0xFB12), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014574 bl #0xfb12 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014574 bl #0xfb12 */
 L_14578:
@@ -13523,6 +13525,8 @@ L_0FBFC:
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 00fc2e movs r0, r5 */
     { uint64_t rr = (ENGD_0F60A ? engi_0F60A(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0xFC34)) : a4_eng_call(GAMEFN(0xF60A), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00fc30 bl #0xf60a */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00fc30 bl #0xf60a */
+    /* engine: bench (A4_VELPROBE): a traffic car placed */
+    ENG_VPA(9u, r5, MEM32(r5 + 4u), MEM32(r5 + 0xCu), S32(0x58u), S32(0x64u), S32(0x4Cu));
     r0 = L32(r4);                                                /* 00fc34 ldr r0, [r4] */
     t = SHR_C(r0, 0x8u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 00fc36 lsrs r1, r0, #8 */
     t = SHL_C(r1, 0x1Eu, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 00fc38 lsls r2, r1, #0x1e */

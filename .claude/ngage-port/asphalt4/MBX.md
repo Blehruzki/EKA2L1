@@ -10110,3 +10110,71 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   not thirded. Which cars take either path (the helicopter? the pursuers? opponents far from the player?) is not
   known: rail69 (A4_VELPROBE + ENG_VPA at +1F24C, any car: its type +C70, the reference's index, the offset;
   Paris on the owner's save): queued.
+- Acceleration against stock, by gear and speed band, in contact-free steps without a shift (the change of the
+  engine's target +7D0 and of +7D8 a step): o1a / o1t (stock) and o3a / y69b (3x) agree in every band -- 4th at
+  240: +0.24 / +0.14 and +0.51 / +0.22; 5th at 280: +0.72 / +0.64 and +0.80 (y69b); 6th at 320: +0.12 / +0.74 and
+  +0.59 -- and y69b reaches 6th and 320+ as stock does. The engine at 3x is not slower.
+- The jump (the LA ramp, x ~32,100-32,300, round 45's): stock jt_n at 264: airborne 14 steps, peak 260, dy -23,
+  -10, -10, -19 ... (gravity -9 a step); o1a 287 / 314: 14 / 15 steps, peaks 277 / 347; r69's twin y69b at 333: 15
+  steps, peak 300, dy -29, -16, -16, -25 ... (-9 a step). The flight is stock's. What the owner feels in a jump is
+  not the trajectory -- the camera through it (eng_cam_pose places the chase camera from the car every substep,
+  the game's offset a step late) is the next guess, not yet looked at.
+- The nitro's press is an edge: the builder sets 0x20 (and 4) only for a press of action 1 (+2092 with r2 = 0:
+  K[1] & ~K[0]); the autopilot wrote K[0] = K[1], so even A4_AUTOPILOT_TAP never pressed (o1t / o3t: AE0 0 in both:
+  not a nitro test). Fixed for the bench (a4_gl.c, A4_AUTOPILOT_TAP: K[0] = the last step's script): o1n / o3n
+  queued. +1FD0E (whole-step move, no third) runs only while the game state word (+691E) is 10 -- not racing.
+- o1n / o3n (the nitro, fixed press; 90 s, autopilot, tap every 60 steps): both boost at 11 and 71 (39 steps each)
+  and the bar fills alike. 3x distance -4.3% at 10 s, then -44% at 20 s -- but the paths had parted at step ~50 (a
+  wall: +058..+06C, +6D4 nonzero two steps longer in stock), and from step 139 the 3x car sits against a wall at B4
+  under 50 for 300 steps (gear 4 at 457 against stock's 154). Not the engine's doing.
+- The "gear hunting" under boost (3x up to 3rd at 74, back to 2nd at 77 at rpm 652, up again at 82; stock up once at
+  77): read in +1BF26 (the engine) and +1BDEC (surface drag). The shift sets rpm 0 and +7C4 = +7C8 (3); while +7C4
+  runs there is no drag and no throttle; at its end rpm < 0 takes the gear down with rpm = that gear's top (+1C03C:
+  2nd's top 652). At 77 the 3x car is on a drag surface (+0D4 bit 12, +A78 = 32 a step) the moment the delay ends:
+  throttle +20/3, drag -32/3 -> below 0 -> down. Stock's car was not on that surface then (+0D4 0x400); it would do
+  the same. A path difference, not a fault.
+- The phone's clock (round 69 telemetry, steptime.py): 30-40 substeps in each 0.8-1.06 s window, ~37 a second
+  against 35.16 -- the game keeps real time; "not as fast" is not a slow clock. The frame record's drawn speed
+  (fspeed.py, 0.5 s windows over the last 417 frames of each round): r69 median 310 / 99% 456; r53b 307 / 473,
+  r51 339 / 519, r50c 343 / 502, r53a 227 / 387 -- different tracks and driving: no verdict.
+- **Traffic (traf69: a4_v69b, ENG_VPA tag 9 at +FC34, LA 60 s, 10 traffic cars, 5,003 placements): every traffic car
+  goes back and forth each step.** Its node fraction a substep: +186, +47, -93 (net +140 a step); in x: +40, -81, -20.
+  Substeps 1-2 are placed a whole step ahead: +14574 passes race+0x378/+0x37C as they are, and the whole step has
+  already advanced them by its 256 by then; eng_tmul adds the substep's third on top. Fix (edits.py +14574): on the
+  substeps pass the whole step's own clocks (ENG->tlast). That is the owner's "online lagginess" on the traffic (and
+  likely round 68's "a traffic car goes back and forth"). Run traf70 (a4_v70b: the fix + the probe): running.
+- **The helicopter (cs69p: a4_cs69, A4_CARSUB, Paris on the owner's save, 150 s): race slot 10 = police slot 2, type
+  +C70 = 4 (cars\helicopter.cfg).** Every racing car (slots 0-7) moves evenly (reversals 0-1 in ~4,900 moving
+  substeps). The helicopter: 180 reversals in 1,325 moving substeps, 281 jumps over 2,000 units. Each whole step it
+  is put back where it belongs (the record at substep 1's start: (12913, 1621, 8964), (12872, 823, 8728), (12830,
+  821, 8476) ... moving ~250 a step), and on substeps 1-2 it flies off with a velocity that flips and grows ~1.8x a
+  step -- (-417, +1261, -2188), (+206, -3313, +4034), (-2420, +6622, -6333) a substep -- until the game resets it
+  (cnt 2803). Elsewhere it moves in stop-go bursts (280, 181, 82, 10, 0, 0 a substep). Guess, not yet read: the
+  game places it once a step (its flight), and the car loop's 3x measure (+22832: velocity = 3 x the substep's
+  displacement) takes that placement's jump as a substep's move -- x3 -- so the next substeps carry it three times
+  as far the other way. Run hw69 (EKA2L1_WATCH on its x, y, z, WATCHONCE: the PCs that write them): queued.
+- traf70 (a4_v70b = C69 + the +14574 fix + A4_VELPROBE; LA, 60 s, the same 10 cars and 5,003 placements;
+  trafrev.py): position reversals 2,796 of 4,437 moving triples -> 58 of 4,025; the fraction's change into
+  substep 0 / 1 / 2: -93 / +186 / +47 -> +47 / +46 / +47. **The traffic moves evenly.**
+- hw69 (a4_cs69 + EKA2L1_WATCH on the helicopter's x, y, z): the helicopter did not fly in that run (its address
+  0267c868, not 0267de90; slot 10 still) -- event-driven, and the bench run is not deterministic to the event. The
+  writers are found in the code instead.
+- Read (+1C48E, a pursuer's "reaction", called from +1DE78 at +1E8F2 on the whole step only, G-edit): for every
+  pursuer (+C3C set, +522A4) that follows something (+C40), type 4 (the helicopter) skipping +1CC18 -- state 6
+  (+C6C): position += a hover wobble from the sine table (+1C4FC, `stm r7!`); else position = the followed car's
+  position + offsets + +C60, an eased point (+C60 = (7 x +C60 + target) / 8 a step), at +1C696. So the helicopter and
+  the cops are placed by the game once a step. The movement that follows (+1EA64 for a racing pursuer: type 5
+  skips it) measures +010 = 3 x (position - +0A8) (+22832's 3x edit): a placement's jump w came out as 3w, the next
+  substeps carried the car 2w past, the next placement pulled it back by more: e(n+1) ~ -2 e(n), the observed flip
+  and doubling. Stock measures w once (+010 = its own move + w).
+- Fix (edits.py at +1E8F2, ENG->pw): on the whole step, the pursuer's position before +1C48E is kept; after it,
+  +0A8 moves on by 2w/3 (each axis, w within +-0x10000, not a wreck: +034 = -1) -- the measure then reads 3 x the
+  substep's own move + w, stock's velocity exactly (worked: with D the last substep's place and m the whole step's
+  own third, v = 3(P - D - 2w/3) = w + 3m = P - D + 2m ~ P(n+1) - P(n)). The cops' "comical overshoot" is the same
+  mechanism on the same call (they are placed by +1C696 too) -- a guess until a chase is recorded.
+- Candidate r70 = C70 (= C69's flags) + the traffic fix + the pursuer fix: a4_r70_cand.exe
+  3b7dbedf666a87be43857d2d8447bfe4c8babdaa4b0b0d40840e2a8d02aa40ed, 928,976 bytes (r69 + 316: the two edits).
+  cs70p (a4_cs70 = r70 + A4_CARSUB, Paris on the owner's save, 150 s, as cs69p): running.
+- The jump camera (+12DEC: +5968's argument 5 while the air counters +AF0/+AF4 run) is +490A: rigid on the car
+  (cam+0x10 = car + cam+0xAC x a factor + cam+0x54; no easing state), so the substeps' re-placement of it on the
+  moved car is exact. Not the jump's "sensation" either; open.

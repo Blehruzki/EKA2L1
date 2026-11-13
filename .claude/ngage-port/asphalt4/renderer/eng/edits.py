@@ -41,8 +41,11 @@ EDITS = {
     0x14574: {'before': 'if (!ENG_SUB) { ENG->tdel[0] = (int32_t)(r2 - ENG->tlast[0]); ENG->tdel[1] = (int32_t)(r3 - ENG->tlast[1]); '
                         'ENG->tlast[0] = r2; ENG->tlast[1] = r3; '
                         'if (ENG->tdel[0] < -0x100000 || ENG->tdel[0] > 0x100000) ENG->tdel[0] = 0; '
-                        'if (ENG->tdel[1] < -0x100000 || ENG->tdel[1] > 0x100000) ENG->tdel[1] = 0; }',
-              'why': 'the traffic clocks\' step, for the substeps'},
+                        'if (ENG->tdel[1] < -0x100000 || ENG->tdel[1] > 0x100000) ENG->tdel[1] = 0; } '
+                        'else { r2 = ENG->tlast[0]; r3 = ENG->tlast[1]; }',
+              'why': 'the traffic clocks\' step, for the substeps; the substeps start from the whole step\'s own clocks '
+                     '(the game has advanced race+0x378/+0x37C by then: placed from those, substeps 1-2 were a step '
+                     'ahead and every traffic car went forward 1 1/3 steps and back 2/3 each step -- phone round 69)'},
 }
 
 # ---- the rate map: the game's per-step changes, a third on each substep -----------------------------
@@ -177,6 +180,10 @@ B(0x1FE02, 'ENG_VP(5u, r4, r5, MEM32(r4 + 4u), MEM32(r4 + 0xCu), MEM32(r5 + 4u),
 # index plus its own offset) -- the car, its type (+C70), the reference's index, the offset, the index it takes
 B(0x1F24C, 'ENG_VPA(8u, r5, MEM32(r5 + 0xC70u), MEM32(r0 + 0x1Cu), MEM32(r4 + 0x1Cu), r1, r0);',
   'bench (A4_VELPROBE): a car on rails')
+# bench (A4_VELPROBE, phone round 69): a traffic car placed (+FC34, after +F60A): its place, the node's fraction,
+# the node, the clock-derived index -- per substep, any car
+B(0xFC34, 'ENG_VPA(9u, r5, MEM32(r5 + 4u), MEM32(r5 + 0xCu), S32(0x58u), S32(0x64u), S32(0x4Cu));',
+  'bench (A4_VELPROBE): a traffic car placed')
 # +2217C, the contact book
 G(0x22198, 'E0, steps since a contact')
 # +1F1F8, the AI: its choices (and the stuck check) on the whole step, its keys replayed
@@ -198,6 +205,18 @@ B(0x14EF0, 'if (!ENG_SUB) eng_cam_whole(sp, r23);', 'the chase camera: its offse
 # after the move) -- the AI's choices, on the whole step; the target it sets stays in +680 for the substeps
 G(0x1E5B2, 'a pursuer\'s target velocity (+1D20A): its AI, on the whole step')
 G(0x1E8F2, 'a pursuer\'s reaction (+1C48E): its AI, on the whole step')
+# Phone round 69: +1C48E also moves the pursuer itself, once a step -- it places it at an eased point off the car it
+# follows (+1C696, the helicopter and the cops) or adds a hover wobble (+1C4FC, state 6). The measure that follows
+# (+22832, in +1EA64) takes 3 x (position - +0A8) as the step's velocity, so that jump -- a whole step's -- came
+# out x3: the next substeps carried the car three times the jump the other way, the next placement pulled it
+# back, and the error flipped and doubled each step (cs69p: the helicopter flung 14,000 units, and reset). Counted
+# once, as the game counts it: +0A8 moved on by two thirds of the jump, so the measure reads 3 x the substep's own
+# move plus the jump (stock: the step's move plus the jump). Not for a wreck (its measure is a step's already).
+EDITS[0x1E8F2]['before'] = ('if (!ENG_SUB) { ENG->pw[0] = MEM32(r4 + 4u); ENG->pw[1] = MEM32(r4 + 8u); '
+                            'ENG->pw[2] = MEM32(r4 + 0xCu); }')
+EDITS[0x1E8F2]['after'] = ('if (!ENG_SUB && MEM32(r4 + 0x34u) == 0xFFFFFFFFu) { uint32_t k_; for (k_ = 0; k_ < 3u; k_++) { '
+                           'const int32_t w_ = (int32_t)(MEM32(r4 + 4u + 4u * k_) - ENG->pw[k_]); '
+                           'if (w_ > -0x10000 && w_ < 0x10000) MEM32(r4 + 0xA8u + 4u * k_) += (uint32_t)eng_sdiv(2 * w_, 3); } }')
 # +2292A, the wreck's scripted path: its frame (+034) and step (+048) counters and its end, once a game step --
 # on the wreck's last substep of the step (the whole step without A4_WRECK3, where the wreck runs on it only)
 for a in (0x22BBA, 0x22BEA): GE(a, 'r4', '+048, the wreck path\'s step counter')

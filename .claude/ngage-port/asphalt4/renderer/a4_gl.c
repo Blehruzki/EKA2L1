@@ -1262,6 +1262,11 @@ static void car_record(uint32_t race, uint32_t what)
 #else
     if (K && (what & 1u)) {
         uint32_t k = ap_key(race, r[1]);
+#ifdef A4_AUTOPILOT_TAP
+        /* round 69: K[0] is the handler's last keys and K[1] this step's -- the builder's presses (the nitro, bit 0x20)
+         * are K[1] & ~K[0]. Written equal, a tap was never a press: K[0] now holds the last step's script */
+        uint32_t k0 = r[1] ? ap_key(race, r[1] - 1u) : k;
+#endif
 #if defined(A4_BENCH_SEEK) && defined(A4_SPECTRAFFIC)
         /* bench (r49 on the phone: traffic "passed through"): steer at the nearest live traffic car
          * ahead (its +0x128 bit 0 clear: the collision's own skip), by the game's positions -- to
@@ -1287,7 +1292,11 @@ static void car_record(uint32_t race, uint32_t what)
             if (best != 0x7FFFFFFF && bcr) k |= ((bcr > 0) == ((A4_BENCH_SEEK) > 0)) ? A4_KEY_R : A4_KEY_L;
         }
 #endif
+#ifdef A4_AUTOPILOT_TAP
+        ((volatile uint32_t *)K)[0] = k0; ((volatile uint32_t *)K)[1] = k;
+#else
         ((volatile uint32_t *)K)[0] = k; ((volatile uint32_t *)K)[1] = k;
+#endif
     }
 #endif
 #endif
