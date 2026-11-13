@@ -17203,10 +17203,14 @@ static uint64_t engi_349F8(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r0 = S32(0x14u);                                             /* 034a0a ldr r0, [sp, #0x14] */
     { uint64_t rr = eng_h_345e4(r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* the engine's own +345E4 */ /* 034a0c bl #0x345e4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 034a0c bl #0x345e4 */
+    /* engine: A4_CARCENSUS: the car meshes as the GPU would take them */
+    A4_CAR_CENSUS(S32(0x14u), S32(0x18u), S32(0x1Cu), S32(0x20u), S32(0x38u), S32(0x40u), lr0);
     r0 = S32(0x14u);                                             /* 034a10 ldr r0, [sp, #0x14] */
     r0 = L32(r0);                                                /* 034a12 ldr r0, [r0] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 034a14 cmp r0, #0 */
     if (r0 != 0x0u) goto L_34AE6;                                /* 034a16 bne #0x34ae6 */
+    /* engine: A4_GPUCAR: the car drawn by the GPU */
+    if (A4_CAR_TAKE(S32(0x14u), S32(0x18u), S32(0x1Cu), S32(0x20u), S32(0x38u), S32(0x40u), S32(0x44u), lr0)) goto L_34AE6;
     r1 = GAMEW(0x34DD4);                                         /* 034a18 ldr r1, [pc, #0x3b8] */
     t = SHL_C(r5, 0x3u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 034a1a lsls r0, r5, #3 */
     r2 = L32(r1 + r0);                                           /* 034a1c ldr r2, [r1, r0] */

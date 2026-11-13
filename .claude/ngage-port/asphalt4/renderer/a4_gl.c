@@ -5163,6 +5163,70 @@ __attribute__((noinline)) void a4_list_emit2(const void *obj)   /* r0: 4 KB, a u
     __asm__ volatile("" : : "r"(obj) : "memory");
 }
 #endif
+#ifdef A4_CARCENSUS
+/* Bench (round 67, the draw-time work): the car meshes (CBasicMesh +34AEA -> the mesh routine +349F8, returning to
+ * +34B16) as a GPU path would take them. Per call, after the game's transform: the arrays, counts and mode; the view z
+ * range and how many vertices are nearer than the list's near plane (ZW 126) and the game's (64); the faces by vtable
+ * (TFace +B08EC, TFakeZFace +B08CC), by the flag classes the routine set last frame, by texture kind (colour key at
+ * descriptor +0x28 != 0xFF, alpha map +0x2C); the distinct descriptors; and the first three faces raw (13 words).
+ * 64-word records, a ring of 64 at 0x5A2000 (A4_SCRATCH_SIZE >= 0x1A8000), handed to a4_cc_emit when it wraps. */
+__attribute__((noinline)) void a4_cc_emit(const void *p) { __asm__ volatile("" : : "r"(p) : "memory"); }
+void a4_car_census(uint32_t ctx, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t lr)
+{
+    extern const int32_t a4_hc_25e8;
+    const uint32_t gbase = (uint32_t)(uintptr_t)&a4_hc_25e8 + (uint32_t)a4_hc_25e8 - (0x25E8u | 1u);
+    if (lr != gbase + 0x34B17u || nv > 4096u || nf > 4096u) return;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+    const uint32_t i = rg[0] & 63u;
+    volatile uint32_t *e = rg + 4u + 64u * i;
+    uint32_t k;
+    for (k = 0; k < 64u; k++) e[k] = 0;
+    e[0] = s->frames; e[1] = verts; e[2] = nv; e[3] = faces; e[4] = nf; e[5] = mode; e[6] = ctx;
+    {   int32_t zmin = 0x7FFFFFFF, zmax = -0x7FFFFFFF; uint32_t n126 = 0, n64 = 0;
+        for (k = 0; k < nv; k++) {
+            const int32_t z = (int32_t)*(const volatile uint32_t *)(uintptr_t)(verts + 40u * k + 0x14u);
+            if (z < zmin) zmin = z;
+            if (z > zmax) zmax = z;
+            if (z > -126) n126++;
+            if (z > -64) n64++;
+        }
+        e[7] = (uint32_t)zmin; e[8] = (uint32_t)zmax; e[9] = n126; e[10] = n64; }
+    {   uint32_t vt[4] = { 0, 0, 0, 0 }, vc[4] = { 0, 0, 0, 0 }, ds[16], nd = 0;
+        for (k = 0; k < nf; k++) {
+            const uint32_t fp = faces + 52u * k, v = *(const volatile uint32_t *)(uintptr_t)fp;
+            const uint32_t fl = *(const volatile uint32_t *)(uintptr_t)(fp + 4u), d = *(const volatile uint32_t *)(uintptr_t)(fp + 0x30u);
+            uint32_t j = 0;
+            while (j < 4u && vt[j] && vt[j] != v) j++;
+            if (j < 4u) { vt[j] = v; vc[j]++; }
+            for (j = 0; j < 3u && e[19u + 2u * j + 1u] && e[19u + 2u * j] != fl; j++) ;   /* three flag values, counted */
+            if (j < 3u) { e[19u + 2u * j] = fl; e[19u + 2u * j + 1u]++; }
+            if (d && !e[57]) { e[57] = *(const volatile uint32_t *)(uintptr_t)(d + 4u); e[58] = *(const volatile uint32_t *)(uintptr_t)(d + 8u); }
+            if (d) {
+                if (*(const volatile uint8_t *)(uintptr_t)(d + 0x28u) != 0xFFu) e[59]++;
+                if (*(const volatile uint32_t *)(uintptr_t)(d + 0x2Cu)) e[60]++;
+                for (j = 0; j < nd && ds[j] != d; j++) ;
+                if (j == nd && nd < 16u) ds[nd++] = d;
+            }
+            e[26] |= fl;
+        }
+        for (k = 0; k < 4u; k++) { e[11u + 2u * k] = vt[k]; e[12u + 2u * k] = vc[k]; }
+        e[25] = nd;
+        for (k = 0; k < 2u && k < nf; k++)
+            for (uint32_t w = 0; w < 13u; w++) e[27u + 13u * k + w] = *(const volatile uint32_t *)(uintptr_t)(faces + 52u * k + 4u * w);
+        {   uint32_t umax = 0, vmax = 0;                          /* the texcoords' range over the mesh */
+            for (k = 0; k < nf; k++) for (uint32_t c = 0; c < 3u; c++) {
+                const uint32_t u = *(const volatile uint32_t *)(uintptr_t)(faces + 52u * k + 0x10u + 12u * c);
+                const uint32_t v = *(const volatile uint32_t *)(uintptr_t)(faces + 52u * k + 0x14u + 12u * c);
+                if (u > umax) umax = u;
+                if (v > vmax) vmax = v;
+            }
+            e[61] = umax; e[62] = vmax; }
+        e[63] = mode; }
+    rg[0] = i + 1u;
+    if (((i + 1u) & 63u) == 0u) a4_cc_emit((const void *)(rg + 4u));
+}
+#endif
 #ifdef A4_GPUOBJ
 /* Round 60, the scenery prototype (owner: "start the scenery prototype"; MBX.md round 60): the static roadside
  * objects drawn by the GPU from the game's own data instead of the game's per-object path. The scenery walk +CF6E
@@ -5226,6 +5290,36 @@ struct gstate {
 #define GOBJ ((volatile struct gstate *)GOBJ_BASE)
 #define GMESH ((struct gmesh *)0x00467000u)
 _Static_assert(GOBJ_BASE + sizeof(struct gstate) <= 0x00467000u, "the objects' items");
+#ifdef A4_GPUCAR
+/* Round 67 (the draw-time work: owner "start on that remaining job"; MBX.md round 67): the cars on the GPU. A car is
+ * a CBasicMesh (+34AEA -> the mesh routine +349F8, back to +34B16): 40-byte vertices (model x y z, int32, at +0x18),
+ * 52-byte TFaces (vertex pointers +0xC +0x18 +0x24, texcoords x16 after each, the texture descriptor +0x30), drawn
+ * with the matrix [cam+0x3C] (the camera times the car) -- 7 a frame, ~2,000 faces (the census, A4_CARCENSUS). The
+ * game's own transform still runs (the vertices' view coords for whoever reads them); after it, a mesh the GPU can
+ * draw skips the routine's per-face work (cull, back-face test, class, insert) and is drawn at the frame's first
+ * triangle with the list's projection and the car's matrix as the modelview: baked once into per-corner records
+ * (x y z u v -, int16, the scenery's layout) grouped by texture and class, a draw a group. A face's class is the
+ * routine's: the mode's word (the table at +34DD4, [mode*8 + 4]) kept whole when the face's own flags hold
+ * 0x4100000 and without those bits otherwise -- 0x104000 the paint's reflection (mode 1, tri_tex's bake, as the
+ * table draws it now), 0x4000 plain; any other class, a coloured-key or alpha texture, a vertex past int16, a mesh
+ * nearer than the list's near plane: the game draws it. */
+#define GCAR_BASE 0x00466000u
+#define GCAR_NI   16u                       /* cars a frame */
+#define GCAR_NM   24u                       /* car meshes held */
+#define GCAR_NG   6u                        /* (texture, class) groups a mesh */
+struct gcitem { uint32_t mesh, F; int32_t M[12]; int16_t box[4]; uint16_t qn, qf; };
+struct gcmesh { uint32_t verts, faces, nv, nf, ofs, ng; uint32_t gd[GCAR_NG]; uint8_t gm1[GCAR_NG]; uint16_t gs[GCAR_NG], gc[GCAR_NG];
+                uint16_t rad, ext; uint32_t fp[4]; };
+struct gcstate { uint32_t magic, frame, n, nmesh, taken, built, draws, frames_drawn;
+                 uint32_t refused_mode, refused_class, refused_tex, refused_near, refused_range, refused_full, refused_drawn, stale;
+                 struct gcitem it[GCAR_NI]; };
+#define GCAR ((volatile struct gcstate *)GCAR_BASE)
+#define GCMESH ((struct gcmesh *)(GCAR_BASE + 0x600u))
+_Static_assert(GOBJ_BASE + sizeof(struct gstate) <= GCAR_BASE, "the objects' items under the cars'");
+_Static_assert(GCAR_BASE + sizeof(struct gcstate) <= GCAR_BASE + 0x600u, "the cars' items");
+_Static_assert(GCAR_BASE + 0x600u + GCAR_NM * sizeof(struct gcmesh) <= 0x00467000u, "the cars' meshes");
+#define GCAR_MAGIC 0x52414347u                   /* 'GCAR' */
+#endif
 _Static_assert(0x00467000u + GOBJ_NM * sizeof(struct gmesh) <= GOBJ_HASH, "the mesh table");
 _Static_assert(GOBJ_HASH + GOBJ_NH * 2u <= GOBJ_ARENA, "the hash");
 #define GHASH ((uint16_t *)GOBJ_HASH)
@@ -5236,6 +5330,9 @@ static void gobj_clear(volatile struct gstate *g)
     uint32_t *h = (uint32_t *)GOBJ_HASH;
     for (uint32_t k = 0; k < GOBJ_NH / 2u; k++) h[k] = 0;
     g->nmesh = 0; g->aused = 0; g->full = 0;
+#ifdef A4_GPUCAR
+    GCAR->nmesh = 0;
+#endif
 }
 #define GOBJ_MAGIC 0x4A424F47u                   /* 'GOBJ' */
 static void gobj_reset(volatile struct gstate *g)
@@ -5501,6 +5598,201 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
     gl_depthfunc(GL_GEQUAL);                                 /* bring-up's */
     gl_disable(GL_CULL_FACE); gl_disable(GL_DEPTH_TEST);
 }
+#ifdef A4_GPUCAR
+static uint32_t gcar_gbase(void)                    /* the game's code base, from a placeholder the injector resolves */
+{
+    extern const int32_t a4_hc_25e8;
+    return (uint32_t)(uintptr_t)&a4_hc_25e8 + (uint32_t)a4_hc_25e8 - (0x25E8u | 1u);
+}
+/* the car mesh's records in the arena (built once; 0 if it cannot be) */
+static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcstate *c, uint32_t verts, uint32_t nv,
+                                uint32_t faces, uint32_t nf, uint32_t w1)
+{
+    for (uint32_t i = 0; i < c->nmesh; i++) {
+        struct gcmesh *e = &GCMESH[i];
+        if (e->verts == verts && e->faces == faces && e->nf == nf && e->nv == nv) {
+            if (e->fp[0] != GO32(verts + 0x18u) || e->fp[1] != GO32(verts + 0x1Cu) || e->fp[2] != GO32(faces + 0xCu)
+                || e->fp[3] != GO32(faces + 0x30u)) { c->stale++; g->full = 1; return 0; }   /* emptied at the next frame */
+            return e;
+        }
+    }
+    if (g->full || c->nmesh >= GCAR_NM || GOBJ_ARENA + (g->aused + 3u * nf) * 12u > GOBJ_STAGE) {
+        g->full = 1; c->refused_full++; return 0;
+    }
+    struct gcmesh *me = &GCMESH[c->nmesh];
+    uint32_t ng = 0, o = 0, ext = 0, e2 = 0;
+    int16_t *rec = (int16_t *)(GOBJ_ARENA + g->aused * 12u);
+    /* each face's group: its descriptor and class (the routine's for a face no vertex of which is near) */
+    for (uint32_t f = 0; f < nf; f++) {
+        const uint32_t fp = faces + 52u * f, fl = GO32(fp + 4u), d = GO32(fp + 0x30u);
+        const uint32_t cls = (fl & 0x4100000u) ? w1 : (w1 & ~0x4100000u);
+        uint32_t m1;
+        if (cls == 0x104000u) m1 = 1u; else if (cls == 0x4000u) m1 = 0u; else { c->refused_class++; return 0; }
+        if (!d || !GO32(d + 4u * TS_PIX) || GO8(d + 0x28u) != 0xFFu || GO32(d + 0x2Cu) != 0u
+            || GO32(d + 4u) + 1u > 1024u || GO32(d + 8u) + 1u > 1024u) { c->refused_tex++; return 0; }
+        uint32_t k = 0;
+        while (k < ng && !(me->gd[k] == d && me->gm1[k] == m1)) k++;
+        if (k == ng) { if (ng == GCAR_NG) { c->refused_full++; return 0; } me->gd[ng] = d; me->gm1[ng] = (uint8_t)m1; ng++; }
+    }
+    for (uint32_t k = 0; k < ng; k++) {
+        me->gs[k] = (uint16_t)o; me->gc[k] = 0;
+        for (uint32_t f = 0; f < nf; f++) {
+            const uint32_t fp = faces + 52u * f, fl = GO32(fp + 4u);
+            const uint32_t m1 = (((fl & 0x4100000u) ? w1 : (w1 & ~0x4100000u)) == 0x104000u) ? 1u : 0u;
+            if (GO32(fp + 0x30u) != me->gd[k] || m1 != me->gm1[k]) continue;
+            for (uint32_t cn = 0; cn < 3u; cn++) {
+                const uint32_t vp = GO32(fp + 0xCu + 12u * cn);
+                if (vp < verts || vp >= verts + 40u * nv || (vp - verts) % 40u) { c->refused_range++; return 0; }
+                const int32_t x = (int32_t)GO32(vp + 0x18u), y = (int32_t)GO32(vp + 0x1Cu), z = (int32_t)GO32(vp + 0x20u);
+                const int32_t u = (int32_t)GO32(fp + 0x10u + 12u * cn), v = (int32_t)GO32(fp + 0x14u + 12u * cn);
+                if (go_iabs(x) > 32767 || go_iabs(y) > 32767 || go_iabs(z) > 32767 || go_iabs(u) > 32767 || go_iabs(v) > 32767) {
+                    c->refused_range++; return 0;
+                }
+                int16_t *r = rec + (o * 3u + cn) * 6u;
+                r[0] = (int16_t)x; r[1] = (int16_t)y; r[2] = (int16_t)z; r[3] = (int16_t)u; r[4] = (int16_t)v; r[5] = 0;
+                for (uint32_t a = 0; a < 3u; a++) { const uint32_t e = (uint32_t)go_iabs(r[a]); if (e > ext) ext = e; }
+                {   const uint32_t q2 = (uint32_t)(x * x) + (uint32_t)(y * y) + (uint32_t)(z * z);
+                    if (q2 > e2) e2 = q2; }
+            }
+            o++; me->gc[k]++;
+        }
+    }
+    me->verts = verts; me->faces = faces; me->nv = nv; me->nf = nf; me->ofs = g->aused; me->ng = ng; me->ext = (uint16_t)ext;
+    {   uint32_t x = e2, r = 0, b = 1u << 30;
+        while (b > x) b >>= 2;
+        while (b) { if (x >= r + b) { x -= r + b; r = (r >> 1) + b; } else r >>= 1; b >>= 2; }
+        me->rad = (uint16_t)(r + 1u > 0xFFFFu ? 0xFFFFu : r + 1u); }
+    me->fp[0] = GO32(verts + 0x18u); me->fp[1] = GO32(verts + 0x1Cu); me->fp[2] = GO32(faces + 0xCu); me->fp[3] = GO32(faces + 0x30u);
+    g->aused += 3u * nf; c->nmesh++; c->built++;
+    if (g->aused > g->peak) g->peak = g->aused;
+    return me;
+}
+/* the lifted mesh routine after its transform (eng/edits.py +34A18): 1 = the car is the GPU's, the faces skipped */
+int a4_car_take(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf, uint32_t lr)
+{
+    const uint32_t gb = gcar_gbase();
+    if (lr != gb + 0x34B17u) return 0;                     /* a CBasicMesh: the cars */
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    volatile struct gstate *g = GOBJ;
+    volatile struct gcstate *c = GCAR;
+    gobj_reset(g);
+    if (c->magic != GCAR_MAGIC) {
+        uint32_t *w = (uint32_t *)GCAR_BASE;
+        for (uint32_t k = 0; k < sizeof(struct gcstate) / 4u; k++) w[k] = 0;
+        c->magic = GCAR_MAGIC; c->frame = 0xFFFFFFFFu;
+    }
+    if ((A4_PERF[PF_MODE] & (AB_MESH | AB_LEAN | AB_DEFER)) != (AB_MESH | AB_LEAN)
+        || s->up != A4_GL_MAGIC || !s->zbits || !s->abits || !MESH->gctx) { c->refused_mode++; return 0; }
+    if (g->frame != s->frames) {                           /* the frame's first object or car: as a4_obj_take */
+        if (s->frames - g->frame > 64u && g->nmesh) { g->full = 1; g->gaps++; }
+        g->frame = s->frames; g->n = 0; g->drawn = 0;
+        if (g->full) { gobj_clear(g); g->resets++; }
+    }
+    if (c->frame != s->frames) { c->frame = s->frames; c->n = 0; }
+    if (g->drawn || c->n >= GCAR_NI) { c->refused_drawn++; return 0; }
+#ifdef A4_GOBJ_AB
+    if ((s->frames >> (A4_GOBJ_AB)) & 1u) { c->refused_mode++; return 0; }
+#endif
+    if (nobf || mode == 0u || mode > 7u || nv == 0u || nv > 1024u || nf == 0u || nf > 2048u) { c->refused_mode++; return 0; }
+    const uint32_t mp = GO32(cam + 0x3Cu);
+    if (!mp) { c->refused_mode++; return 0; }
+    const int32_t *M = (const int32_t *)mp;
+    if (go_iabs(M[9]) > 32000 || go_iabs(M[10]) > 32000 || go_iabs(M[11]) > 32000) { c->refused_range++; return 0; }
+    const uint32_t w1 = GO32(GO32(gb + 0x34DD4u) + 8u * mode + 4u);   /* the mode's class word (+349F8's [sp+4]) */
+    struct gcmesh *me = gcar_mesh(g, c, verts, nv, faces, nf, w1);
+    if (!me) return 0;
+    if (M[11] + (int32_t)me->rad + 2 > -(ZK + 4)) { c->refused_near++; return 0; }   /* the list's near plane */
+    volatile struct gcitem *it = &c->it[c->n++];
+    it->mesh = (uint32_t)(uintptr_t)me; it->F = GO32(cam + 4u);
+    for (uint32_t k = 0; k < 12u; k++) it->M[k] = M[k];
+    {   /* its screen box and depth buckets, for the list's grid (as a4_obj_take's) */
+        const uint32_t *gx = (const uint32_t *)(uintptr_t)MESH->gctx;
+        const int32_t r = (int32_t)me->rad + 2, vx = M[9], vy = M[10], vz = M[11];
+        int32_t zn = vz + r, zf = vz - r;
+        const uint32_t qn = zn < 0 ? (uint32_t)(-zn) >> 3 : 0u, qf = zf < 0 ? (uint32_t)(-zf) >> 3 : 0u;
+        it->qn = (uint16_t)(qn > 4095u ? 4095u : qn); it->qf = (uint16_t)(qf > 4095u ? 4095u : qf);
+        if (zn > -512) { it->box[0] = -1; it->box[1] = -1; it->box[2] = VP_W; it->box[3] = VP_H; }
+        else {
+            if (zf < -0x7FFF) zf = -0x7FFF;
+            int32_t F = (int32_t)it->F;
+            if (F < 1) F = 1;
+            if (F > 16383) F = 16383;
+            const int32_t cx = *(const int32_t *)gx[0x40110 / 4] >> 1, cy = *(const int32_t *)gx[0x40114 / 4] >> 1;
+            int32_t xlo = 0x7FFFFFFF, ylo = 0x7FFFFFFF, xhi = -0x7FFFFFFF, yhi = -0x7FFFFFFF;
+            for (uint32_t k = 0; k < 8u; k++) {
+                int32_t x = (k & 1u) ? vx + r : vx - r, y = (k & 2u) ? vy + r : vy - r, sx, sy;
+                if (x > 32767) x = 32767;
+                if (x < -32767) x = -32767;
+                if (y > 32767) y = 32767;
+                if (y < -32767) y = -32767;
+                mesh_scr_i(gx, F, cx, cy, x, y, (k & 4u) ? zf : zn, &sx, &sy);
+                if (sx < xlo) xlo = sx;
+                if (sx > xhi) xhi = sx;
+                if (sy < ylo) ylo = sy;
+                if (sy > yhi) yhi = sy;
+            }
+            xlo -= 2; ylo -= 2; xhi += 2; yhi += 2;
+            it->box[0] = (int16_t)(xlo < -1 ? -1 : xlo > VP_W ? VP_W : xlo);
+            it->box[1] = (int16_t)(ylo < -1 ? -1 : ylo > VP_H ? VP_H : ylo);
+            it->box[2] = (int16_t)(xhi < -1 ? -1 : xhi > VP_W ? VP_W : xhi);
+            it->box[3] = (int16_t)(yhi < -1 ? -1 : yhi > VP_H ? VP_H : yhi);
+        }
+    }
+    c->taken++;
+    return 1;
+}
+/* the frame's cars, after the scenery and before the list: a modelview a car, a draw a group */
+static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
+{
+    volatile struct gcstate *c = GCAR;
+    if (c->magic != GCAR_MAGIC || c->frame != s->frames || !c->n) return;
+    const uint32_t n = c->n;
+    int32_t F = (int32_t)c->it[0].F;
+    if (F < 1) F = 1;
+    if (F > 16383) F = 16383;
+    const int32_t cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
+    int P[16], MV[16], TM[16];
+    for (int i = 0; i < 16; i++) { P[i] = 0; MV[i] = 0; TM[i] = 0; }
+    P[0] = (F << 17) / VP_W; P[5] = (F << 17) / VP_H;            /* the list's projection (mesh_draw) */
+    P[8] = FX - (cx << 17) / VP_W; P[9] = (cy << 17) / VP_H - FX; P[11] = -FX;
+    P[14] = ZK * FX - ((ZK * FX) >> 6);
+    gl_matrixmode(GL_PROJECTION); gl_loadmatrixx(P);
+    gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_GEQUAL); gl_enable(GL_CULL_FACE); gl_depthmask(1);
+    const uint16_t *m1map = (const uint16_t *)gctx[0x5c / 4];
+    const uint16_t *m1tab = m1_table(gctx);
+    TM[10] = FX; TM[15] = FX;
+    int lw = -1, lh = -1; uint32_t lastid = 0xFFFFFFFFu, draws = 0;
+    for (uint32_t i = 0; i < n; i++) {
+        const volatile struct gcitem *it = &c->it[i];
+        const struct gcmesh *me = (const struct gcmesh *)(uintptr_t)it->mesh;
+        MV[0] = it->M[0] << 2; MV[1] = it->M[1] << 2; MV[2] = it->M[2] << 2;
+        MV[4] = it->M[3] << 2; MV[5] = it->M[4] << 2; MV[6] = it->M[5] << 2;
+        MV[8] = it->M[6] << 2; MV[9] = it->M[7] << 2; MV[10] = it->M[8] << 2;
+        MV[12] = it->M[9] << 16; MV[13] = it->M[10] << 16; MV[14] = it->M[11] << 16; MV[15] = FX;
+        gl_matrixmode(GL_MODELVIEW); gl_loadmatrixx(MV);
+        gl_matrixmode(GL_TEXTURE); lw = -1; lh = -1;       /* the texture matrix reloaded under each car's */
+        const uint32_t base = GOBJ_ARENA + 12u * me->ofs;
+        gl_vertexptr(3, GL_SHORT, 12, (const void *)base);
+        gl_texcoordptr(2, GL_SHORT, 12, (const void *)(base + 6u));
+        for (uint32_t k = 0; k < me->ng; k++) {
+            uint32_t id; int wsh, hsh;
+            if (tri_tex(s, KIND_TEX, me->gm1[k], me->gd[k], m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
+            if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
+            if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
+            gl_drawarrays(GL_TRIANGLES, 3 * (int)me->gs[k], 3 * (int)me->gc[k]); draws++;
+        }
+    }
+    c->draws += draws; c->frames_drawn++;
+    MESH->active = 1;                                       /* the table's classes depth-test against them */
+    gl_loadidentity();                                       /* the texture matrix */
+    gl_matrixmode(GL_MODELVIEW); gl_loadidentity();
+    gl_matrixmode(GL_PROJECTION); gl_loadidentity();
+    gl_orthox(0, VP_W*FX, VP_H*FX, 0, -FX, FX);
+    gl_matrixmode(GL_MODELVIEW);
+    gl_depthfunc(GL_GEQUAL);
+    gl_disable(GL_CULL_FACE); gl_disable(GL_DEPTH_TEST);
+}
+#endif
 /* the frame's drawn objects into the list's tile grid (mesh_draw): each its box at its nearest bucket; the count */
 static uint32_t gobj_grid(volatile struct glr *s, uint16_t *grid)
 {
@@ -5509,8 +5801,8 @@ static uint32_t gobj_grid(volatile struct glr *s, uint16_t *grid)
 #ifdef A4_GOBJ_NOGRID
     return 0;                                       /* bench: r60's behaviour, the objects in no grid */
 #endif
-    const uint32_t n = g->n;
-    for (uint32_t i = 0; i < n; i++) {
+    uint32_t n = g->n;
+    for (uint32_t i = 0; i < g->n; i++) {
         const volatile struct gitem *it = &g->it[i];
         const int32_t x0 = it->box[0], y0 = it->box[1], x1 = it->box[2], y1 = it->box[3];
         if (x1 < 0 || y1 < 0 || x0 >= VP_W || y0 >= VP_H || x0 > x1 || y0 > y1) continue;
@@ -5521,6 +5813,23 @@ static uint32_t gobj_grid(volatile struct glr *s, uint16_t *grid)
             for (int32_t tx = tx0; tx <= tx1; tx++)
                 if (q < grid[ty * MESH_GW + tx]) grid[ty * MESH_GW + tx] = q;
     }
+#ifdef A4_GPUCAR
+    {   const volatile struct gcstate *c = GCAR;
+        if (c->magic == GCAR_MAGIC && c->frame == s->frames)
+            for (uint32_t i = 0; i < c->n; i++) {
+                const volatile struct gcitem *it = &c->it[i];
+                const int32_t x0 = it->box[0], y0 = it->box[1], x1 = it->box[2], y1 = it->box[3];
+                if (x1 < 0 || y1 < 0 || x0 >= VP_W || y0 >= VP_H || x0 > x1 || y0 > y1) continue;
+                const int32_t tx0 = x0 < 0 ? 0 : x0 >> 4, tx1 = x1 >= VP_W ? MESH_GW - 1 : x1 >> 4;
+                const int32_t ty0 = y0 < 0 ? 0 : y0 >> 4, ty1 = y1 >= VP_H ? MESH_GH - 1 : y1 >> 4;
+                const uint16_t q = it->qn;
+                for (int32_t ty = ty0; ty <= ty1; ty++)
+                    for (int32_t tx = tx0; tx <= tx1; tx++)
+                        if (q < grid[ty * MESH_GW + tx]) grid[ty * MESH_GW + tx] = q;
+                n++;
+            }
+    }
+#endif
     return n;
 }
 /* mesh_bb_depth's objects: the deepest bucket of an object nearer than the sprite (sb) whose box meets its rectangle,
@@ -5541,6 +5850,18 @@ static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int3
         int32_t d = it->qf < sb ? (int32_t)it->qf : sb - 1;
         if (d > deep) deep = d;
     }
+#ifdef A4_GPUCAR
+    {   const volatile struct gcstate *c = GCAR;
+        if (c->magic == GCAR_MAGIC && c->frame == s->frames)
+            for (uint32_t i = 0; i < c->n; i++) {
+                const volatile struct gcitem *it = &c->it[i];
+                if ((int32_t)it->qn >= sb) continue;
+                if (it->box[2] < x0 || it->box[0] >= x1 || it->box[3] < y0 || it->box[1] >= y1) continue;
+                int32_t d = it->qf < sb ? (int32_t)it->qf : sb - 1;
+                if (d > deep) deep = d;
+            }
+    }
+#endif
     return deep;
 }
 /* bench: the counters, every 256th flush, EKA2L1_PCMEM at a4_gobj_emit (r0: the state's first 0x40 bytes) */
@@ -6433,6 +6754,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #endif
 #ifdef A4_GPUOBJ
         gobj_flush(s, gctx);                            /* round 60: the GPU's objects, before the list */
+#ifdef A4_GPUCAR
+        gcar_flush(s, gctx);                            /* round 67: the cars, after the objects */
+#endif
         if ((s->frames & 255u) == 0u) a4_gobj_emit((const void *)GOBJ);   /* bench: the counters */
 #endif
 #ifdef A4_MESH

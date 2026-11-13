@@ -273,6 +273,14 @@ ALWAYS = {
     # round 60, A4_GPUOBJ: an object the GPU draws itself (a4_gl.c a4_obj_take) skips the game's path; r0-r3 are
     # still the call's at +CE90 (the push and the sub have run), and +CF6A unwinds them
     0x0CE90: {'before': 'if (A4_OBJ_TAKE(r0, r1, r2, r3)) goto L_0CF6A;', 'why': 'A4_GPUOBJ: the object drawn by the GPU'},
+    # round 67, bench (A4_CARCENSUS): the mesh routine's call after its transform -- the ctx, the vertices, their
+    # count, the faces, their count, the mode and the caller (+34B16: a CBasicMesh, the cars)
+    0x34A10: {'before': 'A4_CAR_CENSUS(S32(0x14u), S32(0x18u), S32(0x1Cu), S32(0x20u), S32(0x38u), S32(0x40u), lr0);',
+              'why': 'A4_CARCENSUS: the car meshes as the GPU would take them'},
+    # round 67, A4_GPUCAR: after the transform and the whole-mesh outcode check, a car the GPU draws skips the faces
+    # (cam, verts, n, faces, n, the mode [sp+0x40], the no-back-face flag [sp+0x44], the caller)
+    0x34A18: {'before': 'if (A4_CAR_TAKE(S32(0x14u), S32(0x18u), S32(0x1Cu), S32(0x20u), S32(0x38u), S32(0x40u), S32(0x44u), lr0)) goto L_34AE6;',
+              'why': 'A4_GPUCAR: the car drawn by the GPU'},
     0x0CEC0: {'before': 'if (ce_verts(r0, r1, r2)) goto L_0CEDC;', 'why': 'the vertex unpack +CEC2..+CEDA by hand'},
     0x0CEDC: {'before': 'CE_CHECK(0);', 'why': 'A4_CECHECK: the vertex unpack by hand against the lifted loop'},
     0x0CEEA: {'before': 'if (ce_faces(r0, r1, r2, r4, L32(spp + 0x1Cu))) goto L_0CF4A;', 'why': 'the face unpack +CEEC..+CF48 by hand'},

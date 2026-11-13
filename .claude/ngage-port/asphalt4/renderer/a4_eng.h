@@ -45,6 +45,18 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3);   /* 
 #else
 #define A4_OBJ_TAKE(a, b, c, d) 0
 #endif
+#ifdef A4_GPUCAR
+int a4_car_take(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf, uint32_t lr);   /* a4_gl.c */
+#define A4_CAR_TAKE(c, v, nv, f, nf, m, nb, lr) a4_car_take((c), (v), (nv), (f), (nf), (m), (nb), (lr))
+#else
+#define A4_CAR_TAKE(c, v, nv, f, nf, m, nb, lr) 0
+#endif
+#ifdef A4_CARCENSUS
+void a4_car_census(uint32_t ctx, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t lr);   /* a4_gl.c, bench */
+#define A4_CAR_CENSUS(c, v, nv, f, nf, m, lr) a4_car_census((c), (v), (nv), (f), (nf), (m), (lr))
+#else
+#define A4_CAR_CENSUS(c, v, nv, f, nf, m, lr) ((void)0)
+#endif
 void a4_gl_hud(void);
 int a4_gl_bb(const uint32_t *r, const uint32_t *f);
 #ifdef A4_MESHMEMO

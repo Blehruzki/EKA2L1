@@ -9845,3 +9845,39 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   +2292A's eleven, the GE gates), lift.py's conditional thirds as generated, ENG_SUB_END under A4_WRECK3.
   (c) Not entered: a takedown in slow motion; a falling wreck (+B28 0x800); an opponent's wreck seen through the
   takedown camera; a wreck that starts on substep 1 or 2 (counted on the step's end, not seen in the probe).
+
+## Round 67 (owner: "start on that remaining job"): the frame under one 3x update (28.4 ms) -- the cars first
+
+- The target: a frame no longer than the engine's 28.44 ms step, so each frame draws one real update (35 fps,
+  even motion) -- the owner's choice over drawing between states.
+- Today's cost of the cars (ceil67.sh, W-4 model + EKA2L1_GPUMODEL_CALLS=1, 120 s each): b67 (r67) 41.5 ms a
+  render, render call 32.8, before the first triangle 4.2, 3D 18.1, comp 7.5 (read 5.9); cc67 (r67 +
+  A4_CEIL_CARS, the CBasicMesh wrapper +34AEA returning at once) 32.6 ms a render, render call 24.3, before the
+  first triangle 1.8, 3D 12.5. The cars are 8.9 ms of the frame. Not a repeat of round 57's ceilings (r57's
+  half-step build, no GPU scenery).
+- The car census (A4_CARCENSUS, bench; a4_car_census at the lifted mesh routine's +34A10 when called back to
+  +34B16; tools/carcen.py; 60 s, cap 85): 7 calls a frame (max 11), ~1,900-2,100 faces; 18-19 distinct meshes:
+  the player's (393 vertices, 702 faces, mode 2: 542 faces class 0x104000 -- the paint's reflection -- and 160
+  0x4000; 3 descriptors, 255 x 255), opponents' (171-248 vertices, 272-376 faces, mode 1, class 0x4000 with a few
+  never-drawn faces holding 0x100000; one 127 x 127 texture), small ones (40-65 vertices, 34-78 faces). Every face a
+  TFace (+B08EC); no coloured-key or alpha texture; texcoords x16 (0..4080, some v -32). In the chase view the
+  player's car sits at z -379..-170 (in 57 of 1,157 calls a vertex nearer than 126: a camera's change); an
+  opponent beside or behind the camera now and then.
+- The mesh routine read (+349F8): per face the outcodes' OR (0x20: skip) and AND (skip); the 3D back-face test
+  +3118E when [sp+0x44] is 0 and the mode is not 0; the class: the mode's words from the table at the literal
+  +34DD4 ([mode*8] near, [mode*8 + 4] otherwise), kept whole when the face's own flags hold 0x4100000, else
+  without those bits; modes 0 and 6 add the colour-key and alpha bits; the insert +349B0.
+- A4_GPUCAR (a4_gl.c, with A4_GPUOBJ; edit +34A18 in the lifted mesh routine, after the game's transform and its
+  whole-mesh outcode check): a car mesh (the caller +34B16, a mode 1-7 with the back-face test) is baked once into
+  the scenery arena as per-corner records grouped by (descriptor, class) -- class 0x104000 bound through tri_tex
+  with the mode-1 bake, 0x4000 plain, anything else refused -- and the routine's per-face work skipped; at the
+  frame's first triangle (after gobj_flush) each car is drawn with the list's projection and its own matrix
+  [cam+0x3C] as the modelview, a draw a group, depth-tested and writing, back faces culled; its sphere's screen
+  box and buckets go into the list's grid (gobj_grid, gobj_bb_deep). Refused: a mesh nearer than the list's near
+  plane, a vertex or texcoord past int16, a translation past 32,000, a full store. Its own state at 0x466000
+  (items, 24 meshes), the arena shared with the scenery (emptied together).
+- gc1 = r67 + A4_GPUCAR: snapshots (cap 85, 60 s, ten): the player's Mini with its paint and reflection, the
+  opponents, the HUD -- as r67's. g68 (the W-4 model + GPUMODEL_CALLS, 120 s): **34.7 ms a render (41.5)**,
+  render call 26.3 (32.8), before the first triangle 2.2, 3D 13.5, comp 7.5 (read 6.0); in the last windows 32.5-
+  32.9 ms (3D 12.0-12.8, comp 7.9-8.2, 2D 2.1-2.5, the yield 2.7-3.0, the rest 6.8-7.3); spans of one substep
+  2,622, of two 758. Cars taken 13,900, 7.3 draws a frame; refused near 170, outside a mesh frame 734.
