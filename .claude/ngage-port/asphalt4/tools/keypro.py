@@ -7,9 +7,13 @@
 import sys, struct
 d = open(sys.argv[1], 'rb').read()
 E = {}
-for o in range(0, len(d) - 15, 16):
-    c, sub, kw, live = struct.unpack_from('<4I', d, o)
-    if sub in (1, 2) and c % 3 == sub: E[c] = (sub, kw, live)
+o = 0
+while o + 12 <= len(d):                         # EKA2L1_PCMEM blocks: pc, address, size, then the bytes
+    pc, ad, n = struct.unpack_from('<3I', d, o); o += 12
+    for k in range(0, n - 15, 16):
+        c, sub, kw, live = struct.unpack_from('<4I', d, o + k)
+        if sub in (1, 2): E[c] = (sub, kw, live)
+    o += n
 R = sorted(E.items())
 M = 0x603
 if not R: print('no records'); sys.exit()

@@ -9732,3 +9732,20 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   > 12, the word forced to 8). A key down before substep 1 steers 57 ms sooner, before substep 2 28 ms.
   Bench probe A4_KEYPROBE (4 words a substep, ring 0x5A2000 through a4_camp_emit; tools/keypro.py). The
   source without the flag compiles 12 bytes smaller than r64's (the new label edit), so r64 is a242513's.
+- Battery r64 (exact binary 2fd6c8eb; the container restarted twice, the battery resumed from the Veyron run with
+  the car archive put back first): every run whole, faults=1 each (the known one). Tele (calibrated bench,
+  120 s): 40.9 ms a render (r63 39.3), 3D 17.7; camera yaw and heading reversals 0; held back 0, drop frames 0.
+  **Crash-steer (cap 85): camera yaw one-frame reversals 0 (r63: 14)**, heading less yaw reversals 5 of 131
+  moving frames (r63: 40 of 171). Race to the finish (both): whole; r64f2 met mode 0x18 (a scripted view, 46
+  frames, bearing reversals 23: the scripted cameras still move at 11.72 Hz, not changed here). Menu, mark,
+  Veyron autopilot (camera reversals 0), mark on the Veyron, Paris on the owner's save: whole. Scenery taken
+  93.7% / 93.4% (LA), 72.7% (Paris); r64f2's 10 resets are 64-frame gaps without objects (the finish).
+  Not a repeat of: r63's battery (the camera's pose), a4_cp2 / a4_cp3 (the probe, not the candidate).
+- A4_LIVEKEYS probe (a4_kp = C63 + LIVEKEYS + KEYPROBE, crash-steer at cap 85, 70 s; the dump's PCMEM blocks
+  carry a 12-byte header, keypro.py reads them): 1,536 substep records; of 64 steering changes, **26 reached the
+  car on substep 1 (57 ms before the whole step would have read them), 18 on substep 2 (28 ms), 20 with the
+  whole step** (the thirds a uniform press time gives). The bits not taken that differed: 4 (74) and 0x20 (61),
+  the start press the script's re-press of '5' makes -- kept the whole step's, as meant. Car heading reversals 0.
+- Candidate r65 = a4_r65_cand.exe (C65 = C63 + A4_LIVEKEYS, THIRDSTEP, scratch 0x1A0000):
+  d364f1dba886a90df8cfa884a664e437417143956d69ec780d259f33e952c8cb, 919,448 bytes; twin y65 (rec 700BA62C),
+  counters 700BCA54. Battery r65bat (r64bat on r65): running.
