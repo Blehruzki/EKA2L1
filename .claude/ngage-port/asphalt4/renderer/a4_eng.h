@@ -339,6 +339,70 @@ static inline int go_cb_far(const int32_t *c, volatile const int32_t *p)   /* th
     int32_t dx = c[0] - p[0], dz = c[1] - p[1], dy = c[2] - p[2], dyaw = eng_wrap(c[3] - p[3]);
     return dx > 1024 || dx < -1024 || dz > 1024 || dz < -1024 || dy > 512 || dy < -512 || dyaw > 128 || dyaw < -128;
 }
+/* Round 65 (A4_CAMSCRIPT3): the crash and takedown camera (mode 0x18, +554C) on the substeps. Its pose comes from
+ * a keyframe script (cam+0x248: +5205A plays it, +3D2A turns its eleven channels and the car into the pose) whose
+ * player moves each channel, once a whole step, from its value toward the first keyframe in its list by
+ * (keyframe - value) / (keyframe's step - clock), and takes the keyframe and unlinks it once its step is reached --
+ * so the next whole step's value of every channel is already fixed by the list. A substep j places the camera with
+ * each channel j thirds of the way from its value now to that next value (the script's own straight line), on the
+ * car where it is now; the player itself is held off (the script's done byte set for the call) and every channel
+ * put back after, so the script, its clock and its lists stay the whole step's. Not when the mode's setup has not
+ * run (cam+0xC0 not 0x18: +554C would run +54E8, which allocates). Kept from the substep: the pose +3D2A writes
+ * (cam+0xC channel 10, +0x10..+0x24), +554C's cam+0x28, +0x2C, +0x44 -- outputs it makes afresh each call. */
+#ifdef A4_CAMSCRIPT3
+static inline uint32_t eng_udiv(uint32_t n, uint32_t d);
+/* a signed divide truncating toward zero, as the game's (+50E8C) */
+static inline int32_t eng_sdiv(int32_t n, int32_t d)
+{
+    const uint32_t q = eng_udiv(n < 0 ? 0u - (uint32_t)n : (uint32_t)n, d < 0 ? 0u - (uint32_t)d : (uint32_t)d);
+    return (n < 0) != (d < 0) ? -(int32_t)q : (int32_t)q;
+}
+static inline void eng_cam_script(uint32_t sp, uint32_t *r23, uint32_t j, volatile uint32_t *cam)
+{
+    const uint32_t ob = (uint32_t)(uintptr_t)cam + 0x248u;
+    volatile uint32_t *o = (volatile uint32_t *)(uintptr_t)ob;
+    volatile uint8_t *done = (volatile uint8_t *)(uintptr_t)(ob + 0x88u);
+    const int32_t clk = (int32_t)o[0x8Cu / 4u], end = (int32_t)o[0x90u / 4u];
+    int32_t cur[11];
+    uint32_t save[ENG_CAMW], k, live = 0;
+    if (*done || (end && clk >= end)) return;
+    for (k = 0; k < 11u; k++) {
+        const uint32_t head = o[0x94u / 4u + k], first = MEM32(head);
+        int32_t nx;
+        cur[k] = (int32_t)o[0x5Cu / 4u + k];
+        if (first == head) continue;
+        live = 1;
+        {
+            const int32_t v = (int32_t)MEM32(first + 8u), t = (int32_t)MEM32(first + 12u);
+            /* the player's own arithmetic: 32-bit, (v << 12 - value) / (step - clock) */
+            nx = t > clk ? cur[k] + eng_sdiv((int32_t)(((uint32_t)v << 12) - (uint32_t)cur[k]), t - clk) : (int32_t)((uint32_t)v << 12);
+        }
+        o[0x5Cu / 4u + k] = (uint32_t)(cur[k] + eng_sdiv((nx - cur[k]) * (int32_t)j, 3));
+    }
+    if (!live) return;
+    for (k = 0; k < ENG_CAMW; k++) save[k] = cam[k];
+    *done = 1;
+    for (k = 0; k < 4u; k++) ((volatile uint32_t *)(uintptr_t)sp)[k] = ENG->cam[4 + k];
+    (void)a4_eng_call(GAMEFN(0x5968), ENG->cam[0], ENG->cam[1], ENG->cam[2], ENG->cam[3], sp, r23);
+    *done = 0;
+    for (k = 0; k < 11u; k++) o[0x5Cu / 4u + k] = (uint32_t)cur[k];
+    for (k = 0; k < ENG_CAMW; k++) if (!((k >= 3u && k <= 11u) || k == 17u)) cam[k] = save[k];
+#ifdef A4_CAMPROBE
+    {
+        extern void a4_camp_emit(const void *);
+        volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+        uint32_t i = rg[0] & 255u;
+        volatile uint32_t *e = rg + 4u + 12u * i;
+        volatile int32_t *car = (volatile int32_t *)(uintptr_t)ENG->cam[2];
+        e[0] = ENG->cnt; e[1] = j | (0x18u << 8) | 0x10000u; e[2] = (uint32_t)car[0x678 / 4]; e[3] = (uint32_t)car[1];
+        e[4] = (uint32_t)car[3]; e[5] = (uint32_t)clk; e[6] = save[8]; e[7] = cam[8];
+        e[8] = save[4]; e[9] = cam[4]; e[10] = save[6]; e[11] = cam[6];
+        rg[0] = i + 1u;
+        if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
+    }
+#endif
+}
+#endif
 static inline void eng_cam_pose(uint32_t sp, uint32_t *r23, uint32_t j)
 {
     volatile uint32_t *cam = (volatile uint32_t *)(uintptr_t)ENG->cam[0];
@@ -347,7 +411,13 @@ static inline void eng_cam_pose(uint32_t sp, uint32_t *r23, uint32_t j)
     if (!ENG->camv || !cam) return;
     mode = cam[0x4C / 4];
     if (j == 0u) ENG->cbw = 0;
-    if (!(mode <= 7u || mode == 0x2Au)) { ENG->cbok = 0; return; }
+    if (!(mode <= 7u || mode == 0x2Au)) {
+        ENG->cbok = 0;
+#ifdef A4_CAMSCRIPT3
+        if (mode == 0x18u && j != 0u && car && cam[0xC0u / 4u] == 0x18u) eng_cam_script(sp, r23, j, cam);
+#endif
+        return;
+    }
     chase = car && (mode == 1u || mode == 2u || mode == 3u || mode == 0x2Au);
     for (k = 0; k < ENG_CAMW; k++) save[k] = cam[k];
     if (j == 0u) {                                   /* the whole step: the game's pose is the target */

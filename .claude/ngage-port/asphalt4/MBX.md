@@ -9771,3 +9771,34 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   lifted.c carries them (+14754, +14948, +14CB2, +14EF0). (c) Not entered: chase modes 3 and 0x2A (1 and 2 only);
   a turn over 256 /2048 in a step; the phone's keypad and its key repeat; two steering keys at once (the
   release +25B6 posts, on the copy); a race's end with LIVEKEYS (excluded, not entered).
+
+## Round 65 (owner: "Don't send. Fix the open issues first"): the slow runs, the scripted camera
+
+- The two slow runs, settled as the bench driver. (1) The deterministic pair o3n / o3k (C63 + THIRDSTEP + the
+  lockstep oracle's recorders, BENCH_SEED, AUTOPILOT_UNSTICK, LOCKSTEP 1 / P 7111; o3k + LIVEKEYS; jtrun 90 s,
+  NOKEY5, cap 85): o3n against o3k part at step 119 after the start, o3n against itself (o3n2) at step 117 --
+  the oracle is not deterministic past ~10 s (EKA2L1_DETTICK=50 to pin the tick stalls the boot: framestat 69),
+  and LIVEKEYS parts no sooner than a build parts from itself. (2) q64 / q65 (C63 / C65 + CARREC only, '5' held by
+  the script, cap 85, 120 s, alternating, three each; tools/crawl.py over the whole race's step records):
+      q64_1 speed median 212, crawling 0%       q65_1 206, 0%
+      q64_2 141, 27% (374 steps at once)        q65_2 118, 39% (215)
+      q64_3  80, 34% (336)                      q65_3  48, 49% (390)
+  r64 crawls as r65 does: the bench driver, which steers by the walls, sticks on something in two runs of three
+  either way; three a side cannot tell the builds apart and the key word cannot either (no steering pressed:
+  the merge gives the whole step's word). Not a repeat of r64bat / r65bat (one run each, the last 16 s only).
+- The scripted camera (A4_CAMSCRIPT3, eng_cam_script in a4_eng.h): the crash and takedown camera (0x18, +554C)
+  plays a keyframe script (cam+0x248; +5205A, read: a clock at +0x8C, an end at +0x90, a done byte at +0x88,
+  eleven channels at +0x5C (Q12, x a scale +4 plus an offset +0x30 through +520F0), each with a keyframe list at
+  +0x94; a call moves each channel by (keyframe - value) / (keyframe's step - clock), or takes the keyframe and
+  unlinks it once its step is reached, then clock + 1) and turns it into the pose with the car (+3D2A: cam+0x10..
+  +0x24 and cam+0xC from channel 10). The next whole step's channels are fixed by the lists already, so a substep
+  places the camera with each channel j thirds of the way to its next value, on the car as it is now; the player
+  held off (the done byte set for the call), the channels put back, so the script stays the whole step's. Not
+  before the mode's setup ran (cam+0xC0 0x18; +554C would run +54E8, which allocates). Probe a4_cs (C66 +
+  CAMPROBE, a race to the finish, '5' held, cap 85): 96 substep placements in one crash; from the script's 4th
+  step on the camera moves 8-13 units a substep in one direction (cnt 1625-1665) -- and then 39-47 at the whole
+  step, the wrecked car's own move: a wreck moves on the whole step only (+1DFE6; its path +2292A integrates the
+  car's velocity from a base, the reason round 50 kept it at the game's step), so in a crash the car and the
+  world still step at 11.72 Hz while the camera's motion around the car is smooth. At the crash's start (clk 2-3)
+  the car's own heading swings between substeps (1996, 1941, 2020, 1892): the 3x contact on the moving car.
+  C66 = C65 + A4_CAMSCRIPT3 (a4_r66t.exe, 920,156 bytes; not a candidate yet: no battery).
