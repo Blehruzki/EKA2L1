@@ -10009,3 +10009,56 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   (+B4) median 206 (r68 113-145, p68 217). Not a repeat of: p68 (the arrays written through an opaque call, not
   zeroed; its build is not a phone build). Next: o3z (the round 63 oracle on C68 + the fix, jtrun 90 s, against
   o1) and tc1 (EKA2L1_WATCH on the traffic's two clocks, race+0x378/+0x37C = 0x02039F48:0x02039F50): queued.
+- o3z (round 63's oracle, C68 + the fix + CARREC YREC AUTOPILOT(_UNSTICK) BENCH_SEED LOCKSTEP, jtrun 90 s,
+  against o1, the game's own engine): the countdown the same (revs from record 101, moving at 149); speed to
+  20/40/60/80/100/120/140 at steps 0/0/10/22/37/45/54 (stock 0/1/12/23/38/46/56); gears 2, 3, 4 at steps 32, 85,
+  292 (stock 32, 85, 291); top speed 264 both; distance -0.1% at 10 s, -1.0% at 20 s and at 30 s; B4 at 14.3,
+  18.4, 22.5, 26.6, 30.7 s: 222/227, 128/131, 198/199, 176/180, 231/230 (3x/stock). Round 63's o3 on the same
+  route: gear 4 at step 424, distance -11.2% at 20 s, B4 124/227 at 14.3 s -- it parted from stock after ~8 s,
+  which round 63 read as the paths' chaos; it was the grip. Both runs end stuck (stock from ~38 s, 3x ~47 s:
+  the bench driver, as round 63). 3x: one wreck (step 493) and 17 car contacts, stock 1 -- the 3x drives on
+  after stock stopped. Not a repeat of: o1/o3 (round 63, before the fix). Its car contacts all come after record
+  560 (35 s), where stock had stopped; before, neither run has any.
+- tc1 (z69 + CARREC, EKA2L1_WATCH on race+0x378..+0x37F, 40 s): both traffic clocks are written by the lifted
+  +141B0 (the race rules, the whole step) and advance by exactly 256 (the time scale race+0x84C) a whole step, 369
+  of 369 writes -- the substeps' traffic (eng_tmul: the clock plus a third / two thirds of 256) is on an even
+  step, not the owner's car going back and forth. Every racer and pursuer had the player's 0.4% grip (the cause
+  is in +1EA64, run for every car), so a car that could not hold its line is the likelier one: covered by the fix,
+  not proven -- the phone round will say.
+- Candidate r69 = a4_r69_cand.exe (C69 = C68's flags; the fix is the build's: a4_eng.c zero-initialised):
+  e42821754d62007043c9a93722438405e4dcb59f9b0e0b4d9fabed0c1c6db48f, 928,660 bytes (= z69, cmp'd); +3A15C b510
+  0004, no 0xDEADBEEF. Twin y69 (+ CARREC YREC AUTOPILOT; rec 700BA62C). Battery r69bat (r68bat on r69, plus the
+  twin's grip and diagscan.py over its runs): running.
+- The phone's frame against the bench's on the same track (Paris, the owner's save; pa_r68c is r68 on the bench):
+  draw calls a render 76 / 82, triangles 639 / 651 -- the same work -- but the time inside our GL hook in the 3D
+  pass 18.8 / 3.7 ms and the batched draws 4.13 / 0.74 ms: the phone's driver costs about five times what
+  EKA2L1_GPUMODEL charges for these calls. Textures remade 26 / 3.3 a window. The model was last calibrated
+  before the scenery (r60) and the cars (r68) moved to per-object draws (a modelview and a client-side vertex
+  array each): the next draw-time work starts from this, not from the model's 34.6 ms.
+- Battery r69 (exact binary e4282175): every run whole, faults=1 each (the known boot-time one, before the first
+  frame). Twin y69b (jtrun, autopilot, 120 s): grip 1,048,576 in 596 race steps, 0 (in the air) 15, 4,096 3, the
+  rise after; +E4 never above 0; distance 306,483 over 1,292 steps, speed median 242 (y68b on the same route:
+  143,245 and 113). Tele (calibrated bench, 120 s): 36.6 ms a render (r68 34.6: the car now drives faster through
+  more of the city), 3D 15.0; camera yaw and heading reversals 0; held back 0, drop frames 0. Crash-steer (cap
+  85): camera yaw and car heading one-frame reversals 1 each, at the same frame (heading -12, +52, -13: a wall's
+  push; r68c2 3 and 3); modes 2, 0x18, 0x2A. Race to the finish, exact binary, '5' held (r69f2): reaches the
+  race's end camera (0x17) and stays -- r68f2 never left the chase view in 300 s. The twin's race to the finish
+  (r69f) never reached a race: from post 1,501 every post the same 1,660,408 instructions (a static screen; the
+  menu walk after the battery's earlier races changed the save) -- rerun with the bench save put back: running.
+  Menu, mark, Veyron autopilot (camera reversals 0), mark on the Veyron, Paris on the owner's save: whole; Paris
+  moves 2-3 u/ms along its heading. Scenery 94.2% / 93.9% (LA), 78.5% (Paris); cars on the GPU 15,998 / 35,516 /
+  15,884 taken, stale 0. diagscan.py over t2, c2, f2, v, Paris: the longest run of equal x/z steps 3 frames (r67t2
+  143, the phone 317). +3A15C b510 0004, no 0xDEADBEEF.
+- Rule 4 for r69 (the grip). (a) Guesses: that zero stands in for the stale stack the game's Thumb would read in
+  every slot the lifted code reads unwritten -- checked for the player's car by the oracle (o3z: speed, gears and
+  distance within 1% of stock for 35 s) and the twin's grip, not word by word for the opponents, the wreck, the
+  camera or the lifted render functions (painter, 3D front end, mesh), which the battery runs only as wholes; that
+  the class is closed -- the IR of a4_eng.c with the flag has no llvm.assume and no undefined value, but the other
+  C sources (a4_gl.c, a4_prim.c, a4_tel.c: hand-written, not lifted) were not audited; that the owner's "traffic
+  car going back and forth" was an opponent or pursuer on 0.4% grip (tc1 rules out the traffic's clocks, nothing
+  proves the rest). (b) Read back: the injector's flag and its opt-out, __aeabi_memclr/4/8 in a4_eng.s (the
+  8-byte loop, the byte tail, n = 0, an unaligned start), the compiled +1EA64 (`ldr r0, [r8, #0xb28]; tst r0,
+  #0x80` before the grip store), the IR counts with and without. (c) Not entered: the phone with the fixed engine;
+  a police pursuit with grip (the pursuers grip too now); the 3x edits of rounds 63-67 that were tuned while every
+  car drove on 0.4% grip (the wall's push eng_kick, the crash camera, the wreck at 3x) -- run in the battery, not
+  re-derived.
