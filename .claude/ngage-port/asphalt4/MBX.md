@@ -10067,3 +10067,7 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   a police pursuit with grip (the pursuers grip too now); the 3x edits of rounds 63-67 that were tuned while every
   car drove on 0.4% grip (the wall's push eng_kick, the crash camera, the wreck at 3x) -- run in the battery, not
   re-derived.
+- Sent (owner: "yes"): r69 unbaked, send69/asphalt4_ngi.exe = a4_r69_cand.exe, e4282175, 928,660 bytes. Phone round
+  69 asks: do the cars accelerate, turn and hold the road; does anything still go back and forth; the telemetry
+  (a4tel*.dat) as before. Not a repeat of phone round 68: the build differs only in the grip fix. The frame (52 ms
+  on the phone in r68) is unchanged here and is the next job.
