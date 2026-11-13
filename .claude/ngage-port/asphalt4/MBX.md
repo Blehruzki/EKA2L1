@@ -10071,3 +10071,22 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   69 asks: do the cars accelerate, turn and hold the road; does anything still go back and forth; the telemetry
   (a4tel*.dat) as before. Not a repeat of phone round 68: the build differs only in the grip fix. The frame (52 ms
   on the phone in r68) is unchanged here and is the next job.
+
+## Phone round 69 (r69 e4282175): "it finally starts to feel like it's going at 30 fps ... We're definitely on
+## the right path" -- and: the helicopter goes violently back and forth, its light choppy; traffic cars show the
+## online lagginess; cops overshoot comically, the opponents catch up too fast and brake hard when the player
+## stops (the rubber band?); the Veyron is not as fast as before; jumps at speed feel wrong
+
+- Owner's words, in order: (1) fluid, 30 fps feel. (2) "some assets that don't accompany the new smoothness seem
+  to either lag or behave weirdly. The helicopter looks like it's violently going back and forth. The traffic
+  cars also show some of the online lagginess like bug. The helicopter light also shows up choppy. The cop cars
+  tend to overshoot comically, which makes me think the rubber-banding is broken ... when I crash, they get to me
+  real fast, and if I'm full stop, they still reach to me fast, and slow down rapidly". (4) "the veyron is not as
+  fast as it was before. That also affects certain dynamics such as when jumping from high places at high speed
+  ... they were made and tuned for fun racing. We have to fix this as well."
+- Telemetry (8 captures, phone69/): 54.0 ms a render (seg1 65.2), 3D 24.9, comp 8.6 (read 6.5), 2D 3.2; render
+  call 43.8 ms; spans n = 1: 95, 2: 243, 3: 36, 4: 10, 5: 4 (seg1), 1.1 ms a step. The frame record: camera yaw
+  one-frame reversals 1 of 417, car heading 0; drawn speed off its neighbours >25% in 33% (the frames' 1-3
+  updates). The frame cost is r68's (52.2): the fluidity is the cars moving as they should at 35 Hz.
+- What the bench has never compared with stock: the opponents and pursuers (the oracle followed the player only),
+  the boost (oracle: boost 0), the air (oracle: air 0), the helicopter, and the traffic as drawn. Next: each.
