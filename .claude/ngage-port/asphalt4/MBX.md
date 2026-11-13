@@ -9898,3 +9898,34 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   (calls 1.6, binds 1.1): ~15 ms of a ~33 ms frame, every charge serial in the model. The next levers are the draw
   calls, binds and calls (~5.8 ms) and the present path (convert 2.6 + composite 2.2 on the CPU, post 2.3, read
   and tile 5.3) -- not CPU loops before the read.
+
+## Round 68 (owner: "No, let's go for a phone round instead"): candidate r68
+
+- r68 = a4_r68_cand.exe (C68 = C67 + A4_GPUCAR; the ARMv6 staging copy under A4_PX6; THIRDSTEP, scratch
+  0x1A0000): f5231dc61dc3ad1f2396e1803d658fe8b9efc8f76e4796d0b8e466aadf7eca71, 927,116 bytes (= gc2, cmp'd); no
+  bench-only flag in C68. Twin y68 (+ CARREC YREC AUTOPILOT; rec 700BA62C). Counters a4_gobj_emit +0BD860 (the
+  scenery's 0x74, the cars' 0x40 at +0x2000; gobjsum.py reads both). Over r62 (never sent) and r60 (the phone's
+  last): the scenery's fixes (the grid, the near plane), the 3x engine with real frames only (r63), the chase
+  camera from the car (r64), live steering (r65), the crash camera on its script and the wreck at 3x (r67), the
+  cars on the GPU (r68).
+- Battery r68bat (exact binary; restarted once: the container's restart left /tmp/.X99-lock, Xvfb would not start,
+  the twin's first run had no display -- cleared, rerun whole): every run whole, faults=1 each (the known one).
+  Tele (calibrated bench, 120 s): **34.6 ms a render (r67 38.6)**, 3D 13.6, comp 7.5 (read 5.9), 2D 2.3; camera and
+  heading reversals 0; drawn speed off its neighbours by >25% in 19% of frames (r64 33%: more frames of one update);
+  held back 0, drop frames 2. Crash-steer: camera yaw reversals 3, each at a car heading reversal of its own (the
+  wall's push, 5 in this run; 0 in r67's -- the route's own variety: r68 changes no physics). Race to the finish
+  (twin; exact binary, '5' held), menu, mark, Veyron autopilot (reversals 0), mark on the Veyron, Paris on the
+  owner's save: whole. Cars on the GPU: LA 13,842 taken (near 243 refused), the finish 41,437 (57 meshes built over
+  11 store resets), Paris 18,103 (9.8 draws a frame); refused for class, texture, range or a full store: 0;
+  stale 0. Scenery 94.1% / 93.4% (LA), 71.5% (Paris). +3A15C b510 0004, no 0xDEADBEEF.
+- Rule 4 for r68 (GPU cars). (a) Guesses: that the game's own back-face test and GL's culling agree (the same
+  corner order as the scenery's TFaces; bench snapshots show whole cars, not proven face by face); that the mode-1
+  bake at the frame's first triangle reflects what the table's late draw did (in GL mode the 565 buffer holds the
+  last frame's picture at both times; re-bakes are rare); the nitro flame and other table sprites over the car
+  (depth-tested in the car's grid tiles; round 28 found the game's order there unlike any depth test -- seen in
+  snapshots only); faces never drawn yet given their class by the routine's rule; a car crossing the near plane
+  switching between the GPU and the game for a frame (two rasterisers: a change of look at that frame).
+  (b) Read back: a4_car_take, gcar_mesh, gcar_flush, gobj_grid's and gobj_bb_deep's car loops, the +34A18 edit in
+  lifted.c, a4_gobj_copy and its call. (c) Not entered: a mesh of more than 6 texture groups or a held store of 24
+  meshes (refused / reset), a car mesh whose texture changes under the same address (the fingerprint), the garage
+  and menus (refused outside a mesh frame), the phone's own GPU on per-car modelviews.
