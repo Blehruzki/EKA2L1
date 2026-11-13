@@ -10090,3 +10090,23 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   updates). The frame cost is r68's (52.2): the fluidity is the cars moving as they should at 35 Hz.
 - What the bench has never compared with stock: the opponents and pursuers (the oracle followed the player only),
   the boost (oracle: boost 0), the air (oracle: air 0), the helicopter, and the traffic as drawn. Next: each.
+- o1a / o3a (the round 63 oracle + A4_CARREC_AI: the opponent in race slot 1 recorded too; o1a is the game's own
+  engine, built the old way -- A4_NOZEROINIT, C63 less ENG3 and ENG_ALL, which do not link without each other):
+  the player as before (gears 2/3/4 at 32/85/291-292, distance -0.1 / -1.0 / -1.0 / -0.9% at 10/20/30/40 s); after
+  ~40 s the two paths part (the 3x car meets a corner or contact at record 518 and drops to third; stock goes on
+  to fifth at engine speed 720) -- top speed over the run stock 320, 3x 264, but from different paths. Engine
+  speed in fourth climbs +16 a step in both. Not settled whether the 3x car is slower at the top: the paths had
+  already parted.
+- The opponent cannot be compared this way: its gearbox table (car+730..+7A4) and gear count (+7C0: 6 / 5)
+  differ between the runs -- a different car model. The opponents are drawn before the race; A4_BENCH_SEED sets
+  the C library's state at the race's first step only.
+- The boost has never been compared: '5' is the nitro (round 40's controls) and a boost needs a fresh press
+  (key bit 0x20) -- every oracle held it (AE0 0 throughout; the bar +AD8 rises ~1 a step in both). o1t / o3t (the
+  same oracles with A4_AUTOPILOT_TAP=60: a fresh press every 60 steps): running.
+- Read in +1F1F8 (the AI), before the substeps' skip at +1F3CC: a car with car+B28 bit 20 is on rails -- placed
+  each call at a reference car's track index plus its own offset (+B5C), its position the spline node's (+0xE4 a
+  node), its lap word copied, velocity zeroed (+2202C) -- no edit, every substep. And +1FD0E (the race loop's other
+  branch, under a race-mode flag) moves a car by its whole step's velocity (+6B0) and counts +A34 on every call:
+  not thirded. Which cars take either path (the helicopter? the pursuers? opponents far from the player?) is not
+  known: rail69 (A4_VELPROBE + ENG_VPA at +1F24C, any car: its type +C70, the reference's index, the offset;
+  Paris on the owner's save): queued.

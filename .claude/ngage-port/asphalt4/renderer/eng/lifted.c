@@ -695,6 +695,8 @@ L_1F246:
     r1 = L32(r0 + 0x1Cu);                                        /* 01f246 ldr r1, [r0, #0x1c] */
     r2 = L32(r4 + 0x1Cu);                                        /* 01f248 ldr r2, [r4, #0x1c] */
     { uint32_t ta = r1, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01f24a adds r1, r1, r2 */
+    /* engine: bench (A4_VELPROBE): a car on rails */
+    ENG_VPA(8u, r5, MEM32(r5 + 0xC70u), MEM32(r0 + 0x1Cu), MEM32(r4 + 0x1Cu), r1, r0);
     L32(r5 + 0x1Cu) = r1;                                        /* 01f24c str r1, [r5, #0x1c] */
     r2 = 0x5u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01f24e movs r2, #5 */
     t = SHL_C(r2, 0x9u, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 01f250 lsls r2, r2, #9 */

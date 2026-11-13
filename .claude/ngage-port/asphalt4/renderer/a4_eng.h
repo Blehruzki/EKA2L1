@@ -262,6 +262,7 @@ void eng_cam_unblend(void);
 #define ENG_KPEEK(sp) 0
 #define ENG_KMERGE(sp) ((void)0)
 #define ENG_VP(t, car, a, b, c, d, e) ((void)0)
+#define ENG_VPA(t, car, a, b, c, d, e) ((void)0)
 int32_t eng_thirdv(uint32_t key, int32_t v);
 void ENG_BEGIN(uint32_t race);
 extern const uint16_t eng_frame_off[10];
@@ -349,8 +350,16 @@ static inline void eng_vp(uint32_t tag, uint32_t car, uint32_t a, uint32_t b, ui
     if (i + 1u == 384u) { rg[0] = 0; a4_camp_emit((const void *)(rg + 4u)); }
 }
 #define ENG_VP(t, car, a, b, c, d, e) eng_vp((t), (car), (a), (b), (c), (d), (e))
+/* any car (phone round 69: the cars on rails, +1F1F8's first branch) */
+static inline void eng_vpa(uint32_t tag, uint32_t car, uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
+{
+    uint32_t keep = ENG->dbg[6];
+    ENG->dbg[6] = car; eng_vp(tag, car, a, b, c, d, e); ENG->dbg[6] = keep;
+}
+#define ENG_VPA(t, car, a, b, c, d, e) eng_vpa((t), (car), (a), (b), (c), (d), (e))
 #else
 #define ENG_VP(t, car, a, b, c, d, e) ((void)0)
+#define ENG_VPA(t, car, a, b, c, d, e) ((void)0)
 #endif
 /* the camera's placement as the whole step's +12DEC made it, for the substeps to make again on the moved cars */
 static inline void eng_cam_save(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t sp)

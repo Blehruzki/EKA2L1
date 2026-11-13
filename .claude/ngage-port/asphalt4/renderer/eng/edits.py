@@ -173,6 +173,10 @@ T(0x228F2, '0C4, the acceleration eased 1/8 a step')
 B(0x1FE02, 'ENG_VP(5u, r4, r5, MEM32(r4 + 4u), MEM32(r4 + 0xCu), MEM32(r5 + 4u), MEM32(r5 + 0xCu)); '
   'ENG_VP(6u, r5, r4, MEM32(r5 + 4u), MEM32(r5 + 0xCu), MEM32(r4 + 4u), MEM32(r4 + 0xCu));',
   'bench (A4_VELPROBE): a car-to-car hit, the player in it')
+# bench (A4_VELPROBE, phone round 69): a car on rails (+1F1F8's first branch: placed at its reference car's track
+# index plus its own offset) -- the car, its type (+C70), the reference's index, the offset, the index it takes
+B(0x1F24C, 'ENG_VPA(8u, r5, MEM32(r5 + 0xC70u), MEM32(r0 + 0x1Cu), MEM32(r4 + 0x1Cu), r1, r0);',
+  'bench (A4_VELPROBE): a car on rails')
 # +2217C, the contact book
 G(0x22198, 'E0, steps since a contact')
 # +1F1F8, the AI: its choices (and the stuck check) on the whole step, its keys replayed
