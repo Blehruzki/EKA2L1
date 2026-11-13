@@ -213,7 +213,8 @@ def lift(start):
             if m == 'ldm':
                 E('t = %s; ' % b + ' '.join('%s = L32(t + %d);' % (r, 4 * k) for k, r in enumerate(regs)) + ('' if b in regs else ' %s = t + %d;' % (b, 4 * len(regs))), i)
             elif EDITS.get(i.address, {}).get('third'):     # a vector rate: each word keeps a third of its change
-                E('t = %s; ' % b + ' '.join('%s = eng_third(t + %d, L32(t + %d), %s); L32(t + %d) = %s;' % (r, 4 * k, 4 * k, r, 4 * k, r) for k, r in enumerate(regs)) + ' %s = t + %d;' % (b, 4 * len(regs)), i)
+                c_ = EDITS[i.address]['third']; c_ = '' if c_ is True else 'if (%s) ' % c_
+                E('t = %s; ' % b + ' '.join('%s%s = eng_third(t + %d, L32(t + %d), %s); L32(t + %d) = %s;' % (c_, r, 4 * k, 4 * k, r, 4 * k, r) for k, r in enumerate(regs)) + ' %s = t + %d;' % (b, 4 * len(regs)), i)
             else:
                 E('t = %s; ' % b + ' '.join('L32(t + %d) = %s;' % (4 * k, r) for k, r in enumerate(regs)) + ' %s = t + %d;' % (b, 4 * len(regs)), i)
         elif m in W and ops[1].type == A.ARM_OP_MEM:
@@ -234,7 +235,8 @@ def lift(start):
             elif EDITS.get(i.address, {}).get('third'):     # a rate: the store keeps a third of its change
                 if m != 'str': raise SystemExit('lift.py: a third at %06x on %s' % (i.address, m))
                 if b == 'sp': raise SystemExit('lift.py: a third at %06x on the frame' % i.address)
-                E('{ uint32_t ea_ = %s; %s = eng_third(ea_, L32(ea_), %s); L32(ea_) = %s; }' % (ea, rt, rt, rt), i)
+                c_ = EDITS[i.address]['third']; c_ = '' if c_ is True else 'if (%s) ' % c_   # a condition: the third only when it holds
+                E('{ uint32_t ea_ = %s; %s%s = eng_third(ea_, L32(ea_), %s); L32(ea_) = %s; }' % (ea, c_, rt, rt, rt), i)
             else: E('%s(%s) = %s;' % (Wm, ea, rt), i)
         elif base in ('mov', 'mvn'):
             d = rn(ops[0], i); s = opv(ops[1], i)

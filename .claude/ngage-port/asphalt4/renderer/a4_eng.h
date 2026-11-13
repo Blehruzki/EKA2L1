@@ -213,6 +213,7 @@ struct eng {
     uint32_t kcopy[8];               /* the key object as the next whole step's handler will find it (0x1D bytes) */
     uint32_t loop;                   /* the whole step entered the car loop (+14672): the substeps run only then */
     uint32_t meas1;                  /* +22832 measures a wreck: its displacement is a whole step's (x 1) */
+    uint32_t wy0, wyset;             /* A4_WRECK3: the wreck's height before this substep's +2292A, and its path set it */
     uint32_t lc[64], ls[64][3], lv[64][3]; /* the orientation's angles a step late: the word, the last three substeps' count and value */
     uint32_t kc[16], ks[16];         /* the wall's first push: the car (+678's address) and the step it hit, bit 31 still to come */
     uint32_t dbg[8];                 /* A4_ENGDBG: the substep's path bits and the player's keys, emitted per substep */
@@ -228,7 +229,9 @@ extern volatile struct eng a4_eng_absent;
 #define ENG (&a4_eng_absent)
 #define ENG_SUB (ENG->sub)
 #define ENG_KEYS (ENG->keys)
+#define ENG_WRECK3 0
 #define ENG_SUB_END(car) (ENG_SUB == 2u || (ENG_SUB == 0u && (!ENG->loop || *(volatile uint32_t *)(uintptr_t)((car) + 0x34u) != 0xFFFFFFFFu)))
+int32_t eng_sdiv(int32_t n, int32_t d);
 uint32_t eng_third(uint32_t ea, uint32_t old, uint32_t nw);
 uint32_t eng_ai_slot(uint32_t car);
 uint32_t eng_udiv(uint32_t n, uint32_t d);
@@ -266,7 +269,14 @@ static const uint16_t eng_frame_off[] = { 0xC8, 0xCC, 0xD0, 0xD4, 0x110, 0x114, 
  * car loop (the countdown: ENG->loop clear, the substeps return at once; r14 left +7C4 at 10 from the
  * countdown) -- where a countdown that substeps read is counted, after the step's reads of it, as the
  * game counts it after its step's */
+#ifdef A4_WRECK3
+#define ENG_WRECK3 1
+/* round 65: a wreck runs on every substep, so its last substep of the step is 2 like any car's */
+#define ENG_SUB_END(car) (ENG_SUB == 2u || (ENG_SUB == 0u && !ENG->loop))
+#else
+#define ENG_WRECK3 0
 #define ENG_SUB_END(car) (ENG_SUB == 2u || (ENG_SUB == 0u && (!ENG->loop || *(volatile uint32_t *)(uintptr_t)((car) + 0x34u) != 0xFFFFFFFFu)))
+#endif
 static inline void ENG_BEGIN(uint32_t race)
 {
     if (ENG->magic != ENG_MAGIC || ENG->race != race) {
@@ -349,7 +359,6 @@ static inline int go_cb_far(const int32_t *c, volatile const int32_t *p)   /* th
  * put back after, so the script, its clock and its lists stay the whole step's. Not when the mode's setup has not
  * run (cam+0xC0 not 0x18: +554C would run +54E8, which allocates). Kept from the substep: the pose +3D2A writes
  * (cam+0xC channel 10, +0x10..+0x24), +554C's cam+0x28, +0x2C, +0x44 -- outputs it makes afresh each call. */
-#ifdef A4_CAMSCRIPT3
 static inline uint32_t eng_udiv(uint32_t n, uint32_t d);
 /* a signed divide truncating toward zero, as the game's (+50E8C) */
 static inline int32_t eng_sdiv(int32_t n, int32_t d)
@@ -357,6 +366,7 @@ static inline int32_t eng_sdiv(int32_t n, int32_t d)
     const uint32_t q = eng_udiv(n < 0 ? 0u - (uint32_t)n : (uint32_t)n, d < 0 ? 0u - (uint32_t)d : (uint32_t)d);
     return (n < 0) != (d < 0) ? -(int32_t)q : (int32_t)q;
 }
+#ifdef A4_CAMSCRIPT3
 static inline void eng_cam_script(uint32_t sp, uint32_t *r23, uint32_t j, volatile uint32_t *cam)
 {
     const uint32_t ob = (uint32_t)(uintptr_t)cam + 0x248u;

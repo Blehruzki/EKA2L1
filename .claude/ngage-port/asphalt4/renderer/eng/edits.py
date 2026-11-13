@@ -61,10 +61,15 @@ G(0x1DF58, 'A7C, a countdown'); G(0x1DF64, 'A7C, a count up')
 T(0x1DF88, 'ABC, drained by a table value a step')
 GE(0x1DF9E, 'r4', 'AEC, a countdown (rpm -8 a step while it runs)')
 T(0x1DFA8, 'rpm -8 a step while AEC runs')
+# Round 65 (A4_WRECK3, ENG_WRECK3): the wreck at 3x too -- every substep runs it, its rates a third (the rpm's
+# -0x100; +2292A's push from the path, +1C/+18 x the entry, and its damping; the position a third of the move,
+# the height approaching the path's own point by the step's end), its path's counters on the step's last substep.
+# Without it, as round 50:
 # the wreck sequence (+034 != -1: rpm -0x100 a step, gears down, the scripted path +2292A) runs on the
 # whole step only: its path integrates the car's own velocity, which the substep measure would scale
 # (r7: an opponent's wreck flung it across the map). The wreck moves at the game's 11.72 Hz.
-B(0x1DFE6, 'if (ENG_SUB) return 0;', 'substeps: a wreck waits for the whole step')
+B(0x1DFE6, 'if (ENG_SUB && !ENG_WRECK3) return 0;', 'substeps: a wreck waits for the whole step (A4_WRECK3: runs)')
+EDITS[0x1DFEE] = {'third': 'ENG_WRECK3', 'why': 'A4_WRECK3: the wreck\'s rpm -0x100 a step, a third a substep'}
 G(0x1E39A, 'C48, the respawn countdown')
 T(0x1E602, 'grip 9FC, +0xD55 a step on the road')
 # the velocity's change toward its target (+1E5CA: d = +680 - +010, its length clamped to the traction
@@ -156,8 +161,8 @@ for a_ in (0x1F144, 0x1F14E):
 B(0x22854, 'if (!ENG->meas1) { MEM32(sp + 4u) *= 3u; MEM32(sp + 8u) *= 3u; MEM32(sp + 0xCu) *= 3u; }', 'velocity per step = 3 x the substep\'s displacement')
 B(0x2286C, 'if (!ENG->meas1) { MEM32(sp + 0x1Cu) *= 3u; MEM32(sp + 0x20u) *= 3u; MEM32(sp + 0x24u) *= 3u; }', 'acceleration per step = 3 x the substep\'s change')
 # +1EA64 for a wreck: nothing on the substeps; on the whole step its measure is the game's (x 1)
-B(0x1EA68, 'if (ENG_SUB && MEM32(r0 + 0x34u) != 0xFFFFFFFFu) return 0;', 'substeps: a wreck does not move')
-B(0x1EABC, 'ENG->meas1 = MEM32(r4 + 0x34u) != 0xFFFFFFFFu;', 'a wreck\'s measure is a whole step\'s')
+B(0x1EA68, 'if (ENG_SUB && !ENG_WRECK3 && MEM32(r0 + 0x34u) != 0xFFFFFFFFu) return 0;', 'substeps: a wreck does not move (A4_WRECK3: it does)')
+B(0x1EABC, 'ENG->meas1 = !ENG_WRECK3 && MEM32(r4 + 0x34u) != 0xFFFFFFFFu;', 'a wreck\'s measure is a whole step\'s (A4_WRECK3: a substep\'s, x 3)')
 B(0x1EAC0, 'ENG->meas1 = 0;', 'back to substep measures')
 T(0x228F2, '0C4, the acceleration eased 1/8 a step')
 # +2217C, the contact book
@@ -181,9 +186,37 @@ B(0x14EF0, 'if (!ENG_SUB) eng_cam_whole(sp, r23);', 'the chase camera: its offse
 # after the move) -- the AI's choices, on the whole step; the target it sets stays in +680 for the substeps
 G(0x1E5B2, 'a pursuer\'s target velocity (+1D20A): its AI, on the whole step')
 G(0x1E8F2, 'a pursuer\'s reaction (+1C48E): its AI, on the whole step')
-# +2292A, the wreck's scripted path: its frame (+034) and step (+048) counters, once a game step
-for a in (0x22BBA, 0x22BEA): G(a, '+048, the wreck path\'s step counter')
-for a in (0x22BC0, 0x22BE4): G(a, '+034, the wreck path\'s frame')
+# +2292A, the wreck's scripted path: its frame (+034) and step (+048) counters and its end, once a game step --
+# on the wreck's last substep of the step (the whole step without A4_WRECK3, where the wreck runs on it only)
+for a in (0x22BBA, 0x22BEA): GE(a, 'r4', '+048, the wreck path\'s step counter')
+for a in (0x22BC0, 0x22BE4): GE(a, 'r4', '+034, the wreck path\'s frame')
+GE(0x22C08, 'r4', '+034 = -1, the wreck path\'s end')
+# A4_WRECK3: the rest of +2292A at a third a substep. Its height before the path moves it (the approach below)
+B(0x2292A, 'if (ENG_WRECK3) { ENG->wy0 = L32(r0 + 8u); ENG->wyset = 0; }', 'A4_WRECK3: the wreck\'s height before this substep')
+# the falling wreck (its controller's +B28 bit 0x800): position += velocity, y - 2 -- a third a substep
+for a in (0x22964, 0x22972): EDITS[a] = {'third': 'ENG_WRECK3', 'why': 'A4_WRECK3: the falling wreck\'s move, a third'}
+# its height: y + vy - 2 a step, the 2 a gravity on the velocity the measure takes -- a third of vy and a ninth
+# of the 2 a substep (thirding y + vy - 2 whole would take 2 off the measured velocity every substep: x 3 gravity)
+R(0x22976, '{ const uint32_t ea_ = r4 + 8u; if (ENG_WRECK3) { const int32_t vy_ = (int32_t)(r0 + 2u - L32(ea_)); '
+           'r0 = L32(ea_) + (uint32_t)eng_thirdv(ea_, vy_) - (uint32_t)eng_thirdv(r4 + 0x1124u, eng_thirdv(r4 + 0x1128u, 2)); } L32(ea_) = r0; }',
+  'the falling wreck\'s height (A4_WRECK3: a third of its velocity, a ninth of the step\'s 2)')
+# the path's push on the velocity (+1C's vector x the entry's first word, +18's x its third) -- a third a substep
+for a in (0x22A02, 0x22A48):
+    B(a, 'if (ENG_WRECK3) { uint32_t k_; for (k_ = 0; k_ < 12u; k_ += 4u) S32(0x1Cu + k_) = (uint32_t)eng_thirdv(r4 + 0x1100u + k_, (int32_t)S32(0x1Cu + k_)); }',
+      'A4_WRECK3: the push along +1C, a third')
+B(0x22A8A, 'if (ENG_WRECK3) { uint32_t k_; for (k_ = 0; k_ < 12u; k_ += 4u) S32(0x58u + k_) = (uint32_t)eng_thirdv(r4 + 0x110Cu + k_, (int32_t)S32(0x58u + k_)); }',
+  'A4_WRECK3: the push along +18, a third')
+# the damping near the ground (v x (n - 1) / n, n the path's frames left): x (3n - 1) / 3n a substep
+EDITS[0x22AC4] = {'after': 'if (ENG_WRECK3) S32(0xCu) = 3u * S32(0xCu);', 'why': 'A4_WRECK3: the damping, a third'}
+# the position (+0A8, the last measured one, + the velocity): + a third of the velocity
+EDITS[0x22B2E] = {'after': 'if (ENG_WRECK3) { L32(r4 + 4u) = L32(r4 + 0xA8u) + (uint32_t)eng_thirdv(r4 + 0x1118u, (int32_t)S32(0x34u)); '
+                           'L32(r4 + 0xCu) = L32(r4 + 0xB0u) + (uint32_t)eng_thirdv(r4 + 0x1120u, (int32_t)S32(0x3Cu)); }',
+                  'why': 'A4_WRECK3: the wreck\'s move along the path, a third'}
+# the height: set from the path's frame (+ the ground, - the bounce); at 3x it closes on that point by the step's end
+EDITS[0x22B46] = {'after': 'if (ENG_WRECK3) ENG->wyset = 1;', 'why': 'A4_WRECK3: the height is the path\'s'}
+B(0x22B86, 'if (ENG_WRECK3 && ENG->wyset) { const int32_t t_ = (int32_t)L32(r4 + 8u), y0_ = (int32_t)ENG->wy0; '
+           'const int32_t k_ = ENG_SUB_END(r4) ? 1 : 3 - (int32_t)ENG_SUB; L32(r4 + 8u) = (uint32_t)(y0_ + eng_sdiv(t_ - y0_, k_)); ENG->wyset = 0; }',
+  'A4_WRECK3: the height closes on the path\'s point by the step\'s end')
 # bench (A4_ENGDBG): the path the race step takes, per substep (eng.h's 'ENGS' record)
 import os as _os
 if '-DA4_ENGDBG' in _os.environ.get('A4_EXTRA_CFLAGS', ''):

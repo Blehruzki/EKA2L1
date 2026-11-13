@@ -9802,3 +9802,29 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   world still step at 11.72 Hz while the camera's motion around the car is smooth. At the crash's start (clk 2-3)
   the car's own heading swings between substeps (1996, 1941, 2020, 1892): the 3x contact on the moving car.
   C66 = C65 + A4_CAMSCRIPT3 (a4_r66t.exe, 920,156 bytes; not a candidate yet: no battery).
+- The wreck at 3x (A4_WRECK3, owner: "go with the crash motion"). A wreck (+034 != -1) ran on the whole step
+  only (+1DFE6, +1EA68, the measure x 1): in a crash the car, and so the camera and the world, stepped at 11.72 Hz.
+  +2292A read: per step v = the measured velocity (+010) +/- +1C's vector x the path entry's first word >> 12, -
+  +18's x its third (the entry halved when the controller's +1D9CC is clear); near the ground (y - +0D0 < 30,
+  frame > 2) v x (n - 1) / n, n the frames left; position = +0A8 (the last measured one) + v, the height the
+  entry's +38 + the ground, less a bounce 25 x sin(frame << 13) when the controller's +B28 bit 0x1000 is set;
+  the falling case (+B28 bit 0x800): position += velocity, y - 2. Frame +034 and step +048 + 1 a step (2 with
+  the double rate), the end at the path's length or +048 past 0x24 / 0x48. At 3x (ENG_WRECK3; edits +1DFE6,
+  +1DFEE, +1EA68, +1EABC, +2292A's): every substep runs it, measured x 3 like any car; the rpm's -0x100, the
+  push (eng_thirdv per word) and the damping ((3n - 1) / 3n) a third; the position + a third of v (eng_thirdv);
+  the height closes on the path's point by the step's end (y0 + (target - y0) / (3 - j), 1 on the last); the
+  falling case a third of vy and a ninth of the 2 (thirding y + vy - 2 whole would take the 2 off the measured
+  velocity every substep: 3x gravity); the frame, the step counter and the end on the step's last substep
+  (GE; ENG_SUB_END loses its wreck clause under A4_WRECK3). tools/lift.py: a rate edit may carry a condition.
+- Probe a4_cw (C67 = C66 + WRECK3, + CAMPROBE; a race to the finish, '5' held, cap 85, 300 s): 144 crash-camera
+  substep placements; the wreck moves every substep (x 27049, 26983, ..., 66 a substep), the camera with it
+  (66-68 a substep), the car's heading turning 778, 778, 729, 687, 687, 652, 604, 550 -- against a4_cs's (C66,
+  the wreck at the step) 1996, 1996, 1996, 1941, 2020, 1892: its crash start swung because part of a wreck ran on
+  the substeps (the orientation's lag, the contact) and part not; whole, it turns one way. faults=1 (the known).
+- A/B w0 (C66 + CARREC) / w1 (C67 + CARREC), the race to the finish twice each (tools/wreck.py over the step
+  records): w1_1 one wreck, entry 226 a step, 35 steps, 6,079 units, the steps 194, 170, 174 ... 188 (flat),
+  then 175 down to 92 (the damping) and the respawn's 305, the height a smooth curve (-288..-229..-364); w0_2
+  one wreck (the game's step), entry 289, 36 steps, 7,929 units, 96 then 270 flat, then 264 down to 87 and the
+  respawn's 619; q64_2 / q65_3 (earlier, the game's step) the same shape. w1_2 and w0_1 no wreck. The 3x wreck's
+  path has the game's shape and scale; no wreck flung (round 50's r7). Its flat stretch drifts up ~1 a step (the
+  push's thirds); not settled whether stock's would at that crash.

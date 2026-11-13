@@ -2365,13 +2365,14 @@ L_1DFAA:
     S32(0x14Cu) = r1;                                            /* 01dfe0 str r1, [sp, #0x14c] */
     S32(0x150u) = r2;                                            /* 01dfe2 str r2, [sp, #0x150] */
     if (fZ) goto L_1E0DA;                                        /* 01dfe4 beq #0x1e0da */
-    /* engine: substeps: a wreck waits for the whole step */
-    if (ENG_SUB) return 0;
+    /* engine: substeps: a wreck waits for the whole step (A4_WRECK3: runs) */
+    if (ENG_SUB && !ENG_WRECK3) return 0;
     r6 = 0x8u; fN = r6 >> 31; fZ = r6 == 0;                      /* 01dfe6 movs r6, #8 */
     r0 = L32(r7 + 0x18u);                                        /* 01dfe8 ldr r0, [r7, #0x18] */
     { uint32_t ta = r0, tb = 0xFFu; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01dfea subs r0, #0xff */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01dfec subs r0, r0, #1 */
-    L32(r7 + 0x18u) = r0;                                        /* 01dfee str r0, [r7, #0x18] */
+    /* engine: A4_WRECK3: the wreck's rpm -0x100 a step, a third a substep */
+    { uint32_t ea_ = r7 + 0x18u; if (ENG_WRECK3) r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 01dfee str r0, [r7, #0x18] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01dff0 cmp r0, #0 */
     if ((int32_t)r0 >= (int32_t)0x0u) goto L_1E01E;              /* 01dff2 bge #0x1e01e */
     r1 = S32(0x14Cu);                                            /* 01dff4 ldr r1, [sp, #0x14c] */
@@ -6304,8 +6305,8 @@ static uint64_t engi_1EA64(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
     spp -= 32; S32(0) = r0; S32(4) = r1; S32(8) = r2; S32(12) = r4; S32(16) = r5; S32(20) = r6; S32(24) = r7; S32(28) = lr; /* 01ea64 push {r0, r1, r2, r4, r5, r6, r7, lr} */
     spp -= 0x70u;                                                /* 01ea66 sub sp, #0x70 */
-    /* engine: substeps: a wreck does not move */
-    if (ENG_SUB && MEM32(r0 + 0x34u) != 0xFFFFFFFFu) return 0;
+    /* engine: substeps: a wreck does not move (A4_WRECK3: it does) */
+    if (ENG_SUB && !ENG_WRECK3 && MEM32(r0 + 0x34u) != 0xFFFFFFFFu) return 0;
     r4 = r0; fN = r4 >> 31; fZ = r4 == 0;                        /* 01ea68 movs r4, r0 */
     r1 = 0x61u; fN = r1 >> 31; fZ = r1 == 0;                     /* 01ea6a movs r1, #0x61 */
     t = SHL_C(r1, 0x5u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ea6c lsls r1, r1, #5 */
@@ -6350,8 +6351,8 @@ L_1EAAE:
     { uint64_t rr = (ENGD_226E8 ? engi_226E8(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x1EABA)) : a4_eng_call(GAMEFN(0x226E8), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01eab6 bl #0x226e8 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01eab6 bl #0x226e8 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01eaba movs r0, r4 */
-    /* engine: a wreck's measure is a whole step's */
-    ENG->meas1 = MEM32(r4 + 0x34u) != 0xFFFFFFFFu;
+    /* engine: a wreck's measure is a whole step's (A4_WRECK3: a substep's, x 3) */
+    ENG->meas1 = !ENG_WRECK3 && MEM32(r4 + 0x34u) != 0xFFFFFFFFu;
     { uint64_t rr = (ENGD_22832 ? engi_22832(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x1EAC0)) : a4_eng_call(GAMEFN(0x22832), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01eabc bl #0x22832 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01eabc bl #0x22832 */
     /* engine: back to substep measures */
@@ -7856,6 +7857,8 @@ static uint64_t engi_2292A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     stk[46] = s0; stk[47] = s1; stk[48] = s2; stk[49] = s3;
     stk[50] = s4; stk[51] = s5; stk[52] = s6; stk[53] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
+    /* engine: A4_WRECK3: the wreck's height before this substep */
+    if (ENG_WRECK3) { ENG->wy0 = L32(r0 + 8u); ENG->wyset = 0; }
     spp -= 20; S32(0) = r4; S32(4) = r5; S32(8) = r6; S32(12) = r7; S32(16) = lr; /* 02292a push {r4, r5, r6, r7, lr} */
     spp -= 0x64u;                                                /* 02292c sub sp, #0x64 */
     r4 = r0; fN = r4 >> 31; fZ = r4 == 0;                        /* 02292e movs r4, r0 */
@@ -7887,16 +7890,19 @@ static uint64_t engi_2292A(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     r0 = L32(r4 + 0x4u);                                         /* 02295e ldr r0, [r4, #4] */
     r1 = L32(r4 + 0x10u);                                        /* 022960 ldr r1, [r4, #0x10] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022962 adds r0, r0, r1 */
-    L32(r4 + 0x4u) = r0;                                         /* 022964 str r0, [r4, #4] */
+    /* engine: A4_WRECK3: the falling wreck's move, a third */
+    { uint32_t ea_ = r4 + 0x4u; if (ENG_WRECK3) r0 = eng_third(ea_, L32(ea_), r0); L32(ea_) = r0; } /* 022964 str r0, [r4, #4] */
     r0 = L32(r4 + 0x8u);                                         /* 022966 ldr r0, [r4, #8] */
     r1 = L32(r4 + 0x14u);                                        /* 022968 ldr r1, [r4, #0x14] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 02296a adds r0, r0, r1 */
     r1 = L32(r4 + 0xCu);                                         /* 02296c ldr r1, [r4, #0xc] */
     r2 = L32(r4 + 0x18u);                                        /* 02296e ldr r2, [r4, #0x18] */
     { uint32_t ta = r1, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 022970 adds r1, r1, r2 */
-    L32(r4 + 0xCu) = r1;                                         /* 022972 str r1, [r4, #0xc] */
+    /* engine: A4_WRECK3: the falling wreck's move, a third */
+    { uint32_t ea_ = r4 + 0xCu; if (ENG_WRECK3) r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 022972 str r1, [r4, #0xc] */
     { uint32_t ta = r0, tb = 0x2u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022974 subs r0, r0, #2 */
-    L32(r4 + 0x8u) = r0;                                         /* 022976 str r0, [r4, #8] */
+    /* engine: the falling wreck's height (A4_WRECK3: a third of its velocity, a ninth of the step's 2) */
+    { const uint32_t ea_ = r4 + 8u; if (ENG_WRECK3) { const int32_t vy_ = (int32_t)(r0 + 2u - L32(ea_)); r0 = L32(ea_) + (uint32_t)eng_thirdv(ea_, vy_) - (uint32_t)eng_thirdv(r4 + 0x1124u, eng_thirdv(r4 + 0x1128u, 2)); } L32(ea_) = r0; }  /* was: L32(r4 + 0x8u) = r0;                                         ( 022976 str r0, [r4, #8] ) */
     goto L_22B86;                                                /* 022978 b #0x22b86 */
 L_2297A:
     r0 = L32(r4 + 0x10u);                                        /* 02297a ldr r0, [r4, #0x10] */
@@ -7971,6 +7977,8 @@ L_229D0:
     S32(0x1Cu) = r0;                                             /* 0229fc str r0, [sp, #0x1c] */
     S32(0x20u) = r1;                                             /* 0229fe str r1, [sp, #0x20] */
     S32(0x24u) = r2;                                             /* 022a00 str r2, [sp, #0x24] */
+    /* engine: A4_WRECK3: the push along +1C, a third */
+    if (ENG_WRECK3) { uint32_t k_; for (k_ = 0; k_ < 12u; k_ += 4u) S32(0x1Cu + k_) = (uint32_t)eng_thirdv(r4 + 0x1100u + k_, (int32_t)S32(0x1Cu + k_)); }
     r0 = S32(0x34u);                                             /* 022a02 ldr r0, [sp, #0x34] */
     r1 = S32(0x1Cu);                                             /* 022a04 ldr r1, [sp, #0x1c] */
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022a06 subs r0, r0, r1 */
@@ -8009,6 +8017,8 @@ L_22A1E:
     S32(0x1Cu) = r0;                                             /* 022a42 str r0, [sp, #0x1c] */
     S32(0x20u) = r1;                                             /* 022a44 str r1, [sp, #0x20] */
     S32(0x24u) = r2;                                             /* 022a46 str r2, [sp, #0x24] */
+    /* engine: A4_WRECK3: the push along +1C, a third */
+    if (ENG_WRECK3) { uint32_t k_; for (k_ = 0; k_ < 12u; k_ += 4u) S32(0x1Cu + k_) = (uint32_t)eng_thirdv(r4 + 0x1100u + k_, (int32_t)S32(0x1Cu + k_)); }
     r0 = S32(0x34u);                                             /* 022a48 ldr r0, [sp, #0x34] */
     r1 = S32(0x1Cu);                                             /* 022a4a ldr r1, [sp, #0x1c] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022a4c adds r0, r0, r1 */
@@ -8044,6 +8054,8 @@ L_22A60:
     S32(0x58u) = r0;                                             /* 022a84 str r0, [sp, #0x58] */
     S32(0x5Cu) = r1;                                             /* 022a86 str r1, [sp, #0x5c] */
     S32(0x60u) = r2;                                             /* 022a88 str r2, [sp, #0x60] */
+    /* engine: A4_WRECK3: the push along +18, a third */
+    if (ENG_WRECK3) { uint32_t k_; for (k_ = 0; k_ < 12u; k_ += 4u) S32(0x58u + k_) = (uint32_t)eng_thirdv(r4 + 0x110Cu + k_, (int32_t)S32(0x58u + k_)); }
     r0 = S32(0x34u);                                             /* 022a8a ldr r0, [sp, #0x34] */
     r1 = S32(0x58u);                                             /* 022a8c ldr r1, [sp, #0x58] */
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022a8e subs r0, r0, r1 */
@@ -8073,7 +8085,9 @@ L_22A60:
     r0 = L32(r0);                                                /* 022abe ldr r0, [r0] */
     r1 = L32(r4 + 0x34u);                                        /* 022ac0 ldr r1, [r4, #0x34] */
     { uint32_t ta = r0, tb = r1; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022ac2 subs r0, r0, r1 */
+    /* engine: A4_WRECK3: the damping, a third */
     S32(0xCu) = r0;                                              /* 022ac4 str r0, [sp, #0xc] */
+    if (ENG_WRECK3) S32(0xCu) = 3u * S32(0xCu);
     r0 = S32(0xCu);                                              /* 022ac6 ldr r0, [sp, #0xc] */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022ac8 subs r0, r0, #1 */
     r1 = S32(0x34u);                                             /* 022aca ldr r1, [sp, #0x34] */
@@ -8127,7 +8141,9 @@ L_22B0C:
     { uint32_t ta = sp, tb = 0x40u; t = ta + tb; r1 = t; }       /* 022b28 add r1, sp, #0x40 */
     t = r1; r2 = L32(t + 0); r3 = L32(t + 4); r5 = L32(t + 8); r1 = t + 12; /* 022b2a ldm r1!, {r2, r3, r5} */
     { uint32_t ta = r4, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022b2c adds r0, r4, #4 */
+    /* engine: A4_WRECK3: the wreck's move along the path, a third */
     t = r0; L32(t + 0) = r2; L32(t + 4) = r3; L32(t + 8) = r5; r0 = t + 12; /* 022b2e stm r0!, {r2, r3, r5} */
+    if (ENG_WRECK3) { L32(r4 + 4u) = L32(r4 + 0xA8u) + (uint32_t)eng_thirdv(r4 + 0x1118u, (int32_t)S32(0x34u)); L32(r4 + 0xCu) = L32(r4 + 0xB0u) + (uint32_t)eng_thirdv(r4 + 0x1120u, (int32_t)S32(0x3Cu)); }
     r0 = L32(r4 + 0x3Cu);                                        /* 022b30 ldr r0, [r4, #0x3c] */
     { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x22B36)) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022b32 bl #0x39fe */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 022b32 bl #0x39fe */
@@ -8139,7 +8155,9 @@ L_22B0C:
     r0 = L32(r0 + 0x38u);                                        /* 022b40 ldr r0, [r0, #0x38] */
     r1 = L32(r7 + 0x10u);                                        /* 022b42 ldr r1, [r7, #0x10] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022b44 adds r0, r0, r1 */
+    /* engine: A4_WRECK3: the height is the path's */
     L32(r4 + 0x8u) = r0;                                         /* 022b46 str r0, [r4, #8] */
+    if (ENG_WRECK3) ENG->wyset = 1;
     r0 = L32(r4);                                                /* 022b48 ldr r0, [r4] */
     r1 = L32(r0 + 0x34u);                                        /* 022b4a ldr r1, [r0, #0x34] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 022b4c movs r0, r4 */
@@ -8175,6 +8193,8 @@ L_22B7A:
     { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022b82 subs r0, r1, r0 */
     L32(r4 + 0x8u) = r0;                                         /* 022b84 str r0, [r4, #8] */
 L_22B86:
+    /* engine: A4_WRECK3: the height closes on the path's point by the step's end */
+    if (ENG_WRECK3 && ENG->wyset) { const int32_t t_ = (int32_t)L32(r4 + 8u), y0_ = (int32_t)ENG->wy0; const int32_t k_ = ENG_SUB_END(r4) ? 1 : 3 - (int32_t)ENG_SUB; L32(r4 + 8u) = (uint32_t)(y0_ + eng_sdiv(t_ - y0_, k_)); ENG->wyset = 0; }
     r0 = L32(r4);                                                /* 022b86 ldr r0, [r4] */
     r1 = L32(r0 + 0x34u);                                        /* 022b88 ldr r1, [r0, #0x34] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 022b8a movs r0, r4 */
@@ -8207,11 +8227,11 @@ L_22BB6:
     r1 = L32(r4 + 0x48u);                                        /* 022bb6 ldr r1, [r4, #0x48] */
     { uint32_t ta = r1, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 022bb8 adds r1, r1, #1 */
     /* engine: +048, the wreck path's step counter */
-    if (!ENG_SUB) L32(r4 + 0x48u) = r1; else r1 = L32(r4 + 0x48u); /* 022bba str r1, [r4, #0x48] */
+    if (ENG_SUB_END(r4)) L32(r4 + 0x48u) = r1; else r1 = L32(r4 + 0x48u); /* 022bba str r1, [r4, #0x48] */
     r1 = L32(r4 + 0x34u);                                        /* 022bbc ldr r1, [r4, #0x34] */
     { uint32_t ta = r1, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 022bbe adds r1, r1, #1 */
     /* engine: +034, the wreck path's frame */
-    if (!ENG_SUB) L32(r4 + 0x34u) = r1; else r1 = L32(r4 + 0x34u); /* 022bc0 str r1, [r4, #0x34] */
+    if (ENG_SUB_END(r4)) L32(r4 + 0x34u) = r1; else r1 = L32(r4 + 0x34u); /* 022bc0 str r1, [r4, #0x34] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 022bc2 cmp r0, #0 */
     if (r0 == 0x0u) goto L_22BEC;                                /* 022bc4 beq #0x22bec */
     { uint64_t rr = a4_eng_call(GAMEFN(0x52CA0), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022bc6 bl #0x52ca0 */
@@ -8230,11 +8250,11 @@ L_22BB6:
     r0 = L32(r4 + 0x34u);                                        /* 022be0 ldr r0, [r4, #0x34] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022be2 adds r0, r0, #1 */
     /* engine: +034, the wreck path's frame */
-    if (!ENG_SUB) L32(r4 + 0x34u) = r0; else r0 = L32(r4 + 0x34u); /* 022be4 str r0, [r4, #0x34] */
+    if (ENG_SUB_END(r4)) L32(r4 + 0x34u) = r0; else r0 = L32(r4 + 0x34u); /* 022be4 str r0, [r4, #0x34] */
     r0 = L32(r4 + 0x48u);                                        /* 022be6 ldr r0, [r4, #0x48] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 022be8 adds r0, r0, #1 */
     /* engine: +048, the wreck path's step counter */
-    if (!ENG_SUB) L32(r4 + 0x48u) = r0; else r0 = L32(r4 + 0x48u); /* 022bea str r0, [r4, #0x48] */
+    if (ENG_SUB_END(r4)) L32(r4 + 0x48u) = r0; else r0 = L32(r4 + 0x48u); /* 022bea str r0, [r4, #0x48] */
 L_22BEC:
     r0 = L32(r4 + 0x3Cu);                                        /* 022bec ldr r0, [r4, #0x3c] */
     { uint64_t rr = (ENGD_039FE ? engi_039FE(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x22BF2)) : a4_eng_call0(GAMEFN(0x39FE), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 022bee bl #0x39fe */
@@ -8251,7 +8271,8 @@ L_22BEC:
 L_22C04:
     r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 022c04 movs r0, #0 */
     r0 = ~r0; fN = r0 >> 31; fZ = r0 == 0;                       /* 022c06 mvns r0, r0 */
-    L32(r4 + 0x34u) = r0;                                        /* 022c08 str r0, [r4, #0x34] */
+    /* engine: +034 = -1, the wreck path's end */
+    if (ENG_SUB_END(r4)) L32(r4 + 0x34u) = r0; else r0 = L32(r4 + 0x34u); /* 022c08 str r0, [r4, #0x34] */
 L_22C0A:
     spp += 0x64u;                                                /* 022c0a add sp, #0x64 */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 022c0c pop {r4, r5, r6, r7, pc} */
