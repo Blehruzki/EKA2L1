@@ -10212,3 +10212,20 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   passes a difference of two path positions, its unit not settled). ENG_IS3 (a4_eng.h) keeps it out of the
   render-only builds.
 - r70 rebuilt: a4_r70_cand.exe 930,992 bytes; cs70s / cs70t (a4_cs70, Paris, 200 s each, for a chase): running.
+- cs70s (r70 with the spread and the cops' third; Paris, 200 s): police slot 9 even (reversals 1 of 409 moving),
+  slot 14 even (0 of 99), racing cars even (0-1 of ~6,800). **The helicopter swung**: a 3-step cycle, height +3,000
+  to -3,950, z +-5,000 (563 jumps over 2,000). The substeps' give-back was seen by their own measures: each
+  substep's velocity took the jump again (3 x (own + w/3) = 3 own + w), three times a step where stock adds it once,
+  and the placement's correction fed it. Fix: substeps move +0A8 with the give-back (unseen by the measure); the
+  whole step's measure alone takes w, as stock. Rebuilt (a4_r70_cand 931,028 bytes); cs70u / cs70v: running.
+- cs70u (Paris, 200 s): the helicopter only spawned (6 moving substeps); police slot 9 even (0 of 41).
+- cs70v (Paris, 200 s): **the helicopter flew most of the run and moves evenly**: reversals 80 of 4,370 moving
+  substeps (cs69p 180 of 1,325; cs70s 995 of 4,729), jumps over 2,000: 4 (its spawns; cs69p 281); in flight -50,
+  -53 every substep (cnt 4000-4029). Left: its arrival after a spawn settles in ~5 steps (cnt 2896-2911, moves up to
+  1,900 a substep), and late in the run (cnt 6630-6644) it alternates a big and a small move every other step on
+  the substeps (-45 / -521 / 8 / -356) -- 30 reversals; the game's own two-step rhythm (stock would show it at 11.72
+  Hz), not chased. Police slot 9 even (1 of 406).
+- Candidate r70 = C70 + the traffic clocks + the pursuers' jumps (spread, unseen by the substeps' measures) + the
+  police reaction and spawn velocities: a4_r70_cand.exe
+  2d38c6e8e75d4ca7d8861fab742d65577ba28510d0a56b46dd781a883af1aded, 931,028 bytes; twin a4_y70 (rec 700BA62C).
+  Battery r70bat (r69bat on r70): running.

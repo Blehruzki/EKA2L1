@@ -306,8 +306,9 @@ static const uint16_t eng_frame_off[] = { 0xC8, 0xCC, 0xD0, 0xD4, 0x110, 0x114, 
 /* Phone round 69 (edits.py at +1E8C0 and +1EA68): a pursuer (+C3C: the helicopter, the cops) moved by the game's own
  * logic on the whole step (+1C48E's placement and wobble, the police's) -- a jump w a whole step's long. At 3x it was
  * measured as a substep's move (x3: the error flipped and doubled each step), and drawn at 11.72 Hz. Now spread over
- * the step: the whole step leaves the car 2w/3 short and each substep gives back w/3, so the measure reads w a step
- * (stock's) and the car moves evenly; the whole step's logic finds it where the game put it. */
+ * the step: the whole step leaves the car 2w/3 short (its measure then reads 3 x its own move + w, stock's) and
+ * each substep gives back w/3 unseen by the measure, so the car moves evenly; the whole step's logic finds it
+ * where the game put it. */
 static inline void eng_psnap(uint32_t race)
 {
     uint32_t k, j;
@@ -362,7 +363,9 @@ static inline void eng_pfix(uint32_t car)
         return;
     }
 }
-/* substeps 1 and 2, at the pursuer's move: a third of the jump each */
+/* substeps 1 and 2, at the pursuer's move: a third of the jump each, +0A8 moved with it -- the whole step's measure
+ * has already taken the jump into the velocity, once as stock does; seen again by every substep's measure it was
+ * added three times a step (cs70s: the helicopter swung +-3,500 every three steps) */
 static inline void eng_pstep(uint32_t car)
 {
     uint32_t k, j;
@@ -373,6 +376,7 @@ static inline void eng_pstep(uint32_t car)
         for (j = 0; j < 3u; j++) {
             const int32_t a = ENG_SUB == 1u ? eng_sdiv(ENG->plft[k][j], 2) : ENG->plft[k][j];
             c[1 + j] = (int32_t)((uint32_t)c[1 + j] + (uint32_t)a);
+            c[0xA8 / 4 + j] = (int32_t)((uint32_t)c[0xA8 / 4 + j] + (uint32_t)a);   /* unseen by the measure */
             ENG->plft[k][j] -= a;
         }
         if (ENG_SUB == 2u) ENG->ps[k] = 0;
