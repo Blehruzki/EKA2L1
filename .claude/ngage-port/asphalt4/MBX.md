@@ -10959,3 +10959,10 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   The player's own physics stays comparable only up to its first contact with an opponent. Fix for the bench: the
   seed before the race's load draws its numbers. Thirds pair (k3f, k3f2) running, then a watch on the generators'
   state for the load's callers.
+- k3f / k3f2 (the same snapshot, thirds, one binary twice; framestat 2,111 / 2,141): the same -- car 1 on the grid
+  at x 21740 / 21684, z 45608 / 45472, the AI apart from step 150, and **the player parts at step 386** (a contact
+  in one run: vz -87 -> -36, heading 302 -> 323). Thirds pairs that agreed before (o3s3b = k3, o3w4 = o3w4c) drew
+  the same grid or met no opponent. k3f against k6f: grids different again (cars 1-4). The oracle has compared the
+  player's physics only up to its first opponent contact all along; past one it compares two grids. Next: wr1 (a
+  watch on rand()'s state 0x500148 and random()'s pointers 0x50014C / 0x500150 from boot to the race, the k3f
+  binary): the callers that draw numbers between the menus and the seed's write (0x2468ACE1 at the first step).
