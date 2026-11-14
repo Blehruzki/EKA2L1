@@ -10977,3 +10977,22 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   drawn inline at +6742, +1D43E, +28A2E, +47C04, +17FF2 among others. Nothing seeds it for the bench; a menu draws
   from it per frame, so its value at the grid is the menus' frame count. wr2 (a watch on 0x200D21C, the same run):
   the draws and their callers from boot to race.
+- wr2 (a watch on the game's generator 0x200D21C, the k3f binary): zeroed at boot (+19188, frame 0), drawn at the
+  menus' two transitions (frames 203-207, 431-435: +47C0E, +28A38 x9 / x8, +07464 / +09B72, +17D7A x4, +17E40 x7,
+  +17FFC / +1801C), once at the race's load (frame 488, +673A mod 3, as the music file opens), then 4,842 times in
+  frames 871-923 (+51FC4 from +EB7E..+EC6B, in +D3BA, reached from the render) and ~12,900 a site from frame 1045 (the
+  race: +27D66 ... +280C4). The local generators' seeds (+19184's five callers) all come from race state. So the grid
+  is not this generator's real-time draw count either; its source is not found (the AI cars' pointers differ, as if
+  other models were loaded). Left there: the grid is placed before step 0 and holds still to the start (149), so a
+  run's opponents are fixed per run -- and the snapshot says where every one is.
+- The comparison with opponents accounted for: k3f and k3f2 (thirds) agree with each other to step 258; k6f2
+  (sixths) has no opponent or traffic within ~350 of the player from 198 to 258 (the snapshot's nearest). Whole-step
+  records (the snapshot is taken a substep into the step: a sixth against a third of a move, not a difference),
+  thirds / sixths / stock (o1w, its own grid, no contact there):
+  step 204 x 19142 / 19143 / 19139; 208 heading 603 / 602 / 606; 210 559 / 561 / 566; 212 537 / **542** / 546 (the
+  wall's turn); position apart by 7 / 11 / 29 / 49 / 67 at 214 / 216 / 224 / 232 / 238 (sixths from thirds), and
+  **from stock: sixths 26 / 41 / 49 at 224 / 232 / 236, thirds 55 / 90 / 110**. Speeds B4 within 1-6. So in the
+  game's slow motion the sixths track stock at least as closely as thirds -- closer through the wall -- and the
+  "faults" after 224 in o3s6c / k6d were opponents. Rule 2: not a repeat of o3s6c (no opponent accounting) or o3s6b
+  (before the slip fix). The A4_ENG6 physics are done on the bench; next the candidate (C72 + A4_ENG6) and its
+  battery.
