@@ -10947,3 +10947,15 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   heading, +7D0, +7D8, +7FC, +034) and the 16 traffic cars' first 82 words, 8 KB at 0x5A4400 through a4_camp_emit.
   Runs (kr5): sixths k6f twice, thirds k3f twice -- the thirds pair names the words that vary harmlessly, the
   sixths pair the first that does not.
+- k6f / k6f2 (the raw snapshot, sixths, one binary twice; framestat 2,141 / 2,103): **the opponents differ from
+  step 0** -- cars 3, 4 and 7 on the grid at different places (car 3 x 20036 / 19992, z 46220 / 46080; car 4 z
+  46700 / 46544; car 7 z 46824 / 46968), every AI car's state apart from the start (step 150). The player agrees to
+  step 225; at 226 in k6f car 1, knocked by car 2 (88 units off it, a car that in k6f2 is elsewhere), lands on the
+  player (car 1 from -155, -379 to -137, +69 of the player in a step; the player's vz 12 -> 378, B4 395), in k6f2
+  nothing. So the lockstep oracle is not deterministic in its opponents: A4_BENCH_SEED (round 50) seeds random()
+  and rand() at the race's first step, and the grid is placed before it -- from a count of random numbers the menus
+  (real-time key presses) leave. The sixths' "second drop" at 225 (o3s6c) and k6d's contact at 261 are this: the
+  player meeting cars that are elsewhere in another run; not faults of the sixths, and not evidence either way.
+  The player's own physics stays comparable only up to its first contact with an opponent. Fix for the bench: the
+  seed before the race's load draws its numbers. Thirds pair (k3f, k3f2) running, then a watch on the generators'
+  state for the load's callers.
