@@ -10917,3 +10917,14 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   steps. That is A4_ENG6's design: at scale 512 the step counter (+15B1C, a4_eng6_count) marks a whole step as six
   real substeps instead of three, so each frame of a slowdown is a new simulated state. What remains is making the
   six add up to the game's step (the 208 fix; the 225 drop, k6c running).
+- k6c (k6 rebuilt on the slip fix, the substep probe): **no drop at 225** -- +7D0 156-158 in gear 2 through 225-230,
+  the speed as thirds'. The two sixths runs of the same code are not the same run: o3s6c and k6c agree in every
+  physics field to record 224 and part at 225 (o3s6c's vz 12 -> 0, heading 542 -> 538, speed 157 -> 114: a wall
+  contact at x 16052 z 47524; k6c at x 16049 z 47525 meets none), and o3s6b / k6 (before the fix) part at ~245.
+  Thirds do not: o3s3b = k3 in all 560 records, o3w4 = o3w4c in all 561. What differs between runs is the heap:
+  the player car at 0x23F9A48 (o3s6c), 0x23F9A20 (k6c, o3s6b, o3w4), 0x23FB3C8 (k6, k3, o3s3b, o3w4c) -- and thirds
+  agree across layouts (o3w4 / o3w4c). So something on the sixths path depends on an address. Suspects: the engine's
+  address-keyed tables (the slip check's 16 cars, the orientation lag's 64 words, the steering's 16, the wall
+  push's 16, the remainders' 1,024 with 16 probes) -- full, a key takes a slot chosen by its address and another
+  key's state is lost. k6d (bench, A4_KICKREC): each table's evictions, nfull and slots in use at every whole step.
+  So the 225 drop was this run-to-run fault, not a second whole-step check reading a sixth.

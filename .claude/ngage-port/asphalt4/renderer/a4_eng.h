@@ -247,6 +247,14 @@ struct eng {
     uint32_t rk[ENG_NREM];           /* the word's address (0: free) */
     int8_t rv[ENG_NREM];             /* its remainder, 0 .. n - 1 (bytes since round 71: the traffic's lines needed the room) */
 };
+#ifdef A4_KICKREC
+/* bench (round 73): a probe of the engine's address-keyed tables -- each table's evictions (a key that found its
+ * table full and took another key's slot) in dbg[0..4]: the slip check's, the orientation lag's, the steering's,
+ * the wall push's, the remainders' (as nfull) */
+#define ENG_EVIC(k) (ENG->dbg[(k)]++)
+#else
+#define ENG_EVIC(k) ((void)0)
+#endif
 #ifndef A4_ENG3
 /* Round 51: the lifted render functions (the painter, the 3D front end) built without the 3x engine.
  * lifted.c's engine functions are compiled all the same -- static, so the unreferenced ones are dropped --
@@ -552,6 +560,18 @@ static inline void ENG_BEGIN(uint32_t race)
             e[0] = ENG->wst; e[1] = ENG->sub | ENG->n << 8; e[2] = MEM32(pc + 0x7D0u);
             e[3] = (MEM32(pc + 0xB4u) & 0xFFFFu) | MEM32(pc + 0x7FCu) << 16; e[4] = MEM32(pc + 0x7BCu); e[5] = MEM32(pc + 0x7C4u);
             e[6] = MEM32(pc + 0x10u); e[7] = 0x53425553u;
+            rg[0] = i + 1u;
+            if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
+        }
+        if (ENG->magic == ENG_MAGIC && ENG->sub == 0u) {   /* the tables' pressure: evictions, nfull, slots in use */
+            const uint32_t i = rg[0] & 255u;
+            volatile uint32_t *e = rg + 4u + 8u * i;
+            uint32_t q, us = 0, ul = 0, ub = 0, uk = 0, ur = 0;
+            for (q = 0; q < 16u; q++) { us += ENG->svc[q] != 0u; ub += ENG->sbc[q] != 0u; uk += ENG->kc[q] != 0u; }
+            for (q = 0; q < 64u; q++) ul += ENG->lc[q] != 0u;
+            for (q = 0; q < ENG_NREM; q++) ur += ENG->rk[q] != 0u;
+            e[0] = ENG->wst; e[1] = ENG->dbg[0] | ENG->dbg[1] << 16; e[2] = ENG->dbg[2] | ENG->dbg[3] << 16; e[3] = ENG->nfull;
+            e[4] = us | ul << 8 | ub << 16 | uk << 24; e[5] = ur; e[6] = ENG->n; e[7] = 0x43495645u;
             rg[0] = i + 1u;
             if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
         }
@@ -938,7 +958,7 @@ static inline void eng_kick_mark(uint32_t ea)
         if (ENG->kc[i] == ea) { f = i; break; }
         if (f == 16u && (ENG->kc[i] == 0u || (ENG->ks[i] & 0x7FFFFFFFu) != st)) f = i;
     }
-    if (f == 16u) f = (ea >> 4) & 15u;
+    if (f == 16u) { f = (ea >> 4) & 15u; ENG_EVIC(3); }
     ENG->kc[f] = ea; ENG->ks[f] = st | 0x80000000u;
 }
 #ifdef A4_KICKREC
@@ -988,7 +1008,7 @@ static inline uint32_t eng_alag(uint32_t ea, uint32_t v)
         if (f == 64u && ENG->lc[i] == 0u) f = i;
     }
     if (i == 64u) {
-        if (f == 64u) f = (ea >> 2) & 63u;
+        if (f == 64u) { f = (ea >> 2) & 63u; ENG_EVIC(1); }
         i = f; ENG->lc[i] = ea;
         for (uint32_t q = 0; q < 6u; q++) ENG->ls[i][q] = 0xFFFFFFFFu;
     }
@@ -1003,7 +1023,7 @@ static inline uint32_t eng_steer_upd(uint32_t car, uint32_t br)
 {
     uint32_t i, f = 16u;
     for (i = 0; i < 16u; i++) { if (ENG->sbc[i] == car) break; if (ENG->sbc[i] == 0u && f == 16u) f = i; }
-    if (i == 16u) { i = f == 16u ? (car >> 4) & 15u : f; ENG->sbc[i] = car; ENG->sbb[i] = 0u; }
+    if (i == 16u) { if (f == 16u) ENG_EVIC(2); i = f == 16u ? (car >> 4) & 15u : f; ENG->sbc[i] = car; ENG->sbb[i] = 0u; }
     if (ENG_SUB && ENG->sbb[i] == br) return 0u;
     ENG->sbb[i] = br;
     return 1u;
@@ -1019,7 +1039,7 @@ static inline void eng_slipmark(uint32_t car)
 {
     uint32_t i, f = 16u, k;
     for (i = 0; i < 16u; i++) { if (ENG->svc[i] == car) break; if (f == 16u && ENG->svc[i] == 0u) f = i; }
-    if (i == 16u) { i = f < 16u ? f : (car >> 4) & 15u; ENG->svc[i] = car; ENG->svw[i] = 0u; }
+    if (i == 16u) { if (f == 16u) ENG_EVIC(0); i = f < 16u ? f : (car >> 4) & 15u; ENG->svc[i] = car; ENG->svw[i] = 0u; }
     ENG->svok = 0u;
     if (ENG->svw[i] + 1u == ENG->wst) {
         for (k = 0; k < 3u; k++) ENG->svv[k] = (int32_t)MEM32(car + 4u + 4u * k) - ENG->svp[i][k];
