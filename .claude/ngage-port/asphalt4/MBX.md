@@ -10458,3 +10458,12 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   13/15/18 (hr71b: the whole step only, 40). The velocity words still differ by substep (+010 83/8/102, +018
   71/7/71; hr71b 720/710/39, 835/821/24): the measure's own, an order smaller. hv71 (the old build) stopped: not
   needed.
+- The scratch volume filled (bench videos and snapshot folders of past rounds): bc71.sh died ~6 min into its run
+  (its counters kept), the queue stalled behind it. Past rounds' videos, frame folders and recorder dumps deleted
+  (their findings are in this record); 11 GB free. tunrun's snapshot folder is removed after each GPU run now.
+- bc71 (the cars-only rule + A4_BBCOV, LA, NOTUNNEL, filmed at 8 fps; 28 counter records, 5,284 frames): 22,014
+  sprite calls reached gobj_bb_deep; a GPU item covered all of them under round 67's rule, 20,447 under round 71's;
+  the depth changed for 1,619 (7.4%), 1,567 now untested. Pairs -- objects: whole nearer 65,163, straddling behind
+  the middle 8,457, in front 15,758 (unchanged now), near sprite 2,585; cars: 26,276 / 1,674 / 2,383 / 3,797. The
+  video: the nitro flame (key 5 held; the bench car collects nitro) drawn whole under the car's tail and over the
+  road at 20 s and 32 s. bc67 (round 67's rule, the same run): rerun, queued.
