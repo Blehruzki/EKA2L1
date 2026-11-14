@@ -10274,3 +10274,8 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   clock puts it on every substep, a hit lands where the traffic is (r69 drew and tested it a step ahead on two
   substeps of three). More hits than stock's 11.72 Hz test (which lets a fast car pass through) are the 3x
   engine's, known since r8 ("at 3x fewer pass through").
+- Sent (owner: "yes"): r70 unbaked, send70/asphalt4_ngi.exe = a4_r70_cand.exe
+  2d38c6e8e75d4ca7d8861fab742d65577ba28510d0a56b46dd781a883af1aded, 931,028 bytes; the owner bakes it. For the
+  phone to say: the traffic (still laggy or not), the helicopter and its light, the cops in a chase (overshoot,
+  catching up after a crash), the hits on traffic (too many, or as the game was), the Veyron's speed and the jumps
+  (no fault found on the bench), the telemetry captures as before.
