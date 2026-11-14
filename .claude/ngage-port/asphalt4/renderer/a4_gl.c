@@ -8834,6 +8834,11 @@ static void slow_rec(uint32_t had)
         volatile struct glr *gs = (volatile struct glr *)A4_GL_SCRATCH;
         const uint32_t on = go->magic == GOBJ_MAGIC && go->frame == gs->frames ? go->n : 0u;
         gdrop = (on && !go->drawn) || (gs->gobjprev > 16u && on * 2u < gs->gobjprev);
+#ifdef A4_GDROPMARK
+        /* bench (round 71, "the scenery keeps disappearing"): a frame whose objects fell is marked on screen -- a
+         * magenta 16 x 16 square at the top middle for this present and the next three -- so a video finds it */
+        if (gdrop) *(volatile uint32_t *)0x00454140u = 4u;
+#endif
         gs->gobjprev = on;
     }
 #endif
@@ -9290,6 +9295,18 @@ int a4_gl_frame(uint32_t fps)
 #endif
 #ifdef A4_SLOWREC
     slow_rec(had);
+#endif
+#ifdef A4_GDROPMARK
+    {   volatile uint32_t *gm = (volatile uint32_t *)0x00454140u;
+        const uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
+        if (*gm && *gm <= 4u && bb && had) {
+            for (int y = 2; y < 18; y++) {
+                volatile uint16_t *row = (volatile uint16_t *)bb + y * FB_STRIDE;
+                for (int x = VP_W / 2 - 8; x < VP_W / 2 + 8; x++) row[x] = (uint16_t)0xF81Fu;
+            }
+            (*gm)--;
+        }
+    }
 #endif
     int presented = 0;
 #ifdef A4_WINDOW

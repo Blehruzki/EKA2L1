@@ -10599,3 +10599,27 @@ c. States the bench did not enter: a drop entry with word 7 (no drop frame in an
   objects' arena moved to 0x49F000), turned by its rotation and projected (mesh_scr_i, which takes near points: the
   list uses it there) -- no full-screen box. A4_GOBJ_SPHEREBOX (bench) is the old box. bc72 / bc72s (the new / old
   box, A4_BBCOV), LA on the bench save and Paris on the owner's, filmed: running.
+
+## Phone round 71b (r71, LA): "the scenery keeps disappearing"; no grey lines
+
+- Owner: "the scenery keeps disappearing. However I wasn't able to reproduce the lines again." 7 photos
+  (photos71b/), 8 captures (phone71b/). p1 / p4: a downtown street, buildings and palms either side; p2 / p3 / p5:
+  the same street moments later with the buildings and palms gone -- the sky down to a low band of facades, the road
+  and the traffic drawn. p6 / p7: the hill before the tunnel.
+- Read: what goes is the GPU's scenery objects (gobj: buildings, palms, props); what stays is the table and the list
+  (the road, the low facades). The drop ring (round 71's word 7) in LA's captures (capidx 127, 130): 6 entries --
+  frames 378 (segment 40, 0 objects, camdev 511: a cut), 1881 (89, 66, cut), 1902 (90, 95 objects, triangles 333 from
+  781, camdev 53), 2745 (16, 0, cut), 8280 (10, 7 objects, camdev 22, triangles 656), 9012 (38, 15 objects, camdev
+  10, triangles 480 from 512). In 8280 and 9012 the objects taken fell under half of the frame before's with the
+  camera steady and the table's triangles not up: the missing objects were neither drawn by the GPU nor handed to the
+  game's software path (a refused object adds its faces to the triangles) -- the game did not submit them. Paris
+  (phone71) had two such entries (15474 -> 15477: 22 -> 3, segment 69, camdev 21).
+- The bench has them too: r71t2 frame 4944 (segment 92, 36 objects, camdev 52), r71v 987 (segment 46, 31, camdev
+  10), and bc72LA frame 72 (segment 38, 9, camdev 178). So reproducible on the bench, not seen yet because no video
+  was looked at those frames.
+- A4_GDROPMARK (bench): a frame whose objects fell is marked on screen (a magenta square, top middle, four presents)
+  for a video. gd72 (C71 + the mark, LA at the N95 model, TS=4, filmed at 8 fps): queued. tunrun.sh's menu and boot
+  waits now scale with TS.
+- bc72LA (the bounds box + A4_BBCOV, LA, 3,534 frames): sprite calls 3.96 a frame (bc71 4.17); covered by a GPU item
+  3.15 a frame (3.87); car covers (whole item nearer) 1.24 a frame against 4.97 -- the player's car no longer covers
+  the screen; object covers 8.5 against 12.3.
