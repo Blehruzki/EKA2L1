@@ -10767,3 +10767,53 @@ c. States the bench did not enter: a drop entry with word 7 (no drop frame in an
   views set them elsewhere: +3F50 (-1, unset), +57F2 (a trackside view: the car's segment plus a random 0-5,
   direction 1), +592E (a script: the car's segment). So a chase-view window can go wrong only through the car's
   track record or that 90-degree test.
+
+## Round 72 candidate r72 (a4_r72_cand.exe, sha256 0309b679916b252a47dfbd96b95bd8fe5a483e53f9059319a517c988e38dd1c3, 934,508 bytes)
+
+C72.flags = C71.flags (no flag added; PX_OFF is on by default). +3A15C b510 0004, no 0xDEADBEEF; built unbaked
+(the owner bakes). Bit-identical to c72e (A4_CAMADDR, A4_MBXTIE, A4_SEGREC are bench-only and off). In it,
+against r71:
+1. Sprites against GPU cars and objects: each item's screen box and depth buckets from its mesh's own bounds,
+   turned and projected (gitem_box), not the cube around its sphere -- the player's car no longer covers the whole
+   screen; a sprite in a straddling car's depth range is tested at the car's middle (pickups, the helicopter's light).
+2. Every GPU projection a quarter pixel toward GL's window origin (PX_OFF): no table edge on a sample under either
+   sampling convention (the grey lines).
+3. The frame record (FRC1, every render of the last 256 before each capture): the camera's segment, direction word
+   set, scenery objects taken, camera mode, engine substep (e[2]); its header counts line rows (every 16th
+   composite) and keeps the last. The drop record's word 7 with direction and substep.
+Battery on the exact binary (r72bat.sh, rule 2: the same runs as round 71's r71bat.sh, for comparison):
+- y72b (the recorder twin a4_y72 = C72 + CARREC/YREC/AUTOPILOT, LA): framestat 3,699; grip column [(1048576, 886),
+  (0, 15), (3413, 1), (6826, 1)] (r71 509 / (4096, 39) ..., r70 (0, 13)); E4 max 2, >12 in 0: no crawl.
+- r72t2 (calibrated N95 bench, 120 s): framestat 3,603; **36.9 ms a render** (3D 14.8, comp 7.9, read 6.1, 2D 2.7,
+  pres 2.7) against r71t2's 36.1 (comp 7.6: the line counter's ~1 ms every 16th frame is ~0.06 of it); camera yaw and
+  heading one-frame reversals 0 and 0; drop frames 0; presents 3,227 real, 77 no-render. Line rows 0.
+- r72c2 (crash-steer, cap 85): camera yaw reversals 3, heading 1 -- r71c2's 3 and 1.
+- r72f / r72f2 (to the finish, cap 85): framestat 10,887 / 7,008; r72f2's captures hold modes 1, 2 and 0x17 (the
+  finish camera, which r71f2's window did not reach), no reversal.
+- menu (18 shots), mark, mark on the Veyron: clean (bcv/r72mn.png, bcv/r72k.png).
+- r72v (Veyron autopilot, cap 85): camera yaw reversals 1, heading 2 (r71v 3, 4); heading less camera yaw off its
+  median 50% 33 / 90% 88 / 99% 120 (r71v 14 / 54 / 81, r70v 29 / 75 / 109): within the autopilot's run-to-run spread
+  (the round changed nothing in the engine or the camera).
+- GPU objects and cars (r72t2 / r72f2 / Paris): objects taken 93.8 / 93.8 / 78.6% (r71 93.9 / 93.9 / 77.3), cars
+  8.5 / 7.2 / 7.5 draws a frame, resets 0 / 1 / 4 (gaps). Paris on the owner's save: framestat 3,205, line rows 0.
+- objrec.py reads the new fields on both (objects by segment, direction 0, chase modes).
+
+Rule 4, before it goes out:
+a. Guesses, and how the bench could settle them:
+   - That the grey lines are table rows a GPU sampling at integer coordinates leaves to neither of two triangles
+     (the tie): modelled on the bench (A4_MBXTIE: 75 line rows, with the quarter 1), not observed on the MBX. The
+     phone's line counter says whether rows still go undrawn.
+   - That the quarter costs nothing visible: under GL's sampling 1 short row (65 px) in ~300 sampled frames against
+     0 (the list/table seams sampled a quarter elsewhere); r72t2 and Paris counted 0.
+   - That the bounds box and the middle rule bring the pickups and the helicopter's light above the road: the flame
+     measured whole; a pickup at a car and the GNN light are not on the bench's routes -- the phone settles it.
+   - The vanishing scenery: no fix. The window follows the car's track segment and the 90-degree test (read from
+     +4B40); the field-of-view guess is ruled out; not reproduced in a chase view at speed (LA at 396 km/h, Paris on
+     the owner's save). The frame record will show which of segment, direction, mode or objects moves when it goes.
+b. Read back: a4_gl.c's code lines changed since r71 (git diff 38aee9e..HEAD: the four 2D projections, the three 3D
+   P matrices, gitem_box and the bounds, the cars' middle rule, FRC1's e[2] and its objects fill-in, the line
+   counter, word 7, the bench probes behind their flags), a4_eng.c's emit condition, objrec.py. Only remembered: the
+   comment blocks.
+c. States the bench did not enter: the MBX's own sampling convention (unknown; both are covered); a line row on the
+   phone with the GPU sky (not in C72); the scenery loss in a chase view; the GNN helicopter's light in LA; a pickup
+   beside a traffic car; slow-motion cameras (unchanged: the owner's answer on interpolation is still open).
