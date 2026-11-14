@@ -563,15 +563,19 @@ static inline void ENG_BEGIN(uint32_t race)
             rg[0] = i + 1u;
             if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
         }
-        if (ENG->magic == ENG_MAGIC && ENG->sub == 0u) {   /* the tables' pressure: evictions, nfull, slots in use */
+        if (ENG->magic == ENG_MAGIC) {   /* a checksum of the other cars and the traffic at every substep's start */
             const uint32_t i = rg[0] & 255u;
             volatile uint32_t *e = rg + 4u + 8u * i;
-            uint32_t q, us = 0, ul = 0, ub = 0, uk = 0, ur = 0;
-            for (q = 0; q < 16u; q++) { us += ENG->svc[q] != 0u; ub += ENG->sbc[q] != 0u; uk += ENG->kc[q] != 0u; }
-            for (q = 0; q < 64u; q++) ul += ENG->lc[q] != 0u;
-            for (q = 0; q < ENG_NREM; q++) ur += ENG->rk[q] != 0u;
-            e[0] = ENG->wst; e[1] = ENG->dbg[0] | ENG->dbg[1] << 16; e[2] = ENG->dbg[2] | ENG->dbg[3] << 16; e[3] = ENG->nfull;
-            e[4] = us | ul << 8 | ub << 16 | uk << 24; e[5] = ur; e[6] = ENG->n; e[7] = 0x43495645u;
+            static const uint16_t cw[] = { 4, 8, 12, 16, 20, 24, 0xA8, 0xB4, 0x678, 0x7D0, 0x7D8, 0x7FC };
+            uint32_t q, w, hc = 2166136261u, ht = 2166136261u, ta = ENG->targ ? ENG->targ + GAME32(0xFEB4) : 0u;
+            for (q = 0; q < 16u; q++) {
+                const uint32_t c = *(volatile uint32_t *)(race + 0x394u + 4u * q);
+                if (!c || c == pc) continue;
+                for (w = 0; w < sizeof(cw) / sizeof(cw[0]); w++) hc = (hc ^ MEM32(c + cw[w])) * 16777619u;
+            }
+            if (ta) for (q = 0; q < 16u; q++) for (w = 0; w < 20u; w++) ht = (ht ^ MEM32(ta + 0x148u * q + 4u * w)) * 16777619u;
+            e[0] = ENG->wst; e[1] = ENG->sub | ENG->n << 8 | MEM32(race + 0x84Cu) << 16; e[2] = hc; e[3] = ht;
+            e[4] = MEM32(race + 0x378u); e[5] = MEM32(race + 0x37Cu); e[6] = ENG->cnt; e[7] = 0x48534148u;
             rg[0] = i + 1u;
             if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
         }

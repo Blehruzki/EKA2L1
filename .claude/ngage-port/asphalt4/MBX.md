@@ -10928,3 +10928,13 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   push's 16, the remainders' 1,024 with 16 probes) -- full, a key takes a slot chosen by its address and another
   key's state is lost. k6d (bench, A4_KICKREC): each table's evictions, nfull and slots in use at every whole step.
   So the 225 drop was this run-to-run fault, not a second whole-step check reading a sixth.
+- k6d (the table probe; framestat 2,140): **no table ever full** -- no eviction in the slip check's, the steering's or
+  the wall push's tables, the orientation lag's count flat (20, its value before the race: never incremented), nfull
+  0, slots in use at most 8 / 24 / 8 / 1 and 162 remainders of 1,024. And k6d's car is at 0x23F9A48, o3s6c's
+  address, yet the two part at record 225 as o3s6c and k6c did; k6c and k6d part at 261. So not the heap layout and
+  not the tables: sixths runs of one binary vary run to run. k6c / k6d substeps at 259-262: the player identical to
+  step 260's last substep (a **thirds** step, after the slow window), then k6d meets a contact (B4 161 -> 118, vx
+  -129 -> -93) that k6c does not. The player's own state agrees to the contact, so the difference is in state the
+  record does not hold (other cars, the traffic). k6e (bench): a checksum of the 15 other race cars (x, y, z,
+  velocity, +0A8, B4, heading, +7D0, +7D8, +7FC) and the 16 traffic cars (20 words each), and the traffic's two
+  clocks (race+0x378, +0x37C), at every substep's start; the same binary run twice (k6e, k6e2).
