@@ -10966,3 +10966,14 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   player's physics only up to its first opponent contact all along; past one it compares two grids. Next: wr1 (a
   watch on rand()'s state 0x500148 and random()'s pointers 0x50014C / 0x500150 from boot to the race, the k3f
   binary): the callers that draw numbers between the menus and the seed's write (0x2468ACE1 at the first step).
+- wr1 (a watch on rand()'s and random()'s state, boot to race, the k3f binary): **two writes before the seed** (the
+  libc's own init, lr 0x803AE583), none from the game -- the menus and the load draw nothing from the C library, so
+  the grid's variance is not what A4_BENCH_SEED seeds. The four runs' grids: car 0 (the player) the same; every AI
+  car in one of two places ~150 apart across the road (car 1 (21684, 45472) or (21740, 45608), car 3 (20036, 46220)
+  or (19992, 46080), ...), the heading the same -- a per-car lane choice. The game has its own generator: the
+  Numerical Recipes LCG (x = x * 1664525 + 1013904223, the literals at 17 sites; +51FC4 a draw x >> 16 mod n from a
+  state passed in, +19184 its seed), on local states seeded from race state (+49C4: [+A2C] ^ 0x132FA) and on one
+  **global state at G + 0xCD94** (G = +52CA0's context = race+0x38 = 0x2000488 in every run: the word 0x200D21C),
+  drawn inline at +6742, +1D43E, +28A2E, +47C04, +17FF2 among others. Nothing seeds it for the bench; a menu draws
+  from it per frame, so its value at the grid is the menus' frame count. wr2 (a watch on 0x200D21C, the same run):
+  the draws and their callers from boot to race.
