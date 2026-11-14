@@ -324,6 +324,7 @@ struct glr {
     uint32_t zclean;                   /* round 51 (A4_ZSKIP): the rasterizer context whose 1/w buffer is all zero
                                         * since its last clear (0: none known -- the bss-zeroed start) */
     uint32_t lpt;                      /* round 56 (A4_LONGPRESS): when the pause key's long-press count last dropped */
+    uint32_t gobjprev;                 /* round 71 (A4_SLOWREC): the GPU objects the last 3D frame took */
 };
 
 _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlaps the readback strip");
@@ -3542,6 +3543,7 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         const volatile int32_t *cm = (const volatile int32_t *)race;
         g->rendered = 1;
         g->camok = car != 0;
+        g->chaseavg[2] = cm[0x70 / 4];      /* round 71: the camera's track segment (cam+0x28) as it drew, for the drop record */
         if (car) for (int i = 0; i < 3; i++) g->camoff[i] = cm[0x58 / 4 + i] - car[1 + i];
         if (car) {   /* the running average of the offset's distance on the ground and height -- what does
                       * not turn with the car (r40cf: the world-frame offset turns in every bend, and the
@@ -5870,7 +5872,26 @@ static uint32_t gobj_grid(volatile struct glr *s, uint16_t *grid)
     return n;
 }
 /* mesh_bb_depth's objects: the deepest bucket of an object nearer than the sprite (sb) whose box meets its rectangle,
- * at most sb - 1 (-1: none) */
+ * at most sb - 1 (-1: none).
+ * Round 71 (phone round 70: "the pickups and nitro are looking like they're clipping through the road again"): an
+ * object whose buckets straddle the sprite's (qn < sb <= qf) covers it only when the sprite is behind the object's
+ * middle. Round 67 put the player's car on the GPU, one box and one bucket range for the whole car (z -379..-170),
+ * where round 28 had kept its near faces in the table, drawn in the walk's order with the sprites (MESH_NEAR): the
+ * nitro flame (quads at 191-230) and a pickup at the car then counted as covered, were tested at their own distance,
+ * and the road under them, nearer than that, hid their lower part -- round 27's sinking. The game paints a straddling
+ * object's faces behind the sprite under it and only its nearer faces over it; in front of the middle those are the
+ * few (the flame over the car's tail), behind it the many (a pickup ahead of the car, under its body).
+ * A4_BBSTRADALL (bench): round 67's rule, every straddling object a cover. */
+#ifdef A4_BBCOV
+/* bench: [0] 'BBCV', [1] calls, [2] calls a GPU item covers under round 67's rule, [3] under round 71's; per class (objects 4.., cars 8..): [+0] whole item nearer, [+1] straddling, the sprite behind
+ * its middle, [+2] straddling, in front (no cover since round 71), [+3] the sprite's bucket within MESH_NEAR;
+ * [12] calls whose depth round 71 changed, [13] of those now untested by the GPU's items, [14] frames, [15] the last
+ * frame seen */
+#if defined(A4_BBSINK) || defined(A4_SHADSINK)
+#error "A4_BBCOV shares 0x454100 with the sink probes"
+#endif
+#define BBCOV ((volatile uint32_t *)0x00454100u)
+#endif
 static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 {
     volatile struct gstate *g = GOBJ;
@@ -5880,10 +5901,31 @@ static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int3
     return -1;
 #endif
     int32_t deep = -1;
+#ifdef A4_BBCOV
+    volatile uint32_t *K = BBCOV;
+    int32_t deep67 = -1;
+    if (K[0] != 0x56434242u) { for (uint32_t j = 0; j < 16u; j++) K[j] = 0; K[0] = 0x56434242u; }
+    if (K[15] != s->frames) { K[15] = s->frames; K[14]++; }
+    K[1]++;
+#define BBCOV_ITEM(cls_, qn_, qf_) do {                                                              \
+        const int32_t d67_ = (int32_t)(qf_) < sb ? (int32_t)(qf_) : sb - 1;                         \
+        if (d67_ > deep67) deep67 = d67_;                                                            \
+        K[(cls_) + ((int32_t)(qf_) < sb ? 0u : 2 * sb > (int32_t)(qn_) + (int32_t)(qf_) ? 1u : 2u)]++; \
+        if (sb * 8 < MESH_NEAR) K[(cls_) + 3u]++; } while (0)
+#else
+#define BBCOV_ITEM(cls_, qn_, qf_) do { } while (0)
+#endif
+#ifdef A4_BBSTRADALL
+#define BB_STRAD_SKIP(qn_, qf_) 0
+#else
+#define BB_STRAD_SKIP(qn_, qf_) ((int32_t)(qf_) >= sb && 2 * sb <= (int32_t)(qn_) + (int32_t)(qf_))
+#endif
     for (uint32_t i = 0; i < g->n; i++) {
         const volatile struct gitem *it = &g->it[i];
         if ((int32_t)it->qn >= sb) continue;
         if (it->box[2] < x0 || it->box[0] >= x1 || it->box[3] < y0 || it->box[1] >= y1) continue;
+        BBCOV_ITEM(4u, it->qn, it->qf);
+        if (BB_STRAD_SKIP(it->qn, it->qf)) continue;
         int32_t d = it->qf < sb ? (int32_t)it->qf : sb - 1;
         if (d > deep) deep = d;
     }
@@ -5894,10 +5936,19 @@ static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int3
                 const volatile struct gcitem *it = &c->it[i];
                 if ((int32_t)it->qn >= sb) continue;
                 if (it->box[2] < x0 || it->box[0] >= x1 || it->box[3] < y0 || it->box[1] >= y1) continue;
+                BBCOV_ITEM(8u, it->qn, it->qf);
+                if (BB_STRAD_SKIP(it->qn, it->qf)) continue;
                 int32_t d = it->qf < sb ? (int32_t)it->qf : sb - 1;
                 if (d > deep) deep = d;
             }
     }
+#endif
+#undef BBCOV_ITEM
+#undef BB_STRAD_SKIP
+#ifdef A4_BBCOV
+    if (deep67 >= 0) K[2]++;
+    if (deep >= 0) K[3]++;
+    if (deep67 != deep) { K[12]++; if (deep < 0) K[13]++; }
 #endif
     return deep;
 }
@@ -6794,7 +6845,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_GPUCAR
         gcar_flush(s, gctx);                            /* round 67: the cars, after the objects */
 #endif
+#ifdef A4_BBCOV
+        if ((s->frames & 255u) == 0u) a4_gobj_emit((const void *)0x00454100u);   /* bench: the sprite covers' counters */
+#else
         if ((s->frames & 255u) == 0u) a4_gobj_emit((const void *)GOBJ);   /* bench: the counters */
+#endif
 #endif
 #ifdef A4_MESH
         mesh_draw(s, gctx);                             /* before any of the table's triangles */
@@ -8751,7 +8806,18 @@ static void slow_rec(uint32_t had)
     for (uint32_t i = 1; i < 16u; i++) if (R[i * 16] < R[lo * 16]) lo = i;
     if (e[0] > R[lo * 16]) for (uint32_t k = 0; k < 16u; k++) R[lo * 16 + k] = e[k];
     if (drop) S[18]++;                              /* drop frames (total) */
-    if (e[12] || drop) {                            /* list triangles lost, or a sudden drop in triangles */
+    uint32_t gdrop = 0;
+#ifdef A4_GPUOBJ
+    {   /* round 71: the GPU's scenery is not in the frame's triangles -- a frame whose objects were taken and never
+         * drawn, or whose objects fell to under half of the 3D frame before's (from over 16), is recorded too */
+        const volatile struct gstate *go = GOBJ;
+        volatile struct glr *gs = (volatile struct glr *)A4_GL_SCRATCH;
+        const uint32_t on = go->magic == GOBJ_MAGIC && go->frame == gs->frames ? go->n : 0u;
+        gdrop = (on && !go->drawn) || (gs->gobjprev > 16u && on * 2u < gs->gobjprev);
+        gs->gobjprev = on;
+    }
+#endif
+    if (e[12] || drop || gdrop) {                   /* list triangles lost, or a sudden drop in triangles (or objects) */
         volatile uint32_t *L = S + 32 + 256;
         uint32_t j = S[15] & 7u; S[15]++;
         for (uint32_t k = 0; k < 16u; k++) L[j * 16 + k] = e[k];
@@ -9306,6 +9372,24 @@ int a4_gl_frame(uint32_t fps)
                 if (s->droprec) {   /* the record's drop entry for this frame: lost | camera deviation << 16 | held << 31 */
                     volatile uint32_t *le = (volatile uint32_t *)0x00455800u + 32 + 256 + (s->droprec - 1u) * 16u + 12u;
                     *le = (*le & 0xFFFFu) | dev << 16 | hold << 31;
+                    /* round 71 (phone round 70b: "the top half of the screen stopped rendering the scenery and only
+                     * the skybox was visible", twice; 5 drop frames that race, 3 not held): what the frame's count
+                     * leaves out -- the GPU's scenery and cars draw no table triangles -- and where the camera stood.
+                     * Word 7 (the speculation's time, 0 since round 63): the camera's segment (12 bits) | the
+                     * objects taken (8) << 12 | drawn << 20 | taken this frame << 21 | the cars taken (5) << 22 |
+                     * this frame << 27 | 1 << 31 (the word holds this) */
+                    uint32_t w7 = ((uint32_t)rendered && camok ? (uint32_t)s->chaseavg[2] & 0xFFFu : 0xFFFu) | 0x80000000u;
+#ifdef A4_GPUOBJ
+                    {   const volatile struct gstate *go = GOBJ;
+                        if (go->magic == GOBJ_MAGIC)
+                            w7 |= (go->n > 255u ? 255u : go->n) << 12 | (go->drawn ? 1u : 0u) << 20 | (go->frame == s->frames ? 1u : 0u) << 21; }
+#ifdef A4_GPUCAR
+                    {   const volatile struct gcstate *gc = GCAR;
+                        if (gc->magic == GCAR_MAGIC)
+                            w7 |= (gc->n > 31u ? 31u : gc->n) << 22 | (gc->frame == s->frames ? 1u : 0u) << 27; }
+#endif
+#endif
+                    le[7 - 12] = w7;
                 }
 #endif
                 if (hold) {

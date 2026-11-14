@@ -42,7 +42,7 @@ EDITS = {
                         'ENG->tlast[0] = r2; ENG->tlast[1] = r3; '
                         'if (ENG->tdel[0] < -0x100000 || ENG->tdel[0] > 0x100000) ENG->tdel[0] = 0; '
                         'if (ENG->tdel[1] < -0x100000 || ENG->tdel[1] > 0x100000) ENG->tdel[1] = 0; } '
-                        'else { r2 = ENG->tlast[0]; r3 = ENG->tlast[1]; }',
+                        'else { r2 = ENG_TCLK(0u); r3 = ENG_TCLK(1u); }',
               'why': 'the traffic clocks\' step, for the substeps; the substeps start from the whole step\'s own clocks '
                      '(the game has advanced race+0x378/+0x37C by then: placed from those, substeps 1-2 were a step '
                      'ahead and every traffic car went forward 1 1/3 steps and back 2/3 each step -- phone round 69)'},

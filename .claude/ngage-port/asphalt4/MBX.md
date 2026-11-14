@@ -10345,3 +10345,84 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   the player, all 0x148 bytes, each substep; the array from +FB12's first argument + the game's +FEB4) on the twin's
   route, and a4_hr71 (A4_HELIREC: the helicopter's first 0xD00 bytes and the player's place each substep it moves,
   for its light) on Paris x2: queued.
+- o3w2 (the steering fix, the same weave): at every release and reversal +7FC now runs stock's values exactly --
+  steps 343-349 3195, 1619, -70, -1815, -3588, -4096 in both; 356-361 -3195, -1619, 70, 1815, 3588, 4096 in both --
+  and the smoothed +808 within ~2% of stock's (its 1/8 ease thirded). The first press of the run differs (3x +683,
+  +806, +479 before going right; stock +123): the paths had parted by then (B4 212 against 230), not re-checked.
+- hr71a / hr71b (a4_hr71 = r70 + the steering fix + A4_HELIREC, Paris on the owner's save, 200 s each): the
+  helicopter flew in both (5,004 records in hr71b). Its words that change on the whole step only: +678 (the heading,
+  ~40 a step), +C44/+C48/+A34/+A6C (counters), +C4C, **+C50/+C54/+C58** (~150, 26, 154 a step), +C60/+C68 (the eased
+  offset). +C50..+C58 is the light's aim point: on the road (y -4) ~300 ahead of the player, standing still for two
+  substeps while the player moves ~85 a substep, then jumping on (cnt 4170-4187) -- **the owner's choppy light**.
+  And the r70 spread's flaw: the velocity +010/+018 changes ~720 a substep on the whole step and on substep 1 and
+  ~39 on substep 2, the acceleration +0B8/+0C0 25,000-60,000 -- the give-back hidden from the substeps' measures
+  made the velocity a sawtooth (the jump read on the whole step, not on the substeps); anything the game tilts from
+  it rocks. A guess for the owner's "back and forth again" in LA, not shown there.
+- Rework (a4_eng.h eng_psnap / eng_pfix / eng_pstep / eng_pline): a pursuer the game moved on the whole step is
+  drawn on the straight line from where it began the step (D) to where the game put it (T) -- a third, two thirds,
+  T after substep 2 -- its substeps' own moves overridden; +0A8 untouched, so every substep's measure reads T - D a
+  step (stock's velocity). For the helicopter (+C70 4) its light aim point +C50..+C58 and its heading +678 (the short
+  way round) ride the same line. Guards as before (+0A8 set in the step, a wreck, type 5, a jump of 0x40000 or
+  more); nothing done when only its own physics moved it. hr72a / hr72b (Paris x2): queued.
+- yt71 (a4_yt71: r70 + steering + A4_TRAFDUMP, the twin's LA route, 120 s; 2 hits): traffic slot 3 hit at cnt 3010
+  (+34 0 -> 1, +38 -255, +3C..+48 and +7C rewritten). After it, on each whole step only (the record at substep 1's
+  start) the car moves an extra ~90 in x and ~165 in z (cnt 3013 +96/+173, 3016 +93/+169, 3019 +92/+162 ...,
+  decaying slowly), its lane's +8/+25 a substep in between: the knock lands at 11.72 Hz. +2292A (the wreck path) is
+  called from +1E06E only (the racing cars' control) -- not this. Guess: the knock is driven by the traffic clocks'
+  advance, which the r70 fix gives the substeps as 0 (their clocks = the whole step's, eng_tmul adding the lane's
+  third itself) and the whole step as all 256. Bench variant A4_TCLK2: the substeps' clocks the step's own + their
+  third of its change, eng_tmul the plain product -- whatever runs off the clocks' advance then sees a third each
+  substep. yt72 (TRAFDUMP + TCLK2, the same route): queued after hr72.
+- Pickups and the nitro flame "clipping into the road again" (read, not measured): round 28's rule depth-tests a
+  sprite only under a nearer face's box (mesh_bb_depth); since round 60 the GPU objects and since round 67 the GPU
+  cars count too (gobj_bb_deep), with one box per object or per car where the list had one per face. A car's box
+  over a pickup or its own flame tests the sprite at the car's far bucket, and the road nearer than that hides its
+  lower part -- round 27's picture. A guess to check on the bench with video.
+- yt72 (a4_yt72: yt71 + A4_TCLK2, the same twin LA route, 120 s; framestat 3,787): the routes part (other clocks,
+  other traffic). Traffic slot 2 hit at cnt 3213 (+34 0 -> 1, +38 -1, +3C..+44, +7C, +D4 rewritten). After it the
+  same picture as yt71: at each record of substep 1 (after the whole step) the car has moved an extra ~60 in x and
+  ~150 in z and +20 (its progress) +267..+289 against the plain +46 a substep; the substeps' records move it the
+  plain +6/+26 (cnt 3214, 3217, 3220, 3223, 3226, 3229, 3232, 3235: every whole step). **TCLK2 does not change it:
+  the clock guess is wrong.** The knock is added on the whole step only -- by code the substeps do not run, or that
+  the rate map gates. Next: EKA2L1_WATCH on slot 2's +10..+20 (0x023A26E4..F8) on the same build and route, to name
+  the writer (ww72, queued). Of the race step's calls the substeps skip: +13E10, +52206, +39FE, +1C1DC, +14E60 x3
+  (the rules, before the traffic), +52C88, +1B2D6 (the pursuit check), and everything after the camera at +14CB2
+  (+691E, +51FC4, +36F1C, +52CA0, +18C9A, +2092, +1D76, +13968, +12DEC, +673A, +660A, +663E, +3FE6, +5968, +64D4,
+  +206E, +203A, +4B66C, +4B68C, +133E4, +4B68E).
+- hr72a, hr72b, hr72c (a4_hr72, the rework with pn, Paris on the owner's save, 200 s): **no helicopter record in
+  any** (PCMEM 0 bytes: the recorder writes only while race slot 10 holds +C70 4 and it moved since the last record,
+  and hands over a ring of 4) -- hr71a/b, the same route on the build before the rework, recorded 8 and 16 MB.
+  0 of 3 against 2 of 2: the rework may be stopping or removing the helicopter. Framebuffer snapshots are black in a
+  GPU build. hv72 / hv71 (the two builds again, filmed at 4 fps): queued.
+
+## Round 71 (bench): the sprites' cover by a straddling GPU car; the drop record told what it misses
+
+- The pickups and the flame, read: round 28 kept a face whose three corners are nearer than 512 (MESH_NEAR) in the
+  table while a near sprite was about, drawn in the walk's order with the sprites -- the player's car's plain parts,
+  which covered the flame's frames otherwise (35-93% of their pixels tested, round 28). Round 67 put the player's car
+  on the GPU as one item (z -379..-170: one box, buckets ~21..48, the near cut does not apply to it); a sprite with
+  its bucket inside that range and its rectangle on the car's box -- the flame at 191-230 (buckets 23-28) always,
+  a pickup near the car -- is tested at its own distance (gobj_bb_deep: min(qf, sb - 1)), and the road under it,
+  nearer than that, hides its lower part: round 27's sinking, back with round 67.
+- Rule (gobj_bb_deep, both the objects and the cars): an item whose buckets straddle the sprite's (qn < sb <= qf)
+  covers it only when the sprite is behind the item's middle ((qn + qf) / 2). In front of the middle the game paints
+  the item's few nearer faces over the sprite (the flame over the car's tail); behind it, the many (a pickup ahead of
+  the car, under its body), where the test at its own distance is right for the car's pixels. An item wholly nearer
+  (qf < sb) is unchanged. A4_BBSTRADALL (bench) is round 67's rule. Guess: that the flame and the pickups near the
+  car are what the owner saw -- to be measured: A4_BBCOV (bench, counters at 0x454100 handed to a4_gobj_emit every
+  256 frames: calls, covers by round 67's and round 71's rule, per class whole / behind / in front / within
+  MESH_NEAR, changed, now untested). bc71 (the rule) and bc67 (round 67's), LA, filmed at 8 fps: queued.
+- The sky-only top half (phone round 70b), read: the drop ring (A4_SLOWREC) of the LA race holds 5 entries --
+  frame 39483 25 triangles (from 758, camdev 5, not held), 41745 251 (663, 12), 41781 157 (774, 534), 43578 331
+  (729, 59), 68454 27 (704, held). 41745 and 43578 are partial drops with the camera where it was: candidates for
+  the owner's two. Bench r70 runs had none (r70f2 one, camdev 198: a cut). The frame's count (s->prims) leaves out
+  the GPU's objects and cars, so a frame missing its scenery objects shows no drop at all. The camera word round 39
+  called a transition counter is the camera's track segment (race+0x70 = cam+0x28, eng_cam_pose's "segment";
+  cam = race+0x48): 125 at the hill, its interpolation across the lap's wrap the round 39 empty frame. The 3x
+  substeps keep the game's segment for the game's pose while the blend moves the pose a step late.
+- The drop record extended (A4_SLOWREC, in the candidate): word 7 of a drop entry (the speculation's time, 0 since
+  round 63) now holds the camera's segment as the render drew (12 bits) | the GPU objects taken (8) << 12 | drawn
+  << 20 | taken this frame << 21 | the cars taken (5) << 22 | this frame << 27 | 1 << 31; and an entry is also
+  written for a frame whose objects were taken and never drawn, or fell to under half of the 3D frame before's
+  (from over 16; glr.gobjprev). slowsum.py prints them. For the next phone round, so a sky-only frame names its
+  missing layer.

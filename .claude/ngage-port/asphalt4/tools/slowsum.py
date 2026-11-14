@@ -32,3 +32,12 @@ L = [S[288 + i * 16: 304 + i * 16] for i in range(8)]
 print('drop frames (triangles halved or worse) in the race: %d' % S[18])
 print('speculative frames drawn at the whole step for a camera script (A4_SPECSCRIPTHOLD, round 41): %d; speculations in slow motion (A4_SLOWMOQ; mod 65536): %d' % (S[14] & 0xFFFF, S[14] >> 16))
 show(sorted(L, key=lambda e: e[14]), 'the last 8 frames with list triangles lost or the triangles halved (prevtri: the frame before)')
+# round 71: word 7 of a drop entry (bit 31 set) -- the camera's track segment (4095: no race render), the GPU's objects
+# taken / drawn / taken this frame, its cars taken / this frame; from round 71 an entry is also a frame whose objects
+# were taken and not drawn, or fell to under half of the frame before's
+W = [e for e in sorted(L, key=lambda e: e[14]) if e[0] and e[7] >> 31]
+if W:
+    print('  drop entries (round 71 word 7): frame, camera segment, objects taken, drawn, this frame, cars taken, this frame')
+    for e in W:
+        w = e[7]
+        print('  %6d %6d %6d %6d %6d %6d %6d' % (e[14], w & 0xFFF, (w >> 12) & 0xFF, (w >> 20) & 1, (w >> 21) & 1, (w >> 22) & 0x1F, (w >> 27) & 1))
