@@ -10653,3 +10653,10 @@ c. States the bench did not enter: a drop entry with word 7 (no drop frame in an
   car's middle bucket when that is nearer than its own: the car's near half still hides it, the road between the
   car's middle and the sprite does not. A4_BBSTRADALL keeps round 67's rule whole. The objects keep round 60's (a
   long wall's middle says little).
+- gd73 (C71 + A4_GDROPMARK + A4_SEGREC, LA on the bench's Mini at the N95 model, TS=4, filmed 8 fps; framestat
+  4,026; 3,545 renders recorded): 3 object drops, all camera changes -- frame 948 (direction word set, yaw 285 ->
+  1,324: a view looking back), 4905 (likewise, yaw 1,071 -> 318), and 2697 (segment 76 kept, direction 0, objects 31
+  -> 10, the camera 60 units back while the car went on): the video's marked frame there is the GNN helicopter
+  camera cutting in. The direction word is set in 73 renders, each with a camera looking back. No segment jump. **The
+  owner's vanishing not reproduced on the Mini** (the photos were at 300+ km/h in the Veyron). gd74: the same probe,
+  the Veyron swapped in (barswap), the autopilot (autorun.sh, cap 85), filmed: running.
