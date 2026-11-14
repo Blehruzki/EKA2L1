@@ -10448,3 +10448,13 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
 - A4_TRAFDUMP extended (bench): three records a substep -- the start (ENG_BEGIN), before +FB12 (+14574) and after
   it (+14578) -- each with its substep and point, and a car's address with its slot (eng_tdrec). yt73 (C71 + the
   recorder flags + TRAFDUMP, no TCLK2; a4_camp_emit +0C6760, jtrunt3.sh): queued after bc71/bc67.
+- hv72 (a4_hr72, the rework with pn, Paris on the owner's save, filmed at 4 fps; framestat 5,736): **the helicopter
+  recorded** (17 MB, 5,084 records) -- hr72a-c's empty runs were races without its flight (the route is not
+  repeatable), not the rework stopping it. Against hr71b (the build before, the same route): direction reversals
+  between consecutive moving substeps 8 of 4,798 (hr71b 72 of 4,415); the next substep's move over this one's, 5% /
+  95%: 0.95 / 1.04 (hr71b 0.86 / 1.17); a sample stretch moves (-13,25) (-12,25) (-16,23) ... where hr71b moved
+  (-85,9) (-996,11) (-78,3) (-62,-168). The light's aim point +C50 / +C58 now changes on every substep, 54/55/55 and
+  53/53/53 by substep (hr71b: on the whole step only, 147 and 154 -- the owner's "choppy" light), the heading +678
+  13/15/18 (hr71b: the whole step only, 40). The velocity words still differ by substep (+010 83/8/102, +018
+  71/7/71; hr71b 720/710/39, 835/821/24): the measure's own, an order smaller. hv71 (the old build) stopped: not
+  needed.
