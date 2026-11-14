@@ -10817,3 +10817,24 @@ b. Read back: a4_gl.c's code lines changed since r71 (git diff 38aee9e..HEAD: th
 c. States the bench did not enter: the MBX's own sampling convention (unknown; both are covered); a line row on the
    phone with the GPU sky (not in C72); the scenery loss in a chase view; the GNN helicopter's light in LA; a pickup
    beside a traffic car; slow-motion cameras (unchanged: the owner's answer on interpolation is still open).
+
+## Round 73 (owner: "No, let's find a way to match it with real steps. Drawing in-between frames will introduce back and forth lag or other visual artifacts"): slow motion at real steps
+
+- The game's slow motion, read (+14360..+1442E, the race rules): a request (cam+0x3C = race+0x84 > 0, set by a
+  takedown or crash event) arms a delay countdown race+0x850 and a length race+0x854 (from cam+0x40); when the delay
+  reaches 1 the scale race+0x84C becomes 512 (1 << 9), and when the length reaches 1 (or the player car's track
+  record says so) 256 again. **One value only: half speed.** +15B1C counts the logic steps with the period scale x
+  7111 >> 8 (the third-step build's literal), so at 512 a substep comes every 56.9 ms; the race update fills the
+  real steps between with +1300C (the effects' frame counters, +22C0E, its only direct caller; then the camera,
+  +12DEC(race, &0)). Stock: one whole step every 170.7 ms and a +1300C between.
+- sm72a (C72 + A4_BENCH_SLOWMO=512 -- the scale forced 3 s in 10 -- + A4_SEGREC with the scale in each record,
+  LA on the N95 model, TS=4; framestat 1,194, 473 renders): substeps a render at scale 256: 1 x175, 2 x152, 3 x4,
+  never 0; at 512: **0 x40**, 1 x100, 2 x1 -- 28% of slow-motion frames draw the state the frame before drew, the
+  rest step unevenly. That is the takedown and crash cameras' "stop motion" (phone round 70), at 3x stock's rate.
+- Plan (real steps, no in-between frames): while the scale is 512 the engine runs a game step as **six** substeps of
+  a sixth, one every 28.44 ms as in normal play (A4_ENG6): the whole step on substep 0, motion on 1-5, every rate a
+  sixth with its remainder carried (eng_third's divisor the step's N), the lags, lines and blends by N; the step
+  count's n = m while the engine is in sixths (the period 7111, as at normal speed); one +1300C a whole step (m one
+  more than n once a step), as stock makes one per slowed step. The choice of N is made at each whole step's start
+  from the scale, so a step never changes N midway. At scale 256 everything stays N = 3: the lockstep oracle must
+  find the normal path bit-identical.

@@ -3603,7 +3603,7 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
             volatile uint32_t *e = rg + 4u + 8u * i;
             e[0] = g->frames; e[1] = (uint32_t)cm[0x70 / 4] | (uint32_t)cm[0x74 / 4] << 16;
             e[2] = *(volatile uint32_t *)0x0045D008u;
-            e[3] = a4_gobj_now(g->frames);
+            e[3] = a4_gobj_now(g->frames) | (uint32_t)cm[0x84C / 4] << 16;   /* | the slow-motion scale (256 normal) */
             e[4] = (uint32_t)cm[0x58 / 4]; e[5] = (uint32_t)cm[0x60 / 4]; e[6] = (uint32_t)cm[0x68 / 4];
             e[7] = car ? ((uint32_t)car[1] & 0xFFFFu) | (uint32_t)car[3] << 16 : 0u;
             rg[0] = i + 1u;
