@@ -10730,3 +10730,16 @@ c. States the bench did not enter: a drop entry with word 7 (no drop frame in an
   the start, 260 later). A guess, to settle: the field of view at speeds the bench never reached leaves planes
   that cull the street. fp72 (A4_CAMADDR, bench: the mesh camera's address and F stored on change, watched):
   queued -- then the writer of cam[4].
+- The rerun, every GPU projection moved together (LA, filmed, ~150 s each; line rows counted on every 16th frame):
+  | run | build | framestat | sampled frames | line rows |
+  |---|---|---|---|---|
+  | t72a2 | the tie's model, no offset | 3,982 | ~248 | **75** (last row 122, 81 px) |
+  | t72b2 | the model and the quarter | 4,189 | ~305 | **1** (row 111, 72 px) |
+  | c72z2 | neither (the bench as C71) | 4,242 | ~294 | 0 |
+  | c72e2 | the quarter (the candidate's code) | 4,207 | ~301 | 1 (row 116, 65 px) |
+  Not repeats of the first pair (that moved the 2D projection alone: model 97, model and quarter 16). Read: under
+  the model the quarter takes the lines from 75 to 1. Under GL's sampling it is not quite neutral: the 3D items'
+  float edges move a quarter against GL's samples, and a seam between the list and the table's triangles (their
+  edges the game's integers, the list's exact) can then hold a sample where it held none -- 1 short row in ~300
+  sampled frames, against 0. Moving the 2D projection alone is neutral under GL but leaves the half-pixel seams a
+  GPU sampling at integers would have (16). Kept: everything moved, PX_OFF = FX / 4.
