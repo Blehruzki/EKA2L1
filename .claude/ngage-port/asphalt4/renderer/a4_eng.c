@@ -41,7 +41,8 @@ uint64_t a4_eng_keys(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3)
  * with the period scale x 7111 >> 8 -- at 512 a substep every 56.9 ms, the real steps between filled with +1300C (the
  * effects' frame counters, the camera). While the engine's steps are sixths (the step running is, or the next substep
  * begins one, which the scale makes a sixths step) every real step is a substep: n = m. And one +1300C a whole step,
- * as stock makes one a slowed step: m one more than n when these substeps end a step of sixths. */
+ * as stock makes one a slowed step: m one more than n when these substeps include a sixths step's substep 3 -- its
+ * middle, so the camera's two ticks a step fall three substeps apart (eng_cam_script). */
 void a4_eng6_count(uint32_t race, int32_t *m, int32_t *n)
 {
     uint32_t s, nn, k, ends = 0;
@@ -52,7 +53,7 @@ void a4_eng6_count(uint32_t race, int32_t *m, int32_t *n)
     s = ENG->cnt == 0u ? 5u : ENG->sub; nn = ENG->cnt == 0u ? 6u : ENG->n;
     for (k = 0; k < (uint32_t)*n; k++) {
         if (s + 1u >= nn) { s = 0u; nn = 6u; } else s++;
-        if (nn == 6u && s == 5u) ends++;
+        if (nn == 6u && s == 3u) ends++;
     }
     if (ends) *m = *n + 1;
 }

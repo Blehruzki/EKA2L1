@@ -243,6 +243,7 @@ struct eng {
     uint32_t svc[16], svw[16], svok; /* round 73: the slip check's cars, the whole step each was last checked at, the car
                                       * whose whole-step velocity svv holds */
     int32_t svp[16][3], svv[3];      /* their position then, and the step's displacement (A4_ENG6's sixths) */
+    int32_t sclk;                    /* round 73: the crash camera script's clock after the whole step's tick (A4_ENG6) */
     uint32_t dbg[8];                 /* A4_ENGDBG: the substep's path bits and the player's keys, emitted per substep */
     uint32_t rk[ENG_NREM];           /* the word's address (0: free) */
     int8_t rv[ENG_NREM];             /* its remainder, 0 .. n - 1 (bytes since round 71: the traffic's lines needed the room) */
@@ -736,6 +737,14 @@ static inline void eng_cam_script(uint32_t sp, uint32_t *r23, uint32_t j, volati
     const int32_t clk = (int32_t)o[0x8Cu / 4u], end = (int32_t)o[0x90u / 4u];
     int32_t cur[11];
     uint32_t save[ENG_CAMW], k, live = 0;
+    /* Round 73 (A4_ENG6): in a step of sixths the script ticks twice -- at the whole step, and in the race update's
+     * +1300C, which a4_eng6_count runs after the step's substep 3 (stock's slow motion: the camera at its normal rate,
+     * one tick a real 85 ms, while the cars run at half). So a tick spans three substeps here, as at normal speed:
+     * substeps 1-3 a third, two thirds and all of the way to the next value from the whole step's, 4-5 a third and
+     * two thirds on from the value the mid tick left (the clock moved since the whole step's: ENG->sclk). Before,
+     * the substeps spread one tick over six and the two ticks landed whole -- a jump at each step's end. */
+    int32_t jj = (int32_t)j, den = (int32_t)ENG->n;
+    if (ENG->n == 6u) { den = 3; if (clk != ENG->sclk) jj = j >= 3u ? (int32_t)j - 3 : 0; }
     if (*done || (end && clk >= end)) return;
     for (k = 0; k < 11u; k++) {
         const uint32_t head = o[0x94u / 4u + k], first = MEM32(head);
@@ -748,7 +757,7 @@ static inline void eng_cam_script(uint32_t sp, uint32_t *r23, uint32_t j, volati
             /* the player's own arithmetic: 32-bit, (v << 12 - value) / (step - clock) */
             nx = t > clk ? cur[k] + eng_sdiv((int32_t)(((uint32_t)v << 12) - (uint32_t)cur[k]), t - clk) : (int32_t)((uint32_t)v << 12);
         }
-        o[0x5Cu / 4u + k] = (uint32_t)(cur[k] + eng_sdiv((nx - cur[k]) * (int32_t)j, (int32_t)ENG->n));
+        o[0x5Cu / 4u + k] = (uint32_t)(cur[k] + eng_sdiv((nx - cur[k]) * jj, den));
     }
     if (!live) return;
     for (k = 0; k < ENG_CAMW; k++) save[k] = cam[k];
@@ -785,6 +794,7 @@ static inline void eng_cam_pose(uint32_t sp, uint32_t *r23, uint32_t j)
     if (!(mode <= 7u || mode == 0x2Au)) {
         ENG->cbok = 0;
 #ifdef A4_CAMSCRIPT3
+        if (mode == 0x18u && j == 0u) ENG->sclk = (int32_t)MEM32((uint32_t)(uintptr_t)cam + 0x248u + 0x8Cu);   /* after its tick */
         if (mode == 0x18u && j != 0u && car && cam[0xC0u / 4u] == 0x18u) eng_cam_script(sp, r23, j, cam);
 #endif
         return;

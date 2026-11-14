@@ -10996,3 +10996,21 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   "faults" after 224 in o3s6c / k6d were opponents. Rule 2: not a repeat of o3s6c (no opponent accounting) or o3s6b
   (before the slip fix). The A4_ENG6 physics are done on the bench; next the candidate (C72 + A4_ENG6) and its
   battery.
+- Candidate build r73 (C73 = C72 + A4_ENG6; a4_r73_cand.exe, sha256 8859839208cfb8f1..., 936,788 bytes, +2,280 on
+  r72; +3A15C b510 0004, no 0xDEADBEEF; unbaked) and its battery (r73bat.sh = r72bat.sh on the new binaries, plus the
+  renders' substeps from the frame record and a forced-slow-motion pacing run sm73c): running. So far: y73b (the
+  recorder twin) framestat 3,727, no fault; r73t2 (calibrated N95, 120 s) framestat 3,607, **37.1 ms a render**
+  (r72t2 36.9), camera yaw / heading reversals 0 / 0, drop frames 0, renders by substep 0 x136, 1 x129, 2 x152 (no
+  slow motion on the route); r73c2 (crash-steer, cap 85) framestat 3,134 -- its crash camera (mode 0x18, 95 renders)
+  never in the game's slow motion (substeps 0-2 only; r72c2 likewise), moving 12 a render at every substep.
+- Read back for rule 4, a question the bench had not asked: the crash / takedown camera's script in slow motion.
+  It ticks once a camera update; stock at scale 512 updates the camera at the logic step and again in +1300C, so the
+  script plays at its normal rate (one tick every real 85 ms) while the cars move at half. With A4_ENG6 the whole
+  step ticks at substep 0, the substeps spread one tick over six (j / 6) and +1300C, run after substep 5, ticks once
+  more: per step the camera would move 1/6, 1/6, 1/6, 1/6, 2/6 and then a whole tick at the next substep 0 -- a jump
+  six times the frame's move, ~6 a second, the stop motion again in the camera. A guess until measured: smc73
+  (crash-steer on sm73c, forced slow motion 3 s in 10) reads the 0x18 camera's move by substep. The change, built
+  as sm73d (bench twin) for smd73 after it: a4_eng6_count runs the step's +1300C after substep 3 instead of 5, and
+  eng_cam_script spans a tick over three substeps -- 1-3 toward the next value from the whole step's, 4-5 on from
+  the mid tick's (the script's clock moved since the whole step: ENG->sclk) -- so the camera moves a third of a tick
+  every substep, as at normal speed. Thirds untouched (n = 3: j / 3 as before). r73 is stale if it holds.
