@@ -10467,3 +10467,11 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   the middle 8,457, in front 15,758 (unchanged now), near sprite 2,585; cars: 26,276 / 1,674 / 2,383 / 3,797. The
   video: the nitro flame (key 5 held; the bench car collects nitro) drawn whole under the car's tail and over the
   road at 20 s and 32 s. bc67 (round 67's rule, the same run): rerun, queued.
+- bc67 (round 67's rule + A4_BBCOV, the same LA run, filmed; framestat 5,673; 30 records, 5,262 frames): 24,160
+  sprite calls, every one covered by a GPU item, depth unchanged by construction. The two videos side by side
+  (cropped under the car, the picture turned upright): at 20 s identical; at 32 s, nitro lit, the flame under round
+  71's rule full and bright, under round 67's thinner. Measured over every frame (pixels bright cyan -- B > 230,
+  G > 190, R < 190 -- in the 80 x 45 box under the bumper, 180 x 150 scale): frames with the flame bc71 301 of 1,071
+  (the video cut short when the disk filled), bc67 513 of 1,645; flame pixels a frame, median / mean / 75% / 90%:
+  bc71 589 / 621 / 936 / 1,140, bc67 526 / 583 / 911 / 1,102 -- round 67's rule loses ~10% of the flame (its lower
+  rows, to the road), round 71's draws it whole. Pickups not measured (no pickup at the car in the frames read).
