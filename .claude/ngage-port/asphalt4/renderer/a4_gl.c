@@ -3502,10 +3502,19 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         uint32_t race = (uint32_t)(uintptr_t)self, pl = *(volatile uint32_t *)(race + 0x390);
         uint32_t idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 0;
         volatile uint32_t *car = idx < 16u ? *(volatile uint32_t *volatile *)(race + 0x394 + 4u * idx) : 0;
-        if (F[0] != 0x31435246u) { F[0] = 0x31435246u; F[1] = 0; }   /* 'FRC1' */
+        if (F[0] != 0x31435246u) { F[0] = 0x31435246u; F[1] = 0; F[2] = 0; F[3] = 0; }   /* 'FRC1' */
         volatile uint32_t *e = F + 4u + (F[1] % FREC_N) * 8u;
         e[0] = a4_ntick(); e[1] = 0;
+#ifdef A4_ENG3
+        /* round 72 (phone round 71b, "the scenery keeps disappearing"): with no speculation (A4_ENG3) the fraction's
+         * bits carry the camera's track segment (race+0x70, 12 bits) | its direction word set << 12 | the scenery
+         * objects the GPU took in this render (7 bits, saturated: filled in after the render, A4_DROPHOLD's block)
+         * << 13 -- the camera mode << 20 as before; bit 31 clear */
+        (void)mark_q16;
+        e[2] = (c[0x70u / 4u] & 0xFFFu) | (c[0x74u / 4u] ? 1u << 12 : 0u) | (c[0x94u / 4u] & 0xFFu) << 20;
+#else
         e[2] = mark_q16 | (c[0x94u / 4u] & 0xFFu) << 20;   /* q16, the camera mode, bit 31 = a fraction computed */
+#endif
         e[3] = car ? car[1] : 0; e[4] = car ? car[3] : 0;
         e[5] = (car ? car[0x678u / 4u] & 0xFFFFu : 0u) | (c[0x68u / 4u] & 0xFFFFu) << 16;
         e[6] = c[0x58u / 4u]; e[7] = c[0x60u / 4u];
@@ -3543,6 +3552,17 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         const volatile int32_t *cm = (const volatile int32_t *)race;
         g->rendered = 1;
         g->camok = car != 0;
+#if defined(A4_FRAMEREC) && defined(A4_ENG3) && defined(A4_GPUOBJ)
+        {   /* round 72: the objects taken in this render, into its frame record entry (written before the render) */
+            extern uint32_t a4_gobj_now(uint32_t frames);
+            volatile uint32_t *F = (volatile uint32_t *)A4_GL_FREC;
+            if (F[0] == 0x31435246u && F[1]) {
+                volatile uint32_t *e = F + 4u + ((F[1] - 1u) % FREC_N) * 8u;
+                const uint32_t on = a4_gobj_now(g->frames);
+                e[2] = (e[2] & ~(0x7Fu << 13)) | (on > 127u ? 127u : on) << 13;
+            }
+        }
+#endif
         /* round 71: the camera's track segment (cam+0x28, race+0x70) and its direction word (cam+0x2C, race+0x74: the
          * render's segment window +C9B0 runs ahead of the segment when 0, behind it otherwise -- the scenery objects
          * +CF6E draws are that window's) as it drew, and the engine's last substep, for the drop record */
@@ -6004,8 +6024,8 @@ static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int3
 #endif
     return deep;
 }
-#ifdef A4_SEGREC
-uint32_t a4_gobj_now(uint32_t frames)              /* bench (round 71): the objects taken this frame */
+#if defined(A4_SEGREC) || (defined(A4_FRAMEREC) && defined(A4_ENG3))
+uint32_t a4_gobj_now(uint32_t frames)              /* round 71/72: the objects taken this frame */
 {
     const volatile struct gstate *go = GOBJ;
     return go->magic == GOBJ_MAGIC && go->frame == frames ? go->n : 0u;
@@ -8132,6 +8152,17 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
     /* the strip holding gl_lo (VP_H is a multiple of sh): gl_lo / sh * sh without a divide
      * (the blob has no __aeabi_uidiv; (x * 2731) >> 16 is x / 24 for every x in 0..239) */
     int ystart = sh == 24 ? (int)((((uint32_t)gl_lo * 2731u) >> 16) * 24u) : (gl_lo / STRIP) * STRIP;
+#if defined(A4_FRAMEREC) && defined(A4_ENG3)
+    /* Round 72 (phone round 70: grey horizontal lines "popping in and out randomly, sometimes alone, sometimes in
+     * groups"; the owner's photo: one whole screen row of a bluish grey across the 3D picture, not over the car).
+     * The guess: a row the GPU left undrawn (alpha clear), so the composite keeps the software layer's pixel there.
+     * Every 16th composite of the N95's path each row's undrawn pixels are counted (~1 ms that frame); a row with 64
+     * or more where the rows two above and below have under 16 is a line: the frame record's header [2] counts them,
+     * [3] holds the last -- its row | undrawn pixels (8 bits) << 8 | the frame's number (16 bits) << 16. */
+    uint8_t lc_u[VP_H];
+    const int lc_on = (s->frames & 15u) == 0u && bgra && amask && PX6_ON(s->fmode);
+    if (lc_on) for (int y = 0; y < VP_H; y++) lc_u[y] = 0;
+#endif
     for (int y0 = ystart; y0 <= gl_hi; y0 += sh) {
         uint32_t t0 = a4_ntick();
 #ifdef A4_IDLECEN
@@ -8223,6 +8254,17 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                 int screen_y = VP_H - 1 - (y0 + sy);
                 if (screen_y < CLIP_TOP) continue;
                 const uint32_t *src = rb + sy * VP_W;
+#if defined(A4_FRAMEREC) && defined(A4_ENG3)
+#ifdef A4_LINETEST
+                /* bench (round 72): the test's own case -- on a sampled frame screen row 120 read back as undrawn */
+                if (lc_on && screen_y == 120) for (int x = 0; x < VP_W; x++) ((uint32_t *)rb)[sy * VP_W + x] &= 0x7FFFFFFFu;
+#endif
+                if (lc_on) {   /* round 72: this row's pixels no opaque GPU class drew (alpha's top bit clear) */
+                    uint32_t u = 0;
+                    for (int x = 0; x < VP_W; x++) u += (int32_t)src[x] >= 0;
+                    lc_u[screen_y] = (uint8_t)(u > 255u ? 255u : u);
+                }
+#endif
                 row((uint32_t *)((uint16_t *)fb + screen_y * FB_STRIDE), src, src + VP_W);
 #ifdef A4_BLITCHECK_MUTANT
                 if ((int32_t)src[0] < 0) ((uint16_t *)fb)[screen_y * FB_STRIDE] ^= 1u;   /* the check's own test */
@@ -8320,6 +8362,17 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
             }
             ck[114]++;
         }
+    }
+#endif
+#if defined(A4_FRAMEREC) && defined(A4_ENG3)
+    if (lc_on) {   /* round 72: a line -- a row with many undrawn pixels between rows with few */
+        volatile uint32_t *F = (volatile uint32_t *)A4_GL_FREC;
+        const int lo = (int)miny + 2 > 2 ? (int)miny + 2 : 2, hi = (int)maxy - 2 < VP_H - 3 ? (int)maxy - 2 : VP_H - 3;
+        for (int y = lo; y <= hi; y++)
+            if (lc_u[y] >= 64u && lc_u[y - 2] < 16u && lc_u[y + 2] < 16u && F[0] == 0x31435246u) {
+                F[2]++;
+                F[3] = (uint32_t)y | (uint32_t)lc_u[y] << 8 | (s->frames & 0xFFFFu) << 16;
+            }
     }
 #endif
 #if defined(A4_SKYCEN) || defined(A4_SKYSKIP) || defined(A4_GPUSKY)

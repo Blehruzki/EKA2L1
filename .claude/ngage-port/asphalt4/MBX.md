@@ -10660,3 +10660,20 @@ c. States the bench did not enter: a drop entry with word 7 (no drop frame in an
   camera cutting in. The direction word is set in 73 renders, each with a camera looking back. No segment jump. **The
   owner's vanishing not reproduced on the Mini** (the photos were at 300+ km/h in the Veyron). gd74: the same probe,
   the Veyron swapped in (barswap), the autopilot (autorun.sh, cap 85), filmed: running.
+- gd74 (the same probe with the Veyron swapped in, the autopilot, cap 85, filmed; framestat 3,738): one object drop
+  (frame 846, segment 46 kept, direction 0, objects 65 -> 28 -> 17, yaw +33 in a frame): the video's marked frame is
+  the car sliding and the camera swinging left -- the buildings on the right leave the frame and come back as it
+  swings back: a view change, not the vanishing. **Not reproduced on the bench in either car.** Objects taken by
+  segment on the bench (gd73 / gd74): segment 38 45-91 (median 73 / 64), 39 41-80, 40 39-71, 88-90 71-192; the
+  phone's drop entry at segment 38 (9012, camera steady) had 15. So on the phone the game hands over far fewer
+  objects at a place where the bench never goes below 45 -- with tris not up (no refused object went to software).
+- For r72, so the phone shows it: the frame record (every render of the last 256 before each capture, FRC1) carries,
+  in the bits the speculation's fraction used (A4_ENG3), the camera's segment (12 bits) | direction set << 12 | the
+  objects the GPU took in that render (7 bits, saturated, filled in after the render) << 13 -- with the camera and
+  car positions it already had. objrec.py to read it.
+- The grey lines, for r72: every 16th composite on the N95's path (BGRA, alpha the drawn-mask, ARMv6 rows) counts each
+  row's pixels no opaque GPU class drew; a row with 64 or more between rows (two above and below) with under 16 is
+  a line -- FRC1's header [2] counts them, [3] holds the last (row | undrawn << 8 | frame << 16). Rule 4, testing the
+  test: A4_LINETEST (bench) blanks screen row 120's alpha on the sampled frames -- the detector must count it, and
+  the video shows what a missing row looks like beside the owner's photo. lt72 (LA, filmed): queued. If the bench's
+  read format is not BGRA the counter does not run on the bench at all: the run says which.
