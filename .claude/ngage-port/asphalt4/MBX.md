@@ -10938,3 +10938,12 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   record does not hold (other cars, the traffic). k6e (bench): a checksum of the 15 other race cars (x, y, z,
   velocity, +0A8, B4, heading, +7D0, +7D8, +7FC) and the 16 traffic cars (20 words each), and the traffic's two
   clocks (race+0x378, +0x37C), at every substep's start; the same binary run twice (k6e, k6e2).
+- k6e / k6e2 (the checksum probe, one binary run twice; framestat 2,148 / 2,095): the player's records part at ~380
+  this time (84 of 464 records differ), the traffic clocks agree at every substep, the traffic's checksum parts at
+  step 149 (the race's start, scale 256, n 3 -- before any slow motion, where the sixths binary runs the thirds' code)
+  and the other cars' from the first substep. So the checksums hold words that vary run to run without moving the
+  player (thirds runs agree on the player), and cannot name the first difference that matters. Replaced by a raw
+  snapshot (bench, A4_KICKREC): at every whole step's start the 16 race cars (pointer, x, y, z, velocity, +0A8, B4,
+  heading, +7D0, +7D8, +7FC, +034) and the 16 traffic cars' first 82 words, 8 KB at 0x5A4400 through a4_camp_emit.
+  Runs (kr5): sixths k6f twice, thirds k3f twice -- the thirds pair names the words that vary harmlessly, the
+  sixths pair the first that does not.

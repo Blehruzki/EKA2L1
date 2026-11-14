@@ -563,21 +563,20 @@ static inline void ENG_BEGIN(uint32_t race)
             rg[0] = i + 1u;
             if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
         }
-        if (ENG->magic == ENG_MAGIC) {   /* a checksum of the other cars and the traffic at every substep's start */
-            const uint32_t i = rg[0] & 255u;
-            volatile uint32_t *e = rg + 4u + 8u * i;
-            static const uint16_t cw[] = { 4, 8, 12, 16, 20, 24, 0xA8, 0xB4, 0x678, 0x7D0, 0x7D8, 0x7FC };
-            uint32_t q, w, hc = 2166136261u, ht = 2166136261u, ta = ENG->targ ? ENG->targ + GAME32(0xFEB4) : 0u;
+        if (ENG->magic == ENG_MAGIC && ENG->sub == 0u) {   /* every whole step's start: the race cars and the traffic */
+            volatile uint32_t *z = (volatile uint32_t *)0x005A4400u;   /* 0x2000 bytes, below 0x5A7000 */
+            static const uint16_t cw[] = { 4, 8, 12, 16, 20, 24, 0xA8, 0xB4, 0x678, 0x7D0, 0x7D8, 0x7FC, 0x34 };
+            const uint32_t ta = ENG->targ ? ENG->targ + GAME32(0xFEB4) : 0u;
+            uint32_t q, w;
+            z[0] = 0x50414E53u; z[1] = ENG->wst; z[2] = ENG->cnt; z[3] = ENG->n | MEM32(race + 0x84Cu) << 16;
+            z[4] = MEM32(race + 0x378u); z[5] = MEM32(race + 0x37Cu); z[6] = ENG->targ; z[7] = ta;
             for (q = 0; q < 16u; q++) {
                 const uint32_t c = *(volatile uint32_t *)(race + 0x394u + 4u * q);
-                if (!c || c == pc) continue;
-                for (w = 0; w < sizeof(cw) / sizeof(cw[0]); w++) hc = (hc ^ MEM32(c + cw[w])) * 16777619u;
+                z[8u + 14u * q] = c;
+                for (w = 0; w < 13u; w++) z[9u + 14u * q + w] = c ? MEM32(c + cw[w]) : 0u;
             }
-            if (ta) for (q = 0; q < 16u; q++) for (w = 0; w < 20u; w++) ht = (ht ^ MEM32(ta + 0x148u * q + 4u * w)) * 16777619u;
-            e[0] = ENG->wst; e[1] = ENG->sub | ENG->n << 8 | MEM32(race + 0x84Cu) << 16; e[2] = hc; e[3] = ht;
-            e[4] = MEM32(race + 0x378u); e[5] = MEM32(race + 0x37Cu); e[6] = ENG->cnt; e[7] = 0x48534148u;
-            rg[0] = i + 1u;
-            if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
+            for (q = 0; q < 16u; q++) for (w = 0; w < 82u; w++) z[240u + 82u * q + w] = ta ? MEM32(ta + 0x148u * q + 4u * w) : 0u;
+            a4_camp_emit((const void *)z);
         }
     }
 #endif
