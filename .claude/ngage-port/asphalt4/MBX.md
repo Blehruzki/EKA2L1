@@ -10883,3 +10883,13 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   the wall; stock touches every step of the five. A guess to settle: a sixth's move is too short to reach the wall
   again after a sixth of a push, so most substeps of the step push nothing. kr (A4_KICKREC, bench: every push call
   with its step, substep, before, the game's value and the kept one), thirds k3 against sixths k6: queued.
+- o3w4s / o3w6s (the weave, thirds / A4_ENG6, the scale and n in each record): the weave route never slows (scale 256
+  in all 560 records, n 3), and the two are identical in every physics field. o3w6's divergence at step 289 (the
+  recorder not yet fixed) did not come back in o3w6s; not explained, not repeated.
+- k6 (A4_KICKREC, sixths, forced slow motion): the guess was wrong -- the push runs on **every** substep of the
+  contact's steps (six calls a step) and the kept sixths add up to the game's push each step. What changes is the
+  game's push itself: -20 at step 207, then **-4** a substep from step 208 (thirds, the same route after the slow
+  window: -20 every substep). -4 is the other clamp: +1F0E2 reads [sp+0x50]+0x10 = **car+0x7D0** (the speed scalar the
+  slip check and the target velocity use) -- under 0x80 the push is angle x speed >> 7 clamped 4..64, else 20..64.
+  So in sixths +7D0 fell under 128 at the contact's second step: a speed loss first, the weak push after it. k3 /
+  k6 again with the player car at every substep's start (+7D0, B4, +7FC, x, z, vx): running.

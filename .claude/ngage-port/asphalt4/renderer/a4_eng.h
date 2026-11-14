@@ -534,6 +534,24 @@ static inline void ENG_BEGIN(uint32_t race)
     }
 #endif
     if (ENG->flush) { for (uint32_t i = 0; i < 64u; i++) ENG->lc[i] = 0; ENG->flush = 0; }
+#ifdef A4_KICKREC
+    {   /* bench (round 73): the player car at every substep's start, in the push ring -- the whole step, the substep |
+         * n << 8, +7D0 (the speed scalar), B4 | +7FC << 16, x, z, +010 (vx), 'SUBS' */
+        extern void a4_camp_emit(const void *);
+        volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+        const uint32_t pl = *(volatile uint32_t *)(race + 0x390u), pi = pl ? *(volatile uint32_t *)(pl + 0xCu) : 16u;
+        const uint32_t pc = pi < 16u ? *(volatile uint32_t *)(race + 0x394u + 4u * pi) : 0u;
+        if (pc && ENG->magic == ENG_MAGIC) {
+            const uint32_t i = rg[0] & 255u;
+            volatile uint32_t *e = rg + 4u + 8u * i;
+            e[0] = ENG->wst; e[1] = ENG->sub | ENG->n << 8; e[2] = MEM32(pc + 0x7D0u);
+            e[3] = (MEM32(pc + 0xB4u) & 0xFFFFu) | MEM32(pc + 0x7FCu) << 16; e[4] = MEM32(pc + 4u); e[5] = MEM32(pc + 0xCu);
+            e[6] = MEM32(pc + 0x10u); e[7] = 0x53425553u;
+            rg[0] = i + 1u;
+            if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
+        }
+    }
+#endif
 #ifdef A4_VELPROBE
     {   /* the player car, for the probe */
         uint32_t pl = *(volatile uint32_t *)(race + 0x390), idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 0u;
