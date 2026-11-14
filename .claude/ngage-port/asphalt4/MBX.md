@@ -10436,3 +10436,15 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   car) -- the case meant. The objects' 1,118 are not: a long wall or a block is no sphere, and a sprite in front of
   its middle can be behind its near end. **The rule is now the cars' only** (the scenery objects as round 60 had
   them); the probes rebuilt (bc71, bc67: a4_gobj_emit +0BD870) and queued after hv, NOTUNNEL, 200 s, filmed.
+- ww72 (a4_yt72 again, EKA2L1_WATCH on 0x023A26E4..F8, the twin route; framestat 3,699): the watch missed -- 391
+  writes from +D83D8/+D83E8 and a few from +222F2..+22430, none a traffic car's: the array is not at 0x023A2444 on
+  this route (that base came from yv70's route; the twin route swaps in the Veyron and the heap differs). The run's
+  own hits came elsewhere (slot 3 at cnt 2935, slot 2 at 3584): the same binary does not repeat its route.
+- Read: the dump's substep labels are right (the record is taken in ENG_BEGIN before ENG->sub = cnt % 3), so the
+  knock is added during substep 0, the whole step; and the hit car's +34 is a mirror of the slot record's byte
+  counter (+FB12 +FC7E stores it from [r4] before +FC90 increments it -- the gated store, G), so it steps on
+  substep 1. The traffic update has two gated counters (+FC4A to 45, +FC90); whether the knock is applied inside
+  +FB12 on the whole step or by the whole step's other code is what the next probe parts.
+- A4_TRAFDUMP extended (bench): three records a substep -- the start (ENG_BEGIN), before +FB12 (+14574) and after
+  it (+14578) -- each with its substep and point, and a car's address with its slot (eng_tdrec). yt73 (C71 + the
+  recorder flags + TRAFDUMP, no TCLK2; a4_camp_emit +0C6760, jtrunt3.sh): queued after bc71/bc67.

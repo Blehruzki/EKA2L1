@@ -192,6 +192,9 @@ B(0x1F24C, 'ENG_VPA(8u, r5, MEM32(r5 + 0xC70u), MEM32(r0 + 0x1Cu), MEM32(r4 + 0x
 # bench (A4_TRAFDUMP, phone round 70): the traffic update's first argument, for the probe's traffic array
 EDITS.setdefault(0x14574, {})
 EDITS[0x14574]['before'] = 'ENG_TDARG(r0); ' + EDITS[0x14574]['before']
+# bench (A4_TRAFDUMP, round 71): the traffic before and after +FB12 (r4 is the race), to place a hit car's knock
+EDITS[0x14574]['before'] = EDITS[0x14574]['before'] + ' ENG_TDREC(r4, 1u);'
+B(0x14578, 'ENG_TDREC(r4, 2u);', 'bench (A4_TRAFDUMP): the traffic after +FB12')
 # bench (A4_VELPROBE, phone round 69): a traffic car placed (+FC34, after +F60A): its place, the node's fraction,
 # the node, the clock-derived index -- per substep, any car
 B(0xFC34, 'ENG_VPA(9u, r5, MEM32(r5 + 4u), MEM32(r5 + 0xCu), S32(0x58u), S32(0x64u), S32(0x4Cu));',

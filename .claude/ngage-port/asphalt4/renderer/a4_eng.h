@@ -398,6 +398,43 @@ static inline void eng_pstep(uint32_t car)
         return;
     }
 }
+#ifdef A4_TRAFDUMP
+/* bench (phone round 70, a hit traffic car's response): every traffic car within 1,500 of the player, all its 0x148
+ * bytes -- a record: the substep count, the player's x and z, the cars' count | the substep << 8 | the point << 12
+ * (round 71: 0 the substep's start, 1 before the traffic update +FB12, 2 after it), then per car its address << 4 |
+ * its slot and 82 words; 4 cars at most, 1,344 bytes a record, a ring of 12 at 0x5A2000 handed to a4_camp_emit when
+ * it wraps. The traffic array: +FB12's first argument (ENG->dbg[5], at +14574) + the game's +FEB4. Never a phone
+ * build. */
+static inline void eng_tdrec(uint32_t race, uint32_t tag)
+{
+    extern void a4_camp_emit(const void *);
+    volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+    const uint32_t pl = *(volatile uint32_t *)(race + 0x390u);
+    const uint32_t pi = pl ? *(volatile uint32_t *)(pl + 0xCu) : 16u;
+    const uint32_t pc = pi < 16u ? *(volatile uint32_t *)(race + 0x394u + 4u * pi) : 0u;
+    if (pc && ENG->dbg[5]) {
+        const uint32_t ta = ENG->dbg[5] + GAME32(0xFEB4);
+        uint32_t i = rg[0] % 12u, k, j, n = 0;
+        volatile uint32_t *q = rg + 4u + (1344u / 4u) * i;
+        const int32_t px = (int32_t)MEM32(pc + 4u), pz = (int32_t)MEM32(pc + 0xCu);
+        q[0] = tag ? ENG->cnt - 1u : ENG->cnt; q[1] = (uint32_t)px; q[2] = (uint32_t)pz;
+        for (k = 0; k < 16u && n < 4u; k++) {
+            const uint32_t t = ta + 0x148u * k;
+            const int32_t dx = (int32_t)MEM32(t + 4u) - px, dz = (int32_t)MEM32(t + 0xCu) - pz;
+            if (dx > 1500 || dx < -1500 || dz > 1500 || dz < -1500) continue;
+            q[4u + 83u * n] = t << 4 | k;
+            for (j = 0; j < 82u; j++) q[5u + 83u * n + j] = MEM32(t + 4u * j);
+            n++;
+        }
+        q[3] = n | (tag ? ENG->sub : ENG->cnt % 3u) << 8 | tag << 12;
+        rg[0] = i + 1u;
+        if (i + 1u == 12u) { rg[0] = 0; a4_camp_emit((const void *)(rg + 4u)); }
+    }
+}
+#define ENG_TDREC(race, tag) eng_tdrec((race), (tag))
+#else
+#define ENG_TDREC(race, tag) ((void)0)
+#endif
 static inline void ENG_BEGIN(uint32_t race)
 {
     if (ENG->magic != ENG_MAGIC || ENG->race != race) {
@@ -436,35 +473,7 @@ static inline void ENG_BEGIN(uint32_t race)
     }
 #endif
 #ifdef A4_TRAFDUMP
-    {   /* bench (phone round 70, a hit traffic car's response): every traffic car within 1,500 of the player, all its
-         * 0x148 bytes, each substep -- a record: the count, the player's x and z, the slots' count, then per car its
-         * slot and 82 words; 4 cars at most, 1,344 bytes a record, a ring of 12 at 0x5A2000 handed to a4_camp_emit
-         * when it wraps. The traffic array: +FB12's first argument (ENG->dbg[5], at +14574) + the game's +FEB4.
-         * Never a phone build. */
-        extern void a4_camp_emit(const void *);
-        volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
-        const uint32_t pl = *(volatile uint32_t *)(race + 0x390u);
-        const uint32_t pi = pl ? *(volatile uint32_t *)(pl + 0xCu) : 16u;
-        const uint32_t pc = pi < 16u ? *(volatile uint32_t *)(race + 0x394u + 4u * pi) : 0u;
-        if (pc && ENG->dbg[5]) {
-            const uint32_t ta = ENG->dbg[5] + GAME32(0xFEB4);
-            uint32_t i = rg[0] % 12u, k, j, n = 0;
-            volatile uint32_t *q = rg + 4u + (1344u / 4u) * i;
-            const int32_t px = (int32_t)MEM32(pc + 4u), pz = (int32_t)MEM32(pc + 0xCu);
-            q[0] = ENG->cnt; q[1] = (uint32_t)px; q[2] = (uint32_t)pz;
-            for (k = 0; k < 16u && n < 4u; k++) {
-                const uint32_t t = ta + 0x148u * k;
-                const int32_t dx = (int32_t)MEM32(t + 4u) - px, dz = (int32_t)MEM32(t + 0xCu) - pz;
-                if (dx > 1500 || dx < -1500 || dz > 1500 || dz < -1500) continue;
-                q[4u + 83u * n] = k;
-                for (j = 0; j < 82u; j++) q[5u + 83u * n + j] = MEM32(t + 4u * j);
-                n++;
-            }
-            q[3] = n;
-            rg[0] = i + 1u;
-            if (i + 1u == 12u) { rg[0] = 0; a4_camp_emit((const void *)(rg + 4u)); }
-        }
-    }
+    eng_tdrec(race, 0u);
 #endif
 #ifdef A4_HELIREC
     {   /* bench (phone round 70, the helicopter's light): while police slot 2 (race slot 10) holds the helicopter

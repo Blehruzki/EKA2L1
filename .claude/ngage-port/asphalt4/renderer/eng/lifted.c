@@ -10555,10 +10555,12 @@ L_1455C:
     r3 = L32(r2 + 0x3Cu);                                        /* 014570 ldr r3, [r2, #0x3c] */
     r2 = L32(r2 + 0x38u);                                        /* 014572 ldr r2, [r2, #0x38] */
     /* engine: the traffic clocks' step, for the substeps; the substeps start from the whole step's own clocks (the game has advanced race+0x378/+0x37C by then: placed from those, substeps 1-2 were a step ahead and every traffic car went forward 1 1/3 steps and back 2/3 each step -- phone round 69) */
-    ENG_TDARG(r0); if (!ENG_SUB) { ENG->tdel[0] = (int32_t)(r2 - ENG->tlast[0]); ENG->tdel[1] = (int32_t)(r3 - ENG->tlast[1]); ENG->tlast[0] = r2; ENG->tlast[1] = r3; if (ENG->tdel[0] < -0x100000 || ENG->tdel[0] > 0x100000) ENG->tdel[0] = 0; if (ENG->tdel[1] < -0x100000 || ENG->tdel[1] > 0x100000) ENG->tdel[1] = 0; } else { r2 = ENG_TCLK(0u); r3 = ENG_TCLK(1u); }
+    ENG_TDARG(r0); if (!ENG_SUB) { ENG->tdel[0] = (int32_t)(r2 - ENG->tlast[0]); ENG->tdel[1] = (int32_t)(r3 - ENG->tlast[1]); ENG->tlast[0] = r2; ENG->tlast[1] = r3; if (ENG->tdel[0] < -0x100000 || ENG->tdel[0] > 0x100000) ENG->tdel[0] = 0; if (ENG->tdel[1] < -0x100000 || ENG->tdel[1] > 0x100000) ENG->tdel[1] = 0; } else { r2 = ENG_TCLK(0u); r3 = ENG_TCLK(1u); } ENG_TDREC(r4, 1u);
     { uint64_t rr = (ENGD_0FB12 ? engi_0FB12(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x14578)) : a4_eng_call(GAMEFN(0xFB12), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014574 bl #0xfb12 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014574 bl #0xfb12 */
 L_14578:
+    /* engine: bench (A4_TRAFDUMP): the traffic after +FB12 */
+    ENG_TDREC(r4, 2u);
     r1 = GAMEW(0x145E8);                                         /* 014578 ldr r1, [pc, #0x6c] */
     r0 = L32(r4 + 0x38u);                                        /* 01457a ldr r0, [r4, #0x38] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01457c adds r0, r0, r1 */
