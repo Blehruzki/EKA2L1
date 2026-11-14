@@ -172,6 +172,24 @@
 #define GL_IMPLEMENTATION_COLOR_READ_TYPE_OES   0x8B9A
 #define GL_IMPLEMENTATION_COLOR_READ_FORMAT_OES 0x8B9B
 #define FX 0x10000
+/* Round 72 (phone rounds 70/70b: grey horizontal lines, one screen row each, across the ground and behind the
+ * cars and the roadside objects -- the software sky's fill showing through a row of ground no triangle covered).
+ * The table's triangles reach the GPU at the game's integer screen points with a W scaled per triangle (tri_conv),
+ * so two triangles share an edge's points but not its arithmetic; on a GPU that samples at integer coordinates
+ * (Direct3D's convention, not GL's half-integer one) a horizontal edge at an integer row passes through every
+ * sample of that row, and the two triangles' last-bit differences can leave it to neither. PX_OFF moves the 2D
+ * projection a quarter pixel toward GL's window origin (screen x - 1/4, screen y + 1/4): an integer edge is then
+ * a quarter pixel from the samples under either convention, and a span [a, b) of integer edges covers the pixels
+ * a .. b-1 under both -- what GL covered before. A4_MBXTIE (bench) models the tie: half a pixel more (the edges
+ * on GL's samples) and each triangle's rows moved 1/128 pixel by its W scale's parity. */
+#ifndef PX_OFF
+#define PX_OFF (FX / 4)
+#endif
+#ifdef A4_MBXTIE
+#define PX_OFF_ALL (PX_OFF + FX / 2)
+#else
+#define PX_OFF_ALL (PX_OFF)
+#endif
 
 /* What a batched triangle is drawn as: the top nibble of its TEXID word (the low
  * bits are the GL texture name, or for a flat triangle its RGB565 colour). A run is
@@ -893,7 +911,7 @@ static int bringup(volatile struct glr *s)
     gl_enableclient(GL_VERTEX_ARRAY);
     gl_enableclient(GL_TEXTURE_COORD_ARRAY);
     gl_matrixmode(GL_PROJECTION); gl_loadidentity();
-    gl_orthox(0, VP_W*FX, VP_H*FX, 0, -FX, FX);      /* top-left origin, 2D (no depth) */
+    gl_orthox(PX_OFF_ALL, VP_W*FX + PX_OFF_ALL, VP_H*FX - PX_OFF_ALL, -PX_OFF_ALL, -FX, FX);      /* top-left origin, 2D (no depth) */
     gl_matrixmode(GL_MODELVIEW); gl_loadidentity();
     gl_clearcolorx(FX, 0, FX, FX);                   /* sentinel-clear once, so the first pipelined
                                                       * readback (before any draw) is all-sentinel */
@@ -3511,7 +3529,8 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
          * objects the GPU took in this render (7 bits, saturated: filled in after the render, A4_DROPHOLD's block)
          * << 13 -- the camera mode << 20 as before; bit 31 clear */
         (void)mark_q16;
-        e[2] = (c[0x70u / 4u] & 0xFFFu) | (c[0x74u / 4u] ? 1u << 12 : 0u) | (c[0x94u / 4u] & 0xFFu) << 20;
+        e[2] = (c[0x70u / 4u] & 0xFFFu) | (c[0x74u / 4u] ? 1u << 12 : 0u) | (c[0x94u / 4u] & 0xFFu) << 20
+             | (*(volatile uint32_t *)0x0045D00Cu & 3u) << 28;   /* the engine's substep (ENG->sub) */
 #else
         e[2] = mark_q16 | (c[0x94u / 4u] & 0xFFu) << 20;   /* q16, the camera mode, bit 31 = a fraction computed */
 #endif
@@ -4296,6 +4315,10 @@ static inline void tri_conv(uint32_t kind, int wsh, int hsh, int32_t x0, int32_t
     pos[0] = x0 * W0; pos[1]  = y0 * W0; pos[2]  = -(zq < W0 ? zq : W0); pos[3]  = W0;
     pos[4] = x1 * W1; pos[5]  = y1 * W1; pos[6]  = -(zq < W1 ? zq : W1); pos[7]  = W1;
     pos[8] = x2 * W2; pos[9]  = y2 * W2; pos[10] = -(zq < W2 ? zq : W2); pos[11] = W2;
+#ifdef A4_MBXTIE
+    if (shift & 1) { pos[1] += W0 >> 7; pos[5] += W1 >> 7; pos[9] += W2 >> 7; }   /* bench: the tie's model */
+    else           { pos[1] -= W0 >> 7; pos[5] -= W1 >> 7; pos[9] -= W2 >> 7; }
+#endif
 }
 static inline void ext3(int32_t a, int32_t b, int32_t c, int32_t *lo, int32_t *hi)
 {
@@ -5722,7 +5745,7 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
     gl_loadidentity();                                       /* the texture matrix */
     gl_matrixmode(GL_MODELVIEW); gl_loadidentity();
     gl_matrixmode(GL_PROJECTION); gl_loadidentity();
-    gl_orthox(0, VP_W*FX, VP_H*FX, 0, -FX, FX);              /* bring-up's */
+    gl_orthox(PX_OFF_ALL, VP_W*FX + PX_OFF_ALL, VP_H*FX - PX_OFF_ALL, -PX_OFF_ALL, -FX, FX);              /* bring-up's */
     gl_matrixmode(GL_MODELVIEW);
     gl_depthfunc(GL_GEQUAL);                                 /* bring-up's */
     gl_disable(GL_CULL_FACE); gl_disable(GL_DEPTH_TEST);
@@ -5891,7 +5914,7 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
     gl_loadidentity();                                       /* the texture matrix */
     gl_matrixmode(GL_MODELVIEW); gl_loadidentity();
     gl_matrixmode(GL_PROJECTION); gl_loadidentity();
-    gl_orthox(0, VP_W*FX, VP_H*FX, 0, -FX, FX);
+    gl_orthox(PX_OFF_ALL, VP_W*FX + PX_OFF_ALL, VP_H*FX - PX_OFF_ALL, -PX_OFF_ALL, -FX, FX);
     gl_matrixmode(GL_MODELVIEW);
     gl_depthfunc(GL_GEQUAL);
     gl_disable(GL_CULL_FACE); gl_disable(GL_DEPTH_TEST);
@@ -6292,7 +6315,7 @@ draw:
 #endif
     gl_loadidentity();                               /* the texture matrix */
     gl_matrixmode(GL_PROJECTION); gl_loadidentity();
-    gl_orthox(0, VP_W*FX, VP_H*FX, 0, -FX, FX);      /* bring-up's */
+    gl_orthox(PX_OFF_ALL, VP_W*FX + PX_OFF_ALL, VP_H*FX - PX_OFF_ALL, -PX_OFF_ALL, -FX, FX);      /* bring-up's */
     gl_matrixmode(GL_MODELVIEW);
     gl_depthfunc(GL_GEQUAL);                         /* bring-up's */
     gl_disable(GL_CULL_FACE); gl_disable(GL_DEPTH_TEST);

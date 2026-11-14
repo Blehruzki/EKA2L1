@@ -10677,3 +10677,36 @@ c. States the bench did not enter: a drop entry with word 7 (no drop frame in an
   test: A4_LINETEST (bench) blanks screen row 120's alpha on the sampled frames -- the detector must count it, and
   the video shows what a missing row looks like beside the owner's photo. lt72 (LA, filmed): queued. If the bench's
   read format is not BGRA the counter does not run on the bench at all: the run says which.
+- lt72 (C71 + A4_LINETEST, LA, filmed 8 fps; framestat 2,911): the counter runs on the bench (BGRA) and counts the
+  test's row -- lcread.py: line rows 182 on ~188 sampled frames, last row 120, 255 undrawn. The video's row 120
+  (rec_lt72, frames 624 / 675) is a thin line of whatever the software layer holds there.
+- The owner's photo read again (up71line/zl.png, zr.png): the line passes **behind the guard rail** as well as the
+  car -- both drawn over it. Rail and car are GPU items drawn before the table's triangles (gobj_flush, gcar_flush,
+  then mesh_draw, then the stream), so the row was not missing from the GPU picture: only the ground's triangles
+  left it uncovered. And C71 has no A4_GPUSKY: under the ground the composite keeps the game's software sky, whose
+  bottom fill is the horizon's bluish grey -- the line's colour on grass and road alike. Corrected reading: **a
+  row of ground no triangle covered**, not a row the GPU missed. The counter still catches it (those pixels are
+  undrawn; 64 or more of them in the row).
+- Why a ground row, and only on the phone (a guess, named): the table's triangles reach the GPU at the game's
+  integer screen points, (x W, y W, z, W) with W scaled by a power of two chosen per triangle (tri_conv: |x| W
+  under 2^26). Two triangles share an edge's points but not their arithmetic, so their copies of a shared point
+  can differ in the last bits after the GPU's divide. Under GL's sampling (pixel centres at half-integers, the
+  bench's llvmpipe) an integer edge is half a pixel from every sample and the difference never shows. A GPU that
+  samples at integer coordinates (Direct3D's convention) has a horizontal edge at an integer row pass through every
+  sample of that row: the two triangles' copies then decide the row each its own way, and a row left to neither
+  is a line across the ground -- the segment boundaries that run level across the screen, any height, one or
+  many, changing every frame.
+- Fix (a4_gl.c PX_OFF, every 2D projection): the projection a quarter pixel toward GL's window origin. An integer
+  edge is then a quarter pixel from the samples under either convention, and a span of integer edges [a, b) covers
+  the pixels a .. b-1 under both -- what GL covered before, so the bench's picture is unchanged and no sample
+  sits on an edge anywhere. Universal: it is the projection, not a map or a place.
+- The test of it (rule 4), since the bench samples as GL does: A4_MBXTIE models the tie -- half a pixel more (the
+  integer edges on GL's samples) and each triangle's rows moved 1/128 pixel by its W scale's parity. t72a (the
+  model, PX_OFF 0) must show lines (the counter and the video, beside the photo); t72b (the model and the quarter)
+  none. LA, filmed: running.
+- gd75 (C71 + A4_GDROPMARK + A4_SEGREC, LA, CPUCAP=40 -- the CPU at an eighth, frames slow; framestat 3,598, 3,038
+  renders recorded): 2 object drops -- frame 2412 (segment 4 -> 5, direction 0, objects 40 -> 9 -> 4 for ten
+  renders, back to 31 at 2442) is the GNN helicopter camera's cut-in (the video's mark, frame 441: the top-down
+  news view), 4017 a view looking back (direction set). Objects by segment as the normal-speed runs (segment 5
+  median 34 against gd73's 34). **A slow CPU does not reproduce the vanishing.** The frame record's camera mode
+  (r72) tells such cut-ins from a loss on the phone; e[2] now also carries the engine's substep (bits 28-29).
