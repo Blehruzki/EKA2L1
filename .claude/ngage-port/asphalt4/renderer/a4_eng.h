@@ -918,7 +918,25 @@ static inline void eng_kick_mark(uint32_t ea)
     if (f == 16u) f = (ea >> 4) & 15u;
     ENG->kc[f] = ea; ENG->ks[f] = st | 0x80000000u;
 }
+#ifdef A4_KICKREC
+/* bench (round 73): every wall push -- the whole step, the substep | n << 8, the word, its value before, the game's
+ * new value, the value kept -- 6 words a record, a ring of 256 at 0x5A2000 handed to a4_camp_emit when it wraps */
+static inline uint32_t eng_kick_in(uint32_t ea, uint32_t nw);
 static inline uint32_t eng_kick(uint32_t ea, uint32_t nw)
+{
+    extern void a4_camp_emit(const void *);
+    volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+    const uint32_t old = MEM32(ea), r = eng_kick_in(ea, nw), i = rg[0] & 255u;
+    volatile uint32_t *e = rg + 4u + 8u * i;
+    e[0] = ENG->wst; e[1] = ENG->sub | ENG->n << 8; e[2] = ea; e[3] = old; e[4] = nw; e[5] = r; e[6] = ENG->cnt; e[7] = 0x4B49434Bu;
+    rg[0] = i + 1u;
+    if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
+    return r;
+}
+static inline uint32_t eng_kick_in(uint32_t ea, uint32_t nw)
+#else
+static inline uint32_t eng_kick(uint32_t ea, uint32_t nw)
+#endif
 {
     uint32_t st = ENG->wst, i;
     for (i = 0; i < 16u; i++)

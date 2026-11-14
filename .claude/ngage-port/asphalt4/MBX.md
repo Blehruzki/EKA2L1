@@ -10873,3 +10873,13 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   slow-motion frames the state again), 1 x206, 2 x1; **sixths 0 x1, 1 x128, 2 x160, 3 x5** -- as at normal speed
   (1 x410, 2 x267, 3 x13). Every slow-motion frame a new real step. Not a repeat of sm72a (the thirds before the
   change, 0 x40 of 141).
+- o3s3b / o3s6b (the recorder fixed; forced slow motion from step 201, lockstep): the sixths now record a whole step
+  a record, and track the thirds within 1 unit to step 208 (x 19018 / 19017 at 205, 18629 / 18628 at 208) -- the
+  sixths' motion adds up to the thirds' step. Then a wall contact (step 207: +B18 to -4, the five steps of the
+  heading pushed off the wall): stock (o1w) turns the heading 20 a step (659 -> 626 -> 606 -> 586 -> 566 -> 546)
+  at speed 138-134; thirds 22 a step (-> 537) at 137-131; **sixths 23 then 6-7 a step (602, 596, 589, 582) and the
+  speed 130 -> 86**, a second contact at 212. Not the game's: a fault of the sixths. The push is the contact
+  branch's (+1F080: when +B18 is armed, heading +- clamp(angle/2 ...), 20..64), run only on a substep that touches
+  the wall; stock touches every step of the five. A guess to settle: a sixth's move is too short to reach the wall
+  again after a sixth of a push, so most substeps of the step push nothing. kr (A4_KICKREC, bench: every push call
+  with its step, substep, before, the game's value and the kept one), thirds k3 against sixths k6: queued.
