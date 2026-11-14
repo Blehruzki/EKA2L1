@@ -10475,3 +10475,22 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   (the video cut short when the disk filled), bc67 513 of 1,645; flame pixels a frame, median / mean / 75% / 90%:
   bc71 589 / 621 / 936 / 1,140, bc67 526 / 583 / 911 / 1,102 -- round 67's rule loses ~10% of the flame (its lower
   rows, to the road), round 71's draws it whole. Pickups not measured (no pickup at the car in the frames read).
+- yt73 (C71 + the recorder flags + the three-point TRAFDUMP, the twin route; framestat 3,951): a hit at cnt 2229,
+  slot 12 (0x023A33A4 on this route). **The knock is applied inside +FB12, on the whole step only**: before / after
+  +FB12 on substep 0 the car moves (104,-71), (115,-78), (112,-76), (110,-73), (106,-72) a step; on substeps 1 and 2
+  +FB12 moves it (-2,2), its lane drift; nothing moves it outside +FB12. Its height rises 325 -> 342 -> 372 -> 397
+  -> 417 -> 429 -> 439 -> 446 -> 451 -> 463 -> 476, +2C (its spin, 0..4095) 3934, 3658, 3348, 718, 682 ... on the
+  whole step, +28 counts 7 down to 0 a step; then it holds at (6196, 476, -23934), in the air. Read: +FB12's state
+  word bit 8 marks a knock -- +3C picks a table (+39FE), its byte counter the entry (60 bytes; +FF4A adds the entry's
+  height x 3 / 4), the counter stepped at +FC90, which the rate map gates to the whole step (G: one entry a step,
+  stock's rate) -- and +FB12 places the car absolutely from its lane and that entry on every call (+F1B0 at +FEA4 /
+  +FEF0, stored at +FF02 and, the knock's height added, +FF7C). So the substeps place it on the same entry again:
+  the knocked car jumps an entry, ~133 units, at 11.72 Hz -- the owner's "ghost car" is this stepping, the hit's
+  path itself the game's.
+- Fix (a4_eng.h eng_tsnap / eng_tknock, edits.py +14574 / +FF7E / +FF88): before +FB12 on the whole step every
+  traffic slot's place and spin are kept (D); a car +FB12 places through the knock branch is drawn on the line from
+  D to the game's place (T) -- a third after the whole step, two thirds after substep 1 (with that substep's own
+  drift), the game's after substep 2; the spin the short way round 4096. Its counters, its velocity (+2202C) and
+  measure (+22832, at +FF84, before the line) stay the game's; the next call places it from its own state again.
+  Not over a jump of more than 0x2000. The engine state had 64 bytes left: the remainder table's values (0..2) are
+  bytes now (int8_t rv[1024], 3 KB freed). yt74 (the fix, TRAFDUMP, the twin route): running.

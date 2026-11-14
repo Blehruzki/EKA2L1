@@ -191,7 +191,7 @@ B(0x1F24C, 'ENG_VPA(8u, r5, MEM32(r5 + 0xC70u), MEM32(r0 + 0x1Cu), MEM32(r4 + 0x
   'bench (A4_VELPROBE): a car on rails')
 # bench (A4_TRAFDUMP, phone round 70): the traffic update's first argument, for the probe's traffic array
 EDITS.setdefault(0x14574, {})
-EDITS[0x14574]['before'] = 'ENG_TDARG(r0); ' + EDITS[0x14574]['before']
+EDITS[0x14574]['before'] = 'ENG_TDARG(r0); eng_tsnap(r0); ' + EDITS[0x14574]['before']
 # bench (A4_TRAFDUMP, round 71): the traffic before and after +FB12 (r4 is the race), to place a hit car's knock
 EDITS[0x14574]['before'] = EDITS[0x14574]['before'] + ' ENG_TDREC(r4, 1u);'
 B(0x14578, 'ENG_TDREC(r4, 2u);', 'bench (A4_TRAFDUMP): the traffic after +FB12')
@@ -344,3 +344,10 @@ ALWAYS = {
     0x0CEEA: {'before': 'if (ce_faces(r0, r1, r2, r4, L32(spp + 0x1Cu))) goto L_0CF4A;', 'why': 'the face unpack +CEEC..+CF48 by hand'},
     0x0CF4A: {'before': 'CE_CHECK(1);', 'why': 'A4_CECHECK: the face unpack by hand against the lifted loop'},
 }
+
+# Round 71 (phone round 70, "a ghost car"; yt73): a hit traffic car's knock -- +FB12 places it absolutely from a table
+# entry the whole step alone steps (+FC90, G), so it jumped an entry a step. The whole step's places before +FB12 are
+# kept (eng_tsnap, at +14574); a car placed through the knock branch (+FF7C's store) is drawn on the line from there
+# to the game's place over the step (eng_tknock), after its measure (+22832 at +FF84), at the slot loop's +FF88.
+B(0xFF7E, 'ENG->tkp = r5;', 'a knocked traffic car placed (its knock entry\'s height added)')
+B(0xFF88, 'if (ENG->tkp) { if (ENG->tkp == r5) eng_tknock(r5); ENG->tkp = 0; }', 'a knocked traffic car: drawn on its step\'s line')

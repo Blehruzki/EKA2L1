@@ -236,9 +236,11 @@ struct eng {
     uint32_t wy0, wyset;             /* A4_WRECK3: the wreck's height before this substep's +2292A, and its path set it */
     uint32_t lc[64], ls[64][3], lv[64][3]; /* the orientation's angles a step late: the word, the last three substeps' count and value */
     uint32_t kc[16], ks[16];         /* the wall's first push: the car (+678's address) and the step it hit, bit 31 still to come */
+    uint32_t targ, tkp, tkv;         /* round 71: +FB12's first argument; a knocked car it placed; the cars on a line */
+    int32_t tsp[16][4], tkt[16][4];  /* the traffic at the whole step before +FB12 (D: x, y, z, +2C) and after (T) */
     uint32_t dbg[8];                 /* A4_ENGDBG: the substep's path bits and the player's keys, emitted per substep */
     uint32_t rk[ENG_NREM];           /* the word's address (0: free) */
-    int32_t rv[ENG_NREM];            /* its remainder, 0..2 */
+    int8_t rv[ENG_NREM];             /* its remainder, 0..2 (bytes since round 71: the traffic's lines needed the room) */
 };
 #ifndef A4_ENG3
 /* Round 51: the lifted render functions (the painter, the 3D front end) built without the 3x engine.
@@ -275,6 +277,8 @@ void eng_cam_unblend(void);
 #define ENG_VPA(t, car, a, b, c, d, e) ((void)0)
 #define ENG_TDARG(a) ((void)0)
 #define ENG_TCLK(w) (ENG->tlast[(w)])
+void eng_tsnap(uint32_t arg);
+void eng_tknock(uint32_t car);
 int32_t eng_thirdv(uint32_t key, int32_t v);
 void ENG_BEGIN(uint32_t race);
 extern const uint16_t eng_frame_off[10];
@@ -398,6 +402,56 @@ static inline void eng_pstep(uint32_t car)
         return;
     }
 }
+/* Round 71 (phone round 70: a traffic car hit from behind "moves around a little ... like passing through a ghost
+ * car"; yt73): a hit traffic car plays a knock -- +FB12's state word bit 8, a table of entries (+39FE of its +3C)
+ * stepped by a counter the whole step alone advances (+FC90, gated) -- and +FB12 places it absolutely from that entry
+ * every call. So the whole step moved it a whole entry, ~110 x and ~75 z, and the substeps placed it on the same
+ * entry again (their lane drift only): 11.72 Hz jumps. Before +FB12 on the whole step every traffic car's place and
+ * spin (+2C, 4096 a turn) is kept (D); a car +FB12 then places through the knock branch (+FF7E) is drawn on the
+ * line from D to where the game put it (T): a third of the way, two thirds after substep 1 (plus the substep's own
+ * drift), the game's own after substep 2. Its counters, velocity (+2202C) and measure (+22832) stay the game's:
+ * only the place drawn and collided with between whole steps moves. A jump of more than 0x2000 is not drawn over. */
+static inline int32_t eng_wrap12(int32_t d) { d &= 4095; return d >= 2048 ? d - 4096 : d; }
+static inline void eng_tsnap(uint32_t arg)
+{
+    uint32_t k, ta;
+    ENG->targ = arg;
+    if (ENG_SUB || !arg) return;
+    ta = arg + GAME32(0xFEB4);
+    for (k = 0; k < 16u; k++) {
+        const uint32_t t = ta + 0x148u * k;
+        ENG->tsp[k][0] = (int32_t)MEM32(t + 4u); ENG->tsp[k][1] = (int32_t)MEM32(t + 8u);
+        ENG->tsp[k][2] = (int32_t)MEM32(t + 0xCu); ENG->tsp[k][3] = (int32_t)MEM32(t + 0x2Cu);
+    }
+}
+static inline int32_t eng_tline(int32_t a, int32_t b, uint32_t j, uint32_t ang)
+{
+    const int32_t d = ang ? eng_wrap12(b - a) : b - a;
+    const int32_t v = a + (j == 1u ? eng_sdiv(d, 3) : eng_sdiv(2 * d, 3));
+    return ang ? (v & 4095) : v;
+}
+static inline void eng_tknock(uint32_t car)
+{
+    const uint32_t ta = ENG->targ + GAME32(0xFEB4), off = car - ta, k = off / 0x148u;
+    volatile int32_t *c = (volatile int32_t *)(uintptr_t)car;
+    uint32_t j;
+    if (!ENG->targ || off % 0x148u || k >= 16u) return;
+    if (ENG_SUB == 0u) {
+        ENG->tkv &= ~(1u << k);
+        for (j = 0; j < 3u; j++) {
+            const int32_t d = c[1u + j] - ENG->tsp[k][j];
+            if (d > 0x2000 || d < -0x2000) return;                      /* a respawn, not a knock's step */
+        }
+        for (j = 0; j < 3u; j++) { ENG->tkt[k][j] = c[1u + j]; c[1u + j] = eng_tline(ENG->tsp[k][j], ENG->tkt[k][j], 1u, 0u); }
+        ENG->tkt[k][3] = c[0x2C / 4]; c[0x2C / 4] = eng_tline(ENG->tsp[k][3], ENG->tkt[k][3], 1u, 1u);
+        ENG->tkv |= 1u << k;
+    } else if (ENG->tkv & (1u << k)) {
+        if (ENG_SUB == 1u) {                                            /* two thirds, and this substep's own drift */
+            for (j = 0; j < 3u; j++) c[1u + j] = eng_tline(ENG->tsp[k][j], ENG->tkt[k][j], 2u, 0u) + (c[1u + j] - ENG->tkt[k][j]);
+            c[0x2C / 4] = (eng_tline(ENG->tsp[k][3], ENG->tkt[k][3], 2u, 1u) + eng_wrap12(c[0x2C / 4] - ENG->tkt[k][3])) & 4095;
+        } else ENG->tkv &= ~(1u << k);                                  /* substep 2: the game's own place */
+    }
+}
 #ifdef A4_TRAFDUMP
 /* bench (phone round 70, a hit traffic car's response): every traffic car within 1,500 of the player, all its 0x148
  * bytes -- a record: the substep count, the player's x and z, the cars' count | the substep << 8 | the point << 12
@@ -447,6 +501,7 @@ static inline void ENG_BEGIN(uint32_t race)
         ENG->tlast[0] = ENG->tlast[1] = 0; ENG->tdel[0] = ENG->tdel[1] = 0;
         for (uint32_t i = 0; i < 8u; i++) { ENG->pc[i] = 0; ENG->ps[i] = 0; }
         for (uint32_t i = 0; i < 16u; i++) ENG->sbc[i] = 0;
+        ENG->targ = 0; ENG->tkp = 0; ENG->tkv = 0;
     }
 #ifdef A4_ENGDBG
     {   /* bench: the last substep's record ('ENGS': count, substep, path bits, keys) with the player car */
