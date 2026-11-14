@@ -10502,3 +10502,51 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   largest substep-to-substep move change over the race: 89 (yt73 161, yt72 148). **The knock is drawn smoothly now.**
   Not measured: whether the knock's size matches stock's (the hit itself is the game's; the oracle comparison of a
   hit needs the same contact in both runs, which the routes do not repeat).
+
+## Round 71 candidate r71 (a4_r71_cand.exe, sha256 924cbdc74fb622d5b6893335e356813dcb92329592c2e1a8a22aaf241dcfaa22, 934,056 bytes)
+
+C71.flags = C70.flags (no flag added; the round's changes are unconditional or under flags already in). +3A15C
+b510 0004 checked, no 0xDEADBEEF; built unbaked (the owner bakes). In it, against r70:
+1. The steering rate at the game's step value (947d442; o3w2, phone round 70's "slipping").
+2. The pursuers drawn on the line from where the step began to where the game put them, the helicopter's light
+   aim point and heading with it (hv72: reversals 8 of 4,798 against 72; the light moving every substep).
+3. A knocked traffic car drawn on its step's line (yt74: its substep moves even; "a ghost car").
+4. The sprites' cover by a straddling GPU car only behind its middle (bc71 / bc67: the flame whole, ~10% more).
+5. The drop record extended (word 7: the camera's segment, the GPU objects' and cars' state; object-loss frames).
+6. The engine's third-remainders as bytes (room for 3).
+Battery on the exact binary (r71bat.sh, rule 2: the same runs as round 70's, r70bat.sh, for comparison):
+- y71b (twin LA route, the recorder build a4_y71 = C71 + CARREC/YREC/AUTOPILOT): framestat 3,845, grip column
+  [(1048576, 509), (4096, 39), (7509, 2), (10922, 2)] (r70: 410 / 27, (0, 13), 7), no crawl.
+- r71t2 (calibrated N95 bench, 120 s): framestat 3,666; 36.1 ms a render (3D 14.7, comp 7.6, read 6.1, 2D 2.6,
+  pres 2.7) against r70t2's 35.3 (3D 13.7) -- the later windows (capidx 135-137: 3D 16.4-22.5) carry it, another
+  stretch of the route; camera yaw and heading one-frame reversals 0 and 0; drop frames 0; presents 3,432 real, 205
+  no-render.
+- r71c2 (crash-steer, cap 85): camera yaw reversals 3, heading 1 -- r70c2's 3 and 1 (the same crash's -12/51/-12).
+- r71f / r71f2 (to the finish, cap 85): framestat 10,889 / 7,789, the finish's modes 1 and 2, no reversal.
+- menu (18 shots), mark, mark on the Veyron: clean.
+- r71v (Veyron autopilot, cap 85): heading less camera yaw off its median 50% 14 / 90% 54 / 99% 81 (r70v 29 / 75 /
+  109); camera yaw reversals 3 (r70v 0), heading 4 (0) -- small (-9,5 / -18,19 / -9,14 / -9,14 /2048). Read: the
+  steering rate is the game's step value now, no longer thirded and smoothed; the autopilot's quick corrections show
+  as the game makes them. o3w3 (the weave on r71's code, lockstep) is row for row identical to o3w2, the verified
+  weave: the round changed nothing in the player's steering beyond 947d442.
+- GPU objects and cars (r71t2 / r71f2 / Paris): objects taken 93.9 / 93.9 / 77.3% (r70 92.7 / 94.2 / 80.6), cars
+  8.3 / 6.6 / 8.0 draws a frame, resets 0.
+- Paris on the owner's save, filmed: framestat 3,316, clean. Grip and crawl: no crawl in any run.
+
+Rule 4, before it goes out:
+a. Guesses, and how the bench could settle them:
+   - That a sprite in front of a straddling car's middle shows over the car as the game paints it. The flame is
+     measured (whole, ~10% more pixels); a pickup at a car is not (none in the frames read) -- the phone settles it.
+   - That the knocked car's path is the game's and only its stepping was ours: the line draws the game's entries;
+     the knock's size against stock's is not compared (a hit does not repeat between runs).
+   - That race+0x70 is the camera's track segment (eng_cam_pose's own naming; round 39's "transition counter"):
+     the drop record's word 7 only reports it.
+   - That the Veyron run's small heading wiggles are the game's own steering, not a fault: o3w3 = o3w2 in lockstep
+     says the rule is unchanged; the autopilot's input is what moves.
+b. Read back: edits.py, lifted.c and a4_eng.c in full (git diff f72d46d..HEAD), a4_eng.h's code lines (the
+   pursuer line, the knock line, the remainder bytes, eng_tdrec), a4_gl.c's gobj_bb_deep, the drop record's word 7
+   and gdrop path. Only remembered: the comment blocks.
+c. States the bench did not enter: a drop entry with word 7 (no drop frame in any battery run, so the new fields
+   were never written on the bench -- the gdrop path included); a hit landing on a substep (placed by the game's own
+   code, lined from the next whole step); a knock in slow motion; two knocked cars at once (one bit each, untested);
+   a pickup beside a traffic car; the helicopter in LA (tested in Paris only).
