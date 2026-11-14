@@ -177,11 +177,13 @@
  * The table's triangles reach the GPU at the game's integer screen points with a W scaled per triangle (tri_conv),
  * so two triangles share an edge's points but not its arithmetic; on a GPU that samples at integer coordinates
  * (Direct3D's convention, not GL's half-integer one) a horizontal edge at an integer row passes through every
- * sample of that row, and the two triangles' last-bit differences can leave it to neither. PX_OFF moves the 2D
- * projection a quarter pixel toward GL's window origin (screen x - 1/4, screen y + 1/4): an integer edge is then
- * a quarter pixel from the samples under either convention, and a span [a, b) of integer edges covers the pixels
- * a .. b-1 under both -- what GL covered before. A4_MBXTIE (bench) models the tie: half a pixel more (the edges
- * on GL's samples) and each triangle's rows moved 1/128 pixel by its W scale's parity. */
+ * sample of that row, and the two triangles' last-bit differences can leave it to neither. PX_OFF moves every
+ * GPU projection -- the 2D one of the table's triangles and the 3D ones of the list, the objects and the cars,
+ * together, so no seam between them moves -- a quarter pixel toward GL's window origin (screen x - 1/4, screen
+ * y + 1/4): an integer edge is then a quarter pixel from the samples under either convention, and a span [a, b) of
+ * integer edges covers the pixels a .. b-1 under both -- what GL covered before. A4_MBXTIE (bench) models the
+ * tie: half a pixel more (the edges on GL's samples, as a GPU sampling at integers puts them) and each triangle's
+ * rows moved 1/128 pixel by its W scale's parity. */
 #ifndef PX_OFF
 #define PX_OFF (FX / 4)
 #endif
@@ -5584,6 +5586,14 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
     if ((s->frames >> (A4_GOBJ_AB)) & 1u) { g->refused_off++; return 0; }
 #endif
     const uint32_t cam = GO32(ctx + 4u), mp = cam ? GO32(cam + 0x3Cu) : 0, cp = cam ? GO32(cam + 0x38u) : 0;
+#ifdef A4_CAMADDR
+    {   /* bench (round 72, the vanishing scenery): the mesh context's camera and its focal (cam+4), stored only when
+         * they change, for EKA2L1_WATCH on 0x454400..0x454408 */
+        volatile uint32_t *w = (volatile uint32_t *)0x00454400u;
+        if (w[0] != cam) w[0] = cam;
+        if (cam && w[1] != GO32(cam + 4u)) w[1] = GO32(cam + 4u);
+    }
+#endif
     if (!mp || !cp || mp == cp) { g->refused_mode++; return 0; }
     const int32_t *M = (const int32_t *)mp, *C = (const int32_t *)cp;   /* the object's, the camera's */
     for (uint32_t k = 0; k < 9u; k++) if (M[k] != C[k]) { g->refused_rot++; return 0; }
@@ -5656,6 +5666,7 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
     for (int i = 0; i < 16; i++) { P[i] = 0; MV[i] = 0; TM[i] = 0; }
     P[0] = (F << 17) / VP_W; P[5] = (F << 17) / VP_H;            /* the list's projection (mesh_draw) */
     P[8] = FX - (cx << 17) / VP_W; P[9] = (cy << 17) / VP_H - FX; P[11] = -FX;
+    P[8] += (2 * PX_OFF_ALL) / VP_W; P[9] += (2 * PX_OFF_ALL) / VP_H;   /* the 2D projection's offset (PX_OFF) */
     P[14] = ZK * FX - ((ZK * FX) >> 6);
     gl_matrixmode(GL_PROJECTION); gl_loadmatrixx(P);
     gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_GEQUAL); gl_enable(GL_CULL_FACE); gl_depthmask(1);
@@ -5882,6 +5893,7 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
     for (int i = 0; i < 16; i++) { P[i] = 0; MV[i] = 0; TM[i] = 0; }
     P[0] = (F << 17) / VP_W; P[5] = (F << 17) / VP_H;            /* the list's projection (mesh_draw) */
     P[8] = FX - (cx << 17) / VP_W; P[9] = (cy << 17) / VP_H - FX; P[11] = -FX;
+    P[8] += (2 * PX_OFF_ALL) / VP_W; P[9] += (2 * PX_OFF_ALL) / VP_H;   /* the 2D projection's offset (PX_OFF) */
     P[14] = ZK * FX - ((ZK * FX) >> 6);
     gl_matrixmode(GL_PROJECTION); gl_loadmatrixx(P);
     gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_GEQUAL); gl_enable(GL_CULL_FACE); gl_depthmask(1);
@@ -6192,6 +6204,7 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
     P[5] = (F << 17) / VP_H;
     P[8] = FX - (cx << 17) / VP_W;
     P[9] = (cy << 17) / VP_H - FX;
+    P[8] += (2 * PX_OFF_ALL) / VP_W; P[9] += (2 * PX_OFF_ALL) / VP_H;   /* the 2D projection's offset (PX_OFF) */
     P[11] = -FX;
     P[14] = ZK * FX - ((ZK * FX) >> 6);              /* 1/64 farther than the table's ZK/ZW: a
                                                       * face the table draws in the same plane

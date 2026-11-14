@@ -10710,3 +10710,23 @@ c. States the bench did not enter: a drop entry with word 7 (no drop frame in an
   news view), 4017 a view looking back (direction set). Objects by segment as the normal-speed runs (segment 5
   median 34 against gd73's 34). **A slow CPU does not reproduce the vanishing.** The frame record's camera mode
   (r72) tells such cut-ins from a loss on the phone; e[2] now also carries the engine's substep (bits 28-29).
+- t72a / t72b, first pair (the model with the quarter on the 2D projection only; LA, filmed, framestat 4,110 /
+  4,175): line rows counted 97 / 16 (on ~290 sampled frames each); t72a's rows 105-114, 64-81 pixels undrawn; t72b's
+  16 all before frame 15,936. The video of t72a (rec_t72a, frame 277, t72v/z277.png): one screen row across the far
+  road and the pavement, broken by the guard rail's posts and passing under the cars -- the owner's photo's
+  structure, in the software layer's colour of this track. So a tie at the table's integer edges makes exactly
+  that line. But the model moved only the 2D projection half a pixel, not the list, the objects and the cars,
+  which a GPU sampling at integers would move with it -- so it also opened half-pixel seams between the list and
+  the table's triangles, which a quarter does not close (t72b's 16). Corrected: PX_OFF (and the model's half)
+  now moves the 3D projections too (gobj_flush, gcar_flush, mesh_draw: P[8], P[9] by 2 * offset / size), every GPU
+  item together. Rerun with a baseline: t72a2 / t72b2 / c72z2 (no offset, no model: the bench as C71) / c72e2 (the
+  candidate's code): running.
+- The vanishing scenery and speed: the phone's 71b frame record has the player car at up to 8.5 units/ms (median
+  4.5, 90% 7.2; Paris 71: 90% 5.2) -- the speedometer read 303-342 km/h in the photos, so about 40 km/h per unit/ms.
+  The bench's runs never went near: gd73 (the Mini) 99% 3.7, gd74 (the Veyron on the autopilot, cap 85) 99% 2.7.
+  **The bench has not driven where the phone lost the scenery.** The photos: buildings at 303 and 305 km/h, gone at
+  309 and 342. The mesh context's focal F (cam[4], which sets the projection and the four planes the sphere cull
+  +358FC tests: cam[0x0C], [0x18], [0x20], [0x28], [0x2C], [0x34]) changes with speed (round 49's notes: 460 at
+  the start, 260 later). A guess, to settle: the field of view at speeds the bench never reached leaves planes
+  that cull the street. fp72 (A4_CAMADDR, bench: the mesh camera's address and F stored on change, watched):
+  queued -- then the writer of cam[4].
