@@ -216,6 +216,7 @@ struct eng {
     uint32_t tlast[2];               /* the traffic's two clocks (race+0x378, +0x37C) at the last whole step */
     int32_t tdel[2];                 /* and their change over that step */
     uint32_t aic[32], aik[32], aia[32]; /* the AI's keys and argument per car, from the whole step */
+    uint32_t sbc[16], sbb[16];       /* the steering rate's last update per car: the car, its branch (1-4) */
     uint32_t frame[16];              /* +141B0's frame slots its race rules set (eng_frame_off), at the whole step */
     uint32_t camv, cam[8];           /* the whole step's last camera placement (+5968 from +12DEC): r0-r3, 4 stack words */
     uint32_t cbok, cbmode;           /* round 63: the chase camera's offset from its car, the whole step before's and this */
@@ -228,10 +229,10 @@ struct eng {
     uint32_t kcopy[8];               /* the key object as the next whole step's handler will find it (0x1D bytes) */
     uint32_t loop;                   /* the whole step entered the car loop (+14672): the substeps run only then */
     uint32_t meas1;                  /* +22832 measures a wreck: its displacement is a whole step's (x 1) */
-    uint32_t pc[16], pw[16][3], pa[16][3]; /* the pursuers at the whole step's start: car, position, +0A8 */
-    int32_t pown[16][3];             /* their own move since (+1E8C0): the rest is the game placing them, counted once */
-    uint32_t ps[16];                 /* a pursuer whose whole-step jump the substeps are giving back */
-    int32_t plft[16][3];             /* what is left of it (2/3 at the whole step's move, 0 after substep 2) */
+    uint32_t pc[8], pw[8][3], pa[8][3]; /* the pursuers (race slots 8-15) at the whole step's start: car, position, +0A8 */
+    int32_t pown[8][3];              /* their own move since (+1E8C0): the rest is the game placing them, counted once */
+    uint32_t ps[8];                  /* a pursuer whose whole-step jump the substeps are giving back */
+    int32_t plft[8][3];              /* what is left of it (2/3 at the whole step's move, 0 after substep 2) */
     uint32_t wy0, wyset;             /* A4_WRECK3: the wreck's height before this substep's +2292A, and its path set it */
     uint32_t lc[64], ls[64][3], lv[64][3]; /* the orientation's angles a step late: the word, the last three substeps' count and value */
     uint32_t kc[16], ks[16];         /* the wall's first push: the car (+678's address) and the step it hit, bit 31 still to come */
@@ -257,6 +258,7 @@ uint32_t eng_ai_slot(uint32_t car);
 void eng_pown(uint32_t car, uint32_t j, int32_t d);
 void eng_pfix(uint32_t car);
 void eng_pstep(uint32_t car);
+uint32_t eng_steer_upd(uint32_t car, uint32_t br);
 uint32_t eng_udiv(uint32_t n, uint32_t d);
 uint64_t eng_c_1b2d6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t sp, uint32_t *r23);
 uint32_t eng_alag(uint32_t ea, uint32_t v);
@@ -271,6 +273,7 @@ void eng_cam_unblend(void);
 #define ENG_KMERGE(sp) ((void)0)
 #define ENG_VP(t, car, a, b, c, d, e) ((void)0)
 #define ENG_VPA(t, car, a, b, c, d, e) ((void)0)
+#define ENG_TDARG(a) ((void)0)
 int32_t eng_thirdv(uint32_t key, int32_t v);
 void ENG_BEGIN(uint32_t race);
 extern const uint16_t eng_frame_off[10];
@@ -284,6 +287,11 @@ uint64_t eng_h_345e4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_
 _Static_assert(A4_ENG_STATE + sizeof(struct eng) <= 0x00460000u, "the engine state past the scratch block");
 #define ENG ((volatile struct eng *)A4_ENG_STATE)
 #define ENG_IS3 1
+#ifdef A4_TRAFDUMP
+#define ENG_TDARG(a) (ENG->dbg[5] = (a))
+#else
+#define ENG_TDARG(a) ((void)0)
+#endif
 /* the slots +141B0's race rules (+1433C..+1452C) write, read by the traffic and car loop after them */
 static const uint16_t eng_frame_off[] = { 0xC8, 0xCC, 0xD0, 0xD4, 0x110, 0x114, 0x118, 0x11C, 0x120, 0x124 };
 #define ENG_NFRAME (sizeof(eng_frame_off) / sizeof(eng_frame_off[0]))
@@ -312,8 +320,8 @@ static const uint16_t eng_frame_off[] = { 0xC8, 0xCC, 0xD0, 0xD4, 0x110, 0x114, 
 static inline void eng_psnap(uint32_t race)
 {
     uint32_t k, j;
-    for (k = 0; k < 16u; k++) {
-        const uint32_t car = *(volatile uint32_t *)(uintptr_t)(race + 0x394u + 4u * k);
+    for (k = 0; k < 8u; k++) {                         /* the police slots: race slots 8-15 */
+        const uint32_t car = *(volatile uint32_t *)(uintptr_t)(race + 0x394u + 4u * (k + 8u));
         volatile int32_t *c = (volatile int32_t *)(uintptr_t)car;
         if (ENG->ps[k] && ENG->ps[k] == car)              /* a spread its substeps did not finish: finished now, */
             for (j = 0; j < 3u; j++) {                    /* out of the measure's sight (+0A8 with it) */
@@ -334,14 +342,14 @@ static inline void eng_psnap(uint32_t race)
 static inline void eng_pown(uint32_t car, uint32_t j, int32_t d)
 {
     uint32_t k;
-    for (k = 0; k < 16u; k++) if (ENG->pc[k] == car) { ENG->pown[k][j] += d; return; }
+    for (k = 0; k < 8u; k++) if (ENG->pc[k] == car) { ENG->pown[k][j] += d; return; }
 }
 static inline int32_t eng_sdiv(int32_t n, int32_t d);
 /* the whole step, at the pursuer's move (+1EA64's entry, before its measure) */
 static inline void eng_pfix(uint32_t car)
 {
     uint32_t k, j;
-    for (k = 0; k < 16u; k++) {
+    for (k = 0; k < 8u; k++) {
         volatile int32_t *c;
         int32_t w[3];
         if (ENG->pc[k] != car) continue;
@@ -369,7 +377,7 @@ static inline void eng_pfix(uint32_t car)
 static inline void eng_pstep(uint32_t car)
 {
     uint32_t k, j;
-    for (k = 0; k < 16u; k++) {
+    for (k = 0; k < 8u; k++) {
         volatile int32_t *c;
         if (ENG->ps[k] != car) continue;
         c = (volatile int32_t *)(uintptr_t)car;
@@ -393,7 +401,8 @@ static inline void ENG_BEGIN(uint32_t race)
         for (uint32_t i = 0; i < 64u; i++) ENG->lc[i] = 0;
         ENG->flush = 0;
         ENG->tlast[0] = ENG->tlast[1] = 0; ENG->tdel[0] = ENG->tdel[1] = 0;
-        for (uint32_t i = 0; i < 16u; i++) { ENG->pc[i] = 0; ENG->ps[i] = 0; }
+        for (uint32_t i = 0; i < 8u; i++) { ENG->pc[i] = 0; ENG->ps[i] = 0; }
+        for (uint32_t i = 0; i < 16u; i++) ENG->sbc[i] = 0;
     }
 #ifdef A4_ENGDBG
     {   /* bench: the last substep's record ('ENGS': count, substep, path bits, keys) with the player car */
@@ -417,6 +426,59 @@ static inline void ENG_BEGIN(uint32_t race)
     {   /* the player car, for the probe */
         uint32_t pl = *(volatile uint32_t *)(race + 0x390), idx = pl ? *(volatile uint32_t *)(pl + 0xC) : 0u;
         ENG->dbg[6] = idx < 16u ? *(volatile uint32_t *)(race + 0x394 + 4u * idx) : 0u;
+    }
+#endif
+#ifdef A4_TRAFDUMP
+    {   /* bench (phone round 70, a hit traffic car's response): every traffic car within 1,500 of the player, all its
+         * 0x148 bytes, each substep -- a record: the count, the player's x and z, the slots' count, then per car its
+         * slot and 82 words; 4 cars at most, 1,344 bytes a record, a ring of 12 at 0x5A2000 handed to a4_camp_emit
+         * when it wraps. The traffic array: +FB12's first argument (ENG->dbg[5], at +14574) + the game's +FEB4.
+         * Never a phone build. */
+        extern void a4_camp_emit(const void *);
+        volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+        const uint32_t pl = *(volatile uint32_t *)(race + 0x390u);
+        const uint32_t pi = pl ? *(volatile uint32_t *)(pl + 0xCu) : 16u;
+        const uint32_t pc = pi < 16u ? *(volatile uint32_t *)(race + 0x394u + 4u * pi) : 0u;
+        if (pc && ENG->dbg[5]) {
+            const uint32_t ta = ENG->dbg[5] + GAME32(0xFEB4);
+            uint32_t i = rg[0] % 12u, k, j, n = 0;
+            volatile uint32_t *q = rg + 4u + (1344u / 4u) * i;
+            const int32_t px = (int32_t)MEM32(pc + 4u), pz = (int32_t)MEM32(pc + 0xCu);
+            q[0] = ENG->cnt; q[1] = (uint32_t)px; q[2] = (uint32_t)pz;
+            for (k = 0; k < 16u && n < 4u; k++) {
+                const uint32_t t = ta + 0x148u * k;
+                const int32_t dx = (int32_t)MEM32(t + 4u) - px, dz = (int32_t)MEM32(t + 0xCu) - pz;
+                if (dx > 1500 || dx < -1500 || dz > 1500 || dz < -1500) continue;
+                q[4u + 83u * n] = k;
+                for (j = 0; j < 82u; j++) q[5u + 83u * n + j] = MEM32(t + 4u * j);
+                n++;
+            }
+            q[3] = n;
+            rg[0] = i + 1u;
+            if (i + 1u == 12u) { rg[0] = 0; a4_camp_emit((const void *)(rg + 4u)); }
+        }
+    }
+#endif
+#ifdef A4_HELIREC
+    {   /* bench (phone round 70, the helicopter's light): while police slot 2 (race slot 10) holds the helicopter
+         * (+C70 4) and it has moved since the last record, the substep count, the player car's x, y, z and the
+         * helicopter's first 0xD00 bytes -- 0xD10 a record, a ring of 4 at 0x5A2000 (A4_SCRATCH_SIZE >= 0x1A6000)
+         * handed to a4_camp_emit when it wraps. Never a phone build. */
+        extern void a4_camp_emit(const void *);
+        volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+        const uint32_t h = *(volatile uint32_t *)(race + 0x394u + 4u * 10u);
+        const uint32_t pl = *(volatile uint32_t *)(race + 0x390u);
+        const uint32_t pi = pl ? *(volatile uint32_t *)(pl + 0xCu) : 16u;
+        const uint32_t pc = pi < 16u ? *(volatile uint32_t *)(race + 0x394u + 4u * pi) : 0u;
+        if (h && MEM32(h + 0xC70u) == 4u && pc && MEM32(h + 4u) != rg[1]) {
+            uint32_t i = rg[0] % 4u, k;
+            volatile uint32_t *q = rg + 4u + (0xD10u / 4u) * i;
+            rg[1] = MEM32(h + 4u);
+            q[0] = ENG->cnt; q[1] = MEM32(pc + 4u); q[2] = MEM32(pc + 8u); q[3] = MEM32(pc + 0xCu);
+            for (k = 0; k < 0xD00u / 4u; k++) q[4u + k] = MEM32(h + 4u * k);
+            rg[0] = i + 1u;
+            if (i + 1u == 4u) { rg[0] = 0; a4_camp_emit((const void *)(rg + 4u)); }
+        }
     }
 #endif
 #ifdef A4_CARSUB
@@ -798,6 +860,18 @@ static inline uint32_t eng_alag(uint32_t ea, uint32_t v)
     if (ENG->ls[i][o] == now - 2u) r = ENG->lv[i][o];
     ENG->ls[i][k] = now; ENG->lv[i][k] = v;
     return r;
+}
+/* Phone round 70 (+1B9E0, edits.py): whether the steering rate A1C is computed on this call -- always on the whole
+ * step; on a substep only when the car's key branch (1 left, 2 right, 3/4 back toward centre) differs from the one
+ * the rate was last computed under (a live key changed mid-step); else the substep keeps the step's rate */
+static inline uint32_t eng_steer_upd(uint32_t car, uint32_t br)
+{
+    uint32_t i, f = 16u;
+    for (i = 0; i < 16u; i++) { if (ENG->sbc[i] == car) break; if (ENG->sbc[i] == 0u && f == 16u) f = i; }
+    if (i == 16u) { i = f == 16u ? (car >> 4) & 15u : f; ENG->sbc[i] = car; ENG->sbb[i] = 0u; }
+    if (ENG_SUB && ENG->sbb[i] == br) return 0u;
+    ENG->sbb[i] = br;
+    return 1u;
 }
 /* the AI's per-car slot: its keys and +1DE78's stack argument, as the whole step's AI chose them */
 static inline uint32_t eng_ai_slot(uint32_t car)

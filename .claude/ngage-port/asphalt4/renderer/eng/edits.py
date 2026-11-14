@@ -94,7 +94,16 @@ T(0x1E896, 'heading -= A20 (reversing)'); T(0x1E8A2, 'heading += A20')
 R(0x1E8C0, '{ uint32_t k_; ENG_VP(4u, r4, MEM32(r1), MEM32(r1 + 4u), MEM32(r1 + 8u), r1, r0); for (k_ = 0; k_ < 12u; k_ += 4u) { uint32_t ea_ = r0 + k_; const uint32_t o_ = MEM32(ea_); MEM32(ea_) = eng_third(ea_, o_, o_ + MEM32(r1 + k_)); if (!ENG_SUB) eng_pown(r0 - 4u, k_ / 4u, (int32_t)(MEM32(ea_) - o_)); } }',
   'position += velocity (+521A0): a third of the step\'s')
 # +1B9E0, steering
-for a in (0x1BA28, 0x1BA52, 0x1BA7E, 0x1BA9A): T(a, 'A1C, the steering rate, eased a step')
+# A1C, the steering rate: each call the game eases it toward the held key's target ((A1C + k)/2, (A1C - k)/2) or,
+# with no key, back toward centre ((A1C +- 3k)/4), then +7FC += A1C. Phone round 70 (quick left-right "as if it was
+# slipping"): thirded, the rate crossed zero a third at a time -- on a release the first substep's rate kept the old
+# sign (-1800 -> -900 where stock jumps to +901) and +7FC ran on past the game's own -4096 to -4376 before turning,
+# every reversal a step late (o1w / o3w). Now the rate is the game's step value: computed on the whole step as stock
+# does, kept on the substeps (+7FC still moves a third of it each), and computed afresh on a substep whose branch
+# differs from the one its step took (a live key pressed, released or reversed mid-step: A4_LIVEKEYS)
+for a, br in ((0x1BA28, 1), (0x1BA52, 2), (0x1BA7E, 3), (0x1BA9A, 4)):
+    R(a, '{ uint32_t ea_ = r2 + 0x1Cu; if (eng_steer_upd(r12, %du)) L32(ea_) = r1; else r1 = L32(ea_); }' % br,
+      'A1C, the steering rate: the game\'s step value, kept on the substeps')
 for a in (0x1BA2C, 0x1BA56, 0x1BAA0): T(a, 'steering 7FC += A1C')
 T(0x1BAF0, '808, steering eased 1/8 a step'); T(0x1BB1A, '80C, steering eased a step')
 # +1BB1E, the brake
@@ -180,6 +189,9 @@ B(0x1FE02, 'ENG_VP(5u, r4, r5, MEM32(r4 + 4u), MEM32(r4 + 0xCu), MEM32(r5 + 4u),
 # index plus its own offset) -- the car, its type (+C70), the reference's index, the offset, the index it takes
 B(0x1F24C, 'ENG_VPA(8u, r5, MEM32(r5 + 0xC70u), MEM32(r0 + 0x1Cu), MEM32(r4 + 0x1Cu), r1, r0);',
   'bench (A4_VELPROBE): a car on rails')
+# bench (A4_TRAFDUMP, phone round 70): the traffic update's first argument, for the probe's traffic array
+EDITS.setdefault(0x14574, {})
+EDITS[0x14574]['before'] = 'ENG_TDARG(r0); ' + EDITS[0x14574]['before']
 # bench (A4_VELPROBE, phone round 69): a traffic car placed (+FC34, after +F60A): its place, the node's fraction,
 # the node, the clock-derived index -- per substep, any car
 B(0xFC34, 'ENG_VPA(9u, r5, MEM32(r5 + 4u), MEM32(r5 + 0xCu), S32(0x58u), S32(0x64u), S32(0x4Cu));',

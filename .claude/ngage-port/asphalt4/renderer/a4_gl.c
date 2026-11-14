@@ -1200,7 +1200,7 @@ __attribute__((noinline)) void a4_rec_emit2(const void *hdr, const void *car, co
 #define A4_KEY_BRAKE 0x80u           /* '6' (brakes; reverse at rest): a guess by the pattern above */
 #endif
 /* the autopilot's keys this step */
-static uint32_t ap_key(uint32_t race, uint32_t st)
+static __attribute__((unused)) uint32_t ap_key(uint32_t race, uint32_t st)
 {
 #ifdef A4_AUTOPILOT_UNSTICK
     /* bench (round 45): the bench driver cannot get a stopped car going again -- a car at rest

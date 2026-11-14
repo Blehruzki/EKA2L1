@@ -10279,3 +10279,69 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   phone to say: the traffic (still laggy or not), the helicopter and its light, the cops in a chase (overshoot,
   catching up after a crash), the hits on traffic (too many, or as the game was), the Veyron's speed and the jumps
   (no fault found on the bench), the telemetry captures as before.
+
+## Phone round 70 (r70 2d38c6e8): "The car feels fast as it should!"; the traffic no longer goes back and forth; the
+## helicopter normal -- and: its light choppy; traffic hit from behind barely moves ("a ghost car"); pickups and
+## nitro clip through the road again; takedown and crash cams in stop motion; quick left-right steering slips
+
+- Owner's words, in order: "The car feels fast as it should!" -- "the traffic doesn't look like it's going back and
+  forth" -- "the helicopter is behaving normal. the light still looks choppy. Instead of moving smoothly along with
+  the camera, it's like it freezes on the same spot for two or three frames then updates its position forward." --
+  "Regarding traffic hits, I can hit the cars, but they don't respond to the hits accordingly ... if I hit a car from
+  behind at high speed, I would expect that car to fly forward spectacularly. However most of the time it registers
+  the hit but it feels like I'm passing through a ghost car. It moves around a little" -- "the pickups and nitro are
+  looking like they're clipping through the road again" -- "the takedown and crash cams still make the cars look
+  like they're being animated in stop motion, as if they are skipping frames" -- "if I'm turning in one direction,
+  then immediately turn the opposite, the car doesn't feel like it's adjusting accordingly, but rather as if it was
+  slipping ... over 150 km/h then hold down left, then a second after release and hold down right ... It doesn't feel
+  natural."
+- Telemetry (8 captures, phone70/): renders 39.7-72.4 ms a window (median ~49), 3D 14-43, comp ~10, 2D ~3.4; render
+  call 41.6-43.5 ms; spans n = 1: 1,011, 2: 2,372, 3: 420, 4: 91, 5: 13 (seg0), 1.4-1.6 ms a step; one load span of
+  329 ms (seg1). Frame record (417 frames): presents a median 61 ms apart; drawn speed off its neighbours >25% in 21%;
+  **camera yaw one-frame reversals 18 of 417** (r69 1) with car heading reversals 0 -- small ones (-1, +4, -4; +1,
+  -6, +7; -6, +7, -20): the camera, not the car; heading less camera yaw reversals 36 of 189 moving frames. Drawn
+  speed (fspeed.py): median 368, 99% 488 -- above every earlier round's (r69 310 / 456, r51 339 / 519).
+- Bench (round 70 follow-ups, so far): the weave pair o1w / o3w (lockstep, A4_AUTOSTEER: throttle to step 150, then
+  right 10, free 2, left 10, free 2; a4_gl.c's ap_key marked unused for it, r70 rebuilt identical): o1w recorded;
+  o3w recorded nothing (rec 0) -- rerun. yv70's hit traffic car (023a2fcc, step 880) after the hit: its lane motion
+  goes on (-6/-7 a substep, the fraction steady) and a knock is added **on the whole step only** (+75, +107, +103,
+  +101, +98 ... at each substep 1's record, nothing on substeps 1-2): the knocked car moves in 11.72 Hz jerks, ~100
+  a step against the player's 272. What applies the knock is not yet found (the whole step's code that the
+  substeps skip). Slow motion: +15F28 is the period's literal (scale x 7111 >> 8), so a slowed step's substeps come
+  further apart and frames repeat -- the takedown and crash cams' stop motion (3x stock's rate, still visible).
+
+## Phone round 70b (r70, LA): the helicopter's back and forth again (righting itself after a while); hit traffic
+## laggy again; twice the top half of the screen showed only the sky (high speed, before the hill before the
+## tunnel); grey horizontal lines popping in and out "as if it was an old monitor"
+
+- Owner's words: "The helicopter did the back and forth bug again, but it corrected itself after a while. This
+  doesn't mean the bug is fixed" -- "When hitting traffic cars, they did the laggy bug again" -- "There was a moment
+  where the top half of the screen stopped rendering the scenery and only the skybox was visible. It happened twice
+  and I was going at high speed. It happened before reaching the hill that's before the tunnel" -- "some gray
+  horizontal lines appear as if there was some interference, or as if it was an old monitor with horizontal lines
+  popping in and out randomly, sometimes alone, sometimes in groups."
+- Telemetry (8 captures, phone70b/): 27.7-43.7 ms a render (3D 5.8-18.4); spans n = 1: 1,089, 2: 1,878, 3: 333;
+  camera yaw one-frame reversals 8 of 417, heading 0. **Presents: real 23,271, of them 15,834 with no render since
+  the last** (callers 0x78B309AB x15,774, 0x78B6988D x60) -- r70's Paris run 2,155 of 9,439; the window's present
+  time falls to 0.0-0.5 ms in captures 316-319. Drop frames (triangles halved or worse) 5 (Paris run 0); held back
+  2.
+- The weave pair redone with the weave from step 320 (the first started at the race's own start, at rest, and the
+  stock car ended in a wall): o1w / o3w, right 10 steps, free 2, left 10, free 2, from ~B4 150. Read in +1B9E0 (the
+  steering): +7FC += A1C each call, clamped to +-4096 while a key is held; A1C, the rate, eased each call toward
+  the key's target -- (A1C +- k)/2 held, (A1C -+ 3k)/4 with no key (k = 0x10 or 0x20 x +800 / 16; +800 1802 here).
+  Stock at a release: A1C -1800 -> +901 in one step, +7FC -4096 -> -3195. 3x: A1C's store thirded (T, round 50) --
+  -1800 -> -900 on the first substep, the old sign -- and +7FC ran on to -4376, past the game's own clamp, before
+  turning; every reversal a step late (+7FC: stock -3195, -1619, +70, +1815; 3x -4376, -3453, -2101, -560), the
+  smoothed +808 and the heading after it. **The owner's "as if it was slipping".**
+- Fix (edits.py at +1BA28 / +1BA52 / +1BA7E / +1BA9A, a4_eng.h eng_steer_upd): the rate is the game's step value --
+  computed on the whole step, kept on the substeps (+7FC still moves a third of it each), and computed afresh on a
+  substep whose key branch (left, right, back toward centre either side) differs from the one its step took (a live
+  key changed mid-step, A4_LIVEKEYS). The engine state outgrew its 12 KB block with the round's tables: the
+  pursuers' tables are now the police slots' 8 (race slots 8-15) instead of 16. o3w2 (the fix): queued.
+- yw70 (the twin's LA route, EKA2L1_WATCH over the traffic array 023a2444-023a38c4, WATCHONCE, the game's own code
+  only): 24 hits in that run (a cluster at steps 824-909), but the watch's 64 writers were all construction stores
+  and the traffic's per-substep fields (+22D64 writing +4C..+78, +222BC +FC..+104, +222F2 +40..+48) before any
+  hit -- it cannot name the knock. Probes built instead: a4_yt71 (A4_TRAFDUMP: every traffic car within 1,500 of
+  the player, all 0x148 bytes, each substep; the array from +FB12's first argument + the game's +FEB4) on the twin's
+  route, and a4_hr71 (A4_HELIREC: the helicopter's first 0xD00 bytes and the player's place each substep it moves,
+  for its light) on Paris x2: queued.

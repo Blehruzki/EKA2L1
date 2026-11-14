@@ -4395,8 +4395,8 @@ L_1B9F2:
     t = SHR_C(r1, 0x1Fu, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 01ba22 lsrs r3, r1, #0x1f */
     { uint32_t ta = r3, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba24 adds r1, r3, r1 */
     t = SAR_C(r1, 0x1u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ba26 asrs r1, r1, #1 */
-    /* engine: A1C, the steering rate, eased a step */
-    { uint32_t ea_ = r2 + 0x1Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01ba28 str r1, [r2, #0x1c] */
+    /* engine: A1C, the steering rate: the game's step value, kept on the substeps */
+    { uint32_t ea_ = r2 + 0x1Cu; if (eng_steer_upd(r12, 1u)) L32(ea_) = r1; else r1 = L32(ea_); }  /* was: L32(r2 + 0x1Cu) = r1;                                        ( 01ba28 str r1, [r2, #0x1c] ) */
     { uint32_t ta = r5, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba2a adds r1, r5, r1 */
     /* engine: steering 7FC += A1C */
     { uint32_t ea_ = r0 + 0x3Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01ba2c str r1, [r0, #0x3c] */
@@ -4419,8 +4419,8 @@ L_1BA3A:
     t = SHR_C(r1, 0x1Fu, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 01ba4c lsrs r3, r1, #0x1f */
     { uint32_t ta = r3, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba4e adds r1, r3, r1 */
     t = SAR_C(r1, 0x1u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ba50 asrs r1, r1, #1 */
-    /* engine: A1C, the steering rate, eased a step */
-    { uint32_t ea_ = r2 + 0x1Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01ba52 str r1, [r2, #0x1c] */
+    /* engine: A1C, the steering rate: the game's step value, kept on the substeps */
+    { uint32_t ea_ = r2 + 0x1Cu; if (eng_steer_upd(r12, 2u)) L32(ea_) = r1; else r1 = L32(ea_); }  /* was: L32(r2 + 0x1Cu) = r1;                                        ( 01ba52 str r1, [r2, #0x1c] ) */
     { uint32_t ta = r5, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba54 adds r1, r5, r1 */
     /* engine: steering 7FC += A1C */
     { uint32_t ea_ = r0 + 0x3Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01ba56 str r1, [r0, #0x3c] */
@@ -4444,8 +4444,8 @@ L_1BA62:
     t = SHR_C(r3, 0x1Eu, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 01ba78 lsrs r3, r3, #0x1e */
     { uint32_t ta = r3, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba7a adds r1, r3, r1 */
     t = SAR_C(r1, 0x2u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ba7c asrs r1, r1, #2 */
-    /* engine: A1C, the steering rate, eased a step */
-    { uint32_t ea_ = r2 + 0x1Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01ba7e str r1, [r2, #0x1c] */
+    /* engine: A1C, the steering rate: the game's step value, kept on the substeps */
+    { uint32_t ea_ = r2 + 0x1Cu; if (eng_steer_upd(r12, 3u)) L32(ea_) = r1; else r1 = L32(ea_); }  /* was: L32(r2 + 0x1Cu) = r1;                                        ( 01ba7e str r1, [r2, #0x1c] ) */
     goto L_1BA9C;                                                /* 01ba80 b #0x1ba9c */
 L_1BA82:
     t = r7 * r3; fN = t >> 31; fZ = t == 0; r3 = t;              /* 01ba82 muls r3, r7, r3 */
@@ -4460,8 +4460,8 @@ L_1BA82:
     t = SHR_C(r3, 0x1Eu, &fC); r3 = t; fN = t >> 31; fZ = t == 0; /* 01ba94 lsrs r3, r3, #0x1e */
     { uint32_t ta = r3, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba96 adds r1, r3, r1 */
     t = SAR_C(r1, 0x2u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01ba98 asrs r1, r1, #2 */
-    /* engine: A1C, the steering rate, eased a step */
-    { uint32_t ea_ = r2 + 0x1Cu; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01ba9a str r1, [r2, #0x1c] */
+    /* engine: A1C, the steering rate: the game's step value, kept on the substeps */
+    { uint32_t ea_ = r2 + 0x1Cu; if (eng_steer_upd(r12, 4u)) L32(ea_) = r1; else r1 = L32(ea_); }  /* was: L32(r2 + 0x1Cu) = r1;                                        ( 01ba9a str r1, [r2, #0x1c] ) */
 L_1BA9C:
     r3 = L32(r2 + 0x1Cu);                                        /* 01ba9c ldr r3, [r2, #0x1c] */
     { uint32_t ta = r5, tb = r3; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01ba9e adds r1, r5, r3 */
@@ -10555,7 +10555,7 @@ L_1455C:
     r3 = L32(r2 + 0x3Cu);                                        /* 014570 ldr r3, [r2, #0x3c] */
     r2 = L32(r2 + 0x38u);                                        /* 014572 ldr r2, [r2, #0x38] */
     /* engine: the traffic clocks' step, for the substeps; the substeps start from the whole step's own clocks (the game has advanced race+0x378/+0x37C by then: placed from those, substeps 1-2 were a step ahead and every traffic car went forward 1 1/3 steps and back 2/3 each step -- phone round 69) */
-    if (!ENG_SUB) { ENG->tdel[0] = (int32_t)(r2 - ENG->tlast[0]); ENG->tdel[1] = (int32_t)(r3 - ENG->tlast[1]); ENG->tlast[0] = r2; ENG->tlast[1] = r3; if (ENG->tdel[0] < -0x100000 || ENG->tdel[0] > 0x100000) ENG->tdel[0] = 0; if (ENG->tdel[1] < -0x100000 || ENG->tdel[1] > 0x100000) ENG->tdel[1] = 0; } else { r2 = ENG->tlast[0]; r3 = ENG->tlast[1]; }
+    ENG_TDARG(r0); if (!ENG_SUB) { ENG->tdel[0] = (int32_t)(r2 - ENG->tlast[0]); ENG->tdel[1] = (int32_t)(r3 - ENG->tlast[1]); ENG->tlast[0] = r2; ENG->tlast[1] = r3; if (ENG->tdel[0] < -0x100000 || ENG->tdel[0] > 0x100000) ENG->tdel[0] = 0; if (ENG->tdel[1] < -0x100000 || ENG->tdel[1] > 0x100000) ENG->tdel[1] = 0; } else { r2 = ENG->tlast[0]; r3 = ENG->tlast[1]; }
     { uint64_t rr = (ENGD_0FB12 ? engi_0FB12(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x14578)) : a4_eng_call(GAMEFN(0xFB12), r0, r1, r2, r3, sp, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 014574 bl #0xfb12 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 014574 bl #0xfb12 */
 L_14578:

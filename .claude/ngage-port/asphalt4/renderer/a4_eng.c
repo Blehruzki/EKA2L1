@@ -18,7 +18,7 @@ __attribute__((noinline)) void a4_stkpoison(uint32_t *p, uint32_t n)
     ENG->dbg[7] = x;
 }
 #endif
-#if defined(A4_CAMPROBE) || defined(A4_KEYPROBE) || defined(A4_VELPROBE) || defined(A4_CARSUB)
+#if defined(A4_CAMPROBE) || defined(A4_KEYPROBE) || defined(A4_VELPROBE) || defined(A4_CARSUB) || defined(A4_HELIREC) || defined(A4_TRAFDUMP)
 __attribute__((noinline)) void a4_camp_emit(const void *r) { __asm__ volatile("" : : "r"(r) : "memory"); }
 #endif
 #ifdef A4_ENG3
