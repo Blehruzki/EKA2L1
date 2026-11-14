@@ -10743,3 +10743,27 @@ c. States the bench did not enter: a drop entry with word 7 (no drop frame in an
   edges the game's integers, the list's exact) can then hold a sample where it held none -- 1 short row in ~300
   sampled frames, against 0. Moving the 2D projection alone is neutral under GL but leaves the half-pixel seams a
   GPU sampling at integers would have (16). Kept: everything moved, PX_OFF = FX / 4.
+- The mesh camera's focal and planes, read (fp72 / fw72b, A4_CAMADDR): the camera at 0x216F918 (a heap address,
+  the same every bench run); F (cam+4) is written by +341C0 (called from +34375) only when it changes, and the four
+  planes (cam+0x08..+0x34) right after it, **in floating point** (the dfpaeabi calls, libm's sqrt: normalised
+  normals from F and the screen's half sizes). On the Mini F runs 260 -> 200 in steps of 5 and back (the nitro's
+  widening); on the Veyron the same (vl72: 200-260, 460 at the start). So the planes are sane for any F the game
+  makes: **the field-of-view guess is ruled out.**
+- vl72 (C71 + A4_CAMADDR + A4_SEGREC + A4_GDROPMARK, the Veyron swapped into the bench save, LA, key 5 held, filmed;
+  framestat 5,850): the speedometer reached 396 km/h (322, 274, 211 in other frames) -- the bench's frame-record
+  units/ms do not convert to km/h as guessed above (the bench's guest clock and the phone's differ in what a render
+  interval spans); speed in km/h is what the photos give and what the video shows. 4 object drops, all views: a
+  crash camera (frame 8370, the video's cars flying), the GNN helicopter (11244), the race's start (114), a sharp
+  turn with the buildings still drawn (20127). Segments 36-41 as gd73's.
+- vp72 (the same probe on the owner's save -- Paris, their Veyron, filmed; framestat 6,441): 4 drops -- frame 10722
+  (segment 50, objects 82 -> 12, low for 25 renders: lap 2 has 92-99 there) is the GNN helicopter view again
+  (the video, LIVE banner; SEGREC carries no camera mode -- r72's frame record does); seg 66 on both laps the same
+  decline (a place, not a fault); 20523 a look back (direction set). **Not reproduced in the chase view at speed,
+  on either track.**
+- Who sets the window (sw72: EKA2L1_WATCH on race+0x70..+0x78, the race at 0x2039BD0): in the chase views it is
+  +4B40 (our lifted engi_04B40): cam+0x28 = the followed car's track record +0x1C -- **the window follows the car's
+  segment, not the camera's**; cam+0x2C = the car's reverse flag (its +0x28 & 0x20), flipped when the camera's yaw
+  (cam+0x20) is more than 512 (90 degrees) from a reference heading ([sp+0xDC]+0x38). The scripted and trackside
+  views set them elsewhere: +3F50 (-1, unset), +57F2 (a trackside view: the car's segment plus a random 0-5,
+  direction 1), +592E (a script: the car's segment). So a chase-view window can go wrong only through the car's
+  track record or that 90-degree test.
