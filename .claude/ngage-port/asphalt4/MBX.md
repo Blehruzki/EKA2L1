@@ -10426,3 +10426,13 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   written for a frame whose objects were taken and never drawn, or fell to under half of the 3D frame before's
   (from over 16; glr.gobjprev). slowsum.py prints them. For the next phone round, so a sky-only frame names its
   missing layer.
+- bc71 / bc67, first try: both ended after ~20 s (framestat 923 / 896) -- tunrun.sh's tunnel test reads the
+  framebuffer snapshots, black in a GPU build, as the tunnel; rerun with NOTUNNEL. bc71's counters over the 233
+  frames it had (rule 2: not a repeat of round 28's BBSINK LA counts, a check build, or round 67's gc runs, which
+  counted no sprites): 809 sprite calls reached gobj_bb_deep, a GPU item covered all 809 under round 67's rule and
+  699 under round 71's; the depth changed for 343, 110 of them now untested. Per item-sprite pair -- objects: whole
+  item nearer 2,539, straddling with the sprite behind the middle 466, in front 1,118, sprite within MESH_NEAR 0;
+  cars: 2,779 / 161 / 124 / 110. The 110 untested are the near sprites over the cars (the flame, pickups at the
+  car) -- the case meant. The objects' 1,118 are not: a long wall or a block is no sphere, and a sprite in front of
+  its middle can be behind its near end. **The rule is now the cars' only** (the scenery objects as round 60 had
+  them); the probes rebuilt (bc71, bc67: a4_gobj_emit +0BD870) and queued after hv, NOTUNNEL, 200 s, filmed.

@@ -5873,18 +5873,19 @@ static uint32_t gobj_grid(volatile struct glr *s, uint16_t *grid)
 }
 /* mesh_bb_depth's objects: the deepest bucket of an object nearer than the sprite (sb) whose box meets its rectangle,
  * at most sb - 1 (-1: none).
- * Round 71 (phone round 70: "the pickups and nitro are looking like they're clipping through the road again"): an
- * object whose buckets straddle the sprite's (qn < sb <= qf) covers it only when the sprite is behind the object's
- * middle. Round 67 put the player's car on the GPU, one box and one bucket range for the whole car (z -379..-170),
+ * Round 71 (phone round 70: "the pickups and nitro are looking like they're clipping through the road again"): a
+ * car whose buckets straddle the sprite's (qn < sb <= qf) covers it only when the sprite is behind the car's
+ * middle. Not the scenery objects: a long wall or a block is no sphere, and a sprite in front of its middle can be
+ * behind its near end (bc71: 1,118 such pairs in 233 frames, against 124 for the cars). Round 67 put the player's car on the GPU, one box and one bucket range for the whole car (z -379..-170),
  * where round 28 had kept its near faces in the table, drawn in the walk's order with the sprites (MESH_NEAR): the
  * nitro flame (quads at 191-230) and a pickup at the car then counted as covered, were tested at their own distance,
  * and the road under them, nearer than that, hid their lower part -- round 27's sinking. The game paints a straddling
  * object's faces behind the sprite under it and only its nearer faces over it; in front of the middle those are the
  * few (the flame over the car's tail), behind it the many (a pickup ahead of the car, under its body).
- * A4_BBSTRADALL (bench): round 67's rule, every straddling object a cover. */
+ * A4_BBSTRADALL (bench): round 67's rule, every straddling car a cover. */
 #ifdef A4_BBCOV
 /* bench: [0] 'BBCV', [1] calls, [2] calls a GPU item covers under round 67's rule, [3] under round 71's; per class (objects 4.., cars 8..): [+0] whole item nearer, [+1] straddling, the sprite behind
- * its middle, [+2] straddling, in front (no cover since round 71), [+3] the sprite's bucket within MESH_NEAR;
+ * its middle, [+2] straddling, in front (a car: no cover since round 71), [+3] the sprite's bucket within MESH_NEAR;
  * [12] calls whose depth round 71 changed, [13] of those now untested by the GPU's items, [14] frames, [15] the last
  * frame seen */
 #if defined(A4_BBSINK) || defined(A4_SHADSINK)
@@ -5925,7 +5926,6 @@ static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int3
         if ((int32_t)it->qn >= sb) continue;
         if (it->box[2] < x0 || it->box[0] >= x1 || it->box[3] < y0 || it->box[1] >= y1) continue;
         BBCOV_ITEM(4u, it->qn, it->qf);
-        if (BB_STRAD_SKIP(it->qn, it->qf)) continue;
         int32_t d = it->qf < sb ? (int32_t)it->qf : sb - 1;
         if (d > deep) deep = d;
     }
