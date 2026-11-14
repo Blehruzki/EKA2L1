@@ -10893,3 +10893,14 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   slip check and the target velocity use) -- under 0x80 the push is angle x speed >> 7 clamped 4..64, else 20..64.
   So in sixths +7D0 fell under 128 at the contact's second step: a speed loss first, the weak push after it. k3 /
   k6 again with the player car at every substep's start (+7D0, B4, +7FC, x, z, vx): running.
+- k3 / k6 again, the player car at every substep (+7D0, gear +7BC): the sixths' speed scalar falls 139 -> 92 on the
+  first whole step after the contact's push (step 208, substep 0) with **gear 2 -> 1**: a downshift (92 / 139 = the
+  gear ratio), thirds 139 -> 138 in gear 2, stock likewise. The slip check (+1BB98, the whole step's: dot(+010, +704)
+  >> 12 less +7D0, under -10 an rpm penalty, +7D8 -= +7DC x 8, and the downshift after it) read +010 = 126 -- the
+  last sixth's displacement x 6, a sixth spent sliding along the wall -- against 139; thirds read 132 (the last
+  third's x 3), stock its whole step's. Fix (A4_ENG6; a4_eng.h eng_slipmark / eng_slipsrc, edits.py +1BB9E, +1BBE0):
+  every car's position is kept at each whole step's check, and in a step of sixths the check's dot product reads the
+  displacement over the whole step before (now less then) -- the step's velocity stock measures -- when that check
+  was the step just before; else +010. Thirds read +010 as before (their game state untouched; the position table is
+  engine memory). o3s6c (the fix, lockstep, forced slow motion) and o3w4c (thirds with the table, the weave):
+  running.

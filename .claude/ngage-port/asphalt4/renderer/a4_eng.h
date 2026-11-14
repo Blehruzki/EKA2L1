@@ -240,6 +240,9 @@ struct eng {
     uint32_t kc[16], ks[16];         /* the wall's first push: the car (+678's address) and the step it hit, bit 31 still to come */
     uint32_t targ, tkp, tkv;         /* round 71: +FB12's first argument; a knocked car it placed; the cars on a line */
     int32_t tsp[16][4], tkt[16][4];  /* the traffic at the whole step before +FB12 (D: x, y, z, +2C) and after (T) */
+    uint32_t svc[16], svw[16], svok; /* round 73: the slip check's cars, the whole step each was last checked at, the car
+                                      * whose whole-step velocity svv holds */
+    int32_t svp[16][3], svv[3];      /* their position then, and the step's displacement (A4_ENG6's sixths) */
     uint32_t dbg[8];                 /* A4_ENGDBG: the substep's path bits and the player's keys, emitted per substep */
     uint32_t rk[ENG_NREM];           /* the word's address (0: free) */
     int8_t rv[ENG_NREM];             /* its remainder, 0 .. n - 1 (bytes since round 71: the traffic's lines needed the room) */
@@ -264,6 +267,8 @@ void eng_pown(uint32_t car, uint32_t j, int32_t d);
 void eng_pfix(uint32_t car);
 void eng_pstep(uint32_t car);
 uint32_t eng_steer_upd(uint32_t car, uint32_t br);
+void eng_slipmark(uint32_t car);
+uint32_t eng_slipsrc(uint32_t car);
 uint32_t eng_udiv(uint32_t n, uint32_t d);
 uint64_t eng_c_1b2d6(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t sp, uint32_t *r23);
 uint32_t eng_alag(uint32_t ea, uint32_t v);
@@ -513,8 +518,8 @@ static inline void ENG_BEGIN(uint32_t race)
         ENG->flush = 0;
         ENG->tlast[0] = ENG->tlast[1] = 0; ENG->tdel[0] = ENG->tdel[1] = 0;
         for (uint32_t i = 0; i < 8u; i++) { ENG->pc[i] = 0; ENG->ps[i] = 0; }
-        for (uint32_t i = 0; i < 16u; i++) ENG->sbc[i] = 0;
-        ENG->targ = 0; ENG->tkp = 0; ENG->tkv = 0;
+        for (uint32_t i = 0; i < 16u; i++) { ENG->sbc[i] = 0; ENG->svc[i] = 0; }
+        ENG->targ = 0; ENG->tkp = 0; ENG->tkv = 0; ENG->svok = 0;
     }
 #ifdef A4_ENGDBG
     {   /* bench: the last substep's record ('ENGS': count, substep, path bits, keys) with the player car */
@@ -545,7 +550,7 @@ static inline void ENG_BEGIN(uint32_t race)
             const uint32_t i = rg[0] & 255u;
             volatile uint32_t *e = rg + 4u + 8u * i;
             e[0] = ENG->wst; e[1] = ENG->sub | ENG->n << 8; e[2] = MEM32(pc + 0x7D0u);
-            e[3] = (MEM32(pc + 0xB4u) & 0xFFFFu) | MEM32(pc + 0x7FCu) << 16; e[4] = MEM32(pc + 4u); e[5] = MEM32(pc + 0xCu);
+            e[3] = (MEM32(pc + 0xB4u) & 0xFFFFu) | MEM32(pc + 0x7FCu) << 16; e[4] = MEM32(pc + 0x7BCu); e[5] = MEM32(pc + 0x7C4u);
             e[6] = MEM32(pc + 0x10u); e[7] = 0x53425553u;
             rg[0] = i + 1u;
             if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
@@ -1002,6 +1007,30 @@ static inline uint32_t eng_steer_upd(uint32_t car, uint32_t br)
     if (ENG_SUB && ENG->sbb[i] == br) return 0u;
     ENG->sbb[i] = br;
     return 1u;
+}
+/* Round 73 (k6): the slip check (+1BB98, the whole step's: dot(+010, +704) >> 12 against the speed +7D0, more than 10
+ * under it an rpm penalty and a downshift) reads +010, the last substep's displacement x n. In a step of sixths that
+ * is one sixth, and at a wall a sixth spent sliding read 126 against a speed of 139: the penalty and a downshift (the
+ * speed scalar 139 -> 92, gear 2 -> 1) that neither stock (its step's displacement) nor thirds (the last third's,
+ * 132) took. So in a step of sixths the check reads the car's displacement over the whole step before -- its position
+ * less where the last whole step's check found it, stock's own measure of a step -- when that check was the step
+ * just before; else +010. Positions are kept at every whole step for every car (thirds read +010 as before). */
+static inline void eng_slipmark(uint32_t car)
+{
+    uint32_t i, f = 16u, k;
+    for (i = 0; i < 16u; i++) { if (ENG->svc[i] == car) break; if (f == 16u && ENG->svc[i] == 0u) f = i; }
+    if (i == 16u) { i = f < 16u ? f : (car >> 4) & 15u; ENG->svc[i] = car; ENG->svw[i] = 0u; }
+    ENG->svok = 0u;
+    if (ENG->svw[i] + 1u == ENG->wst) {
+        for (k = 0; k < 3u; k++) ENG->svv[k] = (int32_t)MEM32(car + 4u + 4u * k) - ENG->svp[i][k];
+        ENG->svok = car;
+    }
+    for (k = 0; k < 3u; k++) ENG->svp[i][k] = (int32_t)MEM32(car + 4u + 4u * k);
+    ENG->svw[i] = ENG->wst;
+}
+static inline uint32_t eng_slipsrc(uint32_t car)
+{
+    return ENG->n == 6u && ENG->svok == car ? (uint32_t)(uintptr_t)ENG->svv : car + 0x10u;
 }
 /* the AI's per-car slot: its keys and +1DE78's stack argument, as the whole step's AI chose them */
 static inline uint32_t eng_ai_slot(uint32_t car)

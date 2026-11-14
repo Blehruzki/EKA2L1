@@ -113,6 +113,9 @@ T(0x1BB60, 'rpm -= brake'); T(0x1BB90, 'rpm -= 7DC/2 (key 4)')
 # +1BB98, engine drag
 # the slip check once a step (the game's decision on its step's state), with the whole penalty
 B(0x1BBD8, 'if (ENG_SUB) goto L_1BC08;', 'the slip check is the whole step\'s')
+# round 73: in a step of sixths the check reads the whole step's displacement (eng_slipmark / eng_slipsrc, a4_eng.h)
+B(0x1BB9E, 'if (!ENG_SUB) eng_slipmark(r5);', 'the car\'s position at each whole step (the slip check\'s step velocity)')
+B(0x1BBE0, 'r0 = eng_slipsrc(r5);', 'the slip check\'s velocity: +010, or in sixths the whole step\'s displacement')
 T(0x1BC2E, 'rpm -= coast'); T(0x1BC54, 'rpm -= A74/64')
 # 7C4, the gear change's delay (no engine drag while it runs): counted at the step's end, as the game
 # counts it after its step's check -- counted on substep 0 its last step lost substeps 1-2 to the drag,

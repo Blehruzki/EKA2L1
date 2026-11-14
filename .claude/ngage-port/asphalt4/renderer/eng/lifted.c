@@ -4569,6 +4569,8 @@ static uint64_t engi_1BB98(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     spp -= 24; S32(0) = r3; S32(4) = r4; S32(8) = r5; S32(12) = r6; S32(16) = r7; S32(20) = lr; /* 01bb98 push {r3, r4, r5, r6, r7, lr} */
     r5 = r0; fN = r5 >> 31; fZ = r5 == 0;                        /* 01bb9a movs r5, r0 */
     r6 = r1; fN = r6 >> 31; fZ = r6 == 0;                        /* 01bb9c movs r6, r1 */
+    /* engine: the car's position at each whole step (the slip check's step velocity) */
+    if (!ENG_SUB) eng_slipmark(r5);
     r0 = 0xD0u; fN = r0 >> 31; fZ = r0 == 0;                     /* 01bb9e movs r0, #0xd0 */
     r0 = L32(r0 + r5);                                           /* 01bba0 ldr r0, [r0, r5] */
     r1 = L32(r5 + 0x8u);                                         /* 01bba2 ldr r1, [r5, #8] */
@@ -4606,6 +4608,8 @@ L_1BBD8:
     { uint32_t ta = r0, tb = 0x10u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01bbda adds r0, #0x10 */
     r1 = GAMEW(0x1BD18);                                         /* 01bbdc ldr r1, [pc, #0x138] */
     { uint32_t ta = r5, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01bbde adds r1, r5, r1 */
+    /* engine: the slip check's velocity: +010, or in sixths the whole step's displacement */
+    r0 = eng_slipsrc(r5);
     { uint64_t rr = (ENGD_52182 ? engi_52182(r0, r1, r2, r3, S32(0), S32(4), S32(8), S32(12), S32(16), S32(20), S32(24), S32(28), r23, GAMEFN(0x1BBE4)) : a4_eng_call0(GAMEFN(0x52182), r0, r1, r2, r3, r23)); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01bbe0 bl #0x52182 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01bbe0 bl #0x52182 */
     t = SAR_C(r0, 0xCu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01bbe4 asrs r0, r0, #0xc */
