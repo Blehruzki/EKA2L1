@@ -10868,3 +10868,8 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   game step (so o3w6 diverged where the weave route itself enters slow motion: its steering script ran double speed).
   Bench code only (A4_CARREC / A4_AUTOPILOT); now from the engine's sub and n. Rebuilt with the scale and n in each
   record's header (A4_CREC_SCALE, bench): o3s3b / o3s6b / o3w6s / o3w4s queued.
+- sm73n3 / sm73 (forced slow motion 3 s in 10, A4_BENCH_SLOWMO=512, LA on the N95 model, TS=4, A4_SEGREC; thirds /
+  sixths; framestat 1,690 / 1,621, 985 renders each): substeps a render at scale 512 -- thirds 0 x88 (30% of the
+  slow-motion frames the state again), 1 x206, 2 x1; **sixths 0 x1, 1 x128, 2 x160, 3 x5** -- as at normal speed
+  (1 x410, 2 x267, 3 x13). Every slow-motion frame a new real step. Not a repeat of sm72a (the thirds before the
+  change, 0 x40 of 141).
