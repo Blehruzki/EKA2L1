@@ -10912,3 +10912,8 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   and from 228 the sixths fall behind (57 units at 228, 428 at 240, ~5,500 by 320 where the weave starts). Not a
   repeat of o3s6b (its fault at 208 fixed here). Same shape as the 208 drop (a third of the speed lost in a step: a
   downshift?); k6 rebuilt on the fix to read the substeps at 222-228.
+- The owner on slow motion (round 73): "by matching with real steps I mean modifying whatever marks those steps so it
+  includes a smoother movement for these slowdowns" -- the step's marking is what to change, not frames between
+  steps. That is A4_ENG6's design: at scale 512 the step counter (+15B1C, a4_eng6_count) marks a whole step as six
+  real substeps instead of three, so each frame of a slowdown is a new simulated state. What remains is making the
+  six add up to the game's step (the 208 fix; the 225 drop, k6c running).
