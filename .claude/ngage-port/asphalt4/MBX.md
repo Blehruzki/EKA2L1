@@ -10550,3 +10550,22 @@ c. States the bench did not enter: a drop entry with word 7 (no drop frame in an
    were never written on the bench -- the gdrop path included); a hit landing on a substep (placed by the game's own
    code, lined from the next whole step); a knock in slow motion; two knocked cars at once (one bit each, untested);
    a pickup beside a traffic car; the helicopter in LA (tested in Paris only).
+- r71 sent (owner: "I haven't tried r71 yet. Will do now"): send71/asphalt4_ngi.exe, sha256 924cbdc7..., unbaked.
+
+## Phone round 70, the grey line (photo, owner: "here's the line I'm talking about for round 70. It was harder to make it appear this time but last time there were much, much more")
+
+- Read from the photo (copied to up71line/, read with PIL): one line, a single screen row 2-3 photo rows thick
+  (~2.9 photo px a row), across the whole 3D picture -- the grass on the left, the road on the right -- and not over
+  the player's car. Its slope in the photo is the screen edge's (0.023 against 0.025 a px): an exact LCD row, about
+  row 128-140 of 240 (two HUD anchors disagree by a few rows; not settled whether it is a multiple of 16). Its colour
+  is the same over both: bluish grey -- the grass rows read (140,173,107) and the line (138,164,180); the road
+  (190,195,213) and the line (127,133,170). Not a mesh seam (it would follow geometry, not a screen row); not the
+  previous frame's row (that would be grass over grass). Read: the 3D picture missed that row and the software layer
+  under the composite shows through -- the car, drawn there, hides it.
+- Not reproduced on the bench: linescan.py (each video frame at 320x240, a row whose colour departs from rows +-2
+  across more than half the width while those two agree) over bc67 (1,645 frames), bc71 (1,071) and hv72 (822,
+  Paris) found only the HUD banner's bar (rows 178/181) and the horizon's edge (rows 121-129) -- no line. The bench's
+  GL is llvmpipe, the phone's the MBX: the composite code is shared, so a composite bug would likely show here too;
+  a row the MBX did not draw (alpha left 0, the drawn-mask then keeps the framebuffer's pixel) would not.
+- Next: a phone counter -- every 16th composite, each row's pixels the GPU left undrawn (alpha < 0x80), and a row
+  with many where the rows two above and below have few counted, with its index -- for r72. Not in r71 (sent).
