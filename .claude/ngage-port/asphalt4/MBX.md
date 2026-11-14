@@ -10641,3 +10641,15 @@ c. States the bench did not enter: a drop entry with word 7 (no drop frame in an
   the render; slowsum.py prints them). A4_SEGREC (bench): every race render -- frame, segment | direction << 16, the
   engine's substep count, the objects taken, the camera x z yaw, the player car x z -- a ring of 256 handed to
   a4_camp_emit. gd73 (C71 + A4_GDROPMARK + A4_SEGREC, LA at the N95 model, filmed): queued after the Paris pair.
+- bc72PA / bc72sPA (the same pair, Paris on the owner's save, the Veyron; framestat 5,493 / 5,428): covered by a GPU
+  item 34,470 / 5,490 = 6.28 a frame against 30,104 / 4,792 = 6.28 -- no change in the share of sprites covered
+  there; car covers whole nearer 1.64 against 8.20 a frame, objects whole 3.44 against 9.94, but straddling covers
+  behind the middle 3.37 / 1.95 (cars) -- in Paris's crowded streets the tight boxes turn whole covers into
+  straddling ones. The route did not reach the GNN helicopter camera (contact sheet, 30 frames): the light is not
+  checked on the bench.
+- Read from the Paris pair: with tight boxes more sprites fall inside a car's own depth range behind its middle
+  (3.37 a frame against 1.95) -- at night most are the cars' own lights -- and a straddled sprite was tested at its
+  own distance, the road under it hiding its lower part. Now (gobj_bb_deep, cars) such a sprite is tested at the
+  car's middle bucket when that is nearer than its own: the car's near half still hides it, the road between the
+  car's middle and the sprite does not. A4_BBSTRADALL keeps round 67's rule whole. The objects keep round 60's (a
+  long wall's middle says little).

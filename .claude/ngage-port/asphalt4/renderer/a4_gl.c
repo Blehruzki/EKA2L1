@@ -5983,7 +5983,14 @@ static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int3
                 if (it->box[2] < x0 || it->box[0] >= x1 || it->box[3] < y0 || it->box[1] >= y1) continue;
                 BBCOV_ITEM(8u, it->qn, it->qf);
                 if (BB_STRAD_SKIP(it->qn, it->qf)) continue;
-                int32_t d = it->qf < sb ? (int32_t)it->qf : sb - 1;
+                /* round 71 (bounds boxes): a car straddling the sprite, the sprite behind its middle, tests it at the
+                 * middle -- the car's near half hides it, and the road under it, nearer than the sprite but not
+                 * than the car's middle (a headlight at the car's front, a pickup under the car), does not */
+                int32_t d = it->qf < sb ? (int32_t)it->qf
+#ifndef A4_BBSTRADALL
+                          : ((int32_t)it->qn + (int32_t)it->qf) / 2 < sb - 1 ? ((int32_t)it->qn + (int32_t)it->qf) / 2
+#endif
+                          : sb - 1;
                 if (d > deep) deep = d;
             }
     }
