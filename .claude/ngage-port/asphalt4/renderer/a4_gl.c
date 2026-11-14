@@ -5274,7 +5274,8 @@ typedef int16_t __attribute__((may_alias)) go_s16;
 #define GOBJ_NG    12u                      /* texture groups a mesh */
 #define GOBJ_NH    4096u                    /* the meshes' hash (uint16 index + 1, linear probing) */
 #define GOBJ_HASH  0x00497000u
-#define GOBJ_ARENA 0x00499000u              /* per-corner records, 12 bytes each, to the staging */
+#define GOBJ_BND   0x00499000u              /* round 71: each mesh's bounds in its own frame, int16 x y z lo, x y z hi */
+#define GOBJ_ARENA 0x0049F000u              /* per-corner records, 12 bytes each, to the staging (0x499000 to round 70) */
 #ifndef A4_GOBJ_AEND
 #define A4_GOBJ_AEND 0x005A0000u            /* A4_SCRATCH_SIZE 0x1A0000: ~1 MB of corners */
 #endif
@@ -5302,6 +5303,8 @@ struct gstate {
 };
 #define GOBJ ((volatile struct gstate *)GOBJ_BASE)
 #define GMESH ((struct gmesh *)0x00467000u)
+#define GBND  ((int16_t (*)[6])GOBJ_BND)
+_Static_assert(GOBJ_BND + GOBJ_NM * 12u <= GOBJ_ARENA, "the objects' bounds under the arena");
 _Static_assert(GOBJ_BASE + sizeof(struct gstate) <= 0x00467000u, "the objects' items");
 #ifdef A4_GPUCAR
 /* Round 67 (the draw-time work: owner "start on that remaining job"; MBX.md round 67): the cars on the GPU. A car is
@@ -5328,8 +5331,10 @@ struct gcstate { uint32_t magic, frame, n, nmesh, taken, built, draws, frames_dr
                  struct gcitem it[GCAR_NI]; };
 #define GCAR ((volatile struct gcstate *)GCAR_BASE)
 #define GCMESH ((struct gcmesh *)(GCAR_BASE + 0x600u))
+#define GCBND  ((int16_t (*)[6])(GCAR_BASE + 0x480u))   /* round 71: each car mesh's bounds, as GBND */
 _Static_assert(GOBJ_BASE + sizeof(struct gstate) <= GCAR_BASE, "the objects' items under the cars'");
-_Static_assert(GCAR_BASE + sizeof(struct gcstate) <= GCAR_BASE + 0x600u, "the cars' items");
+_Static_assert(GCAR_BASE + sizeof(struct gcstate) <= GCAR_BASE + 0x480u, "the cars' items");
+_Static_assert(0x480u + GCAR_NM * 12u <= 0x600u, "the cars' bounds");
 _Static_assert(GCAR_BASE + 0x600u + GCAR_NM * sizeof(struct gcmesh) <= 0x00467000u, "the cars' meshes");
 #define GCAR_MAGIC 0x52414347u                   /* 'GCAR' */
 #endif
@@ -5361,6 +5366,71 @@ static void gobj_reset(volatile struct gstate *g)
     }
 }
 /* the object's mesh in the arena (built once; 0 if it cannot be) */
+/* Round 71 (r71 on the phone: pickups and the helicopter's light still "clipping through the road ... depending on
+ * where I stand"): an item's screen box and depth buckets for the sprites' cover test (gobj_bb_deep) and the list's
+ * grid -- from the eight corners of its mesh's own bounds (bnd: x y z lo, x y z hi) turned into view space by its
+ * rotation R (Q14, column-major: view r = (R[r] x + R[3+r] y + R[6+r] z) >> 14 + T[r]) and projected, instead of
+ * the cube around its bounding sphere. A car seen from behind covers a box about its own size, not the sphere's
+ * cube (2.5 times its area); the player's car, whose sphere comes within 512 of the camera, no longer covers the
+ * whole screen (it did: every sprite on screen was depth-tested against it). Every corner is ahead of the near
+ * plane (the take refused the item otherwise: its sphere holds the corners), so mesh_scr_i projects each.
+ * A4_GOBJ_SPHEREBOX (bench): the round 60-70 box. */
+static void gitem_box(const uint32_t *gx, int32_t F, const int32_t *R, const int32_t *T, const int16_t *bnd, int32_t rad,
+                      volatile int16_t *box, volatile uint16_t *qn, volatile uint16_t *qf)
+{
+    const int32_t cx = *(const int32_t *)gx[0x40110 / 4] >> 1, cy = *(const int32_t *)gx[0x40114 / 4] >> 1;
+    int32_t xlo = 0x7FFFFFFF, ylo = 0x7FFFFFFF, xhi = -0x7FFFFFFF, yhi = -0x7FFFFFFF, zlo = 0x7FFFFFFF, zhi = -0x7FFFFFFF;
+    if (F < 1) F = 1;
+    if (F > 16383) F = 16383;
+#ifdef A4_GOBJ_SPHEREBOX
+    (void)bnd; (void)zlo; (void)zhi;
+    {   const int32_t r = rad + 2, vx = T[0], vy = T[1], vz = T[2];
+        int32_t zn = vz + r, zf = vz - r;
+        const uint32_t n_ = zn < 0 ? (uint32_t)(-zn) >> 3 : 0u, f_ = zf < 0 ? (uint32_t)(-zf) >> 3 : 0u;
+        *qn = (uint16_t)(n_ > 4095u ? 4095u : n_); *qf = (uint16_t)(f_ > 4095u ? 4095u : f_);
+        if (zn > -512) { box[0] = -1; box[1] = -1; box[2] = VP_W; box[3] = VP_H; return; }
+        if (zf < -0x7FFF) zf = -0x7FFF;
+        for (uint32_t k = 0; k < 8u; k++) {
+            int32_t x = (k & 1u) ? vx + r : vx - r, y = (k & 2u) ? vy + r : vy - r, sx, sy;
+            if (x > 32767) x = 32767;
+            if (x < -32767) x = -32767;
+            if (y > 32767) y = 32767;
+            if (y < -32767) y = -32767;
+            mesh_scr_i(gx, F, cx, cy, x, y, (k & 4u) ? zf : zn, &sx, &sy);
+            if (sx < xlo) xlo = sx;
+            if (sx > xhi) xhi = sx;
+            if (sy < ylo) ylo = sy;
+            if (sy > yhi) yhi = sy;
+        }
+    }
+#else
+    (void)rad;
+    for (uint32_t k = 0; k < 8u; k++) {
+        const int32_t px = bnd[(k & 1u) ? 3 : 0], py = bnd[(k & 2u) ? 4 : 1], pz = bnd[(k & 4u) ? 5 : 2];
+        int32_t v[3], sx, sy;
+        for (uint32_t r = 0; r < 3u; r++)
+            v[r] = (int32_t)(((int64_t)R[r] * px + (int64_t)R[3u + r] * py + (int64_t)R[6u + r] * pz) >> 14) + T[r];
+        if (v[2] > -(ZK + 4)) { box[0] = -1; box[1] = -1; box[2] = VP_W; box[3] = VP_H; zhi = 0; break; }   /* never: the take's test */
+        if (v[2] < zlo) zlo = v[2];
+        if (v[2] > zhi) zhi = v[2];
+        for (uint32_t r = 0; r < 2u; r++) { if (v[r] > 32767) v[r] = 32767; if (v[r] < -32767) v[r] = -32767; }
+        mesh_scr_i(gx, F, cx, cy, v[0], v[1], v[2] < -0x7FFF ? -0x7FFF : v[2], &sx, &sy);
+        if (sx < xlo) xlo = sx;
+        if (sx > xhi) xhi = sx;
+        if (sy < ylo) ylo = sy;
+        if (sy > yhi) yhi = sy;
+    }
+    {   const int32_t zn = zhi + 2, zf = zlo - 2;
+        const uint32_t n_ = zn < 0 ? (uint32_t)(-zn) >> 3 : 0u, f_ = zf < 0 ? (uint32_t)(-zf) >> 3 : 0u;
+        *qn = (uint16_t)(n_ > 4095u ? 4095u : n_); *qf = (uint16_t)(f_ > 4095u ? 4095u : f_);
+        if (zhi == 0) return; }
+#endif
+    xlo -= 2; ylo -= 2; xhi += 2; yhi += 2;
+    box[0] = (int16_t)(xlo < -1 ? -1 : xlo > VP_W ? VP_W : xlo);
+    box[1] = (int16_t)(ylo < -1 ? -1 : ylo > VP_H ? VP_H : ylo);
+    box[2] = (int16_t)(xhi < -1 ? -1 : xhi > VP_W ? VP_W : xhi);
+    box[3] = (int16_t)(yhi < -1 ? -1 : yhi > VP_H ? VP_H : yhi);
+}
 static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
 {
     const uint32_t verts = GO32(obj + 0x20u), faces = GO32(obj + 0x28u), nv = GO32(obj + 0x1Cu), nf = GO32(obj + 0x24u);
@@ -5379,8 +5449,10 @@ static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
         g->full = 1; g->refused_full++; return 0;           /* emptied at the next frame */
     }
     struct gmesh *me = &GMESH[g->nmesh];
+    int16_t *const bnd = GBND[g->nmesh];
     uint32_t ng = 0, o = 0, ext = 0, e2 = 0;
     int16_t *rec = (int16_t *)(GOBJ_ARENA + g->aused * 12u);
+    bnd[0] = bnd[1] = bnd[2] = 32767; bnd[3] = bnd[4] = bnd[5] = -32767;
     /* faces grouped by texture index, each group's faces in the mesh's own order */
     for (uint32_t f = 0; f < nf; f++) {
         const uint32_t t = GO8(faces + 10u * f + 3u);
@@ -5400,7 +5472,9 @@ static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
                 const uint32_t vp = verts + 6u * v;
                 int16_t *r = rec + (o * 3u + c) * 6u;
                 r[0] = GOS16(vp); r[1] = GOS16(vp + 2u); r[2] = GOS16(vp + 4u);
-                for (uint32_t a = 0; a < 3u; a++) { const uint32_t e = (uint32_t)go_iabs(r[a]); if (e > ext) ext = e; }
+                for (uint32_t a = 0; a < 3u; a++) { const uint32_t e = (uint32_t)go_iabs(r[a]); if (e > ext) ext = e;
+                                                    if (r[a] < bnd[a]) bnd[a] = r[a];
+                                                    if (r[a] > bnd[3u + a]) bnd[3u + a] = r[a]; }
                 {   const uint32_t q2 = (uint32_t)(r[0] * r[0]) + (uint32_t)(r[1] * r[1]) + (uint32_t)(r[2] * r[2]);
                     if (q2 > e2) e2 = q2; }
                 r[3] = (int16_t)(GO8(fp + ui[c]) << 4); r[4] = (int16_t)(GO8(fp + ui[c] + 1u) << 4); r[5] = 0;
@@ -5488,40 +5562,11 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
     it->d[0] = (int32_t)dx; it->d[1] = (int32_t)dy; it->d[2] = (int32_t)dz;
     {   /* Phone round 60: the table's untested classes -- a prop's own shadow (bikes, tyres black), cut-outs -- were
          * painted over these objects: they are tested only where the list's tile grid holds a nearer face, and the
-         * objects were in no grid. So each object's screen box and depth buckets (as mesh_take's: ZW >> 3): its
-         * bounding sphere (the farthest corner's distance, gobj_mesh) around its view-space origin M[9..11]. */
+         * objects were in no grid. So each object's screen box and depth buckets (as mesh_take's: ZW >> 3): since
+         * round 71 its mesh's own bounds turned and projected (gitem_box); to round 70 the cube around its bounding
+         * sphere. */
         const uint32_t *gx = (const uint32_t *)(uintptr_t)MESH->gctx;
-        const int32_t r = (int32_t)me->rad + 2;
-        const int32_t vx = M[9], vy = M[10], vz = M[11];
-        int32_t zn = vz + r, zf = vz - r;                  /* nearest, farthest (z < 0 ahead) */
-        const uint32_t qn = zn < 0 ? (uint32_t)(-zn) >> 3 : 0u, qf = zf < 0 ? (uint32_t)(-zf) >> 3 : 0u;
-        it->qn = (uint16_t)(qn > 4095u ? 4095u : qn); it->qf = (uint16_t)(qf > 4095u ? 4095u : qf);
-        if (zn > -512) { it->box[0] = -1; it->box[1] = -1; it->box[2] = VP_W; it->box[3] = VP_H; }   /* near: everywhere */
-        else {
-            if (zf < -0x7FFF) zf = -0x7FFF;
-            int32_t F = (int32_t)GO32(cam + 4u);
-            if (F < 1) F = 1;
-            if (F > 16383) F = 16383;
-            const int32_t cx = *(const int32_t *)gx[0x40110 / 4] >> 1, cy = *(const int32_t *)gx[0x40114 / 4] >> 1;
-            int32_t xlo = 0x7FFFFFFF, ylo = 0x7FFFFFFF, xhi = -0x7FFFFFFF, yhi = -0x7FFFFFFF;
-            for (uint32_t k = 0; k < 8u; k++) {            /* the corners of the sphere's view-space box */
-                int32_t x = (k & 1u) ? vx + r : vx - r, y = (k & 2u) ? vy + r : vy - r, sx, sy;
-                if (x > 32767) x = 32767;
-                if (x < -32767) x = -32767;
-                if (y > 32767) y = 32767;
-                if (y < -32767) y = -32767;
-                mesh_scr_i(gx, F, cx, cy, x, y, (k & 4u) ? zf : zn, &sx, &sy);
-                if (sx < xlo) xlo = sx;
-                if (sx > xhi) xhi = sx;
-                if (sy < ylo) ylo = sy;
-                if (sy > yhi) yhi = sy;
-            }
-            xlo -= 2; ylo -= 2; xhi += 2; yhi += 2;
-            it->box[0] = (int16_t)(xlo < -1 ? -1 : xlo > VP_W ? VP_W : xlo);
-            it->box[1] = (int16_t)(ylo < -1 ? -1 : ylo > VP_H ? VP_H : ylo);
-            it->box[2] = (int16_t)(xhi < -1 ? -1 : xhi > VP_W ? VP_W : xhi);
-            it->box[3] = (int16_t)(yhi < -1 ? -1 : yhi > VP_H ? VP_H : yhi);
-        }
+        gitem_box(gx, (int32_t)GO32(cam + 4u), M, M + 9, GBND[me - GMESH], (int32_t)me->rad, it->box, &it->qn, &it->qf);
     }
     g->F = GO32(cam + 4u);
     g->taken++;
@@ -5659,7 +5704,9 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
         g->full = 1; c->refused_full++; return 0;
     }
     struct gcmesh *me = &GCMESH[c->nmesh];
+    int16_t *const bnd = GCBND[c->nmesh];
     uint32_t ng = 0, o = 0, ext = 0, e2 = 0;
+    bnd[0] = bnd[1] = bnd[2] = 32767; bnd[3] = bnd[4] = bnd[5] = -32767;
     int16_t *rec = (int16_t *)(GOBJ_ARENA + g->aused * 12u);
     /* each face's group: its descriptor and class (the routine's for a face no vertex of which is near) */
     for (uint32_t f = 0; f < nf; f++) {
@@ -5689,7 +5736,9 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
                 }
                 int16_t *r = rec + (o * 3u + cn) * 6u;
                 r[0] = (int16_t)x; r[1] = (int16_t)y; r[2] = (int16_t)z; r[3] = (int16_t)u; r[4] = (int16_t)v; r[5] = 0;
-                for (uint32_t a = 0; a < 3u; a++) { const uint32_t e = (uint32_t)go_iabs(r[a]); if (e > ext) ext = e; }
+                for (uint32_t a = 0; a < 3u; a++) { const uint32_t e = (uint32_t)go_iabs(r[a]); if (e > ext) ext = e;
+                                                    if (r[a] < bnd[a]) bnd[a] = r[a];
+                                                    if (r[a] > bnd[3u + a]) bnd[3u + a] = r[a]; }
                 {   const uint32_t q2 = (uint32_t)(x * x) + (uint32_t)(y * y) + (uint32_t)(z * z);
                     if (q2 > e2) e2 = q2; }
             }
@@ -5744,38 +5793,9 @@ int a4_car_take(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint3
     volatile struct gcitem *it = &c->it[c->n++];
     it->mesh = (uint32_t)(uintptr_t)me; it->F = GO32(cam + 4u);
     for (uint32_t k = 0; k < 12u; k++) it->M[k] = M[k];
-    {   /* its screen box and depth buckets, for the list's grid (as a4_obj_take's) */
+    {   /* its screen box and depth buckets, for the list's grid and the sprites' cover (as a4_obj_take's) */
         const uint32_t *gx = (const uint32_t *)(uintptr_t)MESH->gctx;
-        const int32_t r = (int32_t)me->rad + 2, vx = M[9], vy = M[10], vz = M[11];
-        int32_t zn = vz + r, zf = vz - r;
-        const uint32_t qn = zn < 0 ? (uint32_t)(-zn) >> 3 : 0u, qf = zf < 0 ? (uint32_t)(-zf) >> 3 : 0u;
-        it->qn = (uint16_t)(qn > 4095u ? 4095u : qn); it->qf = (uint16_t)(qf > 4095u ? 4095u : qf);
-        if (zn > -512) { it->box[0] = -1; it->box[1] = -1; it->box[2] = VP_W; it->box[3] = VP_H; }
-        else {
-            if (zf < -0x7FFF) zf = -0x7FFF;
-            int32_t F = (int32_t)it->F;
-            if (F < 1) F = 1;
-            if (F > 16383) F = 16383;
-            const int32_t cx = *(const int32_t *)gx[0x40110 / 4] >> 1, cy = *(const int32_t *)gx[0x40114 / 4] >> 1;
-            int32_t xlo = 0x7FFFFFFF, ylo = 0x7FFFFFFF, xhi = -0x7FFFFFFF, yhi = -0x7FFFFFFF;
-            for (uint32_t k = 0; k < 8u; k++) {
-                int32_t x = (k & 1u) ? vx + r : vx - r, y = (k & 2u) ? vy + r : vy - r, sx, sy;
-                if (x > 32767) x = 32767;
-                if (x < -32767) x = -32767;
-                if (y > 32767) y = 32767;
-                if (y < -32767) y = -32767;
-                mesh_scr_i(gx, F, cx, cy, x, y, (k & 4u) ? zf : zn, &sx, &sy);
-                if (sx < xlo) xlo = sx;
-                if (sx > xhi) xhi = sx;
-                if (sy < ylo) ylo = sy;
-                if (sy > yhi) yhi = sy;
-            }
-            xlo -= 2; ylo -= 2; xhi += 2; yhi += 2;
-            it->box[0] = (int16_t)(xlo < -1 ? -1 : xlo > VP_W ? VP_W : xlo);
-            it->box[1] = (int16_t)(ylo < -1 ? -1 : ylo > VP_H ? VP_H : ylo);
-            it->box[2] = (int16_t)(xhi < -1 ? -1 : xhi > VP_W ? VP_W : xhi);
-            it->box[3] = (int16_t)(yhi < -1 ? -1 : yhi > VP_H ? VP_H : yhi);
-        }
+        gitem_box(gx, (int32_t)it->F, M, M + 9, GCBND[me - GCMESH], (int32_t)me->rad, it->box, &it->qn, &it->qf);
     }
     c->taken++;
     return 1;

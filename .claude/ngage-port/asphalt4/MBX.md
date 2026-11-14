@@ -10569,3 +10569,33 @@ c. States the bench did not enter: a drop entry with word 7 (no drop frame in an
   a row the MBX did not draw (alpha left 0, the drawn-mask then keeps the framebuffer's pixel) would not.
 - Next: a phone counter -- every 16th composite, each row's pixels the GPU left undrawn (alpha < 0x80), and a row
   with many where the rows two above and below have few counted, with its index -- for r72. Not in r71 (sent).
+
+## Phone round 71 (r71 924cbdc7, Paris): no grey lines this race; pickups and the helicopter's light still clip
+
+- Owner: "they didnt show up in this round [the grey lines] ... they don't stay at the same height. They can appear
+  anywhere in the screen. It can be one, a couple, a small handful or a lot. It's pretty random" -- "other issues
+  with the pickups and the heli light clipping. Since these are 2d assets they tend to keep facing the camera at all
+  times. And depending on where I stand they can look like clipping through the road or not. The heli light no longer
+  looks stuttery - it slides through the road smoothly, but it also has that clippy bug." 12 photos (photos71/),
+  8 captures (phone71/). A second race, in LA, to come.
+- Photos: the GNN helicopter camera (p1-p4): the light's glow on the road cut along a straight screen row at its
+  bottom -- a sprite depth-tested against a flat road (whose depth is constant along a screen row in that view), no
+  car over it. p9 (THE AVENUE): a "$" pickup above the car on screen, its bottom flat. The nitro flame whole in p10-12
+  (round 71's rule). The light "slides smoothly" (the pursuer line, verified on the phone).
+- Telemetry: 56.2 ms a render (3D 24.6) against r70's Paris 53.8 (24.3) -- another race on the same track; per window
+  median 50.3 (r70 49.9). Frame record: camera yaw one-frame reversals **1 of 417** (r70 Paris 18, r69 1), heading
+  less camera yaw reversals 5 of 92 moving frames (r70 36 of 189). Drop ring with round 71's word 7 (it works on the
+  phone): 2 drop frames in the race; 8 entries, among them object drops -- frame 15474 22 objects, 15477 3 (camera
+  segment 69 both, camdev 21, triangles 385 -> 373): objects the game did not hand over, not lost ones (a refused
+  object goes to software and would add triangles). Its reading waits for LA.
+- Read, the clipping: gobj_bb_deep counts a GPU car or object as covering a sprite when its box meets the sprite's
+  rectangle, and the box is the cube around the item's bounding sphere -- and for an item whose sphere comes within
+  512 of the camera, **the whole screen** (a4_car_take / a4_obj_take: zn > -512). The player's car is always that
+  near (its z -379..-170): every sprite on screen was covered by it and tested at min(its far bucket, its own), and
+  the road under the sprite, nearer than that, hid its lower part. Round 71's straddle rule took the flame out; a
+  pickup or light beyond the car's far edge was still covered whole.
+- Fix (a4_gl.c gitem_box, round 71): an item's box and depth buckets from the eight corners of its mesh's own bounds
+  (computed at the mesh's build: GCBND, 24 x 12 bytes after the cars' state; GBND, 2048 x 12 bytes at 0x499000, the
+  objects' arena moved to 0x49F000), turned by its rotation and projected (mesh_scr_i, which takes near points: the
+  list uses it there) -- no full-screen box. A4_GOBJ_SPHEREBOX (bench) is the old box. bc72 / bc72s (the new / old
+  box, A4_BBCOV), LA on the bench save and Paris on the owner's, filmed: running.
