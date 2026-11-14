@@ -206,8 +206,10 @@ static inline uint32_t ROR_C(uint32_t x, uint32_t n, uint32_t *c)
 #define ENG_NREM 1024u                /* remainders of a third, one per word that keeps thirds (a hash on its address) */
 struct eng {
     uint32_t magic, race;            /* reset when a new race object appears */
-    uint32_t cnt;                    /* race steps run (substeps): the next one's substep is cnt % 3 */
-    uint32_t sub;                    /* the substep running: 0 the game's whole step, 1 and 2 motion only */
+    uint32_t cnt;                    /* race steps run (substeps) */
+    uint32_t sub;                    /* the substep running: 0 the game's whole step, 1 .. n - 1 motion only */
+    uint32_t n;                      /* round 73: this whole step's substeps -- 3; 6 in the game's slow motion (A4_ENG6) */
+    uint32_t wst;                    /* round 73: whole steps begun (the step a wall's push belongs to) */
     uint32_t keys;                   /* the player's keys as substep 0 built them, replayed on 1 and 2 */
     uint32_t nfull;                  /* words the remainder table had no room for (kept as plain thirds) */
     uint32_t nsnd;                   /* the step's effect calls (+1B2D6) so far: one per car and effect a step */
@@ -234,13 +236,13 @@ struct eng {
     int32_t pown[8][3];              /* their own move since (+1E8C0): the rest is the game placing them */
     uint32_t ps[8], pn[8];           /* a pursuer the substeps are carrying from D to T, and how many words (3 or 7) */
     uint32_t wy0, wyset;             /* A4_WRECK3: the wreck's height before this substep's +2292A, and its path set it */
-    uint32_t lc[64], ls[64][3], lv[64][3]; /* the orientation's angles a step late: the word, the last three substeps' count and value */
+    uint32_t lc[64], ls[64][6], lv[64][6]; /* the orientation's angles a step late: the word, the last six substeps' count and value */
     uint32_t kc[16], ks[16];         /* the wall's first push: the car (+678's address) and the step it hit, bit 31 still to come */
     uint32_t targ, tkp, tkv;         /* round 71: +FB12's first argument; a knocked car it placed; the cars on a line */
     int32_t tsp[16][4], tkt[16][4];  /* the traffic at the whole step before +FB12 (D: x, y, z, +2C) and after (T) */
     uint32_t dbg[8];                 /* A4_ENGDBG: the substep's path bits and the player's keys, emitted per substep */
     uint32_t rk[ENG_NREM];           /* the word's address (0: free) */
-    int8_t rv[ENG_NREM];             /* its remainder, 0..2 (bytes since round 71: the traffic's lines needed the room) */
+    int8_t rv[ENG_NREM];             /* its remainder, 0 .. n - 1 (bytes since round 71: the traffic's lines needed the room) */
 };
 #ifndef A4_ENG3
 /* Round 51: the lifted render functions (the painter, the 3D front end) built without the 3x engine.
@@ -253,8 +255,9 @@ extern volatile struct eng a4_eng_absent;
 #define ENG_SUB (ENG->sub)
 #define ENG_KEYS (ENG->keys)
 #define ENG_WRECK3 0
-#define ENG_SUB_END(car) (ENG_SUB == 2u || (ENG_SUB == 0u && (!ENG->loop || *(volatile uint32_t *)(uintptr_t)((car) + 0x34u) != 0xFFFFFFFFu)))
+#define ENG_SUB_END(car) (ENG_SUB + 1u == ENG->n || (ENG_SUB == 0u && (!ENG->loop || *(volatile uint32_t *)(uintptr_t)((car) + 0x34u) != 0xFFFFFFFFu)))
 int32_t eng_sdiv(int32_t n, int32_t d);
+int32_t eng_divn(int32_t v);
 uint32_t eng_third(uint32_t ea, uint32_t old, uint32_t nw);
 uint32_t eng_ai_slot(uint32_t car);
 void eng_pown(uint32_t car, uint32_t j, int32_t d);
@@ -310,12 +313,21 @@ static const uint16_t eng_frame_off[] = { 0xC8, 0xCC, 0xD0, 0xD4, 0x110, 0x114, 
  * game counts it after its step's */
 #ifdef A4_WRECK3
 #define ENG_WRECK3 1
-/* round 65: a wreck runs on every substep, so its last substep of the step is 2 like any car's */
-#define ENG_SUB_END(car) (ENG_SUB == 2u || (ENG_SUB == 0u && !ENG->loop))
+/* round 65: a wreck runs on every substep, so its last substep of the step is n - 1 like any car's */
+#define ENG_SUB_END(car) (ENG_SUB + 1u == ENG->n || (ENG_SUB == 0u && !ENG->loop))
 #else
 #define ENG_WRECK3 0
-#define ENG_SUB_END(car) (ENG_SUB == 2u || (ENG_SUB == 0u && (!ENG->loop || *(volatile uint32_t *)(uintptr_t)((car) + 0x34u) != 0xFFFFFFFFu)))
+#define ENG_SUB_END(car) (ENG_SUB + 1u == ENG->n || (ENG_SUB == 0u && (!ENG->loop || *(volatile uint32_t *)(uintptr_t)((car) + 0x34u) != 0xFFFFFFFFu)))
 #endif
+/* Round 73 (phone round 70: the takedown and crash cameras "in stop motion"): the game's slow motion is its step
+ * count at half rate (race+0x84C 512), a substep of a third every 56.9 ms, so frames repeated. With A4_ENG6 a whole
+ * step that begins in slow motion runs as six substeps of a sixth, one every 28.44 ms -- every value the engine
+ * divided by 3 is divided by the step's n. A value over n, truncated toward zero as v / 3 was (n is 3 or 6). */
+static inline int32_t eng_divn(int32_t v)
+{
+    if (ENG->n == 6u) { int32_t r = v / 6; __asm__("" : "+r"(r)); return r; }   /* the barrier keeps the two constant */
+    return v / 3;                                                              /* divides apart (merged: a libgcc call) */
+}
 /* Phone rounds 69-70 (edits.py at +1E8C0 and +1EA68): a pursuer (+C3C: the helicopter, the cops) moved by the game's
  * own logic on the whole step (+1C48E's placement and wobble, the police's) -- a jump a whole step long. At 3x it was
  * measured as a substep's move (x3: the error flipped and doubled each step) and drawn at 11.72 Hz. r70 spread the
@@ -355,11 +367,11 @@ static inline void eng_pown(uint32_t car, uint32_t j, int32_t d)
 }
 static inline int32_t eng_sdiv(int32_t n, int32_t d);
 static inline int32_t eng_wrap(int32_t d);
-/* the point j thirds of the way from a to b (word 6, the heading, the short way round: 2048 a turn) */
+/* the point j n-ths of the way from a to b (word 6, the heading, the short way round: 2048 a turn) */
 static inline int32_t eng_pline(uint32_t w, int32_t a, int32_t b, uint32_t j)
 {
     const int32_t d = w == 6u ? eng_wrap(b - a) : b - a;
-    const int32_t v = a + (j == 1u ? eng_sdiv(d, 3) : eng_sdiv(2 * d, 3));
+    const int32_t v = a + eng_sdiv((int32_t)j * d, (int32_t)ENG->n);
     return w == 6u ? (v & 2047) : v;
 }
 /* the whole step, at the pursuer's move (+1EA64's entry, before its measure) */
@@ -388,7 +400,7 @@ static inline void eng_pfix(uint32_t car)
         return;
     }
 }
-/* substeps 1 and 2, at the pursuer's move: two thirds of the way, then the game's own place */
+/* substeps 1 .. n - 1, at the pursuer's move: (sub + 1) n-ths of the way, then (the last) the game's own place */
 static inline void eng_pstep(uint32_t car)
 {
     uint32_t k, j;
@@ -397,8 +409,8 @@ static inline void eng_pstep(uint32_t car)
         if (ENG->ps[k] != car) continue;
         c = (volatile int32_t *)(uintptr_t)car;
         for (j = 0; j < ENG->pn[k]; j++)                  /* only the words the line carries (a cop's heading is its own) */
-            c[eng_pxo[j] / 4u] = ENG_SUB == 1u ? eng_pline(j, ENG->pw[k][j], ENG->pt[k][j], 2u) : ENG->pt[k][j];
-        if (ENG_SUB == 2u) ENG->ps[k] = 0;
+            c[eng_pxo[j] / 4u] = ENG_SUB + 1u < ENG->n ? eng_pline(j, ENG->pw[k][j], ENG->pt[k][j], ENG_SUB + 1u) : ENG->pt[k][j];
+        if (ENG_SUB + 1u >= ENG->n) ENG->ps[k] = 0;
         return;
     }
 }
@@ -427,7 +439,7 @@ static inline void eng_tsnap(uint32_t arg)
 static inline int32_t eng_tline(int32_t a, int32_t b, uint32_t j, uint32_t ang)
 {
     const int32_t d = ang ? eng_wrap12(b - a) : b - a;
-    const int32_t v = a + (j == 1u ? eng_sdiv(d, 3) : eng_sdiv(2 * d, 3));
+    const int32_t v = a + eng_sdiv((int32_t)j * d, (int32_t)ENG->n);
     return ang ? (v & 4095) : v;
 }
 static inline void eng_tknock(uint32_t car)
@@ -446,10 +458,10 @@ static inline void eng_tknock(uint32_t car)
         ENG->tkt[k][3] = c[0x2C / 4]; c[0x2C / 4] = eng_tline(ENG->tsp[k][3], ENG->tkt[k][3], 1u, 1u);
         ENG->tkv |= 1u << k;
     } else if (ENG->tkv & (1u << k)) {
-        if (ENG_SUB == 1u) {                                            /* two thirds, and this substep's own drift */
-            for (j = 0; j < 3u; j++) c[1u + j] = eng_tline(ENG->tsp[k][j], ENG->tkt[k][j], 2u, 0u) + (c[1u + j] - ENG->tkt[k][j]);
-            c[0x2C / 4] = (eng_tline(ENG->tsp[k][3], ENG->tkt[k][3], 2u, 1u) + eng_wrap12(c[0x2C / 4] - ENG->tkt[k][3])) & 4095;
-        } else ENG->tkv &= ~(1u << k);                                  /* substep 2: the game's own place */
+        if (ENG_SUB + 1u < ENG->n) {                                    /* (sub + 1) n-ths, and this substep's own drift */
+            for (j = 0; j < 3u; j++) c[1u + j] = eng_tline(ENG->tsp[k][j], ENG->tkt[k][j], ENG_SUB + 1u, 0u) + (c[1u + j] - ENG->tkt[k][j]);
+            c[0x2C / 4] = (eng_tline(ENG->tsp[k][3], ENG->tkt[k][3], ENG_SUB + 1u, 1u) + eng_wrap12(c[0x2C / 4] - ENG->tkt[k][3])) & 4095;
+        } else ENG->tkv &= ~(1u << k);                                  /* the step's last substep: the game's own place */
     }
 }
 #ifdef A4_TRAFDUMP
@@ -480,7 +492,7 @@ static inline void eng_tdrec(uint32_t race, uint32_t tag)
             for (j = 0; j < 82u; j++) q[5u + 83u * n + j] = MEM32(t + 4u * j);
             n++;
         }
-        q[3] = n | (tag ? ENG->sub : ENG->cnt % 3u) << 8 | tag << 12;
+        q[3] = n | ENG->sub << 8 | tag << 12;
         rg[0] = i + 1u;
         if (i + 1u == 12u) { rg[0] = 0; a4_camp_emit((const void *)(rg + 4u)); }
     }
@@ -493,6 +505,7 @@ static inline void ENG_BEGIN(uint32_t race)
 {
     if (ENG->magic != ENG_MAGIC || ENG->race != race) {
         ENG->magic = ENG_MAGIC; ENG->race = race; ENG->cnt = 0; ENG->keys = 0; ENG->nfull = 0; ENG->cbok = 0;
+        ENG->sub = 0; ENG->n = 3u; ENG->wst = 0;
         for (uint32_t i = 0; i < ENG_NREM; i++) { ENG->rk[i] = 0; ENG->rv[i] = 0; }
         for (uint32_t i = 0; i < 32u; i++) ENG->aic[i] = 0;
         for (uint32_t i = 0; i < 16u; i++) { ENG->kc[i] = 0; ENG->ks[i] = 0; }
@@ -571,7 +584,15 @@ static inline void ENG_BEGIN(uint32_t race)
         if (i + 1u == 48u) { rg[0] = 0; a4_camp_emit((const void *)(rg + 4u)); }
     }
 #endif
-    ENG->sub = ENG->cnt % 3u; ENG->cnt++;
+    if (ENG->cnt == 0u || ENG->sub + 1u >= ENG->n) {          /* a whole step: its substep count chosen at its start */
+        ENG->sub = 0u; ENG->wst++;
+#ifdef A4_ENG6
+        ENG->n = *(volatile uint32_t *)(race + 0x84Cu) == 512u ? 6u : 3u;   /* the game's slow motion: sixths */
+#else
+        ENG->n = 3u;
+#endif
+    } else ENG->sub++;
+    ENG->cnt++;
     if (ENG->sub == 0u) { ENG->nsnd = 0; ENG->camv = 0; ENG->loop = 0; eng_psnap(race); }
 }
 /* bench (A4_VELPROBE, phone round 68): per substep, the player car's control -- its entry, the velocity's change
@@ -681,7 +702,7 @@ static inline void eng_cam_script(uint32_t sp, uint32_t *r23, uint32_t j, volati
             /* the player's own arithmetic: 32-bit, (v << 12 - value) / (step - clock) */
             nx = t > clk ? cur[k] + eng_sdiv((int32_t)(((uint32_t)v << 12) - (uint32_t)cur[k]), t - clk) : (int32_t)((uint32_t)v << 12);
         }
-        o[0x5Cu / 4u + k] = (uint32_t)(cur[k] + eng_sdiv((nx - cur[k]) * (int32_t)j, 3));
+        o[0x5Cu / 4u + k] = (uint32_t)(cur[k] + eng_sdiv((nx - cur[k]) * (int32_t)j, (int32_t)ENG->n));
     }
     if (!live) return;
     for (k = 0; k < ENG_CAMW; k++) save[k] = cam[k];
@@ -748,7 +769,7 @@ static inline void eng_cam_pose(uint32_t sp, uint32_t *r23, uint32_t j)
         int32_t o[5], hd = car[0x678 / 4] & 2047, dh = eng_wrap(hd - ENG->cbhd), rx, rz;
         for (k = 0; k < 5u; k++) {
             const int32_t a = ENG->cbprev[k], d = k == 3u ? eng_wrap(ENG->cbcur[k] - a) : ENG->cbcur[k] - a;
-            o[k] = a + (j == 0u ? 0 : j == 1u ? d / 3 : (2 * d) / 3);
+            o[k] = a + (j == 0u ? 0 : eng_divn((int32_t)j * d));
         }
         if (dh < 256 && dh > -256) {
             eng_rot(o[0], o[1], dh, &rx, &rz);
@@ -861,9 +882,9 @@ static inline uint32_t eng_udiv(uint32_t n, uint32_t d)
     for (int b = 31; b >= 0; b--) { r = (r << 1) | ((n >> b) & 1u); if (r >= d) { r -= d; q |= 1u << b; } }
     return q;
 }
-/* A rate's store on a substep: the word keeps a third of the change the game's whole step would make,
- * floor-divided, the remainder (0..2) carried in the word's own slot, so three substeps of the same
- * change add up to the whole step's exactly. */
+/* A rate's store on a substep: the word keeps an n-th (a third; a sixth in slow motion) of the change the game's
+ * whole step would make, floor-divided, the remainder (0 .. n - 1) carried in the word's own slot, so the step's n
+ * substeps of the same change add up to the whole step's exactly. */
 static inline uint32_t eng_third(uint32_t ea, uint32_t old, uint32_t nw)
 {
     uint32_t h = (ea * 2654435761u) >> 22, n;
@@ -873,10 +894,10 @@ static inline uint32_t eng_third(uint32_t ea, uint32_t old, uint32_t nw)
         if (ENG->rk[h] == 0u) { ENG->rk[h] = ea; ENG->rv[h] = 0; break; }
     }
     t = (int32_t)(nw - old);
-    if (n == 16u) { ENG->nfull++; return old + (uint32_t)(t / 3); }
+    if (n == 16u) { ENG->nfull++; return old + (uint32_t)eng_divn(t); }
     t += ENG->rv[h];
-    q = t >= 0 ? t / 3 : -((2 - t) / 3);
-    ENG->rv[h] = t - 3 * q;
+    q = t >= 0 ? eng_divn(t) : -eng_divn((int32_t)ENG->n - 1 - t);
+    ENG->rv[h] = (int8_t)(t - (int32_t)ENG->n * q);
     return old + (uint32_t)q;
 }
 /* A third of a value with its remainder carried under a key of its own (an odd address, never a word's):
@@ -889,7 +910,7 @@ static inline int32_t eng_thirdv(uint32_t key, int32_t v) { return (int32_t)eng_
  * the game's whole one and the step's later substeps add none; later steps are thirded as before. */
 static inline void eng_kick_mark(uint32_t ea)
 {
-    uint32_t st = (ENG->cnt - 1u) / 3u, i, f = 16u;
+    uint32_t st = ENG->wst, i, f = 16u;
     for (i = 0; i < 16u; i++) {
         if (ENG->kc[i] == ea) { f = i; break; }
         if (f == 16u && (ENG->kc[i] == 0u || (ENG->ks[i] & 0x7FFFFFFFu) != st)) f = i;
@@ -899,7 +920,7 @@ static inline void eng_kick_mark(uint32_t ea)
 }
 static inline uint32_t eng_kick(uint32_t ea, uint32_t nw)
 {
-    uint32_t st = (ENG->cnt - 1u) / 3u, i;
+    uint32_t st = ENG->wst, i;
     for (i = 0; i < 16u; i++)
         if (ENG->kc[i] == ea && (ENG->ks[i] & 0x7FFFFFFFu) == st) {
             if (ENG->ks[i] & 0x80000000u) { ENG->ks[i] = st; return nw; }   /* the contact's substep: all of it */
@@ -919,16 +940,18 @@ static inline uint32_t eng_kick(uint32_t ea, uint32_t nw)
  * car's control did not run then (a wreck, the race's start), the current ones. */
 static inline uint32_t eng_alag(uint32_t ea, uint32_t v)
 {
-    uint32_t now = ENG->cnt - 1u, i, f = 64u, k = now % 3u, o = (now + 1u) % 3u, r = v;
+    const uint32_t now = ENG->cnt - 1u, L = ENG->n - 1u;     /* the lag: the step's substeps less this one */
+    uint32_t i, f = 64u, k = now % 6u, o = (now - L) % 6u, r = v;
     for (i = 0; i < 64u; i++) {
         if (ENG->lc[i] == ea) break;
         if (f == 64u && ENG->lc[i] == 0u) f = i;
     }
     if (i == 64u) {
         if (f == 64u) f = (ea >> 2) & 63u;
-        i = f; ENG->lc[i] = ea; ENG->ls[i][0] = ENG->ls[i][1] = ENG->ls[i][2] = 0xFFFFFFFFu;
+        i = f; ENG->lc[i] = ea;
+        for (uint32_t q = 0; q < 6u; q++) ENG->ls[i][q] = 0xFFFFFFFFu;
     }
-    if (ENG->ls[i][o] == now - 2u) r = ENG->lv[i][o];
+    if (now >= L && ENG->ls[i][o] == now - L) r = ENG->lv[i][o];
     ENG->ls[i][k] = now; ENG->lv[i][k] = v;
     return r;
 }
@@ -959,15 +982,15 @@ static inline uint32_t eng_ai_slot(uint32_t car)
 /* bench (phone round 70, a hit traffic car's knock on the whole step only): the substeps' clocks the step's own plus
  * the substep's third of its change, and +FB12's products from them alone -- whatever else the traffic does by the
  * clocks' advance (a knock) then sees a third of it each substep, not 0, 0 and all of it */
-#define ENG_TCLK(w) (ENG->tlast[(w)] + (uint32_t)eng_sdiv((int32_t)ENG->sub * ENG->tdel[(w)], 3))
+#define ENG_TCLK(w) (ENG->tlast[(w)] + (uint32_t)eng_sdiv((int32_t)ENG->sub * ENG->tdel[(w)], (int32_t)ENG->n))
 static inline uint32_t eng_tmul(uint32_t t, uint32_t speed, uint32_t which) { (void)which; return t * speed; }
 #else
 #define ENG_TCLK(w) (ENG->tlast[(w)])
 static inline uint32_t eng_tmul(uint32_t t, uint32_t speed, uint32_t which)
 {
-    int64_t f = (int64_t)ENG->sub * ENG->tdel[which & 1u] * (int32_t)speed;   /* the substep's share, x 3 */
+    int64_t f = (int64_t)ENG->sub * ENG->tdel[which & 1u] * (int32_t)speed;   /* the substep's share, x n */
     if (f > 0x7FFFFFFFll || f < -0x7FFFFFFFll) f = 0;                         /* (not a clock: its whole step) */
-    return t * speed + (uint32_t)((int32_t)f / 3);                            /* the game's own product, wrapped */
+    return t * speed + (uint32_t)eng_divn((int32_t)f);                        /* the game's own product, wrapped */
 }
 #endif
 #endif

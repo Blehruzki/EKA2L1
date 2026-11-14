@@ -83,7 +83,7 @@ T(0x1E602, 'grip 9FC, +0xD55 a step on the road')
 # which reaches 70% of the way in a step: the car lagged its target at a launch and after a wall)
 B(0x1E684, '{ int32_t m_ = (int32_t)MEM32(sp + 0x104u), t_ = (int32_t)MEM32(sp + 0x108u), g_, l_; uint32_t k_; '
   'ENG_VP(2u, r4, (uint32_t)m_, (uint32_t)t_, MEM32(sp + 0x10Cu), MEM32(sp + 0x110u), MEM32(sp + 0x114u)); '
-  'g_ = (m_ > t_) ? t_ : m_; l_ = t_ / 3; '
+  'g_ = (m_ > t_) ? t_ : m_; l_ = eng_divn(t_); '
   'if (t_ > 0 && g_ > l_ && g_ > 0) { int32_t f_ = (int32_t)(l_ < 0x80000 ? eng_udiv((uint32_t)l_ << 12, (uint32_t)g_) : eng_udiv((uint32_t)l_, ((uint32_t)g_ >> 12) | 1u)); '
   'for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x10Cu + k_) = (uint32_t)(int32_t)(((int64_t)(int32_t)MEM32(sp + 0x10Cu + k_) * f_) >> 12); } '
   'ENG_VP(3u, r4, MEM32(sp + 0x10Cu), MEM32(sp + 0x110u), MEM32(sp + 0x114u), MEM32(MEM32(sp + 0x150u) + 0x3Cu), MEM32(sp + 0x140u)); }',
@@ -174,8 +174,8 @@ R(0x1F13A, 'MEM32(r7 + 0x38u) = r0 = eng_kick(r7 + 0x38u, r0);', 'heading += the
 for a_ in (0x1F144, 0x1F14E):
     GE(a_, 'r5 - 0xB00u', 'B18, the wall\'s countdown, at the step\'s end')
 # +22832, the measure: a substep's displacement is a third of a step's
-B(0x22854, 'if (!ENG->meas1) { MEM32(sp + 4u) *= 3u; MEM32(sp + 8u) *= 3u; MEM32(sp + 0xCu) *= 3u; }', 'velocity per step = 3 x the substep\'s displacement')
-B(0x2286C, 'if (!ENG->meas1) { MEM32(sp + 0x1Cu) *= 3u; MEM32(sp + 0x20u) *= 3u; MEM32(sp + 0x24u) *= 3u; }', 'acceleration per step = 3 x the substep\'s change')
+B(0x22854, 'if (!ENG->meas1) { MEM32(sp + 4u) *= ENG->n; MEM32(sp + 8u) *= ENG->n; MEM32(sp + 0xCu) *= ENG->n; }', 'velocity per step = n x the substep\'s displacement')
+B(0x2286C, 'if (!ENG->meas1) { MEM32(sp + 0x1Cu) *= ENG->n; MEM32(sp + 0x20u) *= ENG->n; MEM32(sp + 0x24u) *= ENG->n; }', 'acceleration per step = n x the substep\'s change')
 # +1EA64 for a wreck: nothing on the substeps; on the whole step its measure is the game's (x 1)
 B(0x1EA68, 'if (ENG_SUB && !ENG_WRECK3 && MEM32(r0 + 0x34u) != 0xFFFFFFFFu) return 0;', 'substeps: a wreck does not move (A4_WRECK3: it does)')
 B(0x1EABC, 'ENG->meas1 = !ENG_WRECK3 && MEM32(r4 + 0x34u) != 0xFFFFFFFFu;', 'a wreck\'s measure is a whole step\'s (A4_WRECK3: a substep\'s, x 3)')
@@ -240,9 +240,9 @@ EDITS[0x1EA68]['before'] = 'if (!ENG_SUB) eng_pfix(r0); else eng_pstep(r0); ' + 
 # (+20520, its call at +20610) the same once. For those two callers (by the return address the veneer passes),
 # +0A8 = position - v/3. The other callers (traffic, rails, the stuck check, collisions) are left as they were.
 B(0x2209E, 'if (ENG_IS3 && (lr0 == GAMEFN(0x1CD22) || lr0 == GAMEFN(0x20614))) { const uint32_t c_ = r4 - 0xA8u; '
-           'r0 = MEM32(c_ + 4u) - (uint32_t)eng_sdiv((int32_t)MEM32(c_ + 0x10u), 3); '
-           'r1 = MEM32(c_ + 8u) - (uint32_t)eng_sdiv((int32_t)MEM32(c_ + 0x14u), 3); '
-           'r2 = MEM32(c_ + 0xCu) - (uint32_t)eng_sdiv((int32_t)MEM32(c_ + 0x18u), 3); }',
+           'r0 = MEM32(c_ + 4u) - (uint32_t)eng_sdiv((int32_t)MEM32(c_ + 0x10u), (int32_t)ENG->n); '
+           'r1 = MEM32(c_ + 8u) - (uint32_t)eng_sdiv((int32_t)MEM32(c_ + 0x14u), (int32_t)ENG->n); '
+           'r2 = MEM32(c_ + 0xCu) - (uint32_t)eng_sdiv((int32_t)MEM32(c_ + 0x18u), (int32_t)ENG->n); }',
   'a pursuer given a velocity (the police reaction, the police spawn): +0A8 a third of it back, for the 3x measure')
 # +2292A, the wreck's scripted path: its frame (+034) and step (+048) counters and its end, once a game step --
 # on the wreck's last substep of the step (the whole step without A4_WRECK3, where the wreck runs on it only)
@@ -265,7 +265,7 @@ for a in (0x22A02, 0x22A48):
 B(0x22A8A, 'if (ENG_WRECK3) { uint32_t k_; for (k_ = 0; k_ < 12u; k_ += 4u) S32(0x58u + k_) = (uint32_t)eng_thirdv(r4 + 0x110Cu + k_, (int32_t)S32(0x58u + k_)); }',
   'A4_WRECK3: the push along +18, a third')
 # the damping near the ground (v x (n - 1) / n, n the path's frames left): x (3n - 1) / 3n a substep
-EDITS[0x22AC4] = {'after': 'if (ENG_WRECK3) S32(0xCu) = 3u * S32(0xCu);', 'why': 'A4_WRECK3: the damping, a third'}
+EDITS[0x22AC4] = {'after': 'if (ENG_WRECK3) S32(0xCu) = ENG->n * S32(0xCu);', 'why': 'A4_WRECK3: the damping, a third'}
 # the position (+0A8, the last measured one, + the velocity): + a third of the velocity
 EDITS[0x22B2E] = {'after': 'if (ENG_WRECK3) { L32(r4 + 4u) = L32(r4 + 0xA8u) + (uint32_t)eng_thirdv(r4 + 0x1118u, (int32_t)S32(0x34u)); '
                            'L32(r4 + 0xCu) = L32(r4 + 0xB0u) + (uint32_t)eng_thirdv(r4 + 0x1120u, (int32_t)S32(0x3Cu)); }',
@@ -273,7 +273,7 @@ EDITS[0x22B2E] = {'after': 'if (ENG_WRECK3) { L32(r4 + 4u) = L32(r4 + 0xA8u) + (
 # the height: set from the path's frame (+ the ground, - the bounce); at 3x it closes on that point by the step's end
 EDITS[0x22B46] = {'after': 'if (ENG_WRECK3) ENG->wyset = 1;', 'why': 'A4_WRECK3: the height is the path\'s'}
 B(0x22B86, 'if (ENG_WRECK3 && ENG->wyset) { const int32_t t_ = (int32_t)L32(r4 + 8u), y0_ = (int32_t)ENG->wy0; '
-           'const int32_t k_ = ENG_SUB_END(r4) ? 1 : 3 - (int32_t)ENG_SUB; L32(r4 + 8u) = (uint32_t)(y0_ + eng_sdiv(t_ - y0_, k_)); ENG->wyset = 0; }',
+           'const int32_t k_ = ENG_SUB_END(r4) ? 1 : (int32_t)ENG->n - (int32_t)ENG_SUB; L32(r4 + 8u) = (uint32_t)(y0_ + eng_sdiv(t_ - y0_, k_)); ENG->wyset = 0; }',
   'A4_WRECK3: the height closes on the path\'s point by the step\'s end')
 # bench (A4_ENGDBG): the path the race step takes, per substep (eng.h's 'ENGS' record)
 import os as _os
@@ -290,8 +290,8 @@ G(0x1FD56, 'A34, a step counter (the kinematic move)')
 # +239B6, the car-car response, conjugated by the step: it reads each car's displacement so far (its
 # position - +0A8, the previous position) as the step's velocity -- at 3x a substep's, a third: x 3 on
 # reading (+23A50 the car, +23A5A the other), so its thresholds, constants and momentum see the game's.
-B(0x23A54, 'MEM32(sp + 0x98u) *= 3u; MEM32(sp + 0x9Cu) *= 3u; MEM32(sp + 0xA0u) *= 3u;', 'the car\'s displacement as a step\'s')
-B(0x23A5E, 'MEM32(sp + 0x8Cu) *= 3u; MEM32(sp + 0x90u) *= 3u; MEM32(sp + 0x94u) *= 3u;', 'the other\'s displacement as a step\'s')
+B(0x23A54, 'MEM32(sp + 0x98u) *= ENG->n; MEM32(sp + 0x9Cu) *= ENG->n; MEM32(sp + 0xA0u) *= ENG->n;', 'the car\'s displacement as a step\'s')
+B(0x23A5E, 'MEM32(sp + 0x8Cu) *= ENG->n; MEM32(sp + 0x90u) *= ENG->n; MEM32(sp + 0x94u) *= ENG->n;', 'the other\'s displacement as a step\'s')
 # It gives each car its velocity after the hit by setting its previous
 # position (+0A8 = position - the step's new displacement), which +22832 then measures. A substep's
 # measure is 3 x the displacement, so the response's displacement is a third of the step's: +0A8 =

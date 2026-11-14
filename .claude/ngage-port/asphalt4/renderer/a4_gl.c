@@ -1151,7 +1151,16 @@ int a4_step_count(void *self, int32_t *m, int32_t *n)           /* +16796: bl +1
      * rest -- to reproduce on the bench what a takedown's slow motion does to the frames */
     *(volatile uint32_t *)((uint32_t)(uintptr_t)self + 0x84Cu) = ((a4_ntick() / 1000u) % 10u) >= 7u ? (uint32_t)(A4_BENCH_SLOWMO) : 256u;
 #endif
+#ifdef A4_BENCH_SLOWSTEP
+    /* bench (round 73): the game's slow motion forced by the race's own step (race+0x30) -- 512 for A4_BENCH_SLOWSTEP
+     * steps of every three times that, 256 the rest -- so two lockstep runs slow down on the same whole steps */
+    {   const uint32_t st = *(volatile uint32_t *)((uint32_t)(uintptr_t)self + 0x30u);
+        *(volatile uint32_t *)((uint32_t)(uintptr_t)self + 0x84Cu) = st > 200u && (st / (A4_BENCH_SLOWSTEP)) % 3u == 2u ? 512u : 256u; }
+#endif
     int r = ((int (*)(void *, int32_t *, int32_t *))GAMEFN(a4_stepcnt))(self, m, n);
+#if defined(A4_ENG6) && defined(A4_ENG3)
+    { extern void a4_eng6_count(uint32_t race, int32_t *m, int32_t *n); a4_eng6_count((uint32_t)(uintptr_t)self, m, n); }
+#endif
 #ifdef A4_LOCKSTEP
     /* bench (round 31): game time cut loose from the clock -- every race update that would
      * render runs exactly A4_LOCKSTEP steps (1 normal, 2 with the step halved) and then
@@ -3532,7 +3541,7 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
          * << 13 -- the camera mode << 20 as before; bit 31 clear */
         (void)mark_q16;
         e[2] = (c[0x70u / 4u] & 0xFFFu) | (c[0x74u / 4u] ? 1u << 12 : 0u) | (c[0x94u / 4u] & 0xFFu) << 20
-             | (*(volatile uint32_t *)0x0045D00Cu & 3u) << 28;   /* the engine's substep (ENG->sub) */
+             | (*(volatile uint32_t *)0x0045D00Cu & 7u) << 28;   /* the engine's substep (ENG->sub, 0-5) */
 #else
         e[2] = mark_q16 | (c[0x94u / 4u] & 0xFFu) << 20;   /* q16, the camera mode, bit 31 = a fraction computed */
 #endif
@@ -3589,7 +3598,7 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
          * +CF6E draws are that window's) as it drew, and the engine's last substep, for the drop record */
         g->chaseavg[2] = (cm[0x70 / 4] & 0xFFF) | (cm[0x74 / 4] ? 1 << 12 : 0)
 #ifdef A4_ENG3
-                         | (int32_t)((*(volatile uint32_t *)0x0045D00Cu & 3u) << 13)
+                         | (int32_t)((*(volatile uint32_t *)0x0045D00Cu > 3u ? 3u : *(volatile uint32_t *)0x0045D00Cu) << 13)
 #endif
                          ;
 #ifdef A4_SEGREC

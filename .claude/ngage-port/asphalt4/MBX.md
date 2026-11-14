@@ -10838,3 +10838,22 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   more than n once a step), as stock makes one per slowed step. The choice of N is made at each whole step's start
   from the scale, so a step never changes N midway. At scale 256 everything stays N = 3: the lockstep oracle must
   find the normal path bit-identical.
+- Built (A4_ENG6; a4_eng.h, a4_eng.c, a4_gl.c, edits.py, lifted.c regenerated): the engine state carries n (3 or 6)
+  and wst (whole steps begun); ENG_BEGIN starts a whole step when the last substep was the step's n-1st (or the race's
+  first) and picks n from race+0x84C there (512: 6). Every "3" of the engine is now the step's n: eng_third's
+  divisor and remainder (eng_divn: two constant divides, kept apart by a compiler barrier -- merged, clang made one
+  divide by a variable, a libgcc call the blob lacks), the measure's and the car-car response's x 3, the traction's
+  third (+1E684), the pursuers' and the knocked traffic's lines (j n-ths, the last substep the game's place), the
+  chase camera's offset blend and the camera script (j / n), the traffic clock's share (sub / n), the wreck's
+  damping (n x frames) and its closing height (n - sub), a pursuer's +0A8 (v / n), the end gates (ENG_SUB_END: the
+  step's n-1st substep), the wall push's step (wst for (cnt - 1) / 3), the orientation lag (a ring of six, n - 1
+  substeps back), the key handler's "the next step is whole". The step count (a4_eng6_count, after +15B1C): at scale
+  512, when the step running or the next one is of sixths, n = m, and m = n + 1 when the update's substeps end a
+  step of sixths (stock's one +1300C a slowed step). The frame record's substep field is 3 bits (28-30); the drop
+  record's word 7 keeps 2 (3 = 3 or more). Size: +1.7 KB of code.
+- Tests running (ow7): the lockstep weave of round 71 (o3w3) on the new code without A4_ENG6 (o3w4) and with it
+  (o3w6) -- no slow motion on that route, so both must be o3w3 row for row; the same weave with slow motion forced
+  by the race's own step (A4_BENCH_SLOWSTEP=40: 512 for 40 whole steps of every 120 from step 200, so steps 320-359
+  of the weave are slowed), thirds (o3s3) against sixths (o3s6): the whole steps' states should agree as closely as
+  thirds agreed with stock (o1w against o3w2); and the forced slow motion on the N95 model, sixths (sm73) against
+  thirds (sm73n3): substeps a render in slow motion.

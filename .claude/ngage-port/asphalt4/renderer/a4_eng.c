@@ -29,11 +29,32 @@ extern const int32_t a4_hc_25e8;
 uint64_t a4_eng_keys(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3)
 {
     uint32_t r23[2], stk[8] = { 0 };
-    if (ENG->magic == ENG_MAGIC && (ENG->cnt % 3u) != 0u) return 0;
+    if (ENG->magic == ENG_MAGIC && ENG->cnt != 0u && ENG->sub + 1u < ENG->n) return 0;   /* the next step a substep */
 #ifdef A4_LIVEKEYS
     ENG->kobj = r0; ENG->kmask = r1; ENG->kok = 1;   /* for the substeps' copy (eng_keys_peek) */
 #endif
     return a4_eng_call(GAMEFN_PH(a4_hc_25e8), r0, r1, r2, r3, (uint32_t)(uintptr_t)stk, r23);
+}
+#endif
+#if defined(A4_ENG6) && defined(A4_ENG3)
+/* Round 73: the race update's step count (+15B1C, after it ran) in the game's slow motion. The game counts its steps
+ * with the period scale x 7111 >> 8 -- at 512 a substep every 56.9 ms, the real steps between filled with +1300C (the
+ * effects' frame counters, the camera). While the engine's steps are sixths (the step running is, or the next substep
+ * begins one, which the scale makes a sixths step) every real step is a substep: n = m. And one +1300C a whole step,
+ * as stock makes one a slowed step: m one more than n when these substeps end a step of sixths. */
+void a4_eng6_count(uint32_t race, int32_t *m, int32_t *n)
+{
+    uint32_t s, nn, k, ends = 0;
+    if (ENG->magic != ENG_MAGIC || ENG->race != race || *m <= 0) return;
+    if (*(volatile uint32_t *)(race + 0x84Cu) != 512u) return;
+    if (ENG->cnt != 0u && ENG->n != 6u && ENG->sub + 1u < ENG->n) return;   /* a step of thirds still running */
+    *n = *m;
+    s = ENG->cnt == 0u ? 5u : ENG->sub; nn = ENG->cnt == 0u ? 6u : ENG->n;
+    for (k = 0; k < (uint32_t)*n; k++) {
+        if (s + 1u >= nn) { s = 0u; nn = 6u; } else s++;
+        if (nn == 6u && s == 5u) ends++;
+    }
+    if (ends) *m = *n + 1;
 }
 #endif
 #define ENGV(x) uint64_t a4_engv_##x(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, \
