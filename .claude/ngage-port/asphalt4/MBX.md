@@ -10494,3 +10494,11 @@ The direction of round 50, taken up again: every frame drawn from a real simulat
   measure (+22832, at +FF84, before the line) stay the game's; the next call places it from its own state again.
   Not over a jump of more than 0x2000. The engine state had 64 bytes left: the remainder table's values (0..2) are
   bytes now (int8_t rv[1024], 3 KB freed). yt74 (the fix, TRAFDUMP, the twin route): running.
+- yt74 (the knock fix, TRAFDUMP, the twin route; framestat 3,756): slot 5 hit at cnt 4010 beside the player
+  (distance 53-68). Its moves per substep after the hit, (x, z): (-55,7) (-69,4) (-73,5) | (-54,6) (-72,5) (-72,5) |
+  (-59,7) (-77,5) (-77,5) | (-54,6) (-72,4) (-73,4) | (-54,5) (-72,4) (-74,2) -- even within ~25% (the whole step's
+  third, then the two substeps' with their own lane drift, -18 each); spin +2C -271 -209 -241 | -261 -229 -231 |
+  -282 -251 -251 | -386 -386 -387. yt73 (no fix, the same route family): (104,-71) (-2,2) (-6,5) a step. The
+  largest substep-to-substep move change over the race: 89 (yt73 161, yt72 148). **The knock is drawn smoothly now.**
+  Not measured: whether the knock's size matches stock's (the hit itself is the game's; the oracle comparison of a
+  hit needs the same contact in both runs, which the routes do not repeat).
