@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Round 72: the scenery per render, from the frame record (FRC1) of each capture (a4_gl.c A4_GL_FREC under
 # A4_ENG3): e[2] = the camera's track segment (12 bits) | its direction word set << 12 | the scenery objects the
-# GPU took (7 bits, saturated) << 13 | the camera mode (race+0x94) << 20 | the engine's substep << 28.
+# GPU took (7 bits, saturated) << 13 | the camera mode (race+0x94) << 20 | the engine's substep (3 bits, 0-5) << 28.
 # Prints each capture's renders where the objects fell under half the render before's (from over 16), with the
 # renders around them, and a summary of objects by segment (direction 0, chase modes). Usage: objrec.py <dir> [ctx]
 import sys, struct, glob, os, collections
@@ -19,7 +19,7 @@ for fn in sorted(glob.glob(os.path.join(sys.argv[1], 'a4tel*.dat'))):
     for i in range(n - k, n):
         e = struct.unpack_from('<8I', d, OFF + 16 + (i % 256) * 32)
         E.append(dict(ms=e[0], seg=e[2] & 0xFFF, dir=(e[2] >> 12) & 1, obj=(e[2] >> 13) & 0x7F, mode=(e[2] >> 20) & 0xFF,
-                      sub=(e[2] >> 28) & 3, car=(s32(e[3]), s32(e[4])), hd=e[5] & 0xFFFF, yaw=e[5] >> 16, cam=(s32(e[6]), s32(e[7]))))
+                      sub=(e[2] >> 28) & 7, car=(s32(e[3]), s32(e[4])), hd=e[5] & 0xFFFF, yaw=e[5] >> 16, cam=(s32(e[6]), s32(e[7]))))
     print('%s capidx %d renders %d (kept %d) line rows %d%s' % (fn.split('/')[-1], cap, n, k, lc,
           ' last: row %d undrawn %d frame %d' % (last & 0xFF, (last >> 8) & 0xFF, last >> 16) if lc else ''))
     for e in E:

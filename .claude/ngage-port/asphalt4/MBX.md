@@ -10857,3 +10857,14 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   of the weave are slowed), thirds (o3s3) against sixths (o3s6): the whole steps' states should agree as closely as
   thirds agreed with stock (o1w against o3w2); and the forced slow motion on the N95 model, sixths (sm73) against
   thirds (sm73n3): substeps a render in slow motion.
+- o3w4 (the new code without A4_ENG6, the round-71 lockstep weave; framestat 2,117): **row for row o3w3** -- the
+  weave's 63 rows identical, and in all 561 whole-step car records the position, velocity, +0A8, heading, speed
+  (B4), steering (+7FC, +808) and drift (+9F8) identical; the record words that differ are the same 405 offsets in
+  which o3w3 and o3w2 already differed (pointers and render state). The thirds path is unchanged.
+- o3w6 (the same with A4_ENG6): identical to step 288, then apart (speed 189 / 100 at step 289). o3s3 / o3s6 (forced
+  slow motion from step 201): identical to 202, then the sixths run moved **half** a step's distance a record at the
+  same speed. Cause: the bench recorder and the autopilot's key script (a4_gl.c car_record) took "the next race step
+  is whole" from cnt % 3 -- in a step of sixths they fired every three substeps, two records and two script steps a
+  game step (so o3w6 diverged where the weave route itself enters slow motion: its steering script ran double speed).
+  Bench code only (A4_CARREC / A4_AUTOPILOT); now from the engine's sub and n. Rebuilt with the scale and n in each
+  record's header (A4_CREC_SCALE, bench): o3s3b / o3s6b / o3w6s / o3w4s queued.

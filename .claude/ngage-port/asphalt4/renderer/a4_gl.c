@@ -1263,10 +1263,10 @@ static void car_record(uint32_t race, uint32_t what)
 {
 #ifdef A4_ENG3
     {   /* round 50, the 3x engine: the keys and the record before a whole step only (a4_eng.h's state:
-         * magic, race, cnt -- the next race step's substep is cnt % 3), so the autopilot's scripts and the
-         * records keep the game's 85.33 ms steps */
+         * magic, race, cnt, sub, n -- round 73: the next race step is whole when the last was its step's n-1st), so
+         * the autopilot's scripts and the records keep the game's steps (85.33 ms; 170.67 in slow motion) */
         volatile uint32_t *eg = (volatile uint32_t *)0x0045D000u;
-        if (eg[0] == 0x33454E47u && (eg[2] % 3u) != 0u) return;
+        if (eg[0] == 0x33454E47u && eg[2] != 0u && eg[3] + 1u < eg[4]) return;
     }
 #endif
     volatile uint32_t *r = (volatile uint32_t *)A4_GL_CREC;
@@ -1378,6 +1378,10 @@ static void car_record(uint32_t race, uint32_t what)
     if (!(what & 2u)) return;
     r[0] = 0x43455243u; r[2] = K ? ((volatile uint32_t *)K)[0] : 0; r[3] = K ? ((volatile uint32_t *)K)[1] : 0;
     r[4] = car; r[5] = idx; r[6] = K ? ((volatile uint32_t *)K)[11] : 0; r[7] = *(volatile uint32_t *)(race + 0x44);
+#ifdef A4_CREC_SCALE
+    /* bench (round 73): the slow-motion scale (race+0x84C) << 8 and the engine's substeps a step (n) << 24 beside it */
+    r[5] = idx | (*(volatile uint32_t *)(race + 0x84Cu) & 0xFFFFu) << 8 | (*(volatile uint32_t *)0x0045D010u & 0xFFu) << 24;
+#endif
     a4_rec_emit2((const void *)r, car ? (const void *)car : (const void *)r, (const void *)race);
 #ifdef A4_CARREC_AI
     {   /* bench (round 43): an opponent too (race slot 1, or 2 if the player is 1): 'CREA' */
