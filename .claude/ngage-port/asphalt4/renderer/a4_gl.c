@@ -3543,7 +3543,32 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         const volatile int32_t *cm = (const volatile int32_t *)race;
         g->rendered = 1;
         g->camok = car != 0;
-        g->chaseavg[2] = cm[0x70 / 4];      /* round 71: the camera's track segment (cam+0x28) as it drew, for the drop record */
+        /* round 71: the camera's track segment (cam+0x28, race+0x70) and its direction word (cam+0x2C, race+0x74: the
+         * render's segment window +C9B0 runs ahead of the segment when 0, behind it otherwise -- the scenery objects
+         * +CF6E draws are that window's) as it drew, and the engine's last substep, for the drop record */
+        g->chaseavg[2] = (cm[0x70 / 4] & 0xFFF) | (cm[0x74 / 4] ? 1 << 12 : 0)
+#ifdef A4_ENG3
+                         | (int32_t)((*(volatile uint32_t *)0x0045D00Cu & 3u) << 13)
+#endif
+                         ;
+#ifdef A4_SEGREC
+        {   /* bench (round 71, the vanishing scenery): every race render -- a ring of 256 x 8 words at 0x5A2000 (A4_SCRATCH_SIZE
+             * >= 0x1A6000) handed to a4_camp_emit when it wraps: frame, segment, direction, the engine's substep count,
+             * the objects taken this frame, the camera x z and yaw, the player car x z */
+            extern void a4_camp_emit(const void *);
+            extern uint32_t a4_gobj_now(uint32_t frames);
+            volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+            uint32_t i = rg[0] & 255u;
+            volatile uint32_t *e = rg + 4u + 8u * i;
+            e[0] = g->frames; e[1] = (uint32_t)cm[0x70 / 4] | (uint32_t)cm[0x74 / 4] << 16;
+            e[2] = *(volatile uint32_t *)0x0045D008u;
+            e[3] = a4_gobj_now(g->frames);
+            e[4] = (uint32_t)cm[0x58 / 4]; e[5] = (uint32_t)cm[0x60 / 4]; e[6] = (uint32_t)cm[0x68 / 4];
+            e[7] = car ? ((uint32_t)car[1] & 0xFFFFu) | (uint32_t)car[3] << 16 : 0u;
+            rg[0] = i + 1u;
+            if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
+        }
+#endif
         if (car) for (int i = 0; i < 3; i++) g->camoff[i] = cm[0x58 / 4 + i] - car[1 + i];
         if (car) {   /* the running average of the offset's distance on the ground and height -- what does
                       * not turn with the car (r40cf: the world-frame offset turns in every bend, and the
@@ -5972,6 +5997,13 @@ static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int3
 #endif
     return deep;
 }
+#ifdef A4_SEGREC
+uint32_t a4_gobj_now(uint32_t frames)              /* bench (round 71): the objects taken this frame */
+{
+    const volatile struct gstate *go = GOBJ;
+    return go->magic == GOBJ_MAGIC && go->frame == frames ? go->n : 0u;
+}
+#endif
 /* bench: the counters, every 256th flush, EKA2L1_PCMEM at a4_gobj_emit (r0: the state's first 0x40 bytes) */
 __attribute__((noinline)) void a4_gobj_emit(const void *st) { __asm__ volatile("" : : "r"(st) : "memory"); }
 #endif
@@ -9414,8 +9446,10 @@ int a4_gl_frame(uint32_t fps)
                      * leaves out -- the GPU's scenery and cars draw no table triangles -- and where the camera stood.
                      * Word 7 (the speculation's time, 0 since round 63): the camera's segment (12 bits) | the
                      * objects taken (8) << 12 | drawn << 20 | taken this frame << 21 | the cars taken (5) << 22 |
-                     * this frame << 27 | 1 << 31 (the word holds this) */
+                     * this frame << 27 | the camera's direction word set << 28 | the engine's substep (2) << 29 |
+                     * 1 << 31 (the word holds this) */
                     uint32_t w7 = ((uint32_t)rendered && camok ? (uint32_t)s->chaseavg[2] & 0xFFFu : 0xFFFu) | 0x80000000u;
+                    if (rendered && camok) w7 |= ((uint32_t)s->chaseavg[2] >> 12 & 7u) << 28;   /* direction, substep (2) */
 #ifdef A4_GPUOBJ
                     {   const volatile struct gstate *go = GOBJ;
                         if (go->magic == GOBJ_MAGIC)

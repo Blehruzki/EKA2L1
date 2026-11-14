@@ -37,7 +37,7 @@ show(sorted(L, key=lambda e: e[14]), 'the last 8 frames with list triangles lost
 # were taken and not drawn, or fell to under half of the frame before's
 W = [e for e in sorted(L, key=lambda e: e[14]) if e[0] and e[7] >> 31]
 if W:
-    print('  drop entries (round 71 word 7): frame, camera segment, objects taken, drawn, this frame, cars taken, this frame')
+    print('  drop entries (round 71 word 7): frame, camera segment, objects taken, drawn, this frame, cars taken, this frame, direction set, substep')
     for e in W:
         w = e[7]
-        print('  %6d %6d %6d %6d %6d %6d %6d' % (e[14], w & 0xFFF, (w >> 12) & 0xFF, (w >> 20) & 1, (w >> 21) & 1, (w >> 22) & 0x1F, (w >> 27) & 1))
+        print('  %6d %6d %6d %6d %6d %6d %6d %6d %6d' % (e[14], w & 0xFFF, (w >> 12) & 0xFF, (w >> 20) & 1, (w >> 21) & 1, (w >> 22) & 0x1F, (w >> 27) & 1, (w >> 28) & 1, (w >> 29) & 3))

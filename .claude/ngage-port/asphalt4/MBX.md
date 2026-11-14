@@ -10623,3 +10623,21 @@ c. States the bench did not enter: a drop entry with word 7 (no drop frame in an
 - bc72LA (the bounds box + A4_BBCOV, LA, 3,534 frames): sprite calls 3.96 a frame (bc71 4.17); covered by a GPU item
   3.15 a frame (3.87); car covers (whole item nearer) 1.24 a frame against 4.97 -- the player's car no longer covers
   the screen; object covers 8.5 against 12.3.
+- bc72LA / bc72sLA (the bounds box / the sphere's cube, both with round 71's cars-only straddle rule, A4_BBCOV, the
+  same LA run, filmed; framestat 5,331 / 5,474): sprite calls 3.96 / 4.42 a frame; covered by a GPU item 3.15 /
+  4.17 (-24%); car covers (whole nearer) 1.24 / 7.07 (5.7 times fewer); object covers 8.5 / 12.4; the flame's pixels
+  under the bumper (as bc71/bc67), median 592 / 537 (+10%), 90% 1,130 / 1,230. Paris (the owner's save: the GNN
+  helicopter's light) next.
+- The scenery, read (rule 4: from the binary): the render's scenery objects are one loop, +CF6E (from +D7D0), over
+  the objects of a window of track segments that +C9B0 computes from the camera: cam+0x28 (race+0x70, the segment)
+  and cam+0x2C (race+0x74, the direction word): 0 -- the window starts 2 segments behind and runs 12 (or 14, a
+  track flag) ahead; set -- it runs the other way, behind the camera. A wrong segment or a flipped direction for one
+  render leaves the street's objects outside the window: gone, while the road (drawn by another walk) stays -- the
+  owner's photos. Round 39's empty render was the segment interpolated across the lap's wrap. Writers: the camera
+  placement family (+4010: the segment from the followed car's track record +0x1C when unset; +40D4/+41F0/+42BC
+  the direction cleared on a mode's set-up), +12DEC (bit 4 of +0x28 toggled around its +5968 call), +13968
+  (+0x28). The 3x engine's substeps keep the placement's own +0x28 and +0x2C (eng_cam_pose, words 10 and 11).
+- Drop record, word 7, extended: the direction word set << 28 and the engine's last substep (2 bits) << 29 (from
+  the render; slowsum.py prints them). A4_SEGREC (bench): every race render -- frame, segment | direction << 16, the
+  engine's substep count, the objects taken, the camera x z yaw, the player car x z -- a ring of 256 handed to
+  a4_camp_emit. gd73 (C71 + A4_GDROPMARK + A4_SEGREC, LA at the N95 model, filmed): queued after the Paris pair.
