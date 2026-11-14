@@ -10904,3 +10904,11 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   was the step just before; else +010. Thirds read +010 as before (their game state untouched; the position table is
   engine memory). o3s6c (the fix, lockstep, forced slow motion) and o3w4c (thirds with the table, the weave):
   running.
+- o3w4c (thirds with the slip table, the weave; framestat 2,119): identical to o3w4 in every physics field of all
+  561 records -- the table changes nothing in thirds. o3s6c (sixths with the slip fix, forced slow motion from step
+  201, lockstep; framestat 3,124): the downshift at step 208 is gone -- heading 659 -> 602 -> 561 -> 542 against
+  thirds 603 / 559 / 537 and stock 606 / 566 / 546, speed 130-151 against 133-154, position within 1-36 units of
+  thirds to step 224. Then a second fault: speed **151 -> 114** at step 225-226 (thirds 154, stock 156), sixths only,
+  and from 228 the sixths fall behind (57 units at 228, 428 at 240, ~5,500 by 320 where the weave starts). Not a
+  repeat of o3s6b (its fault at 208 fixed here). Same shape as the 208 drop (a third of the speed lost in a step: a
+  downshift?); k6 rebuilt on the fix to read the substeps at 222-228.
