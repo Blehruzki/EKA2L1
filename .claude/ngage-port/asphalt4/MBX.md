@@ -11052,3 +11052,9 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   substeps 4-5 hold the target instead of running past it. Thirds unchanged (n = 3: the old arithmetic). Builds:
   sm73e 938,220 bytes; the C72 flags alone (c72chk) 936,576 (r72 934,508: round 73's generalisations, thirds checked
   identical in o3w4 / o3w4c). sme73 (crash-steer, forced slow motion): running.
+- sme73 (crash-steer on sm73e, the chase at +1300C; framestat 2,984): **chase hops 0 of 137 sixths renders** (smd73 5
+  of 126; normal speed 0-1 in 300-400); the camera's move less the car's in sixths median 0, p90 8.6, max 26 (smd73 3
+  / 11.2 / 57.7); the camera and the car move alike frame to frame (16 / 16, 15 / 15, 18 / 18, 22 / 22; the larger
+  ones in turns, the offset swinging with the heading). No crash camera fell in a slowed window this run (sixths
+  renders in mode 2 only), so the script's re-placement after +1300C is not yet seen; sme73b (the same again):
+  running.
