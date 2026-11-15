@@ -11492,3 +11492,19 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   1084, 828, 700, 572, 316) are 1024 + ~57 + k x 128 -- a fixed part plus whole sixteenths.
 - tv1 (C74 + TKREC + TKREC_SELF, no autopilot, '5' held as tk77 drove -- tk77's takedown was the silver opponent at
   ~25 s -- Paris, owner's save, N95 model, 400 s, the watch on the wreck's heading): running.
+- **tv1 (C74 + TKREC + TKREC_SELF, '5' held, no autopilot, Paris, owner's save, N95 model, 400 s; framestat 2,749):
+  three crash / takedown cameras (cnt 637, 1603, 2777); the watch on the first wreck (an opponent, 025CF810) named
+  the writer -- game +521AE (+521A0, a vector add) called from +197C4: +197B8, the car's rotate (vtable +0x2C:
+  angles += a vector, then +1971E), turning the heading +34, +29, +112, +128, +128, -126, -101, -44 on single
+  substeps, the lifted +1EA64's small corrections (-2 .. -14) between.** Its callers through the vtable: +23BCE and
+  +23C0E in +239B6, the car-car response (lifted): for each car, heading += clamp(torque >> 4, -128, 128), the
+  torque the contact arm x the impulse. The game does it once a step (a takedown's wreck turns <= 1/16 turn a step,
+  drawn at 11.72 Hz); the 3x engine runs the response every substep, so a car turned the whole kick on each substep
+  that found the contact and none on the others -- the sixteenths and holds of tk77, the takedown's stop-motion. The
+  response's displacement and velocity were already conjugated (rounds 50, 70: x n on reading, a third on setting);
+  its spin was not.
+- Fix (a4_eng.h eng_spin / eng_spin_apply; edits.py +23BC6, +23C06, +1971E): a car's first kick in a step is the
+  step's, as the game computes one -- a share turned at once (k - (n-1) x trunc(k / n)), the rest evenly at the
+  next n - 1 substeps' +1971E entry (the orientation built from it); the step's later kicks for the car dropped; an
+  unfinished spread finished with the next kick. lifted.c regenerated: the diff is the three insertions only. Builds:
+  C74 (941,952 bytes), C74stock (unchanged code path), the probe tv2. tv2 (tv1's run with the fix): running.

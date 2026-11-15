@@ -204,6 +204,7 @@ static inline uint32_t ROR_C(uint32_t x, uint32_t n, uint32_t *c)
 /* the 3x engine's own state (A4_ENG3): the scratch block the half-step physics used (0x45D000; the two
  * are never built together, a4_eng.c checks) */
 #define ENG_NREM 1024u                /* remainders of a third, one per word that keeps thirds (a hash on its address) */
+#define ENG_NSPIN 16u                /* round 74: the cars a contact turned, spread over a step (eng_spin) */
 struct eng {
     uint32_t magic, race;            /* reset when a new race object appears */
     uint32_t cnt;                    /* race steps run (substeps) */
@@ -250,6 +251,11 @@ struct eng {
     int8_t rv[ENG_NREM];             /* its remainder, 0 .. n - 1 (bytes since round 71: the traffic's lines needed the room) */
     int32_t tkd[16][4];              /* round 74: a knocked car's own drift over its last step, n substeps' worth (x, y, z, +2C) */
     uint32_t tkds[16];               /* the substep count that drift was measured at (valid for the next step's substep 0) */
+    uint32_t spc[ENG_NSPIN];         /* round 74: a car a contact turned (0: free) -- eng_spin */
+    uint32_t sps[ENG_NSPIN];         /* the whole step its kick belongs to */
+    int32_t spr[ENG_NSPIN];          /* the kick's part still to turn */
+    uint32_t spt[ENG_NSPIN];         /* the substep count it last turned at */
+    uint8_t spl[ENG_NSPIN];          /* the substeps the rest is spread over */
 };
 #ifdef A4_KICKREC
 /* bench (round 73): a probe of the engine's address-keyed tables -- each table's evictions (a key that found its
@@ -304,6 +310,8 @@ void eng_cam_unblend(void);
 void eng_tsnap(uint32_t arg);
 void eng_tknock(uint32_t car);
 int32_t eng_thirdv(uint32_t key, int32_t v);
+int32_t eng_spin(uint32_t car, int32_t k);
+void eng_spin_apply(uint32_t car);
 void ENG_BEGIN(uint32_t race);
 extern const uint16_t eng_frame_off[10];
 #define ENG_NFRAME 10u
@@ -547,6 +555,7 @@ static inline void ENG_BEGIN(uint32_t race)
         for (uint32_t i = 0; i < 32u; i++) ENG->aic[i] = 0;
         for (uint32_t i = 0; i < 16u; i++) { ENG->kc[i] = 0; ENG->ks[i] = 0; }
         for (uint32_t i = 0; i < 16u; i++) ENG->tkds[i] = 0x80000000u;   /* round 74: no knock drift measured yet */
+        for (uint32_t i = 0; i < ENG_NSPIN; i++) { ENG->spc[i] = 0; ENG->spl[i] = 0; ENG->spr[i] = 0; }   /* no spin spread */
         for (uint32_t i = 0; i < 64u; i++) ENG->lc[i] = 0;
         ENG->flush = 0;
         ENG->tlast[0] = ENG->tlast[1] = 0; ENG->tdel[0] = ENG->tdel[1] = 0;
@@ -1022,6 +1031,43 @@ static inline uint32_t eng_third(uint32_t ea, uint32_t old, uint32_t nw)
 /* A third of a value with its remainder carried under a key of its own (an odd address, never a word's):
  * a per-step change the game applies through code that is not a store (a vector add, a call). */
 static inline int32_t eng_thirdv(uint32_t key, int32_t v) { return (int32_t)eng_third(key | 1u, 0u, (uint32_t)v); }
+/* Round 74 (phone round 73: "the cars are still looking stop-motion-ish during takedown cams"): a contact's spin.
+ * +239B6, the car-car response, turns each car by clamp(torque >> 4, -128, 128) about y through its rotate (+197B8,
+ * the car's vtable +0x2C: angles += the vector, then +1971E). The game does it once a step, so a takedown's wreck
+ * turns up to a sixteenth of a turn a step, drawn at 11.72 Hz. Run every substep, the response turned the car the
+ * whole kick on each substep that found the contact and not at all on the others (tv1, the watch on a wreck's
+ * heading: +34, +29, +112, +128, +128, -126, -101 on single substeps, held between) -- the heading in sixteenths.
+ * Now a car's first kick in a step is the step's kick, as the game computes one; it is turned a share now and the
+ * rest evenly at the next n - 1 substeps' orientation (+1971E's entry); the step's later kicks for that car are
+ * dropped, and a spread still unfinished at the next kick is finished with it. */
+static inline int32_t eng_spin(uint32_t car, int32_t k)
+{
+    uint32_t i, f = ENG_NSPIN;
+    const int32_t n = (int32_t)ENG->n;
+    int32_t s, q;
+    for (i = 0; i < ENG_NSPIN; i++) {
+        if (ENG->spc[i] == car) { f = i; break; }
+        if (f == ENG_NSPIN && (ENG->spc[i] == 0u || (ENG->spl[i] == 0u && ENG->sps[i] != ENG->wst))) f = i;
+    }
+    if (f == ENG_NSPIN) { f = (car >> 4) % ENG_NSPIN; ENG_EVIC(5); ENG->spl[f] = 0; ENG->spr[f] = 0; }
+    if (ENG->spc[f] != car) { ENG->spc[f] = car; ENG->sps[f] = ENG->wst - 1u; ENG->spr[f] = 0; ENG->spl[f] = 0; }
+    if (ENG->sps[f] == ENG->wst) return 0;            /* the step's kick is already the car's */
+    s = ENG->spr[f];                                  /* the last kick's unfinished part, turned now */
+    q = eng_sdiv(k, n);                               /* toward zero: a share of each sign alike */
+    s += k - q * (n - 1);
+    ENG->sps[f] = ENG->wst; ENG->spr[f] = q * (n - 1); ENG->spl[f] = (uint8_t)(n - 1); ENG->spt[f] = ENG->cnt;
+    return s;
+}
+static inline void eng_spin_apply(uint32_t car)
+{
+    uint32_t i;
+    int32_t d;
+    for (i = 0; i < ENG_NSPIN; i++) if (ENG->spc[i] == car) break;
+    if (i == ENG_NSPIN || ENG->spl[i] == 0u || ENG->spt[i] == ENG->cnt) return;
+    d = eng_sdiv(ENG->spr[i], (int32_t)ENG->spl[i]);
+    ENG->spr[i] -= d; ENG->spl[i]--; ENG->spt[i] = ENG->cnt;
+    MEM32(car + 0x678u) += (uint32_t)d;               /* the heading; +1971E builds the matrix from it next */
+}
 /* The wall's first push (+1ED4C: the heading turned off the wall by half the angle met, clamped 20..64,
  * while +B18 counts the contact's 5 steps). The game turns the car the whole push at the step the contact
  * starts; three thirds, each on the angle the last one left, add up to less (30 against stock's 49 at a

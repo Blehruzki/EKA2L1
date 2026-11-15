@@ -311,6 +311,12 @@ for a, pa, pp in ((0x23D16, 0xBC, 0xC0), (0x23D56, 0xC4, 0xC8)):
     EDITS[a] = {'after': '{ uint32_t a_ = MEM32(sp + 0x%Xu), p_ = MEM32(sp + 0x%Xu), k_; for (k_ = 0; k_ < 12u; k_ += 4u) '
                          'MEM32(a_ + k_) = MEM32(p_ + k_) - (uint32_t)eng_thirdv(a_ + k_, (int32_t)(MEM32(p_ + k_) - MEM32(a_ + k_))); }' % (pa, pp),
                 'why': 'the hit\'s new velocity, as a substep\'s displacement'}
+# round 74: the response's spin (heading += clamp(torque >> 4, -128, 128) through the car's rotate, vtable +0x2C) --
+# the game's once a step, here every substep that finds the contact: a car's first kick a step spread over the step
+# (a4_eng.h eng_spin), its rest turned at the next substeps' +1971E
+B(0x23BC6, 'r1 = (uint32_t)eng_spin(r5, (int32_t)r1);', 'the car\'s spin: the step\'s one kick, spread (eng_spin)')
+B(0x23C06, 'r1 = (uint32_t)eng_spin(r4, (int32_t)r1);', 'the other\'s spin: the step\'s one kick, spread (eng_spin)')
+B(0x1971E, 'eng_spin_apply(r0);', 'a contact spin\'s rest, a share a substep (eng_spin)')
 # +1FF56, the car thrown over a traffic car: placed at its previous position + the traffic car's
 # velocity (+010, a step's) + a lift; on a substep the traffic moved a third of that
 B(0x20154, '{ uint32_t k_, a_ = MEM32(sp + 0x90u); for (k_ = 0; k_ < 12u; k_ += 4u) MEM32(sp + 0x30u + k_) = MEM32(a_ + k_) + (uint32_t)eng_thirdv(a_ + 0x40u + k_, (int32_t)MEM32(r4 + k_)); }',

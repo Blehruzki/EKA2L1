@@ -3700,8 +3700,8 @@ static uint64_t engi_1971E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     stk[26] = s0; stk[27] = s1; stk[28] = s2; stk[29] = s3;
     stk[30] = s4; stk[31] = s5; stk[32] = s6; stk[33] = s7;
     (void)fN; (void)fZ; (void)fC; (void)fV; (void)t; (void)lr; (void)r8; (void)r9; (void)r10; (void)r11; (void)r12;
-    /* engine: bench (A4_SPINREC): the wreck heading probe at the entry */
-    ENG_WPROBE(0x1971Eu); 
+    /* engine: a contact spin's rest, a share a substep (eng_spin) */
+    ENG_WPROBE(0x1971Eu); eng_spin_apply(r0);
     spp -= 16; S32(0) = r4; S32(4) = r5; S32(8) = r6; S32(12) = lr; /* 01971e push {r4, r5, r6, lr} */
     spp -= 0x18u;                                                /* 019720 sub sp, #0x18 */
     r5 = r0; fN = r5 >> 31; fZ = r5 == 0;                        /* 019722 movs r5, r0 */
@@ -9628,6 +9628,8 @@ L_23BC0:
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 023bc0 movs r0, r5 */
     r2 = 0x0u; fN = r2 >> 31; fZ = r2 == 0;                      /* 023bc2 movs r2, #0 */
     S32(0x3Cu) = r2;                                             /* 023bc4 str r2, [sp, #0x3c] */
+    /* engine: the car's spin: the step's one kick, spread (eng_spin) */
+    r1 = (uint32_t)eng_spin(r5, (int32_t)r1);
     S32(0x40u) = r1;                                             /* 023bc6 str r1, [sp, #0x40] */
     S32(0x44u) = r2;                                             /* 023bc8 str r2, [sp, #0x44] */
     { uint32_t ta = sp, tb = 0x3Cu; t = ta + tb; r1 = t; }       /* 023bca add r1, sp, #0x3c */
@@ -9663,6 +9665,8 @@ L_23C00:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 023c00 movs r0, r4 */
     r2 = 0x0u; fN = r2 >> 31; fZ = r2 == 0;                      /* 023c02 movs r2, #0 */
     S32(0x3Cu) = r2;                                             /* 023c04 str r2, [sp, #0x3c] */
+    /* engine: the other's spin: the step's one kick, spread (eng_spin) */
+    r1 = (uint32_t)eng_spin(r4, (int32_t)r1);
     S32(0x40u) = r1;                                             /* 023c06 str r1, [sp, #0x40] */
     S32(0x44u) = r2;                                             /* 023c08 str r2, [sp, #0x44] */
     { uint32_t ta = sp, tb = 0x3Cu; t = ta + tb; r1 = t; }       /* 023c0a add r1, sp, #0x3c */
