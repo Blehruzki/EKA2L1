@@ -11466,3 +11466,16 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   port.** Best test: hs4 / hx4 (the same route, knobs and save; not a repeat of hc1-hc4, which had no state or
   offset record, nor of hx1 / hx3 / hs3, which had no boost). The chained pair (hsc4 / hxc4) stopped: the photo's
   "x1 NITRO" is single boosts.
+- The takedown's wreck turning in sixteenths, the writer sought with EKA2L1_WATCHPTR (new, emulator: the watch follows
+  the wreck TKREC keeps at 0x5A2008, onto its +678). tw1 (C74 + CARREC + AUTOPILOT(_UNSTICK) + BENCH_SEEK=1 + TKREC,
+  Paris, owner's save, N95 model, 450 s; framestat 3,627): one crash camera (0x18, frames 4068-4371) -- the
+  player's own crash ("TOO CLOSE ... LEARN TO DRIVE!"), which TKREC's pick skips (not the followed car): no wreck,
+  no watch. A4_TKREC_SELF (bench, new): the pick takes the followed car too. tw2 (that; framestat 3,397): a crash
+  camera at 1950-2613, but the pick had settled on cars with +034 = 0 -- parked, not wrecked (heading constant
+  1574; 4 stores in the whole run, from +1DE78's wrap) -- so +034 < 1024 is not "a wreck": now 1 .. 1023 (a wreck
+  path running; tk77's wreck read 2 .. 25). tw3 running.
+- The far buildings, reread for depth: depth = min(128 / ZW, 1) against a clear of 0 under GL_GEQUAL, 16-bit
+  (EGL_DEPTH_SIZE 16): at ZW 32,000 the depth is 0.004, 262 steps of 1/65535 above the clear -- a far face passes
+  on any 16-bit buffer, so depth precision does not drop far buildings. Still not reproduced on the bench.
+- The ordinal check's ROM: the 5320's SYM.ROM back at roms/rm-409 (from the owner's 7z); its z: (for rules.py's six
+  libraries) needs the device installed -- after tw3.
