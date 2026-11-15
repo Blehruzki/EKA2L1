@@ -11130,3 +11130,21 @@ c. States the bench did not enter: the game's own slow motion -- every slowdown 
   the phone: a takedown's and a crash's slow motion (the cars moving every frame, the camera even, no hop); the grey
   lines (the frame record's line counter); pickups and the helicopter's light against the road; the scenery loss (the
   frame record's segment, direction, objects and mode around it).
+
+## Phone round 73 (r73b, the owner's report and telemetry)
+
+Owner: "The issues are still there. The helicopter had a moment where it would get farther and farther every time I
+hit the nitro button. it didn't happen after it came back to its natural position. The 2d assets still clip through
+the road. The scenery triangles are still disappearing. The cars are still looking stop-motion-ish during takedown
+cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on a red traffic car) and a4tel0-7
+(capidx 134-141, the last ~8 captures of the session).
+- Telemetry (ph73): 417 frames, render start to present median 35 ms, presents 43 ms apart (bench 33); 51.1 ms a
+  render (3D 22.4, comp 8.7, read 6.5, 2D 3.1, pres 1.9; r71's phone ~50); no-render presents 244 of 3,650; drop
+  frames 0; camera yaw reversals 3, heading 0; **line rows 0 in all eight captures** (the grey lines not in the
+  report either). Renders by substep 0 x144, 1 x133, 2 x140, modes 1 and 2 only: **no slow motion and no takedown
+  camera inside the recorded windows** -- the takedowns were before them. Scenery (objrec): one drop, segment 9 -> 10,
+  objects taken 21 -> 4 -> 2, and 2-4 a render through segments 10-17 (then 11, 16, 22, 40 ... 123).
+- Photos, the scenery: at the far end of a straight, white patches from the skyline down to the road (1000801138 /
+  39 / 40 right of the round tower; 1000801141 between buildings, an orange block drawn alone in it; 1000801134 at
+  the road's end) -- far buildings or parts of them not drawn, the software sky's pale horizon showing through. Far
+  scenery, not the near window round 72 suspected.
