@@ -91,6 +91,11 @@ B(0x1E684, '{ int32_t m_ = (int32_t)MEM32(sp + 0x104u), t_ = (int32_t)MEM32(sp +
 T(0x1E7F8, 'drift 9F8 += f(turn)'); T(0x1E804, 'drift 9F8 += f(turn)')
 T(0x1E87E, '81C, the turn held, += A20')
 T(0x1E896, 'heading -= A20 (reversing)'); T(0x1E8A2, 'heading += A20')
+# bench (A4_SPINREC, round 74: a wreck's spin in the takedown camera): the heading's stores for a wreck, recorded
+EDITS[0x1E896]['before'] = 'ENG_SPINREC(1u, r4, L32(r7 + 0x38u), r0, L32(S32(0x174u) + 0x20u), L32(S32(0x150u) + 0x38u));'
+EDITS[0x1E8A2]['before'] = 'ENG_SPINREC(2u, r4, L32(r7 + 0x38u), r0, L32(S32(0x174u) + 0x20u), L32(S32(0x150u) + 0x38u));'
+EDITS[0x1E8B4] = {'before': 'ENG_SPINREC(3u, r4, L32(r7 + 0x38u), r0, L32(S32(0x174u) + 0x20u), L32(S32(0x150u) + 0x38u));',
+                  'why': 'bench (A4_SPINREC): heading += the drift 9F8 (a wreck\'s, recorded)'}
 R(0x1E8C0, '{ uint32_t k_; ENG_VP(4u, r4, MEM32(r1), MEM32(r1 + 4u), MEM32(r1 + 8u), r1, r0); for (k_ = 0; k_ < 12u; k_ += 4u) { uint32_t ea_ = r0 + k_; const uint32_t o_ = MEM32(ea_); MEM32(ea_) = eng_third(ea_, o_, o_ + MEM32(r1 + k_)); if (!ENG_SUB) eng_pown(r0 - 4u, k_ / 4u, (int32_t)(MEM32(ea_) - o_)); } }',
   'position += velocity (+521A0): a third of the step\'s')
 # +1B9E0, steering
@@ -169,6 +174,8 @@ EDITS[0x1F03A] = {'after': 'eng_kick_mark(r7 + 0x38u);', 'why': 'a contact start
 EDITS[0x1F06C] = {'after': 'eng_kick_mark(r7 + 0x38u);', 'why': 'a contact starts (+B18 from 0): the first push is the whole step\'s'}
 R(0x1F132, 'MEM32(r7 + 0x38u) = r0 = eng_kick(r7 + 0x38u, r0);', 'heading -= the wall\'s turn (eng_kick)')
 R(0x1F13A, 'MEM32(r7 + 0x38u) = r0 = eng_kick(r7 + 0x38u, r0);', 'heading += the wall\'s turn (eng_kick)')
+for a_, k_ in ((0x1F132, 4), (0x1F13A, 5)):
+    EDITS[a_]['before'] = 'ENG_SPINREC(%du, r7 - 0x640u, L32(r7 + 0x38u), r0, 0u, 0u);' % k_
 # B18, the wall contact's countdown (5 steps): the game counts it after the step's contact check (a
 # contact re-arms it only from 0, at the step after it ran out); counted on substep 0 the substeps
 # after it saw 0 while the car was still against the wall and re-armed it (r11: a second push, the

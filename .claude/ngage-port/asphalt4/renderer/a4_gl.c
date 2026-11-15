@@ -6147,6 +6147,51 @@ static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int3
 #endif
     return deep;
 }
+#ifdef A4_BBCELL
+/* gobj_bb_deep per cell (A4_BBCELL): each GPU object's and car's depth (the same rules) on the cells its box meets */
+#define BBC_LL 2u
+static void gobj_bb_cells(int32_t sb, const int32_t *ex, const int32_t *ey, int32_t *cd)
+{
+    volatile struct gstate *g = GOBJ;
+    const volatile struct glr *s = (const volatile struct glr *)A4_GL_SCRATCH;
+    const uint32_t N = 1u << BBC_LL;
+    if (g->magic != GOBJ_MAGIC || g->frame != s->frames || !g->drawn) return;
+#ifdef A4_GOBJ_NOGRID
+    return;
+#endif
+#define BBC_APPLY(bx_, d_) do { for (uint32_t c_ = 0; c_ < N * N; c_++) {                                        \
+        const int32_t cx0_ = ex[c_ & (N - 1u)], cx1_ = ex[(c_ & (N - 1u)) + 1u], cy0_ = ey[c_ >> BBC_LL], cy1_ = ey[(c_ >> BBC_LL) + 1u]; \
+        if ((bx_)[2] < cx0_ || (bx_)[0] >= cx1_ || (bx_)[3] < cy0_ || (bx_)[1] >= cy1_) continue;          \
+        if ((d_) > cd[c_]) cd[c_] = (d_); } } while (0)
+    for (uint32_t i = 0; i < g->n; i++) {
+        const volatile struct gitem *it = &g->it[i];
+        if ((int32_t)it->qn >= sb) continue;
+        if (it->box[2] < ex[0] || it->box[0] >= ex[N] || it->box[3] < ey[0] || it->box[1] >= ey[N]) continue;
+        const int32_t d = it->qf < sb ? (int32_t)it->qf : sb - 1;
+        BBC_APPLY(it->box, d);
+    }
+#ifdef A4_GPUCAR
+    {   const volatile struct gcstate *c = GCAR;
+        if (c->magic == GCAR_MAGIC && c->frame == s->frames)
+            for (uint32_t i = 0; i < c->n; i++) {
+                const volatile struct gcitem *it = &c->it[i];
+                if ((int32_t)it->qn >= sb) continue;
+                if (it->box[2] < ex[0] || it->box[0] >= ex[N] || it->box[3] < ey[0] || it->box[1] >= ey[N]) continue;
+#ifndef A4_BBSTRADALL
+                if ((int32_t)it->qf >= sb && 2 * sb <= (int32_t)it->qn + (int32_t)it->qf) continue;   /* the middle rule */
+#endif
+                const int32_t d = it->qf < sb ? (int32_t)it->qf
+#ifndef A4_BBSTRADALL
+                          : ((int32_t)it->qn + (int32_t)it->qf) / 2 < sb - 1 ? ((int32_t)it->qn + (int32_t)it->qf) / 2
+#endif
+                          : sb - 1;
+                BBC_APPLY(it->box, d);
+            }
+    }
+#endif
+#undef BBC_APPLY
+}
+#endif
 #if defined(A4_SEGREC) || (defined(A4_FRAMEREC) && defined(A4_ENG3))
 uint32_t a4_gobj_now(uint32_t frames)              /* round 71/72: the objects taken this frame */
 {
@@ -7631,6 +7676,109 @@ static void spr_rec(volatile struct glr *s, const int32_t *b1, uint32_t mode, ui
     if (((i + 1u) & 63u) == 0u) a4_camp_emit((const void *)(rg + 4u));
 }
 #endif
+#if defined(A4_MESH) && defined(A4_TAKEBB) && defined(A4_BBCELL)
+#if !defined(A4_TAKE2)
+#error "A4_BBCELL projects the list's faces with A4_TAKE2's mesh_scr_i"
+#endif
+/* Round 74 (phone rounds 70-73: "the pickups and helicopter light are still clipping"; tk75 / tk77: the police
+ * searchlight's disk on the road cut flat along a row, where stock -- the game's own picture, st74pa -- draws it
+ * whole). mesh_bb_depth tests the whole sprite at one depth when any cover meets its rectangle, so the road (the
+ * faces the game paints BEFORE the sprite, which it paints over) cuts it wherever the road is nearer than that
+ * depth. The searchlight's rectangle (80 x 80 at its distance) is wider than its disk, and a road face wholly in
+ * front of it (the game paints that one after the sprite) met only a transparent corner (A4_SPRCEN: 595 of the
+ * 1,303 list covers met the rectangle itself, 708 only by their box). So the cover is decided per cell, a 4 x 4
+ * grid of the rectangle: a cell no nearer list face meets -- the face's own triangle, projected as the game
+ * projects it, not its box -- and no GPU item's box meets is not tested (painted over everything, as the game
+ * paints it); a covered cell is tested as before, at its own deepest cover. The sprite is drawn as one quad per
+ * run of equal cells in a row, its texture continuous across them. cd[]: per cell the covering bucket or -1. */
+#define BBC_L 2u                                   /* log2 of the cells a side */
+#define BBC_N (1u << BBC_L)
+static int bbc_tri_meets(const int32_t *px, const int32_t *py, int32_t ax0, int32_t ay0, int32_t ax1, int32_t ay1)
+{
+    /* the triangle against the box [ax0, ax1] x [ay0, ay1] (inclusive): the box's axes, then each edge's */
+    int32_t xl = px[0], xh = px[0], yl = py[0], yh = py[0];
+    for (int k = 1; k < 3; k++) {
+        if (px[k] < xl) xl = px[k];
+        if (px[k] > xh) xh = px[k];
+        if (py[k] < yl) yl = py[k];
+        if (py[k] > yh) yh = py[k];
+    }
+    if (xh < ax0 || xl > ax1 || yh < ay0 || yl > ay1) return 0;
+    for (int k = 0; k < 3; k++) {
+        const int32_t a = k, b = k == 2 ? 0 : k + 1, c = k == 0 ? 2 : k - 1;
+        const int64_t ex = (int64_t)px[b] - px[a], ey = (int64_t)py[b] - py[a];
+        const int64_t sc = ex * ((int64_t)py[c] - py[a]) - ey * ((int64_t)px[c] - px[a]);
+        if (sc == 0) continue;
+        int out = 1;
+        for (int q = 0; q < 4 && out; q++) {
+            const int64_t qx = (q & 1) ? ax1 : ax0, qy = (q & 2) ? ay1 : ay0;
+            const int64_t e = ex * (qy - py[a]) - ey * (qx - px[a]);
+            if ((e > 0 && sc > 0) || (e < 0 && sc < 0) || e == 0) out = 0;
+        }
+        if (out) return 0;                          /* every corner outside this edge: apart */
+    }
+    return 1;
+}
+static int mesh_bb_cells(const int32_t *b1, const int32_t *ex, const int32_t *ey, int32_t *cd)
+{
+    const int32_t x0 = ex[0], x1 = ex[BBC_N], y0 = ey[0], y1 = ey[BBC_N];
+    uint32_t fl = (uint32_t)b1[-3], open = 0, c;
+    int32_t sb = (b1[2] - ((fl >> 13) & 1u ? 0x20 : 0)) >> 3;
+    if (fl & 0x10000u) sb -= 16;
+    if (fl & 0x20000u) sb += 16;
+    for (c = 0; c < BBC_N * BBC_N; c++) cd[c] = -1;
+    if (sb <= 0) return 0;
+    if (x1 <= 0 || y1 <= 0 || x0 >= VP_W || y0 >= VP_H) return 0;
+    {   /* the tile grid: a cell with no nearer list bucket in its tiles needs no face scan */
+        const uint16_t *g = (const uint16_t *)MESH->grid;
+        for (c = 0; c < BBC_N * BBC_N; c++) {
+            const int32_t cx0 = ex[c & (BBC_N - 1u)], cx1 = ex[(c & (BBC_N - 1u)) + 1u], cy0 = ey[c >> BBC_L], cy1 = ey[(c >> BBC_L) + 1u];
+            if (cx1 <= cx0 || cy1 <= cy0 || cx1 <= 0 || cy1 <= 0 || cx0 >= VP_W || cy0 >= VP_H) continue;
+            int32_t tx0 = cx0 < 0 ? 0 : cx0 >> 4, tx1 = cx1 > VP_W ? MESH_GW - 1 : (cx1 - 1) >> 4;
+            int32_t ty0 = cy0 < 0 ? 0 : cy0 >> 4, ty1 = cy1 > VP_H ? MESH_GH - 1 : (cy1 - 1) >> 4;
+            for (int32_t ty = ty0; ty <= ty1 && !(open & (1u << c)); ty++)
+                for (int32_t tx = tx0; tx <= tx1; tx++)
+                    if ((int32_t)g[ty * MESH_GW + tx] < sb) { open |= 1u << c; break; }
+        }
+    }
+    if (open) {
+        const uint16_t *ord = MESH_ORD, *Q = MESH_Q;
+        const uint8_t *K = MESH_K;
+        const int16_t *B = MESH_B;
+        const uint32_t *gx = (const uint32_t *)(uintptr_t)MESH->gctx;
+        const int32_t F = (int32_t)MESH->F;           /* as the insert projected them (mesh_take) */
+        const int32_t pcx = *(const int32_t *)gx[0x40110 / 4] >> 1, pcy = *(const int32_t *)gx[0x40114 / 4] >> 1;
+        uint32_t n = MESH->n, lo = 0, hi = n;
+        while (lo < hi) {                           /* the first face of a bucket below sb */
+            uint32_t mid = (lo + hi) >> 1;
+            if ((int32_t)Q[ord[mid]] >= sb) lo = mid + 1; else hi = mid;
+        }
+        for (uint32_t t = lo; t < n && open; t++) {   /* deep to near: a cell's first cover is its deepest */
+            uint32_t i = ord[t];
+            if (K[i] == 0xFFu) continue;
+            const int16_t *b = B + i * 4u;
+            if (b[2] < x0 || b[0] >= x1 || b[3] < y0 || b[1] >= y1) continue;
+            int32_t px[3], py[3], have = 0;
+            for (c = 0; c < BBC_N * BBC_N; c++) {
+                if (!(open & (1u << c))) continue;
+                const int32_t cx0 = ex[c & (BBC_N - 1u)], cx1 = ex[(c & (BBC_N - 1u)) + 1u], cy0 = ey[c >> BBC_L], cy1 = ey[(c >> BBC_L) + 1u];
+                if (b[2] < cx0 || b[0] >= cx1 || b[3] < cy0 || b[1] >= cy1) continue;
+                if (!have) {
+                    const int16_t *v = MESH_V + i * 18u;
+                    for (int k = 0; k < 3; k++) mesh_scr_i(gx, F, pcx, pcy, v[6 * k], v[6 * k + 1], v[6 * k + 2], &px[k], &py[k]);
+                    have = 1;
+                }
+                if (bbc_tri_meets(px, py, cx0 - 1, cy0 - 1, cx1, cy1)) { cd[c] = Q[i]; open &= ~(1u << c); }
+            }
+        }
+    }
+#ifdef A4_GPUOBJ
+    gobj_bb_cells(sb, ex, ey, cd);                  /* the GPU's objects and cars, by their boxes */
+#endif
+    for (c = 0; c < BBC_N * BBC_N; c++) if (cd[c] >= 0) return 1;
+    return 0;
+}
+#endif
 int a4_gl_bb(const uint32_t *r, const uint32_t *f)
 {
 #ifdef A4_GPUSKY
@@ -7697,6 +7845,10 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
      * round 26). The blit pushed {r0-r7, lr} under its frame: r1 at f+0x70, lr at f+0x8C.
      * Other callers' quads keep no depth. */
     int32_t bbz = 0, bbzd = 0;                     /* the depth used, the TBillboard's (detected) */
+#if defined(A4_MESH) && defined(A4_BBCELL)
+    int32_t bbc_x[BBC_N + 1u], bbc_y[BBC_N + 1u], bbc_d[BBC_N * BBC_N];
+    int bbcell = 0;                                 /* round 74: drawn cell by cell (mesh_bb_cells) */
+#endif
 #if defined(A4_MESH)
     {   extern const int32_t a4_bbret;
         if (f[0x8c / 4] == (uint32_t)(uintptr_t)&a4_bbret + (uint32_t)a4_bbret) {
@@ -7715,6 +7867,16 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
             bbz = bbzd;                             /* bench: round 27's rule, every sprite tested */
 #else
             if (MESH_ON()) {
+#ifdef A4_BBCELL
+                for (uint32_t k = 0; k <= BBC_N; k++) {
+                    bbc_x[k] = x0 + (int32_t)(((uint32_t)(x1 - x0) * k) >> BBC_L);
+                    bbc_y[k] = y0 + (int32_t)(((uint32_t)(y1 - y0) * k) >> BBC_L);
+                }
+                bbcell = mesh_bb_cells(b1, bbc_x, bbc_y, bbc_d);
+                if (bbcell) bbz = bbzd;                 /* (a tested sprite, for the census below) */
+            }
+            if (0) {
+#endif
 #ifdef A4_SPRCEN
                 spr_lf = spr_oc = spr_od = -1;
 #endif
@@ -7818,6 +7980,32 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
     for (uint32_t k = spr[8 / 4] + 1u; k > 1u; k >>= 1) hl++;
     int32_t S0 = wl <= 8 ? sl * (1 << (8 - wl)) : sl >> (wl - 8), S1 = wl <= 8 ? sr * (1 << (8 - wl)) : sr >> (wl - 8);
     int32_t T0 = hl <= 8 ? tt * (1 << (8 - hl)) : tt >> (hl - 8), T1 = hl <= 8 ? tb * (1 << (8 - hl)) : tb >> (hl - 8);
+#if defined(A4_MESH) && defined(A4_BBCELL)
+    if (bbcell) {
+        /* each row of cells, one quad per run of equal covers: its texture from the same lines as the whole
+         * quad's (sl + (x - x0) du, tt - (y - y0) dv), so the runs meet without a seam */
+        for (uint32_t ry = 0; ry < BBC_N; ry++) {
+            const int32_t ya = bbc_y[ry], yb = bbc_y[ry + 1u];
+            if (yb <= ya) continue;
+            const int32_t ta = tt - (ya - y0) * dv, tb2 = tt - (yb - y0) * dv;
+            const int32_t Ta = hl <= 8 ? ta * (1 << (8 - hl)) : ta >> (hl - 8), Tb = hl <= 8 ? tb2 * (1 << (8 - hl)) : tb2 >> (hl - 8);
+            uint32_t cx = 0;
+            while (cx < BBC_N) {
+                const int32_t d = bbc_d[ry * BBC_N + cx];
+                uint32_t ce = cx + 1u;
+                while (ce < BBC_N && bbc_d[ry * BBC_N + ce] == d) ce++;
+                const int32_t xa = bbc_x[cx], xb = bbc_x[ce];
+                if (xb > xa) {
+                    const int32_t sa = sl + (xa - x0) * du, sb2 = sl + (xb - x0) * du;
+                    const int32_t Sa = wl <= 8 ? sa * (1 << (8 - wl)) : sa >> (wl - 8), Sb = wl <= 8 ? sb2 * (1 << (8 - wl)) : sb2 >> (wl - 8);
+                    const int32_t z = d < 0 ? 0 : ((d + 1) * 8 < bbzd ? (d + 1) * 8 : bbzd);
+                    quad_push(s, xa, ya, xb, yb, Sa, Ta, Sb, Tb, id, z);
+                }
+                cx = ce;
+            }
+        }
+    } else
+#endif
     quad_push(s, x0, y0, x1, y1, S0, T0, S1, T1, id, bbz);
     A4_PERF[PF_BB]++;
 #ifdef A4_DUALCAP

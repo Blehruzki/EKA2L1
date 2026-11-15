@@ -1033,6 +1033,28 @@ static inline void eng_kick_mark(uint32_t ea)
     if (f == 16u) { f = (ea >> 4) & 15u; ENG_EVIC(3); }
     ENG->kc[f] = ea; ENG->ks[f] = st | 0x80000000u;
 }
+#ifdef A4_SPINREC
+/* bench (round 74, the takedown's wreck turning in steps): every store of a wrecked car's heading +678 the control
+ * (+1DE78: += / -= A20, += the drift 9F8) and the wall (+1F132/+1F13A) make -- the substep count, the substep | n << 8
+ * | the site << 16, the car, the heading before, the game's new value, A20, the drift, +034: 8 words, a ring of 256
+ * at 0x5A2000 handed to a4_camp_emit */
+static inline void eng_spinrec(uint32_t site, uint32_t car, uint32_t old, uint32_t nw, uint32_t a20, uint32_t drift)
+{
+    extern void a4_camp_emit(const void *);
+    volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+    uint32_t i;
+    volatile uint32_t *e;
+    if (MEM32(car + 0x34u) == 0xFFFFFFFFu) return;
+    i = rg[0] & 255u; e = rg + 4u + 8u * i;
+    e[0] = ENG->cnt; e[1] = ENG->sub | ENG->n << 8 | site << 16; e[2] = car; e[3] = old; e[4] = nw; e[5] = a20; e[6] = drift;
+    e[7] = MEM32(car + 0x34u);
+    rg[0] = i + 1u;
+    if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
+}
+#define ENG_SPINREC(s_, c_, o_, n_, a_, d_) eng_spinrec((s_), (c_), (o_), (n_), (a_), (d_))
+#else
+#define ENG_SPINREC(s_, c_, o_, n_, a_, d_) ((void)0)
+#endif
 #ifdef A4_KICKREC
 /* bench (round 73): every wall push -- the whole step, the substep | n << 8, the word, its value before, the game's
  * new value, the value kept -- 6 words a record, a ring of 256 at 0x5A2000 handed to a4_camp_emit when it wraps */

@@ -11231,3 +11231,30 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   corners) and the GPU item gobj_bb_deep found (object or car, index, depth, box, buckets). sprcen.py projects the
   face and says whether the face itself meets the rectangle or only its box. tk77 (C73 + SPRCEN + TKREC, Paris on
   the owner's save, 90 s, filmed): running.
+- tk77 (C73 + SPRCEN + TKREC, Paris, owner's save, 90 s; framestat 2,586): **the takedown's wrecked car turns in
+  steps** -- a takedown at frames 1989-2208 (mode 0x18, 59 renders), the wreck (an opponent, 025CF848; +034, its path
+  frame, 2 .. 25) moving evenly (56, 50, 46, 45, 45 ... then 18-19 a substep) but its heading +678 changing -256 on
+  substep 0 and -128 on substeps 1 and 2 (cnt 895-898), then still for five substeps, then +5, +128, +128 and still
+  again: the spin doubled on the whole step's substep and held between. Its matrix +6D4 changes only where the
+  heading does. A wreck's pitch and roll stayed 0 in this one (a spin, not a roll).
+- tk77's sprite census in the news camera (mode 0x2A, frames 4641-5064, 528 tested sprites): the police searchlight is
+  texture 024065F0, mode 2 (additive), flags 0xA000 (bit 13: its key 32 nearer), 80 x 80 px at ZW ~800; tested in
+  every recorded frame -- by the player car's middle rule (car#0 straddling, tested at 736 for a light at 840), by
+  car#1 nearer, or by a list face wholly in front of it (bucket 84-101 against the light's 92-105) that meets the
+  rectangle (48) or only by its box (71). Video, tk77 61.5-65.5 s: the disk cut flat at its bottom in some frames,
+  whole in others.
+- **Stock reference** (st74pa: the unmodified game, the same route and save, 85 s, filmed): the news camera at 79-83 s,
+  the searchlight's disk **whole** beside the car (and the car over it where it passes under). Read: the game's insert
+  (+349B0) keys the light at (ZW - 32) >> 3 and the road faces by their deepest ZW, so a road face wholly in front of
+  the light is painted over it in stock too -- but only on that face's own pixels; the light's rectangle is wider than
+  its disk, and a face that meets only a transparent corner changes nothing in stock, while here it made the WHOLE
+  sprite depth-tested at that face's bucket, and the road nearer than that (faces the game paints before the light)
+  cut the disk along a row.
+- Fix (a4_gl.c A4_BBCELL, round 74): the cover decided per cell of a 4 x 4 grid over the sprite's rectangle -- a cell
+  is tested only where a nearer list face's own triangle (projected as the insert projects it, mesh_scr_i) or a GPU
+  item's box meets it, at that cell's deepest cover; uncovered cells are painted untested, as the game paints them;
+  one quad per run of equal cells a row, texture continuous. tk79 (C73 + BBCELL + TKREC, Paris, 90 s, filmed): queued.
+- A4_SPINREC (bench, new; edits.py ENG_SPINREC at +1E896 / +1E8A2 / +1E8B4 / +1F132 / +1F13A): tk78 recorded no store
+  for a wrecked car at any of them -- the wreck's turn comes from elsewhere. TKREC's wreck pick took a non-car slot in
+  tk78 (+034 a pointer): now only +034 < 1024. A watch run (EKA2L1_WATCH on 025CF848 + 0x678, WATCHONCE, the same
+  route: the silver opponent the player takes down at ~25 s) queued to name the writers.

@@ -77,7 +77,7 @@ uint32_t a4_eng_traffic(void) { return ENG->magic == ENG_MAGIC && ENG->targ ? EN
 void a4_eng_tkrec(uint32_t race, uint32_t frames)
 {
     extern void a4_camp_emit(const void *);
-#if defined(A4_TRAFDUMP) || defined(A4_SPRCEN)
+#if defined(A4_TRAFDUMP) || defined(A4_SPRCEN) || defined(A4_SPINREC) || defined(A4_KICKREC)
     volatile uint32_t *rg = (volatile uint32_t *)0x005A8000u;   /* past the traffic dump's / sprite census's ring (A4_SCRATCH_SIZE >= 0x1AA000) */
 #else
     volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
@@ -95,7 +95,7 @@ void a4_eng_tkrec(uint32_t race, uint32_t frames)
     e[11] = MEM32(race + 0x48u + 0x14u);
     for (k = 0; k < 16u && !wc; k++) {
         const uint32_t c = MEM32(race + 0x394u + 4u * k);
-        if (c && c != fc && MEM32(c + 0x34u) != 0xFFFFFFFFu) wc = c;
+        if (c && c != fc && MEM32(c + 0x34u) < 1024u) wc = c;                   /* a wreck path's frame (not a pointer) */
     }
     for (k = 12u; k < 32u; k++) e[k] = 0u;
     if (wc) {
