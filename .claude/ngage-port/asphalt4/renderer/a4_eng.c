@@ -106,7 +106,12 @@ void a4_eng_tkrec(uint32_t race, uint32_t frames)
     }
     rg[2] = wc;                                  /* round 74: the wreck A4_SPINREC's entry probes watch */
     rg[0] = i + 1u;
-    if (((i + 1u) & 63u) == 0u) a4_camp_emit((const void *)(rg + 4u));
+    if (((i + 1u) & 63u) == 0u) {
+        a4_camp_emit((const void *)(rg + 4u));
+#ifdef A4_SPINREC
+        a4_camp_emit((const void *)0x005A2010u);  /* the heading probes' ring as it stands (it fills slowly) */
+#endif
+    }
 }
 #endif
 #define ENGV(x) uint64_t a4_engv_##x(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, \

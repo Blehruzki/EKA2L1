@@ -11285,3 +11285,7 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   -776 (the gap only closes and opens as the player drives past it); the nitro presses fired this time (+AE0 39 every
   120 steps). The police helicopter does not chase on this route without a WANTED level; "farther with every nitro"
   stays unreproduced. hn7 stopped.
+- tk81 (the entry probes, Paris, 90 s; framestat 2,624): a takedown (mode 0x18, 70 renders, frames 8253-8985), the
+  probe ring empty -- read back: the ring is handed over only when 256 records fill it, and a takedown makes fewer;
+  tk78 / tk80's "no store" were the same blind spot, not a measurement. The ring is now handed over with every TKREC
+  block too (spinrd.py dedupes). tk82 (the same + that): running.
