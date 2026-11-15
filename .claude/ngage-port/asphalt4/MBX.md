@@ -11366,3 +11366,12 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   tower at ~154 s and ~203 s) are drawn whole on the bench, buildings to the skyline, no white patch. So the far
   buildings' loss is not reproduced on the bench in the regular LA race -- a phone-only difference (the GPU, its
   driver), not the game's object window.
+- hc3_a (the 3x build + slot 10, Paris, 100 s; framestat 2,377): the news camera for 5.0 s with a boost through it --
+  **the camera 477 -> 493 from the car** (stock hc2_a 517 -> 527). Slot 10 holds the news copter (type 4; it flies
+  in this run -- in hn4 / hn6 it stayed parked: no news event there): during the news camera its gap from the car
+  34 -> 662, after it it flies off and back (to ~2,000, then 378 under the next boost). hc4_a (the stock step):
+  slot 10 flies the same kind of pattern (gaps 324 .. 10,000 and back). Per boost (hcboost.py: the gap at the boost's
+  start, its end, 2 s later), both builds go either way with the copter's own flight -- 3x: 37,342 -> 29,304,
+  29,529 -> 33,736, 47,072 -> 57,263, 66,368 -> 60,460, 132 -> 634 -> 956 (news), 1,096 -> 772 -> 175; stock:
+  36,158 -> 27,672, 19,804 -> 16,496, 9,638 -> 4,660, 1,857 -> 7,720 -> 11,858, 22,705 -> 32,518, 51,110 -> 3,390.
+  No 3x-only ratchet in these; hc3_b / hc3_c / hc4_b to come.
