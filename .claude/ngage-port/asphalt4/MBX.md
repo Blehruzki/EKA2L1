@@ -11273,3 +11273,15 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   one (height -776, still; the gap closing to 921 at step 480 as the player passed it). The flying helicopter is race
   slot 10 (police slot 2), as A4_HELIREC took it in round 71: HDIST now reads that slot only. hn5 (the stock step)
   stopped; hn6 / hn7 (the pair on slot 10) queued after tk80.
+- tk80 (C73 + SPINREC with the 27 extra sites + TKREC with the tightened pick + BBCELL, Paris, 90 s; framestat 2,665):
+  a takedown (frames 2178-2976, the wreck 02658A20 sliding 41-51 a substep, even) whose heading changed twice, -40 and
+  -18, each on a step's LAST substep -- and still no store from any of the 32 lifted sites. So the wreck is turned by
+  game code outside the lifted engine. A4_SPINREC now also probes the entry of every lifted function (42; the wreck
+  TKREC tracks kept at 0x5A8008): the span of the step in which the heading changes. tk81 queued.
+- Pickups on the bench: the Paris route has rotating "$" pickups at ~36-41 s (tk75 old rule, tk80 cells): whole in
+  both; the phone's pickup clipping is not reproduced on this route (round 71's photo had a "$" above the player's
+  car -- the car's box over it).
+- hn6 (the 3x build, HDIST on race slot 10, Paris, 120 s; framestat 3,032): slot 10 is also a still unit at height
+  -776 (the gap only closes and opens as the player drives past it); the nitro presses fired this time (+AE0 39 every
+  120 steps). The police helicopter does not chase on this route without a WANTED level; "farther with every nitro"
+  stays unreproduced. hn7 stopped.
