@@ -545,6 +545,7 @@ static inline void ENG_BEGIN(uint32_t race)
         for (uint32_t i = 0; i < ENG_NREM; i++) { ENG->rk[i] = 0; ENG->rv[i] = 0; }
         for (uint32_t i = 0; i < 32u; i++) ENG->aic[i] = 0;
         for (uint32_t i = 0; i < 16u; i++) { ENG->kc[i] = 0; ENG->ks[i] = 0; }
+        for (uint32_t i = 0; i < 16u; i++) ENG->tkds[i] = 0x80000000u;   /* round 74: no knock drift measured yet */
         for (uint32_t i = 0; i < 64u; i++) ENG->lc[i] = 0;
         ENG->flush = 0;
         ENG->tlast[0] = ENG->tlast[1] = 0; ENG->tdel[0] = ENG->tdel[1] = 0;
