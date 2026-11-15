@@ -11014,3 +11014,16 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   eng_cam_script spans a tick over three substeps -- 1-3 toward the next value from the whole step's, 4-5 on from
   the mid tick's (the script's clock moved since the whole step: ENG->sclk) -- so the camera moves a third of a tick
   every substep, as at normal speed. Thirds untouched (n = 3: j / 3 as before). r73 is stale if it holds.
+- r73 battery, the rest (r73bat.sh; rule 2: the runs of r72bat.sh, so row for row against round 72): r73f (to the
+  finish, the recorder twin, cap 85) framestat 10,883 (r72f 10,887); r73f2 (to the finish, exact binary, key 5 held)
+  7,667 (r72f2 7,008), modes 1 and 2, reversals 0; menu 18 shots (framestat 4,041), mark 1,578, mark on the Veyron
+  1,520: clean; r73v (Veyron autopilot) reversals 0 / 0 (r72v 1 / 2), heading less camera yaw off its median
+  37 / 82 / 110 (r72v 33 / 88 / 120); GPU objects taken 94.0% (r73f2) and 77.0% (Paris; r72 93.8 / 78.6), cars 6.7 /
+  7.7 draws a frame, resets 0 / 0; Paris on the owner's save framestat 3,167, line rows 1 (row 27, 131 px, once in
+  3,217 renders: the quarter's known short row under GL's sampling), r73t2 0; y73b grip [(1048576, 476), (0, 14), ...],
+  E4 max 0: no crawl; the |dx| == |dz| runs 0-2. Every battery route stayed at scale 256 (substeps 0-2 in all
+  six runs' frame records): the battery checks that the candidate plays as r72 where nothing slows, not the slow motion.
+- sm73c (the candidate's code + A4_BENCH_SLOWMO=512 + A4_SEGREC, LA, the N95 model, TS=4; framestat 1,663): substeps
+  a render at scale 512 **0 x2, 1 x167, 2 x124, 3 x1** (thirds sm73n3: 0 x88 of 296); at 256 1 x407, 2 x279, 3 x6
+  (sm73n3 1 x402, 2 x277, 3 x10). segsub.py fixed on the way (it took the frame counter for a render count; it
+  steps by 3). Every slow-motion frame a new real state, the slip fix included.
