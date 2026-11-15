@@ -11446,3 +11446,12 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   press now sets 0x80000 too. hs3 had no news event (no copter); hsd (a debug run) stuck at "press any key": the
   stock build loads slower than the menu keys -- three '5' presses added after them. hs4 / hx4 (single boosts) and
   hsc4 / hxc4 (chained) running.
+- hs4 (the stock step, the nitro press with bit 19 + top-up 256 every 40 steps, Paris, owner's save, N95 model, 500 s;
+  framestat 3,324): **boosts fire** (AE0 39 .. 1 back to back -- a press every 40, a boost 40: boosting all along).
+  The copter (news camera at 16881, state 0 -> 1 -> 2): in state 2 its eased offset dips with each boost (|C60|
+  760 -> 230 -> 760, D's tent) and it stays 900-1,450 from the camera. State 8 (+1CA62 / +1CB36: +1932E(.., its
+  segment +01C, 3) -- the track's special stretch ahead, a tunnel or a bridge) 29532-39291: it climbs (+C4C 200 ->
+  1,200) and hangs 2,450-2,750 from the camera. Then states 1 / 8 alternating (39291-43773): **out to 5,000-10,000
+  from the camera (10,093 at 42171) under the boosts**, back to 1,000-1,450 once in state 2. So the stock game
+  also sends the copter far away in states 1 and 8 -- a stretch of state 1 is where it flies off; whether the 3x
+  build goes farther, or stays out longer, is hx4's question.
