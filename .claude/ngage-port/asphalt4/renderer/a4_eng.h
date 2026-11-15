@@ -297,6 +297,7 @@ void eng_cam_unblend(void);
 #define ENG_VPA(t, car, a, b, c, d, e) ((void)0)
 #define ENG_TDARG(a) ((void)0)
 #define ENG_TDREC(race, tag) ((void)0)
+#define ENG_SPINREC(s_, c_, o_, n_, a_, d_) ((void)0)
 #define ENG_TCLK(w) (ENG->tlast[(w)])
 void eng_tsnap(uint32_t arg);
 void eng_tknock(uint32_t car);
