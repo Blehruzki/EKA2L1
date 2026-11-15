@@ -3349,7 +3349,7 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
          * its boost countdown +AE0, its speed +7D0, its heading +678, the tick; and (round 74, the owner's photos: the
          * copter in the chase view, farther through a boost) race slot 10's x y z, type +C70, the car it follows +C40
          * (and whether that is the player), its state +C6C, timers +C44 / +C48, the eased offset +C60..+C68, its
-         * height +C4C, its last place +0A8.. and velocity +010.., and the player's boost level +AE8: 32 words, a ring
+         * height +C4C, its last place +0A8.. and velocity +010.., and the player's nitro +AD8 | boost chain +AE8 << 16: 32 words, a ring
          * of 64 at 0x5A2000 handed to a4_camp_emit; in the 3x build and the stock one alike. Never a phone build. */
         extern void a4_camp_emit(const void *);
         volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
@@ -3372,7 +3372,7 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
             e[19] = h ? *(volatile uint32_t *)(h + 0xC44u) : 0u; e[20] = h ? *(volatile uint32_t *)(h + 0xC48u) : 0u;
             for (uint32_t k = 0; k < 3u; k++) e[21u + k] = h ? *(volatile uint32_t *)(h + 0xC60u + 4u * k) : 0u;
             e[24] = h ? *(volatile uint32_t *)(h + 0xC4Cu) : 0u;
-            e[25] = pc ? *(volatile uint32_t *)(pc + 0xAE8u) : 0u;
+            e[25] = pc ? (*(volatile uint32_t *)(pc + 0xAD8u) & 0xFFFFu) | *(volatile uint32_t *)(pc + 0xAE8u) << 16 : 0u;  /* nitro amount | chain << 16 */
             for (uint32_t k = 0; k < 3u; k++) e[26u + k] = h ? *(volatile uint32_t *)(h + 0x0A8u + 4u * k) : 0u;
             for (uint32_t k = 0; k < 3u; k++) e[29u + k] = h ? *(volatile uint32_t *)(h + 0x010u + 4u * k) : 0u;
         }
