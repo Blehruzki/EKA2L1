@@ -11258,3 +11258,18 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   for a wrecked car at any of them -- the wreck's turn comes from elsewhere. TKREC's wreck pick took a non-car slot in
   tk78 (+034 a pointer): now only +034 < 1024. A watch run (EKA2L1_WATCH on 025CF848 + 0x678, WATCHONCE, the same
   route: the silver opponent the player takes down at ~25 s) queued to name the writers.
+- The watch run (EKA2L1_WATCH on 025CF848 + 0x678, WATCHONCE, the tk78 binary, 45 s): that address held another
+  object in this run (writers: an allocation's clear, then +2183A storing a texture-like word) -- the heap differs
+  run to run, so a fixed-address watch cannot follow a car. Dropped.
+- tk79 (C73 + BBCELL + TKREC, Paris, 90 s; framestat 2,515): one news-camera frame filmed (42 s), the searchlight's
+  disk whole beside the car. tk79b (the same, 90 s): the player stuck behind a wreck from 27 s, no news camera. Not
+  yet a count of cut frames with and without the cells.
+- A wreck's heading, read again from tk77 (cnt 891-935): 1078, 1206 (+128), 1084 (-122), 828 (-256), 700 (-128), 572
+  (-128), 316 (-256), then held 316 for five substeps, 321, 449 (+128), 577 (+128), held, 566 -- exact sixteenths of
+  a turn (2,048 a turn for a race car), the signature of a contact's fixed spin, landing on whichever substeps the
+  contact is found. A4_HDREC (bench, edits.py): every other store at +0x38 off a base in the lifted engine (27 sites)
+  recorded when the word is a wreck's heading -- tk80 (C73 + SPINREC + TKREC + BBCELL, Paris, 90 s) queued.
+- hn4 (the 3x build + CARREC + HDIST, Paris, 120 s; framestat 2,931): HDIST's "nearest type-4 unit" was again a parked
+  one (height -776, still; the gap closing to 921 at step 480 as the player passed it). The flying helicopter is race
+  slot 10 (police slot 2), as A4_HELIREC took it in round 71: HDIST now reads that slot only. hn5 (the stock step)
+  stopped; hn6 / hn7 (the pair on slot 10) queued after tk80.
