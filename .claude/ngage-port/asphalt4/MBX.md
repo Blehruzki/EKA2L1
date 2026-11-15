@@ -11126,3 +11126,7 @@ c. States the bench did not enter: the game's own slow motion -- every slowdown 
    host time, or while the crash camera is up), none by the race rules' request and countdowns (cam+0x3C, race+0x850,
    +0x854); an opponent's takedown and its wreck flying at sixths; a hit inside a slowdown; the phone's frame rate in
    a slowdown (the model gives 1-2 substeps a render, as at normal speed).
+- Sent to the owner (their "send it"): a4_r73b_cand.exe, unbaked, sha256 6438e2ab..., 937,992 bytes. To look for on
+  the phone: a takedown's and a crash's slow motion (the cars moving every frame, the camera even, no hop); the grey
+  lines (the frame record's line counter); pickups and the helicopter's light against the road; the scenery loss (the
+  frame record's segment, direction, objects and mode around it).
