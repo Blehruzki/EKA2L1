@@ -11479,3 +11479,16 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   on any 16-bit buffer, so depth precision does not drop far buildings. Still not reproduced on the bench.
 - The ordinal check's ROM: the 5320's SYM.ROM back at roms/rm-409 (from the owner's 7z); its z: (for rules.py's six
   libraries) needs the device installed -- after tw3.
+- tw3 (the narrowed pick; framestat 3,260): the watch followed the player through its own crash (cnt 2299, camera
+  0x18): 11 stores -- +1EA64's smooth +21, +22, +17 (the slide), then **+1E35C's stm: pitch, heading, roll = (0,
+  atan2(the track's direction, +1CD88 / +3154C) + 1024, 0)** -- the respawn's reset (+1DB10 first), then +1E8B4's +7
+  and +1E904's wrap. (The lifted offsets mapped to game addresses by compiling a4_eng.c with -g and llvm-addr2line on
+  engi_1DE78 + the offset: lifted.c carries each game instruction's address.) So the player's crash ends in a snap
+  to the track's heading, as stock does; it is not the takedown victim's sixteenths.
+- Read for the sixteenths: +3154C / +31498 is a full-resolution atan2 (a byte table an octant: 2,048 a turn), so an
+  angle is not rounded there; +23964 (unlifted, in a routine ending at +2397x) sets the heading to atan2(a vector) +
+  1024 when that is within a quarter turn of it, else calls +237B4 -- read, not yet tied to the victim; the stores to
+  the drift +9F8 (+19A54, +19AAA, +1AB7A, +1B9A8, +1B9B8, +1F3C2) set no fixed +-128. tk77's headings (1078, 1206,
+  1084, 828, 700, 572, 316) are 1024 + ~57 + k x 128 -- a fixed part plus whole sixteenths.
+- tv1 (C74 + TKREC + TKREC_SELF, no autopilot, '5' held as tk77 drove -- tk77's takedown was the silver opponent at
+  ~25 s -- Paris, owner's save, N95 model, 400 s, the watch on the wreck's heading): running.
