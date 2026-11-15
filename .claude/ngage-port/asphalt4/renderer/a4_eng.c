@@ -104,6 +104,7 @@ void a4_eng_tkrec(uint32_t race, uint32_t frames)
         for (k = 0; k < 4u; k++) e[19u + k] = MEM32(wc + 0x6D4u + 4u * k);
         e[23] = MEM32(wc + 0x34u);
     }
+    rg[2] = wc;                                  /* round 74: the wreck A4_SPINREC's entry probes watch */
     rg[0] = i + 1u;
     if (((i + 1u) & 63u) == 0u) a4_camp_emit((const void *)(rg + 4u));
 }

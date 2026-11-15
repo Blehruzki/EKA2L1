@@ -366,3 +366,11 @@ B(0xFF88, 'if (ENG->tkp) { if (ENG->tkp == r5) eng_tknock(r5); ENG->tkp = 0; }',
 for a_, v_, b_ in ((0x1D1AC, 'r0', 'r4'), (0x1D1B2, 'r2', 'r4'), (0x1E044, 'r1', 'r2'), (0x1E066, 'r1', 'r0'), (0x1E432, 'r1', 'r0'), (0x1E6B0, 'r0', 'r7'), (0x1E6F0, 'r0', 'r7'), (0x1E706, 'r0', 'r7'), (0x1E714, 'r0', 'r7'), (0x1E742, 'r0', 'r7'), (0x1E74E, 'r0', 'r7'), (0x1E7F8, 'r1', 'r2'), (0x1E804, 'r1', 'r2'), (0x1E828, 'r0', 'r2'), (0x1E838, 'r0', 'r2'), (0x1E850, 'r0', 'r2'), (0x1E8BA, 'r0', 'r2'), (0x1E904, 'r1', 'r7'), (0x1E914, 'r1', 'r7'), (0x1F1E8, 'r0', 'r7'), (0x1F1F2, 'r0', 'r7'), (0x1F258, 'r0', 'r2'), (0x1F26E, 'r0', 'r1'), (0x1F27A, 'r0', 'r2'), (0x1F3C2, 'r1', 'r0'), (0x1FD38, 'r0', 'r1'), (0x20114, 'r0', 'r1')):
     EDITS.setdefault(a_, {'why': 'bench (A4_SPINREC): a store at +0x38 (a wreck\'s heading?)'})
     EDITS[a_]['before'] = 'ENG_HDREC(0x%05Xu, %s + 0x38u, %s);' % (a_, b_, v_)
+
+# bench (A4_SPINREC, round 74): at every lifted function's entry, whether the tracked wreck's heading changed since
+# the last probe -- which span of the step turns it (the stores at +0x38 in the lifted code never did)
+for f_ in open(__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)) if '__file__' in globals() else 'renderer/eng', 'funcs.txt')).read().split():
+    if f_.startswith('#') or f_.endswith(':i'): continue
+    a_ = int(f_, 16)
+    EDITS.setdefault(a_, {'why': 'bench (A4_SPINREC): the wreck heading probe at the entry'})
+    EDITS[a_]['before'] = ('ENG_WPROBE(0x%05Xu); ' % a_) + EDITS[a_].get('before', '')

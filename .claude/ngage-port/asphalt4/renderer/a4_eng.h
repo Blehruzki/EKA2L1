@@ -299,6 +299,7 @@ void eng_cam_unblend(void);
 #define ENG_TDREC(race, tag) ((void)0)
 #define ENG_SPINREC(s_, c_, o_, n_, a_, d_) ((void)0)
 #define ENG_HDREC(a_, ea_, v_) ((void)0)
+#define ENG_WPROBE(f_) ((void)0)
 #define ENG_TCLK(w) (ENG->tlast[(w)])
 void eng_tsnap(uint32_t arg);
 void eng_tknock(uint32_t car);
@@ -1064,9 +1065,21 @@ static inline void eng_hdrec(uint32_t a, uint32_t ea, uint32_t v)
     eng_spinrec(0x100u | (a & 0xFFFFu) >> 0, car, MEM32(ea), v, a, 0u);
 }
 #define ENG_HDREC(a_, ea_, v_) eng_hdrec((a_), (ea_), (v_))
+/* at every lifted function's entry: the wreck TKREC tracks (0x5A8008) -- its heading changed since the last probe:
+ * recorded as site 0xFF with the function's address in the A20 word */
+static inline void eng_wprobe(uint32_t fn)
+{
+    volatile uint32_t *w = (volatile uint32_t *)0x005A8008u;
+    const uint32_t wc = w[0];
+    if (wc < 0x02000000u || wc >= 0x03000000u) return;
+    const uint32_t h = MEM32(wc + 0x678u);
+    if (h != w[1]) { eng_spinrec(0xFFu, wc, w[1], h, fn, 0u); w[1] = h; }
+}
+#define ENG_WPROBE(f_) eng_wprobe((f_))
 #else
 #define ENG_SPINREC(s_, c_, o_, n_, a_, d_) ((void)0)
 #define ENG_HDREC(a_, ea_, v_) ((void)0)
+#define ENG_WPROBE(f_) ((void)0)
 #endif
 #ifdef A4_KICKREC
 /* bench (round 73): every wall push -- the whole step, the substep | n << 8, the word, its value before, the game's
