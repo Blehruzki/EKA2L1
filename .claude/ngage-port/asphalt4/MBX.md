@@ -11455,3 +11455,14 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   from the camera (10,093 at 42171) under the boosts**, back to 1,000-1,450 once in state 2. So the stock game
   also sends the copter far away in states 1 and 8 -- a stretch of state 1 is where it flies off; whether the 3x
   build goes farther, or stays out longer, is hx4's question.
+- hx4 (the 3x build, the same knobs, Paris, owner's save, N95 model, 500 s; framestat 3,443): **the same copter as
+  stock's** -- news camera (state 0) at 3111, state 8 2,400-2,600 from the camera (climbed to 1,200), states 1 / 8
+  under the boosts out to 5,000-9,594, back to 610-1,460 in state 2, its eased offset dipping with each boost there.
+  The offset split (tools hcres.py: the copter less the player, C60 and the height): in state 1 the remainder grows
+  to ~8,700 units in both builds (stock 8,732 at 42234, 3x 8,892 at 5730) and shrinks back to ~200 by state 2;
+  without boosts (hx1) state 1 stayed within 2,613 of the camera. **So "farther with every nitro, until it came back
+  to its natural position" is the stock game's own copter: its state 1 (after the news shot or a tunnel climb)
+  carries it away under a boost, state 2 holds it ~1,000 ahead. The 3x engine reproduces it; nothing to fix in the
+  port.** Best test: hs4 / hx4 (the same route, knobs and save; not a repeat of hc1-hc4, which had no state or
+  offset record, nor of hx1 / hx3 / hs3, which had no boost). The chained pair (hsc4 / hxc4) stopped: the photo's
+  "x1 NITRO" is single boosts.
