@@ -11375,3 +11375,12 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   29,529 -> 33,736, 47,072 -> 57,263, 66,368 -> 60,460, 132 -> 634 -> 956 (news), 1,096 -> 772 -> 175; stock:
   36,158 -> 27,672, 19,804 -> 16,496, 9,638 -> 4,660, 1,857 -> 7,720 -> 11,858, 22,705 -> 32,518, 51,110 -> 3,390.
   No 3x-only ratchet in these; hc3_b / hc3_c / hc4_b to come.
+- hc3_b (3x, 2,119 renders): the player stuck on a wall most of the run; one news camera, 442 -> 459 from the car
+  through a boost. hc3_c (3x): stuck, no news camera. hc4_b (stock step, 1,024 renders, modes 2 / 0x17 / 0x18 only,
+  no news camera): per boost 36,001 -> 27,462, 19,593 -> 16,564, 9,384 -> 4,482, 1,933 -> 7,296 -> 11,297,
+  22,050 -> 31,795, 51,773 -> 4,050, 6,113 -> 960 -- the same kind of spread as hc4_a and the 3x runs. **Copter
+  result: not reproduced.** The news camera holds its distance through a boost in both builds (stock 517 -> 527, 3x
+  477 -> 493 and 442 -> 459), and slot 10's gap moves with its own flight in both, either way per boost. Best test of
+  this series: hc3_a (the only 3x run with the news camera, a boost, and slot 10 all recorded). Not a repeat of tk75 /
+  tk77 / tk79 (no boost inside) or hn4 / hn6 (no news event). Next needs the owner's own account: the view it was
+  seen in, how far, how long.
