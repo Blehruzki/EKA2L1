@@ -97,6 +97,11 @@ void a4_eng_tkrec(uint32_t race, uint32_t frames)
         const uint32_t c = MEM32(race + 0x394u + 4u * k);
         if (c && c != fc && MEM32(c + 0x34u) < 1024u) wc = c;                   /* a wreck path's frame (not a pointer) */
     }
+#ifdef A4_TKREC_SELF
+    /* bench (round 74): the followed car itself when nothing else is a wreck -- the player's own crash, whose camera
+     * (0x18) is a takedown's, for EKA2L1_WATCHPTR on the wreck's heading when the bench takes no one down */
+    if (!wc && fc && MEM32(fc + 0x34u) < 1024u) wc = fc;
+#endif
     for (k = 12u; k < 32u; k++) e[k] = 0u;
     if (wc) {
         e[12] = wc; e[13] = MEM32(wc + 4u); e[14] = MEM32(wc + 8u); e[15] = MEM32(wc + 0xCu);
