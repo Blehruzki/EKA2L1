@@ -11342,3 +11342,13 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   news camera in either (takedowns at ~31, ~76 s / ~25, ~67 s; "TOO CLOSE..."), so the searchlight under the cells
   is seen only in tk79's one frame (the same code: C73 + BBCELL + TKREC). sm73g (the battery's tail, r73's slow-motion
   bench) framestat 1,690.
+- Owner, asked: the far buildings were in a "regular race" (LA); the helicopter is **the news copter** -- "With the news
+  lady, the helicopter event triggers pretty early. I start building up wanted level but the cops don't trigger that
+  early in the race when the news copter shows up." So "farther and farther every time I hit the nitro button" is the
+  news camera (mode 0x2A), which the Paris bench route does reach (42-80 s in tk75 / tk77 / tk79, 79 s in stock).
+- A4_HCREC (bench, new, in the 3x and stock builds alike, a4_step_render): every render's camera mode, camera x y z,
+  the player's x y z, its boost countdown +AE0, speed +7D0, heading, the tick. hc1 (C74 + CARREC + BENCH_NITRO=40 +
+  HCREC, the 3x engine) and hc2 (C73stock + the same, the stock step), Paris on the owner's save, 100 s, filmed, two
+  runs each (hcana.py: the camera's distance from the car through the news camera, with the boosts): running.
+- la1 (C74 + SEGREC, LA bench save, 300 s, filmed): the whole race's segments by frame, for road sections 9-17 and the
+  far buildings: queued after.

@@ -3334,6 +3334,28 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
 #if defined(A4_TKREC) && defined(A4_ENG3)
     { extern void a4_eng_tkrec(uint32_t race, uint32_t frames); a4_eng_tkrec((uint32_t)(uintptr_t)self, ((volatile struct glr *)A4_GL_SCRATCH)->frames); }
 #endif
+#ifdef A4_HCREC
+    {   /* bench (round 74, phone round 73: the news copter "farther and farther every time I hit the nitro"): every
+         * render -- the frame, the camera mode (race+0x94), the camera's x y z (race+0x48 +0x10..), the player's x y z,
+         * its boost countdown +AE0, its speed +7D0, its heading +678, the tick: 16 words, a ring of 128 at 0x5A2000
+         * handed to a4_camp_emit; in the 3x build and the stock one alike. Never a phone build. */
+        extern void a4_camp_emit(const void *);
+        volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+        const uint32_t race = (uint32_t)(uintptr_t)self, pl = *(volatile uint32_t *)(race + 0x390u);
+        const uint32_t pi = pl ? *(volatile uint32_t *)(pl + 0xCu) : 16u;
+        const uint32_t pc = pi < 16u ? *(volatile uint32_t *)(race + 0x394u + 4u * pi) : 0u;
+        const uint32_t i = rg[0] & 127u;
+        volatile uint32_t *e = rg + 4u + 16u * i;
+        e[0] = ((volatile struct glr *)A4_GL_SCRATCH)->frames; e[1] = *(volatile uint32_t *)(race + 0x94u);
+        for (uint32_t k = 0; k < 3u; k++) e[2u + k] = *(volatile uint32_t *)(race + 0x48u + 0x10u + 4u * k);
+        for (uint32_t k = 0; k < 3u; k++) e[5u + k] = pc ? *(volatile uint32_t *)(pc + 4u + 4u * k) : 0u;
+        e[8] = pc ? *(volatile uint32_t *)(pc + 0xAE0u) : 0u; e[9] = pc ? *(volatile uint32_t *)(pc + 0x7D0u) : 0u;
+        e[10] = pc ? *(volatile uint32_t *)(pc + 0x678u) : 0u; e[11] = a4_ntick();
+        for (uint32_t k = 12u; k < 16u; k++) e[k] = 0u;
+        rg[0] = i + 1u;
+        if (((i + 1u) & 127u) == 0u) a4_camp_emit((const void *)(rg + 4u));
+    }
+#endif
 #if defined(A4_FRAMEMARK) || defined(A4_FRAMEREC)
     uint32_t mark_q16 = 0;   /* the speculation's fraction this render, bit 31 = computed */
 #endif
