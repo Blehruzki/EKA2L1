@@ -11187,3 +11187,6 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   only near the eye; objects past |T| 32,000 are refused to the game's own drawing ("range"). So the white patches are
   the game's own draw distance or its object window (the phone's 21 -> 2-4 objects at segment 9 -> 10), not GL's
   clipping; telling which needs the same road in stock.
+- Owner, asked: "nitro flames are fine. It's the pickups and helicopter light that are still clipping." and, of the
+  scenery, "far buildings". So: the sprites to fix are the pickups and the helicopter's light (not the flame);
+  the scenery loss is far buildings (the photos' white patches), not near pieces flickering.
