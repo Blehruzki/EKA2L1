@@ -11384,3 +11384,29 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   this series: hc3_a (the only 3x run with the news camera, a boost, and slot 10 all recorded). Not a repeat of tk75 /
   tk77 / tk79 (no boost inside) or hn4 / hn6 (no news event). Next needs the owner's own account: the view it was
   seen in, how far, how long.
+
+### Round 74, the container replaced: the bench restored, the copter photos read
+- The cloud container was replaced: the scratchpad (the bench's drives, builds, run scripts, recordings, the round
+  73 photos) is gone; the repository is whole. Restored from the owner: the handoff zip (baseline asphalt4_ngi.exe
+  4baef63a, the patched factory DLL, make_loader_hashes.py; SHA256SUMS all OK), "A4 and Ngage.zip" (the N-Gage
+  app and the .n-gage package), the 5320 ROM, the N95 8GB ROM, the save (8,100 bytes). Still to come: the N95's
+  Open C (OpenC_RM320.zip, backend.dll UID 0x102828d5) -- the bench runs RM-320. a4code.bin re-cut from the
+  baseline (code 0xB9E48 bytes at 0x9C). The emulator rebuilt (it needed qt6-base-private-dev).
+- Owner: the copter that went farther with each nitro was in the **normal (chase) view**; photos 1000801137 /
+  39 / 40 / 41 (LA, lap 1/3, WANTED, 297 -> 298 -> 310 -> 317 km/h, the nitro's flame from the second on): the
+  copter ahead above the road, **~57 -> 29 -> 26 -> 20 screen px wide** (photo px / 2.9) -- about 2.9 times
+  farther from the camera by the last, the boost still on.
+- Read, +1C48E (the pursuer placement, whole step only): states other than 6 place it absolutely -- position =
+  the followed car's (+C40) + C60 + a side wobble (sine of +C44) + the height +C4C (1000 from the spawn, +20520);
+  C60 eased 1/8 a step toward fwd x D, **D = -750 in state 0** (the news camera's state: the camera is 0x2A while
+  a type-4 unit is in state 0) **and D = 1000 - 50 (AE8 + 1)^2 (20 - |AE0 - 20|) otherwise** (the followed car's
+  boost countdown AE0 > 0; else AE8 counts as -1): stock pulls the copter *toward* the car during a boost (D 1000
+  -> 0 at the boost's middle for AE8 = 0) and lets it ease back after. State 6 (+1D272: the followed car's +B28
+  with bit 29, the bust; +1D1B8 sets it for the cops) moves it relatively -- position += the wobble, carried by
+  its own move. The spawn sets state 0 for the helicopter, 1 for the others; no other writer of +C6C found
+  (+16F78 clears a different object's).
+- So the photos' copter went the opposite way to stock's design, at a placement whose inputs the 3x build gates
+  (AE0 at +1BEE0, the call at +1E8F2): either it was not on that path, or the substeps' motion (eng_pstep's
+  spread, the pursuer line) carried it. A guess; next, measured: slot 10's +C40, +C6C, +C60, +C44, the followed
+  car's AE0 / AE8, per render, the 3x build against the stock step, through a news event and boosts (not a
+  repeat of hc1-hc4: those recorded slot 10's place only, not its state or its eased offset).
