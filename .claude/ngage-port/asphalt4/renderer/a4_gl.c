@@ -1422,14 +1422,10 @@ static void car_record(uint32_t race, uint32_t what)
 #ifdef A4_HDIST
     {   /* bench (round 73): the helicopter -- the police slot holding type 4 (+C70) -- its x, y, z, the player's x, z
          * and the player's boost countdown +AE0 in the header words 2-7, 'HDST' */
-        uint32_t q, hc = 0, best = 0xFFFFFFFFu;     /* round 74: the type-4 unit nearest the player (hn3 took a parked one) */
-        for (q = 8u; q < 16u; q++) {
-            const uint32_t c = *(volatile uint32_t *)(race + 0x394u + 4u * q);
-            if (!c || *(volatile int32_t *)(c + 0xC70u) != 4 || !car) continue;
-            const int32_t dx = *(volatile int32_t *)(c + 4u) - *(volatile int32_t *)(car + 4u), dz = *(volatile int32_t *)(c + 0xCu) - *(volatile int32_t *)(car + 0xCu);
-            const uint32_t d = (uint32_t)(dx < 0 ? -dx : dx) + (uint32_t)(dz < 0 ? -dz : dz);
-            if (d < best) { best = d; hc = c; }
-        }
+        /* round 74: race slot 10 (police slot 2) while it holds type 4, as A4_HELIREC took it (hn3 / hn4: the first or
+         * the nearest type-4 unit was a parked one at height -776) */
+        const uint32_t h10 = *(volatile uint32_t *)(race + 0x394u + 4u * 10u);
+        const uint32_t hc = h10 && *(volatile int32_t *)(h10 + 0xC70u) == 4 ? h10 : 0u;
         r[0] = 0x54534448u;
         r[2] = hc ? *(volatile uint32_t *)(hc + 4u) : 0x80000000u; r[3] = hc ? *(volatile uint32_t *)(hc + 8u) : 0u; r[4] = hc ? *(volatile uint32_t *)(hc + 0xCu) : 0u;
         r[5] = car ? *(volatile uint32_t *)(car + 4u) : 0u; r[6] = car ? *(volatile uint32_t *)(car + 0xCu) : 0u; r[7] = car ? *(volatile uint32_t *)(car + 0xAE0u) : 0u;
