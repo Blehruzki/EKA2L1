@@ -11338,3 +11338,7 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   - States not entered: a police chase with the helicopter (no WANTED on the bench), so "farther with every nitro" is
     untouched; the LA road of the far-building loss (segments 9-17) is not on the bench's LA race; the takedown's
     wreck spin (sixteenth-turn jumps from code outside the lifted engine) is unchanged in this build.
+- pa_r74d / pa_r74e (the exact binary, Paris on the owner's save, 85 s each, filmed; framestat 2,373 / 2,375): no
+  news camera in either (takedowns at ~31, ~76 s / ~25, ~67 s; "TOO CLOSE..."), so the searchlight under the cells
+  is seen only in tk79's one frame (the same code: C73 + BBCELL + TKREC). sm73g (the battery's tail, r73's slow-motion
+  bench) framestat 1,690.
