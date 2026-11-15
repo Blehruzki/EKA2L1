@@ -11289,3 +11289,16 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   probe ring empty -- read back: the ring is handed over only when 256 records fill it, and a takedown makes fewer;
   tk78 / tk80's "no store" were the same blind spot, not a measurement. The ring is now handed over with every TKREC
   block too (spinrd.py dedupes). tk82 (the same + that): running.
+- tk82 (entry probes with the ring handed over, Paris, 90 s; framestat 2,643): no takedown camera this time, but two
+  wrecks' headings traced (356 changes). Where they change: at the entry of +1971E (the orientation, after the move:
+  333 -- +83, +99, +54, +61, -51 single-substep turns on any substep, among small ones), at +1EA64's entry (10: the
+  wall push, eng_kick's thirds, recorded at +1F132 too: -20 .. -3, smooth), and at +CE8C's (3: +1497 at the wreck's
+  start, -195, +153 -- set outside the engine, between the step and the draw). The +1971E span holds no lifted +0x38
+  store that fired for a wreck (+1E896 / +1E8A2 / +1E8B4 silent), and the one unlifted call in it is +1C48E (via
+  +522A4), a large routine on a sub-state (+0x2C mode, +8 counter, +0xC value) -- not read to the end. Not fixed this
+  round; the wreck's place and the camera are even.
+- The traffic in a slow-motion takedown (tk76b, cnt 2680-2770, steps of sixths): 9-10 a substep, even (slots 3-5).
+- Phone cadence, read for the takedown: the phone renders every ~43 ms against substeps of 28.4 ms, so consecutive
+  frames are 1 or 2 substeps apart (renders by substep 0 x144, 1 x133, 2 x140): uneven steps on screen, most visible
+  where the camera is still and cars cross it -- a takedown camera. A guess at part of "stop-motion-ish", not measured
+  on a phone.
