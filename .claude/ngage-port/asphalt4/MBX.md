@@ -11176,3 +11176,8 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   These knocks are mild (a car hit from behind, spun once, sliding); a flipped car (the photo's) not recorded, so
   which of its words step is not known. tk74 (seek + nitro every 40 + TKREC + TRAFDUMP, the Veyron, 300 s; the
   TKREC ring at 0x5A8000 beside the dump's, scratch 0x1AE000): queued after hn3 / hn1.
+- hn3 (the 3x build + nitro presses every 40 + HDIST, Paris on the owner's save, 150 s; framestat 3,590): **no
+  result** -- the police slot of type 4 it took never moved in 1,686 steps (a parked unit at height -776, not the
+  flying helicopter), and the boost countdown +AE0 stayed 0: the presses (K[1] bit 0x20) fired no nitro (the bar is
+  earned; the bench driver earns none). hn1 (the stock twin) stopped: it would read the same. The helicopter's
+  "farther with every nitro" stays unreproduced; it needs a flying helicopter (hr71's route had one) and a charged bar.
