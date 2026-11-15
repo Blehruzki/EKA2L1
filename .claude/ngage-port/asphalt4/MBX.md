@@ -11181,3 +11181,9 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   flying helicopter), and the boost countdown +AE0 stayed 0: the presses (K[1] bit 0x20) fired no nitro (the bar is
   earned; the bench driver earns none). hn1 (the stock twin) stopped: it would read the same. The helicopter's
   "farther with every nitro" stays unreproduced; it needs a flying helicopter (hr71's route had one) and a charged bar.
+- Read for the scenery photos: neither GPU path cuts far geometry. The table's triangles go as (x W, y W, -min(zq, W),
+  W): depth clamped inside the clip volume (tri_conv). The GPU objects' projection (gobj_flush, and the cars' and
+  the mesh's alike) is P[11] = -1, P[14] = ZK - ZK/64: depth ZK/ZW, which falls toward 0 with distance and is cut
+  only near the eye; objects past |T| 32,000 are refused to the game's own drawing ("range"). So the white patches are
+  the game's own draw distance or its object window (the phone's 21 -> 2-4 objects at segment 9 -> 10), not GL's
+  clipping; telling which needs the same road in stock.
