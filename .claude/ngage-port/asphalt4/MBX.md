@@ -11359,3 +11359,10 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   steady too, but none with a boost inside it. So the news camera's distance is not yet seen to ratchet; the copter
   the owner saw may be the one in the sky (race slot 10's type-4 unit, a still unit at -776 in hn4 / hn6). HCREC now
   also records slot 10's place and type; hc3 (3x) x3 and hc4 (stock step) x2 queued after la1.
+- la1 (C74 + SEGREC, LA bench save, the regular race to its end, 300 s, filmed; framestat 7,498): the segments by
+  frame: 37 .. 125, 0 .. 36 (a lap), with **9 -> 10 the drop the phone showed: objects 22 -> 2-3 through 10-15, 4-5 at
+  16-17** (the phone: 21 -> 4 -> 2, 2-4 through 10-17) -- the game hands over that few on this stretch on the bench
+  too: an open highway between grass (the video, 66-89 s), not a downtown. The downtown stretches (40-64 s, the round
+  tower at ~154 s and ~203 s) are drawn whole on the bench, buildings to the skyline, no white patch. So the far
+  buildings' loss is not reproduced on the bench in the regular LA race -- a phone-only difference (the GPU, its
+  driver), not the game's object window.
