@@ -243,8 +243,16 @@ public:
     // window of memory.
     static std::uint32_t watch_pc_lo;
     static std::uint32_t watch_pc_hi;
+    // EKA2L1_WATCHPTR=cell:off: the watch follows a pointer -- each store of a new value to the
+    // word at `cell` moves the watched word to that value + off (a heap object's field, whose
+    // address differs run to run; ngage-port, Asphalt 4 round 74: a wrecked car's heading).
+    static std::uint32_t watch_ptr_cell;
+    static std::uint32_t watch_ptr_off;
     void ReportWatch(std::uint32_t address, std::uint32_t data, std::uint32_t width);
+    void RetargetWatch(std::uint32_t data);
     inline void WatchWrite(std::uint32_t address, std::uint32_t data, std::uint32_t width) {
+        if (watch_ptr_cell && address == watch_ptr_cell && width == 4)
+            RetargetWatch(data);
         if (watch_addr && address < watch_end && address + width > watch_addr)
             ReportWatch(address, data, width);
     }

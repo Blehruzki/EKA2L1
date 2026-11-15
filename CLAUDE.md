@@ -73,7 +73,8 @@ watch the count move.
 bridged SVC (`clear_inactivity_time` in `src/emu/kernel/src/svc.cpp`). Counting
 in `kernel_system::reset_inactivity_time` instead mixes in the window server's
 own host-side resets, which are an order of magnitude more frequent. The other
-probes are `EKA2L1_WATCH`, `EKA2L1_WATCHVAL`, `EKA2L1_WATCHPC` and
+probes are `EKA2L1_WATCH`, `EKA2L1_WATCHVAL`, `EKA2L1_WATCHPC`,
+`EKA2L1_WATCHPTR` (a watch that follows a pointer the guest stores) and
 `EKA2L1_RWATCH` in `src/emu/cpu/src/dyncom/armstate.cpp`.
 `EKA2L1_PCTRACE=lo:hi:path` writes every basic-block entry whose PC falls in
 [lo, hi) to a file as (pc, sp) word pairs, armed from the first entry at

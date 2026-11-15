@@ -43,6 +43,27 @@ std::uint32_t ARMul_State::rwatch_end = []() -> std::uint32_t {
                  : static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) + 4;
 }();
 
+std::uint32_t ARMul_State::watch_ptr_cell = []() -> std::uint32_t {
+    const char *w = std::getenv("EKA2L1_WATCHPTR");
+    return w ? static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) : 0;
+}();
+
+std::uint32_t ARMul_State::watch_ptr_off = []() -> std::uint32_t {
+    const char *w = std::getenv("EKA2L1_WATCHPTR");
+    const char *colon = w ? std::strchr(w, ':') : nullptr;
+    return colon ? static_cast<std::uint32_t>(std::strtoul(colon + 1, nullptr, 16)) : 0;
+}();
+
+void ARMul_State::RetargetWatch(std::uint32_t data) {
+    static std::uint32_t last = 0;
+    if (data == last)
+        return;
+    last = data;
+    watch_addr = data ? data + watch_ptr_off : 0;
+    watch_end = watch_addr ? watch_addr + 4 : 0;
+    LOG_ERROR(eka2l1::CPU_DYNCOM, "WATCHPTR: now 0x{:X} (pointer 0x{:X} stored at pc 0x{:X})", watch_addr, data, Reg[15]);
+}
+
 // EKA2L1_WATCHGATE's state (see ReportWatch), shared with a range read watch: while a gate is
 // configured, an EKA2L1_RWATCH range reports reads only while it is open.
 static bool watch_gate_open = std::getenv("EKA2L1_WATCHGATE") == nullptr;
