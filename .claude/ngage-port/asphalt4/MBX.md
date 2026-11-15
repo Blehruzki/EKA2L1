@@ -11515,3 +11515,8 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   and 64 renders -- the stop-motion in numbers. tv3 (the fix again, for a takedown camera): running.
 - shipchk rewritten (tools shipchk.py: uncompressed, +3A15C 10b5 0400, no 0xDEADBEEF): r74 passes; the fix's C74
   build (941,952 bytes, 92663fb7...) passes.
+- tv3 (the fix again; framestat 2,917): again no takedown camera (one wreck tracked, 28 kicks, none a sixteenth;
+  the news camera at 6411). tv1 (before the fix) had three crash / takedown cameras; two runs with the fix none. A
+  takedown may hang on how far a contact turns a car -- the old substeps turned it up to n kicks a step, more than
+  stock's one -- so the rate is checked against the stock step: tdbat (all '5' held, no autopilot, Paris, owner's
+  save, N95 model, 400 s): hsr1 (C74stock + HCREC), tv4 (the fix), hsr2, tvo2 (before the fix): running.
