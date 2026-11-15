@@ -1363,7 +1363,9 @@ static void car_record(uint32_t race, uint32_t what)
         /* bench (round 73, the helicopter "farther every time I hit the nitro"): a press of the nitro (bit 0x20, a
          * press being K[1] & ~K[0]) every A4_BENCH_NITRO steps from step 260 */
         if (r[1] >= 260u && r[1] % (A4_BENCH_NITRO) == 0u) {
-            ((volatile uint32_t *)K)[1] = ((volatile uint32_t *)K)[0] | 0x20u;
+            /* round 74: and bit 19, which +2092 adds to action 1's (the nitro's) mapped keys whatever the save's
+             * key map says -- 0x20 alone started no boost on the owner's save */
+            ((volatile uint32_t *)K)[1] = ((volatile uint32_t *)K)[0] | 0x20u | 0x80000u;
 #ifdef A4_BENCH_NITROFILL
             /* round 74: the autopilot earns no nitro, so a press started nothing (+1BE70 starts a boost at +AD8 >=
              * 256, chains one at > 512): the player's +AD8 topped up to A4_BENCH_NITROFILL before each press */

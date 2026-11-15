@@ -11438,3 +11438,11 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
 - A4_BENCH_NITROFILL=<n> (bench, new, with BENCH_NITRO): the player's +AD8 topped up to n before each press.
   hx3 / hs3 (3x / stock step, a press every 40 steps, n 256: single boosts) and hxc3 / hsc3 (every 15 steps, n 768:
   chained boosts, AE8 up to 2) running.
+- hx3 / hs3 (the top-up, n 256, a press every 40): **still no boost in either build** (AE0 0; no "x1 NITRO" on the
+  HUD). The top-up compiles as meant (read back from a4_hs.exe: every 40 steps K[1] |= 0x20 and +AD8 raised to 256).
+  Read: the race step builds the player's key word from +2092(keys, action, mode) -- mask = the save's key map for
+  the action, plus a fixed bit (action 0: bit 18, action 1 -- the nitro -- bit 19, actions 2 / 3: bit 17), pressed =
+  K[1] & mask & ~K[0] -- so 0x20 is the nitro only under one key map; the owner's save may map it elsewhere. The
+  press now sets 0x80000 too. hs3 had no news event (no copter); hsd (a debug run) stuck at "press any key": the
+  stock build loads slower than the menu keys -- three '5' presses added after them. hs4 / hx4 (single boosts) and
+  hsc4 / hxc4 (chained) running.
