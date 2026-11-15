@@ -11508,3 +11508,10 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   next n - 1 substeps' +1971E entry (the orientation built from it); the step's later kicks for the car dropped; an
   unfinished spread finished with the next kick. lifted.c regenerated: the diff is the three insertions only. Builds:
   C74 (941,952 bytes), C74stock (unchanged code path), the probe tv2. tv2 (tv1's run with the fix): running.
+- tv2 (the fix, tv1's run; framestat 2,890): no takedown camera this time (the bench is not deterministic); its one
+  tracked wreck (+034 2, in contact for ~3,500 frames) took 440 kicks through the rotate and 209 shares at +1971E's
+  entry: **the largest change a store 38 (tv1: 128 / 145), none a whole sixteenth**. tv1's takedown cameras, per
+  render (tools tkhd.py): 188 renders, 173 with the wreck's heading still, 3 changes of 96+ (max 145), holds of 63
+  and 64 renders -- the stop-motion in numbers. tv3 (the fix again, for a takedown camera): running.
+- shipchk rewritten (tools shipchk.py: uncompressed, +3A15C 10b5 0400, no 0xDEADBEEF): r74 passes; the fix's C74
+  build (941,952 bytes, 92663fb7...) passes.
