@@ -1362,7 +1362,16 @@ static void car_record(uint32_t race, uint32_t what)
 #ifdef A4_BENCH_NITRO
         /* bench (round 73, the helicopter "farther every time I hit the nitro"): a press of the nitro (bit 0x20, a
          * press being K[1] & ~K[0]) every A4_BENCH_NITRO steps from step 260 */
-        if (r[1] >= 260u && r[1] % (A4_BENCH_NITRO) == 0u) ((volatile uint32_t *)K)[1] = ((volatile uint32_t *)K)[0] | 0x20u;
+        if (r[1] >= 260u && r[1] % (A4_BENCH_NITRO) == 0u) {
+            ((volatile uint32_t *)K)[1] = ((volatile uint32_t *)K)[0] | 0x20u;
+#ifdef A4_BENCH_NITROFILL
+            /* round 74: the autopilot earns no nitro, so a press started nothing (+1BE70 starts a boost at +AD8 >=
+             * 256, chains one at > 512): the player's +AD8 topped up to A4_BENCH_NITROFILL before each press */
+            const uint32_t pl_ = *(volatile uint32_t *)(race + 0x390u), pi_ = pl_ ? *(volatile uint32_t *)(pl_ + 0xCu) : 16u;
+            const uint32_t pc_ = pi_ < 16u ? *(volatile uint32_t *)(race + 0x394u + 4u * pi_) : 0u;
+            if (pc_ && *(volatile int32_t *)(pc_ + 0xAD8u) < (A4_BENCH_NITROFILL)) *(volatile int32_t *)(pc_ + 0xAD8u) = (A4_BENCH_NITROFILL);
+#endif
+        }
 #endif
     }
 #endif

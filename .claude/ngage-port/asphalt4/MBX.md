@@ -11425,3 +11425,16 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   +C60..+C68, +C4C, +0A8.., +010.., the player's +AE8. hx0 (probe, 3x): slot 10 parked until the event (+C40 0,
   its words never set by +20520 yet). hx1 / hs1 / hx2 / hs2 (3x / stock step, CARREC + AUTOPILOT(_UNSTICK) +
   BENCH_NITRO=40 + HCREC, Paris on the owner's save, the N95 model, 500 s wall): running.
+- hx1 (the 3x build + HCREC + autopilot + BENCH_NITRO=40, Paris, owner's save, N95 model, 500 s wall; framestat
+  3,422, faults 1 the boot one): **no boost fired** (AE0 0 throughout): +1BE70 starts a boost only at +AD8 >= 256
+  (one "x1" charge; a chain at > 512, +AE8 counting chains 0..2, each boost +AE0 = 40 steps), and the autopilot
+  earns no nitro. The copter itself: spawned at frame 8151 in the news camera (0x2A, state 0, height +C4C 200, its
+  eased offset growing to 740: D = -750); state 1 at 8640 (60 steps on: the news camera ends, the chase view; in
+  state 1 +1C48E also moves it by fwd x 1000 sin(...) after the placement, and +C4C eases 1195 -> 200); state 2 at
+  8991 (60 steps on), steady from there: |C60| 970-998, the copter 1,120-1,250 from the player and 1,430-1,530
+  from the camera -- ahead of the car (the camera behind it). State 2's 1,450 is the baseline the photos' copter
+  is ~3 times farther than. (Another state-machine read: +1C48E's states 0 -> 1 (+1C8CA, 60 steps) -> 2, with 7 and
+  8 entered through +1932E checks (+1C8E4, +1CB36), and 6 the bust; states 1 and 8 move it relatively.)
+- A4_BENCH_NITROFILL=<n> (bench, new, with BENCH_NITRO): the player's +AD8 topped up to n before each press.
+  hx3 / hs3 (3x / stock step, a press every 40 steps, n 256: single boosts) and hxc3 / hsc3 (every 15 steps, n 768:
+  chained boosts, AE8 up to 2) running.
