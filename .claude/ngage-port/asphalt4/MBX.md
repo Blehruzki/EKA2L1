@@ -11034,3 +11034,21 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   2) in sixths, while the car is slow (a crash's end): 13-18 at some substeps against 1-5 at others (139605-140315
   ms: sub 5 13 with the car 0, sub 3 15 with 2, sub 0 18 with 3) -- +1300C's chase update shows raw the frame it runs,
   then the blend; to read again after the change. Not a repeat of r73c2 (no slow motion there) or sm73c (no camera).
+- smd73 (crash-steer on sm73d -- +1300C after substep 3, the script's tick over three substeps; framestat 3,135):
+  **the crash camera even** -- 12, 12, 12, 11, 12, 12 a substep through its steps of sixths (24-25 where a render took
+  two substeps, as the cars), against smc73's 6, 6, 6, 6, 12, 36. The chase camera (mode 2) in sixths: its offset
+  from the car hops and comes back on the frames that end with +1300C -- (+7, +5) then (-14, -8); (+12, +7) then
+  (-11, -6); (-9, -1) then (+57, +9) -- and its yaw against the car's turn (1934 -> 1938 while the car went 1942 ->
+  1925): back and forth, the artifact the owner named. Counted (hop.py: the offset's change turning back with both
+  over 5): smd73 5 of 126 sixths renders, smc73 1 of 113; at normal speed r73t2 0 of 415, r73c2 1 of 317, r73v 0 of
+  375. Cause: +1300C runs the game's chase camera from the blend's pose (not its own) and the frame shows its raw
+  pose; the next substep's blend puts the old offset back.
+- Change (A4_ENG6 builds only; sm73e): +1300C wrapped (a4_step_fill, a hook at +1693C installed with A4_ENG6; the
+  placeholder a4_stepfill in every GL build). Before it, eng_cam_unblend (the game's own chase pose back, as before a
+  whole step); after it, eng_cam_mid: its pose the chase blend's next target (the last target turned to the car's
+  heading, as at a whole step), the substep that ran placed again on the new pair -- and the crash camera's script
+  likewise. In a step of sixths a chase target spans three substeps (1-3 toward the whole step's, 4-5 toward
+  +1300C's), j counted from the last; with no +1300C in the step (the scale back to 256 mid-step, or lockstep)
+  substeps 4-5 hold the target instead of running past it. Thirds unchanged (n = 3: the old arithmetic). Builds:
+  sm73e 938,220 bytes; the C72 flags alone (c72chk) 936,576 (r72 934,508: round 73's generalisations, thirds checked
+  identical in o3w4 / o3w4c). sme73 (crash-steer, forced slow motion): running.

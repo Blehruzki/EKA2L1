@@ -244,6 +244,7 @@ struct eng {
                                       * whose whole-step velocity svv holds */
     int32_t svp[16][3], svv[3];      /* their position then, and the step's displacement (A4_ENG6's sixths) */
     int32_t sclk;                    /* round 73: the crash camera script's clock after the whole step's tick (A4_ENG6) */
+    uint32_t cmid;                   /* round 73: this step of sixths' +1300C has run (its camera a second target) */
     uint32_t dbg[8];                 /* A4_ENGDBG: the substep's path bits and the player's keys, emitted per substep */
     uint32_t rk[ENG_NREM];           /* the word's address (0: free) */
     int8_t rv[ENG_NREM];             /* its remainder, 0 .. n - 1 (bytes since round 71: the traffic's lines needed the room) */
@@ -744,7 +745,7 @@ static inline void eng_cam_script(uint32_t sp, uint32_t *r23, uint32_t j, volati
      * two thirds on from the value the mid tick left (the clock moved since the whole step's: ENG->sclk). Before,
      * the substeps spread one tick over six and the two ticks landed whole -- a jump at each step's end. */
     int32_t jj = (int32_t)j, den = (int32_t)ENG->n;
-    if (ENG->n == 6u) { den = 3; if (clk != ENG->sclk) jj = j >= 3u ? (int32_t)j - 3 : 0; }
+    if (ENG->n == 6u) { den = 3; jj = clk != ENG->sclk ? (j >= 3u ? (int32_t)j - 3 : 0) : (j > 3u ? 3 : (int32_t)j); }   /* no tick yet: hold */
     if (*done || (end && clk >= end)) return;
     for (k = 0; k < 11u; k++) {
         const uint32_t head = o[0x94u / 4u + k], first = MEM32(head);
@@ -790,7 +791,7 @@ static inline void eng_cam_pose(uint32_t sp, uint32_t *r23, uint32_t j)
     uint32_t mode, k, save[ENG_CAMW], chase;
     if (!ENG->camv || !cam) return;
     mode = cam[0x4C / 4];
-    if (j == 0u) ENG->cbw = 0;
+    if (j == 0u) { ENG->cbw = 0; ENG->cmid = 0; }
     if (!(mode <= 7u || mode == 0x2Au)) {
         ENG->cbok = 0;
 #ifdef A4_CAMSCRIPT3
@@ -823,9 +824,14 @@ static inline void eng_cam_pose(uint32_t sp, uint32_t *r23, uint32_t j)
     }
     if (chase && ENG->cbok && ENG->cbmode == mode) {   /* the pose: the car now, the offset a third further a substep */
         int32_t o[5], hd = car[0x678 / 4] & 2047, dh = eng_wrap(hd - ENG->cbhd), rx, rz;
+        /* round 73 (A4_ENG6): in a step of sixths the game updates the camera twice -- the whole step, and +1300C
+         * after substep 3 (eng_cam_mid makes its pose the next target) -- so a target spans three substeps, j
+         * counted from the last one: 1-3 toward the whole step's, 4-5 toward +1300C's */
+        int32_t jj = (int32_t)j;
+        if (ENG->n == 6u) jj = ENG->cmid ? (j >= 3u ? (int32_t)j - 3 : 0) : (j > 3u ? 3 : (int32_t)j);   /* no +1300C: hold */
         for (k = 0; k < 5u; k++) {
             const int32_t a = ENG->cbprev[k], d = k == 3u ? eng_wrap(ENG->cbcur[k] - a) : ENG->cbcur[k] - a;
-            o[k] = a + (j == 0u ? 0 : eng_divn((int32_t)j * d));
+            o[k] = a + (jj == 0 ? 0 : ENG->n == 6u ? eng_sdiv(jj * d, 3) : eng_divn(jj * d));
         }
         if (dh < 256 && dh > -256) {
             eng_rot(o[0], o[1], dh, &rx, &rz);
@@ -854,6 +860,40 @@ static inline void eng_cam_pose(uint32_t sp, uint32_t *r23, uint32_t j)
     if (j != 0u) for (k = 0; k < ENG_CAMW; k++) if (k < 4u || k > 11u) cam[k] = save[k];
 }
 static inline void eng_cam_substep(uint32_t sp, uint32_t *r23) { eng_cam_pose(sp, r23, ENG->sub); }
+/* Round 73 (A4_ENG6): +1300C, the race update's between-steps fill, runs in a step of sixths once, after substep 3
+ * (a4_eng6_count), and updates the camera as stock's slow motion does between its logic steps. Before it the chase
+ * pose goes back to the game's own (eng_cam_unblend, as before a whole step), so its camera code reads its own
+ * pose; after it that pose is the chase blend's next target -- the blend's offset turned to the car's heading the
+ * last target, as at a whole step -- and the substep that ran last is placed again on the new pair (j - 3 of
+ * three), so the frame shows the blend and not +1300C's raw pose (smd73: the offset hopped and came back at every
+ * such frame). The crash camera's script ticked in +1300C; its substep is placed again the same way. */
+static inline void eng_cam_mid(void)
+{
+    volatile uint32_t *cam = (volatile uint32_t *)(uintptr_t)ENG->cam[0];
+    volatile int32_t *car = (volatile int32_t *)(uintptr_t)ENG->cam[2];
+    uint32_t stk[32] = { 0 }, r23[2], mode, k;
+    if (ENG->n != 6u || !ENG->camv || !cam || !car) return;
+    mode = cam[0x4C / 4];
+    ENG->cmid = 1;
+    if ((mode == 1u || mode == 2u || mode == 3u || mode == 0x2Au) && ENG->cbok && ENG->cbmode == mode) {
+        int32_t c[5], rx, rz, hd = car[0x678 / 4] & 2047;
+        c[0] = (int32_t)cam[4] - car[1]; c[1] = (int32_t)cam[6] - car[3]; c[2] = (int32_t)cam[5] - car[2];
+        c[3] = eng_wrap((int32_t)cam[8] - hd); c[4] = (int32_t)cam[7];
+        if (go_cb_far(c, ENG->cbcur) || eng_wrap(hd - ENG->cbhd) > 255 || eng_wrap(hd - ENG->cbhd) < -255) {
+            for (k = 0; k < 5u; k++) ENG->cbprev[k] = c[k];
+        } else {
+            eng_rot(ENG->cbcur[0], ENG->cbcur[1], eng_wrap(hd - ENG->cbhd), &rx, &rz);
+            ENG->cbprev[0] = rx; ENG->cbprev[1] = rz;
+            for (k = 2; k < 5u; k++) ENG->cbprev[k] = ENG->cbcur[k];
+        }
+        for (k = 0; k < 5u; k++) { ENG->cbcur[k] = c[k]; ENG->cbgp[k] = (int32_t)cam[4 + k]; }
+        ENG->cbhd = hd;
+        if (ENG->sub >= 3u) eng_cam_pose((uint32_t)(uintptr_t)(stk + 8), r23, ENG->sub);
+    }
+#ifdef A4_CAMSCRIPT3
+    else if (mode == 0x18u && cam[0xC0u / 4u] == 0x18u && ENG->sub > 3u) eng_cam_script((uint32_t)(uintptr_t)(stk + 8), r23, ENG->sub, cam);
+#endif
+}
 static inline void eng_cam_whole(uint32_t sp, uint32_t *r23) { eng_cam_pose(sp, r23, 0u); }
 /* Before the whole step's camera code (+141B0 at +14CB2): the pose words the blend wrote go back to the
  * game's own last placement, so the game's camera reads its own pose, not the blend's -- unless something

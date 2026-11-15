@@ -58,6 +58,12 @@ void a4_eng6_count(uint32_t race, int32_t *m, int32_t *n)
     if (ends) *m = *n + 1;
 }
 #endif
+#if defined(A4_ENG6) && defined(A4_ENG3)
+/* Round 73: around +1300C (a4_gl.c a4_step_fill): the chase pose the game's own before it, its camera the next
+ * target after it (eng_cam_mid) */
+void a4_eng6_fill_pre(void) { if (ENG->magic == ENG_MAGIC && ENG->n == 6u) eng_cam_unblend(); }
+void a4_eng6_fill_post(void) { if (ENG->magic == ENG_MAGIC && ENG->n == 6u) eng_cam_mid(); }
+#endif
 #define ENGV(x) uint64_t a4_engv_##x(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, \
     uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7) \
     { return engr_##x(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7, (uint32_t)(uintptr_t)__builtin_return_address(0)); }

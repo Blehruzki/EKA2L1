@@ -163,7 +163,7 @@ STEP_HOOKS = {0x16796: ('a4_step_count', (0xF7FF, 0xF9C1)),    # bl +15B1C, the 
               0x16966: ('a4_step_cam', (0xF7FC, 0xF9F8)),      # bl +12D5A, before the render
               0x1696C: ('a4_step_render', (0xF7FC, 0xF811))}   # bl +12992, the render
 STEP_PLACEHOLDERS = {'a4_stepcnt': 0x15B1C | 1, 'a4_stepmain': 0x15A52 | 1,
-                     'a4_stepcam': 0x12D5A | 1, 'a4_steprend': 0x12992 | 1,
+                     'a4_stepcam': 0x12D5A | 1, 'a4_steprend': 0x12992 | 1, 'a4_stepfill': 0x1300C | 1,
                      'a4_hc_1de78': 0x1DE78 | 1, 'a4_hc_1f1f8': 0x1F1F8 | 1,
                      'a4_hc_1ea64': 0x1EA64 | 1, 'a4_hc_1fd5c': 0x1FD5C | 1,
                      'a4_hc_25e8': 0x25E8 | 1, 'a4_hc_12dec': 0x12DEC | 1,
@@ -475,6 +475,12 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == want, 'step hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)
             blx_insert(code, off, syms[sym])
             print('step   +%06X -> %s +%06X (4-byte BLX for the bl)' % (off, sym, syms[sym] - LINK_BASE))
+    # round 73 (A4_ENG6): +1300C, the race update's between-steps fill, wrapped for the camera in a step of sixths
+    if steptime and '-DA4_ENG6' in os.environ.get('A4_EXTRA_CFLAGS', '').split():
+        have = struct.unpack_from('<HH', code, 0x1693C)
+        assert have == (0xF7FC, 0xFB66), 'fill hook +01693C: displaced %04x %04x, expected f7fc fb66' % have
+        blx_insert(code, 0x1693C, syms['a4_step_fill'])
+        print('step   +01693C -> a4_step_fill +%06X (4-byte BLX for the bl +1300C)' % (syms['a4_step_fill'] - LINK_BASE))
     if '-DA4_HALFLOGIC' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
         have = struct.unpack_from('<HH', code, 0x167A6)
         assert have == (0x6BA0, 0x19C0), 'half logic: +167A6 holds %04x %04x' % have

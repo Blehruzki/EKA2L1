@@ -1406,6 +1406,17 @@ int a4_step_main(void *self)                                    /* +167B4: bl +1
     A4_PERF[PF_SMAIN] += a4_ntick() - t0; A4_PERF[PF_NMAIN]++;
     return r;
 }
+#if defined(A4_ENG6) && defined(A4_ENG3)
+extern const int32_t a4_stepfill;
+int a4_step_fill(void *self)                                    /* +1693C: bl +1300C (round 73, A4_ENG6 builds only) */
+{
+    extern void a4_eng6_fill_pre(void), a4_eng6_fill_post(void);
+    a4_eng6_fill_pre();
+    int r = a4_gcall1(GAMEFN(a4_stepfill), (uint32_t)(uintptr_t)self);
+    a4_eng6_fill_post();
+    return r;
+}
+#endif
 int a4_step_cam(void *self)                                     /* +16966: bl +12D5A */
 {
     uint32_t t0 = a4_ntick();
