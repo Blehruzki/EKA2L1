@@ -11073,3 +11073,56 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   alone, the chase unfixed) or sme73 / sme73b (no crash camera slowed).
   Slow motion on the bench, all three: every frame a new real substep (sm73c); the crash camera even (smd73,
   smf73); the chase camera without its hop (sme73, sme73b). Next: candidate r73b (C73, this code) and its battery.
+
+## Round 73 candidate r73b (a4_r73b_cand.exe, sha256 6438e2abfd429d342cd80b2a6d04f12aaf44ecc1ded14a8257abd934b3edee6b, 937,992 bytes)
+
+C73.flags = C72.flags + A4_ENG6. +3A15C b510 0004, no 0xDEADBEEF; built unbaked (the owner bakes). Supersedes r73
+(8859839208..., the camera unfixed) and r72 (never sent: its changes are in this one). Against r71, the last build
+the phone ran:
+1. (r72) Every GPU projection a quarter pixel toward GL's window origin (the grey lines); sprites against GPU cars
+   and objects by their mesh's own bounds (pickups, the helicopter's light); the frame record's scenery fields.
+2. Slow motion at real steps (A4_ENG6): while the game's slow motion is on (race+0x84C = 512) the engine marks each
+   game step as six substeps instead of three, so every frame of a slowdown draws a newly simulated state (thirds
+   repeated 30% of them); nothing is drawn between steps. A step of sixths adds up to the game's step: every rate /
+   n, every measure x n, the wall push's step, the orientation lag over a ring of six, the slip check on the whole
+   step's displacement (the wall downshift).
+3. The slowed step's between-steps update (+1300C: the effects' counters and the camera, as stock runs it between
+   its slowed steps) once a step after substep 3; the crash camera's script and the chase camera's blend take its
+   camera as a second target, so both move at their normal rate and evenly (no lump, no hop).
+Battery on the exact binary (q73bat.sh = r73bat.sh, rule 2: round 72's runs, row for row):
+- w73b (the recorder twin a4_w73) framestat 3,705; grip [(1048576, 336), (0, 12), (4096, 7), (5234, 4)]; E4 max 0.
+- q73t2 (calibrated N95, 120 s) framestat 3,677; **35.6 ms a render** (3D 14.0, comp 7.7, read 5.9, 2D 2.5, pres
+  2.5; r73t2 37.1, r72t2 36.9); reversals 0 / 0; drop frames 0; presents 3,554, 277 no-render (r70t2 237, r71t2 205,
+  r72t2 77: the host's spread); line rows 0.
+- q73c2 (crash-steer) framestat 3,026, reversals 0; q73f / q73f2 (to the finish) 10,894 / 7,005, modes 1/2/0x17, no
+  reversal; menu 18 shots (4,035), mark 1,557, mark on the Veyron 1,569; q73v (Veyron autopilot) 3,050, reversals 0 /
+  0, heading less yaw 31 / 78 / 110; Paris (owner's save) 3,213, line rows 0; GPU objects taken 94.8 / 94.1 / 77.1%;
+  the |dx| == |dz| runs 0-4 (r71c2 4). No battery route slows (substeps 0-2 in all six frame records).
+- sm73g (this code + the forced slow motion, the N95 model): substeps a render at 512 0 x1, 1 x183, 2 x113, 3 x4,
+  4 x1 -- 301 of 302 slowed frames a new state; at 256 as before. smd73 / smf73 (the crash camera slowed) even;
+  sme73 / sme73b (the chase slowed) 0 hops in 280 sixths renders.
+
+Rule 4, before it goes out:
+a. Guesses, and how the bench could settle them:
+   - That the game's slow motion has one scale, 512 (read from the race rules +14360..+1442E). Any other scale gets
+     no sixths (a4_eng6_count acts at 512 only) and plays as r71 did.
+   - That a step of sixths is the game's step: measured in lockstep against stock and thirds through a wall scrape
+     and straight driving with the slow motion forced, opponents accounted for (k6f2 / k3f / o1w: sixths 26-49 units
+     from stock where thirds are 55-110). A car-to-car hit, a takedown, a wreck's scripted flight, a jump, the boost
+     and a traffic hit in sixths are not on the bench's routes: a lockstep run through one of each would settle them.
+   - That +1300C's place in the step (after substep 3, not its end) is invisible: it moves the effects' frame counters
+     mid-step; read from the code, not looked at.
+   - That the takedown's camera is 0x18 (round 65's read): the chase modes (1, 2, 3, 0x2A) and 0x18 are blended in
+     sixths; any other mode a slowdown uses is placed by the game twice a step, as stock places it.
+   - Round 72's: the grey-line tie modelled (A4_MBXTIE), not seen on the MBX; the pickups and the GNN light not on
+     the bench's routes; the scenery loss not reproduced (the frame record will say).
+b. Read back: the whole diff since r72's candidate (a3a6800..): a4_eng.h (n and wst, eng_divn, the lag ring, the slip
+   check, the script's and the chase's spans in sixths, eng_cam_mid, the probes behind A4_KICKREC), a4_eng.c
+   (a4_eng6_count, the key gate, the fill's halves), a4_gl.c (a4_step_fill; FRC1's substep in 3 bits, the drop
+   record's 2; the bench knobs A4_BENCH_SLOWSTEP / A4_BENCH_SLOWCAM / A4_CREC_SCALE, off), edits.py (n in the
+   measures; the slip edits), injector.py (the +1693C hook with A4_ENG6; the placeholder), a4_gl.s. Thirds checked to
+   take the old arithmetic at every changed site (n = 3). Only remembered: the comment blocks.
+c. States the bench did not enter: the game's own slow motion -- every slowdown on the bench was forced (the scale by
+   host time, or while the crash camera is up), none by the race rules' request and countdowns (cam+0x3C, race+0x850,
+   +0x854); an opponent's takedown and its wreck flying at sixths; a hit inside a slowdown; the phone's frame rate in
+   a slowdown (the model gives 1-2 substeps a render, as at normal speed).
