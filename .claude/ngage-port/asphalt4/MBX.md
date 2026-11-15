@@ -11058,3 +11058,9 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   ones in turns, the offset swinging with the heading). No crash camera fell in a slowed window this run (sixths
   renders in mode 2 only), so the script's re-placement after +1300C is not yet seen; sme73b (the same again):
   running.
+- sme73b (the same again, framestat 3,043): chase hops 0 of 143 sixths renders, 1 of 272 others; again no crash
+  camera in a slowed window (the forced window is host time, 3 s in 10). For the crash camera on purpose, a bench
+  knob A4_BENCH_SLOWCAM (a4_gl.c a4_step_count, never in a phone build): the scale 512 while the race camera's mode
+  (race+0x94; the camera object is race+0x48 itself) is the crash camera 0x18 -- a takedown's slow motion on the
+  crash-steer route. sm73f = C73 + A4_BENCH_SLOWCAM + A4_SEGREC (938,180 bytes; the first build read race+0x48 as a
+  pointer, killed before a result, rebuilt); smf73 (crash-steer): running.

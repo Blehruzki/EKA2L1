@@ -1151,6 +1151,12 @@ int a4_step_count(void *self, int32_t *m, int32_t *n)           /* +16796: bl +1
      * rest -- to reproduce on the bench what a takedown's slow motion does to the frames */
     *(volatile uint32_t *)((uint32_t)(uintptr_t)self + 0x84Cu) = ((a4_ntick() / 1000u) % 10u) >= 7u ? (uint32_t)(A4_BENCH_SLOWMO) : 256u;
 #endif
+#ifdef A4_BENCH_SLOWCAM
+    /* bench (round 73): the game's slow motion forced while the race camera (race+0x48) is the crash camera (mode
+     * 0x18: the camera object is race+0x48 itself, its mode at +0x4C, race+0x94) -- a takedown's slow motion where the
+     * crash-steer route only crashes at normal speed */
+    *(volatile uint32_t *)((uint32_t)(uintptr_t)self + 0x84Cu) = *(volatile uint32_t *)((uint32_t)(uintptr_t)self + 0x94u) == 0x18u ? 512u : 256u;
+#endif
 #ifdef A4_BENCH_SLOWSTEP
     /* bench (round 73): the game's slow motion forced by the race's own step (race+0x30) -- 512 for A4_BENCH_SLOWSTEP
      * steps of every three times that, 256 the rest -- so two lockstep runs slow down on the same whole steps */
