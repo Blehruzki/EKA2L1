@@ -1303,6 +1303,32 @@ static void car_record(uint32_t race, uint32_t what)
          * are K[1] & ~K[0]. Written equal, a tap was never a press: K[0] now holds the last step's script */
         uint32_t k0 = r[1] ? ap_key(race, r[1] - 1u) : k;
 #endif
+#if defined(A4_BENCH_SEEK) && defined(A4_ENG3)
+        /* bench (round 73): the seek driver on the 3x engine -- the nearest car ahead within 2,500, traffic (live:
+         * +0x128 bit 0 clear) or an opponent (race slots 0-7 but the player), steered at by the bearing's sign: to
+         * hit traffic and take opponents down, which the racing line rarely does (the takedown camera) */
+        {   extern uint32_t a4_eng_traffic(void);
+            const uint32_t ta = a4_eng_traffic();
+            if (car && r[1] > 200u) {
+                const volatile int32_t *pc = (const volatile int32_t *)car;
+                int32_t vx = pc[0x10u / 4u], vz = pc[0x18u / 4u], best = 0x7FFFFFFF; int64_t bcr = 0;
+                for (uint32_t i = 0; i < 24u; i++) {
+                    const volatile int32_t *t;
+                    if (i < 16u) { if (!ta) continue; t = (const volatile int32_t *)(ta + i * 0x148u); if (t[0x128u / 4u] & 1) continue; }
+                    else { const uint32_t oc = *(volatile uint32_t *)(race + 0x394u + 4u * (i - 16u)); if (!oc || oc == car) continue; t = (const volatile int32_t *)oc; }
+                    int32_t dx = t[1] - pc[1], dz = t[3] - pc[3];
+                    if (dx > 2500 || dx < -2500 || dz > 2500 || dz < -2500) continue;
+                    int64_t dot = (int64_t)vx * dx + (int64_t)vz * dz;
+                    int32_t d = (dx < 0 ? -dx : dx) + (dz < 0 ? -dz : dz);
+                    if (dot <= 0 || d < 150 || d >= best) continue;
+                    best = d; bcr = (int64_t)vx * dz - (int64_t)vz * dx;
+                    int64_t lim = ((int64_t)((vx < 0 ? -vx : vx) + (vz < 0 ? -vz : vz)) * d) / 40;
+                    if (bcr < lim && bcr > -lim) bcr = 0;
+                }
+                if (best != 0x7FFFFFFF && bcr) k |= ((bcr > 0) == ((A4_BENCH_SEEK) > 0)) ? A4_KEY_R : A4_KEY_L;
+            }
+        }
+#endif
 #if defined(A4_BENCH_SEEK) && defined(A4_SPECTRAFFIC)
         /* bench (r49 on the phone: traffic "passed through"): steer at the nearest live traffic car
          * ahead (its +0x128 bit 0 clear: the collision's own skip), by the game's positions -- to
@@ -1332,6 +1358,11 @@ static void car_record(uint32_t race, uint32_t what)
         ((volatile uint32_t *)K)[0] = k0; ((volatile uint32_t *)K)[1] = k;
 #else
         ((volatile uint32_t *)K)[0] = k; ((volatile uint32_t *)K)[1] = k;
+#endif
+#ifdef A4_BENCH_NITRO
+        /* bench (round 73, the helicopter "farther every time I hit the nitro"): a press of the nitro (bit 0x20, a
+         * press being K[1] & ~K[0]) every A4_BENCH_NITRO steps from step 260 */
+        if (r[1] >= 260u && r[1] % (A4_BENCH_NITRO) == 0u) ((volatile uint32_t *)K)[1] = ((volatile uint32_t *)K)[0] | 0x20u;
 #endif
     }
 #endif
@@ -1387,6 +1418,16 @@ static void car_record(uint32_t race, uint32_t what)
 #ifdef A4_CREC_SCALE
     /* bench (round 73): the slow-motion scale (race+0x84C) << 8 and the engine's substeps a step (n) << 24 beside it */
     r[5] = idx | (*(volatile uint32_t *)(race + 0x84Cu) & 0xFFFFu) << 8 | (*(volatile uint32_t *)0x0045D010u & 0xFFu) << 24;
+#endif
+#ifdef A4_HDIST
+    {   /* bench (round 73): the helicopter -- the police slot holding type 4 (+C70) -- its x, y, z, the player's x, z
+         * and the player's boost countdown +AE0 in the header words 2-7, 'HDST' */
+        uint32_t q, hc = 0;
+        for (q = 8u; q < 16u; q++) { const uint32_t c = *(volatile uint32_t *)(race + 0x394u + 4u * q); if (c && *(volatile int32_t *)(c + 0xC70u) == 4) { hc = c; break; } }
+        r[0] = 0x54534448u;
+        r[2] = hc ? *(volatile uint32_t *)(hc + 4u) : 0x80000000u; r[3] = hc ? *(volatile uint32_t *)(hc + 8u) : 0u; r[4] = hc ? *(volatile uint32_t *)(hc + 0xCu) : 0u;
+        r[5] = car ? *(volatile uint32_t *)(car + 4u) : 0u; r[6] = car ? *(volatile uint32_t *)(car + 0xCu) : 0u; r[7] = car ? *(volatile uint32_t *)(car + 0xAE0u) : 0u;
+    }
 #endif
     a4_rec_emit2((const void *)r, car ? (const void *)car : (const void *)r, (const void *)race);
 #ifdef A4_CARREC_AI
@@ -3288,6 +3329,9 @@ __attribute__((noinline)) void a4_render_mark3(uint32_t pitch, uint32_t roll, ui
 int a4_step_render(void *self)                                  /* +1696C: bl +12992 */
 {
     volatile uint32_t *pf = A4_PERF;
+#if defined(A4_TKREC) && defined(A4_ENG3)
+    { extern void a4_eng_tkrec(uint32_t race, uint32_t frames); a4_eng_tkrec((uint32_t)(uintptr_t)self, ((volatile struct glr *)A4_GL_SCRATCH)->frames); }
+#endif
 #if defined(A4_FRAMEMARK) || defined(A4_FRAMEREC)
     uint32_t mark_q16 = 0;   /* the speculation's fraction this render, bit 31 = computed */
 #endif

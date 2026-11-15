@@ -11148,3 +11148,20 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   39 / 40 right of the round tower; 1000801141 between buildings, an orange block drawn alone in it; 1000801134 at
   the road's end) -- far buildings or parts of them not drawn, the software sky's pale horizon showing through. Far
   scenery, not the near window round 72 suspected.
+- Read for the report, before any run:
+  - The slow motion's grant (+14360..+1442E, read again): the request (cam+0x3C, race+0x84) is taken only while
+    race+0x858 < 2 (the player wrecked) or race+0x85C < 3 with a value at [r1 + 0x1C] (+14356) of 900 or more (not
+    wrecked) -- at most a few slowdowns a race. So most takedown cameras run at normal speed, in thirds; sixths
+    reach only the granted ones. No takedown has ever been reproduced on the bench (every bench record's camera
+    modes: 1, 2, 6, 0x17, 0x18, 0x2A). The photo's takedown is a traffic car (1000801135); round 71's knock line
+    covers a knocked traffic car, not necessarily a flipped one.
+  - The helicopter: the pursuer line (round 72) is first on a phone in r73b. A line its substeps did not finish is
+    finished at the next step with +0A8 shifted by the jump (eng_psnap), out of the measure's sight -- if a boost
+    leaves lines unfinished, the helicopter's measured speed falls short each time. A guess.
+- Bench probes (bench only, never a phone build): A4_BENCH_SEEK on the 3x engine (steers at the nearest traffic car
+  or opponent ahead; the traffic array from the engine's +FB12 argument, a4_eng_traffic); A4_TKREC (every render:
+  count, substep | n | scale, camera mode, camera x z, the followed car's x z and heading); A4_BENCH_NITRO=N (a nitro
+  press every N steps from 260); A4_HDIST (the helicopter's place, the player's and the boost countdown in the car
+  record's header). ENG_TDREC defined for builds without the 3x engine (a stock build failed on it). Runs: tk73
+  (C73 + seek + TKREC, LA, cap 85, 150 s, filmed), then hn3 / hn1 (the 3x build and the stock build, Paris on the
+  owner's save, nitro every 40 steps, HDIST).

@@ -18,7 +18,7 @@ __attribute__((noinline)) void a4_stkpoison(uint32_t *p, uint32_t n)
     ENG->dbg[7] = x;
 }
 #endif
-#if defined(A4_CAMPROBE) || defined(A4_KEYPROBE) || defined(A4_VELPROBE) || defined(A4_CARSUB) || defined(A4_HELIREC) || defined(A4_TRAFDUMP) || defined(A4_SEGREC) || defined(A4_KICKREC)
+#if defined(A4_CAMPROBE) || defined(A4_KEYPROBE) || defined(A4_VELPROBE) || defined(A4_CARSUB) || defined(A4_HELIREC) || defined(A4_TRAFDUMP) || defined(A4_SEGREC) || defined(A4_KICKREC) || defined(A4_TKREC)
 __attribute__((noinline)) void a4_camp_emit(const void *r) { __asm__ volatile("" : : "r"(r) : "memory"); }
 #endif
 #ifdef A4_ENG3
@@ -63,6 +63,29 @@ void a4_eng6_count(uint32_t race, int32_t *m, int32_t *n)
  * target after it (eng_cam_mid) */
 void a4_eng6_fill_pre(void) { if (ENG->magic == ENG_MAGIC && ENG->n == 6u) eng_cam_unblend(); }
 void a4_eng6_fill_post(void) { if (ENG->magic == ENG_MAGIC && ENG->n == 6u) eng_cam_mid(); }
+#endif
+#if defined(A4_BENCH_SEEK) && defined(A4_ENG3)
+/* bench (round 73, the seek driver): the traffic array +FB12 was last given (0 before the race's first traffic step) */
+uint32_t a4_eng_traffic(void) { return ENG->magic == ENG_MAGIC && ENG->targ ? ENG->targ + GAME32(0xFEB4) : 0u; }
+#endif
+#if defined(A4_TKREC) && defined(A4_ENG3)
+/* bench (round 73, phone round 73's "stop motion in the takedown cams"): every render -- the frame, the engine's
+ * count, substep | n << 8 | the scale (race+0x84C) << 16, the camera mode (race+0x94), the camera x and z (race+0x48's
+ * +0x10, +0x18), the followed car's x and z (the camera placement's car, ENG->cam[2]), its heading +678 | its address's
+ * low 16 bits << 16 -- 8 words, a ring of 256 at 0x5A2000 (A4_SCRATCH_SIZE >= 0x1A6000) handed to a4_camp_emit */
+void a4_eng_tkrec(uint32_t race, uint32_t frames)
+{
+    extern void a4_camp_emit(const void *);
+    volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+    const uint32_t i = rg[0] & 255u, fc = ENG->camv ? ENG->cam[2] : 0u;
+    volatile uint32_t *e = rg + 4u + 8u * i;
+    e[0] = frames; e[1] = ENG->cnt; e[2] = ENG->sub | ENG->n << 8 | MEM32(race + 0x84Cu) << 16; e[3] = MEM32(race + 0x94u);
+    e[4] = MEM32(race + 0x48u + 0x10u); e[5] = MEM32(race + 0x48u + 0x18u);
+    e[6] = fc ? (MEM32(fc + 4u) & 0xFFFFu) | MEM32(fc + 0xCu) << 16 : 0u;
+    e[7] = fc ? (MEM32(fc + 0x678u) & 0xFFFFu) | fc << 16 : 0u;
+    rg[0] = i + 1u;
+    if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
+}
 #endif
 #define ENGV(x) uint64_t a4_engv_##x(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, \
     uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7) \
