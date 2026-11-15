@@ -248,6 +248,8 @@ struct eng {
     uint32_t dbg[8];                 /* A4_ENGDBG: the substep's path bits and the player's keys, emitted per substep */
     uint32_t rk[ENG_NREM];           /* the word's address (0: free) */
     int8_t rv[ENG_NREM];             /* its remainder, 0 .. n - 1 (bytes since round 71: the traffic's lines needed the room) */
+    int32_t tkd[16][4];              /* round 74: a knocked car's own drift over its last step, n substeps' worth (x, y, z, +2C) */
+    uint32_t tkds[16];               /* the substep count that drift was measured at (valid for the next step's substep 0) */
 };
 #ifdef A4_KICKREC
 /* bench (round 73): a probe of the engine's address-keyed tables -- each table's evictions (a key that found its
@@ -438,7 +440,12 @@ static inline void eng_pstep(uint32_t car)
  * spin (+2C, 4096 a turn) is kept (D); a car +FB12 then places through the knock branch (+FF7E) is drawn on the
  * line from D to where the game put it (T): a third of the way, two thirds after substep 1 (plus the substep's own
  * drift), the game's own after substep 2. Its counters, velocity (+2202C) and measure (+22832) stay the game's:
- * only the place drawn and collided with between whole steps moves. A jump of more than 0x2000 is not drawn over. */
+ * only the place drawn and collided with between whole steps moves. A jump of more than 0x2000 is not drawn over.
+ * Round 74 (phone round 73, "the cars are still looking stop-motion-ish during takedown cams"; tk74): the line ran
+ * to T, which holds substep 0's own drift but not the next substeps' (~21 x each), and those were added on top -- a
+ * knocked car moved 32, 53, 54 a substep, the same jolt every whole step. Now the line runs to the step's end,
+ * estimated: T plus the car's drift over the rest of the step (at substep 0 its last step's, kept at that step's
+ * end; after, its own drift since T, scaled to the step) -- 46, 46, 46. The last substep is the game's own place. */
 static inline int32_t eng_wrap12(int32_t d) { d &= 4095; return d >= 2048 ? d - 4096 : d; }
 static inline void eng_tsnap(uint32_t arg)
 {
@@ -462,22 +469,33 @@ static inline void eng_tknock(uint32_t car)
 {
     const uint32_t ta = ENG->targ + GAME32(0xFEB4), off = car - ta, k = off / 0x148u;
     volatile int32_t *c = (volatile int32_t *)(uintptr_t)car;
+    const int32_t n = (int32_t)ENG->n;
     uint32_t j;
     if (!ENG->targ || off % 0x148u || k >= 16u) return;
     if (ENG_SUB == 0u) {
+        const int known = ENG->cnt - ENG->tkds[k] == 1u;   /* its drift measured over the step just ended */
         ENG->tkv &= ~(1u << k);
         for (j = 0; j < 3u; j++) {
             const int32_t d = c[1u + j] - ENG->tsp[k][j];
             if (d > 0x2000 || d < -0x2000) return;                      /* a respawn, not a knock's step */
         }
-        for (j = 0; j < 3u; j++) { ENG->tkt[k][j] = c[1u + j]; c[1u + j] = eng_tline(ENG->tsp[k][j], ENG->tkt[k][j], 1u, 0u); }
-        ENG->tkt[k][3] = c[0x2C / 4]; c[0x2C / 4] = eng_tline(ENG->tsp[k][3], ENG->tkt[k][3], 1u, 1u);
+        for (j = 0; j < 4u; j++) {
+            volatile int32_t *w = j < 3u ? &c[1u + j] : &c[0x2C / 4];
+            const int32_t f = *w + (known ? eng_sdiv(ENG->tkd[k][j] * (n - 1), n) : 0);   /* the step's end, estimated */
+            ENG->tkt[k][j] = *w;
+            *w = eng_tline(ENG->tsp[k][j], f, 1u, j == 3u);
+        }
         ENG->tkv |= 1u << k;
     } else if (ENG->tkv & (1u << k)) {
-        if (ENG_SUB + 1u < ENG->n) {                                    /* (sub + 1) n-ths, and this substep's own drift */
-            for (j = 0; j < 3u; j++) c[1u + j] = eng_tline(ENG->tsp[k][j], ENG->tkt[k][j], ENG_SUB + 1u, 0u) + (c[1u + j] - ENG->tkt[k][j]);
-            c[0x2C / 4] = (eng_tline(ENG->tsp[k][3], ENG->tkt[k][3], ENG_SUB + 1u, 1u) + eng_wrap12(c[0x2C / 4] - ENG->tkt[k][3])) & 4095;
-        } else ENG->tkv &= ~(1u << k);                                  /* the step's last substep: the game's own place */
+        const int32_t s = (int32_t)ENG_SUB;
+        for (j = 0; j < 4u; j++) {
+            volatile int32_t *w = j < 3u ? &c[1u + j] : &c[0x2C / 4];
+            const int32_t dl = j < 3u ? *w - ENG->tkt[k][j] : eng_wrap12(*w - ENG->tkt[k][j]);   /* its own drift since T */
+            if (ENG_SUB + 1u < ENG->n)                                  /* (sub + 1) n-ths of the way to the step's end, */
+                *w = eng_tline(ENG->tsp[k][j], ENG->tkt[k][j] + eng_sdiv(dl * (n - 1), s), ENG_SUB + 1u, j == 3u);
+            else ENG->tkd[k][j] = eng_sdiv(dl * n, n - 1);              /* the last: the game's own place; the drift kept */
+        }
+        if (ENG_SUB + 1u >= ENG->n) { ENG->tkv &= ~(1u << k); ENG->tkds[k] = ENG->cnt; }
     }
 }
 #ifdef A4_TRAFDUMP

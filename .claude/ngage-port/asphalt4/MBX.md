@@ -11190,3 +11190,24 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
 - Owner, asked: "nitro flames are fine. It's the pickups and helicopter light that are still clipping." and, of the
   scenery, "far buildings". So: the sprites to fix are the pickups and the helicopter's light (not the flame);
   the scenery loss is far buildings (the photos' white patches), not near pieces flickering.
+- tk74 (C73 + CARREC + AUTOPILOT + seek + nitro every 40 + TKREC + TRAFDUMP, LA, the Veyron, cap 85, 300 s, filmed;
+  framestat 7,853): 7,680 renders, modes 2 (7,426), 0x17 (158, the intro), 0x18 (96, the player's own wreck); scale
+  256 throughout -- **no takedown again**. (tkana.py and tdread3.py now keep the TKREC ring's blocks, 0x5A8010, and the
+  dump's, 0x5A2010, apart: both lengths are captured at every emit.)
+- Found in its traffic dump instead: a knocked traffic car (slot 3, cnt 1182, hit from behind at 80 from the player)
+  **moves 32, 53, 54 a substep, the same jolt every whole step** for the 40 steps the knock plays (x; z alike, 11 / 12 /
+  12). All of it inside +FB12 (point 1 -> point 2). Read back against round 71's line: the line runs from D to T, and T
+  (the game's place after substep 0's +FB12) holds that substep's own drift, while the next substeps' drift (~21 x each,
+  measured: T - D = 96, then 21 and 21) is added on top -- so substep 0 moves a third of (entry + 1 drift) and the
+  others a third plus a whole drift. That is an 11.72 Hz judder on every knocked car, close up in a takedown camera.
+  Not a repeat of round 71 (yt73 / yt74: the knock's words and which step them; the pacing inside the step was not
+  measured).
+- Fix (a4_eng.h eng_tknock, round 74): the line runs to the step's end, estimated -- T plus the car's drift over the
+  remaining substeps: at substep 0 its last step's drift (kept at that step's end with the substep count, used only by
+  the next step), after it its own drift since T scaled to the step; the last substep is the game's own place, as
+  before. Offline on tk74's numbers: 46, 46, 46. The heading (+2C) the same, wrapped.
+- The flip in the owner's photo (1000801135, a red traffic car rolled ~30 degrees in the takedown camera at 358 km/h)
+  is not this knock (tk74's is a bump: +FB12's knock branch sets y from the entry, +0x38 x 3/4 over the road's +D0).
+  Which words a rolled traffic car steps is still unread. The Paris run on the owner's save (pa_q73c, r73b) has a
+  traffic car flipping beside the player at ~25 s, 249 km/h ("GOT INSURANCE?"): tk75 (C73 + TRAFDUMP + TKREC + the
+  even line, Paris on the owner's save, 70 s, filmed) records it and checks the line.
