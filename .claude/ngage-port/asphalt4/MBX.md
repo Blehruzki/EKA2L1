@@ -11410,3 +11410,18 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   spread, the pursuer line) carried it. A guess; next, measured: slot 10's +C40, +C6C, +C60, +C44, the followed
   car's AE0 / AE8, per render, the 3x build against the stock step, through a news event and boosts (not a
   repeat of hc1-hc4: those recorded slot 10's place only, not its state or its eased offset).
+- The bench back (round 74, after the container): the N95 8GB ROM installed as RM-320; the N-Gage app, the game's
+  metadata and game SIS; the N95's Open C from Nokia's own Open C/C++ plug-in 1.7 (archive.org's copy of
+  s60_open_c_cpp_plug_in_v1_7_en.zip; pips_s60_1_7_SS.sis's S60 3.1 branch: libc 0x10207369 596 exports, backend
+  0x102828d5 174, libm, libdl, libpthread, libcipcserver, rpipe, pipelib; openc_ssl's libcrypto/libssl/libz/
+  libcrypt/libzcore; STDCPP's libstdcpp) on E:\sys\bin; config cpu dyncom, log *:info; EKA2L1_EXCLFAULT=1. The
+  baseline boots, the menus and the owner's save (career 91%, Instant Play -> Paris) are there. Menu keys must be
+  held (~0.6 s) at the N95 model, not tapped.
+- **C74.flags rebuilt from this record (rounds 12 -> 74's chain) and proven: the build reproduces a4_r74_cand.exe
+  byte for byte (sha256 ef2a44ee...7d03, 940,352 bytes, clang 18.1.3).** Committed as flags/C74.flags. The stock-step
+  twin (C74stock: C74 less ENG3, ENG_ALL, LIVEKEYS, CAMSCRIPT3, WRECK3, ENG6, no THIRDSTEP) is a reconstruction
+  only -- round 73's C73stock was not written down.
+- A4_HCREC widened to 32 words a render (a ring of 64): slot 10's +C40 / follows-player, +C6C, +C44, +C48,
+  +C60..+C68, +C4C, +0A8.., +010.., the player's +AE8. hx0 (probe, 3x): slot 10 parked until the event (+C40 0,
+  its words never set by +20520 yet). hx1 / hs1 / hx2 / hs2 (3x / stock step, CARREC + AUTOPILOT(_UNSTICK) +
+  BENCH_NITRO=40 + HCREC, Paris on the owner's save, the N95 model, 500 s wall): running.

@@ -3337,15 +3337,18 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
 #ifdef A4_HCREC
     {   /* bench (round 74, phone round 73: the news copter "farther and farther every time I hit the nitro"): every
          * render -- the frame, the camera mode (race+0x94), the camera's x y z (race+0x48 +0x10..), the player's x y z,
-         * its boost countdown +AE0, its speed +7D0, its heading +678, the tick: 16 words, a ring of 128 at 0x5A2000
-         * handed to a4_camp_emit; in the 3x build and the stock one alike. Never a phone build. */
+         * its boost countdown +AE0, its speed +7D0, its heading +678, the tick; and (round 74, the owner's photos: the
+         * copter in the chase view, farther through a boost) race slot 10's x y z, type +C70, the car it follows +C40
+         * (and whether that is the player), its state +C6C, timers +C44 / +C48, the eased offset +C60..+C68, its
+         * height +C4C, its last place +0A8.. and velocity +010.., and the player's boost level +AE8: 32 words, a ring
+         * of 64 at 0x5A2000 handed to a4_camp_emit; in the 3x build and the stock one alike. Never a phone build. */
         extern void a4_camp_emit(const void *);
         volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
         const uint32_t race = (uint32_t)(uintptr_t)self, pl = *(volatile uint32_t *)(race + 0x390u);
         const uint32_t pi = pl ? *(volatile uint32_t *)(pl + 0xCu) : 16u;
         const uint32_t pc = pi < 16u ? *(volatile uint32_t *)(race + 0x394u + 4u * pi) : 0u;
-        const uint32_t i = rg[0] & 127u;
-        volatile uint32_t *e = rg + 4u + 16u * i;
+        const uint32_t i = rg[0] & 63u;
+        volatile uint32_t *e = rg + 4u + 32u * i;
         e[0] = ((volatile struct glr *)A4_GL_SCRATCH)->frames; e[1] = *(volatile uint32_t *)(race + 0x94u);
         for (uint32_t k = 0; k < 3u; k++) e[2u + k] = *(volatile uint32_t *)(race + 0x48u + 0x10u + 4u * k);
         for (uint32_t k = 0; k < 3u; k++) e[5u + k] = pc ? *(volatile uint32_t *)(pc + 4u + 4u * k) : 0u;
@@ -3355,9 +3358,17 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
             const uint32_t h = *(volatile uint32_t *)(race + 0x394u + 4u * 10u);
             for (uint32_t k = 0; k < 3u; k++) e[12u + k] = h ? *(volatile uint32_t *)(h + 4u + 4u * k) : 0x80000000u;
             e[15] = h ? *(volatile uint32_t *)(h + 0xC70u) : 0xFFFFFFFFu;
+            e[16] = h ? *(volatile uint32_t *)(h + 0xC40u) : 0u; e[17] = h && pc && e[16] == pc;
+            e[18] = h ? *(volatile uint32_t *)(h + 0xC6Cu) : 0xFFFFFFFFu;
+            e[19] = h ? *(volatile uint32_t *)(h + 0xC44u) : 0u; e[20] = h ? *(volatile uint32_t *)(h + 0xC48u) : 0u;
+            for (uint32_t k = 0; k < 3u; k++) e[21u + k] = h ? *(volatile uint32_t *)(h + 0xC60u + 4u * k) : 0u;
+            e[24] = h ? *(volatile uint32_t *)(h + 0xC4Cu) : 0u;
+            e[25] = pc ? *(volatile uint32_t *)(pc + 0xAE8u) : 0u;
+            for (uint32_t k = 0; k < 3u; k++) e[26u + k] = h ? *(volatile uint32_t *)(h + 0x0A8u + 4u * k) : 0u;
+            for (uint32_t k = 0; k < 3u; k++) e[29u + k] = h ? *(volatile uint32_t *)(h + 0x010u + 4u * k) : 0u;
         }
         rg[0] = i + 1u;
-        if (((i + 1u) & 127u) == 0u) a4_camp_emit((const void *)(rg + 4u));
+        if (((i + 1u) & 63u) == 0u) a4_camp_emit((const void *)(rg + 4u));
     }
 #endif
 #if defined(A4_FRAMEMARK) || defined(A4_FRAMEREC)
