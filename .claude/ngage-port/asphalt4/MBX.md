@@ -11027,3 +11027,10 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   a render at scale 512 **0 x2, 1 x167, 2 x124, 3 x1** (thirds sm73n3: 0 x88 of 296); at 256 1 x407, 2 x279, 3 x6
   (sm73n3 1 x402, 2 x277, 3 x10). segsub.py fixed on the way (it took the frame counter for a render count; it
   steps by 3). Every slow-motion frame a new real state, the slip fix included.
+- smc73 (crash-steer on sm73c -- the r73 code, slow motion forced 3 s in 10 -- cap 85; framestat 3,033): renders by
+  substep 0 x120, 1 x111, 2 x111, 3 x27, 4 x25, 5 x23 (sixths in modes 2 and 0x18). **The jump, measured**: the crash
+  camera (0x18) in a step of sixths moves 6, 6, 6, 6 at substeps 1-4, 12 at 5 (+1300C's tick lands) and 34-37 at the
+  next substep 0 -- 72 a step, the script's rate, in two lumps; at scale 256 12 every substep. The chase camera (mode
+  2) in sixths, while the car is slow (a crash's end): 13-18 at some substeps against 1-5 at others (139605-140315
+  ms: sub 5 13 with the car 0, sub 3 15 with 2, sub 0 18 with 3) -- +1300C's chase update shows raw the frame it runs,
+  then the blend; to read again after the change. Not a repeat of r73c2 (no slow motion there) or sm73c (no camera).
