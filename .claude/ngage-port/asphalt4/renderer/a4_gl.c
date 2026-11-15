@@ -3351,7 +3351,11 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         for (uint32_t k = 0; k < 3u; k++) e[5u + k] = pc ? *(volatile uint32_t *)(pc + 4u + 4u * k) : 0u;
         e[8] = pc ? *(volatile uint32_t *)(pc + 0xAE0u) : 0u; e[9] = pc ? *(volatile uint32_t *)(pc + 0x7D0u) : 0u;
         e[10] = pc ? *(volatile uint32_t *)(pc + 0x678u) : 0u; e[11] = a4_ntick();
-        for (uint32_t k = 12u; k < 16u; k++) e[k] = 0u;
+        {   /* race slot 10 (police slot 2: the helicopter's in round 71): its x y z and type +C70 */
+            const uint32_t h = *(volatile uint32_t *)(race + 0x394u + 4u * 10u);
+            for (uint32_t k = 0; k < 3u; k++) e[12u + k] = h ? *(volatile uint32_t *)(h + 4u + 4u * k) : 0x80000000u;
+            e[15] = h ? *(volatile uint32_t *)(h + 0xC70u) : 0xFFFFFFFFu;
+        }
         rg[0] = i + 1u;
         if (((i + 1u) & 127u) == 0u) a4_camp_emit((const void *)(rg + 4u));
     }

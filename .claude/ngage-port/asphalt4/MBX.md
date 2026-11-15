@@ -11352,3 +11352,10 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   runs each (hcana.py: the camera's distance from the car through the news camera, with the boosts): running.
 - la1 (C74 + SEGREC, LA bench save, 300 s, filmed): the whole race's segments by frame, for road sections 9-17 and the
   far buildings: queued after.
+- hc1_a / hc1_b (the 3x build, 100 s each; framestat 2,502 / 2,513): no news camera in either (takedowns, mode 0x18).
+  hc2_a (the stock step; 2,437): **the news camera for 4.9 s with a boost through it -- the camera 517 .. 527 from the
+  player all along** (boost 39 -> 0, speed 360 -> 392 -> 303): the stock copter keeps its distance. The 3x runs that did
+  reach it (TKREC: camera x z against the player's): tk75 501 -> 512 over 78 renders, tk77 440-442, tk79 472-477 --
+  steady too, but none with a boost inside it. So the news camera's distance is not yet seen to ratchet; the copter
+  the owner saw may be the one in the sky (race slot 10's type-4 unit, a still unit at -776 in hn4 / hn6). HCREC now
+  also records slot 10's place and type; hc3 (3x) x3 and hc4 (stock step) x2 queued after la1.
