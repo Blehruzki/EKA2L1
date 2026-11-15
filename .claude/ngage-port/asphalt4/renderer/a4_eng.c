@@ -72,23 +72,40 @@ uint32_t a4_eng_traffic(void) { return ENG->magic == ENG_MAGIC && ENG->targ ? EN
 /* bench (round 73, phone round 73's "stop motion in the takedown cams"): every render -- the frame, the engine's
  * count, substep | n << 8 | the scale (race+0x84C) << 16, the camera mode (race+0x94), the camera x and z (race+0x48's
  * +0x10, +0x18), the followed car's x and z (the camera placement's car, ENG->cam[2]), its heading +678 | its address's
- * low 16 bits << 16 -- 8 words, a ring of 256 at 0x5A2000 (A4_SCRATCH_SIZE >= 0x1A6000) handed to a4_camp_emit */
+ * low 16 bits << 16; then (round 74) its pitch, roll, height, the camera's height, and the first wrecked race car's
+ * place, angles and matrix -- 32 words, a ring of 64 at 0x5A2000 (A4_SCRATCH_SIZE >= 0x1A6000) handed to a4_camp_emit */
 void a4_eng_tkrec(uint32_t race, uint32_t frames)
 {
     extern void a4_camp_emit(const void *);
-#ifdef A4_TRAFDUMP
-    volatile uint32_t *rg = (volatile uint32_t *)0x005A8000u;   /* past the traffic dump's ring (A4_SCRATCH_SIZE >= 0x1AA000) */
+#if defined(A4_TRAFDUMP) || defined(A4_SPRCEN)
+    volatile uint32_t *rg = (volatile uint32_t *)0x005A8000u;   /* past the traffic dump's / sprite census's ring (A4_SCRATCH_SIZE >= 0x1AA000) */
 #else
     volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
 #endif
-    const uint32_t i = rg[0] & 255u, fc = ENG->camv ? ENG->cam[2] : 0u;
-    volatile uint32_t *e = rg + 4u + 8u * i;
+    const uint32_t i = rg[0] & 63u, fc = ENG->camv ? ENG->cam[2] : 0u;
+    volatile uint32_t *e = rg + 4u + 32u * i;
+    uint32_t wc = 0u, k;
     e[0] = frames; e[1] = ENG->cnt; e[2] = ENG->sub | ENG->n << 8 | MEM32(race + 0x84Cu) << 16; e[3] = MEM32(race + 0x94u);
     e[4] = MEM32(race + 0x48u + 0x10u); e[5] = MEM32(race + 0x48u + 0x18u);
     e[6] = fc ? (MEM32(fc + 4u) & 0xFFFFu) | MEM32(fc + 0xCu) << 16 : 0u;
     e[7] = fc ? (MEM32(fc + 0x678u) & 0xFFFFu) | fc << 16 : 0u;
+    /* round 74: the followed car's pitch +674, roll +67C, height, the camera's height; then the first wrecked race car
+     * (+034 not -1) other than it: its address, x y z, pitch, heading, roll, its matrix +6D4's first four words, +034 */
+    e[8] = fc ? MEM32(fc + 0x674u) : 0u; e[9] = fc ? MEM32(fc + 0x67Cu) : 0u; e[10] = fc ? MEM32(fc + 8u) : 0u;
+    e[11] = MEM32(race + 0x48u + 0x14u);
+    for (k = 0; k < 16u && !wc; k++) {
+        const uint32_t c = MEM32(race + 0x394u + 4u * k);
+        if (c && c != fc && MEM32(c + 0x34u) != 0xFFFFFFFFu) wc = c;
+    }
+    for (k = 12u; k < 32u; k++) e[k] = 0u;
+    if (wc) {
+        e[12] = wc; e[13] = MEM32(wc + 4u); e[14] = MEM32(wc + 8u); e[15] = MEM32(wc + 0xCu);
+        e[16] = MEM32(wc + 0x674u); e[17] = MEM32(wc + 0x678u); e[18] = MEM32(wc + 0x67Cu);
+        for (k = 0; k < 4u; k++) e[19u + k] = MEM32(wc + 0x6D4u + 4u * k);
+        e[23] = MEM32(wc + 0x34u);
+    }
     rg[0] = i + 1u;
-    if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
+    if (((i + 1u) & 63u) == 0u) a4_camp_emit((const void *)(rg + 4u));
 }
 #endif
 #define ENGV(x) uint64_t a4_engv_##x(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2, \

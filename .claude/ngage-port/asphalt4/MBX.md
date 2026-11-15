@@ -11211,3 +11211,23 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   Which words a rolled traffic car steps is still unread. The Paris run on the owner's save (pa_q73c, r73b) has a
   traffic car flipping beside the player at ~25 s, 249 km/h ("GOT INSURANCE?"): tk75 (C73 + TRAFDUMP + TKREC + the
   even line, Paris on the owner's save, 70 s, filmed) records it and checks the line.
+- tk75 (C73 + TRAFDUMP + TKREC + round 74's even line, Paris on the owner's save, 70 s, filmed; framestat 2,170): the
+  line, measured -- a knocked car (slot 3, cnt 827-870) 52, 75, 60, 60, 57, 60, 60, 61, 61, 59, 59, 61, 58, 60, 61 ...
+  a substep (tk74's pattern 32 / 53 / 54 gone; a few irregular substeps where the car met something), slot 1 89, 89,
+  90, 87, 87, 88. **A takedown at ~25 s** (the video: "GOT INSURANCE?", a silver car close up with the letterbox,
+  "TAKE HIM OUT!", "TAKEDOWN!"): camera mode 0x18 for 69 renders, camera and followed car moving 70-90 a render,
+  even. But TKREC's "followed car" is ENG->cam[2], the chase placement's car -- the player, not the wreck: the
+  wrecked car's own motion was not recorded. Also caught: **the police helicopter's searchlight in the news camera
+  (mode 0x2A, "...URIOUS RACE IN PARIS", ~62 s): the light's disk on the road cut flat along a screen row at its
+  bottom** (rec_tk75.mkv 61.5-64 s, second frame: a cyan traffic car beside it) -- the phone's photos' fault,
+  reproduced on the bench for the first time.
+- tk76 (TKREC widened: the followed car's pitch, roll, height, matrix; 45 s): no takedown. tk76b (90 s): a takedown
+  with slow motion (mode 0x18, 136 renders, steps of sixths) -- the followed car again the player (address ..9A48 in
+  every mode), even (36 a render in sixths, 72 in thirds), its angles constant. The recorder now takes the first
+  wrecked race car (+034 not -1) other than the player: its place, pitch / heading / roll and matrix (32 words a
+  render, ring at 0x5A8000).
+- A4_SPRCEN (bench, new): every depth-tested TBillboard -- its frame, mode, flags, texture, distance, bucket,
+  rectangle, the depth used, and which cover set it: the list face mesh_bb_depth found deepest (index, bucket, box,
+  corners) and the GPU item gobj_bb_deep found (object or car, index, depth, box, buckets). sprcen.py projects the
+  face and says whether the face itself meets the rectangle or only its box. tk77 (C73 + SPRCEN + TKREC, Paris on
+  the owner's save, 90 s, filmed): running.

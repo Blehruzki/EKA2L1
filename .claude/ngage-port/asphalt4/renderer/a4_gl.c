@@ -6067,6 +6067,14 @@ static uint32_t gobj_grid(volatile struct glr *s, uint16_t *grid)
 #endif
 #define BBCOV ((volatile uint32_t *)0x00454100u)
 #endif
+#ifdef A4_SPRCEN
+/* bench (round 74, the searchlight and pickups cut flat): which cover set a sprite's test depth -- the list face
+ * (its index) and the GPU item (class << 16 | index, class 1 an object, 2 a car) mesh_bb_depth found deepest */
+#define SPRC ((volatile int32_t *)0x005A2004u)   /* the ring's header words: list face, GPU item, its depth */
+#define spr_lf SPRC[0]
+#define spr_oc SPRC[1]
+#define spr_od SPRC[2]
+#endif
 static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 {
     volatile struct gstate *g = GOBJ;
@@ -6101,6 +6109,9 @@ static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int3
         if (it->box[2] < x0 || it->box[0] >= x1 || it->box[3] < y0 || it->box[1] >= y1) continue;
         BBCOV_ITEM(4u, it->qn, it->qf);
         int32_t d = it->qf < sb ? (int32_t)it->qf : sb - 1;
+#ifdef A4_SPRCEN
+        if (d > deep) { spr_oc = (int32_t)(0x10000u | i); spr_od = d; }
+#endif
         if (d > deep) deep = d;
     }
 #ifdef A4_GPUCAR
@@ -6120,6 +6131,9 @@ static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int3
                           : ((int32_t)it->qn + (int32_t)it->qf) / 2 < sb - 1 ? ((int32_t)it->qn + (int32_t)it->qf) / 2
 #endif
                           : sb - 1;
+#ifdef A4_SPRCEN
+                if (d > deep) { spr_oc = (int32_t)(0x20000u | i); spr_od = d; }
+#endif
                 if (d > deep) deep = d;
             }
     }
@@ -7512,6 +7526,15 @@ void a4_gl_flush(void);
  * rectangle cover it. None: 0. Some: the far edge of the deepest such bucket -- every
  * covering face is nearer than that, while the road behind them, which a test at the
  * sprite's own distance lost to, mostly is not (round 28). b1 = bb + 0x10. */
+#ifdef A4_SPRCEN
+/* bench: a tested sprite's record, 32 words, a ring of 64 at 0x5A2000 handed to a4_camp_emit -- [0] frame, [1] mode,
+ * [2] flags (bb + 4), [3] texture, [4] distance, [5] bucket, [6] [7] its rectangle, [8] the depth used, [9] the list
+ * face (index, or -1), [10] its bucket, [11] [12] its box, [13..17] its corners (x y z, int16), [18] the GPU item
+ * (class << 16 | index, or -1), [19] its depth bucket, [20] [21] its box, [22] its qn | qf << 16, [23] the list's F,
+ * [24] cx | cy << 16 */
+static void spr_rec(volatile struct glr *s, const int32_t *b1, uint32_t mode, uint32_t tex, int32_t x0, int32_t y0,
+                    int32_t x1, int32_t y1, int32_t bbzd, int32_t bbz);
+#endif
 static int32_t mesh_bb_depth(const int32_t *b1, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 {
     uint32_t fl = (uint32_t)b1[-3];
@@ -7556,6 +7579,9 @@ static int32_t mesh_bb_depth(const int32_t *b1, int32_t x0, int32_t y0, int32_t 
         }
 #endif
         deep = Q[i];                                /* the tail runs deep to near: the first */
+#ifdef A4_SPRCEN
+        spr_lf = (int32_t)i;
+#endif
         break;                                      /* cover found is the deepest */
     }
 #ifdef A4_GPUOBJ
@@ -7563,6 +7589,46 @@ static int32_t mesh_bb_depth(const int32_t *b1, int32_t x0, int32_t y0, int32_t 
         if (od > deep) deep = od; }
 #endif
     return deep < 0 ? 0 : (deep + 1) * 8;
+}
+#endif
+#ifdef A4_SPRCEN
+static void spr_rec(volatile struct glr *s, const int32_t *b1, uint32_t mode, uint32_t tex, int32_t x0, int32_t y0,
+                    int32_t x1, int32_t y1, int32_t bbzd, int32_t bbz)
+{
+    extern void a4_camp_emit(const void *);
+    volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+    const uint32_t i = rg[0] & 63u, fl = (uint32_t)b1[-3];
+    volatile uint32_t *e = rg + 4u + 32u * i;
+    int32_t sb = (b1[2] - ((fl >> 13) & 1u ? 0x20 : 0)) >> 3;
+    if (fl & 0x10000u) sb -= 16;
+    if (fl & 0x20000u) sb += 16;
+    for (uint32_t k = 0; k < 32u; k++) e[k] = 0;
+    e[0] = s->frames; e[1] = mode; e[2] = fl; e[3] = tex; e[4] = (uint32_t)bbzd; e[5] = (uint32_t)sb;
+    e[6] = ((uint32_t)x0 & 0xFFFFu) | (uint32_t)y0 << 16; e[7] = ((uint32_t)x1 & 0xFFFFu) | (uint32_t)y1 << 16;
+    e[8] = (uint32_t)bbz; e[9] = (uint32_t)spr_lf;
+    if (spr_lf >= 0) {
+        const uint16_t *bx = (const uint16_t *)(MESH_B + (uint32_t)spr_lf * 4u);
+        const uint16_t *v = (const uint16_t *)(MESH_V + (uint32_t)spr_lf * 18u);
+        e[10] = MESH_Q[spr_lf]; e[11] = bx[0] | (uint32_t)bx[1] << 16; e[12] = bx[2] | (uint32_t)bx[3] << 16;
+        e[13] = v[0] | (uint32_t)v[1] << 16; e[14] = v[2] | (uint32_t)v[6] << 16; e[15] = v[7] | (uint32_t)v[8] << 16;
+        e[16] = v[12] | (uint32_t)v[13] << 16; e[17] = v[14];
+    }
+    e[18] = (uint32_t)spr_oc; e[19] = (uint32_t)spr_od;
+#ifdef A4_GPUOBJ
+    if (spr_oc >= 0) {
+        const uint32_t ix = (uint32_t)spr_oc & 0xFFFFu;
+        const volatile int16_t *bx = (spr_oc >> 16) == 1 ? GOBJ->it[ix].box : GCAR->it[ix].box;
+        const uint32_t qn = (spr_oc >> 16) == 1 ? GOBJ->it[ix].qn : GCAR->it[ix].qn;
+        const uint32_t qf = (spr_oc >> 16) == 1 ? GOBJ->it[ix].qf : GCAR->it[ix].qf;
+        e[20] = (uint16_t)bx[0] | (uint32_t)(uint16_t)bx[1] << 16; e[21] = (uint16_t)bx[2] | (uint32_t)(uint16_t)bx[3] << 16;
+        e[22] = qn | qf << 16;
+    }
+#endif
+    e[23] = MESH->F;
+    {   const uint32_t *gc = (const uint32_t *)MESH->gctx;
+        if (gc) e[24] = ((uint32_t)(*(const int32_t *)gc[0x40110 / 4] >> 1) & 0xFFFFu) | (uint32_t)(*(const int32_t *)gc[0x40114 / 4] >> 1) << 16; }
+    rg[0] = i + 1u;
+    if (((i + 1u) & 63u) == 0u) a4_camp_emit((const void *)(rg + 4u));
 }
 #endif
 int a4_gl_bb(const uint32_t *r, const uint32_t *f)
@@ -7649,8 +7715,14 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
             bbz = bbzd;                             /* bench: round 27's rule, every sprite tested */
 #else
             if (MESH_ON()) {
+#ifdef A4_SPRCEN
+                spr_lf = spr_oc = spr_od = -1;
+#endif
                 int32_t dz = mesh_bb_depth(b1, x0, y0, x1, y1);
                 if (dz) bbz = dz < bbzd ? dz : bbzd;
+#ifdef A4_SPRCEN
+                if (bbz) spr_rec(s, b1, mode, (uint32_t)(uintptr_t)spr, x0, y0, x1, y1, bbzd, bbz);
+#endif
             }
 #endif
 #endif
