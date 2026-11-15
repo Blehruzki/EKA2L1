@@ -11165,3 +11165,14 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   record's header). ENG_TDREC defined for builds without the 3x engine (a stock build failed on it). Runs: tk73
   (C73 + seek + TKREC, LA, cap 85, 150 s, filmed), then hn3 / hn1 (the 3x build and the stock build, Paris on the
   owner's save, nitro every 40 steps, HDIST).
+- tk73 (C73 + seek + TKREC, LA, cap 85, 150 s, filmed; framestat 3,718): 3,072 renders, modes 2 (2,852), 0x17
+  (135, the race's intro) and 0x18 (85, the player's own wreck: camera 42-46 and the car 44-48 a substep, even);
+  scale 256 throughout -- **no takedown**: the seek driver ran 118-156 km/h and wedged itself at a wall (the round-49
+  note's "wedges itself after its first hit"). Found on the way: **the intro camera (0x17) steps** -- once it slows,
+  3-4 units on the whole step's renders and 0 on the substeps' (cnt 204-228): eng_cam_pose places only the chase
+  modes and 0x18 on substeps; 0x17 (the intro and the finish) and 6 are placed by the game on the whole step alone.
+- The knocked traffic in round 71's dumps (yt73, yt74; tdread3's loader): position and heading (+2C) move every
+  substep (the knock line); +20 (the lane progress) 570-600 a step on the whole step only; +28 264 once at the hit.
+  These knocks are mild (a car hit from behind, spun once, sliding); a flipped car (the photo's) not recorded, so
+  which of its words step is not known. tk74 (seek + nitro every 40 + TKREC + TRAFDUMP, the Veyron, 300 s; the
+  TKREC ring at 0x5A8000 beside the dump's, scratch 0x1AE000): queued after hn3 / hn1.

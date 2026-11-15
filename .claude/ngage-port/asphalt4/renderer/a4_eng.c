@@ -76,7 +76,11 @@ uint32_t a4_eng_traffic(void) { return ENG->magic == ENG_MAGIC && ENG->targ ? EN
 void a4_eng_tkrec(uint32_t race, uint32_t frames)
 {
     extern void a4_camp_emit(const void *);
+#ifdef A4_TRAFDUMP
+    volatile uint32_t *rg = (volatile uint32_t *)0x005A8000u;   /* past the traffic dump's ring (A4_SCRATCH_SIZE >= 0x1AA000) */
+#else
     volatile uint32_t *rg = (volatile uint32_t *)0x005A2000u;
+#endif
     const uint32_t i = rg[0] & 255u, fc = ENG->camv ? ENG->cam[2] : 0u;
     volatile uint32_t *e = rg + 4u + 8u * i;
     e[0] = frames; e[1] = ENG->cnt; e[2] = ENG->sub | ENG->n << 8 | MEM32(race + 0x84Cu) << 16; e[3] = MEM32(race + 0x94u);
