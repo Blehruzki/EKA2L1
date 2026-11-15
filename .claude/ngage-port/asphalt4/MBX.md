@@ -11302,3 +11302,39 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   frames are 1 or 2 substeps apart (renders by substep 0 x144, 1 x133, 2 x140): uneven steps on screen, most visible
   where the camera is still and cars cross it -- a takedown camera. A guess at part of "stop-motion-ish", not measured
   on a phone.
+
+## Round 74 candidate (r74: C73 + the even knock line + A4_BBCELL)
+
+- a4_r74_cand.exe = C74.flags (C73.flags + -DA4_BBCELL), THIRDSTEP, scratch 0x1A0000; sha256 ef2a44ee9e0ce657
+  f9430b24e14d3f510b8071bf2fa4c5766482eafe5fb67d03, 940,352 bytes; shipchk: uncompressed, +3A15C b510 0004, no
+  0xDEADBEEF. Its lifted.c carries the bench probes' call sites (ENG_SPINREC / ENG_HDREC / ENG_WPROBE), empty
+  macros without A4_SPINREC. Oracle twin a4_y74 (+ CARREC, YREC, AUTOPILOT).
+- Battery (r74bat.sh, the exact binary; against r73b's q73bat):
+  - y74b (oracle, LA, 120 s): framestat 3,688; camera reversals 0; grip [(1048576, 351) ...]; E4 max 1 (>0 in 78
+    steps, >12 in 0: no crawl -- r72's y72b had 4 steps).
+  - r74t2 (calibrated N95 bench, 120 s): framestat 3,637; **37.3 ms a render** (3D 15.3, comp 7.9, read 6.2, 2D 2.7,
+    pres 2.7) against r73b 35.6 (3D 14.0) and r73 37.1 (15.2) -- inside the r68-r73 spread of 34.6-37.1; drawn
+    speed off its neighbours by >25%: 31% (r73 31%, r73b 16%: it follows the render time across the substep
+    boundary); camera and heading reversals 0; renders by substep 140 / 143 / 134; drop frames 0; held back 0.
+  - r74c2 (crash-steer, cap 85): framestat 3,081; modes 2 (231), 0x18 (87), 0x2A (99); camera yaw reversals 2
+    (q73c2 2).
+  - r74f (oracle, race to the finish) framestat 10,884; r74f2 (exact, key 5) 7,564, the finish camera 0x17 250
+    frames, max bearing change 148 (the cut to the finish view).
+  - menu 4,138 (18 shots), mark 1,579, Veyron autopilot 3,116 (camera reversals 4, +-9 /2048; r71 3, r72 1, r73 0),
+    Veyron mark 1,566, archive restored.
+  - GPU objects: LA 93.9% taken (q73 94.8%), finish 94.2%, Paris 78.0% (77.1%).
+  - Paris (owner's save, filmed, 110 s): framestat 3,170; a takedown at ~59 s; no news camera this run.
+  - Line rows 0 (both); objects by segment as before.
+- The searchlight on the exact binary: two more filmed Paris runs (pa_r74d / pa_r74e) queued for a news camera.
+- Rule 4 (before it goes out):
+  - Guesses: (1) the knock line's step-end estimate -- at substep 0 a car's drift over its last step stands for this
+    step's; a change of drift mid-knock lands on the step's last substep (measured: even in tk75, a few irregular
+    substeps where the car met something). (2) The cell rule -- that the phone's cut sprites are the case the bench
+    shows (a cover meeting the rectangle, not the drawn part); cells are a 4 x 4 grid, so a cover meeting part of a
+    cell still tests the whole cell; GPU objects and cars are still judged by their boxes.
+  - Read back: the stock picture (st74pa) draws the searchlight whole; the old rule cut it (tk75, tk77 video); the
+    cells drew it whole in the one news-camera frame filmed (tk79). The pickups looked whole on the bench under both
+    rules -- the phone's case (a "$" just ahead of the car) is not on the bench route.
+  - States not entered: a police chase with the helicopter (no WANTED on the bench), so "farther with every nitro" is
+    untouched; the LA road of the far-building loss (segments 9-17) is not on the bench's LA race; the takedown's
+    wreck spin (sixteenth-turn jumps from code outside the lifted engine) is unchanged in this build.
