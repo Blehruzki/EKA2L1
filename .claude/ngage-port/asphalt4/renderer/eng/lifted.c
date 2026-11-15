@@ -703,6 +703,8 @@ L_1F246:
     { uint32_t ta = r0, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f252 adds r0, r0, r2 */
     r2 = S32(0x8Cu);                                             /* 01f254 ldr r2, [sp, #0x8c] */
     r0 = L32(r0 + 0x38u);                                        /* 01f256 ldr r0, [r0, #0x38] */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1F258u, r2 + 0x38u, r0);
     L32(r2 + 0x38u) = r0;                                        /* 01f258 str r0, [r2, #0x38] */
     r2 = S32(0x9Cu);                                             /* 01f25a ldr r2, [sp, #0x9c] */
     r2 = L32(r2);                                                /* 01f25c ldr r2, [r2] */
@@ -714,6 +716,8 @@ L_1F246:
     if ((int32_t)r1 < (int32_t)0x1u) goto L_1F288;               /* 01f268 blt #0x1f288 */
     r1 = S32(0x8Cu);                                             /* 01f26a ldr r1, [sp, #0x8c] */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f26c adds r0, r0, #1 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1F26Eu, r1 + 0x38u, r0);
     L32(r1 + 0x38u) = r0;                                        /* 01f26e str r0, [r1, #0x38] */
     goto L_1F288;                                                /* 01f270 b #0x1f288 */
 L_1F272:
@@ -721,6 +725,8 @@ L_1F272:
     if ((int32_t)r1 >= (int32_t)0x1u) goto L_1F288;              /* 01f274 bge #0x1f288 */
     r2 = S32(0x8Cu);                                             /* 01f276 ldr r2, [sp, #0x8c] */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f278 subs r0, r0, #1 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1F27Au, r2 + 0x38u, r0);
     L32(r2 + 0x38u) = r0;                                        /* 01f27a str r0, [r2, #0x38] */
     { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f27c cmp r1, #0 */
     if ((int32_t)r1 >= (int32_t)0x0u) goto L_1F288;              /* 01f27e bge #0x1f288 */
@@ -897,6 +903,8 @@ L_1F366:
     t = SHL_C(r0, 0x6u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01f3bc lsls r0, r0, #6 */
     r1 = 0x0u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01f3be movs r1, #0 */
     { uint32_t ta = r5, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f3c0 adds r0, r5, r0 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1F3C2u, r0 + 0x38u, r1);
     L32(r0 + 0x38u) = r1;                                        /* 01f3c2 str r1, [r0, #0x38] */
 L_1F3C4:
     r1 = S32(0x90u);                                             /* 01f3c4 ldr r1, [sp, #0x90] */
@@ -2427,6 +2435,8 @@ L_1E01E:
     r2 = 0x3u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01e03e movs r2, #3 */
     t = SHL_C(r2, 0xAu, &fC); r2 = t; fN = t >> 31; fZ = t == 0; /* 01e040 lsls r2, r2, #0xa */
     { uint32_t ta = r4, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r2 = t; } /* 01e042 adds r2, r4, r2 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E044u, r2 + 0x38u, r1);
     L32(r2 + 0x38u) = r1;                                        /* 01e044 str r1, [r2, #0x38] */
     r2 = 0x8u; fN = r2 >> 31; fZ = r2 == 0;                      /* 01e046 movs r2, #8 */
     t = r0 & ~ r2; fN = t >> 31; fZ = t == 0; r0 = t;            /* 01e048 bics r0, r2 */
@@ -2444,6 +2454,8 @@ L_1E01E:
     r0 = S32(0x150u);                                            /* 01e060 ldr r0, [sp, #0x150] */
     L32(r0 + 0x2Cu) = r1;                                        /* 01e062 str r1, [r0, #0x2c] */
     r0 = S32(0x150u);                                            /* 01e064 ldr r0, [sp, #0x150] */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E066u, r0 + 0x38u, r1);
     L32(r0 + 0x38u) = r1;                                        /* 01e066 str r1, [r0, #0x38] */
     r2 = S32(0x154u);                                            /* 01e068 ldr r2, [sp, #0x154] */
     L32(r2 + 0x1Cu) = r1;                                        /* 01e06a str r1, [r2, #0x1c] */
@@ -2946,6 +2958,8 @@ L_1E3F6:
     t = r0; L32(t + 0) = r1; L32(t + 4) = r2; L32(t + 8) = r3; r0 = t + 12; /* 01e42c stm r0!, {r1, r2, r3} */
     r0 = S32(0x150u);                                            /* 01e42e ldr r0, [sp, #0x150] */
     r1 = 0x0u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01e430 movs r1, #0 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E432u, r0 + 0x38u, r1);
     L32(r0 + 0x38u) = r1;                                        /* 01e432 str r1, [r0, #0x38] */
 L_1E434:
     r1 = S32(0x17Cu);                                            /* 01e434 ldr r1, [sp, #0x17c] */
@@ -3292,6 +3306,8 @@ L_1E684:
     t = SHL_C(r1, 0x1u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01e6aa lsls r1, r1, #1 */
     { uint64_t rr = a4_eng_call(GAMEARM(0x50E8C), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e6ac blx #0x50e8c */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e6ac blx #0x50e8c */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E6B0u, r7 + 0x38u, r0);
     L32(r7 + 0x38u) = r0;                                        /* 01e6b0 str r0, [r7, #0x38] */
     goto L_1E744;                                                /* 01e6b2 b #0x1e744 */
 L_1E6B4:
@@ -3325,6 +3341,8 @@ L_1E6B4:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e6e8 blx #0x50e8c */
     r1 = S32(0x134u);                                            /* 01e6ec ldr r1, [sp, #0x134] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e6ee adds r0, r0, r1 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E6F0u, r7 + 0x38u, r0);
     L32(r7 + 0x38u) = r0;                                        /* 01e6f0 str r0, [r7, #0x38] */
     goto L_1E744;                                                /* 01e6f2 b #0x1e744 */
 L_1E6F4:
@@ -3337,6 +3355,8 @@ L_1E6F4:
     { uint32_t ta = r2, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e700 cmp r2, #1 */
     if ((int32_t)r2 >= (int32_t)0x1u) goto L_1E70A;              /* 01e702 bge #0x1e70a */
     r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01e704 movs r0, #0 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E706u, r7 + 0x38u, r0);
     L32(r7 + 0x38u) = r0;                                        /* 01e706 str r0, [r7, #0x38] */
     goto L_1E744;                                                /* 01e708 b #0x1e744 */
 L_1E70A:
@@ -3345,6 +3365,8 @@ L_1E70A:
     t = r2 * r0; fN = t >> 31; fZ = t == 0; r0 = t;              /* 01e70e muls r0, r2, r0 */
     { uint64_t rr = a4_eng_call(GAMEARM(0x50E8C), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 01e710 blx #0x50e8c */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e710 blx #0x50e8c */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E714u, r7 + 0x38u, r0);
     L32(r7 + 0x38u) = r0;                                        /* 01e714 str r0, [r7, #0x38] */
     goto L_1E744;                                                /* 01e716 b #0x1e744 */
 L_1E718:
@@ -3369,6 +3391,8 @@ L_1E718:
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 01e73a blx #0x50e8c */
     r1 = S32(0x130u);                                            /* 01e73e ldr r1, [sp, #0x130] */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e740 adds r0, r0, r1 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E742u, r7 + 0x38u, r0);
     L32(r7 + 0x38u) = r0;                                        /* 01e742 str r0, [r7, #0x38] */
 L_1E744:
     r0 = S32(0x138u);                                            /* 01e744 ldr r0, [sp, #0x138] */
@@ -3376,6 +3400,8 @@ L_1E744:
     if (!fN) goto L_1E750;                                       /* 01e748 bpl #0x1e750 */
     r0 = L32(r7 + 0x38u);                                        /* 01e74a ldr r0, [r7, #0x38] */
     t = SAR_C(r0, 0x1u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01e74c asrs r0, r0, #1 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E74Eu, r7 + 0x38u, r0);
     L32(r7 + 0x38u) = r0;                                        /* 01e74e str r0, [r7, #0x38] */
 L_1E750:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 01e750 movs r0, r4 */
@@ -3461,6 +3487,7 @@ L_1E7E2:
     { uint32_t ta = r1, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01e7f4 adds r1, r1, r2 */
     r2 = S32(0x150u);                                            /* 01e7f6 ldr r2, [sp, #0x150] */
     /* engine: drift 9F8 += f(turn) */
+    ENG_HDREC(0x1E7F8u, r2 + 0x38u, r1);
     { uint32_t ea_ = r2 + 0x38u; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01e7f8 str r1, [r2, #0x38] */
     goto L_1E806;                                                /* 01e7fa b #0x1e806 */
 L_1E7FC:
@@ -3469,6 +3496,7 @@ L_1E7FC:
     { uint32_t ta = r1, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01e800 adds r1, r1, r2 */
     r2 = S32(0x150u);                                            /* 01e802 ldr r2, [sp, #0x150] */
     /* engine: drift 9F8 += f(turn) */
+    ENG_HDREC(0x1E804u, r2 + 0x38u, r1);
     { uint32_t ea_ = r2 + 0x38u; r1 = eng_third(ea_, L32(ea_), r1); L32(ea_) = r1; } /* 01e804 str r1, [r2, #0x38] */
 L_1E806:
     r2 = S32(0x150u);                                            /* 01e806 ldr r2, [sp, #0x150] */
@@ -3491,6 +3519,8 @@ L_1E820:
     if ((int32_t)r1 <= (int32_t)0x71u) goto L_1E82A;             /* 01e822 ble #0x1e82a */
     r2 = S32(0x150u);                                            /* 01e824 ldr r2, [sp, #0x150] */
     r0 = 0x71u; fN = r0 >> 31; fZ = r0 == 0;                     /* 01e826 movs r0, #0x71 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E828u, r2 + 0x38u, r0);
     L32(r2 + 0x38u) = r0;                                        /* 01e828 str r0, [r2, #0x38] */
 L_1E82A:
     r0 = S32(0x150u);                                            /* 01e82a ldr r0, [sp, #0x150] */
@@ -3500,6 +3530,8 @@ L_1E82A:
     { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e832 cmp r1, r0 */
     if ((int32_t)r1 >= (int32_t)r0) goto L_1E852;                /* 01e834 bge #0x1e852 */
     r2 = S32(0x150u);                                            /* 01e836 ldr r2, [sp, #0x150] */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E838u, r2 + 0x38u, r0);
     L32(r2 + 0x38u) = r0;                                        /* 01e838 str r0, [r2, #0x38] */
     goto L_1E852;                                                /* 01e83a b #0x1e852 */
 L_1E83C:
@@ -3513,6 +3545,8 @@ L_1E83C:
     L32(r2 + 0x20u) = r0;                                        /* 01e84a str r0, [r2, #0x20] */
     r2 = S32(0x150u);                                            /* 01e84c ldr r2, [sp, #0x150] */
     r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01e84e movs r0, #0 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E850u, r2 + 0x38u, r0);
     L32(r2 + 0x38u) = r0;                                        /* 01e850 str r0, [r2, #0x38] */
 L_1E852:
     t = SHL_C(r6, 0x1Fu, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 01e852 lsls r0, r6, #0x1f */
@@ -3581,6 +3615,8 @@ L_1E8A4:
     L32(r7 + 0x38u) = r0;                                        /* 01e8b4 str r0, [r7, #0x38] */
     r2 = S32(0x150u);                                            /* 01e8b6 ldr r2, [sp, #0x150] */
     r0 = 0x0u; fN = r0 >> 31; fZ = r0 == 0;                      /* 01e8b8 movs r0, #0 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E8BAu, r2 + 0x38u, r0);
     L32(r2 + 0x38u) = r0;                                        /* 01e8ba str r0, [r2, #0x38] */
 L_1E8BC:
     { uint32_t ta = r4, tb = 0x4u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01e8bc adds r0, r4, #4 */
@@ -3624,6 +3660,8 @@ L_1E8F6:
 L_1E900:
     r1 = L32(r7 + 0x38u);                                        /* 01e900 ldr r1, [r7, #0x38] */
     { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01e902 subs r1, r1, r0 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E904u, r7 + 0x38u, r1);
     L32(r7 + 0x38u) = r1;                                        /* 01e904 str r1, [r7, #0x38] */
     { uint32_t ta = r1, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e906 cmp r1, r0 */
     if ((int32_t)r1 >= (int32_t)r0) goto L_1E900;                /* 01e908 bge #0x1e900 */
@@ -3634,6 +3672,8 @@ L_1E90A:
 L_1E910:
     r1 = L32(r7 + 0x38u);                                        /* 01e910 ldr r1, [r7, #0x38] */
     { uint32_t ta = r1, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01e912 adds r1, r1, r0 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1E914u, r7 + 0x38u, r1);
     L32(r7 + 0x38u) = r1;                                        /* 01e914 str r1, [r7, #0x38] */
     { uint32_t ta = r1, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01e916 cmp r1, #0 */
     if ((int32_t)r1 < (int32_t)0x0u) goto L_1E910;               /* 01e918 blt #0x1e910 */
@@ -6174,10 +6214,13 @@ L_1D1A2:
     if ((int32_t)r0 >= (int32_t)r1) goto L_1D1B2;                /* 01d1a8 bge #0x1d1b2 */
     { uint32_t ta = r0, tb = 0x1u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01d1aa adds r0, r0, #1 */
     /* engine: C38, the speed wave's phase */
+    ENG_HDREC(0x1D1ACu, r4 + 0x38u, r0);
     if (!ENG_SUB) L32(r4 + 0x38u) = r0; else r0 = L32(r4 + 0x38u); /* 01d1ac str r0, [r4, #0x38] */
     spp += 0x7Cu;                                                /* 01d1ae add sp, #0x7c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01d1b0 pop {r4, r5, r6, r7, pc} */
 L_1D1B2:
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1D1B2u, r4 + 0x38u, r2);
     L32(r4 + 0x38u) = r2;                                        /* 01d1b2 str r2, [r4, #0x38] */
     spp += 0x7Cu;                                                /* 01d1b4 add sp, #0x7c */
     r4 = S32(0); r5 = S32(4); r6 = S32(8); r7 = S32(12); t = S32(16); spp += 20; RET(t); /* 01d1b6 pop {r4, r5, r6, r7, pc} */
@@ -7441,12 +7484,16 @@ L_1F1DC:
     { uint32_t ta = r0, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f1e2 cmp r0, r2 */
     if ((int32_t)r0 < (int32_t)r2) goto L_1F1EA;                 /* 01f1e4 blt #0x1f1ea */
     { uint32_t ta = r0, tb = r2; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f1e6 subs r0, r0, r2 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1F1E8u, r7 + 0x38u, r0);
     L32(r7 + 0x38u) = r0;                                        /* 01f1e8 str r0, [r7, #0x38] */
 L_1F1EA:
     r0 = L32(r7 + 0x38u);                                        /* 01f1ea ldr r0, [r7, #0x38] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 01f1ec cmp r0, #0 */
     if ((int32_t)r0 >= (int32_t)0x0u) goto L_1F1F4;              /* 01f1ee bge #0x1f1f4 */
     { uint32_t ta = r0, tb = r2; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 01f1f0 adds r0, r0, r2 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1F1F2u, r7 + 0x38u, r0);
     L32(r7 + 0x38u) = r0;                                        /* 01f1f2 str r0, [r7, #0x38] */
 L_1F1F4:
     spp += 0x7Cu;                                                /* 01f1f4 add sp, #0x7c */
@@ -7888,6 +7935,8 @@ static uint64_t engi_1FD0E(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, u
     t = SHL_C(r1, 0x6u, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 01fd32 lsls r1, r1, #6 */
     r0 = L32(r0 + 0xCu);                                         /* 01fd34 ldr r0, [r0, #0xc] */
     { uint32_t ta = r4, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 01fd36 adds r1, r4, r1 */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x1FD38u, r1 + 0x38u, r0);
     L32(r1 + 0x38u) = r0;                                        /* 01fd38 str r0, [r1, #0x38] */
     r1 = 0x0u; fN = r1 >> 31; fZ = r1 == 0;                      /* 01fd3a movs r1, #0 */
     r0 = 0x7Cu; fN = r0 >> 31; fZ = r0 == 0;                     /* 01fd3c movs r0, #0x7c */
@@ -8832,6 +8881,8 @@ L_200E8:
     t = SHL_C(r1, 0xAu, &fC); r1 = t; fN = t >> 31; fZ = t == 0; /* 02010e lsls r1, r1, #0xa */
     { uint32_t ta = r0, tb = r1; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 020110 adds r0, r0, r1 */
     r1 = S32(0xB0u);                                             /* 020112 ldr r1, [sp, #0xb0] */
+    /* engine: bench (A4_SPINREC): a store at +0x38 (a wreck's heading?) */
+    ENG_HDREC(0x20114u, r1 + 0x38u, r0);
     L32(r1 + 0x38u) = r0;                                        /* 020114 str r0, [r1, #0x38] */
     r0 = L32(r5);                                                /* 020116 ldr r0, [r5] */
     r1 = r5; fN = r1 >> 31; fZ = r1 == 0;                        /* 020118 movs r1, r5 */

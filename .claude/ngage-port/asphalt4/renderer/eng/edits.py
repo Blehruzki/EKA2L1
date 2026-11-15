@@ -361,3 +361,8 @@ ALWAYS = {
 # to the game's place over the step (eng_tknock), after its measure (+22832 at +FF84), at the slot loop's +FF88.
 B(0xFF7E, 'ENG->tkp = r5;', 'a knocked traffic car placed (its knock entry\'s height added)')
 B(0xFF88, 'if (ENG->tkp) { if (ENG->tkp == r5) eng_tknock(r5); ENG->tkp = 0; }', 'a knocked traffic car: drawn on its step\'s line')
+
+# bench (A4_SPINREC, round 74): every other store at +0x38 off a base in the lifted engine, for a wreck's heading
+for a_, v_, b_ in ((0x1D1AC, 'r0', 'r4'), (0x1D1B2, 'r2', 'r4'), (0x1E044, 'r1', 'r2'), (0x1E066, 'r1', 'r0'), (0x1E432, 'r1', 'r0'), (0x1E6B0, 'r0', 'r7'), (0x1E6F0, 'r0', 'r7'), (0x1E706, 'r0', 'r7'), (0x1E714, 'r0', 'r7'), (0x1E742, 'r0', 'r7'), (0x1E74E, 'r0', 'r7'), (0x1E7F8, 'r1', 'r2'), (0x1E804, 'r1', 'r2'), (0x1E828, 'r0', 'r2'), (0x1E838, 'r0', 'r2'), (0x1E850, 'r0', 'r2'), (0x1E8BA, 'r0', 'r2'), (0x1E904, 'r1', 'r7'), (0x1E914, 'r1', 'r7'), (0x1F1E8, 'r0', 'r7'), (0x1F1F2, 'r0', 'r7'), (0x1F258, 'r0', 'r2'), (0x1F26E, 'r0', 'r1'), (0x1F27A, 'r0', 'r2'), (0x1F3C2, 'r1', 'r0'), (0x1FD38, 'r0', 'r1'), (0x20114, 'r0', 'r1')):
+    EDITS.setdefault(a_, {'why': 'bench (A4_SPINREC): a store at +0x38 (a wreck\'s heading?)'})
+    EDITS[a_]['before'] = 'ENG_HDREC(0x%05Xu, %s + 0x38u, %s);' % (a_, b_, v_)

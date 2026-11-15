@@ -298,6 +298,7 @@ void eng_cam_unblend(void);
 #define ENG_TDARG(a) ((void)0)
 #define ENG_TDREC(race, tag) ((void)0)
 #define ENG_SPINREC(s_, c_, o_, n_, a_, d_) ((void)0)
+#define ENG_HDREC(a_, ea_, v_) ((void)0)
 #define ENG_TCLK(w) (ENG->tlast[(w)])
 void eng_tsnap(uint32_t arg);
 void eng_tknock(uint32_t car);
@@ -1053,8 +1054,18 @@ static inline void eng_spinrec(uint32_t site, uint32_t car, uint32_t old, uint32
     if (((i + 1u) & 255u) == 0u) a4_camp_emit((const void *)(rg + 4u));
 }
 #define ENG_SPINREC(s_, c_, o_, n_, a_, d_) eng_spinrec((s_), (c_), (o_), (n_), (a_), (d_))
+/* every other store at +0x38 off a base in the lifted engine: if the word is a wreck's heading (the base - 0x640 a
+ * car whose +034 is a path frame), recorded as a site 0x10000 + the store's address */
+static inline void eng_hdrec(uint32_t a, uint32_t ea, uint32_t v)
+{
+    const uint32_t car = ea - 0x678u;
+    if (ea < 0x02000000u || ea >= 0x03000000u || MEM32(car + 0x34u) >= 1024u || MEM32(car + 0xC70u) > 16u) return;
+    eng_spinrec(0x100u | (a & 0xFFFFu) >> 0, car, MEM32(ea), v, a, 0u);
+}
+#define ENG_HDREC(a_, ea_, v_) eng_hdrec((a_), (ea_), (v_))
 #else
 #define ENG_SPINREC(s_, c_, o_, n_, a_, d_) ((void)0)
+#define ENG_HDREC(a_, ea_, v_) ((void)0)
 #endif
 #ifdef A4_KICKREC
 /* bench (round 73): every wall push -- the whole step, the substep | n << 8, the word, its value before, the game's
