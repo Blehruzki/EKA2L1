@@ -11064,3 +11064,12 @@ c. States the bench did not enter: the MBX's own sampling convention (unknown; b
   (race+0x94; the camera object is race+0x48 itself) is the crash camera 0x18 -- a takedown's slow motion on the
   crash-steer route. sm73f = C73 + A4_BENCH_SLOWCAM + A4_SEGREC (938,180 bytes; the first build read race+0x48 as a
   pointer, killed before a result, rebuilt); smf73 (crash-steer): running.
+- smf73 (crash-steer on sm73f: slow motion whenever the crash camera is up; framestat 2,517): sixths renders 51 in
+  the crash camera (0x18) -- **its move 8.5 / 9.2 / 8.6 / 8.5 / 8.9 / 8.5 at substeps 0-5** (medians; p90 10-11;
+  frame to frame 7, 7, 7, 7, 8, 8, 8, 9, 9, ...), no lump (the maxima are the cuts in and out: 70, 388); its
+  bearing reversals 0. The chase's hops: 0 of 4 sixths renders, 4 of 305 at normal speed -- two pairs at 116,982 and
+  129,364 ms, substeps 0-2 (thirds), the first before any crash camera: the crash-steer route's wall hits at normal
+  speed (r73c2 1, r72c2's yaw reversals 3), where +1300C never runs. Not a repeat of smd73 (the script's change
+  alone, the chase unfixed) or sme73 / sme73b (no crash camera slowed).
+  Slow motion on the bench, all three: every frame a new real substep (sm73c); the crash camera even (smd73,
+  smf73); the chase camera without its hop (sme73, sme73b). Next: candidate r73b (C73, this code) and its battery.
