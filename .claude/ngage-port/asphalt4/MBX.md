@@ -11929,3 +11929,18 @@ news 39 ms.
   stopped: it cannot give a verdict while the baseline differs from itself. The lift's exactness rests on the lifter
   (the same lift.py and edits machinery as the 42 functions before it) and on cr77b / m77a drawing every car whole;
   named as a guess for rule 4.
+- **The turn's end on the phone, read render by render (LA, ph76a, frec3.py turn; 43 flips of the steering rate
+  A1C):** at a release A1C jumps across zero (-1,800 -> +901 -> +1,576 -> 0) and the heading stops within two
+  renders (275, 267, 264, held); the camera's yaw, which lagged it by ~16, then moves AWAY from the heading for ~4
+  renders (283, 288, 291, 292) before coming back (290, 284, 273): the car on screen (draw less yaw) goes -16, -19,
+  -24, -27, -28, -26, -20, -9 -- out and back by 12 units (2 degrees) over ~8 renders. On a straight with the
+  heading still the yaw also wanders +-4 (677 held: 679, 680, 680, 676, 675, 672, 674, 678 ...). On substeps the
+  chase camera is the car's heading plus the game's own offset (yaw less heading) taken at the whole steps and
+  blended a step late (a4_eng.h, round 63), so the swing is the game's offset moving the wrong way after the turn --
+  whether stock's offset does the same is the question.
+- sx1 / sx3 and sl1 (A4_AUTOSTEER, its turn bits K+4 0x8 / 0x200 named guesses in a4_gl.c): **the auto-steer never
+  steered** -- A1C 0 in every render of sx3; sl1's heading turned -20 a render only in the unstick cycle, with the
+  camera's yaw equal to the heading in every render (a car at a crawl or reversing, not a chase at speed). Neither
+  is a turn at speed; the swing 0 in them says nothing. Replaced by a key-driven pair (tools: the scratchpad's
+  hcs.sh -- '5' held, '4' 1.5 s, free 4 s, '6' 1.5 s, free 4 s, as crashrun.sh steered): ks1 (stock step, 931b807's
+  tree + C74stock, no THIRDSTEP) and ks3 (C77), 200 s each, queued.
