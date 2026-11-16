@@ -11751,3 +11751,7 @@ No game change against r75; the build adds what the four open issues need record
      mark after 2 s, by design); the ninth press on this binary (m76a's build); a mark in a news shot or takedown on
      this binary (the AUTOMARK builds, the same path but the trigger); a second race in one session (marks number
      on, FRC3 runs on); C: full (Replace fails, the mark dropped).
+- r76 sent to the owner (unbaked a4_r76_cand.exe, sha256 4601bd18a5321c5a3250894c1ca51d495e251d1650b2a9c78bd49a7543ae4303,
+  947,388 bytes; "send it"). Asked for: LA and Paris, C at a choppy takedown or roll, a snap-back in a clean turn, the
+  searchlight hiding, the far buildings going; the a4mark*.dat files with the a4tel*.dat ones, copied before the game
+  is started again.
