@@ -83,6 +83,11 @@ the emulator.
   `.claude/ngage-port/BUGBOOK.md` §12.w: it made the bench deterministic (50 instr/us
   reliably live, 200 reliably dead), which is how the game's tick-seeded PRNG was
   found; the phone fix itself is in the port (`GAME_TICK_SEED_*`, KNOBS.md).
+- Not a switch: the kernel's "Access violation reading/writing address" log line
+  now also gives the guest's pc, lr and sp at the fault
+  (`kernel_system::cpu_exception_handler`, `src/emu/kernel/src/kernel.cpp`). It
+  named the faulting instruction of the N-Gage port's lifted car draw in one run
+  (asphalt4 round 77).
 
 ## Patch maps
 

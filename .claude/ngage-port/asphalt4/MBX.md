@@ -11867,3 +11867,16 @@ news 39 ms.
   projection's centre -- enough to project the seam's corners as the GPU did and see whether they part. frec3.py
   lines. Scratch 0x1BA000.
 - C77 = C76 + the four; a4_r77b.exe built (968,424 bytes). Not yet run.
+- ox76 (the baseline oracle, 931b807's tree; framestat 2,408): 8 captures. **ox77 (the lifted draw, no share): the
+  emulator halted at the race's start** -- a guest read of 0x42DED4D0 in Main, then "Corrupted graphics command
+  list". To name the instruction the emulator's access-violation line now gives pc, lr and sp (kernel.cpp;
+  EMU_PATCHES.md, Notes). cr77 (r77x, the same build): **pc +0E53FC in engi_0D3BA (+0x3C20) = game +ECBE, `ldr r0,
+  [r0, #0x38]` on [sp+0x2D0]** -- a slot +D840 set to race + 0x6A80, read back as 0x796E0357. Cause: **a4_eng_call
+  saved r4-r8 only (a4_eng_call0 r4), and the span trampolines (a4_tramp.s) use r8-r11 without saving them** (a4_gl.s
+  says so at a4_gcall1); the lifted draw is the first lifted function whose callees reach the spans (the mesh
+  draws), and its compiled code held r9 / r10 across one and read its emulated stack through them. Both helpers now
+  save r4-r11 (8-aligned). cr77b (the fix, 150 s; framestat 1,359; the boot fault only): the race runs, the cars
+  drawn (a car pushed against the player's, whole).
+- Re-run on the fixed builds: ox77 (oracle, for capcmp against ox76), m77a (C77, C at 40 .. 280 s), sx1 / sx3 (the
+  steered pair: stock step 931b807's tree + C74stock, and C77, both AUTOPILOT + AUTOSTEER: right 3 steps, free 14,
+  left 3, free 14): running.

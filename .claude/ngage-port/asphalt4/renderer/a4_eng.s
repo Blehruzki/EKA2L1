@@ -5,11 +5,16 @@
 @ uint64_t a4_eng_call(fn, a0, a1, a2, [sp] a3, [sp+4] emulated sp, [sp+8] &r2r3): a call into the game from a lifted
 @ function -- the eight words at the emulated stack pointer copied to the real stack as the callee's
 @ stack arguments, r0:r1 returned and r2, r3 stored (the game's code reads them after some calls)
+@ Round 77: r9-r11 saved too. The span trampolines (a4_tramp.s) use r8-r11 without saving them -- the game's Thumb
+@ never holds those across a span (a4_gl.s a4_gcall1 says the same) -- and the lifted car draw (+D3BA) is the first
+@ lifted function whose callees reach the spans: its compiled code kept r9 / r10 across a mesh draw and read its
+@ emulated stack through them afterwards (cr77: a fault at +ECBE reading [sp+0x2D0] + 0x38 = 0x796E038F).
         .global a4_eng_call
 a4_eng_call:
-        push    {r4-r8, lr}
-        ldr     r4, [sp, #24]
-        ldr     r5, [sp, #28]
+        push    {r4-r11, lr}
+        sub     sp, sp, #4          @ 40 bytes pushed: the stack stays 8-aligned
+        ldr     r4, [sp, #40]
+        ldr     r5, [sp, #44]
         mov     r12, r0
         sub     sp, sp, #32
         ldr     r6, [r5, #0]
@@ -33,26 +38,28 @@ a4_eng_call:
         mov     r2, r3
         mov     r3, r4
         blx     r12
-        ldr     r12, [sp, #64]      @ where r2, r3 go (the callee's, as the game's code may read them)
+        ldr     r12, [sp, #80]      @ where r2, r3 go (the callee's, as the game's code may read them)
         str     r2, [r12, #0]
         str     r3, [r12, #4]
-        add     sp, sp, #32
-        pop     {r4-r8, pc}
+        add     sp, sp, #36
+        pop     {r4-r11, pc}
 @ uint64_t a4_eng_call0(fn, a0, a1, a2, [sp] a3, [sp+4] &r2r3): the same for a callee that reads no stack word
 @ of its caller's (lift.py noargs: its flow walked with the stack's depth) -- nothing copied
         .global a4_eng_call0
 a4_eng_call0:
-        push    {r4, lr}
+        push    {r4-r11, lr}        @ round 77: r5-r11 kept too (the spans, above)
+        sub     sp, sp, #4
         mov     r12, r0
         mov     r0, r1
         mov     r1, r2
         mov     r2, r3
-        ldr     r3, [sp, #8]
+        ldr     r3, [sp, #40]
         blx     r12
-        ldr     r12, [sp, #12]      @ where r2, r3 go
+        ldr     r12, [sp, #44]      @ where r2, r3 go
         str     r2, [r12, #0]
         str     r3, [r12, #4]
-        pop     {r4, pc}
+        add     sp, sp, #4
+        pop     {r4-r11, pc}
 @ the game's HUD sprite painter (+29736) as it was, its prologue (overwritten by the engine's veneer)
 @ replayed and then on at +29740 (Thumb): A4_PAINTCHECK runs it beside the lifted one. Its epilogue
 @ (add sp, #0x5c; pop {r4-r7, pc}) returns to our caller through the lr pushed here.
