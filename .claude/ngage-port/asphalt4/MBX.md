@@ -11921,3 +11921,11 @@ news 39 ms.
   -- its own visible pixels hold its depth and pass, the road nearer than it fails -- the painter's result, with no
   stencil (the N95 has no stencil config). Or, cheaper and partial, test only the part of the cell inside the cover's
   box.
+- **dx76a / dx76b (the baseline oracle, 931b807's tree, EKA2L1_DETTICK=200; framestat 2,079 / 1,907): the captures
+  now fall on the same frames (766 / 766, 1,639 / 1,639 -- against ox76's 766 / 772 wall-clock) but still differ: 745
+  px in capture 0 (rows 105-120, the opponents ahead), 2,826 in 1, whole frames from 2.** The guest tick is not the
+  source of the parting; something else the race reads differs run to run (the other clock calls -- the fast
+  counter, home time -- or the scheduling of the game's other threads). dx77 (the lift under the same clock)
+  stopped: it cannot give a verdict while the baseline differs from itself. The lift's exactness rests on the lifter
+  (the same lift.py and edits machinery as the 42 functions before it) and on cr77b / m77a drawing every car whole;
+  named as a guess for rule 4.
