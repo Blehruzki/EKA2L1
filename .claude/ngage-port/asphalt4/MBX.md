@@ -11602,3 +11602,13 @@ captures, a4tel0-6 (capidx 104-110, frames 7330-7744; the files' names carry -55
 - The takedown's choppiness on the phone, against the bench's smooth spin (tv4-tv6): the bench's wrecks spun only
   (pitch and roll 0 in every wreck camera); the phone's telemetry records the player and the camera, not the car the
   takedown camera follows -- nothing to measure the victim with. Waiting for the owner's LA round.
+- Second run, LA (owner: "here comes the second telemetry"): eight captures, capidx 27-34 (frames 2266-2749), lap 1
+  of 3, WANTED. ms a render by window 72.7, 74.8, 49.7, 41.0, 43.9, 48.0, 45.4, 49.4 (27-28 under a chained boost,
+  "x3 NITRO"); presents every 53 ms median (10-90% 33..75). Pictures: the chase view through The Fame Avenue to The
+  Hills, the police helicopter in view in 30-33; the skyline drawn in all eight (pale patches in 30-32 read, enlarged,
+  as a police car's lights and spray and the far hills). objrec: segments 70-101, objects 14-127 a render, no drop;
+  line rows 0 -- **not the far-building stretch** (round 73's drop was at segments 9-17).
+- frec: the car's heading one-frame reversals 0 in 417 frames; the camera's yaw 7 (Paris 1 in 394); a crash camera
+  (0x18) of 56 frames in the record. The one camera reversal of size (1096367: +13, -19) is the player nearly at
+  rest weaving (x-z 10-25 a frame; heading 1774, 1777, 1788, 1768, then 1809, 1850, the camera within 3 of it) --
+  steering at walking pace, not a snap of the camera. The owner's snap-back on turns is not yet in the records.
