@@ -5897,6 +5897,33 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
     return 1;
 }
 /* the frame's objects, before the list (a4_gl_draw_prim, the walk's first triangle) */
+/* Round 78 (phone round 77, the owner: "a whole section of the screen (upper half) gets chopped off", "pops out and
+ * in again ... at random intervals"; LA's records: objects drawn with an empty list in 456 of 1,402 renders, Paris 37
+ * of 829): the composite copies only the frame's drawn rows (miny..maxy). The list sets them all when it draws a face
+ * (mesh_draw), the table's triangles and sprites by their own rows -- but the GPU's objects and cars set none, so in a
+ * frame whose list is empty the rows above the table's topmost triangle were never copied and the game's own sky
+ * stood where the buildings were drawn. Each drawn item's screen box (conservative: its bounding sphere x 1.75, or
+ * the car mesh's bounds, projected) now extends the rows. */
+#ifdef A4_ROWCHECK
+/* bench: the old rows kept (the items do not extend them) and the items' own top row recorded beside the composite's
+ * top -- FRC1's camera-x word becomes miny | the items' top << 16 (a4_gl_flush): renders whose items began above the
+ * composite lost those rows */
+#define rc_miny (*(volatile uint32_t *)0x005B03F0u)      /* a free scratch word (the wreck state ends at 0x5B0288) */
+#endif
+static void rows_extend(volatile struct glr *s, const volatile int16_t *b)
+{
+    int32_t y0 = b[1], y1 = b[3];
+    if (b[0] > b[2] || y0 > y1 || y1 < 0 || y0 >= VP_H) return;    /* off screen */
+    if (y0 < 0) y0 = 0;
+    if (y1 > VP_H - 1) y1 = VP_H - 1;
+#ifdef A4_ROWCHECK
+    if ((uint32_t)y0 < rc_miny) rc_miny = (uint32_t)y0;
+    (void)s;
+#else
+    if ((uint32_t)y0 < s->miny) s->miny = (uint32_t)y0;
+    if ((uint32_t)y1 > s->maxy) s->maxy = (uint32_t)y1;
+#endif
+}
 static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
 {
     volatile struct gstate *g = GOBJ;
@@ -5998,6 +6025,7 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
     }
     g->batches += draws;
     g->draws += ne; g->frames_drawn++;
+    for (uint32_t i = 0; i < n; i++) rows_extend(s, g->it[i].box);   /* round 78: their rows composited */
     MESH->active = 1;                                       /* the table's classes depth-test against them */
     gl_loadidentity();                                       /* the texture matrix */
     gl_matrixmode(GL_MODELVIEW); gl_loadidentity();
@@ -6168,6 +6196,7 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
         }
     }
     c->draws += draws; c->frames_drawn++;
+    for (uint32_t i = 0; i < n; i++) rows_extend(s, c->it[i].box);   /* round 78: their rows composited */
     MESH->active = 1;                                       /* the table's classes depth-test against them */
     gl_loadidentity();                                       /* the texture matrix */
     gl_matrixmode(GL_MODELVIEW); gl_loadidentity();
@@ -7328,6 +7357,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         A4_PERF[PF_MODE] = A4_ABMODE;                  /* so the capture header names it */
 #endif
         s->miny = VP_H; s->maxy = 0;                    /* empty drawn-row extent */
+#ifdef A4_ROWCHECK
+        rc_miny = VP_H;
+#endif
         /* Composite the previous frame's GPU image NOW, before this frame's
          * software draws (the car, the trees, the HUD) land on top of it in
          * painter's order. The old 3D->2D boundary was the frame's first
@@ -9415,6 +9447,11 @@ void a4_gl_flush(void)
      * GPU's objects and what software draws over them (billboards, tags, HUD, the blended
      * classes); and nothing software drew before this point may sit where the GPU drew,
      * or the composite covers it. */
+#if defined(A4_ROWCHECK) && defined(A4_FRAMEREC)
+    {   volatile uint32_t *F = (volatile uint32_t *)A4_GL_FREC;
+        if (F[0] == 0x31435246u && F[1]) F[4u + ((F[1] - 1u) % FREC_N) * 8u + 6u] = s->miny | rc_miny << 16;
+    }
+#endif
     { uint32_t t0 = a4_ntick(); composite_rows(s, s->miny, s->maxy); A4_PERF[PF_COMP] += a4_ntick() - t0; }
 #endif
 #if defined(A4_RUNDIAG) || defined(A4_TEL)

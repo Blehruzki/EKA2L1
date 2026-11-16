@@ -12181,3 +12181,45 @@ road, making the shadow incomplete). This never happened on vanilla." Eight ring
   batch drawn up to that item first (a barrier) and a one-car / one-object redraw. Cost to measure: about one car
   draw a frame for the player's shadow.
 - The snap-back: not seen in Paris either way. Left as it is (r77 changed nothing in the camera).
+- **Owner, on the scenery: "that's not how the original game worked. it doesn't make sense that an scenery already
+  loaded pops out and in again multiple times and at random intervals. Besides, it's not the whole buildings that
+  are disappearing: is like a whole section of the screen (upper half of the screen) that gets chopped off."** So
+  the object counts read above (the game's window per segment) were the wrong measure: the symptom is a region of
+  the screen -- its upper part, above a line -- not drawn, not objects missing. Next: what bounds the region the
+  composite copies (the frame's drawn rows, miny..maxy) and whether every GPU class extends it.
+- **Owner: "I tested a crash, and it works just fine, so that you can close it."** The crash camera on the 3x engine
+  (A4_CAMSCRIPT3 with the wreck's share): closed.
+
+## Round 78: the chopped upper screen, the captures every ~10 s
+
+- **The scenery, found in the code:** the composite copies the frame's drawn rows only (composite_rows(s->miny,
+  s->maxy)). At a frame's first triangle they are emptied (VP_H, 0); the table's triangles and sprites extend them by
+  their own rows (lean_conv, quad_push); the list sets them all when it draws a face (mesh_draw: "rows unknown
+  without projecting: all") -- **but gobj_flush and gcar_flush, the GPU's scenery objects and cars, extend nothing,
+  and mesh_draw returns before setting them when the list is empty.** So in a frame with an empty list, every row
+  above the table's topmost triangle was left out of the composite and the game's own (software) sky stood where the
+  GPU drew the buildings: the upper screen cut off along a line, frame by frame as the list empties and fills. The
+  phone's records: objects drawn with an empty list in 456 of 1,402 renders in LA (33%), 37 of 829 in Paris (4%) --
+  the owner: worse in LA, "to a lesser extend" in Paris. (Round 71b's photos: "the software sky's pale horizon
+  showing through".) The object counts read before were the wrong measure (the owner corrected it).
+- Fix (a4_gl.c rows_extend): each drawn object's and car's screen box (conservative: the bounding sphere x 1.75 /
+  the car mesh's bounds, projected, gitem_box) extends the drawn rows, clamped to the screen. Bench probe
+  A4_ROWCHECK (the old rows kept, FRC1's camera-x word = miny | the items' top row << 16, a scratch word at
+  0x5B03F0): rc77, queued -- renders whose items begin above the composite's top are the rows the old code lost.
+- **The captures:** C78.flags = C77.flags with TEL_EVERY 230 (a capture every ~10 s, not ~1 s). a4_r78a.exe (C78 +
+  the rows fix, 969,416 bytes): m78a (300 s, C at 60 .. 240), queued.
+- rc77 (C77 + A4_ROWCHECK, the bench's Paris route, 300 s; framestat 2,328): the composite's top row 0 in nearly
+  every render (something of the table reaches row 0 there -- the night sky's takes); items above it in 0 of 368.
+  Not a test of the bug: Paris on the bench draws the top rows anyway (the owner: Paris "to a lesser extend").
+- **rcla (the same probe, a fresh career -- no save: Instant Play is Los Angeles, the starter car; hcn.sh NOSAVE,
+  300 s; framestat 2,371): reproduced. Objects drawn with an empty list in 172 of 417 renders; in 60 (14%) the
+  items' boxes began above the composite's top row -- 41 rows (median, max 55) of the upper screen never copied.**
+  (tools/rowcheck.py.) The two ring pictures taken on such frames (composite top 39 / 50, items 0) show no obvious
+  cut: the boxes are conservative (the sphere x 1.75), so an item's box above the line is not proof of its pixels
+  there. Rule 4: the fix can only add rows -- a row the GPU drew nothing in keeps the software layer's pixel, as it
+  did -- so its only cost is the extra rows read in those frames.
+- m78a (a4_r78a: C78 + the rows fix, Paris, 300 s, C at 60 .. 240; framestat 2,321; the boot fault only): 4 marks,
+  all decode; 8 ring files a window of 230 renders each. r51sum's whole-race figure reads 50.9 ms a render because
+  the first window (230 renders from before the start, 140 ms a render through the countdown) used to be ten small
+  ones; the race windows run 31.6-44.9 ms (~38 weighted) against b77b's 40.8 -- no regression. shipchk: sha256
+  1af6c4c5..., 969,416 bytes, uncompressed, +3A15C ok. Battery: b78a (b76a's run) and la78 (LA, no save) queued.
