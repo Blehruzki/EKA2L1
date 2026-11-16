@@ -12140,3 +12140,44 @@ something on the telemetry)". Eight ring files (a4tel0-7) and six marks (a4mark0
   beside it as empty -- a sky band, not the owner's kind. None of the owner's lines in LA this round.
 - The turn's end: 30 ends, swing median 16 (r76 19), the camera off the heading as before (camoff.py: still 5.8,
   moving 10.4; r76 6.1 / 10.1) -- r77 did not touch the camera; the owner did not notice it this time.
+
+## Phone round 77b (r77 4322b80f, Paris): two marks, the finish jingle, the car's shadow
+
+Owner: "second round paris, didn't notice any snap-back turning any side. I did notice that sometime, the
+finish-race jingle will either play later or pause mid-play. it can pause once, twice or even trice. it happened on
+this second round. But it's not consistent. I have neglected to say this as well, but there's still an issue with
+the car's shadow that will render wrongly (missing pieces, or a sensation that some of it is dipping below the
+road, making the shadow incomplete). This never happened on vanilla." Eight ring files (a4tel0-7) and two marks.
+- The snap-back: not seen in Paris, either way.
+- New: the finish jingle late or pausing (1-3 times), not every race.
+- Reported again: the car's shadow incomplete, as if dipping below the road; never in stock.
+- Files: rings 132-139 (the race's last ~26 s; the finish camera, mode 1, from 31,878.4 s) and two marks (lap 1
+  under nitro on the zebra crossing; lap 2 with the news copter): shots/r77-paris-marks.png. No crash camera in
+  any file (modes 2 and 1 only): the crash still untested on the phone.
+- **The finish jingle: the ring captures stall the game thread.** A capture is written every TEL_EVERY (23) rendered
+  frames -- about once a second for the whole race, the ring keeping the last eight -- and each file is 215,344
+  bytes since FRC3 (r76). The render right after a capture: 111-158 ms in Paris, 114-156 in LA, against a median
+  of 58 / 42 and a 99th percentile of 150 / 119 for every other render -- **each capture costs the phone ~70-100 ms,
+  once a second.** The game feeds its sound from the same thread; a 2-3 s jingle meets two or three captures:
+  "pauses once, twice or even thrice", "plays later" when one lands on its start, not every race. (Guess, named:
+  that the jingle's pauses are these stalls -- the audio's buffer depth is not measured; the stalls are.) Also a
+  once-a-second hitch during the race itself, in no fps figure (the captures are outside the windows).
+  Fix for r78: TEL_EVERY 230 -- a capture every ~10 s; each file still holds the last 256 renders (~12 s), so eight
+  files cover the race's last ~80 s with no gap, and the marks are unchanged.
+- **The car's shadow, read in the code:** the game never depth-tests a shadow (it paints it over whatever is there).
+  Here a shadow triangle is depth-tested wherever a tile under it holds a nearer bucket (mesh_tri_covered, round 28)
+  -- and since round 61 the GPU objects and cars are in that grid, so the player's car makes its own shadow tested
+  every frame. Tested, the shadow loses to the road wherever its plane lies under the road surface (the 1/64 bias,
+  ~4 units at ZW 250), and on the 3x engine the car and its shadow are placed at substep positions, the height
+  closing on the road by the step's end (A4_WRECK3 / the engine's height rule), so the plane can sit a few units
+  under a slope or crest: pieces missing, "dipping below the road". Round 33's A4_SHADSINK (before GPU cars, no
+  substeps) found no road tie on the bench route; the conditions changed since.
+- **One cause for three reports -- the pickups, the searchlight's blocks, the shadow:** a class the game paints over
+  everything (sprites, shadows) becomes depth-tested because a GPU car or object covers its tile, and then the
+  road, which the game painted before it, hides it. The rule the game's painter gives: only the cover's own pixels
+  hide it. For r78: such a triangle or sprite cell, covered only by GPU items (not by a nearer list face), is drawn
+  untested, then the covering car / object is drawn again over that rectangle (scissored) with the normal depth test
+  and no depth write -- its visible pixels hold its own depth and pass, the road nearer than it fails. Needs the
+  batch drawn up to that item first (a barrier) and a one-car / one-object redraw. Cost to measure: about one car
+  draw a frame for the player's shadow.
+- The snap-back: not seen in Paris either way. Left as it is (r77 changed nothing in the camera).
