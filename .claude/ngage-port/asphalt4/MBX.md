@@ -11546,3 +11546,19 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   Faults 1 each (the boot one). Not comparable with r74's battery's 37.3 ms: that was the bench's LA save (lost with
   the scratchpad), this is Paris on the owner's save, a heavier route (GPU objects 78% there against LA's 94%).
   tv5 / tv6 (the takedown probe on the pair version) running.
+- Rule 4 for r75 (before it goes out):
+  - Guesses: (1) the game gives one spin kick a step for each pair in contact -- read from the code (+239B6 is the
+    response for one pair, run once a step), not measured; settled on the bench by counting the rotate's calls a
+    (car, other) a step in the stock-step build (a probe at +23BCE / +23C0E). (2) That a kick turned over the step
+    reads as the game's turn: the stock game draws the whole kick at the step (11.72 Hz); here the same total is
+    reached by the step's end, drawn as a turn -- the smoothing the owner asked for ("modifying whatever marks
+    those steps so it includes a smoother movement"), the same direction and total a step as stock. (3) r74's own:
+    the knock line's step-end estimate, the sprite cells (the copter light and pickups: never on a phone yet).
+  - Read back: lifted.c's diff (three insertions, then the two call lines for the pair); eng_spin / eng_spin_apply
+    (the first share k - (n-1) x trunc(k / n) at the kick, trunc(rest / left) at each later +1971E entry, the last
+    share the remainder; the pair's next kick finishes an unfinished rest; an evicted slot's rest turned at once;
+    eng_sdiv, as the build has no divide); the build log and shipchk; tv4's per-render headings.
+  - States not entered: a car hit by two others in one step (the pair key); the table full (16 pairs spreading);
+    slow motion (n 6) with a contact -- tv4's second camera may have been one, not confirmed; the player's own
+    bumps in a race -- its heading kick is spread too, so a bump turns the car over the step instead of at once
+    (the total per step stock's; the old 3x gave up to three kicks a step, more than stock).
