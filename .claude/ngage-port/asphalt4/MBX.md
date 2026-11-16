@@ -11822,3 +11822,13 @@ news 39 ms.
      nearer): BBCELL tests a covered cell at its cover's depth, and a face the game painted BEFORE the sprite (its
      deepest point farther) can have pixels nearer than that -- which the game's painter never lets cover it.
   4. The grey line: 67 px of row 88 undrawn once in ~2,000 sampled composites -- rare, real, short.
+- Owner on LA mark 3's dark streaks: "No, the grey lines were horizontal, like before" -- the streaks are the game's
+  tyre marks; the grey lines are round 70's rows. So in LA they came and went between the counter's samples (every
+  16th composite) and before any mark's picture (taken at the next 3D present after the press). Paris's one count
+  (row 88, 67 px) is the first measurement of one. Lead, from round 70's photo (a full-width row across grass and
+  road at a random height) and the bench never showing one (llvmpipe, 8 bits of sub-pixel precision against the
+  MBX's coarser grid): a seam between two triangles that should share an edge but whose shared corners are not the
+  same numbers -- e.g. the edge between two track segments, each projected on its own -- leaves a sliver a coarser
+  grid can make one pixel row tall. To settle it: the counter on every composite (~0.7 ms of the N95 a frame, by its
+  loop) and, when it fires, the row's undrawn x-range and the faces whose screen boxes end on that row (list or GPU
+  object, and their projected corners) -- for the next build.
