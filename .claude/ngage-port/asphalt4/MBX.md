@@ -11633,3 +11633,40 @@ captures, a4tel0-6 (capidx 104-110, frames 7330-7744; the files' names carry -55
   eight kept); the a4tel ring runs as before. A new session starts again at 0. To settle on the bench before it is
   built: that the game takes no action on C in a race (no pause, no menu), and where the press can be read (the
   game's key queue at [K+0x14], six-bit codes, or the window server's event before it).
+
+## Round 76 candidate: the owner's marks (C) and FRC3, a telemetry build
+
+The owner: "prepare it to capture what you need to see in order to pinpoint the issue and fix it once and for all".
+No game change against r75; the build adds what the four open issues need recorded, and a key to say when.
+- ck1 (r75, '5' held, Paris, owner's save, N95 model; EKA2L1_PCTRACE_REGS at +1EE0, the key-down; BackSpace -- the
+  phone's C -- pressed at 30, 45, 60 s): the runtime hands the game keys as bits of its key word -- Return 0x10000,
+  '5' 0x10, **C 0x4000**; +1D80 translates them to the game's codes and has none for 0x4000 (-1), so +257A drops it:
+  the game never sees C. The race ran on through all three presses (screenshots before / after: no pause, no menu;
+  the 60 s one caught a car flipped in the air -- the bench does enter rolls). Not a repeat: no key path was traced
+  before (the CLAUDE.md hold-C picker is gate6's, the other titles' loader; Asphalt 4 has none).
+- Built (flags/C76.flags = C75 + -DA4_FRC3 -DA4_TELMARK; scratch 0x1B6000, the mark state, FRC3 and the sprite list at
+  0x5B0000-0x5B6A00):
+  - A4_TELMARK: +1EE0's bl +1D80 at +1EEC through a4_key_down (a4_eng.c), which counts C and calls +1D80. a4_tel.c
+    takes a capture at the next present carrying a 3D render into C:\a4markN.dat (N = marks so far, 0-7), header word
+    2 = bit 31 | N; a press within 2 s of the last mark, the ninth press and a press while no race has been drawn for a
+    second (a menu) are dropped; the a4tel ring is left alone.
+  - A4_FRC3: a third ring beside FRC1 (24 words a render, 256 renders; layout in a4_gl.c): the engine's substep
+    count; the player's heading, turn term +9F8, pitch, roll, velocity, keys, steering rate and the axes it was drawn
+    with; one other car (the camera's when not the player, else the nearest wreck, else the nearest car) -- slot,
+    +034, place, angles, drawn axes; the render's largest sprite (rectangle, the cells a list face covers / all
+    covered, its bucket, the nearest cover's); the scenery objects taken and refused by reason, the farthest taken
+    bucket, the list's triangles, GL errors. Every capture and mark also carries the last render's sprite list (16
+    largest) and the GPU objects' state (each taken item's screen box and buckets) -- tools/frec3.py (files, rot,
+    turn, spr, obj, gob: the items' boxes drawn over the screenshot).
+  - C75 rebuilt after the change: byte for byte r75 (ae84c26a...): nothing reaches a build without the new flags.
+- m76a (the first r76 build, '5' held, Paris, 210 s, C at 25, 26, 44, 63, 82, 101, 120, 139, 158, 177, 196 s;
+  framestat 1,663; the one access violation is the boot-time one every run has, b74a / b75a / ck1 / tv5 / tv6):
+  **8 marks** (a4mark0-7, 198,176 bytes each, 256 renders, ~11 s of game time each), the 26 s press dropped (2 s),
+  177 and 196 dropped (eight written); the ring's eight a4tel files as before. Read: the player's drawn heading is its
+  heading less 1,024 (a convention: 799 of 1,008), two substeps behind it (eng_alag: hd 1495 -> 1547 at cnt 492, the
+  drawn axis 471 -> 523 at cnt 495); the other car's axes did not follow its heading (offsets 719 / 1006) -- read
+  before the render, they are the step's or the last render's: the render makes the matrix as it draws a car
+  (+31EA4 / +321A6, round 31). Moved after the render (a4_eng_frc3_post). No takedown or news camera in the eight
+  windows.
+- A4_BENCH_AUTOMARK (bench, new; never a phone build): a mark asked for at the 40th render of a 0x18 (crash /
+  takedown) or 0x2A (news) camera. m76b (r76 + it, '5' held, 400 s): running.

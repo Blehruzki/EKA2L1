@@ -320,6 +320,13 @@ extern const uint16_t eng_frame_off[10];
 #if !defined(A4_ENG3) && !defined(A4_FASTXF)
 uint64_t eng_h_345e4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t sp, uint32_t *r23);   /* a4_eng.c, A4_FASTXF */
 #endif
+/* Phone round 76 (A4_TELMARK, A4_FRC3; a4_gl.c, a4_tel.c): the mark's state -- [0] presses of C, [1] presses
+ * handled, [2] marks written, [3] the last one's tick, [4..14] FRC3's counters before the render, [15] the last present that carried a 3D render; RFile objects for
+ * the mark files from +0x40 -- then FRC3 at 0x5B0400 and the render's sprite list at 0x5B6800 (A4_SCRATCH_SIZE
+ * 0x1B6000: the scratch to 0x5B7000) */
+#define A4_MARK_STATE 0x005B0000u
+#define A4_GL_FREC3   0x005B0400u
+#define A4_GL_SPL     0x005B6800u
 #ifdef A4_ENG3
 #define A4_ENG_STATE 0x0045D000u
 _Static_assert(A4_ENG_STATE + sizeof(struct eng) <= 0x00460000u, "the engine state past the scratch block");

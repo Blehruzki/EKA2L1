@@ -68,6 +68,83 @@ void a4_eng6_fill_post(void) { if (ENG->magic == ENG_MAGIC && ENG->n == 6u) eng_
 /* bench (round 73, the seek driver): the traffic array +FB12 was last given (0 before the race's first traffic step) */
 uint32_t a4_eng_traffic(void) { return ENG->magic == ENG_MAGIC && ENG->targ ? ENG->targ + GAME32(0xFEB4) : 0u; }
 #endif
+#if defined(A4_FRC3) && defined(A4_ENG3)
+/* Phone round 76 (the owner after round 75: "whatever violent movement the car as an object does around its own axis
+ * feels choppy", "the car snaps back in a clean turn"): FRC3's car words for this render, before it draws (a4_gl.c
+ * A4_GL_FREC3 has the layout). The player car's angles as stored, its turn term +9F8, the matrix's forward axis +704
+ * and side axis's height +714 as the render drew it (a4_eng_frc3_post), its velocity, keys and steering rate; then one other car: the car the camera placement follows (ENG->cam[2]) when that is not the
+ * player's, else the wreck (+034 1 .. 1023, a wreck path running) nearest the camera, else the nearest race car --
+ * its slot, place, angles and both axes. */
+static inline uint32_t frc3_h(int32_t v) { return (uint32_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v) & 0xFFFFu; }
+void a4_eng_frc3(uint32_t race, volatile uint32_t *e)
+{
+    const uint32_t pl = MEM32(race + 0x390u), pi = pl ? MEM32(pl + 0xCu) : 16u;
+    const uint32_t pc = pi < 16u ? MEM32(race + 0x394u + 4u * pi) : 0u;
+    const uint32_t fc = ENG->magic == ENG_MAGIC && ENG->camv ? ENG->cam[2] : 0u;
+    const uint32_t ctx = MEM32(race + 0x38u), K = ctx ? MEM32(ctx + 0x1114u) : 0u;
+    const int32_t cx = (int32_t)MEM32(race + 0x48u + 0x10u), cz = (int32_t)MEM32(race + 0x48u + 0x18u);
+    uint32_t oc = 0u, os = 31u, fl = 0u, k;
+    e[1] = ENG->cnt;
+    e[2] = (ENG->sub & 15u) | (ENG->n & 15u) << 4 | (MEM32(race + 0x94u) & 0xFFu) << 8 | MEM32(race + 0x84Cu) << 16;
+    for (k = 3u; k < 16u; k++) e[k] = 0u;
+    if (pc) {
+        e[3] = (MEM32(pc + 0x678u) & 0xFFFFu) | MEM32(pc + 0x9F8u) << 16;
+        e[4] = (MEM32(pc + 0x674u) & 0xFFFFu) | MEM32(pc + 0x67Cu) << 16;
+        e[7] = frc3_h((int32_t)MEM32(pc + 0x10u)) | frc3_h((int32_t)MEM32(pc + 0x18u)) << 16;
+        e[8] = (K ? MEM32(K + 4u) & 0xFFFFu : 0u) | MEM32(pc + 0xA1Cu) << 16;
+    }
+    if (fc && fc != pc) {
+        for (k = 0; k < 16u; k++) if (MEM32(race + 0x394u + 4u * k) == fc) break;
+        oc = fc; os = k < 16u ? k : 30u; fl = 1u;
+    } else {
+        int64_t bw = 0x7FFFFFFFFFFFLL, bn = 0x7FFFFFFFFFFFLL; uint32_t wc = 0u, ws = 31u, nc = 0u, ns = 31u;
+        for (k = 0; k < 16u; k++) {
+            const uint32_t c = MEM32(race + 0x394u + 4u * k), s = c ? MEM32(c + 0x34u) : 0xFFFFFFFFu;
+            if (!c || c == pc || s >= 1024u) continue;                 /* +034 a pointer: not a car */
+            const int64_t dx = (int64_t)(int32_t)MEM32(c + 4u) - cx, dz = (int64_t)(int32_t)MEM32(c + 0xCu) - cz;
+            const int64_t d = (dx < 0 ? -dx : dx) + (dz < 0 ? -dz : dz);
+            if (s >= 1u && d < bw) { bw = d; wc = c; ws = k; }
+            if (d < bn) { bn = d; nc = c; ns = k; }
+        }
+        if (wc) { oc = wc; os = ws; fl = 2u; } else if (nc) { oc = nc; os = ns; }
+    }
+    if (oc) {
+        const uint32_t s = MEM32(oc + 0x34u);
+        e[9] = os | fl << 5 | (s > 511u ? 511u : s) << 7 | MEM32(oc + 0x678u) << 16;
+        e[10] = (MEM32(oc + 0x674u) & 0xFFFFu) | MEM32(oc + 0x67Cu) << 16;
+        e[11] = MEM32(oc + 4u); e[12] = MEM32(oc + 0xCu);
+        e[13] = MEM32(oc + 8u) & 0xFFFFu;
+        e[15] = oc;                                  /* the car, for a4_eng_frc3_post (which writes its axes here) */
+    } else e[9] = 31u;
+}
+/* After the render: the axes the render drew each car with -- it makes the matrix +6D4..+718 again as it draws the
+ * car (+31EA4 / +321A6, MBX.md round 31), so before the render they are the step's (+1971E) or the last render's */
+void a4_eng_frc3_post(uint32_t race, volatile uint32_t *e)
+{
+    const uint32_t pl = MEM32(race + 0x390u), pi = pl ? MEM32(pl + 0xCu) : 16u;
+    const uint32_t pc = pi < 16u ? MEM32(race + 0x394u + 4u * pi) : 0u, oc = (e[9] & 31u) != 31u ? e[15] : 0u;
+    if (pc) {
+        e[5] = frc3_h((int32_t)MEM32(pc + 0x704u)) | frc3_h((int32_t)MEM32(pc + 0x70Cu)) << 16;
+        e[6] = frc3_h((int32_t)MEM32(pc + 0x708u)) | frc3_h((int32_t)MEM32(pc + 0x714u)) << 16;
+    }
+    e[15] = 0u;
+    if (oc) {
+        e[13] = (e[13] & 0xFFFFu) | frc3_h((int32_t)MEM32(oc + 0x704u)) << 16;
+        e[14] = frc3_h((int32_t)MEM32(oc + 0x70Cu)) | frc3_h((int32_t)MEM32(oc + 0x708u)) << 16;
+        e[15] = frc3_h((int32_t)MEM32(oc + 0x710u)) | frc3_h((int32_t)MEM32(oc + 0x714u)) << 16;
+    }
+}
+#endif
+#if defined(A4_TELMARK) && defined(A4_ENG3)
+/* Phone round 76: the owner's mark. The game's key-down (+1EE0) translates the runtime's key (+1D80: a bit of its key
+ * word) to its own code; C, the clear key (0x4000, ck1 on the bench), has none and is dropped there, so the game never
+ * sees it. Hooked at +1EE0's bl +1D80 (tools/injector.py): a press of C asks a4_tel.c for a mark capture. */
+uint32_t a4_key_down(uint32_t kobj, uint32_t key)
+{
+    if (key == 0x4000u) (*(volatile uint32_t *)A4_MARK_STATE)++;
+    return ((uint32_t (*)(uint32_t, uint32_t))GAMEFN(0x1D80u))(kobj, key);
+}
+#endif
 #if defined(A4_TKREC) && defined(A4_ENG3)
 /* bench (round 73, phone round 73's "stop motion in the takedown cams"): every render -- the frame, the engine's
  * count, substep | n << 8 | the scale (race+0x84C) << 16, the camera mode (race+0x94), the camera x and z (race+0x48's

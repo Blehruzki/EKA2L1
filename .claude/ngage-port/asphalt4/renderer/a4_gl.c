@@ -1052,6 +1052,40 @@ _Static_assert(A4_GL_FREC2 + 16u + FREC2_N * 16u <= 0x0045D000u, "FRC2 past the 
 #endif
 _Static_assert(A4_GL_FREC >= 0x00455800u + 0x680u && A4_GL_FREC + 16u + FREC_N * 32u <= 0x00460000u, "the frame record");
 #endif
+#ifdef A4_FRC3
+#if !(defined(A4_FRAMEREC) && defined(A4_ENG3) && defined(A4_GPUOBJ) && defined(A4_DROPHOLD) && defined(A4_MESH) && defined(A4_BBCELL))
+#error "A4_FRC3 goes beside FRC1 in a 3x build with the GPU objects and the sprite cells: A4_FRAMEREC, A4_ENG3, A4_GPUOBJ, A4_DROPHOLD, A4_MESH, A4_BBCELL"
+#endif
+#if defined(A4_KINEDRAW) || defined(A4_IDLECEN) || defined(A4_RBPROBE)
+#error "A4_FRC3 is written right after FRC1 (a4_tel.c): not with FRC2, the idle census or route B's probe after it"
+#endif
+/* Phone round 76 (after round 75: the choppy rotations, the snap-back in turns, the searchlight hidden behind the road,
+ * the far buildings gone mid-way along The Fame Avenue): a third ring beside FRC1, 24 words a render, the same 256
+ * renders. [0] FRC1's ms; [1..15] a4_eng.c a4_eng_frc3, before the render: [1] the engine's substep count, [2] its
+ * substep | n << 4 | the camera mode << 8 | the slow-motion scale << 16; the player car: [3] heading +678 | turn term
+ * +9F8 << 16, [4] pitch +674 | roll +67C << 16, [5] the matrix's forward axis x | z << 16 (+704, +70C), [6] its y |
+ * the side axis's y (+714) << 16 -- these two after the render, which makes the matrix as it draws the car
+ * (a4_eng_frc3_post) -- [7] velocity x | z << 16, [8] keys (K+4) | steering rate +A1C << 16; one other car:
+ * [9] its slot (31 none, 30 not a race slot) | 32 the camera's car / 64 a wreck | +034 (to 511) << 7 | heading << 16, [10]
+ * pitch | roll << 16, [11] x, [12] z, [13] y | forward x << 16, [14] forward z | forward y << 16, [15] side x | side y
+ * << 16 (the axes after the render). After the render: the largest sprite of it the TBillboard path tested or drew (the sprite list, A4_GL_SPL):
+ * [16] its rectangle (x / 2 + 64, y / 2 + 64 as bytes: x0, y0, x1, y1), [17] the cells a list face covers | the
+ * cells covered at all << 16, [18] its bucket | the nearest cover's << 16, [19] sprites | tested << 8 | its texture's
+ * w << 16 | h << 24; the scenery objects, this render's counts (each to 255): [20] taken | refused out of range << 8
+ * | the store full << 16 | too near << 24, [21] the camera's rotation or the object moved | texture, mode or mesh << 8
+ * | drawn or off << 16 | calls << 24, [22] the taken items' farthest bucket | those at 2,000 or more << 16 | GL errors
+ * << 24, [23] the list's triangles drawn | lost << 16 */
+#ifndef A4_GL_FREC3
+#define A4_MARK_STATE 0x005B0000u
+#define A4_GL_FREC3   0x005B0400u
+#define A4_GL_SPL     0x005B6800u
+#endif
+#define FREC3_N 256u
+#define FREC3_W 24u
+#define SPL_N   16u
+_Static_assert(A4_GL_FREC3 + 16u + FREC3_N * FREC3_W * 4u <= A4_GL_SPL, "FRC3 past the sprite list");
+_Static_assert(A4_GL_SPL + 32u + SPL_N * 16u <= 0x005B7000u, "the sprite list past the scratch (A4_SCRATCH_SIZE 0x1B6000)");
+#endif
 #define A4_GL_STEP 0x00421700u
 #define STEPB ((volatile uint32_t *)A4_GL_STEP)
 _Static_assert(A4_GL_STEP >= A4_GL_AGG + sizeof(struct agg) + 4u && A4_GL_STEP + 3u * 32u * 4u <= 0x00422000u,
@@ -3683,9 +3717,47 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         }
 #endif
         F[1]++;
+#ifdef A4_FRC3
+        {   /* round 76: FRC3's entry for this render (A4_GL_FREC3), its car words now; filled and counted after it */
+            extern void a4_eng_frc3(uint32_t race, volatile uint32_t *e);
+            extern void a4_frc3_pre(void);
+            volatile uint32_t *F3 = (volatile uint32_t *)A4_GL_FREC3;
+            if (F3[0] != 0x33435246u) { F3[0] = 0x33435246u; F3[1] = 0; F3[2] = FREC3_W; F3[3] = FREC3_N; }   /* 'FRC3' */
+            volatile uint32_t *e3 = F3 + 4u + (F3[1] % FREC3_N) * FREC3_W;
+            e3[0] = e[0];
+#ifdef A4_BENCH_AUTOMARK
+            {   /* bench (round 76): a mark asked for at the 40th render of a crash / takedown (0x18) or news (0x2A) camera,
+                 * as the owner would press C -- the marks checked in the states the phone round is for. Never a phone
+                 * build. The sprite list's word 6: the camera mode | its renders << 8 */
+                volatile uint32_t *L = (volatile uint32_t *)A4_GL_SPL;
+                const uint32_t cmo = *(volatile uint32_t *)(race + 0x94u) & 0xFFu;
+                if ((L[6] & 0xFFu) != cmo) L[6] = cmo;
+                else if (cmo == 0x18u || cmo == 0x2Au) {
+                    if ((L[6] >> 8) == 40u) (*(volatile uint32_t *)A4_MARK_STATE)++;
+                    L[6] += 256u;
+                }
+            }
+#endif
+            a4_eng_frc3(race, e3);
+            for (uint32_t k = 16u; k < FREC3_W; k++) e3[k] = 0u;
+            a4_frc3_pre();
+        }
+#endif
     }
 #endif
     int r = a4_gcall1(GAMEFN(a4_steprend), (uint32_t)(uintptr_t)self);   /* the render: span trampolines inside */
+#ifdef A4_FRC3
+    {   extern void a4_frc3_post(volatile uint32_t *e3);
+        extern void a4_eng_frc3_post(uint32_t race, volatile uint32_t *e);
+        volatile uint32_t *F3 = (volatile uint32_t *)A4_GL_FREC3;
+        if (F3[0] == 0x33435246u) {
+            volatile uint32_t *e3 = F3 + 4u + (F3[1] % FREC3_N) * FREC3_W;
+            a4_eng_frc3_post((uint32_t)(uintptr_t)self, e3);   /* the axes the render drew the cars with */
+            a4_frc3_post(e3);
+            F3[1]++;
+        }
+    }
+#endif
 #ifdef A4_DROPHOLD
     {   /* a render that draws nothing is a frame too; and where the camera stood from the
          * player car as it drew (after the speculation moved both): a camera cut changes
@@ -6249,6 +6321,67 @@ uint32_t a4_gobj_now(uint32_t frames)              /* round 71/72: the objects t
     return go->magic == GOBJ_MAGIC && go->frame == frames ? go->n : 0u;
 }
 #endif
+#ifdef A4_FRC3
+/* Round 76: FRC3's render words (A4_GL_FREC3). Before the render: the object counters (totals) kept in the mark's
+ * state [4..15], the sprite list emptied. After it: the largest sprite, the counters' change, the taken items' depth
+ * buckets. The list's triangles and the GL errors are counted where they happen -- the list is drawn at the frame's
+ * composite, after the render returns -- so [23] holds them since the render before began: that render's, one entry
+ * late. */
+static uint32_t frc3_c(uint32_t now, uint32_t was) { const uint32_t d = now - was; return d > 255u ? 255u : d; }
+void a4_frc3_pre(void)
+{
+    volatile uint32_t *M = (volatile uint32_t *)A4_MARK_STATE, *L = (volatile uint32_t *)A4_GL_SPL;
+    const volatile struct gstate *g = GOBJ;
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    volatile uint32_t *F3 = (volatile uint32_t *)A4_GL_FREC3;
+    volatile uint32_t *e3 = F3 + 4u + (F3[1] % FREC3_N) * FREC3_W;
+    {   /* the list's triangles and the GL errors since the last render began (PF_MESH is reset with a capture's window) */
+        const uint32_t pm = A4_PERF[PF_MESH], pl = A4_PERF[PF_MLOST], er = s->errc;
+        const uint32_t dm = pm >= M[12] ? pm - M[12] : pm, dl = pl >= M[13] ? pl - M[13] : pl, de = er - M[14];
+        e3[23] = (dm > 65535u ? 65535u : dm) | (dl > 255u ? 255u : dl) << 16 | (de > 255u ? 255u : de) << 24;
+        M[12] = pm; M[13] = pl; M[14] = er;
+    }
+    M[4] = g->taken; M[5] = g->refused_range; M[6] = g->refused_full; M[7] = g->refused_near;
+    M[8] = g->refused_rot + g->refused_moved; M[9] = g->refused_tex + g->refused_mode + g->refused_mesh;
+    M[10] = g->refused_drawn + g->refused_off; M[11] = g->calls;
+    L[0] = 0x314C5053u; L[1] = 0u; L[2] = 0u; L[5] = s->frames;   /* 'SPL1' */
+}
+void a4_frc3_post(volatile uint32_t *e3)
+{
+    volatile uint32_t *M = (volatile uint32_t *)A4_MARK_STATE, *L = (volatile uint32_t *)A4_GL_SPL;
+    const volatile struct gstate *g = GOBJ;
+    const volatile struct glr *s = (const volatile struct glr *)A4_GL_SCRATCH;
+    uint32_t k, best = SPL_N, ba = 0u, nt = 0u;
+    const uint32_t n = L[1] > SPL_N ? SPL_N : L[1];
+    for (k = 0; k < n; k++) {
+        const volatile uint32_t *q = L + 8u + 4u * k;
+        const uint32_t a = (((q[0] >> 16) & 255u) - (q[0] & 255u)) * ((q[0] >> 24) - ((q[0] >> 8) & 255u)) + 1u;
+        if (q[1] >> 16) nt++;
+        if (a > ba) { ba = a; best = k; }
+    }
+    if (best < SPL_N) {
+        const volatile uint32_t *q = L + 8u + 4u * best;
+        e3[16] = q[0]; e3[17] = q[1]; e3[18] = q[2];
+        e3[19] = (L[2] > 255u ? 255u : L[2]) | (nt > 255u ? 255u : nt) << 8 | (q[3] & 0xFFFFu) << 16;
+    } else e3[19] = L[2] > 255u ? 255u : L[2];
+    e3[20] = frc3_c(g->taken, M[4]) | frc3_c(g->refused_range, M[5]) << 8 | frc3_c(g->refused_full, M[6]) << 16
+           | frc3_c(g->refused_near, M[7]) << 24;
+    e3[21] = frc3_c(g->refused_rot + g->refused_moved, M[8]) | frc3_c(g->refused_tex + g->refused_mode + g->refused_mesh, M[9]) << 8
+           | frc3_c(g->refused_drawn + g->refused_off, M[10]) << 16 | frc3_c(g->calls, M[11]) << 24;
+    {   uint32_t mq = 0u, nf = 0u;
+        if (g->magic == GOBJ_MAGIC && g->frame == s->frames)
+            for (k = 0; k < g->n && k < GOBJ_NI; k++) {
+                const uint32_t qf = g->it[k].qf;
+                if (qf > mq) mq = qf;
+                if (qf >= 2000u) nf++;
+            }
+        e3[22] = (mq > 65535u ? 65535u : mq) | (nf > 255u ? 255u : nf) << 16;
+    }
+}
+/* the mark's (a4_tel.c): the scenery objects' state as the last render left it -- the counters, the frame's camera,
+ * each taken item's mesh, offset, screen box and depth buckets */
+uint32_t a4_frc3_gobj(const void **p) { *p = (const void *)GOBJ; return (uint32_t)sizeof(struct gstate); }
+#endif
 /* bench: the counters, every 256th flush, EKA2L1_PCMEM at a4_gobj_emit (r0: the state's first 0x40 bytes) */
 __attribute__((noinline)) void a4_gobj_emit(const void *st) { __asm__ volatile("" : : "r"(st) : "memory"); }
 #endif
@@ -7769,6 +7902,38 @@ static int bbc_tri_meets(const int32_t *px, const int32_t *py, int32_t ax0, int3
     }
     return 1;
 }
+#ifdef A4_FRC3
+/* Round 76: a TBillboard sprite into the render's list (A4_GL_SPL: [0] 'SPL1', [1] sprites in it, [2] seen, [3] [4]
+ * mesh_bb_cells's list cells and bucket for the last; 16 entries from [8], the largest kept): its rectangle as bytes
+ * (x / 2 + 64, y / 2 + 64), the list's cells | all covered cells << 16, its bucket | the nearest cover's << 16, its
+ * texture's w | h << 8 | its distance << 16 */
+static uint32_t frc3_b(int32_t v) { v = v / 2 + 64; return (uint32_t)(v < 0 ? 0 : v > 255 ? 255 : v); }
+static void frc3_spr(int32_t x0, int32_t y0, int32_t x1, int32_t y1, const int32_t *cd, uint32_t wh, int32_t bbzd)
+{
+    volatile uint32_t *L = (volatile uint32_t *)A4_GL_SPL;
+    uint32_t am = 0u, k, i, n = L[1];
+    int32_t nc = 0xFFFF;
+    for (k = 0; k < BBC_N * BBC_N; k++) if (cd[k] >= 0) { am |= 1u << k; if (cd[k] < nc) nc = cd[k]; }
+    const uint32_t area = (uint32_t)(x1 - x0) * (uint32_t)(y1 - y0);
+    L[2]++;
+    if (n < SPL_N) i = n++;
+    else {                                          /* full: in place of the smallest, if this one is larger */
+        uint32_t sa = 0xFFFFFFFFu; i = SPL_N;
+        for (k = 0; k < SPL_N; k++) {
+            const volatile uint32_t *q = L + 8u + 4u * k;
+            const uint32_t a = (((q[0] >> 16) & 255u) - (q[0] & 255u)) * ((q[0] >> 24) - ((q[0] >> 8) & 255u)) * 4u;
+            if (a < sa) { sa = a; i = k; }
+        }
+        if (area <= sa) return;
+    }
+    volatile uint32_t *q = L + 8u + 4u * i;
+    q[0] = frc3_b(x0) | frc3_b(y0) << 8 | frc3_b(x1) << 16 | frc3_b(y1) << 24;
+    q[1] = (L[3] & 0xFFFFu) | am << 16;
+    q[2] = (L[4] & 0xFFFFu) | (uint32_t)nc << 16;
+    q[3] = (wh & 0xFFu) | ((wh >> 16) & 0xFFu) << 8 | (uint32_t)(bbzd < 0 ? 0 : bbzd > 65535 ? 65535 : bbzd) << 16;
+    L[1] = n;
+}
+#endif
 static int mesh_bb_cells(const int32_t *b1, const int32_t *ex, const int32_t *ey, int32_t *cd)
 {
     const int32_t x0 = ex[0], x1 = ex[BBC_N], y0 = ey[0], y1 = ey[BBC_N];
@@ -7777,6 +7942,9 @@ static int mesh_bb_cells(const int32_t *b1, const int32_t *ex, const int32_t *ey
     if (fl & 0x10000u) sb -= 16;
     if (fl & 0x20000u) sb += 16;
     for (c = 0; c < BBC_N * BBC_N; c++) cd[c] = -1;
+#ifdef A4_FRC3
+    ((volatile uint32_t *)A4_GL_SPL)[3] = 0u; ((volatile uint32_t *)A4_GL_SPL)[4] = (uint32_t)sb;   /* round 76: for the list */
+#endif
     if (sb <= 0) return 0;
     if (x1 <= 0 || y1 <= 0 || x0 >= VP_W || y0 >= VP_H) return 0;
     {   /* the tile grid: a cell with no nearer list bucket in its tiles needs no face scan */
@@ -7822,6 +7990,12 @@ static int mesh_bb_cells(const int32_t *b1, const int32_t *ex, const int32_t *ey
             }
         }
     }
+#ifdef A4_FRC3
+    {   uint32_t lm = 0u;                           /* round 76: the cells a list face covers */
+        for (c = 0; c < BBC_N * BBC_N; c++) if (cd[c] >= 0) lm |= 1u << c;
+        ((volatile uint32_t *)A4_GL_SPL)[3] = lm;
+    }
+#endif
 #ifdef A4_GPUOBJ
     gobj_bb_cells(sb, ex, ey, cd);                  /* the GPU's objects and cars, by their boxes */
 #endif
@@ -7924,6 +8098,9 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
                 }
                 bbcell = mesh_bb_cells(b1, bbc_x, bbc_y, bbc_d);
                 if (bbcell) bbz = bbzd;                 /* (a tested sprite, for the census below) */
+#ifdef A4_FRC3
+                frc3_spr(x0, y0, x1, y1, bbc_d, spr[0], bbzd);
+#endif
             }
             if (0) {
 #endif

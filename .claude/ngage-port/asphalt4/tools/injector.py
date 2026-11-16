@@ -122,6 +122,8 @@ _xf = os.environ.get('A4_EXTRA_CFLAGS', '').split()
 assert not ('-DA4_MESHMEMO' in _xf and '-DA4_HALFSPEC' in _xf) or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x462000, \
     'A4_MESHMEMO with A4_HALFSPEC: A4_SCRATCH_SIZE must reach 0x462000 (0x61000 or more)'
 # round 54, bench: A4_SKYCEN's bitmap of the frame's skippable blended boxes, 0x460000-0x462580 (a4_gl.c SKYBM)
+assert not ('-DA4_FRC3' in _xf or '-DA4_TELMARK' in _xf) or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5B7000, \
+    'A4_FRC3 / A4_TELMARK: the mark state, FRC3 and the sprite list at 0x5B0000-0x5B6A00 -- A4_SCRATCH_SIZE must be 0x1B6000 or more'
 assert '-DA4_SKYCEN' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x463000, \
     'A4_SKYCEN: A4_SCRATCH_SIZE must reach 0x463000 (0x62000 or more)'
 assert '-DA4_SKYCHECK' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x461000, \
@@ -475,6 +477,13 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == want, 'step hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)
             blx_insert(code, off, syms[sym])
             print('step   +%06X -> %s +%06X (4-byte BLX for the bl)' % (off, sym, syms[sym] - LINK_BASE))
+    # round 76 (A4_TELMARK): the key-down's translation +1EE0 -> bl +1D80 at +1EEC, through a4_key_down (a4_eng.c), which
+    # asks the telemetry for a mark on C (the runtime's key 0x4000, which the game itself drops) and returns +1D80's code
+    if gl and '-DA4_TELMARK' in os.environ.get('A4_EXTRA_CFLAGS', '').split():
+        have = struct.unpack_from('<HH', code, 0x1EEC)
+        assert have == (0xF7FF, 0xFF48), 'mark hook +001EEC: displaced %04x %04x, expected f7ff ff48 (bl +1D80)' % have
+        blx_insert(code, 0x1EEC, syms['a4_key_down'])
+        print('mark   +001EEC -> a4_key_down +%06X (4-byte BLX for the bl +1D80)' % (syms['a4_key_down'] - LINK_BASE))
     # round 73 (A4_ENG6): +1300C, the race update's between-steps fill, wrapped for the camera in a step of sixths
     if steptime and '-DA4_ENG6' in os.environ.get('A4_EXTRA_CFLAGS', '').split():
         have = struct.unpack_from('<HH', code, 0x1693C)

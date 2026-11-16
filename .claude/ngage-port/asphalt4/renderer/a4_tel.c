@@ -62,6 +62,16 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
        PF_FWHELD,             /* A4_DROPHOLD: framework posts (+6B4) held (total) */
        PF_N };
 #define EFILE_WRITE 0x200u
+#if defined(A4_TELMARK) || defined(A4_FRC3)
+#ifndef A4_GL_FREC3
+#define A4_MARK_STATE 0x005B0000u   /* a4_eng.h, a4_gl.c: the mark's state, FRC3, the render's sprite list */
+#define A4_GL_FREC3   0x005B0400u
+#define A4_GL_SPL     0x005B6800u
+#endif
+#endif
+#ifndef TEL_MARKS
+#define TEL_MARKS 8u               /* round 76: mark files C:\a4mark0.dat .. a4mark7.dat, one a press of C */
+#endif
 #define DES(len) ((1u<<28) | ((uint32_t)(len)))  /* TPtrC iLength: EPtrC(1)<<28 | len */
 
 /* client-side session/subsession objects live in scratch; over-sized so the
@@ -142,6 +152,33 @@ void a4_tel_tick(uint32_t had)
      * "Active 3D" = the last frame drew real geometry (last_prims big); menus draw
      * little, so this skips the menu/boot frames without a fixed frame count. */
     volatile uint32_t *g = (volatile uint32_t *)A4_GL_SCRATCH;
+    int mark = 0;
+#ifdef A4_TELMARK
+    /* Round 76: the owner's mark. A press of C (a4_eng.c a4_key_down counts it in A4_MARK_STATE[0]) takes a capture
+     * now, at the next present that carried a 3D render, into a file of its own, C:\a4markN.dat -- N the marks
+     * written so far, so none is written over in the session; the ninth press, a press within 2 s of the last mark
+     * (a held key's repeats) and a press while no race has been drawn for a second (a menu) are dropped. The ring's
+     * cadence is left alone. */
+    volatile uint32_t *MK = (volatile uint32_t *)A4_MARK_STATE;
+    void *mf = 0;
+    if (MK[0] != MK[1]) {
+        const uint32_t now = a4_ntick();
+        if (MK[2] >= TEL_MARKS || (MK[2] && now - MK[3] < 2000u)) MK[1] = MK[0];
+        else if (had >= 100u) {
+            uint16_t fn[16];
+            const char *c = "C:\\a4mark0.dat";
+            int n = 0; while (c[n]) { fn[n] = (uint16_t)(uint8_t)c[n]; n++; }
+            fn[9] = (uint16_t)('0' + MK[2]);          /* the mark's digit (the '0' in a4mark0) */
+            struct des nd = { DES(n), fn };
+            mf = (void *)(uintptr_t)(A4_MARK_STATE + 0x40u + 32u * MK[2]);
+            t->dbg_rrc = efs_replace(mf, t->rfs, &nd, EFILE_WRITE);
+            if (t->dbg_rrc != 0) MK[1] = MK[0]; else mark = 1;
+        }
+        else if (now - MK[15] > 1000u) MK[1] = MK[0];   /* no race drawn for a second: a press in a menu, dropped */
+    }
+    if (had >= 100u) MK[15] = a4_ntick();             /* the last present that carried a 3D render */
+#endif
+    if (!mark) {
 #ifndef TEL_CYCLE
     if (t->caps >= TEL_RING) return;             /* ring filled once: freeze on early race */
 #endif
@@ -189,6 +226,7 @@ void a4_tel_tick(uint32_t had)
 #else
     if ((t->actframes % TEL_EVERY) != 0) return;
 #endif
+    }
 
     uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
 
@@ -200,7 +238,11 @@ void a4_tel_tick(uint32_t had)
     int i = 0;
     h[i++] = TEL_MAGIC;
     h[i++] = 4;                       /* version 4: 64-word header (the GL phase timers) */
+#ifdef A4_TELMARK
+    h[i++] = mark ? 0x80000000u | MK[2] : t->caps;   /* capture index; a mark's: bit 31 | its number */
+#else
     h[i++] = t->caps;                 /* capture index */
+#endif
     h[i++] = t->fcount;
     h[i++] = VP_W; h[i++] = VP_H; h[i++] = FB_STRIDE; h[i++] = FB_BYTES;
     h[i++] = bb;
@@ -297,6 +339,9 @@ void a4_tel_tick(uint32_t had)
     while (i < TEL_HDR_WORDS) h[i++] = 0;
 
     void *f = &t->rfile[t->caps % TEL_RING];
+#ifdef A4_TELMARK
+    if (mark) f = mf;
+#endif
     struct des hd = { DES(sizeof h), h };
     t->dbg_wrc = efs_writep(f, 0, &hd);
     /* a4_fps_state block (fps + the 128-frame delta ring): quantifies choppiness
@@ -421,6 +466,26 @@ void a4_tel_tick(uint32_t had)
             struct des rd = { DES(16u + 256u * 32u), (const void *)0x00456000u };
             efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4 + 0x700 + 3 * 32 * 4 + 0x680, &rd);
         }
+#ifdef A4_FRC3
+        {   /* round 76: FRC3 (a4_gl.c A4_GL_FREC3, 24 words a render) right after FRC1; then the last render's sprite list
+             * (A4_GL_SPL, 'SPL1', 32 + 16 x 16 bytes) and the scenery objects' state ('GOB1', its size, the frame, 0, then
+             * a4_gl.c's struct gstate: the counters, the camera, each taken item's box and buckets) */
+            extern uint32_t a4_frc3_gobj(const void **p);
+            const int o3 = (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4 + 0x700 + 3 * 32 * 4 + 0x680 + 16 + 256 * 32;
+            const int n3 = 16 + 256 * 24 * 4;
+            struct des r3 = { DES((uint32_t)n3), (const void *)A4_GL_FREC3 };
+            efs_writep(f, o3, &r3);
+            struct des rs = { DES(32u + 16u * 16u), (const void *)A4_GL_SPL };
+            efs_writep(f, o3 + n3, &rs);
+            const void *gp = 0;
+            const uint32_t gn = a4_frc3_gobj(&gp);
+            uint32_t gh[4] = { 0x31424F47u, gn, ((volatile uint32_t *)A4_GL_SCRATCH)[1], 0u };   /* 'GOB1', size, frames */
+            struct des rgh = { DES(16u), gh };
+            efs_writep(f, o3 + n3 + 32 + 16 * 16, &rgh);
+            struct des rg = { DES(gn), gp };
+            efs_writep(f, o3 + n3 + 32 + 16 * 16 + 16, &rg);
+        }
+#endif
 #if defined(A4_KINEDRAW) && !defined(A4_INTERP)
         {   /* engine map 1: FRC2, the heights (a4_gl.c A4_GL_FREC2, 0x45C000), after the frame record */
             struct des r2 = { DES(16u + 255u * 16u), (const void *)0x0045C000u };
@@ -454,7 +519,12 @@ void a4_tel_tick(uint32_t had)
     }
 #endif
     efs_flush(f);
+#ifdef A4_TELMARK
+    if (mark) { MK[2]++; MK[3] = a4_ntick(); MK[1] = MK[0]; }
+    else
+#endif
     t->caps++;
+    (void)mark;
     {   /* next window: reset the timers after the write, so its cost is in no window */
         volatile uint32_t *pf = A4_PERF;
 #if defined(A4_ABCYCLE16)
