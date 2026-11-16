@@ -11793,3 +11793,32 @@ renders each) and the ring's eight files (capidx 117-124), copied to the scratch
   0 rows in the whole race (every file's FRC1 header); no mark's picture has a row breaking from its neighbours
   (the linescan rule). Mark 3 (likely the grey-lines mark) shows two long dark streaks on the road behind the car
   -- the game's tyre marks? Asked.
+
+## Phone round 76, Paris: three marks
+
+Three marks (a4mark0-2) and the ring's eight (capidx 124-131), in the scratchpad's ph76b/; shots/r76-paris-marks.png:
+0 the chase after a takedown bonus by the Eiffel Tower, 1 another bonus, 2 the tunnel. Pauses of 4, 35, 29 and 67 s
+between renders (the owner's). Pacing: chase 53 ms median, takedown camera 29 ms (one substep a render in 33 of 34),
+news 39 ms.
+- **The grey line, counted for the first time:** the line counter (every 16th composite) caught one row -- **row 88,
+  67 pixels no opaque GPU class drew, frame 2160** (between mark 0 at frame 1,906 and mark 1 at 5,266; no record
+  covers it). A short run, not a whole row: the software layer under the composite shows through for 67 px.
+- **The searchlight (mark 0's news camera, 108 renders):** the light (~70 px, bucket 101 -> 72) covered in some cells
+  from 15252385 to 15253511 -- **by GPU objects' boxes only (list cells 0), the nearest cover 1-7 buckets nearer
+  than the light** (ccc0, fff0, 7770, 1111 ...): those cells are tested at that depth, and anything the GPU drew
+  nearer than it there hides the disc. Whole elsewhere (untested).
+- **The takedown (mark 0, victim slot 1, +B28 0x0040):** +034 / +048 step by 2 every whole step (30, 30, 32, 32, 32,
+  34 ...) at one substep a render; its lean (+A434's third) moves on those renders only (-11, -9, -11 ... -6, -4,
+  -1); its position moves every substep (x +47 a substep, even); in the slow motion that follows (n 6) the frame
+  steps by 1 every two or three sixths. The same as LA's: the wreck's animation is the step's, the camera's frames
+  the substep's.
+- Read across both cities, for the fixes:
+  1. The wreck's draw (+DD2A's path, +DEFE's ease of +048, the tumble -42 x +034 when +B28 bit 11) runs on path
+     frames that step once a whole step: give the draw the frame's fraction (the substep's share of the step) --
+     the next bench work, starting with how +DEFE's ease and the path object turn into the drawn pose.
+  2. The turn's end: +A1C flips and the heading stops within a substep while the camera eases on; compare stock's
+     end of a turn on the bench (a steered run, both builds).
+  3. Sprites cut at their own depth (LA's pickup: list faces 1-4 buckets nearer; Paris's light: GPU boxes 1-7
+     nearer): BBCELL tests a covered cell at its cover's depth, and a face the game painted BEFORE the sprite (its
+     deepest point farther) can have pixels nearer than that -- which the game's painter never lets cover it.
+  4. The grey line: 67 px of row 88 undrawn once in ~2,000 sampled composites -- rare, real, short.
