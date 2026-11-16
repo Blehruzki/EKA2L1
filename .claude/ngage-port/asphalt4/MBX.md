@@ -12078,3 +12078,19 @@ c. States the bench did not enter: the slow motion's sixths under the wreck shar
   9 at LA's turn end) that it does not make on stock's steps -- something it reads at a whole step differs from
   stock's there. The swing is ours. Next: the same turn end, stock against 3x, on the bench at speed (short weaves
   on a straight, so the car keeps its speed: the key-driven pairs so far drove into the barriers).
+- kw1 / kw3 (short weaves, '4' / '6' 0.6 s, free 2.5 s): kw1 sat against a hedge at 0 km/h for the whole run (the
+  first attempt died with Xvfb, restarted at 1280x1024); kw3 stopped. **Why every steered bench run failed: ks3's
+  keys word shows xdotool's '4' as K+4 0x20 and '6' as 0x80 -- 0x20 is the nitro (round 69) -- and the auto-steer's
+  0x8 / 0x200 ('2' / '8') are not the turn either: A1C stayed 0 in every render of sx3, sl3, ks3, ws77 and m77a.**
+  The phone's own steering never shows in FRC3's keys word (0 or 0x2000: the low half only); the joystick reaches
+  the game elsewhere. On the bench that is the arrow keys. kj1 / kj3 (the same weave with Left / Right): queued.
+- tools/camoff.py (new): per run, the chase yaw less the heading by render, the heading still or moving. **Phone,
+  LA / Paris: |yaw - hd| mean 6.1 / 6.9 with the heading still (>= 3 in 61% / 56% of renders), 10.1 / 10.3 while
+  it moves; every bench 3x run (m77a, m77g, b77b, ox76, sl3, ws77): 0.3-2.0, >= 3 in 0-20%** -- at the same speeds
+  (by |v| bin: the phone 5.5-12.3 from 100 to 600, the bench 0.3-1.4). So not the speed's shake (+49C4): it comes
+  with the phone's driving -- steering, which the bench has never done.
+- The chase yaw as +4B40 builds it (lifted.c, read): heading + the stack argument (sp+0x120, from +5968's caller) +
+  race+0xE4, wrapped near the last yaw; then, if the byte car+0x824 is 0, + the sway race+0x104 = sin(6 x cam+0xA4)
+  x 2048 / a literal (+52580, +50E8C), else + a term from car+0x9F8 (+529D4); +B28 bit 12 adds +808 >> 6. On the
+  phone the turn term +9F8 is 0 and +B28 0x4202 (bit 12 clear) through the LA turn end, so the offset is race+0xE4,
+  the argument or the sway.
