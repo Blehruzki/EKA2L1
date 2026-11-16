@@ -11627,3 +11627,9 @@ captures, a4tel0-6 (capidx 104-110, frames 7330-7744; the files' names carry -55
   (after the lag), the drift, the searchlight's draw and cover, and the objects refused beside those taken. Proposed
   for r76 (phone-safe, a new ring FRC3): those per render, and a mark key that keeps the record of the ~12 s before it
   is pressed.
+- The owner: the mark on the C key (EStdKeyBackspace, 0x01). Design: every press keeps its own record, a file
+  C:\a4markN.dat (N 0-7) written once at the press -- the screenshot, the 256-render frame records (FRC1/FRC2/FRC3,
+  ~13 s at 51 ms a render) and the header -- never overwritten in the session; a ninth press does nothing (the first
+  eight kept); the a4tel ring runs as before. A new session starts again at 0. To settle on the bench before it is
+  built: that the game takes no action on C in a race (no pause, no menu), and where the press can be read (the
+  game's key queue at [K+0x14], six-bit codes, or the window server's event before it).
