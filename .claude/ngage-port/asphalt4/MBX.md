@@ -11527,3 +11527,7 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   1149, 1085, 1011, 974, 938, 917, 895, 874, 827, 804, 790 (-21 .. -74 a render, slowing), then still** -- the
   spin drawn as a turn, not as jumps. Over tv4's two cameras: max 74 a render, none >= 96 (tv1: max 145, three).
   hsr2 / tvo2 (stock again, before-the-fix again) running.
+- hsr2 (stock step; framestat 2,742): no crash camera (the news camera once). hsr1 / hsr2 spent their races stuck
+  on a yellow taxi at 0 km/h (screens) -- not a rate. tvo2 (before the fix; framestat 2,847): none. Crash /
+  takedown cameras a run, '5' held: before the fix 3, 0; the fix 0, 0, 2; stock 0, 0 (stuck). The rate is the
+  run's luck here; nothing says the fix takes takedowns away.
