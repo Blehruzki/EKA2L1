@@ -11755,3 +11755,41 @@ No game change against r75; the build adds what the four open issues need record
   947,388 bytes; "send it"). Asked for: LA and Paris, C at a choppy takedown or roll, a snap-back in a clean turn, the
   searchlight hiding, the far buildings going; the a4mark*.dat files with the a4tel*.dat ones, copied before the game
   is started again.
+
+## Phone round 76 (r76 4601bd18, baked by the owner): LA, five marks
+
+Owner: "I didn't keep track of which mark is which issue. But I captured the takedown issue, the turning issue, the
+pickups issue, and the grey lines are back. This is from LA." Five marks (a4mark0-4, 211,680 bytes each, ~12-15 s of
+renders each) and the ring's eight files (capidx 117-124), copied to the scratchpad's ph76a/; shots/r76-la-marks.png.
+- The marks' pictures: 0 "TAKEDOWN!" (a yellow car tumbling), 1 the chase with three "$" pickups ahead, 2 a black car
+  on its side (a second takedown), 3 The Fame Avenue under nitro (dark streaks behind the car), 4 lap 3 in a right
+  turn, sparks at the kerb. The C key, the marks, FRC3, the sprite list, the GPU objects' state and the tiles all
+  arrived and decode (frec3.py); GL errors 0, objects refused as full 0.
+- Pacing by camera (all files, 1,448 renders): chase (2) 52 ms a render median (10-90% 42..73), 2 substeps a render
+  mostly; **the takedown camera (0x18) 31 ms (26..71), one substep a render in 97 of 148**; news (0x2A) 54 ms.
+- **The takedowns (marks 0, 2): the victim's wreck animation steps once a whole step.** Victim slot 3 (mark 0) and
+  slot 6 (mark 2), +B28 0x0240 (bit 11 clear: +DD2A's -42 x frame turn is not this case): their path frame +034 and
+  +048 go 0, 1, 1, 2, 3, 3, 4, 5, 6 ... -- a step each whole step, under a camera that renders every substep, so one
+  frame in three moves. +DEFE eases the wreck's draw with +048 x clamp(+044, 25, 75) x 10 / 4096 (+044 157: full
+  after 6 frames, 0.18 a frame) -- stop-motion by construction. Their heading in lumps: slot 3 539 -> 504 (-35) in
+  one render, -> 427 (-77) in the next that moved; slot 6 116 held, then 55 (-61) in one render. +A434's outputs
+  for them: 0 / heading / a lean easing to 0 -- the car seen on its side is not in those angles: the on-side pose
+  comes from the path's draw (+DD2A's path object, +DEFE's ease), to be read next.
+- **The turn (mark 4): the turn stops dead and the camera does not.** The steering rate +A1C builds -901, -1351,
+  -1576, -1689, -1745, -1773 (the heading -3, -3, -7, -5, -13, -7, -13, -7, -13: about 6.5 a substep, even), then
+  **flips to +1578 for a render and the heading stops in that render** (1042 -> 1023, then held); the camera's yaw
+  runs on 6-8 past and comes back over ~1 s (car less camera -6, -7, -7, -8, -6, -5 ... +3, -12). Again at 873,
+  785 and 638 (car less camera to -18). 18 swings of 3 or more in 255 moving renders. The snap-back: the car's turn
+  ends in a substep while the camera eases. Not yet known: whether stock ends a turn as abruptly (its return to
+  centre runs once a step; here it may run every substep -- eng_steer_upd recomputes A1C on a substep when the key
+  branch changes). The keys word FRC3 keeps is K+4's low half only: the owner's map lives above it (0x2000 at most
+  seen) -- widen for a replay.
+- **The pickups (mark 1): a far "$" cut by the road at its own depth.** For ~1 s a 12 px sprite near the horizon
+  (bucket 168-174) had its lower cells covered by list faces only 1-4 buckets nearer (cells 008f / 08cf / 088f,
+  nearest cover 166-171): BBCELL tests those cells at the cover's depth, and the road under the pickup -- the same
+  depth, give or take a bucket -- cuts it. The near "$"s at the press: untested, whole. (The game's own painter: a
+  face a bucket nearer is painted after the sprite and covers it too -- whether stock cuts it the same, open.)
+- **The grey lines: not in the counter, not in a picture.** The round 72 line counter (every 16th composite) counted
+  0 rows in the whole race (every file's FRC1 header); no mark's picture has a row breaking from its neighbours
+  (the linescan rule). Mark 3 (likely the grey-lines mark) shows two long dark streaks on the road behind the car
+  -- the game's tyre marks? Asked.
