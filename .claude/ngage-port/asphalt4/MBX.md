@@ -12241,3 +12241,32 @@ b. Read back: rows_extend and its two call sites (after each flush's draws; skip
    bench only (it keeps the old rows).
 c. Not entered: The Fame Avenue (the bench's LA is the starter route); a box partly behind the camera (marked off
    screen by gitem_box, skipped -- its rows then come from the rest as before, no worse than r77).
+- Owner, asked whether to send r78a now or with the pickup / shadow fix: **"add them first. also you do you, but I
+  think you could teach yourself to enter and select a map instead of just playing instant play... this way you can
+  keep using my save state"**. So r78 = r78a + the cover redraw; and the bench learns to pick a city from the menus
+  on the owner's save (not a fresh career).
+- **A4_COVREDRAW (round 78, in C78): the pickups, the searchlight's blocks and the car's shadow, one rule.** The game
+  paints its shadows and sprites over what it drew before; only what it paints after (nearer) hides them. Here such
+  an element was depth-tested wherever a GPU car / object covered its tile, and the road -- painted before it --
+  then hid it where the road was nearer than its depth (a shadow's plane a few units under a slope) or than the
+  cover's (a pickup's cell under the car's box). Now:
+  - an element covered only by GPU items (the tile test is three-way: mesh_tri_covered 1 = a nearer list face,
+    tested as before; 2 = GPU items only; the list's own grid kept per frame, CVR->lgrid) is drawn passing every
+    test and writing its own depth (CVR_FLAG, bit 27 of its TEXID: draw_run sets GL_ALWAYS and depth writes for the
+    run), and the GPU items whose box meets it with their nearest bucket nearer than it (cvr_add, the grid's own
+    test) are pending;
+  - before the composite the pending items are drawn again exactly as gobj_flush / gcar_flush draw them, with the
+    usual test (GEQUAL) and no writes (cvr_redraw): each of their pixels nearer than the buffer lands -- in front of
+    the element where they are nearer than it, and nowhere the road or anything nearer wrote depth;
+  - any other untested element over a pending item keeps its own depth and writes it (a triangle, a sprite cell or
+    a whole sprite at its distance) -- no GPU item is nearer, so the redraw leaves it, and nearer road painted later
+    still lands; a quad without a depth of its own (a fill), a fade (KIND_ADDF: its TEXID's top byte is the fade, it
+    keeps round 77's rule) or an element tested at a list face's depth over a pending item draws the batch and the
+    redraw first (cvr_flush);
+  - sprites: mesh_bb_cells marks a cell no list face meets but a GPU item does as -2 (own depth, marked) instead of
+    gobj_bb_cells's box rules; the margin stays for list faces.
+  Counters CVR->k (tools/cvr.py, 'CVR1' after the line ring in each capture): triangles covered, elements kept at
+  their depth, flushes, sprite cells, redraws, their draw calls, their ticks. Read back before the first run:
+  protecting an untested element by writing depth 1 (the first version) would have blocked every nearer road
+  triangle painted after it in its rectangle -- an additive sprite writes its whole quad -- so it writes its own
+  depth instead. Without the switch the build is r78a's to the byte (969,416); with it 975,320.

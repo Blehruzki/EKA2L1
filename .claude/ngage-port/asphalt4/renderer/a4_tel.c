@@ -499,6 +499,17 @@ void a4_tel_tick(uint32_t had)
             struct des rl2 = { DES(16u + 8u * 114u * 4u), (const void *)0x005BA000u };
             efs_writep(f, o3 + n3 + 32 + 16 * 16 + 16 + (int)gn + 16 + 2 * (int)mn, &rl2);
 #endif
+#ifdef A4_COVREDRAW
+            /* round 78: the cover redraw's counters after the line ring: 'CVR1' and CVR->k's 8 words (a4_gl.c, +44) */
+            {   struct des rc = { DES(36u), (const void *)(0x005C0400u + 44u) };
+                const int oc = o3 + n3 + 32 + 16 * 16 + 16 + (int)gn + 16 + 2 * (int)mn
+#ifdef A4_LINEREC
+                               + 16 + 8 * 114 * 4
+#endif
+                               ;
+                efs_writep(f, oc, &rc);
+            }
+#endif
         }
 #endif
 #if defined(A4_KINEDRAW) && !defined(A4_INTERP)

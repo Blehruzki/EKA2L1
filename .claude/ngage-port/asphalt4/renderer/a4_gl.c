@@ -529,6 +529,30 @@ struct mesh {
                                          * whose box meets it (0xFFFF: none) -- mesh_draw */
 };
 #define MESH ((volatile struct mesh *)A4_GL_MESH)
+#ifdef A4_COVREDRAW
+/* Round 78 (phone round 77: the pickups "inserting themselves into the pavement", the car's shadow "missing pieces ...
+ * dipping below the road", the searchlight cut in blocks): the game paints its shadows and sprites over whatever it
+ * drew before, and only what it paints after them -- nearer things -- hides them. Here such an element became
+ * depth-tested wherever a GPU car or object covered its tile, so the road, which the game paints before it, hid it
+ * wherever the road was nearer than the element's depth or the cover's. Now an element only GPU items cover is drawn
+ * passing every test and writing its own depth (CVR_FLAG in its TEXID word: GL_ALWAYS, depth writes on), and those
+ * items are drawn once more before the composite (cvr_redraw) with the usual test and no writes: each of their
+ * pixels nearer than what is in the buffer -- the element where it lies, the items' own pixels where they are
+ * visible -- lands again; the road nearer than an item still wins. Any other untested element over a pending item
+ * writes depth 1 (CVR_FLAG at window depth 1), so the redraw cannot cover it; one tested against a list face there
+ * draws the batch and the items first (cvr_flush). State at 0x5C0400 (A4_SCRATCH_SIZE 0x1C0000): the list's own tile
+ * grid (lframe, lgrid, before the GPU's items join it), the pending items (objects in ob, cars in cb) and their
+ * screen box (r), counters (k). */
+#define A4_GL_CVR 0x005C0400u
+#define CVR_FLAG 0x08000000u
+struct cvr { uint32_t lframe, pend; int16_t r[4]; uint32_t ob[6], cb; uint32_t magic, k[8]; uint16_t lgrid[MESH_GW * MESH_GH]; };
+#define CVR ((volatile struct cvr *)A4_GL_CVR)
+_Static_assert(A4_GL_CVR + sizeof(struct cvr) <= 0x005C1000u, "the cover redraw's state past the scratch");
+_Static_assert(__builtin_offsetof(struct cvr, magic) == 44u, "a4_tel.c writes CVR1 (magic, k) from +44");
+static int cvr_hits(int32_t x0, int32_t y0, int32_t x1, int32_t y1);
+static int cvr_add(int32_t b, int32_t x0, int32_t y0, int32_t x1, int32_t y1);
+static void cvr_flush(volatile struct glr *s);
+#endif
 /* Per triangle, from the list's base: its corners (36 bytes), texture word, screen box (the
  * game's integer projection, padded as tbox_calc pads), table bucket; at the draw its place
  * in table order, the next of its run, its indices (the bucket counts while sorting), its
@@ -4604,11 +4628,40 @@ static int mesh_tri_covered(const uint32_t *desc, int32_t za, int32_t zb, int32_
     int32_t tx0 = xlo < 0 ? 0 : xlo >> 4, tx1 = xhi >= VP_W ? MESH_GW - 1 : xhi >> 4;
     int32_t ty0 = ylo < 0 ? 0 : ylo >> 4, ty1 = yhi >= VP_H ? MESH_GH - 1 : yhi >> 4;
     const uint16_t *g = (const uint16_t *)MESH->grid;
+#ifdef A4_COVREDRAW
+    /* round 78: 1 where a nearer list face is in a tile, 2 where only the GPU's items are (CVR) */
+    const volatile struct cvr *cv = CVR;
+    const int lok = cv->lframe == ((volatile struct glr *)A4_GL_SCRATCH)->frames;
+    int any = 0;
+    for (int32_t ty = ty0; ty <= ty1; ty++)
+        for (int32_t tx = tx0; tx <= tx1; tx++)
+            if ((int32_t)g[ty * MESH_GW + tx] < b) {
+                any = 1;
+                if (!lok || (int32_t)cv->lgrid[ty * MESH_GW + tx] < b) return 1;
+            }
+    return any ? 2 : 0;
+#else
     for (int32_t ty = ty0; ty <= ty1; ty++)
         for (int32_t tx = tx0; tx <= tx1; tx++)
             if ((int32_t)g[ty * MESH_GW + tx] < b) return 1;
     return 0;
+#endif
 }
+#ifdef A4_COVREDRAW
+/* the bucket mesh_tri_covered compares (TFace's key: the deepest ZW >> 3, the flag nudges) */
+static int32_t cvr_tri_bucket(const uint32_t *desc, int32_t za, int32_t zb, int32_t zc)
+{
+    extern const int32_t a4_tfvt;
+    int32_t key = za > zb ? za : zb;
+    if (zc > key) key = zc;
+    int32_t b = key >> 3;
+    if (desc[0] == (uint32_t)(uintptr_t)&a4_tfvt + (uint32_t)a4_tfvt) {
+        if (desc[1] & 0x10000u) b -= 16;
+        if (desc[1] & 0x20000u) b += 16;
+    }
+    return b;
+}
+#endif
 #endif
 #if defined(A4_SHADSINK) && defined(A4_MESH) && defined(A4_MESHCHECK)
 /* Bench (round 33, owner: "the car's shadow would start clipping through the road"; check
@@ -4680,10 +4733,26 @@ static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
     tri_conv(kind, wsh, hsh, x0, y0, x1, y1, x2, y2, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2], uvw,
              xlo, xhi, ylo, yhi, pos, uv);
 #if defined(A4_MESH) && !defined(MESH_TRIALL)       /* MESH_TRIALL: bench, round 27's rule */
+#ifdef A4_COVREDRAW
+    if (MESH_ON() && kind != KIND_TEXZ) {
+        const int cv = mesh_tri_covered(desc, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2], xlo, ylo, xhi, yhi);
+        if (cv == 2) {                              /* only GPU items cover it: its own depth, written; they again */
+            *idp |= CVR_FLAG;
+            cvr_add(cvr_tri_bucket(desc, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2]), xlo, ylo, xhi, yhi);
+            CVR->k[0]++;
+        } else if (cv == 0) {
+            /* untested; over an item the redraw will draw again, it keeps its own depth and writes it (no GPU item is
+             * nearer, so the redraw leaves it, and a nearer road the game paints later still lands) */
+            if (cvr_hits(xlo, ylo, xhi, yhi)) { *idp |= CVR_FLAG; CVR->k[1]++; }
+            else { pos[2] = -pos[3]; pos[6] = -pos[7]; pos[10] = -pos[11]; }   /* window depth 1: untested */
+        }                                           /* 1: a nearer list face -- tested, as before (lean_tail) */
+    }
+#else
     if (MESH_ON() && kind != KIND_TEXZ
         && !mesh_tri_covered(desc, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2], xlo, ylo, xhi, yhi)) {
         pos[2] = -pos[3]; pos[6] = -pos[7]; pos[10] = -pos[11];   /* window depth 1: untested */
     }
+#endif
 #endif
 #ifdef A4_ATLAS
     if ((s->fmode & AB_ATLAS) && ti >= 0 && !mv && (kind == KIND_TEX || kind == KIND_TEXZ || kind == KIND_ADD)
@@ -4832,6 +4901,20 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
         uint32_t t0 = a4_ntick(); batch_draw(n); A4_PERF[PF_DRAW] += a4_ntick() - t0;
         n = 0; s->bfill = 0;
     }
+#if defined(A4_COVREDRAW) && defined(A4_MESH)
+    /* round 78: a triangle tested against a nearer list face, over an item the redraw will draw again, writes no
+     * depth -- the redraw would cover it: the batch and the redraw first */
+    if (CVR->pend && MESH_ON() && kind != KIND_TEXZ) {
+        const uint32_t *w0 = (const uint32_t *)desc[3], *w1 = (const uint32_t *)desc[6], *w2 = (const uint32_t *)desc[9];
+        int32_t xl, xh, yl, yh;
+        ext3((int16_t)(int32_t)w0[0], (int16_t)(int32_t)w1[0], (int16_t)(int32_t)w2[0], &xl, &xh);
+        ext3((int16_t)(int32_t)w0[1], (int16_t)(int32_t)w1[1], (int16_t)(int32_t)w2[1], &yl, &yh);
+        if (cvr_hits(xl, yl, xh, yh)
+            && mesh_tri_covered(desc, (int32_t)w0[2], (int32_t)w1[2], (int32_t)w2[2], xl, yl, xh, yh) == 1) {
+            cvr_flush(s); n = 0; CVR->k[2]++;
+        }
+    }
+#endif
     int32_t yr[2];
     if (!lean_conv(s, gctx, desc, kind, m1, tsaddr, (int32_t *)A4_GL_POS + n * 12u, (int32_t *)A4_GL_UV + n * 6u,
                    (uint32_t *)A4_GL_TEXID + n, (int16_t *)A4_GL_TBOX + n * 4u, yr)) return 0;
@@ -6207,6 +6290,159 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
     gl_disable(GL_CULL_FACE); gl_disable(GL_DEPTH_TEST);
 }
 #endif
+#ifdef A4_COVREDRAW
+#if !(defined(A4_GPUOBJ) && defined(A4_GPUCAR) && defined(A4_MESH) && defined(A4_BBCELL) && defined(A4_LEAN) && defined(A4_HPERSP)) || defined(A4_DEFER)
+#error "A4_COVREDRAW redraws the GPU's objects and cars over the table's elements (A4_GPUOBJ, A4_GPUCAR, A4_MESH, A4_BBCELL, A4_LEAN, A4_HPERSP; not A4_DEFER)"
+#endif
+_Static_assert(GOBJ_NI <= 192u && GCAR_NI <= 32u, "the pending sets' bits");
+/* round 78: does a box meet the pending items' box */
+static int cvr_hits(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+{
+    const volatile struct cvr *v = CVR;
+    return v->pend && !(x1 < v->r[0] || x0 > v->r[2] || y1 < v->r[1] || y0 > v->r[3]);
+}
+static void cvr_box(const volatile int16_t *b)
+{
+    volatile struct cvr *v = CVR;
+    if (!v->pend) { v->r[0] = b[0]; v->r[1] = b[1]; v->r[2] = b[2]; v->r[3] = b[3]; v->pend = 1; return; }
+    if (b[0] < v->r[0]) v->r[0] = b[0];
+    if (b[1] < v->r[1]) v->r[1] = b[1];
+    if (b[2] > v->r[2]) v->r[2] = b[2];
+    if (b[3] > v->r[3]) v->r[3] = b[3];
+}
+/* the GPU items this frame whose screen box meets [x0, x1] x [y0, y1] and whose nearest bucket is nearer than b (the
+ * tile grid's own test, gobj_grid): pending, to be drawn again; their number */
+static int cvr_add(int32_t b, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+{
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    volatile struct cvr *v = CVR;
+    int got = 0;
+    const volatile struct gstate *g = GOBJ;
+    if (g->magic == GOBJ_MAGIC && g->frame == s->frames && g->drawn)
+        for (uint32_t i = 0; i < g->n && i < GOBJ_NI; i++) {
+            const volatile struct gitem *it = &g->it[i];
+            if ((int32_t)it->qn >= b || it->box[0] > it->box[2] || it->box[1] > it->box[3]) continue;
+            if (it->box[2] < x0 || it->box[0] > x1 || it->box[3] < y0 || it->box[1] > y1) continue;
+            if (!(v->ob[i >> 5] & (1u << (i & 31u)))) { v->ob[i >> 5] |= 1u << (i & 31u); cvr_box(it->box); }
+            got++;
+        }
+    const volatile struct gcstate *c = GCAR;
+    if (c->magic == GCAR_MAGIC && c->frame == s->frames)
+        for (uint32_t i = 0; i < c->n && i < GCAR_NI; i++) {
+            const volatile struct gcitem *it = &c->it[i];
+            if ((int32_t)it->qn >= b || it->box[0] > it->box[2] || it->box[1] > it->box[3]) continue;
+            if (it->box[2] < x0 || it->box[0] > x1 || it->box[3] < y0 || it->box[1] > y1) continue;
+            if (!(v->cb & (1u << i))) { v->cb |= 1u << i; cvr_box(it->box); }
+            got++;
+        }
+    return got;
+}
+/* the pending items drawn again, as gobj_flush / gcar_flush draw them, with the usual test (GEQUAL) and no depth
+ * writes: each pixel of theirs nearer than the buffer lands -- over the elements drawn since, where they are in
+ * front; where something nearer than the item was drawn and wrote depth (the road, a flagged element), it stays */
+static void cvr_redraw(volatile struct glr *s)
+{
+    volatile struct cvr *v = CVR;
+    if (!v->pend) return;
+    uint32_t *gctx = (uint32_t *)(uintptr_t)MESH->gctx;
+    const volatile struct gstate *g = GOBJ;
+    const volatile struct gcstate *c = GCAR;
+    if (!gctx) { v->pend = 0; return; }
+    const int32_t cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
+    const uint16_t *m1map = (const uint16_t *)gctx[0x5c / 4];
+    const uint16_t *m1tab = m1_table(gctx);
+    int P[16], MV[16], TM[16];
+    int32_t F = 1;
+    if (g->magic == GOBJ_MAGIC && g->frame == s->frames) F = (int32_t)g->F;
+    else if (c->magic == GCAR_MAGIC && c->frame == s->frames && c->n) F = (int32_t)c->it[0].F;
+    if (F < 1) F = 1;
+    if (F > 16383) F = 16383;
+    for (int i = 0; i < 16; i++) { P[i] = 0; MV[i] = 0; TM[i] = 0; }
+    P[0] = (F << 17) / VP_W; P[5] = (F << 17) / VP_H;            /* gobj_flush's projection */
+    P[8] = FX - (cx << 17) / VP_W; P[9] = (cy << 17) / VP_H - FX; P[11] = -FX;
+    P[8] += (2 * PX_OFF_ALL) / VP_W; P[9] += (2 * PX_OFF_ALL) / VP_H;
+    P[14] = ZK * FX - ((ZK * FX) >> 6);
+    gl_matrixmode(GL_PROJECTION); gl_loadmatrixx(P);
+    gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_GEQUAL); gl_enable(GL_CULL_FACE); gl_depthmask(0);
+    TM[10] = FX; TM[15] = FX;
+    uint32_t draws = 0;
+    int lw, lh;
+    if (g->magic == GOBJ_MAGIC && g->frame == s->frames) {          /* the objects: one modelview, offsets per item */
+        MV[0] = g->R[0] << 2; MV[1] = g->R[1] << 2; MV[2] = g->R[2] << 2;
+        MV[4] = g->R[3] << 2; MV[5] = g->R[4] << 2; MV[6] = g->R[5] << 2;
+        MV[8] = g->R[6] << 2; MV[9] = g->R[7] << 2; MV[10] = g->R[8] << 2;
+        MV[12] = g->T[0] << 16; MV[13] = g->T[1] << 16; MV[14] = g->T[2] << 16; MV[15] = FX;
+        gl_matrixmode(GL_MODELVIEW); gl_loadmatrixx(MV);
+        gl_matrixmode(GL_TEXTURE); lw = -1; lh = -1;
+        gl_vertexptr(3, GL_SHORT, 12, (const void *)GOBJ_STAGE);
+        gl_texcoordptr(2, GL_SHORT, 12, (const void *)(GOBJ_STAGE + 6u));
+        for (uint32_t i = 0; i < g->n && i < GOBJ_NI; i++) {
+            if (!(v->ob[i >> 5] & (1u << (i & 31u)))) continue;
+            const volatile struct gitem *it = &g->it[i];
+            const struct gmesh *me = (const struct gmesh *)(uintptr_t)it->mesh;
+            const uint32_t dxx = (uint32_t)it->d[0], dyy = (uint32_t)it->d[1] << 16, dzz = (uint32_t)it->d[2];
+            for (uint32_t k = 0; k < me->ng; k++) {
+                uint32_t id; int wsh, hsh;
+                if (tri_tex(s, KIND_TEX, 0, GO32(it->textab + 4u * me->gt[k]), m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
+                if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
+                gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu);
+                const uint32_t *src = (const uint32_t *)(GOBJ_ARENA + 12u * (me->ofs + 3u * me->gs[k]));
+                for (uint32_t left = 3u * me->gc[k]; left; ) {
+                    uint32_t cn = left > GOBJ_SN ? GOBJ_SN : left;
+                    uint32_t *dst = (uint32_t *)GOBJ_STAGE;
+                    for (uint32_t q = 0; q < cn; q++, src += 3, dst += 3) {   /* x y, z u, v -: offset x, y, z */
+                        const uint32_t w0 = src[0], w1 = src[1];
+                        dst[0] = ((w0 + dxx) & 0xFFFFu) | ((w0 + dyy) & 0xFFFF0000u);
+                        dst[1] = ((w1 + dzz) & 0xFFFFu) | (w1 & 0xFFFF0000u);
+                        dst[2] = src[2];
+                    }
+                    gl_drawarrays(GL_TRIANGLES, 0, (int)cn); draws++;
+                    left -= cn;
+                }
+            }
+        }
+    }
+    if (c->magic == GCAR_MAGIC && c->frame == s->frames)            /* the cars: a modelview each */
+        for (uint32_t i = 0; i < c->n && i < GCAR_NI; i++) {
+            if (!(v->cb & (1u << i))) continue;
+            const volatile struct gcitem *it = &c->it[i];
+            const struct gcmesh *me = (const struct gcmesh *)(uintptr_t)it->mesh;
+            MV[0] = it->M[0] << 2; MV[1] = it->M[1] << 2; MV[2] = it->M[2] << 2;
+            MV[4] = it->M[3] << 2; MV[5] = it->M[4] << 2; MV[6] = it->M[5] << 2;
+            MV[8] = it->M[6] << 2; MV[9] = it->M[7] << 2; MV[10] = it->M[8] << 2;
+            MV[12] = it->M[9] << 16; MV[13] = it->M[10] << 16; MV[14] = it->M[11] << 16; MV[15] = FX;
+            gl_matrixmode(GL_MODELVIEW); gl_loadmatrixx(MV);
+            gl_matrixmode(GL_TEXTURE); lw = -1; lh = -1;
+            const uint32_t base = GOBJ_ARENA + 12u * me->ofs;
+            gl_vertexptr(3, GL_SHORT, 12, (const void *)base);
+            gl_texcoordptr(2, GL_SHORT, 12, (const void *)(base + 6u));
+            for (uint32_t k = 0; k < me->ng; k++) {
+                uint32_t id; int wsh, hsh;
+                if (tri_tex(s, KIND_TEX, me->gm1[k], me->gd[k], m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
+                if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
+                gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu);
+                gl_drawarrays(GL_TRIANGLES, 3 * (int)me->gs[k], 3 * (int)me->gc[k]); draws++;
+            }
+        }
+    v->k[4]++; v->k[5] += draws;
+    for (uint32_t j = 0; j < 6u; j++) v->ob[j] = 0;
+    v->cb = 0; v->pend = 0;
+    gl_loadidentity();                                       /* the texture matrix */
+    gl_matrixmode(GL_MODELVIEW); gl_loadidentity();
+    gl_matrixmode(GL_PROJECTION); gl_loadidentity();
+    gl_orthox(PX_OFF_ALL, VP_W*FX + PX_OFF_ALL, VP_H*FX - PX_OFF_ALL, -PX_OFF_ALL, -FX, FX);              /* bring-up's */
+    gl_matrixmode(GL_MODELVIEW);
+    gl_depthfunc(GL_GEQUAL); gl_depthmask(1);                /* as kind_leave leaves a mesh frame */
+    gl_disable(GL_CULL_FACE); gl_disable(GL_DEPTH_TEST);
+}
+/* the batch so far, then the redraw: before an element the redraw must not cover */
+static void cvr_flush(volatile struct glr *s)
+{
+    if (s->bfill) { uint32_t t0 = a4_ntick(); batch_draw(s->bfill); A4_PERF[PF_DRAW] += a4_ntick() - t0; }
+    s->bfill = 0;
+    cvr_redraw(s);
+}
+#endif
 /* the frame's drawn objects into the list's tile grid (mesh_draw): each its box at its nearest bucket; the count */
 static uint32_t gobj_grid(volatile struct glr *s, uint16_t *grid)
 {
@@ -6490,8 +6726,15 @@ __attribute__((noinline)) void a4_gobj_emit(const void *st) { __asm__ volatile("
 /* a frame whose list is empty but whose objects the GPU drew: the grid holds the objects alone, and it is a mesh
  * frame (MESH_ON: the table's classes tested as in a list frame) -- before round 60's phone round it was not, and
  * the table painted untested over the objects */
+#ifdef A4_COVREDRAW
+#define CVR_LEMPTY() do { for (uint32_t j_ = 0; j_ < MESH_GW * MESH_GH; j_++) CVR->lgrid[j_] = 0xFFFFu; \
+                          CVR->lframe = s->frames; } while (0)
+#else
+#define CVR_LEMPTY() do { } while (0)
+#endif
 #define GOBJ_ONLY() do { uint16_t *g_ = (uint16_t *)m->grid;                                    \
                          for (uint32_t j_ = 0; j_ < MESH_GW * MESH_GH; j_++) g_[j_] = 0xFFFFu;   \
+                         CVR_LEMPTY();                                                            \
                          m->active = gobj_grid(s, g_) != 0u; } while (0)
 #else
 #define GOBJ_ONLY() do { } while (0)
@@ -6563,6 +6806,12 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
             volatile uint32_t *G = (volatile uint32_t *)A4_GL_GRD;
             G[0] = 0x31445247u; G[1] = s->frames; G[2] = MESH_GW | MESH_GH << 16; G[3] = n;
             for (uint32_t j = 0; j < MESH_GW * MESH_GH; j++) ((volatile uint16_t *)(G + 4))[j] = g[j];
+        }
+#endif
+#ifdef A4_COVREDRAW
+        {   volatile struct cvr *v = CVR;               /* round 78: the list's own tiles, before the GPU's items */
+            for (uint32_t j = 0; j < MESH_GW * MESH_GH; j++) v->lgrid[j] = g[j];
+            v->lframe = s->frames;
         }
 #endif
 #ifdef A4_GPUOBJ
@@ -7357,6 +7606,12 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         A4_PERF[PF_MODE] = A4_ABMODE;                  /* so the capture header names it */
 #endif
         s->miny = VP_H; s->maxy = 0;                    /* empty drawn-row extent */
+#ifdef A4_COVREDRAW
+        {   volatile struct cvr *v = CVR;               /* round 78: nothing pending from a frame cut short */
+            v->pend = 0; v->cb = 0; v->magic = 0x31525643u;   /* 'CVR1', for a4_tel.c */
+            for (uint32_t j = 0; j < 6u; j++) v->ob[j] = 0;
+        }
+#endif
 #ifdef A4_ROWCHECK
         rc_miny = VP_H;
 #endif
@@ -7737,6 +7992,14 @@ static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1
      * with one tests it -- positions (x zw, y zw, -min(ZK, zw), zw): depth ZK/zw, no divide,
      * the same w at all four corners so the texture stays affine -- and one without sits at
      * window depth 1, passing every test as it was drawn untested before. */
+#if defined(A4_COVREDRAW) && defined(A4_MESH)
+    /* round 78: a quad over an item the redraw will draw again and not marked by a4_gl_bb (a fill, a fade -- KIND_ADDF,
+     * whose TEXID's top byte is the fade -- or one tested at a list face's depth): the batch and the redraw first */
+    if (CVR->pend && MESH_ON() && ((id >> 28) == KIND_ADDF || !(id & CVR_FLAG)) && (id >> 28) != KIND_TEXZ
+        && cvr_hits(x0 < x1 ? x0 : x1, y0 < y1 ? y0 : y1, (x0 < x1 ? x1 : x0) - 1, (y0 < y1 ? y1 : y0) - 1)) {
+        cvr_flush(s); CVR->k[2]++;
+    }
+#endif
     int32_t qw = 4096, qz = 0;
 #ifdef A4_MESH
     if (MESH_ON()) {
@@ -8027,6 +8290,9 @@ static void frc3_spr(int32_t x0, int32_t y0, int32_t x1, int32_t y1, const int32
     uint32_t am = 0u, k, i, n = L[1];
     int32_t nc = 0xFFFF;
     for (k = 0; k < BBC_N * BBC_N; k++) if (cd[k] >= 0) { am |= 1u << k; if (cd[k] < nc) nc = cd[k]; }
+#ifdef A4_COVREDRAW
+        else if (cd[k] == -2) am |= 1u << k;          /* round 78: GPU items only (redrawn over it); nc stays the list's */
+#endif
     const uint32_t area = (uint32_t)(x1 - x0) * (uint32_t)(y1 - y0);
     L[2]++;
     if (n < SPL_N) i = n++;
@@ -8047,7 +8313,7 @@ static void frc3_spr(int32_t x0, int32_t y0, int32_t x1, int32_t y1, const int32
     L[1] = n;
 }
 #endif
-static int mesh_bb_cells(const int32_t *b1, const int32_t *ex, const int32_t *ey, int32_t *cd)
+static int mesh_bb_cells(const int32_t *b1, const int32_t *ex, const int32_t *ey, int32_t *cd, int cvr)
 {
     const int32_t x0 = ex[0], x1 = ex[BBC_N], y0 = ey[0], y1 = ey[BBC_N];
     uint32_t fl = (uint32_t)b1[-3], open = 0, c;
@@ -8109,11 +8375,33 @@ static int mesh_bb_cells(const int32_t *b1, const int32_t *ex, const int32_t *ey
         ((volatile uint32_t *)A4_GL_SPL)[3] = lm;
     }
 #endif
+#if defined(A4_COVREDRAW)
+    /* round 78: a cell no nearer list face meets but a GPU item's box does (its nearest bucket nearer than the
+     * sprite's): -2, drawn at the sprite's own depth and written, those items drawn again after it (cvr_redraw) --
+     * their pixels in front of the sprite land, the road never does. Replaces the items' boxes as covers -- but not
+     * for a fade (mode 3, KIND_ADDF: its TEXID cannot carry the mark), which keeps round 77's rule */
+    if (!cvr) {
+#ifdef A4_GPUOBJ
+        gobj_bb_cells(sb, ex, ey, cd);
+#endif
+        for (c = 0; c < BBC_N * BBC_N; c++) if (cd[c] >= 0) return 1;
+        return 0;
+    }
+    for (c = 0; c < BBC_N * BBC_N; c++) {
+        if (cd[c] >= 0) continue;
+        const int32_t cx0 = ex[c & (BBC_N - 1u)], cx1 = ex[(c & (BBC_N - 1u)) + 1u] - 1, cy0 = ey[c >> BBC_L], cy1 = ey[(c >> BBC_L) + 1u] - 1;
+        if (cx1 < cx0 || cy1 < cy0) continue;
+        if (cvr_add(sb, cx0, cy0, cx1, cy1)) cd[c] = -2;
+    }
+    for (c = 0; c < BBC_N * BBC_N; c++) if (cd[c] != -1) return 1;
+    return 0;
+#else
 #ifdef A4_GPUOBJ
     gobj_bb_cells(sb, ex, ey, cd);                  /* the GPU's objects and cars, by their boxes */
 #endif
     for (c = 0; c < BBC_N * BBC_N; c++) if (cd[c] >= 0) return 1;
     return 0;
+#endif
 }
 #endif
 int a4_gl_bb(const uint32_t *r, const uint32_t *f)
@@ -8209,7 +8497,7 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
                     bbc_x[k] = x0 + (int32_t)(((uint32_t)(x1 - x0) * k) >> BBC_L);
                     bbc_y[k] = y0 + (int32_t)(((uint32_t)(y1 - y0) * k) >> BBC_L);
                 }
-                bbcell = mesh_bb_cells(b1, bbc_x, bbc_y, bbc_d);
+                bbcell = mesh_bb_cells(b1, bbc_x, bbc_y, bbc_d, mode != 3u);
                 if (bbcell) bbz = bbzd;                 /* (a tested sprite, for the census below) */
 #ifdef A4_FRC3
                 frc3_spr(x0, y0, x1, y1, bbc_d, spr[0], bbzd);
@@ -8338,12 +8626,28 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
                 if (xb > xa) {
                     const int32_t sa = sl + (xa - x0) * du, sb2 = sl + (xb - x0) * du;
                     const int32_t Sa = wl <= 8 ? sa * (1 << (8 - wl)) : sa >> (wl - 8), Sb = wl <= 8 ? sb2 * (1 << (8 - wl)) : sb2 >> (wl - 8);
+#ifdef A4_COVREDRAW
+                    if (d == -2 || (d == -1 && mode != 3u && cvr_hits(xa, ya, xb - 1, yb - 1))) {
+                        /* round 78: GPU items only, or none but over an item the redraw will draw again -- its own
+                         * depth, written */
+                        quad_push(s, xa, ya, xb, yb, Sa, Ta, Sb, Tb, id | CVR_FLAG, bbzd);
+                        CVR->k[3]++;
+                    } else
+#endif
+                    {
                     const int32_t z = d < 0 ? 0 : ((d + 1) * 8 < bbzd ? (d + 1) * 8 : bbzd);
                     quad_push(s, xa, ya, xb, yb, Sa, Ta, Sb, Tb, id, z);
+                    }
                 }
                 cx = ce;
             }
         }
+    } else
+#endif
+#if defined(A4_COVREDRAW) && defined(A4_MESH)
+    if (!bbz && bbzd > 0 && bbzd < 32768 && (id >> 28) != KIND_ADDF && cvr_hits(x0, y0, x1 - 1, y1 - 1)) {
+        quad_push(s, x0, y0, x1, y1, S0, T0, S1, T1, id | CVR_FLAG, bbzd);   /* round 78: its own depth, written */
+        CVR->k[3]++;
     } else
 #endif
     quad_push(s, x0, y0, x1, y1, S0, T0, S1, T1, id, bbz);
@@ -8493,6 +8797,12 @@ static void mesh_enter(uint32_t kind)
  * batch_draw restores KIND_TEX (the bring-up state) when it is done. */
 static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st, const uint16_t *ix)
 {
+#ifdef A4_COVREDRAW
+    /* round 78: a run of elements the redraw must not cover, or under items it will draw again: every test passed,
+     * its depth written (CVR_FLAG never set on KIND_ADDF, whose top byte is its fade) */
+    const uint32_t cvf = (mat >> 28) != KIND_ADDF && (mat & CVR_FLAG) && MESH_ON();
+    if ((mat >> 28) != KIND_ADDF) mat &= ~CVR_FLAG;
+#endif
     uint32_t kind = mat >> 28;
     if (kind == KIND_TEXZ && !((volatile struct glr *)A4_GL_SCRATCH)->zbits)
         kind = KIND_TEX;                            /* no depth buffer: draw untested */
@@ -8574,10 +8884,16 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st,
     } else if (kind != KIND_SHAD) {
         gl_bindtex(GL_TEXTURE_2D, mat & 0x0FFFFFFFu);
     }
+#ifdef A4_COVREDRAW
+    if (cvf) { gl_depthfunc(GL_ALWAYS); gl_depthmask(1); }
+#endif
     /* an index list (AB_INDEXED): the run's triangles where they sit in the batch, in run
      * order -- the same triangles in the same order as the copy draws */
     if (ix) gl_drawelements(GL_TRIANGLES, (int)(count*3), GL_UNSIGNED_SHORT, ix + first*3);
     else gl_drawarrays(GL_TRIANGLES, (int)(first*3), (int)(count*3));
+#ifdef A4_COVREDRAW
+    if (cvf) { gl_depthfunc(GL_GEQUAL); gl_depthmask(kind == KIND_TEXZ ? 1 : 0); }   /* mesh_enter's */
+#endif
 }
 
 /* Draw the accumulated frame in arrival order, one glDrawArrays per run of
@@ -9434,6 +9750,9 @@ void a4_gl_flush(void)
      * batch was drawn as it filled). */
     { uint32_t t0 = a4_ntick(); batch_draw(s->bfill); A4_PERF[PF_DRAW] += a4_ntick() - t0; }
     s->bfill = 0;
+#ifdef A4_COVREDRAW
+    { uint32_t t0 = a4_ntick(); cvr_redraw(s); CVR->k[6] += a4_ntick() - t0; }   /* round 78: the covers, again */
+#endif
     if (s->fmode & AB_FLUSH) {
         /* A tile renderer (the MBX) renders nothing until something makes it: without
          * this the frame is only rendered when composite_prev's first glReadPixels asks,
