@@ -12009,3 +12009,9 @@ news 39 ms.
   row, with their vertices). Still no bench catch of the phone's line (one row, neighbours fully drawn, mid-picture)
   except m77a's frame 4,452 under the first recorder; the phone build carries the recorder (A4_LINEREC), so the next
   line the owner sees is recorded with the triangles around it.
+- lt77b (C77 + LINETEST on the stream-edge recorder, 90 s; framestat 965): row 120 caught in every sampled frame
+  as before, and the stream record on it -- e.g. frames 1,119 / 1,122: a road triangle ending on row 119 ((-1,114)
+  (178,113) (-1,119)) and the next beginning on 119 ((145,139) (0,141) (-1,119)), the shared corner at the same w
+  (185,728): the two sides of a seam and their vertices, as the GPU got them. Where the row lies inside one large
+  triangle nothing ends or begins beside it, and nothing is listed -- right for the test's artificial row. One
+  triangle a row and side is kept (the frame's last): a sample of the seam, not all of it.
