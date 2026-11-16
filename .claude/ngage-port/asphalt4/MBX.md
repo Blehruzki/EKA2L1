@@ -12015,3 +12015,22 @@ news 39 ms.
   (185,728): the two sides of a seam and their vertices, as the GPU got them. Where the row lies inside one large
   triangle nothing ends or begins beside it, and nothing is listed -- right for the test's artificial row. One
   triangle a row and side is kept (the frame's last): a sample of the seam, not all of it.
+
+## Round 77 candidate (C77, scratch 0x1C0000): the battery
+
+- Candidate r77a (C77, 969,048 bytes, sha256 5a4b900b...; shipchk: uncompressed, +3A15C 10b50400, no 0xDEADBEEF;
+  C77 holds no bench flag). Battery on it, round 76's runs (rule 2: m76f / b76a's twins, not repeats of any other):
+  - m77f (CPRE, C at the race's load, 30, 31, 70, 110, 150 s; 160 s; framestat 1,425): 4 marks (30, 70, 110, 150) --
+    the press at 31 s dropped by the 2-second rule, the one at the load not a mark (older than a second when the
+    race read it) -- as m76f; every mark decodes (12.5 / 11.8 / 11.3 / 9.7 s of renders, 215,344 bytes each); the
+    boot-time access violation only (ROM code, pc 0x8039F834, every run's).
+  - b77a (b76a's run: '5' held, Paris, the owner's save, the N95 model, 480 s; framestat 3,149; the boot fault
+    only): whole race (r51sum.py) **2,739 renders, 43.9 ms a render | 3D 17.4, comp 11.2 (read 6.7), 2D 2.6, pres
+    2.1 -- against b76a's 41.5 (comp 7.8, read 5.9).** Every C77 run shows it (m77a / m77f / lm77 / wm77 comp 11.0-11.3
+    against m76f's 8.1): **the line counter on every composite costs ~3 ms a render** -- its loop took a branch a
+    pixel, plus the first / last tracking, over all 76,800 pixels each composite. Not acceptable for a counter.
+- The counter rewritten (a4_gl.c, the composite's lc_on block): the drawn bits summed four pixels a step with no
+  branch, the undrawn run's ends found from each end of the row only on a row that can be a line (64 or more
+  undrawn; line_rec reads them only there) -- the same counts and ends. Candidate r77 rebuilt: 969,132 bytes,
+  sha256 4322b80f1592032394fa3df963fe075daa6885b17bc8a70a489e72942c85f583 (shipchk clean). Queued: lt77c (the
+  row-120 test on the new counter), then the battery again on this binary (m77g, b77b).

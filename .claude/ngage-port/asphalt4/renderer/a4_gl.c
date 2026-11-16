@@ -9037,13 +9037,22 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                 if (lc_on && screen_y == 120) for (int x = 0; x < VP_W; x++) ((uint32_t *)rb)[sy * VP_W + x] &= 0x7FFFFFFFu;
 #endif
                 if (lc_on) {   /* round 72: this row's pixels no opaque GPU class drew (alpha's top bit clear) */
-                    uint32_t u = 0;
+                    /* round 77 (b77a: the branch a pixel cost ~3 ms a composite on every composite): the drawn
+                     * bits summed four a step, no branch; the undrawn run's ends only on a row that can be a line
+                     * (64 or more), found from each end -- the same counts and ends as the pixel loop */
+                    uint32_t d = 0, u;
+                    for (const uint32_t *p = src, *pe = src + VP_W; p < pe; p += 4)
+                        d += (p[0] >> 31) + (p[1] >> 31) + (p[2] >> 31) + (p[3] >> 31);
+                    u = (uint32_t)VP_W - d;
 #ifdef A4_LINEREC
-                    uint32_t x0_ = 0, x1_ = 0;
-                    for (int x = 0; x < VP_W; x++) if ((int32_t)src[x] >= 0) { if (!u) x0_ = (uint32_t)x; x1_ = (uint32_t)x; u++; }
-                    lc_x[screen_y] = x0_ | x1_ << 16;
-#else
-                    for (int x = 0; x < VP_W; x++) u += (int32_t)src[x] >= 0;
+                    {   uint32_t x0_ = 0, x1_ = 0;
+                        if (u >= 64u) {
+                            while ((int32_t)src[x0_] < 0) x0_++;               /* u > 0: an undrawn pixel ends it */
+                            x1_ = (uint32_t)VP_W - 1u;
+                            while ((int32_t)src[x1_] < 0) x1_--;
+                        }
+                        lc_x[screen_y] = x0_ | x1_ << 16;
+                    }
 #endif
                     lc_u[screen_y] = (uint8_t)(u > 255u ? 255u : u);
                 }
