@@ -11612,3 +11612,18 @@ captures, a4tel0-6 (capidx 104-110, frames 7330-7744; the files' names carry -55
   (0x18) of 56 frames in the record. The one camera reversal of size (1096367: +13, -19) is the player nearly at
   rest weaving (x-z 10-25 a frame; heading 1774, 1777, 1788, 1768, then 1809, 1850, the camera within 3 of it) --
   steering at walking pace, not a snap of the camera. The owner's snap-back on turns is not yet in the records.
+- The owner's answers: (1) choppy is any violent turn of a car about its own axes -- spin, flip, roll; (2) the
+  snap-back is the car, not the camera, in a clean turn; (3) the far buildings go mid-way along The Fame Avenue.
+  Read with the Paris record: the car's heading never reverses there, but "heading less camera yaw" reverses in 13 of
+  73 moving frames -- the car's angle on screen swinging out and back while the camera follows. The bench's tv6 shows
+  the heading moving in bursts with holds of several substeps (348 held cnt 2401-2410, then 328, 314, 300, 292 held to
+  2432): a camera that keeps turning through a hold turns the car back on screen. Next on the bench: the heading per
+  substep in a steered turn, 3x against stock; the store at +1E8B4 (heading += the drift +9F8, every substep, not
+  thirded) and eng_alag's two-substep lag are the suspects for this and for the choppy rotations.
+- Asked whether the telemetry gets what is needed: not for these. It keeps the last ~20 s before the owner quits (8
+  windows 23 renders apart, each with the 256-render frame record), so a moment mid-race is only caught by luck; and
+  per render it has the player's x, z and heading, the camera, the segment, the objects taken (capped at 127), the
+  heights. Missing: the car the camera follows (a wreck's pitch, heading, roll), the angles the drawn matrix used
+  (after the lag), the drift, the searchlight's draw and cover, and the objects refused beside those taken. Proposed
+  for r76 (phone-safe, a new ring FRC3): those per render, and a mark key that keeps the record of the ~12 s before it
+  is pressed.
