@@ -11520,3 +11520,10 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   takedown may hang on how far a contact turns a car -- the old substeps turned it up to n kicks a step, more than
   stock's one -- so the rate is checked against the stock step: tdbat (all '5' held, no autopilot, Paris, owner's
   save, N95 model, 400 s): hsr1 (C74stock + HCREC), tv4 (the fix), hsr2, tvo2 (before the fix): running.
+- hsr1 (the stock step + HCREC, '5' held, 400 s; framestat 2,761): no crash / takedown camera (0x18) -- the rate
+  varies run to run in stock too. **tv4 (the fix; framestat 2,849): two (frames 1059, 4752), the first at tv1's
+  moment.** The wreck's heading a render through it (tools tkhd.py and a per-render list): tv1 (before) 1363,
+  1361, 1393 (+32), 1518 (+125), 1632 (+114), 1620, 1475 (-145), then still for 40 renders; **tv4 (the fix) 1170,
+  1149, 1085, 1011, 974, 938, 917, 895, 874, 827, 804, 790 (-21 .. -74 a render, slowing), then still** -- the
+  spin drawn as a turn, not as jumps. Over tv4's two cameras: max 74 a render, none >= 96 (tv1: max 145, three).
+  hsr2 / tvo2 (stock again, before-the-fix again) running.
