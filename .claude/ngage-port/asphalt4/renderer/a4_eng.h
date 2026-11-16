@@ -252,6 +252,7 @@ struct eng {
     int32_t tkd[16][4];              /* round 74: a knocked car's own drift over its last step, n substeps' worth (x, y, z, +2C) */
     uint32_t tkds[16];               /* the substep count that drift was measured at (valid for the next step's substep 0) */
     uint32_t spc[ENG_NSPIN];         /* round 74: a car a contact turned (0: free) -- eng_spin */
+    uint32_t spo[ENG_NSPIN];         /* the car it met (a kick a step for each pair, as the game's response gives) */
     uint32_t sps[ENG_NSPIN];         /* the whole step its kick belongs to */
     int32_t spr[ENG_NSPIN];          /* the kick's part still to turn */
     uint32_t spt[ENG_NSPIN];         /* the substep count it last turned at */
@@ -310,7 +311,7 @@ void eng_cam_unblend(void);
 void eng_tsnap(uint32_t arg);
 void eng_tknock(uint32_t car);
 int32_t eng_thirdv(uint32_t key, int32_t v);
-int32_t eng_spin(uint32_t car, int32_t k);
+int32_t eng_spin(uint32_t car, uint32_t other, int32_t k);
 void eng_spin_apply(uint32_t car);
 void ENG_BEGIN(uint32_t race);
 extern const uint16_t eng_frame_off[10];
@@ -555,7 +556,7 @@ static inline void ENG_BEGIN(uint32_t race)
         for (uint32_t i = 0; i < 32u; i++) ENG->aic[i] = 0;
         for (uint32_t i = 0; i < 16u; i++) { ENG->kc[i] = 0; ENG->ks[i] = 0; }
         for (uint32_t i = 0; i < 16u; i++) ENG->tkds[i] = 0x80000000u;   /* round 74: no knock drift measured yet */
-        for (uint32_t i = 0; i < ENG_NSPIN; i++) { ENG->spc[i] = 0; ENG->spl[i] = 0; ENG->spr[i] = 0; }   /* no spin spread */
+        for (uint32_t i = 0; i < ENG_NSPIN; i++) { ENG->spc[i] = 0; ENG->spo[i] = 0; ENG->spl[i] = 0; ENG->spr[i] = 0; }   /* no spin spread */
         for (uint32_t i = 0; i < 64u; i++) ENG->lc[i] = 0;
         ENG->flush = 0;
         ENG->tlast[0] = ENG->tlast[1] = 0; ENG->tdel[0] = ENG->tdel[1] = 0;
@@ -1037,20 +1038,24 @@ static inline int32_t eng_thirdv(uint32_t key, int32_t v) { return (int32_t)eng_
  * turns up to a sixteenth of a turn a step, drawn at 11.72 Hz. Run every substep, the response turned the car the
  * whole kick on each substep that found the contact and not at all on the others (tv1, the watch on a wreck's
  * heading: +34, +29, +112, +128, +128, -126, -101 on single substeps, held between) -- the heading in sixteenths.
- * Now a car's first kick in a step is the step's kick, as the game computes one; it is turned a share now and the
- * rest evenly at the next n - 1 substeps' orientation (+1971E's entry); the step's later kicks for that car are
- * dropped, and a spread still unfinished at the next kick is finished with it. */
-static inline int32_t eng_spin(uint32_t car, int32_t k)
+ * Now a pair's first kick in a step is the step's kick for that car, as the game computes one a pair; it is turned a
+ * share now and the rest evenly at the next n - 1 substeps' orientation (+1971E's entry); the step's later kicks of
+ * the same pair are dropped, and a spread still unfinished at the pair's next kick is finished with it. */
+static inline int32_t eng_spin(uint32_t car, uint32_t other, int32_t k)
 {
     uint32_t i, f = ENG_NSPIN;
     const int32_t n = (int32_t)ENG->n;
     int32_t s, q;
     for (i = 0; i < ENG_NSPIN; i++) {
-        if (ENG->spc[i] == car) { f = i; break; }
+        if (ENG->spc[i] == car && ENG->spo[i] == other) { f = i; break; }
         if (f == ENG_NSPIN && (ENG->spc[i] == 0u || (ENG->spl[i] == 0u && ENG->sps[i] != ENG->wst))) f = i;
     }
-    if (f == ENG_NSPIN) { f = (car >> 4) % ENG_NSPIN; ENG_EVIC(5); ENG->spl[f] = 0; ENG->spr[f] = 0; }
-    if (ENG->spc[f] != car) { ENG->spc[f] = car; ENG->sps[f] = ENG->wst - 1u; ENG->spr[f] = 0; ENG->spl[f] = 0; }
+    if (f == ENG_NSPIN) {                             /* full: the oldest finished slot, else one by the address */
+        f = (car >> 4) % ENG_NSPIN; ENG_EVIC(5);
+        if (ENG->spl[f] && ENG->spc[f]) MEM32(ENG->spc[f] + 0x678u) += (uint32_t)ENG->spr[f];   /* its rest turned now */
+        ENG->spl[f] = 0; ENG->spr[f] = 0;
+    }
+    if (ENG->spc[f] != car || ENG->spo[f] != other) { ENG->spc[f] = car; ENG->spo[f] = other; ENG->sps[f] = ENG->wst - 1u; ENG->spr[f] = 0; ENG->spl[f] = 0; }
     if (ENG->sps[f] == ENG->wst) return 0;            /* the step's kick is already the car's */
     s = ENG->spr[f];                                  /* the last kick's unfinished part, turned now */
     q = eng_sdiv(k, n);                               /* toward zero: a share of each sign alike */
@@ -1062,11 +1067,12 @@ static inline void eng_spin_apply(uint32_t car)
 {
     uint32_t i;
     int32_t d;
-    for (i = 0; i < ENG_NSPIN; i++) if (ENG->spc[i] == car) break;
-    if (i == ENG_NSPIN || ENG->spl[i] == 0u || ENG->spt[i] == ENG->cnt) return;
-    d = eng_sdiv(ENG->spr[i], (int32_t)ENG->spl[i]);
-    ENG->spr[i] -= d; ENG->spl[i]--; ENG->spt[i] = ENG->cnt;
-    MEM32(car + 0x678u) += (uint32_t)d;               /* the heading; +1971E builds the matrix from it next */
+    for (i = 0; i < ENG_NSPIN; i++) {                 /* each pair's spread of this car, a share a substep */
+        if (ENG->spc[i] != car || ENG->spl[i] == 0u || ENG->spt[i] == ENG->cnt) continue;
+        d = eng_sdiv(ENG->spr[i], (int32_t)ENG->spl[i]);
+        ENG->spr[i] -= d; ENG->spl[i]--; ENG->spt[i] = ENG->cnt;
+        MEM32(car + 0x678u) += (uint32_t)d;           /* the heading; +1971E builds the matrix from it next */
+    }
 }
 /* The wall's first push (+1ED4C: the heading turned off the wall by half the angle met, clamped 20..64,
  * while +B18 counts the contact's 5 steps). The game turns the car the whole push at the step the contact

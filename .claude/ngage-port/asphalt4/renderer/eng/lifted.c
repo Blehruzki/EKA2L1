@@ -9628,8 +9628,8 @@ L_23BC0:
     r0 = r5; fN = r0 >> 31; fZ = r0 == 0;                        /* 023bc0 movs r0, r5 */
     r2 = 0x0u; fN = r2 >> 31; fZ = r2 == 0;                      /* 023bc2 movs r2, #0 */
     S32(0x3Cu) = r2;                                             /* 023bc4 str r2, [sp, #0x3c] */
-    /* engine: the car's spin: the step's one kick, spread (eng_spin) */
-    r1 = (uint32_t)eng_spin(r5, (int32_t)r1);
+    /* engine: the car's spin: the pair's one kick a step, spread (eng_spin) */
+    r1 = (uint32_t)eng_spin(r5, r4, (int32_t)r1);
     S32(0x40u) = r1;                                             /* 023bc6 str r1, [sp, #0x40] */
     S32(0x44u) = r2;                                             /* 023bc8 str r2, [sp, #0x44] */
     { uint32_t ta = sp, tb = 0x3Cu; t = ta + tb; r1 = t; }       /* 023bca add r1, sp, #0x3c */
@@ -9665,8 +9665,8 @@ L_23C00:
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 023c00 movs r0, r4 */
     r2 = 0x0u; fN = r2 >> 31; fZ = r2 == 0;                      /* 023c02 movs r2, #0 */
     S32(0x3Cu) = r2;                                             /* 023c04 str r2, [sp, #0x3c] */
-    /* engine: the other's spin: the step's one kick, spread (eng_spin) */
-    r1 = (uint32_t)eng_spin(r4, (int32_t)r1);
+    /* engine: the other's spin: the pair's one kick a step, spread (eng_spin) */
+    r1 = (uint32_t)eng_spin(r4, r5, (int32_t)r1);
     S32(0x40u) = r1;                                             /* 023c06 str r1, [sp, #0x40] */
     S32(0x44u) = r2;                                             /* 023c08 str r2, [sp, #0x44] */
     { uint32_t ta = sp, tb = 0x3Cu; t = ta + tb; r1 = t; }       /* 023c0a add r1, sp, #0x3c */

@@ -11531,3 +11531,10 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   on a yellow taxi at 0 km/h (screens) -- not a rate. tvo2 (before the fix; framestat 2,847): none. Crash /
   takedown cameras a run, '5' held: before the fix 3, 0; the fix 0, 0, 2; stock 0, 0 (stuck). The rate is the
   run's luck here; nothing says the fix takes takedowns away.
+- The spread keyed by the pair (eng_spin(car, other, k)): the game's response gives a kick a step for each pair in
+  contact, so a car hit by two others in one step turns twice in stock; keyed by the car alone, the second pair's
+  kick was dropped. Now a slot per (car, other); +1971E's entry turns each of the car's spreads a share; a full
+  table turns an evicted slot's rest at once. lifted.c regenerated (the two call lines only). a4_r75_cand.exe now
+  ae84c26a0e4ebdb7c324f709b75acb7a7c213c657bdd3efa2304236e37c879c2, 941,372 bytes; shipchk clean; the stock-step
+  build unchanged in size (831,920). The A/B (b74a r74, b75a r75 -- the exact binaries, '5' held, Paris, owner's
+  save, N95 model, 480 s, telemetry kept) running; tv5 / tv6 (the takedown probe on the pair version) after.

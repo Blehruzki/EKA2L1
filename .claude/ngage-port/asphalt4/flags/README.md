@@ -11,4 +11,5 @@ reproducing a4_r74_cand.exe byte for byte (sha256 ef2a44ee9e0ce657f9430b24e14d3f
 
 C75.flags = C74.flags (no flag added: round 75's change, the contact spin spread over the step, is code in the 3x
 engine -- a4_eng.h eng_spin, edits.py +23BC6 / +23C06 / +1971E). a4_r75_cand.exe, sha256
-92663fb79cfa12052ea8d1aea9a71ac1891944c8c6bf982e24eaf2a0325eb864, 941,952 bytes (this tree, the injector as committed).
+ae84c26a0e4ebdb7c324f709b75acb7a7c213c657bdd3efa2304236e37c879c2, 941,372 bytes (the spread keyed by the contact pair;
+the first build, keyed by the car alone, was 92663fb7..., 941,952 bytes).
