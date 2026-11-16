@@ -322,14 +322,14 @@ uint64_t eng_h_345e4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_
 #endif
 /* Phone round 76 (A4_TELMARK, A4_FRC3; a4_gl.c, a4_tel.c): the mark's state -- [0] presses of C, [1] presses
  * handled, [2] marks written, [3] the last one's tick, [4..14] FRC3's counters before the render, [15] the last present that carried a 3D render; RFile objects for
- * the mark files from +0x40 -- then FRC3 at 0x5B0400 (A4_FREC3_N renders of A4_FREC3_W words), the render's sprite list at 0x5B8800 and the
- * list's tiles at 0x5B8A00 (A4_SCRATCH_SIZE 0x1B8000: the scratch to 0x5B9000) */
+ * the mark files from +0x40 -- then FRC3 at 0x5B0400 (A4_FREC3_N renders of A4_FREC3_W words), the render's sprite list at 0x5B9800 and the
+ * list's tiles at 0x5B9A00 (A4_SCRATCH_SIZE 0x1B9000: the scratch to 0x5BA000) */
 #define A4_MARK_STATE 0x005B0000u
 #define A4_GL_FREC3   0x005B0400u
-#define A4_GL_SPL     0x005B8800u
-#define A4_GL_GRD     0x005B8A00u
+#define A4_GL_SPL     0x005B9800u
+#define A4_GL_GRD     0x005B9A00u
 #define A4_FREC3_N    256u
-#define A4_FREC3_W    32u
+#define A4_FREC3_W    36u
 #ifdef A4_ENG3
 #define A4_ENG_STATE 0x0045D000u
 _Static_assert(A4_ENG_STATE + sizeof(struct eng) <= 0x00460000u, "the engine state past the scratch block");

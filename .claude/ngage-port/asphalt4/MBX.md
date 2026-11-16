@@ -11691,3 +11691,29 @@ No game change against r75; the build adds what the four open issues need record
   buildings: a white patch with no list tile and no GPU box is a place nothing 3D was drawn. The hook checked
   compiled (llvm-objdump: the fifth argument passed through on the stack, +A434 called at GBASE + 0xA435). m76c
   (r76's 32-word build + AUTOMARK, 400 s): running.
+- m76c (r76 32-word + AUTOMARK, 400 s; framestat 2,927): 2 marks (0x18), and a news camera (0x2A, 60 renders) in
+  the ring. +A434's draw angles: the player's drawn heading = +678 in 907 of 929 renders (the rest 1-4 off: the
+  turn term); its first output 0-6 (a tilt), its third -21..0 -- the body's lean, which +A434 moves as it draws;
+  +A434 runs twice a render for the player (two draws). The news shot: its sprites (64 x 64 textures) all tested,
+  every cell covered by GPU boxes (list cells 0), buckets 103 / nearest cover 99; the objects store refusing 3 a
+  render as full. The marks' pictures (frec3.py gob) line up: sprite boxes on the cars' lights, the searchlight
+  (86 x 86 px, ZW 758, untested) in mark 1's news frame.
+  - **Mark 0 is a takedown with the victim rolled onto its side (the picture) -- and every recorded angle says no
+    roll**: its pitch and roll 0, +A434's outputs 0 / heading / a lean easing -20 -> 0 by 2-3 once a whole step.
+    The roll is drawn elsewhere: **+DD2A, in the car draw: while +034 is not -1, it takes the wreck's path
+    (+03C -> +39FE) and, with +B28 bit 11, turns the car -42 x +034 (bit 4 the sign) -- 42 / 2,048 of a turn a
+    path frame; +034 advances once a whole step** (m76b: by 2; m76c: by 1). So the tumble moves 7.4 degrees every
+    third frame at 3x: the owner's "spinning, flipping and rolling over feels choppy", by the code. (+DEFE eases with
+    +044 and +048 too.) Not yet a fix: the record now carries the path's words to confirm it on the phone.
+- FRC3 to 36 words (scratch 0x1B9000; sprite list 0x5B9800, tiles 0x5B9A00): the other car's [13..15] now its path
+  frame +034, +044 / +048, +B28, +03C (the step axes dropped: the render does not draw from them); [32..34] the
+  player's own (a crash), [35] the other car's address. frec3.py rot prints the tumble +DD2A draws.
+- m76d (the 36-word build + AUTOMARK, 400 s; framestat 2,868): 1 mark, the player's own crash (camera 0x18 on the
+  player; its +034 -1: no path, +B28 0x42xx) -- **and no other car in all 256 renders: the fallback "nearest car"
+  skipped every car with +034 -1, i.e. every normal car** (the filter meant for pointer words). Fixed: -1 or under
+  1,024 is a car; a wreck is 1..1,023.
+- Candidate r76 = a4_r76_cand.exe (C76.flags, THIRDSTEP, scratch 0x1B9000): sha256
+  b6933f38b0d1a7fdba33f4e6650889d3e826370b3f0fa2300b622583831f1841, 947,376 bytes; shipchk clean (uncompressed,
+  +3A15C 10b5 0400, no 0xDEADBEEF); hooks: +1EEC (C), +DBE0 / +E88C (+A434). C75 still rebuilds r75 byte for
+  byte. Battery on this binary (r76bat: m76e -- C during the race's load, then at 30, 31, 70, 110, 150 s; b76a --
+  b75a's run, 480 s, for the cost): running.

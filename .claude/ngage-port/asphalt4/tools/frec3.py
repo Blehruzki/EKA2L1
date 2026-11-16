@@ -3,9 +3,9 @@
 # render's ms, from the ring captures (a4telN.dat) and the owner's marks (a4markN.dat, a press of C: header word 2 has
 # bit 31). Modes:
 #   files  each file: ring or mark, its renders, the span of time it covers
-#   rot    the player car's and the other car's turn per render (heading, pitch, roll, the step's forward axis and,
-#          from the 32-word build, the angles +A434 gave the draw), the engine's substeps between renders -- the
-#          choppy rotation
+#   rot    the player car's and the other car's turn per render (heading, pitch, roll, the step's forward axis, the
+#          angles +A434 gave the draw and, from the 36-word build, the wreck's tumble +DD2A draws: -42 x its path
+#          frame +034), the engine's substeps between renders -- the choppy rotation
 #   turn   the player's heading, the step's axis (two substeps late), the draw's heading (+A434), the camera's yaw and
 #          the car-less-camera angle per render, and its reversals -- the snap-back
 #   spr    per render the largest sprite: its rectangle, the cells a list face covers / all covered cells, its
@@ -79,6 +79,15 @@ def row(e1, e3):
                  odox=s16(e3[28] >> 16), odoy=s16(e3[29] & 0xFFFF), odoz=s16(e3[29] >> 16),
                  cpitch=s16(e3[30] & 0xFFFF), croll=s16(e3[30] >> 16),
                  npc=e3[31] & 255, noc=(e3[31] >> 8) & 255, nall=(e3[31] >> 16) & 255, site=(e3[31] >> 24) & 3)
+    if len(e3) >= 36:   # r76's third build: the wreck path words (the other car's in [13..15], the player's [32..34])
+        r.update(oy=s16(e3[13] & 0xFFFF), o34w=s16(e3[13] >> 16), o44=s16(e3[14] & 0xFFFF), o48=s16(e3[14] >> 16),
+                 ob28=e3[15] & 0xFFFF, o3c=s16(e3[15] >> 16), ofx=0, ofz=0, ofy=0, osx=0, osy=0,
+                 p34=s16(e3[32] & 0xFFFF), p3c=s16(e3[32] >> 16), p44=s16(e3[33] & 0xFFFF), p48=s16(e3[33] >> 16),
+                 pb28=e3[34] & 0xFFFF, pseg=e3[34] >> 16, oaddr=e3[35])
+        # the wreck's turn as +DD2A draws it: -42 x the path frame (clamped to the path; the length is not recorded),
+        # its sign by +B28 bit 4, only while +034 is not -1 and +B28 bit 11 is set
+        for k, f, b in (('otumble', 'o34w', 'ob28'), ('ptumble', 'p34', 'pb28')):
+            r[k] = (42 * r[f] * (1 if r[b] & 16 else -1)) if r[f] != -1 and r[b] & 0x800 else None
     return r
 
 # the drawn heading on +678's circle: the forward axis's angle + 1,024 (m76a: heading less it -1,024 in 799 of 1,008)
@@ -125,7 +134,7 @@ if mode == 'gob':
         mrg = struct.unpack_from('<%dH' % (gw * gh), d, go + 16 + 2 * gw * gh)
         grd = (gw, gh, lst, mrg)
         print('list tiles (GRD1): frame %d (%s the objects\' frame), %d list faces; tiles with a list face %d, with only GPU objects %d, with nothing %d of %d'
-              % (gfr, 'is' if gfr == frames else 'NOT', gnf, sum(1 for v in lst if v != 0xFFFF),
+              % (gfr, 'is' if gfr == st[1] else 'NOT', gnf, sum(1 for v in lst if v != 0xFFFF),
                  sum(1 for a, b in zip(lst, mrg) if a == 0xFFFF and b != 0xFFFF), sum(1 for b in mrg if b == 0xFFFF), gw * gh))
     try:
         from PIL import Image, ImageDraw
@@ -143,7 +152,7 @@ if mode == 'gob':
         for b0, b1, b2, b3, qn, qf in items:
             dr.rectangle([b0 * 2, b1 * 2, b2 * 2, b3 * 2], outline=(0, 255, 0) if qf < 2000 else (255, 0, 255))
         for rc in S: dr.rectangle([v * 2 for v in rc], outline=(255, 255, 0))
-        out = info['fn'] + '.gob.png'; im.rotate(180).save(out); print('drawn:', out, '(turned upright; green items, magenta at bucket 2,000+, yellow sprites; blue ticks list tiles, red crosses tiles nothing 3D covered)')
+        out = info['fn'] + '.gob.png'; im.save(out); print('drawn:', out, '(green items, magenta at bucket 2,000+, yellow sprites; blue ticks list tiles, red crosses tiles no list face or GPU object covers -- the game\'s own table may still draw there)')
     except ImportError:
         pass
     sys.exit()
@@ -173,6 +182,9 @@ elif mode == 'rot':
                 df = wrap(fa - pa) if fa >= 0 and pa >= 0 else 0
                 if dh or dp or dr or df or mode == 'rot':
                     dd = ''
+                    tk = 'otumble' if who == 'other' else 'ptumble'
+                    if r.get(tk) is not None or p.get(tk) is not None:
+                        dd += '  tumble %5s (d %4s)' % (r.get(tk), (r[tk] - p[tk]) if r.get(tk) is not None and p.get(tk) is not None else '-')
                     if 'db' in r:   # the draw's angles (+A434) and their change
                         A, B, C = ('oda', 'odb', 'odc') if who == 'other' else ('da', 'db', 'dc')
                         dd = '  draw %5d %5d %5d (d %4d %4d %4d)' % (r[A], r[B], r[C], wrap(r[A] - p[A]), wrap(r[B] - p[B]), wrap(r[C] - p[C]))

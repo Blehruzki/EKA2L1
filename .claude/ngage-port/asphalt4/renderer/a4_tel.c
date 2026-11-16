@@ -66,10 +66,10 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
 #ifndef A4_GL_FREC3
 #define A4_MARK_STATE 0x005B0000u   /* a4_eng.h, a4_gl.c: the mark's state, FRC3, the render's sprite list */
 #define A4_GL_FREC3   0x005B0400u
-#define A4_GL_SPL     0x005B8800u
-#define A4_GL_GRD     0x005B8A00u
+#define A4_GL_SPL     0x005B9800u
+#define A4_GL_GRD     0x005B9A00u
 #define A4_FREC3_N    256u
-#define A4_FREC3_W    32u
+#define A4_FREC3_W    36u
 #endif
 #endif
 #ifndef TEL_MARKS
@@ -470,7 +470,7 @@ void a4_tel_tick(uint32_t had)
             efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4 + 0x700 + 3 * 32 * 4 + 0x680, &rd);
         }
 #ifdef A4_FRC3
-        {   /* round 76: FRC3 (a4_gl.c A4_GL_FREC3, 32 words a render) right after FRC1; then the last render's sprite list
+        {   /* round 76: FRC3 (a4_gl.c A4_GL_FREC3, 36 words a render) right after FRC1; then the last render's sprite list
              * (A4_GL_SPL, 'SPL1', 32 + 16 x 16 bytes) and the scenery objects' state ('GOB1', its size, the frame, 0, then
              * a4_gl.c's struct gstate: the counters, the camera, each taken item's box and buckets) */
             extern uint32_t a4_frc3_gobj(const void **p);

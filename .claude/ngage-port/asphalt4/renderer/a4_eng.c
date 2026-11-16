@@ -92,6 +92,10 @@ void a4_eng_frc3(uint32_t race, volatile uint32_t *e)
         e[4] = (MEM32(pc + 0x674u) & 0xFFFFu) | MEM32(pc + 0x67Cu) << 16;
         e[7] = frc3_h((int32_t)MEM32(pc + 0x10u)) | frc3_h((int32_t)MEM32(pc + 0x18u)) << 16;
         e[8] = (K ? MEM32(K + 4u) & 0xFFFFu : 0u) | MEM32(pc + 0xA1Cu) << 16;
+        /* the player's own wreck path (a crash): its frame, path, ease words, flags, segment */
+        e[32] = (MEM32(pc + 0x34u) & 0xFFFFu) | MEM32(pc + 0x3Cu) << 16;
+        e[33] = (MEM32(pc + 0x44u) & 0xFFFFu) | MEM32(pc + 0x48u) << 16;
+        e[34] = (MEM32(pc + 0xB28u) & 0xFFFFu) | MEM32(pc + 0x1Cu) << 16;
     }
     e[30] = pc;                                      /* the player car, for a4_h_a434 during the render */
     if (fc && fc != pc) {
@@ -101,10 +105,10 @@ void a4_eng_frc3(uint32_t race, volatile uint32_t *e)
         int64_t bw = 0x7FFFFFFFFFFFLL, bn = 0x7FFFFFFFFFFFLL; uint32_t wc = 0u, ws = 31u, nc = 0u, ns = 31u;
         for (k = 0; k < 16u; k++) {
             const uint32_t c = MEM32(race + 0x394u + 4u * k), s = c ? MEM32(c + 0x34u) : 0xFFFFFFFFu;
-            if (!c || c == pc || s >= 1024u) continue;                 /* +034 a pointer: not a car */
+            if (!c || c == pc || (s >= 1024u && s != 0xFFFFFFFFu)) continue;   /* +034 a pointer: not a car (-1: no path) */
             const int64_t dx = (int64_t)(int32_t)MEM32(c + 4u) - cx, dz = (int64_t)(int32_t)MEM32(c + 0xCu) - cz;
             const int64_t d = (dx < 0 ? -dx : dx) + (dz < 0 ? -dz : dz);
-            if (s >= 1u && d < bw) { bw = d; wc = c; ws = k; }
+            if (s >= 1u && s < 1024u && d < bw) { bw = d; wc = c; ws = k; }
             if (d < bn) { bn = d; nc = c; ns = k; }
         }
         if (wc) { oc = wc; os = ws; fl = 2u; } else if (nc) { oc = nc; os = ns; }
@@ -114,26 +118,23 @@ void a4_eng_frc3(uint32_t race, volatile uint32_t *e)
         e[9] = os | fl << 5 | (s > 511u ? 511u : s) << 7 | MEM32(oc + 0x678u) << 16;
         e[10] = (MEM32(oc + 0x674u) & 0xFFFFu) | MEM32(oc + 0x67Cu) << 16;
         e[11] = MEM32(oc + 4u); e[12] = MEM32(oc + 0xCu);
-        e[13] = MEM32(oc + 8u) & 0xFFFFu;
-        e[15] = oc;                                  /* the car, for a4_eng_frc3_post (which writes its axes here) */
+        /* the wreck's draw (+DD2A, +DEFE): its path frame +034, ease words +044 / +048, flags +B28, path +03C */
+        e[13] = (MEM32(oc + 8u) & 0xFFFFu) | MEM32(oc + 0x34u) << 16;
+        e[14] = (MEM32(oc + 0x44u) & 0xFFFFu) | MEM32(oc + 0x48u) << 16;
+        e[15] = (MEM32(oc + 0xB28u) & 0xFFFFu) | MEM32(oc + 0x3Cu) << 16;
+        e[35] = oc;                                  /* the car, for a4_h_a434 during the render */
     } else e[9] = 31u;
 }
-/* After the render: the axes the render drew each car with -- it makes the matrix +6D4..+718 again as it draws the
- * car (+31EA4 / +321A6, MBX.md round 31), so before the render they are the step's (+1971E) or the last render's */
+/* After the render: the player's step axes (+704 forward, +714 the side's height: +1971E's, two substeps behind the
+ * heading -- the render does not draw from them, round 31 rone8) and the camera's pitch and roll */
 void a4_eng_frc3_post(uint32_t race, volatile uint32_t *e)
 {
     const uint32_t pl = MEM32(race + 0x390u), pi = pl ? MEM32(pl + 0xCu) : 16u;
-    const uint32_t pc = pi < 16u ? MEM32(race + 0x394u + 4u * pi) : 0u, oc = (e[9] & 31u) != 31u ? e[15] : 0u;
+    const uint32_t pc = pi < 16u ? MEM32(race + 0x394u + 4u * pi) : 0u;
     e[30] = (MEM32(race + 0x64u) & 0xFFFFu) | MEM32(race + 0x6Cu) << 16;   /* the camera's pitch, roll */
     if (pc) {
         e[5] = frc3_h((int32_t)MEM32(pc + 0x704u)) | frc3_h((int32_t)MEM32(pc + 0x70Cu)) << 16;
         e[6] = frc3_h((int32_t)MEM32(pc + 0x708u)) | frc3_h((int32_t)MEM32(pc + 0x714u)) << 16;
-    }
-    e[15] = 0u;
-    if (oc) {
-        e[13] = (e[13] & 0xFFFFu) | frc3_h((int32_t)MEM32(oc + 0x704u)) << 16;
-        e[14] = frc3_h((int32_t)MEM32(oc + 0x70Cu)) | frc3_h((int32_t)MEM32(oc + 0x708u)) << 16;
-        e[15] = frc3_h((int32_t)MEM32(oc + 0x710u)) | frc3_h((int32_t)MEM32(oc + 0x714u)) << 16;
     }
 }
 #endif
@@ -148,7 +149,7 @@ uint32_t a4_h_a434_at(uint32_t car, int32_t *a, int32_t *b, int32_t *c, int32_t 
     volatile uint32_t *F3 = (volatile uint32_t *)A4_GL_FREC3;
     if (F3[0] != 0x33435246u) return r;
     volatile uint32_t *e = F3 + 4u + (F3[1] % A4_FREC3_N) * A4_FREC3_W;
-    const uint32_t pc = e[30], oc = (e[9] & 31u) != 31u ? e[15] : 0u;
+    const uint32_t pc = e[30], oc = (e[9] & 31u) != 31u ? e[35] : 0u;
     uint32_t n = e[31];
     if (car && car == pc) {
         if ((n & 0xFFu) == 0u) {

@@ -1060,15 +1060,16 @@ _Static_assert(A4_GL_FREC >= 0x00455800u + 0x680u && A4_GL_FREC + 16u + FREC_N *
 #error "A4_FRC3 is written right after FRC1 (a4_tel.c): not with FRC2, the idle census or route B's probe after it"
 #endif
 /* Phone round 76 (after round 75: the choppy rotations, the snap-back in turns, the searchlight hidden behind the road,
- * the far buildings gone mid-way along The Fame Avenue): a third ring beside FRC1, 32 words a render, the same 256
+ * the far buildings gone mid-way along The Fame Avenue): a third ring beside FRC1, 36 words a render, the same 256
  * renders. [0] FRC1's ms; [1..15] a4_eng.c a4_eng_frc3, before the render: [1] the engine's substep count, [2] its
  * substep | n << 4 | the camera mode << 8 | the slow-motion scale << 16; the player car: [3] heading +678 | turn term
  * +9F8 << 16, [4] pitch +674 | roll +67C << 16, [5] the matrix's forward axis x | z << 16 (+704, +70C), [6] its y |
  * the side axis's y (+714) << 16 -- these two after the render, which makes the matrix as it draws the car
  * (a4_eng_frc3_post) -- [7] velocity x | z << 16, [8] keys (K+4) | steering rate +A1C << 16; one other car:
  * [9] its slot (31 none, 30 not a race slot) | 32 the camera's car / 64 a wreck | +034 (to 511) << 7 | heading << 16, [10]
- * pitch | roll << 16, [11] x, [12] z, [13] y | forward x << 16, [14] forward z | forward y << 16, [15] side x | side y
- * << 16 (the axes after the render). After the render: the largest sprite of it the TBillboard path tested or drew (the sprite list, A4_GL_SPL):
+ * pitch | roll << 16, [11] x, [12] z, [13] y | its wreck path frame +034 << 16, [14] +044 | +048 << 16, [15] +B28's low half |
+ * the path +03C << 16 (the wreck's draw, +DD2A: while +034 is not -1 and +B28 bit 11 is set it turns the car -42 x
+ * +034 (bit 4 the sign) about the path's axis; +DEFE eases with +044 and +048). After the render: the largest sprite of it the TBillboard path tested or drew (the sprite list, A4_GL_SPL):
  * [16] its rectangle (x / 2 + 64, y / 2 + 64 as bytes: x0, y0, x1, y1), [17] the cells a list face covers | the
  * cells covered at all << 16, [18] its bucket | the nearest cover's << 16, [19] sprites | tested << 8 | its texture's
  * w << 16 | h << 24; the scenery objects, this render's counts (each to 255): [20] taken | refused out of range << 8
@@ -1080,21 +1081,22 @@ _Static_assert(A4_GL_FREC >= 0x00455800u + 0x680u && A4_GL_FREC + 16u + FREC_N *
  * player's second output | its first << 16, [25] its third | the offset's x << 16, [26] the offset's y | z << 16;
  * [27..29] the other car's the same; [30] the camera's pitch +0x64 | roll +0x6C << 16; [31] +A434's calls for the
  * player | for the other car << 8 | all << 16 | the call site of the first (bit 24 the player's from +E88C, bit 25 the
- * other's). */
+ * other's); the player's own wreck: [32] +034 | +03C << 16, [33] +044 | +048 << 16, [34] +B28's low half | its
+ * segment +01C << 16; [35] the other car's address. */
 #ifndef A4_GL_FREC3
 #define A4_MARK_STATE 0x005B0000u   /* a4_eng.h's */
 #define A4_GL_FREC3   0x005B0400u
-#define A4_GL_SPL     0x005B8800u
-#define A4_GL_GRD     0x005B8A00u
+#define A4_GL_SPL     0x005B9800u
+#define A4_GL_GRD     0x005B9A00u
 #define A4_FREC3_N    256u
-#define A4_FREC3_W    32u
+#define A4_FREC3_W    36u
 #endif
 #define FREC3_N A4_FREC3_N
 #define FREC3_W A4_FREC3_W
 #define SPL_N   16u
 _Static_assert(A4_GL_FREC3 + 16u + FREC3_N * FREC3_W * 4u <= A4_GL_SPL, "FRC3 past the sprite list");
 _Static_assert(A4_GL_SPL + 32u + SPL_N * 16u <= A4_GL_GRD, "the sprite list past the list's tiles");
-_Static_assert(A4_GL_GRD + 16u + 2u * (VP_W / 16u) * (VP_H / 16u) <= 0x005B9000u, "the list's tiles past the scratch (A4_SCRATCH_SIZE 0x1B8000)");
+_Static_assert(A4_GL_GRD + 16u + 2u * (VP_W / 16u) * (VP_H / 16u) <= 0x005BA000u, "the list's tiles past the scratch (A4_SCRATCH_SIZE 0x1B9000)");
 #endif
 #define A4_GL_STEP 0x00421700u
 #define STEPB ((volatile uint32_t *)A4_GL_STEP)
