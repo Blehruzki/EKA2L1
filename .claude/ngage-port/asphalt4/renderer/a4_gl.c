@@ -3709,6 +3709,11 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         e[3] = car ? car[1] : 0; e[4] = car ? car[3] : 0;
         e[5] = (car ? car[0x678u / 4u] & 0xFFFFu : 0u) | (c[0x68u / 4u] & 0xFFFFu) << 16;
         e[6] = c[0x58u / 4u]; e[7] = c[0x60u / 4u];
+#ifdef A4_CAMREC
+        /* bench (round 77, the turn's end): in place of the camera's x and z, the chase yaw's own terms -- race+0xE4
+         * and the sway race+0x104 (+4B40), with the car's byte +824 (the sway's switch) in [7]'s top byte */
+        e[6] = c[0xE4u / 4u]; e[7] = (c[0x104u / 4u] & 0x00FFFFFFu) | (car ? (uint32_t)*(volatile uint8_t *)((uintptr_t)car + 0x824u) << 24 : 0u);
+#endif
 #ifdef A4_GL_FREC2
         {
             volatile uint32_t *F2 = (volatile uint32_t *)A4_GL_FREC2;

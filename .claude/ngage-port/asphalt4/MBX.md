@@ -12094,3 +12094,49 @@ c. States the bench did not enter: the slow motion's sixths under the wreck shar
   x 2048 / a literal (+52580, +50E8C), else + a term from car+0x9F8 (+529D4); +B28 bit 12 adds +808 >> 6. On the
   phone the turn term +9F8 is 0 and +B28 0x4202 (bit 12 clear) through the LA turn end, so the offset is race+0xE4,
   the argument or the sway.
+- **kj1 / kj3 (the weave with the arrow keys: Left / Right 0.6 s, free 2.5 s, '5' held, 240 s; framestat 1,875 /
+  1,997): the bench steers at speed for the first time (kj1 at 243 km/h, weaving).** camoff.py: stock (kj1) |yaw - hd|
+  2.7 still / 2.4 moving (>= 3 in 40% / 35%), 3x (kj3, slower: median 96 a render against 187) 1.8 / 1.3 -- **the
+  game's camera sits off the heading in stock too once it steers**; the offset is the game's. The turn ends
+  (turnend.py): stock 44, swing median 10, max 18, back within 2 after a median 2 renders; 3x 25, median 4, max 7.
+  Read render by render, stock's end (kj1, 79,926): the heading stops at 1,002 with the camera 12 behind (yaw
+  1,014), and the camera goes on turning the same way and catches up -- 1,013, 1,012, 1,010, 1,010, 1,008, ... -- no
+  reversal. The phone's 3x end turned back first (283 -> 292). So the difference: after the stop, the game's offset
+  shrinks in stock and grew in the 3x run (19 -> 28 before falling). Which term grows: a bench probe, A4_CAMREC (FRC1's
+  camera x / z words replaced by race+0xE4 and the sway race+0x104 with car byte +824), in both trees: cj1 (stock,
+  931b807's tree + C74stock) and cj3 (C77), the same weave: queued.
+- cj1 / cj3 (A4_CAMREC, the arrow-key weave): cj1 (stock) never moved (speed 0 in every render: stuck at the
+  start), so its race+0xE4 / sway / byte +824 all 0 say nothing; cj3 (3x, median 85 a render): race+0xE4 nonzero in
+  241 of 417 renders (+-1..4), the sway -5 in 9, the byte 0. Not like for like; left there for the phone's report.
+
+## Phone round 77 (r77 4322b80f, baked by the owner): LA, six marks
+
+Owner: "r77: the cars no longer look choppy during takedowns. Need to test crash. will do on second round in paris.
+The pickups are still clipping through road, as if they were inserting themselves into the pavement. There are
+still scenery missing at the usual spots. That's got to be something that affects the game in general because I've
+seen that same bug in paris, albeit to a lesser extend and also it's harder to notice. Haven't noticed the
+snap-back on turning. Will pay more attention to it on the second round running right now (unless you notice
+something on the telemetry)". Eight ring files (a4tel0-7) and six marks (a4mark0-5).
+- **The takedowns: fixed on the phone** (A4_WRECKFRAC). The crash camera untested yet (Paris next).
+- The six marks (shots/r77-la-marks.png): 0 lap 2 in the hills, 1-2 The Fame Avenue (a thin skyline, a gap right of
+  centre in 2), 3 lap 3 among the towers beside a red car, 4 The Fame Avenue with a blue car, 5 lap 3. The rings
+  (capidx 128-135) are the race's last ~20 s.
+- **The pickups: found in mark 0's window** (frec3.py spr, 31,210,259-31,211,061): a sprite straight ahead coming in
+  (bucket 327 -> 97, 24 -> 82 px), its lower cells covered (8880 -> fcc0 -> fff0) by one cover at bucket 58 -- the
+  player's car's box. A cell a car covers is drawn at the car's depth, so the road beside the car nearer than that
+  depth (painted before the pickup by the game) hides the pickup's lower part: "inserting themselves into the
+  pavement". The margin cannot help (the car is 40-270 buckets nearer). The same mechanism as the searchlight's
+  residual. The exact rule, for round 78: draw such a cell's sprite untested, then draw the covering car (or object)
+  again in that cell with the normal depth test and no depth write -- its own visible pixels hold its depth and
+  pass, the road nearer than it fails -- which needs the batch drawn up to the sprite first (a barrier) and a
+  scissored redraw of one car / object (gcar_flush is self-contained per car).
+- The scenery (marks 1, 2, 4, frec3.py obj): on segments 96-97 the game calls 93-102 object draws a render, the GPU
+  takes 90-99, refuses none for range or a full list (near 1-3, a texture 1); the farthest bucket falls 2,617 ->
+  2,259 along a segment and the objects at 2,000+ 10 -> 2, then back to 10 at the next segment. So the far objects
+  go because the game asks for fewer, not because the port drops them -- its window follows the camera's segment.
+  Whether stock asks for the same on that stretch (and the gap is stock's too, hidden by its software picture) is
+  the open question; the owner sees it in Paris as well.
+- The grey lines: one line counted in the whole race (every composite now): frame 4,308, row 23, 255 px, the rows
+  beside it as empty -- a sky band, not the owner's kind. None of the owner's lines in LA this round.
+- The turn's end: 30 ends, swing median 16 (r76 19), the camera off the heading as before (camoff.py: still 5.8,
+  moving 10.4; r76 6.1 / 10.1) -- r77 did not touch the camera; the owner did not notice it this time.
