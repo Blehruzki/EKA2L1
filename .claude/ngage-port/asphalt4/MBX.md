@@ -11981,3 +11981,20 @@ news 39 ms.
   covered cells in 10, every one by list faces 10-41 buckets nearer (walls, the game paints those after it); the
   picture shows the disc around the car whole, its top-right cells behind the striped wall. Not Paris's phone case
   (GPU boxes 5-9 nearer), which the bench route did not reproduce.
+- ks1 / ks3 (the key-steered pair, 200 s each; framestat 1,625 / 1,547): **no use** -- both cars ended against the
+  barriers (ks1 at a crawl, 69 units a render, its heading turning 4 a render; ks3 stalled at 0 km/h from the start),
+  and the camera's yaw equalled the heading in every render of both (1 render differs in each). The bench cannot
+  drive a turn at the phone's speed (393 units a render) with this driver; three steered pairs have now said nothing.
+- **The turn's end, from the code and the phone's own numbers instead** (eng_cam_pose, a4_eng.h): every render's
+  chase yaw is the car's heading now plus the game's offset (its yaw less the heading at the whole step), blended
+  from the step before's to this step's -- and eng_cam_unblend gives the game's camera its own pose back before each
+  whole step, so its dynamics are its own. The game's offset is what a step's first render shows (the blend's start),
+  so the phone's ring gives the game's own camera step by step. LA's end at cnt 849 (steering released, the heading
+  stopped at 264 by cnt 853): the game's offsets 12, 17, 19, 28, 9, 9 at the steps from cnt 838; its yaw (heading +
+  offset) 323, 289, 292, 273, 273 -- itself turning back 3 at the stop; **its car-less-camera angle -17, -19, -28, -9:
+  the same swing out to -28 and back that the 3x renders show (-16, -19, -24, -27, -28, -26, -20, -9), there as
+  single-frame jumps at 11.7 Hz.** So the swing is the game's camera (its velocity-following yaw outrunning the
+  heading's stop, then a 19-unit step back), not a 3x fault; the 3x blend shows the same values a step late, spread
+  over the substeps, and its world yaw reverses (283 -> 292) where the game's turns back 3, because its yaw leads
+  the game's in the turn by the heading's progress within the step. Guess, named: that the owner's "snap-back" is
+  this swing; a stock-step build's ring on the phone would show the game's own at 11.7 Hz. No camera change in r77.
