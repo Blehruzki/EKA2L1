@@ -11538,3 +11538,11 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   ae84c26a0e4ebdb7c324f709b75acb7a7c213c657bdd3efa2304236e37c879c2, 941,372 bytes; shipchk clean; the stock-step
   build unchanged in size (831,920). The A/B (b74a r74, b75a r75 -- the exact binaries, '5' held, Paris, owner's
   save, N95 model, 480 s, telemetry kept) running; tv5 / tv6 (the takedown probe on the pair version) after.
+- The A/B on the exact binaries (tools telsum.py: a4tel's 23-render windows, the last 8 of the session; '5' held,
+  Paris, owner's save, N95 model, 480 s; the host behind the model 0.1-0.2%):
+  | build | framestat | ms a render | 3D | hook | comp | read | 2D | pres | errc |
+  | r74 ef2a44ee (b74a) | 3,406 | 51.4 (42-64) | 26.8 | 24.4 | 7.6 | 5.9 | 3.0 | 2.8 | 0 |
+  | r75 ae84c26a (b75a) | 3,133 | 51.3 (50-54) | 26.9 | 24.5 | 8.2 | 6.6 | 2.2 | 3.0 | 0 |
+  Faults 1 each (the boot one). Not comparable with r74's battery's 37.3 ms: that was the bench's LA save (lost with
+  the scratchpad), this is Paris on the owner's save, a heavier route (GPU objects 78% there against LA's 94%).
+  tv5 / tv6 (the takedown probe on the pair version) running.
