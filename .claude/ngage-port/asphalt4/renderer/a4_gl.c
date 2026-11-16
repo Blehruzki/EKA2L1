@@ -8766,7 +8766,8 @@ void a4_comp_row_pld(uint32_t *d32, const uint32_t *src, const uint32_t *end);
  * below: undrawn (to 255) | (above << 8) | list faces recorded << 16 | GPU items << 24; then up to 6 list faces whose
  * screen box starts or ends within a row of it and meets the run (6 words each: their three corners as the list
  * holds them, camera space, int16 -- x0 | y0 << 16, z0 | x1 << 16, y1 | z1 << 16, x2 | y2 << 16, z2 | bucket << 16 --
- * and box top | box bottom << 12 | key << 24); then up to 3 GPU items whose box edge is there (box x0 | y0 << 16,
+ * and box top | box bottom << 12 | key << 24; the six whose box spans the row, nearest box edge first); then up to 3
+ * GPU items whose box spans it (box x0 | y0 << 16,
  * x1 | y1 << 16); [46] the focal F, [47] the projection's centre (pcx | pcy << 16). Undrawn: no opaque GPU class
  * drew the pixel (alpha's top bit), so the software layer under the composite shows -- the grey. */
 #define A4_GL_LINREC 0x005BA000u
@@ -8786,25 +8787,36 @@ static void line_rec(volatile struct glr *s, int y, const uint8_t *lc_u, uint32_
         const uint8_t *K = MESH_K;
         const int32_t gy = VP_H - 1 - y;   /* the list's boxes are in the game's rows: top-down, as the screen's */
         (void)gy;
-        for (uint32_t i = 0; i < MESH->n && nf < 6u; i++) {
+        /* (m77a: a 72 px line had no face whose box edge was within a row of it -- the boxes are padded, a seam
+         * lies inside both faces' boxes) the six faces whose box spans the row over the run, the nearest box edge
+         * first */
+        uint32_t pick[6]; int32_t pd[6];
+        for (uint32_t i = 0; i < MESH->n; i++) {
             const int16_t *b = B + i * 4u;
             if (K[i] == 0xFFu || b[0] > b[2]) continue;
-            if (!((b[1] >= y - 1 && b[1] <= y + 1) || (b[3] >= y - 1 && b[3] <= y + 1))) continue;
+            if (b[1] > y + 1 || b[3] < y - 1) continue;
             if (b[2] < (int32_t)(xr & 0xFFFFu) || b[0] > (int32_t)(xr >> 16)) continue;   /* not over the run */
-            const int16_t *v = V + i * 18u;
-            volatile uint32_t *f = e + 4u + nf * 6u;
+            const int32_t d1 = b[1] - y < 0 ? y - b[1] : b[1] - y, d3 = b[3] - y < 0 ? y - b[3] : b[3] - y;
+            const int32_t dd = d1 < d3 ? d1 : d3;
+            uint32_t j = nf < 6u ? nf++ : 6u;
+            if (j == 6u) { j = 0; for (uint32_t q = 1; q < 6u; q++) if (pd[q] > pd[j]) j = q; if (dd >= pd[j]) continue; }
+            pick[j] = i; pd[j] = dd;
+        }
+        for (uint32_t q = 0; q < nf; q++) {
+            const uint32_t i = pick[q];
+            const int16_t *b = B + i * 4u, *v = V + i * 18u;
+            volatile uint32_t *f = e + 4u + q * 6u;
             f[0] = (uint16_t)v[0] | (uint32_t)(uint16_t)v[1] << 16; f[1] = (uint16_t)v[2] | (uint32_t)(uint16_t)v[6] << 16;
             f[2] = (uint16_t)v[7] | (uint32_t)(uint16_t)v[8] << 16; f[3] = (uint16_t)v[12] | (uint32_t)(uint16_t)v[13] << 16;
             f[4] = (uint16_t)v[14] | (uint32_t)Q[i] << 16;
             f[5] = ((uint32_t)b[1] & 0xFFFu) | ((uint32_t)b[3] & 0xFFFu) << 12 | (uint32_t)K[i] << 24;
-            nf++;
         }
     }
     {   const volatile struct gstate *g = GOBJ;
         if (g->magic == GOBJ_MAGIC && g->frame == s->frames)
             for (uint32_t i = 0; i < g->n && i < GOBJ_NI && ng < 3u; i++) {
                 const volatile int16_t *b = g->it[i].box;
-                if (!((b[1] >= y - 1 && b[1] <= y + 1) || (b[3] >= y - 1 && b[3] <= y + 1))) continue;
+                if (b[1] > y + 1 || b[3] < y - 1) continue;              /* its box spans the row */
                 if (b[2] < (int32_t)(xr & 0xFFFFu) || b[0] > (int32_t)(xr >> 16)) continue;
                 e[40u + 2u * ng] = (uint16_t)b[0] | (uint32_t)(uint16_t)b[1] << 16;
                 e[41u + 2u * ng] = (uint16_t)b[2] | (uint32_t)(uint16_t)b[3] << 16;
@@ -8812,6 +8824,10 @@ static void line_rec(volatile struct glr *s, int y, const uint8_t *lc_u, uint32_
             }
     }
     e[3] |= nf << 16 | ng << 24;
+#ifdef A4_LINEMARK
+    /* bench (round 77): a line asks for a mark, as a press of C would -- its picture at the next present */
+    ((volatile uint32_t *)0x005B0000u)[16] = a4_ntick(); (*(volatile uint32_t *)0x005B0000u)++;
+#endif
     {   const uint32_t *gx = (const uint32_t *)(uintptr_t)MESH->gctx;
         e[46] = MESH->F;
         if (gx) e[47] = ((uint32_t)(*(const int32_t *)gx[0x40110 / 4] >> 1) & 0xFFFFu) | (uint32_t)(*(const int32_t *)gx[0x40114 / 4] >> 1) << 16;

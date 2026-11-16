@@ -11890,3 +11890,19 @@ news 39 ms.
 - tools/turnend.py (new): how a turn ends, from FRC1 (any build) -- per turn end, the heading's last moves and the
   car-less-camera swing after it (most, renders until within 2). The phone's LA ring: 23 turn ends, swing median
   19 (max 83), back within 2 after a median 9 renders. sx1 / sx3 (the steered pair) running.
+- sx1 / sx3 (the steered pair, short taps: right 3 steps, free 14, left 3; framestat 1,324 / 1,328): turnend.py
+  finds the car-less-camera swing 0 at every turn end in both, stock step and 3x (the chase yaw equal to the
+  heading throughout) -- the taps too short to set the car sliding, unlike the phone's turns (swing median 19). Not
+  a verdict; a long-steer pair (on 10 steps, free 30: sl1 stock step, sl3 C77) queued.
+- wm77 (C77 + A4_WRECKPROBE + automark on a takedown, 420 s; framestat 2,939): no takedown in the run, no mark. A
+  seek-driven run (ws77, the autopilot into the nearest car) queued.
+- **m77a (C77, the phone's flags; C at 40 .. 280 s; framestat 2,250): 7 marks, the boot fault only; 41.0 ms a
+  render over the race (1,851 renders), 48.0 ms in the last windows.** The line recorder's first catches on the
+  bench: frame 3333 row 42, 221 px undrawn over x 8..314 -- one list face with a box edge there (bucket 307, key 1,
+  box rows 41..54, corners (-3531 740 -2453) (-3531 632 -2461) (-189 624 -2350)); 3336 rows 40 and 45; 3339 row 40;
+  4122 row 24; 4125 row 21; **4452 row 90, 72 px over x 37..120** -- the phone's line in Paris was row 88, 67 px --
+  with no face or item whose box edge lay within a row of it. F 260, centre 160,120.
+  Two changes from that: the face pick widened to the six faces whose box spans the row (nearest box edge first:
+  the boxes are padded, so a seam lies inside both faces' boxes, not at their edges), and GPU items likewise; and a
+  bench-only A4_LINEMARK that takes a mark at the line's own frame (the screenshot of the line). lm77 (C77 +
+  LINEMARK, 300 s) queued; lt77 (the LINETEST row-120 recorder check) queued.
