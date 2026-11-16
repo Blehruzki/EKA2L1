@@ -7,6 +7,7 @@ def caps(d):
     out = {}
     for f in glob.glob(os.path.join(d, 'a4tel*.dat')):
         b = open(f, 'rb').read()
+        if len(b) < 256: continue                   # a ring slot never written
         ver = struct.unpack_from('<I', b, 4)[0]
         hb = 256 if ver >= 4 else 128
         h = struct.unpack_from('<%dI' % (hb // 4), b, 0)

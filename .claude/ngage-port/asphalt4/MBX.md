@@ -11880,3 +11880,13 @@ news 39 ms.
 - Re-run on the fixed builds: ox77 (oracle, for capcmp against ox76), m77a (C77, C at 40 .. 280 s), sx1 / sx3 (the
   steered pair: stock step 931b807's tree + C74stock, and C77, both AUTOPILOT + AUTOSTEER: right 3 steps, free 14,
   left 3, free 14): running.
+- ox77 (the fixed lifted draw, no share; framestat 2,365): 7 captures (every 97th step; the 8th never reached).
+  capcmp.py against ox76: 1,140 pixels in capture 0 (rows 97-120), whole frames from capture 2 -- **and ox76b, the
+  baseline run again, differs from ox76 the same way** (378 px in capture 0, whole frames from 2): capture 0's
+  differences are the opponents' places (the player's car and the scenery the same), so the race's state parts
+  between identical runs here -- the oracle is not deterministic on this bench as it stands (round 50's ran with
+  the LA bench save, since lost). No verdict on the lift from it. Next: the same with EKA2L1_DETTICK=200 (the tick a
+  fixed step a read, the same reads in both builds) -- baseline twice, then the lift: queued.
+- tools/turnend.py (new): how a turn ends, from FRC1 (any build) -- per turn end, the heading's last moves and the
+  car-less-camera swing after it (most, renders until within 2). The phone's LA ring: 23 turn ends, swing median
+  19 (max 83), back within 2 after a median 9 renders. sx1 / sx3 (the steered pair) running.

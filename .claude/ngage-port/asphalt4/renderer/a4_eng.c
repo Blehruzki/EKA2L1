@@ -123,6 +123,10 @@ void a4_eng_frc3(uint32_t race, volatile uint32_t *e)
         e[14] = (MEM32(oc + 0x44u) & 0xFFFFu) | MEM32(oc + 0x48u) << 16;
         e[15] = (MEM32(oc + 0xB28u) & 0xFFFFu) | MEM32(oc + 0x3Cu) << 16;
         e[35] = oc;                                  /* the car, for a4_h_a434 during the render */
+#if defined(A4_WRECKPROBE) && defined(A4_WRECKFRAC)
+        /* bench (round 77): the time the draw poses this wreck at (eng_wt8 of +048, x 256), in [34]'s high half */
+        e[34] = (e[34] & 0xFFFFu) | (eng_wt8(oc, 0x48u) & 0xFFFFu) << 16;
+#endif
     } else e[9] = 31u;
 }
 /* After the render: the player's step axes (+704 forward, +714 the side's height: +1971E's, two substeps behind the
