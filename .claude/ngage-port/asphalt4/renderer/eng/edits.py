@@ -380,3 +380,30 @@ for f_ in open(__import__('os').path.join(__import__('os').path.dirname(__import
     a_ = int(f_, 16)
     EDITS.setdefault(a_, {'why': 'bench (A4_SPINREC): the wreck heading probe at the entry'})
     EDITS[a_]['before'] = ('ENG_WPROBE(0x%05Xu); ' % a_) + EDITS[a_].get('before', '')
+# Round 77 (A4_WRECKFRAC; phone round 76: the takedowns' "spinning, flipping and rolling over feels choppy"): the wreck
+# drawn at the substep's time. +2292A moves the path's frame +034 and step counter +048 once a step (the GE gates
+# above), by 1 -- 2 at the path's double rate -- and the car draw +D3BA (lifted for this) poses the wreck from them
+# alone, so its pose moved one render in n while its place moved every one. eng_wrate_set records the rate where
+# +2292A adds it; the draw reads the counters as eng_wt8 (x 256, plus the rate x the share of the step run since they
+# moved -- a4_eng.h). With no share (the substep they move on, or A4_WRECKFRAC off) every edit gives the game's
+# numbers exactly.
+B(0x22BB6, 'eng_wrate_set(r4, 1u);', 'A4_WRECKFRAC: the wreck path\'s rate, 1 (the frame and step counter + 1)')
+B(0x22BE0, 'eng_wrate_set(r4, 2u);', 'A4_WRECKFRAC: the path\'s double rate (+ 1 more)')
+# the ease (+DEFE..): +048 x clamp(+044, 25, 75), then x 10 to a 4,096 ramp -- lift, roll (512), spin (1,024)
+R(0xDF18, '{ t = (uint32_t)(((int64_t)(int32_t)r1 * (int32_t)eng_wt8(r4, 0x48u)) >> 8); fN = t >> 31; fZ = t == 0; r2 = t; }',
+  'A4_WRECKFRAC: the wreck\'s ease on +048 at the substep\'s time')
+# its arc: (+048 x c) / 4 - 5 +048^2 / 4 -- the square at the substep's time
+R(0xDF5E, '{ const int64_t w_ = (int32_t)eng_wt8(r4, 0x48u); t = (uint32_t)((w_ * w_) >> 16); fN = t >> 31; fZ = t == 0; r3 = t; }',
+  'A4_WRECKFRAC: the wreck\'s arc on +048 at the substep\'s time')
+# the damage morph: frames by +048 / 4, blended by (+048 mod 4) / 4 (x 4,096)
+B(0xDFEA, '{ const uint32_t w_ = eng_wt8(r4, 0x48u); r0 = w_ >> 10; r7 = (w_ & 1023u) << 2; }',
+  'A4_WRECKFRAC: the wreck\'s damage morph on +048 at the substep\'s time')
+# the turns by the frame: +-42 x +034 (+B28 bit 11; bit 4 the sign), -min(85 x +034, 512) (bit 12, both branches)
+B(0xDD72, '{ const int32_t u_ = (L32(r6 + 0x28u) & 0x10u) ? 42 : -42; r1 = (uint32_t)((u_ * (int32_t)eng_wt8c(r4, (int32_t)S32(0x74u))) >> 8); }',
+  'A4_WRECKFRAC: the wreck\'s turn 42 a frame at the substep\'s time')
+for a in (0xDDE2, 0xDE50):
+    B(a, '{ const uint32_t a_ = (85u * eng_wt8c(r4, (int32_t)S32(0x74u))) >> 8; r1 = a_ > 512u ? 512u : a_; }',
+      'A4_WRECKFRAC: the wreck\'s turn 85 a frame (to 512) at the substep\'s time')
+# the keyframe record (frame +034's, 15 words) blended toward the next
+for a in (0xDDB4, 0xDE1E):
+    B(a, 'r1 = eng_wkey(r4, r1, S32(0x74u), (int32_t)S32(0x70u));', 'A4_WRECKFRAC: the wreck\'s keyframe at the substep\'s time')

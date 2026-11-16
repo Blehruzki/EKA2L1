@@ -330,6 +330,10 @@ uint64_t eng_h_345e4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_
 #define A4_GL_GRD     0x005B9A00u
 #define A4_FREC3_N    256u
 #define A4_FREC3_W    36u
+/* Round 77 (A4_WRECKFRAC): the wrecks whose path rate +2292A gave (8), that rate (1 or 2), and the keyframe record
+ * blended for the draw -- in the mark block's spare words (0x5B0200; the engine's block is full) */
+struct wreckst { uint32_t wrc[8]; uint8_t wrd[8]; int32_t wkey[16]; };
+#define WRK ((volatile struct wreckst *)0x005B0200u)
 #ifdef A4_ENG3
 #define A4_ENG_STATE 0x0045D000u
 _Static_assert(A4_ENG_STATE + sizeof(struct eng) <= 0x00460000u, "the engine state past the scratch block");
@@ -1072,6 +1076,63 @@ static inline int32_t eng_spin(uint32_t car, uint32_t other, int32_t k)
     s += k - q * (n - 1);
     ENG->sps[f] = ENG->wst; ENG->spr[f] = q * (n - 1); ENG->spl[f] = (uint8_t)(n - 1); ENG->spt[f] = ENG->cnt;
     return s;
+}
+/* Round 77 (phone round 76: "whatever violent movement the car as an object does around its own axis feels choppy"):
+ * the wreck's draw at the substep's time. A wreck's path (+2292A) moves its frame +034 and step counter +048 by 1 --
+ * 2 at the path's double rate -- on the step's last substep (edits.py GE at +22BBA..+22BEA), and the car draw +D3BA
+ * poses it from them alone: the keyframe record of frame +034 (+32042 / +31F2E), the turns -42 x +034 and
+ * -min(85 x +034, 512), the ease of +048 x +044 that lifts, rolls (up to 512) and spins (up to 1,024) it, its arc,
+ * and the damage morph every 4 of +048. So the wreck's pose moved one render in n, its position every one (A4_WRECK3).
+ * The draw now reads them at the substep's time: the counter (x 256) plus the rate x the share of the step run since
+ * they moved, ((sub + 1) mod n) / n -- the counters' own next value, reached at the step's end; 0 on the substep
+ * they move, so the game's pose exactly there. eng_wrate: the rate, recorded where +2292A adds it. */
+static inline void eng_wrate_set(uint32_t car, uint32_t d)
+{
+#ifdef A4_WRECKFRAC
+    uint32_t i, f = 8u;
+    for (i = 0; i < 8u; i++) { if (WRK->wrc[i] == car) { WRK->wrd[i] = (uint8_t)d; return; } if (f == 8u && WRK->wrc[i] == 0u) f = i; }
+    if (f == 8u) { f = (car >> 4) & 7u; ENG_EVIC(6); }
+    WRK->wrc[f] = car; WRK->wrd[f] = (uint8_t)d;
+#else
+    (void)car; (void)d;
+#endif
+}
+static inline uint32_t eng_wfrac8(uint32_t car)       /* the share of the step since the counters moved, x 256 x rate */
+{
+#ifdef A4_WRECKFRAC
+    const uint32_t n = ENG->n, k = ENG->magic == ENG_MAGIC && n > 1u && n <= 6u && ENG->sub + 1u < n ? ENG->sub + 1u : 0u;  /* (sub + 1) mod n: no divide here */
+    static const uint16_t q8[7][6] = { {0}, {0}, {0, 128}, {0, 85, 171}, {0, 64, 128, 192}, {0, 51, 102, 154, 205},
+                                       {0, 43, 85, 128, 171, 213} };
+    uint32_t i, d = 1u;
+    if (!k) return 0u;
+    for (i = 0; i < 8u; i++) if (WRK->wrc[i] == car) { d = WRK->wrd[i]; break; }
+    return (uint32_t)q8[n][k] * d;
+#else
+    (void)car; return 0u;
+#endif
+}
+static inline uint32_t eng_wt8(uint32_t car, uint32_t off) { return (MEM32(car + off) << 8) + eng_wfrac8(car); }
+/* the keyframe record +D3BA hands +32042 / +31F2E: frame +034's (rec, clamped to last by the game), blended toward the
+ * next by the substep's share; the record itself when there is no share or no next frame. 15 words a record. */
+static inline uint32_t eng_wkey(uint32_t car, uint32_t rec, uint32_t path, int32_t last)
+{
+    const int32_t f = (int32_t)MEM32(car + 0x34u);
+    uint32_t t8 = ((uint32_t)f << 8) + eng_wfrac8(car), i, w, a, b;
+    if (f < 0 || f >= last || (!(t8 & 0xFFu) && (int32_t)(t8 >> 8) == f)) return rec;
+    if ((int32_t)(t8 >> 8) >= last) t8 = (uint32_t)last << 8;
+    a = path + 4u + 60u * (t8 >> 8); b = (int32_t)(t8 >> 8) + 1 <= last ? a + 60u : a; w = t8 & 0xFFu;
+    for (i = 0; i < 15u; i++) {
+        const int32_t va = (int32_t)MEM32(a + 4u * i), vb = (int32_t)MEM32(b + 4u * i);
+        WRK->wkey[i] = va + (int32_t)(((int64_t)(vb - va) * (int32_t)w) >> 8);
+    }
+    return (uint32_t)(uintptr_t)WRK->wkey;
+}
+/* the turns +D3BA gives by the frame: unit x the frame (unit -42 or +42), -min(85 x frame, 512) -- at the share */
+static inline uint32_t eng_wt8c(uint32_t car, int32_t last)
+{
+    const int32_t f = (int32_t)MEM32(car + 0x34u);
+    uint32_t t8 = ((uint32_t)(f < 0 ? 0 : f) << 8) + (f >= 0 && f < last ? eng_wfrac8(car) : 0u);
+    return (int32_t)(t8 >> 8) > last ? (uint32_t)(last < 0 ? 0 : last) << 8 : t8;
 }
 static inline void eng_spin_apply(uint32_t car)
 {

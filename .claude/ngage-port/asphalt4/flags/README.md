@@ -20,3 +20,8 @@ on the C key, C:\a4markN.dat, and FRC3 beside FRC1; tools/frec3.py reads both). 
 injector.py refuses less). a4_r76_cand.exe, sha256 4601bd18a5321c5a3250894c1ca51d495e251d1650b2a9c78bd49a7543ae4303,
 947,388 bytes. Bench only, never in a phone build: `-DA4_BENCH_AUTOMARK` (a mark asked for 40 renders into a crash /
 takedown or news camera).
+
+C77.flags = C76.flags + `-DA4_WRECKFRAC -DA4_BBMARGIN -DA4_LINEALL -DA4_LINEREC` (round 77), scratch `0x1BA000`. **Round 77
+also lifts the car draw +D3BA (renderer/eng/funcs.txt), and lifted.c is generated with the flag set's hooks** (tools/
+lift.py routes +D3BA's bl +A434 through A4_FRC3's hooks): regenerate it with the build's own flags, and to rebuild an
+earlier candidate byte for byte take that commit's lifted.c too (r75 / r76 from 931b807's tree).

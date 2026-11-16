@@ -30,6 +30,9 @@ if '-DA4_HALFMOTION' in FL:
                   0x14C68: 'a4_h_1fd5c', 0x146FC: 'a4_h_1f1f8', 0x146D6: 'a4_h_1fd0e'})
 if '-DA4_HALFPHYS' in FL: HOOKS.update({0x14EEC: 'a4_h_12dec', 0x1306C: 'a4_h_12dec'})
 if '-DA4_SPECTRAFFIC' in FL: HOOKS[0x14574] = 'a4_h_fb12'
+# round 76 (A4_FRC3): the car draw's bl +A434 (the angles a car is drawn at), recorded -- the injector hooks the game's
+# +DBE0 / +E88C; with +D3BA lifted (round 77) its calls go through the same functions here
+if '-DA4_FRC3' in FL: HOOKS.update({0xDBE0: 'a4_h_a434_dbe0', 0xE88C: 'a4_h_a434_e88c'})
 if '-DA4_SPECCAMSAFE' in FL:
     HOOKS.update({0x556E: 'a4_cs_5205a_tramp', 0x5912: 'a4_cs_5205a_tramp', 0x5578: 'a4_cs_3d2a_tramp', 0x5926: 'a4_cs_3d2a_tramp'})
     for t in (0x3CE8, 0x3CF8, 0x3D08, 0x5662, 0x566E, 0x5682, 0x5696, 0x56A2, 0x56B6, 0x56C2, 0x56CE, 0x5762, 0x576E, 0x5786, 0x579A):

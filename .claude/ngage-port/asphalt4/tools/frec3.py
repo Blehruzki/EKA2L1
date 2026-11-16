@@ -15,6 +15,7 @@
 #   gob [file] a mark's scenery items (box, buckets), sprite list and the list's tiles, drawn over its screenshot
 #          (<file>.gob.png)
 #   list   every word of every render
+#   lines  the grey lines r77 recorded (LIN1): the row, its undrawn run, the faces and items whose box edge is on it
 # A mark covers the 256 renders (~13 s) before the press. Angles are 2,048 a turn.
 import sys, struct, glob, os, math
 HDR, FPS, FB = 256, 560, 320 * 240 * 2
@@ -25,7 +26,7 @@ def offs(d):                                                    # the sprite lis
     o = OFF3 + 16 + n * w * 4
     return o, o + 32 + 16 * 16
 args = sys.argv[1:]
-MODES = ('files', 'rot', 'turn', 'spr', 'obj', 'gob', 'list')
+MODES = ('files', 'rot', 'turn', 'spr', 'obj', 'gob', 'list', 'lines')
 mode = 'files'
 if args and args[-1] in MODES: mode = args.pop()
 elif len(args) >= 2 and args[-2] == 'gob': mode = 'gob'; args = args[:-2] + [args[-1]]
@@ -101,6 +102,35 @@ if mode == 'files':
         ts = sorted(R)
         print('%-40s %-6s %3d  renders %3d  %d..%d ms (%.1f s)' % (os.path.basename(info['fn']), 'MARK' if info['mark'] else 'ring',
               info['idx'], len(ts), ts[0], ts[-1], (ts[-1] - ts[0]) / 1000.0))
+    sys.exit()
+
+if mode == 'lines':
+    # r77's grey-line ring ('LIN1' after the merged tile grid): each hit -- row, undrawn run, the faces and items whose
+    # screen box starts or ends on it (list faces' corners in camera space, as the list holds them)
+    seen = set()
+    for info, d in infos:
+        so, g = offs(d)
+        if len(d) < g + 16: continue
+        size = struct.unpack_from('<I', d, g + 4)[0]
+        lo = g + 16 + size + 16 + 600 + 600
+        if len(d) < lo + 16 or struct.unpack_from('<I', d, lo)[0] != 0x314E494C: print(os.path.basename(info['fn']), 'no LIN1'); continue
+        n = struct.unpack_from('<I', d, lo + 4)[0]
+        for k in range(max(0, n - 8), n):
+            e = struct.unpack_from('<48I', d, lo + 16 + (k % 8) * 192)
+            key = (e[0], e[1], e[2])
+            if key in seen: continue
+            seen.add(key)
+            nf, ng = (e[3] >> 16) & 255, e[3] >> 24
+            print('frame %5d row %3d undrawn %3d x %3d..%3d (rows below/above undrawn %d / %d) faces %d items %d F %d centre %d,%d'
+                  % (e[0] & 0xFFFF, e[0] >> 16, e[1], e[2] & 0xFFFF, e[2] >> 16, e[3] & 255, (e[3] >> 8) & 255, nf, ng, e[46], e[47] & 0xFFFF, e[47] >> 16))
+            for j in range(nf):
+                f = e[4 + 6 * j: 10 + 6 * j]
+                c = [s16(f[0] & 0xFFFF), s16(f[0] >> 16), s16(f[1] & 0xFFFF), s16(f[1] >> 16), s16(f[2] & 0xFFFF), s16(f[2] >> 16),
+                     s16(f[3] & 0xFFFF), s16(f[3] >> 16), s16(f[4] & 0xFFFF)]
+                print('   face bucket %5d key %3d box rows %4d..%4d  corners (%d %d %d) (%d %d %d) (%d %d %d)' % ((f[4] >> 16), f[5] >> 24, s16((f[5] & 0xFFF) << 4) >> 4, s16(((f[5] >> 12) & 0xFFF) << 4) >> 4, *c))
+            for j in range(ng):
+                a, b = e[40 + 2 * j], e[41 + 2 * j]
+                print('   item box %d %d %d %d' % (s16(a & 0xFFFF), s16(a >> 16), s16(b & 0xFFFF), s16(b >> 16)))
     sys.exit()
 
 if mode == 'gob':

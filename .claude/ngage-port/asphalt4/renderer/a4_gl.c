@@ -6285,6 +6285,18 @@ static int32_t gobj_bb_deep(int32_t sb, int32_t x0, int32_t y0, int32_t x1, int3
     return deep;
 }
 #ifdef A4_BBCELL
+/* Round 77 (A4_BBMARGIN; phone round 76: Paris's searchlight cut in blocks under GPU objects' boxes 1-7 buckets nearer
+ * than it, LA's far pickup cut by road faces 1-4 nearer): a covered cell is depth-tested at its cover's depth, so
+ * EVERYTHING the GPU drew nearer than that hides the sprite there -- the road under it too, which the game paints
+ * BEFORE the sprite (its deepest point is farther) and so under it. A cover within BBC_MARGIN buckets of the sprite
+ * (the game's own nudge for the light is 4: flag 0x2000's 0x20 ZW) is the sprite's own depth, not in front of it: it
+ * no longer covers; and a scenery object straddling the sprite's depth (its box, not its faces, is all we have) no
+ * longer covers either -- only one wholly nearer by the margin. Cars keep the middle rule, by the margin. */
+#ifdef A4_BBMARGIN
+#define BBC_MARGIN 4
+#else
+#define BBC_MARGIN 0
+#endif
 /* gobj_bb_deep per cell (A4_BBCELL): each GPU object's and car's depth (the same rules) on the cells its box meets */
 #define BBC_LL 2u
 static void gobj_bb_cells(int32_t sb, const int32_t *ex, const int32_t *ey, int32_t *cd)
@@ -6302,7 +6314,10 @@ static void gobj_bb_cells(int32_t sb, const int32_t *ex, const int32_t *ey, int3
         if ((d_) > cd[c_]) cd[c_] = (d_); } } while (0)
     for (uint32_t i = 0; i < g->n; i++) {
         const volatile struct gitem *it = &g->it[i];
-        if ((int32_t)it->qn >= sb) continue;
+        if ((int32_t)it->qn >= sb - BBC_MARGIN) continue;
+#ifdef A4_BBMARGIN
+        if ((int32_t)it->qf >= sb - BBC_MARGIN) continue;          /* round 77: straddling (or within the margin): not a cover */
+#endif
         if (it->box[2] < ex[0] || it->box[0] >= ex[N] || it->box[3] < ey[0] || it->box[1] >= ey[N]) continue;
         const int32_t d = it->qf < sb ? (int32_t)it->qf : sb - 1;
         BBC_APPLY(it->box, d);
@@ -6322,6 +6337,7 @@ static void gobj_bb_cells(int32_t sb, const int32_t *ex, const int32_t *ey, int3
                           : ((int32_t)it->qn + (int32_t)it->qf) / 2 < sb - 1 ? ((int32_t)it->qn + (int32_t)it->qf) / 2
 #endif
                           : sb - 1;
+                if (d >= sb - BBC_MARGIN) continue;                     /* round 77: within the margin, the sprite's own depth */
                 BBC_APPLY(it->box, d);
             }
     }
@@ -6396,6 +6412,10 @@ void a4_frc3_post(volatile uint32_t *e3)
 /* the mark's (a4_tel.c): the scenery objects' state as the last render left it -- the counters, the frame's camera,
  * each taken item's mesh, offset, screen box and depth buckets */
 uint32_t a4_frc3_gobj(const void **p) { *p = (const void *)GOBJ; return (uint32_t)sizeof(struct gstate); }
+/* the car draws' bl +A434 (injector.py at +DBE0 / +E88C; tools/lift.py in the lifted +D3BA): a4_eng.c records it */
+extern uint32_t a4_h_a434_at(uint32_t car, int32_t *a, int32_t *b, int32_t *c, int32_t *o, uint32_t site);
+uint32_t a4_h_a434_dbe0(uint32_t car, int32_t *a, int32_t *b, int32_t *c, int32_t *o) { return a4_h_a434_at(car, a, b, c, o, 0u); }
+uint32_t a4_h_a434_e88c(uint32_t car, int32_t *a, int32_t *b, int32_t *c, int32_t *o) { return a4_h_a434_at(car, a, b, c, o, 1u); }
 /* and the merged tile grid (the list's faces and the GPU's objects, mesh_draw / gobj_grid) as the last frame left it */
 uint32_t a4_frc3_grid(const void **p) { *p = (const void *)MESH->grid; return 2u * MESH_GW * MESH_GH; }
 #endif
@@ -7982,7 +8002,7 @@ static int mesh_bb_cells(const int32_t *b1, const int32_t *ex, const int32_t *ey
             int32_t ty0 = cy0 < 0 ? 0 : cy0 >> 4, ty1 = cy1 > VP_H ? MESH_GH - 1 : (cy1 - 1) >> 4;
             for (int32_t ty = ty0; ty <= ty1 && !(open & (1u << c)); ty++)
                 for (int32_t tx = tx0; tx <= tx1; tx++)
-                    if ((int32_t)g[ty * MESH_GW + tx] < sb) { open |= 1u << c; break; }
+                    if ((int32_t)g[ty * MESH_GW + tx] < sb - BBC_MARGIN) { open |= 1u << c; break; }
         }
     }
     if (open) {
@@ -7995,7 +8015,7 @@ static int mesh_bb_cells(const int32_t *b1, const int32_t *ex, const int32_t *ey
         uint32_t n = MESH->n, lo = 0, hi = n;
         while (lo < hi) {                           /* the first face of a bucket below sb */
             uint32_t mid = (lo + hi) >> 1;
-            if ((int32_t)Q[ord[mid]] >= sb) lo = mid + 1; else hi = mid;
+            if ((int32_t)Q[ord[mid]] >= sb - BBC_MARGIN) lo = mid + 1; else hi = mid;   /* round 77: nearer by the margin */
         }
         for (uint32_t t = lo; t < n && open; t++) {   /* deep to near: a cell's first cover is its deepest */
             uint32_t i = ord[t];
@@ -8736,6 +8756,69 @@ static void batch_draw(uint32_t nt)
  * Read in the implementation's own pair when AB_NATIVE says so (BGRA on the N95). */
 void a4_comp_row(uint32_t *d32, const uint32_t *src, const uint32_t *end);   /* a4_px.s */
 void a4_comp_row_pld(uint32_t *d32, const uint32_t *src, const uint32_t *end);
+#ifdef A4_LINEREC
+#if !(defined(A4_FRAMEREC) && defined(A4_ENG3) && defined(A4_MESH) && defined(A4_GPUOBJ))
+#error "A4_LINEREC records the line counter's hits (A4_FRAMEREC with A4_ENG3) with the list's faces and the GPU objects"
+#endif
+/* Round 77 (phone round 76: the grey lines are back; Paris counted one -- row 88, 67 px undrawn): each line the
+ * counter finds, with what borders it. A ring of 8 at 0x5BA000 ('LIN1', the hits, 0, 0), 48 words each: [0] the frame |
+ * the row << 16, [1] its undrawn pixels, [2] the first and last undrawn x (x0 | x1 << 16), [3] the rows above and
+ * below: undrawn (to 255) | (above << 8) | list faces recorded << 16 | GPU items << 24; then up to 6 list faces whose
+ * screen box starts or ends within a row of it and meets the run (6 words each: their three corners as the list
+ * holds them, camera space, int16 -- x0 | y0 << 16, z0 | x1 << 16, y1 | z1 << 16, x2 | y2 << 16, z2 | bucket << 16 --
+ * and box top | box bottom << 12 | key << 24); then up to 3 GPU items whose box edge is there (box x0 | y0 << 16,
+ * x1 | y1 << 16); [46] the focal F, [47] the projection's centre (pcx | pcy << 16). Undrawn: no opaque GPU class
+ * drew the pixel (alpha's top bit), so the software layer under the composite shows -- the grey. */
+#define A4_GL_LINREC 0x005BA000u
+static void line_rec(volatile struct glr *s, int y, const uint8_t *lc_u, uint32_t xr)
+{
+    volatile uint32_t *R = (volatile uint32_t *)A4_GL_LINREC;
+    if (R[0] != 0x314E494Cu) { R[0] = 0x314E494Cu; R[1] = 0; R[2] = 0; R[3] = 0; }   /* 'LIN1' */
+    volatile uint32_t *e = R + 4u + (R[1] & 7u) * 48u;
+    uint32_t k, nf = 0, ng = 0;
+    for (k = 0; k < 48u; k++) e[k] = 0u;
+    e[0] = (s->frames & 0xFFFFu) | (uint32_t)y << 16; e[1] = lc_u[y];
+    e[3] = (uint32_t)lc_u[y + 1] | (uint32_t)lc_u[y - 1] << 8;
+    e[2] = xr;                                       /* the run: the row's first and last undrawn x */
+    if (MESH->frame == s->frames) {
+        const int16_t *B = MESH_B, *V = MESH_V;
+        const uint16_t *Q = MESH_Q;
+        const uint8_t *K = MESH_K;
+        const int32_t gy = VP_H - 1 - y;   /* the list's boxes are in the game's rows: top-down, as the screen's */
+        (void)gy;
+        for (uint32_t i = 0; i < MESH->n && nf < 6u; i++) {
+            const int16_t *b = B + i * 4u;
+            if (K[i] == 0xFFu || b[0] > b[2]) continue;
+            if (!((b[1] >= y - 1 && b[1] <= y + 1) || (b[3] >= y - 1 && b[3] <= y + 1))) continue;
+            if (b[2] < (int32_t)(xr & 0xFFFFu) || b[0] > (int32_t)(xr >> 16)) continue;   /* not over the run */
+            const int16_t *v = V + i * 18u;
+            volatile uint32_t *f = e + 4u + nf * 6u;
+            f[0] = (uint16_t)v[0] | (uint32_t)(uint16_t)v[1] << 16; f[1] = (uint16_t)v[2] | (uint32_t)(uint16_t)v[6] << 16;
+            f[2] = (uint16_t)v[7] | (uint32_t)(uint16_t)v[8] << 16; f[3] = (uint16_t)v[12] | (uint32_t)(uint16_t)v[13] << 16;
+            f[4] = (uint16_t)v[14] | (uint32_t)Q[i] << 16;
+            f[5] = ((uint32_t)b[1] & 0xFFFu) | ((uint32_t)b[3] & 0xFFFu) << 12 | (uint32_t)K[i] << 24;
+            nf++;
+        }
+    }
+    {   const volatile struct gstate *g = GOBJ;
+        if (g->magic == GOBJ_MAGIC && g->frame == s->frames)
+            for (uint32_t i = 0; i < g->n && i < GOBJ_NI && ng < 3u; i++) {
+                const volatile int16_t *b = g->it[i].box;
+                if (!((b[1] >= y - 1 && b[1] <= y + 1) || (b[3] >= y - 1 && b[3] <= y + 1))) continue;
+                if (b[2] < (int32_t)(xr & 0xFFFFu) || b[0] > (int32_t)(xr >> 16)) continue;
+                e[40u + 2u * ng] = (uint16_t)b[0] | (uint32_t)(uint16_t)b[1] << 16;
+                e[41u + 2u * ng] = (uint16_t)b[2] | (uint32_t)(uint16_t)b[3] << 16;
+                ng++;
+            }
+    }
+    e[3] |= nf << 16 | ng << 24;
+    {   const uint32_t *gx = (const uint32_t *)(uintptr_t)MESH->gctx;
+        e[46] = MESH->F;
+        if (gx) e[47] = ((uint32_t)(*(const int32_t *)gx[0x40110 / 4] >> 1) & 0xFFFFu) | (uint32_t)(*(const int32_t *)gx[0x40114 / 4] >> 1) << 16;
+    }
+    R[1]++;
+}
+#endif
 static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 {
 #ifdef A4_DUALCAP
@@ -8783,7 +8866,14 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
      * or more where the rows two above and below have under 16 is a line: the frame record's header [2] counts them,
      * [3] holds the last -- its row | undrawn pixels (8 bits) << 8 | the frame's number (16 bits) << 16. */
     uint8_t lc_u[VP_H];
+#ifdef A4_LINEREC
+    uint32_t lc_x[VP_H];                            /* round 77: each row's first and last undrawn x (x0 | x1 << 16) */
+#endif
+#ifdef A4_LINEALL
+    const int lc_on = bgra && amask && PX6_ON(s->fmode);   /* round 77: every composite (phone round 76: a line lives a frame or two) */
+#else
     const int lc_on = (s->frames & 15u) == 0u && bgra && amask && PX6_ON(s->fmode);
+#endif
     if (lc_on) for (int y = 0; y < VP_H; y++) lc_u[y] = 0;
 #endif
     for (int y0 = ystart; y0 <= gl_hi; y0 += sh) {
@@ -8884,7 +8974,13 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 #endif
                 if (lc_on) {   /* round 72: this row's pixels no opaque GPU class drew (alpha's top bit clear) */
                     uint32_t u = 0;
+#ifdef A4_LINEREC
+                    uint32_t x0_ = 0, x1_ = 0;
+                    for (int x = 0; x < VP_W; x++) if ((int32_t)src[x] >= 0) { if (!u) x0_ = (uint32_t)x; x1_ = (uint32_t)x; u++; }
+                    lc_x[screen_y] = x0_ | x1_ << 16;
+#else
                     for (int x = 0; x < VP_W; x++) u += (int32_t)src[x] >= 0;
+#endif
                     lc_u[screen_y] = (uint8_t)(u > 255u ? 255u : u);
                 }
 #endif
@@ -8995,6 +9091,9 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
             if (lc_u[y] >= 64u && lc_u[y - 2] < 16u && lc_u[y + 2] < 16u && F[0] == 0x31435246u) {
                 F[2]++;
                 F[3] = (uint32_t)y | (uint32_t)lc_u[y] << 8 | (s->frames & 0xFFFFu) << 16;
+#ifdef A4_LINEREC
+                line_rec(s, y, lc_u, lc_x[y]);
+#endif
             }
     }
 #endif

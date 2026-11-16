@@ -124,6 +124,10 @@ assert not ('-DA4_MESHMEMO' in _xf and '-DA4_HALFSPEC' in _xf) or GL_SCRATCH + G
 # round 54, bench: A4_SKYCEN's bitmap of the frame's skippable blended boxes, 0x460000-0x462580 (a4_gl.c SKYBM)
 assert not ('-DA4_FRC3' in _xf or '-DA4_TELMARK' in _xf) or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5BA000, \
     'A4_FRC3 / A4_TELMARK: the mark state, FRC3, the sprite list and the list tiles at 0x5B0000-0x5B9C68 -- A4_SCRATCH_SIZE must be 0x1B9000 or more'
+assert '-DA4_LINEREC' not in _xf or ('-DA4_FRC3' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5BB000), \
+    'A4_LINEREC: written with FRC3\'s blocks, its ring at 0x5BA000 -- A4_SCRATCH_SIZE must be 0x1BA000 or more'
+assert '-DA4_WRECKFRAC' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5B0300, \
+    'A4_WRECKFRAC: the wreck state at 0x5B0200 -- A4_SCRATCH_SIZE must reach 0x5B0300 (C77 uses 0x1B9000)'
 assert '-DA4_SKYCEN' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x463000, \
     'A4_SKYCEN: A4_SCRATCH_SIZE must reach 0x463000 (0x62000 or more)'
 assert '-DA4_SKYCHECK' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x461000, \

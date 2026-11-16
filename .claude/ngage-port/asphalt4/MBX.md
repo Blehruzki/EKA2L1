@@ -11832,3 +11832,38 @@ news 39 ms.
   grid can make one pixel row tall. To settle it: the counter on every composite (~0.7 ms of the N95 a frame, by its
   loop) and, when it fires, the row's undrawn x-range and the faces whose screen boxes end on that row (list or GPU
   object, and their projected corners) -- for the next build.
+
+## Round 77 (owner: "go ahead"): the wreck drawn at the substep's time, the sprite margin, the grey-line recorder
+
+- **The wreck's pose, read in the code (the car draw +D3BA, 6.5 KB):** a wreck (+034 not -1) is posed from its path
+  object (+39FE(+03C): a frame count, 60-byte keyframe records) and its counters alone: the keyframe record of frame
+  min(+034, len - 1) applied by +32042 / +31F2E (by the byte +038); with +B28 bit 11 a turn +-42 x frame (+32302), bit
+  12 -min(85 x frame, 512) (+32342); then (+DEFE..+E1E6) an ease of +048 x clamp(+044, 25, 75) x 10 / 4,096 (ease-out)
+  that moves it along a vector (the car's vtable +0x18), lifts it on an arc ((+048 c) / 4 - 5 +048^2 / 4), rolls it
+  +-512 x ease (a quarter turn: "on its side") and spins it 1,024 x ease (byte +038) or a literal, and a damage morph
+  every 4 of +048 (+32690, blended by +048 mod 4). +2292A moves +034 / +048 by 1 (2 at the double rate) on the step's
+  last substep. The phone's victims (+B28 0x0240 / 0x0040, bits 11-12 clear): the keyframe, the ease's roll and
+  spin, the arc -- the ease 0.33, 0.6, 0.8, 0.93 at frames 1-4: the car rolls ~30, 24, 18 degrees in single renders,
+  each held n renders. The flip's choppiness, by the code.
+- The fix (A4_WRECKFRAC): +D3BA lifted (tools/lift.py; 3,015 instructions; its stack words to [sp+0x320], within the
+  eight passed); edits read +048 / +034 at the substep's time -- the counter x 256 plus the rate x ((sub + 1) mod n)
+  / n, the counters' own next value reached at the step's end (eng_wt8, a4_eng.h) -- in the ease (+DF18), the arc's
+  square (+DF5E), the morph (+DFEA), the turns (+DD72, +DDE2, +DE50) and the keyframe (+DDB4, +DE1E: frame and next
+  blended word by word, eng_wkey); the rate recorded where +2292A adds it (+22BB6, +22BE0). No share (the substep
+  the counters move on, or the flag off): the game's numbers exactly. The wreck state at 0x5B0200 (the engine's block
+  is full).
+- The exactness check, lockstep (capcmp.py's rule: a lifted function must give the same pictures): ox76 (931b807's
+  tree, C76 + LOCKSTEP 1 / P 7111, BENCH_SEED, AUTOPILOT(_UNSTICK), CARREC, TELSTEP, captures every 97th step, not
+  cycling) against ox77 (this tree, the same flags: the lifted draw, no share): running (the first attempt died
+  with Xvfb, restarted).
+- **Sprites (A4_BBMARGIN):** a covered cell is depth-tested at its cover's depth, so everything the GPU drew nearer
+  hides the sprite there -- the road under it too, which the game paints before the sprite. A cover within 4 buckets
+  (the game's own nudge for the light) no longer covers; a scenery object straddling the sprite's depth (only its
+  box is known) no longer covers -- one wholly nearer by the margin does; cars keep the middle rule, by the margin.
+- **Grey lines (A4_LINEALL, A4_LINEREC):** the counter on every composite; each hit into a ring of 8 ('LIN1',
+  0x5BA000, written with every capture and mark): the frame, the row, its undrawn run (first / last x, counted in
+  the same pass), the rows beside it, up to 6 list faces whose box starts or ends within a row of it over the run
+  (their corners in camera space as the list holds them, bucket, key) and 3 GPU items likewise, the focal and the
+  projection's centre -- enough to project the seam's corners as the GPU did and see whether they part. frec3.py
+  lines. Scratch 0x1BA000.
+- C77 = C76 + the four; a4_r77b.exe built (968,424 bytes). Not yet run.

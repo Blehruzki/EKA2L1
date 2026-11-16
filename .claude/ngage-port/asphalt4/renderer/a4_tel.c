@@ -494,6 +494,11 @@ void a4_tel_tick(uint32_t had)
             efs_writep(f, o3 + n3 + 32 + 16 * 16 + 16 + (int)gn, &rl);
             struct des rm = { DES(mn), mp };
             efs_writep(f, o3 + n3 + 32 + 16 * 16 + 16 + (int)gn + 16 + (int)mn, &rm);
+#ifdef A4_LINEREC
+            /* round 77: the grey lines' ring (a4_gl.c A4_GL_LINREC, 'LIN1', 16 + 8 x 48 words), after the merged grid */
+            struct des rl2 = { DES(16u + 8u * 48u * 4u), (const void *)0x005BA000u };
+            efs_writep(f, o3 + n3 + 32 + 16 * 16 + 16 + (int)gn + 16 + 2 * (int)mn, &rl2);
+#endif
         }
 #endif
 #if defined(A4_KINEDRAW) && !defined(A4_INTERP)

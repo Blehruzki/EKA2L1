@@ -171,8 +171,8 @@ uint32_t a4_h_a434_at(uint32_t car, int32_t *a, int32_t *b, int32_t *c, int32_t 
     e[31] = n;
     return r;
 }
-uint32_t a4_h_a434_dbe0(uint32_t car, int32_t *a, int32_t *b, int32_t *c, int32_t *o) { return a4_h_a434_at(car, a, b, c, o, 0u); }
-uint32_t a4_h_a434_e88c(uint32_t car, int32_t *a, int32_t *b, int32_t *c, int32_t *o) { return a4_h_a434_at(car, a, b, c, o, 1u); }
+/* the hooks themselves, a4_h_a434_dbe0 / _e88c, are in a4_gl.c: the lifted car draw (+D3BA, round 77, included here)
+ * declares its hooks as void (void) */
 #endif
 #if defined(A4_TELMARK) && defined(A4_ENG3)
 /* Phone round 76: the owner's mark. The game's key-down (+1EE0) translates the runtime's key (+1D80: a bit of its key
