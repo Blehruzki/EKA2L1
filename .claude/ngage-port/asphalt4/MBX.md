@@ -12070,3 +12070,6 @@ c. States the bench did not enter: the slow motion's sixths under the wreck shar
    bits 11 / 12 (the turn edits run only there: read back, never run); a real seam under the stream record; Paris's
    light under GPU covers 5-9 nearer; the far-building stretch (LA, segments 9-17); a mark file 2,112 bytes longer
    (LIN1's 114 words) on the phone's C: -- the same writer, a longer block.
+- Sent (owner: "send ir"): a4_r77_cand.exe, unbaked, sha256 4322b80f1592032394fa3df963fe075daa6885b17bc8a70a489e72942c85f583,
+  969,132 bytes; the owner bakes it. Asked: does the stock game swing the car the same way after a turn? Marks (C)
+  wanted after a takedown, a snap-back, a cut light or pickup, the far buildings going; grey lines record themselves.
