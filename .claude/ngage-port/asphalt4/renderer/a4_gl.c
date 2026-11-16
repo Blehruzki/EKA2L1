@@ -3746,7 +3746,10 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
                 const uint32_t cmo = *(volatile uint32_t *)(race + 0x94u) & 0xFFu;
                 if ((L[6] & 0xFFu) != cmo) L[6] = cmo;
                 else if (cmo == 0x18u || cmo == 0x2Au) {
-                    if ((L[6] >> 8) == 40u) (*(volatile uint32_t *)A4_MARK_STATE)++;
+                    if ((L[6] >> 8) == 40u) {
+                        ((volatile uint32_t *)A4_MARK_STATE)[16] = a4_ntick();   /* as a4_key_down stamps a press */
+                        (*(volatile uint32_t *)A4_MARK_STATE)++;
+                    }
                     L[6] += 256u;
                 }
             }

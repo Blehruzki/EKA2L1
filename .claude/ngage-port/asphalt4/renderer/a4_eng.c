@@ -178,9 +178,13 @@ uint32_t a4_h_a434_e88c(uint32_t car, int32_t *a, int32_t *b, int32_t *c, int32_
 /* Phone round 76: the owner's mark. The game's key-down (+1EE0) translates the runtime's key (+1D80: a bit of its key
  * word) to its own code; C, the clear key (0x4000, ck1 on the bench), has none and is dropped there, so the game never
  * sees it. Hooked at +1EE0's bl +1D80 (tools/injector.py): a press of C asks a4_tel.c for a mark capture. */
+extern uint32_t a4_ntick(void);                      /* a4_gl.s: User::NTickCount */
 uint32_t a4_key_down(uint32_t kobj, uint32_t key)
 {
-    if (key == 0x4000u) (*(volatile uint32_t *)A4_MARK_STATE)++;
+    if (key == 0x4000u) {                            /* a press of C, and when (a4_tel.c drops one a second old) */
+        ((volatile uint32_t *)A4_MARK_STATE)[16] = a4_ntick();
+        (*(volatile uint32_t *)A4_MARK_STATE)++;
+    }
     return ((uint32_t (*)(uint32_t, uint32_t))GAMEFN(0x1D80u))(kobj, key);
 }
 #endif

@@ -11717,3 +11717,13 @@ No game change against r75; the build adds what the four open issues need record
   +3A15C 10b5 0400, no 0xDEADBEEF); hooks: +1EEC (C), +DBE0 / +E88C (+A434). C75 still rebuilds r75 byte for
   byte. Battery on this binary (r76bat: m76e -- C during the race's load, then at 30, 31, 70, 110, 150 s; b76a --
   b75a's run, 480 s, for the cost): running.
+- m76e (the candidate b6933f38, C during the race's load and at 30, 31, 70, 110, 150 s, 160 s; framestat 1,492):
+  **5 marks for 4 race presses -- the press during the load was not dropped**: it waited (the load makes no
+  present, so "a second without a 3D present" was never tested) and became mark 0 at the race's first frame (33
+  renders). The other car now filled (wrecks and nearest cars; +A434 ran for it in 549 of 1,002 renders -- not drawn
+  in the rest). Fixed: a4_key_down stamps the press (mark state word 16; the RFile objects moved to +0x80) and a
+  request more than a second old when served is dropped; AUTOMARK stamps too.
+- Candidate r76 rebuilt: a4_r76_cand.exe, sha256 4601bd18a5321c5a3250894c1ca51d495e251d1650b2a9c78bd49a7543ae4303,
+  947,388 bytes; shipchk clean. m76f (this binary, the same presses; framestat 1,372): **4 marks** -- the load's
+  press dropped, 31 s dropped (2 s after a mark), 30 / 70 / 110 / 150 written (256 renders each); the ring's 8
+  files as before; the one boot-time access violation every run has. b76a (this binary, b75a's run, 480 s): running.

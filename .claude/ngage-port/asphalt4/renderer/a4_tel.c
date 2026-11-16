@@ -160,26 +160,25 @@ void a4_tel_tick(uint32_t had)
     /* Round 76: the owner's mark. A press of C (a4_eng.c a4_key_down counts it in A4_MARK_STATE[0]) takes a capture
      * now, at the next present that carried a 3D render, into a file of its own, C:\a4markN.dat -- N the marks
      * written so far, so none is written over in the session; the ninth press, a press within 2 s of the last mark
-     * (a held key's repeats) and a press while no race has been drawn for a second (a menu) are dropped. The ring's
-     * cadence is left alone. */
+     * (a held key's repeats) and a press still waiting a second after it was made (in a menu or a load: the race
+     * drew nothing to take; m76e's press during the load became the race's first mark when it was dropped only at a
+     * present) are dropped. The ring's cadence is left alone. */
     volatile uint32_t *MK = (volatile uint32_t *)A4_MARK_STATE;
     void *mf = 0;
     if (MK[0] != MK[1]) {
         const uint32_t now = a4_ntick();
-        if (MK[2] >= TEL_MARKS || (MK[2] && now - MK[3] < 2000u)) MK[1] = MK[0];
+        if (MK[2] >= TEL_MARKS || (MK[2] && now - MK[3] < 2000u) || now - MK[16] > 1000u) MK[1] = MK[0];
         else if (had >= 100u) {
             uint16_t fn[16];
             const char *c = "C:\\a4mark0.dat";
             int n = 0; while (c[n]) { fn[n] = (uint16_t)(uint8_t)c[n]; n++; }
             fn[9] = (uint16_t)('0' + MK[2]);          /* the mark's digit (the '0' in a4mark0) */
             struct des nd = { DES(n), fn };
-            mf = (void *)(uintptr_t)(A4_MARK_STATE + 0x40u + 32u * MK[2]);
+            mf = (void *)(uintptr_t)(A4_MARK_STATE + 0x80u + 32u * MK[2]);
             t->dbg_rrc = efs_replace(mf, t->rfs, &nd, EFILE_WRITE);
             if (t->dbg_rrc != 0) MK[1] = MK[0]; else mark = 1;
         }
-        else if (now - MK[15] > 1000u) MK[1] = MK[0];   /* no race drawn for a second: a press in a menu, dropped */
     }
-    if (had >= 100u) MK[15] = a4_ntick();             /* the last present that carried a 3D render */
 #endif
     if (!mark) {
 #ifndef TEL_CYCLE
