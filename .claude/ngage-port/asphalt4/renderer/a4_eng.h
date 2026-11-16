@@ -332,8 +332,9 @@ uint64_t eng_h_345e4(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_
 #define A4_FREC3_W    36u
 /* Round 77 (A4_WRECKFRAC): the wrecks whose path rate +2292A gave (8), that rate (1 or 2), and the keyframe record
  * blended for the draw -- in the mark block's spare words (0x5B0200; the engine's block is full) */
-struct wreckst { uint32_t wrc[8]; uint8_t wrd[8]; int32_t wkey[16]; };
+struct wreckst { uint32_t wrc[8]; uint8_t wrd[8]; int32_t wkey[16]; uint32_t wcn[8]; };
 #define WRK ((volatile struct wreckst *)0x005B0200u)
+_Static_assert(sizeof(struct wreckst) <= 0x200u, "the wreck state runs into FRC3 (0x5B0400)");
 #ifdef A4_ENG3
 #define A4_ENG_STATE 0x0045D000u
 _Static_assert(A4_ENG_STATE + sizeof(struct eng) <= 0x00460000u, "the engine state past the scratch block");
@@ -1084,15 +1085,21 @@ static inline int32_t eng_spin(uint32_t car, uint32_t other, int32_t k)
  * -min(85 x +034, 512), the ease of +048 x +044 that lifts, rolls (up to 512) and spins (up to 1,024) it, its arc,
  * and the damage morph every 4 of +048. So the wreck's pose moved one render in n, its position every one (A4_WRECK3).
  * The draw now reads them at the substep's time: the counter (x 256) plus the rate x the share of the step run since
- * they moved, ((sub + 1) mod n) / n -- the counters' own next value, reached at the step's end; 0 on the substep
- * they move, so the game's pose exactly there. eng_wrate: the rate, recorded where +2292A adds it. */
+ * they moved, (substeps since the move) / n -- the counters' own next value, reached at the step's end; 0 on the
+ * substep they move, so the game's pose exactly there. eng_wrate: the rate, recorded where +2292A adds it, and the
+ * substep count at the move (wcn); no share once a whole step has passed without a move (the game stopped moving
+ * them: a pose must not creep ahead of the counters and fall back), nor before a car's first recorded move. */
 static inline void eng_wrate_set(uint32_t car, uint32_t d)
 {
 #ifdef A4_WRECKFRAC
     uint32_t i, f = 8u;
-    for (i = 0; i < 8u; i++) { if (WRK->wrc[i] == car) { WRK->wrd[i] = (uint8_t)d; return; } if (f == 8u && WRK->wrc[i] == 0u) f = i; }
-    if (f == 8u) { f = (car >> 4) & 7u; ENG_EVIC(6); }
-    WRK->wrc[f] = car; WRK->wrd[f] = (uint8_t)d;
+    for (i = 0; i < 8u; i++) { if (WRK->wrc[i] == car) break; if (f == 8u && WRK->wrc[i] == 0u) f = i; }
+    if (i == 8u) {
+        if (f == 8u) { f = (car >> 4) & 7u; ENG_EVIC(6); }
+        i = f; WRK->wrc[i] = car; WRK->wcn[i] = ENG->cnt - 64u;      /* no move recorded yet */
+    }
+    WRK->wrd[i] = (uint8_t)d;
+    if (ENG_SUB_END(car)) WRK->wcn[i] = ENG->cnt;                  /* the substep the counters move on */
 #else
     (void)car; (void)d;
 #endif
@@ -1100,13 +1107,16 @@ static inline void eng_wrate_set(uint32_t car, uint32_t d)
 static inline uint32_t eng_wfrac8(uint32_t car)       /* the share of the step since the counters moved, x 256 x rate */
 {
 #ifdef A4_WRECKFRAC
-    const uint32_t n = ENG->n, k = ENG->magic == ENG_MAGIC && n > 1u && n <= 6u && ENG->sub + 1u < n ? ENG->sub + 1u : 0u;  /* (sub + 1) mod n: no divide here */
+    const uint32_t n = ENG->n;
     static const uint16_t q8[7][6] = { {0}, {0}, {0, 128}, {0, 85, 171}, {0, 64, 128, 192}, {0, 51, 102, 154, 205},
                                        {0, 43, 85, 128, 171, 213} };
-    uint32_t i, d = 1u;
-    if (!k) return 0u;
-    for (i = 0; i < 8u; i++) if (WRK->wrc[i] == car) { d = WRK->wrd[i]; break; }
-    return (uint32_t)q8[n][k] * d;
+    uint32_t i, k;
+    if (ENG->magic != ENG_MAGIC || n < 2u || n > 6u) return 0u;
+    for (i = 0; i < 8u; i++) if (WRK->wrc[i] == car) break;
+    if (i == 8u) return 0u;                                        /* no move recorded: the game's pose */
+    k = ENG->cnt - WRK->wcn[i];                                    /* substeps since the counters moved */
+    if (k == 0u || k >= n) return 0u;                              /* on the move, or a step without one */
+    return (uint32_t)q8[n][k] * WRK->wrd[i];
 #else
     (void)car; return 0u;
 #endif

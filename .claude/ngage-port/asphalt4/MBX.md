@@ -11944,3 +11944,11 @@ news 39 ms.
   is a turn at speed; the swing 0 in them says nothing. Replaced by a key-driven pair (tools: the scratchpad's
   hcs.sh -- '5' held, '4' 1.5 s, free 4 s, '6' 1.5 s, free 4 s, as crashrun.sh steered): ks1 (stock step, 931b807's
   tree + C74stock, no THIRDSTEP) and ks3 (C77), 200 s each, queued.
+- Rule 4 on A4_WRECKFRAC, read back: the share was ((sub + 1) mod n) / n for any car the draw poses as a wreck,
+  with a rate of 1 by default. That assumes the counters move again at the step's end; if a wreck stays posed after
+  the game stops moving them (a path that ends while the car is still drawn), the pose would creep ahead by up to
+  (n-1)/n and fall back every step. +2292A moves them on every call, so it holds while the game calls it -- an
+  assumption, not a measurement. Now the share is (substeps since the counters last moved) / n, the move's substep
+  count kept per car where +2292A adds the rate (WRK->wcn, at its last substep): exact on the move, the same share
+  as before while they move every step, none once a step passes without a move, none before a car's first recorded
+  move. Sizes: C77 968,648 -> 968,696. ws77's probe build (a4_wm77s) and lm77 / ks3 rebuilt with it before their runs.
