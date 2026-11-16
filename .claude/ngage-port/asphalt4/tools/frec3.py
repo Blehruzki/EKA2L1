@@ -15,7 +15,8 @@
 #   gob [file] a mark's scenery items (box, buckets), sprite list and the list's tiles, drawn over its screenshot
 #          (<file>.gob.png)
 #   list   every word of every render
-#   lines  the grey lines r77 recorded (LIN1): the row, its undrawn run, the faces and items whose box spans it
+#   lines  the grey lines r77 recorded (LIN1): the row, its undrawn run, the faces and items whose box spans it,
+#          and (the second build) the stream's triangles whose box ends or begins on the rows beside it
 #   wreck  per render with the other car a wreck: substep, camera, its path frame +034 and +048, and (A4_WRECKPROBE)
 #          the +048 x 256 the lifted draw used (eng_wt8; the counter's own value x 256 on the step's last substep),
 #          with the draw's angles (+A434) -- the takedown's animation at the substep's time
@@ -118,8 +119,9 @@ if mode == 'lines':
         lo = g + 16 + size + 16 + 600 + 600
         if len(d) < lo + 16 or struct.unpack_from('<I', d, lo)[0] != 0x314E494C: print(os.path.basename(info['fn']), 'no LIN1'); continue
         n = struct.unpack_from('<I', d, lo + 4)[0]
+        W = 114 if len(d) >= lo + 16 + 8 * 114 * 4 else 48      # r77's second build: the stream's row edges from [48]
         for k in range(max(0, n - 8), n):
-            e = struct.unpack_from('<48I', d, lo + 16 + (k % 8) * 192)
+            e = struct.unpack_from('<%dI' % W, d, lo + 16 + (k % 8) * W * 4)
             key = (e[0], e[1], e[2])
             if key in seen: continue
             seen.add(key)
@@ -134,6 +136,14 @@ if mode == 'lines':
             for j in range(ng):
                 a, b = e[40 + 2 * j], e[41 + 2 * j]
                 print('   item box %d %d %d %d' % (s16(a & 0xFFFF), s16(a >> 16), s16(b & 0xFFFF), s16(b >> 16)))
+            for j in range(6 if W == 114 else 0):     # rows y-1, y, y+1 x (box ends there, box begins there)
+                q = e[48 + 11 * j: 59 + 11 * j]
+                if not q[0]: continue
+                vs = []
+                for v in range(3):
+                    xw, yw, w = s32(q[2 + 3 * v]), s32(q[3 + 3 * v]), s32(q[4 + 3 * v])
+                    vs.append('(%.2f %.2f w %d)' % (xw / w, yw / w, w) if w else '(w 0)')
+                print('   stream tri, box %s row %+d: tex %08x  %s' % ('ends on' if j % 2 == 0 else 'begins on', j // 2 - 1, q[1], ' '.join(vs)))
     sys.exit()
 
 if mode == 'gob':

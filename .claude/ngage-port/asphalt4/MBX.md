@@ -11952,3 +11952,19 @@ news 39 ms.
   count kept per car where +2292A adds the rate (WRK->wcn, at its last substep): exact on the move, the same share
   as before while they move every step, none once a step passes without a move, none before a car's first recorded
   move. Sizes: C77 968,648 -> 968,696. ws77's probe build (a4_wm77s) and lm77 / ks3 rebuilt with it before their runs.
+- sl3 (C77, the auto-steer at 10 on / 30 off, 200 s; framestat 1,659): driving at speed (mean |v| 319) but A1C 0
+  in every render again -- no steering; 13 heading stops (knocks), the car-less-camera swing median 1, max 7. So at
+  speed without steering the chase yaw stays on the heading; the phone's offsets of 16-28 come with steering. The
+  key-driven pair (ks1 / ks3) is the comparison.
+- **lt77 (C77 + A4_LINETEST, the recorder's own test, 90 s; framestat 938): row 120 blanked on the sampled frames
+  is caught in every one (255 undrawn over x 0..319, rows 119 / 121 fully drawn) and recorded** -- the counter and the
+  ring work on every composite. What it lists there: tall list faces (walls, box rows 0..119/120) and a GPU item or
+  none -- in frame 1,089 no list face spans row 120 at all, yet rows 119 and 121 are drawn: by the stream (the
+  game's own triangles through the batch), which the recorder did not see. And the bench's own catches in m77a
+  (rows 21-45, 221-229 px, the rows beside them 47-229 undrawn too) are stripes in the skyline band, sky showing
+  between layers, not the phone's kind; only frame 4,452 (row 90, 72 px, both neighbours fully drawn) is.
+- So the recorder now also keeps the stream's triangles (lte_take in batch_draw, A4_LINEREC): per screen row the
+  frame's last triangle whose box ends on it and the last whose box begins on it, with its three vertices as the
+  GPU got them (x*W, y*W, W) and its texture word, 0x5BB000-0x5C0280; each line record (now 114 words) copies rows
+  y-1..y+1 -- the triangles that should meet at the gap and where their edges really lie. A4_SCRATCH_SIZE 0x1C0000.
+  lm77 (+ A4_LINEMARK, 969,128 bytes) and lt77b (the row-120 test on it) rebuilt and queued after the steer pair.

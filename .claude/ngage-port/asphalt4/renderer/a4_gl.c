@@ -4293,6 +4293,36 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint16_t *m1
  * order and drawn later, in a4_gl_flush; an overflow past MAXT is drawn now. */
 static void composite_prev(volatile struct glr *s) __attribute__((unused));
 static void batch_draw(uint32_t nt);
+#ifdef A4_LINEREC
+/* Round 77 (lt77: rows beside a line drawn by neither a list face nor a GPU object -- the game's own triangles, the
+ * stream): per screen row, the last stream triangle of the frame whose box ends on the row and the last whose box
+ * begins on it (the box unpadded), as batch_draw takes them: 11 words -- the frame, its texture word, and its three
+ * vertices as the GPU got them (x*W, y*W, W, GL_FIXED). line_rec copies rows y-1..y+1. 240 x 2 x 44 bytes from
+ * 0x5BB000 (A4_SCRATCH_SIZE 0x1C0000). */
+#define A4_GL_LTE 0x005BB000u
+#define LTE_W 11u
+static void lte_take(uint32_t nt)
+{
+    const volatile struct glr *sg = (const volatile struct glr *)A4_GL_SCRATCH;
+    const int16_t *tb = (const int16_t *)A4_GL_TBOX;
+    const int32_t *P = (const int32_t *)A4_GL_POS;
+    const uint32_t *tid = (const uint32_t *)A4_GL_TEXID, fr = sg->frames;
+    volatile uint32_t *T = (volatile uint32_t *)A4_GL_LTE;
+    for (uint32_t t = 0; t < nt; t++) {
+        const int16_t *b = tb + t * 4u;
+        if (b[1] > b[3]) continue;                                   /* off screen */
+        const int32_t yt = b[1] + 1, yb = b[3] - 1;                  /* tbox_calc pads by one */
+        for (uint32_t e = 0; e < 2u; e++) {
+            const int32_t y = e ? yt : yb;
+            if (y < 0 || y >= VP_H) continue;
+            volatile uint32_t *q = T + ((uint32_t)y * 2u + e) * LTE_W;
+            const int32_t *v = P + t * (3u * POSC);
+            q[0] = fr; q[1] = tid[t];
+            for (uint32_t k = 0; k < 3u; k++) { q[2u + 3u * k] = (uint32_t)v[POSC * k]; q[3u + 3u * k] = (uint32_t)v[POSC * k + 1u]; q[4u + 3u * k] = (uint32_t)v[POSC * k + 3u]; }
+        }
+    }
+}
+#endif
 #ifdef A4_HPERSP
 static inline int bitlen(uint32_t v) { return v ? 32 - __builtin_clz(v) : 0; }   /* CLZ (ARMv5) */
 #endif
@@ -8520,6 +8550,9 @@ static void batch_draw(uint32_t nt)
 {
     if (nt == 0) return;
     if (nt > MAXT) nt = MAXT;
+#ifdef A4_LINEREC
+    lte_take(nt);
+#endif
     uint32_t *TEXID = (uint32_t *)A4_GL_TEXID;
 #ifdef A4_REORDER
     if (((volatile struct glr *)A4_GL_SCRATCH)->fmode & AB_REORDER) {
@@ -8757,8 +8790,8 @@ static void batch_draw(uint32_t nt)
 void a4_comp_row(uint32_t *d32, const uint32_t *src, const uint32_t *end);   /* a4_px.s */
 void a4_comp_row_pld(uint32_t *d32, const uint32_t *src, const uint32_t *end);
 #ifdef A4_LINEREC
-#if !(defined(A4_FRAMEREC) && defined(A4_ENG3) && defined(A4_MESH) && defined(A4_GPUOBJ))
-#error "A4_LINEREC records the line counter's hits (A4_FRAMEREC with A4_ENG3) with the list's faces and the GPU objects"
+#if !(defined(A4_FRAMEREC) && defined(A4_ENG3) && defined(A4_MESH) && defined(A4_GPUOBJ) && defined(A4_REORDER)) || defined(A4_DEFER)
+#error "A4_LINEREC records the line counter's hits (A4_FRAMEREC with A4_ENG3) with the list's faces, the GPU objects and the stream's triangles (A4_REORDER's boxes, positions not A4_DEFER's records)"
 #endif
 /* Round 77 (phone round 76: the grey lines are back; Paris counted one -- row 88, 67 px undrawn): each line the
  * counter finds, with what borders it. A ring of 8 at 0x5BA000 ('LIN1', the hits, 0, 0), 48 words each: [0] the frame |
@@ -8768,16 +8801,19 @@ void a4_comp_row_pld(uint32_t *d32, const uint32_t *src, const uint32_t *end);
  * holds them, camera space, int16 -- x0 | y0 << 16, z0 | x1 << 16, y1 | z1 << 16, x2 | y2 << 16, z2 | bucket << 16 --
  * and box top | box bottom << 12 | key << 24; the six whose box spans the row, nearest box edge first); then up to 3
  * GPU items whose box spans it (box x0 | y0 << 16,
- * x1 | y1 << 16); [46] the focal F, [47] the projection's centre (pcx | pcy << 16). Undrawn: no opaque GPU class
+ * x1 | y1 << 16); [46] the focal F, [47] the projection's centre (pcx | pcy << 16); [48..113] the stream's triangles
+ * whose box ends / begins on rows y-1, y, y+1 (lte_take, 11 words each, 0 where none this frame). Undrawn: no opaque GPU class
  * drew the pixel (alpha's top bit), so the software layer under the composite shows -- the grey. */
 #define A4_GL_LINREC 0x005BA000u
+#define LIN_W 114u                                      /* 48 + rows y-1..y+1 x (ending, beginning) x LTE_W */
+_Static_assert(16u + 8u * LIN_W * 4u <= 0x1000u, "LIN1 past 0x5BB000");
 static void line_rec(volatile struct glr *s, int y, const uint8_t *lc_u, uint32_t xr)
 {
     volatile uint32_t *R = (volatile uint32_t *)A4_GL_LINREC;
     if (R[0] != 0x314E494Cu) { R[0] = 0x314E494Cu; R[1] = 0; R[2] = 0; R[3] = 0; }   /* 'LIN1' */
-    volatile uint32_t *e = R + 4u + (R[1] & 7u) * 48u;
+    volatile uint32_t *e = R + 4u + (R[1] & 7u) * LIN_W;
     uint32_t k, nf = 0, ng = 0;
-    for (k = 0; k < 48u; k++) e[k] = 0u;
+    for (k = 0; k < LIN_W; k++) e[k] = 0u;
     e[0] = (s->frames & 0xFFFFu) | (uint32_t)y << 16; e[1] = lc_u[y];
     e[3] = (uint32_t)lc_u[y + 1] | (uint32_t)lc_u[y - 1] << 8;
     e[2] = xr;                                       /* the run: the row's first and last undrawn x */
@@ -8824,6 +8860,18 @@ static void line_rec(volatile struct glr *s, int y, const uint8_t *lc_u, uint32_
             }
     }
     e[3] |= nf << 16 | ng << 24;
+    {   /* the stream's triangles whose box ends or begins on rows y-1, y, y+1 this frame (lte_take) */
+        const volatile uint32_t *T = (const volatile uint32_t *)A4_GL_LTE;
+        for (int32_t r = -1; r <= 1; r++) {
+            if (y + r < 0 || y + r >= VP_H) continue;
+            for (uint32_t q = 0; q < 2u; q++) {
+                const volatile uint32_t *src = T + ((uint32_t)(y + r) * 2u + q) * LTE_W;
+                volatile uint32_t *dst = e + 48u + ((uint32_t)(r + 1) * 2u + q) * LTE_W;
+                if (src[0] != s->frames) continue;
+                for (k = 0; k < LTE_W; k++) dst[k] = src[k];
+            }
+        }
+    }
 #ifdef A4_LINEMARK
     /* bench (round 77): a line asks for a mark, as a press of C would -- its picture at the next present */
     ((volatile uint32_t *)0x005B0000u)[16] = a4_ntick(); (*(volatile uint32_t *)0x005B0000u)++;
