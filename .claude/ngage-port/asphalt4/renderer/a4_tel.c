@@ -66,7 +66,10 @@ enum { PF_MODE, PF_RENDERS, PF_T0, PF_COMP, PF_READ, PF_DRAW, PF_GLFLUSH,
 #ifndef A4_GL_FREC3
 #define A4_MARK_STATE 0x005B0000u   /* a4_eng.h, a4_gl.c: the mark's state, FRC3, the render's sprite list */
 #define A4_GL_FREC3   0x005B0400u
-#define A4_GL_SPL     0x005B6800u
+#define A4_GL_SPL     0x005B8800u
+#define A4_GL_GRD     0x005B8A00u
+#define A4_FREC3_N    256u
+#define A4_FREC3_W    32u
 #endif
 #endif
 #ifndef TEL_MARKS
@@ -467,12 +470,12 @@ void a4_tel_tick(uint32_t had)
             efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4 + 0x700 + 3 * 32 * 4 + 0x680, &rd);
         }
 #ifdef A4_FRC3
-        {   /* round 76: FRC3 (a4_gl.c A4_GL_FREC3, 24 words a render) right after FRC1; then the last render's sprite list
+        {   /* round 76: FRC3 (a4_gl.c A4_GL_FREC3, 32 words a render) right after FRC1; then the last render's sprite list
              * (A4_GL_SPL, 'SPL1', 32 + 16 x 16 bytes) and the scenery objects' state ('GOB1', its size, the frame, 0, then
              * a4_gl.c's struct gstate: the counters, the camera, each taken item's box and buckets) */
             extern uint32_t a4_frc3_gobj(const void **p);
             const int o3 = (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES + 122 * 4 + 0x700 + 3 * 32 * 4 + 0x680 + 16 + 256 * 32;
-            const int n3 = 16 + 256 * 24 * 4;
+            const int n3 = 16 + (int)(A4_FREC3_N * A4_FREC3_W * 4u);
             struct des r3 = { DES((uint32_t)n3), (const void *)A4_GL_FREC3 };
             efs_writep(f, o3, &r3);
             struct des rs = { DES(32u + 16u * 16u), (const void *)A4_GL_SPL };
@@ -484,6 +487,14 @@ void a4_tel_tick(uint32_t had)
             efs_writep(f, o3 + n3 + 32 + 16 * 16, &rgh);
             struct des rg = { DES(gn), gp };
             efs_writep(f, o3 + n3 + 32 + 16 * 16 + 16, &rg);
+            /* the list's tiles before the GPU's objects joined them ('GRD1', 16 + 600 bytes), then the merged grid */
+            extern uint32_t a4_frc3_grid(const void **p);
+            const void *mp = 0;
+            const uint32_t mn = a4_frc3_grid(&mp);
+            struct des rl = { DES(16u + mn), (const void *)A4_GL_GRD };
+            efs_writep(f, o3 + n3 + 32 + 16 * 16 + 16 + (int)gn, &rl);
+            struct des rm = { DES(mn), mp };
+            efs_writep(f, o3 + n3 + 32 + 16 * 16 + 16 + (int)gn + 16 + (int)mn, &rm);
         }
 #endif
 #if defined(A4_KINEDRAW) && !defined(A4_INTERP)

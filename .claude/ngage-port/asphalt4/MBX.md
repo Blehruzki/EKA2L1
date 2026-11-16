@@ -11670,3 +11670,24 @@ No game change against r75; the build adds what the four open issues need record
   windows.
 - A4_BENCH_AUTOMARK (bench, new; never a phone build): a mark asked for at the 40th render of a 0x18 (crash /
   takedown) or 0x2A (news) camera. m76b (r76 + it, '5' held, 400 s): running.
+- m76b (r76 + AUTOMARK, '5' held, Paris, 400 s; framestat 2,910): 2 marks, both automatic (0x18 cameras; no news
+  camera in the run). The 24-word FRC3 read:
+  - **A clean turn's onset (the player, chase camera, no steering key: the game's own turn): the heading moves -21 on
+    one substep, then -7, -7, -7** (cnt 1850-1854; again 1908-1912, 1924-1926): the first substep carries three
+    times the rate of the others. The camera's yaw equals the heading in every render (rigid chase) while the step's
+    axis +704 follows two substeps late -- but the render does not draw from +704 (round 31, rone8: +678 at +A44C).
+    What it draws from: **+A434 (car, &a, &b, &c, offset[3])**, called by the car draws +DBE0 and +E88C, reads +678,
+    adds the turn term +9F8 when the car slides (+818 / +824 flags), builds a lean from +A04..+A24 and moves +A14 as it
+    draws. So the drawn heading is +678 (+ +9F8 sliding); recorded from the 32-word build on (below).
+  - **The takedown (mark 0: camera 0x18 on the victim, slot 7):** its position moves evenly every substep (z +75,
+    then +63, then +60 a substep: WRECK3's work holds); its heading at the contact -20, +27, +8, +44, +5, -7, -7, then
+    still -- uneven, the contact spin (eng_spin) still lumpy per render; **its wreck path frame +034 advances by 2 once
+    a whole step** (0, 2, 2, 4, 4, 4, 6 ...): whatever the path drives moves at the step's rate, a third of the
+    frames -- a lead for "spinning, flipping and rolling over feels choppy".
+- FRC3 widened to 32 words (scratch 0x1B8000; the sprite list to 0x5B8800, the list's tiles to 0x5B8A00): [24..29]
+  +A434's outputs for the player and the other car (the first call of the render for each; hooks at +DBE0 / +E88C,
+  a4_h_a434_*), [30] the camera's pitch and roll, [31] +A434's calls. And every capture now carries the list's own
+  tile grid (where the list drew a face, before the GPU objects joined it) and the merged grid, for the far
+  buildings: a white patch with no list tile and no GPU box is a place nothing 3D was drawn. The hook checked
+  compiled (llvm-objdump: the fifth argument passed through on the stack, +A434 called at GBASE + 0xA435). m76c
+  (r76's 32-word build + AUTOMARK, 400 s): running.

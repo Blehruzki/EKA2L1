@@ -1060,7 +1060,7 @@ _Static_assert(A4_GL_FREC >= 0x00455800u + 0x680u && A4_GL_FREC + 16u + FREC_N *
 #error "A4_FRC3 is written right after FRC1 (a4_tel.c): not with FRC2, the idle census or route B's probe after it"
 #endif
 /* Phone round 76 (after round 75: the choppy rotations, the snap-back in turns, the searchlight hidden behind the road,
- * the far buildings gone mid-way along The Fame Avenue): a third ring beside FRC1, 24 words a render, the same 256
+ * the far buildings gone mid-way along The Fame Avenue): a third ring beside FRC1, 32 words a render, the same 256
  * renders. [0] FRC1's ms; [1..15] a4_eng.c a4_eng_frc3, before the render: [1] the engine's substep count, [2] its
  * substep | n << 4 | the camera mode << 8 | the slow-motion scale << 16; the player car: [3] heading +678 | turn term
  * +9F8 << 16, [4] pitch +674 | roll +67C << 16, [5] the matrix's forward axis x | z << 16 (+704, +70C), [6] its y |
@@ -1073,18 +1073,28 @@ _Static_assert(A4_GL_FREC >= 0x00455800u + 0x680u && A4_GL_FREC + 16u + FREC_N *
  * cells covered at all << 16, [18] its bucket | the nearest cover's << 16, [19] sprites | tested << 8 | its texture's
  * w << 16 | h << 24; the scenery objects, this render's counts (each to 255): [20] taken | refused out of range << 8
  * | the store full << 16 | too near << 24, [21] the camera's rotation or the object moved | texture, mode or mesh << 8
- * | drawn or off << 16 | calls << 24, [22] the taken items' farthest bucket | those at 2,000 or more << 16 | GL errors
- * << 24, [23] the list's triangles drawn | lost << 16 */
+ * | drawn or off << 16 | calls << 24, [22] the taken items' farthest bucket | those at 2,000 or more << 16, [23] the
+ * list's triangles drawn | lost << 16 | GL errors << 24 (since the render before began: a4_frc3_pre). What the render
+ * drew the cars with -- +A434's outputs, the angles a car is drawn at (+678 with the turn term +9F8 when it slides,
+ * the lean from +A04..+A24) and an offset, a4_eng.c a4_h_a434, the first call of the render for that car: [24] the
+ * player's second output | its first << 16, [25] its third | the offset's x << 16, [26] the offset's y | z << 16;
+ * [27..29] the other car's the same; [30] the camera's pitch +0x64 | roll +0x6C << 16; [31] +A434's calls for the
+ * player | for the other car << 8 | all << 16 | the call site of the first (bit 24 the player's from +E88C, bit 25 the
+ * other's). */
 #ifndef A4_GL_FREC3
-#define A4_MARK_STATE 0x005B0000u
+#define A4_MARK_STATE 0x005B0000u   /* a4_eng.h's */
 #define A4_GL_FREC3   0x005B0400u
-#define A4_GL_SPL     0x005B6800u
+#define A4_GL_SPL     0x005B8800u
+#define A4_GL_GRD     0x005B8A00u
+#define A4_FREC3_N    256u
+#define A4_FREC3_W    32u
 #endif
-#define FREC3_N 256u
-#define FREC3_W 24u
+#define FREC3_N A4_FREC3_N
+#define FREC3_W A4_FREC3_W
 #define SPL_N   16u
 _Static_assert(A4_GL_FREC3 + 16u + FREC3_N * FREC3_W * 4u <= A4_GL_SPL, "FRC3 past the sprite list");
-_Static_assert(A4_GL_SPL + 32u + SPL_N * 16u <= 0x005B7000u, "the sprite list past the scratch (A4_SCRATCH_SIZE 0x1B6000)");
+_Static_assert(A4_GL_SPL + 32u + SPL_N * 16u <= A4_GL_GRD, "the sprite list past the list's tiles");
+_Static_assert(A4_GL_GRD + 16u + 2u * (VP_W / 16u) * (VP_H / 16u) <= 0x005B9000u, "the list's tiles past the scratch (A4_SCRATCH_SIZE 0x1B8000)");
 #endif
 #define A4_GL_STEP 0x00421700u
 #define STEPB ((volatile uint32_t *)A4_GL_STEP)
@@ -3725,6 +3735,7 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
             if (F3[0] != 0x33435246u) { F3[0] = 0x33435246u; F3[1] = 0; F3[2] = FREC3_W; F3[3] = FREC3_N; }   /* 'FRC3' */
             volatile uint32_t *e3 = F3 + 4u + (F3[1] % FREC3_N) * FREC3_W;
             e3[0] = e[0];
+            for (uint32_t k = 16u; k < FREC3_W; k++) e3[k] = 0u;
 #ifdef A4_BENCH_AUTOMARK
             {   /* bench (round 76): a mark asked for at the 40th render of a crash / takedown (0x18) or news (0x2A) camera,
                  * as the owner would press C -- the marks checked in the states the phone round is for. Never a phone
@@ -3739,7 +3750,6 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
             }
 #endif
             a4_eng_frc3(race, e3);
-            for (uint32_t k = 16u; k < FREC3_W; k++) e3[k] = 0u;
             a4_frc3_pre();
         }
 #endif
@@ -6381,6 +6391,8 @@ void a4_frc3_post(volatile uint32_t *e3)
 /* the mark's (a4_tel.c): the scenery objects' state as the last render left it -- the counters, the frame's camera,
  * each taken item's mesh, offset, screen box and depth buckets */
 uint32_t a4_frc3_gobj(const void **p) { *p = (const void *)GOBJ; return (uint32_t)sizeof(struct gstate); }
+/* and the merged tile grid (the list's faces and the GPU's objects, mesh_draw / gobj_grid) as the last frame left it */
+uint32_t a4_frc3_grid(const void **p) { *p = (const void *)MESH->grid; return 2u * MESH_GW * MESH_GH; }
 #endif
 /* bench: the counters, every 256th flush, EKA2L1_PCMEM at a4_gobj_emit (r0: the state's first 0x40 bytes) */
 __attribute__((noinline)) void a4_gobj_emit(const void *st) { __asm__ volatile("" : : "r"(st) : "memory"); }
@@ -6455,6 +6467,15 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
                 for (int32_t tx = b[0] >> 4; tx <= (b[2] >> 4); tx++)
                     if (q < g[ty * MESH_GW + tx]) g[ty * MESH_GW + tx] = (uint16_t)q;
         }
+#ifdef A4_FRC3
+        {   /* round 76: the list's own tiles before the GPU's objects join them ('GRD1', its frame, the grid's size;
+             * a4_tel.c writes it with a capture, the merged grid after it) -- where a building is missing, whether the
+             * list drew anything there */
+            volatile uint32_t *G = (volatile uint32_t *)A4_GL_GRD;
+            G[0] = 0x31445247u; G[1] = s->frames; G[2] = MESH_GW | MESH_GH << 16; G[3] = n;
+            for (uint32_t j = 0; j < MESH_GW * MESH_GH; j++) ((volatile uint16_t *)(G + 4))[j] = g[j];
+        }
+#endif
 #ifdef A4_GPUOBJ
         nobj = gobj_grid(s, g);                      /* and the GPU's objects (round 60's phone round) */
 #endif

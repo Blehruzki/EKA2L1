@@ -93,6 +93,7 @@ void a4_eng_frc3(uint32_t race, volatile uint32_t *e)
         e[7] = frc3_h((int32_t)MEM32(pc + 0x10u)) | frc3_h((int32_t)MEM32(pc + 0x18u)) << 16;
         e[8] = (K ? MEM32(K + 4u) & 0xFFFFu : 0u) | MEM32(pc + 0xA1Cu) << 16;
     }
+    e[30] = pc;                                      /* the player car, for a4_h_a434 during the render */
     if (fc && fc != pc) {
         for (k = 0; k < 16u; k++) if (MEM32(race + 0x394u + 4u * k) == fc) break;
         oc = fc; os = k < 16u ? k : 30u; fl = 1u;
@@ -123,6 +124,7 @@ void a4_eng_frc3_post(uint32_t race, volatile uint32_t *e)
 {
     const uint32_t pl = MEM32(race + 0x390u), pi = pl ? MEM32(pl + 0xCu) : 16u;
     const uint32_t pc = pi < 16u ? MEM32(race + 0x394u + 4u * pi) : 0u, oc = (e[9] & 31u) != 31u ? e[15] : 0u;
+    e[30] = (MEM32(race + 0x64u) & 0xFFFFu) | MEM32(race + 0x6Cu) << 16;   /* the camera's pitch, roll */
     if (pc) {
         e[5] = frc3_h((int32_t)MEM32(pc + 0x704u)) | frc3_h((int32_t)MEM32(pc + 0x70Cu)) << 16;
         e[6] = frc3_h((int32_t)MEM32(pc + 0x708u)) | frc3_h((int32_t)MEM32(pc + 0x714u)) << 16;
@@ -134,6 +136,42 @@ void a4_eng_frc3_post(uint32_t race, volatile uint32_t *e)
         e[15] = frc3_h((int32_t)MEM32(oc + 0x710u)) | frc3_h((int32_t)MEM32(oc + 0x714u)) << 16;
     }
 }
+#endif
+#if defined(A4_FRC3) && defined(A4_ENG3)
+/* The angles the render draws a car at: +A434 (car, &a, &b, &c, offset[3]) -- from the car draws +DBE0 and +E88C
+ * (tools/injector.py) -- reads +678, adds the turn term +9F8 when the car slides (+818 / +824), the lean from +A04 ..
+ * +A24 (and moves +A14 as it draws), and gives three angles and a position offset. Its outputs for the player car and
+ * FRC3's other car go into this render's entry (a4_gl.c A4_GL_FREC3 [24..31]), the first call of the render each. */
+uint32_t a4_h_a434_at(uint32_t car, int32_t *a, int32_t *b, int32_t *c, int32_t *o, uint32_t site)
+{
+    const uint32_t r = ((uint32_t (*)(uint32_t, int32_t *, int32_t *, int32_t *, int32_t *))GAMEFN(0xA434u))(car, a, b, c, o);
+    volatile uint32_t *F3 = (volatile uint32_t *)A4_GL_FREC3;
+    if (F3[0] != 0x33435246u) return r;
+    volatile uint32_t *e = F3 + 4u + (F3[1] % A4_FREC3_N) * A4_FREC3_W;
+    const uint32_t pc = e[30], oc = (e[9] & 31u) != 31u ? e[15] : 0u;
+    uint32_t n = e[31];
+    if (car && car == pc) {
+        if ((n & 0xFFu) == 0u) {
+            e[24] = frc3_h(*b) | frc3_h(*a) << 16; e[25] = frc3_h(*c) | frc3_h(o[0]) << 16;
+            e[26] = frc3_h(o[1]) | frc3_h(o[2]) << 16;
+            if (site) n |= 1u << 24;
+        }
+        if ((n & 0xFFu) < 255u) n++;
+    }
+    if (car && car == oc) {
+        if (((n >> 8) & 0xFFu) == 0u) {
+            e[27] = frc3_h(*b) | frc3_h(*a) << 16; e[28] = frc3_h(*c) | frc3_h(o[0]) << 16;
+            e[29] = frc3_h(o[1]) | frc3_h(o[2]) << 16;
+            if (site) n |= 1u << 25;
+        }
+        if (((n >> 8) & 0xFFu) < 255u) n += 1u << 8;
+    }
+    if (((n >> 16) & 0xFFu) < 255u) n += 1u << 16;
+    e[31] = n;
+    return r;
+}
+uint32_t a4_h_a434_dbe0(uint32_t car, int32_t *a, int32_t *b, int32_t *c, int32_t *o) { return a4_h_a434_at(car, a, b, c, o, 0u); }
+uint32_t a4_h_a434_e88c(uint32_t car, int32_t *a, int32_t *b, int32_t *c, int32_t *o) { return a4_h_a434_at(car, a, b, c, o, 1u); }
 #endif
 #if defined(A4_TELMARK) && defined(A4_ENG3)
 /* Phone round 76: the owner's mark. The game's key-down (+1EE0) translates the runtime's key (+1D80: a bit of its key

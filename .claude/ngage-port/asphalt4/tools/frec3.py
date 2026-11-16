@@ -3,23 +3,27 @@
 # render's ms, from the ring captures (a4telN.dat) and the owner's marks (a4markN.dat, a press of C: header word 2 has
 # bit 31). Modes:
 #   files  each file: ring or mark, its renders, the span of time it covers
-#   rot    the player car's and the other car's turn per render (heading, pitch, roll and the drawn forward axis), the
-#          engine's substeps between renders, and the renders that move after holding still -- the choppy rotation
-#   turn   the player's heading, its drawn heading (the forward axis), the camera's yaw and the car-less-camera angle
-#          per render, and its reversals -- the snap-back
+#   rot    the player car's and the other car's turn per render (heading, pitch, roll, the step's forward axis and,
+#          from the 32-word build, the angles +A434 gave the draw), the engine's substeps between renders -- the
+#          choppy rotation
+#   turn   the player's heading, the step's axis (two substeps late), the draw's heading (+A434), the camera's yaw and
+#          the car-less-camera angle per render, and its reversals -- the snap-back
 #   spr    per render the largest sprite: its rectangle, the cells a list face covers / all covered cells, its
 #          bucket and the nearest cover's -- the searchlight
 #   obj    per render the camera's segment, the objects taken and refused by reason, the farthest taken bucket, the
 #          list's triangles, GL errors -- the far buildings
-#   gob [file] a mark's scenery items (box, buckets) and sprite list, drawn over its screenshot (<file>.gob.png)
+#   gob [file] a mark's scenery items (box, buckets), sprite list and the list's tiles, drawn over its screenshot
+#          (<file>.gob.png)
 #   list   every word of every render
 # A mark covers the 256 renders (~13 s) before the press. Angles are 2,048 a turn.
 import sys, struct, glob, os, math
 HDR, FPS, FB = 256, 560, 320 * 240 * 2
 OFF1 = HDR + FPS + FB + 122 * 4 + 0x700 + 384 + 0x680          # FRC1
-OFF3 = OFF1 + 16 + 256 * 32                                     # FRC3
-OFFS = OFF3 + 16 + 256 * 24 * 4                                 # the sprite list ('SPL1')
-OFFG = OFFS + 32 + 16 * 16                                      # 'GOB1' header, then struct gstate
+OFF3 = OFF1 + 16 + 256 * 32                                     # FRC3: 'FRC3', count, W words a render, N renders
+def offs(d):                                                    # the sprite list ('SPL1'), then 'GOB1' + struct gstate
+    w, n = struct.unpack_from('<2I', d, OFF3 + 8)
+    o = OFF3 + 16 + n * w * 4
+    return o, o + 32 + 16 * 16
 args = sys.argv[1:]
 MODES = ('files', 'rot', 'turn', 'spr', 'obj', 'gob', 'list')
 mode = 'files'
@@ -36,7 +40,7 @@ def load(fn):
     d = open(fn, 'rb').read()
     h = struct.unpack_from('<64I', d, 0)
     info = dict(fn=fn, mark=bool(h[2] >> 31), idx=h[2] & 0x7FFFFFFF, ok=False, R={})
-    if len(d) < OFFG + 16 or struct.unpack_from('<I', d, OFF1)[0] != 0x31435246 or struct.unpack_from('<I', d, OFF3)[0] != 0x33435246:
+    if len(d) < OFF3 + 16 or struct.unpack_from('<I', d, OFF1)[0] != 0x31435246 or struct.unpack_from('<I', d, OFF3)[0] != 0x33435246:
         return info, d
     n1 = struct.unpack_from('<I', d, OFF1 + 4)[0]
     mg3, n3, w3, r3 = struct.unpack_from('<4I', d, OFF3)
@@ -68,6 +72,13 @@ def row(e1, e3):
              rrot=e3[21] & 255, rtex=(e3[21] >> 8) & 255, roff=(e3[21] >> 16) & 255, calls=e3[21] >> 24,
              maxq=e3[22] & 0xFFFF, nfar=(e3[22] >> 16) & 255, ltri=e3[23] & 0xFFFF, llost=(e3[23] >> 16) & 255,
              glerr=e3[23] >> 24, raw=e3)
+    if len(e3) >= 32:   # r76's second build: what +A434 gave the draw, the camera's pitch and roll
+        r.update(da=s16(e3[24] >> 16), db=s16(e3[24] & 0xFFFF), dc=s16(e3[25] & 0xFFFF),
+                 dox=s16(e3[25] >> 16), doy=s16(e3[26] & 0xFFFF), doz=s16(e3[26] >> 16),
+                 oda=s16(e3[27] >> 16), odb=s16(e3[27] & 0xFFFF), odc=s16(e3[28] & 0xFFFF),
+                 odox=s16(e3[28] >> 16), odoy=s16(e3[29] & 0xFFFF), odoz=s16(e3[29] >> 16),
+                 cpitch=s16(e3[30] & 0xFFFF), croll=s16(e3[30] >> 16),
+                 npc=e3[31] & 255, noc=(e3[31] >> 8) & 255, nall=(e3[31] >> 16) & 255, site=(e3[31] >> 24) & 3)
     return r
 
 # the drawn heading on +678's circle: the forward axis's angle + 1,024 (m76a: heading less it -1,024 in 799 of 1,008)
@@ -85,7 +96,7 @@ if mode == 'files':
 
 if mode == 'gob':
     info, d = infos[0]
-    g = OFFG
+    OFFS, g = offs(d)
     mg, size, frames, _ = struct.unpack_from('<4I', d, g)
     print('%s: %s %d, GOB1 %08x size %d frame %d' % (info['fn'], 'mark' if info['mark'] else 'ring', info['idx'], mg, size, frames))
     st = struct.unpack_from('<46I', d, g + 16)
@@ -105,16 +116,34 @@ if mode == 'gob':
         S.append(rc)
         print('  sprite %2d rect %4d %4d %4d %4d  list cells %04x all %04x  bucket %5d nearest cover %5d  tex %dx%d dist %d'
               % (k, rc[0], rc[1], rc[2], rc[3], q[1] & 0xFFFF, q[1] >> 16, s16(q[2] & 0xFFFF), q[2] >> 16, q[3] & 255, (q[3] >> 8) & 255, q[3] >> 16))
+    go = g + 16 + size
+    grd = None
+    if len(d) >= go + 16 + 1200 and struct.unpack_from('<I', d, go)[0] == 0x31445247:
+        gm, gfr, gwh, gnf = struct.unpack_from('<4I', d, go)
+        gw, gh = gwh & 0xFFFF, gwh >> 16
+        lst = struct.unpack_from('<%dH' % (gw * gh), d, go + 16)
+        mrg = struct.unpack_from('<%dH' % (gw * gh), d, go + 16 + 2 * gw * gh)
+        grd = (gw, gh, lst, mrg)
+        print('list tiles (GRD1): frame %d (%s the objects\' frame), %d list faces; tiles with a list face %d, with only GPU objects %d, with nothing %d of %d'
+              % (gfr, 'is' if gfr == frames else 'NOT', gnf, sum(1 for v in lst if v != 0xFFFF),
+                 sum(1 for a, b in zip(lst, mrg) if a == 0xFFFF and b != 0xFFFF), sum(1 for b in mrg if b == 0xFFFF), gw * gh))
     try:
         from PIL import Image, ImageDraw
         px = struct.unpack_from('<%dH' % (320 * 240), d, HDR + FPS)
         im = Image.new('RGB', (320, 240))
         im.putdata([(((p >> 11) & 31) << 3, ((p >> 5) & 63) << 2, (p & 31) << 3) for p in px])
         im = im.resize((640, 480), Image.NEAREST); dr = ImageDraw.Draw(im)
+        if grd:   # tiles: blue tick where the list drew a face, red cross where neither the list nor a GPU object did
+            gw, gh, lst, mrg = grd
+            for ty in range(gh):
+                for tx in range(gw):
+                    x, y = tx * 32, ty * 32
+                    if lst[ty * gw + tx] != 0xFFFF: dr.line([x + 2, y + 2, x + 8, y + 2], fill=(0, 128, 255), width=2)
+                    elif mrg[ty * gw + tx] == 0xFFFF: dr.line([x + 12, y + 12, x + 20, y + 20], fill=(255, 0, 0)); dr.line([x + 20, y + 12, x + 12, y + 20], fill=(255, 0, 0))
         for b0, b1, b2, b3, qn, qf in items:
             dr.rectangle([b0 * 2, b1 * 2, b2 * 2, b3 * 2], outline=(0, 255, 0) if qf < 2000 else (255, 0, 255))
         for rc in S: dr.rectangle([v * 2 for v in rc], outline=(255, 255, 0))
-        out = info['fn'] + '.gob.png'; im.rotate(180).save(out); print('drawn:', out, '(turned upright; green items, magenta at bucket 2,000+, yellow sprites)')
+        out = info['fn'] + '.gob.png'; im.rotate(180).save(out); print('drawn:', out, '(turned upright; green items, magenta at bucket 2,000+, yellow sprites; blue ticks list tiles, red crosses tiles nothing 3D covered)')
     except ImportError:
         pass
     sys.exit()
@@ -143,10 +172,14 @@ elif mode == 'rot':
                 fa, pa = ang(r[FX], r[FZ]), ang(p[FX], p[FZ])
                 df = wrap(fa - pa) if fa >= 0 and pa >= 0 else 0
                 if dh or dp or dr or df or mode == 'rot':
-                    print('%9d +%3d ms cnt %6d (+%d) sub %d/%d cam %3d  %s  d heading %5d pitch %5d roll %5d  drawn %5d  (hd %4d p %5d r %5d)'
+                    dd = ''
+                    if 'db' in r:   # the draw's angles (+A434) and their change
+                        A, B, C = ('oda', 'odb', 'odc') if who == 'other' else ('da', 'db', 'dc')
+                        dd = '  draw %5d %5d %5d (d %4d %4d %4d)' % (r[A], r[B], r[C], wrap(r[A] - p[A]), wrap(r[B] - p[B]), wrap(r[C] - p[C]))
+                    print('%9d +%3d ms cnt %6d (+%d) sub %d/%d cam %3d  %s  d heading %5d pitch %5d roll %5d  axis %5d  (hd %4d p %5d r %5d)%s'
                           % (r['t'], r['t'] - p['t'], r['cnt'], r['cnt'] - p['cnt'], r['sub'], r['n'], r['cmode'],
                              ('slot %2d %s +034 %3d' % (r['oslot'], 'cam' if r['ofl'] == 1 else 'wreck' if r['ofl'] == 2 else 'near', r['o34'])) if who == 'other' else 'player',
-                             dh, dp, dr, df, r[H] & 0x7FF, r[P], r[Ro]))
+                             dh, dp, dr, df, r[H] & 0x7FF, r[P], r[Ro], dd))
             prev = (key, r)
 elif mode == 'turn':
     prevd = None; rev = 0; moving = 0
@@ -160,8 +193,9 @@ elif mode == 'turn':
             if prevd[1] and d and (d > 0) != (prevd[1] > 0) and abs(d) >= 3: rev += 1; flag = '  <- reversal'
             prevd = (rel, d if d else prevd[1])
         else: prevd = (rel, 0)
-        print('%9d cnt %6d sub %d cam %3d  hd %4d drawn %4d yaw %4d  car-cam %5d  turn %6d steer %6d keys %04x v %6d %6d%s'
-              % (r['t'], r['cnt'], r['sub'], r['cmode'], r['hd'], fa, r['yaw'], rel, r['turn'], r['steer'], r['keys'], r['vx'], r['vz'], flag))
+        dr = '  draw %5d (car-cam %5d)' % (r['db'], wrap(r['db'] - r['yaw'])) if 'db' in r else ''
+        print('%9d cnt %6d sub %d cam %3d  hd %4d axis %4d yaw %4d  car-cam %5d  turn %6d steer %6d keys %04x v %6d %6d%s%s'
+              % (r['t'], r['cnt'], r['sub'], r['cmode'], r['hd'], fa, r['yaw'], rel, r['turn'], r['steer'], r['keys'], r['vx'], r['vz'], dr, flag))
     print('car-less-camera reversals (3 or more): %d of %d moving renders' % (rev, moving))
 elif mode == 'spr':
     for r in rows:
