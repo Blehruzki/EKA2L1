@@ -11968,3 +11968,16 @@ news 39 ms.
   GPU got them (x*W, y*W, W) and its texture word, 0x5BB000-0x5C0280; each line record (now 114 words) copies rows
   y-1..y+1 -- the triangles that should meet at the gap and where their edges really lie. A4_SCRATCH_SIZE 0x1C0000.
   lm77 (+ A4_LINEMARK, 969,128 bytes) and lt77b (the row-120 test on it) rebuilt and queued after the steer pair.
+- **ws77 (C77 with the guard + A4_WRECKPROBE + automark + the seek driver, 420 s; framestat 2,866; the boot fault
+  only): two takedowns of slot 2 (cnt 646-693, 2,782-2,798), mode 0x18, n 3.** The time the lifted draw used, +048 x
+  256 + the share (frec3.py wreck): 1.33, 1.67, 2.00, 2.67, 3.00, 3.33 ... -- +0.33 a render one substep apart, +0.67
+  two apart, exactly the counter on the substep it moves (sub 2 of 3), never back (no step down in either
+  takedown); the game's own +034 / +048 still 1, 1, 2, 2, 3 ... So the wreck's keyframe, ease, roll, spin, arc and
+  morph are now posed at every render's own time: 3 poses a step where there was 1. The pictures (shots/
+  r77-ws77-marks.png: "TAKEDOWN!" and the wreck after it) draw the wreck whole. Not entered: the slow motion's sixths
+  (no n 6 render in the run; the share is q8[6][k], the same code); the second takedown's heading jumped +51 in one
+  render (513 -> 564, cnt 2,786 -> 2,787) -- the impact's turn, not the path's (+B28 bit 11 clear), left as it was.
+- ws77's mark 1 is the news camera (GNN LIVE) -- the searchlight under A4_BBMARGIN: 41 renders with it (62-90 px),
+  covered cells in 10, every one by list faces 10-41 buckets nearer (walls, the game paints those after it); the
+  picture shows the disc around the car whole, its top-right cells behind the striped wall. Not Paris's phone case
+  (GPU boxes 5-9 nearer), which the bench route did not reproduce.
