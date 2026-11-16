@@ -11727,3 +11727,27 @@ No game change against r75; the build adds what the four open issues need record
   947,388 bytes; shipchk clean. m76f (this binary, the same presses; framestat 1,372): **4 marks** -- the load's
   press dropped, 31 s dropped (2 s after a mark), 30 / 70 / 110 / 150 written (256 renders each); the ring's 8
   files as before; the one boot-time access violation every run has. b76a (this binary, b75a's run, 480 s): running.
+- b76a (the candidate 4601bd18, b75a's run: '5' held, Paris, owner's save, N95 model, 480 s; framestat 3,232; faults
+  1, the boot one; errc 0): the last eight windows (telsum.py) are not like for like -- b76a's run ended in a lighter
+  stretch (3D 9.9 ms against 26.9) -- so the whole race's aggregates (r51sum.py, the AG block every capture carries):
+  | build | renders | ms a render | 3D | comp (read) | 2D | pres |
+  | r75 ae84c26a (b75a) | 2,838 | 42.6 | 19.6 | 7.9 (6.2) | 2.3 | 2.4 |
+  | r76 4601bd18 (b76a) | 2,911 | 41.5 | 18.2 | 7.8 (5.9) | 2.6 | 2.4 |
+  FRC3, the sprite list and the +A434 hook cost nothing measurable; a mark's write is outside the windows (as a ring
+  capture's) and is a host write on the bench -- its phone cost unmeasured (about one ring capture's, which the
+  phone already writes every 23 renders).
+- Rule 4, r76 (4601bd18):
+  a. Guesses: (1) C reaches the game as the runtime's key 0x4000 on the phone -- measured only through EKA2L1's
+     mapping (host Backspace -> EStdKeyBackspace 0x01 -> the runtime's 0x4000); the phone's C is the same scancode
+     and the runtime the same binary; if no a4mark file appears, it was wrong. (2) +DD2A's tumble (-42 x +034 while
+     +B28 bit 11) and (3) +A434's outputs as the drawn angles -- read from the code, one picture and m76c (907 of
+     929); the record carries the raw words, so the round settles them either way. (4) 1.7 MB of scratch on the
+     phone (+100 KB over r75's, which ran). (5) A mark's write cost on the phone's flash.
+  b. Read back: a4_tel.c's mark and block writes (the second reading found the menu press waiting; m76e found the
+     load press, which the reading had not), a4_gl.c's pre / post / sprite code, a4_eng.c's frc3 and the hook
+     (disassembled: the fifth argument passed on the stack, +A434 at GBASE + 0xA435). Remembered, not read: none of
+     the hook encodings -- injector.py asserts each displaced bl and capstone checks each BLX.
+  c. Not entered: a press in the pause menu (the load's was; the same age test drops it); C held past 2 s (a second
+     mark after 2 s, by design); the ninth press on this binary (m76a's build); a mark in a news shot or takedown on
+     this binary (the AUTOMARK builds, the same path but the trigger); a second race in one session (marks number
+     on, FRC3 runs on); C: full (Replace fails, the mark dropped).
