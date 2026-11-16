@@ -11577,3 +11577,9 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   bench takes the same objects and draws the skyline; depth precision ruled out): open, needs the phone's own
   capture of the moment (a4tel holds the screen of each of the session's last 8 windows, ~9 s: quitting within a few
   seconds of the loss keeps it).
+- **Sent (owner: "send it"): a4_r75_cand.exe, unbaked, sha256 ae84c26a0e4ebdb7c324f709b75acb7a7c213c657bdd3efa2304236e37c879c2,
+  941,372 bytes** -- the battery's binary (b75a's loader hash SHA-1 f36564fb... is this file's). The owner bakes.
+  Asked of the phone round: the takedown camera (the wreck's turn smooth, not stop-motion); the pickups and the
+  copter's searchlight (whole, not cut along a row); the far buildings in the LA regular race -- if they vanish,
+  quit within a few seconds and send a4tel0-7.dat (each holds that window's screen); and anything that changed in
+  bumps against other cars (the player's own contact turn is spread over the step now).
