@@ -12073,3 +12073,8 @@ c. States the bench did not enter: the slow motion's sixths under the wreck shar
 - Sent (owner: "send ir"): a4_r77_cand.exe, unbaked, sha256 4322b80f1592032394fa3df963fe075daa6885b17bc8a70a489e72942c85f583,
   969,132 bytes; the owner bakes it. Asked: does the stock game swing the car the same way after a turn? Marks (C)
   wanted after a takedown, a snap-back, a cut light or pickup, the far buildings going; grey lines record themselves.
+- **Owner, asked whether the stock game swings the car out and back after a turn: "no, it didn't".** So the guess
+  above is wrong: the game's camera, run on the 3x engine's whole steps, makes a swing (its offsets 12, 17, 19, 28,
+  9 at LA's turn end) that it does not make on stock's steps -- something it reads at a whole step differs from
+  stock's there. The swing is ours. Next: the same turn end, stock against 3x, on the bench at speed (short weaves
+  on a straight, so the car keeps its speed: the key-driven pairs so far drove into the barriers).
