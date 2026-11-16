@@ -11906,3 +11906,18 @@ news 39 ms.
   the boxes are padded, so a seam lies inside both faces' boxes, not at their edges), and GPU items likewise; and a
   bench-only A4_LINEMARK that takes a mark at the line's own frame (the screenshot of the line). lm77 (C77 +
   LINEMARK, 300 s) queued; lt77 (the LINETEST row-120 recorder check) queued.
+- **The margin against the phone's own cut sprites (offline, the round 76 marks' sprite rows):** LA's pickup (mark
+  1): 62 renders with covered cells, the nearest cover within 4 buckets in all 62 -- under BBMARGIN none of them
+  covers (list faces only), so the "$" is drawn whole in every one. Paris's searchlight (mark 0): 78 renders, the
+  nearest cover within 4 in 13 only; the rest 5-9 buckets nearer (17 at 6, 16 at 7, 13 at 8), GPU objects' boxes.
+  Of those the straddlers (the box reaching past the light's depth) no longer cover; one wholly nearer by more than
+  4 still does, and its cell is drawn at that object's far bucket -- so the road in the cell nearer than that
+  (painted before the light by the game) still cuts it in a cell-sized block. The record keeps only the nearest
+  cover's near bucket, so how many of the 65 straddle is not known. m77a: no news camera in the run (camera 2 in
+  every mark), so the light is not in it; its covered sprites are car lights under their own cars (cover 7-9 nearer,
+  the car's near bound) and far sprites behind a crest (list faces 230 buckets nearer) -- both right.
+  The exact rule for a cover wholly in front (left for round 78, needs a new batch kind): draw the sprite's cell
+  untested and without a depth write, then draw the covering object again in that cell with the normal depth test
+  -- its own visible pixels hold its depth and pass, the road nearer than it fails -- the painter's result, with no
+  stencil (the N95 has no stencil config). Or, cheaper and partial, test only the part of the cell inside the cover's
+  box.

@@ -15,7 +15,10 @@
 #   gob [file] a mark's scenery items (box, buckets), sprite list and the list's tiles, drawn over its screenshot
 #          (<file>.gob.png)
 #   list   every word of every render
-#   lines  the grey lines r77 recorded (LIN1): the row, its undrawn run, the faces and items whose box edge is on it
+#   lines  the grey lines r77 recorded (LIN1): the row, its undrawn run, the faces and items whose box spans it
+#   wreck  per render with the other car a wreck: substep, camera, its path frame +034 and +048, and (A4_WRECKPROBE)
+#          the +048 x 256 the lifted draw used (eng_wt8; the counter's own value x 256 on the step's last substep),
+#          with the draw's angles (+A434) -- the takedown's animation at the substep's time
 # A mark covers the 256 renders (~13 s) before the press. Angles are 2,048 a turn.
 import sys, struct, glob, os, math
 HDR, FPS, FB = 256, 560, 320 * 240 * 2
@@ -26,7 +29,7 @@ def offs(d):                                                    # the sprite lis
     o = OFF3 + 16 + n * w * 4
     return o, o + 32 + 16 * 16
 args = sys.argv[1:]
-MODES = ('files', 'rot', 'turn', 'spr', 'obj', 'gob', 'list', 'lines')
+MODES = ('files', 'rot', 'turn', 'spr', 'obj', 'gob', 'list', 'lines', 'wreck')
 mode = 'files'
 if args and args[-1] in MODES: mode = args.pop()
 elif len(args) >= 2 and args[-2] == 'gob': mode = 'gob'; args = args[:-2] + [args[-1]]
@@ -239,6 +242,15 @@ elif mode == 'turn':
         print('%9d cnt %6d sub %d cam %3d  hd %4d axis %4d yaw %4d  car-cam %5d  turn %6d steer %6d keys %04x v %6d %6d%s%s'
               % (r['t'], r['cnt'], r['sub'], r['cmode'], r['hd'], fa, r['yaw'], rel, r['turn'], r['steer'], r['keys'], r['vx'], r['vz'], dr, flag))
     print('car-less-camera reversals (3 or more): %d of %d moving renders' % (rev, moving))
+elif mode == 'wreck':
+    pv = None
+    for r in rows:
+        if 'o34w' not in r or r['o34w'] == -1 or r['o34w'] == 0 and r['o48'] == 0: pv = None; continue
+        t8 = r['pseg']
+        print('%9d cnt %6d sub %d/%d cam %3d slot %2d  +034 %4d +048 %4d  t8 %6d (%5.2f)%s  draw %5d %5d %5d'
+              % (r['t'], r['cnt'], r['sub'], r['n'], r['cmode'], r['oslot'], r['o34w'], r['o48'], t8, t8 / 256.0,
+                 '  +%5.2f' % ((t8 - pv) / 256.0) if pv is not None else '        ', r.get('oda', 0), r.get('odb', 0), r.get('odc', 0)))
+        pv = t8
 elif mode == 'spr':
     for r in rows:
         if not r['nspr']: continue
