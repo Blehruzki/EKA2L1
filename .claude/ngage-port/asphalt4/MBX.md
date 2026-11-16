@@ -11562,3 +11562,18 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
     slow motion (n 6) with a contact -- tv4's second camera may have been one, not confirmed; the player's own
     bumps in a race -- its heading kick is spread too, so a bump turns the car over the step instead of at once
     (the total per step stock's; the old 3x gave up to three kicks a step, more than stock).
+- tv5 / tv6 (the takedown probe on the pair version, '5' held, Paris, owner's save, N95 model, 400 s; framestat
+  2,814 / 2,821): crash / takedown cameras 1 and 5 (tv6: frames 1125, 4836, 7086, 7887, 8349) -- takedowns as many
+  as ever. In tv5's (slow motion, the camera on the victim 025CF810): its heading +21, +20, +17, +14, +11, +10, +8,
+  +7, +6 a substep -- a turn that slows. Across the wreck cameras, the heading a render: tv1 (before) max 145, three
+  of 96+; tv4 max 74, tv5 21, tv6 55, none of 96+ (tools tkhd.py). **The takedown's stop-motion is gone on the
+  bench.**
+- The 5320 installed again as RM-409 (--installdevice from the owner's 7z): rules.py's ordinal check reads all six
+  libraries again (54 ordinals, 0 past the end).
+- Where round 74's four reports stand: (1) the copter farther with each nitro -- the stock game's own (hs4 / hx4);
+  (2) the takedown's stop-motion -- found (+239B6's spin kick, whole on every substep) and fixed (r75); (3) the
+  pickups and the copter light clipping -- r74's cells (in r75 too), the light drawn whole on the bench, the
+  pickups' case not on the bench route: open until a phone round; (4) the far buildings in LA -- not reproduced (the
+  bench takes the same objects and draws the skyline; depth precision ruled out): open, needs the phone's own
+  capture of the moment (a4tel holds the screen of each of the session's last 8 windows, ~9 s: quitting within a few
+  seconds of the loss keeps it).
