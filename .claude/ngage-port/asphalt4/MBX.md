@@ -11583,3 +11583,22 @@ cams." Ten photos (LA, the Veyron, 242-521 km/h, WANTED; one takedown camera on 
   copter's searchlight (whole, not cut along a row); the far buildings in the LA regular race -- if they vanish,
   quit within a few seconds and send a4tel0-7.dat (each holds that window's screen); and anything that changed in
   bumps against other cars (the player's own contact turn is spread over the step now).
+
+## Phone round 75 (r75 ae84c26a, baked by the owner): Paris, first run
+Owner: "there was a moment where the light hid behind a block of road. Also cars are still spinning around choppy on
+takedowns and crashes. And I noticed a bit of snap-back on turns. I'm going for a second round in LA." Seven
+captures, a4tel0-6 (capidx 104-110, frames 7330-7744; the files' names carry -55, -50 ... -60).
+- Telemetry: errc 0 in all; ms a render by window 38, 42, 63, 67, 52, 32, 34 (the race's aggregate: 2,419 renders,
+  51.0 ms a render; 3D 21.9 (hook 13.4), comp 8.6 (read 6.3), 2D 3.0, pres 2.2); presents every 51 ms median
+  (10-90% 31..66), render start to present 42 ms (frec.py). Camera yaw one-frame reversals 1 in 394 frames, car
+  heading 0; "car heading less camera yaw" reversals 13 of 73 moving frames (frec.py) -- what the snap-back may be.
+- Pictures: w0 a takedown camera (the player's Veyron side by side with the silver opponent, sparks), w1 "TAKE
+  DOWN!", **w2-w5 the GNN news camera: w2 the searchlight's disc whole around the white opponent; w3, w4, w5 no disc
+  anywhere** (shots/r75-news-light-w2-w3.png) -- the light gone mid-shot, as the owner saw; w6 the chase ("OWNAGE!").
+- The bench, the same news camera on the fix's probe (tv4 / tv5 / tv6 screenshots, 17 frames): the disc drawn in
+  several, absent in others -- off screen or hidden, not told apart at a screenshot's size. Next: the sprite census
+  (A4_SPRCEN) on a news camera with r75's code, each frame's light: drawn, its rectangle, the cells tested and by
+  which cover.
+- The takedown's choppiness on the phone, against the bench's smooth spin (tv4-tv6): the bench's wrecks spun only
+  (pitch and roll 0 in every wreck camera); the phone's telemetry records the player and the camera, not the car the
+  takedown camera follows -- nothing to measure the victim with. Waiting for the owner's LA round.
