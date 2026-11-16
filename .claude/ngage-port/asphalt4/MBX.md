@@ -12223,3 +12223,21 @@ road, making the shadow incomplete). This never happened on vanilla." Eight ring
   the first window (230 renders from before the start, 140 ms a render through the countdown) used to be ten small
   ones; the race windows run 31.6-44.9 ms (~38 weighted) against b77b's 40.8 -- no regression. shipchk: sha256
   1af6c4c5..., 969,416 bytes, uncompressed, +3A15C ok. Battery: b78a (b76a's run) and la78 (LA, no save) queued.
+- **Battery on r78a 1af6c4c5 (969,416 bytes):** m78a (above: 4 marks, the boot fault only); b78a (b76a's run, 480
+  s; framestat 3,249; the boot fault only): 2,761 renders, 50.7 ms a render with the first window (the menus and the
+  countdown, 230 renders at ~140 ms, which b77b's shorter windows had already dropped from its history), 42.6
+  without it, against b77b's 40.8 -- windows 7-8 a heavy stretch (3D 29 / 24 ms); the composite 8.9 against 8.7: the
+  extra rows cost nothing measurable. la78 (LA, no save, 240 s, C at 60 / 120 / 180; framestat 1,972; the boot fault
+  only): 3 marks, the city's towers drawn to the top of the screen (shots/r78-la78-marks.png).
+
+Rule 4, before r78a goes out:
+a. Guesses: (1) that the owner's chopped upper screen is the composite's row range -- by the code and rcla's probe
+   (14% of LA renders lost the top 41 rows, median), and by the phone's own share of empty-list frames (LA 33%,
+   Paris 4%, as the owner saw it); no bench picture of a cut (the boxes are conservative). The phone settles it.
+   (2) That the jingle's pauses are the capture stalls -- the stalls are measured (~70-100 ms each), the audio's
+   buffer depth is not; the phone settles it.
+b. Read back: rows_extend and its two call sites (after each flush's draws; skipped for an off-screen box; clamped);
+   the reset of the rows at the frame's start (unchanged, before both flushes); C78's one change. A4_ROWCHECK is
+   bench only (it keeps the old rows).
+c. Not entered: The Fame Avenue (the bench's LA is the starter route); a box partly behind the camera (marked off
+   screen by gitem_box, skipped -- its rows then come from the rest as before, no worse than r77).

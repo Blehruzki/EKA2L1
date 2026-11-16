@@ -28,3 +28,7 @@ C77.flags = C76.flags + `-DA4_WRECKFRAC -DA4_BBMARGIN -DA4_LINEALL -DA4_LINEREC`
 also lifts the car draw +D3BA (renderer/eng/funcs.txt), and lifted.c is generated with the flag set's hooks** (tools/
 lift.py routes +D3BA's bl +A434 through A4_FRC3's hooks): regenerate it with the build's own flags, and to rebuild an
 earlier candidate byte for byte take that commit's lifted.c too (r75 / r76 from 931b807's tree).
+
+C78.flags = C77.flags with `-DTEL_EVERY=230` (round 78: a capture every ~10 s, each one stalled the phone ~80 ms);
+scratch `0x1C0000`. a4_r78a.exe (C78 + the composited rows of the GPU objects and cars), sha256
+1af6c4c5b3e527e9dd06775372a632a725aa9ba32f0d1c0108af32e89232483a, 969,416 bytes. Bench only: `-DA4_ROWCHECK`.
