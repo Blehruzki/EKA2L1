@@ -11998,3 +11998,14 @@ news 39 ms.
   over the substeps, and its world yaw reverses (283 -> 292) where the game's turns back 3, because its yaw leads
   the game's in the turn by the heading's progress within the step. Guess, named: that the owner's "snap-back" is
   this swing; a stock-step build's ring on the phone would show the game's own at 11.7 Hz. No camera change in r77.
+- **lm77 (C77 + LINEMARK with the stream edges, 300 s; framestat 2,204; the boot fault only): two catches, each with
+  its picture (shots/r77-lm77-lines.png), neither the phone's kind.** Frame 2,691 (the takedown camera): rows 7 and 8
+  (77 / 82 px over x 3..319) just under the top letterbox bar -- the recorder names the bar itself, a flat quad
+  (tex 10000000) over (0,0)-(320,7), and the 3D's first triangles beginning on rows 8-9 (w 145,000-185,000, the
+  far road): a sliver between the bar and the letterboxed 3D, where the composite keeps the software layer. Frame
+  4,458: full-width bands at rows 19 and 26 (226-227 px, the rows beside them as empty) inside a bridge's top --
+  six list faces of key 2 (box rows 13..32) span them: the sky through the balustrade's transparent texels, as the
+  game draws it. Both show the stream record works on a real frame (the triangles ending and beginning beside the
+  row, with their vertices). Still no bench catch of the phone's line (one row, neighbours fully drawn, mid-picture)
+  except m77a's frame 4,452 under the first recorder; the phone build carries the recorder (A4_LINEREC), so the next
+  line the owner sees is recorded with the triangles around it.
