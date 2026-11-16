@@ -12034,3 +12034,39 @@ news 39 ms.
   undrawn; line_rec reads them only there) -- the same counts and ends. Candidate r77 rebuilt: 969,132 bytes,
   sha256 4322b80f1592032394fa3df963fe075daa6885b17bc8a70a489e72942c85f583 (shipchk clean). Queued: lt77c (the
   row-120 test on the new counter), then the battery again on this binary (m77g, b77b).
+- lt77c (the row-120 test on the new counter, 90 s; framestat 1,023): row 120 caught on every sampled frame, run x
+  0..319 (the ends right), rows beside it 0. Composite against lt77b (the old counter, the same test): comp 9.1
+  (read 6.4) against 11.5 (read 7.1) -- the composite's own work 2.7 ms against 4.4 (round 76's 1.9): the counter
+  now ~0.8 ms a composite, not ~2.5-3.
+- **Battery on r77 4322b80f (969,132 bytes):** m77g (m77f's run; framestat 1,422): 4 marks (30, 70, 110, 150; 31 s
+  dropped, the load's press not a mark), all decode; the boot fault only. b77b (b76a's run, 480 s; framestat 3,324;
+  the boot fault only): **3,021 renders, 40.8 ms a render | 3D 16.8, comp 8.7 (read 5.9), 2D 2.6, pres 2.3** --
+  b76a 41.5 (comp 7.8, read 5.9): the counter's ~0.9 ms on the composite, the rest the route.
+
+Rule 4, before r77 goes out:
+a. Guesses, and how the bench could settle them:
+   - That the lifted car draw (+D3BA) is exact where there is no share: not settled -- the lockstep oracle parts
+     between two identical baseline runs here, even on the deterministic tick (dx76a / dx76b). It rests on the
+     lifter's record and on the pictures (cr77b, m77a, ws77: every car and wreck drawn whole). Settled by finding
+     the race's other clock (the fast counter, home time) and running the oracle again.
+   - That a wreck's counters keep moving every step while it is posed: measured in ws77 (two takedowns, never back,
+     exact on each move); the guard (no share once a step passes without a move) covers the other case.
+   - That 4 buckets is the sprite's own depth: LA's cut pickup replayed, 62 of 62 renders uncovered; Paris's light
+     13 of 78 by the nearest cover -- a GPU object wholly in front still tests its cell at its far depth and the road
+     nearer than that still cuts the light there. The exact rule (draw the cover again over the sprite's cell)
+     needs a batch kind of its own: round 78.
+   - That the line record will show the phone's line: the bench catches sky bands and the letterbox sliver, and
+     one possible row (m77a, row 90); the phone's kind is not reproduced. One stream triangle a row and side is kept.
+   - That the "snap-back" is the game's own camera (reconstructed from the phone's ring: the same -28 swing at 11.7
+     Hz): no change; a stock-step ring from the phone would settle it.
+b. Read back: every wreck edit in lifted.c in its context (+DD72, +DDE2, +DE50, +DDB4, +DE1E, +DF18, +DF5E, +DFEA --
+   the branches into +DD72 / +DDE2 / +DE50 bring the value the edit recomputes, the game's own rsbs still signs it,
+   the arc's linear and square terms share the fractional time); eng_wfrac8 / eng_wrate_set / eng_wkey / eng_wt8c
+   (which found the stale-rate creep: the guard); lte_take and line_rec's copy (a macro clash, caught by the
+   compiler); the counter rewrite (tested by lt77c); the margin lines in gobj_bb_cells / mesh_bb_cells. Only
+   remembered: a4_tel.c's block offsets for SPL / GOB1 / GRD1 (exercised by every mark decoding) and the
+   injector's scratch asserts.
+c. States the bench did not enter: the slow motion's sixths under the wreck share (q8[6][k]); a wreck with +B28
+   bits 11 / 12 (the turn edits run only there: read back, never run); a real seam under the stream record; Paris's
+   light under GPU covers 5-9 nearer; the far-building stretch (LA, segments 9-17); a mark file 2,112 bytes longer
+   (LIN1's 114 words) on the phone's C: -- the same writer, a longer block.
