@@ -12769,3 +12769,36 @@ c. Not entered: the phone's own giants (see a1); a cut blended triangle (KIND_AD
   of them at the first use): [32] list faces, [33] objects, [34] cars handed back. a4_tel.c writes 160 bytes; frec3
   prints the cut and hand-back counts. All under A4_CLIPG. r82e (C82, sha256 f41865b5085e720d9236791e33371cc40c23892f3381b4f9d04004757f40809c,
   982,724 bytes; cliptest pass). Battery running: m82e, la82e, b82e. Not a repeat of r82d's (the three paths now cut).
+- m82e (r82e, Instant Play, night Paris; framestat 2,233, the boot fault only): 8 marks, clean pictures (the underpass, the bridge,
+  Montmartre's arcade). CRK1: **270 list faces and 234 GPU objects handed back, no car**; yet 58 triangles cut (94
+  pieces, the farthest 2,582 px) against r82d's 80. Why few: a refused face goes to the game's insert (+349B0, a4_otins)
+  and its face draw +31246 sends a perspective face (0x4001) with any vertex flag to +35D3A, which **clips in 3D against
+  the four screen-edge planes** (map 1): it reaches the stream inside the panel. Only the affine classes (clipped only
+  when near, bit 12) can still arrive giant -- those are what lean_tail cuts. Both paths are the game's stock ones;
+  nothing is dropped. Cost: ~0.1 face and ~0.1 object a render handed back.
+- la82e (LA, "main menu after 5 looks"; framestat 2,256, the boot fault only): 7 marks, clean (downtown, the hills, the
+  LIVE cut-in, a boost). CRK1: **548 list faces and 286 objects handed back, no car; 0 triangles cut** -- as la82d up to
+  the same capture (its 21 cuts all fell in a seventh capture, after the race, that this run did not reach); 256 of the
+  faces before the first mark (the HOME garage and the start).
+- b82e (b78a's run; framestat 3,024, the boot fault only): 55.7 ms a render over the race (3D 19.8, composite 10.4)
+  against b82d's 55.0 (19.6, 10.1). Not like for like: the driverless car took another path (its frames: a wall at the
+  left early on; 710 renders in segments 0-19 against b82d's 552, where segcmp has 43 ms against 38; segments 80-139
+  faster, 42-52 against 46-54) and 2,822 triangles cut (797 pieces, the farthest 32,053) against 961. Hand-backs: 357
+  list faces, 319 objects, no car over ~3,000 renders. The cost bound: round 62 put the GPU's objects at 4.7 ms a
+  render for ~37 objects (r59 49.4 -> r62 44.7), ~0.13 ms an object on the game's path; 0.1-0.2 a render handed back
+  is ~0.02 ms -- not what moved the total. Not a repeat of b82d (the three paths handed back).
+
+Rule 4, before r82e goes out (r82d's a-c stand; added):
+a. Guesses: (4) that the game's own path draws a handed-back face or object correctly -- the stock path every face
+   took before the list (round 53) and every near object since round 62; a perspective face is clipped there in 3D
+   against the screen-edge planes (+35D3A), so it does not come back giant; an affine one is cut by lean_tail.
+   (5) That a box from the mesh's bounds is the right test for an item (conservative: a corner of the bounds may be
+   off the band while no triangle is -- that item is handed back needlessly, at ~0.13 ms).
+b. Read back: mesh_take's test after the projection and the back-face test (a culled face stays culled; every return
+   0 path leaves the list as it was); gitem_box's giant from the extents before its clamp, 0 on its two early returns
+   (the near box, never reached past the take's near test); both takes' n-- (the slot given back, nothing else of the
+   frame's state changed: taken, F and the box arrays are written after or for that slot only); crk_get zeroing all 40
+   words; a4_tel.c's 160 bytes at the same offset, nothing written after it; frec3 reading 40 words when present.
+c. Not entered: cars handed back (0 in all three runs: a car's box never reached the band here -- the finish camera's
+   spin is the likeliest place, and the bench's runs did not finish); whether the phone's lines go (only the phone can
+   say); the MBX tiles' parameter-buffer loss (r82d's a2) -- still unaddressed.
