@@ -12319,3 +12319,7 @@ b. Read back: lean_conv's three-way rule (shadows only GPU items cover: own dept
 c. Not entered: a night or rain city (the bench ran LA and Paris's Instant Play), a crowded start or a pile-up (the
    most pending items at once), The Fame Avenue, replays, multiplayer. A fill or fade over a pending item (the flush)
    was entered: 10 in la78c.
+- **r78 sent** (owner: "yes, send it"): a4_r78_cand.exe, unbaked, sha256 a45148853e48e293fcca0e9d29342af64891d4a063b9def79b8af4961c0ef608,
+  975,180 bytes = r78c, built from fb69da3 with C78 (A4_THIRDSTEP=1, scratch 0x1C0000). To check on the phone: the
+  pickups on the road, the searchlight and the car's shadow whole; the upper screen whole (LA's usual spots); the
+  finish jingle without pauses; the render times against r77 (the CVR1 block in each capture: redraw ticks, k[6]).
