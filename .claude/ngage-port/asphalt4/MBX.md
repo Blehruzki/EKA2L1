@@ -12475,3 +12475,26 @@ c. Not entered: the finish camera on the bench; a whole race in a camera other t
   lines, 406 rows filled, 129,920 pixels. The fill does what it says, and the test fails without it.
 - C80.flags = C78 + -DA4_LINEFILL. r80 candidate = r80c (da090fd0, 976,784 bytes). Battery queued: m80 (Instant
   Play marks), la80 (LA on the owner's save, where the lines were), b80 (b78a's run, timing).
+- **Battery on r80 (C80, from d10a81b; sha256 da090fd0cc324347f29d142d39205c044dcb46ac3f59eb6aa508e59b496c34a7, 976,784 bytes):** m80 (Instant Play
+  marks; framestat 2,181, the boot fault only): 7 marks, the pictures clean; one real line on the bench in the race,
+  recorded and filled (72 px). la80 (LA on the owner's save; framestat 2,291, the boot fault only): 8 marks, the
+  pictures clean; no line in the race; 34 rows (7,174 px) filled before it, with no frame record yet -- the HOME
+  screen's 3D garage (the owner's Veyron), the menus' screenshots unchanged to the eye. b80 (b78a's run; framestat
+  3,057, the boot fault only): the race windows 44.3 ms (r79b 45.3, r79a 44.3; its scene again a bare one, 21 list
+  triangles a render): the fill costs nothing to measure. Not a repeat of lt80a / lt80b (the test rows) or la79a /
+  b79b (r79: no fill).
+
+Rule 4, before r80 goes out:
+a. Guesses: (1) that the owner's grey lines are the rows the counter finds (64 or more undrawn, the rows two away
+   under 16): phone round 79's three LA lines were (two with both neighbours whole, one with 46 / 6 beside) -- lines
+   shorter than 64 px, or two rows thick with the rows two away also open, stay; the phone settles it (LIN1 counts
+   both the lines and the fills). (2) That copying a neighbour row's pixels is what the eye expects there: the same
+   surface one row away; a GPU-drawn pixel inside the run (a pole, a car's edge) takes its neighbour's too -- one
+   row. Not settled on the bench: its GPU does not crack the phone's way (one line in m80).
+b. Read back: the fill sits under the counter's own condition, outside the frame record's magic test (so it also
+   runs where no record is kept: the garage); the source row's choice (below unless it has 16 or more undrawn, then
+   above, else none); the run's bounds checked (x0 <= x1 < VP_W, rows >= CLIP_TOP); after every strip is composited,
+   before the 2D; LIN1's [2] / [3] initialised with the magic if no line was recorded first.
+c. Not entered: a phone crack on the bench (only the forced row and one real line); a line inside a menu's 3D with
+   software detail under it (the garage's fills, unseen); the first two and last two composited rows (the counter's
+   range: miny + 2 .. maxy - 2).
