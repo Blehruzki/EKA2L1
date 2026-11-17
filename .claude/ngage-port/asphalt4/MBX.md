@@ -12704,3 +12704,24 @@ c. Not entered: the phone's own cracks (its MBX); more than two runs a frame (co
   the horizon's busiest tile rows (where the cracks crowd too: CRK1 bands 96-111, 112-127); (2) **the game's near,
   huge triangles** (corners at x -22,181 in round 81b, w ~1,100) drawn by the MBX's fixed-point clipping as slivers of
   the wrong rows or texels -- across the screen, behind the car. Both are what "peak of speed" and "tunnel exit" bring.
+- m82 / la82 (r82 before the cut, the battery stopped once superseded): m82 (Instant Play; framestat 2,081, the boot fault
+  only): 8 marks (7 presses, 1 automatic -- a 65 px crack at row 90); CRK1 88 + 25 cracks, 119 gaps of 3-5 rows, none of
+  64+. la82 (LA; framestat 2,260, the boot fault only): 66 cracks of 64+ (the HOME garage's row 118, before the race) and
+  no automatic mark spent on them -- the race gate holds.
+- **Round 82's fix: A4_CLIPG -- the game's giant triangles cut on the CPU.** Read in tri_conv: a stream triangle reaches the
+  GPU as (x W, y W, z, W) in fixed point with x the game's screen pixel; a corner at x -22,181 with W ~1,100 sits ~140
+  screens beyond the panel and the MBX must clip it in fixed point, where a cut a thousandth off moves it tens of pixels
+  and texels along an edge that long -- a sliver at eye height then draws as a strip of the wrong texels across the
+  screen, depth-tested (behind the car, as the video shows). Now lean_tail cuts any triangle with a corner more than
+  CLIPG = 1,024 px off the panel to [-1024, 1344] x [-1024, 1264] (renderer/a4_clip.h: Sutherland-Hodgman, positions
+  kept in 1/16 px, the depth by 1/w and the texture words by a/w, both linear in screen space -- as the GPU interpolates
+  them; shift-subtract divides, no helper) and draws the polygon as a fan through lean_conv (a cvp of three struct
+  clipv in place of desc's corners; tri_conv's new fb shifts the 1/16 px positions). CRK1 [29] triangles cut, [30]
+  pieces drawn, [31] the farthest corner. **tools/cliptest.c** (host): 200,000 random triangles with corners to
+  +-32,000 px and w 200-30,000: 188,666 clipped polygons checked, no vertex off the band, none more than 0.06 px off the
+  original triangle; depth and texture words within 2 units + 0.1% (a corner cut by two planes 0.2% of the span) of the
+  exact perspective value on the edge they lie on (the planes' value inside); the recorded sliver -> 4 vertices, u 38,637
+  where the hand calculation gives ~38,600; two mutants (u, v swapped; depth linear in screen space) caught. Bugs the test
+  found on the way: the cut point rounded to a whole pixel (half a pixel on a sliver 5 rows tall: positions now 1/16
+  px), num << 15 overflowing 32 bits once positions carried 1/16 px, a % that needed a divide helper. C82.flags = C80 +
+  -DA4_CLIPG; r82c 982,000 bytes (C80 alone 979,308). Battery running: m82c, la82c, b82c.

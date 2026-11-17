@@ -34,6 +34,15 @@
 #ifdef A4_LISTDUMP
 #include "a4_memo.h"                /* round 60: the list dump's mesh call per face */
 #endif
+#ifdef A4_CLIPG
+#if !(defined(A4_LEAN) && defined(A4_COVREDRAW))
+#error "A4_CLIPG cuts in lean_tail and counts in CRK1 (A4_GL_CRK, beside A4_COVREDRAW's state)"
+#endif
+#include "a4_clip.h"                /* round 82: the game's giant triangles cut to a guard band (tools/cliptest.c) */
+#ifndef CLIPG
+#define CLIPG 1024                  /* pixels beyond each edge of the panel a corner may lie before the triangle is cut */
+#endif
+#endif
 
 #define A4_GL_SCRATCH 0x00401000u
 #define A4_GL_READBUF 0x00403000u        /* one strip: 320*STRIP*4, ends at 0x408000 */
@@ -544,6 +553,7 @@ struct mesh {
  * grid (lframe, lgrid, before the GPU's items join it), the pending items (objects in ob, cars in cb) and their
  * screen box (r), counters (k). */
 #define A4_GL_CVR 0x005C0400u
+#define A4_GL_CRK 0x005C0800u   /* round 81/82: the crack and cut-triangle counters ('CRK1', 32 words) */
 #define CVR_FLAG 0x08000000u   /* the run passes every test and writes its depth */
 #define CVR_WRITE 0x04000000u  /* the run keeps its test and writes its depth (bm78c: tested elements over a pending item) */
 struct cvr { uint32_t lframe, pend; int16_t r[4]; uint32_t ob[6], cb; uint32_t magic, k[8]; uint16_t lgrid[MESH_GW * MESH_GH]; };
@@ -4552,8 +4562,8 @@ static inline int tri_tex(volatile struct glr *s, uint32_t kind, int m1, uint32_
  * points (int16, as the game's), depths and texcoord words; xlo..yhi its extents */
 static inline void tri_conv(uint32_t kind, int wsh, int hsh, int32_t x0, int32_t y0, int32_t x1, int32_t y1,
                             int32_t x2, int32_t y2, int32_t za, int32_t zb, int32_t zc, const uint32_t *uvw,
-                            int32_t xlo, int32_t xhi, int32_t ylo, int32_t yhi, int32_t *pos, int32_t *uv)
-{
+                            int32_t xlo, int32_t xhi, int32_t ylo, int32_t yhi, int32_t *pos, int32_t *uv, int fb)
+{   /* fb: the positions' fraction bits (0; round 82's cut triangles 4) -- the extents xlo..yhi are whole pixels */
     if (kind == KIND_TEX || kind == KIND_TEXZ || kind == KIND_ADD || kind == KIND_ALPHA) {
         uv[0] = ((int32_t)uvw[0] * 4096) >> wsh; uv[1] = ((int32_t)uvw[1] * 4096) >> hsh;
         uv[2] = ((int32_t)uvw[2] * 4096) >> wsh; uv[3] = ((int32_t)uvw[3] * 4096) >> hsh;
@@ -4585,9 +4595,9 @@ static inline void tri_conv(uint32_t kind, int wsh, int hsh, int32_t x0, int32_t
     if (W0 < 1) W0 = 1;
     if (W1 < 1) W1 = 1;
     if (W2 < 1) W2 = 1;
-    pos[0] = x0 * W0; pos[1]  = y0 * W0; pos[2]  = -(zq < W0 ? zq : W0); pos[3]  = W0;
-    pos[4] = x1 * W1; pos[5]  = y1 * W1; pos[6]  = -(zq < W1 ? zq : W1); pos[7]  = W1;
-    pos[8] = x2 * W2; pos[9]  = y2 * W2; pos[10] = -(zq < W2 ? zq : W2); pos[11] = W2;
+    pos[0] = (x0 * W0) >> fb; pos[1]  = (y0 * W0) >> fb; pos[2]  = -(zq < W0 ? zq : W0); pos[3]  = W0;
+    pos[4] = (x1 * W1) >> fb; pos[5]  = (y1 * W1) >> fb; pos[6]  = -(zq < W1 ? zq : W1); pos[7]  = W1;
+    pos[8] = (x2 * W2) >> fb; pos[9]  = (y2 * W2) >> fb; pos[10] = -(zq < W2 ? zq : W2); pos[11] = W2;
 #ifdef A4_MBXTIE
     if (shift & 1) { pos[1] += W0 >> 7; pos[5] += W1 >> 7; pos[9] += W2 >> 7; }   /* bench: the tie's model */
     else           { pos[1] -= W0 >> 7; pos[5] -= W1 >> 7; pos[9] -= W2 >> 7; }
@@ -4714,8 +4724,9 @@ static void shad_sink(const uint32_t *gctx, const uint32_t *desc)
 }
 #endif
 static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1,
-                     uint32_t tsaddr, int32_t *pos, int32_t *uv, uint32_t *idp, int16_t *box, int32_t *yr)
-{
+                     uint32_t tsaddr, int32_t *pos, int32_t *uv, uint32_t *idp, int16_t *box, int32_t *yr, const void *cvp)
+{   /* cvp: round 82 -- a piece of a cut triangle (A4_CLIPG: three struct clipv, positions in 1/16 pixel) in place of
+     * desc's corners and texture words; desc still gives the class, the texture and the face's record */
     int wsh, hsh;
     int mv = m1 && kind != KIND_ALPHA;
     int ti = tri_tex(s, kind, m1, tsaddr, mv ? (const uint16_t *)gctx[0x5c / 4] : 0, mv ? m1_table(gctx) : 0,
@@ -4725,21 +4736,35 @@ static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
     int32_t x0 = (int16_t)(int32_t)v0[0], y0 = (int16_t)(int32_t)v0[1];
     int32_t x1 = (int16_t)(int32_t)v1[0], y1 = (int16_t)(int32_t)v1[1];
     int32_t x2 = (int16_t)(int32_t)v2[0], y2 = (int16_t)(int32_t)v2[1];
+    int32_t za = (int32_t)v0[2], zb = (int32_t)v1[2], zc = (int32_t)v2[2];
+    uint32_t uvw[6] = { desc[4], desc[5], desc[7], desc[8], desc[10], desc[11] };
     int32_t xlo, xhi, ylo, yhi;
+    int fb = 0;
+#ifdef A4_CLIPG
+    if (cvp) {
+        const struct clipv *cv = (const struct clipv *)cvp;
+        x0 = cv[0].x; y0 = cv[0].y; x1 = cv[1].x; y1 = cv[1].y; x2 = cv[2].x; y2 = cv[2].y;
+        za = cv[0].z; zb = cv[1].z; zc = cv[2].z;
+        uvw[0] = (uint32_t)cv[0].u; uvw[1] = (uint32_t)cv[0].v; uvw[2] = (uint32_t)cv[1].u; uvw[3] = (uint32_t)cv[1].v;
+        uvw[4] = (uint32_t)cv[2].u; uvw[5] = (uint32_t)cv[2].v;
+        fb = CLIP_FB;
+    }
+#else
+    (void)cvp;
+#endif
     ext3(x0, x1, x2, &xlo, &xhi); ext3(y0, y1, y2, &ylo, &yhi);
+    if (fb) { xlo >>= fb; ylo >>= fb; xhi = (xhi + (1 << fb) - 1) >> fb; yhi = (yhi + (1 << fb) - 1) >> fb; }   /* whole pixels */
     tbox_calc(box, xlo, ylo, xhi, yhi);
     yr[0] = ylo < 0 ? 0 : ylo >= VP_H ? VP_H - 1 : ylo;
     yr[1] = yhi < 0 ? 0 : yhi >= VP_H ? VP_H - 1 : yhi;
-    const uint32_t uvw[6] = { desc[4], desc[5], desc[7], desc[8], desc[10], desc[11] };
-    tri_conv(kind, wsh, hsh, x0, y0, x1, y1, x2, y2, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2], uvw,
-             xlo, xhi, ylo, yhi, pos, uv);
+    tri_conv(kind, wsh, hsh, x0, y0, x1, y1, x2, y2, za, zb, zc, uvw, xlo, xhi, ylo, yhi, pos, uv, fb);
 #if defined(A4_MESH) && !defined(MESH_TRIALL)       /* MESH_TRIALL: bench, round 27's rule */
 #ifdef A4_COVREDRAW
     if (MESH_ON() && kind != KIND_TEXZ) {
-        const int cv = mesh_tri_covered(desc, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2], xlo, ylo, xhi, yhi);
+        const int cv = mesh_tri_covered(desc, za, zb, zc, xlo, ylo, xhi, yhi);
         if (cv == 2 && kind == KIND_SHAD) {         /* a shadow only GPU items cover: its own depth, written; they again */
             *idp |= CVR_FLAG;
-            cvr_add(cvr_tri_bucket(desc, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2]), xlo, ylo, xhi, yhi);
+            cvr_add(cvr_tri_bucket(desc, za, zb, zc), xlo, ylo, xhi, yhi);
             CVR->k[0]++;
         } else if (cv != 0) {                       /* tested at its own depth as before; over a pending item it writes it */
             if (cvr_hits(xlo, ylo, xhi, yhi)) { *idp |= CVR_WRITE; CVR->k[1]++; }
@@ -4752,7 +4777,7 @@ static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
     }
 #else
     if (MESH_ON() && kind != KIND_TEXZ
-        && !mesh_tri_covered(desc, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2], xlo, ylo, xhi, yhi)) {
+        && !mesh_tri_covered(desc, za, zb, zc, xlo, ylo, xhi, yhi)) {
         pos[2] = -pos[3]; pos[6] = -pos[7]; pos[10] = -pos[11];   /* window depth 1: untested */
     }
 #endif
@@ -4897,7 +4922,50 @@ static void sky_check_expect(int32_t y0, int32_t y1)
 }
 #endif
 #endif
+static int lean_tail_cv(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1, uint32_t tsaddr,
+                        const void *cvp);
 static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1, uint32_t tsaddr)
+{
+#ifdef A4_CLIPG
+    {   /* round 82 (the owner's video: lines and bands across the picture at a tunnel exit at top speed, drawn and
+         * depth-tested): a triangle with a corner more than CLIPG pixels off the panel is cut to the band around it
+         * on the CPU (a4_clip.h, perspective-correct; tools/cliptest.c) and drawn as a fan, so the MBX never clips a
+         * corner 140 screens away in fixed point. CRK1 [29] triangles cut, [30] pieces drawn, [31] the farthest corner. */
+        const uint32_t *vv[3] = { (const uint32_t *)desc[3], (const uint32_t *)desc[6], (const uint32_t *)desc[9] };
+        int giant = 0; int32_t far = 0;
+        for (int i = 0; i < 3; i++) {
+            const int32_t x = (int16_t)(int32_t)vv[i][0], y = (int16_t)(int32_t)vv[i][1];
+            if (x < -CLIPG || x > VP_W + CLIPG || y < -CLIPG || y > VP_H + CLIPG) giant = 1;
+            const int32_t ax = x < 0 ? -x : x, ay = y < 0 ? -y : y;
+            if (ax > far) far = ax;
+            if (ay > far) far = ay;
+        }
+        if (giant) {
+            struct clipv t[3], o[CLIPV_MAX];
+            for (int i = 0; i < 3; i++) {
+                t[i].x = (int32_t)(int16_t)(int32_t)vv[i][0] * (1 << CLIP_FB);
+                t[i].y = (int32_t)(int16_t)(int32_t)vv[i][1] * (1 << CLIP_FB);
+                t[i].z = (int32_t)vv[i][2];
+                t[i].u = (int32_t)desc[4 + 3 * i]; t[i].v = (int32_t)desc[5 + 3 * i];
+            }
+            const int n = clip_tri(t, -CLIPG * (1 << CLIP_FB), -CLIPG * (1 << CLIP_FB), (VP_W + CLIPG) * (1 << CLIP_FB),
+                                   (VP_H + CLIPG) * (1 << CLIP_FB), o);
+            volatile uint32_t *C = (volatile uint32_t *)A4_GL_CRK;
+            if (C[0] != 0x314B5243u) { for (uint32_t k = 1; k < 32u; k++) C[k] = 0; C[0] = 0x314B5243u; }
+            C[29]++; if (n >= 3) C[30] += (uint32_t)(n - 2); if ((uint32_t)far > C[31]) C[31] = (uint32_t)far;
+            int r = (kind == KIND_ADD || kind == KIND_ALPHA) ? 0 : 1;
+            for (int k = 1; k + 1 < n; k++) {
+                const struct clipv f[3] = { o[0], o[k], o[k + 1] };
+                if (!lean_tail_cv(s, gctx, desc, kind, m1, tsaddr, f)) r = 0;
+            }
+            return r;
+        }
+    }
+#endif
+    return lean_tail_cv(s, gctx, desc, kind, m1, tsaddr, 0);
+}
+static int lean_tail_cv(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1, uint32_t tsaddr,
+                        const void *cvp)
 {
     uint32_t n = s->bfill;
     if (n >= MAXT) {                                /* batch full: draw it, then refill */
@@ -4906,7 +4974,7 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
     }
     int32_t yr[2];
     if (!lean_conv(s, gctx, desc, kind, m1, tsaddr, (int32_t *)A4_GL_POS + n * 12u, (int32_t *)A4_GL_UV + n * 6u,
-                   (uint32_t *)A4_GL_TEXID + n, (int16_t *)A4_GL_TBOX + n * 4u, yr)) return 0;
+                   (uint32_t *)A4_GL_TEXID + n, (int16_t *)A4_GL_TBOX + n * 4u, yr, cvp)) return 0;
 #ifdef A4_SKYCEN
     sky_note(kind, desc);
 #endif
@@ -4980,7 +5048,7 @@ static int defer_take(volatile struct glr *s, uint32_t *gctx, const uint32_t *de
         int32_t yr[2];
         uint32_t *sh = (uint32_t *)0x00423000u + n * 24u;    /* pos 12, uv 6, id, box 2, ok, rows 2 */
         sh[19] = lean_conv(s, gctx, desc, kind, m1, tsaddr, (int32_t *)sh, (int32_t *)sh + 12, sh + 18,
-                           (int16_t *)(sh + 20), yr);
+                           (int16_t *)(sh + 20), yr, 0);
         sh[22] = (uint32_t)yr[0]; sh[23] = (uint32_t)yr[1];
     }
 #endif
@@ -7880,7 +7948,7 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
          * first differing word's index (0-11 pos, 12-17 uv, 18 id, 19-22 box, 23-24 rows) */
         volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
         int32_t lp[12], lu[6], yr[2]; uint32_t lid = 0; int16_t lb[4];
-        int ok = lean_conv(s, gctx, desc, kind, m1, tsaddr, lp, lu, &lid, lb, yr);
+        int ok = lean_conv(s, gctx, desc, kind, m1, tsaddr, lp, lu, &lid, lb, yr, 0);
         const int16_t *ob = (const int16_t *)A4_GL_TBOX + n * 4u;
         int bad = -1;
         for (int k = 0; k < 12 && bad < 0; k++) if (lp[k] != POS[vb*4 + k]) bad = k;
@@ -9039,8 +9107,8 @@ static void batch_draw(uint32_t nt)
                     int32_t x2 = (int16_t)(d[6] & 0xFFFFu), y2 = (int16_t)(d[6] >> 16);
                     int32_t xlo, xhi, ylo, yhi;
                     ext3(x0, x1, x2, &xlo, &xhi); ext3(y0, y1, y2, &ylo, &yhi);
-                    tri_conv(kind, wsh, hsh, x0, y0, x1, y1, x2, y2, (int32_t)d[7], (int32_t)d[8], (int32_t)d[9], d + 10,
-                             xlo, xhi, ylo, yhi, po, uo);
+                    tri_conv(kind, wsh, hsh, x0, y0, x1, y1, x2, y2, (int32_t)d[7], (int32_t)d[8], (int32_t)d[9], d + 10,  /* fb 0 */
+                             xlo, xhi, ylo, yhi, po, uo, 0);
                 }
 #ifdef A4_DEFERCHECK
                 {   /* bench: these words against the lean path's at the hook (0x412D00 [110]
@@ -9285,7 +9353,7 @@ static void line_rec(volatile struct glr *s, int y, const uint8_t *lc_u, uint32_
  * then (MESH->F), [23] runs recorded in LIN1; round 82: [24] runs of gaps 3-6 rows thick (kind 4, not filled; the
  * thickness in e[1] bits 16-23), [25] those of 64+, [26] automatic marks asked, [27] the last one's tick, [28] the
  * thickest gap. Totals from the boot. */
-#define A4_GL_CRK 0x005C0800u
+/* (A4_GL_CRK 0x5C0800 is defined beside A4_GL_CVR) */
 #ifdef A4_COVREDRAW
 _Static_assert(A4_GL_CVR + sizeof(struct cvr) <= A4_GL_CRK, "the crack counters over the cover redraw's state");
 #endif
