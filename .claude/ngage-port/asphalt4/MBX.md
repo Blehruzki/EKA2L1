@@ -12641,3 +12641,12 @@ c. Not entered: the phone's own cracks (its MBX); more than two runs a frame (co
 - Timing: the race 56.9 ms a render (r79 LA 61.1, r77 52.5), the composite 11.0 (r79 10.1: the mask and fill, ~0.9 ms
   on the phone, as the model said); every render, the last ~104 s: median 57 ms, 90% 75, 99% 90, >= 100 ms 9 (r79: 57 /
   73 / 94 / 13). Asked: were the grey lines seen.
+- Owner: **"and yes, the lines appeared before the second lap"**. The ring's frame records cover the last ~104 s (lap 2
+  on), but CRK1 counts from the boot: by mark 0 (early lap 2) 37 one-row runs, none of 64+, the longest 49 px -- lap 1's
+  cracks were 16-49 px and every one was filled. GPU fills (header [49], the game's rectangle fill on the GPU): bursts
+  of ~110-140 in takedowns (the letterbox bars), none otherwise. **So the lines the owner saw are not the fill's kind**:
+  either undrawn pixels the rule excludes (a gap touching another undrawn area -- the sky, the software layer's
+  bottom fill -- or three rows and more) or something the GPU draws grey (alpha set: never counted). The record cannot
+  tell which; a picture of one can. Asked for one (a photo or video at a tunnel exit, lap 1), and its colour, width,
+  place on screen, count, duration, and whether stock ever shows it; an automatic capture (the final picture scanned
+  for long rows unlike both neighbours, a mark written at once) is the alternative.
