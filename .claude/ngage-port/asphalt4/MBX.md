@@ -12498,3 +12498,6 @@ b. Read back: the fill sits under the counter's own condition, outside the frame
 c. Not entered: a phone crack on the bench (only the forced row and one real line); a line inside a menu's 3D with
    software detail under it (the garage's fills, unseen); the first two and last two composited rows (the counter's
    range: miny + 2 .. maxy - 2).
+- **r80 sent** (owner: "send it"): a4_r80_cand.exe, unbaked, sha256 da090fd0cc324347..., 976,784 bytes (C80 from
+  d10a81b; the battery above). Asked of the round: the grey lines in LA (and the fills, LIN1 [2] / [3], in the
+  captures); the jingle (a press of C right after it ends if it pauses); the pickups.
