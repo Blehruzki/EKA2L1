@@ -12417,3 +12417,26 @@ c. Not entered: the finish camera on the bench; a whole race in a camera other t
   measure against b79b: its scene drew 18 list triangles a render against b79b's 81 (the car stuck somewhere bare).
   r79n sent unbaked after it (a4_r79n_cand.exe). Asked of the round: the same track in r79 and r79n, by feel and
   telemetry; the black boxes at the finish (r79); the jingle (both); which mark shows a pickup still sinking.
+
+## Phone round 79 (r79 26b45c55, baked by the owner): Paris and LA -- the jingle whole; pickups "pretty much fixed"; grey lines in LA
+- Owner: "This is r79. first set of files is from paris. jingle played normally. I think I marked one set of pickups
+  barely sinking by a little. But I think it's pretty much fixed. In LA I got the grey lines again. Does the telemetry
+  tell you the ms or fps at all times or at the worst points?" Files: p79/ (8 ring, mark 0: The Avenue, lap 1, the
+  $$ pickups beside the car, their foot flat on the road), l79/ (8 ring, mark 0: lap 3, hills). r79n not yet run.
+- The race aggregates (every render under 0.5 s): Paris 58.2 ms a render (r78 62.9, r77 56.7), 3D 25.8 (30.0, 25.5);
+  LA 61.1 (62.9, 52.5), 3D 26.3 (28.8, 22.9), hook 16.0 (14.6, 13.5). The redraw: one a render, 9-11 draw calls
+  (objects 48% Paris, 63% LA), ~1.55 ms a render.
+- **Every render, the last ~110 s** (the frame record's 256 renders a capture overlap at 230 a capture; frgaps.py,
+  scratchpad), render to render: Paris r79 median 56 ms, 90% 72, 99% 97, >= 100 ms 18 in 1,858 (r78 63 / 88 / 112,
+  49; r77 59 / 84 / 155, 37 in 827); LA r79 57 / 73 / 94, 13 in 1,903 (r78 58 / 75 / 91, 9; r77 51 / 74 / 149, 64 in
+  1,398 -- r77's captures every ~1.3 s). Paris: r79 better than r77 throughout; LA: the median 6 ms above r77's, the
+  slow tail far thinner. Whether LA's 6 ms is the cover redraw: r79n.
+- **Grey lines (LIN1), LA:** three: frame 1,476 row 103, 70 px x 230-299, the rows beside it drawn; frame 8,598 row
+  99, 65 px x 237-301, likewise (the same place, a lap apart); frame 6,639 row 113, 78 px, 46 / 6 beside. Frame
+  1,476's faces: the road (key 1, buckets 297 / 303) has its far edge from corner (633, 153, -2383) to (3441, 157,
+  -2427): at F 260, centre 120, **screen y 103.3 and 103.2 -- a near-horizontal edge a quarter pixel above row 103's
+  centre**; a stream triangle (tex 5a) starts at the game's integer (229, 103); the faces at rows 16-115 are a building
+  at x >= 300. Row 103 between x 230 and 299 belongs to the road by the fill rule only if the GPU puts that edge
+  above 103.5 -- the round-72 reading (a row of ground no triangle covers), now with its numbers. Paris: bands of
+  several rows (the rows beside also undrawn, sky), not the owner's kind, except perhaps frame 2,781 row 94 (64 px,
+  12 / 24 beside).
