@@ -12460,3 +12460,18 @@ c. Not entered: the finish camera on the bench; a whole race in a camera other t
   cause (r79's jingle was whole, once). Asked: a press of C right after the jingle ends, while the finish camera
   still turns (a mark needs a 3D render within a second of the press) -- the mark then holds every render of the
   finish.
+- **A4_LINEFILL (round 80): the grey lines filled at the composite.** After the composite, each row the line counter
+  finds (64 or more undrawn, the rows two away under 16) has its undrawn run (lc_x, A4_LINEREC: the first to the last
+  undrawn x) copied from the composited row below, or above where the row below has 16 or more undrawn itself;
+  before the 2D, so no HUD is copied; LIN1 [2] counts the rows filled, [3] their pixels. The recorder still records
+  each line before it is filled. Test of the test: A4_LINETEST blanks screen row 120 (every composite, with
+  A4_LINEALL) -- lt80a (LINETEST) must show row 120 unlike its neighbours, lt80b (LINETEST + LINEFILL) row 120 equal
+  to row 121 (rowdiff.py on the marks). Builds: r80t1 976,504, r80t2 976,952, the candidate r80c 976,784 (C78 +
+  -DA4_LINEFILL; r79b 976,464).
+- lt80a (r80t1, LINETEST; Instant Play, 100 s, two marks; framestat 950, the boot fault only): row 120 against row 121
+  differs by 17.3 / 16.7 (rows 118/119: 7.8 / 4.8), identical in 0 of 320 pixels; the line visible across the
+  picture's left (lt80_marks.png); LIN1 442 lines, 0 filled. lt80b (r80t2, LINETEST + LINEFILL; framestat 977, the
+  boot fault only): row 120 identical to row 121 in 320 of 320 in both marks, no line in the picture; LIN1 406
+  lines, 406 rows filled, 129,920 pixels. The fill does what it says, and the test fails without it.
+- C80.flags = C78 + -DA4_LINEFILL. r80 candidate = r80c (da090fd0, 976,784 bytes). Battery queued: m80 (Instant
+  Play marks), la80 (LA on the owner's save, where the lines were), b80 (b78a's run, timing).

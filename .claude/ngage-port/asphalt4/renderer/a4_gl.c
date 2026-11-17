@@ -9194,6 +9194,9 @@ void a4_comp_row_pld(uint32_t *d32, const uint32_t *src, const uint32_t *end);
  * whose box ends / begins on rows y-1, y, y+1 (lte_take, 11 words each, 0 where none this frame). Undrawn: no opaque GPU class
  * drew the pixel (alpha's top bit), so the software layer under the composite shows -- the grey. */
 #define A4_GL_LINREC 0x005BA000u
+#if defined(A4_LINEFILL) && !(defined(A4_LINEREC) && defined(A4_LINEALL) && defined(A4_FRAMEREC) && defined(A4_ENG3))
+#error "A4_LINEFILL fills the rows the line counter finds, over the run A4_LINEREC keeps (A4_LINEALL, A4_FRAMEREC, A4_ENG3)"
+#endif
 #define LIN_W 114u                                      /* 48 + rows y-1..y+1 x (ending, beginning) x LTE_W */
 _Static_assert(16u + 8u * LIN_W * 4u <= 0x1000u, "LIN1 past 0x5BB000");
 static void line_rec(volatile struct glr *s, int y, const uint8_t *lc_u, uint32_t xr)
@@ -9550,11 +9553,32 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
         volatile uint32_t *F = (volatile uint32_t *)A4_GL_FREC;
         const int lo = (int)miny + 2 > 2 ? (int)miny + 2 : 2, hi = (int)maxy - 2 < VP_H - 3 ? (int)maxy - 2 : VP_H - 3;
         for (int y = lo; y <= hi; y++)
-            if (lc_u[y] >= 64u && lc_u[y - 2] < 16u && lc_u[y + 2] < 16u && F[0] == 0x31435246u) {
-                F[2]++;
-                F[3] = (uint32_t)y | (uint32_t)lc_u[y] << 8 | (s->frames & 0xFFFFu) << 16;
+            if (lc_u[y] >= 64u && lc_u[y - 2] < 16u && lc_u[y + 2] < 16u) {
+                if (F[0] == 0x31435246u) {
+                    F[2]++;
+                    F[3] = (uint32_t)y | (uint32_t)lc_u[y] << 8 | (s->frames & 0xFFFFu) << 16;
 #ifdef A4_LINEREC
-                line_rec(s, y, lc_u, lc_x[y]);
+                    line_rec(s, y, lc_u, lc_x[y]);
+#endif
+                }
+#ifdef A4_LINEFILL
+                {   /* round 80 (the grey lines, phone round 79: a row of ground the GPU gave to neither of two faces --
+                     * the road's far edge a quarter pixel above the row's centre, the software layer's grey showing
+                     * through): the row's undrawn run, after the composite, from the composited row beside it -- below,
+                     * or above where the row below has 16 or more undrawn itself. Pixels the GPU did draw inside the
+                     * run take their neighbour's too: one row, the same surface. Before the 2D, so no HUD is copied.
+                     * LIN1's [2] counts the rows filled, [3] their pixels (both totals). */
+                    const int sy_ = lc_u[y + 1] < 16u ? y + 1 : lc_u[y - 1] < 16u ? y - 1 : -1;
+                    const uint32_t fx0 = lc_x[y] & 0xFFFFu, fx1 = lc_x[y] >> 16;
+                    if (sy_ >= CLIP_TOP && y >= CLIP_TOP && fx0 <= fx1 && fx1 < (uint32_t)VP_W) {
+                        volatile uint16_t *fd = fb + y * FB_STRIDE;
+                        const volatile uint16_t *fs = fb + sy_ * FB_STRIDE;
+                        for (uint32_t x = fx0; x <= fx1; x++) fd[x] = fs[x];
+                        volatile uint32_t *R = (volatile uint32_t *)A4_GL_LINREC;
+                        if (R[0] != 0x314E494Cu) { R[0] = 0x314E494Cu; R[1] = 0; R[2] = 0; R[3] = 0; }
+                        R[2]++; R[3] += fx1 - fx0 + 1u;
+                    }
+                }
 #endif
             }
     }
