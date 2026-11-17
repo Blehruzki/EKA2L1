@@ -544,7 +544,8 @@ struct mesh {
  * grid (lframe, lgrid, before the GPU's items join it), the pending items (objects in ob, cars in cb) and their
  * screen box (r), counters (k). */
 #define A4_GL_CVR 0x005C0400u
-#define CVR_FLAG 0x08000000u
+#define CVR_FLAG 0x08000000u   /* the run passes every test and writes its depth */
+#define CVR_WRITE 0x04000000u  /* the run keeps its test and writes its depth (bm78c: tested elements over a pending item) */
 struct cvr { uint32_t lframe, pend; int16_t r[4]; uint32_t ob[6], cb; uint32_t magic, k[8]; uint16_t lgrid[MESH_GW * MESH_GH]; };
 #define CVR ((volatile struct cvr *)A4_GL_CVR)
 _Static_assert(A4_GL_CVR + sizeof(struct cvr) <= 0x005C1000u, "the cover redraw's state past the scratch");
@@ -4736,16 +4737,18 @@ static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
 #ifdef A4_COVREDRAW
     if (MESH_ON() && kind != KIND_TEXZ) {
         const int cv = mesh_tri_covered(desc, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2], xlo, ylo, xhi, yhi);
-        if (cv == 2) {                              /* only GPU items cover it: its own depth, written; they again */
+        if (cv == 2 && kind == KIND_SHAD) {         /* a shadow only GPU items cover: its own depth, written; they again */
             *idp |= CVR_FLAG;
             cvr_add(cvr_tri_bucket(desc, (int32_t)v0[2], (int32_t)v1[2], (int32_t)v2[2]), xlo, ylo, xhi, yhi);
             CVR->k[0]++;
+        } else if (cv != 0) {                       /* tested at its own depth as before; over a pending item it writes it */
+            if (cvr_hits(xlo, ylo, xhi, yhi)) { *idp |= CVR_WRITE; CVR->k[1]++; }
         } else if (cv == 0) {
             /* untested; over an item the redraw will draw again, it keeps its own depth and writes it (no GPU item is
              * nearer, so the redraw leaves it, and a nearer road the game paints later still lands) */
             if (cvr_hits(xlo, ylo, xhi, yhi)) { *idp |= CVR_FLAG; CVR->k[1]++; }
             else { pos[2] = -pos[3]; pos[6] = -pos[7]; pos[10] = -pos[11]; }   /* window depth 1: untested */
-        }                                           /* 1: a nearer list face -- tested, as before (lean_tail) */
+        }
     }
 #else
     if (MESH_ON() && kind != KIND_TEXZ
@@ -4901,20 +4904,6 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
         uint32_t t0 = a4_ntick(); batch_draw(n); A4_PERF[PF_DRAW] += a4_ntick() - t0;
         n = 0; s->bfill = 0;
     }
-#if defined(A4_COVREDRAW) && defined(A4_MESH)
-    /* round 78: a triangle tested against a nearer list face, over an item the redraw will draw again, writes no
-     * depth -- the redraw would cover it: the batch and the redraw first */
-    if (CVR->pend && MESH_ON() && kind != KIND_TEXZ) {
-        const uint32_t *w0 = (const uint32_t *)desc[3], *w1 = (const uint32_t *)desc[6], *w2 = (const uint32_t *)desc[9];
-        int32_t xl, xh, yl, yh;
-        ext3((int16_t)(int32_t)w0[0], (int16_t)(int32_t)w1[0], (int16_t)(int32_t)w2[0], &xl, &xh);
-        ext3((int16_t)(int32_t)w0[1], (int16_t)(int32_t)w1[1], (int16_t)(int32_t)w2[1], &yl, &yh);
-        if (cvr_hits(xl, yl, xh, yh)
-            && mesh_tri_covered(desc, (int32_t)w0[2], (int32_t)w1[2], (int32_t)w2[2], xl, yl, xh, yh) == 1) {
-            cvr_flush(s); n = 0; CVR->k[2]++;
-        }
-    }
-#endif
     int32_t yr[2];
     if (!lean_conv(s, gctx, desc, kind, m1, tsaddr, (int32_t *)A4_GL_POS + n * 12u, (int32_t *)A4_GL_UV + n * 6u,
                    (uint32_t *)A4_GL_TEXID + n, (int16_t *)A4_GL_TBOX + n * 4u, yr)) return 0;
@@ -7993,11 +7982,13 @@ static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1
      * the same w at all four corners so the texture stays affine -- and one without sits at
      * window depth 1, passing every test as it was drawn untested before. */
 #if defined(A4_COVREDRAW) && defined(A4_MESH)
-    /* round 78: a quad over an item the redraw will draw again and not marked by a4_gl_bb (a fill, a fade -- KIND_ADDF,
-     * whose TEXID's top byte is the fade -- or one tested at a list face's depth): the batch and the redraw first */
+    /* round 78: a quad over an item the redraw will draw again and not marked by a4_gl_bb: one tested at a list face's
+     * depth writes it (CVR_WRITE); a fill (no depth of its own) or a fade (KIND_ADDF, whose TEXID's top byte is the
+     * fade) draws the batch and the redraw first */
     if (CVR->pend && MESH_ON() && ((id >> 28) == KIND_ADDF || !(id & CVR_FLAG)) && (id >> 28) != KIND_TEXZ
         && cvr_hits(x0 < x1 ? x0 : x1, y0 < y1 ? y0 : y1, (x0 < x1 ? x1 : x0) - 1, (y0 < y1 ? y1 : y0) - 1)) {
-        cvr_flush(s); CVR->k[2]++;
+        if ((id >> 28) != KIND_ADDF && zw > 0 && zw < 32768) { id |= CVR_WRITE; CVR->k[1]++; }   /* tested: writes */
+        else { cvr_flush(s); CVR->k[2]++; }                   /* a fill (no depth of its own), a fade */
     }
 #endif
     int32_t qw = 4096, qz = 0;
@@ -8801,7 +8792,8 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st,
     /* round 78: a run of elements the redraw must not cover, or under items it will draw again: every test passed,
      * its depth written (CVR_FLAG never set on KIND_ADDF, whose top byte is its fade) */
     const uint32_t cvf = (mat >> 28) != KIND_ADDF && (mat & CVR_FLAG) && MESH_ON();
-    if ((mat >> 28) != KIND_ADDF) mat &= ~CVR_FLAG;
+    const uint32_t cvw = (mat >> 28) != KIND_ADDF && (mat & CVR_WRITE) && MESH_ON();
+    if ((mat >> 28) != KIND_ADDF) mat &= ~(CVR_FLAG | CVR_WRITE);
 #endif
     uint32_t kind = mat >> 28;
     if (kind == KIND_TEXZ && !((volatile struct glr *)A4_GL_SCRATCH)->zbits)
@@ -8886,6 +8878,7 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st,
     }
 #ifdef A4_COVREDRAW
     if (cvf) { gl_depthfunc(GL_ALWAYS); gl_depthmask(1); }
+    else if (cvw) gl_depthmask(1);
 #endif
     /* an index list (AB_INDEXED): the run's triangles where they sit in the batch, in run
      * order -- the same triangles in the same order as the copy draws */
@@ -8893,6 +8886,7 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st,
     else gl_drawarrays(GL_TRIANGLES, (int)(first*3), (int)(count*3));
 #ifdef A4_COVREDRAW
     if (cvf) { gl_depthfunc(GL_GEQUAL); gl_depthmask(kind == KIND_TEXZ ? 1 : 0); }   /* mesh_enter's */
+    else if (cvw) gl_depthmask(kind == KIND_TEXZ ? 1 : 0);
 #endif
 }
 

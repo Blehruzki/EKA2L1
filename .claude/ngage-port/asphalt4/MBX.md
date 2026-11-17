@@ -12270,3 +12270,20 @@ c. Not entered: The Fame Avenue (the bench's LA is the starter route); a box par
   protecting an untested element by writing depth 1 (the first version) would have blocked every nearer road
   triangle painted after it in its rectangle -- an additive sprite writes its whole quad -- so it writes its own
   depth instead. Without the switch the build is r78a's to the byte (969,416); with it 975,320.
+- **bm78b/c (round 78, r78b then r78c a4514885, 975,180 bytes): the cover redraw restricted.** r78b (every element
+  only GPU items cover, every quad over a pending item flushing) cost 57.5 ms a render against r78a's 38.0, ~12.8k
+  flushes a capture: every tested road triangle over a car flushed. r78c: the own-depth-and-redraw rule only for
+  shadows (KIND_SHAD) and the sprite cells and quads a4_gl_bb marks; a triangle or quad tested at a list face's depth
+  over a pending item keeps its test and writes its depth (CVR_WRITE, bit 26: draw_run turns depth writes on for the
+  run), so it no longer flushes; only a fill or a fade does. m78d (hcm, Instant Play, marks at 40-280 s): framestat
+  2208, the usual one fault (the exit), 7 marks, 8 captures; render 40.3 ms against 38.0 (+2.3); flushes 0; about one
+  redraw a render, ~14 draw calls in it; no GL errors; the marks' pictures clean (the pickups whole on the road, the
+  car's shadow whole). Not a repeat of bm78a (r78a, no cover redraw) or bm78b (the broad rule).
+- **The bench picks a city on the owner's save (the owner: "teach yourself to enter and select a map instead of just
+  playing instant play").** The game's window on the bench is upside down (the saved picture mode), the keys as the
+  game reads them. Main menu (after four Returns): INSTANT PLAY (Paris on this save), CAREER (91%), N-GAGE ARENA,
+  N-GAGE APPLICATION, MULTIPLAYER, OPTIONS. CAREER -> HOME: CHOOSE YOUR RIDE, TUNING, CHOOSE YOUR LADY, MY RECORDS,
+  POINT PICKUPS, START RACE -> DESTINATION (a world map; Left / Right change the city; Los Angeles is where it opens on
+  this save) -> CHOOSE YOUR EVENT (RACE first) -> the city's loading card ("PRESS ANY KEY"). Keys for an LA race on
+  the owner's save, with the owner's Veyron: Return x4, Down, Return, Down x5, Return, Return, Return, 5 5 5
+  (scratchpad la_keys.txt; hcm.sh / hcn.sh / hcs.sh take KEYS from the environment). Screens: menux/m0-m6.
