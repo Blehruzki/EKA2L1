@@ -12518,3 +12518,14 @@ c. Not entered: a phone crack on the bench (only the forced row and one real lin
   recorder stays; LIN1 [2] / [3] count the rows and pixels filled. A texture's one-row hole over the sky (a far
   rail's) closes too -- named. Builds: r81t0 (C78 + LINETEST + LINETEST2: rows 120, 130-131 and row 100 x 40-71
   blanked, no fill) 976,912; r81t3 (C80 + both tests) 978,184; the candidate r81c (C80) 977,688.
+- lt81a (r81t0: the three test gaps, no fill; framestat 941, the boot fault only): rows 120, 130, 131 equal to their
+  source row in 0 of 320, row 100 x 40-71 in 1-2 of 32; the gaps visible (an orange line at rows 120 and 130).
+  lt81b (r81t3: the gaps, the fill; framestat 995): rows 120, 130, 131 equal in 320 of 320 in both marks, row 100's
+  run in 32 / 23 of 32 (the rest where a row beside it is undrawn: not a crack by the rule); no line in the picture;
+  LIN1 26,580 rows, 449,881 pixels filled.
+- vis81p / vis81l (r81v: C80 + A4_LINEFILLVIS, bench only -- filled pixels magenta (one row) and cyan (two rows);
+  Instant Play and LA on the owner's save, 6 marks each, the boot fault only): ~30-60 one-row pixels a frame -- single
+  specks in foliage and lamps against the sky, and stair-steps along a seam (LA mark 4: a wall's top edge, rows
+  104-125, 2 px a row and runs of 9-10: cracks between faces); two-row pixels a handful (tree edges, a billboard's
+  edge, rows 67-71 x 177-198). (Row 231 x 3-110 is cyan in every mark: the game's own HUD bar, drawn after the
+  composite -- not a fill.) The fill touches little but cracks.

@@ -9491,8 +9491,15 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                     for (uint32_t w = 0; w < VP_W / 32; w++) {
                         uint32_t c1 = cm[0][w] & ~cm[1][w] & cm[2][w];                              /* row y+1 alone */
                         uint32_t c2 = cmn >= 4u ? cm[0][w] & ~cm[1][w] & ~cm[2][w] & cm[3][w] : 0u;   /* rows y+1, y+2 */
+#ifdef A4_LINEFILLVIS
+                        /* bench (round 81): the filled pixels magenta (one-row) and cyan (two-row), to see where they land */
+                        (void)r0; (void)r2; (void)r3;
+                        for (uint32_t x = w * 32u; c1; c1 >>= 1, x++) if (c1 & 1u) { r1[x] = 0xF81Fu; n1++; }
+                        for (uint32_t x = w * 32u; c2; c2 >>= 1, x++) if (c2 & 1u) { r2[x] = 0x07FFu; r1[x] = 0x07FFu; n2 += 2u; }
+#else
                         for (uint32_t x = w * 32u; c1; c1 >>= 1, x++) if (c1 & 1u) { r1[x] = r2[x]; n1++; }
                         for (uint32_t x = w * 32u; c2; c2 >>= 1, x++) if (c2 & 1u) { r2[x] = r3[x]; r1[x] = r0[x]; n2 += 2u; }   /* each from its nearer drawn row */
+#endif
                     }
                     if (n1) { cf_rows++; cf_px += n1; }
                     if (n2) { cf_rows += 2u; cf_px += n2; }
