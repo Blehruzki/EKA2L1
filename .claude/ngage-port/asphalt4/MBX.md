@@ -12674,3 +12674,11 @@ c. Not entered: the phone's own cracks (its MBX); more than two runs a frame (co
   session, 3 s apart (CRK1 [26] / [27]); CRK1 is 32 words now. Test: A4_LINETEST3 (bench) blanks rows 150-153 x 20-299
   -- lt82a (with LINETEST and LINETEST2) must show them recorded as 4-row gaps, unfilled, and 5 automatic marks.
   Builds: r82t5 979,712; the candidate r82c 979,224.
+- lt82a (r82t5: LINETEST + 2 + 3; framestat 964, the boot fault only): rows 120, 130, 131 filled as before (320/320);
+  rows 150-153 left open (row 151 equal to rows 149 / 154 in 0-39 of 280 -- the software layer shows, as designed);
+  LIN1 'gap 4 rows (not filled)' at row 150 x 20-299; CRK1 [24] 505 thick runs, 498 of 64+, the thickest 5 rows (a
+  neighbour also open), automatic marks 5 -- marks 0-4 three seconds apart, and the press at 90 s as mark 5.
+- Then the automatic marks gated to the race (the frame record's last entry under 1 s old and in the chase camera), so
+  the HOME garage's crack (row 118, 100+ px, every frame) cannot spend them. lt82b (r82t5 rebuilt, 979,788): the five
+  automatic marks inside the race (their frame records: the start's fly-in 0x17, then mode 2), three seconds apart;
+  the press as mark 5. Candidate r82c 979,300 (C80). Battery queued: m82, la82 (MENUKEYS), b82.

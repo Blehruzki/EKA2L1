@@ -9310,9 +9310,14 @@ static void crk_run(volatile struct glr *s, const uint8_t *lc_u, int row, int32_
 #ifdef A4_TELMARK
     if (len >= 64u && C[26] < 5u) {
         /* round 82: a gap of 64 px or more asks for a mark of this very frame (a press of C lands ~1 s late): the
-         * capture at this frame's present, as a press is taken -- at most 5 a session, 3 s apart (C[26], C[27]) */
+         * capture at this frame's present, as a press is taken -- at most 5 a session, 3 s apart (C[26], C[27]); in a
+         * race only -- the frame record's last entry under a second old and in the chase camera (mode 2), so the HOME
+         * screen's garage (a crack every frame) cannot spend them */
         const uint32_t now = a4_ntick();
-        if (!C[26] || now - C[27] >= 3000u) {
+        const volatile uint32_t *FR = (const volatile uint32_t *)A4_GL_FREC;
+        const volatile uint32_t *fe = FR + 4u + ((FR[1] - 1u) % FREC_N) * 8u;
+        const int racing = FR[0] == 0x31435246u && FR[1] && now - fe[0] < 1000u && ((fe[2] >> 20) & 0xFFu) == 2u;
+        if (racing && (!C[26] || now - C[27] >= 3000u)) {
             ((volatile uint32_t *)A4_MARK_STATE)[16] = now; (*(volatile uint32_t *)A4_MARK_STATE)++;
             C[26]++; C[27] = now;
         }
