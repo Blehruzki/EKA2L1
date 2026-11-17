@@ -525,6 +525,17 @@ void a4_tel_tick(uint32_t had)
                 efs_writep(f, oc, &rc);
             }
 #endif
+#ifdef A4_LINEFILL
+            /* round 81: the crack recorder's counters ('CRK1', 24 words, a4_gl.c A4_GL_CRK) after CVR1 */
+            {   struct des rk = { DES(96u), (const void *)0x005C0800u };
+                const int ok = o3 + n3 + 32 + 16 * 16 + 16 + (int)gn + 16 + 2 * (int)mn + 16 + 8 * 114 * 4
+#ifdef A4_COVREDRAW
+                               + 36
+#endif
+                               ;
+                efs_writep(f, ok, &rk);
+            }
+#endif
         }
 #endif
 #if defined(A4_KINEDRAW) && !defined(A4_INTERP)

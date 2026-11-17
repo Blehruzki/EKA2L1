@@ -9275,6 +9275,38 @@ static void line_rec(volatile struct glr *s, int y, const uint8_t *lc_u, uint32_
     R[1]++;
 }
 #endif
+#ifdef A4_LINEFILL
+/* Round 81 (the owner: "add the recorder"): the crack recorder. Every run of 16 or more pixels the fill finds -- one
+ * row (kind 2) or two (kind 3, the upper row) -- is counted here, and the first two a frame are recorded in LIN1's ring
+ * as a line is (line_rec: the run, the list's faces, the GPU items' boxes and the stream's triangles at its rows; the
+ * frame number joins it to FRC1's speed and camera), its kind in e[1] bits 8-15. 'CRK1' at 0x5C0800 (a4_tel.c writes
+ * it after CVR1): [1] one-row runs, [2] two-row runs, [3] runs of 64 or more, [4] their pixels (all >= 16), [5..19]
+ * runs by 16-row band of the screen, [20] the longest run, [21] its row | the frame (16 bits) << 16, [22] the focal
+ * then (MESH->F), [23] runs recorded in LIN1. Totals from the boot. */
+#define A4_GL_CRK 0x005C0800u
+#ifdef A4_COVREDRAW
+_Static_assert(A4_GL_CVR + sizeof(struct cvr) <= A4_GL_CRK, "the crack counters over the cover redraw's state");
+#endif
+_Static_assert(A4_GL_CRK + 24u * 4u <= 0x005C1000u, "the crack counters past the scratch");
+static void crk_run(volatile struct glr *s, const uint8_t *lc_u, int row, int32_t x0, int32_t x1, uint32_t kind,
+                    uint32_t *nrec)
+{
+    const uint32_t len = (uint32_t)(x1 - x0 + 1);
+    if (x0 < 0 || len < 16u) return;
+    volatile uint32_t *C = (volatile uint32_t *)A4_GL_CRK;
+    if (C[0] != 0x314B5243u) { for (uint32_t k = 1; k < 24u; k++) C[k] = 0; C[0] = 0x314B5243u; }   /* 'CRK1' */
+    C[kind == 3u ? 2 : 1]++;
+    if (len >= 64u) C[3]++;
+    C[4] += len;
+    if (row >= 0 && row < VP_H) C[5u + ((uint32_t)row >> 4)]++;
+    if (len > C[20]) { C[20] = len; C[21] = (uint32_t)row | (s->frames & 0xFFFFu) << 16; C[22] = MESH->F; }
+    if (*nrec >= 2u) return;
+    (*nrec)++; C[23]++;
+    line_rec(s, row, lc_u, (uint32_t)x0 | (uint32_t)x1 << 16);
+    volatile uint32_t *R = (volatile uint32_t *)A4_GL_LINREC;
+    R[4u + ((R[1] - 1u) & 7u) * LIN_W + 1u] |= kind << 8;
+}
+#endif
 static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 {
 #ifdef A4_DUALCAP
@@ -9335,7 +9367,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 #ifdef A4_LINEFILL
     /* round 81: each composited row's drawn-mask (bit x: the GPU drew pixel x opaque), the last four rows kept --
      * cm[0] this row, cm[1] the one below it on screen, ... -- and how many consecutive rows are in them */
-    uint32_t cm[4][VP_W / 32], cmn = 0, cf_rows = 0, cf_px = 0;
+    uint32_t cm[4][VP_W / 32], cmn = 0, cf_rows = 0, cf_px = 0, crk_n = 0;
     _Static_assert(VP_W % 32 == 0, "the drawn-mask's words");
 #endif
     for (int y0 = ystart; y0 <= gl_hi; y0 += sh) {
@@ -9487,20 +9519,35 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                      * one-row crack from the pixel below; rows y+1 (and y+2) here, this row y the one above them, all
                      * already composited. A texture's one-row hole over the sky (a far rail) closes too. */
                     volatile uint16_t *r0 = fb + screen_y * FB_STRIDE, *r1 = r0 + FB_STRIDE, *r2 = r1 + FB_STRIDE, *r3 = r2 + FB_STRIDE;
+                    (void)r0; (void)r2; (void)r3;   /* (A4_LINEFILLVIS, bench, paints instead) */
                     uint32_t n1 = 0, n2 = 0;
+                    int32_t a0 = -1, al = -2, b0 = -1, bl = -2;   /* round 81: the current one- and two-row runs */
                     for (uint32_t w = 0; w < VP_W / 32; w++) {
                         uint32_t c1 = cm[0][w] & ~cm[1][w] & cm[2][w];                              /* row y+1 alone */
                         uint32_t c2 = cmn >= 4u ? cm[0][w] & ~cm[1][w] & ~cm[2][w] & cm[3][w] : 0u;   /* rows y+1, y+2 */
+                        for (uint32_t x = w * 32u; c1; c1 >>= 1, x++) if (c1 & 1u) {
 #ifdef A4_LINEFILLVIS
-                        /* bench (round 81): the filled pixels magenta (one-row) and cyan (two-row), to see where they land */
-                        (void)r0; (void)r2; (void)r3;
-                        for (uint32_t x = w * 32u; c1; c1 >>= 1, x++) if (c1 & 1u) { r1[x] = 0xF81Fu; n1++; }
-                        for (uint32_t x = w * 32u; c2; c2 >>= 1, x++) if (c2 & 1u) { r2[x] = 0x07FFu; r1[x] = 0x07FFu; n2 += 2u; }
+                            r1[x] = 0xF81Fu;          /* bench (round 81): one-row fills magenta */
 #else
-                        for (uint32_t x = w * 32u; c1; c1 >>= 1, x++) if (c1 & 1u) { r1[x] = r2[x]; n1++; }
-                        for (uint32_t x = w * 32u; c2; c2 >>= 1, x++) if (c2 & 1u) { r2[x] = r3[x]; r1[x] = r0[x]; n2 += 2u; }   /* each from its nearer drawn row */
+                            r1[x] = r2[x];
 #endif
+                            n1++;
+                            if ((int32_t)x != al + 1) { crk_run(s, lc_u, screen_y + 1, a0, al, 2u, &crk_n); a0 = (int32_t)x; }
+                            al = (int32_t)x;
+                        }
+                        for (uint32_t x = w * 32u; c2; c2 >>= 1, x++) if (c2 & 1u) {
+#ifdef A4_LINEFILLVIS
+                            r2[x] = 0x07FFu; r1[x] = 0x07FFu;   /* two-row fills cyan */
+#else
+                            r2[x] = r3[x]; r1[x] = r0[x];       /* each from its nearer drawn row */
+#endif
+                            n2 += 2u;
+                            if ((int32_t)x != bl + 1) { crk_run(s, lc_u, screen_y + 1, b0, bl, 3u, &crk_n); b0 = (int32_t)x; }
+                            bl = (int32_t)x;
+                        }
                     }
+                    crk_run(s, lc_u, screen_y + 1, a0, al, 2u, &crk_n);
+                    crk_run(s, lc_u, screen_y + 1, b0, bl, 3u, &crk_n);
                     if (n1) { cf_rows++; cf_px += n1; }
                     if (n2) { cf_rows += 2u; cf_px += n2; }
                 }
@@ -9612,8 +9659,8 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                 if (F[0] == 0x31435246u) {
                     F[2]++;
                     F[3] = (uint32_t)y | (uint32_t)lc_u[y] << 8 | (s->frames & 0xFFFFu) << 16;
-#ifdef A4_LINEREC
-                    line_rec(s, y, lc_u, lc_x[y]);
+#if defined(A4_LINEREC) && !defined(A4_LINEFILL)
+                    line_rec(s, y, lc_u, lc_x[y]);   /* with A4_LINEFILL its crack runs are recorded instead */
 #endif
                 }
 #ifdef A4_LINEFILL

@@ -12569,3 +12569,17 @@ c. Not entered: the phone's own cracks (the bench has seams but not the phone's 
   strip-shaped -- the lines are single undrawn rows. To settle: a record per filled crack of which path drew the rows
   above and below it, the focal and the speed; an A/B of the quarter-pixel shift; then a root fix (one projection for
   shared edges, or far edges overlapped half a pixel) in place of the fill.
+- Owner: **"add the recorder"**. Round 81's crack recorder (A4_LINEFILL): every run of 16 or more pixels the fill
+  closes -- one row (kind 2) or two (kind 3) -- is counted in 'CRK1' (0x5C0800, after CVR1 in each capture: one-row
+  and two-row runs, runs of 64+, their pixels, runs by 16-row screen band, the longest with its row, frame and focal,
+  records made), and the first two a frame go into LIN1's ring through line_rec (the run, the list faces, the GPU
+  items' boxes and the stream's triangles at its rows; the frame joins FRC1's speed and camera), the kind in e[1]
+  bits 8-15. The >= 64 px post-pass no longer records (its count F[2] stays). frec3.py lines: each record's
+  surfaces over the run's middle pixel in the drawn rows above and below (list faces projected x = cx + F X / -Z,
+  y = cy - F Y / -Z; the stream's triangles as drawn; items by box), and the CRK1 totals.
+- **Round 79's three LA lines read that way** (l79): frame 1,476 row 103 -- above only GPU items' boxes, below a list
+  face (the road) and items; frame 8,598 row 99 -- the same; frame 6,639 row 113 -- items both sides. **The seam is
+  between the road (the list: our projection) and the GPU objects above it (GL's projection)** -- suspect (1), as
+  far as boxes can tell (an item's box is not its triangles).
+- Builds: r81t4 (C80 + LINETEST + LINETEST2, the recorder's test) 978,828; r81r (C80, the candidate with the
+  recorder) 978,376.

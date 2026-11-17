@@ -16,6 +16,8 @@
 #          (<file>.gob.png)
 #   list   every word of every render
 #   lines  the grey lines r77 recorded (LIN1): the row, its undrawn run, the faces and items whose box spans it,
+#          (round 81) the crack runs the fill recorded, with the surfaces over the run's middle above and below, and
+#          the crack counters (CRK1),
 #          and (the second build) the stream's triangles whose box ends or begins on the rows beside it
 #   wreck  per render with the other car a wreck: substep, camera, its path frame +034 and +048, and (A4_WRECKPROBE)
 #          the +048 x 256 the lifted draw used (eng_wt8; the counter's own value x 256 on the step's last substep),
@@ -126,8 +128,42 @@ if mode == 'lines':
             if key in seen: continue
             seen.add(key)
             nf, ng = (e[3] >> 16) & 255, e[3] >> 24
-            print('frame %5d row %3d undrawn %3d x %3d..%3d (rows below/above undrawn %d / %d) faces %d items %d F %d centre %d,%d'
-                  % (e[0] & 0xFFFF, e[0] >> 16, e[1], e[2] & 0xFFFF, e[2] >> 16, e[3] & 255, (e[3] >> 8) & 255, nf, ng, e[46], e[47] & 0xFFFF, e[47] >> 16))
+            kind = (e[1] >> 8) & 255
+            KN = {0: 'line', 1: 'line', 2: 'crack 1-row', 3: 'crack 2-row'}
+            print('frame %5d row %3d %s undrawn %3d x %3d..%3d (rows below/above undrawn %d / %d) faces %d items %d F %d centre %d,%d'
+                  % (e[0] & 0xFFFF, e[0] >> 16, KN.get(kind, 'kind %d' % kind), e[1] & 255, e[2] & 0xFFFF, e[2] >> 16, e[3] & 255,
+                     (e[3] >> 8) & 255, nf, ng, e[46], e[47] & 0xFFFF, e[47] >> 16))
+            if True:   # every record (a round-77 line as a one-row crack)
+                # round 81: which of the recorded surfaces covers the run's middle pixel in the drawn row above and below
+                # (list faces projected as the list's insert does, x = cx + F X / -Z, y = cy - F Y / -Z; the stream's
+                # triangles as drawn; the GPU items by their boxes only)
+                row, xm = e[0] >> 16, ((e[2] & 0xFFFF) + (e[2] >> 16)) / 2 + 0.5
+                F, cx, cy = e[46], e[47] & 0xFFFF, e[47] >> 16
+                def inside(P, x, y):
+                    (ax, ay), (bx, by), (qx, qy) = P
+                    d1 = (bx - ax) * (y - ay) - (by - ay) * (x - ax); d2 = (qx - bx) * (y - by) - (qy - by) * (x - bx)
+                    d3 = (ax - qx) * (y - qy) - (ay - qy) * (x - qx)
+                    return (d1 >= 0 and d2 >= 0 and d3 >= 0) or (d1 <= 0 and d2 <= 0 and d3 <= 0)
+                tris = []
+                for j in range(nf):
+                    f = e[4 + 6 * j: 10 + 6 * j]
+                    c = [s16(f[0] & 0xFFFF), s16(f[0] >> 16), s16(f[1] & 0xFFFF), s16(f[1] >> 16), s16(f[2] & 0xFFFF), s16(f[2] >> 16),
+                         s16(f[3] & 0xFFFF), s16(f[3] >> 16), s16(f[4] & 0xFFFF)]
+                    P = [(cx + F * c[3 * v] / -c[3 * v + 2], cy - F * c[3 * v + 1] / -c[3 * v + 2]) for v in range(3) if c[3 * v + 2] < 0]
+                    if len(P) == 3: tris.append(('list', P))
+                for j in range(6 if W == 114 else 0):
+                    q = e[48 + 11 * j: 59 + 11 * j]
+                    if not q[0]: continue
+                    P = [(s32(q[2 + 3 * v]) / s32(q[4 + 3 * v]), s32(q[3 + 3 * v]) / s32(q[4 + 3 * v])) for v in range(3) if s32(q[4 + 3 * v])]
+                    if len(P) == 3: tris.append(('stream %08x' % q[1], P))
+                def owners(y):
+                    o = [n for n, P in tris if inside(P, xm, y + 0.5)]
+                    for j in range(ng):
+                        a, b = e[40 + 2 * j], e[41 + 2 * j]
+                        if s16(a & 0xFFFF) <= xm <= s16(b & 0xFFFF) and s16(a >> 16) <= y <= s16(b >> 16): o.append('item box')
+                    return o or ['none recorded']
+                print('   owners at x %.1f: above (row %d) %s; below (row %d) %s' % (xm, row - 1, owners(row - 1),
+                      row + (2 if kind == 3 else 1), owners(row + (2 if kind == 3 else 1))))
             for j in range(nf):
                 f = e[4 + 6 * j: 10 + 6 * j]
                 c = [s16(f[0] & 0xFFFF), s16(f[0] >> 16), s16(f[1] & 0xFFFF), s16(f[1] >> 16), s16(f[2] & 0xFFFF), s16(f[2] >> 16),
@@ -144,6 +180,17 @@ if mode == 'lines':
                     xw, yw, w = s32(q[2 + 3 * v]), s32(q[3 + 3 * v]), s32(q[4 + 3 * v])
                     vs.append('(%.2f %.2f w %d)' % (xw / w, yw / w, w) if w else '(w 0)')
                 print('   stream tri, box %s row %+d: tex %08x  %s' % ('ends on' if j % 2 == 0 else 'begins on', j // 2 - 1, q[1], ' '.join(vs)))
+    best = None   # round 81: the crack counters ('CRK1'), the latest (largest) of the files
+    for info, d in infos:
+        i = d.rfind(b'CRK1')
+        if i >= 0 and len(d) >= i + 96:
+            c = struct.unpack_from('<24I', d, i)
+            if best is None or c[1] + c[2] > best[1] + best[2]: best = c
+    if best:
+        c = best
+        print('cracks (CRK1, from the boot): one-row runs %d, two-row %d, >= 64 px %d, pixels %d; recorded %d' % (c[1], c[2], c[3], c[4], c[23]))
+        print('  by 16-row band:', ' '.join('%d-%d:%d' % (16 * b, 16 * b + 15, c[5 + b]) for b in range(15) if c[5 + b]))
+        print('  longest %d px, row %d, frame %d, F %d' % (c[20], c[21] & 0xFFFF, c[21] >> 16, c[22]))
     sys.exit()
 
 if mode == 'gob':
