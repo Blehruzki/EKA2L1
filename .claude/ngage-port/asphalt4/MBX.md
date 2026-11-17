@@ -12552,3 +12552,20 @@ b. Read back: the mask (bit x = alpha's top bit, the count from it equal to the 
 c. Not entered: the phone's own cracks (the bench has seams but not the phone's lines); the first two rows of a
    composite (no window yet) and its last (no row above): a crack there stays; the non-ARMv6 composite paths (no
    counter, no fill).
+- Owner, before r81 goes out: "What could be causing a bunch of lines to appear randomly on the screen, especially
+  when I'm at the peak of speed and coming out from a low triangle count to a higher one (tunnel exit to open road in
+  LA)? Software bug? hardware limitation? brainstorm". Checked first: r80's LA slow-frame record (slowsum.py) -- no
+  list triangles lost in any slow or lossy frame (the list holds 0-44 a frame against MESH_MAXT 2,048): not an
+  overflow of ours. The line records' F (the game's focal) runs 185-260: the field of view widens with speed.
+  Suspects, ranked: (1) seams between the three ways a surface reaches the GPU -- the list's faces (our float
+  projection with W), the stream's triangles (the game's integer screen coordinates), the GPU objects (GL's own
+  projection from 3D): a shared edge computed three ways does not meet, and a near-horizontal far edge turns a
+  quarter pixel into a row-long gap (round 79's line: the road's far edge at y 103.25-103.3, an object above);
+  speed's wider view packs the far road into fewer rows, and a tunnel exit brings in the whole far view at once.
+  (2) The game's integer decisions under our float drawing: a far sliver flat in integer rows the game skips or its
+  rasterizer covers by its own rule, where the GPU's rule covers neither side. (3) Round 72's quarter-pixel shift
+  (PX_OFF) moving such edges onto row centres. (4) The hardware only as an amplifier (the MBX's sub-pixel snapping and
+  fill rule); a parameter-buffer split at high triangle counts would leave tile-shaped (16 px) damage, a readback race
+  strip-shaped -- the lines are single undrawn rows. To settle: a record per filled crack of which path drew the rows
+  above and below it, the focal and the speed; an A/B of the quarter-pixel shift; then a root fix (one projection for
+  shared edges, or far edges overlapped half a pixel) in place of the fill.
