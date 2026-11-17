@@ -12589,3 +12589,14 @@ c. Not entered: the phone's own cracks (the bench has seams but not the phone's 
   782 one-row runs, 467 two-row, by band 96-111 315 (row 100's run), 112-127 466 (row 120), 128-143 467 (rows 130-131).
   The recorder records what it is given. (frec3 now skips a ring file a kill left empty.) Battery on r81r queued: m81r,
   la81r, b81r.
+- Battery on r81r (978,376, 4f62f0ef): m81r (Instant Play; framestat 2,271, the boot fault only): 7 marks, clean;
+  "la81r" (framestat 2,322, the boot fault only) reached **Paris, not LA** -- the boot ran long, the intro took the
+  first Returns and the fourth chose INSTANT PLAY (menu screens 1-4): a second Paris run, clean; the LA leg rerun as
+  la81s with 30 s before the keys (hcm.sh PREWAIT). b81r (b78a's run; framestat 3,123, the boot fault only): 44.2 ms
+  (b81 46.7, b80 44.3).
+- **The bench's own cracks, recorded** (r81r, natural, no test gaps): Paris twice -- 107 + 26 and 132 + 18 runs of 16+
+  (one-row + two-row) in ~2,300 renders, none of 64+, the longest 57-58 px at row 90; by band, mostly rows 96-111, then
+  64-95. Their surfaces (frec3 lines): road face above and a stream triangle below; an item above and a stream triangle
+  below; a stream triangle with items above and a road face below; road faces both sides (rows 70-72); items both
+  sides. **Every pairing of the three paths**, the horizon's rows most -- suspects (1)/(2): seams between paths, and
+  within the list. The bench cracks too; its llvmpipe cracks less long than the phone's MBX.
