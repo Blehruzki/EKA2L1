@@ -12667,3 +12667,10 @@ c. Not entered: the phone's own cracks (its MBX); more than two runs a frame (co
   more thick, or touching the background, which nothing records. A press lands ~1 s late.
 - Round 82 (instrument): gaps of 3-6 rows between drawn rows recorded (not filled); any gap of 64+ px (1-6 rows) writes
   a mark at that frame's own present (at most 5 a session, 3 s apart; the owner's presses keep the other marks).
+- Round 82 written (A4_LINEFILL's recorder grown; C80 flags): the drawn-masks kept in a ring of 8 rows (no copying);
+  gaps of 3-6 rows between drawn rows found by the same masks (kind 4, the thickness at the run's first word in e[1]
+  bits 16-23), counted in CRK1 [24] / [25] (64+) / [28] (thickest) and recorded like the cracks, not filled; any run of
+  64+ px of any kind asks for a mark at this frame's own present (the A4_MARK_STATE stamp a press makes), at most 5 a
+  session, 3 s apart (CRK1 [26] / [27]); CRK1 is 32 words now. Test: A4_LINETEST3 (bench) blanks rows 150-153 x 20-299
+  -- lt82a (with LINETEST and LINETEST2) must show them recorded as 4-row gaps, unfilled, and 5 automatic marks.
+  Builds: r82t5 979,712; the candidate r82c 979,224.

@@ -9282,29 +9282,47 @@ static void line_rec(volatile struct glr *s, int y, const uint8_t *lc_u, uint32_
  * frame number joins it to FRC1's speed and camera), its kind in e[1] bits 8-15. 'CRK1' at 0x5C0800 (a4_tel.c writes
  * it after CVR1): [1] one-row runs, [2] two-row runs, [3] runs of 64 or more, [4] their pixels (all >= 16), [5..19]
  * runs by 16-row band of the screen, [20] the longest run, [21] its row | the frame (16 bits) << 16, [22] the focal
- * then (MESH->F), [23] runs recorded in LIN1. Totals from the boot. */
+ * then (MESH->F), [23] runs recorded in LIN1; round 82: [24] runs of gaps 3-6 rows thick (kind 4, not filled; the
+ * thickness in e[1] bits 16-23), [25] those of 64+, [26] automatic marks asked, [27] the last one's tick, [28] the
+ * thickest gap. Totals from the boot. */
 #define A4_GL_CRK 0x005C0800u
 #ifdef A4_COVREDRAW
 _Static_assert(A4_GL_CVR + sizeof(struct cvr) <= A4_GL_CRK, "the crack counters over the cover redraw's state");
 #endif
-_Static_assert(A4_GL_CRK + 24u * 4u <= 0x005C1000u, "the crack counters past the scratch");
+_Static_assert(A4_GL_CRK + 32u * 4u <= 0x005C1000u, "the crack counters past the scratch");
 static void crk_run(volatile struct glr *s, const uint8_t *lc_u, int row, int32_t x0, int32_t x1, uint32_t kind,
                     uint32_t *nrec)
 {
-    const uint32_t len = (uint32_t)(x1 - x0 + 1);
+    const uint32_t len = (uint32_t)(x1 - x0 + 1), kd = kind & 0xFFu, th = kind >> 8;
     if (x0 < 0 || len < 16u) return;
     volatile uint32_t *C = (volatile uint32_t *)A4_GL_CRK;
-    if (C[0] != 0x314B5243u) { for (uint32_t k = 1; k < 24u; k++) C[k] = 0; C[0] = 0x314B5243u; }   /* 'CRK1' */
-    C[kind == 3u ? 2 : 1]++;
-    if (len >= 64u) C[3]++;
-    C[4] += len;
+    if (C[0] != 0x314B5243u) { for (uint32_t k = 1; k < 32u; k++) C[k] = 0; C[0] = 0x314B5243u; }   /* 'CRK1' */
+    if (kd == 4u) {                                 /* round 82: 3-6 rows, not filled */
+        C[24]++; if (len >= 64u) C[25]++;
+        if (th > C[28]) C[28] = th;
+    } else {
+        C[kd == 3u ? 2 : 1]++;
+        if (len >= 64u) C[3]++;
+        C[4] += len;
+    }
     if (row >= 0 && row < VP_H) C[5u + ((uint32_t)row >> 4)]++;
     if (len > C[20]) { C[20] = len; C[21] = (uint32_t)row | (s->frames & 0xFFFFu) << 16; C[22] = MESH->F; }
+#ifdef A4_TELMARK
+    if (len >= 64u && C[26] < 5u) {
+        /* round 82: a gap of 64 px or more asks for a mark of this very frame (a press of C lands ~1 s late): the
+         * capture at this frame's present, as a press is taken -- at most 5 a session, 3 s apart (C[26], C[27]) */
+        const uint32_t now = a4_ntick();
+        if (!C[26] || now - C[27] >= 3000u) {
+            ((volatile uint32_t *)A4_MARK_STATE)[16] = now; (*(volatile uint32_t *)A4_MARK_STATE)++;
+            C[26]++; C[27] = now;
+        }
+    }
+#endif
     if (*nrec >= 2u) return;
     (*nrec)++; C[23]++;
     line_rec(s, row, lc_u, (uint32_t)x0 | (uint32_t)x1 << 16);
     volatile uint32_t *R = (volatile uint32_t *)A4_GL_LINREC;
-    R[4u + ((R[1] - 1u) & 7u) * LIN_W + 1u] |= kind << 8;
+    R[4u + ((R[1] - 1u) & 7u) * LIN_W + 1u] |= kd << 8 | th << 16;
 }
 #endif
 static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
@@ -9367,7 +9385,8 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 #ifdef A4_LINEFILL
     /* round 81: each composited row's drawn-mask (bit x: the GPU drew pixel x opaque), the last four rows kept --
      * cm[0] this row, cm[1] the one below it on screen, ... -- and how many consecutive rows are in them */
-    uint32_t cm[4][VP_W / 32], cmn = 0, cf_rows = 0, cf_px = 0, crk_n = 0;
+    uint32_t cm[8][VP_W / 32], cmn = 0, ch = 0, cf_rows = 0, cf_px = 0, crk_n = 0;
+#define CMR(j) cm[(ch + (j)) & 7u]   /* round 82: a ring of 8 rows -- CMR(0) this row, CMR(1) the one below it, ... */
     _Static_assert(VP_W % 32 == 0, "the drawn-mask's words");
 #endif
     for (int y0 = ystart; y0 <= gl_hi; y0 += sh) {
@@ -9471,6 +9490,10 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                 if (lc_on && (screen_y == 130 || screen_y == 131)) for (int x = 0; x < VP_W; x++) ((uint32_t *)rb)[sy * VP_W + x] &= 0x7FFFFFFFu;
                 if (lc_on && screen_y == 100) for (int x = 40; x < 72; x++) ((uint32_t *)rb)[sy * VP_W + x] &= 0x7FFFFFFFu;
 #endif
+#ifdef A4_LINETEST3
+                /* bench (round 82): a four-row gap, rows 150-153 x 20..299 -- recorded as kind 4, not filled; asks marks */
+                if (lc_on && screen_y >= 150 && screen_y <= 153) for (int x = 20; x < 300; x++) ((uint32_t *)rb)[sy * VP_W + x] &= 0x7FFFFFFFu;
+#endif
                 if (lc_on) {   /* round 72: this row's pixels no opaque GPU class drew (alpha's top bit clear) */
                     /* round 77 (b77a: the branch a pixel cost ~3 ms a composite on every composite): the drawn
                      * bits summed four a step, no branch; the undrawn run's ends only on a row that can be a line
@@ -9479,8 +9502,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 #ifdef A4_LINEFILL
                     {   /* round 81: the row's drawn-mask, the count from it (four pixels a step, a nibble's bits by table) */
                         static const uint8_t pc4[16] = { 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4 };
-                        for (uint32_t k = 3; k > 0; k--)
-                            for (uint32_t w = 0; w < VP_W / 32; w++) cm[k][w] = cm[k - 1][w];
+                        ch = (ch - 1u) & 7u;          /* the ring turns: the row below is now CMR(1) */
                         const uint32_t *p = src;
                         for (uint32_t w = 0; w < VP_W / 32; w++) {
                             uint32_t b = 0;
@@ -9488,7 +9510,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                                 const uint32_t t = (p[0] >> 31) | (p[1] >> 31) << 1 | (p[2] >> 31) << 2 | (p[3] >> 31) << 3;
                                 b |= t << q; d += pc4[t];
                             }
-                            cm[0][w] = b;
+                            CMR(0)[w] = b;
                         }
                         cmn++;
                     }
@@ -9522,9 +9544,25 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                     (void)r0; (void)r2; (void)r3;   /* (A4_LINEFILLVIS, bench, paints instead) */
                     uint32_t n1 = 0, n2 = 0;
                     int32_t a0 = -1, al = -2, b0 = -1, bl = -2;   /* round 81: the current one- and two-row runs */
+                    int32_t t0 = -1, tl = -2; uint32_t tk = 0;     /* round 82: the current run of thicker gaps, its rows */
                     for (uint32_t w = 0; w < VP_W / 32; w++) {
-                        uint32_t c1 = cm[0][w] & ~cm[1][w] & cm[2][w];                              /* row y+1 alone */
-                        uint32_t c2 = cmn >= 4u ? cm[0][w] & ~cm[1][w] & ~cm[2][w] & cm[3][w] : 0u;   /* rows y+1, y+2 */
+                        uint32_t c1 = CMR(0)[w] & ~CMR(1)[w] & CMR(2)[w];                              /* row y+1 alone */
+                        uint32_t c2 = cmn >= 4u ? CMR(0)[w] & ~CMR(1)[w] & ~CMR(2)[w] & CMR(3)[w] : 0u;   /* rows y+1, y+2 */
+                        /* round 82: gaps of 3 to 6 rows between drawn rows -- recorded (kind 4 and the thickness), not
+                         * filled; th[x] would be the thickness, kept as the thickness at the run's first pixel */
+                        uint32_t ct = 0, k3 = 0;
+                        {   uint32_t open = ~CMR(1)[w] & ~CMR(2)[w];
+                            for (uint32_t k = 3; k <= 6u && cmn >= k + 2u; k++) {
+                                open &= ~CMR(k)[w];
+                                const uint32_t bk = CMR(0)[w] & open & CMR(k + 1u)[w];
+                                if (bk && !k3) k3 = k;
+                                ct |= bk;
+                            }
+                        }
+                        for (uint32_t x = w * 32u, c = ct; c; c >>= 1, x++) if (c & 1u) {
+                            if ((int32_t)x != tl + 1) { crk_run(s, lc_u, screen_y + 1, t0, tl, 4u | tk << 8, &crk_n); t0 = (int32_t)x; tk = k3; }
+                            tl = (int32_t)x;
+                        }
                         for (uint32_t x = w * 32u; c1; c1 >>= 1, x++) if (c1 & 1u) {
 #ifdef A4_LINEFILLVIS
                             r1[x] = 0xF81Fu;          /* bench (round 81): one-row fills magenta */
@@ -9548,6 +9586,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                     }
                     crk_run(s, lc_u, screen_y + 1, a0, al, 2u, &crk_n);
                     crk_run(s, lc_u, screen_y + 1, b0, bl, 3u, &crk_n);
+                    crk_run(s, lc_u, screen_y + 1, t0, tl, 4u | tk << 8, &crk_n);
                     if (n1) { cf_rows++; cf_px += n1; }
                     if (n2) { cf_rows += 2u; cf_px += n2; }
                 }

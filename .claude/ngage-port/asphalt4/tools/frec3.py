@@ -128,8 +128,8 @@ if mode == 'lines':
             if key in seen: continue
             seen.add(key)
             nf, ng = (e[3] >> 16) & 255, e[3] >> 24
-            kind = (e[1] >> 8) & 255
-            KN = {0: 'line', 1: 'line', 2: 'crack 1-row', 3: 'crack 2-row'}
+            kind, th = (e[1] >> 8) & 255, (e[1] >> 16) & 255
+            KN = {0: 'line', 1: 'line', 2: 'crack 1-row', 3: 'crack 2-row', 4: 'gap %d rows (not filled)' % th}
             print('frame %5d row %3d %s undrawn %3d x %3d..%3d (rows below/above undrawn %d / %d) faces %d items %d F %d centre %d,%d'
                   % (e[0] & 0xFFFF, e[0] >> 16, KN.get(kind, 'kind %d' % kind), e[1] & 255, e[2] & 0xFFFF, e[2] >> 16, e[3] & 255,
                      (e[3] >> 8) & 255, nf, ng, e[46], e[47] & 0xFFFF, e[47] >> 16))
@@ -162,8 +162,8 @@ if mode == 'lines':
                         a, b = e[40 + 2 * j], e[41 + 2 * j]
                         if s16(a & 0xFFFF) <= xm <= s16(b & 0xFFFF) and s16(a >> 16) <= y <= s16(b >> 16): o.append('item box')
                     return o or ['none recorded']
-                print('   owners at x %.1f: above (row %d) %s; below (row %d) %s' % (xm, row - 1, owners(row - 1),
-                      row + (2 if kind == 3 else 1), owners(row + (2 if kind == 3 else 1))))
+                below = row + (2 if kind == 3 else th if kind == 4 else 1)
+                print('   owners at x %.1f: above (row %d) %s; below (row %d) %s' % (xm, row - 1, owners(row - 1), below, owners(below)))
             for j in range(nf):
                 f = e[4 + 6 * j: 10 + 6 * j]
                 c = [s16(f[0] & 0xFFFF), s16(f[0] >> 16), s16(f[1] & 0xFFFF), s16(f[1] >> 16), s16(f[2] & 0xFFFF), s16(f[2] >> 16),
@@ -184,13 +184,15 @@ if mode == 'lines':
     for info, d in infos:
         i = d.rfind(b'CRK1')
         if i >= 0 and len(d) >= i + 96:
-            c = struct.unpack_from('<24I', d, i)
+            c = struct.unpack_from('<%dI' % (32 if len(d) >= i + 128 else 24), d, i)
             if best is None or c[1] + c[2] > best[1] + best[2]: best = c
     if best:
         c = best
         print('cracks (CRK1, from the boot): one-row runs %d, two-row %d, >= 64 px %d, pixels %d; recorded %d' % (c[1], c[2], c[3], c[4], c[23]))
         print('  by 16-row band:', ' '.join('%d-%d:%d' % (16 * b, 16 * b + 15, c[5 + b]) for b in range(15) if c[5 + b]))
         print('  longest %d px, row %d, frame %d, F %d' % (c[20], c[21] & 0xFFFF, c[21] >> 16, c[22]))
+        if len(c) >= 32:
+            print('  gaps of 3-6 rows (not filled): %d runs, %d of 64+, the thickest %d rows; automatic marks asked %d' % (c[24], c[25], c[28], c[26]))
     sys.exit()
 
 if mode == 'gob':
