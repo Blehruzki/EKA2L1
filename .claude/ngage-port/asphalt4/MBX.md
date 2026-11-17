@@ -12583,3 +12583,9 @@ c. Not entered: the phone's own cracks (the bench has seams but not the phone's 
   far as boxes can tell (an item's box is not its triangles).
 - Builds: r81t4 (C80 + LINETEST + LINETEST2, the recorder's test) 978,828; r81r (C80, the candidate with the
   recorder) 978,376.
+- lt81c (r81t4: the test gaps with the recorder; Instant Play, 100 s, two marks; framestat 999, the boot fault only):
+  the fills as lt81b (rows 120, 130, 131 equal to their sources 320/320; row 100's run 32/32 in both marks); LIN1 holds
+  crack records -- row 120 'crack 1-row' x 0-319, row 130 'crack 2-row' x 0-319, two a frame; CRK1 at the last capture:
+  782 one-row runs, 467 two-row, by band 96-111 315 (row 100's run), 112-127 466 (row 120), 128-143 467 (rows 130-131).
+  The recorder records what it is given. (frec3 now skips a ring file a kill left empty.) Battery on r81r queued: m81r,
+  la81r, b81r.

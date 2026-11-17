@@ -100,7 +100,7 @@ def row(e1, e3):
 # the drawn heading on +678's circle: the forward axis's angle + 1,024 (m76a: heading less it -1,024 in 799 of 1,008)
 def ang(x, z): return (int(round(math.atan2(x, z) * 1024 / math.pi)) + 1024) & 0x7FF if x or z else -1
 
-infos = [load(f) for f in files]
+infos = [load(f) for f in files if os.path.getsize(f) >= 256]   # a ring file cut by a kill is empty
 if mode == 'files':
     for info, d in infos:
         R = info['R']
