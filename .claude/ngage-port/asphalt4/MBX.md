@@ -12287,3 +12287,35 @@ c. Not entered: The Fame Avenue (the bench's LA is the starter route); a box par
   this save) -> CHOOSE YOUR EVENT (RACE first) -> the city's loading card ("PRESS ANY KEY"). Keys for an LA race on
   the owner's save, with the owner's Veyron: Return x4, Down, Return, Down x5, Return, Return, Return, 5 5 5
   (scratchpad la_keys.txt; hcm.sh / hcn.sh / hcs.sh take KEYS from the environment). Screens: menux/m0-m6.
+- **Battery on r78c a4514885 (975,180 bytes; rebuilt from fb69da3 with C78, byte for byte the same):** m78d (above:
+  Instant Play, 7 marks, the boot fault only); la78c (the owner's save, CAREER -> START RACE -> Los Angeles -> RACE,
+  the owner's Veyron, 260 s, C every 30 s; framestat 2,264; the boot fault only): 8 marks, the towers whole to the top
+  of the screen, a $$$ pickup standing whole on the road, the car's shadow whole (shots/r78-la78c-marks.png); the cover
+  counters per ~230 renders: one redraw a render, flushes 0 to 10 in a capture (fills and fades over a pending item),
+  the redraw's draw calls 10-47 a redraw (most in the city's centre, where buildings are GPU objects). b78c (b78a's run,
+  480 s; framestat 2,968; the boot fault only): 2,565 renders, 55.8 ms a render with the first window against b78a's
+  50.7; the eight race windows 46.7 ms against 42.9 (+3.8, 9%): 3D 20.4 against 18.9, the composite 12.1 against
+  10.2 (its read 6.9 against 6.3 -- the frame read waits on the redraw's GPU work). m78d's +2.3 and this +3.8: the
+  cover redraw costs 2-4 ms a render on the model. Not a repeat of b78a / la78 (r78a, no cover redraw, LA without the
+  owner's save).
+
+Rule 4, before r78 (r78c) goes out:
+a. Guesses: (1) that the owner's pickups "inserting themselves into the pavement", the searchlight's blocks and the
+   incomplete shadow are one cause (an element the game paints over the road tested against the road's depth wherever
+   a car or object's box marked the tile) -- by the code and the bench's pictures before and after; the phone settles
+   it. (2) Its cost on the phone: 2-4 ms a render on the model (one redraw a render, its draw calls priced by the GPU
+   model); the phone's CVR1 counters (redraw ticks, k[6]) and the render times settle it. Not a guess: depth
+   invariance between the item's first draw and its redraw -- where the redraw must land, the buffer holds the
+   element's farther depth (a strict pass); where it only meets the item's own pixels, an equal depth repaints the same
+   texel (alpha test, no blending), and a miss leaves the first draw.
+b. Read back: lean_conv's three-way rule (shadows only GPU items cover: own depth, written, the items pending; any
+   other covered triangle tested as before and, over a pending item, writing its depth; uncovered ones over a pending
+   item at their own depth, written); quad_push's (a tested quad over a pending item writes, a fill or a fade flushes);
+   a4_gl_bb's marked cells and quads; draw_run's flags set and undone around the draw, stripped from the texture id
+   (never from KIND_ADDF's fade byte); cvr_redraw's state -- batch_draw leaves the bring-up state (kind_leave), the
+   redraw sets gobj_flush's projection, GEQUAL, no writes, cull, and puts back the ortho, the identities, GEQUAL /
+   writes on, cull and depth off; the next batch sets its own pointers; the frame's start clears the pending items;
+   CVR1's telemetry block written from scratch (not a static descriptor).
+c. Not entered: a night or rain city (the bench ran LA and Paris's Instant Play), a crowded start or a pile-up (the
+   most pending items at once), The Fame Avenue, replays, multiplayer. A fill or fade over a pending item (the flush)
+   was entered: 10 in la78c.

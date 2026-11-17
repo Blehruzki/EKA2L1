@@ -31,4 +31,6 @@ earlier candidate byte for byte take that commit's lifted.c too (r75 / r76 from 
 
 C78.flags = C77.flags with `-DTEL_EVERY=230` (round 78: a capture every ~10 s, each one stalled the phone ~80 ms);
 scratch `0x1C0000`. a4_r78a.exe (C78 + the composited rows of the GPU objects and cars), sha256
-1af6c4c5b3e527e9dd06775372a632a725aa9ba32f0d1c0108af32e89232483a, 969,416 bytes. Bench only: `-DA4_ROWCHECK`.
+1af6c4c5b3e527e9dd06775372a632a725aa9ba32f0d1c0108af32e89232483a, 969,416 bytes. Then `-DA4_COVREDRAW` (the pickups, the searchlight's blocks and the car's shadow drawn over the
+road, the cars and objects that cover them drawn again): a4_r78c.exe = the r78 candidate, sha256
+a45148853e48e293fcca0e9d29342af64891d4a063b9def79b8af4961c0ef608, 975,180 bytes. Bench only: `-DA4_ROWCHECK`.
