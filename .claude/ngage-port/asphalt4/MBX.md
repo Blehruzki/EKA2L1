@@ -12733,3 +12733,26 @@ c. Not entered: the phone's own cracks (its MBX); more than two runs a frame (co
   nothing to see in the time. But the race windows 48.5 ms against r81r's 44.2, the composite ~1 ms up in every window
   (12.4-15.0 against 11.5-13.2): round 82's thickness test (k = 3..6 on every word of every row). Now skipped where the
   rows below are drawn (open = CMR(0) & ~CMR(1) & ~CMR(2), zero on almost every word): r82d 982,020. Battery on r82d running.
+- **Battery on r82d (C82, from e92edf6; sha256 b20c7d9b75a4cadc767d6094ee06916023264c131ea22620cc95e286b37f683d, 982,020 bytes):** m82d (Instant Play, night Paris;
+  framestat 2,238, the boot fault only): 7 marks, clean; 80 cut into 142 pieces (farthest 1,858). la82d (LA, "main menu
+  after 4 looks"; framestat 2,201, the boot fault only): 8 marks (one automatic), clean (Urban Havoc, the LIVE cut-in, a
+  takedown); 21 cut. b82d (b78a's run; framestat 3,042, the boot fault only): the race windows 44.7 ms against r81r's
+  44.2, **the composite 12.4 as r81r's** (the thickness skip worked); 961 cut into 547 pieces, the farthest corner 32,688;
+  4 automatic marks. Not a repeat of m81r / la81t / b81r (no cut, no thick-gap record, no automatic marks) or r82c.
+
+Rule 4, before r82 goes out:
+a. Guesses: (1) **that the owner's lines and bands are the MBX clipping the game's giant near triangles** -- for it: the
+   video's line runs behind the car (drawn and depth-tested: a lost tile would cut the car too), the giant sliver
+   recorded at the tunnel exit (corners at x -22,181 / +10,558, rows 83-88), the precision of a fixed-point cut 140
+   screens out; not shown: the phone drawing an uncut giant wrong (the bench's float GPU draws it right, so the bench
+   cannot tell cut from uncut). The phone settles it -- the lines gone, or still there with CRK1's cut count beside them.
+   (2) The MBX's tiles losing geometry at triangle peaks: not addressed; if lines remain, the automatic marks (any gap
+   of 64+ px, 1-6 rows, in a race) and the thick-gap records say whether they are undrawn. (3) A guard band of 1,024 px
+   (corners kept within [-1024, 1344] x [-1024, 1264]) being safe for the MBX's fixed point.
+b. Read back: a4_clip.h (and its host test: positions, depth, texture words, two mutants); lean_tail's interception (a
+   corner beyond the band -> cut, the fan's pieces through lean_tail_cv with the piece as cvp; the software-draws rule
+   as before; nothing left -> drawn by no one, off the panel anyway); lean_conv's piece branch (1/16 px positions, whole
+   pixel extents floor / ceil for the box and rows, depth and texture words from the piece, tri_conv's fb); tri_conv's
+   (x W) >> fb; every other caller passing 0; CRK1 [29-31]; the thickness skip (the same bands, open zero sooner).
+c. Not entered: the phone's own giants (see a1); a cut blended triangle (KIND_ADD / ALPHA: software also draws them --
+   its copy is the whole triangle, as before); the list's own near faces (projected by us in mesh_take, not cut).

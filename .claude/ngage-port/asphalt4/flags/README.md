@@ -37,3 +37,7 @@ a45148853e48e293fcca0e9d29342af64891d4a063b9def79b8af4961c0ef608, 975,180 bytes.
 
 C80.flags = C78.flags with `-DA4_LINEFILL` (round 80: the grey line's row filled from its neighbour at the composite).
 r80 candidate sha256 da090fd0cc324347f29d142d39205c044dcb46ac3f59eb6aa508e59b496c34a7, 976,784 bytes. Bench only: `-DA4_LINETEST` (blanks screen row 120: the fill's test).
+
+C82.flags = C80.flags with `-DA4_CLIPG` (round 82: the game's triangles with a corner more than 1,024 px off the panel cut to
+that band on the CPU, perspective-correct -- renderer/a4_clip.h, tools/cliptest.c). The r82 candidate (also: 3-6-row gaps
+recorded, automatic marks in a race) sha256 b20c7d9b75a4cadc767d6094ee06916023264c131ea22620cc95e286b37f683d, 982,020 bytes. Bench only: `-DA4_LINETEST3`, `-DA4_LINEFILLVIS`.
