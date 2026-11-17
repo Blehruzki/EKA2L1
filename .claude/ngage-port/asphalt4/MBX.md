@@ -12756,3 +12756,16 @@ b. Read back: a4_clip.h (and its host test: positions, depth, texture words, two
    (x W) >> fb; every other caller passing 0; CRK1 [29-31]; the thickness skip (the same bands, open zero sooner).
 c. Not entered: the phone's own giants (see a1); a cut blended triangle (KIND_ADD / ALPHA: software also draws them --
    its copy is the whole triangle, as before); the list's own near faces (projected by us in mesh_take, not cut).
+
+- **The owner: "did you consider this may happen anywhere, not only on LA, and not only right before the finish line?"**
+  The cut is generic (every stream triangle, every frame, every city), but r82d left three paths around it: the list's
+  own faces (projected in mesh_take, drawn by the GPU from view space), the GPU scenery objects and the GPU cars (drawn
+  from object space): the MBX clips those itself, and a face just beyond the near plane or a wall beside the car can
+  reach thousands of pixels off the panel. **r82e ("add it"):** each of the three hands such geometry back to the game,
+  whose triangles then reach lean_tail's cut: mesh_take refuses a face with a projected corner more than CLIPG px off
+  the panel (after the back-face test: a culled face is still culled); a4_obj_take and the car take refuse an item whose
+  gitem_box (its mesh's bounds turned and projected, before the clamp) reaches beyond the band -- gitem_box now returns
+  that, and the take gives back the slot (n--) as refused_near does. CRK1 grows to 40 words (CRK_N; crk_get() zeroes all
+  of them at the first use): [32] list faces, [33] objects, [34] cars handed back. a4_tel.c writes 160 bytes; frec3
+  prints the cut and hand-back counts. All under A4_CLIPG. r82e (C82, sha256 f41865b5085e720d9236791e33371cc40c23892f3381b4f9d04004757f40809c,
+  982,724 bytes; cliptest pass). Battery running: m82e, la82e, b82e. Not a repeat of r82d's (the three paths now cut).

@@ -553,7 +553,14 @@ struct mesh {
  * grid (lframe, lgrid, before the GPU's items join it), the pending items (objects in ob, cars in cb) and their
  * screen box (r), counters (k). */
 #define A4_GL_CVR 0x005C0400u
-#define A4_GL_CRK 0x005C0800u   /* round 81/82: the crack and cut-triangle counters ('CRK1', 32 words) */
+#define A4_GL_CRK 0x005C0800u   /* round 81/82: the crack and cut-triangle counters ('CRK1', CRK_N words) */
+#define CRK_N 40u               /* round 82e: [32..34] the giant faces, objects and cars handed back to the game */
+static inline volatile uint32_t *crk_get(void)
+{
+    volatile uint32_t *C = (volatile uint32_t *)A4_GL_CRK;
+    if (C[0] != 0x314B5243u) { for (uint32_t k = 1; k < CRK_N; k++) C[k] = 0; C[0] = 0x314B5243u; }   /* 'CRK1' */
+    return C;
+}
 #define CVR_FLAG 0x08000000u   /* the run passes every test and writes its depth */
 #define CVR_WRITE 0x04000000u  /* the run keeps its test and writes its depth (bm78c: tested elements over a pending item) */
 struct cvr { uint32_t lframe, pend; int16_t r[4]; uint32_t ob[6], cb; uint32_t magic, k[8]; uint16_t lgrid[MESH_GW * MESH_GH]; };
@@ -4950,8 +4957,7 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
             }
             const int n = clip_tri(t, -CLIPG * (1 << CLIP_FB), -CLIPG * (1 << CLIP_FB), (VP_W + CLIPG) * (1 << CLIP_FB),
                                    (VP_H + CLIPG) * (1 << CLIP_FB), o);
-            volatile uint32_t *C = (volatile uint32_t *)A4_GL_CRK;
-            if (C[0] != 0x314B5243u) { for (uint32_t k = 1; k < 32u; k++) C[k] = 0; C[0] = 0x314B5243u; }
+            volatile uint32_t *C = crk_get();
             C[29]++; if (n >= 3) C[30] += (uint32_t)(n - 2); if ((uint32_t)far > C[31]) C[31] = (uint32_t)far;
             int r = (kind == KIND_ADD || kind == KIND_ALPHA) ? 0 : 1;
             for (int k = 1; k + 1 < n; k++) {
@@ -5483,6 +5489,13 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
     mesh_scr_i(gctx, F, cx, cy, x0, y0, z0, &sx0, &sy0);
     mesh_scr_i(gctx, F, cx, cy, x1, y1, z1, &sx1, &sy1);
     mesh_scr_i(gctx, F, cx, cy, x2, y2, z2, &sx2, &sy2);
+#ifdef A4_CLIPG
+    /* round 82e: a corner more than CLIPG pixels off the panel -- the GPU would clip the face there in fixed point;
+     * the game's table draws it instead, through lean_tail's cut */
+    if (sx0 < -CLIPG || sx0 > VP_W + CLIPG || sy0 < -CLIPG || sy0 > VP_H + CLIPG
+        || sx1 < -CLIPG || sx1 > VP_W + CLIPG || sy1 < -CLIPG || sy1 > VP_H + CLIPG
+        || sx2 < -CLIPG || sx2 > VP_W + CLIPG || sy2 < -CLIPG || sy2 > VP_H + CLIPG) { crk_get()[32]++; return 0; }
+#endif
     uint32_t texz = 0;
     if (fl == 0x4001u) {                            /* mesh_fallback, on the screen y's above */
         int32_t wt, wa, wb;                         /* 0x2ff60's first output, branch for branch */
@@ -5831,8 +5844,8 @@ static void gobj_reset(volatile struct gstate *g)
  * whole screen (it did: every sprite on screen was depth-tested against it). Every corner is ahead of the near
  * plane (the take refused the item otherwise: its sphere holds the corners), so mesh_scr_i projects each.
  * A4_GOBJ_SPHEREBOX (bench): the round 60-70 box. */
-static void gitem_box(const uint32_t *gx, int32_t F, const int32_t *R, const int32_t *T, const int16_t *bnd, int32_t rad,
-                      volatile int16_t *box, volatile uint16_t *qn, volatile uint16_t *qf)
+static int gitem_box(const uint32_t *gx, int32_t F, const int32_t *R, const int32_t *T, const int16_t *bnd, int32_t rad,
+                     volatile int16_t *box, volatile uint16_t *qn, volatile uint16_t *qf)
 {
     const int32_t cx = *(const int32_t *)gx[0x40110 / 4] >> 1, cy = *(const int32_t *)gx[0x40114 / 4] >> 1;
     int32_t xlo = 0x7FFFFFFF, ylo = 0x7FFFFFFF, xhi = -0x7FFFFFFF, yhi = -0x7FFFFFFF, zlo = 0x7FFFFFFF, zhi = -0x7FFFFFFF;
@@ -5844,7 +5857,7 @@ static void gitem_box(const uint32_t *gx, int32_t F, const int32_t *R, const int
         int32_t zn = vz + r, zf = vz - r;
         const uint32_t n_ = zn < 0 ? (uint32_t)(-zn) >> 3 : 0u, f_ = zf < 0 ? (uint32_t)(-zf) >> 3 : 0u;
         *qn = (uint16_t)(n_ > 4095u ? 4095u : n_); *qf = (uint16_t)(f_ > 4095u ? 4095u : f_);
-        if (zn > -512) { box[0] = -1; box[1] = -1; box[2] = VP_W; box[3] = VP_H; return; }
+        if (zn > -512) { box[0] = -1; box[1] = -1; box[2] = VP_W; box[3] = VP_H; return 0; }
         if (zf < -0x7FFF) zf = -0x7FFF;
         for (uint32_t k = 0; k < 8u; k++) {
             int32_t x = (k & 1u) ? vx + r : vx - r, y = (k & 2u) ? vy + r : vy - r, sx, sy;
@@ -5879,13 +5892,21 @@ static void gitem_box(const uint32_t *gx, int32_t F, const int32_t *R, const int
     {   const int32_t zn = zhi + 2, zf = zlo - 2;
         const uint32_t n_ = zn < 0 ? (uint32_t)(-zn) >> 3 : 0u, f_ = zf < 0 ? (uint32_t)(-zf) >> 3 : 0u;
         *qn = (uint16_t)(n_ > 4095u ? 4095u : n_); *qf = (uint16_t)(f_ > 4095u ? 4095u : f_);
-        if (zhi == 0) return; }
+        if (zhi == 0) return 0; }
 #endif
     xlo -= 2; ylo -= 2; xhi += 2; yhi += 2;
+#ifdef A4_CLIPG
+    /* round 82e: the box reaches more than CLIPG pixels off the panel -- the GPU would clip the item's triangles there
+     * itself, in fixed point (the cut in lean_tail sees only the game's own); the take hands the item back */
+    const int giant = xlo < -CLIPG || xhi > VP_W + CLIPG || ylo < -CLIPG || yhi > VP_H + CLIPG;
+#else
+    const int giant = 0;
+#endif
     box[0] = (int16_t)(xlo < -1 ? -1 : xlo > VP_W ? VP_W : xlo);
     box[1] = (int16_t)(ylo < -1 ? -1 : ylo > VP_H ? VP_H : ylo);
     box[2] = (int16_t)(xhi < -1 ? -1 : xhi > VP_W ? VP_W : xhi);
     box[3] = (int16_t)(yhi < -1 ? -1 : yhi > VP_H ? VP_H : yhi);
+    return giant;
 }
 static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
 {
@@ -6030,7 +6051,11 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
          * round 71 its mesh's own bounds turned and projected (gitem_box); to round 70 the cube around its bounding
          * sphere. */
         const uint32_t *gx = (const uint32_t *)(uintptr_t)MESH->gctx;
-        gitem_box(gx, (int32_t)GO32(cam + 4u), M, M + 9, GBND[me - GMESH], (int32_t)me->rad, it->box, &it->qn, &it->qf);
+        if (gitem_box(gx, (int32_t)GO32(cam + 4u), M, M + 9, GBND[me - GMESH], (int32_t)me->rad, it->box, &it->qn, &it->qf)) {
+#ifdef A4_CLIPG
+            g->n--; crk_get()[33]++; return 0;      /* round 82e: to the game, whose triangles lean_tail cuts */
+#endif
+        }
     }
     g->F = GO32(cam + 4u);
     g->taken++;
@@ -6288,7 +6313,11 @@ int a4_car_take(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint3
     for (uint32_t k = 0; k < 12u; k++) it->M[k] = M[k];
     {   /* its screen box and depth buckets, for the list's grid and the sprites' cover (as a4_obj_take's) */
         const uint32_t *gx = (const uint32_t *)(uintptr_t)MESH->gctx;
-        gitem_box(gx, (int32_t)it->F, M, M + 9, GCBND[me - GCMESH], (int32_t)me->rad, it->box, &it->qn, &it->qf);
+        if (gitem_box(gx, (int32_t)it->F, M, M + 9, GCBND[me - GCMESH], (int32_t)me->rad, it->box, &it->qn, &it->qf)) {
+#ifdef A4_CLIPG
+            c->n--; crk_get()[34]++; return 0;      /* round 82e: as an object's */
+#endif
+        }
     }
     c->taken++;
     return 1;
@@ -9352,19 +9381,19 @@ static void line_rec(volatile struct glr *s, int y, const uint8_t *lc_u, uint32_
  * runs by 16-row band of the screen, [20] the longest run, [21] its row | the frame (16 bits) << 16, [22] the focal
  * then (MESH->F), [23] runs recorded in LIN1; round 82: [24] runs of gaps 3-6 rows thick (kind 4, not filled; the
  * thickness in e[1] bits 16-23), [25] those of 64+, [26] automatic marks asked, [27] the last one's tick, [28] the
- * thickest gap. Totals from the boot. */
+ * thickest gap; [29] triangles cut (A4_CLIPG), [30] pieces drawn, [31] the farthest corner; round 82e: [32] list faces,
+ * [33] GPU objects, [34] GPU cars handed back to the game for a corner (a box corner) beyond the band. Totals from the boot. */
 /* (A4_GL_CRK 0x5C0800 is defined beside A4_GL_CVR) */
 #ifdef A4_COVREDRAW
 _Static_assert(A4_GL_CVR + sizeof(struct cvr) <= A4_GL_CRK, "the crack counters over the cover redraw's state");
 #endif
-_Static_assert(A4_GL_CRK + 32u * 4u <= 0x005C1000u, "the crack counters past the scratch");
+_Static_assert(A4_GL_CRK + CRK_N * 4u <= 0x005C1000u, "the crack counters past the scratch");
 static void crk_run(volatile struct glr *s, const uint8_t *lc_u, int row, int32_t x0, int32_t x1, uint32_t kind,
                     uint32_t *nrec)
 {
     const uint32_t len = (uint32_t)(x1 - x0 + 1), kd = kind & 0xFFu, th = kind >> 8;
     if (x0 < 0 || len < 16u) return;
-    volatile uint32_t *C = (volatile uint32_t *)A4_GL_CRK;
-    if (C[0] != 0x314B5243u) { for (uint32_t k = 1; k < 32u; k++) C[k] = 0; C[0] = 0x314B5243u; }   /* 'CRK1' */
+    volatile uint32_t *C = crk_get();
     if (kd == 4u) {                                 /* round 82: 3-6 rows, not filled */
         C[24]++; if (len >= 64u) C[25]++;
         if (th > C[28]) C[28] = th;

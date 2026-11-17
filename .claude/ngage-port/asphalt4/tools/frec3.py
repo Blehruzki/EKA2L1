@@ -184,7 +184,7 @@ if mode == 'lines':
     for info, d in infos:
         i = d.rfind(b'CRK1')
         if i >= 0 and len(d) >= i + 96:
-            c = struct.unpack_from('<%dI' % (32 if len(d) >= i + 128 else 24), d, i)
+            c = struct.unpack_from('<%dI' % (40 if len(d) >= i + 160 else 32 if len(d) >= i + 128 else 24), d, i)
             if best is None or c[1] + c[2] > best[1] + best[2]: best = c
     if best:
         c = best
@@ -193,6 +193,9 @@ if mode == 'lines':
         print('  longest %d px, row %d, frame %d, F %d' % (c[20], c[21] & 0xFFFF, c[21] >> 16, c[22]))
         if len(c) >= 32:
             print('  gaps of 3-6 rows (not filled): %d runs, %d of 64+, the thickest %d rows; automatic marks asked %d' % (c[24], c[25], c[28], c[26]))
+            print('  triangles cut (A4_CLIPG): %d, pieces drawn %d, the farthest corner %d px' % (c[29], c[30], c[31]))
+        if len(c) >= 40:
+            print('  handed back to the game beyond the band: list faces %d, GPU objects %d, GPU cars %d' % (c[32], c[33], c[34]))
     sys.exit()
 
 if mode == 'gob':
