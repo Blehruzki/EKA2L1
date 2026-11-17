@@ -12440,3 +12440,23 @@ c. Not entered: the finish camera on the bench; a whole race in a camera other t
   above 103.5 -- the round-72 reading (a row of ground no triangle covers), now with its numbers. Paris: bands of
   several rows (the rows beside also undrawn, sky), not the owner's kind, except perhaps frame 2,781 row 94 (64 px,
   12 / 24 beside).
+
+## Phone round 79n (r79n 11bfe090: r79 without the cover redraw), Paris
+- Owner: "This is r79n, in Paris. I don't think it's any faster. In fact, I think it felt a bit slower during the
+  heavier parts (montmartre). See if you can confirm this with the telemetry. I also noticed the jingle issue
+  appeared in this build." 8 ring files (p79n/), no marks.
+- The race: 59.8 ms a render (r79 58.2), 3D 29.3 (25.8), 767 prims a render (r79 786 -- **the scene's, not the cover
+  redraw's quads**: r79n has none; the second correction stands, the first's "the redraw's own quads" withdrawn).
+  Every render, the last ~114 s: median 59 ms, 90% 82, 99% 97, >= 100 ms 17 (r79: 56 / 72 / 97 / 18).
+- **By track segment** (FRC1 word 2 bits 0-11, the camera's segment, chase camera only; segcmp.py, scratchpad), the
+  median render-to-render ms, r77 / r78 / r79 / r79n: segments 40-49 77 / 80 / 63 / 80; 50-59 79 / 74 / 67 / 65;
+  60-69 80 / 89 / 66 / 78; 70-79 79 / 79 / 63 / 59; 80-89 59 / 63 / 62 / 78; 100-109 54 / 79 / 55 / 70. The heavy
+  stretch (40-79) is r79's fastest in three of four bins; r79n slower than r79 in the heavy bins by 12-17 ms in
+  three. **The owner's reading confirmed: r79n is no faster, and slower through the heavy part.** The cover redraw
+  costs nothing the phone's races can show; a race's own traffic moves a segment by 10-15 ms. r79 keeps it.
+- LA by segment (r77 / r78 / r79): 0-19 41 / 52 / 55, 20-39 43 / 63 / 56, 40-59 51 / 61 / 58, 60-99 equal within 2;
+  r77's first 40 segments ran 12-14 ms faster -- not attributed (r77's samples there may be another lap).
+- The jingle paused in r79n, whose captures wait for the chase camera as r79's do: the captures are not its only
+  cause (r79's jingle was whole, once). Asked: a press of C right after the jingle ends, while the finish camera
+  still turns (a mark needs a 3D render within a second of the press) -- the mark then holds every render of the
+  finish.
