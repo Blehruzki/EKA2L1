@@ -12343,3 +12343,27 @@ c. Not entered: a night or rain city (the bench ran LA and Paris's Instant Play)
   the jingle is one stall; three pauses in one jingle are not three captures (one every ~13 s).
 - Pictures (p78_marks.png, scratchpad): night Paris, the owner's Veyron; the shadows whole; mark 3 the pickups'
   sparkle behind the car. Which mark shows the sinking pickup: asked.
+
+## Phone round 78b (r78 a4514885, LA): the upper screen whole; four black boxes through the car at the finish
+- Owner: "LA: upper screen is working. There was a moment where the helicopter did the same bug of getting too far
+  ahead from the car. But then it came back and behaved normally. And I noticed a graphical bug with my car at the
+  end of the race, when the camera was spinning to show the front side of the car, I could see what it looked like 4
+  black boards or boxes, each roughly positioned at each wheel. And they where showing through the car". Mark 0 (lap
+  1, 5th): the helicopter far up the street ahead. Mark 1 (1ST, 0 km/h, the finish camera at the car's front): black
+  jagged patches over the red nose and bumper (l78_marks.png, scratchpad).
+- Telemetry (l78/, against round 77's LA, ph77a): 2,301 renders, **62.9 ms a render against 52.5**; 3D 28.8 / 22.9,
+  hook 14.6 / 13.5, composite 10.2 / 9.6 (read 7.0 / 6.5), batch draws 5.8 / 5.0, present 4.0 / 2.3, calls 123 /
+  104; renders 60 ms apart or more 52% / 24%.
+- **Correction to round 78's Paris reading.** PF_TRIS counts s->prims, and quad_push adds one a quad: the sprites'
+  cell quads are in it, not only the game's triangles. So "the race drew 17% more triangles" was wrong: Paris +111
+  and LA +107 a render are mostly the cover redraw's own cell quads (the bench, same race: b78a 631, b78c 678). The
+  regression is r78's: Paris +6.3 ms, LA +10.4 ms a render -- three to four times the bench's 2-4 ms.
+- Where: 3D outside the hook (the billboards' path is not hook-timed) LA 14.1 against 9.4 ms, Paris 15.2 against
+  12.9 -- mesh_bb_cells calls cvr_add for every cell (16 a sprite), and cvr_add walks every GPU object (up to 192)
+  and car with no prefilter by the sprite's box: in LA's centre a sprite costs 16 walks of ~150 objects. Then the
+  redraw (~1.5 ms, ~9 draw calls) and its run splits (+20 calls).
+- The black boxes, by the code: a shadow only the car covers is drawn passing every test and writing its own depth
+  (the ground's, behind the body) inside the car's outline; cvr_redraw then draws the car with GEQUAL and **no depth
+  writes**, so every fragment of the car nearer than the ground passes, in group order -- the wheel wells' black
+  inner faces after the body paint over it. The bench never looked at the car's front (the race camera is behind it,
+  the owner's Veyron is black from behind).
