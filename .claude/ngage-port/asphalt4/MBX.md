@@ -12529,3 +12529,26 @@ c. Not entered: a phone crack on the bench (only the forced row and one real lin
   104-125, 2 px a row and runs of 9-10: cracks between faces); two-row pixels a handful (tree edges, a billboard's
   edge, rows 67-71 x 177-198). (Row 231 x 3-110 is cyan in every mark: the game's own HUD bar, drawn after the
   composite -- not a fill.) The fill touches little but cracks.
+- **Battery on r81 (C80 flags, the round-81 fill, from d99d729; sha256 730f9b9fc53c5a6c0f8cea9ac32f5b73a7e3defdcd7c570b300a9b3e3fe2f646, 977,688 bytes):**
+  m81 (Instant Play marks; framestat 2,040, the boot fault only): 7 marks, the pictures clean; la81 (LA on the owner's
+  save; framestat 2,268, the boot fault only): 8 marks, the pictures clean (The Fame Avenue, the LIVE cut-in); b81
+  (b78a's run; framestat 3,017, the boot fault only): the race windows 46.7 ms (r80 44.3, r79b 45.3; its scene busier,
+  102 list triangles a render against 81-87); the composite less its read 6.1 ms against 4.9-5.4 -- **the mask and the
+  fill cost ~1 ms a render on the model**. Fills (LIN1, from the boot): m81 115,296 rows / 200,613 px, la81 63,667 /
+  114,024, b81 114,762 / 289,529 -- ~30-60 rows and ~50-150 px a frame, the specks and seams vis81 showed.
+  Not a repeat of m80 / la80 / b80 (r80: the >= 64 px run copy).
+
+Rule 4, before r81 goes out:
+a. Guesses: (1) that the owner's lines are pixels the GPU left undrawn (the software layer's grey showing): round 70's
+   photo and round 79's records say so; round 80's lines were never counted, so their shape is unknown -- if r81 still
+   shows them and LIN1 shows fills, they are not the undrawn kind (drawn grey: a texture's edge, say). The phone
+   settles it. (2) That a one-row texture hole over the sky closing (a far rail, foliage) is not seen: vis81 shows
+   specks of a pixel or two. (3) The ~1 ms on the phone (the model's figure).
+b. Read back: the mask (bit x = alpha's top bit, the count from it equal to the old sum -- the line counter's numbers
+   unchanged); the window's shift each row and cmn's count (consecutive rows only: the strips are consecutive, no row
+   skipped at CLIP_TOP 0); the crack masks (one row: cm0 & ~cm1 & cm2; two rows: cm0 & ~cm1 & ~cm2 & cm3, disjoint
+   from the first); the rows written (y+1, y+2) composited before; filled pixels stay undrawn in the masks, so a
+   fill never feeds another; LIN1's counters.
+c. Not entered: the phone's own cracks (the bench has seams but not the phone's lines); the first two rows of a
+   composite (no window yet) and its last (no row above): a crack there stays; the non-ARMv6 composite paths (no
+   counter, no fill).
