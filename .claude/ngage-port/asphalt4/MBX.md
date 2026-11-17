@@ -12621,3 +12621,6 @@ b. Read back: crk_run's bounds (runs < 16 or x0 < 0 return; the band index row >
    kind in e[1] bits 8-15 (line_rec's e[1] holds the undrawn count in bits 0-7), the post-pass's line_rec skipped under
    A4_LINEFILL, CRK1's offset in a4_tel.c (after LIN1 and CVR1).
 c. Not entered: the phone's own cracks (its MBX); more than two runs a frame (counted, not recorded).
+- **r81 sent** (owner: "yes"): a4_r81_cand.exe, unbaked, sha256 4f62f0ef343b631b..., 978,376 bytes (= r81r, C80 from
+  d09da90). Asked of the round: LA with a tunnel exit at top speed -- the grey lines (seen or not), and the captures for
+  CRK1 / LIN1 (which surfaces crack on the MBX, how long, which rows); the rest as r80.
