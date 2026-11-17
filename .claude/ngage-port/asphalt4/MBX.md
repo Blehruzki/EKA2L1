@@ -12385,3 +12385,28 @@ c. Not entered: a night or rain city (the bench ran LA and Paris's Instant Play)
   renders (~7 s) in Paris's mark 5 and LA's mark 1; 2 while racing, 0x17 the start's fly-in, 0x2A the helicopter's
   LIVE cut-in. Ring captures now wait for mode 2 (a4_tel.c capdue: due every TEL_EVERY frames, taken at the first
   chase-camera render) -- none during the finish's jingle. A press of C still writes at once.
+- **Battery on r79b (976,464 bytes, sha256 26b45c552aa4a3fac19152fc01e07471cb63b285049c5021cb8c7b776a8c7797; r79a + the capture hold; C78, from a51f3aa):**
+  m79b (Instant Play, night Paris, C at 40-280 s; framestat 2,280, the boot fault only): 7 marks, the pictures clean;
+  the ring every ~10 s as before, every capture's last render in the chase camera (mode 2). b79b (b78a's run;
+  framestat 3,086, the boot fault only): the race windows 45.3 ms (b79a 44.3, r78c 46.7, r78a 42.9), calls 106. On
+  the bench the cover redraw now costs 1.4-2.4 ms a render, r78c's 3.8. la79a (r79a, above) for LA's pictures.
+  Not a repeat of b78c / la78c / m78d (r78c: the 16 walks a sprite, the redraw without depth writes, no hold).
+- r79n (969,524 bytes, sha256 11bfe090a2da70d68dc85c8d2b7979dc30a7b2c128f66b3eaa168625e3d2a017): r79b without -DA4_COVREDRAW (r78a + the capture hold), built for
+  the owner to set beside r79 in one session if r79 still feels slower than round 77 -- the split the bench cannot
+  give. Its battery only if it goes out.
+
+Rule 4, before r79 goes out:
+a. Guesses: (1) the black boxes are the redraw drawing without depth writes -- by the code; the bench's race camera
+   never sees the car's front, the finish camera (mode 1) was not reached on the bench; the phone settles it.
+   (2) The phone's cost: the bench puts the fix at 1.4-2.4 ms (r78c 3.8); the phone's r78 races were 6-10 ms slower
+   than round 77's, the split between the fix and the race unknown -- r79 against r79n in one session settles it.
+   (3) The jingle: the hold takes the captures out of the finish (mode 1, ~7 s); the two ~110 ms renders seen near
+   the line in Paris remain unexplained (the game's own, or r78's cost) -- the phone settles it, and a press of C in
+   the jingle still stalls it.
+b. Read back: the redraw's depth writes (GEQUAL with writes: a car's nearest fragment wins among its own groups; a
+   later element tests against the true car depth); the bind skip (lastid reset at each redraw); cvr_cells against
+   the per-cell loop it replaces (the same open cells, cd -1 and non-empty; the same item rule, qn < sb and the box
+   meeting a cell; the hull test only skips items no cell can meet); a4_tel.c's hold (due every TEL_EVERY active
+   frames, taken at the first render whose frame-record mode is 2).
+c. Not entered: the finish camera on the bench; a whole race in a camera other than 2 (every capture would wait --
+   none seen on the phone); The Fame Avenue's end; replays and multiplayer.
