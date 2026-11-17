@@ -12600,3 +12600,24 @@ c. Not entered: the phone's own cracks (the bench has seams but not the phone's 
   below; a stream triangle with items above and a road face below; road faces both sides (rows 70-72); items both
   sides. **Every pairing of the three paths**, the horizon's rows most -- suspects (1)/(2): seams between paths, and
   within the list. The bench cracks too; its llvmpipe cracks less long than the phone's MBX.
+- la81s (PREWAIT 30) reached Paris again: the boot's screens had changed -- the intro took one Return and the third
+  reached the main menu, so the fourth chose INSTANT PLAY; a fixed count of Returns cannot hold. hcm.sh now takes
+  MENUKEYS: Return until a screenshot matches the main menu (ismain.py against ref/mainmenu.png -- the menu 0.0, its
+  neighbours 13-160; threshold 6), then the keys (la_menukeys.txt: Down Return Down x5 Return Return Return 5 5 5).
+  **la81t** (r81r, LA on the owner's save, "main menu after 4 looks"; framestat 2,242, the boot fault only): 8 marks,
+  LA's streets clean (the LIVE cut-in, the hills). CRK1: 130 one-row runs, 1 two-row, 62 of 64+, longest 101 px row 118
+  F 200 -- **the HOME screen's 3D garage cracks every frame** (row 118, x 0-100 and 115-210, a list face below, nothing
+  recorded above: the garage's floor seam), and in the race rows 104-131: items above / road below most, road above /
+  a stream triangle below, road above / items below.
+- **r81 candidate = r81r** (C80 + the round-81 fill and recorder, from d09da90; sha256 4f62f0ef343b631bced8e621207ccc62aab7a778cc5df50ac60e63331684877e, 978,376 bytes):
+  battery m81r, la81t, b81r (above), the fill's test lt81b and the recorder's lt81c.
+
+Rule 4, before r81 goes out (adds to round 81's answers above):
+a. Guesses: (4) the recorder's owner test is a guide, not proof -- a GPU item is known only by its box, the list's
+   projection in frec3 omits our sub-pixel offset, and only the stream triangles ending or beginning within a row are
+   kept. (5) Its cost: at most two line_rec calls a frame (a walk of the list and the objects) -- in b81r's 44.2 ms.
+b. Read back: crk_run's bounds (runs < 16 or x0 < 0 return; the band index row >> 4 < 15), the run tracking across
+   words (consecutive x continues a run, a gap closes it, each row's last runs closed after its words), the record's
+   kind in e[1] bits 8-15 (line_rec's e[1] holds the undrawn count in bits 0-7), the post-pass's line_rec skipped under
+   A4_LINEFILL, CRK1's offset in a4_tel.c (after LIN1 and CVR1).
+c. Not entered: the phone's own cracks (its MBX); more than two runs a frame (counted, not recorded).
