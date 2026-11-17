@@ -12501,3 +12501,20 @@ c. Not entered: a phone crack on the bench (only the forced row and one real lin
 - **r80 sent** (owner: "send it"): a4_r80_cand.exe, unbaked, sha256 da090fd0cc324347..., 976,784 bytes (C80 from
   d10a81b; the battery above). Asked of the round: the grey lines in LA (and the fills, LIN1 [2] / [3], in the
   captures); the jingle (a press of C right after it ends if it pauses); the pickups.
+
+## Phone round 80 (r80 da090fd0, baked by the owner): LA -- "gray lines they still appear. the rest looks and feels good"
+- Files (l80/): 8 ring captures, marks 0 (lap 3, 00:34:35) and 1 (lap 3, 00:30:25). **No LIN1 block in any file**:
+  from the boot to the last capture the counter found no line (64 or more undrawn, the rows two away under 16) and
+  the fill filled nothing -- r79's LA session had three. The owner's lines this session are not the counter's kind:
+  shorter than 64 px, beside the sky (a row two away open), or thicker.
+- The marks' pictures: oddrow.py (scratchpad: runs of 12+ pixels in a row unlike both rows beside it while those two
+  agree) finds none in either mark -- the line was not in the marked frames (a line lives a frame or two). Test of the
+  test: oddrow finds lt80a's row 120 (5 runs), not lt80b's.
+- **Round 81: the fill pixel by pixel (A4_LINEFILL redone).** In the composite's ARMv6 path each row's drawn-mask
+  (10 words; the line counter's count now from it, a nibble table), the last four rows kept; after each row is
+  composited, every pixel of the row below it that the GPU left undrawn between drawn pixels above and below (a
+  one-row crack, any length) takes the composited pixel below it, and every pixel undrawn in two rows between drawn
+  ones (a two-row crack) takes each row's nearer drawn neighbour. Round 80's run copy is removed; the >= 64 px
+  recorder stays; LIN1 [2] / [3] count the rows and pixels filled. A texture's one-row hole over the sky (a far
+  rail's) closes too -- named. Builds: r81t0 (C78 + LINETEST + LINETEST2: rows 120, 130-131 and row 100 x 40-71
+  blanked, no fill) 976,912; r81t3 (C80 + both tests) 978,184; the candidate r81c (C80) 977,688.

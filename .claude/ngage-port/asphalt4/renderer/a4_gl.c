@@ -9332,6 +9332,12 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 #endif
     if (lc_on) for (int y = 0; y < VP_H; y++) lc_u[y] = 0;
 #endif
+#ifdef A4_LINEFILL
+    /* round 81: each composited row's drawn-mask (bit x: the GPU drew pixel x opaque), the last four rows kept --
+     * cm[0] this row, cm[1] the one below it on screen, ... -- and how many consecutive rows are in them */
+    uint32_t cm[4][VP_W / 32], cmn = 0, cf_rows = 0, cf_px = 0;
+    _Static_assert(VP_W % 32 == 0, "the drawn-mask's words");
+#endif
     for (int y0 = ystart; y0 <= gl_hi; y0 += sh) {
         uint32_t t0 = a4_ntick();
 #ifdef A4_IDLECEN
@@ -9428,13 +9434,36 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                 /* bench (round 72): the test's own case -- on a sampled frame screen row 120 read back as undrawn */
                 if (lc_on && screen_y == 120) for (int x = 0; x < VP_W; x++) ((uint32_t *)rb)[sy * VP_W + x] &= 0x7FFFFFFFu;
 #endif
+#ifdef A4_LINETEST2
+                /* bench (round 81): a two-row gap, rows 130-131, and a short one, row 100 x 40..71 (32 px) */
+                if (lc_on && (screen_y == 130 || screen_y == 131)) for (int x = 0; x < VP_W; x++) ((uint32_t *)rb)[sy * VP_W + x] &= 0x7FFFFFFFu;
+                if (lc_on && screen_y == 100) for (int x = 40; x < 72; x++) ((uint32_t *)rb)[sy * VP_W + x] &= 0x7FFFFFFFu;
+#endif
                 if (lc_on) {   /* round 72: this row's pixels no opaque GPU class drew (alpha's top bit clear) */
                     /* round 77 (b77a: the branch a pixel cost ~3 ms a composite on every composite): the drawn
                      * bits summed four a step, no branch; the undrawn run's ends only on a row that can be a line
                      * (64 or more), found from each end -- the same counts and ends as the pixel loop */
                     uint32_t d = 0, u;
+#ifdef A4_LINEFILL
+                    {   /* round 81: the row's drawn-mask, the count from it (four pixels a step, a nibble's bits by table) */
+                        static const uint8_t pc4[16] = { 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4 };
+                        for (uint32_t k = 3; k > 0; k--)
+                            for (uint32_t w = 0; w < VP_W / 32; w++) cm[k][w] = cm[k - 1][w];
+                        const uint32_t *p = src;
+                        for (uint32_t w = 0; w < VP_W / 32; w++) {
+                            uint32_t b = 0;
+                            for (uint32_t q = 0; q < 32; q += 4, p += 4) {
+                                const uint32_t t = (p[0] >> 31) | (p[1] >> 31) << 1 | (p[2] >> 31) << 2 | (p[3] >> 31) << 3;
+                                b |= t << q; d += pc4[t];
+                            }
+                            cm[0][w] = b;
+                        }
+                        cmn++;
+                    }
+#else
                     for (const uint32_t *p = src, *pe = src + VP_W; p < pe; p += 4)
                         d += (p[0] >> 31) + (p[1] >> 31) + (p[2] >> 31) + (p[3] >> 31);
+#endif
                     u = (uint32_t)VP_W - d;
 #ifdef A4_LINEREC
                     {   uint32_t x0_ = 0, x1_ = 0;
@@ -9450,6 +9479,25 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                 }
 #endif
                 row((uint32_t *)((uint16_t *)fb + screen_y * FB_STRIDE), src, src + VP_W);
+#ifdef A4_LINEFILL
+                if (lc_on && cmn >= 3u) {
+                    /* round 81 (phone round 80: grey lines still, and none the >= 64 px counter caught): every pixel the
+                     * GPU left undrawn between two drawn ones a row above and below -- a one-row crack, any length --
+                     * and every pair of undrawn rows between drawn ones (two rows, each from its nearer drawn row), a
+                     * one-row crack from the pixel below; rows y+1 (and y+2) here, this row y the one above them, all
+                     * already composited. A texture's one-row hole over the sky (a far rail) closes too. */
+                    volatile uint16_t *r0 = fb + screen_y * FB_STRIDE, *r1 = r0 + FB_STRIDE, *r2 = r1 + FB_STRIDE, *r3 = r2 + FB_STRIDE;
+                    uint32_t n1 = 0, n2 = 0;
+                    for (uint32_t w = 0; w < VP_W / 32; w++) {
+                        uint32_t c1 = cm[0][w] & ~cm[1][w] & cm[2][w];                              /* row y+1 alone */
+                        uint32_t c2 = cmn >= 4u ? cm[0][w] & ~cm[1][w] & ~cm[2][w] & cm[3][w] : 0u;   /* rows y+1, y+2 */
+                        for (uint32_t x = w * 32u; c1; c1 >>= 1, x++) if (c1 & 1u) { r1[x] = r2[x]; n1++; }
+                        for (uint32_t x = w * 32u; c2; c2 >>= 1, x++) if (c2 & 1u) { r2[x] = r3[x]; r1[x] = r0[x]; n2 += 2u; }   /* each from its nearer drawn row */
+                    }
+                    if (n1) { cf_rows++; cf_px += n1; }
+                    if (n2) { cf_rows += 2u; cf_px += n2; }
+                }
+#endif
 #ifdef A4_BLITCHECK_MUTANT
                 if ((int32_t)src[0] < 0) ((uint16_t *)fb)[screen_y * FB_STRIDE] ^= 1u;   /* the check's own test */
 #endif
@@ -9562,25 +9610,16 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 #endif
                 }
 #ifdef A4_LINEFILL
-                {   /* round 80 (the grey lines, phone round 79: a row of ground the GPU gave to neither of two faces --
-                     * the road's far edge a quarter pixel above the row's centre, the software layer's grey showing
-                     * through): the row's undrawn run, after the composite, from the composited row beside it -- below,
-                     * or above where the row below has 16 or more undrawn itself. Pixels the GPU did draw inside the
-                     * run take their neighbour's too: one row, the same surface. Before the 2D, so no HUD is copied.
-                     * LIN1's [2] counts the rows filled, [3] their pixels (both totals). */
-                    const int sy_ = lc_u[y + 1] < 16u ? y + 1 : lc_u[y - 1] < 16u ? y - 1 : -1;
-                    const uint32_t fx0 = lc_x[y] & 0xFFFFu, fx1 = lc_x[y] >> 16;
-                    if (sy_ >= CLIP_TOP && y >= CLIP_TOP && fx0 <= fx1 && fx1 < (uint32_t)VP_W) {
-                        volatile uint16_t *fd = fb + y * FB_STRIDE;
-                        const volatile uint16_t *fs = fb + sy_ * FB_STRIDE;
-                        for (uint32_t x = fx0; x <= fx1; x++) fd[x] = fs[x];
-                        volatile uint32_t *R = (volatile uint32_t *)A4_GL_LINREC;
-                        if (R[0] != 0x314E494Cu) { R[0] = 0x314E494Cu; R[1] = 0; R[2] = 0; R[3] = 0; }
-                        R[2]++; R[3] += fx1 - fx0 + 1u;
-                    }
-                }
+                (void)0;   /* round 81: filled pixel by pixel in the composite (above); round 80's run copy is gone */
 #endif
             }
+    }
+#endif
+#ifdef A4_LINEFILL
+    if (cf_rows) {   /* LIN1's [2] the rows filled, [3] their pixels (both totals) */
+        volatile uint32_t *R = (volatile uint32_t *)A4_GL_LINREC;
+        if (R[0] != 0x314E494Cu) { R[0] = 0x314E494Cu; R[1] = 0; R[2] = 0; R[3] = 0; }
+        R[2] += cf_rows; R[3] += cf_px;
     }
 #endif
 #if defined(A4_SKYCEN) || defined(A4_SKYSKIP) || defined(A4_GPUSKY)
