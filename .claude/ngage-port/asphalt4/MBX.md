@@ -12367,3 +12367,21 @@ c. Not entered: a night or rain city (the bench ran LA and Paris's Instant Play)
   writes**, so every fragment of the car nearer than the ground passes, in group order -- the wheel wells' black
   inner faces after the body paint over it. The bench never looked at the car's front (the race camera is behind it,
   the owner's Veyron is black from behind).
+- **r79a (976,356 bytes, 2b0e55b8; C78 flags): the cover redraw cheaper, the black boxes fixed by the code.**
+  (1) cvr_redraw writes depth (GEQUAL, depthmask 1) as the first draw did; (2) mesh_bb_cells' cells: one walk of the
+  items a sprite (cvr_cells: each item tested against the sprite's whole box first, then its cells), not 16 walks of
+  every item (cvr_add a cell); (3) the redraw skips a bind of the texture already bound; (4) CVR k[7] = the objects'
+  share of the redraw's draw calls (cvr.py: redraw-objdraws). la79a (LA on the owner's save, as la78c; framestat
+  2,280, the boot fault only): 8 marks, the pictures clean (The Fame Avenue reached, the LIVE cut-in, pickups on the
+  road); the redraw's draw calls 19,585, objects 12,635 (65%). b79a (b78c's run): the race windows 44.3 ms against
+  r78c's 46.7 and r78a's 42.9 (+1.4 against no cover redraw); calls 101 / 116 / 103; 3D 18.9 / 20.4 / 18.9.
+- **Correction (to the correction above).** The bench's b78c also drew 117 list triangles a render against b78a's 78
+  and b79a's 87 (meshtri: the road, which the cover redraw does not touch): the bench's runs of one path differ in
+  their scene by as much as the effect, so "the +111 / +107 are the redraw's own cell quads" is not shown either; a
+  quad counts one in s->prims, and the sprite cells (k[3]) were ~48 a render in Paris. What stands: the phone's r78
+  races ran 6.3 / 10.4 ms a render slower than round 77's, by an unknown split between r78 and the race; the redraw
+  itself 1.5 ms. One race with the redraw on and off settles the split.
+- **The finish's camera.** The frame record's camera mode (word 2 bits 20-27, race+0x94) at the finish: 1, ~108
+  renders (~7 s) in Paris's mark 5 and LA's mark 1; 2 while racing, 0x17 the start's fly-in, 0x2A the helicopter's
+  LIVE cut-in. Ring captures now wait for mode 2 (a4_tel.c capdue: due every TEL_EVERY frames, taken at the first
+  chase-camera render) -- none during the finish's jingle. A press of C still writes at once.

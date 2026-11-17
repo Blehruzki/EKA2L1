@@ -6352,9 +6352,12 @@ static void cvr_redraw(volatile struct glr *s)
     P[8] += (2 * PX_OFF_ALL) / VP_W; P[9] += (2 * PX_OFF_ALL) / VP_H;
     P[14] = ZK * FX - ((ZK * FX) >> 6);
     gl_matrixmode(GL_PROJECTION); gl_loadmatrixx(P);
-    gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_GEQUAL); gl_enable(GL_CULL_FACE); gl_depthmask(0);
+    /* round 78b: with depth writes, as the first draw -- without them every fragment of an item nearer than a flagged
+     * element's depth passed in group order, and a car's wheel wells painted over its body (the owner's black boxes
+     * at the finish, where a shadow under the car had written the ground's depth inside its outline) */
+    gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_GEQUAL); gl_enable(GL_CULL_FACE); gl_depthmask(1);
     TM[10] = FX; TM[15] = FX;
-    uint32_t draws = 0;
+    uint32_t draws = 0, odraws = 0, lastid = 0xFFFFFFFFu;
     int lw, lh;
     if (g->magic == GOBJ_MAGIC && g->frame == s->frames) {          /* the objects: one modelview, offsets per item */
         MV[0] = g->R[0] << 2; MV[1] = g->R[1] << 2; MV[2] = g->R[2] << 2;
@@ -6374,7 +6377,7 @@ static void cvr_redraw(volatile struct glr *s)
                 uint32_t id; int wsh, hsh;
                 if (tri_tex(s, KIND_TEX, 0, GO32(it->textab + 4u * me->gt[k]), m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
                 if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
-                gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu);
+                if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
                 const uint32_t *src = (const uint32_t *)(GOBJ_ARENA + 12u * (me->ofs + 3u * me->gs[k]));
                 for (uint32_t left = 3u * me->gc[k]; left; ) {
                     uint32_t cn = left > GOBJ_SN ? GOBJ_SN : left;
@@ -6385,7 +6388,7 @@ static void cvr_redraw(volatile struct glr *s)
                         dst[1] = ((w1 + dzz) & 0xFFFFu) | (w1 & 0xFFFF0000u);
                         dst[2] = src[2];
                     }
-                    gl_drawarrays(GL_TRIANGLES, 0, (int)cn); draws++;
+                    gl_drawarrays(GL_TRIANGLES, 0, (int)cn); draws++; odraws++;
                     left -= cn;
                 }
             }
@@ -6409,11 +6412,11 @@ static void cvr_redraw(volatile struct glr *s)
                 uint32_t id; int wsh, hsh;
                 if (tri_tex(s, KIND_TEX, me->gm1[k], me->gd[k], m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
                 if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
-                gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu);
+                if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
                 gl_drawarrays(GL_TRIANGLES, 3 * (int)me->gs[k], 3 * (int)me->gc[k]); draws++;
             }
         }
-    v->k[4]++; v->k[5] += draws;
+    v->k[4]++; v->k[5] += draws; v->k[7] += odraws;   /* k[7]: the objects' share (round 78b) */
     for (uint32_t j = 0; j < 6u; j++) v->ob[j] = 0;
     v->cb = 0; v->pend = 0;
     gl_loadidentity();                                       /* the texture matrix */
@@ -8304,6 +8307,50 @@ static void frc3_spr(int32_t x0, int32_t y0, int32_t x1, int32_t y1, const int32
     L[1] = n;
 }
 #endif
+#if defined(A4_COVREDRAW)
+/* round 78b: the cells no list face meets (cd -1) that a GPU item's box meets, the item's nearest bucket nearer than
+ * the sprite's (sb): -2, and those items pending (cvr_add's rule) -- in one walk of the items a sprite, each item first
+ * tested against the sprite's whole box. r78 called cvr_add for each of the 16 cells, each a walk of every object
+ * and car: on the phone 3-4 ms a render in LA's centre. */
+static void cvr_cells(int32_t sb, const int32_t *ex, const int32_t *ey, int32_t *cd)
+{
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+    volatile struct cvr *v = CVR;
+    int32_t x0[BBC_N * BBC_N], y0[BBC_N * BBC_N], x1[BBC_N * BBC_N], y1[BBC_N * BBC_N];
+    uint32_t open = 0, c;
+    for (c = 0; c < BBC_N * BBC_N; c++) {
+        x0[c] = ex[c & (BBC_N - 1u)]; x1[c] = ex[(c & (BBC_N - 1u)) + 1u] - 1;
+        y0[c] = ey[c >> BBC_L];       y1[c] = ey[(c >> BBC_L) + 1u] - 1;
+        if (cd[c] == -1 && x1[c] >= x0[c] && y1[c] >= y0[c]) open |= 1u << c;
+    }
+    if (!open) return;
+    const int32_t sx0 = ex[0], sx1 = ex[BBC_N] - 1, sy0 = ey[0], sy1 = ey[BBC_N] - 1;   /* the cells' hull */
+    const volatile struct gstate *g = GOBJ;
+    if (g->magic == GOBJ_MAGIC && g->frame == s->frames && g->drawn)
+        for (uint32_t i = 0; i < g->n && i < GOBJ_NI; i++) {
+            const volatile struct gitem *it = &g->it[i];
+            if ((int32_t)it->qn >= sb) continue;
+            const int32_t b0 = it->box[0], b1 = it->box[1], b2 = it->box[2], b3 = it->box[3];
+            if (b0 > b2 || b1 > b3 || b2 < sx0 || b0 > sx1 || b3 < sy0 || b1 > sy1) continue;
+            uint32_t hit = 0;
+            for (c = 0; c < BBC_N * BBC_N; c++)
+                if ((open & (1u << c)) && !(b2 < x0[c] || b0 > x1[c] || b3 < y0[c] || b1 > y1[c])) { cd[c] = -2; hit = 1; }
+            if (hit && !(v->ob[i >> 5] & (1u << (i & 31u)))) { v->ob[i >> 5] |= 1u << (i & 31u); cvr_box(it->box); }
+        }
+    const volatile struct gcstate *gc = GCAR;
+    if (gc->magic == GCAR_MAGIC && gc->frame == s->frames)
+        for (uint32_t i = 0; i < gc->n && i < GCAR_NI; i++) {
+            const volatile struct gcitem *it = &gc->it[i];
+            if ((int32_t)it->qn >= sb) continue;
+            const int32_t b0 = it->box[0], b1 = it->box[1], b2 = it->box[2], b3 = it->box[3];
+            if (b0 > b2 || b1 > b3 || b2 < sx0 || b0 > sx1 || b3 < sy0 || b1 > sy1) continue;
+            uint32_t hit = 0;
+            for (c = 0; c < BBC_N * BBC_N; c++)
+                if ((open & (1u << c)) && !(b2 < x0[c] || b0 > x1[c] || b3 < y0[c] || b1 > y1[c])) { cd[c] = -2; hit = 1; }
+            if (hit && !(v->cb & (1u << i))) { v->cb |= 1u << i; cvr_box(it->box); }
+        }
+}
+#endif
 static int mesh_bb_cells(const int32_t *b1, const int32_t *ex, const int32_t *ey, int32_t *cd, int cvr)
 {
     const int32_t x0 = ex[0], x1 = ex[BBC_N], y0 = ey[0], y1 = ey[BBC_N];
@@ -8378,12 +8425,7 @@ static int mesh_bb_cells(const int32_t *b1, const int32_t *ex, const int32_t *ey
         for (c = 0; c < BBC_N * BBC_N; c++) if (cd[c] >= 0) return 1;
         return 0;
     }
-    for (c = 0; c < BBC_N * BBC_N; c++) {
-        if (cd[c] >= 0) continue;
-        const int32_t cx0 = ex[c & (BBC_N - 1u)], cx1 = ex[(c & (BBC_N - 1u)) + 1u] - 1, cy0 = ey[c >> BBC_L], cy1 = ey[(c >> BBC_L) + 1u] - 1;
-        if (cx1 < cx0 || cy1 < cy0) continue;
-        if (cvr_add(sb, cx0, cy0, cx1, cy1)) cd[c] = -2;
-    }
+    cvr_cells(sb, ex, ey, cd);                      /* round 78b: one walk of the items, not one a cell */
     for (c = 0; c < BBC_N * BBC_N; c++) if (cd[c] != -1) return 1;
     return 0;
 #else

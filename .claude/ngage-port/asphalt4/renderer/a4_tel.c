@@ -90,6 +90,7 @@ struct tel {
     uint32_t actframes;          /* active-3D frames seen (TEL_SKIP gating) */
     uint32_t fillcap;            /* A4_FILLCAP: GPU fills counted at the last capture */
     uint32_t dropcap;            /* A4_DROPCAP: drop frames counted at the last capture */
+    uint32_t capdue;             /* round 78b: a ring capture due, held until the chase camera */
     uint8_t  rfs[32];
     uint8_t  rfile[TEL_RING][32];
 };
@@ -226,7 +227,21 @@ void a4_tel_tick(uint32_t had)
     if (A4_PERF[PF_FILL] == t->fillcap || (t->actframes & 7u) != 0) return;
     t->fillcap = A4_PERF[PF_FILL];
 #else
-    if ((t->actframes % TEL_EVERY) != 0) return;
+    if ((t->actframes % TEL_EVERY) == 0) t->capdue = 1;
+    if (!t->capdue) return;
+#if defined(A4_FRAMEREC)
+    {   /* round 78b (the owner: the finish jingle pauses; a capture stalls the game ~100-140 ms, one fell 2 s into
+         * Paris's finish): held while the camera is not the race's chase camera (mode 2 -- not the finish's, the
+         * start's fly-in, a crash's or the helicopter's), taken at the first chase render after. The mode from this
+         * render's frame record (a4_gl.c A4_GL_FREC 0x456000, FREC_N 256: word 2 bits 20-27, race+0x94) */
+        const volatile uint32_t *F = (const volatile uint32_t *)0x00456000u;
+        if (F[0] == 0x31435246u && F[1]) {
+            const volatile uint32_t *e = F + 4u + ((F[1] - 1u) % 256u) * 8u;
+            if (((e[2] >> 20) & 0xFFu) != 2u) return;
+        }
+    }
+#endif
+    t->capdue = 0;
 #endif
     }
 

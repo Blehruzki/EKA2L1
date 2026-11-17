@@ -2,7 +2,7 @@
 import sys, glob, os, struct
 fs = []
 for a in sys.argv[1:]: fs += sorted(glob.glob(os.path.join(a, '*.dat'))) if os.path.isdir(a) else [a]
-names = 'tri-covered tri/quad-kept flushes sprite-cells redraws redraw-draws redraw-ticks -'.split()
+names = 'tri-covered tri/quad-kept flushes sprite-cells redraws redraw-draws redraw-ticks redraw-objdraws'.split()
 for f in fs:
     d = open(f, 'rb').read(); i = d.rfind(b'CVR1')
     if i < 0: print(os.path.basename(f), 'no CVR1'); continue
