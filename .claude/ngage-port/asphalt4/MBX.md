@@ -12802,3 +12802,6 @@ b. Read back: mesh_take's test after the projection and the back-face test (a cu
 c. Not entered: cars handed back (0 in all three runs: a car's box never reached the band here -- the finish camera's
    spin is the likeliest place, and the bench's runs did not finish); whether the phone's lines go (only the phone can
    say); the MBX tiles' parameter-buffer loss (r82d's a2) -- still unaddressed.
+- **r82e sent to the owner (unbaked), 2026-11-17**: a4_r82_cand.exe = r82e, sha256
+  f41865b5085e720d9236791e33371cc40c23892f3381b4f9d04004757f40809c, 982,724 bytes. Awaiting phone round 82: whether the
+  lines and bands go, with CRK1's cut and hand-back counts ([29-34]) beside any that remain.
