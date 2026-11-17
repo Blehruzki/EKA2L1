@@ -12682,3 +12682,25 @@ c. Not entered: the phone's own cracks (its MBX); more than two runs a frame (co
   the HOME garage's crack (row 118, 100+ px, every frame) cannot spend them. lt82b (r82t5 rebuilt, 979,788): the five
   automatic marks inside the race (their frame records: the start's fly-in 0x17, then mode 2), three seconds apart;
   the press as mark 5. Candidate r82c 979,300 (C80). Battery queued: m82, la82 (MENUKEYS), b82.
+
+## The owner's video (r81, LA, the end of lap 3 to the finish; 4.1 s, 60 fps, 245 frames, the phone filmed)
+- Owner: "The best I can get you is a video. You have to analyze all of its frames so you can see all of the lines.
+  they're sometimes long across the screen, or short". Copied to vid82/ (scratchpad); every frame extracted (1080 x 900
+  crop of the panel, ~3.2 video px a panel pixel across, ~3.5 down); automatic scores (thin rows; grey rows) mostly
+  found the HUD's edges (the LCD's own row grid defeats a plain row test), so every second frame was looked at in
+  contact sheets (sheets/s0-s9).
+- What is there (panel rows estimated from the video): **frames 29-31** (411 km/h, nitro): a thin dark line straight
+  across the picture at about the car's roof (~row 100), through the grass, the rail and the road -- **behind the car**
+  (the car drawn over it): round 70's description exactly. **Frame 47**: a lighter band across the road's right half.
+  **Frames 49-51** (~0.3 s before the line): a dark slate-blue band across the road, ~11-16 rows (about rows 113-127),
+  full width in 49, in 51 ending at about x 200 with a near-vertical end and flat top and bottom (a rectangle, not a
+  triangle's slanted edge). **Frames 63-67** (just before the finish timer appears at 69): light grey bands across the
+  sky near rows 25-35, a thin line in 63, 4-6 rows in 65 and 67. LA's start / finish line has no gantry overhead (the
+  bench's start frames: open road) -- the sky bands and the road band are not a structure and its shadow.
+- None of these is a one- or two-row gap between drawn rows (r81 fills those). So each is either (a) undrawn three rows
+  or more (the r82 recorder's kind 4) or (b) drawn wrong. Suspects: (1) **the MBX's tiles** -- the panel is rendered in
+  16 x 16 tiles, each tile's triangles kept in a fixed parameter buffer; at a triangle peak (a tunnel exit, the wide
+  view at speed) an overflow can lose a tile's geometry -- a rectangle with flat top and bottom and a vertical end, on
+  the horizon's busiest tile rows (where the cracks crowd too: CRK1 bands 96-111, 112-127); (2) **the game's near,
+  huge triangles** (corners at x -22,181 in round 81b, w ~1,100) drawn by the MBX's fixed-point clipping as slivers of
+  the wrong rows or texels -- across the screen, behind the car. Both are what "peak of speed" and "tunnel exit" bring.
