@@ -12650,3 +12650,20 @@ c. Not entered: the phone's own cracks (its MBX); more than two runs a frame (co
   tell which; a picture of one can. Asked for one (a photo or video at a tunnel exit, lap 1), and its colour, width,
   place on screen, count, duration, and whether stock ever shows it; an automatic capture (the final picture scanned
   for long rows unlike both neighbours, a mark written at once) is the alternative.
+
+## Phone round 81b (r81, LA): "I think I managed to capture it this time" -- a mark at a tunnel exit
+- Files (l81b/): 8 ring, mark 0 (lap 2's start, 324 km/h on nitro, "TAKE HIM OUT!"). The mark's 13.4 s run from inside a
+  tunnel (camera segments 15-21: 2 objects drawn, 0 list triangles) to its exit (segments 33-41: 46-51 objects, 85-104
+  list triangles); the press at frame 8,336 (GOB1). The picture (the frame after the press): no line to see at 4x.
+- LIN1 holds what came just before: frame 8,243 (93 frames, ~5 s before) row 87, 131 px, and row 89 -- F 200;
+  frame 8,252 rows 78-79, 156 px (two rows) -- F 190; **frame 8,315 (~1 s before the press) rows 26-27 undrawn across
+  the whole width, rows 25 and 28 drawn -- F 200**; all filled by r81 (recorded inside the fill). The focal 190-200
+  against 260: the wide view of top speed. Stream triangles beside them: tex 40000064 with corners at x -22,181 and
+  10,558, w 1,104-1,416 (a wall or ceiling right at the camera, its screen corners far off the panel); tex c5 at row 90.
+  CRK1 by then: 186 one-row, 11 two-row, 3 of 64+. FRC1's own line counter: 5 in the session, the last frame 8,315 row 27.
+- Reading: at a tunnel exit at speed the cracks are long and sit beside the game's near, huge triangles -- the MBX
+  clips those in fixed point (a candidate root, named, unproven); the fill closed the ones of one or two rows, and what
+  the owner saw a second before pressing is either one of these (if the fill showed it somehow) or a gap three rows or
+  more thick, or touching the background, which nothing records. A press lands ~1 s late.
+- Round 82 (instrument): gaps of 3-6 rows between drawn rows recorded (not filled); any gap of 64+ px (1-6 rows) writes
+  a mark at that frame's own present (at most 5 a session, 3 s apart; the owner's presses keep the other marks).
