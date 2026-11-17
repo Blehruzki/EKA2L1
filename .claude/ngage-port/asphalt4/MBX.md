@@ -12410,3 +12410,10 @@ b. Read back: the redraw's depth writes (GEQUAL with writes: a car's nearest fra
    frames, taken at the first render whose frame-record mode is 2).
 c. Not entered: the finish camera on the bench; a whole race in a camera other than 2 (every capture would wait --
    none seen on the phone); The Fame Avenue's end; replays and multiplayer.
+- Owner: **"send both"**. r79 (= r79b, a4_r79_cand.exe, 26b45c55..., 976,464 bytes) sent unbaked at once (its
+  battery above). r79n's battery (11bfe090..., 969,524 bytes; the first attempt lost to Xvfb dying, rerun):
+  m79n (Instant Play, night Paris; framestat 2,369, the boot fault only): 7 marks, the pictures clean, every capture
+  in the chase camera; b79n (framestat 3,507, the boot fault only): 35.3 ms a render in the race windows -- not a
+  measure against b79b: its scene drew 18 list triangles a render against b79b's 81 (the car stuck somewhere bare).
+  r79n sent unbaked after it (a4_r79n_cand.exe). Asked of the round: the same track in r79 and r79n, by feel and
+  telemetry; the black boxes at the finish (r79); the jingle (both); which mark shows a pickup still sinking.
