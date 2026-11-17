@@ -12323,3 +12323,23 @@ c. Not entered: a night or rain city (the bench ran LA and Paris's Instant Play)
   975,180 bytes = r78c, built from fb69da3 with C78 (A4_THIRDSTEP=1, scratch 0x1C0000). To check on the phone: the
   pickups on the road, the searchlight and the car's shadow whole; the upper screen whole (LA's usual spots); the
   finish jingle without pauses; the render times against r77 (the CVR1 block in each capture: redraw ticks, k[6]).
+
+## Phone round 78 (r78 a4514885, baked by the owner): Paris, six marks
+- Owner: "In paris, the pickups are still sinking, but it's almost fixed. Search light and shadow seems to be fixed.
+  finish jingle still has pausing. And no, it feels worse than previous builds. I don't remember which build I told
+  you it felt the smoothest of all so far, but it definitely regressed in this regard." (LA next.) The record's
+  smoothest: round 69 (r69 e4282175, "it finally starts to feel like it's going at 30 fps"), 54.0 ms a render.
+- Telemetry (p78/: 8 ring captures, 6 marks; tools/r51sum.py, the race's aggregate, against round 77b's Paris, ph77b):
+  2,305 renders, 62.9 ms a render against 56.7 (round 77 LA 52.5); 3D 30.0 against 25.5, the hook 14.8 against 12.6,
+  the composite 10.3 against 9.7 (its read 7.0 against 6.5), 2D 3.4 / 3.1, present 2.5 / 2.4. But the race drew
+  784 triangles a render against 673 (+17%) and 137 draw calls against 112: a triangle cost the same -- the 3D phase
+  38.2 us a triangle against 37.9, the hook 18.9 against 18.7. Renders 60 ms apart or more: 42% against 32%.
+  The cover redraw (CVR1): one redraw a render, ~8 draw calls each, 1.46 ms a render (its own ticks, in the flush,
+  not in 3D); fills and fades flushing it: 133, all before the race. So of the +6.3 ms: the redraw ~1.5, its wait in
+  the read ~0.5; the rest goes with the race's 17% more triangles. Not settled: two different races; one race with
+  the redraw on and off by turns would settle it.
+- The finish (mark 5: 1ST, 0 km/h, the press 2.3 s after a ring capture): the render after that capture came 139 ms
+  after the one before (the median 60); renders of 95-112 ms 6.6-6.7 s and 14-16 s before the press. A capture during
+  the jingle is one stall; three pauses in one jingle are not three captures (one every ~13 s).
+- Pictures (p78_marks.png, scratchpad): night Paris, the owner's Veyron; the shadows whole; mark 3 the pickups'
+  sparkle behind the car. Which mark shows the sinking pickup: asked.
