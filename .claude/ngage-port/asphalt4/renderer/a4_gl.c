@@ -9624,8 +9624,8 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                         /* round 82: gaps of 3 to 6 rows between drawn rows -- recorded (kind 4 and the thickness), not
                          * filled; th[x] would be the thickness, kept as the thickness at the run's first pixel */
                         uint32_t ct = 0, k3 = 0;
-                        {   uint32_t open = ~CMR(1)[w] & ~CMR(2)[w];
-                            for (uint32_t k = 3; k <= 6u && cmn >= k + 2u; k++) {
+                        {   uint32_t open = CMR(0)[w] & ~CMR(1)[w] & ~CMR(2)[w];   /* (0 on almost every word: done) */
+                            for (uint32_t k = 3; open && k <= 6u && cmn >= k + 2u; k++) {
                                 open &= ~CMR(k)[w];
                                 const uint32_t bk = CMR(0)[w] & open & CMR(k + 1u)[w];
                                 if (bk && !k3) k3 = k;

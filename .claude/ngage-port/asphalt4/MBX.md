@@ -12725,3 +12725,11 @@ c. Not entered: the phone's own cracks (its MBX); more than two runs a frame (co
   found on the way: the cut point rounded to a whole pixel (half a pixel on a sliver 5 rows tall: positions now 1/16
   px), num << 15 overflowing 32 bits once positions carried 1/16 px, a % that needed a divide helper. C82.flags = C80 +
   -DA4_CLIPG; r82c 982,000 bytes (C80 alone 979,308). Battery running: m82c, la82c, b82c.
+- Battery on r82c (982,000): m82c (Instant Play, night Paris; framestat 2,137, the boot fault only): 8 marks, clean (the
+  bridge's underpass, a wall at the camera); 49 triangles cut into 81 pieces, the farthest corner 2,886 px. la82c (LA,
+  "main menu after 5 looks"; framestat 2,223, the boot fault only): 8 marks, clean to The Hills at 337 km/h; 24 cut, 27
+  pieces, the farthest corner 5,566. b82c (b78a's run; framestat 2,862, the boot fault only): 1,247 cut into 797 pieces
+  (most a wall the driverless car leans on; the farthest corner 29,609 -- the phone's kind), ~0.5 a render at ~50 us:
+  nothing to see in the time. But the race windows 48.5 ms against r81r's 44.2, the composite ~1 ms up in every window
+  (12.4-15.0 against 11.5-13.2): round 82's thickness test (k = 3..6 on every word of every row). Now skipped where the
+  rows below are drawn (open = CMR(0) & ~CMR(1) & ~CMR(2), zero on almost every word): r82d 982,020. Battery on r82d running.
