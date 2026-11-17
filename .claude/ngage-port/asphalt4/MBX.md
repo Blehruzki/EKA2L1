@@ -12624,3 +12624,20 @@ c. Not entered: the phone's own cracks (its MBX); more than two runs a frame (co
 - **r81 sent** (owner: "yes"): a4_r81_cand.exe, unbaked, sha256 4f62f0ef343b631b..., 978,376 bytes (= r81r, C80 from
   d09da90). Asked of the round: LA with a tunnel exit at top speed -- the grey lines (seen or not), and the captures for
   CRK1 / LIN1 (which surfaces crack on the MBX, how long, which rows); the rest as r80.
+
+## Phone round 81 (r81 4f62f0ef, baked by the owner): LA -- the files, no comment ("here")
+- Files (l81/): 8 ring captures, mark 0 (LA, lap 2, 00:42:05, 406 km/h on nitro).
+- **CRK1 (the phone's own cracks, from the boot): 114 one-row runs of 16+ px and 2 two-row, none of 64+, 2,734 px, the
+  longest 49 px at row 107 (F 260); by band 96-111: 81, 112-127: 11, the rest scattered above** -- all filled. So the
+  MBX's cracks in this LA race were 16-49 px, near the horizon, ~1 every 24 renders -- the >= 64 px counter of r72-r80
+  could never see them, which is why r80 recorded nothing.
+- Their surfaces (57 LIN1 records, frec3's owner test): a GPU object's box on one side or both in 52 -- item / item 15,
+  item + road / item 14, item / item + road 13, road / stream triangle 3, item + road both 3, the rest single. On the
+  bench every pairing appeared (road / stream most); on the phone the GPU objects are in nearly all -- the MBX's
+  drawing of the objects (GL's fixed-point modelview and projection on 16-bit vertices) is the likelier side of the
+  seam. Boxes only: not proof.
+- Mark 0's picture: oddrow finds row 96 x 277-308 unlike its neighbours -- a house's white trim (0xCE77 between beige
+  rows), texture, not a line.
+- Timing: the race 56.9 ms a render (r79 LA 61.1, r77 52.5), the composite 11.0 (r79 10.1: the mask and fill, ~0.9 ms
+  on the phone, as the model said); every render, the last ~104 s: median 57 ms, 90% 75, 99% 90, >= 100 ms 9 (r79: 57 /
+  73 / 94 / 13). Asked: were the grey lines seen.
