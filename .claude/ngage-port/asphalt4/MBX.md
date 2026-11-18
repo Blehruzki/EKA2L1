@@ -13012,3 +13012,15 @@ cuts make and 11 of 21 wraps did; the mechanism itself is shown on the bench (tr
   against 3.205 without (1,273) -- **void: A4_MASKCHECK re-reads all 320 pixels of every skipped row (the AND over the
   row), the very pass the skip removes, on the skip's frames only.** Rerun without the check: r83alt2 (C83 +
   A4_MSKIP_ALT).
+- b83alt2 (r83alt2 = C83 + A4_MSKIP_ALT, the skip on odd frames; framestat 3,024, the boot fault only): the composite
+  less its readback **2.638 ms a frame with the skip (1,274 frames) against 3.088 without (1,274): -0.45 ms**. The mirror
+  (r83alt3, MSKIP_PAR=1: the skip on even frames) running, to separate a bias of the parity itself.
+- b83alt3 (the mirror: the skip on even frames; framestat 3,066, the boot fault only): 3.231 ms with the skip (1,275)
+  against 2.634 without (1,276). With b83alt2: odd frames ~0.52 ms cheaper whichever has the skip, and the skip itself
+  nets ~+0.07 ms -- nothing, against the ~0.5 ms of work it removes (~140 rows a frame x ~1,000 instructions). The
+  instrument cannot see it: NTickCount's 1 ms ticks, the composite timed less a readback timed in several slices, a
+  rounding that follows the frames' phase. (FastCounter answers a constant on the N95: a4_gl.s.) **The parity A/B is not
+  a measure at this size.** The exact one: the cycle profile (EKA2L1_PCPROF + _CYCLES, 1.5 G instructions after 6 G,
+  b78a's run) of r83 with the skip and with -DA4_MSKIP_NEVER (the pass on every row, round 82's), both with -DA4_PROFSYM
+  (composite_rows kept out of line for its own symbol; bench only): composite_rows's cycles against a4_comp_row's
+  (the same rows' work in both) -- the path cancels. Running: pf83skip, pf83never.

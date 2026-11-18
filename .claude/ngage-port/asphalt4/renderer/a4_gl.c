@@ -472,6 +472,8 @@ void a4_idle_start(void)
 #define AB_MSKIP 2097152u /* round 83: bit 21, a fully drawn row's drawn-mask pass skipped (A4_LINEFILL; A4_ABCYCLE17 steps it) */
 #ifdef A4_ABCYCLE17
 #define MSKIP_ON(mode) (((mode) & AB_MSKIP) != 0u)
+#elif defined(A4_MSKIP_NEVER)
+#define MSKIP_ON(mode) 0   /* bench (round 83): the mask pass on every row, as round 82 -- the profile's baseline */
 #elif defined(A4_MSKIP_ALT)
 /* bench (round 83): the skip on odd frames only -- neighbouring frames show nearly the same scene, so the composite's
  * time on odd and even frames (CRK1 [40]/[41] ticks less the readback's, [42]/[43] frames) is the skip's saving */
@@ -9567,6 +9569,9 @@ static void crk_run(volatile struct glr *s, const uint8_t *lc_u, int row, int32_
     (void)lc_u; (void)nrec;   /* round 83: the phone's build counts the runs, records none */
 #endif
 }
+#endif
+#ifdef A4_PROFSYM
+__attribute__((noinline))   /* bench (round 83): its own symbol in a cycle profile */
 #endif
 static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 {
