@@ -12944,3 +12944,6 @@ c. Not entered: a wrap in LA or Paris (0 in both: only b78a's wall); a refused c
 
 Rule 4 for r82g, a1 restated: the guess is now only that the phone's slivers are wraps -- the shape 0 of 338 ordinary
 cuts make and 11 of 21 wraps did; the mechanism itself is shown on the bench (true coverage 0, drawn 5,760 px).
+- **r82g sent to the owner (unbaked), 2026-11-18**: a4_r82_cand.exe = r82g, sha256
+  1ed9c80aca9aa978205dc5c53023f52e6b50210f3ba2b650167e4c4ce570a45d, 985,184 bytes. Awaiting phone round 82g: whether the
+  lines go; CRK1 [35] (wraps undone) and [36] (refused) at every capture; CUT1's raw corners at any automatic mark.
