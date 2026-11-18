@@ -12857,3 +12857,20 @@ c. Not entered: cars handed back (0 in all three runs: a car's box never reached
   px, depth 0.64 and texture 0.86 of the allowance), and 400,000 corners through the game's 32-bit projection emulated
   (RT2 = floor(2^22/z)): 107,269 wrapped by the game, clip_proj64 disagreeing with its word on 0, the unwrapped value
   within 1 px; another F (5-30% off) accepted 0 of 399,844; mutant (the game's word as read) wrong on all 107,269.
+- Battery on r82f (C82, from 739084d; sha256 16907afa91391ee8b47c3af06b1d04bd797713845461390a9370df8f6154b2b8, 985,052
+  bytes). m82f (Instant Play, night Paris; framestat 1,976, the boot fault only): 7 marks, clean pictures -- but the
+  car stood behind a white car most of the run (22-52 km/h), a weaker Paris than m82e. **1,407,977 corners projected
+  again with the game's arithmetic, 0 refused** (clip_proj64 agrees with the game's word on every one: the emulated
+  projection and MESH->F are right); 0 wrapped; 144 cut into 247 pieces; 120 faces and 412 objects handed back; CUT1
+  decodes (near-clipped corners at zw 64, the positions used within half a pixel of the words). No thick gaps.
+- la82f (LA, "main menu after 5 looks"; framestat 2,205, the boot fault only): 8 marks, clean (the LIVE cut-in, a boost,
+  downtown, the hills). 1,288,521 corners projected again, 0 refused, 0 wrapped; 15 cut into 17 pieces (the farthest
+  3,320); 515 faces and 297 objects handed back, none by the exact test alone.
+- b82f (b78a's run; framestat 2,971, the boot fault only): **6 wrapped corners undone; the farthest corner 39,097 px**
+  (a position past int16, which r82e could not represent); 2,287,718 projected again, 0 refused; 751 cut into 351
+  pieces; 460 faces and 258 objects handed back. 56.9 ms a render (3D 21.2, composite 10.0) against b82e's 55.7 (19.8,
+  10.4); by segment mixed (0-19 41 against 43, 60-79 58 against 62; 100-139 3 ms slower), the path different again (440
+  renders in 0-19 against 710). The re-projection ran ~950 times a render (the trigger d < 2 F is broad): **r82g**
+  narrows it -- after d < 2 F (or a view coordinate past int16), |F x'| or |F y'| >= 32,000 d (two products), so only a
+  corner whose projection can reach the int16 edge is projected again (the game's table runs up to 0.34% high: its
+  product overflows from ~32,650, its word read as int16 from ~32,500; 32,000 leaves 1.5%). [39] then counts only those.

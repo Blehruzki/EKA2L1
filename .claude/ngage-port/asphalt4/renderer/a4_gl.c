@@ -4981,7 +4981,8 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
         /* Round 82f (phone round 82: the lines stayed; 6,491 cut into 774 pieces, corners at the int16 limit; bench probe
          * b82w: the game's projection multiplies in 32 bits and keeps the product >> 16, so its screen word is the true
          * position modulo 65,536 and a corner past +-32,767 px lands on the wrong side -- its triangle drawn wrong, or
-         * cut to nothing): a corner that could project that far -- nearer than 2 F, or a view coordinate past int16 -- is
+         * cut to nothing): a corner that could project that far -- nearer than 2 F or a view coordinate past int16, and
+         * |F x'| or |F y'| >= 32,000 d (the game's table runs up to 0.34% high: 1.5% to spare) -- is
          * projected again with the game's own arithmetic in 64 bits (clip_proj64, 1/16 px), kept where it agrees with
          * the game's word modulo 65,536 (clip_agrees: else another camera's F, left as read), and the band test and the
          * cut use it. F is the list's, this frame's (MESH->F). CRK1 [35] corners past int16 (wraps undone), [36]
@@ -4997,7 +4998,9 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
             const int32_t d = (int32_t)vv[i][2], vz = (int32_t)vv[i][5];
             if (F > 0 && d > 0 && vz == -d) {               /* a projected mesh vertex: zw == -z' */
                 const int32_t vx = (int32_t)vv[i][3], vy = (int32_t)vv[i][4];
-                if (d < 2 * F || (uint32_t)vx + 32768u > 65535u || (uint32_t)vy + 32768u > 65535u) {
+                const int64_t fx = (int64_t)F * vx, fy = (int64_t)F * vy, lim = (int64_t)32000 * d;
+                if ((d < 2 * F || (uint32_t)vx + 32768u > 65535u || (uint32_t)vy + 32768u > 65535u)
+                    && (fx >= lim || -fx >= lim || fy >= lim || -fy >= lim)) {   /* r82g: only where it can reach int16's edge */
                     int64_t tx, ty;
                     clip_proj64((const int32_t *)((uintptr_t)gctx + 0x2008Cu), (int32_t)gctx[0x4010C / 4],
                                 (int32_t)gctx[0x40108 / 4], F, cx, cy, vx, vy, vz, &tx, &ty);
