@@ -12998,3 +12998,17 @@ cuts make and 11 of 21 wraps did; the mechanism itself is shown on the bench (tr
   render, carry the menus' window in slot 0.) Next: A4_MSKIP_ALT (bench), the skip on odd frames only, the composite
   less its readback summed by frame parity in CRK1 [40]/[41] (ticks), [42]/[43] (frames) -- neighbouring frames, the
   same scene. r83a is byte-identical with the bench flags off (457c20ab both builds).
+- Battery on r83a (C83, from 7f3af34's source with the bench flags off; sha256 457c20ab..., 983,292 bytes). m83a (Instant
+  Play, night Paris; framestat 2,219, the boot fault only): 7 marks, clean -- a whole race this time (The Banks, a crash
+  camera with the car on its roof, the arcade); fills 81,609 rows / 235,486 px; 54 cut. la83a (LA, "main menu after 5
+  looks"; framestat 2,280, the boot fault only): 8 marks, clean (the LIVE cut-in, downtown, the hills, a near
+  traffic car); fills 74,742 rows / 133,421 px; 670 faces and 348 objects handed back (1 face by the exact test
+  alone); no LIN1 records (A4_LINEREC off) -- frec3's "recorded 0". b83a and b83alt (A4_MSKIP_ALT) running.
+- b83a (r83a, b78a's run; framestat 3,041, the boot fault only): 55.4 ms a render (3D 21.6, composite 9.4, read 6.8)
+  against b82g's 56.9 (20.9, 10.0, 7.1) -- the composite's loop 2.6 against 2.9 ms; but the driverless car stood in
+  segments 120-139 for 1,865 of its renders (another path again): not a measure of the change. b83alt running.
+- b83alt (r83alt = C83 + A4_MSKIP_ALT + A4_MASKCHECK; framestat 2,961, the boot fault only): the check again exact
+  (176,242 rows skipped, 0 wrong); by frame parity the composite less its readback 3.557 ms with the skip (1,275 frames)
+  against 3.205 without (1,273) -- **void: A4_MASKCHECK re-reads all 320 pixels of every skipped row (the AND over the
+  row), the very pass the skip removes, on the skip's frames only.** Rerun without the check: r83alt2 (C83 +
+  A4_MSKIP_ALT).

@@ -475,7 +475,10 @@ void a4_idle_start(void)
 #elif defined(A4_MSKIP_ALT)
 /* bench (round 83): the skip on odd frames only -- neighbouring frames show nearly the same scene, so the composite's
  * time on odd and even frames (CRK1 [40]/[41] ticks less the readback's, [42]/[43] frames) is the skip's saving */
-#define MSKIP_ON(mode) ((((const volatile struct glr *)A4_GL_SCRATCH)->frames & 1u) != 0u)
+#ifndef MSKIP_PAR
+#define MSKIP_PAR 0u   /* 0: the skip on odd frames; 1: on even ones (the mirror run, for a bias of the parity itself) */
+#endif
+#define MSKIP_ON(mode) (((((const volatile struct glr *)A4_GL_SCRATCH)->frames ^ MSKIP_PAR) & 1u) != 0u)
 #else
 #define MSKIP_ON(mode) 1
 #endif
