@@ -32,7 +32,7 @@ def offs(d):                                                    # the sprite lis
     o = OFF3 + 16 + n * w * 4
     return o, o + 32 + 16 * 16
 args = sys.argv[1:]
-MODES = ('files', 'rot', 'turn', 'spr', 'obj', 'gob', 'list', 'lines', 'wreck')
+MODES = ('files', 'rot', 'turn', 'spr', 'obj', 'gob', 'list', 'lines', 'wreck', 'shadchk')
 mode = 'files'
 if args and args[-1] in MODES: mode = args.pop()
 elif len(args) >= 2 and args[-2] == 'gob': mode = 'gob'; args = args[:-2] + [args[-1]]
@@ -110,7 +110,7 @@ if mode == 'files':
               info['idx'], len(ts), ts[0], ts[-1], (ts[-1] - ts[0]) / 1000.0))
     sys.exit()
 
-if mode == 'lines':
+if mode in ('lines', 'shadchk'):
     # r77's grey-line ring ('LIN1' after the merged tile grid): each hit -- row, undrawn run, the faces and items whose
     # screen box starts or ends on it (list faces' corners in camera space, as the list holds them)
     seen = set()
@@ -200,9 +200,13 @@ if mode == 'lines':
             print('  wrapped corners (the game projection past int16, undone): %d; projected again %d; refused (word disagreed) %d; handed back by the exact test alone: faces %d, items %d' % (c[35], c[39], c[36], c[37], c[38]))
             if len(c) >= 52:
                 print('  filled (from the boot): %d rows, %d pixels%s' % (c[48], c[49], ('; mask check (bench): %d rows skipped, %d not all drawn, %d said drawn wrongly' % (c[46], c[45], c[47])) if c[46] or c[45] or c[47] else ''))
-            if (c[42] or c[43]) and not c[44]:
+            if len(c) >= 52 and (c[50] or c[51]):   # round 84 (A4_SHADBATCH)
+                print('  shadow batch (from the boot): faces kept %d; buckets lost (never drawn: their faces but the trigger) %d' % (c[50], c[51]))
+            if mode == 'shadchk':   # round 84, bench A4_SHADCHECK: [40..47] are its
+                print('  shadow check (bench): faces found %d, not found %d; corners differing %d; buckets differing %d; pending items differing %d (of %d faces with any); tests: candidates %d, full scans %d' % (c[40], c[41], c[42], c[43], c[44], c[45], c[46], c[47]))
+            elif (c[42] or c[43]) and not c[44]:
                 print('  mask skip by frame (bench): composite less readback %.3f ms a frame with the skip (%d frames), %.3f without (%d)' % (c[41] / max(c[43], 1), c[43], c[40] / max(c[42], 1), c[42]))
-            if c[44]:
+            if c[44] and mode != 'shadchk':
                 print('  wrap probe (bench): corners past int16 %d; of %d compared, %d off the view projection by > 2 px (%d inside int16); largest |projection| %d' % (c[40], c[44], c[41], c[42], c[43]))
     if mode == 'lines':   # round 82f: 'CUT1', the last 16 triangles cut, from every file
         seen = set()

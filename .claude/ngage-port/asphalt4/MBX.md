@@ -13131,3 +13131,42 @@ c. Not entered: the line counter's every-16th-frame path on the phone (FRC1's li
   +2732E -- what space the vertices are in, where the face's darkening comes from, the order the table draws it in
   (painted over the road, under what is nearer), and whether the faces overlap (the game's span darkens a pixel once).
   Next after it, by the census: the 0x20000 / 0x20002 classes (87 + 37 a render, +347E8) and the near clip's faces (~67).
+
+## Round 84 (the owner: "proceed with your steps"): the player's shadow in one batch
+
+- Read in the binary (capstone, a4code.bin): +20918 copies obj+4..+0xC (a position) and calls +2732E(obj+0x128's
+  object, its r1, &position, r2). **+2732E draws the whole shadow mesh**: [r4] its vertex pointers ([r4+0x18] of them),
+  [r4+4] its faces ([r4+0x14]); +344F6 transforms the vertices to view space with clip flags (the shadow skipped when
+  their AND has bit 4 or 5); a direction from +31498 (two points through +52338: the camera's and the object's); each
+  vertex's view x and z (v+0xC, v+0x14) moved by its height (v+0x1C >> 3) along it -- the projected shadow; then each
+  face inserted, `bl +349B0` at +27402, r6 the index counting down. +349B0 (the ordering table's insert): key =
+  face->vtable[0](face) >> 3, -16 / +16 by face flags bits 16 / 17, clamped at 0, dropped at 4096 or more, linked into
+  ctx+0x5C's bucket -- no culling: every face of the shadow goes to the table and the face draw (+31246 -> +34798, three
+  projections) and the hook decide each.
+- The plan: the `bl +349B0` at +27402 becomes a BLX to a trampoline (r6 the index, r4 the mesh, as arguments) that
+  keeps each face for a batch and inserts one (a trigger) into the table; at the trigger's draw the whole shadow goes
+  through our path at once. Where the trigger sits matters if the road under the car is in the stream: cls83 (bench
+  A4_CLASSVIS: 0x20000 green, 0x20002 blue, the near clip's red, the shadows yellow) in LA first.
+- cls83 (r83 + A4_CLASSVIS, LA; marks at 35 and 65 s): **red is the road surface** under and ahead of the car -- the
+  game's table draws it as near-clipped faces (flag bit 27), not the list -- and the yellow shadow lies over it; green
+  (0x20000) and blue (0x20002) small (kerbs, slabs). So the shadow must stay in the table's order against the road:
+  one trigger per bucket, not one for the whole shadow.
+- Read further (capstone): +3121E (TFace's key) is -min(z0, z1, z2), the deepest corner's w; a shadow face (flags 0x20)
+  goes +31246 -> +34798(cam, face, gctx) with draw_primitive's flags = face[1] and the focal cam[1]; +344F6 sets each
+  vertex's x y z, its clip flags (v[9]: 1-8 the sides, 0x10 nearer than 64, 0x20 out of range, x y then left stale)
+  and v[2] = 0, which +34798 reads as "not projected" -- +51E44 writes v[0] v[1] (screen) and v[2] = -z.
+- Where the 5-6 ms goes, first (ceil83la against la83a, CVR1): k[0] (shadow triangles taking cvr_add's scan of every
+  GPU item: 192 objects, 16 cars) 430k over the run, ~180 a render of the 306 -- ~40k item tests a render; the car
+  redraws the shadow causes (k[4] 1,547 vs 994, k[6] 1,499 vs 817 ticks over the run) ~0.3 ms a render. pfceil83 (the
+  ceiling under the cycle profile, as pf83la) to split the rest.
+- **The design (A4_SHADBATCH)**: +27402's `bl +349B0` -> BLX a4_shadow_insert(cam, face). A face of flags 0x20 and
+  TFace's vtable, its corners z <= -ZK, in int16, none flagged near or out of range, inside the CLIPG band and not
+  wrapping (clip_beyond_v, as mesh_take): projected as +51E44 would (mesh_scr_i; a corner already projected this frame
+  read back, v[2] != 0 -- the game's own memo) and v[0..2] written as it writes them; kept in a list by its bucket
+  (max w >> 3; the table drops 4096 and up, so do we). A bucket's first face goes to the table (the trigger); the
+  rest only to the list. At the trigger's draw (draw_prim_take, the lean path) the bucket's faces go through
+  lean_tail_cv in the table's order (last inserted first), their positions from the list (cvp, 1/16 px exact), and
+  cvr_add scans only the bucket's candidates (the GPU items nearer than the bucket whose box meets the union of the
+  bucket's boxes, found once) -- every face's result as the per-face path's. Anything else: +349B0 as before.
+  Scratch 0x5BA000-0x5C0280 (A4_LINEREC's, not in C83; #error together). CRK1 [50] faces batched, [51] buckets lost
+  (a trigger drawn when it could not be taken: the bucket's other faces lost that frame).

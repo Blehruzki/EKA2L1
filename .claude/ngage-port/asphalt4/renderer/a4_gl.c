@@ -6553,10 +6553,92 @@ static void cvr_box(const volatile int16_t *b)
     if (b[2] > v->r[2]) v->r[2] = b[2];
     if (b[3] > v->r[3]) v->r[3] = b[3];
 }
+#ifdef A4_SHADBATCH
+/* Round 84: the player's shadow in batches (MBX.md round 84). +2732E draws the shadow mesh a face at a time; its insert
+ * (`bl +349B0` at +27402) is a BLX to a4_shadow_insert, which keeps a face it can take in SHB's list by its bucket and
+ * sends only the bucket's first (its trigger) to the table. At the trigger's draw (shb_draw) the bucket's faces go through
+ * lean_tail_cv in the order the table would have sent them, and cvr_add looks only at the GPU items that can meet the
+ * bucket (shb_cvr_add): the same triangles, flags and pending items, without the table's walk, the face draw, its
+ * projections, draw_primitive and the hook for each face. State at 0x5BA000 (A4_LINEREC's place, not in the phone
+ * build). */
+#if !defined(A4_MESH) || !defined(A4_TAKE2) || !defined(A4_LEAN) || !defined(A4_CLIPG) || !defined(A4_TAKESHADOW) \
+    || defined(A4_LINEREC) || defined(A4_DEFER) || defined(A4_DUALCAP)
+#error "A4_SHADBATCH: the lean path's mesh frame (A4_MESH, A4_TAKE2, A4_LEAN, A4_CLIPG, A4_TAKESHADOW, A4_COVREDRAW), its state where A4_LINEREC keeps its ring"
+#endif
+#if defined(A4_SHADCHECK) && (defined(A4_WRAPPROBE) || defined(A4_MASKCHECK) || defined(A4_MSKIP_ALT))
+#error "A4_SHADCHECK counts in CRK1 [40..47], which that uses"
+#endif
+#define A4_GL_SHB 0x005BA000u
+#define SHB_MAGIC 0x31424853u      /* 'SHB1' */
+#define SHB_NG 64u                  /* buckets a frame */
+#define SHB_NF 512u                 /* faces a frame */
+#define SHB_END 0xFFFFu
+struct shbg { uint32_t trig; int32_t b; uint16_t head, n; int16_t box[4]; };   /* trig: 0 once drawn; box: the union */
+struct shbf { uint32_t face, xy[3]; int32_t w[3]; uint32_t next; };            /* xy: x | y << 16, whole pixels */
+struct shb {
+    uint32_t magic, frame, n, ng, last;
+    uint32_t cand, cb, nco, ncc;    /* the candidate scan: on, its bucket, its objects and cars (by index, in order) */
+    uint8_t co[GOBJ_NI], cc[GCAR_NI];
+    struct shbg g[SHB_NG];
+    struct shbf f[SHB_NF];
+};
+#define SHB ((struct shb *)A4_GL_SHB)
+_Static_assert(A4_GL_SHB + sizeof(struct shb) <= 0x005C0280u, "the shadow batch's state past A4_LINEREC's place");
+_Static_assert(GOBJ_NI <= 256u && GCAR_NI <= 256u, "candidate indices in a byte");
+/* the bucket's candidates: the items cvr_add would test, by its own tests, whose box meets u (the union of the bucket's
+ * faces' boxes) -- every item that meets one of the faces, as each face's box lies in u */
+static void shb_cand(volatile struct glr *s, int32_t b, const int16_t *u)
+{
+    struct shb *h = SHB;
+    uint32_t no = 0, nc = 0;
+    const volatile struct gstate *g = GOBJ;
+    if (g->magic == GOBJ_MAGIC && g->frame == s->frames && g->drawn)
+        for (uint32_t i = 0; i < g->n && i < GOBJ_NI; i++) {
+            const volatile struct gitem *it = &g->it[i];
+            if ((int32_t)it->qn >= b || it->box[0] > it->box[2] || it->box[1] > it->box[3]) continue;
+            if (it->box[2] < u[0] || it->box[0] > u[2] || it->box[3] < u[1] || it->box[1] > u[3]) continue;
+            h->co[no++] = (uint8_t)i;
+        }
+    const volatile struct gcstate *c = GCAR;
+    if (c->magic == GCAR_MAGIC && c->frame == s->frames)
+        for (uint32_t i = 0; i < c->n && i < GCAR_NI; i++) {
+            const volatile struct gcitem *it = &c->it[i];
+            if ((int32_t)it->qn >= b || it->box[0] > it->box[2] || it->box[1] > it->box[3]) continue;
+            if (it->box[2] < u[0] || it->box[0] > u[2] || it->box[3] < u[1] || it->box[1] > u[3]) continue;
+            h->cc[nc++] = (uint8_t)i;
+        }
+    h->nco = no; h->ncc = nc; h->cb = (uint32_t)b; h->cand = 1;
+}
+/* cvr_add over the candidates only: the same items pending, in the same order */
+static int shb_cvr_add(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+{
+    const struct shb *h = SHB;
+    volatile struct cvr *v = CVR;
+    int got = 0;
+    for (uint32_t k = 0; k < h->nco; k++) {
+        const uint32_t i = h->co[k];
+        const volatile struct gitem *it = &GOBJ->it[i];
+        if (it->box[2] < x0 || it->box[0] > x1 || it->box[3] < y0 || it->box[1] > y1) continue;
+        if (!(v->ob[i >> 5] & (1u << (i & 31u)))) { v->ob[i >> 5] |= 1u << (i & 31u); cvr_box(it->box); }
+        got++;
+    }
+    for (uint32_t k = 0; k < h->ncc; k++) {
+        const uint32_t i = h->cc[k];
+        const volatile struct gcitem *it = &GCAR->it[i];
+        if (it->box[2] < x0 || it->box[0] > x1 || it->box[3] < y0 || it->box[1] > y1) continue;
+        if (!(v->cb & (1u << i))) { v->cb |= 1u << i; cvr_box(it->box); }
+        got++;
+    }
+    return got;
+}
+#endif
 /* the GPU items this frame whose screen box meets [x0, x1] x [y0, y1] and whose nearest bucket is nearer than b (the
  * tile grid's own test, gobj_grid): pending, to be drawn again; their number */
 static int cvr_add(int32_t b, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 {
+#ifdef A4_SHADBATCH
+    if (SHB->cand && b == (int32_t)SHB->cb) return shb_cvr_add(x0, y0, x1, y1);   /* round 84: inside a shadow bucket */
+#endif
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
     volatile struct cvr *v = CVR;
     int got = 0;
@@ -6688,6 +6770,209 @@ static void cvr_flush(volatile struct glr *s)
     s->bfill = 0;
     cvr_redraw(s);
 }
+#endif
+#ifdef A4_SHADBATCH
+/* A shadow face +2732E inserts (cam, face: +349B0's arguments) into the frame's list: 1 = kept, the table never sees it;
+ * 0 = to the table (refused, or its bucket's trigger). Taken: TFace's vtable and flags 0x20 exactly (+31246 sends it to
+ * +34798, the plain face draw: draw_primitive's flags are face[1]); each corner flagged neither near nor out of range by
+ * +344F6 (v[9] 0x10, 0x20: the latter leaves x y stale), at z <= -ZK, in int16, inside the CLIPG band and not where the
+ * projection wraps (as mesh_take: lean_tail neither cuts nor re-projects such a face). Its corners projected as +51E44
+ * does (mesh_scr_i), or read back where this frame projected them already (v[2] != 0: +34798's own memo, cleared by
+ * +344F6), and written as +51E44 writes them. Its bucket is the table's: +3121E's key, the deepest -z, >> 3 (flags 0x20:
+ * no nudge); 4096 and up the table drops, so it goes there. The mode is the window's (A4_PERF), as mesh_take's. */
+static int shb_take(uint32_t *cam, uint32_t *face)
+{
+    const struct glr *s = (const struct glr *)A4_GL_SCRATCH;
+    struct shb *h = SHB;
+    if ((A4_PERF[PF_MODE] & (AB_MESH | AB_LEAN | AB_DEFER)) != (AB_MESH | AB_LEAN)
+        || s->up != A4_GL_MAGIC || !s->zbits || !s->abits) return 0;
+    const uint32_t frames = s->frames;
+    if (h->magic != SHB_MAGIC || h->frame != frames) {      /* the frame's first: the last frame's buckets never drawn lost */
+        if (h->magic == SHB_MAGIC) {
+            uint32_t lost = 0;
+            for (uint32_t k = 0; k < h->ng && k < SHB_NG; k++) if (h->g[k].trig) lost++;
+            if (lost) crk_get()[51] += lost;
+        }
+        h->magic = SHB_MAGIC; h->frame = frames; h->n = 0; h->ng = 0; h->last = 0; h->cand = 0;
+    }
+    if (face[0] != (uint32_t)(uintptr_t)&a4_tfvt + (uint32_t)a4_tfvt || face[1] != 0x20u) return 0;
+    const uint32_t *gctx = (const uint32_t *)((const struct mesh *)A4_GL_MESH)->gctx;
+    const int32_t F = (int32_t)cam[1];
+    const uint32_t n = h->n;
+    if (!gctx || F < 1 || n >= SHB_NF) return 0;
+    const int32_t cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
+    int32_t *vv[3] = { (int32_t *)face[3], (int32_t *)face[6], (int32_t *)face[9] };
+    int32_t sx[3], sy[3], w[3], wm = 0;
+    for (int i = 0; i < 3; i++) {
+        const int32_t *p = vv[i];
+        const int32_t x = p[3], y = p[4], z = p[5];
+        if (((uint32_t)p[9] & 0x30u) || z > -ZK || !MESH_FITS(x) || !MESH_FITS(y) || !MESH_FITS(z)) return 0;
+#ifndef A4_SHADCHECK
+        if (p[2]) {                                 /* projected this frame (by an earlier face here) */
+            if (p[2] != -z) return 0;
+            sx[i] = p[0]; sy[i] = p[1];
+        } else
+#endif
+            mesh_scr_i(gctx, F, cx, cy, x, y, z, &sx[i], &sy[i]);
+        w[i] = -z;
+        if (sx[i] < -CLIPG || sx[i] > VP_W + CLIPG || sy[i] < -CLIPG || sy[i] > VP_H + CLIPG) return 0;
+        if (-z < F + (F >> 4) && clip_beyond_v(F, cx, cy, x, y, -z)) return 0;   /* where mesh_scr_i wraps (round 82f) */
+        if (w[i] > wm) wm = w[i];
+    }
+    const int32_t b = wm >> 3;
+    if (b >= 4096) return 0;
+    uint32_t gi = h->last;
+    if (gi >= h->ng || h->g[gi].b != b)
+        for (gi = 0; gi < h->ng && h->g[gi].b != b; gi++) ;
+    int32_t xlo, xhi, ylo, yhi;
+    ext3(sx[0], sx[1], sx[2], &xlo, &xhi); ext3(sy[0], sy[1], sy[2], &ylo, &yhi);
+    int trig = 0;
+    struct shbg *g = &h->g[gi];
+    if (gi == h->ng) {                              /* the bucket's first face: its trigger, to the table */
+        if (gi >= SHB_NG) return 0;
+        g->trig = (uint32_t)(uintptr_t)face; g->b = b; g->head = SHB_END; g->n = 0;
+        g->box[0] = (int16_t)xlo; g->box[1] = (int16_t)ylo; g->box[2] = (int16_t)xhi; g->box[3] = (int16_t)yhi;
+        h->ng = gi + 1;
+        trig = 1;
+    } else {
+        if (!g->trig) return 0;                     /* drawn already (a second walk this frame): the table, as before */
+        if (xlo < g->box[0]) g->box[0] = (int16_t)xlo;
+        if (ylo < g->box[1]) g->box[1] = (int16_t)ylo;
+        if (xhi > g->box[2]) g->box[2] = (int16_t)xhi;
+        if (yhi > g->box[3]) g->box[3] = (int16_t)yhi;
+    }
+    h->last = gi;
+    struct shbf *f = &h->f[n];
+    f->face = (uint32_t)(uintptr_t)face;
+    for (int i = 0; i < 3; i++) {
+        f->xy[i] = (uint32_t)(uint16_t)sx[i] | ((uint32_t)(uint16_t)sy[i] << 16);
+        f->w[i] = w[i];
+#ifndef A4_SHADCHECK
+        if (!vv[i][2]) { vv[i][0] = sx[i]; vv[i][1] = sy[i]; vv[i][2] = w[i]; }   /* as +51E44 writes them */
+#endif
+    }
+    f->next = g->head; g->head = (uint16_t)n; g->n++;   /* the table's order: the last inserted drawn first */
+    h->n = n + 1;
+    crk_get()[50]++;
+#ifdef A4_SHADCHECK
+    (void)trig;
+    return 0;                                       /* bench: every face to the table as well; shb_check compares */
+#else
+    return trig ? 0 : 1;
+#endif
+}
+/* +27402's BLX (r0 = cam, r1 = face, as the bl to +349B0 had them); returns to +27406 */
+void a4_shadow_insert(uint32_t *cam, uint32_t *face)
+{
+    if (shb_take(cam, face)) return;
+    ((void (*)(uint32_t *, uint32_t *))((uint32_t)(uintptr_t)&a4_otins + (uint32_t)a4_otins))(cam, face);
+}
+#ifndef A4_SHADCHECK
+/* At a shadow-class triangle in the lean path: when desc is a trigger of this frame, its bucket's faces through
+ * lean_tail_cv (desc's own result returned); -1 when it is not one (the per-face path draws it). */
+static int shb_draw(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, uint32_t tsaddr)
+{
+    struct shb *h = SHB;
+    if (h->magic != SHB_MAGIC || h->frame != s->frames) return -1;
+    const uint32_t ng = h->ng < SHB_NG ? h->ng : SHB_NG;
+    uint32_t gi = 0;
+    while (gi < ng && h->g[gi].trig != (uint32_t)(uintptr_t)desc) gi++;
+    if (gi == ng) return -1;
+    struct shbg *g = &h->g[gi];
+    g->trig = 0;
+    shb_cand(s, g->b, g->box);
+    int r = 1;
+    for (uint32_t k = g->head; k != SHB_END && k < SHB_NF; k = h->f[k].next) {
+        const struct shbf *f = &h->f[k];
+        struct clipv cv[3];
+        for (int i = 0; i < 3; i++) {
+            cv[i].x = (int32_t)(int16_t)(f->xy[i] & 0xFFFFu) * (1 << CLIP_FB);
+            cv[i].y = (int32_t)(int16_t)(f->xy[i] >> 16) * (1 << CLIP_FB);
+            cv[i].z = f->w[i]; cv[i].u = 0; cv[i].v = 0; cv[i].q = 0;
+        }
+        const int rr = lean_tail_cv(s, gctx, (const uint32_t *)(uintptr_t)f->face, kind, 0, tsaddr, cv);
+        if (f->face == (uint32_t)(uintptr_t)desc) r = rr;
+    }
+    h->cand = 0;
+    return r;
+}
+#else
+/* Bench (A4_SHADCHECK): every shadow face also went to the table, which draws it a face at a time; here, at its draw, the
+ * list's record of it against the game's: CRK1 [40] faces found in the list, [41] not found, [42] corners whose v[0..2]
+ * (the game's projection, done by now) differ from the list's, [43] faces whose bucket differs, [44] faces whose pending
+ * items by the candidates differ from cvr_add's own scan, [45] faces with an item to pend, [46] candidate tests, [47]
+ * full-scan tests. */
+static void shb_check(volatile struct glr *s, const uint32_t *desc)
+{
+    const struct shb *h = SHB;
+    volatile uint32_t *C = crk_get();
+    if (h->magic != SHB_MAGIC || h->frame != s->frames) { C[41]++; return; }
+    uint32_t k = 0;
+    while (k < h->n && k < SHB_NF && h->f[k].face != (uint32_t)(uintptr_t)desc) k++;
+    if (k >= h->n || k >= SHB_NF) { C[41]++; return; }
+    C[40]++;
+    const struct shbf *f = &h->f[k];
+    int32_t sx[3], sy[3], w[3];
+    for (int i = 0; i < 3; i++) {
+        const int32_t *p = (const int32_t *)desc[3 + 3 * i];
+        sx[i] = (int16_t)(f->xy[i] & 0xFFFFu); sy[i] = (int16_t)(f->xy[i] >> 16); w[i] = f->w[i];
+        if (p[0] != sx[i] || p[1] != sy[i] || p[2] != w[i]) C[42]++;
+    }
+    uint32_t gi = 0;
+    while (gi < h->ng && gi < SHB_NG) {
+        uint32_t j = h->g[gi].head, hit = 0;
+        while (j != SHB_END && j < SHB_NF) { if (j == k) { hit = 1; break; } j = h->f[j].next; }
+        if (hit) break;
+        gi++;
+    }
+    if (gi >= h->ng || gi >= SHB_NG) { C[43]++; return; }
+    const struct shbg *g = &h->g[gi];
+    const int32_t *p0 = (const int32_t *)desc[3], *p1 = (const int32_t *)desc[6], *p2 = (const int32_t *)desc[9];
+    const int32_t b = cvr_tri_bucket(desc, p0[2], p1[2], p2[2]);
+    if (b != g->b) C[43]++;
+    int32_t xlo, xhi, ylo, yhi;
+    ext3(sx[0], sx[1], sx[2], &xlo, &xhi); ext3(sy[0], sy[1], sy[2], &ylo, &yhi);
+    uint32_t fo[6] = { 0, 0, 0, 0, 0, 0 }, fc = 0, co[6] = { 0, 0, 0, 0, 0, 0 }, cc = 0;
+    const volatile struct gstate *go = GOBJ;
+    const volatile struct gcstate *gc = GCAR;
+    const int ok = go->magic == GOBJ_MAGIC && go->frame == s->frames && go->drawn;
+    const int okc = gc->magic == GCAR_MAGIC && gc->frame == s->frames;
+    for (uint32_t i = 0; ok && i < go->n && i < GOBJ_NI; i++) {      /* cvr_add's own scan, on this face's box */
+        const volatile struct gitem *it = &go->it[i];
+        C[47]++;
+        if ((int32_t)it->qn >= b || it->box[0] > it->box[2] || it->box[1] > it->box[3]) continue;
+        if (it->box[2] < xlo || it->box[0] > xhi || it->box[3] < ylo || it->box[1] > yhi) continue;
+        fo[i >> 5] |= 1u << (i & 31u);
+    }
+    for (uint32_t i = 0; okc && i < gc->n && i < GCAR_NI; i++) {
+        const volatile struct gcitem *it = &gc->it[i];
+        C[47]++;
+        if ((int32_t)it->qn >= b || it->box[0] > it->box[2] || it->box[1] > it->box[3]) continue;
+        if (it->box[2] < xlo || it->box[0] > xhi || it->box[3] < ylo || it->box[1] > yhi) continue;
+        fc |= 1u << i;
+    }
+    shb_cand(s, g->b, g->box);                      /* the bucket's candidates, then shb_cvr_add's test on this box */
+    for (uint32_t q = 0; q < h->nco; q++) {
+        const uint32_t i = h->co[q];
+        const volatile struct gitem *it = &go->it[i];
+        C[46]++;
+        if (it->box[2] < xlo || it->box[0] > xhi || it->box[3] < ylo || it->box[1] > yhi) continue;
+        co[i >> 5] |= 1u << (i & 31u);
+    }
+    for (uint32_t q = 0; q < h->ncc; q++) {
+        const uint32_t i = h->cc[q];
+        const volatile struct gcitem *it = &gc->it[i];
+        C[46]++;
+        if (it->box[2] < xlo || it->box[0] > xhi || it->box[3] < ylo || it->box[1] > yhi) continue;
+        cc |= 1u << i;
+    }
+    SHB->cand = 0;
+    int d = fc != cc, any = fc != 0;
+    for (int j = 0; j < 6; j++) { d |= fo[j] != co[j]; any |= fo[j] != 0; }
+    if (d) C[44]++;
+    if (any) C[45]++;
+}
+#endif
 #endif
 /* the frame's drawn objects into the list's tile grid (mesh_draw): each its box at its nearest bucket; the count */
 static uint32_t gobj_grid(volatile struct glr *s, uint16_t *grid)
@@ -7956,11 +8241,32 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #endif
     uint32_t tsaddr = desc[0x30 / 4];               /* texture descriptor, or flat colour */
     if (!tsaddr && kind != KIND_SHAD) return 0;
+#ifdef A4_SHADBATCH
+    const int shad = kind == KIND_SHAD;             /* round 84: the class, before a bench colour replaces it */
+#endif
 #ifdef A4_SHADVIS
     if (kind == KIND_SHAD) { kind = KIND_FLAT; tsaddr = 0x07E0u; }   /* bench (round 83): the shadow class solid green */
 #endif
+#ifdef A4_CLASSVIS
+    /* bench (round 83): the stream's classes by colour -- 0x20000 green, 0x20002 blue, the near clip's (bit 27) red,
+     * the shadows (0x20) yellow */
+    if (flags == 0x20000u) { kind = KIND_FLAT; tsaddr = 0x07E0u; }
+    else if (flags == 0x20002u) { kind = KIND_FLAT; tsaddr = 0x001Fu; }
+    else if (flags & 0x08000000u) { kind = KIND_FLAT; tsaddr = 0xF800u; }
+    else if (kind == KIND_SHAD) { kind = KIND_FLAT; tsaddr = 0xFFE0u; }
+#endif
 #if defined(A4_DEFER) && !defined(A4_M1VIS) && !defined(A4_SEQDUMP) && !defined(A4_VTXDUMP)
     if ((s->fmode & (AB_DEFER | AB_REORDER)) == (AB_DEFER | AB_REORDER)) return defer_take(s, gctx, desc, kind, m1, tsaddr);
+#endif
+#ifdef A4_SHADBATCH
+    if (shad && (s->fmode & AB_LEAN)) {
+#ifdef A4_SHADCHECK
+        shb_check(s, desc);                         /* bench: the list's record against the game's draw */
+#else
+        const int r = shb_draw(s, gctx, desc, kind, tsaddr);   /* round 84: a shadow bucket's trigger draws the bucket */
+        if (r >= 0) return r;
+#endif
+    }
 #endif
 #if defined(A4_LEAN) && !defined(A4_M1VIS) && !defined(A4_SEQDUMP) && !defined(A4_VTXDUMP)
 #ifdef A4_DUALCAP

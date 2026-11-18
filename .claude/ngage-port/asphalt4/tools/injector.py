@@ -70,6 +70,10 @@ CAPTURE_DISPLACED = {0x300B2: (0x0005, 0x0014),     # movs r5, r0 ; movs r4, r2
 # Added only when A4_EXTRA_CFLAGS defines A4_MESH.
 MESH_HOOKS = {0x34ADC: 'a4_mesh_insert'}
 MESH_DISPLACED = {0x34ADC: (0xF7FF, 0xFF68)}      # bl +349B0
+# Round 84 (A4_SHADBATCH): the shadow mesh routine +2732E's insert (`bl +349B0` at +27402, its face loop) becomes a
+# BLX to a4_shadow_insert(cam, face), which keeps a face for its bucket's batch and passes the rest to +349B0 itself.
+SHAD_HOOKS = {0x27402: 'a4_shadow_insert'}
+SHAD_DISPLACED = {0x27402: (0xF00D, 0xFAD5)}      # bl +349B0
 IDLE_PLACEHOLDERS = {'a4_rlib_load': 0x50FA8,    # round 57, A4_IDLECEN: the game's import slot for RLibrary::Load (euser 1308)
                      'a4_rlib_lookup': 0x50FB8}  # ... and for RLibrary::Lookup (euser 1838)
 MESH_PLACEHOLDERS = {'a4_otins': 0x349B0 | 1,     # the ordering-table insert (Thumb)
@@ -475,6 +479,14 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == want, 'mesh hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)
             blx_insert(code, off, syms[sym])
             print('mesh   +%06X -> %s +%06X (4-byte BLX for the bl)' % (off, sym, syms[sym] - LINK_BASE))
+    if mesh and '-DA4_SHADBATCH' in os.environ.get('A4_EXTRA_CFLAGS', '').split():
+        assert not os.environ.get('A4_CEIL_ROAD'), 'A4_SHADBATCH hooks +2732E\'s insert, which A4_CEIL_ROAD never reaches'
+        for off, sym in SHAD_HOOKS.items():
+            want = SHAD_DISPLACED[off]
+            have = struct.unpack_from('<HH', code, off)
+            assert have == want, 'shadow hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)
+            blx_insert(code, off, syms[sym])
+            print('shadow +%06X -> %s +%06X (4-byte BLX for the bl)' % (off, sym, syms[sym] - LINK_BASE))
     if steptime:
         for off, (sym, want) in STEP_HOOKS.items():
             have = struct.unpack_from('<HH', code, off)
