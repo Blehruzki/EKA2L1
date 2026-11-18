@@ -196,6 +196,8 @@ if mode == 'lines':
             print('  triangles cut (A4_CLIPG): %d, pieces drawn %d, the farthest corner %d px' % (c[29], c[30], c[31]))
         if len(c) >= 40:
             print('  handed back to the game beyond the band: list faces %d, GPU objects %d, GPU cars %d' % (c[32], c[33], c[34]))
+            if c[39]:
+                print('  wrap probe (bench): corners past int16 %d; of %d compared, %d off the view projection by > 2 px (%d inside int16); largest |projection| %d' % (c[35], c[39], c[36], c[37], c[38]))
     sys.exit()
 
 if mode == 'gob':

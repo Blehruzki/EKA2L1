@@ -4939,6 +4939,31 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
          * on the CPU (a4_clip.h, perspective-correct; tools/cliptest.c) and drawn as a fan, so the MBX never clips a
          * corner 140 screens away in fixed point. CRK1 [29] triangles cut, [30] pieces drawn, [31] the farthest corner. */
         const uint32_t *vv[3] = { (const uint32_t *)desc[3], (const uint32_t *)desc[6], (const uint32_t *)desc[9] };
+#ifdef A4_WRAPPROBE
+        {   /* bench (phone round 82: 6,491 cut, 774 pieces; corners to 32,764): is a corner's screen word past int16, and
+             * does the projection from its view coordinates (v+0xC..0x14) differ from what we read? CRK1 [35] corners
+             * whose 32-bit x or y word is past int16, [36] corners (a projected mesh vertex: zw == -z') whose projection
+             * differs from the int16 read by more than 2 px, [37] of those the projection inside int16 (F or the
+             * formula wrong, not the range), [38] the largest |projection|, [39] corners compared */
+            volatile uint32_t *C = crk_get();
+            const int32_t F = (int32_t)MESH->F, cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
+            for (int i = 0; i < 3; i++) {
+                const int32_t wx = (int32_t)vv[i][0], wy = (int32_t)vv[i][1];
+                if (wx != (int16_t)wx || wy != (int16_t)wy) C[35]++;
+                const int32_t vx = (int32_t)vv[i][3], vy = (int32_t)vv[i][4], vz = (int32_t)vv[i][5];
+                if (vz >= 0 || (int32_t)vv[i][2] != -vz || F < 1) continue;
+                C[39]++;
+                const int64_t px = cx + clip_sdivr((int64_t)vx * F, (uint32_t)-vz), py = cy - clip_sdivr((int64_t)vy * F, (uint32_t)-vz);
+                const int64_t dx = px - (int16_t)wx, dy = py - (int16_t)wy;
+                if (dx > 2 || dx < -2 || dy > 2 || dy < -2) {
+                    C[36]++;
+                    if (px >= -32768 && px <= 32767 && py >= -32768 && py <= 32767) C[37]++;
+                }
+                const int64_t ap = px < 0 ? -px : px, aq = py < 0 ? -py : py, am = ap > aq ? ap : aq;
+                if (am > (int64_t)C[38]) C[38] = am > 0x7FFFFFFF ? 0x7FFFFFFFu : (uint32_t)am;
+            }
+        }
+#endif
         int giant = 0; int32_t far = 0;
         for (int i = 0; i < 3; i++) {
             const int32_t x = (int16_t)(int32_t)vv[i][0], y = (int16_t)(int32_t)vv[i][1];

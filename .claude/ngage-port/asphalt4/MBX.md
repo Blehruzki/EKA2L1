@@ -12805,3 +12805,24 @@ c. Not entered: cars handed back (0 in all three runs: a car's box never reached
 - **r82e sent to the owner (unbaked), 2026-11-17**: a4_r82_cand.exe = r82e, sha256
   f41865b5085e720d9236791e33371cc40c23892f3381b4f9d04004757f40809c, 982,724 bytes. Awaiting phone round 82: whether the
   lines and bands go, with CRK1's cut and hand-back counts ([29-34]) beside any that remain.
+
+## Phone round 82 (r82e): "They still show up"
+
+- Files: 4 marks (a4mark0-3; 3 automatic, CRK1 [26]) and 8 rings (a4tel0-7), 2026-11-18. CRK1 at the last capture
+  (a4mark3): 100 one-row and 5 two-row cracks, 44 gaps of 3-6 rows (5 of 64+ px, the thickest 6); **6,491 triangles
+  cut into only 774 pieces, the farthest corner 32,764 px**; 605 list faces and 408 objects handed back, no car. The
+  longest gaps: **291 px at row 37 (frame 3126) and the full 320 px at row 58 (frame 6009)**.
+- Frame 3126's record: rows 37-39 undrawn over x 0..290 (and 295..319), the list's faces none at that row, the row
+  above drawn by three stream triangles of tex 40000065 that are **this cut's own pieces** (corners at exactly -1024
+  and 1344, a band y 35.06..37.06 across the whole width, W ~28,000: mid-distance), the next strip down from row 40.
+  Frame 3048 (rows 43, 72) and 5973 / 5985 (rows 67, 92) the same: pieces of 40000065 at the band's edges, then
+  undrawn rows below them. So the strip that should continue below a cut strip was not drawn at all.
+- Reading: most cut triangles leave nothing (6,491 -> 774) and the farthest corners sit at the int16 limit. lean_conv
+  and the cut read a corner's screen x, y as int16 of the vertex's 32-bit word ("as the game's"); the game's projection
+  (+51E44 / +51F08) is 32-bit -- a corner past +-32,767 px read as int16 wraps to the wrong side of the screen, so its
+  triangle is drawn in the wrong place (before r82: by the MBX) or, cut, lands outside the band and is dropped: the
+  strip's row band is left undrawn either way -- a line. Not shown yet. Bench probe A4_WRAPPROBE (r82w, C82 +
+  -DA4_WRAPPROBE, 983,876 bytes): CRK1 [35] corners whose 32-bit word is past int16, [36] corners whose projection
+  from the view coordinates (v+0xC..0x14, 64-bit, F = MESH->F) is more than 2 px off the int16 read, [37] of those
+  inside int16 (the formula, not the range), [38] the largest |projection|, [39] corners compared. Running on b78a's
+  run (the wall: 2,822 cut / 797 pieces in b82e) and LA. Not a repeat of b82e / la82e (no probe).
