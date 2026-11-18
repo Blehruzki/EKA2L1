@@ -6565,6 +6565,9 @@ static void cvr_box(const volatile int16_t *b)
     || defined(A4_LINEREC) || defined(A4_DEFER) || defined(A4_DUALCAP)
 #error "A4_SHADBATCH: the lean path's mesh frame (A4_MESH, A4_TAKE2, A4_LEAN, A4_CLIPG, A4_TAKESHADOW, A4_COVREDRAW), its state where A4_LINEREC keeps its ring"
 #endif
+#if defined(A4_SHADCOUNT) && (defined(A4_SHADCHECK) || defined(A4_WRAPPROBE) || defined(A4_MASKCHECK) || defined(A4_MSKIP_ALT))
+#error "A4_SHADCOUNT counts in CRK1 [40..43], which that uses"
+#endif
 #if defined(A4_SHADCHECK) && (defined(A4_WRAPPROBE) || defined(A4_MASKCHECK) || defined(A4_MSKIP_ALT))
 #error "A4_SHADCHECK counts in CRK1 [40..47], which that uses"
 #endif
@@ -6579,34 +6582,59 @@ struct shb {
     uint32_t magic, frame, n, ng, last;
     uint32_t cand, cb, nco, ncc;    /* the candidate scan: on, its bucket, its objects and cars (by index, in order) */
     uint8_t co[GOBJ_NI], cc[GCAR_NI];
+    uint32_t fset, fno, fnc;        /* the frame's candidates (every bucket's, found once): made, objects, cars */
+    int32_t bmax; int16_t ubox[4];  /* the deepest bucket kept and the union of every face's box, this frame */
+    uint8_t fo[GOBJ_NI], fc[GCAR_NI];
+    uint8_t gmap[64];               /* a bucket's group + 1 by b & 63 (0: none; a clash falls back to the scan) */
     struct shbg g[SHB_NG];
     struct shbf f[SHB_NF];
 };
 #define SHB ((struct shb *)A4_GL_SHB)
 _Static_assert(A4_GL_SHB + sizeof(struct shb) <= 0x005C0280u, "the shadow batch's state past A4_LINEREC's place");
 _Static_assert(GOBJ_NI <= 256u && GCAR_NI <= 256u, "candidate indices in a byte");
+_Static_assert(__builtin_offsetof(struct shb, gmap) % 4u == 0u, "the bucket map cleared a word at a time");
 /* the bucket's candidates: the items cvr_add would test, by its own tests, whose box meets u (the union of the bucket's
  * faces' boxes) -- every item that meets one of the faces, as each face's box lies in u */
 static void shb_cand(volatile struct glr *s, int32_t b, const int16_t *u)
 {
     struct shb *h = SHB;
-    uint32_t no = 0, nc = 0;
     const volatile struct gstate *g = GOBJ;
-    if (g->magic == GOBJ_MAGIC && g->frame == s->frames && g->drawn)
-        for (uint32_t i = 0; i < g->n && i < GOBJ_NI; i++) {
-            const volatile struct gitem *it = &g->it[i];
-            if ((int32_t)it->qn >= b || it->box[0] > it->box[2] || it->box[1] > it->box[3]) continue;
-            if (it->box[2] < u[0] || it->box[0] > u[2] || it->box[3] < u[1] || it->box[1] > u[3]) continue;
-            h->co[no++] = (uint8_t)i;
-        }
     const volatile struct gcstate *c = GCAR;
-    if (c->magic == GCAR_MAGIC && c->frame == s->frames)
-        for (uint32_t i = 0; i < c->n && i < GCAR_NI; i++) {
-            const volatile struct gcitem *it = &c->it[i];
-            if ((int32_t)it->qn >= b || it->box[0] > it->box[2] || it->box[1] > it->box[3]) continue;
-            if (it->box[2] < u[0] || it->box[0] > u[2] || it->box[3] < u[1] || it->box[1] > u[3]) continue;
-            h->cc[nc++] = (uint8_t)i;
-        }
+    if (!h->fset) {     /* the frame's first: cvr_add's tests against the deepest bucket and the union of every box */
+        uint32_t no = 0, nc = 0;
+        const int32_t bm = h->bmax;
+        const int16_t *v = h->ubox;
+        if (g->magic == GOBJ_MAGIC && g->frame == s->frames && g->drawn)
+            for (uint32_t i = 0; i < g->n && i < GOBJ_NI; i++) {
+                const volatile struct gitem *it = &g->it[i];
+                if ((int32_t)it->qn >= bm || it->box[0] > it->box[2] || it->box[1] > it->box[3]) continue;
+                if (it->box[2] < v[0] || it->box[0] > v[2] || it->box[3] < v[1] || it->box[1] > v[3]) continue;
+                h->fo[no++] = (uint8_t)i;
+            }
+        if (c->magic == GCAR_MAGIC && c->frame == s->frames)
+            for (uint32_t i = 0; i < c->n && i < GCAR_NI; i++) {
+                const volatile struct gcitem *it = &c->it[i];
+                if ((int32_t)it->qn >= bm || it->box[0] > it->box[2] || it->box[1] > it->box[3]) continue;
+                if (it->box[2] < v[0] || it->box[0] > v[2] || it->box[3] < v[1] || it->box[1] > v[3]) continue;
+                h->fc[nc++] = (uint8_t)i;
+            }
+        h->fno = no; h->fnc = nc; h->fset = 1;
+    }
+    uint32_t no = 0, nc = 0;    /* the bucket's, from the frame's (b <= bmax, u inside ubox: a subset of the same tests) */
+    for (uint32_t k = 0; k < h->fno; k++) {
+        const uint32_t i = h->fo[k];
+        const volatile struct gitem *it = &g->it[i];
+        if ((int32_t)it->qn >= b) continue;
+        if (it->box[2] < u[0] || it->box[0] > u[2] || it->box[3] < u[1] || it->box[1] > u[3]) continue;
+        h->co[no++] = (uint8_t)i;
+    }
+    for (uint32_t k = 0; k < h->fnc; k++) {
+        const uint32_t i = h->fc[k];
+        const volatile struct gcitem *it = &c->it[i];
+        if ((int32_t)it->qn >= b) continue;
+        if (it->box[2] < u[0] || it->box[0] > u[2] || it->box[3] < u[1] || it->box[1] > u[3]) continue;
+        h->cc[nc++] = (uint8_t)i;
+    }
     h->nco = no; h->ncc = nc; h->cb = (uint32_t)b; h->cand = 1;
 }
 /* cvr_add over the candidates only: the same items pending, in the same order */
@@ -6794,6 +6822,8 @@ static int shb_take(uint32_t *cam, uint32_t *face)
             if (lost) crk_get()[51] += lost;
         }
         h->magic = SHB_MAGIC; h->frame = frames; h->n = 0; h->ng = 0; h->last = 0; h->cand = 0;
+        h->fset = 0; h->bmax = -1;
+        for (uint32_t k = 0; k < 16u; k++) ((uint32_t *)(void *)h->gmap)[k] = 0;
     }
     if (face[0] != (uint32_t)(uintptr_t)&a4_tfvt + (uint32_t)a4_tfvt || face[1] != 0x20u) return 0;
     const uint32_t *gctx = (const uint32_t *)((const struct mesh *)A4_GL_MESH)->gctx;
@@ -6816,14 +6846,20 @@ static int shb_take(uint32_t *cam, uint32_t *face)
             mesh_scr_i(gctx, F, cx, cy, x, y, z, &sx[i], &sy[i]);
         w[i] = -z;
         if (sx[i] < -CLIPG || sx[i] > VP_W + CLIPG || sy[i] < -CLIPG || sy[i] > VP_H + CLIPG) return 0;
-        if (-z < F + (F >> 4) && clip_beyond_v(F, cx, cy, x, y, -z)) return 0;   /* where mesh_scr_i wraps (round 82f) */
+        /* where mesh_scr_i can wrap (round 82f) -- not with |x|, |y| < -z and F < 30,000: the offset F x / -z is then under
+         * F px, and the 32-bit product under 2^31 with RT2's error to spare (the band test above already decided) */
+        if (-z < F + (F >> 4) && !(F < 30000 && x > z && x < -z && y > z && y < -z)
+            && clip_beyond_v(F, cx, cy, x, y, -z)) return 0;
         if (w[i] > wm) wm = w[i];
     }
     const int32_t b = wm >> 3;
     if (b >= 4096) return 0;
     uint32_t gi = h->last;
-    if (gi >= h->ng || h->g[gi].b != b)
-        for (gi = 0; gi < h->ng && h->g[gi].b != b; gi++) ;
+    if (gi >= h->ng || h->g[gi].b != b) {
+        const uint32_t m = h->gmap[b & 63];
+        if (m && h->g[m - 1u].b == b) gi = m - 1u;
+        else for (gi = 0; gi < h->ng && h->g[gi].b != b; gi++) ;
+    }
     int32_t xlo, xhi, ylo, yhi;
     ext3(sx[0], sx[1], sx[2], &xlo, &xhi); ext3(sy[0], sy[1], sy[2], &ylo, &yhi);
     int trig = 0;
@@ -6833,6 +6869,7 @@ static int shb_take(uint32_t *cam, uint32_t *face)
         g->trig = (uint32_t)(uintptr_t)face; g->b = b; g->head = SHB_END; g->n = 0;
         g->box[0] = (int16_t)xlo; g->box[1] = (int16_t)ylo; g->box[2] = (int16_t)xhi; g->box[3] = (int16_t)yhi;
         h->ng = gi + 1;
+        if (!h->gmap[b & 63]) h->gmap[b & 63] = (uint8_t)(gi + 1u);
         trig = 1;
     } else {
         if (!g->trig) return 0;                     /* drawn already (a second walk this frame): the table, as before */
@@ -6842,6 +6879,14 @@ static int shb_take(uint32_t *cam, uint32_t *face)
         if (yhi > g->box[3]) g->box[3] = (int16_t)yhi;
     }
     h->last = gi;
+    if (b > h->bmax) h->bmax = b;
+    if (!h->n) { h->ubox[0] = (int16_t)xlo; h->ubox[1] = (int16_t)ylo; h->ubox[2] = (int16_t)xhi; h->ubox[3] = (int16_t)yhi; }
+    else {
+        if (xlo < h->ubox[0]) h->ubox[0] = (int16_t)xlo;
+        if (ylo < h->ubox[1]) h->ubox[1] = (int16_t)ylo;
+        if (xhi > h->ubox[2]) h->ubox[2] = (int16_t)xhi;
+        if (yhi > h->ubox[3]) h->ubox[3] = (int16_t)yhi;
+    }
     struct shbf *f = &h->f[n];
     f->face = (uint32_t)(uintptr_t)face;
     for (int i = 0; i < 3; i++) {
@@ -6864,6 +6909,19 @@ static int shb_take(uint32_t *cam, uint32_t *face)
 /* +27402's BLX (r0 = cam, r1 = face, as the bl to +349B0 had them); returns to +27406 */
 void a4_shadow_insert(uint32_t *cam, uint32_t *face)
 {
+#ifdef A4_SHADCOUNT
+    {   /* bench (round 84): CRK1 [40] calls, [41] not TFace / flags 0x20, [42] a corner flagged near or out of range,
+         * [43] the distinct meshes' faces this frame (cam changes, or face pointers far apart: [44] mesh starts) */
+        volatile uint32_t *C = crk_get();
+        C[40]++;
+        if (face[0] != (uint32_t)(uintptr_t)&a4_tfvt + (uint32_t)a4_tfvt || face[1] != 0x20u) C[41]++;
+        else {
+            const int32_t *p0 = (const int32_t *)face[3], *p1 = (const int32_t *)face[6], *p2 = (const int32_t *)face[9];
+            if (((uint32_t)p0[9] | (uint32_t)p1[9] | (uint32_t)p2[9]) & 0x30u) C[42]++;
+            else if (p0[5] > -ZK || p1[5] > -ZK || p2[5] > -ZK) C[43]++;
+        }
+    }
+#endif
     if (shb_take(cam, face)) return;
     ((void (*)(uint32_t *, uint32_t *))((uint32_t)(uintptr_t)&a4_otins + (uint32_t)a4_otins))(cam, face);
 }

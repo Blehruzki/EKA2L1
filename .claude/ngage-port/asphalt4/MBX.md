@@ -13184,3 +13184,25 @@ c. Not entered: the line counter's every-16th-frame path on the phone (FRC1's li
   la83a 9.09M, ceil83la 8.09M, la84a 8.73M -- the shadow still ~0.64M of its 1.0M, CPU work, not the GPU model's.
   So the per-face table walk and cvr_add's scan were not the bulk; what is left needs naming before more is changed:
   pw83la / pw84a (the cycle profile, PROFSYM, both over instructions 6e9-8.5e9 of LA) running.
+- shv84 (r84a + A4_SHADVIS, LA, marks as shv83; framestat 1,430, the boot fault only): the green shadow the same as
+  shv83's -- at 35 s the same scene and the same outline, at 80 s whole; no face missing, none extra.
+- pw83la / pw84a (r83 and r84a under the cycle profile, PROFSYM, both over instructions 6e9-8.5e9 of LA; per post
+  normalised by a4_cvt565_run, the same each frame; model ms at 330 MHz): **gone with the batch** lean_tail_cv -2.40
+  (5.76 -> 3.35, every class), lean_tail -1.42, engi_349B0 (the table's insert) -0.76, the face draw and its
+  projections (+34798, +51F08, +51E44, +31246) -0.92, draw_prim_take -0.40; **added** a4_shadow_insert +2.06, shb_draw
+  +0.75. Net about -3.3 on the shadow's path. The insert is the surprise: 18.1e9 (cycles x 100) against a4_mesh_insert's
+  4.9e9 for the list's ~2,400 faces a render -- ~29x the list's cost a face if it saw only the 306 faces drawn. Its hot
+  blocks are the face's first loads, the context's and the group's box (each ~250-330 cycles, i.e. read misses at 85).
+  So either +2732E runs for more faces than are drawn (other cars' shadows, inserted and never shown), or the misses
+  are real. shcnt84 (r84a + A4_SHADCOUNT: calls, not shadow faces, corners near/out of range, nearer than ZK) running.
+- shcnt84 (r84a + A4_SHADCOUNT, LA to 120 s; framestat 1,508, the boot fault only): **calls 202,572, every one a
+  shadow face kept** (none of another class, none near or out of range, none nearer than ZK). So +2732E runs for the
+  drawn faces only and the insert's cost is its own: read in pw84a's blocks, it is spread -- the face's first loads,
+  the context's two pointers, the projection, clip_beyond_v's four 64-bit products on most corners (~10%: the shadow's
+  corners are mostly nearer than 1.06 F), the bucket search when the last bucket is not the face's (~5%). shb_draw's:
+  the records read back (46%, each a line not yet in the cache) and shb_cand's scan of all 208 items per bucket (32%).
+- r84b: three trims, each exact -- shb_cand's items found once a frame (against the deepest bucket and the union of
+  every face's box) and each bucket's filtered from those; clip_beyond_v skipped where the projection cannot wrap
+  (|x|, |y| < -z and F < 30,000: the offset is then under F px; the band test on the projected point already decided,
+  as lean_tail's own giant test does); the bucket found through a 64-entry map by b & 63. shck84b (its check) and
+  la84b (timing) running.
