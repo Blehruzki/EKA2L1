@@ -12874,3 +12874,36 @@ c. Not entered: cars handed back (0 in all three runs: a car's box never reached
   narrows it -- after d < 2 F (or a view coordinate past int16), |F x'| or |F y'| >= 32,000 d (two products), so only a
   corner whose projection can reach the int16 edge is projected again (the game's table runs up to 0.34% high: its
   product overflows from ~32,650, its word read as int16 from ~32,500; 32,000 leaves 1.5%). [39] then counts only those.
+- Battery on r82g (C82, from f5381f4; sha256 1ed9c80aca9aa978205dc5c53023f52e6b50210f3ba2b650167e4c4ce570a45d, 985,184
+  bytes). m82g (Instant Play, night Paris; framestat 1,993, the boot fault only -- the "Killed" in the battery log is
+  hcm.sh's own pkill at the run's end, the job still its child): 7 marks, clean (the car again held behind the white
+  car); 137 cut into 233 pieces; 111 faces, 425 objects handed back; **0 corners projected again** (none reached the
+  narrowed trigger). la82g (LA, "main menu after 5 looks"; framestat 2,312, the boot fault only): 8 marks, clean -- a
+  crash ("TOO CLOSE...", the crash camera) and the respawn, downtown, the hills; 21 cut, 503 faces and 269 objects
+  handed back; 0 projected again. b82g running.
+- b82g (b78a's run; framestat 2,951, the boot fault only): **64 wrapped corners undone** of 74 projected again (the
+  narrowed trigger: 74 against b82f's 2,287,718), 0 refused; the farthest corner 54,544 px; 1,076 cut into 545 pieces;
+  400 faces and 275 objects handed back. 56.9 ms a render (3D 20.9, composite 10.0), as b82f's 56.9: the ~950
+  re-projections a render were not a cost. Over r82d -> e -> f -> g the race: 55.0, 55.7, 56.9, 56.9; segments 0-39
+  slower than b82d's in every run since r82e (41-46 against 38-40), the later ones mixed (60-79 56-62 against 60). The
+  paths differ run to run (0-19: 552, 710, 440, 381 renders) and the hand-back is ~0.3 a render at ~0.13 ms by round 62's
+  measure, so no cause is shown; open -- a same-run A/B of the hand-back (bench flag by frame windows, FRC1's gaps by
+  window parity) would settle it. Not a repeat of b82e / b82f (narrowed trigger).
+
+Rule 4, before r82g goes out (r82d's and r82e's a-c stand; added):
+a. Guesses: (1) **that the phone's long gaps are wrapped corners** -- for it: the gaps border this cut's own pieces, most
+   cut triangles left nothing (6,491 -> 774), corners at the int16 limit, the game's projection wraps by construction
+   and b78a's wall makes 53-64 wraps on the bench; not shown: a wrap on the phone at a gap. If the lines stay, the
+   automatic marks now carry CUT1 (the frame's cut triangles, raw) and CRK1 [35] says whether any wrap was undone.
+   (2) That MESH->F is the stream's F: checked -- 5.0 million corners projected again (r82f's broad trigger, three runs),
+   0 refused. (3) That the game's projection is mesh_scr_i's: the same check. (4) The 32,000 trigger: 1.5% inside the
+   overflow, from the table's measured 0.34% (cliptest, RT2 = floor(2^22/z)).
+b. Read back: clip_proj64 against mesh_scr_i line by line (pre-shift ranges, lz, the two end values at gctx + 0x4010C /
+   0x40108, the 32-bit r * F >> 6, the shift of x kept 32-bit as the game's); clip_agrees' modulo-65,536 difference; the
+   clamp's bound against clip_cut's int32 differences (2^29 + 2^29 < 2^31); q carried (set in clip_tri, written by
+   clip_cut, never read by lean_conv); the trigger's products (F < 2^14, |v| < 2^31, 32,000 d < 2^46); mesh_take's
+   and gitem_box's exact tests (clip_beyond_v's four comparisons: sy = cy - F y / d inverts y's); the CUT1 ring (16 x 24
+   words at 0x5C0900, under 0x5C1000; a4_tel.c 1,544 bytes after CRK1's 192); frec3's 48-word and CUT1 decoding.
+c. Not entered: a wrap in LA or Paris (0 in both: only b78a's wall); a refused corner (0 everywhere: the "word as
+   read" fallback never ran); a wrapped corner of a list face or a GPU item (the exact tests fired 0 times); the hand-
+   back's cost question above; the MBX's tile loss (still unaddressed).

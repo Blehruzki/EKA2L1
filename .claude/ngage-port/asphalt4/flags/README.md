@@ -42,4 +42,7 @@ C82.flags = C80.flags with `-DA4_CLIPG` (round 82: the game's triangles with a c
 that band on the CPU, perspective-correct -- renderer/a4_clip.h, tools/cliptest.c). The r82 candidate (also: 3-6-row gaps
 recorded, automatic marks in a race) was r82d, sha256 b20c7d9b75a4cadc767d6094ee06916023264c131ea22620cc95e286b37f683d, 982,020 bytes;
 now r82e (same flags; the list's faces, the GPU's objects and cars that would reach beyond the band handed back to the game, CRK1
-40 words) sha256 f41865b5085e720d9236791e33371cc40c23892f3381b4f9d04004757f40809c, 982,724 bytes. Bench only: `-DA4_LINETEST3`, `-DA4_LINEFILLVIS`.
+40 words) sha256 f41865b5085e720d9236791e33371cc40c23892f3381b4f9d04004757f40809c, 982,724 bytes; now r82g (same flags; the game's
+projection wrap undone before the cut, the exact band tests, q carried by the clipper, CRK1 48 words and the CUT1 ring)
+sha256 1ed9c80aca9aa978205dc5c53023f52e6b50210f3ba2b650167e4c4ce570a45d, 985,184 bytes. Bench only: `-DA4_LINETEST3`,
+`-DA4_LINEFILLVIS`, `-DA4_WRAPPROBE` (CRK1 [40-44]).
