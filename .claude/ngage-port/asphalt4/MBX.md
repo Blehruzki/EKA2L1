@@ -13235,3 +13235,6 @@ c. State the bench did not enter: more than 512 shadow faces or 64 buckets in a 
    trigger (after the composite) or a second 3D target (the bucket's other faces lost: counted in [51]); other cars'
    shadows near the camera (none in LA; any +2732E face is handled alike); the bumper camera (a shadow nearer than ZK
    goes to the table); A/B mode windows (none in this build).
+- **r84b sent to the owner (unbaked, 67b12d53; the owner bakes).** On the phone, read: the 3D phase and the render
+  time against r82g's (LA ~55 ms a render, 3D ~25), CRK1 [50] faces batched and [51] buckets lost (expect 0), the
+  composite (step 1's mask skip), and the shadow by eye (whole, not doubled, not through the road or the car).
