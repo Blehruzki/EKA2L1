@@ -472,12 +472,19 @@ void a4_idle_start(void)
 #define AB_MSKIP 2097152u /* round 83: bit 21, a fully drawn row's drawn-mask pass skipped (A4_LINEFILL; A4_ABCYCLE17 steps it) */
 #ifdef A4_ABCYCLE17
 #define MSKIP_ON(mode) (((mode) & AB_MSKIP) != 0u)
+#elif defined(A4_MSKIP_ALT)
+/* bench (round 83): the skip on odd frames only -- neighbouring frames show nearly the same scene, so the composite's
+ * time on odd and even frames (CRK1 [40]/[41] ticks less the readback's, [42]/[43] frames) is the skip's saving */
+#define MSKIP_ON(mode) ((((const volatile struct glr *)A4_GL_SCRATCH)->frames & 1u) != 0u)
 #else
 #define MSKIP_ON(mode) 1
 #endif
 #define AB_RBVAR 262144u  /* rounds 55-56: bits 18-19, route B's probe variant (A4_RBPROBE; stepped by A4_ABCYCLE15): 0 the
                            * runtime presents, 1 the frame through an EGL window surface on the runtime's window, 2 as 1
                            * at swap interval 0, 3 the runtime with its posts of an unchanged frame skipped */
+#if defined(A4_MSKIP_ALT) && (defined(A4_ABCYCLE17) || defined(A4_WRAPPROBE) || !defined(A4_LINEFILL))
+#error "A4_MSKIP_ALT alternates the mask skip by frame (CRK1 [40..43]: not with A4_ABCYCLE17 or A4_WRAPPROBE's [40..44])"
+#endif
 #if defined(A4_ABCYCLE17) && (!defined(A4_LINEFILL) || !defined(A4_TEL) || !(A4_ABMODE + 0) || defined(A4_ABCYCLE16) || defined(A4_ABCYCLE15) || defined(A4_ABCYCLE14) || defined(A4_ABCYCLE13) || defined(A4_ABCYCLE12) || defined(A4_ABCYCLE11))
 #error "A4_ABCYCLE17 alternates A4_LINEFILL's mask skip (AB_MSKIP) over the build's A4_ABMODE (alone)"
 #endif
@@ -10231,7 +10238,16 @@ void a4_gl_flush(void)
         if (F[0] == 0x31435246u && F[1]) F[4u + ((F[1] - 1u) % FREC_N) * 8u + 6u] = s->miny | rc_miny << 16;
     }
 #endif
-    { uint32_t t0 = a4_ntick(); composite_rows(s, s->miny, s->maxy); A4_PERF[PF_COMP] += a4_ntick() - t0; }
+    { uint32_t t0 = a4_ntick();
+#ifdef A4_MSKIP_ALT
+      const uint32_t r0_ = A4_PERF[PF_READ], odd_ = s->frames & 1u;
+#endif
+      composite_rows(s, s->miny, s->maxy); A4_PERF[PF_COMP] += a4_ntick() - t0;
+#ifdef A4_MSKIP_ALT
+      {   volatile uint32_t *C = crk_get();
+          C[40u + odd_] += (a4_ntick() - t0) - (A4_PERF[PF_READ] - r0_); C[42u + odd_]++; }
+#endif
+    }
 #endif
 #if defined(A4_RUNDIAG) || defined(A4_TEL)
     {   /* 0x412000: [0] frames [1] draw calls [2] triangles [3] max calls in a frame

@@ -12990,3 +12990,11 @@ cuts make and 11 of 21 wraps did; the mechanism itself is shown on the bench (tr
   985,184). Bench: A4_ABCYCLE17 ('AG33': AB_MSKIP, bit 21, on and off by window; r51sum's slots "mask always" / "mask
   skip") and A4_MASKCHECK (CRK1 [45] skipped rows whose mask was not all ones, [46] rows skipped, [47] rows the routine
   called all drawn wrongly -- both must stay 0). Running: b83ab (r83ab = C83 + both, 984,012), then m83a / la83a / b83a.
+- b83ab (r83ab, b78a's run; framestat 2,827, the boot fault only): **A4_MASKCHECK: 167,832 rows skipped, 0 with an
+  undrawn pixel, 0 rows the routine called all drawn wrongly** -- the skip is exact (and ~59% of composited rows take
+  it). The fill still works: 126,399 rows / 276,215 pixels filled. The timing by window: the composite's loop (comp
+  less read) 5.8 ms "mask always" against 6.2 "mask skip" over 4 windows each -- no difference to see: window to window
+  the loop runs 4.2-7.3 ms with the scene, which buries a saving of ~0.4 ms. (The slots' aggregates, 74.2 / 49.5 ms a
+  render, carry the menus' window in slot 0.) Next: A4_MSKIP_ALT (bench), the skip on odd frames only, the composite
+  less its readback summed by frame parity in CRK1 [40]/[41] (ticks), [42]/[43] (frames) -- neighbouring frames, the
+  same scene. r83a is byte-identical with the bench flags off (457c20ab both builds).

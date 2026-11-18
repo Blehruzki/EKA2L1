@@ -200,6 +200,8 @@ if mode == 'lines':
             print('  wrapped corners (the game projection past int16, undone): %d; projected again %d; refused (word disagreed) %d; handed back by the exact test alone: faces %d, items %d' % (c[35], c[39], c[36], c[37], c[38]))
             if len(c) >= 52:
                 print('  filled (from the boot): %d rows, %d pixels%s' % (c[48], c[49], ('; mask check (bench): %d rows skipped, %d not all drawn, %d said drawn wrongly' % (c[46], c[45], c[47])) if c[46] or c[45] or c[47] else ''))
+            if (c[42] or c[43]) and not c[44]:
+                print('  mask skip by frame (bench): composite less readback %.3f ms a frame with the skip (%d frames), %.3f without (%d)' % (c[41] / max(c[43], 1), c[43], c[40] / max(c[42], 1), c[42]))
             if c[44]:
                 print('  wrap probe (bench): corners past int16 %d; of %d compared, %d off the view projection by > 2 px (%d inside int16); largest |projection| %d' % (c[40], c[44], c[41], c[42], c[43]))
     if mode == 'lines':   # round 82f: 'CUT1', the last 16 triangles cut, from every file
