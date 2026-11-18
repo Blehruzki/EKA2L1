@@ -12947,3 +12947,33 @@ cuts make and 11 of 21 wraps did; the mechanism itself is shown on the bench (tr
 - **r82g sent to the owner (unbaked), 2026-11-18**: a4_r82_cand.exe = r82g, sha256
   1ed9c80aca9aa978205dc5c53023f52e6b50210f3ba2b650167e4c4ce570a45d, 985,184 bytes. Awaiting phone round 82g: whether the
   lines go; CRK1 [35] (wraps undone) and [36] (refused) at every capture; CUT1's raw corners at any automatic mark.
+
+## Phone round 82g (r82g 1ed9c80a, baked by the owner): LA, ~5 races -- "never got a gray line so I guess it's fixed"
+
+- Files (up82g/): 8 rings (captures 41-48, the session's last ~110 s) and mark 0 (automatic, ~10 min earlier). CRK1
+  from the boot: **968 wrapped corners undone, 985 projected again, 0 refused; the farthest true corner 242,790 px**;
+  15,356 cut into 1,480 pieces; 2,777 faces and 1,741 objects handed back, no car, none by the exact tests alone.
+  Round 82's last guess settled: the game's projection wraps on the owner's route, often, and with the wraps undone the
+  lines are gone. Cracks: 357 one-row and 31 two-row runs (filled), 92 thick-gap runs (1 of 64+); the longest run 227
+  px at row 35 (frame 19,262) fell outside every capture; the recorded ones: a filled 66 px crack (row 112) and a 57 px
+  gap at row 7 with nothing near it (the sky). No full-width sliver in any record.
+- **The helicopter (owner):** "it only happens if the helicopter spawns close to a curve side and that curve side is
+  the inner one ... as if it was getting pressed against it and blasted forward". Noted beside rounds 70b / 78b; not
+  pursued now.
+- **The owner: the frame rate "has regressed ever since a few rounds back".** All rounds 77-82g LA (FRC1 segments
+  0-125, the same coordinates; r82e and r82g are LA too). Race aggregates (r51sum / aggcmp, ms a render):
+  | round | total | 3D | hook | comp | read | 2D | pres | tris |
+  | r77   | 52.5  | 22.9 | 13.5 | 9.6 | 6.5 | 3.1 | 2.3 | 594 |
+  | r79   | 61.1  | 26.3 | 16.0 | 10.1 | 6.9 | 3.2 | 2.5 | 627 |
+  | r80   | 55.6  | 24.8 | 14.4 | 10.2 | 7.0 | 3.1 | 1.5 | 627 |
+  | r81   | 56.9  | 25.7 | 15.7 | 11.0 | 6.9 | 2.9 | 1.6 | 642 |
+  | r81b  | 66.8  | 26.5 | 15.4 | 11.2 | 7.0 | 3.2 | 2.9 | 644 |
+  | r82e  | 58.8  | 26.8 | 16.1 | 11.2 | 6.9 | 3.1 | 1.9 | 644 |
+  | r82g  | 58.3  | 25.0 | 15.3 | 11.3 | 7.0 | 3.2 | 2.5 | 643 |
+  Median render gap by 25-segment bin (segcmp): r80 47 / 52 / 59 / 55 / 44 ms, r81 50 / 59 / 61 / 61 / 52, r81b 51 /
+  62 / 60 / 59 / 52, r82e 51 / 55 / 62 / 61 / 69, r82g 48 / 56 / 57 / 61 / 52 (r77 41 / 49 / 54 / 58). The same build
+  twice (r81, r81b) agrees within ~3 ms a bin and differs by 10 ms in the total (r81b: 7 presents a render) -- so the
+  totals carry several ms of round noise. What moved steadily since r80: **the composite's loop, 3.2 -> 4.1 (r81) ->
+  4.3 ms (r82g)** -- the 8-row drawn-mask ring, the two-row fill, the crack recorder and round 82's 3-6-row gap test
+  (read flat at ~7.0). Since r77: 3D +2.1 (the cover redraw from r78, ~1.5 on the phone; 8% more triangles a render),
+  the composite +1.7, present and the rest ~+1.9. The phone is at ~17 fps in LA (58 ms); 30 fps is 33 ms.
