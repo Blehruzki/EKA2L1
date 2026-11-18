@@ -9570,6 +9570,25 @@ static void crk_run(volatile struct glr *s, const uint8_t *lc_u, int row, int32_
 #endif
 }
 #endif
+#ifdef A4_MSKIP_PROF
+#if !defined(A4_MSKIP_ALT) || !defined(A4_LINEFILL)
+#error "A4_MSKIP_PROF splits A4_MSKIP_ALT's mask pass by frame parity (A4_LINEFILL)"
+#endif
+#define MASK_ROW_BODY \
+    static const uint8_t pc4[16] = { 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4 }; \
+    uint32_t d = 0; \
+    for (uint32_t w = 0; w < VP_W / 32; w++) { \
+        uint32_t b = 0; \
+        for (uint32_t q = 0; q < 32; q += 4, p += 4) { \
+            const uint32_t t = (p[0] >> 31) | (p[1] >> 31) << 1 | (p[2] >> 31) << 2 | (p[3] >> 31) << 3; \
+            b |= t << q; d += pc4[t]; \
+        } \
+        m[w] = b; \
+    } \
+    return d;
+__attribute__((noinline)) static uint32_t mask_row_odd(const uint32_t *p, uint32_t *m) { MASK_ROW_BODY }
+__attribute__((noinline)) static uint32_t mask_row_even(const uint32_t *p, uint32_t *m) { MASK_ROW_BODY }
+#endif
 #ifdef A4_PROFSYM
 __attribute__((noinline))   /* bench (round 83): its own symbol in a cycle profile */
 #endif
@@ -9766,6 +9785,11 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                         }
 #endif
                     } else {
+#ifdef A4_MSKIP_PROF
+                        /* bench (round 83): the same pass in one of two identical copies by frame parity -- the cycle
+                         * profile credits each its own, on alternate frames of one run */
+                        const uint32_t d = (s->frames & 1u) ? mask_row_odd(src, CMR(0)) : mask_row_even(src, CMR(0));
+#else
                         static const uint8_t pc4[16] = { 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4 };
                         const uint32_t *p = src;
                         uint32_t d = 0;
@@ -9777,6 +9801,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                             }
                             CMR(0)[w] = b;
                         }
+#endif
                         dcount = d;
 #ifdef A4_MASKCHECK
                         if (!undrawn && d != VP_W) crk_get()[47]++;   /* bench: the routine said all drawn and was wrong */

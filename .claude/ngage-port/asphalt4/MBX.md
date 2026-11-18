@@ -13024,3 +13024,9 @@ cuts make and 11 of 21 wraps did; the mechanism itself is shown on the bench (tr
   b78a's run) of r83 with the skip and with -DA4_MSKIP_NEVER (the pass on every row, round 82's), both with -DA4_PROFSYM
   (composite_rows kept out of line for its own symbol; bench only): composite_rows's cycles against a4_comp_row's
   (the same rows' work in both) -- the path cancels. Running: pf83skip, pf83never.
+- pf83skip / pf83never (cycle profiles, 1.5 G instructions after 6 G, b78a's run): composite_rows 5.36% / 5.33% of the
+  modelled cycles; a4_comp_row 11.22% / 6.95% (the paths again unequal -- more undrawn rows in pf83skip's). The heaviest
+  block of composite_rows, the mask loop, ~1.7 ms a render without the skip, ~1.1 with it -- across unequal paths, no
+  verdict. **Same frames, separate counts: A4_MSKIP_PROF (bench)** -- the mask pass in two identical out-of-line copies,
+  mask_row_odd (A4_MSKIP_ALT's skip frames: only rows the routine saw undrawn) and mask_row_even (every row), credited
+  apart by the profile on alternate frames of one run. Running: pf83par.
