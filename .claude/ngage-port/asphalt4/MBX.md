@@ -13030,3 +13030,28 @@ cuts make and 11 of 21 wraps did; the mechanism itself is shown on the bench (tr
   verdict. **Same frames, separate counts: A4_MSKIP_PROF (bench)** -- the mask pass in two identical out-of-line copies,
   mask_row_odd (A4_MSKIP_ALT's skip frames: only rows the routine saw undrawn) and mask_row_even (every row), credited
   apart by the profile on alternate frames of one run. Running: pf83par.
+- **pf83par (r83 + A4_MSKIP_ALT + A4_MSKIP_PROF + A4_PROFSYM, cycle profile, b78a's run, 1.5 G instructions after 6
+  G): the mask pass on every row (mask_row_even, even frames) 60.1 M modelled cycles; with the skip (mask_row_odd, odd
+  frames, only rows the routine saw undrawn) 27.9 M -- 54% less, on alternate frames of the same scenes.** The window
+  is ~3.30 G cycles (~10 s at 330 MHz, ~180 renders): **~2.0 ms a frame without the skip, ~0.93 with -- the skip saves
+  ~1.1 ms a frame on the N95 model**, the size of the phone's composite rise since r80 (its loop 3.2 -> 4.3 ms). Not a
+  repeat of b83alt2 / b83alt3 (the same parity split timed by 1 ms ticks: inconclusive) or pf83skip / pf83never (two
+  runs, two paths).
+
+Rule 4, before r83a goes out:
+a. Guesses: (1) that the phone gains what the model shows (~1.1 ms a frame from the skip, ~0.1-0.2 from the line
+   records' per-triangle copies) -- the phone's composite rose by about that from r80 to r82g, which is the check; the
+   next round's comp figure (r82g 11.3) settles it. (2) That nothing the owner sees depends on what goes: the line records
+   (LIN1) and the every-frame line counter were instruments; the fill stays, every frame, with the same masks (the
+   skip proven exact: 344,074 skipped rows over b83ab and b83alt, 0 not all drawn). (3) The automatic marks (A4_AUTOMARK)
+   off: the C key's marks stay.
+b. Read back: a4_px.s (the ORR only on the halfword path; lr's bit 31 outside every AND it meets -- (x >> 3) has bits
+   29-31 clear; MOV r0 before the POP on the one exit; the _pld copy the same); the composite's row (the routine first --
+   it reads src only, the mask pass reads src only, so the order changes nothing; ch turned once a row as before; cmn
+   counted every composited row now, and the fill's `cmn >= 3` gate as before); MSKIP_ON 1 in the phone build;
+   crk_run without A4_LINEREC (counts, no LIN1); the fill's totals to CRK1 [48]/[49]; a4_tel.c's CRK1 block 256 bytes
+   (to 0x5C0900) and CUT1 after it; frec3's 52-word read. The bench flags (ABCYCLE17, MASKCHECK, MSKIP_ALT/PROF/NEVER,
+   PROFSYM) leave the candidate's bytes alone: r83a built three times, 457c20ab each.
+c. Not entered: the line counter's every-16th-frame path on the phone (FRC1's line hits only on those frames now --
+   an instrument, not a picture); a row the routine calls undrawn but whose undrawn pixels are all in groups it never
+   sees (impossible: every group of every composited row goes through it).

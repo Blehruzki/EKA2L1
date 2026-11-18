@@ -46,3 +46,9 @@ now r82e (same flags; the list's faces, the GPU's objects and cars that would re
 projection wrap undone before the cut, the exact band tests, q carried by the clipper, CRK1 48 words and the CUT1 ring)
 sha256 1ed9c80aca9aa978205dc5c53023f52e6b50210f3ba2b650167e4c4ce570a45d, 985,184 bytes. Bench only: `-DA4_LINETEST3`,
 `-DA4_LINEFILLVIS`, `-DA4_WRAPPROBE` (CRK1 [40-44]).
+
+C83.flags = C82.flags without `-DA4_LINEALL` and `-DA4_LINEREC` (round 83: the line counter back to every 16th frame,
+no line records -- lte_take's per-triangle copies and LIN1 gone; the crack fill stays, every frame, and skips the
+drawn-mask pass on rows the ARMv6 composite saw fully drawn). r83a: sha256 457c20abeb530d2d..., 983,292 bytes. Bench
+only: `-DA4_AUTOMARK` (the automatic marks at a 64 px gap), `-DA4_ABCYCLE17` (the skip by window), `-DA4_MASKCHECK`,
+`-DA4_MSKIP_ALT` / `-DMSKIP_PAR`, `-DA4_MSKIP_NEVER`, `-DA4_MSKIP_PROF`, `-DA4_PROFSYM`.
