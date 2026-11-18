@@ -12907,3 +12907,40 @@ b. Read back: clip_proj64 against mesh_scr_i line by line (pre-shift ranges, lz,
 c. Not entered: a wrap in LA or Paris (0 in both: only b78a's wall); a refused corner (0 everywhere: the "word as
    read" fallback never ran); a wrapped corner of a list face or a GPU item (the exact tests fired 0 times); the hand-
    back's cost question above; the MBX's tile loss (still unaddressed).
+- **The owner: "Likely? did you check this thoroughly?"** No. Shown: the game's projection wraps (by construction;
+  53-64 on b78a's wall); the phone's gaps border this cut's pieces; around the 291 px gap 3,290 cuts gave 48 pieces (mark0
+  -> mark1, ~2.5 s). Not shown: a wrap on the phone; that a wrap makes a gap at all (what a wrapped triangle draws was
+  never looked at). A competing reading not ruled out: real off-screen triangles the game did not cull (all three
+  corners off-screen past different planes) -- they cut to nothing and leave no gap. The decisive bench step for the
+  mechanism: r82wr (r82g + -DA4_WRAPREC, bench: CUT1 keeps only triangles with a wrapped corner undone, 985,208 bytes)
+  on b78a's run, and tools82/wrapcov.py (scratchpad) rasterising each such triangle at 320 x 240 from the true positions
+  and from the int16 words r82e drew, counting the pixels each covers that the other does not. Its own check: on 182
+  ordinary cut triangles (b82g, m82g, la82g) both agree exactly (0 missed, 0 wrong); 22 of the 182 cut to nothing
+  legitimately -- the competing reading's triangles exist.
+- r82wr (b78a's run; framestat 3,041, the boot fault only; a first try ran with no display -- Xvfb had died, framestat
+  0 -- and was rerun): 53 wrapped corners undone, 0 refused, 1,050 cut. **tools/r82/wrapcov.py on its 21 distinct
+  wrapped triangles: every one is entirely off-screen in truth (corners x 6,400 to 46,690 px) -- r82g draws 0 px of them
+  -- and r82e and every earlier build drew them as lines across the screen: 1, 2 or 4 rows x 320 px, 5,760 wrong
+  pixels in all, textured, at mid depth (zw 285-610: behind nearer geometry and the car).** Shape: two corners close
+  together ~7,000-11,000 px right, the third the nearest and past +32,767, read as -18,000 to -31,700 (e.g. words
+  (10742,12) (-25547,13) (10356,17), true (10742,12) (39989,13) (10356,17)). None of the 21 cut to nothing: the phone's
+  burst of empty cuts (3,290 -> 48 pieces) is not this -- real off-screen triangles (22 of 182 ordinary cuts on the bench
+  are empty), harmless; that "evidence" is withdrawn.
+- **tools/r82/sliver.py: of 338 ordinary (unwrapped) cut triangles over b82f, b82g, m82f, m82g, la82f, la82g and b82wr,
+  0 draw a full-width sliver (300+ px of a row, at most 8 rows); of the 21 wrapped, 11 did as r82e drew them, 0 as r82g
+  draws them.** On the phone (r82e's LIN1, 153 distinct stream triangles recorded): **18 full-band-width slivers**
+  (corners at -1024 and 1344, at most 8 rows), all tex 40000065, at exactly the records of the long gaps (frames 3048,
+  3126 -- the 291 px --, 5973, 5985 -- 176 px --, 8862). And round 81b's recorded sliver, (-22181, 83, w 1104) (10558,
+  88, 1404) (10473, 87, 1416), has the bench's wrapped shape: two corners together near 10,500, the third the nearest,
+  -22,181 = 43,355 - 65,536 (its offset 43,195 past the 32,607 limit).
+- **Corrections.** (1) The lines are not missing geometry and not the MBX clipping in fixed point (round 82's reading):
+  they are triangles that belong off-screen, drawn across it because the game's projection wrapped one corner. The cut
+  (r82-r82e) trimmed them faithfully and left them on screen. (2) The recorder's "gaps" at those records are the sky
+  between such a sliver and the real geometry -- undrawn rows made to look like a gap by the wrong sliver above or
+  below them. (3) The empty cuts were never evidence for this.
+- Still not shown: a wrap on the phone itself (r82e recorded no view coordinates). r82g's CUT1 and CRK1 [35] will: the
+  wraps undone counted, and the automatic marks carry the raw corners. r82g rebuilt from this source (A4_WRAPREC off)
+  is byte-identical: sha256 1ed9c80a... -- its battery stands.
+
+Rule 4 for r82g, a1 restated: the guess is now only that the phone's slivers are wraps -- the shape 0 of 338 ordinary
+cuts make and 11 of 21 wraps did; the mechanism itself is shown on the bench (true coverage 0, drawn 5,760 px).

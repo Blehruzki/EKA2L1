@@ -5029,6 +5029,9 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
                                    (VP_H + CLIPG) * (1 << CLIP_FB), o);
             volatile uint32_t *C = crk_get();
             C[29]++; if (n >= 3) C[30] += (uint32_t)(n - 2); if ((uint32_t)far > C[31]) C[31] = (uint32_t)far;
+#ifdef A4_WRAPREC
+            if (wrp)   /* bench: only the triangles with a wrapped corner undone -- what the offline check rasterises */
+#endif
             {   /* 'CUT1': this cut's raw corners, the last CUT_N kept -- a mark at a gap shows what was cut in its frame */
                 volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;
                 if (U[0] != 0x31545543u) { U[1] = 0; U[0] = 0x31545543u; }
