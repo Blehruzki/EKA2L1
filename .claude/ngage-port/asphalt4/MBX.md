@@ -13206,3 +13206,32 @@ c. Not entered: the line counter's every-16th-frame path on the phone (FRC1's li
   (|x|, |y| < -z and F < 30,000: the offset is then under F px; the band test on the projected point already decided,
   as lean_tail's own giant test does); the bucket found through a 64-entry map by b & 63. shck84b (its check) and
   la84b (timing) running.
+- shck84b (r84b + A4_SHADCHECK, LA to 150 s; framestat 1,654, the boot fault only): faces found 272,952, not found 0;
+  corners differing 0; buckets differing 0; pending items differing 0 of 236,962 faces with any; item tests 292,872
+  against 14,952,384. (shck84's 1,761 "not found" did not recur, and shcnt84 saw no refusal: that run's own.)
+- **la84b (r84b candidate = C83 + A4_SHADBATCH, 67b12d53, rebuilt from 72b4bb6 to the same bytes; LA, marks every 30 s;
+  framestat 2,276, the boot fault only): the median render gap by 25-segment bin 40 / 46 / 44 / 37 ms against la83a's
+  42 / 47 / 47 / 41 and the ceiling's 36 / 42 / 44 / 36 -- ~2.5 ms a render back, about half the shadow's ~5 ms.**
+  Faces batched 419,220, buckets lost 0, no triangle cut; cracks as la83a's. Not a repeat of la84a (r84a: no trims;
+  41 / 46 / 46 / 38). What is left of the shadow: the insert's first touch of each face (the misses the table's insert
+  had), lean_tail_cv per face (the cover rule's tile walk, the batch slot), the records read back, and the car's
+  redraws the shadow pends -- per face, by design (each face keeps its own cover result).
+
+Rule 4, before r84b goes out (r84b = C83, r83a's flags, + A4_SHADBATCH: step 1's mask skip and step 2's shadow batch):
+a. The guesses. (1) That the phone gains what the bench does, ~2.5 ms a render: the model's misses (85 cycles) and CPI
+   are not the N95's; only the phone's 3D phase (a4tel) can say. (2) That nothing advances s->frames between the
+   shadow's insert and its draw on the phone (if it did, a bucket's faces but its trigger would be lost that frame):
+   0 lost on the bench in 419k faces; CRK1 [51] counts it on the phone. (3) That the scratch at 0x5BA000 may hold
+   anything at boot: guarded (SHB's magic before use; cvr_add's flag needs the magic and is cleared at each frame's
+   first triangle). (4) That a face is never drawn twice in a frame: a second insert into a drawn bucket goes to the
+   table. (5) That the order in a bucket is the table's: exact unless a face of a kept bucket is refused (0 on the
+   bench: shcnt84, shck84b).
+b. Read back: the whole renderer diff after writing it (shb_cand, shb_cvr_add, cvr_add's branch, shb_take,
+   a4_shadow_insert, shb_draw, shb_check, the draw_prim_take hook, the first-triangle reset) and again for the trims
+   (where a meaningless leftover in the band test was found and removed before any build); the compiled insert in
+   full against its profile (shins.dis); the injector's hook: its displaced halfwords asserted (f00d fad5, `bl +349B0`)
+   and its BLX self-checked by capstone at each build.
+c. State the bench did not enter: more than 512 shadow faces or 64 buckets in a frame (they go to the table); a late
+   trigger (after the composite) or a second 3D target (the bucket's other faces lost: counted in [51]); other cars'
+   shadows near the camera (none in LA; any +2732E face is handled alike); the bumper camera (a shadow nearer than ZK
+   goes to the table); A/B mode windows (none in this build).
