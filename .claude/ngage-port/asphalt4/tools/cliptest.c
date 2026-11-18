@@ -97,15 +97,79 @@ static int check(const struct clipv *t, const struct clipv *o, int n, int32_t x0
 }
 
 static void mk(struct clipv *t, int mode)
-{
+{   /* mode 2 (round 82f): corners unwrapped by clip_proj64 -- to +-4 million px, w from 64 */
+    const double big = mode == 2 ? 4.0e6 : 32000;
     for (int i = 0; i < 3; i++) {
         int giant = rand() % 2;
-        t[i].x = (int32_t)((giant ? rnd(-32000, 32000) : rnd(-100, 420)) * (1 << CLIP_FB));
-        t[i].y = (int32_t)((giant && mode && rand() % 3 == 0 ? rnd(-32000, 32000) : rnd(-60, 300)) * (1 << CLIP_FB));
-        t[i].z = (int32_t)rnd(200, 30000);
+        t[i].x = (int32_t)((giant ? rnd(-big, big) : rnd(-100, 420)) * (1 << CLIP_FB));
+        t[i].y = (int32_t)((giant && mode && rand() % 3 == 0 ? rnd(-big, big) : rnd(-60, 300)) * (1 << CLIP_FB));
+        t[i].z = (int32_t)rnd(mode == 2 ? 64 : 200, 30000);
         t[i].u = (int32_t)rnd(-200000, 200000);
         t[i].v = (int32_t)rnd(-200000, 200000);
     }
+}
+
+/* round 82f: the game's projection as it runs (32-bit products, MBX.md map 2) -- its screen word */
+static int32_t rt2[0x8020];
+static int32_t game_word(int32_t F, int32_t c, int sign, int32_t v, int32_t z)
+{
+    const int m = z > -64 ? 7 : z > -128 ? 6 : z > -256 ? 5 : z > -512 ? 4 : 0;
+    const int32_t lz = m ? (int32_t)((uint32_t)(-z) << m) : (int32_t)((uint32_t)(-z) & 0x7FFFu);
+    int32_t r = rt2[lz];
+    r = (int32_t)((uint32_t)r * (uint32_t)F) >> 6;
+    const int32_t vv = (int32_t)((uint32_t)v << m);
+    const int32_t q = (int32_t)((uint32_t)vv * (uint32_t)r + 0x8000u) >> 16;
+    return sign > 0 ? c + q : c - q;
+}
+static int32_t game_true(int32_t F, int32_t c, int sign, int32_t v, int32_t z)   /* the same with no wrap */
+{
+    const int m = z > -64 ? 7 : z > -128 ? 6 : z > -256 ? 5 : z > -512 ? 4 : 0;
+    const int32_t lz = m ? (int32_t)((uint32_t)(-z) << m) : (int32_t)((uint32_t)(-z) & 0x7FFFu);
+    int32_t r = rt2[lz];
+    r = (int32_t)((uint32_t)r * (uint32_t)F) >> 6;
+    const int64_t q = ((int64_t)(int32_t)((uint32_t)v << m) * r + 0x8000) >> 16;
+    return (int32_t)(sign > 0 ? c + q : c - q);
+}
+/* clip_proj64 against the game: with the frame's F it must agree with the game's word modulo 65,536 on every corner
+ * (clip_agrees) and give the unwrapped value to a pixel; with another F it must be refused nearly always. Mutant: the
+ * products kept in 32 bits (as the game) -- the unwrapped values must then be wrong. */
+static int projtest(void)
+{
+    for (int z = 1; z < 0x8020; z++) rt2[z] = (int32_t)((1u << 22) / (uint32_t)z);
+    rt2[0] = 0;
+    int n = 0, wrapped = 0, disagree = 0, worst = 0, wrongF = 0, wrongF_ok = 0, mut = 0;
+    double rel = 0;
+    srand(821);
+    for (int k = 0; k < 400000; k++) {
+        const int32_t F = (int32_t)rnd(180, 460), cx = 160, cy = 120;
+        const int32_t x = (int32_t)rnd(-32767, 32767), y = (int32_t)rnd(-32767, 32767);
+        const int32_t z = rand() % 4 ? -(int32_t)rnd(1, 600) : -(int32_t)rnd(1, 30000);
+        const int32_t wx = (int16_t)game_word(F, cx, 1, x, z), wy = (int16_t)game_word(F, cy, -1, y, z);
+        const int32_t gx = game_true(F, cx, 1, x, z), gy = game_true(F, cy, -1, y, z);
+        int64_t tx, ty;
+        clip_proj64(rt2, 0, 0, F, cx, cy, x, y, z, &tx, &ty);
+        n++;
+        if (gx != (int16_t)gx || gy != (int16_t)gy) wrapped++;
+        if (!clip_agrees(tx, wx) || !clip_agrees(ty, wy)) disagree++;
+        const int e = (int)(llabs((tx >> 4) - gx) > llabs((ty >> 4) - gy) ? llabs((tx >> 4) - gx) : llabs((ty >> 4) - gy));
+        if (e > worst) worst = e;
+        const double ex = cx + (double)F * x / -z;
+        if (fabs(ex - cx) > 1000) { const double r_ = fabs(tx / 16.0 - ex) / fabs(ex - cx); if (r_ > rel) rel = r_; }
+        {   /* another F (5-30% off) */
+            const int32_t F2 = F + (rand() % 2 ? 1 : -1) * (int32_t)(F * rnd(0.05, 0.3));
+            int64_t ux, uy;
+            clip_proj64(rt2, 0, 0, F2, cx, cy, x, y, z, &ux, &uy);
+            if (llabs((ux >> 4) - gx) > 2 || llabs((uy >> 4) - gy) > 2) { wrongF++; if (clip_agrees(ux, wx) && clip_agrees(uy, wy)) wrongF_ok++; }
+        }
+        {   /* mutant: 32-bit products */
+            const int64_t mx = (int16_t)game_word(F, cx, 1, x, z), my = (int16_t)game_word(F, cy, -1, y, z);   /* as read */
+            if ((gx != (int16_t)gx || gy != (int16_t)gy) && (llabs(mx - gx) > 1 || llabs(my - gy) > 1)) mut++;
+        }
+    }
+    printf("projection: %d corners (%d wrapped by the game); disagreeing with the game's word %d; worst unwrapped error %d px; "
+           "the table's own error at most %.3f%% of the offset; another F accepted %d of %d; mutant (32-bit) wrong on %d\n",
+           n, wrapped, disagree, worst, rel * 100, wrongF_ok, wrongF, mut);
+    return disagree == 0 && worst <= 1 && wrapped > 1000 && wrongF_ok * 100 < wrongF && mut == wrapped;
 }
 
 int main(void)
@@ -126,6 +190,21 @@ int main(void)
         if (!r) off++;
     }
     printf("cases %d: checked %d, nothing left %d, under a pixel tall %d; vertices off the band %d\n", n_cases, cut, empty, thin, off);
+    {   /* round 82f: corners to +-4 million px (clip_proj64's unwrapped positions) */
+        int c2 = 0, o2 = 0, t2 = 0; srand(822);
+        for (int k = 0; k < 100000; k++) {
+            struct clipv t[3], o[CLIPV_MAX];
+            mk(t, 2);
+            int n = clip_tri(t, x0, y0, x1, y1, o);
+            if (!n) continue;
+            int r = check(t, o, n, x0, y0, x1, y1, &wd, &wz, &wu);
+            if (r < 0) { t2++; continue; }
+            c2++;
+            if (!r) o2++;
+        }
+        off += o2;
+        printf("corners to +-4M px: checked %d, under a pixel tall %d; vertices off the band %d\n", c2, t2, o2);
+    }
     printf("worst: distance off the triangle %.3f px; depth and texture errors as a share of their allowance x 1e-3: %.2e, %.2e (pass < 1e-3)\n", wd, wz, wu);
     {   /* the recorded sliver (phone round 81b): (-22181, 83, 1104) (10558, 88, 1404) (10473, 87, 1416) */
         const int F = 1 << CLIP_FB;
@@ -160,7 +239,8 @@ int main(void)
     }
     printf("mutants: u/v swapped -> texture %.2e (%s); linear depth -> depth %.2e (%s)\n", mu, mu > 1e-3 ? "caught" : "NOT CAUGHT",
            mz, mz > 1e-3 ? "caught" : "NOT CAUGHT");
-    int ok = off == 0 && wd < 0.1 && wz < 1e-3 && wu < 1e-3 && mu > 1e-3 && mz > 1e-3;
+    const int pt = projtest() && clip_clamp((int64_t)1 << 40) == (int32_t)CLIP_UNWRAP_LIM && clip_clamp(-5) == -5;
+    int ok = off == 0 && wd < 0.1 && wz < 1e-3 && wu < 1e-3 && mu > 1e-3 && mz > 1e-3 && pt;
     printf("%s\n", ok ? "cliptest pass" : "cliptest FAIL");
     return ok ? 0 : 1;
 }

@@ -184,7 +184,7 @@ if mode == 'lines':
     for info, d in infos:
         i = d.rfind(b'CRK1')
         if i >= 0 and len(d) >= i + 96:
-            c = struct.unpack_from('<%dI' % (40 if len(d) >= i + 160 else 32 if len(d) >= i + 128 else 24), d, i)
+            c = struct.unpack_from('<%dI' % (48 if d[i + 192:i + 196] == b'CUT1' or len(d) >= i + 192 + 1544 else 40 if len(d) >= i + 160 else 32 if len(d) >= i + 128 else 24), d, i)
             if best is None or c[1] + c[2] > best[1] + best[2]: best = c
     if best:
         c = best
@@ -196,8 +196,32 @@ if mode == 'lines':
             print('  triangles cut (A4_CLIPG): %d, pieces drawn %d, the farthest corner %d px' % (c[29], c[30], c[31]))
         if len(c) >= 40:
             print('  handed back to the game beyond the band: list faces %d, GPU objects %d, GPU cars %d' % (c[32], c[33], c[34]))
-            if c[39]:
-                print('  wrap probe (bench): corners past int16 %d; of %d compared, %d off the view projection by > 2 px (%d inside int16); largest |projection| %d' % (c[35], c[39], c[36], c[37], c[38]))
+        if len(c) >= 48:
+            print('  wrapped corners (the game projection past int16, undone): %d; projected again %d; refused (word disagreed) %d; handed back by the exact test alone: faces %d, items %d' % (c[35], c[39], c[36], c[37], c[38]))
+            if c[44]:
+                print('  wrap probe (bench): corners past int16 %d; of %d compared, %d off the view projection by > 2 px (%d inside int16); largest |projection| %d' % (c[40], c[44], c[41], c[42], c[43]))
+    if mode == 'lines':   # round 82f: 'CUT1', the last 16 triangles cut, from every file
+        seen = set()
+        for info, d in infos:
+            i = d.rfind(b'CUT1')
+            if i < 0 or len(d) < i + 8 + 16 * 96: continue
+            tot = struct.unpack_from('<I', d, i + 4)[0]
+            print('%s: CUT1, %d cut from the boot, the last %d:' % (info['fn'], tot, min(tot, 16)))
+            for k in range(min(tot, 16)):
+                j = (tot - 1 - k) & 15
+                w = struct.unpack_from('<24I', d, i + 8 + j * 96)
+                if w in seen: continue
+                seen.add(w)
+                s32 = lambda u: u - (1 << 32) if u & 0x80000000 else u
+                s16 = lambda u: u - 65536 if u & 0x8000 else u
+                fr, F = w[0] & 0xFFFFF, w[0] >> 20
+                kind, n, fix, ref, wrp = w[1] & 255, (w[1] >> 8) & 255, (w[1] >> 16) & 15, (w[1] >> 20) & 15, (w[1] >> 24) & 15
+                cs = []
+                for v in range(3):
+                    wx, wy = s16(w[2 + 5 * v] & 0xFFFF), s16(w[2 + 5 * v] >> 16)
+                    cs.append('word (%d,%d) zw %d view (%d,%d,%d) used (%.1f,%.1f)' % (wx, wy, s32(w[3 + 5 * v]), s32(w[4 + 5 * v]), s32(w[5 + 5 * v]), s32(w[6 + 5 * v]), s32(w[17 + 2 * v]) / 16, s32(w[18 + 2 * v]) / 16))
+                print('  frame %d F %d kind %d -> %d vertices; projected again %d, refused %d, wrapped %d; tex %08x' % (fr, F, kind, n, fix, ref, wrp, w[23]))
+                for c_ in cs: print('     ' + c_)
     sys.exit()
 
 if mode == 'gob':

@@ -15,7 +15,11 @@
 #include <stdint.h>
 
 #define CLIPV_MAX 10            /* 3 corners, +1 a plane, 4 planes: at most 7; room to spare */
-struct clipv { int32_t x, y, z, u, v; };   /* screen x, y in 1/16 pixel (CLIP_FB), the game's depth w (> 0), the texture words */
+struct clipv { int32_t x, y, z, u, v; uint32_t q; };   /* screen x, y in 1/16 pixel (CLIP_FB), the game's depth w (> 0),
+                                                        * the texture words; q = 2^30 / w, set by clip_tri and carried
+                                                        * through the cuts (round 82f: a vertex cut twice took its second
+                                                        * cut's 1/w from the first's depth rounded to a whole unit --
+                                                        * 0.5% off at w ~ 100) */
 #define CLIP_FB 4               /* the positions' fraction bits: a cut point keeps 1/16 pixel, not rounded to a whole one */
 
 static uint32_t clip_udiv32(uint32_t n, uint32_t d)
@@ -47,6 +51,36 @@ static int64_t clip_sdivr(int64_t n, uint32_t d)
 }
 #define CLIP_QS 30              /* q = 2^30 / w */
 
+/* Round 82f: the game's projection (+51E44 / +51F08, a4_gl.c's mesh_scr_i, MBX.md map 2) with its products in 64 bits:
+ * the screen position the game means for view coordinates (x, y, z < 0), in 1/16 pixel. The game multiplies in 32 bits
+ * and keeps (product + 0x8000) >> 16, so its own screen word is this value modulo 65,536 (to the rounding) -- past
+ * +-32,767 px it wraps to the wrong side. rt2: its reciprocal table (gctx + 0x2008C, RT2[z] = floor(2^22 / z)); lo, hi:
+ * the values it takes for z <= 0 and z >= 0x8020 (gctx + 0x4010C, + 0x40108). x, y: the near ranges pre-shift by 4-7
+ * bits, as the game's (a 32-bit shift: past 2^24 the game's own value is garbage, and so is this one -- clip_agrees
+ * then refuses it). */
+static void clip_proj64(const int32_t *rt2, int32_t lo, int32_t hi, int32_t F, int32_t cx, int32_t cy, int32_t x,
+                        int32_t y, int32_t z, int64_t *sx, int64_t *sy)
+{
+    const int m = z > -64 ? 7 : z > -128 ? 6 : z > -256 ? 5 : z > -512 ? 4 : 0;
+    const int32_t lz = m ? (int32_t)((uint32_t)(-z) << m) : (int32_t)((uint32_t)(-z) & 0x7FFFu);
+    int32_t r = lz <= 0 ? lo : lz >= 0x8020 ? hi : rt2[lz];
+    r = (int32_t)((uint32_t)r * (uint32_t)F) >> 6;
+    const int64_t xx = (int32_t)((uint32_t)x << m), yy = (int32_t)((uint32_t)y << m);
+    *sx = (int64_t)cx * 16 + ((xx * r + 0x800) >> 12);
+    *sy = (int64_t)cy * 16 - ((yy * r + 0x800) >> 12);
+}
+/* the 1/16 px position t agrees with the game's screen word modulo 65,536, to its rounding (1 px) */
+static int clip_agrees(int64_t t, int32_t word)
+{
+    const int32_t e = (int16_t)(uint16_t)(uint32_t)((t >> 4) - word);
+    return e >= -1 && e <= 1;
+}
+#define CLIP_UNWRAP_LIM ((int64_t)1 << 29)   /* positions clamped to +-2^29 (33 million px): clip_cut's differences fit int32 */
+static int32_t clip_clamp(int64_t t)
+{
+    return (int32_t)(t > CLIP_UNWRAP_LIM ? CLIP_UNWRAP_LIM : t < -CLIP_UNWRAP_LIM ? -CLIP_UNWRAP_LIM : t);
+}
+
 /* the point where the edge P -> Q meets the plane coord == c (P and Q on opposite sides) */
 static void clip_cut(const struct clipv *p, const struct clipv *q, int axis, int32_t c, struct clipv *o)
 {
@@ -56,13 +90,14 @@ static void clip_cut(const struct clipv *p, const struct clipv *q, int axis, int
     const uint32_t num = (uint32_t)(c > pc ? c - pc : pc - c);
     const int32_t oc = (int32_t)(po + clip_sdivr((int64_t)(qo - po) * num, den));
     if (axis) { o->y = c; o->x = oc; } else { o->x = c; o->y = oc; }
-    /* t in 2^-30 (num to 2^21: num << 30 under 2^51); q = 2^30 / w is linear in screen space; an attribute a at the cut is
-     * a_P + (a_Q - a_P) * s, s = t * q_Q / q_N -- the perspective-corrected fraction (every product under 2^62) */
+    /* t in 2^-30 (num to 2^30 -- positions to +-2^29: num << 30 under 2^61); q = 2^30 / w is linear in screen space; an
+     * attribute a at the cut is a_P + (a_Q - a_P) * s, s = t * q_Q / q_N -- the perspective-corrected fraction (every
+     * product under 2^62) */
     const uint64_t t30 = num >= den ? (uint64_t)1 << 30 : clip_udiv64((uint64_t)num << 30, den);
-    const uint32_t zp = (uint32_t)(p->z > 0 ? p->z : 1), zq = (uint32_t)(q->z > 0 ? q->z : 1);
-    const int64_t qp = clip_udiv32(1u << CLIP_QS, zp), qq = clip_udiv32(1u << CLIP_QS, zq);
+    const int64_t qp = p->q, qq = q->q;
     int64_t qn = qp + (((qq - qp) * (int64_t)t30) >> 30);
     if (qn < 1) qn = 1;
+    o->q = (uint32_t)qn;
     o->z = (int32_t)clip_udiv32((1u << CLIP_QS) + ((uint32_t)qn >> 1), (uint32_t)qn);   /* rounded */
     uint64_t s30 = clip_udiv64(t30 * (uint64_t)qq, (uint32_t)qn);
     if (s30 > ((uint64_t)1 << 30)) s30 = (uint64_t)1 << 30;
@@ -88,7 +123,7 @@ static int clip_tri(const struct clipv *tri, int32_t x0, int32_t y0, int32_t x1,
 {
     struct clipv a[CLIPV_MAX], b[CLIPV_MAX];
     int n = 3;
-    for (int i = 0; i < 3; i++) a[i] = tri[i];
+    for (int i = 0; i < 3; i++) { a[i] = tri[i]; a[i].q = clip_udiv32(1u << CLIP_QS, (uint32_t)(a[i].z > 0 ? a[i].z : 1)); }
     n = clip_plane(a, n, b, 0, x0, 1); if (n < 3) return 0;
     n = clip_plane(b, n, a, 0, x1, 0); if (n < 3) return 0;
     n = clip_plane(a, n, b, 1, y0, 1); if (n < 3) return 0;

@@ -12826,3 +12826,34 @@ c. Not entered: cars handed back (0 in all three runs: a car's box never reached
   from the view coordinates (v+0xC..0x14, 64-bit, F = MESH->F) is more than 2 px off the int16 read, [37] of those
   inside int16 (the formula, not the range), [38] the largest |projection|, [39] corners compared. Running on b78a's
   run (the wall: 2,822 cut / 797 pieces in b82e) and LA. Not a repeat of b82e / la82e (no probe).
+- b82w (r82w, b78a's run; framestat 2,344, the boot fault only): of 2,765,802 projected mesh corners compared, **none
+  has a 32-bit screen word past int16** -- the game's projection ends in (int32 product + 0x8000) >> 16, so its word
+  is always int16 and a true position past +-32,767 comes out wrapped modulo 65,536 inside the game itself (the int16
+  read loses nothing more). 2,644 corners are more than 2 px off the exact projection: **53 with the true position past
+  int16 (wrapped; the largest 60,112)** and 2,591 inside int16 -- the game's reciprocal table (RT2 = floor(2^22/z)) at
+  far depths, up to ~0.8% of the offset, not a wrap. 1,384 cut into 571 pieces. The bench's own thick gaps: 84, 3 of
+  64+, all 17-37 px wide; the phone's 291 and 320 px runs have no bench counterpart yet. So wraps exist (rare on this
+  route) and any wrapped corner makes its triangle wrong before the cut and possibly empty after it; whether they are
+  the phone's long gaps the phone has to say. la82w (the probe in LA) running.
+- la82w (r82w in LA, "main menu after 5 looks"; framestat 1,827, the boot fault only): 1,817,895 corners compared, none
+  off the exact projection, the largest |projection| 697 px; 0 cut. The bench's LA driving never brings geometry near
+  enough to project far (the phone's run cut 6,491): the wrap is a phone-route state the bench enters only on b78a's
+  wall (53 corners).
+- **r82f -- the wrap undone.** (1) lean_tail: a corner that could project past int16 -- nearer than 2 F, or a view
+  coordinate past int16 -- is projected again with the game's own arithmetic in 64 bits (a4_clip.h clip_proj64: the
+  pre-shifts, RT2 and its two end values, (product + 0x800) >> 12 in 1/16 px), kept only where it agrees with the game's
+  word modulo 65,536 within 1 px (clip_agrees; else another camera's F, the word as read), clamped to +-2^29 (1/16 px);
+  the band test and the cut use these positions. F is MESH->F when MESH->frame is this frame. (Not the exact F x / d: the
+  game's table rounds by up to 0.34% of the offset, ~100 px at 32,000, so the exact value would fail the agreement and,
+  where kept, part from the game's other corners.) (2) mesh_take and gitem_box: their projection (mesh_scr_i) wraps as
+  the game's does, so a corner nearer than ~1.06 F (list faces: |x'|, |y'| < 32,768) or 2 F / past int16 (items' box
+  corners) is also tested exactly on its view coordinates (clip_beyond_v: F x against (edge - c) d, no divide). (3) The
+  clipper carries q = 2^30 / w through its cuts (struct clipv q) -- a corner cut twice took its second cut's 1/w from
+  the first's depth rounded to a whole unit, 0.5% off at w ~ 100 (found by the test below at corners to 4M px).
+  (4) CRK1 to 48 words: [35] corners past int16 (wraps undone), [36] refused, [37] faces / [38] items handed back by the
+  exact test alone, [39] corners projected again; the probe moves to [40-44]. 'CUT1' at 0x5C0900: the last 16 triangles
+  cut, each with its corners' raw words, depths, view coordinates and the positions used (a4_tel.c after CRK1; frec3
+  lines prints it). **cliptest** now also: 100,000 triangles with corners to +-4M px (none off the band, distance 0.061
+  px, depth 0.64 and texture 0.86 of the allowance), and 400,000 corners through the game's 32-bit projection emulated
+  (RT2 = floor(2^22/z)): 107,269 wrapped by the game, clip_proj64 disagreeing with its word on 0, the unwrapped value
+  within 1 px; another F (5-30% off) accepted 0 of 399,844; mutant (the game's word as read) wrong on all 107,269.

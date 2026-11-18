@@ -527,13 +527,18 @@ void a4_tel_tick(uint32_t had)
 #endif
 #ifdef A4_LINEFILL
             /* round 81: the crack recorder's counters ('CRK1', a4_gl.c A4_GL_CRK) after CVR1 */
-            {   struct des rk = { DES(160u), (const void *)0x005C0800u };   /* round 82e: 40 words (CRK_N) */
+            {   struct des rk = { DES(192u), (const void *)0x005C0800u };   /* round 82f: 48 words (CRK_N) */
                 const int ok = o3 + n3 + 32 + 16 * 16 + 16 + (int)gn + 16 + 2 * (int)mn + 16 + 8 * 114 * 4
 #ifdef A4_COVREDRAW
                                + 36
 #endif
                                ;
                 efs_writep(f, ok, &rk);
+#ifdef A4_CLIPG
+                /* round 82f: 'CUT1', the last 16 triangles cut (a4_gl.c A4_GL_CUT: 8 + 16 x 24 words), after CRK1 */
+                struct des ru = { DES(8u + 16u * 24u * 4u), (const void *)0x005C0900u };
+                efs_writep(f, ok + 192, &ru);
+#endif
             }
 #endif
         }

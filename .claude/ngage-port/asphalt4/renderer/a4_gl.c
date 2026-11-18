@@ -554,7 +554,11 @@ struct mesh {
  * screen box (r), counters (k). */
 #define A4_GL_CVR 0x005C0400u
 #define A4_GL_CRK 0x005C0800u   /* round 81/82: the crack and cut-triangle counters ('CRK1', CRK_N words) */
-#define CRK_N 40u               /* round 82e: [32..34] the giant faces, objects and cars handed back to the game */
+#define CRK_N 48u               /* round 82e: [32..34] the giant faces, objects and cars handed back to the game; 82f:
+                                 * [35..39] the wrapped corners, [40..44] the bench's wrap probe */
+#define A4_GL_CUT 0x005C0900u   /* round 82f: 'CUT1', the last CUT_N triangles cut, their raw corners (lean_tail) */
+#define CUT_N 16u
+#define CUT_W 24u
 static inline volatile uint32_t *crk_get(void)
 {
     volatile uint32_t *C = (volatile uint32_t *)A4_GL_CRK;
@@ -4931,6 +4935,16 @@ static void sky_check_expect(int32_t y0, int32_t y1)
 #endif
 static int lean_tail_cv(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1, uint32_t tsaddr,
                         const void *cvp);
+#ifdef A4_CLIPG
+/* round 82f: cx + F x / d outside [-CLIPG, VP_W + CLIPG] or cy - F y / d outside [-CLIPG, VP_H + CLIPG] (d > 0), on the
+ * view coordinates and exactly -- no projection, so nothing wraps (the game's does past +-32,767 px) */
+static inline int clip_beyond_v(int32_t F, int32_t cx, int32_t cy, int32_t x, int32_t y, int32_t d)
+{
+    const int64_t fx = (int64_t)F * x, fy = (int64_t)F * y, dd = d;
+    return fx < (int64_t)(-CLIPG - cx) * dd || fx > (int64_t)(VP_W + CLIPG - cx) * dd
+        || fy > (int64_t)(cy + CLIPG) * dd || fy < (int64_t)(cy - VP_H - CLIPG) * dd;
+}
+#endif
 static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1, uint32_t tsaddr)
 {
 #ifdef A4_CLIPG
@@ -4941,42 +4955,70 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
         const uint32_t *vv[3] = { (const uint32_t *)desc[3], (const uint32_t *)desc[6], (const uint32_t *)desc[9] };
 #ifdef A4_WRAPPROBE
         {   /* bench (phone round 82: 6,491 cut, 774 pieces; corners to 32,764): is a corner's screen word past int16, and
-             * does the projection from its view coordinates (v+0xC..0x14) differ from what we read? CRK1 [35] corners
-             * whose 32-bit x or y word is past int16, [36] corners (a projected mesh vertex: zw == -z') whose projection
-             * differs from the int16 read by more than 2 px, [37] of those the projection inside int16 (F or the
-             * formula wrong, not the range), [38] the largest |projection|, [39] corners compared */
+             * does the projection from its view coordinates (v+0xC..0x14) differ from what we read? CRK1 [40] corners
+             * whose 32-bit x or y word is past int16, [41] corners (a projected mesh vertex: zw == -z') whose projection
+             * differs from the int16 read by more than 2 px, [42] of those the projection inside int16 (the game's
+             * reciprocal table at far depths), [43] the largest |projection|, [44] corners compared */
             volatile uint32_t *C = crk_get();
             const int32_t F = (int32_t)MESH->F, cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
             for (int i = 0; i < 3; i++) {
                 const int32_t wx = (int32_t)vv[i][0], wy = (int32_t)vv[i][1];
-                if (wx != (int16_t)wx || wy != (int16_t)wy) C[35]++;
+                if (wx != (int16_t)wx || wy != (int16_t)wy) C[40]++;
                 const int32_t vx = (int32_t)vv[i][3], vy = (int32_t)vv[i][4], vz = (int32_t)vv[i][5];
                 if (vz >= 0 || (int32_t)vv[i][2] != -vz || F < 1) continue;
-                C[39]++;
+                C[44]++;
                 const int64_t px = cx + clip_sdivr((int64_t)vx * F, (uint32_t)-vz), py = cy - clip_sdivr((int64_t)vy * F, (uint32_t)-vz);
                 const int64_t dx = px - (int16_t)wx, dy = py - (int16_t)wy;
                 if (dx > 2 || dx < -2 || dy > 2 || dy < -2) {
-                    C[36]++;
-                    if (px >= -32768 && px <= 32767 && py >= -32768 && py <= 32767) C[37]++;
+                    C[41]++;
+                    if (px >= -32768 && px <= 32767 && py >= -32768 && py <= 32767) C[42]++;
                 }
                 const int64_t ap = px < 0 ? -px : px, aq = py < 0 ? -py : py, am = ap > aq ? ap : aq;
-                if (am > (int64_t)C[38]) C[38] = am > 0x7FFFFFFF ? 0x7FFFFFFFu : (uint32_t)am;
+                if (am > (int64_t)C[43]) C[43] = am > 0x7FFFFFFF ? 0x7FFFFFFFu : (uint32_t)am;
             }
         }
 #endif
+        /* Round 82f (phone round 82: the lines stayed; 6,491 cut into 774 pieces, corners at the int16 limit; bench probe
+         * b82w: the game's projection multiplies in 32 bits and keeps the product >> 16, so its screen word is the true
+         * position modulo 65,536 and a corner past +-32,767 px lands on the wrong side -- its triangle drawn wrong, or
+         * cut to nothing): a corner that could project that far -- nearer than 2 F, or a view coordinate past int16 -- is
+         * projected again with the game's own arithmetic in 64 bits (clip_proj64, 1/16 px), kept where it agrees with
+         * the game's word modulo 65,536 (clip_agrees: else another camera's F, left as read), and the band test and the
+         * cut use it. F is the list's, this frame's (MESH->F). CRK1 [35] corners past int16 (wraps undone), [36]
+         * corners refused, [39] corners projected again. */
+        const int32_t F = MESH->frame == s->frames ? (int32_t)MESH->F : 0;
+        const int32_t cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
+        int32_t X[3], Y[3];
+        uint32_t fix = 0, ref = 0, wrp = 0;
         int giant = 0; int32_t far = 0;
         for (int i = 0; i < 3; i++) {
-            const int32_t x = (int16_t)(int32_t)vv[i][0], y = (int16_t)(int32_t)vv[i][1];
+            const int32_t wx = (int16_t)(int32_t)vv[i][0], wy = (int16_t)(int32_t)vv[i][1];
+            X[i] = wx * (1 << CLIP_FB); Y[i] = wy * (1 << CLIP_FB);
+            const int32_t d = (int32_t)vv[i][2], vz = (int32_t)vv[i][5];
+            if (F > 0 && d > 0 && vz == -d) {               /* a projected mesh vertex: zw == -z' */
+                const int32_t vx = (int32_t)vv[i][3], vy = (int32_t)vv[i][4];
+                if (d < 2 * F || (uint32_t)vx + 32768u > 65535u || (uint32_t)vy + 32768u > 65535u) {
+                    int64_t tx, ty;
+                    clip_proj64((const int32_t *)((uintptr_t)gctx + 0x2008Cu), (int32_t)gctx[0x4010C / 4],
+                                (int32_t)gctx[0x40108 / 4], F, cx, cy, vx, vy, vz, &tx, &ty);
+                    if (clip_agrees(tx, wx) && clip_agrees(ty, wy)) {
+                        X[i] = clip_clamp(tx); Y[i] = clip_clamp(ty); fix++;
+                        if ((tx >> CLIP_FB) != (int16_t)(tx >> CLIP_FB) || (ty >> CLIP_FB) != (int16_t)(ty >> CLIP_FB)) wrp++;
+                    } else ref++;
+                }
+            }
+            const int32_t x = X[i] >> CLIP_FB, y = Y[i] >> CLIP_FB;
             if (x < -CLIPG || x > VP_W + CLIPG || y < -CLIPG || y > VP_H + CLIPG) giant = 1;
             const int32_t ax = x < 0 ? -x : x, ay = y < 0 ? -y : y;
             if (ax > far) far = ax;
             if (ay > far) far = ay;
         }
+        if (fix | ref) { volatile uint32_t *C = crk_get(); C[35] += wrp; C[36] += ref; C[39] += fix; }
         if (giant) {
             struct clipv t[3], o[CLIPV_MAX];
             for (int i = 0; i < 3; i++) {
-                t[i].x = (int32_t)(int16_t)(int32_t)vv[i][0] * (1 << CLIP_FB);
-                t[i].y = (int32_t)(int16_t)(int32_t)vv[i][1] * (1 << CLIP_FB);
+                t[i].x = X[i];
+                t[i].y = Y[i];
                 t[i].z = (int32_t)vv[i][2];
                 t[i].u = (int32_t)desc[4 + 3 * i]; t[i].v = (int32_t)desc[5 + 3 * i];
             }
@@ -4984,6 +5026,20 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
                                    (VP_H + CLIPG) * (1 << CLIP_FB), o);
             volatile uint32_t *C = crk_get();
             C[29]++; if (n >= 3) C[30] += (uint32_t)(n - 2); if ((uint32_t)far > C[31]) C[31] = (uint32_t)far;
+            {   /* 'CUT1': this cut's raw corners, the last CUT_N kept -- a mark at a gap shows what was cut in its frame */
+                volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;
+                if (U[0] != 0x31545543u) { U[1] = 0; U[0] = 0x31545543u; }
+                volatile uint32_t *w = U + 2u + (U[1] & (CUT_N - 1u)) * CUT_W;
+                w[0] = (s->frames & 0xFFFFFu) | ((uint32_t)F & 0xFFFu) << 20;
+                w[1] = (kind & 0xFFu) | (uint32_t)(n & 0xFF) << 8 | fix << 16 | ref << 20 | wrp << 24;
+                for (int i = 0; i < 3; i++) {
+                    w[2 + 5 * i] = (vv[i][0] & 0xFFFFu) | vv[i][1] << 16;
+                    w[3 + 5 * i] = vv[i][2]; w[4 + 5 * i] = vv[i][3]; w[5 + 5 * i] = vv[i][4]; w[6 + 5 * i] = vv[i][5];
+                    w[17 + 2 * i] = (uint32_t)X[i]; w[18 + 2 * i] = (uint32_t)Y[i];
+                }
+                w[23] = tsaddr;
+                U[1]++;
+            }
             int r = (kind == KIND_ADD || kind == KIND_ALPHA) ? 0 : 1;
             for (int k = 1; k + 1 < n; k++) {
                 const struct clipv f[3] = { o[0], o[k], o[k + 1] };
@@ -5520,6 +5576,13 @@ static int mesh_take(uint32_t *cam, const uint32_t *face)
     if (sx0 < -CLIPG || sx0 > VP_W + CLIPG || sy0 < -CLIPG || sy0 > VP_H + CLIPG
         || sx1 < -CLIPG || sx1 > VP_W + CLIPG || sy1 < -CLIPG || sy1 > VP_H + CLIPG
         || sx2 < -CLIPG || sx2 > VP_W + CLIPG || sy2 < -CLIPG || sy2 > VP_H + CLIPG) { crk_get()[32]++; return 0; }
+    {   /* round 82f: mesh_scr_i wraps as the game's projection does (modulo 65,536 past +-32,767 px); with |x'|, |y'| <
+         * 32,768 (MESH_FITS) only a corner nearer than ~1.005 F can, so those are tested exactly on the view coordinates.
+         * CRK1 [37] faces handed back by this test alone */
+        const int32_t lim = F + (F >> 4);
+        if ((-z0 < lim && clip_beyond_v(F, cx, cy, x0, y0, -z0)) || (-z1 < lim && clip_beyond_v(F, cx, cy, x1, y1, -z1))
+            || (-z2 < lim && clip_beyond_v(F, cx, cy, x2, y2, -z2))) { volatile uint32_t *C = crk_get(); C[32]++; C[37]++; return 0; }
+    }
 #endif
     uint32_t texz = 0;
     if (fl == 0x4001u) {                            /* mesh_fallback, on the screen y's above */
@@ -5874,6 +5937,8 @@ static int gitem_box(const uint32_t *gx, int32_t F, const int32_t *R, const int3
 {
     const int32_t cx = *(const int32_t *)gx[0x40110 / 4] >> 1, cy = *(const int32_t *)gx[0x40114 / 4] >> 1;
     int32_t xlo = 0x7FFFFFFF, ylo = 0x7FFFFFFF, xhi = -0x7FFFFFFF, yhi = -0x7FFFFFFF, zlo = 0x7FFFFFFF, zhi = -0x7FFFFFFF;
+    int xgiant = 0;                     /* round 82f: beyond the band by the exact test (A4_CLIPG) */
+    (void)xgiant;
     if (F < 1) F = 1;
     if (F > 16383) F = 16383;
 #ifdef A4_GOBJ_SPHEREBOX
@@ -5905,6 +5970,12 @@ static int gitem_box(const uint32_t *gx, int32_t F, const int32_t *R, const int3
         for (uint32_t r = 0; r < 3u; r++)
             v[r] = (int32_t)(((int64_t)R[r] * px + (int64_t)R[3u + r] * py + (int64_t)R[6u + r] * pz) >> 14) + T[r];
         if (v[2] > -(ZK + 4)) { box[0] = -1; box[1] = -1; box[2] = VP_W; box[3] = VP_H; zhi = 0; break; }   /* never: the take's test */
+#ifdef A4_CLIPG
+        /* round 82f: mesh_scr_i wraps past +-32,767 px (the game's projection does): a corner near enough to, or past
+         * int16 before the clamp below, is tested exactly on its view coordinates */
+        if ((-v[2] < 2 * F || v[0] > 32767 || v[0] < -32767 || v[1] > 32767 || v[1] < -32767)
+            && clip_beyond_v(F, cx, cy, v[0], v[1], -v[2])) xgiant = 1;
+#endif
         if (v[2] < zlo) zlo = v[2];
         if (v[2] > zhi) zhi = v[2];
         for (uint32_t r = 0; r < 2u; r++) { if (v[r] > 32767) v[r] = 32767; if (v[r] < -32767) v[r] = -32767; }
@@ -5923,7 +5994,7 @@ static int gitem_box(const uint32_t *gx, int32_t F, const int32_t *R, const int3
 #ifdef A4_CLIPG
     /* round 82e: the box reaches more than CLIPG pixels off the panel -- the GPU would clip the item's triangles there
      * itself, in fixed point (the cut in lean_tail sees only the game's own); the take hands the item back */
-    const int giant = xlo < -CLIPG || xhi > VP_W + CLIPG || ylo < -CLIPG || yhi > VP_H + CLIPG;
+    const int giant = (xlo < -CLIPG || xhi > VP_W + CLIPG || ylo < -CLIPG || yhi > VP_H + CLIPG) ? 1 : xgiant ? 2 : 0;
 #else
     const int giant = 0;
 #endif
@@ -6076,9 +6147,11 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
          * round 71 its mesh's own bounds turned and projected (gitem_box); to round 70 the cube around its bounding
          * sphere. */
         const uint32_t *gx = (const uint32_t *)(uintptr_t)MESH->gctx;
-        if (gitem_box(gx, (int32_t)GO32(cam + 4u), M, M + 9, GBND[me - GMESH], (int32_t)me->rad, it->box, &it->qn, &it->qf)) {
+        const int gb = gitem_box(gx, (int32_t)GO32(cam + 4u), M, M + 9, GBND[me - GMESH], (int32_t)me->rad, it->box, &it->qn, &it->qf);
+        if (gb) {
 #ifdef A4_CLIPG
-            g->n--; crk_get()[33]++; return 0;      /* round 82e: to the game, whose triangles lean_tail cuts */
+            volatile uint32_t *C = crk_get();
+            g->n--; C[33]++; if (gb == 2) C[38]++; return 0;   /* round 82e: to the game, whose triangles lean_tail cuts */
 #endif
         }
     }
@@ -6338,9 +6411,11 @@ int a4_car_take(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint3
     for (uint32_t k = 0; k < 12u; k++) it->M[k] = M[k];
     {   /* its screen box and depth buckets, for the list's grid and the sprites' cover (as a4_obj_take's) */
         const uint32_t *gx = (const uint32_t *)(uintptr_t)MESH->gctx;
-        if (gitem_box(gx, (int32_t)it->F, M, M + 9, GCBND[me - GCMESH], (int32_t)me->rad, it->box, &it->qn, &it->qf)) {
+        const int gb = gitem_box(gx, (int32_t)it->F, M, M + 9, GCBND[me - GCMESH], (int32_t)me->rad, it->box, &it->qn, &it->qf);
+        if (gb) {
 #ifdef A4_CLIPG
-            c->n--; crk_get()[34]++; return 0;      /* round 82e: as an object's */
+            volatile uint32_t *C = crk_get();
+            c->n--; C[34]++; if (gb == 2) C[38]++; return 0;   /* round 82e: as an object's */
 #endif
         }
     }
@@ -9407,12 +9482,17 @@ static void line_rec(volatile struct glr *s, int y, const uint8_t *lc_u, uint32_
  * then (MESH->F), [23] runs recorded in LIN1; round 82: [24] runs of gaps 3-6 rows thick (kind 4, not filled; the
  * thickness in e[1] bits 16-23), [25] those of 64+, [26] automatic marks asked, [27] the last one's tick, [28] the
  * thickest gap; [29] triangles cut (A4_CLIPG), [30] pieces drawn, [31] the farthest corner; round 82e: [32] list faces,
- * [33] GPU objects, [34] GPU cars handed back to the game for a corner (a box corner) beyond the band. Totals from the boot. */
+ * [33] GPU objects, [34] GPU cars handed back to the game for a corner (a box corner) beyond the band; round 82f: [35]
+ * corners whose true position was past int16 (the game's projection wrapped; undone), [36] corners whose recomputed
+ * position disagreed with the game's word (left as read), [37] list faces and [38] objects / cars handed back by the
+ * exact test alone, [39] corners projected again; [40..44] the bench's wrap probe. 'CUT1' at 0x5C0900: the last 16
+ * triangles cut. Totals from the boot. */
 /* (A4_GL_CRK 0x5C0800 is defined beside A4_GL_CVR) */
 #ifdef A4_COVREDRAW
 _Static_assert(A4_GL_CVR + sizeof(struct cvr) <= A4_GL_CRK, "the crack counters over the cover redraw's state");
 #endif
-_Static_assert(A4_GL_CRK + CRK_N * 4u <= 0x005C1000u, "the crack counters past the scratch");
+_Static_assert(A4_GL_CRK + CRK_N * 4u <= A4_GL_CUT, "the crack counters over the cut ring");
+_Static_assert(A4_GL_CUT + (2u + CUT_N * CUT_W) * 4u <= 0x005C1000u, "the cut ring past the scratch");
 static void crk_run(volatile struct glr *s, const uint8_t *lc_u, int row, int32_t x0, int32_t x1, uint32_t kind,
                     uint32_t *nrec)
 {
