@@ -12,7 +12,9 @@
 @ whose alpha is >= 0x80 written as 565 from the top bits of its channels -- ((p >> 8) & 0xF800)
 @ | ((p >> 5) & 0x7E0) | ((p >> 3) & 0x1F) -- into the row at d32 (word aligned), the others left
 @ alone. (end - src) a multiple of 4 pixels, not 0. Four pixels a turn, one store pair when all
-@ four are drawn (the common case), halfword stores otherwise.
+@ four are drawn (the common case), halfword stores otherwise. Round 83: returns 1 if any turn took
+@ the halfword path (a pixel not drawn), else 0 -- kept in bit 31 of the B-lane mask (lr), which
+@ the AND with (x >> 3) never sees (its top three bits are clear): one ORR on the slow path only.
         .global a4_comp_row
 a4_comp_row:
         push    {r4-r11, lr}
@@ -44,8 +46,10 @@ a4_comp_row:
         stmia   r0!, {r8, r9}
 2:      cmp     r1, r2
         bne     1b
+        mov     r0, lr, lsr #31                 @ round 83: 1 if a pixel was not drawn
         pop     {r4-r11, pc}
-3:      tst     r4, #0x80000000                 @ some pixel not drawn: one at a time
+3:      orr     lr, lr, #0x80000000             @ round 83: the row had an undrawn pixel
+        tst     r4, #0x80000000                 @ some pixel not drawn: one at a time
         strhne  r8, [r0]
         tst     r5, #0x80000000
         movne   r10, r8, lsr #16
@@ -123,8 +127,10 @@ a4_comp_row_pld:
         stmia   r0!, {r8, r9}
 2:      cmp     r1, r2
         bne     1b
+        mov     r0, lr, lsr #31                 @ round 83: 1 if a pixel was not drawn
         pop     {r4-r11, pc}
-3:      tst     r4, #0x80000000                 @ some pixel not drawn: one at a time
+3:      orr     lr, lr, #0x80000000             @ round 83: the row had an undrawn pixel
+        tst     r4, #0x80000000                 @ some pixel not drawn: one at a time
         strhne  r8, [r0]
         tst     r5, #0x80000000
         movne   r10, r8, lsr #16

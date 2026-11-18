@@ -19,8 +19,9 @@ NAME29 = {0: 'game front', 1: 'lifted', 2: 'game (2)', 3: 'lifted+memo'}   # rou
 NAME30 = {0: 'sky software', 1: 'sky GPU', 2: '-', 3: '-'}               # round 54: AB_GPUSKY
 NAME31 = {0: 'v0 runtime', 1: 'v1 EGL', 2: 'v2 EGL', 3: 'v3 runtime'}   # rounds 55-56: route B's probe (AB_RBVAR)
 NAME32 = {0: 'census off', 1: 'census on', 2: '-', 3: '-'}               # round 57: the CPU-idle census (AB_IDLE)
+NAME33 = {0: 'mask always', 1: 'mask skip', 2: '-', 3: '-'}              # round 83: the drawn-mask pass skipped on full rows (AB_MSKIP)
 fmt0 = struct.unpack_from('<I', rows[-1][2], AGG + 0x600)[0] if rows else 0
-NAME, SHIFT, MASK = {0x41473238: (NAME28, 14, 1), 0x41473239: (NAME29, 15, 3), 0x41473330: (NAME30, 17, 1), 0x41473331: (NAME31, 18, 3), 0x41473332: (NAME32, 20, 1)}.get(fmt0, (NAME27, 12, 3))
+NAME, SHIFT, MASK = {0x41473238: (NAME28, 14, 1), 0x41473239: (NAME29, 15, 3), 0x41473330: (NAME30, 17, 1), 0x41473331: (NAME31, 18, 3), 0x41473332: (NAME32, 20, 1), 0x41473333: (NAME33, 21, 1)}.get(fmt0, (NAME27, 12, 3))
 print('capidx mode   slot          rend  ms/rend | 3D   comp  read  2D   pres')
 for c, h, d in rows:
     r, w = h[33], h[34]
@@ -29,7 +30,7 @@ for c, h, d in rows:
           h[13] / r, h[18] / r, h[36] / r, h[16] / r, h[17] / r))
 c, h, d = rows[-1]
 fmt = struct.unpack_from('<I', d, AGG + 0x600)[0]
-print('aggregates format %08x%s' % (fmt, '' if fmt in (0x41473237, 0x41473238, 0x41473239, 0x41473330, 0x41473331, 0x41473332) else '  (not AG27-AG32)'))
+print('aggregates format %08x%s' % (fmt, '' if fmt in (0x41473237, 0x41473238, 0x41473239, 0x41473330, 0x41473331, 0x41473332, 0x41473333) else '  (not AG27-AG33)'))
 for s in range(3):
     for m in range(4):
         a = struct.unpack_from('<32I', d, AGG + (s * 4 + m) * 128)

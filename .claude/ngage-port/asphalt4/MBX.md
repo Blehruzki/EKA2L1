@@ -12977,3 +12977,16 @@ cuts make and 11 of 21 wraps did; the mechanism itself is shown on the bench (tr
   4.3 ms (r82g)** -- the 8-row drawn-mask ring, the two-row fill, the crack recorder and round 82's 3-6-row gap test
   (read flat at ~7.0). Since r77: 3D +2.1 (the cover redraw from r78, ~1.5 on the phone; 8% more triangles a render),
   the composite +1.7, present and the rest ~+1.9. The phone is at ~17 fps in LA (58 ms); 30 fps is 33 ms.
+- **Round 83, step 1 (the owner: "yes" -- win back the regression).** (1) a4_px.s: a4_comp_row and _pld return 1 if any
+  four-pixel group took the halfword path (a pixel not drawn) -- kept in bit 31 of the B-lane mask (lr), which the AND
+  with (x >> 3) never sees; one ORR on the slow path, one MOV at the end. (2) The composite composites the row first;
+  A4_LINEFILL's drawn-mask is then all ones without the 320-pixel pass when the routine saw none undrawn (AB_MSKIP;
+  MSKIP_ON 1 in a phone build), and is built every composite (the fill's), not on the counter's frames; the line
+  counter (lc_u, FRC1's line hits) back to every 16th frame without A4_LINEALL. (3) A4_LINEFILL no longer needs
+  A4_LINEREC / A4_LINEALL (the #error now: FRAMEREC, ENG3, PX6); crk_run records into LIN1 only with A4_LINEREC; the
+  automatic marks need -DA4_AUTOMARK (bench). The fill's totals to CRK1 [48] rows / [49] pixels (CRK_N 52; a4_tel.c
+  writes 256 bytes from 0x5C0800, CUT1 after them; frec3 reads them). (4) C83.flags = C82 without -DA4_LINEALL and
+  -DA4_LINEREC (the line records: lte_take's 22 stores a triangle in every batch, LIN1). r83a 983,292 bytes (r82g
+  985,184). Bench: A4_ABCYCLE17 ('AG33': AB_MSKIP, bit 21, on and off by window; r51sum's slots "mask always" / "mask
+  skip") and A4_MASKCHECK (CRK1 [45] skipped rows whose mask was not all ones, [46] rows skipped, [47] rows the routine
+  called all drawn wrongly -- both must stay 0). Running: b83ab (r83ab = C83 + both, 984,012), then m83a / la83a / b83a.

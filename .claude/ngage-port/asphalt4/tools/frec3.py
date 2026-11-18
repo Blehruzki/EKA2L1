@@ -184,7 +184,7 @@ if mode == 'lines':
     for info, d in infos:
         i = d.rfind(b'CRK1')
         if i >= 0 and len(d) >= i + 96:
-            c = struct.unpack_from('<%dI' % (48 if d[i + 192:i + 196] == b'CUT1' or len(d) >= i + 192 + 1544 else 40 if len(d) >= i + 160 else 32 if len(d) >= i + 128 else 24), d, i)
+            c = struct.unpack_from('<%dI' % (52 if d[i + 256:i + 260] == b'CUT1' or len(d) >= i + 256 + 1544 else 48 if d[i + 192:i + 196] == b'CUT1' or len(d) >= i + 192 + 1544 else 40 if len(d) >= i + 160 else 32 if len(d) >= i + 128 else 24), d, i)
             if best is None or c[1] + c[2] > best[1] + best[2]: best = c
     if best:
         c = best
@@ -198,6 +198,8 @@ if mode == 'lines':
             print('  handed back to the game beyond the band: list faces %d, GPU objects %d, GPU cars %d' % (c[32], c[33], c[34]))
         if len(c) >= 48:
             print('  wrapped corners (the game projection past int16, undone): %d; projected again %d; refused (word disagreed) %d; handed back by the exact test alone: faces %d, items %d' % (c[35], c[39], c[36], c[37], c[38]))
+            if len(c) >= 52:
+                print('  filled (from the boot): %d rows, %d pixels%s' % (c[48], c[49], ('; mask check (bench): %d rows skipped, %d not all drawn, %d said drawn wrongly' % (c[46], c[45], c[47])) if c[46] or c[45] or c[47] else ''))
             if c[44]:
                 print('  wrap probe (bench): corners past int16 %d; of %d compared, %d off the view projection by > 2 px (%d inside int16); largest |projection| %d' % (c[40], c[44], c[41], c[42], c[43]))
     if mode == 'lines':   # round 82f: 'CUT1', the last 16 triangles cut, from every file

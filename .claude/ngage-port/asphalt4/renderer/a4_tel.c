@@ -408,7 +408,9 @@ void a4_tel_tick(uint32_t had)
         uint32_t r = pf[PF_RENDERS], w = a4_ntick() - pf[PF_T0];
         if (r && w < r * 500u) {
             uint32_t m = pf[PF_MODE];                /* a4_gl.c AGG_SLOT */
-#if defined(A4_ABCYCLE16)
+#if defined(A4_ABCYCLE17)
+            volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 21) & 1u) * 32u;
+#elif defined(A4_ABCYCLE16)
             volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 20) & 1u) * 32u;
 #elif defined(A4_ABCYCLE15)
             volatile uint32_t *a = (volatile uint32_t *)0x00421000u + ((m >> 18) & 3u) * 32u;
@@ -438,7 +440,9 @@ void a4_tel_tick(uint32_t had)
             a[9] += pf[PF_REO]; a[10] += pf[PF_CALLS]; a[11] += pf[PF_RUNS0]; a[12] += pf[PF_TRIS];
             a[13] += pf[PF_NPRES]; a[14] += pf[PF_SKIPPED]; a[15]++;
         }
-#if defined(A4_ABCYCLE16)
+#if defined(A4_ABCYCLE17)
+        *(volatile uint32_t *)0x00421600u = 0x41473333u;   /* 'AG33': slot = the mask skip (AB_MSKIP) */
+#elif defined(A4_ABCYCLE16)
         *(volatile uint32_t *)0x00421600u = 0x41473332u;   /* 'AG32': slot = the census counting (AB_IDLE) */
 #elif defined(A4_ABCYCLE15)
         *(volatile uint32_t *)0x00421600u = 0x41473331u;   /* 'AG31': slot = route B's probe variant 0..3 */
@@ -527,7 +531,7 @@ void a4_tel_tick(uint32_t had)
 #endif
 #ifdef A4_LINEFILL
             /* round 81: the crack recorder's counters ('CRK1', a4_gl.c A4_GL_CRK) after CVR1 */
-            {   struct des rk = { DES(192u), (const void *)0x005C0800u };   /* round 82f: 48 words (CRK_N) */
+            {   struct des rk = { DES(256u), (const void *)0x005C0800u };   /* round 83: to CUT1 (CRK_N 52 words, then 0) */
                 const int ok = o3 + n3 + 32 + 16 * 16 + 16 + (int)gn + 16 + 2 * (int)mn + 16 + 8 * 114 * 4
 #ifdef A4_COVREDRAW
                                + 36
@@ -537,7 +541,7 @@ void a4_tel_tick(uint32_t had)
 #ifdef A4_CLIPG
                 /* round 82f: 'CUT1', the last 16 triangles cut (a4_gl.c A4_GL_CUT: 8 + 16 x 24 words), after CRK1 */
                 struct des ru = { DES(8u + 16u * 24u * 4u), (const void *)0x005C0900u };
-                efs_writep(f, ok + 192, &ru);
+                efs_writep(f, ok + 256, &ru);
 #endif
             }
 #endif
@@ -584,7 +588,10 @@ void a4_tel_tick(uint32_t had)
     (void)mark;
     {   /* next window: reset the timers after the write, so its cost is in no window */
         volatile uint32_t *pf = A4_PERF;
-#if defined(A4_ABCYCLE16)
+#if defined(A4_ABCYCLE17)
+        /* round 83: the mask skip (AB_MSKIP, bit 21) on and off by window; the build's A4_ABMODE kept */
+        pf[PF_MODE] = ((uint32_t)(A4_ABMODE) & ~2097152u) | ((((pf[PF_MODE] >> 21) & 1u) ^ 1u) << 21);
+#elif defined(A4_ABCYCLE16)
         /* round 57: the census (AB_IDLE, bit 20) on and off by window; the build's A4_ABMODE kept */
         pf[PF_MODE] = ((uint32_t)(A4_ABMODE) & ~1048576u) | ((((pf[PF_MODE] >> 20) & 1u) ^ 1u) << 20);
 #elif defined(A4_ABCYCLE15)

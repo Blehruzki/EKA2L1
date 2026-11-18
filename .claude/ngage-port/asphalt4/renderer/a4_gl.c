@@ -469,9 +469,18 @@ void a4_idle_start(void)
 #define AB_FRONT 32768u  /* round 53: the lifted mesh routine (+349F8, the hand transform inside) */
 #define AB_MEMO 65536u   /* round 53: with it, the corner memo (A4_MESHMEMO); alone (slot 2) the game's front end again */
 #define AB_GPUSKY 131072u /* round 54: the backdrop drawn on the GPU (A4_GPUSKY; stepped per window by A4_ABCYCLE14) */
+#define AB_MSKIP 2097152u /* round 83: bit 21, a fully drawn row's drawn-mask pass skipped (A4_LINEFILL; A4_ABCYCLE17 steps it) */
+#ifdef A4_ABCYCLE17
+#define MSKIP_ON(mode) (((mode) & AB_MSKIP) != 0u)
+#else
+#define MSKIP_ON(mode) 1
+#endif
 #define AB_RBVAR 262144u  /* rounds 55-56: bits 18-19, route B's probe variant (A4_RBPROBE; stepped by A4_ABCYCLE15): 0 the
                            * runtime presents, 1 the frame through an EGL window surface on the runtime's window, 2 as 1
                            * at swap interval 0, 3 the runtime with its posts of an unchanged frame skipped */
+#if defined(A4_ABCYCLE17) && (!defined(A4_LINEFILL) || !defined(A4_TEL) || !(A4_ABMODE + 0) || defined(A4_ABCYCLE16) || defined(A4_ABCYCLE15) || defined(A4_ABCYCLE14) || defined(A4_ABCYCLE13) || defined(A4_ABCYCLE12) || defined(A4_ABCYCLE11))
+#error "A4_ABCYCLE17 alternates A4_LINEFILL's mask skip (AB_MSKIP) over the build's A4_ABMODE (alone)"
+#endif
 #if defined(A4_ABCYCLE16) && (!defined(A4_IDLECEN) || defined(A4_ABCYCLE15) || defined(A4_ABCYCLE14) || defined(A4_ABCYCLE13) || defined(A4_ABCYCLE12) || defined(A4_ABCYCLE11))
 #error "A4_ABCYCLE16 alternates the census (A4_IDLECEN) over the build's A4_ABMODE (alone)"
 #endif
@@ -554,8 +563,9 @@ struct mesh {
  * screen box (r), counters (k). */
 #define A4_GL_CVR 0x005C0400u
 #define A4_GL_CRK 0x005C0800u   /* round 81/82: the crack and cut-triangle counters ('CRK1', CRK_N words) */
-#define CRK_N 48u               /* round 82e: [32..34] the giant faces, objects and cars handed back to the game; 82f:
-                                 * [35..39] the wrapped corners, [40..44] the bench's wrap probe */
+#define CRK_N 52u               /* round 82e: [32..34] the giant faces, objects and cars handed back to the game; 82f:
+                                 * [35..39] the wrapped corners, [40..44] the bench's wrap probe; 83: [45..47] the bench's
+                                 * mask check, [48..49] the rows and pixels filled */
 #define A4_GL_CUT 0x005C0900u   /* round 82f: 'CUT1', the last CUT_N triangles cut, their raw corners (lean_tail) */
 #define CUT_N 16u
 #define CUT_W 24u
@@ -1151,7 +1161,9 @@ _Static_assert(A4_GL_STEP >= A4_GL_AGG + sizeof(struct agg) + 4u && A4_GL_STEP +
 #endif
 /* the slot of a mode: bit 0 AB_SKIPREP, bit 1 AB_INDEXED (round 20; round 19 used
  * (mode >> 2) & 3, its files carry no format word after the segments) */
-#if defined(A4_ABCYCLE16)
+#if defined(A4_ABCYCLE17)
+#define AGG_SLOT(m) (((m) >> 21) & 1u)                                       /* round 83: the mask skip (AB_MSKIP) */
+#elif defined(A4_ABCYCLE16)
 #define AGG_SLOT(m) (((m) >> 20) & 1u)                                       /* round 57: the census counting (AB_IDLE) */
 #elif defined(A4_ABCYCLE15)
 #define AGG_SLOT(m) (((m) >> 18) & 3u)                                       /* route B's probe variant 0..3 */
@@ -7724,7 +7736,11 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
 #endif
-#if defined(A4_TEL) && defined(A4_ABCYCLE16)
+#if defined(A4_TEL) && defined(A4_ABCYCLE17)
+        /* round 83: a4_tel.c alternates AB_MSKIP (bit 21) per window; the rest is A4_ABMODE */
+        A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~AB_MSKIP;
+        s->fmode = A4_PERF[PF_MODE];
+#elif defined(A4_TEL) && defined(A4_ABCYCLE16)
         /* round 57: a4_tel.c alternates AB_IDLE (bit 20, the census counting) per window; the rest is A4_ABMODE */
         A4_PERF[PF_MODE] |= (uint32_t)(A4_ABMODE) & ~1048576u;
         s->fmode = A4_PERF[PF_MODE];
@@ -9379,8 +9395,8 @@ static void batch_draw(uint32_t nt)
  * that is not the magenta sentinel -- nor the sentinel with a glow added to it (R and B
  * saturated, G short of full: additive over the backdrop), so pure pinks are lost there.
  * Read in the implementation's own pair when AB_NATIVE says so (BGRA on the N95). */
-void a4_comp_row(uint32_t *d32, const uint32_t *src, const uint32_t *end);   /* a4_px.s */
-void a4_comp_row_pld(uint32_t *d32, const uint32_t *src, const uint32_t *end);
+uint32_t a4_comp_row(uint32_t *d32, const uint32_t *src, const uint32_t *end);   /* a4_px.s; round 83: 1 if any pixel was undrawn */
+uint32_t a4_comp_row_pld(uint32_t *d32, const uint32_t *src, const uint32_t *end);
 #ifdef A4_LINEREC
 #if !(defined(A4_FRAMEREC) && defined(A4_ENG3) && defined(A4_MESH) && defined(A4_GPUOBJ) && defined(A4_REORDER)) || defined(A4_DEFER)
 #error "A4_LINEREC records the line counter's hits (A4_FRAMEREC with A4_ENG3) with the list's faces, the GPU objects and the stream's triangles (A4_REORDER's boxes, positions not A4_DEFER's records)"
@@ -9397,9 +9413,6 @@ void a4_comp_row_pld(uint32_t *d32, const uint32_t *src, const uint32_t *end);
  * whose box ends / begins on rows y-1, y, y+1 (lte_take, 11 words each, 0 where none this frame). Undrawn: no opaque GPU class
  * drew the pixel (alpha's top bit), so the software layer under the composite shows -- the grey. */
 #define A4_GL_LINREC 0x005BA000u
-#if defined(A4_LINEFILL) && !(defined(A4_LINEREC) && defined(A4_LINEALL) && defined(A4_FRAMEREC) && defined(A4_ENG3))
-#error "A4_LINEFILL fills the rows the line counter finds, over the run A4_LINEREC keeps (A4_LINEALL, A4_FRAMEREC, A4_ENG3)"
-#endif
 #define LIN_W 114u                                      /* 48 + rows y-1..y+1 x (ending, beginning) x LTE_W */
 _Static_assert(16u + 8u * LIN_W * 4u <= 0x1000u, "LIN1 past 0x5BB000");
 static void line_rec(volatile struct glr *s, int y, const uint8_t *lc_u, uint32_t xr)
@@ -9479,6 +9492,9 @@ static void line_rec(volatile struct glr *s, int y, const uint8_t *lc_u, uint32_
 }
 #endif
 #ifdef A4_LINEFILL
+#if !(defined(A4_FRAMEREC) && defined(A4_ENG3) && defined(A4_PX6))
+#error "A4_LINEFILL fills in the N95's composite (A4_PX6's rows), beside the line counter (A4_FRAMEREC, A4_ENG3)"
+#endif
 /* Round 81 (the owner: "add the recorder"): the crack recorder. Every run of 16 or more pixels the fill finds -- one
  * row (kind 2) or two (kind 3, the upper row) -- is counted here, and the first two a frame are recorded in LIN1's ring
  * as a line is (line_rec: the run, the list's faces, the GPU items' boxes and the stream's triangles at its rows; the
@@ -9515,7 +9531,7 @@ static void crk_run(volatile struct glr *s, const uint8_t *lc_u, int row, int32_
     }
     if (row >= 0 && row < VP_H) C[5u + ((uint32_t)row >> 4)]++;
     if (len > C[20]) { C[20] = len; C[21] = (uint32_t)row | (s->frames & 0xFFFFu) << 16; C[22] = MESH->F; }
-#ifdef A4_TELMARK
+#if defined(A4_TELMARK) && defined(A4_AUTOMARK)   /* round 83: the automatic marks bench-only (a capture stalls ~80 ms) */
     if (len >= 64u && C[26] < 5u) {
         /* round 82: a gap of 64 px or more asks for a mark of this very frame (a press of C lands ~1 s late): the
          * capture at this frame's present, as a press is taken -- at most 5 a session, 3 s apart (C[26], C[27]); in a
@@ -9531,11 +9547,15 @@ static void crk_run(volatile struct glr *s, const uint8_t *lc_u, int row, int32_
         }
     }
 #endif
+#ifdef A4_LINEREC
     if (*nrec >= 2u) return;
     (*nrec)++; C[23]++;
     line_rec(s, row, lc_u, (uint32_t)x0 | (uint32_t)x1 << 16);
     volatile uint32_t *R = (volatile uint32_t *)A4_GL_LINREC;
     R[4u + ((R[1] - 1u) & 7u) * LIN_W + 1u] |= kd << 8 | th << 16;
+#else
+    (void)lc_u; (void)nrec;   /* round 83: the phone's build counts the runs, records none */
+#endif
 }
 #endif
 static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
@@ -9688,7 +9708,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 #ifdef A4_CEIL_COMP
             continue;                                   /* bench ceiling (round 67): no composite rows -- never a phone build */
 #endif
-            void (*const row)(uint32_t *, const uint32_t *, const uint32_t *) = PX6_PLD(s->fmode) ? a4_comp_row_pld : a4_comp_row;
+            uint32_t (*const row)(uint32_t *, const uint32_t *, const uint32_t *) = PX6_PLD(s->fmode) ? a4_comp_row_pld : a4_comp_row;
             for (int sy = 0; sy < sh; sy++) {
                 int screen_y = VP_H - 1 - (y0 + sy);
                 if (screen_y < CLIP_TOP) continue;
@@ -9707,16 +9727,33 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                 /* bench (round 82): a four-row gap, rows 150-153 x 20..299 -- recorded as kind 4, not filled; asks marks */
                 if (lc_on && screen_y >= 150 && screen_y <= 153) for (int x = 20; x < 300; x++) ((uint32_t *)rb)[sy * VP_W + x] &= 0x7FFFFFFFu;
 #endif
-                if (lc_on) {   /* round 72: this row's pixels no opaque GPU class drew (alpha's top bit clear) */
-                    /* round 77 (b77a: the branch a pixel cost ~3 ms a composite on every composite): the drawn
-                     * bits summed four a step, no branch; the undrawn run's ends only on a row that can be a line
-                     * (64 or more), found from each end -- the same counts and ends as the pixel loop */
-                    uint32_t d = 0, u;
+#endif
+                /* round 83 (the owner: the frame rate regressed since r80; the composite's loop 3.2 -> 4.3 ms since
+                 * round 81): the row composited first -- the ARMv6 routine says whether any four-pixel group was not
+                 * all drawn (one instruction on its slow path), and a row with none has an all-ones drawn-mask without
+                 * the 320-pixel pass below (most rows of the 3D picture) */
+                const uint32_t undrawn = row((uint32_t *)((uint16_t *)fb + screen_y * FB_STRIDE), src, src + VP_W);
+                uint32_t dcount = VP_W;                     /* the row's drawn pixels, when counted */
 #ifdef A4_LINEFILL
-                    {   /* round 81: the row's drawn-mask, the count from it (four pixels a step, a nibble's bits by table) */
+                {   /* round 81: the row's drawn-mask, the count from it (four pixels a step, a nibble's bits by table);
+                     * round 83: every composite (the fill's), not only the counter's */
+                    ch = (ch - 1u) & 7u;              /* the ring turns: the row below is now CMR(1) */
+                    if (!undrawn && MSKIP_ON(s->fmode)) {
+                        for (uint32_t w = 0; w < VP_W / 32; w++) CMR(0)[w] = 0xFFFFFFFFu;
+#ifdef A4_MASKCHECK
+                        {   /* bench: the skipped row's mask computed anyway -- CRK1 [45] rows whose mask was not all
+                             * ones (must stay 0), [46] rows skipped */
+                            volatile uint32_t *C = crk_get();
+                            uint32_t all = 0xFFFFFFFFu;
+                            for (uint32_t x = 0; x < VP_W; x++) all &= src[x];
+                            if ((int32_t)all >= 0) C[45]++;
+                            C[46]++;
+                        }
+#endif
+                    } else {
                         static const uint8_t pc4[16] = { 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4 };
-                        ch = (ch - 1u) & 7u;          /* the ring turns: the row below is now CMR(1) */
                         const uint32_t *p = src;
+                        uint32_t d = 0;
                         for (uint32_t w = 0; w < VP_W / 32; w++) {
                             uint32_t b = 0;
                             for (uint32_t q = 0; q < 32; q += 4, p += 4) {
@@ -9725,13 +9762,26 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                             }
                             CMR(0)[w] = b;
                         }
-                        cmn++;
-                    }
-#else
-                    for (const uint32_t *p = src, *pe = src + VP_W; p < pe; p += 4)
-                        d += (p[0] >> 31) + (p[1] >> 31) + (p[2] >> 31) + (p[3] >> 31);
+                        dcount = d;
+#ifdef A4_MASKCHECK
+                        if (!undrawn && d != VP_W) crk_get()[47]++;   /* bench: the routine said all drawn and was wrong */
 #endif
-                    u = (uint32_t)VP_W - d;
+                    }
+                    cmn++;
+                }
+#endif
+#if defined(A4_FRAMEREC) && defined(A4_ENG3)
+                if (lc_on) {   /* round 72: this row's pixels no opaque GPU class drew (alpha's top bit clear) */
+                    uint32_t u;
+#ifndef A4_LINEFILL
+                    if (undrawn) {   /* round 77: the drawn bits summed four a step, no branch */
+                        uint32_t d = 0;
+                        for (const uint32_t *p = src, *pe = src + VP_W; p < pe; p += 4)
+                            d += (p[0] >> 31) + (p[1] >> 31) + (p[2] >> 31) + (p[3] >> 31);
+                        dcount = d;
+                    }
+#endif
+                    u = (uint32_t)VP_W - dcount;
 #ifdef A4_LINEREC
                     {   uint32_t x0_ = 0, x1_ = 0;
                         if (u >= 64u) {
@@ -9745,9 +9795,8 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                     lc_u[screen_y] = (uint8_t)(u > 255u ? 255u : u);
                 }
 #endif
-                row((uint32_t *)((uint16_t *)fb + screen_y * FB_STRIDE), src, src + VP_W);
 #ifdef A4_LINEFILL
-                if (lc_on && cmn >= 3u) {
+                if (cmn >= 3u) {   /* round 83: every composite (was the counter's frames: every one under A4_LINEALL) */
                     /* round 81 (phone round 80: grey lines still, and none the >= 64 px counter caught): every pixel the
                      * GPU left undrawn between two drawn ones a row above and below -- a one-row crack, any length --
                      * and every pair of undrawn rows between drawn ones (two rows, each from its nearer drawn row), a
@@ -9922,10 +9971,16 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
     }
 #endif
 #ifdef A4_LINEFILL
-    if (cf_rows) {   /* LIN1's [2] the rows filled, [3] their pixels (both totals) */
-        volatile uint32_t *R = (volatile uint32_t *)A4_GL_LINREC;
-        if (R[0] != 0x314E494Cu) { R[0] = 0x314E494Cu; R[1] = 0; R[2] = 0; R[3] = 0; }
-        R[2] += cf_rows; R[3] += cf_px;
+    if (cf_rows) {
+#ifdef A4_LINEREC
+        {   /* LIN1's [2] the rows filled, [3] their pixels (both totals) */
+            volatile uint32_t *R = (volatile uint32_t *)A4_GL_LINREC;
+            if (R[0] != 0x314E494Cu) { R[0] = 0x314E494Cu; R[1] = 0; R[2] = 0; R[3] = 0; }
+            R[2] += cf_rows; R[3] += cf_px;
+        }
+#endif
+        volatile uint32_t *C = crk_get();           /* round 83: CRK1 [48] the rows filled, [49] their pixels (totals) */
+        C[48] += cf_rows; C[49] += cf_px;
     }
 #endif
 #if defined(A4_SKYCEN) || defined(A4_SKYSKIP) || defined(A4_GPUSKY)
