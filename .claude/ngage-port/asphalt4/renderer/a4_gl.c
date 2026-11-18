@@ -5056,6 +5056,9 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
 #ifdef A4_WRAPREC
             if (wrp)   /* bench: only the triangles with a wrapped corner undone -- what the offline check rasterises */
 #endif
+#ifdef A4_STREAMCEN
+            if (0)     /* bench (round 83): the census owns CUT1's place */
+#endif
             {   /* 'CUT1': this cut's raw corners, the last CUT_N kept -- a mark at a gap shows what was cut in its frame */
                 volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;
                 if (U[0] != 0x31545543u) { U[1] = 0; U[0] = 0x31545543u; }
@@ -6402,8 +6405,32 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
     return me;
 }
 /* the lifted mesh routine after its transform (eng/edits.py +34A18): 1 = the car is the GPU's, the faces skipped */
+#ifdef A4_STREAMCEN
+static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf, uint32_t lr);
+/* bench (round 83): every car-mesh draw call of the frame for the stream census (a4_prim.c): 0x5C0E10 -- [0] the frame,
+ * [1] calls, then 24 x (faces, faces + 52 nf, mode, taken) */
+static volatile uint32_t *scn_car(uint32_t faces, uint32_t nf, uint32_t mode)
+{
+    volatile uint32_t *L = (volatile uint32_t *)0x005C0E10u;
+    const uint32_t fr = ((volatile struct glr *)A4_GL_SCRATCH)->frames;
+    if (L[0] != fr) { L[0] = fr; L[1] = 0; }
+    if (L[1] >= 24u) return 0;
+    volatile uint32_t *d = L + 2u + L[1]++ * 4u;
+    d[0] = faces; d[1] = faces + 52u * nf; d[2] = mode; d[3] = 0;
+    return d;
+}
+#endif
 int a4_car_take(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf, uint32_t lr)
 {
+#ifdef A4_STREAMCEN
+    volatile uint32_t *scn_d = scn_car(faces, nf, mode);
+    const int scn_r = a4_car_take_i(cam, verts, nv, faces, nf, mode, nobf, lr);
+    if (scn_d && scn_r) scn_d[3] = 1;
+    return scn_r;
+}
+static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf, uint32_t lr)
+{
+#endif
     const uint32_t gb = gcar_gbase();
     if (lr != gb + 0x34B17u) return 0;                     /* a CBasicMesh: the cars */
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
@@ -7929,6 +7956,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #endif
     uint32_t tsaddr = desc[0x30 / 4];               /* texture descriptor, or flat colour */
     if (!tsaddr && kind != KIND_SHAD) return 0;
+#ifdef A4_SHADVIS
+    if (kind == KIND_SHAD) { kind = KIND_FLAT; tsaddr = 0x07E0u; }   /* bench (round 83): the shadow class solid green */
+#endif
 #if defined(A4_DEFER) && !defined(A4_M1VIS) && !defined(A4_SEQDUMP) && !defined(A4_VTXDUMP)
     if ((s->fmode & (AB_DEFER | AB_REORDER)) == (AB_DEFER | AB_REORDER)) return defer_take(s, gctx, desc, kind, m1, tsaddr);
 #endif

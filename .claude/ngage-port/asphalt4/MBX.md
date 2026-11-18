@@ -13055,3 +13055,79 @@ b. Read back: a4_px.s (the ORR only on the halfword path; lr's bit 31 outside ev
 c. Not entered: the line counter's every-16th-frame path on the phone (FRC1's line hits only on those frames now --
    an instrument, not a picture); a row the routine calls undrawn but whose undrawn pixels are all in groups it never
    sees (impossible: every group of every composited row goes through it).
+
+## Round 83, step 2 (the owner: "start on step 2"): scoping the big costs
+
+- The phone's frame (r82g, LA, steptime.py and the header): ~55 ms a render -- the logic 3.2 (2 steps a render, 1.6 a
+  step), the render call +12992 ~47 (before the first triangle 5.8; the 3D pass ~24, our hook ~15 of it; the composite
+  ~11-13, its readback 7; the 2D 3.2), the present 2.4, ~2-4 else. The list now takes ~18 faces a render (header [38]):
+  since round 60 the scenery goes to the GPU whole and the cars likewise; the ~610-700 primitives a render are mostly
+  the game's own per-face stream through the hook. Round 57's idle census: the ARM never idles (the runtime's yield
+  spins), so CPU work is frame time. Round 60's ceilings (bench): the world's three blocks 20.8 of a 39.0 ms render
+  call -- since then the scenery and cars moved to the GPU; what is left on the per-face path: +2732E's single faces
+  (328 a frame then, "what it is, to be read"), the road surface (yet another path), the sprites and the rest.
+- First measure: a cycle profile of r83 in an LA race on the owner's save (pf83la: C83 + A4_PROFSYM; EKA2L1_PCPROF +
+  _CYCLES, 3 G instructions after 14 G; hcm.sh with the menus). Not a repeat of round 68's p68c (a build before the GPU
+  cars, the cover redraw and the cut).
+- pf83la, first two tries: Xvfb had died (framestat 0: the emulator could not open the display; scratchpad xup.sh now
+  restarts it before a run); then a whole run (framestat 2,533, the boot fault only) but no profile -- 3 G after 14 G
+  ends past the run's ~18 G (the race from ~5 G; the file is written only once the window is full). Rerun at 8 G.
+- pf83la (third try: 3 G instructions after 8 G, in the LA race; ~390 renders): the model's cycles -- our code 73.1%
+  (with the lifted game code), the game's own 21.8%, other images 5.1%. By job (ms a render at ~18 M cycles a render):
+  the present convert a4_cvt565_run 13.4% (~7.4 -- the model overstates it: the phone's whole present is 2.4); the
+  composite a4_comp_row 9.7% + composite_rows 4.4%; the per-triangle path (lean_tail_cv 7.75, lean_tail 3.14,
+  batch_draw 3.29, draw_prim_take 1.17, tex_index 1.14, tri_tex 0.45, a4_gl_draw_prim 0.26) ~17% (~9.5 ms); the HUD
+  painter a4_engv_29736 7.8% (~4.3); the scenery's front end engi_349F8 4.6 + engi_349B0 2.0; the GPU objects
+  (gitem_box 1.8, a4_gobj_copy 1.2, gobj_flush 0.8, a4_obj_take 0.4, gobj_mesh 0.35); __aeabi_memclr8 1.2. The game's
+  own code spread thin (+49480 2.6%, +522A4 1.4, +52E44 1.3, +34798 1.0, +2CE90 1.0 ...); its per-face path (+31246,
+  +34798, +35D3A, +3598C, +35A28, +51E44, +51F08 ...) ~5% (~2.7 ms). lean_tail_cv's hottest blocks (27% of it): a
+  scan of up to 191 GPU objects' boxes and buckets per triangle -- cvr_add, the cover redraw's search, inlined (shadow
+  triangles covered only by GPU items; ~1 ms a render).
+- **Which triangles the stream is: A4_STREAMCEN (bench)** -- a4_tramp.s passes draw_primitive's caller (the saved lr
+  at [sp, #52]: +300AE's push {r4, r5, lr} and sub sp, #0x14, disassembled, then the trampoline's six words) to
+  a4_prim_capture, which counts in race frames (FRC1's last entry in the chase camera) by call site: calls, those the
+  GPU path took, the flags ORed, the face record's first word. 'SCN1' in CUT1's place (lean_tail records no cuts in
+  that build). scn83 (C83 + -DA4_STREAMCEN, 983,284 bytes) in LA running; scratchpad tools82/scn.py reads it.
+- scn83la (census, LA; framestat 2,467, the boot fault only): 859,570 draw_primitive calls in race frames by call site:
+  **+347E8 84% (flags ORed 0x3002a: the flat / shadow classes; the GPU path took 97%), +35F9E 13% (0x08435101: the
+  perspective class, the near clip's emits; 100%), +3485C 4% (0x114100; 37%)**, one face record vtable throughout.
+  Per frame: the census divided by s->frames, which a4_gl_frame advances at every DoPresent -- the runtime's yield,
+  several a render (5,322 over a race of ~2,000 renders) -- so ~161 "a frame" is **~470 a render**: ~395 of the flat /
+  shadow class, ~60 near-clipped perspective faces, ~20 others. (An estimate of calls from the profile's entry blocks
+  was nonsense -- its blocks are not basic blocks and carry the cache model's stalls -- and is not used.)
+- So the per-face stream is mostly one class. Where it comes from: scn83b (SCN2): the census by call site and exact
+  flags, renders counted by the frame record's count, and each face record tested against the frame's car-mesh draw
+  calls (a4_car_take records every one -- faces, 52 x nf, mode, taken -- at 0x5C0E10). Running in LA.
+- scn83b (SCN2, LA; framestat 2,483, the boot fault only): 809,784 calls over 1,529 race renders, **529.6 a render**:
+  | site | flags | a render | GPU path took | in a car-mesh draw |
+  | +347E8 | 0x20 (KIND_SHAD: the shadow class) | **306.0** | 100% | none |
+  | +347E8 | 0x20000 | 86.8 | 100% | none |
+  | +347E8 | 0x20002 | 37.0 | 100% | none |
+  | +35F9E | 0x08020001, 0x08021001, 0x1, 0x401001 ... (perspective, the near clip's) | ~67 | 100% | none |
+  | +3485C | 0x14100 | 12.9 | 0% (software) | all: a refused car draw, mode 0 |
+  | +347E8 | 0x10000, 0x10008 | 9.8, 9.6 | 100%, 0% | none |
+  So the per-face stream is the shadow class first (58%), none of it from the cars' mesh draws; 306 a render is round
+  60's "+2732E single faces" (328 a frame then, "what it is, to be read"; c59road: those off, the render call -3.4 ms
+  on the bench). In our path a shadow is the dearest triangle (the cover rule's tile walk and cvr_add's scan of every
+  GPU item). Which shadows: r83 + -DA4_SHADVIS (bench: KIND_SHAD drawn as solid green) in LA, marks every 15 s.
+- shv83 (r83 + A4_SHADVIS, LA; framestat 1,635, the boot fault only): **the green is the player's car's shadow** -- a
+  large blob under and behind the car in every mark; no other car shows one. So ~306 triangles a render through the
+  game's per-face path and our hook are one object, the player's shadow. Next: is +2732E its drawer (shvceil83: the
+  same with A4_CEIL_ROAD -- the green gone or not), and what drawing it costs (ceil83la: r83 with A4_CEIL_ROAD, LA,
+  against la83a by segment; LA runs agree within ~1 ms a 25-segment bin: la82f / la82g / la83a 43/43/42, 48/48/47).
+- shvceil83 (r83 + A4_SHADVIS + A4_CEIL_ROAD, LA; framestat 1,469, the boot fault only): **no green in any mark** --
+  +2732E (the one-face drawer under +20938, insert +27402) draws the player's car's shadow, a face a call, ~306 a
+  render; the rest of the picture whole (the road surface is another path).
+- **ceil83la (r83 with A4_CEIL_ROAD, LA; framestat 2,413, the boot fault only): the player's shadow costs ~5-6 ms a
+  render on the bench** -- the median render gap by 25-segment bin 36 / 42 / 44 / 36 ms against la83a's 42 / 47 / 47 /
+  41 (la82f, la82g alike within ~1 ms), ~12% of the frame: the single dearest thing in it. Not a repeat of round 59-60's
+  c59road (its build had no cover rule, no GPU cars or objects, and the class was not yet known to be the shadow).
+- **Step 2's first target: the player's shadow drawn by the GPU in one batch.** Each of its ~306 faces a render goes
+  through +2732E (one face), +27402 (the insert, its own transform +346B0), the ordering table's sort, the face draw
+  +31246 / +34798 with three projections (+51E44), draw_primitive and our hook (where a shadow is the dearest triangle:
+  the cover rule's tile walk and cvr_add's scan). Taking the faces at +2732E (the shadow's vertices as its caller +20938
+  builds them) into one list and drawing it once, at the shadow class's place in the frame, with its blend (dst x
+  12/16) and the cover rule applied once to the whole shadow, removes nearly all of that. To read first: +20938 and
+  +2732E -- what space the vertices are in, where the face's darkening comes from, the order the table draws it in
+  (painted over the road, under what is nearer), and whether the faces overlap (the game's span darkens a pixel once).
+  Next after it, by the census: the 0x20000 / 0x20002 classes (87 + 37 a render, +347E8) and the near clip's faces (~67).

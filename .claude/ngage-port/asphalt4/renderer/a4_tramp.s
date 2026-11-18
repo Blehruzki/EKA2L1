@@ -149,6 +149,10 @@ a4_bb_addr:
         .global a4_prim_capture_tramp
 a4_prim_capture_tramp:
         push    {r0, r1, r2, r3, r12, lr}
+#ifdef A4_STREAMCEN
+        ldr     r3, [sp, #52]       @ bench (round 83): draw_primitive's caller -- its push {r4,r5,lr} and sub sp,#0x14
+                                    @ put the saved lr 28 bytes above +300B2's sp, 24 more below it here
+#endif
         bl      a4_prim_capture     @ ret r0: 1 = GPU drew it (skip software), 0 = continue
         cmp     r0, #0
         bne     1f
