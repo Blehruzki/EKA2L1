@@ -6637,7 +6637,7 @@ static int shb_cvr_add(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 static int cvr_add(int32_t b, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 {
 #ifdef A4_SHADBATCH
-    if (SHB->cand && b == (int32_t)SHB->cb) return shb_cvr_add(x0, y0, x1, y1);   /* round 84: inside a shadow bucket */
+    if (SHB->cand && SHB->magic == SHB_MAGIC && b == (int32_t)SHB->cb) return shb_cvr_add(x0, y0, x1, y1);   /* round 84: in a shadow bucket */
 #endif
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
     volatile struct cvr *v = CVR;
@@ -8146,6 +8146,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
             v->pend = 0; v->cb = 0; v->magic = 0x31525643u;   /* 'CVR1', for a4_tel.c */
             for (uint32_t j = 0; j < 6u; j++) v->ob[j] = 0;
         }
+#endif
+#ifdef A4_SHADBATCH
+        SHB->cand = 0;                                  /* round 84: no shadow bucket open (the scratch is not cleared at boot) */
 #endif
 #ifdef A4_ROWCHECK
         rc_miny = VP_H;

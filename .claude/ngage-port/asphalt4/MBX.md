@@ -13170,3 +13170,17 @@ c. Not entered: the line counter's every-16th-frame path on the phone (FRC1's li
   bucket's boxes, found once) -- every face's result as the per-face path's. Anything else: +349B0 as before.
   Scratch 0x5BA000-0x5C0280 (A4_LINEREC's, not in C83; #error together). CRK1 [50] faces batched, [51] buckets lost
   (a trigger drawn when it could not be taken: the bucket's other faces lost that frame).
+- shck84 (C83 + A4_SHADBATCH + A4_SHADCHECK, LA, marks to 150 s; framestat 1,577, the boot fault only; every face
+  also to the table, the list compared at each face's draw): **faces found 270,579, not found 1,761 (0.65%: refused at
+  the insert, drawn a face at a time); corners differing 0 (all 811,737 of the list's projections equal the game's
+  +51E44 at its draw: F = cam[1] and the context are the draw's); buckets differing 0; pending items differing 0 of
+  225,288 faces with any; item tests 275,600 by the candidates against 15,220,364 by cvr_add's scan (55x fewer)**.
+  ~28 buckets a render, ~11 faces each ("lost" 25,139 is every bucket here: a check build draws none). Not a repeat of
+  round 54's TAKECHECK (the list's insert against its old one) or MESHCHECK (the list faces against the table's).
+- la84a (r84a candidate = C83 + A4_SHADBATCH, f836c4ee; LA, marks every 30 s; framestat 2,334, the boot fault only):
+  faces batched 413,100, buckets lost 0; the shadow at the marks as la83a's (crops at 60 and 150 s). **The median
+  render gap by 25-segment bin 41 / 46 / 46 / 38 ms against la83a's 42 / 47 / 47 / 41 and the ceiling's 36 / 42 / 44 /
+  36: a third of the shadow's cost recovered, not most.** Instructions a post (the framestat lines, in-race median):
+  la83a 9.09M, ceil83la 8.09M, la84a 8.73M -- the shadow still ~0.64M of its 1.0M, CPU work, not the GPU model's.
+  So the per-face table walk and cvr_add's scan were not the bulk; what is left needs naming before more is changed:
+  pw83la / pw84a (the cycle profile, PROFSYM, both over instructions 6e9-8.5e9 of LA) running.
