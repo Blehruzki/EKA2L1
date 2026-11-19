@@ -13311,4 +13311,12 @@ c. State the bench did not enter: more than 512 shadow faces or 64 buckets in a 
   Not proven the crash's cause: the only code of r84b's that reads the game's state outside a race frame.
 - at84c (r84c, alltracks.sh: one session, a race on each destination in turn -- LA, New York, Paris, Monte Carlo,
   Dubai, Shanghai -- 45 s each with C at 20 and 35 s, then PAUSE -> MAIN MENU -> YES and the next) running: the battery
-  the owner asked for, and a track loaded after another five times.
+  the owner asked for, and a track loaded after another five times. **LA raced clean; the emulator died in New York,
+  5-20 s into the race (the 5 s shot is the grid): "Access violation reading address 0x3CD87855 in thread Main (pc
+  0x700E16C0)" -- the guest fault behind a KERN-EXEC 3.** Symbolized against r84c.sym (the same build, d72aa53a):
+  engi_0F1B0 +0x57C, the lifted copy of the traffic routine +F1B0 as +FB12 calls it (+FEA4): `ldr r0, [r8]; ldr r0,
+  [r0, #0x18]` is the game's +F3E2 / +F408 (`ldr r0, [r6]; ldr r2, [r0, #0x18]; blx r2`), a virtual call on +F1B0's
+  second argument -- the traffic slot +FB12 took from the lane entry's low byte (race + 0x6E04 + 0x148 x index, +FC0A
+  to +FC12), whose vtable word reads 0x3CD8783D. Not the shadow and not a draw: the race code on the track loaded second.
+  Matches the owner's r84b report (the second race, after "next race", KERN-EXEC 3). The first fault in the log
+  (reading 0x34 at pc 0x8039F834, posts 1) is the known boot one.
