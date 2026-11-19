@@ -13552,3 +13552,26 @@ c. State the bench did not enter: the owner's own road -- three laps to the fini
   [59] the other strips, [60] composites. frec3.py mode timers: each ring capture against the previous one, ms a
   scene. lifted.c regenerated (44 lines: 22 edits). r86c candidate (C86) 991,796 bytes, sha256 840b0eca...; lar86c
   (LA, the timers' first read) running.
+- lar86c (r86c, LA, 300 s; framestat 2,554, the boot fault only): the timers read back (frec3.py timers), ms a
+  scene on the bench's model: walk 0.4-2.0 (mostly ~0.8), cars 0.6-1.0, shadow's insert 0.7-1.0, +31A26/50 0.7-1.0,
+  the ordering table's draw 10-14.5; a composite's first strip 4.1-5.0 against 2.4-2.5 for the rest.
+- **The battery on r86c (the exact binary):** at86c (alltracks.sh, the six maps in one session): no fault, framestat
+  5,454, each map by its shot with the cars; m86c (Instant Play, night Paris, 300 s): framestat 2,301, the boot fault
+  only, 7 marks, 8 captures. (r85a's road-in-place restart, rs85a, untouched by r86's changes.)
+
+Rule 4, before r86c goes out (C86 = C84 + A4_PHTIMERS: r85a's game plus the objects' radix sort and box products,
+the early car take, and the timers):
+a. The guesses. (1) The sort, the boxes, the early take: exact by construction and checked (ck86: 440 flushes in order,
+   250,966 corners equal; ce86: 5,770 cars judged inside, 0 culled by the routine). (2) That nothing reads a taken
+   car's transformed vertices or cam[0]: the face loop (skipped for a taken car in both versions) is the only reader
+   found; +34AEA returns at once and its five sites in +D3BA overwrite r0. (3) That NTickCount sampled per call
+   averages true over a window (1 ms ticks; the header's phase timers rest on the same) and that 22 fast-exec calls a
+   scene cost little on the phone (the phone's own numbers will show it against r85a's 51.8 ms in Monte Carlo).
+b. Read back: gobj_sort and the flush's taking, gitem_box's products, gcar_inside (the outcode tests from +345E4's
+   disassembly: 0x20 for z > 6024 or <= -29900, 0x10 for z > -64, the four planes from cam's words; the extents from
+   the matrix rows' lengths), a4_car_take_i's early / late gate (refused early = refused late, the same inputs), the
+   edits and the regenerated lifted.c (lift.py reproduced the committed file byte for byte before each change), the
+   timers' placement (after a label, a stop with no start adds nothing).
+c. State the bench did not enter: a frame with more than GOBJ_NE (768) object groups (capped and dropped as before);
+   the arena full on a long session (8 KB less room: peak use about half of it on the bench); a car under a scaled
+   matrix (the rows' lengths cover it); the owner's top-speed heavy scenes (the timers are there to measure them).
