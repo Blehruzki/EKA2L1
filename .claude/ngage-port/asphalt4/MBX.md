@@ -13529,3 +13529,8 @@ c. State the bench did not enter: the owner's own road -- three laps to the fini
 - **ce86 (C84 + A4_CAREARLYCHECK, LA; framestat 2,191, the boot fault only): 5,770 car draws judged inside, 0 of them
   culled by the routine; 1,777 not certain.** About three car draws in four now skip the transform. r86b candidate
   989,300 bytes. lar86b (LA, against lar86a by segment) running.
+- lar86b (r86b, LA, 300 s; framestat 2,597, the boot fault only): by 25-segment bin 39 / 44 / 46 / 39 ms against
+  lar86a's 41 / 43 / 43 / 40 -- mixed, and the path different (this run reached segments 0-24 and 125-149). The
+  saving by construction, from rt85: the routine's own 0.145 ms a car call (0.17 less the take) skipped for three
+  car draws in four, ~0.6-0.8 ms a render on the bench -- under these runs' resolution. Exact by ce86; recorded as
+  not measured by the A/B.
