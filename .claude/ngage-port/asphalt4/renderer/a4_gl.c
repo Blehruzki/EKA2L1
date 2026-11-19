@@ -587,6 +587,18 @@ static inline volatile uint32_t *crk_get(void)
     if (C[0] != 0x314B5243u) { for (uint32_t k = 1; k < CRK_N; k++) C[k] = 0; C[0] = 0x314B5243u; }   /* 'CRK1' */
     return C;
 }
+#ifdef A4_FLUSHPROBE
+/* bench (round 84, Dubai's cars): the frame's events in order at 0x5BF000 ([0] count, then type << 24 | value); at
+ * the present copied to CUT1's place for the telemetry -- 1 a GPU frame begun (frames), 2 its cars drawn (n), 3 a
+ * composite (its caller's blob offset), 4 a triangle after it (flags), 5 a billboard to software (site), 6 the present */
+#define FPB ((volatile uint32_t *)0x005BF000u)
+static void fp_ev(uint32_t t, uint32_t v)
+{
+    volatile uint32_t *b = FPB;
+    const uint32_t n = b[0];
+    if (n < 255u) { b[1u + n] = t << 24 | (v & 0xFFFFFFu); b[0] = n + 1u; }
+}
+#endif
 #define CVR_FLAG 0x08000000u   /* the run passes every test and writes its depth */
 #define CVR_WRITE 0x04000000u  /* the run keeps its test and writes its depth (bm78c: tested elements over a pending item) */
 struct cvr { uint32_t lframe, pend; int16_t r[4]; uint32_t ob[6], cb; uint32_t magic, k[8]; uint16_t lgrid[MESH_GW * MESH_GH]; };
@@ -5059,7 +5071,7 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
 #ifdef A4_STREAMCEN
             if (0)     /* bench (round 83): the census owns CUT1's place */
 #endif
-#ifdef A4_CARPROBE2
+#if defined(A4_CARPROBE2) || defined(A4_FLUSHPROBE)
             if (0)     /* bench (round 84): the car probe owns CUT1's place */
 #endif
             {   /* 'CUT1': this cut's raw corners, the last CUT_N kept -- a mark at a gap shows what was cut in its frame */
@@ -6640,6 +6652,9 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
         volatile uint32_t *w = U + 2u + ((U[1] - 1u) & (CUT_N - 1u)) * CUT_W;
         w[22] = gl_geterror(); w[23] = draws; }
 #endif
+#ifdef A4_FLUSHPROBE
+    fp_ev(2u, n | draws << 8);
+#endif
     c->draws += draws; c->frames_drawn++;
     for (uint32_t i = 0; i < n; i++) rows_extend(s, c->it[i].box);   /* round 78: their rows composited */
     MESH->active = 1;                                       /* the table's classes depth-test against them */
@@ -6954,6 +6969,12 @@ static int shb_take(uint32_t *cam, uint32_t *face)
         for (uint32_t k = 0; k < 16u; k++) ((uint32_t *)(void *)h->gmap)[k] = 0;
     }
     if (face[0] != (uint32_t)(uintptr_t)&a4_tfvt + (uint32_t)a4_tfvt || face[1] != 0x20u) return 0;
+    {   /* round 84 (the owner's crash at the next race): a race frame only -- the list begun this frame under this
+         * camera and not yet drawn (mesh_take has read the context it projects with, in this frame); the garage's and
+         * the results' cars (shpr84: faces offered with no list) go to the table as before round 84 */
+        const struct mesh *mm = (const struct mesh *)A4_GL_MESH;
+        if (mm->frame != frames || mm->cam != (uint32_t)(uintptr_t)cam || mm->drawn) return 0;
+    }
 #ifdef A4_SHADPROBE
     {   /* bench (round 84, the owner's crash at the next race): CRK1 [40] shadow faces offered, [41] of them with no list
          * started this frame, [42] with the list under another cam, [46] frames offered any; [47] the last such frame */
@@ -8248,6 +8269,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
      * triangle now is drawn after it, and the GPU's image of this frame is spent --
      * software, in the game's own order (~25 a frame: shadows and sparks among the
      * billboards, round 12) */
+#ifdef A4_FLUSHPROBE
+    if (s->flushed) fp_ev(4u, flags);
+#endif
     if (s->flushed) { A4_PERF[PF_LATE]++; return 0; }
 #endif
     if (s->prims != 0 && gctx[0x4c / 4] != *(volatile uint32_t *)A4_GL_BB) {
@@ -8255,6 +8279,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         return 0;
     }
     if (s->prims == 0) {                                /* first prim of the frame */
+#ifdef A4_FLUSHPROBE
+        fp_ev(1u, s->frames);
+#endif
         s->flushed = 0;
         /* The surface this frame's 3D renders into (ctx[0x4c], what the software span
          * reads): the composite writes there. It was taken only from the span itself
@@ -9260,6 +9287,9 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
     if (iat[0] < 0x10000u) return 0;
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
     if (s->up != A4_GL_MAGIC || s->prims == 0) return 0;      /* no GPU frame begun */
+#ifdef A4_FLUSHPROBE
+    if (s->flushed) fp_ev(5u, 1u);
+#endif
     if (s->flushed) { A4_PERF[PF_BBSW]++; return 0; }          /* composited already: software, in order */
     const uint32_t *ctx = (const uint32_t *)f[0x6c / 4];
     if (ctx[0x4c / 4] != *(volatile uint32_t *)A4_GL_BB || f[0x64 / 4] != (uint32_t)VP_W
@@ -9271,6 +9301,9 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
          * of under it -- before, it survived only where the GPU drew nothing (the sky:
          * round 15's band at the lap line, inferred). What follows is software, in order. */
         A4_PERF[PF_BBSW]++;
+#ifdef A4_FLUSHPROBE
+        fp_ev(5u, 3u);
+#endif
 #ifdef A4_BBPROBE
         ((volatile uint32_t *)0x00412D00u)[120]++;
 #endif
@@ -9543,13 +9576,17 @@ int a4_gl_fill(const uint32_t *f)
 #endif
 }
 
-/* The blit's two-depth sibling (+3059E, a4_bb2_tramp): not reproduced, and never called
- * in the bench race. Its first call composites the frame (what follows is software, in
- * order: right, if slow), and the calls are counted for the capture header. */
+/* The blit's two-scale sibling (+3059E, a4_bb2_tramp; "two-depth" until round 84: it takes an x and a y scale where
+ * +3015E takes one): not reproduced, and never called in LA or Paris. Until round 84 its first call composited the
+ * frame -- what followed went to software, in order. Dubai calls it in the middle of the 3D pass (the sun and its
+ * flare, ~114 triangles in: dbfp, MBX.md round 84), and the software road then painted over the composited cars (the
+ * owner's vanishing cars). Now the sprite is left to the software blit under the GPU's picture: it shows wherever the
+ * GPU draws nothing (the sky), and the frame stays on the GPU. Lost: the glow over GPU-drawn pixels it would cover
+ * (far buildings under the sun). The calls are counted for the capture header. A4_BB2FLUSH (bench): the old rule. */
 void a4_gl_bb2(void)
 {
     if (((volatile struct glr *)A4_GL_SCRATCH)->up == A4_GL_MAGIC) A4_PERF[PF_BB2]++;
-#ifdef A4_IMM
+#if defined(A4_IMM) && defined(A4_BB2FLUSH)
     a4_gl_flush();
 #endif
 }
@@ -10771,6 +10808,11 @@ static void composite_prev(volatile struct glr *s)
 
 void a4_gl_flush(void)
 {
+#ifdef A4_FLUSHPROBE
+    fp_ev(3u, (uint32_t)(uintptr_t)__builtin_return_address(0) - 0x70000000u);
+    {   volatile struct glr *s0 = (volatile struct glr *)A4_GL_SCRATCH;
+        fp_ev(7u, s0->prims | (s0->flushed ? 0x800000u : 0u)); }
+#endif
 #ifdef A4_GPUSKY
     /* the frame's 2D or its present with the backdrop recorded and no GPU frame begun: in software, now */
     if (SKYS->state == SK_REC) sky_replay(SKYS);
@@ -11604,6 +11646,17 @@ int a4_gl_frame(uint32_t fps)
                                                          * the page of a buffer the game may have freed */
 #endif
     a4_gl_flush();                                      /* draw this frame on the GPU */
+#ifdef A4_FLUSHPROBE
+    {   fp_ev(6u, 0u);
+        volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT, *b = FPB;
+        const uint32_t n = b[0] < 255u ? b[0] : 255u;
+        if (n > 4u) {                               /* a frame with something in it: kept for the telemetry */
+            U[0] = 0x31545543u; U[1] = n;
+            for (uint32_t k = 0; k < n && k < 380u; k++) U[2u + k] = b[1u + k];
+        }
+        b[0] = 0;
+    }
+#endif
     A4_PERF[PF_FLAGS] &= ~PFF_2D;                       /* a composite inside it has no 2D after */
 #if defined(A4_ABMARK) && !defined(A4_ABFRAME)
     if (had) mark_draw();                               /* after the flush's composite and the HUD */

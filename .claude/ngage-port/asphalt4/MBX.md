@@ -13286,3 +13286,29 @@ c. State the bench did not enter: more than 512 shadow faces or 64 buckets in a 
   So: the same corners, matrices, projection and state that draw in LA draw nothing in Dubai, where a triangle from
   another array through the same matrix draws. dbst (A4_CARSTAGE: the cars' corners copied to the objects' staging and
   drawn from there, as the objects are) running.
+  - dbst (A4_CARSTAGE, the cars from the objects' staging): no car. dbgl / lagl (EKA2L1_GLDUMP=1000, the emulator's
+    own log of each large draw): **the player's car draw identical in both cities** -- 1,692 corners, the same first
+    corner, the same state words (cull, depth GEQUAL), the same modelview to the metre and the same projection. The
+    cars are drawn; something paints over them afterwards.
+  - **dbfp (A4_FLUSHPROBE: the frame's events in order -- begun, cars drawn, each composite and its caller, each
+    triangle after it -- the last frame before each mark): in Dubai the frame begins, the 12 cars are drawn, and after
+    114 triangles the frame is composited from a4_bb2_tramp -- the two-depth billboard blit +3059E, "never called in
+    the bench race" (LA) -- and every triangle after it goes to the game's software, late, in runs of 18-66 between
+    the blit's calls: the road and the rest painted by software over the composited picture, the cars under it.**
+    Round 12's rule (the blit's first call composites the frame, what follows is software, in order) was written for a
+    call the bench never saw; Dubai calls it in the middle of the 3D pass. The phone's long 2D phase there (11-17 ms
+    against ~3) is that software 3D.
+  - dbnb (r84b + A4_BB2NOFLUSH: the blit's call composites nothing): **the cars back at Dubai's start** -- the player's
+    and the rivals', the sun and its glow over the sky, the frame on the GPU throughout.
+- **r84c: the two fixes.** (1) a4_gl_bb2 no longer composites: the two-scale blit's sprite (the sun and flare in
+  Dubai) is left to the software blit under the GPU's picture, shown where the GPU draws nothing (the sky); lost, the
+  glow over GPU pixels it would cover (far buildings under the sun) -- against, before, the rest of the frame in
+  software and the cars painted over. A4_BB2FLUSH (bench) keeps the old rule. (2) For the crash at the next race,
+  which the bench has not reproduced: the shadow insert takes a face only in a race frame -- the list begun this frame
+  under the same camera and not yet drawn, the frame in which mesh_take already read the context the projection uses;
+  the garage's and the results' cars, offered with no list (shpr84), go to the table as before round 84. In the bench's
+  race frames the list always came first (shpr84: no-list faces only in the garage), so the batch is unchanged there.
+  Not proven the crash's cause: the only code of r84b's that reads the game's state outside a race frame.
+- at84c (r84c, alltracks.sh: one session, a race on each destination in turn -- LA, New York, Paris, Monte Carlo,
+  Dubai, Shanghai -- 45 s each with C at 20 and 35 s, then PAUSE -> MAIN MENU -> YES and the next) running: the battery
+  the owner asked for, and a track loaded after another five times.
