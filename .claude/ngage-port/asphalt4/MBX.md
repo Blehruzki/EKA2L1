@@ -13361,3 +13361,10 @@ c. State the bench did not enter: more than 512 shadow faces or 64 buckets in a 
   object. Against r84c's three crashes in four New York-after-LA runs (at84c, ny2, ny3, ny5; ny4 the layout that
   zeroed the word), five clean later races. Not the every-map battery: the script now steps Right k from LA. Rerun
   as at85b.
+- **at85b (a4_r85a_cand.exe, alltracks.sh fixed: the every-map battery the owner asked for) -- LA, New York, Paris,
+  Monte Carlo, Dubai, Shanghai in one session, 45 s each with C at 20 and 35 s, PAUSE -> MAIN MENU -> YES between:
+  all six raced, no fault (the boot one only; framestat 5,484).** Each map confirmed by its shots (LA's grass, New
+  York's snow, Paris at night, Monte Carlo's harbour, Dubai's sunset, Shanghai's towers); the player's car drawn in
+  all six, rivals in each; Dubai's rivals there through the start and its sun over the sky (r84c's bb2 fix, the
+  owner's report). Shanghai, never raced on the bench before: at its start, large white parallelograms on the road
+  near the camera -- under test against the stock game (shst).
