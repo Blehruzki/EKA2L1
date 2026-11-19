@@ -583,10 +583,10 @@ struct mesh {
  * screen box (r), counters (k). */
 #define A4_GL_CVR 0x005C0400u
 #define A4_GL_CRK 0x005C0800u   /* round 81/82: the crack and cut-triangle counters ('CRK1', CRK_N words) */
-#define CRK_N 62u               /* round 82e: [32..34] the giant faces, objects and cars handed back to the game; 82f:
+#define CRK_N 64u               /* round 82e: [32..34] the giant faces, objects and cars handed back to the game; 82f:
                                  * [35..39] the wrapped corners, [40..44] the bench's wrap probe; 83: [45..47] the bench's
                                  * mask check, [48..49] the rows and pixels filled; 84: [50..51] the shadow batch; 86:
-                                 * [52..61] A4_PHTIMERS (a4_eng.h) */
+                                 * [52..61] A4_PHTIMERS (a4_eng.h), [62] the objects' and cars' flushes, [63] the shadow's draws */
 _Static_assert(CRK_N * 4u <= 256u, "CRK1 within the 256 bytes the telemetry writes, before CUT1");
 #define A4_GL_CUT 0x005C0900u   /* round 82f: 'CUT1', the last CUT_N triangles cut, their raw corners (lean_tail) */
 #define CUT_N 16u
@@ -713,7 +713,39 @@ static int mesh_has(uint32_t p)
 #define SENTINEL_B 0xFFu
 
 /* small typed views of the IAT */
+#ifdef A4_PHTIMERS
+/* Round 86 (the phone's table draw, ~20 ms a scene in phone round r86c): 'TIM2', GL calls counted by class at the IAT,
+ * summed from the launch, at 0x5C0F10 (after CUT1, to the scratch's end; bench A4_STREAMCEN's SCN2 overlaps it):
+ * [1..4] calls -- draws (22, 27), texture binds (11), matrix (15, 16, 42), every other; [5] corners drawn; the same four
+ * made inside [6..9] the objects' flush, [10..13] the cars' flush, [14..17] the batch's draws (batch_draw), [18..21]
+ * the list's draw (mesh_draw), [22..25] the shadow's draws (shb_draw). With the blocks' ticks (CRK1 [62] [63], the
+ * header's batch and list draw) the phone's own cost of a GL call. */
+#if defined(A4_STREAMCEN)
+#error "A4_PHTIMERS keeps TIM2 at 0x5C0F10, where A4_STREAMCEN's SCN2 runs"
+#endif
+#define A4_GL_TIM2 0x005C0F10u
+_Static_assert(A4_GL_TIM2 + 60u * 4u <= 0x005C1000u, "TIM2 within the scratch");
+static inline volatile uint32_t *tim2(void)
+{
+    volatile uint32_t *T = (volatile uint32_t *)A4_GL_TIM2;
+    if (T[0] != 0x324D4954u) { for (uint32_t k = 1; k < 60u; k++) T[k] = 0; T[0] = 0x324D4954u; }   /* 'TIM2' */
+    return T;
+}
+__attribute__((noinline)) static uint32_t gl_cnt(uint32_t i)   /* out of line: one call a GL call, not 12 KB of copies */
+{
+    tim2()[1u + (i == 22u || i == 27u ? 0u : i == 11u ? 1u : (i == 15u || i == 16u || i == 42u) ? 2u : 3u)]++;
+    return i;
+}
+#define F(i) (a4_gl_iat_ptr()[gl_cnt(i)])
+#define TIM2_SNAP(v) uint32_t v[4]; { volatile uint32_t *T_ = tim2(); for (uint32_t q_ = 0; q_ < 4u; q_++) v[q_] = T_[1u + q_]; }
+#define TIM2_ADD(v, b) { volatile uint32_t *T_ = tim2(); for (uint32_t q_ = 0; q_ < 4u; q_++) T_[(b) + q_] += T_[1u + q_] - v[q_]; }
+#define TIM2_CORNERS(c) (tim2()[5] += (uint32_t)(c))
+#else
 #define F(i) (a4_gl_iat_ptr()[i])       /* pc-relative getter; no writable globals */
+#define TIM2_SNAP(v)
+#define TIM2_ADD(v, b)
+#define TIM2_CORNERS(c) ((void)0)
+#endif
 static int   egl_get_display(int d){ return ((int(*)(int))F(0))(d); }
 static int   egl_initialize(int d,int*a,int*b){ return ((int(*)(int,int*,int*))F(1))(d,a,b); }
 static int   egl_pbuffer(int d,uint32_t c,int*a) __attribute__((unused));   /* unused in -DA4_WINDOW */
@@ -740,9 +772,9 @@ static void  gl_enableclient(uint32_t a){ ((void(*)(uint32_t))F(18))(a); }
 static void  gl_vertexptr(int s,uint32_t t,int st,const void*p){ ((void(*)(int,uint32_t,int,const void*))F(19))(s,t,st,p); }
 static void  gl_texcoordptr(int s,uint32_t t,int st,const void*p){ ((void(*)(int,uint32_t,int,const void*))F(20))(s,t,st,p); }
 static void  gl_color4x(int r,int g,int b,int a){ ((void(*)(int,int,int,int))F(21))(r,g,b,a); }
-static void  gl_drawarrays(uint32_t m,int f,int c){ lz_flush(); ((void(*)(uint32_t,int,int))F(22))(m,f,c); }
+static void  gl_drawarrays(uint32_t m,int f,int c){ lz_flush(); TIM2_CORNERS(c); ((void(*)(uint32_t,int,int))F(22))(m,f,c); }
 static void  gl_drawelements(uint32_t m,int c,uint32_t t,const void*ix) __attribute__((unused));
-static void  gl_drawelements(uint32_t m,int c,uint32_t t,const void*ix){ lz_flush(); ((void(*)(uint32_t,int,uint32_t,const void*))F(27))(m,c,t,ix); }   /* ord 55 (stage 4, against the ROM) */
+static void  gl_drawelements(uint32_t m,int c,uint32_t t,const void*ix){ lz_flush(); TIM2_CORNERS(c); ((void(*)(uint32_t,int,uint32_t,const void*))F(27))(m,c,t,ix); }   /* ord 55 (stage 4, against the ROM) */
 static void  gl_shademodel(uint32_t m){ ((void(*)(uint32_t))F(23))(m); }
 static void  gl_texenvx(uint32_t tg,uint32_t p,int v){ ((void(*)(uint32_t,uint32_t,int))F(24))(tg,p,v); }
 static uint32_t gl_geterror(void){ return ((uint32_t(*)(void))F(25))(); }   /* device probe */
@@ -4389,7 +4421,14 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint16_t *m1
  * software rasteriser), 0 to fall through. The triangle is accumulated in arrival
  * order and drawn later, in a4_gl_flush; an overflow past MAXT is drawn now. */
 static void composite_prev(volatile struct glr *s) __attribute__((unused));
+#ifdef A4_PHTIMERS
+static void batch_draw_body(uint32_t nt);
+static void batch_draw(uint32_t nt) { TIM2_SNAP(v); batch_draw_body(nt); TIM2_ADD(v, 14u); }   /* round 86: its calls counted */
+#define BATCH_DRAW_FN batch_draw_body
+#else
 static void batch_draw(uint32_t nt);
+#define BATCH_DRAW_FN batch_draw
+#endif
 #ifdef A4_LINEREC
 /* Round 77 (lt77: rows beside a line drawn by neither a list face nor a GPU object -- the game's own triangles, the
  * stream): per screen row, the last stream triangle of the frame whose box ends on the row and the last whose box
@@ -8552,9 +8591,24 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         *(volatile uint32_t *)0x00412E00u = 0;          /* a new frame's sprite rectangles */
 #endif
 #ifdef A4_GPUOBJ
-        gobj_flush(s, gctx);                            /* round 60: the GPU's objects, before the list */
+#ifdef A4_PHTIMERS
+        uint32_t tf0 = a4_ntick();
+#endif
+        {   TIM2_SNAP(v6); gobj_flush(s, gctx); TIM2_ADD(v6, 6u); }   /* round 60: the GPU's objects, before the list */
+#ifdef A4_PHTIMERS
+        {   /* round 86: CRK1 [62] the objects' flush (low 16 bits) and the cars' (high 16), ticks mod 65,536 */
+            const uint32_t tf1 = a4_ntick();
+            volatile uint32_t *C = crk_get();
+            C[62] = (C[62] & 0xFFFF0000u) | ((C[62] + (tf1 - tf0)) & 0xFFFFu);
+            tf0 = tf1;
+        }
+#endif
 #ifdef A4_GPUCAR
-        gcar_flush(s, gctx);                            /* round 67: the cars, after the objects */
+        {   TIM2_SNAP(v10); gcar_flush(s, gctx); TIM2_ADD(v10, 10u); }   /* round 67: the cars, after the objects */
+#ifdef A4_PHTIMERS
+        {   volatile uint32_t *C = crk_get();
+            C[62] += (a4_ntick() - tf0) << 16; }
+#endif
 #endif
 #ifdef A4_BBCOV
         if ((s->frames & 255u) == 0u) a4_gobj_emit((const void *)0x00454100u);   /* bench: the sprite covers' counters */
@@ -8563,7 +8617,7 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #endif
 #endif
 #ifdef A4_MESH
-        mesh_draw(s, gctx);                             /* before any of the table's triangles */
+        {   TIM2_SNAP(v18); mesh_draw(s, gctx); TIM2_ADD(v18, 18u); }   /* before any of the table's triangles */
 #ifdef A4_ABFRAME
         if (MESH_ON()) quad_push(s, 0, 0, 8, 8, 0, 0, 0, 0, (KIND_FLAT << 28) | 0x07E0u, 0);   /* bench: a list frame's mark */
 #endif
@@ -8644,7 +8698,15 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_SHADCHECK
         shb_check(s, desc);                         /* bench: the list's record against the game's draw */
 #else
+#ifdef A4_PHTIMERS
+        const uint32_t ts0 = a4_ntick();
+#endif
+        TIM2_SNAP(v22);
         const int r = shb_draw(s, gctx, desc, kind, tsaddr);   /* round 84: a shadow bucket's trigger draws the bucket */
+        TIM2_ADD(v22, 22u);
+#ifdef A4_PHTIMERS
+        if (r >= 0) crk_get()[63] += a4_ntick() - ts0;  /* round 86: CRK1 [63] the shadow's draws, ticks */
+#endif
         if (r >= 0) return r;
 #endif
     }
@@ -9893,7 +9955,7 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st,
 /* Draw the accumulated frame in arrival order, one glDrawArrays per run of
  * consecutive equal TEXID words (same texture or colour, same kind). Identical
  * pixels to the per-triangle path; just fewer GL calls. No depth, no sort. */
-static void batch_draw(uint32_t nt)
+static void BATCH_DRAW_FN(uint32_t nt)
 {
     if (nt == 0) return;
     if (nt > MAXT) nt = MAXT;

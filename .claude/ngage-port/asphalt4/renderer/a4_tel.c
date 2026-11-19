@@ -542,6 +542,11 @@ void a4_tel_tick(uint32_t had)
                 /* round 82f: 'CUT1', the last 16 triangles cut (a4_gl.c A4_GL_CUT: 8 + 16 x 24 words), after CRK1 */
                 struct des ru = { DES(8u + 16u * 24u * 4u), (const void *)0x005C0900u };
                 efs_writep(f, ok + 256, &ru);
+#ifdef A4_PHTIMERS
+                /* round 86: 'TIM2' (a4_gl.c A4_GL_TIM2, 60 words: the GL calls by class, by block) after CUT1 */
+                struct des rt = { DES(240u), (const void *)0x005C0F10u };
+                efs_writep(f, ok + 256 + 8 + 16 * 24 * 4, &rt);
+#endif
 #endif
             }
 #endif

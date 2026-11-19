@@ -124,16 +124,27 @@ if mode == 'timers':
     for info, d in infos:
         i = d.rfind(b'CRK1')
         if i < 0 or len(d) < i + 248: continue
-        rows.append((struct.unpack_from('<62I', d, i), ('mark%d' if info['mark'] else 'cap%d') % info['idx']))
+        j = d.rfind(b'TIM2')                        # round 86 (r86d on): the GL calls by class and by block
+        t2 = struct.unpack_from('<60I', d, j) if j >= 0 and len(d) >= j + 240 else (0,) * 60
+        rows.append((struct.unpack_from('<64I', d, i) + t2, ('mark%d' if info['mark'] else 'cap%d') % info['idx']))
     rows.sort(key=lambda r: r[0][52])
-    names = ('walk', 'cars', 'shadow', '31A26/50', 'table draw', 'read 1st', 'read rest')
-    print('stretch            scenes  ms a scene: ' + ' '.join('%10s' % n for n in names) + '   (read: per composite)')
-    z = ((0,) * 62, 'launch')
+    names = ('walk', 'cars', 'shadow', '31A26/50', 'table draw', 'read 1st', 'read rest', 'obj flush', 'car flush', 'shad draw')
+    print('stretch            scenes  ms a scene: ' + ' '.join('%10s' % n for n in names) + '   (read: per composite; the flushes mod 65,536 ticks: the launch line wrong past it)')
+    z = ((0,) * 124, 'launch')
     for (a, la), (b, lb) in [(z, rows[-1])] + list(zip(rows, rows[1:])) if rows else []:
         dn = b[52] - a[52]; dc = b[60] - a[60]
         if dn <= 0: continue
         v = [(b[k] - a[k]) / dn for k in range(53, 58)] + [(b[k] - a[k]) / max(dc, 1) for k in (58, 59)]
+        # round 86 (r86d on): [62] the objects' flush (low 16) and the cars' (high 16), mod 65,536; [63] the shadow's draws
+        v += [((b[62] & 0xFFFF) - (a[62] & 0xFFFF)) % 65536 / dn, ((b[62] >> 16) - (a[62] >> 16)) % 65536 / dn,
+              (b[63] - a[63]) / dn]
         print('%-8s-%-8s  %6d  %s' % (la, lb, dn, ' '.join('%10.2f' % x for x in v)))
+        if b[64] == 0x324D4954:                     # 'TIM2': calls a scene (draw / bind / matrix / other), by block
+            g = lambda k: (b[64 + k] - a[64 + k]) / dn
+            blk = ' '.join('%s %.0f/%.0f/%.0f/%.0f' % (nm, g(o), g(o + 1), g(o + 2), g(o + 3))
+                           for nm, o in (('objects', 6), ('cars', 10), ('batch', 14), ('list', 18), ('shadow', 22)))
+            print('    GL calls a scene: draws %.1f, binds %.1f, matrix %.1f, other %.1f; corners %.0f | %s'
+                  % (g(1), g(2), g(3), g(4), g(5), blk))
     sys.exit()
 
 if mode in ('lines', 'shadchk', 'gobjchk', 'carchk'):

@@ -13605,3 +13605,26 @@ c. State the bench did not enter: a frame with more than GOBJ_NE (768) object gr
 - ny86c (r86c, the bench, New York alone, 45 s, marks at 20 and 35 s; framestat 1,054, the boot fault only): the
   marks' 2D phase 4.4 and 6.7 ms against Shanghai's 3.4 on the phone -- raised, not the phone's 12-26 (the bench's
   car holds accelerate, no nitro: ~140 km/h, not 575; the phone's mark 1 window is 13 renders). Partly reproduced.
+
+### Round 86, step 3 (the owner: "yes, go ahead" -- the table's draw split, GL calls, New York's 2D)
+
+- pa86c (r86c, Paris alone, 60 s, EKA2L1_GPUMODEL_CALLS): **~700 GL calls a frame** -- glDrawArrays 153-174,
+  glBindTexture 134-148 (12-18 redundant), glLoadMatrixx 51-60, glColor4x 47-52, glMatrixMode 41-48, glDepthFunc 41
+  (7 redundant, 7-9 reverted), glEnable / glDisable 35-38 each, glDepthMask 27-35, glBlendFunc 18-20 (10-12 redundant),
+  the two pointers 15-19 each, glTexEnvx 15, glReadPixels 15 -- nearly a bind a draw; the model's charge ~9 ms a frame
+  (draws 5.8, other calls 3.2) and 4.9 the tile render. The phone's header (round r86c): mark 3 (Montmartre) 220
+  batch-path calls a render against ~110, and [38] (the list's faces) 328 against 31-52: Montmartre is heavy in list
+  faces and draw calls. Round 53 measured the N95's GL at ~31 us a call: at 400-700 calls a scene the calls alone
+  could be most of the table's 20 ms -- the phone's per-call cost is the number to get.
+- **r86d (C86): TIM2 and two more timers.** CRK1 [62] the objects' flush (low 16) and the cars' (high 16), [63] the
+  shadow's draws (ticks; CRK_N 64); 'TIM2' at 0x5C0F10 (60 words after CUT1, to the scratch's end; written after CUT1
+  in each capture): the GL calls counted at the IAT by class -- draws (22, 27), binds (11), matrix (15, 16, 42), other
+  -- and corners drawn, and the same four made inside the objects' flush, the cars', batch_draw, the list's draw and
+  the shadow's draws (snapshots around each; batch_draw's body renamed under the flag so its forward-declared calls are
+  counted). gl_cnt out of line (inlined it was +12 KB of code; out of line +4.5 KB). frec3.py timers prints them.
+- lar86d (r86d, LA, 240 s; framestat 2,179, the boot fault only): the census reads -- a scene 81-200 draws, 71-171
+  binds, 74-134 matrix calls, 104-164 others, 10-19k corners; the objects' flush ~24 draws / 24 binds / 32 matrix /
+  7 others, the cars' ~10 / 9 / 40 / 17 (matrix: a modelview and texture matrix a car and group), the list's 8-22
+  draws. The shadow's draws counted 6 in some stretches and 30-86 in others: **not the shadow's own runs** -- consecutive
+  shadow runs share their state in draw_run (no binds, no kind switch) -- but the batch's overflow (MAXT 512) falling
+  inside a shadow bucket, the earlier stream's runs drawn there instead of at the end: attribution, not extra calls.
