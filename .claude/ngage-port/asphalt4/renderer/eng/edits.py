@@ -59,6 +59,13 @@ def GE(a, car, why): EDITS[a] = {'gate': 'end', 'car': car, 'why': why}
 def B(a, code, why): EDITS[a] = {'before': code, 'why': why}
 def R(a, code, why): EDITS[a] = {'replace': code, 'why': why}
 
+# round 86 (A4_PHTIMERS, a4_eng.h): the scene's calls in +D3BA timed for the phone -- the start before each bl, the
+# stop at the instruction after it (a stop with no start adds nothing: +DED6 is also reached from +DE7E)
+for _a, _k in ((0xD7D0, 53), (0xD75A, 56), (0xD768, 56), (0xD7E0, 56), (0xDC1A, 55), (0xDE7A, 54), (0xDED2, 54),
+               (0xE1DC, 54), (0xE29A, 54), (0xE2F4, 54), (0xECB8, 57)):
+    B(_a, 'ENG_TIM0();', 'A4_PHTIMERS: a scene call timed')
+    B(_a + 4, 'ENG_TIM1(%du);%s' % (_k, ' ENG_TIMC();' if _k == 57 else ''), 'A4_PHTIMERS: its ticks summed')
+
 # +1DE78, the car's control and dynamics
 B(0x1DE7C, 'ENG_VP(1u, r0, r1, MEM32(r0 + 0x10u), MEM32(r0 + 0x14u), MEM32(r0 + 0x18u), MEM32(r0 + 8u));',
   'bench (A4_VELPROBE, phone round 68): the player car\'s control entered, its keys and velocity')

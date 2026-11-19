@@ -583,9 +583,11 @@ struct mesh {
  * screen box (r), counters (k). */
 #define A4_GL_CVR 0x005C0400u
 #define A4_GL_CRK 0x005C0800u   /* round 81/82: the crack and cut-triangle counters ('CRK1', CRK_N words) */
-#define CRK_N 52u               /* round 82e: [32..34] the giant faces, objects and cars handed back to the game; 82f:
+#define CRK_N 62u               /* round 82e: [32..34] the giant faces, objects and cars handed back to the game; 82f:
                                  * [35..39] the wrapped corners, [40..44] the bench's wrap probe; 83: [45..47] the bench's
-                                 * mask check, [48..49] the rows and pixels filled */
+                                 * mask check, [48..49] the rows and pixels filled; 84: [50..51] the shadow batch; 86:
+                                 * [52..61] A4_PHTIMERS (a4_eng.h) */
+_Static_assert(CRK_N * 4u <= 256u, "CRK1 within the 256 bytes the telemetry writes, before CUT1");
 #define A4_GL_CUT 0x005C0900u   /* round 82f: 'CUT1', the last CUT_N triangles cut, their raw corners (lean_tail) */
 #define CUT_N 16u
 #define CUT_W 24u
@@ -10390,6 +10392,13 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
         else if (bgra) gl_readpixels(0, y0, VP_W, sh, GL_BGRA, GL_UNSIGNED_BYTE, rb);
         else           gl_readpixels(0, y0, VP_W, sh, GL_RGBA, GL_UNSIGNED_BYTE, rb);
         A4_PERF[PF_READ] += a4_ntick() - t0;
+#ifdef A4_PHTIMERS
+        {   /* round 86: the first strip waits for the GPU's tile render; the rest only copy (CRK1 [58] / [59], [60]) */
+            volatile uint32_t *C = crk_get();
+            C[y0 == ystart ? 58 : 59] += a4_ntick() - t0;
+            if (y0 == ystart) C[60]++;
+        }
+#endif
 #ifdef A4_IDLECEN
         if (IDL_LIVE()) { IDL->rdc += IDL->cnt - ic0; IDL->rdms += a4_ntick() - t0; }
 #endif

@@ -13534,3 +13534,21 @@ c. State the bench did not enter: the owner's own road -- three laps to the fini
   saving by construction, from rt85: the routine's own 0.145 ms a car call (0.17 less the take) skipped for three
   car draws in four, ~0.6-0.8 ms a render on the bench -- under these runs' resolution. Exact by ce86; recorded as
   not measured by the A/B.
+- Owner (on the shadow's options, A exact / B one draw depth-tested against the road): "didn't we have issues with that
+  approach making the shadow render incorrectly? with the missing triangles and dipping through the road?" **Yes --
+  the same mechanism.** Phone round 77b ("missing pieces, or a sensation that some of it is dipping below the road...
+  never on vanilla"): a shadow triangle depth-tested wherever a GPU item covered its tile, and the road (painted
+  before it) hid it where its plane lay a few units under a slope or crest -- the 3x engine's substep heights make
+  that common. r78's A4_COVREDRAW fixed it with the game's own painter rule: a shadow covered only by GPU items drawn
+  untested (GL_ALWAYS, its own depth written), the items in front drawn again over it. That per-face decision (a
+  nearer list face: tested; GPU items only: untested + redraw; nothing: untested) is the work B would drop, so B as
+  proposed would bring round 77b back. The shadow stays on A (exact) or is left for now.
+- Owner: "yes" (send r86b with the phone timers). **A4_PHTIMERS** (new, a phone telemetry flag, flags/C86.flags = C84
+  + it): NTickCount (1 ms) around the scene's calls in the lifted +D3BA (edits.py, a start before each bl and a stop at
+  the instruction after; a stop with no start adds nothing) summed from the boot into CRK1 [52..61] (CRK_N 52 -> 62,
+  within the 256 bytes the telemetry already writes): [52] scenes, [53] the scenery walk +CF6E, [54] the cars +34AEA
+  (five sites), [55] the shadow's insert +20918, [56] +31A26 / +31A50, [57] the ordering table's draw +31CC6 (our
+  draw hooks and the composite in it); the composite's [58] first readback strip (the GPU's tile render and a strip),
+  [59] the other strips, [60] composites. frec3.py mode timers: each ring capture against the previous one, ms a
+  scene. lifted.c regenerated (44 lines: 22 edits). r86c candidate (C86) 991,796 bytes, sha256 840b0eca...; lar86c
+  (LA, the timers' first read) running.

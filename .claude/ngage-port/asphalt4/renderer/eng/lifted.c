@@ -19389,17 +19389,25 @@ L_0D752:
     r3 = 0x0u; fN = r3 >> 31; fZ = r3 == 0;                      /* 00d754 movs r3, #0 */
     r2 = L32(r0);                                                /* 00d756 ldr r2, [r0] */
     r0 = S32(0x2F8u);                                            /* 00d758 ldr r0, [sp, #0x2f8] */
+    /* engine: A4_PHTIMERS: a scene call timed */
+    ENG_TIM0();
     { uint64_t rr = a4_eng_call(GAMEFN(0x31A50), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00d75a bl #0x31a50 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00d75a bl #0x31a50 */
+    /* engine: A4_PHTIMERS: its ticks summed */
+    ENG_TIM1(56u);
     goto L_0D76C;                                                /* 00d75e b #0xd76c */
 L_0D760:
     r0 = S32(0x2DCu);                                            /* 00d760 ldr r0, [sp, #0x2dc] */
     r3 = 0x1u; fN = r3 >> 31; fZ = r3 == 0;                      /* 00d762 movs r3, #1 */
     r2 = L32(r0);                                                /* 00d764 ldr r2, [r0] */
     r0 = S32(0x2F8u);                                            /* 00d766 ldr r0, [sp, #0x2f8] */
+    /* engine: A4_PHTIMERS: a scene call timed */
+    ENG_TIM0();
     { uint64_t rr = a4_eng_call(GAMEFN(0x31A50), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00d768 bl #0x31a50 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00d768 bl #0x31a50 */
 L_0D76C:
+    /* engine: A4_PHTIMERS: its ticks summed */
+    ENG_TIM1(56u);
     { uint32_t ta = sp, tb = 0x19Cu; t = ta + tb; r2 = t; }      /* 00d76c add r2, sp, #0x19c */
     { uint32_t ta = sp, tb = 0x1A0u; t = ta + tb; r1 = t; }      /* 00d76e add r1, sp, #0x1a0 */
     { uint32_t ta = sp, tb = 0x1A8u; t = ta + tb; r0 = t; }      /* 00d770 add r0, sp, #0x1a8 */
@@ -19451,16 +19459,24 @@ L_0D7C0:
     r1 = S32(0x2F8u);                                            /* 00d7ca ldr r1, [sp, #0x2f8] */
     r2 = S32(0x300u);                                            /* 00d7cc ldr r2, [sp, #0x300] */
     r3 = r7; fN = r3 >> 31; fZ = r3 == 0;                        /* 00d7ce movs r3, r7 */
+    /* engine: A4_PHTIMERS: a scene call timed */
+    ENG_TIM0();
     { uint64_t rr = a4_eng_call(GAMEFN(0xCF6E), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00d7d0 bl #0xcf6e */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00d7d0 bl #0xcf6e */
+    /* engine: A4_PHTIMERS: its ticks summed */
+    ENG_TIM1(53u);
     r2 = S32(0x19Cu);                                            /* 00d7d4 ldr r2, [sp, #0x19c] */
     S32(0x0u) = r2;                                              /* 00d7d6 str r2, [sp] */
     r0 = S32(0x2F8u);                                            /* 00d7d8 ldr r0, [sp, #0x2f8] */
     r1 = S32(0x2E4u);                                            /* 00d7da ldr r1, [sp, #0x2e4] */
     r2 = S32(0x1B8u);                                            /* 00d7dc ldr r2, [sp, #0x1b8] */
     r3 = S32(0x1B4u);                                            /* 00d7de ldr r3, [sp, #0x1b4] */
+    /* engine: A4_PHTIMERS: a scene call timed */
+    ENG_TIM0();
     { uint64_t rr = a4_eng_call(GAMEFN(0x31A26), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00d7e0 bl #0x31a26 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00d7e0 bl #0x31a26 */
+    /* engine: A4_PHTIMERS: its ticks summed */
+    ENG_TIM1(56u);
     r0 = GAMEW(0xDAF0);                                          /* 00d7e4 ldr r0, [pc, #0x308] */
     { uint32_t ta = r4, tb = r0; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 00d7e6 adds r0, r4, r0 */
     S32(0x2D4u) = r0;                                            /* 00d7e8 str r0, [sp, #0x2d4] */
@@ -20007,8 +20023,12 @@ L_0DBC0:
     r2 = r0; fN = r2 >> 31; fZ = r2 == 0;                        /* 00dc14 movs r2, r0 */
     r1 = S32(0x2F8u);                                            /* 00dc16 ldr r1, [sp, #0x2f8] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 00dc18 movs r0, r4 */
+    /* engine: A4_PHTIMERS: a scene call timed */
+    ENG_TIM0();
     { uint64_t rr = a4_eng_call(GAMEFN(0x20918), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00dc1a bl #0x20918 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00dc1a bl #0x20918 */
+    /* engine: A4_PHTIMERS: its ticks summed */
+    ENG_TIM1(55u);
     r1 = S32(0x2F8u);                                            /* 00dc1e ldr r1, [sp, #0x2f8] */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 00dc20 movs r0, r4 */
     { uint64_t rr = a4_eng_call0(GAMEFN(0x208AA), r0, r1, r2, r3, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00dc22 bl #0x208aa */
@@ -20345,8 +20365,12 @@ L_0DE64:
     r3 = 0x2u; fN = r3 >> 31; fZ = r3 == 0;                      /* 00de74 movs r3, #2 */
     r2 = L32(r0);                                                /* 00de76 ldr r2, [r0] */
     r0 = L32(r0 + 0x4u);                                         /* 00de78 ldr r0, [r0, #4] */
+    /* engine: A4_PHTIMERS: a scene call timed */
+    ENG_TIM0();
     { uint64_t rr = a4_eng_call(GAMEFN(0x34AEA), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00de7a bl #0x34aea */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00de7a bl #0x34aea */
+    /* engine: A4_PHTIMERS: its ticks summed */
+    ENG_TIM1(54u);
     goto L_0DED6;                                                /* 00de7e b #0xded6 */
 L_0DE80:
     r0 = S32(0x29Cu);                                            /* 00de80 ldr r0, [sp, #0x29c] */
@@ -20394,9 +20418,13 @@ L_0DECA:
     r3 = r7; fN = r3 >> 31; fZ = r3 == 0;                        /* 00decc movs r3, r7 */
     r2 = L32(r0);                                                /* 00dece ldr r2, [r0] */
     r0 = L32(r0 + 0x4u);                                         /* 00ded0 ldr r0, [r0, #4] */
+    /* engine: A4_PHTIMERS: a scene call timed */
+    ENG_TIM0();
     { uint64_t rr = a4_eng_call(GAMEFN(0x34AEA), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00ded2 bl #0x34aea */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00ded2 bl #0x34aea */
 L_0DED6:
+    /* engine: A4_PHTIMERS: its ticks summed */
+    ENG_TIM1(54u);
     r0 = L32(r6 + 0x28u);                                        /* 00ded6 ldr r0, [r6, #0x28] */
     t = SHL_C(r0, 0x13u, &fC); r0 = t; fN = t >> 31; fZ = t == 0; /* 00ded8 lsls r0, r0, #0x13 */
     if (!fN) goto L_0DFD0;                                       /* 00deda bpl #0xdfd0 */
@@ -20809,8 +20837,12 @@ L_0E1B6:
     r3 = 0x1u; fN = r3 >> 31; fZ = r3 == 0;                      /* 00e1d6 movs r3, #1 */
     r2 = L32(r0);                                                /* 00e1d8 ldr r2, [r0] */
     r0 = L32(r0 + 0x4u);                                         /* 00e1da ldr r0, [r0, #4] */
+    /* engine: A4_PHTIMERS: a scene call timed */
+    ENG_TIM0();
     { uint64_t rr = a4_eng_call(GAMEFN(0x34AEA), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00e1dc bl #0x34aea */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00e1dc bl #0x34aea */
+    /* engine: A4_PHTIMERS: its ticks summed */
+    ENG_TIM1(54u);
     r0 = S32(0x2F8u);                                            /* 00e1e0 ldr r0, [sp, #0x2f8] */
     r0 = L32(r0 + 0x4u);                                         /* 00e1e2 ldr r0, [r0, #4] */
     { uint32_t ta = r0, tb = 0x38u; t = ta + tb; fC = t < ta; fV = ((~(ta ^ tb)) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r0 = t; } /* 00e1e4 adds r0, #0x38 */
@@ -20911,9 +20943,13 @@ L_0E28E:
     r3 = 0x1u; fN = r3 >> 31; fZ = r3 == 0;                      /* 00e294 movs r3, #1 */
     r2 = L32(r0);                                                /* 00e296 ldr r2, [r0] */
     r0 = L32(r0 + 0x4u);                                         /* 00e298 ldr r0, [r0, #4] */
+    /* engine: A4_PHTIMERS: a scene call timed */
+    ENG_TIM0();
     { uint64_t rr = a4_eng_call(GAMEFN(0x34AEA), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00e29a bl #0x34aea */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00e29a bl #0x34aea */
 L_0E29E:
+    /* engine: A4_PHTIMERS: its ticks summed */
+    ENG_TIM1(54u);
     r0 = S32(0x29Cu);                                            /* 00e29e ldr r0, [sp, #0x29c] */
     r0 = L8(r0 + 0x1Cu);                                         /* 00e2a0 ldrb r0, [r0, #0x1c] */
     { uint32_t ta = r0, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 00e2a2 cmp r0, #0 */
@@ -20959,8 +20995,12 @@ L_0E2B6:
     r3 = 0x1u; fN = r3 >> 31; fZ = r3 == 0;                      /* 00e2ee movs r3, #1 */
     r2 = L32(r0);                                                /* 00e2f0 ldr r2, [r0] */
     r0 = L32(r0 + 0x4u);                                         /* 00e2f2 ldr r0, [r0, #4] */
+    /* engine: A4_PHTIMERS: a scene call timed */
+    ENG_TIM0();
     { uint64_t rr = a4_eng_call(GAMEFN(0x34AEA), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00e2f4 bl #0x34aea */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00e2f4 bl #0x34aea */
+    /* engine: A4_PHTIMERS: its ticks summed */
+    ENG_TIM1(54u);
     r0 = S32(0x60u);                                             /* 00e2f8 ldr r0, [sp, #0x60] */
     { uint32_t ta = 0x0u, tb = r0; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; r1 = t; } /* 00e2fa rsbs r1, r0, #0 */
     r0 = S32(0x64u);                                             /* 00e2fc ldr r0, [sp, #0x64] */
@@ -22266,8 +22306,12 @@ L_0ECAA:
     { uint64_t rr = a4_eng_call(GAMEFN(0x31E7C), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00ecb2 bl #0x31e7c */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00ecb2 bl #0x31e7c */
     r0 = S32(0x2F8u);                                            /* 00ecb6 ldr r0, [sp, #0x2f8] */
+    /* engine: A4_PHTIMERS: a scene call timed */
+    ENG_TIM0();
     { uint64_t rr = a4_eng_call(GAMEFN(0x31CC6), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00ecb8 bl #0x31cc6 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00ecb8 bl #0x31cc6 */
+    /* engine: A4_PHTIMERS: its ticks summed */
+    ENG_TIM1(57u); ENG_TIMC();
     r0 = S32(0x2D0u);                                            /* 00ecbc ldr r0, [sp, #0x2d0] */
     r0 = L32(r0 + 0x38u);                                        /* 00ecbe ldr r0, [r0, #0x38] */
     { uint32_t ta = r0, tb = 0x1u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 00ecc0 cmp r0, #1 */

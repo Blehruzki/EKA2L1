@@ -25,6 +25,7 @@
 #   shadchk the crack counters with A4_SHADCHECK's [40..47] (round 84); gobjchk with A4_GOBJ86CHECK's [40..43]: the
 #          objects' radix sort against the insertion sort's order, their box corners against round 85's (round 86);
 #          carchk with A4_CAREARLYCHECK's: the early car take's verdicts against the routine's own cull (round 86)
+#   timers A4_PHTIMERS (CRK1 [52..60]): the scene's calls and the readback, ms a scene, capture to capture (round 86)
 # A mark covers the 256 renders (~13 s) before the press. Angles are 2,048 a turn.
 import sys, struct, glob, os, math
 HDR, FPS, FB = 256, 560, 320 * 240 * 2
@@ -35,7 +36,7 @@ def offs(d):                                                    # the sprite lis
     o = OFF3 + 16 + n * w * 4
     return o, o + 32 + 16 * 16
 args = sys.argv[1:]
-MODES = ('files', 'rot', 'turn', 'spr', 'obj', 'gob', 'list', 'lines', 'wreck', 'shadchk', 'gobjchk', 'carchk')
+MODES = ('files', 'rot', 'turn', 'spr', 'obj', 'gob', 'list', 'lines', 'wreck', 'shadchk', 'gobjchk', 'carchk', 'timers')
 mode = 'files'
 if args and args[-1] in MODES: mode = args.pop()
 elif len(args) >= 2 and args[-2] == 'gob': mode = 'gob'; args = args[:-2] + [args[-1]]
@@ -111,6 +112,25 @@ if mode == 'files':
         ts = sorted(R)
         print('%-40s %-6s %3d  renders %3d  %d..%d ms (%.1f s)' % (os.path.basename(info['fn']), 'MARK' if info['mark'] else 'ring',
               info['idx'], len(ts), ts[0], ts[-1], (ts[-1] - ts[0]) / 1000.0))
+    sys.exit()
+
+if mode == 'timers':
+    # round 86 (A4_PHTIMERS): CRK1 [52..60] summed from the boot -- scenes, then ticks (1 ms) of the scenery walk, the
+    # cars, the shadow's insert, +31A26/+31A50, the ordering table's draw; the readback's first strip, the others,
+    # composites. Each ring capture against the previous one: the window's ms a scene.
+    rows = []
+    for info, d in infos:
+        i = d.rfind(b'CRK1')
+        if i < 0 or len(d) < i + 248 or info['mark']: continue
+        rows.append((info['idx'], struct.unpack_from('<62I', d, i)))
+    rows.sort()
+    names = ('walk', 'cars', 'shadow', '31A26/50', 'table draw', 'read 1st', 'read rest')
+    print('capture  scenes  ms a scene: ' + ' '.join('%10s' % n for n in names) + '   (read: per composite)')
+    for (ia, a), (ib, b) in zip(rows, rows[1:]):
+        dn = b[52] - a[52]; dc = b[60] - a[60]
+        if dn <= 0: continue
+        v = [(b[k] - a[k]) / dn for k in range(53, 58)] + [(b[k] - a[k]) / max(dc, 1) for k in (58, 59)]
+        print('%3d-%3d  %6d  %s' % (ia, ib, dn, ' '.join('%10.2f' % x for x in v)))
     sys.exit()
 
 if mode in ('lines', 'shadchk', 'gobjchk', 'carchk'):

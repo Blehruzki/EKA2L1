@@ -64,6 +64,29 @@ void a4_car_earlycheck(uint32_t cam);
 #define A4_CAR_EARLY(c, v, nv, f, nf, m, nb, lr) 0
 #define A4_CAR_EARLYCHECK(c) ((void)0)
 #endif
+#ifdef A4_PHTIMERS
+/* Round 86 (the owner's heavy scenes, measured on the phone): NTickCount (1 ms) around the scene's calls in the lifted
+ * +D3BA, summed from the boot in CRK1's words (a4_gl.c A4_GL_CRK, CRK_N 62): [52] scenes drawn, [53] the scenery walk
+ * +CF6E, [54] the cars +34AEA, [55] the shadow's insert +20918, [56] +31A26 and +31A50, [57] the ordering table's draw
+ * +31CC6 (our draw hooks and the composite within it); the composite's (a4_gl.c) [58] first readback strip (the GPU's
+ * tile render and a strip), [59] the other strips, [60] composites; [61] the timed call's start + 1 (0: none). One
+ * tick per call is coarse; summed over a window's ~230 renders the means are not. */
+uint32_t a4_ntick(void);
+#define ENG_TIM_W ((volatile uint32_t *)0x005C0800u)
+static inline void eng_tim0(void) { ENG_TIM_W[61] = a4_ntick() + 1u; }
+static inline void eng_tim1(uint32_t k)
+{
+    const uint32_t t = ENG_TIM_W[61];
+    if (t) { ENG_TIM_W[k] += a4_ntick() + 1u - t; ENG_TIM_W[61] = 0; }
+}
+#define ENG_TIM0() eng_tim0()
+#define ENG_TIM1(k) eng_tim1(k)
+#define ENG_TIMC() (ENG_TIM_W[52]++)
+#else
+#define ENG_TIM0() ((void)0)
+#define ENG_TIM1(k) ((void)0)
+#define ENG_TIMC() ((void)0)
+#endif
 #ifdef A4_CARCENSUS
 void a4_car_census(uint32_t ctx, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t lr);   /* a4_gl.c, bench */
 #define A4_CAR_CENSUS(c, v, nv, f, nf, m, lr) a4_car_census((c), (v), (nv), (f), (nf), (m), (lr))
