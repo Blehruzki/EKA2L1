@@ -564,7 +564,17 @@ static inline void eng_tdrec(uint32_t race, uint32_t tag)
 #endif
 static inline void ENG_BEGIN(uint32_t race)
 {
-    if (ENG->magic != ENG_MAGIC || ENG->race != race) {
+    /* Round 85 (phone round 84b, KERN-EXEC 3 in a session's second race; the bench's at84c, ny2 to ny5): the next race,
+     * or a restart, runs in the last race's own object -- the game initialises it again in place, at the same address
+     * -- so the engine's state, keyed by that address, ran on from the last race into the new one. A new race at the
+     * last one's address is told by its traffic clock (race+0x378, the r2 +FB12 is given), which starts again (0x3000)
+     * below the last whole step's (0x8500 after 45 s of LA). Kept, the last race's clock made the first step's change
+     * negative (-0x5500), substep 2's traffic product went below zero, and on a lane it counts down +FB12 indexes
+     * past the lane's end (+FBC2: wrapped only when negative): the word there, inflated track data, named traffic slot
+     * 150 and +F1B0 called through a vtable 150 slots on. */
+    const int again = ENG->magic == ENG_MAGIC && ENG->race == race && ENG->tlast[0] != 0u &&
+                      (int32_t)(MEM32(race + 0x378u) - ENG->tlast[0]) < 0;
+    if (ENG->magic != ENG_MAGIC || ENG->race != race || again) {
         ENG->magic = ENG_MAGIC; ENG->race = race; ENG->cnt = 0; ENG->keys = 0; ENG->nfull = 0; ENG->cbok = 0;
         ENG->sub = 0; ENG->n = 3u; ENG->wst = 0;
         for (uint32_t i = 0; i < ENG_NREM; i++) { ENG->rk[i] = 0; ENG->rv[i] = 0; }

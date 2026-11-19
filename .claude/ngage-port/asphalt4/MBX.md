@@ -13320,3 +13320,38 @@ c. State the bench did not enter: more than 512 shadow faces or 64 buckets in a 
   to +FC12), whose vtable word reads 0x3CD8783D. Not the shadow and not a draw: the race code on the track loaded second.
   Matches the owner's r84b report (the second race, after "next race", KERN-EXEC 3). The first fault in the log
   (reading 0x34 at pc 0x8039F834, posts 1) is the known boot one.
+- ny1 (r84c, alltracks.sh NTRACK=2: LA then New York, register dumps on): no race -- the main menu came up with its
+  cursor on N-GAGE APPLICATION, ismain.py (the menu with INSTANT PLAY lit) never matched and the Returns went into
+  MULTIPLAYER. The harness's fault, not the game's: hclive.sh now takes ismain2.py (2: the menu as the reference; 1: the
+  menu, its title band matching, the cursor elsewhere -> Up; 0: anything else -> Return). Not a result.
+- ny2 (r84c, LA then New York, EKA2L1_PCTRACE_REGS at engi_0FB12 / engi_0F1B0 entry and the faulting block): **the
+  same fault, the same address.** +FB12's race (its r0) 0x023966A8 in LA and in New York -- the next race runs in the
+  same object. LA's +F1B0 calls took slots 1-3 (race + 0x6F4C + 0x148 k); New York's first took 0x023A94DC, slot
+  index 150 -- the lane entry's low byte 0x96 -- on +FB12's third call of the new race.
+- ny3 (r84c, the same with a dump where the compiled +FB12 reads the lane entry, E03F0, and EKA2L1_WATCH on the lane's
+  two array pointers, race+0x83CC/+0x83D0): New York's lane arrays 0x02459308 / 0x02459550, allocated at +F90E / +F918
+  (count = race+0x10, x 4) and zeroed by Mem::FillZ (+F924 / +F92E). **The bad read: entry 144 of the +C array (word
+  0x02459548), low byte 0x96.**
+- ny4 (r84c, EKA2L1_WATCH on 0x02459548): no crash -- the word, earlier an inflate buffer (libzcore.dll, then the
+  game's +37A6 copies), was zeroed by +F924's FillZ and read 0. ny5 (the same again): the crash, and the word never
+  zeroed -- its last write the game's copy of inflated track data, 0x81F3A196; the race object 0x28 lower this run
+  (0x02396680), New York's +C array still 0x02459308. So New York has 144 lane entries, the read was entry 144 --
+  **one past the array's end**, the cell's slack, whatever the heap left there (0 in ny4's layout, 0x96 in ny2/3/5).
+- **The cause (the binary and the dumps):** +FB12 indexes a lane by its position less the traffic clock's product
+  (+FBC2: `pos - clk x speed`), wrapping up only when negative -- the game never gives it a negative product. The 3x
+  engine's substeps add a share of the clock's last change (a4_eng.h eng_tmul: sub x tdel x speed / 3, tdel measured
+  at each whole step, +14574's hook). The engine's state is keyed by the race step's object (ENG_BEGIN, reset when
+  the address changes) -- and the next race runs in the same object. Both races' clocks start at 0x3000 / 0x2F00 (the
+  dumps); LA's ended at 0x8500. New York's first whole step measured tdel = 0x3000 - 0x8500 = -0x5500 (inside the
+  +-0x100000 sanity bound), substep 1's product stayed positive, **substep 2's was 0x3000 - 2/3 x 0x5500 < 0: the index
+  ran past the lane's end**, on exactly +FB12's third call of the race as every dump shows. Not the shadow, not r84:
+  every 3x-engine build since the traffic clocks were spread over substeps (phone round 69) has it. The bench's races
+  were each in a fresh session until the every-track battery; the owner's "next race" is the same path.
+- **r85a: the fix, two layers.** (1) ENG_BEGIN resets the engine when the race step's object is the last one's but
+  its traffic clock (race+0x378 -- [sp+0x114] = race + 0x340, +0x38: the r2 +FB12 gets) has gone back below the last
+  whole step's (ENG->tlast[0]): a new race, or a restart, in the same object. The reset is the one a race at a new
+  address always had. (2) +14574's hook: a negative clock change is no step (tdel 0, the substeps at the whole step's
+  clocks) -- before, only beyond +-0x100000. Within a race the clocks only rise (ny2 / ny5: no decrease in 261 LA calls),
+  so (2) changes nothing there. r84c rebuilt first from the tree to the same bytes (d72aa53a: the build line is
+  `A4_THIRDSTEP=1 A4_SCRATCH_SIZE=0x1C0000 A4_EXTRA_CFLAGS="$(cat flags/C83.flags) -DA4_SHADBATCH"`); a4_r85a_cand.exe
+  sha256 c911262f..., 987,636 bytes (+60).

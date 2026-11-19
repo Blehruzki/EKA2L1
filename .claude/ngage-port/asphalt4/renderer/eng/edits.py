@@ -40,12 +40,14 @@ EDITS = {
     # whole step, measured there, so the substeps can place the traffic a third and two thirds along it
     0x14574: {'before': 'if (!ENG_SUB) { ENG->tdel[0] = (int32_t)(r2 - ENG->tlast[0]); ENG->tdel[1] = (int32_t)(r3 - ENG->tlast[1]); '
                         'ENG->tlast[0] = r2; ENG->tlast[1] = r3; '
-                        'if (ENG->tdel[0] < -0x100000 || ENG->tdel[0] > 0x100000) ENG->tdel[0] = 0; '
-                        'if (ENG->tdel[1] < -0x100000 || ENG->tdel[1] > 0x100000) ENG->tdel[1] = 0; } '
+                        'if (ENG->tdel[0] < 0 || ENG->tdel[0] > 0x100000) ENG->tdel[0] = 0; '
+                        'if (ENG->tdel[1] < 0 || ENG->tdel[1] > 0x100000) ENG->tdel[1] = 0; } '
                         'else { r2 = ENG_TCLK(0u); r3 = ENG_TCLK(1u); }',
               'why': 'the traffic clocks\' step, for the substeps; the substeps start from the whole step\'s own clocks '
                      '(the game has advanced race+0x378/+0x37C by then: placed from those, substeps 1-2 were a step '
-                     'ahead and every traffic car went forward 1 1/3 steps and back 2/3 each step -- phone round 69)'},
+                     'ahead and every traffic car went forward 1 1/3 steps and back 2/3 each step -- phone round 69). '
+                     'Round 85: a clock that went back (a new race in the last one\'s race object) is no step: '
+                     'its negative change put substep 2\'s product below zero and +FB12\'s index past a lane\'s end'},
 }
 
 # ---- the rate map: the game's per-step changes, a third on each substep -----------------------------
