@@ -13500,3 +13500,32 @@ c. State the bench did not enter: the owner's own road -- three laps to the fini
   most objects are in view (the insertion sort's cost grew with the square of the frame's (texture, item, group)s),
   level elsewhere (LA runs agree within ~1 ms a bin, round 83). r86a's first cuts: exact (ck86), clean on the six
   maps (at86a), ~3 ms a render off the heavy stretches on the bench.
+
+### Round 86, step 2: the shadow measured, then the cars' transform
+
+- ps86la (pf86, LA; EKA2L1_PCPROF gated ON at shb_draw and a4_shadow_insert, OFF where each returns -- +BF330 in
+  draw_prim_take, +27406 in +2732E; 442,609 openings): **the shadow 2.35 ms a render** -- lean_tail_cv 0.84,
+  a4_shadow_insert 0.73, batch_draw 0.42, shb_draw 0.19 -- spread over 134 and 251 blocks with no hot spot: the cost
+  is the generic per-face path itself (conversion, cover test, batch). Its cut is a dedicated shadow path (with the
+  depth stamp that darkens once, A4_SHADZ, and the cover redraw kept): larger work, after a cheaper find.
+- The cars (rt85, +34AEA x8 a render, 1.38 ms): engi_349F8 0.17 ms a call, all but 0.025 (a4_car_take) **the routine's
+  transform of every vertex (+345E4) before the take at +34A18 -- work thrown away for a car the GPU draws from its
+  object-space corners with its own matrix.** Read (capstone, a4code.bin): +349F8 calls +345E4(cam, verts, end), then
+  skips the mesh when cam[0] -- the AND of the vertices' outcodes -- is nonzero. +345E4's outcode a vertex: 0x20 for
+  view z > 6024 or <= -29900 (nothing else then); 0x10 for z > -64; then 1 / 2 / 4 / 8 for cam[3] y + cam[4] z,
+  cam[6] y + cam[7] z, cam[8] x + cam[10] z, cam[11] x + cam[13] z above 2^18 (32-bit muls). a4_car_take reads only
+  cam+0x3C (the car's matrix, set by the caller), cam+4, the object-space corners (+0x18..) and the faces; its mesh
+  fingerprint likewise (verts+0x18/0x1C, faces+0xC/0x30) -- none of it written by the transform; the routine's exit
+  L_34AE6 only pops, and every caller of +34AEA overwrites r0 at once.
+- **r86b: the car take moved ahead of the transform for a car certainly not culled** (edits.py +34A0A, a4_gl.c
+  a4_car_early / gcar_inside): a box about the car's place (m9, m10, m11), each view axis's extent its matrix row's
+  length times the mesh radius plus the shift's rounding and 4, inside -29900 < z <= -64 and under every plane (and
+  no product of the box able to wrap the game's 32 bits) -> no corner can carry a bit, the routine would not cull, so
+  the take is what +34A18 would do, without the transform. A car refused for any other reason is refused for the late
+  take too (carlate 0, the same inputs); one not certain goes on to the transform, the cull and the late take (carlate
+  1). lifted.c regenerated (lift.py with C84's flags reproduced the committed file byte for byte first): two
+  insertions. Bench: A4_CAREARLYCHECK (never takes early; at +34A12, after the routine's transform, CRK1 [40] cars
+  judged inside, [41] of them culled by the routine, [42] not certain; frec3.py mode carchk).
+- **ce86 (C84 + A4_CAREARLYCHECK, LA; framestat 2,191, the boot fault only): 5,770 car draws judged inside, 0 of them
+  culled by the routine; 1,777 not certain.** About three car draws in four now skip the transform. r86b candidate
+  989,300 bytes. lar86b (LA, against lar86a by segment) running.

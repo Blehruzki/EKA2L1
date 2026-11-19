@@ -50,9 +50,19 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3);   /* 
 #endif
 #ifdef A4_GPUCAR
 int a4_car_take(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf, uint32_t lr);   /* a4_gl.c */
+int a4_car_early(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf, uint32_t lr);
+void a4_car_earlycheck(uint32_t cam);
 #define A4_CAR_TAKE(c, v, nv, f, nf, m, nb, lr) a4_car_take((c), (v), (nv), (f), (nf), (m), (nb), (lr))
+#define A4_CAR_EARLY(c, v, nv, f, nf, m, nb, lr) a4_car_early((c), (v), (nv), (f), (nf), (m), (nb), (lr))
+#ifdef A4_CAREARLYCHECK
+#define A4_CAR_EARLYCHECK(c) a4_car_earlycheck(c)
+#else
+#define A4_CAR_EARLYCHECK(c) ((void)0)
+#endif
 #else
 #define A4_CAR_TAKE(c, v, nv, f, nf, m, nb, lr) 0
+#define A4_CAR_EARLY(c, v, nv, f, nf, m, nb, lr) 0
+#define A4_CAR_EARLYCHECK(c) ((void)0)
 #endif
 #ifdef A4_CARCENSUS
 void a4_car_census(uint32_t ctx, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t lr);   /* a4_gl.c, bench */

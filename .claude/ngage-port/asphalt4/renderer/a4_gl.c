@@ -34,6 +34,10 @@
 #ifdef A4_LISTDUMP
 #include "a4_memo.h"                /* round 60: the list dump's mesh call per face */
 #endif
+#if defined(A4_CAREARLYCHECK) && (defined(A4_GOBJ86CHECK) || defined(A4_SHADCHECK) || defined(A4_CARPROBE) || \
+    defined(A4_MSKIP_ALT) || defined(A4_WRAPPROBE) || defined(A4_ABCYCLE17))
+#error "A4_CAREARLYCHECK counts in CRK1 [40..43], which those use"
+#endif
 #if defined(A4_GOBJ86CHECK) && (defined(A4_SHADCHECK) || defined(A4_CARPROBE) || defined(A4_MSKIP_ALT) || \
     defined(A4_WRAPPROBE) || defined(A4_ABCYCLE17) || defined(A4_GOBJINSSORT))
 #error "A4_GOBJ86CHECK counts in CRK1 [40..43] (with the radix sort), which those use or replace"
@@ -5909,6 +5913,7 @@ struct gstate {
     uint32_t full, resets, peak;            /* store full this frame (reset at the next); resets; most corners held */
     uint32_t batches, refused_rot, refused_range, refused_moved;   /* draws; not the camera's rotation, offset, translation */
     uint32_t stale, gaps;                   /* a held mesh's data changed; the store emptied after frames without objects */
+    uint32_t carlate;                       /* round 86: the early car take's verdict for the late one (a4_car_early) */
     uint32_t refused_near;                  /* nearer than the GPU's near plane in part: the game draws it */
     uint32_t cpchk, cpdiff;                 /* bench (A4_GOBJCOPYCHECK): chunks of the ARMv6 copy checked, words differing */
     int32_t R[9], T[3], o[3];               /* the frame's: the camera's rotation, the translation at o, the origin */
@@ -6491,8 +6496,9 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
     return me;
 }
 /* the lifted mesh routine after its transform (eng/edits.py +34A18): 1 = the car is the GPU's, the faces skipped */
+static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf,
+                         uint32_t lr, int early);
 #ifdef A4_STREAMCEN
-static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf, uint32_t lr);
 /* bench (round 83): every car-mesh draw call of the frame for the stream census (a4_prim.c): 0x5C0E10 -- [0] the frame,
  * [1] calls, then 24 x (faces, faces + 52 nf, mode, taken) */
 static volatile uint32_t *scn_car(uint32_t faces, uint32_t nf, uint32_t mode)
@@ -6506,23 +6512,82 @@ static volatile uint32_t *scn_car(uint32_t faces, uint32_t nf, uint32_t mode)
     return d;
 }
 #endif
+/* Round 86: is a car with matrix M (Q14 rotation, column-major as the routine uses it: x' = (m0 x + m3 y + m6 z) >> 14
+ * + m9) and every vertex within rad of its origin certainly inside each of +345E4's outcode tests? A view axis's
+ * extent is its row's length times rad (plus the shift's rounding and a margin), so every corner lies in that box
+ * about (m9, m10, m11); the box inside -29900 < z <= -64 and under each plane a y + b z <= 2^18 (a x + b z), the
+ * camera's words [3,4] [6,7] [8,10] [11,13], gives no corner a bit, and the AND the cull tests is 0. The planes'
+ * products are the game's 32-bit muls: any point of the box that could wrap them is not certain. */
+static uint32_t gc_isqrt(uint32_t x)
+{
+    uint32_t r = 0, b = 1u << 30;
+    while (b > x) b >>= 2;
+    while (b) { if (x >= r + b) { x -= r + b; r = (r >> 1) + b; } else r >>= 1; b >>= 2; }
+    return r;
+}
+static int gcar_inside(uint32_t cam, const int32_t *M, uint32_t rad)
+{
+    int64_t e[3];
+    for (uint32_t i = 0; i < 3u; i++) {
+        const uint32_t q = (uint32_t)(M[i] * M[i]) + (uint32_t)(M[3u + i] * M[3u + i]) + (uint32_t)(M[6u + i] * M[6u + i]);
+        if (go_iabs(M[i]) > 32767 || go_iabs(M[3u + i]) > 32767 || go_iabs(M[6u + i]) > 32767 || q > 0xC0000000u) return 0;
+        e[i] = (((int64_t)gc_isqrt(q) + 1) * (int64_t)rad >> 14) + 4;
+    }
+    const int64_t c[3] = { M[9], M[10], M[11] };
+    if (c[2] - e[2] <= -29900 || c[2] + e[2] > -64) return 0;
+    static const uint8_t pl[4][3] = { { 3, 4, 1 }, { 6, 7, 1 }, { 8, 10, 0 }, { 11, 13, 0 } };   /* a, b, the axis */
+    for (uint32_t k = 0; k < 4u; k++) {
+        const int64_t a = (int32_t)GO32(cam + 4u * pl[k][0]), b = (int32_t)GO32(cam + 4u * pl[k][1]);
+        const uint32_t ax = pl[k][2];
+        const int64_t aa = a < 0 ? -a : a, ba = b < 0 ? -b : b;
+        const int64_t ca = c[ax] < 0 ? -c[ax] : c[ax], cza = c[2] < 0 ? -c[2] : c[2];
+        if (aa * (ca + e[ax]) + ba * (cza + e[2]) >= 0x7FFFFFFFll) return 0;
+        if (a * c[ax] + b * c[2] + aa * e[ax] + ba * e[2] > (1 << 18)) return 0;
+    }
+    return 1;
+}
 int a4_car_take(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf, uint32_t lr)
 {
 #ifdef A4_STREAMCEN
-    volatile uint32_t *scn_d = scn_car(faces, nf, mode);
-    const int scn_r = a4_car_take_i(cam, verts, nv, faces, nf, mode, nobf, lr);
+    volatile uint32_t *scn_d = scn_car(faces, nf, mode);   /* (an early take is not in the census: bench) */
+    const int scn_r = a4_car_take_i(cam, verts, nv, faces, nf, mode, nobf, lr, 0);
     if (scn_d && scn_r) scn_d[3] = 1;
     return scn_r;
-}
-static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf, uint32_t lr)
-{
+#else
+    return a4_car_take_i(cam, verts, nv, faces, nf, mode, nobf, lr, 0);
 #endif
+}
+/* Round 86, +34A0A (before the transform): 1 = taken, the routine skipped. A car refused for any reason the late take
+ * would refuse it for too is left to the routine with the late take off (carlate 0); one not certainly inside the
+ * outcode tests (gcar_inside) goes on with it armed (carlate 1). A4_CAREARLYCHECK (bench): never taken here -- the
+ * verdict kept (carlate 2 inside, 1 not) for a4_car_earlycheck to set against the routine's own cull. */
+int a4_car_early(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf, uint32_t lr)
+{
+    return a4_car_take_i(cam, verts, nv, faces, nf, mode, nobf, lr, 1);
+}
+#ifdef A4_CAREARLYCHECK
+/* bench (round 86), +34A12 after the transform: CRK1 [40] cars judged inside, [41] of them the routine culled (cam[0]
+ * nonzero: the verdict unsound), [42] cars not certain, [43] early refusals; the late take then runs as before */
+void a4_car_earlycheck(uint32_t cam)
+{
+    volatile struct gstate *g = GOBJ;
+    volatile uint32_t *C = crk_get();
+    if (g->magic != GOBJ_MAGIC) return;
+    if (g->carlate == 2u) { C[40]++; if (GO32(cam) & 0xFFu) C[41]++; g->carlate = 1u; }
+    else if (g->carlate == 1u) C[42]++;
+}
+#endif
+static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf,
+                         uint32_t lr, int early)
+{
     const uint32_t gb = gcar_gbase();
     if (lr != gb + 0x34B17u) return 0;                     /* a CBasicMesh: the cars */
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
     volatile struct gstate *g = GOBJ;
     volatile struct gcstate *c = GCAR;
     gobj_reset(g);
+    if (early) g->carlate = 0u;                            /* round 86: refused below -> the late take refuses too */
+    else { if (!g->carlate) return 0; g->carlate = 0u; }  /* the late take only after an early one left it armed */
     if (c->magic != GCAR_MAGIC) {
         uint32_t *w = (uint32_t *)GCAR_BASE;
         for (uint32_t k = 0; k < sizeof(struct gcstate) / 4u; k++) w[k] = 0;
@@ -6549,6 +6614,14 @@ static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t fac
     struct gcmesh *me = gcar_mesh(g, c, verts, nv, faces, nf, w1);
     if (!me) return 0;
     if (M[11] + (int32_t)me->rad + 2 > -(ZK + 4)) { c->refused_near++; return 0; }   /* the list's near plane */
+    if (early) {                                            /* round 86: taken before the transform only if certain */
+        const int in = gcar_inside(cam, M, me->rad);
+#ifdef A4_CAREARLYCHECK
+        g->carlate = in ? 2u : 1u; return 0;
+#else
+        if (!in) { g->carlate = 1u; return 0; }
+#endif
+    }
     volatile struct gcitem *it = &c->it[c->n++];
     it->mesh = (uint32_t)(uintptr_t)me; it->F = GO32(cam + 4u);
     for (uint32_t k = 0; k < 12u; k++) it->M[k] = M[k];
