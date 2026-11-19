@@ -13578,3 +13578,9 @@ c. State the bench did not enter: a frame with more than GOBJ_NE (768) object gr
 - **r86c sent to the owner (unbaked, 840b0eca; the owner bakes).** On the phone, read: render times against r85a by map
   (Monte Carlo 51.8 ms on r85a), the timers by window (frec3.py timers: which of walk / cars / shadow / table draw /
   readback grows in the heavy scenes and at top speed), and the picture as r85a's.
+- Owner: "will it capture all the races or just the last one?" Both, in two ways: the ring keeps the last 8 captures
+  (one every 230 renders, ~100 s of the session's end), but the timers are sums from the launch, so the last capture
+  holds the whole session's means; and each press of C (a4mark0-7, never overwritten in a session, 8 at most, 2 s
+  apart, only while racing) holds the sums at that moment -- a press near each race's end divides the session by
+  race. frec3.py timers now orders the ring captures and the marks together by their scene count and prints each
+  stretch between two of them and the launch to the last (lar86c's marks: 0.90-1.30 / 0.65-0.99 / ... ms a scene).

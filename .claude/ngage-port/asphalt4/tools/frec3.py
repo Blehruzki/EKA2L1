@@ -118,19 +118,22 @@ if mode == 'timers':
     # round 86 (A4_PHTIMERS): CRK1 [52..60] summed from the boot -- scenes, then ticks (1 ms) of the scenery walk, the
     # cars, the shadow's insert, +31A26/+31A50, the ordering table's draw; the readback's first strip, the others,
     # composites. Each ring capture against the previous one: the window's ms a scene.
+    # ring captures and the owner's marks together, in the order of their scene count (summed from the launch): the
+    # stretch between two of them, and the whole session from the launch to each
     rows = []
     for info, d in infos:
         i = d.rfind(b'CRK1')
-        if i < 0 or len(d) < i + 248 or info['mark']: continue
-        rows.append((info['idx'], struct.unpack_from('<62I', d, i)))
-    rows.sort()
+        if i < 0 or len(d) < i + 248: continue
+        rows.append((struct.unpack_from('<62I', d, i), ('mark%d' if info['mark'] else 'cap%d') % info['idx']))
+    rows.sort(key=lambda r: r[0][52])
     names = ('walk', 'cars', 'shadow', '31A26/50', 'table draw', 'read 1st', 'read rest')
-    print('capture  scenes  ms a scene: ' + ' '.join('%10s' % n for n in names) + '   (read: per composite)')
-    for (ia, a), (ib, b) in zip(rows, rows[1:]):
+    print('stretch            scenes  ms a scene: ' + ' '.join('%10s' % n for n in names) + '   (read: per composite)')
+    z = ((0,) * 62, 'launch')
+    for (a, la), (b, lb) in [(z, rows[-1])] + list(zip(rows, rows[1:])) if rows else []:
         dn = b[52] - a[52]; dc = b[60] - a[60]
         if dn <= 0: continue
         v = [(b[k] - a[k]) / dn for k in range(53, 58)] + [(b[k] - a[k]) / max(dc, 1) for k in (58, 59)]
-        print('%3d-%3d  %6d  %s' % (ia, ib, dn, ' '.join('%10.2f' % x for x in v)))
+        print('%-8s-%-8s  %6d  %s' % (la, lb, dn, ' '.join('%10.2f' % x for x in v)))
     sys.exit()
 
 if mode in ('lines', 'shadchk', 'gobjchk', 'carchk'):
