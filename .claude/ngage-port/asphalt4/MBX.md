@@ -13419,4 +13419,15 @@ c. State the bench did not enter: the owner's own road -- three laps to the fini
   the same speeds (captures 35 and 37: 26.5 and 15.5 ms at 527 and 497 km/h).
 - Not repeated: presenting through EGL (route B) -- rounds 55-56 measured its upload at 37.5 ms a frame.
 - Next: where the heavy scenes' 3D pass goes. pw85mc (C84 + A4_PROFSYM, the cycle profile over instructions
-  1.0e10-1.3e10 of a Monte Carlo race; not a repeat of pw84a, LA) running.
+  1.0e10-1.3e10 of a Monte Carlo race; not a repeat of pw84a, LA): no file -- the profiler's count (instructions
+  credited at block entries, a run's boundary dropped) never reached 1.3e10 in a 200 s race. Rerun (pw85mc2: 7e9 +
+  2.5e9, 250 s race): the window ~200 s into Monte Carlo.
+- **pw85mc against pw84a (LA), in units of a4_cvt565_run (one whole-frame convert a post): 6.39 a post against
+  7.80 -- the bench's Monte Carlo lighter than its LA**: gitem_box 0.08 / 0.18, a4_gobj_copy 0.02 / 0.20, gobj_flush
+  0.02 / 0.12 (fewer GPU objects in view), bb_row2 0.08 / 0.19, the game's own code 1.22 / 1.76. The same in both:
+  the composite (a4_comp_row 0.71, composite_rows 0.32-0.37), the HUD painter a4_engv_29736 0.58-0.61, lean_tail_cv
+  0.36-0.39, a4_shadow_insert 0.23, batch_draw 0.21. **The bench does not reach the owner's heavy scenes**: its car
+  holds accelerate alone (no steering, no nitro), so where the phone's 3D pass doubles at 500+ km/h is the phone's
+  to measure -- timers in a build, not a bench profile. (The ROM's runtime converts the game's 565 back buffer to
+  32-bit at each present -- ngibackbuffer +CB70, our a4_cvt565_run in its place: the game's buffer and the readback
+  are both 565, so the merge converts nothing.)
