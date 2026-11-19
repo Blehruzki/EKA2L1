@@ -13495,3 +13495,8 @@ c. State the bench did not enter: the owner's own road -- three laps to the fini
   code r86 did not touch fell too (a4_gobj_copy 1.01 -> 0.56, bb_row2 0.88 -> 0.48: a lighter scene). gobj_flush's
   own 1.02 -> 0.27 (the sort's 0.60 gone, the rest the scene), gitem_box 1.15 -> 0.57. Settled by track position
   instead: la-r85a / la-r86a (clean candidates, LA, hcm.sh, 300 s) by segment (segcmp.py), running.
+- **lar85a / lar86a (the candidates, LA, 300 s; framestat 2,546 / 2,545, the boot fault only): median render-to-render
+  ms by 25-segment bin 40 / 46 / 46 / 41 against 41 / 43 / 43 / 40** -- 3 ms faster in segments 50-99, where the
+  most objects are in view (the insertion sort's cost grew with the square of the frame's (texture, item, group)s),
+  level elsewhere (LA runs agree within ~1 ms a bin, round 83). r86a's first cuts: exact (ck86), clean on the six
+  maps (at86a), ~3 ms a render off the heavy stretches on the bench.
