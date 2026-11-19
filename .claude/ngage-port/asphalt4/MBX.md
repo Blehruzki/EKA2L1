@@ -13482,3 +13482,7 @@ c. State the bench did not enter: the owner's own road -- three laps to the fini
 - ck86 (C84 + A4_GOBJ86CHECK, LA, hcm.sh; the first try lost to a dead Xvfb -- hcm.sh does not restart it): framestat
   1,270, the boot fault only; **440 flushes, 0 out of order; 250,966 box corners, 0 differing.** r86a candidate (C84)
   988,184 bytes (+548), sha256 b823732e... pg86la (pf86, the same gate and window as pg85la) running.
+- pg86la: **no profile -- the run stalled at the race's loading screen** ("press any key", menu10): posts stopped at
+  624, every later shot black, no fault logged, Xvfb alive afterwards. ck86 (the same code but A4_PROFSYM) raced
+  through the same screen. Not yet known whether the change or the host; at86a (the r86a candidate, the six-map
+  battery -- a hang test too) running before pg86la again.
