@@ -13468,3 +13468,17 @@ c. State the bench did not enter: the owner's own road -- three laps to the fini
   ~0.6** (a4_eng.c's -ftrivial-auto-var-init=zero: engi_349B0's 185 calls a render each clear its frame array).
   The RE's first target is therefore the static world's per-frame path and the shadow's, where the game's own data
   (static, known at load) is recomputed by us every frame.
+- Inside them (pg85la by block): gobj_flush's own 1.02 ms is mostly its **insertion sort** of the frame's (texture,
+  item, group)s by texture (the shift loop +C6304-+C632C: 0.60); gitem_box's 1.15 ms is the eight corners' transforms
+  (~0.42, 72 multiplies an item) and their projection through the game's 128 KB reciprocal table (0.41: random reads,
+  eight an item); gobj_mesh 0.22 thin; the lifted frames' zeroing is a sized memclr (engi_349B0's 28 words), not waste.
+- **r86's first cuts, both exact**: (1) the flush's sort a stable LSD radix sort (a4_gl.c gobj_sort, a byte a pass,
+  the passes with one byte value skipped; its arrays at the arena's end, the staging moved 8 KB lower: GOBJ_STAGE =
+  AEND - 0x10000, the arena's limit with it). Refs rise with the order taken ((i << 8) | k), so the insertion sort's
+  output is the sort by (texture, ref), which a stable sort reproduces. (2) gitem_box takes each axis's two products a
+  row once (18 multiplies, not 72); a corner's row is the int64 sum of the same three products, so every corner is as
+  before. Bench: A4_GOBJINSSORT (the old sort), A4_GOBJ86CHECK (CRK1 [40] flushes, [41] pairs out of (texture, ref)
+  order, [42] corners, [43] differing from round 85's arithmetic; frec3.py mode gobjchk).
+- ck86 (C84 + A4_GOBJ86CHECK, LA, hcm.sh; the first try lost to a dead Xvfb -- hcm.sh does not restart it): framestat
+  1,270, the boot fault only; **440 flushes, 0 out of order; 250,966 box corners, 0 differing.** r86a candidate (C84)
+  988,184 bytes (+548), sha256 b823732e... pg86la (pf86, the same gate and window as pg85la) running.

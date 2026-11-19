@@ -34,6 +34,10 @@
 #ifdef A4_LISTDUMP
 #include "a4_memo.h"                /* round 60: the list dump's mesh call per face */
 #endif
+#if defined(A4_GOBJ86CHECK) && (defined(A4_SHADCHECK) || defined(A4_CARPROBE) || defined(A4_MSKIP_ALT) || \
+    defined(A4_WRAPPROBE) || defined(A4_ABCYCLE17) || defined(A4_GOBJINSSORT))
+#error "A4_GOBJ86CHECK counts in CRK1 [40..43] (with the radix sort), which those use or replace"
+#endif
 #ifdef A4_CLIPG
 #if !(defined(A4_LEAN) && defined(A4_COVREDRAW))
 #error "A4_CLIPG cuts in lean_tail and counts in CRK1 (A4_GL_CRK, beside A4_COVREDRAW's state)"
@@ -5886,11 +5890,15 @@ typedef int16_t __attribute__((may_alias)) go_s16;
 #endif
 #define GOBJ_AEND  A4_GOBJ_AEND
 #define GOBJ_SN    4095u                    /* staging: corners a draw (a multiple of 3), at the arena's end */
-#define GOBJ_STAGE (GOBJ_AEND - 0xE000u)
+#define GOBJ_STAGE (GOBJ_AEND - 0x10000u)   /* round 86: 8 KB lower (0xE000 before), for the sort's arrays */
 #define GOBJ_NE    (GOBJ_NI * 4u)           /* the flush's (texture, item, group)s: keys and refs, after the staging */
+#define GOBJ_KEY2  ((uint32_t *)(GOBJ_AEND - 0x4000u))   /* round 86: the radix sort's second key and ref arrays */
+#define GOBJ_REF2  ((uint32_t *)(GOBJ_AEND - 0x3400u))
+#define GOBJ_CNT   ((uint32_t *)(GOBJ_AEND - 0x2800u))   /* and its 256 counters */
 #define GOBJ_KEY   ((uint32_t *)(GOBJ_AEND - 0x2000u))
 #define GOBJ_REF   ((uint32_t *)(GOBJ_AEND - 0x1000u))
-_Static_assert(GOBJ_NE * 4u <= 0x1000u && GOBJ_SN * 12u <= 0xC000u, "the staging and the flush's keys");
+_Static_assert(GOBJ_NE * 4u <= 0xC00u && GOBJ_SN * 12u <= 0xC000u, "the staging and the flush's keys");
+_Static_assert(GOBJ_STAGE + GOBJ_SN * 12u <= GOBJ_AEND - 0x4000u, "the staging below the sort's arrays");
 struct gitem { uint32_t mesh, textab; int32_t d[3]; int16_t box[4]; uint16_t qn, qf; };   /* screen box, nearest/farthest bucket */
 struct gmesh { uint32_t verts, faces, nf, ofs, ng; uint16_t gs[GOBJ_NG], gc[GOBJ_NG]; uint8_t gt[GOBJ_NG]; uint16_t ext, rad;
                uint32_t fp[3]; };                  /* the data's first words: a mesh moved under the same address */
@@ -6012,11 +6020,28 @@ static int gitem_box(const uint32_t *gx, int32_t F, const int32_t *R, const int3
     }
 #else
     (void)rad;
+    /* round 86: each axis's two products a row taken once (18 multiplies, not 72); a corner's row the sum of the same
+     * three products as before, so every corner exactly as before (pg85la: the transforms ~0.4 ms a render) */
+    int64_t ax[3][2], ay[3][2], az[3][2];
+    for (uint32_t r = 0; r < 3u; r++) {
+        ax[r][0] = (int64_t)R[r] * bnd[0]; ax[r][1] = (int64_t)R[r] * bnd[3];
+        ay[r][0] = (int64_t)R[3u + r] * bnd[1]; ay[r][1] = (int64_t)R[3u + r] * bnd[4];
+        az[r][0] = (int64_t)R[6u + r] * bnd[2]; az[r][1] = (int64_t)R[6u + r] * bnd[5];
+    }
     for (uint32_t k = 0; k < 8u; k++) {
-        const int32_t px = bnd[(k & 1u) ? 3 : 0], py = bnd[(k & 2u) ? 4 : 1], pz = bnd[(k & 4u) ? 5 : 2];
+        const uint32_t ix = k & 1u, iy = (k >> 1) & 1u, iz = (k >> 2) & 1u;
         int32_t v[3], sx, sy;
-        for (uint32_t r = 0; r < 3u; r++)
-            v[r] = (int32_t)(((int64_t)R[r] * px + (int64_t)R[3u + r] * py + (int64_t)R[6u + r] * pz) >> 14) + T[r];
+        for (uint32_t r = 0; r < 3u; r++) v[r] = (int32_t)((ax[r][ix] + ay[r][iy] + az[r][iz]) >> 14) + T[r];
+#ifdef A4_GOBJ86CHECK
+        {   /* bench: the corner as round 85 took it -- CRK1 [42] corners, [43] differing */
+            volatile uint32_t *C = crk_get();
+            const int32_t px = bnd[ix ? 3 : 0], py = bnd[iy ? 4 : 1], pz = bnd[iz ? 5 : 2];
+            C[42]++;
+            for (uint32_t r = 0; r < 3u; r++)
+                if (v[r] != (int32_t)(((int64_t)R[r] * px + (int64_t)R[3u + r] * py + (int64_t)R[6u + r] * pz) >> 14) + T[r])
+                    C[43]++;
+        }
+#endif
         if (v[2] > -(ZK + 4)) { box[0] = -1; box[1] = -1; box[2] = VP_W; box[3] = VP_H; zhi = 0; break; }   /* never: the take's test */
 #ifdef A4_CLIPG
         /* round 82f: mesh_scr_i wraps past +-32,767 px (the game's projection does): a corner near enough to, or past
@@ -6235,6 +6260,25 @@ static void rows_extend(volatile struct glr *s, const volatile int16_t *b)
     if ((uint32_t)y1 > s->maxy) s->maxy = (uint32_t)y1;
 #endif
 }
+/* Round 86: a stable LSD radix sort of n (key, ref) pairs by key, a byte a pass, the passes where every key has the
+ * same byte skipped; the result back in key / ref. Stable: equal keys keep their order. */
+static void gobj_sort(uint32_t *key, uint32_t *ref, uint32_t n)
+{
+    uint32_t *k0 = key, *r0 = ref, *k1 = GOBJ_KEY2, *r1 = GOBJ_REF2, *const cnt = GOBJ_CNT, diff = 0;
+    for (uint32_t i = 1; i < n; i++) diff |= key[i] ^ key[0];
+    for (uint32_t sh = 0; sh < 32u; sh += 8u) {
+        if (!((diff >> sh) & 255u)) continue;
+        for (uint32_t b = 0; b < 256u; b++) cnt[b] = 0;
+        for (uint32_t i = 0; i < n; i++) cnt[(k0[i] >> sh) & 255u]++;
+        for (uint32_t b = 0, p = 0; b < 256u; b++) { const uint32_t c = cnt[b]; cnt[b] = p; p += c; }
+        for (uint32_t i = 0; i < n; i++) {
+            const uint32_t d = cnt[(k0[i] >> sh) & 255u]++;
+            k1[d] = k0[i]; r1[d] = r0[i];
+        }
+        uint32_t *t = k0; k0 = k1; k1 = t; t = r0; r0 = r1; r1 = t;
+    }
+    if (k0 != key) for (uint32_t i = 0; i < n; i++) { key[i] = k0[i]; ref[i] = r0[i]; }
+}
 static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
 {
     volatile struct gstate *g = GOBJ;
@@ -6272,6 +6316,8 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
     /* the frame's (texture, item, group)s, sorted by texture: a draw a texture */
     uint32_t *const key = GOBJ_KEY, *const ref = GOBJ_REF;
     uint32_t ne = 0;
+#ifdef A4_GOBJINSSORT
+    /* bench (round 86): the insertion sort to round 85 -- 0.6 ms a render of shifting (pg85la) */
     for (uint32_t i = 0; i < n; i++) {
         const struct gmesh *me = (const struct gmesh *)(uintptr_t)g->it[i].mesh;
         for (uint32_t k = 0; k < me->ng && ne < GOBJ_NE; k++) {
@@ -6281,6 +6327,25 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
             key[j] = ts; ref[j] = r;
         }
     }
+#else
+    /* round 86: taken in order, then sorted by a stable radix sort -- the insertion sort's order exactly: refs rise
+     * with the order taken (item i, group k < 256: (i << 8) | k), so both are the sort by (texture, ref) */
+    for (uint32_t i = 0; i < n; i++) {
+        const struct gmesh *me = (const struct gmesh *)(uintptr_t)g->it[i].mesh;
+        for (uint32_t k = 0; k < me->ng && ne < GOBJ_NE; k++) {
+            key[ne] = GO32(g->it[i].textab + 4u * me->gt[k]); ref[ne] = (i << 8) | k; ne++;
+        }
+    }
+    gobj_sort(key, ref, ne);
+#endif
+#ifdef A4_GOBJ86CHECK
+    {   /* bench (round 86): (texture, ref) strictly rising, as the insertion sort's -- CRK1 [40] frames, [41] faults */
+        volatile uint32_t *C = crk_get();
+        C[40]++;
+        for (uint32_t e = 1; e < ne; e++)
+            if (key[e - 1u] > key[e] || (key[e - 1u] == key[e] && ref[e - 1u] >= ref[e])) C[41]++;
+    }
+#endif
     int lw = -1, lh = -1; uint32_t lastid = 0xFFFFFFFFu, draws = 0;
     for (uint32_t e = 0; e < ne; ) {
         const uint32_t ts = key[e];
