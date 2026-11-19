@@ -13575,3 +13575,6 @@ b. Read back: gobj_sort and the flush's taking, gitem_box's products, gcar_insid
 c. State the bench did not enter: a frame with more than GOBJ_NE (768) object groups (capped and dropped as before);
    the arena full on a long session (8 KB less room: peak use about half of it on the bench); a car under a scaled
    matrix (the rows' lengths cover it); the owner's top-speed heavy scenes (the timers are there to measure them).
+- **r86c sent to the owner (unbaked, 840b0eca; the owner bakes).** On the phone, read: render times against r85a by map
+  (Monte Carlo 51.8 ms on r85a), the timers by window (frec3.py timers: which of walk / cars / shadow / table draw /
+  readback grows in the heavy scenes and at top speed), and the picture as r85a's.
