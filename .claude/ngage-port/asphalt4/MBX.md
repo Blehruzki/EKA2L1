@@ -13451,4 +13451,20 @@ c. State the bench did not enter: the owner's own road -- three laps to the fini
   CPU only: the GL driver's time is charged as stretches, not profiled.)
 - rt85 (pf85, LA, EKA2L1_PCTRACE over the exe 0x70000000-0x70100000 armed at the race step engi_141B0, a ring of 6M
   entries dumped at the first capture -- a4_gl_rdinfo, called only there): the call tree, for each subtree's
-  inclusive cost (scratchpad inctree.py: a block's cost a visit from pg85la). Running.
+  inclusive cost (scratchpad inctree.py: a block's cost a visit from pg85la; a call is a block at a game function's
+  push or a blob symbol, the call veneers a4_eng_call / a4_engv_* / *_tramp transparent but popping; frames by sp).
+  16 render calls in the ring (48 MB). **Inclusive, ms a render (bench model, LA, +12992 to the HUD, 16.2):**
+  | subtree | ms | of it |
+  | engi_0D3BA (the scene, +D3BA lifted) | 16.1 | -- |
+  | +31CC6 -> +3598C, the ordering table drawn | 8.72 | +31246 x212 7.02 (+34798 x163 6.09: draw_prim_take 5.86 = **gobj_flush 2.53** (the static objects: sort, copy, draws), **shb_draw 1.96** (the shadow's 26 buckets, still face by face through lean_tail_cv), lean_tail 0.86, mesh_draw 0.29, gcar_flush 0.13); +35D3A x49 0.89 (lean_tail 0.35, +35A28 0.24, +51E44 0.15); +312E6 x3 -> engi_3015E 1.69 (the billboards: bb_row2 x42 1.09, a4_gl_bb 0.57) |
+  | +0CF6E, the scenery walk | 3.40 | engi_0CE8C x68 2.85: **a4_obj_take 1.99 (gitem_box 1.40, gobj_mesh 0.45)**, engi_349F8 x1.8 0.63 (the objects left to the game), memclr8 0.18; +358FC x161 0.34 (the cull) |
+  | +34AEA x8, the cars | 1.38 | engi_349F8 1.37 (a4_car_take 0.20) |
+  | +20918 -> +2732E, the shadow's insert | 1.30 | a4_shadow_insert x306 0.93, +344F6 0.29 |
+  | +31A26 -> +34B1A | 0.74 | engi_349B0 x185 0.39 -- **of it __aeabi_memclr8 0.37** -- +34434 x159 0.32 |
+  | +31A50 -> +35FDA | 0.27 | |
+  **So the CPU left in the render call is mostly our own glue, not the game's code (3.8 ms of 16.2): the static world
+  ~5.9 (the take and its box 2.0, the flush 2.5, the walk and the unpack's overhead), the shadow ~3.3 (insert 1.3,
+  draw 2.0), the billboards 1.7, the cars 1.4, the face stream ~2.1, and the lifted functions' zeroed stack frames
+  ~0.6** (a4_eng.c's -ftrivial-auto-var-init=zero: engi_349B0's 185 calls a render each clear its frame array).
+  The RE's first target is therefore the static world's per-frame path and the shadow's, where the game's own data
+  (static, known at load) is recomputed by us every frame.
