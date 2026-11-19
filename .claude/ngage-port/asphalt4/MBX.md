@@ -13238,3 +13238,32 @@ c. State the bench did not enter: more than 512 shadow faces or 64 buckets in a 
 - **r84b sent to the owner (unbaked, 67b12d53; the owner bakes).** On the phone, read: the 3D phase and the render
   time against r82g's (LA ~55 ms a render, 3D ~25), CRK1 [50] faces batched and [51] buckets lost (expect 0), the
   composite (step 1's mask skip), and the shadow by eye (whole, not doubled, not through the road or the car).
+
+### Phone round r84b (the owner: "car shadow is fine. I played one round. The game felt a bit smoother. However when I
+### went to play a second round on Paris by selecting the next race ... it crashed with kern-exec 3")
+
+- up84b (8 captures, 5-12; LA): in-race windows 57.1 / 48.3 / 58.8 / 51.2 / 49.7 / 53.1 ms a render, ~53.0 against
+  r82g's ~56.6 (42-48), 3D ~22.4 against ~24.8, the composite ~12.2 against ~13.8 -- one race, other places on the
+  track, so roughly. Shadow faces batched 898,958, buckets lost 0; cracks, cuts and hand-backs as before.
+- The crash: capture 12's render records end LA at segment 39 (the car stopped at the finish), then 21 s without a
+  render (the results), then segment 110 (Paris) in mode 23 (the intro) and one render of mode 2: Paris loaded and its
+  race began; the crash came after the last capture, early in the second race -- not in the load.
+- Bench, the second race through the pause menu (nr84b: LA 45 s, PAUSE -> MAIN MENU -> YES -> CAREER -> START RACE ->
+  PARIS -> RACE): Paris loads and races, no fault (only the boot one). shpr84 (r84b + A4_SHADPROBE, the same route):
+  shadow faces are also offered outside a race -- the career garage's car, ~2,400 + 3,700 faces with no list started
+  that frame -- and every bucket drew under the insert's own context, on the screen's target, with the list active, 0
+  lost. Not the owner's route (finish -> results -> next race), which the bench cannot drive yet: a race to the finish
+  needs the car to complete three laps.
+
+### The owner's Dubai report (the same session's files: "my and the AI cars disappear at a certain section of the map,
+### a few meters before the starting line, up until the new district" -- 4 marks; "update the battery test ... a race
+### on every map")
+
+- The marks: 0 and 2 without a car anywhere (the rivals' 3RD / 4TH / 5TH labels over an empty road, the player's nitro
+  flame and tyre smoke but no car), 1 and 3 with them. Mark 0's 256 render records: 190 at segment 12 (the start grid,
+  the countdown), the press at segment 16 -- the cars are gone from the start. Shadow buckets lost 15,534 in this
+  session (LA's 0); late triangles a render as LA's (~2-3); the 2D phase 11-17 ms in windows 9-12 against ~3.
+- Bench: db84b (r84b, CAREER -> START RACE -> DUBAI -> RACE): **no car on the start grid through the countdown, the
+  player's or any rival's** -- the sun and its flare in view. db83a (r83a, no shadow batch): the same, the car's shadow
+  on the road where the car should be. **Older than round 84.** The destinations: LA, New York, Paris, Monte Carlo,
+  Dubai, Shanghai -- the bench had raced two. dbcp (r84b + A4_CARPROBE: the GPU cars' take and box at each flush) running.

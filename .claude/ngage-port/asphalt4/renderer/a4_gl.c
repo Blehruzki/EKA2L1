@@ -5059,6 +5059,9 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
 #ifdef A4_STREAMCEN
             if (0)     /* bench (round 83): the census owns CUT1's place */
 #endif
+#ifdef A4_CARPROBE2
+            if (0)     /* bench (round 84): the car probe owns CUT1's place */
+#endif
             {   /* 'CUT1': this cut's raw corners, the last CUT_N kept -- a mark at a gap shows what was cut in its frame */
                 volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;
                 if (U[0] != 0x31545543u) { U[1] = 0; U[0] = 0x31545543u; }
@@ -6483,9 +6486,39 @@ static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t fac
 static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
 {
     volatile struct gcstate *c = GCAR;
+#ifdef A4_CARPROBE
+    {   /* bench (round 84, the owner's Dubai: no cars at the start): CRK1 [40] frames flushed, [41] of them with cars
+         * taken this frame, [42] cars, [43] taken total; [44] car groups whose texture failed (total), [45] car groups
+         * (total), [46] the texture cache's entries | those used this present << 16 (at the cars), [47] evictions */
+        volatile uint32_t *C = crk_get();
+        C[40]++;
+        if (c->magic == GCAR_MAGIC && c->frame == s->frames && c->n) { C[41]++; C[42] = c->n; C[43] = c->taken; }
+        C[47] = A4_PERF[PF_EVICT];
+    }
+#endif
     if (c->magic != GCAR_MAGIC || c->frame != s->frames || !c->n) return;
     const uint32_t n = c->n;
     int32_t F = (int32_t)c->it[0].F;
+#ifdef A4_CARPROBE2
+    {   /* bench (round 84, Dubai): CUT1's place, a ring of 16 flushes -- [0] frames, [1] cars, [2] F as taken, then up to
+         * 7 cars: F, M[9], M[11] (view x, z), mesh ofs | ng << 24 */
+        volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;
+        if (U[0] != 0x31545543u) { U[1] = 0; U[0] = 0x31545543u; }
+        volatile uint32_t *w = U + 2u + (U[1] & (CUT_N - 1u)) * CUT_W;
+        w[0] = s->frames; w[1] = n; w[2] = (uint32_t)F;
+        uint32_t j = 0;                             /* the nearest car (the largest view z) */
+        for (uint32_t i = 1; i < n; i++) if (c->it[i].M[11] > c->it[j].M[11]) j = i;
+        const volatile struct gcitem *it = &c->it[j];
+        const struct gcmesh *me = (const struct gcmesh *)(uintptr_t)it->mesh;
+        for (uint32_t k = 0; k < 12u; k++) w[3 + k] = (uint32_t)it->M[k];
+        w[15] = me->ofs; w[16] = me->ng | (uint32_t)me->gm1[0] << 8 | (uint32_t)me->nf << 16;
+        w[17] = me->gs[0] | (uint32_t)me->gc[0] << 16;
+        {   const uint32_t *r = (const uint32_t *)(GOBJ_ARENA + 12u * me->ofs);
+            w[18] = r[0]; w[19] = r[1]; w[20] = r[2]; }
+        w[21] = j; w[22] = 0; w[23] = 0;
+        U[1]++;
+    }
+#endif
     if (F < 1) F = 1;
     if (F > 16383) F = 16383;
     const int32_t cx = *(const int32_t *)gctx[0x40110 / 4] >> 1, cy = *(const int32_t *)gctx[0x40114 / 4] >> 1;
@@ -6497,6 +6530,15 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
     P[14] = ZK * FX - ((ZK * FX) >> 6);
     gl_matrixmode(GL_PROJECTION); gl_loadmatrixx(P);
     gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_GEQUAL); gl_enable(GL_CULL_FACE); gl_depthmask(1);
+#ifdef A4_CARNOCULL
+    gl_disable(GL_CULL_FACE);                               /* bench (round 84, Dubai): the cars with both faces */
+#endif
+#ifdef A4_CARNODEPTH
+    gl_depthfunc(GL_ALWAYS);                                /* bench (round 84, Dubai): the cars passing every depth test */
+#endif
+#ifdef A4_CARFLAT
+    gl_disable(GL_TEXTURE_2D); gl_color4x(FX, 0, 0, FX);    /* bench (round 84, Dubai): the cars untextured, solid red */
+#endif
     const uint16_t *m1map = (const uint16_t *)gctx[0x5c / 4];
     const uint16_t *m1tab = m1_table(gctx);
     TM[10] = FX; TM[15] = FX;
@@ -6515,12 +6557,31 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
         gl_texcoordptr(2, GL_SHORT, 12, (const void *)(base + 6u));
         for (uint32_t k = 0; k < me->ng; k++) {
             uint32_t id; int wsh, hsh;
+#ifdef A4_CARPROBE
+            crk_get()[45]++;
+            if (tri_tex(s, KIND_TEX, me->gm1[k], me->gd[k], m1map, m1tab, &id, &wsh, &hsh) < 0) { crk_get()[44]++; continue; }
+#else
             if (tri_tex(s, KIND_TEX, me->gm1[k], me->gd[k], m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
+#endif
             if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
             if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
             gl_drawarrays(GL_TRIANGLES, 3 * (int)me->gs[k], 3 * (int)me->gc[k]); draws++;
         }
     }
+#ifdef A4_CARPROBE
+    {   uint32_t u = 0;
+        for (uint32_t k = 0; k < s->ntex && k < NCACHE; k++) if (TX->lu[k] == s->frames) u++;
+        crk_get()[46] = s->ntex | u << 16;                 /* the cache's entries, and those used this present */
+    }
+#endif
+#ifdef A4_CARFLAT
+    gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX);
+#endif
+#ifdef A4_CARPROBE2
+    {   volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;   /* the GL error after the cars' draws, and their count */
+        volatile uint32_t *w = U + 2u + ((U[1] - 1u) & (CUT_N - 1u)) * CUT_W;
+        w[22] = gl_geterror(); w[23] = draws; }
+#endif
     c->draws += draws; c->frames_drawn++;
     for (uint32_t i = 0; i < n; i++) rows_extend(s, c->it[i].box);   /* round 78: their rows composited */
     MESH->active = 1;                                       /* the table's classes depth-test against them */
@@ -6565,6 +6626,12 @@ static void cvr_box(const volatile int16_t *b)
     || defined(A4_LINEREC) || defined(A4_DEFER) || defined(A4_DUALCAP)
 #error "A4_SHADBATCH: the lean path's mesh frame (A4_MESH, A4_TAKE2, A4_LEAN, A4_CLIPG, A4_TAKESHADOW, A4_COVREDRAW), its state where A4_LINEREC keeps its ring"
 #endif
+#if defined(A4_CARPROBE) && (defined(A4_SHADPROBE) || defined(A4_SHADCOUNT) || defined(A4_SHADCHECK) || defined(A4_WRAPPROBE) || defined(A4_MASKCHECK) || defined(A4_MSKIP_ALT))
+#error "A4_CARPROBE counts in CRK1 [40..47], which that uses"
+#endif
+#if defined(A4_SHADPROBE) && (defined(A4_SHADCOUNT) || defined(A4_SHADCHECK) || defined(A4_WRAPPROBE) || defined(A4_MASKCHECK) || defined(A4_MSKIP_ALT))
+#error "A4_SHADPROBE counts in CRK1 [40..47], which that uses"
+#endif
 #if defined(A4_SHADCOUNT) && (defined(A4_SHADCHECK) || defined(A4_WRAPPROBE) || defined(A4_MASKCHECK) || defined(A4_MSKIP_ALT))
 #error "A4_SHADCOUNT counts in CRK1 [40..43], which that uses"
 #endif
@@ -6586,6 +6653,9 @@ struct shb {
     int32_t bmax; int16_t ubox[4];  /* the deepest bucket kept and the union of every face's box, this frame */
     uint8_t fo[GOBJ_NI], fc[GCAR_NI];
     uint8_t gmap[64];               /* a bucket's group + 1 by b & 63 (0: none; a clash falls back to the scan) */
+#ifdef A4_SHADPROBE
+    uint32_t pgctx;                 /* bench: the context the insert projected with */
+#endif
     struct shbg g[SHB_NG];
     struct shbf f[SHB_NF];
 };
@@ -6826,6 +6896,18 @@ static int shb_take(uint32_t *cam, uint32_t *face)
         for (uint32_t k = 0; k < 16u; k++) ((uint32_t *)(void *)h->gmap)[k] = 0;
     }
     if (face[0] != (uint32_t)(uintptr_t)&a4_tfvt + (uint32_t)a4_tfvt || face[1] != 0x20u) return 0;
+#ifdef A4_SHADPROBE
+    {   /* bench (round 84, the owner's crash at the next race): CRK1 [40] shadow faces offered, [41] of them with no list
+         * started this frame, [42] with the list under another cam, [46] frames offered any; [47] the last such frame */
+        const struct mesh *mm = (const struct mesh *)A4_GL_MESH;
+        volatile uint32_t *C = crk_get();
+        C[40]++;
+        if (mm->frame != frames) C[41]++;
+        else if (mm->cam != (uint32_t)(uintptr_t)cam) C[42]++;
+        if (C[47] != frames) { C[46]++; C[47] = frames; }
+        h->pgctx = ((const struct mesh *)A4_GL_MESH)->gctx;
+    }
+#endif
     const uint32_t *gctx = (const uint32_t *)((const struct mesh *)A4_GL_MESH)->gctx;
     const int32_t F = (int32_t)cam[1];
     const uint32_t n = h->n;
@@ -6938,6 +7020,15 @@ static int shb_draw(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc
     if (gi == ng) return -1;
     struct shbg *g = &h->g[gi];
     g->trig = 0;
+#ifdef A4_SHADPROBE
+    {   /* bench: [43] buckets drawn under another context than the insert's, [44] buckets drawn off the screen's target,
+         * [45] buckets drawn with the list inactive */
+        volatile uint32_t *C = crk_get();
+        if (h->pgctx != (uint32_t)(uintptr_t)gctx) C[43]++;
+        if (gctx[0x4c / 4] != *(volatile uint32_t *)A4_GL_BB) C[44]++;
+        if (!MESH_ON()) C[45]++;
+    }
+#endif
     shb_cand(s, g->b, g->box);
     int r = 1;
     for (uint32_t k = g->head; k != SHB_END && k < SHB_NF; k = h->f[k].next) {
@@ -8318,6 +8409,10 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #endif
 #if defined(A4_DEFER) && !defined(A4_M1VIS) && !defined(A4_SEQDUMP) && !defined(A4_VTXDUMP)
     if ((s->fmode & (AB_DEFER | AB_REORDER)) == (AB_DEFER | AB_REORDER)) return defer_take(s, gctx, desc, kind, m1, tsaddr);
+#endif
+#ifdef A4_CARSOLO
+    s->prims++; s->miny = 0; s->maxy = VP_H - 1;    /* bench (round 84, Dubai): the stream left to software -- the frame */
+    return 0;                                       /* begun once, every row composited: the GPU's own picture */
 #endif
 #ifdef A4_SHADBATCH
     if (shad && (s->fmode & AB_LEAN)) {
@@ -10163,6 +10258,11 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                  * round 81): the row composited first -- the ARMv6 routine says whether any four-pixel group was not
                  * all drawn (one instruction on its slow path), and a row with none has an all-ones drawn-mask without
                  * the 320-pixel pass below (most rows of the 3D picture) */
+#ifdef A4_COMPALL
+                /* bench (round 84, the owner's Dubai): every pixel of the GPU's picture composited, drawn or not -- the
+                 * screen shows what the GPU holds (its clear, magenta, where it drew nothing) */
+                for (int x = 0; x < VP_W; x++) ((uint32_t *)rb)[sy * VP_W + x] |= 0x80000000u;
+#endif
                 const uint32_t undrawn = row((uint32_t *)((uint16_t *)fb + screen_y * FB_STRIDE), src, src + VP_W);
                 uint32_t dcount = VP_W;                     /* the row's drawn pixels, when counted */
 #ifdef A4_LINEFILL
@@ -10649,6 +10749,9 @@ void a4_gl_flush(void)
     s->bfill = 0;
 #ifdef A4_COVREDRAW
     { uint32_t t0 = a4_ntick(); cvr_redraw(s); CVR->k[6] += a4_ntick() - t0; }   /* round 78: the covers, again */
+#ifdef A4_CARLATE
+    gcar_flush(s, (uint32_t *)(uintptr_t)MESH->gctx);  /* bench (round 84, Dubai): the cars again, just before the read */
+#endif
 #endif
     if (s->fmode & AB_FLUSH) {
         /* A tile renderer (the MBX) renders nothing until something makes it: without
