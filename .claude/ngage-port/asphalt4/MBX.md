@@ -13368,3 +13368,9 @@ c. State the bench did not enter: more than 512 shadow faces or 64 buckets in a 
   all six, rivals in each; Dubai's rivals there through the start and its sun over the sky (r84c's bb2 fix, the
   owner's report). Shanghai, never raced on the bench before: at its start, large white parallelograms on the road
   near the camera -- under test against the stock game (shst).
+- shst (the stock game, the handoff baseline 4baef63a, software renderer; Shanghai alone, the same route and timing):
+  **the same white parallelograms at the start** -- the game's own road markings near the grid, not the port.
+- rs85a (r85a, restart.sh: LA 40 s, then PAUSE -> RESTART RACE -> "ARE YOU SURE?" YES, twice; '5' held through each):
+  **three races in one object, no fault** (the boot one only; framestat 1,971) -- each restart loaded, ran the intro
+  and the countdown and raced (88 and 139 km/h at 40 s). The restart is the other road into a race in the last
+  race's object, and r85a's clock test takes it the same way.
