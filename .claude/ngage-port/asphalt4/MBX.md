@@ -13267,3 +13267,22 @@ c. State the bench did not enter: more than 512 shadow faces or 64 buckets in a 
   player's or any rival's** -- the sun and its flare in view. db83a (r83a, no shadow batch): the same, the car's shadow
   on the road where the car should be. **Older than round 84.** The destinations: LA, New York, Paris, Monte Carlo,
   Dubai, Shanghai -- the bench had raced two. dbcp (r84b + A4_CARPROBE: the GPU cars' take and box at each flush) running.
+- The Dubai cars, narrowed on the bench (each a run of the start in Dubai, CAREER -> DUBAI -> RACE; COMPALL = every
+  pixel of the GPU's picture composited, magenta where it drew nothing):
+  - dbcp (A4_CARPROBE): the cars are taken and flushed -- 11-12 a frame at the start, the first's box on screen
+    (144,106)-(165,125), z -1,345. dbcp2: no car group's texture fails (0 of 4,010), the cache 51 entries -- the draws
+    are made. dbcp3 (A4_CARPROBE2): every car's F 260 and its view position sane (the player's x 1, z -334).
+  - dbca (COMPALL): the GPU's own picture has no car -- the road, the buildings, the palms and the shadow, no car. Not
+    the composite. dbnc (culling off), dbnd (depth always), dbso2 (the stream to software: nothing drawn after the cars):
+    no car. dbcf (the cars untextured, solid red): no car. dbcl (red, depth always, drawn again just before the read):
+    no car -- **lacl, the same build in LA: every car solid red**: the method sees cars where they are.
+  - dbof (the objects solid green): the buildings and palms green -- the objects draw, with the same projection.
+  - dbcp4 / lacp4: the nearest car's GL inputs equal in both cities -- its rotation near identity, translation (1, -81,
+    -335) / (-3, -84, -301), the same mesh (750 faces, 4 groups, 564 in the first), the same first corner, no GL error.
+  - dbtr (A4_CARTRI: a triangle x -300..300, y 0..300 in the car's frame, through the nearest car's own modelview, from
+    an array of its own): **drawn, large, in Dubai** -- the matrices and the GL state work there.
+  - dbcp5 / lacp5: the car's corners sampled through its 2,250: the same numbers in both cities, a car's shape.
+  - dbc3 (the cars red, culling off, depth always, drawn again last): still no car.
+  So: the same corners, matrices, projection and state that draw in LA draw nothing in Dubai, where a triangle from
+  another array through the same matrix draws. dbst (A4_CARSTAGE: the cars' corners copied to the objects' staging and
+  drawn from there, as the objects are) running.

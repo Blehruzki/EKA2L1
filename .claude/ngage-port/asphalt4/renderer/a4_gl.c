@@ -6244,6 +6244,9 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
     gl_enable(GL_DEPTH_TEST); gl_depthfunc(GL_GEQUAL); gl_enable(GL_CULL_FACE); gl_depthmask(1);
     gl_vertexptr(3, GL_SHORT, 12, (const void *)GOBJ_STAGE);
     gl_texcoordptr(2, GL_SHORT, 12, (const void *)(GOBJ_STAGE + 6u));
+#ifdef A4_OBJFLAT
+    gl_disable(GL_TEXTURE_2D); gl_color4x(0, FX, 0, FX);    /* bench (round 84, Dubai): the objects untextured, solid green */
+#endif
     const uint16_t *m1map = (const uint16_t *)gctx[0x5c / 4];
     const uint16_t *m1tab = m1_table(gctx);
     /* one modelview: column-major GL_FIXED, rotation / 16384 = << 2, translation << 16 (|T| <= 32000: the take) */
@@ -6326,6 +6329,9 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
     g->draws += ne; g->frames_drawn++;
     for (uint32_t i = 0; i < n; i++) rows_extend(s, g->it[i].box);   /* round 78: their rows composited */
     MESH->active = 1;                                       /* the table's classes depth-test against them */
+#ifdef A4_OBJFLAT
+    gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX);
+#endif
     gl_loadidentity();                                       /* the texture matrix */
     gl_matrixmode(GL_MODELVIEW); gl_loadidentity();
     gl_matrixmode(GL_PROJECTION); gl_loadidentity();
@@ -6510,12 +6516,26 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
         for (uint32_t i = 1; i < n; i++) if (c->it[i].M[11] > c->it[j].M[11]) j = i;
         const volatile struct gcitem *it = &c->it[j];
         const struct gcmesh *me = (const struct gcmesh *)(uintptr_t)it->mesh;
+#ifdef A4_CARPROBE3
+        {   /* the nearest car's corners 0, 1, 2 and every 211th to 1,690: x | y << 16, z (18 words), its ofs, corners */
+            static const uint16_t ix[9] = { 0, 1, 2, 211, 422, 633, 844, 1055, 1690 };
+            const int16_t *r = (const int16_t *)(GOBJ_ARENA + 12u * me->ofs);
+            const uint32_t nc = 3u * me->nf;
+            for (uint32_t q = 0; q < 9u; q++) {
+                const uint32_t c2 = ix[q] < nc ? ix[q] : nc - 1u;
+                w[3 + 2 * q] = (uint16_t)r[6 * c2] | (uint32_t)(uint16_t)r[6 * c2 + 1] << 16;
+                w[4 + 2 * q] = (uint32_t)(uint16_t)r[6 * c2 + 2];
+            }
+            w[21] = me->ofs; w[22] = nc;
+        }
+#else
         for (uint32_t k = 0; k < 12u; k++) w[3 + k] = (uint32_t)it->M[k];
         w[15] = me->ofs; w[16] = me->ng | (uint32_t)me->gm1[0] << 8 | (uint32_t)me->nf << 16;
         w[17] = me->gs[0] | (uint32_t)me->gc[0] << 16;
         {   const uint32_t *r = (const uint32_t *)(GOBJ_ARENA + 12u * me->ofs);
             w[18] = r[0]; w[19] = r[1]; w[20] = r[2]; }
         w[21] = j; w[22] = 0; w[23] = 0;
+#endif
         U[1]++;
     }
 #endif
@@ -6565,7 +6585,23 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
 #endif
             if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
             if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
+#ifdef A4_CARSTAGE
+            {   /* bench (round 84, Dubai): the group's corners through the objects' staging, as gobj_flush draws */
+                const uint32_t *src = (const uint32_t *)(base + 36u * me->gs[k]);
+                for (uint32_t left = 3u * me->gc[k]; left; ) {
+                    const uint32_t cn = left > GOBJ_SN ? GOBJ_SN : left;
+                    uint32_t *dst = (uint32_t *)GOBJ_STAGE;
+                    for (uint32_t q = 0; q < 3u * cn; q++) dst[q] = src[q];
+                    gl_vertexptr(3, GL_SHORT, 12, (const void *)GOBJ_STAGE);
+                    gl_texcoordptr(2, GL_SHORT, 12, (const void *)(GOBJ_STAGE + 6u));
+                    gl_drawarrays(GL_TRIANGLES, 0, (int)cn);
+                    src += 3u * cn; left -= cn;
+                }
+                draws++;
+            }
+#else
             gl_drawarrays(GL_TRIANGLES, 3 * (int)me->gs[k], 3 * (int)me->gc[k]); draws++;
+#endif
         }
     }
 #ifdef A4_CARPROBE
@@ -6574,10 +6610,32 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
         crk_get()[46] = s->ntex | u << 16;                 /* the cache's entries, and those used this present */
     }
 #endif
+#ifdef A4_CARTRI
+    {   /* bench (round 84, Dubai): a known triangle (x -300..300, y 0..300 in the car's own frame) through the nearest car's
+         * modelview, from its own array in the scratch: shown, the matrices work and the cars' own corners are wrong */
+        uint32_t j = 0;
+        for (uint32_t i = 1; i < n; i++) if (c->it[i].M[11] > c->it[j].M[11]) j = i;
+        const volatile struct gcitem *it = &c->it[j];
+        MV[0] = it->M[0] << 2; MV[1] = it->M[1] << 2; MV[2] = it->M[2] << 2;
+        MV[4] = it->M[3] << 2; MV[5] = it->M[4] << 2; MV[6] = it->M[5] << 2;
+        MV[8] = it->M[6] << 2; MV[9] = it->M[7] << 2; MV[10] = it->M[8] << 2;
+        MV[12] = it->M[9] << 16; MV[13] = it->M[10] << 16; MV[14] = it->M[11] << 16; MV[15] = FX;
+        gl_matrixmode(GL_MODELVIEW); gl_loadmatrixx(MV);
+        int16_t *t = (int16_t *)(uintptr_t)0x005BF000u;   /* A4_LINEREC's place: free in this build */
+        t[0] = -300; t[1] = 0; t[2] = 0; t[3] = 0; t[4] = 0; t[5] = 0;
+        t[6] = 300; t[7] = 0; t[8] = 0; t[9] = 0; t[10] = 0; t[11] = 0;
+        t[12] = 0; t[13] = 300; t[14] = 0; t[15] = 0; t[16] = 0; t[17] = 0;
+        gl_disable(GL_TEXTURE_2D); gl_disable(GL_CULL_FACE); gl_depthfunc(GL_ALWAYS); gl_color4x(0, 0, FX, FX);
+        gl_vertexptr(3, GL_SHORT, 12, (const void *)t);
+        gl_texcoordptr(2, GL_SHORT, 12, (const void *)(t + 3));
+        gl_drawarrays(GL_TRIANGLES, 0, 3);
+        gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX); gl_depthfunc(GL_GEQUAL);
+    }
+#endif
 #ifdef A4_CARFLAT
     gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX);
 #endif
-#ifdef A4_CARPROBE2
+#if defined(A4_CARPROBE2) && !defined(A4_CARPROBE3)
     {   volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;   /* the GL error after the cars' draws, and their count */
         volatile uint32_t *w = U + 2u + ((U[1] - 1u) & (CUT_N - 1u)) * CUT_W;
         w[22] = gl_geterror(); w[23] = draws; }

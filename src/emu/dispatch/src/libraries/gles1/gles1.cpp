@@ -2882,6 +2882,28 @@ namespace eka2l1::dispatch {
             return true;
         }
 
+        // EKA2L1_GLDUMP=<n> (ngage-port, Asphalt 4 round 84: cars that draw in one city and not another): every 50th
+        // draw of n vertices or more logged with the matrices and state the draw will use and its first vertex.
+        static const long gldump_min = []() { const char *e = std::getenv("EKA2L1_GLDUMP"); return e ? std::strtol(e, nullptr, 10) : 0L; }();
+        if (gldump_min > 0 && static_cast<long>(vcount) >= gldump_min) {
+            static std::uint32_t gldump_n = 0;
+            if ((gldump_n++ % 50) == 0) {
+                const glm::mat4 &mv = model_view_mat_stack_.top();
+                const glm::mat4 &pj = proj_mat_stack_.top();
+                std::int32_t v[3] = { 0, 0, 0 };
+                if (vertex_attrib_.buffer_obj_ == 0 && vertex_attrib_.data_type_ == GL_SHORT_EMU) {
+                    const std::int16_t *p = eka2l1::ptr<std::int16_t>(vertex_attrib_.offset_ + vertex_attrib_.stride_ * first_index).get(crr_process);
+                    if (p) { v[0] = p[0]; v[1] = p[1]; v[2] = p[2]; }
+                }
+                LOG_INFO(HLE_DISPATCHER, "GLDUMP first={} count={} ptr={:#x} stride={} type={:#x} size={} v0=({},{},{}) vstat={:#x} fstat={:#x} nstat={:#x} depthfunc={:#x} "
+                    "mv=[{:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} {:.3f}] "
+                    "pj=[{:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} {:.3f}]",
+                    first_index, vcount, vertex_attrib_.offset_, vertex_attrib_.stride_, vertex_attrib_.data_type_, vertex_attrib_.size_,
+                    v[0], v[1], v[2], vertex_statuses_, fragment_statuses_, non_shader_statuses_, depth_func_,
+                    mv[0][0], mv[0][1], mv[0][2], mv[0][3], mv[1][0], mv[1][1], mv[1][2], mv[1][3], mv[2][0], mv[2][1], mv[2][2], mv[2][3], mv[3][0], mv[3][1], mv[3][2], mv[3][3],
+                    pj[0][0], pj[0][1], pj[0][2], pj[0][3], pj[1][0], pj[1][1], pj[1][2], pj[1][3], pj[2][0], pj[2][1], pj[2][2], pj[2][3], pj[3][0], pj[3][1], pj[3][2], pj[3][3]);
+            }
+        }
         std::uint32_t active_textures_bitarr = retrieve_active_textures_bitarr(this);
         prepare_vertex_buffer_and_descriptors(drv, crr_process, first_index, vcount, active_textures_bitarr);
 
