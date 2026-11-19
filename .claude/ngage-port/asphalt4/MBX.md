@@ -13486,3 +13486,12 @@ c. State the bench did not enter: the owner's own road -- three laps to the fini
   624, every later shot black, no fault logged, Xvfb alive afterwards. ck86 (the same code but A4_PROFSYM) raced
   through the same screen. Not yet known whether the change or the host; at86a (the r86a candidate, the six-map
   battery -- a hang test too) running before pg86la again.
+- **at86a (r86a, alltracks.sh): the six maps in one session, no fault, no stall** (framestat 5,476; the maps checked
+  by their shots). pg86la's stall was not the build.
+- pg86la rerun: the race ran (framestat 2,628) but no profile -- pg85la had only just reached its 3.5e9 gated
+  instructions (1,635 openings x 2.14 M), and r86a's cheaper render call fell short. Rerun at 1.0e9 + 1.5e9: 1,411
+  openings, 1.77 M instructions each (r85: 2.14 M). **13.80 ms a render against pg85la's 16.21 -- but not the same
+  stretch of track**: a window counted in gated instructions reaches further into the race on a cheaper build, and
+  code r86 did not touch fell too (a4_gobj_copy 1.01 -> 0.56, bb_row2 0.88 -> 0.48: a lighter scene). gobj_flush's
+  own 1.02 -> 0.27 (the sort's 0.60 gone, the rest the scene), gitem_box 1.15 -> 0.57. Settled by track position
+  instead: la-r85a / la-r86a (clean candidates, LA, hcm.sh, 300 s) by segment (segcmp.py), running.
