@@ -13355,3 +13355,9 @@ c. State the bench did not enter: more than 512 shadow faces or 64 buckets in a 
   so (2) changes nothing there. r84c rebuilt first from the tree to the same bytes (d72aa53a: the build line is
   `A4_THIRDSTEP=1 A4_SCRATCH_SIZE=0x1C0000 A4_EXTRA_CFLAGS="$(cat flags/C83.flags) -DA4_SHADBATCH"`); a4_r85a_cand.exe
   sha256 c911262f..., 987,636 bytes (+60).
+- at85a (a4_r85a_cand.exe, alltracks.sh, one session, six races of 45 s): **six races, no fault** (the boot one only;
+  framestat 5,582) -- but the destination screen opens on LOS ANGELES every time, not on the last raced as the script
+  assumed, so its Left steps landed on New York: LA then **New York five times running**, each in the last race's
+  object. Against r84c's three crashes in four New York-after-LA runs (at84c, ny2, ny3, ny5; ny4 the layout that
+  zeroed the word), five clean later races. Not the every-map battery: the script now steps Right k from LA. Rerun
+  as at85b.
