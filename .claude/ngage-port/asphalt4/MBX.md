@@ -13400,3 +13400,23 @@ c. State the bench did not enter: the owner's own road -- three laps to the fini
 - **r85a sent to the owner (unbaked, c911262f; the owner bakes).** On the phone, read: several races in a row by
   NEXT RACE after the finish (expect no KERN-EXEC 3), Dubai's start (the cars there throughout), the shadow as r84b's;
   the render times against r84b's (~53 ms LA).
+
+### Phone round r85a (the owner: "I played in several maps, including dubai. So far both bugs are fixed. However I
+### noticed the framerate has gone down again, especially during heavy scenes or when going at top speed (~550 km/h).
+### What's next to bring up the framerate?")
+
+- **Both bugs fixed on the phone**: races on several maps in one session, NEXT RACE included (no KERN-EXEC 3 -- the
+  traffic clock reset, round 85), and Dubai's cars there at its start (r84c's two-scale blit fix). Closes round 84's
+  crash and the Dubai report.
+- up85a (8 captures, 32-39, the ring's last ~100 s): **all one Monte Carlo race**, laps 1-2, 280-575 km/h (the
+  framebuffers: the harbour, the tunnel, the cliffs). 54.4 / 49.6 / 51.3 / 58.5 / 52.9 / 45.3 / 56.2 / 45.9 ms a
+  render, **51.8 on average** (17-22 a second) -- r84b's LA was ~53.0. Per render (steptime.py): 3D pass 21.5 (15.5 to
+  26.5; our hook 10.0-16.4 of it, the game's own share **2.5 to 13.8**), composite 12.8 (read 6.9), 2D 2.9, present
+  2.1, the rest 12.4 (logic 3.0 a span, 1.7 a step; before the first triangle 5.8; render call +12992 43.1 ms).
+  bb2 calls 0 (no two-scale blit on this map), shadow faces as r84b. No same-map capture of r84b to set against, and
+  nothing in r85a's diff costs time (three word compares a shadow face, one a substep; Dubai's blit composites less):
+  the heavier feel is the maps and scenes the owner raced, not the build -- the 3D pass is what swings, by scene, at
+  the same speeds (captures 35 and 37: 26.5 and 15.5 ms at 527 and 497 km/h).
+- Not repeated: presenting through EGL (route B) -- rounds 55-56 measured its upload at 37.5 ms a frame.
+- Next: where the heavy scenes' 3D pass goes. pw85mc (C84 + A4_PROFSYM, the cycle profile over instructions
+  1.0e10-1.3e10 of a Monte Carlo race; not a repeat of pw84a, LA) running.
