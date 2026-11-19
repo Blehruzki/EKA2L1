@@ -13397,3 +13397,6 @@ c. State the bench did not enter: the owner's own road -- three laps to the fini
    quits by PAUSE -> MAIN MENU and restarts by RESTART RACE (both clean, at85b and rs85a); the reset keys on the race's
    clock, not on the road taken. A race with no traffic (+FB12 never called: the last clock 0 and the test off, and
    nothing then to index). Multiplayer. Tracks raced more than 45 s after another (at85b's are 45 s each).
+- **r85a sent to the owner (unbaked, c911262f; the owner bakes).** On the phone, read: several races in a row by
+  NEXT RACE after the finish (expect no KERN-EXEC 3), Dubai's start (the cars there throughout), the shadow as r84b's;
+  the render times against r84b's (~53 ms LA).
