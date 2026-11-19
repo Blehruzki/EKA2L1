@@ -13431,3 +13431,24 @@ c. State the bench did not enter: the owner's own road -- three laps to the fini
   to measure -- timers in a build, not a bench profile. (The ROM's runtime converts the game's 565 back buffer to
   32-bit at each present -- ngibackbuffer +CB70, our a4_cvt565_run in its place: the game's buffer and the readback
   are both 565, so the merge converts nothing.)
+
+## Round 86 (the owner: "is it really necessary to do that step before going with the RE?" ... "yes, start the RE"): taking the game's own work off the CPU
+
+- The question settled first: no separate measuring round -- reading the binary is the same work either way, and the
+  bench profiles name the game's costly code; the phone's split of the heavy scenes rides along in the next build.
+- pg85la (pf85 = C84 + A4_PROFSYM, 987,652 bytes; LA on the owner's save, hcm.sh; EKA2L1_PCPROF gated ON at the render
+  call +12992, OFF at the HUD painter a4_engv_29736 -- the game's front end and the 3D pass, nothing else; 1,635
+  openings, one a race render: +12992 runs in races only; 2e9 instructions after 1.5e9): **16.2 ms of modelled CPU a
+  render, of it the game's own code 3.8, ours 11.4 (the lifted game functions counted as ours), the ROM 1.1.** By
+  function (ms a render): lean_tail_cv 1.31, engi_349F8 1.16, gitem_box 1.15, gobj_flush 1.02, a4_gobj_copy 1.01,
+  the ROM's copy / fill (803A0000) 0.90, bb_row2 0.88, a4_shadow_insert 0.71, batch_draw 0.60, tex_index 0.42, game
+  +33EA8 0.41, +49480 0.36, a4_mesh_insert 0.34, mesh_bb_cells 0.33, +0CF6E 0.28, a4_obj_take 0.27, +522A4 0.26,
+  lean_tail 0.23, gobj_mesh 0.22, +35FDA 0.22, engi_349B0 0.21, shb_draw 0.20, +34B1A 0.20, engi_0CE8C 0.20,
+  mesh_draw 0.19. **The static world's path is the largest block: the lifted front end (engi_349F8, engi_0CE8C) ->
+  a4_obj_take -> gitem_box -> gobj_mesh -> gobj_flush / a4_gobj_copy, ~5 ms -- a third of the window.** Then the
+  per-face stream (lean_tail_cv, batch_draw, tex_index, lean_tail, draw_prim_take, tri_tex ~2.8), the billboards
+  (bb_row2, mesh_bb_cells ~1.3), the shadow (0.9), the ROM's copies (0.9: the sky's memmove, round 51). (The model's
+  CPU only: the GL driver's time is charged as stretches, not profiled.)
+- rt85 (pf85, LA, EKA2L1_PCTRACE over the exe 0x70000000-0x70100000 armed at the race step engi_141B0, a ring of 6M
+  entries dumped at the first capture -- a4_gl_rdinfo, called only there): the call tree, for each subtree's
+  inclusive cost (scratchpad inctree.py: a block's cost a visit from pg85la). Running.
