@@ -13584,3 +13584,21 @@ c. State the bench did not enter: a frame with more than GOBJ_NE (768) object gr
   apart, only while racing) holds the sums at that moment -- a press near each race's end divides the session by
   race. frec3.py timers now orders the ring captures and the marks together by their scene count and prints each
   stretch between two of them and the launch to the last (lar86c's marks: 0.90-1.30 / 0.65-0.99 / ... ms a scene).
+
+### Phone round r86c (the owner: "Played several races, marked C mostly where I felt a drop of frames or like it's
+### skipping frames." -- 8 ring captures, 59-66, and 7 marks)
+
+- Maps by the framebuffers: marks 0-1 New York (snowing, 575 km/h), 2-4 Paris (Montmartre), 5-6 Shanghai; the ring
+  (59-66) all Shanghai, the last race. Ring: 45.5 / 53.5 / 52.4 / 50.5 / 50.9 / 57.9 / 53.8 ms a render (and 65.4 over
+  a 35-render window): 3D 17.0-26.0, composite 11.9-13.4, 2D 2.4-3.7, present 0.1-2.1, rest 12.2-15.1 (logic 2.7-3.4
+  a span). About r85a's level (Monte Carlo 51.8), another map: no same-map comparison on the phone.
+- **The timers (frec3.py timers), ms a scene, the session (15,722 scenes): scenery walk 1.44, cars 0.43, shadow's
+  insert 1.40, +31A26/+31A50 1.51, the ordering table's draw +31CC6 19.93; a composite's first readback strip 5.15
+  (the GPU's tile render), the other strips 1.76.** The table's draw -- our draw hooks, the GPU objects' and cars'
+  flushes, the list's draw, the billboards, the shadow's draws and every GL call made in them -- is the scene's
+  largest block on the phone, ~1.6x the bench model's 10-14 (lar86c). Stretches between marks: walk 0.5-2.6 (Paris
+  2.64 between marks 3 and 4), the table's draw 19.0-22.2.
+- The marks' windows (since the last capture, 13-77 renders): **mark 1 (New York, snow) 2D 25.8 ms, mark 0 12.2**
+  (Shanghai's 3.4-3.6); **marks 2-3 (Paris, Montmartre) 3D 38.9 and 44.0 ms**, 220 GL calls a render against ~110
+  (mark 3: 4,846 calls in 22 renders), 81 ms a render. Two separate costs: something in New York's 2D phase (the snow,
+  by the scene) and Montmartre's 3D (calls and list triangles).
