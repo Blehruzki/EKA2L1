@@ -13374,3 +13374,26 @@ c. State the bench did not enter: more than 512 shadow faces or 64 buckets in a 
   **three races in one object, no fault** (the boot one only; framestat 1,971) -- each restart loaded, ran the intro
   and the countdown and raced (88 and 139 km/h at 40 s). The restart is the other road into a race in the last
   race's object, and r85a's clock test takes it the same way.
+- m85a (r85a, Instant Play -- night Paris -- 300 s, C every 40 s; hcm.sh, its menu wait now ismain2.py's): framestat
+  2,096, the boot fault only, 7 marks and 8 captures; racing throughout.
+
+Rule 4, before r85a goes out (r85a = C84 -- r84c's flags, flags/C84.flags -- + the engine's new-race reset; it carries
+r84c's two fixes, never sent: Dubai's two-scale blit no longer composites, the shadow insert held to race frames):
+a. The guesses. (1) That the phone's KERN-EXEC 3 is this fault: the same report (a session's second race), and on the
+   bench a guest access violation (a device's KERN-EXEC 3) on the second track in four of five r84c runs, by a
+   mechanism every race after the first in the same object has; only the phone can settle it -- a second race there.
+   (2) That race+0x378 is +FB12's clock: read from the binary (+144E4-+144EA, [sp+0x114] = race + 0x340; +1456E-+14572,
+   r2 = its +0x38), not a guess. (3) That the clocks never go back inside a race: every dump rises from the countdown on
+   (ny2, ny4, ny5; 261-264 calls a race) and goes back only at a new race; a full race to the finish and a takedown's
+   slow motion are not in those dumps -- were a clock to go back there, the reset is a one-step hitch (a whole step,
+   the remainders cleared) and the hook keeps the substeps at the whole step's clocks: neither can index past a lane.
+   (4) That the phone's heap puts the next race in the same object as the bench's does: the game's own heap code (the
+   ROM's euser) in the same order -- likely; if not, the old address test resets as before.
+b. Read back: ENG_BEGIN's diff (the test: the magic, the same object, a last clock taken, the signed difference below
+   zero) and its comment; +14574's hook in edits.py and lifted.c, the same text, the generated comment checked equal to
+   edits.py's 'why' by script; the build line proven by rebuilding r84c from the tree to its bytes (d72aa53a) before
+   r85a (+60 bytes, the new test).
+c. State the bench did not enter: the owner's own road -- three laps to the finish, the results, NEXT RACE -- the bench
+   quits by PAUSE -> MAIN MENU and restarts by RESTART RACE (both clean, at85b and rs85a); the reset keys on the race's
+   clock, not on the road taken. A race with no traffic (+FB12 never called: the last clock 0 and the test off, and
+   nothing then to index). Multiplayer. Tracks raced more than 45 s after another (at85b's are 45 s each).

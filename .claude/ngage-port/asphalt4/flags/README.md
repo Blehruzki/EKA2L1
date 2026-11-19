@@ -52,3 +52,12 @@ no line records -- lte_take's per-triangle copies and LIN1 gone; the crack fill 
 drawn-mask pass on rows the ARMv6 composite saw fully drawn). r83a: sha256 457c20abeb530d2d..., 983,292 bytes. Bench
 only: `-DA4_AUTOMARK` (the automatic marks at a 64 px gap), `-DA4_ABCYCLE17` (the skip by window), `-DA4_MASKCHECK`,
 `-DA4_MSKIP_ALT` / `-DMSKIP_PAR`, `-DA4_MSKIP_NEVER`, `-DA4_MSKIP_PROF`, `-DA4_PROFSYM`.
+
+C84.flags = C83.flags with `-DA4_SHADBATCH` (round 84: the car shadow's faces drawn on the GPU in one batch a depth
+bucket -- a4_gl.c shb_*, injector.py's +27402 hook; scratch 0x5BA000-0x5C0280 under the same `A4_SCRATCH_SIZE=0x1C0000`).
+r84b sha256 67b12d53..., r84c (the two-scale blit no longer composites; the shadow insert held to race frames)
+d72aa53aaedaaade..., 987,576 bytes. Bench only: `-DA4_SHADCHECK`, `-DA4_SHADCOUNT`, `-DA4_SHADPROBE`, `-DA4_CARPROBE`
+/ `2` / `3`, `-DA4_COMPALL`, `-DA4_CARSOLO`, `-DA4_CARNOCULL`, `-DA4_CARNODEPTH`, `-DA4_CARFLAT`, `-DA4_CARLATE`,
+`-DA4_CARTRI`, `-DA4_CARSTAGE`, `-DA4_OBJFLAT`, `-DA4_FLUSHPROBE`, `-DA4_BB2FLUSH`.
+Round 85 builds with C84.flags (no flag added: the fix is code in the 3x engine -- a4_eng.h ENG_BEGIN, edits.py
++14574): a4_r85a_cand.exe sha256 c911262fd468d7369620817e3e17a5940d66bef85b53b339cd70566ab8ca4199, 987,636 bytes.
