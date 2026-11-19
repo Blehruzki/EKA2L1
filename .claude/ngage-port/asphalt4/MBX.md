@@ -13602,3 +13602,6 @@ c. State the bench did not enter: a frame with more than GOBJ_NE (768) object gr
   (Shanghai's 3.4-3.6); **marks 2-3 (Paris, Montmartre) 3D 38.9 and 44.0 ms**, 220 GL calls a render against ~110
   (mark 3: 4,846 calls in 22 renders), 81 ms a render. Two separate costs: something in New York's 2D phase (the snow,
   by the scene) and Montmartre's 3D (calls and list triangles).
+- ny86c (r86c, the bench, New York alone, 45 s, marks at 20 and 35 s; framestat 1,054, the boot fault only): the
+  marks' 2D phase 4.4 and 6.7 ms against Shanghai's 3.4 on the phone -- raised, not the phone's 12-26 (the bench's
+  car holds accelerate, no nitro: ~140 km/h, not 575; the phone's mark 1 window is 13 renders). Partly reproduced.
