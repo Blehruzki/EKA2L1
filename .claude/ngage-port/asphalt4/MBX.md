@@ -13858,3 +13858,58 @@ c. State the bench did not enter: a mesh of more than 20 groups (refused as befo
   so it blurs the picture as stock's does, the HUD drawn after it as stock's is. Estimate (not measured): ~3-4 ms a
   boosted render on the phone against 17. Bench test: the game's +1054C and ours run on copies of the same frame,
   every pixel compared, and a forced boost so the bench enters the state at all.
+
+## Round 88 (the owner: "do the whole RE you said you would do, get the gains, then we can go for a phone round")
+
+The program and its state live in STATUS.md (new: how a frame is made, the phone's budget by block, the plan);
+this log keeps every run. No phone round until the program's gains are in.
+
+### Step 1: nitro's radial blur, exact and cheap
+
+- **A4_NITROBLUR** (a4_gl.c a4_nitro_blur / blur_run / blur_sqrt / blur_px; injector: the bl +1054C at +12A12 ->
+  BLX a4_nitro_blur, displaced f7fd fd9b checked): the GPU's frame composited first (a4_gl_flush, as the HUD's first
+  call does), then +1054C's blur in our code -- its order and arithmetic as read (round 87's entry): W, H from
+  ctx+0x1104/+0x1108, ys = 0xCC000 / H, xs = 0xB0000 / W (a shift-and-subtract divide: the blob has none), the per-row
+  and bit-3 column square roots through the game's own table (the literal at +31494; blur_sqrt is +313AA's four
+  branches), k = s I >> 8 skipped at <= 5 and capped at 32, the four pointers in the game's order, the neighbour by
+  (i + j) parity, the packed-565 blend with its 32-bit wrap and logical shift. C88 = C87 + A4_NITROBLUR.
+- Bench switches: **A4_BLURFORCE** (injector: the three conditions before the call, +129D6 beq / +129E2 beq / +129E8
+  bne, taken out -- every race render blurs; with or without the hook) and **A4_BLURCHECK** (the game's +1054C on the
+  screen, ours on a copy of the same composited frame at 0x5C4000, every pixel compared; once, the square root's
+  replica against +313AA over 0..65,535; scratch 0x1E9000; frec3.py mode blurchk).
+- **bk88 (C88 + A4_BLURCHECK + A4_BLURFORCE, Instant Play 120 s; framestat 841, the boot fault only): 268 blurs on
+  real composited frames, 0 pixels differing; the square root 0 of 65,536 differing; the blur's screen the
+  composite's surface every time.** Exact.
+- (First attempt at bk88: no display -- Xvfb had died and hcm.sh does not start it; rerun after xup.sh.)
+- bg87 (C87 + A4_BLURFORCE: the game's blur every render) and bo88 (C88 + A4_BLURFORCE: ours) running, 150 s each:
+  the cost, the game's against ours.
+- Side reading for step 3 (the phone's r87a FRC4, 75 blocks of 16 renders, our hook against the calls): R^2 0.54,
+  ~0.66-1.0 us of hook time a corner sent -- if real, the N95's driver does per-vertex work on the CPU. Confounded
+  with the scene's density; round 60's phone round (objects drawn whole: render 53.5 -> 49-52 ms) and r87a's
+  Montmartre gain say the game's own path costs more than the corners. A switch for it goes in the final phone round.
+- bg87 / bo88 (the game's blur / ours, forced every render, 150 s each; framestat 1,181 / 1,193, the boot fault only):
+  post 3.9 ms (the game's) against d2 +4.2 (ours) -- no difference, and both far under the phone's 17. **Rule 4: the
+  bench's forced blur runs at the slow bench car's strength** ([r5+0xB4] x 300 / [r5+0x7E8], the car's speed against
+  its top: the bench's ~250 km/h, the phone's boosts 500+), where most of the screen is under k 5 and skipped.
+- bk88b (the check build, the strength fixed at 300 -- A4_BLURI, bench -- both blurs timed on the same frame;
+  framestat 779): 338 blurs, 0 pixels differing; **the game's 14.64 ms a blur, ours 11.94** -- the bench's model
+  near the phone's 17 for the game's, and ours barely faster. The compiled loop (clang -O2, read back): ~85
+  instructions a four-pixel step, the loop's state spilled to the stack.
+- Ours rewritten: the row's strengths in C (kb[], 0 = skipped), its pixels in ARM code (a4_px.s a4_blur_row: the
+  four pointers, the mask, k and the row's stride in registers, 12 instructions a pixel; MOVW/MOVT are ARMv6T2, not
+  the ARM1136's: the mask built by MOV/ORR). The C loop kept as A4_BLURC. bk88c (its check, strength 300) running.
+- bk88c (the ARM rows, strength 300; framestat 757): 340 blurs, **0 pixels differing; the game's 14.46 ms, ours
+  10.39.** Profiled (pbl88: PCPROF on a4_nitro_blur's entry to +12A16, 287 openings, cycles): +1054C 14.5 ms a blur
+  (its square root +313AA 0.6 of it), **a4_blur_row 5.66 ms; the C setup of the rows' strengths ~4.7 ms** (19,200
+  entries, 9,600 of them a square root through the 16 KB table, the compiled loop poor). The distances depend on W
+  and H alone: now worked out at the first blur into a compact table (BLS at 0x460000: a row's first s and the s of
+  every bit-3 step, 81 bytes a row; keyed by W, H and the table's address; the bench censuses that use 0x460000
+  excluded by #error), and a blur builds each row's strengths from it. bk88d (its check) running.
+- bk88d (the cached distances, strength 300; framestat 796): 351 blurs, **0 pixels differing**. Ticks: the game's
+  14.36 ms, ours 10.21. Profiled the same way (291 openings): +1054C 14.55 + its square roots 0.63 = **15.2 ms a
+  blur; ours: a4_blur_row 5.64 + the row strengths in C ~1.1 (a4_nitro_blur's 8.06 less the check's own copy and
+  compare, ~7.0 by their instructions and misses) = ~6.7 ms.** Rule 4 on the instrument: the ticks are guest time,
+  which follows the host when the host is slower than the model in a stretch (CPUCAP can only sleep, not run faster;
+  its 5 s stats showed the lag at most 9 ms, so it is local); the profile counts the model's cycles -- the phone's
+  measure. Trusted: the profile. **Step 1: ~8.5 ms off a boosted render at full strength on the model, the blur
+  seen again, exact.**

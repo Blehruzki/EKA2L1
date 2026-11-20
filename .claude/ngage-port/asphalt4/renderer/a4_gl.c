@@ -11381,6 +11381,180 @@ void a4_gl_hud(void)
 #endif
 }
 
+#ifdef A4_NITROBLUR
+/* Round 88 (phone round r87a: every nitro boost ~17 ms a render longer, MBX.md): the game's radial blur +1054C, which
+ * the render +12992 calls at +12A12 while a boost is on, smears the 565 screen toward its centre -- and it ran before
+ * the composite, which then painted the GPU's frame over it: 17 ms a render on a picture nobody saw. The bl at +12A12
+ * now comes here: the GPU's frame composited first (as the HUD's first call would), then the same blur -- +1054C's
+ * order and arithmetic exactly (read instruction by instruction, MBX.md round 88) -- in ARM code with its state in
+ * registers: the blur seen again, as on stock, for a fraction of the time. */
+extern const int32_t a4_g_base;
+#define BLUR_GBASE ((uint32_t)(uintptr_t)&a4_g_base + (uint32_t)a4_g_base)
+static uint32_t blur_udiv(uint32_t n, uint32_t d)          /* n / d, shift and subtract (the blob has no divide) */
+{
+    uint32_t q = 0, r = 0;
+    for (int b = 31; b >= 0; b--) { r = (r << 1) | ((n >> b) & 1u); if (r >= d) { r -= d; q |= 1u << b; } }
+    return q;
+}
+static inline int32_t blur_sqrt(const int32_t *T, int32_t x)   /* +313AA: the game's square root, by its own table */
+{
+    if (x < 0) return 1;
+    if ((uint32_t)x >> 16) {
+        if ((uint32_t)x >> 24) return T[x >> 20];
+        return T[x >> 12] >> 4;
+    }
+    if (((uint32_t)x << 16) >> 28) return T[x >> 4] >> 8;
+    return T[x] >> 10;
+}
+#ifdef A4_BLURC
+static inline void blur_px(uint16_t *p, uint32_t q, uint32_t k) /* p toward q by k/32, two lanes of packed 565 */
+{
+    const uint32_t M = 0x07E0F81Fu, a = *p;
+    const uint32_t P = (a | (a << 16)) & M, Q = (q | (q << 16)) & M;
+    const uint32_t o = ((((Q - P) * k) >> 5) + P) & M;
+    *p = (uint16_t)(o | (o >> 16));
+}
+#endif
+/* +1054C(fb, intensity, ctx): W, H at ctx+0x1104 / +0x1108; four pointers out from the centre, handled in the game's
+ * order (up-left, down-left, up-right, down-right); a pixel blends with its neighbour nearer the centre, across when
+ * i + j is odd, along the column when even -- already blurred, so the smear runs outward */
+void a4_blur_row(uint16_t *p6, uint16_t *p7, uint16_t *p5, uint16_t *p4, const uint8_t *kbuf, uint32_t cols,
+                 uint32_t w2, uint32_t odd);   /* a4_px.s: one row's pixels, the strengths given */
+/* the blur's distance table (0x460000-0x464000: free in a phone build; the bench's censuses there are excluded) */
+#if defined(A4_BLENDCEN) || defined(A4_SKYCEN) || defined(A4_SKYCHECK) || defined(A4_SKYTRACE) || defined(A4_MESHMEMO) \
+    || defined(A4_LIFTCHECK) || defined(A4_BBCHECK) || defined(A4_MEMOCHECK) || defined(A4_PAINTCHECK_BIG) || defined(A4_CECHECK)
+#error "A4_NITROBLUR keeps its distance table at 0x460000, which these bench switches use"
+#endif
+#define BLS_HDR   ((volatile uint32_t *)0x00460000u)
+#define BLS_TAB   ((uint8_t *)0x00460010u)
+#define BLS_BYTES (0x4000u - 0x10u)
+#ifndef A4_BLURC
+/* the row's strengths in C (the square roots: one a row, then one a column with bit 3 set), its pixels in ARM code
+ * (a4_blur_row): the same order and arithmetic as the C loop below, kept as A4_BLURC for the bench's comparison */
+static void blur_run(uint16_t *fb, int32_t I, uint32_t ctx, const int32_t *T)
+{
+    const int32_t W = *(const volatile int32_t *)(uintptr_t)(ctx + 0x1104u);
+    const int32_t H = *(const volatile int32_t *)(uintptr_t)(ctx + 0x1108u);
+    if (W <= 0 || H <= 0) return;
+    uint16_t *c = fb + ((H + (int32_t)((uint32_t)H >> 31)) >> 1) * W;
+    uint16_t *c4 = c + (((uint32_t)W + ((uint32_t)W >> 31)) >> 1);
+    const int32_t rows = H >> 1, cols = W >> 1;
+    if (cols > 512) return;
+    /* the distances depend on W and H alone: worked out at the first blur (and whenever the size or the table moves)
+     * into BLS -- a row's s for its first steps, then the s of each step with bit 3 set (8 of every 16) */
+    const uint32_t per = 1u + (((uint32_t)cols + 15u) >> 4) * 8u;
+    if ((uint32_t)rows * per > BLS_BYTES) return;
+    volatile uint32_t *bh = BLS_HDR;
+    uint8_t *const st = BLS_TAB;
+    if (bh[0] != 0x31534C42u || bh[1] != (uint32_t)W || bh[2] != (uint32_t)H || bh[3] != (uint32_t)(uintptr_t)T) {
+        const int32_t ys = (int32_t)blur_udiv(0xCC000u, (uint32_t)H), xs = (int32_t)blur_udiv(0xB0000u, (uint32_t)W);
+        for (int32_t j = 0; j < rows; j++) {
+            const int32_t dy = (ys * j) >> 12, d2 = dy * dy;
+            uint8_t *r = st + (uint32_t)j * per;
+            const int32_t s0 = (((uint32_t)d2 << 16) >> 28) ? (blur_sqrt(T, d2 >> 4) >> 1) : (blur_sqrt(T, d2) >> 4);
+            if (s0 < 0 || s0 > 255) return;
+            r[0] = (uint8_t)s0;
+            for (int32_t i = 8; i < cols; i += 16)
+                for (int32_t q = 0; q < 8 && i + q < cols; q++) {
+                    const int32_t dx = ((i + q) * xs) >> 12, sv = blur_sqrt(T, (dx * dx + d2) >> 4);
+                    if (sv < 0 || sv > 255) return;
+                    r[1 + ((uint32_t)i >> 4) * 8u + (uint32_t)q] = (uint8_t)sv;
+                }
+        }
+        bh[1] = (uint32_t)W; bh[2] = (uint32_t)H; bh[3] = (uint32_t)(uintptr_t)T; bh[0] = 0x31534C42u;   /* 'BLS1' */
+    }
+    uint8_t kb[512];
+    for (int32_t j = 0; j < rows; j++) {
+        const uint8_t *r = st + (uint32_t)j * per;
+        int32_t s = r[0];
+        for (int32_t i = 0; i < cols; i++) {
+            if (i & 8) s = r[1 + ((uint32_t)i >> 4) * 8u + ((uint32_t)i & 7u)];   /* else the last one stands */
+            const int32_t k = (s * I) >> 8;
+            kb[i] = (uint8_t)(k <= 5 ? 0 : k > 32 ? 32 : k);
+        }
+        uint16_t *p4 = c4 + j * W, *p7 = p4 - 1, *p5 = c4 - W - j * W, *p6 = p5 - 1;
+        a4_blur_row(p6, p7, p5, p4, kb, (uint32_t)cols, 2u * (uint32_t)W, (uint32_t)j & 1u);
+    }
+}
+#else
+static void blur_run(uint16_t *fb, int32_t I, uint32_t ctx, const int32_t *T)
+{
+    const int32_t W = *(const volatile int32_t *)(uintptr_t)(ctx + 0x1104u);
+    const int32_t H = *(const volatile int32_t *)(uintptr_t)(ctx + 0x1108u);
+    if (W <= 0 || H <= 0) return;
+    uint16_t *c = fb + ((H + (int32_t)((uint32_t)H >> 31)) >> 1) * W;
+    uint16_t *r4 = c + (((uint32_t)W + ((uint32_t)W >> 31)) >> 1);
+    uint16_t *r5 = r4 - W, *r6 = r5 - 1, *r7 = r4 - 1;
+    const int32_t rows = H >> 1, cols = W >> 1;
+    const int32_t ys = (int32_t)blur_udiv(0xCC000u, (uint32_t)H), xs = (int32_t)blur_udiv(0xB0000u, (uint32_t)W);
+    for (int32_t j = 0; j < rows; j++) {
+        const int32_t dy = (ys * j) >> 12, d2 = dy * dy;
+        int32_t s = (((uint32_t)d2 << 16) >> 28) ? (blur_sqrt(T, d2 >> 4) >> 1) : (blur_sqrt(T, d2) >> 4);
+        for (int32_t i = 0; i < cols; i++) {
+            if (i & 8) { const int32_t dx = (i * xs) >> 12; s = blur_sqrt(T, (dx * dx + d2) >> 4); }
+            int32_t k = (s * I) >> 8;
+            if (k > 5) {
+                if (k > 32) k = 32;
+                if ((i + j) & 1) {
+                    blur_px(r6, r6[1], (uint32_t)k); blur_px(r7, r7[1], (uint32_t)k);
+                    blur_px(r5, r5[-1], (uint32_t)k); blur_px(r4, r4[-1], (uint32_t)k);
+                } else {
+                    blur_px(r6, r6[W], (uint32_t)k); blur_px(r7, r7[-W], (uint32_t)k);
+                    blur_px(r5, r5[W], (uint32_t)k); blur_px(r4, r4[-W], (uint32_t)k);
+                }
+            }
+            r6--; r5++; r4++; r7--;
+        }
+        r6 -= cols; r5 -= W + cols; r4 += cols; r7 += W + cols;
+    }
+}
+#endif
+#ifdef A4_BLURCHECK
+/* bench: the game's +1054C on the screen, ours on a copy of the same frame (0x5C4000, A4_SCRATCH_SIZE 0x1E9000), every
+ * pixel compared -- CRK1 [40] blurs, [41] pixels differing, [42] blurs with any, [43] the screen not the composite's
+ * surface; [44] the square root's replica against +313AA over 0..65,535 (once), [45] its mismatches */
+#define BLUR_COPY ((uint16_t *)0x005C4000u)
+#endif
+void a4_nitro_blur(uint32_t fbp, uint32_t I, uint32_t ctx)
+{
+#ifdef A4_IMM
+    a4_gl_flush();                                  /* the GPU's frame into the screen first, as stock blurs its picture */
+#endif
+    const int32_t *T = (const int32_t *)(uintptr_t)*(const volatile uint32_t *)(uintptr_t)(BLUR_GBASE + 0x31494u);
+#ifdef A4_BLURCHECK
+    {
+        volatile uint32_t *C = crk_get();
+        if (!C[44]) {
+            int32_t (*gs)(int32_t) = (int32_t (*)(int32_t))(uintptr_t)(BLUR_GBASE + 0x313AAu + 1u);
+            for (int32_t x = 0; x < 65536; x++) if (gs(x) != blur_sqrt(T, x)) C[45]++;
+            C[44] = 65536u;
+        }
+        const int32_t W = *(const volatile int32_t *)(uintptr_t)(ctx + 0x1104u);
+        const int32_t H = *(const volatile int32_t *)(uintptr_t)(ctx + 0x1108u);
+        if (W <= 0 || H <= 0 || W * H > 320 * 240) return;
+        const uint16_t *f = (const uint16_t *)(uintptr_t)fbp;
+#ifdef A4_BLURI
+        I = (A4_BLURI);                             /* bench: the strength the phone's boosts reach (300 at ~530 km/h) */
+#endif
+        for (int32_t k = 0; k < W * H; k++) BLUR_COPY[k] = f[k];
+        /* [46] the game's blur's ticks, [47] ours, [48] the strengths summed (the crack fill's [48] in this build) */
+        const uint32_t t0 = a4_ntick();
+        ((void (*)(uint32_t, uint32_t, uint32_t))(uintptr_t)(BLUR_GBASE + 0x1054Cu + 1u))(fbp, I, ctx);
+        const uint32_t t1 = a4_ntick();
+        blur_run(BLUR_COPY, (int32_t)I, ctx, T);
+        const uint32_t t2 = a4_ntick();
+        C[46] += t1 - t0; C[47] += t2 - t1; C[48] += I;
+        uint32_t d = 0;
+        for (int32_t k = 0; k < W * H; k++) d += f[k] != BLUR_COPY[k];
+        C[40]++; C[41] += d; C[42] += d != 0;
+        if (fbp != *(volatile uint32_t *)A4_GL_BB) C[43]++;
+        return;
+    }
+#endif
+    blur_run((uint16_t *)(uintptr_t)fbp, (int32_t)I, ctx, T);
+}
+#endif
+
 /* Formerly the 3D->2D boundary (the frame's first translucent fill). A race
  * frame has no such fill, so the boundary is now the frame's first primitive
  * (composite_prev) and the frame end (a4_gl_frame). Kept for patch/fill.c. */

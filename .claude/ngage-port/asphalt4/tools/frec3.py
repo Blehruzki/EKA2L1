@@ -28,6 +28,7 @@
 #   timers A4_PHTIMERS (CRK1 [52..60]): the scene's calls and the readback, ms a scene, capture to capture (round 86)
 #   blendcen the crack counters with A4_BLENDCEN's [40..47]: the blended classes' software copies against the GPU's drawn mask (round 86)
 #   ngwhy  the crack counters with A4_NGWHY's [40..47]: the meshes refused for more than 12 texture groups (round 87)
+#   blurchk the crack counters with A4_BLURCHECK's [40..45]: the nitro blur, the game's against ours (round 88)
 #   phase  A4_FRC4 (round 87): each render's 3D pass, our hook, the composite, 2D, the game's blocks, our flushes and GL calls
 #   steps  per render: the engine's substep and step count beside the scene's counts (round 86)
 #   objwhy the crack counters with A4_OBJWHY's [40..47]: the objects refused by the take, by the first test failed (round 86)
@@ -41,7 +42,7 @@ def offs(d):                                                    # the sprite lis
     o = OFF3 + 16 + n * w * 4
     return o, o + 32 + 16 * 16
 args = sys.argv[1:]
-MODES = ('files', 'rot', 'turn', 'spr', 'obj', 'gob', 'list', 'lines', 'wreck', 'shadchk', 'gobjchk', 'carchk', 'timers', 'objwhy', 'steps', 'blendcen', 'phase', 'ngwhy')
+MODES = ('files', 'rot', 'turn', 'spr', 'obj', 'gob', 'list', 'lines', 'wreck', 'shadchk', 'gobjchk', 'carchk', 'timers', 'objwhy', 'steps', 'blendcen', 'phase', 'ngwhy', 'blurchk')
 mode = 'files'
 if args and args[-1] in MODES: mode = args.pop()
 elif len(args) >= 2 and args[-2] == 'gob': mode = 'gob'; args = args[:-2] + [args[-1]]
@@ -152,7 +153,7 @@ if mode == 'timers':
                   % (g(1), g(2), g(3), g(4), g(5), blk))
     sys.exit()
 
-if mode in ('lines', 'shadchk', 'gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwhy'):
+if mode in ('lines', 'shadchk', 'gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwhy', 'blurchk'):
     # r77's grey-line ring ('LIN1' after the merged tile grid): each hit -- row, undrawn run, the faces and items whose
     # screen box starts or ends on it (list faces' corners in camera space, as the list holds them)
     seen = set()
@@ -241,11 +242,15 @@ if mode in ('lines', 'shadchk', 'gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwh
         if len(c) >= 48:
             print('  wrapped corners (the game projection past int16, undone): %d; projected again %d; refused (word disagreed) %d; handed back by the exact test alone: faces %d, items %d' % (c[35], c[39], c[36], c[37], c[38]))
             if len(c) >= 52:
-                print('  filled (from the boot): %d rows, %d pixels%s' % (c[48], c[49], ('; mask check (bench): %d rows skipped, %d not all drawn, %d said drawn wrongly' % (c[46], c[45], c[47])) if (c[46] or c[45] or c[47]) and mode not in ('objwhy', 'blendcen', 'ngwhy') else ''))
+                print('  filled (from the boot): %d rows, %d pixels%s' % (c[48], c[49], ('; mask check (bench): %d rows skipped, %d not all drawn, %d said drawn wrongly' % (c[46], c[45], c[47])) if (c[46] or c[45] or c[47]) and mode not in ('objwhy', 'blendcen', 'ngwhy', 'blurchk') else ''))
             if len(c) >= 52 and (c[50] or c[51]):   # round 84 (A4_SHADBATCH)
                 print('  shadow batch (from the boot): faces kept %d; buckets lost (never drawn: their faces but the trigger) %d' % (c[50], c[51]))
             if mode == 'carchk':    # round 86, bench A4_CAREARLYCHECK: [40..43] are its
                 print('  early car take check (bench): judged inside %d, of them culled by the routine %d (unsound); not certain %d' % (c[40], c[41], c[42]))
+            elif mode == 'blurchk':   # round 88, bench A4_BLURCHECK: [40..45] are its
+                print('  nitro blur check (bench): blurs %d, pixels differing %d, blurs with any %d; screen not the composite\'s surface %d; square root checked over %d values, %d differing'
+                      % (c[40], c[41], c[42], c[43], c[44], c[45]))
+                if len(c) >= 49 and c[40]: print('  timed: the game\'s %.2f ms a blur, ours %.2f; strength %.0f on average' % (c[46] / c[40], c[47] / c[40], c[48] / c[40]))
             elif mode == 'ngwhy':     # round 87, bench A4_NGWHY: [40..47] are its
                 print('  meshes of more than 12 groups (bench): refusals %d, groups %.1f each (most %d), faces %.1f each; every texture plain %d; groups <= 16: %d, <= 24: %d, <= 32: %d'
                       % (c[40], c[41] / max(c[40], 1), c[42], c[43] / max(c[40], 1), c[44], c[45], c[46], c[47]))
@@ -258,9 +263,9 @@ if mode in ('lines', 'shadchk', 'gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwh
                 print('  objects check (bench): flushes %d, sort faults %d (against the insertion sort); box corners %d, differing %d' % (c[40], c[41], c[42], c[43]))
             elif mode == 'shadchk':   # round 84, bench A4_SHADCHECK: [40..47] are its
                 print('  shadow check (bench): faces found %d, not found %d; corners differing %d; buckets differing %d; pending items differing %d (of %d faces with any); tests: candidates %d, full scans %d' % (c[40], c[41], c[42], c[43], c[44], c[45], c[46], c[47]))
-            elif (c[42] or c[43]) and not c[44] and mode not in ('gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwhy'):
+            elif (c[42] or c[43]) and not c[44] and mode not in ('gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwhy', 'blurchk'):
                 print('  mask skip by frame (bench): composite less readback %.3f ms a frame with the skip (%d frames), %.3f without (%d)' % (c[41] / max(c[43], 1), c[43], c[40] / max(c[42], 1), c[42]))
-            if c[44] and mode not in ('shadchk', 'gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwhy'):
+            if c[44] and mode not in ('shadchk', 'gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwhy', 'blurchk'):
                 print('  wrap probe (bench): corners past int16 %d; of %d compared, %d off the view projection by > 2 px (%d inside int16); largest |projection| %d' % (c[40], c[44], c[41], c[42], c[43]))
     if mode == 'lines':   # round 82f: 'CUT1', the last 16 triangles cut, from every file
         seen = set()

@@ -189,3 +189,75 @@ a4_gobj_copy:
         subs    r2, r2, #3
         bgt     1b
         pop     {r4-r11, pc}
+
+@ void a4_blur_row(uint16_t *p6, uint16_t *p7, uint16_t *p5, uint16_t *p4, const uint8_t *kbuf, uint32_t cols,
+@                  uint32_t w2, uint32_t odd)
+@ Round 88: one row of the nitro blur (a4_gl.c blur_run, the game's +1054C): for each column step, k = kbuf[i] (0:
+@ skipped), the four pixels in the game's order -- p6 (up-left, moving left), p7 (down-left, left), p5 (up-right,
+@ right), p4 (down-right, right) -- each blended toward its neighbour nearer the centre: across (p6, p7 from the
+@ right, p5, p4 from the left) when the step is odd, along the column (p6, p5 from the row below, p7, p4 from the row
+@ above; w2 the row in bytes) when even; odd is the first step's parity, flipped every step. A pixel: P = (p | p << 16)
+@ & 0x07E0F81F, Q likewise, p = low half of o | o >> 16 with o = (P + ((Q - P) k >> 5)) & 0x07E0F81F -- the game's
+@ arithmetic, its 32-bit wrap and logical shift. State in registers: ~12 instructions a pixel against the game's ~30.
+        .macro  BLURPX ptr
+        orr     r9, r9, r9, lsl #16
+        and     r9, r9, r7
+        orr     r10, r10, r10, lsl #16
+        and     r10, r10, r7
+        sub     r10, r10, r9
+        mul     r10, r10, r8
+        add     r9, r9, r10, lsr #5
+        and     r9, r9, r7
+        orr     r9, r9, r9, lsr #16
+        strh    r9, [\ptr]
+        .endm
+        .global a4_blur_row
+a4_blur_row:
+        push    {r4-r11, lr}
+        ldr     r4, [sp, #36]                   @ kbuf
+        ldr     r5, [sp, #40]                   @ cols
+        ldr     r6, [sp, #44]                   @ w2: a row in bytes
+        ldr     r11, [sp, #48]                  @ the first step's parity
+        mov     r7, #0x1F
+        orr     r7, r7, #0xF800
+        orr     r7, r7, #0x7E00000              @ the two lanes: 0x07E0F81F (ARMv6: no MOVW/MOVT)
+        cmp     r5, #0
+        beq     9f
+1:      ldrb    r8, [r4], #1                    @ k (0: the step skipped)
+        cmp     r8, #0
+        beq     4f
+        cmp     r11, #0
+        bne     3f
+        ldrh    r9, [r0]                        @ even: along the column
+        ldrh    r10, [r0, r6]
+        BLURPX  r0
+        ldrh    r9, [r1]
+        ldrh    r10, [r1, -r6]
+        BLURPX  r1
+        ldrh    r9, [r2]
+        ldrh    r10, [r2, r6]
+        BLURPX  r2
+        ldrh    r9, [r3]
+        ldrh    r10, [r3, -r6]
+        BLURPX  r3
+        b       4f
+3:      ldrh    r9, [r0]                        @ odd: across
+        ldrh    r10, [r0, #2]
+        BLURPX  r0
+        ldrh    r9, [r1]
+        ldrh    r10, [r1, #2]
+        BLURPX  r1
+        ldrh    r9, [r2]
+        ldrh    r10, [r2, #-2]
+        BLURPX  r2
+        ldrh    r9, [r3]
+        ldrh    r10, [r3, #-2]
+        BLURPX  r3
+4:      sub     r0, r0, #2
+        sub     r1, r1, #2
+        add     r2, r2, #2
+        add     r3, r3, #2
+        eor     r11, r11, #1
+        subs    r5, r5, #1
+        bne     1b
+9:      pop     {r4-r11, pc}

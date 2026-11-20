@@ -130,6 +130,8 @@ assert not ('-DA4_FRC3' in _xf or '-DA4_TELMARK' in _xf) or GL_SCRATCH + GL_SCRA
     'A4_FRC3 / A4_TELMARK: the mark state, FRC3, the sprite list and the list tiles at 0x5B0000-0x5B9C68 -- A4_SCRATCH_SIZE must be 0x1B9000 or more'
 assert '-DA4_LINEREC' not in _xf or ('-DA4_FRC3' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5C1000), \
     'A4_LINEREC: written with FRC3\'s blocks, its ring at 0x5BA000, the stream\'s row edges at 0x5BB000-0x5C0280 -- A4_SCRATCH_SIZE must be 0x1C0000 or more'
+assert '-DA4_BLURCHECK' not in _xf or ('-DA4_NITROBLUR' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5E9800), \
+    'A4_BLURCHECK: its copy of the screen at 0x5C4000-0x5E9800 -- A4_SCRATCH_SIZE must be 0x1E9000 or more'
 assert '-DA4_FRC4' not in _xf or ('-DA4_PHTIMERS' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5C3100), \
     'A4_FRC4: its ring and snapshot at 0x5C1000-0x5C3070 with A4_PHTIMERS -- A4_SCRATCH_SIZE must be 0x1C3000 or more'
 assert '-DA4_WRECKFRAC' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5B0300, \
@@ -489,6 +491,21 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             assert have == want, 'shadow hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)
             blx_insert(code, off, syms[sym])
             print('shadow +%06X -> %s +%06X (4-byte BLX for the bl)' % (off, sym, syms[sym] - LINK_BASE))
+    # round 88 (A4_NITROBLUR): the render +12992's bl +1054C (nitro's radial blur) at +12A12 -> a4_nitro_blur (a4_gl.c):
+    # the GPU's frame composited first, then the same blur in our code. Bench: A4_BLURFORCE takes out the three
+    # conditions before it (+129D6, +129E2, +129E8: beq, beq, bne) so every race render blurs.
+    _xf2 = os.environ.get('A4_EXTRA_CFLAGS', '').split()
+    if gl and '-DA4_NITROBLUR' in _xf2:
+        have = struct.unpack_from('<HH', code, 0x12A12)
+        assert have == (0xF7FD, 0xFD9B), 'blur hook +012A12: displaced %04x %04x, expected f7fd fd9b (bl +1054C)' % have
+        blx_insert(code, 0x12A12, syms['a4_nitro_blur'])
+        print('blur   +012A12 -> a4_nitro_blur +%06X (4-byte BLX for the bl +1054C)' % (syms['a4_nitro_blur'] - LINK_BASE))
+    if gl and '-DA4_BLURFORCE' in _xf2:                 # with or without the hook: the game's blur's cost, or ours
+        for off, want in ((0x129D6, 0xD01E), (0x129E2, 0xD018), (0x129E8, 0xD115)):
+            have = struct.unpack_from('<H', code, off)[0]
+            assert have == want, 'blur force +%06X: %04x, expected %04x' % (off, have, want)
+            struct.pack_into('<H', code, off, 0x46C0)          # mov r8, r8: the branch taken out
+        print('blur   bench: +129D6 +129E2 +129E8 taken out (A4_BLURFORCE)')
     if steptime:
         for off, (sym, want) in STEP_HOOKS.items():
             have = struct.unpack_from('<HH', code, off)

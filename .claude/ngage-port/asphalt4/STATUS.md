@@ -81,7 +81,8 @@ check build comparing against the game's own result where possible), log it, upd
 |---|---|---|---|
 | r86: objects' sort and box, cars before the transform | on the phone (r86c) | ~3 ms in heavy LA | |
 | r87: meshes of up to 20 texture groups on the GPU | on the phone (r87a) | phone: Montmartre ~72 -> ~66 ms | |
-| 1. nitro blur | next | | |
+| 1. nitro blur (A4_NITROBLUR, C88) | done, bench | ~8.5 ms a boosted render (15.2 -> 6.7 on the model); exact, 0 px of 351 blurs | the blur visible again |
+| 2. the unattributed ~8 ms before the 3D | next | | |
 
 ## Where things are
 
