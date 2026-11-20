@@ -4535,6 +4535,14 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint16_t *m1
             const uint16_t *map2 = m1map, *tab = m1tab;
             if (m1_sig(map2, tab, s->cache_m1r[i], n) != s->cache_ck[i]) {
                 uint32_t t0 = a4_ntick();
+#ifdef A4_M1WHERE
+                {   /* bench (round 88, C89's re-bakes): CRK1 [40] re-bakes, [41] the table's address, [42] the surface's,
+                     * [43] the map's, [44] the range used lo | hi << 16, [45] the texture's w | h << 16, [46] the descriptor */
+                    volatile uint32_t *C_ = crk_get();
+                    C_[40]++; C_[41] = (uint32_t)(uintptr_t)tab; C_[42] = *(volatile uint32_t *)A4_GL_BB;
+                    C_[43] = (uint32_t)(uintptr_t)map2; C_[44] = s->cache_m1r[i]; C_[45] = ts[1] | (ts[2] << 16); C_[46] = tsaddr;
+                }
+#endif
                 s->cache_m1r[i] = tex_upload(s->cache_id[i], ts, s->cache_tr[i], 0, map2, tab);
                 s->cache_ck[i] = m1_sig(map2, tab, s->cache_m1r[i], n);
                 A4_PERF[PF_M1BAKE]++; A4_PERF[PF_M1TEX] += n; A4_PERF[PF_M1T] += a4_ntick() - t0;
@@ -8292,8 +8300,16 @@ static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1
 #error "A4_SKYCHECK keeps its row hashes at 0x460000 (A4_SKYCEN's bitmap, the memo's home) and counts at 0x412D00 [50..57]"
 #endif
 #define SKYRH ((volatile uint32_t *)0x00460000u)    /* 240 row hashes and the armed word */
+#elif defined(A4_SKYSTORESKIP)
+#define SKY_SKIP 1                                  /* bench: the routine's stores skipped (round 88's first C89) */
 #else
-#define SKY_SKIP 1
+/* Round 88: the routine's own stores run as well (as A4_SKYCHECK's do). The screen's top rows are a table the game
+ * reads in the frame: the player's car paint is a 256 x 256 mode-1 texture whose table is the screen surface itself
+ * (entries 0x33..0x5338, rows 0-66 -- its reflection of the sky). With the stores skipped those rows held the last
+ * frame's composited picture, HUD and all: the reflection wrong and the texture baked again every few frames (C89's
+ * texture uploads, m1_rebakes 0 -> 165, mw88). The GPU still draws the backdrop, and the copies within its rows stay
+ * skipped: the composite overwrites the rows with the GPU's pixels, the same as the routine's. */
+#define SKY_SKIP 0
 #endif
 #define SKYCK2 ((volatile uint32_t *)0x00412D00u)
 void a4_gl_flush(void);

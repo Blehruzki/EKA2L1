@@ -14101,3 +14101,21 @@ this log keeps every run. No phone round until the program's gains are in.
   13 -> 165 over C89's** -- mode-1 (palette) textures baked again because their table's contents changed. A guess
   to test: +37FA4 now sees the frame's buildings (A4_FLAREFLUSH), so the sun's glare varies as on stock and with it a
   table the game rewrites. ab89 (C88 + A4_GPUSKY alone, C88 + A4_FLAREFLUSH alone; LA and New York) running.
+- ab89 (LA and New York): C88 + A4_GPUSKY alone m1_rebakes 12 / 12 / 35 / 55; C88 + A4_FLAREFLUSH alone 0 / 0 / 0 /
+  0. The sky, not the flare (Rule 2: the flare guess above was wrong).
+- mw88 (C88 + A4_GPUSKY + A4_M1WHERE, bench: CRK1 [40..46] at each re-bake -- count, the table's address, the
+  surface's, the map's, the range used, the texture's size, its descriptor): **the re-baked texture is a 256 x 256 mode-1
+  texture (descriptor 0x2046728) whose table is the screen surface itself -- table 0xE0E9C0 = the surface 0xE0E9C0,
+  entries 0x33..0x5338: rows 0-66 of the screen.** The player's car paint reflects the sky by reading it off the screen
+  (round 13's "a table the game rewrites every frame" was the sky routine writing the screen). With the routine's
+  stores skipped those rows held the last frame's composited picture -- the GPU's sky, but the HUD, the flare and the
+  blur over it: the reflection wrong, and the texture baked again (128 KB through glTexSubImage2D) whenever its
+  sampled entries moved.
+- Fixed: under A4_GPUSKY the routine's own stores run as well (SKY_SKIP 0, as A4_SKYCHECK's always did -- every check
+  of rounds 54 and 88 ran that way); A4_SKYSTORESKIP (bench) restores the skip. The GPU still draws the backdrop and
+  the copies within its rows stay skipped. Cost: the routine's memmove and fills again (~64 KB a frame). at_C89c
+  (C89 with the stores, LA and New York) running.
+- at_C89c (C89 with the routine's stores, LA and New York; framestat ~1,900): **m1_rebakes 0 in every capture;
+  texture bytes back to C88's pattern** (only each race's start); ms a render by capture 38.4 / 38.9 / 41.8 / 43.6
+  (C88 39.0 / 39.3 / 42.3 / 44.0; the skipping C89 37.8 / 38.8 / 41.5 / 44.0). ip89 (Instant Play night Paris 240 s,
+  plain C88 then this C89, marks 60/120/180/230) running for the gain by segment.
