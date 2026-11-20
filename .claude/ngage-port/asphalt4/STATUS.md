@@ -63,6 +63,16 @@ Corrections this table carries: the r86c reading "the game's side is +20 ms in M
 over the walk, our hook and the game's walk of the table. The bench "not reproducing the phone" was largely the
 bench never boosting at speed (its car reached 327 km/h, the phone's boosts run at 360-534).
 
+## The phone with r90b (Paris, two races, 2,389 renders; MBX.md "Phone round r90b")
+
+- Renders under 60 ms 67% (r87a 47%), 75 ms or more 3.7% (9.9%); Montmartre (segments 30-99) 49-67 ms a render
+  (r87a 60-68), its 75 ms-plus renders about halved. The game's own part of the 3D pass 6-8 ms (r87a up to 27).
+- Per render, light renders: 3D 16.1 (our hook 10.4), composite 10.1 (read 7.5: ~5.5 of it the GPU's tile render),
+  2D 4.4, yield 2.2, the rest 14.4 = logic 2.7 + walk 1.4 + cars 0.3 + shadow insert 1.4 + +31A26/50 1.5 + **the
+  runtime's post ~2.8 (our convert ~2.5)** + ~4 unnamed.
+- **Boosts: ~8.4 ms a boosted render** (our blur; the game's was ~17) -- 36% of the owner's renders boosted.
+- **Hitches: ~30 ms re-bakes of the car paint texture** (its table is the screen's top rows), 2% of renders.
+
 ## The plan (the RE program, bench only, then one phone round)
 
 Ordered by size and certainty. Each step: read it from the binary, make it exact, check it on the bench (a
