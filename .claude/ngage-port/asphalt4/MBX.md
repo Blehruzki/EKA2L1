@@ -14378,3 +14378,10 @@ c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no s
 - ca (C90 + A4_CARANIM + A4_WHEELCEN, Instant Play 90 s): **0 differing takes of 4,229** -- the player's mesh 729
   takes, every corner, texcoord and texture as the game's own at that take; the opponents' 0 as before.
 - C90 and C91 rebuilt from this tree: 6ebb8ba6... and 93391d95..., r90a's and r90b's bytes.
+- atca (C90 + A4_CARANIM + A4_WHEELCEN, alltracks: six maps 45 s, one session): **0 differing takes of 15,496** (the
+  player's mesh 2,467 of them, every map's car), framestat 5,288, the boot fault only; the cars drawn right in the
+  shots. A rear-view crop of 8 renders cannot show the tyres (under the body from behind); the census is the proof:
+  every texture and corner the GPU draws is the game's own at that take.
+- Phone cost: a take of the player's car now also reads 40 faces' descriptors and copies its corners on 24 vertices
+  (a few hundred loads); the bake reads the 40-face and 24-vertex lists once. No measurable change expected; not a
+  frame-rate step. Into the next candidate with the reflection work (the owner's "yes").
