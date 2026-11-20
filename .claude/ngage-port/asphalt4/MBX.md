@@ -14283,3 +14283,15 @@ c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no s
   M1_BIG_EVERY gate's pace). Not after boosts (28 of 48 against ~47 by chance). The bench never re-bakes (its route
   and camera); cause not yet named: the paint's table is the screen's rows 0-66 -- rows below the sky band hold the
   last frame's picture, which the stock game reads too.
+
+### Phone round r90b, New York (the owner: "No mark since it felt steady the whole race. Not as smooth as Paris, but I guess it's because of the snow effect")
+- Upload: 8 ring captures, one race (up90bny/). FRC4 on 1,866 renders: under 60 ms 52%, 60-75 ms 46%, 75 or more
+  1.2% (23) -- steady, as felt. Renders under 60 ms 54.5 ms.
+- **The 2D phase is bimodal: 7-12 ms in most renders, 15-21 in boosted ones (23% of renders)** -- against Paris's ~3
+  unboosted. **The snow costs ~5 ms every render** (in the 2D phase: after the composite, before the present). Rule 2:
+  round 86's "New York's 2D 12-26 ms is not the snow: it is the capture ... Closed: no snow cost to cut" read mark
+  windows' averages, where a capture's file write sat; per render (FRC4, which r86 did not have) the snow is there.
+- No hitches: m1_rebakes 29 in every capture (all before the first ring capture), no render with the cars' flush
+  over 8 ms. The post 2.7 ms, our convert 2.4-2.5; the batch flushed in the shadow's draws 1.6-3.6 ms a scene.
+- p2dny (C91 + A4_PROF2D, new bench gate: a4_pg_on after the composite, a4_pg_off at the present -- the 2D phase
+  alone; + A4_PROFSYM; New York 45 s, 6e8 gated instructions after 1e8) running: what draws the snow.

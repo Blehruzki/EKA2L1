@@ -588,7 +588,7 @@ struct mesh {
                                  * mask check, [48..49] the rows and pixels filled; 84: [50..51] the shadow batch; 86:
                                  * [52..61] A4_PHTIMERS (a4_eng.h), [62] the objects' and cars' flushes, [63] the shadow's draws */
 _Static_assert(CRK_N * 4u <= 256u, "CRK1 within the 256 bytes the telemetry writes, before CUT1");
-#ifdef A4_PROFSEG
+#if defined(A4_PROFSEG) || defined(A4_PROF2D)
 /* bench: the profile gate's two marks, distinct bodies so they stay two functions */
 __attribute__((noinline)) void a4_pg_on(void) { ((volatile uint32_t *)0x00412D00u)[60] = 1u; }
 __attribute__((noinline)) void a4_pg_off(void) { ((volatile uint32_t *)0x00412D00u)[61] = 2u; }
@@ -11591,6 +11591,12 @@ void a4_gl_flush(void)
       const uint32_t r0_ = A4_PERF[PF_READ], odd_ = s->frames & 1u;
 #endif
       composite_rows(s, s->miny, s->maxy); A4_PERF[PF_COMP] += a4_ntick() - t0;
+#ifdef A4_PROF2D
+#ifdef A4_PROFSEG
+#error "A4_PROF2D and A4_PROFSEG drive the same gate"
+#endif
+      a4_pg_on();                                       /* bench (round 88): the 2D phase's profile gate, to the present */
+#endif
 #ifdef A4_BLENDCEN
       blend_census();                                   /* bench: after the composite, outside its timer */
 #endif
@@ -12550,6 +12556,9 @@ __attribute__((noinline)) void a4_present_mark(uint32_t t)
 int a4_gl_frame(uint32_t fps)
 {
     (void)fps;
+#ifdef A4_PROF2D
+    a4_pg_off();                                        /* bench (round 88): the 2D phase's gate closed at the present */
+#endif
     volatile uint32_t *iat = a4_gl_iat_ptr();
     if (iat[0] < 0x10000u) return 0;
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
