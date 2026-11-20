@@ -4336,6 +4336,58 @@ static uint32_t tex_upload(uint32_t id, const uint32_t *ts, uint32_t tr, int all
     }
     if (alloc) gl_teximage(GL_TEXTURE_2D, 0, (int)fmt, (int)w, (int)h, 0, fmt, typ, 0);
     uint16_t *conv = (uint16_t *)A4_GL_READBUF;   /* 0x403000..0x408000 = 10240 u16 */
+#ifdef A4_M1MAPCEN
+    if (map2 && w * h >= 16384u) {
+        /* bench (round 88, the owner: the reflection "the stock way or remade to mimic it"): is the map smooth enough
+         * to carry as texture coordinates? M -> the table's (x, y) on the 320-wide screen; each texel against its right
+         * and lower neighbour (both with M): CRK1 [40] bakes, [41] texels with M, [42] pairs, [43] pairs within 1 px
+         * both ways, [44] within 4 px, [45] the bigger jumps, [46] M's min | max << 16, [47] the texture w | h << 16 */
+        volatile uint32_t *C = crk_get();
+        uint32_t mlo = 0xFFFFu, mhi = 0;
+        C[40]++; C[47] = w | (h << 16);
+        for (uint32_t y = 0; y < h; y++)
+            for (uint32_t x = 0; x < w; x++) {
+                const uint32_t i = y * w + x, M = px16[i] ? map2[i] : 0u;
+                if (!M) continue;
+                C[41]++;
+                if (M < mlo) mlo = M;
+                if (M > mhi) mhi = M;
+                const uint32_t my = (uint32_t)(((uint64_t)M * 13421773u) >> 32), mx = M - my * 320u;
+                const uint32_t nb[2] = { x + 1u < w ? i + 1u : 0xFFFFFFFFu, y + 1u < h ? i + w : 0xFFFFFFFFu };
+                for (int k = 0; k < 2; k++) {
+                    if (nb[k] == 0xFFFFFFFFu || !px16[nb[k]] || !map2[nb[k]]) continue;
+                    const uint32_t N = map2[nb[k]], ny = (uint32_t)(((uint64_t)N * 13421773u) >> 32), nx = N - ny * 320u;
+                    const int32_t dx = (int32_t)nx - (int32_t)mx, dy = (int32_t)ny - (int32_t)my;
+                    const int32_t ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
+                    C[42]++;
+                    if (ax <= 1 && ay <= 1) C[43]++;
+                    else if (ax <= 4 && ay <= 4) C[44]++;
+                    else C[45]++;
+                }
+            }
+        C[46] = mlo | (mhi << 16);
+#ifdef A4_RESTTIME
+#error "A4_M1MAPCEN's footprint uses CRK1 [12..15], A4_RESTTIME's words"
+#endif
+        {   /* the reflective texels' footprint: [12] rows holding any, [13] first | last row << 16, [14] the rows'
+             * spans summed (first to last reflective texel of each row), [15] 32 x 32 blocks holding any */
+            uint32_t rows = 0, r0 = 0xFFFFu, r1 = 0, span = 0, blk = 0;
+            for (uint32_t y = 0; y < h; y++) {
+                uint32_t a = 0xFFFFu, b = 0;
+                for (uint32_t x = 0; x < w; x++) { const uint32_t i = y * w + x; if (px16[i] && map2[i]) { if (x < a) a = x; b = x; } }
+                if (a != 0xFFFFu) { rows++; span += b - a + 1u; if (y < r0) r0 = y; r1 = y; }
+            }
+            for (uint32_t by = 0; by < h; by += 32u)
+                for (uint32_t bx = 0; bx < w; bx += 32u) {
+                    uint32_t any = 0;
+                    for (uint32_t y = by; y < by + 32u && y < h && !any; y++)
+                        for (uint32_t x = bx; x < bx + 32u && x < w; x++) if (px16[y * w + x] && map2[y * w + x]) { any = 1; break; }
+                    blk += any;
+                }
+            C[12] = rows; C[13] = r0 | (r1 << 16); C[14] = span; C[15] = blk;
+        }
+    }
+#endif
     uint32_t y0 = 0, nrow = 0;
     for (uint32_t y = 0; y < h; y++) {
         for (uint32_t x = 0; x < w; x++) {

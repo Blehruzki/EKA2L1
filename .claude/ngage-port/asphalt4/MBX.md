@@ -14325,3 +14325,20 @@ c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no s
   frame. Put to the owner: an approximate reflection (the screen's top rows as a small texture updated each frame or
   two, added on the GPU with per-vertex coordinates from the game's map -- like stock, not pixel-exact), or keep it
   frozen and remove Paris's hitches.
+- The owner: "Are you entirely sure it can't be restored the stock way or remade to mimic the stock way?" -- not
+  entirely: the "~30 ms a frame" was the whole texture's re-bake. Measured (mc88 / mc88b: C90 + A4_M1MAPCEN, bench: at
+  each bake of a 16K-texel-plus mode-1 texture, its map against its neighbours and its reflective texels' footprint,
+  CRK1 [40..47] and [12..15]; Instant Play 60 s): the player car's 256 x 256 paint, **5,830 reflective texels (M != 0)
+  of 65,536 -- 9%**; in 132 rows, nearly contiguous in each (6,054 texels first to last), 14 of 64 32 x 32 blocks.
+  **The map is smooth**: of 11,308 neighbouring pairs, 66.5% point within 1 screen pixel of each other both ways,
+  28.9% within 4, 4.6% further (seams). M 0x33..0x5338 (rows 0-66).
+- So two ways back, each with one phone unknown:
+  1. **The stock math itself, only where it changes**: the 5,830 texels recomputed (T + table[M]/4, m1_texel) each
+     frame or two and only their row spans uploaded (~12 KB, 132 spans) -- against the previous frame's 3D picture's
+     rows 0-66 kept at the composite (before the HUD; stock reads the frame being drawn: one frame late). Unknown: the
+     MBX driver's cost for small glTexSubImage2D updates (4 KB/ms whole; partial unmeasured).
+  2. **A GPU mimic**: the base paint static; a second pass adds a quarter of a "screen" texture, masked to the
+     reflective texels, coordinates per corner from M (smooth enough to interpolate); the source the sky texture the
+     GPU already holds (sky only, free) or the GPU's own frame copied mid-frame (sky and buildings; glCopyTexSubImage2D
+     on a tile-based GPU, unmeasured).
+  Either also ends Paris's re-bake hitches. A probe build can time both on the phone in one round.
