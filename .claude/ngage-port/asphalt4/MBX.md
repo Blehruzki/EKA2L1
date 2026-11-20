@@ -13809,3 +13809,32 @@ c. State the bench did not enter: a mesh of more than 20 groups (refused as befo
   binary). Asked: races in Paris (Montmartre) and a couple of other maps, C where it drops, the a4tel* / a4mark*
   files back. To read: FRC4 by segment against r86c's marks (segments 30-80: 60-97 ms), and in the slow renders
   which block holds the game side's ~20 ms.
+
+### Phone round r87a (the owner: "it improved a bit, but there's still room for improvement")
+
+- Upload: 8 ring captures + 2 marks, Paris (up87a/). FRC4 read on all 1,868 renders.
+- **By segment against r86c's Paris marks (ms a render): 30: 70.7 -> 61.9, 40: 62.6 -> 68.1 (r86c n 63), 50: 72.1 ->
+  66.9, 60: 77.5 -> 68.1, 70: 77.1 -> 64.6; list triangles there 190-366 -> 109-169.** Montmartre (30-79) ~72 -> ~66
+  ms: the owner's "a bit". Light segments 51-54 ms.
+- FRC4 by segment: the heavy stretch costs ~14 ms more than the light one -- the table's draw +8 (our hook +4, the
+  game's own walk of the table +4), the scenery walk +3, logic +1; the composite 10-11 ms everywhere. Near refusals
+  1-3 a render; the alpha-map objects (15-20 a render) are the scenery the GPU path still leaves to the game.
+- **The phone's biggest single cost in this upload is nitro.** "post" (the 3D pass less the table's draw) is 0 in
+  80% of renders and 17-18 ms in 19%, in runs of 16-51 consecutive renders (1.2-3.4 s) at 360-534 km/h with the
+  speed climbing: the boosts. Nitro renders against the others in the same segments: **74.9 against 58.0 ms, +16.9,
+  all of it in post** (table, hook, logic, composite equal). The bench never entered it (its car, holding 5 = nitro,
+  reached 327 km/h at most; post <= 9 in pa87a / m87a / ng87).
+- **Read from the binary: it is the nitro radial blur.** +12992 (the render function; the scene at +12952 -> +1298A ->
+  +D3BA) then, when [r4+0x864+4] and [r5+0xAE0] are set and [r5+0xAE8] == 2, calls **+1054C(the render surface's
+  pixels [[r4+0x3C]]+0x4C, intensity min([r5+0xB4] x 300 / [r5+0x7E8], 300), [r4+0x38])**: four mirrored pointers out
+  from the screen's centre, per pixel a distance (+313AA, a square root), a strength from it (skipped at 5 or under,
+  capped at 32) and the pixel blended toward its neighbour nearer the centre in packed 565 -- the whole screen, read
+  and written. +37FA4 (the scene's last call, after the table, when [+0x38] is 1 or 3) is the sun's flare test (it
+  reads 7 pixels for the sky's 0x20 bit), not this.
+- **It runs before the composite and the composite paints over it.** It sits between the scene and the first
+  billboard / HUD call, where A4_IMM composites the GPU's frame: wherever the GPU drew, the blurred pixels are
+  replaced. Mark 0 was pressed mid-boost (its last renders post 17; 542 km/h, the flame, "x3 NITRO"): its framebuffer
+  is sharp -- no blur anywhere. **~17 ms a render of the game's work thrown away during every boost**; only pixels no
+  GPU class drew (the software sky) keep it. This is round 54's unaccounted writer (g54t2: "over most of the screen
+  between its last triangle and the HUD, through none of our hooks"; that bench car held nitro too). Stock's own
+  software picture is blurred; the port has not shown the blur since the composite moved to the frame's end.
