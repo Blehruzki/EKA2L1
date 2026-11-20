@@ -151,6 +151,12 @@ if mode == 'timers':
                            for nm, o in (('objects', 6), ('cars', 10), ('batch', 14), ('list', 18), ('shadow', 22)))
             print('    GL calls a scene: draws %.1f, binds %.1f, matrix %.1f, other %.1f; corners %.0f | %s'
                   % (g(1), g(2), g(3), g(4), g(5), blk))
+        if b[13] or b[15]:                          # round 88 (A4_RESTTIME): the post, the convert, the shadow's flushes
+            dp = b[13] - a[13]; dv = b[15] - a[15]; dz = b[19] - a[19]
+            print('    the post %.2f ms a post (%d posts, %.2f a scene); our convert %.2f ms (its window-size calls %.2f); '
+                  'the batch flushed inside the shadow\'s draws %.2f ms a scene (%.2f flushes a scene)'
+                  % ((b[12] - a[12]) / max(dp, 1), dp, dp / dn, (b[14] - a[14]) / max(dv, 1), (b[18] - a[18]) / max(dz, 1),
+                     (b[16] - a[16]) / dn, (b[17] - a[17]) / dn))
     sys.exit()
 
 if mode in ('lines', 'shadchk', 'gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwhy', 'blurchk'):

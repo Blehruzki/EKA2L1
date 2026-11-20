@@ -7571,6 +7571,9 @@ void a4_shadow_insert(uint32_t *cam, uint32_t *face)
 #if defined(A4_SHADFAST) && !(defined(A4_MESH) && defined(A4_COVREDRAW) && !defined(MESH_TRIALL) && defined(A4_LEAN))
 #error "A4_SHADFAST is written for the lean path with A4_MESH and A4_COVREDRAW"
 #endif
+#if defined(A4_RESTTIME) && (!defined(A4_DROPHOLD) || !defined(A4_SHADFAST) || defined(A4_DEDUPCEN) || defined(A4_M1WHERE))
+#error "A4_RESTTIME times the framework's post (A4_DROPHOLD's hook) and the shadow path's flushes (A4_SHADFAST), in CRK1 [12..19] [61]"
+#endif
 #if defined(A4_SHADFASTCHECK) && (!defined(A4_SHADFAST) || defined(A4_OBJWHY) || defined(A4_BLENDCEN) || defined(A4_NGWHY) \
     || defined(A4_DEDUPCEN) || defined(A4_M1WHERE))
 #error "A4_SHADFASTCHECK checks A4_SHADFAST and counts in CRK1 [40..43]"
@@ -7664,6 +7667,10 @@ static int shb_draw(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc
             uint32_t n = s->bfill;
             if (n >= MAXT) {                        /* batch full: draw it, then refill (as lean_tail_cv) */
                 uint32_t t0 = a4_ntick(); batch_draw(n); A4_PERF[PF_DRAW] += a4_ntick() - t0;
+#ifdef A4_RESTTIME
+                {   /* round 88: CRK1 [16] the ticks of the table's batch flushed inside the shadow's draws, [17] flushes */
+                    volatile uint32_t *C_ = crk_get(); C_[16] += a4_ntick() - t0; C_[17]++; }
+#endif
                 n = 0; s->bfill = 0;
             }
             int32_t yr[2];
@@ -11332,6 +11339,16 @@ typedef void (*cvt_fn)(uint32_t *self, uint32_t dst, uint32_t src);
 typedef void (*cvt_size_fn)(int32_t *size, const void *window);   /* TSize returned through r0, this in r1 */
 #define CVT_STUB_OFF (0xCB70u - 0x5EC8u)       /* +CB70's bl to the stub: inside the hashed words */
 
+#ifdef A4_RESTTIME
+/* Round 88: CRK1 [14] our convert's ticks (all of it, the window-size calls included), [15] converts, [18] the ticks of
+ * its window-size calls (RWindowBase::Size, a round trip to the window server each), [19] converts that asked */
+#define cvt_fast cvt_fast_body
+#define CVT_SIZE_T0() const uint32_t tsz0_ = a4_ntick()
+#define CVT_SIZE_T1() { volatile uint32_t *C_ = crk_get(); C_[18] += a4_ntick() - tsz0_; C_[19]++; }
+#else
+#define CVT_SIZE_T0()
+#define CVT_SIZE_T1()
+#endif
 static void cvt_fast(uint32_t *self, uint32_t dst, uint32_t src)
 {
     volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;   /* [91] fast, [92] handed back, [93]/[94] the check */
@@ -11353,10 +11370,12 @@ static void cvt_fast(uint32_t *self, uint32_t dst, uint32_t src)
     const void *win = (const void *)((uintptr_t)X10 + 0x28u);
     const cvt_size_fn size = (cvt_size_fn)(uintptr_t)CVT[11];
     int32_t sz[2];
+    CVT_SIZE_T0();
     size(sz, win);
     if (sz[0] < w) { size(sz, win); w = sz[0]; }
     size(sz, win);
     if (sz[1] < h) { size(sz, win); h = sz[1]; }
+    CVT_SIZE_T1();
     if (h == 0 || (w == 0 && h > 0)) return;         /* +CB70 writes nothing either */
     int fast = h > 0 && h <= 4096 && w > 0 && w <= 4096 && !(w & 3) && !((sp | dp) & 3u)
         && sstr * 2u >= (uint32_t)w && sstr <= 4096u && dstr >= (uint32_t)w && dstr <= 4096u;
@@ -11400,6 +11419,16 @@ static void cvt_fast(uint32_t *self, uint32_t dst, uint32_t src)
     for (int32_t r = 0; r < h; r++, sp += sstr * 4u, dp += dstr * 4u)
         run((uint32_t *)(uintptr_t)dp, (const uint32_t *)(uintptr_t)sp, (const uint32_t *)(uintptr_t)(sp + (uint32_t)w * 2u));
 }
+#ifdef A4_RESTTIME
+#undef cvt_fast
+static void cvt_fast(uint32_t *self, uint32_t dst, uint32_t src)   /* round 88: the convert timed (CRK1 [14] [15]) */
+{
+    const uint32_t t0 = a4_ntick();
+    cvt_fast_body(self, dst, src);
+    volatile uint32_t *C = crk_get();
+    C[14] += a4_ntick() - t0; C[15]++;
+}
+#endif
 
 /* At every present: the converter pointed at our vtable, once its object is found and checked. */
 static void cvt_install(void)
@@ -12476,10 +12505,23 @@ int a4_fw_hold(void)
 #elif defined(A4_IDLECEN)
     IDL->pc0 = IDL->cnt; IDL->pt0 = a4_ntick();
     return 0;
+#elif defined(A4_RESTTIME)
+    crk_get()[61] = a4_ntick();                     /* round 88: the post's start (a4_fw_done) */
+    return 0;
 #else
     return 0;
 #endif
 }
+#if defined(A4_RESTTIME) && !defined(A4_IDLECEN) && !defined(A4_RBPROBE)
+/* Round 88 (phone r87a: ~8.5 ms a render outside every timer): a4_fwpost_tramp, after a post it made -- CRK1 [12] the
+ * framework's posts' ticks (the lock, our convert, the unlock's CFbsScreenDevice::Update and pacing timer), [13] posts */
+uint32_t a4_fw_done(uint32_t ret)
+{
+    volatile uint32_t *C = crk_get();
+    C[12] += a4_ntick() - C[61]; C[13]++;
+    return ret;
+}
+#endif
 #ifdef A4_IDLECEN
 /* a4_fwpost_tramp, after a post it made (round 57: the census's span; round 56's probe has its own) */
 uint32_t a4_fw_done(uint32_t ret)
