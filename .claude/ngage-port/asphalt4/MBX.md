@@ -13805,3 +13805,7 @@ c. State the bench did not enter: a mesh of more than 20 groups (refused as befo
    reaching 768 (most 187; its refusal is refused_drawn's path); a full store at 1,440 meshes; NTickCount wrapping
    in a render (a 32-bit tick: the delta is unsigned, a timer read across it reads as gone back and is flagged).
    Entered: the ring wrapped, captures inside renders, six races in one session.
+- Owner: "send it". **r87a sent** (a4_r87a.exe, unbaked, 998,188 bytes, sha256 2e1c0ae56f67a3a5..., the battery's
+  binary). Asked: races in Paris (Montmartre) and a couple of other maps, C where it drops, the a4tel* / a4mark*
+  files back. To read: FRC4 by segment against r86c's marks (segments 30-80: 60-97 ms), and in the slow renders
+  which block holds the game side's ~20 ms.
