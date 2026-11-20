@@ -78,8 +78,10 @@ check build comparing against the game's own result where possible), log it, upd
 3. **Our GL submission** (done, read): the phone's own FRC4 (r87a, 1,865 renders) fits ~47 us a draw + ~0.9 us a
    corner, but the cars' flush (1.7 ms for a few thousand corners) bounds the driver's per-corner cost well below
    that -- the corners carry our own per-triangle work. Indexed draws (meshes share 1.8x / 3.2x corners) would save
-   little: dropped. What is ours to cut is **the shadow**: ~290 faces a render, 4.9 ms of draws + 1.7 of insert on the
-   phone, through the general per-triangle path; memory-bound (the N95 has no L2). The next target.
+   little: dropped. The shadow (~290 faces a render) looked like 4.9 ms of draws + 1.7 of insert on the phone, but
+   FRC4's "shadow draws" timer also holds the table's batch flush that falls inside a shadow bucket (56 of the
+   batch's 80 draws a scene): the shadow's own CPU is ~1-2 ms there. Its dedicated exact path (A4_SHADFAST) trims part
+   of it; the rest is memory (each face's list record a cache miss; the N95 has no L2).
 4. **The game's walk of the table** (answered by step 2): its cost was the blended copies, not the walk (0.7 ms).
 5. **The composite and present** (read): the read-back already uses the phone's native BGRA; its wait is the MBX's
    tile render; the present's convert is hand-tuned (~2.4 ms on the phone); the yield is FRC4's "pres". No cheap cut.
@@ -96,8 +98,9 @@ check build comparing against the game's own result where possible), log it, upd
 | 2. the GPU's sky (A4_GPUSKY) + the flare composited first (A4_FLAREFLUSH), C89 | done, bench | night Paris ~4-5 ms a render (segments 100-119: 44.5 -> 40.4, 46.2 -> 41.5) | exact: 0 px differing on all six tracks; the sky routine's stores kept (the car paint's reflection reads them); the flare now over the 3D, as stock |
 | 3. indexed draws | dropped | | the driver's per-corner cost is small on the phone |
 | 4/6. the alpha copies left below the sky | dropped | | ~none left under the GPU sky, Montmartre included |
-| 3'. the shadow's per-face path | next | | ~6.6 ms a render on the phone for ~290 faces |
-| r89a (C89) | battery running | | then Rule 4 and the owner's go |
+| 3'. the shadow's per-face path (A4_SHADFAST), C90 | done, bench | ~0.2 ms a render on the model | exact: 190,026 faces, 0 records differing; the "6.6 ms" was mostly the table's batch flush timed inside it |
+| r89a (C89) | battery passed, not sent | | superseded by r90a |
+| r90a (C90 = C89 + A4_SHADFAST) | battery running | | then Rule 4 and the owner's go |
 
 ## Where things are
 

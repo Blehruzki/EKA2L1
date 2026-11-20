@@ -14161,3 +14161,35 @@ c. State the bench did not enter: the phone's driver with the sky texture (GL_RE
    frames in gk88g, Dubai's mostly); a triangle after the flare's composite (0 on the bench; it would go to software,
    correct and slower). Entered: all six maps in one session, the ring wrapped, marks, a 400 s race, boosts (C88's
    blur runs), Dubai's sun rule.
+
+## Round 88, the shadow (the owner: "do the shadow first")
+
+- Not a repeat of: round 84's A4_SHADBATCH (the batch itself, its check shck84/84b against the table's faces) or round
+  86's ps86la (the gated profile that found no hot spot and named the cut: "a dedicated shadow path ... larger work").
+- What a shadow face's record depends on, read from lean_tail_cv / lean_conv / tri_tex / tri_conv / mesh_tri_covered /
+  cvr_tri_bucket for KIND_SHAD with the list's corners (cvp): no texture (id KIND_SHAD << 28, sizes 0) and no texcoords;
+  whole-pixel corners and extents ((x << CLIP_FB) W >> CLIP_FB = x W); the face a TFace of flags 0x20 exactly (shb_take
+  takes no other), so both bucket functions give the deepest w >> 3 with no nudge; the cover grid and cvr_hits /
+  cvr_add as before. lean_conv's hottest block (39% of its own time, pf89b) is the load of the face and its three
+  corner records -- which, for a shadow face, the list's corners then replace.
+- **A4_SHADFAST** (a4_gl.c shf_rec, shf_covered; shb_draw): each face of a bucket from its list record straight into
+  its batch slot -- the same record, without reading the face again, without tri_tex or the generic branches.
+  **A4_SHADFASTCHECK** (bench): every face's dedicated record made dry first (no cover item added), then lean_tail_cv's
+  own, compared word by word (12 positions, 6 texcoords, the id with its cover flags, the box, the cover add, the
+  return); CRK1 [40] faces, [41] differing, [42] the first, [43] adds.
+- sfk89 (C89 + both, LA and New York; framestat 2,073, the boot fault only): **190,026 faces, 0 differing; 164,083
+  cover adds, each matched.** pf89f (C89 + A4_SHADFAST under the profile, pf89's window) running.
+- pf89f (C89 + A4_SHADFAST + A4_PROFSYM, pf89b's window): normalised per present (a4_cvt565_run, once a present), the
+  lean path and the shadow's draw together 0.407 -> 0.394 convert-units: **~3% of that path.** lean_conv 562 -> 160
+  (the shadow faces gone from it), but shf_rec 412 and tri_conv 337 -> 410: shf_rec's first block (37% of it) is the
+  list record's load -- a line written at the insert, gone from the cache by the draw. The generic branches were not
+  the cost; the memory is.
+- msf89 (plain C89 + A4_SHADFAST, Instant Play 300 s, marks as m89a; framestat 2,315, the boot fault only; FRC4 1,881
+  renders): renders under 60 ms, the shadow's draws 3.8 -> 3.6 ms (m89a), the rest within the runs' difference (msf89's
+  scenes denser: 25 objects taken and 36 list triangles a render against 21.6 and 29.6).
+- **What the "shadow's draws" timer holds** (frec3 timers, m89a): a scene's GL calls inside it 56 draws, 47 binds, 64
+  others -- of the batch's 80 draws. The batch (MAXT) fills inside a shadow bucket most frames and its flush -- the
+  table's own triangles, drawn by texture run -- lands in the shadow's timer (round 86 saw the same). So the phone's
+  4.9 ms there is mostly the table's GL work; the shadow's own CPU is ~1-2 ms of it, and the insert's 1.7 ms. Corrected
+  in STATUS.md: the shadow is not a 6.6 ms target. A4_SHADFAST stays (exact, ~0.2 ms a render on the model).
+- **C90 = C89 + A4_SHADFAST** (flags/C90.flags). Its battery next.

@@ -7568,6 +7568,73 @@ void a4_shadow_insert(uint32_t *cam, uint32_t *face)
     ((void (*)(uint32_t *, uint32_t *))((uint32_t)(uintptr_t)&a4_otins + (uint32_t)a4_otins))(cam, face);
 }
 #ifndef A4_SHADCHECK
+#if defined(A4_SHADFAST) && !(defined(A4_MESH) && defined(A4_COVREDRAW) && !defined(MESH_TRIALL) && defined(A4_LEAN))
+#error "A4_SHADFAST is written for the lean path with A4_MESH and A4_COVREDRAW"
+#endif
+#if defined(A4_SHADFASTCHECK) && (!defined(A4_SHADFAST) || defined(A4_OBJWHY) || defined(A4_BLENDCEN) || defined(A4_NGWHY) \
+    || defined(A4_DEDUPCEN) || defined(A4_M1WHERE))
+#error "A4_SHADFASTCHECK checks A4_SHADFAST and counts in CRK1 [40..43]"
+#endif
+#ifdef A4_SHADFAST
+/* Round 88 (phone r87a: the shadow's draws 4.9 ms a render for ~290 faces; round 86's profile: the generic per-face path,
+ * no hot spot). A shadow face from the list straight to its batch record, as lean_tail_cv(s, gctx, face, KIND_SHAD, 0,
+ * tsaddr, its list corners) makes it, without reading the face or its corners again: KIND_SHAD has no texture
+ * (tri_tex: id KIND_SHAD << 28, sizes 0) and no texcoords (tri_conv: 0); the corners are whole pixels (lean_conv with
+ * cvp: x << CLIP_FB in, whole-pixel extents, (x << 4) W >> 4 = x W out); the face is a TFace of flags 0x20 exactly
+ * (shb_take took no other), so mesh_tri_covered's and cvr_tri_bucket's bucket is the deepest w >> 3 with no nudge. */
+static inline int shf_covered(int32_t b, int32_t xlo, int32_t ylo, int32_t xhi, int32_t yhi)
+{   /* mesh_tri_covered's grid test, A4_COVREDRAW's: 1 a nearer list face, 2 only the GPU's items, 0 none */
+    if (b <= 0) return 0;
+    if (xhi < 0 || yhi < 0 || xlo >= VP_W || ylo >= VP_H) return 0;
+    int32_t tx0 = xlo < 0 ? 0 : xlo >> 4, tx1 = xhi >= VP_W ? MESH_GW - 1 : xhi >> 4;
+    int32_t ty0 = ylo < 0 ? 0 : ylo >> 4, ty1 = yhi >= VP_H ? MESH_GH - 1 : yhi >> 4;
+    const uint16_t *g = (const uint16_t *)MESH->grid;
+    const volatile struct cvr *cv = CVR;
+    const int lok = cv->lframe == ((volatile struct glr *)A4_GL_SCRATCH)->frames;
+    int any = 0;
+    for (int32_t ty = ty0; ty <= ty1; ty++)
+        for (int32_t tx = tx0; tx <= tx1; tx++)
+            if ((int32_t)g[ty * MESH_GW + tx] < b) {
+                any = 1;
+                if (!lok || (int32_t)cv->lgrid[ty * MESH_GW + tx] < b) return 1;
+            }
+    return any ? 2 : 0;
+}
+/* the record into pos, uv, *idp, box and yr; dry (the check build): the cover redraw's item not added nor counted,
+ * *addp set where it would be */
+static PROF_NI void shf_rec(const struct shbf *f, int32_t *pos, int32_t *uv, uint32_t *idp, int16_t *box, int32_t *yr,
+                    int dry, int *addp)
+{
+    static const uint32_t z6[6] = { 0, 0, 0, 0, 0, 0 };
+    const int32_t x0 = (int16_t)(f->xy[0] & 0xFFFFu), y0 = (int16_t)(f->xy[0] >> 16);
+    const int32_t x1 = (int16_t)(f->xy[1] & 0xFFFFu), y1 = (int16_t)(f->xy[1] >> 16);
+    const int32_t x2 = (int16_t)(f->xy[2] & 0xFFFFu), y2 = (int16_t)(f->xy[2] >> 16);
+    const int32_t za = f->w[0], zb = f->w[1], zc = f->w[2];
+    int32_t xlo, xhi, ylo, yhi;
+    ext3(x0, x1, x2, &xlo, &xhi); ext3(y0, y1, y2, &ylo, &yhi);
+    tbox_calc(box, xlo, ylo, xhi, yhi);
+    yr[0] = ylo < 0 ? 0 : ylo >= VP_H ? VP_H - 1 : ylo;
+    yr[1] = yhi < 0 ? 0 : yhi >= VP_H ? VP_H - 1 : yhi;
+    *idp = KIND_SHAD << 28;
+    tri_conv(KIND_SHAD, 0, 0, x0, y0, x1, y1, x2, y2, za, zb, zc, z6, xlo, xhi, ylo, yhi, pos, uv, 0);
+    if (MESH_ON()) {
+        int32_t key = za > zb ? za : zb;
+        if (zc > key) key = zc;
+        const int32_t b = key >> 3;
+        const int cv = shf_covered(b, xlo, ylo, xhi, yhi);
+        if (cv == 2) {                              /* a shadow only GPU items cover: its own depth, written; they again */
+            *idp |= CVR_FLAG;
+            if (dry) *addp = 1;
+            else { cvr_add(b, xlo, ylo, xhi, yhi); CVR->k[0]++; }
+        } else if (cv != 0) {
+            if (cvr_hits(xlo, ylo, xhi, yhi)) { *idp |= CVR_WRITE; if (!dry) CVR->k[1]++; }
+        } else {
+            if (cvr_hits(xlo, ylo, xhi, yhi)) { *idp |= CVR_FLAG; if (!dry) CVR->k[1]++; }
+            else { pos[2] = -pos[3]; pos[6] = -pos[7]; pos[10] = -pos[11]; }   /* window depth 1: untested */
+        }
+    }
+}
+#endif
 /* At a shadow-class triangle in the lean path: when desc is a trigger of this frame, its bucket's faces through
  * lean_tail_cv (desc's own result returned); -1 when it is not one (the per-face path draws it). */
 static int shb_draw(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, uint32_t tsaddr)
@@ -7591,8 +7658,40 @@ static int shb_draw(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc
 #endif
     shb_cand(s, g->b, g->box);
     int r = 1;
+#if defined(A4_SHADFAST) && !defined(A4_SHADFASTCHECK)
+    if (kind == KIND_SHAD) {                        /* every face's record from the list (lean_tail_cv's for KIND_SHAD: 1) */
+        for (uint32_t k = g->head; k != SHB_END && k < SHB_NF; k = h->f[k].next) {
+            uint32_t n = s->bfill;
+            if (n >= MAXT) {                        /* batch full: draw it, then refill (as lean_tail_cv) */
+                uint32_t t0 = a4_ntick(); batch_draw(n); A4_PERF[PF_DRAW] += a4_ntick() - t0;
+                n = 0; s->bfill = 0;
+            }
+            int32_t yr[2];
+            shf_rec(&h->f[k], (int32_t *)A4_GL_POS + n * 12u, (int32_t *)A4_GL_UV + n * 6u, (uint32_t *)A4_GL_TEXID + n,
+                    (int16_t *)A4_GL_TBOX + n * 4u, yr, 0, 0);
+            if ((uint32_t)yr[0] < s->miny) s->miny = (uint32_t)yr[0];
+            if ((uint32_t)yr[1] > s->maxy) s->maxy = (uint32_t)yr[1];
+            s->bfill = n + 1;
+            s->prims++;
+            A4_PERF[PF_SHAD]++;
+        }
+        h->cand = 0;
+        return 1;
+    }
+#endif
     for (uint32_t k = g->head; k != SHB_END && k < SHB_NF; k = h->f[k].next) {
         const struct shbf *f = &h->f[k];
+#ifdef A4_SHADFASTCHECK
+        /* bench: the dedicated record, made dry first, against lean_tail_cv's own at its slot -- CRK1 [40] faces, [41]
+         * records differing, [42] the first's word (0-11 pos, 12-17 uv, 18 id, 19-22 box, 23 the add), [43] adds */
+        int32_t cpos[12], cuv[6], cyr[2]; uint32_t cid; int16_t cbox[4]; int cadd = 0;
+        if (s->bfill >= MAXT) {                     /* the generic path's flush first, so both see one cover state */
+            uint32_t t0 = a4_ntick(); batch_draw(s->bfill); A4_PERF[PF_DRAW] += a4_ntick() - t0;
+            s->bfill = 0;
+        }
+        const uint32_t k0 = CVR->k[0];
+        if (kind == KIND_SHAD) shf_rec(f, cpos, cuv, &cid, cbox, cyr, 1, &cadd);
+#endif
         struct clipv cv[3];
         for (int i = 0; i < 3; i++) {
             cv[i].x = (int32_t)(int16_t)(f->xy[i] & 0xFFFFu) * (1 << CLIP_FB);
@@ -7601,6 +7700,23 @@ static int shb_draw(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc
         }
         const int rr = lean_tail_cv(s, gctx, (const uint32_t *)(uintptr_t)f->face, kind, 0, tsaddr, cv);
         if (f->face == (uint32_t)(uintptr_t)desc) r = rr;
+#ifdef A4_SHADFASTCHECK
+        if (kind == KIND_SHAD) {
+            volatile uint32_t *C = crk_get();
+            const uint32_t n = s->bfill - 1u;
+            const int32_t *gp = (const int32_t *)A4_GL_POS + n * 12u, *gu = (const int32_t *)A4_GL_UV + n * 6u;
+            const int16_t *gb = (const int16_t *)A4_GL_TBOX + n * 4u;
+            int bad = -1;
+            for (int q = 0; q < 12 && bad < 0; q++) if (gp[q] != cpos[q]) bad = q;
+            for (int q = 0; q < 6 && bad < 0; q++) if (gu[q] != cuv[q]) bad = 12 + q;
+            if (bad < 0 && ((const uint32_t *)A4_GL_TEXID)[n] != cid) bad = 18;
+            for (int q = 0; q < 4 && bad < 0; q++) if (gb[q] != cbox[q]) bad = 19 + q;
+            if (bad < 0 && (CVR->k[0] - k0) != (uint32_t)cadd) bad = 23;
+            if (bad < 0 && rr != 1) bad = 24;
+            C[40]++; C[43] += (uint32_t)cadd;
+            if (bad >= 0) { if (!C[41]) C[42] = (uint32_t)bad | (C[40] << 8); C[41]++; }
+        }
+#endif
     }
     h->cand = 0;
     return r;

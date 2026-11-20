@@ -72,3 +72,15 @@ the GPU objects take meshes of up to 20 texture groups, 1,440 meshes held, the t
 would pass the flush's 768). **Its scratch is larger: `A4_SCRATCH_SIZE=0x1C3000`** (FRC4 at 0x5C1000-0x5C3070).
 r87a candidate sha256 2e1c0ae56f67a3a5..., 998,188 bytes. Bench only: `-DA4_NGWHY`. C86.flags still reproduces r86d
 byte for byte with this tree.
+
+C88.flags = C87.flags with `-DA4_NITROBLUR` (round 88 step 1: the nitro radial blur +1054C, exact, run after the
+composite at +12A12). Bench only: `-DA4_BLURCHECK`, `-DA4_BLURFORCE`, `-DA4_BLURI=n`, `-DA4_BLURC`.
+
+C89.flags = C88.flags with `-DA4_GPUSKY -DA4_FLAREFLUSH` (round 88 step 2: the sky on the GPU, its routine's stores kept,
+the blended copies within its rows skipped; the frame composited before the sun's flare +37FA4). r89a candidate
+sha256 22089b745913f4c9..., 1,003,248 bytes (not sent). Bench only: `-DA4_SKYCHECK`, `-DA4_SKYTRACE`,
+`-DA4_SKYTRACE_EVERY=n`, `-DA4_SKYCHECK_MARGIN=n`, `-DA4_SKYGATE`, `-DA4_SKYSTORESKIP`, `-DA4_M1WHERE`, `-DA4_DEDUPCEN`,
+`-DA4_PROFSYM`.
+
+C90.flags = C89.flags with `-DA4_SHADFAST` (round 88: each shadow face's batch record straight from the shadow list,
+exact). Bench only: `-DA4_SHADFASTCHECK`. Same scratch as C87 (`A4_SCRATCH_SIZE=0x1C3000`).
