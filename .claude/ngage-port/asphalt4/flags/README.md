@@ -61,3 +61,14 @@ d72aa53aaedaaade..., 987,576 bytes. Bench only: `-DA4_SHADCHECK`, `-DA4_SHADCOUN
 `-DA4_CARTRI`, `-DA4_CARSTAGE`, `-DA4_OBJFLAT`, `-DA4_FLUSHPROBE`, `-DA4_BB2FLUSH`.
 Round 85 builds with C84.flags (no flag added: the fix is code in the 3x engine -- a4_eng.h ENG_BEGIN, edits.py
 +14574): a4_r85a_cand.exe sha256 c911262fd468d7369620817e3e17a5940d66bef85b53b339cd70566ab8ca4199, 987,636 bytes.
+
+C86.flags = C84.flags with `-DA4_PHTIMERS` (round 86: phone telemetry -- CRK1 [52..63] the scene's blocks in ticks, 'TIM2'
+the GL calls by class and block; still `A4_SCRATCH_SIZE=0x1C0000`). r86c (without TIM2) sha256 840b0eca..., 991,796 bytes;
+r86d (TIM2) 996,340 bytes, not sent. Bench only: `-DA4_GOBJ86CHECK`, `-DA4_GOBJINSSORT`, `-DA4_CAREARLYCHECK`,
+`-DA4_OBJWHY`, `-DA4_BLENDCEN`, `-DA4_PROFSEG=lo -DA4_PROFSEG_HI=hi`.
+
+C87.flags = C86.flags with `-DA4_FRC4 -DA4_GOBJNG=20u` (round 87: 'FRC4', each render's split written into every capture;
+the GPU objects take meshes of up to 20 texture groups, 1,440 meshes held, the take refusing an object whose groups
+would pass the flush's 768). **Its scratch is larger: `A4_SCRATCH_SIZE=0x1C3000`** (FRC4 at 0x5C1000-0x5C3070).
+r87a candidate sha256 2e1c0ae56f67a3a5..., 998,188 bytes. Bench only: `-DA4_NGWHY`. C86.flags still reproduces r86d
+byte for byte with this tree.

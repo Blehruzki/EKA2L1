@@ -13737,3 +13737,27 @@ c. State the bench did not enter: a frame with more than GOBJ_NE (768) object gr
   work where the phone shows 28 -- only the phone can say, render by render, which block holds it. Not a repeat of
   r86c's timers (stretches only) or r86d's TIM2 (stretches, unsent): per render, inside the owner's marks.
   a4_r87a_cand.exe 997,936 bytes, sha256 a535b1759dfb6339...
+
+### Round 87 (the owner: "yes, go ahead" -- the over-12-groups meshes onto the GPU, and the per-render timers)
+
+- **ng87 (C87 as first built, C86 + A4_FRC4, + A4_NGWHY; Paris 400 s; framestat ~3,150, the boot fault only): the
+  meshes refused for more than 12 groups need 13-19 (15.6-16.3 on average), carry 134-152 faces each, and every one
+  has plain textures** (the take's own test): 0 at segments 0-20, 231 by 32, 1,098 by 49, 1,719 by 76, 1,752 by 94;
+  at most 16 groups 69%, at most 24 all. They are the dense stretch's big meshes, and the phone refused ~5 a render
+  in Paris (mark 4's GOB1: 2,317 by then) -- ~675 faces a render through the game's transform and the list.
+- FRC4 on the bench (ng87, 1,377 renders): it works; renders under 60 ms read 3D 13.7, hook 14.5, composite 8.9,
+  table 13.7, walk 1.0, ~138 draws / 122 binds / 9,030 corners a render. **Rule 4: the hook's 1-in-4 sampling x 4
+  makes a render's own hook time meaningless** (the frame's first triangle carries the objects', cars' and list's
+  draws: 60-75 ms renders read hook 52.6 against a 3D pass of 34.9). Fixed under A4_FRC4: the frame's first
+  triangle (prims 0) timed exactly, the rest sampled as before (still unbiased over a window).
+- **A4_GOBJNG (round 87, a4_gl.c)**: GOBJ_NG = A4_GOBJNG (20), GOBJ_NM 2,048 -> 1,440 so the records (36 + 5 x NG
+  bytes, 136) fit under the hash (195,840 of 196,608 bytes; asserted); gstate's ngsum, reset with the frame's items
+  at both frame starts (the object take's and the car take's), and **the take refuses an object whose groups would
+  pass the flush's GOBJ_NE (768) -- the game draws it -- where the flush used to leave the groups past it undrawn**
+  (never reached so far: ow86r's most was 187). The phone's Paris session held 896 meshes; the arena (~82k
+  corners, phone peak 72,405) is unchanged, and a full store empties and rebuilds as before. frec3.py gob reads
+  GOB1's head by its size (48 words with ngsum).
+- **C87 = C86 + A4_FRC4 + A4_GOBJNG=20u, A4_SCRATCH_SIZE 0x1C3000. C86 still reproduces r86d byte for byte with
+  this tree** (every change flag-guarded). a4_r87a_cand.exe 998,188 bytes, sha256 2e1c0ae56f67a3a5... pa87a (r87a,
+  Paris 400 s, marks 150-390 s) running: the refusals gone, the store's peak, ms a render by segment against ps86 /
+  ow86r / ng87 (segments 30-70: 45-56 ms), and the picture.
