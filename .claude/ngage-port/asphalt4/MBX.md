@@ -13761,3 +13761,47 @@ c. State the bench did not enter: a frame with more than GOBJ_NE (768) object gr
   this tree** (every change flag-guarded). a4_r87a_cand.exe 998,188 bytes, sha256 2e1c0ae56f67a3a5... pa87a (r87a,
   Paris 400 s, marks 150-390 s) running: the refusals gone, the store's peak, ms a render by segment against ps86 /
   ow86r / ng87 (segments 30-70: 45-56 ms), and the picture.
+- **pa87a (r87a, Paris 400 s, marks 150-390 s; framestat 3,353, the boot fault only): the mesh refusals are gone
+  (r_mesh 0, r_full 0); the store held 908 meshes, peak 58,098 corners of ~82k, no resets; the group sum 92-130 a
+  frame (of 768).** By segment against ng87 (FRC4, the same stretch): segments 30-49 list triangles 251 -> 88, the
+  list's draw 4.6 -> 1.5 ms, the walk 2.3 -> 1.8; corners to the GPU 10.0k -> 17.0k a render (the GPU path sends a
+  mesh's every face; the game's culled per face first), the objects' flush 1.9 -> 3.0 ms; GL draws 205 -> 186.
+  **ms a render unchanged on the bench** (segments 30-70: 46.6-53.4 against 45.1-56.5 over three C86 runs) -- the
+  model charges 150 ns of CPU a vertex and the game's per-face path little (its dense-stretch game side was 3.4 ms
+  against the phone's 28). On the phone the N95's MBX has the VGP (round ~20's sources: TI's brief, 3DMark Mobile06
+  2.36 Mtris/s): ~2,300 more triangles a frame is ~1 ms of the GPU's own time, against the game's transform, cull and
+  list for ~675 faces a render there. The phone's FRC4 will say which way it went. Shots in the dense stretch
+  (paris_g245-290): buildings, balconies, lamps, awnings and the parasol as before; no holes.
+- The cover redraw (round 78, tools/cvr.py) between marks 2 and 5, the dense stretch: ng87 604 redraws, 4,801 draws,
+  430 ticks (7.9 draws, 0.71 ms a redraw); pa87a 489, 8,609, 705 (17.6 draws, 1.44 ms) -- **a big building is now a
+  GPU item, so a shadow or sprite under it redraws all its groups: ~+0.7 ms a render on the bench there.** A later
+  cut, if the phone shows it: redraw only the groups whose own box meets the covered cell.
+- **at87a (r87a, the exact binary; alltracks.sh, the six maps in one session, 45 s each): no fault but the boot
+  fault, framestat 5,549, each map by its shot with the cars** (LA, New York in snow, Paris, Monte Carlo, Dubai,
+  Shanghai); the store after Shanghai: 114 meshes, resets 3 = gaps 3 (the races' starts), no mesh refused.
+- **m87a (r87a, the exact binary; Instant Play, 300 s, C at 40-280 s): framestat 2,289, the boot fault only, 7 marks,
+  8 ring captures.** FRC4 read from all 15 files: 1,893 renders joined to FRC1/FRC3 (every one), 14 flagged with a
+  capture inside (the captures), the ring wrapped (1,898 > 256). With the first triangle timed exactly the hook sits
+  at the 3D pass (renders under 60 ms: 3D 12.4, hook 12.5) instead of above it.
+
+Rule 4, before r87a goes out (C87 = C86 + A4_FRC4 + A4_GOBJNG=20u: r86's game, the over-12-groups meshes on the GPU,
+and each render's split in every capture):
+a. The guesses. (1) **That the phone gains in the dense stretch -- not settleable on the bench**, whose model charges
+   150 ns of CPU a vertex and little for the game's per-face path (its dense game side 3.4 ms against the phone's
+   28): ~675 faces a render in Paris leave the game's transform, cull and list, for ~7k more corners (~2.3k
+   triangles) of the VGP's own work a frame and ~0.7 ms more cover redraw (bench). The phone's FRC4 settles it,
+   render by render and by segment against r86c's marks. (2) That 1,440 meshes suffice: the phone's Paris session
+   held 896, the bench's at most 908; a full store empties and rebuilds as before. (3) That these meshes draw right
+   on the GPU path: the same path, tests and depth rule as every object taken since round 60; the dense stretch's
+   shots show the buildings, balconies, lamps and parasol (a per-pixel A/B, round 60's A4_GOBJ_AB, not run). (4)
+   FRC4's cost: ~40 loads and stores a render and two tick reads around the first triangle. (5) The scratch 12 KB
+   larger (0x1C3000; the injector checks the layout).
+b. Read back: the A4_GOBJNG diff (the record's size and the static asserts, the sum reset at both frame starts, the
+   refusal before the item is pushed, the sum added after the CLIPG hand-back), a4_frc4_mark (snapshot order, the
+   went-back flag, byte and half saturation, the ring's index), a4_tel.c's offset (after TIM2), frec3.py phase and
+   gob against the bench's files; C86 still reproduces r86d byte for byte. The header's "our hook" now times the
+   first triangle exactly (a better estimate of the same thing; windows not comparable with r86c's to the decimal).
+c. State the bench did not enter: a mesh of more than 20 groups (refused as before; the most seen 19); the group sum
+   reaching 768 (most 187; its refusal is refused_drawn's path); a full store at 1,440 meshes; NTickCount wrapping
+   in a render (a 32-bit tick: the delta is unsigned, a timer read across it reads as gone back and is flagged).
+   Entered: the ring wrapped, captures inside renders, six races in one session.
