@@ -14255,3 +14255,10 @@ b. Read back: the trampoline's timed path (round 56's, its stack and return as r
    else (every crk_get index in the tree listed).
 c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no sum -- a4_fw_done is not called then);
    the tick wrapping inside a post (unsigned difference, as every timer).
+- Owner: "add them" (after "Before you send it ..."). **r90b sent** (a4_r90b.exe, unbaked, 1,006,472 bytes, sha256
+  93391d95d55aa6e2..., the battery's binary). Asked: races in Paris (Montmartre) and two or three other maps, C where
+  it drops, the a4tel* / a4mark* files back. To read: FRC4 by segment against r87a's; frec3 timers for the post, the
+  convert and the shadow's nested flush.
+- **Correction to my reply of this round** ("route B is the only lever that size"): rounds 55-57 measured it on the
+  phone -- eglSwapBuffers 12.0 ms a frame at swap interval 1 and 0 alike, about what it removes (~12-13 ms) -- and
+  round 57 closed it. Put to the owner with the alternatives before any redesign starts.
