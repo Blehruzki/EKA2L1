@@ -14310,3 +14310,18 @@ c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no s
 - **The three maps on r90b**: renders under 60 ms Paris 67%, New York 52%, LA 72%; 75 ms or more 3.7% / 1.2% / 0.2%.
   An unboosted render ~51-54 ms (~19 fps), a boosted one ~60 (~17). What costs above that: boosts +8-9 ms (our blur;
   23-39% of renders), New York's snow +5 every render, Paris's paint re-bakes ~30 ms in 2% of renders.
+
+### The owner: "reflections are not working"
+- The car's paint and windows are span mode 1: T + table[M]/4, the table the frame being drawn (ctx[0x60] = the render
+  target, round 13; rows 0-66 for the player's car, mw88) -- the game reflects whatever its software render has put in
+  those rows by the time the car is drawn. On the GPU path (round 67) the texture is baked from the 565 buffer at the
+  frame's first triangle and baked again only when 64 sampled table entries change, at most every 8th present.
+- r90b's counters: **LA m1_rebakes 39 in every capture, New York 29 -- no re-bake in the whole race: the reflection is
+  frozen at the race's start.** Paris re-baked in its hilly stretches -- those are its ~30 ms hitches (128 KB through
+  glTexSubImage2D). r87a was already mostly flat (36-40); since C89 the sky routine's stores keep the sampled rows
+  steady, so LA and New York never re-bake at all. Not new in kind: the reflection has stepped or stood still since
+  the cars moved to the GPU; r90b made it stand still on two maps.
+- What stock's reflection costs here: a 256 x 256 re-bake and upload a frame (~30 ms on the N95) -- not possible every
+  frame. Put to the owner: an approximate reflection (the screen's top rows as a small texture updated each frame or
+  two, added on the GPU with per-vertex coordinates from the game's map -- like stock, not pixel-exact), or keep it
+  frozen and remove Paris's hitches.
