@@ -375,7 +375,11 @@ ALWAYS = {
     # visibility by reading 14 pixels of the 565 screen around it for the sky's 0x20 bit and draws the sun and its lens
     # flare (additive blits, +2C572) into the screen -- the GPU's frame composited first, so the test sees the frame's
     # own objects (stock's occlusion) and the flare lands over them, as on stock (the GPU's sky would hide it)
-    0x0ECFE: {'before': 'A4_FLARE_PRE();', 'why': 'A4_FLAREFLUSH: the frame composited before the sun\'s flare'},
+    0x0ECFE: {'before': 'A4_FLARE_PRE();', 'why': 'A4_FLAREFLUSH: the frame composited before the sun\'s flare test and draw'},
+    # round 88, A4_CARANIM (the owner: "check and make sure the cars wheels are actually spinning"): +1B084 animates the
+    # player's car's own mesh each render -- the tyres' frame on 40 faces, the front wheels' steer and a bounce on 24
+    # vertices -- which A4_GPUCAR's bake froze; the car noted here, before the call, for the take (a4_gl.c a4_car_anim)
+    0x0DCE2: {'before': 'A4_CAR_ANIM(r4);', 'why': 'A4_CARANIM: the car whose mesh +1B084 animates'},
     0x0CEC0: {'before': 'if (ce_verts(r0, r1, r2)) goto L_0CEDC;', 'why': 'the vertex unpack +CEC2..+CEDA by hand'},
     0x0CEDC: {'before': 'CE_CHECK(0);', 'why': 'A4_CECHECK: the vertex unpack by hand against the lifted loop'},
     0x0CEEA: {'before': 'if (ce_faces(r0, r1, r2, r4, L32(spp + 0x1Cu))) goto L_0CF4A;', 'why': 'the face unpack +CEEC..+CF48 by hand'},

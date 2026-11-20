@@ -70,6 +70,12 @@ void a4_car_earlycheck(uint32_t cam);
 #define A4_CAR_EARLY(c, v, nv, f, nf, m, nb, lr) 0
 #define A4_CAR_EARLYCHECK(c) ((void)0)
 #endif
+#ifdef A4_CARANIM
+void a4_car_anim(uint32_t car);                      /* a4_gl.c, round 88: the car +1B084 animates this render */
+#define A4_CAR_ANIM(car) a4_car_anim(car)
+#else
+#define A4_CAR_ANIM(car) ((void)0)
+#endif
 #ifdef A4_PHTIMERS
 /* Round 86 (the owner's heavy scenes, measured on the phone): NTickCount (1 ms) around the scene's calls in the lifted
  * +D3BA, summed from the boot in CRK1's words (a4_gl.c A4_GL_CRK, CRK_N 62): [52] scenes drawn, [53] the scenery walk

@@ -84,3 +84,9 @@ sha256 22089b745913f4c9..., 1,003,248 bytes (not sent). Bench only: `-DA4_SKYCHE
 
 C90.flags = C89.flags with `-DA4_SHADFAST` (round 88: each shadow face's batch record straight from the shadow list,
 exact). Bench only: `-DA4_SHADFASTCHECK`. Same scratch as C87 (`A4_SCRATCH_SIZE=0x1C3000`).
+
+A4_CARANIM (round 88, after r90b; for the next candidate, not in C90/C91): the player's car mesh as +1B084 animates it
+each render -- the tyres' two frames (the spin), the front wheels' steer and a bounce -- which A4_GPUCAR's bake froze.
+Needs lifted.c with the +DCE2 hook (regenerated; the macro is empty without the flag, and C90/C91 rebuild to r90a's and
+r90b's bytes). Bench only: `-DA4_WHEELCEN` (the live mesh against the bake at every take, CRK1 [40..47] and CUT1's
+place), `-DA4_WHEELGATE` (opens EKA2L1_WATCHGATE's word 0x5C30F0 at the census's first difference).

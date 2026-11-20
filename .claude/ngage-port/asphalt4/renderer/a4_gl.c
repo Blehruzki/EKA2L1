@@ -5330,7 +5330,7 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
 #ifdef A4_STREAMCEN
             if (0)     /* bench (round 83): the census owns CUT1's place */
 #endif
-#if defined(A4_CARPROBE2) || defined(A4_FLUSHPROBE)
+#if defined(A4_CARPROBE2) || defined(A4_FLUSHPROBE) || defined(A4_WHEELCEN)
             if (0)     /* bench (round 84): the car probe owns CUT1's place */
 #endif
             {   /* 'CUT1': this cut's raw corners, the last CUT_N kept -- a mark at a gap shows what was cut in its frame */
@@ -6247,6 +6247,27 @@ _Static_assert(GCAR_BASE + sizeof(struct gcstate) <= GCAR_BASE + 0x480u, "the ca
 _Static_assert(0x480u + GCAR_NM * 12u <= 0x600u, "the cars' bounds");
 _Static_assert(GCAR_BASE + 0x600u + GCAR_NM * sizeof(struct gcmesh) <= 0x00467000u, "the cars' meshes");
 #define GCAR_MAGIC 0x52414347u                   /* 'GCAR' */
+#ifdef A4_CARANIM
+#ifndef A4_GPUCAR
+#error "A4_CARANIM animates A4_GPUCAR's meshes"
+#endif
+/* The owner (round 88): "check and make sure the cars wheels are actually spinning". +1B084, which the scene (+DCE2)
+ * calls for the player's car before its body is drawn, animates that car's own mesh every render: the 40 faces listed
+ * at +26C take the descriptor +180[+66C] (+66C cycling 1, 2 while the speed +7D0 is not 0, else 0: the tyres' two
+ * frames), and the 24 vertices indexed at +1AC take x = +20C[i] + r * steer / 1024 (r -3..3 but 0, four vertices
+ * each) and y = +23C[i] plus a bounce. The bake froze them on its own render's. With A4_CARANIM that mesh is baked
+ * with those faces in groups of their own whose texture is read from a face of theirs when drawn, and the corners on
+ * those vertices are copied again at each take; the car is the game's if they cannot be (the state: GCANIM). */
+struct gcanim { uint32_t magic, car, frame, mi, verts, ofs, info, refreshed, refused, rebakes; };
+#define GCANIM ((volatile struct gcanim *)(GCAR_BASE + 0x600u + GCAR_NM * sizeof(struct gcmesh)))
+#define GCANIM_MAGIC 0x4D494E41u                 /* 'ANIM' */
+_Static_assert(GCAR_BASE + 0x600u + GCAR_NM * sizeof(struct gcmesh) + sizeof(struct gcanim) <= 0x00467000u, "the cars' animation");
+#define GC_GD(me, k) (((me)->gm1[k] & 2u) ? GO32((me)->gd[k] + 0x30u) : (me)->gd[k])   /* a live group: its face's */
+#define GC_M1(me, k) ((uint32_t)(me)->gm1[k] & 1u)
+#else
+#define GC_GD(me, k) ((me)->gd[k])
+#define GC_M1(me, k) ((me)->gm1[k])
+#endif
 #endif
 _Static_assert(0x00467000u + GOBJ_NM * sizeof(struct gmesh) <= GOBJ_HASH, "the mesh table");
 _Static_assert(GOBJ_HASH + GOBJ_NH * 2u <= GOBJ_ARENA, "the hash");
@@ -6260,6 +6281,9 @@ static void gobj_clear(volatile struct gstate *g)
     g->nmesh = 0; g->aused = 0; g->full = 0;
 #ifdef A4_GPUCAR
     GCAR->nmesh = 0;
+#endif
+#ifdef A4_CARANIM
+    GCANIM->mi = 0;
 #endif
 }
 #define GOBJ_MAGIC 0x4A424F47u                   /* 'GOBJ' */
@@ -6817,6 +6841,152 @@ static uint32_t gcar_gbase(void)                    /* the game's code base, fro
     extern const int32_t a4_hc_25e8;
     return (uint32_t)(uintptr_t)&a4_hc_25e8 + (uint32_t)a4_hc_25e8 - (0x25E8u | 1u);
 }
+#ifdef A4_WHEELCEN
+/* bench (the owner: "check and make sure the cars wheels are actually spinning"): each later take of a baked car mesh
+ * set against the game's live mesh, corner by corner in the bake's own order -- CRK1 [40] takes compared, [41] of them
+ * with a corner's position changed, [42] with a texcoord changed, [43] with a face's group (descriptor or class)
+ * changed; the last take with any: [44] corners moved, [45] texcoords changed, [46] faces regrouped | nf << 16,
+ * [47] its vertex array. CUT1's place (0x5C0900): [1] changed takes, then a ring of 12 of them, 24 words each -- the
+ * frame, the mesh's index, its verts, moved | texcoords << 16, regrouped, the first moved vertex's address, its baked
+ * x | y << 16 and z, its live x | y << 16 and z, the first changed texcoord's face | corner, baked u | v << 16, live,
+ * the first regrouped face, its descriptor, its flags, the mesh's takes and changed takes so far; then from word 300
+ * each mesh's takes and changed takes (24 x 2) */
+static void wheel_cen(const struct gcmesh *me, uint32_t verts, uint32_t faces, uint32_t nf, uint32_t w1)
+{
+    volatile uint32_t *C = crk_get(), *U = (volatile uint32_t *)A4_GL_CUT;
+    if (U[0] != 0x31545543u) { for (uint32_t k = 1; k < 386u; k++) U[k] = 0; U[0] = 0x31545543u; }
+    const uint32_t mi = (uint32_t)(me - GCMESH);
+    const int16_t *rec = (const int16_t *)(GOBJ_ARENA + 12u * me->ofs);
+    uint32_t dp = 0, du = 0, dg = 0, o = 0, pv = 0, pb0 = 0, pb1 = 0, pl0 = 0, pl1 = 0, uf = 0, ub = 0, ul = 0, gf = 0;
+    const uint32_t *aw = 0; uint32_t na = 0, rep[2] = { 0u, 0u };   /* A4_CARANIM's animated faces: their live groups */
+#ifdef A4_CARANIM
+    {   volatile struct gcanim *A = GCANIM;
+        if (A->magic == GCANIM_MAGIC && A->mi == mi + 1u && A->verts == verts && A->ofs == me->ofs) {
+            aw = (const uint32_t *)(uintptr_t)A->info; na = aw[0] & 0xFFFFu;
+            for (uint32_t k = 0; k < me->ng; k++) if (me->gm1[k] & 2u) rep[me->gm1[k] & 1u] = me->gd[k];
+        }
+    }
+#endif
+    for (uint32_t k = 0; k < me->ng; k++)
+        for (uint32_t f = 0, ja = 0; f < nf; f++) {
+            const uint32_t fp = faces + 52u * f, fl = GO32(fp + 4u);
+            const uint32_t m1 = (((fl & 0x4100000u) ? w1 : (w1 & ~0x4100000u)) == 0x104000u) ? 1u : 0u;
+            uint32_t key = GO32(fp + 0x30u), km = m1;
+            if (ja < na && (aw[1u + ja] & ~3u) == fp) { ja++; key = rep[m1]; km = m1 | 2u; }
+            if (key != me->gd[k] || km != me->gm1[k]) continue;
+            if ((km & 2u) && GO32(fp + 0x30u) != GO32(key + 0x30u)) dg++;   /* drawn with another face's texture */
+            if (o >= nf) { dg++; continue; }
+            for (uint32_t cn = 0; cn < 3u; cn++) {
+                const uint32_t vp = GO32(fp + 0xCu + 12u * cn);
+                const int16_t *r = rec + (o * 3u + cn) * 6u;
+                const int16_t x = (int16_t)GO32(vp + 0x18u), y = (int16_t)GO32(vp + 0x1Cu), z = (int16_t)GO32(vp + 0x20u);
+                if (x != r[0] || y != r[1] || z != r[2]) {
+                    if (!dp++) { pv = vp; pb0 = (uint16_t)r[0] | (uint32_t)(uint16_t)r[1] << 16; pb1 = (uint16_t)r[2];
+                                 pl0 = (uint16_t)x | (uint32_t)(uint16_t)y << 16; pl1 = (uint16_t)z; }
+                }
+                const int16_t u = (int16_t)GO32(fp + 0x10u + 12u * cn), v = (int16_t)GO32(fp + 0x14u + 12u * cn);
+                if (u != r[3] || v != r[4]) {
+                    if (!du++) { uf = fp | cn; ub = (uint16_t)r[3] | (uint32_t)(uint16_t)r[4] << 16;
+                                 ul = (uint16_t)u | (uint32_t)(uint16_t)v << 16; }
+                }
+            }
+            o++;
+        }
+    if (o != nf) dg += o > nf ? o - nf : nf - o;
+    if (dg) {   /* the first face in no group of the bake */
+        for (uint32_t f = 0, ja = 0; f < nf && !gf; f++) {
+            const uint32_t fp = faces + 52u * f, fl = GO32(fp + 4u);
+            const uint32_t m1 = (((fl & 0x4100000u) ? w1 : (w1 & ~0x4100000u)) == 0x104000u) ? 1u : 0u;
+            uint32_t key = GO32(fp + 0x30u), km = m1;
+            if (ja < na && (aw[1u + ja] & ~3u) == fp) { ja++; key = rep[m1]; km = m1 | 2u; }
+            uint32_t k = 0;
+            while (k < me->ng && !(key == me->gd[k] && km == me->gm1[k])) k++;
+            if (k == me->ng) gf = fp;
+        }
+    }
+    C[40]++; if (dp) C[41]++; if (du) C[42]++; if (dg) C[43]++;
+    if (mi < 24u) { U[300u + 2u * mi]++; if (dp || du || dg) U[301u + 2u * mi]++; }
+    if (dp || du || dg) {
+#ifdef A4_WHEELGATE
+        *(volatile uint32_t *)0x005C30F0u = 1u;   /* bench: EKA2L1_WATCHGATE's word (FRC4's spare), open from the first change */
+#endif
+        C[44] = dp; C[45] = du; C[46] = dg | nf << 16; C[47] = verts;
+        volatile uint32_t *w = U + 2u + (U[1] % 12u) * 24u;
+        w[0] = ((volatile struct glr *)A4_GL_SCRATCH)->frames; w[1] = mi; w[2] = verts; w[3] = dp | du << 16; w[4] = dg;
+        w[5] = pv; w[6] = pb0; w[7] = pb1; w[8] = pl0; w[9] = pl1; w[10] = uf; w[11] = ub; w[12] = ul;
+        w[13] = gf; w[14] = gf ? GO32(gf + 0x30u) : 0u; w[15] = gf ? GO32(gf + 4u) : 0u;
+        w[16] = mi < 24u ? U[300u + 2u * mi] : 0u; w[17] = mi < 24u ? U[301u + 2u * mi] : 0u;
+        U[1]++;
+    }
+}
+#endif
+#ifdef A4_CARANIM
+static uint32_t gc_isqrt(uint32_t x);
+/* +DCE2 (eng/edits.py): the car +1B084 is about to animate, this render */
+void a4_car_anim(uint32_t car)
+{
+    volatile struct gcanim *A = GCANIM;
+    if (A->magic != GCANIM_MAGIC) { A->mi = 0; A->refreshed = A->refused = A->rebakes = 0; A->magic = GCANIM_MAGIC; }
+    A->car = car; A->frame = ((volatile struct glr *)A4_GL_SCRATCH)->frames;
+}
+static uint32_t gca_car(uint32_t verts)             /* the car +1B084 animated this render, if this is its mesh */
+{
+    volatile struct gcanim *A = GCANIM;
+    if (A->magic != GCANIM_MAGIC || A->frame != ((volatile struct glr *)A4_GL_SCRATCH)->frames || !A->car) return 0;
+    if (!GO32(A->car + 0x1A8u) || GO32(GO32(A->car + 0x108u) + 4u) != verts) return 0;
+    return A->car;
+}
+static int gca_face(uint32_t car, uint32_t fp)      /* one of the 40 faces it gives the tyres' frame */
+{
+    for (uint32_t k = 0; k < 40u; k++) if (GO32(car + 0x26Cu + 4u * k) == fp) return 1;
+    return 0;
+}
+static uint32_t gca_vert(uint32_t car, uint32_t verts, uint32_t vp)   /* 1 + the index of a vertex of its 24, or 0 */
+{
+    for (uint32_t k = 0; k < 24u; k++) {
+        const int32_t i = GOS16(car + 0x1ACu + 2u * k);
+        if (i >= 0 && verts + 40u * (uint32_t)i == vp) return 1u + (uint32_t)i;
+    }
+    return 0;
+}
+static int gca_texok(uint32_t d)                    /* the bake's own test of a face's texture */
+{
+    return d && GO32(d + 4u * TS_PIX) && GO8(d + 0x28u) == 0xFFu && GO32(d + 0x2Cu) == 0u
+        && GO32(d + 4u) + 1u <= 1024u && GO32(d + 8u) + 1u <= 1024u;
+}
+/* at each take of the animated mesh: the live groups' textures valid, every animated face of a class on its group's
+ * texture, and the corners on the moved vertices copied again (the bounds widened to hold them); 0: the game's car */
+static int gca_refresh(struct gcmesh *me, uint32_t mi, uint32_t info)
+{
+    const uint32_t *w = (const uint32_t *)(uintptr_t)info;
+    const uint32_t na = w[0] & 0xFFFFu, np = w[0] >> 16;
+    uint32_t rd[2] = { 0u, 0u };
+    for (uint32_t k = 0; k < me->ng; k++)
+        if (me->gm1[k] & 2u) {
+            const uint32_t d = GO32(me->gd[k] + 0x30u);
+            if (!gca_texok(d)) return 0;
+            rd[me->gm1[k] & 1u] = d;
+        }
+    for (uint32_t j = 0; j < na; j++) { const uint32_t f = w[1u + j]; if (GO32((f & ~3u) + 0x30u) != rd[f & 1u]) return 0; }
+    int16_t *const rec = (int16_t *)(GOBJ_ARENA + 12u * me->ofs);
+    int16_t *const bnd = GCBND[mi];
+    uint32_t ext = me->ext, rad = me->rad;
+    for (uint32_t j = 0; j < np; j++) {
+        const uint32_t p = w[1u + na + j], vp = me->verts + 40u * (p >> 16);
+        const int32_t x = (int32_t)GO32(vp + 0x18u), y = (int32_t)GO32(vp + 0x1Cu), z = (int32_t)GO32(vp + 0x20u);
+        if (go_iabs(x) > 32767 || go_iabs(y) > 32767 || go_iabs(z) > 32767) return 0;
+        int16_t *const r = rec + 6u * (p & 0xFFFFu);
+        r[0] = (int16_t)x; r[1] = (int16_t)y; r[2] = (int16_t)z;
+        for (uint32_t a = 0; a < 3u; a++) { const uint32_t e = (uint32_t)go_iabs(r[a]); if (e > ext) ext = e;
+                                            if (r[a] < bnd[a]) bnd[a] = r[a];
+                                            if (r[a] > bnd[3u + a]) bnd[3u + a] = r[a]; }
+        const uint32_t q2 = (uint32_t)(x * x) + (uint32_t)(y * y) + (uint32_t)(z * z);
+        if (q2 >= rad * rad) { const uint32_t r1 = gc_isqrt(q2) + 1u; rad = r1 > 0xFFFFu ? 0xFFFFu : r1; }
+    }
+    me->ext = (uint16_t)ext; me->rad = (uint16_t)rad;
+    return 1;
+}
+#endif
 /* the car mesh's records in the arena (built once; 0 if it cannot be) */
 static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcstate *c, uint32_t verts, uint32_t nv,
                                 uint32_t faces, uint32_t nf, uint32_t w1)
@@ -6826,12 +6996,43 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
         if (e->verts == verts && e->faces == faces && e->nf == nf && e->nv == nv) {
             if (e->fp[0] != GO32(verts + 0x18u) || e->fp[1] != GO32(verts + 0x1Cu) || e->fp[2] != GO32(faces + 0xCu)
                 || e->fp[3] != GO32(faces + 0x30u)) { c->stale++; g->full = 1; return 0; }   /* emptied at the next frame */
+#ifdef A4_CARANIM
+            {   volatile struct gcanim *A = GCANIM;
+                if (A->magic == GCANIM_MAGIC && A->mi == i + 1u && A->verts == verts && A->ofs == e->ofs) {
+                    if (!gca_refresh(e, i, A->info)) { A->refused++; c->refused_range++; return 0; }
+                    A->refreshed++;
+                } else if (gca_car(verts)) { A->rebakes++; c->stale++; g->full = 1; return 0; }   /* baked before +1B084 ran */
+            }
+#endif
+#ifdef A4_WHEELCEN
+            wheel_cen(e, verts, faces, nf, w1);
+#endif
             return e;
         }
     }
+#ifdef A4_CARANIM
+    /* the animated mesh: after its records, a word (faces | corners << 16), its animated faces (address | class) in
+     * face order, and its corners on the moved vertices (record | vertex index << 16) */
+    const uint32_t acar = gca_car(verts);
+    uint32_t nfa = 0, npa = 0, xu = 0;
+    if (acar) {
+        for (uint32_t f = 0; f < nf; f++) {
+            const uint32_t fp = faces + 52u * f;
+            if (gca_face(acar, fp)) nfa++;
+            for (uint32_t cn = 0; cn < 3u; cn++) if (gca_vert(acar, verts, GO32(fp + 0xCu + 12u * cn))) npa++;
+        }
+        xu = (4u * (1u + nfa + npa) + 11u) / 12u;
+    }
+    if (g->full || c->nmesh >= GCAR_NM || GOBJ_ARENA + (g->aused + 3u * nf + xu) * 12u > GOBJ_STAGE) {
+        g->full = 1; c->refused_full++; return 0;
+    }
+    uint32_t *const aw = (uint32_t *)(GOBJ_ARENA + 12u * (g->aused + 3u * nf));
+    uint32_t na = 0, npw = 0, rep[2] = { 0u, 0u };
+#else
     if (g->full || c->nmesh >= GCAR_NM || GOBJ_ARENA + (g->aused + 3u * nf) * 12u > GOBJ_STAGE) {
         g->full = 1; c->refused_full++; return 0;
     }
+#endif
     struct gcmesh *me = &GCMESH[c->nmesh];
     int16_t *const bnd = GCBND[c->nmesh];
     uint32_t ng = 0, o = 0, ext = 0, e2 = 0;
@@ -6845,16 +7046,33 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
         if (cls == 0x104000u) m1 = 1u; else if (cls == 0x4000u) m1 = 0u; else { c->refused_class++; return 0; }
         if (!d || !GO32(d + 4u * TS_PIX) || GO8(d + 0x28u) != 0xFFu || GO32(d + 0x2Cu) != 0u
             || GO32(d + 4u) + 1u > 1024u || GO32(d + 8u) + 1u > 1024u) { c->refused_tex++; return 0; }
+#ifdef A4_CARANIM
+        uint32_t key = d, km = m1;                  /* an animated face: its class's live group, keyed by its first face */
+        if (acar && gca_face(acar, fp)) { if (!rep[m1]) rep[m1] = fp; key = rep[m1]; km = m1 | 2u; aw[1u + na++] = fp | m1; }
+        uint32_t k = 0;
+        while (k < ng && !(me->gd[k] == key && me->gm1[k] == km)) k++;
+        if (k == ng) { if (ng == GCAR_NG) { c->refused_full++; return 0; } me->gd[ng] = key; me->gm1[ng] = (uint8_t)km; ng++; }
+#else
         uint32_t k = 0;
         while (k < ng && !(me->gd[k] == d && me->gm1[k] == m1)) k++;
         if (k == ng) { if (ng == GCAR_NG) { c->refused_full++; return 0; } me->gd[ng] = d; me->gm1[ng] = (uint8_t)m1; ng++; }
+#endif
     }
     for (uint32_t k = 0; k < ng; k++) {
         me->gs[k] = (uint16_t)o; me->gc[k] = 0;
+#ifdef A4_CARANIM
+        uint32_t ja = 0;
+#endif
         for (uint32_t f = 0; f < nf; f++) {
             const uint32_t fp = faces + 52u * f, fl = GO32(fp + 4u);
             const uint32_t m1 = (((fl & 0x4100000u) ? w1 : (w1 & ~0x4100000u)) == 0x104000u) ? 1u : 0u;
+#ifdef A4_CARANIM
+            uint32_t key = GO32(fp + 0x30u), km = m1;
+            if (ja < na && (aw[1u + ja] & ~3u) == fp) { ja++; key = rep[m1]; km = m1 | 2u; }
+            if (key != me->gd[k] || km != me->gm1[k]) continue;
+#else
             if (GO32(fp + 0x30u) != me->gd[k] || m1 != me->gm1[k]) continue;
+#endif
             for (uint32_t cn = 0; cn < 3u; cn++) {
                 const uint32_t vp = GO32(fp + 0xCu + 12u * cn);
                 if (vp < verts || vp >= verts + 40u * nv || (vp - verts) % 40u) { c->refused_range++; return 0; }
@@ -6865,6 +7083,12 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
                 }
                 int16_t *r = rec + (o * 3u + cn) * 6u;
                 r[0] = (int16_t)x; r[1] = (int16_t)y; r[2] = (int16_t)z; r[3] = (int16_t)u; r[4] = (int16_t)v; r[5] = 0;
+#ifdef A4_CARANIM
+                if (acar) {
+                    const uint32_t vi = gca_vert(acar, verts, vp);
+                    if (vi) { if (npw == npa) { c->refused_full++; return 0; } aw[1u + nfa + npw++] = (o * 3u + cn) | (vi - 1u) << 16; }
+                }
+#endif
                 for (uint32_t a = 0; a < 3u; a++) { const uint32_t e = (uint32_t)go_iabs(r[a]); if (e > ext) ext = e;
                                                     if (r[a] < bnd[a]) bnd[a] = r[a];
                                                     if (r[a] > bnd[3u + a]) bnd[3u + a] = r[a]; }
@@ -6882,6 +7106,15 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
     me->fp[0] = GO32(verts + 0x18u); me->fp[1] = GO32(verts + 0x1Cu); me->fp[2] = GO32(faces + 0xCu); me->fp[3] = GO32(faces + 0x30u);
 #ifdef A4_DEDUPCEN
     dedup_note(GOBJ_ARENA + 12u * me->ofs, (const uint16_t *)me->gs, (const uint16_t *)me->gc, me->ng, 42u);
+#endif
+#ifdef A4_CARANIM
+    if (acar) {
+        if (na != nfa || npw != npa) { c->refused_full++; return 0; }
+        aw[0] = na | npw << 16;
+        volatile struct gcanim *A = GCANIM;
+        A->mi = c->nmesh + 1u; A->verts = verts; A->ofs = me->ofs; A->info = (uint32_t)(uintptr_t)aw;
+        g->aused += xu;
+    }
 #endif
     g->aused += 3u * nf; c->nmesh++; c->built++;
     if (g->aused > g->peak) g->peak = g->aused;
@@ -7124,9 +7357,9 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
             uint32_t id; int wsh, hsh;
 #ifdef A4_CARPROBE
             crk_get()[45]++;
-            if (tri_tex(s, KIND_TEX, me->gm1[k], me->gd[k], m1map, m1tab, &id, &wsh, &hsh) < 0) { crk_get()[44]++; continue; }
+            if (tri_tex(s, KIND_TEX, GC_M1(me, k), GC_GD(me, k), m1map, m1tab, &id, &wsh, &hsh) < 0) { crk_get()[44]++; continue; }
 #else
-            if (tri_tex(s, KIND_TEX, me->gm1[k], me->gd[k], m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
+            if (tri_tex(s, KIND_TEX, GC_M1(me, k), GC_GD(me, k), m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
 #endif
             if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
             if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
@@ -7450,7 +7683,7 @@ static void cvr_redraw(volatile struct glr *s)
             gl_texcoordptr(2, GL_SHORT, 12, (const void *)(base + 6u));
             for (uint32_t k = 0; k < me->ng; k++) {
                 uint32_t id; int wsh, hsh;
-                if (tri_tex(s, KIND_TEX, me->gm1[k], me->gd[k], m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
+                if (tri_tex(s, KIND_TEX, GC_M1(me, k), GC_GD(me, k), m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
                 if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
                 if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
                 gl_drawarrays(GL_TRIANGLES, 3 * (int)me->gs[k], 3 * (int)me->gc[k]); draws++;

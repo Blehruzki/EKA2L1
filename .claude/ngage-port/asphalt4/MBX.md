@@ -14342,3 +14342,39 @@ c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no s
      GPU already holds (sky only, free) or the GPU's own frame copied mid-frame (sky and buildings; glCopyTexSubImage2D
      on a tile-based GPU, unmeasured).
   Either also ends Paris's re-bake hitches. A probe build can time both on the phone in one round.
+
+### The owner: "check and make sure the cars wheels are actually spinning. It seems they're not"
+- **They were not, on the GPU path.** A census (A4_WHEELCEN, bench: at every later take of a baked car mesh, the
+  game's live mesh against the bake, corner by corner in the bake's order -- CRK1 [40..47], and CUT1's place a ring of
+  the last 12 differing takes and each mesh's takes; tools: the scratchpad's crkw.py / wcring.py): wc2 (C90 + it,
+  Instant Play 90 s) -- **only the player's mesh ever differs, at 640 of its 797 takes** (every render once the race
+  runs), in two alternating states; the opponents' 12 meshes never (0 of ~2,300).
+- Who writes it: EKA2L1_WATCH over the vertex array and then the face array, gated (EKA2L1_WATCHGATE, A4_WHEELGATE
+  opening the gate at the census's first difference, EKA2L1_WATCHONCE): after the gate, the vertices' model words
+  +18/+1C are written only by game +1B18A / +1B282 and the faces' descriptors +30 only by +1B2CA -- **+1B084**, which
+  the scene calls at +DCE2 (r0 = the car, when [sp+0x31C]) before the body's mesh call at +DE7A. Read:
+  - [car+1A8] 0: return. The mesh is [car+108] (its +4 the vertex array, 40-byte vertices).
+  - 24 vertices indexed by the halfwords at car+1AC: x = car+20C[i] + r * s / 1024, r -3..3 but 0, four vertices each,
+    s clamped to [literal, 4096] from the steering ([car+818] ? [car+7FC] : [car+824] ? -[car+9F8] << 4 : ...), a
+    quarter of it in one case (+133E4): the front wheels' steer as a shear.
+  - The same 24: y = car+23C[i] + b, b from the game's LCG scaled by [car+B14] (0 when it is 0): a bounce.
+  - +66C (round 31's "per-render flip") steps 1, 2, 1, 2 ... while the speed [car+7D0] is not 0, else 0; the 40 faces
+    listed at car+26C take the descriptor car+180[+66C] -- **the tyres' two frames**: the spin.
+  - The census's "382 corners moved" state was its own bookkeeping: the 40 faces on a descriptor of another group
+    shifted the group order. The real changes are those 40 descriptors and 24 vertices.
+- A4_GPUCAR baked the mesh once (round 67): the tyres stood on the frame of the bake's render, and the front wheels'
+  steer and the bounce were lost too. Not the 3x engine's (it leaves +66C at the step's value, round 31): the render
+  calls +1B084 every render.
+- **A4_CARANIM** (a4_gl.c; edits.py +DCE2 `A4_CAR_ANIM(r4)` before the call; lifted.c regenerated with C90.flags, the
+  only other line a comment): a4_car_anim notes the car and the render. The bake of the mesh +1B084 animates this
+  render (gca_car: [car+1A8], [[car+108]+4] = the mesh's vertices) puts its animated faces in groups of their own, one
+  a class, keyed by the class's first animated face (gm1 | 2) -- the draw reads that face's descriptor (GC_GD, both
+  car draws) -- and keeps after its records the animated faces (address | class) and the corners on the 24 vertices
+  (record | vertex). Each take of it (gca_refresh): every live group's texture passes the bake's test, every animated
+  face is on its class's texture, and those corners are copied again from the vertices, the bounds, ext and radius
+  widened to hold them; any failure hands the car to the game for that render. A mesh baked before +1B084 ran for it
+  is baked again (the arena emptied, once); gobj_clear forgets it. State at 0x466F60 (the 160 bytes after the 24
+  meshes).
+- ca (C90 + A4_CARANIM + A4_WHEELCEN, Instant Play 90 s): **0 differing takes of 4,229** -- the player's mesh 729
+  takes, every corner, texcoord and texture as the game's own at that take; the opponents' 0 as before.
+- C90 and C91 rebuilt from this tree: 6ebb8ba6... and 93391d95..., r90a's and r90b's bytes.

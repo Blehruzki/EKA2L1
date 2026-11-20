@@ -20136,6 +20136,8 @@ L_0DCDA:
     { uint32_t ta = r7, tb = 0x0u; t = ta - tb; fC = ta >= tb; fV = ((ta ^ tb) & (ta ^ t)) >> 31; fN = t >> 31; fZ = t == 0; } /* 00dcdc cmp r7, #0 */
     if (r7 == 0x0u) goto L_0DCE6;                                /* 00dcde beq #0xdce6 */
     r0 = r4; fN = r0 >> 31; fZ = r0 == 0;                        /* 00dce0 movs r0, r4 */
+    /* engine: A4_CARANIM: the car whose mesh +1B084 animates */
+    A4_CAR_ANIM(r4);
     { uint64_t rr = a4_eng_call(GAMEFN(0x1B084), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00dce2 bl #0x1b084 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00dce2 bl #0x1b084 */
 L_0DCE6:
