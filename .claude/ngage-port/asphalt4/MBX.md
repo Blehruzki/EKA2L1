@@ -14193,3 +14193,32 @@ c. State the bench did not enter: the phone's driver with the sky texture (GL_RE
   4.9 ms there is mostly the table's GL work; the shadow's own CPU is ~1-2 ms of it, and the insert's 1.7 ms. Corrected
   in STATUS.md: the shadow is not a 6.6 ms target. A4_SHADFAST stays (exact, ~0.2 ms a render on the model).
 - **C90 = C89 + A4_SHADFAST** (flags/C90.flags). Its battery next.
+
+### r90a: the candidate (C90) and its battery
+- **r90a = C90 = C89 + A4_SHADFAST**: a4_r90a_cand.exe, 1,004,860 bytes, sha256 6ebb8ba608ae307b..., the same bytes
+  as msf89's binary. r89a (not sent) superseded.
+- at90a (alltracks, the exact binary, six maps 45 s): framestat 5,549, the boot fault only; m1_rebakes 0 in every
+  capture; uploads only at each race's start (7 windows); the shots right on every map (Dubai's sun and flare, New
+  York's snow and a boost's flame, night Paris, Shanghai).
+- m90a (Instant Play 300 s, C at 40-280 s): framestat 2,424, the boot fault only, 7 marks; FRC4 joined on 2,039
+  renders. Renders under 60 ms: 36.8 ms (m89a 37.5) -- 3D 10.2 (hook 9.2, the game's own part 1.0), the shadow's draws
+  3.0 (3.8), composite 8.7, 2D 2.4, present/yield 2.3, the rest 13.1.
+- pa90a (Paris 400 s, marks 150-390 s): framestat ~3,300, the boot fault only; **this run drove through Montmartre** --
+  by segment against pa87a (r87a's battery): 30-39 46.6 -> 43.3, 40-49 50.9 -> 48.6, 60-69 47.5 -> 44.1, 70-79 53.4
+  -> 45.6, 80-89 51.3 -> 42.5, 90-99 49.5 -> 43.7, 100-109 49.3 -> 39.2, 130-139 42.1 -> 31.0; 50-59 38.2 -> 49.7 is two
+  different scenes (30 objects taken against 117). The bench's dense-stretch game side was never the phone's: the
+  phone's FRC4 is the measure. Shots: the chevron boards, the moon, Sacre-Coeur, the helicopter at 349 km/h.
+
+Rule 4, before r90a goes out (r89a's answers stand -- above -- and for A4_SHADFAST):
+a. The guesses. (1) The shadow path's phone gain: ~0.2 ms a render on the model (msf89 / m90a against m89a), the
+   phone's unknown; FRC4's shadow-draws and insert timers settle it. (2) That the phone's "shadow draws" 4.9 ms is
+   mostly the batch's flush (the bench's TIM2: 56 of 80 batch draws inside it) -- the phone's own TIM2 counts in its
+   captures settle that too. Exactness is not a guess: 190,026 faces compared, 0 differing.
+b. Read back: shf_rec and shf_covered against lean_conv (cvp branch), tri_tex (KIND_SHAD), tri_conv (KIND_SHAD: uv 0,
+   the mesh-frame shadow depth ZK + ZK/64), mesh_tri_covered (A4_COVREDRAW) and cvr_tri_bucket line by line; shb_draw's
+   loop against lean_tail_cv's bookkeeping (the flush at MAXT, miny/maxy, bfill, prims, PF_SHAD, the return 1); the
+   KIND_SHAD guard (bench recolours fall to the generic loop); the static const zero texcoords (no writable static).
+c. State the bench did not enter: a shadow face in a frame whose list drew nothing (MESH_ON() false: both paths skip the
+   cover test alike, by the same test); a batch flush inside a bucket with the cover state changed by it (the check
+   build flushed first so both paths saw one state; the dedicated path flushes exactly where lean_tail_cv did).
+   Entered: all six maps, Montmartre, the ring wrapped, marks, boosts.

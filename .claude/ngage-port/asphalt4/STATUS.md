@@ -100,7 +100,7 @@ check build comparing against the game's own result where possible), log it, upd
 | 4/6. the alpha copies left below the sky | dropped | | ~none left under the GPU sky, Montmartre included |
 | 3'. the shadow's per-face path (A4_SHADFAST), C90 | done, bench | ~0.2 ms a render on the model | exact: 190,026 faces, 0 records differing; the "6.6 ms" was mostly the table's batch flush timed inside it |
 | r89a (C89) | battery passed, not sent | | superseded by r90a |
-| r90a (C90 = C89 + A4_SHADFAST) | battery running | | then Rule 4 and the owner's go |
+| r90a (C90 = C89 + A4_SHADFAST) | battery passed, Rule 4 written | Paris 400 s by segment vs r87a's run: 3-10 ms a render lower through Montmartre and after | awaiting the owner's go |
 
 ## Where things are
 
