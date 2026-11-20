@@ -14119,3 +14119,45 @@ this log keeps every run. No phone round until the program's gains are in.
   texture bytes back to C88's pattern** (only each race's start); ms a render by capture 38.4 / 38.9 / 41.8 / 43.6
   (C88 39.0 / 39.3 / 42.3 / 44.0; the skipping C89 37.8 / 38.8 / 41.5 / 44.0). ip89 (Instant Play night Paris 240 s,
   plain C88 then this C89, marks 60/120/180/230) running for the gain by segment.
+- ip89 (Instant Play night Paris 240 s, plain C88 then the final C89, marks 60/120/180/230; framestat 1,873 / 1,960,
+  the boot fault only): by segment, the stretch both runs captured: **100-109 44.5 -> 40.4 ms a render, 110-119 46.2
+  -> 41.5**, 130-139 41.3 -> 40.9 (120-129: C89's car held there 693 renders, 46.9 -> 37.1, not comparable). With the
+  stores kept, ~4-5 ms a render (pf88s, skipping them: ~6).
+
+### r89a: the candidate (C89) and its battery
+- **r89a = C89 = C88 + A4_GPUSKY (the routine's stores kept) + A4_FLAREFLUSH** (flags/C89.flags): the nitro blur
+  exact after the composite, the sky on the GPU with the copies in its rows skipped, the flare after the composite.
+  a4_r89a_cand.exe, 1,003,248 bytes, sha256 22089b745913f4c9..., the same bytes as at_C89c's binary.
+- at89a (alltracks, the exact binary, six maps 45 s each): framestat 5,572, the boot fault only; m1_rebakes 0 in
+  every capture; texture uploads only at each race's start (7 windows over 15 KB a frame, as C88's 7); the shots
+  right on every map (Dubai's sun and glare, New York's snow, night Paris, Shanghai).
+- m89a (Instant Play 300 s, C at 40-280 s): framestat 2,379, the boot fault only, 7 marks, 8 ring captures; FRC4
+  joined on 1,945 renders. Renders under 60 ms: 37.5 ms -- 3D 11.2 (our hook 10.2, **the game's own part 1.0**),
+  composite 8.8 (read 6.3), 2D 2.4, present/yield 2.2, the rest 12.8.
+- pa89a (Paris 400 s, marks 150-390 s): framestat 3,525, the boot fault only. The bench car was pinned behind a rival
+  at 2-19 km/h from ~100 s to ~300 s (the autopilot), so its marks sample segments 0-9 and 120-139 only (33.7 and
+  40.7-40.8 ms a render; pa87a 39.6 and 42.1); Montmartre was passed in bc88d (above) with the same sky and flare.
+
+Rule 4, before r89a goes out:
+a. The guesses. (1) **That the phone gains where the bench cannot show it**: the GPU sky removes the game's software
+   copies of blended triangles and additive billboards within the sky's rows -- on r86c's / r87a's phone ~330 alpha
+   triangles a render in Montmartre at ~66 us each; the bench's game side there was 3.4 ms against the phone's 28.
+   FRC4's game3d on the phone settles it, by segment against r87a's. (2) The MBX's cost for the sky's quads (a
+   512 x 128 565 texture, 1-3 textured quads and fills over the backdrop's rows): the model charges triangles, not
+   fill; the phone's read timer would show a fill cost. (3) The sky texture's upload once a track (128 KB, a stall at
+   each race's start). (4) The nitro blur's phone cost (the model: 15.2 -> 6.7 ms a boosted render; exact, 0 px of
+   351 blurs). (5) Dubai's sun one frame late as it comes into view (8 times in the bench's race). (6) The flare test
+   now reads the composited picture: GPU-drawn pixels' 0x20 bit can differ from the game's own rasteriser's.
+b. Read back (the diff since r87a, every line outside a bench flag): the lean path's verdict under A4_GPUSKY (GPU-only
+   when the triangle's last row is above the backdrop's end; the clipped path's pieces each deciding); sky_decide's
+   why 8 and a4_gl_bb2's two words; SKY_SKIP 0 (the stores run; sky_replay compiled empty); struct skys' static assert
+   (0x412840 + its size <= 0x412A00); A4_FLAREFLUSH (edits.py ALWAYS at +ECFE, the one lifted line before the
+   bl +37FA4, a4_eng.h's macro, a4_gl_flare_pre = a4_gl_flush); the blur (round 88 step 1). C89 rebuilt after every
+   later edit is byte-identical (the A4_PROFSYM split compiles to nothing). One thing found reading: the GPU sky's
+   census words [58..69] lie inside A4_BBPROBE's sprite table ([10..117]) -- both diagnostics, nothing reads either
+   to decide; the captures' sky counts can be overwritten by a sprite record (left as is, noted).
+c. State the bench did not enter: the phone's driver with the sky texture (GL_REPEAT, NEAREST, 512 x 128 -- powers of
+   two); a frame whose sky layout the recorder does not know (falls back to software by the why codes: seen 569 such
+   frames in gk88g, Dubai's mostly); a triangle after the flare's composite (0 on the bench; it would go to software,
+   correct and slower). Entered: all six maps in one session, the ring wrapped, marks, a 400 s race, boosts (C88's
+   blur runs), Dubai's sun rule.

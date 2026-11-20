@@ -35,7 +35,8 @@ The game is the N-Gage 2.0 binary, unchanged on disk except what tools/injector.
   convert and post).
 - Blended classes (alpha-map, additive) are drawn twice: on the GPU and by the game's span, whose copy shows only
   where no GPU class drew. Since C89 the sky is the GPU's too (the routine +35FDA's stores recorded and drawn as
-  textured quads at the first triangle, pixel-exact), so copies within the sky's rows are skipped; Dubai's sun
+  textured quads at the first triangle, pixel-exact; the stores still run, since the player's car paint reads the
+  screen's top rows as its reflection table), so copies within the sky's rows are skipped; Dubai's sun
   (+3059E) keeps the sky in software for 128 frames after it is drawn.
 - The scene's last call, +37FA4, tests the sun's visibility on the screen's pixels and draws its lens flare: since
   C89 the GPU's frame is composited before it (A4_FLAREFLUSH), as stock's order.
@@ -74,13 +75,16 @@ check build comparing against the game's own result where possible), log it, upd
    software copies are the largest block of the game's own work in the table; within the sky's rows the GPU's sky
    (round 54's A4_GPUSKY, exact) makes them unnecessary. Found on the way: +37FA4, the scene's last call, draws the
    sun's lens flare into the screen before the composite (now after it: A4_FLAREFLUSH).
-3. **Our GL submission** (12-19 ms, ~550 calls a render): redundant state, binds and draws a texture; the
-   shadow's and the batch's draws.
-4. **The game's walk of the table** (6-9 ms): its per-triangle dispatch around our hook.
-5. **The composite** (10-11 ms every render): the read-back and merge -- the largest fixed cost; round 55's
-   direct-present design is the way to remove it.
-6. **The alpha-map objects** (15-20 a render in Montmartre, the scenery still on the game's path): taking them
-   needs their blend in the right order.
+3. **Our GL submission** (done, read): the phone's own FRC4 (r87a, 1,865 renders) fits ~47 us a draw + ~0.9 us a
+   corner, but the cars' flush (1.7 ms for a few thousand corners) bounds the driver's per-corner cost well below
+   that -- the corners carry our own per-triangle work. Indexed draws (meshes share 1.8x / 3.2x corners) would save
+   little: dropped. What is ours to cut is **the shadow**: ~290 faces a render, 4.9 ms of draws + 1.7 of insert on the
+   phone, through the general per-triangle path; memory-bound (the N95 has no L2). The next target.
+4. **The game's walk of the table** (answered by step 2): its cost was the blended copies, not the walk (0.7 ms).
+5. **The composite and present** (read): the read-back already uses the phone's native BGRA; its wait is the MBX's
+   tile render; the present's convert is hand-tuned (~2.4 ms on the phone); the yield is FRC4's "pres". No cheap cut.
+6. **The alpha-map objects** (answered by step 2): their ~330 software copies a render in Montmartre lay within the
+   sky's rows -- under the GPU sky they are GPU-only (bc88d: 0.27 copies a composite left, ~0% over holes).
 
 ## Progress
 
@@ -89,8 +93,11 @@ check build comparing against the game's own result where possible), log it, upd
 | r86: objects' sort and box, cars before the transform | on the phone (r86c) | ~3 ms in heavy LA | |
 | r87: meshes of up to 20 texture groups on the GPU | on the phone (r87a) | phone: Montmartre ~72 -> ~66 ms | |
 | 1. nitro blur (A4_NITROBLUR, C88) | done, bench | ~8.5 ms a boosted render (15.2 -> 6.7 on the model); exact, 0 px of 351 blurs | the blur visible again |
-| 2. the GPU's sky (A4_GPUSKY) + the flare composited first (A4_FLAREFLUSH), C89 | done, bench | night Paris ~6 ms a render (12%); all tracks 0-6 ms by capture | exact: 0 px differing on all six tracks; the flare now over the 3D, as stock |
-| 4/6. the alpha copies left below the sky (deferred to the composite) | next | | the census first (bc88b) |
+| 2. the GPU's sky (A4_GPUSKY) + the flare composited first (A4_FLAREFLUSH), C89 | done, bench | night Paris ~4-5 ms a render (segments 100-119: 44.5 -> 40.4, 46.2 -> 41.5) | exact: 0 px differing on all six tracks; the sky routine's stores kept (the car paint's reflection reads them); the flare now over the 3D, as stock |
+| 3. indexed draws | dropped | | the driver's per-corner cost is small on the phone |
+| 4/6. the alpha copies left below the sky | dropped | | ~none left under the GPU sky, Montmartre included |
+| 3'. the shadow's per-face path | next | | ~6.6 ms a render on the phone for ~290 faces |
+| r89a (C89) | battery running | | then Rule 4 and the owner's go |
 
 ## Where things are
 
