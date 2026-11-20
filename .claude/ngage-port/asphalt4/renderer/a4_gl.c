@@ -4488,9 +4488,10 @@ static int cache_slot(volatile struct glr *s, uint32_t *id)
  * State at 0x5C3100 (the scratch's tail after FRC4); the phone's cost in TIM2 [40..47]: [40] refreshes, [41] their
  * ticks gathering, [42] uploading, [43] texels made, [44] rectangles uploaded, [45] entries noted, [46] refreshes
  * skipped (not drawn lately), [47] entries dropped; [48] the pace now (a refresh every n composites) | the most it
- * has been << 16. The pace: every 32 refreshes their mean cost decides -- 1.5 ms or less a refresh, every
- * composite; then every 2nd, 4th, 8th (the MBX driver's cost of a part upload was never measured: a slow one costs
- * the frame rate little and the reflection only its rate). */
+ * has been << 16. The pace: every 32 refreshes their mean cost decides, the fewest composites between refreshes
+ * that keep it at 0.75 ms a render or less -- every composite, every 2nd, 4th or 8th (the bench's model: ~1.65 ms a
+ * refresh, every 4th; the MBX driver's cost of a part upload was never measured: a slow one costs the frame rate
+ * little and the reflection only its rate). */
 #define M1L_BASE 0x005C3100u
 #define M1L_NE 2u
 #define M1L_NR 256u
@@ -4606,9 +4607,9 @@ static void m1l_refresh(volatile struct glr *s)
         T[40]++; T[41] += tg; T[42] += (a4_ntick() - t0) - tg;
     }
     L->acc += a4_ntick() - tr0;
-    if (++L->cnt == 32u) {                          /* the pace from the last 32 refreshes' mean (ms, x2 against 3) */
-        const uint32_t m2 = L->acc >> 4;            /* twice the mean */
-        L->every = m2 <= 3u ? 1u : m2 <= 6u ? 2u : m2 <= 12u ? 4u : 8u;
+    if (++L->cnt == 32u) {                          /* the pace from the last 32 refreshes' ticks: mean / every <= 0.75 ms */
+        const uint32_t a = L->acc;                  /* 32 x the mean: 24 is 0.75 ms */
+        L->every = a <= 24u ? 1u : a <= 48u ? 2u : a <= 96u ? 4u : 8u;
         L->acc = 0; L->cnt = 0;
         const uint32_t hi = T[48] >> 16 > L->every ? T[48] >> 16 : L->every;
         T[48] = L->every | hi << 16;

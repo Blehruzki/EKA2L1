@@ -14470,4 +14470,15 @@ c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no s
 ### r91a: the candidate (C92 = C91 + A4_CARANIM + A4_M1LIVE + A4_PAINTFWD + A4_SNOWFAST)
 - a4_r91a_cand.exe, 1,015,124 bytes, sha256 352030fb77f498c0... (A4_THIRDSTEP=1, A4_SCRATCH_SIZE=0x1C3000). C90 / C91
   rebuilt from the same tree: r90a's and r90b's bytes.
-- bat91 (at91 six maps 45 s, m91 Instant Play 300 s with C marks, pa91 Paris 400 s) running.
+- bat91 on that first build (352030fb...): at91 (six maps, one session) framestat 5,629, the boot fault only, every map's
+  shot right (New York's flakes there); m91 (Instant Play 300 s, 7 marks) framestat 2,259 (m90b 2,379); pa91 (Paris
+  400 s) 3,659 (pa90b 3,530), **m1_rebakes 0 in every capture (pa90b 19-39 a window, up to 155 ms of them)**.
+- Per render by mark (FRC4, at91 against at90b, ms): **the 2D phase LA 2.31 / 2.40 -> 1.81 / 1.78, New York 5.06 / 5.92
+  -> 4.13 / 4.84, Paris 2.91 / 2.55 -> 2.28 / 1.80, Monte Carlo 2.34 / 2.41 -> 1.71 / 1.76** (A4_PAINTFWD, A4_SNOWFAST);
+  "the rest" ~+1.9 everywhere -- the reflection's refresh (after the composite, outside its timer and the 2D's), one
+  a render at ~1.65 ms on the model: renders ~1 ms longer on the whole (m91's 5% fewer frames). Rule 4: the
+  reflection was paced to keep the refresh under 1.5 ms -- a frame-rate cost the owner did not ask for.
+- **The pace tightened**: the fewest composites between refreshes that keep it at **0.75 ms a render** or less (the
+  32 refreshes' ticks: 24 or less every composite, 48 every 2nd, 96 every 4th, else 8th) -- the bench settles at every
+  4th; the phone's own cost decides there (TIM2 [48]). r91a rebuilt: a4_r91a_cand.exe sha256 a9006828e0088011...,
+  1,015,124 bytes; C90 / C91 still r90a's / r90b's bytes. bat91b (the same battery on it) running.

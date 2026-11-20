@@ -123,6 +123,11 @@ check build comparing against the game's own result where possible), log it, upd
 | r90a (C90 = C89 + A4_SHADFAST) | battery passed, not sent | Paris 400 s by segment vs r87a's run: 3-10 ms a render lower through Montmartre and after | the kept version without probes |
 | **r90b (C91 = C90 + A4_RESTTIME)** | **sent** (round 88) | as r90a | the phone round reads the post, the convert, the shadow's nested flush |
 | wheels (A4_CARANIM), for the next candidate | done, bench | none (a correctness fix) | the owner: "check and make sure the cars wheels are actually spinning" -- they were not: the GPU car's bake froze the player's tyres (+1B084's two frames), steer and bounce; exact now, 0 of 4,229 takes differing from the game's mesh |
+| the reflection (A4_M1LIVE) | done, bench | Paris's ~30 ms re-bake hitches gone (0 re-bakes); costs ~1.65 ms a refresh on the model, paced to 0.75 ms a render | the stock arithmetic on the paint's reflective texels (7,618 in 4 rectangles) from the frame just composited, one frame late; the phone's upload cost is the unknown (TIM2 [40..48]) |
+| the painter's rows (A4_PAINTFWD) | done, bench | the 2D phase -0.5 to -0.7 ms on every map (model) | exact: 174,914 calls against the game's painter, 0 px |
+| New York's snow (A4_SNOWFAST) | done, bench | New York's 2D phase -0.9 to -1.1 ms with the above (model) | exact: 193 renders against the game's +286A4, 0 flake bytes, 0 px; 63% of flake pieces skipped (clipped) |
+| the blur two pixels at once (A4_BLURFAST2) | dropped | none on the model | exact, but the blur is memory-bound |
+| **r91a (C92 = C91 + A4_CARANIM, A4_M1LIVE, A4_PAINTFWD, A4_SNOWFAST)** | battery on the final build running | | the next phone round: the tyres, the reflection's cost and look, New York's 2D phase |
 
 ## Versions kept (the owner, round 88: "keep track of this version and the redesign one ... I don't want to lose this one")
 
