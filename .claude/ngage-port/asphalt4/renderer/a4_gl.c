@@ -4475,6 +4475,146 @@ static int cache_slot(volatile struct glr *s, uint32_t *id)
     return v;
 }
 
+#ifdef A4_M1LIVE
+/* Round 88 (the owner: "reflections are not working" ... "Are you entirely sure it can't be restored the stock way"):
+ * the player car's paint is a 256 x 256 mode-1 texture whose table is the screen itself (mw88: rows 0-66 -- the
+ * game reflects whatever is on the top of the screen when the car is drawn). Baked whole (128 KB, ~30 ms on the
+ * N95) only when 64 sampled table entries changed, at most every 8th present, it stood still in LA and New York and
+ * hitched in Paris. Here such a texture (a big mode-1 one whose table is the 3D surface) keeps the rectangles that
+ * hold its reflective texels (both T and M not 0: the only ones the table changes -- 5,830 of 65,536 on the player's
+ * car, in 132 rows), and after each composite those are made again with the span's own arithmetic (m1_texel) from
+ * the surface just composited -- the 3D picture's top rows before the 2D, the flare and the blur go over them, one
+ * frame later than stock's -- and only they go through glTexSubImage2D. Its whole-texture re-bake is not run.
+ * State at 0x5C3100 (the scratch's tail after FRC4); the phone's cost in TIM2 [40..47]: [40] refreshes, [41] their
+ * ticks gathering, [42] uploading, [43] texels made, [44] rectangles uploaded, [45] entries noted, [46] refreshes
+ * skipped (not drawn lately), [47] entries dropped; [48] the pace now (a refresh every n composites) | the most it
+ * has been << 16. The pace: every 32 refreshes their mean cost decides -- 1.5 ms or less a refresh, every
+ * composite; then every 2nd, 4th, 8th (the MBX driver's cost of a part upload was never measured: a slow one costs
+ * the frame rate little and the reflection only its rate). */
+#define M1L_BASE 0x005C3100u
+#define M1L_NE 2u
+#define M1L_NR 256u
+#ifndef M1L_MERGE
+#define M1L_MERGE 6u                 /* rows merge into one rectangle while its area stays under MERGE/4 of their spans */
+#endif
+struct m1lent { uint32_t idx, key, tab, map, src, w, h, tr, nr, texels; uint32_t r[M1L_NR]; };
+struct m1live { uint32_t magic, tick, every, acc, cnt; struct m1lent e[M1L_NE]; };
+#define M1L ((volatile struct m1live *)M1L_BASE)
+#define M1L_MAGIC 0x4C31314Du                    /* 'M11L' */
+_Static_assert(M1L_BASE + sizeof(struct m1live) <= 0x005C4000u, "M1LIVE within A4_SCRATCH_SIZE 0x1C3000's scratch");
+#ifndef A4_PHTIMERS
+#error "A4_M1LIVE counts in TIM2 (A4_PHTIMERS)"
+#endif
+static volatile struct m1live *m1l_get(void)
+{
+    volatile struct m1live *L = M1L;
+    if (L->magic != M1L_MAGIC) {
+        L->tick = 0; L->every = 1u; L->acc = 0; L->cnt = 0;
+        for (uint32_t k = 0; k < M1L_NE; k++) L->e[k].idx = 0xFFFFFFFFu;
+        L->magic = M1L_MAGIC;
+    }
+    return L;
+}
+static int m1l_has(uint32_t i)
+{
+    volatile struct m1live *L = m1l_get();
+    for (uint32_t k = 0; k < M1L_NE; k++) if (L->e[k].idx == i) return 1;
+    return 0;
+}
+/* tex_make's: slot i now holds ts (map2 0: not a mode-1 bake); a big mode-1 one on the surface's table is noted */
+static void m1l_note(volatile struct glr *s, uint32_t i, const uint32_t *ts, const uint16_t *map2, const uint16_t *tab, uint32_t tr)
+{
+    volatile struct m1live *L = m1l_get();
+    for (uint32_t k = 0; k < M1L_NE; k++) if (L->e[k].idx == i) { L->e[k].idx = 0xFFFFFFFFu; tim2()[47]++; }
+    const uint32_t w = ts[1] + 1u, h = ts[2] + 1u;
+    if (!map2 || w * h < M1_BIG || w > 256u || h > 256u) return;
+    if ((uint32_t)(uintptr_t)tab != *(volatile uint32_t *)A4_GL_BB) return;   /* not the screen's table */
+    uint32_t k = 0;
+    while (k < M1L_NE && L->e[k].idx != 0xFFFFFFFFu) k++;
+    if (k == M1L_NE) {                              /* full: the one drawn longest ago gives way */
+        k = 0;
+        for (uint32_t q = 1; q < M1L_NE; q++) if (TX->lu[L->e[q].idx] < TX->lu[L->e[k].idx]) k = q;
+        tim2()[47]++;
+    }
+    volatile struct m1lent *e = &L->e[k];
+    const uint16_t *px16 = (const uint16_t *)ts[TS_PIX];
+    uint32_t nr = 0, texels = 0, open = 0, y0 = 0, a0 = 0, b0 = 0, sum = 0;
+    for (uint32_t y = 0; y <= h; y++) {
+        uint32_t a = 0xFFFFu, b = 0, n = 0;
+        if (y < h)
+            for (uint32_t x = 0; x < w; x++) { const uint32_t t = y * w + x; if (px16[t] && map2[t]) { if (x < a) a = x; b = x; n++; } }
+        texels += n;
+        if (open && n && (y - y0 + 1u) * ((b > b0 ? b : b0) - (a < a0 ? a : a0) + 1u) * 4u <= M1L_MERGE * (sum + b - a + 1u)
+            && (y - y0 + 1u) * ((b > b0 ? b : b0) - (a < a0 ? a : a0) + 1u) <= 10240u - 256u) {   /* READBUF, the padding's room */
+            if (a < a0) a0 = a;
+            if (b > b0) b0 = b;
+            sum += b - a + 1u;
+            continue;
+        }
+        if (open) {                                 /* the open rectangle ends at the row before */
+            if (nr == M1L_NR) return;               /* (cannot be: a row a rectangle at most) */
+            if (!((b0 - a0) & 1u)) { if (b0 + 1u < w) b0++; else a0--; }   /* an even width: rows of whole words (UNPACK 4) */
+            e->r[nr++] = y0 | (y - 1u - y0) << 8 | a0 << 16 | b0 << 24;
+            open = 0;
+        }
+        if (n) { open = 1; y0 = y; a0 = a; b0 = b; sum = b - a + 1u; }
+    }
+    e->key = (uint32_t)(uintptr_t)ts | 1u; e->tab = (uint32_t)(uintptr_t)tab; e->map = (uint32_t)(uintptr_t)map2; e->src = ts[TS_PIX];
+    e->w = w; e->h = h; e->tr = tr; e->nr = nr; e->texels = texels; e->idx = i;
+    tim2()[45]++;
+}
+/* after each composite: the noted textures drawn lately, their reflective rectangles made again from the surface */
+static void m1l_refresh(volatile struct glr *s)
+{
+    volatile struct m1live *L = m1l_get();
+    if (++L->tick < L->every) return;
+    L->tick = 0;
+    volatile uint32_t *T = tim2();
+    const uint32_t tr0 = a4_ntick();
+    const uint32_t bb = *(volatile uint32_t *)A4_GL_BB;
+    for (uint32_t k = 0; k < M1L_NE; k++) {
+        volatile struct m1lent *e = &L->e[k];
+        const uint32_t i = e->idx;
+        if (i == 0xFFFFFFFFu) continue;
+        const uint32_t *ts = (const uint32_t *)(uintptr_t)(e->key & ~3u);
+        if (i >= s->ntex || s->cache_ptr[i] != e->key || s->cache_tab[i] != e->tab || TX->src[i] != e->src
+            || ts[TS_PIX] != e->src || ts[1] + 1u != e->w || ts[2] + 1u != e->h) { e->idx = 0xFFFFFFFFu; T[47]++; continue; }
+        if (s->frames - TX->lu[i] > 2u || e->tab != bb) { T[46]++; continue; }
+        const uint16_t *px16 = (const uint16_t *)(uintptr_t)e->src, *map2 = (const uint16_t *)(uintptr_t)e->map;
+        const uint16_t *tab = (const uint16_t *)(uintptr_t)e->tab;
+        const uint32_t w = e->w, tr = e->tr;
+        const uint32_t fmt = tr ? GL_RGBA : GL_RGB, typ = tr ? GL_UNSIGNED_SHORT_5_5_5_1 : GL_UNSIGNED_SHORT_5_6_5;
+        uint16_t *const conv = (uint16_t *)A4_GL_READBUF;  /* free after the composite's reads */
+        const uint32_t t0 = a4_ntick();
+        uint32_t tg = 0;
+        gl_bindtex(GL_TEXTURE_2D, s->cache_id[i]);
+        for (uint32_t q = 0; q < e->nr; q++) {
+            const uint32_t r = e->r[q], y0 = r & 0xFFu, nh = ((r >> 8) & 0xFFu) + 1u, a = (r >> 16) & 0xFFu, b = r >> 24;
+            const uint32_t tg0 = a4_ntick();
+            uint16_t *c = conv;
+            for (uint32_t y = y0; y < y0 + nh; y++)     /* tex_upload's own texels: T, or m1_texel where T is not 0 */
+                for (uint32_t x = a, t = y * w + a; x <= b; x++, t++) {
+                    uint32_t t16 = px16[t];
+                    if (t16) t16 = m1_texel(t16, map2[t], tab);
+                    *c++ = tr ? (uint16_t)((t16 & 0xF800) | (((t16 >> 6) & 0x1F) << 6) | ((t16 & 0x1F) << 1) | (px16[t] ? 1u : 0u))
+                              : (uint16_t)t16;
+                }
+            tg += a4_ntick() - tg0;
+            gl_texsubimage(GL_TEXTURE_2D, 0, (int)a, (int)y0, (int)(b - a + 1u), (int)nh, fmt, typ, conv);
+            T[43] += (b - a + 1u) * nh; T[44]++;
+        }
+        T[40]++; T[41] += tg; T[42] += (a4_ntick() - t0) - tg;
+    }
+    L->acc += a4_ntick() - tr0;
+    if (++L->cnt == 32u) {                          /* the pace from the last 32 refreshes' mean (ms, x2 against 3) */
+        const uint32_t m2 = L->acc >> 4;            /* twice the mean */
+        L->every = m2 <= 3u ? 1u : m2 <= 6u ? 2u : m2 <= 12u ? 4u : 8u;
+        L->acc = 0; L->cnt = 0;
+        const uint32_t hi = T[48] >> 16 > L->every ? T[48] >> 16 : L->every;
+        T[48] = L->every | hi << 16;
+    }
+}
+#endif
 /* (Re)make slot i's GL texture from ts: the alpha-map texture (var 2), the mode-1 bake
  * (var 1) or the plain/colour-key one, and record what it was made from. */
 static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t *ts, const uint16_t *m1map, const uint16_t *m1tab, int var)
@@ -4505,6 +4645,9 @@ static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t 
 #endif
     s->cache_m1r[i] = r; s->cache_fr[i] = s->frames;
     s->cache_ck[i] = var == 1 ? m1_sig(map2, tab, r, total) : 0;
+#ifdef A4_M1LIVE
+    m1l_note(s, (uint32_t)i, ts, map2, tab, tr);     /* (map2 0 unless var 1) */
+#endif
     uint32_t am = var == 2 ? ts[11] : 0u;           /* the alpha map is part of what it was made from */
     TX->src[i] = ts[TS_PIX]; TX->wh[i] = ts[1] | (ts[2] << 16);
     TX->hs[i] = tex_hash(px16, total, am); TX->lu[i] = s->frames;
@@ -4585,7 +4728,11 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint16_t *m1
         if (m1 && s->cache_fr[i] != s->frames && (n < M1_BIG || s->frames - s->cache_fr[i] >= M1_BIG_EVERY)) {
             s->cache_fr[i] = s->frames;
             const uint16_t *map2 = m1map, *tab = m1tab;
+#ifdef A4_M1LIVE
+            if (!m1l_has((uint32_t)i) && m1_sig(map2, tab, s->cache_m1r[i], n) != s->cache_ck[i]) {   /* (noted: m1l_refresh's) */
+#else
             if (m1_sig(map2, tab, s->cache_m1r[i], n) != s->cache_ck[i]) {
+#endif
                 uint32_t t0 = a4_ntick();
 #ifdef A4_M1WHERE
                 {   /* bench (round 88, C89's re-bakes): CRK1 [40] re-bakes, [41] the table's address, [42] the surface's,
@@ -11876,6 +12023,9 @@ void a4_gl_flush(void)
       const uint32_t r0_ = A4_PERF[PF_READ], odd_ = s->frames & 1u;
 #endif
       composite_rows(s, s->miny, s->maxy); A4_PERF[PF_COMP] += a4_ntick() - t0;
+#ifdef A4_M1LIVE
+      m1l_refresh(s);                                   /* round 88: the paint's reflection from the frame just composited */
+#endif
 #ifdef A4_PROF2D
 #ifdef A4_PROFSEG
 #error "A4_PROF2D and A4_PROFSEG drive the same gate"

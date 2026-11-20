@@ -157,6 +157,14 @@ if mode == 'timers':
                   'the batch flushed inside the shadow\'s draws %.2f ms a scene (%.2f flushes a scene)'
                   % ((b[12] - a[12]) / max(dp, 1), dp, dp / dn, (b[14] - a[14]) / max(dv, 1), (b[18] - a[18]) / max(dz, 1),
                      (b[16] - a[16]) / dn, (b[17] - a[17]) / dn))
+        if b[64] == 0x324D4954 and b[64 + 45]:       # round 88 (A4_M1LIVE): the paint's reflection after each composite
+            dr = b[104] - a[104]                    # TIM2 [40..47]
+            if dr > 0:
+                print('    the reflection: %d refreshes (%.2f a scene), %.2f ms each making its texels, %.2f uploading them; '
+                      '%.0f texels in %.1f rectangles each; textures noted %d, refreshes skipped %d, dropped %d; '
+                      'the pace every %d composites (at most %d)'
+                      % (dr, dr / dn, (b[105] - a[105]) / dr, (b[106] - a[106]) / dr, (b[107] - a[107]) / dr,
+                         (b[108] - a[108]) / dr, b[109], b[110] - a[110], b[111] - a[111], b[112] & 0xFFFF, b[112] >> 16))
     sys.exit()
 
 if mode in ('lines', 'shadchk', 'gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwhy', 'blurchk'):

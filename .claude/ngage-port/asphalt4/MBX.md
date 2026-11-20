@@ -14385,3 +14385,30 @@ c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no s
 - Phone cost: a take of the player's car now also reads 40 faces' descriptors and copies its corners on 24 vertices
   (a few hundred loads); the bake reads the 40-face and 24-vertex lists once. No measurable change expected; not a
   frame-rate step. Into the next candidate with the reflection work (the owner's "yes").
+
+### The reflection, route 1: the stock arithmetic on the reflective texels (A4_M1LIVE)
+- Why it stood still (read again): m1_sig samples 64 texels of the 65,536 for the big texture -- ~9% reflective, so ~6
+  samples of the table; on uniform sky they never change, so LA and New York never re-baked and Paris re-baked whole
+  (~30 ms) on its hills.
+- **A4_M1LIVE** (a4_gl.c; state at 0x5C3100, the scratch's tail after FRC4; phone counters TIM2 [40..48]): a big
+  mode-1 texture whose table is the 3D surface (the player's paint, mw88) is noted at its bake (tex_make: m1l_note)
+  with the rectangles holding its reflective texels (T and M both non-zero -- the only texels the table changes):
+  each row's first-to-last such texel, rows merged while the rectangle stays under 1.5x their spans and the READBUF
+  (10,240 texels less a padding row), widths made even (rows of whole words, UNPACK_ALIGNMENT 4). After every composite
+  (a4_gl_flush, after composite_rows, before the blur, the flare and the 2D) m1l_refresh makes those rectangles again
+  with tex_upload's own arithmetic (m1_texel, the 5551 form when the texture has zero texels) from the surface just
+  composited and sends only them through glTexSubImage2D; its whole re-bake in tex_index is not run (m1l_has). An entry
+  is dropped when its slot holds anything else; not refreshed when not drawn in the last 2 presents.
+- The source is the composited 3D picture's rows 0-66, one frame before stock's (stock reads the frame being drawn when
+  the car is drawn, so it holds what the table drew before it); sprites drawn after our composite are not in it.
+- Pace (the MBX's cost of a part upload never measured): every 32 refreshes their mean decides -- 1.5 ms or less,
+  every composite; then every 2nd, 4th, 8th. frec3.py timers prints the line ("the reflection: ...").
+- ml / ml2 (C90 + A4_CARANIM + A4_M1LIVE, Instant Play 90 s, night Paris): one refresh a render, **7,618 texels in 4
+  rectangles** (5,830 reflective), 0.75-0.9 ms making them and 0.8-0.9 uploading on the model (which overstates
+  streaming ~3x); the pace stayed 1. Pictures (EKA2L1_POSTDUMP, every 20th render of each run's race, the car's rear):
+  **stock (the untouched game) and A4_M1LIVE show the rear window taking the scene's top -- green-yellow under trees,
+  dark teal otherwise, changing render to render; C90 shows the same teal in every render.**
+- Route 2 (the GPU mimic) not built: route 1 is the stock arithmetic itself, and its one unknown -- the MBX driver's
+  cost for a 15 KB part upload a render -- is what the next phone round's TIM2 [40..48] measures (the pace bounds
+  it meanwhile). The mimic's own unknown, a mid-frame glCopyTexSubImage2D, cannot be benched: the emulator's HLE GLES
+  does not implement it (dispatch/src/register.cpp, commented out). It stays the fallback if the phone's upload is slow.

@@ -132,6 +132,8 @@ assert '-DA4_LINEREC' not in _xf or ('-DA4_FRC3' in _xf and GL_SCRATCH + GL_SCRA
     'A4_LINEREC: written with FRC3\'s blocks, its ring at 0x5BA000, the stream\'s row edges at 0x5BB000-0x5C0280 -- A4_SCRATCH_SIZE must be 0x1C0000 or more'
 assert '-DA4_BLURCHECK' not in _xf or ('-DA4_NITROBLUR' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5E9800), \
     'A4_BLURCHECK: its copy of the screen at 0x5C4000-0x5E9800 -- A4_SCRATCH_SIZE must be 0x1E9000 or more'
+assert '-DA4_M1LIVE' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5C3958, \
+    'A4_M1LIVE: its state at 0x5C3100-0x5C3958 after FRC4 -- A4_SCRATCH_SIZE must be 0x1C3000 or more'
 assert '-DA4_FRC4' not in _xf or ('-DA4_PHTIMERS' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5C3100), \
     'A4_FRC4: its ring and snapshot at 0x5C1000-0x5C3070 with A4_PHTIMERS -- A4_SCRATCH_SIZE must be 0x1C3000 or more'
 assert '-DA4_WRECKFRAC' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5B0300, \
