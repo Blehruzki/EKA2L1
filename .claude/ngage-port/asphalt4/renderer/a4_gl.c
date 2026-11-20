@@ -6068,8 +6068,17 @@ typedef int16_t __attribute__((may_alias)) go_s16;
 #define GOS16(a) (*(const volatile go_s16 *)(uintptr_t)(a))
 #define GOBJ_BASE  0x00464000u
 #define GOBJ_NI    192u                     /* objects a frame */
+#ifdef A4_GOBJNG
+/* Round 87 (phone round r86c, Montmartre: every mesh refusal on the phone, 2,317 by mark 4, a mesh of more than 12
+ * texture groups; bench A4_NGWHY: 13-19 groups, ~16 on average, 134-152 faces, every texture plain): GOBJ_NG groups
+ * a mesh, the meshes held fewer so the records fit (36 + 5 x NG bytes) under the hash; the take refuses an object
+ * whose groups would pass the flush's GOBJ_NE (the game draws it) instead of the flush dropping them */
+#define GOBJ_NM    1440u
+#define GOBJ_NG    (A4_GOBJNG)
+#else
 #define GOBJ_NM    2048u                    /* distinct meshes held (a 120 s race: 910, 45.5k corners) */
 #define GOBJ_NG    12u                      /* texture groups a mesh */
+#endif
 #define GOBJ_NH    4096u                    /* the meshes' hash (uint16 index + 1, linear probing) */
 #define GOBJ_HASH  0x00497000u
 #define GOBJ_BND   0x00499000u              /* round 71: each mesh's bounds in its own frame, int16 x y z lo, x y z hi */
@@ -6101,11 +6110,16 @@ struct gstate {
     uint32_t carlate;                       /* round 86: the early car take's verdict for the late one (a4_car_early) */
     uint32_t refused_near;                  /* nearer than the GPU's near plane in part: the game draws it */
     uint32_t cpchk, cpdiff;                 /* bench (A4_GOBJCOPYCHECK): chunks of the ARMv6 copy checked, words differing */
+#ifdef A4_GOBJNG
+    uint32_t ngsum;                         /* round 87: the frame's items' groups (the flush draws GOBJ_NE) */
+#endif
     int32_t R[9], T[3], o[3];               /* the frame's: the camera's rotation, the translation at o, the origin */
     struct gitem it[GOBJ_NI];
 };
 #define GOBJ ((volatile struct gstate *)GOBJ_BASE)
 #define GMESH ((struct gmesh *)0x00467000u)
+_Static_assert(0x00467000u + GOBJ_NM * sizeof(struct gmesh) <= GOBJ_HASH, "the meshes under the hash");
+_Static_assert(GOBJ_NG <= 64u && GOBJ_NM < 65535u, "a group index in a ref's low byte, a mesh in the hash's uint16");
 #define GBND  ((int16_t (*)[6])GOBJ_BND)
 _Static_assert(GOBJ_BND + GOBJ_NM * 12u <= GOBJ_ARENA, "the objects' bounds under the arena");
 _Static_assert(GOBJ_BASE + sizeof(struct gstate) <= 0x00467000u, "the objects' items");
@@ -6374,6 +6388,9 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
         /* no objects for 64 frames (a menu, a load): the next race's data may sit where this one's did */
         if (s->frames - g->frame > 64u && g->nmesh) { g->full = 1; g->gaps++; }
         g->frame = s->frames; g->n = 0; g->drawn = 0;
+#ifdef A4_GOBJNG
+        g->ngsum = 0;
+#endif
         if (g->full) { gobj_clear(g); g->resets++; }
     }
     if (g->drawn || g->n >= GOBJ_NI) { g->refused_drawn++; return 0; }
@@ -6452,6 +6469,9 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
     const int64_t dx = (int64_t)px - g->o[0], dy = (int64_t)py - g->o[1], dz = (int64_t)pz - g->o[2];
     const int64_t lim = 32767 - (int64_t)me->ext;
     if (dx > lim || dx < -lim || dy > lim || dy < -lim || dz > lim || dz < -lim) { g->refused_range++; return 0; }
+#ifdef A4_GOBJNG
+    if (g->ngsum + me->ng > GOBJ_NE) { g->refused_drawn++; return 0; }   /* the flush would leave its groups undrawn */
+#endif
     volatile struct gitem *it = &g->it[g->n++];
     it->mesh = (uint32_t)(uintptr_t)me; it->textab = textab;
     it->d[0] = (int32_t)dx; it->d[1] = (int32_t)dy; it->d[2] = (int32_t)dz;
@@ -6470,6 +6490,9 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
         }
     }
     g->F = GO32(cam + 4u);
+#ifdef A4_GOBJNG
+    g->ngsum += me->ng;
+#endif
     g->taken++;
     return 1;
 }
@@ -6843,6 +6866,9 @@ static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t fac
     if (g->frame != s->frames) {                           /* the frame's first object or car: as a4_obj_take */
         if (s->frames - g->frame > 64u && g->nmesh) { g->full = 1; g->gaps++; }
         g->frame = s->frames; g->n = 0; g->drawn = 0;
+#ifdef A4_GOBJNG
+        g->ngsum = 0;
+#endif
         if (g->full) { gobj_clear(g); g->resets++; }
     }
     if (c->frame != s->frames) { c->frame = s->frames; c->n = 0; }
@@ -9142,6 +9168,15 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     /* every 4th call timed (NTickCount is 1 ms: summed over many calls the count of ticks
      * crossed is an unbiased measure of the time inside), x4 */
     int r;
+#ifdef A4_FRC4
+    /* round 87: the frame's first triangle carries the objects', cars' and list's draws -- timed exactly, not one
+     * frame in four x 4 (a render's own hook time, FRC4, was dominated by that sampling) */
+    if (((volatile struct glr *)A4_GL_SCRATCH)->prims == 0 && ((volatile struct glr *)A4_GL_SCRATCH)->up == A4_GL_MAGIC) {
+        uint32_t t0 = a4_ntick();
+        r = draw_prim_take(gctx, desc, flags);
+        A4_PERF[PF_HOOK] += a4_ntick() - t0;
+    } else
+#endif
     if ((++A4_PERF[PF_HOOKN] & 3u) == 0 && ((volatile struct glr *)A4_GL_SCRATCH)->up == A4_GL_MAGIC) {
         uint32_t t0 = a4_ntick();
         r = draw_prim_take(gctx, desc, flags);

@@ -292,10 +292,11 @@ if mode == 'gob':
     mg, size, frames, _ = struct.unpack_from('<4I', d, g)
     print('%s: %s %d, GOB1 %08x size %d frame %d' % (info['fn'], 'mark' if info['mark'] else 'ring', info['idx'], mg, size, frames))
     # round 86b added carlate after gaps: struct gstate's head is 47 words from then (size 6,332), 46 before (6,328)
-    hw = 47 if size >= 188 + 192 * 32 else 46
+    # round 87 (A4_GOBJNG) adds ngsum after cpdiff: 48 head words (R, T, o included), 6,336
+    hw = (size - 192 * 32) // 4
     st = struct.unpack_from('<%dI' % hw, d, g + 16)
     names = ('magic frame n drawn F nmesh aused taken r_mode r_tex r_far r_full built frames_drawn draws calls r_off r_drawn r_mesh full resets peak batches r_rot r_range r_moved stale gaps '
-             + ('carlate ' if hw == 47 else '') + 'r_near cpchk cpdiff').split()
+             + ('carlate ' if hw >= 47 else '') + 'r_near cpchk cpdiff' + (' ngsum' if hw >= 48 else '')).split()
     print(' '.join('%s=%d' % (k, v) for k, v in zip(names[1:], st[1:len(names)])))
     n = st[2]; items = []
     for k in range(min(n, 192)):
