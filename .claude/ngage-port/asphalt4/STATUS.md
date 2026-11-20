@@ -100,7 +100,30 @@ check build comparing against the game's own result where possible), log it, upd
 | 4/6. the alpha copies left below the sky | dropped | | ~none left under the GPU sky, Montmartre included |
 | 3'. the shadow's per-face path (A4_SHADFAST), C90 | done, bench | ~0.2 ms a render on the model | exact: 190,026 faces, 0 records differing; the "6.6 ms" was mostly the table's batch flush timed inside it |
 | r89a (C89) | battery passed, not sent | | superseded by r90a |
-| r90a (C90 = C89 + A4_SHADFAST) | battery passed, Rule 4 written | Paris 400 s by segment vs r87a's run: 3-10 ms a render lower through Montmartre and after | awaiting the owner's go |
+| r90a (C90 = C89 + A4_SHADFAST) | battery passed, not sent | Paris 400 s by segment vs r87a's run: 3-10 ms a render lower through Montmartre and after | the kept version without probes |
+| **r90b (C91 = C90 + A4_RESTTIME)** | **sent** (round 88) | as r90a | the phone round reads the post, the convert, the shadow's nested flush |
+
+## Versions kept (the owner, round 88: "keep track of this version and the redesign one ... I don't want to lose this one")
+
+The incremental line ends here as **r90**; any redesign is a separate line and must never cost it.
+
+| version | flags | what | sha256 (unbaked) | bytes |
+|---|---|---|---|---|
+| **r90b** (sent in round 88) | flags/C91.flags | C90 + A4_RESTTIME (phone timers for the post, the convert, the shadow's nested flushes) | 93391d95d55aa6e2e34e5481203b7a75ca8f13e6f0b30b53c1cd0149180bbb2a | 1,006,472 |
+| r90a | flags/C90.flags | the same without those timers | 6ebb8ba608ae307b06ae7f46de64422ea28b7cdb54fba480c5efd70d70bf8f36 | 1,004,860 |
+
+- **Tree**: commit `7fe92d3b42dfa3b8b859aca8611057dcc35d5992` on the fork's `ngage-port` (both build from it; the branch
+  is never rewritten). `git checkout 7fe92d3` gives the exact sources.
+- **Recipe** (from `.claude/ngage-port/asphalt4`): `A4_THIRDSTEP=1 A4_SCRATCH_SIZE=0x1C3000 A4_EXTRA_CFLAGS="$(cat
+  flags/C91.flags)" python3 tools/injector.py <baseline> a4_r90b.exe --gl --capture` (C90.flags for r90a). Toolchain:
+  clang/ld.lld/llvm-objcopy as the injector calls them; the emulator for the bench from this repository.
+- **Inputs not in git** (the owner's, from the handoff zip): the baseline `asphalt4_ngi.exe` sha256
+  4baef63ac70f7a46c08689dc614d0ce3b752298d495241aca01145d111b2aa06 (765,940 bytes; the injector refuses the pristine
+  image); the guard DLL and make_loader_hashes.py -- the owner bakes every phone build.
+- **The guarantee**: every redesign change goes behind its own flags; after each redesign commit C90 and C91 are
+  rebuilt and must give the bytes above (sha256), and that check is logged in MBX.md. If a redesign ever has to
+  touch shared code in a way that changes them, it goes on a branch of its own instead (the owner's OK first).
+- The record of how r90 was reached: MBX.md rounds 84-88; this file's tables above.
 
 ## Where things are
 

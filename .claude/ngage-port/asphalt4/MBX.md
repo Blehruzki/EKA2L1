@@ -14222,3 +14222,36 @@ c. State the bench did not enter: a shadow face in a frame whose list drew nothi
    cover test alike, by the same test); a batch flush inside a bucket with the cover state changed by it (the check
    build flushed first so both paths saw one state; the dedicated path flushes exactly where lean_tail_cv did).
    Entered: all six maps, Montmartre, the ring wrapped, marks, boosts.
+
+### r90b: the probes added (the owner: "add them") and the version kept
+- Probe 1 (the read-back's wait against its copy) needed no code: r87a's TIM2 already splits it -- the first strip
+  5.23 ms a composite (the MBX's tile render plus one strip), the other 14 1.83: **~5.1 ms waiting for the GPU, ~2.0
+  copying.**
+- Probe 3 as proposed (round 57's A4_IDLECEN, a lowest-priority counting thread) would read 0 on the phone as it did
+  on the bench: the runtime's yield spins, the ARM never idles (round 57). Replaced by timing what the unnamed ~8.5 ms
+  can hold that our code reaches: **A4_RESTTIME** (phone; a4_gl.c, a4_tramp.s, frec3.py timers): the framework's
+  post timed through round 56's timed trampoline path (CRK1 [12] ticks, [13] posts), our convert ([14], [15]) and its
+  RWindowBase::Size calls -- 3-4 window-server round trips a post, as the runtime's own convert makes ([18], [19]);
+  probe 2, the table's batch flushed inside the shadow's draws ([16] ticks, [17] flushes). C91 = C90 + A4_RESTTIME.
+- r90b = C91: a4_r90b_cand.exe, 1,006,472 bytes, sha256 93391d95d55aa6e2... (STATUS.md "Versions kept": the tree
+  7fe92d3, the recipe, the baseline's hash). C90 still rebuilds to r90a's bytes.
+- at90b (six maps 45 s): framestat 5,624, the boot fault only; m1_rebakes 0. The new timers in the race stretches:
+  the post 1.3-1.9 ms a post, one a scene (five a scene over stretches that include menus), our convert 1.0-1.2 of it,
+  its window-size calls 0.01-0.05 (the bench's window server is the host's); **the batch flushed inside the shadow's
+  draws 2.5-5.0 ms a scene, 0.67-1.0 flushes a scene** -- nearly all of that timer on the model.
+- m90b (Instant Play 300 s, 7 marks): framestat 2,379, the boot fault only; FRC4 on 1,934 renders; renders under 60
+  ms 37.7 ms (m90a 36.8: the runs' spread).
+- pa90b (Paris 400 s): the boot fault only; through Montmartre again (segments 30-69 45.0-50.1 ms a render, 70-130
+  34.8-45.5).
+
+Rule 4, before r90b goes out (r90a's answers stand; for A4_RESTTIME):
+a. Guesses: none in what the build does -- the timers only read the tick and add. Their reading is the guess: that
+   "the post" holds the window server's Update and pacing timer (the unlock's, round 56), so post less convert is
+   that round trip.
+b. Read back: the trampoline's timed path (round 56's, its stack and return as recorded: +6B6 pops, nothing read --
+   now in a phone build for the first time since rb55/56, which ran it on the phone); a4_fw_hold's start word (CRK1
+   [61], free); a4_fw_done's sum; the cvt_fast wrapper (the body renamed, the vtable takes the wrapper: the symbol
+   file shows cvt_fast at +D0000); the size calls' bracket; the flush's ticks; CRK1 [12..19] and [61] used nowhere
+   else (every crk_get index in the tree listed).
+c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no sum -- a4_fw_done is not called then);
+   the tick wrapping inside a post (unsigned difference, as every timer).
