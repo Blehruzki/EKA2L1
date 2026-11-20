@@ -608,7 +608,7 @@ static inline volatile uint32_t *crk_get(void)
  * the composite's rows go into a drawn-mask, a bit a pixel (0x460000, 240 rows of 10 words); after the composite
  * each noted triangle's pixels (centres inside, corners doubled, exact in 64 bits) are counted against it -- CRK1
  * [40] composites, [41] alpha triangles, [42] their pixels, [43] of them the GPU left undrawn (where the copy
- * shows), [44] alpha triangles with any such pixel; [45] additive triangles, [46] pixels, [47] undrawn */
+ * shows), [44] alpha triangles with any such pixel, [47] their pixels; [45] additive triangles, [46] pixels */
 #define BLM ((volatile uint32_t *)0x00460000u)
 #define BLN (*(volatile uint32_t *)0x00462600u)
 #define BLT ((volatile int16_t *)0x00462604u)
@@ -667,8 +667,8 @@ static void blend_census(void)
                     pix++;
                     if (!((BLM[(uint32_t)y * (VP_W / 32u) + ((uint32_t)x >> 5)] >> ((uint32_t)x & 31u)) & 1u)) und++;
                 }
-        if (al) { C[41]++; C[42] += pix; C[43] += und; if (und) C[44]++; }
-        else    { C[45]++; C[46] += pix; C[47] += und; }
+        if (al) { C[41]++; C[42] += pix; C[43] += und; if (und) { C[44]++; C[47] += pix; } }   /* [47]: those triangles' pixels */
+        else    { C[45]++; C[46] += pix; }
     }
     blend_reset();
 }
@@ -5140,6 +5140,7 @@ struct skys {
     uint32_t nrun, lr[3], dst[3], src[3], n[3], rows[3], sst[3];   /* a run of band rows per memmove site */
     uint32_t tex, tw2, th2, tpix, twh, thash;  /* the sky texture: its GL name, size (log2), what it holds */
     uint32_t p0;                               /* the frame's prims once its start (backdrop, list) is drawn */
+    uint32_t bb2f, bb2n;                       /* round 88: the frame of the last +3059E call, calls seen */
 };
 #define SKYS ((volatile struct skys *)0x00412840u)
 _Static_assert(0x00412840u + sizeof(struct skys) <= 0x00412A00u, "the sky record past its block (A4_PERF at 0x412C00)");
@@ -5153,6 +5154,9 @@ static inline uint32_t sky_rows(volatile struct glr *s) { return SKYS->state == 
 static void sky_check_expect(int32_t y0, int32_t y1)
 {
     volatile uint32_t *m = (volatile uint32_t *)0x00460000u + VP_H + 1;
+#ifdef A4_SKYCHECK_MARGIN
+    y0 -= (A4_SKYCHECK_MARGIN); y1 += (A4_SKYCHECK_MARGIN);   /* bench: are the rows left over a row or two off? */
+#endif
     if (y0 < 0) y0 = 0;
     if (y1 > VP_H - 1) y1 = VP_H - 1;
     for (int32_t y = y0; y <= y1; y++) m[y >> 5] |= 1u << (y & 31);
@@ -5278,11 +5282,29 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
                 w[23] = tsaddr;
                 U[1]++;
             }
+#ifdef A4_GPUSKY
+            /* round 88: a blended triangle's pieces each say whether software's copy is needed (one reaching below
+             * the GPU's backdrop); within it, the GPU's alone -- as an uncut triangle (to round 87 always copied) */
+            int r = 1;
+#else
             int r = (kind == KIND_ADD || kind == KIND_ALPHA) ? 0 : 1;
+#endif
             for (int k = 1; k + 1 < n; k++) {
                 const struct clipv f[3] = { o[0], o[k], o[k + 1] };
                 if (!lean_tail_cv(s, gctx, desc, kind, m1, tsaddr, f)) r = 0;
             }
+#if defined(A4_GPUSKY) && defined(A4_SKYCHECK)
+            if (!r && (kind == KIND_ADD || kind == KIND_ALPHA)) {   /* bench: software's copy is the whole triangle */
+                const uint32_t *a = (const uint32_t *)desc[3], *b = (const uint32_t *)desc[6], *c = (const uint32_t *)desc[9];
+                int32_t y0 = (int16_t)(int32_t)a[1], y1 = y0;
+                const int32_t yb = (int16_t)(int32_t)b[1], yc = (int16_t)(int32_t)c[1];
+                if (yb < y0) y0 = yb;
+                if (yb > y1) y1 = yb;
+                if (yc < y0) y0 = yc;
+                if (yc > y1) y1 = yc;
+                sky_check_expect(y0, y1);
+            }
+#endif
             return r;
         }
     }
@@ -8263,6 +8285,10 @@ static void sky_decide(const uint32_t *rsp)
 #ifdef A4_ABCYCLE14
     else if (!(s->fmode & AB_GPUSKY)) why = 7;                                 /* this window's baseline */
 #endif
+    /* round 88: +3059E (Dubai's sun and its flare) is drawn by software under the GPU's picture, where only the sky
+     * shows it -- under the GPU's own sky it would be hidden: the sky stays software for 128 frames after a call
+     * (the first frame of a sun coming into view still loses it) */
+    else if (k->bb2n && s->frames - k->bb2f < 128u) why = 8;
     k->why = why;
     k->state = why ? SK_SW : SK_REC;
     if (why) SKYCK2[68]++;
@@ -8438,7 +8464,10 @@ static void sky_check_begin(volatile struct skys *k)
         for (int x = 0; x < 32; x++) hs = (hs ^ fb[(i / 10) * VP_W + (i % 10) * 32 + x]) * 16777619u;
         ((volatile uint32_t *)0x00461000u)[i] = hs;
     }
-    ((volatile uint32_t *)0x00460400u)[0] = (ck[50] & 15u) == 0u;
+#ifndef A4_SKYTRACE_EVERY
+#define A4_SKYTRACE_EVERY 16u                      /* bench: trace one checked frame in this many (1: every one) */
+#endif
+    ((volatile uint32_t *)0x00460400u)[0] = (ck[50] % (A4_SKYTRACE_EVERY)) == 0u;
     ((volatile uint32_t *)0x00460400u)[2] = 0;
 #endif
 }
@@ -10030,6 +10059,10 @@ int a4_gl_fill(const uint32_t *f)
 void a4_gl_bb2(void)
 {
     if (((volatile struct glr *)A4_GL_SCRATCH)->up == A4_GL_MAGIC) A4_PERF[PF_BB2]++;
+#ifdef A4_GPUSKY
+    {   volatile struct glr *s_ = (volatile struct glr *)A4_GL_SCRATCH;
+        SKYS->bb2f = s_->frames; SKYS->bb2n++; }
+#endif
 #if defined(A4_IMM) && defined(A4_BB2FLUSH)
     a4_gl_flush();
 #endif
@@ -11421,12 +11454,18 @@ static inline void blur_px(uint16_t *p, uint32_t q, uint32_t k) /* p toward q by
 void a4_blur_row(uint16_t *p6, uint16_t *p7, uint16_t *p5, uint16_t *p4, const uint8_t *kbuf, uint32_t cols,
                  uint32_t w2, uint32_t odd);   /* a4_px.s: one row's pixels, the strengths given */
 /* the blur's distance table (0x460000-0x464000: free in a phone build; the bench's censuses there are excluded) */
-#if defined(A4_BLENDCEN) || defined(A4_SKYCEN) || defined(A4_SKYCHECK) || defined(A4_SKYTRACE) || defined(A4_MESHMEMO) \
+#if defined(A4_BLENDCEN) || defined(A4_SKYCEN) || defined(A4_MESHMEMO) \
     || defined(A4_LIFTCHECK) || defined(A4_BBCHECK) || defined(A4_MEMOCHECK) || defined(A4_PAINTCHECK_BIG) || defined(A4_CECHECK)
 #error "A4_NITROBLUR keeps its distance table at 0x460000, which these bench switches use"
 #endif
+#if defined(A4_SKYCHECK) || defined(A4_SKYTRACE)
+/* bench: the sky check's row hashes are at 0x460000 -- the table past the scratch's usual end instead */
+#define BLS_HDR   ((volatile uint32_t *)0x005C4000u)
+#define BLS_TAB   ((uint8_t *)0x005C4010u)
+#else
 #define BLS_HDR   ((volatile uint32_t *)0x00460000u)
 #define BLS_TAB   ((uint8_t *)0x00460010u)
+#endif
 #define BLS_BYTES (0x4000u - 0x10u)
 #ifndef A4_BLURC
 /* the row's strengths in C (the square roots: one a row, then one a column with bit 3 set), its pixels in ARM code

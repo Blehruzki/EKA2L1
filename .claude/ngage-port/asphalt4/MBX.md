@@ -13913,3 +13913,70 @@ this log keeps every run. No phone round until the program's gains are in.
   its 5 s stats showed the lag at most 9 ms, so it is local); the profile counts the model's cycles -- the phone's
   measure. Trusted: the profile. **Step 1: ~8.5 ms off a boosted render at full strength on the model, the blur
   seen again, exact.**
+
+### Step 2: the whole frame by cycles (RE 2 and RE 4 read off one profile)
+
+- pf88 (C88 + A4_PROFSEG 0..4095: the gate open from the first race render; Instant Play = night Paris, 240 s;
+  4e9 instructions after 2e9; framestat 1,733; renders ~48.5 ms; ~557 renders in the window), cycles a render on
+  the model: **the blended classes' software copies 8.0 ms** (+33EA8, the alpha span, 7.1; +33D18, +2E56C,
+  +2F358), our draw path in the table 7.0 (lean_tail_cv 2.2, batch_draw 1.5, tex_index 0.5, ...), the scene before
+  the table 5.8 (engi_349F8 1.5, a4_shadow_insert 1.1, the inserts, the objects' take and box), the composite 5.6
+  (a4_comp_row 3.7, a4_gl_flush 1.9), the present's convert 5.0 (a4_cvt565_run -- memory-bound on the model; the
+  phone's whole present is 2.5), **the billboards' software blit 4.6** (bb_row2 3.5: the lifted +3015E's mode-2 row),
+  the HUD painter 2.4, the game's own walk of the table 0.7, logic 0.6, other 8.9 (kernel/HLE 1.8, +49480 1.1,
+  +52E44 0.6, +522A4 0.5, memclr 0.4, the minimap +26E28 0.3, ...).
+- **RE 4 answered: "the game's own walk of the table" on the phone (6-9 ms) is mostly the software copies, not the
+  walk** (0.7 ms). The owner's Paris is the night one (mark 0's frame).
+- **The additive billboards are drawn twice too**: a4_gl_bb queues the GPU quad and returns 0 for modes 2/3 (only
+  mode 0 returns 1), so the software blit runs as well -- bb_row2 is that copy; its glow shows only where the GPU
+  drew nothing, as the blended triangles' copies.
+- bc88 (C87 + A4_BLENDCEN, the census extended: [47] the pixels of alpha triangles with any undrawn pixel; Instant
+  Play 150 s, marks 60/100/140; framestat 1,079): **night Paris ~10.8k alpha-copy pixels a composite, 36.6% of them
+  undrawn by the GPU (day Paris 16-18%); 60% of the triangles have an undrawn pixel and hold 83% of the pixels.** So
+  skipping whole triangles saves ~17% of the span's work; per span (a row segment) more, per pixel at most ~63%.
+- The way that removes both copies where they are not needed: **A4_GPUSKY (round 54)** -- the sky on the GPU,
+  pixel-exact then (g54c: 0 of 1,583 frames differing); within the backdrop's rows the GPU's picture covers every
+  pixel, so blended triangles and additive billboards there need no software copy (the GPU's blend, as on the rest
+  of the screen). Shelved in round 55 for no gain in LA (~29 blended triangles a frame) and an unaccounted writer
+  in the backdrop's rows between the last triangle and the HUD (g54t2) -- **that writer was the nitro blur** (the
+  bench car held 5, nitro; +1054C runs exactly there, over most of the screen), which step 1 moved after the
+  composite. It still builds on C88 (the five sites found). gk88 (C87 + A4_GPUSKY + A4_SKYCHECK: the backdrop read
+  back against the routine's own stores, the rows hashed at the first triangle and at the composite) running.
+- gk88 (C87 + A4_GPUSKY + A4_SKYCHECK, Instant Play 120 s; framestat 962, the boot fault only; tools/skychk.py,
+  new: the census block after the framebuffer): 466 frames with the GPU's backdrop, 33 software (the start); **0
+  backdrop pixels differing from the routine's own stores**, 0 without the drawn mask; one composite forced by a
+  triangle; **rows software changed between the first triangle and the composite: 332 in 39 frames.**
+- gk88b (C88 + the same; the blur's table moved to 0x5C4000 under A4_SKYCHECK / A4_SKYTRACE, whose row hashes hold
+  0x460000; scratch 0x1C8000 for the check; 150 s, framestat 1,143): 676 frames, 0 pixels differing; **rows changed
+  1,253 in 87 frames** -- with the blur after the composite, so not (only) the blur. gk88c (+ A4_SKYTRACE: the rows
+  hashed again at every hook in every 16th checked frame, the change pinned between two hooks) running.
+- gk88c (+ A4_SKYTRACE, one checked frame in 16 traced; 150 s, framestat 701): 236 frames, 0 pixels differing, rows
+  changed 347 in 18 frames; the ~15 traced frames caught none. gk88d (A4_SKYTRACE_EVERY=1, new: every checked frame
+  traced): the bench at ~1 fps, the race barely begun, the captures cut mid-write by the kill -- nothing read.
+- Not the writer: +3059E (the two-scale sprite Dubai's sun uses, left to software under the GPU's picture since
+  round 84) -- 0 calls in night Paris on the bench and on the phone (r87a's headers); its one software billboard a
+  render comes after the composite. **But in Dubai the GPU sky would cover that sun**: +3059E reproduced on the GPU,
+  or the sky kept in software in a frame that calls it -- open before the sky can ship.
+- Candidates for the rows, both harmless (copies the GPU draws as well): a blended triangle cut by A4_CLIPG keeps its
+  software copy whole while only its pieces' rows are marked as expected; and the rows marked for copies reaching
+  below the band come from the projected rows, which can be a row off the game's rasterizer's. To pin down after the
+  cost: pf88s (C88 + A4_GPUSKY + the profile gate, the same 240 s night race as pf88) running.
+- pf88s (C88 + A4_GPUSKY, the same night race and gate as pf88; framestat 1,992): no profile (the 6e9 gated
+  instructions not reached in 240 s -- the frames got cheaper), but its FRC4 reads: **by segment, the same stretch:
+  100-109 53.5 -> 48.0 ms a render, 110-119 47.2 -> 41.6, 120-129 48.6 -> 42.0 -- ~6 ms (~12%) a render less with the
+  GPU's sky** (the blended triangles' and additive billboards' software copies within the backdrop's rows gone).
+- The clipped path fixed under A4_GPUSKY (lean_tail: a blended triangle cut by A4_CLIPG had started from "copy" and
+  kept its software copy whatever its pieces said; now each piece says, as an uncut triangle does; under
+  A4_SKYCHECK its whole rows are marked as expected when it is copied). gk88e (the check with it) running.
+- gk88e (the clipped fix; 150 s, framestat 1,119): 576 frames, 0 pixels differing; **rows changed 612 in 44 frames**
+  (gk88b 1,253 in 87) -- halved, not gone.
+- **Dubai's sun under the GPU sky** (a4_gl_bb2 / sky_decide): +3059E's calls are noted (struct skys bb2f, bb2n), and
+  the sky stays software for 128 frames after one (why 8); only the first frame of a sun coming into view still
+  loses it. To check in Dubai.
+- gk88f (A4_SKYCHECK_MARGIN=2, bench: the expected copies' rows widened by two each way -- is what is left a row or
+  two off the rasterizer's?) running.
+- gk88f (margin 2; framestat ~2,100): 678 frames, 0 differing, **rows changed 1,018 in 72 frames -- not a row or two
+  off the expected copies: another software writer in the backdrop's rows during the 3D pass.** If it is something
+  the GPU does not draw (particles, lines), the GPU's sky would hide it. ww88 (C88 + A4_GPUSKY, no check: the
+  routine's stores skipped; EKA2L1_WATCH on screen row 100 of the surface -- 0xE0E9C0 on the bench, the captures'
+  bb -- narrowed to game code 0x70000000-0x700B9E48) running.

@@ -255,8 +255,8 @@ if mode in ('lines', 'shadchk', 'gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwh
                 print('  meshes of more than 12 groups (bench): refusals %d, groups %.1f each (most %d), faces %.1f each; every texture plain %d; groups <= 16: %d, <= 24: %d, <= 32: %d'
                       % (c[40], c[41] / max(c[40], 1), c[42], c[43] / max(c[40], 1), c[44], c[45], c[46], c[47]))
             elif mode == 'blendcen':  # round 86, bench A4_BLENDCEN: [40..47] are its
-                print('  blended copies (bench): composites %d; alpha triangles %d, pixels %d, undrawn by the GPU %d (%.1f%%), triangles with any %d (%.1f%%); additive %d, pixels %d, undrawn %d'
-                      % (c[40], c[41], c[42], c[43], 100.0 * c[43] / max(c[42], 1), c[44], 100.0 * c[44] / max(c[41], 1), c[45], c[46], c[47]))
+                print('  blended copies (bench): composites %d; alpha triangles %d, pixels %d, undrawn by the GPU %d (%.1f%%), triangles with any %d (%.1f%%) holding %d pixels (%.1f%%); additive %d, pixels %d'
+                      % (c[40], c[41], c[42], c[43], 100.0 * c[43] / max(c[42], 1), c[44], 100.0 * c[44] / max(c[41], 1), c[47], 100.0 * c[47] / max(c[42], 1), c[45], c[46]))
             elif mode == 'objwhy':    # round 86, bench A4_OBJWHY: [40..47] are its
                 print('  object refusals (bench): texture none %d, +0x28 != 0xFF %d, alpha map %d, > 1024 %d (their faces %d); mode %d; mesh %d (> 12 groups %d)' % (c[40], c[41], c[42], c[43], c[47], c[44], c[45], c[46]))
             elif mode == 'gobjchk':   # round 86, bench A4_GOBJ86CHECK: [40..43] are its
