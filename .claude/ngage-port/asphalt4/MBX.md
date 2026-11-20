@@ -14262,3 +14262,24 @@ c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no s
 - **Correction to my reply of this round** ("route B is the only lever that size"): rounds 55-57 measured it on the
   phone -- eglSwapBuffers 12.0 ms a frame at swap interval 1 and 0 alike, about what it removes (~12-13 ms) -- and
   round 57 closed it. Put to the owner with the alternatives before any redesign starts.
+
+### Phone round r90b (the owner: "I raced two times in Paris ... Montmartre has improved. still a bit of framedropping, but better than previous rounds. Will play on other maps")
+- Upload: 8 ring captures + 4 marks, Paris, two races (up90b/). FRC4 on 2,389 renders (r87a: 1,868).
+- **Against r87a, all renders**: under 60 ms 67% (r87a 47%), 75 ms or more 3.7% (9.9%); renders under 60 ms 47.1 ms
+  (52.9). The game's own part of the 3D pass (game3d) 5.7 / 7.7 / 6.8 ms in the three classes (7.8 / 15.1 / 26.7): the
+  copies gone. By segment (10s, all renders): Montmartre 30-99 49.1-66.6 ms (r87a 59.5-68.1); 75 ms or more 40-49 13.3%
+  (27.8), 60-69 10.2% (24.4), 80-89 9.2% (16.8), 100-119 0-1% (29-37).
+- **Boosts** (the blur now after the composite, in the 2D phase): 36% of r90b's renders boosted (2D >= 7 ms) -- 60.0 ms
+  a render against 51.0 unboosted, the 2D 11.4 against 3.0: **our blur ~8.4 ms a boosted render on the phone** (the
+  game's was ~17: the saving held, ~8.6). The model's 6.7 under-read it; at 36% of renders it averages ~3 ms a render.
+- **The new timers (A4_RESTTIME)**: the post 2.6-3.8 ms a post (one a scene in races), our convert 2.4-2.8 of it, its
+  window-size calls ~0.1, the rest of the post (lock, Update, pacing) 0.3-1.2. The batch flushed inside the shadow's
+  draws ~3 ms a scene (0.6-0.9 flushes): the shadow's own ~0.5-1.5 ms. So the unnamed part of "rest" is ~4 ms now (14.4
+  less logic 2.7, walk 1.4, cars 0.3, shadow insert 1.4, +31A26/50 1.5, the post ~2.8).
+- The read-back: the first strip 5.5-6.7 ms a composite, the rest 1.7-2.0 -- the GPU's tile render ~5-6 ms waited for.
+- **Hitches: the cars' flush at ~30 ms in 48 renders (2.0%; r87a 10, 0.5%)** -- the size of the paint texture's
+  re-bake (256 x 256, 128 KB through glTexSubImage2D at the MBX's ~4 KB/ms). m1_rebakes 59 -> 151 over the session
+  (one every ~180 frames; r87a one every ~1,200), at segments 20-95, in runs (63-66: every second render, the
+  M1_BIG_EVERY gate's pace). Not after boosts (28 of 48 against ~47 by chance). The bench never re-bakes (its route
+  and camera); cause not yet named: the paint's table is the screen's rows 0-66 -- rows below the sky band hold the
+  last frame's picture, which the stock game reads too.
