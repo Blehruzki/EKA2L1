@@ -14440,3 +14440,34 @@ c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no s
   **174,914 calls compared, 0 differing, 0 pixels, 0 clip words**; through the new loops 48,950 (paletted) and 96,556
   (alpha plane), 29,021 others; 161,867 not compared (empty or past the buffers -- the clipped flakes). pfm (its
   mutant, one pixel a call): 4,881 of 4,881 flagged.
+
+### The nitro blur, two pixels at once (A4_BLURFAST2) -- exact, no gain: left out
+- Read: past the blur's first row and each row's first step, a step's four pixels each blend with a neighbour of
+  their own quadrant already done (the row before, or the quadrant's own previous step) -- the quadrants meet only at
+  the first row and the first column. a4_blur_row2 (a4_gl.s, under the flag: a4_px.s is not preprocessed) works p6
+  with p5 / p7 with p4 (even steps) or p6 with p7 / p5 with p4 (odd) at once; blur_run calls it past those.
+- bf2 / bf1 (C91 + A4_BLURCHECK + A4_BLURFORCE + A4_BLURI=300, with and without it, Instant Play 120 s): **261
+  blurs, 0 pixels differing** (both); timed on the same frames **ours 10.10 ms a blur against 10.03** -- no gain on
+  the model: the blur's cost is its memory traffic (the 150 KB screen read and written, rows apart), not the
+  latencies the pairing hides. Not in the candidate (an unmeasured gain is a guess).
+- **A4_SNOWFAST** (a4_eng.c a4_snow; injector: the bl +286A4 at +129C8 -> a4_snow): +286A4 line for line in C -- the
+  same game words, the game's own divide (+50E8C) for both projections and its respawn (+285B8), +525A0's quotient
+  (the same for every flake of a render) once, +29ADA's piece loop inline -- and each piece handed to the painter's
+  entry (a4_engv_29736) only when the painter's own clip (a4_paint_fast's first lines, the same arithmetic) leaves it
+  pixels; the composite and the clip rectangle's first setting, which the painter's first call made, at the same
+  point.
+- **A4_SNOWCHECK** (bench, scratch 0x220000): every render the game's +286A4 and ours on the same state -- the 1,000
+  flakes, the screen, the sprite's alpha saved; the game's run and its results kept; all put back; ours, each respawn
+  taking the game's respawned flake (rand drawn once), a respawn of ours where the game's flake still holds our move
+  counted as a disagreement; then flakes, screen and alpha compared (TIM2 [50..59]). First runs showed ~255 pixels a
+  render differing, all on row 239 from column 64: **the check's own fault** -- its two screen copies overlapped by
+  512 bytes (0x5F3240 inside the first's 0x5CDC40 + 153,600); found by watching row 239 (EKA2L1_WATCHGATE over the
+  game's run alone: the painter's own store) and recording both runs' painter calls (A4_SNOWREC). Fixed (0x5F3440).
+- snc10 (C91 + A4_SNOWFAST + A4_SNOWCHECK, New York 60 s): **193 renders, 0 flake bytes, 0 screen pixels, 0 respawn
+  disagreements (9,720 respawns), 0 alpha**; 71,534 pieces painted, **121,466 skipped (63%)**. snm (its mutant: the
+  run's first visible piece left out, flake 0 moved): 119 of 119 renders flagged, both ways.
+
+### r91a: the candidate (C92 = C91 + A4_CARANIM + A4_M1LIVE + A4_PAINTFWD + A4_SNOWFAST)
+- a4_r91a_cand.exe, 1,015,124 bytes, sha256 352030fb77f498c0... (A4_THIRDSTEP=1, A4_SCRATCH_SIZE=0x1C3000). C90 / C91
+  rebuilt from the same tree: r90a's and r90b's bytes.
+- bat91 (at91 six maps 45 s, m91 Instant Play 300 s with C marks, pa91 Paris 400 s) running.

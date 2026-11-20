@@ -90,3 +90,10 @@ each render -- the tyres' two frames (the spin), the front wheels' steer and a b
 Needs lifted.c with the +DCE2 hook (regenerated; the macro is empty without the flag, and C90/C91 rebuild to r90a's and
 r90b's bytes). Bench only: `-DA4_WHEELCEN` (the live mesh against the bake at every take, CRK1 [40..47] and CUT1's
 place), `-DA4_WHEELGATE` (opens EKA2L1_WATCHGATE's word 0x5C30F0 at the census's first difference).
+
+C92.flags = C91.flags with `-DA4_CARANIM -DA4_M1LIVE -DA4_PAINTFWD -DA4_SNOWFAST` (round 88, after r90b: the player's
+tyres spin, the car paint's reflection made again after each composite (paced by its cost; TIM2 [40..48]), the
+painter's forward rows, New York's snow in C with clipped flakes skipped). Same scratch (`A4_SCRATCH_SIZE=0x1C3000`).
+r91a candidate sha256 352030fb77f498c0..., 1,015,124 bytes. Bench only: `-DA4_WHEELCEN`, `-DA4_WHEELGATE`,
+`-DA4_PAINTCEN`, `-DA4_PAINTCHECK` (counts also in TIM2 [50..57]), `-DA4_SNOWCHECK` (scratch 0x220000),
+`-DA4_SNOWMUTANT`, `-DA4_SNOWREC`, `-DA4_SNOWGATE`, `-DA4_BLURFAST2` (exact, no gain on the model: not in C92).

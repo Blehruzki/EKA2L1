@@ -665,6 +665,16 @@ static uint64_t a4_paint_fast(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3
     uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 {
     const uint32_t o = r0, surf = r1, d = s0, fl = s1;
+#ifdef A4_SNOWREC
+    {   /* bench: the painter's calls while a run is recorded (0x618C40: [0] which run, then 2 lists of 1,000 x 3) */
+        volatile uint32_t *R = (volatile uint32_t *)0x00618C40u;
+        if (R[0] == 1u || R[0] == 2u) {
+            volatile uint32_t *L = R + 2u + (R[0] - 1u) * 3001u;
+            if (L[0] < 1000u) { volatile uint32_t *e = L + 1u + 3u * L[0]; e[0] = r2; e[1] = r3; e[2] = d ^ (fl << 24) ^ L16(o + 0x38u); }
+            L[0]++;
+        }
+    }
+#endif
     a4_gl_hud();                                        /* edits.py ALWAYS at +2973A */
     int32_t sx0 = 0, sy0 = 0, w = LS16(d + 4u), h = LS16(d + 6u), sx1 = w, sy1 = h;
     const uint32_t px = L32(surf + 4u), W = L16(surf + 8u), H = L16(surf + 0xAu);
@@ -908,8 +918,16 @@ static void snow_run(uint32_t self, uint32_t ctx)
                 }
 #ifdef A4_SNOWCHECK
                 {   volatile uint32_t *T_ = (volatile uint32_t *)0x005C0F10u;
+#if defined(A4_SNOWMUTANT)
+                    if (snow_paints(ctx, d, x, y)) {   /* bench: the check's own test -- the run's first visible piece left out */
+                        if (T_[28] != 0x4D55544Eu) T_[28] = 0x4D55544Eu;
+                        else { T_[57]++; a4_engv_29736(spr, ctx, (uint32_t)x, (uint32_t)y, d, fl, 0, 0, 0, 0, 0, 0); }
+                    } else T_[58]++;
+#else
                     if (snow_paints(ctx, d, x, y)) { T_[57]++; a4_engv_29736(spr, ctx, (uint32_t)x, (uint32_t)y, d, fl, 0, 0, 0, 0, 0, 0); }
-                    else T_[58]++; }
+                    else T_[58]++;
+#endif
+                }
 #else
                 if (snow_paints(ctx, d, x, y)) a4_engv_29736(spr, ctx, (uint32_t)x, (uint32_t)y, d, fl, 0, 0, 0, 0, 0, 0);
 #endif
@@ -930,11 +948,11 @@ static void snow_run(uint32_t self, uint32_t ctx)
  * taking the game's respawned flake (rand is drawn once, by the game's run); then compared. TIM2 [50] renders
  * checked, [51] flake bytes differing, [52] renders with any, [53] screen pixels differing, [54] renders with any,
  * [55] our respawns, [56] flakes whose respawn ours and the game's disagree on, [57] pieces painted, [58] pieces
- * skipped (clipped), [59] the alpha differing. Copies at 0x5C4000 (A4_SCRATCH_SIZE 0x220000). */
+ * skipped (clipped), [59] the alpha differing. Copies at 0x5C4000-0x618C40 (A4_SCRATCH_SIZE 0x220000). */
 #define SNC_P0 ((uint32_t *)0x005C4000u)            /* the flakes before (5,000 words) */
 #define SNC_P1 ((uint32_t *)0x005C8E20u)            /* after the game's run */
 #define SNC_S0 ((uint16_t *)0x005CDC40u)            /* the screen before (76,800 halfwords) */
-#define SNC_S1 ((uint16_t *)0x005F3240u)            /* after the game's run (ends 0x618840) */
+#define SNC_S1 ((uint16_t *)0x005F3440u)            /* after the game's run (ends 0x618C40) */
 static void snow_respawn_check(uint32_t self, uint32_t k)
 {
     volatile uint32_t *T_ = (volatile uint32_t *)0x005C0F10u;
@@ -954,18 +972,69 @@ void a4_snow(uint32_t self, uint32_t ctx)
     for (uint32_t q = 0; q < 5000u; q++) SNC_P0[q] = L32(self + 4u * q);
     for (uint32_t q = 0; q < n; q++) SNC_S0[q] = L16(px + 2u * q);
     const uint32_t a0 = L16(spr + 0x38u);
+#ifdef A4_SNOWGATE
+    MEM32(0x005C30F0u) = 1u;                        /* bench: EKA2L1_WATCHGATE open over the game's run alone */
+#endif
+#ifdef A4_SNOWREC
+    volatile uint32_t *R_ = (volatile uint32_t *)0x00618C40u;
+    R_[2] = 0; R_[2u + 3001u] = 0; R_[0] = 1u;
+#endif
     ((void (*)(uint32_t, uint32_t))(uintptr_t)GAMEFN(0x286A4u))(self, ctx);
+#ifdef A4_SNOWGATE
+    MEM32(0x005C30F0u) = 0u;
+#endif
     const uint32_t a1 = L16(spr + 0x38u);
     for (uint32_t q = 0; q < 5000u; q++) SNC_P1[q] = L32(self + 4u * q);
     for (uint32_t q = 0; q < n; q++) SNC_S1[q] = L16(px + 2u * q);
     for (uint32_t q = 0; q < 5000u; q++) L32(self + 4u * q) = SNC_P0[q];
     for (uint32_t q = 0; q < n; q++) L16(px + 2u * q) = SNC_S0[q];
     L16(spr + 0x38u) = (uint16_t)a0;
+#ifdef A4_SNOWREC
+    R_[0] = 2u;
+#endif
+#ifdef A4_SNOWMUTANT
+    T_[28] = 0;                                     /* bench: the first visible piece of this run is left out */
+#endif
     snow_run(self, ctx);                            /* a flake the game respawned and ours did not differs below */
+#ifdef A4_SNOWMUTANT
+    L32(self + 4u) += 1u;                           /* bench: flake 0's x one off */
+#endif
+#ifdef A4_SNOWREC
+    R_[0] = 0;
+    {   /* [30] calls the game's run made, [31] ours, [32] the first index differing, [33..35] the game's entry there,
+         * [36..38] ours; [29] renders whose lists differ */
+        volatile uint32_t *A = R_ + 2u, *B = R_ + 2u + 3001u;
+        uint32_t i = 0, m = A[0] < B[0] ? A[0] : B[0];
+        if (m > 1000u) m = 1000u;
+        while (i < m && A[1u + 3u * i] == B[1u + 3u * i] && A[2u + 3u * i] == B[2u + 3u * i] && A[3u + 3u * i] == B[3u + 3u * i]) i++;
+        if (i < m || A[0] != B[0]) {
+            T_[29]++; T_[30] = A[0]; T_[31] = B[0]; T_[32] = i;
+            if (i < 1000u) { T_[33] = A[1u + 3u * i]; T_[34] = A[2u + 3u * i]; T_[35] = A[3u + 3u * i];
+                             T_[36] = B[1u + 3u * i]; T_[37] = B[2u + 3u * i]; T_[38] = B[3u + 3u * i]; }
+        }
+    }
+#endif
     uint32_t db = 0, dp = 0;
     for (uint32_t q = 0; q < 5000u; q++) db += L32(self + 4u * q) != SNC_P1[q];
     for (uint32_t q = 0; q < n; q++) dp += L16(px + 2u * q) != SNC_S1[q];
+    if (dp) {   /* the differing pixels: [40] the first's index, [41] the game's | ours << 16, [42] before, [43] ours as
+                 * before (we drew none there), [44] the game's as before (it drew none), [45] lowest | highest row << 16 */
+        uint32_t f = 0xFFFFFFFFu, nb = 0, gb = 0, ylo = 0xFFFFu, yhi = 0;
+        const uint32_t Wd = L16(ctx + 8u);
+        for (uint32_t q = 0; q < n; q++) {
+            const uint32_t o = L16(px + 2u * q);
+            if (o == SNC_S1[q]) continue;
+            if (f == 0xFFFFFFFFu) f = q;
+            nb += o == SNC_S0[q]; gb += SNC_S1[q] == SNC_S0[q];
+            uint32_t yy = 0, r = q; while (r >= Wd) { r -= Wd; yy++; }
+            if (yy < ylo) ylo = yy;
+            if (yy > yhi) yhi = yy;
+        }
+        T_[40] = f; T_[41] = SNC_S1[f] | (uint32_t)L16(px + 2u * f) << 16; T_[42] = SNC_S0[f];
+        T_[43] += nb; T_[44] += gb; T_[45] = ylo | yhi << 16;
+    }
     T_[50]++; T_[51] += db; T_[52] += db != 0; T_[53] += dp; T_[54] += dp != 0; T_[59] += L16(spr + 0x38u) != a1;
+    T_[39] = px;                                    /* diagnosis: the screen's address */
 }
 #else
 void a4_snow(uint32_t self, uint32_t ctx) { snow_run(self, ctx); }
