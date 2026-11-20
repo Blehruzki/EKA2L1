@@ -588,6 +588,11 @@ struct mesh {
                                  * mask check, [48..49] the rows and pixels filled; 84: [50..51] the shadow batch; 86:
                                  * [52..61] A4_PHTIMERS (a4_eng.h), [62] the objects' and cars' flushes, [63] the shadow's draws */
 _Static_assert(CRK_N * 4u <= 256u, "CRK1 within the 256 bytes the telemetry writes, before CUT1");
+#ifdef A4_PROFSEG
+/* bench: the profile gate's two marks, distinct bodies so they stay two functions */
+__attribute__((noinline)) void a4_pg_on(void) { ((volatile uint32_t *)0x00412D00u)[60] = 1u; }
+__attribute__((noinline)) void a4_pg_off(void) { ((volatile uint32_t *)0x00412D00u)[61] = 2u; }
+#endif
 #define A4_GL_CUT 0x005C0900u   /* round 82f: 'CUT1', the last CUT_N triangles cut, their raw corners (lean_tail) */
 #define CUT_N 16u
 #define CUT_W 24u
@@ -597,6 +602,77 @@ static inline volatile uint32_t *crk_get(void)
     if (C[0] != 0x314B5243u) { for (uint32_t k = 1; k < CRK_N; k++) C[k] = 0; C[0] = 0x314B5243u; }   /* 'CRK1' */
     return C;
 }
+#ifdef A4_BLENDCEN
+/* bench (round 86, Montmartre): the blended classes' software copies against the GPU's drawn mask. lean_tail_cv
+ * notes each blended triangle it also leaves to the game's span (its screen corners; 400 a frame, at 0x462600);
+ * the composite's rows go into a drawn-mask, a bit a pixel (0x460000, 240 rows of 10 words); after the composite
+ * each noted triangle's pixels (centres inside, corners doubled, exact in 64 bits) are counted against it -- CRK1
+ * [40] composites, [41] alpha triangles, [42] their pixels, [43] of them the GPU left undrawn (where the copy
+ * shows), [44] alpha triangles with any such pixel; [45] additive triangles, [46] pixels, [47] undrawn */
+#define BLM ((volatile uint32_t *)0x00460000u)
+#define BLN (*(volatile uint32_t *)0x00462600u)
+#define BLT ((volatile int16_t *)0x00462604u)
+#define BLT_N 400u
+_Static_assert(0x00460000u + VP_H * (VP_W / 32u) * 4u <= 0x00462600u && 0x00462604u + BLT_N * 16u <= 0x00464000u,
+               "the census below the objects' state");
+static void blend_reset(void)
+{
+    BLN = 0;
+    for (uint32_t i = 0; i < VP_H * (VP_W / 32u); i++) BLM[i] = 0;
+}
+static void blend_note(uint32_t alpha, const uint32_t *desc)
+{
+    const uint32_t n = BLN, tag = (uint32_t)(uintptr_t)desc | alpha;
+    if (n >= BLT_N) return;
+    if (n && *(volatile uint32_t *)(BLT + 8u * (n - 1u) + 6u) == tag) return;   /* a clipped triangle's later pieces */
+    const uint32_t *v0 = (const uint32_t *)desc[3], *v1 = (const uint32_t *)desc[6], *v2 = (const uint32_t *)desc[9];
+    volatile int16_t *t = BLT + 8u * n;
+    t[0] = (int16_t)(int32_t)v0[0]; t[1] = (int16_t)(int32_t)v0[1]; t[2] = (int16_t)(int32_t)v1[0];
+    t[3] = (int16_t)(int32_t)v1[1]; t[4] = (int16_t)(int32_t)v2[0]; t[5] = (int16_t)(int32_t)v2[1];
+    *(volatile uint32_t *)(t + 6) = tag;
+    BLN = n + 1u;
+}
+static void blend_census(void)
+{
+    volatile uint32_t *C = crk_get();
+    const uint32_t n = BLN > BLT_N ? BLT_N : BLN;
+    C[40]++;
+    for (uint32_t i = 0; i < n; i++) {
+        const volatile int16_t *t = BLT + 8u * i;
+        const uint32_t al = *(const volatile uint32_t *)(t + 6) & 1u;
+        const int64_t X0 = 2 * t[0], Y0 = 2 * t[1], X1 = 2 * t[2], Y1 = 2 * t[3], X2 = 2 * t[4], Y2 = 2 * t[5];
+        const int64_t ar = (X1 - X0) * (Y2 - Y0) - (Y1 - Y0) * (X2 - X0);
+        int32_t xl = t[0], xh = t[0], yl = t[1], yh = t[1];
+        if (t[2] < xl) xl = t[2];
+        if (t[2] > xh) xh = t[2];
+        if (t[4] < xl) xl = t[4];
+        if (t[4] > xh) xh = t[4];
+        if (t[3] < yl) yl = t[3];
+        if (t[3] > yh) yh = t[3];
+        if (t[5] < yl) yl = t[5];
+        if (t[5] > yh) yh = t[5];
+        if (xl < 0) xl = 0;
+        if (yl < 0) yl = 0;
+        if (xh > VP_W - 1) xh = VP_W - 1;
+        if (yh > VP_H - 1) yh = VP_H - 1;
+        uint32_t pix = 0, und = 0;
+        if (ar != 0)
+            for (int32_t y = yl; y <= yh; y++)
+                for (int32_t x = xl; x <= xh; x++) {
+                    const int64_t px = 2 * x + 1, py = 2 * y + 1;
+                    const int64_t e0 = (X1 - X0) * (py - Y0) - (Y1 - Y0) * (px - X0);
+                    const int64_t e1 = (X2 - X1) * (py - Y1) - (Y2 - Y1) * (px - X1);
+                    const int64_t e2 = (X0 - X2) * (py - Y2) - (Y0 - Y2) * (px - X2);
+                    if (ar > 0 ? (e0 < 0 || e1 < 0 || e2 < 0) : (e0 > 0 || e1 > 0 || e2 > 0)) continue;
+                    pix++;
+                    if (!((BLM[(uint32_t)y * (VP_W / 32u) + ((uint32_t)x >> 5)] >> ((uint32_t)x & 31u)) & 1u)) und++;
+                }
+        if (al) { C[41]++; C[42] += pix; C[43] += und; if (und) C[44]++; }
+        else    { C[45]++; C[46] += pix; C[47] += und; }
+    }
+    blend_reset();
+}
+#endif
 #ifdef A4_FLUSHPROBE
 /* bench (round 84, Dubai's cars): the frame's events in order at 0x5BF000 ([0] count, then type << 24 | value); at
  * the present copied to CUT1's place for the telemetry -- 1 a GPU frame begun (frames), 2 its cars drawn (n), 3 a
@@ -723,6 +799,9 @@ static int mesh_has(uint32_t p)
 #if defined(A4_STREAMCEN)
 #error "A4_PHTIMERS keeps TIM2 at 0x5C0F10, where A4_STREAMCEN's SCN2 runs"
 #endif
+#if defined(A4_FRC4) && !defined(A4_FRAMEREC)
+#error "A4_FRC4 closes each render at the frame record's tick (A4_FRAMEREC)"
+#endif
 #define A4_GL_TIM2 0x005C0F10u
 _Static_assert(A4_GL_TIM2 + 60u * 4u <= 0x005C1000u, "TIM2 within the scratch");
 static inline volatile uint32_t *tim2(void)
@@ -740,7 +819,58 @@ __attribute__((noinline)) static uint32_t gl_cnt(uint32_t i)   /* out of line: o
 #define TIM2_SNAP(v) uint32_t v[4]; { volatile uint32_t *T_ = tim2(); for (uint32_t q_ = 0; q_ < 4u; q_++) v[q_] = T_[1u + q_]; }
 #define TIM2_ADD(v, b) { volatile uint32_t *T_ = tim2(); for (uint32_t q_ = 0; q_ < 4u; q_++) T_[(b) + q_] += T_[1u + q_] - v[q_]; }
 #define TIM2_CORNERS(c) (tim2()[5] += (uint32_t)(c))
+#ifdef A4_FRC4
+/* Round 87 (phone round r86c: Montmartre's renders 75-90 ms, the 3D pass 44 ms of which our hook 15.8 -- and the bench
+ * does not show the game's other 28): 'FRC4', a render's own split, so the owner's marks say where each slow render's
+ * time went. At each render's start (the frame record's tick, FRC1 e[0]) the render before is closed: 8 words, a ring
+ * of 256 at 0x5C1000 after a 16-byte header ('FRC4', count, 256, 8) -- [0] its start tick; ms (bytes, to 255): [1] the
+ * 3D pass | our hook << 8 | the composite << 16 | its reads << 24, [2] the 2D | the present << 8 | the batch's draws
+ * << 16 | the list's draw << 24, [3] the scenery walk | the cars << 8 | the shadow's insert << 16 | +31A26/+31A50 << 24
+ * (CRK1 [53..56]), [4] the table's draw (CRK1 [57]) | the objects' flush << 8 | the cars' << 16 | the shadow's draws
+ * << 24; GL calls (TIM2, halves to 65,535): [5] draws | binds << 16, [6] matrix | other << 16; [7] corners drawn (24
+ * bits) | the logic's ticks (7 bits) << 24 | bit 31: a window counter went back (a capture in it: those read from 0).
+ * The snapshot it closes against follows the ring (24 words). */
+#define A4_GL_FRC4 0x005C1000u
+#define FRC4_N 256u
+_Static_assert(A4_GL_FRC4 + 16u + FRC4_N * 32u + 24u * 4u <= 0x005C3100u, "FRC4 within A4_SCRATCH_SIZE 0x1C3000's scratch");
+static void a4_frc4_mark(uint32_t now)
+{
+    volatile uint32_t *R = (volatile uint32_t *)A4_GL_FRC4, *P = R + 4u + FRC4_N * 8u;
+    volatile uint32_t *pf = A4_PERF, *C = crk_get(), *T = tim2();
+    const uint32_t v[16] = { pf[PF_T3D], pf[PF_HOOK], pf[PF_COMP], pf[PF_READ], pf[PF_T2D], pf[PF_TPRES], pf[PF_DRAW],
+                             pf[PF_MDRAW], C[53], C[54], C[55], C[56], C[57], C[62], C[63], pf[PF_TLOGIC] };
+    if (R[0] != 0x34435246u) { R[0] = 0x34435246u; R[1] = 0; R[2] = FRC4_N; R[3] = 8u; P[22] = 0; }   /* 'FRC4' */
+    if (P[22] == 0x50414E53u) {                                 /* 'SNAP': the render before is closed */
+        uint32_t d[16], back = 0;
+        for (uint32_t k = 0; k < 16u; k++) {
+            if (k == 13u) continue;
+            if (v[k] >= P[k]) d[k] = v[k] - P[k]; else { d[k] = v[k]; back = 1u; }
+            if (d[k] > 255u) d[k] = 255u;
+        }
+        const uint32_t ol = (v[13] - P[13]) & 0xFFFFu, oh = ((v[13] >> 16) - (P[13] >> 16)) & 0xFFFFu;
+        uint32_t gd[5];
+        for (uint32_t k = 0; k < 5u; k++) { gd[k] = T[1u + k] - P[16u + k]; if (k < 4u && gd[k] > 65535u) gd[k] = 65535u; }
+        if (gd[4] > 0xFFFFFFu) gd[4] = 0xFFFFFFu;
+        volatile uint32_t *e = R + 4u + (R[1] % FRC4_N) * 8u;
+        e[0] = P[21];
+        e[1] = d[0] | d[1] << 8 | d[2] << 16 | d[3] << 24;
+        e[2] = d[4] | d[5] << 8 | d[6] << 16 | d[7] << 24;
+        e[3] = d[8] | d[9] << 8 | d[10] << 16 | d[11] << 24;
+        e[4] = d[12] | (ol > 255u ? 255u : ol) << 8 | (oh > 255u ? 255u : oh) << 16 | d[14] << 24;
+        e[5] = gd[0] | gd[1] << 16;
+        e[6] = gd[2] | gd[3] << 16;
+        e[7] = gd[4] | (d[15] > 127u ? 127u : d[15]) << 24 | back << 31;
+        R[1]++;
+    }
+    for (uint32_t k = 0; k < 16u; k++) P[k] = v[k];
+    for (uint32_t k = 0; k < 5u; k++) P[16u + k] = T[1u + k];
+    P[21] = now; P[22] = 0x50414E53u;
+}
+#endif
 #else
+#ifdef A4_FRC4
+#error "A4_FRC4 reads A4_PHTIMERS' timers and TIM2"
+#endif
 #define F(i) (a4_gl_iat_ptr()[i])       /* pc-relative getter; no writable globals */
 #define TIM2_SNAP(v)
 #define TIM2_ADD(v, b)
@@ -3810,6 +3940,14 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
 #endif
     }
 #endif
+#ifdef A4_PROFSEG
+    {   /* bench (round 86, Montmartre): a profile gate by the camera's track segment (race+0x70) -- a4_pg_on at a
+         * render inside [A4_PROFSEG, A4_PROFSEG_HI], a4_pg_off at one outside: EKA2L1_PCPROF_ON / _OFF at their
+         * addresses profile whole frames in that stretch */
+        const uint32_t sg = ((const volatile uint32_t *)self)[0x70u / 4u] & 0xFFFu;
+        if (sg >= (A4_PROFSEG) && sg <= (A4_PROFSEG_HI)) a4_pg_on(); else a4_pg_off();
+    }
+#endif
 #ifdef A4_FRAMEREC
     {   /* round 41: the frame record (see A4_GL_FREC) -- this render's entry */
         volatile uint32_t *F = (volatile uint32_t *)A4_GL_FREC, *c = (volatile uint32_t *)self;
@@ -3819,6 +3957,9 @@ int a4_step_render(void *self)                                  /* +1696C: bl +1
         if (F[0] != 0x31435246u) { F[0] = 0x31435246u; F[1] = 0; F[2] = 0; F[3] = 0; }   /* 'FRC1' */
         volatile uint32_t *e = F + 4u + (F[1] % FREC_N) * 8u;
         e[0] = a4_ntick(); e[1] = 0;
+#ifdef A4_FRC4
+        a4_frc4_mark(e[0]);                         /* round 87: the render before, closed at this one's tick */
+#endif
 #ifdef A4_ENG3
         /* round 72 (phone round 71b, "the scenery keeps disappearing"): with no speculation (A4_ENG3) the fraction's
          * bits carry the camera's track segment (race+0x70, 12 bits) | its direction word set << 12 | the scenery
@@ -5182,6 +5323,9 @@ static int lean_tail_cv(volatile struct glr *s, uint32_t *gctx, const uint32_t *
 #endif
     if (kind == KIND_ADD || kind == KIND_ALPHA) return (uint32_t)yr[1] < sky_rows(s);
 #endif
+#ifdef A4_BLENDCEN
+    if (kind == KIND_ADD || kind == KIND_ALPHA) blend_note(kind == KIND_ALPHA, desc);   /* bench: its software copy */
+#endif
     return (kind == KIND_ADD || kind == KIND_ALPHA) ? 0 : 1;
 }
 #elif defined(A4_LEAN)
@@ -6123,6 +6267,12 @@ static int gitem_box(const uint32_t *gx, int32_t F, const int32_t *R, const int3
     box[3] = (int16_t)(yhi < -1 ? -1 : yhi > VP_H ? VP_H : yhi);
     return giant;
 }
+#ifdef A4_NGWHY
+#if defined(A4_OBJWHY) || defined(A4_GOBJCOPYCHECK)
+#error "A4_NGWHY keeps the take's texture table in GOB1's cpchk and counts in CRK1 [40..47]"
+#endif
+#define NGW_TEXTAB (g->cpchk)
+#endif
 static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
 {
     const uint32_t verts = GO32(obj + 0x20u), faces = GO32(obj + 0x28u), nv = GO32(obj + 0x1Cu), nf = GO32(obj + 0x24u);
@@ -6150,7 +6300,32 @@ static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
         const uint32_t t = GO8(faces + 10u * f + 3u);
         uint32_t k = 0;
         while (k < ng && me->gt[k] != t) k++;
-        if (k == ng) { if (ng == GOBJ_NG) { g->refused_full++; return 0; } me->gt[ng] = (uint8_t)t; ng++; }
+        if (k == ng) { if (ng == GOBJ_NG) {
+#ifdef A4_OBJWHY
+            crk_get()[46]++;
+#endif
+#ifdef A4_NGWHY
+            {   /* bench (round 87): a mesh of more than GOBJ_NG groups -- CRK1 [40] such refusals, [41] their groups
+                 * summed, [42] the most, [43] their faces, [44] of them every texture plain (the take's own test),
+                 * [45] at most 16 groups, [46] at most 24, [47] at most 32 */
+                uint8_t tt[64]; uint32_t nt = 0, plain = 1;
+                for (uint32_t f2 = 0; f2 < nf; f2++) {
+                    const uint32_t t2 = GO8(faces + 10u * f2 + 3u);
+                    uint32_t q = 0;
+                    while (q < nt && tt[q] != t2) q++;
+                    if (q == nt && nt < 64u) tt[nt++] = (uint8_t)t2;
+                }
+                for (uint32_t q = 0; q < nt; q++) {
+                    const uint32_t ts = GO32(NGW_TEXTAB + 4u * tt[q]);
+                    if (!ts || !GO32(ts + 4u * TS_PIX) || GO8(ts + 0x28u) != 0xFFu || GO32(ts + 0x2Cu) != 0u
+                        || GO32(ts + 4u) + 1u > 1024u || GO32(ts + 8u) + 1u > 1024u) plain = 0;
+                }
+                volatile uint32_t *C = crk_get();
+                C[40]++; C[41] += nt; if (nt > C[42]) C[42] = nt; C[43] += nf; C[44] += plain;
+                C[45] += nt <= 16u; C[46] += nt <= 24u; C[47] += nt <= 32u;
+            }
+#endif
+            g->refused_full++; return 0; } me->gt[ng] = (uint8_t)t; ng++; }
     }
     for (uint32_t k = 0; k < ng; k++) {
         me->gs[k] = (uint16_t)o; me->gc[k] = 0;
@@ -6216,7 +6391,11 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
         if (cam && w[1] != GO32(cam + 4u)) w[1] = GO32(cam + 4u);
     }
 #endif
-    if (!mp || !cp || mp == cp) { g->refused_mode++; return 0; }
+    if (!mp || !cp || mp == cp) {
+#ifdef A4_OBJWHY
+        crk_get()[44]++;                                   /* bench: [44] the mode refusals */
+#endif
+        g->refused_mode++; return 0; }
     const int32_t *M = (const int32_t *)mp, *C = (const int32_t *)cp;   /* the object's, the camera's */
     for (uint32_t k = 0; k < 9u; k++) if (M[k] != C[k]) { g->refused_rot++; return 0; }
     const int32_t px = (int32_t)GO32(obj), py = (int32_t)GO32(obj + 4u), pz = (int32_t)GO32(obj + 8u);
@@ -6224,12 +6403,28 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
         const uint32_t q = (uint32_t)C[r] * (uint32_t)px + (uint32_t)C[3u + r] * (uint32_t)py + (uint32_t)C[6u + r] * (uint32_t)pz;
         if (M[9u + r] != C[9u + r] + ((int32_t)q >> 14)) { g->refused_moved++; return 0; }
     }
+#ifdef A4_NGWHY
+    g->cpchk = textab;                                     /* bench: the take's texture table, for gobj_mesh's census */
+#endif
     struct gmesh *me = gobj_mesh(g, obj);
-    if (!me) { g->refused_mesh++; return 0; }
+    if (!me) {
+#ifdef A4_OBJWHY
+        crk_get()[45]++;                                   /* bench: [45] the mesh refusals ([46] of them, > GOBJ_NG groups) */
+#endif
+        g->refused_mesh++; return 0; }
     for (uint32_t k = 0; k < me->ng; k++) {                /* every texture plain: the list's class */
         const uint32_t ts = GO32(textab + 4u * me->gt[k]);
         if (!ts || !GO32(ts + 4u * TS_PIX) || GO8(ts + 0x28u) != 0xFFu || GO32(ts + 0x2Cu) != 0u
-            || GO32(ts + 4u) + 1u > 1024u || GO32(ts + 8u) + 1u > 1024u) { g->refused_tex++; return 0; }
+            || GO32(ts + 4u) + 1u > 1024u || GO32(ts + 8u) + 1u > 1024u) {
+#ifdef A4_OBJWHY
+            {   /* bench (round 86): the first test the texture fails -- CRK1 [40] none / no texels, [41] +0x28 != 0xFF,
+                 * [42] an alpha map at +0x2C, [43] larger than 1,024; [47] the refused objects' faces */
+                volatile uint32_t *C = crk_get();
+                C[!ts || !GO32(ts + 4u * TS_PIX) ? 40 : GO8(ts + 0x28u) != 0xFFu ? 41 : GO32(ts + 0x2Cu) ? 42 : 43]++;
+                C[47] += me->nf;
+            }
+#endif
+            g->refused_tex++; return 0; }
     }
     if (g->n == 0u) {                                      /* the frame's camera: the origin o at its place */
         int64_t o[3];
@@ -6383,6 +6578,15 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
         }
     }
     gobj_sort(key, ref, ne);
+#endif
+#ifdef A4_OBJWHY
+    {   /* bench (round 86): the frame's groups against GOBJ_NE -- GOB1's cpchk the most in a flush, cpdiff the flushes
+         * that reached it (the groups past it are not drawn) */
+        uint32_t want = 0;
+        for (uint32_t i = 0; i < n; i++) want += ((const struct gmesh *)(uintptr_t)g->it[i].mesh)->ng;
+        if (want > g->cpchk) g->cpchk = want;
+        if (want > GOBJ_NE) g->cpdiff++;
+    }
 #endif
 #ifdef A4_GOBJ86CHECK
     {   /* bench (round 86): (texture, ref) strictly rising, as the insertion sort's -- CRK1 [40] frames, [41] faults */
@@ -8469,6 +8673,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
          * the next frame, was composited onto the SCREEN, over the 2D drawn before it
          * (round 13-14: the HOME panel and the garage's stats box and bar). */
         *(volatile uint32_t *)A4_GL_BB = gctx[0x4c / 4];
+#ifdef A4_BLENDCEN
+        blend_reset();                                  /* bench: a frame with no composite leaves nothing behind */
+#endif
         A4_PERF[PF_MFIRST] = a4_ntick();                /* the 3D pass begins */
 #ifdef A4_AGG
         agg_render(A4_PERF[PF_MFIRST]);
@@ -10568,6 +10775,16 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
                 for (int x = 0; x < VP_W; x++) ((uint32_t *)rb)[sy * VP_W + x] |= 0x80000000u;
 #endif
                 const uint32_t undrawn = row((uint32_t *)((uint16_t *)fb + screen_y * FB_STRIDE), src, src + VP_W);
+#ifdef A4_BLENDCEN
+                {   /* bench: the row's drawn-mask for the blended copies' census (a read word's bit 31: drawn) */
+                    volatile uint32_t *m = BLM + (uint32_t)screen_y * (VP_W / 32u);
+                    for (uint32_t w = 0; w < VP_W / 32u; w++) {
+                        uint32_t b = 0;
+                        for (uint32_t q = 0; q < 32u; q++) b |= (src[w * 32u + q] >> 31) << q;
+                        m[w] = b;
+                    }
+                }
+#endif
                 uint32_t dcount = VP_W;                     /* the row's drawn pixels, when counted */
 #ifdef A4_LINEFILL
                 {   /* round 81: the row's drawn-mask, the count from it (four pixels a step, a nibble's bits by table);
@@ -11085,6 +11302,9 @@ void a4_gl_flush(void)
       const uint32_t r0_ = A4_PERF[PF_READ], odd_ = s->frames & 1u;
 #endif
       composite_rows(s, s->miny, s->maxy); A4_PERF[PF_COMP] += a4_ntick() - t0;
+#ifdef A4_BLENDCEN
+      blend_census();                                   /* bench: after the composite, outside its timer */
+#endif
 #ifdef A4_MSKIP_ALT
       {   volatile uint32_t *C = crk_get();
           C[40u + odd_] += (a4_ntick() - t0) - (A4_PERF[PF_READ] - r0_); C[42u + odd_]++; }

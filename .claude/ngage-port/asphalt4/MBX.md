@@ -13628,3 +13628,112 @@ c. State the bench did not enter: a frame with more than GOBJ_NE (768) object gr
   draws. The shadow's draws counted 6 in some stretches and 30-86 in others: **not the shadow's own runs** -- consecutive
   shadow runs share their state in draw_run (no binds, no kind switch) -- but the batch's overflow (MAXT 512) falling
   inside a shadow bucket, the earlier stream's runs drawn there instead of at the end: attribution, not extra calls.
+- **New York's 2D 12-26 ms is not the snow: it is the capture.** The marks' 2D phase is measured since the last
+  capture, and a mark window of 13-77 renders includes the previous capture's file write; New York's renders read
+  53-60 ms steady through every window, the 2D phase's raised average coming from one or two renders holding a
+  write. The bench's gated 2D profiles (p2dny, p2dsh) caught the loading screen instead (the guard DLL and zlib):
+  not read further (the owner's side). **Closed: no snow cost to cut.**
+- **The marks are the slow stretches the owner felt (rule 3: what each mark holds).** Every mark's last ~20 renders
+  before the press read 75-90 ms. By render (frec3.py obj), the renders under 60 ms against those at 75 ms or more:
+
+  | mark (map) | fast n | objects taken | refused (tex + full) | object calls | list tris | slow n | taken | refused | calls | list tris |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | 0 (New York) | 161 | 49.9 | 0.6 | 54.6 | 9.0 | 51 | 56.8 | 1.6 | 62.2 | 11.2 |
+  | 1 (New York) | 173 | 51.7 | 0.0 | 55.4 | 8.6 | 48 | 48.7 | 0.7 | 53.0 | 9.9 |
+  | 2 (Paris) | 71 | 81.6 | 19.1 | 98.3 | 251.1 | 73 | 92.8 | 23.6 | 114.8 | 221.4 |
+  | 3 (Paris) | 179 | 22.4 | 2.3 | 26.8 | 49.1 | 35 | 66.5 | 22.7 | 87.1 | 317.7 |
+  | 4 (Paris) | 158 | 26.9 | 2.1 | 31.2 | 51.2 | 15 | 72.9 | 27.5 | 98.7 | 412.1 |
+  | 5 (Shanghai) | 197 | 11.9 | 1.3 | 15.4 | 85.2 | 23 | 21.1 | 0.3 | 23.6 | 9.5 |
+  | 6 (Shanghai) | 185 | 15.2 | 0.1 | 16.5 | 7.6 | 13 | 44.1 | 0.3 | 45.4 | 80.1 |
+
+  In Paris the slow renders are the dense scenery (66-93 objects) **with 23-28 objects a render refused by the take**,
+  which the game then draws itself through the list (220-410 list triangles against ~50). New York's slow renders
+  are not the scenery (the same counts as its fast ones): another cost, not read yet. GOB1 (mark 4): 896 meshes,
+  54,633 of ~82k corners in use (peak 72,405), resets 3 (= the gaps, the store never full); **refused_full 2,317 is
+  not the store: it counts gobj_mesh's other refusal, a mesh of more than GOBJ_NG (12) texture groups**; "refused
+  tex" in frec3 is refused_tex + mode + mesh (a4_frc3_pre's M[9]), 27,269 in mark 4.
+- **Bench A4_OBJWHY** (a4_gl.c a4_obj_take / gobj_mesh; frec3.py mode objwhy): CRK1 [40..43] the texture test the
+  refused object failed first (none / no texels, +0x28 != 0xFF, an alpha map at +0x2C, larger than 1,024), [47] their
+  faces; [44] mode, [45] mesh refusals, [46] of them more than 12 groups. Not a repeat of round 72's A4_CAMADDR or
+  round 67's car census (cars, not objects): no object census by reason is in the record. ow86p (C86 + A4_OBJWHY,
+  Paris, 90 s, 996,816 bytes) running.
+- **ow86p (C86 + A4_OBJWHY, Paris, 90 s; framestat 1,535, the boot fault only): every texture refusal is the
+  alpha-map class** -- none / no texels 0, +0x28 != 0xFF 0, alpha map 2,999 (43,390 faces, 14.5 an object), larger
+  than 1,024 0; mode 0, mesh 0, more than 12 groups 0. The alpha-map textures are soft (round 14's A4_ALPHAHIST: 24%
+  zero, 32.5% full, 43% between), so an alpha test is not exact: taking these objects needs the list's blend at the
+  list's place in the order. Not taken yet. The bench car reached segments 105-110 only (the phone's slow renders are
+  at 30-80), where 19-20 objects a render were refused and the list drew ~64 triangles: most refused objects are
+  culled by the game after the refusal.
+- **Rule 4 on my own reading: in a MESH build the decoder's "tex_remade" (word 38) is the window's list triangles and
+  "tex_evicted" (word 46) the list's draw calls** (a4_tel.c reuses them under A4_MESH; a4tel_decode.py names them
+  from round 14). Read right: the list's draw calls a render are **91 (mark 2), 136 (mark 3), 36 (mark 4)** against
+  1-10 elsewhere -- 2.4 triangles a call in Montmartre: the alpha faces, interleaved in the table's order with the
+  other classes, break the list's runs.
+- **The mark windows' phases (ms a render): mark 3 (Montmartre, 22 renders) 3D pass 44.0 (our hook 15.8), composite
+  12.6, 2D 3.7, logic 20.5; mark 2 38.9 (15.8) / 13.5 / 3.6 / 20.7; against a light window (cap 59, Shanghai) 17.0
+  (9.4) / 11.9 / 2.4 / 12.2.** The 3D pass (first primitive to the 3D flush, the composite outside it under A4_IMM)
+  less our hook is the game's own work inside the table's walk: 28.2 ms against 7.6 -- **+20 ms in the game's code,
+  +6 in ours, +8 in the logic before the first primitive.** The timers' stretches (592-923 scenes) average the dense
+  part with the rest: the table's draw 21.5-22.2 against 19.0-20.5, the walk 1.9-2.6 against 0.5-1.2.
+- By segment (frec3.py steps, new: the substep, steps, keys, speed and segment a render): the phone's slow renders
+  are all at Paris segments 30-80 (60-128 objects taken, 16-25 refused, 150-410 list triangles, 60-97 ms a render);
+  segments 0-25 run 45-65 ms. Speed a little higher in New York's slow renders (526 against 441) and mark 4's; the
+  logic steps (n 3) the same in fast and slow.
+- ow86q (the same build, Paris, 230 s, marks every 30 s from 60 s) running: to reach segments 30-80 on the bench
+  and profile the game's +20 ms there.
+- ow86q (230 s): the bench car reached segment 25 by 210 s. ps86 (C86 + A4_PROFSEG=30..60, new bench flag: a4_pg_on /
+  a4_pg_off at each render by the camera's segment, race+0x70, for EKA2L1_PCPROF_ON / _OFF; Paris 400 s): this run
+  went faster (segments 13-94 at the marks, 240-390 s) and passed 30-60 in ~50 s, short of the 8e9 instructions
+  asked: no profile written. Its marks hold the dense stretch on the bench: **segments 30-70 at 46-53 ms a render
+  against 35-38 for 10-25, the 3D pass 21.8 ms with our hook 18.4 -- the game's own part 3.4 ms against the phone's
+  28.2.** The bench does not reproduce the phone's game-side cost there.
+- **On the phone that game-side time follows the list's triangles** (the mark windows): 11-23 list triangles a
+  render 7.6-14.4 ms, 100 -> 13.2, 230 -> 23.1, 328 -> 28.2 -- about 66 us a list triangle above ~100. **What runs
+  there for a list triangle: the blended classes are drawn twice** (round 54; lean_tail_cv returns 0 for
+  KIND_ALPHA / KIND_ADD): the GPU's blend and the game's own span, +2E56C -> +33EA8 for the alpha class, a
+  read-modify-write blend per pixel, kept because over the backdrop (dst alpha 0) only software's copy shows. In
+  Montmartre most list triangles are the refused alpha-map objects' faces (ow86p: 14.5 a refused object; the phone's
+  23 refused x 14.5 = 330 against 328 list triangles): **~330 software alpha triangles a render.** Round 54 shelved
+  the cut (A4_SKYSKIP not exact; A4_GPUSKY exact for the sky but no gain in LA, ~29 blended triangles a frame, and an
+  unexplained writer in the backdrop's rows); Montmartre has ten times the blended triangles.
+- A4_BLENDCEN (bench; a4_gl.c blend_note / blend_census; frec3.py mode blendcen): each blended triangle left to the
+  game's span noted (screen corners, 400 a frame at 0x462600), the composite's read rows kept as a drawn-mask (bit 31
+  of each read word; 0x460000), and after the composite each triangle's pixels counted exactly (centres, 64-bit edge
+  functions) against it: CRK1 [41] alpha triangles, [42] pixels, [43] undrawn by the GPU, [44] triangles with any
+  undrawn pixel; [45..47] the additive class. A triangle whose every pixel the GPU drew opaque has a software copy
+  the composite always overwrites -- skipping exactly those would be exact; the census says how many there are.
+  Not a repeat of round 54's A4_SKYCEN (boxes against the sky band's row, LA) -- this counts pixels against the
+  drawn-mask, in Montmartre. bc86 (C86 + A4_BLENDCEN, 998,652 bytes; Paris 400 s, marks 60-390 s) running.
+- **bc86 (C86 + A4_BLENDCEN, Paris 400 s, marks 60-390 s; framestat 2,946, the boot fault only): the software copies
+  are not Montmartre's cost.** By stretch between marks in the dense part (segments 21-87): 16-33 alpha triangles a
+  composite go to the game's span, 7,500-11,400 pixels; 15.8-18% of those pixels the GPU left undrawn (where the
+  copy shows); 61-70% of the triangles have no such pixel (their copy always overwritten). Additive: 0-90 undrawn
+  pixels in the whole run. So of the 250-330 list triangles a render there, ~30 are alpha (the refused objects'
+  other faces are plain classes, drawn once, through the list); ~10k pixels of span a render is ~1 ms on the
+  phone, not 20. An exact skip of the overwritten copies (deferred to the composite's drawn-mask) would save under
+  1 ms: not pursued now.
+- **Rule 4 on the hook timer**: PF_HOOK times a4_gl_draw_prim only (every 4th call, x4); the first triangle's
+  object and car flushes and the list's draw are inside it, the billboards' and the shadow insert's hooks are not.
+- **Rule 4 on frec3.py gob**: round 86b added carlate after gaps in struct gstate; the mode still read 46 head words
+  and items at +184 -- every field after gaps and every item box 4 bytes off since r86b. Fixed by GOB1's size word
+  (6,332 from r86b, 6,328 before). The GOB1 counts quoted above are all before gaps and stand. Read right, mark 4's
+  GOB1: **r_mesh 2,317 = r_full 2,317 with the store never full: every mesh refusal on the phone is a mesh of more
+  than 12 texture groups**; r_near 26,854.
+- ow86r (C86 + A4_OBJWHY with the flush's group count, Paris 400 s, marks 150-390 s; segments 0-98): **the flush's
+  groups never reach GOBJ_NE** (most 187 of 768; cpdiff 0) -- no scenery dropped there (task closed). Through the
+  dense stretch: alpha-map refusals 6,786 -> 19,859, **meshes of more than 12 groups 0 at segments 0-23, then 623,
+  1,227, 1,728, 1,739 by segment 98** -- all of the mesh refusals; mode 0, none of the other texture tests.
+- A4_NGWHY (bench, round 87; a4_gl.c gobj_mesh, frec3.py mode ngwhy): for each such refusal CRK1 [40] count, [41]
+  the groups (distinct texture indices, to 64), [42] the most, [43] faces, [44] of them every texture plain (the
+  take's test), [45..47] at most 16 / 24 / 32 groups -- whether raising GOBJ_NG would take them. ng87 (C87 +
+  A4_NGWHY) running.
+- **r87a candidate: C87 = C86 + A4_FRC4** (round 87, scratch 0x1C3000; a4_gl.c a4_frc4_mark, a4_tel.c, injector.py
+  check): 'FRC4' at 0x5C1000, each render closed at the next one's frame-record tick, 8 words -- the 3D pass, our
+  hook, the composite and its reads, 2D, the present, the batch's and the list's draws; the walk, cars, shadow insert,
+  +31A26/50 and the table's draw (CRK1 [53..57]); the objects' and cars' flushes and the shadow's draws; GL draws,
+  binds, matrix and other calls and corners (TIM2); the logic's ticks; a flag when a window counter went back (a
+  capture in the render). Written into every capture after TIM2; frec3.py mode phase joins it to FRC1/FRC3 by the
+  start tick. **What it can establish that the bench cannot**: the bench's dense stretch shows 3.4 ms of game-side 3D
+  work where the phone shows 28 -- only the phone can say, render by render, which block holds it. Not a repeat of
+  r86c's timers (stretches only) or r86d's TIM2 (stretches, unsent): per render, inside the owner's marks.
+  a4_r87a_cand.exe 997,936 bytes, sha256 a535b1759dfb6339...

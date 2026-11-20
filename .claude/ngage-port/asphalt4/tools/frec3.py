@@ -26,6 +26,11 @@
 #          objects' radix sort against the insertion sort's order, their box corners against round 85's (round 86);
 #          carchk with A4_CAREARLYCHECK's: the early car take's verdicts against the routine's own cull (round 86)
 #   timers A4_PHTIMERS (CRK1 [52..60]): the scene's calls and the readback, ms a scene, capture to capture (round 86)
+#   blendcen the crack counters with A4_BLENDCEN's [40..47]: the blended classes' software copies against the GPU's drawn mask (round 86)
+#   ngwhy  the crack counters with A4_NGWHY's [40..47]: the meshes refused for more than 12 texture groups (round 87)
+#   phase  A4_FRC4 (round 87): each render's 3D pass, our hook, the composite, 2D, the game's blocks, our flushes and GL calls
+#   steps  per render: the engine's substep and step count beside the scene's counts (round 86)
+#   objwhy the crack counters with A4_OBJWHY's [40..47]: the objects refused by the take, by the first test failed (round 86)
 # A mark covers the 256 renders (~13 s) before the press. Angles are 2,048 a turn.
 import sys, struct, glob, os, math
 HDR, FPS, FB = 256, 560, 320 * 240 * 2
@@ -36,7 +41,7 @@ def offs(d):                                                    # the sprite lis
     o = OFF3 + 16 + n * w * 4
     return o, o + 32 + 16 * 16
 args = sys.argv[1:]
-MODES = ('files', 'rot', 'turn', 'spr', 'obj', 'gob', 'list', 'lines', 'wreck', 'shadchk', 'gobjchk', 'carchk', 'timers')
+MODES = ('files', 'rot', 'turn', 'spr', 'obj', 'gob', 'list', 'lines', 'wreck', 'shadchk', 'gobjchk', 'carchk', 'timers', 'objwhy', 'steps', 'blendcen', 'phase', 'ngwhy')
 mode = 'files'
 if args and args[-1] in MODES: mode = args.pop()
 elif len(args) >= 2 and args[-2] == 'gob': mode = 'gob'; args = args[:-2] + [args[-1]]
@@ -147,7 +152,7 @@ if mode == 'timers':
                   % (g(1), g(2), g(3), g(4), g(5), blk))
     sys.exit()
 
-if mode in ('lines', 'shadchk', 'gobjchk', 'carchk'):
+if mode in ('lines', 'shadchk', 'gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwhy'):
     # r77's grey-line ring ('LIN1' after the merged tile grid): each hit -- row, undrawn run, the faces and items whose
     # screen box starts or ends on it (list faces' corners in camera space, as the list holds them)
     seen = set()
@@ -236,18 +241,26 @@ if mode in ('lines', 'shadchk', 'gobjchk', 'carchk'):
         if len(c) >= 48:
             print('  wrapped corners (the game projection past int16, undone): %d; projected again %d; refused (word disagreed) %d; handed back by the exact test alone: faces %d, items %d' % (c[35], c[39], c[36], c[37], c[38]))
             if len(c) >= 52:
-                print('  filled (from the boot): %d rows, %d pixels%s' % (c[48], c[49], ('; mask check (bench): %d rows skipped, %d not all drawn, %d said drawn wrongly' % (c[46], c[45], c[47])) if c[46] or c[45] or c[47] else ''))
+                print('  filled (from the boot): %d rows, %d pixels%s' % (c[48], c[49], ('; mask check (bench): %d rows skipped, %d not all drawn, %d said drawn wrongly' % (c[46], c[45], c[47])) if (c[46] or c[45] or c[47]) and mode not in ('objwhy', 'blendcen', 'ngwhy') else ''))
             if len(c) >= 52 and (c[50] or c[51]):   # round 84 (A4_SHADBATCH)
                 print('  shadow batch (from the boot): faces kept %d; buckets lost (never drawn: their faces but the trigger) %d' % (c[50], c[51]))
             if mode == 'carchk':    # round 86, bench A4_CAREARLYCHECK: [40..43] are its
                 print('  early car take check (bench): judged inside %d, of them culled by the routine %d (unsound); not certain %d' % (c[40], c[41], c[42]))
+            elif mode == 'ngwhy':     # round 87, bench A4_NGWHY: [40..47] are its
+                print('  meshes of more than 12 groups (bench): refusals %d, groups %.1f each (most %d), faces %.1f each; every texture plain %d; groups <= 16: %d, <= 24: %d, <= 32: %d'
+                      % (c[40], c[41] / max(c[40], 1), c[42], c[43] / max(c[40], 1), c[44], c[45], c[46], c[47]))
+            elif mode == 'blendcen':  # round 86, bench A4_BLENDCEN: [40..47] are its
+                print('  blended copies (bench): composites %d; alpha triangles %d, pixels %d, undrawn by the GPU %d (%.1f%%), triangles with any %d (%.1f%%); additive %d, pixels %d, undrawn %d'
+                      % (c[40], c[41], c[42], c[43], 100.0 * c[43] / max(c[42], 1), c[44], 100.0 * c[44] / max(c[41], 1), c[45], c[46], c[47]))
+            elif mode == 'objwhy':    # round 86, bench A4_OBJWHY: [40..47] are its
+                print('  object refusals (bench): texture none %d, +0x28 != 0xFF %d, alpha map %d, > 1024 %d (their faces %d); mode %d; mesh %d (> 12 groups %d)' % (c[40], c[41], c[42], c[43], c[47], c[44], c[45], c[46]))
             elif mode == 'gobjchk':   # round 86, bench A4_GOBJ86CHECK: [40..43] are its
                 print('  objects check (bench): flushes %d, sort faults %d (against the insertion sort); box corners %d, differing %d' % (c[40], c[41], c[42], c[43]))
             elif mode == 'shadchk':   # round 84, bench A4_SHADCHECK: [40..47] are its
                 print('  shadow check (bench): faces found %d, not found %d; corners differing %d; buckets differing %d; pending items differing %d (of %d faces with any); tests: candidates %d, full scans %d' % (c[40], c[41], c[42], c[43], c[44], c[45], c[46], c[47]))
-            elif (c[42] or c[43]) and not c[44] and mode not in ('gobjchk', 'carchk'):
+            elif (c[42] or c[43]) and not c[44] and mode not in ('gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwhy'):
                 print('  mask skip by frame (bench): composite less readback %.3f ms a frame with the skip (%d frames), %.3f without (%d)' % (c[41] / max(c[43], 1), c[43], c[40] / max(c[42], 1), c[42]))
-            if c[44] and mode not in ('shadchk', 'gobjchk', 'carchk'):
+            if c[44] and mode not in ('shadchk', 'gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwhy'):
                 print('  wrap probe (bench): corners past int16 %d; of %d compared, %d off the view projection by > 2 px (%d inside int16); largest |projection| %d' % (c[40], c[44], c[41], c[42], c[43]))
     if mode == 'lines':   # round 82f: 'CUT1', the last 16 triangles cut, from every file
         seen = set()
@@ -278,12 +291,15 @@ if mode == 'gob':
     OFFS, g = offs(d)
     mg, size, frames, _ = struct.unpack_from('<4I', d, g)
     print('%s: %s %d, GOB1 %08x size %d frame %d' % (info['fn'], 'mark' if info['mark'] else 'ring', info['idx'], mg, size, frames))
-    st = struct.unpack_from('<46I', d, g + 16)
-    names = 'magic frame n drawn F nmesh aused taken r_mode r_tex r_far r_full built frames_drawn draws calls r_off r_drawn r_mesh full resets peak batches r_rot r_range r_moved stale gaps r_near'.split()
-    print(' '.join('%s=%d' % (k, v) for k, v in zip(names[1:], st[1:29])))
+    # round 86b added carlate after gaps: struct gstate's head is 47 words from then (size 6,332), 46 before (6,328)
+    hw = 47 if size >= 188 + 192 * 32 else 46
+    st = struct.unpack_from('<%dI' % hw, d, g + 16)
+    names = ('magic frame n drawn F nmesh aused taken r_mode r_tex r_far r_full built frames_drawn draws calls r_off r_drawn r_mesh full resets peak batches r_rot r_range r_moved stale gaps '
+             + ('carlate ' if hw == 47 else '') + 'r_near cpchk cpdiff').split()
+    print(' '.join('%s=%d' % (k, v) for k, v in zip(names[1:], st[1:len(names)])))
     n = st[2]; items = []
     for k in range(min(n, 192)):
-        mesh, tex, dx, dy, dz, b0, b1, b2, b3, qn, qf = struct.unpack_from('<2I3i4h2H', d, g + 16 + 184 + 32 * k)
+        mesh, tex, dx, dy, dz, b0, b1, b2, b3, qn, qf = struct.unpack_from('<2I3i4h2H', d, g + 16 + 4 * hw + 32 * k)
         items.append((b0, b1, b2, b3, qn, qf)); print('  item %3d box %4d %4d %4d %4d  buckets %4d..%4d  d %6d %6d %6d' % (k, b0, b1, b2, b3, qn, qf, dx, dy, dz))
     mgs, ns, seen = struct.unpack_from('<3I', d, OFFS)
     print('sprites (SPL1 %08x): %d kept of %d seen' % (mgs, ns, seen))
@@ -394,6 +410,40 @@ elif mode == 'spr':
         x0, y0, x1, y1 = [(v - 64) * 2 for v in r['rect']]
         print('%9d cam %3d  sprites %2d tested %2d  largest %4d %4d %4d %4d (tex %dx%d)  list cells %04x all %04x  bucket %5d nearest cover %5d'
               % (r['t'], r['cmode'], r['nspr'], r['ntest'], x0, y0, x1, y1, r['tw'], r['th'], r['lmask'], r['amask'], r['sb'], r['nc'] if r['amask'] else -1))
+elif mode == 'phase':   # round 87 (A4_FRC4): each render's own split, joined to its FRC1/FRC3 row by its start tick
+    F4 = {}
+    for info, d in infos:
+        i = d.rfind(b'FRC4')
+        if i < 0 or len(d) < i + 16 + 256 * 32: continue
+        n4 = struct.unpack_from('<I', d, i + 4)[0]
+        for k in range(max(0, n4 - 256), n4):
+            e = struct.unpack_from('<8I', d, i + 16 + (k % 256) * 32); F4[e[0]] = e
+    print('FRC4: %d renders' % len(F4))
+    B = lambda w, k: (w >> (8 * k)) & 255
+    out = []
+    for a, b in zip(rows, rows[1:]):
+        e = F4.get(a['t'])
+        if not e: continue
+        dt = (b['t'] - a['t']) & 0xFFFFFFFF
+        if not 0 < dt < 400: continue
+        ph = dict(dt=dt, t3d=B(e[1], 0), hook=B(e[1], 1), comp=B(e[1], 2), read=B(e[1], 3), d2=B(e[2], 0), pres=B(e[2], 1),
+                  bdraw=B(e[2], 2), ldraw=B(e[2], 3), walk=B(e[3], 0), cars=B(e[3], 1), shins=B(e[3], 2), a26=B(e[3], 3),
+                  table=B(e[4], 0), oflush=B(e[4], 1), cflush=B(e[4], 2), sdraw=B(e[4], 3), draws=e[5] & 0xFFFF, binds=e[5] >> 16,
+                  mtx=e[6] & 0xFFFF, oth=e[6] >> 16, corners=e[7] & 0xFFFFFF, logic=(e[7] >> 24) & 127, back=e[7] >> 31)
+        ph['rest'] = dt - ph['t3d'] - ph['comp'] - ph['d2'] - ph['pres']
+        ph['game3d'] = ph['t3d'] - ph['hook']
+        ph['ltri'] = b['ltri']  # the list's triangles are counted one entry late (a4_frc3_pre)
+        out.append((a, ph))
+    keys = 'dt t3d hook game3d comp read d2 pres rest logic walk cars shins a26 table oflush cflush sdraw bdraw ldraw draws binds mtx oth corners'.split()
+    for b, ph in out:
+        print('%9d seg %4d taken %3d tex %3d list %4d | ' % (b['t'], b['seg'], b['taken'], b['rtex'], ph['ltri']) + ' '.join('%s %d' % (k, ph[k]) for k in keys) + (' BACK' if ph['back'] else ''))
+    for lab, sel in (('renders under 60 ms', lambda x: x[1]['dt'] < 60), ('60-75 ms', lambda x: 60 <= x[1]['dt'] < 75), ('75 ms or more', lambda x: x[1]['dt'] >= 75)):
+        L = [x for x in out if sel(x) and not x[1]['back']]
+        if L: print('%-20s n %4d: ' % (lab, len(L)) + ' '.join('%s %.1f' % (k, sum(x[1][k] for x in L) / len(L)) for k in keys)
+                    + ' | taken %.1f list %.1f' % (sum(x[0]['taken'] for x in L) / len(L), sum(x[1]['ltri'] for x in L) / len(L)))
+elif mode == 'steps':   # round 86: per render, the engine's substep and steps with the scene's counts, for the time a render
+    for r in rows:
+        print('%9d sub %2d n %2d cam %3d taken %3d tex %3d calls %3d list tris %5d keys %04x speed %5d seg %4d' % (r['t'], r['sub'], r['n'], r['cmode'], r['taken'], r['rtex'], r['calls'], r['ltri'], r['keys'], int(math.hypot(r['vx'], r['vz'])), r['seg']))
 elif mode == 'obj':
     for r in rows:
         print('%9d seg %4d cam %3d  taken %3d  refused range %3d full %3d near %3d rot/moved %3d tex %3d off %3d  calls %3d  far bucket %5d (%3d at 2000+)  list tris %5d lost %3d glerr %d'
