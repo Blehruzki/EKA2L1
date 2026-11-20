@@ -14482,3 +14482,28 @@ c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no s
   32 refreshes' ticks: 24 or less every composite, 48 every 2nd, 96 every 4th, else 8th) -- the bench settles at every
   4th; the phone's own cost decides there (TIM2 [48]). r91a rebuilt: a4_r91a_cand.exe sha256 a9006828e0088011...,
   1,015,124 bytes; C90 / C91 still r90a's / r90b's bytes. bat91b (the same battery on it) running.
+- **bat91b on r91a (a9006828...)**: at91b (six maps 45 s, one session) framestat 5,712, the boot fault only; m91b (Instant
+  Play 300 s, 7 marks) framestat **2,446 (m90b 2,379, the first build's m91 2,259)**; pa91b (Paris 400 s) 3,667 (pa90b
+  3,530), m1_rebakes 0 in every capture. The pace every 4th composite on the model (TIM2 [48] 4 | 4 << 16), ~0.4 ms a
+  render. By mark, renders against at90b: LA 38.21 / 38.45 (37.99 / 38.56), New York 41.24 / 42.69 (41.55 / 43.37),
+  Paris 37.78 / 39.19 (37.61 / 39.24), Monte Carlo 39.93 / 41.69 (39.55 / 42.35); the 2D phase as at91.
+
+Rule 4, before r91a goes out:
+a. The guesses. (1) The MBX driver's cost of a part upload (4 rectangles, ~15 KB a refresh) -- never measured; the pace
+   bounds the reflection to ~0.75 ms a render whatever it is, and TIM2 [40..48] (frec3.py timers: "the reflection")
+   measures it. If it is slow the reflection refreshes every 4th or 8th render -- alive, but stepping. (2) That the
+   phone gains what the model shows in the 2D phase (0.5-1.1 ms a render; New York's snow ~5 ms on the phone against
+   ~3 on the model, so perhaps more there) -- FRC4's 2D phase per render settles it. (3) The reflection one render
+   behind stock's (stock reads the frame being drawn) and without the sprites drawn after our composite -- a chosen
+   difference, not measured on the phone; the owner's eye is the test.
+b. Read back: A4_CARANIM (gca_car / gca_face / gca_vert / gca_texok / gca_refresh, the bake's three passes and the
+   registration, GC_GD at both car draws, gobj_clear forgetting it); A4_M1LIVE (m1l_note's rectangles -- merge, the
+   READBUF cap less a padding row, even widths --, m1l_refresh's checks before each upload, the pace); A4_PAINTFWD's two
+   loops against pf_walk; A4_SNOWFAST against +286A4 instruction by instruction (the alpha's rounding, both divides
+   on the same z, the sine and cosine indices, the wind once a render, the bounds by unsigned compare, the respawn
+   after the draw) and against the painter's first lines (clip, the -1 clip setting, a4_gl_hud). The snow is called
+   only when the race's [..+2C] is 3 (+129B4): New York, where its check ran.
+c. State the bench did not enter: the pace at 2 or 8 (bench: 1 and 4); two big mode-1 textures on the screen's table at
+   once (entries noted 6 a session, one at a time); A4_CARANIM's re-bake path (a mesh baked in a render +1B084 skipped)
+   -- its counter is not in the telemetry; a car change between races is (atca, six maps: 0 of 15,496 takes
+   differing). Entered: every map, Montmartre, marks, boosts, New York's snow throughout.
