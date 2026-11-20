@@ -13980,3 +13980,39 @@ this log keeps every run. No phone round until the program's gains are in.
   the GPU does not draw (particles, lines), the GPU's sky would hide it. ww88 (C88 + A4_GPUSKY, no check: the
   routine's stores skipped; EKA2L1_WATCH on screen row 100 of the surface -- 0xE0E9C0 on the bench, the captures'
   bb -- narrowed to game code 0x70000000-0x700B9E48) running.
+- ww88 (the watch on screen row 100, game code only): its 400 stores filled at boot by +064E (a clear) and then by
+  +2AB08 (the 2D fill-rect, menus); re-armed at the blob's first store into the row and listing each PC once, it
+  names ~20 writers -- the 2D's (+26E28 the minimap, +26F..+2713E and +2B5A0..+2BC1E the sprite and text blits,
+  +2CD02/+2CE90 families) and the alpha span (+33F66 in +33EA8) -- but cannot tell the 3D pass from the HUD.
+- **The emulator's EKA2L1_WATCHGATE extended** (armstate.cpp/.h, EMU_PATCHES.md): the gate may lie outside the
+  watched range, and with EKA2L1_WATCHONCE=1 each PC writing while it is open is reported once. **A4_SKYGATE**
+  (bench) opens the gate (0x5C30F0, FRC4's spare words) when a GPU frame's backdrop is drawn and closes it at the
+  composite.
+- wg88 (C88 + A4_GPUSKY + A4_SKYGATE; the watch on rows 0-99, gated; Instant Play 120 s, framestat 1,134): **735 GPU
+  frames, one writer in the sky's rows between the first triangle and the composite: +33F66, the alpha span
+  (+33EA8)** -- the software copies of blended triangles the GPU draws as well, which the composite overwrites
+  wherever the GPU drew (all of the backdrop's rows). So the rows gk88b-f counted are copies the check's marks miss
+  (not every path that keeps a copy marks its rows), not a writer the GPU's sky would hide: **the GPU sky is correct
+  in night Paris.** Next: the same check on every track (gk88g, alltracks; new census [64] frames kept software for
+  a sun, [65] +3059E calls, [66] of them in a GPU-sky frame before its composite -- the sun lost).
+- gk88g (C88 + A4_GPUSKY + A4_SKYCHECK, alltracks: a 45 s race on each of the six; framestat 5,080, the boot fault
+  only; the ring keeps the last 8 captures): **984 frames checked, 0 backdrop pixels differing from the game's own
+  sky on any track**, 0 without the drawn mask, 0 composites forced. Dubai's sun: 2,840 +3059E calls, 470 frames kept
+  software by the rule (why 8), **8 calls in a GPU-sky frame before its composite -- the sun one frame late as it comes
+  into view, 8 times in Dubai's race** (accepted: a frame at 30 fps). Rows software changed before the composite:
+  5,179 in 61 frames by the first kept capture (frame 6,656: LA or New York, ~85 rows a frame), +540 over the rest
+  -- far more than Paris; wg88b (the gated watch, LA and New York) running.
+- wg88b (A4_SKYGATE's watch, LA and New York; framestat ~1,900): 728 GPU frames, **one writer: +2C524, the saturating
+  additive blit +2C4DA, called (via +2C572) from +37E86/+37EEA inside +37FA4 -- the sun's lens flare.** +37FA4 is the
+  scene's last call (the lifted +D3BA at +ECFE, after the table's draw, when [+0x38] is 1 or 3: LA and New York), and
+  step 2's note that it "reads pixels only" was wrong: read again, it counts how many of 14 pixels of the 565 screen
+  around the sun's projection (7 across, 7 down) carry the sky's 0x20 bit, fades the sun by the count (x the edge
+  fade, >> 4), draws the sun through a sprite's virtual draw and the flare's elements with the additive blit. It runs
+  before the composite, so (a) in the port as shipped the test sees no GPU-drawn object -- the sun is never hidden by a
+  building -- and the composite then paints the GPU's frame over the flare, which shows over the software sky alone;
+  (b) under the GPU's sky the flare would not show at all.
+- **A4_FLAREFLUSH** (lifted +D3BA at +ECFE, edits.py ALWAYS; a4_gl_flare_pre): the GPU's frame composited before
+  +37FA4 -- the test reads the frame's own picture as stock's did, and the sun and flare land over it, as on stock.
+  Nothing GPU-drawn should follow in the frame (the scene returns; the blur at +12A12 and the HUD composite anyway);
+  bench census under A4_SKYCHECK [72] flare composites, [70] triangles and [71] billboards reaching the hooks after
+  one. gk88h (C88 + A4_GPUSKY + A4_SKYCHECK + A4_FLAREFLUSH, LA and New York) running.

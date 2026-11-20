@@ -22347,6 +22347,8 @@ L_0ECE8:
     r1 = S32(0x2F8u);                                            /* 00ecf8 ldr r1, [sp, #0x2f8] */
     r0 = L32(r0);                                                /* 00ecfa ldr r0, [r0] */
     r3 = r4; fN = r3 >> 31; fZ = r3 == 0;                        /* 00ecfc movs r3, r4 */
+    /* engine: A4_FLAREFLUSH: the frame composited before the sun's flare test and draw */
+    A4_FLARE_PRE();
     { uint64_t rr = a4_eng_call(GAMEFN(0x37FA4), r0, r1, r2, r3, sp, r23); r0 = (uint32_t)rr; r1 = (uint32_t)(rr >> 32); r2 = r23[0]; r3 = r23[1]; } /* 00ecfe bl #0x37fa4 */
     r12 = 0xDEAD0000u; /* clobbered by the call */               /* 00ecfe bl #0x37fa4 */
 L_0ED02:

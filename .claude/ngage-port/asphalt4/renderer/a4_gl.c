@@ -8292,6 +8292,7 @@ static void sky_decide(const uint32_t *rsp)
     k->why = why;
     k->state = why ? SK_SW : SK_REC;
     if (why) SKYCK2[68]++;
+    if (why == 8) SKYCK2[64]++;                  /* census [64]: frames whose sky stayed software for a sun (why 8) */
 }
 /* the stores recorded so far, in software (in the routine's order: top fill, band, bottom fill) */
 static void sky_replay(volatile struct skys *k)
@@ -8562,6 +8563,11 @@ static void sky_frame_begin(volatile struct glr *s)
     SKYCK2[67]++; SKYCK2[63] = k->fb;
 #ifdef A4_SKYCHECK
     sky_check_begin(k);
+#endif
+#ifdef A4_SKYGATE
+    /* bench (round 88): the emulator's EKA2L1_WATCHGATE word -- open from here to the composite, so a watch on
+     * the backdrop's rows names what software writes there in a GPU frame (FRC4's spare words, 0x5C30F0) */
+    *(volatile uint32_t *)0x005C30F0u = 1u;
 #endif
 }
 /* the hook left a triangle to software (r 0); took: the GPU drew it too (a blended copy kept below the
@@ -9190,6 +9196,9 @@ int a4_gl_draw_prim(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 #ifdef A4_GPUSKY
     const uint32_t p0 = ((volatile struct glr *)A4_GL_SCRATCH)->prims;
 #endif
+#if defined(A4_FLAREFLUSH) && defined(A4_SKYCHECK)
+    if (SKYCK2[73] == ((volatile struct glr *)A4_GL_SCRATCH)->frames + 1u) SKYCK2[70]++;   /* bench: after the flare's composite */
+#endif
 #ifdef A4_SKYTRACE
     sky_trace(1u, flags);
 #endif
@@ -9723,6 +9732,9 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
 #ifdef A4_GPUSKY
     if (SKYS->state == SK_REC) sky_replay(SKYS);     /* blitted before a GPU frame began: the backdrop first */
 #endif
+#if defined(A4_FLAREFLUSH) && defined(A4_SKYCHECK)
+    if (SKYCK2[73] == ((volatile struct glr *)A4_GL_SCRATCH)->frames + 1u) SKYCK2[71]++;   /* bench: after the flare's composite */
+#endif
 #ifdef A4_SKYTRACE
     sky_trace(3u, f[0x94 / 4]);
 #endif
@@ -10061,7 +10073,10 @@ void a4_gl_bb2(void)
     if (((volatile struct glr *)A4_GL_SCRATCH)->up == A4_GL_MAGIC) A4_PERF[PF_BB2]++;
 #ifdef A4_GPUSKY
     {   volatile struct glr *s_ = (volatile struct glr *)A4_GL_SCRATCH;
-        SKYS->bb2f = s_->frames; SKYS->bb2n++; }
+        SKYS->bb2f = s_->frames; SKYS->bb2n++;
+        /* census [65] calls, [66] of them in a frame whose backdrop the GPU drew, before its composite (the sun
+         * lost under the GPU's sky: the first frame of one coming into view) -- A4_SKYCEN's words, not built with it */
+        SKYCK2[65]++; if (SKYS->state == SK_GPU && !s_->flushed) SKYCK2[66]++; }
 #endif
 #if defined(A4_IMM) && defined(A4_BB2FLUSH)
     a4_gl_flush();
@@ -10658,6 +10673,9 @@ __attribute__((noinline))   /* bench (round 83): its own symbol in a cycle profi
 #endif
 static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 {
+#ifdef A4_SKYGATE
+    *(volatile uint32_t *)0x005C30F0u = 0u;          /* bench: the watch's gate closed before the composite writes */
+#endif
 #ifdef A4_DUALCAP
     return;                                         /* the game's own picture stays untouched */
 #endif
@@ -11413,6 +11431,31 @@ void a4_gl_hud(void)
     a4_gl_flush();
 #endif
 }
+
+#ifdef A4_FLAREFLUSH
+/* Round 88: the scene's last call, +37FA4 (the lifted +D3BA at +ECFE, when [+0x38] is 1 or 3 -- LA and New York),
+ * counts how many of 14 screen pixels around the sun's projection carry the sky's 0x20 bit (7 across, 7 down), fades
+ * the sun by it and draws the sun and its lens flare into the 565 screen (the flare additive, +37E86/+37EEA ->
+ * +2C572). It ran before the composite: the test saw no GPU-drawn object (the sun never hidden by a building), and
+ * the composite then painted the GPU's frame over the flare, which showed over the software sky alone -- and under the
+ * GPU's sky not at all (wg88b). The frame composited first: the test reads the frame's own picture, as stock's did,
+ * and the sun and flare land on top of it. Nothing GPU-drawn follows it in the frame (the scene returns; the blur at
+ * +12A12 and the HUD composite anyway). */
+void a4_gl_flare_pre(void)
+{
+#ifdef A4_IMM
+    a4_gl_flush();
+#endif
+#ifdef A4_SKYCHECK
+    /* bench: census [72] flare composites, [73] the frame's number + 1 (the hooks count what still comes after it: [70]
+     * triangles, [71] billboards) */
+#ifdef A4_ROWSTAT
+#error "A4_FLAREFLUSH's bench census uses 0x412D00 [70..73], A4_ROWSTAT's words"
+#endif
+    SKYCK2[72]++; SKYCK2[73] = ((volatile struct glr *)A4_GL_SCRATCH)->frames + 1u;
+#endif
+}
+#endif
 
 #ifdef A4_NITROBLUR
 /* Round 88 (phone round r87a: every nitro boost ~17 ms a render longer, MBX.md): the game's radial blur +1054C, which

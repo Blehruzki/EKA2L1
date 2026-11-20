@@ -23,6 +23,17 @@ print('%s (frame %d):' % (fn, fr))
 print('  sky check: frames %d, backdrop pixels differing %d (frames with any %d, first at %d,%d), without the drawn mask %d; rows software changed before the composite %d (frames %d); mutant flips %d'
       % (c[50], c[51], c[52], c[53] & 0xFFFF, (c[53] >> 16) & 0x7FFF, c[54], c[55], c[56], c[57]))
 print('  frames with the GPU backdrop %d, software sky %d, composites forced by a triangle %d; uploads %d (changed %d)' % (c[67], c[68], c[69], c[58], c[59]))
+print('  A4_FLAREFLUSH: flare composites %d; after them triangles %d, billboards %d' % (c[72], c[70], c[71]))
+print('  +3059E (the sun): calls %d, in a GPU-sky frame before its composite %d; frames kept software for it %d' % (c[65], c[66], c[64]))
+if os.environ.get('SKYCHK_ALL'):                 # every capture's running totals, in frame order (a session's tracks)
+    rows = []
+    for f in fs:
+        d = open(f, 'rb').read()
+        if len(d) < OFF + 122 * 4: continue
+        w = struct.unpack_from('<122I', d, OFF); rows.append((struct.unpack_from('<I', d, 12)[0], os.path.basename(f), w))
+    for fr, fn, w in sorted(rows):
+        print('  %-16s frame %6d: checked %5d differing %6d rows changed %5d (frames %4d) gpu %5d sw %5d sun calls %5d lost %4d kept %5d'
+              % (fn, fr, w[50], w[51], w[55], w[56], w[67], w[68], w[65], w[66], w[64]))
 if c[40]:
     K = {1: 'draw hook entry', 2: 'draw hook exit', 3: 'billboard', 5: 'fill', 6: 'flush'}
     print('  trace: intervals with a change %d, rows %d; the first after %s (info %06x) and before %s (info %06x), first row %d, rows %d'

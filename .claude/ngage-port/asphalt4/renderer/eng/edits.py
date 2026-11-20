@@ -371,6 +371,11 @@ ALWAYS = {
               'why': 'A4_GPUCAR: the car taken before its transform'},
     0x34A12: {'before': 'A4_CAR_EARLYCHECK(r0);',
               'why': 'A4_CAREARLYCHECK: the early verdict against the routine\'s own cull'},
+    # round 88, A4_FLAREFLUSH: the scene's last call, +37FA4 (when [+0x38] is 1 or 3: LA, New York), tests the sun's
+    # visibility by reading 14 pixels of the 565 screen around it for the sky's 0x20 bit and draws the sun and its lens
+    # flare (additive blits, +2C572) into the screen -- the GPU's frame composited first, so the test sees the frame's
+    # own objects (stock's occlusion) and the flare lands over them, as on stock (the GPU's sky would hide it)
+    0x0ECFE: {'before': 'A4_FLARE_PRE();', 'why': 'A4_FLAREFLUSH: the frame composited before the sun\'s flare'},
     0x0CEC0: {'before': 'if (ce_verts(r0, r1, r2)) goto L_0CEDC;', 'why': 'the vertex unpack +CEC2..+CEDA by hand'},
     0x0CEDC: {'before': 'CE_CHECK(0);', 'why': 'A4_CECHECK: the vertex unpack by hand against the lifted loop'},
     0x0CEEA: {'before': 'if (ce_faces(r0, r1, r2, r4, L32(spp + 0x1Cu))) goto L_0CF4A;', 'why': 'the face unpack +CEEC..+CF48 by hand'},

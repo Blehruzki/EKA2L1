@@ -166,6 +166,11 @@ std::uint32_t ARMul_State::watch_pc_hi = []() -> std::uint32_t {
     return colon ? static_cast<std::uint32_t>(std::strtoul(colon + 1, nullptr, 16)) : 0;
 }();
 
+std::uint32_t ARMul_State::watch_gate = [] {
+    const char *w = std::getenv("EKA2L1_WATCHGATE");
+    return w ? static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) : 0u;
+}();
+
 void ARMul_State::ReportWatch(std::uint32_t address, std::uint32_t data, std::uint32_t width) {
     // EKA2L1_WATCHGATE=addr: a gate word inside the watched range. A store of non-zero
     // to it opens the gate, of zero closes it; while open, each word of the range
@@ -173,10 +178,12 @@ void ARMul_State::ReportWatch(std::uint32_t address, std::uint32_t data, std::ui
     // place a stretch of guest code writes, for a leak check of code bracketed by the
     // gate (ngage-port, Asphalt 4 round 31: what the speculative half-step writes outside
     // the objects it saves and restores). EKA2L1_WATCHMAX caps the words reported.
-    static const std::uint32_t gate = [] {
-        const char *w = std::getenv("EKA2L1_WATCHGATE");
-        return w ? static_cast<std::uint32_t>(std::strtoul(w, nullptr, 16)) : 0u;
-    }();
+    // The gate may lie outside the range (WatchWrite tests it too), and with EKA2L1_WATCHONCE=1
+    // each writing PC is reported once while open (the first 256) instead of each word: the code
+    // that writes a block during a bracketed stretch, the gate a word the bracketing code keeps
+    // (ngage-port, Asphalt 4 round 88: what writes the sky's rows between the first triangle and
+    // the composite).
+    const std::uint32_t gate = watch_gate;
     if (gate) {
         bool &open = watch_gate_open;
         static std::unordered_set<std::uint32_t> seen;
@@ -190,7 +197,21 @@ void ARMul_State::ReportWatch(std::uint32_t address, std::uint32_t data, std::ui
             open = data != 0;
             return;
         }
-        if (!open || seen.size() >= gcap)
+        if (!open)
+            return;
+        static const bool gonce = [] {
+            const char *w = std::getenv("EKA2L1_WATCHONCE");
+            return w && *w == '1';
+        }();
+        if (gonce) {
+            static std::unordered_set<std::uint32_t> pcs;
+            if (pcs.size() >= 256u || !pcs.insert(Reg[15]).second)
+                return;
+            LOG_ERROR(eka2l1::CPU_DYNCOM, "WATCHGATE: pc 0x{:X} (lr 0x{:X} sp 0x{:X}) writes {} bytes of 0x{:X} to 0x{:X} (writer {})",
+                Reg[15], Reg[14], Reg[13], width, data, address, pcs.size());
+            return;
+        }
+        if (seen.size() >= gcap)
             return;
         for (std::uint32_t a = address & ~3u; a < address + width; a += 4) {
             if (seen.insert(a).second)

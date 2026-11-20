@@ -248,12 +248,14 @@ public:
     // address differs run to run; ngage-port, Asphalt 4 round 74: a wrecked car's heading).
     static std::uint32_t watch_ptr_cell;
     static std::uint32_t watch_ptr_off;
+    // EKA2L1_WATCHGATE=addr: the gate word (ReportWatch); it may lie outside the watched range.
+    static std::uint32_t watch_gate;
     void ReportWatch(std::uint32_t address, std::uint32_t data, std::uint32_t width);
     void RetargetWatch(std::uint32_t data);
     inline void WatchWrite(std::uint32_t address, std::uint32_t data, std::uint32_t width) {
         if (watch_ptr_cell && address == watch_ptr_cell && width == 4)
             RetargetWatch(data);
-        if (watch_addr && address < watch_end && address + width > watch_addr)
+        if (watch_addr && ((address < watch_end && address + width > watch_addr) || address == watch_gate))
             ReportWatch(address, data, width);
     }
 

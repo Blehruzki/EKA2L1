@@ -42,6 +42,12 @@ extern const int32_t a4_g_base;                 /* a4_eng.s: patched to (code + 
 uint64_t a4_eng_call(uint32_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t sp, uint32_t *r23);
 uint64_t a4_eng_call0(uint32_t fn, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t *r23);   /* no stack words */
 void a4_mesh_insert(uint32_t *cam, uint32_t *face);  /* a4_gl.c (A4_MESH): the mesh routine's insert, kept for the list */
+#ifdef A4_FLAREFLUSH
+void a4_gl_flare_pre(void);                          /* a4_gl.c, round 88: the frame composited before +37FA4 */
+#define A4_FLARE_PRE() a4_gl_flare_pre()
+#else
+#define A4_FLARE_PRE() ((void)0)
+#endif
 #ifdef A4_GPUOBJ
 int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3);   /* a4_gl.c, round 60: 1 = drawn by the GPU */
 #define A4_OBJ_TAKE(a, b, c, d) a4_obj_take((a), (b), (c), (d))
