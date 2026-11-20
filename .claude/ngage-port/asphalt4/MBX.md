@@ -14295,3 +14295,18 @@ c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no s
   over 8 ms. The post 2.7 ms, our convert 2.4-2.5; the batch flushed in the shadow's draws 1.6-3.6 ms a scene.
 - p2dny (C91 + A4_PROF2D, new bench gate: a4_pg_on after the composite, a4_pg_off at the present -- the 2D phase
   alone; + A4_PROFSYM; New York 45 s, 6e8 gated instructions after 1e8) running: what draws the snow.
+- p2dny (the 2D phase gated, New York): 256 openings at 10.9 ms (model) -- 67% in ngifilemanagerfactory (the guard
+  DLL, 0x71700000-0x717BB000) and 8% in libzcore: the race's start, its loading (round 86's p2dny caught the same and
+  left it as the owner's side; the guard is the owner's: not read further). p2dny2 / p2dny3 (skipping 9e8 / 7.5e8 gated
+  instructions, 60 s races): no profile -- mid-race the 2D phase is too light to fill the window. The bench's own FRC4
+  (at90b's marks): the 2D phase 2.3-2.4 ms in LA, 5.0-5.9 in New York -- the snow ~3 ms on the model, ~5 on the phone.
+  Its routine not named yet.
+
+### Phone round r90b, LA (the owner: "Improved on the heavy parts of the map" -- the last round before deciding next steps)
+- Upload: 8 ring captures (up90bla/). FRC4 on 1,865 renders: **under 60 ms 72%, 60-75 ms 27%, 75 or more 0.2% (4)**;
+  under 60 ms 52.9 ms. Boosted 39% (61.0 ms against 53.1 unboosted; the 2D 12.0 against 3.6). No hitches (m1_rebakes
+  39 throughout, no cars' flush over 8 ms). Flat across the map: by 20 segments 50.9-57.6 ms a render, 0-2.5% over 70.
+  The post 2.7 ms (our convert 2.4); the batch flushed in the shadow's draws 2.6-3.7 ms a scene.
+- **The three maps on r90b**: renders under 60 ms Paris 67%, New York 52%, LA 72%; 75 ms or more 3.7% / 1.2% / 0.2%.
+  An unboosted render ~51-54 ms (~19 fps), a boosted one ~60 (~17). What costs above that: boosts +8-9 ms (our blur;
+  23-39% of renders), New York's snow +5 every render, Paris's paint re-bakes ~30 ms in 2% of renders.

@@ -63,7 +63,17 @@ Corrections this table carries: the r86c reading "the game's side is +20 ms in M
 over the walk, our hook and the game's walk of the table. The bench "not reproducing the phone" was largely the
 bench never boosting at speed (its car reached 327 km/h, the phone's boosts run at 360-534).
 
-## The phone with r90b (Paris, two races, 2,389 renders; MBX.md "Phone round r90b")
+## The phone with r90b (Paris two races, New York, LA; MBX.md "Phone round r90b")
+
+| map | renders under 60 ms | 75 ms or more | boosted | its own cost |
+|---|---|---|---|---|
+| Paris | 67% (r87a 47%) | 3.7% (9.9%) | 36% | the paint re-bakes: ~30 ms in 2% of renders |
+| New York | 52% | 1.2% | 23% | the snow: ~5 ms every render (the 2D phase) |
+| LA | 72% | 0.2% | 39% | none |
+
+An unboosted render ~51-54 ms (~19 fps), a boosted one ~60 (+8-9 ms: our blur).
+
+Paris in detail:
 
 - Renders under 60 ms 67% (r87a 47%), 75 ms or more 3.7% (9.9%); Montmartre (segments 30-99) 49-67 ms a render
   (r87a 60-68), its 75 ms-plus renders about halved. The game's own part of the 3D pass 6-8 ms (r87a up to 27).
