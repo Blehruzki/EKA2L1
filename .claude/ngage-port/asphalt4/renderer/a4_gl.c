@@ -4200,6 +4200,11 @@ _Static_assert((A4_GL_POS & 7u) == 0 && (A4_GL_UV & 7u) == 0 && (A4_GL_REO & 7u)
 #ifndef REO_SCAN
 #define REO_SCAN 32u             /* runs a triangle may look back over (bench: 32 ~ unlimited) */
 #endif
+#ifdef A4_PROFSYM
+#define PROF_NI __attribute__((noinline))     /* bench (round 88): the per-triangle path's parts as their own symbols */
+#else
+#define PROF_NI
+#endif
 static inline void tbox_calc(int16_t *b, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 {
     x0 -= 1; y0 -= 1; x1 += 1; y1 += 1;
@@ -4772,7 +4777,7 @@ static void atl_flush_pending(volatile struct glr *s)
     ((volatile uint32_t *)0x00412D00u)[119] += done;
 }
 #endif
-static inline int tri_tex(volatile struct glr *s, uint32_t kind, int m1, uint32_t tsaddr,
+static inline PROF_NI int tri_tex(volatile struct glr *s, uint32_t kind, int m1, uint32_t tsaddr,
                           const uint16_t *m1map, const uint16_t *m1tab, uint32_t *idp, int *wshp, int *hshp)
 {   /* returns the cache slot (>= 0), -2 for an untextured kind, -1 when the texture fails */
     if (kind == KIND_SHAD) { *idp = KIND_SHAD << 28; *wshp = *hshp = 0; return -2; }
@@ -4797,7 +4802,7 @@ static inline int tri_tex(volatile struct glr *s, uint32_t kind, int m1, uint32_
 }
 /* positions (x*W, y*W, -min(zq, W), W) and texcoords of one triangle from its screen
  * points (int16, as the game's), depths and texcoord words; xlo..yhi its extents */
-static inline void tri_conv(uint32_t kind, int wsh, int hsh, int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+static inline PROF_NI void tri_conv(uint32_t kind, int wsh, int hsh, int32_t x0, int32_t y0, int32_t x1, int32_t y1,
                             int32_t x2, int32_t y2, int32_t za, int32_t zb, int32_t zc, const uint32_t *uvw,
                             int32_t xlo, int32_t xhi, int32_t ylo, int32_t yhi, int32_t *pos, int32_t *uv, int fb)
 {   /* fb: the positions' fraction bits (0; round 82's cut triangles 4) -- the extents xlo..yhi are whole pixels */
@@ -4858,7 +4863,7 @@ static inline void ext3(int32_t a, int32_t b, int32_t c, int32_t *lo, int32_t *h
  * at 16 pixels. Its bucket as +349B0 takes it: TFace's key (+3121E, the deepest ZW), >> 3,
  * -16 for flag 0x10000, +16 for 0x20000; a TFakeZFace's key is 1 (+522C2), drawn after
  * everything; a clipped copy (+35D3A's pool, no record of its own) by the deepest ZW. */
-static int mesh_tri_covered(const uint32_t *desc, int32_t za, int32_t zb, int32_t zc,
+static PROF_NI int mesh_tri_covered(const uint32_t *desc, int32_t za, int32_t zb, int32_t zc,
                             int32_t xlo, int32_t ylo, int32_t xhi, int32_t yhi)
 {
     extern const int32_t a4_tfvt, a4_tfzvt;
@@ -4897,7 +4902,7 @@ static int mesh_tri_covered(const uint32_t *desc, int32_t za, int32_t zb, int32_
 }
 #ifdef A4_COVREDRAW
 /* the bucket mesh_tri_covered compares (TFace's key: the deepest ZW >> 3, the flag nudges) */
-static int32_t cvr_tri_bucket(const uint32_t *desc, int32_t za, int32_t zb, int32_t zc)
+static PROF_NI int32_t cvr_tri_bucket(const uint32_t *desc, int32_t za, int32_t zb, int32_t zc)
 {
     extern const int32_t a4_tfvt;
     int32_t key = za > zb ? za : zb;
@@ -4960,7 +4965,7 @@ static void shad_sink(const uint32_t *gctx, const uint32_t *desc)
         }
 }
 #endif
-static int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1,
+static PROF_NI int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1,
                      uint32_t tsaddr, int32_t *pos, int32_t *uv, uint32_t *idp, int16_t *box, int32_t *yr, const void *cvp)
 {   /* cvp: round 82 -- a piece of a cut triangle (A4_CLIPG: three struct clipv, positions in 1/16 pixel) in place of
      * desc's corners and texture words; desc still gives the class, the texture and the face's record */
@@ -6315,6 +6320,31 @@ static int gitem_box(const uint32_t *gx, int32_t F, const int32_t *R, const int3
 #endif
 #define NGW_TEXTAB (g->cpchk)
 #endif
+#ifdef A4_DEDUPCEN
+/* bench (round 88, RE 3: the phone's GL time ~0.9 us a corner): a baked mesh's corners (12-byte records x y z u v -)
+ * against its distinct ones, group by group -- what an indexed draw would hand the driver. CRK1 [40] the objects'
+ * corners, [41] distinct, [42] the cars' corners, [43] distinct, [44] object meshes, [45] car meshes */
+#if defined(A4_OBJWHY) || defined(A4_BLENDCEN) || defined(A4_NGWHY)
+#error "A4_DEDUPCEN counts in CRK1 [40..45]"
+#endif
+static void dedup_note(uint32_t base, const uint16_t *gs, const uint16_t *gc, uint32_t ng, uint32_t w)
+{
+    volatile uint32_t *C = crk_get();
+    for (uint32_t k = 0; k < ng; k++) {
+        const uint32_t *r = (const uint32_t *)(base + 36u * gs[k]);
+        const uint32_t n = 3u * gc[k];
+        uint32_t u = 0;
+        for (uint32_t i = 0; i < n; i++) {
+            uint32_t j = 0;
+            for (; j < i; j++)
+                if (r[3u * j] == r[3u * i] && r[3u * j + 1u] == r[3u * i + 1u] && (r[3u * j + 2u] & 0xFFFFu) == (r[3u * i + 2u] & 0xFFFFu)) break;
+            if (j == i) u++;
+        }
+        C[w] += n; C[w + 1u] += u;
+    }
+    C[44u + (w >> 1) - 20u]++;
+}
+#endif
 static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
 {
     const uint32_t verts = GO32(obj + 0x20u), faces = GO32(obj + 0x28u), nv = GO32(obj + 0x1Cu), nf = GO32(obj + 0x24u);
@@ -6397,6 +6427,9 @@ static struct gmesh *gobj_mesh(volatile struct gstate *g, uint32_t obj)
         while (b) { if (x >= r + b) { x -= r + b; r = (r >> 1) + b; } else r >>= 1; b >>= 2; }
         me->rad = (uint16_t)(r + 1u > 0xFFFFu ? 0xFFFFu : r + 1u); }
     me->fp[0] = GO32(verts); me->fp[1] = GO32(verts + 4u); me->fp[2] = GO32(faces);
+#ifdef A4_DEDUPCEN
+    dedup_note(GOBJ_ARENA + 12u * me->ofs, (const uint16_t *)me->gs, (const uint16_t *)me->gc, me->ng, 40u);
+#endif
     GHASH[h] = (uint16_t)(g->nmesh + 1u);
     g->aused += 3u * nf; g->nmesh++; g->built++;
     if (g->aused > g->peak) g->peak = g->aused;
@@ -6787,6 +6820,9 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
         while (b) { if (x >= r + b) { x -= r + b; r = (r >> 1) + b; } else r >>= 1; b >>= 2; }
         me->rad = (uint16_t)(r + 1u > 0xFFFFu ? 0xFFFFu : r + 1u); }
     me->fp[0] = GO32(verts + 0x18u); me->fp[1] = GO32(verts + 0x1Cu); me->fp[2] = GO32(faces + 0xCu); me->fp[3] = GO32(faces + 0x30u);
+#ifdef A4_DEDUPCEN
+    dedup_note(GOBJ_ARENA + 12u * me->ofs, (const uint16_t *)me->gs, (const uint16_t *)me->gc, me->ng, 42u);
+#endif
     g->aused += 3u * nf; c->nmesh++; c->built++;
     if (g->aused > g->peak) g->peak = g->aused;
     return me;
@@ -7110,7 +7146,7 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
 #endif
 _Static_assert(GOBJ_NI <= 192u && GCAR_NI <= 32u, "the pending sets' bits");
 /* round 78: does a box meet the pending items' box */
-static int cvr_hits(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+static PROF_NI int cvr_hits(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 {
     const volatile struct cvr *v = CVR;
     return v->pend && !(x1 < v->r[0] || x0 > v->r[2] || y1 < v->r[1] || y0 > v->r[3]);
@@ -7175,7 +7211,7 @@ _Static_assert(GOBJ_NI <= 256u && GCAR_NI <= 256u, "candidate indices in a byte"
 _Static_assert(__builtin_offsetof(struct shb, gmap) % 4u == 0u, "the bucket map cleared a word at a time");
 /* the bucket's candidates: the items cvr_add would test, by its own tests, whose box meets u (the union of the bucket's
  * faces' boxes) -- every item that meets one of the faces, as each face's box lies in u */
-static void shb_cand(volatile struct glr *s, int32_t b, const int16_t *u)
+static PROF_NI void shb_cand(volatile struct glr *s, int32_t b, const int16_t *u)
 {
     struct shb *h = SHB;
     const volatile struct gstate *g = GOBJ;
@@ -7242,7 +7278,7 @@ static int shb_cvr_add(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 #endif
 /* the GPU items this frame whose screen box meets [x0, x1] x [y0, y1] and whose nearest bucket is nearer than b (the
  * tile grid's own test, gobj_grid): pending, to be drawn again; their number */
-static int cvr_add(int32_t b, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+static PROF_NI int cvr_add(int32_t b, int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 {
 #ifdef A4_SHADBATCH
     if (SHB->cand && SHB->magic == SHB_MAGIC && b == (int32_t)SHB->cb) return shb_cvr_add(x0, y0, x1, y1);   /* round 84: in a shadow bucket */
@@ -7388,7 +7424,7 @@ static void cvr_flush(volatile struct glr *s)
  * does (mesh_scr_i), or read back where this frame projected them already (v[2] != 0: +34798's own memo, cleared by
  * +344F6), and written as +51E44 writes them. Its bucket is the table's: +3121E's key, the deepest -z, >> 3 (flags 0x20:
  * no nudge); 4096 and up the table drops, so it goes there. The mode is the window's (A4_PERF), as mesh_take's. */
-static int shb_take(uint32_t *cam, uint32_t *face)
+static PROF_NI int shb_take(uint32_t *cam, uint32_t *face)
 {
     const struct glr *s = (const struct glr *)A4_GL_SCRATCH;
     struct shb *h = SHB;

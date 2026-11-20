@@ -14039,3 +14039,65 @@ this log keeps every run. No phone round until the program's gains are in.
   rows; Instant Play 150 s, marks 60/100/140) running: how many copies are left and how many of their pixels the GPU
   left undrawn -- if ~none, a deferral of the copies to the composite (run only where the read-back shows a hole)
   removes the rest of the alpha-map objects' software cost (round 86: ~66 us a list triangle on the phone).
+- bc88b (C87 + A4_GPUSKY + A4_FLAREFLUSH + A4_BLENDCEN, the census noting copies kept below the backdrop's rows;
+  Instant Play 150 s, framestat 1,285): **432 composites by the 60 s mark, 36 alpha copies (bc88, no GPU sky: 17,627
+  in 670)**; 60-100 s (segments ~125-133): 579 copies in 199 composites, 1.54 M pixels, 4.8% undrawn; 100-140 s: 144
+  in 243, ~0% undrawn. Additive copies 970 / 3,996 / 6,400 (cumulative; ~30 px each).
+- bc88c (the same, 400 s, marks 200/260/320/380 s; the car at segments 126-131, 132-1, 4-16, 22-35): **520 alpha
+  copies in 2,162 composites (0.24 a composite), 517 of their 2.8 M pixels undrawn (0.02%)**; none at all from segment
+  1 to 35. Additive ~12 a composite, ~33 px each. Under the GPU's sky the alpha copies are nearly gone on the bench's
+  stretch of Paris, and those left lie over GPU-drawn pixels -- Montmartre (segments 30-80, the phone's ~330 a
+  render) not yet reached: bc88d (520 s, marks 400-515 s) running.
+- What a deferral would rest on: +3598C (the table's walk) calls each entry's draw method in bucket order and clears
+  each bucket head as it goes; the entries and their primitives are the frame's (pools reset at the next frame), so
+  they are intact at the composite. draw_primitive +300AE sets ctx+0x54 from the primitive and projects again;
+  +2E56C (the alpha path) writes ctx+0x7C itself -- the per-triangle state is the primitive's.
+- **RE 3 from the phone's own data** (r87a, every render's FRC4 split, 1,865 renders, frec3 phase): the GL blocks
+  (objects' flush + cars' + shadow + batch + list draws) average 16.6 ms a render against 169 draws, 143 binds, 88
+  matrix, 186 other calls and 10.2k corners; least squares: **~47 us a draw (its binds and matrix calls ride with it:
+  draws and binds are collinear) + ~0.9 us a corner** (R^2 0.31 -- five timers of whole milliseconds each), so about
+  8 ms a render by draws and 9 by corners. The bench's model charges 20 us a draw + 3 a call + 0.15 a vertex: the
+  phone's draws and corners cost ~2x and ~6x the model's. Round 24/25's atlas (fewer draws, no gain on the phone) is
+  the caution against reading the per-draw half as removable by merging alone.
+- bc88d (the same, 520 s, marks 400/440/480/515 s; the car at segments 66-95 by 400 s -- **Montmartre passed**):
+  **496 alpha copies in 2,182 composites over the whole race to segment 95, 861 of their 2.9 M pixels undrawn**;
+  742 in 2,778 by the end. Additive ~12 a composite, ~28 px each. **The phone's ~330 software alpha triangles a render
+  in Montmartre (round 86) lay within the backdrop's rows: under the GPU's sky (C89) they are GPU-only.** A deferral of
+  the copies left (0.27 a composite, ~0.03% of their pixels over holes) is not worth building: dropped.
+- The phone's GL blocks a render (r87a, all 1,865 renders): objects' flush 3.5 ms, cars' 1.7, **the shadow's draws
+  4.9**, the table's batches 5.2, the list 1.3. The shadow's is our own per-face work: shb_draw sends each batched
+  shadow face through lean_tail_cv (clip, convert, cover test), ~24 us a face on the phone.
+- dd88 (C89 + A4_DEDUPCEN, bench: at each mesh's bake its corners against its distinct (x y z u v) corners, group by
+  group -- what an indexed draw would hand the driver; Instant Play 150 s): **objects 11,145 corners, 6,330 distinct
+  (1.76x; 162 meshes); cars 9,366, 2,916 distinct (3.2x; 13 meshes).** Both are drawn with glDrawArrays, three corners
+  a triangle (the objects copied into the staging and merged a draw a texture; the cars straight from the store). The
+  model charges an indexed draw by its index count, so the bench cannot show what the MBX driver would save.
+- pf89 (C89 + the profile gate, night Paris, 240 s, 1.5e9 gated instructions skipped, 3e9 credited) running: what
+  leads once the sky's copies are gone.
+- pf89 (C89 + the profile gate, night Paris, 240 s, 3e9 credited; tools pgrank2.py): a4_cvt565_run 18.8%,
+  a4_comp_row 11.3%, the HUD painter (a4_engv_29736) 8.0, lean_tail_cv 6.0, tex_upload 3.5 (a window nearer the
+  race's start than pf88's), a4_shadow_insert 3.5, batch_draw 3.4, +33EA8 3.4, a4_gl_flush 3.2, engi_349F8 3.0; the
+  game's own code otherwise thin (+49480 2.1, +522A4 1.3, +52E44 1.3 ...). **bb_row2 (7.2% in pf88) is gone from the
+  top**: the additive billboards' copies were within the sky's rows too.
+- Not targets, from the record: the present's convert is already hand-tuned (16 instructions for four pixels) and
+  measured ~2.4 ms on the phone (the model overstates memory-streaming code ~3x); the runtime's yield (+9A6) is the
+  FRC4 "pres" (~2.5 ms: it spins until its timer runs, round 57); posts are one a render in the race (the model's
+  stats lines: 26-45 frames rendered against 26-37 posts each 5 s). The phone's cars' flush (1.7 ms for a few
+  thousand corners and ~20 draws) bounds the driver's own per-corner cost well under the regression's 0.9 us: the
+  regression's corners carry our per-triangle CPU work (the table's and shadow's triangles through lean_tail_cv) --
+  so indexed draws (dd88's 1.8x / 3.2x) would save little on the phone. Dropped as a target.
+- **The shadow is ours to cut**: ~290 faces a render on the phone (CRK1 [50] / [52] over r87a: 274-294), FRC4's
+  shadow draws 4.9 ms + its insert 1.7 -- ~23 us a face for a flat translucent triangle. pf89b (C89 + A4_PROFSYM, new:
+  PROF_INL makes lean_conv, tri_conv, tri_tex, mesh_tri_covered, cvr_hits, cvr_add, cvr_tri_bucket, shb_take and
+  shb_cand their own symbols in a profile build) running.
+- pf89b (C89 + A4_PROFSYM; tools/injector.py new A4_ELFOUT keeps the linked blob for disassembly; scratchpad hotpc.py:
+  a function's hottest basic blocks): per render on the model, shb_take 1.3 ms, lean_conv's own code 1.1, tri_conv 0.6,
+  mesh_tri_covered 0.4, batch_draw 1.3, shb_draw 0.3, tri_tex 0.2. shb_take's hot blocks are loads -- the face, its
+  three vertex records, the context's centre words at +0x40110 -- ~1,450 cycles a face on the model: memory-bound (the
+  N95 has 32 KB of L1 and no L2). C89 rebuilt without A4_PROFSYM is byte-identical to the measured one.
+- **A C89 regression: texture uploads.** The model's stats: C89 uploads 25-85 KB a frame through whole races (New
+  York, Paris, Monaco), C88 none outside each race's start. Not the sky (its census [58]: 6 uploads in the session, one
+  a track). The telemetry's counters: tex_remade and tex_evicted alike in both; **m1_rebakes 0 in every C88 capture,
+  13 -> 165 over C89's** -- mode-1 (palette) textures baked again because their table's contents changed. A guess
+  to test: +37FA4 now sees the frame's buildings (A4_FLAREFLUSH), so the sun's glare varies as on stock and with it a
+  table the game rewrites. ab89 (C88 + A4_GPUSKY alone, C88 + A4_FLAREFLUSH alone; LA and New York) running.

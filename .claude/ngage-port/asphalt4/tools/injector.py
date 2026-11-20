@@ -252,6 +252,8 @@ def build_blob(link_addr, tmp, clean=False, gl=False):
             sys.exit('new code has writable data: it would need a data section of its own')
     binf = os.path.join(tmp, 'a4.bin')
     subprocess.check_call(['llvm-objcopy', '-O', 'binary', '-j', '.text', elf, binf])
+    if os.environ.get('A4_ELFOUT'):                      # bench aid: the linked blob kept, to disassemble a profile's PCs
+        import shutil; shutil.copyfile(elf, os.environ['A4_ELFOUT'])
     syms = {}
     for line in subprocess.check_output(['llvm-nm', elf], text=True).splitlines():
         p = line.split()
