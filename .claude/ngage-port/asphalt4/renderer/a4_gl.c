@@ -5343,7 +5343,13 @@ static int lean_tail_cv(volatile struct glr *s, uint32_t *gctx, const uint32_t *
 #ifdef A4_SKYCHECK
     if ((kind == KIND_ADD || kind == KIND_ALPHA) && sky_rows(s) && (uint32_t)yr[1] >= sky_rows(s)) sky_check_expect(yr[0], yr[1]);
 #endif
-    if (kind == KIND_ADD || kind == KIND_ALPHA) return (uint32_t)yr[1] < sky_rows(s);
+    if (kind == KIND_ADD || kind == KIND_ALPHA) {
+        if ((uint32_t)yr[1] < sky_rows(s)) return 1;
+#ifdef A4_BLENDCEN
+        blend_note(kind == KIND_ALPHA, desc);   /* bench: the copy kept below the backdrop's rows */
+#endif
+        return 0;
+    }
 #endif
 #ifdef A4_BLENDCEN
     if (kind == KIND_ADD || kind == KIND_ALPHA) blend_note(kind == KIND_ALPHA, desc);   /* bench: its software copy */

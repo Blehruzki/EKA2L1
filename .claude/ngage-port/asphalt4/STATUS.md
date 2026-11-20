@@ -8,7 +8,7 @@ Owner's goals: 30 fps on the Nokia N95 8GB, real frames only, physics as stock, 
 Owner's rule for this stretch (after phone round r87a): **do the whole reverse engineering on the bench, take
 the gains, then one phone round** -- no build per finding.
 
-## How a frame is made (C87, round 87)
+## How a frame is made (C89, round 88)
 
 The game is the N-Gage 2.0 binary, unchanged on disk except what tools/injector.py adds: a blob of our code
 (renderer/*.c, *.s, the lifted engine renderer/eng/lifted.c) and hooks into the game's own functions.
@@ -34,7 +34,11 @@ The game is the N-Gage 2.0 binary, unchanged on disk except what tools/injector.
 - **2D and the present**: the game's HUD and sprites in software over it, then its present (the runtime's
   convert and post).
 - Blended classes (alpha-map, additive) are drawn twice: on the GPU and by the game's span, whose copy shows only
-  where no GPU class drew (the software sky).
+  where no GPU class drew. Since C89 the sky is the GPU's too (the routine +35FDA's stores recorded and drawn as
+  textured quads at the first triangle, pixel-exact), so copies within the sky's rows are skipped; Dubai's sun
+  (+3059E) keeps the sky in software for 128 frames after it is drawn.
+- The scene's last call, +37FA4, tests the sun's visibility on the screen's pixels and draws its lens flare: since
+  C89 the GPU's frame is composited before it (A4_FLAREFLUSH), as stock's order.
 
 ## Where the phone's time goes (r87a, Paris, FRC4 -- every render split, ms)
 
@@ -66,7 +70,10 @@ check build comparing against the game's own result where possible), log it, upd
 1. **Nitro's radial blur** (+1054C, MBX.md round 87): today the game spends ~17 ms a boosted render on it and the
    composite paints over it, so it is never seen. Our own exact routine (same order, same arithmetic) run after
    the composite at +12A12: the blur visible again, ~3-4 ms instead of 17. First, a bench that boosts at speed.
-2. **The ~8 ms before the 3D that no timer names** -- profile it on a bench that now enters the phone's states.
+2. **The whole frame by cycles** (done, MBX.md round 88 step 2): the blended classes' and additive billboards'
+   software copies are the largest block of the game's own work in the table; within the sky's rows the GPU's sky
+   (round 54's A4_GPUSKY, exact) makes them unnecessary. Found on the way: +37FA4, the scene's last call, draws the
+   sun's lens flare into the screen before the composite (now after it: A4_FLAREFLUSH).
 3. **Our GL submission** (12-19 ms, ~550 calls a render): redundant state, binds and draws a texture; the
    shadow's and the batch's draws.
 4. **The game's walk of the table** (6-9 ms): its per-triangle dispatch around our hook.
@@ -82,7 +89,8 @@ check build comparing against the game's own result where possible), log it, upd
 | r86: objects' sort and box, cars before the transform | on the phone (r86c) | ~3 ms in heavy LA | |
 | r87: meshes of up to 20 texture groups on the GPU | on the phone (r87a) | phone: Montmartre ~72 -> ~66 ms | |
 | 1. nitro blur (A4_NITROBLUR, C88) | done, bench | ~8.5 ms a boosted render (15.2 -> 6.7 on the model); exact, 0 px of 351 blurs | the blur visible again |
-| 2. the unattributed ~8 ms before the 3D | next | | |
+| 2. the GPU's sky (A4_GPUSKY) + the flare composited first (A4_FLAREFLUSH), C89 | done, bench | night Paris ~6 ms a render (12%); all tracks 0-6 ms by capture | exact: 0 px differing on all six tracks; the flare now over the 3D, as stock |
+| 4/6. the alpha copies left below the sky (deferred to the composite) | next | | the census first (bc88b) |
 
 ## Where things are
 

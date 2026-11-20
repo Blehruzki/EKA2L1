@@ -14016,3 +14016,26 @@ this log keeps every run. No phone round until the program's gains are in.
   Nothing GPU-drawn should follow in the frame (the scene returns; the blur at +12A12 and the HUD composite anyway);
   bench census under A4_SKYCHECK [72] flare composites, [70] triangles and [71] billboards reaching the hooks after
   one. gk88h (C88 + A4_GPUSKY + A4_SKYCHECK + A4_FLAREFLUSH, LA and New York) running.
+- gk88h (C88 + A4_GPUSKY + A4_SKYCHECK + A4_FLAREFLUSH, LA and New York; framestat 1,905): 329 frames checked, 0
+  pixels differing; **rows software changed before the composite 187 in 15 frames (gk88g: 5,179 in 61)** -- the alpha
+  copies' residue, as in Paris; 256 flare composites, **0 triangles and 31 billboards after them** (software, over the
+  composited picture, as on stock). The screenshots: New York in snow at the start, no sun in view; the same picture
+  as gk88g's.
+- wg88c (the gated watch with A4_FLAREFLUSH, LA and New York): 732 GPU frames, **no software writer in the sky's rows
+  between the first triangle and the composite.** With wg88 (Paris: only the alpha copies) and gk88g (0 pixels
+  differing on all six tracks): **the GPU sky is correct.** Left as it is: the sun one frame late in Dubai (8 times a
+  race), and the flare test's 0x20 bit now read from GPU-drawn pixels (an object's pixel can carry it, as a software
+  one could on stock).
+- **C89 = C88 + A4_GPUSKY + A4_FLAREFLUSH** (flags/C89.flags). at_C88 / at_C89 (plain builds, alltracks: six 45 s
+  races, two marks each, the last 8 captures kept; framestat 5,339 / 5,363, the boot fault only): ms a render by
+  capture (the same capture slots, the car's path differs run to run) 39.0 -> 37.8, 39.3 -> 38.8, 42.3 -> 41.5, 44.0
+  -> 44.0, **44.4 -> 39.0, 47.4 -> 41.2**, 41.0 -> 42.4, 42.4 -> 42.9. By FRC4 phase: the 3D pass down 3-5 ms where
+  the sky is in view; **"cflush" (the cars' flush, the first GL draw after the sky's) up ~2 ms in every capture --
+  host time, not the model's**: the model's charges a frame are the same in both runs (397/400 calls, 106 draws,
+  13.4k/13.2k vertices, tile render 4.28/4.26 ms; only texture bytes 3.1k -> 11.7k, +0.26 ms, the sky's uploads), so
+  the bench's own GL (drawing the 512x128 sky quad on the host) shows in that timer and the phone's gain should be
+  that much larger than the bench's. With pf88s (night Paris by segment, ~6 ms a render): C89 is the step-2 result.
+- bc88b (C87 + A4_GPUSKY + A4_FLAREFLUSH + A4_BLENDCEN, the census now noting the copies kept below the backdrop's
+  rows; Instant Play 150 s, marks 60/100/140) running: how many copies are left and how many of their pixels the GPU
+  left undrawn -- if ~none, a deferral of the copies to the composite (run only where the read-back shows a hole)
+  removes the rest of the alpha-map objects' software cost (round 86: ~66 us a list triangle on the phone).
