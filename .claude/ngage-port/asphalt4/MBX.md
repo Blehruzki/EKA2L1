@@ -13838,3 +13838,23 @@ c. State the bench did not enter: a mesh of more than 20 groups (refused as befo
   GPU class drew (the software sky) keep it. This is round 54's unaccounted writer (g54t2: "over most of the screen
   between its last triangle and the HUD, through none of our hooks"; that bench car held nitro too). Stock's own
   software picture is blurred; the port has not shown the blur since the composite moved to the frame's end.
+- Owner: "are you entirely sure the blur can't be added back without having that cost?" -- **No: the 17 ms is the
+  game's code, not the effect's.** +1054C read in full (a4code.bin): W, H from ctx+0x1104 / +0x1108; four pointers from
+  the centre -- top-left (W/2-1, H/2-1) going left and up, bottom-left (W/2-1, H/2) left and down, top-right (W/2,
+  H/2-1) right and up, bottom-right (W/2, H/2) right and down, handled in that order at each step; rows j = 0..H/2-1
+  outward, columns i = 0..W/2-1 outward. Scales: ys = 0xCC000 / H, xs = 0xB0000 / W (the divide helper +50E8C).
+  Per row: dy = ys j >> 12, d2 = dy^2; s = ((d2 >> 12) & 15) ? isqrt(d2 >> 4) >> 1 : isqrt(d2) >> 4 (+313AA). Per
+  column: when bit 3 of i is set, s = isqrt(((xs i >> 12)^2 + d2) >> 4); otherwise the last s stands. k = s x
+  intensity >> 8; k <= 5 skips the step's four pixels, k > 32 is 32. Each pixel p blends toward its neighbour q
+  nearer the centre -- horizontal when (i + j) is odd, vertical when even -- packed 565 as the game's: P = (p | p <<
+  16) & 0x07E0F81F, Q likewise, p' = ((((Q - P) x k) >> 5) + P) & 0x07E0F81F, stored as the low half of p' | p' >>
+  16 (32-bit wrap, logical shift). In place: the neighbour toward the centre is already blurred (an IIR smear
+  outward), except across the centre lines where the step's order decides. Deterministic and a few ALU operations a
+  pixel; the game spends ~17 ms on it in Thumb with its loop state on the stack, a square root call on half the
+  columns and four pointers juggled through memory.
+- **A way back for the blur, at a fraction of the cost (proposal, not built):** our own ARM routine with the same
+  order and arithmetic (exact to the bit; s per (i, j) fixed by W and H, so a table or a per-row isqrt checked
+  exhaustively against +313AA), called at +12A12 in place of the game's -- after composing the GPU's frame there,
+  so it blurs the picture as stock's does, the HUD drawn after it as stock's is. Estimate (not measured): ~3-4 ms a
+  boosted render on the phone against 17. Bench test: the game's +1054C and ours run on copies of the same frame,
+  every pixel compared, and a forced boost so the bench enters the state at all.
