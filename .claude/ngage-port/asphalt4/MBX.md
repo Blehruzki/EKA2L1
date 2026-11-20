@@ -14412,3 +14412,31 @@ c. Not entered: a post the hold skips (a4_fw_hold returns 1: no start word, no s
   cost for a 15 KB part upload a render -- is what the next phone round's TIM2 [40..48] measures (the pace bounds
   it meanwhile). The mimic's own unknown, a mid-frame glCopyTexSubImage2D, cannot be benched: the emulator's HLE GLES
   does not implement it (dispatch/src/register.cpp, commented out). It stays the fallback if the phone's upload is slow.
+
+### New York's snow, named (r90b's "~5 ms every render" in the 2D phase)
+- p2dny4 (C91 + A4_PROF2D + A4_PROFSYM, the 2D phase gated -- a4_pg_on after the composite, a4_pg_off at the frame's
+  start --, New York 120 s, EKA2L1_PCPROF_CYCLES, skip 7e8, length 1e8 -- the earlier attempts' windows were too long
+  to fill mid-race): 808 openings. **The painter (a4_engv_29736, our A4_PAINTFAST) 47%** -- its walk for colours with
+  an alpha plane 21%, 8-bit paletted 15%, its per-call work ~7% --, **game +286A4 15%**, drtaeabi (the runtime's
+  divide) 7-10%, +29ADA 4%.
+- A4_PAINTCEN (bench, a4_eng.c: TIM2 [26..39] pixels and calls by the walk's format), LA then New York 60 s: per render
+  LA ~1 call of colours-with-alpha (1,800 px, the HUD) against **New York's ~117 (2,700 px)**; 8-bit paletted ~5 calls
+  both (1,950 / 2,700 px).
+- **+286A4 is the snow** (read): called once a render by +12992 at +129C8 (before the blur's +12A12), it moves **1,000
+  flakes** (20 bytes each: x, y, z, an angle, a speed) -- per flake the sprite's alpha set from z, the screen point by
+  two calls of the runtime's divide (x W / z + W/2, y H / z + H/2: W, H at [ctx+4C], [ctx+50]), the flake drawn by
+  +29ADA (the sprite's frame (z * 6) >> 9 for z < 512, its pieces each through the painter +29736), the move by the
+  sine table at the literal +28808 (cos at angle + 512) times the speed >> 14, z less (the player car's speed x 100
+  / its top speed << 7) / 100 (+525A0, by reciprocal) while the car moves, and a respawn (+285B8, rand) out of x in
+  [-512, 512], y in [-512, 128] or z <= 0. **~885 of the 1,000 a render are clipped away by the painter, after the
+  whole call chain.**
+- **A4_PAINTFWD** (a4_eng.c): the compiled walk (pf_walk) for the two hot formats reloaded 7-9 stack words a pixel
+  (register pressure: the whole walk's state live). pf_apl_fwd (colours with an alpha plane) and pf_pal8_fwd (8-bit
+  paletted, no plane) are the same per-pixel arithmetic for a row walked forward into the screen (xdir 1, dstep 1),
+  with only source and screen pointers live; the game's masks +29E14 / +29E18 are 0xF81F / 0xF81F0 and the one
+  colour +29A34 0x39C7, so only a colour's low 16 bits matter. Every other case keeps pf_walk.
+- pfc (C91 + A4_PAINTFWD + A4_PAINTCHECK -- the game's painter and ours on the same input, call for call; its counts
+  moved to TIM2 [50..54] since A4_BBPROBE's sprite table covers census words 10-117 -- LA then New York 45 s):
+  **174,914 calls compared, 0 differing, 0 pixels, 0 clip words**; through the new loops 48,950 (paletted) and 96,556
+  (alpha plane), 29,021 others; 161,867 not compared (empty or past the buffers -- the clipped flakes). pfm (its
+  mutant, one pixel a call): 4,881 of 4,881 flagged.

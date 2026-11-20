@@ -588,6 +588,79 @@ static inline __attribute__((always_inline)) void pf_walk(const struct pfw *p, c
         sy += p->ydir;
     } while (sy != p->sy1);
 }
+#ifdef A4_PAINTFWD
+/* Round 88 (the 2D phase by cycles, New York, p2dny4: the painter's walk 36% of it, its two formats the HUD's and the
+ * snow's): pf_walk's loop for a row walked forward into the screen (xdir 1, dstep 1 -- no flip across, no turn) kept
+ * the walk's whole state live, and the compiler reloaded seven or nine words from the stack every pixel. These two
+ * are the same per-pixel arithmetic with only what a forward row needs: source and screen pointers, the alpha
+ * plane's byte and nibble. The game's masks 0xF81F and 0xF81F0 (+29E14, +29E18; the one colour +29A34 is 0x39C7)
+ * read only a colour's low 16 bits, so the colour is read as an unsigned halfword. Checked against the game's own
+ * painter call for call by A4_PAINTCHECK. */
+static inline uint32_t pf_blend(uint32_t c, uint32_t dv, uint32_t al, uint32_t m1, uint32_t m3)
+{
+    const uint32_t c1 = (c & m1) | ((c & 0x7E0u) << 16), d1 = (dv & m1) | ((dv & 0x7E0u) << 16);
+    const uint32_t t = (c1 - d1) * al + (d1 << 4);
+    return ((t & m3) >> 4) | ((t & 0x7E000000u) >> 20);
+}
+/* colours with an alpha plane (PAL 0, APL 1, the colour as the source has it) */
+static void pf_apl_fwd(const struct pfw *p)
+{
+    const uint32_t csrc = p->csrc, asrc = p->asrc, m1 = p->m1, m3 = p->m3;
+    const int32_t *const AT = p->AT;
+    const uint32_t n = p->sx1 - p->sx0, step = p->sw * p->ydir, skip = p->rowskipb;
+    uint32_t sy = p->sy0, i0 = p->rowoff + p->sx0, dst = p->dst;
+    do {
+        const uint16_t *cp = (const uint16_t *)(uintptr_t)(csrc + 2u * i0);
+        uint16_t *dp = (uint16_t *)(uintptr_t)dst;
+        uint16_t *const de = dp + n;
+        uint32_t i = i0;
+        do {
+            const int32_t al = AT[(L8(asrc + (uint32_t)((int32_t)i >> 1)) >> ((1u & ~i) << 2)) & 15u];
+            if (al == 15) *dp = *cp;
+            else if (al != 0) *dp = (uint16_t)pf_blend(*cp, *dp, (uint32_t)al, m1, m3);
+            cp++; dp++; i++;
+        } while (dp != de);
+        dst += 2u * n + skip;
+        i0 += step;
+        sy += p->ydir;
+    } while (sy != p->sy1);
+}
+/* 8-bit paletted, no alpha plane: the colour of each index made when the walk first meets it (as pf_walk), the
+ * colour key's index skipped (al 0: nothing drawn, and its colour never needed) */
+static void pf_pal8_fwd(const struct pfw *p)
+{
+    const int32_t a15 = p->AT[15];
+    if (a15 == 0) return;                           /* every pixel's al 0 */
+    uint16_t lut[256];
+    uint32_t lutv[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    const uint32_t isrc = p->isrc, key = p->key, ct = p->ct, mode = p->mode, lit4 = p->lit4, m1 = p->m1, m3 = p->m3;
+    const uint32_t n = p->sx1 - p->sx0, step = p->sw * p->ydir, skip = p->rowskipb;
+    uint32_t sy = p->sy0, i0 = p->rowoff + p->sx0, dst = p->dst;
+    do {
+        const uint8_t *ip = (const uint8_t *)(uintptr_t)(isrc + i0);
+        uint16_t *dp = (uint16_t *)(uintptr_t)dst;
+        uint16_t *const de = dp + n;
+        do {
+            const uint32_t idx = *ip++;
+            if (idx != key) {
+                uint32_t c;
+                if ((lutv[idx >> 5] >> (idx & 31u)) & 1u) c = lut[idx];
+                else {
+                    c = pf_mode((uint32_t)(int32_t)(int16_t)(((L8(ct + 3u * idx + 2u) >> 3) << 11) | ((L8(ct + 3u * idx + 1u) >> 2) << 5)
+                                                             | (L8(ct + 3u * idx) >> 3)), mode, lit4);
+                    lut[idx] = (uint16_t)c; lutv[idx >> 5] |= 1u << (idx & 31u);
+                }
+                if (a15 == 15) *dp = (uint16_t)c;
+                else *dp = (uint16_t)pf_blend(c, *dp, (uint32_t)a15, m1, m3);
+            }
+            dp++;
+        } while (dp != de);
+        dst += 2u * n + skip;
+        i0 += step;
+        sy += p->ydir;
+    } while (sy != p->sy1);
+}
+#endif
 static uint64_t a4_paint_fast(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2,
     uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7)
 {
@@ -634,17 +707,49 @@ static uint64_t a4_paint_fast(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3
         uint32_t pal = L32(L32(o + 0x14u) + 4u * ((uint32_t)L8(o + 0xCu) * (uint32_t)L8(d + 0xBu) + (uint32_t)(int32_t)LS16(o + 0x24u)));
         key = (uint32_t)(int32_t)LS16(pal + 0xCu); ct = L32(pal + 8u);
     }
+#ifdef A4_PAINTCEN
+    {   /* bench (round 88, New York's snow): TIM2 [26+v] pixels and [32+v] calls by the walk's format -- v 0 4-bit
+         * paletted with an alpha plane, 1 4-bit paletted, 2 8-bit paletted with an alpha plane, 3 8-bit paletted, 4
+         * colours with an alpha plane, 5 colours; [38] the last call's w | h << 16 of format 4, [39] of format 3 */
+        volatile uint32_t *T_ = (volatile uint32_t *)0x005C0F10u;
+        const uint32_t v = pal8 ? (nib ? (apl ? 0u : 1u) : (apl ? 2u : 3u)) : (apl ? 4u : 5u);
+        if (T_[0] == 0x324D4954u) {
+            T_[26u + v] += (uint32_t)w * (uint32_t)h; T_[32u + v]++;
+            if (v == 4u) T_[38] = (uint32_t)w | (uint32_t)h << 16;
+            if (v == 3u) T_[39] = (uint32_t)w | (uint32_t)h << 16;
+        }
+    }
+#endif
     struct pfw P;
     P.sx0 = (uint32_t)sx0; P.sx1 = (uint32_t)sx1; P.sy0 = (uint32_t)sy0; P.sy1 = (uint32_t)sy1;
     P.xdir = (uint32_t)xdir; P.ydir = (uint32_t)ydir; P.rowoff = rowoff; P.dst = dst;
     P.dstepb = 2u * dstep; P.rowskipb = 2u * rowskip; P.sw = (uint32_t)(int32_t)LS16(d + 4u);
     P.isrc = isrc; P.csrc = csrc; P.asrc = asrc; P.key = key; P.ct = ct; P.mode = mode; P.lit4 = lit4;
     P.m1 = m1; P.m3 = m3; P.AT = AT;
+#ifdef A4_PAINTFWD
+    const int fwd = xdir == 1 && dstep == 1u;       /* a forward row into the screen: the two loops above */
+#if defined(A4_PAINTCHECK) && defined(A4_PHTIMERS)
+    {   /* bench: TIM2 [55] calls by pf_pal8_fwd, [56] by pf_apl_fwd, [57] painted by any other loop */
+        volatile uint32_t *T_ = (volatile uint32_t *)0x005C0F10u;
+        if (T_[0] == 0x324D4954u) {
+            if (fwd && pal8 && !nib && !apl) T_[55]++;
+            else if (fwd && !pal8 && apl && mode != 1u && mode != 3u && mode != 4u) T_[56]++;
+            else T_[57]++;
+        }
+    }
+#endif
+    if (pal8) { if (nib) { if (apl) pf_walk(&P, 1, 1, 1, 1); else pf_walk(&P, 1, 1, 0, 1); }
+                else { if (apl) pf_walk(&P, 1, 0, 1, 1); else if (fwd) pf_pal8_fwd(&P); else pf_walk(&P, 1, 0, 0, 1); } }
+    else { int m0 = mode != 1u && mode != 3u && mode != 4u;     /* the colour as the source has it */
+           if (apl) { if (m0) { if (fwd) pf_apl_fwd(&P); else pf_walk(&P, 0, 0, 1, 0); } else pf_walk(&P, 0, 0, 1, 1); }
+           else { if (m0) pf_walk(&P, 0, 0, 0, 0); else pf_walk(&P, 0, 0, 0, 1); } }
+#else
     if (pal8) { if (nib) { if (apl) pf_walk(&P, 1, 1, 1, 1); else pf_walk(&P, 1, 1, 0, 1); }
                 else { if (apl) pf_walk(&P, 1, 0, 1, 1); else pf_walk(&P, 1, 0, 0, 1); } }
     else { int m0 = mode != 1u && mode != 3u && mode != 4u;     /* the colour as the source has it */
            if (apl) { if (m0) pf_walk(&P, 0, 0, 1, 0); else pf_walk(&P, 0, 0, 1, 1); }
            else { if (m0) pf_walk(&P, 0, 0, 0, 0); else pf_walk(&P, 0, 0, 0, 1); } }
+#endif
     return ((uint64_t)(uint32_t)sy1 << 32) | (uint32_t)sy1;
 }
 #define PAINT_UT a4_paint_fast
@@ -686,6 +791,9 @@ uint64_t a4_engv_29736(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint3
 #endif
     if (x1 <= x0 || y1 <= y0 || !px || (uint32_t)((x1 - x0) * (y1 - y0) * 2) > PCK_MAX) {
         ck[116]++;
+#ifdef A4_PHTIMERS
+        if (((volatile uint32_t *)0x005C0F10u)[0] == 0x324D4954u) ((volatile uint32_t *)0x005C0F10u)[54]++;
+#endif
         return PAINT_UT(r0, r1, r2, r3, s0, s1, s2, s3, s4, s5, s6, s7);
     }
     volatile uint16_t *fb = (volatile uint16_t *)(uintptr_t)px;
@@ -710,8 +818,156 @@ uint64_t a4_engv_29736(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint3
     ck[115]++;
     if (d) { ck[117]++; ck[120] += d; }
     if (MEM32(r1 + 0x38u) != g0 || MEM32(r1 + 0x3Cu) != g1) ck[121]++;
+#ifdef A4_PHTIMERS
+    {   /* round 88: the same counts in TIM2 [50..54] -- A4_BBPROBE's sprite table runs over census words 10-117 */
+        volatile uint32_t *T_ = (volatile uint32_t *)0x005C0F10u;
+        if (T_[0] == 0x324D4954u) {
+            T_[50]++; if (d) { T_[51]++; T_[52] += d; }
+            if (MEM32(r1 + 0x38u) != g0 || MEM32(r1 + 0x3Cu) != g1) T_[53]++;
+        }
+    }
+#endif
     (void)i;
     return rr;
 }
+#endif
+#endif
+#ifdef A4_SNOWFAST
+/* Round 88 (phone round r90b, New York: the 2D phase ~5 ms longer every render, "the snow"; p2dny4, the 2D phase by
+ * cycles: +286A4 15%, the runtime's divide 7-10%, +29ADA 4%, and the painter's per-call work): +286A4, called once a
+ * render by +12992 (+129C8, before the blur), moves New York's 1,000 snowflakes and draws each through +29ADA (the
+ * sprite's pieces of the flake's size, each through the painter +29736): ~115 of the 1,000 land on the screen. Here
+ * the same routine, line for line -- the same values from the same game words, the game's own divide (+50E8C) for
+ * the projection and its respawn (+285B8) -- and each piece drawn by the painter's entry only when the painter's own
+ * clip (a4_paint_fast's first lines, the same arithmetic) leaves it pixels: a piece clipped away cost the whole call
+ * chain and drew nothing. The composite and the clip rectangle's first setting, which the painter's first call
+ * made, are made at the same point. +525A0 (a value over 100 by its reciprocal) is the same each flake of a render
+ * and is done once. Checked against the game's routine on the same state every render by A4_SNOWCHECK. */
+#ifndef A4_PAINTFAST
+#error "A4_SNOWFAST draws through the painter's entry (A4_PAINTFAST)"
+#endif
+uint64_t a4_engv_29736(uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t s0, uint32_t s1, uint32_t s2,
+    uint32_t s3, uint32_t s4, uint32_t s5, uint32_t s6, uint32_t s7);
+typedef int32_t (*snow_div_fn)(int32_t, int32_t);
+typedef uint32_t (*snow_get_fn)(uint32_t, uint32_t);
+typedef void (*snow_resp_fn)(uint32_t, uint32_t, uint32_t);
+static int snow_paints(uint32_t surf, uint32_t d, int32_t x, int32_t y)   /* a4_paint_fast's clip: pixels left? */
+{
+    int32_t w = LS16(d + 4u), h = LS16(d + 6u);
+    const int32_t cx0 = LS16(surf + 0x38u), cx1 = (int32_t)((uint32_t)cx0 + (uint32_t)(int32_t)LS16(surf + 0x3Cu));
+    const int32_t cy0 = LS16(surf + 0x3Au), cy1 = (int32_t)((uint32_t)cy0 + (uint32_t)(int32_t)LS16(surf + 0x3Eu));
+    if (x < cx0) { w = (int32_t)((uint32_t)w - ((uint32_t)cx0 - (uint32_t)x)); x = cx0; }
+    if (y < cy0) { h = (int32_t)((uint32_t)h - ((uint32_t)cy0 - (uint32_t)y)); y = cy0; }
+    { int32_t e = (int32_t)((uint32_t)x + (uint32_t)w); if (e > cx1) w = (int32_t)((uint32_t)w - ((uint32_t)e - (uint32_t)cx1)); }
+    { int32_t e = (int32_t)((uint32_t)y + (uint32_t)h); if (e > cy1) h = (int32_t)((uint32_t)h - ((uint32_t)e - (uint32_t)cy1)); }
+    return w > 0 && h > 0;
+}
+#ifdef A4_SNOWCHECK
+#define SNOW_RESPAWN(self, k) snow_respawn_check((self), (k))
+static void snow_respawn_check(uint32_t self, uint32_t k);
+#else
+#define SNOW_RESPAWN(self, k) ((snow_resp_fn)(uintptr_t)GAMEFN(0x285B8u))((self), (k), 0u)
+#endif
+static void snow_run(uint32_t self, uint32_t ctx)
+{
+    const uint32_t S = ((snow_get_fn)(uintptr_t)GAMEFN(0x19212u))(self, ctx);   /* +19212, as called (r0, r1) */
+    const uint32_t G = L32(L32(S + 4u));
+    const uint32_t X = L32(G + 0xF80u + 0x2Cu);
+    const uint32_t C = L32(4u * L32(L32(X + 0x380u + 0x10u) + 0xCu) + X + 0x380u + 0x14u);   /* the player's car */
+    const int32_t wind = (int32_t)L32(C + 0xB4u);
+    const snow_div_fn idiv = (snow_div_fn)(uintptr_t)GAMEARM(0x50E8Cu);
+    const int32_t n100 = (int32_t)((uint32_t)idiv((int32_t)((uint32_t)wind * 100u), (int32_t)L32(C + 0x7C0u + 0x28u)) << 7);
+    /* +525A0's quotient: the high word of n * 0x51EB851F, >> 5, less n >> 31 */
+    const int32_t q100 = (int32_t)(((int64_t)n100 * (int64_t)0x51EB851F) >> 32 >> 5) - (n100 >> 31);
+    const uint32_t slot = self + 0x4E00u, tab = GAMEW(0x28808u), bx = GAMEW(0x2880Cu), by = GAMEW(0x28810u);
+    int first = 1;
+    for (uint32_t k = 0; k < 1000u; k++) {
+        const uint32_t p = self + 20u * k;
+        const int32_t z = (int32_t)L32(p + 0xCu);
+        const int32_t fr = z < 512 ? (int32_t)((uint32_t)z * 6u) >> 9 : 0;
+        {   const int32_t t = (int32_t)((uint32_t)z << 3);
+            L16(L32(slot + 0x24u) + 0x38u) = (uint16_t)(14 - ((int32_t)((uint32_t)t + ((uint32_t)(t >> 31) >> 22)) >> 10)); }
+        const int32_t W = (int32_t)L32(L32(ctx + 0x4Cu));
+        const int32_t sx = (int32_t)((uint32_t)idiv((int32_t)(L32(p + 4u) * (uint32_t)W), z) + (uint32_t)(W >> 1));
+        const int32_t H = (int32_t)L32(L32(ctx + 0x50u));
+        const int32_t sy = (int32_t)((uint32_t)idiv((int32_t)(L32(p + 8u) * (uint32_t)H), z) + (uint32_t)(H >> 1));
+        {   /* +29ADA(sprite, ctx, sx, sy, fr): the frame's pieces, each to the painter */
+            const uint32_t spr = L32(slot + 0x24u);
+            const uint32_t pl = L32(L32(spr + 0x1Cu) + 4u * (uint32_t)fr);
+            for (int32_t q = 0; q < LS16(pl); q++) {
+                const uint32_t pc = L32(L32(pl + 4u) + 4u * (uint32_t)q);
+                const uint32_t fl = (uint32_t)(int32_t)LS16(pc + 4u), d = L32(pc + 8u);
+                const int32_t x = (int32_t)((uint32_t)(int32_t)LS16(pc) + (uint32_t)sx);
+                const int32_t y = (int32_t)((uint32_t)(int32_t)LS16(pc + 2u) + (uint32_t)sy);
+                if (first) {                        /* what the painter's first call did before its clip */
+                    first = 0;
+                    a4_gl_hud();
+                    if (LS16(ctx + 0x38u) == -1) {
+                        L16(ctx + 0x38u) = 0; L16(ctx + 0x3Au) = 0; L16(ctx + 0x3Cu) = L16(ctx + 8u); L16(ctx + 0x3Eu) = L16(ctx + 0xAu);
+                    }
+                }
+#ifdef A4_SNOWCHECK
+                {   volatile uint32_t *T_ = (volatile uint32_t *)0x005C0F10u;
+                    if (snow_paints(ctx, d, x, y)) { T_[57]++; a4_engv_29736(spr, ctx, (uint32_t)x, (uint32_t)y, d, fl, 0, 0, 0, 0, 0, 0); }
+                    else T_[58]++; }
+#else
+                if (snow_paints(ctx, d, x, y)) a4_engv_29736(spr, ctx, (uint32_t)x, (uint32_t)y, d, fl, 0, 0, 0, 0, 0, 0);
+#endif
+            }
+        }
+        const uint32_t a = L32(p + 0x10u), spd = L32(p + 0x14u);
+        const int32_t nx = (int32_t)((uint32_t)((int32_t)((uint32_t)(int32_t)(int16_t)L32(tab + (((a + 0x200u) << 21) >> 19)) * spd) >> 14) + L32(p + 4u));
+        L32(p + 4u) = (uint32_t)nx;
+        const int32_t ny = (int32_t)((uint32_t)((int32_t)((uint32_t)(int32_t)(int16_t)L32(tab + ((a << 21) >> 19)) * spd) >> 14) + L32(p + 8u));
+        L32(p + 8u) = (uint32_t)ny;
+        if (wind) L32(p + 0xCu) = L32(p + 0xCu) - (uint32_t)q100;
+        if ((uint32_t)nx + 0x200u >= bx || (uint32_t)ny + 0x200u >= by || (int32_t)L32(p + 0xCu) <= 0) SNOW_RESPAWN(self, k);
+    }
+}
+#ifdef A4_SNOWCHECK
+/* bench: the game's +286A4 and ours on the same state, every render. Saved first: the 1,000 flakes (20,000 bytes),
+ * the screen, the flake sprite's alpha; the game's run, its results kept; all put back; ours run with each respawn
+ * taking the game's respawned flake (rand is drawn once, by the game's run); then compared. TIM2 [50] renders
+ * checked, [51] flake bytes differing, [52] renders with any, [53] screen pixels differing, [54] renders with any,
+ * [55] our respawns, [56] flakes whose respawn ours and the game's disagree on, [57] pieces painted, [58] pieces
+ * skipped (clipped), [59] the alpha differing. Copies at 0x5C4000 (A4_SCRATCH_SIZE 0x220000). */
+#define SNC_P0 ((uint32_t *)0x005C4000u)            /* the flakes before (5,000 words) */
+#define SNC_P1 ((uint32_t *)0x005C8E20u)            /* after the game's run */
+#define SNC_S0 ((uint16_t *)0x005CDC40u)            /* the screen before (76,800 halfwords) */
+#define SNC_S1 ((uint16_t *)0x005F3240u)            /* after the game's run (ends 0x618840) */
+static void snow_respawn_check(uint32_t self, uint32_t k)
+{
+    volatile uint32_t *T_ = (volatile uint32_t *)0x005C0F10u;
+    uint32_t same = 1;                              /* the game's flake as our move left it: the game did not respawn it */
+    for (uint32_t q = 0; q < 5u; q++) same &= L32(self + 20u * k + 4u * q) == SNC_P1[5u * k + q];
+    T_[56] += same;
+    for (uint32_t q = 0; q < 5u; q++) L32(self + 20u * k + 4u * q) = SNC_P1[5u * k + q];
+    T_[55]++;
+}
+void a4_snow(uint32_t self, uint32_t ctx)
+{
+    volatile uint32_t *T_ = (volatile uint32_t *)0x005C0F10u;
+    const uint32_t px = L32(ctx + 4u), n = (uint32_t)L16(ctx + 8u) * (uint32_t)L16(ctx + 0xAu);
+    if (T_[0] != 0x324D4954u || !px || n > 76800u) { snow_run(self, ctx); return; }
+    const uint32_t spr = L32(self + 0x4E00u + 0x24u);
+    a4_gl_hud();                                    /* the composite first: both runs draw over the same picture */
+    for (uint32_t q = 0; q < 5000u; q++) SNC_P0[q] = L32(self + 4u * q);
+    for (uint32_t q = 0; q < n; q++) SNC_S0[q] = L16(px + 2u * q);
+    const uint32_t a0 = L16(spr + 0x38u);
+    ((void (*)(uint32_t, uint32_t))(uintptr_t)GAMEFN(0x286A4u))(self, ctx);
+    const uint32_t a1 = L16(spr + 0x38u);
+    for (uint32_t q = 0; q < 5000u; q++) SNC_P1[q] = L32(self + 4u * q);
+    for (uint32_t q = 0; q < n; q++) SNC_S1[q] = L16(px + 2u * q);
+    for (uint32_t q = 0; q < 5000u; q++) L32(self + 4u * q) = SNC_P0[q];
+    for (uint32_t q = 0; q < n; q++) L16(px + 2u * q) = SNC_S0[q];
+    L16(spr + 0x38u) = (uint16_t)a0;
+    snow_run(self, ctx);                            /* a flake the game respawned and ours did not differs below */
+    uint32_t db = 0, dp = 0;
+    for (uint32_t q = 0; q < 5000u; q++) db += L32(self + 4u * q) != SNC_P1[q];
+    for (uint32_t q = 0; q < n; q++) dp += L16(px + 2u * q) != SNC_S1[q];
+    T_[50]++; T_[51] += db; T_[52] += db != 0; T_[53] += dp; T_[54] += dp != 0; T_[59] += L16(spr + 0x38u) != a1;
+}
+#else
+void a4_snow(uint32_t self, uint32_t ctx) { snow_run(self, ctx); }
 #endif
 #endif

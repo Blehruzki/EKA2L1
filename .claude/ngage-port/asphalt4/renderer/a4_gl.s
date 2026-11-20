@@ -243,3 +243,72 @@ a4_hc_25e8:
         .global a4_hc_12dec
 a4_hc_12dec:
         .word   0xDEADBEEF          @ patched: (code+0x12DEC | 1) - (this word): the camera's update
+
+#ifdef A4_BLURFAST2
+@ void a4_blur_row2(uint16_t *p6, uint16_t *p7, uint16_t *p5, uint16_t *p4, const uint8_t *kbuf, uint32_t cols,
+@                   uint32_t w2, uint32_t odd)
+@ Round 88 (A4_BLURFAST2): a4_blur_row for a row's steps after its first, in a row after the first (j >= 1, i >= 1).
+@ There each of the four pixels blends with a neighbour of its own quadrant already done (the row before, or its own
+@ previous step) -- the quadrants meet only at the first row and the first column -- so a step's four are
+@ independent and two are worked at once (p6 with p7, then p5 with p4): the same arithmetic, the loads' and the
+@ multiply's latencies under the other pixel's work.
+        .macro  BLUR2   pa, pb, oa, ob
+        ldrh    r9, [\pa]
+        ldrh    r12, [\pb]
+        ldrh    r10, [\pa, \oa]
+        ldrh    lr, [\pb, \ob]
+        orr     r9, r9, r9, lsl #16
+        orr     r12, r12, r12, lsl #16
+        and     r9, r9, r7
+        and     r12, r12, r7
+        orr     r10, r10, r10, lsl #16
+        orr     lr, lr, lr, lsl #16
+        and     r10, r10, r7
+        and     lr, lr, r7
+        sub     r10, r10, r9
+        sub     lr, lr, r12
+        mul     r10, r10, r8
+        mul     lr, lr, r8
+        add     r9, r9, r10, lsr #5
+        add     r12, r12, lr, lsr #5
+        and     r9, r9, r7
+        and     r12, r12, r7
+        orr     r9, r9, r9, lsr #16
+        orr     r12, r12, r12, lsr #16
+        strh    r9, [\pa]
+        strh    r12, [\pb]
+        .endm
+        .global a4_blur_row2
+a4_blur_row2:
+        push    {r4-r11, lr}
+        ldr     r4, [sp, #36]                   @ kbuf
+        ldr     r5, [sp, #40]                   @ cols
+        ldr     r6, [sp, #44]                   @ w2
+        ldr     r11, [sp, #48]                  @ the first step's parity
+        mov     r7, #0x1F
+        orr     r7, r7, #0xF800
+        orr     r7, r7, #0x7E00000
+        cmp     r5, #0
+        beq     9f
+        rsb     r6, r6, #0                      @ r6 = -w2 (the row above, for p7 and p4)
+1:      ldrb    r8, [r4], #1
+        cmp     r8, #0
+        beq     4f
+        cmp     r11, #0
+        bne     3f
+        rsb     r6, r6, #0                      @ +w2
+        BLUR2   r0, r2, r6, r6                  @ even: p6 and p5 from the row below
+        rsb     r6, r6, #0                      @ -w2
+        BLUR2   r1, r3, r6, r6                  @ p7 and p4 from the row above
+        b       4f
+3:      BLUR2   r0, r1, #2, #2                  @ odd: p6 and p7 from the right
+        BLUR2   r2, r3, #-2, #-2                @ p5 and p4 from the left
+4:      sub     r0, r0, #2
+        sub     r1, r1, #2
+        add     r2, r2, #2
+        add     r3, r3, #2
+        eor     r11, r11, #1
+        subs    r5, r5, #1
+        bne     1b
+9:      pop     {r4-r11, pc}
+#endif

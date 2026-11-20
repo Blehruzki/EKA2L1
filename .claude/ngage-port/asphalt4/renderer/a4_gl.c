@@ -12140,6 +12140,10 @@ static inline void blur_px(uint16_t *p, uint32_t q, uint32_t k) /* p toward q by
  * i + j is odd, along the column when even -- already blurred, so the smear runs outward */
 void a4_blur_row(uint16_t *p6, uint16_t *p7, uint16_t *p5, uint16_t *p4, const uint8_t *kbuf, uint32_t cols,
                  uint32_t w2, uint32_t odd);   /* a4_px.s: one row's pixels, the strengths given */
+#ifdef A4_BLURFAST2
+void a4_blur_row2(uint16_t *p6, uint16_t *p7, uint16_t *p5, uint16_t *p4, const uint8_t *kbuf, uint32_t cols,
+                  uint32_t w2, uint32_t odd);  /* a4_px.s: the same past a row's first step, two pixels at once */
+#endif
 /* the blur's distance table (0x460000-0x464000: free in a phone build; the bench's censuses there are excluded) */
 #if defined(A4_BLENDCEN) || defined(A4_SKYCEN) || defined(A4_MESHMEMO) \
     || defined(A4_LIFTCHECK) || defined(A4_BBCHECK) || defined(A4_MEMOCHECK) || defined(A4_PAINTCHECK_BIG) || defined(A4_CECHECK)
@@ -12199,7 +12203,16 @@ static void blur_run(uint16_t *fb, int32_t I, uint32_t ctx, const int32_t *T)
             kb[i] = (uint8_t)(k <= 5 ? 0 : k > 32 ? 32 : k);
         }
         uint16_t *p4 = c4 + j * W, *p7 = p4 - 1, *p5 = c4 - W - j * W, *p6 = p5 - 1;
+#ifdef A4_BLURFAST2
+        /* round 88: past the first row and the first step the four quadrants never meet -- two pixels at once there */
+        if (j == 0 || cols < 2) a4_blur_row(p6, p7, p5, p4, kb, (uint32_t)cols, 2u * (uint32_t)W, (uint32_t)j & 1u);
+        else {
+            a4_blur_row(p6, p7, p5, p4, kb, 1u, 2u * (uint32_t)W, (uint32_t)j & 1u);
+            a4_blur_row2(p6 - 1, p7 - 1, p5 + 1, p4 + 1, kb + 1, (uint32_t)cols - 1u, 2u * (uint32_t)W, ((uint32_t)j & 1u) ^ 1u);
+        }
+#else
         a4_blur_row(p6, p7, p5, p4, kb, (uint32_t)cols, 2u * (uint32_t)W, (uint32_t)j & 1u);
+#endif
     }
 }
 #else
