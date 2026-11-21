@@ -94,6 +94,13 @@ place), `-DA4_WHEELGATE` (opens EKA2L1_WATCHGATE's word 0x5C30F0 at the census's
 C92.flags = C91.flags with `-DA4_CARANIM -DA4_M1LIVE -DA4_PAINTFWD -DA4_SNOWFAST` (round 88, after r90b: the player's
 tyres spin, the car paint's reflection made again after each composite (paced by its cost; TIM2 [40..48]), the
 painter's forward rows, New York's snow in C with clipped flakes skipped). Same scratch (`A4_SCRATCH_SIZE=0x1C3000`).
-r91a candidate sha256 352030fb77f498c0..., 1,015,124 bytes. Bench only: `-DA4_WHEELCEN`, `-DA4_WHEELGATE`,
+r91a as sent: sha256 a9006828e0088011..., 1,015,124 bytes (the pace tightened; the first build was 352030fb77f498c0...). Bench only: `-DA4_WHEELCEN`, `-DA4_WHEELGATE`,
 `-DA4_PAINTCEN`, `-DA4_PAINTCHECK` (counts also in TIM2 [50..57]), `-DA4_SNOWCHECK` (scratch 0x220000),
 `-DA4_SNOWMUTANT`, `-DA4_SNOWREC`, `-DA4_SNOWGATE`, `-DA4_BLURFAST2` (exact, no gain on the model: not in C92).
+
+C93.flags = C91.flags with `-DA4_CARANIM -DA4_M1SKY -DA4_PAINTFWD -DA4_SNOWFAST` (round 88, after r91a's phone round:
+the paint's reflection on the GPU with no texture changed during a race -- A4_M1SKY replaces A4_M1LIVE, whose uploads
+cost the phone 18 ms a refresh). Same scratch (`A4_SCRATCH_SIZE=0x1C3000`). r91b candidate sha256 d81b952798606cc4...,
+1,021,728 bytes; C90 / C91 / C92 rebuilt from the same tree give r90a's, r90b's and r91a's bytes. Bench only:
+`-DA4_M1SKYCEN` (TIM2 [48], [50..59]: the faces against the game's map, why the half sky is made again, the
+registrations, how each frame's mapping went).

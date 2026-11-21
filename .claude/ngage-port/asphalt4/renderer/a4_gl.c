@@ -4631,8 +4631,9 @@ static void m1l_refresh(volatile struct glr *s)
  *   alpha 0xFF again, as before. Only the faces with a reflecting texel in their box are drawn again (a list made
  *   with the points: on LA's Veyron 50 of the paint's 564), and each one's corner points are the least-squares
  *   plane of the map's points over its texels -- the per-texel map drawn as the nearest plane across each face;
- * - the screen-to-sky mapping each frame from the GPU's backdrop (sky_layout's runs). So the reflection follows the
- *   picture every frame, but holds the backdrop only -- what the 3D draws over the screen's top rows is not in it,
+ * - the screen-to-sky mapping each frame from the sky routine's own row copies (m1s_obs_*: on the GPU's frames and on
+ *   software ones alike -- Dubai's sun keeps its sky software), committed at the car's draw (m1s_commit). So the
+ *   reflection follows the picture every frame, but holds the backdrop only -- what the 3D draws over the screen's top rows is not in it,
  *   and the per-corner points are the game's per-texel map drawn smooth across each face.
  * State at 0x5C3100 (A4_M1LIVE's place; not with it). TIM2 [40] second passes drawn, [41] renders whose mapping was
  * not this frame's, [42] corner tables made, [43] faces drawn again | of them those fitted flat (their texels on one
@@ -4646,7 +4647,8 @@ static void m1l_refresh(volatile struct glr *s)
 #error "A4_M1SKY: the GPU's sky and cars (A4_GPUSKY, A4_GPUCAR, A4_CARANIM's bake), TIM2 (A4_PHTIMERS)"
 #endif
 struct m1sky { uint32_t magic, mi, verts, ofs, scr, ready, desc, frame, ox, oy, w, h;
-               uint32_t tex2, t2pix, t2wh, t2hash, t2w2, t2h2, nidx; };
+               uint32_t tex2, t2pix, t2wh, t2hash, t2w2, t2h2, nidx;
+               uint32_t ofr, onlr, ohave, obad, otop, opix, owh, olw, opx, opy, olr[3]; };   /* the sky seen (m1s_obs_*) */
 #define M1S ((volatile struct m1sky *)0x005C3100u)
 #define M1S_MAGIC 0x31534D31u                    /* '1MS1' */
 _Static_assert(0x005C3100u + sizeof(struct m1sky) <= 0x005C4000u, "M1SKY within A4_SCRATCH_SIZE 0x1C3000's scratch");
@@ -4655,9 +4657,15 @@ static volatile struct m1sky *m1s_get(void)
     volatile struct m1sky *S = M1S;
     if (S->magic != M1S_MAGIC) {
         S->mi = 0; S->ready = 0; S->frame = 0xFFFFFFFFu; S->tex2 = 0; S->t2pix = 0; S->t2wh = 0; S->t2hash = 0;
+        S->ofr = 0xFFFFFFFFu; S->ohave = 0; S->obad = 1;
         S->magic = M1S_MAGIC;
     }
     return S;
+}
+#define M1S_F 64u                                    /* the half sky's rows above the image: the top fill's colour */
+static inline uint32_t m1s_half(uint32_t c)         /* twice the span's quarter, channel by channel */
+{
+    return ((((c >> 11) & 31u) >> 2) << 12) | ((((c >> 5) & 63u) >> 2) << 6) | (((c & 31u) >> 2) << 1);
 }
 /* tex_make's var 3: the paint as RGBA8888 -- T, alpha 0 (T 0) / 0x80 (M) / 0xFF -- in strips through the readback */
 static uint32_t m1s_upload(uint32_t id, const uint32_t *ts, const uint16_t *map2)
@@ -7394,6 +7402,70 @@ static void m1s_corners(volatile struct m1sky *S, const struct gcmesh *me, uint3
     S->nidx = ni; S->desc = d; S->ready = 1; T[42]++;
     T[49] += ((a4_ntick() - t0) & 0xFFFFu) << 16;   /* the point tables' making, ticks (high half) */
 }
+/* at the car flush and the covers' redraw, before their binds: this frame's mapping, when the sky routine was seen
+ * and its runs were one picture (m1s_obs_*), and the half sky made again when the image, a sample of 64 of its
+ * texels or its top colour as halved is another (LA's top colour flickers 0x1061 / 0x1060, a blue bit the half
+ * drops: keyed by the full colour, the 256 KB texture was made again at each flicker, ~48 ms of uploads on the MBX) */
+static void m1s_commit(void)
+{
+    volatile struct m1sky *S = m1s_get();
+    volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
+#ifdef A4_M1SKYCEN
+    /* bench: TIM2 [58] frames whose sky was not seen | seen without a run << 8 | its runs not one picture << 16 |
+     * mapped << 24 (bytes, wrapping); [59] the last frame counted */
+    {   volatile uint32_t *T = tim2();
+        if (S->frame != s->frames && T[59] != s->frames) {
+            T[59] = s->frames;
+            T[58] += S->ofr != s->frames ? 1u : !S->ohave ? 1u << 8 : S->obad ? 1u << 16 : 1u << 24;
+        }
+    }
+#endif
+    if (S->frame == s->frames || S->ofr != s->frames || !S->ohave || S->obad) return;
+    const uint32_t pix = S->opix, w = S->owh & 0xFFFFu, h = S->owh >> 16;
+    const uint16_t *px = (const uint16_t *)(uintptr_t)pix;
+    uint32_t hs = 0x811C9DC5u;
+    for (uint32_t i = 0, tot = w * h, step = (tot >> 6) | 1u; i < tot; i += step) hs = (hs ^ px[i]) * 16777619u;
+    const uint32_t topc = m1s_half(S->otop != 0xFFFFFFFFu ? S->otop : px[0]);
+    if (!S->tex2 || S->t2pix != pix || S->t2wh != S->owh || S->t2hash != (hs ^ topc)) {
+#ifdef A4_M1SKYCEN
+        /* bench: why the half sky is made again -- TIM2 [53] the image's address | its size << 8 | its texels or the
+         * top colour << 16 (counts), [54] the last top colour (old | new << 16) */
+        if (S->tex2) {
+            volatile uint32_t *T = tim2();
+            T[53] += (S->t2pix != pix ? 1u : 0u) + (S->t2wh != S->owh ? 1u << 8 : 0u) + (S->t2hash != (hs ^ topc) ? 1u << 16 : 0u);
+            T[54] = (S->t2hash ^ hs) | topc << 16;
+        }
+#endif
+        const uint32_t t0 = a4_ntick();
+        uint32_t id = S->tex2, lh = 0;
+        while ((1u << lh) < M1S_F + h) lh++;
+        if (!id) { gl_gentex(1, &id); if (!id) return; }
+        gl_bindtex(GL_TEXTURE_2D, id);
+        gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        gl_teximage(GL_TEXTURE_2D, 0, GL_RGB, (int)w, (int)(1u << lh), 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, 0);
+        uint16_t *conv = (uint16_t *)A4_GL_READBUF;    /* 10240 texels */
+        const uint32_t H = 1u << lh;
+        uint32_t y0 = 0, nrow = 0;
+        for (uint32_t y = 0; y < H; y++) {
+            const uint32_t iy = y < M1S_F ? 0xFFFFFFFFu : (y - M1S_F < h ? y - M1S_F : h - 1u);   /* below: the last row */
+            for (uint32_t x = 0; x < w; x++) conv[nrow * w + x] = (uint16_t)(iy == 0xFFFFFFFFu ? topc : m1s_half(px[iy * w + x]));
+            nrow++;
+            if ((nrow + 1u) * w > 10240u || y == H - 1u) {
+                gl_texsubimage(GL_TEXTURE_2D, 0, 0, (int)y0, (int)w, (int)nrow, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, conv);
+                y0 = y + 1u; nrow = 0;
+            }
+        }
+        S->tex2 = id; S->t2pix = pix; S->t2wh = S->owh; S->t2hash = hs ^ topc; S->t2w2 = S->olw; S->t2h2 = lh;
+        volatile uint32_t *T = tim2();
+        T[44]++; T[46] = S->owh;
+        T[49] += (a4_ntick() - t0) & 0xFFFFu;          /* the half skies' making, ticks (low half) */
+    }
+    S->ox = S->opx; S->oy = S->opy; S->frame = s->frames;
+    tim2()[45] = S->ox | S->oy << 16;
+}
 /* the paint this car's second pass reflects on (its mode-1 groups drawn from it as var 3), or 0: none this frame */
 static uint32_t m1s_will(const struct gcmesh *me, const uint16_t *m1map, const uint16_t *m1tab)
 {
@@ -7737,6 +7809,9 @@ static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t fac
 /* the frame's cars, after the scenery and before the list: a modelview a car, a draw a group */
 static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
 {
+#ifdef A4_M1SKY
+    m1s_commit();                                   /* before the binds this flush tracks */
+#endif
     volatile struct gcstate *c = GCAR;
 #ifdef A4_CARPROBE
     {   /* bench (round 84, the owner's Dubai: no cars at the start): CRK1 [40] frames flushed, [41] of them with cars
@@ -8080,6 +8155,9 @@ static PROF_NI int cvr_add(int32_t b, int32_t x0, int32_t y0, int32_t x1, int32_
  * front; where something nearer than the item was drawn and wrote depth (the road, a flagged element), it stays */
 static void cvr_redraw(volatile struct glr *s)
 {
+#ifdef A4_M1SKY
+    m1s_commit();                                   /* before the binds this redraw tracks */
+#endif
     volatile struct cvr *v = CVR;
     if (!v->pend) return;
     uint32_t *gctx = (uint32_t *)(uintptr_t)MESH->gctx;
@@ -9262,10 +9340,57 @@ static void sky_replay(volatile struct skys *k)
     k->state = SK_SW;
     SKYCK2[68]++;
 }
+#ifdef A4_M1SKY
+/* The reflection's mapping, seen at the sky routine's own row copies whether the sky ends on the GPU or in software
+ * (Dubai's sun keeps it software for 128 frames after each sun call, round 88, and its GPU layout is then never
+ * made): each run's first row gives the screen-to-image offset -- (ic - x) wrapping at the image's power-of-two
+ * width, M1S_F + ir - y -- which every run of one picture shares; any that differs spoils the frame's. */
+static void m1s_obs_frame(volatile struct m1sky *S, volatile struct skys *k)
+{
+    const uint32_t fr = ((volatile struct glr *)A4_GL_SCRATCH)->frames;
+    if (S->ofr == fr) return;
+    S->ofr = fr; S->onlr = 0; S->ohave = 0; S->otop = 0xFFFFFFFFu;
+    const uint16_t *hd = (const uint16_t *)k->hdr;
+    S->obad = k->why == 1u || !hd || ((uint32_t)(uintptr_t)hd & 3u) || hd[0] < 2u || hd[0] > 1024u || (hd[0] & 1u)
+              || !hd[1] || hd[1] > 1024u || !((const uint32_t *)hd)[4] || (((const uint32_t *)hd)[4] & 3u);   /* sky_decide's */
+    if (!S->obad) {
+        uint32_t lw = 0;
+        while ((1u << lw) < hd[0]) lw++;
+        S->opix = ((const uint32_t *)hd)[4]; S->owh = hd[0] | (uint32_t)hd[1] << 16; S->olw = lw;
+        if ((1u << lw) != hd[0]) S->obad = 1;        /* wraps at w only when w is a power of two */
+    }
+}
+static void m1s_obs_top(const uint32_t *blk)
+{
+    volatile struct m1sky *S = m1s_get();
+    m1s_obs_frame(S, SKYS);
+    S->otop = (blk[1] >> 16) == (blk[1] & 0xFFFFu) ? (blk[1] & 0xFFFFu) : 0xFFFFFFFFu;
+}
+static void m1s_obs_mv(const uint32_t *blk)
+{
+    volatile struct m1sky *S = m1s_get();
+    volatile struct skys *k = SKYS;
+    m1s_obs_frame(S, k);
+    if (S->obad) return;
+    const uint32_t dst = blk[0], src = blk[1], lr = blk[7];
+    for (uint32_t i = 0; i < S->onlr; i++) if (S->olr[i] == lr) return;    /* a run's later row */
+    if (S->onlr == 3u || dst < k->fb || src < S->opix) { S->obad = 1; return; }
+    S->olr[S->onlr] = lr; S->onlr++;
+    uint32_t rem;
+    const uint32_t y = sky_udiv(dst - k->fb, 2u * VP_W, &rem), x = rem >> 1;
+    const uint32_t so = src - S->opix, ir = so >> (S->olw + 1u), ic = (so & ((2u << S->olw) - 1u)) >> 1;
+    const uint32_t ox = (ic - x) & ((1u << S->olw) - 1u), oy = M1S_F + ir - y;
+    if (S->ohave && (ox != S->opx || oy != S->opy)) { S->obad = 1; return; }
+    S->opx = ox; S->opy = oy; S->ohave = 1;
+}
+#endif
 int a4_sky_top(const uint32_t *blk)                 /* r0 the fill's end, r1 its colour pair, r4 its start */
 {
     volatile struct skys *k = SKYS;
     if (k->state == SK_NONE) sky_decide(blk + 8);
+#ifdef A4_M1SKY
+    m1s_obs_top(blk);
+#endif
     if (k->state != SK_REC) return 0;
     if (k->top_b || k->nrun || k->bot_b) { sky_replay(k); return 0; }   /* a second top fill: not this layout */
     k->top_a = blk[4]; k->top_b = blk[0]; k->top_c = blk[1];
@@ -9284,6 +9409,9 @@ int a4_sky_mv(const uint32_t *blk)                  /* memmove(r0, r1, r2), from
 {
     volatile struct skys *k = SKYS;
     if (k->state == SK_NONE) sky_decide(blk + 8);
+#ifdef A4_M1SKY
+    m1s_obs_mv(blk);
+#endif
     if (k->state != SK_REC) return 0;
     uint32_t dst = blk[0], src = blk[1], n = blk[2], lr = blk[7], i;
     if (k->bot_b) { sky_replay(k); return 0; }      /* a band row after the bottom fill: not this layout */
@@ -9500,75 +9628,6 @@ static void sky_trace(uint32_t kind, uint32_t info)
 }
 #endif
 #endif
-#ifdef A4_M1SKY
-#define M1S_F 64u                                    /* the half sky's rows above the image: the top fill's colour */
-static inline uint32_t m1s_half(uint32_t c)         /* twice the span's quarter, channel by channel */
-{
-    return ((((c >> 11) & 31u) >> 2) << 12) | ((((c >> 5) & 63u) >> 2) << 6) | (((c & 31u) >> 2) << 1);
-}
-/* the GPU's backdrop this frame: the screen-to-image offset of its runs (one offset, wrapping at the image's power-of-two
- * width), and the half sky made again when the image (or the top fill's colour) is another */
-static void m1s_sky(volatile struct glr *s, volatile struct skys *k, const struct skq *q, int nq)
-{
-    volatile struct m1sky *S = m1s_get();
-    const uint16_t *hd = (const uint16_t *)k->hdr;
-    const uint32_t w = hd[0], h = hd[1], pix = ((const uint32_t *)hd)[4];
-    if ((1u << k->tw2) != w || !pix) return;        /* the runs wrap at w only when the texture is exactly w wide */
-    int have = 0;
-    uint32_t ox = 0, oy = 0;
-    for (int i = 0; i < nq; i++) {
-        if ((q[i].id >> 28) != KIND_TEX) continue;
-        const uint32_t ic = (uint32_t)q[i].S0 >> (16u - k->tw2), ir = (uint32_t)q[i].T0 >> (16u - k->th2);
-        const uint32_t x = (ic - (uint32_t)q[i].x0) & (w - 1u), y = M1S_F + ir - (uint32_t)q[i].y0;
-        if (have && (x != ox || y != oy)) return;   /* runs not one picture: the mapping kept from before */
-        ox = x; oy = y; have = 1;
-    }
-    if (!have) return;
-    /* the top colour as the half sky holds it: LA's flickers 0x1061 / 0x1060 (a blue bit the half drops), and each
-     * flicker made the 256 KB texture again (~48 ms of uploads on the MBX) until keyed by its half */
-    const uint32_t topc = m1s_half(k->top_b ? (k->top_c & 0xFFFFu) : ((const uint16_t *)(uintptr_t)pix)[0]);
-    if (!S->tex2 || S->t2pix != pix || S->t2wh != (w | h << 16) || S->t2hash != (k->thash ^ topc)) {
-#ifdef A4_M1SKYCEN
-        /* bench: why the half sky is made again -- TIM2 [53] the image's address | its size << 8 | its hash or the top
-         * colour << 16 (counts), [54] the last top colour (old | new << 16), [55] k->top_b | the frame << 8 */
-        if (S->tex2) {
-            volatile uint32_t *T = tim2();
-            T[53] += (S->t2pix != pix ? 1u : 0u) + (S->t2wh != (w | h << 16) ? 1u << 8 : 0u) + (S->t2hash != (k->thash ^ topc) ? 1u << 16 : 0u);
-            T[54] = (S->t2hash ^ k->thash) | topc << 16; T[55] = k->top_b | s->frames << 8;
-        }
-#endif
-        const uint32_t t0 = a4_ntick();
-        uint32_t id = S->tex2, lh = 0;
-        while ((1u << lh) < M1S_F + h) lh++;
-        if (!id) { gl_gentex(1, &id); if (!id) return; }
-        gl_bindtex(GL_TEXTURE_2D, id);
-        gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        gl_teximage(GL_TEXTURE_2D, 0, GL_RGB, (int)w, (int)(1u << lh), 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, 0);
-        const uint16_t *px = (const uint16_t *)(uintptr_t)pix;
-        uint16_t *conv = (uint16_t *)A4_GL_READBUF;    /* 10240 texels */
-        const uint32_t H = 1u << lh, top = topc;
-        uint32_t y0 = 0, nrow = 0;
-        for (uint32_t y = 0; y < H; y++) {
-            const uint32_t iy = y < M1S_F ? 0xFFFFFFFFu : (y - M1S_F < h ? y - M1S_F : h - 1u);   /* below: the last row */
-            for (uint32_t x = 0; x < w; x++) conv[nrow * w + x] = (uint16_t)(iy == 0xFFFFFFFFu ? top : m1s_half(px[iy * w + x]));
-            nrow++;
-            if ((nrow + 1u) * w > 10240u || y == H - 1u) {
-                gl_texsubimage(GL_TEXTURE_2D, 0, 0, (int)y0, (int)w, (int)nrow, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, conv);
-                y0 = y + 1u; nrow = 0;
-            }
-        }
-        S->tex2 = id; S->t2pix = pix; S->t2wh = w | h << 16; S->t2hash = k->thash ^ topc;
-        S->t2w2 = k->tw2; S->t2h2 = lh;
-        tim2()[44]++; tim2()[46] = w | h << 16;
-        tim2()[49] += (a4_ntick() - t0) & 0xFFFFu;    /* the half skies' making, ticks (low half) */
-    }
-    S->ox = ox; S->oy = oy; S->frame = s->frames;
-    tim2()[45] = ox | oy << 16;
-}
-#endif
 /* at the frame's first triangle, after the clear: the recorded backdrop drawn, before the mesh list */
 static void sky_frame_begin(volatile struct glr *s)
 {
@@ -9582,9 +9641,6 @@ static void sky_frame_begin(volatile struct glr *s)
     s->bfill = 0;
     k->state = SK_GPU;
     SKYCK2[67]++; SKYCK2[63] = k->fb;
-#ifdef A4_M1SKY
-    m1s_sky(s, k, q, nq);
-#endif
 #ifdef A4_SKYDIMCEN
     {   /* bench (round 88, the reflection on the GPU): TIM2 [26] the image's w | h << 16, [27] the texture's log2 w |
          * log2 h << 8 | runs << 16 | quads << 24, [28..30] each run's screen x | width << 16, [31..33] its image column

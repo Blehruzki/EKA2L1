@@ -14537,12 +14537,12 @@ each render. What moves is only where each reflective texel looks: the paint's m
 - **The paint** (a big mode-1 texture on the screen's table, drawn by the player's GPU car) is made once as RGBA8888:
   its T, alpha 0 where T is 0 (the colour key), **0x80 where it reflects** (M != 0), 0xFF elsewhere. GL_REPLACE writes
   that alpha into the frame (0x80 is still "drawn" to the composite).
-- **The half sky**: the GPU's own backdrop (A4_GPUSKY's panorama) made once as a texture at twice its quarter, channel
+- **The half sky**: the game's sky panorama made once as a texture at twice its quarter, channel
   by channel (m1s_half, the stock arithmetic), with 64 rows of the top fill's colour above it and the last row below
   (wrap at the panorama's power-of-two width, clamp in height).
 - **The second pass**: right after the car, its reflecting faces again over the half sky, at texture coordinates that
-  are each corner's screen point, mapped into the half sky each frame from sky_layout's runs (one offset: the
-  texture matrix); GL_EQUAL depth, blending (1 - dst alpha, 1): a reflecting texel gets 0.498 of twice the quarter,
+  are each corner's screen point, mapped into the half sky each frame (one offset: the texture matrix; read from the
+  sky routine's row copies, below); GL_EQUAL depth, blending (1 - dst alpha, 1): a reflecting texel gets 0.498 of twice the quarter,
   any other none, and every car pixel ends with alpha 0xFF as before. Both car draws (gcar_flush, cvr_redraw) do it.
 - **The points**: a face's corner points are the least-squares plane of the map's points over the face's texels
   (m1s_scan: those inside the face, else those in its box; the mean where they lie on one line), made once at the
@@ -14571,3 +14571,24 @@ Runs (bench, C93 = C91 + A4_CARANIM + A4_M1SKY + A4_PAINTFWD + A4_SNOWFAST):
 - **The half sky was made 3 times in hm_ms** (~256 KB: 13 strips at ~2.3 ms + ~70 us a KB, ~48 ms on the phone each).
   hm_cen (+ the census of why): the top fill's colour flickers 0x1061 / 0x1060 -- a blue bit the half drops -- and each
   flicker made the texture again. Keyed by the half colour now.
+- Two read-backs (Rule 4 b): (1) the registration took the last-baked mesh with any mode-1 face -- an opponent's mesh
+  baked after the player's would have taken the pass from it (one slot); now only the player's car registers (the mesh
+  +1B084 animates, gca_car, with a big mode-1 paint), and gobj_clear forgets it with the store (it did not). (2) TIM2
+  [49] added: ticks making the half skies | the point tables << 16 -- the one-time costs the phone has not priced.
+- msall (six maps 45 s, one session; the build before those two): framestat 5,642, the boot fault only; one point
+  table and one half sky per race (TIM2 [42], [44] 1 to 6 across the maps: the flicker fix holds). **But passes on an
+  earlier frame's mapping: Monaco 200 of 718, Dubai 604 of 720, Shanghai 312 of 722** (LA, New York, Paris 0); Dubai's
+  mapping 170,26 in every capture -- the reflection frozen against the sky.
+- dscen (+ A4_M1SKYCEN, Dubai and Shanghai): Dubai's frames begin "not recording" -- sky_decide's why 8: +3059E, the sun
+  and its flare, keeps the whole sky in software for 128 frames after each call (round 88), so sky_layout is never made
+  and the mapping never read. **The fix: the mapping seen at the sky routine's own row copies** (a4_sky_top /
+  a4_sky_mv, in any state, before they decide; m1s_obs_*): each run's first row gives (ic - x) mod w and M1S_F + ir - y,
+  every run must agree; committed at the car flush and the covers' redraw (m1s_commit, before their binds), which also
+  makes the half sky again when the image, 64 of its texels (its own sample: the GPU sky's hash is not kept on
+  software frames) or the halved top colour change. sky_frame_begin is as C91's again.
+- dscen2 (the same two maps on it): **passes on an earlier mapping 0 in both** (Dubai mapped every race frame, the
+  offset moving 0x1B2 / 0x1AA); one half sky per map (Shanghai's made again for the new image at the same address:
+  [53] size | texels << 16).
+- **C90 / C91 / C92 rebuilt from this tree: r90a's 6ebb8ba6..., r90b's 93391d95..., r91a's a9006828... -- unchanged.**
+  C93 (r91b candidate): a4_r91b_cand.exe sha256 d81b952798606cc4a813ec302ec10d0b93deef630a8c99b3dff10701e73334cf,
+  1,021,728 bytes. bat93 (six maps with a frame dump, Instant Play 300 s with 7 marks on the model, Paris 400 s) running.
